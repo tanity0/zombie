@@ -61,6 +61,10 @@ const selectEnemyType = (gameTime: number): EnemyType => {
 // speed mostly constant, only the spawn pressure increases).
 const difficultyFor = (gameTime: number) => Math.min(1 + gameTime / 90000, 5);
 
+// Global enemy toughness multiplier on top of the difficulty ramp. Bumped so
+// fights are chunkier and ammo/positioning matter more. Damage is unaffected.
+const ENEMY_HP_MULT = 5;
+
 const buildEnemy = (
   type: EnemyType,
   x: number,
@@ -71,7 +75,7 @@ const buildEnemy = (
   const stats = ENEMY_STATS[type];
   const diff = difficultyFor(gameTime);
   // Reaper is a fixed terminal entity — don't scale it.
-  const hpMult = type === 'reaper' ? 1 : diff;
+  const hpMult = type === 'reaper' ? 1 : diff * ENEMY_HP_MULT;
   const dmgMult = type === 'reaper' ? 1 : Math.min(diff, 2.5);
 
   return {

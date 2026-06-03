@@ -93,6 +93,30 @@ export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => 
   return [createWeapon(profile.gunKey), createWeapon(profile.meleeKey)];
 };
 
+// Effective firing range per gun family (px). A gun only fires when an enemy
+// is within this reach, so the player doesn't burn rounds into empty space.
+// RE-flavored: shotgun is close-quarters, rifle reaches far, handgun is mid.
+export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
+  handgun: 440,
+  shotgun: 240,
+  rifle: 780
+};
+
+// Distance from the player center to the nearest enemy center, or Infinity
+// when the field is empty.
+const nearestEnemyDistance = (player: Player, enemies: Enemy[]): number => {
+  let closestD2 = Infinity;
+  const pcx = player.x + player.width / 2;
+  const pcy = player.y + player.height / 2;
+  for (const e of enemies) {
+    const dx = e.x + e.width / 2 - pcx;
+    const dy = e.y + e.height / 2 - pcy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < closestD2) closestD2 = d2;
+  }
+  return Math.sqrt(closestD2);
+};
+
 // Aim helper: point at the nearest enemy, falling back to the last movement
 // direction (then straight up) when the field is empty.
 const aimDirection = (player: Player, enemies: Enemy[]): { x: number; y: number } => {
@@ -133,6 +157,12 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   const field = AMMO_FIELD[weapon.ammoType];
   if (player[field] <= 0) return []; // dry — switch to melee until resupplied
+
+  // Range gate: hold fire (and ammo) unless an enemy is within reach. Don't
+  // advance lastFired here so the gun fires the instant a target enters range.
+  if (nearestEnemyDistance(player, enemies) > RANGE_BY_CATEGORY[weapon.ammoType]) {
+    return [];
+  }
 
   const baseDir = aimDirection(player, enemies);
   const count = weapon.count ?? 1;
