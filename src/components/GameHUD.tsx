@@ -1,7 +1,7 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
-import { getWeaponShortName, effectiveReloadMs } from '../utils/weaponUtils';
+import { getWeaponShortName } from '../utils/weaponUtils';
 import type { AmmoType } from '../types/game';
 
 const REAPER_TIME_MS = 30 * 60 * 1000;
@@ -132,9 +132,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                 const active = gun.id === activeGun?.id;
                 const reloading =
                   player.reloadingWeaponId === gun.id && Date.now() < player.reloadEndsAt;
-                const reloadProgress = reloading
-                  ? Math.max(0, Math.min(1, 1 - (player.reloadEndsAt - Date.now()) / effectiveReloadMs(gun, player)))
-                  : 0;
                 return (
                   <button
                     key={gun.id}
@@ -154,12 +151,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                     <div className="leading-tight text-left">
                       <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>
                       {reloading ? (
-                        <div className="w-[52px]">
-                          <div className="text-[10px] font-bold text-amber-300 animate-pulse">RELOAD</div>
-                          <div className="h-1 mt-0.5 rounded bg-white/15 overflow-hidden">
-                            <div className="h-full bg-amber-400" style={{ width: `${reloadProgress * 100}%` }} />
-                          </div>
-                        </div>
+                        <div className="text-[12px] font-bold text-amber-300 animate-pulse">RELOAD…</div>
                       ) : (
                         <div
                           className={`text-[13px] font-bold tabular-nums ${

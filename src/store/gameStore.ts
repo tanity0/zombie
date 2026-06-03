@@ -13,12 +13,10 @@ import { openCrate } from '../utils/weaponDrop';
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
 export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 120, shotgun: 40, rifle: 24 };
 export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, rifle: 60 };
-// How much a world ammo pickup grants for each family (enemy drops + air
-// drops). Modest relative to the reserve cap — resupply is scarce.
+// How much a world/melee ammo pickup grants for each family (enemy drops, air
+// drops, and the boxes melee kills now drop). Modest relative to the reserve
+// cap — resupply is scarce.
 export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 30, shotgun: 10, rifle: 5 };
-// Rounds refunded into the RESERVE per melee finisher, by the active gun's
-// family. The crit→stun→finish loop slowly tops the reserve back up.
-export const FINISHER_AMMO_REFUND: Record<AmmoType, number> = { handgun: 4, shotgun: 1, rifle: 1 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
 export const BULLET_KNOCKBACK_SPEED = 190;
@@ -324,6 +322,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // the one finger-release does melee, knockback, and bullet-parry together.
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     const survivors: Enemy[] = [];
+    const critHits: { x: number; y: number; value: number }[] = [];
+    const meleeCritChance = melee?.critChance ?? 0;
     for (const enemy of enemies) {
       if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
       const ecx = enemy.x + enemy.width / 2;
@@ -338,7 +338,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: true }); // execute
         continue;
       }
-      const newHealth = Math.max(0, enemy.health - meleeDamage);
+      // Melee weapons carry a fixed crit chance (varies by weapon). A crit
+      // multiplies the swing's damage and pops a gold number.
+      const crit = Math.random() < meleeCritChance;
+      const dmg = meleeDamage * (crit ? CRIT_DAMAGE_MULT : 1);
+      if (crit) critHits.push({ x: ecx, y: enemy.y, value: Math.round(dmg) });
+      const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
         continue;
@@ -372,9 +377,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Shockwave ring telegraph — wider than the hit zone so the swing reads big.
     get().spawnRing(pcx, pcy, 14, KNOCKBACK_RING_RADIUS, 'rgba(252, 211, 77, 0.85)', 4, 320);
 
+    // Gold crit numbers for any critical melee hits.
+    for (const c of critHits) {
+      get().spawnDamageNumber(c.x, c.y, c.value, true);
+    }
+
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
-    // (finisher or not) refunds a chunk of ammo into the active gun's reserve —
-    // melee is now the run's main way to claw rounds back.
+    // also DROPS an ammo box for the active gun's family — melee is the run's
+    // main way to scavenge rounds, but you have to walk over the drop.
     for (const { enemy, finisher } of killed) {
       const ex = enemy.x + enemy.width / 2;
       const ey = enemy.y + enemy.height / 2;
@@ -385,6 +395,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `pickup-xp-melee-${enemy.id}`,
         x: ex - 8, y: ey - 8, type: 'experience', value: xp
       });
+      if (gun?.ammoType) {
+        get().addPickup({
+          id: `pickup-ammo-melee-${enemy.id}`,
+          x: ex - 8 + 14, y: ey - 8,
+          type: `ammo-${gun.ammoType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+          value: 0
+        });
+      }
       if (finisher) {
         get().spawnBurst(ex, ey, '#fcd34d', 16);
         get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.9)', 4, 360);
@@ -394,9 +412,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
-    }
-    if (killed.length > 0 && gun?.ammoType) {
-      get().addAmmo(gun.ammoType, killed.length * FINISHER_AMMO_REFUND[gun.ammoType]);
     }
   },
 

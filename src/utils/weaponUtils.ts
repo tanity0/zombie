@@ -29,6 +29,7 @@ interface WeaponDef {
   passthrough?: boolean;
   magSize?: number;      // magazine capacity (rounds loaded); omit for melee
   reloadMs?: number;     // reload duration; heavier guns reload slower
+  critChance?: number;   // fixed crit chance (melee weapons)
 }
 
 const CATALOG: Record<string, WeaponDef> = {
@@ -48,9 +49,10 @@ const CATALOG: Record<string, WeaponDef> = {
   'rifle-t3':         { key: 'rifle-t3',   name: 'グレネードランチャー', type: 'rifle', category: 'rifle', tier: 3, damage: 75, cooldown: 1400, projectileSpeed: 420, projectileSize: 14, count: 1, passthrough: true, magSize: 1, reloadMs: 2200 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
-  'knife-t1':         { key: 'knife-t1',   name: 'ナイフ',         type: 'knife',   tier: 1, isMelee: true, damage: 8,  cooldown: 0 },
-  'hatchet-t2':       { key: 'hatchet-t2', name: '鉈',             type: 'hatchet', tier: 2, isMelee: true, damage: 14, cooldown: 0 },
-  'machete-t3':       { key: 'machete-t3', name: 'マチェーテ',     type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0 }
+  // Each carries a fixed crit chance that rises with tier.
+  'knife-t1':         { key: 'knife-t1',   name: 'ナイフ',         type: 'knife',   tier: 1, isMelee: true, damage: 8,  cooldown: 0, critChance: 0.05 },
+  'hatchet-t2':       { key: 'hatchet-t2', name: '鉈',             type: 'hatchet', tier: 2, isMelee: true, damage: 14, cooldown: 0, critChance: 0.08 },
+  'machete-t3':       { key: 'machete-t3', name: 'マチェーテ',     type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 }
 };
 
 export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
@@ -86,6 +88,7 @@ export const createWeapon = (key: string): Weapon => {
     magSize: def.magSize,
     magazine: def.magSize, // a fresh gun starts fully loaded
     reloadMs: def.reloadMs,
+    critChance: def.critChance,
     category: def.category,
     tier: def.tier,
     isMelee: def.isMelee,
@@ -133,9 +136,9 @@ export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => 
 // is within this reach, so the player doesn't burn rounds into empty space.
 // RE-flavored: shotgun is close-quarters, rifle reaches far, handgun is mid.
 export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
-  handgun: 440,
-  shotgun: 240,
-  rifle: 780
+  handgun: 220,
+  shotgun: 120,
+  rifle: 390
 };
 
 // A stunned enemy is a low-priority target — the player should be putting

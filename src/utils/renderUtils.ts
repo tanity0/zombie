@@ -1,6 +1,7 @@
 import { Player, Enemy, Projectile, Pickup, VisualEffect } from '../types/game';
 import { getEnemyColor } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
+import { effectiveReloadMs } from './weaponUtils';
 
 // Kick off image loads as soon as the renderer module is imported. The
 // names map 1:1 to PNG filenames under `public/sprites/`.
@@ -162,6 +163,7 @@ export const renderGame = (
 
   projectiles.forEach(projectile => drawProjectile(ctx, projectile, camera));
   drawPlayer(ctx, player, camera);
+  drawReloadMeter(ctx, player, camera);
 
   // World-space effects on top of sprites (particles, rings, damage numbers)
   effects.forEach(e => {
@@ -1173,6 +1175,37 @@ const gemColorFor = (value: number): { fill: string; shimmer: string } => {
   if (value >= 5) return { fill: '#ef4444', shimmer: '#fecaca' };
   if (value >= 2) return { fill: '#10b981', shimmer: '#a7f3d0' };
   return { fill: '#3b82f6', shimmer: '#bfdbfe' };
+};
+
+// A reload progress bar floating just above the player's head while the active
+// gun is being reloaded.
+const drawReloadMeter = (
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  camera: { x: number; y: number }
+) => {
+  if (!player.reloadingWeaponId || Date.now() >= player.reloadEndsAt) return;
+  const gun = player.weapons.find(w => w.id === player.reloadingWeaponId);
+  if (!gun) return;
+  const total = effectiveReloadMs(gun, player);
+  const progress = Math.max(0, Math.min(1, 1 - (player.reloadEndsAt - Date.now()) / total));
+
+  const w = 30;
+  const h = 5;
+  const cx = player.x + player.width / 2 - camera.x;
+  const top = player.y - camera.y - 16;
+  const x = cx - w / 2;
+
+  ctx.save();
+  // Track
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(x - 1, top - 1, w + 2, h + 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillRect(x, top, w, h);
+  // Fill
+  ctx.fillStyle = '#fbbf24';
+  ctx.fillRect(x, top, w * progress, h);
+  ctx.restore();
 };
 
 const drawPickup = (

@@ -126,6 +126,9 @@ export interface Weapon {
   tier?: number;
   isMelee?: boolean;
   ammoType?: AmmoType;
+  // Fixed crit chance for this weapon. Guns currently roll the player's global
+  // critChance instead, but melee weapons carry their own fixed value here.
+  critChance?: number;
   // Catalog key (e.g. 'handgun-t1') so drops/crates can re-create the weapon.
   key?: string;
 }
