@@ -3,7 +3,9 @@ import {
   useGameStore,
   INVULN_MS,
   COUNTER_EXTEND_PER_HIT,
-  STUN_DURATION_MS
+  STUN_DURATION_MS,
+  CRIT_DAMAGE_MULT,
+  BOSS_CRIT_DAMAGE_MULT
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType } from '../types/game';
@@ -18,7 +20,8 @@ import {
   generateEnemy,
   getEnemyFireProfile,
   getEnemySpawnCount,
-  getEnemySpawnInterval
+  getEnemySpawnInterval,
+  isBossType
 } from '../utils/enemyUtils';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
@@ -233,7 +236,15 @@ export const useGameLoop = (onGameOver: () => void) => {
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage }) => {
           const enemyForFx = enemies.find(e => e.id === enemyId);
           const projectile = projectiles.find(p => p.id === projectileId);
-          const enemyKilled = damageEnemy(enemyId, damage);
+
+          // Apply the crit multiplier at hit time: bosses take 5× on a crit,
+          // normal enemies 1.5×. `damage` is the projectile's base damage.
+          const isBoss = enemyForFx ? isBossType(enemyForFx.type) : false;
+          const critMult = projectile?.crit
+            ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
+            : 1;
+          const dmg = damage * critMult;
+          const enemyKilled = damageEnemy(enemyId, dmg);
 
           // Floating damage number at the enemy's body. Reflected bolts and
           // crits both render in the gold "big hit" color.
@@ -241,7 +252,7 @@ export const useGameLoop = (onGameOver: () => void) => {
             spawnDamageNumber(
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y,
-              damage,
+              dmg,
               !!projectile?.reflected || !!projectile?.crit
             );
           }

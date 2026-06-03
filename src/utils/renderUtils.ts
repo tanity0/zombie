@@ -330,10 +330,11 @@ const drawDamageNumberEffect = (
   ctx.globalAlpha = alpha;
   ctx.font = `${e.crit ? 'bold ' : ''}${Math.round(12 * scale)}px ui-rounded, -apple-system, system-ui, sans-serif`;
   ctx.textAlign = 'center';
+  const label = e.text ?? String(e.value);
   ctx.fillStyle = '#000';
-  ctx.fillText(String(e.value), e.x - camera.x + 1, e.y - camera.y + 1);
+  ctx.fillText(label, e.x - camera.x + 1, e.y - camera.y + 1);
   ctx.fillStyle = e.color;
-  ctx.fillText(String(e.value), e.x - camera.x, e.y - camera.y);
+  ctx.fillText(label, e.x - camera.x, e.y - camera.y);
   ctx.restore();
 };
 

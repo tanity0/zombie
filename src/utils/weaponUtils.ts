@@ -252,7 +252,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       width: size,
       height: size,
       speed,
-      damage: weapon.damage * (crit ? 1.5 : 1),
+      // Base damage only — the crit multiplier is applied at hit time so it can
+      // scale differently against bosses (×5) vs normal enemies (×1.5).
+      damage: weapon.damage,
       direction: pd,
       weaponType: weapon.category as WeaponType, // 'handgun' | 'shotgun' | 'rifle'
       duration: 1400,

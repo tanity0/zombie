@@ -253,6 +253,9 @@ export type VisualEffect =
       createdAt: number;
       duration: number;
       crit?: boolean;
+      // Optional override text (e.g. "+30" for ammo pickups). Falls back to the
+      // numeric value when absent.
+      text?: string;
     }
   | {
       kind: 'ring';

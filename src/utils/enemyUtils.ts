@@ -25,6 +25,11 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   reaper:    { width: 80, height: 80, speed: 130, health: 99999,damage: 999, experienceValue: 0 }
 };
 
+// Big set-piece enemies. They use a different crit ruleset (no instant melee
+// finisher; crits hit much harder instead).
+export const isBossType = (t: EnemyType): boolean =>
+  t === 'pumpkin' || t === 'giantbat' || t === 'reaper';
+
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
 interface EnemyWeight { type: EnemyType; weight: number; }

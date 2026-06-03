@@ -7,6 +7,7 @@ import {
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
+import { isBossType } from '../utils/enemyUtils';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -25,6 +26,10 @@ export const BULLET_KNOCKBACK_SPEED = 64;
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
 export const CRIT_DAMAGE_MULT = 1.5;
+// Bosses use a beefier crit ruleset: gun crits hit 5×, and meleeing a stunned
+// boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
+export const BOSS_CRIT_DAMAGE_MULT = 5;
+export const BOSS_MELEE_STUN_MULT = 5;
 // Melee reach for the finger-release counter swing.
 export const MELEE_RADIUS = 74;
 
@@ -83,7 +88,10 @@ interface GameState {
     x: number;
     y: number;
   };
-  
+  // Most recent weapon the player acquired (drop/crate). The HUD shows a
+  // 5-second "got a weapon" popup off this. null until the first pickup.
+  lastWeaponGet: { name: string; at: number } | null;
+
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
   setSwipeDirection: (direction: { x: number; y: number } | null) => void;
@@ -138,6 +146,7 @@ interface GameState {
   spawnEffect: (effect: VisualEffect) => void;
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
+  spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   updateEffects: (deltaTime: number) => void;
@@ -198,7 +207,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     x: 0,
     y: 0
   },
-  
+  lastWeaponGet: null,
+
   // Player actions
   movePlayer: (input, deltaTime) => {
     set(state => {
@@ -336,7 +346,20 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
-        killed.push({ enemy, finisher: true }); // execute
+        if (isBossType(enemy.type)) {
+          // Bosses can't be instakilled. A melee hit on a stunned boss deals
+          // 5× melee damage and shakes off the stun (no finisher).
+          const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
+          critHits.push({ x: ecx, y: enemy.y, value: Math.round(dmg) });
+          const newHealth = Math.max(0, enemy.health - dmg);
+          if (newHealth <= 0) {
+            killed.push({ enemy, finisher: false });
+          } else {
+            survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now });
+          }
+          continue;
+        }
+        killed.push({ enemy, finisher: true }); // normal instant execute
         continue;
       }
       // Melee weapons carry a fixed crit chance (varies by weapon). A crit
@@ -909,14 +932,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         break;
       }
       case 'ammo-handgun':
-        get().addAmmo('handgun', AMMO_PICKUP.handgun);
-        break;
       case 'ammo-shotgun':
-        get().addAmmo('shotgun', AMMO_PICKUP.shotgun);
+      case 'ammo-rifle': {
+        const fam = pickup.type.slice('ammo-'.length) as AmmoType;
+        const amount = AMMO_PICKUP[fam];
+        get().addAmmo(fam, amount);
+        // Floating "+N" over the player's head, cyan so it reads apart from
+        // damage numbers.
+        const p = get().player;
+        get().spawnAmmoNumber(p.x + p.width / 2, p.y - 6, amount);
         break;
-      case 'ammo-rifle':
-        get().addAmmo('rifle', AMMO_PICKUP.rifle);
-        break;
+      }
       case 'weapon-drop':
         if (pickup.weaponKey) get().grantWeapon(pickup.weaponKey);
         break;
@@ -982,7 +1008,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { reloadingWeaponId: '', reloadEndsAt: 0 }
         : {};
 
-      return { player: { ...player, weapons, activeWeaponId, ...reloadPatch } };
+      return {
+        player: { ...player, weapons, activeWeaponId, ...reloadPatch },
+        lastWeaponGet: { name: weapon.name, at: Date.now() }
+      };
     });
   },
 
@@ -1158,7 +1187,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         camera: {
           x: 0,
           y: 0
-        }
+        },
+        lastWeaponGet: null
       };
     });
   },
@@ -1215,6 +1245,27 @@ export const useGameStore = create<GameState>((set, get) => ({
       createdAt: now,
       duration: 720,
       crit
+    };
+    set(state => {
+      const next = [...state.effects, effect];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+
+  // Floating "+N" for ammo pickups, in a distinct cyan so it reads separately
+  // from white/gold damage numbers. Rises from the given point (player's head).
+  spawnAmmoNumber: (x, y, amount) => {
+    const now = Date.now();
+    const effect: VisualEffect = {
+      kind: 'damageNumber',
+      id: `fx-ammo-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y,
+      value: amount,
+      text: `+${amount}`,
+      color: '#67e8f9',
+      createdAt: now,
+      duration: 760
     };
     set(state => {
       const next = [...state.effects, effect];

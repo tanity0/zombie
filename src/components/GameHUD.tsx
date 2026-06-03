@@ -14,6 +14,7 @@ interface GameHUDProps {
 const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const player = useGameStore(state => state.player);
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
+  const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
   const enemies = useGameStore(state => state.enemies);
@@ -25,8 +26,26 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const reaperImminent = gameTime >= REAPER_TIME_MS - REAPER_WARN_LEAD && gameTime < REAPER_TIME_MS;
   const reaperArrived = gameTime >= REAPER_TIME_MS;
 
+  const weaponGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
+
   return (
     <div className="absolute inset-0 pointer-events-none text-white">
+      {/* New-weapon popup — shows for 5s after picking up a gun / opening a crate */}
+      {weaponGetVisible && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2"
+          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 64px)' }}
+        >
+          <div className="glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 ring-sky-400/70 shadow-lg animate-pulse">
+            <span className="text-xl">🔫</span>
+            <div className="leading-tight">
+              <div className="text-[10px] text-sky-200/80 font-bold tracking-wide">新しい銃器を入手！</div>
+              <div className="text-sm font-bold text-white">{lastWeaponGet!.name}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <div
         className="absolute left-0 right-0 flex items-center justify-between gap-2 px-3"
