@@ -5,22 +5,20 @@ import {
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType
 } from '../types/game';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 
-// RE-style ammo economy. Each gun family draws from its own pool. Pools start
-// modest and cap low so resupply pickups (and crit refunds) matter.
-export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 30, shotgun: 12, rifle: 6 };
-export const AMMO_MAX: Record<AmmoType, number> = { handgun: 90, shotgun: 36, rifle: 18 };
+// RE-style ammo economy. Guns fire from a per-gun magazine and reload from
+// these per-family RESERVE pools. The reserve starts large (you're well
+// stocked) but ammo is hard to find, so the run is a slow drain on it.
+export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 120, shotgun: 40, rifle: 24 };
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, rifle: 60 };
 // How much a world ammo pickup grants for each family (enemy drops + air
-// drops). Tripled so resupply moments feel meaningful.
-export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 54, shotgun: 18, rifle: 9 };
-// How much each level-up tops up every family. A partial resupply — enough to
-// reward leveling without removing the pressure of managing ammo between gems.
-export const AMMO_LEVELUP: Record<AmmoType, number> = { handgun: 14, shotgun: 5, rifle: 3 };
-// Rounds refunded per melee finisher, by the equipped gun's family. Executing a
-// stunned enemy tops the gun back up so the crit→stun→finish loop sustains ammo.
-export const FINISHER_AMMO_REFUND: Record<AmmoType, number> = { handgun: 6, shotgun: 2, rifle: 1 };
+// drops). Modest relative to the reserve cap — resupply is scarce.
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 30, shotgun: 10, rifle: 5 };
+// Rounds refunded into the RESERVE per melee finisher, by the active gun's
+// family. The crit→stun→finish loop slowly tops the reserve back up.
+export const FINISHER_AMMO_REFUND: Record<AmmoType, number> = { handgun: 4, shotgun: 1, rifle: 1 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
 export const BULLET_KNOCKBACK_SPEED = 190;
@@ -115,6 +113,8 @@ interface GameState {
   grantWeapon: (key: string) => void;
   setActiveWeapon: (id: string) => void;
   autoSwitchIfDry: () => void;
+  startReload: (weaponId: string) => void;
+  tickReload: () => void;
 
   // Projectile actions
   addProjectile: (projectile: Projectile) => void;
@@ -171,7 +171,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
     critChance: 0.07,
-    moveFrozenUntil: 0
+    reloadEndsAt: 0,
+    reloadingWeaponId: '',
+    magBonus: 0,
+    reloadMult: 1
   },
   enemies: [],
   projectiles: [],
@@ -206,10 +209,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       let direction = 'idle';
       let isMoving = false;
       let lastDirection = player.lastDirection;
-      // Shot hitstop: while the freeze window is open, the player is rooted
-      // (movement speed 0) so each shot reads with a beat of recoil.
-      const frozen = Date.now() < player.moveFrozenUntil;
-      const moveSpeed = frozen ? 0 : player.speed;
+      // While reloading, the survivor is fumbling a fresh magazine in — they
+      // can still shuffle and melee, but at 2/3 speed.
+      const reloading =
+        player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
+      const moveSpeed = reloading ? player.speed * (2 / 3) : player.speed;
 
       // Handle movement based on input state (keyboard) or swipe direction (touch)
       if (swipeDirection) {
@@ -282,7 +286,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           x: newX,
           y: newY,
           direction: direction as any,
-          isMoving: frozen ? false : isMoving,
+          isMoving,
           lastDirection
         }
       };
@@ -368,9 +372,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Shockwave ring telegraph — wider than the hit zone so the swing reads big.
     get().spawnRing(pcx, pcy, 14, KNOCKBACK_RING_RADIUS, 'rgba(252, 211, 77, 0.85)', 4, 320);
 
-    // Per-kill rewards. Finishers grant bonus XP, gold VFX, and refund a chunk
-    // of ammo into the equipped gun — the loop that keeps a low-ammo run alive.
-    let finisherCount = 0;
+    // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
+    // (finisher or not) refunds a chunk of ammo into the active gun's reserve —
+    // melee is now the run's main way to claw rounds back.
     for (const { enemy, finisher } of killed) {
       const ex = enemy.x + enemy.width / 2;
       const ey = enemy.y + enemy.height / 2;
@@ -382,7 +386,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: ex - 8, y: ey - 8, type: 'experience', value: xp
       });
       if (finisher) {
-        finisherCount += 1;
         get().spawnBurst(ex, ey, '#fcd34d', 16);
         get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.9)', 4, 360);
       } else {
@@ -392,8 +395,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
     }
-    if (finisherCount > 0 && gun?.ammoType) {
-      get().addAmmo(gun.ammoType, finisherCount * FINISHER_AMMO_REFUND[gun.ammoType]);
+    if (killed.length > 0 && gun?.ammoType) {
+      get().addAmmo(gun.ammoType, killed.length * FINISHER_AMMO_REFUND[gun.ammoType]);
     }
   },
 
@@ -457,19 +460,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       
       // Update max level in stats if needed
       const newMaxLevel = Math.max(state.gameStats.maxLevel, newLevel);
-      
-      // Level-up resupply: top up every ammo family (clamped to its cap). One
-      // of the three ways the player restocks, alongside enemy drops and the
-      // air-dropped crates that appear on the map.
+
+      // No automatic ammo resupply on level-up — ammo is managed entirely
+      // through reserves/reloads and scarce pickups. Level-ups grant upgrades.
       return {
         player: {
           ...player,
           level: newLevel,
           experienceToNextLevel: newExpToNextLevel,
-          experience: 0,
-          ammoHandgun: Math.min(AMMO_MAX.handgun, player.ammoHandgun + AMMO_LEVELUP.handgun),
-          ammoShotgun: Math.min(AMMO_MAX.shotgun, player.ammoShotgun + AMMO_LEVELUP.shotgun),
-          ammoRifle: Math.min(AMMO_MAX.rifle, player.ammoRifle + AMMO_LEVELUP.rifle)
+          experience: 0
         },
         showUpgradeMenu: true,
         upgradeOptions,
@@ -530,11 +529,21 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...w, cooldown: w.cooldown > 0 ? Math.max(80, w.cooldown * 0.9) : w.cooldown
             }));
             break;
-          case 'amount':
-            // Extra bullet/pellet per shot for the gun.
+          case 'magSize': {
+            // 装填数アップ — bigger magazines for every gun. Top up the
+            // currently-loaded rounds too so the boost is immediately useful.
+            updatedPlayer.magBonus += 2;
+            const bonus = updatedPlayer.magBonus;
             updatedPlayer.weapons = updatedPlayer.weapons.map(w =>
-              w.isMelee ? w : { ...w, count: (w.count || 1) + 1 }
+              w.magSize != null
+                ? { ...w, magazine: Math.min((w.magazine ?? 0) + 2, w.magSize + bonus) }
+                : w
             );
+            break;
+          }
+          case 'reloadSpeed':
+            // リロード時間短縮 — faster reloads for all guns (floor at 0.4×).
+            updatedPlayer.reloadMult = Math.max(0.4, updatedPlayer.reloadMult * 0.85);
             break;
           case 'critChance':
             updatedPlayer.critChance = Math.min(0.6, updatedPlayer.critChance + 0.05);
@@ -927,42 +936,116 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (idx >= 0) weapons[idx] = weapon; else weapons.push(weapon);
 
       // Keep the active selection sensible: stay on the upgraded active gun
-      // (its id changed), or arm the new gun if we had none / were dry.
+      // (its id changed), or arm the new gun if we had none / were dry (no
+      // loaded rounds and no reserve to reload from).
       const hadGun = getGuns(player).length > 0;
+      const activeNow = getActiveGun(player);
       const activeDry =
-        !hadGun ||
-        (getActiveGun(player)?.ammoType
-          ? ammoPoolFor(player, getActiveGun(player)!.ammoType!) <= 0
-          : true);
+        !activeNow?.ammoType ||
+        ((activeNow.magazine ?? 0) <= 0 && ammoPoolFor(player, activeNow.ammoType) <= 0);
       let activeWeaponId = player.activeWeaponId;
       if (isActiveCategory || !hadGun || activeDry) {
         activeWeaponId = weapon.id;
       }
 
-      return { player: { ...player, weapons, activeWeaponId } };
+      // If the gun we just replaced was mid-reload, drop that reload (its id is
+      // gone; the new gun comes fully loaded anyway).
+      const wasReloadingReplaced = current && player.reloadingWeaponId === current.id;
+      const reloadPatch = wasReloadingReplaced
+        ? { reloadingWeaponId: '', reloadEndsAt: 0 }
+        : {};
+
+      return { player: { ...player, weapons, activeWeaponId, ...reloadPatch } };
     });
   },
 
   // Manually arm a specific gun (from the HUD weapon icons). Ignores melee.
+  // Cancels any in-progress reload so the move-speed penalty doesn't follow
+  // the player onto the freshly-armed gun.
   setActiveWeapon: (id) => {
     set(state => {
       const target = state.player.weapons.find(w => w.id === id && !w.isMelee);
       if (!target) return {};
-      return { player: { ...state.player, activeWeaponId: id } };
+      return {
+        player: {
+          ...state.player,
+          activeWeaponId: id,
+          reloadingWeaponId: '',
+          reloadEndsAt: 0
+        }
+      };
     });
   },
 
-  // If the active gun's pool is empty, auto-arm another owned gun that still
-  // has ammo. Returns nothing; safe to call every frame before firing.
+  // Begin reloading a gun: pull rounds from its reserve into its magazine over
+  // the weapon's reload time. No-op if already reloading it, the mag is full,
+  // or the reserve is empty.
+  startReload: (weaponId) => {
+    set(state => {
+      const p = state.player;
+      const w = p.weapons.find(g => g.id === weaponId);
+      if (!w || !w.ammoType) return {};
+      if (p.reloadingWeaponId === weaponId && Date.now() < p.reloadEndsAt) return {};
+      const need = effectiveMagSize(w, p) - (w.magazine ?? 0);
+      if (need <= 0) return {};
+      if (ammoPoolFor(p, w.ammoType) <= 0) return {}; // no reserve to load from
+      return {
+        player: {
+          ...p,
+          reloadingWeaponId: weaponId,
+          reloadEndsAt: Date.now() + effectiveReloadMs(w, p)
+        }
+      };
+    });
+  },
+
+  // Complete a finished reload: move min(need, reserve) rounds from the reserve
+  // pool into the gun's magazine. Called once per frame from the game loop.
+  tickReload: () => {
+    set(state => {
+      const p = state.player;
+      if (!p.reloadingWeaponId || Date.now() < p.reloadEndsAt) return {};
+      const w = p.weapons.find(g => g.id === p.reloadingWeaponId);
+      if (!w || !w.ammoType) {
+        return { player: { ...p, reloadingWeaponId: '', reloadEndsAt: 0 } };
+      }
+      const field = AMMO_FIELD[w.ammoType];
+      const need = Math.max(0, effectiveMagSize(w, p) - (w.magazine ?? 0));
+      const moved = Math.min(need, p[field]);
+      return {
+        player: {
+          ...p,
+          [field]: p[field] - moved,
+          weapons: p.weapons.map(g =>
+            g.id === w.id ? { ...g, magazine: (g.magazine ?? 0) + moved } : g
+          ),
+          reloadingWeaponId: '',
+          reloadEndsAt: 0
+        }
+      };
+    });
+  },
+
+  // Keep the active gun shootable. Called each frame before firing:
+  //   1. active gun has loaded rounds -> nothing to do.
+  //   2. active gun empty but has reserve -> reload it (don't switch).
+  //   3. active gun fully dry -> switch to a gun that can fire now (loaded) or
+  //      reload (has reserve); if none, the player falls back to melee.
   autoSwitchIfDry: () => {
     const player = get().player;
     const active = getActiveGun(player);
-    if (active?.ammoType && ammoPoolFor(player, active.ammoType) > 0) return;
-    const stocked = getGuns(player).find(
-      w => w.ammoType && ammoPoolFor(player, w.ammoType) > 0
-    );
-    if (stocked && stocked.id !== player.activeWeaponId) {
-      set(state => ({ player: { ...state.player, activeWeaponId: stocked.id } }));
+    if (!active?.ammoType) return;
+    if ((active.magazine ?? 0) > 0) return;
+    if (ammoPoolFor(player, active.ammoType) > 0) {
+      get().startReload(active.id);
+      return;
+    }
+    const guns = getGuns(player);
+    const ready = guns.find(w => (w.magazine ?? 0) > 0);
+    const reloadable = guns.find(w => w.ammoType && ammoPoolFor(player, w.ammoType) > 0);
+    const target = ready ?? reloadable;
+    if (target && target.id !== player.activeWeaponId) {
+      set(state => ({ player: { ...state.player, activeWeaponId: target.id } }));
     }
   },
   
@@ -1023,7 +1106,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
           critChance: 0.07,
-          moveFrozenUntil: 0
+          reloadEndsAt: 0,
+          reloadingWeaponId: '',
+          magBonus: 0,
+          reloadMult: 1
         },
         enemies: [],
         projectiles: [],

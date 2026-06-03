@@ -1,7 +1,7 @@
 import React from 'react';
-import { useGameStore, AMMO_MAX } from '../store/gameStore';
+import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
-import { getWeaponShortName } from '../utils/weaponUtils';
+import { getWeaponShortName, effectiveReloadMs } from '../utils/weaponUtils';
 import type { AmmoType } from '../types/game';
 
 const REAPER_TIME_MS = 30 * 60 * 1000;
@@ -122,13 +122,19 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
             }}
           >
             <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-2">
-              {/* Gun slots — one per owned category; tap to switch */}
+              {/* Gun slots — one per owned category; tap to switch. Shows
+                  装填弾 / 母数(リザーブ) and a reload indicator. */}
               {guns.map(gun => {
                 const ammoType = gun.ammoType;
-                const ammo = ammoType ? ammoFieldFor(ammoType) : 0;
-                const ammoMax = ammoType ? AMMO_MAX[ammoType] : 0;
-                const dry = ammo <= 0;
+                const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
+                const mag = gun.magazine ?? 0;
+                const dry = mag <= 0 && reserve <= 0;
                 const active = gun.id === activeGun?.id;
+                const reloading =
+                  player.reloadingWeaponId === gun.id && Date.now() < player.reloadEndsAt;
+                const reloadProgress = reloading
+                  ? Math.max(0, Math.min(1, 1 - (player.reloadEndsAt - Date.now()) / effectiveReloadMs(gun, player)))
+                  : 0;
                 return (
                   <button
                     key={gun.id}
@@ -147,14 +153,23 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                     </div>
                     <div className="leading-tight text-left">
                       <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>
-                      <div
-                        className={`text-[13px] font-bold tabular-nums ${
-                          dry ? 'text-red-400 animate-pulse' : 'text-white'
-                        }`}
-                      >
-                        {ammo}
-                        <span className="text-[10px] text-white/40">/{ammoMax}</span>
-                      </div>
+                      {reloading ? (
+                        <div className="w-[52px]">
+                          <div className="text-[10px] font-bold text-amber-300 animate-pulse">RELOAD</div>
+                          <div className="h-1 mt-0.5 rounded bg-white/15 overflow-hidden">
+                            <div className="h-full bg-amber-400" style={{ width: `${reloadProgress * 100}%` }} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={`text-[13px] font-bold tabular-nums ${
+                            dry ? 'text-red-400 animate-pulse' : 'text-white'
+                          }`}
+                        >
+                          {mag}
+                          <span className="text-[10px] text-white/40">/{reserve}</span>
+                        </div>
+                      )}
                     </div>
                   </button>
                 );

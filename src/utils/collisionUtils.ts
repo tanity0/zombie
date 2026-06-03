@@ -13,6 +13,21 @@ export const checkCollision = (
   );
 };
 
+// The player's DAMAGE hitbox is smaller than the sprite so near-misses don't
+// clip — only used for taking damage (enemy contact, hostile bolts), not for
+// picking things up. 2/3 of the full body, centered.
+const PLAYER_HIT_SCALE = 2 / 3;
+const playerHitbox = (player: { x: number; y: number; width: number; height: number }) => {
+  const w = player.width * PLAYER_HIT_SCALE;
+  const h = player.height * PLAYER_HIT_SCALE;
+  return {
+    x: player.x + (player.width - w) / 2,
+    y: player.y + (player.height - h) / 2,
+    width: w,
+    height: h
+  };
+};
+
 // Check collisions between projectiles and enemies
 export const checkProjectileEnemyCollisions = (
   projectiles: Projectile[],
@@ -58,15 +73,17 @@ export const checkProjectilePlayerCollisions = (
   projectiles: Projectile[],
   player: Player
 ): Projectile[] => {
-  return projectiles.filter(p => p.hostile && checkCollision(p, player));
+  const hit = playerHitbox(player);
+  return projectiles.filter(p => p.hostile && checkCollision(p, hit));
 };
 
-// Check collisions between player and enemies
+// Check collisions between player and enemies (uses the reduced damage hitbox)
 export const checkPlayerEnemyCollisions = (
-  player: Player, 
+  player: Player,
   enemies: Enemy[]
 ): Enemy[] => {
-  return enemies.filter(enemy => checkCollision(player, enemy));
+  const hit = playerHitbox(player);
+  return enemies.filter(enemy => checkCollision(hit, enemy));
 };
 
 // Check collisions between player and pickups

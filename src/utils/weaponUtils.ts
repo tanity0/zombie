@@ -6,12 +6,6 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 // feel snappier and reach their target sooner.
 const PROJECTILE_SPEED_MULT = 1.5;
 
-// Shot hitstop, derived from the gun's cooldown so heavy slow guns (revolver/
-// magnum, shotguns) root the player noticeably while rapid guns (machine
-// pistol) barely hitch. Clamped so it always reads but never fully locks.
-export const shotFreezeMs = (weapon: Weapon): number =>
-  Math.round(Math.max(70, Math.min(240, (weapon.cooldown || 300) * 0.24)));
-
 // ---------------------------------------------------------------------------
 // Weapon catalog
 // ---------------------------------------------------------------------------
@@ -33,23 +27,25 @@ interface WeaponDef {
   projectileSize?: number;
   count?: number;        // bullets/pellets per shot
   passthrough?: boolean;
+  magSize?: number;      // magazine capacity (rounds loaded); omit for melee
+  reloadMs?: number;     // reload duration; heavier guns reload slower
 }
 
 const CATALOG: Record<string, WeaponDef> = {
   // A — Handgun family (9mm). Fast, low damage, cheap to feed.
-  'handgun-t1':       { key: 'handgun-t1', name: '拳銃',           type: 'handgun', category: 'handgun', tier: 1, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 1 },
-  'handgun-t2':       { key: 'handgun-t2', name: '二丁拳銃',       type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2 },
-  'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 130, projectileSpeed: 560, projectileSize: 7, count: 1 },
+  'handgun-t1':       { key: 'handgun-t1', name: '拳銃',           type: 'handgun', category: 'handgun', tier: 1, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 1, magSize: 12, reloadMs: 900 },
+  'handgun-t2':       { key: 'handgun-t2', name: '二丁拳銃',       type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
+  'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 130, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300 },
 
   // B — Shotgun family (12g). Slow, short-range cone of pellets.
-  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5 },
-  'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6 },
-  'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7 },
+  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 2, reloadMs: 1100 },
+  'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 6, reloadMs: 1800 },
+  'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 8, reloadMs: 1700 },
 
   // C — Rifle/Magnum family (.44). Heavy single rounds, piercing at higher tiers.
-  'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1 },
-  'rifle-t2':         { key: 'rifle-t2',   name: 'スナイパー',     type: 'rifle',   category: 'rifle',   tier: 2, damage: 55, cooldown: 1100, projectileSpeed: 1000, projectileSize: 8,  count: 1, passthrough: true },
-  'rifle-t3':         { key: 'rifle-t3',   name: 'グレネードランチャー', type: 'rifle', category: 'rifle', tier: 3, damage: 75, cooldown: 1400, projectileSpeed: 420, projectileSize: 14, count: 1, passthrough: true },
+  'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500 },
+  'rifle-t2':         { key: 'rifle-t2',   name: 'スナイパー',     type: 'rifle',   category: 'rifle',   tier: 2, damage: 55, cooldown: 1100, projectileSpeed: 1000, projectileSize: 8,  count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
+  'rifle-t3':         { key: 'rifle-t3',   name: 'グレネードランチャー', type: 'rifle', category: 'rifle', tier: 3, damage: 75, cooldown: 1400, projectileSpeed: 420, projectileSize: 14, count: 1, passthrough: true, magSize: 1, reloadMs: 2200 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   'knife-t1':         { key: 'knife-t1',   name: 'ナイフ',         type: 'knife',   tier: 1, isMelee: true, damage: 8,  cooldown: 0 },
@@ -87,6 +83,9 @@ export const createWeapon = (key: string): Weapon => {
     projectileSize: def.projectileSize,
     count: def.count,
     passthrough: def.passthrough,
+    magSize: def.magSize,
+    magazine: def.magSize, // a fresh gun starts fully loaded
+    reloadMs: def.reloadMs,
     category: def.category,
     tier: def.tier,
     isMelee: def.isMelee,
@@ -108,9 +107,21 @@ export const getActiveGun = (player: Player): Weapon | undefined => {
   return guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
 };
 
-// Player-state pool value for an ammo type.
+// Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
   player[AMMO_FIELD[type]];
+
+// Magazine capacity including the player's global 装填数アップ bonus.
+export const effectiveMagSize = (w: Weapon, p: Player): number =>
+  (w.magSize ?? 0) + (w.magSize != null ? p.magBonus : 0);
+
+// Reload duration including the player's global リロード時間短縮 multiplier.
+export const effectiveReloadMs = (w: Weapon, p: Player): number =>
+  Math.max(250, (w.reloadMs ?? 0) * p.reloadMult);
+
+// Is this specific gun currently mid-reload?
+export const isReloading = (p: Player, weaponId: string): boolean =>
+  p.reloadingWeaponId === weaponId && Date.now() < p.reloadEndsAt;
 
 // Starting loadout: one gun + one melee weapon from the class profile.
 export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => {
@@ -127,35 +138,53 @@ export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
   rifle: 780
 };
 
-// Distance from the player center to the nearest enemy center, or Infinity
-// when the field is empty.
-const nearestEnemyDistance = (player: Player, enemies: Enemy[]): number => {
-  let closestD2 = Infinity;
+// A stunned enemy is a low-priority target — the player should be putting
+// rounds into the threats that are still moving, not the one already frozen
+// for a melee finish.
+const isStunned = (e: Enemy, gameTime: number): boolean =>
+  e.stunUntil !== undefined && gameTime < e.stunUntil;
+
+// Choose the gun's target: the nearest NON-stunned enemy, only falling back to
+// a stunned one when every enemy on the field is stunned. Returns null if the
+// field is empty.
+const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
+  const gameTime = useGameStore.getState().gameTime;
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
+  let best: Enemy | null = null;
+  let bestD2 = Infinity;
+  let bestStunned: Enemy | null = null;
+  let bestStunnedD2 = Infinity;
   for (const e of enemies) {
     const dx = e.x + e.width / 2 - pcx;
     const dy = e.y + e.height / 2 - pcy;
     const d2 = dx * dx + dy * dy;
-    if (d2 < closestD2) closestD2 = d2;
+    if (isStunned(e, gameTime)) {
+      if (d2 < bestStunnedD2) { bestStunnedD2 = d2; bestStunned = e; }
+    } else if (d2 < bestD2) {
+      bestD2 = d2; best = e;
+    }
   }
-  return Math.sqrt(closestD2);
+  return best ?? bestStunned;
 };
 
-// Aim helper: point at the nearest enemy, falling back to the last movement
+// Distance from the player center to the gun's chosen target, or Infinity when
+// the field is empty (used by the range gate).
+const nearestEnemyDistance = (player: Player, enemies: Enemy[]): number => {
+  const target = pickTarget(player, enemies);
+  if (!target) return Infinity;
+  const dx = target.x + target.width / 2 - (player.x + player.width / 2);
+  const dy = target.y + target.height / 2 - (player.y + player.height / 2);
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+// Aim helper: point at the chosen target, falling back to the last movement
 // direction (then straight up) when the field is empty.
 const aimDirection = (player: Player, enemies: Enemy[]): { x: number; y: number } => {
-  let closest: Enemy | null = null;
-  let closestD2 = Infinity;
-  const pcx = player.x + player.width / 2;
-  const pcy = player.y + player.height / 2;
-  for (const e of enemies) {
-    const dx = e.x + e.width / 2 - pcx;
-    const dy = e.y + e.height / 2 - pcy;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < closestD2) { closestD2 = d2; closest = e; }
-  }
+  const closest = pickTarget(player, enemies);
   if (closest) {
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
     const dx = closest.x + closest.width / 2 - pcx;
     const dy = closest.y + closest.height / 2 - pcy;
     const dist = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
@@ -180,8 +209,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   if (weapon.isMelee || !weapon.ammoType) return [];
   if (now - weapon.lastFired < weapon.cooldown) return [];
 
-  const field = AMMO_FIELD[weapon.ammoType];
-  if (player[field] <= 0) return []; // dry — switch to melee until resupplied
+  // Can't fire while reloading, or with an empty magazine. Reloads are kicked
+  // off by autoSwitchIfDry/startReload, not here — firing just stops.
+  if (isReloading(player, weapon.id)) return [];
+  if ((weapon.magazine ?? 0) <= 0) return [];
 
   // Range gate: hold fire (and ammo) unless an enemy is within reach. Don't
   // advance lastFired here so the gun fires the instant a target enters range.
@@ -225,15 +256,15 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     });
   }
 
-  // Burn one round, record the fire time, and open the shot-freeze window in a
-  // single commit. The freeze roots the player for a beat so shots have weight.
+  // Drain one round from this gun's magazine and record the fire time. The
+  // reserve pool is untouched here — it only feeds the magazine on reload.
   useGameStore.setState(state => ({
     player: {
       ...state.player,
-      [field]: Math.max(0, state.player[field] - 1),
-      moveFrozenUntil: now + shotFreezeMs(weapon),
       weapons: state.player.weapons.map(w =>
-        w.id === weapon.id ? { ...w, lastFired: now } : w
+        w.id === weapon.id
+          ? { ...w, lastFired: now, magazine: Math.max(0, (w.magazine ?? 0) - 1) }
+          : w
       )
     }
   }));

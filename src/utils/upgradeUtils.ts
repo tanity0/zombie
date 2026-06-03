@@ -4,7 +4,7 @@ import { UpgradeOption, Player, PassiveType } from '../types/game';
 // world drops and crates, never the level-up menu — so every option here is
 // a passive stat boost.
 const PASSIVE_POOL: PassiveType[] = [
-  'maxHealth', 'speed', 'might', 'cooldown', 'amount', 'critChance'
+  'maxHealth', 'speed', 'might', 'cooldown', 'magSize', 'reloadSpeed', 'critChance'
 ];
 
 export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
@@ -29,7 +29,8 @@ export const getPassiveDisplayName = (type: PassiveType): string => {
     case 'speed': return '移動速度アップ';
     case 'might': return 'ダメージ強化';
     case 'cooldown': return '連射速度アップ';
-    case 'amount': return '装弾数アップ';
+    case 'magSize': return '装填数アップ';
+    case 'reloadSpeed': return 'リロード時間短縮';
     case 'critChance': return 'クリティカル率アップ';
     case 'area': return '効果範囲アップ';
     case 'duration': return '効果時間延長';
@@ -43,7 +44,8 @@ export const getPassiveDescription = (type: PassiveType): string => {
     case 'speed': return '移動速度が10%向上します';
     case 'might': return '銃・近接のダメージが12%増加します';
     case 'cooldown': return '銃の発射間隔が10%短縮されます';
-    case 'amount': return '銃の発射弾数が1発増加します';
+    case 'magSize': return '全ての銃の装填数が増加します';
+    case 'reloadSpeed': return '全ての銃のリロード時間が短縮されます';
     case 'critChance': return 'クリティカル率が5%上昇します';
     default: return '不明なアップグレード';
   }

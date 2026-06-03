@@ -21,7 +21,7 @@ import {
   getEnemySpawnInterval
 } from '../utils/enemyUtils';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { fireWeapon, getActiveGun } from '../utils/weaponUtils';
+import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -67,6 +67,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const collectPickup = useGameStore(state => state.collectPickup);
   const addPickup = useGameStore(state => state.addPickup);
   const autoSwitchIfDry = useGameStore(state => state.autoSwitchIfDry);
+  const tickReload = useGameStore(state => state.tickReload);
   const setGameTime = useGameStore(state => state.setGameTime);
   const updateGameStats = useGameStore(state => state.updateGameStats);
   const setCameraPosition = useGameStore(state => state.setCameraPosition);
@@ -140,8 +141,9 @@ export const useGameLoop = (onGameOver: () => void) => {
         const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
         setCameraPosition(targetCameraX, targetCameraY);
         
-        // Fire the active gun only. Swap off a dry gun first so the player
-        // keeps shooting as long as any owned gun has ammo.
+        // Complete any finished reload, then ensure the active gun is
+        // shootable (reload it / swap off a fully-dry gun), then fire it.
+        tickReload();
         autoSwitchIfDry();
         const activeGun = getActiveGun(useGameStore.getState().player);
         if (activeGun) {
@@ -314,22 +316,26 @@ export const useGameLoop = (onGameOver: () => void) => {
                   10, 80, 'rgba(96,165,250,0.7)', 3, 500
                 );
               }
-              // Ammo resupply — common, biased toward the equipped gun's family
-              // so the player usually finds rounds for what they're carrying.
-              if (Math.random() < (isElite ? 0.6 : 0.3)) {
-                const equippedAmmo = getActiveGun(player)?.ammoType;
-                const allTypes: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
-                const dropType =
-                  equippedAmmo && Math.random() < 0.7
-                    ? equippedAmmo
-                    : allTypes[Math.floor(Math.random() * allTypes.length)];
-                addPickup({
-                  id: `pickup-ammo-${enemy.id}`,
-                  x: enemy.x + enemy.width / 2 - 8 + 16,
-                  y: enemy.y + enemy.height / 2 - 8,
-                  type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
-                  value: 0
-                });
+              // Ammo resupply — only for gun families the player actually owns,
+              // biased toward the active gun so it's usually directly useful.
+              if (Math.random() < (isElite ? 0.45 : 0.14)) {
+                const owned = getGuns(player)
+                  .map(w => w.ammoType)
+                  .filter((t): t is AmmoType => !!t);
+                if (owned.length > 0) {
+                  const equippedAmmo = getActiveGun(player)?.ammoType;
+                  const dropType =
+                    equippedAmmo && Math.random() < 0.7
+                      ? equippedAmmo
+                      : owned[Math.floor(Math.random() * owned.length)];
+                  addPickup({
+                    id: `pickup-ammo-${enemy.id}`,
+                    x: enemy.x + enemy.width / 2 - 8 + 16,
+                    y: enemy.y + enemy.height / 2 - 8,
+                    type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+                    value: 0
+                  });
+                }
               }
               // Rare world weapon drop (~1%, elites a bit higher).
               if (Math.random() < (isElite ? 0.06 : 0.01)) {
@@ -514,13 +520,13 @@ export const useGameLoop = (onGameOver: () => void) => {
         // break position to go fetch it — guided there by the VS-style edge
         // arrow the renderer draws for worldDrop pickups. Capped so the field
         // never clutters with crates. gameTime-based so pauses don't cheat it.
-        const MAX_WORLD_AMMO_DROPS = 2;
+        const MAX_WORLD_AMMO_DROPS = 1;
         const worldAmmoCount = pickups.filter(
           p => p.worldDrop &&
             (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')
         ).length;
         if (nextAmmoDropDelayRef.current === 0) {
-          nextAmmoDropDelayRef.current = 16000 + Math.random() * 10000; // first drop ~16-26s in
+          nextAmmoDropDelayRef.current = 26000 + Math.random() * 14000; // first drop ~26-40s in
         }
         if (
           worldAmmoCount < MAX_WORLD_AMMO_DROPS &&
@@ -533,13 +539,16 @@ export const useGameLoop = (onGameOver: () => void) => {
           const dist = halfMax * (1.1 + Math.random() * 0.5);
           const px = player.x + player.width / 2 + Math.cos(angle) * dist;
           const py = player.y + player.height / 2 + Math.sin(angle) * dist;
-          // Weight toward the equipped gun's family so the trek usually pays off.
+          // Only drop ammo for gun families the player owns, weighted toward
+          // the active gun so the trek usually pays off.
+          const owned = getGuns(player)
+            .map(w => w.ammoType)
+            .filter((t): t is AmmoType => !!t);
           const equippedAmmo = getActiveGun(player)?.ammoType;
-          const allTypes: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
           const dropType =
             equippedAmmo && Math.random() < 0.7
               ? equippedAmmo
-              : allTypes[Math.floor(Math.random() * allTypes.length)];
+              : owned[Math.floor(Math.random() * owned.length)];
           addPickup({
             id: `pickup-airdrop-${Math.floor(gameTime)}-${Math.floor(Math.random() * 1e6)}`,
             x: px - 8,
@@ -550,7 +559,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           });
           spawnRing(px, py, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
           lastAmmoDropRef.current = gameTime;
-          nextAmmoDropDelayRef.current = 18000 + Math.random() * 10000; // 18-28s between drops
+          nextAmmoDropDelayRef.current = 34000 + Math.random() * 16000; // 34-50s between drops
         }
 
         // Scripted wave/elite events (5min pumpkin, 7min bat horde, 30min
@@ -673,6 +682,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     collectPickup,
     addPickup,
     autoSwitchIfDry,
+    tickReload,
     setGameTime,
     updateGameStats,
     setCameraPosition,

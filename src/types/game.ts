@@ -32,17 +32,24 @@ export interface Player {
   counterWindowEnd: number;     // ms timestamp; window is open while now <= this
   counterCooldownEnd: number;   // ms timestamp; cannot open another window until this
   lastCounterSuccessTime: number; // for the success flash effect
-  // RE-style resources. Guns draw from a category-specific ammo pool;
-  // running a pool dry stops that gun firing (melee always works).
+  // RE-style resources. Each gun family has a category-specific RESERVE pool
+  // (these fields). A gun fires from its own loaded magazine and reloads from
+  // this reserve; an empty reserve means no more reloads for that family.
   ammoHandgun: number;
   ammoShotgun: number;
   ammoRifle: number;
   // Chance [0,1] that a gun hit crits — crits deal extra damage and stun
   // the target so it can be finished with the melee counter.
   critChance: number;
-  // Shot "hitstop": movement is frozen until this ms timestamp, set briefly
-  // each time a gun fires so shooting has weight. 0 = not frozen.
-  moveFrozenUntil: number;
+  // Reload state. While reloadEndsAt is in the future the named gun is being
+  // reloaded: it can't fire and the player moves at 2/3 speed (melee still
+  // works). 0 / '' when not reloading.
+  reloadEndsAt: number;
+  reloadingWeaponId: string;
+  // Level-up modifiers applied to ALL owned guns: magBonus adds to every gun's
+  // magazine capacity; reloadMult scales reload time (<1 = faster).
+  magBonus: number;
+  reloadMult: number;
 }
 
 // Movement direction
@@ -106,6 +113,12 @@ export interface Weapon {
   duration?: number;
   passthrough?: boolean;
   count?: number;
+  // Magazine state (guns only; undefined for melee). `magazine` is the rounds
+  // currently loaded, `magSize` the base capacity, `reloadMs` the base reload
+  // time. Firing drains `magazine`; reloads refill it from the reserve pool.
+  magazine?: number;
+  magSize?: number;
+  reloadMs?: number;
   // RE-style classification. Guns belong to a category that shares an ammo
   // pool; tier (1-3) controls power within the category. Melee weapons set
   // isMelee and don't consume ammo (they're triggered by the counter).
@@ -188,7 +201,7 @@ export interface UpgradeOption {
   level: number;
 }
 
-export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'amount' | 'critChance';
+export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance';
 
 // Game statistics
 export interface GameStats {
