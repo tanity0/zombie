@@ -33,6 +33,11 @@ export const useGameLoop = (onGameOver: () => void) => {
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const lastSeenGameTimeRef = useRef(0);
+  // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
+  // and the (randomized) wait until the next one, so resupply crates appear at
+  // an irregular but bounded cadence.
+  const lastAmmoDropRef = useRef(0);
+  const nextAmmoDropDelayRef = useRef(0);
   const prevLevelRef = useRef(1);
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
@@ -111,6 +116,8 @@ export const useGameLoop = (onGameOver: () => void) => {
         // wave consumption so the same player can re-fight the schedule.
         if (newGameTime < lastSeenGameTimeRef.current) {
           consumedWavesRef.current = newConsumedWaves();
+          lastAmmoDropRef.current = 0;
+          nextAmmoDropDelayRef.current = 0;
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -483,6 +490,50 @@ export const useGameLoop = (onGameOver: () => void) => {
           }
 
           lastEnemySpawnRef.current = timestamp;
+        }
+
+        // Air-dropped ammo supplies (#3). At an irregular cadence a resupply
+        // crate appears at a random spot just off-screen, so the player has to
+        // break position to go fetch it — guided there by the VS-style edge
+        // arrow the renderer draws for worldDrop pickups. Capped so the field
+        // never clutters with crates. gameTime-based so pauses don't cheat it.
+        const MAX_WORLD_AMMO_DROPS = 2;
+        const worldAmmoCount = pickups.filter(
+          p => p.worldDrop &&
+            (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')
+        ).length;
+        if (nextAmmoDropDelayRef.current === 0) {
+          nextAmmoDropDelayRef.current = 16000 + Math.random() * 10000; // first drop ~16-26s in
+        }
+        if (
+          worldAmmoCount < MAX_WORLD_AMMO_DROPS &&
+          gameTime - lastAmmoDropRef.current > nextAmmoDropDelayRef.current
+        ) {
+          // Place it just beyond the viewport at a random bearing from the
+          // player so it's always off-screen (and within ~1.6 screens away).
+          const angle = Math.random() * Math.PI * 2;
+          const halfMax = Math.max(gameBounds.width, gameBounds.height) / 2;
+          const dist = halfMax * (1.1 + Math.random() * 0.5);
+          const px = player.x + player.width / 2 + Math.cos(angle) * dist;
+          const py = player.y + player.height / 2 + Math.sin(angle) * dist;
+          // Weight toward the equipped gun's family so the trek usually pays off.
+          const equippedAmmo = player.weapons.find(w => !w.isMelee)?.ammoType;
+          const allTypes: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
+          const dropType =
+            equippedAmmo && Math.random() < 0.7
+              ? equippedAmmo
+              : allTypes[Math.floor(Math.random() * allTypes.length)];
+          addPickup({
+            id: `pickup-airdrop-${Math.floor(gameTime)}-${Math.floor(Math.random() * 1e6)}`,
+            x: px - 8,
+            y: py - 8,
+            type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+            value: 0,
+            worldDrop: true
+          });
+          spawnRing(px, py, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
+          lastAmmoDropRef.current = gameTime;
+          nextAmmoDropDelayRef.current = 18000 + Math.random() * 10000; // 18-28s between drops
         }
 
         // Scripted wave/elite events (5min pumpkin, 7min bat horde, 30min

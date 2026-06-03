@@ -14,6 +14,9 @@ export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 30, shotgun: 12
 export const AMMO_MAX: Record<AmmoType, number> = { handgun: 90, shotgun: 36, rifle: 18 };
 // How much a world ammo pickup grants for each family.
 export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 18, shotgun: 6, rifle: 3 };
+// How much each level-up tops up every family. A partial resupply — enough to
+// reward leveling without removing the pressure of managing ammo between gems.
+export const AMMO_LEVELUP: Record<AmmoType, number> = { handgun: 14, shotgun: 5, rifle: 3 };
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
@@ -440,12 +443,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Update max level in stats if needed
       const newMaxLevel = Math.max(state.gameStats.maxLevel, newLevel);
       
+      // Level-up resupply: top up every ammo family (clamped to its cap). One
+      // of the three ways the player restocks, alongside enemy drops and the
+      // air-dropped crates that appear on the map.
       return {
         player: {
           ...player,
           level: newLevel,
           experienceToNextLevel: newExpToNextLevel,
-          experience: 0
+          experience: 0,
+          ammoHandgun: Math.min(AMMO_MAX.handgun, player.ammoHandgun + AMMO_LEVELUP.handgun),
+          ammoShotgun: Math.min(AMMO_MAX.shotgun, player.ammoShotgun + AMMO_LEVELUP.shotgun),
+          ammoRifle: Math.min(AMMO_MAX.rifle, player.ammoRifle + AMMO_LEVELUP.rifle)
         },
         showUpgradeMenu: true,
         upgradeOptions,

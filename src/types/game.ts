@@ -159,6 +159,10 @@ export interface Pickup {
   // For 'weapon-drop': the catalog key of the dropped weapon. For
   // 'weapon-crate' this is left undefined (the weapon is rolled on open).
   weaponKey?: string;
+  // True for supplies air-dropped onto the map at a random off-screen spot
+  // (as opposed to dropping where an enemy died). These get a VS-style edge
+  // arrow pointing the player toward them while they're off-screen.
+  worldDrop?: boolean;
 }
 
 export type PickupType =

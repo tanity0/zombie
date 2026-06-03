@@ -192,10 +192,94 @@ export const renderGame = (
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, width, height);
 
+  // Edge arrows pointing toward air-dropped supplies that are currently
+  // off-screen (VS-style). Drawn over the vignette so they stay legible.
+  drawOffscreenIndicators(ctx, pickups, camera, width, height);
+
   // Screen-space flashes overlay everything
   effects.forEach(e => {
     if (e.kind === 'flash') drawFlashEffect(ctx, e, width, height);
   });
+};
+
+// Color used for each ammo family's box and its off-screen arrow.
+const AMMO_INDICATOR_COLOR: Record<string, string> = {
+  'ammo-handgun': '#d4a017',
+  'ammo-shotgun': '#ef4444',
+  'ammo-rifle': '#f59e0b'
+};
+
+// Draw a clamped edge arrow for every worldDrop ammo pickup that's off-screen,
+// pointing from the screen center toward the supply's true position. Keeps the
+// player oriented toward resupply crates they have to walk out and grab.
+const drawOffscreenIndicators = (
+  ctx: CanvasRenderingContext2D,
+  pickups: Pickup[],
+  camera: { x: number; y: number },
+  width: number,
+  height: number
+) => {
+  // Inset the arrow ring from the very edge; a larger top inset keeps arrows
+  // clear of the HUD that overlays the top of the screen.
+  const marginX = 26;
+  const marginTop = 64;
+  const marginBottom = 30;
+  const cxC = width / 2;
+  const cyC = height / 2;
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
+
+  for (const pickup of pickups) {
+    if (!pickup.worldDrop) continue;
+    const color = AMMO_INDICATOR_COLOR[pickup.type];
+    if (!color) continue;
+
+    // Center of the pickup in screen space.
+    const tx = pickup.x + 8 - camera.x;
+    const ty = pickup.y + 8 - camera.y;
+
+    // On-screen? Then it speaks for itself — no arrow needed.
+    const onScreen = tx >= 0 && tx <= width && ty >= 0 && ty <= height;
+    if (onScreen) continue;
+
+    // March from the screen center toward the target until we hit the inset
+    // rectangle; that intersection is where the arrow sits.
+    const angle = Math.atan2(ty - cyC, tx - cxC);
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    let t = Infinity;
+    if (dx > 0.0001) t = Math.min(t, (width - marginX - cxC) / dx);
+    else if (dx < -0.0001) t = Math.min(t, (marginX - cxC) / dx);
+    if (dy > 0.0001) t = Math.min(t, (height - marginBottom - cyC) / dy);
+    else if (dy < -0.0001) t = Math.min(t, (marginTop - cyC) / dy);
+    if (!isFinite(t)) continue;
+    const ex = cxC + dx * t;
+    const ey = cyC + dy * t;
+
+    ctx.save();
+    // Ammo-box chip behind the arrow so the player knows which family it is.
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#1f2937';
+    ctx.fillRect(ex - 8, ey - 6, 16, 12);
+    ctx.fillStyle = color;
+    ctx.fillRect(ex - 8, ey - 6, 16, 3);
+    ctx.fillStyle = '#fde68a';
+    ctx.fillRect(ex - 5, ey, 2, 4);
+    ctx.fillRect(ex - 1, ey, 2, 4);
+    ctx.fillRect(ex + 3, ey, 2, 4);
+
+    // Arrowhead just outside the chip, pointing toward the supply.
+    ctx.translate(ex + dx * 13, ey + dy * 13);
+    ctx.rotate(angle);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-5, -6);
+    ctx.lineTo(-5, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 };
 
 const drawParticleEffect = (
