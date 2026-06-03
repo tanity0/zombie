@@ -237,6 +237,19 @@ export const useGameLoop = (onGameOver: () => void) => {
             );
           }
 
+          // Light knockback on every connecting bullet — staggers normal
+          // enemies along the shot line. Heavies/bosses are immovable so they
+          // don't get shoved around by chip damage.
+          if (
+            !enemyKilled && enemyForFx && projectile &&
+            enemyForFx.type !== 'reaper' && enemyForFx.type !== 'giantbat' &&
+            enemyForFx.type !== 'pumpkin'
+          ) {
+            useGameStore.getState().knockbackEnemy(
+              enemyId, projectile.direction.x, projectile.direction.y
+            );
+          }
+
           // Crit that didn't outright kill → stun the target so it can be
           // executed with a melee finisher. Mark it with a brief yellow ring.
           if (projectile?.crit && !enemyKilled && enemyForFx) {

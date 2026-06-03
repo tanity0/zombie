@@ -1,6 +1,10 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, SHOT_FREEZE_MS } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
+
+// Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
+// feel snappier and reach their target sooner.
+const PROJECTILE_SPEED_MULT = 1.5;
 
 // ---------------------------------------------------------------------------
 // Weapon catalog
@@ -170,7 +174,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     weapon.category === 'shotgun' ? 0.5 :
     count > 1 ? 0.12 : 0;
   const size = weapon.projectileSize || 8;
-  const speed = weapon.projectileSpeed || 520;
+  const speed = (weapon.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
@@ -200,11 +204,13 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     });
   }
 
-  // Burn one round and record the fire time in a single commit.
+  // Burn one round, record the fire time, and open the shot-freeze window in a
+  // single commit. The freeze roots the player for a beat so shots have weight.
   useGameStore.setState(state => ({
     player: {
       ...state.player,
       [field]: Math.max(0, state.player[field] - 1),
+      moveFrozenUntil: now + SHOT_FREEZE_MS,
       weapons: state.player.weapons.map(w =>
         w.id === weapon.id ? { ...w, lastFired: now } : w
       )

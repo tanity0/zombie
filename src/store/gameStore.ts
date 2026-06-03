@@ -12,11 +12,20 @@ import { openCrate } from '../utils/weaponDrop';
 // modest and cap low so resupply pickups (and crit refunds) matter.
 export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 30, shotgun: 12, rifle: 6 };
 export const AMMO_MAX: Record<AmmoType, number> = { handgun: 90, shotgun: 36, rifle: 18 };
-// How much a world ammo pickup grants for each family.
-export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 18, shotgun: 6, rifle: 3 };
+// How much a world ammo pickup grants for each family (enemy drops + air
+// drops). Tripled so resupply moments feel meaningful.
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 54, shotgun: 18, rifle: 9 };
 // How much each level-up tops up every family. A partial resupply — enough to
 // reward leveling without removing the pressure of managing ammo between gems.
 export const AMMO_LEVELUP: Record<AmmoType, number> = { handgun: 14, shotgun: 5, rifle: 3 };
+// Rounds refunded per melee finisher, by the equipped gun's family. Executing a
+// stunned enemy tops the gun back up so the crit→stun→finish loop sustains ammo.
+export const FINISHER_AMMO_REFUND: Record<AmmoType, number> = { handgun: 6, shotgun: 2, rifle: 1 };
+
+// Light knockback applied to a normal enemy each time a bullet connects.
+export const BULLET_KNOCKBACK_SPEED = 190;
+// Shot hitstop: how long player movement freezes the instant a gun fires.
+export const SHOT_FREEZE_MS = 55;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
@@ -99,6 +108,7 @@ interface GameState {
   damageEnemy: (id: string, amount: number) => boolean;
   updateEnemies: (deltaTime: number) => void;
   stunEnemy: (id: string, until: number) => void;
+  knockbackEnemy: (id: string, dirX: number, dirY: number) => void;
 
   // Ammo
   addAmmo: (type: AmmoType, amount: number) => void;
@@ -159,7 +169,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoHandgun: AMMO_INITIAL.handgun,
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
-    critChance: 0.07
+    critChance: 0.07,
+    moveFrozenUntil: 0
   },
   enemies: [],
   projectiles: [],
@@ -194,7 +205,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       let direction = 'idle';
       let isMoving = false;
       let lastDirection = player.lastDirection;
-      const moveSpeed = player.speed;
+      // Shot hitstop: while the freeze window is open, the player is rooted
+      // (movement speed 0) so each shot reads with a beat of recoil.
+      const frozen = Date.now() < player.moveFrozenUntil;
+      const moveSpeed = frozen ? 0 : player.speed;
 
       // Handle movement based on input state (keyboard) or swipe direction (touch)
       if (swipeDirection) {
@@ -267,7 +281,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           x: newX,
           y: newY,
           direction: direction as any,
-          isMoving,
+          isMoving: frozen ? false : isMoving,
           lastDirection
         }
       };
@@ -353,9 +367,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Shockwave ring telegraph — wider than the hit zone so the swing reads big.
     get().spawnRing(pcx, pcy, 14, KNOCKBACK_RING_RADIUS, 'rgba(252, 211, 77, 0.85)', 4, 320);
 
-    // Per-kill rewards. Finishers grant bonus XP, gold VFX, and refund a round
-    // into the equipped gun — the loop that keeps a low-ammo run alive.
-    let ammoRefund = 0;
+    // Per-kill rewards. Finishers grant bonus XP, gold VFX, and refund a chunk
+    // of ammo into the equipped gun — the loop that keeps a low-ammo run alive.
+    let finisherCount = 0;
     for (const { enemy, finisher } of killed) {
       const ex = enemy.x + enemy.width / 2;
       const ey = enemy.y + enemy.height / 2;
@@ -367,7 +381,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: ex - 8, y: ey - 8, type: 'experience', value: xp
       });
       if (finisher) {
-        ammoRefund += 1;
+        finisherCount += 1;
         get().spawnBurst(ex, ey, '#fcd34d', 16);
         get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.9)', 4, 360);
       } else {
@@ -377,8 +391,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
     }
-    if (ammoRefund > 0 && gun?.ammoType) {
-      get().addAmmo(gun.ammoType, ammoRefund);
+    if (finisherCount > 0 && gun?.ammoType) {
+      get().addAmmo(gun.ammoType, finisherCount * FINISHER_AMMO_REFUND[gun.ammoType]);
     }
   },
 
@@ -650,6 +664,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       enemies: state.enemies.map(e =>
         e.id === id ? { ...e, stunUntil: until } : e
+      )
+    }));
+  },
+
+  // Light bullet knockback: nudge an enemy along the shot direction. Reuses the
+  // same decay model as the melee shove (KNOCKBACK_DURATION) but at a much
+  // lower speed so it only staggers, never launches.
+  knockbackEnemy: (id, dirX, dirY) => {
+    const now = Date.now();
+    set(state => ({
+      enemies: state.enemies.map(e =>
+        e.id === id
+          ? {
+              ...e,
+              knockbackVx: dirX * BULLET_KNOCKBACK_SPEED,
+              knockbackVy: dirY * BULLET_KNOCKBACK_SPEED,
+              knockbackUntil: now + KNOCKBACK_DURATION
+            }
+          : e
       )
     }));
   },
@@ -934,7 +967,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoHandgun: AMMO_INITIAL.handgun,
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
-          critChance: 0.07
+          critChance: 0.07,
+          moveFrozenUntil: 0
         },
         enemies: [],
         projectiles: [],

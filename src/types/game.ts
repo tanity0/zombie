@@ -36,6 +36,9 @@ export interface Player {
   // Chance [0,1] that a gun hit crits — crits deal extra damage and stun
   // the target so it can be finished with the melee counter.
   critChance: number;
+  // Shot "hitstop": movement is frozen until this ms timestamp, set briefly
+  // each time a gun fires so shooting has weight. 0 = not frozen.
+  moveFrozenUntil: number;
 }
 
 // Movement direction
