@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0.5rem);
+  }
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+  }
+  .pl-safe {
+    padding-left: max(env(safe-area-inset-left), 0.5rem);
+  }
+  .pr-safe {
+    padding-right: max(env(safe-area-inset-right), 0.5rem);
+  }
+  .top-safe {
+    top: env(safe-area-inset-top);
+  }
+  .bottom-safe {
+    bottom: env(safe-area-inset-bottom);
+  }
+  .left-safe {
+    left: env(safe-area-inset-left);
+  }
+  .right-safe {
+    right: env(safe-area-inset-right);
+  }
+  .glass-panel {
+    background-color: rgba(20, 20, 28, 0.55);
+    backdrop-filter: saturate(160%) blur(18px);
+    -webkit-backdrop-filter: saturate(160%) blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass-pill {
+    background-color: rgba(20, 20, 28, 0.55);
+    backdrop-filter: saturate(160%) blur(18px);
+    -webkit-backdrop-filter: saturate(160%) blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+  }
+}
