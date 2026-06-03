@@ -38,10 +38,11 @@ const CATALOG: Record<string, WeaponDef> = {
   'handgun-t2':       { key: 'handgun-t2', name: '二丁拳銃',       type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
   'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 130, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300 },
 
-  // B — Shotgun family (12g). Slow, short-range cone of pellets.
-  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 2, reloadMs: 1100 },
-  'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 6, reloadMs: 1800 },
-  'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 8, reloadMs: 1700 },
+  // B — Shotgun family (12g). Slow, short-range cone of pellets. Small 3-round
+  // magazine across the family.
+  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 3, reloadMs: 1100 },
+  'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 3, reloadMs: 1800 },
+  'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 3, reloadMs: 1700 },
 
   // C — Rifle/Magnum family (.44). Heavy single rounds, piercing at higher tiers.
   'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500 },

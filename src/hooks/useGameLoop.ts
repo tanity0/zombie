@@ -167,8 +167,11 @@ export const useGameLoop = (onGameOver: () => void) => {
         const now = Date.now();
         const liveEnemies = useGameStore.getState().enemies;
         const livePlayer = useGameStore.getState().player;
+        const liveGameTime = useGameStore.getState().gameTime;
         const firedIds: string[] = [];
         liveEnemies.forEach(enemy => {
+          // Stunned enemies are frozen — they can't spit projectiles either.
+          if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
           const profile = getEnemyFireProfile(enemy);
           if (!profile) return;
           if (now - enemy.lastShot < profile.interval) return;

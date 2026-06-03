@@ -19,7 +19,8 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, r
 export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 30, shotgun: 10, rifle: 5 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
-export const BULLET_KNOCKBACK_SPEED = 190;
+// (2/3 of the previous 190 for a shorter shove.)
+export const BULLET_KNOCKBACK_SPEED = 127;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
@@ -43,7 +44,7 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // player read the attack while the actual catch zone stays disciplined.
 export const KNOCKBACK_HIT_RADIUS = 55;
 export const KNOCKBACK_RING_RADIUS = 180;
-export const KNOCKBACK_SPEED = 600;
+export const KNOCKBACK_SPEED = 400; // 2/3 of the old 600 for a shorter shove
 export const KNOCKBACK_DURATION = 280;
 export const REFLECT_DAMAGE_MULTIPLIER = 12.0;
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
