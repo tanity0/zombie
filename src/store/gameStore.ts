@@ -19,8 +19,8 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, r
 export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 30, shotgun: 10, rifle: 5 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
-// (2/3 of the previous 190 for a shorter shove.)
-export const BULLET_KNOCKBACK_SPEED = 127;
+// Guns shove only half as hard as the melee counter's push.
+export const BULLET_KNOCKBACK_SPEED = 64;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
@@ -403,6 +403,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           type: `ammo-${gun.ammoType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
           value: 0
         });
+      }
+      // Mid-boss killed in melee still drops its weapon crate (the gun-kill
+      // path drops one too; bosses are usually finished with the counter).
+      if (enemy.type === 'pumpkin' || enemy.type === 'giantbat') {
+        get().addPickup({
+          id: `pickup-crate-${enemy.id}`,
+          x: ex - 8, y: ey - 8 - 18,
+          type: 'weapon-crate',
+          value: 0
+        });
+        get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
       }
       if (finisher) {
         get().spawnBurst(ex, ey, '#fcd34d', 16);

@@ -119,9 +119,14 @@ export const ammoPoolFor = (player: Player, type: AmmoType): number =>
 export const effectiveMagSize = (w: Weapon, p: Player): number =>
   (w.magSize ?? 0) + (w.magSize != null ? p.magBonus : 0);
 
-// Reload duration including the player's global リロード時間短縮 multiplier.
+// Global reload-time multiplier — reloads take this much longer at baseline so
+// being caught empty is a real commitment.
+const RELOAD_TIME_MULT = 2;
+
+// Reload duration including the global multiplier and the player's リロード時間
+// 短縮 upgrade.
 export const effectiveReloadMs = (w: Weapon, p: Player): number =>
-  Math.max(250, (w.reloadMs ?? 0) * p.reloadMult);
+  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult);
 
 // Is this specific gun currently mid-reload?
 export const isReloading = (p: Player, weaponId: string): boolean =>
