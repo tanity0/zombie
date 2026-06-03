@@ -65,7 +65,8 @@ const buildEnemy = (
   type: EnemyType,
   x: number,
   y: number,
-  gameTime: number
+  gameTime: number,
+  isWave = false
 ): Enemy => {
   const stats = ENEMY_STATS[type];
   const diff = difficultyFor(gameTime);
@@ -86,7 +87,9 @@ const buildEnemy = (
     type,
     experienceValue: stats.experienceValue,
     lastHit: 0,
-    lastShot: Date.now() - Math.random() * 1500
+    lastShot: Date.now() - Math.random() * 1500,
+    spawnedAt: gameTime,
+    isWave
   };
 };
 
@@ -125,17 +128,18 @@ export const generateEnemy = (
       y = player.y - viewportHeight / 4 - buffer + Math.random() * (viewportHeight / 2 + buffer * 2);
       break;
   }
-  return buildEnemy(type, x, y, gameTime);
+  return buildEnemy(type, x, y, gameTime, false);
 };
 
 // Spawn an enemy at a specific world position (used for Reaper, scripted
-// elites, and horde lines).
+// elites, and horde lines). These are tagged isWave so the enemy-cap culler
+// gives them a short grace period before they can be removed.
 export const spawnEnemyAt = (
   type: EnemyType,
   x: number,
   y: number,
   gameTime: number
-): Enemy => buildEnemy(type, x, y, gameTime);
+): Enemy => buildEnemy(type, x, y, gameTime, true);
 
 // Hostile projectile profiles. In the Mad Forest port only `plant` shoots —
 // everything else is pure melee. Plants spit seeds toward the player on a
@@ -209,16 +213,16 @@ export const getEnemyColor = (type: EnemyType): string => {
   }
 };
 
-// Spawn cadence: starts gentle, ramps up fast. Matches VS's "you're never
-// alone for long after minute 2" feel.
+// RE-style spawn cadence: a sparse, deliberate trickle, not a swarm. One
+// enemy at a time, slow interval, so the field stays at ~5-10 bodies under
+// the hard cap (see useGameLoop) instead of the VS wall-of-enemies.
 export const getEnemySpawnInterval = (gameTime: number): number => {
-  // 800ms at start → ~180ms by 12 minutes
-  const base = Math.max(180, 800 - gameTime / 1000);
-  return base + Math.random() * 120;
+  // ~2000ms at start → ~1200ms floor by ~26 minutes.
+  const base = Math.max(1200, 2000 - gameTime / 2000);
+  return base + Math.random() * 300;
 };
 
-export const getEnemySpawnCount = (gameTime: number): number => {
-  // 1 enemy per tick at start, ramps to 4-5 by 15 minutes
-  const base = 1 + Math.floor(gameTime / 180000);
-  return base + (Math.random() < 0.4 ? 1 : 0);
+export const getEnemySpawnCount = (_gameTime: number): number => {
+  // Always one body per spawn tick — density is governed by the cap.
+  return 1;
 };

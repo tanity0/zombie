@@ -3,33 +3,23 @@ import { generateUpgradeOptions } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  Weapon, WeaponType, VisualEffect
+  VisualEffect, AmmoType
 } from '../types/game';
-import { getStartingWeapons, getWeaponDisplayName } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD } from '../utils/weaponUtils';
+import { openCrate } from '../utils/weaponDrop';
 
-// Stat templates for new weapons gained via level-up. Mirrors the starting
-// weapon stats so a wand acquired mid-run isn't crippled compared to a
-// wand started with.
-const newWeaponTemplate = (type: WeaponType): Weapon => {
-  const id = `weapon-${type}-${Date.now()}`;
-  const name = getWeaponDisplayName(type);
-  switch (type) {
-    case 'whip':
-      return { id, name, type, damage: 10, cooldown: 1200, lastFired: 0, level: 1, area: 120, duration: 220 };
-    case 'wand':
-      return { id, name, type, damage: 8, cooldown: 1100, lastFired: 0, level: 1, projectileSpeed: 360, projectileSize: 14, passthrough: false };
-    case 'knife':
-      return { id, name, type, damage: 7, cooldown: 700, lastFired: 0, level: 1, projectileSpeed: 420, projectileSize: 12, passthrough: false, count: 1 };
-    case 'axe':
-      return { id, name, type, damage: 14, cooldown: 1500, lastFired: 0, level: 1, projectileSpeed: 280, projectileSize: 22 };
-    case 'bible':
-      return { id, name, type, damage: 9, cooldown: 500, lastFired: 0, level: 1, projectileSize: 18 };
-    case 'garlic':
-      return { id, name, type, damage: 3, cooldown: 300, lastFired: 0, level: 1, area: 110 };
-    default:
-      return { id, name, type, damage: 8, cooldown: 700, lastFired: 0, level: 1, projectileSpeed: 320, projectileSize: 14 };
-  }
-};
+// RE-style ammo economy. Each gun family draws from its own pool. Pools start
+// modest and cap low so resupply pickups (and crit refunds) matter.
+export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 30, shotgun: 12, rifle: 6 };
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 90, shotgun: 36, rifle: 18 };
+// How much a world ammo pickup grants for each family.
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 18, shotgun: 6, rifle: 3 };
+
+// Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
+export const STUN_DURATION_MS = 5000;
+export const CRIT_DAMAGE_MULT = 1.5;
+// Melee reach for the finger-release counter swing.
+export const MELEE_RADIUS = 74;
 
 // Counter-on-release tuning. The counter window opens the moment the player
 // lifts their finger (or presses Space on PC) and stays open briefly. Any
@@ -105,6 +95,13 @@ interface GameState {
   removeEnemy: (id: string) => void;
   damageEnemy: (id: string, amount: number) => boolean;
   updateEnemies: (deltaTime: number) => void;
+  stunEnemy: (id: string, until: number) => void;
+
+  // Ammo
+  addAmmo: (type: AmmoType, amount: number) => void;
+
+  // Weapons (drops / crates)
+  grantWeapon: (key: string) => void;
   
   // Projectile actions
   addProjectile: (projectile: Projectile) => void;
@@ -155,7 +152,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     lastDirection: null,
     counterWindowEnd: 0,
     counterCooldownEnd: 0,
-    lastCounterSuccessTime: 0
+    lastCounterSuccessTime: 0,
+    ammoHandgun: AMMO_INITIAL.handgun,
+    ammoShotgun: AMMO_INITIAL.shotgun,
+    ammoRifle: AMMO_INITIAL.rifle,
+    critChance: 0.07
   },
   enemies: [],
   projectiles: [],
@@ -285,49 +286,97 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   triggerCounter: () => {
     const now = Date.now();
-    const { player } = get();
-    // Respect cooldown — no counter, no knockback, no window.
+    const { player, gameTime, enemies } = get();
+    // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return;
 
+    const melee = player.weapons.find(w => w.isMelee);
+    const gun = player.weapons.find(w => !w.isMelee);
+    const meleeDamage = melee?.damage ?? 6;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
 
-    // Open the counter window AND knock back nearby enemies in the same
-    // commit. The knockback is purely positional — no damage, no XP, no
-    // kills. Reaper is immune.
-    set(state => {
-      const knockedEnemies = state.enemies.map(enemy => {
-        if (enemy.type === 'reaper') return enemy;
-        const ecx = enemy.x + enemy.width / 2;
-        const ecy = enemy.y + enemy.height / 2;
-        const dx = ecx - pcx;
-        const dy = ecy - pcy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > KNOCKBACK_HIT_RADIUS) return enemy;
-        const norm = Math.max(0.001, dist);
-        // Distance falloff: dead-center = full speed, edge = half speed.
-        const falloff = 1 - dist / KNOCKBACK_HIT_RADIUS;
-        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
-        return {
-          ...enemy,
-          knockbackVx: (dx / norm) * speed,
-          knockbackVy: (dy / norm) * speed,
-          knockbackUntil: now + KNOCKBACK_DURATION
-        };
-      });
-      return {
-        enemies: knockedEnemies,
-        player: {
-          ...state.player,
-          counterWindowEnd: now + COUNTER_WINDOW,
-          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN
-        }
-      };
-    });
+    // Single sweep: every non-reaper enemy in melee range is either finished
+    // (if stunned) for an instant kill, or takes light damage + knockback.
+    // The counter window for reflecting bullets opens at the same time, so
+    // the one finger-release does melee, knockback, and bullet-parry together.
+    const killed: { enemy: Enemy; finisher: boolean }[] = [];
+    const survivors: Enemy[] = [];
+    for (const enemy of enemies) {
+      if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
+      const ecx = enemy.x + enemy.width / 2;
+      const ecy = enemy.y + enemy.height / 2;
+      const dx = ecx - pcx;
+      const dy = ecy - pcy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > MELEE_RADIUS) { survivors.push(enemy); continue; }
 
-    // Shockwave ring sized to RING_RADIUS — wider than the hit zone so the
-    // counter swing reads as a big sweep visually.
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      if (stunned) {
+        killed.push({ enemy, finisher: true }); // execute
+        continue;
+      }
+      const newHealth = Math.max(0, enemy.health - meleeDamage);
+      if (newHealth <= 0) {
+        killed.push({ enemy, finisher: false });
+        continue;
+      }
+      const norm = Math.max(0.001, dist);
+      const falloff = 1 - dist / MELEE_RADIUS;
+      const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+      survivors.push({
+        ...enemy,
+        health: newHealth,
+        lastHit: now,
+        knockbackVx: (dx / norm) * speed,
+        knockbackVy: (dy / norm) * speed,
+        knockbackUntil: now + KNOCKBACK_DURATION
+      });
+    }
+
+    set(state => ({
+      enemies: survivors,
+      gameStats: {
+        ...state.gameStats,
+        enemiesKilled: state.gameStats.enemiesKilled + killed.length
+      },
+      player: {
+        ...state.player,
+        counterWindowEnd: now + COUNTER_WINDOW,
+        counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN
+      }
+    }));
+
+    // Shockwave ring telegraph — wider than the hit zone so the swing reads big.
     get().spawnRing(pcx, pcy, 14, KNOCKBACK_RING_RADIUS, 'rgba(252, 211, 77, 0.85)', 4, 320);
+
+    // Per-kill rewards. Finishers grant bonus XP, gold VFX, and refund a round
+    // into the equipped gun — the loop that keeps a low-ammo run alive.
+    let ammoRefund = 0;
+    for (const { enemy, finisher } of killed) {
+      const ex = enemy.x + enemy.width / 2;
+      const ey = enemy.y + enemy.height / 2;
+      const xp = finisher
+        ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
+        : enemy.experienceValue;
+      get().addPickup({
+        id: `pickup-xp-melee-${enemy.id}`,
+        x: ex - 8, y: ey - 8, type: 'experience', value: xp
+      });
+      if (finisher) {
+        ammoRefund += 1;
+        get().spawnBurst(ex, ey, '#fcd34d', 16);
+        get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.9)', 4, 360);
+      } else {
+        get().spawnBurst(ex, ey, '#e5e7eb', 6);
+      }
+    }
+    if (killed.some(k => k.finisher)) {
+      get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
+    }
+    if (ammoRefund > 0 && gun?.ammoType) {
+      get().addAmmo(gun.ammoType, ammoRefund);
+    }
   },
 
   damagePlayer: (amount) => {
@@ -432,44 +481,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectUpgrade: (upgrade) => {
     set(state => {
       const { player } = state;
-      
-      // Handle weapon upgrades
-      if (upgrade.type === 'weapon' && upgrade.weaponType) {
-        const existingWeapon = player.weapons.find(w => w.type === upgrade.weaponType);
-        
-        if (existingWeapon) {
-          // Upgrade existing weapon
-          return {
-            player: {
-              ...player,
-              weapons: player.weapons.map(w => 
-                w.id === existingWeapon.id 
-                  ? { ...w, level: w.level + 1, damage: w.damage * 1.2 } 
-                  : w
-              )
-            },
-            showUpgradeMenu: false,
-            isPaused: false
-          };
-        } else {
-          // Add new weapon. Use per-type templates so each weapon enters
-          // play with sensible stats and behavior (whip = AoE slab,
-          // wand = auto-target, axe = arc, etc.) rather than a knife-shaped
-          // generic.
-          const template = newWeaponTemplate(upgrade.weaponType);
-          return {
-            player: {
-              ...player,
-              weapons: [...player.weapons, template]
-            },
-            showUpgradeMenu: false,
-            isPaused: false
-          };
-        }
-      }
-      
-      // Handle passive upgrades. Player-stat passives mutate the player;
-      // weapon-stat passives mutate every weapon's relevant field.
+
+      // RE rework: level-ups only strengthen the player — new weapons come
+      // exclusively from world drops and crates. Every upgrade is a passive.
       if (upgrade.type === 'passive' && upgrade.passiveType) {
         const updatedPlayer = { ...player };
         switch (upgrade.passiveType) {
@@ -481,31 +495,30 @@ export const useGameStore = create<GameState>((set, get) => ({
             updatedPlayer.speed = Math.round(updatedPlayer.speed * 1.1);
             break;
           case 'might':
+            // Boost damage on both the gun and the melee weapon.
             updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, damage: w.damage * 1.1
-            }));
-            break;
-          case 'area':
-            updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w,
-              area: w.area ? w.area * 1.1 : w.area,
-              projectileSize: w.projectileSize ? w.projectileSize * 1.05 : w.projectileSize
+              ...w, damage: w.damage * 1.12
             }));
             break;
           case 'cooldown':
+            // Faster fire rate on the gun (melee cooldown is 0, untouched).
             updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, cooldown: Math.max(80, w.cooldown * 0.92)
-            }));
-            break;
-          case 'duration':
-            updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, duration: w.duration ? w.duration * 1.15 : w.duration
+              ...w, cooldown: w.cooldown > 0 ? Math.max(80, w.cooldown * 0.9) : w.cooldown
             }));
             break;
           case 'amount':
-            updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, count: (w.count || 1) + 1
-            }));
+            // Extra bullet/pellet per shot for the gun.
+            updatedPlayer.weapons = updatedPlayer.weapons.map(w =>
+              w.isMelee ? w : { ...w, count: (w.count || 1) + 1 }
+            );
+            break;
+          case 'critChance':
+            updatedPlayer.critChance = Math.min(0.6, updatedPlayer.critChance + 0.05);
+            break;
+          // 'area' / 'duration' are no longer offered (no area weapons), but
+          // keep harmless no-op cases for type completeness.
+          case 'area':
+          case 'duration':
             break;
         }
         return {
@@ -514,7 +527,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           isPaused: false
         };
       }
-      
+
       return {
         showUpgradeMenu: false,
         isPaused: false
@@ -580,7 +593,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   updateEnemies: (deltaTime) => {
     set(state => {
-      const { enemies, player } = state;
+      const { enemies, player, gameTime } = state;
       const now = Date.now();
 
       const updatedEnemies = enemies.map(enemy => {
@@ -594,6 +607,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             x: enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
             y: enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime
           };
+        }
+
+        // Stun (from a crit) freezes the enemy in place — it's a sitting duck
+        // for a melee finisher. gameTime-based so pauses don't cheat the timer.
+        if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
+          return enemy;
         }
 
         // Plants are nearly stationary — they shuffle slightly toward the
@@ -617,7 +636,29 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { enemies: updatedEnemies };
     });
   },
-  
+
+  stunEnemy: (id, until) => {
+    set(state => ({
+      enemies: state.enemies.map(e =>
+        e.id === id ? { ...e, stunUntil: until } : e
+      )
+    }));
+  },
+
+  // Ammo
+  addAmmo: (type, amount) => {
+    set(state => {
+      const field = AMMO_FIELD[type];
+      const max = AMMO_MAX[type];
+      return {
+        player: {
+          ...state.player,
+          [field]: Math.min(max, state.player[field] + amount)
+        }
+      };
+    });
+  },
+
   // Projectile actions
   addProjectile: (projectile) => {
     set(state => ({
@@ -673,18 +714,6 @@ export const useGameStore = create<GameState>((set, get) => ({
           return true;
         })
         .map(p => {
-          // Whip chain: scheduled slashes (createdAt in the future) follow
-          // the player so they land at the player's CURRENT position when
-          // they activate, not where the player was when the chain started.
-          if (p.weaponType === 'whip' && currentTime < p.createdAt) {
-            const facingLeft = p.direction.x < 0;
-            const slashHeight = p.height;
-            return {
-              ...p,
-              x: facingLeft ? playerCX - p.width : playerCX,
-              y: playerCY - slashHeight / 2
-            };
-          }
           // Orbital motion (bibles): position relative to the player using
           // a continuously-updated angle. Doesn't use direction/speed.
           if (p.orbitRadius !== undefined && p.orbitAngle !== undefined) {
@@ -800,9 +829,45 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
         break;
       }
+      case 'ammo-handgun':
+        get().addAmmo('handgun', AMMO_PICKUP.handgun);
+        break;
+      case 'ammo-shotgun':
+        get().addAmmo('shotgun', AMMO_PICKUP.shotgun);
+        break;
+      case 'ammo-rifle':
+        get().addAmmo('rifle', AMMO_PICKUP.rifle);
+        break;
+      case 'weapon-drop':
+        if (pickup.weaponKey) get().grantWeapon(pickup.weaponKey);
+        break;
+      case 'weapon-crate':
+        // Open the crate: roll a gun by category & tier and equip it.
+        get().grantWeapon(openCrate(get().gameTime));
+        break;
     }
 
     get().removePickup(id);
+  },
+
+  // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
+  // replaces the current gun/melee if it's the same or a higher tier (so a
+  // stray T1 drop never downgrades a T3). Otherwise it's discarded.
+  grantWeapon: (key) => {
+    const weapon = createWeapon(key);
+    set(state => {
+      const slotIndex = state.player.weapons.findIndex(
+        w => !!w.isMelee === !!weapon.isMelee
+      );
+      const current = slotIndex >= 0 ? state.player.weapons[slotIndex] : undefined;
+      if (current && (weapon.tier ?? 1) < (current.tier ?? 1)) {
+        return {}; // keep the better weapon we already have
+      }
+      const weapons = [...state.player.weapons];
+      if (slotIndex >= 0) weapons[slotIndex] = weapon;
+      else weapons.push(weapon);
+      return { player: { ...state.player, weapons } };
+    });
   },
   
   // Game state actions
@@ -856,7 +921,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           lastDirection: null,
           counterWindowEnd: 0,
           counterCooldownEnd: 0,
-          lastCounterSuccessTime: 0
+          lastCounterSuccessTime: 0,
+          ammoHandgun: AMMO_INITIAL.handgun,
+          ammoShotgun: AMMO_INITIAL.shotgun,
+          ammoRifle: AMMO_INITIAL.rifle,
+          critChance: 0.07
         },
         enemies: [],
         projectiles: [],

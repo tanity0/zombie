@@ -1,6 +1,8 @@
 import React from 'react';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, AMMO_MAX } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
+import { getWeaponShortName } from '../utils/weaponUtils';
+import type { AmmoType } from '../types/game';
 
 const REAPER_TIME_MS = 30 * 60 * 1000;
 const REAPER_WARN_LEAD = 30 * 1000;
@@ -103,28 +105,62 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         </div>
       </div>
 
-      {/* Weapons */}
-      <div
-        className="absolute"
-        style={{
-          left: 'max(env(safe-area-inset-left), 12px)',
-          bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
-        }}
-      >
-        <div className="glass-panel rounded-2xl px-2 py-1.5">
-          <div className="flex items-center gap-1.5">
-            {player.weapons.map(weapon => (
-              <div
-                key={weapon.id}
-                className="w-7 h-7 rounded-xl bg-white/10 flex items-center justify-center text-[11px] font-bold text-white"
-                title={`${weapon.name} (Lv ${weapon.level})`}
-              >
-                {weapon.level}
-              </div>
-            ))}
+      {/* Equipped weapons + ammo */}
+      {(() => {
+        const gun = player.weapons.find(w => !w.isMelee);
+        const melee = player.weapons.find(w => w.isMelee);
+        const ammoFieldFor = (t: AmmoType) =>
+          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : player.ammoRifle;
+        const ammoType = gun?.ammoType;
+        const ammo = ammoType ? ammoFieldFor(ammoType) : 0;
+        const ammoMax = ammoType ? AMMO_MAX[ammoType] : 0;
+        const dry = ammo <= 0;
+        return (
+          <div
+            className="absolute"
+            style={{
+              left: 'max(env(safe-area-inset-left), 12px)',
+              bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
+            }}
+          >
+            <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-3">
+              {/* Gun slot */}
+              {gun && (
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
+                      dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/20'
+                    }`}
+                    title={gun.name}
+                  >
+                    🔫
+                  </div>
+                  <div className="leading-tight">
+                    <div className="text-[10px] text-white/60 truncate max-w-[88px]">{gun.name}</div>
+                    <div
+                      className={`text-[13px] font-bold tabular-nums ${
+                        dry ? 'text-red-400 animate-pulse' : 'text-white'
+                      }`}
+                    >
+                      {ammo}
+                      <span className="text-[10px] text-white/40">/{ammoMax}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Melee slot */}
+              {melee && (
+                <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
+                  <div className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base" title={melee.name}>
+                    🔪
+                  </div>
+                  <div className="text-[10px] text-white/60">{getWeaponShortName(melee.type)}</div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Stats */}
       <div

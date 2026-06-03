@@ -11,8 +11,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   const characterClasses = [
     {
       id: 'warrior',
-      name: 'ウォーリア',
-      description: 'バランスの取れた剣士で、強力な剣撃を放ちます。',
+      name: 'ヘビーガンナー',
+      description: 'ソードオフ・ショットガンと鉈で近距離を制圧する。',
       icon: <Swords className="w-8 h-8 text-red-500" />,
       stats: {
         health: 'High',
@@ -22,8 +22,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     },
     {
       id: 'mage',
-      name: 'メイジ',
-      description: '魔法を使って遠距離から敵を攻撃します。',
+      name: 'マークスマン',
+      description: 'マグナムとナイフ。一撃の重さで遠距離から狙撃する。',
       icon: <Wand2 className="w-8 h-8 text-purple-500" />,
       stats: {
         health: 'Low',
@@ -33,8 +33,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     },
     {
       id: 'rogue',
-      name: 'ローグ',
-      description: '素早く俊敏で、攻撃速度が速いです。',
+      name: 'ストライカー',
+      description: 'ハンドガンとマチェーテ。手数とフィニッシュで攻める。',
       icon: <Swords className="w-8 h-8 text-green-500" />,
       stats: {
         health: 'Low',
@@ -44,8 +44,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     },
     {
       id: 'necromancer',
-      name: 'ネクロマンサー',
-      description: '闇の力を操り、近くの敵にダメージを与えます。',
+      name: 'スカベンジャー',
+      description: 'ハンドガンとナイフ。拾った武器で戦況を変える。',
       icon: <Skull className="w-8 h-8 text-indigo-500" />,
       stats: {
         health: 'Medium',
@@ -68,10 +68,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       <div className="max-w-3xl w-full glass-panel rounded-3xl overflow-hidden">
         <div className="relative px-5 pt-6 pb-3 text-center">
           <h1 className="text-3xl font-semibold tracking-tight text-white">
-            ダークサバイバーズ
+            ゾンビサバイバル
           </h1>
           <p className="text-[13px] text-white/60 mt-1">
-            マッド・フォレストで30分生き延びろ
+            弾を節約し、群れを捌いて生き延びろ
           </p>
           <span className="absolute top-3 right-3 glass-pill px-2 py-0.5 text-[10px] font-mono tabular-nums text-white/70">
             v{__APP_VERSION__}
@@ -163,11 +163,11 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             </button>
 
             <div className="mt-3 text-[12px] text-white/60 space-y-1 text-center">
-              <p>画面のどこでも指を置いてスワイプ＝移動。</p>
+              <p>画面のどこでも指を置いてスワイプ＝移動。銃は自動で発射。</p>
               <p className="text-amber-300/90">
-                指を離した瞬間にカウンター発動！敵の弾を反射できます。
+                指を離すと近接攻撃＆弾反射！クリで気絶した敵は一撃で仕留められます。
               </p>
-              <p className="text-white/40 text-[11px]">PC: WASD / 矢印で移動・Space でカウンター</p>
+              <p className="text-white/40 text-[11px]">PC: WASD / 矢印で移動・Space で近接カウンター</p>
             </div>
           </div>
         </div>

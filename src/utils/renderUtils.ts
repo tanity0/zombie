@@ -79,11 +79,12 @@ interface RenderProps {
   width: number;
   height: number;
   camera: { x: number; y: number };
+  gameTime: number;
 }
 
 export const renderGame = (
   ctx: CanvasRenderingContext2D,
-  { player, enemies, projectiles, pickups, effects, width, height, camera }: RenderProps
+  { player, enemies, projectiles, pickups, effects, width, height, camera, gameTime }: RenderProps
 ) => {
   ctx.clearRect(0, 0, width, height);
   drawForestBackground(ctx, width, height, camera);
@@ -157,7 +158,7 @@ export const renderGame = (
   const sortedEnemies = [...enemies].sort(
     (a, b) => (a.y + a.height) - (b.y + b.height)
   );
-  sortedEnemies.forEach(enemy => drawEnemy(ctx, enemy, camera));
+  sortedEnemies.forEach(enemy => drawEnemy(ctx, enemy, camera, gameTime));
 
   projectiles.forEach(projectile => drawProjectile(ctx, projectile, camera));
   drawPlayer(ctx, player, camera);
@@ -700,16 +701,50 @@ const drawHealthBar = (
   ctx.fillRect(x, y, w * pct, h);
 };
 
+// Spinning targeting reticle around a stunned enemy — reads more clearly than
+// a "!" and signals "finish me with melee". Drawn larger than the body so it's
+// visible even under the sprite.
+const drawStunReticle = (
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number
+) => {
+  const r = size * 0.85 + 6;
+  const spin = (Date.now() * 0.004) % (Math.PI * 2);
+  ctx.save();
+  // Soft tint to read the body as "frozen".
+  ctx.fillStyle = 'rgba(250, 204, 21, 0.16)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  // Rotating reticle: four arc segments + corner ticks.
+  ctx.translate(cx, cy);
+  ctx.rotate(spin);
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, i * (Math.PI / 2) + 0.25, i * (Math.PI / 2) + (Math.PI / 2) - 0.25);
+    ctx.stroke();
+  }
+  ctx.restore();
+};
+
 const drawEnemy = (
   ctx: CanvasRenderingContext2D,
   enemy: Enemy,
-  camera: { x: number; y: number }
+  camera: { x: number; y: number },
+  gameTime: number
 ) => {
   const cx = enemy.x + enemy.width / 2 - camera.x;
   const cy = enemy.y + enemy.height / 2 - camera.y;
   const color = getEnemyColor(enemy.type);
   const w = enemy.width;
   const h = enemy.height;
+
+  const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+  if (stunned) drawStunReticle(ctx, cx, cy, Math.max(w, h));
 
   ctx.save();
   if (enemy.type === 'ghost') ctx.globalAlpha = 0.65;
@@ -982,90 +1017,36 @@ const drawProjectile = (
   }
 
   switch (projectile.weaponType) {
-    case 'knife': {
-      ctx.fillStyle = '#e5e7eb';
+    case 'handgun':
+    case 'rifle': {
+      // Tracer round — a bright streak oriented along travel. Rifle rounds
+      // are longer; crits glow gold.
       const angle = Math.atan2(projectile.direction.y, projectile.direction.x);
+      const len = Math.max(projectile.width, 6) * (projectile.weaponType === 'rifle' ? 2.6 : 1.7);
       ctx.save();
       ctx.translate(
         projectile.x + projectile.width / 2 - camera.x,
         projectile.y + projectile.height / 2 - camera.y
       );
       ctx.rotate(angle);
-      ctx.fillRect(-projectile.width / 2, -projectile.height / 4, projectile.width, projectile.height / 2);
+      ctx.shadowColor = projectile.crit ? '#fbbf24' : '#fde68a';
+      ctx.shadowBlur = projectile.crit ? 12 : 6;
+      ctx.fillStyle = projectile.crit ? '#fde047' : '#fef3c7';
+      ctx.fillRect(-len / 2, -Math.max(1, projectile.height / 4), len, Math.max(2, projectile.height / 2));
       ctx.restore();
       break;
     }
-    case 'axe': {
-      ctx.fillStyle = '#a78bfa';
-      const rot = (Date.now() * 0.012) % (Math.PI * 2);
-      ctx.save();
-      ctx.translate(
-        projectile.x + projectile.width / 2 - camera.x,
-        projectile.y + projectile.height / 2 - camera.y
-      );
-      ctx.rotate(rot);
-      ctx.beginPath();
-      ctx.moveTo(0, -projectile.height / 2);
-      ctx.lineTo(projectile.width / 2, 0);
-      ctx.lineTo(0, projectile.height / 2);
-      ctx.lineTo(-projectile.width / 2, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-      break;
-    }
-    case 'wand': {
+    case 'shotgun': {
+      // Pellet — a small hot dot.
       const cx = projectile.x + projectile.width / 2 - camera.x;
       const cy = projectile.y + projectile.height / 2 - camera.y;
-      const r = projectile.width / 2;
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, '#f9a8d4');
-      g.addColorStop(1, '#a78bfa');
-      ctx.fillStyle = g;
-      ctx.shadowColor = '#f9a8d4';
-      ctx.shadowBlur = 10;
+      ctx.save();
+      ctx.shadowColor = projectile.crit ? '#fbbf24' : '#f59e0b';
+      ctx.shadowBlur = projectile.crit ? 10 : 5;
+      ctx.fillStyle = projectile.crit ? '#fde047' : '#fdba74';
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(2, projectile.width / 2), 0, Math.PI * 2);
       ctx.fill();
-      ctx.shadowBlur = 0;
-      break;
-    }
-    case 'whip': {
-      // Slash slab — fade-in then fade-out across the projectile's duration.
-      const t = (Date.now() - projectile.createdAt) / Math.max(50, projectile.duration);
-      const alpha = Math.max(0, 1 - Math.abs(t - 0.4) * 2);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      const px = projectile.x - camera.x;
-      const py = projectile.y - camera.y;
-      const grad = ctx.createLinearGradient(px, py, px + projectile.width, py);
-      if (projectile.direction.x >= 0) {
-        grad.addColorStop(0, 'rgba(255,255,255,0)');
-        grad.addColorStop(1, 'rgba(252, 211, 77, 0.9)');
-      } else {
-        grad.addColorStop(0, 'rgba(252, 211, 77, 0.9)');
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
-      }
-      ctx.fillStyle = grad;
-      ctx.fillRect(px, py, projectile.width, projectile.height);
-      ctx.restore();
-      break;
-    }
-    case 'bible': {
-      ctx.fillStyle = '#fbbf24';
-      const rot = (Date.now() * 0.005) % (Math.PI * 2);
-      ctx.save();
-      ctx.translate(
-        projectile.x + projectile.width / 2 - camera.x,
-        projectile.y + projectile.height / 2 - camera.y
-      );
-      ctx.rotate(rot);
-      ctx.fillRect(-projectile.width / 2, -projectile.height / 2, projectile.width, projectile.height);
-      ctx.fillStyle = '#f3f4f6';
-      const cw = projectile.width * 0.2;
-      const ch = projectile.height * 0.6;
-      ctx.fillRect(-cw / 2, -ch / 2, cw, ch);
-      ctx.fillRect(-ch / 2, -cw / 2, ch, cw);
       ctx.restore();
       break;
     }
@@ -1085,21 +1066,6 @@ const drawProjectile = (
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      break;
-    }
-    case 'garlic': {
-      const cx = projectile.x + projectile.width / 2 - camera.x;
-      const cy = projectile.y + projectile.height / 2 - camera.y;
-      const pulse = 0.85 + 0.15 * Math.sin(Date.now() * 0.005);
-      const r = (projectile.width / 2) * pulse;
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, 'rgba(253, 230, 138, 0.25)');
-      g.addColorStop(0.6, 'rgba(253, 230, 138, 0.12)');
-      g.addColorStop(1, 'rgba(253, 230, 138, 0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
       break;
     }
     default: {
@@ -1142,15 +1108,18 @@ const drawPickup = (
   const shadowAlpha = 0.35 - floatOffset * 0.025; // shrinks slightly as the pickup rises
   drawGroundShadow(ctx, cx, cy + size / 2, size * 0.85, Math.max(0.22, shadowAlpha));
 
-  // Sprite-first. XP gems pick the tier name from the value so the
-  // blue/green/red sprites get the right slot. Other pickup types use
-  // their direct name.
-  const spriteName =
-    pickup.type === 'experience'
-      ? (pickup.value >= 5 ? 'pickup-xp-red' : pickup.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
-      : `pickup-${pickup.type}`;
-  if (drawSprite(ctx, spriteName, pickup.x - camera.x, pickup.y - camera.y + floatOffset, size, size)) {
-    return;
+  // Sprite-first for the original atlas-backed pickups. XP gems pick the
+  // tier name from value. RE-specific pickups (ammo, weapon drops/crates)
+  // have no atlas art and are drawn procedurally below.
+  const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
+  if (SPRITE_PICKUPS.has(pickup.type)) {
+    const spriteName =
+      pickup.type === 'experience'
+        ? (pickup.value >= 5 ? 'pickup-xp-red' : pickup.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
+        : `pickup-${pickup.type}`;
+    if (drawSprite(ctx, spriteName, pickup.x - camera.x, pickup.y - camera.y + floatOffset, size, size)) {
+      return;
+    }
   }
 
   switch (pickup.type) {
@@ -1243,6 +1212,61 @@ const drawPickup = (
       ctx.beginPath();
       ctx.arc(cx, drawY - 10, 2 + spark * 1.5, 0, Math.PI * 2);
       ctx.fill();
+      break;
+    }
+    case 'ammo-handgun':
+    case 'ammo-shotgun':
+    case 'ammo-rifle': {
+      // Small ammo box. Color-coded by family: brass/red/amber.
+      const boxColor =
+        pickup.type === 'ammo-shotgun' ? '#b91c1c' :
+        pickup.type === 'ammo-rifle' ? '#b45309' : '#a16207';
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(cx - 7, drawY - 4, 14, 9);
+      ctx.fillStyle = boxColor;
+      ctx.fillRect(cx - 7, drawY - 4, 14, 3);
+      // Rounds peeking out
+      ctx.fillStyle = '#fde68a';
+      ctx.fillRect(cx - 5, drawY - 6, 2, 3);
+      ctx.fillRect(cx - 1, drawY - 6, 2, 3);
+      ctx.fillRect(cx + 3, drawY - 6, 2, 3);
+      break;
+    }
+    case 'weapon-drop': {
+      // A gun silhouette glinting on the ground.
+      ctx.save();
+      ctx.shadowColor = '#93c5fd';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(cx - 8, drawY - 2, 14, 4);   // barrel/body
+      ctx.fillRect(cx - 8, drawY + 2, 4, 5);    // grip
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(cx - 3, drawY + 2, 3, 3);    // trigger guard
+      ctx.restore();
+      break;
+    }
+    case 'weapon-crate': {
+      // Metal supply crate with a glowing weapon icon.
+      const pulse = 0.85 + 0.15 * Math.sin(Date.now() / 220);
+      ctx.save();
+      ctx.shadowColor = '#60a5fa';
+      ctx.shadowBlur = 14 * pulse;
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(cx - 9, drawY - 6, 18, 13);
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(cx - 9, drawY - 6, 18, 3);
+      // Cross banding
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx - 9, drawY - 6, 18, 13);
+      ctx.beginPath();
+      ctx.moveTo(cx - 9, drawY - 6); ctx.lineTo(cx + 9, drawY + 7);
+      ctx.moveTo(cx + 9, drawY - 6); ctx.lineTo(cx - 9, drawY + 7);
+      ctx.stroke();
+      // Center icon
+      ctx.fillStyle = '#bfdbfe';
+      ctx.fillRect(cx - 2, drawY - 1, 4, 3);
+      ctx.restore();
       break;
     }
   }

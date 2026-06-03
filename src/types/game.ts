@@ -28,6 +28,14 @@ export interface Player {
   counterWindowEnd: number;     // ms timestamp; window is open while now <= this
   counterCooldownEnd: number;   // ms timestamp; cannot open another window until this
   lastCounterSuccessTime: number; // for the success flash effect
+  // RE-style resources. Guns draw from a category-specific ammo pool;
+  // running a pool dry stops that gun firing (melee always works).
+  ammoHandgun: number;
+  ammoShotgun: number;
+  ammoRifle: number;
+  // Chance [0,1] that a gun hit crits — crits deal extra damage and stun
+  // the target so it can be finished with the melee counter.
+  critChance: number;
 }
 
 // Movement direction
@@ -54,6 +62,15 @@ export interface Enemy {
   knockbackUntil?: number;
   knockbackVx?: number;
   knockbackVy?: number;
+  // Stun state (gameTime-based so it survives pauses). While
+  // gameTime < stunUntil the enemy stops moving and can be finished with
+  // a melee counter for an instant kill.
+  stunUntil?: number;
+  // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
+  // a short grace period before they become eligible for culling so big
+  // set-piece hordes aren't deleted the instant they appear.
+  spawnedAt?: number; // gameTime ms when spawned
+  isWave?: boolean;
 }
 
 export type EnemyType =
@@ -82,9 +99,25 @@ export interface Weapon {
   duration?: number;
   passthrough?: boolean;
   count?: number;
+  // RE-style classification. Guns belong to a category that shares an ammo
+  // pool; tier (1-3) controls power within the category. Melee weapons set
+  // isMelee and don't consume ammo (they're triggered by the counter).
+  category?: WeaponCategory;
+  tier?: number;
+  isMelee?: boolean;
+  ammoType?: AmmoType;
+  // Catalog key (e.g. 'handgun-t1') so drops/crates can re-create the weapon.
+  key?: string;
 }
 
-export type WeaponType = 'knife' | 'axe' | 'wand' | 'whip' | 'bible' | 'garlic' | 'enemy_bolt';
+// Gun families. Each shares an ammo pool with the matching AmmoType.
+export type WeaponCategory = 'handgun' | 'shotgun' | 'rifle';
+export type AmmoType = WeaponCategory;
+
+// Projectile/weapon kinds. Guns use their category as the projectile type;
+// melee weapons never spawn projectiles (handled by the counter). enemy_bolt
+// is the hostile seed/bolt enemies spit.
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt';
 
 // Projectile types
 export interface Projectile {
@@ -103,6 +136,9 @@ export interface Projectile {
   hitEnemies: string[];
   hostile: boolean;
   reflected: boolean;
+  // Gun crit flag — set when the shot rolled a critical. Crits hit harder
+  // and stun whatever they connect with.
+  crit?: boolean;
   // Optional motion modifiers. Axes set `gravity` so they arc upward then
   // fall. Bibles use the orbit fields to circle the player continuously.
   // `followsPlayer` snaps the projectile to the player every frame (garlic).
@@ -120,9 +156,15 @@ export interface Pickup {
   y: number;
   type: PickupType;
   value: number;
+  // For 'weapon-drop': the catalog key of the dropped weapon. For
+  // 'weapon-crate' this is left undefined (the weapon is rolled on open).
+  weaponKey?: string;
 }
 
-export type PickupType = 'experience' | 'health' | 'magnet' | 'bomb' | 'chest';
+export type PickupType =
+  | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'
+  | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
+  | 'weapon-drop' | 'weapon-crate';
 
 // Upgrade options
 export interface UpgradeOption {
@@ -135,7 +177,7 @@ export interface UpgradeOption {
   level: number;
 }
 
-export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'amount';
+export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'amount' | 'critChance';
 
 // Game statistics
 export interface GameStats {

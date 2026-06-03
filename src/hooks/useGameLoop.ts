@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import {
   useGameStore,
   INVULN_MS,
-  COUNTER_EXTEND_PER_HIT
+  COUNTER_EXTEND_PER_HIT,
+  STUN_DURATION_MS
 } from '../store/gameStore';
+import { rollWeaponKey } from '../utils/weaponDrop';
+import type { AmmoType } from '../types/game';
 import {
   checkProjectileEnemyCollisions,
   checkPlayerEnemyCollisions,
@@ -216,14 +219,25 @@ export const useGameLoop = (onGameOver: () => void) => {
           const projectile = projectiles.find(p => p.id === projectileId);
           const enemyKilled = damageEnemy(enemyId, damage);
 
-          // Floating damage number at the enemy's body. Use the reflected
-          // flag to mark crit color (reflected bolts hit way harder).
+          // Floating damage number at the enemy's body. Reflected bolts and
+          // crits both render in the gold "big hit" color.
           if (enemyForFx) {
             spawnDamageNumber(
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y,
               damage,
-              !!projectile?.reflected
+              !!projectile?.reflected || !!projectile?.crit
+            );
+          }
+
+          // Crit that didn't outright kill → stun the target so it can be
+          // executed with a melee finisher. Mark it with a brief yellow ring.
+          if (projectile?.crit && !enemyKilled && enemyForFx) {
+            useGameStore.getState().stunEnemy(enemyId, gameTime + STUN_DURATION_MS);
+            spawnRing(
+              enemyForFx.x + enemyForFx.width / 2,
+              enemyForFx.y + enemyForFx.height / 2,
+              6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260
             );
           }
 
@@ -261,21 +275,48 @@ export const useGameLoop = (onGameOver: () => void) => {
               });
               const isElite = enemy.type === 'pumpkin' || enemy.type === 'giantbat';
               if (isElite) {
-                // VS-style boss drop — treasure chest always drops from
-                // pumpkins and giant bats. Pickup it up to open a free
-                // upgrade menu.
+                // Mid-boss drop — a weapon crate. Picking it up opens it and
+                // rolls a new gun (category & tier weighted by run time).
                 addPickup({
-                  id: `pickup-chest-${enemy.id}`,
+                  id: `pickup-crate-${enemy.id}`,
                   x: enemy.x + enemy.width / 2 - 8,
                   y: enemy.y + enemy.height / 2 - 8 - 18,
-                  type: 'chest',
+                  type: 'weapon-crate',
                   value: 0
                 });
                 spawnRing(
                   enemy.x + enemy.width / 2,
                   enemy.y + enemy.height / 2,
-                  10, 80, 'rgba(252,211,77,0.7)', 3, 500
+                  10, 80, 'rgba(96,165,250,0.7)', 3, 500
                 );
+              }
+              // Ammo resupply — common, biased toward the equipped gun's family
+              // so the player usually finds rounds for what they're carrying.
+              if (Math.random() < (isElite ? 0.6 : 0.3)) {
+                const equippedAmmo = player.weapons.find(w => !w.isMelee)?.ammoType;
+                const allTypes: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
+                const dropType =
+                  equippedAmmo && Math.random() < 0.7
+                    ? equippedAmmo
+                    : allTypes[Math.floor(Math.random() * allTypes.length)];
+                addPickup({
+                  id: `pickup-ammo-${enemy.id}`,
+                  x: enemy.x + enemy.width / 2 - 8 + 16,
+                  y: enemy.y + enemy.height / 2 - 8,
+                  type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+                  value: 0
+                });
+              }
+              // Rare world weapon drop (~1%, elites a bit higher).
+              if (Math.random() < (isElite ? 0.06 : 0.01)) {
+                addPickup({
+                  id: `pickup-weapon-${enemy.id}`,
+                  x: enemy.x + enemy.width / 2 - 8,
+                  y: enemy.y + enemy.height / 2 - 8 + 16,
+                  type: 'weapon-drop',
+                  value: 0,
+                  weaponKey: rollWeaponKey(gameTime)
+                });
               }
               const chickenChance = isElite ? 0.35 : 0.015;
               const magnetChance = isElite ? 0.15 : 0.004;
@@ -402,6 +443,28 @@ export const useGameLoop = (onGameOver: () => void) => {
                       6
                     ));
                   break;
+                case 'ammo-handgun':
+                case 'ammo-shotgun':
+                case 'ammo-rifle':
+                  spawnBurst(pk.x + 8, pk.y + 8, '#fcd34d', 6);
+                  break;
+                case 'weapon-drop':
+                  spawnBurst(pk.x + 8, pk.y + 8, '#93c5fd', 12);
+                  spawnRing(
+                    player.x + player.width / 2,
+                    player.y + player.height / 2,
+                    8, 60, 'rgba(147,197,253,0.85)', 3, 360
+                  );
+                  break;
+                case 'weapon-crate':
+                  spawnFlash('rgba(96,165,250,0.3)', 260);
+                  spawnRing(
+                    player.x + player.width / 2,
+                    player.y + player.height / 2,
+                    10, 120, 'rgba(96,165,250,0.9)', 5, 440
+                  );
+                  spawnBurst(pk.x + 8, pk.y + 8, '#bfdbfe', 18);
+                  break;
               }
             }
             collectPickup(pickupId);
@@ -432,23 +495,25 @@ export const useGameLoop = (onGameOver: () => void) => {
         );
         waveEnemies.forEach(addEnemy);
 
-        // Limit enemy count to keep the simulation tractable on phones.
-        // Reapers and giant bats are always kept regardless of distance.
-        const maxEnemies = Math.min(120, 40 + Math.floor(gameTime / 30000));
-        if (enemies.length > maxEnemies) {
-          // Find the enemies furthest from the player and remove them,
-          // but never cull elites/giantbats/reaper — they're set-pieces.
-          const isProtected = (t: string) =>
-            t === 'reaper' || t === 'giantbat' || t === 'pumpkin';
-          const sortedEnemies = [...enemies]
-            .filter(e => !isProtected(e.type))
+        // RE-style density: a hard cap of ~10 concurrent enemies. Set-piece
+        // elites are never culled, and scripted-wave enemies get a 10-second
+        // grace period before they're eligible (otherwise a boss wave gets
+        // deleted the instant it spawns under the low cap).
+        const MAX_ENEMIES = 10;
+        const WAVE_GRACE_MS = 10000;
+        if (enemies.length > MAX_ENEMIES) {
+          const isProtected = (e: typeof enemies[number]) =>
+            e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+            (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
+          const cullable = [...enemies]
+            .filter(e => !isProtected(e))
             .sort((a, b) => {
               const distA = Math.hypot(a.x - player.x, a.y - player.y);
               const distB = Math.hypot(b.x - player.x, b.y - player.y);
               return distB - distA;
             });
 
-          const toRemove = sortedEnemies.slice(0, enemies.length - maxEnemies);
+          const toRemove = cullable.slice(0, enemies.length - MAX_ENEMIES);
           toRemove.forEach(enemy => {
             useGameStore.getState().removeEnemy(enemy.id);
           });

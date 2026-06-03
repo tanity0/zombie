@@ -2,7 +2,6 @@ import React from 'react';
 import { useGameStore } from '../store/gameStore';
 
 const UpgradeMenu: React.FC = () => {
-  const player = useGameStore(state => state.player);
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
   const selectUpgrade = useGameStore(state => state.selectUpgrade);
   
