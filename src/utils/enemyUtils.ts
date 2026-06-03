@@ -64,6 +64,9 @@ const difficultyFor = (gameTime: number) => Math.min(1 + gameTime / 90000, 5);
 // Global enemy toughness multiplier on top of the difficulty ramp. Bumped so
 // fights are chunkier and ammo/positioning matter more. Damage is unaffected.
 const ENEMY_HP_MULT = 5;
+// Global enemy speed multiplier — slows the whole bestiary for a more
+// deliberate, survival-horror pace (matches the slower player).
+const ENEMY_SPEED_MULT = 2 / 3;
 
 const buildEnemy = (
   type: EnemyType,
@@ -84,7 +87,7 @@ const buildEnemy = (
     y,
     width: stats.width,
     height: stats.height,
-    speed: stats.speed,
+    speed: stats.speed * ENEMY_SPEED_MULT,
     health: stats.health * hpMult,
     maxHealth: stats.health * hpMult,
     damage: Math.round(stats.damage * dmgMult),

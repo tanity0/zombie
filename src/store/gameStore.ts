@@ -54,7 +54,7 @@ export const REFLECT_SPEED_MULTIPLIER = 1.8;
 
 // Player base stats tuned to feel like Vampire Survivors' Antonio: slower
 // than the previous build (so weapons matter more), modest HP, small body.
-export const PLAYER_BASE_SPEED = 130;
+export const PLAYER_BASE_SPEED = 87;
 export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
 export const INVULN_MS = 700;
