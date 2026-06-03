@@ -21,7 +21,7 @@ import {
   getEnemySpawnInterval
 } from '../utils/enemyUtils';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { fireWeapon } from '../utils/weaponUtils';
+import { fireWeapon, getActiveGun } from '../utils/weaponUtils';
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -66,6 +66,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const addProjectile = useGameStore(state => state.addProjectile);
   const collectPickup = useGameStore(state => state.collectPickup);
   const addPickup = useGameStore(state => state.addPickup);
+  const autoSwitchIfDry = useGameStore(state => state.autoSwitchIfDry);
   const setGameTime = useGameStore(state => state.setGameTime);
   const updateGameStats = useGameStore(state => state.updateGameStats);
   const setCameraPosition = useGameStore(state => state.setCameraPosition);
@@ -139,11 +140,14 @@ export const useGameLoop = (onGameOver: () => void) => {
         const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
         setCameraPosition(targetCameraX, targetCameraY);
         
-        // Fire weapons
-        player.weapons.forEach(weapon => {
-          const newProjectiles = fireWeapon(weapon, player, enemies);
+        // Fire the active gun only. Swap off a dry gun first so the player
+        // keeps shooting as long as any owned gun has ammo.
+        autoSwitchIfDry();
+        const activeGun = getActiveGun(useGameStore.getState().player);
+        if (activeGun) {
+          const newProjectiles = fireWeapon(activeGun, useGameStore.getState().player, enemies);
           newProjectiles.forEach(proj => useGameStore.getState().addProjectile(proj));
-        });
+        }
         
         // Update enemies
         updateEnemies(deltaTime);
@@ -313,7 +317,7 @@ export const useGameLoop = (onGameOver: () => void) => {
               // Ammo resupply — common, biased toward the equipped gun's family
               // so the player usually finds rounds for what they're carrying.
               if (Math.random() < (isElite ? 0.6 : 0.3)) {
-                const equippedAmmo = player.weapons.find(w => !w.isMelee)?.ammoType;
+                const equippedAmmo = getActiveGun(player)?.ammoType;
                 const allTypes: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
                 const dropType =
                   equippedAmmo && Math.random() < 0.7
@@ -530,7 +534,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           const px = player.x + player.width / 2 + Math.cos(angle) * dist;
           const py = player.y + player.height / 2 + Math.sin(angle) * dist;
           // Weight toward the equipped gun's family so the trek usually pays off.
-          const equippedAmmo = player.weapons.find(w => !w.isMelee)?.ammoType;
+          const equippedAmmo = getActiveGun(player)?.ammoType;
           const allTypes: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
           const dropType =
             equippedAmmo && Math.random() < 0.7
@@ -668,6 +672,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     reflectProjectile,
     collectPickup,
     addPickup,
+    autoSwitchIfDry,
     setGameTime,
     updateGameStats,
     setCameraPosition,

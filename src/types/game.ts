@@ -17,6 +17,10 @@ export interface Player {
   level: number;
   experienceToNextLevel: number;
   weapons: Weapon[];
+  // Id of the currently-active gun (the one that auto-fires). The player can
+  // hold up to one gun per category plus a melee weapon, and switch between
+  // guns via the HUD; an empty pool auto-switches to a gun that still has ammo.
+  activeWeaponId: string;
   characterClass: CharacterClass;
   direction: Direction;
   isMoving: boolean;

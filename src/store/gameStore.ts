@@ -5,7 +5,7 @@ import {
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType
 } from '../types/game';
-import { getStartingWeapons, createWeapon, AMMO_FIELD } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 
 // RE-style ammo economy. Each gun family draws from its own pool. Pools start
@@ -24,8 +24,6 @@ export const FINISHER_AMMO_REFUND: Record<AmmoType, number> = { handgun: 6, shot
 
 // Light knockback applied to a normal enemy each time a bullet connects.
 export const BULLET_KNOCKBACK_SPEED = 190;
-// Shot hitstop: how long player movement freezes the instant a gun fires.
-export const SHOT_FREEZE_MS = 55;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
@@ -115,7 +113,9 @@ interface GameState {
 
   // Weapons (drops / crates)
   grantWeapon: (key: string) => void;
-  
+  setActiveWeapon: (id: string) => void;
+  autoSwitchIfDry: () => void;
+
   // Projectile actions
   addProjectile: (projectile: Projectile) => void;
   removeProjectile: (id: string) => void;
@@ -157,6 +157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     level: 1,
     experienceToNextLevel: 5,
     weapons: [],
+    activeWeaponId: '',
     characterClass: 'warrior',
     direction: 'idle',
     isMoving: false,
@@ -308,7 +309,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (now < player.counterCooldownEnd) return;
 
     const melee = player.weapons.find(w => w.isMelee);
-    const gun = player.weapons.find(w => !w.isMelee);
+    const gun = getActiveGun(player); // finisher refunds into the active gun
     const meleeDamage = melee?.damage ?? 6;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
@@ -898,18 +899,71 @@ export const useGameStore = create<GameState>((set, get) => ({
   grantWeapon: (key) => {
     const weapon = createWeapon(key);
     set(state => {
-      const slotIndex = state.player.weapons.findIndex(
-        w => !!w.isMelee === !!weapon.isMelee
-      );
-      const current = slotIndex >= 0 ? state.player.weapons[slotIndex] : undefined;
-      if (current && (weapon.tier ?? 1) < (current.tier ?? 1)) {
-        return {}; // keep the better weapon we already have
+      const player = state.player;
+
+      // Melee: single slot, keep the higher tier (as before).
+      if (weapon.isMelee) {
+        const idx = player.weapons.findIndex(w => w.isMelee);
+        const current = idx >= 0 ? player.weapons[idx] : undefined;
+        if (current && (weapon.tier ?? 1) < (current.tier ?? 1)) return {};
+        const weapons = [...player.weapons];
+        if (idx >= 0) weapons[idx] = weapon; else weapons.push(weapon);
+        return { player: { ...player, weapons } };
       }
-      const weapons = [...state.player.weapons];
-      if (slotIndex >= 0) weapons[slotIndex] = weapon;
-      else weapons.push(weapon);
-      return { player: { ...state.player, weapons } };
+
+      // Guns: one per category (max 3). A new category is added to the
+      // arsenal; an existing category keeps whichever tier is higher.
+      const idx = player.weapons.findIndex(
+        w => !w.isMelee && w.category === weapon.category
+      );
+      const current = idx >= 0 ? player.weapons[idx] : undefined;
+      const isActiveCategory = current && current.id === player.activeWeaponId;
+
+      if (current && (weapon.tier ?? 1) < (current.tier ?? 1)) {
+        return {}; // already own a better gun of this category
+      }
+
+      const weapons = [...player.weapons];
+      if (idx >= 0) weapons[idx] = weapon; else weapons.push(weapon);
+
+      // Keep the active selection sensible: stay on the upgraded active gun
+      // (its id changed), or arm the new gun if we had none / were dry.
+      const hadGun = getGuns(player).length > 0;
+      const activeDry =
+        !hadGun ||
+        (getActiveGun(player)?.ammoType
+          ? ammoPoolFor(player, getActiveGun(player)!.ammoType!) <= 0
+          : true);
+      let activeWeaponId = player.activeWeaponId;
+      if (isActiveCategory || !hadGun || activeDry) {
+        activeWeaponId = weapon.id;
+      }
+
+      return { player: { ...player, weapons, activeWeaponId } };
     });
+  },
+
+  // Manually arm a specific gun (from the HUD weapon icons). Ignores melee.
+  setActiveWeapon: (id) => {
+    set(state => {
+      const target = state.player.weapons.find(w => w.id === id && !w.isMelee);
+      if (!target) return {};
+      return { player: { ...state.player, activeWeaponId: id } };
+    });
+  },
+
+  // If the active gun's pool is empty, auto-arm another owned gun that still
+  // has ammo. Returns nothing; safe to call every frame before firing.
+  autoSwitchIfDry: () => {
+    const player = get().player;
+    const active = getActiveGun(player);
+    if (active?.ammoType && ammoPoolFor(player, active.ammoType) > 0) return;
+    const stocked = getGuns(player).find(
+      w => w.ammoType && ammoPoolFor(player, w.ammoType) > 0
+    );
+    if (stocked && stocked.id !== player.activeWeaponId) {
+      set(state => ({ player: { ...state.player, activeWeaponId: stocked.id } }));
+    }
   },
   
   // Game state actions
@@ -955,6 +1009,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           level: 1,
           experienceToNextLevel: 5,
           weapons: startingWeapons,
+          activeWeaponId: startingWeapons.find(w => !w.isMelee)?.id ?? '',
           characterClass: validClass,
           direction: 'idle',
           isMoving: false,

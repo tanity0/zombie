@@ -13,6 +13,7 @@ interface GameHUDProps {
 
 const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const player = useGameStore(state => state.player);
+  const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
   const enemies = useGameStore(state => state.enemies);
@@ -105,16 +106,13 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         </div>
       </div>
 
-      {/* Equipped weapons + ammo */}
+      {/* Equipped weapons + ammo. Guns are tappable to switch the active one. */}
       {(() => {
-        const gun = player.weapons.find(w => !w.isMelee);
+        const guns = player.weapons.filter(w => !w.isMelee);
         const melee = player.weapons.find(w => w.isMelee);
+        const activeGun = guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
         const ammoFieldFor = (t: AmmoType) =>
           t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : player.ammoRifle;
-        const ammoType = gun?.ammoType;
-        const ammo = ammoType ? ammoFieldFor(ammoType) : 0;
-        const ammoMax = ammoType ? AMMO_MAX[ammoType] : 0;
-        const dry = ammo <= 0;
         return (
           <div
             className="absolute"
@@ -123,32 +121,45 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
               bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
             }}
           >
-            <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-3">
-              {/* Gun slot */}
-              {gun && (
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
-                      dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/20'
+            <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-2">
+              {/* Gun slots — one per owned category; tap to switch */}
+              {guns.map(gun => {
+                const ammoType = gun.ammoType;
+                const ammo = ammoType ? ammoFieldFor(ammoType) : 0;
+                const ammoMax = ammoType ? AMMO_MAX[ammoType] : 0;
+                const dry = ammo <= 0;
+                const active = gun.id === activeGun?.id;
+                return (
+                  <button
+                    key={gun.id}
+                    onClick={() => setActiveWeapon(gun.id)}
+                    className={`pointer-events-auto flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors ${
+                      active ? 'bg-amber-500/25 ring-2 ring-amber-400/70' : 'bg-white/5 opacity-70'
                     }`}
                     title={gun.name}
                   >
-                    🔫
-                  </div>
-                  <div className="leading-tight">
-                    <div className="text-[10px] text-white/60 truncate max-w-[88px]">{gun.name}</div>
                     <div
-                      className={`text-[13px] font-bold tabular-nums ${
-                        dry ? 'text-red-400 animate-pulse' : 'text-white'
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
+                        dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/20'
                       }`}
                     >
-                      {ammo}
-                      <span className="text-[10px] text-white/40">/{ammoMax}</span>
+                      🔫
                     </div>
-                  </div>
-                </div>
-              )}
-              {/* Melee slot */}
+                    <div className="leading-tight text-left">
+                      <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>
+                      <div
+                        className={`text-[13px] font-bold tabular-nums ${
+                          dry ? 'text-red-400 animate-pulse' : 'text-white'
+                        }`}
+                      >
+                        {ammo}
+                        <span className="text-[10px] text-white/40">/{ammoMax}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+              {/* Melee slot (always available; not switchable) */}
               {melee && (
                 <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
                   <div className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base" title={melee.name}>

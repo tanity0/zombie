@@ -1,10 +1,16 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, SHOT_FREEZE_MS } from '../store/gameStore';
+import { useGameStore } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
 // feel snappier and reach their target sooner.
 const PROJECTILE_SPEED_MULT = 1.5;
+
+// Shot hitstop, derived from the gun's cooldown so heavy slow guns (revolver/
+// magnum, shotguns) root the player noticeably while rapid guns (machine
+// pistol) barely hitch. Clamped so it always reads but never fully locks.
+export const shotFreezeMs = (weapon: Weapon): number =>
+  Math.round(Math.max(70, Math.min(240, (weapon.cooldown || 300) * 0.24)));
 
 // ---------------------------------------------------------------------------
 // Weapon catalog
@@ -90,6 +96,21 @@ export const createWeapon = (key: string): Weapon => {
 };
 
 export const getWeaponDef = (key: string): WeaponDef | undefined => CATALOG[key];
+
+// All guns the player owns (excludes the melee weapon).
+export const getGuns = (player: Player): Weapon[] =>
+  player.weapons.filter(w => !w.isMelee);
+
+// The active gun: the one matching activeWeaponId, falling back to the first
+// gun owned (or undefined if the player somehow has none).
+export const getActiveGun = (player: Player): Weapon | undefined => {
+  const guns = getGuns(player);
+  return guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
+};
+
+// Player-state pool value for an ammo type.
+export const ammoPoolFor = (player: Player, type: AmmoType): number =>
+  player[AMMO_FIELD[type]];
 
 // Starting loadout: one gun + one melee weapon from the class profile.
 export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => {
@@ -210,7 +231,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     player: {
       ...state.player,
       [field]: Math.max(0, state.player[field] - 1),
-      moveFrozenUntil: now + SHOT_FREEZE_MS,
+      moveFrozenUntil: now + shotFreezeMs(weapon),
       weapons: state.player.weapons.map(w =>
         w.id === weapon.id ? { ...w, lastFired: now } : w
       )
