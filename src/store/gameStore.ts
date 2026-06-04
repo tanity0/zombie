@@ -77,9 +77,15 @@ export const REFLECT_SPEED_MULTIPLIER = 1.8;
 export const HITSTOP_MS = 300;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
-// Inertia time constant (s). Movement velocity eases toward its target so
-// starting/stopping/turning has ~0.2s of inertia instead of being instant.
-export const INERTIA_TAU = 0.2;
+// Inertia time constants (s). Velocity eases toward its target over this
+// window. The player is now instant (0 = no inertia, snappy control); enemies
+// keep 0.3s so they curve into turns instead of snapping.
+export const PLAYER_INERTIA_TAU = 0;
+export const ENEMY_INERTIA_TAU = 0.3;
+
+// Easing factor for a given time constant. tau <= 0 means instant (alpha = 1).
+const inertiaAlpha = (deltaTime: number, tau: number): number =>
+  tau <= 0 ? 1 : 1 - Math.exp(-deltaTime / tau);
 
 // Player base stats tuned to feel like Vampire Survivors' Antonio: slower
 // than the previous build (so weapons matter more), modest HP, small body.
@@ -282,9 +288,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const tlen = Math.hypot(tx, ty);
       if (tlen > 0) { tx /= tlen; ty /= tlen; }
 
-      // Inertia: ease the velocity toward the target so starting, stopping and
-      // turning take ~0.3s instead of snapping.
-      const alpha = 1 - Math.exp(-deltaTime / INERTIA_TAU);
+      // Inertia: ease the velocity toward the target. Player tau is 0 → fully
+      // instant, responsive control.
+      const alpha = inertiaAlpha(deltaTime, PLAYER_INERTIA_TAU);
       const vx = player.vx + (tx * moveSpeed - player.vx) * alpha;
       const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
       const newX = player.x + vx * deltaTime;
@@ -758,7 +764,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const tvx = (dx / distance) * speed;
         const tvy = (dy / distance) * speed;
 
-        const alpha = 1 - Math.exp(-deltaTime / INERTIA_TAU);
+        const alpha = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
