@@ -205,10 +205,12 @@ export const useGameLoop = (onGameOver: () => void) => {
         // the bolt back at the firing enemy. Otherwise it does damage.
         const liveProjectiles = useGameStore.getState().projectiles;
         const incoming = checkProjectilePlayerCollisions(liveProjectiles, player);
+        let reflectedAny = false;
         for (const proj of incoming) {
           const currentPlayer = useGameStore.getState().player;
           if (now <= currentPlayer.counterWindowEnd) {
             reflectProjectile(proj.id);
+            reflectedAny = true;
             // Each successful reflect refreshes the window so a barrage
             // can be turned back fully. The cooldown still gates a NEW
             // counter trigger once the chain finally lapses.
@@ -235,6 +237,12 @@ export const useGameLoop = (onGameOver: () => void) => {
               onGameOver();
             }
           }
+        }
+        // "Counter!" only when a bullet was actually reflected (once per frame).
+        if (reflectedAny) {
+          useGameStore.getState().spawnCallout(
+            player.x + player.width / 2, player.y - 12, 'Counter!', '#38bdf8'
+          );
         }
 
         // Check for collisions between projectiles and enemies

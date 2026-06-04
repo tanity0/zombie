@@ -406,9 +406,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     // expanding ring) so the catch zone reads clearly the moment it fires.
     get().spawnGlow(pcx, pcy, MELEE_RADIUS, 'rgba(251,191,36,', 340);
 
-    // "Counter!" callout over the player's head whenever the counter fires.
-    get().spawnCallout(pcx, player.y - 12, 'Counter!', '#38bdf8');
-
     // Slash streaks on every enemy that was cut.
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y);

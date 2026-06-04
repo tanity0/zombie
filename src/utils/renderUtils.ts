@@ -392,7 +392,7 @@ const drawDamageNumberEffect = (
   const bold = e.crit || scale > 1.2;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px ui-rounded, -apple-system, system-ui, sans-serif`;
+  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px "Special Elite", ui-rounded, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   const label = e.text ?? String(e.value);
   ctx.fillStyle = '#000';

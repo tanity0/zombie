@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dark-toned distressed font (RE-style typewriter) for Latin text; Japanese
+   falls back to the gothic stack. Placed after base so it beats preflight. */
+@layer base {
+  html, body {
+    font-family: "Special Elite", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+      "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  }
+}
+
 @layer utilities {
   .pt-safe {
     padding-top: max(env(safe-area-inset-top), 0.5rem);
