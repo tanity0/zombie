@@ -78,8 +78,8 @@ export const HITSTOP_MS = 300;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
 // Inertia time constant (s). Movement velocity eases toward its target so
-// starting/stopping/turning takes ~0.3s instead of being instant.
-export const INERTIA_TAU = 0.15;
+// starting/stopping/turning has ~0.2s of inertia instead of being instant.
+export const INERTIA_TAU = 0.2;
 
 // Player base stats tuned to feel like Vampire Survivors' Antonio: slower
 // than the previous build (so weapons matter more), modest HP, small body.
