@@ -292,4 +292,26 @@ export type VisualEffect =
       color: string;
       createdAt: number;
       duration: number;
+    }
+  | {
+      // Fixed-radius radial light that fades in place (no expansion). Used to
+      // flash the counter's reach when it fires.
+      kind: 'glow';
+      id: string;
+      x: number; y: number;
+      radius: number;
+      color: string;          // base rgb, e.g. 'rgba(251,191,36,'  — alpha appended
+      createdAt: number;
+      duration: number;
+    }
+  | {
+      // A short slash streak drawn on an enemy struck in melee.
+      kind: 'slash';
+      id: string;
+      x: number; y: number;
+      angle: number;          // radians
+      length: number;
+      color: string;
+      createdAt: number;
+      duration: number;
     };

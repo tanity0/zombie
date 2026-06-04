@@ -148,6 +148,8 @@ interface GameState {
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
+  spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
+  spawnSlash: (x: number, y: number, color?: string) => void;
   spawnFlash: (color: string, duration?: number) => void;
   updateEffects: (deltaTime: number) => void;
 }
@@ -334,6 +336,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     const survivors: Enemy[] = [];
     const critHits: { x: number; y: number; value: number }[] = [];
+    const slashAt: { x: number; y: number }[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
     for (const enemy of enemies) {
       if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
@@ -344,6 +347,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > MELEE_RADIUS) { survivors.push(enemy); continue; }
 
+      // Anything in reach gets cut — show a slash on it.
+      slashAt.push({ x: ecx, y: ecy });
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         if (isBossType(enemy.type)) {
@@ -398,8 +403,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }));
 
-    // Shockwave ring telegraph — wider than the hit zone so the swing reads big.
-    get().spawnRing(pcx, pcy, 14, KNOCKBACK_RING_RADIUS, 'rgba(252, 211, 77, 0.85)', 4, 320);
+    // Counter-range light: a fixed-radius glow at the melee reach (no
+    // expanding ring) so the catch zone reads clearly the moment it fires.
+    get().spawnGlow(pcx, pcy, MELEE_RADIUS, 'rgba(251,191,36,', 340);
+
+    // Slash streaks on every enemy that was cut.
+    for (const s of slashAt) {
+      get().spawnSlash(s.x, s.y);
+    }
 
     // Gold crit numbers for any critical melee hits.
     for (const c of critHits) {
@@ -1290,6 +1301,40 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       ]
     }));
+  },
+
+  spawnGlow: (x, y, radius, color, duration = 320) => {
+    const now = Date.now();
+    set(state => {
+      const next = [...state.effects, {
+        kind: 'glow' as const,
+        id: `fx-glow-${now}-${Math.random().toString(36).slice(2, 6)}`,
+        x, y, radius, color,
+        createdAt: now,
+        duration
+      }];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+
+  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)') => {
+    const now = Date.now();
+    set(state => {
+      const next = [...state.effects, {
+        kind: 'slash' as const,
+        id: `fx-slash-${now}-${Math.random().toString(36).slice(2, 6)}`,
+        x: x + (Math.random() - 0.5) * 8,
+        y: y + (Math.random() - 0.5) * 8,
+        angle: -0.9 + Math.random() * 0.5, // roughly diagonal, slight variance
+        length: 26 + Math.random() * 8,
+        color,
+        createdAt: now,
+        duration: 200
+      }];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
   },
 
   spawnFlash: (color, duration = 220) => {

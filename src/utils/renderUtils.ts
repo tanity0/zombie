@@ -25,31 +25,19 @@ const drawCounterShield = (
   const cx = player.x + player.width / 2 - camera.x;
   const cy = player.y + player.height / 2 - camera.y;
   // Sized to the actual melee reach so the ring doubles as the close-combat
-  // range indicator.
+  // range indicator. Kept subtle/translucent — the bright flash on activation
+  // is the separate `glow` effect spawned in triggerCounter.
   const baseRadius = MELEE_RADIUS;
   const now = Date.now();
 
-  if (now - player.lastCounterSuccessTime < 280) {
-    const t = 1 - (now - player.lastCounterSuccessTime) / 280;
-    ctx.save();
-    ctx.globalAlpha = t;
-    ctx.fillStyle = '#FDE68A';
-    ctx.beginPath();
-    ctx.arc(cx, cy, baseRadius * (1.4 + (1 - t) * 0.6), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
   if (now <= player.counterWindowEnd) {
     ctx.save();
-    ctx.fillStyle = 'rgba(251, 191, 36, 0.22)';
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.10)';
     ctx.beginPath();
     ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#FBBF24';
-    ctx.shadowColor = '#FBBF24';
-    ctx.shadowBlur = 18;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
     ctx.beginPath();
     ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
     ctx.stroke();
@@ -60,7 +48,7 @@ const drawCounterShield = (
   if (now < player.counterCooldownEnd) {
     ctx.save();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
     ctx.beginPath();
     ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
     ctx.stroke();
@@ -172,6 +160,8 @@ export const renderGame = (
   effects.forEach(e => {
     if (e.kind === 'particle') drawParticleEffect(ctx, e, camera);
     else if (e.kind === 'ring') drawRingEffect(ctx, e, camera);
+    else if (e.kind === 'glow') drawGlowEffect(ctx, e, camera);
+    else if (e.kind === 'slash') drawSlashEffect(ctx, e, camera);
     else if (e.kind === 'damageNumber') drawDamageNumberEffect(ctx, e, camera);
   });
 
@@ -317,6 +307,61 @@ const drawRingEffect = (
   ctx.lineWidth = e.width;
   ctx.beginPath();
   ctx.arc(e.x - camera.x, e.y - camera.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+};
+
+// Fixed-radius radial light that fades in place — the counter's reach flash.
+const drawGlowEffect = (
+  ctx: CanvasRenderingContext2D,
+  e: Extract<VisualEffect, { kind: 'glow' }>,
+  camera: { x: number; y: number }
+) => {
+  const t = Math.min(1, (Date.now() - e.createdAt) / e.duration);
+  const alpha = (1 - t) * 0.5;
+  const cx = e.x - camera.x;
+  const cy = e.y - camera.y;
+  const grad = ctx.createRadialGradient(cx, cy, e.radius * 0.2, cx, cy, e.radius);
+  grad.addColorStop(0, `${e.color}${(alpha * 0.9).toFixed(3)})`);
+  grad.addColorStop(0.7, `${e.color}${(alpha * 0.35).toFixed(3)})`);
+  grad.addColorStop(1, `${e.color}0)`);
+  ctx.save();
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, e.radius, 0, Math.PI * 2);
+  ctx.fill();
+  // Crisp rim that fades with the glow.
+  ctx.globalAlpha = (1 - t) * 0.8;
+  ctx.strokeStyle = `${e.color}0.9)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, e.radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+};
+
+// Short diagonal slash streak drawn over a melee-struck enemy.
+const drawSlashEffect = (
+  ctx: CanvasRenderingContext2D,
+  e: Extract<VisualEffect, { kind: 'slash' }>,
+  camera: { x: number; y: number }
+) => {
+  const t = Math.min(1, (Date.now() - e.createdAt) / e.duration);
+  const cx = e.x - camera.x;
+  const cy = e.y - camera.y;
+  const half = e.length / 2;
+  const dx = Math.cos(e.angle) * half;
+  const dy = Math.sin(e.angle) * half;
+  ctx.save();
+  ctx.globalAlpha = 1 - t;
+  ctx.strokeStyle = e.color;
+  ctx.lineCap = 'round';
+  // Slight grow + thin out as it fades for a quick "swipe".
+  ctx.lineWidth = 4 * (1 - t) + 1;
+  const grow = 1 + t * 0.3;
+  ctx.beginPath();
+  ctx.moveTo(cx - dx * grow, cy - dy * grow);
+  ctx.lineTo(cx + dx * grow, cy + dy * grow);
   ctx.stroke();
   ctx.restore();
 };
