@@ -163,6 +163,7 @@ interface GameState {
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
+  spawnCallout: (x: number, y: number, text: string, color: string) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
   spawnSlash: (x: number, y: number, color?: string) => void;
@@ -405,6 +406,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // expanding ring) so the catch zone reads clearly the moment it fires.
     get().spawnGlow(pcx, pcy, MELEE_RADIUS, 'rgba(251,191,36,', 340);
 
+    // "Counter!" callout over the player's head whenever the counter fires.
+    get().spawnCallout(pcx, player.y - 12, 'Counter!', '#38bdf8');
+
     // Slash streaks on every enemy that was cut.
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y);
@@ -450,6 +454,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (finisher) {
         get().spawnBurst(ex, ey, '#fcd34d', 16);
         get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.9)', 4, 360);
+        // "Kill!" callout over the executed enemy's head.
+        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
       } else {
         get().spawnBurst(ex, ey, '#e5e7eb', 6);
       }
@@ -1290,6 +1296,28 @@ export const useGameStore = create<GameState>((set, get) => ({
       color: '#67e8f9',
       createdAt: now,
       duration: 760
+    };
+    set(state => {
+      const next = [...state.effects, effect];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+
+  // Big bold floating callout (e.g. "Kill!", "Counter!"). Rises and fades like
+  // a damage number but larger.
+  spawnCallout: (x, y, text, color) => {
+    const now = Date.now();
+    const effect: VisualEffect = {
+      kind: 'damageNumber',
+      id: `fx-callout-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y,
+      value: 0,
+      text,
+      color,
+      scale: 1.9,
+      createdAt: now,
+      duration: 850
     };
     set(state => {
       const next = [...state.effects, effect];

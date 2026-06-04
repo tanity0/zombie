@@ -272,9 +272,11 @@ export type VisualEffect =
       createdAt: number;
       duration: number;
       crit?: boolean;
-      // Optional override text (e.g. "+30" for ammo pickups). Falls back to the
-      // numeric value when absent.
+      // Optional override text (e.g. "+30" for ammo pickups, "Kill!"/"Counter!"
+      // callouts). Falls back to the numeric value when absent.
       text?: string;
+      // Optional font scale multiplier (callouts use a larger value).
+      scale?: number;
     }
   | {
       kind: 'ring';

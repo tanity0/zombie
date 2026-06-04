@@ -388,10 +388,11 @@ const drawDamageNumberEffect = (
 ) => {
   const t = (Date.now() - e.createdAt) / e.duration;
   const alpha = Math.max(0, 1 - t);
-  const scale = e.crit ? 1.35 : 1;
+  const scale = e.scale ?? (e.crit ? 1.35 : 1);
+  const bold = e.crit || scale > 1.2;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = `${e.crit ? 'bold ' : ''}${Math.round(12 * scale)}px ui-rounded, -apple-system, system-ui, sans-serif`;
+  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px ui-rounded, -apple-system, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   const label = e.text ?? String(e.value);
   ctx.fillStyle = '#000';
