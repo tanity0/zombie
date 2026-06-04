@@ -19,6 +19,22 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, r
 // cap — resupply is scarce.
 export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 15, shotgun: 6, rifle: 4 };
 
+// Player-tunable melee ammo-drop rate (percent), set on the start screen and
+// persisted across reloads. A melee kill drops ammo at this rate; a melee
+// finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
+const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
+export const DEFAULT_MELEE_DROP_PCT = 50;
+export const clampDropPct = (n: number): number =>
+  Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
+const loadMeleeDropPct = (): number => {
+  try {
+    const v = localStorage.getItem(DROP_PCT_KEY);
+    return v != null ? clampDropPct(parseFloat(v)) : DEFAULT_MELEE_DROP_PCT;
+  } catch {
+    return DEFAULT_MELEE_DROP_PCT;
+  }
+};
+
 // Light knockback applied to a normal enemy each time a bullet connects.
 // Guns shove only half as hard as the melee counter's push.
 export const BULLET_KNOCKBACK_SPEED = 64;
@@ -90,6 +106,8 @@ interface GameState {
   showUpgradeMenu: boolean;
   // Flipped true the moment the finale boss (giantbat) dies — the run is won.
   gameWon: boolean;
+  // Start-screen setting: melee-kill ammo drop rate (percent).
+  meleeAmmoDropPercent: number;
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
@@ -155,6 +173,7 @@ interface GameState {
   // Game state actions
   setGameTime: (time: number) => void;
   setPaused: (paused: boolean) => void;
+  setMeleeAmmoDropPercent: (pct: number) => void;
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
@@ -214,6 +233,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isPaused: false,
   showUpgradeMenu: false,
   gameWon: false,
+  meleeAmmoDropPercent: loadMeleeDropPct(),
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
@@ -434,10 +454,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `pickup-xp-melee-${enemy.id}`,
         x: ex - 8, y: ey - 8, type: 'experience', value: xp
       });
-      // Ammo scavenge is a lottery now, not guaranteed: a finisher (executing a
-      // stunned enemy) rolls 20%, a plain melee kill only 5%. Counter (reflect)
-      // kills are handled in the gun-kill path at 30%.
-      const ammoChance = finisher ? 0.2 : 0.05;
+      // Ammo scavenge: base rate is the start-screen setting; a finisher
+      // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
+      // Counter (reflect) kills are handled in the gun-kill path at 30%.
+      const baseRate = get().meleeAmmoDropPercent / 100;
+      const ammoChance = finisher ? Math.min(1, baseRate * 1.5) : baseRate;
       if (gun?.ammoType && Math.random() < ammoChance) {
         get().addPickup({
           id: `pickup-ammo-melee-${enemy.id}`,
@@ -1147,7 +1168,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPaused: (paused) => {
     set({ isPaused: paused });
   },
-  
+
+  setMeleeAmmoDropPercent: (pct) => {
+    const clamped = clampDropPct(pct);
+    try { localStorage.setItem(DROP_PCT_KEY, String(clamped)); } catch { /* ignore */ }
+    set({ meleeAmmoDropPercent: clamped });
+  },
+
   setGameBounds: (bounds) => {
     set({ gameBounds: bounds });
   },

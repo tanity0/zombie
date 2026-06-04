@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Skull, Wand2, Swords } from 'lucide-react';
+import { useGameStore } from '../store/gameStore';
 
 interface MainMenuProps {
   onStartGame: (characterClass: string) => void;
@@ -7,6 +8,20 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   const [selectedClass, setSelectedClass] = useState('warrior');
+
+  // Start-screen ammo drop-rate setting (persisted in the store/localStorage).
+  const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
+  const setMeleeAmmoDropPercent = useGameStore(s => s.setMeleeAmmoDropPercent);
+  const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
+
+  const commitDrop = (raw: string) => {
+    setDropInput(raw);
+    const n = parseInt(raw, 10);
+    if (!Number.isNaN(n)) setMeleeAmmoDropPercent(n);
+  };
+  const normalizeDrop = () => {
+    setDropInput(String(useGameStore.getState().meleeAmmoDropPercent));
+  };
   
   const characterClasses = [
     {
@@ -151,6 +166,27 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           </div>
 
           <div className="flex flex-col items-center px-2">
+            {/* Ammo drop-rate setting — melee kill base rate; finisher is ×1.5 */}
+            <div className="w-full mb-3 flex items-center justify-between gap-3 rounded-2xl bg-white/5 border border-white/10 px-3 py-2.5">
+              <div className="text-left">
+                <div className="text-[13px] font-medium text-white">弾ドロップ率</div>
+                <div className="text-[11px] text-white/50">近接キル時。フィニッシュは×1.5。</div>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={100}
+                  value={dropInput}
+                  onChange={(e) => commitDrop(e.target.value)}
+                  onBlur={normalizeDrop}
+                  className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+                />
+                <span className="text-white/60 text-sm">%</span>
+              </div>
+            </div>
+
             <button
               onClick={() => onStartGame(selectedClass)}
               className="w-full py-3 rounded-2xl text-base font-semibold text-white"
