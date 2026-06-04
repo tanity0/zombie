@@ -17,6 +17,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
   const isPaused = useGameStore(state => state.isPaused);
   const camera = useGameStore(state => state.camera);
   const gameTime = useGameStore(state => state.gameTime);
+  const shakeUntil = useGameStore(state => state.shakeUntil);
   
   // Prevent default touch events on canvas
   useEffect(() => {
@@ -66,9 +67,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
       width,
       height,
       camera,
-      gameTime
+      gameTime,
+      shakeUntil
     });
-  }, [player, enemies, projectiles, pickups, effects, width, height, isPaused, camera, gameTime]);
+  }, [player, enemies, projectiles, pickups, effects, width, height, isPaused, camera, gameTime, shakeUntil]);
   
   return (
     <canvas

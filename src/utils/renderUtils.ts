@@ -2,7 +2,7 @@ import { Player, Enemy, Projectile, Pickup, VisualEffect } from '../types/game';
 import { getEnemyColor } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
 import { effectiveReloadMs } from './weaponUtils';
-import { MELEE_RADIUS } from '../store/gameStore';
+import { MELEE_RADIUS, SHAKE_MS } from '../store/gameStore';
 
 // Kick off image loads as soon as the renderer module is imported. The
 // names map 1:1 to PNG filenames under `public/sprites/`.
@@ -72,13 +72,25 @@ interface RenderProps {
   height: number;
   camera: { x: number; y: number };
   gameTime: number;
+  shakeUntil?: number;
 }
 
 export const renderGame = (
   ctx: CanvasRenderingContext2D,
-  { player, enemies, projectiles, pickups, effects, width, height, camera, gameTime }: RenderProps
+  { player, enemies, projectiles, pickups, effects, width, height, camera, gameTime, shakeUntil }: RenderProps
 ) => {
   ctx.clearRect(0, 0, width, height);
+
+  // Screen shake on damage: jitter the whole canvas, decaying over the window.
+  const shakeLeft = shakeUntil ? shakeUntil - Date.now() : 0;
+  const shaking = shakeLeft > 0;
+  ctx.save();
+  if (shaking) {
+    const k = Math.min(1, shakeLeft / SHAKE_MS);
+    const mag = 7 * k;
+    ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
+  }
+
   drawForestBackground(ctx, width, height, camera);
 
   // Ground shadows for every gameplay entity, drawn before sprites so they
@@ -168,6 +180,9 @@ export const renderGame = (
   // Ambient atmosphere layer: drifting fireflies + dust. Persistent and
   // independent of the gameplay-event effects queue.
   drawAmbientParticles(ctx, width, height, camera);
+
+  // End screen-shake transform — overlays below are full-screen and untranslated.
+  ctx.restore();
 
   // Warm color grade + stronger vignette to unify the scene.
   ctx.save();

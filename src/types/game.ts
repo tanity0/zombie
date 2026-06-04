@@ -8,6 +8,10 @@ export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'necromancer';
 export interface Player {
   x: number;
   y: number;
+  // Velocity (px/s). Movement is smoothed toward the input target so the player
+  // has ~0.3s of inertia on starting, stopping, and turning.
+  vx: number;
+  vy: number;
   width: number;
   height: number;
   speed: number;
@@ -70,12 +74,20 @@ export interface Enemy {
   experienceValue: number;
   lastHit: number;
   lastShot: number;
+  // Chase velocity (px/s), smoothed toward the heading so enemies have ~0.3s of
+  // inertia and curve into turns instead of snapping.
+  vx?: number;
+  vy?: number;
   // Knockback state. While knockbackUntil is in the future the enemy is
   // pushed by (knockbackVx, knockbackVy) instead of chasing the player.
   // All three are absent on most enemies most of the time.
   knockbackUntil?: number;
   knockbackVx?: number;
   knockbackVy?: number;
+  // Melee-knockback debounce: an enemy shoved by a counter can't be shoved
+  // again until this gameless ms timestamp (damage still applies). Prevents
+  // infinite knockback-locking.
+  knockbackImmuneUntil?: number;
   // Stun state (gameTime-based so it survives pauses). While
   // gameTime < stunUntil the enemy stops moving and can be finished with
   // a melee counter for an instant kill.

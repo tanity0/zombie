@@ -51,8 +51,19 @@ export const KNOCKBACK_HIT_RADIUS = 55;
 export const KNOCKBACK_RING_RADIUS = 180;
 export const KNOCKBACK_SPEED = 200; // melee counter shove (halved again)
 export const KNOCKBACK_DURATION = 280;
+// After being shoved by a melee counter, an enemy is immune to further melee
+// knockback for this long (damage still lands) so it can't be locked forever.
+export const KNOCKBACK_IMMUNE_MS = 1750;
 export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered bullets hit 5× harder
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
+
+// Hitstop: a melee finisher freezes the whole game briefly for impact.
+export const HITSTOP_MS = 300;
+// Screen-shake duration when the player takes damage.
+export const SHAKE_MS = 280;
+// Inertia time constant (s). Movement velocity eases toward its target so
+// starting/stopping/turning takes ~0.3s instead of being instant.
+export const INERTIA_TAU = 0.15;
 
 // Player base stats tuned to feel like Vampire Survivors' Antonio: slower
 // than the previous build (so weapons matter more), modest HP, small body.
@@ -91,6 +102,11 @@ interface GameState {
   // Most recent weapon the player acquired (drop/crate). The HUD shows a
   // 5-second "got a weapon" popup off this. null until the first pickup.
   lastWeaponGet: { name: string; at: number } | null;
+  // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
+  // (melee-finisher impact pause). 0 = running.
+  hitstopUntil: number;
+  // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
+  shakeUntil: number;
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -158,6 +174,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   player: {
     x: 0,
     y: 0,
+    vx: 0,
+    vy: 0,
     width: PLAYER_HITBOX,
     height: PLAYER_HITBOX,
     speed: PLAYER_BASE_SPEED,
@@ -210,92 +228,62 @@ export const useGameStore = create<GameState>((set, get) => ({
     y: 0
   },
   lastWeaponGet: null,
+  hitstopUntil: 0,
+  shakeUntil: 0,
 
   // Player actions
   movePlayer: (input, deltaTime) => {
     set(state => {
       const { player, gameBounds, swipeDirection } = state;
-      let newX = player.x;
-      let newY = player.y;
-      let direction = 'idle';
-      let isMoving = false;
-      let lastDirection = player.lastDirection;
+      void gameBounds; // World is effectively infinite — no clamp.
+
       // While reloading, the survivor is fumbling a fresh magazine in — they
       // can still shuffle and melee, but at 2/3 speed.
       const reloading =
         player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
       const moveSpeed = reloading ? player.speed * (2 / 3) : player.speed;
 
-      // Handle movement based on input state (keyboard) or swipe direction (touch)
+      // Target direction from swipe (touch) or keys.
+      let tx = 0;
+      let ty = 0;
       if (swipeDirection) {
-        // Move based on swipe direction
-        newX += swipeDirection.x * moveSpeed * deltaTime;
-        newY += swipeDirection.y * moveSpeed * deltaTime;
-        
-        // Set dominant direction for animation
-        const absX = Math.abs(swipeDirection.x);
-        const absY = Math.abs(swipeDirection.y);
-        
-        if (absX > absY) {
-          direction = swipeDirection.x > 0 ? 'right' : 'left';
-        } else {
-          direction = swipeDirection.y > 0 ? 'down' : 'up';
-        }
-        
-        isMoving = true;
-        // Update last direction when moving
-        lastDirection = { ...swipeDirection };
+        tx = swipeDirection.x;
+        ty = swipeDirection.y;
       } else {
-        // Traditional directional movement
-        let dirX = 0;
-        let dirY = 0;
-        
-        if (input.up) {
-          newY -= moveSpeed * deltaTime;
-          direction = 'up';
-          isMoving = true;
-          dirY = -1;
-        }
-        if (input.down) {
-          newY += moveSpeed * deltaTime;
-          direction = 'down';
-          isMoving = true;
-          dirY = 1;
-        }
-        if (input.left) {
-          newX -= moveSpeed * deltaTime;
-          direction = 'left';
-          isMoving = true;
-          dirX = -1;
-        }
-        if (input.right) {
-          newX += moveSpeed * deltaTime;
-          direction = 'right';
-          isMoving = true;
-          dirX = 1;
-        }
-        
-        // Update last direction when moving with keyboard
-        if (isMoving) {
-          // Normalize the direction vector
-          const length = Math.sqrt(dirX * dirX + dirY * dirY);
-          if (length > 0) {
-            lastDirection = {
-              x: dirX / length,
-              y: dirY / length
-            };
-          }
-        }
+        if (input.up) ty -= 1;
+        if (input.down) ty += 1;
+        if (input.left) tx -= 1;
+        if (input.right) tx += 1;
       }
-      
-      // World is effectively infinite — no clamp. Mad Forest is open.
-      void gameBounds;
-      
+      const tlen = Math.hypot(tx, ty);
+      if (tlen > 0) { tx /= tlen; ty /= tlen; }
+
+      // Inertia: ease the velocity toward the target so starting, stopping and
+      // turning take ~0.3s instead of snapping.
+      const alpha = 1 - Math.exp(-deltaTime / INERTIA_TAU);
+      const vx = player.vx + (tx * moveSpeed - player.vx) * alpha;
+      const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
+      const newX = player.x + vx * deltaTime;
+      const newY = player.y + vy * deltaTime;
+
+      const speedNow = Math.hypot(vx, vy);
+      let direction: string = 'idle';
+      let lastDirection = player.lastDirection;
+      if (speedNow > 1) {
+        lastDirection = { x: vx / speedNow, y: vy / speedNow };
+        direction = Math.abs(vx) > Math.abs(vy)
+          ? (vx > 0 ? 'right' : 'left')
+          : (vy > 0 ? 'down' : 'up');
+      }
+      const isMoving = speedNow > moveSpeed * 0.15;
+
       return {
         player: {
           ...player,
           x: newX,
           y: newY,
+          vx,
+          vy,
           direction: direction as any,
           isMoving,
           lastDirection
@@ -377,25 +365,35 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: false });
         continue;
       }
-      const norm = Math.max(0.001, dist);
-      const falloff = 1 - dist / MELEE_RADIUS;
-      const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
-      survivors.push({
-        ...enemy,
-        health: newHealth,
-        lastHit: now,
-        knockbackVx: (dx / norm) * speed,
-        knockbackVy: (dy / norm) * speed,
-        knockbackUntil: now + KNOCKBACK_DURATION
-      });
+      // Knockback, unless this enemy was shoved recently (debounce to avoid
+      // locking it in an infinite stagger). Damage still landed above.
+      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
+        const norm = Math.max(0.001, dist);
+        const falloff = 1 - dist / MELEE_RADIUS;
+        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+        survivors.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          knockbackVx: (dx / norm) * speed,
+          knockbackVy: (dy / norm) * speed,
+          knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS
+        });
+      } else {
+        survivors.push({ ...enemy, health: newHealth, lastHit: now });
+      }
     }
 
+    // A melee finisher (instant execute) triggers a brief full-game hitstop.
+    const finisherHit = killed.some(k => k.finisher);
     set(state => ({
       enemies: survivors,
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length
       },
+      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
       player: {
         ...state.player,
         counterWindowEnd: now + COUNTER_WINDOW,
@@ -469,6 +467,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const newHealth = Math.max(0, state.player.health - amount);
       return {
+        // Real damage kicks off a screen shake.
+        shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         player: {
           ...state.player,
           health: newHealth,
@@ -477,7 +477,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
-    
+
     // Return whether player is dead
     return get().player.health <= 0;
   },
@@ -713,19 +713,26 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // Plants are nearly stationary — they shuffle slightly toward the
         // player but mostly hold ground and spit seeds. Everything else
-        // does the standard VS straight-line chase.
+        // does the standard VS straight-line chase, but with inertia: the
+        // chase velocity eases toward the heading so enemies curve into turns
+        // (~0.3s) rather than snapping to face the player.
         const dx = player.x - enemy.x;
         const dy = player.y - enemy.y;
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
-        const dirX = dx / distance;
-        const dirY = dy / distance;
-
         const speed = enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed;
+        const tvx = (dx / distance) * speed;
+        const tvy = (dy / distance) * speed;
+
+        const alpha = 1 - Math.exp(-deltaTime / INERTIA_TAU);
+        const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
+        const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
         return {
           ...enemy,
-          x: enemy.x + dirX * speed * deltaTime,
-          y: enemy.y + dirY * speed * deltaTime
+          vx,
+          vy,
+          x: enemy.x + vx * deltaTime,
+          y: enemy.y + vy * deltaTime
         };
       });
 
@@ -1152,6 +1159,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         player: {
           x: 0,
           y: 0,
+          vx: 0,
+          vy: 0,
           width: PLAYER_HITBOX,
           height: PLAYER_HITBOX,
           speed: PLAYER_BASE_SPEED,
@@ -1201,7 +1210,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           x: 0,
           y: 0
         },
-        lastWeaponGet: null
+        lastWeaponGet: null,
+        hitstopUntil: 0,
+        shakeUntil: 0
       };
     });
   },

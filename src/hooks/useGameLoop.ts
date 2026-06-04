@@ -101,7 +101,14 @@ export const useGameLoop = (onGameOver: () => void) => {
       const rawDelta = (timestamp - lastFrameTimeRef.current) / 1000;
       const deltaTime = Math.min(0.05, rawDelta);
       lastFrameTimeRef.current = timestamp;
-      
+
+      // Hitstop: a melee finisher freezes the whole simulation for a beat. Keep
+      // the time origin current so we don't get a giant delta when it lapses.
+      if (Date.now() < useGameStore.getState().hitstopUntil) {
+        frameRef.current = requestAnimationFrame(gameLoop);
+        return;
+      }
+
       // Update FPS counter
       fpsCounterRef.current.frames++;
       if (timestamp - fpsCounterRef.current.lastCheck >= 1000) {
