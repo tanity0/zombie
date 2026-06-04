@@ -145,9 +145,9 @@ export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => 
 // is within this reach, so the player doesn't burn rounds into empty space.
 // RE-flavored: shotgun is close-quarters, rifle reaches far, handgun is mid.
 export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
-  handgun: 220,
+  handgun: 176,
   shotgun: 120,
-  rifle: 390
+  rifle: 312
 };
 
 // A stunned enemy is a low-priority target — the player should be putting
