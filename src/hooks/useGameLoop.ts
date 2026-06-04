@@ -41,6 +41,8 @@ export const useGameLoop = (onGameOver: () => void) => {
   // an irregular but bounded cadence.
   const lastAmmoDropRef = useRef(0);
   const nextAmmoDropDelayRef = useRef(0);
+  // How many of the scripted supply weapon-crates have dropped this run.
+  const cratesDroppedRef = useRef(0);
   const prevLevelRef = useRef(1);
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
@@ -130,6 +132,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           consumedWavesRef.current = newConsumedWaves();
           lastAmmoDropRef.current = 0;
           nextAmmoDropDelayRef.current = 0;
+          cratesDroppedRef.current = 0;
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -355,18 +358,16 @@ export const useGameLoop = (onGameOver: () => void) => {
                   10, 80, 'rgba(96,165,250,0.7)', 3, 500
                 );
               }
-              // Ammo resupply — only for gun families the player actually owns,
-              // biased toward the active gun so it's usually directly useful.
-              if (Math.random() < (isElite ? 0.45 : 0.14)) {
+              // Ammo resupply: ordinary gun kills no longer drop ammo at all.
+              // Only a COUNTER kill — an enemy slain by a reflected bolt — rolls
+              // a drop (30%), for the player's active gun family.
+              if (projectile?.reflected && Math.random() < 0.3) {
+                const equippedAmmo = getActiveGun(player)?.ammoType;
                 const owned = getGuns(player)
                   .map(w => w.ammoType)
                   .filter((t): t is AmmoType => !!t);
-                if (owned.length > 0) {
-                  const equippedAmmo = getActiveGun(player)?.ammoType;
-                  const dropType =
-                    equippedAmmo && Math.random() < 0.7
-                      ? equippedAmmo
-                      : owned[Math.floor(Math.random() * owned.length)];
+                const dropType = equippedAmmo ?? owned[0];
+                if (dropType) {
                   addPickup({
                     id: `pickup-ammo-${enemy.id}`,
                     x: enemy.x + enemy.width / 2 - 8 + 16,
@@ -545,9 +546,24 @@ export const useGameLoop = (onGameOver: () => void) => {
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime)
         ) {
           const spawnCount = getEnemySpawnCount(gameTime);
+          const plantCount = useGameStore.getState().enemies
+            .filter(e => e.type === 'plant').length;
 
           for (let i = 0; i < spawnCount; i++) {
-            const enemy = generateEnemy(gameTime, player, gameBounds);
+            let enemy = generateEnemy(gameTime, player, gameBounds);
+            // Hard cap of 2 live ranged plants — re-roll a plant pick into
+            // something else once the field already has two, so ranged pressure
+            // never piles up past "annoying".
+            if (enemy.type === 'plant' && plantCount >= 2) {
+              let tries = 0;
+              while (enemy.type === 'plant' && tries < 6) {
+                enemy = generateEnemy(gameTime, player, gameBounds);
+                tries++;
+              }
+              if (enemy.type === 'plant') {
+                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton');
+              }
+            }
             addEnemy(enemy);
           }
 
@@ -565,7 +581,7 @@ export const useGameLoop = (onGameOver: () => void) => {
             (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')
         ).length;
         if (nextAmmoDropDelayRef.current === 0) {
-          nextAmmoDropDelayRef.current = 26000 + Math.random() * 14000; // first drop ~26-40s in
+          nextAmmoDropDelayRef.current = 50000 + Math.random() * 10000; // first drop ~50-60s in
         }
         if (
           worldAmmoCount < MAX_WORLD_AMMO_DROPS &&
@@ -598,11 +614,34 @@ export const useGameLoop = (onGameOver: () => void) => {
           });
           spawnRing(px, py, 10, 70, 'rgba(252, 211, 77, 0.7)', 3, 520);
           lastAmmoDropRef.current = gameTime;
-          nextAmmoDropDelayRef.current = 34000 + Math.random() * 16000; // 34-50s between drops
+          nextAmmoDropDelayRef.current = 75000 + Math.random() * 30000; // 75-105s between drops
         }
 
-        // Scripted wave/elite events (5min pumpkin, 7min bat horde, 30min
-        // Reaper, etc.). consumeDueWaves fires each event exactly once.
+        // Scripted supply crates — three guaranteed weapon crates spread across
+        // the run (on top of the crate every mid-boss drops). Placed near the
+        // player so they're easy to grab while the action stays hot.
+        const CRATE_DROP_TIMES = [50000, 140000, 180000];
+        if (
+          cratesDroppedRef.current < CRATE_DROP_TIMES.length &&
+          gameTime >= CRATE_DROP_TIMES[cratesDroppedRef.current]
+        ) {
+          const angle = Math.random() * Math.PI * 2;
+          const cx = player.x + player.width / 2 + Math.cos(angle) * 200;
+          const cy = player.y + player.height / 2 + Math.sin(angle) * 200;
+          addPickup({
+            id: `pickup-crate-supply-${cratesDroppedRef.current}`,
+            x: cx - 8,
+            y: cy - 8,
+            type: 'weapon-crate',
+            value: 0
+          });
+          spawnRing(cx, cy, 10, 80, 'rgba(96,165,250,0.8)', 3, 520);
+          cratesDroppedRef.current += 1;
+        }
+
+        // Scripted wave/elite events (compressed 5-min schedule: early plant,
+        // mid-boss spikes, the 7-strong onslaught, finale giantbat).
+        // consumeDueWaves fires each event exactly once.
         const waveEnemies = consumeDueWaves(
           gameTime,
           consumedWavesRef.current,

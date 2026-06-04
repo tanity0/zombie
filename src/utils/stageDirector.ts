@@ -32,94 +32,72 @@ const ringAroundPlayer = (
   return enemies;
 };
 
-// Helper — line of enemies along one off-screen edge
-const lineFromSide = (
-  type: EnemyType,
-  count: number,
-  side: 'top' | 'right' | 'bottom' | 'left',
+// Helper — a ring of mixed enemy types (one per entry), for set-piece swarms
+const mixedRing = (
+  types: EnemyType[],
+  radius: number,
   player: Player,
-  bounds: GameBounds,
   gameTime: number
-): Enemy[] => {
-  const enemies: Enemy[] = [];
-  const half = { x: bounds.width / 2 + 80, y: bounds.height / 2 + 80 };
-  for (let i = 0; i < count; i++) {
-    const along = (i / Math.max(1, count - 1) - 0.5) * Math.max(bounds.width, bounds.height);
-    let x = player.x;
-    let y = player.y;
-    if (side === 'top')    { y -= half.y; x += along; }
-    if (side === 'bottom') { y += half.y; x += along; }
-    if (side === 'left')   { x -= half.x; y += along; }
-    if (side === 'right')  { x += half.x; y += along; }
-    enemies.push(spawnEnemyAt(type, x, y, gameTime));
-  }
-  return enemies;
-};
+): Enemy[] =>
+  types.map((type, i) => {
+    const theta = (i / types.length) * Math.PI * 2 + Math.random() * 0.2;
+    const x = player.x + Math.cos(theta) * radius;
+    const y = player.y + Math.sin(theta) * radius;
+    return spawnEnemyAt(type, x, y, gameTime);
+  });
 
+// When the finale boss (giantbat) is released. The HUD flashes a warning just
+// before this, and the run is won the moment the boss dies.
+export const FINALE_BOSS_TIME_MS = 250 * 1000; // 4:10
+
+// Compressed ~5-minute set-piece script. Designed as a tension curve:
+// calm intro → first counter → mid-boss spike → build → 7-strong onslaught →
+// second spike → short lull → finale boss. Weapon crates are dropped on a
+// separate timed schedule (see useGameLoop) plus from every mid-boss kill.
 const WAVE_EVENTS: WaveEvent[] = [
   {
-    // First boss — single pumpkin so the player gets their first chest
-    // within ~3 minutes regardless of how the spawner is rolling.
-    id: 'pumpkin-solo-3min',
-    triggerAtMs: 3 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 1, 280, player, t)
+    // 0:25 — a lone ranged plant so the player meets the counter early.
+    id: 'plant-intro-25s',
+    triggerAtMs: 25 * 1000,
+    spawner: (player, _b, t) => ringAroundPlayer('plant', 1, 260, player, t)
   },
   {
-    id: 'pumpkin-elites-5min',
-    triggerAtMs: 5 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 3, 320, player, t)
+    // 1:15 — first mid-boss spike; drops a weapon crate on death.
+    id: 'pumpkin-solo-75s',
+    triggerAtMs: 75 * 1000,
+    spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 1, 300, player, t)
   },
   {
-    id: 'bat-horde-7min',
-    triggerAtMs: 7 * 60 * 1000,
-    spawner: (player, bounds, t) => lineFromSide('bat', 40, 'right', player, bounds, t)
+    // 2:00 — refresh the ranged presence after the first plant is likely dead,
+    // so counters stay part of the kit. The spawner caps live plants at 2.
+    id: 'plant-refresh-120s',
+    triggerAtMs: 120 * 1000,
+    spawner: (player, _b, t) => ringAroundPlayer('plant', 1, 280, player, t)
   },
   {
-    id: 'giantbat-10min',
-    triggerAtMs: 10 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('giantbat', 1, 280, player, t)
+    // 2:45 — PEAK: a 7-strong melee onslaught crashes in from all sides.
+    id: 'onslaught-165s',
+    triggerAtMs: 165 * 1000,
+    spawner: (player, _b, t) => mixedRing(
+      ['zombie', 'skeleton', 'zombie', 'werewolf', 'skeleton', 'zombie', 'skeleton'],
+      360, player, t
+    )
   },
   {
-    id: 'werewolf-pack-12min',
-    triggerAtMs: 12 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('werewolf', 12, 360, player, t)
-  },
-  {
-    id: 'zombie-line-15min',
-    triggerAtMs: 15 * 60 * 1000,
-    spawner: (player, bounds, t) => lineFromSide('zombie', 30, 'left', player, bounds, t)
-  },
-  {
-    id: 'pumpkin-ring-18min',
-    triggerAtMs: 18 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 8, 380, player, t)
-  },
-  {
-    id: 'giantbat-pair-20min',
-    triggerAtMs: 20 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('giantbat', 2, 320, player, t)
-  },
-  {
-    // Mid/late-game chest opportunity so the player has a fresh upgrade
-    // pick before the 25:00 ghost swarm rolls in.
-    id: 'giantbat-solo-22min',
-    triggerAtMs: 22 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('giantbat', 1, 320, player, t)
-  },
-  {
-    id: 'ghost-swarm-25min',
-    triggerAtMs: 25 * 60 * 1000,
-    spawner: (player, _b, t) => ringAroundPlayer('ghost', 30, 400, player, t)
-  },
-  {
-    id: 'pumpkin-pair-27min',
-    triggerAtMs: 27 * 60 * 1000,
+    // 3:30 — second mid-boss spike (pair) to gear up before the finale.
+    id: 'pumpkin-pair-210s',
+    triggerAtMs: 210 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 2, 320, player, t)
   },
   {
-    id: 'reaper',
-    triggerAtMs: 30 * 60 * 1000,
-    spawner: (player, _b, t) => [spawnEnemyAt('reaper', player.x - 100, player.y - 100, t)]
+    // 4:10 — FINALE boss. Trash keeps trickling from the continuous spawner;
+    // killing the giantbat wins the run.
+    id: 'finale-giantbat',
+    triggerAtMs: FINALE_BOSS_TIME_MS,
+    spawner: (player, _b, t) => [
+      ...ringAroundPlayer('giantbat', 1, 300, player, t),
+      ...ringAroundPlayer('skeleton', 2, 240, player, t)
+    ]
   }
 ];
 
@@ -142,14 +120,3 @@ export const consumeDueWaves = (
   }
   return out;
 };
-
-// True once Reaper has been released into the world. The HUD uses this to
-// flip into a final "REAPER" warning state.
-export const reaperHasSpawned = (consumed: ConsumedWaves) => consumed.has('reaper');
-
-// Pre-warning: returns true in the 30s before Reaper spawn, so the HUD can
-// flash a banner.
-export const reaperWarningActive = (gameTime: number, consumed: ConsumedWaves) =>
-  !consumed.has('reaper') &&
-  gameTime >= 30 * 60 * 1000 - 30000 &&
-  gameTime < 30 * 60 * 1000;

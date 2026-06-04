@@ -12,9 +12,10 @@ import { useGameControls } from '../hooks/useGameControls';
 
 interface GameProps {
   onGameOver: () => void;
+  onVictory: () => void;
 }
 
-const Game: React.FC<GameProps> = ({ onGameOver }) => {
+const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [isTouch, setIsTouch] = useState(
@@ -24,6 +25,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
   const isPaused = useGameStore(state => state.isPaused);
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
+  const gameWon = useGameStore(state => state.gameWon);
   const player = useGameStore(state => state.player);
   const setGameBounds = useGameStore(state => state.setGameBounds);
   const setPaused = useGameStore(state => state.setPaused);
@@ -76,6 +78,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       onGameOver();
     }
   }, [player.health, onGameOver]);
+
+  // Win the run the moment the finale boss is defeated.
+  useEffect(() => {
+    if (gameWon) {
+      onVictory();
+    }
+  }, [gameWon, onVictory]);
   
   // Handle keyboard pause toggle
   useEffect(() => {

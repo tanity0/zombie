@@ -19,6 +19,10 @@ function App() {
     setGameState('gameOver');
   };
 
+  const handleVictory = () => {
+    setGameState('victory');
+  };
+
   const returnToMenu = () => {
     setGameState('menu');
   };
@@ -30,11 +34,12 @@ function App() {
       )}
       
       {gameState === 'playing' && (
-        <Game onGameOver={handleGameOver} />
+        <Game onGameOver={handleGameOver} onVictory={handleVictory} />
       )}
-      
-      {gameState === 'gameOver' && (
-        <GameOverScreen 
+
+      {(gameState === 'gameOver' || gameState === 'victory') && (
+        <GameOverScreen
+          won={gameState === 'victory'}
           stats={gameStats}
           onReturnToMenu={returnToMenu}
           onPlayAgain={() => startGame(useGameStore.getState().characterClass)}

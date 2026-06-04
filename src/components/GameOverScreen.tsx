@@ -6,12 +6,14 @@ interface GameOverScreenProps {
   stats: GameStats;
   onReturnToMenu: () => void;
   onPlayAgain: () => void;
+  won?: boolean;
 }
 
 const GameOverScreen: React.FC<GameOverScreenProps> = ({
   stats,
   onReturnToMenu,
-  onPlayAgain
+  onPlayAgain,
+  won = false
 }) => {
   return (
     <div
@@ -20,8 +22,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     >
       <div className="glass-panel rounded-3xl w-full max-w-md overflow-hidden">
         <div className="px-5 pt-6 pb-3 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-white">ゲームオーバー</h2>
-          <p className="text-[13px] text-white/60 mt-1">闇に飲み込まれました</p>
+          <h2 className={`text-2xl font-semibold tracking-tight ${won ? 'text-amber-300' : 'text-white'}`}>
+            {won ? 'ステージクリア！' : 'ゲームオーバー'}
+          </h2>
+          <p className="text-[13px] text-white/60 mt-1">
+            {won ? '森を生き延びた' : '闇に飲み込まれました'}
+          </p>
         </div>
         <div className="px-5 pb-5">
           <div className="grid grid-cols-2 gap-2 mb-4">
@@ -44,10 +50,17 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             <button
               onClick={onPlayAgain}
               className="w-full py-3 rounded-2xl text-base font-semibold text-white"
-              style={{
-                background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
-                boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35)'
-              }}
+              style={
+                won
+                  ? {
+                      background: 'linear-gradient(180deg, rgba(251, 191, 36, 0.95), rgba(245, 158, 11, 0.95))',
+                      boxShadow: '0 8px 24px rgba(245, 158, 11, 0.35)'
+                    }
+                  : {
+                      background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
+                      boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35)'
+                    }
+              }
             >
               もう一度プレイ
             </button>

@@ -21,7 +21,7 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   ghost:     { width: 24, height: 24, speed: 90,  health: 14,   damage: 5,   experienceValue: 1 },
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
-  giantbat:  { width: 60, height: 60, speed: 70,  health: 500,  damage: 22,  experienceValue: 30 },
+  giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 22,  experienceValue: 30 },
   reaper:    { width: 80, height: 80, speed: 130, health: 99999,damage: 999, experienceValue: 0 }
 };
 
@@ -38,19 +38,22 @@ const selectEnemyType = (gameTime: number): EnemyType => {
   const t = gameTime;
   const pool: EnemyWeight[] = [];
 
-  // 0:00-0:30 — only bats
+  // Compressed ~5-minute arc (vs the old 30-min ramp). Types unlock fast so the
+  // whole bestiary is seen inside one short, escalating run.
+  // 0:00-0:25 — only bats
   pool.push({ type: 'bat', weight: 100 });
 
-  if (t >= 30000)  pool.push({ type: 'skeleton', weight: 60 });
-  if (t >= 90000)  pool.push({ type: 'zombie',   weight: 40 });
-  if (t >= 120000) pool.push({ type: 'plant',    weight: 12 });
-  if (t >= 180000) pool.push({ type: 'ghost',    weight: 50 });
-  if (t >= 360000) pool.push({ type: 'werewolf', weight: 45 });
+  if (t >= 25000)  pool.push({ type: 'skeleton', weight: 55 });   // 0:25
+  // Ranged plants enter early so the counter has targets from the start. A hard
+  // cap of 2 live plants is enforced in the spawner so they never get annoying.
+  if (t >= 45000)  pool.push({ type: 'plant',    weight: 14 });   // 0:45
+  if (t >= 75000)  pool.push({ type: 'zombie',   weight: 45 });   // 1:15
+  if (t >= 150000) pool.push({ type: 'ghost',    weight: 45 });   // 2:30
+  if (t >= 195000) pool.push({ type: 'werewolf', weight: 45 });   // 3:15
 
-  // Past 8 min the early enemies thin out so later types dominate; tweak the
-  // bat weight downward so the field doesn't stay swarmy forever.
-  if (t >= 480000) pool[0].weight = 30;
-  if (t >= 900000) pool[0].weight = 12; // 15 min onward, bats are rare
+  // Thin the bats out as the run heats up so heavier types dominate late.
+  if (t >= 150000) pool[0].weight = 45;
+  if (t >= 240000) pool[0].weight = 22; // 4:00 onward, bats are rare
 
   const total = pool.reduce((s, p) => s + p.weight, 0);
   let r = Math.random() * total;
@@ -61,10 +64,11 @@ const selectEnemyType = (gameTime: number): EnemyType => {
   return pool[pool.length - 1].type;
 };
 
-// Compute a difficulty multiplier capped at 5×. Same shape as the legacy
-// code; HP and damage scale with it, base speed does not (VS keeps enemy
-// speed mostly constant, only the spawn pressure increases).
-const difficultyFor = (gameTime: number) => Math.min(1 + gameTime / 90000, 5);
+// Compute a difficulty multiplier. Retuned for the compressed ~5-min run: it
+// climbs to ~2.5× by the finale instead of 5× over 30 min, so enemies get
+// meaningfully tougher across the sprint without becoming bullet sponges. HP
+// and damage scale with it; base speed does not.
+const difficultyFor = (gameTime: number) => Math.min(1 + gameTime / 150000, 2.5);
 
 // Global enemy toughness multiplier on top of the difficulty ramp. Bumped so
 // fights are chunkier and ammo/positioning matter more. Damage is unaffected.

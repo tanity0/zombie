@@ -2,10 +2,10 @@ import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName } from '../utils/weaponUtils';
+import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import type { AmmoType } from '../types/game';
 
-const REAPER_TIME_MS = 30 * 60 * 1000;
-const REAPER_WARN_LEAD = 30 * 1000;
+const BOSS_WARN_LEAD = 12 * 1000;
 
 interface GameHUDProps {
   fps: number;
@@ -23,8 +23,11 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const expPercentage = (player.experience / player.experienceToNextLevel) * 100;
   const healthPercentage = (player.health / player.maxHealth) * 100;
 
-  const reaperImminent = gameTime >= REAPER_TIME_MS - REAPER_WARN_LEAD && gameTime < REAPER_TIME_MS;
-  const reaperArrived = gameTime >= REAPER_TIME_MS;
+  const bossActive = enemies.some(e => e.type === 'giantbat');
+  const bossImminent =
+    !bossActive &&
+    gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
+    gameTime < FINALE_BOSS_TIME_MS;
 
   const weaponGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
 
@@ -74,17 +77,17 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         マッド・フォレスト
       </div>
 
-      {/* Reaper warning / arrival banner */}
-      {(reaperImminent || reaperArrived) && (
+      {/* Finale boss warning / arrival banner */}
+      {(bossImminent || bossActive) && (
         <div
           className={`absolute left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-[13px] font-bold ${
-            reaperArrived
+            bossActive
               ? 'bg-red-700/80 text-red-100 animate-pulse'
               : 'bg-red-900/70 text-red-200 animate-pulse'
           }`}
           style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 56px)' }}
         >
-          {reaperArrived ? '死神降臨' : 'まもなく死神が訪れる…'}
+          {bossActive ? '最終ボス出現！' : 'まもなく最終ボスが現れる…'}
         </div>
       )}
 

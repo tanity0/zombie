@@ -17,7 +17,7 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, r
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
 // drops, and the boxes melee kills now drop). Modest relative to the reserve
 // cap — resupply is scarce.
-export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 30, shotgun: 10, rifle: 5 };
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 15, shotgun: 6, rifle: 4 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
 // Guns shove only half as hard as the melee counter's push.
@@ -88,6 +88,8 @@ interface GameState {
   gameTime: number;
   isPaused: boolean;
   showUpgradeMenu: boolean;
+  // Flipped true the moment the finale boss (giantbat) dies — the run is won.
+  gameWon: boolean;
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
@@ -211,6 +213,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
+  gameWon: false,
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
@@ -388,12 +391,14 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // A melee finisher (instant execute) triggers a brief full-game hitstop.
     const finisherHit = killed.some(k => k.finisher);
+    const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
     set(state => ({
       enemies: survivors,
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length
       },
+      gameWon: state.gameWon || bossKilled,
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
       player: {
         ...state.player,
@@ -429,7 +434,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `pickup-xp-melee-${enemy.id}`,
         x: ex - 8, y: ey - 8, type: 'experience', value: xp
       });
-      if (gun?.ammoType) {
+      // Ammo scavenge is a lottery now, not guaranteed: a finisher (executing a
+      // stunned enemy) rolls 20%, a plain melee kill only 5%. Counter (reflect)
+      // kills are handled in the gun-kill path at 30%.
+      const ammoChance = finisher ? 0.2 : 0.05;
+      if (gun?.ammoType && Math.random() < ammoChance) {
         get().addPickup({
           id: `pickup-ammo-melee-${enemy.id}`,
           x: ex - 8 + 14, y: ey - 8,
@@ -666,15 +675,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed = true;
         
         // Update game stats
-        const newStats = { 
+        const newStats = {
           ...gameStats,
           enemiesKilled: gameStats.enemiesKilled + 1,
           damageDealt: gameStats.damageDealt + amount
         };
-        
-        return { 
+
+        return {
           enemies: updatedEnemies.filter(e => e.id !== id),
-          gameStats: newStats
+          gameStats: newStats,
+          // The giantbat is the run's finale boss — killing it wins the game.
+          gameWon: state.gameWon || enemy.type === 'giantbat'
         };
       }
       
@@ -1198,6 +1209,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameTime: 0,
         isPaused: false,
         showUpgradeMenu: false,
+        gameWon: false,
         upgradeOptions: [],
         swipeDirection: null,
         gameStats: {
