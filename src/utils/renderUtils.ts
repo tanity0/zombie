@@ -2,6 +2,7 @@ import { Player, Enemy, Projectile, Pickup, VisualEffect } from '../types/game';
 import { getEnemyColor } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
 import { effectiveReloadMs } from './weaponUtils';
+import { MELEE_RADIUS } from '../store/gameStore';
 
 // Kick off image loads as soon as the renderer module is imported. The
 // names map 1:1 to PNG filenames under `public/sprites/`.
@@ -23,7 +24,9 @@ const drawCounterShield = (
 ) => {
   const cx = player.x + player.width / 2 - camera.x;
   const cy = player.y + player.height / 2 - camera.y;
-  const baseRadius = player.width * 0.95;
+  // Sized to the actual melee reach so the ring doubles as the close-combat
+  // range indicator.
+  const baseRadius = MELEE_RADIUS;
   const now = Date.now();
 
   if (now - player.lastCounterSuccessTime < 280) {

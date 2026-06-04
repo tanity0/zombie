@@ -129,6 +129,9 @@ export interface Weapon {
   // Fixed crit chance for this weapon. Guns currently roll the player's global
   // critChance instead, but melee weapons carry their own fixed value here.
   critChance?: number;
+  // Enemies a fired round passes through (piercing guns). Undefined = none /
+  // unlimited depending on `passthrough`.
+  pierce?: number;
   // Catalog key (e.g. 'handgun-t1') so drops/crates can re-create the weapon.
   key?: string;
 }
@@ -157,6 +160,10 @@ export interface Projectile {
   createdAt: number;
   passthrough: boolean;
   hitEnemies: string[];
+  // For piercing rounds: how many enemies the shot may pass THROUGH before it
+  // despawns (so pierce:1 hits two enemies). Undefined = unlimited (the old
+  // passthrough behavior for sniper/grenade).
+  pierce?: number;
   hostile: boolean;
   reflected: boolean;
   // Gun crit flag — set when the shot rolled a critical. Crits hit harder

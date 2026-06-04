@@ -30,6 +30,7 @@ interface WeaponDef {
   magSize?: number;      // magazine capacity (rounds loaded); omit for melee
   reloadMs?: number;     // reload duration; heavier guns reload slower
   critChance?: number;   // fixed crit chance (melee weapons)
+  pierce?: number;       // enemies the round passes through (piercing guns)
 }
 
 const CATALOG: Record<string, WeaponDef> = {
@@ -38,14 +39,15 @@ const CATALOG: Record<string, WeaponDef> = {
   'handgun-t2':       { key: 'handgun-t2', name: '二丁拳銃',       type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
   'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 130, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300 },
 
-  // B — Shotgun family (12g). Slow, short-range cone of pellets. Small 3-round
-  // magazine across the family.
-  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 3, reloadMs: 1100 },
-  'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 3, reloadMs: 1800 },
-  'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 3, reloadMs: 1700 },
+  // B — Shotgun family (12g). Each pellet consumes a shell, so the magazine is
+  // sized for 3 trigger-pulls' worth of pellets (count × 3).
+  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 15, reloadMs: 1100 },
+  'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 18, reloadMs: 1800 },
+  'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 21, reloadMs: 1700 },
 
-  // C — Rifle/Magnum family (.44). Heavy single rounds, piercing at higher tiers.
-  'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500 },
+  // C — Rifle/Magnum family (.44). Heavy single rounds. The revolver pierces
+  // one enemy; higher tiers pierce freely.
+  'rifle-t1':         { key: 'rifle-t1',   name: 'マグナム',       type: 'rifle',   category: 'rifle',   tier: 1, damage: 30, cooldown: 800,  projectileSpeed: 700,  projectileSize: 9,  count: 1, magSize: 6, reloadMs: 1500, passthrough: true, pierce: 1 },
   'rifle-t2':         { key: 'rifle-t2',   name: 'スナイパー',     type: 'rifle',   category: 'rifle',   tier: 2, damage: 55, cooldown: 1100, projectileSpeed: 1000, projectileSize: 8,  count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
   'rifle-t3':         { key: 'rifle-t3',   name: 'グレネードランチャー', type: 'rifle', category: 'rifle', tier: 3, damage: 75, cooldown: 1400, projectileSpeed: 420, projectileSize: 14, count: 1, passthrough: true, magSize: 1, reloadMs: 2200 },
 
@@ -90,6 +92,7 @@ export const createWeapon = (key: string): Weapon => {
     magazine: def.magSize, // a fresh gun starts fully loaded
     reloadMs: def.reloadMs,
     critChance: def.critChance,
+    pierce: def.pierce,
     category: def.category,
     tier: def.tier,
     isMelee: def.isMelee,
@@ -261,20 +264,22 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       createdAt: now,
       passthrough: weapon.passthrough || false,
       hitEnemies: [],
+      pierce: weapon.pierce,
       hostile: false,
       reflected: false,
       crit
     });
   }
 
-  // Drain one round from this gun's magazine and record the fire time. The
-  // reserve pool is untouched here — it only feeds the magazine on reload.
+  // Drain the magazine and record the fire time. Shotguns burn one shell per
+  // pellet ("打った分だけ"); everything else spends a single round per trigger.
+  const consume = weapon.category === 'shotgun' ? count : 1;
   useGameStore.setState(state => ({
     player: {
       ...state.player,
       weapons: state.player.weapons.map(w =>
         w.id === weapon.id
-          ? { ...w, lastFired: now, magazine: Math.max(0, (w.magazine ?? 0) - 1) }
+          ? { ...w, lastFired: now, magazine: Math.max(0, (w.magazine ?? 0) - consume) }
           : w
       )
     }

@@ -281,9 +281,19 @@ export const useGameLoop = (onGameOver: () => void) => {
             );
           }
 
-          // If the projectile isn't passthrough or the enemy was killed, remove the projectile
-          if (projectile && (!projectile.passthrough || enemyKilled)) {
-            removeProjectile(projectileId);
+          // Despawn rules:
+          //  - piercing N rounds (revolver): pass through anything until they've
+          //    struck pierce+1 enemies, regardless of kills.
+          //  - unlimited passthrough (sniper/grenade): stop on a kill.
+          //  - everything else: stop on first hit.
+          if (projectile) {
+            const removeIt =
+              projectile.pierce !== undefined
+                ? projectile.hitEnemies.length > projectile.pierce
+                : projectile.passthrough
+                  ? enemyKilled
+                  : true;
+            if (removeIt) removeProjectile(projectileId);
           }
 
           // If enemy was killed, spawn pickups. VS-style drop table:

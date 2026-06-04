@@ -149,8 +149,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                 const mag = gun.magazine ?? 0;
                 const dry = mag <= 0 && reserve <= 0;
                 const active = gun.id === activeGun?.id;
-                const reloading =
-                  player.reloadingWeaponId === gun.id && Date.now() < player.reloadEndsAt;
                 return (
                   <button
                     key={gun.id}
@@ -169,18 +167,14 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                     </div>
                     <div className="leading-tight text-left">
                       <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>
-                      {reloading ? (
-                        <div className="text-[12px] font-bold text-amber-300 animate-pulse">RELOAD…</div>
-                      ) : (
-                        <div
-                          className={`text-[13px] font-bold tabular-nums ${
-                            dry ? 'text-red-400 animate-pulse' : 'text-white'
-                          }`}
-                        >
-                          {mag}
-                          <span className="text-[10px] text-white/40">/{reserve}</span>
-                        </div>
-                      )}
+                      <div
+                        className={`text-[13px] font-bold tabular-nums ${
+                          dry ? 'text-red-400 animate-pulse' : 'text-white'
+                        }`}
+                      >
+                        {mag}
+                        <span className="text-[10px] text-white/40">/{reserve}</span>
+                      </div>
                     </div>
                   </button>
                 );

@@ -49,9 +49,9 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // player read the attack while the actual catch zone stays disciplined.
 export const KNOCKBACK_HIT_RADIUS = 55;
 export const KNOCKBACK_RING_RADIUS = 180;
-export const KNOCKBACK_SPEED = 400; // 2/3 of the old 600 for a shorter shove
+export const KNOCKBACK_SPEED = 200; // melee counter shove (halved again)
 export const KNOCKBACK_DURATION = 280;
-export const REFLECT_DAMAGE_MULTIPLIER = 12.0;
+export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered bullets hit 5× harder
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
 
 // Player base stats tuned to feel like Vampire Survivors' Antonio: slower
@@ -559,44 +559,46 @@ export const useGameStore = create<GameState>((set, get) => ({
       // exclusively from world drops and crates. Every upgrade is a passive.
       if (upgrade.type === 'passive' && upgrade.passiveType) {
         const updatedPlayer = { ...player };
+        // Per-level gains are intentionally modest (~half of the earlier,
+        // too-steep values) so growth feels gradual.
         switch (upgrade.passiveType) {
           case 'maxHealth':
-            updatedPlayer.maxHealth += 20;
-            updatedPlayer.health = Math.min(updatedPlayer.health + 20, updatedPlayer.maxHealth);
+            updatedPlayer.maxHealth += 10;
+            updatedPlayer.health = Math.min(updatedPlayer.health + 10, updatedPlayer.maxHealth);
             break;
           case 'speed':
-            updatedPlayer.speed = Math.round(updatedPlayer.speed * 1.1);
+            updatedPlayer.speed = Math.round(updatedPlayer.speed * 1.05);
             break;
           case 'might':
             // Boost damage on both the gun and the melee weapon.
             updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, damage: w.damage * 1.12
+              ...w, damage: w.damage * 1.06
             }));
             break;
           case 'cooldown':
             // Faster fire rate on the gun (melee cooldown is 0, untouched).
             updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, cooldown: w.cooldown > 0 ? Math.max(80, w.cooldown * 0.9) : w.cooldown
+              ...w, cooldown: w.cooldown > 0 ? Math.max(80, w.cooldown * 0.95) : w.cooldown
             }));
             break;
           case 'magSize': {
             // 装填数アップ — bigger magazines for every gun. Top up the
             // currently-loaded rounds too so the boost is immediately useful.
-            updatedPlayer.magBonus += 2;
+            updatedPlayer.magBonus += 1;
             const bonus = updatedPlayer.magBonus;
             updatedPlayer.weapons = updatedPlayer.weapons.map(w =>
               w.magSize != null
-                ? { ...w, magazine: Math.min((w.magazine ?? 0) + 2, w.magSize + bonus) }
+                ? { ...w, magazine: Math.min((w.magazine ?? 0) + 1, w.magSize + bonus) }
                 : w
             );
             break;
           }
           case 'reloadSpeed':
             // リロード時間短縮 — faster reloads for all guns (floor at 0.4×).
-            updatedPlayer.reloadMult = Math.max(0.4, updatedPlayer.reloadMult * 0.85);
+            updatedPlayer.reloadMult = Math.max(0.4, updatedPlayer.reloadMult * 0.925);
             break;
           case 'critChance':
-            updatedPlayer.critChance = Math.min(0.6, updatedPlayer.critChance + 0.05);
+            updatedPlayer.critChance = Math.min(0.6, updatedPlayer.critChance + 0.025);
             break;
           // 'area' / 'duration' are no longer offered (no area weapons), but
           // keep harmless no-op cases for type completeness.
