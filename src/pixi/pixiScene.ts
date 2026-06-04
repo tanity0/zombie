@@ -1,0 +1,663 @@
+// Per-frame sync: read the store, drive the Pixi scene graph. Pure reader —
+// it NEVER writes gameplay state (useGameLoop remains the only clock/writer).
+//
+// What it reproduces from the Canvas2D renderer (gameplay-faithful):
+//   background floor + trees, foot shadows, player & enemies (Y-sorted by foot
+//   Y) with their overlays (health bar, hit flash, ghost fade, boss marker,
+//   stun reticle), projectiles, pickups, the world-space effects[] queue
+//   (particle / ring / glow / slash / damageNumber / trail / flash), the
+//   counter ring, the reload meter, and off-screen supply arrows.
+//
+// Deliberately deferred to a later polish phase (per "don't pile on glow /
+// filters first"): warm light halos, the multiply colour-grade, the radial
+// vignette, and the ambient firefly layer.
+
+import { Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js';
+import type {
+  Enemy, Pickup, Player, Projectile, VisualEffect,
+} from '../types/game';
+import { useGameStore, MELEE_RADIUS, SHAKE_MS } from '../store/gameStore';
+import { getEnemyColor } from '../utils/enemyUtils';
+import { effectiveReloadMs } from '../utils/weaponUtils';
+import type { SceneLayers } from './layers';
+import { getTexture } from './pixiTextures';
+import { enemyFootBox, enemyShadow, playerFootBox } from './renderSpec';
+
+const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
+
+const AMMO_INDICATOR_COLOR: Record<string, string> = {
+  'ammo-handgun': '#d4a017',
+  'ammo-shotgun': '#ef4444',
+  'ammo-rifle': '#f59e0b',
+};
+
+const containScale = (boxW: number, boxH: number, texW: number, texH: number) =>
+  Math.min(boxW / texW, boxH / texH);
+
+// Flat elliptical foot shadow, matching renderUtils.drawGroundShadow's geometry
+// (the passed `w` is pre-scaled by the caller; ellipse radii are w*0.55/w*0.18).
+const drawShadow = (g: Graphics, cx: number, cy: number, w: number, alpha: number) => {
+  g.ellipse(cx, cy, w * 0.55, w * 0.18).fill({ color: 0x000000, alpha });
+};
+
+// One pooled actor view (player or enemy): a foot-anchored sprite plus a
+// behind-sprite reticle layer and an above-sprite overlay layer, all in one
+// container whose zIndex is the foot Y (the Y-sort key).
+interface ActorView {
+  container: Container;
+  reticle: Graphics; // below the sprite (stun reticle / tint)
+  sprite: Sprite;
+  overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
+}
+
+export class PixiScene {
+  private L: SceneLayers;
+
+  private trees = new Map<string, Sprite>();
+  private enemies = new Map<string, ActorView>();
+  private playerView: ActorView | null = null;
+
+  private pickups = new Map<string, { container: Container; gfx: Graphics; sprite?: Sprite }>();
+  private projectiles = new Map<string, Graphics>();
+  private effects = new Map<string, Graphics | Text>();
+
+  private shadowGfx = new Graphics();
+  private playerFx = new Graphics();   // counter ring + reload meter (world)
+  private flashGfx = new Graphics();   // full-screen damage flashes (screen)
+  private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
+
+  private screenW = 1;
+  private screenH = 1;
+
+  constructor(layers: SceneLayers) {
+    this.L = layers;
+    this.L.groundLayer.addChild(this.shadowGfx);
+    this.L.effectLayer.addChild(this.playerFx);
+    this.L.uiLayer.addChild(this.flashGfx, this.arrowGfx);
+  }
+
+  resize(w: number, h: number) {
+    this.screenW = w;
+    this.screenH = h;
+    this.L.groundBase.width = w;
+    this.L.groundBase.height = h;
+  }
+
+  // Build a fresh actor view and parent it into the actor layer.
+  private makeActor(): ActorView {
+    const container = new Container();
+    const reticle = new Graphics();
+    const sprite = new Sprite();
+    sprite.anchor.set(0.5, 1); // foot-centre
+    const overlay = new Graphics();
+    container.addChild(reticle, sprite, overlay);
+    this.L.actorLayer.addChild(container);
+    return { container, reticle, sprite, overlay };
+  }
+
+  // ---- top-level frame sync ------------------------------------------------
+
+  sync() {
+    const s = useGameStore.getState();
+    const now = Date.now();
+
+    // Camera offset + screen shake on the whole world (and the floor).
+    let sx = 0;
+    let sy = 0;
+    const shakeLeft = s.shakeUntil ? s.shakeUntil - now : 0;
+    if (shakeLeft > 0) {
+      const mag = 7 * Math.min(1, shakeLeft / SHAKE_MS);
+      sx = (Math.random() * 2 - 1) * mag;
+      sy = (Math.random() * 2 - 1) * mag;
+    }
+    this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
+    this.L.groundBase.position.set(sx, sy);
+    (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y);
+
+    this.syncTrees(s.camera);
+    this.syncShadows(s.player, s.enemies);
+    this.syncPickups(s.pickups, now);
+    this.syncActors(s.player, s.enemies, s.gameTime, now);
+    this.syncProjectiles(s.projectiles, now);
+    this.syncEffects(s.effects, now);
+    this.syncPlayerFx(s.player, now);
+    this.syncArrows(s.pickups, s.camera);
+    this.syncFlash(s.effects, now);
+  }
+
+  // ---- background trees (always behind actors, like the Canvas2D path) ------
+
+  private syncTrees(camera: { x: number; y: number }) {
+    const tcell = 220;
+    const hash2 = (x: number, y: number) => {
+      const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return v - Math.floor(v);
+    };
+    const startX = Math.floor((camera.x - tcell) / tcell) * tcell;
+    const startY = Math.floor((camera.y - tcell) / tcell) * tcell;
+    const endX = startX + this.screenW + tcell * 2;
+    const endY = startY + this.screenH + tcell * 2;
+
+    const seen = new Set<string>();
+    const tex = getTexture('tree');
+    for (let wx = startX; wx <= endX; wx += tcell) {
+      for (let wy = startY; wy <= endY; wy += tcell) {
+        if (hash2(wx + 13, wy - 7) >= 0.35) continue;
+        const key = `${wx}_${wy}`;
+        seen.add(key);
+        let sprite = this.trees.get(key);
+        if (!sprite) {
+          sprite = new Sprite(tex ?? undefined);
+          sprite.anchor.set(0.5, 1);
+          this.L.backgroundLayer.addChild(sprite);
+          this.trees.set(key, sprite);
+          const scale = 0.85 + hash2(wx + 5, wy + 23) * 0.4;
+          const ox = (hash2(wx, wy + 1) - 0.5) * tcell;
+          const oy = (hash2(wx + 1, wy) - 0.5) * tcell;
+          const boxW = 48 * scale;
+          const boxH = 64 * scale;
+          // Match the Canvas2D box: drawn at (x-24s, y-32s, 48s, 64s), so the
+          // foot (bottom of that box) sits 32*scale below the cell point.
+          sprite.x = wx + tcell / 2 + ox;
+          sprite.y = wy + tcell / 2 + oy + 32 * scale;
+          if (tex) {
+            const sc = containScale(boxW, boxH, tex.width, tex.height);
+            sprite.scale.set(sc);
+          }
+        }
+      }
+    }
+    for (const [key, sprite] of this.trees) {
+      if (!seen.has(key)) {
+        sprite.destroy();
+        this.trees.delete(key);
+      }
+    }
+  }
+
+  // ---- foot shadows (player + enemies) into one graphics -------------------
+
+  private syncShadows(player: Player, enemies: Enemy[]) {
+    const g = this.shadowGfx;
+    g.clear();
+    const pf = playerFootBox(player);
+    drawShadow(g, pf.footX, pf.footY - 2, player.width * 1.7 * 0.55, 0.4);
+    for (const e of enemies) {
+      if (e.type === 'ghost') continue;
+      const { width, alpha } = enemyShadow(e);
+      drawShadow(g, e.x + e.width / 2, e.y + e.height - 2, width, alpha);
+    }
+  }
+
+  // ---- actors: player + enemies, Y-sorted by foot Y ------------------------
+
+  private syncActors(player: Player, enemies: Enemy[], gameTime: number, now: number) {
+    // Player
+    if (!this.playerView) this.playerView = this.makeActor();
+    this.drawPlayer(this.playerView, player, now);
+
+    // Enemies (mark-and-sweep pool)
+    const seen = new Set<string>();
+    for (const e of enemies) {
+      seen.add(e.id);
+      let view = this.enemies.get(e.id);
+      if (!view) {
+        view = this.makeActor();
+        this.enemies.set(e.id, view);
+      }
+      this.drawEnemy(view, e, gameTime, now);
+    }
+    for (const [id, view] of this.enemies) {
+      if (!seen.has(id)) {
+        view.container.destroy({ children: true });
+        this.enemies.delete(id);
+      }
+    }
+  }
+
+  private drawPlayer(view: ActorView, p: Player, now: number) {
+    const fb = playerFootBox(p);
+    const tex = getTexture('player');
+    view.sprite.texture = tex ?? view.sprite.texture;
+    if (tex) {
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height);
+      const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+      view.sprite.scale.set(flip ? -sc : sc, sc);
+    }
+    view.sprite.position.set(fb.footX, fb.footY);
+    view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
+    view.container.zIndex = fb.footY;
+    view.reticle.clear();
+    view.overlay.clear();
+  }
+
+  private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
+    const fb = enemyFootBox(e);
+    const tex = getTexture(e.type);
+    const cx = e.x + e.width / 2;
+    const cy = e.y + e.height / 2;
+
+    view.sprite.position.set(fb.footX, fb.footY);
+    view.container.zIndex = fb.footY;
+    view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
+
+    if (tex) {
+      view.sprite.texture = tex;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height);
+      view.sprite.scale.set(sc);
+      view.sprite.visible = true;
+    } else {
+      view.sprite.visible = false; // placeholder ellipse drawn in reticle below
+    }
+
+    // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
+    const r = view.reticle;
+    r.clear();
+    if (!tex) {
+      const col = parseInt(getEnemyColor(e.type).slice(1), 16);
+      r.ellipse(cx, cy, e.width / 2.4, e.height / 2.4).fill({ color: col });
+    }
+    const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
+    if (stunned) this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now);
+
+    // Above-sprite layer: health bar, boss marker, hit flash.
+    const o = view.overlay;
+    o.clear();
+    this.drawHealthBar(o, e);
+    if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
+      this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
+    }
+    if (now - e.lastHit < 90) {
+      o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
+    }
+  }
+
+  private drawHealthBar(g: Graphics, e: Enemy) {
+    if (e.health >= e.maxHealth) return;
+    const w = e.width;
+    const h = 3;
+    const x = e.x;
+    const y = e.y - h - 2;
+    g.rect(x, y, w, h).fill({ color: 0x000000, alpha: 0.5 });
+    const pct = e.health / e.maxHealth;
+    g.rect(x, y, w * pct, h).fill({ color: pct < 0.3 ? 0xef4444 : 0x10b981 });
+  }
+
+  private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number) {
+    const rad = size * 0.85 + 6;
+    const spin = (now * 0.004) % (Math.PI * 2);
+    g.circle(cx, cy, rad).fill({ color: 0xfacc15, alpha: 0.16 });
+    for (let i = 0; i < 4; i++) {
+      const a0 = spin + i * (Math.PI / 2) + 0.25;
+      const a1 = spin + i * (Math.PI / 2) + (Math.PI / 2) - 0.25;
+      g.arc(cx, cy, rad, a0, a1).stroke({ width: 2, color: 0xfacc15 });
+    }
+  }
+
+  private drawBossMarker(g: Graphics, cx: number, topY: number, glow: number, now: number) {
+    const baseY = topY - 10 + Math.sin(now / 220) * 2;
+    g.ellipse(cx, baseY, 3, 2.4).fill({ color: 0x0f0f14 });
+    g.poly([cx - 2, baseY, cx - 9, baseY - 3, cx - 5, baseY + 1]).fill({ color: 0x0f0f14 });
+    g.poly([cx + 2, baseY, cx + 9, baseY - 3, cx + 5, baseY + 1]).fill({ color: 0x0f0f14 });
+    g.rect(cx - 1, baseY - 1, 1, 1).fill({ color: glow });
+    g.rect(cx + 1, baseY - 1, 1, 1).fill({ color: glow });
+  }
+
+  // ---- projectiles ---------------------------------------------------------
+
+  private syncProjectiles(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.createdAt > now) continue; // scheduled / inactive
+      seen.add(p.id);
+      let g = this.projectiles.get(p.id);
+      if (!g) {
+        g = new Graphics();
+        this.L.frontObjectLayer.addChild(g);
+        this.projectiles.set(p.id, g);
+      }
+      this.drawProjectile(g, p);
+    }
+    for (const [id, g] of this.projectiles) {
+      if (!seen.has(id)) {
+        g.destroy();
+        this.projectiles.delete(id);
+      }
+    }
+  }
+
+  private drawProjectile(g: Graphics, p: Projectile) {
+    g.clear();
+    g.rotation = 0;
+    const cx = p.x + p.width / 2;
+    const cy = p.y + p.height / 2;
+    g.position.set(cx, cy);
+
+    if (p.reflected) {
+      g.circle(0, 0, Math.max(p.width, p.height) * 0.7).fill({ color: 0xfcd34d });
+    }
+
+    switch (p.weaponType) {
+      case 'handgun':
+      case 'rifle': {
+        g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        const len = Math.max(p.width, 6) * (p.weaponType === 'rifle' ? 2.6 : 1.7);
+        const hh = Math.max(2, p.height / 2);
+        g.rect(-len / 2, -hh / 2, len, hh).fill({ color: p.crit ? 0xfde047 : 0xfef3c7 });
+        break;
+      }
+      case 'shotgun': {
+        g.circle(0, 0, Math.max(2, p.width / 2)).fill({ color: p.crit ? 0xfde047 : 0xfdba74 });
+        break;
+      }
+      case 'enemy_bolt': {
+        if (p.reflected) break;
+        g.circle(0, 0, p.width / 2).fill({ color: 0xb91c1c });
+        g.circle(0, 0, p.width / 3).fill({ color: 0xfca5a5 });
+        break;
+      }
+      default: {
+        g.circle(0, 0, p.width / 2).fill({ color: 0xf3f4f6 });
+        break;
+      }
+    }
+  }
+
+  // ---- pickups -------------------------------------------------------------
+
+  private syncPickups(pickups: Pickup[], now: number) {
+    const seen = new Set<string>();
+    for (const p of pickups) {
+      seen.add(p.id);
+      let entry = this.pickups.get(p.id);
+      if (!entry) {
+        const container = new Container();
+        const gfx = new Graphics();
+        container.addChild(gfx);
+        this.L.groundLayer.addChild(container);
+        entry = { container, gfx };
+        this.pickups.set(p.id, entry);
+      }
+      this.drawPickup(entry, p, now);
+    }
+    for (const [id, entry] of this.pickups) {
+      if (!seen.has(id)) {
+        entry.container.destroy({ children: true });
+        this.pickups.delete(id);
+      }
+    }
+  }
+
+  private drawPickup(
+    entry: { container: Container; gfx: Graphics; sprite?: Sprite },
+    p: Pickup,
+    now: number
+  ) {
+    const cx = p.x + 8;
+    const cy = p.y + 8;
+    const size = 16;
+    const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
+    const g = entry.gfx;
+    g.clear();
+
+    // Shadow stays at the base (not floating) so the bob lifts the item off it.
+    const shadowAlpha = Math.max(0.22, 0.35 - floatOffset * 0.025);
+    drawShadow(g, cx, cy + size / 2, size * 0.85, shadowAlpha);
+
+    if (SPRITE_PICKUPS.has(p.type)) {
+      const name = p.type === 'experience'
+        ? (p.value >= 5 ? 'pickup-xp-red' : p.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
+        : `pickup-${p.type}`;
+      const tex = getTexture(name);
+      if (tex) {
+        if (!entry.sprite) {
+          entry.sprite = new Sprite();
+          entry.sprite.anchor.set(0.5, 1);
+          entry.container.addChild(entry.sprite);
+        }
+        entry.sprite.texture = tex;
+        const sc = containScale(size, size, tex.width, tex.height);
+        entry.sprite.scale.set(sc);
+        entry.sprite.position.set(cx, cy + size / 2 + floatOffset);
+        entry.sprite.visible = true;
+        return;
+      }
+    }
+    if (entry.sprite) entry.sprite.visible = false;
+    this.drawProceduralPickup(g, p, cx, cy + floatOffset, now);
+  }
+
+  private drawProceduralPickup(g: Graphics, p: Pickup, cx: number, drawY: number, now: number) {
+    switch (p.type) {
+      case 'ammo-handgun':
+      case 'ammo-shotgun':
+      case 'ammo-rifle': {
+        const box = p.type === 'ammo-shotgun' ? 0xb91c1c : p.type === 'ammo-rifle' ? 0xb45309 : 0xa16207;
+        g.rect(cx - 7, drawY - 4, 14, 9).fill({ color: 0x1f2937 });
+        g.rect(cx - 7, drawY - 4, 14, 3).fill({ color: box });
+        g.rect(cx - 5, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+        g.rect(cx - 1, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+        g.rect(cx + 3, drawY - 6, 2, 3).fill({ color: 0xfde68a });
+        break;
+      }
+      case 'weapon-drop': {
+        g.rect(cx - 8, drawY - 2, 14, 4).fill({ color: 0xcbd5e1 });
+        g.rect(cx - 8, drawY + 2, 4, 5).fill({ color: 0xcbd5e1 });
+        g.rect(cx - 3, drawY + 2, 3, 3).fill({ color: 0x64748b });
+        break;
+      }
+      case 'weapon-crate': {
+        g.rect(cx - 9, drawY - 6, 18, 13).fill({ color: 0x334155 });
+        g.rect(cx - 9, drawY - 6, 18, 3).fill({ color: 0x475569 });
+        g.rect(cx - 9, drawY - 6, 18, 13).stroke({ width: 1.5, color: 0x94a3b8 });
+        g.moveTo(cx - 9, drawY - 6).lineTo(cx + 9, drawY + 7)
+          .moveTo(cx + 9, drawY - 6).lineTo(cx - 9, drawY + 7)
+          .stroke({ width: 1.5, color: 0x94a3b8 });
+        g.rect(cx - 2, drawY - 1, 4, 3).fill({ color: 0xbfdbfe });
+        break;
+      }
+      default: {
+        // experience/health/magnet/bomb/chest only reach here if the atlas
+        // failed to load — a small neutral diamond keeps them visible.
+        void now;
+        g.poly([cx, drawY - 6, cx + 6, drawY, cx, drawY + 6, cx - 6, drawY])
+          .fill({ color: 0x93c5fd });
+        break;
+      }
+    }
+  }
+
+  // ---- world-space effects[] queue -----------------------------------------
+
+  private syncEffects(effects: VisualEffect[], now: number) {
+    const seen = new Set<string>();
+    for (const e of effects) {
+      if (e.kind === 'flash') continue; // screen-space, handled separately
+      seen.add(e.id);
+      if (e.kind === 'damageNumber') {
+        this.drawDamageNumber(e, now);
+      } else {
+        let g = this.effects.get(e.id);
+        if (!g || g instanceof Text) {
+          g = new Graphics();
+          // trails sit under the actors; everything else above.
+          (e.kind === 'trail' ? this.L.groundLayer : this.L.effectLayer).addChild(g);
+          this.effects.set(e.id, g);
+        }
+        this.drawEffectGfx(g as Graphics, e, now);
+      }
+    }
+    for (const [id, obj] of this.effects) {
+      if (!seen.has(id)) {
+        obj.destroy();
+        this.effects.delete(id);
+      }
+    }
+  }
+
+  private drawEffectGfx(g: Graphics, e: VisualEffect, now: number) {
+    g.clear();
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    switch (e.kind) {
+      case 'particle': {
+        g.alpha = Math.max(0, 1 - t);
+        g.circle(e.x, e.y, e.size).fill({ color: e.color });
+        break;
+      }
+      case 'ring': {
+        g.alpha = 1 - t;
+        const radius = e.startRadius + (e.endRadius - e.startRadius) * t;
+        g.circle(e.x, e.y, radius).stroke({ width: e.width, color: e.color });
+        break;
+      }
+      case 'glow': {
+        // Additive soft disc + rim (radial-gradient approximation).
+        g.blendMode = 'add';
+        g.alpha = 1 - t;
+        g.circle(e.x, e.y, e.radius).fill({ color: `${e.color}1)`, alpha: 0.35 });
+        g.circle(e.x, e.y, e.radius).stroke({ width: 2, color: `${e.color}1)` });
+        break;
+      }
+      case 'slash': {
+        g.alpha = 1 - t;
+        const half = e.length / 2;
+        const grow = 1 + t * 0.3;
+        const dx = Math.cos(e.angle) * half * grow;
+        const dy = Math.sin(e.angle) * half * grow;
+        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
+          .stroke({ width: 4 * (1 - t) + 1, color: e.color, cap: 'round' });
+        break;
+      }
+      case 'trail': {
+        g.alpha = 1 - t;
+        const cx = e.fromX + (e.toX - e.fromX) * t;
+        const cy = e.fromY + (e.toY - e.fromY) * t;
+        g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2, color: e.color });
+        break;
+      }
+    }
+  }
+
+  private drawDamageNumber(e: Extract<VisualEffect, { kind: 'damageNumber' }>, now: number) {
+    const t = (now - e.createdAt) / e.duration;
+    const scale = e.scale ?? (e.crit ? 1.35 : 1);
+    const bold = e.crit || scale > 1.2;
+    let txt = this.effects.get(e.id) as Text | undefined;
+    if (!txt || !(txt instanceof Text)) {
+      txt = new Text({
+        text: e.text ?? String(e.value),
+        style: {
+          fontFamily: '"Special Elite", ui-rounded, system-ui, sans-serif',
+          fontSize: Math.round(12 * scale),
+          fontWeight: bold ? 'bold' : 'normal',
+          fill: e.color,
+          stroke: { color: 0x000000, width: 2 },
+        },
+      });
+      txt.anchor.set(0.5, 0.5);
+      this.L.effectLayer.addChild(txt);
+      this.effects.set(e.id, txt);
+    }
+    txt.position.set(e.x, e.y);
+    txt.alpha = Math.max(0, 1 - t);
+  }
+
+  // ---- player FX: counter ring + reload meter (world space) ----------------
+
+  private syncPlayerFx(player: Player, now: number) {
+    const g = this.playerFx;
+    g.clear();
+    const cx = player.x + player.width / 2;
+    const cy = player.y + player.height / 2;
+    const r = MELEE_RADIUS;
+    if (now <= player.counterWindowEnd) {
+      g.circle(cx, cy, r).fill({ color: 0xfbbf24, alpha: 0.1 });
+      g.circle(cx, cy, r).stroke({ width: 2, color: 0xfbbf24, alpha: 0.5 });
+    } else if (now < player.counterCooldownEnd) {
+      g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
+    }
+
+    // Reload meter above the head.
+    if (player.reloadingWeaponId && now < player.reloadEndsAt) {
+      const gun = player.weapons.find(w => w.id === player.reloadingWeaponId);
+      if (gun) {
+        const total = effectiveReloadMs(gun, player);
+        const progress = Math.max(0, Math.min(1, 1 - (player.reloadEndsAt - now) / total));
+        const w = 30;
+        const h = 5;
+        const x = cx - w / 2;
+        const top = player.y - 16;
+        g.rect(x - 1, top - 1, w + 2, h + 2).fill({ color: 0x000000, alpha: 0.6 });
+        g.rect(x, top, w, h).fill({ color: 0xffffff, alpha: 0.18 });
+        g.rect(x, top, w * progress, h).fill({ color: 0xfbbf24 });
+      }
+    }
+  }
+
+  // ---- screen-space: off-screen supply arrows ------------------------------
+
+  private syncArrows(pickups: Pickup[], camera: { x: number; y: number }) {
+    const g = this.arrowGfx;
+    g.clear();
+    const marginX = 26, marginTop = 64, marginBottom = 30;
+    const cxC = this.screenW / 2;
+    const cyC = this.screenH / 2;
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
+    for (const p of pickups) {
+      if (!p.worldDrop) continue;
+      const colorStr = AMMO_INDICATOR_COLOR[p.type];
+      if (!colorStr) continue;
+      const tx = p.x + 8 - camera.x;
+      const ty = p.y + 8 - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist;
+      const ey = cyC + dy * tdist;
+      const color = parseInt(colorStr.slice(1), 16);
+
+      g.rect(ex - 8, ey - 6, 16, 12).fill({ color: 0x1f2937, alpha: 0.9 });
+      g.rect(ex - 8, ey - 6, 16, 3).fill({ color });
+      g.rect(ex - 5, ey, 2, 4).fill({ color: 0xfde68a });
+      g.rect(ex - 1, ey, 2, 4).fill({ color: 0xfde68a });
+      g.rect(ex + 3, ey, 2, 4).fill({ color: 0xfde68a });
+
+      // Arrowhead, rotated toward the supply.
+      const hx = ex + dx * 13, hy = ey + dy * 13;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+    }
+  }
+
+  // ---- screen-space: full-screen damage flashes ----------------------------
+
+  private syncFlash(effects: VisualEffect[], now: number) {
+    const g = this.flashGfx;
+    g.clear();
+    for (const e of effects) {
+      if (e.kind !== 'flash') continue;
+      const alpha = Math.max(0, 1 - (now - e.createdAt) / e.duration);
+      g.rect(0, 0, this.screenW, this.screenH).fill({ color: e.color, alpha });
+    }
+  }
+
+  destroy() {
+    for (const s of this.trees.values()) s.destroy();
+    for (const v of this.enemies.values()) v.container.destroy({ children: true });
+    this.playerView?.container.destroy({ children: true });
+    for (const e of this.pickups.values()) e.container.destroy({ children: true });
+    for (const g of this.projectiles.values()) g.destroy();
+    for (const o of this.effects.values()) o.destroy();
+    this.shadowGfx.destroy();
+    this.playerFx.destroy();
+    this.flashGfx.destroy();
+    this.arrowGfx.destroy();
+  }
+}

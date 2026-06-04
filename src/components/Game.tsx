@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
+import PixiStage from '../pixi/PixiStage';
+import { isPixiRenderer } from '../config/renderer';
 import GameHUD from './GameHUD';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
@@ -115,7 +117,13 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
         overflow: 'hidden'
       }}
     >
-      <GameCanvas width={windowSize.width} height={windowSize.height} />
+      {/* World view: PixiJS (?renderer=pixi) or the original Canvas2D
+          renderer (default). The React HUD below overlays either one. */}
+      {isPixiRenderer() ? (
+        <PixiStage width={windowSize.width} height={windowSize.height} />
+      ) : (
+        <GameCanvas width={windowSize.width} height={windowSize.height} />
+      )}
 
       {/* Joystick zone covers the whole screen for one-handed play; place
           it BEFORE the HUD/buttons so those render on top and stay tappable. */}
