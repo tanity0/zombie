@@ -784,17 +784,43 @@ export class PixiScene {
         break;
       }
       case 'slash': {
-        // Additive streak: soft wide underlay + hot white core line.
+        // Curved crescent "swoosh": a tapered blade arc that sweeps through the
+        // swing and fades. Additive fill + a hot white leading edge so it reads
+        // as a glowing slash (and gets caught by bloom).
         g.blendMode = 'add';
-        g.alpha = 1 - t;
-        const half = e.length / 2;
-        const grow = 1 + t * 0.4;
-        const dx = Math.cos(e.angle) * half * grow;
-        const dy = Math.sin(e.angle) * half * grow;
-        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 8 * (1 - t) + 2, color: e.color, alpha: 0.4, cap: 'round' });
-        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 3 * (1 - t) + 1, color: 0xffffff, alpha: 0.85, cap: 'round' });
+        const a = Math.max(0, 1 - t);
+        g.alpha = a;
+        const sweep = 1.7;                     // angular span of the arc
+        const spin = e.angle - 0.5 + t * 0.9;  // rotate the blade through the swing
+        const grow = 0.85 + t * 0.5;
+        const rOuter = e.length * 1.05 * grow;
+        const thick = 4 + e.length * 0.16;     // crescent belly thickness
+        // Pivot so the arc's belly passes through the hit point.
+        const px = e.x - Math.cos(spin) * rOuter;
+        const py = e.y - Math.sin(spin) * rOuter;
+        const a0 = spin - sweep / 2;
+        const a1 = spin + sweep / 2;
+        const steps = 12;
+        const pts: number[] = [];
+        for (let i = 0; i <= steps; i++) {
+          const ang = a0 + (a1 - a0) * (i / steps);
+          pts.push(px + Math.cos(ang) * rOuter, py + Math.sin(ang) * rOuter);
+        }
+        for (let i = steps; i >= 0; i--) {
+          const f = i / steps;
+          const ang = a0 + (a1 - a0) * f;
+          const taper = Math.sin(f * Math.PI); // 0 at the tips, 1 at the belly
+          const ri = rOuter - thick * taper;
+          pts.push(px + Math.cos(ang) * ri, py + Math.sin(ang) * ri);
+        }
+        g.poly(pts).fill({ color: e.color, alpha: 0.5 });
+        // Hot white leading edge along the outer arc.
+        g.moveTo(px + Math.cos(a0) * rOuter, py + Math.sin(a0) * rOuter);
+        for (let i = 1; i <= steps; i++) {
+          const ang = a0 + (a1 - a0) * (i / steps);
+          g.lineTo(px + Math.cos(ang) * rOuter, py + Math.sin(ang) * rOuter);
+        }
+        g.stroke({ width: 2.4 * a + 0.6, color: 0xffffff, alpha: 0.9 });
         break;
       }
       case 'trail': {
