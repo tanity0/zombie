@@ -26,11 +26,11 @@ import { enemyFootBox, enemyShadow, playerFootBox } from './renderSpec';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
-const GRADE_ALPHA = 0.55;      // strength of the cool grade
-const PLAYER_LIGHT_TINT = 0xffd9a0; // warm hero halo
-const PLAYER_LIGHT_ALPHA = 0.55;
-const PLAYER_LIGHT_RADIUS = 230;    // halo radius in screen px
-const VIGNETTE_ALPHA = 0.9;
+const GRADE_ALPHA = 0.4;       // strength of the cool grade
+const PLAYER_LIGHT_TINT = 0xffca7a; // warm hero halo
+const PLAYER_LIGHT_ALPHA = 0.32;
+const PLAYER_LIGHT_RADIUS = 200;    // halo radius in world px
+const VIGNETTE_ALPHA = 0.85;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -86,25 +86,30 @@ export class PixiScene {
 
   constructor(layers: SceneLayers) {
     this.L = layers;
-    this.L.groundLayer.addChild(this.shadowGfx);
+    // Warm light sits in the GROUND layer, BELOW the actors, so it pools on the
+    // floor without ever painting over (and washing out) the character / enemy
+    // sprites — they keep their full pixel-art colour and outline (Octopath
+    // style). Behind the foot shadows so those still read.
+    this.playerLight.anchor.set(0.5);
+    this.playerLight.tint = PLAYER_LIGHT_TINT;
+    this.playerLight.alpha = PLAYER_LIGHT_ALPHA;
+    this.playerLight.blendMode = 'add';
+    this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
+    this.L.groundLayer.addChild(this.playerLight, this.shadowGfx);
+
     this.L.effectLayer.addChild(this.playerFx);
 
     this.gradeSprite.tint = GRADE_TINT;
     this.gradeSprite.alpha = GRADE_ALPHA;
     this.gradeSprite.blendMode = 'multiply';
 
-    this.playerLight.anchor.set(0.5);
-    this.playerLight.tint = PLAYER_LIGHT_TINT;
-    this.playerLight.alpha = PLAYER_LIGHT_ALPHA;
-    this.playerLight.blendMode = 'add';
-    this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
-
     this.vignette.alpha = VIGNETTE_ALPHA;
 
-    // Order: cool grade (multiplies world) → warm hero light → vignette →
-    // damage flash + off-screen arrows on top of everything.
+    // Screen-space overlays: cool multiply grade darkens/cools the whole scene
+    // (multiply preserves detail/outlines), then the vignette, then damage
+    // flash + off-screen arrows on top of everything.
     this.L.uiLayer.addChild(
-      this.gradeSprite, this.playerLight, this.vignette,
+      this.gradeSprite, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
   }
@@ -162,10 +167,10 @@ export class PixiScene {
     this.syncArrows(s.pickups, s.camera);
     this.syncFlash(s.effects, now);
 
-    // Warm hero halo follows the player's on-screen position (world coords
-    // minus camera, plus shake), with a gentle breathing pulse.
-    const lx = s.player.x + s.player.width / 2 - s.camera.x + sx;
-    const ly = s.player.y + s.player.height / 2 - s.camera.y + sy;
+    // Warm ground pool follows the player. It lives in the world's groundLayer
+    // (camera-offset already applied to the parent), so plain world coords.
+    const lx = s.player.x + s.player.width / 2;
+    const ly = s.player.y + s.player.height / 2;
     this.playerLight.position.set(lx, ly);
     this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (0.92 + 0.08 * Math.sin(now / 600));
   }
