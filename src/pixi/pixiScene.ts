@@ -12,7 +12,7 @@
 // (screen space) and a warm player light halo (screen space, above the grade so
 // the hero pops). Tilt-shift depth-of-field and ambient fireflies land next.
 
-import { Container, Graphics, Sprite, Text, TilingSprite, Texture, Rectangle, Filter } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, TilingSprite, Texture, Rectangle, Filter } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   Enemy, Pickup, Player, Projectile, VisualEffect,
@@ -42,7 +42,11 @@ const HORIZON_FOREST_MAX_HEIGHT = 230;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.54;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const FRONT_FOREST_PARALLAX_X = 0.44;
-const FRONT_FOREST_ALPHA = 0.86;
+const FRONT_FOREST_HEIGHT_RATIO = 0.46;
+const FRONT_FOREST_MIN_HEIGHT = 250;
+const FRONT_FOREST_MAX_HEIGHT = 380;
+const FRONT_FOREST_ALPHA = 0.78;
+const FRONT_FOREST_BLUR = 2.4;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -158,6 +162,7 @@ export class PixiScene {
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
+  private frontForestBlur: BlurFilter | null = null;
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
@@ -192,6 +197,12 @@ export class PixiScene {
       worldFilters.push(this.tiltShift);
     }
     if (worldFilters.length) this.L.worldGroup.filters = worldFilters;
+
+    this.frontForestBlur = new BlurFilter({
+      strength: FRONT_FOREST_BLUR,
+      quality: 3,
+    });
+    this.L.frontForest.filters = [this.frontForestBlur];
 
     // Ambient fireflies: a pool of soft additive motes in the lighting layer.
     if (FIREFLY_ENABLED) {
@@ -262,13 +273,11 @@ export class PixiScene {
     this.L.groundBase.width = w;
     this.L.groundBase.height = Math.max(1, h - farH);
     this.L.groundBase.position.set(0, farH);
-    const frontScale = Math.max(
-      w / this.L.frontForest.texture.width,
-      h / this.L.frontForest.texture.height
-    );
-    this.L.frontForest.position.set(0, 0);
+    const frontH = this.frontForestHeight();
+    const frontScale = frontH / this.L.frontForest.texture.height;
+    this.L.frontForest.position.set(0, h - frontH);
     this.L.frontForest.width = w;
-    this.L.frontForest.height = h;
+    this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
     this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
     // Full-screen atmosphere overlays.
@@ -294,6 +303,13 @@ export class PixiScene {
     return Math.min(
       HORIZON_FOREST_MAX_HEIGHT,
       Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
+    );
+  }
+
+  private frontForestHeight() {
+    return Math.min(
+      FRONT_FOREST_MAX_HEIGHT,
+      Math.max(FRONT_FOREST_MIN_HEIGHT, this.screenH * FRONT_FOREST_HEIGHT_RATIO)
     );
   }
 
@@ -364,7 +380,8 @@ export class PixiScene {
     this.L.horizonForest.tilePosition.x = -s.camera.x * HORIZON_FOREST_PARALLAX_X;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
-    this.L.frontForest.position.set(sx * 0.75, 0);
+    const frontH = this.frontForestHeight();
+    this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH);
     this.L.frontForest.tilePosition.set(
       -s.camera.x * FRONT_FOREST_PARALLAX_X,
       0
@@ -1024,6 +1041,9 @@ export class PixiScene {
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
     this.L.horizonForest.destroy();
+    this.L.frontForest.filters = [];
+    this.frontForestBlur?.destroy();
+    this.frontForestBlur = null;
     this.L.frontForest.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();

@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.14 - Smaller blurred front forest (Codex)
+
+### Summary
+Adjusted the nearest foreground forest after visual review.
+- Changed the front forest from full-screen cover sizing to a bottom-anchored
+  band with capped height, so the trees read closer to normal scale.
+- Added a light Pixi `BlurFilter` to soften the nearest foreground layer.
+- Kept front forest parallax horizontal-only.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (front forest sizing and blur)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `FRONT_FOREST_HEIGHT_RATIO`, `FRONT_FOREST_MIN_HEIGHT`,
+  `FRONT_FOREST_MAX_HEIGHT`, and `FRONT_FOREST_BLUR` in
+  `src/pixi/pixiScene.ts` after on-device visual review.
+
 ## 2026-06-06 - v0.24.13 - Horizon forest seam and horizontal-only parallax (Codex)
 
 ### Summary
