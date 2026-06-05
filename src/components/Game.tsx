@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer } from '../config/renderer';
+import { BUILD_ID } from '../config/buildInfo';
 import GameHUD from './GameHUD';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
@@ -140,6 +141,24 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
       {showUpgradeMenu && (
         <UpgradeMenu />
       )}
+
+      {/* Build marker (bottom-left): confirms which bundle is actually loaded
+          on-device. Shows the active renderer too. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 4,
+          bottom: 2,
+          fontSize: 9,
+          lineHeight: 1.2,
+          color: 'rgba(255,255,255,0.45)',
+          fontFamily: 'monospace',
+          pointerEvents: 'none',
+          zIndex: 50
+        }}
+      >
+        {isPixiRenderer() ? 'pixi' : 'canvas'} · {BUILD_ID}
+      </div>
     </div>
   );
 };
