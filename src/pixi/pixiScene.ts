@@ -52,6 +52,10 @@ const DEPTH_SCALE_ENABLED = true;
 const DEPTH_K = 0.0011;   // scale change per world-Y px from the player plane
 const DEPTH_MIN = 0.58;
 const DEPTH_MAX = 1.6;
+// Enemies get a deliberately more extreme depth falloff than the rest.
+const ENEMY_DEPTH_K = 0.0019;
+const ENEMY_DEPTH_MIN = 0.4;
+const ENEMY_DEPTH_MAX = 2.1;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -185,10 +189,19 @@ export class PixiScene {
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
-  private depthScale(footWorldY: number): number {
+  private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
-    const f = 1 + (footWorldY - this.depthRefY) * DEPTH_K;
-    return f < DEPTH_MIN ? DEPTH_MIN : f > DEPTH_MAX ? DEPTH_MAX : f;
+    const f = 1 + (footWorldY - this.depthRefY) * k;
+    return f < min ? min : f > max ? max : f;
+  }
+
+  private depthScale(footWorldY: number): number {
+    return this.depthScaleWith(footWorldY, DEPTH_K, DEPTH_MIN, DEPTH_MAX);
+  }
+
+  // Enemies use a stronger falloff for a more dramatic near/far size gap.
+  private depthScaleEnemy(footWorldY: number): number {
+    return this.depthScaleWith(footWorldY, ENEMY_DEPTH_K, ENEMY_DEPTH_MIN, ENEMY_DEPTH_MAX);
   }
 
   sync() {
@@ -292,7 +305,7 @@ export class PixiScene {
       if (e.type === 'ghost') continue;
       const { width, alpha } = enemyShadow(e);
       const footY = e.y + e.height;
-      drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScale(footY), alpha);
+      drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScaleEnemy(footY), alpha);
     }
   }
 
@@ -350,7 +363,7 @@ export class PixiScene {
 
     if (tex) {
       view.sprite.texture = tex;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScale(fb.footY);
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
       view.sprite.scale.set(sc);
       view.sprite.visible = true;
     } else {
