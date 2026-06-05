@@ -25,7 +25,9 @@ export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 15, shotgun: 6, 
 // finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
 const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
 export const DEFAULT_MELEE_DROP_PCT = 50;
-export type CounterTriggerResult = { swung: boolean; hit: boolean };
+// `finish` = a melee finisher executed a normal enemy, or finisher-grade
+// damage landed on a stunned boss (drives the kill.mp3 sound).
+export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean };
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 const loadMeleeDropPct = (): number => {
@@ -349,7 +351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const { player, gameTime, enemies } = get();
     // Respect cooldown — no swing, no knockback, no window.
-    if (now < player.counterCooldownEnd) return { swung: false, hit: false };
+    if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false };
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
@@ -362,6 +364,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // The counter window for reflecting bullets opens at the same time, so
     // the one finger-release does melee, knockback, and bullet-parry together.
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
+    let bossFinishHit = false; // finisher-grade damage landed on a stunned boss
     const survivors: Enemy[] = [];
     const critHits: { x: number; y: number; value: number }[] = [];
     const slashAt: { x: number; y: number }[] = [];
@@ -382,6 +385,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isBossType(enemy.type)) {
           // Bosses can't be instakilled. A melee hit on a stunned boss deals
           // 5× melee damage and shakes off the stun (no finisher).
+          bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           critHits.push({ x: ecx, y: enemy.y, value: Math.round(dmg) });
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -506,7 +510,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
     }
-    return { swung: true, hit: slashAt.length > 0 };
+    return { swung: true, hit: slashAt.length > 0, finish: finisherHit || bossFinishHit };
   },
 
   damagePlayer: (amount) => {

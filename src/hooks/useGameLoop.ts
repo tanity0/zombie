@@ -25,7 +25,7 @@ import {
 } from '../utils/enemyUtils';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx } from '../audio/audioManager';
+import { playSfx, playEnemyDeath } from '../audio/audioManager';
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -239,7 +239,9 @@ export const useGameLoop = (onGameOver: () => void) => {
               }
             }));
           } else {
+            const wasVulnerable = !useGameStore.getState().player.invulnerable;
             const playerDied = damagePlayer(proj.damage);
+            if (wasVulnerable) playSfx('player-damage');
             removeProjectile(proj.id);
             spawnBurst(
               player.x + player.width / 2,
@@ -254,6 +256,7 @@ export const useGameLoop = (onGameOver: () => void) => {
         }
         // "Counter!" only when a bullet was actually reflected (once per frame).
         if (reflectedAny) {
+          playSfx('counter');
           useGameStore.getState().spawnCallout(
             player.x + player.width / 2, player.y - 12, 'Counter!', '#38bdf8'
           );
@@ -330,6 +333,10 @@ export const useGameLoop = (onGameOver: () => void) => {
           //   - always an XP gem; its `value` becomes the gem tier.
           //   - rare chicken (HP), magnet, bomb. Elites/giantbats roll richer.
           if (enemyKilled) {
+            // Random zombie grunt on a gun/projectile kill. Melee finishers use
+            // kill.mp3 instead (wired via the counter result); bomb clears use
+            // the bomb sound, so they don't double up here.
+            playEnemyDeath();
             const enemy = enemies.find(e => e.id === enemyId);
             if (enemy) {
               // Death burst — colored by the enemy's identity for a satisfying pop.
@@ -441,6 +448,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           const damageWasApplied = !player.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
+            playSfx('player-damage');
             spawnBurst(
               player.x + player.width / 2,
               player.y + player.height / 2,
@@ -469,16 +477,22 @@ export const useGameLoop = (onGameOver: () => void) => {
             pk.type === 'weapon-drop' ||
             pk.type === 'weapon-crate'
           );
+          const hasHealthPickup = collidedPickups.some(pk => pk.type === 'health');
+          const hasBombPickup = collidedPickups.some(pk => pk.type === 'bomb');
           const hasOtherPickup = collidedPickups.some(pk =>
             pk.type !== 'ammo-handgun' &&
             pk.type !== 'ammo-shotgun' &&
             pk.type !== 'ammo-rifle' &&
             pk.type !== 'weapon-drop' &&
-            pk.type !== 'weapon-crate'
+            pk.type !== 'weapon-crate' &&
+            pk.type !== 'health' &&
+            pk.type !== 'bomb'
           );
           if (hasOtherPickup) playSfx('pickup');
           if (hasAmmoPickup) playSfx('ammo-pickup');
           if (hasWeaponPickup) playSfx('weapon-pickup');
+          if (hasHealthPickup) playSfx('eat');   // meat / health
+          if (hasBombPickup) playSfx('bomb');
 
           pickupCollisions.forEach(pickupId => {
             const pk = pickups.find(p => p.id === pickupId);

@@ -45,7 +45,15 @@ export type SfxKey =
   | 'shotgun-fire'
   | 'rifle-fire'
   | 'level-up'
-  | 'boss-warning';
+  | 'boss-warning'
+  | 'melee-finish'
+  | 'player-damage'
+  | 'bomb'
+  | 'eat'
+  | 'zombie-1'
+  | 'zombie-2'
+  | 'zombie-3'
+  | 'zombie-4';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
@@ -102,6 +110,37 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/reload.mp3`,
     volume: 0.86,
   },
+  // Counter (bullet parry) success — deliberately a touch louder than the rest.
+  counter: {
+    src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
+    volume: 0.98,
+    minIntervalMs: 120,
+  },
+  // Melee finisher on a normal enemy, and finisher damage dealt to a boss.
+  'melee-finish': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/kill.mp3`,
+    volume: 0.92,
+    minIntervalMs: 90,
+  },
+  'player-damage': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/player-damage.mp3`,
+    volume: 0.85,
+    minIntervalMs: 140,
+  },
+  bomb: {
+    src: `${import.meta.env.BASE_URL}audio/sfx/bomb.mp3`,
+    volume: 0.9,
+  },
+  // Meat / health pickup ("eat").
+  eat: {
+    src: `${import.meta.env.BASE_URL}audio/sfx/eat.mp3`,
+    volume: 0.82,
+  },
+  // Random zombie death grunts (1-4), chosen by playEnemyDeath().
+  'zombie-1': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-1.mp3`, volume: 0.7, minIntervalMs: 50 },
+  'zombie-2': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-2.mp3`, volume: 0.7, minIntervalMs: 50 },
+  'zombie-3': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-3.mp3`, volume: 0.7, minIntervalMs: 50 },
+  'zombie-4': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-4.mp3`, volume: 0.7, minIntervalMs: 50 },
 };
 
 let bgm: HTMLAudioElement | null = null;
@@ -300,4 +339,19 @@ export const playSfx = (key: SfxKey) => {
   } catch {
     // Ignore playback failures; gameplay must stay responsive.
   }
+};
+
+// Random zombie death grunt on a kill. A shared throttle stops mass deaths
+// (e.g. a spray of bullets) from stacking into a wall of grunts.
+const ENEMY_DEATH_KEYS: SfxKey[] = ['zombie-1', 'zombie-2', 'zombie-3', 'zombie-4'];
+const ENEMY_DEATH_MIN_INTERVAL_MS = 70;
+let lastEnemyDeathAt = 0;
+
+export const playEnemyDeath = () => {
+  if (muted) return;
+  const now = window.performance?.now() ?? Date.now();
+  if (now - lastEnemyDeathAt < ENEMY_DEATH_MIN_INTERVAL_MS) return;
+  lastEnemyDeathAt = now;
+  const key = ENEMY_DEATH_KEYS[Math.floor(Math.random() * ENEMY_DEATH_KEYS.length)];
+  playSfx(key);
 };
