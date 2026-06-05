@@ -50,7 +50,7 @@
     border-radius: 9999px;
   }
   .upgrade-menu-backdrop {
-    animation: upgrade-backdrop-in 180ms ease-out both;
+    animation: upgrade-backdrop-in 220ms ease-out both;
   }
   .upgrade-menu-panel {
     transform-origin: 50% 54%;

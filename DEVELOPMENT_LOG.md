@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.23.1 - Melee crescent visibility and level-up reveal timing (Codex)
+
+### Summary
+Adjusted the previous visual polish based on playtest feedback.
+- Made the melee/counter crescent wider, brighter, and longer so it reads as a
+  visible slash edge instead of a tiny thin line.
+- Delayed the UpgradeMenu overlay by 450ms after level-up so the game-side
+  level-up flash/rings are visible before the selection panel appears.
+- Slightly lengthened the UpgradeMenu backdrop fade to match the delayed reveal.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (melee/counter crescent)
+- `src/components/Game.tsx`, `src/index.css` (UpgradeMenu reveal timing)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the pause delay feels too long, tune the `450` ms timer in
+  `src/components/Game.tsx`.
+
 ## 2026-06-05 - v0.23.0 - Sparkle, level-up, and enemy light pass (Codex)
 
 ### Summary

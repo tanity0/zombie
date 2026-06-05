@@ -27,6 +27,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
 
   const isPaused = useGameStore(state => state.isPaused);
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
+  const [showUpgradeOverlay, setShowUpgradeOverlay] = useState(false);
   const gameWon = useGameStore(state => state.gameWon);
   const player = useGameStore(state => state.player);
   const setGameBounds = useGameStore(state => state.setGameBounds);
@@ -101,6 +102,15 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPaused, setPaused, showUpgradeMenu]);
+
+  useEffect(() => {
+    if (!showUpgradeMenu) {
+      setShowUpgradeOverlay(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowUpgradeOverlay(true), 450);
+    return () => window.clearTimeout(timer);
+  }, [showUpgradeMenu]);
   
   // Prevent text selection from long-press, but DON'T preventDefault on
   // touchstart at the container level — doing so suppresses iOS Safari's
@@ -137,7 +147,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
         <PauseMenu onResume={() => setPaused(false)} onQuit={onGameOver} />
       )}
       
-      {showUpgradeMenu && (
+      {showUpgradeOverlay && (
         <UpgradeMenu />
       )}
 
