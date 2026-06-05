@@ -36,10 +36,12 @@ const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
-const FAR_BACKDROP_PARALLAX_Y = 0.025;
-const HORIZON_BLEND_HEIGHT = 92;
+const HORIZON_FOREST_HEIGHT_RATIO = 0.27;
+const HORIZON_FOREST_MIN_HEIGHT = 150;
+const HORIZON_FOREST_MAX_HEIGHT = 230;
+const HORIZON_FOREST_OVERLAP_RATIO = 0.54;
+const HORIZON_FOREST_PARALLAX_X = 0.16;
 const FRONT_FOREST_PARALLAX_X = 0.44;
-const FRONT_FOREST_PARALLAX_Y = 0.045;
 const FRONT_FOREST_ALPHA = 0.86;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
@@ -147,7 +149,6 @@ export class PixiScene {
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
-  private horizonBlendGfx = new Graphics(); // soft seam between panorama and ground
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -234,7 +235,7 @@ export class PixiScene {
     // flash + off-screen arrows on top of everything.
     this.L.uiLayer.addChild(
       this.gradeSprite, this.vignette,
-      this.horizonBlendGfx, this.flashGfx, this.arrowGfx,
+      this.flashGfx, this.arrowGfx,
     );
   }
 
@@ -248,6 +249,16 @@ export class PixiScene {
     this.L.farBackdrop.height = farH;
     this.L.farBackdrop.tileScale.set(farScale);
     this.L.farBackdrop.alpha = 1;
+    const horizonH = this.horizonForestHeight();
+    const horizonScale = Math.max(w / this.L.horizonForest.texture.width, horizonH / this.L.horizonForest.texture.height);
+    this.L.horizonForest.width = w;
+    this.L.horizonForest.height = horizonH;
+    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO);
+    this.L.horizonForest.tileScale.set(horizonScale);
+    this.L.horizonForest.tilePosition.set(
+      0,
+      -(this.L.horizonForest.texture.height - horizonH / horizonScale)
+    );
     this.L.groundBase.width = w;
     this.L.groundBase.height = Math.max(1, h - farH);
     this.L.groundBase.position.set(0, farH);
@@ -265,7 +276,6 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
-    this.drawHorizonBlend();
 
     // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
     if (this.tiltShift) {
@@ -280,17 +290,11 @@ export class PixiScene {
     return Math.min(this.screenH * 0.3, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
 
-  private drawHorizonBlend() {
-    const g = this.horizonBlendGfx;
-    g.clear();
-    const farH = this.farBackdropHeight();
-    const y = Math.max(0, farH - HORIZON_BLEND_HEIGHT * 0.45);
-    g.rect(0, y, this.screenW, HORIZON_BLEND_HEIGHT * 0.45)
-      .fill({ color: 0x07101b, alpha: 0.22 });
-    g.rect(0, farH - 10, this.screenW, HORIZON_BLEND_HEIGHT)
-      .fill({ color: 0x07101b, alpha: 0.38 });
-    g.rect(0, farH + 12, this.screenW, HORIZON_BLEND_HEIGHT * 0.85)
-      .fill({ color: 0x0b0f14, alpha: 0.22 });
+  private horizonForestHeight() {
+    return Math.min(
+      HORIZON_FOREST_MAX_HEIGHT,
+      Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
+    );
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -347,17 +351,23 @@ export class PixiScene {
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
     const farH = this.farBackdropHeight();
-    this.L.farBackdrop.position.set(sx * 0.25, sy * 0.12);
+    this.L.farBackdrop.position.set(sx * 0.25, 0);
     this.L.farBackdrop.tilePosition.set(
       -s.camera.x * FAR_BACKDROP_PARALLAX_X,
-      -s.camera.y * FAR_BACKDROP_PARALLAX_Y
+      0
     );
+    const horizonH = this.horizonForestHeight();
+    this.L.horizonForest.position.set(
+      sx * 0.4,
+      farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO
+    );
+    this.L.horizonForest.tilePosition.x = -s.camera.x * HORIZON_FOREST_PARALLAX_X;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
-    this.L.frontForest.position.set(sx * 0.75, sy * 0.28);
+    this.L.frontForest.position.set(sx * 0.75, 0);
     this.L.frontForest.tilePosition.set(
       -s.camera.x * FRONT_FOREST_PARALLAX_X,
-      -s.camera.y * FRONT_FOREST_PARALLAX_Y
+      0
     );
 
     this.syncTrees(s.camera);
@@ -1012,8 +1022,8 @@ export class PixiScene {
     this.playerFx.destroy();
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
-    this.horizonBlendGfx.destroy();
     this.L.farBackdrop.destroy();
+    this.L.horizonForest.destroy();
     this.L.frontForest.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();

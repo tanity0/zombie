@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.13 - Horizon forest seam and horizontal-only parallax (Codex)
+
+### Summary
+Refined the depth-background setup based on visual feedback.
+- Converted the supplied purple-back boundary forest image into
+  `public/backgrounds/horizon-forest-band.png`.
+- Added a `horizonForest` screen-space seam layer between the distant panorama
+  and the ground.
+- Removed the previous dark rectangle horizon blend layer that looked like a
+  black band over the distant church/castle area.
+- Stopped vertical parallax for the distant panorama and nearest foreground
+  forest so endless north/south movement cannot expose texture edges.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon forest layer)
+- `src/pixi/PixiStage.tsx` (horizon forest texture load)
+- `src/pixi/pixiScene.ts` (seam layout, horizontal-only far/front parallax)
+- `public/backgrounds/horizon-forest-band.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `HORIZON_FOREST_*` constants in `src/pixi/pixiScene.ts` if the seam
+  sits too high/low on phone screens.
+- The source is JPEG chroma-keyed, so a true alpha PNG would still be cleaner if
+  purple fringe appears against the panorama.
+
 ## 2026-06-06 - v0.24.12 - Front forest foreground parallax layer (Codex)
 
 ### Summary
