@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.11 - Forest horizon band between panorama and ground (Codex)
+
+### Summary
+Added a forest strip between the distant panorama and the playable ground.
+- Added `public/backgrounds/forest-horizon-source.jpg` from the supplied forest
+  band image.
+- Added a `horizonForest` screen-space TilingSprite between `groundBase` and the
+  world layers, so it masks the hard panorama/ground seam without covering
+  actors.
+- Displays only the lower forest portion of the source image by offsetting
+  `tilePosition.y`, avoiding the baked checkerboard-looking top area.
+- Added a slightly faster parallax than the far panorama so the strip reads as a
+  nearer middle-distance forest layer.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon forest layer)
+- `src/pixi/PixiStage.tsx` (load forest strip source)
+- `src/pixi/pixiScene.ts` (layout/parallax/source crop)
+- `public/backgrounds/forest-horizon-source.jpg`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This uses crop-by-tile-position rather than real transparency because the
+  supplied JPEG has no alpha channel.
+- Tune `HORIZON_FOREST_HEIGHT`, `HORIZON_FOREST_SOURCE_Y`, and
+  `HORIZON_FOREST_PARALLAX_X` after visual review.
+
 ## 2026-06-06 - v0.24.10 - Opaque panorama and horizon blend (Codex)
 
 ### Summary

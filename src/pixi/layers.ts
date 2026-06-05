@@ -8,6 +8,7 @@
 //
 //   farBackdrop  – screen-space distant panorama (slow parallax, top band)
 //   groundBase   – screen-space tiling forest floor (below the horizon band)
+//   horizonForest – screen-space forest strip masking the panorama/ground seam
 //   world (camera-offset)
 //     ├─ backgroundLayer  – trees and other far props
 //     ├─ groundLayer      – foot shadows, ground trails, pickups
@@ -23,6 +24,7 @@ export interface SceneLayers {
   farBackdrop: TilingSprite;
   worldGroup: Container;
   groundBase: TilingSprite;
+  horizonForest: TilingSprite;
   world: Container;
   backgroundLayer: Container;
   groundLayer: Container;
@@ -33,9 +35,15 @@ export interface SceneLayers {
   uiLayer: Container;
 }
 
-export const buildLayers = (stage: Container, forestTexture: Texture, farTexture: Texture): SceneLayers => {
+export const buildLayers = (
+  stage: Container,
+  forestTexture: Texture,
+  farTexture: Texture,
+  horizonForestTexture: Texture
+): SceneLayers => {
   const farBackdrop = new TilingSprite({ texture: farTexture, width: 1, height: 1 });
   const groundBase = new TilingSprite({ texture: forestTexture, width: 1, height: 1 });
+  const horizonForest = new TilingSprite({ texture: horizonForestTexture, width: 1, height: 1 });
 
   const world = new Container();
 
@@ -64,7 +72,7 @@ export const buildLayers = (stage: Container, forestTexture: Texture, farTexture
   // overlays (grade / vignette / flash) live in uiLayer, OUTSIDE this group, so
   // they stay sharp.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, world);
+  worldGroup.addChild(groundBase, horizonForest, world);
 
   const uiLayer = new Container();
 
@@ -74,6 +82,7 @@ export const buildLayers = (stage: Container, forestTexture: Texture, farTexture
     farBackdrop,
     worldGroup,
     groundBase,
+    horizonForest,
     world,
     backgroundLayer,
     groundLayer,
