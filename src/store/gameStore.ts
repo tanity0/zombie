@@ -3,11 +3,12 @@ import { generateUpgradeOptions } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  VisualEffect, AmmoType
+  VisualEffect, AmmoType, Direction
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
+import { resolveTreeCollision } from '../world/trees';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -293,11 +294,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       const alpha = inertiaAlpha(deltaTime, PLAYER_INERTIA_TAU);
       const vx = player.vx + (tx * moveSpeed - player.vx) * alpha;
       const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
-      const newX = player.x + vx * deltaTime;
-      const newY = player.y + vy * deltaTime;
+
+      // Block the player's hitbox out of tree trunks (rectangle AABB only).
+      const resolved = resolveTreeCollision({
+        x: player.x + vx * deltaTime,
+        y: player.y + vy * deltaTime,
+        width: player.width,
+        height: player.height,
+      });
+      const newX = resolved.x;
+      const newY = resolved.y;
 
       const speedNow = Math.hypot(vx, vy);
-      let direction: string = 'idle';
+      let direction: Direction = 'idle';
       let lastDirection = player.lastDirection;
       if (speedNow > 1) {
         lastDirection = { x: vx / speedNow, y: vy / speedNow };
@@ -314,7 +323,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           y: newY,
           vx,
           vy,
-          direction: direction as any,
+          direction,
           isMoving,
           lastDirection
         }
@@ -739,11 +748,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
-          return {
-            ...enemy,
+          const kb = resolveTreeCollision({
             x: enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
-            y: enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime
-          };
+            y: enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
+            width: enemy.width,
+            height: enemy.height,
+          });
+          return { ...enemy, x: kb.x, y: kb.y };
         }
 
         // Stun (from a crit) freezes the enemy in place — it's a sitting duck
@@ -768,13 +779,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
-        return {
-          ...enemy,
-          vx,
-          vy,
+        const moved = resolveTreeCollision({
           x: enemy.x + vx * deltaTime,
-          y: enemy.y + vy * deltaTime
-        };
+          y: enemy.y + vy * deltaTime,
+          width: enemy.width,
+          height: enemy.height,
+        });
+
+        return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
 
       return { enemies: updatedEnemies };

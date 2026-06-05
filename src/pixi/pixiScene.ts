@@ -24,6 +24,7 @@ import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
 import { enemyFootBox, enemyShadow, playerFootBox } from './renderSpec';
+import { treesInRegion, TREE_CELL } from '../world/trees';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -242,49 +243,38 @@ export class PixiScene {
     this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (0.92 + 0.08 * Math.sin(now / 600));
   }
 
-  // ---- background trees (always behind actors, like the Canvas2D path) ------
+  // ---- trees: Y-sorted with the actors so you stand in front / behind -------
 
   private syncTrees(camera: { x: number; y: number }) {
-    const tcell = 220;
-    const hash2 = (x: number, y: number) => {
-      const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-      return v - Math.floor(v);
-    };
-    const startX = Math.floor((camera.x - tcell) / tcell) * tcell;
-    const startY = Math.floor((camera.y - tcell) / tcell) * tcell;
-    const endX = startX + this.screenW + tcell * 2;
-    const endY = startY + this.screenH + tcell * 2;
+    const tex = getTexture('tree');
+    const margin = TREE_CELL;
+    const trees = treesInRegion(
+      camera.x - margin, camera.y - margin,
+      camera.x + this.screenW + margin, camera.y + this.screenH + margin,
+    );
 
     const seen = new Set<string>();
-    const tex = getTexture('tree');
-    for (let wx = startX; wx <= endX; wx += tcell) {
-      for (let wy = startY; wy <= endY; wy += tcell) {
-        if (hash2(wx + 13, wy - 7) >= 0.35) continue;
-        const key = `${wx}_${wy}`;
-        seen.add(key);
-        let entry = this.trees.get(key);
-        if (!entry) {
-          const sprite = new Sprite(tex ?? undefined);
-          sprite.anchor.set(0.5, 1);
-          this.L.backgroundLayer.addChild(sprite);
-          const scale = 0.85 + hash2(wx + 5, wy + 23) * 0.4;
-          const ox = (hash2(wx, wy + 1) - 0.5) * tcell;
-          const oy = (hash2(wx + 1, wy) - 0.5) * tcell;
-          const boxW = 48 * scale;
-          const boxH = 64 * scale;
-          // Match the Canvas2D box: drawn at (x-24s, y-32s, 48s, 64s), so the
-          // foot (bottom of that box) sits 32*scale below the cell point.
-          sprite.x = wx + tcell / 2 + ox;
-          sprite.y = wy + tcell / 2 + oy + 32 * scale;
-          const baseScale = tex ? containScale(boxW, boxH, tex.width, tex.height) : 1;
-          entry = { sprite, baseScale, footY: sprite.y };
-          this.trees.set(key, entry);
-        }
-        // Depth scale every frame: a tree's apparent size shifts as the player
-        // (the focal plane) walks past it. Anchored at the foot, so it stays
-        // rooted to the ground.
-        if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+    for (const t of trees) {
+      seen.add(t.key);
+      let entry = this.trees.get(t.key);
+      if (!entry) {
+        const sprite = new Sprite(tex ?? undefined);
+        sprite.anchor.set(0.5, 1);
+        sprite.x = t.footX;
+        sprite.y = t.footY;
+        // Y-sort together with the player & enemies by foot Y, so the hero can
+        // pass in front of (south) or behind (north) each tree.
+        sprite.zIndex = t.footY;
+        this.L.actorLayer.addChild(sprite);
+        const boxW = 48 * t.scale;
+        const boxH = 64 * t.scale;
+        const baseScale = tex ? containScale(boxW, boxH, tex.width, tex.height) : 1;
+        entry = { sprite, baseScale, footY: t.footY };
+        this.trees.set(t.key, entry);
       }
+      // Depth scale every frame: a tree's apparent size shifts as the player
+      // (the focal plane) walks past it. Anchored at the foot, stays rooted.
+      if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
