@@ -10,6 +10,43 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.22.0 - Octopath-style combat juice, pass 1 (Claude Code)
+
+### Summary
+First pass at "Octopath Traveler-level" flashy effects (visual only; no gameplay
+change per CLAUDE.md). Two parts:
+- Pixi effect RENDERING upgraded to additive + glowing cores so every existing
+  effect pops and is caught by the bloom filter:
+  - `particle` -> additive spark (soft halo + colored body + hot white core)
+  - `ring` -> additive shockwave (soft band + crisp edge + hot inner line)
+  - `glow` -> brighter additive disc + core
+  - `slash` -> additive streak with a white-hot core line
+- Layered effect COMBOS at the headline moments:
+  - Crit / headshot: gold shockwave ring + gold sparks + glow.
+  - Melee finisher: white shockwave + gold ring + 24 sparks + glow + stronger
+    full-screen flash (0.18 -> 0.28).
+  - Counter (reflect): cyan shockwave + sparks + glow + brief flash + callout.
+  - Player damage: red full-screen flash (on top of the existing shake/burst).
+  - Gunfire: warm muzzle flash glow at the gun, pointed along the shot.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (drawEffectGfx additive/glow rendering)
+- `src/hooks/useGameLoop.ts` (crit / counter / player-damage / muzzle combos)
+- `src/store/gameStore.ts` (melee finisher combo + flash boost)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+- Needs on-device pass (brightness/bloom interaction, perf with muzzle flashes).
+
+### Handoff notes
+- All effect intensities are literals at the spawn sites / drawEffectGfx - easy
+  to dial up or down after seeing it on-device.
+- NEXT (not done yet): item-pickup sparkle pass, LEVEL-UP production (best done
+  as a UpgradeMenu entrance animation since level-up pauses immediately), and
+  deeper environment/lighting (enemy emissive, dynamic light on hits).
+
 ## 2026-06-05 - v0.21.1 - Add Drive SFX assets and finalize event sounds (Codex)
 
 ### Summary

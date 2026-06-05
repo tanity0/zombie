@@ -713,39 +713,54 @@ export class PixiScene {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     switch (e.kind) {
       case 'particle': {
+        // Glowing additive spark: soft halo + colored body + hot white core.
+        g.blendMode = 'add';
         g.alpha = Math.max(0, 1 - t);
-        g.circle(e.x, e.y, e.size).fill({ color: e.color });
+        const r = e.size;
+        g.circle(e.x, e.y, r * 2.6).fill({ color: e.color, alpha: 0.22 });
+        g.circle(e.x, e.y, r).fill({ color: e.color });
+        g.circle(e.x, e.y, r * 0.5).fill({ color: 0xffffff, alpha: 0.75 });
         break;
       }
       case 'ring': {
+        // Additive shockwave: soft wide band + crisp edge + hot inner line.
+        g.blendMode = 'add';
         g.alpha = 1 - t;
         const radius = e.startRadius + (e.endRadius - e.startRadius) * t;
+        g.circle(e.x, e.y, radius).stroke({ width: e.width + 4, color: e.color, alpha: 0.3 });
         g.circle(e.x, e.y, radius).stroke({ width: e.width, color: e.color });
+        g.circle(e.x, e.y, radius).stroke({ width: Math.max(1, e.width * 0.4), color: 0xffffff, alpha: 0.5 * (1 - t) });
         break;
       }
       case 'glow': {
-        // Additive soft disc + rim (radial-gradient approximation).
+        // Additive soft disc with a brighter core (radial-gradient approximation).
         g.blendMode = 'add';
         g.alpha = 1 - t;
-        g.circle(e.x, e.y, e.radius).fill({ color: `${e.color}1)`, alpha: 0.35 });
+        g.circle(e.x, e.y, e.radius).fill({ color: `${e.color}1)`, alpha: 0.4 });
+        g.circle(e.x, e.y, e.radius * 0.55).fill({ color: `${e.color}1)`, alpha: 0.5 });
         g.circle(e.x, e.y, e.radius).stroke({ width: 2, color: `${e.color}1)` });
         break;
       }
       case 'slash': {
+        // Additive streak: soft wide underlay + hot white core line.
+        g.blendMode = 'add';
         g.alpha = 1 - t;
         const half = e.length / 2;
-        const grow = 1 + t * 0.3;
+        const grow = 1 + t * 0.4;
         const dx = Math.cos(e.angle) * half * grow;
         const dy = Math.sin(e.angle) * half * grow;
         g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 4 * (1 - t) + 1, color: e.color, cap: 'round' });
+          .stroke({ width: 8 * (1 - t) + 2, color: e.color, alpha: 0.4, cap: 'round' });
+        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
+          .stroke({ width: 3 * (1 - t) + 1, color: 0xffffff, alpha: 0.85, cap: 'round' });
         break;
       }
       case 'trail': {
+        g.blendMode = 'add';
         g.alpha = 1 - t;
         const cx = e.fromX + (e.toX - e.fromX) * t;
         const cy = e.fromY + (e.toY - e.fromY) * t;
-        g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2, color: e.color });
+        g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2.5, color: e.color });
         break;
       }
     }

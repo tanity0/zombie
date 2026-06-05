@@ -499,8 +499,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
       }
       if (finisher) {
-        get().spawnBurst(ex, ey, '#fcd34d', 16);
-        get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.9)', 4, 360);
+        // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
+        get().spawnBurst(ex, ey, '#fde047', 24);
+        get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+        get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
+        get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', 320);
         // "Kill!" callout over the executed enemy's head.
         get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
       } else {
@@ -508,7 +511,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     if (killed.some(k => k.finisher)) {
-      get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
+      get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
     return { swung: true, hit: slashAt.length > 0, finish: finisherHit || bossFinishHit };
   },

@@ -171,6 +171,13 @@ export const useGameLoop = (onGameOver: () => void) => {
             if (activeGun.category === 'handgun') playSfx('handgun-fire');
             if (activeGun.category === 'shotgun') playSfx('shotgun-fire');
             if (activeGun.category === 'rifle') playSfx('rifle-fire');
+            // Muzzle flash at the gun, pointed along the shot.
+            const md = newProjectiles[0].direction;
+            const mpx = postReloadPlayer.x + postReloadPlayer.width / 2 + md.x * 18;
+            const mpy = postReloadPlayer.y + postReloadPlayer.height / 2 + md.y * 18;
+            useGameStore.getState().spawnGlow(
+              mpx, mpy, activeGun.category === 'shotgun' ? 22 : 15, 'rgba(255,238,170,', 90
+            );
           }
           newProjectiles.forEach(proj => useGameStore.getState().addProjectile(proj));
         }
@@ -241,7 +248,10 @@ export const useGameLoop = (onGameOver: () => void) => {
           } else {
             const wasVulnerable = !useGameStore.getState().player.invulnerable;
             const playerDied = damagePlayer(proj.damage);
-            if (wasVulnerable) playSfx('player-damage');
+            if (wasVulnerable) {
+              playSfx('player-damage');
+              spawnFlash('rgba(239,68,68,0.22)', 200);
+            }
             removeProjectile(proj.id);
             spawnBurst(
               player.x + player.width / 2,
@@ -257,9 +267,13 @@ export const useGameLoop = (onGameOver: () => void) => {
         // "Counter!" only when a bullet was actually reflected (once per frame).
         if (reflectedAny) {
           playSfx('counter');
-          useGameStore.getState().spawnCallout(
-            player.x + player.width / 2, player.y - 12, 'Counter!', '#38bdf8'
-          );
+          const pcx = player.x + player.width / 2;
+          const pcy = player.y + player.height / 2;
+          spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, 320);
+          spawnBurst(pcx, pcy, '#38bdf8', 14);
+          spawnFlash('rgba(56,189,248,0.12)', 150);
+          useGameStore.getState().spawnGlow(pcx, pcy, 54, 'rgba(56,189,248,', 280);
+          useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
         }
 
         // Check for collisions between projectiles and enemies
@@ -278,6 +292,15 @@ export const useGameLoop = (onGameOver: () => void) => {
           const dmg = damage * critMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(projectile?.crit ? 'headshot' : 'shot-damage');
+
+          // Crit / headshot juice: gold shockwave + sparks + glow.
+          if (projectile?.crit && enemyForFx) {
+            const cex = enemyForFx.x + enemyForFx.width / 2;
+            const cey = enemyForFx.y + enemyForFx.height / 2;
+            spawnRing(cex, cey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+            spawnBurst(cex, cey, '#fde047', 10);
+            useGameStore.getState().spawnGlow(cex, cey, 34, 'rgba(253,224,71,', 240);
+          }
 
           // Floating damage number at the enemy's body. Reflected bolts and
           // crits both render in the gold "big hit" color.
@@ -449,6 +472,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
             playSfx('player-damage');
+            spawnFlash('rgba(239,68,68,0.22)', 200);
             spawnBurst(
               player.x + player.width / 2,
               player.y + player.height / 2,
