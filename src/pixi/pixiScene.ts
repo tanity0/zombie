@@ -799,8 +799,24 @@ export class PixiScene {
     const cy = player.y + player.height / 2;
     const r = MELEE_RADIUS;
     if (now <= player.counterWindowEnd) {
-      g.circle(cx, cy, r).fill({ color: 0xfbbf24, alpha: 0.1 });
-      g.circle(cx, cy, r).stroke({ width: 2, color: 0xfbbf24, alpha: 0.5 });
+      const dir = player.lastDirection ?? (
+        player.direction === 'left' ? { x: -1, y: 0 } :
+        player.direction === 'right' ? { x: 1, y: 0 } :
+        player.direction === 'up' ? { x: 0, y: -1 } :
+        { x: 0, y: 1 }
+      );
+      const angle = Math.atan2(dir.y, dir.x);
+      const start = angle - 0.82;
+      const end = angle + 0.82;
+      const startX = cx + Math.cos(start) * r;
+      const startY = cy + Math.sin(start) * r;
+
+      g.moveTo(startX, startY)
+        .arc(cx, cy, r, start, end)
+        .stroke({ width: 5, color: 0xfbbf24, alpha: 0.12 });
+      g.moveTo(startX, startY)
+        .arc(cx, cy, r, start, end)
+        .stroke({ width: 1.5, color: 0xfef3c7, alpha: 0.62 });
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }

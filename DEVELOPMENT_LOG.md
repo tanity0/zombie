@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.22.2 - Crescent melee counter indicator (Codex)
+
+### Summary
+Changed the active melee/counter indicator from a filled yellow circle into a
+thin crescent-like rim.
+- Removed the inner fill from the active counter radius.
+- Draws only a short forward-facing arc based on the player's last movement
+  direction.
+- Uses a faint wide halo stroke plus a thin bright stroke so the edge glows
+  without lighting the inside of the circle.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (Pixi player counter indicator)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The cooldown ring is still the old faint gray full circle. If desired, it can
+  be converted to the same crescent style in a later pass.
+
 ## 2026-06-05 - v0.22.1 - Remove player-covering counter glow (Codex)
 
 ### Summary
