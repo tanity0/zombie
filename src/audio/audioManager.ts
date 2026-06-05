@@ -3,10 +3,8 @@
 
 const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
-const TARGET_BGM_VOLUME = 0.42;
+const TARGET_BGM_VOLUME = 0.3;
 const TARGET_SFX_VOLUME = 0.72;
-const FADE_STEP_MS = 40;
-const FADE_STEP = 0.05;
 
 const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
@@ -58,7 +56,7 @@ export type SfxKey =
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
     src: `${import.meta.env.BASE_URL}audio/sfx/pickup.wav`,
-    volume: 0.62,
+    volume: 0.74,
   },
   'ammo-pickup': {
     src: `${import.meta.env.BASE_URL}audio/sfx/ammo-pickup.wav`,
@@ -85,17 +83,17 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   'handgun-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/handgun-fire.mp3`,
-    volume: 0.46,
+    volume: 0.52,
     minIntervalMs: 24,
   },
   'shotgun-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.mp3`,
-    volume: 0.58,
+    volume: 0.66,
     minIntervalMs: 32,
   },
   'rifle-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/rifle-fire.mp3`,
-    volume: 0.54,
+    volume: 0.62,
     minIntervalMs: 28,
   },
   melee: {
@@ -113,7 +111,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // Counter (bullet parry) success — deliberately a touch louder than the rest.
   counter: {
     src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
-    volume: 0.98,
+    volume: 0.88,
     minIntervalMs: 120,
   },
   // Melee finisher on a normal enemy, and finisher damage dealt to a boss.
@@ -144,9 +142,10 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
 };
 
 let bgm: HTMLAudioElement | null = null;
+let bgmGain: GainNode | null = null; // BGM routed through WebAudio so its volume
+let bgmRouted = false;               // is controllable on iOS (element.volume isn't)
 let bgmActive = false;
 let muted = false;
-let fadeTimer: number | null = null;
 let sfxContext: AudioContext | null = null;
 
 const sfxBuffers = new Map<SfxKey, AudioBuffer>();
@@ -187,7 +186,44 @@ const ensureBgm = () => {
   bgm.loop = true;
   bgm.preload = 'auto';
   bgm.playsInline = true;
-  bgm.volume = 0;
+  bgm.volume = 1; // real level is set by the WebAudio gain (iOS-safe)
+};
+
+// Route the BGM element through the SFX AudioContext + a gain node, so we can
+// actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
+// and balance it against the SFX. Falls back to element.volume if unavailable.
+const ensureBgmRouting = () => {
+  if (bgmRouted) return;
+  const ctx = ensureSfxContext();
+  ensureBgm();
+  if (!ctx || !bgm) return;
+  try {
+    const source = ctx.createMediaElementSource(bgm);
+    bgmGain = ctx.createGain();
+    bgmGain.gain.value = TARGET_BGM_VOLUME;
+    source.connect(bgmGain);
+    bgmGain.connect(ctx.destination);
+    bgmRouted = true;
+  } catch {
+    // Routing unsupported — fall back to element volume (works on desktop).
+    bgmRouted = false;
+  }
+};
+
+// Drive the BGM to match (bgmActive && !muted). Play/pause does the real on/off
+// (the only thing that works on iOS); the gain sets the level.
+const applyBgm = () => {
+  ensureBgm();
+  if (!bgm) return;
+  if (bgmActive && !muted) {
+    resumeSfxContext();
+    ensureBgmRouting();
+    if (bgmGain) bgmGain.gain.value = TARGET_BGM_VOLUME;
+    else bgm.volume = TARGET_BGM_VOLUME;
+    void playBgm();
+  } else {
+    bgm.pause();
+  }
 };
 
 const ensureSfxContext = () => {
@@ -232,31 +268,6 @@ const warmSfxBuffers = () => {
     .forEach(loadSfxBuffer);
 };
 
-const stopFade = () => {
-  if (fadeTimer != null) window.clearInterval(fadeTimer);
-  fadeTimer = null;
-};
-
-const fadeBgmTo = (target: number) => {
-  ensureBgm();
-  if (!bgm) return;
-  stopFade();
-  fadeTimer = window.setInterval(() => {
-    if (!bgm) return;
-    const diff = target - bgm.volume;
-    if (Math.abs(diff) <= FADE_STEP) {
-      bgm.volume = target;
-      stopFade();
-      if (target === 0 && !bgmActive) {
-        bgm.pause();
-        bgm.currentTime = 0;
-      }
-      return;
-    }
-    bgm.volume = Math.max(0, Math.min(1, bgm.volume + Math.sign(diff) * FADE_STEP));
-  }, FADE_STEP_MS);
-};
-
 const playBgm = async () => {
   ensureBgm();
   if (!bgm) return;
@@ -273,28 +284,14 @@ export const isAudioMuted = () => muted;
 export const setAudioMuted = (nextMuted: boolean) => {
   muted = nextMuted;
   persistMuted();
-
-  if (bgmActive && !muted) {
-    warmSfxBuffers();
-    void playBgm();
-    fadeBgmTo(TARGET_BGM_VOLUME);
-  } else {
-    fadeBgmTo(0);
-  }
+  if (!muted) warmSfxBuffers();
+  applyBgm();
 };
 
 export const setBgmActive = async (nextActive: boolean) => {
   bgmActive = nextActive;
-  ensureBgm();
-  if (!bgm) return;
-
-  if (nextActive && !muted) {
-    warmSfxBuffers();
-    await playBgm();
-    fadeBgmTo(TARGET_BGM_VOLUME);
-  } else {
-    fadeBgmTo(0);
-  }
+  if (bgmActive && !muted) warmSfxBuffers();
+  applyBgm();
 };
 
 export const playSfx = (key: SfxKey) => {

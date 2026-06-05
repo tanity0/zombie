@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.4 - Audio fixes: melee-kill grunt, iOS BGM toggle/volume, balance (Claude Code)
+
+### Summary
+1. Enemies killed by slash/melee now grunt: `triggerCounter` returns a `killed`
+   count on `CounterTriggerResult`; both input handlers call `playEnemyDeath()`
+   when `killed > 0` (was only on gun/projectile kills).
+2. BGM toggle/volume on iOS fixed: HTMLAudioElement.volume is ignored on iOS, so
+   the old volume-fade couldn't mute or balance BGM there. BGM is now routed
+   through the SFX WebAudio context via a GainNode (createMediaElementSource ->
+   gain -> destination), with on/off done by play()/pause(). Removed the fade
+   timer; added `ensureBgmRouting()` + `applyBgm()`; `setAudioMuted`/`setBgmActive`
+   just call `applyBgm()`. Falls back to element.volume if routing is unsupported.
+3. Volume balance: BGM 0.42 -> 0.30; quiet SFX nudged up (pickup .62->.74,
+   handgun .46->.52, shotgun .58->.66, rifle .54->.62); over-loud counter
+   .98->.88.
+
+### Code touched
+- `src/audio/audioManager.ts` (BGM WebAudio routing, volume balance)
+- `src/store/gameStore.ts` (`CounterTriggerResult.killed`)
+- `src/components/VirtualJoystick.tsx`, `src/hooks/useGameControls.ts` (grunt on melee kill)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK / `npm run build` OK. Pushed -> Pages auto-deploy.
+- iOS BGM routing uses createMediaElementSource; needs an on-device check that
+  BGM both plays and toggles after the WebAudio routing (fallback included).
+
+### Handoff notes
+- Per-file inherent loudness still varies; the volume numbers in `SFX_SOURCES`
+  are easy to retune. If a specific SE is still extreme, adjust its `volume`.
+- Still DEFERRED (need user input): melee-kill ammo drop rate, Marksman magnum.
+
 ## 2026-06-05 - v0.24.3 - Stylish melee circle + shotgun/handgun ammo tweaks (Claude Code)
 
 ### Summary

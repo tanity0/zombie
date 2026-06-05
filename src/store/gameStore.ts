@@ -27,7 +27,8 @@ const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
 export const DEFAULT_MELEE_DROP_PCT = 50;
 // `finish` = a melee finisher executed a normal enemy, or finisher-grade
 // damage landed on a stunned boss (drives the kill.mp3 sound).
-export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean };
+// `killed` = how many enemies the swing killed (drives the zombie death grunt).
+export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number };
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 const loadMeleeDropPct = (): number => {
@@ -351,7 +352,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const { player, gameTime, enemies } = get();
     // Respect cooldown — no swing, no knockback, no window.
-    if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false };
+    if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
@@ -513,7 +514,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
-    return { swung: true, hit: slashAt.length > 0, finish: finisherHit || bossFinishHit };
+    return { swung: true, hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
 
   damagePlayer: (amount) => {

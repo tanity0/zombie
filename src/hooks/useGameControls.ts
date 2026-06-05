@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { playSfx } from '../audio/audioManager';
+import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
 
 // Keyboard fallback — the game is touch-first now, but we keep WASD/arrow
@@ -42,6 +42,7 @@ export const useGameControls = () => {
           if (counter.swung) playSfx('melee');
           if (counter.finish) playSfx('melee-finish');
           else if (counter.hit) playSfx('slash-damage');
+          if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
         }
       }
 

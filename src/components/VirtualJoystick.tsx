@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { playSfx } from '../audio/audioManager';
+import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
 
 // Floating thumb-stick. The user can place a finger anywhere inside the
@@ -30,6 +30,7 @@ const VirtualJoystick: React.FC = () => {
       if (counter.swung) playSfx('melee');
       if (counter.finish) playSfx('melee-finish');
       else if (counter.hit) playSfx('slash-damage');
+      if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
     }
     pointerIdRef.current = null;
     originRef.current = null;
