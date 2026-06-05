@@ -134,8 +134,10 @@ export const useGameLoop = (onGameOver: () => void) => {
         fpsCounterRef.current.lastCheck = timestamp;
       }
       
-      // Skip updates if game is paused
-      if (!isPaused) {
+      // Skip updates if game is paused. Read fresh from the store (not the
+      // captured closure) so a level-up / pause takes effect immediately even
+      // before React re-runs this effect with the new value.
+      if (!useGameStore.getState().isPaused) {
         // Update game time
         const newGameTime = gameTime + deltaTime * 1000;
         setGameTime(newGameTime);
@@ -414,10 +416,12 @@ export const useGameLoop = (onGameOver: () => void) => {
                   10, 80, 'rgba(96,165,250,0.7)', 3, 500
                 );
               }
-              // Ammo resupply: ordinary gun kills no longer drop ammo at all.
-              // Only a COUNTER kill — an enemy slain by a reflected bolt — rolls
-              // a drop (30%), for the player's active gun family.
-              if (projectile?.reflected && Math.random() < 0.3) {
+              // Ammo resupply: every kill rolls an ammo drop at the start-screen
+              // drop rate, so the slider governs the whole ammo economy. (Before,
+              // only melee kills dropped — but the gun lands most killing blows,
+              // so the rate felt far lower than set.) Active gun's family.
+              const gunKillDropRate = useGameStore.getState().meleeAmmoDropPercent / 100;
+              if (Math.random() < gunKillDropRate) {
                 const equippedAmmo = getActiveGun(player)?.ammoType;
                 const owned = getGuns(player)
                   .map(w => w.ammoType)

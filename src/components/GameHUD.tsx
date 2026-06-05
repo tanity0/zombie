@@ -48,7 +48,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
       {weaponGetVisible && (
         <div
           className="absolute left-1/2 -translate-x-1/2"
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 64px)' }}
+          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)' }}
         >
           <div className="glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 ring-sky-400/70 shadow-lg animate-pulse">
             <span className="text-xl">🔫</span>

@@ -177,7 +177,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             <div className="w-full mb-3 flex items-center justify-between gap-3 rounded-2xl bg-white/5 border border-white/10 px-3 py-2.5">
               <div className="text-left">
                 <div className="text-[13px] font-medium text-white">弾ドロップ率</div>
-                <div className="text-[11px] text-white/50">近接キル時。フィニッシュは×1.5。</div>
+                <div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5。</div>
               </div>
               <div className="flex items-center gap-1">
                 <input

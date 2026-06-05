@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.5 - Pause-on-levelup, ammo drop on all kills, weapon popup position (Claude Code)
+
+### Summary
+1. Level-up (and any pause) now stops the sim reliably: the game loop read
+   `isPaused` from the captured closure, which could stay stale during the async
+   effect re-run window, so the sim kept running for a few frames. Now reads
+   `useGameStore.getState().isPaused` fresh inside the loop.
+2. Ammo drop rate now applies to ALL kills, not just melee. The melee-only rate
+   felt like ~20% because the auto-gun lands most killing blows (it even avoids
+   stunned enemies, but still steals normal kills). Gun kills now roll an ammo
+   drop at the start-screen rate (melee path already did; finisher still x1.5).
+   Start-screen label updated: "撃破時。近接フィニッシュは×1.5。". Revertible to
+   melee-only if undesired.
+3. New-weapon popup moved down (top +64px -> +118px) so it no longer overlaps the
+   HP/EXP status card.
+
+### Code touched
+- `src/hooks/useGameLoop.ts` (fresh isPaused read; ammo drop on gun kills)
+- `src/components/GameHUD.tsx` (weapon popup position)
+- `src/components/MainMenu.tsx` (drop-rate label)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK / `npm run build` OK. Pushed -> Pages auto-deploy.
+
+### Handoff notes
+- At 100% drop, every kill now drops an ammo box of the active gun's family —
+  that's a lot of pickups; the slider is meant to be dialed down for normal play.
+- Still deferred: Marksman magnum-vs-sniper direction.
+
 ## 2026-06-05 - v0.24.4 - Audio fixes: melee-kill grunt, iOS BGM toggle/volume, balance (Claude Code)
 
 ### Summary
