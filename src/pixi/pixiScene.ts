@@ -33,6 +33,10 @@ const PLAYER_LIGHT_TINT = 0xffca7a; // warm hero halo
 const PLAYER_LIGHT_ALPHA = 0.32;
 const PLAYER_LIGHT_RADIUS = 200;    // halo radius in world px
 const VIGNETTE_ALPHA = 0.85;
+const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
+const FAR_BACKDROP_MIN_HEIGHT = 150;
+const FAR_BACKDROP_PARALLAX_X = 0.09;
+const FAR_BACKDROP_PARALLAX_Y = 0.025;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -232,8 +236,16 @@ export class PixiScene {
   resize(w: number, h: number) {
     this.screenW = w;
     this.screenH = h;
+    const farH = this.farBackdropHeight();
+    const farScale = Math.max(w / this.L.farBackdrop.texture.width, farH / this.L.farBackdrop.texture.height);
+    this.L.farBackdrop.position.set(0, 0);
+    this.L.farBackdrop.width = w;
+    this.L.farBackdrop.height = farH;
+    this.L.farBackdrop.tileScale.set(farScale);
+    this.L.farBackdrop.alpha = 0.92;
     this.L.groundBase.width = w;
-    this.L.groundBase.height = h;
+    this.L.groundBase.height = Math.max(1, h - farH);
+    this.L.groundBase.position.set(0, farH);
     // Full-screen atmosphere overlays.
     this.gradeSprite.width = w;
     this.gradeSprite.height = h;
@@ -247,6 +259,10 @@ export class PixiScene {
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: w, y: bandY };
     }
+  }
+
+  private farBackdropHeight() {
+    return Math.min(this.screenH * 0.3, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -302,8 +318,14 @@ export class PixiScene {
       sy = (Math.random() * 2 - 1) * mag;
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
-    this.L.groundBase.position.set(sx, sy);
-    (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y);
+    const farH = this.farBackdropHeight();
+    this.L.farBackdrop.position.set(sx * 0.25, sy * 0.12);
+    this.L.farBackdrop.tilePosition.set(
+      -s.camera.x * FAR_BACKDROP_PARALLAX_X,
+      -s.camera.y * FAR_BACKDROP_PARALLAX_Y
+    );
+    this.L.groundBase.position.set(sx, farH + sy);
+    (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
 
     this.syncTrees(s.camera);
     this.syncShadows(s.player, s.enemies);
@@ -957,6 +979,7 @@ export class PixiScene {
     this.playerFx.destroy();
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
+    this.L.farBackdrop.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();
     this.vignette.destroy();

@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.9 - Distant panorama parallax layer (Codex)
+
+### Summary
+Added the first background-depth pass using the generated distant panorama.
+- Added `public/backgrounds/distant-night-panorama.jpg`.
+- Added a new `farBackdrop` screen-space TilingSprite behind the Pixi world.
+- The panorama occupies the upper horizon band and scrolls slowly with camera
+  movement for parallax depth.
+- Shifted the forest-floor `groundBase` down so the top band remains distant
+  scenery instead of tiled ground.
+
+### Code touched
+- `src/pixi/layers.ts` (far backdrop layer)
+- `src/pixi/PixiStage.tsx` (load distant panorama texture)
+- `src/pixi/pixiScene.ts` (resize/parallax layout)
+- `public/backgrounds/distant-night-panorama.jpg`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `FAR_BACKDROP_HEIGHT_RATIO`, `FAR_BACKDROP_MIN_HEIGHT`, and parallax
+  constants in `src/pixi/pixiScene.ts` after on-device visual review.
+- Next depth pass should add a soft horizon mist/seam treatment and lightweight
+  ground-depth shading below the panorama.
+
 ## 2026-06-06 - v0.24.8 - Melee ammo drop slider fallback fix (Codex)
 
 ### Summary

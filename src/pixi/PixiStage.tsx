@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Application } from 'pixi.js';
+import { Application, Assets } from 'pixi.js';
 import { buildLayers } from './layers';
 import { getForestTexture } from './forestTile';
 import { ensureTextures } from './pixiTextures';
@@ -36,6 +36,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         autoDensity: true,
       });
       await ensureTextures();
+      const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
       if (cancelled) {
         app.destroy(true);
         return;
@@ -50,7 +51,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         host.appendChild(app.canvas);
       }
 
-      const layers = buildLayers(app.stage, getForestTexture());
+      const layers = buildLayers(app.stage, getForestTexture(), farTexture);
       const scene = new PixiScene(layers);
       scene.resize(width, height);
 

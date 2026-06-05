@@ -6,7 +6,8 @@
 // sibling of `world` pinned to screen space for full-screen / edge HUD-ish
 // world effects (damage flashes, off-screen supply arrows).
 //
-//   groundBase   – screen-space tiling forest floor (always furthest back)
+//   farBackdrop  – screen-space distant panorama (slow parallax, top band)
+//   groundBase   – screen-space tiling forest floor (below the horizon band)
 //   world (camera-offset)
 //     ├─ backgroundLayer  – trees and other far props
 //     ├─ groundLayer      – foot shadows, ground trails, pickups
@@ -19,6 +20,7 @@
 import { Container, TilingSprite, Texture } from 'pixi.js';
 
 export interface SceneLayers {
+  farBackdrop: TilingSprite;
   worldGroup: Container;
   groundBase: TilingSprite;
   world: Container;
@@ -31,7 +33,8 @@ export interface SceneLayers {
   uiLayer: Container;
 }
 
-export const buildLayers = (stage: Container, forestTexture: Texture): SceneLayers => {
+export const buildLayers = (stage: Container, forestTexture: Texture, farTexture: Texture): SceneLayers => {
+  const farBackdrop = new TilingSprite({ texture: farTexture, width: 1, height: 1 });
   const groundBase = new TilingSprite({ texture: forestTexture, width: 1, height: 1 });
 
   const world = new Container();
@@ -65,9 +68,10 @@ export const buildLayers = (stage: Container, forestTexture: Texture): SceneLaye
 
   const uiLayer = new Container();
 
-  stage.addChild(worldGroup, uiLayer);
+  stage.addChild(farBackdrop, worldGroup, uiLayer);
 
   return {
+    farBackdrop,
     worldGroup,
     groundBase,
     world,
