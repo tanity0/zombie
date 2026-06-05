@@ -78,7 +78,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
   // Check if player is dead
   useEffect(() => {
     if (player.health <= 0) {
-      onGameOver();
+      const timer = window.setTimeout(onGameOver, 700);
+      return () => window.clearTimeout(timer);
     }
   }, [player.health, onGameOver]);
 

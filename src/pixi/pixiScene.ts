@@ -842,21 +842,23 @@ export class PixiScene {
     const r = MELEE_RADIUS;
     if (now <= player.counterWindowEnd) {
       const accent = -0.18;
-      const start = accent - 0.58;
-      const end = accent + 0.58;
-      const startX = cx + Math.cos(start) * r;
-      const startY = cy + Math.sin(start) * r;
+      const arc = (spread: number, width: number, color: number, alpha: number) => {
+        const start = accent - spread;
+        const end = accent + spread;
+        g.moveTo(cx + Math.cos(start) * r, cy + Math.sin(start) * r)
+          .arc(cx, cy, r, start, end)
+          .stroke({ width, color, alpha, cap: 'round' });
+      };
 
       g.circle(cx, cy, r)
-        .stroke({ width: 5, color: 0xfbbf24, alpha: 0.16 });
+        .stroke({ width: 11, color: 0xfbbf24, alpha: 0.08 });
       g.circle(cx, cy, r)
-        .stroke({ width: 1.8, color: 0xfef3c7, alpha: 0.66 });
-      g.moveTo(startX, startY)
-        .arc(cx, cy, r, start, end)
-        .stroke({ width: 9, color: 0xfbbf24, alpha: 0.2 });
-      g.moveTo(startX, startY)
-        .arc(cx, cy, r, start, end)
-        .stroke({ width: 4, color: 0xfef3c7, alpha: 0.82 });
+        .stroke({ width: 5, color: 0xfbbf24, alpha: 0.2 });
+      g.circle(cx, cy, r)
+        .stroke({ width: 2, color: 0xfef3c7, alpha: 0.7 });
+      arc(1.2, 9, 0xfbbf24, 0.1);
+      arc(0.86, 7, 0xfbbf24, 0.16);
+      arc(0.5, 4, 0xfef3c7, 0.38);
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }

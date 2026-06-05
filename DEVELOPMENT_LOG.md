@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.0 - Red death/kill splash and smoother melee ring (Codex)
+
+### Summary
+Added red impact presentation and refined the melee/counter ring.
+- Player death now holds the game view briefly before game-over, showing a deep
+  red flash, red rings, red glow, and blood-like burst particles.
+- Delayed the fallback `Game.tsx` health-zero transition so it does not hide the
+  death VFX immediately.
+- Enemy kill splashes are now red/dark-red for projectile kills and melee kills,
+  including melee finishers.
+- Smoothed the melee/counter ring: full 360-degree glowing rim with a subtle
+  right-side thickening made from blended arcs instead of a hard separate mark.
+
+### Code touched
+- `src/hooks/useGameLoop.ts` (player death VFX, projectile kill splash)
+- `src/store/gameStore.ts` (melee kill / finisher splash)
+- `src/components/Game.tsx` (delayed health-zero fallback transition)
+- `src/pixi/pixiScene.ts` (smoother full melee/counter ring)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Player game-over transition delay is 650ms in `useGameLoop.ts` and 700ms in
+  `Game.tsx` as a fallback. Tune both together if the death hold feels too
+  short or too long.
+- The ring's right-side thickening is controlled by `accent` and the three
+  local `arc(...)` calls in `src/pixi/pixiScene.ts`.
+
 ## 2026-06-05 - v0.23.2 - Full melee ring and stronger level-up VFX (Codex)
 
 ### Summary

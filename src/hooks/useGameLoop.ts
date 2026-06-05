@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useGameStore,
   INVULN_MS,
@@ -47,6 +47,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const prevLevelRef = useRef(1);
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
+  const gameOverTriggeredRef = useRef(false);
   
   // Game state
   const isPaused = useGameStore(state => state.isPaused);
@@ -83,6 +84,19 @@ export const useGameLoop = (onGameOver: () => void) => {
   const spawnFlash = useGameStore(state => state.spawnFlash);
   const spawnEffect = useGameStore(state => state.spawnEffect);
   const updateEffects = useGameStore(state => state.updateEffects);
+
+  const triggerPlayerDeath = useCallback((x: number, y: number) => {
+    if (gameOverTriggeredRef.current) return;
+    gameOverTriggeredRef.current = true;
+    playSfx('player-damage');
+    spawnFlash('rgba(127, 29, 29, 0.48)', 520);
+    spawnRing(x, y, 8, 118, 'rgba(220,38,38,0.9)', 7, 620);
+    spawnRing(x, y, 24, 168, 'rgba(127,29,29,0.66)', 4, 760);
+    useGameStore.getState().spawnGlow(x, y, 96, 'rgba(220,38,38,', 620);
+    spawnBurst(x, y, '#ef4444', 36);
+    spawnBurst(x, y, '#7f1d1d', 22);
+    window.setTimeout(onGameOver, 650);
+  }, [onGameOver, spawnBurst, spawnFlash, spawnRing]);
 
   // Game loop
   useEffect(() => {
@@ -260,7 +274,10 @@ export const useGameLoop = (onGameOver: () => void) => {
               5
             );
             if (playerDied) {
-              onGameOver();
+              triggerPlayerDeath(
+                player.x + player.width / 2,
+                player.y + player.height / 2
+              );
             }
           }
         }
@@ -360,19 +377,18 @@ export const useGameLoop = (onGameOver: () => void) => {
             playEnemyDeath();
             const enemy = enemies.find(e => e.id === enemyId);
             if (enemy) {
-              // Death burst — colored by the enemy's identity for a satisfying pop.
-              const burstColor =
-                enemy.type === 'pumpkin' ? '#fb923c' :
-                enemy.type === 'giantbat' ? '#94a3b8' :
-                enemy.type === 'zombie' ? '#86efac' :
-                enemy.type === 'bat' ? '#475569' :
-                '#fef3c7';
+              // Death splash: red burst so kills read as blood/hit impact.
+              const ex = enemy.x + enemy.width / 2;
+              const ey = enemy.y + enemy.height / 2;
+              const bloodCount = enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 30 : 16;
               spawnBurst(
-                enemy.x + enemy.width / 2,
-                enemy.y + enemy.height / 2,
-                burstColor,
-                enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 18 : 8
+                ex,
+                ey,
+                '#dc2626',
+                bloodCount
               );
+              spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)));
+              spawnRing(ex, ey, 4, enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
 
               addPickup({
                 id: `pickup-xp-${enemy.id}`,
@@ -479,7 +495,10 @@ export const useGameLoop = (onGameOver: () => void) => {
             );
           }
           if (playerDied) {
-            onGameOver();
+            triggerPlayerDeath(
+              player.x + player.width / 2,
+              player.y + player.height / 2
+            );
           }
         });
         
@@ -865,7 +884,8 @@ export const useGameLoop = (onGameOver: () => void) => {
     spawnFlash,
     spawnEffect,
     updateEffects,
-    onGameOver
+    onGameOver,
+    triggerPlayerDeath
   ]);
   
   return { fps };
