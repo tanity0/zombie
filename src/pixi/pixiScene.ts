@@ -12,8 +12,8 @@
 // (screen space) and a warm player light halo (screen space, above the grade so
 // the hero pops). Tilt-shift depth-of-field and ambient fireflies land next.
 
-import { Container, Graphics, Sprite, Text, TilingSprite, Texture, Rectangle } from 'pixi.js';
-import { TiltShiftFilter } from 'pixi-filters';
+import { Container, Graphics, Sprite, Text, TilingSprite, Texture, Rectangle, Filter } from 'pixi.js';
+import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   Enemy, Pickup, Player, Projectile, VisualEffect,
 } from '../types/game';
@@ -42,6 +42,20 @@ const TILT_SHIFT_ENABLED = true;
 const TILT_SHIFT_BLUR = 14;       // max blur strength at the edges
 const TILT_SHIFT_GRADIENT = 440;  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
+
+// Selective bloom — only pixels brighter than the threshold glow, so the dark
+// forest stays clean while gems / muzzle flashes / crits / lights / fireflies
+// bloom. Applied to the world group alongside the tilt-shift.
+const BLOOM_ENABLED = true;
+const BLOOM_THRESHOLD = 0.82;
+const BLOOM_SCALE = 0.7;
+const BLOOM_BLUR = 5;
+
+// Ambient fireflies drifting through the moonlit forest (soft additive motes).
+const FIREFLY_ENABLED = true;
+const FIREFLY_COUNT = 40;
+const FIREFLY_TINT = 0xcfe89a;   // soft warm green-yellow
+const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -85,6 +99,14 @@ interface ActorView {
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
 }
 
+// One drifting ambient mote.
+interface Firefly {
+  sprite: Sprite;
+  x: number; y: number;   // world position
+  vx: number; vy: number; // drift velocity (px/s)
+  phase: number; freq: number; base: number; size: number;
+}
+
 export class PixiScene {
   private L: SceneLayers;
 
@@ -108,6 +130,11 @@ export class PixiScene {
   private vignette = new Sprite(getVignetteTexture());
 
   private tiltShift: TiltShiftFilter | null = null;
+  private bloom: AdvancedBloomFilter | null = null;
+
+  private fireflies: Firefly[] = [];
+  private firefliesPlaced = false;
+  private fxPrevNow = 0;
 
   private screenW = 1;
   private screenH = 1;
@@ -116,15 +143,46 @@ export class PixiScene {
   constructor(layers: SceneLayers) {
     this.L = layers;
 
-    // Tilt-shift depth-of-field over the whole world group (floor + actors).
-    // filterArea is pinned to the screen in resize() so Pixi never tries to
-    // render the world's map-sized bounds into a filter texture.
+    // Bloom + tilt-shift depth-of-field over the whole world group (floor +
+    // actors). filterArea is pinned to the screen in resize() so Pixi never
+    // renders the world's map-sized bounds into a filter texture. Bloom runs
+    // first (glow the bright bits), then the DoF blur composes over it.
+    const worldFilters: Filter[] = [];
+    if (BLOOM_ENABLED) {
+      this.bloom = new AdvancedBloomFilter({
+        threshold: BLOOM_THRESHOLD,
+        bloomScale: BLOOM_SCALE,
+        blur: BLOOM_BLUR,
+        quality: 4,
+      });
+      worldFilters.push(this.bloom);
+    }
     if (TILT_SHIFT_ENABLED) {
       this.tiltShift = new TiltShiftFilter({
         blur: TILT_SHIFT_BLUR,
         gradientBlur: TILT_SHIFT_GRADIENT,
       });
-      this.L.worldGroup.filters = [this.tiltShift];
+      worldFilters.push(this.tiltShift);
+    }
+    if (worldFilters.length) this.L.worldGroup.filters = worldFilters;
+
+    // Ambient fireflies: a pool of soft additive motes in the lighting layer.
+    if (FIREFLY_ENABLED) {
+      const tex = getGlowTexture();
+      for (let i = 0; i < FIREFLY_COUNT; i++) {
+        const sprite = new Sprite(tex);
+        sprite.anchor.set(0.5);
+        sprite.tint = FIREFLY_TINT;
+        sprite.blendMode = 'add';
+        this.L.lightingLayer.addChild(sprite);
+        this.fireflies.push({
+          sprite, x: 0, y: 0, vx: 0, vy: 0,
+          phase: Math.random() * Math.PI * 2,
+          freq: 0.001 + Math.random() * 0.0016,
+          base: 0.22 + Math.random() * 0.33,
+          size: 4 + Math.random() * 6,
+        });
+      }
     }
     // Warm light sits in the GROUND layer, BELOW the actors, so it pools on the
     // floor without ever painting over (and washing out) the character / enemy
@@ -241,6 +299,46 @@ export class PixiScene {
     const ly = s.player.y + s.player.height / 2;
     this.playerLight.position.set(lx, ly);
     this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (0.92 + 0.08 * Math.sin(now / 600));
+
+    this.syncFireflies(s.camera, now);
+  }
+
+  // ---- ambient fireflies ---------------------------------------------------
+
+  private syncFireflies(camera: { x: number; y: number }, now: number) {
+    if (!this.fireflies.length) return;
+    const dt = this.fxPrevNow ? Math.min(50, now - this.fxPrevNow) : 16;
+    this.fxPrevNow = now;
+
+    const minX = camera.x - FIREFLY_MARGIN;
+    const minY = camera.y - FIREFLY_MARGIN;
+    const maxX = camera.x + this.screenW + FIREFLY_MARGIN;
+    const maxY = camera.y + this.screenH + FIREFLY_MARGIN;
+
+    if (!this.firefliesPlaced) {
+      for (const f of this.fireflies) {
+        f.x = minX + Math.random() * (maxX - minX);
+        f.y = minY + Math.random() * (maxY - minY);
+        const a = Math.random() * Math.PI * 2;
+        const s = 5 + Math.random() * 10;
+        f.vx = Math.cos(a) * s;
+        f.vy = Math.sin(a) * s;
+      }
+      this.firefliesPlaced = true;
+    }
+
+    const sec = dt / 1000;
+    for (const f of this.fireflies) {
+      f.x += f.vx * sec;
+      f.y += f.vy * sec;
+      // Wrap into the visible band so density follows the camera.
+      if (f.x < minX) f.x = maxX; else if (f.x > maxX) f.x = minX;
+      if (f.y < minY) f.y = maxY; else if (f.y > maxY) f.y = minY;
+      const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * f.freq + f.phase));
+      f.sprite.position.set(f.x, f.y);
+      f.sprite.alpha = f.base * twinkle;
+      f.sprite.width = f.sprite.height = f.size;
+    }
   }
 
   // ---- trees: Y-sorted with the actors so you stand in front / behind -------
@@ -777,10 +875,14 @@ export class PixiScene {
     this.gradeSprite.destroy();
     this.playerLight.destroy();
     this.vignette.destroy();
-    if (this.tiltShift) {
+    for (const f of this.fireflies) f.sprite.destroy();
+    this.fireflies = [];
+    if (this.tiltShift || this.bloom) {
       this.L.worldGroup.filters = [];
-      this.tiltShift.destroy();
+      this.tiltShift?.destroy();
+      this.bloom?.destroy();
       this.tiltShift = null;
+      this.bloom = null;
     }
   }
 }
