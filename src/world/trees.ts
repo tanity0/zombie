@@ -54,14 +54,17 @@ export const treesInRegion = (
 
 export interface Rect { x: number; y: number; width: number; height: number; }
 
-// Trunk collision box — a narrow rectangle at the tree's base, so actors can
-// still overlap the canopy (drawn well above the foot) but not the trunk.
+// Trunk collision box — a narrow rectangle at the tree's base. Its BOTTOM edge
+// sits exactly on the sprite's foot (footY), so the tree picture is drawn up
+// from the bottom of the hitbox (no vertical offset), and the box extends
+// upward over the trunk. Actors can still overlap the canopy (drawn well above
+// the box) but not the trunk.
 const TRUNK_W = 18; // at scale 1
 const TRUNK_H = 16;
 export const trunkRect = (t: TreeInstance): Rect => {
   const w = TRUNK_W * t.scale;
   const h = TRUNK_H * t.scale;
-  return { x: t.footX - w / 2, y: t.footY - h / 2, width: w, height: h };
+  return { x: t.footX - w / 2, y: t.footY - h, width: w, height: h };
 };
 
 // Rectangle (AABB) collision only. Push `rect` (top-left x/y, width/height) out
