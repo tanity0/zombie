@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.10 - Opaque panorama and horizon blend (Codex)
+
+### Summary
+Adjusted the new distant panorama based on visual feedback.
+- Made the far panorama fully opaque (`alpha = 1`) so it reads as a solid
+  background instead of slightly translucent.
+- Added a soft dark horizon blend band over the panorama/ground boundary so the
+  transition into the ground feels foggier and less hard-edged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (far backdrop opacity and horizon blend overlay)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Boundary softness is controlled by `HORIZON_BLEND_HEIGHT` and the three
+  rectangles in `drawHorizonBlend()`.
+
 ## 2026-06-06 - v0.24.9 - Distant panorama parallax layer (Codex)
 
 ### Summary
