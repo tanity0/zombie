@@ -19,6 +19,7 @@
 import { Container, TilingSprite, Texture } from 'pixi.js';
 
 export interface SceneLayers {
+  worldGroup: Container;
   groundBase: TilingSprite;
   world: Container;
   backgroundLayer: Container;
@@ -54,11 +55,20 @@ export const buildLayers = (stage: Container, forestTexture: Texture): SceneLaye
     lightingLayer
   );
 
+  // worldGroup holds everything the tilt-shift depth-of-field filter applies to
+  // (the floor + the camera-offset world). The filter uses a screen-sized
+  // filterArea so it never processes the world's enormous bounds. Screen-space
+  // overlays (grade / vignette / flash) live in uiLayer, OUTSIDE this group, so
+  // they stay sharp.
+  const worldGroup = new Container();
+  worldGroup.addChild(groundBase, world);
+
   const uiLayer = new Container();
 
-  stage.addChild(groundBase, world, uiLayer);
+  stage.addChild(worldGroup, uiLayer);
 
   return {
+    worldGroup,
     groundBase,
     world,
     backgroundLayer,

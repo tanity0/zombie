@@ -12,7 +12,8 @@
 // (screen space) and a warm player light halo (screen space, above the grade so
 // the hero pops). Tilt-shift depth-of-field and ambient fireflies land next.
 
-import { Container, Graphics, Sprite, Text, TilingSprite, Texture } from 'pixi.js';
+import { Container, Graphics, Sprite, Text, TilingSprite, Texture, Rectangle } from 'pixi.js';
+import { TiltShiftFilter } from 'pixi-filters';
 import type {
   Enemy, Pickup, Player, Projectile, VisualEffect,
 } from '../types/game';
@@ -31,6 +32,15 @@ const PLAYER_LIGHT_TINT = 0xffca7a; // warm hero halo
 const PLAYER_LIGHT_ALPHA = 0.32;
 const PLAYER_LIGHT_RADIUS = 200;    // halo radius in world px
 const VIGNETTE_ALPHA = 0.85;
+
+// Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
+// (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
+// centred a touch above middle so the player (slightly below centre) stays
+// crisp. Set ENABLED false if it costs too much on-device.
+const TILT_SHIFT_ENABLED = true;
+const TILT_SHIFT_BLUR = 14;       // max blur strength at the edges
+const TILT_SHIFT_GRADIENT = 260;  // px over which sharp ramps into blur
+const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -81,11 +91,24 @@ export class PixiScene {
   private playerLight = new Sprite(getGlowTexture());
   private vignette = new Sprite(getVignetteTexture());
 
+  private tiltShift: TiltShiftFilter | null = null;
+
   private screenW = 1;
   private screenH = 1;
 
   constructor(layers: SceneLayers) {
     this.L = layers;
+
+    // Tilt-shift depth-of-field over the whole world group (floor + actors).
+    // filterArea is pinned to the screen in resize() so Pixi never tries to
+    // render the world's map-sized bounds into a filter texture.
+    if (TILT_SHIFT_ENABLED) {
+      this.tiltShift = new TiltShiftFilter({
+        blur: TILT_SHIFT_BLUR,
+        gradientBlur: TILT_SHIFT_GRADIENT,
+      });
+      this.L.worldGroup.filters = [this.tiltShift];
+    }
     // Warm light sits in the GROUND layer, BELOW the actors, so it pools on the
     // floor without ever painting over (and washing out) the character / enemy
     // sprites — they keep their full pixel-art colour and outline (Octopath
@@ -124,6 +147,14 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
+
+    // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
+    if (this.tiltShift) {
+      this.L.worldGroup.filterArea = new Rectangle(0, 0, w, h);
+      const bandY = h * TILT_SHIFT_BAND;
+      this.tiltShift.start = { x: 0, y: bandY };
+      this.tiltShift.end = { x: w, y: bandY };
+    }
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -713,5 +744,13 @@ export class PixiScene {
     this.playerFx.destroy();
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
+    this.gradeSprite.destroy();
+    this.playerLight.destroy();
+    this.vignette.destroy();
+    if (this.tiltShift) {
+      this.L.worldGroup.filters = [];
+      this.tiltShift.destroy();
+      this.tiltShift = null;
+    }
   }
 }
