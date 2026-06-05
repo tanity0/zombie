@@ -8,11 +8,11 @@
 //   (particle / ring / glow / slash / damageNumber / trail / flash), the
 //   counter ring, the reload meter, and off-screen supply arrows.
 //
-// Deliberately deferred to a later polish phase (per "don't pile on glow /
-// filters first"): warm light halos, the multiply colour-grade, the radial
-// vignette, and the ambient firefly layer.
+// HD-2D atmosphere (moonlit / cool): a multiply colour-grade + radial vignette
+// (screen space) and a warm player light halo (screen space, above the grade so
+// the hero pops). Tilt-shift depth-of-field and ambient fireflies land next.
 
-import { Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js';
+import { Container, Graphics, Sprite, Text, TilingSprite, Texture } from 'pixi.js';
 import type {
   Enemy, Pickup, Player, Projectile, VisualEffect,
 } from '../types/game';
@@ -21,7 +21,16 @@ import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
+import { getGlowTexture, getVignetteTexture } from './lighting';
 import { enemyFootBox, enemyShadow, playerFootBox } from './renderSpec';
+
+// --- moonlit atmosphere tuning (tweak freely on-device) -------------------
+const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
+const GRADE_ALPHA = 0.55;      // strength of the cool grade
+const PLAYER_LIGHT_TINT = 0xffd9a0; // warm hero halo
+const PLAYER_LIGHT_ALPHA = 0.55;
+const PLAYER_LIGHT_RADIUS = 230;    // halo radius in screen px
+const VIGNETTE_ALPHA = 0.9;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -66,6 +75,12 @@ export class PixiScene {
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
 
+  // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
+  // playerLight is added on top so the hero stays bright; vignette darkens edges.
+  private gradeSprite = new Sprite(Texture.WHITE);
+  private playerLight = new Sprite(getGlowTexture());
+  private vignette = new Sprite(getVignetteTexture());
+
   private screenW = 1;
   private screenH = 1;
 
@@ -73,7 +88,25 @@ export class PixiScene {
     this.L = layers;
     this.L.groundLayer.addChild(this.shadowGfx);
     this.L.effectLayer.addChild(this.playerFx);
-    this.L.uiLayer.addChild(this.flashGfx, this.arrowGfx);
+
+    this.gradeSprite.tint = GRADE_TINT;
+    this.gradeSprite.alpha = GRADE_ALPHA;
+    this.gradeSprite.blendMode = 'multiply';
+
+    this.playerLight.anchor.set(0.5);
+    this.playerLight.tint = PLAYER_LIGHT_TINT;
+    this.playerLight.alpha = PLAYER_LIGHT_ALPHA;
+    this.playerLight.blendMode = 'add';
+    this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
+
+    this.vignette.alpha = VIGNETTE_ALPHA;
+
+    // Order: cool grade (multiplies world) → warm hero light → vignette →
+    // damage flash + off-screen arrows on top of everything.
+    this.L.uiLayer.addChild(
+      this.gradeSprite, this.playerLight, this.vignette,
+      this.flashGfx, this.arrowGfx,
+    );
   }
 
   resize(w: number, h: number) {
@@ -81,6 +114,11 @@ export class PixiScene {
     this.screenH = h;
     this.L.groundBase.width = w;
     this.L.groundBase.height = h;
+    // Full-screen atmosphere overlays.
+    this.gradeSprite.width = w;
+    this.gradeSprite.height = h;
+    this.vignette.width = w;
+    this.vignette.height = h;
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -123,6 +161,13 @@ export class PixiScene {
     this.syncPlayerFx(s.player, now);
     this.syncArrows(s.pickups, s.camera);
     this.syncFlash(s.effects, now);
+
+    // Warm hero halo follows the player's on-screen position (world coords
+    // minus camera, plus shake), with a gentle breathing pulse.
+    const lx = s.player.x + s.player.width / 2 - s.camera.x + sx;
+    const ly = s.player.y + s.player.height / 2 - s.camera.y + sy;
+    this.playerLight.position.set(lx, ly);
+    this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (0.92 + 0.08 * Math.sin(now / 600));
   }
 
   // ---- background trees (always behind actors, like the Canvas2D path) ------
