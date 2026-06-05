@@ -8,6 +8,8 @@
 // ~35% of cells spawn, ±cell/2 jitter, scale 0.85..1.25, foot pushed down by
 // 32*scale).
 
+import { Rect, footRect, resolveAabb } from './obstacles';
+
 export const TREE_CELL = 220;
 
 export const treeHash = (x: number, y: number): number => {
@@ -52,57 +54,22 @@ export const treesInRegion = (
   return out;
 };
 
-export interface Rect { x: number; y: number; width: number; height: number; }
-
-// Trunk collision box — a narrow rectangle at the tree's base. Its BOTTOM edge
-// sits exactly on the sprite's foot (footY), so the tree picture is drawn up
-// from the bottom of the hitbox (no vertical offset), and the box extends
-// upward over the trunk. Actors can still overlap the canopy (drawn well above
-// the box) but not the trunk.
+// Trunk collision box — a narrow rectangle following the shared obstacle
+// convention: its BOTTOM edge sits on the sprite's foot (footY) and it rises
+// over the trunk. Actors can still overlap the canopy (drawn well above) but
+// not the trunk.
 const TRUNK_W = 18; // at scale 1
 const TRUNK_H = 16;
-export const trunkRect = (t: TreeInstance): Rect => {
-  const w = TRUNK_W * t.scale;
-  const h = TRUNK_H * t.scale;
-  return { x: t.footX - w / 2, y: t.footY - h, width: w, height: h };
-};
+export const trunkRect = (t: TreeInstance): Rect =>
+  footRect(t.footX, t.footY, TRUNK_W * t.scale, TRUNK_H * t.scale);
 
-// Rectangle (AABB) collision only. Push `rect` (top-left x/y, width/height) out
-// of any overlapping tree trunk along the axis of least penetration, and return
-// the corrected top-left. Velocity is intentionally left untouched by the
-// caller so the actor slides along a trunk edge.
+// Rectangle (AABB) collision only. Push `rect` out of any nearby tree trunk and
+// return the corrected top-left. One cell of padding covers every reachable
+// trunk (jitter stays within a neighbouring cell).
 export const resolveTreeCollision = (rect: Rect): { x: number; y: number } => {
-  // One cell of padding is enough: jitter keeps every reachable trunk within a
-  // neighbouring cell.
   const cx = rect.x + rect.width / 2;
   const cy = rect.y + rect.height / 2;
   const pad = TREE_CELL;
   const trees = treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad);
-
-  let x = rect.x;
-  let y = rect.y;
-  for (const t of trees) {
-    const w = trunkRect(t);
-    const ax2 = x + rect.width;
-    const ay2 = y + rect.height;
-    const wx2 = w.x + w.width;
-    const wy2 = w.y + w.height;
-
-    // playerRect vs wallRect overlap test (AABB).
-    const overlapX = Math.min(ax2, wx2) - Math.max(x, w.x);
-    const overlapY = Math.min(ay2, wy2) - Math.max(y, w.y);
-    if (overlapX <= 0 || overlapY <= 0) continue; // not overlapping
-
-    // Resolve along the smaller penetration axis.
-    if (overlapX < overlapY) {
-      const aCentre = x + rect.width / 2;
-      const wCentre = w.x + w.width / 2;
-      x += aCentre < wCentre ? -overlapX : overlapX;
-    } else {
-      const aCentre = y + rect.height / 2;
-      const wCentre = w.y + w.height / 2;
-      y += aCentre < wCentre ? -overlapY : overlapY;
-    }
-  }
-  return { x, y };
+  return resolveAabb(rect, trees.map(trunkRect));
 };
