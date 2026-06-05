@@ -42,6 +42,17 @@ const TILT_SHIFT_BLUR = 14;       // max blur strength at the edges
 const TILT_SHIFT_GRADIENT = 440;  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 
+// Pseudo-perspective scale: objects are drawn bigger toward the foreground
+// (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
+// it scales sprites + foot shadows only. Collision boxes, attack ranges, the
+// counter radius and every other distance are never touched. Measured as a
+// scale offset from the player's foot plane, so the player stays ~1.0 and
+// objects grow/shrink relative to the hero.
+const DEPTH_SCALE_ENABLED = true;
+const DEPTH_K = 0.00045;  // scale change per world-Y px from the player plane
+const DEPTH_MIN = 0.82;
+const DEPTH_MAX = 1.2;
+
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
@@ -72,7 +83,7 @@ interface ActorView {
 export class PixiScene {
   private L: SceneLayers;
 
-  private trees = new Map<string, Sprite>();
+  private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
   private enemies = new Map<string, ActorView>();
   private playerView: ActorView | null = null;
 
@@ -95,6 +106,7 @@ export class PixiScene {
 
   private screenW = 1;
   private screenH = 1;
+  private depthRefY = 0; // player foot world-Y this frame (the focal plane)
 
   constructor(layers: SceneLayers) {
     this.L = layers;
@@ -171,9 +183,20 @@ export class PixiScene {
 
   // ---- top-level frame sync ------------------------------------------------
 
+  // Visual-only depth scale for an object given its foot world-Y. >1 in front
+  // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
+  private depthScale(footWorldY: number): number {
+    if (!DEPTH_SCALE_ENABLED) return 1;
+    const f = 1 + (footWorldY - this.depthRefY) * DEPTH_K;
+    return f < DEPTH_MIN ? DEPTH_MIN : f > DEPTH_MAX ? DEPTH_MAX : f;
+  }
+
   sync() {
     const s = useGameStore.getState();
     const now = Date.now();
+
+    // Focal plane for the pseudo-perspective scale = the player's feet.
+    this.depthRefY = playerFootBox(s.player).footY;
 
     // Camera offset + screen shake on the whole world (and the floor).
     let sx = 0;
@@ -226,12 +249,11 @@ export class PixiScene {
         if (hash2(wx + 13, wy - 7) >= 0.35) continue;
         const key = `${wx}_${wy}`;
         seen.add(key);
-        let sprite = this.trees.get(key);
-        if (!sprite) {
-          sprite = new Sprite(tex ?? undefined);
+        let entry = this.trees.get(key);
+        if (!entry) {
+          const sprite = new Sprite(tex ?? undefined);
           sprite.anchor.set(0.5, 1);
           this.L.backgroundLayer.addChild(sprite);
-          this.trees.set(key, sprite);
           const scale = 0.85 + hash2(wx + 5, wy + 23) * 0.4;
           const ox = (hash2(wx, wy + 1) - 0.5) * tcell;
           const oy = (hash2(wx + 1, wy) - 0.5) * tcell;
@@ -241,16 +263,19 @@ export class PixiScene {
           // foot (bottom of that box) sits 32*scale below the cell point.
           sprite.x = wx + tcell / 2 + ox;
           sprite.y = wy + tcell / 2 + oy + 32 * scale;
-          if (tex) {
-            const sc = containScale(boxW, boxH, tex.width, tex.height);
-            sprite.scale.set(sc);
-          }
+          const baseScale = tex ? containScale(boxW, boxH, tex.width, tex.height) : 1;
+          entry = { sprite, baseScale, footY: sprite.y };
+          this.trees.set(key, entry);
         }
+        // Depth scale every frame: a tree's apparent size shifts as the player
+        // (the focal plane) walks past it. Anchored at the foot, so it stays
+        // rooted to the ground.
+        if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       }
     }
-    for (const [key, sprite] of this.trees) {
+    for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
-        sprite.destroy();
+        entry.sprite.destroy();
         this.trees.delete(key);
       }
     }
@@ -262,11 +287,12 @@ export class PixiScene {
     const g = this.shadowGfx;
     g.clear();
     const pf = playerFootBox(player);
-    drawShadow(g, pf.footX, pf.footY - 2, player.width * 1.7 * 0.55, 0.4);
+    drawShadow(g, pf.footX, pf.footY - 2, player.width * 1.7 * 0.55 * this.depthScale(pf.footY), 0.4);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
       const { width, alpha } = enemyShadow(e);
-      drawShadow(g, e.x + e.width / 2, e.y + e.height - 2, width, alpha);
+      const footY = e.y + e.height;
+      drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScale(footY), alpha);
     }
   }
 
@@ -301,7 +327,7 @@ export class PixiScene {
     const tex = getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
     if (tex) {
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height);
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScale(fb.footY);
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       view.sprite.scale.set(flip ? -sc : sc, sc);
     }
@@ -324,7 +350,7 @@ export class PixiScene {
 
     if (tex) {
       view.sprite.texture = tex;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height);
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScale(fb.footY);
       view.sprite.scale.set(sc);
       view.sprite.visible = true;
     } else {
@@ -482,12 +508,13 @@ export class PixiScene {
     const cy = p.y + 8;
     const size = 16;
     const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
+    const d = this.depthScale(cy + size / 2); // foot = base of the item
     const g = entry.gfx;
     g.clear();
 
     // Shadow stays at the base (not floating) so the bob lifts the item off it.
     const shadowAlpha = Math.max(0.22, 0.35 - floatOffset * 0.025);
-    drawShadow(g, cx, cy + size / 2, size * 0.85, shadowAlpha);
+    drawShadow(g, cx, cy + size / 2, size * 0.85 * d, shadowAlpha);
 
     if (SPRITE_PICKUPS.has(p.type)) {
       const name = p.type === 'experience'
@@ -501,7 +528,7 @@ export class PixiScene {
           entry.container.addChild(entry.sprite);
         }
         entry.sprite.texture = tex;
-        const sc = containScale(size, size, tex.width, tex.height);
+        const sc = containScale(size, size, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);
         entry.sprite.position.set(cx, cy + size / 2 + floatOffset);
         entry.sprite.visible = true;
@@ -734,7 +761,7 @@ export class PixiScene {
   }
 
   destroy() {
-    for (const s of this.trees.values()) s.destroy();
+    for (const e of this.trees.values()) e.sprite.destroy();
     for (const v of this.enemies.values()) v.container.destroy({ children: true });
     this.playerView?.container.destroy({ children: true });
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
