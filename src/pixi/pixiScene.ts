@@ -39,7 +39,7 @@ const VIGNETTE_ALPHA = 0.85;
 // crisp. Set ENABLED false if it costs too much on-device.
 const TILT_SHIFT_ENABLED = true;
 const TILT_SHIFT_BLUR = 14;       // max blur strength at the edges
-const TILT_SHIFT_GRADIENT = 260;  // px over which sharp ramps into blur
+const TILT_SHIFT_GRADIENT = 440;  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
