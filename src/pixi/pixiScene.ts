@@ -841,29 +841,27 @@ export class PixiScene {
     const cy = player.y + player.height / 2;
     const r = MELEE_RADIUS;
     if (now <= player.counterWindowEnd) {
-      // A sleek rotating "rune" reach-ring: faint glow rim + crisp bright ring,
-      // small rotating tick marks, and two symmetric bright sweeps orbiting it.
-      // Normal blend (so the reload meter below isn't affected); the bright
-      // cream pixels are picked up by the bloom filter on their own.
-      const spin = now * 0.005;
-      g.circle(cx, cy, r).stroke({ width: 8, color: 0xfbbf24, alpha: 0.1 });
-      g.circle(cx, cy, r).stroke({ width: 2, color: 0xfff3c4, alpha: 0.75 });
-
-      const ticks = 28;
-      for (let i = 0; i < ticks; i++) {
-        const a = spin * 0.4 + (i / ticks) * Math.PI * 2;
-        g.moveTo(cx + Math.cos(a) * (r - 3), cy + Math.sin(a) * (r - 3))
-          .lineTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3))
-          .stroke({ width: 1, color: 0xfde68a, alpha: 0.22 });
+      // Stylish "blade circle" telegraph (Samurai-Shodown-esque, but refined):
+      // a faint reach ring + a comet-like arc that tapers from a bright head to
+      // a thin tail, sweeping around the circle like a blade tracing it. Normal
+      // blend (reload meter stays intact); the bright cream pixels bloom on
+      // their own.
+      const head = now * 0.011;     // leading-edge angle (sweeps around)
+      const span = Math.PI * 1.55;  // how much of the ring the blade covers
+      const segs = 26;
+      for (let i = 0; i < segs; i++) {
+        const f = i / segs;         // 0 at the bright head -> 1 at the faint tail
+        const a1 = head - f * span;
+        const a2 = head - ((i + 1) / segs) * span;
+        g.moveTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r)
+          .lineTo(cx + Math.cos(a2) * r, cy + Math.sin(a2) * r)
+          .stroke({ width: 5 * (1 - f) + 0.6, color: 0xfff3c4, alpha: 0.95 * (1 - f) });
       }
-
-      const sweep = 0.8;
-      for (let k = 0; k < 2; k++) {
-        const s0 = spin + k * Math.PI;
-        g.moveTo(cx + Math.cos(s0) * r, cy + Math.sin(s0) * r)
-          .arc(cx, cy, r, s0, s0 + sweep)
-          .stroke({ width: 3.5, color: 0xfffbe6, alpha: 0.95, cap: 'round' });
-      }
+      // Bright leading tip of the blade.
+      g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 3.2)
+        .fill({ color: 0xffffff, alpha: 0.95 });
+      // Faint full reach ring underneath.
+      g.circle(cx, cy, r).stroke({ width: 1.4, color: 0xfbbf24, alpha: 0.16 });
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }

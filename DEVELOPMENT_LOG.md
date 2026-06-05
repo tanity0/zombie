@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.3 - Stylish melee circle + shotgun/handgun ammo tweaks (Claude Code)
+
+### Summary
+Visual:
+- Restyled the melee/counter reach circle (`syncPlayerFx`) again, per reference
+  (Samurai Shodown circular slash, but refined): a faint reach ring plus a
+  comet-like blade arc that tapers from a bright head to a thin tail and sweeps
+  around the circle. Replaced the previous rotating "rune" ring.
+
+Balance (requested):
+- Shotgun now spends 1 round per trigger pull (was 1 per pellet). `fireWeapon`
+  `consume = 1`; shotgun magazines resized from pellet-counts (15/18/21) to
+  3 shots each (preserves the old ~3-shots-per-mag cadence, reserve lasts far
+  longer).
+- Handgun starting reserve halved: `AMMO_INITIAL.handgun` 120 -> 60.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (melee circle), `src/utils/weaponUtils.ts` (shotgun),
+  `src/store/gameStore.ts` (handgun ammo), `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK / `npm run build` OK. Pushed to the dev branch, which the
+  Pages workflow auto-deploys to https://tanity0.github.io/zombie/ .
+
+### Handoff notes — DEFERRED (need user input, left unchanged)
+- Melee-kill ammo DROP rate: code in `triggerCounter` already applies
+  `meleeAmmoDropPercent` on melee KILLS (50% base, finisher x1.5). Couldn't find
+  a bug; likely melee kills are simply infrequent. Need the user to confirm
+  whether drops are missing on confirmed melee finishes before changing design.
+- Marksman (mage) magnum: starting `rifle-t1` is named マグナム but plays
+  sniper-like (range 312, piercing). User wants it to feel like a magnum -
+  confirm desired direction (handgun-class punchy revolver vs just retune) before
+  changing, since it also affects the rifle upgrade tree.
+
 ## 2026-06-05 - v0.24.2 - Revert slash rework; restyle melee reach-ring (Claude Code)
 
 ### Summary

@@ -13,7 +13,7 @@ import { resolveTreeCollision } from '../world/trees';
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
-export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 120, shotgun: 40, rifle: 24 };
+export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 40, rifle: 24 };
 export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, rifle: 60 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
 // drops, and the boxes melee kills now drop). Modest relative to the reserve
