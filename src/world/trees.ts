@@ -58,8 +58,8 @@ export const treesInRegion = (
 // convention: its BOTTOM edge sits on the sprite's foot (footY) and it rises
 // over the trunk. Actors can still overlap the canopy (drawn well above) but
 // not the trunk.
-const TRUNK_W = 18; // at scale 1
-const TRUNK_H = 16;
+const TRUNK_W = 16; // at scale 1
+const TRUNK_H = 6;  // thin band at the very base of the trunk (roots)
 export const trunkRect = (t: TreeInstance): Rect =>
   footRect(t.footX, t.footY, TRUNK_W * t.scale, TRUNK_H * t.scale);
 
