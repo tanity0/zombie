@@ -484,14 +484,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       // Ammo scavenge: base rate is the start-screen setting; a finisher
       // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
-      // Counter (reflect) kills are handled in the gun-kill path at 30%.
+      // Prefer the active gun's family; if the active pointer is temporarily
+      // invalid, fall back to any owned gun so the slider still governs melee.
       const baseRate = get().meleeAmmoDropPercent / 100;
       const ammoChance = finisher ? Math.min(1, baseRate * 1.5) : baseRate;
-      if (gun?.ammoType && Math.random() < ammoChance) {
+      const ownedAmmoTypes = getGuns(player)
+        .map(w => w.ammoType)
+        .filter((t): t is AmmoType => !!t);
+      const dropType = gun?.ammoType ?? ownedAmmoTypes[0];
+      if (dropType && Math.random() < ammoChance) {
         get().addPickup({
           id: `pickup-ammo-melee-${enemy.id}`,
           x: ex - 8 + 14, y: ey - 8,
-          type: `ammo-${gun.ammoType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+          type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
           value: 0
         });
       }

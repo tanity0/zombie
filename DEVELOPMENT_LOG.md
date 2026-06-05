@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.8 - Melee ammo drop slider fallback fix (Codex)
+
+### Summary
+Investigated the report that ammo drops from melee-circle kills did not feel
+linked to the start-screen percentage.
+- Confirmed the normal melee kill path reads `meleeAmmoDropPercent / 100`, and
+  melee finishers still use `×1.5` capped at 100%.
+- Found one mismatch: melee kills only created ammo when `getActiveGun(player)`
+  returned a gun with `ammoType`, while gun kills already fall back to owned gun
+  ammo types.
+- Added the same owned-gun fallback to melee kills so the start-screen slider
+  governs melee drops even if the active gun pointer is temporarily unavailable.
+
+### Code touched
+- `src/store/gameStore.ts` (melee ammo drop fallback)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The label says "撃破時。近接フィニッシュは×1.5。"; current behavior matches
+  that: all kills use the slider, melee finishers multiply it.
+- If the user wants the slider to apply only to melee kills again, revert the
+  gun-kill drop block in `src/hooks/useGameLoop.ts` from v0.24.5.
+
 ## 2026-06-05 - v0.24.7 - Thicker melee crescent + 0.1s freeze on knockback-immune (Claude Code)
 
 ### Summary
