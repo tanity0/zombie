@@ -9,8 +9,8 @@
 import type { Enemy, Player } from '../types/game';
 
 // The player sprite reads as chunky pixel art by drawing larger than its
-// hitbox. The visual box is centred on the hitbox CENTRE, so the feet hang
-// below the hitbox bottom (matches the Canvas2D renderer exactly).
+// hitbox. Its FOOT is anchored to the hitbox bottom (see playerFootBox) so the
+// drawn feet match the collision footprint; the extra height rises upward.
 export const PLAYER_VISUAL_SCALE = 1.7;
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre
@@ -27,8 +27,11 @@ export const playerFootBox = (p: Player): FootBox => {
   const boxW = p.width * PLAYER_VISUAL_SCALE;
   const boxH = p.height * PLAYER_VISUAL_SCALE;
   const cx = p.x + p.width / 2;
-  const cy = p.y + p.height / 2;
-  return { footX: cx, footY: cy + boxH / 2, boxW, boxH };
+  // Foot sits on the hitbox BOTTOM (not below it), so the drawn feet line up
+  // with the collision the simulation uses — see the obstacle convention in
+  // CLAUDE.md / src/world/obstacles.ts. The oversized sprite then rises upward
+  // from there.
+  return { footX: cx, footY: p.y + p.height, boxW, boxH };
 };
 
 export const enemyFootBox = (e: Enemy): FootBox => ({

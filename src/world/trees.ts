@@ -59,10 +59,10 @@ export const treesInRegion = (
 // over the trunk. Actors can still overlap the canopy (drawn well above) but
 // not the trunk.
 const TRUNK_W = 16; // at scale 1
-// ~10px tall: tuned so that an actor approaching from the north stops with its
-// drawn feet right at the trunk base (the player sprite's feet hang ~10px below
-// its hitbox bottom), instead of punching through.
-const TRUNK_H = 10;
+// Thin band at the trunk base. Now that every actor's drawn feet sit on its
+// hitbox bottom (see renderSpec.playerFootBox), an actor approaching from the
+// north stops with its feet right at the trunk base — no per-actor fudge.
+const TRUNK_H = 8;
 export const trunkRect = (t: TreeInstance): Rect =>
   footRect(t.footX, t.footY, TRUNK_W * t.scale, TRUNK_H * t.scale);
 
