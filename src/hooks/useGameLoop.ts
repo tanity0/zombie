@@ -759,23 +759,33 @@ export const useGameLoop = (onGameOver: () => void) => {
         // Detect level-up edge: golden ring around the player.
         const currentPlayer = useGameStore.getState().player;
         if (currentPlayer.level > prevLevelRef.current) {
-          spawnFlash('rgba(253,224,71,0.16)', 220);
+          const cx = currentPlayer.x + currentPlayer.width / 2;
+          const cy = currentPlayer.y + currentPlayer.height / 2;
+          spawnFlash('rgba(253,224,71,0.28)', 320);
           spawnRing(
-            currentPlayer.x + currentPlayer.width / 2,
-            currentPlayer.y + currentPlayer.height / 2,
-            10, 90, 'rgba(253,224,71,0.9)', 4, 520
+            cx,
+            cy,
+            8, 126, 'rgba(253,224,71,0.95)', 6, 680
           );
           spawnRing(
-            currentPlayer.x + currentPlayer.width / 2,
-            currentPlayer.y + currentPlayer.height / 2,
-            4, 34, 'rgba(255,255,255,0.95)', 3, 260
+            cx,
+            cy,
+            2, 54, 'rgba(255,255,255,0.95)', 4, 360
           );
+          spawnRing(
+            cx,
+            cy,
+            36, 170, 'rgba(251,191,36,0.62)', 3, 820
+          );
+          useGameStore.getState().spawnGlow(cx, cy, 82, 'rgba(253,224,71,', 520);
           spawnBurst(
-            currentPlayer.x + currentPlayer.width / 2,
-            currentPlayer.y + currentPlayer.height / 2,
+            cx,
+            cy,
             '#fde68a',
-            28
+            44
           );
+          spawnBurst(cx, cy, '#ffffff', 12);
+          useGameStore.getState().spawnCallout(cx, currentPlayer.y - 14, 'LEVEL UP!', '#fde68a');
           prevLevelRef.current = currentPlayer.level;
         } else if (currentPlayer.level < prevLevelRef.current) {
           prevLevelRef.current = currentPlayer.level; // reset after game over

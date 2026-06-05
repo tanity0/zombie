@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.23.2 - Full melee ring and stronger level-up VFX (Codex)
+
+### Summary
+Adjusted melee/counter and level-up presentation based on playtest feedback.
+- Changed the melee/counter indicator from a partial crescent to a full 360
+  degree glowing ring.
+- Added a subtly thicker/brighter right-side arc on top of the full ring.
+- Made level-up much flashier with a stronger flash, triple rings, center glow,
+  larger gold burst, white sparkle burst, and a `LEVEL UP!` callout.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (full melee/counter ring with right-side accent)
+- `src/hooks/useGameLoop.ts` (level-up VFX combo)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Right-side ring accent is fixed slightly above the horizontal right side
+  (`accent = -0.18`) so it is only subtly biased, as requested.
+- If the level-up gets too busy on mobile, first reduce the gold burst count
+  from `44` in `src/hooks/useGameLoop.ts`.
+
 ## 2026-06-05 - v0.23.1 - Melee crescent visibility and level-up reveal timing (Codex)
 
 ### Summary

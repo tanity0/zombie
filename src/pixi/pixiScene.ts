@@ -841,24 +841,22 @@ export class PixiScene {
     const cy = player.y + player.height / 2;
     const r = MELEE_RADIUS;
     if (now <= player.counterWindowEnd) {
-      const dir = player.lastDirection ?? (
-        player.direction === 'left' ? { x: -1, y: 0 } :
-        player.direction === 'right' ? { x: 1, y: 0 } :
-        player.direction === 'up' ? { x: 0, y: -1 } :
-        { x: 0, y: 1 }
-      );
-      const angle = Math.atan2(dir.y, dir.x);
-      const start = angle - 1.12;
-      const end = angle + 1.12;
+      const accent = -0.18;
+      const start = accent - 0.58;
+      const end = accent + 0.58;
       const startX = cx + Math.cos(start) * r;
       const startY = cy + Math.sin(start) * r;
 
+      g.circle(cx, cy, r)
+        .stroke({ width: 5, color: 0xfbbf24, alpha: 0.16 });
+      g.circle(cx, cy, r)
+        .stroke({ width: 1.8, color: 0xfef3c7, alpha: 0.66 });
       g.moveTo(startX, startY)
         .arc(cx, cy, r, start, end)
-        .stroke({ width: 9, color: 0xfbbf24, alpha: 0.18 });
+        .stroke({ width: 9, color: 0xfbbf24, alpha: 0.2 });
       g.moveTo(startX, startY)
         .arc(cx, cy, r, start, end)
-        .stroke({ width: 3, color: 0xfef3c7, alpha: 0.78 });
+        .stroke({ width: 4, color: 0xfef3c7, alpha: 0.82 });
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }
