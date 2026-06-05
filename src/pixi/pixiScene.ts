@@ -860,7 +860,7 @@ export class PixiScene {
           const a2 = a0 + ((i + 1) / segs) * span;
           g.moveTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r)
             .lineTo(cx + Math.cos(a2) * r, cy + Math.sin(a2) * r)
-            .stroke({ width: 4 * taper + 0.4, color: 0xfff3c4, alpha: 0.95 * taper * fade });
+            .stroke({ width: 5 * taper + 0.6, color: 0xfff3c4, alpha: 0.95 * taper * fade });
         }
         g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
           .fill({ color: 0xffffff, alpha: 0.9 * fade });

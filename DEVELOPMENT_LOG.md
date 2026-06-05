@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.7 - Thicker melee crescent + 0.1s freeze on knockback-immune (Claude Code)
+
+### Summary
+- Melee crescent a touch thicker: stroke `4*taper+0.4` -> `5*taper+0.6`.
+- Melee counter on an enemy whose knockback is on cooldown (would NOT be shoved)
+  now freezes it in place for 0.1s instead of doing nothing. Implemented by
+  reusing the knockback override with zero velocity (`knockbackVx/Vy = 0`,
+  `knockbackUntil = now + 100`) in `triggerCounter`'s immune branch, so
+  `updateEnemies` holds it still (no chase) for 100ms while damage still lands.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (crescent width), `src/store/gameStore.ts` (freeze)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK / `npm run build` OK. Pushed -> Pages auto-deploy.
+
 ## 2026-06-05 - v0.24.6 - Melee circle: static, quick, thinner (Claude Code)
 
 ### Summary

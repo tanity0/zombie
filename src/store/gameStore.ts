@@ -426,7 +426,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS
         });
       } else {
-        survivors.push({ ...enemy, health: newHealth, lastHit: now });
+        // Knockback is on cooldown for this enemy (recently shoved): don't shove
+        // again — instead freeze it in place for 0.1s. We reuse the knockback
+        // override with zero velocity, so updateEnemies holds it still (no chase)
+        // for the duration while the damage above still lands.
+        survivors.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          knockbackVx: 0,
+          knockbackVy: 0,
+          knockbackUntil: now + 100,
+        });
       }
     }
 
