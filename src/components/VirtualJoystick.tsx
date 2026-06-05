@@ -28,8 +28,8 @@ const VirtualJoystick: React.FC = () => {
     if (pointerIdRef.current !== null) {
       const counter = triggerCounter();
       if (counter.swung) playSfx('melee');
-      if (counter.hit) playSfx('slash-damage');
       if (counter.finish) playSfx('melee-finish');
+      else if (counter.hit) playSfx('slash-damage');
     }
     pointerIdRef.current = null;
     originRef.current = null;

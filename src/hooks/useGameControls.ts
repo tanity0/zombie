@@ -40,8 +40,8 @@ export const useGameControls = () => {
         if (!e.repeat) {
           const counter = useGameStore.getState().triggerCounter();
           if (counter.swung) playSfx('melee');
-          if (counter.hit) playSfx('slash-damage');
           if (counter.finish) playSfx('melee-finish');
+          else if (counter.hit) playSfx('slash-damage');
         }
       }
 

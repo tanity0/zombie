@@ -10,6 +10,48 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.21.1 - Add Drive SFX assets and finalize event sounds (Codex)
+
+### Summary
+- Added the actual Drive-provided SFX files for the v0.21.0 event-sound wiring.
+- Kept Claude Code's event wiring as the base:
+  - random zombie death grunts on projectile/gun kills
+  - `melee-finish` for normal melee finishers and stunned-boss finisher damage
+  - `counter` for successful projectile reflection
+  - `player-damage`, `bomb`, and `eat` on their matching events
+- Adjusted melee input playback so finishers play `melee-finish`; normal melee
+  hits play `slash-damage`.
+
+### Assets added
+- `public/audio/sfx/zombie-1.mp3`
+- `public/audio/sfx/zombie-2.mp3`
+- `public/audio/sfx/zombie-3.mp3`
+- `public/audio/sfx/zombie-4.mp3`
+- `public/audio/sfx/kill.mp3`
+- `public/audio/sfx/counter.mp3`
+- `public/audio/sfx/player-damage.mp3`
+- `public/audio/sfx/bomb.mp3`
+- `public/audio/sfx/eat.mp3`
+
+### Code touched
+- `src/audio/audioManager.ts`
+- `src/hooks/useGameControls.ts`
+- `src/components/VirtualJoystick.tsx`
+- `package.json`
+- `package-lock.json`
+- `CLAUDE.md`
+- `DEVELOPMENT_LOG.md`
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
+### Handoff notes
+- Drive asset copying is a Codex responsibility when Claude Code cannot access
+  the user's local/Drive material folder.
+- Continue from `v0.21.1`; `v0.21.0` below was Claude Code's wiring pass with
+  assets marked pending.
+
 ## 2026-06-05 - v0.21.0 - Kill/counter/player-damage/zombie/bomb/eat SFX (Claude Code)
 
 ### Summary

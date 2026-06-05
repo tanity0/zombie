@@ -48,3 +48,6 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
 - After each agent handoff or meaningful change, append a short entry to
   `DEVELOPMENT_LOG.md` with version, summary, files changed, verification,
   and next handoff notes.
+- Claude Code may not be able to access the user's Google Drive materials.
+  When new BGM/SE files are provided in Drive, have Codex copy them into
+  `public/audio/` first, then commit/push so other agents can use them.
