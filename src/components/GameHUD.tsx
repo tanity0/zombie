@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName } from '../utils/weaponUtils';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import type { AmmoType } from '../types/game';
+import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
 const BOSS_WARN_LEAD = 12 * 1000;
 
@@ -12,6 +14,7 @@ interface GameHUDProps {
 }
 
 const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
+  const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   const player = useGameStore(state => state.player);
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
@@ -31,8 +34,16 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
   const weaponGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
 
+  const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    const next = !audioMuted;
+    setAudioMutedState(next);
+    setAudioMuted(next);
+  };
+
   return (
-    <div className="absolute inset-0 pointer-events-none text-white">
+    <div className="absolute inset-0 z-40 pointer-events-none text-white">
       {/* New-weapon popup — shows for 5s after picking up a gun / opening a crate */}
       {weaponGetVisible && (
         <div
@@ -209,6 +220,21 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
           <div>DMG {Math.floor(gameStats.damageDealt)}</div>
         </div>
       </div>
+
+      {/* BGM toggle */}
+      <button
+        type="button"
+        onPointerDown={toggleBgm}
+        className="pointer-events-auto absolute w-9 h-9 rounded-full glass-pill flex items-center justify-center text-white/70 active:text-white"
+        style={{
+          right: 'max(env(safe-area-inset-right), 12px)',
+          top: 'calc(max(env(safe-area-inset-top), 8px) + 168px)'
+        }}
+        title={audioMuted ? 'Audio on' : 'Audio off'}
+        aria-label={audioMuted ? 'Audio on' : 'Audio off'}
+      >
+        {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+      </button>
 
       {/* FPS */}
       <div

@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { useGameStore } from '../store/gameStore';
 
 interface PauseMenuProps {
   onResume: () => void;

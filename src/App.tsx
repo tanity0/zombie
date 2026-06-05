@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Game from './components/Game';
 import MainMenu from './components/MainMenu';
 import GameOverScreen from './components/GameOverScreen';
 import { GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
+import { setBgmActive } from './audio/audioManager';
 
 function App() {
   const [gameState, setGameState] = useState<GameState>('menu');
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
+
+  useEffect(() => {
+    void setBgmActive(gameState === 'playing');
+  }, [gameState]);
   
   const startGame = (characterClass: string) => {
+    void setBgmActive(true);
     resetGame(characterClass);
     setGameState('playing');
   };

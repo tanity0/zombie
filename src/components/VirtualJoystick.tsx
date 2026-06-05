@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { playSfx } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
 
 // Floating thumb-stick. The user can place a finger anywhere inside the
@@ -25,7 +26,9 @@ const VirtualJoystick: React.FC = () => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
     if (pointerIdRef.current !== null) {
-      triggerCounter();
+      const counter = triggerCounter();
+      if (counter.swung) playSfx('melee');
+      if (counter.hit) playSfx('slash-damage');
     }
     pointerIdRef.current = null;
     originRef.current = null;

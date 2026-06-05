@@ -25,6 +25,7 @@ export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 15, shotgun: 6, 
 // finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
 const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
 export const DEFAULT_MELEE_DROP_PCT = 50;
+export type CounterTriggerResult = { swung: boolean; hit: boolean };
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 const loadMeleeDropPct = (): number => {
@@ -142,7 +143,7 @@ interface GameState {
   damagePlayer: (amount: number) => boolean;
   gainExperience: (amount: number) => void;
   levelUp: () => void;
-  triggerCounter: () => void;
+  triggerCounter: () => CounterTriggerResult;
   
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
@@ -348,7 +349,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const { player, gameTime, enemies } = get();
     // Respect cooldown — no swing, no knockback, no window.
-    if (now < player.counterCooldownEnd) return;
+    if (now < player.counterCooldownEnd) return { swung: false, hit: false };
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
@@ -505,6 +506,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.18)', 160);
     }
+    return { swung: true, hit: slashAt.length > 0 };
   },
 
   damagePlayer: (amount) => {

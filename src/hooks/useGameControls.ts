@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { playSfx } from '../audio/audioManager';
 import { useGameStore } from '../store/gameStore';
 
 // Keyboard fallback — the game is touch-first now, but we keep WASD/arrow
@@ -37,7 +38,9 @@ export const useGameControls = () => {
         e.preventDefault();
         // First press only — auto-repeat shouldn't keep refiring the counter
         if (!e.repeat) {
-          useGameStore.getState().triggerCounter();
+          const counter = useGameStore.getState().triggerCounter();
+          if (counter.swung) playSfx('melee');
+          if (counter.hit) playSfx('slash-damage');
         }
       }
 

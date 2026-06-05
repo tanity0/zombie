@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Skull, Wand2, Swords } from 'lucide-react';
+import { Skull, Wand2, Swords, Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
 interface MainMenuProps {
   onStartGame: (characterClass: string) => void;
@@ -8,6 +9,7 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   const [selectedClass, setSelectedClass] = useState('warrior');
+  const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
 
   // Start-screen ammo drop-rate setting (persisted in the store/localStorage).
   const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
@@ -21,6 +23,11 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   };
   const normalizeDrop = () => {
     setDropInput(String(useGameStore.getState().meleeAmmoDropPercent));
+  };
+  const toggleAudio = () => {
+    const next = !audioMuted;
+    setAudioMutedState(next);
+    setAudioMuted(next);
   };
   
   const characterClasses = [
@@ -196,6 +203,19 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
               }}
             >
               はじめる
+            </button>
+
+            <button
+              onClick={toggleAudio}
+              className={`mt-2 w-full py-2.5 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 ${
+                audioMuted
+                  ? 'bg-white/5 border-white/10 text-white/70'
+                  : 'bg-emerald-400/10 border-emerald-300/35 text-emerald-100'
+              }`}
+              aria-label={audioMuted ? '音をオンにする' : '音をオフにする'}
+            >
+              {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+              {audioMuted ? '音なし' : '音あり'}
             </button>
 
             <div className="mt-3 text-[12px] text-white/60 space-y-1 text-center">

@@ -25,6 +25,7 @@ import {
 } from '../utils/enemyUtils';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
+import { playSfx } from '../audio/audioManager';
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -156,11 +157,21 @@ export const useGameLoop = (onGameOver: () => void) => {
         
         // Complete any finished reload, then ensure the active gun is
         // shootable (reload it / swap off a fully-dry gun), then fire it.
+        const reloadBeforeAutoSwitch = useGameStore.getState().player.reloadingWeaponId;
         tickReload();
         autoSwitchIfDry();
-        const activeGun = getActiveGun(useGameStore.getState().player);
+        const postReloadPlayer = useGameStore.getState().player;
+        if (!reloadBeforeAutoSwitch && postReloadPlayer.reloadingWeaponId) {
+          playSfx('reload');
+        }
+        const activeGun = getActiveGun(postReloadPlayer);
         if (activeGun) {
-          const newProjectiles = fireWeapon(activeGun, useGameStore.getState().player, enemies);
+          const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
+          if (newProjectiles.length > 0) {
+            if (activeGun.category === 'handgun') playSfx('handgun-fire');
+            if (activeGun.category === 'shotgun') playSfx('shotgun-fire');
+            if (activeGun.category === 'rifle') playSfx('rifle-fire');
+          }
           newProjectiles.forEach(proj => useGameStore.getState().addProjectile(proj));
         }
         
@@ -263,6 +274,7 @@ export const useGameLoop = (onGameOver: () => void) => {
             : 1;
           const dmg = damage * critMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
+          playSfx(projectile?.crit ? 'headshot' : 'shot-damage');
 
           // Floating damage number at the enemy's body. Reflected bolts and
           // crits both render in the gold "big hit" color.
@@ -445,6 +457,29 @@ export const useGameLoop = (onGameOver: () => void) => {
         const pickupCollisions = checkPlayerPickupCollisions(player, pickups);
 
         if (pickupCollisions.length > 0) {
+          const collidedPickups = pickupCollisions
+            .map(pickupId => pickups.find(p => p.id === pickupId))
+            .filter((pk): pk is NonNullable<typeof pk> => pk !== undefined);
+          const hasAmmoPickup = collidedPickups.some(pk =>
+            pk.type === 'ammo-handgun' ||
+            pk.type === 'ammo-shotgun' ||
+            pk.type === 'ammo-rifle'
+          );
+          const hasWeaponPickup = collidedPickups.some(pk =>
+            pk.type === 'weapon-drop' ||
+            pk.type === 'weapon-crate'
+          );
+          const hasOtherPickup = collidedPickups.some(pk =>
+            pk.type !== 'ammo-handgun' &&
+            pk.type !== 'ammo-shotgun' &&
+            pk.type !== 'ammo-rifle' &&
+            pk.type !== 'weapon-drop' &&
+            pk.type !== 'weapon-crate'
+          );
+          if (hasOtherPickup) playSfx('pickup');
+          if (hasAmmoPickup) playSfx('ammo-pickup');
+          if (hasWeaponPickup) playSfx('weapon-pickup');
+
           pickupCollisions.forEach(pickupId => {
             const pk = pickups.find(p => p.id === pickupId);
             if (pk) {

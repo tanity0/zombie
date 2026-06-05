@@ -238,7 +238,7 @@ export const getEnemySpawnInterval = (gameTime: number): number => {
   return base + Math.random() * 300;
 };
 
-export const getEnemySpawnCount = (_gameTime: number): number => {
+export const getEnemySpawnCount = (): number => {
   // Always one body per spawn tick — density is governed by the cap.
   return 1;
 };

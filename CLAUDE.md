@@ -38,3 +38,13 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left
   in-game (with the active renderer), so the build loaded on-device can be
   confirmed at a glance. There is one version number — do not add a second.
+
+## Development environment / handoff
+- Local repository path: `/Users/tanity/zombie`
+- Active branch: `claude/chat-context-continuity-saxlH`
+- Install dependencies with `npm install`.
+- Run the dev server with `npm run dev`; Vite serves the app under `/zombie/`
+  (usually `http://localhost:5173/zombie/`, or the next open port).
+- After each agent handoff or meaningful change, append a short entry to
+  `DEVELOPMENT_LOG.md` with version, summary, files changed, verification,
+  and next handoff notes.
