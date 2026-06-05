@@ -49,9 +49,9 @@ const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 // scale offset from the player's foot plane, so the player stays ~1.0 and
 // objects grow/shrink relative to the hero.
 const DEPTH_SCALE_ENABLED = true;
-const DEPTH_K = 0.0007;   // scale change per world-Y px from the player plane
-const DEPTH_MIN = 0.72;
-const DEPTH_MAX = 1.34;
+const DEPTH_K = 0.0011;   // scale change per world-Y px from the player plane
+const DEPTH_MIN = 0.58;
+const DEPTH_MAX = 1.6;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
