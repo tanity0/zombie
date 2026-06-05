@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.23.3 - Crescent slash swoosh (Claude Code)
+
+### Summary
+Reworked the `slash` effect (the melee/counter hit swoosh on enemies) because the
+old straight additive streak looked cheap. It now renders as a curved, tapered
+crescent blade arc that sweeps through the swing and fades:
+- Tapered crescent polygon (pointed tips, thick belly) filled additively in the
+  slash color, with the belly passing through the hit point.
+- Hot white leading edge stroked along the outer arc.
+- Rotates (`spin`) and grows over its short life, so it reads as a blade slash;
+  bloom picks up the bright edge.
+Visual only; gameplay untouched.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (drawEffectGfx `slash` case)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+- Needs on-device look.
+
+### Handoff notes
+- Tuning is all in the `slash` case: `sweep` (arc width), `spin` term (sweep
+  speed/orientation), `rOuter`/`thick` (size & belly), and the white edge stroke.
+- `spawnSlash` still feeds `e.angle`/`e.length` (random angle, length 26-34) from
+  `gameStore.ts`; change there if a fixed swing direction is wanted.
+
 ## 2026-06-05 - v0.23.2 - Full melee ring and stronger level-up VFX (Codex)
 
 ### Summary
