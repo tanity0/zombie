@@ -3,7 +3,6 @@ import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer } from '../config/renderer';
-import { BUILD_ID } from '../config/buildInfo';
 import GameHUD from './GameHUD';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
@@ -142,8 +141,10 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
         <UpgradeMenu />
       )}
 
-      {/* Build marker (bottom-left): confirms which bundle is actually loaded
-          on-device. Shows the active renderer too. */}
+      {/* In-play version marker (bottom-left): same source as the title's
+          top-right badge (__APP_VERSION__ = package.json version) so the
+          number always matches. Visible during on-device testing where the
+          title screen isn't. Also shows the active renderer. */}
       <div
         style={{
           position: 'absolute',
@@ -157,7 +158,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
           zIndex: 50
         }}
       >
-        {isPixiRenderer() ? 'pixi' : 'canvas'} · {BUILD_ID}
+        {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
       </div>
     </div>
   );
