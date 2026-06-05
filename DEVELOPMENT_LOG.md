@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.22.1 - Remove player-covering counter glow (Codex)
+
+### Summary
+Reduced the melee/counter visual noise that was flashing over the player.
+- Removed the yellow player-centered glow from the melee/counter release.
+- Removed the cyan full-screen flash and player-centered glow from successful
+  projectile counter reflection.
+- Kept the counter shockwave ring, sparks, callout, and SFX so the action still
+  reads without covering the player.
+
+### Code touched
+- `src/store/gameStore.ts` (melee/counter release VFX)
+- `src/hooks/useGameLoop.ts` (projectile counter success VFX)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If more reduction is needed, the next candidates are the remaining counter
+  ring/burst in `src/hooks/useGameLoop.ts` and the Pixi counter-radius ring in
+  `src/pixi/pixiScene.ts`.
+
 ## 2026-06-05 - v0.22.0 - Octopath-style combat juice, pass 1 (Claude Code)
 
 ### Summary

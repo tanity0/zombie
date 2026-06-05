@@ -271,8 +271,6 @@ export const useGameLoop = (onGameOver: () => void) => {
           const pcy = player.y + player.height / 2;
           spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, 320);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
-          spawnFlash('rgba(56,189,248,0.12)', 150);
-          useGameStore.getState().spawnGlow(pcx, pcy, 54, 'rgba(56,189,248,', 280);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
         }
 

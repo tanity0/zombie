@@ -447,10 +447,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }));
 
-    // Counter-range light: a fixed-radius glow at the melee reach (no
-    // expanding ring) so the catch zone reads clearly the moment it fires.
-    get().spawnGlow(pcx, pcy, MELEE_RADIUS, 'rgba(251,191,36,', 340);
-
     // Slash streaks on every enemy that was cut.
     for (const s of slashAt) {
       get().spawnSlash(s.x, s.y);
