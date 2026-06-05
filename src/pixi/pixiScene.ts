@@ -784,43 +784,17 @@ export class PixiScene {
         break;
       }
       case 'slash': {
-        // Curved crescent "swoosh": a tapered blade arc that sweeps through the
-        // swing and fades. Additive fill + a hot white leading edge so it reads
-        // as a glowing slash (and gets caught by bloom).
+        // Additive streak: soft wide underlay + hot white core line.
         g.blendMode = 'add';
-        const a = Math.max(0, 1 - t);
-        g.alpha = a;
-        const sweep = 1.7;                     // angular span of the arc
-        const spin = e.angle - 0.5 + t * 0.9;  // rotate the blade through the swing
-        const grow = 0.85 + t * 0.5;
-        const rOuter = e.length * 1.05 * grow;
-        const thick = 4 + e.length * 0.16;     // crescent belly thickness
-        // Pivot so the arc's belly passes through the hit point.
-        const px = e.x - Math.cos(spin) * rOuter;
-        const py = e.y - Math.sin(spin) * rOuter;
-        const a0 = spin - sweep / 2;
-        const a1 = spin + sweep / 2;
-        const steps = 12;
-        const pts: number[] = [];
-        for (let i = 0; i <= steps; i++) {
-          const ang = a0 + (a1 - a0) * (i / steps);
-          pts.push(px + Math.cos(ang) * rOuter, py + Math.sin(ang) * rOuter);
-        }
-        for (let i = steps; i >= 0; i--) {
-          const f = i / steps;
-          const ang = a0 + (a1 - a0) * f;
-          const taper = Math.sin(f * Math.PI); // 0 at the tips, 1 at the belly
-          const ri = rOuter - thick * taper;
-          pts.push(px + Math.cos(ang) * ri, py + Math.sin(ang) * ri);
-        }
-        g.poly(pts).fill({ color: e.color, alpha: 0.5 });
-        // Hot white leading edge along the outer arc.
-        g.moveTo(px + Math.cos(a0) * rOuter, py + Math.sin(a0) * rOuter);
-        for (let i = 1; i <= steps; i++) {
-          const ang = a0 + (a1 - a0) * (i / steps);
-          g.lineTo(px + Math.cos(ang) * rOuter, py + Math.sin(ang) * rOuter);
-        }
-        g.stroke({ width: 2.4 * a + 0.6, color: 0xffffff, alpha: 0.9 });
+        g.alpha = 1 - t;
+        const half = e.length / 2;
+        const grow = 1 + t * 0.4;
+        const dx = Math.cos(e.angle) * half * grow;
+        const dy = Math.sin(e.angle) * half * grow;
+        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
+          .stroke({ width: 8 * (1 - t) + 2, color: e.color, alpha: 0.4, cap: 'round' });
+        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
+          .stroke({ width: 3 * (1 - t) + 1, color: 0xffffff, alpha: 0.85, cap: 'round' });
         break;
       }
       case 'trail': {
@@ -867,24 +841,29 @@ export class PixiScene {
     const cy = player.y + player.height / 2;
     const r = MELEE_RADIUS;
     if (now <= player.counterWindowEnd) {
-      const accent = -0.18;
-      const arc = (spread: number, width: number, color: number, alpha: number) => {
-        const start = accent - spread;
-        const end = accent + spread;
-        g.moveTo(cx + Math.cos(start) * r, cy + Math.sin(start) * r)
-          .arc(cx, cy, r, start, end)
-          .stroke({ width, color, alpha, cap: 'round' });
-      };
+      // A sleek rotating "rune" reach-ring: faint glow rim + crisp bright ring,
+      // small rotating tick marks, and two symmetric bright sweeps orbiting it.
+      // Normal blend (so the reload meter below isn't affected); the bright
+      // cream pixels are picked up by the bloom filter on their own.
+      const spin = now * 0.005;
+      g.circle(cx, cy, r).stroke({ width: 8, color: 0xfbbf24, alpha: 0.1 });
+      g.circle(cx, cy, r).stroke({ width: 2, color: 0xfff3c4, alpha: 0.75 });
 
-      g.circle(cx, cy, r)
-        .stroke({ width: 11, color: 0xfbbf24, alpha: 0.08 });
-      g.circle(cx, cy, r)
-        .stroke({ width: 5, color: 0xfbbf24, alpha: 0.2 });
-      g.circle(cx, cy, r)
-        .stroke({ width: 2, color: 0xfef3c7, alpha: 0.7 });
-      arc(1.2, 9, 0xfbbf24, 0.1);
-      arc(0.86, 7, 0xfbbf24, 0.16);
-      arc(0.5, 4, 0xfef3c7, 0.38);
+      const ticks = 28;
+      for (let i = 0; i < ticks; i++) {
+        const a = spin * 0.4 + (i / ticks) * Math.PI * 2;
+        g.moveTo(cx + Math.cos(a) * (r - 3), cy + Math.sin(a) * (r - 3))
+          .lineTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3))
+          .stroke({ width: 1, color: 0xfde68a, alpha: 0.22 });
+      }
+
+      const sweep = 0.8;
+      for (let k = 0; k < 2; k++) {
+        const s0 = spin + k * Math.PI;
+        g.moveTo(cx + Math.cos(s0) * r, cy + Math.sin(s0) * r)
+          .arc(cx, cy, r, s0, s0 + sweep)
+          .stroke({ width: 3.5, color: 0xfffbe6, alpha: 0.95, cap: 'round' });
+      }
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }

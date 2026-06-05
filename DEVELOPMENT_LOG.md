@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.2 - Revert slash rework; restyle melee reach-ring (Claude Code)
+
+### Summary
+Two targeted changes from playtest feedback (the earlier "slash" rework was the
+wrong target):
+- Reverted the `slash` effect (`drawEffectGfx`) from the crescent swoosh back to
+  the simple additive streak (the crescent wasn't what was wanted).
+- Restyled the melee/counter reach-ring (`syncPlayerFx`, shown while the counter
+  window is open) from the flat amber triple-circle + right-side arc into a
+  sleeker "rune" ring: faint glow rim + crisp bright ring, small rotating tick
+  marks, and two symmetric bright sweeps orbiting the rim. Normal blend so the
+  reload meter is unaffected; bright cream pixels bloom on their own.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (`drawEffectGfx` slash revert, `syncPlayerFx` ring)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+- Needs on-device look (ring rotation speed / brightness).
+
+### Handoff notes
+- Ring tuning is in `syncPlayerFx`: `spin` (rotation speed), `ticks` count,
+  `sweep` length, and the stroke colors/alphas. Cooldown ring still the faint
+  gray circle.
+- Built on the 0.24.1 merge (Codex red-death-splash + my slash crescent). The
+  crescent is now gone again per request.
+
 ## 2026-06-05 - v0.24.0 - Red death/kill splash and smoother melee ring (Codex)
 
 ### Summary
