@@ -47,9 +47,9 @@ const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 // forest stays clean while gems / muzzle flashes / crits / lights / fireflies
 // bloom. Applied to the world group alongside the tilt-shift.
 const BLOOM_ENABLED = true;
-const BLOOM_THRESHOLD = 0.82;
-const BLOOM_SCALE = 0.7;
-const BLOOM_BLUR = 5;
+const BLOOM_THRESHOLD = 0.45;  // lower → colored gems/crits bloom too
+const BLOOM_SCALE = 1.5;
+const BLOOM_BLUR = 8;
 
 // Ambient fireflies drifting through the moonlit forest (soft additive motes).
 const FIREFLY_ENABLED = true;
