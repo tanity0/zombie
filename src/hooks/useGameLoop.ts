@@ -524,16 +524,20 @@ export const useGameLoop = (onGameOver: () => void) => {
               switch (pk.type) {
                 case 'experience': {
                   const color = pk.value >= 5 ? '#fecaca' : pk.value >= 2 ? '#a7f3d0' : '#bfdbfe';
-                  spawnBurst(pk.x + 8, pk.y + 8, color, 4);
+                  const rgb = pk.value >= 5 ? '254,202,202' : pk.value >= 2 ? '167,243,208' : '191,219,254';
+                  spawnBurst(pk.x + 8, pk.y + 8, color, pk.value >= 5 ? 10 : pk.value >= 2 ? 8 : 6);
+                  spawnRing(pk.x + 8, pk.y + 8, 2, pk.value >= 5 ? 24 : 16, `rgba(${rgb},0.75)`, 2, 260);
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, pk.value >= 5 ? 24 : 16, `rgba(${rgb},`, 220);
                   break;
                 }
                 case 'health':
-                  spawnBurst(pk.x + 8, pk.y + 8, '#f87171', 10);
+                  spawnBurst(pk.x + 8, pk.y + 8, '#fca5a5', 16);
                   spawnRing(
                     player.x + player.width / 2,
                     player.y + player.height / 2,
                     8, 36, 'rgba(248,113,113,0.7)', 3, 380
                   );
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 30, 'rgba(248,113,113,', 280);
                   break;
                 case 'magnet':
                   // Animate every gem flying to the player as a trail before
@@ -557,6 +561,7 @@ export const useGameLoop = (onGameOver: () => void) => {
                     player.y + player.height / 2,
                     8, 220, 'rgba(96,165,250,0.55)', 3, 320
                   );
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 34, 'rgba(96,165,250,', 260);
                   break;
                 case 'chest':
                   spawnFlash('rgba(252, 211, 77, 0.35)', 280);
@@ -587,10 +592,12 @@ export const useGameLoop = (onGameOver: () => void) => {
                 case 'ammo-handgun':
                 case 'ammo-shotgun':
                 case 'ammo-rifle':
-                  spawnBurst(pk.x + 8, pk.y + 8, '#fcd34d', 6);
+                  spawnBurst(pk.x + 8, pk.y + 8, '#fde68a', 10);
+                  spawnRing(pk.x + 8, pk.y + 8, 3, 18, 'rgba(253,230,138,0.7)', 2, 280);
                   break;
                 case 'weapon-drop':
-                  spawnBurst(pk.x + 8, pk.y + 8, '#93c5fd', 12);
+                  spawnBurst(pk.x + 8, pk.y + 8, '#bfdbfe', 18);
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 34, 'rgba(147,197,253,', 300);
                   spawnRing(
                     player.x + player.width / 2,
                     player.y + player.height / 2,
@@ -605,6 +612,7 @@ export const useGameLoop = (onGameOver: () => void) => {
                     10, 120, 'rgba(96,165,250,0.9)', 5, 440
                   );
                   spawnBurst(pk.x + 8, pk.y + 8, '#bfdbfe', 18);
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 42, 'rgba(191,219,254,', 340);
                   break;
               }
             }
@@ -751,16 +759,22 @@ export const useGameLoop = (onGameOver: () => void) => {
         // Detect level-up edge: golden ring around the player.
         const currentPlayer = useGameStore.getState().player;
         if (currentPlayer.level > prevLevelRef.current) {
+          spawnFlash('rgba(253,224,71,0.16)', 220);
           spawnRing(
             currentPlayer.x + currentPlayer.width / 2,
             currentPlayer.y + currentPlayer.height / 2,
             10, 90, 'rgba(253,224,71,0.9)', 4, 520
           );
+          spawnRing(
+            currentPlayer.x + currentPlayer.width / 2,
+            currentPlayer.y + currentPlayer.height / 2,
+            4, 34, 'rgba(255,255,255,0.95)', 3, 260
+          );
           spawnBurst(
             currentPlayer.x + currentPlayer.width / 2,
             currentPlayer.y + currentPlayer.height / 2,
             '#fde68a',
-            18
+            28
           );
           prevLevelRef.current = currentPlayer.level;
         } else if (currentPlayer.level < prevLevelRef.current) {

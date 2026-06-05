@@ -57,6 +57,22 @@ const FIREFLY_COUNT = 40;
 const FIREFLY_TINT = 0xcfe89a;   // soft warm green-yellow
 const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 
+// Enemy ground lights: subtle self-emission plus a short brighter pulse when
+// hit. These sit under actors so sprites never get washed out.
+const ENEMY_LIGHT_ENABLED = true;
+const ENEMY_LIGHT_RADIUS = 34;
+const ENEMY_HIT_LIGHT_MS = 180;
+const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
+  zombie: 0x7de28a,
+  bat: 0x9aa6ff,
+  ghost: 0x9bf6ff,
+  skeleton: 0xd7ddff,
+  plant: 0x9fe870,
+  pumpkin: 0xff9f3f,
+  giantbat: 0xb9c4ff,
+  reaper: 0xff4f5e,
+};
+
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
 // it scales sprites + foot shadows only. Collision boxes, attack ranges, the
@@ -94,6 +110,7 @@ const drawShadow = (g: Graphics, cx: number, cy: number, w: number, alpha: numbe
 // container whose zIndex is the foot Y (the Y-sort key).
 interface ActorView {
   container: Container;
+  light: Sprite;
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
@@ -235,13 +252,18 @@ export class PixiScene {
   // Build a fresh actor view and parent it into the actor layer.
   private makeActor(): ActorView {
     const container = new Container();
+    const light = new Sprite(getGlowTexture());
+    light.anchor.set(0.5);
+    light.blendMode = 'add';
+    light.visible = false;
+    this.L.groundLayer.addChild(light);
     const reticle = new Graphics();
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1); // foot-centre
     const overlay = new Graphics();
     container.addChild(reticle, sprite, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, reticle, sprite, overlay };
+    return { container, light, reticle, sprite, overlay };
   }
 
   // ---- top-level frame sync ------------------------------------------------
@@ -417,6 +439,7 @@ export class PixiScene {
     }
     for (const [id, view] of this.enemies) {
       if (!seen.has(id)) {
+        view.light.destroy();
         view.container.destroy({ children: true });
         this.enemies.delete(id);
       }
@@ -435,6 +458,7 @@ export class PixiScene {
     view.sprite.position.set(fb.footX, fb.footY);
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
+    view.light.visible = false;
     view.reticle.clear();
     view.overlay.clear();
   }
@@ -458,6 +482,8 @@ export class PixiScene {
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
 
+    this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
+
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
     const r = view.reticle;
     r.clear();
@@ -478,6 +504,22 @@ export class PixiScene {
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
     }
+  }
+
+  private syncEnemyLight(view: ActorView, e: Enemy, footX: number, footY: number, now: number) {
+    if (!ENEMY_LIGHT_ENABLED || e.type === 'bat') {
+      view.light.visible = false;
+      return;
+    }
+    const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
+    const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
+    const radius = ENEMY_LIGHT_RADIUS * (boss ? 1.55 : 1) * (1 + hitT * 0.42);
+    view.light.visible = true;
+    view.light.tint = ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
+    view.light.position.set(footX, footY - e.height * 0.22);
+    view.light.width = radius * 2;
+    view.light.height = radius * 1.45;
+    view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
   }
 
   private drawHealthBar(g: Graphics, e: Enemy) {
@@ -894,7 +936,11 @@ export class PixiScene {
 
   destroy() {
     for (const e of this.trees.values()) e.sprite.destroy();
-    for (const v of this.enemies.values()) v.container.destroy({ children: true });
+    for (const v of this.enemies.values()) {
+      v.light.destroy();
+      v.container.destroy({ children: true });
+    }
+    this.playerView?.light.destroy();
     this.playerView?.container.destroy({ children: true });
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();

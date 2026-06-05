@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.23.0 - Sparkle, level-up, and enemy light pass (Codex)
+
+### Summary
+Added the next visual polish pass requested by the player.
+- Strengthened item pickup sparkles with richer bursts, small pickup-local
+  rings, and short glows for gems / ammo / health / weapon pickups.
+- Added level-up screen feedback before the pause fully reads: a subtle flash,
+  extra white ring, larger burst, and UpgradeMenu entrance animation.
+- Added Pixi enemy floor self-lights plus a short brighter hit pulse, kept under
+  sprites so enemies do not get washed out.
+
+### Code touched
+- `src/hooks/useGameLoop.ts` (pickup and level-up VFX combos)
+- `src/components/UpgradeMenu.tsx`, `src/index.css` (UpgradeMenu entrance)
+- `src/pixi/pixiScene.ts` (enemy self-emission / hit pulse lights)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Enemy lights are intentionally subtle. Tune `ENEMY_LIGHT_RADIUS`,
+  `ENEMY_HIT_LIGHT_MS`, and `ENEMY_LIGHT_TINT` in `src/pixi/pixiScene.ts`.
+- If pickup effects become too busy on mobile, reduce the per-pickup
+  `spawnBurst` counts in `src/hooks/useGameLoop.ts`.
+
 ## 2026-06-05 - v0.22.2 - Crescent melee counter indicator (Codex)
 
 ### Summary
