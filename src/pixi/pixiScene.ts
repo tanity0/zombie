@@ -290,7 +290,11 @@ export class PixiScene {
     for (let i = 0; i < 4; i++) {
       const a0 = spin + i * (Math.PI / 2) + 0.25;
       const a1 = spin + i * (Math.PI / 2) + (Math.PI / 2) - 0.25;
-      g.arc(cx, cy, rad, a0, a1).stroke({ width: 2, color: 0xfacc15 });
+      // moveTo before arc: otherwise Pixi draws a connecting line from the
+      // previous pen position to the arc start (stray yellow line artifact).
+      g.moveTo(cx + Math.cos(a0) * rad, cy + Math.sin(a0) * rad)
+        .arc(cx, cy, rad, a0, a1)
+        .stroke({ width: 2, color: 0xfacc15 });
     }
   }
 
