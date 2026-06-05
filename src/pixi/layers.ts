@@ -15,6 +15,7 @@
 //     ├─ frontObjectLayer – projectiles (above the actors)
 //     ├─ effectLayer      – over-sprite effects, counter ring, reload meter
 //     └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
+//   frontForest    – screen-space nearest forest foreground (fast parallax)
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
 import { Container, TilingSprite, Texture } from 'pixi.js';
@@ -23,6 +24,7 @@ export interface SceneLayers {
   farBackdrop: TilingSprite;
   worldGroup: Container;
   groundBase: TilingSprite;
+  frontForest: TilingSprite;
   world: Container;
   backgroundLayer: Container;
   groundLayer: Container;
@@ -33,9 +35,15 @@ export interface SceneLayers {
   uiLayer: Container;
 }
 
-export const buildLayers = (stage: Container, forestTexture: Texture, farTexture: Texture): SceneLayers => {
+export const buildLayers = (
+  stage: Container,
+  forestTexture: Texture,
+  farTexture: Texture,
+  frontForestTexture: Texture
+): SceneLayers => {
   const farBackdrop = new TilingSprite({ texture: farTexture, width: 1, height: 1 });
   const groundBase = new TilingSprite({ texture: forestTexture, width: 1, height: 1 });
+  const frontForest = new TilingSprite({ texture: frontForestTexture, width: 1, height: 1 });
 
   const world = new Container();
 
@@ -68,12 +76,13 @@ export const buildLayers = (stage: Container, forestTexture: Texture, farTexture
 
   const uiLayer = new Container();
 
-  stage.addChild(farBackdrop, worldGroup, uiLayer);
+  stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
 
   return {
     farBackdrop,
     worldGroup,
     groundBase,
+    frontForest,
     world,
     backgroundLayer,
     groundLayer,

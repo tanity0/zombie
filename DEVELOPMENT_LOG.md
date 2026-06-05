@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.12 - Front forest foreground parallax layer (Codex)
+
+### Summary
+Added the supplied purple-back forest image as the nearest foreground layer.
+- Converted the purple JPEG background into an alpha PNG locally and saved it as
+  `public/backgrounds/front-forest-foreground.png`.
+- Added a new `frontForest` screen-space `TilingSprite` above the Pixi world and
+  below the UI layer.
+- Gave the front forest faster parallax than the ground so it reads as the
+  closest moving layer.
+
+### Code touched
+- `src/pixi/layers.ts` (front forest layer)
+- `src/pixi/PixiStage.tsx` (front forest texture load)
+- `src/pixi/pixiScene.ts` (front forest resize/parallax sync)
+- `public/backgrounds/front-forest-foreground.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+- `curl -I http://localhost:5176/zombie/backgrounds/front-forest-foreground.png` OK (`200`, `image/png`)
+
+### Handoff notes
+- Tune `FRONT_FOREST_PARALLAX_X`, `FRONT_FOREST_PARALLAX_Y`, and
+  `FRONT_FOREST_ALPHA` in `src/pixi/pixiScene.ts` after on-device visual review.
+- The source was a JPEG chroma key, so a small purple edge fringe may remain; a
+  true alpha PNG source would be cleaner if this becomes noticeable in motion.
+
 ## 2026-06-06 - v0.24.10 - Opaque panorama and horizon blend (Codex)
 
 ### Summary

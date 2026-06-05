@@ -38,6 +38,9 @@ const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
 const FAR_BACKDROP_PARALLAX_Y = 0.025;
 const HORIZON_BLEND_HEIGHT = 92;
+const FRONT_FOREST_PARALLAX_X = 0.44;
+const FRONT_FOREST_PARALLAX_Y = 0.045;
+const FRONT_FOREST_ALPHA = 0.86;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -248,6 +251,15 @@ export class PixiScene {
     this.L.groundBase.width = w;
     this.L.groundBase.height = Math.max(1, h - farH);
     this.L.groundBase.position.set(0, farH);
+    const frontScale = Math.max(
+      w / this.L.frontForest.texture.width,
+      h / this.L.frontForest.texture.height
+    );
+    this.L.frontForest.position.set(0, 0);
+    this.L.frontForest.width = w;
+    this.L.frontForest.height = h;
+    this.L.frontForest.tileScale.set(frontScale);
+    this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
     // Full-screen atmosphere overlays.
     this.gradeSprite.width = w;
     this.gradeSprite.height = h;
@@ -342,6 +354,11 @@ export class PixiScene {
     );
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
+    this.L.frontForest.position.set(sx * 0.75, sy * 0.28);
+    this.L.frontForest.tilePosition.set(
+      -s.camera.x * FRONT_FOREST_PARALLAX_X,
+      -s.camera.y * FRONT_FOREST_PARALLAX_Y
+    );
 
     this.syncTrees(s.camera);
     this.syncShadows(s.player, s.enemies);
@@ -997,6 +1014,7 @@ export class PixiScene {
     this.arrowGfx.destroy();
     this.horizonBlendGfx.destroy();
     this.L.farBackdrop.destroy();
+    this.L.frontForest.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();
     this.vignette.destroy();

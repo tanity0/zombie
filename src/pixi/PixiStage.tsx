@@ -37,6 +37,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       });
       await ensureTextures();
       const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
+      const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
       if (cancelled) {
         app.destroy(true);
         return;
@@ -51,7 +52,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         host.appendChild(app.canvas);
       }
 
-      const layers = buildLayers(app.stage, getForestTexture(), farTexture);
+      const layers = buildLayers(app.stage, getForestTexture(), farTexture, frontForestTexture);
       const scene = new PixiScene(layers);
       scene.resize(width, height);
 
