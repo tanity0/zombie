@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-05 - v0.24.6 - Melee circle: static, quick, thinner (Claude Code)
+
+### Summary
+Tuned the melee/counter reach circle per feedback:
+- No rotation: the blade is now a STATIC crescent (faces the player's last
+  heading) instead of a comet sweeping around the ring.
+- Quicker: it snaps in and fades over ~140ms (a brief flash) rather than showing
+  for the whole counter window.
+- Thinner reach ring: faint full ring width 1.4 -> 0.8.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (syncPlayerFx counter-window branch; import COUNTER_WINDOW)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK / `npm run build` OK. Pushed -> Pages auto-deploy.
+
+### Handoff notes
+- Flash duration is the `/ 140` term; crescent width via the stroke `4*taper+0.4`;
+  reach ring width 0.8 — all easy to retune.
+
 ## 2026-06-05 - v0.24.5 - Pause-on-levelup, ammo drop on all kills, weapon popup position (Claude Code)
 
 ### Summary
