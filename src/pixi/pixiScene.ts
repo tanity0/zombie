@@ -171,14 +171,14 @@ export class PixiScene {
   private screenW = 1;
   private screenH = 1;
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
+  private horizonForestFootWorldY = -Infinity;
 
   constructor(layers: SceneLayers) {
     this.L = layers;
 
-    // Bloom + tilt-shift depth-of-field over the whole world group (floor +
-    // actors). filterArea is pinned to the screen in resize() so Pixi never
-    // renders the world's map-sized bounds into a filter texture. Bloom runs
-    // first (glow the bright bits), then the DoF blur composes over it.
+    // Bloom + tilt-shift depth-of-field over the camera-offset gameplay world.
+    // The fixed ground and horizon seam stay outside these filters so blur never
+    // smears ground pixels upward over the far panorama.
     const worldFilters: Filter[] = [];
     if (BLOOM_ENABLED) {
       this.bloom = new AdvancedBloomFilter({
@@ -196,7 +196,7 @@ export class PixiScene {
       });
       worldFilters.push(this.tiltShift);
     }
-    if (worldFilters.length) this.L.worldGroup.filters = worldFilters;
+    if (worldFilters.length) this.L.world.filters = worldFilters;
 
     this.frontForestBlur = new BlurFilter({
       strength: FRONT_FOREST_BLUR,
@@ -288,7 +288,7 @@ export class PixiScene {
 
     // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
     if (this.tiltShift) {
-      this.L.worldGroup.filterArea = new Rectangle(0, 0, w, h);
+      this.L.world.filterArea = new Rectangle(0, 0, w, h);
       const bandY = h * TILT_SHIFT_BAND;
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: w, y: bandY };
@@ -311,6 +311,10 @@ export class PixiScene {
       FRONT_FOREST_MAX_HEIGHT,
       Math.max(FRONT_FOREST_MIN_HEIGHT, this.screenH * FRONT_FOREST_HEIGHT_RATIO)
     );
+  }
+
+  private isBehindHorizonForest(footWorldY: number) {
+    return footWorldY < this.horizonForestFootWorldY;
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -378,6 +382,7 @@ export class PixiScene {
       farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO
     );
     this.L.horizonForest.tilePosition.x = -s.camera.x * HORIZON_FOREST_PARALLAX_X;
+    this.horizonForestFootWorldY = s.camera.y + this.L.horizonForest.y + horizonH;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
     const frontH = this.frontForestHeight();
@@ -477,6 +482,7 @@ export class PixiScene {
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+      entry.sprite.alpha = this.isBehindHorizonForest(entry.footY) ? 0 : 1;
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -497,6 +503,7 @@ export class PixiScene {
       if (e.type === 'ghost') continue;
       const { width, alpha } = enemyShadow(e);
       const footY = e.y + e.height;
+      if (this.isBehindHorizonForest(footY)) continue;
       drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScaleEnemy(footY), alpha);
     }
   }
@@ -553,6 +560,7 @@ export class PixiScene {
 
     view.sprite.position.set(fb.footX, fb.footY);
     view.container.zIndex = fb.footY;
+    view.container.alpha = this.isBehindHorizonForest(fb.footY) ? 0 : 1;
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
 
     if (tex) {
@@ -564,7 +572,8 @@ export class PixiScene {
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
 
-    this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
+    if (view.container.alpha === 0) view.light.visible = false;
+    else this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
     const r = view.reticle;
@@ -1051,7 +1060,7 @@ export class PixiScene {
     for (const f of this.fireflies) f.sprite.destroy();
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {
-      this.L.worldGroup.filters = [];
+      this.L.world.filters = [];
       this.tiltShift?.destroy();
       this.bloom?.destroy();
       this.tiltShift = null;

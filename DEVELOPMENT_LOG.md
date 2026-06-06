@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.18 - Keep ground out of DoF and hide far actors (Codex)
+
+### Summary
+Fixed the ground bleeding over the distant panorama and made far-side actors
+disappear behind the horizon forest.
+- Moved bloom/tilt-shift filters from `worldGroup` to the camera-offset `world`
+  so `groundBase` and `horizonForest` are not blurred into the panorama.
+- Added a horizon-forest foot line in world coordinates.
+- Set tree sprites and enemy containers to `alpha = 0` when their foot position
+  is above that line.
+- Skipped hidden enemies' lights and foot shadows.
+
+### Code touched
+- `src/pixi/layers.ts` (filter ownership comment)
+- `src/pixi/pixiScene.ts` (filter target and far actor/tree hiding)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The ground should stay outside DoF/bloom. If blur is needed later, add a
+  separate ground-only effect that cannot sample into the panorama band.
+- The player is intentionally not hidden by the horizon line in this pass.
+
 ## 2026-06-06 - v0.24.17 - Restore Claude v0.24.7 melee crest (Codex)
 
 ### Summary

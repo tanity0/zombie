@@ -70,11 +70,9 @@ export const buildLayers = (
     lightingLayer
   );
 
-  // worldGroup holds everything the tilt-shift depth-of-field filter applies to
-  // (the floor + the camera-offset world). The filter uses a screen-sized
-  // filterArea so it never processes the world's enormous bounds. Screen-space
-  // overlays (grade / vignette / flash) live in uiLayer, OUTSIDE this group, so
-  // they stay sharp.
+  // worldGroup holds the fixed screen-space ground/seam plus the camera-offset
+  // world. Filters are applied to `world` only, so the ground never bleeds into
+  // the far panorama through blur.
   const worldGroup = new Container();
   worldGroup.addChild(groundBase, horizonForest, world);
 
