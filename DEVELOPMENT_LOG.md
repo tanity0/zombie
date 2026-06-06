@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.25 - Keep horizon seam clear of world fade mask (Codex)
+
+### Summary
+Adjusted the shared horizon fade mask so it cannot cover the horizon seam forest.
+- Moved `worldFadeMask` from `worldGroup` into `filteredWorld`.
+- Kept the mask applied only to gameplay rendering.
+- Left `horizonForest` outside the mask and above gameplay in draw order.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (mask parent)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The per-enemy/per-procedural-tree hide logic still only affects gameplay
+  actors/trees, not the `horizonForest` seam PNG.
+
 ## 2026-06-06 - v0.24.24 - Draw horizon forest seam above gameplay world (Codex)
 
 ### Summary

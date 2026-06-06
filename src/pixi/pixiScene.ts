@@ -204,7 +204,7 @@ export class PixiScene {
     }
     if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
     this.L.filteredWorld.mask = this.worldFadeMask;
-    this.L.worldGroup.addChild(this.worldFadeMask);
+    this.L.filteredWorld.addChild(this.worldFadeMask);
 
     this.frontForestBlur = new BlurFilter({
       strength: FRONT_FOREST_BLUR,
