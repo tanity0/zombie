@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.49 - Rebuild atlas from transparent Drive PNG (Codex)
+
+### Summary
+Rebuilt the modern enemy/tree/pickup atlas from the transparent PNG supplied in
+AI MEGLIO materials, removing the white-edge artifacts left by the JPEG
+white-key extraction.
+- Source asset:
+  `/Users/tanity/マイドライブ（tanity0@gmail.com）/AI MEGLIO/素材/260601/IMG_5503.PNG`
+- Used the source alpha channel directly instead of chroma/white-keying.
+- Replaced `public/sprites/atlas.png` with the transparent extraction.
+- Updated atlas rectangles in both PixiJS and Canvas fallback loaders.
+- Bumped app version so sprite cache query strings refresh.
+
+### Code touched
+- `public/sprites/atlas.png`
+- `src/pixi/pixiTextures.ts`
+- `src/utils/spriteLoader.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The local Drive sync path for AI MEGLIO materials is
+  `/Users/tanity/マイドライブ（tanity0@gmail.com）/AI MEGLIO/素材`.
+- Prefer transparent PNG sources for future sprite atlas updates; avoid JPEG
+  white-keying because pale highlights and antialiasing leave visible fringes.
+
 ## 2026-06-07 - v0.24.48 - Match object scale to ground perspective relatively (Codex)
 
 ### Summary
