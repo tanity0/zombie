@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.20 - Smooth horizon reveal fade (Codex)
+
+### Summary
+Smoothed the top-edge appearance of gameplay objects near the horizon forest.
+- Moved the hard fully-hidden line 50px upward from the horizon forest foot.
+- Added a screen-space alpha mask to `filteredWorld` so all gameplay rendering
+  fades in together from the forest line instead of popping in per object.
+- Kept the existing per-tree/per-enemy full hide as a backup at the alpha-zero
+  line while pickups, projectiles, effects, and actors share the same mask fade.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon reveal mask and shifted hide line)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The fade is implemented as one stretched 4px-wide canvas texture mask, so it
+  avoids per-object opacity work and should stay cheap.
+
 ## 2026-06-06 - v0.24.19 - Restore actor/object visibility after ground filter split (Codex)
 
 ### Summary

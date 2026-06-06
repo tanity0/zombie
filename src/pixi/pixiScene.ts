@@ -41,6 +41,8 @@ const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
+const HORIZON_REVEAL_OFFSET_PX = 50;
+const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.44;
 const FRONT_FOREST_HEIGHT_RATIO = 0.46;
 const FRONT_FOREST_MIN_HEIGHT = 250;
@@ -159,6 +161,8 @@ export class PixiScene {
   private gradeSprite = new Sprite(Texture.WHITE);
   private playerLight = new Sprite(getGlowTexture());
   private vignette = new Sprite(getVignetteTexture());
+  private worldFadeMask = new Sprite(Texture.WHITE);
+  private worldFadeMaskTexture: Texture | null = null;
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
@@ -172,6 +176,7 @@ export class PixiScene {
   private screenH = 1;
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private horizonForestFootWorldY = -Infinity;
+  private horizonFadeZeroScreenY = 0;
 
   constructor(layers: SceneLayers) {
     this.L = layers;
@@ -198,6 +203,8 @@ export class PixiScene {
       worldFilters.push(this.tiltShift);
     }
     if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
+    this.L.filteredWorld.mask = this.worldFadeMask;
+    this.L.worldGroup.addChild(this.worldFadeMask);
 
     this.frontForestBlur = new BlurFilter({
       strength: FRONT_FOREST_BLUR,
@@ -271,6 +278,7 @@ export class PixiScene {
       0,
       -(this.L.horizonForest.texture.height - horizonH / horizonScale)
     );
+    this.updateWorldFadeMask(w, h);
     this.L.groundBase.width = w;
     this.L.groundBase.height = Math.max(1, h - farH);
     this.L.groundBase.position.set(0, farH);
@@ -316,6 +324,36 @@ export class PixiScene {
 
   private isBehindHorizonForest(footWorldY: number) {
     return footWorldY < this.horizonForestFootWorldY;
+  }
+
+  private updateWorldFadeMask(w: number, h: number) {
+    const horizonBottomY = this.L.horizonForest.y + this.L.horizonForest.height;
+    const zeroY = horizonBottomY - HORIZON_REVEAL_OFFSET_PX;
+    const fullY = zeroY + HORIZON_REVEAL_FADE_PX;
+    this.horizonFadeZeroScreenY = zeroY;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = Math.max(1, Math.ceil(h));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const grad = ctx.createLinearGradient(0, zeroY, 0, fullY);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, zeroY, canvas.width, Math.max(1, fullY - zeroY));
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+    ctx.fillRect(0, fullY, canvas.width, canvas.height - fullY);
+
+    const texture = Texture.from(canvas);
+    this.worldFadeMask.texture = texture;
+    this.worldFadeMask.position.set(0, 0);
+    this.worldFadeMask.width = w;
+    this.worldFadeMask.height = h;
+    this.worldFadeMaskTexture?.destroy(true);
+    this.worldFadeMaskTexture = texture;
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -383,7 +421,7 @@ export class PixiScene {
       farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO
     );
     this.L.horizonForest.tilePosition.x = -s.camera.x * HORIZON_FOREST_PARALLAX_X;
-    this.horizonForestFootWorldY = s.camera.y + this.L.horizonForest.y + horizonH;
+    this.horizonForestFootWorldY = s.camera.y + this.horizonFadeZeroScreenY;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
     const frontH = this.frontForestHeight();
@@ -1054,6 +1092,10 @@ export class PixiScene {
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;
+    this.L.filteredWorld.mask = null;
+    this.worldFadeMask.destroy();
+    this.worldFadeMaskTexture?.destroy(true);
+    this.worldFadeMaskTexture = null;
     this.L.frontForest.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();
