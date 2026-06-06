@@ -9,13 +9,14 @@
 //   farBackdrop  – screen-space distant panorama (slow parallax, top band)
 //   groundBase   – screen-space tiling forest floor (below the horizon band)
 //   horizonForest – screen-space forest seam over the ground/far boundary
-//   world (camera-offset)
-//     ├─ backgroundLayer  – trees and other far props
-//     ├─ groundLayer      – foot shadows, ground trails, pickups
-//     ├─ actorLayer       – player + enemies, Y-SORTED by foot Y (+ overlays)
-//     ├─ frontObjectLayer – projectiles (above the actors)
-//     ├─ effectLayer      – over-sprite effects, counter ring, reload meter
-//     └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
+//   filteredWorld – screen-space filter wrapper
+//     └─ world (camera-offset)
+//       ├─ backgroundLayer  – trees and other far props
+//       ├─ groundLayer      – foot shadows, ground trails, pickups
+//       ├─ actorLayer       – player + enemies, Y-SORTED by foot Y (+ overlays)
+//       ├─ frontObjectLayer – projectiles (above the actors)
+//       ├─ effectLayer      – over-sprite effects, counter ring, reload meter
+//       └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
 //   frontForest    – screen-space nearest forest foreground (fast parallax)
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
@@ -27,6 +28,7 @@ export interface SceneLayers {
   worldGroup: Container;
   groundBase: TilingSprite;
   frontForest: TilingSprite;
+  filteredWorld: Container;
   world: Container;
   backgroundLayer: Container;
   groundLayer: Container;
@@ -49,6 +51,7 @@ export const buildLayers = (
   const groundBase = new TilingSprite({ texture: forestTexture, width: 1, height: 1 });
   const frontForest = new TilingSprite({ texture: frontForestTexture, width: 1, height: 1 });
 
+  const filteredWorld = new Container();
   const world = new Container();
 
   const backgroundLayer = new Container();
@@ -69,12 +72,13 @@ export const buildLayers = (
     effectLayer,
     lightingLayer
   );
+  filteredWorld.addChild(world);
 
   // worldGroup holds the fixed screen-space ground/seam plus the camera-offset
-  // world. Filters are applied to `world` only, so the ground never bleeds into
-  // the far panorama through blur.
+  // world. Filters are applied to filteredWorld only, so the ground never
+  // bleeds into the far panorama through blur while world still draws above it.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, horizonForest, world);
+  worldGroup.addChild(groundBase, horizonForest, filteredWorld);
 
   const uiLayer = new Container();
 
@@ -86,6 +90,7 @@ export const buildLayers = (
     worldGroup,
     groundBase,
     frontForest,
+    filteredWorld,
     world,
     backgroundLayer,
     groundLayer,

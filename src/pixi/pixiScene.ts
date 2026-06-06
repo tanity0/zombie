@@ -176,9 +176,10 @@ export class PixiScene {
   constructor(layers: SceneLayers) {
     this.L = layers;
 
-    // Bloom + tilt-shift depth-of-field over the camera-offset gameplay world.
+    // Bloom + tilt-shift depth-of-field over the gameplay world wrapper.
     // The fixed ground and horizon seam stay outside these filters so blur never
-    // smears ground pixels upward over the far panorama.
+    // smears ground pixels upward over the far panorama. The wrapper itself is
+    // screen-space; the camera-offset `world` remains its child.
     const worldFilters: Filter[] = [];
     if (BLOOM_ENABLED) {
       this.bloom = new AdvancedBloomFilter({
@@ -196,7 +197,7 @@ export class PixiScene {
       });
       worldFilters.push(this.tiltShift);
     }
-    if (worldFilters.length) this.L.world.filters = worldFilters;
+    if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
 
     this.frontForestBlur = new BlurFilter({
       strength: FRONT_FOREST_BLUR,
@@ -288,7 +289,7 @@ export class PixiScene {
 
     // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
     if (this.tiltShift) {
-      this.L.world.filterArea = new Rectangle(0, 0, w, h);
+      this.L.filteredWorld.filterArea = new Rectangle(0, 0, w, h);
       const bandY = h * TILT_SHIFT_BAND;
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: w, y: bandY };
@@ -1060,7 +1061,7 @@ export class PixiScene {
     for (const f of this.fireflies) f.sprite.destroy();
     this.fireflies = [];
     if (this.tiltShift || this.bloom) {
-      this.L.world.filters = [];
+      this.L.filteredWorld.filters = [];
       this.tiltShift?.destroy();
       this.bloom?.destroy();
       this.tiltShift = null;

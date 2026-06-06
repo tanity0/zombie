@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.19 - Restore actor/object visibility after ground filter split (Codex)
+
+### Summary
+Fixed a regression where the ground rendered above characters, enemies, trees,
+pickups, and other gameplay objects.
+- Added a screen-space `filteredWorld` wrapper between `worldGroup` and the
+  camera-offset `world`.
+- Kept `groundBase` and `horizonForest` outside the DoF/bloom filters.
+- Applied DoF/bloom to `filteredWorld`, not directly to the camera-offset
+  `world`, so the filter area stays aligned to the screen and gameplay objects
+  render above the ground again.
+
+### Code touched
+- `src/pixi/layers.ts` (added `filteredWorld` wrapper)
+- `src/pixi/pixiScene.ts` (filter target moved to `filteredWorld`)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Do not apply screen-sized filter areas directly to the camera-offset `world`.
+  Use a screen-space wrapper when filtering gameplay layers without including
+  the fixed ground.
+
 ## 2026-06-06 - v0.24.18 - Keep ground out of DoF and hide far actors (Codex)
 
 ### Summary
