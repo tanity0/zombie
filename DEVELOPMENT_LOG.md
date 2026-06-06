@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.42 - Match object scale to ground perspective (Codex)
+
+### Summary
+Aligned object visual scale more closely with the perspective ground.
+- Added `groundObjectScale()` based on the same horizon-to-foreground curve used
+  by the ground strips.
+- Blended that ground-derived scale into the existing tree/player/enemy/item
+  depth scale.
+- Applied the same depth scale to projectile graphics.
+- Left gameplay positions, hitboxes, collision, and simulation speed unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (object scale derived from ground perspective)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is a visual-only scale pass. If object movement speed also needs to
+  parallax with the ground, do it as a separate trial because it can create
+  visible hitbox/position mismatch.
+- Tune `OBJECT_GROUND_SCALE_WEIGHT` for how strongly objects follow the ground
+  curve, and `OBJECT_GROUND_SCALE_MIN/MAX` for far/near size limits.
+
 ## 2026-06-07 - v0.24.41 - Trial stronger ground perspective (Codex)
 
 ### Summary
