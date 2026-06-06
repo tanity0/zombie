@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.44 - Sharpen player sprite outline (Codex)
+
+### Summary
+Regenerated the player sprite with a clearer pixel outline.
+- Used the reusable `AI_MEGLIO/skills/purple_key_sprite` workflow.
+- Kept the purple-background keying and `32x32` transparent PNG contract.
+- Added a dark 1px pixel outline to improve readability over the darker forest
+  and moss ground.
+
+### Code touched
+- `public/sprites/player.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `file public/sprites/player.png` OK (`32 x 32`, RGBA PNG)
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Runtime code was not changed.
+- The reusable purple-key sprite workflow now lives in
+  `/Users/tanity/AI_MEGLIO/skills/purple_key_sprite/`.
+
 ## 2026-06-07 - v0.24.43 - Replace player sprite (Codex)
 
 ### Summary
