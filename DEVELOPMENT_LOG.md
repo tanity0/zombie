@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.17 - Restore Claude v0.24.7 melee crest (Codex)
+
+### Summary
+Corrected the melee/counter indicator target after clarification.
+- Replaced the restored 360-degree ring with Claude Code's `v0.24.7` static
+  crest/crescent indicator.
+- Kept the horizon seam forest layering fix from `v0.24.16` intact.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (melee/counter crest restore)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The intended melee indicator is the Claude Code `v0.24.7` crest/crescent,
+  not the earlier Codex 360-degree ring.
+
 ## 2026-06-06 - v0.24.16 - Restore smooth melee ring and reveal seam forest (Codex)
 
 ### Summary

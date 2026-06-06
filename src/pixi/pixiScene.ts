@@ -17,7 +17,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   Enemy, Pickup, Player, Projectile, VisualEffect,
 } from '../types/game';
-import { useGameStore, MELEE_RADIUS, SHAKE_MS } from '../store/gameStore';
+import { useGameStore, MELEE_RADIUS, SHAKE_MS, COUNTER_WINDOW } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import type { SceneLayers } from './layers';
@@ -923,24 +923,32 @@ export class PixiScene {
     const cy = player.y + player.height / 2;
     const r = MELEE_RADIUS;
     if (now <= player.counterWindowEnd) {
-      const accent = -0.18;
-      const arc = (spread: number, width: number, color: number, alpha: number) => {
-        const start = accent - spread;
-        const end = accent + spread;
-        g.moveTo(cx + Math.cos(start) * r, cy + Math.sin(start) * r)
-          .arc(cx, cy, r, start, end)
-          .stroke({ width, color, alpha, cap: 'round' });
-      };
-
-      g.circle(cx, cy, r)
-        .stroke({ width: 11, color: 0xfbbf24, alpha: 0.08 });
-      g.circle(cx, cy, r)
-        .stroke({ width: 5, color: 0xfbbf24, alpha: 0.2 });
-      g.circle(cx, cy, r)
-        .stroke({ width: 2, color: 0xfef3c7, alpha: 0.7 });
-      arc(1.2, 9, 0xfbbf24, 0.1);
-      arc(0.86, 7, 0xfbbf24, 0.16);
-      arc(0.5, 4, 0xfef3c7, 0.38);
+      // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in
+      // and fades fast (no rotation). The crescent faces the player's last
+      // heading; it's thick in the belly and tapers to thin tips.
+      const dir = player.lastDirection;
+      const head = dir ? Math.atan2(dir.y, dir.x) : -Math.PI / 2;
+      const openAt = player.counterWindowEnd - COUNTER_WINDOW;
+      const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
+      if (ft < 1) {
+        const fade = Math.max(0, 1 - ft);
+        const span = Math.PI * 1.05;
+        const a0 = head - span / 2;
+        const segs = 20;
+        for (let i = 0; i < segs; i++) {
+          const f = i / segs;
+          const taper = Math.sin(f * Math.PI); // 0 at the tips, 1 at the belly
+          const a1 = a0 + f * span;
+          const a2 = a0 + ((i + 1) / segs) * span;
+          g.moveTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r)
+            .lineTo(cx + Math.cos(a2) * r, cy + Math.sin(a2) * r)
+            .stroke({ width: 5 * taper + 0.6, color: 0xfff3c4, alpha: 0.95 * taper * fade });
+        }
+        g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
+          .fill({ color: 0xffffff, alpha: 0.9 * fade });
+      }
+      // Faint full reach ring underneath (thin).
+      g.circle(cx, cy, r).stroke({ width: 0.8, color: 0xfbbf24, alpha: 0.16 });
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }
