@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.50 - Smooth vertical perspective scale (Codex)
+
+### Summary
+Softened and smoothed vertical scale changes for enemies, trees, and pickups.
+- Reduced the player-relative depth scale strength for normal objects and
+  enemies.
+- Narrowed min/max scale clamps so vertical movement feels less extreme.
+- Changed the ground-perspective blend from linear interpolation to logarithmic
+  interpolation, making scale transitions feel less jumpy.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Main tuning knobs:
+  `DEPTH_K`, `ENEMY_DEPTH_K`, and `OBJECT_GROUND_RELATIVE_WEIGHT`.
+- If the effect still feels too strong, lower `OBJECT_GROUND_RELATIVE_WEIGHT`
+  first before changing sprite visual sizes.
+
 ## 2026-06-07 - v0.24.49 - Rebuild atlas from transparent Drive PNG (Codex)
 
 ### Summary

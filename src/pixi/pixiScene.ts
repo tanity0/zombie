@@ -99,20 +99,20 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
 // scale offset from the player's foot plane, so the player stays ~1.0 and
 // objects grow/shrink relative to the hero.
 const DEPTH_SCALE_ENABLED = true;
-const DEPTH_K = 0.0011;   // scale change per world-Y px from the player plane
-const DEPTH_MIN = 0.58;
-const DEPTH_MAX = 1.6;
+const DEPTH_K = 0.0009;   // scale change per world-Y px from the player plane
+const DEPTH_MIN = 0.68;
+const DEPTH_MAX = 1.45;
 // Enemies get a deliberately more extreme depth falloff than the rest.
-const ENEMY_DEPTH_K = 0.0019;
-const ENEMY_DEPTH_MIN = 0.4;
-const ENEMY_DEPTH_MAX = 2.1;
+const ENEMY_DEPTH_K = 0.00145;
+const ENEMY_DEPTH_MIN = 0.55;
+const ENEMY_DEPTH_MAX = 1.85;
 const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
-const OBJECT_GROUND_RELATIVE_WEIGHT = 0.62;
-const OBJECT_GROUND_RELATIVE_MIN = 0.55;
-const OBJECT_GROUND_RELATIVE_MAX = 1.7;
+const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
+const OBJECT_GROUND_RELATIVE_MIN = 0.68;
+const OBJECT_GROUND_RELATIVE_MAX = 1.45;
 const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
 
@@ -424,7 +424,7 @@ export class PixiScene {
     if (!DEPTH_SCALE_ENABLED) return 1;
     const relative = 1 + (footWorldY - this.depthRefY) * k;
     const groundRatio = this.groundRelativeScale(footWorldY);
-    const groundBlend = 1 + (groundRatio - 1) * OBJECT_GROUND_RELATIVE_WEIGHT;
+    const groundBlend = Math.exp(Math.log(groundRatio) * OBJECT_GROUND_RELATIVE_WEIGHT);
     const f = relative * groundBlend;
     return f < min ? min : f > max ? max : f;
   }
