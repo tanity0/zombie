@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.35 - Separate actor hide line from ground fade (Codex)
+
+### Summary
+Fixed enemies/trees not disappearing near the horizon forest.
+- Added `HORIZON_ACTOR_HIDE_OFFSET_PX`.
+- Kept ground/world reveal using `HORIZON_REVEAL_OFFSET_PX`.
+- Changed enemy/tree hide cutoff to use the rendered `horizonForest` bottom
+  line instead of the much higher ground-fade zero line.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon actor hide cutoff)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If actors vanish too early/late at the forest seam, tune
+  `HORIZON_ACTOR_HIDE_OFFSET_PX` without changing the ground fade constants.
+
 ## 2026-06-06 - v0.24.34 - Restore horizon actor fade cutoff (Codex)
 
 ### Summary
