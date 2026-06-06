@@ -43,6 +43,7 @@ const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
+const HORIZON_ACTOR_FADE_PX = 120;
 const HORIZON_REVEAL_OFFSET_PX = 200;
 const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.44;
@@ -323,8 +324,8 @@ export class PixiScene {
     );
   }
 
-  private isBehindHorizonForest(footWorldY: number) {
-    return footWorldY < this.horizonForestFootWorldY;
+  private horizonActorAlpha(footWorldY: number) {
+    return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / HORIZON_ACTOR_FADE_PX));
   }
 
   private horizonRevealZeroScreenY() {
@@ -553,7 +554,7 @@ export class PixiScene {
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = this.isBehindHorizonForest(entry.footY) ? 0 : 1;
+      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -574,8 +575,9 @@ export class PixiScene {
       if (e.type === 'ghost') continue;
       const { width, alpha } = enemyShadow(e);
       const footY = e.y + e.height;
-      if (this.isBehindHorizonForest(footY)) continue;
-      drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScaleEnemy(footY), alpha);
+      const horizonAlpha = this.horizonActorAlpha(footY);
+      if (horizonAlpha <= 0) continue;
+      drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScaleEnemy(footY), alpha * horizonAlpha);
     }
   }
 
@@ -631,7 +633,8 @@ export class PixiScene {
 
     view.sprite.position.set(fb.footX, fb.footY);
     view.container.zIndex = fb.footY;
-    view.container.alpha = this.isBehindHorizonForest(fb.footY) ? 0 : 1;
+    const horizonAlpha = this.horizonActorAlpha(fb.footY);
+    view.container.alpha = horizonAlpha;
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
 
     if (tex) {
@@ -643,8 +646,11 @@ export class PixiScene {
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
 
-    if (view.container.alpha === 0) view.light.visible = false;
-    else this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
+    if (horizonAlpha <= 0) view.light.visible = false;
+    else {
+      this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
+      view.light.alpha *= horizonAlpha;
+    }
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
     const r = view.reticle;

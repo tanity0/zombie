@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.36 - Fade actors into horizon forest (Codex)
+
+### Summary
+Changed the horizon disappearance from an abrupt cutoff to a distance-based fade.
+- Added `HORIZON_ACTOR_FADE_PX = 120`.
+- Faded trees, enemy containers, enemy shadows, and enemy lights as their foot
+  position approaches the horizon forest hide line.
+- Kept the final fully-hidden point at the forest seam line from v0.24.35.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (actor/tree/shadow/light horizon alpha)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `HORIZON_ACTOR_FADE_PX` for fade length. Larger values fade earlier and
+  more gradually; smaller values fade later and faster.
+
 ## 2026-06-06 - v0.24.35 - Separate actor hide line from ground fade (Codex)
 
 ### Summary
