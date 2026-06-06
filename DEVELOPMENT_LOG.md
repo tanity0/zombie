@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.32 - Raise horizon forest seam (Codex)
+
+### Summary
+Moved the visible boundary forest seam 100px upward.
+- Added `HORIZON_FOREST_Y_OFFSET_PX = -100`.
+- Applied the offset in both resize and frame sync placement.
+- Left horizon reveal/fade logic, gameplay alpha cutoff, ground, and layer order unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon forest Y placement)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the forest now overlaps the HUD/far backdrop too much, tune only
+  `HORIZON_FOREST_Y_OFFSET_PX` first.
+
 ## 2026-06-06 - v0.24.31 - Render horizon forest as sprite (Codex)
 
 ### Summary
