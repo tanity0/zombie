@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.24 - Draw horizon forest seam above gameplay world (Codex)
+
+### Summary
+Restored visibility for the horizon boundary forest.
+- Moved `horizonForest` above `filteredWorld` in `worldGroup` draw order.
+- Kept `groundBase` below gameplay and outside DoF/bloom filters.
+- Kept the shared horizon fade mask unchanged.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon seam draw order)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Horizon seam forest should remain outside the gameplay filter wrapper and draw
+  over the far/ground transition.
+
 ## 2026-06-06 - v0.24.23 - Lower horizon fade cutoff slightly (Codex)
 
 ### Summary

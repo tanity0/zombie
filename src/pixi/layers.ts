@@ -8,7 +8,6 @@
 //
 //   farBackdrop  – screen-space distant panorama (slow parallax, top band)
 //   groundBase   – screen-space tiling forest floor (below the horizon band)
-//   horizonForest – screen-space forest seam over the ground/far boundary
 //   filteredWorld – screen-space filter wrapper
 //     └─ world (camera-offset)
 //       ├─ backgroundLayer  – trees and other far props
@@ -17,6 +16,7 @@
 //       ├─ frontObjectLayer – projectiles (above the actors)
 //       ├─ effectLayer      – over-sprite effects, counter ring, reload meter
 //       └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
+//   horizonForest – screen-space forest seam over the ground/far boundary
 //   frontForest    – screen-space nearest forest foreground (fast parallax)
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
@@ -74,11 +74,12 @@ export const buildLayers = (
   );
   filteredWorld.addChild(world);
 
-  // worldGroup holds the fixed screen-space ground/seam plus the camera-offset
-  // world. Filters are applied to filteredWorld only, so the ground never
-  // bleeds into the far panorama through blur while world still draws above it.
+  // worldGroup holds the fixed screen-space ground plus the camera-offset world.
+  // Filters are applied to filteredWorld only, so the ground never bleeds into
+  // the far panorama through blur while world still draws above it. The horizon
+  // seam forest draws above both to hide the far/ground transition.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, horizonForest, filteredWorld);
+  worldGroup.addChild(groundBase, filteredWorld, horizonForest);
 
   const uiLayer = new Container();
 
