@@ -51,7 +51,7 @@ export const buildLayers = (
   const horizonForest = new Sprite(horizonForestTexture);
   const groundBase = new Container();
   const groundStrips = Array.from(
-    { length: 36 },
+    { length: 72 },
     () => new TilingSprite({ texture: forestTexture, width: 1, height: 1 })
   );
   groundBase.addChild(...groundStrips);

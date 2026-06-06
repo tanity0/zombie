@@ -448,7 +448,7 @@ export class PixiScene {
       strip.width = this.screenW;
       strip.height = Math.ceil(stripH) + 2;
       strip.tileScale.set(GROUND_TILE_SCALE_X, scaleY);
-      strip.tilePosition.set(-cameraX, -sourceY);
+      strip.tilePosition.set(-cameraX * GROUND_TILE_SCALE_X, -sourceY * scaleY);
       sourceY += stripH / Math.max(0.001, scaleY);
     }
   }

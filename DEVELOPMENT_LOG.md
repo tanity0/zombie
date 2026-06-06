@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.40 - Reduce perspective ground sampling artifacts (Codex)
+
+### Summary
+Reduced visible artifacts in the perspective ground while moving vertically.
+- Increased perspective ground strips from `36` to `72` so each band is thinner.
+- Changed strip tile position to account for `tileScale`, keeping source-image
+  sampling continuous across scaled strips.
+- Kept the softened depth tuning from v0.24.38/v0.24.39.
+
+### Code touched
+- `src/pixi/layers.ts` (ground strip count)
+- `src/pixi/pixiScene.ts` (ground tilePosition sampling)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If artifacts remain, the next safer step is to reduce `GROUND_TILE_SCALE_Y`
+  contrast further or replace the strip method with a single pre-rendered
+  perspective texture.
+
 ## 2026-06-06 - v0.24.39 - Smooth perspective ground strip seams (Codex)
 
 ### Summary
