@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.22 - Raise horizon fade cutoff again (Codex)
+
+### Summary
+Adjusted the horizon reveal further after playtest feedback.
+- Moved the fully-hidden gameplay fade cutoff from 100px above the horizon
+  forest foot to 200px above it.
+- Kept the shared `filteredWorld` mask and fade length unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon reveal offset)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The fade now starts much higher; if the fade feels too long or too short,
+  tune `HORIZON_REVEAL_FADE_PX` separately.
+
 ## 2026-06-06 - v0.24.21 - Raise horizon fade cutoff (Codex)
 
 ### Summary
