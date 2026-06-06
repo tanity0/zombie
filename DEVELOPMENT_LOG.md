@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.27 - Move horizon seam forest upward (Codex)
+
+### Summary
+Adjusted the visible horizon seam forest placement after screenshot review.
+- Added `HORIZON_FOREST_Y_OFFSET_PX = -200`.
+- Moved the horizon seam forest 200px upward in both resize and per-frame sync.
+- Kept the temporary topmost non-UI draw order and front forest blur disabled.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon seam Y offset)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current seam placement is intentionally frontmost for visibility testing. Once
+  the visual position is approved, decide whether to move it back below
+  `frontForest` or keep it as a foreground seam.
+
 ## 2026-06-06 - v0.24.26 - Disable front forest blur and force horizon seam front (Codex)
 
 ### Summary
