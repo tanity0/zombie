@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.28 - Lower horizon seam forest slightly (Codex)
+
+### Summary
+Adjusted the horizon seam forest placement after screenshot review.
+- Changed `HORIZON_FOREST_Y_OFFSET_PX` from -200 to -100, moving the seam forest
+  100px downward.
+- Kept the temporary topmost non-UI draw order and front forest blur disabled.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon seam Y offset)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current seam placement offset: `HORIZON_FOREST_Y_OFFSET_PX = -100`.
+
 ## 2026-06-06 - v0.24.27 - Move horizon seam forest upward (Codex)
 
 ### Summary
