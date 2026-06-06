@@ -110,6 +110,9 @@ const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
+const OBJECT_GROUND_RELATIVE_WEIGHT = 0.62;
+const OBJECT_GROUND_RELATIVE_MIN = 0.55;
+const OBJECT_GROUND_RELATIVE_MAX = 1.7;
 const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
 
@@ -185,6 +188,7 @@ export class PixiScene {
 
   private screenW = 1;
   private screenH = 1;
+  private cameraY = 0;
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private horizonForestFootWorldY = -Infinity;
   private horizonFadeZeroScreenY = 0;
@@ -418,8 +422,27 @@ export class PixiScene {
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
   private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
-    const f = 1 + (footWorldY - this.depthRefY) * k;
+    const relative = 1 + (footWorldY - this.depthRefY) * k;
+    const groundRatio = this.groundRelativeScale(footWorldY);
+    const groundBlend = 1 + (groundRatio - 1) * OBJECT_GROUND_RELATIVE_WEIGHT;
+    const f = relative * groundBlend;
     return f < min ? min : f > max ? max : f;
+  }
+
+  private groundScaleAt(footWorldY: number): number {
+    const farH = this.farBackdropHeight();
+    const groundH = Math.max(1, this.screenH - farH);
+    const screenY = footWorldY - this.cameraY;
+    const t = Math.max(0, Math.min(1, (screenY - farH) / groundH));
+    const perspective = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
+    return GROUND_TILE_SCALE_Y_FAR
+      + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * perspective;
+  }
+
+  private groundRelativeScale(footWorldY: number): number {
+    const base = Math.max(0.001, this.groundScaleAt(this.depthRefY));
+    const ratio = this.groundScaleAt(footWorldY) / base;
+    return Math.max(OBJECT_GROUND_RELATIVE_MIN, Math.min(OBJECT_GROUND_RELATIVE_MAX, ratio));
   }
 
   private depthScale(footWorldY: number): number {
@@ -458,6 +481,7 @@ export class PixiScene {
   sync() {
     const s = useGameStore.getState();
     const now = Date.now();
+    this.cameraY = s.camera.y;
 
     // Focal plane for the pseudo-perspective scale = the player's feet.
     this.depthRefY = playerFootBox(s.player).footY;

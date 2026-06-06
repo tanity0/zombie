@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.48 - Match object scale to ground perspective relatively (Codex)
+
+### Summary
+Reduced the mismatch where enemies, trees, and pickups moved vertically with the
+world but did not change scale as strongly as the perspective ground.
+- Reintroduced ground-curve influence as a relative scale ratio, using the
+  player's current foot position as `1.0`.
+- Kept baseline character/object sizes from v0.24.47 instead of applying the
+  absolute ground scale that made everything too small in v0.24.42.
+- Applied the stronger perspective response through the existing `depthScale`
+  path, so enemies, trees, pickups, and their shadows stay visually consistent.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `OBJECT_GROUND_RELATIVE_WEIGHT` to adjust how strongly objects follow the
+  ground curve. Keep it relative to the player's foot plane to avoid global
+  shrinkage.
+
 ## 2026-06-07 - v0.24.47 - Enlarge modern sprite presentation (Codex)
 
 ### Summary
