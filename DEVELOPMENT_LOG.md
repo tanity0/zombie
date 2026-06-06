@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.15 - Lower horizon forest seam (Codex)
+
+### Summary
+Adjusted the horizon forest seam so it hides the ground/panorama boundary
+without covering too much of the distant backdrop.
+- Reduced the horizon forest height.
+- Lowered the layer by reducing its overlap into the far backdrop.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (`HORIZON_FOREST_*` tuning)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If it still covers too much distant scenery, lower `HORIZON_FOREST_OVERLAP_RATIO`
+  further. If a hard seam appears, raise it slightly.
+
 ## 2026-06-06 - v0.24.14 - Smaller blurred front forest (Codex)
 
 ### Summary
