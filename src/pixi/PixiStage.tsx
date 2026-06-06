@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Application, Assets } from 'pixi.js';
 import { buildLayers } from './layers';
-import { getForestTexture } from './forestTile';
 import { ensureTextures } from './pixiTextures';
 import { PixiScene } from './pixiScene';
 
@@ -37,6 +36,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       });
       await ensureTextures();
       const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
+      const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
       if (cancelled) {
@@ -53,7 +53,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         host.appendChild(app.canvas);
       }
 
-      const layers = buildLayers(app.stage, getForestTexture(), farTexture, horizonForestTexture, frontForestTexture);
+      const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
       const scene = new PixiScene(layers);
       scene.resize(width, height);
 

@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.37 - Add perspective moss ground (Codex)
+
+### Summary
+Replaced the generated forest-floor base with the supplied moss/dirt ground
+texture and added a lightweight pseudo-perspective ground renderer.
+- Added `public/backgrounds/ground-moss-dirt.jpg`.
+- Loaded the new ground texture in `PixiStage`.
+- Changed `groundBase` from one `TilingSprite` to a `Container` of 36 horizontal
+  tiled strips.
+- Scaled each strip vertically so the ground compresses toward the horizon
+  forest, matching the supplied perspective reference without a 3D mesh.
+
+### Code touched
+- `public/backgrounds/ground-moss-dirt.jpg`
+- `src/pixi/PixiStage.tsx` (ground texture loading)
+- `src/pixi/layers.ts` (strip-based ground layer)
+- `src/pixi/pixiScene.ts` (perspective strip layout and sync)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+- `curl -I http://localhost:5175/zombie/backgrounds/ground-moss-dirt.jpg` OK
+  (`200`, `image/jpeg`)
+
+### Handoff notes
+- Tune `GROUND_TILE_SCALE_Y_FAR`, `GROUND_TILE_SCALE_Y_NEAR`, and
+  `GROUND_PERSPECTIVE_CURVE` for stronger/weaker horizon compression.
+
 ## 2026-06-06 - v0.24.36 - Fade actors into horizon forest (Codex)
 
 ### Summary

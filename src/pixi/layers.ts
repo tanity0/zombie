@@ -26,7 +26,8 @@ export interface SceneLayers {
   farBackdrop: TilingSprite;
   horizonForest: Sprite;
   worldGroup: Container;
-  groundBase: TilingSprite;
+  groundBase: Container;
+  groundStrips: TilingSprite[];
   frontForest: TilingSprite;
   filteredWorld: Container;
   world: Container;
@@ -48,7 +49,12 @@ export const buildLayers = (
 ): SceneLayers => {
   const farBackdrop = new TilingSprite({ texture: farTexture, width: 1, height: 1 });
   const horizonForest = new Sprite(horizonForestTexture);
-  const groundBase = new TilingSprite({ texture: forestTexture, width: 1, height: 1 });
+  const groundBase = new Container();
+  const groundStrips = Array.from(
+    { length: 36 },
+    () => new TilingSprite({ texture: forestTexture, width: 1, height: 1 })
+  );
+  groundBase.addChild(...groundStrips);
   const frontForest = new TilingSprite({ texture: frontForestTexture, width: 1, height: 1 });
 
   const filteredWorld = new Container();
@@ -89,6 +95,7 @@ export const buildLayers = (
     horizonForest,
     worldGroup,
     groundBase,
+    groundStrips,
     frontForest,
     filteredWorld,
     world,

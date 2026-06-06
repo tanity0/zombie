@@ -12,7 +12,7 @@
 // (screen space) and a warm player light halo (screen space, above the grade so
 // the hero pops). Tilt-shift depth-of-field and ambient fireflies land next.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, TilingSprite, Texture, Rectangle, Filter } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   Enemy, Pickup, Player, Projectile, VisualEffect,
@@ -106,6 +106,11 @@ const DEPTH_MAX = 1.6;
 const ENEMY_DEPTH_K = 0.0019;
 const ENEMY_DEPTH_MIN = 0.4;
 const ENEMY_DEPTH_MAX = 2.1;
+const GROUND_TILE_SCALE_X_NEAR = 0.82;
+const GROUND_TILE_SCALE_X_FAR = 0.56;
+const GROUND_TILE_SCALE_Y_NEAR = 0.82;
+const GROUND_TILE_SCALE_Y_FAR = 0.06;
+const GROUND_PERSPECTIVE_CURVE = 2.15;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -281,9 +286,7 @@ export class PixiScene {
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
-    this.L.groundBase.width = w;
-    this.L.groundBase.height = Math.max(1, h - farH);
-    this.L.groundBase.position.set(0, farH);
+    this.updatePerspectiveGround(0, 0, 0, 0);
     const frontH = this.frontForestHeight();
     const frontScale = frontH / this.L.frontForest.texture.height;
     this.L.frontForest.position.set(0, h - frontH);
@@ -427,6 +430,29 @@ export class PixiScene {
     return this.depthScaleWith(footWorldY, ENEMY_DEPTH_K, ENEMY_DEPTH_MIN, ENEMY_DEPTH_MAX);
   }
 
+  private updatePerspectiveGround(cameraX: number, cameraY: number, shakeX: number, shakeY: number) {
+    const farH = this.farBackdropHeight();
+    const groundH = Math.max(1, this.screenH - farH);
+    const strips = this.L.groundStrips;
+    const stripH = groundH / strips.length;
+    this.L.groundBase.position.set(shakeX, farH + shakeY);
+
+    for (let i = 0; i < strips.length; i++) {
+      const strip = strips[i];
+      const y = i * stripH;
+      const t = strips.length <= 1 ? 1 : i / (strips.length - 1);
+      const perspective = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
+      const scaleX = GROUND_TILE_SCALE_X_FAR + (GROUND_TILE_SCALE_X_NEAR - GROUND_TILE_SCALE_X_FAR) * perspective;
+      const scaleY = GROUND_TILE_SCALE_Y_FAR + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * perspective;
+
+      strip.position.set(0, y);
+      strip.width = this.screenW;
+      strip.height = Math.ceil(stripH) + 1;
+      strip.tileScale.set(scaleX, scaleY);
+      strip.tilePosition.set(-cameraX, -(cameraY + farH + y) / Math.max(0.001, scaleY));
+    }
+  }
+
   sync() {
     const s = useGameStore.getState();
     const now = Date.now();
@@ -455,8 +481,7 @@ export class PixiScene {
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
     this.horizonFadeZeroScreenY = this.horizonRevealZeroScreenY();
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
-    this.L.groundBase.position.set(sx, farH + sy);
-    (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
+    this.updatePerspectiveGround(s.camera.x, s.camera.y, sx, sy);
     const frontH = this.frontForestHeight();
     this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH);
     this.L.frontForest.tilePosition.set(
@@ -1126,6 +1151,7 @@ export class PixiScene {
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
+    this.L.groundBase.destroy({ children: true });
     this.L.horizonForest.destroy();
     this.horizonForestFadeMask.destroy();
     this.horizonForestFadeMaskTexture?.destroy(true);
