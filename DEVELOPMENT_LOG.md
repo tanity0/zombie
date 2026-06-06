@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.30 - Restore shared horizon fade without hiding trees (Codex)
+
+### Summary
+Fixed the horizon fade behavior after the branch restore confusion.
+- Removed the remaining per-tree and per-enemy hard alpha cutoff.
+- Kept `worldFadeMask` as the single shared top-edge fade for all gameplay
+  rendering in `filteredWorld`.
+- Restored trees, enemy shadows, and enemy lights so they fade with the shared
+  mask instead of disappearing independently.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (removed individual far-hide alpha gates)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Top-edge disappearance should now be controlled by `HORIZON_REVEAL_OFFSET_PX`
+  and `HORIZON_REVEAL_FADE_PX` only.
+
 ## 2026-06-06 - v0.24.29 - Shrink horizon seam forest (Codex)
 
 ### Summary
