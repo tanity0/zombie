@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.29 - Shrink horizon seam forest (Codex)
+
+### Summary
+Adjusted the horizon seam forest scale after screenshot review.
+- Reduced horizon seam forest height tuning by about half:
+  `0.3 / 170-260px` -> `0.15 / 85-130px`.
+- Kept `HORIZON_FOREST_Y_OFFSET_PX = -100`.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon seam height tuning)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current seam draw order is still topmost non-UI for visual tuning.
+
 ## 2026-06-06 - v0.24.28 - Lower horizon seam forest slightly (Codex)
 
 ### Summary
