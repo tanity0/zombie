@@ -37,6 +37,7 @@ const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
+const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
@@ -291,6 +292,7 @@ export class PixiScene {
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.width = w;
     this.L.horizonForest.height = horizonH;
+    this.L.horizonForest.tileScale.set(w / this.L.horizonForest.texture.width, horizonH / this.L.horizonForest.texture.height);
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
@@ -507,6 +509,10 @@ export class PixiScene {
     );
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.L.horizonForest.tilePosition.set(
+      -s.camera.x * HORIZON_FOREST_PARALLAX_X,
+      0
+    );
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
     this.horizonFadeZeroScreenY = this.horizonRevealZeroScreenY();
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();

@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.53 - Horizon forest parallax direction fix (Codex)
+
+### Summary
+Fixed the depth cue where the forest in front of the distant panorama appeared
+to move slower than the far background.
+- Converted the horizon forest seam from a static `Sprite` to a `TilingSprite`.
+- Added `HORIZON_FOREST_PARALLAX_X = 0.16`, faster than the far backdrop's
+  `0.09` and slower than the nearest foreground forest's `0.44`.
+- Kept the existing horizon position, fade mask, and actor fade behavior.
+
+### Code touched
+- `src/pixi/layers.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The parallax order is now far backdrop `0.09` < horizon forest `0.16` <
+  front forest `0.44`.
+
 ## 2026-06-07 - v0.24.52 - Crisp fireflies and lighter front forest blur (Codex)
 
 ### Summary
