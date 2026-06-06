@@ -10,29 +10,8 @@
 // the Canvas2D path's `imageSmoothingEnabled = false`.
 
 import { Assets, Rectangle, Texture } from 'pixi.js';
+import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
-
-// Mirror of ATLAS_RECTS in spriteLoader.ts. Kept as a separate copy so the
-// Canvas2D path stays completely untouched by the Pixi spike. [sx, sy, sw, sh]
-const ATLAS_RECTS: Record<string, [number, number, number, number]> = {
-  zombie:            [12, 12, 252, 278],
-  bat:               [276, 12, 238, 200],
-  skeleton:          [526, 12, 200, 283],
-  plant:             [738, 12, 247, 280],
-  ghost:             [997, 12, 229, 227],
-  werewolf:          [1238, 12, 273, 250],
-  pumpkin:           [12, 307, 222, 252],
-  giantbat:          [246, 307, 321, 269],
-  reaper:            [579, 307, 228, 275],
-  tree:              [819, 307, 250, 275],
-  'pickup-xp-blue':  [1081, 307, 99, 144],
-  'pickup-xp-green': [1192, 307, 113, 167],
-  'pickup-xp-red':   [1317, 307, 136, 180],
-  'pickup-health':   [12, 594, 191, 158],
-  'pickup-magnet':   [215, 594, 207, 158],
-  'pickup-bomb':     [434, 594, 153, 187],
-  'pickup-chest':    [599, 594, 202, 207],
-};
 
 const textures = new Map<string, Texture>();
 let ready = false;

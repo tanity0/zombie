@@ -11,6 +11,8 @@
 // Anything without a rect (the hand-picked `player.png`) falls through to the
 // per-file loader at `public/sprites/<name>.png`.
 
+import { ATLAS_RECTS } from './spriteAtlas';
+
 const cache = new Map<string, HTMLImageElement | null>();
 
 const base = import.meta.env.BASE_URL; // resolves to '/vs/' in production
@@ -20,28 +22,6 @@ export const spritePath = (name: string): string =>
   `${base}sprites/${name}.png?v=${encodeURIComponent(spriteAssetVersion)}`;
 
 const ATLAS_NAME = 'atlas';
-
-// Source rectangles inside atlas.png as [sx, sy, sw, sh]. `player` is
-// deliberately absent so it falls through to the per-file loader.
-const ATLAS_RECTS: Record<string, [number, number, number, number]> = {
-  zombie:            [12, 12, 252, 278],
-  bat:               [276, 12, 238, 200],
-  skeleton:          [526, 12, 200, 283],
-  plant:             [738, 12, 247, 280],
-  ghost:             [997, 12, 229, 227],
-  werewolf:          [1238, 12, 273, 250],
-  pumpkin:           [12, 307, 222, 252],
-  giantbat:          [246, 307, 321, 269],
-  reaper:            [579, 307, 228, 275],
-  tree:              [819, 307, 250, 275],
-  'pickup-xp-blue':  [1081, 307, 99, 144],
-  'pickup-xp-green': [1192, 307, 113, 167],
-  'pickup-xp-red':   [1317, 307, 136, 180],
-  'pickup-health':   [12, 594, 191, 158],
-  'pickup-magnet':   [215, 594, 207, 158],
-  'pickup-bomb':     [434, 594, 153, 187],
-  'pickup-chest':    [599, 594, 202, 207],
-};
 
 export const getSprite = (name: string): HTMLImageElement | null => {
   const path = spritePath(name);
@@ -74,7 +54,7 @@ export const drawSprite = (
   height: number,
   flipH = false
 ): boolean => {
-  const rect = ATLAS_RECTS[name];
+  const rect = ATLAS_RECTS[name as keyof typeof ATLAS_RECTS];
   const atlas = rect ? getSprite(ATLAS_NAME) : null;
   if (rect && atlas) {
     const [sx, sy, sw, sh] = rect;

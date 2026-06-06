@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.51 - Centralize sprite atlas rects (Codex)
+
+### Summary
+Reduced atlas-maintenance risk after the modern sprite swaps.
+- Added `src/utils/spriteAtlas.ts` as the single source of truth for atlas
+  source rectangles.
+- Updated both the Canvas fallback loader and PixiJS texture provider to import
+  the shared atlas rectangles.
+- Removed the duplicated `ATLAS_RECTS` maps that previously had to be kept in
+  sync manually.
+
+### Code touched
+- `src/utils/spriteAtlas.ts`
+- `src/utils/spriteLoader.ts`
+- `src/pixi/pixiTextures.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `rg "const ATLAS_RECTS|ATLAS_RECTS" src/utils src/pixi` OK
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Future atlas rebuilds should update only `src/utils/spriteAtlas.ts` for
+  source rectangles, plus `public/sprites/atlas.png` for the image itself.
+- This is a source-organization change only; no intended gameplay or visual
+  behavior change.
+
 ## 2026-06-07 - v0.24.50 - Smooth vertical perspective scale (Codex)
 
 ### Summary
