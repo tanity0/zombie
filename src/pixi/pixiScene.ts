@@ -326,6 +326,10 @@ export class PixiScene {
     return footWorldY < this.horizonForestFootWorldY;
   }
 
+  private horizonRevealZeroScreenY() {
+    return this.L.horizonForest.y + this.L.horizonForest.height - HORIZON_REVEAL_OFFSET_PX;
+  }
+
   private updateHorizonForestFadeMask(w: number, horizonH: number) {
     const canvas = document.createElement('canvas');
     canvas.width = 4;
@@ -353,8 +357,7 @@ export class PixiScene {
   }
 
   private updateWorldFadeMask(w: number, h: number) {
-    const horizonBottomY = this.L.horizonForest.y + this.L.horizonForest.height;
-    const zeroY = horizonBottomY - HORIZON_REVEAL_OFFSET_PX;
+    const zeroY = this.horizonRevealZeroScreenY();
     const fullY = zeroY + HORIZON_REVEAL_FADE_PX;
     this.horizonFadeZeroScreenY = zeroY;
 
@@ -444,6 +447,7 @@ export class PixiScene {
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
+    this.horizonFadeZeroScreenY = this.horizonRevealZeroScreenY();
     this.horizonForestFootWorldY = s.camera.y + this.horizonFadeZeroScreenY;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);

@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.34 - Restore horizon actor fade cutoff (Codex)
+
+### Summary
+Restored the enemy/tree fade-out behavior near the horizon forest.
+- Added `horizonRevealZeroScreenY()` so the cutoff is derived from the current
+  visible `horizonForest` position every frame.
+- Updated `horizonForestFootWorldY` during `sync()` after the forest position is
+  set, avoiding stale resize-time cutoff values.
+- Kept the bottom 10px forest fade and the 100px raised seam placement.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon fade cutoff calculation)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If actors still appear in front of the far panorama, inspect
+  `HORIZON_REVEAL_OFFSET_PX` first; the cutoff now follows the rendered forest.
+
 ## 2026-06-06 - v0.24.33 - Fade horizon forest bottom edge (Codex)
 
 ### Summary
