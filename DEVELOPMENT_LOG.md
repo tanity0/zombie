@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.25 - Raise restored horizon cutoff slightly (Codex)
+
+### Summary
+Adjusted the restored v0.24.23 horizon disappearance point.
+- Changed `HORIZON_REVEAL_OFFSET_PX` from 50 to 100, moving the disappear point
+  50px upward.
+- Kept the restored individual far-hide behavior intact.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon reveal offset)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current restored cutoff: `HORIZON_REVEAL_OFFSET_PX = 100`.
+
 ## 2026-06-06 - v0.24.24 - Lower restored horizon cutoff (Codex)
 
 ### Summary
