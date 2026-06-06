@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.43 - Replace player sprite (Codex)
+
+### Summary
+Replaced the player sprite with the supplied black-armored character.
+- Converted the supplied purple-background image into a transparent PNG.
+- Cropped the foreground character and resized it to match the existing
+  `32x32` player sprite contract.
+- Replaced `public/sprites/player.png`.
+
+### Code touched
+- `public/sprites/player.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `file public/sprites/player.png` OK (`32 x 32`, RGBA PNG)
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The purple background was keyed out via a one-off local CoreGraphics/Swift
+  conversion script. No runtime code changed.
+- If the in-game sprite feels too small/large, regenerate the sprite with a
+  different crop padding rather than changing gameplay box sizes.
+
 ## 2026-06-07 - v0.24.42 - Match object scale to ground perspective (Codex)
 
 ### Summary
