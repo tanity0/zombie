@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.41 - Trial stronger ground perspective (Codex)
+
+### Summary
+Created a trial version with stronger ground depth, closer to the first
+perspective pass, while preserving the v0.24.40 sampling fixes.
+- Changed `GROUND_TILE_SCALE_Y_FAR` from `0.38` to `0.12`.
+- Changed `GROUND_PERSPECTIVE_CURVE` from `1.45` to `2.05`.
+- Kept the 72-strip ground and scale-aware tilePosition from v0.24.40.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (ground perspective tuning)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `v0.24.40` / commit `1a1deea` is the current preferred stable baseline for
+  the perspective ground before this stronger-depth trial.
+- If this trial feels too aggressive, compare against `v0.24.40` and tune
+  `GROUND_TILE_SCALE_Y_FAR` upward before changing other constants.
+
 ## 2026-06-07 - v0.24.40 - Reduce perspective ground sampling artifacts (Codex)
 
 ### Summary
