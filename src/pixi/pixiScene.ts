@@ -109,8 +109,8 @@ const ENEMY_DEPTH_MAX = 2.1;
 const GROUND_TILE_SCALE_X_NEAR = 0.82;
 const GROUND_TILE_SCALE_X_FAR = 0.56;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
-const GROUND_TILE_SCALE_Y_FAR = 0.06;
-const GROUND_PERSPECTIVE_CURVE = 2.15;
+const GROUND_TILE_SCALE_Y_FAR = 0.38;
+const GROUND_PERSPECTIVE_CURVE = 1.45;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 

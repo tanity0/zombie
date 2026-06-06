@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.38 - Soften ground perspective depth (Codex)
+
+### Summary
+Reduced the perceived depth/motion of the perspective ground.
+- Changed `GROUND_TILE_SCALE_Y_FAR` from `0.06` to `0.38`.
+- Changed `GROUND_PERSPECTIVE_CURVE` from `2.15` to `1.45`.
+- Left the supplied moss/dirt texture and strip count unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (ground perspective tuning)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the ground still moves too much, raise `GROUND_TILE_SCALE_Y_FAR` further
+  toward `0.5`. If it becomes too flat, lower it toward `0.25`.
+
 ## 2026-06-06 - v0.24.37 - Add perspective moss ground (Codex)
 
 ### Summary
