@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.30 - Move horizon forest to top non-UI layer (Codex)
+
+### Summary
+Moved the boundary forest layer to the top of the game scene.
+- Removed `horizonForest` from `worldGroup`.
+- Added `horizonForest` directly to the stage after `frontForest` and before
+  `uiLayer`, making it the topmost non-UI visual layer.
+- Kept `HORIZON_REVEAL_OFFSET_PX = 200` and the restored individual far-hide
+  behavior unchanged.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon seam stage order)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `uiLayer` remains above the forest so HUD, mobile controls, flashes, and
+  arrows remain usable.
+
 ## 2026-06-06 - v0.24.29 - Keep horizon forest visible above gameplay fade (Codex)
 
 ### Summary
