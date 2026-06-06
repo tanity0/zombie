@@ -41,6 +41,7 @@ const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
+const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 const HORIZON_REVEAL_OFFSET_PX = 200;
 const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.44;
@@ -163,6 +164,8 @@ export class PixiScene {
   private vignette = new Sprite(getVignetteTexture());
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
+  private horizonForestFadeMask = new Sprite(Texture.WHITE);
+  private horizonForestFadeMaskTexture: Texture | null = null;
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
@@ -205,6 +208,8 @@ export class PixiScene {
     if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
     this.L.filteredWorld.mask = this.worldFadeMask;
     this.L.worldGroup.addChild(this.worldFadeMask);
+    this.L.horizonForest.mask = this.horizonForestFadeMask;
+    this.L.horizonForest.parent.addChild(this.horizonForestFadeMask);
 
     this.frontForestBlur = new BlurFilter({
       strength: FRONT_FOREST_BLUR,
@@ -272,6 +277,7 @@ export class PixiScene {
     this.L.horizonForest.width = w;
     this.L.horizonForest.height = horizonH;
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
     this.L.groundBase.width = w;
     this.L.groundBase.height = Math.max(1, h - farH);
@@ -318,6 +324,32 @@ export class PixiScene {
 
   private isBehindHorizonForest(footWorldY: number) {
     return footWorldY < this.horizonForestFootWorldY;
+  }
+
+  private updateHorizonForestFadeMask(w: number, horizonH: number) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = Math.max(1, Math.ceil(horizonH));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const fadeStart = Math.max(0, canvas.height - HORIZON_FOREST_BOTTOM_FADE_PX);
+    const grad = ctx.createLinearGradient(0, fadeStart, 0, canvas.height);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+    ctx.fillRect(0, 0, canvas.width, fadeStart);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, fadeStart, canvas.width, canvas.height - fadeStart);
+
+    const texture = Texture.from(canvas);
+    this.horizonForestFadeMask.texture = texture;
+    this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
+    this.horizonForestFadeMask.width = w;
+    this.horizonForestFadeMask.height = horizonH;
+    this.horizonForestFadeMaskTexture?.destroy(true);
+    this.horizonForestFadeMaskTexture = texture;
   }
 
   private updateWorldFadeMask(w: number, h: number) {
@@ -411,6 +443,7 @@ export class PixiScene {
     );
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
     this.horizonForestFootWorldY = s.camera.y + this.horizonFadeZeroScreenY;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
@@ -1079,6 +1112,9 @@ export class PixiScene {
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
     this.L.horizonForest.destroy();
+    this.horizonForestFadeMask.destroy();
+    this.horizonForestFadeMaskTexture?.destroy(true);
+    this.horizonForestFadeMaskTexture = null;
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;

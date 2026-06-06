@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.33 - Fade horizon forest bottom edge (Codex)
+
+### Summary
+Softened the lower edge of the visible boundary forest.
+- Added a dedicated alpha mask for `horizonForest`.
+- Kept the forest opaque through most of its height, fading only the bottom
+  `10px` to transparent.
+- Left horizon placement, gameplay cutoff, ground rendering, and layer order
+  unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (horizon forest bottom alpha mask)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `HORIZON_FOREST_BOTTOM_FADE_PX` if the seam needs a wider/narrower fade.
+
 ## 2026-06-06 - v0.24.32 - Raise horizon forest seam (Codex)
 
 ### Summary
