@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.26 - Disable front forest blur and force horizon seam front (Codex)
+
+### Summary
+Adjusted forest layers after playtest feedback.
+- Disabled the bottom/front forest blur by setting `FRONT_FOREST_BLUR = 0` and
+  only creating a `BlurFilter` when the value is greater than zero.
+- Enlarged the horizon seam forest band and increased overlap with the far/ground
+  boundary so the seam forest should be more visible.
+- Moved `horizonForest` out of `worldGroup` and above `frontForest` so it is the
+  topmost non-UI layer for visibility testing.
+
+### Code touched
+- `src/pixi/layers.ts` (temporary topmost horizon seam draw order)
+- `src/pixi/pixiScene.ts` (forest layer tuning)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the horizon seam still does not appear in this topmost placement, the next
+  check should be the visible source region of `horizon-forest-band.png`, not
+  enemy/tree alpha or draw order.
+
 ## 2026-06-06 - v0.24.25 - Keep horizon seam clear of world fade mask (Codex)
 
 ### Summary

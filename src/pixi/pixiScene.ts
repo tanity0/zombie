@@ -36,10 +36,10 @@ const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
-const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
-const HORIZON_FOREST_MIN_HEIGHT = 120;
-const HORIZON_FOREST_MAX_HEIGHT = 185;
-const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
+const HORIZON_FOREST_HEIGHT_RATIO = 0.3;
+const HORIZON_FOREST_MIN_HEIGHT = 170;
+const HORIZON_FOREST_MAX_HEIGHT = 260;
+const HORIZON_FOREST_OVERLAP_RATIO = 0.28;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_REVEAL_OFFSET_PX = 150;
 const HORIZON_REVEAL_FADE_PX = 90;
@@ -48,7 +48,7 @@ const FRONT_FOREST_HEIGHT_RATIO = 0.46;
 const FRONT_FOREST_MIN_HEIGHT = 250;
 const FRONT_FOREST_MAX_HEIGHT = 380;
 const FRONT_FOREST_ALPHA = 0.78;
-const FRONT_FOREST_BLUR = 2.4;
+const FRONT_FOREST_BLUR = 0;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -206,11 +206,13 @@ export class PixiScene {
     this.L.filteredWorld.mask = this.worldFadeMask;
     this.L.filteredWorld.addChild(this.worldFadeMask);
 
-    this.frontForestBlur = new BlurFilter({
-      strength: FRONT_FOREST_BLUR,
-      quality: 3,
-    });
-    this.L.frontForest.filters = [this.frontForestBlur];
+    if (FRONT_FOREST_BLUR > 0) {
+      this.frontForestBlur = new BlurFilter({
+        strength: FRONT_FOREST_BLUR,
+        quality: 3,
+      });
+      this.L.frontForest.filters = [this.frontForestBlur];
+    }
 
     // Ambient fireflies: a pool of soft additive motes in the lighting layer.
     if (FIREFLY_ENABLED) {
