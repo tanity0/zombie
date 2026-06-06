@@ -8,6 +8,7 @@
 //
 //   farBackdrop  – screen-space distant panorama (slow parallax, top band)
 //   groundBase   – screen-space tiling forest floor (below the horizon band)
+//   horizonForest – screen-space forest seam over the ground/far boundary
 //   filteredWorld – screen-space filter wrapper
 //     └─ world (camera-offset)
 //       ├─ backgroundLayer  – trees and other far props
@@ -17,7 +18,6 @@
 //       ├─ effectLayer      – over-sprite effects, counter ring, reload meter
 //       └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
 //   frontForest    – screen-space nearest forest foreground (fast parallax)
-//   horizonForest – screen-space forest seam, temporarily topmost in-world
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
 import { Container, TilingSprite, Texture } from 'pixi.js';
@@ -74,15 +74,15 @@ export const buildLayers = (
   );
   filteredWorld.addChild(world);
 
-  // worldGroup holds the fixed screen-space ground plus the camera-offset world.
-  // Filters are applied to filteredWorld only, so the ground never bleeds into
-  // the far panorama through blur while world still draws above it.
+  // worldGroup holds the fixed screen-space ground/seam plus the camera-offset
+  // world. Filters are applied to filteredWorld only, so the ground never
+  // bleeds into the far panorama through blur while world still draws above it.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, filteredWorld);
+  worldGroup.addChild(groundBase, horizonForest, filteredWorld);
 
   const uiLayer = new Container();
 
-  stage.addChild(farBackdrop, worldGroup, frontForest, horizonForest, uiLayer);
+  stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
 
   return {
     farBackdrop,

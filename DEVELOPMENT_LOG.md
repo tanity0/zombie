@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.23 restore - Restore completed horizon fade behavior (Codex)
+
+### Summary
+Restored the runtime code to the known-good `6d3f17a / v0.24.23` state after
+the later branch/version confusion.
+- Restored `package.json`, `package-lock.json`, `src/pixi/layers.ts`, and
+  `src/pixi/pixiScene.ts` from commit `6d3f17a`.
+- This brings back the completed top-edge disappearance logic where gameplay
+  objects use the shared horizon fade and hard cutoff behavior from v0.24.23.
+
+### Code touched
+- `package.json`, `package-lock.json`
+- `src/pixi/layers.ts`
+- `src/pixi/pixiScene.ts`
+- `DEVELOPMENT_LOG.md` (this restore note)
+
+### Verification
+- `npm run lint` pending
+- `npm run build` pending
+
+### Handoff notes
+- Treat `6d3f17a / v0.24.23` as the reference point for the horizon fade logic.
+- Do not remove the individual far-hide logic again unless explicitly requested.
+
 ## 2026-06-06 - v0.24.31 - Use alpha channel for horizon fade mask (Codex)
 
 ### Summary

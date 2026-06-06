@@ -36,12 +36,11 @@ const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
-const HORIZON_FOREST_HEIGHT_RATIO = 0.15;
-const HORIZON_FOREST_MIN_HEIGHT = 85;
-const HORIZON_FOREST_MAX_HEIGHT = 130;
-const HORIZON_FOREST_OVERLAP_RATIO = 0.28;
+const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
+const HORIZON_FOREST_MIN_HEIGHT = 120;
+const HORIZON_FOREST_MAX_HEIGHT = 185;
+const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
-const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const HORIZON_REVEAL_OFFSET_PX = 150;
 const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.44;
@@ -49,7 +48,7 @@ const FRONT_FOREST_HEIGHT_RATIO = 0.46;
 const FRONT_FOREST_MIN_HEIGHT = 250;
 const FRONT_FOREST_MAX_HEIGHT = 380;
 const FRONT_FOREST_ALPHA = 0.78;
-const FRONT_FOREST_BLUR = 0;
+const FRONT_FOREST_BLUR = 2.4;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -176,6 +175,7 @@ export class PixiScene {
   private screenW = 1;
   private screenH = 1;
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
+  private horizonForestFootWorldY = -Infinity;
   private horizonFadeZeroScreenY = 0;
 
   constructor(layers: SceneLayers) {
@@ -203,16 +203,14 @@ export class PixiScene {
       worldFilters.push(this.tiltShift);
     }
     if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
-    this.L.filteredWorld.setMask({ mask: this.worldFadeMask, channel: 'alpha' });
-    this.L.filteredWorld.addChild(this.worldFadeMask);
+    this.L.filteredWorld.mask = this.worldFadeMask;
+    this.L.worldGroup.addChild(this.worldFadeMask);
 
-    if (FRONT_FOREST_BLUR > 0) {
-      this.frontForestBlur = new BlurFilter({
-        strength: FRONT_FOREST_BLUR,
-        quality: 3,
-      });
-      this.L.frontForest.filters = [this.frontForestBlur];
-    }
+    this.frontForestBlur = new BlurFilter({
+      strength: FRONT_FOREST_BLUR,
+      quality: 3,
+    });
+    this.L.frontForest.filters = [this.frontForestBlur];
 
     // Ambient fireflies: a pool of soft additive motes in the lighting layer.
     if (FIREFLY_ENABLED) {
@@ -274,7 +272,7 @@ export class PixiScene {
     const horizonScale = Math.max(w / this.L.horizonForest.texture.width, horizonH / this.L.horizonForest.texture.height);
     this.L.horizonForest.width = w;
     this.L.horizonForest.height = horizonH;
-    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO);
     this.L.horizonForest.tileScale.set(horizonScale);
     this.L.horizonForest.tilePosition.set(
       0,
@@ -322,6 +320,10 @@ export class PixiScene {
       FRONT_FOREST_MAX_HEIGHT,
       Math.max(FRONT_FOREST_MIN_HEIGHT, this.screenH * FRONT_FOREST_HEIGHT_RATIO)
     );
+  }
+
+  private isBehindHorizonForest(footWorldY: number) {
+    return footWorldY < this.horizonForestFootWorldY;
   }
 
   private updateWorldFadeMask(w: number, h: number) {
@@ -416,9 +418,10 @@ export class PixiScene {
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.position.set(
       sx * 0.4,
-      farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX
+      farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO
     );
     this.L.horizonForest.tilePosition.x = -s.camera.x * HORIZON_FOREST_PARALLAX_X;
+    this.horizonForestFootWorldY = s.camera.y + this.horizonFadeZeroScreenY;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);
     const frontH = this.frontForestHeight();
@@ -518,7 +521,7 @@ export class PixiScene {
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = 1;
+      entry.sprite.alpha = this.isBehindHorizonForest(entry.footY) ? 0 : 1;
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -539,6 +542,7 @@ export class PixiScene {
       if (e.type === 'ghost') continue;
       const { width, alpha } = enemyShadow(e);
       const footY = e.y + e.height;
+      if (this.isBehindHorizonForest(footY)) continue;
       drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScaleEnemy(footY), alpha);
     }
   }
@@ -595,7 +599,7 @@ export class PixiScene {
 
     view.sprite.position.set(fb.footX, fb.footY);
     view.container.zIndex = fb.footY;
-    view.container.alpha = 1;
+    view.container.alpha = this.isBehindHorizonForest(fb.footY) ? 0 : 1;
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
 
     if (tex) {
@@ -607,7 +611,8 @@ export class PixiScene {
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
 
-    this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
+    if (view.container.alpha === 0) view.light.visible = false;
+    else this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
     const r = view.reticle;
@@ -1087,7 +1092,7 @@ export class PixiScene {
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;
-    this.L.filteredWorld.setMask({ mask: null, inverse: false });
+    this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = null;
