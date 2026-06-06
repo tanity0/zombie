@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.52 - Crisp fireflies and lighter front forest blur (Codex)
+
+### Summary
+Adjusted atmosphere layering after the HD-2D perspective pass.
+- Reduced the lower foreground forest blur from `2.4` to `1.6`.
+- Moved ambient firefly sprites from the filtered world `lightingLayer` to the
+  screen-space `uiLayer`, before grade/vignette overlays.
+- Kept firefly motion in world coordinates but draw them in screen coordinates,
+  so they still drift with the field while staying outside depth-of-field blur.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Fireflies are intentionally outside `filteredWorld` now. Do not move them back
+  into `lightingLayer` unless they should be blurred by the field DoF again.
+
 ## 2026-06-07 - v0.24.51 - Centralize sprite atlas rects (Codex)
 
 ### Summary

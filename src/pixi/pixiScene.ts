@@ -10,7 +10,8 @@
 //
 // HD-2D atmosphere (moonlit / cool): a multiply colour-grade + radial vignette
 // (screen space) and a warm player light halo (screen space, above the grade so
-// the hero pops). Tilt-shift depth-of-field and ambient fireflies land next.
+// the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
+// outside that filter so they stay crisp.
 
 import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
@@ -51,7 +52,7 @@ const FRONT_FOREST_HEIGHT_RATIO = 0.46;
 const FRONT_FOREST_MIN_HEIGHT = 250;
 const FRONT_FOREST_MAX_HEIGHT = 380;
 const FRONT_FOREST_ALPHA = 0.78;
-const FRONT_FOREST_BLUR = 2.4;
+const FRONT_FOREST_BLUR = 1.6;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -63,8 +64,8 @@ const TILT_SHIFT_GRADIENT = 440;  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
-// forest stays clean while gems / muzzle flashes / crits / lights / fireflies
-// bloom. Applied to the world group alongside the tilt-shift.
+// forest stays clean while gems / muzzle flashes / crits / lights bloom.
+// Applied to the world group alongside the tilt-shift.
 const BLOOM_ENABLED = true;
 const BLOOM_THRESHOLD = 0.45;  // lower → colored gems/crits bloom too
 const BLOOM_SCALE = 1.5;
@@ -229,7 +230,9 @@ export class PixiScene {
     });
     this.L.frontForest.filters = [this.frontForestBlur];
 
-    // Ambient fireflies: a pool of soft additive motes in the lighting layer.
+    // Ambient fireflies: screen-space sprites driven by world coordinates.
+    // They stay outside filteredWorld so the field depth-of-field never blurs
+    // them, but they are added before grade/vignette so atmosphere still binds.
     if (FIREFLY_ENABLED) {
       const tex = getGlowTexture();
       for (let i = 0; i < FIREFLY_COUNT; i++) {
@@ -237,7 +240,7 @@ export class PixiScene {
         sprite.anchor.set(0.5);
         sprite.tint = FIREFLY_TINT;
         sprite.blendMode = 'add';
-        this.L.lightingLayer.addChild(sprite);
+        this.L.uiLayer.addChild(sprite);
         this.fireflies.push({
           sprite, x: 0, y: 0, vx: 0, vy: 0,
           phase: Math.random() * Math.PI * 2,
@@ -567,7 +570,7 @@ export class PixiScene {
       if (f.x < minX) f.x = maxX; else if (f.x > maxX) f.x = minX;
       if (f.y < minY) f.y = maxY; else if (f.y > maxY) f.y = minY;
       const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * f.freq + f.phase));
-      f.sprite.position.set(f.x, f.y);
+      f.sprite.position.set(f.x - camera.x, f.y - camera.y);
       f.sprite.alpha = f.base * twinkle;
       f.sprite.width = f.sprite.height = f.size;
     }
