@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.29 - Keep horizon forest visible above gameplay fade (Codex)
+
+### Summary
+Restored visibility for the forest that sits in front of the distant backdrop.
+- Moved `horizonForest` above `filteredWorld` inside `worldGroup`.
+- Kept `HORIZON_REVEAL_OFFSET_PX = 200` and the restored individual far-hide
+  behavior unchanged.
+- This separates the seam forest PNG from gameplay/object transparency tuning.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon seam draw order)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `HORIZON_REVEAL_OFFSET_PX` controls gameplay object cutoff, not the
+  `horizonForest` PNG position.
+
 ## 2026-06-06 - v0.24.28 - Raise restored horizon cutoff by 40px (Codex)
 
 ### Summary

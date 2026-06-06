@@ -74,11 +74,13 @@ export const buildLayers = (
   );
   filteredWorld.addChild(world);
 
-  // worldGroup holds the fixed screen-space ground/seam plus the camera-offset
-  // world. Filters are applied to filteredWorld only, so the ground never
-  // bleeds into the far panorama through blur while world still draws above it.
+  // worldGroup holds the fixed screen-space ground plus the camera-offset world.
+  // Filters are applied to filteredWorld only, so the ground never bleeds into
+  // the far panorama through blur while world still draws above it. The horizon
+  // seam forest draws above the gameplay world so it does not get hidden by the
+  // shared fade/cutoff tuning.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, horizonForest, filteredWorld);
+  worldGroup.addChild(groundBase, filteredWorld, horizonForest);
 
   const uiLayer = new Container();
 
