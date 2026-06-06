@@ -203,7 +203,7 @@ export class PixiScene {
       worldFilters.push(this.tiltShift);
     }
     if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
-    this.L.filteredWorld.mask = this.worldFadeMask;
+    this.L.filteredWorld.setMask({ mask: this.worldFadeMask, channel: 'alpha' });
     this.L.filteredWorld.addChild(this.worldFadeMask);
 
     if (FRONT_FOREST_BLUR > 0) {
@@ -1087,7 +1087,7 @@ export class PixiScene {
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;
-    this.L.filteredWorld.mask = null;
+    this.L.filteredWorld.setMask({ mask: null, inverse: false });
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = null;

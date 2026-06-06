@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.31 - Use alpha channel for horizon fade mask (Codex)
+
+### Summary
+Fixed the shared horizon fade mask so it actually uses the transparent gradient.
+- Switched `filteredWorld` from `.mask = worldFadeMask` to
+  `setMask({ mask: worldFadeMask, channel: 'alpha' })`.
+- Kept trees/enemies visible individually; all top-edge disappearance should come
+  from the shared alpha mask.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (mask channel selection)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pixi sprite masks read the red channel by default. This mask is encoded in
+  canvas alpha, so it must stay on `channel: 'alpha'`.
+
 ## 2026-06-06 - v0.24.30 - Restore shared horizon fade without hiding trees (Codex)
 
 ### Summary
