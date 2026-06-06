@@ -8,10 +8,22 @@
 
 import type { Enemy, Player } from '../types/game';
 
-// The player sprite reads as chunky pixel art by drawing larger than its
-// hitbox. Its FOOT is anchored to the hitbox bottom (see playerFootBox) so the
-// drawn feet match the collision footprint; the extra height rises upward.
-export const PLAYER_VISUAL_SCALE = 1.7;
+// The sprites read as chunky pixel art by drawing larger than their gameplay
+// hitboxes. Feet stay anchored to the hitbox bottom; the extra height rises
+// upward, so collision and melee ranges remain unchanged.
+export const PLAYER_VISUAL_SCALE = 2.05;
+
+const ENEMY_VISUAL_SCALE: Record<Enemy['type'], number> = {
+  bat: 2.35,
+  skeleton: 2.15,
+  zombie: 2.1,
+  plant: 2.15,
+  ghost: 2.0,
+  werewolf: 2.05,
+  pumpkin: 1.75,
+  giantbat: 1.55,
+  reaper: 1.45,
+};
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre
 // the sprite is pinned to (also its Y-sort key); `boxW/boxH` is the box the
@@ -34,12 +46,15 @@ export const playerFootBox = (p: Player): FootBox => {
   return { footX: cx, footY: p.y + p.height, boxW, boxH };
 };
 
-export const enemyFootBox = (e: Enemy): FootBox => ({
-  footX: e.x + e.width / 2,
-  footY: e.y + e.height,
-  boxW: e.width,
-  boxH: e.height,
-});
+export const enemyFootBox = (e: Enemy): FootBox => {
+  const scale = ENEMY_VISUAL_SCALE[e.type] ?? 2;
+  return {
+    footX: e.x + e.width / 2,
+    footY: e.y + e.height,
+    boxW: e.width * scale,
+    boxH: e.height * scale,
+  };
+};
 
 // Ground-shadow width per enemy (heavy bosses get a wider, darker pool). Mirror
 // of the Canvas2D `drawGroundShadow` calls.

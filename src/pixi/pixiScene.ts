@@ -110,9 +110,8 @@ const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
-const OBJECT_GROUND_SCALE_MIN = 0.42;
-const OBJECT_GROUND_SCALE_MAX = 1.18;
-const OBJECT_GROUND_SCALE_WEIGHT = 0.78;
+const TREE_VISUAL_SCALE = 1.65;
+const PICKUP_VISUAL_SIZE = 30;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -186,7 +185,6 @@ export class PixiScene {
 
   private screenW = 1;
   private screenH = 1;
-  private cameraY = 0;
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private horizonForestFootWorldY = -Infinity;
   private horizonFadeZeroScreenY = 0;
@@ -420,22 +418,8 @@ export class PixiScene {
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
   private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
-    const relative = 1 + (footWorldY - this.depthRefY) * k;
-    const f = this.groundObjectScale(footWorldY) * OBJECT_GROUND_SCALE_WEIGHT
-      + relative * (1 - OBJECT_GROUND_SCALE_WEIGHT);
+    const f = 1 + (footWorldY - this.depthRefY) * k;
     return f < min ? min : f > max ? max : f;
-  }
-
-  private groundObjectScale(footWorldY: number): number {
-    const farH = this.farBackdropHeight();
-    const groundH = Math.max(1, this.screenH - farH);
-    const screenY = footWorldY - this.cameraY;
-    const t = Math.max(0, Math.min(1, (screenY - farH) / groundH));
-    const perspective = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
-    const groundScale = GROUND_TILE_SCALE_Y_FAR
-      + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * perspective;
-    const normalized = groundScale / GROUND_TILE_SCALE_Y_NEAR;
-    return Math.max(OBJECT_GROUND_SCALE_MIN, Math.min(OBJECT_GROUND_SCALE_MAX, normalized));
   }
 
   private depthScale(footWorldY: number): number {
@@ -474,7 +458,6 @@ export class PixiScene {
   sync() {
     const s = useGameStore.getState();
     const now = Date.now();
-    this.cameraY = s.camera.y;
 
     // Focal plane for the pseudo-perspective scale = the player's feet.
     this.depthRefY = playerFootBox(s.player).footY;
@@ -589,8 +572,8 @@ export class PixiScene {
         // pass in front of (south) or behind (north) each tree.
         sprite.zIndex = t.footY;
         this.L.actorLayer.addChild(sprite);
-        const boxW = 48 * t.scale;
-        const boxH = 64 * t.scale;
+        const boxW = 48 * TREE_VISUAL_SCALE * t.scale;
+        const boxH = 64 * TREE_VISUAL_SCALE * t.scale;
         const baseScale = tex ? containScale(boxW, boxH, tex.width, tex.height) : 1;
         entry = { sprite, baseScale, footY: t.footY };
         this.trees.set(t.key, entry);
@@ -614,14 +597,15 @@ export class PixiScene {
     const g = this.shadowGfx;
     g.clear();
     const pf = playerFootBox(player);
-    drawShadow(g, pf.footX, pf.footY - 2, player.width * 1.7 * 0.55 * this.depthScale(pf.footY), 0.4);
+    drawShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 0.4);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
-      const { width, alpha } = enemyShadow(e);
+      const { alpha } = enemyShadow(e);
+      const fb = enemyFootBox(e);
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
-      drawShadow(g, e.x + e.width / 2, footY - 2, width * this.depthScaleEnemy(footY), alpha * horizonAlpha);
+      drawShadow(g, e.x + e.width / 2, footY - 2, fb.boxW * 0.55 * this.depthScaleEnemy(footY), alpha * horizonAlpha);
     }
   }
 
@@ -795,9 +779,9 @@ export class PixiScene {
   private drawProjectile(g: Graphics, p: Projectile) {
     g.clear();
     g.rotation = 0;
+    g.scale.set(1);
     const cx = p.x + p.width / 2;
     const cy = p.y + p.height / 2;
-    g.scale.set(this.depthScale(cy));
     g.position.set(cx, cy);
 
     if (p.reflected) {
@@ -860,17 +844,19 @@ export class PixiScene {
     p: Pickup,
     now: number
   ) {
-    const cx = p.x + 8;
-    const cy = p.y + 8;
-    const size = 16;
+    const hitSize = 16;
+    const cx = p.x + hitSize / 2;
+    const cy = p.y + hitSize / 2;
+    const footY = p.y + hitSize;
+    const size = PICKUP_VISUAL_SIZE;
     const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
-    const d = this.depthScale(cy + size / 2); // foot = base of the item
+    const d = this.depthScale(footY); // foot = base of the pickup hitbox
     const g = entry.gfx;
     g.clear();
 
     // Shadow stays at the base (not floating) so the bob lifts the item off it.
     const shadowAlpha = Math.max(0.22, 0.35 - floatOffset * 0.025);
-    drawShadow(g, cx, cy + size / 2, size * 0.85 * d, shadowAlpha);
+    drawShadow(g, cx, footY, size * 0.85 * d, shadowAlpha);
 
     if (SPRITE_PICKUPS.has(p.type)) {
       const name = p.type === 'experience'
@@ -886,7 +872,7 @@ export class PixiScene {
         entry.sprite.texture = tex;
         const sc = containScale(size, size, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);
-        entry.sprite.position.set(cx, cy + size / 2 + floatOffset);
+        entry.sprite.position.set(cx, footY + floatOffset);
         entry.sprite.visible = true;
         return;
       }

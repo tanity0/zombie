@@ -10,6 +10,101 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.47 - Enlarge modern sprite presentation (Codex)
+
+### Summary
+Adjusted the modern sprite atlas presentation so the pixel art reads larger and
+less crushed, closer to an Octopath-style chunky sprite scale.
+- Increased player visual scale from `1.7` to `2.05`.
+- Added per-enemy visual scale factors while keeping gameplay hitboxes,
+  collisions, melee radius, and movement unchanged.
+- Increased tree and pickup visual sizes so the new atlas does not collapse into
+  tiny unreadable details.
+- Resized shadows to follow the enlarged visual boxes.
+
+### Code touched
+- `src/pixi/renderSpec.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is visual-only scaling. If gameplay feels easier/harder, inspect
+  perception first; collision boxes were not changed.
+
+## 2026-06-07 - v0.24.46 - Replace world sprites with modern atlas (Codex)
+
+### Summary
+Replaced the enemy, tree, and pickup atlas with the supplied modern pixel-art
+sheet.
+- Keyed the white JPEG background to transparent and rebuilt
+  `public/sprites/atlas.png`.
+- Updated the atlas rectangles in both the PixiJS renderer and Canvas fallback.
+- Added a version query to `spritePath()` so changed sprite files are not stuck
+  behind browser cache.
+- Confirmed `public/sprites/player.png` is already the new black-armored
+  player sprite; the apparent old sprite was likely cached.
+
+### Sprite mapping
+- `zombie`: standing zombie with bat
+- `bat`: four-legged crawler
+- `skeleton`: armored gas-mask enemy
+- `plant`: carnivorous plant
+- `ghost`: pale ghost
+- `werewolf`: large wolf creature
+- `pumpkin`: bloated boss
+- `giantbat`: winged demon boss
+- `reaper`: scythe reaper
+- `tree`: dead tree
+- `pickup-xp-blue/green/red`: blue, green, red vials
+- `pickup-health`: medical pack
+- `pickup-magnet`: magnet
+- `pickup-bomb`: bomb
+- `pickup-chest`: open chest
+
+### Code touched
+- `public/sprites/atlas.png`
+- `src/pixi/pixiTextures.ts`
+- `src/utils/spriteLoader.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The unused hooded normal enemy from the source sheet was intentionally skipped.
+- If the player still appears old in browser, force reload once; future sprite
+  loads now include the app version query.
+
+## 2026-06-07 - v0.24.45 - Restore object visual sizes (Codex)
+
+### Summary
+Restored character, enemy, item, and projectile sizes after the
+ground-perspective scale trial.
+- Removed the ground-derived object scale blend from `depthScaleWith`.
+- Removed `groundObjectScale()` and related tuning constants.
+- Reset projectile graphics scale to `1` each frame so old scale state cannot
+  persist.
+- Kept the strong perspective ground, seam fixes, and outlined player sprite
+  unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (object scale reset)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- v0.24.42 was the object-scale trial that made world objects too small.
+- If object speed/scale matching is revisited, keep it behind a small trial
+  constant and avoid changing baseline sprite sizes globally.
+
 ## 2026-06-07 - v0.24.44 - Sharpen player sprite outline (Codex)
 
 ### Summary
