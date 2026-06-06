@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.31 - Render horizon forest as sprite (Codex)
+
+### Summary
+Made the boundary forest layer render without tiling/cropping.
+- Changed `horizonForest` from `TilingSprite` to a regular `Sprite`.
+- Removed `tileScale` / `tilePosition` handling for the boundary forest.
+- Kept it as the topmost non-UI layer, after `frontForest` and before `uiLayer`.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon forest display type)
+- `src/pixi/pixiScene.ts` (removed horizon forest tiling controls)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is a visibility fix. If the forest is now too vertically compressed,
+  tune `HORIZON_FOREST_HEIGHT_RATIO/MIN/MAX` next.
+
 ## 2026-06-06 - v0.24.30 - Move horizon forest to top non-UI layer (Codex)
 
 ### Summary

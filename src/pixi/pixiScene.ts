@@ -40,7 +40,6 @@ const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
-const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_REVEAL_OFFSET_PX = 200;
 const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.44;
@@ -269,15 +268,9 @@ export class PixiScene {
     this.L.farBackdrop.tileScale.set(farScale);
     this.L.farBackdrop.alpha = 1;
     const horizonH = this.horizonForestHeight();
-    const horizonScale = Math.max(w / this.L.horizonForest.texture.width, horizonH / this.L.horizonForest.texture.height);
     this.L.horizonForest.width = w;
     this.L.horizonForest.height = horizonH;
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO);
-    this.L.horizonForest.tileScale.set(horizonScale);
-    this.L.horizonForest.tilePosition.set(
-      0,
-      -(this.L.horizonForest.texture.height - horizonH / horizonScale)
-    );
     this.updateWorldFadeMask(w, h);
     this.L.groundBase.width = w;
     this.L.groundBase.height = Math.max(1, h - farH);
@@ -416,11 +409,7 @@ export class PixiScene {
       0
     );
     const horizonH = this.horizonForestHeight();
-    this.L.horizonForest.position.set(
-      sx * 0.4,
-      farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO
-    );
-    this.L.horizonForest.tilePosition.x = -s.camera.x * HORIZON_FOREST_PARALLAX_X;
+    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO);
     this.horizonForestFootWorldY = s.camera.y + this.horizonFadeZeroScreenY;
     this.L.groundBase.position.set(sx, farH + sy);
     (this.L.groundBase as TilingSprite).tilePosition.set(-s.camera.x, -s.camera.y + farH);

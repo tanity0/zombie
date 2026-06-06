@@ -20,11 +20,11 @@
 //   horizonForest – screen-space forest seam, topmost non-UI layer
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
-import { Container, TilingSprite, Texture } from 'pixi.js';
+import { Container, Sprite, TilingSprite, Texture } from 'pixi.js';
 
 export interface SceneLayers {
   farBackdrop: TilingSprite;
-  horizonForest: TilingSprite;
+  horizonForest: Sprite;
   worldGroup: Container;
   groundBase: TilingSprite;
   frontForest: TilingSprite;
@@ -47,7 +47,7 @@ export const buildLayers = (
   frontForestTexture: Texture
 ): SceneLayers => {
   const farBackdrop = new TilingSprite({ texture: farTexture, width: 1, height: 1 });
-  const horizonForest = new TilingSprite({ texture: horizonForestTexture, width: 1, height: 1 });
+  const horizonForest = new Sprite(horizonForestTexture);
   const groundBase = new TilingSprite({ texture: forestTexture, width: 1, height: 1 });
   const frontForest = new TilingSprite({ texture: frontForestTexture, width: 1, height: 1 });
 
