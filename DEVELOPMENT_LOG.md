@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.16 - Restore smooth melee ring and reveal seam forest (Codex)
+
+### Summary
+Fixed two regressions spotted during visual review.
+- Restored the smooth 360-degree melee/counter ring with subtle right-side
+  thickening from the earlier Codex pass, replacing the static crescent style
+  that had remained from the later Claude Code tuning.
+- Moved `horizonForest` into `worldGroup` above `groundBase` and below the
+  camera-offset `world`, so the seam forest is visible over the ground/far
+  boundary without covering actors.
+
+### Code touched
+- `src/pixi/layers.ts` (horizon forest layer ordering)
+- `src/pixi/pixiScene.ts` (melee/counter ring restore, import cleanup)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the seam forest disappears again, check that it is a child of `worldGroup`
+  after `groundBase`, not a stage child behind `worldGroup`.
+- The intended melee indicator is the smooth full ring, not the static crescent.
+
 ## 2026-06-06 - v0.24.15 - Lower horizon forest seam (Codex)
 
 ### Summary

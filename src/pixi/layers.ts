@@ -7,8 +7,8 @@
 // world effects (damage flashes, off-screen supply arrows).
 //
 //   farBackdrop  – screen-space distant panorama (slow parallax, top band)
-//   horizonForest – screen-space forest seam between far backdrop and ground
 //   groundBase   – screen-space tiling forest floor (below the horizon band)
+//   horizonForest – screen-space forest seam over the ground/far boundary
 //   world (camera-offset)
 //     ├─ backgroundLayer  – trees and other far props
 //     ├─ groundLayer      – foot shadows, ground trails, pickups
@@ -76,11 +76,11 @@ export const buildLayers = (
   // overlays (grade / vignette / flash) live in uiLayer, OUTSIDE this group, so
   // they stay sharp.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, world);
+  worldGroup.addChild(groundBase, horizonForest, world);
 
   const uiLayer = new Container();
 
-  stage.addChild(farBackdrop, horizonForest, worldGroup, frontForest, uiLayer);
+  stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
 
   return {
     farBackdrop,
