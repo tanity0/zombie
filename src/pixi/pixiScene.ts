@@ -106,8 +106,7 @@ const DEPTH_MAX = 1.6;
 const ENEMY_DEPTH_K = 0.0019;
 const ENEMY_DEPTH_MIN = 0.4;
 const ENEMY_DEPTH_MAX = 2.1;
-const GROUND_TILE_SCALE_X_NEAR = 0.82;
-const GROUND_TILE_SCALE_X_FAR = 0.56;
+const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.38;
 const GROUND_PERSPECTIVE_CURVE = 1.45;
@@ -435,6 +434,7 @@ export class PixiScene {
     const groundH = Math.max(1, this.screenH - farH);
     const strips = this.L.groundStrips;
     const stripH = groundH / strips.length;
+    let sourceY = cameraY + farH;
     this.L.groundBase.position.set(shakeX, farH + shakeY);
 
     for (let i = 0; i < strips.length; i++) {
@@ -442,14 +442,14 @@ export class PixiScene {
       const y = i * stripH;
       const t = strips.length <= 1 ? 1 : i / (strips.length - 1);
       const perspective = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
-      const scaleX = GROUND_TILE_SCALE_X_FAR + (GROUND_TILE_SCALE_X_NEAR - GROUND_TILE_SCALE_X_FAR) * perspective;
       const scaleY = GROUND_TILE_SCALE_Y_FAR + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * perspective;
 
       strip.position.set(0, y);
       strip.width = this.screenW;
-      strip.height = Math.ceil(stripH) + 1;
-      strip.tileScale.set(scaleX, scaleY);
-      strip.tilePosition.set(-cameraX, -(cameraY + farH + y) / Math.max(0.001, scaleY));
+      strip.height = Math.ceil(stripH) + 2;
+      strip.tileScale.set(GROUND_TILE_SCALE_X, scaleY);
+      strip.tilePosition.set(-cameraX, -sourceY);
+      sourceY += stripH / Math.max(0.001, scaleY);
     }
   }
 

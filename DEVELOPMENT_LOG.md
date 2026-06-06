@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-06 - v0.24.39 - Smooth perspective ground strip seams (Codex)
+
+### Summary
+Reduced visible texture jumps between perspective ground strips.
+- Removed per-strip horizontal scale variation.
+- Kept `GROUND_TILE_SCALE_X` constant so vertical strip borders align better.
+- Changed vertical tile sampling to accumulate continuous source Y across
+  strips instead of recalculating each strip independently.
+- Slightly overlapped strip heights to hide subpixel seams.
+
+### Code touched
+- `src/pixi/pixiScene.ts` (ground strip texture sampling)
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If strip seams remain visible, increase strip count in `src/pixi/layers.ts`
+  or add a tiny per-strip alpha overlap mask.
+
 ## 2026-06-06 - v0.24.38 - Soften ground perspective depth (Codex)
 
 ### Summary
