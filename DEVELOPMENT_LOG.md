@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.5 - Add magnum-start player walk frames (Codex)
+
+### Summary
+Added a dedicated animated player sprite for the magnum/sniper starting class.
+- Extracted four transparent `player-magnum-walk-*` PNGs from the supplied
+  purple-matte walk sheet using the dot-sprite extraction workflow.
+- The normal `player.png` remains unchanged.
+- Pixi now preloads all four magnum walk frames and uses them only when the
+  starting class is `mage` (the marksman/magnum loadout).
+- The magnum sprite scales by height so the long rifle barrel does not shrink
+  the character body; other player sprites keep the existing contain scaling.
+- Removed the previous squash/sway/rotation walk fake for the magnum sprite;
+  only a tiny vertical bob remains under the real frame animation.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `public/sprites/player-magnum-walk-3.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `PLAYER_WALK_CYCLE_MS` if the walk tempo feels too fast or slow.
+- If any tiny purple matte specks are visible in-game, rerun the extraction pass
+  with a slightly wider purple threshold instead of adding runtime filters.
+- Current trigger is `player.characterClass === 'mage'`, matching the existing
+  marksman/magnum starting profile.
+
 ## 2026-06-08 - v0.25.4 - Add player walk motion (Codex)
 
 ### Summary

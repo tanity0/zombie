@@ -23,14 +23,21 @@ export const ensureTextures = (): Promise<void> => {
   if (ready) return Promise.resolve();
   if (loading) return loading;
   loading = (async () => {
-    const [atlas, player, torch] = await Promise.all([
+    const [atlas, player, torch, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
+      Assets.load(spritePath('player-magnum-walk-0')),
+      Assets.load(spritePath('player-magnum-walk-1')),
+      Assets.load(spritePath('player-magnum-walk-2')),
+      Assets.load(spritePath('player-magnum-walk-3')),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
     torch.source.scaleMode = 'nearest';
+    playerWalk.forEach((tex) => {
+      tex.source.scaleMode = 'nearest';
+    });
 
     for (const [name, [sx, sy, sw, sh]] of Object.entries(ATLAS_RECTS)) {
       textures.set(
@@ -39,6 +46,9 @@ export const ensureTextures = (): Promise<void> => {
       );
     }
     textures.set('player', player);
+    playerWalk.forEach((tex, i) => {
+      textures.set(`player-magnum-walk-${i}`, tex);
+    });
     textures.set('torch', torch);
     ready = true;
   })();
