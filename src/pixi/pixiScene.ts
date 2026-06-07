@@ -123,10 +123,10 @@ const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
 const TORCH_LIGHT_RADIUS = 92;
 const TORCH_EMBER_COUNT = 7;
-const TORCH_REFLECTION_W = 70;
-const TORCH_REFLECTION_H = 18;
+const TORCH_REFLECTION_W = 92;
+const TORCH_REFLECTION_H = 24;
 const GROUND_REFLECTION_ENABLED = true;
-const GROUND_REFLECTION_ALPHA = 0.12;
+const GROUND_REFLECTION_ALPHA = 0.28;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -700,7 +700,7 @@ export class PixiScene {
   ) {
     if (!GROUND_REFLECTION_ENABLED || alpha <= 0) return;
     g.ellipse(x, y, width * 0.5, height * 0.5).fill({ color, alpha });
-    g.ellipse(x, y, width * 0.25, height * 0.32).fill({ color: 0xffffff, alpha: alpha * 0.18 });
+    g.ellipse(x, y, width * 0.28, height * 0.34).fill({ color: 0xffffff, alpha: alpha * 0.22 });
   }
 
   private syncGroundReflections(
@@ -740,8 +740,8 @@ export class PixiScene {
         g,
         p.x + 8,
         footY + 2 * d,
-        34 * d * strength * pulse,
-        8 * d * strength,
+        52 * d * strength * pulse,
+        13 * d * strength,
         color,
         GROUND_REFLECTION_ALPHA * horizonAlpha * strength * (1 - Math.max(0, bob) * 0.03)
       );
@@ -763,10 +763,10 @@ export class PixiScene {
         g,
         cx,
         cy + 6 * d,
-        (p.weaponType === 'rifle' ? 32 : 22) * d,
-        5 * d,
+        (p.weaponType === 'rifle' ? 46 : 34) * d,
+        8 * d,
         color,
-        GROUND_REFLECTION_ALPHA * 0.62 * horizonAlpha
+        GROUND_REFLECTION_ALPHA * 0.9 * horizonAlpha
       );
     }
 
@@ -780,10 +780,10 @@ export class PixiScene {
         g,
         e.x,
         e.y + 8 * d,
-        Math.min(110, e.radius * 1.18) * d,
-        Math.min(22, e.radius * 0.22) * d,
+        Math.min(160, e.radius * 1.45) * d,
+        Math.min(32, e.radius * 0.3) * d,
         `${e.color}1)`,
-        GROUND_REFLECTION_ALPHA * 0.9 * (1 - t) * horizonAlpha
+        GROUND_REFLECTION_ALPHA * 1.15 * (1 - t) * horizonAlpha
       );
     }
   }
@@ -820,7 +820,7 @@ export class PixiScene {
     view.reflection.tint = 0xff9f1c;
     view.reflection.width = TORCH_REFLECTION_W * d * prop.scale * pulse;
     view.reflection.height = TORCH_REFLECTION_H * d * prop.scale * (0.86 + 0.14 * pulse);
-    view.reflection.alpha = 0.11 * horizonAlpha * pulse;
+    view.reflection.alpha = 0.2 * horizonAlpha * pulse;
 
     const f = view.flame;
     f.clear();

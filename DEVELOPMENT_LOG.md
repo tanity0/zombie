@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.66 - Make damp ground reflections visible (Codex)
+
+### Summary
+Raised the subtle reflection pass to a visible level after playtest feedback.
+- Increased global reflection alpha from `0.12` to `0.28`.
+- Widened pickup, projectile, and glow reflection ellipses.
+- Strengthened torch foot reflection alpha and size.
+- Kept the same cheap rendering strategy: one shared `Graphics` for generic
+  glow reflections plus one simple Sprite per torch reflection.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the reflection now reads too watery, lower `GROUND_REFLECTION_ALPHA` first
+  before changing the drawing approach.
+
 ## 2026-06-07 - v0.24.65 - Reflect glowing effects on damp ground (Codex)
 
 ### Summary
