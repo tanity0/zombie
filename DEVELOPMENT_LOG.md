@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.77 - Add grenade blast damage (Codex)
+
+### Summary
+Buffed the grenade launcher and gave it real splash damage.
+- Raised `rifle-t3` / グレネードランチャー base damage from `75` to `95`.
+- Projectiles now carry their source `weaponKey`, so the loop can distinguish
+  grenade shots from other rifle-family bullets.
+- Grenade launcher shots now explode on first enemy hit and are removed instead
+  of acting like piercing sniper rounds.
+- The blast deals falloff splash damage in a `92px` radius, spawns blast VFX,
+  blood bursts, damage numbers, and XP gems for enemies killed by splash.
+
+### Code touched
+- `src/types/game.ts`
+- `src/utils/weaponUtils.ts`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tuning constants live in `src/hooks/useGameLoop.ts`:
+  `GRENADE_BLAST_RADIUS`, `GRENADE_BLAST_DAMAGE_MULT`.
+- Source weapon detection uses `Projectile.weaponKey === 'rifle-t3'`.
+
 ## 2026-06-07 - v0.24.76 - Add opening settings and melee damage numbers (Codex)
 
 ### Summary

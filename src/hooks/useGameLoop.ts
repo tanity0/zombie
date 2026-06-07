@@ -28,6 +28,10 @@ import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 
+const GRENADE_WEAPON_KEY = 'rifle-t3';
+const GRENADE_BLAST_RADIUS = 92;
+const GRENADE_BLAST_DAMAGE_MULT = 0.62;
+
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
   const frameRef = useRef(0);
@@ -303,6 +307,7 @@ export const useGameLoop = (onGameOver: () => void) => {
         // Check for collisions between projectiles and enemies
         const projectileEnemyCollisions = checkProjectileEnemyCollisions(useGameStore.getState().projectiles, enemies);
         const projectilesRemovedThisFrame = new Set<string>();
+        const grenadeExplodedThisFrame = new Set<string>();
         
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage }) => {
           const enemyForFx = enemies.find(e => e.id === enemyId);
@@ -332,6 +337,45 @@ export const useGameLoop = (onGameOver: () => void) => {
             spawnRing(cex, cey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
             spawnBurst(cex, cey, '#fde047', 10);
             useGameStore.getState().spawnGlow(cex, cey, 34, 'rgba(253,224,71,', 240);
+          }
+
+          if (
+            projectile?.weaponKey === GRENADE_WEAPON_KEY &&
+            enemyForFx &&
+            !grenadeExplodedThisFrame.has(projectileId)
+          ) {
+            grenadeExplodedThisFrame.add(projectileId);
+            const blastX = enemyForFx.x + enemyForFx.width / 2;
+            const blastY = enemyForFx.y + enemyForFx.height / 2;
+            spawnRing(blastX, blastY, 10, GRENADE_BLAST_RADIUS, 'rgba(251,146,60,0.82)', 5, 360);
+            spawnBurst(blastX, blastY, '#f97316', 24);
+            spawnBurst(blastX, blastY, '#7f1d1d', 10);
+            useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', 360);
+
+            const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT;
+            for (const splashEnemy of useGameStore.getState().enemies) {
+              if (splashEnemy.id === enemyId || splashEnemy.type === 'reaper') continue;
+              const sx = splashEnemy.x + splashEnemy.width / 2;
+              const sy = splashEnemy.y + splashEnemy.height / 2;
+              const dist = Math.hypot(sx - blastX, sy - blastY);
+              if (dist > GRENADE_BLAST_RADIUS) continue;
+              const falloff = 1 - dist / GRENADE_BLAST_RADIUS;
+              const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
+              const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
+              spawnDamageNumber(sx, splashEnemy.y, splashDamage, !!projectile.crit);
+              spawnBurst(sx, sy, '#b91c1c', projectile.crit ? 7 : 4);
+              if (splashKilled) {
+                playEnemyDeath();
+                spawnBurst(sx, sy, '#dc2626', 12);
+                addPickup({
+                  id: `pickup-xp-grenade-${splashEnemy.id}`,
+                  x: sx - 8,
+                  y: sy - 8,
+                  type: 'experience',
+                  value: splashEnemy.experienceValue
+                });
+              }
+            }
           }
 
           // Floating damage number at the enemy's body. Reflected bolts and
@@ -376,7 +420,9 @@ export const useGameLoop = (onGameOver: () => void) => {
           //  - everything else: stop on first hit.
           if (projectile) {
             const removeIt =
-              projectile.pierce !== undefined
+              projectile.weaponKey === GRENADE_WEAPON_KEY
+                ? true
+                : projectile.pierce !== undefined
                 ? projectile.hitEnemies.length > projectile.pierce
                 : projectile.passthrough
                   ? enemyKilled

@@ -168,6 +168,7 @@ export interface Projectile {
   damage: number;
   direction: { x: number; y: number };
   weaponType: WeaponType;
+  weaponKey?: string;
   duration: number;
   createdAt: number;
   passthrough: boolean;
