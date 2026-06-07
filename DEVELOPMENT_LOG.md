@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.71 - Fade pickups into horizon zone (Codex)
+
+### Summary
+Fixed pickup objects overlapping the far background in the upper transparent
+zone.
+- Applied `horizonActorAlpha` to the whole pickup container, not only selected
+  ground reflections.
+- This covers weapon crates, ammo boxes, gems, meat/health, magnet, bomb, and
+  other pickup sprites/procedural drawings consistently.
+- Pickups now hide completely at alpha zero and z-sort by their foot Y.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If another object overlaps the far backdrop, check whether its container also
+  uses `horizonActorAlpha(footY)`.
+
 ## 2026-06-07 - v0.24.70 - Stabilize player screen-pixel snap (Codex)
 
 ### Summary

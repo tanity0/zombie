@@ -1211,10 +1211,15 @@ export class PixiScene {
     const size = PICKUP_VISUAL_SIZE;
     const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
     const d = this.depthScale(footY); // foot = base of the pickup hitbox
+    const horizonAlpha = this.horizonActorAlpha(footY);
     const glow = entry.glow;
     const g = entry.gfx;
+    entry.container.alpha = horizonAlpha;
+    entry.container.visible = horizonAlpha > 0;
+    entry.container.zIndex = footY;
     glow.clear();
     g.clear();
+    if (horizonAlpha <= 0) return;
 
     // Shadow stays at the base (not floating) so the bob lifts the item off it.
     const shadowAlpha = Math.max(0.22, 0.35 - floatOffset * 0.025);
