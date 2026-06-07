@@ -233,9 +233,9 @@ const drawOffscreenIndicators = (
   height: number
 ) => {
   // Inset the arrow ring from the very edge; a larger top inset keeps arrows
-  // clear of the HUD that overlays the top of the screen.
+  // clear of the iOS status bar and top HUD that overlay the screen.
   const marginX = 26;
-  const marginTop = 64;
+  const marginTop = Math.min(Math.max(154, height * 0.17), height - 96);
   const marginBottom = 30;
   const cxC = width / 2;
   const cyC = height / 2;

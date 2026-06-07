@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.88 - Keep supply arrows below top HUD (Codex)
+
+### Summary
+Adjusted off-screen supply arrow clamping so upward arrows no longer hide under
+the iOS status bar or top HUD.
+- Pixi arrow anchors now use a responsive top safe line of roughly 154px / 17%
+  of screen height, capped for short screens.
+- Canvas fallback arrows use the same top safe line for consistency.
+- Bottom and side arrow margins remain unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/utils/renderUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the top HUD height changes, retune the `154` / `0.17` values in the arrow
+  margin calculation in both renderers.
+
 ## 2026-06-07 - v0.24.87 - Add clustered breakable mines (Codex)
 
 ### Summary

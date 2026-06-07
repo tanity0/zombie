@@ -1590,7 +1590,12 @@ export class PixiScene {
   private syncArrows(pickups: Pickup[], camera: { x: number; y: number }) {
     const g = this.arrowGfx;
     g.clear();
-    const marginX = 26, marginTop = 64, marginBottom = 30;
+    const marginX = 26;
+    // Keep upward arrows below the iOS status bar and the top HUD. The icon
+    // itself plus the arrowhead extends ~20px above its anchor, so the clamp
+    // needs to be materially lower than the visible HUD edge.
+    const marginTop = Math.min(Math.max(154, this.screenH * 0.17), this.screenH - 96);
+    const marginBottom = 30;
     const cxC = this.screenW / 2;
     const cyC = this.screenH / 2;
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
