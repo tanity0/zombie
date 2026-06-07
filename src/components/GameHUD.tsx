@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
@@ -8,6 +8,14 @@ import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
 const BOSS_WARN_LEAD = 12 * 1000;
+const PERF_CAPTURE_COOLDOWN_MS = 15_000;
+const PERF_THRESHOLDS = {
+  fps: 45,
+  effects: 180,
+  projectiles: 45,
+  pickups: 130,
+  enemies: 12,
+};
 
 interface GameHUDProps {
   fps: number;
@@ -21,6 +29,10 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
   const enemies = useGameStore(state => state.enemies);
+  const effectsCount = useGameStore(state => state.effects.length);
+  const projectilesCount = useGameStore(state => state.projectiles.length);
+  const pickupsCount = useGameStore(state => state.pickups.length);
+  const lastPerfCaptureAt = useRef(0);
 
   const formattedTime = formatTime(gameTime / 1000);
   const expPercentage = (player.experience / player.experienceToNextLevel) * 100;
@@ -33,6 +45,39 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
     gameTime < FINALE_BOSS_TIME_MS;
 
   const weaponGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
+  const perfIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (fps > 0 && fps < PERF_THRESHOLDS.fps) issues.push(`fps<${PERF_THRESHOLDS.fps}`);
+    if (effectsCount > PERF_THRESHOLDS.effects) issues.push(`fx>${PERF_THRESHOLDS.effects}`);
+    if (projectilesCount > PERF_THRESHOLDS.projectiles) issues.push(`p>${PERF_THRESHOLDS.projectiles}`);
+    if (pickupsCount > PERF_THRESHOLDS.pickups) issues.push(`item>${PERF_THRESHOLDS.pickups}`);
+    if (enemies.length > PERF_THRESHOLDS.enemies) issues.push(`enemy>${PERF_THRESHOLDS.enemies}`);
+    return issues;
+  }, [fps, effectsCount, projectilesCount, pickupsCount, enemies.length]);
+  const perfWarning = perfIssues.length > 0;
+
+  useEffect(() => {
+    if (!perfWarning) return;
+    const now = Date.now();
+    if (now - lastPerfCaptureAt.current < PERF_CAPTURE_COOLDOWN_MS) return;
+    lastPerfCaptureAt.current = now;
+
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas');
+    if (!canvas || !canvas.toBlob) return;
+
+    const reason = perfIssues.join('_').replace(/[^a-zA-Z0-9_-]/g, '');
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `zombie-perf-${new Date(now).toISOString().replace(/[:.]/g, '-')}-${reason}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }, [perfWarning, perfIssues]);
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
     e?.preventDefault();
@@ -238,13 +283,18 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
       {/* Test perf indicator */}
       <div
-        className="absolute glass-pill px-2 py-0.5 text-[10px] text-white/60 tabular-nums"
+        className={`absolute glass-pill px-2 py-1 text-[10px] tabular-nums leading-tight ${
+          perfWarning ? 'text-red-100 ring-1 ring-red-400/70 bg-red-500/15' : 'text-white/60'
+        }`}
         style={{
           right: 'max(env(safe-area-inset-right), 12px)',
           top: 'calc(max(env(safe-area-inset-top), 8px) + 212px)'
         }}
       >
-        FPS {fps}
+        <div>FPS {fps}</div>
+        <div>fx {effectsCount} p {projectilesCount}</div>
+        <div>item {pickupsCount} enemy {enemies.length}</div>
+        {perfWarning && <div>WARN {perfIssues.join(',')}</div>}
       </div>
     </div>
   );

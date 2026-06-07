@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.80 - Add perf debug counters and warning capture (Codex)
+
+### Summary
+Expanded the always-visible test performance HUD.
+- The in-game debug pill now shows `FPS`, active effect count, projectile count,
+  pickup count, and enemy count.
+- The pill turns red and lists warning reasons when counts cross conservative
+  test thresholds.
+- On threshold exceed, the game attempts to save a canvas PNG named
+  `zombie-perf-...png`, with a 15-second cooldown to avoid download spam.
+
+### Code touched
+- `src/components/GameHUD.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Threshold constants live in `GameHUD`: `PERF_THRESHOLDS`.
+- Browser auto-download behavior is platform-dependent. Desktop browsers should
+  generally save the PNG; iOS Safari may block or ask for user action.
+- The screenshot captures the game canvas, not necessarily the overlaid React
+  HUD, depending on browser/WebGL capture behavior.
+
 ## 2026-06-07 - v0.24.79 - Show in-game FPS during testing (Codex)
 
 ### Summary
