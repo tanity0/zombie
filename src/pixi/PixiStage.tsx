@@ -60,41 +60,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
 
       appRef.current = app;
       sceneRef.current = scene;
-      window.__zombieCapturePng = (filename: string) => {
-        app.renderer.render(app.stage);
-        const canvas = app.renderer.extract.canvas({
-          target: app.stage,
-          resolution: 1,
-          clearColor: '#0b0b12',
-        });
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const lines = window.__zombiePerfDebug ?? [];
-          const pad = 8;
-          const lineH = 13;
-          const boxW = 132;
-          const boxH = Math.max(24, lines.length * lineH + pad * 2);
-          const x = canvas.width - boxW - 10;
-          const y = 10;
-          ctx.fillStyle = 'rgba(0,0,0,0.78)';
-          ctx.fillRect(x, y, boxW, boxH);
-          ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-          ctx.strokeRect(x + 0.5, y + 0.5, boxW - 1, boxH - 1);
-          ctx.font = '11px monospace';
-          ctx.textBaseline = 'top';
-          ctx.fillStyle = 'rgba(255,255,255,0.92)';
-          lines.forEach((line, i) => {
-            ctx.fillText(line, x + pad, y + pad + i * lineH);
-          });
-        }
-        const link = document.createElement('a');
-        link.href = canvas.toDataURL('image/png');
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        return true;
-      };
 
       app.ticker.add(() => scene.sync());
     })();
@@ -103,7 +68,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       cancelled = true;
       sceneRef.current?.destroy();
       sceneRef.current = null;
-      if (window.__zombieCapturePng) delete window.__zombieCapturePng;
       if (appRef.current) {
         appRef.current.destroy(true);
         appRef.current = null;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/renderUtils';
@@ -8,8 +8,6 @@ import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
 const BOSS_WARN_LEAD = 12 * 1000;
-const PERF_CAPTURE_COOLDOWN_MS = 15_000;
-const PERF_CAPTURE_DELAY_MS = 320;
 const PERF_THRESHOLDS = {
   fps: 45,
   effects: 180,
@@ -33,8 +31,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const effectsCount = useGameStore(state => state.effects.length);
   const projectilesCount = useGameStore(state => state.projectiles.length);
   const pickupsCount = useGameStore(state => state.pickups.length);
-  const lastPerfCaptureAt = useRef(0);
-  const perfCaptureTimer = useRef<number | null>(null);
 
   const formattedTime = formatTime(gameTime / 1000);
   const expPercentage = (player.experience / player.experienceToNextLevel) * 100;
@@ -63,49 +59,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
     `item ${pickupsCount} enemy ${enemies.length}`,
     ...(perfWarning ? [`WARN ${perfIssues.join(',')}`] : []),
   ], [fps, effectsCount, projectilesCount, pickupsCount, enemies.length, perfWarning, perfIssues]);
-
-  useEffect(() => {
-    window.__zombiePerfDebug = perfDebugLines;
-    return () => {
-      if (window.__zombiePerfDebug === perfDebugLines) delete window.__zombiePerfDebug;
-    };
-  }, [perfDebugLines]);
-
-  useEffect(() => {
-    if (!perfWarning) return;
-    const now = Date.now();
-    if (now - lastPerfCaptureAt.current < PERF_CAPTURE_COOLDOWN_MS) return;
-    if (perfCaptureTimer.current !== null) return;
-    lastPerfCaptureAt.current = now;
-
-    perfCaptureTimer.current = window.setTimeout(() => {
-      perfCaptureTimer.current = null;
-      const canvas = document.querySelector<HTMLCanvasElement>('canvas');
-      const reason = perfIssues.join('_').replace(/[^a-zA-Z0-9_-]/g, '');
-      const filename = `zombie-perf-${new Date(now).toISOString().replace(/[:.]/g, '-')}-${reason}.png`;
-      if (window.__zombieCapturePng?.(filename)) return;
-      if (!canvas || !canvas.toBlob) return;
-
-      canvas.toBlob(blob => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }, 'image/png');
-    }, PERF_CAPTURE_DELAY_MS);
-
-    return () => {
-      if (perfCaptureTimer.current !== null) {
-        window.clearTimeout(perfCaptureTimer.current);
-        perfCaptureTimer.current = null;
-      }
-    };
-  }, [perfWarning, perfIssues]);
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
     e?.preventDefault();

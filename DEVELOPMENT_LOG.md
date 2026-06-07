@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.84 - Remove perf screenshots and cull enemy lights (Codex)
+
+### Summary
+Removed the automatic perf screenshot path and added a first enemy-count
+optimization.
+- Removed threshold-triggered PNG downloads from the perf HUD.
+- Removed the test-only Pixi screenshot extraction helper and global types.
+- Kept the always-visible perf numbers on screen.
+- When enemy count reaches `7+`, normal enemies stop drawing their constant
+  subtle self-light; boss lights and hit-pulse lights remain active.
+
+### Code touched
+- `src/components/GameHUD.tsx`
+- `src/pixi/PixiStage.tsx`
+- `src/pixi/pixiScene.ts`
+- `src/vite-env.d.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The next likely enemy-heavy hotspot is simulation-side enemy movement and
+  collision, especially per-enemy tree/torch resolution during crowded frames.
+- If FPS still drops mainly with enemies, consider profiling/refactoring
+  `useGameLoop` subscriptions and `updateEnemies`.
+
 ## 2026-06-07 - v0.24.83 - Burn perf metrics into captures and harden touch recovery (Codex)
 
 ### Summary

@@ -81,6 +81,7 @@ const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 // Enemy ground lights: subtle self-emission plus a short brighter pulse when
 // hit. These sit under actors so sprites never get washed out.
 const ENEMY_LIGHT_ENABLED = true;
+const ENEMY_LIGHT_CULL_COUNT = 7;
 const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
 const ENEMY_BREATH_ENABLED = true;
@@ -235,6 +236,7 @@ export class PixiScene {
   private screenH = 1;
   private cameraY = 0;
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
+  private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
   private horizonFadeZeroScreenY = 0;
 
@@ -977,6 +979,8 @@ export class PixiScene {
   // ---- actors: player + enemies, Y-sorted by foot Y ------------------------
 
   private syncActors(player: Player, enemies: Enemy[], gameTime: number, now: number) {
+    this.enemyCount = enemies.length;
+
     // Player
     if (!this.playerView) this.playerView = this.makeActor();
     this.drawPlayer(this.playerView, player, now);
@@ -1092,6 +1096,10 @@ export class PixiScene {
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
     const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
+    if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
+      view.light.visible = false;
+      return;
+    }
     const radius = ENEMY_LIGHT_RADIUS * (boss ? 1.55 : 1) * (1 + hitT * 0.42);
     view.light.visible = true;
     view.light.tint = ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
