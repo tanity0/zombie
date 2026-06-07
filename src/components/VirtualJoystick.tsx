@@ -22,15 +22,19 @@ const VirtualJoystick: React.FC = () => {
   const setLastDirection = useGameStore(state => state.setLastDirection);
   const triggerCounter = useGameStore(state => state.triggerCounter);
 
-  const release = useCallback(() => {
+  const release = useCallback((fireCounter = true) => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
-    if (pointerIdRef.current !== null) {
+    const pointerId = pointerIdRef.current;
+    if (pointerId !== null && fireCounter) {
       const counter = triggerCounter();
       if (counter.swung) playSfx('melee');
       if (counter.finish) playSfx('melee-finish');
       else if (counter.hit) playSfx('slash-damage');
       if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
+    }
+    if (pointerId !== null && zoneRef.current?.hasPointerCapture(pointerId)) {
+      zoneRef.current.releasePointerCapture(pointerId);
     }
     pointerIdRef.current = null;
     originRef.current = null;
@@ -40,14 +44,14 @@ const VirtualJoystick: React.FC = () => {
   }, [setSwipeDirection, triggerCounter]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (pointerIdRef.current !== null) return;
+    if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
     setOrigin(o);
     setDelta({ x: 0, y: 0 });
     zoneRef.current?.setPointerCapture(e.pointerId);
-  }, []);
+  }, [release]);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -86,6 +90,24 @@ const VirtualJoystick: React.FC = () => {
     [release]
   );
 
+  useEffect(() => {
+    const handleGlobalPointerEnd = (e: PointerEvent) => {
+      if (pointerIdRef.current !== e.pointerId) return;
+      release(e.type === 'pointerup');
+    };
+    const clearWithoutCounter = () => release(false);
+    window.addEventListener('pointerup', handleGlobalPointerEnd);
+    window.addEventListener('pointercancel', handleGlobalPointerEnd);
+    window.addEventListener('blur', clearWithoutCounter);
+    window.addEventListener('pagehide', clearWithoutCounter);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerEnd);
+      window.removeEventListener('pointercancel', handleGlobalPointerEnd);
+      window.removeEventListener('blur', clearWithoutCounter);
+      window.removeEventListener('pagehide', clearWithoutCounter);
+    };
+  }, [release]);
+
   // Safety: clear movement state if the component unmounts mid-touch
   useEffect(() => {
     return () => {
@@ -103,6 +125,7 @@ const VirtualJoystick: React.FC = () => {
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
       onPointerLeave={handlePointerEnd}
+      onLostPointerCapture={() => release(false)}
     >
       {origin && (
         <>

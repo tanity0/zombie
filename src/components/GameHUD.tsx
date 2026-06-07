@@ -57,6 +57,19 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
     return issues;
   }, [fps, effectsCount, projectilesCount, pickupsCount, enemies.length]);
   const perfWarning = perfIssues.length > 0;
+  const perfDebugLines = useMemo(() => [
+    `FPS ${fps}`,
+    `fx ${effectsCount} p ${projectilesCount}`,
+    `item ${pickupsCount} enemy ${enemies.length}`,
+    ...(perfWarning ? [`WARN ${perfIssues.join(',')}`] : []),
+  ], [fps, effectsCount, projectilesCount, pickupsCount, enemies.length, perfWarning, perfIssues]);
+
+  useEffect(() => {
+    window.__zombiePerfDebug = perfDebugLines;
+    return () => {
+      if (window.__zombiePerfDebug === perfDebugLines) delete window.__zombiePerfDebug;
+    };
+  }, [perfDebugLines]);
 
   useEffect(() => {
     if (!perfWarning) return;
@@ -310,10 +323,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
           textShadow: '0 1px 2px rgba(0,0,0,0.95)'
         }}
       >
-        <div>FPS {fps}</div>
-        <div>fx {effectsCount} p {projectilesCount}</div>
-        <div>item {pickupsCount} enemy {enemies.length}</div>
-        {perfWarning && <div>WARN {perfIssues.join(',')}</div>}
+        {perfDebugLines.map(line => <div key={line}>{line}</div>)}
       </div>
     </div>
   );

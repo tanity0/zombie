@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.83 - Burn perf metrics into captures and harden touch recovery (Codex)
+
+### Summary
+Improved perf capture readability and mobile joystick recovery.
+- Perf warning screenshots now draw the current debug metrics directly onto the
+  extracted PNG, so the saved preview includes `FPS`, `fx`, `p`, `item`,
+  `enemy`, and warning reasons.
+- `GameHUD` publishes the current perf lines to `window.__zombiePerfDebug` for
+  the Pixi capture helper.
+- `VirtualJoystick` now recovers from stale pointer state by clearing any
+  previous pointer on a new touch, listening for global `pointerup` /
+  `pointercancel`, and clearing on `blur`, `pagehide`, or lost pointer capture.
+- This targets the mobile case where low-FPS/enemy-heavy moments can delay or
+  drop pointer-end events after a melee release, leaving movement unresponsive.
+
+### Code touched
+- `src/components/GameHUD.tsx`
+- `src/components/VirtualJoystick.tsx`
+- `src/pixi/PixiStage.tsx`
+- `src/vite-env.d.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The one-finger control model still fires melee/counter on normal pointer-up.
+- Recovery paths such as `pointercancel`, `blur`, and stale-pointer replacement
+  clear movement without firing another melee action.
+
 ## 2026-06-07 - v0.24.82 - Use Pixi extraction for perf screenshots (Codex)
 
 ### Summary
