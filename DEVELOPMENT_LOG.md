@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.13 - Add debug ammo pickup settings (Codex)
+
+### Summary
+Adjusted ammo-box values and exposed them on the start-screen debug settings.
+- Default ammo-box pickup amounts changed to:
+  - Handgun: +40
+  - Shotgun: +10
+  - Rifle/Magnum: +20
+- Start settings now include debug inputs for each ammo-box amount.
+- Duplicate same/lower-tier gun pickups now use the configured amount ×2.
+- Debug settings persist in localStorage alongside the melee ammo drop rate.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/components/MainMenu.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The melee ammo drop rate and ammo-box amount settings are debug controls and
+  should be removed from the public start menu before release.
+
 ## 2026-06-08 - v0.25.12 - Lower heavy-gunner displayed health (Codex)
 
 ### Summary

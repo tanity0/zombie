@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import type { AmmoType } from '../types/game';
 import {
   getBgmVolume,
   getSfxVolume,
@@ -24,7 +25,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   // Start-screen ammo drop-rate setting (persisted in the store/localStorage).
   const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
   const setMeleeAmmoDropPercent = useGameStore(s => s.setMeleeAmmoDropPercent);
+  const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
+  const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
+  const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
+    handgun: String(ammoPickupAmounts.handgun),
+    shotgun: String(ammoPickupAmounts.shotgun),
+    rifle: String(ammoPickupAmounts.rifle)
+  });
 
   const commitDrop = (raw: string) => {
     setDropInput(raw);
@@ -33,6 +41,17 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   };
   const normalizeDrop = () => {
     setDropInput(String(useGameStore.getState().meleeAmmoDropPercent));
+  };
+  const commitAmmoPickup = (type: AmmoType, raw: string) => {
+    setAmmoInputs(prev => ({ ...prev, [type]: raw }));
+    const n = parseInt(raw, 10);
+    if (!Number.isNaN(n)) setAmmoPickupAmount(type, n);
+  };
+  const normalizeAmmoPickup = (type: AmmoType) => {
+    setAmmoInputs(prev => ({
+      ...prev,
+      [type]: String(useGameStore.getState().ammoPickupAmounts[type])
+    }));
   };
   const toggleAudio = () => {
     const next = !audioMuted;
@@ -99,6 +118,11 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         damage: 'High'
       }
     }
+  ];
+  const ammoDebugFields: { type: AmmoType; label: string }[] = [
+    { type: 'handgun', label: '拳銃' },
+    { type: 'shotgun', label: 'ショットガン' },
+    { type: 'rifle', label: 'ライフル' }
   ];
   
   return (
@@ -233,7 +257,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-left">
                     <div className="text-[13px] font-medium text-white">弾ドロップ率</div>
-                    <div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5。</div>
+                    <div className="text-[11px] text-white/50">デバッグ用。撃破時。近接フィニッシュは×1.5。</div>
                   </div>
                   <div className="flex items-center gap-1">
                     <input
@@ -247,6 +271,32 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                       className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60"
                     />
                     <span className="text-white/60 text-sm">%</span>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[13px] font-medium text-white">弾薬箱取得量</div>
+                      <div className="text-[11px] text-white/50">デバッグ用。重複武器取得時はこの2倍。</div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {ammoDebugFields.map(field => (
+                      <label key={field.type} className="block">
+                        <span className="mb-1 block text-[10px] text-white/60">{field.label}</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={999}
+                          value={ammoInputs[field.type]}
+                          onChange={(e) => commitAmmoPickup(field.type, e.target.value)}
+                          onBlur={() => normalizeAmmoPickup(field.type)}
+                          className="w-full text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+                        />
+                      </label>
+                    ))}
                   </div>
                 </div>
 

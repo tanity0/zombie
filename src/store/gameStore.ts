@@ -21,12 +21,13 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, r
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
 // drops, and the boxes melee kills now drop). Modest relative to the reserve
 // cap — resupply is scarce.
-export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 15, shotgun: 6, rifle: 4 };
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10, rifle: 20 };
 
 // Player-tunable melee ammo-drop rate (percent), set on the start screen and
 // persisted across reloads. A melee kill drops ammo at this rate; a melee
 // finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
 const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
+const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
 export const DEFAULT_MELEE_DROP_PCT = 50;
 // `finish` = a melee finisher executed a normal enemy, or finisher-grade
 // damage landed on a stunned boss (drives the kill.mp3 sound).
@@ -40,6 +41,21 @@ const loadMeleeDropPct = (): number => {
     return v != null ? clampDropPct(parseFloat(v)) : DEFAULT_MELEE_DROP_PCT;
   } catch {
     return DEFAULT_MELEE_DROP_PCT;
+  }
+};
+export const clampAmmoPickupAmount = (n: number): number =>
+  Math.max(0, Math.min(999, Math.round(Number.isFinite(n) ? n : 0)));
+const loadAmmoPickupAmounts = (): Record<AmmoType, number> => {
+  try {
+    const raw = localStorage.getItem(AMMO_PICKUP_KEY);
+    const parsed = raw ? JSON.parse(raw) as Partial<Record<AmmoType, number>> : {};
+    return {
+      handgun: clampAmmoPickupAmount(parsed.handgun ?? AMMO_PICKUP.handgun),
+      shotgun: clampAmmoPickupAmount(parsed.shotgun ?? AMMO_PICKUP.shotgun),
+      rifle: clampAmmoPickupAmount(parsed.rifle ?? AMMO_PICKUP.rifle)
+    };
+  } catch {
+    return { ...AMMO_PICKUP };
   }
 };
 
@@ -130,6 +146,8 @@ interface GameState {
   gameWon: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
   meleeAmmoDropPercent: number;
+  // Debug setting: ammo granted by one ammo-box pickup per weapon family.
+  ammoPickupAmounts: Record<AmmoType, number>;
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   upgradeOptions: UpgradeOption[];
@@ -203,6 +221,7 @@ interface GameState {
   setGameTime: (time: number) => void;
   setPaused: (paused: boolean) => void;
   setMeleeAmmoDropPercent: (pct: number) => void;
+  setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
@@ -267,6 +286,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   showUpgradeMenu: false,
   gameWon: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
+  ammoPickupAmounts: loadAmmoPickupAmounts(),
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   upgradeOptions: [],
@@ -1123,7 +1143,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'ammo-shotgun':
       case 'ammo-rifle': {
         const fam = pickup.type.slice('ammo-'.length) as AmmoType;
-        const amount = AMMO_PICKUP[fam];
+        const amount = get().ammoPickupAmounts[fam];
         get().addAmmo(fam, amount);
         // Floating "+N" over the player's head, cyan so it reads apart from
         // damage numbers.
@@ -1354,7 +1374,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (current && (weapon.tier ?? 1) <= (current.tier ?? 1)) {
         const ammoType = weapon.ammoType;
         const ammoField = AMMO_FIELD[ammoType];
-        const amount = AMMO_PICKUP[ammoType] * 2;
+        const amount = get().ammoPickupAmounts[ammoType] * 2;
         duplicateAmmo = { amount };
         return {
           player: {
@@ -1503,6 +1523,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const clamped = clampDropPct(pct);
     try { localStorage.setItem(DROP_PCT_KEY, String(clamped)); } catch { /* ignore */ }
     set({ meleeAmmoDropPercent: clamped });
+  },
+
+  setAmmoPickupAmount: (type, amount) => {
+    const clamped = clampAmmoPickupAmount(amount);
+    set(state => {
+      const next = { ...state.ammoPickupAmounts, [type]: clamped };
+      try { localStorage.setItem(AMMO_PICKUP_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return { ammoPickupAmounts: next };
+    });
   },
 
   addMeleeFinishCombo: (amount = 1) => {
