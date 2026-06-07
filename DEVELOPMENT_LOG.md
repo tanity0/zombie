@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.63 - Clean torch purple fringe and improve flame (Codex)
+
+### Summary
+Refined the new torch prop visuals.
+- Removed remaining opaque purple fringe pixels from `public/sprites/torch.png`.
+- Also normalized fully transparent pixels to black RGB to prevent purple
+  color bleed during texture sampling.
+- Reworked the torch fire from small round glows into a taller rising flame
+  with a warm orange body, pale core, and drifting ember particles.
+
+### Code touched
+- `public/sprites/torch.png`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Purple-ish nontransparent pixel check: `0`
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Flame height/embers are purely Pixi-side; the torch sprite remains a clean
+  transparent prop body.
+
 ## 2026-06-07 - v0.24.62 - Add breakable torch props (Codex)
 
 ### Summary

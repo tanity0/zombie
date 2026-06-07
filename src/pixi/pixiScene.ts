@@ -122,6 +122,7 @@ const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
 const TORCH_LIGHT_RADIUS = 92;
+const TORCH_EMBER_COUNT = 7;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -707,16 +708,26 @@ export class PixiScene {
     f.clear();
     if (horizonAlpha > 0) {
       const r = 5.5 * d * prop.scale * pulse;
-      f.circle(flameX, flameY + 2, r * 4.4).fill({ color: 0xff9f1c, alpha: 0.08 });
-      f.circle(flameX, flameY, r * 2.25).fill({ color: 0xf97316, alpha: 0.26 });
-      f.circle(flameX, flameY - r * 0.25, r * 1.25).fill({ color: 0xfef3c7, alpha: 0.58 });
-      for (let i = 0; i < 3; i++) {
-        const bob = Math.sin(now / (180 + i * 35) + prop.footX * 0.01 + i) * 2;
-        f.circle(
-          flameX + (i - 1) * r * 0.9,
-          flameY - r * (2 + i * 0.45) + bob,
-          r * (0.55 - i * 0.08)
-        ).fill({ color: i === 0 ? 0xffedd5 : 0xfbbf24, alpha: 0.25 - i * 0.04 });
+      const sway = Math.sin(now / 160 + prop.footX * 0.015) * r * 0.55;
+      f.circle(flameX, flameY + 3, r * 5.1).fill({ color: 0xff9f1c, alpha: 0.09 });
+      f.ellipse(flameX + sway * 0.12, flameY - r * 0.6, r * 2.4, r * 4.4)
+        .fill({ color: 0xff7a18, alpha: 0.22 });
+      f.ellipse(flameX + sway * 0.36, flameY - r * 2.1, r * 1.45, r * 3.7)
+        .fill({ color: 0xfbbf24, alpha: 0.34 });
+      f.ellipse(flameX + sway * 0.55, flameY - r * 3.1, r * 0.72, r * 2.15)
+        .fill({ color: 0xffedd5, alpha: 0.48 });
+      f.circle(flameX + sway * 0.25, flameY - r * 0.35, r * 1.2)
+        .fill({ color: 0xffffff, alpha: 0.28 });
+      for (let i = 0; i < TORCH_EMBER_COUNT; i++) {
+        const seed = prop.footX * 0.021 + prop.footY * 0.007 + i * 1.931;
+        const rise = ((now / (760 + i * 73) + seed) % 1);
+        const drift = Math.sin(now / (230 + i * 29) + seed * 9) * r * (0.9 + i * 0.12);
+        const ex = flameX + drift;
+        const ey = flameY - r * (1.7 + rise * 9.5);
+        const emberAlpha = horizonAlpha * Math.sin(rise * Math.PI) * (0.18 + (i % 3) * 0.05);
+        const emberR = r * (0.22 + (i % 3) * 0.08);
+        f.circle(ex, ey, emberR * 2.4).fill({ color: 0xff9f1c, alpha: emberAlpha * 0.28 });
+        f.circle(ex, ey, emberR).fill({ color: i % 2 === 0 ? 0xfef3c7 : 0xfbbf24, alpha: emberAlpha });
       }
     }
 
