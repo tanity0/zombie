@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.55 - Replace player with purple-keyed source cutout (Codex)
+
+### Summary
+Replaced the player sprite with the user-provided source art instead of the old
+32x32 cutout.
+- Chroma-keyed the purple background to alpha 0.
+- Cropped to the sprite bounds only; no resize, sharpening, outline, or
+  redraw/correction pass was applied.
+- Left gameplay sizing and Pixi rendering logic unchanged.
+
+### Code touched
+- `public/sprites/player.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The new `player.png` is intentionally much higher resolution and vertically
+  proportioned (`270x487`) than the previous `32x32` asset. If in-game size
+  feels off, adjust visual scale separately rather than resampling the source.
+
 ## 2026-06-07 - v0.24.54 - Pixel-crisp focused sprites (Codex)
 
 ### Summary
