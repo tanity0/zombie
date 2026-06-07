@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.70 - Stabilize player screen-pixel snap (Codex)
+
+### Summary
+Reduced player-only jitter during movement.
+- Added a screen-pixel snap helper that accounts for the current world/camera
+  offset.
+- Changed only the player sprite placement to snap after camera offset, rather
+  than rounding raw world coordinates. This avoids a 1px tug-of-war between the
+  player sprite and the camera's fractional movement.
+- Left enemies, pickups, ground, DOF, and depth scaling untouched.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If jitter remains visible, next check camera follow smoothing / camera
+  fractional values before changing sprite textures or DOF.
+
 ## 2026-06-07 - v0.24.69 - Soften gem glow and reduce shimmer (Codex)
 
 ### Summary

@@ -518,6 +518,10 @@ export class PixiScene {
     return this.depthScaleWith(footWorldY, ENEMY_DEPTH_K, ENEMY_DEPTH_MIN, ENEMY_DEPTH_MAX);
   }
 
+  private snapToScreenPixel(worldValue: number, worldOffset: number): number {
+    return Math.round(worldValue + worldOffset) - worldOffset;
+  }
+
   private updatePerspectiveGround(cameraX: number, cameraY: number, shakeX: number, shakeY: number) {
     const farH = this.farBackdropHeight();
     const groundH = Math.max(1, this.screenH - farH);
@@ -996,7 +1000,10 @@ export class PixiScene {
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       view.sprite.scale.set(flip ? -sc : sc, sc);
     }
-    view.sprite.position.set(Math.round(fb.footX), Math.round(fb.footY));
+    view.sprite.position.set(
+      this.snapToScreenPixel(fb.footX, this.L.world.position.x),
+      this.snapToScreenPixel(fb.footY, this.L.world.position.y),
+    );
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
