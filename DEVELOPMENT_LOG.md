@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.68 - Make gems self-glow and deepen event contrast (Codex)
+
+### Summary
+Adjusted the glow direction after playtest feedback.
+- Removed experience gems from the damp-ground reflection pass so their light no
+  longer reads as a cheap floor ellipse.
+- Strengthened the gem's own additive body glow with a wider colored halo and a
+  smaller white core.
+- Increased strong-event local contrast: wider dark falloff around bright glow
+  events and longer cast shadows from nearby actors.
+- Kept the heavier contrast event-only (`glow.radius >= STRONG_GLOW_RADIUS`) so
+  ordinary movement and pickups do not permanently darken the field.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Gem self-glow strength is `GEM_BODY_GLOW_ALPHA`.
+- Strong-event contrast is controlled by `LOCAL_EVENT_SHADE_ALPHA`,
+  `LOCAL_EVENT_SHADOW_ALPHA`, and the reach/length literals in
+  `syncLocalEventLighting`.
+
 ## 2026-06-07 - v0.24.67 - Strengthen local glow contrast (Codex)
 
 ### Summary

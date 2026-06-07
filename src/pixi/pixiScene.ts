@@ -127,10 +127,10 @@ const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
-const GEM_BODY_GLOW_ALPHA = 0.34;
+const GEM_BODY_GLOW_ALPHA = 0.62;
 const STRONG_GLOW_RADIUS = 44;
-const LOCAL_EVENT_SHADE_ALPHA = 0.18;
-const LOCAL_EVENT_SHADOW_ALPHA = 0.22;
+const LOCAL_EVENT_SHADE_ALPHA = 0.34;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.38;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -732,6 +732,7 @@ export class PixiScene {
     if (!GROUND_REFLECTION_ENABLED) return;
 
     for (const p of pickups) {
+      if (p.type === 'experience') continue;
       const footY = p.y + 16;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
@@ -824,14 +825,16 @@ export class PixiScene {
 
       const d = this.depthScale(e.y);
       const shadeAlpha = LOCAL_EVENT_SHADE_ALPHA * life * horizonAlpha;
-      const rx = e.radius * 1.95 * d;
-      const ry = e.radius * 0.78 * d;
+      const rx = e.radius * 2.55 * d;
+      const ry = e.radius * 1.04 * d;
 
       // A soft local contrast ring: strong glow events deepen only the nearby
       // damp floor, never the whole scene. The bright additive core is drawn by
       // the glow effect itself above this ground-only shade.
+      g.ellipse(e.x, e.y + 16 * d, rx * 1.2, ry * 1.18)
+        .fill({ color: 0x000000, alpha: shadeAlpha * 0.2 });
       g.ellipse(e.x, e.y + 12 * d, rx, ry)
-        .stroke({ width: Math.max(8, e.radius * 0.28 * d), color: 0x000000, alpha: shadeAlpha });
+        .stroke({ width: Math.max(14, e.radius * 0.42 * d), color: 0x000000, alpha: shadeAlpha });
 
       const castActors: Array<{ x: number; y: number; w: number }> = [{
         x: player.x + player.width / 2,
@@ -843,7 +846,7 @@ export class PixiScene {
         castActors.push({ x: box.cx, y: box.footY, w: box.shadowW });
       }
 
-      const reach = e.radius * 2.25;
+      const reach = e.radius * 3.25;
       for (const actor of castActors) {
         const dx = actor.x - e.x;
         const dy = actor.y - e.y;
@@ -852,10 +855,10 @@ export class PixiScene {
         const falloff = 1 - dist / reach;
         const nx = dx / dist;
         const ny = dy / dist;
-        const len = (18 + e.radius * 0.16) * falloff * d;
-        const width = Math.max(5, actor.w * 0.34 * d) * falloff;
-        g.moveTo(actor.x + nx * 4, actor.y + ny * 2)
-          .lineTo(actor.x + nx * len, actor.y + ny * len * 0.6)
+        const len = (34 + e.radius * 0.42) * falloff * d;
+        const width = Math.max(8, actor.w * 0.48 * d) * falloff;
+        g.moveTo(actor.x + nx * 3, actor.y + ny * 2)
+          .lineTo(actor.x + nx * len, actor.y + ny * len * 0.72)
           .stroke({
             width,
             color: 0x000000,
@@ -1217,9 +1220,10 @@ export class PixiScene {
           const pulse = 0.82 + 0.18 * Math.sin(now / 240 + p.x * 0.017);
           const gy = footY + floatOffset - size * 0.48 * d;
           const r = size * d * pulse;
-          glow.circle(cx, gy, r * 0.76).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.52 });
-          glow.circle(cx, gy, r * 0.46).fill({ color, alpha: GEM_BODY_GLOW_ALPHA });
-          glow.circle(cx, gy, r * 0.22).fill({ color: 0xffffff, alpha: GEM_BODY_GLOW_ALPHA * 0.72 });
+          glow.circle(cx, gy, r * 1.05).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.22 });
+          glow.circle(cx, gy, r * 0.72).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.48 });
+          glow.circle(cx, gy, r * 0.42).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.72 });
+          glow.circle(cx, gy, r * 0.18).fill({ color: 0xffffff, alpha: GEM_BODY_GLOW_ALPHA * 0.62 });
         }
         if (!entry.sprite) {
           entry.sprite = new Sprite();
