@@ -68,15 +68,17 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
     perfCaptureTimer.current = window.setTimeout(() => {
       perfCaptureTimer.current = null;
       const canvas = document.querySelector<HTMLCanvasElement>('canvas');
+      const reason = perfIssues.join('_').replace(/[^a-zA-Z0-9_-]/g, '');
+      const filename = `zombie-perf-${new Date(now).toISOString().replace(/[:.]/g, '-')}-${reason}.png`;
+      if (window.__zombieCapturePng?.(filename)) return;
       if (!canvas || !canvas.toBlob) return;
 
-      const reason = perfIssues.join('_').replace(/[^a-zA-Z0-9_-]/g, '');
       canvas.toBlob(blob => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `zombie-perf-${new Date(now).toISOString().replace(/[:.]/g, '-')}-${reason}.png`;
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         link.remove();

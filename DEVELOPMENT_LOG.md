@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.82 - Use Pixi extraction for perf screenshots (Codex)
+
+### Summary
+Changed warning screenshot capture away from direct WebGL canvas reads.
+- `PixiStage` now exposes a test-only `window.__zombieCapturePng()` helper that
+  uses `app.renderer.extract.download({ target: app.stage })`.
+- `GameHUD` uses the Pixi extraction helper first, falling back to canvas
+  `toBlob` only when the helper is unavailable.
+- Removed `preserveDrawingBuffer` from Pixi init because Pixi extraction should
+  avoid the black-backbuffer issue without adding that ongoing render cost.
+
+### Code touched
+- `src/pixi/PixiStage.tsx`
+- `src/components/GameHUD.tsx`
+- `src/vite-env.d.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The downloaded perf screenshot captures the Pixi stage, not the native iOS
+  browser download popup and not the React HUD overlay.
+- iOS Safari may still ask before downloading, but the saved PNG should be less
+  prone to the mostly-black WebGL backbuffer read bug.
+
 ## 2026-06-07 - v0.24.81 - Keep perf HUD above darkness and stabilize captures (Codex)
 
 ### Summary
