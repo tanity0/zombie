@@ -113,6 +113,7 @@ export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer n
 const BREAKABLE_PROP_DROP_CHANCE = 0.28;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
+const MELEE_FINISH_COMBO_WINDOW_MS = 5000;
 
 interface GameState {
   player: Player;
@@ -129,6 +130,8 @@ interface GameState {
   gameWon: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
   meleeAmmoDropPercent: number;
+  meleeFinishComboCount: number;
+  meleeFinishComboUntil: number;
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
@@ -263,6 +266,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   showUpgradeMenu: false,
   gameWon: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
+  meleeFinishComboCount: 0,
+  meleeFinishComboUntil: 0,
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
@@ -474,6 +479,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // A melee finisher (instant execute) triggers a brief full-game hitstop.
     const finisherHit = killed.some(k => k.finisher);
+    const comboFinishHit = finisherHit || bossFinishHit;
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
     set(state => ({
       enemies: survivors,
@@ -482,6 +488,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemiesKilled: state.gameStats.enemiesKilled + killed.length
       },
       gameWon: state.gameWon || bossKilled,
+      meleeFinishComboCount: comboFinishHit
+        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + 1 : 1)
+        : state.meleeFinishComboCount,
+      meleeFinishComboUntil: comboFinishHit
+        ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS
+        : state.meleeFinishComboUntil,
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
       player: {
         ...state.player,
@@ -844,6 +856,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             height: enemy.height,
           }, solidProps);
           return { ...enemy, x: kb.x, y: kb.y };
+        }
+
+        // Bosses pop up briefly when they take melee finisher-grade damage;
+        // while airborne they should read as caught, not still advancing.
+        if (enemy.liftUntil !== undefined && now < enemy.liftUntil) {
+          return { ...enemy, vx: 0, vy: 0 };
         }
 
         // Stun (from a crit) freezes the enemy in place — it's a sitting duck
@@ -1551,6 +1569,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: false,
         showUpgradeMenu: false,
         gameWon: false,
+        meleeFinishComboCount: 0,
+        meleeFinishComboUntil: 0,
         upgradeOptions: [],
         swipeDirection: null,
         gameStats: {

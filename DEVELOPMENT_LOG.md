@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.99 - Add melee finisher combo timer (Codex)
+
+### Summary
+Added melee finisher combo tracking and tightened boss finisher reaction.
+- Bosses no longer advance while the melee finisher lift reaction is active.
+- Any melee finisher-grade hit starts a 5-second combo window, including boss
+  stunned-finisher damage.
+- The HUD begins showing combo count from 2 combo onward if another finisher
+  lands inside the 5-second window.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/components/GameHUD.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Combo timing uses `gameTime`, so pause/upgrade menus do not drain the window.
+- The first finisher only arms the timer; display starts at 2 combo by design.
+
 ## 2026-06-07 - v0.24.98 - Tighten shotgun spread and stack pellet knockback (Codex)
 
 ### Summary

@@ -27,6 +27,8 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
+  const meleeFinishComboCount = useGameStore(state => state.meleeFinishComboCount);
+  const meleeFinishComboUntil = useGameStore(state => state.meleeFinishComboUntil);
   const enemies = useGameStore(state => state.enemies);
   const effectsCount = useGameStore(state => state.effects.length);
   const projectilesCount = useGameStore(state => state.projectiles.length);
@@ -37,6 +39,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const healthPercentage = (player.health / player.maxHealth) * 100;
 
   const bossActive = enemies.some(e => e.type === 'giantbat');
+  const comboVisible = meleeFinishComboCount >= 2 && gameTime <= meleeFinishComboUntil;
   const bossImminent =
     !bossActive &&
     gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
@@ -82,6 +85,18 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
               <div className="text-[10px] text-sky-200/80 font-bold tracking-wide">新しい銃器を入手！</div>
               <div className="text-sm font-bold text-white">{lastWeaponGet!.name}</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {comboVisible && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 text-center"
+          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 142px)' }}
+        >
+          <div className="px-4 py-1.5 rounded-full bg-amber-500/18 border border-amber-200/50 shadow-[0_0_18px_rgba(251,191,36,0.35)] backdrop-blur-sm">
+            <div className="text-[10px] leading-none tracking-[0.24em] text-amber-100/80 font-bold">近接フィニッシュ</div>
+            <div className="text-2xl leading-tight font-black tabular-nums text-amber-100 drop-shadow">{meleeFinishComboCount} COMBO</div>
           </div>
         </div>
       )}
