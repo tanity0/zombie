@@ -58,7 +58,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png`,
       accent: 'rgba(248, 113, 113, 0.55)',
       stats: {
-        health: 'High',
+        health: 'Medium',
         speed: 'Medium',
         damage: 'Medium'
       }

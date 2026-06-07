@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.12 - Lower heavy-gunner displayed health (Codex)
+
+### Summary
+Adjusted the start-menu class stat display.
+- Heavy Gunner health display changed from `High` to `Medium`.
+- Confirmed current ammo pickup values:
+  - Ammo box: handgun +15, shotgun +6, rifle/magnum +4.
+  - Duplicate same/lower-tier gun pickup: handgun +30, shotgun +12,
+    rifle/magnum +8.
+
+### Code touched
+- `src/components/MainMenu.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This change updates the class-select display only. Current gameplay HP still
+  starts from the shared `PLAYER_BASE_HP` unless class-specific HP is added.
+
 ## 2026-06-08 - v0.25.11 - Use character sprites in start menu (Codex)
 
 ### Summary
