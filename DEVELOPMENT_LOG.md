@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.65 - Reflect glowing effects on damp ground (Codex)
+
+### Summary
+Extended the lightweight wet-ground reflection pass beyond torches.
+- Added one shared additive `Graphics` layer for ground reflections.
+- Gems, magnet, bomb, weapon pickups, active projectiles, and `glow` effects
+  now paint subtle flattened light onto the damp forest floor.
+- Kept the implementation cheap: no reflected sprites, no render textures, no
+  full-scene postprocess. Reflections are just small additive ellipses.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Global strength is `GROUND_REFLECTION_ALPHA`.
+- This intentionally reflects only light-like objects/effects, not character
+  bodies, to preserve performance and avoid a water-surface look.
+
 ## 2026-06-07 - v0.24.64 - Add lightweight torch ground reflection (Codex)
 
 ### Summary

@@ -125,6 +125,8 @@ const TORCH_LIGHT_RADIUS = 92;
 const TORCH_EMBER_COUNT = 7;
 const TORCH_REFLECTION_W = 70;
 const TORCH_REFLECTION_H = 18;
+const GROUND_REFLECTION_ENABLED = true;
+const GROUND_REFLECTION_ALPHA = 0.12;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -184,6 +186,7 @@ export class PixiScene {
   private effects = new Map<string, Graphics | Text>();
 
   private shadowGfx = new Graphics();
+  private groundReflectionGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
@@ -278,7 +281,8 @@ export class PixiScene {
     this.playerLight.alpha = PLAYER_LIGHT_ALPHA;
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
-    this.L.groundLayer.addChild(this.playerLight, this.shadowGfx);
+    this.groundReflectionGfx.blendMode = 'add';
+    this.L.groundLayer.addChild(this.groundReflectionGfx, this.playerLight, this.shadowGfx);
 
     this.L.effectLayer.addChild(this.playerFx);
 
@@ -569,6 +573,7 @@ export class PixiScene {
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncEffects(s.effects, now);
+    this.syncGroundReflections(s.pickups, s.projectiles, s.effects, now);
     this.syncPlayerFx(s.player, now);
     this.syncArrows(s.pickups, s.camera);
     this.syncFlash(s.effects, now);
@@ -681,6 +686,105 @@ export class PixiScene {
         view.container.destroy({ children: true });
         this.breakableProps.delete(id);
       }
+    }
+  }
+
+  private drawGroundReflection(
+    g: Graphics,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: number | string,
+    alpha: number
+  ) {
+    if (!GROUND_REFLECTION_ENABLED || alpha <= 0) return;
+    g.ellipse(x, y, width * 0.5, height * 0.5).fill({ color, alpha });
+    g.ellipse(x, y, width * 0.25, height * 0.32).fill({ color: 0xffffff, alpha: alpha * 0.18 });
+  }
+
+  private syncGroundReflections(
+    pickups: Pickup[],
+    projectiles: Projectile[],
+    effects: VisualEffect[],
+    now: number
+  ) {
+    const g = this.groundReflectionGfx;
+    g.clear();
+    if (!GROUND_REFLECTION_ENABLED) return;
+
+    for (const p of pickups) {
+      const footY = p.y + 16;
+      const horizonAlpha = this.horizonActorAlpha(footY);
+      if (horizonAlpha <= 0) continue;
+      const bob = Math.sin(now / 300 + p.x * 0.01) * 2;
+      const pulse = 0.78 + 0.22 * Math.sin(now / 260 + p.x * 0.018);
+      let color: number | null = null;
+      let strength = 0;
+      if (p.type === 'experience') {
+        color = p.value >= 5 ? 0xffb4b4 : p.value >= 2 ? 0x7ee7b0 : 0x8fb8ff;
+        strength = p.value >= 5 ? 1.1 : p.value >= 2 ? 0.9 : 0.75;
+      } else if (p.type === 'magnet') {
+        color = 0x60a5fa;
+        strength = 0.8;
+      } else if (p.type === 'bomb') {
+        color = 0xfde047;
+        strength = 0.85;
+      } else if (p.type === 'weapon-crate' || p.type === 'weapon-drop') {
+        color = 0xbfdbfe;
+        strength = 0.62;
+      }
+      if (color == null) continue;
+      const d = this.depthScale(footY);
+      this.drawGroundReflection(
+        g,
+        p.x + 8,
+        footY + 2 * d,
+        34 * d * strength * pulse,
+        8 * d * strength,
+        color,
+        GROUND_REFLECTION_ALPHA * horizonAlpha * strength * (1 - Math.max(0, bob) * 0.03)
+      );
+    }
+
+    for (const p of projectiles) {
+      if (p.createdAt > now) continue;
+      const cx = p.x + p.width / 2;
+      const cy = p.y + p.height / 2;
+      const horizonAlpha = this.horizonActorAlpha(cy);
+      if (horizonAlpha <= 0) continue;
+      const color =
+        p.reflected || p.crit ? 0xfde047 :
+          p.weaponType === 'shotgun' ? 0xfdba74 :
+            p.weaponType === 'enemy_bolt' ? 0xef4444 :
+              0xfef3c7;
+      const d = this.depthScale(cy);
+      this.drawGroundReflection(
+        g,
+        cx,
+        cy + 6 * d,
+        (p.weaponType === 'rifle' ? 32 : 22) * d,
+        5 * d,
+        color,
+        GROUND_REFLECTION_ALPHA * 0.62 * horizonAlpha
+      );
+    }
+
+    for (const e of effects) {
+      if (e.kind !== 'glow') continue;
+      const t = Math.min(1, (now - e.createdAt) / e.duration);
+      const horizonAlpha = this.horizonActorAlpha(e.y);
+      if (t >= 1 || horizonAlpha <= 0) continue;
+      const d = this.depthScale(e.y);
+      this.drawGroundReflection(
+        g,
+        e.x,
+        e.y + 8 * d,
+        Math.min(110, e.radius * 1.18) * d,
+        Math.min(22, e.radius * 0.22) * d,
+        `${e.color}1)`,
+        GROUND_REFLECTION_ALPHA * 0.9 * (1 - t) * horizonAlpha
+      );
     }
   }
 
