@@ -752,7 +752,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             updatedPlayer.reloadMult = Math.max(0.4, updatedPlayer.reloadMult * 0.925);
             break;
           case 'critChance':
-            updatedPlayer.critChance = Math.min(0.3, updatedPlayer.critChance + 0.025);
+            updatedPlayer.critChance = Math.min(0.3, updatedPlayer.critChance + 0.03);
             break;
           // 'area' / 'duration' are no longer offered (no area weapons), but
           // keep harmless no-op cases for type completeness.

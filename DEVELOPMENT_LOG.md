@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.25.2 - Raise crit upgrade to 3 percent (Codex)
+
+### Summary
+Adjusted the level-up crit bonus amount.
+- Crit Chance passive now grants +3% per pickup instead of +2.5%.
+- The +30% player bonus cap remains unchanged.
+- Upgrade menu copy now reflects the 3% value.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/utils/upgradeUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- With the +30% cap, the crit passive reaches cap after 10 pickups.
+
 ## 2026-06-07 - v0.25.1 - Count counters and multi-finish combos (Codex)
 
 ### Summary

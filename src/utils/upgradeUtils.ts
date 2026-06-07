@@ -46,7 +46,7 @@ export const getPassiveDescription = (type: PassiveType): string => {
     case 'cooldown': return '銃の発射間隔が5%短縮されます';
     case 'magSize': return '全ての銃の装填数が増加します';
     case 'reloadSpeed': return '全ての銃のリロード時間が短縮されます';
-    case 'critChance': return 'クリティカル率が2.5%上昇します';
+    case 'critChance': return 'クリティカル率が3%上昇します';
     default: return '不明なアップグレード';
   }
 };
