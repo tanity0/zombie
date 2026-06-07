@@ -23,7 +23,7 @@ const minesInCell = (cx: number, cy: number): MineInstance[] => {
   const centerY = cy + MINE_CELL / 2 + (mineHash(cx + 29, cy - 11) - 0.5) * MINE_CELL * 0.42;
   if (Math.abs(centerX) < 260 && Math.abs(centerY) < 260) return [];
 
-  const count = 7;
+  const count = 5 + Math.floor(mineHash(cx + 7, cy + 7) * 6); // 5-10 eggs
   const spread = 44 + mineHash(cx - 5, cy + 41) * 20;
   const out: MineInstance[] = [];
   for (let i = 0; i < count; i++) {
@@ -76,7 +76,7 @@ export const pressureMinesNearPlayer = (
   const ahead = 310 + mineHash(segment + 13, segment + 29) * 120;
   const centerX = playerX + nx * ahead;
   const centerY = playerY + ny * ahead;
-  const count = 7;
+  const count = 5 + Math.floor(mineHash(segment - 17, segment + 61) * 6); // 5-10 eggs
   const spacing = 26 + mineHash(segment + 7, segment - 5) * 11;
   const gapIndex = Math.floor(mineHash(segment + 37, segment + 73) * count);
 
@@ -84,7 +84,7 @@ export const pressureMinesNearPlayer = (
   for (let i = 0; i < count; i++) {
     // Leave a mild gap sometimes so the player can thread through instead of
     // being forced to shoot every patch.
-    if (i === gapIndex && mineHash(segment - 3, i + 97) < 0.42) continue;
+    if (count >= 7 && i === gapIndex && mineHash(segment - 3, i + 97) < 0.42) continue;
     const lane = i - (count - 1) / 2;
     const offset = lane * spacing + (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 28;
     const sideJitter = (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 46;

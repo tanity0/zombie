@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.93 - Randomize egg patch count (Codex)
+
+### Summary
+Changed insect egg patch size from fixed 7 eggs to deterministic random counts.
+- World egg patches now roll 5-10 eggs per patch.
+- Forward pressure egg patches also roll 5-10 eggs per patch.
+- Optional gap behavior is suppressed for smaller patches so the visible count
+  does not drop too low.
+
+### Code touched
+- `src/world/mines.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Counts are deterministic from the existing hash seeds, so patches remain
+  stable instead of flickering frame-to-frame.
+
 ## 2026-06-07 - v0.24.92 - Scatter egg patches farther ahead (Codex)
 
 ### Summary
