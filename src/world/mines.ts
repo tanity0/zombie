@@ -9,6 +9,14 @@ export interface MineInstance {
   scale: number;
 }
 
+export interface MineAmbushAnchor {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const mineHash = (x: number, y: number): number => {
   const v = Math.sin(x * 43.123 + y * 119.731) * 43758.5453;
   return v - Math.floor(v);
@@ -103,6 +111,35 @@ export const pressureMinesNearPlayer = (
       scale: 0.84 + mineHash(segment + i * 5, segment + i * 7) * 0.16,
     });
   }
+  return out;
+};
+
+export const mineAmbushAround = (anchor: MineAmbushAnchor): MineInstance[] => {
+  const count = 52;
+  const rx = anchor.width * 0.62;
+  const ry = anchor.height * 0.58;
+  const out: MineInstance[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const t = i / count;
+    const angle = t * Math.PI * 2;
+    const ringNoise = (mineHash(i + 17, anchor.x * 0.01 + anchor.y * 0.01) - 0.5) * 42;
+    const tangentNoise = (mineHash(i - 31, anchor.y * 0.01 - anchor.x * 0.01) - 0.5) * 32;
+    const row = i % 3;
+    const rowPush = (row - 1) * 18;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const tx = -sin;
+    const ty = cos;
+
+    out.push({
+      id: `mine-ambush-${anchor.id}-${i}`,
+      footX: anchor.x + cos * (rx + ringNoise + rowPush) + tx * tangentNoise,
+      footY: anchor.y + sin * (ry + ringNoise * 0.65 + rowPush) + ty * tangentNoise,
+      scale: 0.82 + mineHash(i + 5, anchor.x + anchor.y) * 0.18,
+    });
+  }
+
   return out;
 };
 

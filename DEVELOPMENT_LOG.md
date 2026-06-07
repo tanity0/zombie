@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.96 - Add one-time insect egg ambush (Codex)
+
+### Summary
+Added a mid-run insect egg ambush event.
+- At 2:30 game time, the run stores a one-time ambush anchor at the player's
+  current position.
+- The event places 52 eggs in a noisy 3-row elliptical ring outside the current
+  screen area, creating a breakable encirclement.
+- Eggs reuse existing mine/egg behavior: 1 HP, acid contact damage, liquid burst
+  effects, and destroyed eggs stay gone through `destroyedBreakableProps`.
+
+### Code touched
+- `src/world/mines.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `MINE_AMBUSH_TIME_MS` in `src/store/gameStore.ts` if the event should
+  happen earlier/later.
+- Tune `count`, `rx`, and `ry` in `mineAmbushAround()` if the ring feels too
+  dense or too far outside the screen.
+
 ## 2026-06-07 - v0.24.95 - Add paired insect egg drawing (Codex)
 
 ### Summary

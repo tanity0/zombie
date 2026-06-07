@@ -10,7 +10,8 @@ import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
 import { resolveTreeCollision } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
-import { mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
+import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
+import type { MineAmbushAnchor } from '../world/mines';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -111,6 +112,7 @@ export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer n
 
 const BREAKABLE_PROP_DROP_CHANCE = 0.28;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
+const MINE_AMBUSH_TIME_MS = 150000;
 
 interface GameState {
   player: Player;
@@ -119,6 +121,7 @@ interface GameState {
   pickups: Pickup[];
   breakableProps: BreakableProp[];
   destroyedBreakableProps: Record<string, true>;
+  mineAmbushAnchor: MineAmbushAnchor | null;
   gameTime: number;
   isPaused: boolean;
   showUpgradeMenu: boolean;
@@ -254,6 +257,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pickups: [],
   breakableProps: [],
   destroyedBreakableProps: {},
+  mineAmbushAnchor: null,
   gameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
@@ -1116,6 +1120,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   syncBreakableProps: (camera, bounds) => {
     const pad = 520;
     set(state => {
+      const mineAmbushAnchor = state.mineAmbushAnchor ?? (
+        state.gameTime >= MINE_AMBUSH_TIME_MS
+          ? {
+              id: `${Math.floor(state.gameTime)}`,
+              x: state.player.x + state.player.width / 2,
+              y: state.player.y + state.player.height / 2,
+              width: bounds.width + 180,
+              height: bounds.height + 180,
+            }
+          : null
+      );
       const generated = torchesInRegion(
         camera.x - pad,
         camera.y - pad,
@@ -1134,6 +1149,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         state.player.lastDirection,
         state.gameTime
       );
+      const ambushMines = mineAmbushAnchor ? mineAmbushAround(mineAmbushAnchor) : [];
       const current = new Map(state.breakableProps.map(p => [p.id, p]));
       const next: BreakableProp[] = [];
 
@@ -1161,7 +1177,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
-      for (const mine of [...generatedMines, ...pressureMines]) {
+      for (const mine of [...generatedMines, ...pressureMines, ...ambushMines]) {
         if (state.destroyedBreakableProps[mine.id]) continue;
         const existing = current.get(mine.id);
         if (existing) {
@@ -1185,7 +1201,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
-      return { breakableProps: next };
+      return { breakableProps: next, mineAmbushAnchor };
     });
   },
 
@@ -1523,6 +1539,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pickups: [],
         breakableProps: [],
         destroyedBreakableProps: {},
+        mineAmbushAnchor: null,
         gameTime: 0,
         isPaused: false,
         showUpgradeMenu: false,
