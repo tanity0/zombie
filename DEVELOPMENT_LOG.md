@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.3 - Buff level upgrades and tighten shotgun cone (Codex)
+
+### Summary
+Adjusted level-up values and fixed shotgun grouping.
+- Max HP passive now grants +30 max HP and fully heals, instead of +10.
+- Might passive now multiplies gun/melee damage by 1.2, instead of 1.06.
+- Upgrade descriptions now match the new values.
+- Shotgun spread now treats `0.34rad` as the total cone width across all pellets,
+  not the per-pellet step, so higher-tier shotguns no longer fan out too widely.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/utils/weaponUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `SHOTGUN_SPREAD_CONE_RAD` in `src/utils/weaponUtils.ts` if shotgun
+  grouping still needs another pass.
+
 ## 2026-06-07 - v0.25.2 - Raise crit upgrade to 3 percent (Codex)
 
 ### Summary

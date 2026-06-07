@@ -717,7 +717,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // too-steep values) so growth feels gradual.
         switch (upgrade.passiveType) {
           case 'maxHealth':
-            updatedPlayer.maxHealth += 10;
+            updatedPlayer.maxHealth += 30;
             updatedPlayer.health = updatedPlayer.maxHealth;
             break;
           case 'speed':
@@ -726,7 +726,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           case 'might':
             // Boost damage on both the gun and the melee weapon.
             updatedPlayer.weapons = updatedPlayer.weapons.map(w => ({
-              ...w, damage: w.damage * 1.06
+              ...w, damage: w.damage * 1.2
             }));
             break;
           case 'cooldown':

@@ -5,7 +5,7 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
 // feel snappier and reach their target sooner.
 const PROJECTILE_SPEED_MULT = 1.5;
-const SHOTGUN_SPREAD_STEP_RAD = 0.34;
+const SHOTGUN_SPREAD_CONE_RAD = 0.34;
 const TIER_CRIT_STEP = 0.03;
 const BASE_CRIT_BY_CATEGORY: Record<AmmoType, number> = {
   handgun: 0.10,
@@ -247,17 +247,17 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   const baseDir = aimDirection(player, enemies);
   const count = weapon.count ?? 1;
-  const spread =
-    weapon.category === 'shotgun' ? SHOTGUN_SPREAD_STEP_RAD :
-    count > 1 ? 0.12 : 0;
+  const spreadStep = weapon.category === 'shotgun'
+    ? (count > 1 ? SHOTGUN_SPREAD_CONE_RAD / (count - 1) : 0)
+    : count > 1 ? 0.12 : 0;
   const size = weapon.projectileSize || 8;
   const speed = (weapon.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
     let pd = { ...baseDir };
-    if (count > 1 && spread > 0) {
-      const angle = -spread * (count - 1) / 2 + i * spread;
+    if (count > 1 && spreadStep > 0) {
+      const angle = -spreadStep * (count - 1) / 2 + i * spreadStep;
       pd = rotate(baseDir, angle);
     }
     const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0));

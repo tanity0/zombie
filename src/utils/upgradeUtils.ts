@@ -40,9 +40,9 @@ export const getPassiveDisplayName = (type: PassiveType): string => {
 
 export const getPassiveDescription = (type: PassiveType): string => {
   switch (type) {
-    case 'maxHealth': return '最大体力が10ポイント増加します';
+    case 'maxHealth': return '最大体力が30ポイント増加します';
     case 'speed': return '移動速度が5%向上します';
-    case 'might': return '銃・近接のダメージが6%増加します';
+    case 'might': return '銃・近接のダメージが20%増加します';
     case 'cooldown': return '銃の発射間隔が5%短縮されます';
     case 'magSize': return '全ての銃の装填数が増加します';
     case 'reloadSpeed': return '全ての銃のリロード時間が短縮されます';
