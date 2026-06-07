@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.79 - Show in-game FPS during testing (Codex)
+
+### Summary
+Made the existing FPS counter visible during gameplay testing.
+- The game loop already measured FPS once per second; the HUD now displays it
+  as a small `FPS xx` pill below the right-side audio button.
+- Kept the indicator lightweight and read-only so it does not affect gameplay
+  simulation or rendering logic.
+
+### Code touched
+- `src/components/GameHUD.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is intentionally always visible for the current test phase.
+- If it becomes distracting later, hide or gate the block in `GameHUD`.
+
 ## 2026-06-07 - v0.24.78 - Full BGM default and duplicate weapon ammo (Codex)
 
 ### Summary

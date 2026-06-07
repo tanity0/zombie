@@ -236,16 +236,15 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
       </button>
 
-      {/* FPS */}
+      {/* Test perf indicator */}
       <div
-        className="absolute text-[10px] text-white/40 tabular-nums"
+        className="absolute glass-pill px-2 py-0.5 text-[10px] text-white/60 tabular-nums"
         style={{
           right: 'max(env(safe-area-inset-right), 12px)',
-          top: 'max(env(safe-area-inset-top), 8px)',
-          transform: 'translateY(-2px)'
+          top: 'calc(max(env(safe-area-inset-top), 8px) + 212px)'
         }}
       >
-        <span className="hidden">{fps}</span>
+        FPS {fps}
       </div>
     </div>
   );
