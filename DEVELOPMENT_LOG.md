@@ -10,6 +10,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.6 - Add striker player walk frames (Codex)
+
+### Summary
+Added the striker player walk sheet and assigned it to the remaining starting
+classes for now.
+- Extracted four transparent `player-striker-walk-*` PNGs from the supplied
+  purple-matte walk sheet using the dot-sprite extraction workflow.
+- `rogue` now uses the striker walk frames.
+- `warrior` and `necromancer` also temporarily use the striker frames until
+  their dedicated heavy-gunner/scavenger art is supplied.
+- `mage` continues to use the magnum/sniper walk frames from v0.25.5.
+- Player class sprites use height-based scaling to preserve body size even when
+  gun barrels extend past the hitbox width.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `public/sprites/player-striker-walk-3.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current class sprite mapping:
+  - `mage`: magnum/sniper
+  - `rogue`: striker
+  - `warrior`: striker temporarily
+  - `necromancer`: striker temporarily
+- Replace the temporary `warrior` / `necromancer` mapping when heavy-gunner and
+  scavenger walk sheets are ready.
+
 ## 2026-06-08 - v0.25.5 - Add magnum-start player walk frames (Codex)
 
 ### Summary
