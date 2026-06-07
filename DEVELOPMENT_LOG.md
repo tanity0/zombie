@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.69 - Soften gem glow and reduce shimmer (Codex)
+
+### Summary
+Softened the previous glow pass after playtest feedback.
+- Reduced gem body glow intensity and widened the outer color halo so gems read
+  as a faint self-emission instead of an obvious painted glow disc.
+- Shrank the gem white core to keep the sprite from becoming a flat white orb.
+- Rounded gem glow and strong-event lighting coordinates to reduce subpixel
+  shimmer while moving.
+- Kept long event shadows, but lowered the local darkening/stroke strength so
+  strong-light events contrast without making the scene look jagged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If gems still feel too artificial, lower `GEM_BODY_GLOW_ALPHA` further before
+  changing the pickup sprite asset.
+- If motion still looks rough, inspect the perspective ground strip rendering
+  next; this change only addresses the new Graphics-based glow/shadow shimmer.
+
 ## 2026-06-07 - v0.24.68 - Make gems self-glow and deepen event contrast (Codex)
 
 ### Summary

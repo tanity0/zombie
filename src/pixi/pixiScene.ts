@@ -127,10 +127,10 @@ const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
-const GEM_BODY_GLOW_ALPHA = 0.62;
+const GEM_BODY_GLOW_ALPHA = 0.38;
 const STRONG_GLOW_RADIUS = 44;
-const LOCAL_EVENT_SHADE_ALPHA = 0.34;
-const LOCAL_EVENT_SHADOW_ALPHA = 0.38;
+const LOCAL_EVENT_SHADE_ALPHA = 0.24;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.28;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -825,16 +825,18 @@ export class PixiScene {
 
       const d = this.depthScale(e.y);
       const shadeAlpha = LOCAL_EVENT_SHADE_ALPHA * life * horizonAlpha;
+      const lightX = Math.round(e.x);
+      const lightY = Math.round(e.y);
       const rx = e.radius * 2.55 * d;
       const ry = e.radius * 1.04 * d;
 
       // A soft local contrast ring: strong glow events deepen only the nearby
       // damp floor, never the whole scene. The bright additive core is drawn by
       // the glow effect itself above this ground-only shade.
-      g.ellipse(e.x, e.y + 16 * d, rx * 1.2, ry * 1.18)
-        .fill({ color: 0x000000, alpha: shadeAlpha * 0.2 });
-      g.ellipse(e.x, e.y + 12 * d, rx, ry)
-        .stroke({ width: Math.max(14, e.radius * 0.42 * d), color: 0x000000, alpha: shadeAlpha });
+      g.ellipse(lightX, lightY + Math.round(16 * d), rx * 1.2, ry * 1.18)
+        .fill({ color: 0x000000, alpha: shadeAlpha * 0.12 });
+      g.ellipse(lightX, lightY + Math.round(12 * d), rx, ry)
+        .stroke({ width: Math.max(10, e.radius * 0.3 * d), color: 0x000000, alpha: shadeAlpha });
 
       const castActors: Array<{ x: number; y: number; w: number }> = [{
         x: player.x + player.width / 2,
@@ -848,17 +850,19 @@ export class PixiScene {
 
       const reach = e.radius * 3.25;
       for (const actor of castActors) {
-        const dx = actor.x - e.x;
-        const dy = actor.y - e.y;
+        const actorX = Math.round(actor.x);
+        const actorY = Math.round(actor.y);
+        const dx = actorX - lightX;
+        const dy = actorY - lightY;
         const dist = Math.hypot(dx, dy);
         if (dist < 1 || dist > reach) continue;
         const falloff = 1 - dist / reach;
         const nx = dx / dist;
         const ny = dy / dist;
-        const len = (34 + e.radius * 0.42) * falloff * d;
-        const width = Math.max(8, actor.w * 0.48 * d) * falloff;
-        g.moveTo(actor.x + nx * 3, actor.y + ny * 2)
-          .lineTo(actor.x + nx * len, actor.y + ny * len * 0.72)
+        const len = (38 + e.radius * 0.5) * falloff * d;
+        const width = Math.max(6, actor.w * 0.36 * d) * falloff;
+        g.moveTo(actorX + nx * 3, actorY + ny * 2)
+          .lineTo(actorX + nx * len, actorY + ny * len * 0.72)
           .stroke({
             width,
             color: 0x000000,
@@ -1218,12 +1222,13 @@ export class PixiScene {
         if (p.type === 'experience') {
           const color = p.value >= 5 ? 0xff7878 : p.value >= 2 ? 0x54e68e : 0x70a7ff;
           const pulse = 0.82 + 0.18 * Math.sin(now / 240 + p.x * 0.017);
-          const gy = footY + floatOffset - size * 0.48 * d;
+          const gx = Math.round(cx);
+          const gy = Math.round(footY + floatOffset - size * 0.48 * d);
           const r = size * d * pulse;
-          glow.circle(cx, gy, r * 1.05).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.22 });
-          glow.circle(cx, gy, r * 0.72).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.48 });
-          glow.circle(cx, gy, r * 0.42).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.72 });
-          glow.circle(cx, gy, r * 0.18).fill({ color: 0xffffff, alpha: GEM_BODY_GLOW_ALPHA * 0.62 });
+          glow.circle(gx, gy, r * 1.28).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.12 });
+          glow.circle(gx, gy, r * 0.88).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.24 });
+          glow.circle(gx, gy, r * 0.52).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.32 });
+          glow.circle(gx, gy, r * 0.12).fill({ color: 0xffffff, alpha: GEM_BODY_GLOW_ALPHA * 0.22 });
         }
         if (!entry.sprite) {
           entry.sprite = new Sprite();
