@@ -31,6 +31,9 @@ import { playSfx, playEnemyDeath } from '../audio/audioManager';
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
+const MAX_ENEMIES = 10;
+const WAVE_GRACE_MS = 10000;
+const ENEMY_RECYCLE_DISTANCE_MULT = 1.35;
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -732,11 +735,16 @@ export const useGameLoop = (onGameOver: () => void) => {
         }
         
         // Continuous spawner — drip enemies onto the field from off-screen.
+        const enemyCountBeforeSpawn = useGameStore.getState().enemies.length;
         if (
+          enemyCountBeforeSpawn < MAX_ENEMIES &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime)
         ) {
-          const spawnCount = getEnemySpawnCount(gameTime);
-          const plantCount = useGameStore.getState().enemies
+          const spawnCount = Math.min(
+            getEnemySpawnCount(gameTime),
+            MAX_ENEMIES - enemyCountBeforeSpawn
+          );
+          let plantCount = useGameStore.getState().enemies
             .filter(e => e.type === 'plant').length;
 
           for (let i = 0; i < spawnCount; i++) {
@@ -754,6 +762,7 @@ export const useGameLoop = (onGameOver: () => void) => {
                 enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton');
               }
             }
+            if (enemy.type === 'plant') plantCount += 1;
             addEnemy(enemy);
           }
 
@@ -840,17 +849,65 @@ export const useGameLoop = (onGameOver: () => void) => {
         );
         waveEnemies.forEach(addEnemy);
 
+        // VS-style recycling: when an enemy drifts far beyond the viewport,
+        // bring it back just outside the current screen instead of letting the
+        // simulation spend time on a distant actor. Boss-class enemies keep
+        // their HP/type/state; regular enemies are refreshed into the current
+        // spawn pool while reusing the same renderer id.
+        const currentEnemiesForRecycle = useGameStore.getState().enemies;
+        const recycleDistance = Math.max(gameBounds.width, gameBounds.height) * ENEMY_RECYCLE_DISTANCE_MULT;
+        const playerCenterX = player.x + player.width / 2;
+        const playerCenterY = player.y + player.height / 2;
+        let recycledAnyEnemy = false;
+        const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
+          const enemyCenterX = enemy.x + enemy.width / 2;
+          const enemyCenterY = enemy.y + enemy.height / 2;
+          const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
+          const waveProtected = enemy.isWave && gameTime - (enemy.spawnedAt ?? 0) < WAVE_GRACE_MS;
+          if (distFromPlayer <= recycleDistance || waveProtected) return enemy;
+
+          const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
+          const replacement = generateEnemy(
+            gameTime,
+            player,
+            gameBounds,
+            preserveEnemyState ? enemy.type : undefined
+          );
+          recycledAnyEnemy = true;
+
+          if (preserveEnemyState) {
+            return {
+              ...enemy,
+              x: replacement.x,
+              y: replacement.y,
+              vx: undefined,
+              vy: undefined,
+              knockbackUntil: undefined,
+              knockbackVx: undefined,
+              knockbackVy: undefined,
+              spawnedAt: gameTime
+            };
+          }
+
+          return {
+            ...replacement,
+            id: enemy.id
+          };
+        });
+        if (recycledAnyEnemy) {
+          useGameStore.setState({ enemies: recycledEnemies });
+        }
+
         // RE-style density: a hard cap of ~10 concurrent enemies. Set-piece
         // elites are never culled, and scripted-wave enemies get a 10-second
         // grace period before they're eligible (otherwise a boss wave gets
         // deleted the instant it spawns under the low cap).
-        const MAX_ENEMIES = 10;
-        const WAVE_GRACE_MS = 10000;
-        if (enemies.length > MAX_ENEMIES) {
-          const isProtected = (e: typeof enemies[number]) =>
+        const currentEnemiesForCap = useGameStore.getState().enemies;
+        if (currentEnemiesForCap.length > MAX_ENEMIES) {
+          const isProtected = (e: typeof currentEnemiesForCap[number]) =>
             e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
             (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
-          const cullable = [...enemies]
+          const cullable = [...currentEnemiesForCap]
             .filter(e => !isProtected(e))
             .sort((a, b) => {
               const distA = Math.hypot(a.x - player.x, a.y - player.y);
@@ -858,10 +915,16 @@ export const useGameLoop = (onGameOver: () => void) => {
               return distB - distA;
             });
 
-          const toRemove = cullable.slice(0, enemies.length - MAX_ENEMIES);
-          toRemove.forEach(enemy => {
-            useGameStore.getState().removeEnemy(enemy.id);
-          });
+          const toRemoveIds = new Set(
+            cullable
+              .slice(0, currentEnemiesForCap.length - MAX_ENEMIES)
+              .map(enemy => enemy.id)
+          );
+          if (toRemoveIds.size > 0) {
+            useGameStore.setState({
+              enemies: currentEnemiesForCap.filter(enemy => !toRemoveIds.has(enemy.id))
+            });
+          }
         }
 
         // Tick visual effects (particles drift, damage numbers float, etc.)

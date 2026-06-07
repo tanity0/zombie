@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.85 - Recycle distant enemies near viewport (Codex)
+
+### Summary
+Added VS-style enemy recycling for enemies that drift too far from the player.
+- Continuous spawn now respects the live enemy cap before adding new enemies,
+  avoiding spawn-then-cull churn.
+- Distant regular enemies are refreshed into the current spawn pool and moved
+  back just outside the active viewport while reusing their renderer id.
+- Boss-class enemies and the reaper keep HP/type/state and only warp position
+  when they get far away, matching the expected Vampire Survivors-style boss
+  pressure.
+- Scripted-wave enemies still get their 10-second grace period before they are
+  eligible for recycling or density cleanup.
+- The hard cap remains in place after wave events so enemy-heavy scenes do not
+  grow without bound.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The next performance hotspot is still likely `updateEnemies`, especially the
+  per-enemy collision checks against trees/torches when enemy count is high.
+- On-device tuning point: `ENEMY_RECYCLE_DISTANCE_MULT` in `useGameLoop.ts`
+  controls how far an enemy can drift before being repositioned.
+
 ## 2026-06-07 - v0.24.84 - Remove perf screenshots and cull enemy lights (Codex)
 
 ### Summary
