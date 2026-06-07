@@ -168,7 +168,7 @@ interface GameState {
   damageEnemy: (id: string, amount: number) => boolean;
   updateEnemies: (deltaTime: number) => void;
   stunEnemy: (id: string, until: number) => void;
-  knockbackEnemy: (id: string, dirX: number, dirY: number) => void;
+  knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number) => void;
 
   // Ammo
   addAmmo: (type: AmmoType, amount: number) => void;
@@ -899,15 +899,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Light bullet knockback: nudge an enemy along the shot direction. Reuses the
   // same decay model as the melee shove (KNOCKBACK_DURATION) but at a much
   // lower speed so it only staggers, never launches.
-  knockbackEnemy: (id, dirX, dirY) => {
+  knockbackEnemy: (id, dirX, dirY, multiplier = 1) => {
     const now = Date.now();
+    const strength = Math.max(1, Math.min(3, multiplier));
     set(state => ({
       enemies: state.enemies.map(e =>
         e.id === id
           ? {
               ...e,
-              knockbackVx: dirX * BULLET_KNOCKBACK_SPEED,
-              knockbackVy: dirY * BULLET_KNOCKBACK_SPEED,
+              knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * strength,
+              knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * strength,
               knockbackUntil: now + KNOCKBACK_DURATION
             }
           : e

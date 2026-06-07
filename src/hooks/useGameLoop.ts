@@ -338,6 +338,10 @@ export const useGameLoop = (onGameOver: () => void) => {
 
         // Check for collisions between projectiles and enemies
         const projectileEnemyCollisions = checkProjectileEnemyCollisions(useGameStore.getState().projectiles, enemies);
+        const projectileHitCountsByEnemy = new Map<string, number>();
+        for (const { enemyId } of projectileEnemyCollisions) {
+          projectileHitCountsByEnemy.set(enemyId, (projectileHitCountsByEnemy.get(enemyId) ?? 0) + 1);
+        }
         const projectilesRemovedThisFrame = new Set<string>();
         const grenadeExplodedThisFrame = new Set<string>();
         
@@ -430,7 +434,10 @@ export const useGameLoop = (onGameOver: () => void) => {
             enemyForFx.type !== 'pumpkin'
           ) {
             useGameStore.getState().knockbackEnemy(
-              enemyId, projectile.direction.x, projectile.direction.y
+              enemyId,
+              projectile.direction.x,
+              projectile.direction.y,
+              Math.min(3, projectileHitCountsByEnemy.get(enemyId) ?? 1)
             );
           }
 

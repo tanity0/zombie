@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.98 - Tighten shotgun spread and stack pellet knockback (Codex)
+
+### Summary
+Improved shotgun feel and pellet impact.
+- Tightened shotgun pellet spacing from `0.5rad` to `0.34rad` for better
+  grouping.
+- Projectile collision handling now counts how many bullets hit the same enemy
+  in the same frame.
+- Bullet knockback receives that hit count as a multiplier, capped at 3x, so
+  stacked pellets shove enemies farther without launching them infinitely.
+
+### Code touched
+- `src/utils/weaponUtils.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `SHOTGUN_SPREAD_STEP_RAD` in `src/utils/weaponUtils.ts` if grouping needs
+  another pass.
+- Knockback strength is still bounded in `knockbackEnemy()` with a hard 3x cap.
+
 ## 2026-06-07 - v0.24.97 - Add boss finisher lift reaction (Codex)
 
 ### Summary
