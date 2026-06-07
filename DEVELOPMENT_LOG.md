@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.73 - Apply breathing to all enemies (Codex)
+
+### Summary
+Updated enemy idle breathing after confirming all current enemies are humanoid
+zombies in the active art direction.
+- Removed the old `bat` exclusion from enemy breathing.
+- All enemy sprites now receive the same renderer-only breathing pulse, while
+  heavy enemy types still use reduced amplitude.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Type names such as `bat` may remain in data/code for legacy behavior, but
+  current art direction treats enemies as humanoid zombie variants for idle
+  sprite breathing.
+
 ## 2026-06-07 - v0.24.72 - Add subtle enemy breathing (Codex)
 
 ### Summary
@@ -18,8 +40,7 @@ Added a lightweight idle breathing motion to enemy sprites.
   living/undead breathing feel without moving hitboxes or gameplay state.
 - Each enemy gets a stable phase offset from its id so groups do not pulse in
   perfect sync.
-- Heavy enemies use a reduced amplitude; bats are excluded for now because they
-  read as flying sprites rather than standing bodies.
+- Heavy enemies use a reduced amplitude.
 
 ### Code touched
 - `src/pixi/pixiScene.ts`

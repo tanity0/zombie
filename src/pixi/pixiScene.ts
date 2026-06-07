@@ -1072,7 +1072,7 @@ export class PixiScene {
   }
 
   private enemyBreath(e: Enemy, now: number) {
-    if (!ENEMY_BREATH_ENABLED || e.type === 'bat') return { x: 1, y: 1 };
+    if (!ENEMY_BREATH_ENABLED) return { x: 1, y: 1 };
     const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
     const amp = heavy ? 0.65 : 1;
     const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
