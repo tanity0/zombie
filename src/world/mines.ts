@@ -16,14 +16,14 @@ const mineHash = (x: number, y: number): number => {
 
 const minesInCell = (cx: number, cy: number): MineInstance[] => {
   // Roughly half as common as torches, but spawned as a small cluster so they
-  // read as a deliberate caltrop/mine patch instead of isolated clutter.
+  // read as a deliberate insect-egg patch instead of isolated clutter.
   if (mineHash(cx + 13, cy - 37) >= 0.09) return [];
 
   const centerX = cx + MINE_CELL / 2 + (mineHash(cx - 17, cy + 23) - 0.5) * MINE_CELL * 0.42;
   const centerY = cy + MINE_CELL / 2 + (mineHash(cx + 29, cy - 11) - 0.5) * MINE_CELL * 0.42;
   if (Math.abs(centerX) < 260 && Math.abs(centerY) < 260) return [];
 
-  const count = 4 + Math.floor(mineHash(cx + 7, cy + 7) * 3); // 4-6, usually 5
+  const count = 7;
   const spread = 44 + mineHash(cx - 5, cy + 41) * 20;
   const out: MineInstance[] = [];
   for (let i = 0; i < count; i++) {
@@ -76,15 +76,15 @@ export const pressureMinesNearPlayer = (
   const ahead = 210 + mineHash(segment + 13, segment + 29) * 80;
   const centerX = playerX + nx * ahead;
   const centerY = playerY + ny * ahead;
-  const count = 4 + Math.floor(mineHash(segment - 17, segment + 61) * 3);
-  const spacing = 30 + mineHash(segment + 7, segment - 5) * 8;
+  const count = 7;
+  const spacing = 28 + mineHash(segment + 7, segment - 5) * 7;
   const gapIndex = Math.floor(mineHash(segment + 37, segment + 73) * count);
 
   const out: MineInstance[] = [];
   for (let i = 0; i < count; i++) {
     // Leave a mild gap sometimes so the player can thread through instead of
     // being forced to shoot every patch.
-    if (count >= 5 && i === gapIndex && mineHash(segment - 3, i + 97) < 0.45) continue;
+    if (i === gapIndex && mineHash(segment - 3, i + 97) < 0.42) continue;
     const offset = (i - (count - 1) / 2) * spacing;
     const jitter = (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 12;
     const sideJitter = (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 18;

@@ -896,9 +896,9 @@ export class PixiScene {
     if (prop.type === 'mine') {
       const d = this.depthScale(prop.footY);
       const horizonAlpha = this.horizonActorAlpha(prop.footY);
-      const pulse = 0.72 + 0.28 * Math.sin(now / 260 + prop.footX * 0.04);
-      const w = 18 * prop.scale * d;
-      const h = 10 * prop.scale * d;
+      const pulse = 0.72 + 0.28 * Math.sin(now / 320 + prop.footX * 0.04);
+      const w = 16 * prop.scale * d;
+      const h = 13 * prop.scale * d;
 
       view.container.zIndex = prop.footY;
       view.container.alpha = horizonAlpha;
@@ -909,27 +909,20 @@ export class PixiScene {
       const g = view.flame;
       g.clear();
       const x = Math.round(prop.footX);
-      const y = Math.round(prop.footY - h * 0.55);
+      const y = Math.round(prop.footY - h * 0.62);
       if (horizonAlpha > 0) {
-        g.ellipse(x, prop.footY - h * 0.05, w * 0.76, h * 0.34)
-          .fill({ color: 0x050608, alpha: 0.34 });
-        g.poly([
-          x - w * 0.55, y + h * 0.26,
-          x - w * 0.18, y - h * 0.18,
-          x - w * 0.04, y + h * 0.26,
-        ]).fill({ color: 0x111827, alpha: 0.96 });
-        g.poly([
-          x + w * 0.55, y + h * 0.26,
-          x + w * 0.18, y - h * 0.18,
-          x + w * 0.04, y + h * 0.26,
-        ]).fill({ color: 0x111827, alpha: 0.96 });
-        g.poly([
-          x - w * 0.24, y + h * 0.18,
-          x, y - h * 0.62,
-          x + w * 0.24, y + h * 0.18,
-        ]).fill({ color: 0x1f2937, alpha: 0.98 });
-        g.circle(x, y + h * 0.12, Math.max(1.6, 2.2 * d * prop.scale))
-          .fill({ color: 0xb91c1c, alpha: 0.52 + 0.26 * pulse });
+        g.ellipse(x, prop.footY - h * 0.03, w * 0.82, h * 0.28)
+          .fill({ color: 0x03130a, alpha: 0.34 });
+        g.ellipse(x, y + h * 0.24, w * 0.44, h * 0.62)
+          .fill({ color: 0x052e16, alpha: 0.94 });
+        g.ellipse(x - w * 0.04, y + h * 0.14, w * 0.34, h * 0.48)
+          .fill({ color: 0x166534, alpha: 0.88 });
+        g.ellipse(x + w * 0.08, y + h * 0.08, w * 0.22, h * 0.34)
+          .fill({ color: 0x84cc16, alpha: 0.24 + 0.16 * pulse });
+        g.ellipse(x - w * 0.13, y - h * 0.1, w * 0.12, h * 0.16)
+          .fill({ color: 0xd9f99d, alpha: 0.32 + 0.18 * pulse });
+        g.circle(x + w * 0.22, y + h * 0.2, Math.max(1.1, 1.4 * d * prop.scale))
+          .fill({ color: 0x0b1f0f, alpha: 0.42 });
       }
 
       const o = view.overlay;

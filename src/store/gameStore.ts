@@ -110,7 +110,7 @@ export const WORLD_HALF_EXTENT = 200000;
 export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
 const BREAKABLE_PROP_DROP_CHANCE = 0.28;
-export const MINE_DAMAGE = 34;
+export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 
 interface GameState {
   player: Player;
@@ -562,10 +562,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
       if (broken) {
         if (broken.type === 'mine') {
-          get().spawnBurst(broken.footX, broken.footY - 8, '#facc15', 22);
-          get().spawnBurst(broken.footX, broken.footY - 8, '#f97316', 12);
-          get().spawnRing(broken.footX, broken.footY - 8, 5, 48, 'rgba(251,146,60,0.82)', 4, 320);
-          get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(251,146,60,', 320);
+          get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
+          get().spawnBurst(broken.footX, broken.footY - 8, '#166534', 16);
+          get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
+          get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(132,204,22,', 320);
         } else {
           get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
           get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);

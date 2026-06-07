@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.90 - Convert mines to insect eggs (Codex)
+
+### Summary
+Converted the mine/caltrop trap concept into insect eggs and increased patch
+size.
+- World and pressure patches now use 7 eggs instead of 4-6 mines.
+- The trap remains mechanically identical: passable, one-hit breakable, no loot,
+  and damaging when touched.
+- Contact and break effects now use green acid/liquid bursts, rings, and glows
+  instead of orange/red explosions.
+- Pixi procedural drawing now renders a small green egg sac with a pulsing core
+  instead of dark metal spikes.
+
+### Code touched
+- `src/world/mines.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Internal type names still use `mine` to keep this change small and avoid a
+  broad rename; gameplay/readable comments now treat them as insect eggs.
+- If the 7-egg line feels too dense, retune `spacing` and optional gap behavior
+  in `pressureMinesNearPlayer()`.
+
 ## 2026-06-07 - v0.24.89 - Add forward pressure mine patches (Codex)
 
 ### Summary

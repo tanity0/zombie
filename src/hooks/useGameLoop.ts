@@ -571,10 +571,10 @@ export const useGameLoop = (onGameOver: () => void) => {
           const fxY = hitProp.footY - hitProp.height * 0.9;
           if (broken) {
             if (broken.type === 'mine') {
-              spawnBurst(fxX, fxY, '#facc15', 22);
-              spawnBurst(fxX, fxY, '#f97316', 16);
-              spawnRing(fxX, fxY, 4, 54, 'rgba(251,146,60,0.9)', 4, 360);
-              useGameStore.getState().spawnGlow(fxX, fxY, 62, 'rgba(251,146,60,', 360);
+              spawnBurst(fxX, fxY, '#84cc16', 28);
+              spawnBurst(fxX, fxY, '#166534', 18);
+              spawnRing(fxX, fxY, 4, 50, 'rgba(132,204,22,0.82)', 4, 360);
+              useGameStore.getState().spawnGlow(fxX, fxY, 58, 'rgba(132,204,22,', 360);
             } else {
               spawnBurst(fxX, fxY, '#f97316', 20);
               spawnBurst(fxX, fxY, '#fde68a', 8);
@@ -587,9 +587,10 @@ export const useGameLoop = (onGameOver: () => void) => {
           }
         }
 
-        // Mines are passable traps: no loot, one hit to disarm, but stepping
-        // on one detonates it and hurts the player. The invulnerability window
-        // keeps a clustered patch from deleting the whole HP bar at once.
+        // Insect eggs are passable traps: no loot, one hit to burst, but
+        // stepping on one splashes corrosive green fluid and hurts the player.
+        // The invulnerability window keeps a clustered patch from deleting the
+        // whole HP bar at once.
         const currentPlayerForMine = useGameStore.getState().player;
         const mineHit = useGameStore.getState().breakableProps.find(prop =>
           prop.type === 'mine' && checkCollision(currentPlayerForMine, prop)
@@ -598,10 +599,11 @@ export const useGameLoop = (onGameOver: () => void) => {
           const broken = damageBreakableProp(mineHit.id, 999);
           const fxX = mineHit.footX;
           const fxY = mineHit.footY - mineHit.height * 0.5;
-          spawnBurst(fxX, fxY, '#facc15', 26);
-          spawnBurst(fxX, fxY, '#ef4444', 14);
-          spawnRing(fxX, fxY, 5, 76, 'rgba(239,68,68,0.8)', 5, 420);
-          useGameStore.getState().spawnGlow(fxX, fxY, 78, 'rgba(251,146,60,', 420);
+          spawnBurst(fxX, fxY, '#a3e635', 34);
+          spawnBurst(fxX, fxY, '#15803d', 24);
+          spawnBurst(fxX, fxY, '#052e16', 10);
+          spawnRing(fxX, fxY, 5, 72, 'rgba(132,204,22,0.78)', 5, 420);
+          useGameStore.getState().spawnGlow(fxX, fxY, 78, 'rgba(132,204,22,', 420);
           if (broken && !currentPlayerForMine.invulnerable) {
             const playerDied = damagePlayer(MINE_DAMAGE);
             playSfx('bomb');
