@@ -84,8 +84,8 @@ const ENEMY_LIGHT_ENABLED = true;
 const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
 const ENEMY_BREATH_ENABLED = true;
-const ENEMY_BREATH_SCALE_X = 0.012;
-const ENEMY_BREATH_SCALE_Y = 0.018;
+const ENEMY_BREATH_SCALE_X = 0.016;
+const ENEMY_BREATH_SCALE_Y = 0.024;
 const ENEMY_BREATH_MS = 1500;
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,

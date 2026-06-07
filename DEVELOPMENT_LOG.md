@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.74 - Slightly raise enemy breathing amplitude (Codex)
+
+### Summary
+Made enemy idle breathing a little easier to perceive.
+- Increased `ENEMY_BREATH_SCALE_X` from `0.012` to `0.016`.
+- Increased `ENEMY_BREATH_SCALE_Y` from `0.018` to `0.024`.
+- Kept timing, phase offsets, foot anchoring, and gameplay/collision behavior
+  unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the motion becomes too rubbery, reduce these constants before changing the
+  animation method.
+
 ## 2026-06-07 - v0.24.73 - Apply breathing to all enemies (Codex)
 
 ### Summary
