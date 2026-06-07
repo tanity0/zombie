@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.8 - Replace striker and add shotgun player sprite (Codex)
+
+### Summary
+Updated the starting-class player sprites.
+- Replaced the striker walk frames with the supplied blond shotgun/rifle character.
+- Added a new two-frame shotgun/heavy-gunner walk sheet from the supplied female
+  shotgun character.
+- `warrior` now uses the shotgun/heavy-gunner female sprite.
+- `rogue` uses the updated striker sprite.
+- `necromancer` still temporarily uses the striker sprite until scavenger art is
+  supplied.
+- `mage` continues to use the magnum/sniper sprite.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current class sprite mapping:
+  - `warrior`: shotgun/heavy-gunner female
+  - `mage`: magnum/sniper
+  - `rogue`: striker
+  - `necromancer`: striker temporarily
+- Replace the temporary `necromancer` mapping when scavenger art is ready.
+
 ## 2026-06-08 - v0.25.7 - Reduce class walk sheets to two frames (Codex)
 
 ### Summary

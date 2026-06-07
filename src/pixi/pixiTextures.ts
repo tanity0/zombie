@@ -31,6 +31,8 @@ export const ensureTextures = (): Promise<void> => {
       Assets.load(spritePath('player-magnum-walk-1')),
       Assets.load(spritePath('player-striker-walk-0')),
       Assets.load(spritePath('player-striker-walk-1')),
+      Assets.load(spritePath('player-shotgun-walk-0')),
+      Assets.load(spritePath('player-shotgun-walk-1')),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
@@ -51,6 +53,9 @@ export const ensureTextures = (): Promise<void> => {
     });
     playerWalk.slice(2, 4).forEach((tex, i) => {
       textures.set(`player-striker-walk-${i}`, tex);
+    });
+    playerWalk.slice(4, 6).forEach((tex, i) => {
+      textures.set(`player-shotgun-walk-${i}`, tex);
     });
     textures.set('torch', torch);
     ready = true;

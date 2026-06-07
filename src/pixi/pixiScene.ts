@@ -1069,12 +1069,15 @@ export class PixiScene {
     const fb = playerFootBox(p);
     const walking = p.isMoving && p.direction !== 'idle';
     const usesMagnumSprite = p.characterClass === 'mage';
-    const usesStrikerSprite = p.characterClass === 'rogue' || p.characterClass === 'warrior' || p.characterClass === 'necromancer';
+    const usesShotgunSprite = p.characterClass === 'warrior';
+    const usesStrikerSprite = p.characterClass === 'rogue' || p.characterClass === 'necromancer';
     const frame = walking
       ? Math.floor((now % PLAYER_WALK_CYCLE_MS) / (PLAYER_WALK_CYCLE_MS / PLAYER_WALK_FRAME_COUNT))
       : 0;
     const textureName = usesMagnumSprite
       ? `player-magnum-walk-${frame}`
+      : usesShotgunSprite
+        ? `player-shotgun-walk-${frame}`
       : usesStrikerSprite
         ? `player-striker-walk-${frame}`
         : 'player';
@@ -1084,7 +1087,7 @@ export class PixiScene {
     const step = Math.sin(phase);
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     if (tex) {
-      const baseScale = usesMagnumSprite || usesStrikerSprite
+      const baseScale = usesMagnumSprite || usesShotgunSprite || usesStrikerSprite
         ? fb.boxH / tex.height
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
       const sc = baseScale * this.depthScale(fb.footY);
