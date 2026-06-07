@@ -10,6 +10,43 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.7 - Reduce class walk sheets to two frames (Codex)
+
+### Summary
+Replaced the class walk sheets with the supplied two-frame versions.
+- Re-extracted the striker walk sheet from the new two-pose source image.
+- Re-extracted the magnum/sniper walk sheet from the new two-pose source image.
+- Removed the unused `*-walk-2.png` and `*-walk-3.png` files for both class
+  sprite sets.
+- Pixi now loads two frames per class sprite set and alternates them during
+  movement.
+- Current class sprite mapping is unchanged:
+  - `mage`: magnum/sniper
+  - `rogue`: striker
+  - `warrior`: striker temporarily
+  - `necromancer`: striker temporarily
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png` deleted
+- `public/sprites/player-magnum-walk-3.png` deleted
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png` deleted
+- `public/sprites/player-striker-walk-3.png` deleted
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `PLAYER_WALK_FRAME_COUNT` is now 2. If future class art returns to 4 poses,
+  update the loader and frame count together.
+
 ## 2026-06-08 - v0.25.6 - Add striker player walk frames (Codex)
 
 ### Summary
