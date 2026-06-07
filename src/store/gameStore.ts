@@ -1,14 +1,15 @@
 import { create } from 'zustand';
 import { generateUpgradeOptions } from '../utils/upgradeUtils';
 import {
-  Player, Enemy, Projectile, Pickup, GameStats,
+  Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
-import { openCrate } from '../utils/weaponDrop';
+import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
 import { resolveTreeCollision } from '../world/trees';
+import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -107,11 +108,15 @@ export const WORLD_HALF_EXTENT = 200000;
 // currently on screen.
 export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
+const BREAKABLE_PROP_DROP_CHANCE = 0.28;
+
 interface GameState {
   player: Player;
   enemies: Enemy[];
   projectiles: Projectile[];
   pickups: Pickup[];
+  breakableProps: BreakableProp[];
+  destroyedBreakableProps: Record<string, true>;
   gameTime: number;
   isPaused: boolean;
   showUpgradeMenu: boolean;
@@ -180,6 +185,11 @@ interface GameState {
   addPickup: (pickup: Pickup) => void;
   removePickup: (id: string) => void;
   collectPickup: (id: string) => void;
+
+  // Breakable props
+  syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds) => void;
+  damageBreakableProp: (id: string, amount: number) => BreakableProp | null;
+  dropBreakablePropLoot: (prop: BreakableProp) => void;
   
   // Game state actions
   setGameTime: (time: number) => void;
@@ -240,6 +250,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   enemies: [],
   projectiles: [],
   pickups: [],
+  breakableProps: [],
+  destroyedBreakableProps: {},
   gameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
@@ -269,7 +281,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Player actions
   movePlayer: (input, deltaTime) => {
     set(state => {
-      const { player, gameBounds, swipeDirection } = state;
+      const { player, gameBounds, swipeDirection, breakableProps } = state;
       void gameBounds; // World is effectively infinite — no clamp.
 
       // While reloading, the survivor is fumbling a fresh magazine in — they
@@ -300,12 +312,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
 
       // Block the player's hitbox out of tree trunks (rectangle AABB only).
-      const resolved = resolveTreeCollision({
+      const treeResolved = resolveTreeCollision({
         x: player.x + vx * deltaTime,
         y: player.y + vy * deltaTime,
         width: player.width,
         height: player.height,
       });
+      const resolved = resolveTorchCollision({
+        x: treeResolved.x,
+        y: treeResolved.y,
+        width: player.width,
+        height: player.height,
+      }, breakableProps);
       const newX = resolved.x;
       const newY = resolved.y;
 
@@ -350,7 +368,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   triggerCounter: () => {
     const now = Date.now();
-    const { player, gameTime, enemies } = get();
+    const { player, gameTime, enemies, breakableProps } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
@@ -530,7 +548,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
-    return { swung: true, hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
+
+    let propHit = false;
+    for (const prop of breakableProps) {
+      const dx = prop.footX - pcx;
+      const dy = prop.footY - pcy;
+      if (Math.hypot(dx, dy) > MELEE_RADIUS) continue;
+      propHit = true;
+      const broken = get().damageBreakableProp(prop.id, meleeDamage * 2.5);
+      get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
+      if (broken) {
+        get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
+        get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
+        get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
+        get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
+        get().dropBreakablePropLoot(broken);
+      }
+    }
+
+    return { swung: true, hit: slashAt.length > 0 || propHit, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
 
   damagePlayer: (amount) => {
@@ -765,7 +801,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   updateEnemies: (deltaTime) => {
     set(state => {
-      const { enemies, player, gameTime } = state;
+      const { enemies, player, gameTime, breakableProps } = state;
       const now = Date.now();
 
       const updatedEnemies = enemies.map(enemy => {
@@ -774,12 +810,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
-          const kb = resolveTreeCollision({
+          const treeResolved = resolveTreeCollision({
             x: enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
             y: enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
             width: enemy.width,
             height: enemy.height,
           });
+          const kb = resolveTorchCollision({
+            x: treeResolved.x,
+            y: treeResolved.y,
+            width: enemy.width,
+            height: enemy.height,
+          }, breakableProps);
           return { ...enemy, x: kb.x, y: kb.y };
         }
 
@@ -805,12 +847,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
-        const moved = resolveTreeCollision({
+        const treeResolved = resolveTreeCollision({
           x: enemy.x + vx * deltaTime,
           y: enemy.y + vy * deltaTime,
           width: enemy.width,
           height: enemy.height,
         });
+        const moved = resolveTorchCollision({
+          x: treeResolved.x,
+          y: treeResolved.y,
+          width: enemy.width,
+          height: enemy.height,
+        }, breakableProps);
 
         return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
@@ -1054,6 +1102,136 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().removePickup(id);
   },
 
+  syncBreakableProps: (camera, bounds) => {
+    const pad = 520;
+    set(state => {
+      const generated = torchesInRegion(
+        camera.x - pad,
+        camera.y - pad,
+        camera.x + bounds.width + pad,
+        camera.y + bounds.height + pad
+      );
+      const current = new Map(state.breakableProps.map(p => [p.id, p]));
+      const next: BreakableProp[] = [];
+
+      for (const torch of generated) {
+        if (state.destroyedBreakableProps[torch.id]) continue;
+        const existing = current.get(torch.id);
+        if (existing) {
+          next.push(existing);
+          continue;
+        }
+        const rect = torchRect(torch);
+        next.push({
+          id: torch.id,
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          footX: torch.footX,
+          footY: torch.footY,
+          scale: torch.scale,
+          health: 12,
+          maxHealth: 12,
+          type: 'torch',
+          lastHit: 0
+        });
+      }
+
+      return { breakableProps: next };
+    });
+  },
+
+  damageBreakableProp: (id, amount) => {
+    let broken: BreakableProp | null = null;
+    set(state => {
+      const prop = state.breakableProps.find(p => p.id === id);
+      if (!prop) return {};
+
+      const nextHealth = Math.max(0, prop.health - amount);
+      if (nextHealth <= 0) {
+        broken = { ...prop, health: 0, lastHit: Date.now() };
+        return {
+          breakableProps: state.breakableProps.filter(p => p.id !== id),
+          destroyedBreakableProps: {
+            ...state.destroyedBreakableProps,
+            [id]: true
+          }
+        };
+      }
+
+      return {
+        breakableProps: state.breakableProps.map(p =>
+          p.id === id ? { ...p, health: nextHealth, lastHit: Date.now() } : p
+        )
+      };
+    });
+    return broken;
+  },
+
+  dropBreakablePropLoot: (prop) => {
+    if (Math.random() >= BREAKABLE_PROP_DROP_CHANCE) return;
+    const x = prop.footX - 8;
+    const y = prop.footY - 16;
+    const roll = Math.random();
+    const player = get().player;
+
+    if (roll < 0.58) {
+      const equippedAmmo = getActiveGun(player)?.ammoType;
+      const owned = getGuns(player)
+        .map(w => w.ammoType)
+        .filter((t): t is AmmoType => !!t);
+      const dropType = equippedAmmo ?? owned[0];
+      if (dropType) {
+        get().addPickup({
+          id: `pickup-torch-ammo-${prop.id}`,
+          x, y,
+          type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+          value: 0
+        });
+        return;
+      }
+    }
+
+    if (roll < 0.8) {
+      get().addPickup({
+        id: `pickup-torch-health-${prop.id}`,
+        x, y,
+        type: 'health',
+        value: 20
+      });
+      return;
+    }
+
+    if (roll < 0.89) {
+      get().addPickup({
+        id: `pickup-torch-magnet-${prop.id}`,
+        x, y,
+        type: 'magnet',
+        value: 0
+      });
+      return;
+    }
+
+    if (roll < 0.96) {
+      get().addPickup({
+        id: `pickup-torch-bomb-${prop.id}`,
+        x, y,
+        type: 'bomb',
+        value: 0
+      });
+      return;
+    }
+
+    get().addPickup({
+      id: `pickup-torch-weapon-${prop.id}`,
+      x, y,
+      type: 'weapon-drop',
+      value: 0,
+      weaponKey: rollWeaponKey(get().gameTime)
+    });
+  },
+
   // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
   // replaces the current gun/melee if it's the same or a higher tier (so a
   // stray T1 drop never downgrades a T3). Otherwise it's discarded.
@@ -1277,6 +1455,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: [],
         projectiles: [],
         pickups: [],
+        breakableProps: [],
+        destroyedBreakableProps: {},
         gameTime: 0,
         isPaused: false,
         showUpgradeMenu: false,

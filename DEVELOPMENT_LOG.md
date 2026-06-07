@@ -10,6 +10,43 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.62 - Add breakable torch props (Codex)
+
+### Summary
+Added torch environmental objects with Octopath-like fire lighting.
+- Added deterministic torch placement around the camera via `src/world/torches.ts`.
+- Added `BreakableProp` state so torches can be destroyed and stay destroyed
+  for the run.
+- Torches can be broken by projectiles or melee/counter swings.
+- Broken torches roll a small non-gem loot table: mostly ammo, sometimes
+  health, magnet, bomb, or a rare weapon drop. They never drop XP gems.
+- Added `public/sprites/torch.png` from the supplied purple-background asset
+  using the purple-key sprite workflow.
+- Pixi renders the torch body as crisp pixel art, then adds warm additive glow,
+  soft flame motes, and hit/break sparks in code.
+
+### Code touched
+- `src/types/game.ts`
+- `src/world/torches.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `public/sprites/torch.png`
+- `public/sprites/README.md`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Torch fire is not baked into the sprite. Tune the light in
+  `TORCH_LIGHT_RADIUS`, `TORCH_VISUAL_W`, and `TORCH_VISUAL_H` in
+  `src/pixi/pixiScene.ts`.
+- Drop chance is `BREAKABLE_PROP_DROP_CHANCE = 0.28` in `src/store/gameStore.ts`.
+- Torch placement density is controlled in `src/world/torches.ts`.
+
 ## 2026-06-07 - v0.24.61 - Set vertical ground scroll feel to 3.0 (Codex)
 
 ### Summary

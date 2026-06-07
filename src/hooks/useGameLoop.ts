@@ -10,6 +10,7 @@ import {
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType } from '../types/game';
 import {
+  checkCollision,
   checkProjectileEnemyCollisions,
   checkPlayerEnemyCollisions,
   checkPlayerPickupCollisions,
@@ -56,6 +57,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const enemies = useGameStore(state => state.enemies);
   const projectiles = useGameStore(state => state.projectiles);
   const pickups = useGameStore(state => state.pickups);
+  const breakableProps = useGameStore(state => state.breakableProps);
   const inputState = useGameStore(state => state.inputState);
   const swipeDirection = useGameStore(state => state.swipeDirection);
   const gameBounds = useGameStore(state => state.gameBounds);
@@ -73,6 +75,9 @@ export const useGameLoop = (onGameOver: () => void) => {
   const addProjectile = useGameStore(state => state.addProjectile);
   const collectPickup = useGameStore(state => state.collectPickup);
   const addPickup = useGameStore(state => state.addPickup);
+  const syncBreakableProps = useGameStore(state => state.syncBreakableProps);
+  const damageBreakableProp = useGameStore(state => state.damageBreakableProp);
+  const dropBreakablePropLoot = useGameStore(state => state.dropBreakablePropLoot);
   const autoSwitchIfDry = useGameStore(state => state.autoSwitchIfDry);
   const tickReload = useGameStore(state => state.tickReload);
   const setGameTime = useGameStore(state => state.setGameTime);
@@ -170,6 +175,7 @@ export const useGameLoop = (onGameOver: () => void) => {
         const targetCameraX = player.x - gameBounds.width / 2 + player.width / 2;
         const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
         setCameraPosition(targetCameraX, targetCameraY);
+        syncBreakableProps({ x: targetCameraX, y: targetCameraY }, gameBounds);
         
         // Complete any finished reload, then ensure the active gun is
         // shootable (reload it / swap off a fully-dry gun), then fire it.
@@ -295,6 +301,7 @@ export const useGameLoop = (onGameOver: () => void) => {
 
         // Check for collisions between projectiles and enemies
         const projectileEnemyCollisions = checkProjectileEnemyCollisions(useGameStore.getState().projectiles, enemies);
+        const projectilesRemovedThisFrame = new Set<string>();
         
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage }) => {
           const enemyForFx = enemies.find(e => e.id === enemyId);
@@ -367,6 +374,7 @@ export const useGameLoop = (onGameOver: () => void) => {
                   ? enemyKilled
                   : true;
             if (removeIt) removeProjectile(projectileId);
+            if (removeIt) projectilesRemovedThisFrame.add(projectileId);
           }
 
           // If enemy was killed, spawn pickups. VS-style drop table:
@@ -481,6 +489,32 @@ export const useGameLoop = (onGameOver: () => void) => {
             }
           }
         });
+
+        // Projectiles can also break small environmental props such as torches.
+        const propProjectiles = useGameStore.getState().projectiles;
+        const liveProps = useGameStore.getState().breakableProps;
+        for (const projectile of propProjectiles) {
+          if (projectilesRemovedThisFrame.has(projectile.id)) continue;
+          if (projectile.hostile || projectile.createdAt > now) continue;
+          const hitProp = liveProps.find(prop => checkCollision(projectile, prop));
+          if (!hitProp) continue;
+
+          const broken = damageBreakableProp(hitProp.id, projectile.damage);
+          removeProjectile(projectile.id);
+          projectilesRemovedThisFrame.add(projectile.id);
+
+          const fxX = hitProp.footX;
+          const fxY = hitProp.footY - hitProp.height * 0.9;
+          if (broken) {
+            spawnBurst(fxX, fxY, '#f97316', 20);
+            spawnBurst(fxX, fxY, '#fde68a', 8);
+            spawnRing(fxX, fxY, 6, 36, 'rgba(251,146,60,0.86)', 3, 340);
+            useGameStore.getState().spawnGlow(fxX, fxY, 48, 'rgba(251,146,60,', 380);
+            dropBreakablePropLoot(broken);
+          } else {
+            spawnBurst(fxX, fxY, '#fbbf24', 5);
+          }
+        }
         
         // Check for collisions between player and enemies
         const playerEnemyCollisions = checkPlayerEnemyCollisions(player, enemies);
@@ -862,6 +896,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     enemies,
     projectiles,
     pickups,
+    breakableProps,
     inputState,
     swipeDirection,
     gameBounds,
@@ -877,6 +912,9 @@ export const useGameLoop = (onGameOver: () => void) => {
     reflectProjectile,
     collectPickup,
     addPickup,
+    syncBreakableProps,
+    damageBreakableProp,
+    dropBreakablePropLoot,
     autoSwitchIfDry,
     tickReload,
     setGameTime,

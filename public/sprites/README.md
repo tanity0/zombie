@@ -29,6 +29,7 @@ render size — the renderer scales without smoothing.
 | `pickup-bomb.png` | 8×8 | 16×16 | |
 | `pickup-chest.png` | 16×16 | 16×16 | Boss drop, opens upgrade menu. |
 | `tree.png` | 32×32 or 48×64 | 48×64 | Scattered as Mad Forest decor. |
+| `torch.png` | any cropped pixel-art PNG | 42×68 | Breakable prop; fire is rendered as Pixi light/glow, not baked into the sprite. |
 
 ## Recommended source
 

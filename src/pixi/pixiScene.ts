@@ -16,7 +16,7 @@
 import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
-  Enemy, Pickup, Player, Projectile, VisualEffect,
+  BreakableProp, Enemy, Pickup, Player, Projectile, VisualEffect,
 } from '../types/game';
 import { useGameStore, MELEE_RADIUS, SHAKE_MS, COUNTER_WINDOW } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -119,6 +119,9 @@ const OBJECT_GROUND_RELATIVE_MIN = 0.68;
 const OBJECT_GROUND_RELATIVE_MAX = 1.45;
 const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
+const TORCH_VISUAL_W = 42;
+const TORCH_VISUAL_H = 68;
+const TORCH_LIGHT_RADIUS = 92;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -148,6 +151,14 @@ interface ActorView {
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
 }
 
+interface PropView {
+  container: Container;
+  light: Sprite;
+  sprite: Sprite;
+  flame: Graphics;
+  overlay: Graphics;
+}
+
 // One drifting ambient mote.
 interface Firefly {
   sprite: Sprite;
@@ -161,6 +172,7 @@ export class PixiScene {
 
   private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
   private enemies = new Map<string, ActorView>();
+  private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
 
   private pickups = new Map<string, { container: Container; gfx: Graphics; sprite?: Sprite }>();
@@ -423,6 +435,23 @@ export class PixiScene {
     return { container, light, reticle, sprite, overlay };
   }
 
+  private makeProp(): PropView {
+    const container = new Container();
+    const light = new Sprite(getGlowTexture());
+    light.anchor.set(0.5);
+    light.blendMode = 'add';
+    this.L.groundLayer.addChild(light);
+
+    const sprite = new Sprite();
+    sprite.anchor.set(0.5, 1);
+    const flame = new Graphics();
+    flame.blendMode = 'add';
+    const overlay = new Graphics();
+    container.addChild(sprite, flame, overlay);
+    this.L.actorLayer.addChild(container);
+    return { container, light, sprite, flame, overlay };
+  }
+
   // ---- top-level frame sync ------------------------------------------------
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front
@@ -527,6 +556,7 @@ export class PixiScene {
     );
 
     this.syncTrees(s.camera);
+    this.syncBreakableProps(s.breakableProps, now);
     this.syncShadows(s.player, s.enemies);
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
@@ -623,6 +653,78 @@ export class PixiScene {
         entry.sprite.destroy();
         this.trees.delete(key);
       }
+    }
+  }
+
+  private syncBreakableProps(props: BreakableProp[], now: number) {
+    const seen = new Set<string>();
+    for (const prop of props) {
+      seen.add(prop.id);
+      let view = this.breakableProps.get(prop.id);
+      if (!view) {
+        view = this.makeProp();
+        this.breakableProps.set(prop.id, view);
+      }
+      this.drawBreakableProp(view, prop, now);
+    }
+    for (const [id, view] of this.breakableProps) {
+      if (!seen.has(id)) {
+        view.light.destroy();
+        view.container.destroy({ children: true });
+        this.breakableProps.delete(id);
+      }
+    }
+  }
+
+  private drawBreakableProp(view: PropView, prop: BreakableProp, now: number) {
+    const tex = getTexture(prop.type);
+    const d = this.depthScale(prop.footY);
+    const visualW = TORCH_VISUAL_W * prop.scale;
+    const visualH = TORCH_VISUAL_H * prop.scale;
+    const sc = tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
+    const horizonAlpha = this.horizonActorAlpha(prop.footY);
+    const pulse = 0.82 + 0.18 * Math.sin(now / 130 + prop.footX * 0.03);
+    const flameX = Math.round(prop.footX);
+    const flameY = Math.round(prop.footY - visualH * d * 0.72);
+
+    view.container.zIndex = prop.footY;
+    view.container.alpha = horizonAlpha;
+    view.sprite.position.set(Math.round(prop.footX), Math.round(prop.footY));
+    view.sprite.visible = !!tex;
+    if (tex) {
+      view.sprite.texture = tex;
+      view.sprite.scale.set(sc);
+    }
+
+    view.light.visible = horizonAlpha > 0;
+    view.light.position.set(prop.footX, flameY + 6);
+    view.light.tint = 0xffb45f;
+    view.light.width = TORCH_LIGHT_RADIUS * d * pulse * 2;
+    view.light.height = TORCH_LIGHT_RADIUS * d * pulse * 1.45;
+    view.light.alpha = 0.18 * horizonAlpha * pulse;
+
+    const f = view.flame;
+    f.clear();
+    if (horizonAlpha > 0) {
+      const r = 5.5 * d * prop.scale * pulse;
+      f.circle(flameX, flameY + 2, r * 4.4).fill({ color: 0xff9f1c, alpha: 0.08 });
+      f.circle(flameX, flameY, r * 2.25).fill({ color: 0xf97316, alpha: 0.26 });
+      f.circle(flameX, flameY - r * 0.25, r * 1.25).fill({ color: 0xfef3c7, alpha: 0.58 });
+      for (let i = 0; i < 3; i++) {
+        const bob = Math.sin(now / (180 + i * 35) + prop.footX * 0.01 + i) * 2;
+        f.circle(
+          flameX + (i - 1) * r * 0.9,
+          flameY - r * (2 + i * 0.45) + bob,
+          r * (0.55 - i * 0.08)
+        ).fill({ color: i === 0 ? 0xffedd5 : 0xfbbf24, alpha: 0.25 - i * 0.04 });
+      }
+    }
+
+    const o = view.overlay;
+    o.clear();
+    if (now - prop.lastHit < 90) {
+      o.circle(prop.footX, prop.footY - visualH * d * 0.48, Math.max(14, visualW * d * 0.45))
+        .fill({ color: 0xffffff, alpha: 0.34 });
     }
   }
 
@@ -1198,6 +1300,10 @@ export class PixiScene {
   destroy() {
     for (const e of this.trees.values()) e.sprite.destroy();
     for (const v of this.enemies.values()) {
+      v.light.destroy();
+      v.container.destroy({ children: true });
+    }
+    for (const v of this.breakableProps.values()) {
       v.light.destroy();
       v.container.destroy({ children: true });
     }

@@ -23,12 +23,14 @@ export const ensureTextures = (): Promise<void> => {
   if (ready) return Promise.resolve();
   if (loading) return loading;
   loading = (async () => {
-    const [atlas, player] = await Promise.all([
+    const [atlas, player, torch] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
+      Assets.load(spritePath('torch')),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
+    torch.source.scaleMode = 'nearest';
 
     for (const [name, [sx, sy, sw, sh]] of Object.entries(ATLAS_RECTS)) {
       textures.set(
@@ -37,6 +39,7 @@ export const ensureTextures = (): Promise<void> => {
       );
     }
     textures.set('player', player);
+    textures.set('torch', torch);
     ready = true;
   })();
   return loading;

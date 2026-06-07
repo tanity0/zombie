@@ -207,6 +207,23 @@ export interface Pickup {
   worldDrop?: boolean;
 }
 
+export interface BreakableProp {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  footX: number;
+  footY: number;
+  scale: number;
+  health: number;
+  maxHealth: number;
+  type: BreakablePropType;
+  lastHit: number;
+}
+
+export type BreakablePropType = 'torch';
+
 export type PickupType =
   | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
