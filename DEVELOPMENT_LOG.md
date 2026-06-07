@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.10 - Correct marksman and striker sprite assignment (Codex)
+
+### Summary
+Corrected the marksman/striker sprite assets after the previous assignment mixup.
+- Replaced `player-magnum-walk-*` with the supplied blond marksman/rifle frames.
+- Replaced `player-striker-walk-*` with the supplied white-haired striker/handgun
+  frames.
+- Class-to-texture code did not need a mapping change:
+  - `mage` already reads `player-magnum-walk-*`
+  - `rogue` already reads `player-striker-walk-*`
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current class sprite mapping remains:
+  - `warrior`: shotgun/heavy-gunner female
+  - `mage`: marksman/blond rifle
+  - `rogue`: striker/white-haired handgun
+  - `necromancer`: scavenger
+
 ## 2026-06-08 - v0.25.9 - Add scavenger player sprite (Codex)
 
 ### Summary
