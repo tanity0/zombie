@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.9 - Add scavenger player sprite (Codex)
+
+### Summary
+Added the dedicated scavenger player sprite.
+- Extracted two transparent `player-scavenger-walk-*` PNGs from the supplied
+  purple-matte source image.
+- `necromancer` now uses the scavenger sprite instead of temporarily using the
+  striker sprite.
+- All four starting classes now have distinct player sprite mappings.
+
+### Code touched
+- `public/sprites/player-scavenger-walk-0.png`
+- `public/sprites/player-scavenger-walk-1.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current class sprite mapping:
+  - `warrior`: shotgun/heavy-gunner female
+  - `mage`: magnum/sniper
+  - `rogue`: striker
+  - `necromancer`: scavenger
+
 ## 2026-06-08 - v0.25.8 - Replace striker and add shotgun player sprite (Codex)
 
 ### Summary
