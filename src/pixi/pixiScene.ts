@@ -123,6 +123,8 @@ const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
 const TORCH_LIGHT_RADIUS = 92;
 const TORCH_EMBER_COUNT = 7;
+const TORCH_REFLECTION_W = 70;
+const TORCH_REFLECTION_H = 18;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -155,6 +157,7 @@ interface ActorView {
 interface PropView {
   container: Container;
   light: Sprite;
+  reflection: Sprite;
   sprite: Sprite;
   flame: Graphics;
   overlay: Graphics;
@@ -441,7 +444,10 @@ export class PixiScene {
     const light = new Sprite(getGlowTexture());
     light.anchor.set(0.5);
     light.blendMode = 'add';
-    this.L.groundLayer.addChild(light);
+    const reflection = new Sprite(getGlowTexture());
+    reflection.anchor.set(0.5);
+    reflection.blendMode = 'add';
+    this.L.groundLayer.addChild(reflection, light);
 
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1);
@@ -450,7 +456,7 @@ export class PixiScene {
     const overlay = new Graphics();
     container.addChild(sprite, flame, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, sprite, flame, overlay };
+    return { container, light, reflection, sprite, flame, overlay };
   }
 
   // ---- top-level frame sync ------------------------------------------------
@@ -671,6 +677,7 @@ export class PixiScene {
     for (const [id, view] of this.breakableProps) {
       if (!seen.has(id)) {
         view.light.destroy();
+        view.reflection.destroy();
         view.container.destroy({ children: true });
         this.breakableProps.delete(id);
       }
@@ -703,6 +710,13 @@ export class PixiScene {
     view.light.width = TORCH_LIGHT_RADIUS * d * pulse * 2;
     view.light.height = TORCH_LIGHT_RADIUS * d * pulse * 1.45;
     view.light.alpha = 0.18 * horizonAlpha * pulse;
+
+    view.reflection.visible = horizonAlpha > 0;
+    view.reflection.position.set(prop.footX, prop.footY + 3 * d);
+    view.reflection.tint = 0xff9f1c;
+    view.reflection.width = TORCH_REFLECTION_W * d * prop.scale * pulse;
+    view.reflection.height = TORCH_REFLECTION_H * d * prop.scale * (0.86 + 0.14 * pulse);
+    view.reflection.alpha = 0.11 * horizonAlpha * pulse;
 
     const f = view.flame;
     f.clear();
@@ -1316,6 +1330,7 @@ export class PixiScene {
     }
     for (const v of this.breakableProps.values()) {
       v.light.destroy();
+      v.reflection.destroy();
       v.container.destroy({ children: true });
     }
     this.playerView?.light.destroy();

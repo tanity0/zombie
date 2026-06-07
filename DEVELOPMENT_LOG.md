@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.64 - Add lightweight torch ground reflection (Codex)
+
+### Summary
+Added the first lightweight reflection pass.
+- Each torch now gets a thin warm additive ground reflection under its foot.
+- The effect reuses the existing glow texture as a horizontally stretched
+  Sprite, so it avoids expensive reflected-scene rendering.
+- Reflection pulse follows the torch flame pulse and respects horizon fade.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune only `TORCH_REFLECTION_W`, `TORCH_REFLECTION_H`, and reflection alpha in
+  `drawBreakableProp` if the wet-ground glint is too strong or too weak.
+
 ## 2026-06-07 - v0.24.63 - Clean torch purple fringe and improve flame (Codex)
 
 ### Summary
