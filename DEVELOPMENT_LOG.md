@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.91 - Make egg bursts read as liquid (Codex)
+
+### Summary
+Changed insect egg contact/break effects away from light explosions and toward
+green liquid spray.
+- Added a non-additive `liquid` particle rendering path: no glow halo and no
+  white hot core, so droplets read as fluid instead of sparks.
+- Egg contact now emits upward-biased green droplets instead of a ring/glow
+  blast.
+- Projectile breakage also uses the same liquid splash helper at lower
+  intensity.
+
+### Code touched
+- `src/types/game.ts`
+- `src/pixi/pixiScene.ts`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Melee breaking eggs still uses the store-side burst path; if it also reads too
+  spark-like on device, move the shared liquid helper into the store or a small
+  effect utility.
+
 ## 2026-06-07 - v0.24.90 - Convert mines to insect eggs (Codex)
 
 ### Summary

@@ -280,6 +280,7 @@ export type VisualEffect =
       createdAt: number;
       duration: number;
       drag?: number;
+      liquid?: boolean;
     }
   | {
       kind: 'damageNumber';

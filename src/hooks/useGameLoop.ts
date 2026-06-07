@@ -113,6 +113,32 @@ export const useGameLoop = (onGameOver: () => void) => {
     window.setTimeout(onGameOver, 650);
   }, [onGameOver, spawnBurst, spawnFlash, spawnRing]);
 
+  const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {
+    const now = Date.now();
+    const count = Math.round(30 * intensity);
+    const colors = ['#a3e635', '#65a30d', '#15803d', '#052e16'];
+    for (let i = 0; i < count; i++) {
+      const upwardBias = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.92;
+      const angle = Math.random() < 0.72 ? upwardBias : Math.random() * Math.PI * 2;
+      const speed = 54 + Math.random() * 190 * intensity;
+      const size = 1.6 + Math.random() * (2.6 + intensity);
+      spawnEffect({
+        kind: 'particle',
+        id: `fx-egg-fluid-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        x: x + (Math.random() - 0.5) * 8,
+        y: y + (Math.random() - 0.5) * 5,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.78,
+        color: colors[i % colors.length],
+        size,
+        createdAt: now,
+        duration: 420 + Math.random() * 260,
+        drag: 3.4,
+        liquid: true,
+      });
+    }
+  }, [spawnEffect]);
+
   // Game loop
   useEffect(() => {
     const gameLoop = (timestamp: number) => {
@@ -571,10 +597,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           const fxY = hitProp.footY - hitProp.height * 0.9;
           if (broken) {
             if (broken.type === 'mine') {
-              spawnBurst(fxX, fxY, '#84cc16', 28);
-              spawnBurst(fxX, fxY, '#166534', 18);
-              spawnRing(fxX, fxY, 4, 50, 'rgba(132,204,22,0.82)', 4, 360);
-              useGameStore.getState().spawnGlow(fxX, fxY, 58, 'rgba(132,204,22,', 360);
+              spawnEggFluidSplash(fxX, fxY, 0.82);
             } else {
               spawnBurst(fxX, fxY, '#f97316', 20);
               spawnBurst(fxX, fxY, '#fde68a', 8);
@@ -599,11 +622,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           const broken = damageBreakableProp(mineHit.id, 999);
           const fxX = mineHit.footX;
           const fxY = mineHit.footY - mineHit.height * 0.5;
-          spawnBurst(fxX, fxY, '#a3e635', 34);
-          spawnBurst(fxX, fxY, '#15803d', 24);
-          spawnBurst(fxX, fxY, '#052e16', 10);
-          spawnRing(fxX, fxY, 5, 72, 'rgba(132,204,22,0.78)', 5, 420);
-          useGameStore.getState().spawnGlow(fxX, fxY, 78, 'rgba(132,204,22,', 420);
+          spawnEggFluidSplash(fxX, fxY, 1.28);
           if (broken && !currentPlayerForMine.invulnerable) {
             const playerDied = damagePlayer(MINE_DAMAGE);
             playSfx('bomb');
@@ -1108,7 +1127,8 @@ export const useGameLoop = (onGameOver: () => void) => {
     spawnEffect,
     updateEffects,
     onGameOver,
-    triggerPlayerDeath
+    triggerPlayerDeath,
+    spawnEggFluidSplash
   ]);
   
   return { fps };

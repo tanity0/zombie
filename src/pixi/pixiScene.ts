@@ -1412,6 +1412,15 @@ export class PixiScene {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     switch (e.kind) {
       case 'particle': {
+        if (e.liquid) {
+          g.blendMode = 'normal';
+          g.alpha = Math.max(0, 1 - t * 0.88);
+          const r = e.size;
+          g.ellipse(e.x, e.y, r * 1.45, r * 0.95).fill({ color: 0x052e16, alpha: 0.46 });
+          g.circle(e.x, e.y, r).fill({ color: e.color, alpha: 0.92 });
+          g.circle(e.x - r * 0.28, e.y - r * 0.22, r * 0.34).fill({ color: 0xd9f99d, alpha: 0.28 });
+          break;
+        }
         // Glowing additive spark: soft halo + colored body + hot white core.
         g.blendMode = 'add';
         g.alpha = Math.max(0, 1 - t);
