@@ -73,11 +73,11 @@ export const pressureMinesNearPlayer = (
   const ny = direction!.y / mag;
   const px = -ny;
   const py = nx;
-  const ahead = 210 + mineHash(segment + 13, segment + 29) * 80;
+  const ahead = 310 + mineHash(segment + 13, segment + 29) * 120;
   const centerX = playerX + nx * ahead;
   const centerY = playerY + ny * ahead;
   const count = 7;
-  const spacing = 28 + mineHash(segment + 7, segment - 5) * 7;
+  const spacing = 26 + mineHash(segment + 7, segment - 5) * 11;
   const gapIndex = Math.floor(mineHash(segment + 37, segment + 73) * count);
 
   const out: MineInstance[] = [];
@@ -85,13 +85,14 @@ export const pressureMinesNearPlayer = (
     // Leave a mild gap sometimes so the player can thread through instead of
     // being forced to shoot every patch.
     if (i === gapIndex && mineHash(segment - 3, i + 97) < 0.42) continue;
-    const offset = (i - (count - 1) / 2) * spacing;
-    const jitter = (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 12;
-    const sideJitter = (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 18;
+    const lane = i - (count - 1) / 2;
+    const offset = lane * spacing + (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 28;
+    const sideJitter = (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 46;
+    const clumpJitter = Math.sin(i * 1.71 + mineHash(segment, i) * Math.PI * 2) * 14;
     out.push({
       id: `mine-pressure-${segment}-${i}`,
-      footX: centerX + px * (offset + jitter) + nx * sideJitter,
-      footY: centerY + py * (offset + jitter) + ny * sideJitter,
+      footX: centerX + px * (offset + clumpJitter) + nx * sideJitter,
+      footY: centerY + py * (offset + clumpJitter) + ny * sideJitter,
       scale: 0.84 + mineHash(segment + i * 5, segment + i * 7) * 0.16,
     });
   }

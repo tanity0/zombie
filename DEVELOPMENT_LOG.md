@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.92 - Scatter egg patches farther ahead (Codex)
+
+### Summary
+Adjusted pressure egg placement so it feels less like a clean line and appears
+farther off-screen.
+- Moved pressure patch centers farther ahead of the player's movement direction
+  (`310-430px` instead of `210-290px`).
+- Increased perpendicular and forward jitter so eggs form an organic clump/loose
+  barrier instead of a neatly spaced row.
+- Kept the 7-egg target count and occasional gap behavior.
+
+### Code touched
+- `src/world/mines.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If eggs now feel too far away on narrow phones, tune `ahead` in
+  `pressureMinesNearPlayer()` down slightly while keeping the new jitter values.
+
 ## 2026-06-07 - v0.24.91 - Make egg bursts read as liquid (Codex)
 
 ### Summary
