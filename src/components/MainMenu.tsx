@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Skull, Wand2, Swords, Volume2, VolumeX } from 'lucide-react';
+import { Settings, Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import {
   getBgmVolume,
@@ -55,7 +55,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'warrior',
       name: 'ヘビーガンナー',
       description: 'ソードオフ・ショットガンと鉈で近距離を制圧する。',
-      icon: <Swords className="w-8 h-8 text-red-500" />,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png`,
+      accent: 'rgba(248, 113, 113, 0.55)',
       stats: {
         health: 'High',
         speed: 'Medium',
@@ -66,7 +67,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'mage',
       name: 'マークスマン',
       description: 'マグナムとナイフ。一撃の重さで遠距離から狙撃する。',
-      icon: <Wand2 className="w-8 h-8 text-purple-500" />,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-walk-0.png`,
+      accent: 'rgba(168, 85, 247, 0.52)',
       stats: {
         health: 'Low',
         speed: 'Medium',
@@ -77,7 +79,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'rogue',
       name: 'ストライカー',
       description: 'ハンドガンとマチェーテ。手数とフィニッシュで攻める。',
-      icon: <Swords className="w-8 h-8 text-green-500" />,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png`,
+      accent: 'rgba(52, 211, 153, 0.48)',
       stats: {
         health: 'Low',
         speed: 'High',
@@ -88,7 +91,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'necromancer',
       name: 'スカベンジャー',
       description: 'ハンドガンとナイフ。拾った武器で戦況を変える。',
-      icon: <Skull className="w-8 h-8 text-indigo-500" />,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png`,
+      accent: 'rgba(129, 140, 248, 0.48)',
       stats: {
         health: 'Medium',
         speed: 'Low',
@@ -137,20 +141,40 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
             {characterClasses.map((charClass) => (
               <div
                 key={charClass.id}
-                className={`relative p-3 rounded-2xl transition-colors cursor-pointer border ${
+                className={`relative min-h-[154px] overflow-hidden rounded-2xl transition-colors cursor-pointer border ${
                   selectedClass === charClass.id
                     ? 'bg-blue-500/15 border-blue-400/60'
                     : 'bg-white/5 border-white/10 active:bg-white/10'
                 }`}
                 onClick={() => setSelectedClass(charClass.id)}
               >
-                <div className="flex items-start space-x-2">
-                  <div className="flex-shrink-0">
-                    {charClass.icon}
+                <div
+                  className="pointer-events-none absolute -left-7 -bottom-8 w-32 h-32 rounded-full blur-2xl opacity-40"
+                  style={{ backgroundColor: charClass.accent }}
+                />
+                <div className="relative flex min-h-[154px]">
+                  <div className="relative w-[86px] flex-shrink-0 flex items-end justify-center pt-3 pb-2">
+                    <div
+                      className={`absolute bottom-2 h-6 w-16 rounded-full blur-md transition-opacity ${
+                        selectedClass === charClass.id ? 'opacity-80' : 'opacity-35'
+                      }`}
+                      style={{ backgroundColor: charClass.accent }}
+                    />
+                    <img
+                      src={charClass.sprite}
+                      alt={charClass.name}
+                      className="relative z-10 max-h-[122px] max-w-[86px] object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.55)]"
+                      style={{
+                        imageRendering: 'pixelated',
+                        transform: selectedClass === charClass.id ? 'scale(1.06)' : 'scale(1)',
+                        transformOrigin: '50% 100%',
+                        transition: 'transform 140ms ease-out'
+                      }}
+                    />
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-medium text-white">{charClass.name}</h3>
-                    <p className="mt-1 text-xs text-gray-300">{charClass.description}</p>
+                  <div className="relative flex-1 min-w-0 px-2.5 py-3">
+                    <h3 className="text-base font-semibold text-white leading-tight">{charClass.name}</h3>
+                    <p className="mt-1 text-[11px] leading-snug text-gray-300">{charClass.description}</p>
                     
                     <div className="mt-2 grid grid-cols-3 w-full text-center text-xs text-gray-300">
                       <div>
@@ -194,7 +218,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                 </div>
                 
                 {selectedClass === charClass.id && (
-                  <div className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.8)]" />
+                  <>
+                    <div className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.8)]" />
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-300/80 shadow-[0_0_14px_rgba(147,197,253,0.9)]" />
+                  </>
                 )}
               </div>
             ))}

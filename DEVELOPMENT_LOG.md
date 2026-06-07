@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.11 - Use character sprites in start menu (Codex)
+
+### Summary
+Reworked the start-character selection cards to use the actual class sprites.
+- Removed the lucide class icons from the character cards.
+- Each class card now shows the corresponding standing sprite:
+  - `warrior`: shotgun/heavy-gunner female
+  - `mage`: marksman/blond rifle
+  - `rogue`: striker/white-haired handgun
+  - `necromancer`: scavenger
+- Added a small character stage, class-colored glow, selected-card scale, and
+  bottom highlight so the cards read as character choices rather than icon
+  buttons.
+
+### Code touched
+- `src/components/MainMenu.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Menu sprites currently use each class's `*-walk-0.png` standing frame.
+
 ## 2026-06-08 - v0.25.10 - Correct marksman and striker sprite assignment (Codex)
 
 ### Summary
