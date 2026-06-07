@@ -294,6 +294,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           playSfx('counter');
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
+          useGameStore.getState().spawnGlow(pcx, pcy, 78, 'rgba(56,189,248,', 280);
           spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, 320);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');

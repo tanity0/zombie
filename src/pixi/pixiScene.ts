@@ -127,6 +127,10 @@ const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
+const GEM_BODY_GLOW_ALPHA = 0.34;
+const STRONG_GLOW_RADIUS = 44;
+const LOCAL_EVENT_SHADE_ALPHA = 0.18;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.22;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
 
@@ -165,6 +169,13 @@ interface PropView {
   overlay: Graphics;
 }
 
+interface PickupView {
+  container: Container;
+  glow: Graphics;
+  gfx: Graphics;
+  sprite?: Sprite;
+}
+
 // One drifting ambient mote.
 interface Firefly {
   sprite: Sprite;
@@ -181,12 +192,13 @@ export class PixiScene {
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
 
-  private pickups = new Map<string, { container: Container; gfx: Graphics; sprite?: Sprite }>();
+  private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
   private effects = new Map<string, Graphics | Text>();
 
   private shadowGfx = new Graphics();
   private groundReflectionGfx = new Graphics();
+  private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
@@ -282,7 +294,12 @@ export class PixiScene {
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
     this.groundReflectionGfx.blendMode = 'add';
-    this.L.groundLayer.addChild(this.groundReflectionGfx, this.playerLight, this.shadowGfx);
+    this.L.groundLayer.addChild(
+      this.localEventShadeGfx,
+      this.groundReflectionGfx,
+      this.playerLight,
+      this.shadowGfx,
+    );
 
     this.L.effectLayer.addChild(this.playerFx);
 
@@ -574,6 +591,7 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncEffects(s.effects, now);
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, now);
+    this.syncLocalEventLighting(s.effects, s.player, s.enemies, now);
     this.syncPlayerFx(s.player, now);
     this.syncArrows(s.pickups, s.camera);
     this.syncFlash(s.effects, now);
@@ -785,6 +803,66 @@ export class PixiScene {
         `${e.color}1)`,
         GROUND_REFLECTION_ALPHA * 1.15 * (1 - t) * horizonAlpha
       );
+    }
+  }
+
+  private syncLocalEventLighting(
+    effects: VisualEffect[],
+    player: Player,
+    enemies: Enemy[],
+    now: number
+  ) {
+    const g = this.localEventShadeGfx;
+    g.clear();
+
+    for (const e of effects) {
+      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+      const t = Math.min(1, (now - e.createdAt) / e.duration);
+      const life = 1 - t;
+      const horizonAlpha = this.horizonActorAlpha(e.y);
+      if (life <= 0 || horizonAlpha <= 0) continue;
+
+      const d = this.depthScale(e.y);
+      const shadeAlpha = LOCAL_EVENT_SHADE_ALPHA * life * horizonAlpha;
+      const rx = e.radius * 1.95 * d;
+      const ry = e.radius * 0.78 * d;
+
+      // A soft local contrast ring: strong glow events deepen only the nearby
+      // damp floor, never the whole scene. The bright additive core is drawn by
+      // the glow effect itself above this ground-only shade.
+      g.ellipse(e.x, e.y + 12 * d, rx, ry)
+        .stroke({ width: Math.max(8, e.radius * 0.28 * d), color: 0x000000, alpha: shadeAlpha });
+
+      const castActors: Array<{ x: number; y: number; w: number }> = [{
+        x: player.x + player.width / 2,
+        y: playerFootBox(player).footY,
+        w: player.width,
+      }];
+      for (const enemy of enemies) {
+        const box = enemyFootBox(enemy);
+        castActors.push({ x: box.cx, y: box.footY, w: box.shadowW });
+      }
+
+      const reach = e.radius * 2.25;
+      for (const actor of castActors) {
+        const dx = actor.x - e.x;
+        const dy = actor.y - e.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1 || dist > reach) continue;
+        const falloff = 1 - dist / reach;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const len = (18 + e.radius * 0.16) * falloff * d;
+        const width = Math.max(5, actor.w * 0.34 * d) * falloff;
+        g.moveTo(actor.x + nx * 4, actor.y + ny * 2)
+          .lineTo(actor.x + nx * len, actor.y + ny * len * 0.6)
+          .stroke({
+            width,
+            color: 0x000000,
+            alpha: LOCAL_EVENT_SHADOW_ALPHA * life * falloff * horizonAlpha,
+            cap: 'round',
+          });
+      }
     }
   }
 
@@ -1089,10 +1167,12 @@ export class PixiScene {
       let entry = this.pickups.get(p.id);
       if (!entry) {
         const container = new Container();
+        const glow = new Graphics();
         const gfx = new Graphics();
-        container.addChild(gfx);
+        glow.blendMode = 'add';
+        container.addChild(glow, gfx);
         this.L.groundLayer.addChild(container);
-        entry = { container, gfx };
+        entry = { container, glow, gfx };
         this.pickups.set(p.id, entry);
       }
       this.drawPickup(entry, p, now);
@@ -1106,7 +1186,7 @@ export class PixiScene {
   }
 
   private drawPickup(
-    entry: { container: Container; gfx: Graphics; sprite?: Sprite },
+    entry: PickupView,
     p: Pickup,
     now: number
   ) {
@@ -1117,7 +1197,9 @@ export class PixiScene {
     const size = PICKUP_VISUAL_SIZE;
     const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
     const d = this.depthScale(footY); // foot = base of the pickup hitbox
+    const glow = entry.glow;
     const g = entry.gfx;
+    glow.clear();
     g.clear();
 
     // Shadow stays at the base (not floating) so the bob lifts the item off it.
@@ -1130,6 +1212,15 @@ export class PixiScene {
         : `pickup-${p.type}`;
       const tex = getTexture(name);
       if (tex) {
+        if (p.type === 'experience') {
+          const color = p.value >= 5 ? 0xff7878 : p.value >= 2 ? 0x54e68e : 0x70a7ff;
+          const pulse = 0.82 + 0.18 * Math.sin(now / 240 + p.x * 0.017);
+          const gy = footY + floatOffset - size * 0.48 * d;
+          const r = size * d * pulse;
+          glow.circle(cx, gy, r * 0.76).fill({ color, alpha: GEM_BODY_GLOW_ALPHA * 0.52 });
+          glow.circle(cx, gy, r * 0.46).fill({ color, alpha: GEM_BODY_GLOW_ALPHA });
+          glow.circle(cx, gy, r * 0.22).fill({ color: 0xffffff, alpha: GEM_BODY_GLOW_ALPHA * 0.72 });
+        }
         if (!entry.sprite) {
           entry.sprite = new Sprite();
           entry.sprite.anchor.set(0.5, 1);
@@ -1144,6 +1235,7 @@ export class PixiScene {
       }
     }
     if (entry.sprite) entry.sprite.visible = false;
+    glow.clear();
     this.drawProceduralPickup(g, p, cx, cy + floatOffset, now);
   }
 
@@ -1243,9 +1335,21 @@ export class PixiScene {
         // Additive soft disc with a brighter core (radial-gradient approximation).
         g.blendMode = 'add';
         g.alpha = 1 - t;
-        g.circle(e.x, e.y, e.radius).fill({ color: `${e.color}1)`, alpha: 0.4 });
-        g.circle(e.x, e.y, e.radius * 0.55).fill({ color: `${e.color}1)`, alpha: 0.5 });
-        g.circle(e.x, e.y, e.radius).stroke({ width: 2, color: `${e.color}1)` });
+        const isStrong = e.radius >= STRONG_GLOW_RADIUS;
+        const color = `${e.color}1)`;
+        if (isStrong) {
+          g.circle(e.x - 2, e.y, e.radius * 1.26).fill({ color: 0xff3344, alpha: 0.08 });
+          g.circle(e.x + 2, e.y, e.radius * 1.26).fill({ color: 0x38d9ff, alpha: 0.07 });
+          g.circle(e.x, e.y, e.radius * 1.42).fill({ color, alpha: 0.18 });
+          g.circle(e.x, e.y, e.radius * 0.92).fill({ color, alpha: 0.34 });
+          g.circle(e.x, e.y, e.radius * 0.45).fill({ color: 0xffffff, alpha: 0.34 });
+          g.circle(e.x, e.y, e.radius).stroke({ width: 4, color, alpha: 0.64 });
+          g.circle(e.x, e.y, e.radius * 0.58).stroke({ width: 1.5, color: 0xffffff, alpha: 0.42 });
+        } else {
+          g.circle(e.x, e.y, e.radius).fill({ color, alpha: 0.4 });
+          g.circle(e.x, e.y, e.radius * 0.55).fill({ color, alpha: 0.5 });
+          g.circle(e.x, e.y, e.radius).stroke({ width: 2, color });
+        }
         break;
       }
       case 'slash': {

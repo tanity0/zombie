@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.67 - Strengthen local glow contrast (Codex)
+
+### Summary
+Improved the cheap-looking damp-ground light around gems and strong glow events.
+- Added a dedicated additive pickup-glow layer so experience gems get a colored
+  multi-layer body glow instead of reading as flat white orbs.
+- Added local-only contrast shading and short cast shadows for strong `glow`
+  effects (`radius >= 44`), so finishers, torch breaks, level-up flashes, and
+  other big events deepen nearby ground without darkening the whole scene.
+- Upgraded strong glow rendering with wider bloom layers, a hot core, and subtle
+  red/cyan fringe for event-only impact.
+- Added a strong local glow to successful counters so the same local event-light
+  treatment applies there too.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The event-only threshold is `STRONG_GLOW_RADIUS`.
+- Gem body glow strength is `GEM_BODY_GLOW_ALPHA`.
+- Local darkening is intentionally ground-only and temporary; do not replace it
+  with a global darkness/DOF change unless the art direction changes.
+
 ## 2026-06-07 - v0.24.66 - Make damp ground reflections visible (Codex)
 
 ### Summary
