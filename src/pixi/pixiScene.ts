@@ -678,7 +678,7 @@ export class PixiScene {
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       view.sprite.scale.set(flip ? -sc : sc, sc);
     }
-    view.sprite.position.set(fb.footX, fb.footY);
+    view.sprite.position.set(Math.round(fb.footX), Math.round(fb.footY));
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
@@ -692,7 +692,7 @@ export class PixiScene {
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
-    view.sprite.position.set(fb.footX, fb.footY);
+    view.sprite.position.set(Math.round(fb.footX), Math.round(fb.footY));
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     view.container.alpha = horizonAlpha;
@@ -905,7 +905,7 @@ export class PixiScene {
         entry.sprite.texture = tex;
         const sc = containScale(size, size, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);
-        entry.sprite.position.set(cx, footY + floatOffset);
+        entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));
         entry.sprite.visible = true;
         return;
       }

@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.54 - Pixel-crisp focused sprites (Codex)
+
+### Summary
+Reduced sampling blur on focused pixel sprites without removing HD-2D depth
+effects.
+- Enabled Pixi renderer `roundPixels` for crisper pixel-art sampling.
+- Rounded only player, enemy, and sprite-backed pickup display positions.
+- Left gameplay coordinates, hitboxes, Y-sort, depth scale, DOF, bloom, fog, and
+  source art unchanged.
+
+### Code touched
+- `src/pixi/PixiStage.tsx`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is intentionally not a sharpening/outline pass. If center sprites still
+  lack detail, inspect source art resolution next rather than adding fake
+  correction layers.
+
 ## 2026-06-07 - v0.24.53 - Horizon forest parallax direction fix (Codex)
 
 ### Summary
