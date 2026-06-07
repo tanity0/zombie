@@ -30,6 +30,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         width,
         height,
         antialias: false, // pixel art — keep edges crisp
+        preserveDrawingBuffer: true, // test captures: keep WebGL canvas readable after render
         roundPixels: true,
         background: 0x0b0b12,
         resolution: Math.min(window.devicePixelRatio || 1, 2),

@@ -9,6 +9,7 @@ import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
 const BOSS_WARN_LEAD = 12 * 1000;
 const PERF_CAPTURE_COOLDOWN_MS = 15_000;
+const PERF_CAPTURE_DELAY_MS = 320;
 const PERF_THRESHOLDS = {
   fps: 45,
   effects: 180,
@@ -33,6 +34,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const projectilesCount = useGameStore(state => state.projectiles.length);
   const pickupsCount = useGameStore(state => state.pickups.length);
   const lastPerfCaptureAt = useRef(0);
+  const perfCaptureTimer = useRef<number | null>(null);
 
   const formattedTime = formatTime(gameTime / 1000);
   const expPercentage = (player.experience / player.experienceToNextLevel) * 100;
@@ -60,23 +62,34 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
     if (!perfWarning) return;
     const now = Date.now();
     if (now - lastPerfCaptureAt.current < PERF_CAPTURE_COOLDOWN_MS) return;
+    if (perfCaptureTimer.current !== null) return;
     lastPerfCaptureAt.current = now;
 
-    const canvas = document.querySelector<HTMLCanvasElement>('canvas');
-    if (!canvas || !canvas.toBlob) return;
+    perfCaptureTimer.current = window.setTimeout(() => {
+      perfCaptureTimer.current = null;
+      const canvas = document.querySelector<HTMLCanvasElement>('canvas');
+      if (!canvas || !canvas.toBlob) return;
 
-    const reason = perfIssues.join('_').replace(/[^a-zA-Z0-9_-]/g, '');
-    canvas.toBlob(blob => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `zombie-perf-${new Date(now).toISOString().replace(/[:.]/g, '-')}-${reason}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, 'image/png');
+      const reason = perfIssues.join('_').replace(/[^a-zA-Z0-9_-]/g, '');
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `zombie-perf-${new Date(now).toISOString().replace(/[:.]/g, '-')}-${reason}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 'image/png');
+    }, PERF_CAPTURE_DELAY_MS);
+
+    return () => {
+      if (perfCaptureTimer.current !== null) {
+        window.clearTimeout(perfCaptureTimer.current);
+        perfCaptureTimer.current = null;
+      }
+    };
   }, [perfWarning, perfIssues]);
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
@@ -283,12 +296,16 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
       {/* Test perf indicator */}
       <div
-        className={`absolute glass-pill px-2 py-1 text-[10px] tabular-nums leading-tight ${
-          perfWarning ? 'text-red-100 ring-1 ring-red-400/70 bg-red-500/15' : 'text-white/60'
+        className={`fixed px-2 py-1 rounded-lg text-[10px] tabular-nums leading-tight shadow-lg ${
+          perfWarning
+            ? 'text-red-50 ring-1 ring-red-300/90 bg-red-950/90'
+            : 'text-white/90 ring-1 ring-white/15 bg-black/75'
         }`}
         style={{
           right: 'max(env(safe-area-inset-right), 12px)',
-          top: 'calc(max(env(safe-area-inset-top), 8px) + 212px)'
+          top: 'calc(max(env(safe-area-inset-top), 8px) + 212px)',
+          zIndex: 90,
+          textShadow: '0 1px 2px rgba(0,0,0,0.95)'
         }}
       >
         <div>FPS {fps}</div>

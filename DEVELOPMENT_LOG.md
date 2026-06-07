@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.81 - Keep perf HUD above darkness and stabilize captures (Codex)
+
+### Summary
+Improved the test performance overlay and warning screenshots.
+- Moved the performance counter block to a fixed high-z overlay with a dark
+  opaque backing, so it stays readable above in-game darkness/flash effects.
+- Enabled Pixi `preserveDrawingBuffer` during this test phase so WebGL canvas
+  PNG captures are less likely to be blank/black.
+- Delayed warning captures by `320ms` after threshold detection to avoid
+  catching the darkest instant of a flash/fade.
+
+### Code touched
+- `src/components/GameHUD.tsx`
+- `src/pixi/PixiStage.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `preserveDrawingBuffer` can slightly hurt rendering performance; keep it only
+  while screenshot-based perf testing is useful.
+- Browser auto-download limitations still apply on iOS Safari.
+
 ## 2026-06-07 - v0.24.80 - Add perf debug counters and warning capture (Codex)
 
 ### Summary
