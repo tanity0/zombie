@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.4 - Add player walk motion (Codex)
+
+### Summary
+Added a lightweight walk motion to the player sprite.
+- Player sprite now bobs, sways, rotates slightly, and subtly squash-stretches
+  while moving.
+- The effect is visual-only: gameplay position, speed, hitbox, and foot z-sort
+  are unchanged.
+- The sprite returns to neutral scale/rotation when idle.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `PLAYER_WALK_CYCLE_MS`, `PLAYER_WALK_BOB_PX`, `PLAYER_WALK_SWAY_PX`, and
+  `PLAYER_WALK_ROTATION` in `src/pixi/pixiScene.ts` if the gait feels too subtle
+  or too wobbly.
+
 ## 2026-06-08 - v0.25.3 - Buff level upgrades and tighten shotgun cone (Codex)
 
 ### Summary

@@ -86,6 +86,10 @@ const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
 const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
+const PLAYER_WALK_CYCLE_MS = 260;
+const PLAYER_WALK_BOB_PX = 2.2;
+const PLAYER_WALK_SWAY_PX = 1.4;
+const PLAYER_WALK_ROTATION = 0.035;
 const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
 const ENEMY_BREATH_SCALE_Y = 0.024;
@@ -1066,14 +1070,23 @@ export class PixiScene {
     const fb = playerFootBox(p);
     const tex = getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
+    const walking = p.isMoving && p.direction !== 'idle';
+    const phase = walking ? (now / PLAYER_WALK_CYCLE_MS) * Math.PI * 2 : 0;
+    const step = Math.sin(phase);
+    const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
+    const sway = walking ? step * PLAYER_WALK_SWAY_PX * this.depthScale(fb.footY) : 0;
     if (tex) {
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScale(fb.footY);
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      view.sprite.scale.set(flip ? -sc : sc, sc);
+      const squash = walking ? Math.cos(phase) : 0;
+      const sx = sc * (1 + squash * 0.018);
+      const sy = sc * (1 - squash * 0.014);
+      view.sprite.scale.set(flip ? -sx : sx, sy);
+      view.sprite.rotation = walking ? step * PLAYER_WALK_ROTATION * (flip ? -1 : 1) : 0;
     }
     view.sprite.position.set(
-      this.snapToScreenPixel(fb.footX, this.L.world.position.x),
-      this.snapToScreenPixel(fb.footY, this.L.world.position.y),
+      this.snapToScreenPixel(fb.footX + sway, this.L.world.position.x),
+      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y),
     );
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
