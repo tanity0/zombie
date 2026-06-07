@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.25.0 - Add weapon base crit rates (Codex)
+
+### Summary
+Moved gun critical chance to weapon-based rates with level-up bonus on top.
+- Guns now receive base crit by family: shotgun 5%, handgun 10%, rifle/magnum
+  20%.
+- Weapon tier adds +3% crit per tier above tier 1.
+- Shotgun pellets roll crit independently per pellet using the weapon base rate
+  plus player bonus.
+- Level-up crit bonus is now capped at +30% and starts at 0%, instead of being
+  the whole gun crit chance.
+- Melee weapons keep their fixed weapon crit rates.
+
+### Code touched
+- `src/utils/weaponUtils.ts`
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current gun crit totals before level-up bonus: shotgun 5/8/11%, handgun
+  10/13/16%, rifle 20/23/26%.
+- Tune `BASE_CRIT_BY_CATEGORY` or `TIER_CRIT_STEP` in `src/utils/weaponUtils.ts`
+  if balance needs another pass.
+
 ## 2026-06-07 - v0.24.99 - Add melee finisher combo timer (Codex)
 
 ### Summary

@@ -249,7 +249,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoHandgun: AMMO_INITIAL.handgun,
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
-    critChance: 0.07,
+    critChance: 0,
     reloadEndsAt: 0,
     reloadingWeaponId: '',
     magBonus: 0,
@@ -751,7 +751,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             updatedPlayer.reloadMult = Math.max(0.4, updatedPlayer.reloadMult * 0.925);
             break;
           case 'critChance':
-            updatedPlayer.critChance = Math.min(0.6, updatedPlayer.critChance + 0.025);
+            updatedPlayer.critChance = Math.min(0.3, updatedPlayer.critChance + 0.025);
             break;
           // 'area' / 'duration' are no longer offered (no area weapons), but
           // keep harmless no-op cases for type completeness.
@@ -1553,7 +1553,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoHandgun: AMMO_INITIAL.handgun,
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
-          critChance: 0.07,
+          critChance: 0,
           reloadEndsAt: 0,
           reloadingWeaponId: '',
           magBonus: 0,

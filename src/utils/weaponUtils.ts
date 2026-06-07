@@ -6,6 +6,12 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 // feel snappier and reach their target sooner.
 const PROJECTILE_SPEED_MULT = 1.5;
 const SHOTGUN_SPREAD_STEP_RAD = 0.34;
+const TIER_CRIT_STEP = 0.03;
+const BASE_CRIT_BY_CATEGORY: Record<AmmoType, number> = {
+  handgun: 0.10,
+  shotgun: 0.05,
+  rifle: 0.20,
+};
 
 // ---------------------------------------------------------------------------
 // Weapon catalog
@@ -59,6 +65,12 @@ const CATALOG: Record<string, WeaponDef> = {
   'machete-t3':       { key: 'machete-t3', name: 'マチェーテ',     type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 }
 };
 
+const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
+  if (def.critChance !== undefined) return def.critChance;
+  if (!def.category) return undefined;
+  return BASE_CRIT_BY_CATEGORY[def.category] + Math.max(0, def.tier - 1) * TIER_CRIT_STEP;
+};
+
 export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
   handgun: ['handgun-t1', 'handgun-t2', 'handgun-t3'],
   shotgun: ['shotgun-t1', 'shotgun-t2', 'shotgun-t3'],
@@ -92,7 +104,7 @@ export const createWeapon = (key: string): Weapon => {
     magSize: def.magSize,
     magazine: def.magSize, // a fresh gun starts fully loaded
     reloadMs: def.reloadMs,
-    critChance: def.critChance,
+    critChance: weaponBaseCritChance(def),
     pierce: def.pierce,
     category: def.category,
     tier: def.tier,
@@ -248,7 +260,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       const angle = -spread * (count - 1) / 2 + i * spread;
       pd = rotate(baseDir, angle);
     }
-    const crit = Math.random() < (player.critChance || 0);
+    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0));
+    const crit = Math.random() < critChance;
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,
       x: player.x + player.width / 2 - size / 2,

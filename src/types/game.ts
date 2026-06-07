@@ -42,8 +42,8 @@ export interface Player {
   ammoHandgun: number;
   ammoShotgun: number;
   ammoRifle: number;
-  // Chance [0,1] that a gun hit crits — crits deal extra damage and stun
-  // the target so it can be finished with the melee counter.
+  // Level-up crit bonus [0, 0.30]. Gun shots add this to the weapon's base
+  // crit chance; melee uses its weapon crit chance directly.
   critChance: number;
   // Reload state. While reloadEndsAt is in the future the named gun is being
   // reloaded: it can't fire and the player moves at 2/3 speed (melee still
@@ -140,8 +140,8 @@ export interface Weapon {
   tier?: number;
   isMelee?: boolean;
   ammoType?: AmmoType;
-  // Fixed crit chance for this weapon. Guns currently roll the player's global
-  // critChance instead, but melee weapons carry their own fixed value here.
+  // Fixed/base crit chance for this weapon. Guns add the player's level-up
+  // crit bonus at fire time; melee weapons use this directly.
   critChance?: number;
   // Enemies a fired round passes through (piercing guns). Undefined = none /
   // unlimited depending on `passthrough`.
