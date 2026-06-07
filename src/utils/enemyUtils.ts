@@ -116,14 +116,25 @@ export const generateEnemy = (
   gameTime: number,
   player: Player,
   gameBounds: GameBounds,
-  forcedType?: EnemyType
+  forcedType?: EnemyType,
+  pressureDirection?: { x: number; y: number } | null
 ): Enemy => {
   const type = forcedType ?? selectEnemyType(gameTime);
   const buffer = 50;
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
 
-  const spawnSide = Math.floor(Math.random() * 4);
+  const dirMag = pressureDirection
+    ? Math.hypot(pressureDirection.x, pressureDirection.y)
+    : 0;
+  let spawnSide = Math.floor(Math.random() * 4);
+  if (dirMag > 0.25 && Math.random() < 0.34) {
+    const nx = pressureDirection!.x / dirMag;
+    const ny = pressureDirection!.y / dirMag;
+    spawnSide = Math.abs(nx) > Math.abs(ny)
+      ? (nx > 0 ? 1 : 3)
+      : (ny > 0 ? 2 : 0);
+  }
   let x = 0;
   let y = 0;
   switch (spawnSide) {

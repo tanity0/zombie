@@ -33,7 +33,9 @@ const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
 const MAX_ENEMIES = 10;
 const WAVE_GRACE_MS = 10000;
-const ENEMY_RECYCLE_DISTANCE_MULT = 1.35;
+const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
+const PICKUP_HARD_CAP = 120;
+const XP_PICKUP_KEEP_COUNT = 82;
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -473,7 +475,8 @@ export const useGameLoop = (onGameOver: () => void) => {
                   x: enemy.x + enemy.width / 2 - 8,
                   y: enemy.y + enemy.height / 2 - 8 - 18,
                   type: 'weapon-crate',
-                  value: 0
+                  value: 0,
+                  worldDrop: true
                 });
                 spawnRing(
                   enemy.x + enemy.width / 2,
@@ -498,7 +501,8 @@ export const useGameLoop = (onGameOver: () => void) => {
                     x: enemy.x + enemy.width / 2 - 8 + 16,
                     y: enemy.y + enemy.height / 2 - 8,
                     type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
-                    value: 0
+                    value: 0,
+                    worldDrop: true
                   });
                 }
               }
@@ -510,7 +514,8 @@ export const useGameLoop = (onGameOver: () => void) => {
                   y: enemy.y + enemy.height / 2 - 8 + 16,
                   type: 'weapon-drop',
                   value: 0,
-                  weaponKey: rollWeaponKey(gameTime)
+                  weaponKey: rollWeaponKey(gameTime),
+                  worldDrop: true
                 });
               }
               const chickenChance = isElite ? 0.35 : 0.015;
@@ -522,7 +527,8 @@ export const useGameLoop = (onGameOver: () => void) => {
                   x: enemy.x + enemy.width / 2 - 8,
                   y: enemy.y + enemy.height / 2 - 8 + 18,
                   type: 'health',
-                  value: 30
+                  value: 30,
+                  worldDrop: true
                 });
               }
               if (Math.random() < magnetChance) {
@@ -748,18 +754,18 @@ export const useGameLoop = (onGameOver: () => void) => {
             .filter(e => e.type === 'plant').length;
 
           for (let i = 0; i < spawnCount; i++) {
-            let enemy = generateEnemy(gameTime, player, gameBounds);
+            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, gameBounds);
+                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection);
                 tries++;
               }
               if (enemy.type === 'plant') {
-                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton');
+                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton', player.lastDirection);
               }
             }
             if (enemy.type === 'plant') plantCount += 1;
@@ -816,6 +822,9 @@ export const useGameLoop = (onGameOver: () => void) => {
           nextAmmoDropDelayRef.current = 75000 + Math.random() * 30000; // 75-105s between drops
         }
 
+        const playerCenterX = player.x + player.width / 2;
+        const playerCenterY = player.y + player.height / 2;
+
         // Scripted supply crates — three guaranteed weapon crates spread across
         // the run (on top of the crate every mid-boss drops). Placed near the
         // player so they're easy to grab while the action stays hot.
@@ -832,10 +841,28 @@ export const useGameLoop = (onGameOver: () => void) => {
             x: cx - 8,
             y: cy - 8,
             type: 'weapon-crate',
-            value: 0
+            value: 0,
+            worldDrop: true
           });
           spawnRing(cx, cy, 10, 80, 'rgba(96,165,250,0.8)', 3, 520);
           cratesDroppedRef.current += 1;
+        }
+
+        // VS keeps gems around, but this Pixi/HD-2D scene pays for every
+        // pickup. Keep important supplies indefinitely and trim only far XP
+        // gems once the field grows past the perf guardrail.
+        const currentPickupsForCap = useGameStore.getState().pickups;
+        if (currentPickupsForCap.length > PICKUP_HARD_CAP) {
+          const importantPickups = currentPickupsForCap.filter(p => p.type !== 'experience');
+          const keptXp = currentPickupsForCap
+            .filter(p => p.type === 'experience')
+            .sort((a, b) => {
+              const da = Math.hypot(a.x + 8 - playerCenterX, a.y + 8 - playerCenterY);
+              const db = Math.hypot(b.x + 8 - playerCenterX, b.y + 8 - playerCenterY);
+              return da - db;
+            })
+            .slice(0, XP_PICKUP_KEEP_COUNT);
+          useGameStore.setState({ pickups: [...importantPickups, ...keptXp] });
         }
 
         // Scripted wave/elite events (compressed 5-min schedule: early plant,
@@ -856,8 +883,6 @@ export const useGameLoop = (onGameOver: () => void) => {
         // spawn pool while reusing the same renderer id.
         const currentEnemiesForRecycle = useGameStore.getState().enemies;
         const recycleDistance = Math.max(gameBounds.width, gameBounds.height) * ENEMY_RECYCLE_DISTANCE_MULT;
-        const playerCenterX = player.x + player.width / 2;
-        const playerCenterY = player.y + player.height / 2;
         let recycledAnyEnemy = false;
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
           const enemyCenterX = enemy.x + enemy.width / 2;
@@ -871,7 +896,8 @@ export const useGameLoop = (onGameOver: () => void) => {
             gameTime,
             player,
             gameBounds,
-            preserveEnemyState ? enemy.type : undefined
+            preserveEnemyState ? enemy.type : undefined,
+            player.lastDirection
           );
           recycledAnyEnemy = true;
 

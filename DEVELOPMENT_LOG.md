@@ -10,6 +10,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.86 - Tighten enemy recycling and supply arrows (Codex)
+
+### Summary
+Adjusted enemy pressure and pickup guidance after the first recycling pass.
+- Enemy recycling now triggers much closer to the viewport, so the player cannot
+  kite far away from the horde as easily.
+- Continuous spawns and recycled enemies now occasionally bias toward the
+  player's movement direction, creating mild path-blocking pressure without
+  making every spawn predictable.
+- Ammo, weapon crates, weapon drops, and meat/health pickups now opt into the
+  off-screen arrow system when dropped by enemies or breakable torches.
+- Arrow colors now cover meat/health and weapon supplies in Pixi and the canvas
+  fallback renderer.
+- To prevent uncollected XP gems from growing without bound, the game trims only
+  far XP gems after the pickup count exceeds a guardrail; important supplies are
+  kept.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/utils/enemyUtils.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `src/utils/renderUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- VS-style behavior: XP gems can remain for collection/magnet feel, but this
+  implementation trims distant XP when item count is high for mobile perf.
+- Tuning points: `ENEMY_RECYCLE_DISTANCE_MULT`, `PICKUP_HARD_CAP`, and
+  `XP_PICKUP_KEEP_COUNT` in `src/hooks/useGameLoop.ts`; spawn direction bias is
+  inside `generateEnemy()` in `src/utils/enemyUtils.ts`.
+
 ## 2026-06-07 - v0.24.85 - Recycle distant enemies near viewport (Codex)
 
 ### Summary

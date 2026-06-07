@@ -216,7 +216,10 @@ export const renderGame = (
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
   'ammo-shotgun': '#ef4444',
-  'ammo-rifle': '#f59e0b'
+  'ammo-rifle': '#f59e0b',
+  'health': '#fb7185',
+  'weapon-crate': '#60a5fa',
+  'weapon-drop': '#bfdbfe'
 };
 
 // Draw a clamped edge arrow for every worldDrop ammo pickup that's off-screen,

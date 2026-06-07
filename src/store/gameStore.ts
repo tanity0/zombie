@@ -1187,7 +1187,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           id: `pickup-torch-ammo-${prop.id}`,
           x, y,
           type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
-          value: 0
+          value: 0,
+          worldDrop: true
         });
         return;
       }
@@ -1198,7 +1199,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `pickup-torch-health-${prop.id}`,
         x, y,
         type: 'health',
-        value: 20
+        value: 20,
+        worldDrop: true
       });
       return;
     }
@@ -1228,7 +1230,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       x, y,
       type: 'weapon-drop',
       value: 0,
-      weaponKey: rollWeaponKey(get().gameTime)
+      weaponKey: rollWeaponKey(get().gameTime),
+      worldDrop: true
     });
   },
 
