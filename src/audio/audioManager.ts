@@ -5,7 +5,7 @@ const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
 const BGM_VOLUME_KEY = 'zombie:bgmVolume';
 const SFX_VOLUME_KEY = 'zombie:sfxVolume';
-const DEFAULT_BGM_VOLUME = 0.55;
+const DEFAULT_BGM_VOLUME = 1;
 const DEFAULT_SFX_VOLUME = 1;
 
 const BGM_TRACKS = [

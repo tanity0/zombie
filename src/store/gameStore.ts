@@ -1233,10 +1233,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
-  // replaces the current gun/melee if it's the same or a higher tier (so a
-  // stray T1 drop never downgrades a T3). Otherwise it's discarded.
+  // replaces the current gun/melee if it is a higher tier (so a
+  // stray T1 drop never downgrades a T3). Existing guns convert to ammo.
   grantWeapon: (key) => {
     const weapon = createWeapon(key);
+    let duplicateAmmo: { amount: number } | null = null;
     set(state => {
       const player = state.player;
 
@@ -1258,8 +1259,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const current = idx >= 0 ? player.weapons[idx] : undefined;
       const isActiveCategory = current && current.id === player.activeWeaponId;
 
-      if (current && (weapon.tier ?? 1) < (current.tier ?? 1)) {
-        return {}; // already own a better gun of this category
+      if (current && (weapon.tier ?? 1) <= (current.tier ?? 1)) {
+        const ammoType = weapon.ammoType;
+        const ammoField = AMMO_FIELD[ammoType];
+        const amount = AMMO_PICKUP[ammoType] * 2;
+        duplicateAmmo = { amount };
+        return {
+          player: {
+            ...player,
+            [ammoField]: Math.min(AMMO_MAX[ammoType], player[ammoField] + amount)
+          },
+          lastWeaponGet: { name: `${weapon.name} -> 弾薬 +${amount}`, at: Date.now() }
+        };
       }
 
       const weapons = [...player.weapons];
@@ -1290,6 +1301,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastWeaponGet: { name: weapon.name, at: Date.now() }
       };
     });
+
+    if (duplicateAmmo) {
+      const p = get().player;
+      get().spawnAmmoNumber(p.x + p.width / 2, p.y - 6, duplicateAmmo.amount);
+    }
   },
 
   // Manually arm a specific gun (from the HUD weapon icons). Ignores melee.

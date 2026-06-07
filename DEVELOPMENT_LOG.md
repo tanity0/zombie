@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.78 - Full BGM default and duplicate weapon ammo (Codex)
+
+### Summary
+Adjusted audio defaults, duplicate weapon pickups, and reload HUD placement.
+- Changed the default BGM volume for new/unset settings from `55%` to `100%`.
+- Existing saved `zombie:bgmVolume` values are still respected; the new default
+  applies when no saved BGM volume exists yet.
+- Picking up a gun category already owned at the same or lower tier now converts
+  to ammo worth `AMMO_PICKUP * 2` instead of being discarded.
+- Higher-tier gun pickups still upgrade the weapon as before.
+- Reload progress is now positioned from the rendered player head height, so the
+  meter sits above the character art instead of overlapping the face.
+
+### Code touched
+- `src/audio/audioManager.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Duplicate gun ammo conversion lives in `grantWeapon`.
+- Melee weapon replacement behavior was left unchanged.
+- Reload meter placement uses `playerFootBox` plus `depthScale` to match the
+  HD-2D visual size.
+
 ## 2026-06-07 - v0.24.77 - Add grenade blast damage (Codex)
 
 ### Summary

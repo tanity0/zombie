@@ -1517,7 +1517,9 @@ export class PixiScene {
         const w = 30;
         const h = 5;
         const x = cx - w / 2;
-        const top = player.y - 16;
+        const fb = playerFootBox(player);
+        const d = this.depthScale(fb.footY);
+        const top = fb.footY - fb.boxH * d - 10;
         g.rect(x - 1, top - 1, w + 2, h + 2).fill({ color: 0x000000, alpha: 0.6 });
         g.rect(x, top, w, h).fill({ color: 0xffffff, alpha: 0.18 });
         g.rect(x, top, w * progress, h).fill({ color: 0xfbbf24 });
