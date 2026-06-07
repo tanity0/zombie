@@ -111,6 +111,7 @@ const ENEMY_DEPTH_MAX = 1.85;
 const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
+const GROUND_SCROLL_Y_FEEL = 1.2;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
@@ -464,7 +465,7 @@ export class PixiScene {
     const groundH = Math.max(1, this.screenH - farH);
     const strips = this.L.groundStrips;
     const stripH = groundH / strips.length;
-    let sourceY = cameraY + farH;
+    let sourceY = cameraY * GROUND_SCROLL_Y_FEEL + farH;
     this.L.groundBase.position.set(shakeX, farH + shakeY);
 
     for (let i = 0; i < strips.length; i++) {
@@ -1082,23 +1083,42 @@ export class PixiScene {
       const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
       if (ft < 1) {
         const fade = Math.max(0, 1 - ft);
-        const span = Math.PI * 1.05;
+        const fullSegs = 64;
+        for (let i = 0; i < fullSegs; i++) {
+          const a1 = -Math.PI + (i / fullSegs) * Math.PI * 2;
+          const a2 = -Math.PI + ((i + 1) / fullSegs) * Math.PI * 2;
+          const mid = (a1 + a2) / 2;
+          const forward = Math.max(0, Math.cos(mid - head));
+          const rear = Math.max(0, Math.cos(mid - head - Math.PI));
+          const glow = 0.25 + forward * 0.75 + rear * 0.12;
+          const rr = r + Math.sin(i * 1.7) * 0.9;
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 2.4 + glow * 8.5, color: 0xff9f1c, alpha: 0.12 * fade * glow, cap: 'round' });
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 0.75 + glow * 0.65, color: 0xfff3c4, alpha: 0.55 * fade, cap: 'round' });
+        }
+
+        const span = Math.PI * 1.08;
         const a0 = head - span / 2;
-        const segs = 20;
-        for (let i = 0; i < segs; i++) {
-          const f = i / segs;
+        const crescentSegs = 24;
+        for (let i = 0; i < crescentSegs; i++) {
+          const f = i / crescentSegs;
           const taper = Math.sin(f * Math.PI); // 0 at the tips, 1 at the belly
           const a1 = a0 + f * span;
-          const a2 = a0 + ((i + 1) / segs) * span;
-          g.moveTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r)
-            .lineTo(cx + Math.cos(a2) * r, cy + Math.sin(a2) * r)
-            .stroke({ width: 5 * taper + 0.6, color: 0xfff3c4, alpha: 0.95 * taper * fade });
+          const a2 = a0 + ((i + 1) / crescentSegs) * span;
+          const rr = r + 1.5 + taper * 2;
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 2 + 12 * taper, color: 0xff7a18, alpha: 0.16 * taper * fade, cap: 'round' });
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 0.8 + 2.3 * taper, color: 0xfff7cc, alpha: 0.92 * taper * fade, cap: 'round' });
         }
         g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
           .fill({ color: 0xffffff, alpha: 0.9 * fade });
       }
-      // Faint full reach ring underneath (thin).
-      g.circle(cx, cy, r).stroke({ width: 0.8, color: 0xfbbf24, alpha: 0.16 });
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }

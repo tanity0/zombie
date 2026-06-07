@@ -649,7 +649,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         switch (upgrade.passiveType) {
           case 'maxHealth':
             updatedPlayer.maxHealth += 10;
-            updatedPlayer.health = Math.min(updatedPlayer.health + 10, updatedPlayer.maxHealth);
+            updatedPlayer.health = updatedPlayer.maxHealth;
             break;
           case 'speed':
             updatedPlayer.speed = Math.round(updatedPlayer.speed * 1.05);

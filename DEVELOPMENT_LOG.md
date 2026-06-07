@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.56 - Ground scroll feel, HP full heal, crest ring polish (Codex)
+
+### Summary
+Adjusted three feel/presentation points without changing player movement speed.
+- Increased only the terrain texture's vertical scroll feel to `1.2x`.
+- Changed max-HP level-up upgrades to fully heal after increasing max HP.
+- Reworked the melee crest into a 360-degree luminous ring with thin linework
+  and angle-weighted glow, while keeping the stronger crescent belly.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `GROUND_SCROLL_Y_FEEL` is visual-only; player speed and camera tracking are
+  unchanged.
+
 ## 2026-06-07 - v0.24.55 - Replace player with purple-keyed source cutout (Codex)
 
 ### Summary
