@@ -5,7 +5,8 @@ import {
   COUNTER_EXTEND_PER_HIT,
   STUN_DURATION_MS,
   CRIT_DAMAGE_MULT,
-  BOSS_CRIT_DAMAGE_MULT
+  BOSS_CRIT_DAMAGE_MULT,
+  MINE_DAMAGE
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType } from '../types/game';
@@ -569,13 +570,48 @@ export const useGameLoop = (onGameOver: () => void) => {
           const fxX = hitProp.footX;
           const fxY = hitProp.footY - hitProp.height * 0.9;
           if (broken) {
-            spawnBurst(fxX, fxY, '#f97316', 20);
-            spawnBurst(fxX, fxY, '#fde68a', 8);
-            spawnRing(fxX, fxY, 6, 36, 'rgba(251,146,60,0.86)', 3, 340);
-            useGameStore.getState().spawnGlow(fxX, fxY, 48, 'rgba(251,146,60,', 380);
-            dropBreakablePropLoot(broken);
+            if (broken.type === 'mine') {
+              spawnBurst(fxX, fxY, '#facc15', 22);
+              spawnBurst(fxX, fxY, '#f97316', 16);
+              spawnRing(fxX, fxY, 4, 54, 'rgba(251,146,60,0.9)', 4, 360);
+              useGameStore.getState().spawnGlow(fxX, fxY, 62, 'rgba(251,146,60,', 360);
+            } else {
+              spawnBurst(fxX, fxY, '#f97316', 20);
+              spawnBurst(fxX, fxY, '#fde68a', 8);
+              spawnRing(fxX, fxY, 6, 36, 'rgba(251,146,60,0.86)', 3, 340);
+              useGameStore.getState().spawnGlow(fxX, fxY, 48, 'rgba(251,146,60,', 380);
+              dropBreakablePropLoot(broken);
+            }
           } else {
             spawnBurst(fxX, fxY, '#fbbf24', 5);
+          }
+        }
+
+        // Mines are passable traps: no loot, one hit to disarm, but stepping
+        // on one detonates it and hurts the player. The invulnerability window
+        // keeps a clustered patch from deleting the whole HP bar at once.
+        const currentPlayerForMine = useGameStore.getState().player;
+        const mineHit = useGameStore.getState().breakableProps.find(prop =>
+          prop.type === 'mine' && checkCollision(currentPlayerForMine, prop)
+        );
+        if (mineHit) {
+          const broken = damageBreakableProp(mineHit.id, 999);
+          const fxX = mineHit.footX;
+          const fxY = mineHit.footY - mineHit.height * 0.5;
+          spawnBurst(fxX, fxY, '#facc15', 26);
+          spawnBurst(fxX, fxY, '#ef4444', 14);
+          spawnRing(fxX, fxY, 5, 76, 'rgba(239,68,68,0.8)', 5, 420);
+          useGameStore.getState().spawnGlow(fxX, fxY, 78, 'rgba(251,146,60,', 420);
+          if (broken && !currentPlayerForMine.invulnerable) {
+            const playerDied = damagePlayer(MINE_DAMAGE);
+            playSfx('bomb');
+            spawnFlash('rgba(239,68,68,0.18)', 180);
+            if (playerDied) {
+              triggerPlayerDeath(
+                currentPlayerForMine.x + currentPlayerForMine.width / 2,
+                currentPlayerForMine.y + currentPlayerForMine.height / 2
+              );
+            }
           }
         }
         

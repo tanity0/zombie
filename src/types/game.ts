@@ -223,7 +223,7 @@ export interface BreakableProp {
   lastHit: number;
 }
 
-export type BreakablePropType = 'torch';
+export type BreakablePropType = 'torch' | 'mine';
 
 export type PickupType =
   | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'

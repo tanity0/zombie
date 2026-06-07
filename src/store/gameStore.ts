@@ -10,6 +10,7 @@ import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
 import { resolveTreeCollision } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
+import { mineRect, minesInRegion } from '../world/mines';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -109,6 +110,7 @@ export const WORLD_HALF_EXTENT = 200000;
 export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
 const BREAKABLE_PROP_DROP_CHANCE = 0.28;
+export const MINE_DAMAGE = 34;
 
 interface GameState {
   player: Player;
@@ -282,6 +284,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   movePlayer: (input, deltaTime) => {
     set(state => {
       const { player, gameBounds, swipeDirection, breakableProps } = state;
+      const solidProps = breakableProps.filter(p => p.type !== 'mine');
       void gameBounds; // World is effectively infinite — no clamp.
 
       // While reloading, the survivor is fumbling a fresh magazine in — they
@@ -323,7 +326,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         y: treeResolved.y,
         width: player.width,
         height: player.height,
-      }, breakableProps);
+      }, solidProps);
       const newX = resolved.x;
       const newY = resolved.y;
 
@@ -558,11 +561,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const broken = get().damageBreakableProp(prop.id, meleeDamage * 2.5);
       get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
       if (broken) {
-        get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
-        get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
-        get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
-        get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
-        get().dropBreakablePropLoot(broken);
+        if (broken.type === 'mine') {
+          get().spawnBurst(broken.footX, broken.footY - 8, '#facc15', 22);
+          get().spawnBurst(broken.footX, broken.footY - 8, '#f97316', 12);
+          get().spawnRing(broken.footX, broken.footY - 8, 5, 48, 'rgba(251,146,60,0.82)', 4, 320);
+          get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(251,146,60,', 320);
+        } else {
+          get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
+          get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
+          get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
+          get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
+          get().dropBreakablePropLoot(broken);
+        }
       }
     }
 
@@ -802,6 +812,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateEnemies: (deltaTime) => {
     set(state => {
       const { enemies, player, gameTime, breakableProps } = state;
+      const solidProps = breakableProps.filter(p => p.type !== 'mine');
       const now = Date.now();
 
       const updatedEnemies = enemies.map(enemy => {
@@ -821,7 +832,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             y: treeResolved.y,
             width: enemy.width,
             height: enemy.height,
-          }, breakableProps);
+          }, solidProps);
           return { ...enemy, x: kb.x, y: kb.y };
         }
 
@@ -858,7 +869,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           y: treeResolved.y,
           width: enemy.width,
           height: enemy.height,
-        }, breakableProps);
+        }, solidProps);
 
         return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
@@ -1111,6 +1122,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         camera.x + bounds.width + pad,
         camera.y + bounds.height + pad
       );
+      const generatedMines = minesInRegion(
+        camera.x - pad,
+        camera.y - pad,
+        camera.x + bounds.width + pad,
+        camera.y + bounds.height + pad
+      );
       const current = new Map(state.breakableProps.map(p => [p.id, p]));
       const next: BreakableProp[] = [];
 
@@ -1134,6 +1151,30 @@ export const useGameStore = create<GameState>((set, get) => ({
           health: 12,
           maxHealth: 12,
           type: 'torch',
+          lastHit: 0
+        });
+      }
+
+      for (const mine of generatedMines) {
+        if (state.destroyedBreakableProps[mine.id]) continue;
+        const existing = current.get(mine.id);
+        if (existing) {
+          next.push(existing);
+          continue;
+        }
+        const rect = mineRect(mine);
+        next.push({
+          id: mine.id,
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          footX: mine.footX,
+          footY: mine.footY,
+          scale: mine.scale,
+          health: 1,
+          maxHealth: 1,
+          type: 'mine',
           lastHit: 0
         });
       }

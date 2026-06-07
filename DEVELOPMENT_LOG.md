@@ -10,6 +10,41 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.87 - Add clustered breakable mines (Codex)
+
+### Summary
+Added low-frequency clustered mine/caltrop traps as a separate field-pressure
+object from enemies.
+- Mines spawn in deterministic clusters of roughly 4-6 pieces, at a lower
+  frequency than torches, so they occasionally block a route without becoming
+  constant friction.
+- Mines are passable traps: the player can walk over them, but stepping on one
+  detonates it for damage and destroys it.
+- Mines have 1 HP, so bullets or melee can disarm them in one hit.
+- Destroyed mines drop no items, unlike torches.
+- Enemies and player movement are no longer blocked by mines; torches remain
+  solid environmental props.
+- Pixi renders mines procedurally as small dark metal spikes with a faint red
+  warning dot, keeping the asset load light.
+
+### Code touched
+- `src/world/mines.ts`
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tuning points: `MINE_CELL` and the `0.09` spawn threshold in
+  `src/world/mines.ts`, and `MINE_DAMAGE` in `src/store/gameStore.ts`.
+- Current mine damage is 34 and uses the existing player invulnerability window,
+  so stepping into a cluster cannot stack every mine instantly.
+
 ## 2026-06-07 - v0.24.86 - Tighten enemy recycling and supply arrows (Codex)
 
 ### Summary

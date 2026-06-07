@@ -893,6 +893,53 @@ export class PixiScene {
   }
 
   private drawBreakableProp(view: PropView, prop: BreakableProp, now: number) {
+    if (prop.type === 'mine') {
+      const d = this.depthScale(prop.footY);
+      const horizonAlpha = this.horizonActorAlpha(prop.footY);
+      const pulse = 0.72 + 0.28 * Math.sin(now / 260 + prop.footX * 0.04);
+      const w = 18 * prop.scale * d;
+      const h = 10 * prop.scale * d;
+
+      view.container.zIndex = prop.footY;
+      view.container.alpha = horizonAlpha;
+      view.sprite.visible = false;
+      view.light.visible = false;
+      view.reflection.visible = false;
+
+      const g = view.flame;
+      g.clear();
+      const x = Math.round(prop.footX);
+      const y = Math.round(prop.footY - h * 0.55);
+      if (horizonAlpha > 0) {
+        g.ellipse(x, prop.footY - h * 0.05, w * 0.76, h * 0.34)
+          .fill({ color: 0x050608, alpha: 0.34 });
+        g.poly([
+          x - w * 0.55, y + h * 0.26,
+          x - w * 0.18, y - h * 0.18,
+          x - w * 0.04, y + h * 0.26,
+        ]).fill({ color: 0x111827, alpha: 0.96 });
+        g.poly([
+          x + w * 0.55, y + h * 0.26,
+          x + w * 0.18, y - h * 0.18,
+          x + w * 0.04, y + h * 0.26,
+        ]).fill({ color: 0x111827, alpha: 0.96 });
+        g.poly([
+          x - w * 0.24, y + h * 0.18,
+          x, y - h * 0.62,
+          x + w * 0.24, y + h * 0.18,
+        ]).fill({ color: 0x1f2937, alpha: 0.98 });
+        g.circle(x, y + h * 0.12, Math.max(1.6, 2.2 * d * prop.scale))
+          .fill({ color: 0xb91c1c, alpha: 0.52 + 0.26 * pulse });
+      }
+
+      const o = view.overlay;
+      o.clear();
+      if (now - prop.lastHit < 90) {
+        o.circle(x, y, Math.max(13, w * 0.62)).fill({ color: 0xffffff, alpha: 0.28 });
+      }
+      return;
+    }
+
     const tex = getTexture(prop.type);
     const d = this.depthScale(prop.footY);
     const visualW = TORCH_VISUAL_W * prop.scale;
