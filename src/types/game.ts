@@ -92,6 +92,8 @@ export interface Enemy {
   // gameTime < stunUntil the enemy stops moving and can be finished with
   // a melee counter for an instant kill.
   stunUntil?: number;
+  // Visual-only lift reaction for boss melee finisher-grade hits.
+  liftUntil?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.

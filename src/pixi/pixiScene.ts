@@ -84,6 +84,8 @@ const ENEMY_LIGHT_ENABLED = true;
 const ENEMY_LIGHT_CULL_COUNT = 7;
 const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
+const BOSS_FINISH_LIFT_MS = 420;
+const BOSS_FINISH_LIFT_PX = 18;
 const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
 const ENEMY_BREATH_SCALE_Y = 0.024;
@@ -1086,7 +1088,10 @@ export class PixiScene {
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
-    view.sprite.position.set(Math.round(fb.footX), Math.round(fb.footY));
+    const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
+    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
+    const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop));
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     view.container.alpha = horizonAlpha;

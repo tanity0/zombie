@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.97 - Add boss finisher lift reaction (Codex)
+
+### Summary
+Added a visual lift reaction when a stunned boss takes melee finisher-grade
+damage.
+- Bosses that survive a stunned melee finisher hit now get a short visual-only
+  lift window (`liftUntil`).
+- Pixi offsets only the enemy sprite upward with a subtle shake, leaving foot
+  position, z-sort, collision, and gameplay movement unchanged.
+- Normal enemies and boss deaths are unchanged.
+
+### Code touched
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tune `BOSS_FINISH_LIFT_MS` and `BOSS_FINISH_LIFT_PX` in
+  `src/pixi/pixiScene.ts` if the reaction should be heavier or subtler.
+
 ## 2026-06-07 - v0.24.96 - Add one-time insect egg ambush (Codex)
 
 ### Summary

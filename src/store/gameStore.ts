@@ -418,7 +418,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
           } else {
-            survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now });
+            survivors.push({
+              ...enemy,
+              health: newHealth,
+              stunUntil: undefined,
+              lastHit: now,
+              liftUntil: now + 420,
+            });
           }
           continue;
         }
