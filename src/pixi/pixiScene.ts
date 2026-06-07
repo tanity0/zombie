@@ -912,17 +912,17 @@ export class PixiScene {
       const y = Math.round(prop.footY - h * 0.62);
       if (horizonAlpha > 0) {
         g.ellipse(x, prop.footY - h * 0.03, w * 0.82, h * 0.28)
-          .fill({ color: 0x03130a, alpha: 0.34 });
+          .fill({ color: 0x07100a, alpha: 0.38 });
         g.ellipse(x, y + h * 0.24, w * 0.44, h * 0.62)
-          .fill({ color: 0x052e16, alpha: 0.94 });
+          .fill({ color: 0x0b2113, alpha: 0.92 });
         g.ellipse(x - w * 0.04, y + h * 0.14, w * 0.34, h * 0.48)
-          .fill({ color: 0x166534, alpha: 0.88 });
+          .fill({ color: 0x24351f, alpha: 0.86 });
         g.ellipse(x + w * 0.08, y + h * 0.08, w * 0.22, h * 0.34)
-          .fill({ color: 0x84cc16, alpha: 0.24 + 0.16 * pulse });
+          .fill({ color: 0x52633a, alpha: 0.13 + 0.08 * pulse });
         g.ellipse(x - w * 0.13, y - h * 0.1, w * 0.12, h * 0.16)
-          .fill({ color: 0xd9f99d, alpha: 0.32 + 0.18 * pulse });
+          .fill({ color: 0x8a9164, alpha: 0.14 + 0.08 * pulse });
         g.circle(x + w * 0.22, y + h * 0.2, Math.max(1.1, 1.4 * d * prop.scale))
-          .fill({ color: 0x0b1f0f, alpha: 0.42 });
+          .fill({ color: 0x11170d, alpha: 0.46 });
       }
 
       const o = view.overlay;

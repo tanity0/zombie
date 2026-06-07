@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.94 - Mute egg colors and stagger rows (Codex)
+
+### Summary
+Adjusted insect eggs so they blend into the ground and form less mechanical
+patches.
+- Muted egg colors from vivid yellow-green to darker moss/olive tones with much
+  softer highlights.
+- Forward pressure egg patches now lay out in deterministic 2-3 staggered rows
+  instead of a mostly single line.
+- Preserved the 5-10 egg random count and occasional pass-through gap behavior.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/world/mines.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Color choices intentionally avoid saturated green so future gray/brown floor
+  variants should not make eggs look like UI markers.
+
 ## 2026-06-07 - v0.24.93 - Randomize egg patch count (Codex)
 
 ### Summary

@@ -78,6 +78,9 @@ export const pressureMinesNearPlayer = (
   const centerY = playerY + ny * ahead;
   const count = 5 + Math.floor(mineHash(segment - 17, segment + 61) * 6); // 5-10 eggs
   const spacing = 26 + mineHash(segment + 7, segment - 5) * 11;
+  const rowCount = 2 + Math.floor(mineHash(segment + 43, segment - 21) * 2);
+  const rowSpacing = 24 + mineHash(segment - 71, segment + 19) * 14;
+  const colCount = Math.ceil(count / rowCount);
   const gapIndex = Math.floor(mineHash(segment + 37, segment + 73) * count);
 
   const out: MineInstance[] = [];
@@ -85,14 +88,18 @@ export const pressureMinesNearPlayer = (
     // Leave a mild gap sometimes so the player can thread through instead of
     // being forced to shoot every patch.
     if (count >= 7 && i === gapIndex && mineHash(segment - 3, i + 97) < 0.42) continue;
-    const lane = i - (count - 1) / 2;
-    const offset = lane * spacing + (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 28;
-    const sideJitter = (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 46;
-    const clumpJitter = Math.sin(i * 1.71 + mineHash(segment, i) * Math.PI * 2) * 14;
+    const row = i % rowCount;
+    const col = Math.floor(i / rowCount);
+    const colLane = col - (colCount - 1) / 2;
+    const rowLane = row - (rowCount - 1) / 2;
+    const stagger = (row - (rowCount - 1) / 2) * spacing * 0.34;
+    const colOffset = colLane * spacing + stagger + (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 24;
+    const rowOffset = rowLane * rowSpacing + (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 22;
+    const clumpJitter = Math.sin(i * 1.71 + mineHash(segment, i) * Math.PI * 2) * 9;
     out.push({
       id: `mine-pressure-${segment}-${i}`,
-      footX: centerX + px * (offset + clumpJitter) + nx * sideJitter,
-      footY: centerY + py * (offset + clumpJitter) + ny * sideJitter,
+      footX: centerX + px * (colOffset + clumpJitter) + nx * rowOffset,
+      footY: centerY + py * (colOffset + clumpJitter) + ny * rowOffset,
       scale: 0.84 + mineHash(segment + i * 5, segment + i * 7) * 0.16,
     });
   }
