@@ -385,7 +385,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false; // finisher-grade damage landed on a stunned boss
     const survivors: Enemy[] = [];
-    const critHits: { x: number; y: number; value: number }[] = [];
+    const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
     for (const enemy of enemies) {
@@ -406,7 +406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 5× melee damage and shakes off the stun (no finisher).
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
-          critHits.push({ x: ecx, y: enemy.y, value: Math.round(dmg) });
+          meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
@@ -422,7 +422,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // multiplies the swing's damage and pops a gold number.
       const crit = Math.random() < meleeCritChance;
       const dmg = meleeDamage * (crit ? CRIT_DAMAGE_MULT : 1);
-      if (crit) critHits.push({ x: ecx, y: enemy.y, value: Math.round(dmg) });
+      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
@@ -482,9 +482,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnSlash(s.x, s.y);
     }
 
-    // Gold crit numbers for any critical melee hits.
-    for (const c of critHits) {
-      get().spawnDamageNumber(c.x, c.y, c.value, true);
+    // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
+    for (const c of meleeDamageNumbers) {
+      get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     }
 
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill

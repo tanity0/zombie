@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.76 - Add opening settings and melee damage numbers (Codex)
+
+### Summary
+Added opening-screen settings and fixed missing melee damage numbers.
+- Normal melee hits now spawn damage numbers, not only critical melee hits.
+- Critical melee and stunned-boss melee damage still use the gold/crit number
+  style.
+- Added a settings button to the opening menu.
+- Moved the ammo drop percentage into the settings panel.
+- Added persistent BGM and SE volume sliders.
+- Raised the default BGM volume from `0.30` to `0.55`.
+- BGM volume is applied through the existing WebAudio gain path for iOS-safe
+  control; SE volume scales all SFX while preserving per-sound balance.
+
+### Code touched
+- `src/audio/audioManager.ts`
+- `src/components/MainMenu.tsx`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Volume storage keys: `zombie:bgmVolume`, `zombie:sfxVolume`.
+- Mute remains separate via `zombie:audioMuted`.
+- If the settings panel feels crowded on small screens, keep it collapsible and
+  adjust spacing rather than returning all controls to the main menu surface.
+
 ## 2026-06-07 - v0.24.75 - Add bullet-hit blood and chest crate art (Codex)
 
 ### Summary

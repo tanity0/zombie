@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
-import { Skull, Wand2, Swords, Volume2, VolumeX } from 'lucide-react';
+import { Settings, Skull, Wand2, Swords, Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
-import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
+import {
+  getBgmVolume,
+  getSfxVolume,
+  isAudioMuted,
+  setAudioMuted,
+  setBgmVolume,
+  setSfxVolume
+} from '../audio/audioManager';
 
 interface MainMenuProps {
   onStartGame: (characterClass: string) => void;
@@ -9,7 +16,10 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   const [selectedClass, setSelectedClass] = useState('warrior');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
+  const [bgmVol, setBgmVol] = useState(getBgmVolume);
+  const [sfxVol, setSfxVol] = useState(getSfxVolume);
 
   // Start-screen ammo drop-rate setting (persisted in the store/localStorage).
   const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
@@ -28,6 +38,16 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     const next = !audioMuted;
     setAudioMutedState(next);
     setAudioMuted(next);
+  };
+  const changeBgmVolume = (raw: string) => {
+    const next = Number(raw) / 100;
+    setBgmVol(next);
+    setBgmVolume(next);
+  };
+  const changeSfxVolume = (raw: string) => {
+    const next = Number(raw) / 100;
+    setSfxVol(next);
+    setSfxVolume(next);
   };
   
   const characterClasses = [
@@ -98,6 +118,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           <span className="absolute top-3 right-3 glass-pill px-2 py-0.5 text-[10px] font-mono tabular-nums text-white/70">
             v{__APP_VERSION__}
           </span>
+          <button
+            onClick={() => setSettingsOpen(v => !v)}
+            className="absolute top-3 left-3 w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-white/80 flex items-center justify-center active:bg-white/10"
+            aria-label="設定"
+            title="設定"
+          >
+            <Settings size={17} />
+          </button>
         </div>
 
         <div className="p-3">
@@ -173,26 +201,72 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           </div>
 
           <div className="flex flex-col items-center px-2">
-            {/* Ammo drop-rate setting — melee kill base rate; finisher is ×1.5 */}
-            <div className="w-full mb-3 flex items-center justify-between gap-3 rounded-2xl bg-white/5 border border-white/10 px-3 py-2.5">
-              <div className="text-left">
-                <div className="text-[13px] font-medium text-white">弾ドロップ率</div>
-                <div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5。</div>
+            {settingsOpen && (
+              <div className="w-full mb-3 rounded-2xl bg-white/5 border border-white/10 px-3 py-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-left">
+                    <div className="text-[13px] font-medium text-white">弾ドロップ率</div>
+                    <div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5。</div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      value={dropInput}
+                      onChange={(e) => commitDrop(e.target.value)}
+                      onBlur={normalizeDrop}
+                      className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+                    />
+                    <span className="text-white/60 text-sm">%</span>
+                  </div>
+                </div>
+
+                <label className="block">
+                  <div className="mb-1 flex items-center justify-between text-[12px] text-white/70">
+                    <span>BGM</span>
+                    <span className="tabular-nums">{Math.round(bgmVol * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(bgmVol * 100)}
+                    onChange={(e) => changeBgmVolume(e.target.value)}
+                    className="w-full accent-blue-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="mb-1 flex items-center justify-between text-[12px] text-white/70">
+                    <span>SE</span>
+                    <span className="tabular-nums">{Math.round(sfxVol * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(sfxVol * 100)}
+                    onChange={(e) => changeSfxVolume(e.target.value)}
+                    className="w-full accent-emerald-400"
+                  />
+                </label>
+
+                <button
+                  onClick={toggleAudio}
+                  className={`w-full py-2.5 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 ${
+                    audioMuted
+                      ? 'bg-white/5 border-white/10 text-white/70'
+                      : 'bg-emerald-400/10 border-emerald-300/35 text-emerald-100'
+                  }`}
+                  aria-label={audioMuted ? '音をオンにする' : '音をオフにする'}
+                >
+                  {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+                  {audioMuted ? '音なし' : '音あり'}
+                </button>
               </div>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={100}
-                  value={dropInput}
-                  onChange={(e) => commitDrop(e.target.value)}
-                  onBlur={normalizeDrop}
-                  className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60"
-                />
-                <span className="text-white/60 text-sm">%</span>
-              </div>
-            </div>
+            )}
 
             <button
               onClick={() => onStartGame(selectedClass)}
@@ -203,19 +277,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
               }}
             >
               はじめる
-            </button>
-
-            <button
-              onClick={toggleAudio}
-              className={`mt-2 w-full py-2.5 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 ${
-                audioMuted
-                  ? 'bg-white/5 border-white/10 text-white/70'
-                  : 'bg-emerald-400/10 border-emerald-300/35 text-emerald-100'
-              }`}
-              aria-label={audioMuted ? '音をオンにする' : '音をオフにする'}
-            >
-              {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
-              {audioMuted ? '音なし' : '音あり'}
             </button>
 
             <div className="mt-3 text-[12px] text-white/60 space-y-1 text-center">

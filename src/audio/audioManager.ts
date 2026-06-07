@@ -3,8 +3,10 @@
 
 const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
-const TARGET_BGM_VOLUME = 0.3;
-const TARGET_SFX_VOLUME = 0.72;
+const BGM_VOLUME_KEY = 'zombie:bgmVolume';
+const SFX_VOLUME_KEY = 'zombie:sfxVolume';
+const DEFAULT_BGM_VOLUME = 0.55;
+const DEFAULT_SFX_VOLUME = 1;
 
 const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
@@ -146,6 +148,8 @@ let bgmGain: GainNode | null = null; // BGM routed through WebAudio so its volum
 let bgmRouted = false;               // is controllable on iOS (element.volume isn't)
 let bgmActive = false;
 let muted = false;
+let bgmVolume = DEFAULT_BGM_VOLUME;
+let sfxVolume = DEFAULT_SFX_VOLUME;
 let sfxContext: AudioContext | null = null;
 
 const sfxBuffers = new Map<SfxKey, AudioBuffer>();
@@ -171,6 +175,21 @@ const readInitialMuted = () => {
 };
 
 muted = readInitialMuted();
+
+const readVolume = (key: string, fallback: number) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(1, n));
+  } catch {
+    return fallback;
+  }
+};
+
+bgmVolume = readVolume(BGM_VOLUME_KEY, DEFAULT_BGM_VOLUME);
+sfxVolume = readVolume(SFX_VOLUME_KEY, DEFAULT_SFX_VOLUME);
 
 const persistMuted = () => {
   try {
@@ -200,7 +219,7 @@ const ensureBgmRouting = () => {
   try {
     const source = ctx.createMediaElementSource(bgm);
     bgmGain = ctx.createGain();
-    bgmGain.gain.value = TARGET_BGM_VOLUME;
+    bgmGain.gain.value = bgmVolume;
     source.connect(bgmGain);
     bgmGain.connect(ctx.destination);
     bgmRouted = true;
@@ -218,8 +237,8 @@ const applyBgm = () => {
   if (bgmActive && !muted) {
     resumeSfxContext();
     ensureBgmRouting();
-    if (bgmGain) bgmGain.gain.value = TARGET_BGM_VOLUME;
-    else bgm.volume = TARGET_BGM_VOLUME;
+    if (bgmGain) bgmGain.gain.value = bgmVolume;
+    else bgm.volume = bgmVolume;
     void playBgm();
   } else {
     bgm.pause();
@@ -281,11 +300,26 @@ const playBgm = async () => {
 
 export const isAudioMuted = () => muted;
 
+export const getBgmVolume = () => bgmVolume;
+
+export const getSfxVolume = () => sfxVolume;
+
 export const setAudioMuted = (nextMuted: boolean) => {
   muted = nextMuted;
   persistMuted();
   if (!muted) warmSfxBuffers();
   applyBgm();
+};
+
+export const setBgmVolume = (volume: number) => {
+  bgmVolume = Math.max(0, Math.min(1, volume));
+  try { localStorage.setItem(BGM_VOLUME_KEY, String(bgmVolume)); } catch { /* ignore */ }
+  applyBgm();
+};
+
+export const setSfxVolume = (volume: number) => {
+  sfxVolume = Math.max(0, Math.min(1, volume));
+  try { localStorage.setItem(SFX_VOLUME_KEY, String(sfxVolume)); } catch { /* ignore */ }
 };
 
 export const setBgmActive = async (nextActive: boolean) => {
@@ -318,7 +352,7 @@ export const playSfx = (key: SfxKey) => {
   const gain = context.createGain();
   source.buffer = buffer;
   source.playbackRate.value = config.playbackRate ?? 1;
-  gain.gain.value = config.volume ?? TARGET_SFX_VOLUME;
+  gain.gain.value = (config.volume ?? 1) * sfxVolume;
   source.connect(gain);
   gain.connect(context.destination);
 
