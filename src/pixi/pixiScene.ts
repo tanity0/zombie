@@ -111,7 +111,8 @@ const ENEMY_DEPTH_MAX = 1.85;
 const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
-const GROUND_SCROLL_Y_FEEL = 1.8;
+const GROUND_SCROLL_X_FEEL = 1.2;
+const GROUND_SCROLL_Y_FEEL = 2.0;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
@@ -479,7 +480,7 @@ export class PixiScene {
       strip.width = this.screenW;
       strip.height = Math.ceil(stripH) + 2;
       strip.tileScale.set(GROUND_TILE_SCALE_X, scaleY);
-      strip.tilePosition.set(-cameraX * GROUND_TILE_SCALE_X, -sourceY * scaleY);
+      strip.tilePosition.set(-cameraX * GROUND_TILE_SCALE_X * GROUND_SCROLL_X_FEEL, -sourceY * scaleY);
       sourceY += stripH / Math.max(0.001, scaleY);
     }
   }

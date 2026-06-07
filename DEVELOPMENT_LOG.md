@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.60 - Tune ground scroll feel X/Y (Codex)
+
+### Summary
+Adjusted visual-only ground texture scroll feel on both axes.
+- Changed vertical ground scroll feel from `1.8` to `2.0`.
+- Added horizontal ground scroll feel at `1.2`.
+- Player speed, camera tracking, collisions, and object positions are unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Terrain texture scroll is now independently tunable via
+  `GROUND_SCROLL_X_FEEL` and `GROUND_SCROLL_Y_FEEL`.
+
 ## 2026-06-07 - v0.24.59 - Increase vertical ground scroll feel to 1.8 (Codex)
 
 ### Summary
