@@ -91,12 +91,25 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
       {comboVisible && (
         <div
-          className="absolute left-1/2 -translate-x-1/2 text-center"
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 142px)' }}
+          className="absolute text-left"
+          style={{
+            top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+            left: 'max(env(safe-area-inset-left), 18px)',
+          }}
         >
-          <div className="px-4 py-1.5 rounded-full bg-amber-500/18 border border-amber-200/50 shadow-[0_0_18px_rgba(251,191,36,0.35)] backdrop-blur-sm">
-            <div className="text-[10px] leading-none tracking-[0.24em] text-amber-100/80 font-bold">近接フィニッシュ</div>
-            <div className="text-2xl leading-tight font-black tabular-nums text-amber-100 drop-shadow">{meleeFinishComboCount} COMBO</div>
+          <div className="leading-none">
+            <div
+              className="text-[9px] tracking-[0.18em] text-amber-100/75 font-bold"
+              style={{ textShadow: '0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(251,191,36,0.35)' }}
+            >
+              FINISH / COUNTER
+            </div>
+            <div
+              className="text-xl font-black tabular-nums text-amber-100"
+              style={{ WebkitTextStroke: '1px rgba(20,12,4,0.9)', textShadow: '0 0 8px rgba(251,191,36,0.45)' }}
+            >
+              {meleeFinishComboCount} COMBO
+            </div>
           </div>
         </div>
       )}

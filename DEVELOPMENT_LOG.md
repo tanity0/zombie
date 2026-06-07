@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.25.1 - Count counters and multi-finish combos (Codex)
+
+### Summary
+Expanded combo counting and simplified combo UI.
+- Simultaneous melee finishers now add one combo count per finished enemy.
+- Boss melee finisher-grade hits still add one combo count.
+- Successful counters/reflections add one combo count when a projectile is
+  actually reflected.
+- Combo HUD moved to the left, removed the pill frame, and now uses smaller
+  outlined text.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/components/GameHUD.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The shared combo helper is `addMeleeFinishCombo()` in `src/store/gameStore.ts`.
+  The name is historical; it now also covers successful counters.
+
 ## 2026-06-07 - v0.25.0 - Add weapon base crit rates (Codex)
 
 ### Summary

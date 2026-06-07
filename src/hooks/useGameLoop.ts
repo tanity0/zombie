@@ -93,6 +93,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const setGameTime = useGameStore(state => state.setGameTime);
   const updateGameStats = useGameStore(state => state.updateGameStats);
   const setCameraPosition = useGameStore(state => state.setCameraPosition);
+  const addMeleeFinishCombo = useGameStore(state => state.addMeleeFinishCombo);
   const spawnBurst = useGameStore(state => state.spawnBurst);
   const spawnDamageNumber = useGameStore(state => state.spawnDamageNumber);
   const spawnRing = useGameStore(state => state.spawnRing);
@@ -327,6 +328,7 @@ export const useGameLoop = (onGameOver: () => void) => {
         }
         // "Counter!" only when a bullet was actually reflected (once per frame).
         if (reflectedAny) {
+          addMeleeFinishCombo(1);
           playSfx('counter');
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -1127,6 +1129,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     setGameTime,
     updateGameStats,
     setCameraPosition,
+    addMeleeFinishCombo,
     spawnBurst,
     spawnDamageNumber,
     spawnRing,

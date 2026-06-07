@@ -203,6 +203,7 @@ interface GameState {
   setGameTime: (time: number) => void;
   setPaused: (paused: boolean) => void;
   setMeleeAmmoDropPercent: (pct: number) => void;
+  addMeleeFinishCombo: (amount?: number) => void;
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
@@ -479,7 +480,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // A melee finisher (instant execute) triggers a brief full-game hitstop.
     const finisherHit = killed.some(k => k.finisher);
-    const comboFinishHit = finisherHit || bossFinishHit;
+    const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
     set(state => ({
       enemies: survivors,
@@ -488,10 +489,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemiesKilled: state.gameStats.enemiesKilled + killed.length
       },
       gameWon: state.gameWon || bossKilled,
-      meleeFinishComboCount: comboFinishHit
-        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + 1 : 1)
+      meleeFinishComboCount: comboFinishCount > 0
+        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
-      meleeFinishComboUntil: comboFinishHit
+      meleeFinishComboUntil: comboFinishCount > 0
         ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS
         : state.meleeFinishComboUntil,
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
@@ -1502,6 +1503,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     const clamped = clampDropPct(pct);
     try { localStorage.setItem(DROP_PCT_KEY, String(clamped)); } catch { /* ignore */ }
     set({ meleeAmmoDropPercent: clamped });
+  },
+
+  addMeleeFinishCombo: (amount = 1) => {
+    const gain = Math.max(1, Math.floor(amount));
+    set(state => ({
+      meleeFinishComboCount: state.meleeFinishComboUntil >= state.gameTime
+        ? state.meleeFinishComboCount + gain
+        : gain,
+      meleeFinishComboUntil: state.gameTime + MELEE_FINISH_COMBO_WINDOW_MS,
+    }));
   },
 
   setGameBounds: (bounds) => {
