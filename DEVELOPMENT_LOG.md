@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.72 - Add subtle enemy breathing (Codex)
+
+### Summary
+Added a lightweight idle breathing motion to enemy sprites.
+- Enemies now get a tiny foot-anchored X/Y scale pulse, giving them a subtle
+  living/undead breathing feel without moving hitboxes or gameplay state.
+- Each enemy gets a stable phase offset from its id so groups do not pulse in
+  perfect sync.
+- Heavy enemies use a reduced amplitude; bats are excluded for now because they
+  read as flying sprites rather than standing bodies.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tuning constants: `ENEMY_BREATH_SCALE_X`, `ENEMY_BREATH_SCALE_Y`,
+  `ENEMY_BREATH_MS`.
+- This is renderer-only and does not affect collision or AI movement.
+
 ## 2026-06-07 - v0.24.71 - Fade pickups into horizon zone (Codex)
 
 ### Summary

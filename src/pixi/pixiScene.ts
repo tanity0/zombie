@@ -83,6 +83,10 @@ const FIREFLY_MARGIN = 90;       // spawn/recycle band around the visible view
 const ENEMY_LIGHT_ENABLED = true;
 const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
+const ENEMY_BREATH_ENABLED = true;
+const ENEMY_BREATH_SCALE_X = 0.012;
+const ENEMY_BREATH_SCALE_Y = 0.018;
+const ENEMY_BREATH_MS = 1500;
 const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   zombie: 0x7de28a,
   bat: 0x9aa6ff,
@@ -142,6 +146,12 @@ const AMMO_INDICATOR_COLOR: Record<string, string> = {
 
 const containScale = (boxW: number, boxH: number, texW: number, texH: number) =>
   Math.min(boxW / texW, boxH / texH);
+
+const stablePhase = (id: string) => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return (Math.abs(h) % 1000) / 1000 * Math.PI * 2;
+};
 
 // Flat elliptical foot shadow, matching renderUtils.drawGroundShadow's geometry
 // (the passed `w` is pre-scaled by the caller; ellipse radii are w*0.55/w*0.18).
@@ -1026,7 +1036,8 @@ export class PixiScene {
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
-      view.sprite.scale.set(sc);
+      const breath = this.enemyBreath(e, now);
+      view.sprite.scale.set(sc * breath.x, sc * breath.y);
       view.sprite.visible = true;
     } else {
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
@@ -1058,6 +1069,20 @@ export class PixiScene {
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
     }
+  }
+
+  private enemyBreath(e: Enemy, now: number) {
+    if (!ENEMY_BREATH_ENABLED || e.type === 'bat') return { x: 1, y: 1 };
+    const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
+    const amp = heavy ? 0.65 : 1;
+    const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
+    const inhale = Math.sin(phase);
+    const secondary = Math.sin(phase * 2 + 0.7) * 0.28;
+    const wave = inhale * 0.72 + secondary;
+    return {
+      x: 1 + ENEMY_BREATH_SCALE_X * amp * wave,
+      y: 1 - ENEMY_BREATH_SCALE_Y * amp * wave,
+    };
   }
 
   private syncEnemyLight(view: ActorView, e: Enemy, footX: number, footY: number, now: number) {
