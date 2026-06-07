@@ -10,7 +10,7 @@ import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
 import { resolveTreeCollision } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
-import { mineRect, minesInRegion } from '../world/mines';
+import { mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -1128,6 +1128,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         camera.x + bounds.width + pad,
         camera.y + bounds.height + pad
       );
+      const pressureMines = pressureMinesNearPlayer(
+        state.player.x + state.player.width / 2,
+        state.player.y + state.player.height / 2,
+        state.player.lastDirection,
+        state.gameTime
+      );
       const current = new Map(state.breakableProps.map(p => [p.id, p]));
       const next: BreakableProp[] = [];
 
@@ -1155,7 +1161,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
-      for (const mine of generatedMines) {
+      for (const mine of [...generatedMines, ...pressureMines]) {
         if (state.destroyedBreakableProps[mine.id]) continue;
         const existing = current.get(mine.id);
         if (existing) {

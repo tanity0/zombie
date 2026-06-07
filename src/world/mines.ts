@@ -54,6 +54,50 @@ export const minesInRegion = (
   return out;
 };
 
+export const pressureMinesNearPlayer = (
+  playerX: number,
+  playerY: number,
+  direction: { x: number; y: number } | null,
+  gameTime: number
+): MineInstance[] => {
+  const mag = direction ? Math.hypot(direction.x, direction.y) : 0;
+  if (mag < 0.25) return [];
+
+  // A fresh pressure patch about every 18 seconds, anchored by time segment so
+  // it does not slide with the player every frame. Only some segments spawn a
+  // patch, keeping the trap from feeling constant.
+  const segment = Math.floor(gameTime / 18000);
+  if (mineHash(segment + 101, segment - 47) >= 0.58) return [];
+
+  const nx = direction!.x / mag;
+  const ny = direction!.y / mag;
+  const px = -ny;
+  const py = nx;
+  const ahead = 210 + mineHash(segment + 13, segment + 29) * 80;
+  const centerX = playerX + nx * ahead;
+  const centerY = playerY + ny * ahead;
+  const count = 4 + Math.floor(mineHash(segment - 17, segment + 61) * 3);
+  const spacing = 30 + mineHash(segment + 7, segment - 5) * 8;
+  const gapIndex = Math.floor(mineHash(segment + 37, segment + 73) * count);
+
+  const out: MineInstance[] = [];
+  for (let i = 0; i < count; i++) {
+    // Leave a mild gap sometimes so the player can thread through instead of
+    // being forced to shoot every patch.
+    if (count >= 5 && i === gapIndex && mineHash(segment - 3, i + 97) < 0.45) continue;
+    const offset = (i - (count - 1) / 2) * spacing;
+    const jitter = (mineHash(segment + i * 11, segment - i * 19) - 0.5) * 12;
+    const sideJitter = (mineHash(segment - i * 23, segment + i * 3) - 0.5) * 18;
+    out.push({
+      id: `mine-pressure-${segment}-${i}`,
+      footX: centerX + px * (offset + jitter) + nx * sideJitter,
+      footY: centerY + py * (offset + jitter) + ny * sideJitter,
+      scale: 0.84 + mineHash(segment + i * 5, segment + i * 7) * 0.16,
+    });
+  }
+  return out;
+};
+
 const MINE_W = 18;
 const MINE_H = 12;
 

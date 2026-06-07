@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.89 - Add forward pressure mine patches (Codex)
+
+### Summary
+Adjusted mines so they actually appear and sometimes block the player's advance.
+- Added a pressure-mine generator that places a small mine line ahead of the
+  player's recent movement direction.
+- Pressure patches spawn only on some 18-second time segments, so the pattern
+  creates occasional route pressure without becoming constant.
+- Patches contain roughly 4-6 mines, with occasional gaps so the player can
+  sometimes thread through instead of always shooting.
+- Existing deterministic world mines remain in place as background traps.
+- Destroyed pressure mines use the existing `destroyedBreakableProps` tracking,
+  so they do not immediately respawn within the same segment.
+
+### Code touched
+- `src/world/mines.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Tuning points for pressure mines are in `pressureMinesNearPlayer()`:
+  the `18000` segment length, `0.58` spawn threshold, `ahead` distance,
+  `count`, and `spacing`.
+
 ## 2026-06-07 - v0.24.88 - Keep supply arrows below top HUD (Codex)
 
 ### Summary
