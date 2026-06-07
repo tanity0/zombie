@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.95 - Add paired insect egg drawing (Codex)
+
+### Summary
+Updated insect egg visuals so each trap unit reads as a paired egg set.
+- Added a smaller side egg next to the main egg using the same muted moss/olive
+  palette.
+- Kept collision, spawning, and damage behavior unchanged; this is a visual-only
+  adjustment.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The small egg is drawn before the main egg so the pair stays compact and does
+  not increase the gameplay footprint.
+
 ## 2026-06-07 - v0.24.94 - Mute egg colors and stagger rows (Codex)
 
 ### Summary

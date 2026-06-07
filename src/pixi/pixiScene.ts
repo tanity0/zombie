@@ -911,8 +911,20 @@ export class PixiScene {
       const x = Math.round(prop.footX);
       const y = Math.round(prop.footY - h * 0.62);
       if (horizonAlpha > 0) {
+        const sx = x + w * 0.42;
+        const sy = y + h * 0.34;
+        const sw = w * 0.48;
+        const sh = h * 0.55;
         g.ellipse(x, prop.footY - h * 0.03, w * 0.82, h * 0.28)
           .fill({ color: 0x07100a, alpha: 0.38 });
+        g.ellipse(sx, sy + sh * 0.43, sw * 0.42, sh * 0.18)
+          .fill({ color: 0x07100a, alpha: 0.3 });
+        g.ellipse(sx, sy + sh * 0.14, sw * 0.35, sh * 0.48)
+          .fill({ color: 0x0b2113, alpha: 0.9 });
+        g.ellipse(sx - sw * 0.05, sy + sh * 0.06, sw * 0.26, sh * 0.36)
+          .fill({ color: 0x24351f, alpha: 0.78 });
+        g.ellipse(sx + sw * 0.08, sy - sh * 0.02, sw * 0.13, sh * 0.18)
+          .fill({ color: 0x8a9164, alpha: 0.1 + 0.06 * pulse });
         g.ellipse(x, y + h * 0.24, w * 0.44, h * 0.62)
           .fill({ color: 0x0b2113, alpha: 0.92 });
         g.ellipse(x - w * 0.04, y + h * 0.14, w * 0.34, h * 0.48)
