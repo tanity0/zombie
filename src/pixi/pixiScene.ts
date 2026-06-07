@@ -136,7 +136,7 @@ const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.24;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.28;
 
-const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest']);
+const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate']);
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
@@ -1251,9 +1251,12 @@ export class PixiScene {
     drawShadow(g, cx, footY, size * 0.85 * d, shadowAlpha);
 
     if (SPRITE_PICKUPS.has(p.type)) {
-      const name = p.type === 'experience'
-        ? (p.value >= 5 ? 'pickup-xp-red' : p.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
-        : `pickup-${p.type}`;
+      const name =
+        p.type === 'experience'
+          ? (p.value >= 5 ? 'pickup-xp-red' : p.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
+          : p.type === 'weapon-crate'
+            ? 'pickup-chest'
+            : `pickup-${p.type}`;
       const tex = getTexture(name);
       if (tex) {
         if (p.type === 'experience') {

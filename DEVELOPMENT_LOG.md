@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-07 - v0.24.75 - Add bullet-hit blood and chest crate art (Codex)
+
+### Summary
+Added small bullet-hit blood feedback and swapped weapon crates to existing
+treasure chest art.
+- Bullet/projectile hits on enemies now spawn a small red/dark-red burst before
+  kill logic, with crits using a slightly larger count.
+- Kill splashes remain larger and separate, so normal hits read as chip blood
+  rather than a death splash.
+- `weapon-crate` pickups now use the atlas-backed `pickup-chest` sprite instead
+  of the old procedural box drawing.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The weapon crate still behaves as a weapon crate; only its pickup art now maps
+  to `pickup-chest`.
+- If hit blood feels too busy, lower the two `spawnBurst` counts near projectile
+  enemy collision handling.
+
 ## 2026-06-07 - v0.24.74 - Slightly raise enemy breathing amplitude (Codex)
 
 ### Summary

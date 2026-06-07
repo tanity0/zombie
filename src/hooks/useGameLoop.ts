@@ -318,6 +318,13 @@ export const useGameLoop = (onGameOver: () => void) => {
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(projectile?.crit ? 'headshot' : 'shot-damage');
 
+          if (enemyForFx) {
+            const hitX = enemyForFx.x + enemyForFx.width / 2;
+            const hitY = enemyForFx.y + enemyForFx.height / 2;
+            spawnBurst(hitX, hitY, '#b91c1c', projectile?.crit ? 8 : 5);
+            spawnBurst(hitX, hitY, '#7f1d1d', projectile?.crit ? 4 : 2);
+          }
+
           // Crit / headshot juice: gold shockwave + sparks + glow.
           if (projectile?.crit && enemyForFx) {
             const cex = enemyForFx.x + enemyForFx.width / 2;
