@@ -73,7 +73,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     {
       id: 'warrior',
       name: 'ヘビーガンナー',
-      description: 'ソードオフ・ショットガンと鉈で近距離を制圧する。',
+      description: 'ソードオフ・ショットガンとダガーで近距離を制圧する。',
       sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png`,
       accent: 'rgba(248, 113, 113, 0.55)',
       stats: {
@@ -97,7 +97,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     {
       id: 'rogue',
       name: 'ストライカー',
-      description: 'ハンドガンとマチェーテ。手数とフィニッシュで攻める。',
+      description: 'ハンドガンとファイティングナイフ。手数とフィニッシュで攻める。',
       sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png`,
       accent: 'rgba(52, 211, 153, 0.48)',
       stats: {
@@ -120,7 +120,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     }
   ];
   const ammoDebugFields: { type: AmmoType; label: string }[] = [
-    { type: 'handgun', label: '拳銃' },
+    { type: 'handgun', label: 'ハンドガン' },
     { type: 'shotgun', label: 'ショットガン' },
     { type: 'rifle', label: 'ライフル' }
   ];

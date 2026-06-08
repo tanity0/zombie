@@ -10,6 +10,41 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.14 - Add weapon tier pickup colors and shotgun shove tuning (Codex)
+
+### Summary
+Improved weapon pickup readability and adjusted shotgun knockback feel.
+- Weapon pickup popup now prefixes acquired guns with `T1` / `T2` / `T3`.
+- Weapon pickup popup text color now changes by tier:
+  - T1: white
+  - T2: blue
+  - T3: gold
+- Duplicate same/lower-tier gun pickups also show the tier prefix before the
+  ammo conversion text.
+- Renamed weapons:
+  - `拳銃` -> `ハンドガン`
+  - `二丁拳銃` -> `二丁ハンドガン`
+  - `鉈` -> `ダガー`
+  - `マチェーテ` -> `ファイティングナイフ`
+- Shotgun projectile knockback now applies a small shotgun-only boost on top of
+  the existing same-frame pellet hit count multiplier, still capped at 3x.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/components/GameHUD.tsx`
+- `src/hooks/useGameLoop.ts`
+- `src/utils/weaponUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Shotgun spread is controlled by `SHOTGUN_SPREAD_CONE_RAD = 0.34` in
+  `src/utils/weaponUtils.ts`. It is a fixed total cone width shared by all
+  shotgun tiers; higher tiers add pellets inside the same cone.
+
 ## 2026-06-08 - v0.25.13 - Add debug ammo pickup settings (Codex)
 
 ### Summary

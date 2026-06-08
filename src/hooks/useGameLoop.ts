@@ -435,11 +435,13 @@ export const useGameLoop = (onGameOver: () => void) => {
             enemyForFx.type !== 'reaper' && enemyForFx.type !== 'giantbat' &&
             enemyForFx.type !== 'pumpkin'
           ) {
+            const hitCount = projectileHitCountsByEnemy.get(enemyId) ?? 1;
+            const pelletKnockback = projectile.weaponType === 'shotgun' ? 1.35 : 1;
             useGameStore.getState().knockbackEnemy(
               enemyId,
               projectile.direction.x,
               projectile.direction.y,
-              Math.min(3, projectileHitCountsByEnemy.get(enemyId) ?? 1)
+              Math.min(3, hitCount * pelletKnockback)
             );
           }
 

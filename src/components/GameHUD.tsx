@@ -83,7 +83,12 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
             <span className="text-xl">🔫</span>
             <div className="leading-tight">
               <div className="text-[10px] text-sky-200/80 font-bold tracking-wide">新しい銃器を入手！</div>
-              <div className="text-sm font-bold text-white">{lastWeaponGet!.name}</div>
+              <div
+                className="text-sm font-bold"
+                style={{ color: lastWeaponGet!.color ?? '#ffffff' }}
+              >
+                {lastWeaponGet!.name}
+              </div>
             </div>
           </div>
         </div>

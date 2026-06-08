@@ -42,8 +42,8 @@ interface WeaponDef {
 
 const CATALOG: Record<string, WeaponDef> = {
   // A — Handgun family (9mm). Fast, low damage, cheap to feed.
-  'handgun-t1':       { key: 'handgun-t1', name: '拳銃',           type: 'handgun', category: 'handgun', tier: 1, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 1, magSize: 12, reloadMs: 900 },
-  'handgun-t2':       { key: 'handgun-t2', name: '二丁拳銃',       type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
+  'handgun-t1':       { key: 'handgun-t1', name: 'ハンドガン',     type: 'handgun', category: 'handgun', tier: 1, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 1, magSize: 12, reloadMs: 900 },
+  'handgun-t2':       { key: 'handgun-t2', name: '二丁ハンドガン', type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
   'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 130, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300 },
 
   // B — Shotgun family (12g). One trigger pull = one shell (the spread is free),
@@ -61,8 +61,8 @@ const CATALOG: Record<string, WeaponDef> = {
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
   // Each carries a fixed crit chance that rises with tier.
   'knife-t1':         { key: 'knife-t1',   name: 'ナイフ',         type: 'knife',   tier: 1, isMelee: true, damage: 8,  cooldown: 0, critChance: 0.05 },
-  'hatchet-t2':       { key: 'hatchet-t2', name: '鉈',             type: 'hatchet', tier: 2, isMelee: true, damage: 14, cooldown: 0, critChance: 0.08 },
-  'machete-t3':       { key: 'machete-t3', name: 'マチェーテ',     type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 }
+  'hatchet-t2':       { key: 'hatchet-t2', name: 'ダガー',         type: 'hatchet', tier: 2, isMelee: true, damage: 14, cooldown: 0, critChance: 0.08 },
+  'machete-t3':       { key: 'machete-t3', name: 'ファイティングナイフ', type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 }
 };
 
 const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
@@ -313,8 +313,8 @@ export const getWeaponShortName = (type: WeaponType): string => {
     case 'shotgun': return 'ショットガン';
     case 'rifle':   return 'ライフル';
     case 'knife':   return 'ナイフ';
-    case 'hatchet': return '鉈';
-    case 'machete': return 'マチェーテ';
+    case 'hatchet': return 'ダガー';
+    case 'machete': return 'ファイティングナイフ';
     default:        return '武器';
   }
 };

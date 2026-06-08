@@ -130,6 +130,14 @@ const BREAKABLE_PROP_DROP_CHANCE = 0.28;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 5000;
+const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
+const weaponTierColor = (tier?: number): string => {
+  switch (tier ?? 1) {
+    case 3: return '#facc15';
+    case 2: return '#60a5fa';
+    default: return '#f8fafc';
+  }
+};
 
 interface GameState {
   player: Player;
@@ -163,7 +171,7 @@ interface GameState {
   };
   // Most recent weapon the player acquired (drop/crate). The HUD shows a
   // 5-second "got a weapon" popup off this. null until the first pickup.
-  lastWeaponGet: { name: string; at: number } | null;
+  lastWeaponGet: { name: string; at: number; color?: string } | null;
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
@@ -1381,7 +1389,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             ...player,
             [ammoField]: Math.min(AMMO_MAX[ammoType], player[ammoField] + amount)
           },
-          lastWeaponGet: { name: `${weapon.name} -> 弾薬 +${amount}`, at: Date.now() }
+          lastWeaponGet: {
+            name: `${weaponTierLabel(weapon.tier)} ${weapon.name} -> 弾薬 +${amount}`,
+            at: Date.now(),
+            color: weaponTierColor(weapon.tier)
+          }
         };
       }
 
@@ -1410,7 +1422,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       return {
         player: { ...player, weapons, activeWeaponId, ...reloadPatch },
-        lastWeaponGet: { name: weapon.name, at: Date.now() }
+        lastWeaponGet: {
+          name: `${weaponTierLabel(weapon.tier)} ${weapon.name}`,
+          at: Date.now(),
+          color: weaponTierColor(weapon.tier)
+        }
       };
     });
 
