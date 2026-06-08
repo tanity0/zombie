@@ -295,6 +295,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
     critChance: 0,
+    quickMagCritUntil: 0,
     reloadEndsAt: 0,
     reloadingWeaponId: '',
     magBonus: 0,
@@ -1358,6 +1359,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               weapons: p.weapons.map(w =>
                 w.id === active.id ? { ...w, magazine: (w.magazine ?? 0) + moved } : w
               ),
+              quickMagCritUntil: state.gameTime + 5000,
               reloadingWeaponId: '',
               reloadEndsAt: 0
             }
@@ -1815,6 +1817,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
           critChance: 0,
+          quickMagCritUntil: 0,
           reloadEndsAt: 0,
           reloadingWeaponId: '',
           magBonus: 0,

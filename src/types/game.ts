@@ -45,6 +45,9 @@ export interface Player {
   // Level-up crit bonus [0, 0.30]. Gun shots add this to the weapon's base
   // crit chance; melee uses its weapon crit chance directly.
   critChance: number;
+  // Temporary quick-magazine reload buff. While gameTime is below this value,
+  // gun shots gain a small extra crit chance.
+  quickMagCritUntil: number;
   // Reload state. While reloadEndsAt is in the future the named gun is being
   // reloaded: it can't fire and the player moves at 2/3 speed (melee still
   // works). 0 / '' when not reloading.

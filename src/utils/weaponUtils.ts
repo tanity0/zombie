@@ -265,7 +265,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       const angle = -spreadStep * (count - 1) / 2 + i * spreadStep;
       pd = rotate(baseDir, angle);
     }
-    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0));
+    const quickMagCritBonus = player.quickMagCritUntil > useGameStore.getState().gameTime ? 0.10 : 0;
+    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + quickMagCritBonus);
     const crit = Math.random() < critChance;
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,

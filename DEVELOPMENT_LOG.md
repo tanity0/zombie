@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.69 - Add quick-magazine crit buff (Codex)
+
+### Summary
+Added a temporary crit bonus to Scavenger's quick magazine reload skill.
+- When a `quick-magazine` pickup actually reloads ammo into the active gun, the
+  player gains `+10%` gun critical chance for `5s`.
+- The buff uses gameTime, so it pauses with the game.
+- The bonus is applied at shot creation together with weapon base crit and the
+  level-up crit passive.
+- Empty quick-magazine pickups that move no ammo do not grant the buff.
+
+### Code touched
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/utils/weaponUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.68 - Replace Dog fetch animation with sprites (Codex)
 
 ### Summary
