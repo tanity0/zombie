@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.67 - Double heavy grenade knockback (Codex)
+
+### Summary
+Increased Heavy Gunner sub-weapon grenade knockback distance.
+- Changed `HEAVY_GRENADE_KNOCKBACK_MULT` from `1.8` to `3.6`.
+- This affects the Heavy Gunner thrown grenade blast only.
+- Bullet knockback, shotgun pellet knockback, melee knockback, and grenade
+  launcher splash damage are unchanged.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.66 - Swap Striker and Scavenger character art (Codex)
 
 ### Summary
