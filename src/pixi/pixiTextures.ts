@@ -36,6 +36,8 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-walk-0',
       'player-scavenger-walk-1',
       'player-scavenger-walk-2',
+      'dog-walk-0',
+      'dog-walk-1',
     ];
     const [atlas, player, torch, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),

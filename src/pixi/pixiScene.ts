@@ -90,6 +90,8 @@ const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_SPRITE_BASE_HEIGHT = 96;
+const DOG_WALK_FRAME_MS = 150;
+const DOG_SPRITE_SCALE = 0.72;
 const playerWalkSequence = (p: Player): number[] =>
   p.characterClass === 'mage' ||
   p.characterClass === 'rogue' ||
@@ -229,7 +231,7 @@ export class PixiScene {
 
   private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
-  private effects = new Map<string, Graphics | Text>();
+  private effects = new Map<string, Container | Graphics | Text>();
 
   private shadowGfx = new Graphics();
   private groundReflectionGfx = new Graphics();
@@ -1479,9 +1481,12 @@ export class PixiScene {
       seen.add(e.id);
       if (e.kind === 'damageNumber') {
         this.drawDamageNumber(e, now);
+      } else if (e.kind === 'dogFetch') {
+        this.drawDogFetchSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
-        if (!g || g instanceof Text) {
+        if (!(g instanceof Graphics)) {
+          if (g) g.destroy();
           g = new Graphics();
           // trails sit under the actors; everything else above.
           (e.kind === 'trail' ? this.L.groundLayer : this.L.effectLayer).addChild(g);
@@ -1574,38 +1579,62 @@ export class PixiScene {
         g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2.5, color: e.color });
         break;
       }
-      case 'dogFetch': {
-        g.blendMode = 'normal';
-        g.alpha = Math.max(0, Math.min(1, 1 - Math.max(0, t - 0.92) / 0.08));
-        const outRatio = (e.pickupAt - e.createdAt) / e.duration;
-        const outgoing = t <= outRatio;
-        const legT = outgoing ? t / Math.max(0.001, outRatio) : (t - outRatio) / Math.max(0.001, 1 - outRatio);
-        const ease = legT < 0.5 ? 2 * legT * legT : 1 - Math.pow(-2 * legT + 2, 2) / 2;
-        const startX = outgoing ? e.toX : e.targetX;
-        const startY = outgoing ? e.toY : e.targetY;
-        const endX = outgoing ? e.targetX : e.toX;
-        const endY = outgoing ? e.targetY : e.toY;
-        const x = startX + (endX - startX) * ease;
-        const y = startY + (endY - startY) * ease;
-        const facing = endX >= startX ? 1 : -1;
-        const bob = Math.sin(now / 72) * 1.2;
-        const tail = Math.sin(now / 58) * 1.2;
+    }
+  }
 
-        g.ellipse(x, y + 8, 12, 4).fill({ color: 0x000000, alpha: 0.26 });
-        g.rect(x - 9, y - 4 + bob, 16, 8).fill({ color: 0x4b3524 });
-        g.rect(x - 7, y - 7 + bob, 11, 5).fill({ color: 0x6b4a2f });
-        g.rect(x + facing * 5, y - 9 + bob, 7 * facing, 7).fill({ color: 0x5b3a24 });
-        g.rect(x + facing * 8, y - 13 + bob, 3 * facing, 5).fill({ color: 0x2f1f16 });
-        g.rect(x + facing * 11, y - 4 + bob, 2 * facing, 2).fill({ color: 0x111111 });
-        g.rect(x + facing * 7, y - 7 + bob, 2 * facing, 2).fill({ color: 0xf8fafc });
-        g.rect(x + facing * -10, y - 6 + bob + tail, 5 * -facing, 3).fill({ color: 0x6b4a2f });
-        g.rect(x - 6, y + 4 + bob, 3, 5).fill({ color: 0x2f1f16 });
-        g.rect(x + 3, y + 4 - bob, 3, 5).fill({ color: 0x2f1f16 });
-        if (!outgoing) {
-          g.rect(x + facing * 13, y - 1 + bob, 3 * facing, 3).fill({ color: 0xcbd5e1, alpha: 0.9 });
-        }
-        break;
-      }
+  private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    const outRatio = (e.pickupAt - e.createdAt) / e.duration;
+    const outgoing = t <= outRatio;
+    const legT = outgoing ? t / Math.max(0.001, outRatio) : (t - outRatio) / Math.max(0.001, 1 - outRatio);
+    const ease = legT < 0.5 ? 2 * legT * legT : 1 - Math.pow(-2 * legT + 2, 2) / 2;
+    const startX = outgoing ? e.toX : e.targetX;
+    const startY = outgoing ? e.toY : e.targetY;
+    const endX = outgoing ? e.targetX : e.toX;
+    const endY = outgoing ? e.targetY : e.toY;
+    return {
+      alpha: Math.max(0, Math.min(1, 1 - Math.max(0, t - 0.92) / 0.08)),
+      x: startX + (endX - startX) * ease,
+      y: startY + (endY - startY) * ease,
+      facing: endX >= startX ? 1 : -1,
+      carrying: !outgoing,
+    };
+  }
+
+  private drawDogFetchSprite(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
+    let container = this.effects.get(e.id);
+    if (!(container instanceof Container) || container instanceof Text) {
+      if (container) container.destroy();
+      container = new Container();
+      const shadow = new Graphics();
+      shadow.name = 'shadow';
+      const sprite = new Sprite();
+      sprite.name = 'sprite';
+      sprite.anchor.set(0.5, 1);
+      container.addChild(shadow, sprite);
+      this.L.effectLayer.addChild(container);
+      this.effects.set(e.id, container);
+    }
+
+    const shadow = container.getChildByName('shadow') as Graphics | undefined;
+    const sprite = container.getChildByName('sprite') as Sprite | undefined;
+    const pose = this.dogFetchPose(e, now);
+    const frame = Math.floor(now / DOG_WALK_FRAME_MS) % 2;
+    const tex = getTexture(`dog-walk-${frame}`) ?? getTexture('dog-walk-0');
+
+    container.alpha = pose.alpha;
+    container.position.set(Math.round(pose.x), Math.round(pose.y + 11));
+    container.zIndex = pose.y + 11;
+
+    if (shadow) {
+      shadow.clear();
+      shadow.ellipse(0, 0, 23, 7).fill({ color: 0x000000, alpha: 0.24 });
+    }
+    if (sprite && tex) {
+      sprite.texture = tex;
+      sprite.scale.set(pose.facing * DOG_SPRITE_SCALE, DOG_SPRITE_SCALE);
+      sprite.position.set(0, 2 + Math.sin(now / 90) * 0.8);
+      sprite.visible = true;
     }
   }
 

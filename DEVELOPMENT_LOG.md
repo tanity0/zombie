@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.68 - Replace Dog fetch animation with sprites (Codex)
+
+### Summary
+Replaced the temporary procedural Dog fetch drawing with a two-frame sprite
+animation.
+- Processed `/tmp/codex-remote-attachments/019e963d-1503-7b22-a39b-597ea91a7423/84043E2F-5B14-4506-A3A0-89DCB06F7D31/1-写真1.jpg`.
+- Added `public/sprites/dog-walk-0.png` and `public/sprites/dog-walk-1.png`.
+- Removed the purple backdrop and enclosed purple holes around the legs with
+  hard alpha only.
+- Added the dog sprites to Pixi texture preloading.
+- Dog fetch effects now render a sprite with a small ground shadow and 2-frame
+  walk animation instead of the temporary blocky Graphics dog.
+
+### Code touched
+- `public/sprites/dog-walk-0.png`
+- `public/sprites/dog-walk-1.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed both dog frames are 96x72 RGBA.
+- Confirmed zero semi-transparent pixels in both dog frames.
+- Confirmed zero visible purple-key pixels remain in both dog frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.67 - Double heavy grenade knockback (Codex)
 
 ### Summary
