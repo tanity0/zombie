@@ -59,6 +59,8 @@ export interface Player {
   subWeapons: SubWeaponKey[];
   subWeaponLevels: Partial<Record<SubWeaponKey, number>>;
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
+  huntingChargeStartedAt: number;
+  huntingCharged: boolean;
 }
 
 // Movement direction
@@ -97,6 +99,9 @@ export interface Enemy {
   // gameTime < stunUntil the enemy stops moving and can be finished with
   // a melee counter for an instant kill.
   stunUntil?: number;
+  // Root state from traps. This only stops movement; it does not make the
+  // enemy a critical/finisher target.
+  rootUntil?: number;
   // Visual-only lift reaction for boss melee finisher-grade hits.
   liftUntil?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
@@ -163,7 +168,7 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog';
 
 // Projectile types
 export interface Projectile {
@@ -216,6 +221,12 @@ export interface Pickup {
   // (as opposed to dropping where an enemy died). These get a VS-style edge
   // arrow pointing the player toward them while they're off-screen.
   worldDrop?: boolean;
+  // Optional short throw arc for spawned pickups. Used by Striker's magazine
+  // so the item visibly pops out from the player before landing.
+  throwFromX?: number;
+  throwFromY?: number;
+  throwStartAt?: number;
+  throwDuration?: number;
 }
 
 export interface BreakableProp {
@@ -238,7 +249,7 @@ export type BreakablePropType = 'torch' | 'mine';
 export type PickupType =
   | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
-  | 'weapon-drop' | 'weapon-crate';
+  | 'weapon-drop' | 'weapon-crate' | 'quick-magazine';
 
 // Upgrade options
 export interface UpgradeOption {
@@ -335,6 +346,16 @@ export type VisualEffect =
       toX: number; toY: number;
       color: string;
       createdAt: number;
+      duration: number;
+    }
+  | {
+      kind: 'dogFetch';
+      id: string;
+      fromX: number; fromY: number;
+      targetX: number; targetY: number;
+      toX: number; toY: number;
+      createdAt: number;
+      pickupAt: number;
       duration: number;
     }
   | {

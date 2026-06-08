@@ -19,6 +19,7 @@ const VirtualJoystick: React.FC = () => {
   const [delta, setDelta] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const setSwipeDirection = useGameStore(state => state.setSwipeDirection);
+  const setTouchActive = useGameStore(state => state.setTouchActive);
   const setLastDirection = useGameStore(state => state.setLastDirection);
   const triggerCounter = useGameStore(state => state.triggerCounter);
 
@@ -40,18 +41,20 @@ const VirtualJoystick: React.FC = () => {
     originRef.current = null;
     setOrigin(null);
     setDelta({ x: 0, y: 0 });
+    setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, triggerCounter]);
+  }, [setSwipeDirection, setTouchActive, triggerCounter]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
+    setTouchActive(true);
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
     setOrigin(o);
     setDelta({ x: 0, y: 0 });
     zoneRef.current?.setPointerCapture(e.pointerId);
-  }, [release]);
+  }, [release, setTouchActive]);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -111,9 +114,10 @@ const VirtualJoystick: React.FC = () => {
   // Safety: clear movement state if the component unmounts mid-touch
   useEffect(() => {
     return () => {
+      setTouchActive(false);
       setSwipeDirection(null);
     };
-  }, [setSwipeDirection]);
+  }, [setSwipeDirection, setTouchActive]);
 
   return (
     <div

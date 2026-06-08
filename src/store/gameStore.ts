@@ -14,6 +14,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { rectsOverlap } from '../world/obstacles';
+import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -74,6 +75,11 @@ export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
 // Melee reach for the finger-release counter swing.
 export const MELEE_RADIUS = 74;
+export const huntingMeleeRadius = (player: Player): number => {
+  if (!player.huntingCharged) return MELEE_RADIUS;
+  const level = Math.max(1, Math.min(3, player.subWeaponLevels['striker-hunting'] ?? 1));
+  return MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level];
+};
 
 // Counter-on-release tuning. The counter window opens the moment the player
 // lifts their finger (or presses Space on PC) and stays open briefly. Any
@@ -134,6 +140,7 @@ const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
 const GRENADE_ROLL_DRAG = 1.45;
+const TRAP_ROOT_CRIT_BONUS = 0.10;
 const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
 const weaponTierColor = (tier?: number): string => {
   switch (tier ?? 1) {
@@ -165,6 +172,7 @@ interface GameState {
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
+  touchActive: boolean;
   gameBounds: GameBounds;
   gameStats: GameStats;
   characterClass: CharacterClass;
@@ -185,6 +193,7 @@ interface GameState {
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
   setSwipeDirection: (direction: { x: number; y: number } | null) => void;
+  setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
   damagePlayer: (amount: number) => boolean;
   gainExperience: (amount: number) => void;
@@ -196,6 +205,7 @@ interface GameState {
   selectUpgrade: (upgrade: UpgradeOption) => void;
   learnSubWeapon: (key: SubWeaponKey) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
+  updateHuntingCharge: (startedAt: number, charged: boolean) => void;
   
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
@@ -203,6 +213,7 @@ interface GameState {
   damageEnemy: (id: string, amount: number) => boolean;
   updateEnemies: (deltaTime: number) => void;
   stunEnemy: (id: string, until: number) => void;
+  rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number) => void;
 
   // Ammo
@@ -290,7 +301,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     reloadMult: 1,
     subWeapons: [],
     subWeaponLevels: {},
-    subWeaponCooldowns: {}
+    subWeaponCooldowns: {},
+    huntingChargeStartedAt: 0,
+    huntingCharged: false
   },
   enemies: [],
   projectiles: [],
@@ -309,6 +322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
+  touchActive: false,
   gameBounds: { width: 800, height: 600 },
   gameStats: {
     timeAlive: 0,
@@ -407,6 +421,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ swipeDirection: direction });
   },
 
+  setTouchActive: (active) => {
+    set({ touchActive: active });
+  },
+
   setLastDirection: (direction) => {
     set(state => ({
       player: {
@@ -418,7 +436,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   triggerCounter: () => {
     const now = Date.now();
-    const { player, gameTime, enemies, breakableProps } = get();
+    const { player, gameTime, enemies, breakableProps, projectiles } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
@@ -427,6 +445,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamage = melee?.damage ?? 6;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
+    const meleeRange = huntingMeleeRadius(player);
 
     // Single sweep: every non-reaper enemy in melee range is either finished
     // (if stunned) for an instant kill, or takes light damage + knockback.
@@ -438,6 +457,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
+    const grenadesToDetonate = projectiles
+      .filter(p => p.weaponType === 'grenade')
+      .filter(p => {
+        const gx = p.x + p.width / 2;
+        const gy = p.y + p.height / 2;
+        return Math.hypot(gx - pcx, gy - pcy) <= meleeRange;
+      })
+      .map(p => p.id);
+
     for (const enemy of enemies) {
       if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
       const ecx = enemy.x + enemy.width / 2;
@@ -445,7 +473,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > MELEE_RADIUS) { survivors.push(enemy); continue; }
+      if (dist > meleeRange) { survivors.push(enemy); continue; }
 
       // Anything in reach gets cut — show a slash on it.
       slashAt.push({ x: ecx, y: ecy });
@@ -476,7 +504,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // Melee weapons carry a fixed crit chance (varies by weapon). A crit
       // multiplies the swing's damage and pops a gold number.
-      const crit = Math.random() < meleeCritChance;
+      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
+        ? TRAP_ROOT_CRIT_BONUS
+        : 0;
+      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus);
       const dmg = meleeDamage * (crit ? CRIT_DAMAGE_MULT : 1);
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -488,7 +519,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // locking it in an infinite stagger). Damage still landed above.
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
-        const falloff = 1 - dist / MELEE_RADIUS;
+        const falloff = 1 - dist / meleeRange;
         const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
         survivors.push({
           ...enemy,
@@ -536,9 +567,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       player: {
         ...state.player,
         counterWindowEnd: now + COUNTER_WINDOW,
-        counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN
-      }
+        counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+        huntingCharged: false,
+        huntingChargeStartedAt: 0
+      },
+      projectiles: grenadesToDetonate.length > 0
+        ? state.projectiles.map(p =>
+            grenadesToDetonate.includes(p.id)
+              ? { ...p, createdAt: now - Math.max(1, p.duration) }
+              : p
+          )
+        : state.projectiles
     }));
+
+    for (const id of grenadesToDetonate) {
+      const grenade = projectiles.find(p => p.id === id);
+      if (grenade) {
+        get().spawnSlash(grenade.x + grenade.width / 2, grenade.y + grenade.height / 2);
+      }
+    }
 
     // Slash streaks on every enemy that was cut.
     for (const s of slashAt) {
@@ -616,7 +663,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const prop of breakableProps) {
       const dx = prop.footX - pcx;
       const dy = prop.footY - pcy;
-      if (Math.hypot(dx, dy) > MELEE_RADIUS) continue;
+      if (Math.hypot(dx, dy) > meleeRange) continue;
       propHit = true;
       const broken = get().damageBreakableProp(prop.id, meleeDamage * 2.5);
       get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
@@ -855,6 +902,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }));
   },
+
+  updateHuntingCharge: (startedAt, charged) => {
+    set(state => {
+      if (
+        state.player.huntingChargeStartedAt === startedAt &&
+        state.player.huntingCharged === charged
+      ) {
+        return {};
+      }
+      return {
+        player: {
+          ...state.player,
+          huntingChargeStartedAt: startedAt,
+          huntingCharged: charged
+        }
+      };
+    });
+  },
   
   // Enemy actions
   addEnemy: (enemy) => {
@@ -953,6 +1018,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           return enemy;
         }
 
+        // Trap root freezes movement only. It deliberately does not share the
+        // crit stun state, so rooted enemies are not melee-finisher targets.
+        if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) {
+          return { ...enemy, vx: 0, vy: 0 };
+        }
+
         // Plants are nearly stationary — they shuffle slightly toward the
         // player but mostly hold ground and spit seeds. Everything else
         // does the standard VS straight-line chase, but with inertia: the
@@ -993,6 +1064,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       enemies: state.enemies.map(e =>
         e.id === id ? { ...e, stunUntil: until } : e
+      )
+    }));
+  },
+
+  rootEnemy: (id, until) => {
+    set(state => ({
+      enemies: state.enemies.map(e =>
+        e.id === id ? { ...e, rootUntil: until, vx: 0, vy: 0 } : e
       )
     }));
   },
@@ -1253,6 +1332,43 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Open the crate: roll a gun by category & tier and equip it.
         get().grantWeapon(openCrate(get().gameTime));
         break;
+      case 'quick-magazine': {
+        let movedAmount = 0;
+        set(state => {
+          const p = state.player;
+          const active = getActiveGun(p);
+          if (!active?.ammoType) return {};
+          const field = AMMO_FIELD[active.ammoType];
+          const need = Math.max(0, effectiveMagSize(active, p) - (active.magazine ?? 0));
+          const moved = Math.min(need, p[field]);
+          movedAmount = moved;
+          if (moved <= 0) {
+            return {
+              player: {
+                ...p,
+                reloadingWeaponId: '',
+                reloadEndsAt: 0
+              }
+            };
+          }
+          return {
+            player: {
+              ...p,
+              [field]: p[field] - moved,
+              weapons: p.weapons.map(w =>
+                w.id === active.id ? { ...w, magazine: (w.magazine ?? 0) + moved } : w
+              ),
+              reloadingWeaponId: '',
+              reloadEndsAt: 0
+            }
+          };
+        });
+        if (movedAmount > 0) {
+          const p = get().player;
+          get().spawnAmmoNumber(p.x + p.width / 2, p.y - 6, movedAmount);
+        }
+        break;
+      }
     }
 
     get().removePickup(id);
@@ -1705,7 +1821,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadMult: 1,
           subWeapons: [],
           subWeaponLevels: {},
-          subWeaponCooldowns: {}
+          subWeaponCooldowns: {},
+          huntingChargeStartedAt: 0,
+          huntingCharged: false
         },
         enemies: [],
         projectiles: [],
@@ -1720,6 +1838,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
         upgradeOptions: [],
+        touchActive: false,
         swipeDirection: null,
         gameStats: {
           timeAlive: 0,

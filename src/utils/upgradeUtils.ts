@@ -1,4 +1,5 @@
 import { UpgradeOption, Player, PassiveType } from '../types/game';
+import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL, huntingChargeSecondsLabel } from '../config/hunting';
 
 // RE rework: level-ups only strengthen the survivor. New weapons come from
 // world drops and crates, never the level-up menu — so every option here is
@@ -11,6 +12,9 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const subWeaponOptions: UpgradeOption[] = [];
   const grenadeLevel = player.subWeaponLevels['heavy-grenade'] ?? 0;
   const trapLevel = player.subWeaponLevels['marksman-trap'] ?? 0;
+  const quickMagLevel = player.subWeaponLevels['striker-quick-mag'] ?? 0;
+  const huntingLevel = player.subWeaponLevels['striker-hunting'] ?? 0;
+  const dogLevel = player.subWeaponLevels.dog ?? 0;
 
   if (player.characterClass === 'warrior' && grenadeLevel < 3) {
     const nextLevel = grenadeLevel + 1;
@@ -35,6 +39,47 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
       level: nextLevel
     });
   }
+
+  if (player.characterClass === 'necromancer' && quickMagLevel < 3) {
+    const nextLevel = quickMagLevel + 1;
+    const cooldown = 12 - nextLevel * 2;
+    subWeaponOptions.push({
+      id: 'subweapon-striker-quick-mag',
+      name: nextLevel === 1 ? 'クイックマガジン' : `クイックマガジン Lv${nextLevel}`,
+      description: `${cooldown}秒ごとに少し離れた位置へマガジンを投げます。拾うと即リロードします`,
+      type: 'subWeapon',
+      subWeaponKey: 'striker-quick-mag',
+      level: nextLevel
+    });
+  }
+
+  if (player.characterClass === 'rogue' && huntingLevel < 3) {
+    const nextLevel = huntingLevel + 1;
+    const chargeSeconds = huntingChargeSecondsLabel(nextLevel);
+    const radiusBonus = HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[nextLevel];
+    subWeaponOptions.push({
+      id: 'subweapon-striker-hunting',
+      name: nextLevel === 1 ? 'ハンティング' : `ハンティング Lv${nextLevel}`,
+      description: `${chargeSeconds}秒入力すると次の近接攻撃の範囲が+${radiusBonus}広がります`,
+      type: 'subWeapon',
+      subWeaponKey: 'striker-hunting',
+      level: nextLevel
+    });
+  }
+
+  if (dogLevel < 3) {
+    const nextLevel = dogLevel + 1;
+    const cooldown = [0, 3, 2, 1][nextLevel];
+    subWeaponOptions.push({
+      id: 'subweapon-dog',
+      name: nextLevel === 1 ? 'ドッグ' : `ドッグ Lv${nextLevel}`,
+      description: `帰還後${cooldown}秒で画面内のアイテムを1つ拾いに行きます（サブウェポン系は除外）`,
+      type: 'subWeapon',
+      subWeaponKey: 'dog',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);

@@ -11,7 +11,7 @@ import type { Enemy, Player } from '../types/game';
 // The sprites read as chunky pixel art by drawing larger than their gameplay
 // hitboxes. Feet stay anchored to the hitbox bottom; the extra height rises
 // upward, so collision and melee ranges remain unchanged.
-export const PLAYER_VISUAL_SCALE = 2.05;
+export const PLAYER_VISUAL_SCALE = 2.3;
 
 const ENEMY_VISUAL_SCALE: Record<Enemy['type'], number> = {
   bat: 2.35,

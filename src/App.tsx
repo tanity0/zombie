@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Game from './components/Game';
 import MainMenu from './components/MainMenu';
 import GameOverScreen from './components/GameOverScreen';
@@ -13,8 +13,13 @@ const LOADING_MIN_MS = 650;
 function App() {
   const [gameState, setGameState] = useState<GameState>('menu');
   const [loadingClass, setLoadingClass] = useState<CharacterClass>('warrior');
+  const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
+
+  useEffect(() => {
+    preloadPromiseRef.current = ensureTextures().catch(() => {});
+  }, []);
 
   useEffect(() => {
     void setBgmActive(gameState === 'playing');
@@ -29,8 +34,10 @@ function App() {
     setGameState('loading');
 
     const startedAt = performance.now();
+    const preloadPromise = preloadPromiseRef.current ?? ensureTextures().catch(() => {});
+    preloadPromiseRef.current = preloadPromise;
     await Promise.all([
-      ensureTextures().catch(() => {}),
+      preloadPromise,
       new Promise(resolve => window.setTimeout(resolve, LOADING_MIN_MS)),
     ]);
     const remaining = LOADING_MIN_MS - (performance.now() - startedAt);

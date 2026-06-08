@@ -10,6 +10,994 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.63 - Match gameplay player scale to class cards (Codex)
+
+### Summary
+Adjusted gameplay player rendering to better match the character selection
+card display.
+- Changed `PLAYER_VISUAL_SCALE` from `2.6` to `2.3`.
+- With the current 128x108 player frames, this makes the central gameplay
+  player display height nearly identical to the class-card image height.
+- Re-centered Marksman and Striker walk frames by head-position instead of
+  full-frame/bounding-box center so their heads no longer sway left/right as
+  much during the walk cycle.
+- Kept hard-alpha sprites; no semi-transparent pixels were introduced.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `src/pixi/renderSpec.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Gameplay center-scale target: class card `86/128 = 0.671875`, gameplay
+  player `28*2.3/96 = 0.670833`.
+- Confirmed Marksman head centers now stay around x=64px.
+- Confirmed Striker head centers now stay around x=64px.
+- Confirmed zero semi-transparent pixels in adjusted frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.62 - Replace Marksman sprites and retune player scale (Codex)
+
+### Summary
+Replaced the Marksman in-game walk sprites and adjusted the gameplay player
+display size after local feedback.
+- Processed `/Users/tanity/Downloads/4D2D71E4-AFBE-4BF8-B487-836B1E4D0EB1.PNG`.
+- Extracted three frames for `player-magnum-walk-0.png` through `-2.png`.
+- Removed the connected purple backdrop with hard alpha only.
+- Kept the existing `0 -> 1 -> 2 -> 1` Marksman animation sequence.
+- Adjusted `PLAYER_VISUAL_SCALE` from `1.5` to `2.6` so in-game characters sit
+  closer to the character-select card size.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `src/pixi/renderSpec.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed all three Marksman frames are 128x108 RGBA.
+- Confirmed zero semi-transparent pixels in all three Marksman frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.61 - Replace Heavy Gunner walk sprites (Codex)
+
+### Summary
+Replaced the Heavy Gunner in-game walk sprites with the latest supplied sheet.
+- Processed `/Users/tanity/Downloads/94326402-8E4B-4E51-9365-C25966311941.PNG`.
+- Extracted three frames for `player-shotgun-walk-0.png` through `-2.png`.
+- Removed the connected purple backdrop with hard alpha only.
+- Kept the existing `0 -> 1 -> 2 -> 1` Heavy Gunner animation sequence.
+- Kept the shared 128x108 frame size and 96px visible sprite-height convention.
+
+### Code touched
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `public/sprites/player-shotgun-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed all three frames are 128x108 RGBA.
+- Confirmed zero semi-transparent pixels in all three frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.60 - Halve in-game player display scale (Codex)
+
+### Summary
+Reduced the gameplay player sprite size further after local visual feedback.
+- Changed `PLAYER_VISUAL_SCALE` from `3.0` to `1.5`.
+- This affects only the in-game foot-anchored player drawing box.
+- Character selection layout, gameplay collision, movement speed, and melee
+  range are unchanged.
+
+### Code touched
+- `src/pixi/renderSpec.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.59 - Reduce in-game player display scale (Codex)
+
+### Summary
+Adjusted the gameplay-only player sprite size after the crisp sprite rebuild.
+- Reduced `PLAYER_VISUAL_SCALE` from `3.45` to `3.0`.
+- Keeps player collision, movement speed, melee range, and class selection
+  layout unchanged.
+- The Pixi player draw path still uses uniform X/Y scale, so this does not add
+  vertical stretching or any new masking/filter trick.
+
+### Code touched
+- `src/pixi/renderSpec.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+- If the sprite still feels tall in gameplay, tune `PLAYER_VISUAL_SCALE` again;
+  avoid non-uniform Y scaling unless the user explicitly wants squash/stretch.
+
+## 2026-06-08 - v0.25.58 - Rebuild player sprites for crisp dot rendering (Codex)
+
+### Summary
+Rebuilt all current player class walk sprites for sharper in-game dot rendering.
+- The previous sprites preserved huge source images, then Pixi scaled them down
+  heavily in-game. That minification crushed the dot texture.
+- Re-extracted Marksman, Heavy Gunner, Striker, and Scavenger frames from the
+  latest supplied source sheets.
+- Rebuilt each frame as a game-display-size 128x108 PNG with a 96px visible
+  sprite height.
+- Used nearest-neighbor resizing and hard alpha keying so the rendered sprites
+  have no semi-transparent edge blur.
+- Increased `PLAYER_VISUAL_SCALE` so these 96px player sprites display near
+  their source pixel size instead of being strongly minified.
+- Kept the `0 -> 1 -> 2 -> 1` animation sequence for all four classes.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `public/sprites/player-shotgun-walk-2.png`
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `public/sprites/player-scavenger-walk-0.png`
+- `public/sprites/player-scavenger-walk-1.png`
+- `public/sprites/player-scavenger-walk-2.png`
+- `src/pixi/renderSpec.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed all rebuilt player walk frames are 128x108 RGBA.
+- Confirmed rebuilt frames have hard alpha only, with zero semi-transparent pixels.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+- This intentionally changes player visual scale only; gameplay collision boxes
+  remain unchanged.
+
+## 2026-06-08 - v0.25.57 - Replace Marksman walk cycle (Codex)
+
+### Summary
+Updated the Marksman player animation.
+- Processed `/Users/tanity/Downloads/E92EB5D4-AE38-465D-8FFB-C69778EFA6AB.PNG`.
+- Extracted three transparent frames without resampling the source pixels.
+- Marksman now uses `player-magnum-walk-0.png` through `-2.png`.
+- Marksman playback now loops as `0 -> 1 -> 2 -> 1`.
+- Added a Marksman-specific sprite base height so the larger source can stay
+  uncropped without changing gameplay scale.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Processed frame PNGs are RGBA with transparent backgrounds.
+- Confirmed Marksman frames are 430x490.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.56 - Replace Scavenger walk cycle (Codex)
+
+### Summary
+Updated the Scavenger player animation.
+- Processed `/Users/tanity/Downloads/74737E6E-2E78-4176-BC6A-70EDE7483665.PNG`.
+- Extracted three transparent frames without resampling the source pixels.
+- Scavenger now uses `player-scavenger-walk-0.png` through `-2.png`.
+- Scavenger playback now loops as `0 -> 1 -> 2 -> 1`.
+- Added a Scavenger-specific sprite base height so the larger source can stay
+  uncropped without changing gameplay scale.
+
+### Code touched
+- `public/sprites/player-scavenger-walk-0.png`
+- `public/sprites/player-scavenger-walk-1.png`
+- `public/sprites/player-scavenger-walk-2.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Processed frame PNGs are RGBA with transparent backgrounds.
+- Confirmed Scavenger frames are 400x470.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.55 - Replace Heavy Gunner and Striker walk cycles (Codex)
+
+### Summary
+Updated Heavy Gunner and Striker player animations.
+- Processed `/Users/tanity/Downloads/FD56B342-AC47-4A22-9A95-426A21574DED.PNG` for Heavy Gunner.
+- Processed `/Users/tanity/Downloads/EA23808E-F62E-45E8-9C7B-219CC68CD4A8.jpg` for Striker.
+- Extracted three transparent frames for each class without resampling the
+  source pixels.
+- Heavy Gunner now uses `player-shotgun-walk-0.png` through `-2.png`.
+- Striker now uses `player-striker-walk-0.png` through `-2.png`.
+- Heavy Gunner and Striker playback now loops as `0 -> 1 -> 2 -> 1`.
+- Added class-specific sprite base heights so the larger Heavy Gunner source
+  can stay uncropped without changing gameplay scale.
+
+### Code touched
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `public/sprites/player-shotgun-walk-2.png`
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Processed frame PNGs are RGBA with transparent backgrounds.
+- Confirmed Heavy Gunner frames are 350x480 and Striker frames are 270x410.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.54 - Explicitly clean up Pixi ticker on replay (Codex)
+
+### Summary
+Reduced the likely replay-after-first-run slowdown.
+- `PixiStage` now stores the Pixi ticker callback and removes it explicitly on
+  unmount.
+- The cleanup also clears the host element children after destroying the Pixi
+  application, so stale canvases cannot remain attached.
+- This targets the symptom where the first play after Safari restart is light,
+  but subsequent plays in the same tab feel heavier.
+
+### Code touched
+- `src/pixi/PixiStage.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+- If the issue persists, add a tiny debug counter for live PixiStage instances
+  and active ticker callbacks to confirm whether a renderer loop is still
+  leaking.
+
+## 2026-06-08 - v0.25.53 - Restore projectile collision freshness (Codex)
+
+### Summary
+Fixed a regression from the game-loop performance cleanup.
+- Projectile/enemy collision detection now reads fresh `projectiles` and
+  `enemies` after movement updates in the same frame.
+- Hit processing now looks up projectile and enemy data from that same fresh
+  snapshot instead of the older frame-start arrays.
+- This keeps the v0.25.52 React churn reduction while restoring gun hit
+  detection.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.52 - Reduce game-loop React churn (Codex)
+
+### Summary
+Reduced a likely runtime performance issue in the main game loop.
+- Removed high-frequency React subscriptions from `useGameLoop` for `player`,
+  `enemies`, `projectiles`, `pickups`, `breakableProps`, `inputState`,
+  `swipeDirection`, `gameBounds`, `gameTime`, and `isPaused`.
+- The simulation loop now reads the latest Zustand state directly inside each
+  animation frame.
+- This avoids re-rendering/recreating the RAF effect whenever gameplay arrays
+  change, which became expensive after more enemies, pickups, effects, and
+  sub-weapons were added.
+- Gameplay behavior is intended to remain unchanged.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+- If Safari still feels heavy after this, next check Pixi filter cost and effect
+  counts rather than texture cache growth.
+
+## 2026-06-08 - v0.25.51 - Replace Striker walk sheet second revision (Codex)
+
+### Summary
+Updated the Striker six-frame walk sprites with the latest supplied sheet.
+- Processed `/Users/tanity/Downloads/EA23808E-F62E-45E8-9C7B-219CC68CD4A8.PNG`.
+- Detected each sprite cluster after purple-key transparency, then rebuilt `player-striker-walk-0.png` through `-5.png`.
+- Rebuilt the frames on a taller transparent canvas so the 398px-tall source pixels are not cropped or resampled.
+- Kept the current walk animation tempo and six-frame playback code unchanged.
+- Added a class-sprite base-height constant so the taller Striker PNGs preserve the existing in-game scale without flattening the source pixels.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `public/sprites/player-striker-walk-3.png`
+- `public/sprites/player-striker-walk-4.png`
+- `public/sprites/player-striker-walk-5.png`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Processed frame PNGs are RGBA with transparent backgrounds.
+- Confirmed every Striker frame keeps the full 398px source-height sprite inside a 270x410 canvas.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.50 - Slow player walk animation a touch more (Codex)
+
+### Summary
+Slightly slowed the player walk animation again.
+- Increased `PLAYER_WALK_CYCLE_MS` from `420` to `460`.
+- Movement speed and gameplay physics are unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.49 - Slightly slow player walk animation (Codex)
+
+### Summary
+Adjusted the player walk animation tempo.
+- Increased `PLAYER_WALK_CYCLE_MS` from `360` to `420`.
+- This makes the six-frame Striker walk sheet advance a little more calmly without changing player movement speed.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.48 - Replace Striker walk sheet revision (Codex)
+
+### Summary
+Updated the Striker six-frame walk sprites with the revised sheet.
+- Processed `/Users/tanity/Downloads/D31851F7-F5F1-40B0-9E1D-37FE3DCBB40A.PNG`.
+- Detected each sprite cluster after purple-key transparency, avoiding adjacent-frame bleed.
+- Rebuilt:
+  - `public/sprites/player-striker-walk-0.png`
+  - `public/sprites/player-striker-walk-1.png`
+  - `public/sprites/player-striker-walk-2.png`
+  - `public/sprites/player-striker-walk-3.png`
+  - `public/sprites/player-striker-walk-4.png`
+  - `public/sprites/player-striker-walk-5.png`
+- Kept the existing six-frame Striker animation code path unchanged.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `public/sprites/player-striker-walk-3.png`
+- `public/sprites/player-striker-walk-4.png`
+- `public/sprites/player-striker-walk-5.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Processed frame PNGs are RGBA with transparent backgrounds.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.47 - Replace Striker with 6-frame walk sheet (Codex)
+
+### Summary
+Updated the Striker player animation.
+- Processed `/Users/tanity/Downloads/52A72CB6-BAFC-4601-AB43-E569010D6709.PNG`.
+- Split the sheet into six frames, keyed out the purple background, and wrote:
+  - `public/sprites/player-striker-walk-0.png`
+  - `public/sprites/player-striker-walk-1.png`
+  - `public/sprites/player-striker-walk-2.png`
+  - `public/sprites/player-striker-walk-3.png`
+  - `public/sprites/player-striker-walk-4.png`
+  - `public/sprites/player-striker-walk-5.png`
+- Pixi texture preload now loads all six Striker frames.
+- Striker walk animation now plays all six frames in order.
+- Other player classes remain on their existing two-frame cycles.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `public/sprites/player-striker-walk-3.png`
+- `public/sprites/player-striker-walk-4.png`
+- `public/sprites/player-striker-walk-5.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Processed frame PNGs are RGBA with transparent backgrounds.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.46 - Animate Dog fetch behavior (Codex)
+
+### Summary
+Changed `ドッグ` from instant pickup into a visible fetch action.
+- Added a temporary pixel-dog renderer using Pixi `Graphics`.
+- Dog now runs from the player to the selected pickup, collects it on arrival,
+  then returns to the player.
+- The next pickup countdown starts only after Dog has returned.
+- Cooldowns changed to:
+  - Lv1: `3s`
+  - Lv2: `2s`
+  - Lv3: `1s`
+- Dog still skips `quick-magazine` and full-HP health pickups.
+
+### Code touched
+- `src/types/game.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `src/utils/upgradeUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.45 - Add common Dog sub-weapon pickup helper (Codex)
+
+### Summary
+Added common sub-weapon `ドッグ`.
+- Dog can appear as a level-up sub-weapon option for every character.
+- At intervals, Dog picks one random eligible item currently inside the visible
+  screen.
+- Dog does not pick sub-weapon generated `quick-magazine` pickups.
+- Dog skips health pickups when the player is already at full health.
+- Lv scaling currently shortens the pickup interval:
+  - Lv1: `7s`
+  - Lv2: `5s`
+  - Lv3: `3.5s`
+- Added a small trail/burst/ring and matching pickup SFX when Dog fetches an
+  item.
+
+### Code touched
+- `src/types/game.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.44 - Start preload at app launch (Codex)
+
+### Summary
+Moved the Pixi texture preload earlier in the app lifecycle.
+- `ensureTextures()` now starts immediately when `App` mounts.
+- Character-select loading still waits for the same preload promise if it has
+  not finished yet.
+- The post-selection loading screen keeps its short minimum display time, but
+  the heavy asset warmup is no longer first kicked off after selecting a class.
+
+### Code touched
+- `src/App.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.43 - Tune Hunting charge times (Codex)
+
+### Summary
+Adjusted Striker `ハンティング` charge timing.
+- Lv1 charge time: `2.5s`
+- Lv2 charge time: `2.0s`
+- Lv3 charge time: `1.5s`
+- Moved Hunting charge timing into the shared Hunting config so game logic and
+  upgrade card text stay aligned.
+
+### Code touched
+- `src/config/hunting.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/utils/upgradeUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.42 - Tighten Hunting high-level range (Codex)
+
+### Summary
+Adjusted Striker `ハンティング` range scaling after feel testing.
+- Lv1 remains `+18px`.
+- Lv2 reduced from `+28px` to `+24px`.
+- Lv3 reduced from `+40px` to `+34px`.
+- Hit detection, charged range circle, attack crest, and card text all continue
+  to share the same range table.
+
+### Code touched
+- `src/config/hunting.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.41 - Show Hunting charged range circle (Codex)
+
+### Summary
+Improved Striker `ハンティング` charged readability.
+- When Hunting is fully charged, a faint blue melee-range circle is shown
+  around the player.
+- The circle uses the same level-scaled melee radius as the actual hit
+  detection and the attack crest.
+- The existing attack crest remains the active melee swing visual.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.40 - Scale Hunting range by level (Codex)
+
+### Summary
+Adjusted Striker `ハンティング` level scaling.
+- Hunting melee range bonus now grows by level:
+  - Lv1: `+18px`
+  - Lv2: `+28px`
+  - Lv3: `+40px`
+- The hit detection and Pixi crest/ring rendering now use the same level-based
+  radius.
+- Upgrade card text now shows the input time and current range bonus.
+
+### Code touched
+- `src/config/hunting.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `src/utils/upgradeUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.39 - Start Hunting charge on touch input (Codex)
+
+### Summary
+Adjusted Striker `ハンティング` charge feel.
+- Charge timing now starts as soon as the touch joystick is pressed.
+- The timer no longer depends on actual movement, so dead-zone touch, blocked
+  movement, or slow initial movement do not delay the charge start.
+- Keyboard movement input also counts as active input.
+- Fully charged Hunting still stays ready until melee/counter use.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/components/VirtualJoystick.tsx`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.38 - Shorten Hunting default charge (Codex)
+
+### Summary
+Adjusted Striker `ハンティング` charge timing.
+- Lv1/default charge time changed from `5s` to `3s`.
+- Lv2 charge time is now `2s`.
+- Lv3 charge time is now `1s`.
+- Upgrade card descriptions now reflect the shorter timings.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/utils/upgradeUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.37 - Keep Hunting charge until melee use (Codex)
+
+### Summary
+Adjusted Striker `ハンティング` charge behavior.
+- Lv1/default charge time remains `5s`.
+- Once Hunting is fully charged, the charge stays ready even if the player
+  stops walking.
+- The charge is still consumed only when the melee/counter swing is triggered.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.36 - Add Striker Hunting sub-weapon (Codex)
+
+### Summary
+Added Striker `ハンティング` as a charge-based sub-weapon.
+- Offered only to Striker (`rogue`) through level-up cards.
+- Walking continuously charges the next melee attack.
+  - Lv1: `5s`
+  - Lv2: `4s`
+  - Lv3: `3s`
+- When charged, the next melee swing uses an expanded melee target range.
+- The charge is consumed when the melee/counter swing is triggered.
+- Player ground light shifts from warm amber to blue while Hunting is charged.
+
+### Code touched
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.35 - Move quick magazine skill to Scavenger (Codex)
+
+### Summary
+Adjusted sub-weapon class ownership.
+- `クイックマガジン` is now offered to Scavenger (`necromancer`) instead of
+  Striker (`rogue`).
+- Skill behavior is unchanged.
+
+### Code touched
+- `src/utils/upgradeUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.34 - Prevent instant pickup during throw arcs (Codex)
+
+### Summary
+Fixed quick magazine pickup timing.
+- Thrown pickups are no longer collectible until their throw animation has
+  completed.
+- This prevents Striker quick magazines from being picked up instantly at the
+  player's feet on spawn.
+
+### Code touched
+- `src/utils/collisionUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.33 - Tighten pickup collection range (Codex)
+
+### Summary
+Adjusted shared item pickup feel.
+- Reduced the common pickup collision padding from `24px` to `16px`.
+- This affects gems, ammo, weapon drops, quick magazines, and other pickups
+  uniformly.
+
+### Code touched
+- `src/utils/collisionUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.32 - Fix quick magazine throw freeze (Codex)
+
+### Summary
+Fixed a likely runtime freeze when Striker quick magazine appears.
+- Removed Canvas-style `Graphics.save/rotate/restore` calls from Pixi pickup
+  drawing.
+- Kept the throw arc and added a small squash pulse so the magazine still
+  reads as popping out without unsafe Graphics transforms.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.31 - Let melee detonate grenades (Codex)
+
+### Summary
+Added melee interaction for Heavy Gunner grenades.
+- Grenades inside melee range are now treated as hit by the melee swing.
+- A hit grenade immediately expires its fuse, so the existing grenade blast
+  damage, VFX, sound, and knockback logic runs on the next game-loop pass.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.30 - Animate Striker magazine throw (Codex)
+
+### Summary
+Improved Striker quick magazine feel.
+- Added short pickup throw metadata so quick magazines move from the player to
+  their landing point instead of appearing instantly.
+- Pickup collision follows the animated throw position.
+- Pixi pickup rendering follows the same animated position and spins the
+  magazine during the throw for a small "pop" motion.
+
+### Code touched
+- `src/types/game.ts`
+- `src/utils/collisionUtils.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.29 - Add grenade blast knockback (Codex)
+
+### Summary
+Confirmed and adjusted Heavy Gunner grenade behavior.
+- Heavy Gunner grenade remains non-critical.
+- Added knockback to enemies hit by the grenade blast.
+- Boss/elite immovable exceptions are kept aligned with bullet knockback.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.28 - Set grenade fuse to 2 seconds (Codex)
+
+### Summary
+Adjusted Heavy Gunner grenade timing after local feel testing.
+- Changed grenade fuse from `3000ms` to `2000ms`.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.27 - Set grenade fuse to 3 seconds (Codex)
+
+### Summary
+Adjusted Heavy Gunner grenade timing after local feel testing.
+- Changed grenade fuse from `4000ms` to `3000ms`.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.26 - Add Striker quick magazine sub-weapon (Codex)
+
+### Summary
+Added the first Striker sub-weapon and adjusted grenade timing.
+- Heavy Gunner grenade fuse extended to `4000ms`.
+- Added Striker `クイックマガジン` sub-weapon card.
+  - Lv1 cooldown: `10s`
+  - Lv2 cooldown: `8s`
+  - Lv3 cooldown: `6s`
+- When the active gun is not full and reserve ammo exists, the Striker drops
+  one nearby magazine pickup.
+- Picking up the magazine instantly reloads the active gun by moving ammo from
+  reserve into the magazine with no reload delay.
+- Only one quick magazine can exist at a time to avoid pickup clutter.
+
+### Code touched
+- `src/types/game.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.25 - Tune grenade blast and trap crit bonus (Codex)
+
+### Summary
+Adjusted the sub-weapon follow-up balance.
+- Slightly reduced Heavy Gunner grenade blast radius from `72` to `66`.
+- Added a `+10%` critical chance bonus against enemies currently rooted by
+  the Marksman trap.
+  - The trap itself still does not apply critical stun.
+  - The bonus is checked when bullets or melee hits land on the rooted enemy.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
+## 2026-06-08 - v0.25.24 - Fix grenade spread and trap root behavior (Codex)
+
+### Summary
+Adjusted the first sub-weapon balance pass from local testing.
+- Heavy Gunner grenades now split into clearly different roll directions.
+  - Lv1: one grenade toward the target.
+  - Lv2: two grenades split left/right.
+  - Lv3: three grenades roll in a surrounding pattern around the player.
+- Marksman trap no longer uses critical stun.
+  - Added a trap-only `rootUntil` state that stops movement without making
+    the enemy a finisher/critical target.
+  - Lv2+ traps now stay active until their max target count is reached or
+    the trap duration expires.
+  - Trap hit tracking prevents the same enemy from consuming multiple target
+    slots from one trap.
+
+### Code touched
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless the user explicitly asks for GitHub
+  handoff again.
+
 ## 2026-06-08 - v0.25.23 - Add sub-weapon leveling and Marksman trap (Codex)
 
 ### Summary

@@ -18,9 +18,10 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, Enemy, Pickup, Player, Projectile, VisualEffect,
 } from '../types/game';
-import { useGameStore, MELEE_RADIUS, SHAKE_MS, COUNTER_WINDOW } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
+import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
@@ -31,6 +32,7 @@ import { treesInRegion, TREE_CELL } from '../world/trees';
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
 const GRADE_ALPHA = 0.4;       // strength of the cool grade
 const PLAYER_LIGHT_TINT = 0xffca7a; // warm hero halo
+const PLAYER_HUNTING_LIGHT_TINT = 0x60a5fa;
 const PLAYER_LIGHT_ALPHA = 0.32;
 const PLAYER_LIGHT_RADIUS = 200;    // halo radius in world px
 const VIGNETTE_ALPHA = 0.85;
@@ -86,8 +88,21 @@ const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
 const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
-const PLAYER_WALK_FRAME_COUNT = 2;
-const PLAYER_WALK_CYCLE_MS = 360;
+const PLAYER_WALK_CYCLE_MS = 460;
+const PLAYER_CLASS_SPRITE_BASE_HEIGHT = 96;
+const playerWalkSequence = (p: Player): number[] =>
+  p.characterClass === 'mage' ||
+  p.characterClass === 'rogue' ||
+  p.characterClass === 'warrior' ||
+  p.characterClass === 'necromancer'
+    ? [0, 1, 2, 1]
+    : [0, 1];
+const playerWalkFrame = (p: Player, now: number, walking: boolean): number => {
+  if (!walking) return 0;
+  const sequence = playerWalkSequence(p);
+  const index = Math.floor((now % PLAYER_WALK_CYCLE_MS) / (PLAYER_WALK_CYCLE_MS / sequence.length));
+  return sequence[index] ?? 0;
+};
 const PLAYER_WALK_BOB_PX = 0.8;
 const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
@@ -151,6 +166,7 @@ const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'health': '#fb7185',
   'weapon-crate': '#60a5fa',
   'weapon-drop': '#bfdbfe',
+  'quick-magazine': '#cbd5e1',
 };
 
 const containScale = (boxW: number, boxH: number, texW: number, texH: number) =>
@@ -625,7 +641,8 @@ export class PixiScene {
     const lx = s.player.x + s.player.width / 2;
     const ly = s.player.y + s.player.height / 2;
     this.playerLight.position.set(lx, ly);
-    this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : PLAYER_LIGHT_TINT;
+    this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (s.player.huntingCharged ? 1.16 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
 
     this.syncFireflies(s.camera, now);
   }
@@ -757,7 +774,8 @@ export class PixiScene {
 
     for (const p of pickups) {
       if (p.type === 'experience') continue;
-      const footY = p.y + 16;
+      const pos = pickupDisplayPosition(p, now);
+      const footY = pos.y + 16;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
       const bob = Math.sin(now / 300 + p.x * 0.01) * 2;
@@ -781,7 +799,7 @@ export class PixiScene {
       const d = this.depthScale(footY);
       this.drawGroundReflection(
         g,
-        p.x + 8,
+        pos.x + 8,
         footY + 2 * d,
         52 * d * strength * pulse,
         13 * d * strength,
@@ -1072,9 +1090,7 @@ export class PixiScene {
     const usesShotgunSprite = p.characterClass === 'warrior';
     const usesStrikerSprite = p.characterClass === 'rogue';
     const usesScavengerSprite = p.characterClass === 'necromancer';
-    const frame = walking
-      ? Math.floor((now % PLAYER_WALK_CYCLE_MS) / (PLAYER_WALK_CYCLE_MS / PLAYER_WALK_FRAME_COUNT))
-      : 0;
+    const frame = playerWalkFrame(p, now, walking);
     const textureName = usesMagnumSprite
       ? `player-magnum-walk-${frame}`
       : usesShotgunSprite
@@ -1091,7 +1107,7 @@ export class PixiScene {
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     if (tex) {
       const baseScale = usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
-        ? fb.boxH / tex.height
+        ? fb.boxH / PLAYER_CLASS_SPRITE_BASE_HEIGHT
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
       const sc = baseScale * this.depthScale(fb.footY);
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
@@ -1344,9 +1360,10 @@ export class PixiScene {
     now: number
   ) {
     const hitSize = 16;
-    const cx = p.x + hitSize / 2;
-    const cy = p.y + hitSize / 2;
-    const footY = p.y + hitSize;
+    const pos = pickupDisplayPosition(p, now);
+    const cx = pos.x + hitSize / 2;
+    const cy = pos.y + hitSize / 2;
+    const footY = pos.y + hitSize;
     const size = PICKUP_VISUAL_SIZE;
     const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
     const d = this.depthScale(footY); // foot = base of the pickup hitbox
@@ -1429,6 +1446,17 @@ export class PixiScene {
           .moveTo(cx + 9, drawY - 6).lineTo(cx - 9, drawY + 7)
           .stroke({ width: 1.5, color: 0x94a3b8 });
         g.rect(cx - 2, drawY - 1, 4, 3).fill({ color: 0xbfdbfe });
+        break;
+      }
+      case 'quick-magazine': {
+        const t = p.throwStartAt && p.throwDuration
+          ? Math.max(0, Math.min(1, (now - p.throwStartAt) / p.throwDuration))
+          : 1;
+        const squash = t < 1 ? 1 + Math.sin(Math.PI * t) * 0.18 : 1;
+        g.roundRect(cx - 8 * squash, drawY - 6, 16 * squash, 10, 2).fill({ color: 0x111827 });
+        g.roundRect(cx - 7 * squash, drawY - 5, 14 * squash, 8, 2).stroke({ width: 1.5, color: 0xcbd5e1 });
+        g.rect(cx - 5 * squash, drawY - 3, 10 * squash, 2).fill({ color: 0x94a3b8, alpha: 0.9 });
+        g.rect(cx - 5 * squash, drawY, 10 * squash, 2).fill({ color: 0x64748b, alpha: 0.8 });
         break;
       }
       default: {
@@ -1546,6 +1574,38 @@ export class PixiScene {
         g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2.5, color: e.color });
         break;
       }
+      case 'dogFetch': {
+        g.blendMode = 'normal';
+        g.alpha = Math.max(0, Math.min(1, 1 - Math.max(0, t - 0.92) / 0.08));
+        const outRatio = (e.pickupAt - e.createdAt) / e.duration;
+        const outgoing = t <= outRatio;
+        const legT = outgoing ? t / Math.max(0.001, outRatio) : (t - outRatio) / Math.max(0.001, 1 - outRatio);
+        const ease = legT < 0.5 ? 2 * legT * legT : 1 - Math.pow(-2 * legT + 2, 2) / 2;
+        const startX = outgoing ? e.toX : e.targetX;
+        const startY = outgoing ? e.toY : e.targetY;
+        const endX = outgoing ? e.targetX : e.toX;
+        const endY = outgoing ? e.targetY : e.toY;
+        const x = startX + (endX - startX) * ease;
+        const y = startY + (endY - startY) * ease;
+        const facing = endX >= startX ? 1 : -1;
+        const bob = Math.sin(now / 72) * 1.2;
+        const tail = Math.sin(now / 58) * 1.2;
+
+        g.ellipse(x, y + 8, 12, 4).fill({ color: 0x000000, alpha: 0.26 });
+        g.rect(x - 9, y - 4 + bob, 16, 8).fill({ color: 0x4b3524 });
+        g.rect(x - 7, y - 7 + bob, 11, 5).fill({ color: 0x6b4a2f });
+        g.rect(x + facing * 5, y - 9 + bob, 7 * facing, 7).fill({ color: 0x5b3a24 });
+        g.rect(x + facing * 8, y - 13 + bob, 3 * facing, 5).fill({ color: 0x2f1f16 });
+        g.rect(x + facing * 11, y - 4 + bob, 2 * facing, 2).fill({ color: 0x111111 });
+        g.rect(x + facing * 7, y - 7 + bob, 2 * facing, 2).fill({ color: 0xf8fafc });
+        g.rect(x + facing * -10, y - 6 + bob + tail, 5 * -facing, 3).fill({ color: 0x6b4a2f });
+        g.rect(x - 6, y + 4 + bob, 3, 5).fill({ color: 0x2f1f16 });
+        g.rect(x + 3, y + 4 - bob, 3, 5).fill({ color: 0x2f1f16 });
+        if (!outgoing) {
+          g.rect(x + facing * 13, y - 1 + bob, 3 * facing, 3).fill({ color: 0xcbd5e1, alpha: 0.9 });
+        }
+        break;
+      }
     }
   }
 
@@ -1580,7 +1640,7 @@ export class PixiScene {
     g.clear();
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
-    const r = MELEE_RADIUS;
+    const r = huntingMeleeRadius(player);
     if (now <= player.counterWindowEnd) {
       // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in
       // and fades fast (no rotation). The crescent faces the player's last
@@ -1627,6 +1687,14 @@ export class PixiScene {
         g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
           .fill({ color: 0xffffff, alpha: 0.9 * fade });
       }
+    } else if (player.huntingCharged) {
+      const pulse = 0.72 + 0.28 * Math.sin(now / 260);
+      g.circle(cx, cy, r)
+        .stroke({ width: 7, color: 0x60a5fa, alpha: 0.055 + 0.035 * pulse });
+      g.circle(cx, cy, r)
+        .stroke({ width: 1.35, color: 0xbfdbfe, alpha: 0.34 + 0.08 * pulse });
+      g.circle(cx, cy, r - 3)
+        .stroke({ width: 0.8, color: 0xffffff, alpha: 0.12 + 0.04 * pulse });
     } else if (now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }

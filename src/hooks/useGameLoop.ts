@@ -28,24 +28,48 @@ import {
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
+import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
 const HEAVY_GRENADE_COOLDOWN_MS = 5000;
-const HEAVY_GRENADE_FUSE_MS = 1050;
-const HEAVY_GRENADE_RADIUS = 72;
+const HEAVY_GRENADE_FUSE_MS = 2000;
+const HEAVY_GRENADE_RADIUS = 66;
 const HEAVY_GRENADE_DAMAGE = 42;
 const HEAVY_GRENADE_SPEED = 118;
+const HEAVY_GRENADE_KNOCKBACK_MULT = 1.8;
 const MARKSMAN_TRAP_COOLDOWN_MS = 6500;
 const MARKSMAN_TRAP_DURATION_MS = 9000;
 const MARKSMAN_TRAP_STUN_MS = 3000;
+const MARKSMAN_TRAP_CRIT_BONUS = 0.10;
 const MARKSMAN_TRAP_RADIUS_BY_LEVEL = [0, 34, 42, 50];
+const STRIKER_QUICK_MAG_COOLDOWN_BY_LEVEL = [0, 10000, 8000, 6000];
+const STRIKER_QUICK_MAG_THROW_DISTANCE = 82;
+const STRIKER_QUICK_MAG_THROW_MS = 360;
+const DOG_PICKUP_COOLDOWN_BY_LEVEL = [0, 3000, 2000, 1000];
+const DOG_EMPTY_RETRY_MS = 900;
+const DOG_FETCH_OUT_MS = 560;
+const DOG_FETCH_RETURN_MS = 620;
+const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
+  1: [0],
+  2: [-0.9, 0.9],
+  3: [0, (Math.PI * 2) / 3, -(Math.PI * 2) / 3]
+};
 const MAX_ENEMIES = 10;
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
+
+type DogFetchMission = {
+  effectId: string;
+  pickupId: string;
+  level: number;
+  pickupAt: number;
+  returnAt: number;
+  collected: boolean;
+};
 
 export const useGameLoop = (onGameOver: () => void) => {
   const [fps, setFps] = useState(0);
@@ -68,18 +92,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
   const gameOverTriggeredRef = useRef(false);
-  
-  // Game state
-  const isPaused = useGameStore(state => state.isPaused);
-  const gameTime = useGameStore(state => state.gameTime);
-  const player = useGameStore(state => state.player);
-  const enemies = useGameStore(state => state.enemies);
-  const projectiles = useGameStore(state => state.projectiles);
-  const pickups = useGameStore(state => state.pickups);
-  const breakableProps = useGameStore(state => state.breakableProps);
-  const inputState = useGameStore(state => state.inputState);
-  const swipeDirection = useGameStore(state => state.swipeDirection);
-  const gameBounds = useGameStore(state => state.gameBounds);
+  const dogFetchRef = useRef<DogFetchMission | null>(null);
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -93,6 +106,8 @@ export const useGameLoop = (onGameOver: () => void) => {
   const reflectProjectile = useGameStore(state => state.reflectProjectile);
   const addProjectile = useGameStore(state => state.addProjectile);
   const setSubWeaponCooldown = useGameStore(state => state.setSubWeaponCooldown);
+  const rootEnemy = useGameStore(state => state.rootEnemy);
+  const updateHuntingCharge = useGameStore(state => state.updateHuntingCharge);
   const collectPickup = useGameStore(state => state.collectPickup);
   const addPickup = useGameStore(state => state.addPickup);
   const syncBreakableProps = useGameStore(state => state.syncBreakableProps);
@@ -190,6 +205,17 @@ export const useGameLoop = (onGameOver: () => void) => {
       // captured closure) so a level-up / pause takes effect immediately even
       // before React re-runs this effect with the new value.
       if (!useGameStore.getState().isPaused) {
+        const loopState = useGameStore.getState();
+        const {
+          gameTime,
+          player,
+          enemies,
+          pickups,
+          inputState,
+          swipeDirection,
+          gameBounds,
+        } = loopState;
+
         // Update game time
         const newGameTime = gameTime + deltaTime * 1000;
         setGameTime(newGameTime);
@@ -217,6 +243,32 @@ export const useGameLoop = (onGameOver: () => void) => {
 
         // Move player based on input or swipe direction
         movePlayer(inputState, deltaTime);
+
+        const huntingInputActive =
+          useGameStore.getState().touchActive ||
+          swipeDirection !== null ||
+          inputState.up ||
+          inputState.down ||
+          inputState.left ||
+          inputState.right;
+        const huntingPlayer = useGameStore.getState().player;
+        const huntingLevel = Math.max(0, Math.min(3, huntingPlayer.subWeaponLevels['striker-hunting'] ?? 0));
+        if (
+          huntingPlayer.subWeapons.includes('striker-hunting') &&
+          huntingLevel > 0 &&
+          huntingInputActive
+        ) {
+          const startedAt = huntingPlayer.huntingChargeStartedAt > 0
+            ? huntingPlayer.huntingChargeStartedAt
+            : newGameTime;
+          updateHuntingCharge(
+            startedAt,
+            huntingPlayer.huntingCharged ||
+              newGameTime - startedAt >= HUNTING_CHARGE_MS_BY_LEVEL[huntingLevel]
+          );
+        } else if (!huntingPlayer.huntingCharged && huntingPlayer.huntingChargeStartedAt !== 0) {
+          updateHuntingCharge(0, false);
+        }
 
         // Infinite-world camera: center the player exactly.
         const targetCameraX = player.x - gameBounds.width / 2 + player.width / 2;
@@ -266,36 +318,34 @@ export const useGameLoop = (onGameOver: () => void) => {
               dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy)
             }))
             .sort((a, b) => a.dist - b.dist)[0]?.enemy;
-          if (target) {
-            const tx = target.x + target.width / 2;
-            const ty = target.y + target.height / 2;
-            const mag = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
-            const baseDir = { x: (tx - pcx) / mag, y: (ty - pcy) / mag };
-            const angles = level === 1 ? [0] : level === 2 ? [-0.28, 0.28] : [-0.38, 0, 0.38];
-            angles.forEach((angle, index) => {
-              const ca = Math.cos(angle);
-              const sa = Math.sin(angle);
-              addProjectile({
-                id: `proj-heavy-grenade-${Date.now()}-${index}`,
-                x: pcx - 7,
-                y: pcy - 7,
-                width: 14,
-                height: 14,
-                speed: HEAVY_GRENADE_SPEED,
-                damage: HEAVY_GRENADE_DAMAGE,
-                direction: { x: baseDir.x * ca - baseDir.y * sa, y: baseDir.x * sa + baseDir.y * ca },
-                weaponType: 'grenade',
-                weaponKey: 'sub-heavy-grenade',
-                duration: HEAVY_GRENADE_FUSE_MS,
-                createdAt: Date.now(),
-                passthrough: false,
-                hitEnemies: [],
-                hostile: false,
-                reflected: false
-              });
+          const aimX = target ? target.x + target.width / 2 - pcx : subWeaponPlayer.lastDirection?.x ?? 1;
+          const aimY = target ? target.y + target.height / 2 - pcy : subWeaponPlayer.lastDirection?.y ?? 0;
+          const mag = Math.max(0.001, Math.hypot(aimX, aimY));
+          const baseDir = { x: aimX / mag, y: aimY / mag };
+          const angles = GRENADE_SPREAD_BY_LEVEL[level] ?? GRENADE_SPREAD_BY_LEVEL[1];
+          angles.forEach((angle, index) => {
+            const ca = Math.cos(angle);
+            const sa = Math.sin(angle);
+            addProjectile({
+              id: `proj-heavy-grenade-${Date.now()}-${index}`,
+              x: pcx - 7,
+              y: pcy - 7,
+              width: 14,
+              height: 14,
+              speed: HEAVY_GRENADE_SPEED,
+              damage: HEAVY_GRENADE_DAMAGE,
+              direction: { x: baseDir.x * ca - baseDir.y * sa, y: baseDir.x * sa + baseDir.y * ca },
+              weaponType: 'grenade',
+              weaponKey: 'sub-heavy-grenade',
+              duration: HEAVY_GRENADE_FUSE_MS,
+              createdAt: Date.now(),
+              passthrough: false,
+              hitEnemies: [],
+              hostile: false,
+              reflected: false
             });
-            setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
-          }
+          });
+          setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
         }
 
         if (
@@ -328,6 +378,150 @@ export const useGameLoop = (onGameOver: () => void) => {
           spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level], 'rgba(56,189,248,0.46)', 2, 280);
           setSubWeaponCooldown('marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
         }
+
+        if (
+          subWeaponPlayer.subWeapons.includes('striker-quick-mag') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['striker-quick-mag'] ?? 0) &&
+          !useGameStore.getState().pickups.some(p => p.type === 'quick-magazine')
+        ) {
+          const active = getActiveGun(subWeaponPlayer);
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['striker-quick-mag'] ?? 1));
+          const maxMag = active?.magSize != null ? active.magSize + subWeaponPlayer.magBonus : 0;
+          const reserve = active?.ammoType === 'handgun'
+            ? subWeaponPlayer.ammoHandgun
+            : active?.ammoType === 'shotgun'
+              ? subWeaponPlayer.ammoShotgun
+              : active?.ammoType === 'rifle'
+                ? subWeaponPlayer.ammoRifle
+                : 0;
+          if (active?.ammoType && (active.magazine ?? 0) < maxMag && reserve > 0) {
+            const dir = subWeaponPlayer.lastDirection ?? { x: 1, y: 0 };
+            const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+            const px = subWeaponPlayer.x + subWeaponPlayer.width / 2
+              + (dir.x / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
+            const py = subWeaponPlayer.y + subWeaponPlayer.height / 2
+              + (dir.y / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
+            const fromX = subWeaponPlayer.x + subWeaponPlayer.width / 2 - 8;
+            const fromY = subWeaponPlayer.y + subWeaponPlayer.height / 2 - 8;
+            addPickup({
+              id: `pickup-quick-mag-${Date.now()}`,
+              x: px - 8,
+              y: py - 8,
+              type: 'quick-magazine',
+              value: 1,
+              throwFromX: fromX,
+              throwFromY: fromY,
+              throwStartAt: Date.now(),
+              throwDuration: STRIKER_QUICK_MAG_THROW_MS
+            });
+            spawnRing(fromX + 8, fromY + 8, 4, 18, 'rgba(203,213,225,0.72)', 2, 220);
+            spawnRing(px, py, 4, 22, 'rgba(148,163,184,0.7)', 2, 260);
+            spawnBurst(px, py, '#cbd5e1', 6);
+            setSubWeaponCooldown(
+              'striker-quick-mag',
+              gameTime + STRIKER_QUICK_MAG_COOLDOWN_BY_LEVEL[level]
+            );
+          }
+        }
+
+        if (subWeaponPlayer.subWeapons.includes('dog')) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels.dog ?? 1));
+          const dogReadyAt = subWeaponPlayer.subWeaponCooldowns.dog;
+          if (dogReadyAt === undefined) {
+            setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[level]);
+          }
+
+          const dogMission = dogFetchRef.current;
+          if (dogMission) {
+            const nowMs = Date.now();
+            if (!dogMission.collected && nowMs >= dogMission.pickupAt) {
+              const target = useGameStore.getState().pickups.find(p => p.id === dogMission.pickupId);
+              if (target) {
+                const targetX = target.x + 8;
+                const targetY = target.y + 8;
+                spawnBurst(targetX, targetY, '#cbd5e1', 6);
+                spawnRing(targetX, targetY, 3, 18, 'rgba(203,213,225,0.62)', 2, 240);
+
+                if (
+                  target.type === 'ammo-handgun' ||
+                  target.type === 'ammo-shotgun' ||
+                  target.type === 'ammo-rifle'
+                ) {
+                  playSfx('ammo-pickup');
+                } else if (target.type === 'weapon-drop' || target.type === 'weapon-crate') {
+                  playSfx('weapon-pickup');
+                } else if (target.type === 'health') {
+                  playSfx('eat');
+                } else if (target.type === 'bomb') {
+                  playSfx('bomb');
+                } else {
+                  playSfx('pickup');
+                }
+
+                collectPickup(target.id);
+              }
+              dogFetchRef.current = { ...dogMission, collected: true };
+            }
+
+            if (nowMs >= dogMission.returnAt) {
+              dogFetchRef.current = null;
+              setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[dogMission.level]);
+            }
+          } else if (dogReadyAt !== undefined && gameTime >= dogReadyAt) {
+            const state = useGameStore.getState();
+            const margin = 12;
+            const eligiblePickups = state.pickups
+              .filter(p => p.type !== 'quick-magazine')
+              .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
+              .filter(p => {
+                if (p.throwStartAt && p.throwDuration && Date.now() - p.throwStartAt < p.throwDuration) {
+                  return false;
+                }
+                const px = p.x + 8;
+                const py = p.y + 8;
+                return (
+                  px >= state.camera.x - margin &&
+                  px <= state.camera.x + state.gameBounds.width + margin &&
+                  py >= state.camera.y - margin &&
+                  py <= state.camera.y + state.gameBounds.height + margin
+                );
+              });
+
+            if (eligiblePickups.length > 0) {
+              const target = eligiblePickups[Math.floor(Math.random() * eligiblePickups.length)];
+              const targetX = target.x + 8;
+              const targetY = target.y + 8;
+              const playerX = state.player.x + state.player.width / 2;
+              const playerY = state.player.y + state.player.height / 2;
+              const nowMs = Date.now();
+              const effectId = `fx-dog-fetch-${target.id}-${nowMs}`;
+              spawnEffect({
+                kind: 'dogFetch',
+                id: effectId,
+                fromX: targetX,
+                fromY: targetY,
+                targetX,
+                targetY,
+                toX: playerX,
+                toY: playerY,
+                createdAt: nowMs,
+                pickupAt: nowMs + DOG_FETCH_OUT_MS,
+                duration: DOG_FETCH_OUT_MS + DOG_FETCH_RETURN_MS
+              });
+              dogFetchRef.current = {
+                effectId,
+                pickupId: target.id,
+                level,
+                pickupAt: nowMs + DOG_FETCH_OUT_MS,
+                returnAt: nowMs + DOG_FETCH_OUT_MS + DOG_FETCH_RETURN_MS,
+                collected: false
+              };
+              setSubWeaponCooldown('dog', Number.POSITIVE_INFINITY);
+            } else {
+              setSubWeaponCooldown('dog', gameTime + DOG_EMPTY_RETRY_MS);
+            }
+          }
+        }
         
         // Update enemies
         updateEnemies(deltaTime);
@@ -357,6 +551,19 @@ export const useGameLoop = (onGameOver: () => void) => {
             const killed = damageEnemy(enemy.id, splashDamage);
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
             spawnBurst(ex, ey, '#b91c1c', 4);
+            if (
+              !killed &&
+              enemy.type !== 'giantbat' &&
+              enemy.type !== 'pumpkin'
+            ) {
+              const norm = Math.max(0.001, dist);
+              useGameStore.getState().knockbackEnemy(
+                enemy.id,
+                (ex - gx) / norm,
+                (ey - gy) / norm,
+                HEAVY_GRENADE_KNOCKBACK_MULT * (0.55 + falloff * 0.45)
+              );
+            }
             if (killed) {
               playEnemyDeath();
               addPickup({
@@ -375,26 +582,43 @@ export const useGameLoop = (onGameOver: () => void) => {
           const tx = trap.x + trap.width / 2;
           const ty = trap.y + trap.height / 2;
           const radius = trap.area ?? MARKSMAN_TRAP_RADIUS_BY_LEVEL[1];
+          const maxTargets = Math.max(1, trap.count ?? 1);
+          const alreadyHit = new Set(trap.hitEnemies);
+          const remainingTargets = maxTargets - alreadyHit.size;
+          if (remainingTargets <= 0) {
+            removeProjectile(trap.id);
+            continue;
+          }
           const targets = useGameStore.getState().enemies
             .filter(enemy => enemy.type !== 'reaper')
+            .filter(enemy => !alreadyHit.has(enemy.id))
             .map(enemy => ({
               enemy,
               dist: Math.hypot(enemy.x + enemy.width / 2 - tx, enemy.y + enemy.height / 2 - ty)
             }))
             .filter(hit => hit.dist <= radius)
             .sort((a, b) => a.dist - b.dist)
-            .slice(0, Math.max(1, trap.count ?? 1));
+            .slice(0, remainingTargets);
           if (targets.length === 0) continue;
-          removeProjectile(trap.id);
           spawnRing(tx, ty, 8, radius + 12, 'rgba(56,189,248,0.9)', 3, 360);
           spawnBurst(tx, ty, '#38bdf8', 14);
           useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(56,189,248,', 320);
           targets.forEach(({ enemy }) => {
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
-            useGameStore.getState().stunEnemy(enemy.id, gameTime + MARKSMAN_TRAP_STUN_MS);
+            rootEnemy(enemy.id, gameTime + MARKSMAN_TRAP_STUN_MS);
             spawnRing(ex, ey, 5, 28, 'rgba(125,211,252,0.86)', 2, 260);
           });
+          const nextHitEnemies = [...trap.hitEnemies, ...targets.map(({ enemy }) => enemy.id)];
+          if (nextHitEnemies.length >= maxTargets) {
+            removeProjectile(trap.id);
+          } else {
+            useGameStore.setState(state => ({
+              projectiles: state.projectiles.map(p =>
+                p.id === trap.id ? { ...p, hitEnemies: nextHitEnemies } : p
+              )
+            }));
+          }
         }
 
         // Every enemy that has a fire profile periodically lobs a hostile
@@ -488,8 +712,13 @@ export const useGameLoop = (onGameOver: () => void) => {
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
         }
 
-        // Check for collisions between projectiles and enemies
-        const projectileEnemyCollisions = checkProjectileEnemyCollisions(useGameStore.getState().projectiles, enemies);
+        // Check for collisions between projectiles and enemies. Read fresh
+        // after updateProjectiles/updateEnemies so bullets fired or moved this
+        // frame can actually hit.
+        const collisionState = useGameStore.getState();
+        const collisionProjectiles = collisionState.projectiles;
+        const collisionEnemies = collisionState.enemies;
+        const projectileEnemyCollisions = checkProjectileEnemyCollisions(collisionProjectiles, collisionEnemies);
         const projectileHitCountsByEnemy = new Map<string, number>();
         for (const { enemyId } of projectileEnemyCollisions) {
           projectileHitCountsByEnemy.set(enemyId, (projectileHitCountsByEnemy.get(enemyId) ?? 0) + 1);
@@ -498,28 +727,33 @@ export const useGameLoop = (onGameOver: () => void) => {
         const grenadeExplodedThisFrame = new Set<string>();
         
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage }) => {
-          const enemyForFx = enemies.find(e => e.id === enemyId);
-          const projectile = projectiles.find(p => p.id === projectileId);
+          const enemyForFx = collisionEnemies.find(e => e.id === enemyId);
+          const projectile = collisionProjectiles.find(p => p.id === projectileId);
 
           // Apply the crit multiplier at hit time: bosses take 5× on a crit,
           // normal enemies 1.5×. `damage` is the projectile's base damage.
           const isBoss = enemyForFx ? isBossType(enemyForFx.type) : false;
-          const critMult = projectile?.crit
+          const trapCritBonus =
+            enemyForFx?.rootUntil !== undefined &&
+            gameTime < enemyForFx.rootUntil &&
+            Math.random() < MARKSMAN_TRAP_CRIT_BONUS;
+          const hitCrit = !!projectile?.crit || trapCritBonus;
+          const critMult = hitCrit
             ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
             : 1;
           const dmg = damage * critMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
-          playSfx(projectile?.crit ? 'headshot' : 'shot-damage');
+          playSfx(hitCrit ? 'headshot' : 'shot-damage');
 
           if (enemyForFx) {
             const hitX = enemyForFx.x + enemyForFx.width / 2;
             const hitY = enemyForFx.y + enemyForFx.height / 2;
-            spawnBurst(hitX, hitY, '#b91c1c', projectile?.crit ? 8 : 5);
-            spawnBurst(hitX, hitY, '#7f1d1d', projectile?.crit ? 4 : 2);
+            spawnBurst(hitX, hitY, '#b91c1c', hitCrit ? 8 : 5);
+            spawnBurst(hitX, hitY, '#7f1d1d', hitCrit ? 4 : 2);
           }
 
           // Crit / headshot juice: gold shockwave + sparks + glow.
-          if (projectile?.crit && enemyForFx) {
+          if (hitCrit && enemyForFx) {
             const cex = enemyForFx.x + enemyForFx.width / 2;
             const cey = enemyForFx.y + enemyForFx.height / 2;
             spawnRing(cex, cey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
@@ -550,8 +784,8 @@ export const useGameLoop = (onGameOver: () => void) => {
               const falloff = 1 - dist / GRENADE_BLAST_RADIUS;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
-              spawnDamageNumber(sx, splashEnemy.y, splashDamage, !!projectile.crit);
-              spawnBurst(sx, sy, '#b91c1c', projectile.crit ? 7 : 4);
+              spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit);
+              spawnBurst(sx, sy, '#b91c1c', hitCrit ? 7 : 4);
               if (splashKilled) {
                 playEnemyDeath();
                 spawnBurst(sx, sy, '#dc2626', 12);
@@ -573,7 +807,7 @@ export const useGameLoop = (onGameOver: () => void) => {
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y,
               dmg,
-              !!projectile?.reflected || !!projectile?.crit
+              !!projectile?.reflected || hitCrit
             );
           }
 
@@ -597,7 +831,7 @@ export const useGameLoop = (onGameOver: () => void) => {
 
           // Crit that didn't outright kill → stun the target so it can be
           // executed with a melee finisher. Mark it with a brief yellow ring.
-          if (projectile?.crit && !enemyKilled && enemyForFx) {
+          if (hitCrit && !enemyKilled && enemyForFx) {
             useGameStore.getState().stunEnemy(enemyId, gameTime + STUN_DURATION_MS);
             spawnRing(
               enemyForFx.x + enemyForFx.width / 2,
@@ -632,7 +866,7 @@ export const useGameLoop = (onGameOver: () => void) => {
             // kill.mp3 instead (wired via the counter result); bomb clears use
             // the bomb sound, so they don't double up here.
             playEnemyDeath();
-            const enemy = enemies.find(e => e.id === enemyId);
+            const enemy = collisionEnemies.find(e => e.id === enemyId);
             if (enemy) {
               // Death splash: red burst so kills read as blood/hit impact.
               const ex = enemy.x + enemy.width / 2;
@@ -952,6 +1186,12 @@ export const useGameLoop = (onGameOver: () => void) => {
                   spawnBurst(pk.x + 8, pk.y + 8, '#bfdbfe', 18);
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 42, 'rgba(191,219,254,', 340);
                   break;
+                case 'quick-magazine':
+                  playSfx('reload');
+                  spawnBurst(pk.x + 8, pk.y + 8, '#cbd5e1', 10);
+                  spawnRing(pk.x + 8, pk.y + 8, 3, 22, 'rgba(203,213,225,0.76)', 2, 260);
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 28, 'rgba(203,213,225,', 240);
+                  break;
               }
             }
             collectPickup(pickupId);
@@ -1251,16 +1491,6 @@ export const useGameLoop = (onGameOver: () => void) => {
       cancelAnimationFrame(frameRef.current);
     };
   }, [
-    isPaused,
-    gameTime,
-    player,
-    enemies,
-    projectiles,
-    pickups,
-    breakableProps,
-    inputState,
-    swipeDirection,
-    gameBounds,
     movePlayer,
     fireWeapons,
     updateEnemies,
@@ -1268,6 +1498,8 @@ export const useGameLoop = (onGameOver: () => void) => {
     addEnemy,
     addProjectile,
     setSubWeaponCooldown,
+    rootEnemy,
+    updateHuntingCharge,
     damageEnemy,
     damagePlayer,
     removeProjectile,

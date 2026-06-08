@@ -23,18 +23,25 @@ export const ensureTextures = (): Promise<void> => {
   if (ready) return Promise.resolve();
   if (loading) return loading;
   loading = (async () => {
+    const playerWalkNames = [
+      'player-magnum-walk-0',
+      'player-magnum-walk-1',
+      'player-magnum-walk-2',
+      'player-striker-walk-0',
+      'player-striker-walk-1',
+      'player-striker-walk-2',
+      'player-shotgun-walk-0',
+      'player-shotgun-walk-1',
+      'player-shotgun-walk-2',
+      'player-scavenger-walk-0',
+      'player-scavenger-walk-1',
+      'player-scavenger-walk-2',
+    ];
     const [atlas, player, torch, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
-      Assets.load(spritePath('player-magnum-walk-0')),
-      Assets.load(spritePath('player-magnum-walk-1')),
-      Assets.load(spritePath('player-striker-walk-0')),
-      Assets.load(spritePath('player-striker-walk-1')),
-      Assets.load(spritePath('player-shotgun-walk-0')),
-      Assets.load(spritePath('player-shotgun-walk-1')),
-      Assets.load(spritePath('player-scavenger-walk-0')),
-      Assets.load(spritePath('player-scavenger-walk-1')),
+      ...playerWalkNames.map(name => Assets.load(spritePath(name))),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
@@ -50,17 +57,8 @@ export const ensureTextures = (): Promise<void> => {
       );
     }
     textures.set('player', player);
-    playerWalk.slice(0, 2).forEach((tex, i) => {
-      textures.set(`player-magnum-walk-${i}`, tex);
-    });
-    playerWalk.slice(2, 4).forEach((tex, i) => {
-      textures.set(`player-striker-walk-${i}`, tex);
-    });
-    playerWalk.slice(4, 6).forEach((tex, i) => {
-      textures.set(`player-shotgun-walk-${i}`, tex);
-    });
-    playerWalk.slice(6, 8).forEach((tex, i) => {
-      textures.set(`player-scavenger-walk-${i}`, tex);
+    playerWalk.forEach((tex, i) => {
+      textures.set(playerWalkNames[i], tex);
     });
     textures.set('torch', torch);
     ready = true;

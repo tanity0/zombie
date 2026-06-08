@@ -28,6 +28,33 @@ const playerHitbox = (player: { x: number; y: number; width: number; height: num
   };
 };
 
+const throwProgress = (pickup: Pickup, now: number): number => {
+  if (
+    pickup.throwFromX === undefined ||
+    pickup.throwFromY === undefined ||
+    pickup.throwStartAt === undefined ||
+    pickup.throwDuration === undefined ||
+    pickup.throwDuration <= 0
+  ) {
+    return 1;
+  }
+  return Math.max(0, Math.min(1, (now - pickup.throwStartAt) / pickup.throwDuration));
+};
+
+export const pickupDisplayPosition = (pickup: Pickup, now = Date.now()) => {
+  const t = throwProgress(pickup, now);
+  if (t >= 1 || pickup.throwFromX === undefined || pickup.throwFromY === undefined) {
+    return { x: pickup.x, y: pickup.y, arc: 0 };
+  }
+  const eased = 1 - Math.pow(1 - t, 2);
+  const arc = Math.sin(Math.PI * t) * 24;
+  return {
+    x: pickup.throwFromX + (pickup.x - pickup.throwFromX) * eased,
+    y: pickup.throwFromY + (pickup.y - pickup.throwFromY) * eased - arc,
+    arc
+  };
+};
+
 // Check collisions between projectiles and enemies
 export const checkProjectileEnemyCollisions = (
   projectiles: Projectile[],
@@ -95,7 +122,7 @@ export const checkPlayerPickupCollisions = (
 ): string[] => {
   // Slight magnet around the player so collection feels snappy without
   // hoovering pickups from across the screen.
-  const PAD = 24;
+  const PAD = 16;
   const expandedPlayer = {
     x: player.x - PAD,
     y: player.y - PAD,
@@ -106,16 +133,25 @@ export const checkPlayerPickupCollisions = (
   // Pickups don't carry width/height in the type, so treat them as the
   // 16×16 sprite the renderer draws.
   const PICKUP_SIZE = 16;
+  const now = Date.now();
 
   return pickups
-    .filter(pickup =>
-      checkCollision(expandedPlayer, {
-        x: pickup.x,
-        y: pickup.y,
+    .filter(pickup => {
+      if (
+        pickup.throwStartAt !== undefined &&
+        pickup.throwDuration !== undefined &&
+        now - pickup.throwStartAt < pickup.throwDuration
+      ) {
+        return false;
+      }
+      const pos = pickupDisplayPosition(pickup, now);
+      return checkCollision(expandedPlayer, {
+        x: pos.x,
+        y: pos.y,
         width: PICKUP_SIZE,
         height: PICKUP_SIZE
-      })
-    )
+      });
+    })
     .map(pickup => pickup.id);
 };
 

@@ -18,11 +18,13 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<PixiScene | null>(null);
+  const tickerCallbackRef = useRef<(() => void) | null>(null);
 
   // One-time init. Async (Pixi v8 + texture load); a cancel flag guards the
   // StrictMode double-mount / fast-unmount race.
   useEffect(() => {
     let cancelled = false;
+    const host = hostRef.current;
     const app = new Application();
 
     (async () => {
@@ -45,7 +47,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         return;
       }
 
-      const host = hostRef.current;
       if (host) {
         app.canvas.style.position = 'absolute';
         app.canvas.style.top = '0';
@@ -61,17 +62,26 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       appRef.current = app;
       sceneRef.current = scene;
 
-      app.ticker.add(() => scene.sync());
+      const tick = () => scene.sync();
+      tickerCallbackRef.current = tick;
+      app.ticker.add(tick);
     })();
 
     return () => {
       cancelled = true;
+      const app = appRef.current;
+      const tick = tickerCallbackRef.current;
+      if (app && tick) {
+        app.ticker.remove(tick);
+      }
+      tickerCallbackRef.current = null;
       sceneRef.current?.destroy();
       sceneRef.current = null;
-      if (appRef.current) {
-        appRef.current.destroy(true);
+      if (app) {
+        app.destroy(true);
         appRef.current = null;
       }
+      host?.replaceChildren();
     };
     // Init runs once; resize is handled by the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
