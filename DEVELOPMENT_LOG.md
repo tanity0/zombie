@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.70 - Replace Marksman walk sprites (Codex)
+
+### Summary
+Replaced the Marksman walk sprites with the latest hooded rifle sheet.
+- Processed `/tmp/codex-remote-attachments/019e963d-1503-7b22-a39b-597ea91a7423/455F613A-E3DC-468C-9DF6-E8086AF750A9/1-写真1.jpg`.
+- Extracted three frames for `player-magnum-walk-0.png` through `player-magnum-walk-2.png`.
+- Removed the purple backdrop and internal purple pixels with hard alpha only.
+- Re-centered frames by head/top-band position to reduce walk-cycle head wobble.
+- Kept the shared 128x108 frame size and 96px visible sprite-height convention.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed all three Marksman frames are 128x108 RGBA.
+- Confirmed zero semi-transparent pixels in all three Marksman frames.
+- Confirmed zero visible purple-key pixels remain in all three Marksman frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.69 - Add quick-magazine crit buff (Codex)
 
 ### Summary
