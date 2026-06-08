@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.17 - Add post-character loading screen (Codex)
+
+### Summary
+Added a loading step after character selection and before gameplay starts.
+- `App` now transitions `menu` -> `loading` -> `playing`.
+- The loading screen shows the selected survivor name and a compact animated
+  loading treatment.
+- Pixi textures are warmed during loading via `ensureTextures()`.
+- Loading has a short minimum display time so the transition does not flicker.
+
+### Code touched
+- `src/App.tsx`
+- `src/components/LoadingScreen.tsx`
+- `src/types/game.ts`
+- `src/index.css`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Minimum loading display time is controlled by `LOADING_MIN_MS` in
+  `src/App.tsx`.
+
 ## 2026-06-08 - v0.25.16 - Strengthen combo count pop (Codex)
 
 ### Summary

@@ -70,6 +70,16 @@
     animation: combo-count-pop 360ms cubic-bezier(0.16, 1.55, 0.3, 1) both;
     will-change: transform, opacity, filter;
   }
+  .loading-sigil {
+    animation: loading-sigil-spin 1.15s linear infinite;
+    background:
+      conic-gradient(from 0deg, transparent 0 18%, rgba(125, 211, 252, 0.95) 23%, transparent 31% 57%, rgba(167, 243, 208, 0.8) 63%, transparent 70%),
+      radial-gradient(circle, transparent 48%, rgba(255,255,255,0.12) 50%, transparent 54%);
+  }
+  .loading-bar {
+    animation: loading-bar-sweep 880ms ease-in-out infinite;
+    transform-origin: left center;
+  }
 }
 
 @keyframes upgrade-backdrop-in {
@@ -126,5 +136,25 @@
     opacity: 1;
     transform: translateY(0) scale(1);
     filter: brightness(1);
+  }
+}
+
+@keyframes loading-sigil-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loading-bar-sweep {
+  0% {
+    transform: translateX(-70%) scaleX(0.42);
+    opacity: 0.5;
+  }
+  48% {
+    transform: translateX(8%) scaleX(0.72);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(128%) scaleX(0.34);
+    opacity: 0.5;
   }
 }
