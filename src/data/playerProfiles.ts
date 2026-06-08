@@ -13,11 +13,12 @@ import { CharacterClass } from '../types/game';
 export interface PlayerProfile {
   gunKey: string;
   meleeKey: string;
+  maxHp: number;
 }
 
 export const PLAYER_PROFILES: Record<CharacterClass, PlayerProfile> = {
-  warrior:     { gunKey: 'shotgun-t1', meleeKey: 'hatchet-t2' },
-  rogue:       { gunKey: 'handgun-t1', meleeKey: 'machete-t3' },
-  mage:        { gunKey: 'rifle-t1',   meleeKey: 'knife-t1' },
-  necromancer: { gunKey: 'handgun-t1', meleeKey: 'knife-t1' }
+  warrior:     { gunKey: 'shotgun-t1', meleeKey: 'hatchet-t2', maxHp: 130 },
+  rogue:       { gunKey: 'handgun-t1', meleeKey: 'machete-t3', maxHp: 105 },
+  mage:        { gunKey: 'rifle-t1',   meleeKey: 'knife-t1',   maxHp: 100 },
+  necromancer: { gunKey: 'handgun-t1', meleeKey: 'knife-t1',   maxHp: 120 }
 };

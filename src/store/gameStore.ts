@@ -12,6 +12,7 @@ import { resolveTreeCollision } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
+import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -129,7 +130,7 @@ export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer n
 const BREAKABLE_PROP_DROP_CHANCE = 0.28;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
-const MELEE_FINISH_COMBO_WINDOW_MS = 5000;
+const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
 const weaponTierColor = (tier?: number): string => {
   switch (tier ?? 1) {
@@ -1576,6 +1577,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       : 'warrior';
       
     const startingWeapons = getStartingWeapons(validClass);
+    const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
+    const maxHealth = profile.maxHp;
     
     set(state => {
       void state;
@@ -1590,8 +1593,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: PLAYER_HITBOX,
           height: PLAYER_HITBOX,
           speed: PLAYER_BASE_SPEED,
-          health: PLAYER_BASE_HP,
-          maxHealth: PLAYER_BASE_HP,
+          health: maxHealth,
+          maxHealth,
           experience: 0,
           level: 1,
           experienceToNextLevel: 5,

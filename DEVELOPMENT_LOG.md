@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.20 - Add class HP differences and extend combo window (Codex)
+
+### Summary
+Made character HP differences affect actual gameplay and extended combo timing.
+- Added `maxHp` to `PLAYER_PROFILES`.
+- `resetGame` now initializes player `health` / `maxHealth` from the selected
+  character profile.
+- Starting HP:
+  - Heavy Gunner: `130`
+  - Marksman: `100`
+  - Striker: `105`
+  - Scavenger: `120`
+- Melee finisher / counter combo window extended from `5s` to `7s`.
+
+### Code touched
+- `src/data/playerProfiles.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- `PLAYER_BASE_HP` remains as the generic fallback/default initial store value;
+  run-start HP now comes from `PLAYER_PROFILES`.
+
 ## 2026-06-08 - v0.25.19 - Fix settings scroll and retune shotgun spread (Codex)
 
 ### Summary
