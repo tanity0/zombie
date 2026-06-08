@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.18 - Tune shotgun spread tiers (Codex)
+
+### Summary
+Adjusted shotgun spread by tier.
+- T1 spread cone: `0.70`
+- T2 spread cone: `0.50`
+- T3 spread cone: `0.34`
+
+### Code touched
+- `src/utils/weaponUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Loading currently preloads Pixi texture assets through `ensureTextures()`.
+  Those textures are cached in memory by Pixi and can also use the browser HTTP
+  cache. Audio is warmed by the audio manager when gameplay/audio activates, not
+  as a hard loading-screen completion gate.
+
 ## 2026-06-08 - v0.25.17 - Add post-character loading screen (Codex)
 
 ### Summary
