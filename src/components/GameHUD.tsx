@@ -110,10 +110,15 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
               FINISH / COUNTER
             </div>
             <div
-              className="text-xl font-black tabular-nums text-amber-100"
+              className="font-black tabular-nums text-amber-100"
               style={{ WebkitTextStroke: '1px rgba(20,12,4,0.9)', textShadow: '0 0 8px rgba(251,191,36,0.45)' }}
             >
-              {meleeFinishComboCount} COMBO
+              <span key={meleeFinishComboCount} className="combo-count-pop inline-block text-xl">
+                {meleeFinishComboCount}
+              </span>
+              <span className="ml-1 align-baseline text-[10px] tracking-[0.16em] text-amber-100/80">
+                COMBO
+              </span>
             </div>
           </div>
         </div>

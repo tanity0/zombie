@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.15 - Tier shotgun spread and combo pop (Codex)
+
+### Summary
+Adjusted shotgun spread by tier and refined combo display.
+- Shotgun spread is now tier-specific:
+  - T1: `0.40rad`
+  - T2: `0.36rad`
+  - T3: `0.34rad`
+- Combo display now separates the count from the `COMBO` label.
+- `COMBO` text is smaller.
+- Combo number pops in with a short bounce animation whenever the count changes.
+
+### Code touched
+- `src/utils/weaponUtils.ts`
+- `src/components/GameHUD.tsx`
+- `src/index.css`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Shotgun spread is controlled by `SHOTGUN_SPREAD_CONE_RAD_BY_TIER` in
+  `src/utils/weaponUtils.ts`.
+
 ## 2026-06-08 - v0.25.14 - Add weapon tier pickup colors and shotgun shove tuning (Codex)
 
 ### Summary

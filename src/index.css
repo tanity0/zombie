@@ -65,6 +65,10 @@
   .upgrade-menu-option:nth-child(3) {
     animation-delay: 70ms;
   }
+  .combo-count-pop {
+    transform-origin: 50% 82%;
+    animation: combo-count-pop 220ms cubic-bezier(0.18, 1.45, 0.36, 1) both;
+  }
 }
 
 @keyframes upgrade-backdrop-in {
@@ -98,5 +102,23 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes combo-count-pop {
+  0% {
+    opacity: 0.45;
+    transform: translateY(5px) scale(0.72);
+    filter: brightness(1.7);
+  }
+  58% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.18);
+    filter: brightness(1.25);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
   }
 }
