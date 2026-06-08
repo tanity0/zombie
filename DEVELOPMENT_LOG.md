@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.64 - Bust class-select sprite cache (Codex)
+
+### Summary
+Fixed stale character art on the class selection screen.
+- Added the app version query string to `MainMenu` character sprite URLs.
+- The Pixi/gameplay renderer already used versioned sprite URLs via
+  `spritePath()`, but the React class cards used direct image URLs and could
+  keep old cached PNGs.
+- This makes class selection art refresh with each version bump.
+
+### Code touched
+- `src/components/MainMenu.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed because the issue is visible on the GitHub Pages environment.
+
 ## 2026-06-08 - v0.25.63 - Match gameplay player scale to class cards (Codex)
 
 ### Summary

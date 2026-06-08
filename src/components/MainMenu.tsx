@@ -68,13 +68,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     setSfxVol(next);
     setSfxVolume(next);
   };
+  const spriteVersion = encodeURIComponent(__APP_VERSION__);
   
   const characterClasses = [
     {
       id: 'warrior',
       name: 'ヘビーガンナー',
       description: 'ソードオフ・ショットガンとダガーで近距離を制圧する。',
-      sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png`,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(248, 113, 113, 0.55)',
       stats: {
         health: 'Medium',
@@ -86,7 +87,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'mage',
       name: 'マークスマン',
       description: 'マグナムとナイフ。一撃の重さで遠距離から狙撃する。',
-      sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-walk-0.png`,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(168, 85, 247, 0.52)',
       stats: {
         health: 'Low',
@@ -98,7 +99,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'rogue',
       name: 'ストライカー',
       description: 'ハンドガンとファイティングナイフ。手数とフィニッシュで攻める。',
-      sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png`,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(52, 211, 153, 0.48)',
       stats: {
         health: 'Low',
@@ -110,7 +111,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'necromancer',
       name: 'スカベンジャー',
       description: 'ハンドガンとナイフ。拾った武器で戦況を変える。',
-      sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png`,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(129, 140, 248, 0.48)',
       stats: {
         health: 'Medium',
