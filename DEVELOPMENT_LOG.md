@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.65 - Replace Marksman hooded walk sprites (Codex)
+
+### Summary
+Replaced the Marksman walk sprites with the new hooded marksman sheet.
+- Processed `/tmp/codex-remote-attachments/019e963d-1503-7b22-a39b-597ea91a7423/C9F3F49A-38CD-4174-BDE1-6CB0BF5A847A/1-写真1.jpg`.
+- Extracted three frames for `player-magnum-walk-0.png` through `-2.png`.
+- Removed the connected purple backdrop with hard alpha only.
+- Re-centered the frames by head/top-band position to reduce walk-cycle head wobble.
+- Kept the shared 128x108 frame size and 96px visible sprite-height convention.
+
+### Code touched
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed all three Marksman frames are 128x108 RGBA.
+- Confirmed zero semi-transparent pixels in all three Marksman frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
 ## 2026-06-08 - v0.25.64 - Bust class-select sprite cache (Codex)
 
 ### Summary
