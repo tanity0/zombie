@@ -1286,8 +1286,13 @@ export class PixiScene {
         break;
       }
       case 'grenade': {
-        g.circle(0, 0, Math.max(3, p.width / 2)).fill({ color: 0x1f2937 });
-        g.circle(-1, -1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
+        const t = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
+        const hopEnvelope = Math.max(0, 1 - t * 0.58);
+        const hop = Math.abs(Math.sin(t * Math.PI * 5.2)) * 9 * hopEnvelope;
+        g.ellipse(0, 4, Math.max(3, p.width * 0.48), Math.max(1.2, p.height * 0.14))
+          .fill({ color: 0x000000, alpha: 0.28 });
+        g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: 0x1f2937 });
+        g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
         break;
       }
       default: {

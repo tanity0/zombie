@@ -133,6 +133,7 @@ export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
+const GRENADE_ROLL_DRAG = 1.45;
 const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
 const weaponTierColor = (tier?: number): string => {
   switch (tier ?? 1) {
@@ -1126,6 +1127,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             return {
               ...p,
               direction: dir,
+              speed: Math.max(24, p.speed * Math.exp(-GRENADE_ROLL_DRAG * deltaTime)),
               x: nextX,
               y: nextY
             };

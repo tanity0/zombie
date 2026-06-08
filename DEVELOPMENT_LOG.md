@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.22 - Shorten grenade roll and add hop motion (Codex)
+
+### Summary
+Adjusted the Heavy Gunner grenade behavior.
+- Reduced grenade travel distance by shortening fuse time and lowering roll
+  speed.
+- Added grenade-only rolling drag so it slows down before detonation.
+- Added a Pixi hop/shadow treatment so the grenade reads as bouncing from the
+  player's feet before exploding.
+- Wall bounce behavior remains intact for tree trunks and intact torches.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current Heavy Gunner grenade test values:
+  - cooldown: `5000ms`
+  - fuse: `1050ms`
+  - initial roll speed: `118`
+  - roll drag: `1.45`
+  - damage: `42`
+  - radius: `72`
+
 ## 2026-06-08 - v0.25.21 - Add Heavy Gunner grenade sub-weapon card (Codex)
 
 ### Summary
