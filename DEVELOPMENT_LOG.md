@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.16 - Strengthen combo count pop (Codex)
+
+### Summary
+Refined the combo HUD treatment.
+- Combo count is larger.
+- `COMBO` label is slightly smaller and dimmer.
+- Combo glow is flatter and softer, spreading more horizontally with less
+  concentrated brightness.
+- Combo count pop animation is longer and more exaggerated so count changes read
+  as a visible bounce.
+
+### Code touched
+- `src/components/GameHUD.tsx`
+- `src/index.css`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The combo bounce is controlled by `.combo-count-pop` and
+  `@keyframes combo-count-pop` in `src/index.css`.
+
 ## 2026-06-08 - v0.25.15 - Tier shotgun spread and combo pop (Codex)
 
 ### Summary
