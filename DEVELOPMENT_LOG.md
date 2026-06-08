@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.19 - Fix settings scroll and retune shotgun spread (Codex)
+
+### Summary
+Fixed the start-menu settings panel scrolling and retuned shotgun spread.
+- Main menu now uses a top-aligned vertical scroll container so expanded
+  settings remain reachable on mobile.
+- Added extra bottom safe-area padding for the settings/start section.
+- Shotgun spread cone by tier is now:
+  - T1: `1.00`
+  - T2: `0.70`
+  - T3: `0.36`
+
+### Code touched
+- `src/components/MainMenu.tsx`
+- `src/utils/weaponUtils.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the settings panel grows again, keep the root menu as a scroll container
+  and avoid vertical centering on mobile-height layouts.
+
 ## 2026-06-08 - v0.25.18 - Tune shotgun spread tiers (Codex)
 
 ### Summary

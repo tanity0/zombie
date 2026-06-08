@@ -127,15 +127,15 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   
   return (
     <div
-      className="h-full w-full flex flex-col items-center justify-center bg-[#0b0b12] overflow-auto"
+      className="h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-y-auto overscroll-contain"
       style={{
         paddingTop: 'max(env(safe-area-inset-top), 16px)',
-        paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
+        paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 24px), 40px)',
         paddingLeft: 'max(env(safe-area-inset-left), 12px)',
         paddingRight: 'max(env(safe-area-inset-right), 12px)'
       }}
     >
-      <div className="max-w-3xl w-full glass-panel rounded-3xl overflow-hidden">
+      <div className="max-w-3xl w-full shrink-0 glass-panel rounded-3xl overflow-hidden">
         <div className="relative px-5 pt-6 pb-3 text-center">
           <h1 className="text-3xl font-semibold tracking-tight text-white">
             ゾンビサバイバル

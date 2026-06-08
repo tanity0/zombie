@@ -6,9 +6,9 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 // feel snappier and reach their target sooner.
 const PROJECTILE_SPEED_MULT = 1.5;
 const SHOTGUN_SPREAD_CONE_RAD_BY_TIER: Record<number, number> = {
-  1: 0.70,
-  2: 0.50,
-  3: 0.34,
+  1: 1.00,
+  2: 0.70,
+  3: 0.36,
 };
 const TIER_CRIT_STEP = 0.03;
 const BASE_CRIT_BY_CATEGORY: Record<AmmoType, number> = {
