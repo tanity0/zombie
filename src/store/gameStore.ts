@@ -3,16 +3,17 @@ import { generateUpgradeOptions } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  VisualEffect, AmmoType, Direction
+  VisualEffect, AmmoType, Direction, SubWeaponKey
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
-import { resolveTreeCollision } from '../world/trees';
+import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { rectsOverlap } from '../world/obstacles';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -131,6 +132,7 @@ const BREAKABLE_PROP_DROP_CHANCE = 0.28;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
+const GRENADE_BOUNCE_DAMPING = 0.86;
 const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
 const weaponTierColor = (tier?: number): string => {
   switch (tier ?? 1) {
@@ -191,6 +193,8 @@ interface GameState {
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
   selectUpgrade: (upgrade: UpgradeOption) => void;
+  learnSubWeapon: (key: SubWeaponKey) => void;
+  setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
@@ -282,7 +286,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     reloadEndsAt: 0,
     reloadingWeaponId: '',
     magBonus: 0,
-    reloadMult: 1
+    reloadMult: 1,
+    subWeapons: [],
+    subWeaponCooldowns: {}
   },
   enemies: [],
   projectiles: [],
@@ -738,6 +744,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const { player } = state;
 
+      if (upgrade.type === 'subWeapon' && upgrade.subWeaponKey) {
+        const known = player.subWeapons.includes(upgrade.subWeaponKey);
+        return {
+          player: {
+            ...player,
+            subWeapons: known ? player.subWeapons : [...player.subWeapons, upgrade.subWeaponKey]
+          },
+          showUpgradeMenu: false,
+          isPaused: false
+        };
+      }
+
       // RE rework: level-ups only strengthen the player — new weapons come
       // exclusively from world drops and crates. Every upgrade is a passive.
       if (upgrade.type === 'passive' && upgrade.passiveType) {
@@ -801,6 +819,29 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: false
       };
     });
+  },
+
+  learnSubWeapon: (key) => {
+    set(state => ({
+      player: {
+        ...state.player,
+        subWeapons: state.player.subWeapons.includes(key)
+          ? state.player.subWeapons
+          : [...state.player.subWeapons, key]
+      }
+    }));
+  },
+
+  setSubWeaponCooldown: (key, readyAt) => {
+    set(state => ({
+      player: {
+        ...state.player,
+        subWeaponCooldowns: {
+          ...state.player.subWeaponCooldowns,
+          [key]: readyAt
+        }
+      }
+    }));
   },
   
   // Enemy actions
@@ -1017,14 +1058,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     const currentTime = Date.now();
 
     set(state => {
-      const { projectiles, player, gameBounds } = state;
+      const { projectiles, player, gameBounds, breakableProps } = state;
       const cullRadius = Math.max(gameBounds.width, gameBounds.height);
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
+      const grenadeWallsFor = (p: Projectile) => {
+        const pad = 260;
+        const cx = p.x + p.width / 2;
+        const cy = p.y + p.height / 2;
+        const trunks = treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
+        const torches = breakableProps
+          .filter(prop => prop.type === 'torch' && prop.health > 0)
+          .map(torchRect);
+        return [...trunks, ...torches];
+      };
 
       const updatedProjectiles = projectiles
         .filter(p => {
-          if (currentTime - p.createdAt > p.duration) return false;
+          if (currentTime - p.createdAt > p.duration && p.weaponType !== 'grenade') return false;
+          if (currentTime - p.createdAt > p.duration + 500) return false;
           // Garlic / bibles follow the player and shouldn't be culled by
           // their static spawn position; check distance from player.
           const px = p.x + p.width / 2;
@@ -1056,6 +1108,27 @@ export const useGameStore = create<GameState>((set, get) => ({
           let dir = p.direction;
           if (p.gravity) {
             dir = { x: dir.x, y: dir.y + p.gravity * deltaTime };
+          }
+          if (p.weaponType === 'grenade') {
+            let nextX = p.x + dir.x * p.speed * deltaTime;
+            let nextY = p.y + dir.y * p.speed * deltaTime;
+            const walls = grenadeWallsFor(p);
+            const xRect = { x: nextX, y: p.y, width: p.width, height: p.height };
+            if (walls.some(w => rectsOverlap(xRect, w))) {
+              dir = { ...dir, x: -dir.x * GRENADE_BOUNCE_DAMPING };
+              nextX = p.x;
+            }
+            const yRect = { x: nextX, y: nextY, width: p.width, height: p.height };
+            if (walls.some(w => rectsOverlap(yRect, w))) {
+              dir = { ...dir, y: -dir.y * GRENADE_BOUNCE_DAMPING };
+              nextY = p.y;
+            }
+            return {
+              ...p,
+              direction: dir,
+              x: nextX,
+              y: nextY
+            };
           }
           return {
             ...p,
@@ -1616,7 +1689,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadEndsAt: 0,
           reloadingWeaponId: '',
           magBonus: 0,
-          reloadMult: 1
+          reloadMult: 1,
+          subWeapons: [],
+          subWeaponCooldowns: {}
         },
         enemies: [],
         projectiles: [],

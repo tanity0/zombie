@@ -32,6 +32,11 @@ import { playSfx, playEnemyDeath } from '../audio/audioManager';
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
+const HEAVY_GRENADE_COOLDOWN_MS = 5000;
+const HEAVY_GRENADE_FUSE_MS = 1200;
+const HEAVY_GRENADE_RADIUS = 72;
+const HEAVY_GRENADE_DAMAGE = 42;
+const HEAVY_GRENADE_SPEED = 150;
 const MAX_ENEMIES = 10;
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
@@ -83,6 +88,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const removeProjectile = useGameStore(state => state.removeProjectile);
   const reflectProjectile = useGameStore(state => state.reflectProjectile);
   const addProjectile = useGameStore(state => state.addProjectile);
+  const setSubWeaponCooldown = useGameStore(state => state.setSubWeaponCooldown);
   const collectPickup = useGameStore(state => state.collectPickup);
   const addPickup = useGameStore(state => state.addPickup);
   const syncBreakableProps = useGameStore(state => state.syncBreakableProps);
@@ -240,12 +246,87 @@ export const useGameLoop = (onGameOver: () => void) => {
           }
           newProjectiles.forEach(proj => useGameStore.getState().addProjectile(proj));
         }
+
+        const subWeaponPlayer = useGameStore.getState().player;
+        if (
+          subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['heavy-grenade'] ?? 0)
+        ) {
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          const target = useGameStore.getState().enemies
+            .filter(e => e.type !== 'reaper')
+            .map(e => ({
+              enemy: e,
+              dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy)
+            }))
+            .sort((a, b) => a.dist - b.dist)[0]?.enemy;
+          if (target) {
+            const tx = target.x + target.width / 2;
+            const ty = target.y + target.height / 2;
+            const mag = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
+            addProjectile({
+              id: `proj-heavy-grenade-${Date.now()}`,
+              x: pcx - 7,
+              y: pcy - 7,
+              width: 14,
+              height: 14,
+              speed: HEAVY_GRENADE_SPEED,
+              damage: HEAVY_GRENADE_DAMAGE,
+              direction: { x: (tx - pcx) / mag, y: (ty - pcy) / mag },
+              weaponType: 'grenade',
+              weaponKey: 'sub-heavy-grenade',
+              duration: HEAVY_GRENADE_FUSE_MS,
+              createdAt: Date.now(),
+              passthrough: false,
+              hitEnemies: [],
+              hostile: false,
+              reflected: false
+            });
+            setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
+          }
+        }
         
         // Update enemies
         updateEnemies(deltaTime);
         
         // Update projectiles
         updateProjectiles(deltaTime);
+
+        const timedGrenades = useGameStore.getState().projectiles
+          .filter(p => p.weaponType === 'grenade' && Date.now() - p.createdAt >= p.duration);
+        for (const grenade of timedGrenades) {
+          const gx = grenade.x + grenade.width / 2;
+          const gy = grenade.y + grenade.height / 2;
+          removeProjectile(grenade.id);
+          playSfx('bomb');
+          spawnRing(gx, gy, 8, HEAVY_GRENADE_RADIUS, 'rgba(251,146,60,0.82)', 4, 340);
+          spawnBurst(gx, gy, '#f97316', 20);
+          spawnBurst(gx, gy, '#7f1d1d', 8);
+          useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', 340);
+          for (const enemy of useGameStore.getState().enemies) {
+            if (enemy.type === 'reaper') continue;
+            const ex = enemy.x + enemy.width / 2;
+            const ey = enemy.y + enemy.height / 2;
+            const dist = Math.hypot(ex - gx, ey - gy);
+            if (dist > HEAVY_GRENADE_RADIUS) continue;
+            const falloff = 1 - dist / HEAVY_GRENADE_RADIUS;
+            const splashDamage = Math.max(1, Math.round(HEAVY_GRENADE_DAMAGE * (0.55 + falloff * 0.45)));
+            const killed = damageEnemy(enemy.id, splashDamage);
+            spawnDamageNumber(ex, enemy.y, splashDamage, false);
+            spawnBurst(ex, ey, '#b91c1c', 4);
+            if (killed) {
+              playEnemyDeath();
+              addPickup({
+                id: `pickup-xp-heavy-grenade-${enemy.id}`,
+                x: ex - 8,
+                y: ey - 8,
+                type: 'experience',
+                value: enemy.experienceValue
+              });
+            }
+          }
+        }
 
         // Every enemy that has a fire profile periodically lobs a hostile
         // projectile at the player. Each type has its own cadence/range
@@ -1117,6 +1198,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     updateProjectiles,
     addEnemy,
     addProjectile,
+    setSubWeaponCooldown,
     damageEnemy,
     damagePlayer,
     removeProjectile,

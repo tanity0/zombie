@@ -8,19 +8,32 @@ const PASSIVE_POOL: PassiveType[] = [
 ];
 
 export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
-  void player;
+  const subWeaponOptions: UpgradeOption[] = [];
+  if (player.characterClass === 'warrior' && !player.subWeapons.includes('heavy-grenade')) {
+    subWeaponOptions.push({
+      id: 'subweapon-heavy-grenade',
+      name: '手榴弾',
+      description: '5秒ごとに近くの敵へ転がり、小範囲に爆発ダメージを与えます',
+      type: 'subWeapon',
+      subWeaponKey: 'heavy-grenade',
+      level: 1
+    });
+  }
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
-  const picks = shuffled.slice(0, 3);
+  const picks = shuffled.slice(0, 3 - subWeaponOptions.length);
 
-  return picks.map(passiveType => ({
-    id: `passive-${passiveType}`,
-    name: getPassiveDisplayName(passiveType),
-    description: getPassiveDescription(passiveType),
-    type: 'passive' as const,
-    passiveType,
-    level: 1
-  }));
+  return [
+    ...subWeaponOptions,
+    ...picks.map(passiveType => ({
+      id: `passive-${passiveType}`,
+      name: getPassiveDisplayName(passiveType),
+      description: getPassiveDescription(passiveType),
+      type: 'passive' as const,
+      passiveType,
+      level: 1
+    }))
+  ];
 };
 
 export const getPassiveDisplayName = (type: PassiveType): string => {

@@ -54,6 +54,10 @@ export interface Player {
   // magazine capacity; reloadMult scales reload time (<1 = faster).
   magBonus: number;
   reloadMult: number;
+  // Temporary sub-weapon skill test bed. Keys are unlocked by level-up cards;
+  // cooldowns are gameTime timestamps, so they pause with the game.
+  subWeapons: SubWeaponKey[];
+  subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
 }
 
 // Movement direction
@@ -157,7 +161,8 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade';
+export type SubWeaponKey = 'heavy-grenade';
 
 // Projectile types
 export interface Projectile {
@@ -237,9 +242,10 @@ export interface UpgradeOption {
   id: string;
   name: string;
   description: string;
-  type: 'weapon' | 'passive';
+  type: 'weapon' | 'passive' | 'subWeapon';
   weaponType?: WeaponType;
   passiveType?: PassiveType;
+  subWeaponKey?: SubWeaponKey;
   level: number;
 }
 

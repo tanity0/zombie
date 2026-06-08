@@ -10,6 +10,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.21 - Add Heavy Gunner grenade sub-weapon card (Codex)
+
+### Summary
+Added the first test sub-weapon skill as a level-up card.
+- Heavy Gunner can now roll a `手榴弾` card in the level-up menu.
+- Once learned, the skill has unlimited uses with a `5s` game-time cooldown.
+- The grenade rolls toward the nearest enemy, waits `1.2s`, then explodes for
+  small-area damage.
+- Grenades do not explode on contact with enemies.
+- Grenades bounce off tree trunks and intact torches instead of passing through
+  them.
+
+### Code touched
+- `src/types/game.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/utils/collisionUtils.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current test values:
+  - cooldown: `5000ms`
+  - fuse: `1200ms`
+  - damage: `42`
+  - radius: `72`
+  - roll speed: `150`
+- Sub-weapons are currently stored on `player.subWeapons` and cooldowns on
+  `player.subWeaponCooldowns`. This is intentionally lightweight while the
+  final "character skill vs equipment" decision is still open.
+
 ## 2026-06-08 - v0.25.20 - Add class HP differences and extend combo window (Codex)
 
 ### Summary

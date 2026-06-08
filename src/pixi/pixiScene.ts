@@ -1285,6 +1285,11 @@ export class PixiScene {
         g.circle(0, 0, p.width / 3).fill({ color: 0xfca5a5 });
         break;
       }
+      case 'grenade': {
+        g.circle(0, 0, Math.max(3, p.width / 2)).fill({ color: 0x1f2937 });
+        g.circle(-1, -1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
+        break;
+      }
       default: {
         g.circle(0, 0, p.width / 2).fill({ color: 0xf3f4f6 });
         break;
