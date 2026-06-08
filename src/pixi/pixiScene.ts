@@ -1096,9 +1096,9 @@ export class PixiScene {
       : usesShotgunSprite
         ? `player-shotgun-walk-${frame}`
       : usesScavengerSprite
-        ? `player-scavenger-walk-${frame}`
-      : usesStrikerSprite
         ? `player-striker-walk-${frame}`
+      : usesStrikerSprite
+        ? `player-scavenger-walk-${frame}`
         : 'player';
     const tex = getTexture(textureName) ?? getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;

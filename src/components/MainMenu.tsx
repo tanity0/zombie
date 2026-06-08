@@ -99,7 +99,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'rogue',
       name: 'ストライカー',
       description: 'ハンドガンとファイティングナイフ。手数とフィニッシュで攻める。',
-      sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png?v=${spriteVersion}`,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(52, 211, 153, 0.48)',
       stats: {
         health: 'Low',
@@ -111,7 +111,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       id: 'necromancer',
       name: 'スカベンジャー',
       description: 'ハンドガンとナイフ。拾った武器で戦況を変える。',
-      sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png?v=${spriteVersion}`,
+      sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(129, 140, 248, 0.48)',
       stats: {
         health: 'Medium',

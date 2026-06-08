@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.66 - Swap Striker and Scavenger character art (Codex)
+
+### Summary
+Swapped the visible character art for Striker and Scavenger.
+- Striker (`rogue`) now uses the Scavenger sprite set.
+- Scavenger (`necromancer`) now uses the Striker sprite set.
+- Updated both the character selection cards and in-game Pixi player rendering.
+- Gameplay class ids, stats, loadouts, and sub-weapons are unchanged.
+
+### Code touched
+- `src/components/MainMenu.tsx`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change. Do not push unless explicitly requested.
+
 ## 2026-06-09 - v0.25.65 - Replace Marksman hooded walk sprites (Codex)
 
 ### Summary
