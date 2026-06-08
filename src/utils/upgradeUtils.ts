@@ -9,14 +9,30 @@ const PASSIVE_POOL: PassiveType[] = [
 
 export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const subWeaponOptions: UpgradeOption[] = [];
-  if (player.characterClass === 'warrior' && !player.subWeapons.includes('heavy-grenade')) {
+  const grenadeLevel = player.subWeaponLevels['heavy-grenade'] ?? 0;
+  const trapLevel = player.subWeaponLevels['marksman-trap'] ?? 0;
+
+  if (player.characterClass === 'warrior' && grenadeLevel < 3) {
+    const nextLevel = grenadeLevel + 1;
     subWeaponOptions.push({
       id: 'subweapon-heavy-grenade',
-      name: '手榴弾',
-      description: '5秒ごとに近くの敵へ転がり、小範囲に爆発ダメージを与えます',
+      name: nextLevel === 1 ? '手榴弾' : `手榴弾 Lv${nextLevel}`,
+      description: `${nextLevel}方向へ手榴弾を転がし、小範囲に爆発ダメージを与えます`,
       type: 'subWeapon',
       subWeaponKey: 'heavy-grenade',
-      level: 1
+      level: nextLevel
+    });
+  }
+
+  if (player.characterClass === 'mage' && trapLevel < 3) {
+    const nextLevel = trapLevel + 1;
+    subWeaponOptions.push({
+      id: 'subweapon-marksman-trap',
+      name: nextLevel === 1 ? 'トラップ' : `トラップ Lv${nextLevel}`,
+      description: `足元に罠を設置。踏んだ敵を3秒止めます（最大${nextLevel}体）`,
+      type: 'subWeapon',
+      subWeaponKey: 'marksman-trap',
+      level: nextLevel
     });
   }
   // Shuffle the pool and take 3 distinct passives.

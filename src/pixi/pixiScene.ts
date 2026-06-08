@@ -1295,6 +1295,15 @@ export class PixiScene {
         g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
         break;
       }
+      case 'trap': {
+        const age = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
+        const pulse = 0.65 + Math.sin(age * Math.PI * 12) * 0.16;
+        const radius = p.area ?? 34;
+        g.circle(0, 0, radius).stroke({ color: 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
+        g.circle(0, 0, Math.max(4, p.width * 0.38)).fill({ color: 0x0f172a, alpha: 0.88 });
+        g.circle(0, 0, Math.max(2, p.width * 0.18)).fill({ color: 0x7dd3fc, alpha: 0.76 });
+        break;
+      }
       default: {
         g.circle(0, 0, p.width / 2).fill({ color: 0xf3f4f6 });
         break;

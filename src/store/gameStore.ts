@@ -289,6 +289,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     magBonus: 0,
     reloadMult: 1,
     subWeapons: [],
+    subWeaponLevels: {},
     subWeaponCooldowns: {}
   },
   enemies: [],
@@ -747,10 +748,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       if (upgrade.type === 'subWeapon' && upgrade.subWeaponKey) {
         const known = player.subWeapons.includes(upgrade.subWeaponKey);
+        const currentLevel = player.subWeaponLevels[upgrade.subWeaponKey] ?? 0;
+        const nextLevel = Math.min(3, Math.max(currentLevel + 1, upgrade.level || 1));
         return {
           player: {
             ...player,
-            subWeapons: known ? player.subWeapons : [...player.subWeapons, upgrade.subWeaponKey]
+            subWeapons: known ? player.subWeapons : [...player.subWeapons, upgrade.subWeaponKey],
+            subWeaponLevels: {
+              ...player.subWeaponLevels,
+              [upgrade.subWeaponKey]: nextLevel
+            }
           },
           showUpgradeMenu: false,
           isPaused: false
@@ -828,7 +835,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...state.player,
         subWeapons: state.player.subWeapons.includes(key)
           ? state.player.subWeapons
-          : [...state.player.subWeapons, key]
+          : [...state.player.subWeapons, key],
+        subWeaponLevels: {
+          ...state.player.subWeaponLevels,
+          [key]: Math.max(1, state.player.subWeaponLevels[key] ?? 0)
+        }
       }
     }));
   },
@@ -1693,6 +1704,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           magBonus: 0,
           reloadMult: 1,
           subWeapons: [],
+          subWeaponLevels: {},
           subWeaponCooldowns: {}
         },
         enemies: [],

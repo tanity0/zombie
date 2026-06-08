@@ -10,6 +10,46 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-08 - v0.25.23 - Add sub-weapon leveling and Marksman trap (Codex)
+
+### Summary
+Expanded the temporary sub-weapon card system.
+- Added `subWeaponLevels` to player state.
+- Sub-weapon cards can now upgrade existing sub-weapons up to level 3.
+- Heavy Gunner grenade now scales by level:
+  - Lv1: 1 direction
+  - Lv2: 2 directions
+  - Lv3: 3 directions
+- Added Marksman `トラップ` card.
+  - Places a trap at the player's feet on cooldown.
+  - Enemies stepping on it are stopped for `3s`.
+  - Trap level increases radius and max affected enemies up to 3.
+- Trap projectiles are excluded from normal projectile/enemy collision and are
+  consumed by their own trigger logic.
+
+### Code touched
+- `src/types/game.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/utils/collisionUtils.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Current Marksman trap test values:
+  - cooldown: `6500ms`
+  - duration: `9000ms`
+  - stun: `3000ms`
+  - radius by level: `34 / 42 / 50`
+  - max affected enemies by level: `1 / 2 / 3`
+- Sub-weapons are still intentionally lightweight until the final decision
+  between character skills and equipment is made.
+
 ## 2026-06-08 - v0.25.22 - Shorten grenade roll and add hop motion (Codex)
 
 ### Summary

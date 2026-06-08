@@ -37,6 +37,10 @@ const HEAVY_GRENADE_FUSE_MS = 1050;
 const HEAVY_GRENADE_RADIUS = 72;
 const HEAVY_GRENADE_DAMAGE = 42;
 const HEAVY_GRENADE_SPEED = 118;
+const MARKSMAN_TRAP_COOLDOWN_MS = 6500;
+const MARKSMAN_TRAP_DURATION_MS = 9000;
+const MARKSMAN_TRAP_STUN_MS = 3000;
+const MARKSMAN_TRAP_RADIUS_BY_LEVEL = [0, 34, 42, 50];
 const MAX_ENEMIES = 10;
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
@@ -252,6 +256,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['heavy-grenade'] ?? 0)
         ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['heavy-grenade'] ?? 1));
           const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
           const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
           const target = useGameStore.getState().enemies
@@ -265,26 +270,63 @@ export const useGameLoop = (onGameOver: () => void) => {
             const tx = target.x + target.width / 2;
             const ty = target.y + target.height / 2;
             const mag = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
-            addProjectile({
-              id: `proj-heavy-grenade-${Date.now()}`,
-              x: pcx - 7,
-              y: pcy - 7,
-              width: 14,
-              height: 14,
-              speed: HEAVY_GRENADE_SPEED,
-              damage: HEAVY_GRENADE_DAMAGE,
-              direction: { x: (tx - pcx) / mag, y: (ty - pcy) / mag },
-              weaponType: 'grenade',
-              weaponKey: 'sub-heavy-grenade',
-              duration: HEAVY_GRENADE_FUSE_MS,
-              createdAt: Date.now(),
-              passthrough: false,
-              hitEnemies: [],
-              hostile: false,
-              reflected: false
+            const baseDir = { x: (tx - pcx) / mag, y: (ty - pcy) / mag };
+            const angles = level === 1 ? [0] : level === 2 ? [-0.28, 0.28] : [-0.38, 0, 0.38];
+            angles.forEach((angle, index) => {
+              const ca = Math.cos(angle);
+              const sa = Math.sin(angle);
+              addProjectile({
+                id: `proj-heavy-grenade-${Date.now()}-${index}`,
+                x: pcx - 7,
+                y: pcy - 7,
+                width: 14,
+                height: 14,
+                speed: HEAVY_GRENADE_SPEED,
+                damage: HEAVY_GRENADE_DAMAGE,
+                direction: { x: baseDir.x * ca - baseDir.y * sa, y: baseDir.x * sa + baseDir.y * ca },
+                weaponType: 'grenade',
+                weaponKey: 'sub-heavy-grenade',
+                duration: HEAVY_GRENADE_FUSE_MS,
+                createdAt: Date.now(),
+                passthrough: false,
+                hitEnemies: [],
+                hostile: false,
+                reflected: false
+              });
             });
             setSubWeaponCooldown('heavy-grenade', gameTime + HEAVY_GRENADE_COOLDOWN_MS);
           }
+        }
+
+        if (
+          subWeaponPlayer.subWeapons.includes('marksman-trap') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['marksman-trap'] ?? 0)
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['marksman-trap'] ?? 1));
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          addProjectile({
+            id: `proj-marksman-trap-${Date.now()}`,
+            x: pcx - 8,
+            y: pcy - 8,
+            width: 16,
+            height: 16,
+            speed: 0,
+            damage: 0,
+            direction: { x: 0, y: 0 },
+            weaponType: 'trap',
+            weaponKey: 'sub-marksman-trap',
+            duration: MARKSMAN_TRAP_DURATION_MS,
+            createdAt: Date.now(),
+            passthrough: false,
+            hitEnemies: [],
+            hostile: false,
+            reflected: false,
+            area: MARKSMAN_TRAP_RADIUS_BY_LEVEL[level],
+            count: level
+          });
+          spawnRing(pcx, pcy, 4, MARKSMAN_TRAP_RADIUS_BY_LEVEL[level], 'rgba(56,189,248,0.46)', 2, 280);
+          setSubWeaponCooldown('marksman-trap', gameTime + MARKSMAN_TRAP_COOLDOWN_MS);
         }
         
         // Update enemies
@@ -326,6 +368,33 @@ export const useGameLoop = (onGameOver: () => void) => {
               });
             }
           }
+        }
+
+        const armedTraps = useGameStore.getState().projectiles.filter(p => p.weaponType === 'trap');
+        for (const trap of armedTraps) {
+          const tx = trap.x + trap.width / 2;
+          const ty = trap.y + trap.height / 2;
+          const radius = trap.area ?? MARKSMAN_TRAP_RADIUS_BY_LEVEL[1];
+          const targets = useGameStore.getState().enemies
+            .filter(enemy => enemy.type !== 'reaper')
+            .map(enemy => ({
+              enemy,
+              dist: Math.hypot(enemy.x + enemy.width / 2 - tx, enemy.y + enemy.height / 2 - ty)
+            }))
+            .filter(hit => hit.dist <= radius)
+            .sort((a, b) => a.dist - b.dist)
+            .slice(0, Math.max(1, trap.count ?? 1));
+          if (targets.length === 0) continue;
+          removeProjectile(trap.id);
+          spawnRing(tx, ty, 8, radius + 12, 'rgba(56,189,248,0.9)', 3, 360);
+          spawnBurst(tx, ty, '#38bdf8', 14);
+          useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(56,189,248,', 320);
+          targets.forEach(({ enemy }) => {
+            const ex = enemy.x + enemy.width / 2;
+            const ey = enemy.y + enemy.height / 2;
+            useGameStore.getState().stunEnemy(enemy.id, gameTime + MARKSMAN_TRAP_STUN_MS);
+            spawnRing(ex, ey, 5, 28, 'rgba(125,211,252,0.86)', 2, 260);
+          });
         }
 
         // Every enemy that has a fire profile periodically lobs a hostile

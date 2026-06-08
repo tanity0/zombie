@@ -57,6 +57,7 @@ export interface Player {
   // Temporary sub-weapon skill test bed. Keys are unlocked by level-up cards;
   // cooldowns are gameTime timestamps, so they pause with the game.
   subWeapons: SubWeaponKey[];
+  subWeaponLevels: Partial<Record<SubWeaponKey, number>>;
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
 }
 
@@ -161,8 +162,8 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade';
-export type SubWeaponKey = 'heavy-grenade';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap';
 
 // Projectile types
 export interface Projectile {
@@ -189,6 +190,8 @@ export interface Projectile {
   // Gun crit flag — set when the shot rolled a critical. Crits hit harder
   // and stun whatever they connect with.
   crit?: boolean;
+  area?: number;
+  count?: number;
   // Optional motion modifiers. Axes set `gravity` so they arc upward then
   // fall. Bibles use the orbit fields to circle the player continuously.
   // `followsPlayer` snaps the projectile to the player every frame (garlic).
