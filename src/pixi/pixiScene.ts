@@ -1829,13 +1829,15 @@ export class PixiScene {
         this.drawDogFetchSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
+        const targetLayer = e.kind === 'trail' || (e.kind === 'glow' && e.radius >= STRONG_GLOW_RADIUS)
+          ? this.L.groundLayer
+          : this.L.effectLayer;
         if (!(g instanceof Graphics)) {
           if (g) g.destroy();
           g = new Graphics();
-          // trails sit under the actors; everything else above.
-          (e.kind === 'trail' ? this.L.groundLayer : this.L.effectLayer).addChild(g);
           this.effects.set(e.id, g);
         }
+        if (g.parent !== targetLayer) targetLayer.addChild(g);
         this.drawEffectGfx(g as Graphics, e, now);
       }
     }

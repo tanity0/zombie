@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.115 - Move strong glow under event shadows (Codex)
+
+### Summary
+- Routed strong `glow` effects to the ground layer instead of the top effect
+  layer.
+- Keeps broad event light below the local event shadow pass, so it should no
+  longer sit visibly on top of the cast shadows.
+- Normal small glows, rings, slash effects, damage numbers, and dog fetch
+  effects remain on the existing upper effect layer.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Re-test strong events. The bright source may now feel less overlaid; if it
+  becomes too subtle, add a very small separate core effect rather than moving
+  the broad glow back above the shadows.
+
 ## 2026-06-10 - v0.25.114 - Keep strong glow from washing over cast shadows (Codex)
 
 ### Summary
