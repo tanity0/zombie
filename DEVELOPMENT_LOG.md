@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.113 - Lift event shadows above ground overlays (Codex)
+
+### Summary
+- Moved the local event shadow pass from the ground layer to the bottom of the
+  actor layer.
+- Keeps strong glow event shadows above ground reflections, pickups, and
+  additive ground lights while still below characters, trees, props, castle,
+  merchant, and event NPCs.
+- Fixes the issue where only the protruding parts of the event shadows were
+  visible because later ground-layer drawing covered most of the shadow pass.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Re-check with counter, melee finisher, grenade explosion, or boss-castle
+  spawn. If the shadow shape is now visible but too strong, tune the alpha and
+  length constants added in v0.25.111/v0.25.112.
+
 ## 2026-06-09 - v0.25.112 - Make event shadow pass visibly render (Codex)
 
 ### Summary

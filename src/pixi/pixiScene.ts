@@ -363,7 +363,6 @@ export class PixiScene {
       this.groundReflectionGfx,
       this.playerLight,
       this.shadowGfx,
-      this.localEventShadeGfx,
     );
 
     this.castleSprite.anchor.set(0.5, 1);
@@ -385,7 +384,8 @@ export class PixiScene {
     this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlow, this.eventNpcSprite);
 
     this.L.effectLayer.addChild(this.playerFx);
-    this.L.actorLayer.addChild(this.castleView, this.merchantView, this.eventNpcView);
+    this.localEventShadeGfx.zIndex = -1_000_000;
+    this.L.actorLayer.addChild(this.localEventShadeGfx, this.castleView, this.merchantView, this.eventNpcView);
 
     this.gradeSprite.tint = GRADE_TINT;
     this.gradeSprite.alpha = GRADE_ALPHA;
