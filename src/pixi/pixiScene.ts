@@ -170,7 +170,7 @@ const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;
-const LOCAL_EVENT_SHADOW_ALPHA = 0.88;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 
@@ -1141,25 +1141,34 @@ export class PixiScene {
       };
 
       const playerBox = playerFootBox(player);
-      addCaster(playerBox.footX, playerBox.footY, Math.max(playerBox.boxW, playerBox.boxH) * 0.96, 1.12);
+      addCaster(
+        playerBox.footX,
+        playerBox.footY,
+        playerBox.boxW * 0.55 * this.depthScale(playerBox.footY),
+        1.12
+      );
       for (const enemy of enemies) {
         const box = enemyFootBox(enemy);
         const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
           ? 1.28
           : 1;
-        addCaster(box.footX, box.footY, Math.max(box.boxW, box.boxH) * 0.92, bossWeight);
+        addCaster(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
       }
       for (const prop of props) {
         const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
-        addCaster(prop.footX, prop.footY, Math.max(prop.width, prop.height) * prop.scale * 0.9, propWeight);
+        const d = this.depthScale(prop.footY);
+        const shadowW = prop.type === 'mine'
+          ? 16 * prop.scale * d
+          : TORCH_VISUAL_W * prop.scale * d * 0.55;
+        addCaster(prop.footX, prop.footY, shadowW, propWeight);
       }
       for (const tree of this.trees.values()) {
-        addCaster(tree.sprite.x, tree.footY, 82, 0.72);
+        addCaster(tree.sprite.x, tree.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(tree.footY) * 0.36, 0.72);
       }
-      addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, CASTLE_TARGET_HEIGHT * 1.12, castle.bossSpawned ? 1.15 : 0.82);
-      addCaster(merchant.x, merchant.y, MERCHANT_TARGET_HEIGHT * 0.92, 0.9);
+      addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82);
+      addCaster(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
       if (eventNpc.status !== 'completed') {
-        addCaster(eventNpc.x, eventNpc.y, EVENT_NPC_TARGET_HEIGHT * 0.9, 0.9);
+        addCaster(eventNpc.x, eventNpc.y, 76 * this.depthScale(eventNpc.y), 0.9);
       }
 
       castActors
@@ -1176,20 +1185,21 @@ export class PixiScene {
           const ny = dy / dist;
           const actorDepth = this.depthScale(actor.y);
           const len = (118 + e.radius * 1.9) * falloff * actorDepth * Math.min(1.55, actor.strength);
-          const width = Math.max(18, actor.w * actorDepth) * (0.92 + falloff * 1.58);
+          const shadowRadiusX = Math.max(4, actor.w * 0.55);
+          const shadowRadiusY = Math.max(1.5, actor.w * 0.18);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
-          const sx = actorX + nx * Math.min(8, width * 0.35);
-          const sy = actorY + ny * Math.min(5, width * 0.2);
+          const sx = actorX + nx * Math.min(4, shadowRadiusX * 0.2);
+          const sy = actorY + ny * Math.min(3, shadowRadiusY * 0.45);
           const ex = actorX + nx * len;
           const ey = actorY + ny * len * 0.6;
           const px = -ny;
           const py = nx * 0.48;
-          const outerBase = width * 0.98;
-          const outerTip = Math.max(2.5, width * 0.2);
-          const innerBase = width * 0.66;
-          const innerTip = Math.max(1.5, width * 0.1);
-          g.ellipse(actorX, actorY - 1, width * 1.02, Math.max(4, width * 0.27))
-            .fill({ color: 0x000000, alpha: alpha * 0.46 });
+          const outerBase = shadowRadiusX;
+          const outerTip = Math.max(1.4, shadowRadiusX * 0.13);
+          const innerBase = shadowRadiusX * 0.62;
+          const innerTip = Math.max(0.8, shadowRadiusX * 0.06);
+          g.ellipse(actorX, actorY - 1, shadowRadiusX, shadowRadiusY)
+            .fill({ color: 0x000000, alpha: alpha * 0.72 });
           g.poly([
             sx + px * outerBase, sy + py * outerBase,
             sx - px * outerBase, sy - py * outerBase,

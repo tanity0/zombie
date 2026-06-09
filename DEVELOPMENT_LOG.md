@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.120 - Use foot-shadow width for event cast shadows (Codex)
+
+### Summary
+- Reworked strong-event cast shadows to use each actor's normal foot-shadow
+  width instead of the full visual body height/width.
+- Kept the long strong-event cast direction and darker opacity, so the effect
+  reads more like the existing foot shadow stretching away from the light.
+- Reduced the oversized band-like look from v0.25.119 while preserving the
+  strong event slow-motion behavior.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- If the stretched shadow is still too visible, tune `LOCAL_EVENT_SHADOW_ALPHA`
+  first. If it is too long, tune `LOCAL_EVENT_SHADOW_REACH_MULT` or the `len`
+  formula inside `syncLocalEventLighting()`.
+
 ## 2026-06-10 - v0.25.119 - Add strong-event slow motion and max-width shadows (Codex)
 
 ### Summary
