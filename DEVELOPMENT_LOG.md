@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.71 - Tune grenade fuse and Dog size (Codex)
+
+### Summary
+Adjusted Heavy Gunner grenade timing and Dog fetch sprite size.
+- Changed Heavy Gunner sub-weapon grenade fuse from `2000ms` to `2500ms`.
+- Reduced Dog fetch sprite display scale from `0.72` to `0.64`.
+- Kept the Dog source sprites unchanged so the pixel-art cutout remains intact.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.70 - Replace Marksman walk sprites (Codex)
 
 ### Summary
