@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.118 - Exaggerate strong-event cast shadows (Codex)
+
+### Summary
+- Made strong-event cast shadows longer and wider while keeping the same
+  caster cap and same single graphics pass.
+- Slightly increased cast-shadow opacity.
+- Expanded the strong-event shadow reach so more nearby actors/props can cast
+  readable shadows during grenade/counter/finisher-style flashes.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is intentionally theatrical. If it feels too heavy visually, tune
+  `LOCAL_EVENT_SHADOW_REACH_MULT`, the `len` formula, then the `width` formula
+  in that order.
+
 ## 2026-06-10 - v0.25.117 - Darken cast shadows and suppress bloom during strong events (Codex)
 
 ### Summary

@@ -170,9 +170,9 @@ const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;
-const LOCAL_EVENT_SHADOW_ALPHA = 0.78;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.88;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
-const LOCAL_EVENT_SHADOW_REACH_MULT = 4.35;
+const LOCAL_EVENT_SHADOW_REACH_MULT = 5.35;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure']);
 
@@ -1175,8 +1175,8 @@ export class PixiScene {
           const nx = dx / dist;
           const ny = dy / dist;
           const actorDepth = this.depthScale(actor.y);
-          const len = (68 + e.radius * 1.08) * falloff * actorDepth * Math.min(1.28, actor.strength);
-          const width = Math.max(7, actor.w * 0.5 * actorDepth) * (0.5 + falloff * 0.95);
+          const len = (92 + e.radius * 1.48) * falloff * actorDepth * Math.min(1.38, actor.strength);
+          const width = Math.max(9, actor.w * 0.74 * actorDepth) * (0.62 + falloff * 1.18);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
           const sx = actorX + nx * Math.min(8, width * 0.35);
           const sy = actorY + ny * Math.min(5, width * 0.2);
