@@ -14,7 +14,6 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const trapLevel = player.subWeaponLevels['marksman-trap'] ?? 0;
   const quickMagLevel = player.subWeaponLevels['striker-quick-mag'] ?? 0;
   const huntingLevel = player.subWeaponLevels['striker-hunting'] ?? 0;
-  const dogLevel = player.subWeaponLevels.dog ?? 0;
 
   if (player.characterClass === 'warrior' && grenadeLevel < 3) {
     const nextLevel = grenadeLevel + 1;
@@ -63,19 +62,6 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
       description: `${chargeSeconds}秒入力すると次の近接攻撃の範囲が+${radiusBonus}広がります`,
       type: 'subWeapon',
       subWeaponKey: 'striker-hunting',
-      level: nextLevel
-    });
-  }
-
-  if (dogLevel < 3) {
-    const nextLevel = dogLevel + 1;
-    const cooldown = [0, 3, 2, 1][nextLevel];
-    subWeaponOptions.push({
-      id: 'subweapon-dog',
-      name: nextLevel === 1 ? 'ドッグ' : `ドッグ Lv${nextLevel}`,
-      description: `帰還後${cooldown}秒で画面内のアイテムを1つ拾いに行きます（サブウェポン系は除外）`,
-      type: 'subWeapon',
-      subWeaponKey: 'dog',
       level: nextLevel
     });
   }

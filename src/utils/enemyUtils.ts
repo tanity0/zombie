@@ -1,4 +1,4 @@
-import { Enemy, EnemyType, GameBounds, Player, Projectile } from '../types/game';
+import { DifficultyRank, Enemy, EnemyType, GameBounds, Player, Projectile } from '../types/game';
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
@@ -70,6 +70,34 @@ const selectEnemyType = (gameTime: number): EnemyType => {
 // and damage scale with it; base speed does not.
 const difficultyFor = (gameTime: number) => Math.min(1 + gameTime / 150000, 2.5);
 
+const distanceFromStart = (x: number, y: number) => Math.hypot(x, y);
+
+const distanceZoneFor = (x: number, y: number): number => {
+  const d = distanceFromStart(x, y);
+  if (d < 900) return 1;
+  if (d < 1800) return 2;
+  if (d < 3000) return 3;
+  return 4;
+};
+
+const distanceMultiplierForZone = (zone: number): number => {
+  switch (zone) {
+    case 2: return 1.25;
+    case 3: return 1.6;
+    case 4: return 2.1;
+    default: return 1;
+  }
+};
+
+const difficultyRankForZone = (zone: number): DifficultyRank => {
+  switch (zone) {
+    case 2: return 'strong';
+    case 3: return 'elite';
+    case 4: return 'danger';
+    default: return 'normal';
+  }
+};
+
 // Global enemy toughness multiplier on top of the difficulty ramp. Bumped so
 // fights are chunkier and ammo/positioning matter more. Damage is unaffected.
 const ENEMY_HP_MULT = 5;
@@ -85,10 +113,14 @@ const buildEnemy = (
   isWave = false
 ): Enemy => {
   const stats = ENEMY_STATS[type];
-  const diff = difficultyFor(gameTime);
+  const timeDiff = difficultyFor(gameTime);
+  const distanceZone = distanceZoneFor(x, y);
+  const distanceDiff = distanceMultiplierForZone(distanceZone);
+  const diff = timeDiff * distanceDiff;
+  const difficultyRank = difficultyRankForZone(distanceZone);
   // Reaper is a fixed terminal entity — don't scale it.
   const hpMult = type === 'reaper' ? 1 : diff * ENEMY_HP_MULT;
-  const dmgMult = type === 'reaper' ? 1 : Math.min(diff, 2.5);
+  const dmgMult = type === 'reaper' ? 1 : Math.min(diff, 4);
 
   return {
     id: `enemy-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -105,7 +137,10 @@ const buildEnemy = (
     lastHit: 0,
     lastShot: Date.now() - Math.random() * 1500,
     spawnedAt: gameTime,
-    isWave
+    isWave,
+    distanceZone,
+    difficultyRank,
+    difficultyMultiplier: diff
   };
 };
 
@@ -212,7 +247,7 @@ export const createEnemyProjectile = (
     width: profile.size,
     height: profile.size,
     speed: profile.speed,
-    damage: profile.damage,
+    damage: Math.round(profile.damage * (enemy.difficultyMultiplier ?? 1)),
     direction: dir,
     weaponType: 'enemy_bolt',
     duration: ENEMY_PROJECTILE_DURATION,

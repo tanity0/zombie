@@ -3,7 +3,8 @@ import { generateUpgradeOptions } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  VisualEffect, AmmoType, Direction, SubWeaponKey
+  VisualEffect, AmmoType, Direction, SubWeaponKey, CastleEvent, DifficultyRank,
+  WeaponMerchant, ShopItemKey, EventQuestNpc
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
@@ -13,7 +14,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torc
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { rectsOverlap } from '../world/obstacles';
+import { footRect, rectsOverlap, resolveAabb, type Rect } from '../world/obstacles';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
@@ -32,12 +33,68 @@ export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10,
 const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
 const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
 export const DEFAULT_MELEE_DROP_PCT = 50;
+const CASTLE_MIN_DISTANCE = 900;
+const CASTLE_MAX_DISTANCE = 1300;
+const CASTLE_COLLISION_W = 112;
+const CASTLE_COLLISION_H = 42;
+const CASTLE_FOOT_OFFSET_Y = 38;
+const MERCHANT_MIN_DISTANCE = 180;
+const MERCHANT_MAX_DISTANCE = 360;
+const MERCHANT_INTERACT_RADIUS = 58;
+const MERCHANT_REOPEN_DELAY_MS = 1500;
+const EVENT_NPC_MIN_DISTANCE = 460;
+const EVENT_NPC_MAX_DISTANCE = 950;
+const EVENT_NPC_INTERACT_RADIUS = 64;
+const EVENT_NPC_REOPEN_DELAY_MS = 1500;
+export const SHOP_AMMO_COST = 10;
+export const SHOP_DOG_COST = 100;
+export const SHOP_CLASS_SKILL_COST = 100;
+export const SHOP_MEDKIT_COST = 50;
+export const SHOP_VACCINE_COST = 1000;
+const SHOP_MEDKIT_HEAL = 20;
+const SHOP_INTERACT_RING_MS = 360;
 // `finish` = a melee finisher executed a normal enemy, or finisher-grade
 // damage landed on a stunned boss (drives the kill.mp3 sound).
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
 export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number };
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
+
+const createCastleEvent = (): CastleEvent => {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = CASTLE_MIN_DISTANCE + Math.random() * (CASTLE_MAX_DISTANCE - CASTLE_MIN_DISTANCE);
+  return {
+    x: Math.cos(angle) * dist,
+    y: Math.sin(angle) * dist,
+    bossSpawned: false,
+  };
+};
+const castleFootY = (castle: CastleEvent): number => castle.y + CASTLE_FOOT_OFFSET_Y;
+const castleRect = (castle: CastleEvent): Rect =>
+  footRect(castle.x, castleFootY(castle), CASTLE_COLLISION_W, CASTLE_COLLISION_H);
+const resolveCastleCollision = (rect: Rect, castle: CastleEvent): { x: number; y: number } =>
+  resolveAabb(rect, [castleRect(castle)]);
+const createWeaponMerchant = (): WeaponMerchant => {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = MERCHANT_MIN_DISTANCE + Math.random() * (MERCHANT_MAX_DISTANCE - MERCHANT_MIN_DISTANCE);
+  return {
+    x: Math.cos(angle) * dist,
+    y: Math.sin(angle) * dist,
+    radius: MERCHANT_INTERACT_RADIUS,
+  };
+};
+const createEventQuestNpc = (): EventQuestNpc => {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = EVENT_NPC_MIN_DISTANCE + Math.random() * (EVENT_NPC_MAX_DISTANCE - EVENT_NPC_MIN_DISTANCE);
+  return {
+    x: Math.cos(angle) * dist,
+    y: Math.sin(angle) * dist,
+    radius: EVENT_NPC_INTERACT_RADIUS,
+    status: 'available',
+    questIndex: 0,
+    fadeStartedAt: 0,
+  };
+};
 const loadMeleeDropPct = (): number => {
   try {
     const v = localStorage.getItem(DROP_PCT_KEY);
@@ -99,6 +156,8 @@ export const KNOCKBACK_HIT_RADIUS = 55;
 export const KNOCKBACK_RING_RADIUS = 180;
 export const KNOCKBACK_SPEED = 200; // melee counter shove (halved again)
 export const KNOCKBACK_DURATION = 280;
+const TRAP_MELEE_SHOVE_DISTANCE = 68;
+const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
@@ -124,6 +183,7 @@ const inertiaAlpha = (deltaTime: number, tau: number): number =>
 export const PLAYER_BASE_SPEED = 87;
 export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
+const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 700;
 
 // World is effectively infinite. We still need a finite number for spawn
@@ -135,6 +195,14 @@ export const WORLD_HALF_EXTENT = 200000;
 export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
 const BREAKABLE_PROP_DROP_CHANCE = 0.28;
+const ENEMY_STRAP_DROP_CHANCE = 0.12;
+const BREAKABLE_STRAP_DROP_CHANCE = 0.22;
+const TREASURE_DROP_CHANCE_BY_RANK = {
+  strong: 0.02,
+  elite: 0.05,
+  danger: 0.10,
+} as const;
+const TREASURE_VARIANTS_BY_RARITY = [4, 2, 3, 1, 5, 6] as const;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
@@ -149,6 +217,54 @@ const weaponTierColor = (tier?: number): string => {
     default: return '#f8fafc';
   }
 };
+const treasureDropChance = (rank?: DifficultyRank): number => {
+  if (rank === 'strong') return TREASURE_DROP_CHANCE_BY_RANK.strong;
+  if (rank === 'elite') return TREASURE_DROP_CHANCE_BY_RANK.elite;
+  if (rank === 'danger') return TREASURE_DROP_CHANCE_BY_RANK.danger;
+  return 0;
+};
+const strapValueForRank = (rank?: DifficultyRank): number => {
+  if (rank === 'danger') return 3;
+  if (rank === 'elite') return 2;
+  return 1;
+};
+const treasureValueForRank = (rank?: DifficultyRank): number => {
+  if (rank === 'danger') return 4 + Math.floor(Math.random() * 3);
+  if (rank === 'elite') return 2 + Math.floor(Math.random() * 3);
+  return 1 + Math.floor(Math.random() * 2);
+};
+const treasureVariantForValue = (value: number): number =>
+  TREASURE_VARIANTS_BY_RARITY[Math.max(0, Math.min(TREASURE_VARIANTS_BY_RARITY.length - 1, value - 1))];
+const treasureNameForVariant = (variant?: number): string => {
+  switch (variant) {
+    case 1: return 'ニケ像';
+    case 2: return '宝石袋';
+    case 3: return 'ダイヤのネックレス';
+    case 4: return '高級腕時計';
+    case 5: return '変異種血液サンプル';
+    case 6: return '謎のコア';
+    default: return 'トレジャー';
+  }
+};
+export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey => {
+  switch (characterClass) {
+    case 'warrior': return 'heavy-grenade';
+    case 'mage': return 'marksman-trap';
+    case 'rogue': return 'striker-hunting';
+    case 'necromancer': return 'striker-quick-mag';
+    default: return 'heavy-grenade';
+  }
+};
+export const subWeaponDisplayName = (key: SubWeaponKey): string => {
+  switch (key) {
+    case 'heavy-grenade': return '手榴弾';
+    case 'marksman-trap': return 'トラップ';
+    case 'striker-quick-mag': return 'クイックマガジン';
+    case 'striker-hunting': return 'ハンティング';
+    case 'dog': return 'ドッグ';
+    default: return 'サブウェポン';
+  }
+};
 
 interface GameState {
   player: Player;
@@ -158,9 +274,17 @@ interface GameState {
   breakableProps: BreakableProp[];
   destroyedBreakableProps: Record<string, true>;
   mineAmbushAnchor: MineAmbushAnchor | null;
+  castleEvent: CastleEvent;
+  weaponMerchant: WeaponMerchant;
+  eventQuestNpc: EventQuestNpc;
   gameTime: number;
   isPaused: boolean;
   showUpgradeMenu: boolean;
+  showShopMenu: boolean;
+  showEventQuestMenu: boolean;
+  shopReopenAt: number;
+  eventQuestReopenAt: number;
+  vaccinePurchased: boolean;
   // Flipped true the moment the finale boss (giantbat) dies — the run is won.
   gameWon: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
@@ -183,7 +307,7 @@ interface GameState {
   };
   // Most recent weapon the player acquired (drop/crate). The HUD shows a
   // 5-second "got a weapon" popup off this. null until the first pickup.
-  lastWeaponGet: { name: string; at: number; color?: string } | null;
+  lastWeaponGet: { name: string; at: number; color?: string; kind?: 'weapon' | 'treasure' } | null;
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
@@ -206,6 +330,13 @@ interface GameState {
   learnSubWeapon: (key: SubWeaponKey) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
+  buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
+  openShop: () => void;
+  closeShop: () => void;
+  openEventQuest: () => void;
+  acceptEventQuest: () => void;
+  declineEventQuest: () => void;
+  completeEventQuest: () => void;
   
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
@@ -215,6 +346,7 @@ interface GameState {
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number) => void;
+  markCastleBossSpawned: () => void;
 
   // Ammo
   addAmmo: (type: AmmoType, amount: number) => void;
@@ -236,6 +368,7 @@ interface GameState {
   addPickup: (pickup: Pickup) => void;
   removePickup: (id: string) => void;
   collectPickup: (id: string) => void;
+  dropEnemyCurrency: (enemy: Enemy, x: number, y: number) => void;
 
   // Breakable props
   syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds) => void;
@@ -304,7 +437,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponLevels: {},
     subWeaponCooldowns: {},
     huntingChargeStartedAt: 0,
-    huntingCharged: false
+    huntingCharged: false,
+    straps: 0,
+    vaccineRevives: 0
   },
   enemies: [],
   projectiles: [],
@@ -312,9 +447,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   breakableProps: [],
   destroyedBreakableProps: {},
   mineAmbushAnchor: null,
+  castleEvent: createCastleEvent(),
+  weaponMerchant: createWeaponMerchant(),
+  eventQuestNpc: createEventQuestNpc(),
   gameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
+  showShopMenu: false,
+  showEventQuestMenu: false,
+  shopReopenAt: 0,
+  eventQuestReopenAt: 0,
+  vaccinePurchased: false,
   gameWon: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
@@ -330,7 +473,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     enemiesKilled: 0,
     damageDealt: 0,
     experienceCollected: 0,
-    maxLevel: 1
+    maxLevel: 1,
+    maxCombo: 0,
+    strapsCollected: 0,
+    strapsSpent: 0,
+    treasuresCollected: 0
   },
   characterClass: 'warrior',
   effects: [],
@@ -345,15 +492,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Player actions
   movePlayer: (input, deltaTime) => {
     set(state => {
-      const { player, gameBounds, swipeDirection, breakableProps } = state;
+      const { player, gameBounds, swipeDirection, breakableProps, castleEvent } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine');
       void gameBounds; // World is effectively infinite — no clamp.
 
-      // While reloading, the survivor is fumbling a fresh magazine in — they
-      // can still shuffle and melee, but at 2/3 speed.
+      // Reload movement penalty is kept as a single multiplier for tuning.
+      // Currently 1.0, so reloading does not slow movement.
       const reloading =
         player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
-      const moveSpeed = reloading ? player.speed * (2 / 3) : player.speed;
+      const moveSpeed = reloading ? player.speed * RELOAD_MOVE_SPEED_MULT : player.speed;
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -389,8 +536,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         width: player.width,
         height: player.height,
       }, solidProps);
-      const newX = resolved.x;
-      const newY = resolved.y;
+      const castleResolved = resolveCastleCollision({
+        x: resolved.x,
+        y: resolved.y,
+        width: player.width,
+        height: player.height,
+      }, castleEvent);
+      const newX = castleResolved.x;
+      const newY = castleResolved.y;
 
       const speedNow = Math.hypot(vx, vy);
       let direction: Direction = 'idle';
@@ -437,7 +590,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   triggerCounter: () => {
     const now = Date.now();
-    const { player, gameTime, enemies, breakableProps, projectiles } = get();
+    const {
+      player, gameTime, enemies, breakableProps, projectiles, weaponMerchant,
+      eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
+      shopReopenAt, eventQuestReopenAt
+    } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
@@ -447,6 +604,57 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
+    const mdx = weaponMerchant.x - pcx;
+    const mdy = weaponMerchant.y - pcy;
+    if (
+      !showShopMenu &&
+      !showUpgradeMenu &&
+      gameTime >= shopReopenAt &&
+      mdx * mdx + mdy * mdy <= weaponMerchant.radius * weaponMerchant.radius
+    ) {
+      set({
+        showShopMenu: true,
+        isPaused: true,
+        touchActive: false,
+        swipeDirection: null,
+        player: {
+          ...player,
+          counterWindowEnd: now + COUNTER_WINDOW,
+          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+        }
+      });
+      get().spawnRing(weaponMerchant.x, weaponMerchant.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
+      get().spawnGlow(weaponMerchant.x, weaponMerchant.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
+      get().spawnCallout(weaponMerchant.x, weaponMerchant.y - 70, 'SHOP', '#fde68a');
+      return { swung: true, hit: true, finish: false, killed: 0 };
+    }
+
+    const qdx = eventQuestNpc.x - pcx;
+    const qdy = eventQuestNpc.y - pcy;
+    if (
+      eventQuestNpc.status === 'available' &&
+      !showShopMenu &&
+      !showEventQuestMenu &&
+      !showUpgradeMenu &&
+      gameTime >= eventQuestReopenAt &&
+      qdx * qdx + qdy * qdy <= eventQuestNpc.radius * eventQuestNpc.radius
+    ) {
+      set({
+        showEventQuestMenu: true,
+        isPaused: true,
+        touchActive: false,
+        swipeDirection: null,
+        player: {
+          ...player,
+          counterWindowEnd: now + COUNTER_WINDOW,
+          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+        }
+      });
+      get().spawnRing(eventQuestNpc.x, eventQuestNpc.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, SHOP_INTERACT_RING_MS);
+      get().spawnGlow(eventQuestNpc.x, eventQuestNpc.y - 30, 68, 'rgba(96,165,250,', SHOP_INTERACT_RING_MS);
+      get().spawnCallout(eventQuestNpc.x, eventQuestNpc.y - 76, 'QUEST', '#bfdbfe');
+      return { swung: true, hit: true, finish: false, killed: 0 };
+    }
 
     // Single sweep: every non-reaper enemy in melee range is either finished
     // (if stunned) for an instant kill, or takes light damage + knockback.
@@ -466,6 +674,31 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(gx - pcx, gy - pcy) <= meleeRange;
       })
       .map(p => p.id);
+    const trapShoves = projectiles
+      .filter(p => p.weaponType === 'trap')
+      .filter(p => {
+        const tx = p.x + p.width / 2;
+        const ty = p.y + p.height / 2;
+        return Math.hypot(tx - pcx, ty - pcy) <= meleeRange;
+      })
+      .map(p => {
+        const tx = p.x + p.width / 2;
+        const ty = p.y + p.height / 2;
+        const pushDx = tx - pcx;
+        const pushDy = ty - pcy;
+        const norm = Math.hypot(pushDx, pushDy);
+        const ux = norm > 0.001 ? pushDx / norm : 0;
+        const uy = norm > 0.001 ? pushDy / norm : 1;
+        return {
+          id: p.id,
+          fromX: p.x,
+          fromY: p.y,
+          x: p.x + ux * TRAP_MELEE_SHOVE_DISTANCE,
+          y: p.y + uy * TRAP_MELEE_SHOVE_DISTANCE,
+          cx: tx,
+          cy: ty,
+        };
+      });
 
     for (const enemy of enemies) {
       if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
@@ -555,7 +788,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: survivors,
       gameStats: {
         ...state.gameStats,
-        enemiesKilled: state.gameStats.enemiesKilled + killed.length
+        enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        damageDealt: state.gameStats.damageDealt +
+          meleeDamageNumbers.reduce((sum, n) => sum + n.value, 0),
+        maxCombo: comboFinishCount > 0
+          ? Math.max(
+              state.gameStats.maxCombo,
+              state.meleeFinishComboUntil >= gameTime
+                ? state.meleeFinishComboCount + comboFinishCount
+                : comboFinishCount
+            )
+          : state.gameStats.maxCombo
       },
       gameWon: state.gameWon || bossKilled,
       meleeFinishComboCount: comboFinishCount > 0
@@ -572,10 +815,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         huntingCharged: false,
         huntingChargeStartedAt: 0
       },
-      projectiles: grenadesToDetonate.length > 0
+      projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0
         ? state.projectiles.map(p =>
             grenadesToDetonate.includes(p.id)
               ? { ...p, createdAt: now - Math.max(1, p.duration) }
+              : trapShoves.some(t => t.id === p.id)
+                ? {
+                    ...p,
+                    shoveStartX: trapShoves.find(t => t.id === p.id)?.fromX ?? p.x,
+                    shoveStartY: trapShoves.find(t => t.id === p.id)?.fromY ?? p.y,
+                    shoveStartAt: now,
+                    shoveDuration: TRAP_MELEE_SHOVE_SLIDE_MS,
+                    x: trapShoves.find(t => t.id === p.id)?.x ?? p.x,
+                    y: trapShoves.find(t => t.id === p.id)?.y ?? p.y,
+                  }
               : p
           )
         : state.projectiles
@@ -586,6 +839,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (grenade) {
         get().spawnSlash(grenade.x + grenade.width / 2, grenade.y + grenade.height / 2);
       }
+    }
+    for (const trap of trapShoves) {
+      get().spawnSlash(trap.cx, trap.cy, 'rgba(125,211,252,0.9)');
+      get().spawnRing(trap.cx, trap.cy, 4, 22, 'rgba(56,189,248,0.58)', 2, 220);
     }
 
     // Slash streaks on every enemy that was cut.
@@ -611,6 +868,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `pickup-xp-melee-${enemy.id}`,
         x: ex - 8, y: ey - 8, type: 'experience', value: xp
       });
+      get().dropEnemyCurrency(enemy, ex, ey);
       // Ammo scavenge: base rate is the start-screen setting; a finisher
       // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
       // Prefer the active gun's family; if the active pointer is temporarily
@@ -684,13 +942,40 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    return { swung: true, hit: slashAt.length > 0 || propHit, finish: finisherHit || bossFinishHit, killed: killed.length };
+    return {
+      swung: true,
+      hit: slashAt.length > 0 || propHit || trapShoves.length > 0,
+      finish: finisherHit || bossFinishHit,
+      killed: killed.length
+    };
   },
 
   damagePlayer: (amount) => {
     const { player } = get();
 
     if (player.invulnerable) return false;
+
+    const wouldDie = player.health - amount <= 0;
+    if (wouldDie && player.vaccineRevives > 0) {
+      set(state => ({
+        shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
+        player: {
+          ...state.player,
+          health: Math.max(1, Math.floor(state.player.maxHealth * 0.5)),
+          vaccineRevives: state.player.vaccineRevives - 1,
+          invulnerable: true,
+          invulnerableTime: Date.now()
+        }
+      }));
+      const p = get().player;
+      const cx = p.x + p.width / 2;
+      const cy = p.y + p.height / 2;
+      get().spawnFlash('rgba(34, 197, 94, 0.34)', 320);
+      get().spawnRing(cx, cy, 10, 90, 'rgba(74,222,128,0.88)', 5, 520);
+      get().spawnGlow(cx, cy, 78, 'rgba(74,222,128,', 520);
+      get().spawnCallout(cx, cy - 18, 'VACCINE', '#bbf7d0');
+      return false;
+    }
     
     set(state => {
       const newHealth = Math.max(0, state.player.health - amount);
@@ -921,6 +1206,134 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
   },
+
+  buyShopItem: (key, ammoType) => {
+    let purchased = false;
+    set(state => {
+      const spend = (cost: number, playerPatch: Partial<Player>) => {
+        if (state.player.straps < cost) return {};
+        purchased = true;
+        return {
+          player: {
+            ...state.player,
+            ...playerPatch,
+            straps: state.player.straps - cost
+          },
+          gameStats: {
+            ...state.gameStats,
+            strapsSpent: state.gameStats.strapsSpent + cost
+          }
+        };
+      };
+
+      if (key === 'ammo-handgun' || ammoType === 'handgun') {
+        return spend(SHOP_AMMO_COST, {
+          ammoHandgun: Math.min(AMMO_MAX.handgun, state.player.ammoHandgun + state.ammoPickupAmounts.handgun)
+        });
+      }
+      if (key === 'ammo-shotgun' || ammoType === 'shotgun') {
+        return spend(SHOP_AMMO_COST, {
+          ammoShotgun: Math.min(AMMO_MAX.shotgun, state.player.ammoShotgun + state.ammoPickupAmounts.shotgun)
+        });
+      }
+      if (key === 'ammo-rifle' || ammoType === 'rifle') {
+        return spend(SHOP_AMMO_COST, {
+          ammoRifle: Math.min(AMMO_MAX.rifle, state.player.ammoRifle + state.ammoPickupAmounts.rifle)
+        });
+      }
+      if (key === 'medkit') {
+        if (state.player.health >= state.player.maxHealth) return {};
+        return spend(SHOP_MEDKIT_COST, {
+          health: Math.min(state.player.maxHealth, state.player.health + SHOP_MEDKIT_HEAL)
+        });
+      }
+      if (key === 'vaccine') {
+        if (state.vaccinePurchased) return {};
+        const result = spend(SHOP_VACCINE_COST, { vaccineRevives: 1 });
+        if ('player' in result) {
+          return { ...result, vaccinePurchased: true };
+        }
+        return result;
+      }
+
+      const subWeaponKey = key === 'dog' ? 'dog' : classSubWeaponFor(state.player.characterClass);
+      const cost = key === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST;
+      const currentLevel = state.player.subWeaponLevels[subWeaponKey] ?? 0;
+      if (currentLevel >= 3) return {};
+      const nextLevel = currentLevel + 1;
+      return spend(cost, {
+        subWeapons: state.player.subWeapons.includes(subWeaponKey)
+          ? state.player.subWeapons
+          : [...state.player.subWeapons, subWeaponKey],
+        subWeaponLevels: {
+          ...state.player.subWeaponLevels,
+          [subWeaponKey]: nextLevel
+        }
+      });
+    });
+
+    if (purchased) {
+      const p = get().player;
+      get().spawnCallout(p.x + p.width / 2, p.y - 12, 'BUY', '#fde68a');
+    }
+    return purchased;
+  },
+
+  openShop: () => {
+    set({
+      showShopMenu: true,
+      isPaused: true,
+      touchActive: false,
+      swipeDirection: null
+    });
+  },
+
+  closeShop: () => {
+    set(state => ({
+      showShopMenu: false,
+      isPaused: false,
+      shopReopenAt: state.gameTime + MERCHANT_REOPEN_DELAY_MS
+    }));
+  },
+
+  openEventQuest: () => {
+    set({
+      showEventQuestMenu: true,
+      isPaused: true,
+      touchActive: false,
+      swipeDirection: null
+    });
+  },
+
+  acceptEventQuest: () => {
+    set(state => ({
+      showEventQuestMenu: false,
+      isPaused: false,
+      eventQuestNpc: {
+        ...state.eventQuestNpc,
+        status: 'accepted'
+      },
+      eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
+    }));
+  },
+
+  declineEventQuest: () => {
+    set(state => ({
+      showEventQuestMenu: false,
+      isPaused: false,
+      eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
+    }));
+  },
+
+  completeEventQuest: () => {
+    set(state => ({
+      eventQuestNpc: {
+        ...state.eventQuestNpc,
+        status: 'completed',
+        fadeStartedAt: Date.now()
+      }
+    }));
+  },
   
   // Enemy actions
   addEnemy: (enemy) => {
@@ -976,7 +1389,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
-    
+
     return killed;
   },
   
@@ -1097,6 +1510,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
+  markCastleBossSpawned: () => {
+    set(state => ({
+      castleEvent: {
+        ...state.castleEvent,
+        bossSpawned: true,
+      },
+    }));
+  },
+
   // Ammo
   addAmmo: (type, amount) => {
     set(state => {
@@ -1150,7 +1572,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const currentTime = Date.now();
 
     set(state => {
-      const { projectiles, player, gameBounds, breakableProps } = state;
+      const { projectiles, player, gameBounds, breakableProps, castleEvent } = state;
       const cullRadius = Math.max(gameBounds.width, gameBounds.height);
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
@@ -1162,7 +1584,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const torches = breakableProps
           .filter(prop => prop.type === 'torch' && prop.health > 0)
           .map(torchRect);
-        return [...trunks, ...torches];
+        return [...trunks, ...torches, castleRect(castleEvent)];
       };
 
       const updatedProjectiles = projectiles
@@ -1247,6 +1669,33 @@ export const useGameStore = create<GameState>((set, get) => ({
       pickups: state.pickups.filter(p => p.id !== id)
     }));
   },
+
+  dropEnemyCurrency: (enemy, x, y) => {
+    const strapChance = ENEMY_STRAP_DROP_CHANCE + Math.max(0, (enemy.distanceZone ?? 1) - 1) * 0.035;
+    if (Math.random() < strapChance) {
+      get().addPickup({
+        id: `pickup-strap-${enemy.id}`,
+        x: x - 8 + (Math.random() - 0.5) * 18,
+        y: y - 8 + (Math.random() - 0.5) * 18,
+        type: 'strap',
+        value: strapValueForRank(enemy.difficultyRank)
+      });
+    }
+
+    const treasureChance = treasureDropChance(enemy.difficultyRank);
+    if (treasureChance > 0 && Math.random() < treasureChance) {
+      const value = treasureValueForRank(enemy.difficultyRank);
+      get().addPickup({
+        id: `pickup-treasure-${enemy.id}`,
+        x: x - 8 + 12,
+        y: y - 8 - 12,
+        type: 'treasure',
+        value,
+        variant: treasureVariantForValue(value),
+        worldDrop: true
+      });
+    }
+  },
   
   collectPickup: (id) => {
     const { pickups } = get();
@@ -1263,6 +1712,32 @@ export const useGameStore = create<GameState>((set, get) => ({
           player: {
             ...state.player,
             health: Math.min(state.player.health + pickup.value, state.player.maxHealth)
+          }
+        }));
+        break;
+      case 'strap':
+        set(state => ({
+          player: {
+            ...state.player,
+            straps: state.player.straps + pickup.value
+          },
+          gameStats: {
+            ...state.gameStats,
+            strapsCollected: state.gameStats.strapsCollected + pickup.value
+          }
+        }));
+        break;
+      case 'treasure':
+        set(state => ({
+          lastWeaponGet: {
+            name: treasureNameForVariant(pickup.variant),
+            at: Date.now(),
+            color: '#facc15',
+            kind: 'treasure'
+          },
+          gameStats: {
+            ...state.gameStats,
+            treasuresCollected: state.gameStats.treasuresCollected + pickup.value
           }
         }));
         break;
@@ -1304,10 +1779,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Drop XP gems where each killed enemy was so the cleanup feels
         // rewarding even though we skipped the damage path.
         reachable.forEach(enemy => {
+          const ex = enemy.x + enemy.width / 2;
+          const ey = enemy.y + enemy.height / 2;
+          get().dropEnemyCurrency(enemy, ex, ey);
           get().addPickup({
             id: `pickup-bomb-${enemy.id}`,
-            x: enemy.x + enemy.width / 2 - 8,
-            y: enemy.y + enemy.height / 2 - 8,
+            x: ex - 8,
+            y: ey - 8,
             type: 'experience',
             value: enemy.experienceValue
           });
@@ -1492,6 +1970,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropBreakablePropLoot: (prop) => {
+    if (Math.random() < BREAKABLE_STRAP_DROP_CHANCE) {
+      get().addPickup({
+        id: `pickup-strap-prop-${prop.id}`,
+        x: prop.footX - 8 + (Math.random() - 0.5) * 12,
+        y: prop.footY - 18 + (Math.random() - 0.5) * 12,
+        type: 'strap',
+        value: 1
+      });
+    }
     if (Math.random() >= BREAKABLE_PROP_DROP_CHANCE) return;
     const x = prop.footX - 8;
     const y = prop.footY - 16;
@@ -1594,11 +2081,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             ...player,
             [ammoField]: Math.min(AMMO_MAX[ammoType], player[ammoField] + amount)
           },
-          lastWeaponGet: {
-            name: `${weaponTierLabel(weapon.tier)} ${weapon.name} -> 弾薬 +${amount}`,
-            at: Date.now(),
-            color: weaponTierColor(weapon.tier)
-          }
+        lastWeaponGet: {
+          name: `${weaponTierLabel(weapon.tier)} ${weapon.name} -> 弾薬 +${amount}`,
+          at: Date.now(),
+          color: weaponTierColor(weapon.tier),
+          kind: 'weapon'
+        }
         };
       }
 
@@ -1630,7 +2118,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastWeaponGet: {
           name: `${weaponTierLabel(weapon.tier)} ${weapon.name}`,
           at: Date.now(),
-          color: weaponTierColor(weapon.tier)
+          color: weaponTierColor(weapon.tier),
+          kind: 'weapon'
         }
       };
     });
@@ -1757,12 +2246,19 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   addMeleeFinishCombo: (amount = 1) => {
     const gain = Math.max(1, Math.floor(amount));
-    set(state => ({
-      meleeFinishComboCount: state.meleeFinishComboUntil >= state.gameTime
+    set(state => {
+      const nextCombo = state.meleeFinishComboUntil >= state.gameTime
         ? state.meleeFinishComboCount + gain
-        : gain,
-      meleeFinishComboUntil: state.gameTime + MELEE_FINISH_COMBO_WINDOW_MS,
-    }));
+        : gain;
+      return {
+        meleeFinishComboCount: nextCombo,
+        meleeFinishComboUntil: state.gameTime + MELEE_FINISH_COMBO_WINDOW_MS,
+        gameStats: {
+          ...state.gameStats,
+          maxCombo: Math.max(state.gameStats.maxCombo, nextCombo)
+        }
+      };
+    });
   },
 
   setGameBounds: (bounds) => {
@@ -1826,7 +2322,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeaponLevels: {},
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
-          huntingCharged: false
+          huntingCharged: false,
+          straps: 0,
+          vaccineRevives: 0
         },
         enemies: [],
         projectiles: [],
@@ -1834,9 +2332,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         breakableProps: [],
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
+        castleEvent: createCastleEvent(),
+        weaponMerchant: createWeaponMerchant(),
+        eventQuestNpc: createEventQuestNpc(),
         gameTime: 0,
         isPaused: false,
         showUpgradeMenu: false,
+        showShopMenu: false,
+        showEventQuestMenu: false,
+        shopReopenAt: 0,
+        eventQuestReopenAt: 0,
+        vaccinePurchased: false,
         gameWon: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
@@ -1848,7 +2354,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           enemiesKilled: 0,
           damageDealt: 0,
           experienceCollected: 0,
-          maxLevel: 1
+          maxLevel: 1,
+          maxCombo: 0,
+          strapsCollected: 0,
+          strapsSpent: 0,
+          treasuresCollected: 0
         },
         characterClass: validClass,
         effects: [],

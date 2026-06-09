@@ -10,6 +10,890 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.108 - Match gameplay player sprites to character-select sprites (Codex)
+
+### Summary
+- Treat `v0.25.107` as the rollback point for this experiment. If the user says
+  "戻して", return the gameplay player sprite selection/scale to that state.
+- Changed gameplay player rendering to use the exact same `player-*-walk-*`
+  materials shown on the character-select screen.
+- Removed the gameplay-only `player-*-game-*` texture reference from the active
+  player draw path.
+- Matched the gameplay class sprite base scale to the character-select image
+  width (`86px`) so the focal-plane player reads close to the menu sprite size
+  and material scale.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- The generated `player-*-game-*` files are intentionally left in the repo for
+  easy rollback or comparison.
+
+## 2026-06-09 - v0.25.107 - Replace horizon forest seam material (Codex)
+
+### Summary
+- Replaced the horizon forest seam material with the newly supplied
+  `遠景森.png`.
+- Removed only the border-connected purple background by alpha keying.
+- Baked a subtle bottom fade into the texture so the added ground strip fades
+  from transparent at the bottom into the forest material above.
+- Kept the existing runtime horizon forest fade mask in place for final
+  in-game blending.
+
+### Code touched
+- `public/backgrounds/horizon-forest-band.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Alpha sanity check: upper purple background is transparent, bottom edge fades
+  to transparent.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- The output texture is `1672x941`, matching the supplied material aspect ratio.
+
+## 2026-06-09 - v0.25.106 - Revert playable-character layer split (Codex)
+
+### Summary
+- Reverted the `v0.25.104` experiment that moved the playable character into a
+  separate `characterWorld` layer outside the filtered gameplay world.
+- Restored the normal actor-layer composition so player lights, local effects,
+  overlap, and Y-sort behavior line up with the rest of the world again.
+- Kept the `v0.25.105` Heavy Gunner sprite replacement intact.
+- Global world effects remain ON, matching the saved all-effects checkpoint
+  direction while we look for a different way to preserve character pixel art.
+
+### Code touched
+- `src/pixi/layers.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- Avoid the separate playable-character world approach for now: it caused
+  character-related lights to composite under the character.
+
+## 2026-06-09 - v0.25.105 - Replace heavy gunner with new material-preserved sprites (Codex)
+
+### Summary
+- Replaced the Heavy Gunner character-select and in-game sprite frames with
+  the newly supplied 3-frame material.
+- Removed only the border-connected purple background, preserving the character
+  artwork itself.
+- Kept aspect ratio intact and used nearest-neighbor scaling only for fitting
+  into the existing character-select (`128x108`) and gameplay (`96x80`) sprite
+  canvases.
+- Updated both `player-shotgun-walk-*` and `player-shotgun-game-*` so gameplay
+  and character select use the same visual material.
+
+### Code touched
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `public/sprites/player-shotgun-walk-2.png`
+- `public/sprites/player-shotgun-game-0.png`
+- `public/sprites/player-shotgun-game-1.png`
+- `public/sprites/player-shotgun-game-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- The source art was not redrawn or reshaped; only the purple background was
+  keyed out before uniform nearest-neighbor fitting.
+
+## 2026-06-09 - v0.25.104 - Separate playable character from global world filters (Codex)
+
+### Summary
+- Treat `v0.25.103` as the saved "all effects ON" checkpoint.
+- Added a camera-following `characterWorld` layer outside `filteredWorld`.
+- Moved the playable character sprite container into `characterWorld` so global
+  world bloom / tilt-shift no longer brighten or soften the player sprite.
+- Kept global bloom, DOF, vignette, color grade, ground glow, shadows, enemy
+  effects, pickups, and world effects ON.
+
+### Code touched
+- `src/pixi/layers.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- This is the first Octopath-like split: atmosphere remains on the world, while
+  playable character pixels stay outside global post-processing.
+- Tradeoff to watch on-device: the player is now composited above the filtered
+  world, so test whether tree/castle/enemy overlap still feels acceptable.
+
+## 2026-06-09 - v0.25.103 - Restore global world bloom effects (Codex)
+
+### Summary
+- Re-enabled the global Pixi world bloom filter after the character washout
+  diagnosis pass.
+- Player ground glow remains restored at `0.32`.
+- This returns the broader atmospheric effect stack for further visual tuning.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- Known tradeoff: global bloom improves atmosphere but can brighten player
+  sprites; future tuning may need bloom separation or lower threshold/scale.
+
+## 2026-06-09 - v0.25.102 - Restore player ground glow with world bloom off (Codex)
+
+### Summary
+- Restored the warm player ground glow alpha to `0.32`.
+- Kept global world bloom disabled because that was the likely cause of the
+  persistent in-game character color washout.
+- This isolates the player floor halo from the global bloom issue.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- If character color stays correct, keep global bloom off and use localized
+  glow/effect sprites instead.
+
+## 2026-06-09 - v0.25.101 - Disable world bloom for gameplay character color test (Codex)
+
+### Summary
+- Disabled the global Pixi world bloom filter to test the persistent in-game
+  player sprite washout/brightening that does not appear on the character
+  select screen.
+- Character select uses DOM image sprites and is unaffected by Pixi world
+  filters; gameplay sprites were inside `filteredWorld`, so global bloom could
+  brighten pale hair/skin/clothing for the entire run.
+- Kept tilt-shift depth of field, vignette, cool grade, shadows, and local
+  gameplay effects intact.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- If this fixes the character color, reintroduce bloom only on explicit effect
+  layers/items instead of the whole gameplay world.
+
+## 2026-06-09 - v0.25.100 - Disable constant player glow for pixel clarity test (Codex)
+
+### Summary
+- Set the constant player halo/glow alpha to `0` to test whether the always-on
+  additive hero light was softening the player sprites during gameplay.
+- Kept depth of field, vignette, environment lighting, shadows, and event
+  effects intact.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- If player pixels now read sharper, keep the constant hero halo off and use
+  explicit event/skill effects instead.
+
+## 2026-06-09 - v0.25.99 - Add crisp in-game player sprite set (Codex)
+
+### Summary
+- Added separate in-game player sprites for all four character classes so the
+  menu art can stay large while gameplay uses crisp, size-matched pixel art.
+- Generated `*-game-0..2` sprites at a shared `64px` content height with
+  nearest-neighbor scaling only.
+- Updated Pixi player rendering to use the in-game sprites and a `64px` base
+  height, so players near the focal plane are drawn close to 1:1 instead of
+  being dynamically downscaled from larger menu sprites.
+- Confirmed Pixi texture loading already uses `nearest`; this change addresses
+  the remaining mismatch caused by mixed source content heights (`96px` and
+  `108px`) and runtime downscaling.
+
+### Code touched
+- `public/sprites/player-shotgun-game-0.png`
+- `public/sprites/player-shotgun-game-1.png`
+- `public/sprites/player-shotgun-game-2.png`
+- `public/sprites/player-magnum-game-0.png`
+- `public/sprites/player-magnum-game-1.png`
+- `public/sprites/player-magnum-game-2.png`
+- `public/sprites/player-scavenger-game-0.png`
+- `public/sprites/player-scavenger-game-1.png`
+- `public/sprites/player-scavenger-game-2.png`
+- `public/sprites/player-striker-game-0.png`
+- `public/sprites/player-striker-game-1.png`
+- `public/sprites/player-striker-game-2.png`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- Character select continues using the larger `*-walk-*` images; gameplay now
+  uses the new `*-game-*` images.
+
+## 2026-06-09 - v0.25.98 - Replace heavy gunner sprites (Codex)
+
+### Summary
+- Replaced the Heavy Gunner walk frames with the newly supplied 3-frame sprite
+  sheet.
+- Purple background was keyed transparent and frames were fit into the existing
+  `128x108` player sprite canvas using nearest-neighbor scaling only.
+- Lightly aligned head centers across frames to reduce wobble while preserving
+  the walking motion and foot baseline.
+
+### Code touched
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `public/sprites/player-shotgun-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+
+## 2026-06-09 - v0.25.97 - Align scavenger walk head position (Codex)
+
+### Summary
+- Repositioned the Scavenger walk frames so the head center stays consistent
+  across the 3-frame animation.
+- Kept the existing sprite size, foot baseline, and nearest-neighbor pixels.
+- Reduced the visible side-to-side wobble while preserving the leg motion.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+
+## 2026-06-09 - v0.25.96 - Slightly extend trap shove distance (Codex)
+
+### Summary
+- Increased the melee shove distance for placed traps from `56px` to `68px`.
+- Kept the existing direction logic and smooth slide animation unchanged.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+
+## 2026-06-09 - v0.25.95 - Replace scavenger character sprites (Codex)
+
+### Summary
+- Replaced the in-game Scavenger walk frames with the newly supplied 3-frame
+  male scavenger sprite sheet.
+- Purple background was keyed to transparent and each frame was preserved with
+  nearest-neighbor scaling on the existing `128x108` player canvas.
+- Kept the existing foot alignment and player class sprite scale so gameplay
+  positioning stays consistent.
+
+### Code touched
+- `public/sprites/player-striker-walk-0.png`
+- `public/sprites/player-striker-walk-1.png`
+- `public/sprites/player-striker-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push remains paused by user instruction.
+- The Scavenger class (`necromancer`) currently uses `player-striker-walk-*`
+  in both menu and Pixi gameplay rendering due the previous Striker/Scavenger
+  sprite swap.
+
+## 2026-06-09 - v0.25.94 - Add random event duo NPC scaffold (Codex)
+
+### Summary
+- Added the supplied duo character art as `quest-futari` with the purple
+  background keyed transparent.
+- Added a random in-world event NPC that appears once per run.
+- The duo can be interacted with by standing inside their circle and using
+  melee, matching the weapon merchant interaction style.
+- Added a short dialogue popup with `受ける` / `受けない`.
+- Accepting starts the event quest state for the current run; declining closes
+  the dialogue without changing quest state.
+- Added a light breathing motion to the duo sprite so they feel alive in-world.
+
+### Code touched
+- `public/sprites/quest-futari.png`
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `src/components/Game.tsx`
+- `src/components/EventQuestMenu.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Quest completion conditions/rewards are intentionally not implemented yet.
+- `completeEventQuest()` is available as the future hook for fade-out removal.
+- Weapon merchant breathing was left off because the sprite includes large
+  attached weapon props and would look like the whole shop is breathing.
+
+## 2026-06-09 - v0.25.93 - Smooth trap shove direction (Codex)
+
+### Summary
+- Changed Marksman trap melee shove direction to use the player's position
+  relative to the trap center instead of the player's facing direction.
+- A player above the trap now pushes it downward, left pushes it right, and
+  diagonal positions push it away diagonally.
+- Added a short visual-only slide interpolation so shoved traps glide smoothly
+  to their new position instead of snapping.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `src/types/game.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Trap gameplay position updates immediately; only the Pixi rendering is
+  eased for the shove animation.
+
+## 2026-06-09 - v0.25.92 - Replace weapon merchant sprite (Codex)
+
+### Summary
+- Replaced the weapon merchant sprite with the supplied dot-art version.
+- Keyed the purple background to transparent.
+- Normalized the sprite to about the in-game target height (`93x100`) using
+  nearest-neighbor scaling so Pixi does not downsample a huge source and crush
+  the dots.
+
+### Assets touched
+- `public/sprites/weapon-merchant.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: confirm merchant dot crispness and in-world size after the
+  new `93x100` texture.
+
+## 2026-06-09 - v0.25.91 - Add weapon merchant direction indicator (Codex)
+
+### Summary
+- Added a screen-edge direction indicator for the weapon merchant when she is
+  off-screen.
+- The indicator uses a gold/purple merchant-lantern style icon and an arrow
+  pointing toward the merchant.
+- The indicator stays hidden while the merchant is visible on-screen.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: ensure the merchant icon does not clutter the existing
+  castle/supply arrows.
+
+## 2026-06-09 - v0.25.90 - Replace striker and marksman sprites (Codex)
+
+### Summary
+- Replaced the Striker walk frames with the supplied red-haired character art.
+  - Current class mapping uses `player-scavenger-walk-*` for Striker.
+- Replaced the Marksman walk frames with the supplied hooded rifle character art.
+  - Marksman uses `player-magnum-walk-*`.
+- Purple backgrounds were chroma-keyed to transparent, then each frame was
+  fitted to the existing `128x108` player sprite canvas using nearest-neighbor
+  scaling.
+
+### Assets touched
+- `public/sprites/player-scavenger-walk-0.png`
+- `public/sprites/player-scavenger-walk-1.png`
+- `public/sprites/player-scavenger-walk-2.png`
+- `public/sprites/player-magnum-walk-0.png`
+- `public/sprites/player-magnum-walk-1.png`
+- `public/sprites/player-magnum-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Note: file naming still reflects the earlier Striker/Scavenger art swap; the
+  rendered class mapping is correct.
+
+## 2026-06-09 - v0.25.89 - Smooth weapon merchant depth scaling (Codex)
+
+### Summary
+- Removed the merchant-only 1/256 scale snapping.
+- Weapon merchant size now follows the same continuous depth scale as other
+  actors, making near/far size changes seamless.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- This may slightly soften merchant pixels at some distances, but avoids visible
+  stepping in perspective scale.
+
+## 2026-06-09 - v0.25.88 - Lower horizon forest layer (Codex)
+
+### Summary
+- Moved the horizon seam forest layer below the gameplay world group.
+- The distant forest still sits in front of the far backdrop, but it no longer
+  draws over enemies, pickups, props, the player, castle, or merchant.
+- Updated the layer comments to reflect the new ordering.
+
+### Code touched
+- `src/pixi/layers.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: confirm the far/ground seam still reads naturally now that
+  gameplay objects are always above the horizon forest.
+
+## 2026-06-09 - v0.25.87 - Y-sort castle with actors (Codex)
+
+### Summary
+- Moved the boss castle from the background layer into the Y-sorted actor layer.
+- Set the castle z-index to its foot position, matching trees and other actors.
+- The player now appears behind the castle when walking behind it, and in front
+  when walking below/in front of it.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: confirm the castle hiding point feels aligned with its
+  collision footprint.
+
+## 2026-06-09 - v0.25.86 - Increase weapon merchant size (Codex)
+
+### Summary
+- Increased the weapon merchant render height from `50` to `100`, roughly 2x
+  the previous in-game size.
+- Kept the tightened shop interaction rule unchanged: the player must be inside
+  the merchant circle and melee to open the shop.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+
+## 2026-06-09 - v0.25.85 - Tune weapon merchant scale and interaction radius (Codex)
+
+### Summary
+- Reduced the weapon merchant render height from `148` to `50`, roughly one
+  third of the previous in-game size.
+- Rounded merchant sprite scale to a 1/256 step to keep pixel-art scaling more
+  stable and reduce visible distortion.
+- Tightened shop opening: melee only opens the shop when the player's center is
+  inside the merchant interaction circle, not merely within melee reach.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: merchant should feel intentionally interactable but no
+  longer oversized.
+
+## 2026-06-09 - v0.25.84 - Add castle collision and reduce castle size (Codex)
+
+### Summary
+- Reduced the boss castle render height to roughly half of the previous size.
+- Added castle AABB collision using the same obstacle convention as trees:
+  bottom-center foot point, narrow collision rectangle, and AABB push-out.
+- Player movement now resolves against castle collision after tree and torch
+  collision.
+- Grenades now treat the castle as a wall and bounce off it like trees/torches.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: castle visual scale, foot collision width/height, and
+  grenade bounce feel.
+
+## 2026-06-09 - v0.25.83 - Add weapon merchant shop interaction (Codex)
+
+### Summary
+- Added the weapon merchant as an in-world Pixi sprite using the supplied art
+  with the purple background keyed transparent.
+- Placed the merchant randomly near the map center/start area each run.
+- Changed shop access to intentional interaction: stand near the merchant and
+  use melee to open the shop. Passing nearby no longer auto-opens the menu.
+- Added a compact strap shop:
+  - handgun / shotgun / rifle ammo packs: `10s`
+  - dog: `100s`, levels up each purchase and is removed from level-up options
+  - current character subweapon level-up: `100s`
+  - medkit: `50s`, same immediate heal amount as meat
+  - vaccine: `1000s`, one-time purchase that revives the player once
+- Vaccine revive restores 50% max HP, grants invulnerability, and plays a green
+  revive flash/callout.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/types/game.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `src/pixi/pixiTextures.ts`
+- `src/components/Game.tsx`
+- `src/components/ShopMenu.tsx`
+- `src/utils/upgradeUtils.ts`
+- `public/sprites/weapon-merchant.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- On-device check: merchant scale/position, melee-open feel, and vaccine revive
+  balance.
+
+## 2026-06-09 - v0.25.82 - Adjust provisional score and gold formula (Codex)
+
+### Summary
+- Updated provisional result scoring:
+  - damage score: `damageDealt * 0.5`
+  - max combo score: `maxCombo * 500`
+  - treasure score: `treasureValue * 10000`
+  - remaining strap score: `remainingStraps * 80`
+  - clear multiplier: `won ? 3 : 1`
+  - gold: `floor(finalScore / 3000)`
+- Gold is now earned even without stage clear, but clear runs receive 3x score
+  before gold conversion.
+- Result screen now shows the clear multiplier and the `SCORE / 3000` gold
+  conversion note instead of saying gold is clear-only.
+
+### Code touched
+- `src/utils/resultScoring.ts`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+
+## 2026-06-09 - v0.25.81 - Disable reload movement slowdown (Codex)
+
+### Summary
+- Removed the current reload movement slowdown by setting the reload movement
+  multiplier to `1.0`.
+- Kept the multiplier as a single tuning constant so it can be lowered later
+  without hunting through movement code.
+- Updated the reload-state type comment so it no longer says reload always
+  moves at 2/3 speed.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/types/game.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+
+## 2026-06-09 - v0.25.80 - Compact result screen into two columns (Codex)
+
+### Summary
+- Reworked the result screen into a compact two-column layout.
+- Left column now groups run stats in a dense result grid.
+- Right column now groups total score and score breakdown.
+- Action buttons are now side-by-side to reduce vertical height.
+
+### Code touched
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+
+## 2026-06-09 - v0.25.79 - Add named treasure sprites and pickup popup (Codex)
+
+### Summary
+- Cut the supplied treasure sheet into six individual sprite assets:
+  - `public/sprites/treasure-1.png` through `public/sprites/treasure-6.png`
+- Removed the sheet's white number labels and purple background from the
+  in-game treasure sprites.
+- Applied the requested rarity order by treasure value: `4, 2, 3, 1, 5, 6`.
+- Added the requested treasure names:
+  - 1: ニケ像
+  - 2: 宝石袋
+  - 3: ダイヤのネックレス
+  - 4: 高級腕時計
+  - 5: 変異種血液サンプル
+  - 6: 謎のコア
+- Treasure pickups now use the same top acquisition popup pattern as weapon
+  pickups, with a treasure-specific label and coloring.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/types/game.ts`
+- `src/pixi/pixiScene.ts`
+- `src/pixi/pixiTextures.ts`
+- `src/components/GameHUD.tsx`
+- `public/sprites/treasure-1.png`
+- `public/sprites/treasure-2.png`
+- `public/sprites/treasure-3.png`
+- `public/sprites/treasure-4.png`
+- `public/sprites/treasure-5.png`
+- `public/sprites/treasure-6.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Treasure score currently uses `pickup.value`, so the rarity order also affects
+  result scoring weight.
+
+## 2026-06-09 - v0.25.78 - Add run currency and result gold scoring (Codex)
+
+### Summary
+Added the first pass of the two-currency loop.
+- Added in-run `strap` currency to the player.
+- Enemies and breakable props can now drop strap pickups.
+- Distance-rank enemies can drop treasure pickups:
+  - blue/strong: 2%
+  - purple/elite: 5%
+  - red/danger: 10%
+- Added pickup collection stats for straps and treasures.
+- Added max combo tracking for result scoring.
+- Added result-score calculation:
+  - damage: 1 score per damage
+  - max combo: 500 score each
+  - treasure: 10000 score per treasure unit
+  - remaining straps: 100 score each
+  - clear gold: `floor(totalScore / 1000)`, awarded/displayed only on victory
+- Updated result screen to show score breakdown and earned gold.
+- Added HUD strap count.
+
+### Code touched
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `src/components/GameHUD.tsx`
+- `src/components/GameOverScreen.tsx`
+- `src/utils/resultScoring.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Gold persistence and permanent upgrade/shop spending are intentionally not
+  connected yet. This pass only implements drops, collection, and result
+  scoring.
+- Treasure rates are intentionally configurable constants; if treasure becomes
+  too dominant, lower blue/purple/red to 1% / 3% / 7% first.
+
+## 2026-06-09 - v0.25.77 - Allow melee shoving Marksman traps (Codex)
+
+### Summary
+Made Marksman traps more interactable.
+- A melee swing that reaches a placed trap now shoves it a short distance in
+  the player's facing direction.
+- Trap lifetime, hit target history, area, and target count are preserved when
+  shoved.
+- Added a small blue slash/ring feedback on trap shove.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Tune `TRAP_MELEE_SHOVE_DISTANCE` if the shove distance feels too short or too
+  strong in play.
+
+## 2026-06-09 - v0.25.76 - Add difficulty aura and readable damage numbers (Codex)
+
+### Summary
+Improved difficulty readability and combat feedback.
+- Distance-difficulty enemies now emit a lightweight body aura that matches
+  their rank color: blue, purple, or red.
+- The aura uses one pooled glow sprite per enemy view and a slow pulse, avoiding
+  per-enemy particle emission.
+- Damage numbers are larger, have stronger dark outlines, pop slightly on
+  spawn, and drift upward for better visibility during combat.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- If the aura feels too strong on-device, tune `ENEMY_BODY_AURA_ALPHA` first.
+
+## 2026-06-09 - v0.25.75 - Add distance-based difficulty and castle boss event (Codex)
+
+### Summary
+Added the first pass of the exploration-risk difficulty foundation.
+- Enemy difficulty now combines existing time scaling with distance from the
+  game origin.
+- Staying near the start keeps the existing local difficulty curve.
+- Enemies spawned farther from the origin receive extra HP/damage multipliers.
+- Enemy difficulty metadata now includes distance zone, rank, and multiplier for
+  future reward scaling.
+- Stronger distance-zone enemies show aura light instead of changing body color:
+  blue for strong, purple for elite, red for danger.
+- A castle event is generated once per run at a random off-screen distance from
+  the starting point.
+- At 5 minutes, the castle marks itself active, flashes red, emits ground
+  effects, and spawns a `giantbat` boss from its position.
+- The castle now renders from the supplied transparent sprite instead of the
+  temporary procedural placeholder.
+- The castle also gets an off-screen edge arrow, using the same safe HUD clamp
+  as world-drop ammo and weapon supplies.
+
+### Code touched
+- `public/sprites/castle.png`
+- `src/types/game.ts`
+- `src/utils/enemyUtils.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Local-only change for now. GitHub push is paused by user instruction.
+- Reward scaling for distance zones is intentionally not connected yet.
+
 ## 2026-06-09 - v0.25.74 - Replace Heavy Gunner walk sprites (Codex)
 
 ### Summary

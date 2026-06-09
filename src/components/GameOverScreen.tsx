@@ -1,6 +1,7 @@
 import React from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
+import { calculateResultScore } from '../utils/resultScoring';
 
 interface GameOverScreenProps {
   stats: GameStats;
@@ -15,13 +16,41 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   onPlayAgain,
   won = false
 }) => {
+  const {
+    damageScore,
+    comboScore,
+    treasureScore,
+    strapScore,
+    clearMultiplier,
+    totalScore,
+    goldEarned,
+  } = calculateResultScore(stats, won);
+  const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
+  const statsItems = [
+    { label: '生存時間', value: formatTime(stats.timeAlive) },
+    { label: '撃破', value: stats.enemiesKilled },
+    { label: '与ダメ', value: Math.floor(stats.damageDealt) },
+    { label: 'Lv', value: stats.maxLevel },
+    { label: '最大コンボ', value: stats.maxCombo },
+    { label: 'トレジャー', value: stats.treasuresCollected },
+    { label: 'ストラップ残', value: remainingStraps },
+    { label: 'ゴールド', value: goldEarned }
+  ];
+  const scoreItems = [
+    { label: '与ダメ', value: damageScore },
+    { label: '最大コンボ', value: comboScore },
+    { label: 'トレジャー', value: treasureScore },
+    { label: '残ストラップ', value: strapScore },
+    { label: 'クリア倍率', value: `x${clearMultiplier}` }
+  ];
+
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center px-6"
+      className="min-h-screen w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
-      <div className="glass-panel rounded-3xl w-full max-w-md overflow-hidden">
-        <div className="px-5 pt-6 pb-3 text-center">
+      <div className="glass-panel rounded-3xl w-full max-w-lg overflow-hidden">
+        <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won ? 'text-amber-300' : 'text-white'}`}>
             {won ? 'ステージクリア！' : 'ゲームオーバー'}
           </h2>
@@ -29,27 +58,41 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             {won ? '森を生き延びた' : '闇に飲み込まれました'}
           </p>
         </div>
-        <div className="px-5 pb-5">
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            {[
-              { label: '生存時間', value: formatTime(stats.timeAlive) },
-              { label: '撃破した敵', value: stats.enemiesKilled },
-              { label: '与ダメ', value: Math.floor(stats.damageDealt) },
-              { label: '最高レベル', value: stats.maxLevel }
-            ].map(item => (
-              <div
-                key={item.label}
-                className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 text-center"
-              >
-                <div className="text-[10px] uppercase tracking-widest text-white/50">{item.label}</div>
-                <div className="text-lg font-semibold text-white tabular-nums">{item.value}</div>
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2">
+              <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                {statsItems.map(item => (
+                  <div key={item.label} className="min-w-0">
+                    <div className="text-[9px] tracking-wide text-white/45 truncate">{item.label}</div>
+                    <div className="text-[15px] font-semibold text-white tabular-nums truncate">{item.value}</div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+            <div className="rounded-2xl bg-black/25 border border-white/10 px-3 py-2">
+              <div className="mb-2">
+                <div className="text-[10px] uppercase tracking-widest text-white/45">SCORE</div>
+                <div className="text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
+              </div>
+              <div className="space-y-1 text-[11px] text-white/65 tabular-nums">
+                {scoreItems.map(item => (
+                  <div key={item.label} className="flex items-center justify-between gap-2">
+                    <span>{item.label}</span>
+                    <span className="text-right text-white/80">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[9px] leading-tight text-white/45">
+                ゴールド = SCORE / 3000
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onPlayAgain}
-              className="w-full py-3 rounded-2xl text-base font-semibold text-white"
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-white"
               style={
                 won
                   ? {
@@ -66,7 +109,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </button>
             <button
               onClick={onReturnToMenu}
-              className="w-full py-3 rounded-2xl text-base font-semibold text-white/90 bg-white/10 border border-white/10"
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-white/90 bg-white/10 border border-white/10"
             >
               メニューに戻る
             </button>

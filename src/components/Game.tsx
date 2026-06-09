@@ -6,6 +6,8 @@ import { isPixiRenderer } from '../config/renderer';
 import GameHUD from './GameHUD';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
+import ShopMenu from './ShopMenu';
+import EventQuestMenu from './EventQuestMenu';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
 import FullscreenButton from './FullscreenButton';
@@ -27,6 +29,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
 
   const isPaused = useGameStore(state => state.isPaused);
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
+  const showShopMenu = useGameStore(state => state.showShopMenu);
+  const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
   const [showUpgradeOverlay, setShowUpgradeOverlay] = useState(false);
   const gameWon = useGameStore(state => state.gameWon);
   const player = useGameStore(state => state.player);
@@ -94,7 +98,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'p') {
-        if (!showUpgradeMenu) {
+        if (!showUpgradeMenu && !showShopMenu && !showEventQuestMenu) {
           setPaused(!isPaused);
         }
       }
@@ -102,7 +106,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, setPaused, showUpgradeMenu]);
+  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu]);
 
   useEffect(() => {
     if (!showUpgradeMenu) {
@@ -144,12 +148,20 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
       <FullscreenButton target={containerRef} />
       {isTouch && <MobileControls />}
       
-      {isPaused && !showUpgradeMenu && (
+      {isPaused && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && (
         <PauseMenu onResume={() => setPaused(false)} onQuit={onGameOver} />
       )}
       
       {showUpgradeOverlay && (
         <UpgradeMenu />
+      )}
+
+      {showShopMenu && (
+        <ShopMenu />
+      )}
+
+      {showEventQuestMenu && (
+        <EventQuestMenu />
       )}
 
       {/* In-play version marker (bottom-left): same source as the title's

@@ -16,7 +16,7 @@
 import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
-  BreakableProp, Enemy, Pickup, Player, Projectile, VisualEffect,
+  BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -56,6 +56,11 @@ const FRONT_FOREST_MIN_HEIGHT = 250;
 const FRONT_FOREST_MAX_HEIGHT = 380;
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 1.6;
+const CASTLE_FOOT_OFFSET_Y = 38;
+const CASTLE_TARGET_HEIGHT = 125;
+const MERCHANT_TARGET_HEIGHT = 100;
+const EVENT_NPC_TARGET_HEIGHT = 108;
+const EVENT_NPC_FADE_MS = 1100;
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -89,7 +94,7 @@ const ENEMY_HIT_LIGHT_MS = 180;
 const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
-const PLAYER_CLASS_SPRITE_BASE_HEIGHT = 96;
+const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
 const playerWalkSequence = (p: Player): number[] =>
@@ -120,6 +125,13 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
 };
+const ENEMY_RANK_AURA: Record<string, { tint: number; alpha: number; radius: number }> = {
+  strong: { tint: 0x60a5fa, alpha: 0.16, radius: 1.18 },
+  elite: { tint: 0xa855f7, alpha: 0.2, radius: 1.28 },
+  danger: { tint: 0xef4444, alpha: 0.24, radius: 1.42 },
+};
+const ENEMY_BODY_AURA_ALPHA = 0.2;
+const ENEMY_BODY_AURA_MS = 1700;
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -159,7 +171,7 @@ const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.24;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.28;
 
-const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate']);
+const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure']);
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
@@ -169,6 +181,7 @@ const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'weapon-crate': '#60a5fa',
   'weapon-drop': '#bfdbfe',
   'quick-magazine': '#cbd5e1',
+  'treasure': '#facc15',
 };
 
 const containScale = (boxW: number, boxH: number, texW: number, texH: number) =>
@@ -192,6 +205,7 @@ const drawShadow = (g: Graphics, cx: number, cy: number, w: number, alpha: numbe
 interface ActorView {
   container: Container;
   light: Sprite;
+  aura: Sprite;
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
@@ -228,6 +242,17 @@ export class PixiScene {
   private enemies = new Map<string, ActorView>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
+  private castleView = new Container();
+  private castleSprite = new Sprite();
+  private castleGlow = new Sprite(getGlowTexture());
+  private merchantView = new Container();
+  private merchantSprite = new Sprite();
+  private merchantGlow = new Sprite(getGlowTexture());
+  private merchantGfx = new Graphics();
+  private eventNpcView = new Container();
+  private eventNpcSprite = new Sprite();
+  private eventNpcGlow = new Sprite(getGlowTexture());
+  private eventNpcGfx = new Graphics();
 
   private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
@@ -339,7 +364,26 @@ export class PixiScene {
       this.shadowGfx,
     );
 
+    this.castleSprite.anchor.set(0.5, 1);
+    this.castleGlow.anchor.set(0.5);
+    this.castleGlow.blendMode = 'add';
+    this.castleGlow.tint = 0xef4444;
+    this.castleView.addChild(this.castleGlow, this.castleSprite);
+
+    this.merchantSprite.anchor.set(0.5, 1);
+    this.merchantGlow.anchor.set(0.5);
+    this.merchantGlow.blendMode = 'add';
+    this.merchantGlow.tint = 0xfbbf24;
+    this.merchantView.addChild(this.merchantGfx, this.merchantGlow, this.merchantSprite);
+
+    this.eventNpcSprite.anchor.set(0.5, 1);
+    this.eventNpcGlow.anchor.set(0.5);
+    this.eventNpcGlow.blendMode = 'add';
+    this.eventNpcGlow.tint = 0x60a5fa;
+    this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlow, this.eventNpcSprite);
+
     this.L.effectLayer.addChild(this.playerFx);
+    this.L.actorLayer.addChild(this.castleView, this.merchantView, this.eventNpcView);
 
     this.gradeSprite.tint = GRADE_TINT;
     this.gradeSprite.alpha = GRADE_ALPHA;
@@ -489,13 +533,17 @@ export class PixiScene {
     light.blendMode = 'add';
     light.visible = false;
     this.L.groundLayer.addChild(light);
+    const aura = new Sprite(getGlowTexture());
+    aura.anchor.set(0.5);
+    aura.blendMode = 'add';
+    aura.visible = false;
     const reticle = new Graphics();
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1); // foot-centre
     const overlay = new Graphics();
-    container.addChild(reticle, sprite, overlay);
+    container.addChild(aura, reticle, sprite, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, reticle, sprite, overlay };
+    return { container, light, aura, reticle, sprite, overlay };
   }
 
   private makeProp(): PropView {
@@ -626,6 +674,9 @@ export class PixiScene {
     );
 
     this.syncTrees(s.camera);
+    this.syncCastle(s.castleEvent, now);
+    this.syncMerchant(s.weaponMerchant, s.player, now);
+    this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
     this.syncBreakableProps(s.breakableProps, now);
     this.syncShadows(s.player, s.enemies);
     this.syncPickups(s.pickups, now);
@@ -635,7 +686,7 @@ export class PixiScene {
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, now);
     this.syncLocalEventLighting(s.effects, s.player, s.enemies, now);
     this.syncPlayerFx(s.player, now);
-    this.syncArrows(s.pickups, s.camera);
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -684,6 +735,152 @@ export class PixiScene {
       f.sprite.position.set(f.x - camera.x, f.y - camera.y);
       f.sprite.alpha = f.base * twinkle;
       f.sprite.width = f.sprite.height = f.size;
+    }
+  }
+
+  private syncCastle(castle: CastleEvent, now: number) {
+    const tex = getTexture('castle');
+    if (!tex) {
+      this.castleView.visible = false;
+      return;
+    }
+
+    const footY = castle.y + CASTLE_FOOT_OFFSET_Y;
+    const horizonAlpha = this.horizonActorAlpha(footY);
+    if (horizonAlpha <= 0) {
+      this.castleView.visible = false;
+      return;
+    }
+
+    const d = this.depthScale(footY);
+    const pulse = castle.bossSpawned ? 0.75 + 0.25 * Math.sin(now / 260) : 0;
+    const targetH = CASTLE_TARGET_HEIGHT * d;
+    const sc = targetH / tex.height;
+
+    this.castleView.visible = true;
+    this.castleView.position.set(Math.round(castle.x), Math.round(castle.y + CASTLE_FOOT_OFFSET_Y * d));
+    this.castleView.alpha = Math.min(0.96, horizonAlpha * 0.9);
+    this.castleView.zIndex = footY;
+
+    this.castleSprite.texture = tex;
+    this.castleSprite.scale.set(sc);
+
+    this.castleGlow.visible = castle.bossSpawned;
+    this.castleGlow.position.set(0, -targetH * 0.5);
+    this.castleGlow.width = targetH * 1.35;
+    this.castleGlow.height = targetH * 0.9;
+    this.castleGlow.alpha = castle.bossSpawned ? 0.14 + 0.08 * pulse : 0;
+  }
+
+  private syncMerchant(merchant: WeaponMerchant, player: Player, now: number) {
+    const tex = getTexture('weapon-merchant');
+    if (!tex) {
+      this.merchantView.visible = false;
+      return;
+    }
+
+    const horizonAlpha = this.horizonActorAlpha(merchant.y);
+    if (horizonAlpha <= 0) {
+      this.merchantView.visible = false;
+      return;
+    }
+
+    const d = this.depthScale(merchant.y);
+    const targetH = MERCHANT_TARGET_HEIGHT * d;
+    const sc = targetH / tex.height;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 420);
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const dx = merchant.x - pcx;
+    const dy = merchant.y - pcy;
+    const near = dx * dx + dy * dy <= (merchant.radius + 72) * (merchant.radius + 72);
+
+    this.merchantView.visible = true;
+    this.merchantView.position.set(Math.round(merchant.x), Math.round(merchant.y));
+    this.merchantView.alpha = horizonAlpha;
+    this.merchantView.zIndex = merchant.y;
+
+    this.merchantSprite.texture = tex;
+    this.merchantSprite.scale.set(sc);
+
+    this.merchantGlow.position.set(0, -targetH * 0.52);
+    this.merchantGlow.width = targetH * 0.92;
+    this.merchantGlow.height = targetH * 0.72;
+    this.merchantGlow.alpha = (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025);
+
+    const g = this.merchantGfx;
+    g.clear();
+    drawShadow(g, 0, 0, 82 * d, 0.34);
+    if (near) {
+      g.circle(0, -8 * d, merchant.radius * d)
+        .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
+      g.circle(0, -targetH * 0.82, 4 * d)
+        .fill({ color: 0xfde68a, alpha: 0.82 + pulse * 0.16 });
+    }
+  }
+
+  private syncEventQuestNpc(npc: EventQuestNpc, player: Player, now: number) {
+    const tex = getTexture('quest-futari');
+    if (!tex) {
+      this.eventNpcView.visible = false;
+      return;
+    }
+
+    const fadeElapsed = npc.status === 'completed' && npc.fadeStartedAt > 0
+      ? now - npc.fadeStartedAt
+      : 0;
+    if (npc.status === 'completed' && fadeElapsed >= EVENT_NPC_FADE_MS) {
+      this.eventNpcView.visible = false;
+      return;
+    }
+
+    const horizonAlpha = this.horizonActorAlpha(npc.y);
+    if (horizonAlpha <= 0) {
+      this.eventNpcView.visible = false;
+      return;
+    }
+
+    const d = this.depthScale(npc.y);
+    const targetH = EVENT_NPC_TARGET_HEIGHT * d;
+    const sc = targetH / tex.height;
+    const breath = 0.5 + 0.5 * Math.sin(now / 760 + npc.questIndex * 0.7);
+    const breathX = 1 + (breath - 0.5) * 0.012;
+    const breathY = 1 + (breath - 0.5) * 0.022;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 360);
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const dx = npc.x - pcx;
+    const dy = npc.y - pcy;
+    const near = npc.status === 'available' && dx * dx + dy * dy <= (npc.radius + 72) * (npc.radius + 72);
+    const statusAlpha = npc.status === 'completed'
+      ? Math.max(0, 1 - fadeElapsed / EVENT_NPC_FADE_MS)
+      : 1;
+
+    this.eventNpcView.visible = true;
+    this.eventNpcView.position.set(Math.round(npc.x), Math.round(npc.y));
+    this.eventNpcView.alpha = horizonAlpha * statusAlpha;
+    this.eventNpcView.zIndex = npc.y;
+
+    this.eventNpcSprite.texture = tex;
+    this.eventNpcSprite.scale.set(sc * breathX, sc * breathY);
+
+    this.eventNpcGlow.position.set(0, -targetH * 0.58);
+    this.eventNpcGlow.width = targetH * 1.05;
+    this.eventNpcGlow.height = targetH * 0.72;
+    this.eventNpcGlow.alpha = (near ? 0.16 : 0.06) + pulse * (near ? 0.08 : 0.02);
+
+    const g = this.eventNpcGfx;
+    g.clear();
+    drawShadow(g, 0, 0, 76 * d, 0.3);
+    if (near) {
+      g.circle(0, -8 * d, npc.radius * d)
+        .stroke({ width: 2 * d, color: 0x60a5fa, alpha: 0.34 + pulse * 0.2 });
+      g.circle(0, -targetH * 0.96, 4 * d)
+        .fill({ color: 0xbfdbfe, alpha: 0.72 + pulse * 0.18 });
+    }
+    if (npc.status === 'accepted') {
+      g.circle(0, -targetH * 0.98, 5 * d)
+        .stroke({ width: 1.5 * d, color: 0x34d399, alpha: 0.46 + pulse * 0.18 });
     }
   }
 
@@ -1109,7 +1306,7 @@ export class PixiScene {
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     if (tex) {
       const baseScale = usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
-        ? fb.boxH / PLAYER_CLASS_SPRITE_BASE_HEIGHT
+        ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
       const sc = baseScale * this.depthScale(fb.footY);
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
@@ -1123,6 +1320,7 @@ export class PixiScene {
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
+    view.aura.visible = false;
     view.reticle.clear();
     view.overlay.clear();
   }
@@ -1157,6 +1355,7 @@ export class PixiScene {
       this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
       view.light.alpha *= horizonAlpha;
     }
+    this.syncEnemyAura(view, e, fb.footX, fb.footY, horizonAlpha, now);
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
     const r = view.reticle;
@@ -1195,23 +1394,53 @@ export class PixiScene {
   }
 
   private syncEnemyLight(view: ActorView, e: Enemy, footX: number, footY: number, now: number) {
-    if (!ENEMY_LIGHT_ENABLED || e.type === 'bat') {
+    const aura = e.difficultyRank && e.difficultyRank !== 'normal'
+      ? ENEMY_RANK_AURA[e.difficultyRank]
+      : undefined;
+    if (!ENEMY_LIGHT_ENABLED || (e.type === 'bat' && !aura)) {
       view.light.visible = false;
       return;
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
     const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
-    if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
+    if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && !aura && hitT <= 0) {
       view.light.visible = false;
       return;
     }
-    const radius = ENEMY_LIGHT_RADIUS * (boss ? 1.55 : 1) * (1 + hitT * 0.42);
+    const auraRadius = aura?.radius ?? 1;
+    const radius = ENEMY_LIGHT_RADIUS * (boss ? 1.55 : 1) * auraRadius * (1 + hitT * 0.42);
     view.light.visible = true;
-    view.light.tint = ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
+    view.light.tint = aura?.tint ?? ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
     view.light.position.set(footX, footY - e.height * 0.22);
     view.light.width = radius * 2;
     view.light.height = radius * 1.45;
-    view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
+    view.light.alpha = Math.max(aura?.alpha ?? 0, boss ? 0.18 : 0.08) + hitT * 0.22;
+  }
+
+  private syncEnemyAura(
+    view: ActorView,
+    e: Enemy,
+    footX: number,
+    footY: number,
+    horizonAlpha: number,
+    now: number
+  ) {
+    const aura = e.difficultyRank && e.difficultyRank !== 'normal'
+      ? ENEMY_RANK_AURA[e.difficultyRank]
+      : undefined;
+    if (!aura || horizonAlpha <= 0) {
+      view.aura.visible = false;
+      return;
+    }
+    const phase = now / ENEMY_BODY_AURA_MS * Math.PI * 2 + stablePhase(e.id);
+    const pulse = 0.5 + 0.5 * Math.sin(phase);
+    const radius = Math.max(e.width, e.height) * aura.radius * (1.25 + pulse * 0.12);
+    view.aura.visible = true;
+    view.aura.tint = aura.tint;
+    view.aura.position.set(footX, footY - e.height * 0.48);
+    view.aura.width = radius * 1.35;
+    view.aura.height = radius * 1.75;
+    view.aura.alpha = (ENEMY_BODY_AURA_ALPHA + aura.alpha * 0.38 + pulse * 0.055) * horizonAlpha;
   }
 
   private drawHealthBar(g: Graphics, e: Enemy) {
@@ -1276,8 +1505,21 @@ export class PixiScene {
     g.clear();
     g.rotation = 0;
     g.scale.set(1);
-    const cx = p.x + p.width / 2;
-    const cy = p.y + p.height / 2;
+    let drawX = p.x;
+    let drawY = p.y;
+    if (
+      p.shoveStartAt !== undefined &&
+      p.shoveDuration !== undefined &&
+      p.shoveStartX !== undefined &&
+      p.shoveStartY !== undefined
+    ) {
+      const t = Math.max(0, Math.min(1, (Date.now() - p.shoveStartAt) / Math.max(1, p.shoveDuration)));
+      const eased = 1 - Math.pow(1 - t, 3);
+      drawX = p.shoveStartX + (p.x - p.shoveStartX) * eased;
+      drawY = p.shoveStartY + (p.y - p.shoveStartY) * eased;
+    }
+    const cx = drawX + p.width / 2;
+    const cy = drawY + p.height / 2;
     g.position.set(cx, cy);
 
     if (p.reflected) {
@@ -1384,9 +1626,11 @@ export class PixiScene {
     drawShadow(g, cx, footY, size * 0.85 * d, shadowAlpha);
 
     if (SPRITE_PICKUPS.has(p.type)) {
-      const name =
-        p.type === 'experience'
-          ? (p.value >= 5 ? 'pickup-xp-red' : p.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
+        const name =
+          p.type === 'experience'
+            ? (p.value >= 5 ? 'pickup-xp-red' : p.value >= 2 ? 'pickup-xp-green' : 'pickup-xp-blue')
+            : p.type === 'treasure'
+              ? `treasure-${Math.max(1, Math.min(6, p.variant ?? p.value ?? 1))}`
           : p.type === 'weapon-crate'
             ? 'pickup-chest'
             : `pickup-${p.type}`;
@@ -1448,6 +1692,24 @@ export class PixiScene {
           .moveTo(cx + 9, drawY - 6).lineTo(cx - 9, drawY + 7)
           .stroke({ width: 1.5, color: 0x94a3b8 });
         g.rect(cx - 2, drawY - 1, 4, 3).fill({ color: 0xbfdbfe });
+        break;
+      }
+      case 'strap': {
+        g.roundRect(cx - 6, drawY - 6, 12, 12, 2).fill({ color: 0x1f2937, alpha: 0.95 });
+        g.roundRect(cx - 4, drawY - 4, 8, 8, 2).stroke({ width: 1.5, color: 0xe5e7eb, alpha: 0.95 });
+        g.rect(cx - 1.5, drawY - 7, 3, 4).fill({ color: 0x94a3b8 });
+        g.circle(cx, drawY, 2).fill({ color: 0xf8fafc, alpha: 0.82 });
+        break;
+      }
+      case 'treasure': {
+        const pulse = 0.8 + Math.sin(now / 220 + p.x * 0.03) * 0.16;
+        g.blendMode = 'add';
+        g.circle(cx, drawY, 13 * pulse).fill({ color: 0xfacc15, alpha: 0.18 });
+        g.blendMode = 'normal';
+        g.poly([cx, drawY - 9, cx + 8, drawY - 1, cx + 5, drawY + 8, cx - 5, drawY + 8, cx - 8, drawY - 1])
+          .fill({ color: 0xf59e0b });
+        g.poly([cx, drawY - 7, cx + 5, drawY - 1, cx, drawY + 5, cx - 5, drawY - 1])
+          .fill({ color: 0xfef3c7, alpha: 0.88 });
         break;
       }
       case 'quick-magazine': {
@@ -1648,17 +1910,19 @@ export class PixiScene {
         text: e.text ?? String(e.value),
         style: {
           fontFamily: '"Special Elite", ui-rounded, system-ui, sans-serif',
-          fontSize: Math.round(12 * scale),
+          fontSize: Math.round(15 * scale),
           fontWeight: bold ? 'bold' : 'normal',
           fill: e.color,
-          stroke: { color: 0x000000, width: 2 },
+          stroke: { color: 0x020617, width: bold ? 4 : 3 },
         },
       });
       txt.anchor.set(0.5, 0.5);
       this.L.effectLayer.addChild(txt);
       this.effects.set(e.id, txt);
     }
-    txt.position.set(e.x, e.y);
+    const pop = 1 + Math.max(0, 1 - t * 5) * (bold ? 0.22 : 0.14);
+    txt.position.set(e.x, e.y - t * 12);
+    txt.scale.set(pop);
     txt.alpha = Math.max(0, 1 - t);
   }
 
@@ -1749,7 +2013,12 @@ export class PixiScene {
 
   // ---- screen-space: off-screen supply arrows ------------------------------
 
-  private syncArrows(pickups: Pickup[], camera: { x: number; y: number }) {
+  private syncArrows(
+    pickups: Pickup[],
+    castle: CastleEvent,
+    merchant: WeaponMerchant,
+    camera: { x: number; y: number }
+  ) {
     const g = this.arrowGfx;
     g.clear();
     const marginX = 26;
@@ -1792,6 +2061,71 @@ export class PixiScene {
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
       g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
+
+    const castleX = castle.x - camera.x;
+    const castleY = castle.y + 40 - camera.y;
+    if (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH) {
+      const angle = Math.atan2(castleY - cyC, castleX - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (isFinite(tdist)) {
+        const ex = cxC + dx * tdist;
+        const ey = cyC + dy * tdist;
+        const color = castle.bossSpawned ? 0xef4444 : 0xf97316;
+
+        g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
+        g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
+        g.rect(ex - 6, ey - 1, 12, 8).fill({ color: 0x1f2937, alpha: 0.95 });
+        g.rect(ex - 7, ey - 5, 14, 5).fill({ color: 0x111827, alpha: 0.96 });
+        g.moveTo(ex - 7, ey - 5)
+          .lineTo(ex, ey - 12)
+          .lineTo(ex + 7, ey - 5)
+          .fill({ color: 0x020617, alpha: 0.98 });
+        g.rect(ex - 2, ey + 2, 4, 5).fill({ color: 0x451a03, alpha: 0.98 });
+        g.rect(ex - 5, ey, 3, 3).fill({ color: 0xf59e0b, alpha: 0.65 + 0.2 * pulse });
+        g.rect(ex + 2, ey, 3, 3).fill({ color: 0xf59e0b, alpha: 0.65 + 0.2 * pulse });
+
+        const hx = ex + dx * 15, hy = ey + dy * 15;
+        const ca = Math.cos(angle), sa = Math.sin(angle);
+        const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+        g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+      }
+    }
+
+    const merchantX = merchant.x - camera.x;
+    const merchantY = merchant.y - 28 - camera.y;
+    if (merchantX < 0 || merchantX > this.screenW || merchantY < 0 || merchantY > this.screenH) {
+      const angle = Math.atan2(merchantY - cyC, merchantX - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (isFinite(tdist)) {
+        const ex = cxC + dx * tdist;
+        const ey = cyC + dy * tdist;
+        const color = 0xfbbf24;
+        const accent = 0xa855f7;
+
+        g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
+        g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
+        g.rect(ex - 6, ey - 5, 12, 13).fill({ color: 0x1f2937, alpha: 0.95 });
+        g.rect(ex - 4, ey - 2, 8, 7).fill({ color: accent, alpha: 0.34 + 0.22 * pulse });
+        g.rect(ex - 2, ey - 8, 4, 4).fill({ color: 0x78350f, alpha: 0.98 });
+        g.rect(ex - 7, ey + 6, 14, 3).fill({ color: 0x92400e, alpha: 0.96 });
+        g.circle(ex, ey + 1, 3).fill({ color, alpha: 0.58 + 0.28 * pulse });
+
+        const hx = ex + dx * 15, hy = ey + dy * 15;
+        const ca = Math.cos(angle), sa = Math.sin(angle);
+        const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+        g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+      }
+    }
   }
 
   // ---- screen-space: full-screen damage flashes ----------------------------
@@ -1819,6 +2153,8 @@ export class PixiScene {
     }
     this.playerView?.light.destroy();
     this.playerView?.container.destroy({ children: true });
+    this.merchantView.destroy({ children: true });
+    this.eventNpcView.destroy({ children: true });
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();

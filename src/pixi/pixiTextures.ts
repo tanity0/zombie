@@ -27,27 +27,49 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-walk-0',
       'player-magnum-walk-1',
       'player-magnum-walk-2',
+      'player-magnum-game-0',
+      'player-magnum-game-1',
+      'player-magnum-game-2',
       'player-striker-walk-0',
       'player-striker-walk-1',
       'player-striker-walk-2',
+      'player-striker-game-0',
+      'player-striker-game-1',
+      'player-striker-game-2',
       'player-shotgun-walk-0',
       'player-shotgun-walk-1',
       'player-shotgun-walk-2',
+      'player-shotgun-game-0',
+      'player-shotgun-game-1',
+      'player-shotgun-game-2',
       'player-scavenger-walk-0',
       'player-scavenger-walk-1',
       'player-scavenger-walk-2',
+      'player-scavenger-game-0',
+      'player-scavenger-game-1',
+      'player-scavenger-game-2',
       'dog-walk-0',
       'dog-walk-1',
+      'treasure-1',
+      'treasure-2',
+      'treasure-3',
+      'treasure-4',
+      'treasure-5',
+      'treasure-6',
+      'weapon-merchant',
+      'quest-futari',
     ];
-    const [atlas, player, torch, ...playerWalk] = await Promise.all([
+    const [atlas, player, torch, castle, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
+      Assets.load(spritePath('castle')),
       ...playerWalkNames.map(name => Assets.load(spritePath(name))),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
     torch.source.scaleMode = 'nearest';
+    castle.source.scaleMode = 'nearest';
     playerWalk.forEach((tex) => {
       tex.source.scaleMode = 'nearest';
     });
@@ -63,6 +85,7 @@ export const ensureTextures = (): Promise<void> => {
       textures.set(playerWalkNames[i], tex);
     });
     textures.set('torch', torch);
+    textures.set('castle', castle);
     ready = true;
   })();
   return loading;

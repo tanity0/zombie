@@ -16,8 +16,8 @@
 //       ├─ frontObjectLayer – projectiles (above the actors)
 //       ├─ effectLayer      – over-sprite effects, counter ring, reload meter
 //       └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
+//   horizonForest – screen-space forest seam in front of farBackdrop, below gameplay
 //   frontForest    – screen-space nearest forest foreground (fast parallax)
-//   horizonForest – screen-space forest seam, topmost non-UI layer
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
 import { Container, TilingSprite, Texture } from 'pixi.js';
@@ -88,7 +88,7 @@ export const buildLayers = (
 
   const uiLayer = new Container();
 
-  stage.addChild(farBackdrop, worldGroup, frontForest, horizonForest, uiLayer);
+  stage.addChild(farBackdrop, horizonForest, worldGroup, frontForest, uiLayer);
 
   return {
     farBackdrop,

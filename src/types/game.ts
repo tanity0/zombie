@@ -49,8 +49,8 @@ export interface Player {
   // gun shots gain a small extra crit chance.
   quickMagCritUntil: number;
   // Reload state. While reloadEndsAt is in the future the named gun is being
-  // reloaded: it can't fire and the player moves at 2/3 speed (melee still
-  // works). 0 / '' when not reloading.
+  // reloaded: it can't fire, while movement can be tuned by the reload
+  // movement multiplier in the store. 0 / '' when not reloading.
   reloadEndsAt: number;
   reloadingWeaponId: string;
   // Level-up modifiers applied to ALL owned guns: magBonus adds to every gun's
@@ -64,6 +64,10 @@ export interface Player {
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
+  // In-run currency. Spent during the current play only.
+  straps: number;
+  // One-shot revive stock from the in-run vaccine shop item.
+  vaccineRevives: number;
 }
 
 // Movement direction
@@ -112,7 +116,14 @@ export interface Enemy {
   // set-piece hordes aren't deleted the instant they appear.
   spawnedAt?: number; // gameTime ms when spawned
   isWave?: boolean;
+  // Difficulty metadata. Time and distance from the game origin both feed this
+  // at spawn time. Renderer uses rank for aura only; gameplay uses multiplier.
+  distanceZone?: number;
+  difficultyRank?: DifficultyRank;
+  difficultyMultiplier?: number;
 }
+
+export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';
 
 export type EnemyType =
   | 'bat'        // ubiquitous low-HP swarmer
@@ -172,6 +183,31 @@ export type AmmoType = WeaponCategory;
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap';
 export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog';
+export type ShopItemKey =
+  | 'ammo-handgun'
+  | 'ammo-shotgun'
+  | 'ammo-rifle'
+  | 'dog'
+  | 'class-skill'
+  | 'medkit'
+  | 'vaccine';
+
+export interface WeaponMerchant {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export type EventQuestStatus = 'available' | 'accepted' | 'completed';
+
+export interface EventQuestNpc {
+  x: number;
+  y: number;
+  radius: number;
+  status: EventQuestStatus;
+  questIndex: number;
+  fadeStartedAt: number;
+}
 
 // Projectile types
 export interface Projectile {
@@ -208,6 +244,13 @@ export interface Projectile {
   orbitAngle?: number;
   orbitSpeed?: number;
   followsPlayer?: boolean;
+  // Visual-only slide after a shoved static projectile (currently traps).
+  // Gameplay position jumps to x/y immediately; renderer interpolates from
+  // shoveStart* to the new x/y for a short seamless push-out.
+  shoveStartX?: number;
+  shoveStartY?: number;
+  shoveStartAt?: number;
+  shoveDuration?: number;
 }
 
 // Pickup types
@@ -224,6 +267,8 @@ export interface Pickup {
   // (as opposed to dropping where an enemy died). These get a VS-style edge
   // arrow pointing the player toward them while they're off-screen.
   worldDrop?: boolean;
+  // Optional art variant. Treasure uses 1-6 to select the supplied object art.
+  variant?: number;
   // Optional short throw arc for spawned pickups. Used by Striker's magazine
   // so the item visibly pops out from the player before landing.
   throwFromX?: number;
@@ -249,8 +294,15 @@ export interface BreakableProp {
 
 export type BreakablePropType = 'torch' | 'mine';
 
+export interface CastleEvent {
+  x: number;
+  y: number;
+  bossSpawned: boolean;
+}
+
 export type PickupType =
   | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'
+  | 'strap' | 'treasure'
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
   | 'weapon-drop' | 'weapon-crate' | 'quick-magazine';
 
@@ -275,6 +327,10 @@ export interface GameStats {
   damageDealt: number;
   experienceCollected: number;
   maxLevel: number;
+  maxCombo: number;
+  strapsCollected: number;
+  strapsSpent: number;
+  treasuresCollected: number;
 }
 
 // Input state — keyboard fallback only. Touch is handled directly by the

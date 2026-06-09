@@ -45,7 +45,8 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
     gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
     gameTime < FINALE_BOSS_TIME_MS;
 
-  const weaponGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
+  const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
+  const isTreasureGet = lastWeaponGet?.kind === 'treasure';
   const perfIssues = useMemo(() => {
     const issues: string[] = [];
     if (fps > 0 && fps < PERF_THRESHOLDS.fps) issues.push(`fps<${PERF_THRESHOLDS.fps}`);
@@ -73,16 +74,26 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
   return (
     <div className="absolute inset-0 z-40 pointer-events-none text-white">
-      {/* New-weapon popup — shows for 5s after picking up a gun / opening a crate */}
-      {weaponGetVisible && (
+      {/* Acquisition popup — shows for 5s after picking up notable items. */}
+      {itemGetVisible && (
         <div
           className="absolute left-1/2 -translate-x-1/2"
           style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)' }}
         >
-          <div className="glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 ring-sky-400/70 shadow-lg animate-pulse">
-            <span className="text-xl">🔫</span>
+          <div
+            className={`glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 shadow-lg animate-pulse ${
+              isTreasureGet ? 'ring-amber-300/70' : 'ring-sky-400/70'
+            }`}
+          >
+            <span className="text-xl">{isTreasureGet ? '💎' : '🔫'}</span>
             <div className="leading-tight">
-              <div className="text-[10px] text-sky-200/80 font-bold tracking-wide">新しい銃器を入手！</div>
+              <div
+                className={`text-[10px] font-bold tracking-wide ${
+                  isTreasureGet ? 'text-amber-100/85' : 'text-sky-200/80'
+                }`}
+              >
+                {isTreasureGet ? 'トレジャーを入手！' : '新しい銃器を入手！'}
+              </div>
               <div
                 className="text-sm font-bold"
                 style={{ color: lastWeaponGet!.color ?? '#ffffff' }}
@@ -285,6 +296,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         <div className="glass-panel rounded-2xl px-2.5 py-1.5 text-[11px] leading-tight text-white/80">
           <div>撃破 {gameStats.enemiesKilled}</div>
           <div>DMG {Math.floor(gameStats.damageDealt)}</div>
+          <div>STRAP {player.straps}</div>
         </div>
       </div>
 

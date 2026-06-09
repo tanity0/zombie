@@ -23,7 +23,8 @@ import {
   getEnemyFireProfile,
   getEnemySpawnCount,
   getEnemySpawnInterval,
-  isBossType
+  isBossType,
+  spawnEnemyAt
 } from '../utils/enemyUtils';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
@@ -61,6 +62,7 @@ const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
+const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
 
 type DogFetchMission = {
   effectId: string;
@@ -100,6 +102,7 @@ export const useGameLoop = (onGameOver: () => void) => {
   const updateEnemies = useGameStore(state => state.updateEnemies);
   const updateProjectiles = useGameStore(state => state.updateProjectiles);
   const addEnemy = useGameStore(state => state.addEnemy);
+  const markCastleBossSpawned = useGameStore(state => state.markCastleBossSpawned);
   const damageEnemy = useGameStore(state => state.damageEnemy);
   const damagePlayer = useGameStore(state => state.damagePlayer);
   const removeProjectile = useGameStore(state => state.removeProjectile);
@@ -230,6 +233,18 @@ export const useGameLoop = (onGameOver: () => void) => {
           cratesDroppedRef.current = 0;
         }
         lastSeenGameTimeRef.current = newGameTime;
+
+        const castle = useGameStore.getState().castleEvent;
+        if (!castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
+          markCastleBossSpawned();
+          const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
+          addEnemy(boss);
+          spawnFlash('rgba(127,29,29,0.28)', 420);
+          spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+          spawnRing(castle.x, castle.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+          useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
+          spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
+        }
 
         // Update player invulnerability
         if (player.invulnerable && Date.now() - player.invulnerableTime > INVULN_MS) {
@@ -789,6 +804,7 @@ export const useGameLoop = (onGameOver: () => void) => {
               if (splashKilled) {
                 playEnemyDeath();
                 spawnBurst(sx, sy, '#dc2626', 12);
+                useGameStore.getState().dropEnemyCurrency(splashEnemy, sx, sy);
                 addPickup({
                   id: `pickup-xp-grenade-${splashEnemy.id}`,
                   x: sx - 8,
@@ -880,6 +896,7 @@ export const useGameLoop = (onGameOver: () => void) => {
               );
               spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)));
               spawnRing(ex, ey, 4, enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
+              useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
 
               addPickup({
                 id: `pickup-xp-${enemy.id}`,
@@ -1192,6 +1209,15 @@ export const useGameLoop = (onGameOver: () => void) => {
                   spawnRing(pk.x + 8, pk.y + 8, 3, 22, 'rgba(203,213,225,0.76)', 2, 260);
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 28, 'rgba(203,213,225,', 240);
                   break;
+                case 'strap':
+                  spawnBurst(pk.x + 8, pk.y + 8, '#e5e7eb', 6);
+                  useGameStore.getState().spawnAmmoNumber(player.x + player.width / 2, player.y - 6, pk.value);
+                  break;
+                case 'treasure':
+                  spawnBurst(pk.x + 8, pk.y + 8, '#facc15', 18);
+                  spawnRing(pk.x + 8, pk.y + 8, 4, 34, 'rgba(250,204,21,0.82)', 3, 320);
+                  useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 38, 'rgba(250,204,21,', 340);
+                  break;
               }
             }
             collectPickup(pickupId);
@@ -1496,6 +1522,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     updateEnemies,
     updateProjectiles,
     addEnemy,
+    markCastleBossSpawned,
     addProjectile,
     setSubWeaponCooldown,
     rootEnemy,
