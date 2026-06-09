@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.74 - Replace Heavy Gunner walk sprites (Codex)
+
+### Summary
+Replaced the Heavy Gunner walk sprites with the latest blue-haired heavy-gunner
+sheet.
+- Processed `/tmp/codex-remote-attachments/019e963d-1503-7b22-a39b-597ea91a7423/5622C7E0-49DE-4709-8F0A-2347105D6742/1-写真1.jpg`.
+- Extracted three frames for `player-shotgun-walk-0.png` through
+  `player-shotgun-walk-2.png`.
+- Removed the purple backdrop with hard alpha only.
+- Removed small neighboring-frame fragments after extraction.
+- Kept the shared 128x108 frame size and 96px visible sprite-height convention
+  so in-game scaling follows the existing pixel-art display rules.
+
+### Code touched
+- `public/sprites/player-shotgun-walk-0.png`
+- `public/sprites/player-shotgun-walk-1.png`
+- `public/sprites/player-shotgun-walk-2.png`
+- `package.json`, `package-lock.json`
+
+### Verification
+- Confirmed all three Heavy Gunner frames are 128x108 RGBA.
+- Confirmed zero semi-transparent pixels in all three Heavy Gunner frames.
+- Confirmed zero visible purple-key pixels remain in all three Heavy Gunner
+  frames.
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.73 - Shrink Dog and shorten grenade fuse (Codex)
 
 ### Summary
