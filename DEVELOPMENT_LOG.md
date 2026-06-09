@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.109 - Lift horizon seam above ground and soften player glow (Codex)
+
+### Summary
+- Moved the horizon forest seam one layer up: it now draws above the fixed
+  ground layer but below the filtered gameplay world.
+- This lets the seam hide the far/ground boundary without covering enemies,
+  player, pickups, props, or effects.
+- Slightly reduced the constant player ground glow alpha from `0.32` to `0.26`.
+
+### Code touched
+- `src/pixi/layers.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The horizon seam is still screen-space and still uses the existing fade mask.
+- On-device check: confirm the seam sits visually over the ground edge but does
+  not cover gameplay objects.
+
 ## 2026-06-09 - v0.25.108 - Match gameplay player sprites to character-select sprites (Codex)
 
 ### Summary

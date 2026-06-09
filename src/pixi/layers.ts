@@ -7,16 +7,17 @@
 // world effects (damage flashes, off-screen supply arrows).
 //
 //   farBackdrop  – screen-space distant panorama (slow parallax, top band)
-//   groundBase   – screen-space tiling forest floor (below the horizon band)
-//   filteredWorld – screen-space filter wrapper
-//     └─ world (camera-offset)
+//   worldGroup
+//     ├─ groundBase    – screen-space tiling forest floor
+//     ├─ horizonForest – screen-space forest seam above the ground, below gameplay
+//     └─ filteredWorld – screen-space filter wrapper
+//        └─ world (camera-offset)
 //       ├─ backgroundLayer  – trees and other far props
 //       ├─ groundLayer      – foot shadows, ground trails, pickups
 //       ├─ actorLayer       – player + enemies, Y-SORTED by foot Y (+ overlays)
 //       ├─ frontObjectLayer – projectiles (above the actors)
 //       ├─ effectLayer      – over-sprite effects, counter ring, reload meter
 //       └─ lightingLayer    – RESERVED (halos / vignette land here next phase)
-//   horizonForest – screen-space forest seam in front of farBackdrop, below gameplay
 //   frontForest    – screen-space nearest forest foreground (fast parallax)
 //   uiLayer        – screen-space world effects (flash, off-screen arrows)
 
@@ -80,15 +81,17 @@ export const buildLayers = (
   );
   filteredWorld.addChild(world);
 
-  // worldGroup holds the fixed screen-space ground plus the camera-offset world.
+  // worldGroup holds the fixed screen-space ground, the horizon seam, and the
+  // camera-offset world. The seam sits above groundBase but below gameplay
+  // actors/effects so it can hide the floor edge without covering objects.
   // Filters are applied to filteredWorld only, so the ground never bleeds into
   // the far panorama through blur while world still draws above it.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, filteredWorld);
+  worldGroup.addChild(groundBase, horizonForest, filteredWorld);
 
   const uiLayer = new Container();
 
-  stage.addChild(farBackdrop, horizonForest, worldGroup, frontForest, uiLayer);
+  stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
 
   return {
     farBackdrop,
