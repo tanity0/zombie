@@ -1188,17 +1188,25 @@ export class PixiScene {
           const shadowRadiusX = Math.max(4, actor.w * 0.55);
           const shadowRadiusY = Math.max(1.5, actor.w * 0.18);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
+          const startX = actorX + nx * Math.min(3, shadowRadiusX * 0.12);
+          const startY = actorY + ny * Math.min(2, shadowRadiusY * 0.35) - 1;
           g.ellipse(actorX, actorY - 1, shadowRadiusX, shadowRadiusY)
             .fill({ color: 0x000000, alpha: alpha * 0.72 });
           [
-            { distance: 0.28, scale: 1.03, alpha: 0.4 },
-            { distance: 0.58, scale: 1.06, alpha: 0.2 },
-            { distance: 0.88, scale: 1.1, alpha: 0.08 },
+            { distance: 0.95, width: 1.1, alpha: 0.12 },
+            { distance: 0.62, width: 1, alpha: 0.25 },
+            { distance: 0.36, width: 0.92, alpha: 0.48 },
           ].forEach(shadow => {
-            const x = actorX + nx * len * shadow.distance;
-            const y = actorY + ny * len * 0.6 * shadow.distance - 1;
-            g.ellipse(x, y, shadowRadiusX * shadow.scale, shadowRadiusY * shadow.scale)
-              .fill({ color: 0x000000, alpha: alpha * shadow.alpha });
+            const endX = actorX + nx * len * shadow.distance;
+            const endY = actorY + ny * len * 0.6 * shadow.distance - 1;
+            g.moveTo(startX, startY)
+              .lineTo(endX, endY)
+              .stroke({
+                width: Math.max(2, shadowRadiusY * 2 * shadow.width),
+                color: 0x000000,
+                alpha: alpha * shadow.alpha,
+                cap: 'round',
+              });
           });
         });
     }

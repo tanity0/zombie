@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.122 - Restore stretched event shadows with round strokes (Codex)
+
+### Summary
+- Replaced the separated ellipse-copy event shadows from `v0.25.121` with
+  rounded stroke shadows that actually read as stretched foot shadows.
+- Kept the normal foot-shadow ellipse at the caster and layered three different
+  stroke lengths so the shadow fades as it extends away from the light.
+- Preserved the low-cost strong-event-only approach: no shadow maps or per-pixel
+  lighting pass.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The visible stretch is now controlled mainly by the three `distance` values
+  in `syncLocalEventLighting()`.
+- Thickness is tied to normal foot-shadow height via `shadowRadiusY`, not actor
+  body width, to avoid the previous oversized cast-shadow band.
+
 ## 2026-06-10 - v0.25.121 - Stretch foot shadows with fading copies (Codex)
 
 ### Summary
