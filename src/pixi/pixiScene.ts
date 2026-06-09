@@ -172,7 +172,7 @@ const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.88;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
-const LOCAL_EVENT_SHADOW_REACH_MULT = 5.35;
+const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure']);
 
@@ -1141,25 +1141,25 @@ export class PixiScene {
       };
 
       const playerBox = playerFootBox(player);
-      addCaster(playerBox.footX, playerBox.footY, playerBox.boxW * 0.58, 1.12);
+      addCaster(playerBox.footX, playerBox.footY, Math.max(playerBox.boxW, playerBox.boxH) * 0.96, 1.12);
       for (const enemy of enemies) {
         const box = enemyFootBox(enemy);
         const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
           ? 1.28
           : 1;
-        addCaster(box.footX, box.footY, box.boxW * 0.54, bossWeight);
+        addCaster(box.footX, box.footY, Math.max(box.boxW, box.boxH) * 0.92, bossWeight);
       }
       for (const prop of props) {
         const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
-        addCaster(prop.footX, prop.footY, prop.width * prop.scale * 1.15, propWeight);
+        addCaster(prop.footX, prop.footY, Math.max(prop.width, prop.height) * prop.scale * 0.9, propWeight);
       }
       for (const tree of this.trees.values()) {
-        addCaster(tree.sprite.x, tree.footY, 54, 0.72);
+        addCaster(tree.sprite.x, tree.footY, 82, 0.72);
       }
-      addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, CASTLE_TARGET_HEIGHT * 0.9, castle.bossSpawned ? 1.15 : 0.82);
-      addCaster(merchant.x, merchant.y, MERCHANT_TARGET_HEIGHT * 0.58, 0.9);
+      addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, CASTLE_TARGET_HEIGHT * 1.12, castle.bossSpawned ? 1.15 : 0.82);
+      addCaster(merchant.x, merchant.y, MERCHANT_TARGET_HEIGHT * 0.92, 0.9);
       if (eventNpc.status !== 'completed') {
-        addCaster(eventNpc.x, eventNpc.y, EVENT_NPC_TARGET_HEIGHT * 0.62, 0.9);
+        addCaster(eventNpc.x, eventNpc.y, EVENT_NPC_TARGET_HEIGHT * 0.9, 0.9);
       }
 
       castActors
@@ -1175,8 +1175,8 @@ export class PixiScene {
           const nx = dx / dist;
           const ny = dy / dist;
           const actorDepth = this.depthScale(actor.y);
-          const len = (92 + e.radius * 1.48) * falloff * actorDepth * Math.min(1.38, actor.strength);
-          const width = Math.max(9, actor.w * 0.74 * actorDepth) * (0.62 + falloff * 1.18);
+          const len = (118 + e.radius * 1.9) * falloff * actorDepth * Math.min(1.55, actor.strength);
+          const width = Math.max(18, actor.w * actorDepth) * (0.92 + falloff * 1.58);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
           const sx = actorX + nx * Math.min(8, width * 0.35);
           const sy = actorY + ny * Math.min(5, width * 0.2);
@@ -1184,12 +1184,12 @@ export class PixiScene {
           const ey = actorY + ny * len * 0.6;
           const px = -ny;
           const py = nx * 0.48;
-          const outerBase = width * 0.86;
-          const outerTip = Math.max(1.5, width * 0.16);
-          const innerBase = width * 0.52;
-          const innerTip = Math.max(1, width * 0.08);
-          g.ellipse(actorX, actorY - 1, width * 0.86, Math.max(3, width * 0.22))
-            .fill({ color: 0x000000, alpha: alpha * 0.38 });
+          const outerBase = width * 0.98;
+          const outerTip = Math.max(2.5, width * 0.2);
+          const innerBase = width * 0.66;
+          const innerTip = Math.max(1.5, width * 0.1);
+          g.ellipse(actorX, actorY - 1, width * 1.02, Math.max(4, width * 0.27))
+            .fill({ color: 0x000000, alpha: alpha * 0.46 });
           g.poly([
             sx + px * outerBase, sy + py * outerBase,
             sx - px * outerBase, sy - py * outerBase,

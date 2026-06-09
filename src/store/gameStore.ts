@@ -166,6 +166,8 @@ export const REFLECT_SPEED_MULTIPLIER = 1.8;
 
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
+const MIN_TIME_SLOW_SCALE = 0.18;
+const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
 // Inertia time constants (s). Velocity eases toward its target over this
@@ -311,6 +313,10 @@ interface GameState {
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
+  // Strong-event slow motion. Rendering/audio continue; simulation delta is
+  // multiplied by timeSlowScale until this timestamp.
+  timeSlowUntil: number;
+  timeSlowScale: number;
   // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
   shakeUntil: number;
 
@@ -385,6 +391,7 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
+  triggerTimeSlow: (scale: number, durationMs: number) => void;
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
@@ -487,6 +494,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   lastWeaponGet: null,
   hitstopUntil: 0,
+  timeSlowUntil: 0,
+  timeSlowScale: 1,
   shakeUntil: 0,
 
   // Player actions
@@ -916,6 +925,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
+    }
+    if (finisherHit || bossFinishHit) {
+      get().triggerTimeSlow(0.4, HITSTOP_MS + 520);
     }
 
     let propHit = false;
@@ -2368,6 +2380,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         lastWeaponGet: null,
         hitstopUntil: 0,
+        timeSlowUntil: 0,
+        timeSlowScale: 1,
         shakeUntil: 0
       };
     });
@@ -2376,6 +2390,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   setCameraPosition: (x, y) => {
     // Infinite world: the camera follows the player one-to-one with no clamp.
     set({ camera: { x, y } });
+  },
+
+  triggerTimeSlow: (scale, durationMs) => {
+    const now = Date.now();
+    const clampedScale = Math.max(MIN_TIME_SLOW_SCALE, Math.min(MAX_TIME_SLOW_SCALE, scale));
+    const until = now + Math.max(0, durationMs);
+    set(state => {
+      const active = now < state.timeSlowUntil;
+      return {
+        timeSlowUntil: Math.max(active ? state.timeSlowUntil : 0, until),
+        timeSlowScale: active
+          ? Math.min(state.timeSlowScale, clampedScale)
+          : clampedScale
+      };
+    });
   },
 
   spawnEffect: (effect) => {

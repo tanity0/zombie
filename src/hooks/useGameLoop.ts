@@ -137,6 +137,7 @@ export const useGameLoop = (onGameOver: () => void) => {
     spawnRing(x, y, 8, 118, 'rgba(220,38,38,0.9)', 7, 620);
     spawnRing(x, y, 24, 168, 'rgba(127,29,29,0.66)', 4, 760);
     useGameStore.getState().spawnGlow(x, y, 96, 'rgba(220,38,38,', 620);
+    useGameStore.getState().triggerTimeSlow(0.32, 820);
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
     window.setTimeout(onGameOver, 650);
@@ -186,12 +187,13 @@ export const useGameLoop = (onGameOver: () => void) => {
       }
 
       const rawDelta = (timestamp - lastFrameTimeRef.current) / 1000;
-      const deltaTime = Math.min(0.05, rawDelta);
+      const baseDeltaTime = Math.min(0.05, rawDelta);
       lastFrameTimeRef.current = timestamp;
 
       // Hitstop: a melee finisher freezes the whole simulation for a beat. Keep
       // the time origin current so we don't get a giant delta when it lapses.
-      if (Date.now() < useGameStore.getState().hitstopUntil) {
+      const nowMs = Date.now();
+      if (nowMs < useGameStore.getState().hitstopUntil) {
         frameRef.current = requestAnimationFrame(gameLoop);
         return;
       }
@@ -218,6 +220,8 @@ export const useGameLoop = (onGameOver: () => void) => {
           swipeDirection,
           gameBounds,
         } = loopState;
+        const timeScale = nowMs < loopState.timeSlowUntil ? loopState.timeSlowScale : 1;
+        const deltaTime = baseDeltaTime * timeScale;
 
         // Update game time
         const newGameTime = gameTime + deltaTime * 1000;
@@ -243,6 +247,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
           spawnRing(castle.x, castle.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
           useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
+          useGameStore.getState().triggerTimeSlow(0.36, 760);
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
         }
 
@@ -555,6 +560,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           spawnBurst(gx, gy, '#f97316', 20);
           spawnBurst(gx, gy, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', 340);
+          useGameStore.getState().triggerTimeSlow(0.5, 440);
           for (const enemy of useGameStore.getState().enemies) {
             if (enemy.type === 'reaper') continue;
             const ex = enemy.x + enemy.width / 2;
@@ -722,6 +728,7 @@ export const useGameLoop = (onGameOver: () => void) => {
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
           useGameStore.getState().spawnGlow(pcx, pcy, 78, 'rgba(56,189,248,', 280);
+          useGameStore.getState().triggerTimeSlow(0.34, 560);
           spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, 320);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
@@ -788,6 +795,7 @@ export const useGameLoop = (onGameOver: () => void) => {
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
             useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', 360);
+            useGameStore.getState().triggerTimeSlow(0.5, 440);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT;
             for (const splashEnemy of useGameStore.getState().enemies) {

@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.119 - Add strong-event slow motion and max-width shadows (Codex)
+
+### Summary
+- Added a lightweight strong-event slow-motion state. It scales simulation
+  `deltaTime` for brief impact moments while rendering, audio, FPS display, and
+  VFX lifetimes continue normally.
+- Triggered the slow motion on melee finishers, counters, grenade explosions,
+  boss-castle emergence, and player death.
+- Made strong-event cast shadows use a much fuller caster width by taking the
+  larger visual dimension for characters/enemies and widening the shadow body.
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Slow-motion tuning is centralized through `triggerTimeSlow(scale, durationMs)`.
+  Smaller `scale` means stronger slow; longer `durationMs` means the feel holds
+  longer. Current counter value is `0.34 / 560ms`, grenade is `0.5 / 440ms`,
+  and finisher is `0.4 / HITSTOP_MS + 520ms`.
+- Shadow width is intentionally bold for on-device evaluation. If it reads too
+  heavy, reduce the `width` formula in `syncLocalEventLighting()` before
+  lowering shadow opacity.
+
 ## 2026-06-10 - v0.25.118 - Exaggerate strong-event cast shadows (Codex)
 
 ### Summary
