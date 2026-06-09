@@ -1088,13 +1088,11 @@ export class PixiScene {
       const rx = e.radius * 2.55 * d;
       const ry = e.radius * 1.04 * d;
 
-      // A soft local contrast ring: strong glow events deepen only the nearby
-      // damp floor, never the whole scene. The bright additive core is drawn by
-      // the glow effect itself above this ground-only shade.
-      g.ellipse(lightX, lightY + Math.round(16 * d), rx * 1.2, ry * 1.18)
-        .fill({ color: 0x000000, alpha: shadeAlpha * 0.18 });
-      g.ellipse(lightX, lightY + Math.round(12 * d), rx, ry)
-        .stroke({ width: Math.max(10, e.radius * 0.3 * d), color: 0x000000, alpha: shadeAlpha });
+      // Soft local contrast under the light source. Avoid a visible dark rim
+      // around the glow; the cast shadows below should read as coming from
+      // actors/props, not from the edge of the light disc.
+      g.ellipse(lightX, lightY + Math.round(18 * d), rx * 1.1, ry * 0.9)
+        .fill({ color: 0x000000, alpha: shadeAlpha * 0.12 });
 
       type CastShadow = {
         x: number;

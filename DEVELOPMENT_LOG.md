@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.116 - Remove dark rim from strong event lights (Codex)
+
+### Summary
+- Removed the visible dark stroke around strong event glow sources.
+- Kept the soft local ground contrast, but changed it to a low-alpha filled
+  ellipse so shadows no longer appear to originate from the edge of the light
+  disc.
+- Preserved multi-source cast shadows for simultaneous grenade/explosion
+  events.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Check grenade clusters and melee/counter events. The intended result is:
+  multiple shadow directions are allowed, but no dark outline should cling to
+  the glow perimeter.
+
 ## 2026-06-10 - v0.25.115 - Move strong glow under event shadows (Codex)
 
 ### Summary
