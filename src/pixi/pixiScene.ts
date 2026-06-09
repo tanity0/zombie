@@ -91,7 +91,7 @@ const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_SPRITE_BASE_HEIGHT = 96;
 const DOG_WALK_FRAME_MS = 150;
-const DOG_SPRITE_SCALE = 0.64;
+const DOG_SPRITE_SCALE = 0.5;
 const playerWalkSequence = (p: Player): number[] =>
   p.characterClass === 'mage' ||
   p.characterClass === 'rogue' ||

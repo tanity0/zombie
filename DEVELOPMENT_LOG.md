@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.72 - Reduce Dog sprite scale again (Codex)
+
+### Summary
+Made the Dog fetch sprite smaller while keeping the pixel-art source untouched.
+- Reduced Dog fetch sprite display scale from `0.64` to `0.5`.
+- Used a clean half-size display scale to preserve hard pixel edges as much as
+  possible in Pixi.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Pushed after verification.
+
 ## 2026-06-09 - v0.25.71 - Tune grenade fuse and Dog size (Codex)
 
 ### Summary
