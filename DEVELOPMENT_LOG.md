@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.111 - Make event shadows easier to read (Codex)
+
+### Summary
+- Increased the local darkness around strong glow events so nearby shadows read
+  more clearly.
+- Lengthened event-cast shadows and expanded their reach so finishers,
+  counters, explosions, and other strong glow events are easier to evaluate on
+  device.
+- Kept the existing per-light caster cap and screen/radius culling unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is intentionally more visible than the first pass. If it feels too
+  theatrical, tune `LOCAL_EVENT_SHADOW_ALPHA`,
+  `LOCAL_EVENT_SHADOW_REACH_MULT`, and the `len` formula in
+  `syncLocalEventLighting`.
+
 ## 2026-06-09 - v0.25.110 - Add strong-light cast shadows (Codex)
 
 ### Summary

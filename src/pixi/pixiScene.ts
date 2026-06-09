@@ -168,10 +168,10 @@ const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const STRONG_GLOW_RADIUS = 44;
-const LOCAL_EVENT_SHADE_ALPHA = 0.24;
-const LOCAL_EVENT_SHADOW_ALPHA = 0.28;
+const LOCAL_EVENT_SHADE_ALPHA = 0.34;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.46;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
-const LOCAL_EVENT_SHADOW_REACH_MULT = 3.45;
+const LOCAL_EVENT_SHADOW_REACH_MULT = 4.35;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure']);
 
@@ -1092,7 +1092,7 @@ export class PixiScene {
       // damp floor, never the whole scene. The bright additive core is drawn by
       // the glow effect itself above this ground-only shade.
       g.ellipse(lightX, lightY + Math.round(16 * d), rx * 1.2, ry * 1.18)
-        .fill({ color: 0x000000, alpha: shadeAlpha * 0.12 });
+        .fill({ color: 0x000000, alpha: shadeAlpha * 0.18 });
       g.ellipse(lightX, lightY + Math.round(12 * d), rx, ry)
         .stroke({ width: Math.max(10, e.radius * 0.3 * d), color: 0x000000, alpha: shadeAlpha });
 
@@ -1165,7 +1165,7 @@ export class PixiScene {
           const nx = dx / dist;
           const ny = dy / dist;
           const actorDepth = this.depthScale(actor.y);
-          const len = (46 + e.radius * 0.74) * falloff * actorDepth * Math.min(1.25, actor.strength);
+          const len = (68 + e.radius * 1.08) * falloff * actorDepth * Math.min(1.28, actor.strength);
           const width = Math.max(5, actor.w * 0.32 * actorDepth) * (0.45 + falloff * 0.75);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
           const sx = actorX + nx * Math.min(8, width * 0.35);
