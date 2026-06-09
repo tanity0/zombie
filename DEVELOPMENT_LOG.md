@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.110 - Add strong-light cast shadows (Codex)
+
+### Summary
+- Added the first lightweight Octopath-style shadow pass for strong glow
+  events only.
+- Strong local glow events now cast elongated fake ground shadows from the
+  player, enemies, trees, breakable props, castle, weapon merchant, and quest
+  NPCs.
+- Kept the implementation to one `Graphics` layer with screen/radius culling
+  and a per-light cap of 22 shadow casters.
+- Fixed the event-shadow enemy caster coordinates to use the current
+  `enemyFootBox` fields.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is step 1 only: shadows respond to strong one-shot glow events such as
+  finishers/counters/explosions.
+- Step 2 can extend the same caster pass to torch proximity if the event-only
+  version feels good on device.
+
 ## 2026-06-09 - v0.25.109 - Lift horizon seam above ground and soften player glow (Codex)
 
 ### Summary

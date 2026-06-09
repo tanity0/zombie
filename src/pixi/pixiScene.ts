@@ -170,6 +170,8 @@ const GEM_BODY_GLOW_ALPHA = 0.38;
 const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.24;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.28;
+const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
+const LOCAL_EVENT_SHADOW_REACH_MULT = 3.45;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure']);
 
@@ -684,7 +686,17 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncEffects(s.effects, now);
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, now);
-    this.syncLocalEventLighting(s.effects, s.player, s.enemies, now);
+    this.syncLocalEventLighting(
+      s.effects,
+      s.player,
+      s.enemies,
+      s.breakableProps,
+      s.castleEvent,
+      s.weaponMerchant,
+      s.eventQuestNpc,
+      s.camera,
+      now
+    );
     this.syncPlayerFx(s.player, now);
     this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera);
     this.syncFlash(s.effects, now);
@@ -1052,6 +1064,11 @@ export class PixiScene {
     effects: VisualEffect[],
     player: Player,
     enemies: Enemy[],
+    props: BreakableProp[],
+    castle: CastleEvent,
+    merchant: WeaponMerchant,
+    eventNpc: EventQuestNpc,
+    camera: { x: number; y: number },
     now: number
   ) {
     const g = this.localEventShadeGfx;
@@ -1079,38 +1096,99 @@ export class PixiScene {
       g.ellipse(lightX, lightY + Math.round(12 * d), rx, ry)
         .stroke({ width: Math.max(10, e.radius * 0.3 * d), color: 0x000000, alpha: shadeAlpha });
 
-      const castActors: Array<{ x: number; y: number; w: number }> = [{
-        x: player.x + player.width / 2,
-        y: playerFootBox(player).footY,
-        w: player.width,
-      }];
+      type CastShadow = {
+        x: number;
+        y: number;
+        w: number;
+        falloff: number;
+        horizonAlpha: number;
+        strength: number;
+      };
+      const reach = e.radius * LOCAL_EVENT_SHADOW_REACH_MULT;
+      const castActors: CastShadow[] = [];
+      const isNearScreen = (x: number, y: number, pad = 150) =>
+        x >= camera.x - pad &&
+        x <= camera.x + this.screenW + pad &&
+        y >= camera.y - pad &&
+        y <= camera.y + this.screenH + pad;
+      const addCaster = (x: number, y: number, w: number, strength = 1) => {
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w)) return;
+        if (!isNearScreen(x, y)) return;
+        const actorHorizonAlpha = this.horizonActorAlpha(y);
+        if (actorHorizonAlpha <= 0) return;
+        const dx = x - lightX;
+        const dy = y - lightY;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1 || dist > reach) return;
+        castActors.push({
+          x,
+          y,
+          w,
+          falloff: 1 - dist / reach,
+          horizonAlpha: actorHorizonAlpha,
+          strength,
+        });
+      };
+
+      const playerBox = playerFootBox(player);
+      addCaster(playerBox.footX, playerBox.footY, playerBox.boxW * 0.58, 1.12);
       for (const enemy of enemies) {
         const box = enemyFootBox(enemy);
-        castActors.push({ x: box.cx, y: box.footY, w: box.shadowW });
+        const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
+          ? 1.28
+          : 1;
+        addCaster(box.footX, box.footY, box.boxW * 0.54, bossWeight);
+      }
+      for (const prop of props) {
+        const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
+        addCaster(prop.footX, prop.footY, prop.width * prop.scale * 1.15, propWeight);
+      }
+      for (const tree of this.trees.values()) {
+        addCaster(tree.sprite.x, tree.footY, 54, 0.72);
+      }
+      addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, CASTLE_TARGET_HEIGHT * 0.9, castle.bossSpawned ? 1.15 : 0.82);
+      addCaster(merchant.x, merchant.y, MERCHANT_TARGET_HEIGHT * 0.58, 0.9);
+      if (eventNpc.status !== 'completed') {
+        addCaster(eventNpc.x, eventNpc.y, EVENT_NPC_TARGET_HEIGHT * 0.62, 0.9);
       }
 
-      const reach = e.radius * 3.25;
-      for (const actor of castActors) {
-        const actorX = Math.round(actor.x);
-        const actorY = Math.round(actor.y);
-        const dx = actorX - lightX;
-        const dy = actorY - lightY;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 1 || dist > reach) continue;
-        const falloff = 1 - dist / reach;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const len = (38 + e.radius * 0.5) * falloff * d;
-        const width = Math.max(6, actor.w * 0.36 * d) * falloff;
-        g.moveTo(actorX + nx * 3, actorY + ny * 2)
-          .lineTo(actorX + nx * len, actorY + ny * len * 0.72)
-          .stroke({
-            width,
-            color: 0x000000,
-            alpha: LOCAL_EVENT_SHADOW_ALPHA * life * falloff * horizonAlpha,
-            cap: 'round',
-          });
-      }
+      castActors
+        .sort((a, b) => (b.falloff * b.strength) - (a.falloff * a.strength))
+        .slice(0, LOCAL_EVENT_MAX_CAST_SHADOWS)
+        .forEach(actor => {
+          const actorX = Math.round(actor.x);
+          const actorY = Math.round(actor.y);
+          const dx = actorX - lightX;
+          const dy = actorY - lightY;
+          const dist = Math.hypot(dx, dy);
+          const falloff = actor.falloff;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const actorDepth = this.depthScale(actor.y);
+          const len = (46 + e.radius * 0.74) * falloff * actorDepth * Math.min(1.25, actor.strength);
+          const width = Math.max(5, actor.w * 0.32 * actorDepth) * (0.45 + falloff * 0.75);
+          const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
+          const sx = actorX + nx * Math.min(8, width * 0.35);
+          const sy = actorY + ny * Math.min(5, width * 0.2);
+          const ex = actorX + nx * len;
+          const ey = actorY + ny * len * 0.6;
+          g.moveTo(actorX + nx * 3, actorY + ny * 2)
+            .lineTo(ex, ey)
+            .stroke({
+              width: width * 1.85,
+              color: 0x000000,
+              alpha: alpha * 0.28,
+              cap: 'round',
+            });
+          g.moveTo(sx, sy)
+            .lineTo(ex, ey)
+            .stroke({
+              width,
+              color: 0x000000,
+              alpha,
+              cap: 'round',
+            });
+        });
     }
   }
 
