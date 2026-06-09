@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.121 - Stretch foot shadows with fading copies (Codex)
+
+### Summary
+- Replaced the pointed strong-event cast-shadow polygons with three fading
+  copies of each actor's normal foot shadow.
+- Kept the foot-shadow roundness and base width while offsetting the copies
+  away from the strong light source.
+- Made the farthest copy very faint so the shadow reads as fading into the
+  ground instead of ending in a sharp tip.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- This is a low-cost approximation for Octopath-like event shadows: no dynamic
+  shadow map, just a few ellipses during strong light events.
+- If the tail feels too short/long, tune the `distance` values in
+  `syncLocalEventLighting()`. If it feels too smoky, tune the copied ellipse
+  alpha values.
+
 ## 2026-06-10 - v0.25.120 - Use foot-shadow width for event cast shadows (Codex)
 
 ### Summary

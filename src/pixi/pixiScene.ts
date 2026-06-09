@@ -1188,30 +1188,18 @@ export class PixiScene {
           const shadowRadiusX = Math.max(4, actor.w * 0.55);
           const shadowRadiusY = Math.max(1.5, actor.w * 0.18);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
-          const sx = actorX + nx * Math.min(4, shadowRadiusX * 0.2);
-          const sy = actorY + ny * Math.min(3, shadowRadiusY * 0.45);
-          const ex = actorX + nx * len;
-          const ey = actorY + ny * len * 0.6;
-          const px = -ny;
-          const py = nx * 0.48;
-          const outerBase = shadowRadiusX;
-          const outerTip = Math.max(1.4, shadowRadiusX * 0.13);
-          const innerBase = shadowRadiusX * 0.62;
-          const innerTip = Math.max(0.8, shadowRadiusX * 0.06);
           g.ellipse(actorX, actorY - 1, shadowRadiusX, shadowRadiusY)
             .fill({ color: 0x000000, alpha: alpha * 0.72 });
-          g.poly([
-            sx + px * outerBase, sy + py * outerBase,
-            sx - px * outerBase, sy - py * outerBase,
-            ex - px * outerTip, ey - py * outerTip,
-            ex + px * outerTip, ey + py * outerTip,
-          ]).fill({ color: 0x000000, alpha: alpha * 0.32 });
-          g.poly([
-            sx + px * innerBase, sy + py * innerBase,
-            sx - px * innerBase, sy - py * innerBase,
-            ex - px * innerTip, ey - py * innerTip,
-            ex + px * innerTip, ey + py * innerTip,
-          ]).fill({ color: 0x000000, alpha });
+          [
+            { distance: 0.28, scale: 1.03, alpha: 0.4 },
+            { distance: 0.58, scale: 1.06, alpha: 0.2 },
+            { distance: 0.88, scale: 1.1, alpha: 0.08 },
+          ].forEach(shadow => {
+            const x = actorX + nx * len * shadow.distance;
+            const y = actorY + ny * len * 0.6 * shadow.distance - 1;
+            g.ellipse(x, y, shadowRadiusX * shadow.scale, shadowRadiusY * shadow.scale)
+              .fill({ color: 0x000000, alpha: alpha * shadow.alpha });
+          });
         });
     }
   }
