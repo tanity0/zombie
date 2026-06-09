@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.117 - Darken cast shadows and suppress bloom during strong events (Codex)
+
+### Summary
+- Made strong-event cast shadows thicker and darker without increasing the
+  number of drawn shadow shapes.
+- Increased the local event ground darkening while keeping it as a soft fill
+  so it does not create a dark rim around the light source.
+- Temporarily sets the world `AdvancedBloomFilter` bloom scale to `0` while a
+  strong glow event is active, then restores the normal bloom scale afterward.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Strong events should now read with higher contrast: darker cast shadows and
+  no global bloom washing the frame while the event glow is alive.
+- If this becomes too stark, reduce `LOCAL_EVENT_SHADOW_ALPHA` first, then
+  `LOCAL_EVENT_SHADE_ALPHA`.
+
 ## 2026-06-10 - v0.25.116 - Remove dark rim from strong event lights (Codex)
 
 ### Summary

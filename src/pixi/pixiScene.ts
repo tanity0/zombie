@@ -77,6 +77,7 @@ const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
 const BLOOM_ENABLED = true;
 const BLOOM_THRESHOLD = 0.45;  // lower → colored gems/crits bloom too
 const BLOOM_SCALE = 1.5;
+const BLOOM_STRONG_EVENT_SCALE = 0;
 const BLOOM_BLUR = 8;
 
 // Ambient fireflies drifting through the moonlit forest (soft additive motes).
@@ -168,8 +169,8 @@ const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
 const STRONG_GLOW_RADIUS = 44;
-const LOCAL_EVENT_SHADE_ALPHA = 0.34;
-const LOCAL_EVENT_SHADOW_ALPHA = 0.46;
+const LOCAL_EVENT_SHADE_ALPHA = 0.5;
+const LOCAL_EVENT_SHADOW_ALPHA = 0.78;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 4.35;
 
@@ -684,6 +685,7 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncProjectiles(s.projectiles, now);
+    this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, now);
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, now);
     this.syncLocalEventLighting(
@@ -710,6 +712,16 @@ export class PixiScene {
     this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (s.player.huntingCharged ? 1.16 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
 
     this.syncFireflies(s.camera, now);
+  }
+
+  private syncEventBloom(effects: VisualEffect[], now: number) {
+    if (!this.bloom) return;
+    const hasStrongEventGlow = effects.some(e => {
+      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) return false;
+      const t = (now - e.createdAt) / e.duration;
+      return t >= 0 && t < 1;
+    });
+    this.bloom.bloomScale = hasStrongEventGlow ? BLOOM_STRONG_EVENT_SCALE : BLOOM_SCALE;
   }
 
   // ---- ambient fireflies ---------------------------------------------------
@@ -1092,7 +1104,7 @@ export class PixiScene {
       // around the glow; the cast shadows below should read as coming from
       // actors/props, not from the edge of the light disc.
       g.ellipse(lightX, lightY + Math.round(18 * d), rx * 1.1, ry * 0.9)
-        .fill({ color: 0x000000, alpha: shadeAlpha * 0.12 });
+        .fill({ color: 0x000000, alpha: shadeAlpha * 0.22 });
 
       type CastShadow = {
         x: number;
@@ -1164,7 +1176,7 @@ export class PixiScene {
           const ny = dy / dist;
           const actorDepth = this.depthScale(actor.y);
           const len = (68 + e.radius * 1.08) * falloff * actorDepth * Math.min(1.28, actor.strength);
-          const width = Math.max(5, actor.w * 0.32 * actorDepth) * (0.45 + falloff * 0.75);
+          const width = Math.max(7, actor.w * 0.5 * actorDepth) * (0.5 + falloff * 0.95);
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
           const sx = actorX + nx * Math.min(8, width * 0.35);
           const sy = actorY + ny * Math.min(5, width * 0.2);
