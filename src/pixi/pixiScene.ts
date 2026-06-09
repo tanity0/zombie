@@ -1887,13 +1887,16 @@ export class PixiScene {
         const isStrong = e.radius >= STRONG_GLOW_RADIUS;
         const color = `${e.color}1)`;
         if (isStrong) {
-          g.circle(e.x - 2, e.y, e.radius * 1.26).fill({ color: 0xff3344, alpha: 0.08 });
-          g.circle(e.x + 2, e.y, e.radius * 1.26).fill({ color: 0x38d9ff, alpha: 0.07 });
-          g.circle(e.x, e.y, e.radius * 1.42).fill({ color, alpha: 0.18 });
-          g.circle(e.x, e.y, e.radius * 0.92).fill({ color, alpha: 0.34 });
-          g.circle(e.x, e.y, e.radius * 0.45).fill({ color: 0xffffff, alpha: 0.34 });
-          g.circle(e.x, e.y, e.radius).stroke({ width: 4, color, alpha: 0.64 });
-          g.circle(e.x, e.y, e.radius * 0.58).stroke({ width: 1.5, color: 0xffffff, alpha: 0.42 });
+          // Strong events get their broad ground contrast from
+          // syncLocalEventLighting. Keep this top-layer glow compact so it
+          // does not wash over the cast shadows and make them disappear.
+          g.circle(e.x - 2, e.y, e.radius * 0.74).fill({ color: 0xff3344, alpha: 0.035 });
+          g.circle(e.x + 2, e.y, e.radius * 0.74).fill({ color: 0x38d9ff, alpha: 0.03 });
+          g.circle(e.x, e.y, e.radius * 0.82).fill({ color, alpha: 0.1 });
+          g.circle(e.x, e.y, e.radius * 0.46).fill({ color, alpha: 0.24 });
+          g.circle(e.x, e.y, e.radius * 0.22).fill({ color: 0xffffff, alpha: 0.42 });
+          g.circle(e.x, e.y, e.radius * 0.5).stroke({ width: 2.5, color, alpha: 0.5 });
+          g.circle(e.x, e.y, e.radius * 0.28).stroke({ width: 1.25, color: 0xffffff, alpha: 0.44 });
         } else {
           g.circle(e.x, e.y, e.radius).fill({ color, alpha: 0.4 });
           g.circle(e.x, e.y, e.radius * 0.55).fill({ color, alpha: 0.5 });

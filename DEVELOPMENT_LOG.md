@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.114 - Keep strong glow from washing over cast shadows (Codex)
+
+### Summary
+- Reduced the broad top-layer additive glow used by strong glow events.
+- Kept the bright source core and small rim, but stopped the huge glow disc
+  from painting over the local event shadow pass.
+- Leaves the ground contrast and cast-shadow work in `syncLocalEventLighting`,
+  so the Octopath-style event shadow should read more clearly.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Test with counter / melee finisher / grenade. If the shadow is now visible
+  but too dark, tune the local shadow constants instead of re-expanding the
+  top-layer glow.
+
 ## 2026-06-09 - v0.25.113 - Lift event shadows above ground overlays (Codex)
 
 ### Summary
