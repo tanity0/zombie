@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-09 - v0.25.112 - Make event shadow pass visibly render (Codex)
+
+### Summary
+- Moved the local event shadow layer above ground reflections, player ground
+  light, and normal foot shadows while keeping it below actors.
+- Replaced the line-stroke cast shadow with tapered filled shadow polygons plus
+  a darker contact shadow at each caster's foot.
+- This should make strong glow event shadows actually visible instead of being
+  buried under additive ground lights or lost in the detailed floor texture.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- Check with counter, melee finisher, grenade, or boss-castle spawn. If still
+  invisible, the next likely issue is that the triggering glow coordinates are
+  not close enough to the visible actors/props.
+
 ## 2026-06-09 - v0.25.111 - Make event shadows easier to read (Codex)
 
 ### Summary

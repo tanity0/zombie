@@ -360,10 +360,10 @@ export class PixiScene {
     this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
     this.groundReflectionGfx.blendMode = 'add';
     this.L.groundLayer.addChild(
-      this.localEventShadeGfx,
       this.groundReflectionGfx,
       this.playerLight,
       this.shadowGfx,
+      this.localEventShadeGfx,
     );
 
     this.castleSprite.anchor.set(0.5, 1);
@@ -1172,22 +1172,26 @@ export class PixiScene {
           const sy = actorY + ny * Math.min(5, width * 0.2);
           const ex = actorX + nx * len;
           const ey = actorY + ny * len * 0.6;
-          g.moveTo(actorX + nx * 3, actorY + ny * 2)
-            .lineTo(ex, ey)
-            .stroke({
-              width: width * 1.85,
-              color: 0x000000,
-              alpha: alpha * 0.28,
-              cap: 'round',
-            });
-          g.moveTo(sx, sy)
-            .lineTo(ex, ey)
-            .stroke({
-              width,
-              color: 0x000000,
-              alpha,
-              cap: 'round',
-            });
+          const px = -ny;
+          const py = nx * 0.48;
+          const outerBase = width * 0.86;
+          const outerTip = Math.max(1.5, width * 0.16);
+          const innerBase = width * 0.52;
+          const innerTip = Math.max(1, width * 0.08);
+          g.ellipse(actorX, actorY - 1, width * 0.86, Math.max(3, width * 0.22))
+            .fill({ color: 0x000000, alpha: alpha * 0.38 });
+          g.poly([
+            sx + px * outerBase, sy + py * outerBase,
+            sx - px * outerBase, sy - py * outerBase,
+            ex - px * outerTip, ey - py * outerTip,
+            ex + px * outerTip, ey + py * outerTip,
+          ]).fill({ color: 0x000000, alpha: alpha * 0.32 });
+          g.poly([
+            sx + px * innerBase, sy + py * innerBase,
+            sx - px * innerBase, sy - py * innerBase,
+            ex - px * innerTip, ey - py * innerTip,
+            ex + px * innerTip, ey + py * innerTip,
+          ]).fill({ color: 0x000000, alpha });
         });
     }
   }
