@@ -209,8 +209,8 @@ const GROUND_TILE_SCALE_Y_FAR = 0.12;
 const GROUND_SCROLL_X_FEEL = 1.2;
 const GROUND_SCROLL_Y_FEEL = 3.0;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
-const NEAR_GROUND_BLUR_STRIP_RATIO = 0.32;
-const NEAR_GROUND_BLUR_STRENGTH = 2.8;
+const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
+const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
 const OBJECT_GROUND_RELATIVE_MAX = 1.45;
@@ -375,12 +375,12 @@ export class PixiScene {
   private horizonForestFadeMaskTexture: Texture | null = null;
   private frontForestFadeMask = new Sprite(Texture.WHITE);
   private frontForestFadeMaskTexture: Texture | null = null;
-  private nearGroundBlurLayer = new Container();
+  private nearGroundBlurLayers: Container[] = [];
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
   private farBackdropBlur: BlurFilter | null = null;
-  private nearGroundBlurFilter: BlurFilter | null = null;
+  private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
 
   private fireflies: Firefly[] = [];
@@ -430,13 +430,22 @@ export class PixiScene {
     const nearGroundStripCount = Math.max(1, Math.ceil(this.L.groundStrips.length * NEAR_GROUND_BLUR_STRIP_RATIO));
     const nearGroundStart = Math.max(0, this.L.groundStrips.length - nearGroundStripCount);
     const nearGroundStrips = this.L.groundStrips.slice(nearGroundStart);
-    this.nearGroundBlurFilter = new BlurFilter({
-      strength: NEAR_GROUND_BLUR_STRENGTH,
-      quality: 2,
-    });
-    this.nearGroundBlurLayer.filters = [this.nearGroundBlurFilter];
-    this.nearGroundBlurLayer.addChild(...nearGroundStrips);
-    this.L.groundBase.addChild(this.nearGroundBlurLayer);
+    const bandCount = NEAR_GROUND_BLUR_STRENGTHS.length;
+    const bandSize = Math.max(1, Math.ceil(nearGroundStrips.length / bandCount));
+    for (let i = 0; i < bandCount; i++) {
+      const bandStrips = nearGroundStrips.slice(i * bandSize, (i + 1) * bandSize);
+      if (!bandStrips.length) continue;
+      const layer = new Container();
+      const filter = new BlurFilter({
+        strength: NEAR_GROUND_BLUR_STRENGTHS[i] ?? NEAR_GROUND_BLUR_STRENGTHS[bandCount - 1],
+        quality: 2,
+      });
+      layer.filters = [filter];
+      layer.addChild(...bandStrips);
+      this.nearGroundBlurLayers.push(layer);
+      this.nearGroundBlurFilters.push(filter);
+      this.L.groundBase.addChild(layer);
+    }
 
     this.farBackdropBlur = new BlurFilter({
       strength: FAR_BACKDROP_BLUR,
@@ -2592,9 +2601,9 @@ export class PixiScene {
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
-    this.nearGroundBlurLayer.filters = [];
-    this.nearGroundBlurFilter?.destroy();
-    this.nearGroundBlurFilter = null;
+    for (const layer of this.nearGroundBlurLayers) layer.filters = [];
+    for (const filter of this.nearGroundBlurFilters) filter.destroy();
+    this.nearGroundBlurFilters = [];
     this.L.groundBase.destroy({ children: true });
     this.L.horizonForest.destroy();
     this.horizonForestFadeMask.destroy();

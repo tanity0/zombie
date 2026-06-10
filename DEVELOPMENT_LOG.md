@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.162 - Grade near-ground blur strength (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-near-ground-blur-gradient-2026-06-11`
+  - Tag: `pre-near-ground-blur-gradient-v0.25.161`
+- Split the lower ground blur into three strength bands instead of one strong
+  blur across the whole lower region:
+  - `NEAR_GROUND_BLUR_STRIP_RATIO`: `0.32 -> 0.34`
+  - `NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05]`
+- This keeps the actual lower `groundStrips` blur approach from `v0.25.161`,
+  but makes the blur increase stepwise toward the bottom.
+
+### Performance
+- Old load score: `2/10`.
+- Performance Budget Score impact: `+1` to `+3` versus `v0.25.161`.
+- Current normal-play estimate before change: `39-70`.
+- Expected normal-play estimate after change: roughly `40-73`.
+- Visual risk: medium. The hard blur jump should soften, but the three blur
+  bands may still need ratio/strength tuning if the banding is visible.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.161 - Blur actual near ground strips (Codex)
 
 ### Summary
