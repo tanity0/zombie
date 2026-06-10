@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.132 - Add quick benchmark mode (Codex)
+
+### Summary
+- Added a small `ベンチ` text button to the start screen.
+- Benchmark mode runs for 20 seconds after loading into gameplay.
+- It keeps a controlled set of benchmark enemies on screen, emits repeated
+  glow/ring stress effects, samples FPS, and shows `PASS` / `CAUTION` / `FAIL`
+  with average FPS, minimum FPS, and drop count.
+- Benchmark-only enemies are removed when the run finishes or the component
+  unmounts.
+
+### Performance
+- Load score: `2/10`.
+- Benchmark code is inactive in normal play. When active, it uses existing
+  enemy/effect systems and bounded intervals; no package install, network,
+  dynamic shadow maps, or unbounded loops were added.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/Game.tsx`
+- `src/components/MainMenu.tsx`
+- `src/App.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.131 - Size normal shadows from sprite pixels (Codex)
 
 ### Summary

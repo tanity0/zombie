@@ -13,9 +13,10 @@ import {
 
 interface MainMenuProps {
   onStartGame: (characterClass: string) => void;
+  onStartBenchmark: (characterClass: string) => void;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) => {
   const [selectedClass, setSelectedClass] = useState('warrior');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
@@ -367,6 +368,16 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           </div>
         </div>
       </div>
+      <button
+        onClick={() => onStartBenchmark(selectedClass)}
+        className="fixed text-[10px] text-white/30 underline-offset-2 active:text-white/70"
+        style={{
+          right: 'max(env(safe-area-inset-right), 12px)',
+          bottom: 'max(env(safe-area-inset-bottom), 10px)'
+        }}
+      >
+        ベンチ
+      </button>
     </div>
   );
 };

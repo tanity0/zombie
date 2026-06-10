@@ -11,15 +11,17 @@ import EventQuestMenu from './EventQuestMenu';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
 import FullscreenButton from './FullscreenButton';
+import BenchmarkOverlay from './BenchmarkOverlay';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useGameControls } from '../hooks/useGameControls';
 
 interface GameProps {
   onGameOver: () => void;
   onVictory: () => void;
+  benchmarkMode?: boolean;
 }
 
-const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
+const Game: React.FC<GameProps> = ({ onGameOver, onVictory, benchmarkMode = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [isTouch, setIsTouch] = useState(
@@ -145,6 +147,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onVictory }) => {
       {isTouch && <VirtualJoystick />}
 
       <GameHUD fps={fps} />
+      {benchmarkMode && <BenchmarkOverlay fps={fps} />}
       <FullscreenButton target={containerRef} />
       {isTouch && <MobileControls />}
       

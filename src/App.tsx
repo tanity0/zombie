@@ -13,6 +13,7 @@ const LOADING_MIN_MS = 650;
 function App() {
   const [gameState, setGameState] = useState<GameState>('menu');
   const [loadingClass, setLoadingClass] = useState<CharacterClass>('warrior');
+  const [benchmarkMode, setBenchmarkMode] = useState(false);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
@@ -25,12 +26,13 @@ function App() {
     void setBgmActive(gameState === 'playing');
   }, [gameState]);
   
-  const startGame = async (characterClass: string) => {
+  const startGame = async (characterClass: string, benchmark = false) => {
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass
       : 'warrior';
 
     setLoadingClass(validClass);
+    setBenchmarkMode(benchmark);
     setGameState('loading');
 
     const startedAt = performance.now();
@@ -58,13 +60,17 @@ function App() {
   };
 
   const returnToMenu = () => {
+    setBenchmarkMode(false);
     setGameState('menu');
   };
 
   return (
     <div className="w-full h-full bg-gray-900 text-white">
       {gameState === 'menu' && (
-        <MainMenu onStartGame={startGame} />
+        <MainMenu
+          onStartGame={(characterClass) => startGame(characterClass, false)}
+          onStartBenchmark={(characterClass) => startGame(characterClass, true)}
+        />
       )}
 
       {gameState === 'loading' && (
@@ -72,7 +78,7 @@ function App() {
       )}
       
       {gameState === 'playing' && (
-        <Game onGameOver={handleGameOver} onVictory={handleVictory} />
+        <Game onGameOver={handleGameOver} onVictory={handleVictory} benchmarkMode={benchmarkMode} />
       )}
 
       {(gameState === 'gameOver' || gameState === 'victory') && (
