@@ -3,21 +3,27 @@ import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import type { BreakableProp, EnemyType } from '../types/game';
 
-const BENCHMARK_DURATION_MS = 24000;
-const BENCHMARK_WARMUP_MS = 1600;
+const BENCHMARK_ATTEMPT_MS = 5000;
+const BENCHMARK_ATTEMPT_WARMUP_MS = 900;
 const BENCHMARK_TICK_MS = 320;
 const BENCHMARK_ENEMY_HP = 999999;
-const BENCHMARK_ENEMY_TARGET = 72;
-const BENCHMARK_DANGER_FPS = 30;
-const BENCHMARK_SAFE_FPS = 40;
-const BENCHMARK_STAGES = [
-  { id: 'S1', label: 'MAX', startMs: 0, glowCount: 1, ringCount: 1, burstCount: 0, torchCount: 0, yOscillation: 0, shadowJitter: 0 },
-  { id: 'S2', label: 'Y-SHADOW', startMs: 4000, glowCount: 1, ringCount: 1, burstCount: 0, torchCount: 0, yOscillation: 58, shadowJitter: 18 },
-  { id: 'S3', label: 'LIGHT', startMs: 8000, glowCount: 9, ringCount: 4, burstCount: 0, torchCount: 0, yOscillation: 58, shadowJitter: 18 },
-  { id: 'S4', label: 'TORCH10', startMs: 12000, glowCount: 4, ringCount: 2, burstCount: 16, torchCount: 10, yOscillation: 48, shadowJitter: 14 },
-  { id: 'S5', label: 'PARTICLE', startMs: 16000, glowCount: 2, ringCount: 6, burstCount: 96, torchCount: 0, yOscillation: 34, shadowJitter: 10 },
-  { id: 'S6', label: 'ALL-IN', startMs: 20000, glowCount: 11, ringCount: 7, burstCount: 110, torchCount: 10, yOscillation: 78, shadowJitter: 24 },
+const BENCHMARK_PASS_AVG_FPS = 40;
+const BENCHMARK_PASS_MIN_FPS = 30;
+const BENCHMARK_EARLY_FAIL_FPS = 24;
+const BENCHMARK_EARLY_FAIL_AFTER_MS = 2200;
+
+const BENCHMARK_PROFILES = [
+  { id: 'A1', label: 'MAX72', enemyTarget: 72, glowCount: 11, ringCount: 7, particleCount: 110, torchCount: 10, yOscillation: 78, shadowJitter: 24 },
+  { id: 'A2', label: 'E60', enemyTarget: 60, glowCount: 9, ringCount: 6, particleCount: 80, torchCount: 8, yOscillation: 66, shadowJitter: 20 },
+  { id: 'A3', label: 'E48', enemyTarget: 48, glowCount: 7, ringCount: 5, particleCount: 56, torchCount: 7, yOscillation: 54, shadowJitter: 16 },
+  { id: 'A4', label: 'E36', enemyTarget: 36, glowCount: 5, ringCount: 4, particleCount: 36, torchCount: 5, yOscillation: 42, shadowJitter: 12 },
+  { id: 'A5', label: 'E28', enemyTarget: 28, glowCount: 4, ringCount: 3, particleCount: 24, torchCount: 4, yOscillation: 34, shadowJitter: 10 },
+  { id: 'A6', label: 'E20', enemyTarget: 20, glowCount: 3, ringCount: 2, particleCount: 14, torchCount: 3, yOscillation: 24, shadowJitter: 8 },
+  { id: 'A7', label: 'MIN20', enemyTarget: 10, glowCount: 2, ringCount: 2, particleCount: 4, torchCount: 2, yOscillation: 16, shadowJitter: 6 },
 ] as const;
+
+type BenchmarkProfile = typeof BENCHMARK_PROFILES[number];
+
 const BENCHMARK_ENEMY_TYPES: EnemyType[] = [
   'zombie',
   'skeleton',
@@ -64,73 +70,24 @@ interface BenchmarkOverlayProps {
   onComplete: (result: BenchmarkResult) => void;
 }
 
-const gradeBenchmark = (avgFps: number, minFps: number, drops: number): BenchmarkGrade => {
-  if (avgFps >= 55 && minFps >= 45 && drops <= 2) return 'PASS';
-  if (avgFps >= 45 && minFps >= 35) return 'CAUTION';
+const objectCount = (profile: BenchmarkProfile) =>
+  profile.glowCount + profile.ringCount + profile.particleCount + profile.torchCount;
+
+const stressLabel = (profile: BenchmarkProfile) =>
+  `E${profile.enemyTarget} O${objectCount(profile)} G${profile.glowCount} R${profile.ringCount} P${profile.particleCount} T${profile.torchCount}`;
+
+const gradeBenchmark = (avgFps: number, minFps: number): BenchmarkGrade => {
+  if (avgFps >= BENCHMARK_PASS_AVG_FPS && minFps >= BENCHMARK_PASS_MIN_FPS) return 'PASS';
+  if (avgFps >= 34 && minFps >= 24) return 'CAUTION';
   return 'FAIL';
 };
-
-const activeBenchmarkStage = (elapsedMs: number) => {
-  let active = BENCHMARK_STAGES[0];
-  for (const stage of BENCHMARK_STAGES) {
-    if (elapsedMs >= stage.startMs) active = stage;
-  }
-  return active;
-};
-
-const gradeRank = (grade: BenchmarkGrade) => grade === 'FAIL' ? 2 : grade === 'CAUTION' ? 1 : 0;
 
 const summarizeSamples = (samples: number[]) => {
   const valid = samples.filter(v => v > 0);
   const avgFps = valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : 0;
   const minFps = valid.length ? Math.min(...valid) : 0;
-  const drops = valid.filter(value => value < 45).length;
+  const drops = valid.filter(value => value < BENCHMARK_PASS_AVG_FPS).length;
   return { avgFps, minFps, drops };
-};
-
-type BenchmarkStressCaps = {
-  enemyTarget: number;
-  glowCount: number;
-  ringCount: number;
-  burstCount: number;
-  torchCount: number;
-  yOscillation: number;
-  shadowJitter: number;
-  adjusted: boolean;
-};
-
-const capsFromStage = (stage: typeof BENCHMARK_STAGES[number]): BenchmarkStressCaps => ({
-  enemyTarget: BENCHMARK_ENEMY_TARGET,
-  glowCount: stage.glowCount,
-  ringCount: stage.ringCount,
-  burstCount: stage.burstCount,
-  torchCount: stage.torchCount,
-  yOscillation: stage.yOscillation,
-  shadowJitter: stage.shadowJitter,
-  adjusted: false,
-});
-
-const stressLabel = (
-  caps: Pick<BenchmarkStressCaps, 'enemyTarget' | 'glowCount' | 'ringCount' | 'burstCount' | 'torchCount' | 'yOscillation'>
-) => `E${caps.enemyTarget} G${caps.glowCount} R${caps.ringCount} P${caps.burstCount} T${caps.torchCount} Y${caps.yOscillation}`;
-
-const reduceStressCaps = (caps: BenchmarkStressCaps): BenchmarkStressCaps => {
-  if (caps.burstCount > 24) return { ...caps, burstCount: Math.max(0, caps.burstCount - 24), adjusted: true };
-  if (caps.glowCount > 4) return { ...caps, glowCount: Math.max(1, caps.glowCount - 3), adjusted: true };
-  if (caps.ringCount > 3) return { ...caps, ringCount: Math.max(1, caps.ringCount - 2), adjusted: true };
-  if (caps.torchCount > 4) return { ...caps, torchCount: Math.max(0, caps.torchCount - 3), adjusted: true };
-  if (caps.yOscillation > 28) {
-    return {
-      ...caps,
-      yOscillation: Math.max(0, caps.yOscillation - 20),
-      shadowJitter: Math.max(0, caps.shadowJitter - 8),
-      adjusted: true,
-    };
-  }
-  if (caps.enemyTarget > 36) return { ...caps, enemyTarget: Math.max(24, caps.enemyTarget - 12), adjusted: true };
-  if (caps.torchCount > 0) return { ...caps, torchCount: 0, adjusted: true };
-  if (caps.glowCount > 1) return { ...caps, glowCount: 1, adjusted: true };
-  return caps;
 };
 
 const recentAverage = (samples: number[], count = 8) => {
@@ -170,13 +127,12 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);
+  const [activeAttempt, setActiveAttempt] = useState(0);
   const fpsRef = useRef(fps);
-  const samplesRef = useRef<number[]>([]);
-  const stageSamplesRef = useRef<Record<string, number[]>>({});
-  const stageCountsRef = useRef<Record<string, { enemies: number; fx: number; torches: number }>>({});
-  const stageCapsRef = useRef<Record<string, BenchmarkStressCaps>>({});
-  const stageSafeCapsRef = useRef<Record<string, BenchmarkStressCaps>>({});
-  const lastStageIdRef = useRef<string>(BENCHMARK_STAGES[0].id);
+  const attemptStartedAtRef = useRef(performance.now());
+  const attemptSamplesRef = useRef<number[]>([]);
+  const allSamplesRef = useRef<number[]>([]);
+  const completedAttemptsRef = useRef<BenchmarkStageResult[]>([]);
   const finalizedRef = useRef(false);
   const spawnedEnemyIdsRef = useRef(new Set<string>());
   const benchEnemyBaseRef = useRef<Record<string, { x: number; y: number; width: number; height: number; index: number }>>({});
@@ -198,96 +154,109 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     fpsRef.current = fps;
   }, [fps]);
 
-  const finishBenchmark = useCallback(() => {
-    if (finalizedRef.current) return;
-    finalizedRef.current = true;
-    const { avgFps, minFps, drops } = summarizeSamples(samplesRef.current);
-    const maxCounts = maxCountsRef.current;
-    const stages = BENCHMARK_STAGES.map(stage => {
-      const summary = summarizeSamples(stageSamplesRef.current[stage.id] ?? []);
-      const stageGrade = gradeBenchmark(summary.avgFps, summary.minFps, summary.drops);
-      const counts = stageCountsRef.current[stage.id] ?? { enemies: 0, fx: 0, torches: 0 };
-      const caps = stageCapsRef.current[stage.id] ?? capsFromStage(stage);
-      const safeCaps = stageSafeCapsRef.current[stage.id];
-      return {
-        id: stage.id,
-        label: stage.label,
-        grade: stageGrade,
-        avgFps: summary.avgFps,
-        minFps: summary.minFps,
-        drops: summary.drops,
-        enemyTarget: caps.enemyTarget,
-        stress: stressLabel(capsFromStage(stage)),
-        safeStress: safeCaps ? stressLabel(safeCaps) : 'not found',
-        adjusted: caps.adjusted,
-        maxTorches: counts.torches,
-        maxEnemies: counts.enemies,
-        maxFx: counts.fx,
-      };
-    });
-    const totalGradeFromFps = gradeBenchmark(avgFps, minFps, drops);
-    const worstStageGrade = stages.reduce<BenchmarkGrade>(
-      (worst, stage) => gradeRank(stage.grade) > gradeRank(worst) ? stage.grade : worst,
-      'PASS'
-    );
-    const totalGrade = gradeRank(worstStageGrade) > gradeRank(totalGradeFromFps)
-      ? worstStageGrade
-      : totalGradeFromFps;
-    const nextResult = {
-      grade: totalGrade,
-      avgFps,
-      minFps,
-      drops,
-      maxEnemies: maxCounts.enemies,
-      maxFx: maxCounts.fx,
-      maxProjectiles: maxCounts.projectiles,
-      maxPickups: maxCounts.pickups,
-      maxTorches: maxCounts.torches,
-      stageCount: BENCHMARK_STAGES.length,
-      stages,
-    };
-    setResult(nextResult);
+  const cleanupBenchmarkObjects = useCallback(() => {
     spawnedEnemyIdsRef.current.forEach(removeEnemy);
     spawnedEnemyIdsRef.current.clear();
     benchEnemyBaseRef.current = {};
     useGameStore.setState(state => ({
       breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
     }));
+  }, [removeEnemy]);
+
+  const buildAttemptResult = useCallback((profile: BenchmarkProfile, samples: number[]): BenchmarkStageResult => {
+    const summary = summarizeSamples(samples);
+    const grade = gradeBenchmark(summary.avgFps, summary.minFps);
+    return {
+      id: profile.id,
+      label: profile.label,
+      grade,
+      avgFps: summary.avgFps,
+      minFps: summary.minFps,
+      drops: summary.drops,
+      enemyTarget: profile.enemyTarget,
+      stress: stressLabel(profile),
+      safeStress: grade === 'PASS' ? stressLabel(profile) : 'not found',
+      adjusted: profile.id !== BENCHMARK_PROFILES[0].id,
+      maxTorches: maxCountsRef.current.torches,
+      maxEnemies: maxCountsRef.current.enemies,
+      maxFx: maxCountsRef.current.fx,
+    };
+  }, []);
+
+  const finishBenchmark = useCallback((finalAttempt?: BenchmarkStageResult) => {
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+    const attempts = finalAttempt
+      ? [...completedAttemptsRef.current, finalAttempt]
+      : completedAttemptsRef.current;
+    const summary = summarizeSamples(allSamplesRef.current);
+    const passAttempt = attempts.find(attempt => attempt.grade === 'PASS');
+    const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
+    const maxCounts = maxCountsRef.current;
+    const nextResult: BenchmarkResult = {
+      grade: finalGrade,
+      avgFps: summary.avgFps,
+      minFps: summary.minFps,
+      drops: summary.drops,
+      maxEnemies: maxCounts.enemies,
+      maxFx: maxCounts.fx,
+      maxProjectiles: maxCounts.projectiles,
+      maxPickups: maxCounts.pickups,
+      maxTorches: maxCounts.torches,
+      stageCount: attempts.length,
+      stages: attempts,
+    };
+    setResult(nextResult);
+    cleanupBenchmarkObjects();
     window.setTimeout(() => onComplete(nextResult), 450);
-  }, [onComplete, removeEnemy]);
+  }, [cleanupBenchmarkObjects, onComplete]);
+
+  const completeAttempt = useCallback((profile: BenchmarkProfile) => {
+    const attemptResult = buildAttemptResult(profile, attemptSamplesRef.current);
+    const isLast = activeAttempt >= BENCHMARK_PROFILES.length - 1;
+    if (attemptResult.grade === 'PASS' || isLast) {
+      finishBenchmark(attemptResult);
+      return;
+    }
+
+    completedAttemptsRef.current = [...completedAttemptsRef.current, attemptResult];
+    attemptSamplesRef.current = [];
+    attemptStartedAtRef.current = performance.now();
+    cleanupBenchmarkObjects();
+    const nextAttempt = activeAttempt + 1;
+    setActiveAttempt(nextAttempt);
+  }, [activeAttempt, buildAttemptResult, cleanupBenchmarkObjects, finishBenchmark]);
 
   useEffect(() => {
     if (result || fps <= 0) return;
-    const elapsed = performance.now() - startedAt;
-    if (elapsed < BENCHMARK_WARMUP_MS) return;
-    const stage = activeBenchmarkStage(elapsed);
-    samplesRef.current.push(fps);
-    stageSamplesRef.current[stage.id] = [...(stageSamplesRef.current[stage.id] ?? []), fps];
-  }, [fps, result, startedAt]);
+    const attemptElapsed = performance.now() - attemptStartedAtRef.current;
+    if (attemptElapsed < BENCHMARK_ATTEMPT_WARMUP_MS) return;
+    attemptSamplesRef.current.push(fps);
+    allSamplesRef.current.push(fps);
+  }, [fps, result]);
 
   useEffect(() => {
     if (result) return;
+    const profile = BENCHMARK_PROFILES[activeAttempt] ?? BENCHMARK_PROFILES[BENCHMARK_PROFILES.length - 1];
 
     const runBenchmarkTick = () => {
       const elapsed = performance.now() - startedAt;
-      if (elapsed >= BENCHMARK_DURATION_MS) {
-        finishBenchmark();
+      const attemptElapsed = performance.now() - attemptStartedAtRef.current;
+      if (attemptElapsed >= BENCHMARK_ATTEMPT_MS) {
+        completeAttempt(profile);
         return;
       }
-      const stage = activeBenchmarkStage(elapsed);
-      if (stage.id !== lastStageIdRef.current) {
-        lastStageIdRef.current = stage.id;
-        stageCapsRef.current[stage.id] = capsFromStage(stage);
+
+      const recentFps = recentAverage(attemptSamplesRef.current);
+      if (
+        attemptElapsed >= BENCHMARK_EARLY_FAIL_AFTER_MS &&
+        attemptSamplesRef.current.length >= 3 &&
+        recentFps <= BENCHMARK_EARLY_FAIL_FPS
+      ) {
+        completeAttempt(profile);
+        return;
       }
-      const currentCaps = stageCapsRef.current[stage.id] ?? capsFromStage(stage);
-      const stageSamples = stageSamplesRef.current[stage.id] ?? [];
-      const recentFps = recentAverage(stageSamples);
-      const shouldReduce = stageSamples.length >= 3 && (fpsRef.current <= BENCHMARK_DANGER_FPS || recentFps < 35);
-      const caps = shouldReduce ? reduceStressCaps(currentCaps) : currentCaps;
-      stageCapsRef.current[stage.id] = caps;
-      if (stageSamples.length >= 3 && fpsRef.current >= BENCHMARK_SAFE_FPS && recentFps >= BENCHMARK_SAFE_FPS) {
-        stageSafeCapsRef.current[stage.id] = caps;
-      }
+
       useGameStore.setState(state => ({
         isPaused: false,
         showUpgradeMenu: false,
@@ -305,20 +274,20 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           const wave = isBench && base
             ? Math.sin(elapsed * 0.011 + base.index * 0.61)
             : 0;
-          const stretch = isBench && base && caps.shadowJitter > 0
-            ? Math.sin(elapsed * 0.012 + base.index * 1.7) * caps.shadowJitter
+          const stretch = isBench && base && profile.shadowJitter > 0
+            ? Math.sin(elapsed * 0.012 + base.index * 1.7) * profile.shadowJitter
             : 0;
           return {
             ...enemy,
             x: base ? base.x : enemy.x,
-            y: base ? base.y + wave * caps.yOscillation : enemy.y,
+            y: base ? base.y + wave * profile.yOscillation : enemy.y,
             width: base ? Math.max(14, base.width + stretch) : enemy.width,
             height: base ? Math.max(16, base.height + stretch * 0.35) : enemy.height,
             speed: isBench ? 0 : Math.min(enemy.speed, 8),
             damage: 0,
             health: isBench ? BENCHMARK_ENEMY_HP : enemy.health,
             maxHealth: isBench ? BENCHMARK_ENEMY_HP : enemy.maxHealth,
-            rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
+            rootUntil: state.gameTime + BENCHMARK_ATTEMPT_MS + 5000,
           };
         }),
         breakableProps: [
@@ -326,7 +295,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           ...createBenchmarkTorches(
             state.player.x + state.player.width / 2,
             state.player.y + state.player.height / 2,
-            caps.torchCount,
+            profile.torchCount,
             elapsed
           ),
         ],
@@ -338,17 +307,19 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       const py = state.player.y + state.player.height / 2;
       const existingBenchEnemies = state.enemies.filter(e => spawnedEnemyIdsRef.current.has(e.id));
       const benchTorchCount = state.breakableProps.filter(prop => prop.id.startsWith('bench-torch-')).length;
-      const missing = Math.max(0, caps.enemyTarget - existingBenchEnemies.length);
-      if (existingBenchEnemies.length > caps.enemyTarget) {
+      const missing = Math.max(0, profile.enemyTarget - existingBenchEnemies.length);
+
+      if (existingBenchEnemies.length > profile.enemyTarget) {
         existingBenchEnemies
           .sort((a, b) => (benchEnemyBaseRef.current[b.id]?.index ?? 0) - (benchEnemyBaseRef.current[a.id]?.index ?? 0))
-          .slice(0, existingBenchEnemies.length - caps.enemyTarget)
+          .slice(0, existingBenchEnemies.length - profile.enemyTarget)
           .forEach(enemy => {
             removeEnemy(enemy.id);
             spawnedEnemyIdsRef.current.delete(enemy.id);
             delete benchEnemyBaseRef.current[enemy.id];
           });
       }
+
       maxCountsRef.current = {
         enemies: Math.max(maxCountsRef.current.enemies, state.enemies.length),
         fx: Math.max(maxCountsRef.current.fx, state.effects.length),
@@ -356,19 +327,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         pickups: Math.max(maxCountsRef.current.pickups, state.pickups.length),
         torches: Math.max(maxCountsRef.current.torches, benchTorchCount),
       };
-      const prevStageCounts = stageCountsRef.current[stage.id] ?? { enemies: 0, fx: 0, torches: 0 };
-      stageCountsRef.current[stage.id] = {
-        enemies: Math.max(prevStageCounts.enemies, state.enemies.length),
-        fx: Math.max(prevStageCounts.fx, state.effects.length),
-        torches: Math.max(prevStageCounts.torches, benchTorchCount),
-      };
 
       for (let i = 0; i < missing; i++) {
         const idx = existingBenchEnemies.length + i;
-        const angle = (idx / Math.max(1, caps.enemyTarget)) * Math.PI * 2;
+        const angle = (idx / Math.max(1, profile.enemyTarget)) * Math.PI * 2;
         const radius = 145 + (idx % 6) * 38;
         const type = BENCHMARK_ENEMY_TYPES[idx % BENCHMARK_ENEMY_TYPES.length];
-        const jitter = caps.shadowJitter > 0 ? Math.sin(elapsed * 0.012 + idx * 1.7) * caps.shadowJitter : 0;
+        const jitter = profile.shadowJitter > 0 ? Math.sin(elapsed * 0.012 + idx * 1.7) * profile.shadowJitter : 0;
         const enemy = spawnEnemyAt(type, px + Math.cos(angle) * radius, py + Math.sin(angle) * radius, state.gameTime);
         const benchEnemy = {
           ...enemy,
@@ -379,7 +344,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           damage: 0,
           health: BENCHMARK_ENEMY_HP,
           maxHealth: BENCHMARK_ENEMY_HP,
-          rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
+          rootUntil: state.gameTime + BENCHMARK_ATTEMPT_MS + 5000,
         };
         spawnedEnemyIdsRef.current.add(benchEnemy.id);
         benchEnemyBaseRef.current[benchEnemy.id] = {
@@ -393,22 +358,22 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       }
 
       const pulseAngle = elapsed * 0.002;
-      for (let i = 0; i < caps.ringCount; i++) {
-        const angle = pulseAngle + (i / caps.ringCount) * Math.PI * 2;
+      for (let i = 0; i < profile.ringCount; i++) {
+        const angle = pulseAngle + (i / profile.ringCount) * Math.PI * 2;
         const fxX = px + Math.cos(angle) * (96 + i * 28);
         const fxY = py + Math.sin(angle) * (64 + i * 18);
         spawnRing(fxX, fxY, 8, 84 + i * 12, 'rgba(96,165,250,0.72)', 3, 420);
       }
-      for (let i = 0; i < caps.glowCount; i++) {
-        const angle = pulseAngle * 1.35 + (i / caps.glowCount) * Math.PI * 2;
+      for (let i = 0; i < profile.glowCount; i++) {
+        const angle = pulseAngle * 1.35 + (i / profile.glowCount) * Math.PI * 2;
         const fxX = px + Math.cos(angle) * (86 + (i % 4) * 34);
         const fxY = py + Math.sin(angle) * (58 + (i % 3) * 24);
         spawnGlow(fxX, fxY, 58 + (i % 5) * 12, 'rgba(96,165,250,', 460);
       }
-      if (caps.burstCount > 0) {
+      if (profile.particleCount > 0) {
         const burstX = px + Math.cos(pulseAngle * 1.7) * 120;
         const burstY = py + Math.sin(pulseAngle * 1.3) * 84;
-        spawnBurst(burstX, burstY, '#93c5fd', caps.burstCount);
+        spawnBurst(burstX, burstY, '#93c5fd', profile.particleCount);
       }
       setNow(performance.now());
     };
@@ -417,28 +382,26 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     const tick = window.setInterval(runBenchmarkTick, BENCHMARK_TICK_MS);
 
     return () => window.clearInterval(tick);
-  }, [addEnemy, finishBenchmark, removeEnemy, result, spawnBurst, spawnGlow, spawnRing, startedAt]);
-
-  useEffect(() => {
-    if (result) return;
-    const finish = window.setTimeout(finishBenchmark, BENCHMARK_DURATION_MS);
-
-    return () => window.clearTimeout(finish);
-  }, [finishBenchmark, result]);
+  }, [
+    activeAttempt,
+    addEnemy,
+    completeAttempt,
+    removeEnemy,
+    result,
+    spawnBurst,
+    spawnGlow,
+    spawnRing,
+    startedAt,
+  ]);
 
   useEffect(() => () => {
-    spawnedEnemyIdsRef.current.forEach(removeEnemy);
-    spawnedEnemyIdsRef.current.clear();
-    benchEnemyBaseRef.current = {};
-    useGameStore.setState(state => ({
-      breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
-    }));
-  }, [removeEnemy]);
+    cleanupBenchmarkObjects();
+  }, [cleanupBenchmarkObjects]);
 
-  const elapsedMs = Math.min(BENCHMARK_DURATION_MS, now - startedAt);
-  const activeStage = activeBenchmarkStage(elapsedMs);
-  const progress = result ? 100 : Math.round((elapsedMs / BENCHMARK_DURATION_MS) * 100);
-  const secondsLeft = Math.max(0, Math.ceil((BENCHMARK_DURATION_MS - elapsedMs) / 1000));
+  const profile = BENCHMARK_PROFILES[activeAttempt] ?? BENCHMARK_PROFILES[BENCHMARK_PROFILES.length - 1];
+  const attemptElapsed = Math.min(BENCHMARK_ATTEMPT_MS, now - attemptStartedAtRef.current);
+  const progress = result ? 100 : Math.round((attemptElapsed / BENCHMARK_ATTEMPT_MS) * 100);
+  const secondsLeft = Math.max(0, Math.ceil((BENCHMARK_ATTEMPT_MS - attemptElapsed) / 1000));
   const gradeStyle = useMemo(() => {
     switch (result?.grade) {
       case 'PASS':
@@ -472,20 +435,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           <>
             <div>avg {result.avgFps.toFixed(1)} / min {result.minFps}</div>
             <div>drops {result.drops} / fx {result.maxFx}</div>
-            <div>enemy {result.maxEnemies} stages {result.stages.map(s => `${s.id}:${s.grade[0]}`).join(' ')}</div>
+            <div>safe {result.stages.find(stage => stage.grade === 'PASS')?.safeStress ?? 'not found'}</div>
           </>
         ) : (
           <>
-            {(() => {
-              const activeCaps = stageCapsRef.current[activeStage.id] ?? capsFromStage(activeStage);
-              return (
-                <>
-                  <div>fps {fps}</div>
-                  <div>{activeStage.id} {activeStage.label} enemy {activeCaps.enemyTarget}</div>
-                  <div>{stressLabel(activeCaps)}</div>
-                </>
-              );
-            })()}
+            <div>try {activeAttempt + 1}/{BENCHMARK_PROFILES.length} fps {fps}</div>
+            <div>{profile.id} {profile.label}</div>
+            <div>{stressLabel(profile)}</div>
           </>
         )}
       </div>

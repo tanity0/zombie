@@ -10,6 +10,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.142 - Retry benchmark until safe stress is found (Codex)
+
+### Summary
+- Changed benchmark mode from fixed category stages to retry-search behavior.
+- The benchmark now starts from a heavy all-in profile and, if it fails,
+  reruns with lighter profiles until it finds a passing condition.
+- Retry profiles step down through:
+  - `A1 MAX72`: enemy 72 plus heavy object/effect load.
+  - `A2 E60`
+  - `A3 E48`
+  - `A4 E36`
+  - `A5 E28`
+  - `A6 E20`
+  - `A7 MIN20`: enemy 10 plus object/effect total 10, for combined 20.
+- The first profile that holds `avg >= 40fps` and `min >= 30fps` becomes the
+  passing safe setting shown as `40+` in the result.
+- If even `A7 MIN20` fails, the benchmark result is `FAIL`.
+
+### Conclusion
+- This is now useful for tuning: the result tells which enemy/object/effect
+  budget passed, instead of only saying that the initial high-load test failed.
+
+### Performance
+- Load score: `8/10`.
+- Affected subsystem: benchmark-only rendering and simulation stress.
+- Normal gameplay is unaffected. Benchmark remains bounded and cleans up
+  spawned enemies/torches after each retry and at completion.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.141 - Isolate benchmark from normal gameplay (Codex)
 
 ### Summary
