@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.137 - Expand benchmark stress categories (Codex)
+
+### Summary
+- Expanded benchmark mode from three generic stages to five drawing-stress
+  stages.
+- New stages:
+  - `S1 BASE`: enemy 12, glow 1, ring 1, particle 0.
+  - `S2 GLOW`: enemy 16, glow 8, ring 3, particle 0.
+  - `S3 PARTICLE`: enemy 18, glow 2, ring 2, particle burst 42.
+  - `S4 SHADOW`: enemy 44, glow 1, ring 1, particle burst 8, shadow-size jitter.
+  - `S5 MIX`: enemy 64, glow 8, ring 5, particle burst 52, shadow-size jitter.
+- Result screen now shows each stage's stress values as `E/G/R/P` alongside
+  average FPS, minimum FPS, drops, and judgement.
+- Benchmark remains hands-free and exits to the result screen after completion.
+
+### Performance
+- Load score: `6/10`.
+- Affected subsystem: rendering and simulation.
+- This is benchmark-only, bounded by fixed stage targets, short effect
+  durations, and the existing effect pool cap. Normal gameplay is unaffected.
+- Smartphone risk: medium; `S5 MIX` intentionally combines enemy/normal-shadow
+  redraw, glow, ring, and particle pressure to expose mobile Safari limits.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.136 - Add staged benchmark logs (Codex)
 
 ### Summary

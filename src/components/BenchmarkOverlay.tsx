@@ -3,14 +3,16 @@ import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import type { EnemyType } from '../types/game';
 
-const BENCHMARK_DURATION_MS = 12000;
+const BENCHMARK_DURATION_MS = 20000;
 const BENCHMARK_WARMUP_MS = 1600;
 const BENCHMARK_TICK_MS = 320;
 const BENCHMARK_ENEMY_HP = 999999;
 const BENCHMARK_STAGES = [
-  { id: 'S1', label: 'LIGHT', startMs: 0, enemyTarget: 12, pulseCount: 1 },
-  { id: 'S2', label: 'MED', startMs: 4000, enemyTarget: 18, pulseCount: 2 },
-  { id: 'S3', label: 'HEAVY', startMs: 8000, enemyTarget: 26, pulseCount: 4 },
+  { id: 'S1', label: 'BASE', startMs: 0, enemyTarget: 12, glowCount: 1, ringCount: 1, burstCount: 0, shadowJitter: 0 },
+  { id: 'S2', label: 'GLOW', startMs: 4000, enemyTarget: 16, glowCount: 8, ringCount: 3, burstCount: 0, shadowJitter: 0 },
+  { id: 'S3', label: 'PARTICLE', startMs: 8000, enemyTarget: 18, glowCount: 2, ringCount: 2, burstCount: 42, shadowJitter: 0 },
+  { id: 'S4', label: 'SHADOW', startMs: 12000, enemyTarget: 44, glowCount: 1, ringCount: 1, burstCount: 8, shadowJitter: 10 },
+  { id: 'S5', label: 'MIX', startMs: 16000, enemyTarget: 64, glowCount: 8, ringCount: 5, burstCount: 52, shadowJitter: 16 },
 ] as const;
 const BENCHMARK_ENEMY_TYPES: EnemyType[] = [
   'zombie',
@@ -31,6 +33,7 @@ export type BenchmarkStageResult = {
   minFps: number;
   drops: number;
   enemyTarget: number;
+  stress: string;
   maxEnemies: number;
   maxFx: number;
 };
@@ -44,6 +47,7 @@ export type BenchmarkResult = {
   maxFx: number;
   maxProjectiles: number;
   maxPickups: number;
+  stageCount: number;
   stages: BenchmarkStageResult[];
 };
 
@@ -84,6 +88,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const stageSamplesRef = useRef<Record<string, number[]>>({});
   const stageCountsRef = useRef<Record<string, { enemies: number; fx: number }>>({});
   const spawnedEnemyIdsRef = useRef(new Set<string>());
+  const benchEnemyBaseRef = useRef<Record<string, { width: number; height: number; index: number }>>({});
   const maxCountsRef = useRef({
     enemies: 0,
     fx: 0,
@@ -93,6 +98,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
   const addEnemy = useGameStore(state => state.addEnemy);
   const removeEnemy = useGameStore(state => state.removeEnemy);
+  const spawnBurst = useGameStore(state => state.spawnBurst);
   const spawnRing = useGameStore(state => state.spawnRing);
   const spawnGlow = useGameStore(state => state.spawnGlow);
 
@@ -109,6 +115,8 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     if (result) return;
 
     const tick = window.setInterval(() => {
+      const elapsed = performance.now() - startedAt;
+      const stage = activeBenchmarkStage(elapsed);
       useGameStore.setState(state => ({
         isPaused: false,
         showUpgradeMenu: false,
@@ -120,20 +128,27 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           invulnerableTime: Date.now(),
           experience: 0,
         },
-        enemies: state.enemies.map(enemy => ({
-          ...enemy,
-          speed: spawnedEnemyIdsRef.current.has(enemy.id) ? 0 : Math.min(enemy.speed, 8),
-          damage: 0,
-          health: spawnedEnemyIdsRef.current.has(enemy.id) ? BENCHMARK_ENEMY_HP : enemy.health,
-          maxHealth: spawnedEnemyIdsRef.current.has(enemy.id) ? BENCHMARK_ENEMY_HP : enemy.maxHealth,
-          rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
-        })),
+        enemies: state.enemies.map(enemy => {
+          const isBench = spawnedEnemyIdsRef.current.has(enemy.id);
+          const base = benchEnemyBaseRef.current[enemy.id];
+          const stretch = isBench && base && stage.shadowJitter > 0
+            ? Math.sin(elapsed * 0.012 + base.index * 1.7) * stage.shadowJitter
+            : 0;
+          return {
+            ...enemy,
+            width: base ? Math.max(14, base.width + stretch) : enemy.width,
+            height: base ? Math.max(16, base.height + stretch * 0.35) : enemy.height,
+            speed: isBench ? 0 : Math.min(enemy.speed, 8),
+            damage: 0,
+            health: isBench ? BENCHMARK_ENEMY_HP : enemy.health,
+            maxHealth: isBench ? BENCHMARK_ENEMY_HP : enemy.maxHealth,
+            rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
+          };
+        }),
         pickups: state.pickups.filter(pickup => pickup.type !== 'experience'),
       }));
 
       const state = useGameStore.getState();
-      const elapsed = performance.now() - startedAt;
-      const stage = activeBenchmarkStage(elapsed);
       const px = state.player.x + state.player.width / 2;
       const py = state.player.y + state.player.height / 2;
       const existingBenchEnemies = state.enemies.filter(e => spawnedEnemyIdsRef.current.has(e.id));
@@ -155,10 +170,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         const angle = (idx / stage.enemyTarget) * Math.PI * 2 + elapsed * 0.00015;
         const radius = 210 + (idx % 3) * 34;
         const type = BENCHMARK_ENEMY_TYPES[idx % BENCHMARK_ENEMY_TYPES.length];
+        const jitter = stage.shadowJitter > 0 ? Math.sin(elapsed * 0.012 + idx * 1.7) * stage.shadowJitter : 0;
         const enemy = spawnEnemyAt(type, px + Math.cos(angle) * radius, py + Math.sin(angle) * radius, state.gameTime);
         const benchEnemy = {
           ...enemy,
           id: `bench-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+          width: enemy.width + jitter,
+          height: enemy.height + jitter * 0.35,
           speed: 0,
           damage: 0,
           health: BENCHMARK_ENEMY_HP,
@@ -166,22 +184,33 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
         };
         spawnedEnemyIdsRef.current.add(benchEnemy.id);
+        benchEnemyBaseRef.current[benchEnemy.id] = { width: enemy.width, height: enemy.height, index: idx };
         addEnemy(benchEnemy);
       }
 
       const pulseAngle = elapsed * 0.002;
-      for (let i = 0; i < stage.pulseCount; i++) {
-        const angle = pulseAngle + (i / stage.pulseCount) * Math.PI * 2;
+      for (let i = 0; i < stage.ringCount; i++) {
+        const angle = pulseAngle + (i / stage.ringCount) * Math.PI * 2;
         const fxX = px + Math.cos(angle) * (96 + i * 28);
         const fxY = py + Math.sin(angle) * (64 + i * 18);
         spawnRing(fxX, fxY, 8, 84 + i * 12, 'rgba(96,165,250,0.72)', 3, 420);
-        spawnGlow(fxX, fxY, 58 + i * 8, 'rgba(96,165,250,', 460);
+      }
+      for (let i = 0; i < stage.glowCount; i++) {
+        const angle = pulseAngle * 1.35 + (i / stage.glowCount) * Math.PI * 2;
+        const fxX = px + Math.cos(angle) * (86 + (i % 4) * 34);
+        const fxY = py + Math.sin(angle) * (58 + (i % 3) * 24);
+        spawnGlow(fxX, fxY, 58 + (i % 5) * 12, 'rgba(96,165,250,', 460);
+      }
+      if (stage.burstCount > 0) {
+        const burstX = px + Math.cos(pulseAngle * 1.7) * 120;
+        const burstY = py + Math.sin(pulseAngle * 1.3) * 84;
+        spawnBurst(burstX, burstY, '#93c5fd', stage.burstCount);
       }
       setNow(performance.now());
     }, BENCHMARK_TICK_MS);
 
     return () => window.clearInterval(tick);
-  }, [addEnemy, result, spawnGlow, spawnRing, startedAt]);
+  }, [addEnemy, result, spawnBurst, spawnGlow, spawnRing, startedAt]);
 
   useEffect(() => {
     if (result) return;
@@ -200,6 +229,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           minFps: summary.minFps,
           drops: summary.drops,
           enemyTarget: stage.enemyTarget,
+          stress: `E${stage.enemyTarget} G${stage.glowCount} R${stage.ringCount} P${stage.burstCount}`,
           maxEnemies: counts.enemies,
           maxFx: counts.fx,
         };
@@ -220,11 +250,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         maxFx: maxCounts.fx,
         maxProjectiles: maxCounts.projectiles,
         maxPickups: maxCounts.pickups,
+        stageCount: BENCHMARK_STAGES.length,
         stages,
       };
       setResult(nextResult);
       spawnedEnemyIdsRef.current.forEach(removeEnemy);
       spawnedEnemyIdsRef.current.clear();
+      benchEnemyBaseRef.current = {};
       window.setTimeout(() => onComplete(nextResult), 450);
     }, BENCHMARK_DURATION_MS);
 
@@ -234,6 +266,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   useEffect(() => () => {
     spawnedEnemyIdsRef.current.forEach(removeEnemy);
     spawnedEnemyIdsRef.current.clear();
+    benchEnemyBaseRef.current = {};
   }, [removeEnemy]);
 
   const elapsedMs = Math.min(BENCHMARK_DURATION_MS, now - startedAt);
@@ -279,7 +312,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           <>
             <div>fps {fps}</div>
             <div>{activeStage.id} {activeStage.label} enemy {activeStage.enemyTarget}</div>
-            <div>pulse x{activeStage.pulseCount}</div>
+            <div>g{activeStage.glowCount} r{activeStage.ringCount} p{activeStage.burstCount}</div>
           </>
         )}
       </div>

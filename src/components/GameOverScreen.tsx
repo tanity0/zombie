@@ -59,7 +59,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : 'ゲームオーバー'}
           </h2>
           <p className="text-[13px] text-white/60 mt-1">
-            {isBenchmark ? '8秒の簡易負荷テストが完了しました' : won ? '森を生き延びた' : '闇に飲み込まれました'}
+            {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '闇に飲み込まれました'}
           </p>
         </div>
         <div className="px-4 pb-4">
@@ -87,7 +87,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 {benchmarkResult.stages.map(stage => (
                   <div key={stage.id} className="grid grid-cols-[44px_1fr_42px] items-center gap-2 text-[10px] text-white/65 tabular-nums">
                     <span className="text-white/80">{stage.id}</span>
-                    <span>{stage.label} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops}</span>
+                    <span>{stage.label} {stage.stress} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops}</span>
                     <span className={
                       stage.grade === 'PASS'
                         ? 'text-emerald-200'
