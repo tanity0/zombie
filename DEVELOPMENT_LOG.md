@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.144 - Isolate benchmark attempt measurements (Codex)
+
+### Summary
+- Tightened benchmark measurement isolation between attempts.
+- Attempt warm-up is now `1600ms` so the one-second FPS counter is less likely
+  to include frames from the previous attempt.
+- Benchmark cleanup now clears temporary visual effects as well as benchmark
+  enemies and torches.
+- Each attempt now tracks its own max enemy/fx/torch counts instead of using
+  only the whole-run maximum.
+- Result rows now show sample count as `n...` so suspicious low-sample results
+  are visible.
+
+### Conclusion
+- Stage 2 and later could look suspicious because effects and FPS counter
+  windows from the previous attempt could bleed into the next attempt. This
+  patch makes attempt results cleaner and easier to audit.
+
+### Performance
+- Load score: `2/10`.
+- Affected subsystem: benchmark measurement and cleanup only.
+- Normal gameplay is unaffected.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.143 - Run benchmark from low to high load (Codex)
 
 ### Summary

@@ -4,7 +4,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import type { BreakableProp, EnemyType } from '../types/game';
 
 const BENCHMARK_ATTEMPT_MS = 5000;
-const BENCHMARK_ATTEMPT_WARMUP_MS = 900;
+const BENCHMARK_ATTEMPT_WARMUP_MS = 1600;
 const BENCHMARK_TICK_MS = 320;
 const BENCHMARK_ENEMY_HP = 999999;
 const BENCHMARK_PASS_AVG_FPS = 40;
@@ -49,6 +49,7 @@ export type BenchmarkStageResult = {
   maxTorches: number;
   maxEnemies: number;
   maxFx: number;
+  sampleCount: number;
 };
 
 export type BenchmarkResult = {
@@ -143,6 +144,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     pickups: 0,
     torches: 0,
   });
+  const attemptMaxCountsRef = useRef({
+    enemies: 0,
+    fx: 0,
+    torches: 0,
+  });
 
   const addEnemy = useGameStore(state => state.addEnemy);
   const removeEnemy = useGameStore(state => state.removeEnemy);
@@ -160,6 +166,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     benchEnemyBaseRef.current = {};
     useGameStore.setState(state => ({
       breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
+      effects: [],
     }));
   }, [removeEnemy]);
 
@@ -177,9 +184,10 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       stress: stressLabel(profile),
       safeStress: grade === 'PASS' ? stressLabel(profile) : 'not found',
       adjusted: profile.id !== BENCHMARK_PROFILES[0].id,
-      maxTorches: maxCountsRef.current.torches,
-      maxEnemies: maxCountsRef.current.enemies,
-      maxFx: maxCountsRef.current.fx,
+      maxTorches: attemptMaxCountsRef.current.torches,
+      maxEnemies: attemptMaxCountsRef.current.enemies,
+      maxFx: attemptMaxCountsRef.current.fx,
+      sampleCount: samples.length,
     };
   }, []);
 
@@ -221,6 +229,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
     completedAttemptsRef.current = [...completedAttemptsRef.current, attemptResult];
     attemptSamplesRef.current = [];
+    attemptMaxCountsRef.current = { enemies: 0, fx: 0, torches: 0 };
     attemptStartedAtRef.current = performance.now();
     cleanupBenchmarkObjects();
     const nextAttempt = activeAttempt + 1;
@@ -326,6 +335,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         projectiles: Math.max(maxCountsRef.current.projectiles, state.projectiles.length),
         pickups: Math.max(maxCountsRef.current.pickups, state.pickups.length),
         torches: Math.max(maxCountsRef.current.torches, benchTorchCount),
+      };
+      attemptMaxCountsRef.current = {
+        enemies: Math.max(attemptMaxCountsRef.current.enemies, state.enemies.length),
+        fx: Math.max(attemptMaxCountsRef.current.fx, state.effects.length),
+        torches: Math.max(attemptMaxCountsRef.current.torches, benchTorchCount),
       };
 
       for (let i = 0; i < missing; i++) {
