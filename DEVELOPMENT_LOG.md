@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.130 - Replace normal ellipse shadows with cast shadows (Codex)
+
+### Summary
+- Removed the always-on player/enemy elliptical foot shadow from normal
+  rendering.
+- Made the normal stage-light shadow a wider capsule stroke derived from the
+  previous foot-shadow ellipse shape, so `sunlight` casts a short right/down
+  shadow without a separate round blob under actors.
+- Kept strong-event shadows, 2DHD fog, bloom, DOF, light shafts, and local glow
+  behavior unchanged.
+
+### Performance
+- Load score: `1/10`.
+- Normal shadow draw count is lower than before: player/enemy no longer draw
+  both a directional stroke and a separate ellipse. The same pooled
+  `shadowGfx` path is used.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.129 - Strengthen sunlight directional shadows (Codex)
 
 ### Summary

@@ -25,7 +25,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
-import { enemyFootBox, enemyShadow, playerFootBox } from './renderSpec';
+import { enemyFootBox, playerFootBox } from './renderSpec';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
@@ -262,8 +262,10 @@ const drawDirectionalShadow = (
   const uy = lighting.direction.y / mag;
   const scale = Math.max(0.7, Math.min(1.55, w / 42));
   const length = lighting.shadowLength * scale;
-  const width = Math.max(2, w * 0.13);
-  g.moveTo(cx + ux * 2, cy - 1 + uy * 2)
+  const radiusX = w * 0.55;
+  const radiusY = w * 0.18;
+  const width = Math.max(3, Math.hypot(radiusX * uy, radiusY * ux) * 2);
+  g.moveTo(cx + ux * 1.5, cy - 1 + uy * 1.5)
     .lineTo(cx + ux * length, cy - 1 + uy * length)
     .stroke({
       width,
@@ -1455,17 +1457,14 @@ export class PixiScene {
     g.clear();
     const pf = playerFootBox(player);
     drawDirectionalShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 1, ACTIVE_STAGE_LIGHTING);
-    drawShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 0.46);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
-      const { alpha } = enemyShadow(e);
       const fb = enemyFootBox(e);
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
       const shadowW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
       drawDirectionalShadow(g, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, ACTIVE_STAGE_LIGHTING);
-      drawShadow(g, e.x + e.width / 2, footY - 2, shadowW, alpha * horizonAlpha);
     }
   }
 
