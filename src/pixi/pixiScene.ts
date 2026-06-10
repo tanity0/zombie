@@ -78,7 +78,7 @@ const BLOOM_SCALE = 1.5;
 const BLOOM_STRONG_EVENT_SCALE = 0;
 const BLOOM_BLUR = 8;
 const EVENT_SHADOW_ATTACK_MS = 70;
-const EVENT_SHADOW_RELEASE_MS = 200;
+const EVENT_SHADOW_RELEASE_MS = 220;
 
 type StageLightingPreset = {
   name: 'sunlight' | 'moonlight';
@@ -870,7 +870,7 @@ export class PixiScene {
       this.eventShadowReleaseStartBlend = this.eventShadowBlend;
     }
     this.eventShadowReleaseProgress = Math.min(1, this.eventShadowReleaseProgress + dt / EVENT_SHADOW_RELEASE_MS);
-    const easedRelease = this.eventShadowReleaseProgress * this.eventShadowReleaseProgress;
+    const easedRelease = 1 - Math.cos(this.eventShadowReleaseProgress * Math.PI * 0.5);
     this.eventShadowBlend = Math.max(0, this.eventShadowReleaseStartBlend * (1 - easedRelease));
     if (this.eventShadowBlend <= 0.01) {
       this.eventShadowBlend = 0;
@@ -1474,8 +1474,8 @@ export class PixiScene {
           const castThickness = Math.hypot(shadowRadiusX * ny, shadowRadiusY * nx) * 2;
           const shadowLayers = actor.source === 'actor'
             ? [
-                { distance: 0.72, width: 0.9, alpha: 0.22 },
-                { distance: 1.08, width: 0.74, alpha: 0.11 },
+                { distance: 0.72, width: 0.92, alpha: 0.21 },
+                { distance: 1.08, width: 0.86, alpha: 0.1 },
               ]
             : [
                 { distance: 0.95, width: 1.1, alpha: 0.12 },

@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.159 - Smooth shadow return curve and align auxiliary widths (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shadow-return-sine-width-2026-06-10`
+  - Tag: `pre-shadow-return-sine-width-v0.25.158`
+- Reduced the remaining snap feeling when event shadows return:
+  - `EVENT_SHADOW_RELEASE_MS`: `200 -> 220`
+  - release easing changed from quadratic to sine ease-in:
+    `progress * progress` -> `1 - cos(progress * PI * 0.5)`
+  - this keeps the slower start but softens the final acceleration.
+- Aligned auxiliary actor shadow stroke widths so the non-main layers do not
+  feel like mismatched thicknesses:
+  - mid auxiliary stroke: `width 0.90 / alpha 0.22`
+    -> `width 0.92 / alpha 0.21`
+  - long auxiliary stroke: `width 0.74 / alpha 0.11`
+    -> `width 0.86 / alpha 0.10`
+- Rendering count is unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: low to medium. Return should feel less abrupt; auxiliary shadow
+  widths may now read more cohesive but slightly heavier.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.158 - Raise auxiliary event shadow visibility (Codex)
 
 ### Summary
