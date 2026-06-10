@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.146 - Sample benchmark FPS on tick (Codex)
+
+### Summary
+- Fixed benchmark attempts after A1 sometimes showing `avg 0.0 / min 0 / n0`.
+- Benchmark FPS samples are now collected inside the benchmark tick from
+  `fpsRef.current` every 500ms after warm-up.
+- Removed dependency on React `fps` prop changes for sample collection, because
+  a stable 60fps value may not re-render and therefore produced no samples.
+
+### Conclusion
+- The screenshot symptom was a measurement bug, not a true E20 performance
+  failure.
+- A2 and later attempts should now record samples even when the FPS display
+  stays at a constant 60.
+
+### Performance
+- Load score: `1/10`.
+- Affected subsystem: benchmark measurement logic only.
+- No benchmark stress values or normal gameplay rendering cost were changed.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.145 - Clarify benchmark safe limit result (Codex)
 
 ### Summary

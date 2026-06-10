@@ -6,6 +6,7 @@ import type { BreakableProp, EnemyType } from '../types/game';
 const BENCHMARK_ATTEMPT_MS = 5000;
 const BENCHMARK_ATTEMPT_WARMUP_MS = 1600;
 const BENCHMARK_TICK_MS = 320;
+const BENCHMARK_SAMPLE_MS = 500;
 const BENCHMARK_ENEMY_HP = 999999;
 const BENCHMARK_PASS_AVG_FPS = 40;
 const BENCHMARK_PASS_MIN_FPS = 30;
@@ -131,6 +132,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const [activeAttempt, setActiveAttempt] = useState(0);
   const fpsRef = useRef(fps);
   const attemptStartedAtRef = useRef(performance.now());
+  const lastSampleAtRef = useRef(0);
   const attemptSamplesRef = useRef<number[]>([]);
   const allSamplesRef = useRef<number[]>([]);
   const completedAttemptsRef = useRef<BenchmarkStageResult[]>([]);
@@ -232,18 +234,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     attemptSamplesRef.current = [];
     attemptMaxCountsRef.current = { enemies: 0, fx: 0, torches: 0 };
     attemptStartedAtRef.current = performance.now();
+    lastSampleAtRef.current = 0;
     cleanupBenchmarkObjects();
     const nextAttempt = activeAttempt + 1;
     setActiveAttempt(nextAttempt);
   }, [activeAttempt, buildAttemptResult, cleanupBenchmarkObjects, finishBenchmark]);
-
-  useEffect(() => {
-    if (result || fps <= 0) return;
-    const attemptElapsed = performance.now() - attemptStartedAtRef.current;
-    if (attemptElapsed < BENCHMARK_ATTEMPT_WARMUP_MS) return;
-    attemptSamplesRef.current.push(fps);
-    allSamplesRef.current.push(fps);
-  }, [fps, result]);
 
   useEffect(() => {
     if (result) return;
@@ -251,7 +246,17 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
     const runBenchmarkTick = () => {
       const elapsed = performance.now() - startedAt;
-      const attemptElapsed = performance.now() - attemptStartedAtRef.current;
+      const tickNow = performance.now();
+      const attemptElapsed = tickNow - attemptStartedAtRef.current;
+      if (
+        attemptElapsed >= BENCHMARK_ATTEMPT_WARMUP_MS &&
+        tickNow - lastSampleAtRef.current >= BENCHMARK_SAMPLE_MS &&
+        fpsRef.current > 0
+      ) {
+        attemptSamplesRef.current.push(fpsRef.current);
+        allSamplesRef.current.push(fpsRef.current);
+        lastSampleAtRef.current = tickNow;
+      }
       if (attemptElapsed >= BENCHMARK_ATTEMPT_MS) {
         completeAttempt(profile);
         return;
