@@ -37,7 +37,6 @@ const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
 const FAR_BACKDROP_BLUR = 1.1;
-const GROUND_BASE_BLUR = 0.8;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
@@ -55,6 +54,7 @@ const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 2.2;
+const FRONT_FOREST_FADE_IN_RATIO = 0.34;
 const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 125;
 const MERCHANT_TARGET_HEIGHT = 100;
@@ -96,6 +96,8 @@ type StageLightingPreset = {
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
 const STAGE_LIGHT_SHAFT_DRIFT_PX = 18;
 const STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX = 620;
+const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
+const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
@@ -367,11 +369,12 @@ export class PixiScene {
   private worldFadeMaskTexture: Texture | null = null;
   private horizonForestFadeMask = new Sprite(Texture.WHITE);
   private horizonForestFadeMaskTexture: Texture | null = null;
+  private frontForestFadeMask = new Sprite(Texture.WHITE);
+  private frontForestFadeMaskTexture: Texture | null = null;
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
   private farBackdropBlur: BlurFilter | null = null;
-  private groundBaseBlur: BlurFilter | null = null;
   private frontForestBlur: BlurFilter | null = null;
 
   private fireflies: Firefly[] = [];
@@ -415,20 +418,14 @@ export class PixiScene {
     this.L.worldGroup.addChild(this.worldFadeMask);
     this.L.horizonForest.mask = this.horizonForestFadeMask;
     this.L.horizonForest.parent.addChild(this.horizonForestFadeMask);
+    this.L.frontForest.mask = this.frontForestFadeMask;
+    this.L.frontForest.parent.addChild(this.frontForestFadeMask);
 
     this.farBackdropBlur = new BlurFilter({
       strength: FAR_BACKDROP_BLUR,
       quality: 2,
     });
     this.L.farBackdrop.filters = [this.farBackdropBlur];
-
-    if (GROUND_BASE_BLUR > 0) {
-      this.groundBaseBlur = new BlurFilter({
-        strength: GROUND_BASE_BLUR,
-        quality: 2,
-      });
-      this.L.groundBase.filters = [this.groundBaseBlur];
-    }
 
     if (FRONT_FOREST_BLUR > 0) {
       this.frontForestBlur = new BlurFilter({
@@ -537,6 +534,8 @@ export class PixiScene {
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
     this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
+    this.updateFrontForestFadeMask(w, frontH);
+    this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
     // Full-screen atmosphere overlays.
     this.gradeSprite.width = w;
     this.gradeSprite.height = h;
@@ -583,10 +582,12 @@ export class PixiScene {
     }
   }
 
-  private syncStageLightShaftDrift(player: Player) {
+  private syncStageLightShaftDrift(player: Player, now: number) {
     const t = (playerFootBox(player).footX % STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX) / STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX;
     const drift = Math.sin(t * Math.PI * 2) * STAGE_LIGHT_SHAFT_DRIFT_PX;
     this.stageLightShaftGfx.position.set(drift, 0);
+    this.stageLightShaftGfx.alpha =
+      1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT;
   }
 
   private farBackdropHeight() {
@@ -672,6 +673,29 @@ export class PixiScene {
     this.worldFadeMask.height = h;
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = texture;
+  }
+
+  private updateFrontForestFadeMask(w: number, frontH: number) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = Math.max(1, Math.ceil(frontH));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(Math.min(1, FRONT_FOREST_FADE_IN_RATIO), 'rgba(255,255,255,0.56)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const texture = Texture.from(canvas);
+    this.frontForestFadeMask.texture = texture;
+    this.frontForestFadeMask.width = w;
+    this.frontForestFadeMask.height = frontH;
+    this.frontForestFadeMaskTexture?.destroy(true);
+    this.frontForestFadeMaskTexture = texture;
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -868,6 +892,7 @@ export class PixiScene {
       -s.camera.x * FRONT_FOREST_PARALLAX_X,
       0
     );
+    this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
 
     this.syncTrees(s.camera);
     this.syncCastle(s.castleEvent, now);
@@ -877,7 +902,7 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies);
-    this.syncStageLightShaftDrift(s.player);
+    this.syncStageLightShaftDrift(s.player, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -2550,14 +2575,15 @@ export class PixiScene {
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
-    this.L.groundBase.filters = [];
-    this.groundBaseBlur?.destroy();
-    this.groundBaseBlur = null;
     this.L.groundBase.destroy({ children: true });
     this.L.horizonForest.destroy();
     this.horizonForestFadeMask.destroy();
     this.horizonForestFadeMaskTexture?.destroy(true);
     this.horizonForestFadeMaskTexture = null;
+    this.L.frontForest.mask = null;
+    this.frontForestFadeMask.destroy();
+    this.frontForestFadeMaskTexture?.destroy(true);
+    this.frontForestFadeMaskTexture = null;
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;

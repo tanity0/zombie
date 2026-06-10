@@ -10,6 +10,39 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.157 - Pulse light shafts and fade foreground blur (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-light-pulse-front-blur-2026-06-11`
+  - Tag: `pre-light-pulse-front-blur-v0.25.156`
+- Removed the full-ground blur added in `v0.25.156`:
+  - deleted `GROUND_BASE_BLUR`
+  - removed the `groundBase` blur filter setup and destroy path
+- Kept foreground forest blur, but constrained its visible range with a vertical
+  fade mask:
+  - `FRONT_FOREST_BLUR = 2.2`
+  - `FRONT_FOREST_FADE_IN_RATIO = 0.34`
+  - top of the front forest is transparent, then fades in toward the bottom
+- Added a very subtle environmental light shaft pulse:
+  - `STAGE_LIGHT_SHAFT_PULSE_MS = 5200`
+  - `STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08`
+  - no new sprites, filters, or light layers; only the existing shaft graphics'
+    alpha changes over time.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `-1` to `+1` versus `v0.25.156`.
+- Current normal-play estimate before change: `39-65`.
+- Expected normal-play estimate after change: roughly `38-66`.
+- Visual risk: medium. The whole ground should no longer be blurred, but the
+  foreground forest blur fade may need tuning on device if the top edge is too
+  visible or too hidden.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.156 - Blur near foreground instead of fading it (Codex)
 
 ### Summary
