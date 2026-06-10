@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.156 - Blur near foreground instead of fading it (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-near-blur-foreground-2026-06-11`
+  - Tag: `pre-near-blur-foreground-v0.25.155`
+- Removed the pale near-ground fade sprite and its per-frame sync.
+- Restored the foreground forest color treatment:
+  - `FRONT_FOREST_ALPHA`: `0.68 -> 0.78`
+  - removed `FRONT_FOREST_TINT`
+- Replaced the pale foreground treatment with blur:
+  - `GROUND_BASE_BLUR = 0.8`
+  - `FRONT_FOREST_BLUR = 2.2`
+- Slightly brightened the stage environmental light shafts:
+  - sunlight `shaftAlpha`: `0.07 -> 0.085`
+  - moonlight `shaftAlpha`: `0.035 -> 0.045`
+- Kept stage light shaft motion tied to player horizontal movement.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+2` to `+5`.
+- Current normal-play estimate before change: `37-60`.
+- Expected normal-play estimate after change: roughly `39-65`.
+- Visual risk: medium. The pale wash is gone, but the added blur may soften the
+  entire ground base rather than only the very front edge.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.155 - Fade near ground and front forest (Codex)
 
 ### Summary
