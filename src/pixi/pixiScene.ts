@@ -212,10 +212,16 @@ const TORCH_LIGHT_RADIUS = 92;
 const TORCH_EMBER_COUNT = 7;
 const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
+const STRONG_GLOW_RADIUS = 44;
+const EFFECT_VIEWPORT_MARGIN = 180;
+const TORCH_VIEWPORT_MARGIN = 170;
+const TORCH_FAR_FADE_MARGIN = 120;
+const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
+const SMALL_GLOW_RADIUS_SCALE = 0.88;
+const SMALL_GLOW_ALPHA_SCALE = 0.74;
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
-const STRONG_GLOW_RADIUS = 44;
 const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
@@ -308,6 +314,8 @@ interface PickupView {
   sprite?: Sprite;
 }
 
+type EffectView = Container | Graphics | Text | Sprite;
+
 // One drifting ambient mote.
 interface Firefly {
   sprite: Sprite;
@@ -337,7 +345,7 @@ export class PixiScene {
 
   private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
-  private effects = new Map<string, Container | Graphics | Text>();
+  private effects = new Map<string, EffectView>();
 
   private shadowGfx = new Graphics();
   private groundReflectionGfx = new Graphics();
@@ -725,6 +733,57 @@ export class PixiScene {
     return this.depthScaleWith(footWorldY, ENEMY_DEPTH_K, ENEMY_DEPTH_MIN, ENEMY_DEPTH_MAX);
   }
 
+  private isPointNearViewport(
+    x: number,
+    y: number,
+    camera: { x: number; y: number },
+    margin = EFFECT_VIEWPORT_MARGIN
+  ) {
+    return x >= camera.x - margin &&
+      x <= camera.x + this.screenW + margin &&
+      y >= camera.y - margin &&
+      y <= camera.y + this.screenH + margin;
+  }
+
+  private distanceOutsideViewport(x: number, y: number, margin = 0) {
+    const left = -this.L.world.position.x - margin;
+    const top = -this.L.world.position.y - margin;
+    const right = left + this.screenW + margin * 2;
+    const bottom = top + this.screenH + margin * 2;
+    const dx = x < left ? left - x : x > right ? x - right : 0;
+    const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
+    return Math.hypot(dx, dy);
+  }
+
+  private effectNearViewport(e: VisualEffect, camera: { x: number; y: number }) {
+    switch (e.kind) {
+      case 'flash':
+        return true;
+      case 'particle':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size * 4);
+      case 'damageNumber':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
+      case 'ring':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.endRadius);
+      case 'glow':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.radius);
+      case 'slash':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.length);
+      case 'trail':
+        return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
+          this.isPointNearViewport(e.toX, e.toY, camera);
+      case 'dogFetch':
+        return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
+          this.isPointNearViewport(e.targetX, e.targetY, camera) ||
+          this.isPointNearViewport(e.toX, e.toY, camera);
+    }
+  }
+
+  private hideEffectView(id: string) {
+    const view = this.effects.get(id);
+    if (view) view.visible = false;
+  }
+
   private snapToScreenPixel(worldValue: number, worldOffset: number): number {
     return Math.round(worldValue + worldOffset) - worldOffset;
   }
@@ -804,8 +863,8 @@ export class PixiScene {
     this.syncShadows(s.player, s.enemies);
     this.syncProjectiles(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
-    this.syncEffects(s.effects, now);
-    this.syncGroundReflections(s.pickups, s.projectiles, s.effects, now);
+    this.syncEffects(s.effects, s.camera, now);
+    this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
     this.syncLocalEventLighting(
       s.effects,
       s.player,
@@ -1108,6 +1167,7 @@ export class PixiScene {
     pickups: Pickup[],
     projectiles: Projectile[],
     effects: VisualEffect[],
+    camera: { x: number; y: number },
     now: number
   ) {
     const g = this.groundReflectionGfx;
@@ -1175,6 +1235,7 @@ export class PixiScene {
 
     for (const e of effects) {
       if (e.kind !== 'glow') continue;
+      if (!this.isPointNearViewport(e.x, e.y, camera, e.radius + EFFECT_VIEWPORT_MARGIN)) continue;
       const t = Math.min(1, (now - e.createdAt) / e.duration);
       const horizonAlpha = this.horizonActorAlpha(e.y);
       if (t >= 1 || horizonAlpha <= 0) continue;
@@ -1393,36 +1454,51 @@ export class PixiScene {
     const visualH = TORCH_VISUAL_H * prop.scale;
     const sc = tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
     const horizonAlpha = this.horizonActorAlpha(prop.footY);
-    const pulse = 0.82 + 0.18 * Math.sin(now / 130 + prop.footX * 0.03);
     const flameX = Math.round(prop.footX);
     const flameY = Math.round(prop.footY - visualH * d * 0.72);
+    const viewportDistance = this.distanceOutsideViewport(prop.footX, prop.footY, TORCH_VIEWPORT_MARGIN);
+    const visibleTorch = viewportDistance <= 0 && horizonAlpha > 0;
+    const outsideScreenDistance = this.distanceOutsideViewport(prop.footX, prop.footY, 0);
+    const farFade = 1 - Math.max(0, Math.min(1, outsideScreenDistance / TORCH_FAR_FADE_MARGIN));
+    const torchAlpha = horizonAlpha * (0.84 + 0.16 * farFade);
+    const pulse = visibleTorch
+      ? 0.82 + 0.18 * Math.sin(now / 130 + prop.footX * 0.03)
+      : 0.94;
 
     view.container.zIndex = prop.footY;
-    view.container.alpha = horizonAlpha;
+    view.container.alpha = torchAlpha;
     view.sprite.position.set(Math.round(prop.footX), Math.round(prop.footY));
-    view.sprite.visible = !!tex;
+    view.sprite.visible = !!tex && visibleTorch;
     if (tex) {
       view.sprite.texture = tex;
       view.sprite.scale.set(sc);
     }
 
-    view.light.visible = horizonAlpha > 0;
+    if (!visibleTorch) {
+      view.light.visible = false;
+      view.reflection.visible = false;
+      view.flame.clear();
+      view.overlay.clear();
+      return;
+    }
+
+    view.light.visible = true;
     view.light.position.set(prop.footX, flameY + 6);
     view.light.tint = 0xffb45f;
     view.light.width = TORCH_LIGHT_RADIUS * d * pulse * 2;
     view.light.height = TORCH_LIGHT_RADIUS * d * pulse * 1.45;
-    view.light.alpha = 0.18 * horizonAlpha * pulse;
+    view.light.alpha = 0.18 * torchAlpha * pulse * (0.84 + 0.16 * farFade);
 
-    view.reflection.visible = horizonAlpha > 0;
+    view.reflection.visible = true;
     view.reflection.position.set(prop.footX, prop.footY + 3 * d);
     view.reflection.tint = 0xff9f1c;
     view.reflection.width = TORCH_REFLECTION_W * d * prop.scale * pulse;
     view.reflection.height = TORCH_REFLECTION_H * d * prop.scale * (0.86 + 0.14 * pulse);
-    view.reflection.alpha = 0.2 * horizonAlpha * pulse;
+    view.reflection.alpha = 0.2 * torchAlpha * pulse * (0.82 + 0.18 * farFade);
 
     const f = view.flame;
     f.clear();
-    if (horizonAlpha > 0) {
+    if (torchAlpha > 0) {
       const r = 5.5 * d * prop.scale * pulse;
       const sway = Math.sin(now / 160 + prop.footX * 0.015) * r * 0.55;
       f.circle(flameX, flameY + 3, r * 5.1).fill({ color: 0xff9f1c, alpha: 0.09 });
@@ -1440,7 +1516,7 @@ export class PixiScene {
         const drift = Math.sin(now / (230 + i * 29) + seed * 9) * r * (0.9 + i * 0.12);
         const ex = flameX + drift;
         const ey = flameY - r * (1.7 + rise * 9.5);
-        const emberAlpha = horizonAlpha * Math.sin(rise * Math.PI) * (0.18 + (i % 3) * 0.05);
+        const emberAlpha = torchAlpha * Math.sin(rise * Math.PI) * (0.18 + (i % 3) * 0.05);
         const emberR = r * (0.22 + (i % 3) * 0.08);
         f.circle(ex, ey, emberR * 2.4).fill({ color: 0xff9f1c, alpha: emberAlpha * 0.28 });
         f.circle(ex, ey, emberR).fill({ color: i % 2 === 0 ? 0xfef3c7 : 0xfbbf24, alpha: emberAlpha });
@@ -1959,15 +2035,21 @@ export class PixiScene {
 
   // ---- world-space effects[] queue -----------------------------------------
 
-  private syncEffects(effects: VisualEffect[], now: number) {
+  private syncEffects(effects: VisualEffect[], camera: { x: number; y: number }, now: number) {
     const seen = new Set<string>();
     for (const e of effects) {
       if (e.kind === 'flash') continue; // screen-space, handled separately
       seen.add(e.id);
+      if (!this.effectNearViewport(e, camera)) {
+        this.hideEffectView(e.id);
+        continue;
+      }
       if (e.kind === 'damageNumber') {
         this.drawDamageNumber(e, now);
       } else if (e.kind === 'dogFetch') {
         this.drawDogFetchSprite(e, now);
+      } else if (e.kind === 'glow' && e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) {
+        this.drawSmallGlowSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
         const targetLayer = e.kind === 'trail' || (e.kind === 'glow' && e.radius >= STRONG_GLOW_RADIUS)
@@ -1991,6 +2073,7 @@ export class PixiScene {
   }
 
   private drawEffectGfx(g: Graphics, e: VisualEffect, now: number) {
+    g.visible = true;
     g.clear();
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     switch (e.kind) {
@@ -2072,6 +2155,36 @@ export class PixiScene {
     }
   }
 
+  private glowTint(color: string) {
+    const match = color.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (!match) return 0xffffff;
+    const r = Math.max(0, Math.min(255, Number(match[1])));
+    const g = Math.max(0, Math.min(255, Number(match[2])));
+    const b = Math.max(0, Math.min(255, Number(match[3])));
+    return (r << 16) | (g << 8) | b;
+  }
+
+  private drawSmallGlowSprite(e: Extract<VisualEffect, { kind: 'glow' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite)) {
+      if (sprite) sprite.destroy();
+      sprite = new Sprite(getGlowTexture());
+      sprite.anchor.set(0.5);
+      sprite.blendMode = 'add';
+      this.L.effectLayer.addChild(sprite);
+      this.effects.set(e.id, sprite);
+    }
+    const life = Math.max(0, 1 - t);
+    const radius = e.radius * SMALL_GLOW_RADIUS_SCALE;
+    sprite.visible = true;
+    sprite.position.set(e.x, e.y);
+    sprite.tint = this.glowTint(e.color);
+    sprite.width = radius * 2;
+    sprite.height = radius * 2;
+    sprite.alpha = life * SMALL_GLOW_ALPHA_SCALE;
+  }
+
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     const outRatio = (e.pickupAt - e.createdAt) / e.duration;
@@ -2106,6 +2219,7 @@ export class PixiScene {
       this.effects.set(e.id, container);
     }
 
+    container.visible = true;
     const shadow = container.getChildByName('shadow') as Graphics | undefined;
     const sprite = container.getChildByName('sprite') as Sprite | undefined;
     const pose = this.dogFetchPose(e, now);
@@ -2148,6 +2262,7 @@ export class PixiScene {
       this.L.effectLayer.addChild(txt);
       this.effects.set(e.id, txt);
     }
+    txt.visible = true;
     const pop = 1 + Math.max(0, 1 - t * 5) * (bold ? 0.22 : 0.14);
     txt.position.set(e.x, e.y - t * 12);
     txt.scale.set(pop);

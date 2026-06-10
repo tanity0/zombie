@@ -10,6 +10,50 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.150 - Optimize lightweight Pixi effects (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-perf-budget-2026-06-10`
+  - Tag: `pre-perf-budget-v0.25.149`
+- Kept 2DHD fog, depth blur, bloom, DOF-style filtering, and strong-event
+  lighting intact.
+- Converted small glow effects below the strong-event threshold to a single
+  cached radial Sprite draw in Pixi instead of several Graphics circles.
+- Slightly tightened only small glow radius and duration at spawn time.
+  Strong-event glows at `44+` radius are not reduced.
+- Skipped drawing world-space effects outside the camera plus viewport margin:
+  particles, rings, glow, slash, trails, dog fetch sprite, and damage numbers.
+  Effects remain in state and age normally; this is render-side culling only.
+- Skipped offscreen torch rendering outside a viewport margin and reduced torch
+  light/reflection strength only near the edge margin.
+- Skipped glow ground reflections when their glow is offscreen plus margin.
+
+### Performance
+- Old load score: `3/10`.
+- Performance Budget Score expected improvement: `-8` to `-22`.
+- Current normal-play estimate before change: `45-55`.
+- Expected normal-play estimate after change: roughly `38-48` when small glows
+  and offscreen effects are active.
+- Main reduced costs:
+  - small glow Graphics work
+  - offscreen effect draw calls
+  - offscreen torch pulse/flame/ember work
+  - offscreen glow ground reflections
+- Visual risk: low to medium. Small glow can look slightly tighter, and torch
+  light near screen edges can feel a little less broad. Strong event glows,
+  boss/death/counter/finisher lighting, global bloom/fog/blur/DOF, and actor
+  layer filter structure are unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/store/gameStore.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.149 - Add benchmark result copy button (Codex)
 
 ### Summary

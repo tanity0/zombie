@@ -53,6 +53,10 @@ export const SHOP_MEDKIT_COST = 50;
 export const SHOP_VACCINE_COST = 1000;
 const SHOP_MEDKIT_HEAL = 20;
 const SHOP_INTERACT_RING_MS = 360;
+const STRONG_GLOW_RADIUS = 44;
+const SMALL_GLOW_RADIUS_SCALE = 0.9;
+const SMALL_GLOW_DURATION_SCALE = 0.82;
+const SMALL_GLOW_MIN_DURATION_MS = 80;
 // `finish` = a melee finisher executed a normal enemy, or finisher-grade
 // damage landed on a stunned boss (drives the kill.mp3 sound).
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
@@ -2524,13 +2528,18 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spawnGlow: (x, y, radius, color, duration = 320) => {
     const now = Date.now();
+    const small = radius < STRONG_GLOW_RADIUS;
+    const tunedRadius = small ? radius * SMALL_GLOW_RADIUS_SCALE : radius;
+    const tunedDuration = small
+      ? Math.max(SMALL_GLOW_MIN_DURATION_MS, Math.round(duration * SMALL_GLOW_DURATION_SCALE))
+      : duration;
     set(state => {
       const next = [...state.effects, {
         kind: 'glow' as const,
         id: `fx-glow-${now}-${Math.random().toString(36).slice(2, 6)}`,
-        x, y, radius, color,
+        x, y, radius: tunedRadius, color,
         createdAt: now,
-        duration
+        duration: tunedDuration
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
