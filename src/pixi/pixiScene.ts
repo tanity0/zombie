@@ -840,7 +840,7 @@ export class PixiScene {
     const actorDepth = this.depthScale(footY);
     const baseScale = Math.max(0.7, Math.min(1.55, shadowW / 42));
     const fixedLength = ACTIVE_STAGE_LIGHTING.shadowLength * baseScale;
-    const eventLength = (96 + light.radius * 1.65) * falloff * actorDepth;
+    const eventLength = (74 + light.radius * 1.22) * falloff * actorDepth;
     const normalDirection = ACTIVE_STAGE_LIGHTING.direction;
     const eventDirection = { x: groundDx / groundDist, y: groundDy / groundDist };
     const direction = {
@@ -1474,8 +1474,8 @@ export class PixiScene {
           const castThickness = Math.hypot(shadowRadiusX * ny, shadowRadiusY * nx) * 2;
           const shadowLayers = actor.source === 'actor'
             ? [
-                { distance: 0.95, width: 0.96, alpha: 0.09 },
-                { distance: 0.62, width: 0.86, alpha: 0.15 },
+                { distance: 0.7, width: 0.88, alpha: 0.16 },
+                { distance: 1.05, width: 0.7, alpha: 0.055 },
               ]
             : [
                 { distance: 0.95, width: 1.1, alpha: 0.12 },

@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.157 - Balance event shadow layers (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shadow-layer-balance-2026-06-10`
+  - Tag: `pre-shadow-layer-balance-v0.25.156`
+- Rebalanced actor event-shadow layers so dense shadows stay shorter and long
+  shadows read as thin falloff:
+  - main unified actor shadow event length: `(96 + radius * 1.65)` -> `(74 + radius * 1.22)`
+  - actor auxiliary mid shadow: `distance 0.62 / alpha 0.15` -> `distance 0.70 / alpha 0.16`
+  - actor auxiliary long shadow: `distance 0.95 / alpha 0.09` -> `distance 1.05 / alpha 0.055`
+- Rendering count is unchanged: one main normal-shadow stroke plus two faint
+  actor auxiliary event strokes.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: medium. The dense stretched shadow should feel less overlong,
+  but the long falloff may be too subtle on mobile.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.156 - Ease shadow return and darken shadows (Codex)
 
 ### Summary
