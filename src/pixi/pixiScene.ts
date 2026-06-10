@@ -1179,10 +1179,12 @@ export class PixiScene {
           const actorY = Math.round(actor.y);
           const dx = actorX - lightX;
           const dy = actorY - lightY;
-          const dist = Math.hypot(dx, dy);
           const falloff = actor.falloff;
-          const nx = dx / dist;
-          const ny = dy / dist;
+          const groundDx = dx;
+          const groundDy = dy * 0.6;
+          const groundDist = Math.hypot(groundDx, groundDy) || 1;
+          const nx = groundDx / groundDist;
+          const ny = groundDy / groundDist;
           const actorDepth = this.depthScale(actor.y);
           const len = (118 + e.radius * 1.9) * falloff * actorDepth * Math.min(1.55, actor.strength);
           const shadowRadiusX = Math.max(4, actor.w * 0.55);
@@ -1190,6 +1192,7 @@ export class PixiScene {
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
           const startX = actorX + nx * Math.min(3, shadowRadiusX * 0.12);
           const startY = actorY + ny * Math.min(2, shadowRadiusY * 0.35) - 1;
+          const castThickness = Math.hypot(shadowRadiusX * ny, shadowRadiusY * nx) * 2;
           g.ellipse(actorX, actorY - 1, shadowRadiusX, shadowRadiusY)
             .fill({ color: 0x000000, alpha: alpha * 0.72 });
           [
@@ -1197,12 +1200,12 @@ export class PixiScene {
             { distance: 0.62, width: 1, alpha: 0.25 },
             { distance: 0.36, width: 0.92, alpha: 0.48 },
           ].forEach(shadow => {
-            const endX = actorX + nx * len * shadow.distance;
-            const endY = actorY + ny * len * 0.6 * shadow.distance - 1;
+            const endX = startX + nx * len * shadow.distance;
+            const endY = startY + ny * len * shadow.distance;
             g.moveTo(startX, startY)
               .lineTo(endX, endY)
               .stroke({
-                width: Math.max(2, shadowRadiusY * 2 * shadow.width),
+                width: Math.max(2, castThickness * shadow.width),
                 color: 0x000000,
                 alpha: alpha * shadow.alpha,
                 cap: 'round',

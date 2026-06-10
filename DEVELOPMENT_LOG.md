@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.123 - Match event shadow thickness to foot-shadow shape (Codex)
+
+### Summary
+- Kept the rounded-stroke strong-event shadow approach from `v0.25.122`.
+- Folded the ground-perspective Y compression into the shared cast direction so
+  all three shadow layers extend along the same vector.
+- Set stroke thickness from the foot-shadow ellipse cross-section perpendicular
+  to the cast direction, so vertically stretching shadows inherit the foot
+  shadow's wider horizontal body instead of using only its thin height.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+### Handoff notes
+- The three cast-shadow layers still vary by `distance`, `width`, and `alpha`.
+- If vertical cast shadows now feel too heavy, tune the per-layer `width`
+  multipliers before changing the foot-shadow-derived thickness formula.
+
 ## 2026-06-10 - v0.25.122 - Restore stretched event shadows with round strokes (Codex)
 
 ### Summary
