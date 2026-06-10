@@ -3,8 +3,11 @@ import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import type { EnemyType } from '../types/game';
 
-const BENCHMARK_DURATION_MS = 20000;
-const BENCHMARK_ENEMY_TARGET = 10;
+const BENCHMARK_DURATION_MS = 8000;
+const BENCHMARK_WARMUP_MS = 1600;
+const BENCHMARK_ENEMY_TARGET = 12;
+const BENCHMARK_TICK_MS = 320;
+const BENCHMARK_ENEMY_HP = 999999;
 const BENCHMARK_ENEMY_TYPES: EnemyType[] = [
   'zombie',
   'skeleton',
@@ -57,13 +60,36 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps }) => {
 
   useEffect(() => {
     if (result || fps <= 0) return;
+    if (performance.now() - startedAt < BENCHMARK_WARMUP_MS) return;
     samplesRef.current.push(fps);
-  }, [fps, result]);
+  }, [fps, result, startedAt]);
 
   useEffect(() => {
     if (result) return;
 
     const tick = window.setInterval(() => {
+      useGameStore.setState(state => ({
+        isPaused: false,
+        showUpgradeMenu: false,
+        upgradeOptions: [],
+        player: {
+          ...state.player,
+          health: state.player.maxHealth,
+          invulnerable: true,
+          invulnerableTime: Date.now(),
+          experience: 0,
+        },
+        enemies: state.enemies.map(enemy => ({
+          ...enemy,
+          speed: spawnedEnemyIdsRef.current.has(enemy.id) ? 0 : Math.min(enemy.speed, 8),
+          damage: 0,
+          health: spawnedEnemyIdsRef.current.has(enemy.id) ? BENCHMARK_ENEMY_HP : enemy.health,
+          maxHealth: spawnedEnemyIdsRef.current.has(enemy.id) ? BENCHMARK_ENEMY_HP : enemy.maxHealth,
+          rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
+        })),
+        pickups: state.pickups.filter(pickup => pickup.type !== 'experience'),
+      }));
+
       const state = useGameStore.getState();
       const elapsed = performance.now() - startedAt;
       const px = state.player.x + state.player.width / 2;
@@ -88,6 +114,8 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps }) => {
           id: `bench-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
           speed: 0,
           damage: 0,
+          health: BENCHMARK_ENEMY_HP,
+          maxHealth: BENCHMARK_ENEMY_HP,
           rootUntil: state.gameTime + BENCHMARK_DURATION_MS + 5000,
         };
         spawnedEnemyIdsRef.current.add(benchEnemy.id);
@@ -100,7 +128,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps }) => {
       spawnRing(fxX, fxY, 8, 84, 'rgba(96,165,250,0.72)', 3, 420);
       spawnGlow(fxX, fxY, 58, 'rgba(96,165,250,', 460);
       setNow(performance.now());
-    }, 850);
+    }, BENCHMARK_TICK_MS);
 
     return () => window.clearInterval(tick);
   }, [addEnemy, result, spawnGlow, spawnRing, startedAt]);

@@ -10,6 +10,52 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.134 - Prevent benchmark pause skew (Codex)
+
+### Summary
+- Prevented benchmark mode from being skewed by level-up pauses.
+- During benchmark mode, upgrade menus are forced closed, pause is cleared,
+  XP pickups are filtered out, and player experience is kept at zero.
+- Benchmark-spawned enemies now use very high HP so auto-fire does not kill
+  them and generate XP during the short test.
+- FPS sampling ignores the first 1.6 seconds as warm-up so startup spikes do
+  not become false `min 1` failures.
+
+### Performance
+- Load score: `2/10`.
+- Benchmark-only guardrails run on the same bounded interval as the benchmark.
+  Normal play remains unaffected unless benchmark mode is active.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+## 2026-06-10 - v0.25.133 - Make benchmark faster and hands-free (Codex)
+
+### Summary
+- Shortened benchmark mode from 20 seconds to 8 seconds.
+- Increased the controlled benchmark enemy target to 12 and emits stress
+  pulses more frequently for a quicker read.
+- During benchmark mode, the player is kept healed/invulnerable and enemies are
+  made non-damaging/rooted so the user does not need to move or fight.
+
+### Performance
+- Load score: `2/10`.
+- Benchmark-only load is intentionally higher while active. Normal play remains
+  unaffected because the code runs only through the benchmark overlay.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.132 - Add quick benchmark mode (Codex)
 
 ### Summary
