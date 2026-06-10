@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.149 - Add benchmark result copy button (Codex)
+
+### Summary
+- Added a benchmark-only copy button to the result screen.
+- The button copies a plain-text BENCH report for sharing in the debug chat.
+- Copied report includes:
+  - version, grade, avg/min/drops, enemy/fx
+  - safe/stop
+  - device verdict
+  - NET RTT and MAIN DELAY
+  - weak bottleneck
+  - category summaries
+  - per-stage details
+- Uses `navigator.clipboard.writeText` when available, with a textarea
+  `execCommand('copy')` fallback for local HTTP/iOS Safari cases.
+
+### Performance
+- Normal gameplay score impact: `0`.
+- BENCH result screen only; no rendering stress values changed.
+
+### Code touched
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.148 - Add BENCH network and main-thread diagnostics (Codex)
 
 ### Summary

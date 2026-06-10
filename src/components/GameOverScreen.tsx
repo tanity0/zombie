@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore } from '../utils/resultScoring';
@@ -12,6 +12,48 @@ interface GameOverScreenProps {
   benchmarkResult?: BenchmarkResult | null;
 }
 
+const formatBenchmarkShareText = (result: BenchmarkResult): string => {
+  const safeStage = result.stages.filter(stage => stage.grade === 'PASS').at(-1);
+  const stopStage = result.stages.find(stage => stage.grade !== 'PASS');
+  const stageLines = result.stages.map(stage =>
+    `${stage.id} ${stage.category} ${stage.label}: ${stage.grade} avg ${stage.avgFps.toFixed(1)} min ${stage.minFps} drops ${stage.drops} n${stage.sampleCount} / ${stage.stress}`
+  );
+
+  return [
+    `BENCH v${typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown'}`,
+    `grade: ${result.grade === 'PASS' ? 'SAFE' : result.grade}`,
+    `summary: avg ${result.avgFps.toFixed(1)} min ${result.minFps} drops ${result.drops} enemy/fx ${result.maxEnemies}/${result.maxFx}`,
+    `safe: ${safeStage?.safeStress ?? 'not found'}`,
+    `stop: ${stopStage ? `${stopStage.label} ${stopStage.grade}` : 'max passed'}`,
+    `device: ${result.diagnostics.verdict}`,
+    `net: avg ${result.diagnostics.netRttAvg.toFixed(0)}ms max ${result.diagnostics.netRttMax.toFixed(0)}ms n${result.diagnostics.netSamples} fail${result.diagnostics.netFailures}`,
+    `main: avg ${result.diagnostics.mainDelayAvg.toFixed(0)}ms max ${result.diagnostics.mainDelayMax.toFixed(0)}ms n${result.diagnostics.mainSamples}`,
+    `weak: ${result.bottleneck}`,
+    ...result.categorySummary,
+    'stages:',
+    ...stageLines,
+  ].join('\n');
+};
+
+const copyText = async (text: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error('copy failed');
+};
+
 const GameOverScreen: React.FC<GameOverScreenProps> = ({
   stats,
   onReturnToMenu,
@@ -19,6 +61,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   won = false,
   benchmarkResult = null
 }) => {
+  const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const {
     damageScore,
     comboScore,
@@ -49,6 +92,22 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const isBenchmark = benchmarkResult !== null;
   const safeBenchmarkStage = benchmarkResult?.stages.filter(stage => stage.grade === 'PASS').at(-1);
   const stoppedBenchmarkStage = benchmarkResult?.stages.find(stage => stage.grade !== 'PASS');
+  const benchmarkShareText = useMemo(
+    () => benchmarkResult ? formatBenchmarkShareText(benchmarkResult) : '',
+    [benchmarkResult]
+  );
+
+  const handleCopyBenchmark = async () => {
+    if (!benchmarkShareText) return;
+    try {
+      await copyText(benchmarkShareText);
+      setBenchmarkCopyState('copied');
+      window.setTimeout(() => setBenchmarkCopyState('idle'), 1600);
+    } catch {
+      setBenchmarkCopyState('failed');
+      window.setTimeout(() => setBenchmarkCopyState('idle'), 2200);
+    }
+  };
 
   return (
     <div
@@ -144,6 +203,17 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </div>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={handleCopyBenchmark}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-[11px] font-semibold text-white/85"
+              >
+                {benchmarkCopyState === 'copied'
+                  ? 'コピーしました'
+                  : benchmarkCopyState === 'failed'
+                    ? 'コピー失敗'
+                    : 'ベンチ結果をコピー'}
+              </button>
             </div>
           )}
           <div className="grid grid-cols-2 gap-2 mb-3">
