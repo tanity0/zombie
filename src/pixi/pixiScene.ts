@@ -77,6 +77,8 @@ const BLOOM_THRESHOLD = 0.45;  // lower → colored gems/crits bloom too
 const BLOOM_SCALE = 1.5;
 const BLOOM_STRONG_EVENT_SCALE = 0;
 const BLOOM_BLUR = 8;
+const EVENT_SHADOW_ATTACK_MS = 70;
+const EVENT_SHADOW_RELEASE_MS = 170;
 
 type StageLightingPreset = {
   name: 'sunlight' | 'moonlight';
@@ -385,6 +387,9 @@ export class PixiScene {
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
   private fxPrevNow = 0;
+  private eventShadowBlend = 0;
+  private eventShadowPrevNow = 0;
+  private eventShadowLight: StrongEventLight | null = null;
 
   private screenW = 1;
   private screenH = 1;
@@ -818,9 +823,10 @@ export class PixiScene {
     footX: number,
     footY: number,
     shadowW: number,
-    light: StrongEventLight | null
+    light: StrongEventLight | null,
+    blend: number
   ) {
-    if (!light) return undefined;
+    if (!light || blend <= 0.01) return undefined;
     const dx = footX - light.x;
     const dy = footY - light.y;
     const groundDx = dx;
@@ -833,12 +839,34 @@ export class PixiScene {
     const baseScale = Math.max(0.7, Math.min(1.55, shadowW / 42));
     const fixedLength = ACTIVE_STAGE_LIGHTING.shadowLength * baseScale;
     const eventLength = (96 + light.radius * 1.65) * falloff * actorDepth;
+    const normalDirection = ACTIVE_STAGE_LIGHTING.direction;
+    const eventDirection = { x: groundDx / groundDist, y: groundDy / groundDist };
+    const direction = {
+      x: normalDirection.x + (eventDirection.x - normalDirection.x) * blend,
+      y: normalDirection.y + (eventDirection.y - normalDirection.y) * blend,
+    };
+    const eventAlpha = Math.min(0.58, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha);
     return {
-      direction: { x: groundDx / groundDist, y: groundDy / groundDist },
-      length: Math.max(fixedLength, eventLength),
-      alpha: Math.min(0.58, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha),
+      direction,
+      length: fixedLength + (Math.max(fixedLength, eventLength) - fixedLength) * blend,
+      alpha: ACTIVE_STAGE_LIGHTING.shadowAlpha + (eventAlpha - ACTIVE_STAGE_LIGHTING.shadowAlpha) * blend,
       color: 0x000000,
     };
+  }
+
+  private syncEventShadowBlend(activeLight: StrongEventLight | null, now: number) {
+    const dt = this.eventShadowPrevNow ? Math.min(80, Math.max(0, now - this.eventShadowPrevNow)) : 16;
+    this.eventShadowPrevNow = now;
+    if (activeLight) {
+      this.eventShadowLight = activeLight;
+      this.eventShadowBlend = Math.min(1, this.eventShadowBlend + dt / EVENT_SHADOW_ATTACK_MS);
+      return;
+    }
+    this.eventShadowBlend = Math.max(0, this.eventShadowBlend - dt / EVENT_SHADOW_RELEASE_MS);
+    if (this.eventShadowBlend <= 0.01) {
+      this.eventShadowBlend = 0;
+      this.eventShadowLight = null;
+    }
   }
 
   private snapToScreenPixel(worldValue: number, worldOffset: number): number {
@@ -1611,6 +1639,9 @@ export class PixiScene {
     const g = this.shadowGfx;
     g.clear();
     const eventLight = this.strongestEventLight(effects, camera, now);
+    this.syncEventShadowBlend(eventLight, now);
+    const blendedEventLight = this.eventShadowLight;
+    const eventShadowBlend = this.eventShadowBlend;
     const pf = playerFootBox(player);
     const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
     const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW);
@@ -1621,7 +1652,7 @@ export class PixiScene {
       playerShadowW,
       1,
       ACTIVE_STAGE_LIGHTING,
-      this.eventShadowOptions(pf.footX, pf.footY, playerShadowW, eventLight)
+      this.eventShadowOptions(pf.footX, pf.footY, playerShadowW, blendedEventLight, eventShadowBlend)
     );
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
@@ -1638,7 +1669,7 @@ export class PixiScene {
         shadowW,
         horizonAlpha,
         ACTIVE_STAGE_LIGHTING,
-        this.eventShadowOptions(e.x + e.width / 2, footY, shadowW, eventLight)
+        this.eventShadowOptions(e.x + e.width / 2, footY, shadowW, blendedEventLight, eventShadowBlend)
       );
     }
   }

@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.154 - Smooth event shadow return (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-event-shadow-smooth-return-2026-06-10`
+  - Tag: `pre-event-shadow-smooth-return-v0.25.153`
+- Smoothed the return from stretched strong-event actor shadows back to normal
+  directional shadows.
+- Kept the implementation lightweight:
+  - one scene-level event-shadow blend value
+  - short attack/release timing
+  - cached last strong glow only while the return animation is fading out
+  - no extra shadow layer, filter, blur, dynamic shadow map, or per-actor history
+- The shadow direction, length, and alpha now interpolate back to the normal
+  sunlight preset instead of snapping immediately when the strong glow ends.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0` to `+1`.
+- Current normal-play estimate before change: `32-43`.
+- Expected normal-play estimate after change: roughly `32-44`.
+- Visual risk: low to medium. The return should feel smoother; if it feels too
+  floaty, reduce `EVENT_SHADOW_RELEASE_MS`.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.153 - Unify actor event shadows (Codex)
 
 ### Summary
