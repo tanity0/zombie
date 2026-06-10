@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.163 - Speed up foreground forest parallax (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-front-forest-parallax-speed-2026-06-11`
+  - Tag: `pre-front-forest-parallax-speed-v0.25.162`
+- Increased foreground forest horizontal parallax speed:
+  - `FRONT_FOREST_PARALLAX_X`: `0.52 -> 0.68`
+- No new sprites, filters, layers, or draw calls.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `40-73`.
+- Expected normal-play estimate after change: roughly `40-73`.
+- Visual risk: low to medium. If the foreground forest feels too screen-attached
+  or too fast while moving, tune the constant downward.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.162 - Grade near-ground blur strength (Codex)
 
 ### Summary
