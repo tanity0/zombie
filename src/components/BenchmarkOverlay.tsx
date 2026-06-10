@@ -12,6 +12,9 @@ const BENCHMARK_PASS_AVG_FPS = 40;
 const BENCHMARK_PASS_MIN_FPS = 30;
 const BENCHMARK_EARLY_FAIL_FPS = 24;
 const BENCHMARK_EARLY_FAIL_AFTER_MS = 2200;
+const BENCHMARK_NET_SAMPLE_COUNT = 12;
+const BENCHMARK_NET_SAMPLE_GAP_MS = 650;
+const BENCHMARK_MAIN_DELAY_SAMPLE_MS = 250;
 
 const BENCHMARK_PROFILES = [
   { id: 'B1', category: 'BASE', label: 'BASE', enemyTarget: 10, glowCount: 1, ringCount: 1, particleCount: 4, torchCount: 2, yOscillation: 12, shadowJitter: 4 },
@@ -80,6 +83,18 @@ export type BenchmarkResult = {
   stages: BenchmarkStageResult[];
   categorySummary: string[];
   bottleneck: string;
+  diagnostics: BenchmarkDiagnostics;
+};
+
+export type BenchmarkDiagnostics = {
+  netRttAvg: number;
+  netRttMax: number;
+  netSamples: number;
+  netFailures: number;
+  mainDelayAvg: number;
+  mainDelayMax: number;
+  mainSamples: number;
+  verdict: string;
 };
 
 interface BenchmarkOverlayProps {
@@ -144,6 +159,39 @@ const summarizeCategories = (attempts: BenchmarkStageResult[]) => {
   };
 };
 
+const summarizeDiagnostics = (
+  netSamples: number[],
+  netFailures: number,
+  mainDelaySamples: number[]
+): BenchmarkDiagnostics => {
+  const avg = (values: number[]) =>
+    values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  const netRttAvg = avg(netSamples);
+  const netRttMax = netSamples.length ? Math.max(...netSamples) : 0;
+  const mainDelayAvg = avg(mainDelaySamples);
+  const mainDelayMax = mainDelaySamples.length ? Math.max(...mainDelaySamples) : 0;
+  const networkBad = netFailures >= 3 || netRttAvg >= 150 || netRttMax >= 450;
+  const mainBad = mainDelayAvg >= 28 || mainDelayMax >= 140;
+  const verdict = networkBad
+    ? mainBad
+      ? 'network + device unstable'
+      : 'network unstable'
+    : mainBad
+      ? 'device hot / main-thread unstable'
+      : 'network OK / device OK';
+
+  return {
+    netRttAvg,
+    netRttMax,
+    netSamples: netSamples.length,
+    netFailures,
+    mainDelayAvg,
+    mainDelayMax,
+    mainSamples: mainDelaySamples.length,
+    verdict,
+  };
+};
+
 const createBenchmarkTorches = (px: number, py: number, count: number, elapsed: number): BreakableProp[] => {
   const torches: BreakableProp[] = [];
   for (let i = 0; i < count; i++) {
@@ -182,6 +230,9 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const lastSampleAtRef = useRef(0);
   const attemptSamplesRef = useRef<number[]>([]);
   const allSamplesRef = useRef<number[]>([]);
+  const netRttSamplesRef = useRef<number[]>([]);
+  const netFailuresRef = useRef(0);
+  const mainDelaySamplesRef = useRef<number[]>([]);
   const completedAttemptsRef = useRef<BenchmarkStageResult[]>([]);
   const finalizedRef = useRef(false);
   const spawnedEnemyIdsRef = useRef(new Set<string>());
@@ -252,6 +303,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
     const displaySummary = passAttempt ?? summary;
     const categorySummary = summarizeCategories(attempts);
+    const diagnostics = summarizeDiagnostics(
+      netRttSamplesRef.current,
+      netFailuresRef.current,
+      mainDelaySamplesRef.current
+    );
     const maxCounts = maxCountsRef.current;
     const nextResult: BenchmarkResult = {
       grade: finalGrade,
@@ -267,6 +323,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       stages: attempts,
       categorySummary: categorySummary.lines,
       bottleneck: categorySummary.bottleneck,
+      diagnostics,
     };
     setResult(nextResult);
     cleanupBenchmarkObjects();
@@ -290,6 +347,42 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     cleanupBenchmarkObjects();
     setActiveAttempt(nextAttempt);
   }, [activeAttempt, buildAttemptResult, cleanupBenchmarkObjects, finishBenchmark]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+    const runNetworkSamples = async () => {
+      const baseUrl = `${window.location.origin}${window.location.pathname}`;
+      for (let i = 0; i < BENCHMARK_NET_SAMPLE_COUNT && !cancelled; i++) {
+        const start = performance.now();
+        try {
+          await fetch(`${baseUrl}?bench-net=${Date.now()}-${i}`, {
+            cache: 'no-store',
+            credentials: 'same-origin',
+          });
+          if (!cancelled) netRttSamplesRef.current.push(performance.now() - start);
+        } catch {
+          if (!cancelled) netFailuresRef.current += 1;
+        }
+        await sleep(BENCHMARK_NET_SAMPLE_GAP_MS);
+      }
+    };
+
+    void runNetworkSamples();
+
+    let expected = performance.now() + BENCHMARK_MAIN_DELAY_SAMPLE_MS;
+    const delayTimer = window.setInterval(() => {
+      const now = performance.now();
+      mainDelaySamplesRef.current.push(Math.max(0, now - expected));
+      expected = now + BENCHMARK_MAIN_DELAY_SAMPLE_MS;
+    }, BENCHMARK_MAIN_DELAY_SAMPLE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(delayTimer);
+    };
+  }, []);
 
   useEffect(() => {
     if (result) return;
@@ -506,6 +599,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           <>
             <div>avg {result.avgFps.toFixed(1)} / min {result.minFps}</div>
             <div>drops {result.drops} / fx {result.maxFx}</div>
+            <div>net {result.diagnostics.netRttAvg.toFixed(0)}ms main {result.diagnostics.mainDelayMax.toFixed(0)}ms</div>
             <div>safe {result.stages.filter(stage => stage.grade === 'PASS').at(-1)?.safeStress ?? 'not found'}</div>
           </>
         ) : (

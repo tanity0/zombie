@@ -97,6 +97,21 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
               <div className="mt-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
                 <div className="grid grid-cols-[44px_1fr] gap-2">
+                  <span className="text-white/40">device</span>
+                  <span className="truncate text-sky-100/80">{benchmarkResult.diagnostics.verdict}</span>
+                </div>
+                <div className="mt-0.5 grid grid-cols-2 gap-2 text-white/55">
+                  <span className="truncate">
+                    NET avg {benchmarkResult.diagnostics.netRttAvg.toFixed(0)}ms max {benchmarkResult.diagnostics.netRttMax.toFixed(0)}ms n{benchmarkResult.diagnostics.netSamples}
+                    {benchmarkResult.diagnostics.netFailures > 0 ? ` fail${benchmarkResult.diagnostics.netFailures}` : ''}
+                  </span>
+                  <span className="truncate text-right">
+                    MAIN avg {benchmarkResult.diagnostics.mainDelayAvg.toFixed(0)}ms max {benchmarkResult.diagnostics.mainDelayMax.toFixed(0)}ms n{benchmarkResult.diagnostics.mainSamples}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+                <div className="grid grid-cols-[44px_1fr] gap-2">
                   <span className="text-white/40">weak</span>
                   <span className="truncate text-rose-100/80">{benchmarkResult.bottleneck}</span>
                 </div>

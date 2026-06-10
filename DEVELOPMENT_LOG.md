@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.148 - Add BENCH network and main-thread diagnostics (Codex)
+
+### Summary
+- Added browser-level diagnostics to BENCH result output.
+- BENCH now samples:
+  - `NET RTT`: same-origin fetch round-trip timing, as browser-style pseudo-ping.
+  - `MAIN DELAY`: timer drift, used to detect device/main-thread stalls.
+- Result screen now shows:
+  - `device` verdict, such as `network OK / device OK` or
+    `device hot / main-thread unstable`.
+  - NET avg/max/sample count/failure count.
+  - MAIN avg/max/sample count.
+- The goal is to distinguish network trouble from hot-device / throttled Safari
+  behavior when FPS results swing between runs.
+
+### Performance
+- Normal gameplay score impact: `0`.
+- BENCH-only additional score: `+1-2`.
+- Affected subsystem: benchmark diagnostics and result UI only.
+- No normal gameplay rendering, enemy, glow, ring, torch, or shadow values changed.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.147 - Add diagnostic stress benchmark categories (Codex)
 
 ### Summary
