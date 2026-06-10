@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.160 - Add visible near-ground blur overlay (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-near-ground-blur-overlay-2026-06-11`
+  - Tag: `pre-near-ground-blur-overlay-v0.25.159`
+- Added a screen-bottom ground blur overlay so the ground itself visibly softens
+  near the foreground:
+  - `NEAR_GROUND_BLUR_HEIGHT_RATIO = 0.38`
+  - `NEAR_GROUND_BLUR_MIN_HEIGHT = 170`
+  - `NEAR_GROUND_BLUR_MAX_HEIGHT = 310`
+  - `NEAR_GROUND_BLUR_STRENGTH = 3.2`
+  - `NEAR_GROUND_BLUR_ALPHA = 0.48`
+- The overlay reuses the ground texture as a single `TilingSprite`, follows
+  camera movement, and fades in vertically through a mask.
+- This does not reintroduce full-ground blur; only the lower foreground band
+  gets the extra softened layer.
+
+### Performance
+- Old load score: `2/10`.
+- Performance Budget Score impact: `+2` to `+5`.
+- Current normal-play estimate before change: `38-66`.
+- Expected normal-play estimate after change: roughly `40-71`.
+- Visual risk: medium. The blur should now be visible on the ground, but if it
+  feels too milky or too detached from the perspective floor, lower alpha or
+  height before changing the global DOF.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.159 - Preserve foreground forest opacity in blur mask (Codex)
 
 ### Summary

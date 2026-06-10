@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant,
@@ -209,6 +209,12 @@ const GROUND_TILE_SCALE_Y_FAR = 0.12;
 const GROUND_SCROLL_X_FEEL = 1.2;
 const GROUND_SCROLL_Y_FEEL = 3.0;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
+const NEAR_GROUND_BLUR_HEIGHT_RATIO = 0.38;
+const NEAR_GROUND_BLUR_MIN_HEIGHT = 170;
+const NEAR_GROUND_BLUR_MAX_HEIGHT = 310;
+const NEAR_GROUND_BLUR_STRENGTH = 3.2;
+const NEAR_GROUND_BLUR_ALPHA = 0.48;
+const NEAR_GROUND_BLUR_TILE_SCALE_Y = 0.9;
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
 const OBJECT_GROUND_RELATIVE_MAX = 1.45;
@@ -373,10 +379,14 @@ export class PixiScene {
   private horizonForestFadeMaskTexture: Texture | null = null;
   private frontForestFadeMask = new Sprite(Texture.WHITE);
   private frontForestFadeMaskTexture: Texture | null = null;
+  private nearGroundBlur: TilingSprite | null = null;
+  private nearGroundBlurMask = new Sprite(Texture.WHITE);
+  private nearGroundBlurMaskTexture: Texture | null = null;
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
   private farBackdropBlur: BlurFilter | null = null;
+  private nearGroundBlurFilter: BlurFilter | null = null;
   private frontForestBlur: BlurFilter | null = null;
 
   private fireflies: Firefly[] = [];
@@ -422,6 +432,17 @@ export class PixiScene {
     this.L.horizonForest.parent.addChild(this.horizonForestFadeMask);
     this.L.frontForest.mask = this.frontForestFadeMask;
     this.L.frontForest.parent.addChild(this.frontForestFadeMask);
+
+    const groundTexture = this.L.groundStrips[0]?.texture ?? Texture.WHITE;
+    this.nearGroundBlur = new TilingSprite({ texture: groundTexture, width: 1, height: 1 });
+    this.nearGroundBlur.alpha = NEAR_GROUND_BLUR_ALPHA;
+    this.nearGroundBlur.mask = this.nearGroundBlurMask;
+    this.nearGroundBlurFilter = new BlurFilter({
+      strength: NEAR_GROUND_BLUR_STRENGTH,
+      quality: 2,
+    });
+    this.nearGroundBlur.filters = [this.nearGroundBlurFilter];
+    this.L.groundBase.addChild(this.nearGroundBlur, this.nearGroundBlurMask);
 
     this.farBackdropBlur = new BlurFilter({
       strength: FAR_BACKDROP_BLUR,
@@ -528,6 +549,7 @@ export class PixiScene {
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
+    this.updateNearGroundBlurMask(w, h);
     this.updatePerspectiveGround(0, 0, 0, 0);
     const frontH = this.frontForestHeight();
     const frontScale = frontH / this.L.frontForest.texture.height;
@@ -607,6 +629,13 @@ export class PixiScene {
     return Math.min(
       FRONT_FOREST_MAX_HEIGHT,
       Math.max(FRONT_FOREST_MIN_HEIGHT, this.screenH * FRONT_FOREST_HEIGHT_RATIO)
+    );
+  }
+
+  private nearGroundBlurHeight(screenH = this.screenH) {
+    return Math.min(
+      NEAR_GROUND_BLUR_MAX_HEIGHT,
+      Math.max(NEAR_GROUND_BLUR_MIN_HEIGHT, screenH * NEAR_GROUND_BLUR_HEIGHT_RATIO)
     );
   }
 
@@ -698,6 +727,30 @@ export class PixiScene {
     this.frontForestFadeMask.height = frontH;
     this.frontForestFadeMaskTexture?.destroy(true);
     this.frontForestFadeMaskTexture = texture;
+  }
+
+  private updateNearGroundBlurMask(w: number, h: number) {
+    const blurH = this.nearGroundBlurHeight(h);
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = Math.max(1, Math.ceil(blurH));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(0.44, 'rgba(255,255,255,0.5)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const texture = Texture.from(canvas);
+    this.nearGroundBlurMask.texture = texture;
+    this.nearGroundBlurMask.width = w;
+    this.nearGroundBlurMask.height = blurH;
+    this.nearGroundBlurMaskTexture?.destroy(true);
+    this.nearGroundBlurMaskTexture = texture;
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -851,6 +904,21 @@ export class PixiScene {
       strip.tileScale.set(GROUND_TILE_SCALE_X, scaleY);
       strip.tilePosition.set(-cameraX * GROUND_TILE_SCALE_X * GROUND_SCROLL_X_FEEL, -sourceY * scaleY);
       sourceY += stripH / Math.max(0.001, scaleY);
+    }
+
+    if (this.nearGroundBlur) {
+      const blurH = Math.min(groundH, this.nearGroundBlurHeight());
+      const y = Math.max(0, groundH - blurH);
+      const sourceBottomY = cameraY * GROUND_SCROLL_Y_FEEL + farH + groundH;
+      this.nearGroundBlur.position.set(0, y);
+      this.nearGroundBlur.width = this.screenW;
+      this.nearGroundBlur.height = blurH;
+      this.nearGroundBlur.tileScale.set(GROUND_TILE_SCALE_X, NEAR_GROUND_BLUR_TILE_SCALE_Y);
+      this.nearGroundBlur.tilePosition.set(
+        -cameraX * GROUND_TILE_SCALE_X * GROUND_SCROLL_X_FEEL,
+        -sourceBottomY * NEAR_GROUND_BLUR_TILE_SCALE_Y
+      );
+      this.nearGroundBlurMask.position.set(0, y);
     }
   }
 
@@ -2577,6 +2645,18 @@ export class PixiScene {
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
+    if (this.nearGroundBlur) {
+      this.L.groundBase.removeChild(this.nearGroundBlur);
+      this.nearGroundBlur.filters = [];
+      this.nearGroundBlur.destroy();
+    }
+    this.nearGroundBlur = null;
+    this.L.groundBase.removeChild(this.nearGroundBlurMask);
+    this.nearGroundBlurMask.destroy();
+    this.nearGroundBlurMaskTexture?.destroy(true);
+    this.nearGroundBlurMaskTexture = null;
+    this.nearGroundBlurFilter?.destroy();
+    this.nearGroundBlurFilter = null;
     this.L.groundBase.destroy({ children: true });
     this.L.horizonForest.destroy();
     this.horizonForestFadeMask.destroy();
