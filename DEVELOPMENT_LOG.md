@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.135 - Route benchmark completion to result screen (Codex)
+
+### Summary
+- Benchmark completion now hands the result to `App` and transitions to the
+  existing result screen.
+- The result screen shows the benchmark grade plus average FPS, minimum FPS,
+  drop count, and enemy/fx max counts.
+- The benchmark overlay still flashes the final grade briefly, then the run
+  ends automatically.
+
+### Performance
+- Load score: `1/10`.
+- Result routing is UI state only. It does not add runtime benchmark load.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/Game.tsx`
+- `src/components/GameOverScreen.tsx`
+- `src/App.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.134 - Prevent benchmark pause skew (Codex)
 
 ### Summary

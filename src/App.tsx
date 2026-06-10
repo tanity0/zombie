@@ -3,6 +3,7 @@ import Game from './components/Game';
 import MainMenu from './components/MainMenu';
 import GameOverScreen from './components/GameOverScreen';
 import LoadingScreen from './components/LoadingScreen';
+import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmActive } from './audio/audioManager';
@@ -14,6 +15,7 @@ function App() {
   const [gameState, setGameState] = useState<GameState>('menu');
   const [loadingClass, setLoadingClass] = useState<CharacterClass>('warrior');
   const [benchmarkMode, setBenchmarkMode] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
@@ -33,6 +35,7 @@ function App() {
 
     setLoadingClass(validClass);
     setBenchmarkMode(benchmark);
+    setBenchmarkResult(null);
     setGameState('loading');
 
     const startedAt = performance.now();
@@ -61,7 +64,14 @@ function App() {
 
   const returnToMenu = () => {
     setBenchmarkMode(false);
+    setBenchmarkResult(null);
     setGameState('menu');
+  };
+
+  const handleBenchmarkComplete = (result: BenchmarkResult) => {
+    setBenchmarkResult(result);
+    setBenchmarkMode(false);
+    setGameState('gameOver');
   };
 
   return (
@@ -78,13 +88,19 @@ function App() {
       )}
       
       {gameState === 'playing' && (
-        <Game onGameOver={handleGameOver} onVictory={handleVictory} benchmarkMode={benchmarkMode} />
+        <Game
+          onGameOver={handleGameOver}
+          onVictory={handleVictory}
+          benchmarkMode={benchmarkMode}
+          onBenchmarkComplete={handleBenchmarkComplete}
+        />
       )}
 
       {(gameState === 'gameOver' || gameState === 'victory') && (
         <GameOverScreen
           won={gameState === 'victory'}
           stats={gameStats}
+          benchmarkResult={benchmarkResult}
           onReturnToMenu={returnToMenu}
           onPlayAgain={() => startGame(useGameStore.getState().characterClass)}
         />

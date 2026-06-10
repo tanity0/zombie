@@ -2,19 +2,22 @@ import React from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore } from '../utils/resultScoring';
+import type { BenchmarkResult } from './BenchmarkOverlay';
 
 interface GameOverScreenProps {
   stats: GameStats;
   onReturnToMenu: () => void;
   onPlayAgain: () => void;
   won?: boolean;
+  benchmarkResult?: BenchmarkResult | null;
 }
 
 const GameOverScreen: React.FC<GameOverScreenProps> = ({
   stats,
   onReturnToMenu,
   onPlayAgain,
-  won = false
+  won = false,
+  benchmarkResult = null
 }) => {
   const {
     damageScore,
@@ -43,6 +46,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: '残ストラップ', value: strapScore },
     { label: 'クリア倍率', value: `x${clearMultiplier}` }
   ];
+  const isBenchmark = benchmarkResult !== null;
 
   return (
     <div
@@ -52,13 +56,35 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       <div className="glass-panel rounded-3xl w-full max-w-lg overflow-hidden">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won ? 'text-amber-300' : 'text-white'}`}>
-            {won ? 'ステージクリア！' : 'ゲームオーバー'}
+            {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : 'ゲームオーバー'}
           </h2>
           <p className="text-[13px] text-white/60 mt-1">
-            {won ? '森を生き延びた' : '闇に飲み込まれました'}
+            {isBenchmark ? '8秒の簡易負荷テストが完了しました' : won ? '森を生き延びた' : '闇に飲み込まれました'}
           </p>
         </div>
         <div className="px-4 pb-4">
+          {benchmarkResult && (
+            <div className={`mb-3 rounded-2xl border px-3 py-2 ${
+              benchmarkResult.grade === 'PASS'
+                ? 'bg-emerald-950/50 border-emerald-300/35'
+                : benchmarkResult.grade === 'CAUTION'
+                  ? 'bg-amber-950/50 border-amber-300/35'
+                  : 'bg-rose-950/50 border-rose-300/35'
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-white/50">BENCHMARK</div>
+                  <div className="text-2xl font-bold text-white">{benchmarkResult.grade}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-[11px] text-white/70 tabular-nums">
+                  <span>avg</span><span className="text-white">{benchmarkResult.avgFps.toFixed(1)}</span>
+                  <span>min</span><span className="text-white">{benchmarkResult.minFps}</span>
+                  <span>drops</span><span className="text-white">{benchmarkResult.drops}</span>
+                  <span>enemy/fx</span><span className="text-white">{benchmarkResult.maxEnemies}/{benchmarkResult.maxFx}</span>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2 mb-3">
             <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2">
               <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>

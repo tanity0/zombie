@@ -17,9 +17,9 @@ const BENCHMARK_ENEMY_TYPES: EnemyType[] = [
   'bat',
 ];
 
-type BenchmarkGrade = 'PASS' | 'CAUTION' | 'FAIL';
+export type BenchmarkGrade = 'PASS' | 'CAUTION' | 'FAIL';
 
-type BenchmarkResult = {
+export type BenchmarkResult = {
   grade: BenchmarkGrade;
   avgFps: number;
   minFps: number;
@@ -32,6 +32,7 @@ type BenchmarkResult = {
 
 interface BenchmarkOverlayProps {
   fps: number;
+  onComplete: (result: BenchmarkResult) => void;
 }
 
 const gradeBenchmark = (avgFps: number, minFps: number, drops: number): BenchmarkGrade => {
@@ -40,7 +41,7 @@ const gradeBenchmark = (avgFps: number, minFps: number, drops: number): Benchmar
   return 'FAIL';
 };
 
-const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps }) => {
+const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) => {
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);
@@ -143,7 +144,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps }) => {
       const minFps = samples.length ? Math.min(...samples) : 0;
       const drops = samples.filter(value => value < 45).length;
       const maxCounts = maxCountsRef.current;
-      setResult({
+      const nextResult = {
         grade: gradeBenchmark(avgFps, minFps, drops),
         avgFps,
         minFps,
@@ -152,13 +153,15 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps }) => {
         maxFx: maxCounts.fx,
         maxProjectiles: maxCounts.projectiles,
         maxPickups: maxCounts.pickups,
-      });
+      };
+      setResult(nextResult);
       spawnedEnemyIdsRef.current.forEach(removeEnemy);
       spawnedEnemyIdsRef.current.clear();
+      window.setTimeout(() => onComplete(nextResult), 450);
     }, BENCHMARK_DURATION_MS);
 
     return () => window.clearTimeout(finish);
-  }, [removeEnemy, result]);
+  }, [onComplete, removeEnemy, result]);
 
   useEffect(() => () => {
     spawnedEnemyIdsRef.current.forEach(removeEnemy);
