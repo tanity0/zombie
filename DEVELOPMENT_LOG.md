@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.143 - Run benchmark from low to high load (Codex)
+
+### Summary
+- Reversed benchmark retry order.
+- Benchmark now starts from the minimum profile and increases load step by step:
+  - `A1 MIN20`: enemy 10 plus object/effect total 10, combined 20.
+  - `A2 E20`
+  - `A3 E28`
+  - `A4 E36`
+  - `A5 E48`
+  - `A6 E60`
+  - `A7 MAX72`
+- If an attempt passes, benchmark proceeds to the next heavier profile.
+- The first non-pass attempt stops the benchmark.
+- The final safe setting is the last passing profile, not the first passing
+  profile.
+
+### Conclusion
+- The benchmark now finds the highest confirmed safe load instead of proving
+  that only the lowest fallback can pass.
+
+### Performance
+- Load score: `8/10`.
+- Affected subsystem: benchmark-only rendering and simulation stress.
+- Normal gameplay is unaffected.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.142 - Retry benchmark until safe stress is found (Codex)
 
 ### Summary

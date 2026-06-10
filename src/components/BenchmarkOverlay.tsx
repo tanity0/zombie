@@ -13,13 +13,13 @@ const BENCHMARK_EARLY_FAIL_FPS = 24;
 const BENCHMARK_EARLY_FAIL_AFTER_MS = 2200;
 
 const BENCHMARK_PROFILES = [
-  { id: 'A1', label: 'MAX72', enemyTarget: 72, glowCount: 11, ringCount: 7, particleCount: 110, torchCount: 10, yOscillation: 78, shadowJitter: 24 },
-  { id: 'A2', label: 'E60', enemyTarget: 60, glowCount: 9, ringCount: 6, particleCount: 80, torchCount: 8, yOscillation: 66, shadowJitter: 20 },
-  { id: 'A3', label: 'E48', enemyTarget: 48, glowCount: 7, ringCount: 5, particleCount: 56, torchCount: 7, yOscillation: 54, shadowJitter: 16 },
+  { id: 'A1', label: 'MIN20', enemyTarget: 10, glowCount: 2, ringCount: 2, particleCount: 4, torchCount: 2, yOscillation: 16, shadowJitter: 6 },
+  { id: 'A2', label: 'E20', enemyTarget: 20, glowCount: 3, ringCount: 2, particleCount: 14, torchCount: 3, yOscillation: 24, shadowJitter: 8 },
+  { id: 'A3', label: 'E28', enemyTarget: 28, glowCount: 4, ringCount: 3, particleCount: 24, torchCount: 4, yOscillation: 34, shadowJitter: 10 },
   { id: 'A4', label: 'E36', enemyTarget: 36, glowCount: 5, ringCount: 4, particleCount: 36, torchCount: 5, yOscillation: 42, shadowJitter: 12 },
-  { id: 'A5', label: 'E28', enemyTarget: 28, glowCount: 4, ringCount: 3, particleCount: 24, torchCount: 4, yOscillation: 34, shadowJitter: 10 },
-  { id: 'A6', label: 'E20', enemyTarget: 20, glowCount: 3, ringCount: 2, particleCount: 14, torchCount: 3, yOscillation: 24, shadowJitter: 8 },
-  { id: 'A7', label: 'MIN20', enemyTarget: 10, glowCount: 2, ringCount: 2, particleCount: 4, torchCount: 2, yOscillation: 16, shadowJitter: 6 },
+  { id: 'A5', label: 'E48', enemyTarget: 48, glowCount: 7, ringCount: 5, particleCount: 56, torchCount: 7, yOscillation: 54, shadowJitter: 16 },
+  { id: 'A6', label: 'E60', enemyTarget: 60, glowCount: 9, ringCount: 6, particleCount: 80, torchCount: 8, yOscillation: 66, shadowJitter: 20 },
+  { id: 'A7', label: 'MAX72', enemyTarget: 72, glowCount: 11, ringCount: 7, particleCount: 110, torchCount: 10, yOscillation: 78, shadowJitter: 24 },
 ] as const;
 
 type BenchmarkProfile = typeof BENCHMARK_PROFILES[number];
@@ -190,7 +190,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       ? [...completedAttemptsRef.current, finalAttempt]
       : completedAttemptsRef.current;
     const summary = summarizeSamples(allSamplesRef.current);
-    const passAttempt = attempts.find(attempt => attempt.grade === 'PASS');
+    const passAttempt = attempts.filter(attempt => attempt.grade === 'PASS').at(-1);
     const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
     const maxCounts = maxCountsRef.current;
     const nextResult: BenchmarkResult = {
@@ -214,7 +214,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const completeAttempt = useCallback((profile: BenchmarkProfile) => {
     const attemptResult = buildAttemptResult(profile, attemptSamplesRef.current);
     const isLast = activeAttempt >= BENCHMARK_PROFILES.length - 1;
-    if (attemptResult.grade === 'PASS' || isLast) {
+    if (attemptResult.grade !== 'PASS' || isLast) {
       finishBenchmark(attemptResult);
       return;
     }
@@ -435,7 +435,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           <>
             <div>avg {result.avgFps.toFixed(1)} / min {result.minFps}</div>
             <div>drops {result.drops} / fx {result.maxFx}</div>
-            <div>safe {result.stages.find(stage => stage.grade === 'PASS')?.safeStress ?? 'not found'}</div>
+            <div>safe {result.stages.filter(stage => stage.grade === 'PASS').at(-1)?.safeStress ?? 'not found'}</div>
           </>
         ) : (
           <>
