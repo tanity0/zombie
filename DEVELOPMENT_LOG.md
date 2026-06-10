@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.158 - Widen foreground blur fade range (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-front-forest-fade-range-2026-06-11`
+  - Tag: `pre-front-forest-fade-range-v0.25.157`
+- Widened the vertical fade range for the foreground forest blur mask:
+  - `FRONT_FOREST_FADE_IN_RATIO`: `0.34 -> 0.52`
+- This keeps the same foreground blur filter and mask mechanism, but makes the
+  blur overlap feel more gradual across the foreground ground area.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `38-66`.
+- Expected normal-play estimate after change: roughly `38-66`.
+- Visual risk: low to medium. The foreground blur should enter more gradually,
+  but if it hides too much of the lower screen, reduce the ratio.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.157 - Pulse light shafts and fade foreground blur (Codex)
 
 ### Summary
