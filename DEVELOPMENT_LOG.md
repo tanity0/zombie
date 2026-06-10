@@ -10,6 +10,44 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.138 - Add adaptive benchmark stress search (Codex)
+
+### Summary
+- Changed benchmark stress behavior so high-density enemies are present from
+  the beginning instead of ramping enemy count up gradually.
+- Benchmark now tests heavier real rendering scenarios:
+  - max enemy density
+  - vertical actor movement for normal shadow recalculation
+  - local glow/light shadow stress
+  - 10 benchmark torches around the player
+  - particle-heavy bursts
+  - all-in mixed stress
+- Added adaptive stress reduction when FPS hits the danger zone:
+  - danger line: `30fps`
+  - target safe line: `40fps+`
+  - reduction order: particles, glow, rings, torches, vertical/shadow motion,
+    then enemy count.
+- Result screen now shows each stage's starting stress and the remaining
+  `40+` stress setting after automatic reduction, so the safe counts can be
+  used for tuning.
+
+### Performance
+- Load score: `8/10`.
+- Affected subsystem: rendering and simulation.
+- This is benchmark-only and bounded. Benchmark-spawned enemies and torches
+  are removed after the run or unmount.
+- Smartphone risk: high inside benchmark mode by design; normal gameplay is
+  unaffected.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.137 - Expand benchmark stress categories (Codex)
 
 ### Summary

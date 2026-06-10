@@ -85,9 +85,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
               <div className="mt-2 space-y-1 rounded-xl bg-black/20 px-2 py-2">
                 {benchmarkResult.stages.map(stage => (
-                  <div key={stage.id} className="grid grid-cols-[44px_1fr_42px] items-center gap-2 text-[10px] text-white/65 tabular-nums">
+                  <div key={stage.id} className="grid grid-cols-[44px_1fr_42px] items-start gap-2 text-[10px] text-white/65 tabular-nums">
                     <span className="text-white/80">{stage.id}</span>
-                    <span>{stage.label} {stage.stress} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate">{stage.label} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops}</span>
+                      <span className="block truncate text-white/45">start {stage.stress}</span>
+                      <span className={stage.adjusted ? 'block truncate text-amber-100/80' : 'block truncate text-emerald-100/70'}>
+                        40+ {stage.safeStress}
+                      </span>
+                    </span>
                     <span className={
                       stage.grade === 'PASS'
                         ? 'text-emerald-200'
