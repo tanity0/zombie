@@ -78,7 +78,7 @@ const BLOOM_SCALE = 1.5;
 const BLOOM_STRONG_EVENT_SCALE = 0;
 const BLOOM_BLUR = 8;
 const EVENT_SHADOW_ATTACK_MS = 70;
-const EVENT_SHADOW_RELEASE_MS = 220;
+const EVENT_SHADOW_RELEASE_MS = 200;
 
 type StageLightingPreset = {
   name: 'sunlight' | 'moonlight';
@@ -101,7 +101,7 @@ const SUNLIGHT_PRESET: StageLightingPreset = {
   intensity: 0.24,
   contrast: 0.18,
   shadowLength: 32,
-  shadowAlpha: 0.32,
+  shadowAlpha: 0.38,
   shaftAlpha: 0.07,
   bloomScale: 1.16,
   playerAssistAlpha: 0.1,
@@ -389,6 +389,8 @@ export class PixiScene {
   private fxPrevNow = 0;
   private eventShadowBlend = 0;
   private eventShadowPrevNow = 0;
+  private eventShadowReleaseProgress = 0;
+  private eventShadowReleaseStartBlend = 0;
   private eventShadowLight: StrongEventLight | null = null;
 
   private screenW = 1;
@@ -845,7 +847,7 @@ export class PixiScene {
       x: normalDirection.x + (eventDirection.x - normalDirection.x) * blend,
       y: normalDirection.y + (eventDirection.y - normalDirection.y) * blend,
     };
-    const eventAlpha = Math.min(0.64, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha);
+    const eventAlpha = Math.min(0.7, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha);
     return {
       direction,
       length: fixedLength + (Math.max(fixedLength, eventLength) - fixedLength) * blend,
@@ -860,11 +862,20 @@ export class PixiScene {
     if (activeLight) {
       this.eventShadowLight = activeLight;
       this.eventShadowBlend = Math.min(1, this.eventShadowBlend + dt / EVENT_SHADOW_ATTACK_MS);
+      this.eventShadowReleaseProgress = 0;
+      this.eventShadowReleaseStartBlend = this.eventShadowBlend;
       return;
     }
-    this.eventShadowBlend = Math.max(0, this.eventShadowBlend - dt / EVENT_SHADOW_RELEASE_MS);
+    if (this.eventShadowReleaseProgress <= 0) {
+      this.eventShadowReleaseStartBlend = this.eventShadowBlend;
+    }
+    this.eventShadowReleaseProgress = Math.min(1, this.eventShadowReleaseProgress + dt / EVENT_SHADOW_RELEASE_MS);
+    const easedRelease = this.eventShadowReleaseProgress * this.eventShadowReleaseProgress;
+    this.eventShadowBlend = Math.max(0, this.eventShadowReleaseStartBlend * (1 - easedRelease));
     if (this.eventShadowBlend <= 0.01) {
       this.eventShadowBlend = 0;
+      this.eventShadowReleaseProgress = 0;
+      this.eventShadowReleaseStartBlend = 0;
       this.eventShadowLight = null;
     }
   }
