@@ -10,6 +10,44 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.151 - Replace rare enemy glow with ornaments (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-rank-ornaments-2026-06-10`
+  - Tag: `pre-rank-ornaments-v0.25.150`
+- Replaced constant rank aura glow with lightweight pixel-style ornaments:
+  - `strong`: small black wings
+  - `elite`: small horns
+  - `danger`: red wings plus horns and a thin red foot ring
+- Removed rank-driven enemy light radius/tint/alpha boosts. Enemy light now
+  remains type/hit/boss driven instead of keeping rare enemies glowing.
+- Kept hit flashes, boss marker, stun reticle, strong-event glows, and global
+  2DHD fog/depth blur/bloom/DOF unchanged.
+
+### Performance
+- Old load score: `1-2/10`.
+- Performance Budget Score expected improvement: `-4` to `-8` when ranked
+  enemies are common.
+- Current normal-play estimate before change: `38-48`.
+- Expected normal-play estimate after change: roughly `34-44`.
+- Main reduced costs:
+  - constant rare enemy glow Sprite updates
+  - rank-driven always-on enemy light boosts
+- Visual risk: medium. Rank identity changes from colored glow to silhouette
+  ornaments, so readability must be checked on mobile. If ornaments are too
+  subtle, add a thin foot ring for `strong`/`elite` or restore short event-only
+  glow for `danger`.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/types/game.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.150 - Optimize lightweight Pixi effects (Codex)
 
 ### Summary

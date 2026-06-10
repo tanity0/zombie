@@ -173,13 +173,11 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
 };
-const ENEMY_RANK_AURA: Record<string, { tint: number; alpha: number; radius: number }> = {
-  strong: { tint: 0x60a5fa, alpha: 0.16, radius: 1.18 },
-  elite: { tint: 0xa855f7, alpha: 0.2, radius: 1.28 },
-  danger: { tint: 0xef4444, alpha: 0.24, radius: 1.42 },
+const ENEMY_RANK_ORNAMENT: Record<string, { wing: number | null; horn: number | null; ring: number | null }> = {
+  strong: { wing: 0x101827, horn: null, ring: null },
+  elite: { wing: null, horn: 0xd8b4fe, ring: null },
+  danger: { wing: 0xdc2626, horn: 0xfef3c7, ring: 0xef4444 },
 };
-const ENEMY_BODY_AURA_ALPHA = 0.2;
-const ENEMY_BODY_AURA_MS = 1700;
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -292,7 +290,6 @@ const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallback
 interface ActorView {
   container: Container;
   light: Sprite;
-  aura: Sprite;
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
@@ -662,17 +659,13 @@ export class PixiScene {
     light.blendMode = 'add';
     light.visible = false;
     this.L.groundLayer.addChild(light);
-    const aura = new Sprite(getGlowTexture());
-    aura.anchor.set(0.5);
-    aura.blendMode = 'add';
-    aura.visible = false;
     const reticle = new Graphics();
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1); // foot-centre
     const overlay = new Graphics();
-    container.addChild(aura, reticle, sprite, overlay);
+    container.addChild(reticle, sprite, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, aura, reticle, sprite, overlay };
+    return { container, light, reticle, sprite, overlay };
   }
 
   private makeProp(): PropView {
@@ -1619,7 +1612,6 @@ export class PixiScene {
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
-    view.aura.visible = false;
     view.reticle.clear();
     view.overlay.clear();
   }
@@ -1654,7 +1646,6 @@ export class PixiScene {
       this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
       view.light.alpha *= horizonAlpha;
     }
-    this.syncEnemyAura(view, e, fb.footX, fb.footY, horizonAlpha, now);
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
     const r = view.reticle;
@@ -1673,6 +1664,7 @@ export class PixiScene {
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
+    this.drawEnemyRankOrnament(o, e, fb.footX, fb.footY);
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
     }
@@ -1693,53 +1685,81 @@ export class PixiScene {
   }
 
   private syncEnemyLight(view: ActorView, e: Enemy, footX: number, footY: number, now: number) {
-    const aura = e.difficultyRank && e.difficultyRank !== 'normal'
-      ? ENEMY_RANK_AURA[e.difficultyRank]
-      : undefined;
-    if (!ENEMY_LIGHT_ENABLED || (e.type === 'bat' && !aura)) {
+    if (!ENEMY_LIGHT_ENABLED || e.type === 'bat') {
       view.light.visible = false;
       return;
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
     const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
-    if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && !aura && hitT <= 0) {
+    if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
       view.light.visible = false;
       return;
     }
-    const auraRadius = aura?.radius ?? 1;
-    const radius = ENEMY_LIGHT_RADIUS * (boss ? 1.55 : 1) * auraRadius * (1 + hitT * 0.42);
+    const radius = ENEMY_LIGHT_RADIUS * (boss ? 1.55 : 1) * (1 + hitT * 0.42);
     view.light.visible = true;
-    view.light.tint = aura?.tint ?? ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
+    view.light.tint = ENEMY_LIGHT_TINT[e.type] ?? 0x9de58f;
     view.light.position.set(footX, footY - e.height * 0.22);
     view.light.width = radius * 2;
     view.light.height = radius * 1.45;
-    view.light.alpha = Math.max(aura?.alpha ?? 0, boss ? 0.18 : 0.08) + hitT * 0.22;
+    view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
   }
 
-  private syncEnemyAura(
-    view: ActorView,
-    e: Enemy,
-    footX: number,
-    footY: number,
-    horizonAlpha: number,
-    now: number
-  ) {
-    const aura = e.difficultyRank && e.difficultyRank !== 'normal'
-      ? ENEMY_RANK_AURA[e.difficultyRank]
+  private drawEnemyRankOrnament(g: Graphics, e: Enemy, footX: number, footY: number) {
+    const rank = e.difficultyRank && e.difficultyRank !== 'normal'
+      ? ENEMY_RANK_ORNAMENT[e.difficultyRank]
       : undefined;
-    if (!aura || horizonAlpha <= 0) {
-      view.aura.visible = false;
-      return;
+    if (!rank) return;
+
+    const d = this.depthScaleEnemy(footY);
+    const bodyW = Math.max(14, e.width * d);
+    const bodyH = Math.max(18, e.height * d);
+    const topY = footY - bodyH;
+    const shoulderY = topY + bodyH * 0.5;
+    const headY = topY + bodyH * 0.15;
+    const px = Math.max(1, Math.round(2 * d));
+
+    if (rank.ring != null) {
+      g.ellipse(footX, footY - 1 * d, bodyW * 0.48, Math.max(2, bodyW * 0.13))
+        .stroke({ width: Math.max(1, px), color: rank.ring, alpha: 0.72 });
     }
-    const phase = now / ENEMY_BODY_AURA_MS * Math.PI * 2 + stablePhase(e.id);
-    const pulse = 0.5 + 0.5 * Math.sin(phase);
-    const radius = Math.max(e.width, e.height) * aura.radius * (1.25 + pulse * 0.12);
-    view.aura.visible = true;
-    view.aura.tint = aura.tint;
-    view.aura.position.set(footX, footY - e.height * 0.48);
-    view.aura.width = radius * 1.35;
-    view.aura.height = radius * 1.75;
-    view.aura.alpha = (ENEMY_BODY_AURA_ALPHA + aura.alpha * 0.38 + pulse * 0.055) * horizonAlpha;
+
+    if (rank.wing != null) {
+      const wingW = Math.max(5, bodyW * 0.24);
+      const wingH = Math.max(4, bodyH * 0.18);
+      const leftRoot = footX - bodyW * 0.32;
+      const rightRoot = footX + bodyW * 0.32;
+      g.poly([
+        leftRoot, shoulderY,
+        leftRoot - wingW, shoulderY - wingH * 0.42,
+        leftRoot - wingW * 0.62, shoulderY + wingH,
+      ]).fill({ color: rank.wing, alpha: 0.95 });
+      g.poly([
+        rightRoot, shoulderY,
+        rightRoot + wingW, shoulderY - wingH * 0.42,
+        rightRoot + wingW * 0.62, shoulderY + wingH,
+      ]).fill({ color: rank.wing, alpha: 0.95 });
+      g.rect(leftRoot - wingW * 0.72, shoulderY + wingH * 0.12, Math.max(1, px), Math.max(2, wingH * 0.42))
+        .fill({ color: 0x020617, alpha: 0.55 });
+      g.rect(rightRoot + wingW * 0.72, shoulderY + wingH * 0.12, Math.max(1, px), Math.max(2, wingH * 0.42))
+        .fill({ color: 0x020617, alpha: 0.55 });
+    }
+
+    if (rank.horn != null) {
+      const hornW = Math.max(3, bodyW * 0.11);
+      const hornH = Math.max(5, bodyH * 0.14);
+      const hornY = headY + hornH * 0.35;
+      const hornOffset = Math.max(4, bodyW * 0.16);
+      g.poly([
+        footX - hornOffset, hornY,
+        footX - hornOffset - hornW, hornY - hornH,
+        footX - hornOffset + hornW * 0.35, hornY - hornH * 0.2,
+      ]).fill({ color: rank.horn, alpha: 0.95 });
+      g.poly([
+        footX + hornOffset, hornY,
+        footX + hornOffset + hornW, hornY - hornH,
+        footX + hornOffset - hornW * 0.35, hornY - hornH * 0.2,
+      ]).fill({ color: rank.horn, alpha: 0.95 });
+    }
   }
 
   private drawHealthBar(g: Graphics, e: Enemy) {
