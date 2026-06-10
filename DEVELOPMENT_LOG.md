@@ -10,6 +10,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.139 - Fix benchmark completion under heavy load (Codex)
+
+### Summary
+- Fixed benchmark runs that could appear to continue forever under very heavy
+  stress.
+- Benchmark completion is no longer dependent on only one `setTimeout`.
+- The interval tick also checks elapsed time and forces the same completion
+  path once `BENCHMARK_DURATION_MS` is reached.
+- Added a one-shot finalize guard so timeout completion and tick completion
+  cannot double-submit results.
+
+### Conclusion
+- Root cause: the adaptive stress test became heavy enough that relying on a
+  single timeout completion path was too fragile on mobile Safari.
+- Fix: use redundant elapsed-time completion and one-shot cleanup.
+
+### Performance
+- Load score: `2/10` for this fix itself.
+- Affected subsystem: benchmark control flow only.
+- Benchmark stress level is unchanged from `v0.25.138`; this patch only makes
+  completion reliable.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.138 - Add adaptive benchmark stress search (Codex)
 
 ### Summary
