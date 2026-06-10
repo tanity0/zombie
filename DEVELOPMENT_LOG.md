@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.129 - Strengthen sunlight directional shadows (Codex)
+
+### Summary
+- Made the active sunlight preset's normal directional contact shadow easier to
+  see by increasing its length and alpha.
+- Kept the existing foot-shadow ellipse, light shafts, stage preset structure,
+  and strong-event shadow system unchanged.
+
+### Performance
+- Load score: `1/10`.
+- Constant-only tuning. Draw count and rendering paths are unchanged.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.128 - Add switchable stage lighting presets (Codex)
 
 ### Summary
