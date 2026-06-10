@@ -10,6 +10,45 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.128 - Add switchable stage lighting presets (Codex)
+
+### Summary
+- Added switchable `sunlight` / `moonlight` stage lighting presets.
+- Enabled `sunlight` first so the left-top light and right-down shadow direction
+  are easy to evaluate.
+- Added short directional contact shadows while keeping the existing foot
+  ellipses for grounding.
+- Added subtle static diagonal light shafts and reduced the player assist light
+  to avoid a self-emissive player look.
+- Routed normal bloom strength through the active lighting preset.
+
+### Active preset
+- Active: `sunlight`
+- Shadow direction: right/down, from a left-top main light.
+- Moonlight preset is defined but inactive and can be enabled by changing
+  `ACTIVE_STAGE_LIGHTING_NAME` to `moonlight`.
+
+### Rollback point
+- Backup branch: `backup/pre-stage-lighting-presets-2026-06-10`
+- Backup tag: `pre-stage-lighting-presets-v0.25.127`
+- Previous pushed commit: `0e6375b`
+- Safe rollback: `git revert <v0.25.128_commit>`
+
+### Performance
+- Load score: `2/10`.
+- Cost is rendering-side only: a few static light-shaft polygons and one short
+  extra contact-shadow stroke per player/enemy. No per-pixel lighting, dynamic
+  shadow map, unbounded light loop, package install, audio, memory, or network
+  work was added.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.127 - Tune forest depth and default shadows (Codex)
 
 ### Summary

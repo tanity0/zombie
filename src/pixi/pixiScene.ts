@@ -31,10 +31,7 @@ import { treesInRegion, TREE_CELL } from '../world/trees';
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
 const GRADE_ALPHA = 0.4;       // strength of the cool grade
-const PLAYER_LIGHT_TINT = 0xffca7a; // warm hero halo
 const PLAYER_HUNTING_LIGHT_TINT = 0x60a5fa;
-const PLAYER_LIGHT_ALPHA = 0.26;
-const PLAYER_LIGHT_RADIUS = 200;    // halo radius in world px
 const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
@@ -80,6 +77,55 @@ const BLOOM_THRESHOLD = 0.45;  // lower → colored gems/crits bloom too
 const BLOOM_SCALE = 1.5;
 const BLOOM_STRONG_EVENT_SCALE = 0;
 const BLOOM_BLUR = 8;
+
+type StageLightingPreset = {
+  name: 'sunlight' | 'moonlight';
+  direction: { x: number; y: number };
+  color: number;
+  intensity: number;
+  contrast: number;
+  shadowLength: number;
+  shadowAlpha: number;
+  shaftAlpha: number;
+  bloomScale: number;
+  playerAssistAlpha: number;
+  playerAssistRadius: number;
+};
+
+const SUNLIGHT_PRESET: StageLightingPreset = {
+  name: 'sunlight',
+  direction: { x: 0.58, y: 0.36 },
+  color: 0xffe3a3,
+  intensity: 0.24,
+  contrast: 0.18,
+  shadowLength: 24,
+  shadowAlpha: 0.18,
+  shaftAlpha: 0.07,
+  bloomScale: 1.16,
+  playerAssistAlpha: 0.1,
+  playerAssistRadius: 145,
+};
+
+const MOONLIGHT_PRESET: StageLightingPreset = {
+  name: 'moonlight',
+  direction: { x: 0.55, y: 0.32 },
+  color: 0x9fb7ff,
+  intensity: 0.16,
+  contrast: 0.12,
+  shadowLength: 18,
+  shadowAlpha: 0.12,
+  shaftAlpha: 0.035,
+  bloomScale: 1.08,
+  playerAssistAlpha: 0.09,
+  playerAssistRadius: 140,
+};
+
+const STAGE_LIGHTING_PRESETS = {
+  sunlight: SUNLIGHT_PRESET,
+  moonlight: MOONLIGHT_PRESET,
+} as const;
+const ACTIVE_STAGE_LIGHTING_NAME: keyof typeof STAGE_LIGHTING_PRESETS = 'sunlight';
+const ACTIVE_STAGE_LIGHTING = STAGE_LIGHTING_PRESETS[ACTIVE_STAGE_LIGHTING_NAME];
 
 // Ambient fireflies drifting through the moonlit forest (soft additive motes).
 const FIREFLY_ENABLED = true;
@@ -203,6 +249,30 @@ const drawShadow = (g: Graphics, cx: number, cy: number, w: number, alpha: numbe
   g.ellipse(cx, cy, w * 0.55, w * 0.18).fill({ color: 0x000000, alpha });
 };
 
+const drawDirectionalShadow = (
+  g: Graphics,
+  cx: number,
+  cy: number,
+  w: number,
+  alpha: number,
+  lighting: StageLightingPreset
+) => {
+  const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
+  const ux = lighting.direction.x / mag;
+  const uy = lighting.direction.y / mag;
+  const scale = Math.max(0.7, Math.min(1.55, w / 42));
+  const length = lighting.shadowLength * scale;
+  const width = Math.max(2, w * 0.13);
+  g.moveTo(cx + ux * 2, cy - 1 + uy * 2)
+    .lineTo(cx + ux * length, cy - 1 + uy * length)
+    .stroke({
+      width,
+      color: 0x000000,
+      alpha: alpha * lighting.shadowAlpha,
+      cap: 'round',
+    });
+};
+
 // One pooled actor view (player or enemy): a foot-anchored sprite plus a
 // behind-sprite reticle layer and an above-sprite overlay layer, all in one
 // container whose zIndex is the foot Y (the Y-sort key).
@@ -273,6 +343,7 @@ export class PixiScene {
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
   private gradeSprite = new Sprite(Texture.WHITE);
   private playerLight = new Sprite(getGlowTexture());
+  private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
@@ -363,10 +434,10 @@ export class PixiScene {
     // sprites — they keep their full pixel-art colour and outline (Octopath
     // style). Behind the foot shadows so those still read.
     this.playerLight.anchor.set(0.5);
-    this.playerLight.tint = PLAYER_LIGHT_TINT;
-    this.playerLight.alpha = PLAYER_LIGHT_ALPHA;
+    this.playerLight.tint = ACTIVE_STAGE_LIGHTING.color;
+    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha;
     this.playerLight.blendMode = 'add';
-    this.playerLight.width = this.playerLight.height = PLAYER_LIGHT_RADIUS * 2;
+    this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * 2;
     this.groundReflectionGfx.blendMode = 'add';
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
@@ -406,6 +477,7 @@ export class PixiScene {
     // (multiply preserves detail/outlines), then the vignette, then damage
     // flash + off-screen arrows on top of everything.
     this.L.uiLayer.addChild(
+      this.stageLightShaftGfx,
       this.gradeSprite, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
@@ -441,6 +513,7 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
+    this.updateStageLightShafts(w, h);
 
     // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
     if (this.tiltShift) {
@@ -448,6 +521,36 @@ export class PixiScene {
       const bandY = h * TILT_SHIFT_BAND;
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: w, y: bandY };
+    }
+  }
+
+  private updateStageLightShafts(w: number, h: number) {
+    const g = this.stageLightShaftGfx;
+    g.clear();
+    const alpha = ACTIVE_STAGE_LIGHTING.shaftAlpha;
+    if (alpha <= 0) return;
+    g.blendMode = 'add';
+    const color = ACTIVE_STAGE_LIGHTING.color;
+    const shafts = [
+      { x: -w * 0.18, y: -h * 0.08, width: w * 0.18, length: h * 1.22, alpha: 0.42 },
+      { x: w * 0.08, y: -h * 0.14, width: w * 0.12, length: h * 1.06, alpha: 0.28 },
+      { x: w * 0.34, y: -h * 0.2, width: w * 0.16, length: h * 1.18, alpha: 0.22 },
+    ];
+    for (const s of shafts) {
+      const x1 = s.x;
+      const y1 = s.y;
+      const x2 = s.x + s.length * 0.42;
+      const y2 = s.y + s.length;
+      g.poly([
+        x1,
+        y1,
+        x1 + s.width,
+        y1,
+        x2 + s.width * 0.32,
+        y2,
+        x2 - s.width * 0.68,
+        y2,
+      ]).fill({ color, alpha: alpha * s.alpha });
     }
   }
 
@@ -716,8 +819,9 @@ export class PixiScene {
     const lx = s.player.x + s.player.width / 2;
     const ly = s.player.y + s.player.height / 2;
     this.playerLight.position.set(lx, ly);
-    this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : PLAYER_LIGHT_TINT;
-    this.playerLight.alpha = PLAYER_LIGHT_ALPHA * (s.player.huntingCharged ? 1.16 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : ACTIVE_STAGE_LIGHTING.color;
+    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2);
 
     this.syncFireflies(s.camera, now);
   }
@@ -729,7 +833,7 @@ export class PixiScene {
       const t = (now - e.createdAt) / e.duration;
       return t >= 0 && t < 1;
     });
-    this.bloom.bloomScale = hasStrongEventGlow ? BLOOM_STRONG_EVENT_SCALE : BLOOM_SCALE;
+    this.bloom.bloomScale = hasStrongEventGlow ? BLOOM_STRONG_EVENT_SCALE : ACTIVE_STAGE_LIGHTING.bloomScale;
   }
 
   // ---- ambient fireflies ---------------------------------------------------
@@ -1350,6 +1454,7 @@ export class PixiScene {
     const g = this.shadowGfx;
     g.clear();
     const pf = playerFootBox(player);
+    drawDirectionalShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 1, ACTIVE_STAGE_LIGHTING);
     drawShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 0.46);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
@@ -1358,7 +1463,9 @@ export class PixiScene {
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
-      drawShadow(g, e.x + e.width / 2, footY - 2, fb.boxW * 0.55 * this.depthScaleEnemy(footY), alpha * horizonAlpha);
+      const shadowW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
+      drawDirectionalShadow(g, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, ACTIVE_STAGE_LIGHTING);
+      drawShadow(g, e.x + e.width / 2, footY - 2, shadowW, alpha * horizonAlpha);
     }
   }
 
@@ -2285,6 +2392,7 @@ export class PixiScene {
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;
+    this.stageLightShaftGfx.destroy();
     this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);
