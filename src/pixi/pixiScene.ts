@@ -1474,8 +1474,8 @@ export class PixiScene {
           const castThickness = Math.hypot(shadowRadiusX * ny, shadowRadiusY * nx) * 2;
           const shadowLayers = actor.source === 'actor'
             ? [
-                { distance: 0.7, width: 0.88, alpha: 0.16 },
-                { distance: 1.05, width: 0.7, alpha: 0.055 },
+                { distance: 0.72, width: 0.9, alpha: 0.22 },
+                { distance: 1.08, width: 0.74, alpha: 0.11 },
               ]
             : [
                 { distance: 0.95, width: 1.1, alpha: 0.12 },

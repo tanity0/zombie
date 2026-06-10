@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.158 - Raise auxiliary event shadow visibility (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-aux-shadow-visibility-2026-06-10`
+  - Tag: `pre-aux-shadow-visibility-v0.25.157`
+- Raised actor auxiliary event-shadow visibility after user feedback that only
+  the normal/main shadow was readable.
+- Kept the main dense actor shadow short, but made the auxiliary strokes visible:
+  - mid auxiliary stroke: `distance 0.70 / width 0.88 / alpha 0.16`
+    -> `distance 0.72 / width 0.90 / alpha 0.22`
+  - long auxiliary stroke: `distance 1.05 / width 0.70 / alpha 0.055`
+    -> `distance 1.08 / width 0.74 / alpha 0.11`
+- Rendering count is unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: low to medium. Auxiliary shadows should now read on mobile; if
+  they become too smoky, reduce only the long stroke alpha first.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.157 - Balance event shadow layers (Codex)
 
 ### Summary
