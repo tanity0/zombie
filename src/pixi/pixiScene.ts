@@ -93,6 +93,9 @@ type StageLightingPreset = {
 };
 
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
+const STAGE_LIGHT_SHAFT_DRIFT_PX = 18;
+const STAGE_LIGHT_SHAFT_DRIFT_MS = 11_000;
+const PLAYER_SHADOW_SCALE = 0.9;
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
   name: 'sunlight',
@@ -568,6 +571,15 @@ export class PixiScene {
     }
   }
 
+  private syncStageLightShaftDrift(now: number) {
+    const mag = Math.hypot(STAGE_LIGHT_SHAFT_DIRECTION.x, STAGE_LIGHT_SHAFT_DIRECTION.y) || 1;
+    const ux = STAGE_LIGHT_SHAFT_DIRECTION.x / mag;
+    const uy = STAGE_LIGHT_SHAFT_DIRECTION.y / mag;
+    const t = (now % STAGE_LIGHT_SHAFT_DRIFT_MS) / STAGE_LIGHT_SHAFT_DRIFT_MS;
+    const drift = (0.5 + 0.5 * Math.sin(t * Math.PI * 2)) * STAGE_LIGHT_SHAFT_DRIFT_PX;
+    this.stageLightShaftGfx.position.set(-ux * drift, -uy * drift);
+  }
+
   private farBackdropHeight() {
     return Math.min(this.screenH * 0.3, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
@@ -856,6 +868,7 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies);
+    this.syncStageLightShaftDrift(now);
     this.syncProjectiles(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -1533,7 +1546,7 @@ export class PixiScene {
     g.clear();
     const pf = playerFootBox(player);
     const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
-    const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW);
+    const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW) * PLAYER_SHADOW_SCALE;
     drawDirectionalShadow(g, pf.footX, pf.footY - 2, playerShadowW, 1, ACTIVE_STAGE_LIGHTING);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;

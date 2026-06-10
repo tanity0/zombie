@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.153 - Add subtle light shaft drift and shrink player shadow (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-player-shadow-shaft-drift-2026-06-11`
+  - Tag: `pre-player-shadow-shaft-drift-v0.25.152`
+- Reduced only the player directional shadow width:
+  - `PLAYER_SHADOW_SCALE = 0.9`
+  - enemy shadows are unchanged.
+- Added a subtle screen-space drift to the stage light shaft graphics:
+  - max drift: `18px`
+  - period: `11s`
+  - drift direction is opposite `STAGE_LIGHT_SHAFT_DIRECTION`.
+- No new graphics layers, filters, or draw calls were added.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+0` to `+1`.
+- Current normal-play estimate before change: `36-54`.
+- Expected normal-play estimate after change: roughly `36-55`.
+- Visual risk: low to medium. Player grounding becomes slightly lighter, and
+  stage light shafts should feel less screen-fixed without obvious sliding.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.152 - Align actor shadows with stage light shafts (Codex)
 
 ### Summary
