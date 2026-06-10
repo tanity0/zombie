@@ -10,6 +10,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.147 - Add diagnostic stress benchmark categories (Codex)
+
+### Summary
+- Changed benchmark mode into a diagnostic low-to-high stress test.
+- Benchmark now tests categories separately:
+  - `BASE`: minimum reference load.
+  - `PART`: particle bursts at increasing counts.
+  - `GLOW`: local glow count at increasing counts.
+  - `RING`: ring effect count at increasing counts.
+  - `SHDW`: enemy count plus vertical/shadow jitter.
+  - `TORCH`: torch/local-light count at increasing counts.
+  - `MIX`: combined real-game-like enemy/fx load.
+- Each category escalates until the first non-pass, then skips to the next
+  category so one failure does not hide later bottlenecks.
+- Result screen now shows:
+  - `weak`: lowest-performing failed category/profile.
+  - category summaries like `PART: safe P50 / stop P90`.
+  - each row's category prefix.
+- Result card is scrollable on small mobile viewports so the longer diagnostic
+  result can be inspected.
+
+### Performance
+- Load score during normal gameplay: `0/10`.
+- Load score while benchmark is running: `6/10`.
+- Affected subsystem: benchmark-only rendering stress and result UI.
+- Normal gameplay enemy caps, effects, shadows, torches, and simulation are unchanged.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.146 - Sample benchmark FPS on tick (Codex)
 
 ### Summary

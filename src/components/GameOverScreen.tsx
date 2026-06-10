@@ -55,7 +55,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       className="min-h-screen w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
-      <div className="glass-panel rounded-3xl w-full max-w-lg overflow-hidden">
+      <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto rounded-3xl">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : 'ゲームオーバー'}
@@ -95,12 +95,23 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   <span className="block truncate text-rose-100/80">{stoppedBenchmarkStage ? `${stoppedBenchmarkStage.label} ${stoppedBenchmarkStage.grade}` : 'max passed'}</span>
                 </div>
               </div>
+              <div className="mt-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+                <div className="grid grid-cols-[44px_1fr] gap-2">
+                  <span className="text-white/40">weak</span>
+                  <span className="truncate text-rose-100/80">{benchmarkResult.bottleneck}</span>
+                </div>
+                <div className="mt-1 grid grid-cols-1 gap-0.5">
+                  {benchmarkResult.categorySummary.map(line => (
+                    <span key={line} className="truncate text-white/55">{line}</span>
+                  ))}
+                </div>
+              </div>
               <div className="mt-2 space-y-1 rounded-xl bg-black/20 px-2 py-2">
                 {benchmarkResult.stages.map(stage => (
                   <div key={stage.id} className="grid grid-cols-[44px_1fr_42px] items-start gap-2 text-[10px] text-white/65 tabular-nums">
                     <span className="text-white/80">{stage.id}</span>
                     <span className="min-w-0">
-                      <span className="block truncate">{stage.label} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops} n{stage.sampleCount}</span>
+                      <span className="block truncate">{stage.category} {stage.label} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops} n{stage.sampleCount}</span>
                       <span className="block truncate text-white/45">start {stage.stress}</span>
                       <span className={stage.adjusted ? 'block truncate text-amber-100/80' : 'block truncate text-emerald-100/70'}>
                         40+ {stage.safeStress}
