@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.163 - Restore fixed-direction event shadows (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-fixed-shadow-restore-2026-06-11`
+  - Tag: `pre-fixed-shadow-restore-v0.25.162`
+- Restored the `v0.25.160` fixed-direction actor event shadow behavior:
+  - actor event shadows use `ACTIVE_STAGE_LIGHTING.direction` again.
+  - event shadows no longer point from the glow source to the actor foot.
+  - length/alpha/release easing still animate during strong-event glow.
+- Restored fixed-direction-era actor auxiliary event-shadow lengths:
+  - mid auxiliary stroke: `distance 0.92 -> 0.72`
+  - long auxiliary stroke: `distance 1.32 -> 1.08`
+- Rare-enemy overhead marks and prior performance optimizations are unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: medium. This intentionally returns to the calmer fixed-direction
+  event-shadow behavior; light-source accuracy is reduced, but the rotating-tip
+  and one-off event-relative stretch should be gone.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.162 - Rebalance actor event shadow lengths (Codex)
 
 ### Summary
