@@ -3,11 +3,15 @@ import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import type { EnemyType } from '../types/game';
 
-const BENCHMARK_DURATION_MS = 8000;
+const BENCHMARK_DURATION_MS = 12000;
 const BENCHMARK_WARMUP_MS = 1600;
-const BENCHMARK_ENEMY_TARGET = 12;
 const BENCHMARK_TICK_MS = 320;
 const BENCHMARK_ENEMY_HP = 999999;
+const BENCHMARK_STAGES = [
+  { id: 'S1', label: 'LIGHT', startMs: 0, enemyTarget: 12, pulseCount: 1 },
+  { id: 'S2', label: 'MED', startMs: 4000, enemyTarget: 18, pulseCount: 2 },
+  { id: 'S3', label: 'HEAVY', startMs: 8000, enemyTarget: 26, pulseCount: 4 },
+] as const;
 const BENCHMARK_ENEMY_TYPES: EnemyType[] = [
   'zombie',
   'skeleton',
@@ -19,6 +23,18 @@ const BENCHMARK_ENEMY_TYPES: EnemyType[] = [
 
 export type BenchmarkGrade = 'PASS' | 'CAUTION' | 'FAIL';
 
+export type BenchmarkStageResult = {
+  id: string;
+  label: string;
+  grade: BenchmarkGrade;
+  avgFps: number;
+  minFps: number;
+  drops: number;
+  enemyTarget: number;
+  maxEnemies: number;
+  maxFx: number;
+};
+
 export type BenchmarkResult = {
   grade: BenchmarkGrade;
   avgFps: number;
@@ -28,6 +44,7 @@ export type BenchmarkResult = {
   maxFx: number;
   maxProjectiles: number;
   maxPickups: number;
+  stages: BenchmarkStageResult[];
 };
 
 interface BenchmarkOverlayProps {
@@ -41,11 +58,31 @@ const gradeBenchmark = (avgFps: number, minFps: number, drops: number): Benchmar
   return 'FAIL';
 };
 
+const activeBenchmarkStage = (elapsedMs: number) => {
+  let active = BENCHMARK_STAGES[0];
+  for (const stage of BENCHMARK_STAGES) {
+    if (elapsedMs >= stage.startMs) active = stage;
+  }
+  return active;
+};
+
+const gradeRank = (grade: BenchmarkGrade) => grade === 'FAIL' ? 2 : grade === 'CAUTION' ? 1 : 0;
+
+const summarizeSamples = (samples: number[]) => {
+  const valid = samples.filter(v => v > 0);
+  const avgFps = valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : 0;
+  const minFps = valid.length ? Math.min(...valid) : 0;
+  const drops = valid.filter(value => value < 45).length;
+  return { avgFps, minFps, drops };
+};
+
 const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) => {
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);
   const samplesRef = useRef<number[]>([]);
+  const stageSamplesRef = useRef<Record<string, number[]>>({});
+  const stageCountsRef = useRef<Record<string, { enemies: number; fx: number }>>({});
   const spawnedEnemyIdsRef = useRef(new Set<string>());
   const maxCountsRef = useRef({
     enemies: 0,
@@ -61,8 +98,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
   useEffect(() => {
     if (result || fps <= 0) return;
-    if (performance.now() - startedAt < BENCHMARK_WARMUP_MS) return;
+    const elapsed = performance.now() - startedAt;
+    if (elapsed < BENCHMARK_WARMUP_MS) return;
+    const stage = activeBenchmarkStage(elapsed);
     samplesRef.current.push(fps);
+    stageSamplesRef.current[stage.id] = [...(stageSamplesRef.current[stage.id] ?? []), fps];
   }, [fps, result, startedAt]);
 
   useEffect(() => {
@@ -93,20 +133,26 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
       const state = useGameStore.getState();
       const elapsed = performance.now() - startedAt;
+      const stage = activeBenchmarkStage(elapsed);
       const px = state.player.x + state.player.width / 2;
       const py = state.player.y + state.player.height / 2;
       const existingBenchEnemies = state.enemies.filter(e => spawnedEnemyIdsRef.current.has(e.id));
-      const missing = Math.max(0, BENCHMARK_ENEMY_TARGET - existingBenchEnemies.length);
+      const missing = Math.max(0, stage.enemyTarget - existingBenchEnemies.length);
       maxCountsRef.current = {
         enemies: Math.max(maxCountsRef.current.enemies, state.enemies.length),
         fx: Math.max(maxCountsRef.current.fx, state.effects.length),
         projectiles: Math.max(maxCountsRef.current.projectiles, state.projectiles.length),
         pickups: Math.max(maxCountsRef.current.pickups, state.pickups.length),
       };
+      const prevStageCounts = stageCountsRef.current[stage.id] ?? { enemies: 0, fx: 0 };
+      stageCountsRef.current[stage.id] = {
+        enemies: Math.max(prevStageCounts.enemies, state.enemies.length),
+        fx: Math.max(prevStageCounts.fx, state.effects.length),
+      };
 
       for (let i = 0; i < missing; i++) {
         const idx = existingBenchEnemies.length + i;
-        const angle = (idx / BENCHMARK_ENEMY_TARGET) * Math.PI * 2 + elapsed * 0.00015;
+        const angle = (idx / stage.enemyTarget) * Math.PI * 2 + elapsed * 0.00015;
         const radius = 210 + (idx % 3) * 34;
         const type = BENCHMARK_ENEMY_TYPES[idx % BENCHMARK_ENEMY_TYPES.length];
         const enemy = spawnEnemyAt(type, px + Math.cos(angle) * radius, py + Math.sin(angle) * radius, state.gameTime);
@@ -124,10 +170,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       }
 
       const pulseAngle = elapsed * 0.002;
-      const fxX = px + Math.cos(pulseAngle) * 120;
-      const fxY = py + Math.sin(pulseAngle) * 80;
-      spawnRing(fxX, fxY, 8, 84, 'rgba(96,165,250,0.72)', 3, 420);
-      spawnGlow(fxX, fxY, 58, 'rgba(96,165,250,', 460);
+      for (let i = 0; i < stage.pulseCount; i++) {
+        const angle = pulseAngle + (i / stage.pulseCount) * Math.PI * 2;
+        const fxX = px + Math.cos(angle) * (96 + i * 28);
+        const fxY = py + Math.sin(angle) * (64 + i * 18);
+        spawnRing(fxX, fxY, 8, 84 + i * 12, 'rgba(96,165,250,0.72)', 3, 420);
+        spawnGlow(fxX, fxY, 58 + i * 8, 'rgba(96,165,250,', 460);
+      }
       setNow(performance.now());
     }, BENCHMARK_TICK_MS);
 
@@ -137,15 +186,33 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   useEffect(() => {
     if (result) return;
     const finish = window.setTimeout(() => {
-      const samples = samplesRef.current.filter(v => v > 0);
-      const avgFps = samples.length
-        ? samples.reduce((sum, value) => sum + value, 0) / samples.length
-        : 0;
-      const minFps = samples.length ? Math.min(...samples) : 0;
-      const drops = samples.filter(value => value < 45).length;
+      const { avgFps, minFps, drops } = summarizeSamples(samplesRef.current);
       const maxCounts = maxCountsRef.current;
+      const stages = BENCHMARK_STAGES.map(stage => {
+        const summary = summarizeSamples(stageSamplesRef.current[stage.id] ?? []);
+        const stageGrade = gradeBenchmark(summary.avgFps, summary.minFps, summary.drops);
+        const counts = stageCountsRef.current[stage.id] ?? { enemies: 0, fx: 0 };
+        return {
+          id: stage.id,
+          label: stage.label,
+          grade: stageGrade,
+          avgFps: summary.avgFps,
+          minFps: summary.minFps,
+          drops: summary.drops,
+          enemyTarget: stage.enemyTarget,
+          maxEnemies: counts.enemies,
+          maxFx: counts.fx,
+        };
+      });
+      const worstStageGrade = stages.reduce<BenchmarkGrade>(
+        (worst, stage) => gradeRank(stage.grade) > gradeRank(worst) ? stage.grade : worst,
+        'PASS'
+      );
+      const totalGrade = gradeRank(worstStageGrade) > gradeRank(gradeBenchmark(avgFps, minFps, drops))
+        ? worstStageGrade
+        : gradeBenchmark(avgFps, minFps, drops);
       const nextResult = {
-        grade: gradeBenchmark(avgFps, minFps, drops),
+        grade: totalGrade,
         avgFps,
         minFps,
         drops,
@@ -153,6 +220,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         maxFx: maxCounts.fx,
         maxProjectiles: maxCounts.projectiles,
         maxPickups: maxCounts.pickups,
+        stages,
       };
       setResult(nextResult);
       spawnedEnemyIdsRef.current.forEach(removeEnemy);
@@ -169,6 +237,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   }, [removeEnemy]);
 
   const elapsedMs = Math.min(BENCHMARK_DURATION_MS, now - startedAt);
+  const activeStage = activeBenchmarkStage(elapsedMs);
   const progress = result ? 100 : Math.round((elapsedMs / BENCHMARK_DURATION_MS) * 100);
   const secondsLeft = Math.max(0, Math.ceil((BENCHMARK_DURATION_MS - elapsedMs) / 1000));
   const gradeStyle = useMemo(() => {
@@ -204,13 +273,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           <>
             <div>avg {result.avgFps.toFixed(1)} / min {result.minFps}</div>
             <div>drops {result.drops} / fx {result.maxFx}</div>
-            <div>enemy {result.maxEnemies} p {result.maxProjectiles} item {result.maxPickups}</div>
+            <div>enemy {result.maxEnemies} stages {result.stages.map(s => `${s.id}:${s.grade[0]}`).join(' ')}</div>
           </>
         ) : (
           <>
             <div>fps {fps}</div>
-            <div>enemy target {BENCHMARK_ENEMY_TARGET}</div>
-            <div>glow/ring stress</div>
+            <div>{activeStage.id} {activeStage.label} enemy {activeStage.enemyTarget}</div>
+            <div>pulse x{activeStage.pulseCount}</div>
           </>
         )}
       </div>

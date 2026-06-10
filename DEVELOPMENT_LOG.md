@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.136 - Add staged benchmark logs (Codex)
+
+### Summary
+- Changed benchmark mode from a single flat 8-second test to a 12-second
+  staged test.
+- Added three bounded stages: `S1 LIGHT`, `S2 MED`, and `S3 HEAVY`.
+- Each stage increases benchmark enemy target and glow/ring pulse count.
+- Benchmark results now include per-stage average FPS, minimum FPS, drops,
+  max enemy/fx counts, and stage judgement.
+- The final benchmark judgement considers both total FPS and the worst stage.
+
+### Performance
+- Load score: `3/10`.
+- Benchmark-only load is intentionally higher, but remains bounded by fixed
+  stage enemy targets and fixed pulse counts. Normal play is unaffected.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.135 - Route benchmark completion to result screen (Codex)
 
 ### Summary

@@ -83,6 +83,23 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   <span>enemy/fx</span><span className="text-white">{benchmarkResult.maxEnemies}/{benchmarkResult.maxFx}</span>
                 </div>
               </div>
+              <div className="mt-2 space-y-1 rounded-xl bg-black/20 px-2 py-2">
+                {benchmarkResult.stages.map(stage => (
+                  <div key={stage.id} className="grid grid-cols-[44px_1fr_42px] items-center gap-2 text-[10px] text-white/65 tabular-nums">
+                    <span className="text-white/80">{stage.id}</span>
+                    <span>{stage.label} avg {stage.avgFps.toFixed(1)} min {stage.minFps} drops {stage.drops}</span>
+                    <span className={
+                      stage.grade === 'PASS'
+                        ? 'text-emerald-200'
+                        : stage.grade === 'CAUTION'
+                          ? 'text-amber-200'
+                          : 'text-rose-200'
+                    }>
+                      {stage.grade}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <div className="grid grid-cols-2 gap-2 mb-3">
