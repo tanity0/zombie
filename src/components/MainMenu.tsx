@@ -369,14 +369,16 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
         </div>
       </div>
       <button
+        type="button"
         onClick={() => onStartBenchmark(selectedClass)}
-        className="fixed text-[10px] text-white/30 underline-offset-2 active:text-white/70"
+        className="fixed rounded-md border border-cyan-200/30 bg-black/35 px-2 py-1 text-[10px] font-semibold tracking-wide text-cyan-100/70 shadow-lg backdrop-blur-sm active:text-white"
         style={{
           right: 'max(env(safe-area-inset-right), 12px)',
-          bottom: 'max(env(safe-area-inset-bottom), 10px)'
+          bottom: 'max(env(safe-area-inset-bottom), 10px)',
+          zIndex: 60
         }}
       >
-        ベンチ
+        BENCH
       </button>
     </div>
   );

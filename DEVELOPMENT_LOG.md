@@ -10,6 +10,41 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.140 - Make benchmark launch unmistakable (Codex)
+
+### Summary
+- Made benchmark launch state more robust and visible.
+- `App` now keeps the requested benchmark launch in `pendingBenchmarkRef`
+  through the async loading step and reapplies it immediately before entering
+  gameplay.
+- Loading screen now shows `Benchmark Loading` and benchmark-specific copy when
+  benchmark mode is requested.
+- Gameplay now shows a left-side `BENCH MODE` marker whenever benchmark mode is
+  active.
+- Start-screen benchmark button is still small, but now has a visible border,
+  background, and `BENCH` label so it is harder to confuse with normal start.
+
+### Conclusion
+- If the game opens without `Benchmark Loading`, `BENCH MODE`, and the
+  benchmark overlay, the normal start path was used.
+- The benchmark path is now visually distinguishable from regular gameplay.
+
+### Performance
+- Load score: `1/10`.
+- Affected subsystem: UI / state handoff only.
+- No benchmark stress values or normal gameplay rendering cost were changed.
+
+### Code touched
+- `src/App.tsx`
+- `src/components/LoadingScreen.tsx`
+- `src/components/MainMenu.tsx`
+- `src/components/Game.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.139 - Fix benchmark completion under heavy load (Codex)
 
 ### Summary

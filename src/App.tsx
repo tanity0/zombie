@@ -17,6 +17,7 @@ function App() {
   const [benchmarkMode, setBenchmarkMode] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
+  const pendingBenchmarkRef = useRef(false);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
 
@@ -34,6 +35,7 @@ function App() {
       : 'warrior';
 
     setLoadingClass(validClass);
+    pendingBenchmarkRef.current = benchmark;
     setBenchmarkMode(benchmark);
     setBenchmarkResult(null);
     setGameState('loading');
@@ -51,6 +53,7 @@ function App() {
     }
 
     resetGame(validClass);
+    setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
   };
 
@@ -84,7 +87,7 @@ function App() {
       )}
 
       {gameState === 'loading' && (
-        <LoadingScreen characterClass={loadingClass} />
+        <LoadingScreen characterClass={loadingClass} benchmarkMode={benchmarkMode} />
       )}
       
       {gameState === 'playing' && (

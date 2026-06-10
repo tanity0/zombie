@@ -4,9 +4,10 @@ import { CharacterClass } from '../types/game';
 
 interface LoadingScreenProps {
   characterClass: CharacterClass;
+  benchmarkMode?: boolean;
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass }) => {
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass, benchmarkMode = false }) => {
   const profile = PLAYER_PROFILES[characterClass] ?? PLAYER_PROFILES.warrior;
 
   return (
@@ -17,10 +18,12 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass }) => {
         <div className="mx-auto mb-5 h-16 w-16 rounded-full border border-cyan-200/20 bg-white/5 shadow-[0_0_30px_rgba(34,211,238,0.16)]">
           <div className="loading-sigil h-full w-full rounded-full" />
         </div>
-        <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-100/50">Loading</div>
+        <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-100/50">
+          {benchmarkMode ? 'Benchmark Loading' : 'Loading'}
+        </div>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{profile.name}</h1>
         <p className="mt-2 text-[12px] leading-relaxed text-white/50">
-          装備とフィールドを準備中
+          {benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中'}
         </p>
         <div className="mx-auto mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
           <div className="loading-bar h-full rounded-full bg-gradient-to-r from-cyan-300 via-emerald-200 to-amber-200" />
