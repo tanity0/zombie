@@ -42,6 +42,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
+      frontForestTexture.source.scaleMode = 'linear';
       if (cancelled) {
         app.destroy(true);
         return;

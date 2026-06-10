@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.154 - Move light shafts horizontally and smooth front forest (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-horizontal-light-drift-front-forest-2026-06-11`
+  - Tag: `pre-horizontal-light-drift-front-forest-v0.25.153`
+- Changed stage light shaft drift to a slow horizontal loop:
+  - `x = sin(time) * 18px`
+  - `y = 0`
+  - existing shaft shapes are reused; no new draw calls/layers.
+- Reduced the blocky/mosaic look on the foreground forest:
+  - `frontForestTexture.source.scaleMode = 'linear'`
+  - disabled the foreground-only blur filter by setting `FRONT_FOREST_BLUR = 0`
+- Character/atlas pixel-art sampling remains `nearest`.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+0` to `+2`.
+- Current normal-play estimate before change: `36-55`.
+- Expected normal-play estimate after change: roughly `36-57`.
+- Visual risk: medium. Foreground forest should be smoother, but removing its
+  blur may make it feel sharper/closer; tune alpha or blur if it becomes too
+  crisp.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.153 - Add subtle light shaft drift and shrink player shadow (Codex)
 
 ### Summary

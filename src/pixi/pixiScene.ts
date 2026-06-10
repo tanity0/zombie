@@ -53,7 +53,7 @@ const FRONT_FOREST_HEIGHT_RATIO = 0.5;
 const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_FOREST_ALPHA = 0.78;
-const FRONT_FOREST_BLUR = 1.6;
+const FRONT_FOREST_BLUR = 0;
 const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 125;
 const MERCHANT_TARGET_HEIGHT = 100;
@@ -420,11 +420,13 @@ export class PixiScene {
     });
     this.L.farBackdrop.filters = [this.farBackdropBlur];
 
-    this.frontForestBlur = new BlurFilter({
-      strength: FRONT_FOREST_BLUR,
-      quality: 3,
-    });
-    this.L.frontForest.filters = [this.frontForestBlur];
+    if (FRONT_FOREST_BLUR > 0) {
+      this.frontForestBlur = new BlurFilter({
+        strength: FRONT_FOREST_BLUR,
+        quality: 3,
+      });
+      this.L.frontForest.filters = [this.frontForestBlur];
+    }
 
     // Ambient fireflies: screen-space sprites driven by world coordinates.
     // They stay outside filteredWorld so the field depth-of-field never blurs
@@ -572,12 +574,9 @@ export class PixiScene {
   }
 
   private syncStageLightShaftDrift(now: number) {
-    const mag = Math.hypot(STAGE_LIGHT_SHAFT_DIRECTION.x, STAGE_LIGHT_SHAFT_DIRECTION.y) || 1;
-    const ux = STAGE_LIGHT_SHAFT_DIRECTION.x / mag;
-    const uy = STAGE_LIGHT_SHAFT_DIRECTION.y / mag;
     const t = (now % STAGE_LIGHT_SHAFT_DRIFT_MS) / STAGE_LIGHT_SHAFT_DRIFT_MS;
-    const drift = (0.5 + 0.5 * Math.sin(t * Math.PI * 2)) * STAGE_LIGHT_SHAFT_DRIFT_PX;
-    this.stageLightShaftGfx.position.set(-ux * drift, -uy * drift);
+    const drift = Math.sin(t * Math.PI * 2) * STAGE_LIGHT_SHAFT_DRIFT_PX;
+    this.stageLightShaftGfx.position.set(drift, 0);
   }
 
   private farBackdropHeight() {
