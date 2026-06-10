@@ -173,10 +173,10 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
 };
-const ENEMY_RANK_SHADOW: Record<string, { color: number; alphaBoost: number }> = {
-  strong: { color: 0x1d4ed8, alphaBoost: 0.18 },
-  elite: { color: 0x7e22ce, alphaBoost: 0.22 },
-  danger: { color: 0xdc2626, alphaBoost: 0.28 },
+const ENEMY_RANK_MARK: Record<string, { color: number; shape: 'triangle' | 'diamond' | 'danger' }> = {
+  strong: { color: 0x38bdf8, shape: 'triangle' },
+  elite: { color: 0xc084fc, shape: 'diamond' },
+  danger: { color: 0xef4444, shape: 'danger' },
 };
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
@@ -260,14 +260,19 @@ const drawDirectionalShadow = (
   w: number,
   alpha: number,
   lighting: StageLightingPreset,
-  color = 0x000000,
-  alphaBoost = 0
+  options?: {
+    direction?: { x: number; y: number };
+    length?: number;
+    alpha?: number;
+    color?: number;
+  }
 ) => {
-  const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
-  const ux = lighting.direction.x / mag;
-  const uy = lighting.direction.y / mag;
+  const direction = options?.direction ?? lighting.direction;
+  const mag = Math.hypot(direction.x, direction.y) || 1;
+  const ux = direction.x / mag;
+  const uy = direction.y / mag;
   const scale = Math.max(0.7, Math.min(1.55, w / 42));
-  const length = lighting.shadowLength * scale;
+  const length = options?.length ?? lighting.shadowLength * scale;
   const radiusX = w * 0.55;
   const radiusY = w * 0.18;
   const width = Math.max(3, Math.hypot(radiusX * uy, radiusY * ux) * 2);
@@ -275,10 +280,18 @@ const drawDirectionalShadow = (
     .lineTo(cx + ux * length, cy - 1 + uy * length)
     .stroke({
       width,
-      color,
-      alpha: alpha * Math.min(0.62, lighting.shadowAlpha + alphaBoost),
+      color: options?.color ?? 0x000000,
+      alpha: alpha * (options?.alpha ?? lighting.shadowAlpha),
       cap: 'round',
     });
+};
+
+type StrongEventLight = {
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  horizonAlpha: number;
 };
 
 const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallbackW: number) => {
@@ -779,6 +792,55 @@ export class PixiScene {
     if (view) view.visible = false;
   }
 
+  private strongestEventLight(
+    effects: VisualEffect[],
+    camera: { x: number; y: number },
+    now: number
+  ): StrongEventLight | null {
+    let best: StrongEventLight | null = null;
+    let bestScore = 0;
+    for (const e of effects) {
+      if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) continue;
+      if (!this.isPointNearViewport(e.x, e.y, camera, e.radius + EFFECT_VIEWPORT_MARGIN)) continue;
+      const t = Math.min(1, (now - e.createdAt) / e.duration);
+      const life = 1 - t;
+      const horizonAlpha = this.horizonActorAlpha(e.y);
+      if (life <= 0 || horizonAlpha <= 0) continue;
+      const score = e.radius * life * horizonAlpha;
+      if (score <= bestScore) continue;
+      bestScore = score;
+      best = { x: e.x, y: e.y, radius: e.radius, life, horizonAlpha };
+    }
+    return best;
+  }
+
+  private eventShadowOptions(
+    footX: number,
+    footY: number,
+    shadowW: number,
+    light: StrongEventLight | null
+  ) {
+    if (!light) return undefined;
+    const dx = footX - light.x;
+    const dy = footY - light.y;
+    const groundDx = dx;
+    const groundDy = dy * 0.6;
+    const groundDist = Math.hypot(groundDx, groundDy) || 1;
+    const reach = light.radius * LOCAL_EVENT_SHADOW_REACH_MULT;
+    if (groundDist > reach || groundDist < 1) return undefined;
+    const falloff = 1 - groundDist / reach;
+    const actorDepth = this.depthScale(footY);
+    const baseScale = Math.max(0.7, Math.min(1.55, shadowW / 42));
+    const fixedLength = ACTIVE_STAGE_LIGHTING.shadowLength * baseScale;
+    const eventLength = (96 + light.radius * 1.65) * falloff * actorDepth;
+    return {
+      direction: { x: groundDx / groundDist, y: groundDy / groundDist },
+      length: Math.max(fixedLength, eventLength),
+      alpha: Math.min(0.58, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha),
+      color: 0x000000,
+    };
+  }
+
   private snapToScreenPixel(worldValue: number, worldOffset: number): number {
     return Math.round(worldValue + worldOffset) - worldOffset;
   }
@@ -855,7 +917,7 @@ export class PixiScene {
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
-    this.syncShadows(s.player, s.enemies);
+    this.syncShadows(s.player, s.enemies, s.effects, s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -1288,6 +1350,7 @@ export class PixiScene {
         falloff: number;
         horizonAlpha: number;
         strength: number;
+        source: 'actor' | 'world';
       };
       const reach = e.radius * LOCAL_EVENT_SHADOW_REACH_MULT;
       const castActors: CastShadow[] = [];
@@ -1296,7 +1359,7 @@ export class PixiScene {
         x <= camera.x + this.screenW + pad &&
         y >= camera.y - pad &&
         y <= camera.y + this.screenH + pad;
-      const addCaster = (x: number, y: number, w: number, strength = 1) => {
+      const addCaster = (x: number, y: number, w: number, strength = 1, source: 'actor' | 'world' = 'world') => {
         if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w)) return;
         if (!isNearScreen(x, y)) return;
         const actorHorizonAlpha = this.horizonActorAlpha(y);
@@ -1312,6 +1375,7 @@ export class PixiScene {
           falloff: 1 - dist / reach,
           horizonAlpha: actorHorizonAlpha,
           strength,
+          source,
         });
       };
 
@@ -1320,14 +1384,15 @@ export class PixiScene {
         playerBox.footX,
         playerBox.footY,
         playerBox.boxW * 0.55 * this.depthScale(playerBox.footY),
-        1.12
+        1.12,
+        'actor'
       );
       for (const enemy of enemies) {
         const box = enemyFootBox(enemy);
         const bossWeight = enemy.type === 'reaper' || enemy.type === 'giantbat' || enemy.type === 'pumpkin'
           ? 1.28
           : 1;
-        addCaster(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
+        addCaster(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight, 'actor');
       }
       for (const prop of props) {
         const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
@@ -1368,13 +1433,21 @@ export class PixiScene {
           const startX = actorX + nx * Math.min(3, shadowRadiusX * 0.12);
           const startY = actorY + ny * Math.min(2, shadowRadiusY * 0.35) - 1;
           const castThickness = Math.hypot(shadowRadiusX * ny, shadowRadiusY * nx) * 2;
-          g.ellipse(actorX, actorY - 1, shadowRadiusX, shadowRadiusY)
-            .fill({ color: 0x000000, alpha: alpha * 0.72 });
-          [
-            { distance: 0.95, width: 1.1, alpha: 0.12 },
-            { distance: 0.62, width: 1, alpha: 0.25 },
-            { distance: 0.36, width: 0.92, alpha: 0.48 },
-          ].forEach(shadow => {
+          const shadowLayers = actor.source === 'actor'
+            ? [
+                { distance: 0.95, width: 0.96, alpha: 0.09 },
+                { distance: 0.62, width: 0.86, alpha: 0.15 },
+              ]
+            : [
+                { distance: 0.95, width: 1.1, alpha: 0.12 },
+                { distance: 0.62, width: 1, alpha: 0.25 },
+                { distance: 0.36, width: 0.92, alpha: 0.48 },
+              ];
+          if (actor.source !== 'actor') {
+            g.ellipse(actorX, actorY - 1, shadowRadiusX, shadowRadiusY)
+              .fill({ color: 0x000000, alpha: alpha * 0.72 });
+          }
+          shadowLayers.forEach(shadow => {
             const endX = startX + nx * len * shadow.distance;
             const endY = startY + ny * len * shadow.distance;
             g.moveTo(startX, startY)
@@ -1528,13 +1601,28 @@ export class PixiScene {
 
   // ---- foot shadows (player + enemies) into one graphics -------------------
 
-  private syncShadows(player: Player, enemies: Enemy[]) {
+  private syncShadows(
+    player: Player,
+    enemies: Enemy[],
+    effects: VisualEffect[],
+    camera: { x: number; y: number },
+    now: number
+  ) {
     const g = this.shadowGfx;
     g.clear();
+    const eventLight = this.strongestEventLight(effects, camera, now);
     const pf = playerFootBox(player);
     const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
     const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW);
-    drawDirectionalShadow(g, pf.footX, pf.footY - 2, playerShadowW, 1, ACTIVE_STAGE_LIGHTING);
+    drawDirectionalShadow(
+      g,
+      pf.footX,
+      pf.footY - 2,
+      playerShadowW,
+      1,
+      ACTIVE_STAGE_LIGHTING,
+      this.eventShadowOptions(pf.footX, pf.footY, playerShadowW, eventLight)
+    );
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
       const fb = enemyFootBox(e);
@@ -1543,9 +1631,6 @@ export class PixiScene {
       if (horizonAlpha <= 0) continue;
       const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
       const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
-      const rankShadow = e.difficultyRank && e.difficultyRank !== 'normal'
-        ? ENEMY_RANK_SHADOW[e.difficultyRank]
-        : undefined;
       drawDirectionalShadow(
         g,
         e.x + e.width / 2,
@@ -1553,8 +1638,7 @@ export class PixiScene {
         shadowW,
         horizonAlpha,
         ACTIVE_STAGE_LIGHTING,
-        rankShadow?.color,
-        rankShadow?.alphaBoost ?? 0
+        this.eventShadowOptions(e.x + e.width / 2, footY, shadowW, eventLight)
       );
     }
   }
@@ -1678,6 +1762,7 @@ export class PixiScene {
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
+    this.drawEnemyRankMark(o, e, fb.footX, fb.footY);
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
     }
@@ -1715,6 +1800,43 @@ export class PixiScene {
     view.light.width = radius * 2;
     view.light.height = radius * 1.45;
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
+  }
+
+  private drawEnemyRankMark(g: Graphics, e: Enemy, footX: number, footY: number) {
+    const mark = e.difficultyRank && e.difficultyRank !== 'normal'
+      ? ENEMY_RANK_MARK[e.difficultyRank]
+      : undefined;
+    if (!mark) return;
+
+    const d = this.depthScaleEnemy(footY);
+    const size = Math.max(5, Math.min(10, Math.max(e.width, e.height) * d * 0.13));
+    const y = footY - Math.max(18, e.height * d) - size * 1.6;
+    const outline = 0x020617;
+
+    if (mark.shape === 'triangle') {
+      g.poly([footX, y - size, footX + size * 0.92, y + size * 0.58, footX - size * 0.92, y + size * 0.58])
+        .fill({ color: outline, alpha: 0.74 });
+      g.poly([footX, y - size * 0.62, footX + size * 0.58, y + size * 0.38, footX - size * 0.58, y + size * 0.38])
+        .fill({ color: mark.color, alpha: 0.96 });
+      return;
+    }
+
+    if (mark.shape === 'diamond') {
+      g.poly([footX, y - size, footX + size, y, footX, y + size, footX - size, y])
+        .fill({ color: outline, alpha: 0.74 });
+      g.poly([footX, y - size * 0.62, footX + size * 0.62, y, footX, y + size * 0.62, footX - size * 0.62, y])
+        .fill({ color: mark.color, alpha: 0.96 });
+      return;
+    }
+
+    g.roundRect(footX - size * 0.62, y - size, size * 1.24, size * 1.9, Math.max(1, size * 0.22))
+      .fill({ color: outline, alpha: 0.78 });
+    g.roundRect(footX - size * 0.42, y - size * 0.78, size * 0.84, size * 1.46, Math.max(1, size * 0.18))
+      .fill({ color: mark.color, alpha: 0.96 });
+    g.rect(footX - size * 0.11, y - size * 0.52, size * 0.22, size * 0.66)
+      .fill({ color: 0xffffff, alpha: 0.94 });
+    g.circle(footX, y + size * 0.43, size * 0.13)
+      .fill({ color: 0xffffff, alpha: 0.94 });
   }
 
   private drawHealthBar(g: Graphics, e: Enemy) {

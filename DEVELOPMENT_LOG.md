@@ -10,6 +10,43 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.153 - Unify actor event shadows (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-event-shadow-unify-2026-06-10`
+  - Tag: `pre-event-shadow-unify-v0.25.152`
+- Abandoned colored rare-enemy shadows after user review because they conflicted
+  visually with the stretched strong-event shadow.
+- Moved rare-enemy identification to small overhead marks:
+  - `strong`: cyan triangle
+  - `elite`: purple diamond
+  - `danger`: red danger badge
+- Changed actor shadow behavior so the normal player/enemy directional shadow is
+  the primary shadow layer during strong-event light:
+  - normal shadow stretches and strengthens toward the active strong glow
+  - the old actor event-shadow pass now draws only two faint auxiliary strokes
+  - world/object cast shadows keep the previous local event shadow layering
+- Enemy sprites are not tinted. Strong glows, fog, depth blur, bloom, and
+  DOF-style global effects remain unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `-1` to `-3` in strong-event scenes, `0` in
+  normal scenes without large glow.
+- Current normal-play estimate before change: `33-44`.
+- Expected normal-play estimate after change: roughly `32-43`.
+- Main reduced costs:
+  - removed colored-shadow branching from the normal shadow pass
+  - actor strong-event shadows no longer redraw the root ellipse layer
+  - actor strong-event overlay uses two auxiliary strokes instead of three
+- Visual risk: medium. The intended effect is cleaner, but the unified normal
+  shadow may need alpha/length tuning on device during large glow events.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.152 - Use colored shadows for rare enemies (Codex)
 
 ### Summary
