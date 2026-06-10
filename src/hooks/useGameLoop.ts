@@ -78,8 +78,9 @@ type DogFetchMission = {
   collected: boolean;
 };
 
-export const useGameLoop = (onGameOver: () => void) => {
+export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean } = {}) => {
   const [fps, setFps] = useState(0);
+  const benchmarkModeRef = useRef(Boolean(options.benchmarkMode));
   const frameRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
@@ -133,6 +134,10 @@ export const useGameLoop = (onGameOver: () => void) => {
   const spawnFlash = useGameStore(state => state.spawnFlash);
   const spawnEffect = useGameStore(state => state.spawnEffect);
   const updateEffects = useGameStore(state => state.updateEffects);
+
+  useEffect(() => {
+    benchmarkModeRef.current = Boolean(options.benchmarkMode);
+  }, [options.benchmarkMode]);
 
   const triggerPlayerDeath = useCallback((x: number, y: number) => {
     if (gameOverTriggeredRef.current) return;
@@ -227,6 +232,15 @@ export const useGameLoop = (onGameOver: () => void) => {
         } = loopState;
         const timeScale = nowMs < loopState.timeSlowUntil ? loopState.timeSlowScale : 1;
         const deltaTime = baseDeltaTime * timeScale;
+
+        if (benchmarkModeRef.current) {
+          const targetCameraX = player.x - gameBounds.width / 2 + player.width / 2;
+          const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
+          setCameraPosition(targetCameraX, targetCameraY);
+          updateEffects(deltaTime);
+          frameRef.current = requestAnimationFrame(gameLoop);
+          return;
+        }
 
         // Update game time
         const newGameTime = gameTime + deltaTime * 1000;

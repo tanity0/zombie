@@ -268,7 +268,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   useEffect(() => {
     if (result) return;
 
-    const tick = window.setInterval(() => {
+    const runBenchmarkTick = () => {
       const elapsed = performance.now() - startedAt;
       if (elapsed >= BENCHMARK_DURATION_MS) {
         finishBenchmark();
@@ -411,7 +411,10 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         spawnBurst(burstX, burstY, '#93c5fd', caps.burstCount);
       }
       setNow(performance.now());
-    }, BENCHMARK_TICK_MS);
+    };
+
+    runBenchmarkTick();
+    const tick = window.setInterval(runBenchmarkTick, BENCHMARK_TICK_MS);
 
     return () => window.clearInterval(tick);
   }, [addEnemy, finishBenchmark, removeEnemy, result, spawnBurst, spawnGlow, spawnRing, startedAt]);

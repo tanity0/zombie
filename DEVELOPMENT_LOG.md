@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.141 - Isolate benchmark from normal gameplay (Codex)
+
+### Summary
+- Fixed benchmark mode still feeling like a normal game run.
+- `useGameLoop()` now accepts `benchmarkMode` and skips normal gameplay
+  simulation while benchmark mode is active.
+- Benchmark mode still updates FPS, camera position, and visual effect
+  lifetimes, but it skips normal enemy spawning, weapons, pickups, collisions,
+  level-up flow, shops, quests, and regular run progression.
+- Benchmark overlay now runs its first stress tick immediately on mount instead
+  of waiting for the first interval.
+
+### Conclusion
+- Root cause: benchmark mode was previously layered on top of the normal game
+  loop, so the regular run started first and benchmark stress appeared later.
+- Fix: benchmark mode now replaces normal gameplay simulation for the duration
+  of the test.
+
+### Performance
+- Load score: `2/10` for this control-flow fix.
+- Affected subsystem: simulation control flow.
+- Benchmark stress values are unchanged; normal gameplay is unaffected outside
+  benchmark mode.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/components/Game.tsx`
+- `src/components/BenchmarkOverlay.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.140 - Make benchmark launch unmistakable (Codex)
 
 ### Summary

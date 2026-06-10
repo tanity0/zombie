@@ -49,7 +49,7 @@ const Game: React.FC<GameProps> = ({
   useGameControls();
 
   // Start game loop
-  const { fps } = useGameLoop(onGameOver);
+  const { fps } = useGameLoop(onGameOver, { benchmarkMode });
 
   // Detect touch capability (re-checks if device profile changes mid-session)
   useEffect(() => {
