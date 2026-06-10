@@ -173,10 +173,10 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
 };
-const ENEMY_RANK_ORNAMENT: Record<string, { wing: number | null; horn: number | null; ring: number | null }> = {
-  strong: { wing: 0x101827, horn: null, ring: null },
-  elite: { wing: null, horn: 0xd8b4fe, ring: null },
-  danger: { wing: 0xdc2626, horn: 0xfef3c7, ring: 0xef4444 },
+const ENEMY_RANK_SHADOW: Record<string, { color: number; alphaBoost: number }> = {
+  strong: { color: 0x1d4ed8, alphaBoost: 0.18 },
+  elite: { color: 0x7e22ce, alphaBoost: 0.22 },
+  danger: { color: 0xdc2626, alphaBoost: 0.28 },
 };
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
@@ -259,7 +259,9 @@ const drawDirectionalShadow = (
   cy: number,
   w: number,
   alpha: number,
-  lighting: StageLightingPreset
+  lighting: StageLightingPreset,
+  color = 0x000000,
+  alphaBoost = 0
 ) => {
   const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
   const ux = lighting.direction.x / mag;
@@ -273,8 +275,8 @@ const drawDirectionalShadow = (
     .lineTo(cx + ux * length, cy - 1 + uy * length)
     .stroke({
       width,
-      color: 0x000000,
-      alpha: alpha * lighting.shadowAlpha,
+      color,
+      alpha: alpha * Math.min(0.62, lighting.shadowAlpha + alphaBoost),
       cap: 'round',
     });
 };
@@ -1541,7 +1543,19 @@ export class PixiScene {
       if (horizonAlpha <= 0) continue;
       const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
       const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
-      drawDirectionalShadow(g, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, ACTIVE_STAGE_LIGHTING);
+      const rankShadow = e.difficultyRank && e.difficultyRank !== 'normal'
+        ? ENEMY_RANK_SHADOW[e.difficultyRank]
+        : undefined;
+      drawDirectionalShadow(
+        g,
+        e.x + e.width / 2,
+        footY - 2,
+        shadowW,
+        horizonAlpha,
+        ACTIVE_STAGE_LIGHTING,
+        rankShadow?.color,
+        rankShadow?.alphaBoost ?? 0
+      );
     }
   }
 
@@ -1664,7 +1678,6 @@ export class PixiScene {
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
-    this.drawEnemyRankOrnament(o, e, fb.footX, fb.footY);
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
     }
@@ -1702,64 +1715,6 @@ export class PixiScene {
     view.light.width = radius * 2;
     view.light.height = radius * 1.45;
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
-  }
-
-  private drawEnemyRankOrnament(g: Graphics, e: Enemy, footX: number, footY: number) {
-    const rank = e.difficultyRank && e.difficultyRank !== 'normal'
-      ? ENEMY_RANK_ORNAMENT[e.difficultyRank]
-      : undefined;
-    if (!rank) return;
-
-    const d = this.depthScaleEnemy(footY);
-    const bodyW = Math.max(14, e.width * d);
-    const bodyH = Math.max(18, e.height * d);
-    const topY = footY - bodyH;
-    const shoulderY = topY + bodyH * 0.5;
-    const headY = topY + bodyH * 0.15;
-    const px = Math.max(1, Math.round(2 * d));
-
-    if (rank.ring != null) {
-      g.ellipse(footX, footY - 1 * d, bodyW * 0.48, Math.max(2, bodyW * 0.13))
-        .stroke({ width: Math.max(1, px), color: rank.ring, alpha: 0.72 });
-    }
-
-    if (rank.wing != null) {
-      const wingW = Math.max(5, bodyW * 0.24);
-      const wingH = Math.max(4, bodyH * 0.18);
-      const leftRoot = footX - bodyW * 0.32;
-      const rightRoot = footX + bodyW * 0.32;
-      g.poly([
-        leftRoot, shoulderY,
-        leftRoot - wingW, shoulderY - wingH * 0.42,
-        leftRoot - wingW * 0.62, shoulderY + wingH,
-      ]).fill({ color: rank.wing, alpha: 0.95 });
-      g.poly([
-        rightRoot, shoulderY,
-        rightRoot + wingW, shoulderY - wingH * 0.42,
-        rightRoot + wingW * 0.62, shoulderY + wingH,
-      ]).fill({ color: rank.wing, alpha: 0.95 });
-      g.rect(leftRoot - wingW * 0.72, shoulderY + wingH * 0.12, Math.max(1, px), Math.max(2, wingH * 0.42))
-        .fill({ color: 0x020617, alpha: 0.55 });
-      g.rect(rightRoot + wingW * 0.72, shoulderY + wingH * 0.12, Math.max(1, px), Math.max(2, wingH * 0.42))
-        .fill({ color: 0x020617, alpha: 0.55 });
-    }
-
-    if (rank.horn != null) {
-      const hornW = Math.max(3, bodyW * 0.11);
-      const hornH = Math.max(5, bodyH * 0.14);
-      const hornY = headY + hornH * 0.35;
-      const hornOffset = Math.max(4, bodyW * 0.16);
-      g.poly([
-        footX - hornOffset, hornY,
-        footX - hornOffset - hornW, hornY - hornH,
-        footX - hornOffset + hornW * 0.35, hornY - hornH * 0.2,
-      ]).fill({ color: rank.horn, alpha: 0.95 });
-      g.poly([
-        footX + hornOffset, hornY,
-        footX + hornOffset + hornW, hornY - hornH,
-        footX + hornOffset - hornW * 0.35, hornY - hornH * 0.2,
-      ]).fill({ color: rank.horn, alpha: 0.95 });
-    }
   }
 
   private drawHealthBar(g: Graphics, e: Enemy) {

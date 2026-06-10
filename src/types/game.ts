@@ -117,7 +117,7 @@ export interface Enemy {
   spawnedAt?: number; // gameTime ms when spawned
   isWave?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this
-  // at spawn time. Renderer uses rank for lightweight ornaments; gameplay uses multiplier.
+  // at spawn time. Renderer uses rank for colored shadows; gameplay uses multiplier.
   distanceZone?: number;
   difficultyRank?: DifficultyRank;
   difficultyMultiplier?: number;

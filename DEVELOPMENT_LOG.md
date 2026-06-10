@@ -10,6 +10,46 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.152 - Use colored shadows for rare enemies (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-rank-shadow-color-2026-06-10`
+  - Tag: `pre-rank-shadow-color-v0.25.151`
+- Removed the temporary wing/horn rank ornaments because mobile screenshots
+  showed that only red was readable and the shapes looked noisy.
+- Moved rank identification to enemy shadow color:
+  - `strong`: blue shadow
+  - `elite`: purple shadow
+  - `danger`: red shadow
+- Enemy sprites are not tinted. Strong-event glows, hit flashes, boss marker,
+  stun reticle, and global 2DHD fog/depth blur/bloom/DOF remain unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0` to `+1`, with a practical `-1` to `-3`
+  improvement versus the wing/horn ornament version.
+- Current normal-play estimate before change: `34-44`.
+- Expected normal-play estimate after change: roughly `33-44`.
+- Main reduced costs:
+  - removed rank ornament Graphics polygons
+  - reused the existing directional shadow pass with only color/alpha branching
+- Enemy sprite tint note: simple Pixi Sprite `tint` is generally cheap, but it
+  changes the character pixel art more directly. Filter-based recolor would be
+  heavier and is not recommended.
+- Visual risk: low to medium. Colored shadows should be clearer than ornaments,
+  but blue/purple can still be subtle on dark ground. If needed, increase
+  `ENEMY_RANK_SHADOW` alphaBoost or add a very thin foot ring.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/types/game.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.151 - Replace rare enemy glow with ornaments (Codex)
 
 ### Summary
