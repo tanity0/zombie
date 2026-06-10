@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.161 - Blur actual near ground strips (Codex)
+
+### Summary
+- Added rollback anchors before this change:
+  - Branch: `backup/pre-near-ground-strip-blur-2026-06-11`
+  - Tag: `pre-near-ground-strip-blur-v0.25.160`
+- Replaced the previous near-ground copy overlay approach with actual lower
+  ground strip blur:
+  - bottom `32%` of existing `groundStrips` are re-parented into
+    `nearGroundBlurLayer`
+  - `nearGroundBlurLayer` gets one `BlurFilter`
+  - no duplicated ground texture layer, no overlay alpha, and no mask copy
+- This keeps actors, event characters, pickups, front forest, and HUD outside
+  the ground blur. Only the lower ground strips blur.
+
+### Performance
+- Old load score: `2/10`.
+- Performance Budget Score impact: `+1` to `+4` versus `v0.25.159`.
+- Current normal-play estimate before change: `38-66`.
+- Expected normal-play estimate after change: roughly `39-70`.
+- Visual risk: medium. The blur should now affect the real ground rather than a
+  copied overlay, but the seam between normal and blurred strips may need
+  tuning by changing `NEAR_GROUND_BLUR_STRIP_RATIO` or blur strength.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.160 - Add visible near-ground blur overlay (Codex)
 
 ### Summary
