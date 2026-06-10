@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.160 - Keep event shadow direction fixed (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shadow-fixed-direction-2026-06-10`
+  - Tag: `pre-shadow-fixed-direction-v0.25.159`
+- Removed actor event-shadow direction interpolation after user identified that
+  the shadow tip rotating toward and away from the event light looked strange.
+- Actor event shadows now keep `ACTIVE_STAGE_LIGHTING.direction` fixed:
+  - strong-event shadows still extend in length
+  - alpha still intensifies during the event
+  - release timing/easing still applies
+  - no tip rotation toward the glow source
+- Auxiliary event-shadow strokes are unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0` or marginally lower.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: low. Light-source accuracy is reduced, but the shadow should feel
+  much calmer because it no longer swings direction.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.159 - Smooth shadow return curve and align auxiliary widths (Codex)
 
 ### Summary
