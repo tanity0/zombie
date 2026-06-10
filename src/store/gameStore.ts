@@ -166,6 +166,7 @@ export const REFLECT_SPEED_MULTIPLIER = 1.8;
 
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
+const MELEE_FINISH_SLOW_MS = HITSTOP_MS + 520;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
@@ -914,7 +915,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
         get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
         get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
-        get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', 320);
+        get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
         // "Kill!" callout over the executed enemy's head.
         get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
       } else {
@@ -927,7 +928,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
     if (finisherHit || bossFinishHit) {
-      get().triggerTimeSlow(0.4, HITSTOP_MS + 520);
+      get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
     }
 
     let propHit = false;

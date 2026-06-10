@@ -33,6 +33,17 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
   change gameplay: hitboxes, attack ranges, the counter radius (`MELEE_RADIUS`),
   movement distances, etc. stay as the store defines them.
 
+## Performance review for costly changes
+- For any implementation that may add runtime cost, always state a load score
+  before or alongside the implementation check: `1/10` = negligible, `5/10` =
+  noticeable but acceptable with limits, `10/10` = too heavy for the current
+  mobile-first target.
+- Include the reason for the score, what subsystem pays the cost
+  (simulation/rendering/audio/memory/network), and the safeguard or fallback.
+- Prefer bounded, event-only, pooled, or delta-scaling approaches over constant
+  per-frame global effects, per-pixel passes, unbounded loops, or new heavy
+  dependencies.
+
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left

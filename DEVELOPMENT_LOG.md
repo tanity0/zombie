@@ -10,6 +10,41 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.124 - Keep strong glow active during slow motion (Codex)
+
+### Summary
+- Matched strong-event glow/ring durations to their slow-motion windows so the
+  light and event shadows stay visible while the game is slowed.
+- Kept the existing lightweight slow-motion model: simulation `deltaTime` is
+  scaled; rendering/audio continue normally.
+- Added the project rule that potentially costly changes must report a load
+  score, affected subsystem, and safeguard.
+
+### Slow-motion event list
+- Player death: red glow + death rings, `0.32x` for `820ms`.
+- Castle boss emergence: red castle glow/rings, `0.36x` for `900ms`.
+- Heavy Gunner timed grenade explosion: orange glow/ring, `0.5x` for `440ms`.
+- Counter projectile reflection: cyan glow/ring, `0.34x` for `560ms`.
+- Grenade-launcher projectile explosion: orange glow/ring, `0.5x` for `440ms`.
+- Melee finisher / boss finisher hit: gold glow/rings, `0.4x` for `820ms`.
+
+### Performance
+- Load score: `2/10`.
+- Cost is rendering-side only: existing glow/shadow effects live longer during
+  bounded one-shot events. No new per-pixel pass, shadow map, dependency, or
+  unbounded loop was added.
+- Safeguard: strong-event shadows remain capped by `LOCAL_EVENT_MAX_CAST_SHADOWS`.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `src/store/gameStore.ts`
+- `CLAUDE.md`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.123 - Match event shadow thickness to foot-shadow shape (Codex)
 
 ### Summary
