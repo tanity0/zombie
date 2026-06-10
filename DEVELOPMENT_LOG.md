@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.162 - Rebalance actor event shadow lengths (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shadow-length-balance-2026-06-10`
+  - Tag: `pre-shadow-length-balance-v0.25.161`
+- Adjusted the three actor event-shadow lengths per user direction:
+  - layer 1 / main dense shadow is shorter:
+    `(74 + radius * 1.22)` -> `(48 + radius * 0.78)`
+  - layer 2 / mid auxiliary shadow is longer:
+    `distance 0.72` -> `distance 0.92`
+  - layer 3 / long auxiliary shadow is longer:
+    `distance 1.08` -> `distance 1.32`
+- Alpha and stroke width are unchanged in this pass, so the difference is driven
+  mainly by length.
+- Rendering count is unchanged.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: low to medium. Layer 1 should stop dominating; layers 2/3 should
+  read as longer falloff shadows.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.161 - Restore event stretch direction without rotation lerp (Codex)
 
 ### Summary
