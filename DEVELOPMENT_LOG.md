@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.159 - Preserve foreground forest opacity in blur mask (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-front-forest-mask-opacity-2026-06-11`
+  - Tag: `pre-front-forest-mask-opacity-v0.25.158`
+- Adjusted the foreground forest blur mask so the forest no longer fades from
+  fully transparent at the top:
+  - added `FRONT_FOREST_FADE_TOP_ALPHA = 0.58`
+  - added `FRONT_FOREST_FADE_MID_ALPHA = 0.82`
+- Kept the widened fade range from `v0.25.158`:
+  - `FRONT_FOREST_FADE_IN_RATIO = 0.52`
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `38-66`.
+- Expected normal-play estimate after change: roughly `38-66`.
+- Visual risk: low. The foreground forest should retain more presence while
+  the lower foreground still reads as softened.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.158 - Widen foreground blur fade range (Codex)
 
 ### Summary

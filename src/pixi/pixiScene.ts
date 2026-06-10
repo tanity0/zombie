@@ -55,6 +55,8 @@ const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 2.2;
 const FRONT_FOREST_FADE_IN_RATIO = 0.52;
+const FRONT_FOREST_FADE_TOP_ALPHA = 0.58;
+const FRONT_FOREST_FADE_MID_ALPHA = 0.82;
 const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 125;
 const MERCHANT_TARGET_HEIGHT = 100;
@@ -683,8 +685,8 @@ export class PixiScene {
     if (!ctx) return;
 
     const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, 'rgba(255,255,255,0)');
-    grad.addColorStop(Math.min(1, FRONT_FOREST_FADE_IN_RATIO), 'rgba(255,255,255,0.56)');
+    grad.addColorStop(0, `rgba(255,255,255,${FRONT_FOREST_FADE_TOP_ALPHA})`);
+    grad.addColorStop(Math.min(1, FRONT_FOREST_FADE_IN_RATIO), `rgba(255,255,255,${FRONT_FOREST_FADE_MID_ALPHA})`);
     grad.addColorStop(1, 'rgba(255,255,255,1)');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = grad;
