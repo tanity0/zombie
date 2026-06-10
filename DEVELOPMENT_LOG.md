@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.155 - Tune shadow density and return timing (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shadow-density-tune-2026-06-10`
+  - Tag: `pre-shadow-density-tune-v0.25.154`
+- Made stretched actor shadows return a little more slowly:
+  - `EVENT_SHADOW_RELEASE_MS`: `170 -> 220`
+- Darkened the active sunlight shadow preset:
+  - `SUNLIGHT_PRESET.shadowAlpha`: `0.26 -> 0.32`
+- Raised the strong-event actor shadow alpha ceiling slightly:
+  - event alpha cap: `0.58 -> 0.64`
+- No extra shadow layers, filters, dynamic shadow maps, or per-actor history
+  were added.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0` to `+1`.
+- Current normal-play estimate before change: `32-44`.
+- Expected normal-play estimate after change: roughly `32-45`.
+- Visual risk: low to medium. Shadows should read better, but if the ground
+  feels dirty on mobile, reduce `SUNLIGHT_PRESET.shadowAlpha` first.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.154 - Smooth event shadow return (Codex)
 
 ### Summary

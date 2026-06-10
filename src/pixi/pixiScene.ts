@@ -78,7 +78,7 @@ const BLOOM_SCALE = 1.5;
 const BLOOM_STRONG_EVENT_SCALE = 0;
 const BLOOM_BLUR = 8;
 const EVENT_SHADOW_ATTACK_MS = 70;
-const EVENT_SHADOW_RELEASE_MS = 170;
+const EVENT_SHADOW_RELEASE_MS = 220;
 
 type StageLightingPreset = {
   name: 'sunlight' | 'moonlight';
@@ -101,7 +101,7 @@ const SUNLIGHT_PRESET: StageLightingPreset = {
   intensity: 0.24,
   contrast: 0.18,
   shadowLength: 32,
-  shadowAlpha: 0.26,
+  shadowAlpha: 0.32,
   shaftAlpha: 0.07,
   bloomScale: 1.16,
   playerAssistAlpha: 0.1,
@@ -845,7 +845,7 @@ export class PixiScene {
       x: normalDirection.x + (eventDirection.x - normalDirection.x) * blend,
       y: normalDirection.y + (eventDirection.y - normalDirection.y) * blend,
     };
-    const eventAlpha = Math.min(0.58, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha);
+    const eventAlpha = Math.min(0.64, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha);
     return {
       direction,
       length: fixedLength + (Math.max(fixedLength, eventLength) - fixedLength) * blend,
