@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.155 - Fade near ground and front forest (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-ground-near-fade-2026-06-11`
+  - Tag: `pre-ground-near-fade-v0.25.154`
+- Added a ground-only near fade that starts just below the player's foot
+  screen position and becomes gradually paler toward the bottom of the screen.
+- The near fade is a single screen-blended sprite inside `groundBase`, so it
+  affects the floor only and does not wash over actors, enemies, projectiles,
+  or HUD.
+- Made the foreground forest slightly paler:
+  - `FRONT_FOREST_ALPHA`: `0.78 -> 0.68`
+  - `FRONT_FOREST_TINT`: `0xdde6d8`
+- Changed stage light shaft horizontal drift from automatic time-based motion
+  to player-movement-based motion:
+  - `x = sin(playerFootX / 620px) * 18px`
+  - `y = 0`
+  - light shafts stop moving when the player stops moving horizontally.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+1` to `+3`.
+- Current normal-play estimate before change: `36-57`.
+- Expected normal-play estimate after change: roughly `37-60`.
+- Visual risk: medium. The near floor should feel atmospheric, but if it gets
+  too washed out, tune `GROUND_NEAR_FADE_ALPHA` or `FRONT_FOREST_ALPHA`.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.154 - Move light shafts horizontally and smooth front forest (Codex)
 
 ### Summary

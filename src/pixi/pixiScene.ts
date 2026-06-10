@@ -52,7 +52,8 @@ const FRONT_FOREST_PARALLAX_X = 0.52;
 const FRONT_FOREST_HEIGHT_RATIO = 0.5;
 const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
-const FRONT_FOREST_ALPHA = 0.78;
+const FRONT_FOREST_ALPHA = 0.68;
+const FRONT_FOREST_TINT = 0xdde6d8;
 const FRONT_FOREST_BLUR = 0;
 const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 125;
@@ -94,7 +95,7 @@ type StageLightingPreset = {
 
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
 const STAGE_LIGHT_SHAFT_DRIFT_PX = 18;
-const STAGE_LIGHT_SHAFT_DRIFT_MS = 11_000;
+const STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX = 620;
 const PLAYER_SHADOW_SCALE = 0.9;
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
@@ -204,6 +205,8 @@ const GROUND_TILE_SCALE_Y_FAR = 0.12;
 const GROUND_SCROLL_X_FEEL = 1.2;
 const GROUND_SCROLL_Y_FEEL = 3.0;
 const GROUND_PERSPECTIVE_CURVE = 2.05;
+const GROUND_NEAR_FADE_ALPHA = 0.24;
+const GROUND_NEAR_FADE_START_OFFSET_PX = 10;
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
 const OBJECT_GROUND_RELATIVE_MAX = 1.45;
@@ -351,6 +354,7 @@ export class PixiScene {
 
   private shadowGfx = new Graphics();
   private groundReflectionGfx = new Graphics();
+  private groundNearFade = new Sprite(Texture.WHITE);
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
@@ -364,6 +368,7 @@ export class PixiScene {
   private vignette = new Sprite(getVignetteTexture());
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
+  private groundNearFadeTexture: Texture | null = null;
   private horizonForestFadeMask = new Sprite(Texture.WHITE);
   private horizonForestFadeMaskTexture: Texture | null = null;
 
@@ -427,6 +432,10 @@ export class PixiScene {
       });
       this.L.frontForest.filters = [this.frontForestBlur];
     }
+
+    this.groundNearFade.blendMode = 'screen';
+    this.groundNearFade.visible = false;
+    this.L.groundBase.addChild(this.groundNearFade);
 
     // Ambient fireflies: screen-space sprites driven by world coordinates.
     // They stay outside filteredWorld so the field depth-of-field never blurs
@@ -519,6 +528,7 @@ export class PixiScene {
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
+    this.updateGroundNearFadeTexture();
     this.updatePerspectiveGround(0, 0, 0, 0);
     const frontH = this.frontForestHeight();
     const frontScale = frontH / this.L.frontForest.texture.height;
@@ -527,6 +537,7 @@ export class PixiScene {
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
     this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
+    this.L.frontForest.tint = FRONT_FOREST_TINT;
     // Full-screen atmosphere overlays.
     this.gradeSprite.width = w;
     this.gradeSprite.height = h;
@@ -573,8 +584,8 @@ export class PixiScene {
     }
   }
 
-  private syncStageLightShaftDrift(now: number) {
-    const t = (now % STAGE_LIGHT_SHAFT_DRIFT_MS) / STAGE_LIGHT_SHAFT_DRIFT_MS;
+  private syncStageLightShaftDrift(player: Player) {
+    const t = (playerFootBox(player).footX % STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX) / STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX;
     const drift = Math.sin(t * Math.PI * 2) * STAGE_LIGHT_SHAFT_DRIFT_PX;
     this.stageLightShaftGfx.position.set(drift, 0);
   }
@@ -662,6 +673,44 @@ export class PixiScene {
     this.worldFadeMask.height = h;
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = texture;
+  }
+
+  private updateGroundNearFadeTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, 'rgba(210,220,205,0)');
+    grad.addColorStop(0.45, `rgba(210,220,205,${GROUND_NEAR_FADE_ALPHA * 0.42})`);
+    grad.addColorStop(1, `rgba(210,220,205,${GROUND_NEAR_FADE_ALPHA})`);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const texture = Texture.from(canvas);
+    this.groundNearFade.texture = texture;
+    this.groundNearFadeTexture?.destroy(true);
+    this.groundNearFadeTexture = texture;
+  }
+
+  private syncGroundNearFade(player: Player, camera: { x: number; y: number }) {
+    const farH = this.farBackdropHeight();
+    const groundH = Math.max(1, this.screenH - farH);
+    const footY = playerFootBox(player).footY;
+    const startY = Math.max(0, Math.min(groundH - 1, footY - camera.y - farH + GROUND_NEAR_FADE_START_OFFSET_PX));
+    const fadeH = groundH - startY;
+    if (fadeH <= 2) {
+      this.groundNearFade.visible = false;
+      return;
+    }
+
+    this.groundNearFade.visible = true;
+    this.groundNearFade.position.set(0, startY);
+    this.groundNearFade.width = this.screenW;
+    this.groundNearFade.height = fadeH;
   }
 
   // Build a fresh actor view and parent it into the actor layer.
@@ -852,6 +901,7 @@ export class PixiScene {
     this.horizonFadeZeroScreenY = this.horizonRevealZeroScreenY();
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     this.updatePerspectiveGround(s.camera.x, s.camera.y, sx, sy);
+    this.syncGroundNearFade(s.player, s.camera);
     const frontH = this.frontForestHeight();
     this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH);
     this.L.frontForest.tilePosition.set(
@@ -867,7 +917,7 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies);
-    this.syncStageLightShaftDrift(now);
+    this.syncStageLightShaftDrift(s.player);
     this.syncProjectiles(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -2553,6 +2603,8 @@ export class PixiScene {
     this.worldFadeMask.destroy();
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = null;
+    this.groundNearFadeTexture?.destroy(true);
+    this.groundNearFadeTexture = null;
     this.L.frontForest.destroy();
     this.gradeSprite.destroy();
     this.playerLight.destroy();
