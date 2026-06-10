@@ -92,9 +92,11 @@ type StageLightingPreset = {
   playerAssistRadius: number;
 };
 
+const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
+
 const SUNLIGHT_PRESET: StageLightingPreset = {
   name: 'sunlight',
-  direction: { x: 0.58, y: 0.36 },
+  direction: STAGE_LIGHT_SHAFT_DIRECTION,
   color: 0xffe3a3,
   intensity: 0.24,
   contrast: 0.18,
@@ -108,7 +110,7 @@ const SUNLIGHT_PRESET: StageLightingPreset = {
 
 const MOONLIGHT_PRESET: StageLightingPreset = {
   name: 'moonlight',
-  direction: { x: 0.55, y: 0.32 },
+  direction: STAGE_LIGHT_SHAFT_DIRECTION,
   color: 0x9fb7ff,
   intensity: 0.16,
   contrast: 0.12,
@@ -551,8 +553,8 @@ export class PixiScene {
     for (const s of shafts) {
       const x1 = s.x;
       const y1 = s.y;
-      const x2 = s.x + s.length * 0.42;
-      const y2 = s.y + s.length;
+      const x2 = s.x + s.length * STAGE_LIGHT_SHAFT_DIRECTION.x;
+      const y2 = s.y + s.length * STAGE_LIGHT_SHAFT_DIRECTION.y;
       g.poly([
         x1,
         y1,

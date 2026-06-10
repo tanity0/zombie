@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.152 - Align actor shadows with stage light shafts (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shaft-aligned-shadow-2026-06-11`
+  - Tag: `pre-shaft-aligned-shadow-v0.25.151`
+- Matched player/enemy directional shadows to the visible screen-space stage
+  light shafts.
+- Added one shared `STAGE_LIGHT_SHAFT_DIRECTION` constant:
+  - stage light shaft travel: `{ x: 0.42, y: 1 }`
+  - sunlight shadow direction: same constant
+  - moonlight shadow direction: same constant
+- This removes the mismatch where shadows were more horizontal than the
+  moonlight/environment light drawn across the screen.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `36-54`.
+- Expected normal-play estimate after change: roughly `36-54`.
+- Visual risk: low to medium. Shadows now follow the visible light shafts, but
+  they are more vertical than the previous actor-shadow direction.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.151 - Replace rare enemy glow with ornaments (Codex)
 
 ### Summary
