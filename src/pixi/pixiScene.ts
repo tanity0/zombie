@@ -275,6 +275,11 @@ const drawDirectionalShadow = (
     });
 };
 
+const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallbackW: number) => {
+  const spriteW = view?.sprite.visible === false ? 0 : Math.abs(view?.sprite.width ?? 0);
+  return spriteW > 0 ? spriteW * 0.55 : fallbackW;
+};
+
 // One pooled actor view (player or enemy): a foot-anchored sprite plus a
 // behind-sprite reticle layer and an above-sprite overlay layer, all in one
 // container whose zIndex is the foot Y (the Y-sort key).
@@ -794,9 +799,9 @@ export class PixiScene {
     this.syncMerchant(s.weaponMerchant, s.player, now);
     this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
     this.syncBreakableProps(s.breakableProps, now);
-    this.syncShadows(s.player, s.enemies);
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
+    this.syncShadows(s.player, s.enemies);
     this.syncProjectiles(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, now);
@@ -1456,14 +1461,17 @@ export class PixiScene {
     const g = this.shadowGfx;
     g.clear();
     const pf = playerFootBox(player);
-    drawDirectionalShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 1, ACTIVE_STAGE_LIGHTING);
+    const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
+    const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW);
+    drawDirectionalShadow(g, pf.footX, pf.footY - 2, playerShadowW, 1, ACTIVE_STAGE_LIGHTING);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
       const fb = enemyFootBox(e);
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
-      const shadowW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
+      const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
+      const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
       drawDirectionalShadow(g, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, ACTIVE_STAGE_LIGHTING);
     }
   }

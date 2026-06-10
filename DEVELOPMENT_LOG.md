@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.131 - Size normal shadows from sprite pixels (Codex)
+
+### Summary
+- Changed normal player/enemy cast-shadow sizing to derive from each actor
+  sprite's rendered pixel width.
+- Kept the previous foot-box width as a fallback for missing/hidden textures.
+- Moved normal shadow sync after actor sync so shadow sizing uses the current
+  frame's sprite scale and texture.
+
+### Performance
+- Load score: `1/10`.
+- The change only reads existing sprite dimensions and still draws into the
+  same pooled `shadowGfx`. No new objects, filters, dynamic lights, or loops
+  were added.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.130 - Replace normal ellipse shadows with cast shadows (Codex)
 
 ### Summary
