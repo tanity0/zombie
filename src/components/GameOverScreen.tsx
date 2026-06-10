@@ -47,6 +47,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: 'クリア倍率', value: `x${clearMultiplier}` }
   ];
   const isBenchmark = benchmarkResult !== null;
+  const safeBenchmarkStage = benchmarkResult?.stages.filter(stage => stage.grade === 'PASS').at(-1);
+  const stoppedBenchmarkStage = benchmarkResult?.stages.find(stage => stage.grade !== 'PASS');
 
   return (
     <div
@@ -74,13 +76,23 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-widest text-white/50">BENCHMARK</div>
-                  <div className="text-2xl font-bold text-white">{benchmarkResult.grade}</div>
+                  <div className="text-2xl font-bold text-white">{benchmarkResult.grade === 'PASS' ? 'SAFE' : 'FAIL'}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-[11px] text-white/70 tabular-nums">
                   <span>avg</span><span className="text-white">{benchmarkResult.avgFps.toFixed(1)}</span>
                   <span>min</span><span className="text-white">{benchmarkResult.minFps}</span>
                   <span>drops</span><span className="text-white">{benchmarkResult.drops}</span>
                   <span>enemy/fx</span><span className="text-white">{benchmarkResult.maxEnemies}/{benchmarkResult.maxFx}</span>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+                <div className="min-w-0">
+                  <span className="block text-white/40">safe</span>
+                  <span className="block truncate text-emerald-100/80">{safeBenchmarkStage?.safeStress ?? 'not found'}</span>
+                </div>
+                <div className="min-w-0 text-right">
+                  <span className="block text-white/40">stop</span>
+                  <span className="block truncate text-rose-100/80">{stoppedBenchmarkStage ? `${stoppedBenchmarkStage.label} ${stoppedBenchmarkStage.grade}` : 'max passed'}</span>
                 </div>
               </div>
               <div className="mt-2 space-y-1 rounded-xl bg-black/20 px-2 py-2">

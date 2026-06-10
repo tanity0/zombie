@@ -200,12 +200,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     const summary = summarizeSamples(allSamplesRef.current);
     const passAttempt = attempts.filter(attempt => attempt.grade === 'PASS').at(-1);
     const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
+    const displaySummary = passAttempt ?? summary;
     const maxCounts = maxCountsRef.current;
     const nextResult: BenchmarkResult = {
       grade: finalGrade,
-      avgFps: summary.avgFps,
-      minFps: summary.minFps,
-      drops: summary.drops,
+      avgFps: displaySummary.avgFps,
+      minFps: displaySummary.minFps,
+      drops: displaySummary.drops,
       maxEnemies: maxCounts.enemies,
       maxFx: maxCounts.fx,
       maxProjectiles: maxCounts.projectiles,

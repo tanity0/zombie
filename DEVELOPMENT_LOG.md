@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.145 - Clarify benchmark safe limit result (Codex)
+
+### Summary
+- Clarified benchmark result display for low-to-high benchmark runs.
+- Overall benchmark header now uses the highest passing attempt's avg/min/drops
+  when a safe profile is found.
+- Result card now shows:
+  - `safe`: highest confirmed passing stress setting.
+  - `stop`: first profile that did not pass, or `max passed`.
+- Big benchmark label displays `SAFE` when a safe setting was found, instead of
+  showing a broad `PASS` that could be confused with every stage passing.
+
+### Conclusion
+- The screenshot was not a benchmark logic failure: `MIN20` and `E20` passed,
+  then `E28` failed, so the safe limit was `E20`.
+- The old header mixed failed-attempt numbers into the top summary, which made
+  the result look contradictory. This patch makes the conclusion explicit.
+
+### Performance
+- Load score: `1/10`.
+- Affected subsystem: result UI / benchmark summary only.
+- No benchmark stress values or normal gameplay rendering cost were changed.
+
+### Code touched
+- `src/components/BenchmarkOverlay.tsx`
+- `src/components/GameOverScreen.tsx`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+
 ## 2026-06-10 - v0.25.144 - Isolate benchmark attempt measurements (Codex)
 
 ### Summary
