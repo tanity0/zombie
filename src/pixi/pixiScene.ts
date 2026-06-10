@@ -841,9 +841,10 @@ export class PixiScene {
     const baseScale = Math.max(0.7, Math.min(1.55, shadowW / 42));
     const fixedLength = ACTIVE_STAGE_LIGHTING.shadowLength * baseScale;
     const eventLength = (74 + light.radius * 1.22) * falloff * actorDepth;
+    const eventDirection = { x: groundDx / groundDist, y: groundDy / groundDist };
     const eventAlpha = Math.min(0.7, ACTIVE_STAGE_LIGHTING.shadowAlpha + light.life * falloff * 0.34 * light.horizonAlpha);
     return {
-      direction: ACTIVE_STAGE_LIGHTING.direction,
+      direction: eventDirection,
       length: fixedLength + (Math.max(fixedLength, eventLength) - fixedLength) * blend,
       alpha: ACTIVE_STAGE_LIGHTING.shadowAlpha + (eventAlpha - ACTIVE_STAGE_LIGHTING.shadowAlpha) * blend,
       color: 0x000000,

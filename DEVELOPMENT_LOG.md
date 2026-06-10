@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.161 - Restore event stretch direction without rotation lerp (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-event-shadow-direction-restore-2026-06-10`
+  - Tag: `pre-event-shadow-direction-restore-v0.25.160`
+- Corrected the over-fix from `v0.25.160` where event actor shadows stretched
+  only in the global stage-light direction.
+- Event actor shadows now stretch away from the active event glow again:
+  - direction is computed from event glow to actor foot position
+  - no interpolation from normal stage-light direction to event direction
+  - length, alpha, and release easing continue to animate
+- This keeps the "round/object-width shadow stretched in the event direction"
+  concept while avoiding the visible rotating-tip transition.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Current normal-play estimate before change: `32-46`.
+- Expected normal-play estimate after change: roughly `32-46`.
+- Visual risk: medium. Event shadows regain light-relative direction; watch for
+  any abrupt direction change when an event begins or fully ends.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-10 - v0.25.160 - Keep event shadow direction fixed (Codex)
 
 ### Summary
