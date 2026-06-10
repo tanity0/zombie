@@ -39,6 +39,7 @@ const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
+const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
@@ -50,10 +51,10 @@ const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
 const HORIZON_ACTOR_FADE_PX = 120;
 const HORIZON_REVEAL_OFFSET_PX = 200;
 const HORIZON_REVEAL_FADE_PX = 90;
-const FRONT_FOREST_PARALLAX_X = 0.44;
-const FRONT_FOREST_HEIGHT_RATIO = 0.46;
-const FRONT_FOREST_MIN_HEIGHT = 250;
-const FRONT_FOREST_MAX_HEIGHT = 380;
+const FRONT_FOREST_PARALLAX_X = 0.52;
+const FRONT_FOREST_HEIGHT_RATIO = 0.5;
+const FRONT_FOREST_MIN_HEIGHT = 270;
+const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 1.6;
 const CASTLE_FOOT_OFFSET_Y = 38;
@@ -280,6 +281,7 @@ export class PixiScene {
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
+  private farBackdropBlur: BlurFilter | null = null;
   private frontForestBlur: BlurFilter | null = null;
 
   private fireflies: Firefly[] = [];
@@ -323,6 +325,12 @@ export class PixiScene {
     this.L.worldGroup.addChild(this.worldFadeMask);
     this.L.horizonForest.mask = this.horizonForestFadeMask;
     this.L.horizonForest.parent.addChild(this.horizonForestFadeMask);
+
+    this.farBackdropBlur = new BlurFilter({
+      strength: FAR_BACKDROP_BLUR,
+      quality: 2,
+    });
+    this.L.farBackdrop.filters = [this.farBackdropBlur];
 
     this.frontForestBlur = new BlurFilter({
       strength: FRONT_FOREST_BLUR,
@@ -895,7 +903,7 @@ export class PixiScene {
 
     const g = this.eventNpcGfx;
     g.clear();
-    drawShadow(g, 0, 0, 76 * d, 0.3);
+    g.ellipse(0, 0, 76 * d * 0.66, 76 * d * 0.18).fill({ color: 0x000000, alpha: 0.32 });
     if (near) {
       g.circle(0, -8 * d, npc.radius * d)
         .stroke({ width: 2 * d, color: 0x60a5fa, alpha: 0.34 + pulse * 0.2 });
@@ -1342,7 +1350,7 @@ export class PixiScene {
     const g = this.shadowGfx;
     g.clear();
     const pf = playerFootBox(player);
-    drawShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 0.4);
+    drawShadow(g, pf.footX, pf.footY - 2, pf.boxW * 0.55 * this.depthScale(pf.footY), 0.46);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
       const { alpha } = enemyShadow(e);

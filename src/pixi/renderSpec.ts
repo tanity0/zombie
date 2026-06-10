@@ -60,5 +60,5 @@ export const enemyFootBox = (e: Enemy): FootBox => {
 // of the Canvas2D `drawGroundShadow` calls.
 export const enemyShadow = (e: Enemy): { width: number; alpha: number } => {
   const heavy = e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin';
-  return { width: e.width * (heavy ? 1.15 : 1), alpha: heavy ? 0.5 : 0.4 };
+  return { width: e.width * (heavy ? 1.15 : 1), alpha: heavy ? 0.56 : 0.46 };
 };

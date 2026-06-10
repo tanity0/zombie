@@ -10,6 +10,92 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-10 - v0.25.127 - Tune forest depth and default shadows (Codex)
+
+### Summary
+- Increased the foreground forest parallax speed and made the foreground forest
+  slightly larger.
+- Added a light blur to the far backdrop so the distant scenery sits farther
+  behind the play field.
+- Made the two-person event NPC ground shadow slightly wider.
+- Darkened always-on player/enemy foot shadows slightly.
+
+### Performance
+- Load score: `2/10`.
+- Cost is rendering-side only: one low-strength blur filter on the fixed far
+  backdrop plus small parameter changes. No new game-logic loop, shadow caster,
+  audio, memory, or network work was added.
+
+### Code touched
+- `src/pixi/pixiScene.ts`
+- `src/pixi/renderSpec.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+## 2026-06-10 - v0.25.126 - Exclude periodic weapon explosions from slow motion (Codex)
+
+### Summary
+- Removed slow motion from grenade-launcher projectile explosions because they
+  can happen periodically during normal combat and interrupt game tempo.
+- Kept the orange explosion glow/ring visuals; only the simulation slow trigger
+  was removed.
+- Added the project rule that periodic weapon explosions must not trigger slow
+  motion unless explicitly requested.
+
+### Slow-motion event list after this change
+- Player death: red glow + death rings, `0.32x` for `820ms`.
+- Castle boss emergence: red castle glow/rings, `0.36x` for `900ms`.
+- Counter projectile reflection: cyan glow/ring, `0.34x` for `560ms`.
+- Melee finisher / boss finisher hit: gold glow/rings, `0.4x` for `820ms`.
+
+### Performance
+- Load score: `1/10`.
+- This removes another slow-motion trigger and does not add rendering,
+  simulation, audio, memory, or network work.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `CLAUDE.md`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
+## 2026-06-10 - v0.25.125 - Exclude sub-weapon grenades from slow motion (Codex)
+
+### Summary
+- Removed slow motion from the Heavy Gunner timed grenade explosion because
+  sub-weapon events are not slow-motion targets unless explicitly named.
+- Kept the grenade's orange glow/ring visual effect; only the simulation slow
+  trigger was removed.
+- Added the project rule that sub-weapon/class-skill events must not trigger
+  slow motion by default.
+
+### Slow-motion event list after this change
+- Player death: red glow + death rings, `0.32x` for `820ms`.
+- Castle boss emergence: red castle glow/rings, `0.36x` for `900ms`.
+- Counter projectile reflection: cyan glow/ring, `0.34x` for `560ms`.
+- Grenade-launcher projectile explosion: orange glow/ring, `0.5x` for `440ms`.
+- Melee finisher / boss finisher hit: gold glow/rings, `0.4x` for `820ms`.
+
+### Performance
+- Load score: `1/10`.
+- This removes one slow-motion trigger and does not add any new rendering,
+  simulation, audio, memory, or network work.
+
+### Code touched
+- `src/hooks/useGameLoop.ts`
+- `CLAUDE.md`
+- `package.json`, `package-lock.json`
+
+### Verification
+- `npm run lint` OK
+- `npm run build` OK
+
 ## 2026-06-10 - v0.25.124 - Keep strong glow active during slow motion (Codex)
 
 ### Summary

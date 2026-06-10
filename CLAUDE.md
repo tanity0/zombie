@@ -43,6 +43,11 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
 - Prefer bounded, event-only, pooled, or delta-scaling approaches over constant
   per-frame global effects, per-pixel passes, unbounded loops, or new heavy
   dependencies.
+- Sub-weapon events, including grenades and similar class skills, must not
+  trigger slow motion unless the user explicitly names that sub-weapon as a
+  slow-motion target.
+- Periodic weapon explosions, including grenade-launcher-style projectile
+  explosions, also must not trigger slow motion unless explicitly requested.
 
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as

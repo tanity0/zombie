@@ -65,9 +65,9 @@ const XP_PICKUP_KEEP_COUNT = 82;
 const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
 const PLAYER_DEATH_SLOW_MS = 820;
 const CASTLE_SPAWN_SLOW_MS = 900;
-const HEAVY_GRENADE_EXPLOSION_SLOW_MS = 440;
+const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
-const GRENADE_LAUNCHER_EXPLOSION_SLOW_MS = 440;
+const GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS = 440;
 
 type DogFetchMission = {
   effectId: string;
@@ -561,11 +561,10 @@ export const useGameLoop = (onGameOver: () => void) => {
           const gy = grenade.y + grenade.height / 2;
           removeProjectile(grenade.id);
           playSfx('bomb');
-          spawnRing(gx, gy, 8, HEAVY_GRENADE_RADIUS, 'rgba(251,146,60,0.82)', 4, HEAVY_GRENADE_EXPLOSION_SLOW_MS);
+          spawnRing(gx, gy, 8, HEAVY_GRENADE_RADIUS, 'rgba(251,146,60,0.82)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
           spawnBurst(gx, gy, '#f97316', 20);
           spawnBurst(gx, gy, '#7f1d1d', 8);
-          useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_SLOW_MS);
-          useGameStore.getState().triggerTimeSlow(0.5, HEAVY_GRENADE_EXPLOSION_SLOW_MS);
+          useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
           for (const enemy of useGameStore.getState().enemies) {
             if (enemy.type === 'reaper') continue;
             const ex = enemy.x + enemy.width / 2;
@@ -796,11 +795,10 @@ export const useGameLoop = (onGameOver: () => void) => {
             grenadeExplodedThisFrame.add(projectileId);
             const blastX = enemyForFx.x + enemyForFx.width / 2;
             const blastY = enemyForFx.y + enemyForFx.height / 2;
-            spawnRing(blastX, blastY, 10, GRENADE_BLAST_RADIUS, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_SLOW_MS);
+            spawnRing(blastX, blastY, 10, GRENADE_BLAST_RADIUS, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
-            useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_SLOW_MS);
-            useGameStore.getState().triggerTimeSlow(0.5, GRENADE_LAUNCHER_EXPLOSION_SLOW_MS);
+            useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT;
             for (const splashEnemy of useGameStore.getState().enemies) {
