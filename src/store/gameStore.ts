@@ -200,6 +200,11 @@ export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カ�
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 export const katanaLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['katana'] ?? 1));
+// 刀装備中に併用を許可するサブウェポン(許可制)。現状は全サブウェポン停止。
+// TODO(刀): 併用を解禁する時はこの配列にキーを追加する。
+export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
+export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean =>
+  hasKatana(player) && key !== 'katana' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
 
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
@@ -490,9 +495,10 @@ interface GameState {
   levelUp: () => void;
   triggerCounter: () => CounterTriggerResult;
   // Katana actions. performKatanaStrike cuts the given enemies with katana
-  // melee rules (crit, stun finisher, knockback, shared kill rewards);
+  // melee rules (crit, knockback, shared kill rewards). 近接フィニッシュは
+  // 一閃のみ: allowFinisher は dash 経由でだけ true になる。
   // triggerKatanaDash starts the invulnerable dash and cuts along its path.
-  performKatanaStrike: (targetIds: string[], damageMult: number) => { hit: boolean; finish: boolean; killed: number };
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean) => { hit: boolean; finish: boolean; killed: number };
   triggerKatanaDash: (dirX: number, dirY: number) => boolean;
 
   // Weapon actions
@@ -1104,7 +1110,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
   },
 
-  performKatanaStrike: (targetIds, damageMult) => {
+  performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
     const now = Date.now();
     const { player, gameTime, enemies } = get();
     if (!hasKatana(player) || targetIds.length === 0) {
@@ -1130,7 +1136,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ecy = enemy.y + enemy.height / 2;
       slashAt.push({ x: ecx, y: ecy });
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
-      if (stunned) {
+      // 近接フィニッシュ(スタン敵の即時処刑/ボス5×)は一閃ダッシュのみ。
+      // オート斬撃(allowFinisher=false)はスタン敵にも通常ダメージだけ与え、
+      // スタンは消さない(一閃で仕留める余地を残す)。
+      if (stunned && allowFinisher) {
         if (isBossType(enemy.type)) {
           // Same boss rule as the knife: 5× damage, stun shaken off, no execute.
           bossFinishHit = true;
@@ -1169,7 +1178,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
-      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
+      if (!stunned && now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const falloff = Math.max(0, 1 - dist / KATANA_RANGE);
         const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
         survivors.push({
@@ -1268,13 +1277,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (perp <= KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
     }
 
+    const cooldownEnd = now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
     set(state => ({
       player: {
         ...state.player,
         katanaDashUntil: now + KATANA_DASH_MS,
         katanaDashDirX: ux,
         katanaDashDirY: uy,
-        katanaDashCooldownEnd: now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS,
+        katanaDashCooldownEnd: cooldownEnd,
+        // カウンターも一閃クールダウンに依存する: ダッシュ後は同じ時間だけ
+        // 指離し/Spaceのカウンター窓も開かない(triggerCounter冒頭のCD判定が弾く)。
+        counterCooldownEnd: Math.max(state.player.counterCooldownEnd, cooldownEnd),
         // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
         // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
         invulnerable: true,
@@ -1297,7 +1310,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
 
     if (targetIds.length > 0) {
-      get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT);
+      // 近接フィニッシュは一閃のみ許可。
+      get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true);
     }
     return true;
   },

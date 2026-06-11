@@ -8,6 +8,7 @@ import {
   BOSS_CRIT_DAMAGE_MULT,
   MINE_DAMAGE,
   hasKatana,
+  subWeaponBlockedByKatana,
   KATANA_RANGE,
   KATANA_SLASH_INTERVAL_MS
 } from '../store/gameStore';
@@ -304,6 +305,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const huntingLevel = Math.max(0, Math.min(3, huntingPlayer.subWeaponLevels['striker-hunting'] ?? 0));
         if (
           huntingPlayer.subWeapons.includes('striker-hunting') &&
+          !subWeaponBlockedByKatana(huntingPlayer, 'striker-hunting') &&
           huntingLevel > 0 &&
           huntingInputActive
         ) {
@@ -384,7 +386,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const target = best ?? bestStunned;
             if (target) {
               lastKatanaSlashRef.current = gameTime;
-              const result = performKatanaStrike([target.id], 1);
+              // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false。
+              const result = performKatanaStrike([target.id], 1, false);
               if (result.finish) playSfx('melee-finish');
               else if (result.hit) playSfx('slash-damage');
               if (result.killed > 0) playEnemyDeath();
@@ -392,9 +395,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // 刀装備中は他のサブウェポンを発動させない(許可制、現状すべて停止)。
         const subWeaponPlayer = useGameStore.getState().player;
         if (
           subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'heavy-grenade') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['heavy-grenade'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['heavy-grenade'] ?? 1));
@@ -439,6 +444,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         if (
           subWeaponPlayer.subWeapons.includes('marksman-trap') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'marksman-trap') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['marksman-trap'] ?? 0)
         ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['marksman-trap'] ?? 1));
@@ -470,6 +476,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         if (
           subWeaponPlayer.subWeapons.includes('striker-quick-mag') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'striker-quick-mag') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['striker-quick-mag'] ?? 0) &&
           !useGameStore.getState().pickups.some(p => p.type === 'quick-magazine')
         ) {
@@ -513,7 +520,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        if (subWeaponPlayer.subWeapons.includes('dog')) {
+        if (
+          subWeaponPlayer.subWeapons.includes('dog') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'dog')
+        ) {
           const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels.dog ?? 1));
           const dogReadyAt = subWeaponPlayer.subWeaponCooldowns.dog ?? gameTime;
           const nowMs = Date.now();

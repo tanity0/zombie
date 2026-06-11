@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.175 - Restrict katana finishers to dash and gate other sub-weapons (Claude Code)
+
+### Summary
+- ユーザー仕様修正3点を反映 (v0.25.174 の刀実装への追補):
+  - 近接フィニッシュは一閃ダッシュのみ。オート斬撃はスタン敵にも通常ダメージ
+    だけ与え、スタンを消さない(一閃で仕留める導線を残す)。ボスのスタン5×
+    ルールも一閃のみ。`performKatanaStrike` に `allowFinisher` フラグを追加。
+  - カウンターも一閃クールダウンに依存。ダッシュ時に `counterCooldownEnd` も
+    同じ終了時刻まで延ばし、CD中は指離し/Spaceでカウンター窓が開かない。
+  - 刀装備中は他のサブウェポン(手榴弾/トラップ/クイックマガジン/ハンティング
+    /ドッグ)を発動させない。`KATANA_ALLOWED_SUBWEAPONS`(現状空)による
+    許可制で、将来の併用解禁は配列にキーを足すだけ。
+- オート斬撃はスタン敵をノックバックさせない(位置を保って一閃で処刑可能)。
+- 取得経路(カード/商人/スタート画面ショップ)は変更なし。装備中も他サブ
+  ウェポンのカード取得自体は可能(発動だけ停止)。
+
+### Performance
+- Old load score: `1/10`。判定追加のみで描画コスト増なし。
+- Performance Budget Score impact: `0`(むしろ他サブウェポン停止分わずかに減)。
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: ブラウザ実動作確認 — スタンダミーがオート斬撃で30ダメージ(3斬撃)を
+  受けつつ生存・スタン維持、一閃で即時フィニッシュ、ダッシュ直後の
+  triggerCounter が窓を開かない(CD残875ms)、手榴弾/ドッグ所持でも発動0。
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `package.json`, `package-lock.json`
+
 ## 2026-06-11 - v0.25.174 - Add katana sub-weapon with auto-slash and dash (Claude Code)
 
 ### Summary
