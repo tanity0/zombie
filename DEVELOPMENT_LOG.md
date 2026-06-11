@@ -21,6 +21,9 @@ on the zombie game. Append a new entry after each meaningful change.
   既存と同じ 128x108・キャラ約70x96 へ NearestNeighbor 縮小(ドット感維持)。
 - `-game-`(96x80)は描画未使用のため不変。rogue の `player-scavenger-*`(別キャラ)も不変。
 - 旧3枚は `art_src/backup/`、元画像/スクリプトは `art_src/`(未コミット)。
+- `v0.25.198`: 選択画面でスカベンジャーだけ小さい指摘を修正。キャラ高を ~96 → ~106 に拡大
+  (他クラス占有高 magnum=108 / scavenger-rogue=108 / shotgun=96 に対し striker(scavenger)が96で小さかった)。
+  頭中心 x=64・足元基準・透過・NearestNeighbor は維持。
 
 ## 2026-06-11 - v0.25.190-196 - Deployable Shield sub-weapon + bash (Claude Code)
 
