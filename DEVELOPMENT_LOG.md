@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.166 - Space torch generation at 30 percent (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-torch-density-spacing-2026-06-11`
+  - Tag: `pre-torch-density-spacing-v0.25.165`
+- Changed torch generation to feel more spaced while using a 30% fixed cell chance:
+  - `TORCH_CELL`: `360 -> 460`
+  - per-cell torch chance: `22% -> 30%`
+- Torch generation is deterministic by world-grid cell. It is not a timed
+  random spawn while walking; moving into a new area reveals cells that already
+  pass or fail their hash-based placement check. Destroyed torches stay removed.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+0` to `+2`.
+- Current normal-play estimate before change: `44-87`.
+- Expected normal-play estimate after change: roughly `44-89`.
+- Visual risk: low to medium. Wider cells should reduce clustering, but if a
+  mobile viewport still shows more than two torches, raise `TORCH_CELL` again.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.165 - Add gold straps and crate scatter loot (Codex)
 
 ### Summary

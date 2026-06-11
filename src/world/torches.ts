@@ -1,6 +1,6 @@
 import { Rect, footRect, resolveAabb } from './obstacles';
 
-export const TORCH_CELL = 360;
+export const TORCH_CELL = 460;
 
 export interface TorchInstance {
   id: string;
@@ -15,7 +15,7 @@ const torchHash = (x: number, y: number): number => {
 };
 
 const torchInCell = (cx: number, cy: number): TorchInstance | null => {
-  if (torchHash(cx + 31, cy - 19) >= 0.22) return null;
+  if (torchHash(cx + 31, cy - 19) >= 0.3) return null;
   const scale = 0.78 + torchHash(cx - 11, cy + 29) * 0.22;
   const ox = (torchHash(cx, cy + 7) - 0.5) * TORCH_CELL * 0.72;
   const oy = (torchHash(cx + 7, cy) - 0.5) * TORCH_CELL * 0.72;
