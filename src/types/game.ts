@@ -72,6 +72,9 @@ export interface Player {
   katanaDashDirX: number;
   katanaDashDirY: number;
   katanaDashCooldownEnd: number;
+  // 一閃の着地後に動けない硬直(後隙)が切れる時刻。刀・村雨共通。
+  // 着地(katanaDashUntil)から KATANA_DASH_RECOVERY_MS の間は移動も次の一閃も不可。
+  katanaRecoveryUntil: number;
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.

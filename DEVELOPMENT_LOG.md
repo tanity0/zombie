@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.184 - Katana dash landing recovery (0.2s, all katana) (Claude Code)
+
+### Summary
+- ユーザー指摘: 村雨は一閃を連打できてしまう。着地までは発動しない(現状OK)
+  ので、着地後0.2秒の「動けない」硬直(後隙)を作る。刀・村雨共通。
+- 実装:
+  - `Player.katanaRecoveryUntil` を追加。一閃発動時に
+    `katanaDashUntil + KATANA_DASH_RECOVERY_MS(=200ms)` を設定。
+  - `movePlayer`: 着地後〜硬直中は移動入力を無視してその場停止(moveSpeed=0)。
+  - `triggerKatanaDash`: 硬直中は新しい一閃を発動不可
+    (`now < katanaRecoveryUntil` で弾く)。村雨はクールダウン無しのままだが、
+    硬直0.2sぶん連打間隔が空く。刀はさらに従来クールダウンも適用。
+
+### Performance
+- Performance Budget Score impact: `+0`。
+
+### Code touched
+- `src/types/game.ts`, `src/store/gameStore.ts`, `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)状態計測 —
+  - 着地後の硬直中: 移動入力しても動かない(移動0)、一閃も発動不可。
+  - 硬直明け(着地180ms+硬直200ms後): 移動可・一閃再発動可(村雨は無CDなので
+    硬直明け即発動)を確認。
+
 ## 2026-06-11 - v0.25.183 - Katana polish + Murasame (Lv3 upgrade, no cooldowns, silver) (Claude Code)
 
 ### Summary

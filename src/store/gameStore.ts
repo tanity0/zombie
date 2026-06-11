@@ -197,6 +197,8 @@ export const KATANA_DASH_DISTANCE = 128;
 export const KATANA_DASH_HIT_HALF_WIDTH = 26;
 // 一閃後のクールダウンは既存近接(カウンター)と同じ長さ。
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
+// 着地後の硬直(後隙)。刀・村雨共通。着地から この時間 は移動も次の一閃も不可。
+export const KATANA_DASH_RECOVERY_MS = 200;
 // TODO(刀): 仮値。PC二連打の受付時間。既存の操作感を見て調整可能にしてある。
 export const KATANA_DOUBLE_TAP_MS = 260;
 // TODO(刀): 仮値。フリック判定しきい値(直近サンプル窓・最低距離・最低速度)。
@@ -645,6 +647,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     katanaDashDirX: 0,
     katanaDashDirY: 0,
     katanaDashCooldownEnd: 0,
+    katanaRecoveryUntil: 0,
     straps: 0,
     vaccineRevives: 0
   },
@@ -712,9 +715,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const reloading =
         player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
       // 一閃ダッシュ中は入力を無視して固定方向へ高速移動する。
-      const dashing = Date.now() < player.katanaDashUntil;
+      const nowMs = Date.now();
+      const dashing = nowMs < player.katanaDashUntil;
+      // 着地後の硬直中(刀・村雨共通)は移動入力を受け付けない(その場で停止)。
+      const recovering = !dashing && nowMs < player.katanaRecoveryUntil;
       const moveSpeed = dashing
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
+        : recovering ? 0
         : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT : player.speed;
 
       // Target direction from swipe (touch) or keys.
@@ -723,6 +730,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dashing) {
         tx = player.katanaDashDirX;
         ty = player.katanaDashDirY;
+      } else if (recovering) {
+        tx = 0;
+        ty = 0;
       } else if (swipeDirection) {
         tx = swipeDirection.x;
         ty = swipeDirection.y;
@@ -1296,9 +1306,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const { player, enemies, breakableProps, isPaused } = get();
     if (!isKatanaMode(player) || isPaused) return false;
-    // 発動中(移動中)は新しい一閃を出せない = モーションキャンセル不可。村雨でも同じ。
-    if (now < player.katanaDashUntil) return false;
-    // 村雨はクールダウン無し(連発可)。刀はクールダウン中は発動しない。
+    // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
+    // キャンセル不可 + 後隙。村雨でも共通(連発は硬直0.2sぶん間隔が空く)。
+    if (now < player.katanaRecoveryUntil) return false;
+    // 村雨はクールダウン無し(硬直のみ)。刀はさらにクールダウン中は発動しない。
     const mura = hasMurasame(player);
     if (!mura && now < player.katanaDashCooldownEnd) return false;
     const len = Math.hypot(dirX, dirY);
@@ -1337,6 +1348,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       player: {
         ...state.player,
         katanaDashUntil: now + KATANA_DASH_MS,
+        // 着地(KATANA_DASH_MS後)からさらに KATANA_DASH_RECOVERY_MS は硬直。
+        katanaRecoveryUntil: now + KATANA_DASH_MS + KATANA_DASH_RECOVERY_MS,
         katanaDashDirX: ux,
         katanaDashDirY: uy,
         katanaDashCooldownEnd: cooldownEnd,
