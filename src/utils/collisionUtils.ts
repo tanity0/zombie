@@ -69,7 +69,14 @@ export const checkProjectileEnemyCollisions = (
     // Timed grenades explode from their own fuse, not from body contact.
     // Decoys are stationary interceptor devices: they tick down on a timer and
     // shoot down enemy bullets — they must NOT be consumed by enemy body contact.
-    if (projectile.weaponType === 'grenade' || projectile.weaponType === 'trap' || projectile.weaponType === 'decoy') return;
+    // Shields are stationary barrier walls handled by their own pass (blocking +
+    // durability); they likewise must not be consumed as a damaging projectile.
+    if (
+      projectile.weaponType === 'grenade' ||
+      projectile.weaponType === 'trap' ||
+      projectile.weaponType === 'decoy' ||
+      projectile.weaponType === 'shield'
+    ) return;
     // Scheduled-but-not-yet-active projectiles (e.g. the second slash of a
     // whip chain) shouldn't deal damage until their start time arrives.
     if (projectile.createdAt > now) return;

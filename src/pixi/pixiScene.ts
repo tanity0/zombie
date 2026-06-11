@@ -2029,6 +2029,42 @@ export class PixiScene {
         g.circle(0, 0, Math.max(2, rr * 0.34)).fill({ color: 0x7dd3fc, alpha: 0.85 * blink }); // コア
         break;
       }
+      case 'shield': {
+        // 外向き法線(p.direction)で回転。ローカル +x = 表(外/敵側)、-x = 裏(プレイヤー側)。
+        // 中央が +x へ反った曲面の防壁(左向き設置なら「[」の形に見える)。
+        g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        const halfLen = Math.max(p.width, p.height) / 2; // 壁の長さ(local y)
+        const t = Math.min(p.width, p.height);           // 厚み(local x)
+        const half = t / 2;
+        const curveDepth = Math.max(6, half * 1.4);      // 中央の反り量
+        const N = 8;
+        const cxAt = (y: number) => curveDepth * (1 - (y / halfLen) * (y / halfLen)); // 中央ほど+x
+        // プレート外形(表面→裏面)。裏=濃いシルバーをベースに敷く。
+        const body: number[] = [];
+        for (let i = 0; i <= N; i++) { const y = -halfLen + (2 * halfLen) * (i / N); body.push(cxAt(y) + half, y); }
+        for (let i = N; i >= 0; i--) { const y = -halfLen + (2 * halfLen) * (i / N); body.push(cxAt(y) - half, y); }
+        g.poly(body).fill({ color: 0x4b5563 });          // 裏(濃いシルバー)
+        // 表面(+x寄り)の明るいシルバー帯。
+        const frontW = Math.max(2, t * 0.44);
+        const front: number[] = [];
+        for (let i = 0; i <= N; i++) { const y = -halfLen + (2 * halfLen) * (i / N); front.push(cxAt(y) + half, y); }
+        for (let i = N; i >= 0; i--) { const y = -halfLen + (2 * halfLen) * (i / N); front.push(cxAt(y) + half - frontW, y); }
+        g.poly(front).fill({ color: 0xcbd5e1 });          // 表(シルバー)
+        g.poly(body).stroke({ color: 0x1f2937, alpha: 0.85, width: 1.4 }); // 縁取り
+        // 持ち手(裏側 -x、中央)。
+        g.rect(-half - 4, -halfLen * 0.3, 3, halfLen * 0.6).fill({ color: 0x374151 });
+        g.circle(-half - 2.5, -halfLen * 0.3, 1.6).fill({ color: 0x374151 });
+        g.circle(-half - 2.5, halfLen * 0.3, 1.6).fill({ color: 0x374151 });
+        // 耐久が減ると表面に軽い赤み(亀裂感)。常時glowなし。
+        const hp = p.shieldHp ?? 1;
+        const maxHp = p.shieldMaxHp ?? hp;
+        const worn = maxHp > 0 ? 1 - Math.max(0, Math.min(1, hp / maxHp)) : 0;
+        if (worn > 0.01) {
+          const blinkW = 0.7 + Math.sin(Date.now() / 150) * 0.3;
+          g.poly(front).fill({ color: 0xf87171, alpha: 0.2 * worn * blinkW });
+        }
+        break;
+      }
       default: {
         g.circle(0, 0, p.width / 2).fill({ color: 0xf3f4f6 });
         break;

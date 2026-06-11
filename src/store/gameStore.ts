@@ -366,6 +366,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'katana': return '刀';
     case 'murasame': return '村雨';
     case 'decoy': return 'デコイ';
+    case 'shield': return 'シールド';
     default: return 'サブウェポン';
   }
 };

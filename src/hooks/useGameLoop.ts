@@ -30,6 +30,7 @@ import {
   isBossType,
   spawnEnemyAt
 } from '../utils/enemyUtils';
+import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
@@ -69,6 +70,16 @@ const DECOY_THROW_MS = 240;                       // TODO(デコイ): 仮値。�
 // 射程(Lv別)。Lv3でスマホ縦の画面横幅(~400px)にギリギリ収まる半径(~200)が目安。
 // 距離は二乗比較。射程値はデコイ projectile の `area` に載せ、描画側・迎撃側で共有する。
 const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
+// 設置型シールド: 進行方向の反対側に建てる遮蔽壁。敵の通行を止め、敵弾を消す
+// (味方弾は貫通)。設置間隔/持続は全Lv共通、レベルで耐久だけ上がる。各値は独立に
+// 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
+const SHIELD_COOLDOWN_MS = 5000;             // 設置間隔(全Lv共通)
+const SHIELD_DURATION_MS = 5000;             // 持続(全Lv共通)。duration 自動カリングで消滅
+const SHIELD_HP_BY_LEVEL = [0, 2, 4, 6];     // 耐久(Lv1/2/3)
+const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から後方への設置距離
+const SHIELD_LENGTH = 52;                    // 壁の長さ(進行軸に直交)
+const SHIELD_THICKNESS = 12;                 // 壁の厚み(法線方向)
+const SHIELD_HIT_INTERVAL_MS = 400;          // 同一敵が連続で耐久を削る最短間隔
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -123,6 +134,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastKatanaSlashRef = useRef(0);
   // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
   const decoyPulseRef = useRef<Map<string, number>>(new Map());
+  // Shield contact debounce: next-allowed durability-hit time (gameTime ms) per
+  // `${shieldId}:${enemyId}`, so each enemy only chips a shield once per interval.
+  const shieldHitRef = useRef<Map<string, number>>(new Map());
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -701,6 +715,61 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setSubWeaponCooldown('decoy', gameTime + DECOY_COOLDOWN_MS);
         }
 
+        // 設置型シールド: 5秒ごとに進行方向の反対側へ遮蔽壁を建てる。敵の通行を
+        // 止め、敵弾を消し、味方弾は通す。設置間隔/持続は全Lv共通、Lvで耐久だけ上がる。
+        if (
+          subWeaponPlayer.subWeapons.includes('shield') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'shield') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['shield'] ?? 0)
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['shield'] ?? 1));
+          // 進行方向と反対(=外向き法線)。取れなければ最後の向き、それも無ければ下。
+          const move = subWeaponPlayer.lastDirection ?? { x: 0, y: 1 };
+          const mmag = Math.max(0.001, Math.hypot(move.x, move.y));
+          let nx = -move.x / mmag;
+          let ny = -move.y / mmag;
+          // 法線を主軸へスナップ(4方向)。表裏と当たり判定を素直にするため。
+          if (Math.abs(nx) >= Math.abs(ny)) { nx = Math.sign(nx) || 1; ny = 0; }
+          else { nx = 0; ny = Math.sign(ny) || 1; }
+          const horizontal = nx !== 0; // 法線が水平 → 縦長の壁
+          const w = horizontal ? SHIELD_THICKNESS : SHIELD_LENGTH;
+          const h = horizontal ? SHIELD_LENGTH : SHIELD_THICKNESS;
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          const sx = pcx + nx * SHIELD_PLACE_DISTANCE;
+          const sy = pcy + ny * SHIELD_PLACE_DISTANCE;
+          const nowMs = Date.now();
+          // 同時設置は1個: 既存のシールドがあれば消す(デコイと同じ流儀)。
+          for (const s of useGameStore.getState().projectiles.filter(p => p.weaponType === 'shield')) {
+            removeProjectile(s.id);
+            for (const k of [...shieldHitRef.current.keys()]) {
+              if (k.startsWith(`${s.id}:`)) shieldHitRef.current.delete(k);
+            }
+          }
+          addProjectile({
+            id: `proj-shield-${nowMs}`,
+            x: sx - w / 2,
+            y: sy - h / 2,
+            width: w,
+            height: h,
+            speed: 0,
+            damage: 0,
+            direction: { x: nx, y: ny }, // 外向き法線(表の向き)
+            weaponType: 'shield',
+            weaponKey: 'sub-shield',
+            duration: SHIELD_DURATION_MS,
+            createdAt: nowMs,
+            passthrough: false,
+            hitEnemies: [],
+            hostile: false,
+            reflected: false,
+            shieldHp: SHIELD_HP_BY_LEVEL[level],
+            shieldMaxHp: SHIELD_HP_BY_LEVEL[level],
+          });
+          spawnRing(sx, sy, 4, Math.max(w, h) * 0.7, 'rgba(203,213,225,0.6)', 2, 240);
+          setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
+        }
+
         // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
         // パルス方式。距離は二乗比較。高速弾の取りこぼしは許容(swept判定なし)。
         {
@@ -851,6 +920,89 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 p.id === trap.id ? { ...p, hitEnemies: nextHitEnemies } : p
               )
             }));
+          }
+        }
+
+        // 設置型シールド処理: (1)敵の通行遮断+接触で耐久を削る、(2)敵弾の消去。
+        // 味方弾/自弾は hostile でないので無視=貫通。プレイヤーは押し出し対象外=貫通。
+        {
+          const shields = useGameStore.getState().projectiles.filter(p => p.weaponType === 'shield');
+          if (shields.length === 0) {
+            if (shieldHitRef.current.size > 0) shieldHitRef.current.clear();
+          } else {
+            // 死んだシールドの debounce キーを掃除。
+            const liveIds = new Set(shields.map(s => s.id));
+            for (const k of [...shieldHitRef.current.keys()]) {
+              if (!liveIds.has(k.slice(0, k.indexOf(':')))) shieldHitRef.current.delete(k);
+            }
+            const shieldRects = shields.map(s => ({ id: s.id, x: s.x, y: s.y, width: s.width, height: s.height }));
+            const wallRects = shieldRects.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height }));
+            const dmgByShield = new Map<string, number>();
+
+            // (1) 敵: 通行遮断(押し出し)+接触で耐久-1(間隔制)。reaper(終末個体)は貫通。
+            const sstate = useGameStore.getState();
+            let anyMoved = false;
+            const movedEnemies = sstate.enemies.map(enemy => {
+              if (enemy.type === 'reaper') return enemy;
+              const ebox = { x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height };
+              let touched = false;
+              for (const s of shieldRects) {
+                if (rectsOverlap(ebox, s)) {
+                  touched = true;
+                  const key = `${s.id}:${enemy.id}`;
+                  const allowed = shieldHitRef.current.get(key) ?? 0;
+                  if (gameTime >= allowed) {
+                    dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 1);
+                    shieldHitRef.current.set(key, gameTime + SHIELD_HIT_INTERVAL_MS);
+                  }
+                }
+              }
+              if (!touched) return enemy;
+              const resolved = resolveAabb(ebox, wallRects);
+              if (resolved.x === enemy.x && resolved.y === enemy.y) return enemy;
+              anyMoved = true;
+              return { ...enemy, x: resolved.x, y: resolved.y };
+            });
+            if (anyMoved) useGameStore.setState({ enemies: movedEnemies });
+
+            // (2) 敵弾: シールドに重なったら消す(反射しない/誘導しない/耐久も削らない)。
+            for (const b of useGameStore.getState().projectiles) {
+              if (!b.hostile) continue;
+              const bbox = { x: b.x, y: b.y, width: b.width, height: b.height };
+              for (const s of shieldRects) {
+                if (rectsOverlap(bbox, s)) {
+                  removeProjectile(b.id);
+                  spawnBurst(b.x + b.width / 2, b.y + b.height / 2, '#cbd5e1', 4);
+                  break;
+                }
+              }
+            }
+
+            // 耐久反映: 0以下で倒れる演出を出して消す。残れば軽いヒット表現。
+            if (dmgByShield.size > 0) {
+              for (const s of shields) {
+                const dealt = dmgByShield.get(s.id) ?? 0;
+                if (dealt <= 0) continue;
+                const scx = s.x + s.width / 2;
+                const scy = s.y + s.height / 2;
+                const nextHp = (s.shieldHp ?? 0) - dealt;
+                if (nextHp <= 0) {
+                  removeProjectile(s.id);
+                  for (const k of [...shieldHitRef.current.keys()]) {
+                    if (k.startsWith(`${s.id}:`)) shieldHitRef.current.delete(k);
+                  }
+                  spawnBurst(scx, scy, '#94a3b8', 12);
+                  spawnRing(scx, scy, 4, Math.max(s.width, s.height), 'rgba(148,163,184,0.7)', 2, 260);
+                } else {
+                  useGameStore.setState(state => ({
+                    projectiles: state.projectiles.map(p =>
+                      p.id === s.id ? { ...p, shieldHp: nextHp } : p
+                    )
+                  }));
+                  spawnBurst(scx, scy, '#cbd5e1', 3);
+                }
+              }
+            }
           }
         }
 

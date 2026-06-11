@@ -138,7 +138,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
     'striker-quick-mag',
     'dog',
     'katana',
-    'decoy'
+    'decoy',
+    'shield'
   ];
   
   return (

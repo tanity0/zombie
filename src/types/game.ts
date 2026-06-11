@@ -192,8 +192,8 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield';
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'
@@ -265,6 +265,12 @@ export interface Projectile {
   // Decoy: the device travels in the throw direction until this timestamp
   // (Date.now ms), then holds position for the rest of its lifetime.
   decoyLandAt?: number;
+  // Deployable shield: a static rear-guard wall. `direction` holds the outward
+  // (front-facing) normal, snapped to an axis. `shieldHp` is the remaining
+  // durability; each enemy body contact removes 1 (timed by SHIELD_HIT_INTERVAL).
+  // `shieldMaxHp` is kept for the damage-state visual only.
+  shieldHp?: number;
+  shieldMaxHp?: number;
 }
 
 // Pickup types

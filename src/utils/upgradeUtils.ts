@@ -110,6 +110,21 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // 設置型シールドは全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
+  const shieldLevel = player.subWeaponLevels['shield'] ?? 0;
+  if (!ownsKatana && shieldLevel < 3) {
+    const nextLevel = shieldLevel + 1;
+    const hp = [0, 2, 4, 6][nextLevel]; // 耐久(Lv1=2/Lv2=4/Lv3=6)
+    subWeaponOptions.push({
+      id: 'subweapon-shield',
+      name: nextLevel === 1 ? 'シールド' : `シールド Lv${nextLevel}`,
+      description: `進行方向の反対側に遮蔽壁を設置。敵の通行を止め敵弾を消す（味方弾は貫通）。5秒ごと/5秒持続/耐久${hp}`,
+      type: 'subWeapon',
+      subWeaponKey: 'shield',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);
