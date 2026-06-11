@@ -10,6 +10,52 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.197 - Scavenger standing sprite replaced (Claude Code)
+
+### Summary
+- スカベンジャー(necromancer)の立ち絵を新しい髭の銃使いアイドル3フレームに差替。
+  差替先は `public/sprites/player-striker-walk-{0,1,2}.png`(歴史的にファイル名とクラス名が
+  逆だが、メニュー[MainMenu]・ゲーム内[pixiScene]ともこの3枚を necromancer に一貫使用)。
+- 処理(System.Drawing、インストールなし): 元画像(1672x941, 3フレーム/紫背景)を3分割→
+  背景透過(紫キー)→各フレームの頭中心を出力 x=64 に統一(横ブレ防止)→足元を共通接地線(y=103)に→
+  既存と同じ 128x108・キャラ約70x96 へ NearestNeighbor 縮小(ドット感維持)。
+- `-game-`(96x80)は描画未使用のため不変。rogue の `player-scavenger-*`(別キャラ)も不変。
+- 旧3枚は `art_src/backup/`、元画像/スクリプトは `art_src/`(未コミット)。
+
+## 2026-06-11 - v0.25.190-196 - Deployable Shield sub-weapon + bash (Claude Code)
+
+### Summary
+- 新通常サブウェポン「設置型シールド」: 5秒ごとに進行方向の反対側へ遮蔽壁を自動設置(全Lv共通
+  5秒持続)。敵の通行を `resolveAabb` で遮断(プレイヤーは貫通)、接触で外向きノックバック、
+  敵弾は重なりで削除、味方/自弾は貫通。耐久は接触1回・敵弾1発で各1消費、Lv1/2/3=10/30/60。
+  reaper のみ貫通。`updateProjectiles` の duration カリングで5秒自然消滅(残り600msで早めフェード)。
+- シールドバッシュ: 近接が壁に届くと壁を法線方向へトラップと同じ shove 機構でシームレスに押し出し、
+  掃過AABBの敵全部に近接×3+押し出し方向への強ノックバック。スライド終了(shieldBreakAt)で強制破壊。
+- 取得/強化は既存 `applySubWeaponCard` に統合(レベルアップカード/商人スキルカード/スタート画面解放)。
+- 主な定数(調整しやすいよう分離): `SHIELD_*`(useGameLoop), `SHIELD_BASH_*`(gameStore)。
+
+### Code touched
+- `src/types/game.ts`(WeaponType/SubWeaponKey に 'shield'、Projectile に shieldHp/shieldMaxHp/shieldBreakAt)
+- `src/hooks/useGameLoop.ts`(発動+毎フレーム処理: 遮断/耐久/敵弾消去/強制破壊)
+- `src/store/gameStore.ts`(triggerCounter にシールドバッシュ統合、subWeaponDisplayName)
+- `src/utils/collisionUtils.ts`('shield' を体当たり判定から除外)
+- `src/pixi/pixiScene.ts`(drawProjectile に 'shield' ケース: 表/裏/持ち手/反り/フェード)
+- `src/utils/upgradeUtils.ts`(シールドのレベルアップカード)
+- `src/components/MainMenu.tsx`(スタート画面スキルショップに 'shield')
+
+### Verification
+- OK: `tsc --noEmit` / `vite build`。手触り・見た目は社長の実機確認。
+
+## 2026-06-11 - v0.25.188-189 - Decoy finalize + LAN HMR fix (Claude Code)
+
+### Summary
+- デコイ: 射程をLv別 `DECOY_RANGE_BY_LEVEL=[0,120,160,200]`(Lv3で画面横にギリギリ)、
+  迎撃間隔 0.5s→0.2s、Lv1持続 5s→7s。射程サークルをドット多数→単一ストローク円(軽量)に。
+- バグ修正: デコイ(と設置物)が敵の体当たりで消えていた → `checkProjectileEnemyCollisions` の
+  除外リストに `decoy`/`shield` を追加。
+- 環境修正: `vite.config.ts` の `hmr.host:'localhost'` を撤去。実機(LAN)で HMR が切れ
+  「直しても反映されない」原因だった。未指定で origin 自動判定。
+
 ## 2026-06-11 - v0.25.186 - Decoy: show range circle + widen range x3 (Claude Code)
 
 ### Summary
