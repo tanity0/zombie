@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.173 - Widen dog fetch collection range (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-dog-range-widen-2026-06-11`
+  - Tag: `pre-dog-range-widen-v0.25.172`
+- Widened dog skill pickup behavior:
+  - search distance by level: `190/230/270 -> 240/310/380`
+  - collection radius at reached item by level: `34/42/50 -> 48/64/80`
+- The dog still appears only during fetch actions and does not stay beside the
+  player.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+0` to `+1`.
+- Expected normal-play estimate is roughly `44-94`.
+- Visual risk: low to medium. Lv2/Lv3 dog may feel noticeably more generous.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.172 - Add free test strap start option (Codex)
 
 ### Summary
