@@ -10,6 +10,49 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.185 - Add Decoy sub-weapon (bullet interceptor) (Claude Code)
+
+### Summary
+- ロールバックアンカー: branch `backup/pre-decoy-2026-06-11` / tag `pre-decoy-v0.25.184`。
+- 新通常サブウェポン「デコイ」: 進行方向へ円盤型装置を投げて設置し、設置中は
+  0.5秒ごとに射程内の最も近い敵弾を1発だけ迎撃して消す(短いピクセルレーザー
+  →弾削除)。敵本体・敵弾を引きつけず、味方弾/近接/カウンター/刀には干渉しない。
+- 仕様:
+  - クールダウン10秒(全Lv共通)。10秒ごとに自動投擲。方向は `lastDirection`
+    (取れなければ `{1,0}`)。
+  - 持続: Lv1=5s / Lv2=6s / Lv3=7s(+1s/Lv)。迎撃間隔0.5s・1発固定は全Lv共通。
+  - 同時設置1個(新規投擲時に既存デコイを除去)。
+  - 迎撃はパルス方式(毎フレームではない)。距離は二乗比較。高速弾が0.5秒の
+    間に通過した取りこぼしは許容(swept/補間判定なし)。`hostile` 弾のみ対象。
+  - 演出: 小さな円盤装置(明滅コア)+迎撃時の短命 trail レーザー。常時glow・
+    大量パーティクル・長時間トレイルなし。スロー対象外。
+- 実装:
+  - デコイは projectile(`weaponType:'decoy'`)として管理。`decoyLandAt` まで
+    投擲方向へ移動し、以降は停止(`updateProjectiles` に分岐追加)。
+  - 発動と迎撃パルスは `useGameLoop` に追加。パルス周期は per-decoy の
+    `decoyPulseRef`(gameTime ms)で管理。
+  - 取得/強化はレベルアップカード+スタート画面スキルショップ解禁→商人購入。
+    刀/村雨装備中は出さない(併用不可)。
+
+### Performance
+- 旧式負荷スコア: `1.5〜2/10`。Performance Budget Score: Low。
+  毎フレームではなく0.5秒ごと・1発・二乗比較・軌跡判定なし。
+
+### Code touched
+- `src/types/game.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `src/pixi/pixiScene.ts`, `src/utils/upgradeUtils.ts`,
+  `src/components/MainMenu.tsx`, `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)— レベルアップ候補に「デコイ」出現、ループ駆動で投擲→
+  約81px移動→着地停止、CD約10秒設定を確認。迎撃ロジック(ループと同一処理を
+  実行)で最近接の敵弾のみ削除・遠い敵弾/範囲外/味方弾は無傷・レーザー生成を
+  確認。円盤装置の見た目をスクリーンショットで確認。
+- 注: プレビュータブ非表示時はrAFが1fpsに絞られ0.5秒パルスを実時間で待てない
+  ため、迎撃は同一ロジックの直接実行で検証(パルス周期は他サブウェポンと同じ
+  gameTime方式)。実機では通常どおり0.5秒ごとに作動する。
+
 ## 2026-06-11 - v0.25.184 - Katana dash landing recovery (0.2s, all katana) (Claude Code)
 
 ### Summary

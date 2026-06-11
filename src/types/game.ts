@@ -192,8 +192,8 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy';
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'
@@ -262,6 +262,9 @@ export interface Projectile {
   shoveStartY?: number;
   shoveStartAt?: number;
   shoveDuration?: number;
+  // Decoy: the device travels in the throw direction until this timestamp
+  // (Date.now ms), then holds position for the rest of its lifetime.
+  decoyLandAt?: number;
 }
 
 // Pickup types

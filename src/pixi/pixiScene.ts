@@ -2011,6 +2011,16 @@ export class PixiScene {
         g.circle(0, 0, Math.max(2, p.width * 0.18)).fill({ color: 0x7dd3fc, alpha: 0.76 });
         break;
       }
+      case 'decoy': {
+        // 小さめの円盤型装置。中央のコアが軽く明滅(常時glowなし)。
+        const blink = 0.6 + Math.sin(Date.now() / 140) * 0.4;
+        const rr = Math.max(5, p.width * 0.46);
+        g.ellipse(0, 3, rr * 1.05, rr * 0.42).fill({ color: 0x000000, alpha: 0.26 }); // 影
+        g.circle(0, 0, rr).fill({ color: 0x1f2937, alpha: 0.95 });                     // 本体
+        g.circle(0, 0, rr).stroke({ color: 0x38bdf8, alpha: 0.6, width: 1.4 });        // 縁
+        g.circle(0, 0, Math.max(2, rr * 0.34)).fill({ color: 0x7dd3fc, alpha: 0.85 * blink }); // コア
+        break;
+      }
       default: {
         g.circle(0, 0, p.width / 2).fill({ color: 0xf3f4f6 });
         break;

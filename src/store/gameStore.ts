@@ -365,6 +365,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'dog': return 'ドッグ';
     case 'katana': return '刀';
     case 'murasame': return '村雨';
+    case 'decoy': return 'デコイ';
     default: return 'サブウェポン';
   }
 };
@@ -2098,6 +2099,16 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...p,
               x: playerCX - p.width / 2,
               y: playerCY - p.height / 2
+            };
+          }
+          // Decoy: travels in the throw direction until it lands, then holds
+          // position (a stationary placed device) for the rest of its life.
+          if (p.weaponType === 'decoy') {
+            if (p.decoyLandAt !== undefined && currentTime >= p.decoyLandAt) return p;
+            return {
+              ...p,
+              x: p.x + p.direction.x * p.speed * deltaTime,
+              y: p.y + p.direction.y * p.speed * deltaTime
             };
           }
           // Ballistic motion with optional gravity (axes arc upward, fall)

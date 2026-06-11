@@ -13,7 +13,7 @@ import {
   KATANA_SLASH_INTERVAL_MS
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup } from '../types/game';
+import type { AmmoType, Pickup, Projectile } from '../types/game';
 import {
   checkCollision,
   checkProjectileEnemyCollisions,
@@ -59,6 +59,16 @@ const DOG_COLLECT_RADIUS_BY_LEVEL = [0, 48, 64, 80];
 const DOG_COLLECT_BURST_LIMIT = 8;
 const DOG_FETCH_PICKUP_MS = 330;
 const DOG_FETCH_DURATION_MS = 620;
+// デコイ: 進行方向へ投げる円盤型の弾迎撃装置。設置中0.5秒ごとに、射程内の
+// 最も近い敵弾を1発だけ迎撃して消す(高速弾の取りこぼしは許容)。
+const DECOY_COOLDOWN_MS = 10000;                  // 全Lv共通
+const DECOY_DURATION_BY_LEVEL = [0, 5000, 6000, 7000]; // 設置持続(Lv1/2/3)
+const DECOY_PULSE_MS = 500;                       // 迎撃間隔(全Lv共通)
+const DECOY_THROW_DISTANCE = 78;                  // TODO(デコイ): 仮値。投げる距離
+const DECOY_THROW_MS = 240;                       // TODO(デコイ): 仮値。着地までの時間
+// TODO(デコイ): 仮値。射程は少し広め・画面全体ではない局所防御。距離は二乗比較。
+const DECOY_RANGE = 150;
+const DECOY_RANGE_SQ = DECOY_RANGE * DECOY_RANGE;
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -111,6 +121,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   // Katana auto-slash timer (gameTime-based so it pauses with the game).
   const lastKatanaSlashRef = useRef(0);
+  // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
+  const decoyPulseRef = useRef<Map<string, number>>(new Map());
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -640,7 +652,108 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         } else {
           dogFetchRef.current = null;
         }
-        
+
+        // Decoy: 10秒ごとに進行方向へ円盤を投げる。設置中は0.5秒ごとに射程内の
+        // 最も近い敵弾を1発だけ迎撃する(高速弾の取りこぼしは許容)。
+        if (
+          subWeaponPlayer.subWeapons.includes('decoy') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'decoy') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['decoy'] ?? 0)
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['decoy'] ?? 1));
+          const dir = subWeaponPlayer.lastDirection ?? { x: 1, y: 0 };
+          const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+          const ux = dir.x / dmag;
+          const uy = dir.y / dmag;
+          const nowMs = Date.now();
+          // 同時設置は1個: 既存のデコイがあれば消す。
+          for (const d of useGameStore.getState().projectiles.filter(p => p.weaponType === 'decoy')) {
+            removeProjectile(d.id);
+            decoyPulseRef.current.delete(d.id);
+          }
+          const size = 16;
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          const decoyId = `proj-decoy-${nowMs}`;
+          addProjectile({
+            id: decoyId,
+            x: pcx - size / 2,
+            y: pcy - size / 2,
+            width: size,
+            height: size,
+            speed: DECOY_THROW_DISTANCE / (DECOY_THROW_MS / 1000),
+            damage: 0,
+            direction: { x: ux, y: uy },
+            weaponType: 'decoy',
+            weaponKey: 'sub-decoy',
+            duration: DECOY_THROW_MS + DECOY_DURATION_BY_LEVEL[level],
+            createdAt: nowMs,
+            passthrough: false,
+            hitEnemies: [],
+            hostile: false,
+            reflected: false,
+            decoyLandAt: nowMs + DECOY_THROW_MS,
+          });
+          // 初回迎撃は着地の0.5秒後。
+          decoyPulseRef.current.set(decoyId, gameTime + DECOY_THROW_MS + DECOY_PULSE_MS);
+          spawnRing(pcx, pcy, 4, 18, 'rgba(56,189,248,0.6)', 2, 220);
+          setSubWeaponCooldown('decoy', gameTime + DECOY_COOLDOWN_MS);
+        }
+
+        // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
+        // パルス方式。距離は二乗比較。高速弾の取りこぼしは許容(swept判定なし)。
+        {
+          const dstate = useGameStore.getState();
+          const decoys = dstate.projectiles.filter(p => p.weaponType === 'decoy');
+          if (decoys.length === 0) {
+            if (decoyPulseRef.current.size > 0) decoyPulseRef.current.clear();
+          } else {
+            const liveIds = new Set(decoys.map(d => d.id));
+            for (const id of [...decoyPulseRef.current.keys()]) {
+              if (!liveIds.has(id)) decoyPulseRef.current.delete(id);
+            }
+            for (const decoy of decoys) {
+              const nextPulse = decoyPulseRef.current.get(decoy.id) ?? (gameTime + DECOY_PULSE_MS);
+              if (gameTime < nextPulse) {
+                decoyPulseRef.current.set(decoy.id, nextPulse);
+                continue;
+              }
+              decoyPulseRef.current.set(decoy.id, gameTime + DECOY_PULSE_MS);
+              const dcx = decoy.x + decoy.width / 2;
+              const dcy = decoy.y + decoy.height / 2;
+              let nearest: Projectile | null = null;
+              let nearestD2 = DECOY_RANGE_SQ;
+              for (const b of dstate.projectiles) {
+                if (!b.hostile) continue; // 敵弾のみ。味方弾/プレイヤー弾には干渉しない。
+                const bx = b.x + b.width / 2;
+                const by = b.y + b.height / 2;
+                const d2 = (bx - dcx) * (bx - dcx) + (by - dcy) * (by - dcy);
+                if (d2 <= nearestD2) {
+                  nearestD2 = d2;
+                  nearest = b;
+                }
+              }
+              if (nearest) {
+                const bx = nearest.x + nearest.width / 2;
+                const by = nearest.y + nearest.height / 2;
+                // 短命のピクセルレーザー(デコイ→敵弾)。trail を流用。
+                spawnEffect({
+                  kind: 'trail',
+                  id: `fx-decoy-laser-${Math.floor(Date.now())}-${nearest.id}`,
+                  fromX: dcx,
+                  fromY: dcy,
+                  toX: bx,
+                  toY: by,
+                  color: 'rgba(125,211,252,0.95)',
+                  createdAt: Date.now(),
+                  duration: 140,
+                });
+                removeProjectile(nearest.id); // 敵弾を消すだけ(爆発・範囲なし)。
+              }
+            }
+          }
+        }
+
         // Update enemies
         updateEnemies(deltaTime);
         

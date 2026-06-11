@@ -95,6 +95,21 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // デコイは全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
+  const decoyLevel = player.subWeaponLevels['decoy'] ?? 0;
+  if (!ownsKatana && decoyLevel < 3) {
+    const nextLevel = decoyLevel + 1;
+    const durationSec = 4 + nextLevel; // Lv1=5s, Lv2=6s, Lv3=7s
+    subWeaponOptions.push({
+      id: 'subweapon-decoy',
+      name: nextLevel === 1 ? 'デコイ' : `デコイ Lv${nextLevel}`,
+      description: `進行方向へ円盤を投げる。設置中${durationSec}秒、0.5秒ごとに射程内の敵弾を1発迎撃`,
+      type: 'subWeapon',
+      subWeaponKey: 'decoy',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);
