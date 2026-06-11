@@ -154,6 +154,9 @@ const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
+// 背負い刀の傾き(ラジアン)。HUDアイコンと同じ角度で斜めに見せる。
+const KATANA_BACK_ROT_DEG = 32;
+const KATANA_BACK_ROT = (KATANA_BACK_ROT_DEG * Math.PI) / 180;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
 const playerWalkSequence = (p: Player): number[] =>
@@ -1708,16 +1711,28 @@ export class PixiScene {
   private drawPlayerKatanaOnBack(g: Graphics, footX: number, footY: number, boxH: number, flip: boolean) {
     const d = this.depthScale(footY);
     const h = boxH * d;
-    // キャラ実表示(約1.13×boxH)より少し背高にし、柄が肩越し・鞘先が反対の
-    // 腰下に出るよう全体を斜めに配置する。
+    // 形・幅は据え置き。全体を中心まわりに斜めへ回転させて「背負って斜めに
+    // 提げている」見た目にする(KATANA_BACK_ROT、向きで左右反転)。
     const size = h * 1.5;
     const w = size * 0.6;
-    const dir = flip ? -1 : 1;         // 向きに合わせて左右反転
-    const originX = footX - w / 2;     // 体の中央
-    const originY = footY - h * 1.34;  // 柄が頭の上、鞘先が足元付近
+    const dir = flip ? -1 : 1;
+    const originX = footX - w / 2;
+    const originY = footY - h * 1.34;
+    const ang = dir * KATANA_BACK_ROT;
+    const cosA = Math.cos(ang);
+    const sinA = Math.sin(ang);
+    const pivotX = originX + w / 2;
+    const pivotY = originY + size / 2;
     for (const r of buildKatanaShape(dir)) {
-      g.rect(originX + r.x * w, originY + r.y * size, r.w * w, r.h * size)
-        .fill({ color: r.color, alpha: r.alpha });
+      const rw = r.w * w;
+      const rh = r.h * size;
+      const ccx = originX + r.x * w + rw / 2;
+      const ccy = originY + r.y * size + rh / 2;
+      const ox = ccx - pivotX;
+      const oy = ccy - pivotY;
+      const nx = pivotX + ox * cosA - oy * sinA;
+      const ny = pivotY + ox * sinA + oy * cosA;
+      g.rect(nx - rw / 2, ny - rh / 2, rw, rh).fill({ color: r.color, alpha: r.alpha });
     }
   }
 

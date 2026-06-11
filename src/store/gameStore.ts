@@ -1137,6 +1137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const survivors: Enemy[] = [];
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
+    const critStunAt: { x: number; y: number }[] = [];
 
     for (const enemy of enemies) {
       if (!targetIds.includes(enemy.id) || enemy.type === 'reaper') {
@@ -1189,6 +1190,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: false });
         continue;
       }
+      // 銃のクリと同じ挙動: 倒しきれなかったクリは敵をスタンさせ、黄色いリングで
+      // 知らせる。これで刀でも「クリが出た」のが分かり、スタン中の敵を一閃の近接
+      // フィニッシュで処刑できる(刀=銃の代替としての一貫挙動)。
+      const critStun = crit; // reaper は対象外(上で除外済み)
+      if (critStun) critStunAt.push({ x: ecx, y: ecy });
+      const newStunUntil = critStun ? gameTime + STUN_DURATION_MS : enemy.stunUntil;
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
@@ -1199,6 +1206,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...enemy,
           health: newHealth,
           lastHit: now,
+          stunUntil: newStunUntil,
           knockbackVx: (dx / dist) * speed,
           knockbackVy: (dy / dist) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION,
@@ -1209,6 +1217,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...enemy,
           health: newHealth,
           lastHit: now,
+          stunUntil: newStunUntil,
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
@@ -1255,6 +1264,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     for (const c of damageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    }
+    // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック)。
+    for (const c of critStunAt) {
+      get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     }
     grantMeleeKillRewards(get, killed, player, gun);
     if (finisherHit) {

@@ -10,6 +10,39 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.179 - Katana crit stun + diagonal back sprite (Claude Code)
+
+### Summary
+- ユーザー指摘2点:
+  - 「クリが近接武器扱いで発生しない/分からない」: 原因は、刀のクリが既存近接
+    (カウンター)と同じく「金色の数字だけ」で、銃クリのような分かりやすい
+    フィードバックが無かったこと。刀は銃の代替なので、銃クリと同じ挙動に揃えた。
+    倒しきれなかったクリは敵をスタン(`STUN_DURATION_MS`)させ、黄色いリングを
+    出す。スタンした敵は一閃の近接フィニッシュで処刑できる(オート斬撃→クリ
+    スタン→一閃フィニッシュの連携)。クリ率自体は前版で `player.critChance`
+    加算済み。
+  - 「刀をもっと斜めに。デザイン・幅は変えず、単純に回転だけ」: `katanaShape`
+    の形状と幅(0.6)は v0.25.177 のまま据え置き、背面描画とHUDアイコンを
+    同じ角度 `32°` で回転させた(背面は各ドット中心を中心まわりに回転、HUDは
+    SVG `rotate` transform)。
+
+### Performance
+- Performance Budget Score impact: `+0`(回転は座標計算のみ、描画数同じ)。
+
+### Code touched
+- `src/store/gameStore.ts`, `src/utils/katanaShape.ts`,
+  `src/pixi/pixiScene.ts`, `src/components/GameHUD.tsx`,
+  `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)確認 — クリで敵がスタン(5000ms)+黄リング、HUDの刀
+  アイコンが32°回転して表示(`rotate(32 …)`)、背面の背負い刀が斜めに提げた
+  見た目になることをスクリーンショットで確認。
+- 注: プレビューで刀装備が反映されない事象は、開発中のHMRでevalのstoreが
+  二重化していたテスト手法の問題。dev server再起動後の素の状態では装備・HUD
+  反映とも正常に確認できた(実アプリ・実機には影響なし)。
+
 ## 2026-06-11 - v0.25.177 - Katana visual/crit refinements (Claude Code)
 
 ### Summary

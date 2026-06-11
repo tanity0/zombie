@@ -8,24 +8,28 @@ import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import { buildKatanaShape } from '../utils/katanaShape';
 
-// 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。
+// 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。背面の刀と
+// 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。
 const katanaHex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+const KATANA_ICON_ROT_DEG = 32;
 const KatanaIcon: React.FC<{ size?: number }> = ({ size = 26 }) => {
   const w = size * 0.62;
   const rects = useMemo(() => buildKatanaShape(1), []);
   return (
-    <svg width={w} height={size} viewBox={`0 0 ${w} ${size}`} aria-hidden>
-      {rects.map((r, i) => (
-        <rect
-          key={i}
-          x={r.x * w}
-          y={r.y * size}
-          width={r.w * w}
-          height={r.h * size}
-          fill={katanaHex(r.color)}
-          fillOpacity={r.alpha}
-        />
-      ))}
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+      <g transform={`rotate(${KATANA_ICON_ROT_DEG} ${size / 2} ${size / 2}) translate(${(size - w) / 2} 0)`}>
+        {rects.map((r, i) => (
+          <rect
+            key={i}
+            x={r.x * w}
+            y={r.y * size}
+            width={r.w * w}
+            height={r.h * size}
+            fill={katanaHex(r.color)}
+            fillOpacity={r.alpha}
+          />
+        ))}
+      </g>
     </svg>
   );
 };
