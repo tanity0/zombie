@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.172 - Add free test strap start option (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-test-strap-start-2026-06-11`
+  - Tag: `pre-test-strap-start-v0.25.171`
+- Added a free temporary test item to the start-screen skill shop:
+  - `1000ストラップ開始`
+  - toggles ON/OFF from the start menu
+  - when ON, the next run starts with `1000` straps
+  - when OFF, runs still start with `0` straps
+- This is a local testing aid and does not affect merchant prices.
+
+### Performance
+- Old load score: `0/10`.
+- Performance Budget Score impact: `0`.
+- Expected normal-play estimate remains roughly `44-93`.
+- Visual risk: low. This only adds a temporary start-menu toggle.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.171 - Restore dog fetch collection behavior (Codex)
 
 ### Summary

@@ -31,6 +31,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
   const unlockedShopSkillCards = useGameStore(s => s.unlockedShopSkillCards);
   const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
+  const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
+  const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
     handgun: String(ammoPickupAmounts.handgun),
@@ -280,6 +282,26 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
 
             {shopOpen && (
               <div className="mt-2 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+                <button
+                  type="button"
+                  onClick={() => setStartWithTestStraps(!startWithTestStraps)}
+                  className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${
+                    startWithTestStraps
+                      ? 'border-amber-300/35 bg-amber-300/15 text-amber-50'
+                      : 'border-white/10 bg-white/5 text-white active:bg-white/10'
+                  }`}
+                >
+                  <span>
+                    <span className="block text-[13px] font-semibold">1000ストラップ開始</span>
+                    <span className="block text-[11px] text-white/50">
+                      {startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    <span className="block text-[12px] font-semibold text-amber-100">0G</span>
+                    <span className="block text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
+                  </span>
+                </button>
                 {skillShopEntries.map(skillKey => {
                   const level = unlockedShopSkillCards[skillKey] ?? 0;
                   const maxed = level >= 3;

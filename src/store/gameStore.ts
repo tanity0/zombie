@@ -349,6 +349,7 @@ interface GameState {
   // Debug setting: ammo granted by one ammo-box pickup per weapon family.
   ammoPickupAmounts: Record<AmmoType, number>;
   unlockedShopSkillCards: Partial<Record<SubWeaponKey, number>>;
+  startWithTestStraps: boolean;
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   upgradeOptions: UpgradeOption[];
@@ -444,6 +445,7 @@ interface GameState {
   setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
+  setStartWithTestStraps: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
@@ -527,6 +529,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
+  startWithTestStraps: false,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   upgradeOptions: [],
@@ -2327,6 +2330,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  setStartWithTestStraps: (enabled) => {
+    set({ startWithTestStraps: enabled });
+  },
+
   addMeleeFinishCombo: (amount = 1) => {
     const gain = Math.max(1, Math.floor(amount));
     set(state => {
@@ -2364,7 +2371,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const maxHealth = profile.maxHp;
     
     set(state => {
-      void state;
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
       return {
@@ -2406,7 +2412,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,
-          straps: 0,
+          straps: state.startWithTestStraps ? 1000 : 0,
           vaccineRevives: 0
         },
         enemies: [],
