@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.168 - Add temporary start skill shop (Codex)
+
+### Summary
+- Added a simple temporary skill shop entry below character select.
+- All skill cards are currently free (`0G`) and can be bought up to Lv3:
+  - 手榴弾
+  - トラップ
+  - ハンティング
+  - クイックマガジン
+  - ドッグ
+- Added `preRunSkillCards` to the store for start-screen purchases.
+- `resetGame` now applies purchased start-screen skill cards as initial
+  sub-weapons / sub-weapon levels when the run begins.
+- This is intentionally placeholder UI; design and final shop structure can be
+  replaced later.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Expected normal-play estimate remains roughly `44-89`.
+- Visual risk: low to medium. The temporary panel adds height to the start menu
+  and may need later layout polish.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.167 - Route shop skills through skill cards (Codex)
 
 ### Summary

@@ -346,6 +346,7 @@ interface GameState {
   meleeAmmoDropPercent: number;
   // Debug setting: ammo granted by one ammo-box pickup per weapon family.
   ammoPickupAmounts: Record<AmmoType, number>;
+  preRunSkillCards: Partial<Record<SubWeaponKey, number>>;
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   upgradeOptions: UpgradeOption[];
@@ -439,6 +440,7 @@ interface GameState {
   setPaused: (paused: boolean) => void;
   setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
+  setPreRunSkillCard: (key: SubWeaponKey, level: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
@@ -521,6 +523,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameWon: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
+  preRunSkillCards: {},
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   upgradeOptions: [],
@@ -2279,6 +2282,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  setPreRunSkillCard: (key, level) => {
+    const nextLevel = Math.max(0, Math.min(3, Math.round(level)));
+    set(state => {
+      const next = { ...state.preRunSkillCards };
+      if (nextLevel <= 0) {
+        delete next[key];
+      } else {
+        next[key] = nextLevel;
+      }
+      return { preRunSkillCards: next };
+    });
+  },
+
   addMeleeFinishCombo: (amount = 1) => {
     const gain = Math.max(1, Math.floor(amount));
     set(state => {
@@ -2314,6 +2330,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const startingWeapons = getStartingWeapons(validClass);
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
     const maxHealth = profile.maxHp;
+    const preRunSkillCards = get().preRunSkillCards;
+    const startingSubWeapons = (Object.entries(preRunSkillCards) as [SubWeaponKey, number][])
+      .filter(([, level]) => level > 0)
+      .map(([key]) => key);
+    const startingSubWeaponLevels = Object.fromEntries(
+      (Object.entries(preRunSkillCards) as [SubWeaponKey, number][])
+        .filter(([, level]) => level > 0)
+        .map(([key, level]) => [key, Math.max(1, Math.min(3, level))])
+    ) as Partial<Record<SubWeaponKey, number>>;
     
     set(state => {
       void state;
@@ -2353,8 +2378,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           magBonus: 0,
           reloadMult: 1,
-          subWeapons: [],
-          subWeaponLevels: {},
+          subWeapons: startingSubWeapons,
+          subWeaponLevels: startingSubWeaponLevels,
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,

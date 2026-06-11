@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Settings, Volume2, VolumeX } from 'lucide-react';
-import { useGameStore } from '../store/gameStore';
-import type { AmmoType } from '../types/game';
+import { Settings, ShoppingBag, Volume2, VolumeX } from 'lucide-react';
+import { subWeaponDisplayName, useGameStore } from '../store/gameStore';
+import type { AmmoType, SubWeaponKey } from '../types/game';
 import {
   getBgmVolume,
   getSfxVolume,
@@ -19,6 +19,7 @@ interface MainMenuProps {
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) => {
   const [selectedClass, setSelectedClass] = useState('warrior');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   const [bgmVol, setBgmVol] = useState(getBgmVolume);
   const [sfxVol, setSfxVol] = useState(getSfxVolume);
@@ -28,6 +29,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const setMeleeAmmoDropPercent = useGameStore(s => s.setMeleeAmmoDropPercent);
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
+  const preRunSkillCards = useGameStore(s => s.preRunSkillCards);
+  const setPreRunSkillCard = useGameStore(s => s.setPreRunSkillCard);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
     handgun: String(ammoPickupAmounts.handgun),
@@ -125,6 +128,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
     { type: 'handgun', label: 'ハンドガン' },
     { type: 'shotgun', label: 'ショットガン' },
     { type: 'rifle', label: 'ライフル' }
+  ];
+  const skillShopEntries: SubWeaponKey[] = [
+    'heavy-grenade',
+    'marksman-trap',
+    'striker-hunting',
+    'striker-quick-mag',
+    'dog'
   ];
   
   return (
@@ -251,6 +261,53 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                 )}
               </div>
             ))}
+          </div>
+
+          <div className="mb-4 px-1">
+            <button
+              type="button"
+              onClick={() => setShopOpen(v => !v)}
+              className="w-full rounded-2xl border border-amber-200/25 bg-amber-300/10 px-3 py-2.5 text-left text-amber-50 active:bg-amber-300/15"
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <ShoppingBag size={16} />
+                  スキルショップ
+                </span>
+                <span className="text-[11px] text-amber-100/65">0G</span>
+              </span>
+            </button>
+
+            {shopOpen && (
+              <div className="mt-2 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+                {skillShopEntries.map(skillKey => {
+                  const level = preRunSkillCards[skillKey] ?? 0;
+                  const maxed = level >= 3;
+                  return (
+                    <button
+                      key={skillKey}
+                      type="button"
+                      onClick={() => setPreRunSkillCard(skillKey, Math.min(3, level + 1))}
+                      disabled={maxed}
+                      className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${
+                        maxed
+                          ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
+                          : 'border-white/10 bg-white/5 text-white active:bg-white/10'
+                      }`}
+                    >
+                      <span>
+                        <span className="block text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span>
+                        <span className="block text-[11px] text-white/50">Lv{level} → Lv{Math.min(3, level + 1)}</span>
+                      </span>
+                      <span className="text-right">
+                        <span className="block text-[12px] font-semibold text-amber-100">0G</span>
+                        <span className="block text-[10px] text-white/45">{maxed ? 'MAX' : '購入'}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-center px-2">
