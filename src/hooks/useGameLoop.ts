@@ -62,14 +62,13 @@ const DOG_FETCH_DURATION_MS = 620;
 // デコイ: 進行方向へ投げる円盤型の弾迎撃装置。設置中0.5秒ごとに、射程内の
 // 最も近い敵弾を1発だけ迎撃して消す(高速弾の取りこぼしは許容)。
 const DECOY_COOLDOWN_MS = 10000;                  // 全Lv共通
-const DECOY_DURATION_BY_LEVEL = [0, 5000, 6000, 7000]; // 設置持続(Lv1/2/3)
-const DECOY_PULSE_MS = 500;                       // 迎撃間隔(全Lv共通)
+const DECOY_DURATION_BY_LEVEL = [0, 7000, 8000, 9000]; // 設置持続(Lv1/2/3)
+const DECOY_PULSE_MS = 200;                       // 迎撃間隔(全Lv共通)。0.2秒ごとに1発サーチ
 const DECOY_THROW_DISTANCE = 78;                  // TODO(デコイ): 仮値。投げる距離
 const DECOY_THROW_MS = 240;                       // TODO(デコイ): 仮値。着地までの時間
-// TODO(デコイ): 仮値。射程(全Lv共通)。局所防御だが少し広め。距離は二乗比較。
-// 旧150の約3倍。射程値はデコイ projectile の `area` に載せ、描画側と共有する。
-const DECOY_RANGE = 450;
-const DECOY_RANGE_SQ = DECOY_RANGE * DECOY_RANGE;
+// 射程(Lv別)。Lv3でスマホ縦の画面横幅(~400px)にギリギリ収まる半径(~200)が目安。
+// 距離は二乗比較。射程値はデコイ projectile の `area` に載せ、描画側・迎撃側で共有する。
+const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -694,7 +693,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hostile: false,
             reflected: false,
             decoyLandAt: nowMs + DECOY_THROW_MS,
-            area: DECOY_RANGE, // 射程(描画のサークル半径と共有)
+            area: DECOY_RANGE_BY_LEVEL[level], // 射程(Lv別。描画のサークル半径と共有)
           });
           // 初回迎撃は着地の0.5秒後。
           decoyPulseRef.current.set(decoyId, gameTime + DECOY_THROW_MS + DECOY_PULSE_MS);
@@ -723,8 +722,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               decoyPulseRef.current.set(decoy.id, gameTime + DECOY_PULSE_MS);
               const dcx = decoy.x + decoy.width / 2;
               const dcy = decoy.y + decoy.height / 2;
+              const decoyRange = decoy.area ?? 0; // Lv別射程(設置時に load 済み)
               let nearest: Projectile | null = null;
-              let nearestD2 = DECOY_RANGE_SQ;
+              let nearestD2 = decoyRange * decoyRange;
               for (const b of dstate.projectiles) {
                 if (!b.hostile) continue; // 敵弾のみ。味方弾/プレイヤー弾には干渉しない。
                 const bx = b.x + b.width / 2;
