@@ -57,7 +57,7 @@ const ShopMenu: React.FC = () => {
     {
       key: 'dog',
       name: dogLevel > 0 ? `ドッグ ${levelText(dogLevel)}` : 'ドッグ',
-      description: dogLevel >= 3 ? 'アイテム回収 LvMAX' : '画面内アイテムを拾いに行く',
+      description: dogLevel >= 3 ? '範囲回収 LvMAX' : '近くのアイテムをまとめて拾う',
       cost: SHOP_DOG_COST,
       disabled: dogLevel >= 3
     },

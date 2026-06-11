@@ -7,7 +7,7 @@ import {
   WeaponMerchant, ShopItemKey, EventQuestNpc
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
-import { openCrate, rollWeaponKey } from '../utils/weaponDrop';
+import { openCrate } from '../utils/weaponDrop';
 import { isBossType } from '../utils/enemyUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
@@ -201,9 +201,11 @@ export const WORLD_HALF_EXTENT = 200000;
 // currently on screen.
 export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
-const BREAKABLE_PROP_DROP_CHANCE = 0.28;
-const ENEMY_STRAP_DROP_CHANCE = 0.12;
-const BREAKABLE_STRAP_DROP_CHANCE = 0.22;
+const BREAKABLE_PROP_DROP_CHANCE = 0.42;
+const TORCH_STRAP_DROP_MIN = 10;
+const TORCH_STRAP_DROP_VARIANCE = 5;
+const DROP_SCATTER_RADIUS = 22;
+const DROP_THROW_DURATION_MS = 360;
 const TREASURE_DROP_CHANCE_BY_RANK = {
   strong: 0.02,
   elite: 0.05,
@@ -230,11 +232,6 @@ const treasureDropChance = (rank?: DifficultyRank): number => {
   if (rank === 'danger') return TREASURE_DROP_CHANCE_BY_RANK.danger;
   return 0;
 };
-const strapValueForRank = (rank?: DifficultyRank): number => {
-  if (rank === 'danger') return 3;
-  if (rank === 'elite') return 2;
-  return 1;
-};
 const treasureValueForRank = (rank?: DifficultyRank): number => {
   if (rank === 'danger') return 4 + Math.floor(Math.random() * 3);
   if (rank === 'elite') return 2 + Math.floor(Math.random() * 3);
@@ -252,6 +249,29 @@ const treasureNameForVariant = (variant?: number): string => {
     case 6: return '謎のコア';
     default: return 'トレジャー';
   }
+};
+const pickupWithDropScatter = (pickup: Pickup): Pickup => {
+  if (
+    pickup.worldDrop ||
+    pickup.throwFromX !== undefined ||
+    pickup.throwFromY !== undefined ||
+    pickup.throwStartAt !== undefined ||
+    pickup.throwDuration !== undefined
+  ) {
+    return pickup;
+  }
+
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 5 + Math.random() * DROP_SCATTER_RADIUS;
+  return {
+    ...pickup,
+    x: pickup.x + Math.cos(angle) * dist,
+    y: pickup.y + Math.sin(angle) * dist * 0.72,
+    throwFromX: pickup.x,
+    throwFromY: pickup.y,
+    throwStartAt: Date.now(),
+    throwDuration: DROP_THROW_DURATION_MS
+  };
 };
 export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey => {
   switch (characterClass) {
@@ -1677,7 +1697,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Pickup actions
   addPickup: (pickup) => {
     set(state => ({
-      pickups: [...state.pickups, pickup]
+      pickups: [...state.pickups, pickupWithDropScatter(pickup)]
     }));
   },
   
@@ -1688,17 +1708,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropEnemyCurrency: (enemy, x, y) => {
-    const strapChance = ENEMY_STRAP_DROP_CHANCE + Math.max(0, (enemy.distanceZone ?? 1) - 1) * 0.035;
-    if (Math.random() < strapChance) {
-      get().addPickup({
-        id: `pickup-strap-${enemy.id}`,
-        x: x - 8 + (Math.random() - 0.5) * 18,
-        y: y - 8 + (Math.random() - 0.5) * 18,
-        type: 'strap',
-        value: strapValueForRank(enemy.difficultyRank)
-      });
-    }
-
     const treasureChance = treasureDropChance(enemy.difficultyRank);
     if (treasureChance > 0 && Math.random() < treasureChance) {
       const value = treasureValueForRank(enemy.difficultyRank);
@@ -1987,22 +1996,26 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropBreakablePropLoot: (prop) => {
-    if (Math.random() < BREAKABLE_STRAP_DROP_CHANCE) {
+    const cx = prop.footX - 8;
+    const cy = prop.footY - 18;
+    const strapCount = TORCH_STRAP_DROP_MIN + Math.floor(Math.random() * TORCH_STRAP_DROP_VARIANCE);
+    for (let i = 0; i < strapCount; i += 1) {
       get().addPickup({
-        id: `pickup-strap-prop-${prop.id}`,
-        x: prop.footX - 8 + (Math.random() - 0.5) * 12,
-        y: prop.footY - 18 + (Math.random() - 0.5) * 12,
+        id: `pickup-strap-prop-${prop.id}-${i}`,
+        x: cx,
+        y: cy,
         type: 'strap',
         value: 1
       });
     }
+
     if (Math.random() >= BREAKABLE_PROP_DROP_CHANCE) return;
     const x = prop.footX - 8;
     const y = prop.footY - 16;
     const roll = Math.random();
     const player = get().player;
 
-    if (roll < 0.58) {
+    if (roll < 0.5) {
       const equippedAmmo = getActiveGun(player)?.ammoType;
       const owned = getGuns(player)
         .map(w => w.ammoType)
@@ -2013,35 +2026,23 @@ export const useGameStore = create<GameState>((set, get) => ({
           id: `pickup-torch-ammo-${prop.id}`,
           x, y,
           type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
-          value: 0,
-          worldDrop: true
+          value: 0
         });
         return;
       }
     }
 
-    if (roll < 0.8) {
+    if (roll < 0.75) {
       get().addPickup({
         id: `pickup-torch-health-${prop.id}`,
         x, y,
         type: 'health',
-        value: 20,
-        worldDrop: true
+        value: 20
       });
       return;
     }
 
-    if (roll < 0.89) {
-      get().addPickup({
-        id: `pickup-torch-magnet-${prop.id}`,
-        x, y,
-        type: 'magnet',
-        value: 0
-      });
-      return;
-    }
-
-    if (roll < 0.96) {
+    if (roll < 0.9) {
       get().addPickup({
         id: `pickup-torch-bomb-${prop.id}`,
         x, y,
@@ -2052,12 +2053,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     get().addPickup({
-      id: `pickup-torch-weapon-${prop.id}`,
+      id: `pickup-torch-magnet-${prop.id}`,
       x, y,
-      type: 'weapon-drop',
-      value: 0,
-      weaponKey: rollWeaponKey(get().gameTime),
-      worldDrop: true
+      type: 'magnet',
+      value: 0
     });
   },
 

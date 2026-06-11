@@ -48,10 +48,10 @@ const MARKSMAN_TRAP_RADIUS_BY_LEVEL = [0, 34, 42, 50];
 const STRIKER_QUICK_MAG_COOLDOWN_BY_LEVEL = [0, 10000, 8000, 6000];
 const STRIKER_QUICK_MAG_THROW_DISTANCE = 82;
 const STRIKER_QUICK_MAG_THROW_MS = 360;
-const DOG_PICKUP_COOLDOWN_BY_LEVEL = [0, 3000, 2000, 1000];
+const DOG_PICKUP_COOLDOWN_BY_LEVEL = [0, 1600, 1200, 900];
 const DOG_EMPTY_RETRY_MS = 900;
-const DOG_FETCH_OUT_MS = 560;
-const DOG_FETCH_RETURN_MS = 620;
+const DOG_COLLECT_RADIUS_BY_LEVEL = [0, 34, 42, 50];
+const DOG_COLLECT_BURST_LIMIT = 8;
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -62,21 +62,13 @@ const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
+const STRAP_PICKUP_KEEP_COUNT = 60;
 const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
 const PLAYER_DEATH_SLOW_MS = 820;
 const CASTLE_SPAWN_SLOW_MS = 900;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
 const GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS = 440;
-
-type DogFetchMission = {
-  effectId: string;
-  pickupId: string;
-  level: number;
-  pickupAt: number;
-  returnAt: number;
-  collected: boolean;
-};
 
 export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean } = {}) => {
   const [fps, setFps] = useState(0);
@@ -100,7 +92,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
   const gameOverTriggeredRef = useRef(false);
-  const dogFetchRef = useRef<DogFetchMission | null>(null);
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -470,92 +461,48 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[level]);
           }
 
-          const dogMission = dogFetchRef.current;
-          if (dogMission) {
-            const nowMs = Date.now();
-            if (!dogMission.collected && nowMs >= dogMission.pickupAt) {
-              const target = useGameStore.getState().pickups.find(p => p.id === dogMission.pickupId);
-              if (target) {
-                const targetX = target.x + 8;
-                const targetY = target.y + 8;
-                spawnBurst(targetX, targetY, '#cbd5e1', 6);
-                spawnRing(targetX, targetY, 3, 18, 'rgba(203,213,225,0.62)', 2, 240);
-
-                if (
-                  target.type === 'ammo-handgun' ||
-                  target.type === 'ammo-shotgun' ||
-                  target.type === 'ammo-rifle'
-                ) {
-                  playSfx('ammo-pickup');
-                } else if (target.type === 'weapon-drop' || target.type === 'weapon-crate') {
-                  playSfx('weapon-pickup');
-                } else if (target.type === 'health') {
-                  playSfx('eat');
-                } else if (target.type === 'bomb') {
-                  playSfx('bomb');
-                } else {
-                  playSfx('pickup');
-                }
-
-                collectPickup(target.id);
-              }
-              dogFetchRef.current = { ...dogMission, collected: true };
-            }
-
-            if (nowMs >= dogMission.returnAt) {
-              dogFetchRef.current = null;
-              setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[dogMission.level]);
-            }
-          } else if (dogReadyAt !== undefined && gameTime >= dogReadyAt) {
+          if (dogReadyAt !== undefined && gameTime >= dogReadyAt) {
             const state = useGameStore.getState();
-            const margin = 12;
+            const nowMs = Date.now();
+            const radius = DOG_COLLECT_RADIUS_BY_LEVEL[level];
+            const playerX = state.player.x + state.player.width / 2;
+            const playerY = state.player.y + state.player.height / 2;
             const eligiblePickups = state.pickups
-              .filter(p => p.type !== 'quick-magazine')
               .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
               .filter(p => {
-                if (p.throwStartAt && p.throwDuration && Date.now() - p.throwStartAt < p.throwDuration) {
+                if (p.throwStartAt && p.throwDuration && nowMs - p.throwStartAt < p.throwDuration) {
                   return false;
                 }
                 const px = p.x + 8;
                 const py = p.y + 8;
-                return (
-                  px >= state.camera.x - margin &&
-                  px <= state.camera.x + state.gameBounds.width + margin &&
-                  py >= state.camera.y - margin &&
-                  py <= state.camera.y + state.gameBounds.height + margin
-                );
+                return Math.hypot(px - playerX, py - playerY) <= radius;
               });
 
             if (eligiblePickups.length > 0) {
-              const target = eligiblePickups[Math.floor(Math.random() * eligiblePickups.length)];
-              const targetX = target.x + 8;
-              const targetY = target.y + 8;
-              const playerX = state.player.x + state.player.width / 2;
-              const playerY = state.player.y + state.player.height / 2;
-              const nowMs = Date.now();
-              const effectId = `fx-dog-fetch-${target.id}-${nowMs}`;
-              spawnEffect({
-                kind: 'dogFetch',
-                id: effectId,
-                fromX: targetX,
-                fromY: targetY,
-                targetX,
-                targetY,
-                toX: playerX,
-                toY: playerY,
-                createdAt: nowMs,
-                pickupAt: nowMs + DOG_FETCH_OUT_MS,
-                duration: DOG_FETCH_OUT_MS + DOG_FETCH_RETURN_MS
+              const hasAmmoPickup = eligiblePickups.some(p =>
+                p.type === 'ammo-handgun' ||
+                p.type === 'ammo-shotgun' ||
+                p.type === 'ammo-rifle'
+              );
+              const hasWeaponPickup = eligiblePickups.some(p =>
+                p.type === 'weapon-drop' ||
+                p.type === 'weapon-crate'
+              );
+              const hasHealthPickup = eligiblePickups.some(p => p.type === 'health');
+              const hasBombPickup = eligiblePickups.some(p => p.type === 'bomb');
+
+              if (hasAmmoPickup) playSfx('ammo-pickup');
+              else if (hasWeaponPickup) playSfx('weapon-pickup');
+              else if (hasHealthPickup) playSfx('eat');
+              else if (hasBombPickup) playSfx('bomb');
+              else playSfx('pickup');
+
+              spawnRing(playerX, playerY, 5, radius, 'rgba(203,213,225,0.34)', 2, 240);
+              eligiblePickups.slice(0, DOG_COLLECT_BURST_LIMIT).forEach(p => {
+                spawnBurst(p.x + 8, p.y + 8, '#cbd5e1', p.type === 'strap' ? 3 : 5);
               });
-              dogFetchRef.current = {
-                effectId,
-                pickupId: target.id,
-                level,
-                pickupAt: nowMs + DOG_FETCH_OUT_MS,
-                returnAt: nowMs + DOG_FETCH_OUT_MS + DOG_FETCH_RETURN_MS,
-                collected: false
-              };
-              setSubWeaponCooldown('dog', Number.POSITIVE_INFINITY);
+              eligiblePickups.forEach(p => collectPickup(p.id));
+              setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[level]);
             } else {
               setSubWeaponCooldown('dog', gameTime + DOG_EMPTY_RETRY_MS);
             }
@@ -1235,8 +1182,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 28, 'rgba(203,213,225,', 240);
                   break;
                 case 'strap':
-                  spawnBurst(pk.x + 8, pk.y + 8, '#e5e7eb', 6);
-                  useGameStore.getState().spawnAmmoNumber(player.x + player.width / 2, player.y - 6, pk.value);
+                  spawnBurst(pk.x + 8, pk.y + 8, '#e5e7eb', 3);
+                  if (pk.value > 1) {
+                    useGameStore.getState().spawnAmmoNumber(player.x + player.width / 2, player.y - 6, pk.value);
+                  }
                   break;
                 case 'treasure':
                   spawnBurst(pk.x + 8, pk.y + 8, '#facc15', 18);
@@ -1362,7 +1311,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // gems once the field grows past the perf guardrail.
         const currentPickupsForCap = useGameStore.getState().pickups;
         if (currentPickupsForCap.length > PICKUP_HARD_CAP) {
-          const importantPickups = currentPickupsForCap.filter(p => p.type !== 'experience');
+          const importantPickups = currentPickupsForCap.filter(p => p.type !== 'experience' && p.type !== 'strap');
+          const keptStraps = currentPickupsForCap
+            .filter(p => p.type === 'strap')
+            .sort((a, b) => {
+              const da = Math.hypot(a.x + 8 - playerCenterX, a.y + 8 - playerCenterY);
+              const db = Math.hypot(b.x + 8 - playerCenterX, b.y + 8 - playerCenterY);
+              return da - db;
+            })
+            .slice(0, STRAP_PICKUP_KEEP_COUNT);
           const keptXp = currentPickupsForCap
             .filter(p => p.type === 'experience')
             .sort((a, b) => {
@@ -1371,7 +1328,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               return da - db;
             })
             .slice(0, XP_PICKUP_KEEP_COUNT);
-          useGameStore.setState({ pickups: [...importantPickups, ...keptXp] });
+          useGameStore.setState({ pickups: [...importantPickups, ...keptStraps, ...keptXp] });
         }
 
         // Scripted wave/elite events (compressed 5-min schedule: early plant,

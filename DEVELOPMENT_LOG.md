@@ -10,6 +10,41 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.164 - Torch coin drops and dog range collect (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-torch-coin-drops-2026-06-11`
+  - Tag: `pre-torch-coin-drops-v0.25.163`
+- Changed torch destruction loot:
+  - torches now default-drop `10-14` one-scrap strap pickups
+  - torches can additionally drop ammo, health, bomb, or magnet by chance
+  - torches no longer drop treasure or weapon drops
+- Added default narrow scatter motion to non-world-drop pickups:
+  - pickups without an explicit throw now slide/pop out over `360ms`
+  - existing thrown quick-magazine behavior is preserved
+  - world-drop supplies keep their fixed offscreen placement
+- Changed dog ability from screen-wide fetch to narrow area collection:
+  - dog now collects nearby landed pickups in a small radius
+  - Lv1/Lv2/Lv3 radius is `34/42/50`
+  - feedback is a subtle local ring and capped small bursts
+- Enemies no longer drop scrap/strap currency. Rare enemy treasure chance is
+  unchanged.
+- Added a pickup cap safeguard for scattered straps, keeping nearest straps
+  when the field exceeds the pickup guardrail.
+
+### Performance
+- Old load score: `2/10`.
+- Performance Budget Score impact: `+2` to `+6` in torch-heavy moments.
+- Current normal-play estimate before change: `40-73`.
+- Expected normal-play estimate after change: roughly `42-79`.
+- Visual risk: medium. Torch breaks should feel richer, but the coin count and
+  scatter radius may need tuning if the screen looks too busy.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.163 - Speed up foreground forest parallax (Codex)
 
 ### Summary
