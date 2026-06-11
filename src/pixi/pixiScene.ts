@@ -2012,23 +2012,13 @@ export class PixiScene {
         break;
       }
       case 'decoy': {
-        // 射程サークル(ピクセル点線)。area に射程半径が載っている。
+        // 射程サークル。area に射程半径が載っている。クールダウン円と同系の
+        // 単一ストローク円(軽量)。黒フチ+シアン本線で暗背景でも視認できる。
         const range = p.area ?? 0;
         if (range > 0) {
-          const dot = 3;                                   // 1ドットの大きさ
-          // ドット間隔を一定(約14px)にして、半径が大きくても密に見せる。
-          const dots = Math.max(48, Math.round((2 * Math.PI * range) / 14));
-          const blinkR = 0.85 + Math.sin(Date.now() / 320) * 0.15;
-          for (let i = 0; i < dots; i++) {
-            const a = (i / dots) * Math.PI * 2;
-            const px = Math.cos(a) * range;
-            const py = Math.sin(a) * range;
-            // 黒フチ+シアンで暗い背景でもはっきり見えるようにする。
-            g.rect(px - dot / 2 - 0.5, py - dot / 2 - 0.5, dot + 1, dot + 1)
-              .fill({ color: 0x06121f, alpha: 0.55 });
-            g.rect(px - dot / 2, py - dot / 2, dot, dot)
-              .fill({ color: 0x7dd3fc, alpha: 0.85 * blinkR });
-          }
+          const pulse = 0.85 + Math.sin(Date.now() / 320) * 0.15;
+          g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });          // 黒フチ
+          g.circle(0, 0, range).stroke({ color: 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 }); // シアン本線
         }
         // 小さめの円盤型装置。中央のコアが軽く明滅(常時glowなし)。
         const blink = 0.6 + Math.sin(Date.now() / 140) * 0.4;

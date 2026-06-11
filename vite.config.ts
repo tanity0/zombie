@@ -22,11 +22,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // host:true で全インターフェイス公開(同一LANの実機テスト用)。
+    // hmr.host は指定しない: 指定するとスマホ側で ws://localhost に繋ぎに行き
+    // HMR が切れて「コードを直しても反映されない」状態になる。未指定なら
+    // Vite がページの origin(PCのLAN IP)から自動判定し、PC/実機の両方で繋がる。
     host: true,
-    hmr: {
-      protocol: 'ws',
-      host: 'localhost',
-      port: 5173
-    }
   },
 });

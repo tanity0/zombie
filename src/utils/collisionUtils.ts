@@ -67,7 +67,9 @@ export const checkProjectileEnemyCollisions = (
     // Hostile projectiles only damage enemies once they've been reflected
     if (projectile.hostile) return;
     // Timed grenades explode from their own fuse, not from body contact.
-    if (projectile.weaponType === 'grenade' || projectile.weaponType === 'trap') return;
+    // Decoys are stationary interceptor devices: they tick down on a timer and
+    // shoot down enemy bullets — they must NOT be consumed by enemy body contact.
+    if (projectile.weaponType === 'grenade' || projectile.weaponType === 'trap' || projectile.weaponType === 'decoy') return;
     // Scheduled-but-not-yet-active projectiles (e.g. the second slash of a
     // whip chain) shouldn't deal damage until their start time arrives.
     if (projectile.createdAt > now) return;
