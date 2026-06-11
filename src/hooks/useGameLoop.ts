@@ -75,11 +75,12 @@ const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
 // 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
 const SHIELD_COOLDOWN_MS = 5000;             // 設置間隔(全Lv共通)
 const SHIELD_DURATION_MS = 5000;             // 持続(全Lv共通)。duration 自動カリングで消滅
-const SHIELD_HP_BY_LEVEL = [0, 2, 4, 6];     // 耐久(Lv1/2/3)
+const SHIELD_HP_BY_LEVEL = [0, 3, 6, 9];     // 耐久(Lv1/2/3)。敵接触1回・敵弾1発=各1消費
 const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から後方への設置距離
 const SHIELD_LENGTH = 52;                    // 壁の長さ(進行軸に直交)
 const SHIELD_THICKNESS = 12;                 // 壁の厚み(法線方向)
 const SHIELD_HIT_INTERVAL_MS = 400;          // 同一敵が連続で耐久を削る最短間隔
+const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ弾く強さ(store側で≤3にクランプ)
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -939,9 +940,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const wallRects = shieldRects.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height }));
             const dmgByShield = new Map<string, number>();
 
-            // (1) 敵: 通行遮断(押し出し)+接触で耐久-1(間隔制)。reaper(終末個体)は貫通。
+            // (1) 敵: 通行遮断(押し出し)+接触で耐久-1(間隔制)+外向きノックバック。
+            // reaper(終末個体)は貫通。knockbackEnemy は enemies を setState するため、
+            // 押し出しの setState で上書きしないよう「あとでまとめて」適用する。
             const sstate = useGameStore.getState();
             let anyMoved = false;
+            const toKnockback: { id: string; dx: number; dy: number }[] = [];
             const movedEnemies = sstate.enemies.map(enemy => {
               if (enemy.type === 'reaper') return enemy;
               const ebox = { x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height };
@@ -954,6 +958,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (gameTime >= allowed) {
                     dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 1);
                     shieldHitRef.current.set(key, gameTime + SHIELD_HIT_INTERVAL_MS);
+                    // ノックバック方向 = シールド中心→敵中心(来た方へ弾き返す)。
+                    // 重い敵/ボス(giantbat/pumpkin)は既存仕様に合わせて弾かない。
+                    if (enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                      const ecx = enemy.x + enemy.width / 2;
+                      const ecy = enemy.y + enemy.height / 2;
+                      const scx = s.x + s.width / 2;
+                      const scy = s.y + s.height / 2;
+                      const nrm = Math.max(0.001, Math.hypot(ecx - scx, ecy - scy));
+                      toKnockback.push({ id: enemy.id, dx: (ecx - scx) / nrm, dy: (ecy - scy) / nrm });
+                    }
                   }
                 }
               }
@@ -964,14 +978,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               return { ...enemy, x: resolved.x, y: resolved.y };
             });
             if (anyMoved) useGameStore.setState({ enemies: movedEnemies });
+            for (const k of toKnockback) {
+              useGameStore.getState().knockbackEnemy(k.id, k.dx, k.dy, SHIELD_KNOCKBACK_MULT);
+            }
 
-            // (2) 敵弾: シールドに重なったら消す(反射しない/誘導しない/耐久も削らない)。
+            // (2) 敵弾: シールドに重なったら消す(反射/誘導なし)。弾も耐久を1消費する。
             for (const b of useGameStore.getState().projectiles) {
               if (!b.hostile) continue;
               const bbox = { x: b.x, y: b.y, width: b.width, height: b.height };
               for (const s of shieldRects) {
                 if (rectsOverlap(bbox, s)) {
                   removeProjectile(b.id);
+                  dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 1);
                   spawnBurst(b.x + b.width / 2, b.y + b.height / 2, '#cbd5e1', 4);
                   break;
                 }

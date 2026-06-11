@@ -114,11 +114,11 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const shieldLevel = player.subWeaponLevels['shield'] ?? 0;
   if (!ownsKatana && shieldLevel < 3) {
     const nextLevel = shieldLevel + 1;
-    const hp = [0, 2, 4, 6][nextLevel]; // 耐久(Lv1=2/Lv2=4/Lv3=6)
+    const hp = [0, 3, 6, 9][nextLevel]; // 耐久(Lv1=3/Lv2=6/Lv3=9)
     subWeaponOptions.push({
       id: 'subweapon-shield',
       name: nextLevel === 1 ? 'シールド' : `シールド Lv${nextLevel}`,
-      description: `進行方向の反対側に遮蔽壁を設置。敵の通行を止め敵弾を消す（味方弾は貫通）。5秒ごと/5秒持続/耐久${hp}`,
+      description: `進行方向の反対側に遮蔽壁を設置。触れた敵を弾き返し敵弾を消す（味方弾は貫通）。5秒ごと/5秒持続/耐久${hp}（敵接触・敵弾で各1減）`,
       type: 'subWeapon',
       subWeaponKey: 'shield',
       level: nextLevel
