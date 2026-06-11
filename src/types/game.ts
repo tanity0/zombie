@@ -271,6 +271,9 @@ export interface Projectile {
   // `shieldMaxHp` is kept for the damage-state visual only.
   shieldHp?: number;
   shieldMaxHp?: number;
+  // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
+  // then is force-destroyed once Date.now() reaches this timestamp (slide end).
+  shieldBreakAt?: number;
 }
 
 // Pickup types

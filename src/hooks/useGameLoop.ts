@@ -927,10 +927,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 設置型シールド処理: (1)敵の通行遮断+接触で耐久を削る、(2)敵弾の消去。
         // 味方弾/自弾は hostile でないので無視=貫通。プレイヤーは押し出し対象外=貫通。
         {
-          const shields = useGameStore.getState().projectiles.filter(p => p.weaponType === 'shield');
+          let shields = useGameStore.getState().projectiles.filter(p => p.weaponType === 'shield');
           if (shields.length === 0) {
             if (shieldHitRef.current.size > 0) shieldHitRef.current.clear();
           } else {
+            // バッシュで押し出されたシールドは、スライド終了時刻(shieldBreakAt)に強制破壊。
+            const breakNow = Date.now();
+            const breaking = shields.filter(s => s.shieldBreakAt !== undefined && breakNow >= s.shieldBreakAt);
+            for (const s of breaking) {
+              removeProjectile(s.id);
+              for (const k of [...shieldHitRef.current.keys()]) {
+                if (k.startsWith(`${s.id}:`)) shieldHitRef.current.delete(k);
+              }
+              const scx = s.x + s.width / 2;
+              const scy = s.y + s.height / 2;
+              spawnBurst(scx, scy, '#94a3b8', 14);
+              spawnBurst(scx, scy, '#475569', 6);
+              spawnRing(scx, scy, 4, Math.max(s.width, s.height), 'rgba(148,163,184,0.7)', 2, 260);
+            }
+            if (breaking.length > 0) shields = shields.filter(s => !breaking.includes(s));
             // 死んだシールドの debounce キーを掃除。
             const liveIds = new Set(shields.map(s => s.id));
             for (const k of [...shieldHitRef.current.keys()]) {

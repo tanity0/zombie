@@ -166,8 +166,8 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 // 押し出し(トラップと同じ shove 機構でシームレス)、掃過した敵全部に近接×
 // SHIELD_BASH_DAMAGE_MULT と押し出し方向への強ノックバックを与える(壁は破壊せず残す)。
 const SHIELD_BASH_DAMAGE_MULT = 3;
-const SHIELD_BASH_SHOVE_DISTANCE = 96;
-const SHIELD_BASH_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 2.4;
+const SHIELD_BASH_SHOVE_DISTANCE = 72;
+const SHIELD_BASH_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 4.8;
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
@@ -1132,7 +1132,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 x: tr.x, y: tr.y,
               };
             }
-            // シールドバッシュ: 壁を法線方向へシームレスに押し出す(破壊せず残す)。
+            // シールドバッシュ: 壁を法線方向へシームレスに押し出し、スライド終了時に強制破壊。
             const sh = shieldShoves.find(s => s.id === p.id);
             if (sh) {
               return {
@@ -1140,6 +1140,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 shoveStartX: sh.fromX, shoveStartY: sh.fromY,
                 shoveStartAt: now, shoveDuration: TRAP_MELEE_SHOVE_SLIDE_MS,
                 x: sh.x, y: sh.y,
+                shieldBreakAt: now + TRAP_MELEE_SHOVE_SLIDE_MS,
               };
             }
             return p;
