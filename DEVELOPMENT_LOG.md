@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.181 - Katana zan callout at trajectory midpoint (Claude Code)
+
+### Summary
+- ユーザー指摘: 「斬」が移動後のプレイヤー位置に出ていた。仕様どおり、ダッシュ
+  軌道(始点→終点)の真ん中に出すよう修正。位置は発動時に確定(`pcx + ux *
+  KATANA_DASH_DISTANCE/2`)し、移動完了後のフィニッシュ時にそこへ1つ表示する。
+
+### Code touched
+- `src/store/gameStore.ts`, `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)確認 — 始点 x14 / 軌道中点 x78 に「斬」表示、移動後の
+  プレイヤー位置 x156 とは別であることを状態計測で確認。
+
 ## 2026-06-11 - v0.25.180 - Katana smaller back sprite + dash moves before finisher (Claude Code)
 
 ### Summary

@@ -1342,15 +1342,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     // フィニッシュのヒットストップ(全シム停止)を移動中に発火させると、
     // ダッシュの移動ウィンドウ(KATANA_DASH_MS)が凍結に食われてプレイヤーが
     // 動かないため。まず移動だけ走らせ、到達後に斬る。
+    // 「斬」を出す位置 = ダッシュ軌道(始点→終点)の真ん中(発動時に確定)。
+    const zanX = pcx + ux * KATANA_DASH_DISTANCE / 2;
+    const zanY = pcy + uy * KATANA_DASH_DISTANCE / 2;
     if (targetIds.length > 0) {
       setTimeout(() => {
         if (!hasKatana(get().player)) return; // run reset / 刀を外した等
         const result = get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true);
-        // 一閃でフィニッシュした時だけ「斬」を、移動後のプレイヤー位置に1つ表示
+        // 一閃でフィニッシュした時だけ「斬」を軌道の真ん中に1つ表示
         // (何体巻き込んでも1ダッシュにつき1つ)。
         if (result.finish) {
-          const p2 = get().player;
-          get().spawnCallout(p2.x + p2.width / 2, p2.y + p2.height / 2 - 8, '斬', '#fda4af');
+          get().spawnCallout(zanX, zanY - 8, '斬', '#fda4af');
         }
       }, KATANA_DASH_MS);
     }
