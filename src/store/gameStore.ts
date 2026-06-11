@@ -307,6 +307,19 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     default: return 'サブウェポン';
   }
 };
+const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: number): Player => {
+  const known = player.subWeapons.includes(key);
+  const currentLevel = player.subWeaponLevels[key] ?? 0;
+  const nextLevel = Math.min(3, Math.max(currentLevel + 1, cardLevel || 1));
+  return {
+    ...player,
+    subWeapons: known ? player.subWeapons : [...player.subWeapons, key],
+    subWeaponLevels: {
+      ...player.subWeaponLevels,
+      [key]: nextLevel
+    }
+  };
+};
 
 interface GameState {
   player: Player;
@@ -1132,18 +1145,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const { player } = state;
 
       if (upgrade.type === 'subWeapon' && upgrade.subWeaponKey) {
-        const known = player.subWeapons.includes(upgrade.subWeaponKey);
-        const currentLevel = player.subWeaponLevels[upgrade.subWeaponKey] ?? 0;
-        const nextLevel = Math.min(3, Math.max(currentLevel + 1, upgrade.level || 1));
         return {
-          player: {
-            ...player,
-            subWeapons: known ? player.subWeapons : [...player.subWeapons, upgrade.subWeaponKey],
-            subWeaponLevels: {
-              ...player.subWeaponLevels,
-              [upgrade.subWeaponKey]: nextLevel
-            }
-          },
+          player: applySubWeaponCard(player, upgrade.subWeaponKey, upgrade.level),
           showUpgradeMenu: false,
           isPaused: false
         };
@@ -1312,16 +1315,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cost = key === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST;
       const currentLevel = state.player.subWeaponLevels[subWeaponKey] ?? 0;
       if (currentLevel >= 3) return {};
-      const nextLevel = currentLevel + 1;
-      return spend(cost, {
-        subWeapons: state.player.subWeapons.includes(subWeaponKey)
-          ? state.player.subWeapons
-          : [...state.player.subWeapons, subWeaponKey],
-        subWeaponLevels: {
-          ...state.player.subWeaponLevels,
-          [subWeaponKey]: nextLevel
-        }
-      });
+      return spend(cost, applySubWeaponCard(state.player, subWeaponKey));
     });
 
     if (purchased) {

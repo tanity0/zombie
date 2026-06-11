@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.167 - Route shop skills through skill cards (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shop-skill-card-2026-06-11`
+  - Tag: `pre-shop-skill-card-v0.25.166`
+- Split the code meaning of skill acquisition:
+  - `learnSubWeapon` remains the direct "learn the skill" route
+  - level-up sub-weapon choices and merchant skill purchases now share the
+    same `applySubWeaponCard` helper
+- Merchant skill purchases still apply immediately, but they now behave as
+  "skill card acquired" rather than direct hand-written level mutation.
+- Ammo, medkit, and vaccine shop items remain immediately applied.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `0`.
+- Expected normal-play estimate remains roughly `44-89`.
+- Visual risk: low. This is state-flow cleanup, not a visual change.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.166 - Space torch generation at 30 percent (Codex)
 
 ### Summary
