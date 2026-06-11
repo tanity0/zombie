@@ -2033,6 +2033,9 @@ export class PixiScene {
         // 外向き法線(p.direction)で回転。ローカル +x = 表(外/敵側)、-x = 裏(プレイヤー側)。
         // 中央が +x へ反った曲面の防壁(左向き設置なら「[」の形に見える)。
         g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        // 消滅(寿命切れ)が近づくと早めにフェードアウトする。
+        const shieldRemaining = p.duration - (Date.now() - p.createdAt);
+        g.alpha = Math.max(0, Math.min(1, shieldRemaining / 600));
         const halfLen = Math.max(p.width, p.height) / 2; // 壁の長さ(local y)
         const t = Math.min(p.width, p.height);           // 厚み(local x)
         const half = t / 2;

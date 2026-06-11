@@ -162,6 +162,11 @@ export const KNOCKBACK_SPEED = 200; // melee counter shove (halved again)
 export const KNOCKBACK_DURATION = 280;
 const TRAP_MELEE_SHOVE_DISTANCE = 68;
 const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
+// 設置型シールドへの近接攻撃=シールドバッシュ。シールド中心 SHIELD_BASH_RADIUS 内の
+// 敵に近接ダメージ×SHIELD_BASH_DAMAGE_MULT と強ノックバックを与え、シールドは壊れる。
+const SHIELD_BASH_DAMAGE_MULT = 3;
+const SHIELD_BASH_RADIUS = 64;
+const SHIELD_BASH_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 2.4;
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
@@ -948,6 +953,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       });
 
+    // シールドバッシュ: メレー範囲にシールド(壁)があれば、その近傍の敵を強打して
+    // シールドを壊す。壁の最近点がメレー円に入っていれば対象(長い壁でも端で反応)。
+    const shieldsInRange = projectiles
+      .filter(p => p.weaponType === 'shield')
+      .filter(p => {
+        const nx = Math.max(p.x, Math.min(pcx, p.x + p.width));
+        const ny = Math.max(p.y, Math.min(pcy, p.y + p.height));
+        return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
+      });
+    const bashShield = shieldsInRange[0] ?? null;
+    const bashCx = bashShield ? bashShield.x + bashShield.width / 2 : 0;
+    const bashCy = bashShield ? bashShield.y + bashShield.height / 2 : 0;
+    const shieldsToBash = shieldsInRange.map(p => p.id);
+
     for (const enemy of enemies) {
       if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
       const ecx = enemy.x + enemy.width / 2;
@@ -955,7 +974,30 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dx = ecx - pcx;
       const dy = ecy - pcy;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > meleeRange) { survivors.push(enemy); continue; }
+      // バッシュ対象 = シールド中心 SHIELD_BASH_RADIUS 内の敵(メレー範囲外でも当たる)。
+      const bdist = bashShield ? Math.hypot(ecx - bashCx, ecy - bashCy) : Infinity;
+      const isBash = bashShield !== null && bdist <= SHIELD_BASH_RADIUS;
+      if (dist > meleeRange && !isBash) { survivors.push(enemy); continue; }
+
+      // バッシュ: 近接ダメージ×3 + 外向き強ノックバック(シールド中心→敵)。フィニッシュ無し。
+      if (isBash) {
+        slashAt.push({ x: ecx, y: ecy });
+        const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+        const newHealth = Math.max(0, enemy.health - dmg);
+        if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
+        const bnorm = Math.max(0.001, bdist);
+        survivors.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          knockbackVx: ((ecx - bashCx) / bnorm) * SHIELD_BASH_KNOCKBACK_SPEED,
+          knockbackVy: ((ecy - bashCy) / bnorm) * SHIELD_BASH_KNOCKBACK_SPEED,
+          knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        });
+        continue;
+      }
 
       // Anything in reach gets cut — show a slash on it.
       slashAt.push({ x: ecx, y: ecy });
@@ -1063,8 +1105,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         huntingCharged: false,
         huntingChargeStartedAt: 0
       },
-      projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0
-        ? state.projectiles.map(p =>
+      projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || shieldsToBash.length > 0
+        ? state.projectiles
+          .filter(p => !shieldsToBash.includes(p.id)) // バッシュしたシールドは破壊
+          .map(p =>
             grenadesToDetonate.includes(p.id)
               ? { ...p, createdAt: now - Math.max(1, p.duration) }
               : trapShoves.some(t => t.id === p.id)
@@ -1091,6 +1135,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const trap of trapShoves) {
       get().spawnSlash(trap.cx, trap.cy, 'rgba(125,211,252,0.9)');
       get().spawnRing(trap.cx, trap.cy, 4, 22, 'rgba(56,189,248,0.58)', 2, 220);
+    }
+
+    // シールドバッシュの破壊演出(シルバーの破片+衝撃リング)。
+    for (const s of shieldsInRange) {
+      const scx = s.x + s.width / 2;
+      const scy = s.y + s.height / 2;
+      get().spawnSlash(scx, scy, 'rgba(203,213,225,0.95)');
+      get().spawnRing(scx, scy, 6, SHIELD_BASH_RADIUS, 'rgba(203,213,225,0.7)', 3, 280);
+      get().spawnBurst(scx, scy, '#94a3b8', 16);
+      get().spawnBurst(scx, scy, '#475569', 8);
     }
 
     // Slash streaks on every enemy that was cut.
@@ -1140,7 +1194,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     return {
       swung: true,
-      hit: slashAt.length > 0 || propHit || trapShoves.length > 0,
+      hit: slashAt.length > 0 || propHit || trapShoves.length > 0 || shieldsToBash.length > 0,
       finish: finisherHit || bossFinishHit,
       killed: killed.length
     };
