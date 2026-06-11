@@ -207,7 +207,8 @@ const TORCH_STRAP_DROP_VARIANCE = 16;
 const WEAPON_CRATE_STRAP_DROP_MIN = 30;
 const WEAPON_CRATE_STRAP_DROP_VARIANCE = 21;
 const GOLD_STRAP_VALUE = 10;
-const DROP_SCATTER_RADIUS = 32;
+const DROP_SCATTER_RADIUS = 42;
+const WEAPON_CRATE_SCATTER_RADIUS = 92;
 const DROP_THROW_DURATION_MS = 360;
 const TREASURE_DROP_CHANCE_BY_RANK = {
   strong: 0.02,
@@ -265,7 +266,8 @@ const pickupWithDropScatter = (pickup: Pickup): Pickup => {
   }
 
   const angle = Math.random() * Math.PI * 2;
-  const dist = 5 + Math.random() * DROP_SCATTER_RADIUS;
+  const scatterRadius = pickup.scatterRadius ?? DROP_SCATTER_RADIUS;
+  const dist = 5 + Math.random() * scatterRadius;
   return {
     ...pickup,
     x: pickup.x + Math.cos(angle) * dist,
@@ -346,7 +348,7 @@ interface GameState {
   meleeAmmoDropPercent: number;
   // Debug setting: ammo granted by one ammo-box pickup per weapon family.
   ammoPickupAmounts: Record<AmmoType, number>;
-  preRunSkillCards: Partial<Record<SubWeaponKey, number>>;
+  unlockedShopSkillCards: Partial<Record<SubWeaponKey, number>>;
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   upgradeOptions: UpgradeOption[];
@@ -391,6 +393,7 @@ interface GameState {
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
+  buySkillCardFromShop: (key: SubWeaponKey) => boolean;
   openShop: () => void;
   closeShop: () => void;
   openEventQuest: () => void;
@@ -440,7 +443,7 @@ interface GameState {
   setPaused: (paused: boolean) => void;
   setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
-  setPreRunSkillCard: (key: SubWeaponKey, level: number) => void;
+  setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
@@ -523,7 +526,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameWon: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
-  preRunSkillCards: {},
+  unlockedShopSkillCards: {},
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   upgradeOptions: [],
@@ -1328,6 +1331,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     return purchased;
   },
 
+  buySkillCardFromShop: (key) => {
+    let purchased = false;
+    set(state => {
+      const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
+      const currentLevel = state.player.subWeaponLevels[key] ?? 0;
+      if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
+      const cost = key === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST;
+      if (state.player.straps < cost) return {};
+      purchased = true;
+      return {
+        player: {
+          ...applySubWeaponCard(state.player, key),
+          straps: state.player.straps - cost
+        },
+        gameStats: {
+          ...state.gameStats,
+          strapsSpent: state.gameStats.strapsSpent + cost
+        }
+      };
+    });
+
+    if (purchased) {
+      const p = get().player;
+      get().spawnCallout(p.x + p.width / 2, p.y - 12, 'SKILL', '#bfdbfe');
+    }
+    return purchased;
+  },
+
   openShop: () => {
     set({
       showShopMenu: true,
@@ -1855,7 +1886,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               x: pickup.x,
               y: pickup.y,
               type: 'strap',
-              value
+              value,
+              scatterRadius: WEAPON_CRATE_SCATTER_RADIUS
             });
           });
         break;
@@ -2282,16 +2314,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  setPreRunSkillCard: (key, level) => {
+  setUnlockedShopSkillCard: (key, level) => {
     const nextLevel = Math.max(0, Math.min(3, Math.round(level)));
     set(state => {
-      const next = { ...state.preRunSkillCards };
+      const next = { ...state.unlockedShopSkillCards };
       if (nextLevel <= 0) {
         delete next[key];
       } else {
         next[key] = nextLevel;
       }
-      return { preRunSkillCards: next };
+      return { unlockedShopSkillCards: next };
     });
   },
 
@@ -2330,15 +2362,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const startingWeapons = getStartingWeapons(validClass);
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
     const maxHealth = profile.maxHp;
-    const preRunSkillCards = get().preRunSkillCards;
-    const startingSubWeapons = (Object.entries(preRunSkillCards) as [SubWeaponKey, number][])
-      .filter(([, level]) => level > 0)
-      .map(([key]) => key);
-    const startingSubWeaponLevels = Object.fromEntries(
-      (Object.entries(preRunSkillCards) as [SubWeaponKey, number][])
-        .filter(([, level]) => level > 0)
-        .map(([key, level]) => [key, Math.max(1, Math.min(3, level))])
-    ) as Partial<Record<SubWeaponKey, number>>;
     
     set(state => {
       void state;
@@ -2378,8 +2401,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           magBonus: 0,
           reloadMult: 1,
-          subWeapons: startingSubWeapons,
-          subWeaponLevels: startingSubWeaponLevels,
+          subWeapons: [],
+          subWeaponLevels: {},
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,

@@ -5,7 +5,6 @@ import {
   SHOP_DOG_COST,
   SHOP_MEDKIT_COST,
   SHOP_VACCINE_COST,
-  classSubWeaponFor,
   subWeaponDisplayName,
   useGameStore
 } from '../store/gameStore';
@@ -17,6 +16,15 @@ type ShopEntry = {
   description: string;
   cost: number;
   ammoType?: AmmoType;
+  disabled?: boolean;
+};
+
+type SkillShopEntry = {
+  key: `skill-${SubWeaponKey}`;
+  skillKey: SubWeaponKey;
+  name: string;
+  description: string;
+  cost: number;
   disabled?: boolean;
 };
 
@@ -32,18 +40,14 @@ const ammoShopKey: Record<AmmoType, ShopItemKey> = {
   rifle: 'ammo-rifle'
 };
 
-const levelText = (level: number): string => (level >= 3 ? 'MAX' : `Lv${level + 1}`);
-
 const ShopMenu: React.FC = () => {
   const player = useGameStore(state => state.player);
   const ammoPickupAmounts = useGameStore(state => state.ammoPickupAmounts);
+  const unlockedShopSkillCards = useGameStore(state => state.unlockedShopSkillCards);
   const vaccinePurchased = useGameStore(state => state.vaccinePurchased);
   const buyShopItem = useGameStore(state => state.buyShopItem);
+  const buySkillCardFromShop = useGameStore(state => state.buySkillCardFromShop);
   const closeShop = useGameStore(state => state.closeShop);
-
-  const classSkill = classSubWeaponFor(player.characterClass);
-  const classSkillLevel = player.subWeaponLevels[classSkill] ?? 0;
-  const dogLevel = player.subWeaponLevels.dog ?? 0;
 
   const ammoEntries = (['handgun', 'shotgun', 'rifle'] as AmmoType[]).map(type => ({
     key: ammoShopKey[type],
@@ -52,22 +56,24 @@ const ShopMenu: React.FC = () => {
     cost: SHOP_AMMO_COST,
     ammoType: type
   }));
-  const entries: ShopEntry[] = [
+  const skillEntries: SkillShopEntry[] = (Object.entries(unlockedShopSkillCards) as [SubWeaponKey, number][])
+    .filter(([, unlockedLevel]) => unlockedLevel > 0)
+    .map(([skillKey, unlockedLevel]) => {
+      const currentLevel = player.subWeaponLevels[skillKey] ?? 0;
+      const cappedUnlock = Math.min(3, Math.max(0, unlockedLevel));
+      const maxedForStock = currentLevel >= cappedUnlock || currentLevel >= 3;
+      return {
+        key: `skill-${skillKey}` as const,
+        skillKey,
+        name: `${subWeaponDisplayName(skillKey)} ${maxedForStock ? 'MAX' : `Lv${currentLevel + 1}`}`,
+        description: maxedForStock ? `陳列Lv${cappedUnlock}まで購入済み` : `スキルカード 陳列Lv${cappedUnlock}`,
+        cost: skillKey === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST,
+        disabled: maxedForStock
+      };
+    });
+  const entries: (ShopEntry | SkillShopEntry)[] = [
     ...ammoEntries,
-    {
-      key: 'dog',
-      name: dogLevel > 0 ? `ドッグ ${levelText(dogLevel)}` : 'ドッグ',
-      description: dogLevel >= 3 ? '範囲回収 LvMAX' : '近くのアイテムをまとめて拾う',
-      cost: SHOP_DOG_COST,
-      disabled: dogLevel >= 3
-    },
-    {
-      key: 'class-skill',
-      name: `${subWeaponDisplayName(classSkill as SubWeaponKey)} ${levelText(classSkillLevel)}`,
-      description: classSkillLevel >= 3 ? '固有スキル LvMAX' : 'キャラ固有スキルを強化',
-      cost: SHOP_CLASS_SKILL_COST,
-      disabled: classSkillLevel >= 3
-    },
+    ...skillEntries,
     {
       key: 'medkit',
       name: '救急セット',
@@ -84,9 +90,13 @@ const ShopMenu: React.FC = () => {
     }
   ];
 
-  const handleBuy = (entry: ShopEntry) => {
+  const handleBuy = (entry: ShopEntry | SkillShopEntry) => {
     if (entry.disabled || player.straps < entry.cost) return;
-    buyShopItem(entry.key, entry.ammoType);
+    if ('skillKey' in entry) {
+      buySkillCardFromShop(entry.skillKey);
+    } else {
+      buyShopItem(entry.key, entry.ammoType);
+    }
   };
 
   return (

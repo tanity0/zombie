@@ -275,6 +275,7 @@ export interface Pickup {
   throwFromY?: number;
   throwStartAt?: number;
   throwDuration?: number;
+  scatterRadius?: number;
 }
 
 export interface BreakableProp {

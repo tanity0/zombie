@@ -29,8 +29,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const setMeleeAmmoDropPercent = useGameStore(s => s.setMeleeAmmoDropPercent);
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
   const setAmmoPickupAmount = useGameStore(s => s.setAmmoPickupAmount);
-  const preRunSkillCards = useGameStore(s => s.preRunSkillCards);
-  const setPreRunSkillCard = useGameStore(s => s.setPreRunSkillCard);
+  const unlockedShopSkillCards = useGameStore(s => s.unlockedShopSkillCards);
+  const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
     handgun: String(ammoPickupAmounts.handgun),
@@ -281,13 +281,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
             {shopOpen && (
               <div className="mt-2 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
                 {skillShopEntries.map(skillKey => {
-                  const level = preRunSkillCards[skillKey] ?? 0;
+                  const level = unlockedShopSkillCards[skillKey] ?? 0;
                   const maxed = level >= 3;
                   return (
                     <button
                       key={skillKey}
                       type="button"
-                      onClick={() => setPreRunSkillCard(skillKey, Math.min(3, level + 1))}
+                      onClick={() => setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1))}
                       disabled={maxed}
                       className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${
                         maxed
@@ -297,7 +297,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                     >
                       <span>
                         <span className="block text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span>
-                        <span className="block text-[11px] text-white/50">Lv{level} → Lv{Math.min(3, level + 1)}</span>
+                        <span className="block text-[11px] text-white/50">商人陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span>
                       </span>
                       <span className="text-right">
                         <span className="block text-[12px] font-semibold text-amber-100">0G</span>

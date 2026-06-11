@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.169 - Unlock skill cards for merchant and show dog companion (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-shop-unlock-dog-scatter-2026-06-11`
+  - Tag: `pre-shop-unlock-dog-scatter-v0.25.168`
+- Changed the temporary start skill shop from "starting skill ownership" to
+  "merchant stock unlock":
+  - start-screen skill purchases still cost `0G`
+  - starting a run no longer grants those skills automatically
+  - the weapon merchant only lists unlocked skill cards
+  - buying an unlocked merchant skill card applies it immediately in-run
+- Added a lightweight visible dog companion:
+  - appears when the player actually has the dog skill
+  - uses one sprite plus a small shadow, with no glow/filter
+  - follows slightly behind the player
+- Increased normal pickup scatter radius from `32` to `42`.
+- Weapon-crate strap drops now use a wider `92` scatter radius so they land
+  farther from the opened crate and are less likely to be picked up instantly.
+
+### Performance
+- Old load score: `2/10`.
+- Performance Budget Score impact: `+1` to `+4`.
+- Expected normal-play estimate: roughly `45-93`.
+- Visual risk: medium. Dog placement and wider strap scatter may need feel
+  tuning after device play.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.168 - Add temporary start skill shop (Codex)
 
 ### Summary
