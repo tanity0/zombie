@@ -114,7 +114,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const shieldLevel = player.subWeaponLevels['shield'] ?? 0;
   if (!ownsKatana && shieldLevel < 3) {
     const nextLevel = shieldLevel + 1;
-    const hp = [0, 5, 15, 30][nextLevel]; // 耐久(Lv1=5/Lv2=15/Lv3=30)
+    const hp = [0, 10, 30, 60][nextLevel]; // 耐久(Lv1=10/Lv2=30/Lv3=60)
     subWeaponOptions.push({
       id: 'subweapon-shield',
       name: nextLevel === 1 ? 'シールド' : `シールド Lv${nextLevel}`,

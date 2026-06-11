@@ -2043,18 +2043,18 @@ export class PixiScene {
         const body: number[] = [];
         for (let i = 0; i <= N; i++) { const y = -halfLen + (2 * halfLen) * (i / N); body.push(cxAt(y) + half, y); }
         for (let i = N; i >= 0; i--) { const y = -halfLen + (2 * halfLen) * (i / N); body.push(cxAt(y) - half, y); }
-        g.poly(body).fill({ color: 0x4b5563 });          // 裏(濃いシルバー)
-        // 表面(+x寄り)の明るいシルバー帯。
+        g.poly(body).fill({ color: 0x374151 });          // 裏(濃いシルバー・少し暗め)
+        // 表面(+x寄り)のシルバー帯(少し暗め)。
         const frontW = Math.max(2, t * 0.44);
         const front: number[] = [];
         for (let i = 0; i <= N; i++) { const y = -halfLen + (2 * halfLen) * (i / N); front.push(cxAt(y) + half, y); }
         for (let i = N; i >= 0; i--) { const y = -halfLen + (2 * halfLen) * (i / N); front.push(cxAt(y) + half - frontW, y); }
-        g.poly(front).fill({ color: 0xcbd5e1 });          // 表(シルバー)
-        g.poly(body).stroke({ color: 0x1f2937, alpha: 0.85, width: 1.4 }); // 縁取り
+        g.poly(front).fill({ color: 0x94a3b8 });          // 表(シルバー・少し暗め)
+        g.poly(body).stroke({ color: 0x111827, alpha: 0.85, width: 1.4 }); // 縁取り
         // 持ち手(裏側 -x、中央)。
-        g.rect(-half - 4, -halfLen * 0.3, 3, halfLen * 0.6).fill({ color: 0x374151 });
-        g.circle(-half - 2.5, -halfLen * 0.3, 1.6).fill({ color: 0x374151 });
-        g.circle(-half - 2.5, halfLen * 0.3, 1.6).fill({ color: 0x374151 });
+        g.rect(-half - 4, -halfLen * 0.3, 3, halfLen * 0.6).fill({ color: 0x1f2937 });
+        g.circle(-half - 2.5, -halfLen * 0.3, 1.6).fill({ color: 0x1f2937 });
+        g.circle(-half - 2.5, halfLen * 0.3, 1.6).fill({ color: 0x1f2937 });
         // 耐久が減ると表面に軽い赤み(亀裂感)。常時glowなし。
         const hp = p.shieldHp ?? 1;
         const maxHp = p.shieldMaxHp ?? hp;

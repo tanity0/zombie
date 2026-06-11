@@ -75,9 +75,9 @@ const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
 // 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
 const SHIELD_COOLDOWN_MS = 5000;             // 設置間隔(全Lv共通)
 const SHIELD_DURATION_MS = 5000;             // 持続(全Lv共通)。duration 自動カリングで消滅
-const SHIELD_HP_BY_LEVEL = [0, 5, 15, 30];   // 耐久(Lv1/2/3)。敵接触1回・敵弾1発=各1消費
+const SHIELD_HP_BY_LEVEL = [0, 10, 30, 60];  // 耐久(Lv1/2/3)。敵接触1回・敵弾1発=各1消費
 const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から後方への設置距離
-const SHIELD_LENGTH = 52;                    // 壁の長さ(進行軸に直交)
+const SHIELD_LENGTH = 104;                   // 壁の長さ(進行軸に直交=横幅)
 const SHIELD_THICKNESS = 12;                 // 壁の厚み(法線方向)
 const SHIELD_HIT_INTERVAL_MS = 400;          // 同一敵が連続で耐久を削る最短間隔
 const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ弾く強さ(store側で≤3にクランプ)
