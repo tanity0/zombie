@@ -368,7 +368,8 @@ const grantMeleeKillRewards = (
   get: () => GameState,
   killed: { enemy: Enemy; finisher: boolean }[],
   player: Player,
-  gun: Weapon | undefined
+  gun: Weapon | undefined,
+  suppressKillCallout = false
 ) => {
   for (const { enemy, finisher } of killed) {
     const ex = enemy.x + enemy.width / 2;
@@ -418,8 +419,11 @@ const grantMeleeKillRewards = (
       get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
       get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
       get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
-      // "Kill!" callout over the executed enemy's head.
-      get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
+      // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
+      // 軌道中央へ「斬」を出すので、ここでは出さない。
+      if (!suppressKillCallout) {
+        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
+      }
     } else {
       get().spawnBurst(ex, ey, '#dc2626', 16);
       get().spawnBurst(ex, ey, '#7f1d1d', 7);
@@ -583,7 +587,7 @@ interface GameState {
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
-  spawnCallout: (x: number, y: number, text: string, color: string) => void;
+  spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
@@ -1269,10 +1273,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of critStunAt) {
       get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     }
-    grantMeleeKillRewards(get, killed, player, gun);
-    if (finisherHit) {
-      get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
-    }
+    // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
+    // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
+    grantMeleeKillRewards(get, killed, player, gun, true);
     if (finisherHit || bossFinishHit) {
       get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
     }
@@ -1350,9 +1353,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!hasKatana(get().player)) return; // run reset / 刀を外した等
         const result = get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true);
         // 一閃でフィニッシュした時だけ「斬」を軌道の真ん中に1つ表示
-        // (何体巻き込んでも1ダッシュにつき1つ)。
+        // (何体巻き込んでも1ダッシュにつき1つ)。大きい赤の明朝文字+画面暗転。
         if (result.finish) {
-          get().spawnCallout(zanX, zanY - 8, '斬', '#fda4af');
+          get().spawnFlash('rgba(0,0,0,0.6)', 420);                      // 暗転
+          get().spawnCallout(zanX, zanY, '斬', '#ef4444', { scale: 3.6, serif: true });
         }
       }, KATANA_DASH_MS);
     }
@@ -2901,7 +2905,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Big bold floating callout (e.g. "Kill!", "Counter!"). Rises and fades like
   // a damage number but larger.
-  spawnCallout: (x, y, text, color) => {
+  spawnCallout: (x, y, text, color, opts) => {
     const now = Date.now();
     const effect: VisualEffect = {
       kind: 'damageNumber',
@@ -2910,9 +2914,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       value: 0,
       text,
       color,
-      scale: 1.9,
+      scale: opts?.scale ?? 1.9,
+      serif: opts?.serif,
       createdAt: now,
-      duration: 850
+      duration: opts?.serif ? 1000 : 850
     };
     set(state => {
       const next = [...state.effects, effect];

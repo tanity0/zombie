@@ -10,6 +10,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.182 - Katana zan callout: bigger red mincho + screen darken, no Kill! (Claude Code)
+
+### Summary
+- ユーザー指摘4点(一閃の近接フィニッシュ演出):
+  - 「斬」をもっと大きく: callout scale `1.9 → 3.6`。
+  - 同時に出ていた「Kill!」をやめる: `grantMeleeKillRewards` に
+    `suppressKillCallout` を追加し、刀の `performKatanaStrike` から true を渡す
+    (オート斬撃はそもそもフィニッシュしないので影響なし)。既存カウンターの
+    Kill! は従来どおり。
+  - 「斬」表示時だけ画面暗転: 一閃フィニッシュ時に黒の全画面フラッシュ
+    `rgba(0,0,0,0.6)`(420ms、flashは通常ブレンドなので暗転になる)。刀の
+    フィニッシュからは従来の黄色フラッシュを外した。
+  - 「斬」を明朝(serif)・赤に: `VisualEffect.damageNumber` に `serif?` を追加、
+    `spawnCallout` に `{ scale, serif }` opts を追加。レンダラーは serif 時に
+    和文セリフフォントスタック(Hiragino Mincho ProN / Yu Mincho / MS Mincho /
+    Noto Serif JP / serif)を使う。色は赤 `#ef4444`。
+
+### Performance
+- Performance Budget Score impact: `+0`(既存の callout / flash 経路を流用)。
+
+### Code touched
+- `src/types/game.ts`, `src/store/gameStore.ts`, `src/pixi/pixiScene.ts`,
+  `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)状態計測 — 一閃フィニッシュ時に 斬(text='斬',
+  color='#ef4444', scale 3.6, serif=true)+ 暗転flash(rgba(0,0,0,0.6))が生成、
+  Kill! コールアウトは出ない、敵フィニッシュ成功を確認。視覚フレームの撮影は
+  プレビューのタイミング都合で安定せず、見た目の最終確認は実機にて。
+
 ## 2026-06-11 - v0.25.181 - Katana zan callout at trajectory midpoint (Claude Code)
 
 ### Summary

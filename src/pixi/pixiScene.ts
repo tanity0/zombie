@@ -2394,7 +2394,10 @@ export class PixiScene {
       txt = new Text({
         text: e.text ?? String(e.value),
         style: {
-          fontFamily: '"Special Elite", ui-rounded, system-ui, sans-serif',
+          // 明朝(serif)指定の時は和文セリフのスタック。それ以外は既存フォント。
+          fontFamily: e.serif
+            ? '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", serif'
+            : '"Special Elite", ui-rounded, system-ui, sans-serif',
           fontSize: Math.round(15 * scale),
           fontWeight: bold ? 'bold' : 'normal',
           fill: e.color,

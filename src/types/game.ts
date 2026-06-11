@@ -386,6 +386,8 @@ export type VisualEffect =
       text?: string;
       // Optional font scale multiplier (callouts use a larger value).
       scale?: number;
+      // Optional serif/mincho font (e.g. the katana "斬" callout).
+      serif?: boolean;
     }
   | {
       kind: 'ring';
