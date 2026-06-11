@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.171 - Restore dog fetch collection behavior (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-dog-range-collect-fix-2026-06-11`
+  - Tag: `pre-dog-range-collect-fix-v0.25.170`
+- Restored dog skill behavior as an active fetch action:
+  - dog selects a nearby pickup target
+  - a temporary dog-fetch sprite runs from the player toward that item
+  - when the dog reaches the item, it collects nearby pickups in a small radius
+  - the fetch then finishes and repeats after a short cooldown
+- Skill level now widens both:
+  - the distance the dog can search for a pickup
+  - the collection radius around the reached item
+- The dog is not a persistent companion beside the player; it only appears
+  during fetch actions.
+
+### Performance
+- Old load score: `1/10`.
+- Performance Budget Score impact: `+0` to `+1`.
+- Expected normal-play estimate is roughly `44-93`.
+- Visual risk: low to medium. Dog fetch timing and level-based range may need
+  feel tuning on device.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.170 - Remove persistent dog companion sprite (Codex)
 
 ### Summary
