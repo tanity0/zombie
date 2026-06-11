@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, KATANA_DOUBLE_TAP_MS } from '../store/gameStore';
 
 // Keyboard fallback — the game is touch-first now, but we keep WASD/arrow
 // movement and Space-to-counter so the game is still playable on a laptop.
@@ -9,8 +9,30 @@ const isCounterKey = (key: string) => {
   return k === ' ' || k === 'spacebar' || k === 'space' || k === 'j';
 };
 
+type MoveDir = 'up' | 'down' | 'left' | 'right';
+const DIR_VECTORS: Record<MoveDir, { x: number; y: number }> = {
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 }
+};
+const moveDirFromKey = (key: string): MoveDir | null => {
+  switch (key.toLowerCase()) {
+    case 'w': case 'arrowup': return 'up';
+    case 's': case 'arrowdown': return 'down';
+    case 'a': case 'arrowleft': return 'left';
+    case 'd': case 'arrowright': return 'right';
+    default: return null;
+  }
+};
+
 export const useGameControls = () => {
   useEffect(() => {
+    // 刀: 同一方向キーの素早い二連打で一閃ダッシュ。WASDと矢印は同方向なら
+    // 混在二連打(w→↑など)も発動対象。装備/クールダウン判定はstore側が行い、
+    // クールダウン中や未装備時は何も起きず通常移動のまま。
+    let lastDirTap: { dir: MoveDir | ''; at: number } = { dir: '', at: 0 };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const { key } = e;
       const inputState = { ...useGameStore.getState().inputState };
@@ -32,6 +54,20 @@ export const useGameControls = () => {
         case 'arrowright':
           inputState.right = true;
           break;
+      }
+
+      const moveDir = moveDirFromKey(key);
+      if (moveDir && !e.repeat) {
+        const nowMs = Date.now();
+        if (lastDirTap.dir === moveDir && nowMs - lastDirTap.at <= KATANA_DOUBLE_TAP_MS) {
+          const v = DIR_VECTORS[moveDir];
+          if (useGameStore.getState().triggerKatanaDash(v.x, v.y)) {
+            playSfx('melee');
+          }
+          lastDirTap = { dir: '', at: 0 };
+        } else {
+          lastDirTap = { dir: moveDir, at: nowMs };
+        }
       }
 
       if (isCounterKey(key)) {

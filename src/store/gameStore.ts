@@ -168,6 +168,39 @@ export const KNOCKBACK_IMMUNE_MS = 1750;
 export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered bullets hit 5× harder
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
 
+// ---------------------------------------------------------------------------
+// Katana (刀) sub-weapon. Owning the card switches the player to katana mode:
+// guns hold fire and the release/Space knife sweep is disabled (the counter
+// window still opens so bullet reflection keeps working). An auto-slash cuts
+// the nearest in-range enemy continuously, and a flick (mobile) / same-key
+// double-tap (PC) performs an invulnerable dash that cuts along its path.
+// ---------------------------------------------------------------------------
+// Auto-slash reach is fixed at the Hunting Lv3-equivalent melee radius.
+export const KATANA_RANGE = MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3];
+// TODO(刀): 仮値。斬撃間隔・ダメージ・クリ率は未確定。Lv1-3は構造のみで詳細調整は後回し。
+export const KATANA_SLASH_INTERVAL_MS = 600;
+export const KATANA_DAMAGE_BY_LEVEL = [0, 10, 12, 14] as const;
+export const KATANA_CRIT_CHANCE = 0.08; // TODO(刀): 仮値(melee tier2相当)
+export const KATANA_DASH_DAMAGE_MULT = 3; // 一閃 = 刀オート斬撃の3倍(仕様確定値)
+// TODO(刀): 仮値。一閃の距離・所要時間・当たり判定幅は操作感を見て調整する。
+export const KATANA_DASH_MS = 180;
+export const KATANA_DASH_DISTANCE = 150;
+export const KATANA_DASH_HIT_HALF_WIDTH = 30;
+// 一閃後のクールダウンは既存近接(カウンター)と同じ長さ。
+export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
+// TODO(刀): 仮値。PC二連打の受付時間。既存の操作感を見て調整可能にしてある。
+export const KATANA_DOUBLE_TAP_MS = 260;
+// TODO(刀): 仮値。フリック判定しきい値(直近サンプル窓・最低距離・最低速度)。
+// 通常のジョイスティックドラッグは低速なのでフリック扱いにならない。
+export const KATANA_FLICK_WINDOW_MS = 120;
+export const KATANA_FLICK_MIN_DIST = 34;
+export const KATANA_FLICK_MIN_SPEED = 0.9; // px/ms
+export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カード価格。
+
+export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
+export const katanaLevel = (player: Player): number =>
+  Math.max(1, Math.min(3, player.subWeaponLevels['katana'] ?? 1));
+
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
 const MELEE_FINISH_SLOW_MS = HITSTOP_MS + 520;
@@ -306,9 +339,79 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'striker-quick-mag': return 'クイックマガジン';
     case 'striker-hunting': return 'ハンティング';
     case 'dog': return 'ドッグ';
+    case 'katana': return '刀';
     default: return 'サブウェポン';
   }
 };
+// Shared per-kill rewards for melee-grade kills (the release counter swing and
+// the katana strikes). Mirrors what the counter has always granted: XP pickup,
+// enemy currency, ammo scavenge for the active gun family, boss weapon crates,
+// and finisher juice. Extracted from triggerCounter so the katana reuses the
+// exact same finisher judgement/演出 without duplicating reward rules.
+const grantMeleeKillRewards = (
+  get: () => GameState,
+  killed: { enemy: Enemy; finisher: boolean }[],
+  player: Player,
+  gun: Weapon | undefined
+) => {
+  for (const { enemy, finisher } of killed) {
+    const ex = enemy.x + enemy.width / 2;
+    const ey = enemy.y + enemy.height / 2;
+    const xp = finisher
+      ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
+      : enemy.experienceValue;
+    get().addPickup({
+      id: `pickup-xp-melee-${enemy.id}`,
+      x: ex - 8, y: ey - 8, type: 'experience', value: xp
+    });
+    get().dropEnemyCurrency(enemy, ex, ey);
+    // Ammo scavenge: base rate is the start-screen setting; a finisher
+    // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
+    // Prefer the active gun's family; if the active pointer is temporarily
+    // invalid, fall back to any owned gun so the slider still governs melee.
+    const baseRate = get().meleeAmmoDropPercent / 100;
+    const ammoChance = finisher ? Math.min(1, baseRate * 1.5) : baseRate;
+    const ownedAmmoTypes = getGuns(player)
+      .map(w => w.ammoType)
+      .filter((t): t is AmmoType => !!t);
+    const dropType = gun?.ammoType ?? ownedAmmoTypes[0];
+    if (dropType && Math.random() < ammoChance) {
+      get().addPickup({
+        id: `pickup-ammo-melee-${enemy.id}`,
+        x: ex - 8 + 14, y: ey - 8,
+        type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+        value: 0
+      });
+    }
+    // Mid-boss killed in melee still drops its weapon crate (the gun-kill
+    // path drops one too; bosses are usually finished with the counter).
+    if (enemy.type === 'pumpkin' || enemy.type === 'giantbat') {
+      get().addPickup({
+        id: `pickup-crate-${enemy.id}`,
+        x: ex - 8, y: ey - 8 - 18,
+        type: 'weapon-crate',
+        value: 0
+      });
+      get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+    }
+    if (finisher) {
+      // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
+      get().spawnBurst(ex, ey, '#dc2626', 30);
+      get().spawnBurst(ex, ey, '#7f1d1d', 14);
+      get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
+      get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
+      get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
+      get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
+      // "Kill!" callout over the executed enemy's head.
+      get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
+    } else {
+      get().spawnBurst(ex, ey, '#dc2626', 16);
+      get().spawnBurst(ex, ey, '#7f1d1d', 7);
+      get().spawnRing(ex, ey, 4, 24, 'rgba(185,28,28,0.68)', 3, 280);
+    }
+  }
+};
+
 const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: number): Player => {
   const known = player.subWeapons.includes(key);
   const currentLevel = player.subWeaponLevels[key] ?? 0;
@@ -386,7 +489,12 @@ interface GameState {
   gainExperience: (amount: number) => void;
   levelUp: () => void;
   triggerCounter: () => CounterTriggerResult;
-  
+  // Katana actions. performKatanaStrike cuts the given enemies with katana
+  // melee rules (crit, stun finisher, knockback, shared kill rewards);
+  // triggerKatanaDash starts the invulnerable dash and cuts along its path.
+  performKatanaStrike: (targetIds: string[], damageMult: number) => { hit: boolean; finish: boolean; killed: number };
+  triggerKatanaDash: (dirX: number, dirY: number) => boolean;
+
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
   selectUpgrade: (upgrade: UpgradeOption) => void;
@@ -505,6 +613,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponCooldowns: {},
     huntingChargeStartedAt: 0,
     huntingCharged: false,
+    katanaDashUntil: 0,
+    katanaDashDirX: 0,
+    katanaDashDirY: 0,
+    katanaDashCooldownEnd: 0,
     straps: 0,
     vaccineRevives: 0
   },
@@ -571,12 +683,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Currently 1.0, so reloading does not slow movement.
       const reloading =
         player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
-      const moveSpeed = reloading ? player.speed * RELOAD_MOVE_SPEED_MULT : player.speed;
+      // 一閃ダッシュ中は入力を無視して固定方向へ高速移動する。
+      const dashing = Date.now() < player.katanaDashUntil;
+      const moveSpeed = dashing
+        ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT : player.speed;
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
       let ty = 0;
-      if (swipeDirection) {
+      if (dashing) {
+        tx = player.katanaDashDirX;
+        ty = player.katanaDashDirY;
+      } else if (swipeDirection) {
         tx = swipeDirection.x;
         ty = swipeDirection.y;
       } else {
@@ -725,6 +844,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnGlow(eventQuestNpc.x, eventQuestNpc.y - 30, 68, 'rgba(96,165,250,', SHOP_INTERACT_RING_MS);
       get().spawnCallout(eventQuestNpc.x, eventQuestNpc.y - 76, 'QUEST', '#bfdbfe');
       return { swung: true, hit: true, finish: false, killed: 0 };
+    }
+
+    // 刀装備中: 通常ナイフのスイープ(ダメージ/ノックバック/フィニッシュ/
+    // グレネード起爆/トラップ押し出し/小物破壊)は行わない。既存カウンター条件
+    // (ウィンドウ中に敵弾が当たると反射)だけは生かすため、窓とクールダウンは
+    // 通常どおり開く。反射が成立した時のみ既存のカウンター成立演出が出る
+    // (成立エフェクトはループ側の lastCounterSuccessTime エッジ検出が担当)。
+    if (hasKatana(player)) {
+      set(state => ({
+        player: {
+          ...state.player,
+          counterWindowEnd: now + COUNTER_WINDOW,
+          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+        }
+      }));
+      return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
     // Single sweep: every non-reaper enemy in melee range is either finished
@@ -929,62 +1064,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
-    for (const { enemy, finisher } of killed) {
-      const ex = enemy.x + enemy.width / 2;
-      const ey = enemy.y + enemy.height / 2;
-      const xp = finisher
-        ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
-        : enemy.experienceValue;
-      get().addPickup({
-        id: `pickup-xp-melee-${enemy.id}`,
-        x: ex - 8, y: ey - 8, type: 'experience', value: xp
-      });
-      get().dropEnemyCurrency(enemy, ex, ey);
-      // Ammo scavenge: base rate is the start-screen setting; a finisher
-      // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
-      // Prefer the active gun's family; if the active pointer is temporarily
-      // invalid, fall back to any owned gun so the slider still governs melee.
-      const baseRate = get().meleeAmmoDropPercent / 100;
-      const ammoChance = finisher ? Math.min(1, baseRate * 1.5) : baseRate;
-      const ownedAmmoTypes = getGuns(player)
-        .map(w => w.ammoType)
-        .filter((t): t is AmmoType => !!t);
-      const dropType = gun?.ammoType ?? ownedAmmoTypes[0];
-      if (dropType && Math.random() < ammoChance) {
-        get().addPickup({
-          id: `pickup-ammo-melee-${enemy.id}`,
-          x: ex - 8 + 14, y: ey - 8,
-          type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
-          value: 0
-        });
-      }
-      // Mid-boss killed in melee still drops its weapon crate (the gun-kill
-      // path drops one too; bosses are usually finished with the counter).
-      if (enemy.type === 'pumpkin' || enemy.type === 'giantbat') {
-        get().addPickup({
-          id: `pickup-crate-${enemy.id}`,
-          x: ex - 8, y: ey - 8 - 18,
-          type: 'weapon-crate',
-          value: 0
-        });
-        get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
-      }
-      if (finisher) {
-        // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
-        get().spawnBurst(ex, ey, '#dc2626', 30);
-        get().spawnBurst(ex, ey, '#7f1d1d', 14);
-        get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
-        get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
-        get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
-        get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
-        // "Kill!" callout over the executed enemy's head.
-        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
-      } else {
-        get().spawnBurst(ex, ey, '#dc2626', 16);
-        get().spawnBurst(ex, ey, '#7f1d1d', 7);
-        get().spawnRing(ex, ey, 4, 24, 'rgba(185,28,28,0.68)', 3, 280);
-      }
-    }
+    grantMeleeKillRewards(get, killed, player, gun);
     if (killed.some(k => k.finisher)) {
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
@@ -1022,6 +1102,204 @@ export const useGameStore = create<GameState>((set, get) => ({
       finish: finisherHit || bossFinishHit,
       killed: killed.length
     };
+  },
+
+  performKatanaStrike: (targetIds, damageMult) => {
+    const now = Date.now();
+    const { player, gameTime, enemies } = get();
+    if (!hasKatana(player) || targetIds.length === 0) {
+      return { hit: false, finish: false, killed: 0 };
+    }
+
+    const gun = getActiveGun(player); // ammo scavenge stays gun-family based
+    const baseDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(player)];
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const killed: { enemy: Enemy; finisher: boolean }[] = [];
+    let bossFinishHit = false;
+    const survivors: Enemy[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const slashAt: { x: number; y: number }[] = [];
+
+    for (const enemy of enemies) {
+      if (!targetIds.includes(enemy.id) || enemy.type === 'reaper') {
+        survivors.push(enemy);
+        continue;
+      }
+      const ecx = enemy.x + enemy.width / 2;
+      const ecy = enemy.y + enemy.height / 2;
+      slashAt.push({ x: ecx, y: ecy });
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      if (stunned) {
+        if (isBossType(enemy.type)) {
+          // Same boss rule as the knife: 5× damage, stun shaken off, no execute.
+          bossFinishHit = true;
+          const dmg = baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
+          damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+          const newHealth = Math.max(0, enemy.health - dmg);
+          if (newHealth <= 0) {
+            killed.push({ enemy, finisher: false });
+          } else {
+            survivors.push({
+              ...enemy,
+              health: newHealth,
+              stunUntil: undefined,
+              lastHit: now,
+              liftUntil: now + 420,
+            });
+          }
+          continue;
+        }
+        killed.push({ enemy, finisher: true }); // 通常ナイフと同じ即時フィニッシュ
+        continue;
+      }
+      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
+        ? TRAP_ROOT_CRIT_BONUS
+        : 0;
+      const crit = Math.random() < Math.min(1, KATANA_CRIT_CHANCE + trapCritBonus);
+      // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
+      // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
+      const dmg = baseDamage * damageMult * (crit ? CRIT_DAMAGE_MULT : 1);
+      damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
+      const newHealth = Math.max(0, enemy.health - dmg);
+      if (newHealth <= 0) {
+        killed.push({ enemy, finisher: false });
+        continue;
+      }
+      const dx = ecx - pcx;
+      const dy = ecy - pcy;
+      const dist = Math.max(0.001, Math.hypot(dx, dy));
+      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
+        const falloff = Math.max(0, 1 - dist / KATANA_RANGE);
+        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+        survivors.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          knockbackVx: (dx / dist) * speed,
+          knockbackVy: (dy / dist) * speed,
+          knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS
+        });
+      } else {
+        survivors.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          knockbackVx: 0,
+          knockbackVy: 0,
+          knockbackUntil: now + 100,
+        });
+      }
+    }
+
+    // フィニッシュ演出(ヒットストップ/フラッシュ/スロー)はこの呼び出しに対し
+    // 1回だけ発火する。一閃で複数敵を同時フィニッシュしても多重発火しない。
+    const finisherHit = killed.some(k => k.finisher);
+    const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
+    const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    set(state => ({
+      enemies: survivors,
+      gameStats: {
+        ...state.gameStats,
+        enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        damageDealt: state.gameStats.damageDealt +
+          damageNumbers.reduce((sum, n) => sum + n.value, 0),
+        maxCombo: comboFinishCount > 0
+          ? Math.max(
+              state.gameStats.maxCombo,
+              state.meleeFinishComboUntil >= gameTime
+                ? state.meleeFinishComboCount + comboFinishCount
+                : comboFinishCount
+            )
+          : state.gameStats.maxCombo
+      },
+      gameWon: state.gameWon || bossKilled,
+      meleeFinishComboCount: comboFinishCount > 0
+        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+        : state.meleeFinishComboCount,
+      meleeFinishComboUntil: comboFinishCount > 0
+        ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS
+        : state.meleeFinishComboUntil,
+      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil
+    }));
+
+    // 軽量な短命斬撃のみ(常時glowなし)。刀はやや青白い斬閃で識別。
+    for (const s of slashAt) {
+      get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)');
+    }
+    for (const c of damageNumbers) {
+      get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    }
+    grantMeleeKillRewards(get, killed, player, gun);
+    if (finisherHit) {
+      get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
+    }
+    if (finisherHit || bossFinishHit) {
+      get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
+    }
+
+    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
+  },
+
+  triggerKatanaDash: (dirX, dirY) => {
+    const now = Date.now();
+    const { player, enemies, isPaused } = get();
+    if (!hasKatana(player) || isPaused) return false;
+    // クールダウン中は一閃を発動しない(入力は通常移動として扱われる)。
+    if (now < player.katanaDashCooldownEnd) return false;
+    const len = Math.hypot(dirX, dirY);
+    if (len < 0.001) return false;
+    const ux = dirX / len;
+    const uy = dirY / len;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+
+    // 通過予定経路(始点→終点の線分+半幅)に掛かる敵をまとめて斬る。
+    // ダメージは経路確定時に一括適用する(移動自体はKATANA_DASH_MSかけて行う)。
+    const targetIds: string[] = [];
+    for (const e of enemies) {
+      if (e.type === 'reaper') continue;
+      const ex = e.x + e.width / 2 - pcx;
+      const ey = e.y + e.height / 2 - pcy;
+      const along = ex * ux + ey * uy;
+      if (along < -e.width / 2 || along > KATANA_DASH_DISTANCE + e.width / 2) continue;
+      const perp = Math.abs(ex * uy - ey * ux);
+      if (perp <= KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
+    }
+
+    set(state => ({
+      player: {
+        ...state.player,
+        katanaDashUntil: now + KATANA_DASH_MS,
+        katanaDashDirX: ux,
+        katanaDashDirY: uy,
+        katanaDashCooldownEnd: now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS,
+        // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
+        // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
+        invulnerable: true,
+        invulnerableTime: now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
+        lastDirection: { x: ux, y: uy }
+      }
+    }));
+
+    // 軌跡は既存trail 1本のみの軽量表現(常時発光・大量パーティクルなし)。
+    get().spawnEffect({
+      kind: 'trail',
+      id: `fx-katana-dash-${now}`,
+      fromX: pcx,
+      fromY: pcy,
+      toX: pcx + ux * KATANA_DASH_DISTANCE,
+      toY: pcy + uy * KATANA_DASH_DISTANCE,
+      color: 'rgba(196,225,255,0.85)',
+      createdAt: now,
+      duration: 260
+    });
+
+    if (targetIds.length > 0) {
+      get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT);
+    }
+    return true;
   },
 
   damagePlayer: (amount) => {
@@ -1340,7 +1618,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
       return {
@@ -2412,6 +2690,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,
+          katanaDashUntil: 0,
+          katanaDashDirX: 0,
+          katanaDashDirY: 0,
+          katanaDashCooldownEnd: 0,
           straps: state.startWithTestStraps ? 1000 : 0,
           vaccineRevives: 0
         },

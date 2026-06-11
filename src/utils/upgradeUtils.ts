@@ -66,6 +66,21 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // 刀は全クラス共通の通常サブウェポンカード。
+  // TODO(刀): クラス限定にする場合はここを class 条件付きに変える。
+  const katanaCardLevel = player.subWeaponLevels['katana'] ?? 0;
+  if (katanaCardLevel < 3) {
+    const nextLevel = katanaCardLevel + 1;
+    subWeaponOptions.push({
+      id: 'subweapon-katana',
+      name: nextLevel === 1 ? '刀' : `刀 Lv${nextLevel}`,
+      description: '銃とナイフの代わりに周囲の敵を自動で斬る。フリック/方向キー二連打で一閃ダッシュ',
+      type: 'subWeapon',
+      subWeaponKey: 'katana',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);

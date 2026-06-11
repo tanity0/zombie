@@ -64,6 +64,14 @@ export interface Player {
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
+  // Katana (刀) sub-weapon dash state. While katanaDashUntil is in the future
+  // the player ignores input and travels along the dash direction while
+  // invulnerable. The cooldown gates only the next dash — normal movement and
+  // the katana auto-slash continue during it.
+  katanaDashUntil: number;
+  katanaDashDirX: number;
+  katanaDashDirY: number;
+  katanaDashCooldownEnd: number;
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.
@@ -182,7 +190,7 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana';
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'

@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, KATANA_RANGE } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -2378,7 +2378,11 @@ export class PixiScene {
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
     const r = huntingMeleeRadius(player);
-    if (now <= player.counterWindowEnd) {
+    // 刀装備中は通常ナイフの剣閃テレグラフを出さない。カウンターが実際に
+    // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
+    const katana = player.subWeapons.includes('katana');
+    const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
+    if (now <= player.counterWindowEnd && counterFxVisible) {
       // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in
       // and fades fast (no rotation). The crescent faces the player's last
       // heading; it's thick in the belly and tapers to thin tips.
@@ -2432,8 +2436,14 @@ export class PixiScene {
         .stroke({ width: 1.35, color: 0xbfdbfe, alpha: 0.34 + 0.08 * pulse });
       g.circle(cx, cy, r - 3)
         .stroke({ width: 0.8, color: 0xffffff, alpha: 0.12 + 0.04 * pulse });
-    } else if (now < player.counterCooldownEnd) {
+    } else if (!katana && now < player.counterCooldownEnd) {
       g.circle(cx, cy, r).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
+    }
+
+    // 刀: 一閃ダッシュのクールダウン表示。既存の近接クールダウンサークルと
+    // 同じ見た目を刀の射程半径で出す(クールダウン中のみ)。
+    if (katana && now < player.katanaDashCooldownEnd && now >= player.katanaDashUntil) {
+      g.circle(cx, cy, KATANA_RANGE).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }
 
     // Reload meter above the head.

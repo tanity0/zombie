@@ -136,7 +136,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
     'marksman-trap',
     'striker-hunting',
     'striker-quick-mag',
-    'dog'
+    'dog',
+    'katana'
   ];
   
   return (

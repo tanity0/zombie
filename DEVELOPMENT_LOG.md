@@ -10,6 +10,83 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.174 - Add katana sub-weapon with auto-slash and dash (Claude Code)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-katana-subweapon-2026-06-11`
+  - Tag: `pre-katana-subweapon-v0.25.173`
+- First Claude-side-PC implementation after the 2026-06-11 hybrid handoff
+  (Windows clone of the GitHub branch; Node v24.16.0 / npm ci fresh setup).
+- Added a new common sub-weapon 刀 (`SubWeaponKey 'katana'`):
+  - While owned, guns hold their auto-fire and the release/Space knife sweep
+    is disabled. Ammo/reload processing keeps running with no side effects.
+  - The counter window still opens on release/Space, so the existing bullet
+    reflection (counter) works unchanged. The counter blade/ring effect now
+    shows only when a reflect actually succeeds (katana mode suppresses the
+    every-release telegraph).
+  - Auto-slash: targets like the gun auto-fire (nearest non-stunned enemy
+    first, stunned fallback) within a fixed Hunting-Lv3-equivalent radius
+    (`KATANA_RANGE = 74 + 34`), one cut per `KATANA_SLASH_INTERVAL_MS`.
+    Stunned normal enemies take the existing melee finisher (instant execute,
+    same rewards/演出); stunned bosses take the existing 5× rule.
+  - Melee kill rewards (XP/currency/ammo scavenge/crates/finisher juice) were
+    extracted from `triggerCounter` into a shared `grantMeleeKillRewards`
+    helper so katana kills behave exactly like knife kills.
+  - 一閃ダッシュ: mobile flick on the virtual joystick layer, PC same-direction
+    double-tap (WASD and arrows). Player is invulnerable during the dash
+    (reuses the existing INVULN_MS auto-clear), travels
+    `KATANA_DASH_DISTANCE` over `KATANA_DASH_MS`, and cuts every enemy along
+    the path corridor at 3× auto-slash damage with crit applied last
+    (matching the existing melee damage order). Finisher hitstop/flash/slow
+    fires once per dash even when multiple enemies are executed.
+  - Dash cooldown reuses the melee counter cooldown length
+    (`COUNTER_WINDOW + COUNTER_COOLDOWN`) and shows the same faint cooldown
+    circle at katana range. During cooldown, movement and auto-slash continue
+    and flick/double-tap inputs fall through to normal movement.
+  - Counter priority: on release the existing counter path runs first, then
+    the flick check. Normal joystick drags stay below the flick thresholds.
+- Acquisition/upgrade:
+  - Level-up card `刀` (all classes; Lv1-3 through the existing
+    `applySubWeaponCard` flow).
+  - Merchant skill card via the existing unlocked-stock flow
+    (`SHOP_KATANA_COST`).
+  - Start-screen skill shop lists `katana` as a merchant-stock unlock entry
+    (no starting ownership, consistent with v0.25.169).
+- TODO(刀) placeholders (clearly marked in code): damage by level, slash
+  interval, crit chance, dash distance/time/width, flick thresholds,
+  double-tap window, shop cost. Lv1-3 currently differs only by the damage
+  table; detailed balancing is deferred per instruction.
+
+### Performance
+- Old load score: `3/10` (simulation + rendering).
+- Performance Budget Score impact: `+2` to `+5` while katana is active.
+  - Periodic single-target search (interval-gated, squared-distance, no per-
+    frame full scans) plus short-lived slash/trail effects only; no constant
+    glow, no new filters/layers.
+- Current normal-play estimate before change: `44-94`.
+- Expected after: roughly `46-99` in torch/crate-heavy moments with katana.
+- Fallback: lengthen `KATANA_SLASH_INTERVAL_MS`, trim dash trail/slash
+  effects, or skip target search while no enemies are near.
+
+### Code touched
+- `src/types/game.ts`
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/hooks/useGameControls.ts`
+- `src/components/VirtualJoystick.tsx`
+- `src/components/ShopMenu.tsx`
+- `src/components/MainMenu.tsx`
+- `src/utils/upgradeUtils.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json` (version only)
+
+### Verification
+- OK: `npm run lint`
+- OK: `npm run build`
+- Not yet: on-device feel check for flick / double-tap thresholds and slash
+  cadence (all tunable constants, see TODO(刀)).
+
 ## 2026-06-11 - v0.25.173 - Widen dog fetch collection range (Codex)
 
 ### Summary

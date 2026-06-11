@@ -3,6 +3,7 @@ import {
   SHOP_AMMO_COST,
   SHOP_CLASS_SKILL_COST,
   SHOP_DOG_COST,
+  SHOP_KATANA_COST,
   SHOP_MEDKIT_COST,
   SHOP_VACCINE_COST,
   subWeaponDisplayName,
@@ -67,7 +68,7 @@ const ShopMenu: React.FC = () => {
         skillKey,
         name: `${subWeaponDisplayName(skillKey)} ${maxedForStock ? 'MAX' : `Lv${currentLevel + 1}`}`,
         description: maxedForStock ? `陳列Lv${cappedUnlock}まで購入済み` : `スキルカード 陳列Lv${cappedUnlock}`,
-        cost: skillKey === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST,
+        cost: skillKey === 'dog' ? SHOP_DOG_COST : skillKey === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST,
         disabled: maxedForStock
       };
     });

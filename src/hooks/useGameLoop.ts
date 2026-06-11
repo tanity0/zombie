@@ -6,7 +6,10 @@ import {
   STUN_DURATION_MS,
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
-  MINE_DAMAGE
+  MINE_DAMAGE,
+  hasKatana,
+  KATANA_RANGE,
+  KATANA_SLASH_INTERVAL_MS
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup } from '../types/game';
@@ -105,6 +108,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const prevHealthRef = useRef(0);
   const gameOverTriggeredRef = useRef(false);
   const dogFetchRef = useRef<DogFetchJob | null>(null);
+  // Katana auto-slash timer (gameTime-based so it pauses with the game).
+  const lastKatanaSlashRef = useRef(0);
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -119,6 +124,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const reflectProjectile = useGameStore(state => state.reflectProjectile);
   const addProjectile = useGameStore(state => state.addProjectile);
   const setSubWeaponCooldown = useGameStore(state => state.setSubWeaponCooldown);
+  const performKatanaStrike = useGameStore(state => state.performKatanaStrike);
   const rootEnemy = useGameStore(state => state.rootEnemy);
   const updateHuntingCharge = useGameStore(state => state.updateHuntingCharge);
   const collectPickup = useGameStore(state => state.collectPickup);
@@ -328,8 +334,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!reloadBeforeAutoSwitch && postReloadPlayer.reloadingWeaponId) {
           playSfx('reload');
         }
+        // 刀装備中は銃の自動射撃を完全に止める(弾薬/リロード処理は通常どおり
+        // 進むので、刀を外す実装が将来入っても副作用が残らない)。
+        const katanaActive = hasKatana(postReloadPlayer);
         const activeGun = getActiveGun(postReloadPlayer);
-        if (activeGun) {
+        if (activeGun && !katanaActive) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             if (activeGun.category === 'handgun') playSfx('handgun-fire');
@@ -344,6 +353,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
           }
           newProjectiles.forEach(proj => useGameStore.getState().addProjectile(proj));
+        }
+
+        // Katana auto-slash: the gun auto-fire idea in melee form. Targets the
+        // nearest non-stunned enemy first (stunned fallback = finisher chance),
+        // Hunting-Lv3-equivalent reach, one cut per interval. Guns and the
+        // release knife sweep are disabled while the katana is owned.
+        if (katanaActive) {
+          if (gameTime < lastKatanaSlashRef.current) lastKatanaSlashRef.current = 0; // new run
+          if (gameTime - lastKatanaSlashRef.current >= KATANA_SLASH_INTERVAL_MS) {
+            const kp = useGameStore.getState().player;
+            const kcx = kp.x + kp.width / 2;
+            const kcy = kp.y + kp.height / 2;
+            let best: { id: string; d2: number } | null = null;
+            let bestStunned: { id: string; d2: number } | null = null;
+            for (const e of useGameStore.getState().enemies) {
+              if (e.type === 'reaper') continue;
+              const dx = e.x + e.width / 2 - kcx;
+              const dy = e.y + e.height / 2 - kcy;
+              const d2 = dx * dx + dy * dy;
+              if (d2 > KATANA_RANGE * KATANA_RANGE) continue;
+              // 自動射撃と同じ優先順位: スタン中の敵は後回し(最後の手段)。
+              const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
+              if (stunned) {
+                if (!bestStunned || d2 < bestStunned.d2) bestStunned = { id: e.id, d2 };
+              } else if (!best || d2 < best.d2) {
+                best = { id: e.id, d2 };
+              }
+            }
+            const target = best ?? bestStunned;
+            if (target) {
+              lastKatanaSlashRef.current = gameTime;
+              const result = performKatanaStrike([target.id], 1);
+              if (result.finish) playSfx('melee-finish');
+              else if (result.hit) playSfx('slash-damage');
+              if (result.killed > 0) playEnemyDeath();
+            }
+          }
         }
 
         const subWeaponPlayer = useGameStore.getState().player;
@@ -1582,6 +1628,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     markCastleBossSpawned,
     addProjectile,
     setSubWeaponCooldown,
+    performKatanaStrike,
     rootEnemy,
     updateHuntingCharge,
     damageEnemy,
