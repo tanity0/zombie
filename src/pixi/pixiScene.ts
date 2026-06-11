@@ -2089,10 +2089,11 @@ export class PixiScene {
         break;
       }
       case 'strap': {
-        g.roundRect(cx - 6, drawY - 6, 12, 12, 2).fill({ color: 0x1f2937, alpha: 0.95 });
-        g.roundRect(cx - 4, drawY - 4, 8, 8, 2).stroke({ width: 1.5, color: 0xe5e7eb, alpha: 0.95 });
-        g.rect(cx - 1.5, drawY - 7, 3, 4).fill({ color: 0x94a3b8 });
-        g.circle(cx, drawY, 2).fill({ color: 0xf8fafc, alpha: 0.82 });
+        const gold = p.value >= 10;
+        g.roundRect(cx - 6, drawY - 6, 12, 12, 2).fill({ color: gold ? 0x3b2604 : 0x1f2937, alpha: 0.95 });
+        g.roundRect(cx - 4, drawY - 4, 8, 8, 2).stroke({ width: 1.5, color: gold ? 0xfacc15 : 0xe5e7eb, alpha: 0.95 });
+        g.rect(cx - 1.5, drawY - 7, 3, 4).fill({ color: gold ? 0xf59e0b : 0x94a3b8 });
+        g.circle(cx, drawY, gold ? 2.4 : 2).fill({ color: gold ? 0xfef3c7 : 0xf8fafc, alpha: 0.82 });
         break;
       }
       case 'treasure': {

@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.165 - Add gold straps and crate scatter loot (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-strap-gold-crate-drops-2026-06-11`
+  - Tag: `pre-strap-gold-crate-drops-v0.25.164`
+- Tuned torch coin drops:
+  - torch strap value is now randomized from `5-20`
+  - default scatter radius increased from `22` to `32`
+- Added gold strap compression:
+  - a gold strap is `value: 10`
+  - gold straps appear only when total dropped value exceeds `20`
+  - examples: `21 -> 1 gold + 11 normal`, `31 -> 2 gold + 11 normal`
+  - normal strap count stays at `20` or below
+- Added weapon-crate scatter loot:
+  - opening a weapon crate still grants the weapon
+  - it also scatters `30-50` strap value around the crate using gold compression
+- Slightly increased torch field density:
+  - per-cell torch chance changed from `18%` to `22%`
+
+### Performance
+- Old load score: `2/10`.
+- Performance Budget Score impact: additional `+2` to `+8` in crate/torch-heavy moments.
+- Current normal-play estimate before change: `42-79`.
+- Expected normal-play estimate after change: roughly `44-87`.
+- Visual risk: medium. Crate openings should feel rewarding, but torch density
+  and crate scatter may need tuning on mobile if pickup clutter feels high.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.164 - Torch coin drops and dog range collect (Codex)
 
 ### Summary

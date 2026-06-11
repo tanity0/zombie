@@ -202,9 +202,12 @@ export const WORLD_HALF_EXTENT = 200000;
 export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
 const BREAKABLE_PROP_DROP_CHANCE = 0.42;
-const TORCH_STRAP_DROP_MIN = 10;
-const TORCH_STRAP_DROP_VARIANCE = 5;
-const DROP_SCATTER_RADIUS = 22;
+const TORCH_STRAP_DROP_MIN = 5;
+const TORCH_STRAP_DROP_VARIANCE = 16;
+const WEAPON_CRATE_STRAP_DROP_MIN = 30;
+const WEAPON_CRATE_STRAP_DROP_VARIANCE = 21;
+const GOLD_STRAP_VALUE = 10;
+const DROP_SCATTER_RADIUS = 32;
 const DROP_THROW_DURATION_MS = 360;
 const TREASURE_DROP_CHANCE_BY_RANK = {
   strong: 0.02,
@@ -272,6 +275,18 @@ const pickupWithDropScatter = (pickup: Pickup): Pickup => {
     throwStartAt: Date.now(),
     throwDuration: DROP_THROW_DURATION_MS
   };
+};
+const strapDropValues = (totalValue: number): number[] => {
+  const total = Math.max(0, Math.floor(totalValue));
+  if (total <= 0) return [];
+  if (total <= 20) return Array.from({ length: total }, () => 1);
+
+  const goldCount = Math.floor((total - 11) / GOLD_STRAP_VALUE);
+  const normalCount = total - goldCount * GOLD_STRAP_VALUE;
+  return [
+    ...Array.from({ length: goldCount }, () => GOLD_STRAP_VALUE),
+    ...Array.from({ length: normalCount }, () => 1)
+  ];
 };
 export const classSubWeaponFor = (characterClass: CharacterClass): SubWeaponKey => {
   switch (characterClass) {
@@ -1836,6 +1851,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'weapon-crate':
         // Open the crate: roll a gun by category & tier and equip it.
         get().grantWeapon(openCrate(get().gameTime));
+        strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
+          .forEach((value, index) => {
+            get().addPickup({
+              id: `pickup-strap-crate-${pickup.id}-${index}`,
+              x: pickup.x,
+              y: pickup.y,
+              type: 'strap',
+              value
+            });
+          });
         break;
       case 'quick-magazine': {
         let movedAmount = 0;
@@ -1999,15 +2024,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const cx = prop.footX - 8;
     const cy = prop.footY - 18;
     const strapCount = TORCH_STRAP_DROP_MIN + Math.floor(Math.random() * TORCH_STRAP_DROP_VARIANCE);
-    for (let i = 0; i < strapCount; i += 1) {
+    strapDropValues(strapCount).forEach((value, i) => {
       get().addPickup({
         id: `pickup-strap-prop-${prop.id}-${i}`,
         x: cx,
         y: cy,
         type: 'strap',
-        value: 1
+        value
       });
-    }
+    });
 
     if (Math.random() >= BREAKABLE_PROP_DROP_CHANCE) return;
     const x = prop.footX - 8;
