@@ -63,7 +63,7 @@ const VirtualJoystick: React.FC = () => {
       if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
       const flick = detectFlick();
       if (flick && triggerKatanaDash(flick.x, flick.y)) {
-        playSfx('melee');
+        playSfx('katana-dash');
       }
     }
     flickSamplesRef.current = [];

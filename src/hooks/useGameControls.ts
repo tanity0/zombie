@@ -62,7 +62,7 @@ export const useGameControls = () => {
         if (lastDirTap.dir === moveDir && nowMs - lastDirTap.at <= KATANA_DOUBLE_TAP_MS) {
           const v = DIR_VECTORS[moveDir];
           if (useGameStore.getState().triggerKatanaDash(v.x, v.y)) {
-            playSfx('melee');
+            playSfx('katana-dash');
           }
           lastDirTap = { dir: '', at: 0 };
         } else {

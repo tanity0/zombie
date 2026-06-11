@@ -22,7 +22,7 @@ import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange
 import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
-import { buildKatanaShape } from '../utils/katanaShape';
+import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
@@ -1699,18 +1699,24 @@ export class PixiScene {
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();
-    // 刀装備中: スプライトの下レイヤー(reticle)に背負い刀のドットを描く。
-    if (p.subWeapons.includes('katana')) {
+    // 刀/村雨装備中: スプライトの下レイヤー(reticle)に背負い刀のドットを描く。
+    // 村雨は刀身シルバー。
+    const katanaVariant: KatanaVariant | null = p.subWeapons.includes('murasame')
+      ? 'murasame'
+      : p.subWeapons.includes('katana')
+        ? 'katana'
+        : null;
+    if (katanaVariant) {
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      this.drawPlayerKatanaOnBack(view.reticle, fb.footX, fb.footY - bob, fb.boxH, flip);
+      this.drawPlayerKatanaOnBack(view.reticle, fb.footX, fb.footY - bob, fb.boxH, flip, katanaVariant);
     }
     view.overlay.clear();
   }
 
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ
   // を増やさず、`katanaShape` の共有ドット配置を軽量Graphicsで描く(HUDアイコン
-  // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。
-  private drawPlayerKatanaOnBack(g: Graphics, footX: number, footY: number, boxH: number, flip: boolean) {
+  // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。村雨は刀身シルバー。
+  private drawPlayerKatanaOnBack(g: Graphics, footX: number, footY: number, boxH: number, flip: boolean, variant: KatanaVariant) {
     const d = this.depthScale(footY);
     const h = boxH * d;
     // 形・幅・角度・位置(中心)は据え置き。KATANA_BACK_SCALE で全体を中心
@@ -1725,7 +1731,7 @@ export class PixiScene {
     const ang = dir * KATANA_BACK_ROT;
     const cosA = Math.cos(ang);
     const sinA = Math.sin(ang);
-    for (const r of buildKatanaShape(dir)) {
+    for (const r of buildKatanaShape(dir, variant)) {
       const rw = r.w * w;
       const rh = r.h * size;
       const ccx = originX + r.x * w + rw / 2;
@@ -2401,7 +2407,8 @@ export class PixiScene {
           fontSize: Math.round(15 * scale),
           fontWeight: bold ? 'bold' : 'normal',
           fill: e.color,
-          stroke: { color: 0x020617, width: bold ? 4 : 3 },
+          // 明朝コールアウト(斬)は縁取りなし。それ以外は従来の黒フチ。
+          ...(e.serif ? {} : { stroke: { color: 0x020617, width: bold ? 4 : 3 } }),
         },
       });
       txt.anchor.set(0.5, 0.5);
@@ -2425,7 +2432,7 @@ export class PixiScene {
     const r = huntingMeleeRadius(player);
     // 刀装備中は通常ナイフの剣閃テレグラフを出さない。カウンターが実際に
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
-    const katana = player.subWeapons.includes('katana');
+    const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
     const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
     if (now <= player.counterWindowEnd && counterFxVisible) {
       // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in

@@ -207,15 +207,21 @@ export const KATANA_FLICK_MIN_SPEED = 0.9; // px/ms
 export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カード価格。
 
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
+// 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。
+// 刀身シルバー。それ以外の仕様(オート斬撃・一閃3倍・斬・銃/ナイフ無効など)は
+// 刀と同じ。村雨を持つ間も刀本体は所持したまま(ステータスは刀Lv3基準)。
+export const hasMurasame = (player: Player): boolean => player.subWeapons.includes('murasame');
+// 「刀モード」= 刀 または 村雨 を装備している。各所の hasKatana 判定はこれに揃える。
+export const isKatanaMode = (player: Player): boolean => hasKatana(player) || hasMurasame(player);
 export const katanaLevel = (player: Player): number =>
-  Math.max(1, Math.min(3, player.subWeaponLevels['katana'] ?? 1));
+  Math.max(1, Math.min(3, player.subWeaponLevels['katana'] ?? (hasMurasame(player) ? 3 : 1)));
 export const katanaRange = (player: Player): number =>
   KATANA_RANGE_BY_LEVEL[katanaLevel(player)];
 // 刀装備中に併用を許可するサブウェポン(許可制)。現状は全サブウェポン停止。
 // TODO(刀): 併用を解禁する時はこの配列にキーを追加する。
 export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
 export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean =>
-  hasKatana(player) && key !== 'katana' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
+  isKatanaMode(player) && key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
 
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
@@ -356,6 +362,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'striker-hunting': return 'ハンティング';
     case 'dog': return 'ドッグ';
     case 'katana': return '刀';
+    case 'murasame': return '村雨';
     default: return 'サブウェポン';
   }
 };
@@ -872,12 +879,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (ウィンドウ中に敵弾が当たると反射)だけは生かすため、窓とクールダウンは
     // 通常どおり開く。反射が成立した時のみ既存のカウンター成立演出が出る
     // (成立エフェクトはループ側の lastCounterSuccessTime エッジ検出が担当)。
-    if (hasKatana(player)) {
+    if (isKatanaMode(player)) {
+      // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
+      const counterCd = hasMurasame(player) ? now : now + COUNTER_WINDOW + COUNTER_COOLDOWN;
       set(state => ({
         player: {
           ...state.player,
           counterWindowEnd: now + COUNTER_WINDOW,
-          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+          counterCooldownEnd: counterCd,
         }
       }));
       return { swung: false, hit: false, finish: false, killed: 0 };
@@ -1128,7 +1137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
     const now = Date.now();
     const { player, gameTime, enemies } = get();
-    if (!hasKatana(player) || targetIds.length === 0) {
+    if (!isKatanaMode(player) || targetIds.length === 0) {
       return { hit: false, finish: false, killed: 0 };
     }
 
@@ -1285,10 +1294,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   triggerKatanaDash: (dirX, dirY) => {
     const now = Date.now();
-    const { player, enemies, isPaused } = get();
-    if (!hasKatana(player) || isPaused) return false;
-    // クールダウン中は一閃を発動しない(入力は通常移動として扱われる)。
-    if (now < player.katanaDashCooldownEnd) return false;
+    const { player, enemies, breakableProps, isPaused } = get();
+    if (!isKatanaMode(player) || isPaused) return false;
+    // 発動中(移動中)は新しい一閃を出せない = モーションキャンセル不可。村雨でも同じ。
+    if (now < player.katanaDashUntil) return false;
+    // 村雨はクールダウン無し(連発可)。刀はクールダウン中は発動しない。
+    const mura = hasMurasame(player);
+    if (!mura && now < player.katanaDashCooldownEnd) return false;
     const len = Math.hypot(dirX, dirY);
     if (len < 0.001) return false;
     const ux = dirX / len;
@@ -1308,8 +1320,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       const perp = Math.abs(ex * uy - ey * ux);
       if (perp <= KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
     }
+    // 経路上の破壊可能オブジェクト(松明など)も壊す。
+    const propTargetIds: string[] = [];
+    for (const prop of breakableProps) {
+      const ex = prop.footX - pcx;
+      const ey = prop.footY - pcy;
+      const along = ex * ux + ey * uy;
+      if (along < -prop.width / 2 || along > KATANA_DASH_DISTANCE + prop.width / 2) continue;
+      const perp = Math.abs(ex * uy - ey * ux);
+      if (perp <= KATANA_DASH_HIT_HALF_WIDTH + prop.width / 2) propTargetIds.push(prop.id);
+    }
 
-    const cooldownEnd = now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
+    // 村雨はクールダウン無し: ダッシュ終了時刻をそのままCD終了にして実質0に。
+    const cooldownEnd = mura ? now + KATANA_DASH_MS : now + KATANA_DASH_MS + KATANA_DASH_COOLDOWN_MS;
     set(state => ({
       player: {
         ...state.player,
@@ -1317,9 +1340,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         katanaDashDirX: ux,
         katanaDashDirY: uy,
         katanaDashCooldownEnd: cooldownEnd,
-        // カウンターも一閃クールダウンに依存する: ダッシュ後は同じ時間だけ
-        // 指離し/Spaceのカウンター窓も開かない(triggerCounter冒頭のCD判定が弾く)。
-        counterCooldownEnd: Math.max(state.player.counterCooldownEnd, cooldownEnd),
+        // 刀はカウンターも一閃クールダウンに依存する。村雨はカウンターも無CD
+        // なので延長しない(連発可)。
+        counterCooldownEnd: mura
+          ? state.player.counterCooldownEnd
+          : Math.max(state.player.counterCooldownEnd, cooldownEnd),
         // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
         // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
         invulnerable: true,
@@ -1348,10 +1373,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「斬」を出す位置 = ダッシュ軌道(始点→終点)の真ん中(発動時に確定)。
     const zanX = pcx + ux * KATANA_DASH_DISTANCE / 2;
     const zanY = pcy + uy * KATANA_DASH_DISTANCE / 2;
-    if (targetIds.length > 0) {
+    if (targetIds.length > 0 || propTargetIds.length > 0) {
       setTimeout(() => {
-        if (!hasKatana(get().player)) return; // run reset / 刀を外した等
-        const result = get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true);
+        if (!isKatanaMode(get().player)) return; // run reset / 刀を外した等
+        const result = targetIds.length > 0
+          ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true)
+          : { finish: false };
+        // 経路上の松明などを破壊(近接フィニッシュと同等の高ダメージ)。
+        const propDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(get().player)] * KATANA_DASH_DAMAGE_MULT * 2.5;
+        for (const id of propTargetIds) {
+          const prop = get().breakableProps.find(p => p.id === id);
+          if (!prop) continue;
+          const broken = get().damageBreakableProp(id, propDamage);
+          get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(221,238,255,0.95)');
+          if (broken) {
+            if (broken.type === 'mine') {
+              get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
+              get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
+              get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(132,204,22,', 320);
+            } else {
+              get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
+              get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
+              get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
+              get().dropBreakablePropLoot(broken);
+            }
+          }
+        }
         // 一閃でフィニッシュした時だけ「斬」を軌道の真ん中に1つ表示
         // (何体巻き込んでも1ダッシュにつき1つ)。大きい赤の明朝文字+画面暗転。
         if (result.finish) {

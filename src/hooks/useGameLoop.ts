@@ -7,7 +7,7 @@ import {
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
   MINE_DAMAGE,
-  hasKatana,
+  isKatanaMode,
   subWeaponBlockedByKatana,
   katanaRange,
   KATANA_SLASH_INTERVAL_MS
@@ -338,7 +338,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // 刀装備中は銃の自動射撃を完全に止める(弾薬/リロード処理は通常どおり
         // 進むので、刀を外す実装が将来入っても副作用が残らない)。
-        const katanaActive = hasKatana(postReloadPlayer);
+        const katanaActive = isKatanaMode(postReloadPlayer);
         const activeGun = getActiveGun(postReloadPlayer);
         if (activeGun && !katanaActive) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);

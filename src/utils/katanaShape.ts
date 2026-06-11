@@ -24,8 +24,15 @@ const TSUBA_HI = 0xfde68a;
 const WRAP_DARK = 0x111827;
 const WRAP_RED = 0xb91c1c;
 const POMMEL = 0x374151;
+// 村雨(silver): 刀身(鞘)をシルバーにする。それ以外は刀と同じ。
+const SHEATH_SILVER = 0xc4ccd6;
+const SHEATH_SILVER_SHADE = 0x7c8694;
 
-export const buildKatanaShape = (dir: number): KatanaRect[] => {
+export type KatanaVariant = 'katana' | 'murasame';
+
+export const buildKatanaShape = (dir: number, variant: KatanaVariant = 'katana'): KatanaRect[] => {
+  const sheath = variant === 'murasame' ? SHEATH_SILVER : SHEATH;
+  const sheathShade = variant === 'murasame' ? SHEATH_SILVER_SHADE : SHEATH_SHADE;
   const rects: KatanaRect[] = [];
   const u = 0.085; // 1ドットの正規化サイズ
 
@@ -47,8 +54,8 @@ export const buildKatanaShape = (dir: number): KatanaRect[] => {
     const t = 0.30 + (1.0 - 0.30) * (i / NS);
     const x = xAt(t);
     const y = yAt(t);
-    rects.push({ x: x - u * 0.78, y: y - u * 0.62, w: u * 1.56, h: u * 1.32, color: SHEATH, alpha: 0.97 });
-    rects.push({ x: x + dir * u * 0.32, y: y - u * 0.62, w: u * 0.46, h: u * 1.32, color: SHEATH_SHADE, alpha: 0.85 });
+    rects.push({ x: x - u * 0.78, y: y - u * 0.62, w: u * 1.56, h: u * 1.32, color: sheath, alpha: 0.97 });
+    rects.push({ x: x + dir * u * 0.32, y: y - u * 0.62, w: u * 0.46, h: u * 1.32, color: sheathShade, alpha: 0.85 });
   }
 
   // 鯉口(鞘の口、白い細帯)

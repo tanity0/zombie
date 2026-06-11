@@ -10,6 +10,49 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.183 - Katana polish + Murasame (Lv3 upgrade, no cooldowns, silver) (Claude Code)
+
+### Summary
+- ロールバックアンカー: branch `backup/pre-murasame-2026-06-11` / tag `pre-murasame-v0.25.182`。
+- ユーザー指摘の細かい修正:
+  - 「斬」の縁取り(stroke)を無くした(serif コールアウトは縁取りなしに分岐)。
+  - 一閃で松明(破壊可能オブジェクト)も壊せるようにした。ダッシュ経路の
+    corridor に入った prop を移動完了後に高ダメージで破壊し、既存の破壊演出
+    +ドロップを出す。
+  - 一閃の効果音を大きく。専用 SFX キー `katana-dash`(slash.mp3 をフル
+    レングス・音量1.0)を追加し、フリック/二連打の一閃で鳴らす(従来は
+    クリップした `melee` 0.74)。
+- 新サブウェポン「村雨(むらさめ)」:
+  - 刀が Lv3 になったらレベルアップ選択に出現(刀カードの代わり)。
+  - 弾の打ち返し(カウンター)と一閃ダッシュのクールダウンが無く連発可能。
+    ただし発動中(ダッシュ移動中)は新しい一閃を出せない=モーション
+    キャンセル不可。
+  - 刀身がシルバー(`katanaShape` に variant を追加。背面スプライトと HUD
+    アイコンがシルバーになる)。それ以外の仕様は刀と同一(オート斬撃・一閃
+    3倍・クリ→スタン・斬・銃/ナイフ無効など)。ステータスは刀Lv3基準。
+  - 実装: `isKatanaMode = 刀 or 村雨` ヘルパーで各所の刀判定を統一。村雨所持
+    時は dash/counter のクールダウンを 0 にし、counter 連発を許可。
+
+### Performance
+- Performance Budget Score impact: `+0`〜`+1`(prop corridor 判定と SFX 追加のみ)。
+
+### Code touched
+- `src/types/game.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `src/hooks/useGameControls.ts`, `src/components/VirtualJoystick.tsx`,
+  `src/components/GameHUD.tsx`, `src/utils/upgradeUtils.ts`,
+  `src/utils/katanaShape.ts`, `src/pixi/pixiScene.ts`,
+  `src/audio/audioManager.ts`, `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)状態計測 —
+  - 刀Lv3でレベルアップ候補に「村雨」出現、習得後は再出現しない。
+  - 村雨の一閃: 移動中は発動不可(モーションキャンセル防止)、移動後はCD無しで
+    即連発可。村雨のカウンター: 連続で窓が即再オープン(無CD)。
+  - 一閃で松明破壊を確認。村雨の鞘色 `0xc4ccd6`(シルバー)/刀 `0xb91c1c`(赤)。
+  - 背面の村雨がシルバー、HUDが「村雨」+シルバーアイコンをスクリーンショットで確認。
+  - 「斬」serif=true 経路(縁取りなし)。一閃SFXは `katana-dash` キーへ差し替え。
+
 ## 2026-06-11 - v0.25.182 - Katana zan callout: bigger red mincho + screen darken, no Kill! (Claude Code)
 
 ### Summary

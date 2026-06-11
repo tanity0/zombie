@@ -6,15 +6,15 @@ import { getWeaponShortName } from '../utils/weaponUtils';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
-import { buildKatanaShape } from '../utils/katanaShape';
+import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 
 // 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。背面の刀と
-// 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。
+// 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。村雨はシルバー。
 const katanaHex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 const KATANA_ICON_ROT_DEG = 32;
-const KatanaIcon: React.FC<{ size?: number }> = ({ size = 26 }) => {
+const KatanaIcon: React.FC<{ size?: number; variant?: KatanaVariant }> = ({ size = 26, variant = 'katana' }) => {
   const w = size * 0.62;
-  const rects = useMemo(() => buildKatanaShape(1), []);
+  const rects = useMemo(() => buildKatanaShape(1, variant), [variant]);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
       <g transform={`rotate(${KATANA_ICON_ROT_DEG} ${size / 2} ${size / 2}) translate(${(size - w) / 2} 0)`}>
@@ -301,17 +301,21 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
               {/* Melee slot (always available; not switchable). 刀装備中は
                   ナイフの代わりに刀を表示する。 */}
               {melee && (() => {
-                const katanaEquipped = player.subWeapons.includes('katana');
+                const murasameEquipped = player.subWeapons.includes('murasame');
+                const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
+                const katanaName = murasameEquipped ? '村雨' : '刀';
                 return (
                   <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
                     <div
                       className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base"
-                      title={katanaEquipped ? '刀' : melee.name}
+                      title={katanaEquipped ? katanaName : melee.name}
                     >
-                      {katanaEquipped ? <KatanaIcon size={26} /> : '🔪'}
+                      {katanaEquipped
+                        ? <KatanaIcon size={26} variant={murasameEquipped ? 'murasame' : 'katana'} />
+                        : '🔪'}
                     </div>
                     <div className="text-[10px] text-white/60">
-                      {katanaEquipped ? '刀' : getWeaponShortName(melee.type)}
+                      {katanaEquipped ? katanaName : getWeaponShortName(melee.type)}
                     </div>
                   </div>
                 );

@@ -32,6 +32,7 @@ export type SfxKey =
   | 'shoot'
   | 'reload'
   | 'melee'
+  | 'katana-dash'
   | 'counter'
   | 'enemy-hit'
   | 'enemy-kill'
@@ -105,6 +106,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     startAt: 0.04,
     maxDurationMs: 260,
     warm: false,
+  },
+  // 一閃ダッシュ専用。同じ斬撃音をフルレングス・大きめ音量で鳴らす。
+  'katana-dash': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/slash.mp3`,
+    volume: 1.0,
+    minIntervalMs: 60,
   },
   reload: {
     src: `${import.meta.env.BASE_URL}audio/sfx/reload.mp3`,

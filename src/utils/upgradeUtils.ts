@@ -14,9 +14,9 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const trapLevel = player.subWeaponLevels['marksman-trap'] ?? 0;
   const quickMagLevel = player.subWeaponLevels['striker-quick-mag'] ?? 0;
   const huntingLevel = player.subWeaponLevels['striker-hunting'] ?? 0;
-  // 刀装備中は他のサブウェポンカードをレベルアップに出さない(刀は併用不可、
-  // 許可制で解禁予定)。刀自体の強化カードは引き続き出る。
-  const ownsKatana = player.subWeapons.includes('katana');
+  // 刀/村雨装備中は他のサブウェポンカードをレベルアップに出さない(併用不可、
+  // 許可制で解禁予定)。刀自体の強化カード・村雨カードは引き続き出る。
+  const ownsKatana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
 
   if (!ownsKatana && player.characterClass === 'warrior' && grenadeLevel < 3) {
     const nextLevel = grenadeLevel + 1;
@@ -72,6 +72,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   // 刀は全クラス共通の通常サブウェポンカード。
   // TODO(刀): クラス限定にする場合はここを class 条件付きに変える。
   const katanaCardLevel = player.subWeaponLevels['katana'] ?? 0;
+  const ownsMurasame = player.subWeapons.includes('murasame');
   if (katanaCardLevel < 3) {
     const nextLevel = katanaCardLevel + 1;
     subWeaponOptions.push({
@@ -81,6 +82,16 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
       type: 'subWeapon',
       subWeaponKey: 'katana',
       level: nextLevel
+    });
+  } else if (!ownsMurasame) {
+    // 刀がLv3に達したら、刀カードの代わりに上位の「村雨」を提示する。
+    subWeaponOptions.push({
+      id: 'subweapon-murasame',
+      name: '村雨',
+      description: '刀の上位。弾の打ち返しと一閃のクールダウンが無く連発可能（発動中の動作はキャンセル不可）。刀身はシルバー',
+      type: 'subWeapon',
+      subWeaponKey: 'murasame',
+      level: 1
     });
   }
 
