@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.170 - Remove persistent dog companion sprite (Codex)
+
+### Summary
+- Added a rollback anchor before this change:
+  - Branch: `backup/pre-remove-dog-companion-2026-06-11`
+  - Tag: `pre-remove-dog-companion-v0.25.169`
+- Removed the persistent dog companion sprite that followed the player.
+- Dog remains a skill/effect behavior, not a character displayed beside the
+  player.
+- The v0.25.169 skill-shop merchant unlock flow and wider strap scatter remain.
+
+### Performance
+- Old load score: `-1/10` from removing the extra companion sprite.
+- Performance Budget Score impact: `-1`.
+- Expected normal-play estimate: roughly `44-92`.
+- Visual risk: low. This only removes the unintended visible dog companion.
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-11 - v0.25.169 - Unlock skill cards for merchant and show dog companion (Codex)
 
 ### Summary

@@ -340,9 +340,6 @@ export class PixiScene {
   private enemies = new Map<string, ActorView>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
-  private dogCompanion = new Container();
-  private dogCompanionShadow = new Graphics();
-  private dogCompanionSprite = new Sprite();
   private castleView = new Container();
   private castleSprite = new Sprite();
   private castleGlow = new Sprite(getGlowTexture());
@@ -518,15 +515,10 @@ export class PixiScene {
     this.eventNpcGlow.tint = 0x60a5fa;
     this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlow, this.eventNpcSprite);
 
-    this.dogCompanionSprite.anchor.set(0.5, 1);
-    this.dogCompanion.addChild(this.dogCompanionShadow, this.dogCompanionSprite);
-    this.dogCompanion.visible = false;
-
     this.L.effectLayer.addChild(this.playerFx);
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
       this.localEventShadeGfx,
-      this.dogCompanion,
       this.castleView,
       this.merchantView,
       this.eventNpcView,
@@ -1641,7 +1633,6 @@ export class PixiScene {
     // Player
     if (!this.playerView) this.playerView = this.makeActor();
     this.drawPlayer(this.playerView, player, now);
-    this.syncDogCompanion(player, now);
 
     // Enemies (mark-and-sweep pool)
     const seen = new Set<string>();
@@ -1703,47 +1694,6 @@ export class PixiScene {
     view.light.visible = false;
     view.reticle.clear();
     view.overlay.clear();
-  }
-
-  private syncDogCompanion(p: Player, now: number) {
-    if (!p.subWeapons.includes('dog')) {
-      this.dogCompanion.visible = false;
-      return;
-    }
-
-    const fb = playerFootBox(p);
-    const walking = p.isMoving && p.direction !== 'idle';
-    const dirX = p.lastDirection?.x ?? (p.direction === 'right' ? 1 : p.direction === 'left' ? -1 : 0);
-    const dirY = p.lastDirection?.y ?? (p.direction === 'down' ? 1 : p.direction === 'up' ? -1 : 0);
-    const fallbackX = p.direction === 'right' ? -1 : 1;
-    const behindX = dirX !== 0 || dirY !== 0 ? -dirX : fallbackX;
-    const behindY = dirX !== 0 || dirY !== 0 ? -dirY : 0.35;
-    const depth = this.depthScale(fb.footY);
-    const dogX = fb.footX + behindX * 23 * depth;
-    const dogY = fb.footY + 10 * depth + behindY * 10 * depth;
-    const frame = walking ? Math.floor(now / DOG_WALK_FRAME_MS) % 2 : 0;
-    const tex = getTexture(`dog-walk-${frame}`) ?? getTexture('dog-walk-0');
-    const facing = dirX !== 0 ? Math.sign(dirX) : (behindX < 0 ? 1 : -1);
-
-    this.dogCompanion.visible = true;
-    this.dogCompanion.alpha = 0.95;
-    this.dogCompanion.position.set(
-      this.snapToScreenPixel(dogX, this.L.world.position.x),
-      this.snapToScreenPixel(dogY, this.L.world.position.y),
-    );
-    this.dogCompanion.zIndex = dogY - 1;
-
-    this.dogCompanionShadow.clear();
-    this.dogCompanionShadow.ellipse(0, 0, 15 * depth, 5 * depth).fill({ color: 0x000000, alpha: 0.25 });
-
-    if (tex) {
-      this.dogCompanionSprite.texture = tex;
-      this.dogCompanionSprite.scale.set(facing * DOG_SPRITE_SCALE * 0.78 * depth, DOG_SPRITE_SCALE * 0.78 * depth);
-      this.dogCompanionSprite.position.set(0, 2 + (walking ? Math.sin(now / 90) * 0.6 * depth : 0));
-      this.dogCompanionSprite.visible = true;
-    } else {
-      this.dogCompanionSprite.visible = false;
-    }
   }
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
@@ -2647,7 +2597,6 @@ export class PixiScene {
     }
     this.playerView?.light.destroy();
     this.playerView?.container.destroy({ children: true });
-    this.dogCompanion.destroy({ children: true });
     this.merchantView.destroy({ children: true });
     this.eventNpcView.destroy({ children: true });
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
