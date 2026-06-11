@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.186 - Decoy: show range circle + widen range x3 (Claude Code)
+
+### Summary
+- ユーザー指摘2点:
+  - デコイの射程をサークル(ピクセル点線)で表示。射程半径はデコイ projectile の
+    `area` に載せ、`pixiScene` の decoy 描画でドット円として描く(常時glowなし)。
+  - 射程をLv1で現状の約3倍に拡大。`DECOY_RANGE` 150 → 450(全Lv共通)。
+    判定(二乗比較)と描画サークルは同じ `area` 値を共有。
+
+### Code touched
+- `src/hooks/useGameLoop.ts`(DECOY_RANGE=450、生成時に area=射程をセット)
+- `src/pixi/pixiScene.ts`(decoy にピクセル点線の射程サークル描画を追加)
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- 見た目(サークル・拡大射程)は実機で確認予定(プレビューはタブ非アクティブ時
+  にループが絞られ安定撮影できないため)。
+
 ## 2026-06-11 - v0.25.185 - Add Decoy sub-weapon (bullet interceptor) (Claude Code)
 
 ### Summary

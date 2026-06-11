@@ -2012,6 +2012,20 @@ export class PixiScene {
         break;
       }
       case 'decoy': {
+        // 射程サークル(ピクセル点線)。area に射程半径が載っている。
+        const range = p.area ?? 0;
+        if (range > 0) {
+          const dot = 2;                         // 1ドットの大きさ
+          const dots = Math.max(24, Math.round(range / 9)); // 半径に応じて点数
+          const blinkR = 0.5 + Math.sin(Date.now() / 320) * 0.18;
+          for (let i = 0; i < dots; i++) {
+            const a = (i / dots) * Math.PI * 2;
+            const px = Math.cos(a) * range;
+            const py = Math.sin(a) * range;
+            g.rect(px - dot / 2, py - dot / 2, dot, dot)
+              .fill({ color: 0x38bdf8, alpha: 0.32 * (0.7 + blinkR) });
+          }
+        }
         // 小さめの円盤型装置。中央のコアが軽く明滅(常時glowなし)。
         const blink = 0.6 + Math.sin(Date.now() / 140) * 0.4;
         const rr = Math.max(5, p.width * 0.46);
