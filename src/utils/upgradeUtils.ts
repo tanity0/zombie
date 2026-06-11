@@ -14,8 +14,11 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const trapLevel = player.subWeaponLevels['marksman-trap'] ?? 0;
   const quickMagLevel = player.subWeaponLevels['striker-quick-mag'] ?? 0;
   const huntingLevel = player.subWeaponLevels['striker-hunting'] ?? 0;
+  // 刀装備中は他のサブウェポンカードをレベルアップに出さない(刀は併用不可、
+  // 許可制で解禁予定)。刀自体の強化カードは引き続き出る。
+  const ownsKatana = player.subWeapons.includes('katana');
 
-  if (player.characterClass === 'warrior' && grenadeLevel < 3) {
+  if (!ownsKatana && player.characterClass === 'warrior' && grenadeLevel < 3) {
     const nextLevel = grenadeLevel + 1;
     subWeaponOptions.push({
       id: 'subweapon-heavy-grenade',
@@ -27,7 +30,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
-  if (player.characterClass === 'mage' && trapLevel < 3) {
+  if (!ownsKatana && player.characterClass === 'mage' && trapLevel < 3) {
     const nextLevel = trapLevel + 1;
     subWeaponOptions.push({
       id: 'subweapon-marksman-trap',
@@ -39,7 +42,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
-  if (player.characterClass === 'necromancer' && quickMagLevel < 3) {
+  if (!ownsKatana && player.characterClass === 'necromancer' && quickMagLevel < 3) {
     const nextLevel = quickMagLevel + 1;
     const cooldown = 12 - nextLevel * 2;
     subWeaponOptions.push({
@@ -52,7 +55,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
-  if (player.characterClass === 'rogue' && huntingLevel < 3) {
+  if (!ownsKatana && player.characterClass === 'rogue' && huntingLevel < 3) {
     const nextLevel = huntingLevel + 1;
     const chargeSeconds = huntingChargeSecondsLabel(nextLevel);
     const radiusBonus = HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[nextLevel];

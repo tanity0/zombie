@@ -10,6 +10,49 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.176 - Katana tuning: level ranges, crit table, visuals (Claude Code)
+
+### Summary
+- ユーザー確定仕様を反映 (刀の調整7点):
+  - 射程をレベル制に変更: `KATANA_RANGE_BY_LEVEL = [_, 89, 107, 128]`
+    (Lv1 = 通常ナイフ74の1.2倍、以降レベルごとに1.2倍)。固定の
+    ハンティングLv3相当(108)は廃止。
+  - クリ率をレベル制に変更(確定値): Lv1 10% / Lv2 20% / Lv3 30%。
+  - 刀装備中はレベルアップに他のサブウェポンカードを出さない
+    (`generateUpgradeOptions` でガード。刀自身の強化カードは出る)。
+  - 通常斬撃(オート)のエフェクトを2倍サイズに(`spawnSlash` に
+    `lengthScale` 追加。一閃のヒット斬撃は等倍のまま)。
+  - 一閃で近接フィニッシュ成立時、「斬」を軌道の真ん中に1つ表示
+    (複数巻き込んでも1ダッシュ1つ)。
+  - 刀所持中、キャラ中央付近・背面(スプライト下レイヤー)に背負い刀の
+    ドット絵を表示。専用テクスチャなし、Graphicsドット描画(~15 rect)。
+    プレイヤーの向きで左右反転。
+  - HUD下部の近接スロット表示を刀所持中は `🗡️ 刀` に変更。
+- Verification note: ブラウザ自動テストで直接ストライク検証
+  (オート斬撃エフェクト長55=2倍、ダッシュ31=等倍、ダメージ10+30=40、
+  「斬」コールアウト表示、レベルアップカードが刀+パッシブのみ、射程テーブル
+  89/107/128、HUD刀表示)。ゲームループ経由のオート斬撃はテストタブが
+  hidden になり rAF 停止で実測不可(ループ側変更は射程変数の置換のみ)。
+  実機プレイでの目視確認を次の確認事項とする。
+
+### Performance
+- Old load score: `1/10`。背負い刀は毎フレーム~15 rectのGraphics描画
+  (レア敵オーナメントと同等)、斬撃2倍は既存エフェクトのサイズ変更のみ。
+- Performance Budget Score impact: `+0` to `+1`。
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/hooks/useGameLoop.ts`
+- `src/utils/upgradeUtils.ts`
+- `src/components/GameHUD.tsx`
+- `src/pixi/pixiScene.ts`
+- `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 直接ストライクのブラウザ検証(上記)
+- Not yet: 実機での背負い刀・2倍斬撃・「斬」表示の見た目確認
+
 ## 2026-06-11 - v0.25.175 - Restrict katana finishers to dash and gate other sub-weapons (Claude Code)
 
 ### Summary

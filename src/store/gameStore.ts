@@ -175,12 +175,19 @@ export const REFLECT_SPEED_MULTIPLIER = 1.8;
 // the nearest in-range enemy continuously, and a flick (mobile) / same-key
 // double-tap (PC) performs an invulnerable dash that cuts along its path.
 // ---------------------------------------------------------------------------
-// Auto-slash reach is fixed at the Hunting Lv3-equivalent melee radius.
-export const KATANA_RANGE = MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[3];
-// TODO(刀): 仮値。斬撃間隔・ダメージ・クリ率は未確定。Lv1-3は構造のみで詳細調整は後回し。
+// 射程はレベル制(確定仕様): Lv1 = 通常ナイフ(MELEE_RADIUS)の1.2倍、
+// Lv2 = Lv1の1.2倍、Lv3 = Lv2の1.2倍。
+export const KATANA_RANGE_BY_LEVEL = [
+  0,
+  Math.round(MELEE_RADIUS * 1.2),              // Lv1: 89
+  Math.round(MELEE_RADIUS * 1.2 * 1.2),        // Lv2: 107
+  Math.round(MELEE_RADIUS * 1.2 * 1.2 * 1.2),  // Lv3: 128
+] as const;
+// TODO(刀): 仮値。斬撃間隔・ダメージは未確定。
 export const KATANA_SLASH_INTERVAL_MS = 600;
 export const KATANA_DAMAGE_BY_LEVEL = [0, 10, 12, 14] as const;
-export const KATANA_CRIT_CHANCE = 0.08; // TODO(刀): 仮値(melee tier2相当)
+// クリ率はレベル制(確定仕様): Lv1 10% / Lv2 20% / Lv3 30%。
+export const KATANA_CRIT_CHANCE_BY_LEVEL = [0, 0.10, 0.20, 0.30] as const;
 export const KATANA_DASH_DAMAGE_MULT = 3; // 一閃 = 刀オート斬撃の3倍(仕様確定値)
 // TODO(刀): 仮値。一閃の距離・所要時間・当たり判定幅は操作感を見て調整する。
 export const KATANA_DASH_MS = 180;
@@ -200,6 +207,8 @@ export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カ�
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 export const katanaLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['katana'] ?? 1));
+export const katanaRange = (player: Player): number =>
+  KATANA_RANGE_BY_LEVEL[katanaLevel(player)];
 // 刀装備中に併用を許可するサブウェポン(許可制)。現状は全サブウェポン停止。
 // TODO(刀): 併用を解禁する時はこの配列にキーを追加する。
 export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
@@ -575,7 +584,7 @@ interface GameState {
   spawnCallout: (x: number, y: number, text: string, color: string) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
-  spawnSlash: (x: number, y: number, color?: string) => void;
+  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   updateEffects: (deltaTime: number) => void;
 }
@@ -1165,7 +1174,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
-      const crit = Math.random() < Math.min(1, KATANA_CRIT_CHANCE + trapCritBonus);
+      const crit = Math.random() <
+        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + trapCritBonus);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? CRIT_DAMAGE_MULT : 1);
@@ -1179,7 +1189,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dy = ecy - pcy;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
       if (!stunned && now >= (enemy.knockbackImmuneUntil ?? 0)) {
-        const falloff = Math.max(0, 1 - dist / KATANA_RANGE);
+        const falloff = Math.max(0, 1 - dist / katanaRange(player));
         const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
         survivors.push({
           ...enemy,
@@ -1234,8 +1244,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
 
     // 軽量な短命斬撃のみ(常時glowなし)。刀はやや青白い斬閃で識別。
+    // 通常斬撃(オート)はエフェクトを2倍サイズで描く(確定仕様)。
+    const slashScale = allowFinisher ? 1 : 2;
     for (const s of slashAt) {
-      get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)');
+      get().spawnSlash(s.x, s.y, 'rgba(221,238,255,0.95)', slashScale);
     }
     for (const c of damageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
@@ -1311,7 +1323,17 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     if (targetIds.length > 0) {
       // 近接フィニッシュは一閃のみ許可。
-      get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true);
+      const result = get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true);
+      // 一閃でフィニッシュした時だけ「斬」を軌道の真ん中に1つ表示
+      // (何体巻き込んでも1ダッシュにつき1つ)。
+      if (result.finish) {
+        get().spawnCallout(
+          pcx + ux * KATANA_DASH_DISTANCE / 2,
+          pcy + uy * KATANA_DASH_DISTANCE / 2,
+          '斬',
+          '#fda4af'
+        );
+      }
     }
     return true;
   },
@@ -2914,7 +2936,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)') => {
+  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1) => {
     const now = Date.now();
     set(state => {
       const next = [...state.effects, {
@@ -2923,7 +2945,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: x + (Math.random() - 0.5) * 8,
         y: y + (Math.random() - 0.5) * 8,
         angle: -0.9 + Math.random() * 0.5, // roughly diagonal, slight variance
-        length: 26 + Math.random() * 8,
+        length: (26 + Math.random() * 8) * lengthScale,
         color,
         createdAt: now,
         duration: 200

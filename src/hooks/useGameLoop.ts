@@ -9,7 +9,7 @@ import {
   MINE_DAMAGE,
   hasKatana,
   subWeaponBlockedByKatana,
-  KATANA_RANGE,
+  katanaRange,
   KATANA_SLASH_INTERVAL_MS
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
@@ -367,6 +367,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const kp = useGameStore.getState().player;
             const kcx = kp.x + kp.width / 2;
             const kcy = kp.y + kp.height / 2;
+            const kRange = katanaRange(kp);
             let best: { id: string; d2: number } | null = null;
             let bestStunned: { id: string; d2: number } | null = null;
             for (const e of useGameStore.getState().enemies) {
@@ -374,7 +375,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dx = e.x + e.width / 2 - kcx;
               const dy = e.y + e.height / 2 - kcy;
               const d2 = dx * dx + dy * dy;
-              if (d2 > KATANA_RANGE * KATANA_RANGE) continue;
+              if (d2 > kRange * kRange) continue;
               // 自動射撃と同じ優先順位: スタン中の敵は後回し(最後の手段)。
               const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
               if (stunned) {

@@ -271,15 +271,24 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                   </button>
                 );
               })}
-              {/* Melee slot (always available; not switchable) */}
-              {melee && (
-                <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
-                  <div className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base" title={melee.name}>
-                    🔪
+              {/* Melee slot (always available; not switchable). 刀装備中は
+                  ナイフの代わりに刀を表示する。 */}
+              {melee && (() => {
+                const katanaEquipped = player.subWeapons.includes('katana');
+                return (
+                  <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
+                    <div
+                      className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base"
+                      title={katanaEquipped ? '刀' : melee.name}
+                    >
+                      {katanaEquipped ? '🗡️' : '🔪'}
+                    </div>
+                    <div className="text-[10px] text-white/60">
+                      {katanaEquipped ? '刀' : getWeaponShortName(melee.type)}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-white/60">{getWeaponShortName(melee.type)}</div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         );

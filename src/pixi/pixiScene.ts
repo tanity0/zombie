@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, KATANA_RANGE } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -1693,7 +1693,41 @@ export class PixiScene {
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();
+    // 刀装備中: スプライトの下レイヤー(reticle)に背負い刀のドットを描く。
+    if (p.subWeapons.includes('katana')) {
+      const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+      this.drawPlayerKatanaOnBack(view.reticle, fb.footX, fb.footY - bob, fb.boxH, flip);
+    }
     view.overlay.clear();
+  }
+
+  // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ
+  // を増やさず、レア敵オーナメントと同じ軽量Graphicsドット描画で表現する。
+  private drawPlayerKatanaOnBack(g: Graphics, footX: number, footY: number, boxH: number, flip: boolean) {
+    const d = this.depthScale(footY);
+    const h = boxH * d;
+    const px = Math.max(1, h * 0.075); // 1ドットの大きさ
+    const dir = flip ? -1 : 1;         // 向きに合わせて左右反転
+    const cx = footX - dir * px * 0.6; // 中央やや背中側
+    const cy = footY - h * 0.56;       // 体の中央付近
+    // 刀身: 斜め(肩越しに先端が上)へドットを積む
+    for (let i = 0; i <= 5; i++) {
+      g.rect(cx + dir * i * px - px / 2, cy - i * px - px / 2, px, px)
+        .fill({ color: 0xdbe4ee, alpha: 0.95 });
+    }
+    // 刃のハイライト(上側に細く)
+    for (let i = 1; i <= 4; i++) {
+      g.rect(cx + dir * i * px - px / 2, cy - i * px - px, px * 0.6, px * 0.45)
+        .fill({ color: 0xffffff, alpha: 0.8 });
+    }
+    // 鍔(金)
+    g.rect(cx - dir * px - px * 0.9, cy + px - px * 0.55, px * 1.8, px * 1.1)
+      .fill({ color: 0xd4a017, alpha: 0.95 });
+    // 柄(赤巻き+黒)
+    for (let i = 2; i <= 4; i++) {
+      g.rect(cx - dir * i * px - px / 2, cy + i * px - px / 2, px, px)
+        .fill({ color: i === 3 ? 0xb91c1c : 0x1f2937, alpha: 0.95 });
+    }
   }
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
@@ -2441,9 +2475,9 @@ export class PixiScene {
     }
 
     // 刀: 一閃ダッシュのクールダウン表示。既存の近接クールダウンサークルと
-    // 同じ見た目を刀の射程半径で出す(クールダウン中のみ)。
+    // 同じ見た目を刀の射程半径(レベル制)で出す(クールダウン中のみ)。
     if (katana && now < player.katanaDashCooldownEnd && now >= player.katanaDashUntil) {
-      g.circle(cx, cy, KATANA_RANGE).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
+      g.circle(cx, cy, katanaRange(player)).stroke({ width: 1.5, color: 0x94a3b8, alpha: 0.2 });
     }
 
     // Reload meter above the head.
