@@ -22,6 +22,7 @@ import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange
 import { getEnemyColor } from '../utils/enemyUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
+import { buildKatanaShape } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
@@ -1702,31 +1703,21 @@ export class PixiScene {
   }
 
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ
-  // を増やさず、レア敵オーナメントと同じ軽量Graphicsドット描画で表現する。
+  // を増やさず、`katanaShape` の共有ドット配置を軽量Graphicsで描く(HUDアイコン
+  // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。
   private drawPlayerKatanaOnBack(g: Graphics, footX: number, footY: number, boxH: number, flip: boolean) {
     const d = this.depthScale(footY);
     const h = boxH * d;
-    const px = Math.max(1, h * 0.075); // 1ドットの大きさ
+    // キャラ実表示(約1.13×boxH)より少し背高にし、柄が肩越し・鞘先が反対の
+    // 腰下に出るよう全体を斜めに配置する。
+    const size = h * 1.5;
+    const w = size * 0.6;
     const dir = flip ? -1 : 1;         // 向きに合わせて左右反転
-    const cx = footX - dir * px * 0.6; // 中央やや背中側
-    const cy = footY - h * 0.56;       // 体の中央付近
-    // 刀身: 斜め(肩越しに先端が上)へドットを積む
-    for (let i = 0; i <= 5; i++) {
-      g.rect(cx + dir * i * px - px / 2, cy - i * px - px / 2, px, px)
-        .fill({ color: 0xdbe4ee, alpha: 0.95 });
-    }
-    // 刃のハイライト(上側に細く)
-    for (let i = 1; i <= 4; i++) {
-      g.rect(cx + dir * i * px - px / 2, cy - i * px - px, px * 0.6, px * 0.45)
-        .fill({ color: 0xffffff, alpha: 0.8 });
-    }
-    // 鍔(金)
-    g.rect(cx - dir * px - px * 0.9, cy + px - px * 0.55, px * 1.8, px * 1.1)
-      .fill({ color: 0xd4a017, alpha: 0.95 });
-    // 柄(赤巻き+黒)
-    for (let i = 2; i <= 4; i++) {
-      g.rect(cx - dir * i * px - px / 2, cy + i * px - px / 2, px, px)
-        .fill({ color: i === 3 ? 0xb91c1c : 0x1f2937, alpha: 0.95 });
+    const originX = footX - w / 2;     // 体の中央
+    const originY = footY - h * 1.34;  // 柄が頭の上、鞘先が足元付近
+    for (const r of buildKatanaShape(dir)) {
+      g.rect(originX + r.x * w, originY + r.y * size, r.w * w, r.h * size)
+        .fill({ color: r.color, alpha: r.alpha });
     }
   }
 

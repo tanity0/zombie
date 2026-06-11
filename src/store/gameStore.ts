@@ -175,13 +175,14 @@ export const REFLECT_SPEED_MULTIPLIER = 1.8;
 // the nearest in-range enemy continuously, and a flick (mobile) / same-key
 // double-tap (PC) performs an invulnerable dash that cuts along its path.
 // ---------------------------------------------------------------------------
-// 射程はレベル制(確定仕様): Lv1 = 通常ナイフ(MELEE_RADIUS)の1.2倍、
-// Lv2 = Lv1の1.2倍、Lv3 = Lv2の1.2倍。
+// 射程はレベル制(確定仕様): レベルごとに1.2倍。全体を現状より少し狭く
+// (以前の 89/107/128 から係数0.86で 76/92/110)。
+const KATANA_RANGE_TIGHTEN = 0.86;
 export const KATANA_RANGE_BY_LEVEL = [
   0,
-  Math.round(MELEE_RADIUS * 1.2),              // Lv1: 89
-  Math.round(MELEE_RADIUS * 1.2 * 1.2),        // Lv2: 107
-  Math.round(MELEE_RADIUS * 1.2 * 1.2 * 1.2),  // Lv3: 128
+  Math.round(MELEE_RADIUS * 1.2 * KATANA_RANGE_TIGHTEN),              // Lv1: 76
+  Math.round(MELEE_RADIUS * 1.2 * 1.2 * KATANA_RANGE_TIGHTEN),        // Lv2: 92
+  Math.round(MELEE_RADIUS * 1.2 * 1.2 * 1.2 * KATANA_RANGE_TIGHTEN),  // Lv3: 110
 ] as const;
 // TODO(刀): 仮値。斬撃間隔・ダメージは未確定。
 export const KATANA_SLASH_INTERVAL_MS = 600;
@@ -189,10 +190,11 @@ export const KATANA_DAMAGE_BY_LEVEL = [0, 10, 12, 14] as const;
 // クリ率はレベル制(確定仕様): Lv1 10% / Lv2 20% / Lv3 30%。
 export const KATANA_CRIT_CHANCE_BY_LEVEL = [0, 0.10, 0.20, 0.30] as const;
 export const KATANA_DASH_DAMAGE_MULT = 3; // 一閃 = 刀オート斬撃の3倍(仕様確定値)
-// TODO(刀): 仮値。一閃の距離・所要時間・当たり判定幅は操作感を見て調整する。
+// TODO(刀): 仮値。一閃の所要時間は操作感を見て調整する。
 export const KATANA_DASH_MS = 180;
-export const KATANA_DASH_DISTANCE = 150;
-export const KATANA_DASH_HIT_HALF_WIDTH = 30;
+// 一閃の距離・当たり幅も現状より少し狭く(128/26)。
+export const KATANA_DASH_DISTANCE = 128;
+export const KATANA_DASH_HIT_HALF_WIDTH = 26;
 // 一閃後のクールダウンは既存近接(カウンター)と同じ長さ。
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
 // TODO(刀): 仮値。PC二連打の受付時間。既存の操作感を見て調整可能にしてある。
@@ -1174,8 +1176,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
+      // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ
+      // クリティカル率アップ(player.critChance) + トラップ拘束ボーナス。
       const crit = Math.random() <
-        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + trapCritBonus);
+        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? CRIT_DAMAGE_MULT : 1);

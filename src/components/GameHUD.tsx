@@ -6,6 +6,29 @@ import { getWeaponShortName } from '../utils/weaponUtils';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
+import { buildKatanaShape } from '../utils/katanaShape';
+
+// 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。
+const katanaHex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+const KatanaIcon: React.FC<{ size?: number }> = ({ size = 26 }) => {
+  const w = size * 0.62;
+  const rects = useMemo(() => buildKatanaShape(1), []);
+  return (
+    <svg width={w} height={size} viewBox={`0 0 ${w} ${size}`} aria-hidden>
+      {rects.map((r, i) => (
+        <rect
+          key={i}
+          x={r.x * w}
+          y={r.y * size}
+          width={r.w * w}
+          height={r.h * size}
+          fill={katanaHex(r.color)}
+          fillOpacity={r.alpha}
+        />
+      ))}
+    </svg>
+  );
+};
 
 const BOSS_WARN_LEAD = 12 * 1000;
 const PERF_THRESHOLDS = {
@@ -281,7 +304,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                       className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base"
                       title={katanaEquipped ? '刀' : melee.name}
                     >
-                      {katanaEquipped ? '🗡️' : '🔪'}
+                      {katanaEquipped ? <KatanaIcon size={26} /> : '🔪'}
                     </div>
                     <div className="text-[10px] text-white/60">
                       {katanaEquipped ? '刀' : getWeaponShortName(melee.type)}

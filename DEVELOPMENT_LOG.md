@@ -10,6 +10,39 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.177 - Katana visual/crit refinements (Claude Code)
+
+### Summary
+- ユーザー確定の調整4点:
+  - クリ率にプレイヤーのレベルアップ加算(`player.critChance`)を合算する。
+    刀のクリ = レベル別基礎(10/20/30%) + レベルアップクリ率アップ +
+    トラップ拘束ボーナス。以前は基礎のみで「クリが出ない」ように見えていた
+    (元の近接処理も player.critChance を加算していなかったため)。
+  - 射程を全体的に少し狭く。`KATANA_RANGE_BY_LEVEL` 89/107/128 → 76/92/110
+    (係数0.86)。一閃も距離150→128、当たり半幅30→26。
+  - 背負い刀のデザイン刷新: 赤い鞘(鞘・鍔・柄)・少し反り・もう少し長く。
+    新規 `src/utils/katanaShape.ts` に正規化ドット配置を定義し、背面(Pixi
+    Graphics)とHUDアイコン(SVG)が同一形状を共有する。背負い刀らしく斜めに
+    配置し、柄が肩越し・鞘先が反対の腰下に出るようにした。
+  - HUD下部の近接スロットを、絵文字ではなく背負い刀と同じ形状のSVGアイコンで
+    表示(「背負っている刀のデザインをそのまま縮小」)。
+
+### Performance
+- Old load score: `1/10`。背負い刀は約38 rect/フレーム(プレイヤー1体のみ)、
+  HUDアイコンはSVG静的描画。Performance Budget Score impact: `+0` to `+1`。
+
+### Code touched
+- `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `src/pixi/pixiScene.ts`, `src/components/GameHUD.tsx`,
+  `src/utils/katanaShape.ts` (新規), `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: ブラウザ実機確認 — クリ発火(レベルアップ加算込みでcrit gold number、
+  基礎Lv1≈8%)、射程テーブル76/92/110・ダッシュ128/26、HUDの刀アイコン
+  (38 rect, 背負い刀と同形状)、背面の背負い刀が斜めに表示されることを
+  スクリーンショットで確認。
+
 ## 2026-06-11 - v0.25.176 - Katana tuning: level ranges, crit table, visuals (Claude Code)
 
 ### Summary
