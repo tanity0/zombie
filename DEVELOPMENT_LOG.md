@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-11 - v0.25.180 - Katana smaller back sprite + dash moves before finisher (Claude Code)
+
+### Summary
+- ユーザー指摘2点:
+  - 「刀の位置はOK。大きさだけ小さく」: 背負い刀を中心(胸あたり)固定のまま
+    `KATANA_BACK_SCALE = 0.72` で縮小。形・幅・角度・位置は据え置き。
+  - 「近接フィニッシュすると移動しない。移動したあと斬にして」: 原因は、一閃が
+    開始時に即ダメージ+フィニッシュを適用し、フィニッシュのヒットストップ
+    (全シム停止300ms)がダッシュ移動ウィンドウ(180ms)を食い潰して
+    プレイヤーが動かなかったこと。修正として、ダッシュは先に移動だけ走らせ、
+    `KATANA_DASH_MS` 後に斬撃・フィニッシュ・ヒットストップを適用する。
+    「斬」コールアウトは移動後のプレイヤー位置に1つだけ表示。
+
+### Performance
+- Performance Budget Score impact: `+0`。
+
+### Code touched
+- `src/store/gameStore.ts`, `src/pixi/pixiScene.ts`,
+  `package.json`, `package-lock.json`
+
+### Verification
+- OK: `npm run lint` / `npm run build`
+- OK: 実機(ブラウザ)確認 —
+  - 一閃: 発動直後は敵生存・斬なし・ヒットストップなし(移動可能)、約180ms後に
+    119px移動してから敵フィニッシュ+「斬」表示、を状態計測で確認。
+  - 背負い刀が0.72倍に縮小し位置・角度据え置きをスクリーンショットで確認。
+
 ## 2026-06-11 - v0.25.179 - Katana crit stun + diagonal back sprite (Claude Code)
 
 ### Summary
