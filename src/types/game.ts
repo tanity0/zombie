@@ -64,6 +64,10 @@ export interface Player {
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
+  // Whip (鞭) sub-weapon charge. Each whip hit increments whipHitCount; at the
+  // level threshold whipCharged flips true and the next swing fires a hurricane.
+  whipHitCount?: number;
+  whipCharged?: boolean;
   // Katana (刀) sub-weapon dash state. While katanaDashUntil is in the future
   // the player ignores input and travels along the dash direction while
   // invulnerable. The cooldown gates only the next dash — normal movement and
@@ -193,7 +197,7 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip';
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'
@@ -429,6 +433,17 @@ export type VisualEffect =
       // streak that moves with the magnet pull.
       fromX: number; fromY: number;
       toX: number; toY: number;
+      color: string;
+      createdAt: number;
+      duration: number;
+    }
+  | {
+      // 鞭: 全長を即表示してフェードする太い帯(=当たり範囲)+ 明るい芯。
+      kind: 'whip';
+      id: string;
+      fromX: number; fromY: number;
+      toX: number; toY: number;
+      halfWidth: number; // 当たり帯の半幅(px)
       color: string;
       createdAt: number;
       duration: number;

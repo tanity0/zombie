@@ -10,6 +10,69 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.203 - Whip (鞭) sub-weapon + hurricane (Claude Code)
+
+### Summary
+- 新通常サブウェポン「鞭」(全クラス共通・取得専用)。装備中はナイフ近接を鞭に置換(刀と排他=`!ownsKatana` +
+  `isWhipMode = hasWhip && !isKatanaMode`)。入口は既存 `triggerCounter` の刀分岐直後に自己完結ブランチ(早期return)。
+  カウンター窓は通常どおり開くため敵弾反射(カウンター)は自動成立=優先。
+- 鞭スイープ: 進行方向の細長いカプセル(刀ダッシュ幾何流用)。`performWhipStrike` で低ダメージ
+  (`WHIP_DAMAGE_MULT=0.25`)・大ノックバック(`WHIP_KNOCKBACK_SPEED=KNOCKBACK_SPEED*3=600`、外向き)・クリ・
+  近接フィニッシュ(スタン敵即処刑/ボス5×)・弾薬20%固定(`grantMeleeKillRewards` に上書き引数追加)。
+- チャージ: ヒットごと加算(空振り0)。`WHIP_CHARGE_HITS_BY_LEVEL=20` 到達で待機(満タン合図リング)。
+  次の一振りで `performHurricane` 発動→charge=0。自動発動しない。
+- ハリケーン: store状態 `hurricane`(鞭先端=根元の固定点)。`tickHurricane` を毎フレーム(60msスロットル)呼び、
+  半径内の敵を距離順に最大12体まで根元へ吸引(knockback場に書込)。`HURRICANE_*` 定数。プレイヤーへは吸わない。
+  フィニッシュはハリケーン中の通常スイングで成立。
+- 取得/強化: レベルアップカード(`upgradeUtils`、`!ownsKatana && whipLvl<3`)/ 商人(`SHOP_WHIP_COST=100`)/
+  スタート画面解放(`MainMenu` skillShopEntries)。表示名「鞭」。
+- 数値は実機調整前提の仮値(TODO)。検証: `tsc --noEmit` / `vite build` パス(EXIT 0)。手触りは社長の実機確認待ち。
+
+## 2026-06-12 - v0.25.202 - Decoy enemy-collision + laser/sound, shield clank thicker (Claude Code)
+
+### Summary
+- デコイ: 着地後は**敵のみ通行不可**(下部フットプリント `DECOY_FOOT_W=48/H=20` で resolveAabb、reaper貫通)。
+  プレイヤーは通す。`useGameLoop` の updateEnemies 直後に専用パス(コスト Low)。
+- デコイ迎撃レーザーを見やすく: trail `duration 140→320ms`。
+- デコイ迎撃に**効果音追加**(従来無音): `decoy-zap`(counter.mp3 を高ピッチ・小音量・間引き流用)。
+- 盾の展開音「ガチャン」を**太く**: `shield-deploy` に `playbackRate=0.82`(低ピッチ化、ファイル追加なし)。
+- 検証: `tsc --noEmit` パス。手触り・音は社長の実機確認待ち。
+
+## 2026-06-12 - v0.25.201 - Shield: player-pushable + bash uses travel direction (Claude Code)
+
+### Summary
+- 盾はプレイヤーを止めなくなった: 触れると進行方向へ盾を平行移動(スノープラウ)。`gameStore` movePlayer の
+  プレイヤー阻止 resolveAabb を撤去し、重なった盾を移動量だけ平行移動。動いた盾は既存の毎フレーム
+  「盾→敵 resolveAabb」で前方の敵を比例して押し出す(新規コストほぼゼロ=Low)。敵側の貫通不可は維持。
+- バッシュの飛び出し方向を**プレイヤーの進行方向(`lastDirection`)**で決定(設置時の向きではない)。
+  停止中は設置法線にフォールバック。飛距離50・耐久-5は据え置き。
+- 検証: `tsc --noEmit` パス。手触りは社長の実機確認待ち。
+
+## 2026-06-12 - v0.25.199-200 - Shield graphic/collision + tuning, Decoy sprite (Claude Code)
+
+### Summary
+- 設置型シールドをプログラム描画 → **向き別スプライト**へ差替。社長提供の1枚シート
+  (1024x1024・紫背景・上下左右4構成、「外側からキャラが持つ」逆構図)を切り出し・紫キーアウトし、
+  `public/sprites/shield-{up,down,left,right}.png` を生成(`art_src/shield/` にシート/スクリプト、未コミット)。
+  向き対応は社長確認で**完全反転**: シートTOP→down / BOTTOM→up / LEFT→right / RIGHT→left。
+  描画は `pixiScene.syncShields`/`drawShield`(`p.direction` で4方向選択、足元アンカー)。
+- **当たり判定を木と同じ「下部のみ」フットプリント**に変更。`SHIELD_FOOT_W=54 / SHIELD_FOOT_H=16`
+  (旧 `SHIELD_LENGTH/THICKNESS` 壁を撤去)。`actorLayer` に置き足元Yで y-sort → 上部はキャラ被り。
+- **すり抜け不可を敵+プレイヤー両方**に。敵は従来どおり `resolveAabb`(footprint)。プレイヤーは
+  `gameStore` 移動処理に盾 footprint の `resolveAabb` を追加(木/障害物と同じ流儀)。
+- 盾効果範囲(遮断/敵弾削除/バッシュ)は footprint に追従。耐久/フェード/バッシュ/敵弾削除ロジックは温存。
+- **「ガチャンッ!」展開演出**: 着地ダストリング + 着地スラム(上から落ちて squash、`SHIELD_DEPLOY_MS=200`/
+  `SHIELD_DEPLOY_DROP=16`)+ SFX `shield-deploy`(暫定で counter.mp3 流用、専用クランク音に差替可)。
+- 表示サイズ `SHIELD_DISPLAY_H=92`。各値は実機調整TODO。
+- **盾の実機調整で確定(v0.25.200)**: 面は法線に直交させ向き別展開(上下=横108/左右=縦108、奥行16)。
+  左右向きは `SHIELD_SIDE_DROP=18` で範囲と絵を下げ。着地ダストは固定半径64。バッシュ=飛距離
+  `SHIELD_BASH_SHOVE_DISTANCE=50`、一発破壊をやめ `SHIELD_BASH_DURABILITY_COST=5`(耐久を5消費・
+  0以下で破壊。Lv1/2/3=10/30/60 → 約2/6/12回バッシュ可)。
+- **デコイのグラフィック差し替え(v0.25.200)**: 受領シート(1024²・紫背景・単体装置)をキーアウトし
+  `public/sprites/decoy.png`(520x348)を生成。プログラム円盤 → `pixiScene.syncDecoys/drawDecoy` の
+  スプライト描画へ(射程サークルは維持)。`DECOY_DISPLAY_H=56`、中心アンカー(下寄り0.9)、向きなし全方向。
+- 検証: `tsc --noEmit` / `vite build` パス(EXIT 0)。手触り・サイズは社長の実機確認待ち。
+
 ## 2026-06-11 - v0.25.197 - Scavenger standing sprite replaced (Claude Code)
 
 ### Summary

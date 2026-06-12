@@ -125,6 +125,20 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // 鞭は全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可=排他)。
+  const whipLvl = player.subWeaponLevels['whip'] ?? 0;
+  if (!ownsKatana && whipLvl < 3) {
+    const nextLevel = whipLvl + 1;
+    subWeaponOptions.push({
+      id: 'subweapon-whip',
+      name: nextLevel === 1 ? '鞭' : `鞭 Lv${nextLevel}`,
+      description: '通常の近接を鞭に置換。進行方向へ大きくノックバックして避難路を作る。20ヒットで次の一振りがハリケーン（敵を吸引）',
+      type: 'subWeapon',
+      subWeaponKey: 'whip',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);

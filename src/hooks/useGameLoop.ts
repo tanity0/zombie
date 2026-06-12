@@ -70,15 +70,20 @@ const DECOY_THROW_MS = 240;                       // TODO(デコイ): 仮値。�
 // 射程(Lv別)。Lv3でスマホ縦の画面横幅(~400px)にギリギリ収まる半径(~200)が目安。
 // 距離は二乗比較。射程値はデコイ projectile の `area` に載せ、描画側・迎撃側で共有する。
 const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
+const DECOY_FOOT_W = 48;   // デコイの当たり判定幅(敵のみ通行不可。プレイヤーは通す)
+const DECOY_FOOT_H = 20;   // デコイの当たり判定奥行
 // 設置型シールド: 進行方向の反対側に建てる遮蔽壁。敵の通行を止め、敵弾を消す
 // (味方弾は貫通)。設置間隔/持続は全Lv共通、レベルで耐久だけ上がる。各値は独立に
 // 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
 const SHIELD_COOLDOWN_MS = 5000;             // 設置間隔(全Lv共通)
 const SHIELD_DURATION_MS = 5000;             // 持続(全Lv共通)。duration 自動カリングで消滅
 const SHIELD_HP_BY_LEVEL = [0, 10, 30, 60];  // 耐久(Lv1/2/3)。敵接触1回・敵弾1発=各1消費
-const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から後方への設置距離
-const SHIELD_LENGTH = 104;                   // 壁の長さ(進行軸に直交=横幅)
-const SHIELD_THICKNESS = 12;                 // 壁の厚み(法線方向)
+const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から設置足元までの距離
+// 当たり判定は木と同じく「下部のみ」の小さなフットプリント(敵もプレイヤーも貫通不可)。
+// スプライトはこの足元から上へ伸びる。絵に合わせた範囲。実機で微調整(TODO)。
+const SHIELD_FOOT_W = 108;                    // 面の幅(=遮断/効果範囲の横幅)。見た目より広い(中心から両サイド均等)
+const SHIELD_FOOT_H = 16;                     // フットプリント奥行(下辺=足元、縦の厚み)
+const SHIELD_SIDE_DROP = 18;                  // 左右向き時、当たり/効果範囲(と絵)を下へずらす量
 const SHIELD_HIT_INTERVAL_MS = 400;          // 同一敵が連続で耐久を削る最短間隔
 const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ弾く強さ(store側で≤3にクランプ)
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
@@ -732,13 +737,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 法線を主軸へスナップ(4方向)。表裏と当たり判定を素直にするため。
           if (Math.abs(nx) >= Math.abs(ny)) { nx = Math.sign(nx) || 1; ny = 0; }
           else { nx = 0; ny = Math.sign(ny) || 1; }
-          const horizontal = nx !== 0; // 法線が水平 → 縦長の壁
-          const w = horizontal ? SHIELD_THICKNESS : SHIELD_LENGTH;
-          const h = horizontal ? SHIELD_LENGTH : SHIELD_THICKNESS;
           const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
           const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
-          const sx = pcx + nx * SHIELD_PLACE_DISTANCE;
-          const sy = pcy + ny * SHIELD_PLACE_DISTANCE;
+          // 足元(下辺中央)。スプライトはここから上へ伸び、当たり判定は下部のみ。
+          const footX = pcx + nx * SHIELD_PLACE_DISTANCE;
+          const sideways = nx !== 0;
+          // 左右向きは当たり/効果範囲(と絵)を少し下へずらす。
+          const footY = pcy + ny * SHIELD_PLACE_DISTANCE + (sideways ? SHIELD_SIDE_DROP : 0);
+          // 面(=遮断の広い面)は法線に直交させる。左右向き(法線が水平)なら面は縦(Y)、
+          // 上下向きなら面は横(X)。奥行(SHIELD_FOOT_H)は常に法線方向の薄い側。
+          const shieldW = sideways ? SHIELD_FOOT_H : SHIELD_FOOT_W;
+          const shieldH = sideways ? SHIELD_FOOT_W : SHIELD_FOOT_H;
           const nowMs = Date.now();
           // 同時設置は1個: 既存のシールドがあれば消す(デコイと同じ流儀)。
           for (const s of useGameStore.getState().projectiles.filter(p => p.weaponType === 'shield')) {
@@ -749,13 +758,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           addProjectile({
             id: `proj-shield-${nowMs}`,
-            x: sx - w / 2,
-            y: sy - h / 2,
-            width: w,
-            height: h,
+            x: footX - shieldW / 2,
+            y: footY - shieldH,
+            width: shieldW,
+            height: shieldH,
             speed: 0,
             damage: 0,
-            direction: { x: nx, y: ny }, // 外向き法線(表の向き)
+            direction: { x: nx, y: ny }, // 外向き法線(=防ぐ向き、スプライト選択に使用)
             weaponType: 'shield',
             weaponKey: 'sub-shield',
             duration: SHIELD_DURATION_MS,
@@ -767,7 +776,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             shieldHp: SHIELD_HP_BY_LEVEL[level],
             shieldMaxHp: SHIELD_HP_BY_LEVEL[level],
           });
-          spawnRing(sx, sy, 4, Math.max(w, h) * 0.7, 'rgba(203,213,225,0.6)', 2, 240);
+          // ガチャンッ!: 着地ダスト + 金属音(構えた感)。スプライト側で着地スラム。
+          spawnRing(footX, footY, 6, 64, 'rgba(203,213,225,0.7)', 3, 260);
+          playSfx('shield-deploy');
           setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
         }
 
@@ -818,9 +829,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   toY: by,
                   color: 'rgba(125,211,252,0.95)',
                   createdAt: Date.now(),
-                  duration: 140,
+                  duration: 320, // 見やすく延長(旧140msは短すぎた)
                 });
                 removeProjectile(nearest.id); // 敵弾を消すだけ(爆発・範囲なし)。
+                playSfx('decoy-zap');         // 迎撃音(間引きあり)
               }
             }
           }
@@ -828,7 +840,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // Update enemies
         updateEnemies(deltaTime);
-        
+
+        // デコイ(着地後)は敵のみ通行不可。プレイヤーは通す。reaper は貫通。
+        {
+          const dnow = Date.now();
+          const decoyBlocks = useGameStore.getState().projectiles
+            .filter(p => p.weaponType === 'decoy' && dnow >= (p.decoyLandAt ?? 0))
+            .map(d => ({
+              x: d.x + d.width / 2 - DECOY_FOOT_W / 2,
+              y: d.y + d.height / 2 - DECOY_FOOT_H / 2,
+              width: DECOY_FOOT_W,
+              height: DECOY_FOOT_H,
+            }));
+          if (decoyBlocks.length > 0) {
+            const est = useGameStore.getState();
+            let dmoved = false;
+            const ne = est.enemies.map(enemy => {
+              if (enemy.type === 'reaper') return enemy;
+              const r = resolveAabb({ x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height }, decoyBlocks);
+              if (r.x === enemy.x && r.y === enemy.y) return enemy;
+              dmoved = true;
+              return { ...enemy, x: r.x, y: r.y };
+            });
+            if (dmoved) useGameStore.setState({ enemies: ne });
+          }
+        }
+
+        // 鞭ハリケーン: 発動中は毎フレーム(内部でスロットル)敵を鞭先端の根元へ吸引。
+        useGameStore.getState().tickHurricane();
+
         // Update projectiles
         updateProjectiles(deltaTime);
 

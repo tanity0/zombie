@@ -49,6 +49,8 @@ export type SfxKey =
   | 'boss-warning'
   | 'melee-finish'
   | 'player-damage'
+  | 'shield-deploy'
+  | 'decoy-zap'
   | 'bomb'
   | 'eat'
   | 'zombie-1'
@@ -133,6 +135,21 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/player-damage.mp3`,
     volume: 0.85,
     minIntervalMs: 140,
+  },
+  // 設置型シールド展開の「ガチャンッ!」。暫定で counter.mp3 を流用(金属音)。
+  // 専用のクランク音を public/audio/sfx に置いたら src を差し替える。
+  'shield-deploy': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
+    volume: 0.98,
+    playbackRate: 0.82,   // 少し太く: 低めピッチで「ガチャン」を重くする(ファイル差し替え不要)
+    minIntervalMs: 120,
+  },
+  // デコイ迎撃のレーザー音。counter.mp3 を高ピッチ・小音量で流用(短い「ピッ」)。
+  'decoy-zap': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
+    volume: 0.45,
+    playbackRate: 1.6,
+    minIntervalMs: 110,
   },
   bomb: {
     src: `${import.meta.env.BASE_URL}audio/sfx/bomb.mp3`,

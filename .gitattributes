@@ -1,0 +1,18 @@
+# Normalize all text files to LF in the repository to keep Mac(LF)/Windows
+# consistent and avoid whole-repo CRLF churn from core.autocrlf on Windows.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.bundle binary

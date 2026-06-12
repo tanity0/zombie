@@ -230,6 +230,11 @@ const TORCH_REFLECTION_W = 92;
 const TORCH_REFLECTION_H = 24;
 const STRONG_GLOW_RADIUS = 44;
 const EFFECT_VIEWPORT_MARGIN = 180;
+// 設置型シールド: スプライト表示と「ガチャン」着地スラムのパラメータ(実機調整TODO)。
+const SHIELD_DISPLAY_H = 92;     // 画面上の盾の高さ(px)。横幅はテクスチャ比で従属。
+const SHIELD_DEPLOY_MS = 200;    // 着地スラム演出の時間
+const SHIELD_DEPLOY_DROP = 16;   // 落下開始オフセット(px、上から構える)
+const DECOY_DISPLAY_H = 56;      // 設置型デコイ装置の画面上の高さ(px)
 const TORCH_VIEWPORT_MARGIN = 170;
 const TORCH_FAR_FADE_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
@@ -360,6 +365,10 @@ export class PixiScene {
 
   private pickups = new Map<string, PickupView>();
   private projectiles = new Map<string, Graphics>();
+  // 設置型シールドは actorLayer に置いて足元Yでy-sort(上部はキャラ被り)。
+  private shieldViews = new Map<string, { container: Container; sprite: Sprite }>();
+  // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
+  private decoyViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   private effects = new Map<string, EffectView>();
 
   private shadowGfx = new Graphics();
@@ -849,6 +858,9 @@ export class PixiScene {
       case 'trail':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
+      case 'whip':
+        return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
+          this.isPointNearViewport(e.toX, e.toY, camera);
       case 'dogFetch':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.targetX, e.targetY, camera) ||
@@ -941,6 +953,8 @@ export class PixiScene {
     this.syncShadows(s.player, s.enemies);
     this.syncStageLightShaftDrift(s.player, now);
     this.syncProjectiles(s.projectiles, now);
+    this.syncShields(s.projectiles, now);
+    this.syncDecoys(s.projectiles, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
@@ -1931,6 +1945,8 @@ export class PixiScene {
     const seen = new Set<string>();
     for (const p of projectiles) {
       if (p.createdAt > now) continue; // scheduled / inactive
+      if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
+      if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
       seen.add(p.id);
       let g = this.projectiles.get(p.id);
       if (!g) {
@@ -1945,6 +1961,142 @@ export class PixiScene {
         g.destroy();
         this.projectiles.delete(id);
       }
+    }
+  }
+
+  // 設置型デコイは「射程サークル(地面)+ 装置スプライト」を中心アンカーで描画。
+  private syncDecoys(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.weaponType !== 'decoy') continue;
+      if (p.createdAt > now) continue;
+      seen.add(p.id);
+      let v = this.decoyViews.get(p.id);
+      if (!v) {
+        const container = new Container();
+        const gfx = new Graphics();   // 射程サークル(地面)
+        const sprite = new Sprite();  // 装置本体
+        sprite.anchor.set(0.5, 0.9);  // 接地点が装置の下寄り
+        container.addChild(gfx, sprite);
+        this.L.frontObjectLayer.addChild(container);
+        v = { container, gfx, sprite };
+        this.decoyViews.set(p.id, v);
+      }
+      this.drawDecoy(v, p);
+    }
+    for (const [id, v] of this.decoyViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.decoyViews.delete(id);
+      }
+    }
+  }
+
+  private drawDecoy(v: { container: Container; gfx: Graphics; sprite: Sprite }, p: Projectile) {
+    v.container.position.set(p.x + p.width / 2, p.y + p.height / 2);
+    // 射程サークル(area=射程半径)。黒フチ+シアン本線の単一ストローク(軽量)。
+    const g = v.gfx;
+    g.clear();
+    const range = p.area ?? 0;
+    if (range > 0) {
+      const pulse = 0.85 + Math.sin(Date.now() / 320) * 0.15;
+      g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
+      g.circle(0, 0, range).stroke({ color: 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 });
+    }
+    // 装置本体スプライト(向きなし・全方向)。
+    const tex = getTexture('decoy');
+    if (tex) {
+      if (v.sprite.texture !== tex) v.sprite.texture = tex;
+      const scale = tex.height > 0 ? DECOY_DISPLAY_H / tex.height : 1;
+      v.sprite.scale.set(scale);
+    }
+  }
+
+  // 設置型シールドは向き別スプライトを足元アンカーで描画。actorLayer に置いて
+  // 足元Yで y-sort するので、キャラが盾の上部に被る(当たりは下部のみ)。
+  private syncShields(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.weaponType !== 'shield') continue;
+      if (p.createdAt > now) continue;
+      seen.add(p.id);
+      let v = this.shieldViews.get(p.id);
+      if (!v) {
+        const container = new Container();
+        const sprite = new Sprite();
+        sprite.anchor.set(0.5, 1); // 下辺中央 = 足元
+        container.addChild(sprite);
+        this.L.actorLayer.addChild(container);
+        v = { container, sprite };
+        this.shieldViews.set(p.id, v);
+      }
+      this.drawShield(v, p);
+    }
+    for (const [id, v] of this.shieldViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.shieldViews.delete(id);
+      }
+    }
+  }
+
+  private drawShield(v: { container: Container; sprite: Sprite }, p: Projectile) {
+    // 外向き法線(=防ぐ向き)で4方向スプライトを選択。
+    const dir = p.direction;
+    const name = Math.abs(dir.x) >= Math.abs(dir.y)
+      ? (dir.x >= 0 ? 'shield-right' : 'shield-left')
+      : (dir.y >= 0 ? 'shield-down' : 'shield-up');
+    const tex = getTexture(name);
+    if (tex && v.sprite.texture !== tex) v.sprite.texture = tex;
+
+    // バッシュで押し出されている間は描画位置を補間(drawProjectile と同じ)。
+    let drawX = p.x;
+    let drawY = p.y;
+    if (
+      p.shoveStartAt !== undefined &&
+      p.shoveDuration !== undefined &&
+      p.shoveStartX !== undefined &&
+      p.shoveStartY !== undefined
+    ) {
+      const t = Math.max(0, Math.min(1, (Date.now() - p.shoveStartAt) / Math.max(1, p.shoveDuration)));
+      const eased = 1 - Math.pow(1 - t, 3);
+      drawX = p.shoveStartX + (p.x - p.shoveStartX) * eased;
+      drawY = p.shoveStartY + (p.y - p.shoveStartY) * eased;
+    }
+    const footX = drawX + p.width / 2;
+    const footY = drawY + p.height; // 下辺 = 足元
+    const baseScale = tex && tex.height > 0 ? SHIELD_DISPLAY_H / tex.height : 1;
+
+    // ガチャンッ!: 上から落ちて着地し、軽くスカッシュして「構えた」感。
+    const age = Date.now() - p.createdAt;
+    let drop = 0;
+    let sqx = 1;
+    let sqy = 1;
+    if (age < SHIELD_DEPLOY_MS) {
+      const t = age / SHIELD_DEPLOY_MS;
+      const e = 1 - Math.pow(1 - t, 3);             // easeOutCubic で着地
+      drop = (1 - e) * SHIELD_DEPLOY_DROP;          // 上から下りる
+      const squash = Math.sin(t * Math.PI) * 0.16;  // 着地でぐにゃっ
+      sqx = 1 + squash;
+      sqy = 1 - squash;
+    }
+    v.container.position.set(footX, footY - drop);
+    v.container.zIndex = footY;
+    v.sprite.scale.set(baseScale * sqx, baseScale * sqy);
+
+    // 寿命末で早めにフェードアウト。
+    const remaining = p.duration - age;
+    v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600));
+
+    // 耐久が減ると赤み(亀裂感)。tint のみ・常時glowなし。
+    const hp = p.shieldHp ?? 1;
+    const maxHp = p.shieldMaxHp ?? hp;
+    const worn = maxHp > 0 ? 1 - Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    if (worn > 0.01) {
+      const c = Math.round(255 - 150 * (0.6 * worn));
+      v.sprite.tint = (255 << 16) | (c << 8) | c;
+    } else {
+      v.sprite.tint = 0xffffff;
     }
   }
 
@@ -2356,6 +2508,20 @@ export class PixiScene {
         const cx = e.fromX + (e.toX - e.fromX) * t;
         const cy = e.fromY + (e.toY - e.fromY) * t;
         g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2.5, color: e.color });
+        break;
+      }
+      case 'whip': {
+        // 全長を即表示してフェード(伸びない)。当たり範囲=太い半透明の帯(丸キャップ=
+        // カプセル)+ 明るい芯 + 白い細芯で視認性を上げる。
+        g.blendMode = 'add';
+        g.alpha = 1;
+        const a = 1 - t;
+        g.moveTo(e.fromX, e.fromY).lineTo(e.toX, e.toY)
+          .stroke({ width: e.halfWidth * 2, color: e.color, alpha: 0.22 * a, cap: 'round' });
+        g.moveTo(e.fromX, e.fromY).lineTo(e.toX, e.toY)
+          .stroke({ width: 6, color: e.color, alpha: 0.9 * a, cap: 'round' });
+        g.moveTo(e.fromX, e.fromY).lineTo(e.toX, e.toY)
+          .stroke({ width: 2, color: 0xffffff, alpha: 0.85 * a, cap: 'round' });
         break;
       }
     }

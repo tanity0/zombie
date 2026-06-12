@@ -58,6 +58,13 @@ export const ensureTextures = (): Promise<void> => {
       'treasure-6',
       'weapon-merchant',
       'quest-futari',
+      // 設置型シールド: 上下左右の向き別スプライト(向き=防ぐ面)。
+      'shield-up',
+      'shield-down',
+      'shield-left',
+      'shield-right',
+      // 設置型デコイ(全方向の単体装置スプライト)。
+      'decoy',
     ];
     const [atlas, player, torch, castle, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),

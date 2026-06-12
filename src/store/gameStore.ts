@@ -166,7 +166,8 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 // 押し出し(トラップと同じ shove 機構でシームレス)、掃過した敵全部に近接×
 // SHIELD_BASH_DAMAGE_MULT と押し出し方向への強ノックバックを与える(壁は破壊せず残す)。
 const SHIELD_BASH_DAMAGE_MULT = 3;
-const SHIELD_BASH_SHOVE_DISTANCE = 72;
+const SHIELD_BASH_SHOVE_DISTANCE = 50;        // バッシュの飛び出し距離(少し短め)
+const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
 const SHIELD_BASH_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 4.8;
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
@@ -230,6 +231,33 @@ export const katanaRange = (player: Player): number =>
 export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
 export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean =>
   isKatanaMode(player) && key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
+
+// ---------------------------------------------------------------------------
+// 鞭 (whip): 通常サブウェポン。装備中はナイフ近接を鞭に置き換える(刀と排他)。
+// 敵を倒すより「押し退けて避難路を作る」武器。大ノックバック・低ダメージ。
+// 当て続けてチャージ満タン(ヒット数)で、次の一振りがハリケーン(鞭先端へ吸引)。
+// 数値は実機調整前提の仮値(TODO)。
+// ---------------------------------------------------------------------------
+export const WHIP_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3;          // 通常近接の約3倍(仕様アンカー)
+export const WHIP_DAMAGE_MULT = 0.25;                            // TODO(鞭): 低/最小ダメージ
+export const WHIP_HIT_HALF_WIDTH = 24;                           // TODO(鞭): カプセル半幅
+export const WHIP_LENGTH_BY_LEVEL = [0, 150, 180, 210] as const; // TODO(鞭): 進行方向に長く伸びる直線射程
+export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
+export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 20, 20, 20] as const; // ハリケーン必要ヒット数(仕様20)
+export const HURRICANE_RADIUS_BY_LEVEL = [0, 90, 110, 130] as const;        // TODO(鞭): 吸引半径
+export const HURRICANE_DURATION_MS_BY_LEVEL = [0, 1200, 1400, 1600] as const; // TODO(鞭): 持続
+export const HURRICANE_SUCTION_SPEED = 320;                      // TODO(鞭): 吸引速度(px/s)
+export const HURRICANE_MAX_TARGETS_PER_FRAME = 12;               // 負荷cap: 1tickで吸引する最大敵数
+export const HURRICANE_TICK_MS = 60;                             // 吸引tickのスロットル
+export const SHOP_WHIP_COST = 100;                               // TODO(鞭): 商人での鞭カード価格
+
+export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
+// 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
+export const isWhipMode = (player: Player): boolean => hasWhip(player) && !isKatanaMode(player);
+export const whipLevel = (player: Player): number =>
+  Math.max(1, Math.min(3, player.subWeaponLevels['whip'] ?? 1));
+export const whipChargeThreshold = (player: Player): number =>
+  WHIP_CHARGE_HITS_BY_LEVEL[whipLevel(player)];
 
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
@@ -373,6 +401,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'murasame': return '村雨';
     case 'decoy': return 'デコイ';
     case 'shield': return 'シールド';
+    case 'whip': return '鞭';
     default: return 'サブウェポン';
   }
 };
@@ -386,7 +415,8 @@ const grantMeleeKillRewards = (
   killed: { enemy: Enemy; finisher: boolean }[],
   player: Player,
   gun: Weapon | undefined,
-  suppressKillCallout = false
+  suppressKillCallout = false,
+  ammoChanceOverride?: number
 ) => {
   for (const { enemy, finisher } of killed) {
     const ex = enemy.x + enemy.width / 2;
@@ -404,7 +434,9 @@ const grantMeleeKillRewards = (
     // Prefer the active gun's family; if the active pointer is temporarily
     // invalid, fall back to any owned gun so the slider still governs melee.
     const baseRate = get().meleeAmmoDropPercent / 100;
-    const ammoChance = finisher ? Math.min(1, baseRate * 1.5) : baseRate;
+    const ammoChance = ammoChanceOverride !== undefined
+      ? ammoChanceOverride
+      : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
     const ownedAmmoTypes = getGuns(player)
       .map(w => w.ammoType)
       .filter((t): t is AmmoType => !!t);
@@ -516,6 +548,11 @@ interface GameState {
   timeSlowScale: number;
   // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
   shakeUntil: number;
+  // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
+  // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
+  hurricane: {
+    rootX: number; rootY: number; endsAt: number; radius: number; level: number; lastTickAt: number;
+  } | null;
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -532,6 +569,13 @@ interface GameState {
   // triggerKatanaDash starts the invulnerable dash and cuts along its path.
   performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean) => { hit: boolean; finish: boolean; killed: number };
   triggerKatanaDash: (dirX: number, dirY: number) => boolean;
+  // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
+  // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
+  // count for charge. performHurricane spawns the suction vortex at the tip;
+  // tickHurricane pulls nearby enemies toward the root each frame.
+  performWhipStrike: (targetIds: string[]) => { hit: boolean; finish: boolean; killed: number; hits: number };
+  performHurricane: (rootX: number, rootY: number) => void;
+  tickHurricane: () => void;
 
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
@@ -710,6 +754,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   timeSlowUntil: 0,
   timeSlowScale: 1,
   shakeUntil: 0,
+  hurricane: null,
 
   // Player actions
   movePlayer: (input, deltaTime) => {
@@ -780,6 +825,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       }, castleEvent);
       const newX = castleResolved.x;
       const newY = castleResolved.y;
+      // 設置型シールドはプレイヤーを止めない: 触れたら進行方向へ盾を押す(邪魔しない)。
+      // 押された盾は既存の毎フレーム処理(盾→敵 resolveAabb)で進行方向の敵を比例して押し出す。
+      const pMoveDx = newX - player.x;
+      const pMoveDy = newY - player.y;
+      let pushedProjectiles: typeof state.projectiles | null = null;
+      if (pMoveDx !== 0 || pMoveDy !== 0) {
+        const playerRect = { x: newX, y: newY, width: player.width, height: player.height };
+        for (const s of state.projectiles) {
+          if (s.weaponType !== 'shield') continue;
+          if (rectsOverlap(playerRect, { x: s.x, y: s.y, width: s.width, height: s.height })) {
+            pushedProjectiles = (pushedProjectiles ?? state.projectiles).map(pr =>
+              pr.id === s.id ? { ...pr, x: pr.x + pMoveDx, y: pr.y + pMoveDy } : pr
+            );
+          }
+        }
+      }
 
       const speedNow = Math.hypot(vx, vy);
       let direction: Direction = 'idle';
@@ -793,6 +854,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const isMoving = speedNow > moveSpeed * 0.15;
 
       return {
+        ...(pushedProjectiles ? { projectiles: pushedProjectiles } : {}),
         player: {
           ...player,
           x: newX,
@@ -910,6 +972,71 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
+    // 鞭装備中: 通常ナイフのスイープを鞭に置き換える(刀と同様、グレネード起爆/
+    // トラップ押し出し/シールドバッシュ/小物破壊は行わない)。カウンター窓は通常
+    // どおり開くので、敵弾反射(カウンター)はループ側で自動成立する=カウンター優先。
+    if (isWhipMode(player)) {
+      const lvl = whipLevel(player);
+      const ld = player.lastDirection ?? { x: 1, y: 0 };
+      const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
+      const ux = ld.x / lmag;
+      const uy = ld.y / lmag;
+      const reach = WHIP_LENGTH_BY_LEVEL[lvl];
+      const tipX = pcx + ux * reach; // 鞭先端 = ハリケーンの根元
+      const tipY = pcy + uy * reach;
+      // カウンター窓+クールダウンを通常どおり開く(反射はループ側)。
+      set(state => ({
+        player: {
+          ...state.player,
+          counterWindowEnd: now + COUNTER_WINDOW,
+          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+        }
+      }));
+      // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
+      get().spawnEffect({
+        kind: 'whip',
+        id: `fx-whip-${now}`,
+        fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
+        halfWidth: WHIP_HIT_HALF_WIDTH,
+        color: 'rgba(186,230,253,0.95)', createdAt: now, duration: 220,
+      });
+      // チャージ満タンなら、この一振りでハリケーン発動(チャージ消費)。自動発動しない。
+      if (player.whipCharged) {
+        get().performHurricane(tipX, tipY);
+        set(state => ({ player: { ...state.player, whipHitCount: 0, whipCharged: false } }));
+        return { swung: true, hit: true, finish: false, killed: 0 };
+      }
+      // 通常の鞭スイープ: 進行方向の細長いカプセルに掛かる敵を選択(刀ダッシュと同じ幾何)。
+      const targetIds: string[] = [];
+      for (const e of enemies) {
+        if (e.type === 'reaper') continue;
+        const ex = e.x + e.width / 2 - pcx;
+        const ey = e.y + e.height / 2 - pcy;
+        const along = ex * ux + ey * uy;
+        if (along < -e.width / 2 || along > reach + e.width / 2) continue;
+        const perp = Math.abs(ex * uy - ey * ux);
+        if (perp <= WHIP_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
+      }
+      const res = get().performWhipStrike(targetIds);
+      // チャージ加算(空振りは0)。閾値到達でハリケーン待機。
+      if (res.hits > 0) {
+        const threshold = whipChargeThreshold(player);
+        const nextCount = (player.whipHitCount ?? 0) + res.hits;
+        const becameCharged = !player.whipCharged && nextCount >= threshold;
+        set(state => ({
+          player: {
+            ...state.player,
+            whipHitCount: nextCount,
+            whipCharged: state.player.whipCharged || nextCount >= threshold,
+          }
+        }));
+        if (becameCharged) {
+          get().spawnRing(pcx, pcy, 8, 46, 'rgba(125,211,252,0.9)', 2, 320); // 満タン合図(専用ゲージはTODO)
+        }
+      }
+      return { swung: true, hit: res.hit, finish: res.finish, killed: res.killed };
+    }
+
     // Single sweep: every non-reaper enemy in melee range is either finished
     // (if stunned) for an instant kill, or takes light damage + knockback.
     // The counter window for reflecting bullets opens at the same time, so
@@ -965,8 +1092,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
       })
       .map(p => {
-        const dux = p.direction.x; // 外向き法線(主軸スナップ済み)
-        const duy = p.direction.y;
+        // バッシュ方向はプレイヤーの進行方向(設置時の向きではない)。停止中は設置法線にフォールバック。
+        const ld = player.lastDirection;
+        const lm = Math.hypot(ld?.x ?? 0, ld?.y ?? 0);
+        const dux = lm > 0.01 ? ld.x / lm : p.direction.x;
+        const duy = lm > 0.01 ? ld.y / lm : p.direction.y;
         const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
         const ey = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;
         // 始点〜終点の壁を覆う掃過AABB(敵の被弾判定用)。
@@ -1135,12 +1265,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             // シールドバッシュ: 壁を法線方向へシームレスに押し出し、スライド終了時に強制破壊。
             const sh = shieldShoves.find(s => s.id === p.id);
             if (sh) {
+              // 一発破壊はやめ、バッシュ1回で耐久を SHIELD_BASH_DURABILITY_COST 減らす。
+              // 0以下になったらスライド終了時に破壊。残っていれば押し出して残す。
+              const nextHp = (p.shieldHp ?? 1) - SHIELD_BASH_DURABILITY_COST;
               return {
                 ...p,
                 shoveStartX: sh.fromX, shoveStartY: sh.fromY,
                 shoveStartAt: now, shoveDuration: TRAP_MELEE_SHOVE_SLIDE_MS,
                 x: sh.x, y: sh.y,
-                shieldBreakAt: now + TRAP_MELEE_SHOVE_SLIDE_MS,
+                shieldHp: nextHp,
+                ...(nextHp <= 0 ? { shieldBreakAt: now + TRAP_MELEE_SHOVE_SLIDE_MS } : {}),
               };
             }
             return p;
@@ -1377,6 +1511,163 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
+  },
+
+  performWhipStrike: (targetIds) => {
+    const now = Date.now();
+    const { player, gameTime, enemies } = get();
+    if (targetIds.length === 0) return { hit: false, finish: false, killed: 0, hits: 0 };
+
+    const gun = getActiveGun(player);
+    const meleeWeapon = player.weapons.find(w => w.isMelee);
+    const baseDamage = (meleeWeapon?.damage ?? 6) * WHIP_DAMAGE_MULT; // 低/最小ダメージ
+    const meleeCritChance = meleeWeapon?.critChance ?? 0;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    // 鞭の線(進行方向)に直交する単位ベクトル。敵を「線のどちら側にいるか」で
+    // その側へ弾き、中央に直線の避難路を作る。
+    const ld = player.lastDirection ?? { x: 1, y: 0 };
+    const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
+    const nx = -ld.y / lmag;
+    const ny = ld.x / lmag;
+    const killed: { enemy: Enemy; finisher: boolean }[] = [];
+    let bossFinishHit = false;
+    const survivors: Enemy[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const slashAt: { x: number; y: number }[] = [];
+    let hits = 0;
+
+    for (const enemy of enemies) {
+      if (!targetIds.includes(enemy.id) || enemy.type === 'reaper') {
+        survivors.push(enemy);
+        continue;
+      }
+      hits++;
+      const ecx = enemy.x + enemy.width / 2;
+      const ecy = enemy.y + enemy.height / 2;
+      slashAt.push({ x: ecx, y: ecy });
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      if (stunned) {
+        // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除)。
+        if (isBossType(enemy.type)) {
+          bossFinishHit = true;
+          const dmg = baseDamage * BOSS_MELEE_STUN_MULT;
+          damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+          const newHealth = Math.max(0, enemy.health - dmg);
+          if (newHealth <= 0) killed.push({ enemy, finisher: false });
+          else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          continue;
+        }
+        killed.push({ enemy, finisher: true });
+        continue;
+      }
+      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
+      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus);
+      const dmg = baseDamage * (crit ? CRIT_DAMAGE_MULT : 1);
+      damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
+      const newHealth = Math.max(0, enemy.health - dmg);
+      if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
+      // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
+      const side = ((ecx - pcx) * nx + (ecy - pcy) * ny) >= 0 ? 1 : -1;
+      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
+        survivors.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
+          knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
+          knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        });
+      } else {
+        survivors.push({ ...enemy, health: newHealth, lastHit: now, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100 });
+      }
+    }
+
+    const finisherHit = killed.some(k => k.finisher);
+    const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
+    const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    set(state => ({
+      enemies: survivors,
+      gameStats: {
+        ...state.gameStats,
+        enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((s, n) => s + n.value, 0),
+        maxCombo: comboFinishCount > 0
+          ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+          : state.gameStats.maxCombo,
+      },
+      gameWon: state.gameWon || bossKilled,
+      meleeFinishComboCount: comboFinishCount > 0
+        ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
+        : state.meleeFinishComboCount,
+      meleeFinishComboUntil: comboFinishCount > 0 ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS : state.meleeFinishComboUntil,
+      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
+    }));
+
+    for (const s of slashAt) get().spawnSlash(s.x, s.y, 'rgba(186,230,253,0.9)', 1);
+    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    // 弾薬ドロップは鞭固定20%(弾切れ救済)。
+    grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
+    if (finisherHit || bossFinishHit) get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
+
+    return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
+  },
+
+  performHurricane: (rootX, rootY) => {
+    const now = Date.now();
+    const lvl = whipLevel(get().player);
+    set({
+      hurricane: {
+        rootX, rootY,
+        endsAt: now + HURRICANE_DURATION_MS_BY_LEVEL[lvl],
+        radius: HURRICANE_RADIUS_BY_LEVEL[lvl],
+        level: lvl,
+        lastTickAt: 0,
+      }
+    });
+    // 渦の表現(鞭先端の根元が吸引中心)。軽量リング2枚。
+    get().spawnRing(rootX, rootY, HURRICANE_RADIUS_BY_LEVEL[lvl], 12, 'rgba(125,211,252,0.85)', 3, 360);
+    get().spawnRing(rootX, rootY, HURRICANE_RADIUS_BY_LEVEL[lvl] * 0.6, 8, 'rgba(186,230,253,0.7)', 2, 300);
+    get().tickHurricane(); // 初回吸引を即実行(反応を出す)
+  },
+
+  tickHurricane: () => {
+    const now = Date.now();
+    const state = get();
+    const h = state.hurricane;
+    if (!h) return;
+    if (now >= h.endsAt) { set({ hurricane: null }); return; }
+    if (now - h.lastTickAt < HURRICANE_TICK_MS) return;
+    const r2 = h.radius * h.radius;
+    // 半径内の敵を距離順に最大 HURRICANE_MAX_TARGETS_PER_FRAME 体まで根元へ吸引(負荷cap)。
+    const inRange = state.enemies
+      .filter(e => e.type !== 'reaper')
+      .map(e => {
+        const ex = e.x + e.width / 2;
+        const ey = e.y + e.height / 2;
+        return { id: e.id, d2: (ex - h.rootX) * (ex - h.rootX) + (ey - h.rootY) * (ey - h.rootY) };
+      })
+      .filter(o => o.d2 <= r2)
+      .sort((a, b) => a.d2 - b.d2)
+      .slice(0, HURRICANE_MAX_TARGETS_PER_FRAME);
+    if (inRange.length === 0) { set({ hurricane: { ...h, lastTickAt: now } }); return; }
+    const pulled = new Set(inRange.map(o => o.id));
+    const enemies = state.enemies.map(enemy => {
+      if (!pulled.has(enemy.id)) return enemy;
+      const ex = enemy.x + enemy.width / 2;
+      const ey = enemy.y + enemy.height / 2;
+      const dx = h.rootX - ex; // 根元向き(プレイヤーではなく鞭先端へ)
+      const dy = h.rootY - ey;
+      const dist = Math.max(0.001, Math.hypot(dx, dy));
+      return {
+        ...enemy,
+        knockbackVx: (dx / dist) * HURRICANE_SUCTION_SPEED,
+        knockbackVy: (dy / dist) * HURRICANE_SUCTION_SPEED,
+        knockbackUntil: now + HURRICANE_TICK_MS * 2, // 次tickまで吸引を維持
+      };
+    });
+    set({ enemies, hurricane: { ...h, lastTickAt: now } });
   },
 
   triggerKatanaDash: (dirX, dirY) => {
@@ -1816,7 +2107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
       return {
@@ -2949,7 +3240,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         hitstopUntil: 0,
         timeSlowUntil: 0,
         timeSlowScale: 1,
-        shakeUntil: 0
+        shakeUntil: 0,
+        hurricane: null
       };
     });
   },
