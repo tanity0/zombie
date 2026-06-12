@@ -66,17 +66,19 @@ export const ensureTextures = (): Promise<void> => {
       // 設置型デコイ(全方向の単体装置スプライト)。
       'decoy',
     ];
-    const [atlas, player, torch, castle, ...playerWalk] = await Promise.all([
+    const [atlas, player, torch, castle, magicCircle, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
       Assets.load(spritePath('castle')),
+      Assets.load(spritePath('magic-circle')),
       ...playerWalkNames.map(name => Assets.load(spritePath(name))),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
     torch.source.scaleMode = 'nearest';
     castle.source.scaleMode = 'nearest';
+    // 魔法陣はソフトな発光なので linear(既定)のまま — nearest にしない。
     playerWalk.forEach((tex) => {
       tex.source.scaleMode = 'nearest';
     });
@@ -93,6 +95,7 @@ export const ensureTextures = (): Promise<void> => {
     });
     textures.set('torch', torch);
     textures.set('castle', castle);
+    textures.set('magic-circle', magicCircle);
     ready = true;
   })();
   return loading;

@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.208 - 魔法陣スプライト差し替え(手続きリング→足元の常設地面スプライト) (Claude Code)
+
+### Summary
+- **錬金術の魔法陣を実スプライト化**(task#1)。社長提供の素材(Drive `188FNWrSMGGtipDybZYYDNJaZZnunEtaE/IMG_5736.PNG`,
+  1024² の透視楕円の魔法陣)を採用。背景の不透明インディゴ `(67,8,121)` をキーアウトし、
+  **発光強度=alpha** の `cyan(#38bdf8)→白ホット`グローに変換、512²へ縮小して `public/sprites/magic-circle.png`(70KB)を生成。
+  透明部もシアンで埋め縮小時の黒縁を回避。
+- **手続き的リング(spawnRing 280ms throttle)を廃止**。代わりに Pixi の `groundLayer` に魔法陣スプライトを**常設**し、
+  `syncAlchemyCircle` がチャネル中のみ表示・`alpha=溜め進捗(透明→完成で不透明)`で連続フェード。位置は足元(`playerFootBox`)、
+  加算合成、完成間際に微鼓動。完成の「光で召喚」は既存 `summonAlchemy` のフラッシュ/バーストが担当。
+- 描画専用で当たり判定/召喚ロジックには不干渉(`PixiScene` は store の純粋リーダー)。テクスチャは非同期ロード後に一度だけ割当。
+- 変更: `pixiTextures.ts`(`magic-circle` を linear で追加ロード)、`pixiScene.ts`(スプライト+`syncAlchemyCircle`)、
+  `useGameLoop.ts`(リング emit と `alchemyCircleRef` 削除)。
+- 負荷スコア: **1/10**。常設Sprite 1枚をチャネル中のみ位置/alpha更新、非チャネル時は早期return。
+  512²(GPU約1MB)を1回ロード。旧 spawnRing の毎280msエフェクト生成より churn は減少。
+- 注: 効果は **PixiJS のみ**。レガシー Canvas2D フォールバック(`?renderer=canvas`)ではチャネル演出は出ない(方針通り未保守)。
+- 検証: `npm run lint` クリーン / `npm run build` 成功 / `dist/sprites/magic-circle.png` 出力確認。
+
+### Files changed
+- `public/sprites/magic-circle.png`(新規), `src/pixi/pixiTextures.ts`, `src/pixi/pixiScene.ts`,
+  `src/hooks/useGameLoop.ts`, `package.json`
+
+### Next handoff notes
+- 実機で魔法陣のサイズ(`ALCHEMY_CIRCLE_SIZE=168`)・フェード曲線(`0.08+0.92*progress`)・完成鼓動を要確認。要調整なら定数のみで可。
+- 素材は今後も Drive フォルダ `188FNWrSMGGtipDybZYYDNJaZZnunEtaE` に追加される運用。
+
 ## 2026-06-12 - v0.25.207 - Sprite PNG optimization + alchemy HP tuning (Claude Code)
 
 ### Summary

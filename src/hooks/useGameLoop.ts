@@ -141,8 +141,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   // Katana auto-slash timer (gameTime-based so it pauses with the game).
   const lastKatanaSlashRef = useRef(0);
-  // 錬金術: 魔法陣リングの最後のemit時刻(gameTime ms)。throttle 用。
-  const alchemyCircleRef = useRef(0);
   // 錬金術: 敵→召喚の接触ダメージ debounce。`${enemyId}:${summonId}` → 次回許可時刻(Date.now ms)。
   const alchemyHitRef = useRef<Map<string, number>>(new Map());
   // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
@@ -377,20 +375,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : newGameTime;
           if ((alcPlayer.alchemyChannelStartedAt ?? 0) === 0) {
             useGameStore.getState().updateAlchemyChannel(started);
-            alchemyCircleRef.current = 0;
           }
           if (newGameTime - started >= ALCHEMY_CHANNEL_MS) {
             useGameStore.getState().summonAlchemy();
             useGameStore.getState().updateAlchemyChannel(0);
-          } else if (newGameTime - alchemyCircleRef.current >= 280) {
-            // 魔法陣演出: 進捗で濃くなるシアンの地面リング(軽量)。
-            alchemyCircleRef.current = newGameTime;
-            const progress = (newGameTime - started) / ALCHEMY_CHANNEL_MS;
-            const a = (0.25 + 0.6 * progress).toFixed(2);
-            const pcx = alcPlayer.x + alcPlayer.width / 2;
-            const pcy = alcPlayer.y + alcPlayer.height / 2;
-            useGameStore.getState().spawnRing(pcx, pcy, 40, 44, `rgba(125,211,252,${a})`, 2, 340);
           }
+          // 魔法陣演出は Pixi 側(syncAlchemyCircle)が足元の常設地面スプライトを
+          // alpha=溜め進捗で連続フェード描画する(手続き的リングは廃止)。
           // TODO(錬金術): 被弾でチャネル中断するか(現状は中断しない)。
         } else if ((alcPlayer.alchemyChannelStartedAt ?? 0) !== 0) {
           useGameStore.getState().updateAlchemyChannel(0); // 移動/ブロック/レアで中断

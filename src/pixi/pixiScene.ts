@@ -20,7 +20,7 @@ import type {
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
-import { ALCHEMY_SUMMON_TINT } from '../utils/summonUtils';
+import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
@@ -375,6 +375,10 @@ export class PixiScene {
   private effects = new Map<string, EffectView>();
 
   private shadowGfx = new Graphics();
+  // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
+  // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
+  private alchemyCircle = new Sprite();
+  private alchemyCircleTextured = false;
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -509,9 +513,17 @@ export class PixiScene {
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * 2;
     this.groundReflectionGfx.blendMode = 'add';
+    // 魔法陣スプライト: 加算発光・中心アンカー・既定は非表示(alpha 0)。地面の
+    // 反射/光の上、足元シャドウの下に置き、キャラ絵を塗り潰さない。
+    this.alchemyCircle.anchor.set(0.5);
+    this.alchemyCircle.blendMode = 'add';
+    this.alchemyCircle.alpha = 0;
+    this.alchemyCircle.visible = false;
+    // tint は付けない: テクスチャに焼いたシアン→白ホットの階調をそのまま活かす。
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
       this.playerLight,
+      this.alchemyCircle,
       this.shadowGfx,
     );
 
@@ -986,7 +998,40 @@ export class PixiScene {
     this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2);
 
+    this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncFireflies(s.camera, now);
+  }
+
+  // ---- 錬金術の魔法陣(足元の常設地面スプライト) --------------------------
+  // チャネル中(player.alchemyChannelStartedAt>0)だけ表示し、alpha=溜め進捗で
+  // 連続フェード(透明→完成で不透明)。完成の「光で召喚」は summonAlchemy 側の
+  // フラッシュ/バーストが担当する。視覚専用: 当たり判定/召喚ロジックには不干渉。
+  private static readonly ALCHEMY_CIRCLE_SIZE = 168; // 足元の魔法陣の直径(px, 視覚のみ)
+  private syncAlchemyCircle(player: Player, gameTime: number, now: number) {
+    const startedAt = player.alchemyChannelStartedAt ?? 0;
+    if (startedAt <= 0) {
+      if (this.alchemyCircle.visible) {
+        this.alchemyCircle.visible = false;
+        this.alchemyCircle.alpha = 0;
+      }
+      return;
+    }
+    // テクスチャは非同期ロード。準備できた最初のフレームで一度だけ割り当て。
+    if (!this.alchemyCircleTextured) {
+      const tex = getTexture('magic-circle');
+      if (!tex) return;
+      this.alchemyCircle.texture = tex;
+      this.alchemyCircle.width = this.alchemyCircle.height = PixiScene.ALCHEMY_CIRCLE_SIZE;
+      this.alchemyCircleTextured = true;
+    }
+    const progress = Math.max(0, Math.min(1, (gameTime - startedAt) / ALCHEMY_CHANNEL_MS));
+    const foot = playerFootBox(player);
+    this.alchemyCircle.visible = true;
+    this.alchemyCircle.position.set(foot.footX, foot.footY);
+    // 透明→不透明。完成間際にわずかな鼓動を足して「溜まり切る」高揚を出す。
+    const base = 0.08 + 0.92 * progress;
+    const pulse = progress > 0.85 ? 1 + 0.08 * Math.sin(now / 70) : 1;
+    this.alchemyCircle.alpha = Math.min(1, base * pulse);
   }
 
   private syncEventBloom(effects: VisualEffect[], now: number) {
