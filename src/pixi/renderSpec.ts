@@ -6,7 +6,7 @@
 // how big to draw a sprite and where its FEET sit, which is also the value used
 // for Y-sorting. Swap real sprites in later by changing only these numbers.
 
-import type { Enemy, Player } from '../types/game';
+import type { Enemy, Player, Summon } from '../types/game';
 
 // The sprites read as chunky pixel art by drawing larger than their gameplay
 // hitboxes. Feet stay anchored to the hitbox bottom; the extra height rises
@@ -53,6 +53,17 @@ export const enemyFootBox = (e: Enemy): FootBox => {
     footY: e.y + e.height,
     boxW: e.width * scale,
     boxH: e.height * scale,
+  };
+};
+
+// 召喚ユニットは流用元の敵タイプと同じ視覚スケールで描く(敵と大きさを揃える)。
+export const summonFootBox = (s: Summon): FootBox => {
+  const scale = ENEMY_VISUAL_SCALE[s.reusedType] ?? 2;
+  return {
+    footX: s.x + s.width / 2,
+    footY: s.y + s.height,
+    boxW: s.width * scale,
+    boxH: s.height * scale,
   };
 };
 

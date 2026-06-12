@@ -1713,6 +1713,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ summons: [rare] });
       get().spawnRing(sx, sy, 16, 120, 'rgba(125,211,252,0.85)', 3, 360);
       get().spawnGlow(sx, sy, 72, 'rgba(125,211,252,', 420);
+      // 召喚完了演出(レアは強め): 暗転 + スロー + パーティクル(死神=黒も混ぜる)。
+      get().triggerTimeSlow(0.3, 480);
+      get().spawnFlash('rgba(0,0,0,0.5)', 260);
+      get().spawnBurst(sx, sy, '#38bdf8', 34);
+      get().spawnBurst(sx, sy, '#0a0a0a', 16);
       return;
     }
     // 通常: 最大3体、超えたら最古をFIFOで入れ替え。
@@ -1723,6 +1728,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const unit = buildSummon(lvl, 'normal', sx, sy);
     set({ summons: [...kept, unit] });
     get().spawnGlow(sx, sy, 54, 'rgba(125,211,252,', 360);
+    // 召喚完了演出: 暗転 + スロー + シアンのパーティクル。
+    get().triggerTimeSlow(0.4, 320);
+    get().spawnFlash('rgba(0,0,0,0.4)', 200);
+    get().spawnBurst(sx, sy, '#38bdf8', 22);
+    get().spawnBurst(sx, sy, '#bae6fd', 10);
   },
 
   updateSummons: (deltaTime) => {

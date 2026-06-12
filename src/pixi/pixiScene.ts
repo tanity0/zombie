@@ -27,7 +27,7 @@ import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
-import { enemyFootBox, playerFootBox } from './renderSpec';
+import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
@@ -1698,16 +1698,16 @@ export class PixiScene {
   }
 
   private drawSummon(view: ActorView, s: Summon, now: number) {
-    const footX = s.x + s.width / 2;
-    const footY = s.y + s.height;
+    // 敵と同じ視覚スケールの足元ボックスで描く(大きさを揃える)。
+    const fb = summonFootBox(s);
     const tex = getTexture(s.reusedType);
     view.light.visible = false;
-    view.sprite.position.set(Math.round(footX), Math.round(footY));
-    view.container.zIndex = footY;
+    view.sprite.position.set(Math.round(fb.footX), Math.round(fb.footY));
+    view.container.zIndex = fb.footY;
     view.container.alpha = 1;
     if (tex) {
       view.sprite.texture = tex;
-      const sc = containScale(s.width, s.height, tex.width, tex.height) * this.depthScaleEnemy(footY);
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
       view.sprite.scale.set(sc, sc);
       view.sprite.tint = ALCHEMY_SUMMON_TINT; // 味方識別のシアン
       view.sprite.visible = true;

@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.206 - Alchemy polish: summon size matches enemy + completion juice (Claude Code)
+
+### Summary
+- 召喚ユニットの描画サイズを**敵と一致**。`renderSpec.summonFootBox`(流用元タイプの `ENEMY_VISUAL_SCALE` を使用)を追加し、
+  `drawSummon` をそれに差し替え(従来は当たり判定サイズで描き小さく見えていた)。
+- **召喚完了演出**を追加(`summonAlchemy`): 暗転(`spawnFlash` 黒)+ スロー(`triggerTimeSlow`)+ パーティクル(`spawnBurst`)。
+  レアは強め(スロー長め・パーティクル多め・死神の黒も混ぜる)。
+- 検証: `tsc --noEmit` パス。
+
 ## 2026-06-13 - v0.25.205 - Terminology: ストラップ/STRAP → スクラップ/SCRAP (Claude Code)
 
 ### Summary
