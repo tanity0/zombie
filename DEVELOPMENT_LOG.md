@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.211 - 鞭のx軸(直交)判定を5倍に (Claude Code)
+
+### Summary
+- **鞭の当たり判定を横方向に拡大**。鞭は振り方向(=y軸)へ伸びる直線カプセル。その**直交(x軸)半幅**
+  `WHIP_HIT_HALF_WIDTH` を `24` → **`120`(5倍)** に。`perp <= WHIP_HIT_HALF_WIDTH + e.width/2` の判定が広がり、
+  細い線から幅広いなぎ払いに。視覚帯(`whip` エフェクトの `halfWidth*2` ストローク)も同定数を参照するため一致して広がる。
+- 負荷スコア: **1/10**(定数のみ。判定ロジック・計算量は不変)。
+- 検証: `npm run lint` クリーン / `npm run build` 成功。
+
+### Files changed
+- `src/store/gameStore.ts`, `package.json`
+
 ## 2026-06-12 - v0.25.210 - 鞭ハリケーン実スプライト + 死神近接AoE + 召喚耐久2倍 (Claude Code)
 
 ### Summary

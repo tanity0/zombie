@@ -247,7 +247,7 @@ export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boo
 // ---------------------------------------------------------------------------
 export const WHIP_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3;          // 通常近接の約3倍(仕様アンカー)
 export const WHIP_DAMAGE_MULT = 0.25;                            // TODO(鞭): 低/最小ダメージ
-export const WHIP_HIT_HALF_WIDTH = 24;                           // TODO(鞭): カプセル半幅
+export const WHIP_HIT_HALF_WIDTH = 120;                          // カプセル半幅(=振り方向に直交するx軸判定。従来24の5倍)
 export const WHIP_LENGTH_BY_LEVEL = [0, 150, 180, 210] as const; // TODO(鞭): 進行方向に長く伸びる直線射程
 export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
 export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 20, 20, 20] as const; // ハリケーン必要ヒット数(仕様20)
