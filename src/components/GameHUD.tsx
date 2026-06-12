@@ -304,18 +304,20 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
                 const murasameEquipped = player.subWeapons.includes('murasame');
                 const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
                 const katanaName = murasameEquipped ? '村雨' : '刀';
+                // 鞭を取得するとナイフ枠を鞭が占有(刀装備が優先)。ナイフ表示は消える。
+                const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
                 return (
                   <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
                     <div
                       className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base"
-                      title={katanaEquipped ? katanaName : melee.name}
+                      title={katanaEquipped ? katanaName : whipEquipped ? '鞭' : melee.name}
                     >
                       {katanaEquipped
                         ? <KatanaIcon size={26} variant={murasameEquipped ? 'murasame' : 'katana'} />
-                        : '🔪'}
+                        : whipEquipped ? '➰' : '🔪'}
                     </div>
                     <div className="text-[10px] text-white/60">
-                      {katanaEquipped ? katanaName : getWeaponShortName(melee.type)}
+                      {katanaEquipped ? katanaName : whipEquipped ? '鞭' : getWeaponShortName(melee.type)}
                     </div>
                   </div>
                 );

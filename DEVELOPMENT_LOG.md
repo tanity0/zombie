@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.214 - 鞭がナイフ枠を占有(HUD表示) (Claude Code)
+
+### Summary
+- **鞭を取得するとナイフ枠を鞭が占有**(ユーザー意図確認済み: 「取得で鞭がナイフ枠を占有」)。鞭は元々 `isWhipMode` で
+  ナイフ近接スイープを機能的に置換済みだったが、HUDの近接スロットは🔪/ナイフ表示のままだった。HUDを修正し、
+  鞭所持時(刀非装備)は **アイコン➰・ラベル「鞭」** を表示=ナイフ表示が消える。優先順位: 刀 > 鞭 > ナイフ。
+- データモデル(WeaponType等)は不変・HUD表示のみの変更で低リスク。負荷スコア **1/10**。
+- 検証: `npm run lint` クリーン / `npm run build` 成功。
+
+### Files changed
+- `src/components/GameHUD.tsx`, `package.json`
+
 ## 2026-06-12 - v0.25.213 - 鞭ハリケーン滞在2倍 + 鞭は必ずノックバック (Claude Code)
 
 ### Summary
