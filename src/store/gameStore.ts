@@ -252,7 +252,7 @@ export const WHIP_LENGTH_BY_LEVEL = [0, 150, 180, 210] as const; // TODO(鞭): �
 export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
 export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 20, 20, 20] as const; // ハリケーン必要ヒット数(仕様20)
 export const HURRICANE_RADIUS_BY_LEVEL = [0, 90, 110, 130] as const;        // TODO(鞭): 吸引半径
-export const HURRICANE_DURATION_MS_BY_LEVEL = [0, 1200, 1400, 1600] as const; // TODO(鞭): 持続
+export const HURRICANE_DURATION_MS_BY_LEVEL = [0, 2400, 2800, 3200] as const; // 持続(滞在時間2倍)
 export const HURRICANE_SUCTION_SPEED = 320;                      // TODO(鞭): 吸引速度(px/s)
 export const HURRICANE_MAX_TARGETS_PER_FRAME = 12;               // 負荷cap: 1tickで吸引する最大敵数
 export const HURRICANE_TICK_MS = 60;                             // 吸引tickのスロットル
@@ -1596,20 +1596,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
+      // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。
       const side = ((ecx - pcx) * nx + (ecy - pcy) * ny) >= 0 ? 1 : -1;
-      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
-        survivors.push({
-          ...enemy,
-          health: newHealth,
-          lastHit: now,
-          knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
-          knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
-          knockbackUntil: now + KNOCKBACK_DURATION,
-          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
-        });
-      } else {
-        survivors.push({ ...enemy, health: newHealth, lastHit: now, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100 });
-      }
+      survivors.push({
+        ...enemy,
+        health: newHealth,
+        lastHit: now,
+        knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
+        knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
+        knockbackUntil: now + KNOCKBACK_DURATION,
+        knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+      });
     }
 
     const finisherHit = killed.some(k => k.finisher);

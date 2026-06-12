@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.213 - 鞭ハリケーン滞在2倍 + 鞭は必ずノックバック (Claude Code)
+
+### Summary
+- **鞭ハリケーンの滞在時間を2倍**。`HURRICANE_DURATION_MS_BY_LEVEL` `[0,1200,1400,1600]` → **`[0,2400,2800,3200]`**。
+- **鞭は必ずノックバック**。従来はノックバック無敵窓(`knockbackImmuneUntil`)中の敵は弾かれなかったが、`performWhipStrike`
+  でこの窓を無視して**毎回ノックバック**するように(else分岐の「ノックバック0」を撤去)。
+- 負荷スコア: **1/10**(定数 + 分岐簡素化のみ)。検証: `lint` クリーン / `build` 成功。
+
+### Files changed
+- `src/store/gameStore.ts`, `package.json`
+
+### Next handoff notes
+- 「鞭はナイフの置き換えに変更」(task)は**意図確認待ち**。現状すでに鞭装備中はナイフ近接スイープを鞭へ置換済み
+  (`isWhipMode`)。ローダウト/取得の構造変更かどうかをユーザーに確認中。
+- 鞭 lash スプライト(IMG_5742)は依然 35KB のままで自動ファイル保存経路に乗らず未取得。300KB以上での再書き出し or 許可ホスト公開URLが必要。
+
 ## 2026-06-12 - v0.25.212 - 鞭チャージ満タンでピカッと光って通知 (Claude Code)
 
 ### Summary
