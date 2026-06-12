@@ -1818,9 +1818,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   damageSummon: (id, amount) => {
+    const now = Date.now();
     set(state => ({
       summons: state.summons
-        .map(s => (s.id === id && s.kind === 'normal' ? { ...s, health: s.health - amount, lastHit: Date.now() } : s))
+        .map(s => {
+          if (s.id !== id || s.kind !== 'normal') return s;
+          // プレイヤーと同じ被弾構造: 直近被弾から INVULN_MS は無敵(i-frame)。
+          // これで敵が何体群がっても 1 無敵窓につき被弾は 1 回に制限される
+          // (旧: 敵×召喚ペアごとの throttle で敵数ぶん多重被弾していた)。
+          if (now - s.lastHit < INVULN_MS) return s;
+          return { ...s, health: s.health - amount, lastHit: now };
+        })
         .filter(s => s.kind !== 'normal' || s.health > 0),
     }));
   },

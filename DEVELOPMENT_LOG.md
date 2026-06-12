@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.209 - 召喚の被弾をプレイヤーと同じ無敵時間構造に (Claude Code)
+
+### Summary
+- **召喚(通常個体)の被弾頻度を是正**。旧実装は「敵×召喚ペアごとに 500ms throttle」だったため、
+  敵が群がると敵数ぶん多重被弾し**高頻度で削られすぎ**ていた。
+- プレイヤーと**同じ無敵時間(i-frame)構造**へ統一: `damageSummon` 側で `now - lastHit < INVULN_MS(700ms)`
+  なら無敵として被弾を無視。これで敵が何体いても **1 無敵窓につき被弾 1 回**に制限される。
+- ループ側(`useGameLoop`)は per-pair throttle(`alchemyHitRef`)を撤去し、毎フレーム衝突を `damageSummon` に
+  渡すだけに簡素化(プレイヤーの被弾処理と同型)。同フレーム内の重複は 1 体 1 回・最大ダメージへ畳んで set 回数を抑制。
+- 負荷スコア: **1/10**(set 呼び出しはむしろ削減。判定ロジックは時間比較のみ)。
+- 検証: `npm run lint` クリーン / `npm run build` 成功。
+
+### Files changed
+- `src/store/gameStore.ts`(damageSummon に i-frame ゲート)、`src/hooks/useGameLoop.ts`(alchemyHitRef 撤去・簡素化)、`package.json`
+
+### Next handoff notes
+- 鞭(whip)の実スプライト素材を Drive `188FNWrSMGGtipDybZYYDNJaZZnunEtaE/IMG_5742.PNG`(1024² の縦長グロー帯)で受領済み。
+  用途(現状の手続き的 lash 帯の置換 等)が未確定のため未組込み。指定があれば magic-circle と同様にキーアウト→組込み可能。
+
 ## 2026-06-12 - v0.25.208 - 魔法陣スプライト差し替え(手続きリング→足元の常設地面スプライト) (Claude Code)
 
 ### Summary

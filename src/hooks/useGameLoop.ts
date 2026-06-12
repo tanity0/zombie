@@ -141,8 +141,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   // Katana auto-slash timer (gameTime-based so it pauses with the game).
   const lastKatanaSlashRef = useRef(0);
-  // 錬金術: 敵→召喚の接触ダメージ debounce。`${enemyId}:${summonId}` → 次回許可時刻(Date.now ms)。
-  const alchemyHitRef = useRef<Map<string, number>>(new Map());
   // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
   const decoyPulseRef = useRef<Map<string, number>>(new Map());
   // Shield contact debounce: next-allowed durability-hit time (gameTime ms) per
@@ -1556,20 +1554,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         });
 
-        // 錬金術: 敵 ↔ 召喚(通常個体)の接触ダメージ(pair throttle 500ms)。召喚は物理ブロックしない。
+        // 錬金術: 敵 ↔ 召喚(通常個体)の接触ダメージ。召喚は物理ブロックしない。
+        // 被弾頻度の制限は damageSummon 側の無敵時間(プレイヤーと同じ INVULN_MS
+        // 構造)に集約。同フレーム内の重複は 1 体 1 回(最大ダメージ)へ畳む。
         const liveSummonsForHit = useGameStore.getState().summons;
-        if (liveSummonsForHit.length === 0) {
-          if (alchemyHitRef.current.size > 0) alchemyHitRef.current.clear();
-        } else {
+        if (liveSummonsForHit.length > 0) {
           const summonHits = checkEnemySummonCollisions(enemies, liveSummonsForHit);
           if (summonHits.length > 0) {
-            const hnow = Date.now();
+            const perSummon = new Map<string, number>();
             for (const h of summonHits) {
-              const key = `${h.enemyId}:${h.summonId}`;
-              if (hnow >= (alchemyHitRef.current.get(key) ?? 0)) {
-                alchemyHitRef.current.set(key, hnow + 500);
-                useGameStore.getState().damageSummon(h.summonId, h.damage);
-              }
+              perSummon.set(h.summonId, Math.max(perSummon.get(h.summonId) ?? 0, h.damage));
+            }
+            for (const [summonId, dmg] of perSummon) {
+              useGameStore.getState().damageSummon(summonId, dmg);
             }
           }
         }
