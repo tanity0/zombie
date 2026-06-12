@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.212 - 鞭チャージ満タンでピカッと光って通知 (Claude Code)
+
+### Summary
+- **鞭のハリケーンチャージ満タンを「ピカッ」と光って通知**。`becameCharged`(ヒット数が閾値到達=次の一振りで
+  ハリケーン)の瞬間に、従来の控えめなリング1枚を強化: 画面の一瞬の明滅(`spawnFlash` 150ms)+ 白い閃光リング +
+  シアンの輪 + 光の粒バースト。イベント時1回のみ・有界。
+- スロー演出は付けない(CLAUDE.md: サブウェポンのスロー禁止に準拠)。負荷スコア **1/10**(チャージ達成時の単発エフェクト)。
+- 検証: `npm run lint` クリーン / `npm run build` 成功。
+
+### Files changed
+- `src/store/gameStore.ts`, `package.json`
+
 ## 2026-06-12 - v0.25.211 - 鞭のx軸(直交)判定を5倍に (Claude Code)
 
 ### Summary

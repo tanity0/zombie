@@ -1055,7 +1055,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }));
         if (becameCharged) {
-          get().spawnRing(pcx, pcy, 8, 46, 'rgba(125,211,252,0.9)', 2, 320); // 満タン合図(専用ゲージはTODO)
+          // チャージ満タン = 次の一振りでハリケーン。ピカッと光って知らせる。
+          get().spawnFlash('rgba(186,230,253,0.34)', 150);                     // 一瞬の画面明滅(ピカッ)
+          get().spawnRing(pcx, pcy, 10, 72, 'rgba(255,255,255,0.95)', 3, 260); // 白い閃光リング
+          get().spawnRing(pcx, pcy, 6, 50, 'rgba(125,211,252,0.9)', 3, 360);   // シアンの輪
+          get().spawnBurst(pcx, pcy, '#bae6fd', 12);                           // 弾ける光の粒
         }
       }
       return { swung: true, hit: res.hit, finish: res.finish, killed: res.killed };
