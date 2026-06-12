@@ -13,7 +13,8 @@ import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
   ALCHEMY_ATTACK_RANGE, ALCHEMY_ATTACK_INTERVAL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE,
-  ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST
+  ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST,
+  ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
@@ -1649,9 +1650,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastTickAt: 0,
       }
     });
-    // 渦の表現(鞭先端の根元が吸引中心)。軽量リング2枚。
-    get().spawnRing(rootX, rootY, HURRICANE_RADIUS_BY_LEVEL[lvl], 12, 'rgba(125,211,252,0.85)', 3, 360);
-    get().spawnRing(rootX, rootY, HURRICANE_RADIUS_BY_LEVEL[lvl] * 0.6, 8, 'rgba(186,230,253,0.7)', 2, 300);
+    // 渦の表現は Pixi 側(syncWhipHurricane)が hurricane 状態で竜巻スプライトを描画。
     get().tickHurricane(); // 初回吸引を即実行(反応を出す)
   },
 
@@ -1792,7 +1791,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
         }
-        nextSummons.push(moveFollow(s0));
+        // 死神は 0.5秒ごとに巻き込み範囲の敵へ近接AoEダメージ(吸引で寄せた敵を削る)。
+        let sr = s0;
+        if (now - (s0.lastContactAt ?? 0) >= ALCHEMY_RARE_MELEE_INTERVAL_MS) {
+          for (const o of inRange) attackHits.push({ id: enemiesNext[o.i].id, amount: ALCHEMY_RARE_MELEE_DAMAGE });
+          sr = { ...s0, lastContactAt: now };
+        }
+        nextSummons.push(moveFollow(sr));
         continue;
       }
       // 通常個体

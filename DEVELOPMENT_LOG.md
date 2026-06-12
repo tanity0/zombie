@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.210 - 鞭ハリケーン実スプライト + 死神近接AoE + 召喚耐久2倍 (Claude Code)
+
+### Summary
+- **鞭ハリケーンを実スプライト化**。社長提供素材(Drive `188...EtaE/…ハリケーン.png`, 1536×1024 の竜巻)の
+  青灰背景をキーアウトし、`cyan→白`の発光竜巻(発光強度=alpha)へ変換、768×512(**184KB**)で `public/sprites/whip-hurricane.png` 生成。
+  Pixi の `effectLayer` に竜巻スプライトを常設し、`syncWhipHurricane` が store の `hurricane` 状態がある間だけ表示・
+  立ち上がり/消滅で alpha フェード。位置=吸引中心(rootX/rootY)、アンカー=竜巻の根元(地面の渦)、加算発光、わずかな鼓動。
+  旧・手続き的リング2枚(`performHurricane` の `spawnRing`)は廃止。**描画専用で吸引半径/ダメージ/持続には不干渉**。
+- **召喚レア(死神)に近接AoE**。従来は吸引のみ(ダメージなし)だったが、**0.5秒ごとに巻き込み範囲の敵へ近接ダメージ**
+  (`ALCHEMY_RARE_MELEE_DAMAGE=10`, `…INTERVAL_MS=500`)。吸引で寄せた敵を継続的に削る。対象は吸引対象(cap12)を流用。
+- **召喚の耐久を2倍**。`ALCHEMY_SUMMON_HP_BY_LEVEL` `[0,100,150,200]` → **`[0,200,300,400]`**(Lv1=200/Lv2=300/Lv3=400)。
+- 負荷スコア: **1/10**。竜巻は常設Sprite 1枚をハリケーン中のみ更新。死神AoEは既存の吸引ループに時間判定を1つ足すのみ(対象cap据置)。
+- 検証: `npm run lint` クリーン / `npm run build` 成功 / `dist/sprites/whip-hurricane.png` 出力確認。
+
+### Files changed
+- `public/sprites/whip-hurricane.png`(新規), `src/pixi/pixiTextures.ts`, `src/pixi/pixiScene.ts`,
+  `src/store/gameStore.ts`, `src/utils/summonUtils.ts`, `package.json`
+
+### Next handoff notes
+- 鞭の lash スプライト(IMG_5742, 35KB)は **本環境からDrive直取得できず未組込み**。Drive の小サイズ画像は inline base64 で返り、
+  確実にファイル化できない(curlは非公開のため不可)。**公開URL(monopro等)での受領を推奨**(handoff記載の既定方式)。
+  受領でき次第、magic-circle 同様にキーアウト→「プレイヤー手元アンカー・振り方向へ回転/伸縮」で lash を置換予定。
+- 死神AoEダメージ/竜巻サイズ(`WHIP_HURRICANE_WIDTH_MULT=3.0`)・アンカー(`…ANCHOR_Y=0.766`)は実機で要微調整。定数のみで可。
+
 ## 2026-06-12 - v0.25.209 - 召喚の被弾をプレイヤーと同じ無敵時間構造に (Claude Code)
 
 ### Summary

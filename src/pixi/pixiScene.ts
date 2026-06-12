@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -64,6 +64,11 @@ const CASTLE_TARGET_HEIGHT = 125;
 const MERCHANT_TARGET_HEIGHT = 100;
 const EVENT_NPC_TARGET_HEIGHT = 108;
 const EVENT_NPC_FADE_MS = 1100;
+// 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。
+const WHIP_HURRICANE_ANCHOR_Y = 0.766;  // テクスチャ内の地面の渦(根元)位置
+const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍率
+const WHIP_HURRICANE_FADE_IN_MS = 160;  // 立ち上がりフェード
+const WHIP_HURRICANE_FADE_OUT_MS = 280; // 消滅フェード
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -379,6 +384,9 @@ export class PixiScene {
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
   private alchemyCircleTextured = false;
+  // 鞭ハリケーン: 吸引中心に立つ竜巻スプライト。store の hurricane 状態で駆動。
+  private whipHurricane = new Sprite();
+  private whipHurricaneTextured = false;
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -526,6 +534,13 @@ export class PixiScene {
       this.alchemyCircle,
       this.shadowGfx,
     );
+    // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
+    // 加算発光・既定は非表示。アンカーは竜巻の根元(地面の渦)= 吸引中心。
+    this.whipHurricane.anchor.set(0.5, WHIP_HURRICANE_ANCHOR_Y);
+    this.whipHurricane.blendMode = 'add';
+    this.whipHurricane.alpha = 0;
+    this.whipHurricane.visible = false;
+    this.L.effectLayer.addChild(this.whipHurricane);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -999,7 +1014,45 @@ export class PixiScene {
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2);
 
     this.syncAlchemyCircle(s.player, s.gameTime, now);
+    this.syncWhipHurricane(s.hurricane, now);
     this.syncFireflies(s.camera, now);
+  }
+
+  // ---- 鞭ハリケーン(吸引中心に立つ竜巻スプライト) -----------------------
+  // store の hurricane 状態がある間だけ表示し、立ち上がり/消滅で alpha フェード。
+  // 視覚専用: 吸引半径・ダメージ・持続には一切干渉しない。
+  private syncWhipHurricane(
+    hurricane: { rootX: number; rootY: number; endsAt: number; radius: number; level: number } | null,
+    now: number
+  ) {
+    if (!hurricane || now >= hurricane.endsAt) {
+      if (this.whipHurricane.visible) {
+        this.whipHurricane.visible = false;
+        this.whipHurricane.alpha = 0;
+      }
+      return;
+    }
+    if (!this.whipHurricaneTextured) {
+      const tex = getTexture('whip-hurricane');
+      if (!tex) return;
+      this.whipHurricane.texture = tex;
+      this.whipHurricaneTextured = true;
+    }
+    const total = HURRICANE_DURATION_MS_BY_LEVEL[hurricane.level] ?? 1400;
+    const startedAt = hurricane.endsAt - total;
+    const elapsed = now - startedAt;
+    const remaining = hurricane.endsAt - now;
+    const fadeIn = Math.min(1, elapsed / WHIP_HURRICANE_FADE_IN_MS);
+    const fadeOut = Math.min(1, remaining / WHIP_HURRICANE_FADE_OUT_MS);
+    const width = hurricane.radius * WHIP_HURRICANE_WIDTH_MULT;
+    this.whipHurricane.visible = true;
+    this.whipHurricane.position.set(hurricane.rootX, hurricane.rootY);
+    this.whipHurricane.width = width;
+    this.whipHurricane.height = width * (512 / 768); // テクスチャ比を維持
+    // 竜巻の鼓動: わずかな横揺れ的スケール脈動で生命感を出す(回転はしない)。
+    const pulse = 1 + 0.05 * Math.sin(now / 80);
+    this.whipHurricane.scale.x *= pulse;
+    this.whipHurricane.alpha = Math.min(1, fadeIn * fadeOut);
   }
 
   // ---- 錬金術の魔法陣(足元の常設地面スプライト) --------------------------

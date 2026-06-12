@@ -8,7 +8,7 @@ import { getEnemyBaseSize, getEnemyBaseSpeed } from './enemyUtils';
 export const ALCHEMY_CHANNEL_MS = 5000;                 // 立ち止まりチャネル(魔法陣完成まで)
 export const ALCHEMY_MAX_NORMAL = 3;                    // 通常個体の最大数(FIFO)
 export const ALCHEMY_RARE_CHANCE = 0.10;                // 完成時のレア確率
-export const ALCHEMY_SUMMON_HP_BY_LEVEL = [0, 100, 150, 200] as const; // 固定HP(敵スケーリングは使わない)
+export const ALCHEMY_SUMMON_HP_BY_LEVEL = [0, 200, 300, 400] as const; // 固定HP(敵スケーリングは使わない・耐久2倍)
 export const ALCHEMY_SUMMON_TYPE_BY_LEVEL: (EnemyType | null)[] = [null, 'zombie', 'werewolf', 'pumpkin'];
 export const ALCHEMY_RARE_TYPE: EnemyType = 'reaper';   // レアは死神ヴィジュアル
 export const ALCHEMY_SUMMON_DAMAGE = 4;                 // 付随的な低火力
@@ -18,6 +18,8 @@ export const ALCHEMY_AGGRO_RANGE = 380;                 // 敵を引きつける
 export const ALCHEMY_ATTACK_RANGE = 44;                 // 通常個体が敵に接触攻撃する間合い(近接)
 export const ALCHEMY_ATTACK_INTERVAL_MS = 600;          // 通常個体の攻撃間隔(throttle)
 export const ALCHEMY_RARE_LIFETIME_MS = 10000;          // レアは10秒で必ず消滅
+export const ALCHEMY_RARE_MELEE_INTERVAL_MS = 500;      // レア(死神): 巻き込み範囲への近接攻撃間隔
+export const ALCHEMY_RARE_MELEE_DAMAGE = 10;            // レア(死神)の近接AoEダメージ(TODO: 実機調整)
 export const ALCHEMY_RARE_SUCTION_RADIUS = ALCHEMY_AGGRO_RANGE * 1.5; // レア吸引の見た目範囲
 export const ALCHEMY_RARE_SUCTION_PULL_RANGE = ALCHEMY_AGGRO_RANGE;   // 実際に吸引が発生する距離
 export const ALCHEMY_RARE_SUCTION_MAX_TARGETS = 12;     // 1tickの吸引対象上限(負荷cap)
