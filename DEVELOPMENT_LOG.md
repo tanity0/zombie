@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-12 - v0.25.207 - Sprite PNG optimization + alchemy HP tuning (Claude Code)
+
+### Summary
+- **キャラ絵/スプライトPNG最適化(社長承認済み)**: `public/sprites/*.png` 43枚を最適化。
+  `pngquant`(quality floor **88**, `--skip-if-larger`)→ `oxipng -o max` の2段。
+  品質下限88に届かない要求の高い画像(`atlas.png`/`castle.png`/`player-shotgun-*`/`treasure-2`/`treasure-6`)は
+  自動でロスレスにフォールバック。**合計 3.94MB → 2.91MB(−26%, 約1.0MB削減)**。寸法・αは全て不変。
+  ピクセルアート(`player.png` −72%)は原画と視覚的に区別不可を目視確認。
+  `atlas`/`castle` はフルカラーでパレット化不可(q70も未達)のためロスレス維持(品質優先)。
+- **錬金術の召喚体力を調整**(`utils/summonUtils.ts`): `ALCHEMY_SUMMON_HP_BY_LEVEL` を `[0,50,70,100]` →
+  **`[0,100,150,200]`**(Lv1=100/Lv2=150/Lv3=200)。レア消滅は既に10秒(`ALCHEMY_RARE_LIFETIME_MS=10000`)で要件充足、変更なし。
+- 付随: `gameStore.ts` の未使用import `ALCHEMY_SUMMON_DAMAGE` を削除(base 3b6d11b 由来の既存lintエラー解消、挙動不変)。
+- 負荷スコア: **1/10**。ビルド時最適化のみでランタイムコスト増なし(むしろ転送量・デコード減で有利)。
+- 検証: `npm run lint` クリーン / `npm run build` 成功。
+
+### Files changed
+- `public/sprites/*.png`(43枚), `src/utils/summonUtils.ts`, `src/store/gameStore.ts`, `package.json`
+
+### Next handoff notes
+- 魔法陣スプライト差し替え(task#1)は素材待ち: Drive フォルダ `188FNWrSMGGtipDybZYYDNJaZZnunEtaE` に
+  `生成画像1 (1).png`(1.7MB, AI生成と思われる魔法陣候補)等あり。採用素材の指定があれば常設地面スプライト化(alpha=溜め進捗)に進む。
+
 ## 2026-06-13 - v0.25.206 - Alchemy polish: summon size matches enemy + completion juice (Claude Code)
 
 ### Summary

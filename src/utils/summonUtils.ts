@@ -8,7 +8,7 @@ import { getEnemyBaseSize, getEnemyBaseSpeed } from './enemyUtils';
 export const ALCHEMY_CHANNEL_MS = 5000;                 // 立ち止まりチャネル(魔法陣完成まで)
 export const ALCHEMY_MAX_NORMAL = 3;                    // 通常個体の最大数(FIFO)
 export const ALCHEMY_RARE_CHANCE = 0.10;                // 完成時のレア確率
-export const ALCHEMY_SUMMON_HP_BY_LEVEL = [0, 50, 70, 100] as const; // 固定HP(敵スケーリングは使わない)
+export const ALCHEMY_SUMMON_HP_BY_LEVEL = [0, 100, 150, 200] as const; // 固定HP(敵スケーリングは使わない)
 export const ALCHEMY_SUMMON_TYPE_BY_LEVEL: (EnemyType | null)[] = [null, 'zombie', 'werewolf', 'pumpkin'];
 export const ALCHEMY_RARE_TYPE: EnemyType = 'reaper';   // レアは死神ヴィジュアル
 export const ALCHEMY_SUMMON_DAMAGE = 4;                 // 付随的な低火力
