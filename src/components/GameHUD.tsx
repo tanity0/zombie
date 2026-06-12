@@ -336,7 +336,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         <div className="glass-panel rounded-2xl px-2.5 py-1.5 text-[11px] leading-tight text-white/80">
           <div>撃破 {gameStats.enemiesKilled}</div>
           <div>DMG {Math.floor(gameStats.damageDealt)}</div>
-          <div>STRAP {player.straps}</div>
+          <div>SCRAP {player.straps}</div>
         </div>
       </div>
 

@@ -139,6 +139,21 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // 錬金術は全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可=排他)。
+  const alchemyLvl = player.subWeaponLevels['alchemy'] ?? 0;
+  if (!ownsKatana && alchemyLvl < 3) {
+    const nextLevel = alchemyLvl + 1;
+    const hp = [0, 50, 70, 100][nextLevel];
+    subWeaponOptions.push({
+      id: 'subweapon-alchemy',
+      name: nextLevel === 1 ? '錬金術' : `錬金術 Lv${nextLevel}`,
+      description: `5秒立ち止まると魔法陣が完成し味方ゾンビを召喚(HP${hp}・最大3体・囮/壁)。10%でレア(死神)が出てハリケーン吸引(10秒)`,
+      type: 'subWeapon',
+      subWeaponKey: 'alchemy',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);

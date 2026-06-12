@@ -79,14 +79,14 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: 'Lv', value: stats.maxLevel },
     { label: '最大コンボ', value: stats.maxCombo },
     { label: 'トレジャー', value: stats.treasuresCollected },
-    { label: 'ストラップ残', value: remainingStraps },
+    { label: 'スクラップ残', value: remainingStraps },
     { label: 'ゴールド', value: goldEarned }
   ];
   const scoreItems = [
     { label: '与ダメ', value: damageScore },
     { label: '最大コンボ', value: comboScore },
     { label: 'トレジャー', value: treasureScore },
-    { label: '残ストラップ', value: strapScore },
+    { label: '残スクラップ', value: strapScore },
     { label: 'クリア倍率', value: `x${clearMultiplier}` }
   ];
   const isBenchmark = benchmarkResult !== null;

@@ -110,7 +110,7 @@ const ShopMenu: React.FC = () => {
             <h2 className="text-xl font-bold text-white">武器商人</h2>
           </div>
           <div className="rounded-2xl bg-amber-300/12 border border-amber-200/20 px-3 py-1 text-right">
-            <div className="text-[9px] tracking-widest text-amber-100/60">STRAP</div>
+            <div className="text-[9px] tracking-widest text-amber-100/60">SCRAP</div>
             <div className="text-lg font-black text-amber-100 tabular-nums">{player.straps}s</div>
           </div>
         </div>

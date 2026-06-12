@@ -1,4 +1,4 @@
-import { Player, Enemy, Projectile, Pickup } from '../types/game';
+import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
 
 // Check collision between two rectangles
 export const checkCollision = (
@@ -122,6 +122,23 @@ export const checkPlayerEnemyCollisions = (
 ): Enemy[] => {
   const hit = playerHitbox(player);
   return enemies.filter(enemy => checkCollision(hit, enemy));
+};
+
+// 敵 ↔ 召喚ユニット(通常個体のみ)の接触。各重なりにつき敵の damage を返す。
+// レア個体はHP制ではない(10秒で消滅)ので接触ダメージの対象外。
+export const checkEnemySummonCollisions = (
+  enemies: Enemy[],
+  summons: Summon[]
+): { enemyId: string; summonId: string; damage: number }[] => {
+  if (summons.length === 0) return [];
+  const out: { enemyId: string; summonId: string; damage: number }[] = [];
+  for (const enemy of enemies) {
+    for (const s of summons) {
+      if (s.kind !== 'normal') continue;
+      if (checkCollision(enemy, s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });
+    }
+  }
+  return out;
 };
 
 // Check collisions between player and pickups

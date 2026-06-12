@@ -68,6 +68,8 @@ export interface Player {
   // level threshold whipCharged flips true and the next swing fires a hurricane.
   whipHitCount?: number;
   whipCharged?: boolean;
+  // 錬金術: 立ち止まりチャネルの開始 gameTime(ms)。0 = 非チャネル。5秒で召喚。
+  alchemyChannelStartedAt?: number;
   // Katana (刀) sub-weapon dash state. While katanaDashUntil is in the future
   // the player ignores input and travels along the dash direction while
   // invulnerable. The cooldown gates only the next dash — normal movement and
@@ -138,6 +140,31 @@ export interface Enemy {
   difficultyMultiplier?: number;
 }
 
+export type SummonKind = 'normal' | 'rare';
+// 錬金術で召喚する味方ユニット。敵とは別配列(enemies のカウント/スポーン/勝利条件
+// 等に混ざらないよう完全分離)。移動/攻撃/見た目は敵キャラの仕様を流用し、reusedType が
+// その参照元(normal: zombie/werewolf/pumpkin、rare: reaper=死神ヴィジュアル)。
+export interface Summon {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  vx?: number;
+  vy?: number;
+  speed: number;
+  health: number;
+  maxHealth: number;
+  damage: number;
+  kind: SummonKind;
+  reusedType: EnemyType; // 見た目/速度の参照元
+  level: number;
+  createdAt: number;      // Date.now — FIFO順 + レアの10秒寿命
+  expiresAt?: number;     // rare のみ
+  lastHit: number;
+  lastContactAt?: number; // 召喚→敵 接触ダメージの throttle
+}
+
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';
 
 export type EnemyType =
@@ -197,7 +224,7 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy';
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'

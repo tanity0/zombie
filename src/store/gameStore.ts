@@ -4,11 +4,17 @@ import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction, SubWeaponKey, CastleEvent, DifficultyRank,
-  WeaponMerchant, ShopItemKey, EventQuestNpc
+  WeaponMerchant, ShopItemKey, EventQuestNpc, Summon
 } from '../types/game';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType } from '../utils/enemyUtils';
+import { isBossType, resolveEnemyTarget } from '../utils/enemyUtils';
+import {
+  buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
+  ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX, ALCHEMY_SUMMON_DAMAGE,
+  ALCHEMY_ATTACK_RANGE, ALCHEMY_ATTACK_INTERVAL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE,
+  ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST
+} from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
@@ -259,6 +265,12 @@ export const whipLevel = (player: Player): number =>
 export const whipChargeThreshold = (player: Player): number =>
   WHIP_CHARGE_HITS_BY_LEVEL[whipLevel(player)];
 
+// 錬金術ヘルパー。
+export const hasAlchemy = (player: Player): boolean => player.subWeapons.includes('alchemy');
+export const alchemyLevel = (player: Player): number =>
+  Math.max(1, Math.min(3, player.subWeaponLevels['alchemy'] ?? 1));
+export const hasRareSummon = (summons: Summon[]): boolean => summons.some(s => s.kind === 'rare');
+
 // Hitstop: a melee finisher freezes the whole game briefly for impact.
 export const HITSTOP_MS = 300;
 const MELEE_FINISH_SLOW_MS = HITSTOP_MS + 520;
@@ -402,6 +414,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'decoy': return 'デコイ';
     case 'shield': return 'シールド';
     case 'whip': return '鞭';
+    case 'alchemy': return '錬金術';
     default: return 'サブウェポン';
   }
 };
@@ -553,6 +566,8 @@ interface GameState {
   hurricane: {
     rootX: number; rootY: number; endsAt: number; radius: number; level: number; lastTickAt: number;
   } | null;
+  // 錬金術で召喚した味方ユニット。enemies とは別配列(副作用回避)。
+  summons: Summon[];
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -576,6 +591,13 @@ interface GameState {
   performWhipStrike: (targetIds: string[]) => { hit: boolean; finish: boolean; killed: number; hits: number };
   performHurricane: (rootX: number, rootY: number) => void;
   tickHurricane: () => void;
+  // 錬金術 actions. updateAlchemyChannel は立ち止まりチャネルの開始/維持/中断、summonAlchemy は
+  // 魔法陣完成時の召喚(レア判定・FIFO)、updateSummons は毎フレームの追従/攻撃/吸引/消滅、
+  // damageSummon は敵接触ダメージ。
+  updateAlchemyChannel: (startedAt: number) => void;
+  summonAlchemy: () => void;
+  updateSummons: (deltaTime: number) => void;
+  damageSummon: (id: string, amount: number) => void;
 
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
@@ -755,6 +777,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   timeSlowScale: 1,
   shakeUntil: 0,
   hurricane: null,
+  summons: [],
 
   // Player actions
   movePlayer: (input, deltaTime) => {
@@ -1670,6 +1693,128 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ enemies, hurricane: { ...h, lastTickAt: now } });
   },
 
+  updateAlchemyChannel: (startedAt) => {
+    set(state => ({ player: { ...state.player, alchemyChannelStartedAt: startedAt } }));
+  },
+
+  summonAlchemy: () => {
+    const { player, summons } = get();
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    // 設置位置: プレイヤーの少し前(向き)に。
+    const ld = player.lastDirection ?? { x: 0, y: 1 };
+    const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
+    const sx = pcx + (ld.x / lmag) * 40;
+    const sy = pcy + (ld.y / lmag) * 40;
+    const lvl = alchemyLevel(player);
+    if (Math.random() < ALCHEMY_RARE_CHANCE) {
+      // レア: 既存の通常個体を全消去し、レア1体を召喚(枠を専有)。
+      const rare = buildSummon(lvl, 'rare', sx, sy);
+      set({ summons: [rare] });
+      get().spawnRing(sx, sy, 16, 120, 'rgba(125,211,252,0.85)', 3, 360);
+      get().spawnGlow(sx, sy, 72, 'rgba(125,211,252,', 420);
+      return;
+    }
+    // 通常: 最大3体、超えたら最古をFIFOで入れ替え。
+    const normals = summons.filter(s => s.kind === 'normal').sort((a, b) => a.createdAt - b.createdAt);
+    const kept = normals.length >= ALCHEMY_MAX_NORMAL
+      ? normals.slice(normals.length - (ALCHEMY_MAX_NORMAL - 1))
+      : normals;
+    const unit = buildSummon(lvl, 'normal', sx, sy);
+    set({ summons: [...kept, unit] });
+    get().spawnGlow(sx, sy, 54, 'rgba(125,211,252,', 360);
+  },
+
+  updateSummons: (deltaTime) => {
+    const now = Date.now();
+    const state = get();
+    if (state.summons.length === 0) return;
+    const { player } = state;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+
+    const attackHits: { id: string; amount: number }[] = [];
+    let enemiesNext = state.enemies;
+    let enemiesChanged = false;
+
+    // プレイヤーへ間合いを保って追従(密着しない)。
+    const moveFollow = (s: Summon): Summon => {
+      const scx = s.x + s.width / 2;
+      const scy = s.y + s.height / 2;
+      const dx = pcx - scx;
+      const dy = pcy - scy;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= ALCHEMY_FOLLOW_GAP_PX) return s;
+      const step = Math.min(s.speed * deltaTime, dist - ALCHEMY_FOLLOW_GAP_PX);
+      const nx = s.x + (dx / dist) * step;
+      const ny = s.y + (dy / dist) * step;
+      const r = resolveTreeCollision({ x: nx, y: ny, width: s.width, height: s.height });
+      return { ...s, x: r.x, y: r.y };
+    };
+
+    const nextSummons: Summon[] = [];
+    for (const s0 of state.summons) {
+      if (s0.kind === 'rare') {
+        if (now >= (s0.expiresAt ?? 0)) continue; // 10秒で消滅
+        // 吸引: レア中心へ PULL_RANGE 内の敵を最大N体寄せる(ダメージなし)。
+        const rcx = s0.x + s0.width / 2;
+        const rcy = s0.y + s0.height / 2;
+        const pr2 = ALCHEMY_RARE_SUCTION_PULL_RANGE * ALCHEMY_RARE_SUCTION_PULL_RANGE;
+        const inRange = enemiesNext
+          .map((e, i) => ({ i, d2: (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2, reaper: e.type === 'reaper' }))
+          .filter(o => !o.reaper && o.d2 <= pr2)
+          .sort((a, b) => a.d2 - b.d2)
+          .slice(0, ALCHEMY_RARE_SUCTION_MAX_TARGETS);
+        if (inRange.length > 0) {
+          if (!enemiesChanged) { enemiesNext = [...enemiesNext]; enemiesChanged = true; }
+          for (const o of inRange) {
+            const e = enemiesNext[o.i];
+            const ecx = e.x + e.width / 2;
+            const ecy = e.y + e.height / 2;
+            const dx = rcx - ecx;
+            const dy = rcy - ecy;
+            const dist = Math.max(0.001, Math.hypot(dx, dy));
+            enemiesNext[o.i] = {
+              ...e,
+              knockbackVx: (dx / dist) * ALCHEMY_RARE_SUCTION_SPEED,
+              knockbackVy: (dy / dist) * ALCHEMY_RARE_SUCTION_SPEED,
+              knockbackUntil: now + 120,
+            };
+          }
+        }
+        nextSummons.push(moveFollow(s0));
+        continue;
+      }
+      // 通常個体
+      const scx = s0.x + s0.width / 2;
+      const scy = s0.y + s0.height / 2;
+      if (Math.hypot(scx - pcx, scy - pcy) > ALCHEMY_DESPAWN_DIST) continue; // 距離消滅
+      let s = s0;
+      // 攻撃: 近接間合いの最寄り敵に接触ダメージ(throttle)。
+      if (now - (s.lastContactAt ?? 0) >= ALCHEMY_ATTACK_INTERVAL_MS) {
+        let nearestId: string | null = null;
+        let nd2 = ALCHEMY_ATTACK_RANGE * ALCHEMY_ATTACK_RANGE;
+        for (const e of enemiesNext) {
+          if (e.type === 'reaper') continue;
+          const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
+          if (d2 <= nd2) { nd2 = d2; nearestId = e.id; }
+        }
+        if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage }); s = { ...s, lastContactAt: now }; }
+      }
+      nextSummons.push(moveFollow(s));
+    }
+    set({ summons: nextSummons, ...(enemiesChanged ? { enemies: enemiesNext } : {}) });
+    for (const h of attackHits) get().damageEnemy(h.id, h.amount);
+  },
+
+  damageSummon: (id, amount) => {
+    set(state => ({
+      summons: state.summons
+        .map(s => (s.id === id && s.kind === 'normal' ? { ...s, health: s.health - amount, lastHit: Date.now() } : s))
+        .filter(s => s.kind !== 'normal' || s.health > 0),
+    }));
+  },
+
   triggerKatanaDash: (dirX, dirY) => {
     const now = Date.now();
     const { player, enemies, breakableProps, isPaused } = get();
@@ -2107,7 +2252,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
       return {
@@ -2245,7 +2390,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   updateEnemies: (deltaTime) => {
     set(state => {
-      const { enemies, player, gameTime, breakableProps } = state;
+      const { enemies, player, gameTime, breakableProps, summons } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine');
       const now = Date.now();
 
@@ -2293,8 +2438,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // does the standard VS straight-line chase, but with inertia: the
         // chase velocity eases toward the heading so enemies curve into turns
         // (~0.3s) rather than snapping to face the player.
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
+        // 錬金術: aggro範囲内に通常召喚がいればそれを、いなければプレイヤーを狙う(中心同士)。
+        const tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE);
+        const dx = tgt.x - (enemy.x + enemy.width / 2);
+        const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
         const speed = enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed;
         const tvx = (dx / distance) * speed;
@@ -3241,7 +3388,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         timeSlowUntil: 0,
         timeSlowScale: 1,
         shakeUntil: 0,
-        hurricane: null
+        hurricane: null,
+        summons: []
       };
     });
   },

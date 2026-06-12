@@ -16,10 +16,11 @@
 import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
-  BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant,
+  BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
+import { ALCHEMY_SUMMON_TINT } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
@@ -349,6 +350,8 @@ export class PixiScene {
 
   private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
   private enemies = new Map<string, ActorView>();
+  // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
+  private summonViews = new Map<string, ActorView>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
   private castleView = new Container();
@@ -955,6 +958,7 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncDecoys(s.projectiles, now);
+    this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
     this.syncGroundReflections(s.pickups, s.projectiles, s.effects, s.camera, now);
@@ -1671,6 +1675,64 @@ export class PixiScene {
         view.container.destroy({ children: true });
         this.enemies.delete(id);
       }
+    }
+  }
+
+  // 錬金術の召喚ユニット(味方)。敵と同じ actor プール/y-sort を使い、流用タイプの
+  // スプライトにシアンtintを乗せて描く。通常はHPバー、レア(死神)は渦っぽいシアンの円。
+  private syncSummons(summons: Summon[], now: number) {
+    const seen = new Set<string>();
+    for (const s of summons) {
+      seen.add(s.id);
+      let view = this.summonViews.get(s.id);
+      if (!view) { view = this.makeActor(); this.summonViews.set(s.id, view); }
+      this.drawSummon(view, s, now);
+    }
+    for (const [id, view] of this.summonViews) {
+      if (!seen.has(id)) {
+        view.light.destroy();
+        view.container.destroy({ children: true });
+        this.summonViews.delete(id);
+      }
+    }
+  }
+
+  private drawSummon(view: ActorView, s: Summon, now: number) {
+    const footX = s.x + s.width / 2;
+    const footY = s.y + s.height;
+    const tex = getTexture(s.reusedType);
+    view.light.visible = false;
+    view.sprite.position.set(Math.round(footX), Math.round(footY));
+    view.container.zIndex = footY;
+    view.container.alpha = 1;
+    if (tex) {
+      view.sprite.texture = tex;
+      const sc = containScale(s.width, s.height, tex.width, tex.height) * this.depthScaleEnemy(footY);
+      view.sprite.scale.set(sc, sc);
+      view.sprite.tint = ALCHEMY_SUMMON_TINT; // 味方識別のシアン
+      view.sprite.visible = true;
+    } else {
+      view.sprite.visible = false;
+    }
+    // 背面: レアは渦っぽいシアンの円(吸引が分かる軽い表現)。
+    const r = view.reticle;
+    r.clear();
+    if (s.kind === 'rare') {
+      const cx = s.x + s.width / 2;
+      const cy = s.y + s.height / 2;
+      const pulse = 0.5 + 0.3 * Math.sin(now / 200);
+      r.circle(cx, cy, s.width * 0.62).stroke({ color: 0x38bdf8, alpha: 0.5 * pulse, width: 2 });
+      r.circle(cx, cy, s.width * 0.42).stroke({ color: 0xbae6fd, alpha: 0.4 * pulse, width: 1.5 });
+    }
+    // 前面: 通常個体のHPバー。
+    const o = view.overlay;
+    o.clear();
+    if (s.kind === 'normal' && s.health < s.maxHealth) {
+      const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
+      const bx = s.x;
+      const by = s.y - 6;
+      o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: 0.55 });
+      o.rect(bx, by, s.width * frac, 3).fill({ color: 0x38bdf8 });
     }
   }
 

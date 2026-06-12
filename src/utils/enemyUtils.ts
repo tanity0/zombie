@@ -1,4 +1,4 @@
-import { DifficultyRank, Enemy, EnemyType, GameBounds, Player, Projectile } from '../types/game';
+import { DifficultyRank, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
@@ -104,6 +104,38 @@ const ENEMY_HP_MULT = 5;
 // Global enemy speed multiplier — slows the whole bestiary for a more
 // deliberate, survival-horror pace (matches the slower player).
 const ENEMY_SPEED_MULT = 2 / 3;
+
+// 錬金術の召喚ユニットが敵タイプの見た目/速度を流用するための取得関数。
+export const getEnemyBaseSpeed = (type: EnemyType): number => ENEMY_STATS[type].speed * ENEMY_SPEED_MULT;
+export const getEnemyBaseSize = (type: EnemyType): { width: number; height: number } =>
+  ({ width: ENEMY_STATS[type].width, height: ENEMY_STATS[type].height });
+
+// 敵のターゲット解決(錬金術): 既定はプレイヤー中心。aggroRange 内に、プレイヤーより近い
+// 通常召喚ユニットがいればそれを狙う(ソフト/局所、ハードヘイト固定にしない)。summons は ≤3 で軽量。
+export const resolveEnemyTarget = (
+  enemy: Enemy,
+  player: Player,
+  summons: Summon[],
+  aggroRange: number
+): { x: number; y: number; isSummon: boolean } => {
+  const ex = enemy.x + enemy.width / 2;
+  const ey = enemy.y + enemy.height / 2;
+  const px = player.x + player.width / 2;
+  const py = player.y + player.height / 2;
+  let bestX = px;
+  let bestY = py;
+  let bestD2 = (px - ex) * (px - ex) + (py - ey) * (py - ey);
+  let isSummon = false;
+  const aggro2 = aggroRange * aggroRange;
+  for (const s of summons) {
+    if (s.kind !== 'normal') continue;
+    const sx = s.x + s.width / 2;
+    const sy = s.y + s.height / 2;
+    const d2 = (sx - ex) * (sx - ex) + (sy - ey) * (sy - ey);
+    if (d2 <= aggro2 && d2 < bestD2) { bestD2 = d2; bestX = sx; bestY = sy; isSummon = true; }
+  }
+  return { x: bestX, y: bestY, isSummon };
+};
 
 const buildEnemy = (
   type: EnemyType,
@@ -225,15 +257,18 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
 
 export const createEnemyProjectile = (
   enemy: Enemy,
-  player: Player
+  player: Player,
+  targetX?: number,
+  targetY?: number
 ): Projectile => {
   const profile = getEnemyFireProfile(enemy) ?? {
     speed: 200, damage: 6, size: 12, interval: 0, range: 0
   };
   const ex = enemy.x + enemy.width / 2;
   const ey = enemy.y + enemy.height / 2;
-  const px = player.x + player.width / 2;
-  const py = player.y + player.height / 2;
+  // 既定はプレイヤー中心(従来挙動と等価)。錬金術で召喚が標的なら呼出側が座標を渡す。
+  const px = targetX ?? (player.x + player.width / 2);
+  const py = targetY ?? (player.y + player.height / 2);
 
   const dx = px - ex;
   const dy = py - ey;

@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.205 - Terminology: ストラップ/STRAP → スクラップ/SCRAP (Claude Code)
+
+### Summary
+- ゲーム内表示用語を「ストラップ/STRAP」→「スクラップ/SCRAP」に統一(表記修正)。変更は**表示ラベルのみ**:
+  GameHUD(STRAP→SCRAP)、ShopMenu(STRAP→SCRAP)、GameOverScreen(ストラップ残/残ストラップ→スクラップ)、MainMenu(1000ストラップ開始→スクラップ)。
+- 内部変数 `straps` / 定数 `*_STRAP_*` 等は表示対象外のため据え置き(挙動不変)。`s` 接尾はスクラップでも有効なので維持。
+
+## 2026-06-13 - v0.25.204 - Alchemy (錬金術) sub-weapon: summon allies + rare reaper hurricane (Claude Code)
+
+### Summary
+- 新通常サブウェポン「錬金術」。プレイヤーが5秒立ち止まる(`player.isMoving=false`)と魔法陣完成→味方ゾンビ召喚。
+  チャネルは useGameLoop の hunting-charge 後(gameTime基準、移動で中断・被弾は非中断TODO・クールダウン無し)。
+  魔法陣=進捗で濃くなるシアンの地面リング(spawnRing throttle)+完成フラッシュ。
+- 召喚は `enemies` と別配列 `summons`(副作用ゼロ: kill統計/勝利/スポーンcap/カリング等は enemies のみ参照)。
+  通常個体: HP固定 50/70/100、見た目/速度は敵タイプ流用(Lv1 zombie/Lv2 werewolf/Lv3 pumpkin)、シアンtintで識別。
+  最大3体FIFO、プレイヤーへ間合い追従(密着しない)、近接で敵に低ダメ(throttle)、距離/HP0で消滅。
+- レア個体(10%): `reaper`(死神)ヴィジュアル。既存通常を全消去し枠専有、10秒で必ず消滅(HP制でない)。
+  中心へ敵を吸引(鞭ハリケーンの吸引を `updateSummons` 内に複製、reaper除外・cap12・移動中心へ毎フレーム照準)。
+- **敵ターゲット選択(新規)**: `resolveEnemyTarget`(enemyUtils)で aggro範囲(=ハンドガン380)内の通常召喚が
+  プレイヤーより近ければ狙う(ソフト/局所、既定プレイヤー)。`updateEnemies` chase と plant 射撃に適用。
+  敵→召喚の接触ダメは `checkEnemySummonCollisions`(collisionUtils)+ pair throttle 500ms。召喚は物理ブロックしない。
+- 取得/強化: SubWeaponKey 'alchemy' / 表示名「錬金術」/ レベルアップカード(!ownsKatana 排他)/ 商人(SHOP_ALCHEMY_COST=100)/
+  スタート画面解放。定数は `utils/summonUtils.ts`(新)に集約、全て仮値TODO。
+- 変更: types/game.ts, utils/{enemyUtils,summonUtils(新),collisionUtils,upgradeUtils}.ts, store/gameStore.ts,
+  hooks/useGameLoop.ts, pixi/pixiScene.ts, components/MainMenu.tsx。
+- 検証: `tsc --noEmit` / `vite build` パス(EXIT 0)。手触り(追従・敵の寄り・吸引・レア演出)は社長の実機確認/調整待ち。
+
 ## 2026-06-12 - v0.25.203 - Whip (鞭) sub-weapon + hurricane (Claude Code)
 
 ### Summary

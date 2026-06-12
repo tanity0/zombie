@@ -140,7 +140,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
     'katana',
     'decoy',
     'shield',
-    'whip'
+    'whip',
+    'alchemy'
   ];
   
   return (
@@ -296,7 +297,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                   }`}
                 >
                   <span>
-                    <span className="block text-[13px] font-semibold">1000ストラップ開始</span>
+                    <span className="block text-[13px] font-semibold">1000スクラップ開始</span>
                     <span className="block text-[11px] text-white/50">
                       {startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}
                     </span>

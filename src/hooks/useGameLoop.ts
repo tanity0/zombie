@@ -19,7 +19,8 @@ import {
   checkProjectileEnemyCollisions,
   checkPlayerEnemyCollisions,
   checkPlayerPickupCollisions,
-  checkProjectilePlayerCollisions
+  checkProjectilePlayerCollisions,
+  checkEnemySummonCollisions
 } from '../utils/collisionUtils';
 import {
   createEnemyProjectile,
@@ -28,8 +29,10 @@ import {
   getEnemySpawnCount,
   getEnemySpawnInterval,
   isBossType,
-  spawnEnemyAt
+  spawnEnemyAt,
+  resolveEnemyTarget
 } from '../utils/enemyUtils';
+import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
@@ -138,6 +141,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   // Katana auto-slash timer (gameTime-based so it pauses with the game).
   const lastKatanaSlashRef = useRef(0);
+  // 錬金術: 魔法陣リングの最後のemit時刻(gameTime ms)。throttle 用。
+  const alchemyCircleRef = useRef(0);
+  // 錬金術: 敵→召喚の接触ダメージ debounce。`${enemyId}:${summonId}` → 次回許可時刻(Date.now ms)。
+  const alchemyHitRef = useRef<Map<string, number>>(new Map());
   // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
   const decoyPulseRef = useRef<Map<string, number>>(new Map());
   // Shield contact debounce: next-allowed durability-hit time (gameTime ms) per
@@ -351,6 +358,42 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           );
         } else if (!huntingPlayer.huntingCharged && huntingPlayer.huntingChargeStartedAt !== 0) {
           updateHuntingCharge(0, false);
+        }
+
+        // 錬金術: 立ち止まり5秒で魔法陣完成→召喚。移動で中断、レア在席中は不可。被弾では中断しない。
+        const alcStore = useGameStore.getState();
+        const alcPlayer = alcStore.player;
+        const alcLvl = Math.max(0, Math.min(3, alcPlayer.subWeaponLevels['alchemy'] ?? 0));
+        const rareActive = alcStore.summons.some(s => s.kind === 'rare');
+        const canChannel =
+          alcPlayer.subWeapons.includes('alchemy') &&
+          !subWeaponBlockedByKatana(alcPlayer, 'alchemy') &&
+          alcLvl > 0 &&
+          !alcPlayer.isMoving &&
+          !rareActive;
+        if (canChannel) {
+          const started = (alcPlayer.alchemyChannelStartedAt ?? 0) > 0
+            ? (alcPlayer.alchemyChannelStartedAt as number)
+            : newGameTime;
+          if ((alcPlayer.alchemyChannelStartedAt ?? 0) === 0) {
+            useGameStore.getState().updateAlchemyChannel(started);
+            alchemyCircleRef.current = 0;
+          }
+          if (newGameTime - started >= ALCHEMY_CHANNEL_MS) {
+            useGameStore.getState().summonAlchemy();
+            useGameStore.getState().updateAlchemyChannel(0);
+          } else if (newGameTime - alchemyCircleRef.current >= 280) {
+            // 魔法陣演出: 進捗で濃くなるシアンの地面リング(軽量)。
+            alchemyCircleRef.current = newGameTime;
+            const progress = (newGameTime - started) / ALCHEMY_CHANNEL_MS;
+            const a = (0.25 + 0.6 * progress).toFixed(2);
+            const pcx = alcPlayer.x + alcPlayer.width / 2;
+            const pcy = alcPlayer.y + alcPlayer.height / 2;
+            useGameStore.getState().spawnRing(pcx, pcy, 40, 44, `rgba(125,211,252,${a})`, 2, 340);
+          }
+          // TODO(錬金術): 被弾でチャネル中断するか(現状は中断しない)。
+        } else if ((alcPlayer.alchemyChannelStartedAt ?? 0) !== 0) {
+          useGameStore.getState().updateAlchemyChannel(0); // 移動/ブロック/レアで中断
         }
 
         // Infinite-world camera: center the player exactly.
@@ -869,6 +912,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 鞭ハリケーン: 発動中は毎フレーム(内部でスロットル)敵を鞭先端の根元へ吸引。
         useGameStore.getState().tickHurricane();
 
+        // 錬金術: 召喚ユニットの追従/攻撃/レア吸引/消滅を毎フレーム更新。
+        useGameStore.getState().updateSummons(deltaTime);
+
         // Update projectiles
         updateProjectiles(deltaTime);
 
@@ -1091,17 +1137,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const livePlayer = useGameStore.getState().player;
         const liveGameTime = useGameStore.getState().gameTime;
         const firedIds: string[] = [];
+        const liveSummonsForFire = useGameStore.getState().summons;
         liveEnemies.forEach(enemy => {
           // Stunned enemies are frozen — they can't spit projectiles either.
           if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
           const profile = getEnemyFireProfile(enemy);
           if (!profile) return;
           if (now - enemy.lastShot < profile.interval) return;
-          const dx = livePlayer.x - enemy.x;
-          const dy = livePlayer.y - enemy.y;
+          // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
+          const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE);
+          const dx = tgt.x - (enemy.x + enemy.width / 2);
+          const dy = tgt.y - (enemy.y + enemy.height / 2);
           if (Math.hypot(dx, dy) > profile.range) return;
 
-          addProjectile(createEnemyProjectile(enemy, livePlayer));
+          addProjectile(createEnemyProjectile(enemy, livePlayer, tgt.x, tgt.y));
           firedIds.push(enemy.id);
         });
         if (firedIds.length > 0) {
@@ -1515,7 +1564,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
           }
         });
-        
+
+        // 錬金術: 敵 ↔ 召喚(通常個体)の接触ダメージ(pair throttle 500ms)。召喚は物理ブロックしない。
+        const liveSummonsForHit = useGameStore.getState().summons;
+        if (liveSummonsForHit.length === 0) {
+          if (alchemyHitRef.current.size > 0) alchemyHitRef.current.clear();
+        } else {
+          const summonHits = checkEnemySummonCollisions(enemies, liveSummonsForHit);
+          if (summonHits.length > 0) {
+            const hnow = Date.now();
+            for (const h of summonHits) {
+              const key = `${h.enemyId}:${h.summonId}`;
+              if (hnow >= (alchemyHitRef.current.get(key) ?? 0)) {
+                alchemyHitRef.current.set(key, hnow + 500);
+                useGameStore.getState().damageSummon(h.summonId, h.damage);
+              }
+            }
+          }
+        }
+
         // Check for collisions between player and pickups
         const pickupCollisions = checkPlayerPickupCollisions(player, pickups);
 
