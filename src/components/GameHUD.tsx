@@ -74,7 +74,11 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
-  const rhythm = useGameStore(state => state.rhythm);
+  // 個別フィールドを購読(rhythm全体を購読すると resync の firstBeatAt 更新で毎フレーム再描画になり重い)。
+  const rhythmActive = useGameStore(state => state.rhythm.active);
+  const rhythmPrompt = useGameStore(state => state.rhythm.prompt);
+  const rhythmInputIndex = useGameStore(state => state.rhythm.inputIndex);
+  const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
   const enemies = useGameStore(state => state.enemies);
   const effectsCount = useGameStore(state => state.effects.length);
   const projectilesCount = useGameStore(state => state.projectiles.length);
@@ -153,15 +157,25 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
       {/* フィニッシュカウンター表示は四神舞仕様で廃止(コンボ段階はミラーボールの色で表現)。
           コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
 
-      {/* 四神舞: 目標コマンド(4矢印+1本目=四神)を左上に表示。入力済みは淡色。 */}
-      {rhythm.active && (
+      {/* 四神舞: コンボ + 目標コマンド(4矢印+1本目=四神)を上部中央(=頭上の入力矢印の上)に表示。 */}
+      {rhythmActive && (
         <div
-          className="absolute text-left"
+          className="absolute flex flex-col items-center pointer-events-none"
           style={{
-            top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
-            left: 'max(env(safe-area-inset-left), 18px)',
+            top: 'calc(max(env(safe-area-inset-top), 8px) + 76px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
           }}
         >
+          {rhythmCombo >= 2 && (
+            <div
+              className="font-black tabular-nums text-amber-100 leading-none mb-1"
+              style={{ WebkitTextStroke: '1px rgba(20,12,4,0.86)', textShadow: '0 2px 0 rgba(0,0,0,0.55), 0 0 14px rgba(251,191,36,0.3)' }}
+            >
+              <span key={`combo-${rhythmCombo}`} className="combo-count-pop inline-block text-3xl">{rhythmCombo}</span>
+              <span className="ml-1 align-baseline text-[9px] tracking-[0.16em] text-amber-100/75">COMBO</span>
+            </div>
+          )}
           <div
             className="text-[9px] tracking-[0.18em] text-sky-100/75 font-bold"
             style={{ textShadow: '0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(56,189,248,0.35)' }}
@@ -169,8 +183,8 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
             コマンド
           </div>
           <div className="flex items-center gap-1.5 leading-none mt-1">
-            {rhythm.prompt.map((ar, i) => (
-              <span key={i} style={{ opacity: i < rhythm.inputIndex ? 0.3 : 1, display: 'block' }}>
+            {rhythmPrompt.map((ar, i) => (
+              <span key={i} style={{ opacity: i < rhythmInputIndex ? 0.3 : 1, display: 'block' }}>
                 <PixelArrow dir={ar} size={20} color={i === 0 ? '#fca5a5' : '#e2e8f0'} />
               </span>
             ))}
@@ -178,7 +192,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
               className="ml-1 text-[12px] font-bold"
               style={{ color: '#fca5a5', textShadow: '0 1px 0 rgba(0,0,0,0.8)' }}
             >
-              {SHIJIN_JP[SHIJIN_BY_ARROW[rhythm.prompt[0]]]}
+              {SHIJIN_JP[SHIJIN_BY_ARROW[rhythmPrompt[0]]]}
             </span>
           </div>
         </div>

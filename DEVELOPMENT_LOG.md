@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.238 - ダンスBGM混在/音量修正・素材プリロード・タレットもランチャー級・コマンド移動+コンボ表示・重さ対策 (Claude Code)
+
+### Summary
+- ダンスBGMとメインBGMが混ざる問題を修正。ダンス開始でメインBGMを即0(確実に無音)にし、ダンス音量は
+  メインと同じ設定値(bgmVolume)に。終了でメインを設定値へフェードイン。
+- 起動時に音声素材を全て先読み(SFX/メインBGM/ダンストラック/全BGMトラック)。テクスチャは既存どおり先読み。
+- 技リストは miss するとリセット(新コマンドを引き直す)。誤フリック(タイミング成功)では保持のまま。
+- 自動タレットのグレネード弾もランチャー級(半径92/演出440)に。heavy-grenadeサブ武器(手榴弾系)は据え置き。
+- 「重くなる」対策: GameHUD が rhythm 全体を購読し resync の firstBeatAt 更新で毎フレーム再描画していたのを、
+  個別フィールド購読に変更(毎フレーム再描画を解消)。
+- コマンド表示を上部中央(=頭上の入力矢印の上)へ移動し、コンボ表示を追加。
+
+### 実装
+- `src/audio/audioManager.ts`: setGainNow 追加。setDanceMode を「メイン即0/ダンス=bgmVolume/終了フェードイン」に。
+  applyBgm のダンスgainも bgmVolume。preloadAllAudio() 追加。DANCE_VOLUME 撤去。
+- `src/App.tsx`: 起動時 preloadAllAudio()。
+- `src/store/gameStore.ts`: timing-miss と tick-miss で prompt 再生成(技リストリセット)。
+- `src/hooks/useGameLoop.ts`: timedGrenades で weaponKey==='sub-turret-grenade' のみランチャー級半径/演出。
+- `src/components/GameHUD.tsx`: rhythm を granular 購読、コマンドを上部中央へ、コンボ表示追加。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### 重さ調査メモ
+- 主因は resync の per-frame set による HUD 全再描画と推定 → granular 購読で解消。残る毎フレーム描画は Pixi の
+  オーバーレイ(ミラーボール/サークル/入力矢印/暗転)程度で軽量。さらに必要なら FPS 計測や描画間引きを追加可能。
+
 ## 2026-06-13 - v0.25.237 - 四神舞・朱雀を「グレネードランチャー(rifle-t3)」相当の爆発に修正(手榴弾ではない) (Claude Code)
 
 ### Summary

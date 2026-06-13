@@ -244,7 +244,6 @@ let danceBgm: HTMLAudioElement | null = null;
 let danceGain: GainNode | null = null;
 let danceRouted = false;
 let danceActive = false;
-const DANCE_VOLUME = 1;
 
 const ensureDanceBgm = () => {
   if (danceBgm || typeof Audio === 'undefined') return;
@@ -285,6 +284,17 @@ const rampGain = (gain: GainNode | null, el: HTMLAudioElement | null, target: nu
   }
 };
 
+// gain を即時設定(ランプなし)。混ざり防止のため、ダンス開始でメインを即0にするのに使う。
+const setGainNow = (gain: GainNode | null, el: HTMLAudioElement | null, v: number) => {
+  const ctx = sfxContext;
+  if (gain && ctx) {
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(v, ctx.currentTime);
+  } else if (el) {
+    el.volume = v;
+  }
+};
+
 // ダンストラックの再生(失敗は無視)。BGM開始の操作ジェスチャ内で呼ぶことでアンロックされる。
 const playDanceBgm = async () => {
   ensureDanceBgm();
@@ -293,7 +303,8 @@ const playDanceBgm = async () => {
 };
 
 // ダンストラックは BGM が有効な間ずっと再生(通常は gain 0 で無音=連続クロック)。ダンス中だけ
-// 音量を上げ、メインBGMをダック(0)する。非ダンスでメインへフェード復帰。停止はしない。
+// 音量を上げ、メインBGMは即0で確実に無音化(混ざり防止)。非ダンスでメインへフェード復帰。停止しない。
+// ダンスの音量はメインBGMと同じ設定値(bgmVolume)に合わせる。
 export const setDanceMode = (active: boolean) => {
   if (active === danceActive) return;
   danceActive = active;
@@ -301,15 +312,14 @@ export const setDanceMode = (active: boolean) => {
   ensureDanceRouting();
   resumeSfxContext();
   if (!danceBgm) return;
-  if (bgmActive && !muted) void playDanceBgm(); // 念のため再生継続を保証
+  if (bgmActive && !muted) void playDanceBgm();
+  const lvl = muted ? 0 : bgmVolume; // ダンス音量 = BGM設定値
   if (active) {
-    rampGain(danceGain, danceBgm, muted ? 0 : DANCE_VOLUME, 0.12);
-    // メインBGMはダック(0)。再生は止めず位置・設定値(bgmVolume)を保持。
-    rampGain(bgmGain, bgm, 0, 0.2);
+    setGainNow(bgmGain, bgm, 0);            // メインBGMを即0(混ざらない)。位置・設定は保持。
+    rampGain(danceGain, danceBgm, lvl, 0.1);
   } else {
-    rampGain(danceGain, danceBgm, 0, 0.25);
-    // 終了でメインBGMを元の設定値へフェードイン。
-    rampGain(bgmGain, bgm, muted ? 0 : bgmVolume, 0.6);
+    rampGain(danceGain, danceBgm, 0, 0.2);
+    rampGain(bgmGain, bgm, lvl, 0.6);       // 元の設定値へフェードイン
   }
 };
 
@@ -352,7 +362,7 @@ const applyBgm = () => {
     void playBgm();
     // ダンストラックも(操作ジェスチャ内で)再生開始してアンロック。通常は gain 0 の無音=連続クロック。
     ensureDanceRouting();
-    if (danceGain) danceGain.gain.value = danceActive ? DANCE_VOLUME : 0;
+    if (danceGain) danceGain.gain.value = danceActive ? bgmVolume : 0;
     void playDanceBgm();
   } else {
     bgm.pause();
@@ -400,6 +410,21 @@ const warmSfxBuffers = () => {
   (Object.keys(SFX_SOURCES) as SfxKey[])
     .filter(key => SFX_SOURCES[key]?.warm !== false)
     .forEach(loadSfxBuffer);
+};
+
+// ゲーム開始時に音声素材を全て先読み(ダウンロード)しておく。再生はしない(ジェスチャ待ち)。
+// SFXバッファ + メインBGM(先頭) + ダンストラック + 残りのBGMトラックをキャッシュへ。
+export const preloadAllAudio = () => {
+  warmSfxBuffers();
+  ensureBgm();
+  ensureDanceBgm();
+  try { bgm?.load(); } catch { /* ignore */ }
+  try { danceBgm?.load(); } catch { /* ignore */ }
+  if (typeof Audio !== 'undefined') {
+    for (const src of BGM_TRACKS) {
+      try { const a = new Audio(src); a.preload = 'auto'; a.load(); } catch { /* ignore */ }
+    }
+  }
 };
 
 const playBgm = async () => {

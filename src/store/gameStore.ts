@@ -3436,10 +3436,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // タイミングを外しても「ダンスは続く」。コンボと技の蓄積(godSuccess)だけリセット、頭からやり直し。
     if (!onBeat) {
       get().spawnCallout(pcx, headY, 'MISS...', '#fb7185', { scale: 1.3 });
+      // missしたら技リスト(コマンド)もリセット=新しいコマンドを引き直す。
       set(s => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
-        rhythm: { ...s.rhythm, inputIndex: 0, inputArrows: [], godSuccess: 0, comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
+        rhythm: { ...s.rhythm, inputIndex: 0, inputArrows: [], prompt: randomRhythmPrompt(), godSuccess: 0, comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
       }));
       return { judged: 'miss' };
     }
@@ -3537,7 +3538,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(s => ({
           meleeFinishComboCount: 0,
           meleeFinishComboUntil: 0,
-          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], godSuccess: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
+          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], prompt: randomRhythmPrompt(), godSuccess: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
         }));
       } else {
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));

@@ -6,7 +6,7 @@ import LoadingScreen from './components/LoadingScreen';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmActive } from './audio/audioManager';
+import { setBgmActive, preloadAllAudio } from './audio/audioManager';
 import { ensureTextures } from './pixi/pixiTextures';
 
 const LOADING_MIN_MS = 650;
@@ -22,7 +22,9 @@ function App() {
   const gameStats = useGameStore(state => state.gameStats);
 
   useEffect(() => {
+    // 起動時に必要な素材を全て先読み(テクスチャ + 音声/BGM/ダンストラック/SFX)。再生はしない。
     preloadPromiseRef.current = ensureTextures().catch(() => {});
+    preloadAllAudio();
   }, []);
 
   useEffect(() => {

@@ -1338,17 +1338,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gy = grenade.y + grenade.height / 2;
           removeProjectile(grenade.id);
           playSfx('bomb');
-          spawnRing(gx, gy, 8, HEAVY_GRENADE_RADIUS, 'rgba(251,146,60,0.82)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
-          spawnBurst(gx, gy, '#f97316', 20);
-          spawnBurst(gx, gy, '#7f1d1d', 8);
-          useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+          // 自動タレットのグレネード弾は「グレネードランチャー級」(半径92・演出440)。
+          // heavy-grenade サブ武器(手榴弾系)は従来の半径66のまま。
+          const isLauncher = grenade.weaponKey === 'sub-turret-grenade';
+          const blastR = isLauncher ? GRENADE_BLAST_RADIUS : HEAVY_GRENADE_RADIUS;
+          const fxMs = isLauncher ? GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS : HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
+          spawnRing(gx, gy, isLauncher ? 10 : 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
+          spawnBurst(gx, gy, '#f97316', isLauncher ? 24 : 20);
+          spawnBurst(gx, gy, '#7f1d1d', isLauncher ? 10 : 8);
+          useGameStore.getState().spawnGlow(gx, gy, isLauncher ? 58 : 50, 'rgba(251,146,60,', fxMs);
           for (const enemy of useGameStore.getState().enemies) {
             if (enemy.type === 'reaper') continue;
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
             const dist = Math.hypot(ex - gx, ey - gy);
-            if (dist > HEAVY_GRENADE_RADIUS) continue;
-            const falloff = 1 - dist / HEAVY_GRENADE_RADIUS;
+            if (dist > blastR) continue;
+            const falloff = 1 - dist / blastR;
             const splashDamage = Math.max(1, Math.round(HEAVY_GRENADE_DAMAGE * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage);
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
