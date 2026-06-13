@@ -398,6 +398,8 @@ export class PixiScene {
   // 鞭ハリケーン: 吸引中心に立つ竜巻スプライト。store の hurricane 状態で駆動。
   private whipHurricane = new Sprite();
   private whipHurricaneTextured = false;
+  // 四神舞(リズム): プレイヤー頭上のミラーボール+左右サークル+矢印プロンプト(軽量Graphics)。
+  private rhythmOverlay = new Graphics();
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -552,6 +554,8 @@ export class PixiScene {
     this.whipHurricane.alpha = 0;
     this.whipHurricane.visible = false;
     this.L.effectLayer.addChild(this.whipHurricane);
+    this.rhythmOverlay.visible = false;
+    this.L.effectLayer.addChild(this.rhythmOverlay);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -1027,7 +1031,83 @@ export class PixiScene {
 
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
+    this.syncRhythmOverlay(s.rhythm, s.player, s.gameTime);
     this.syncFireflies(s.camera, now);
+  }
+
+  // ---- 四神舞(リズム)UI: ミラーボール + 左右サークル + 矢印プロンプト -------
+  // rhythm.active の間だけプレイヤー頭上に表示し追従。色はコンボ段階(comboStage)。
+  // 左右サークルは 0.5秒ごとに中央で重なる(=ジャスト)。すべて軽量Graphics(常時発光なし)。
+  private syncRhythmOverlay(
+    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; comboStage: number; lastJudge: string; lastJudgeAt: number },
+    player: Player,
+    gameTime: number
+  ) {
+    const g = this.rhythmOverlay;
+    if (!rhythm.active) {
+      if (g.visible) { g.visible = false; g.clear(); }
+      return;
+    }
+    const fb = playerFootBox(player);
+    const cx = fb.footX;
+    const cy = fb.footY - fb.boxH - 26; // 頭上
+    g.visible = true;
+    g.clear();
+
+    // ミラーボール本体(コンボ段階色)。小さな格子で軽く面取り。
+    const stageColors = [0x60a5fa, 0x34d399, 0xfbbf24, 0xf97316, 0xf43f5e, 0xffffff];
+    const col = stageColors[Math.max(0, Math.min(stageColors.length - 1, rhythm.comboStage))];
+    const r = 11;
+    g.circle(cx, cy, r).fill({ color: col, alpha: 0.92 });
+    g.circle(cx, cy, r).stroke({ color: 0x0b1020, alpha: 0.8, width: 1.5 });
+    g.circle(cx - 3, cy - 3, 3).fill({ color: 0xffffff, alpha: 0.85 }); // ハイライト
+    for (let i = -1; i <= 1; i++) {
+      g.moveTo(cx - r, cy + i * 5).lineTo(cx + r, cy + i * 5).stroke({ color: 0x0b1020, alpha: 0.35, width: 1 });
+    }
+
+    // 左右サークル: 次のジャストへ向かって中央へ収束(重なった瞬間=ジャスト)。
+    const interval = 500; // RHYTHM_INTERVAL_MS
+    const beatT = rhythm.firstBeatAt + rhythm.expectBeat * interval;
+    const toBeat = Math.max(0, Math.min(1, (beatT - gameTime) / interval));
+    const spread = 34;
+    const off = spread * toBeat;
+    const ringY = cy + r + 12;
+    const justCol = off < 4 ? 0xfde68a : 0x94a3b8;
+    g.circle(cx - off, ringY, 7).stroke({ color: justCol, alpha: 0.9, width: 2 });
+    g.circle(cx + off, ringY, 7).stroke({ color: justCol, alpha: 0.9, width: 2 });
+    g.circle(cx, ringY, 2).fill({ color: 0xfde68a, alpha: 0.8 }); // 中央=ジャスト点
+
+    // 判定フラッシュ(hit/miss/fire を一瞬の色リングで)。lastJudgeAt は gameTime 基準。
+    const sinceJudge = gameTime - rhythm.lastJudgeAt;
+    if (sinceJudge >= 0 && sinceJudge < 220) {
+      const t = sinceJudge / 220;
+      const jc = rhythm.lastJudge === 'miss' ? 0xf43f5e : rhythm.lastJudge === 'fire' ? 0xfde68a : 0x86efac;
+      g.circle(cx, cy, r + 4 + t * 10).stroke({ color: jc, alpha: 0.7 * (1 - t), width: 2 });
+    }
+
+    // 矢印プロンプト(4本)。完了済みは淡色、現在位置は強調。1本目=四神決定。
+    const arrowY = cy - r - 12;
+    const gap = 13;
+    const startX = cx - (gap * (rhythm.prompt.length - 1)) / 2;
+    for (let i = 0; i < rhythm.prompt.length; i++) {
+      const ax = startX + i * gap;
+      const done = i < rhythm.inputIndex;
+      const cur = i === rhythm.inputIndex;
+      const a = done ? 0.3 : cur ? 1 : 0.7;
+      const acol = i === 0 ? 0xfca5a5 : 0xe2e8f0; // 1本目だけ色を変えて四神決定を示す
+      this.drawRhythmArrow(g, ax, arrowY, rhythm.prompt[i], acol, a, cur ? 1.25 : 1);
+    }
+  }
+
+  // 小さな三角形の矢印を描く(上下左右)。
+  private drawRhythmArrow(g: Graphics, x: number, y: number, dir: 'up' | 'down' | 'left' | 'right', color: number, alpha: number, scale: number) {
+    const s = 4 * scale;
+    let pts: number[];
+    if (dir === 'up') pts = [x, y - s, x - s, y + s, x + s, y + s];
+    else if (dir === 'down') pts = [x, y + s, x - s, y - s, x + s, y - s];
+    else if (dir === 'left') pts = [x - s, y, x + s, y - s, x + s, y + s];
+    else pts = [x + s, y, x - s, y - s, x - s, y + s];
+    g.poly(pts).fill({ color, alpha });
   }
 
   // ---- 鞭ハリケーン(吸引中心に立つ竜巻スプライト) -----------------------

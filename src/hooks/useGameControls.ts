@@ -35,6 +35,28 @@ export const useGameControls = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const { key } = e;
+
+      // 四神舞リズムモード中(PC): 移動キー=フリック(移動しない)、Space=タップ、Escape=終了。
+      // 攻撃実行/効果音は useGameLoop 側が担当。移動入力は出さない(立ち止まりを維持)。
+      if (useGameStore.getState().rhythm.active) {
+        if (key.toLowerCase() === 'escape') {
+          useGameStore.getState().setRhythmActive(false);
+          return;
+        }
+        if (isCounterKey(key)) {
+          e.preventDefault();
+          if (!e.repeat) useGameStore.getState().rhythmInput('tap');
+          return;
+        }
+        const md = moveDirFromKey(key);
+        if (md) {
+          e.preventDefault();
+          if (!e.repeat) useGameStore.getState().rhythmInput('flick', DIR_VECTORS[md]);
+          return;
+        }
+        return; // その他のキーはリズム中は無視
+      }
+
       const inputState = { ...useGameStore.getState().inputState };
 
       switch (key.toLowerCase()) {

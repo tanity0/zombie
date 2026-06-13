@@ -225,6 +225,35 @@ export type AmmoType = WeaponCategory;
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret';
 export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin';
+
+// 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
+// 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。
+export type RhythmArrow = 'up' | 'down' | 'left' | 'right';
+export type ShijinGod = 'suzaku' | 'genbu' | 'seiryu' | 'byakko';
+// loop が消化する実行待ちアクション(store=判定/状態、loop=攻撃実行 の橋渡し)。
+export type RhythmPending =
+  | { kind: 'tap' }
+  | { kind: 'flick'; arrow: RhythmArrow }
+  | { kind: 'god'; god: ShijinGod; x: number; y: number }
+  | { kind: 'finish' };
+export interface RhythmState {
+  active: boolean;
+  firstBeatAt: number;     // gameTime(ms) の beat index 0 の時刻
+  expectBeat: number;      // 次に取るべき beat index(毎ビート入力が要る)
+  prompt: RhythmArrow[];   // 現在の4矢印プロンプト(1本目=四神を決定)
+  inputIndex: number;      // 一致した矢印数(0..4)
+  godSuccess: number;      // 四神技の成功回数(SHIJIN_FINISH_COUNT で全体フィニッシュ)
+  comboStage: number;      // ミラーボール色段階(コンボから導出)
+  lastInputAt: number;     // 連打デバウンス用
+  lastJudge: 'none' | 'hit' | 'miss' | 'fire';
+  lastJudgeAt: number;     // 演出用(gameTime)
+  lastGod: ShijinGod | null;
+  invulnUntil: number;     // 開始直後の無敵(gameTime, TODO仮値)
+  byakkoUntil: number;     // 白虎の持続終了(gameTime)
+  byakkoNextAt: number;    // 次の斬撃パルス
+  byakkoHits: number;      // 斬撃回数(BYAKKO_MAX_HITS で打ち止め)
+  pending: RhythmPending[];// loop が消化する実行待ち
+}
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'

@@ -10,6 +10,54 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.223 - 「四神舞(リズム)」インタラクティブ実装(リズム判定/四神技/ミラーボールUI) (Claude Code)
+
+### Summary
+四神舞の土台(v0.25.222)に、リズム入力・四神技・全体フィニッシュ・ミラーボールUIを実装。ユーザー確認済みの
+方式: (1)停止0.6sでリズムモード自動開始/移動で終了、(2)1本目の矢印で四神決定(上=朱雀/下=玄武/左=青龍/右=白虎)、
+(3)ランダム4矢印プロンプトを全部オンビート入力で発動(モードA)。**store=状態/判定、useGameLoop=攻撃実行**の分離。
+
+### 実装
+- **状態/判定(gameStore)**: `rhythm` 状態 + `setRhythmActive`/`rhythmInput`/`tickRhythm`/`startByakko`/
+  `advanceByakko`/`drainRhythmPending`。タイミング判定(0.5秒ビート, 成功窓 `RHYTHM_SUCCESS_WINDOW_MS`)、
+  既存コンボカウンター連動、外したら(早/遅/無入力)コンボ全リセット(硬直なし)。攻撃は pending に積む。
+- **攻撃実行(useGameLoop)**: idle検出→`setRhythmActive`、`tickRhythm`、pending消化、白虎パルス。
+  - タップ=周囲を軽く吹き飛ばし / フリック=方向帯攻撃。
+  - 朱雀=近場最大3体をグレネード相当で爆破(既存ヘビーグレネード値流用)。
+  - 玄武=上下左右の十字直線 / 青龍=斜めX字直線(プレイヤー幅程度・短命VFX)。
+  - 白虎=5秒間0.5秒ごとに射程内の近い敵1体を斬る(最大10回, 毎フレーム探索しない)。
+  - 四神技4回成功→画面内フィニッシュ(雑魚=近接フィニッシュ処刑/ボス=大ダメージ・即死なし)。
+  - 近接フィニッシュ: スタン雑魚のみ処刑、ボスは処刑しない(多重発火しない設計)。スロー誘発なし。
+- **入力ルーティング**: VirtualJoystick(指離し)とPCキー。リズム中はタップ/フリックをリズムへ振り分け、
+  カウンター/一閃は出さない。PCは移動キー=フリック(移動しない)/Space=タップ/Escape=終了。
+- **UI(pixiScene)**: `syncRhythmOverlay` でプレイヤー頭上にミラーボール(コンボ段階色)+左右収束サークル
+  (0.5秒で中央=ジャスト)+4矢印プロンプト(1本目=四神色)+判定フラッシュ。終了で消える。軽量Graphicsのみ。
+- **HUD**: 「FINISH / COUNTER」表示を廃止(コンボ段階はミラーボール色で表現)。コンボ状態は内部継続。
+- **開始時無敵**: 既存 invulnerable を流用(TODO: 専用秒数 `RHYTHM_START_INVULN_MS`)。
+
+### Files changed
+- `src/types/game.ts` — RhythmArrow/ShijinGod/RhythmPending/RhythmState、GameState に rhythm
+- `src/config/shijin.ts` — 新規。リズム/四神技の定数(多くTODO仮値)+ヘルパー
+- `src/store/gameStore.ts` — rhythm 状態/アクション、initialRhythm、リセットに反映
+- `src/hooks/useGameLoop.ts` — idle検出/tick/pending実行/白虎/四神技ヘルパー
+- `src/components/VirtualJoystick.tsx` / `src/hooks/useGameControls.ts` — リズム入力ルーティング
+- `src/components/GameHUD.tsx` — フィニッシュカウンター表示を廃止
+- `src/pixi/pixiScene.ts` — syncRhythmOverlay(ミラーボール/サークル/矢印)
+- `package.json` — version 0.25.223
+
+### Performance
+- 4/10(Mid)。idle検出は毎フレーム軽量。リズム入力は離散イベント。白虎は0.5秒パルス。四神技は単発。
+  UIは軽量Graphics(常時発光/大量パーティクルなし)。全体フィニッシュは一度のみ・軽量フラッシュ。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO / 要確認(未確定で仮値=実機調整)
+- 判定幅(成功/ジャスト)、各四神技ダメージ/範囲、白虎射程/ダメージ、タップ/フリック威力、開始無敵秒数、Lv差分。
+- ミス時に godSuccess(4回カウント)もリセットするか(現状は維持)。終了時のコンボ扱い(現状維持)。
+- 朱雀/玄武/青龍/白虎の入力パターン仕様はモードA(ランダム4矢印・1本目=四神)で実装。固定パターンが要るなら別途。
+- リズム自動開始(停止0.6s)は alchemy(立ち止まり召喚)と併存する点に注意(両方発動しうる)。
+
 ## 2026-06-13 - v0.25.222 - 通常サブウェポン「四神舞(リズム)」取得/強化の土台のみ (Claude Code)
 
 ### Summary

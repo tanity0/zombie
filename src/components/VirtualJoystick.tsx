@@ -30,6 +30,7 @@ const VirtualJoystick: React.FC = () => {
   const setLastDirection = useGameStore(state => state.setLastDirection);
   const triggerCounter = useGameStore(state => state.triggerCounter);
   const triggerKatanaDash = useGameStore(state => state.triggerKatanaDash);
+  const rhythmInput = useGameStore(state => state.rhythmInput);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
   // ドラッグは低速・小移動なのでしきい値に届かず、一閃は暴発しない。
@@ -54,16 +55,24 @@ const VirtualJoystick: React.FC = () => {
     // The store enforces the cooldown so spam-tapping doesn't help.
     const pointerId = pointerIdRef.current;
     if (pointerId !== null && fireCounter) {
-      // カウンター優先: 既存のカウンター処理を先に通す(刀装備中はナイフ
-      // スイープなしで窓だけ開く)。その後、フリック成立時のみ一閃ダッシュ。
-      const counter = triggerCounter();
-      if (counter.swung) playSfx('melee');
-      if (counter.finish) playSfx('melee-finish');
-      else if (counter.hit) playSfx('slash-damage');
-      if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
-      const flick = detectFlick();
-      if (flick && triggerKatanaDash(flick.x, flick.y)) {
-        playSfx('katana-dash');
+      // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
+      // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
+      if (useGameStore.getState().rhythm.active) {
+        const flick = detectFlick();
+        if (flick) rhythmInput('flick', flick);
+        else rhythmInput('tap');
+      } else {
+        // カウンター優先: 既存のカウンター処理を先に通す(刀装備中はナイフ
+        // スイープなしで窓だけ開く)。その後、フリック成立時のみ一閃ダッシュ。
+        const counter = triggerCounter();
+        if (counter.swung) playSfx('melee');
+        if (counter.finish) playSfx('melee-finish');
+        else if (counter.hit) playSfx('slash-damage');
+        if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
+        const flick = detectFlick();
+        if (flick && triggerKatanaDash(flick.x, flick.y)) {
+          playSfx('katana-dash');
+        }
       }
     }
     flickSamplesRef.current = [];
@@ -76,7 +85,7 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, triggerCounter, triggerKatanaDash, detectFlick]);
+  }, [setSwipeDirection, setTouchActive, triggerCounter, triggerKatanaDash, detectFlick, rhythmInput]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (pointerIdRef.current !== null) release(false);

@@ -38,6 +38,16 @@ import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
+import {
+  RHYTHM_ENTER_IDLE_MS, RHYTHM_TAP_RADIUS, RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
+  RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT,
+  SUZAKU_MAX_TARGETS, SUZAKU_BLAST_RADIUS, SUZAKU_BLAST_DAMAGE,
+  GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE,
+  SEIRYU_LINE_LENGTH, SEIRYU_LINE_HALF_W, SEIRYU_DAMAGE,
+  BYAKKO_RANGE, BYAKKO_DAMAGE, BYAKKO_MAX_HITS,
+  SHIJIN_FINISH_BOSS_DAMAGE, SHIJIN_FINISH_SCREEN_MARGIN,
+} from '../config/shijin';
+import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
@@ -170,6 +180,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const shieldHitRef = useRef<Map<string, number>>(new Map());
   // 自動タレットの発射スロットル: タレットid -> 次に撃てる gameTime(ms)。
   const turretFireRef = useRef<Map<string, number>>(new Map());
+  // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
+  const rhythmIdleStartRef = useRef<number>(0);
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -252,6 +264,147 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
   // Game loop
   useEffect(() => {
+    // --- 四神舞(リズム)の攻撃実行ヘルパー(store=判定、loop=実行)。すべて軽量・短命VFX。
+    const SHIJIN_BOSS_TYPES = new Set(['giantbat', 'pumpkin', 'reaper']);
+    const ARROW_VEC: Record<RhythmArrow, { x: number; y: number }> = {
+      up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
+    };
+    // 1体に当てる。スタン中の雑魚は近接フィニッシュで処刑(allowExecute)。ボスは処刑しない。
+    const shijinHitEnemy = (enemyId: string, damage: number, allowExecute: boolean) => {
+      const st = useGameStore.getState();
+      const e = st.enemies.find(x => x.id === enemyId);
+      if (!e) return false;
+      const stunned = e.stunUntil !== undefined && st.gameTime < e.stunUntil;
+      const boss = SHIJIN_BOSS_TYPES.has(e.type);
+      const ex = e.x + e.width / 2;
+      const ey = e.y + e.height / 2;
+      const dmg = allowExecute && stunned && !boss ? Math.max(damage, e.health) : damage;
+      const killed = damageEnemy(enemyId, dmg);
+      if (killed) {
+        playEnemyDeath();
+        addPickup({ id: `pickup-xp-shijin-${enemyId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, x: ex - 8, y: ey - 8, type: 'experience', value: e.experienceValue });
+      } else {
+        spawnDamageNumber(ex, e.y, Math.round(dmg), stunned);
+      }
+      return killed;
+    };
+    // 直線(帯)攻撃: 起点から(dx,dy)方向 length まで、半幅 halfW の帯に入る敵へ。
+    const rhythmLineAttack = (cx: number, cy: number, dx: number, dy: number, length: number, halfW: number, damage: number, kbMult: number, execute: boolean) => {
+      for (const e of useGameStore.getState().enemies) {
+        if (e.type === 'reaper') continue;
+        const rx = e.x + e.width / 2 - cx;
+        const ry = e.y + e.height / 2 - cy;
+        const along = rx * dx + ry * dy;
+        if (along < 0 || along > length) continue;
+        const perp = Math.abs(rx * dy - ry * dx);
+        if (perp > halfW + e.width / 2) continue;
+        shijinHitEnemy(e.id, damage, execute);
+        if (kbMult > 0) useGameStore.getState().knockbackEnemy(e.id, dx, dy, kbMult);
+      }
+    };
+    // 玄武/青龍の直線VFX: 少しクネクネさせた短命のスラッシュ点 + 端のバースト(軽量・ピクセル調)。
+    const lineVfx = (cx: number, cy: number, dx: number, dy: number, length: number, sparkColor: string, burstHex: string) => {
+      for (let t = 0.25; t <= 1.001; t += 0.25) {
+        const j = (Math.random() - 0.5) * 12;
+        useGameStore.getState().spawnSlash(cx + dx * length * t - dy * j, cy + dy * length * t + dx * j, sparkColor);
+      }
+      spawnBurst(cx + dx * length, cy + dy * length, burstHex, 6);
+    };
+    const fireShijinGod = (god: ShijinGod, x: number, y: number) => {
+      if (god === 'suzaku') {
+        // 朱雀: 近場最大3体をグレネード相当で爆破(範囲ダメージ・フォールオフ)。
+        const targets = useGameStore.getState().enemies
+          .filter(e => e.type !== 'reaper')
+          .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - x, e.y + e.height / 2 - y) }))
+          .sort((a, b) => a.d - b.d).slice(0, SUZAKU_MAX_TARGETS).map(h => h.e);
+        spawnFlash('rgba(248,113,113,0.16)', 150);
+        for (const t of targets) {
+          const bx = t.x + t.width / 2;
+          const by = t.y + t.height / 2;
+          spawnRing(bx, by, 8, SUZAKU_BLAST_RADIUS, 'rgba(248,113,113,0.85)', 4, 360);
+          spawnBurst(bx, by, '#f87171', 14);
+          spawnBurst(bx, by, '#7f1d1d', 6);
+          useGameStore.getState().spawnGlow(bx, by, 46, 'rgba(248,113,113,', 360);
+          for (const e of useGameStore.getState().enemies) {
+            if (e.type === 'reaper') continue;
+            const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
+            if (dist > SUZAKU_BLAST_RADIUS) continue;
+            const falloff = 1 - dist / SUZAKU_BLAST_RADIUS;
+            shijinHitEnemy(e.id, Math.max(1, Math.round(SUZAKU_BLAST_DAMAGE * (0.55 + falloff * 0.45))), true);
+          }
+        }
+        playSfx('bomb');
+        useGameStore.getState().spawnCallout(x, y - 30, '朱雀', '#f87171', { scale: 2.6, serif: true });
+      } else if (god === 'genbu') {
+        // 玄武: 上下左右の十字直線(プレイヤー幅程度)。
+        for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          rhythmLineAttack(x, y, dx, dy, GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE, 0, true);
+          lineVfx(x, y, dx, dy, GENBU_LINE_LENGTH, 'rgba(214,211,170,0.9)', '#a16207');
+        }
+        playSfx('melee');
+        useGameStore.getState().spawnCallout(x, y - 30, '玄武', '#cbd5e1', { scale: 2.6, serif: true });
+      } else if (god === 'seiryu') {
+        // 青龍: 斜めX字の直線(水流)。
+        const s = Math.SQRT1_2;
+        for (const [dx, dy] of [[s, -s], [-s, -s], [s, s], [-s, s]]) {
+          rhythmLineAttack(x, y, dx, dy, SEIRYU_LINE_LENGTH, SEIRYU_LINE_HALF_W, SEIRYU_DAMAGE, 0, true);
+          lineVfx(x, y, dx, dy, SEIRYU_LINE_LENGTH, 'rgba(186,230,253,0.9)', '#0ea5e9');
+        }
+        playSfx('melee');
+        useGameStore.getState().spawnCallout(x, y - 30, '青龍', '#38bdf8', { scale: 2.6, serif: true });
+      } else {
+        // 白虎: 5秒間の持続斬りを開始(以後 loop が0.5秒ごとにパルス処理)。
+        useGameStore.getState().startByakko();
+        useGameStore.getState().spawnCallout(x, y - 30, '白虎', '#e5e7eb', { scale: 2.6, serif: true });
+      }
+    };
+    // 四神技4回成功 → 画面内の敵に全体フィニッシュ(雑魚=処刑/ボス=大ダメージ)。一度だけ実行。
+    const shijinWholeScreenFinish = () => {
+      const st = useGameStore.getState();
+      const cam = st.camera;
+      const b = st.gameBounds;
+      const m = SHIJIN_FINISH_SCREEN_MARGIN;
+      const onScreen = st.enemies.filter(e => {
+        const ex = e.x + e.width / 2;
+        const ey = e.y + e.height / 2;
+        return ex >= cam.x - m && ex <= cam.x + b.width + m && ey >= cam.y - m && ey <= cam.y + b.height + m;
+      });
+      spawnFlash('rgba(255,255,255,0.5)', 200);
+      for (const e of onScreen) {
+        if (SHIJIN_BOSS_TYPES.has(e.type)) shijinHitEnemy(e.id, SHIJIN_FINISH_BOSS_DAMAGE, false);
+        else shijinHitEnemy(e.id, 99999, true);
+      }
+      playSfx('melee-finish');
+    };
+    const executeRhythmPending = (pa: RhythmPending) => {
+      const p = useGameStore.getState().player;
+      const pcx = p.x + p.width / 2;
+      const pcy = p.y + p.height / 2;
+      if (pa.kind === 'tap') {
+        spawnRing(pcx, pcy, 6, RHYTHM_TAP_RADIUS, 'rgba(167,139,250,0.6)', 2, 200);
+        for (const e of useGameStore.getState().enemies) {
+          if (e.type === 'reaper') continue;
+          const ex = e.x + e.width / 2;
+          const ey = e.y + e.height / 2;
+          const d = Math.hypot(ex - pcx, ey - pcy);
+          if (d > RHYTHM_TAP_RADIUS) continue;
+          shijinHitEnemy(e.id, RHYTHM_TAP_DAMAGE, false);
+          const n = Math.max(0.001, d);
+          useGameStore.getState().knockbackEnemy(e.id, (ex - pcx) / n, (ey - pcy) / n, RHYTHM_TAP_KNOCKBACK_MULT);
+        }
+        playSfx('melee');
+      } else if (pa.kind === 'flick') {
+        const v = ARROW_VEC[pa.arrow];
+        rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, false);
+        useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
+        playSfx('katana-dash');
+      } else if (pa.kind === 'god') {
+        fireShijinGod(pa.god, pa.x, pa.y);
+      } else if (pa.kind === 'finish') {
+        shijinWholeScreenFinish();
+      }
+    };
+
     const gameLoop = (timestamp: number) => {
       // The game can sit idle (tab in background, game-over screen, paused
       // mid-render, etc.) for arbitrary amounts of time. We must NOT pass
@@ -414,6 +567,55 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // TODO(錬金術): 被弾でチャネル中断するか(現状は中断しない)。
         } else if ((alcPlayer.alchemyChannelStartedAt ?? 0) !== 0) {
           useGameStore.getState().updateAlchemyChannel(0); // 移動/ブロック/レアで中断
+        }
+
+        // 四神舞(リズム): 立ち止まりでモード開始→タップ/フリック入力で戦う。store=判定、loop=実行。
+        {
+          const rs = useGameStore.getState();
+          const rp = rs.player;
+          const ownsRhythm = rp.subWeapons.includes('shijin') && !subWeaponBlockedByKatana(rp, 'shijin');
+          if (!ownsRhythm) {
+            if (rs.rhythm.active) useGameStore.getState().setRhythmActive(false);
+            rhythmIdleStartRef.current = 0;
+          } else if (rp.isMoving) {
+            // 動いたら終了(UI消滅)。停止計測リセット。
+            rhythmIdleStartRef.current = newGameTime;
+            if (rs.rhythm.active) useGameStore.getState().setRhythmActive(false);
+          } else {
+            if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
+            if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
+              useGameStore.getState().setRhythmActive(true);
+            }
+          }
+
+          if (useGameStore.getState().rhythm.active) {
+            useGameStore.getState().tickRhythm();
+            // pending(タップ/フリック/四神技/全体フィニッシュ)を消化して実行。
+            for (const pa of useGameStore.getState().drainRhythmPending()) {
+              executeRhythmPending(pa);
+            }
+            // 白虎: 5秒間 0.5秒ごとに射程内の近い敵を1体斬る(最大10回)。毎フレーム探索しない。
+            const rr = useGameStore.getState().rhythm;
+            if (rr.byakkoUntil > newGameTime && newGameTime >= rr.byakkoNextAt && rr.byakkoHits < BYAKKO_MAX_HITS) {
+              const bp = useGameStore.getState().player;
+              const bcx = bp.x + bp.width / 2;
+              const bcy = bp.y + bp.height / 2;
+              const target = useGameStore.getState().enemies
+                .filter(e => e.type !== 'reaper')
+                .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - bcx, e.y + e.height / 2 - bcy) }))
+                .filter(h => h.d <= BYAKKO_RANGE)
+                .sort((a, b) => a.d - b.d)[0]?.e;
+              if (target) {
+                const ex = target.x + target.width / 2;
+                const ey = target.y + target.height / 2;
+                shijinHitEnemy(target.id, BYAKKO_DAMAGE, true);
+                useGameStore.getState().spawnSlash(ex, ey, 'rgba(241,245,249,0.95)');
+                spawnRing(ex, ey, 4, 22, 'rgba(226,232,240,0.7)', 2, 200);
+                playSfx('slash-damage');
+              }
+              useGameStore.getState().advanceByakko();
+            }
+          }
         }
 
         // Infinite-world camera: center the player exactly.

@@ -54,8 +54,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
-  const meleeFinishComboCount = useGameStore(state => state.meleeFinishComboCount);
-  const meleeFinishComboUntil = useGameStore(state => state.meleeFinishComboUntil);
   const enemies = useGameStore(state => state.enemies);
   const effectsCount = useGameStore(state => state.effects.length);
   const projectilesCount = useGameStore(state => state.projectiles.length);
@@ -66,7 +64,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const healthPercentage = (player.health / player.maxHealth) * 100;
 
   const bossActive = enemies.some(e => e.type === 'giantbat');
-  const comboVisible = meleeFinishComboCount >= 2 && gameTime <= meleeFinishComboUntil;
   const bossImminent =
     !bossActive &&
     gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
@@ -132,38 +129,8 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
         </div>
       )}
 
-      {comboVisible && (
-        <div
-          className="absolute text-left"
-          style={{
-            top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
-            left: 'max(env(safe-area-inset-left), 18px)',
-          }}
-        >
-          <div className="leading-none">
-            <div
-              className="text-[9px] tracking-[0.18em] text-amber-100/75 font-bold"
-              style={{ textShadow: '0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(251,191,36,0.35)' }}
-            >
-              FINISH / COUNTER
-            </div>
-            <div
-              className="font-black tabular-nums text-amber-100"
-              style={{
-                WebkitTextStroke: '1px rgba(20,12,4,0.86)',
-                textShadow: '0 2px 0 rgba(0,0,0,0.55), 0 0 14px rgba(251,191,36,0.28), 10px 0 22px rgba(251,191,36,0.12), -10px 0 22px rgba(251,191,36,0.12)'
-              }}
-            >
-              <span key={`combo-${meleeFinishComboCount}`} className="combo-count-pop inline-block text-3xl">
-                {meleeFinishComboCount}
-              </span>
-              <span className="ml-1 align-baseline text-[9px] tracking-[0.16em] text-amber-100/70">
-                COMBO
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* フィニッシュカウンター表示は四神舞仕様で廃止(コンボ段階はミラーボールの色で表現)。
+          コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
 
       {/* Top bar */}
       <div

@@ -4,8 +4,14 @@ import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction, SubWeaponKey, CastleEvent, DifficultyRank,
-  WeaponMerchant, ShopItemKey, EventQuestNpc, Summon
+  WeaponMerchant, ShopItemKey, EventQuestNpc, Summon,
+  RhythmState, RhythmArrow, ShijinGod, RhythmPending
 } from '../types/game';
+import {
+  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_INPUT_DEBOUNCE_MS,
+  RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
+  randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS
+} from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, resolveEnemyTarget } from '../utils/enemyUtils';
@@ -23,6 +29,13 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, type Rect } from '../world/obstacles';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
+
+// 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
+const initialRhythm = (): RhythmState => ({
+  active: false, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0,
+  godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastGod: null,
+  invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, pending: [],
+});
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
@@ -545,6 +558,7 @@ interface GameState {
   startWithTestStraps: boolean;
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
+  rhythm: RhythmState;
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
@@ -667,6 +681,13 @@ interface GameState {
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
+  // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
+  setRhythmActive: (active: boolean) => void;
+  rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
+  tickRhythm: () => void;
+  startByakko: () => void;
+  advanceByakko: () => void;
+  drainRhythmPending: () => RhythmPending[];
   setGameBounds: (bounds: GameBounds) => void;
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
@@ -757,6 +778,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   startWithTestStraps: false,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
+  rhythm: initialRhythm(),
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
@@ -3341,10 +3363,165 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // --- 四神舞(リズム) -------------------------------------------------------
+  // store は状態と判定のみを持つ。実際の攻撃(タップ/フリック/四神技/全体フィニッシュ/
+  // 白虎の斬撃)は useGameLoop が pending を消化して実行する(効果音・XP・エフェクトのため)。
+  setRhythmActive: (active) => {
+    if (active === get().rhythm.active) return;
+    if (active) {
+      const gt = get().gameTime;
+      set(state => ({
+        rhythm: {
+          ...state.rhythm,
+          active: true,
+          firstBeatAt: gt + RHYTHM_LEAD_MS,
+          expectBeat: 0,
+          inputIndex: 0,
+          prompt: randomRhythmPrompt(),
+          godSuccess: 0,
+          comboStage: rhythmComboStage(state.meleeFinishComboCount),
+          lastJudge: 'none',
+          lastJudgeAt: gt,
+          invulnUntil: gt + RHYTHM_START_INVULN_MS,
+          byakkoUntil: 0,
+          byakkoNextAt: 0,
+          byakkoHits: 0,
+          pending: [],
+        },
+        // 立ち上がり無敵: 既存の invulnerable を流用(INVULN_MS で自動解除)。TODO: 専用秒数。
+        player: { ...state.player, invulnerable: true, invulnerableTime: Date.now() },
+      }));
+    } else {
+      // 終了: UIは消え、白虎も止め、残っていれば無敵を解除する。
+      set(state => ({
+        rhythm: { ...state.rhythm, active: false, byakkoUntil: 0, pending: [] },
+        player: { ...state.player, invulnerable: false },
+      }));
+    }
+  },
+
+  rhythmInput: (kind, dir) => {
+    const state = get();
+    const r = state.rhythm;
+    if (!r.active) return { judged: 'none' };
+    const gt = state.gameTime;
+    if (gt - r.lastInputAt < RHYTHM_INPUT_DEBOUNCE_MS) return { judged: 'none' };
+    const beatT = r.firstBeatAt + r.expectBeat * RHYTHM_INTERVAL_MS;
+    // タイミングを外したら(早すぎ/遅すぎ)コンボ全リセット(硬直は入れない)。
+    if (Math.abs(gt - beatT) > RHYTHM_SUCCESS_WINDOW_MS) {
+      set(s => ({
+        meleeFinishComboCount: 0,
+        meleeFinishComboUntil: 0,
+        rhythm: { ...s.rhythm, inputIndex: 0, prompt: randomRhythmPrompt(), comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
+      }));
+      return { judged: 'miss' };
+    }
+    // 成功タイミング。既存コンボカウンターを進める。
+    get().addMeleeFinishCombo(1);
+    const combo = get().meleeFinishComboCount;
+    const pcx = state.player.x + state.player.width / 2;
+    const pcy = state.player.y + state.player.height / 2;
+    const newPending: RhythmPending[] = [];
+    let inputIndex = r.inputIndex;
+    let prompt = r.prompt;
+    let godSuccess = r.godSuccess;
+    let judged: 'hit' | 'fire' = 'hit';
+    let firedGod: ShijinGod | undefined;
+    let finish = false;
+    const arrow: RhythmArrow | null = (kind === 'flick' && dir) ? arrowFromDir(dir.x, dir.y) : null;
+    if (!arrow) {
+      newPending.push({ kind: 'tap' }); // タップ=周囲を軽く吹き飛ばし
+    } else {
+      newPending.push({ kind: 'flick', arrow }); // フリック=方向攻撃
+      if (arrow === prompt[inputIndex]) {
+        inputIndex++;
+        if (inputIndex >= prompt.length) {
+          firedGod = SHIJIN_BY_ARROW[prompt[0]]; // 1本目の矢印で四神決定
+          newPending.push({ kind: 'god', god: firedGod, x: pcx, y: pcy });
+          judged = 'fire';
+          godSuccess++;
+          inputIndex = 0;
+          prompt = randomRhythmPrompt();
+          if (godSuccess >= SHIJIN_FINISH_COUNT) {
+            newPending.push({ kind: 'finish' });
+            godSuccess = 0;
+            finish = true;
+          }
+        }
+      } else {
+        // プロンプトと違う向き(タイミングは成功): 入力進行のみリセット(コンボは継続)。
+        inputIndex = 0;
+        prompt = randomRhythmPrompt();
+      }
+    }
+    set(s => ({
+      rhythm: {
+        ...s.rhythm,
+        expectBeat: s.rhythm.expectBeat + 1,
+        inputIndex,
+        prompt,
+        godSuccess,
+        comboStage: rhythmComboStage(combo),
+        lastInputAt: gt,
+        lastJudge: judged === 'fire' ? 'fire' : 'hit',
+        lastJudgeAt: gt,
+        lastGod: firedGod ?? s.rhythm.lastGod,
+        pending: [...s.rhythm.pending, ...newPending],
+      },
+    }));
+    return { judged, god: firedGod, finish };
+  },
+
+  tickRhythm: () => {
+    const state = get();
+    const r = state.rhythm;
+    if (!r.active) return;
+    const gt = state.gameTime;
+    // 過ぎたビートはミス扱い。ただし「プレイ中(コンボ>0 または 入力進行>0)」でなければ静かに送る
+    // (ただ立っているだけで毎ビート"ミス"が点滅しないように)。
+    let expect = r.expectBeat;
+    let missed = false;
+    while (gt > r.firstBeatAt + expect * RHYTHM_INTERVAL_MS + RHYTHM_SUCCESS_WINDOW_MS) {
+      expect++;
+      missed = true;
+    }
+    if (missed) {
+      const playing = state.meleeFinishComboCount > 0 || r.inputIndex > 0;
+      if (playing) {
+        set(s => ({
+          meleeFinishComboCount: 0,
+          meleeFinishComboUntil: 0,
+          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, prompt: randomRhythmPrompt(), comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
+        }));
+      } else {
+        set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));
+      }
+    }
+  },
+
+  startByakko: () => {
+    set(s => ({
+      rhythm: { ...s.rhythm, byakkoUntil: s.gameTime + BYAKKO_DURATION_MS, byakkoNextAt: s.gameTime, byakkoHits: 0 },
+    }));
+  },
+
+  advanceByakko: () => {
+    set(s => ({
+      rhythm: { ...s.rhythm, byakkoNextAt: s.gameTime + BYAKKO_INTERVAL_MS, byakkoHits: s.rhythm.byakkoHits + 1 },
+    }));
+  },
+
+  drainRhythmPending: () => {
+    const p = get().rhythm.pending;
+    if (p.length === 0) return [];
+    set(s => ({ rhythm: { ...s.rhythm, pending: [] } }));
+    return p;
+  },
+
   setGameBounds: (bounds) => {
     set({ gameBounds: bounds });
   },
-  
+
   updateGameStats: (stats) => {
     set(state => ({
       gameStats: { ...state.gameStats, ...stats }
