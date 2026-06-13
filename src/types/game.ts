@@ -253,6 +253,7 @@ export interface RhythmState {
   lastJudge: 'none' | 'hit' | 'miss' | 'fire';
   lastJudgeAt: number;     // 演出用(gameTime)
   lastTapAt: number;       // タップ成功の時刻(gameTime)。タップ発光演出に使用
+  lastFinishAt: number;    // 四神技4回成功(全体フィニッシュ)の時刻(gameTime)。虹色演出に使用
   lastGod: ShijinGod | null;
   invulnUntil: number;     // 開始直後の無敵(gameTime, TODO仮値)
   byakkoUntil: number;     // 白虎の持続終了(gameTime)

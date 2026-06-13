@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.228 - 四神舞: ミラーボール実素材化(0.5秒左右反転)+ タップ発光 + 連続回数で色変化 (Claude Code)
+
+### Summary
+ユーザー提供のミラーボール画像(64x64)を実テクスチャとして採用。手続き描画の円を廃止しスプライト化。
+- 0.5秒(1ビート)ごとに左右反転し、回転して見せる。
+- ジャストタップでボールが光る(拡大パルス+暖色ハロー)。
+- 色は「技を連続で出した回数(godSuccess)」で変化: 0白/1青/2緑/3赤、4=全体フィニッシュで虹色。
+  (当初フリック方向で色、としていたがユーザー指示で連続回数方式へ戻し)
+
+### 実装
+- `public/sprites/mirror-ball.png` 追加。`pixiTextures.ts` で 'mirror-ball' を nearest で読込・登録。
+- `src/config/shijin.ts`: RHYTHM_STAGE_COLORS/RHYTHM_FINISH_RAINBOW_MS/RHYTHM_BALL_DIAM/RHYTHM_RAINBOW_PALETTE。
+- `src/types/game.ts` + `gameStore.ts`: RhythmState.lastFinishAt(虹用)。フィニッシュ時に記録。
+- `src/pixi/pixiScene.ts`: rhythmBall スプライト(effectLayer)。flip=floor(gameTime/500)%2、tint=段階色/虹、
+  タップで scale パルス+ハロー。手続き円ミラーボールは廃止。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- ボール直径30px/虹の巡回速度/段階色は仮。実機で調整。素材を回転アニメ(コマ)にしたい場合は別対応。
+
 ## 2026-06-13 - v0.25.227 - 四神舞: リズム中の画面暗転 + タップ発光の演出追加 (Claude Code)
 
 ### Summary

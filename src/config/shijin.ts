@@ -27,6 +27,12 @@ export const arrowFromDir = (x: number, y: number): RhythmArrow =>
 // 表示用: 矢印グリフと四神の和名(コマンドUI/オーバーレイで使用)。
 export const ARROW_GLYPH: Record<RhythmArrow, string> = { up: '↑', down: '↓', left: '←', right: '→' };
 export const SHIJIN_JP: Record<ShijinGod, string> = { suzaku: '朱雀', genbu: '玄武', seiryu: '青龍', byakko: '白虎' };
+// 技を連続で出した回数(godSuccess)で変わるミラーボールの色。0白/1青/2緑/3赤、4でフィニッシュ=虹。
+export const RHYTHM_STAGE_COLORS = [0xffffff, 0x3b82f6, 0x22c55e, 0xef4444];
+export const RHYTHM_FINISH_RAINBOW_MS = 950;  // フィニッシュ時の虹色演出の長さ
+export const RHYTHM_BALL_DIAM = 30;           // 頭上ミラーボールの表示直径(px)
+// フィニッシュの虹(順番に巡回して虹色に見せる)。
+export const RHYTHM_RAINBOW_PALETTE = [0xff3b30, 0xff9500, 0xffcc00, 0x34c759, 0x00c7be, 0x007aff, 0xaf52de];
 // 1本目の矢印 → 四神(上=朱雀/下=玄武/左=青龍/右=白虎)。
 export const SHIJIN_BY_ARROW: Record<RhythmArrow, ShijinGod> = {
   up: 'suzaku',

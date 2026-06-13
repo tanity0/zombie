@@ -66,7 +66,7 @@ export const ensureTextures = (): Promise<void> => {
       // 設置型デコイ(全方向の単体装置スプライト)。
       'decoy',
     ];
-    const [atlas, player, torch, castle, magicCircle, whipHurricane, whip, ...playerWalk] = await Promise.all([
+    const [atlas, player, torch, castle, magicCircle, whipHurricane, whip, mirrorBall, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
@@ -74,12 +74,14 @@ export const ensureTextures = (): Promise<void> => {
       Assets.load(spritePath('magic-circle')),
       Assets.load(spritePath('whip-hurricane')),
       Assets.load(spritePath('whip')),
+      Assets.load(spritePath('mirror-ball')),
       ...playerWalkNames.map(name => Assets.load(spritePath(name))),
     ]);
     atlas.source.scaleMode = 'nearest';
     player.source.scaleMode = 'nearest';
     torch.source.scaleMode = 'nearest';
     castle.source.scaleMode = 'nearest';
+    mirrorBall.source.scaleMode = 'nearest'; // ピクセル調を維持
     // 魔法陣はソフトな発光なので linear(既定)のまま — nearest にしない。
     playerWalk.forEach((tex) => {
       tex.source.scaleMode = 'nearest';
@@ -100,6 +102,7 @@ export const ensureTextures = (): Promise<void> => {
     textures.set('magic-circle', magicCircle);
     textures.set('whip-hurricane', whipHurricane);
     textures.set('whip', whip);
+    textures.set('mirror-ball', mirrorBall);
     ready = true;
   })();
   return loading;

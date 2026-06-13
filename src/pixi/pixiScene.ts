@@ -28,7 +28,10 @@ import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
-import { RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA } from '../config/shijin';
+import {
+  RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
+  RHYTHM_INTERVAL_MS, RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
+} from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
@@ -404,6 +407,9 @@ export class PixiScene {
   // リズム中の画面暗転 + タップ発光(screen-space, uiLayer)。dim は現在のイージング済み濃さ。
   private rhythmScreenFx = new Graphics();
   private rhythmDim = 0;
+  // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
+  private rhythmBall = new Sprite();
+  private rhythmBallTextured = false;
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -563,6 +569,10 @@ export class PixiScene {
     // 暗転/発光は screen-space。uiLayer の最下層に置き、画面端マーカー等は上に残す。
     this.rhythmScreenFx.visible = false;
     this.L.uiLayer.addChildAt(this.rhythmScreenFx, 0);
+    // ミラーボール: 頭上に表示。rhythmOverlay(リング/矢印)より上に描く。
+    this.rhythmBall.anchor.set(0.5, 0.5);
+    this.rhythmBall.visible = false;
+    this.L.effectLayer.addChild(this.rhythmBall);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -1044,16 +1054,18 @@ export class PixiScene {
   }
 
   // ---- 四神舞(リズム)UI: ミラーボール + 左右サークル + 矢印プロンプト -------
-  // rhythm.active の間だけプレイヤー頭上に表示し追従。色はコンボ段階(comboStage)。
-  // 左右サークルは 0.5秒ごとに中央で重なる(=ジャスト)。すべて軽量Graphics(常時発光なし)。
+  // rhythm.active の間だけプレイヤー頭上に表示し追従。ミラーボール色は「技を連続で出した回数
+  // (godSuccess)」で 0白/1青/2緑/3赤、フィニッシュで虹。0.5秒ごとに左右反転して回転に見せる。
+  // 左右サークルは 0.5秒ごとに足元で重なる(=ジャスト)。リング/矢印は軽量Graphics。
   private syncRhythmOverlay(
-    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; comboStage: number; lastJudge: string; lastJudgeAt: number },
+    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
     player: Player,
     gameTime: number
   ) {
     const g = this.rhythmOverlay;
     if (!rhythm.active) {
       if (g.visible) { g.visible = false; g.clear(); }
+      if (this.rhythmBall.visible) this.rhythmBall.visible = false;
       return;
     }
     const fb = playerFootBox(player);
@@ -1062,20 +1074,35 @@ export class PixiScene {
     g.visible = true;
     g.clear();
 
-    // ミラーボール本体(コンボ段階色)。小さな格子で軽く面取り。
-    const stageColors = [0x60a5fa, 0x34d399, 0xfbbf24, 0xf97316, 0xf43f5e, 0xffffff];
-    const col = stageColors[Math.max(0, Math.min(stageColors.length - 1, rhythm.comboStage))];
-    const r = 11;
-    g.circle(cx, cy, r).fill({ color: col, alpha: 0.92 });
-    g.circle(cx, cy, r).stroke({ color: 0x0b1020, alpha: 0.8, width: 1.5 });
-    g.circle(cx - 3, cy - 3, 3).fill({ color: 0xffffff, alpha: 0.85 }); // ハイライト
-    for (let i = -1; i <= 1; i++) {
-      g.moveTo(cx - r, cy + i * 5).lineTo(cx + r, cy + i * 5).stroke({ color: 0x0b1020, alpha: 0.35, width: 1 });
+    // ミラーボール本体: 実テクスチャのスプライト。0.5秒ごとに左右反転して回転して見せる。
+    const r = RHYTHM_BALL_DIAM / 2;
+    const ball = this.rhythmBall;
+    if (!this.rhythmBallTextured) {
+      const tex = getTexture('mirror-ball');
+      if (tex) { ball.texture = tex; this.rhythmBallTextured = true; }
     }
+    const texW = ball.texture && ball.texture.width > 0 ? ball.texture.width : 64;
+    const baseScale = RHYTHM_BALL_DIAM / texW;
+    const flipSign = Math.floor(gameTime / RHYTHM_INTERVAL_MS) % 2 === 0 ? 1 : -1;
+    // タップ発光: 直後に少し拡大して光る + 背面に暖色ハロー。
+    const tapT = Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS);
+    const pulse = 1 + 0.18 * tapT;
+    ball.scale.set(baseScale * pulse * flipSign, baseScale * pulse);
+    ball.position.set(cx, cy);
+    // 色: フィニッシュ虹 > 段階色(0白/1青/2緑/3赤)。
+    const sinceFinish = gameTime - rhythm.lastFinishAt;
+    if (sinceFinish >= 0 && sinceFinish < RHYTHM_FINISH_RAINBOW_MS) {
+      ball.tint = RHYTHM_RAINBOW_PALETTE[Math.floor(gameTime / 70) % RHYTHM_RAINBOW_PALETTE.length];
+    } else {
+      ball.tint = RHYTHM_STAGE_COLORS[Math.max(0, Math.min(RHYTHM_STAGE_COLORS.length - 1, rhythm.godSuccess))];
+    }
+    ball.alpha = 1;
+    ball.visible = true;
+    if (tapT > 0.01) g.circle(cx, cy, r + 4 + tapT * 8).fill({ color: 0xfff2cc, alpha: 0.3 * tapT });
 
     // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
     // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。
-    const interval = 500; // RHYTHM_INTERVAL_MS
+    const interval = RHYTHM_INTERVAL_MS;
     const beatT = rhythm.firstBeatAt + rhythm.expectBeat * interval;
     const toBeat = Math.max(0, Math.min(1, (beatT - gameTime) / interval));
     const footCx = fb.footX;
