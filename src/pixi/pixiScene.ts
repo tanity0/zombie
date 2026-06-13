@@ -65,10 +65,14 @@ const MERCHANT_TARGET_HEIGHT = 100;
 const EVENT_NPC_TARGET_HEIGHT = 108;
 const EVENT_NPC_FADE_MS = 1100;
 // 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。
-const WHIP_HURRICANE_ANCHOR_Y = 0.766;  // テクスチャ内の地面の渦(根元)位置
+const WHIP_HURRICANE_ANCHOR_Y = 0.92;   // テクスチャ内の地面の渦(根元)位置(縦長竜巻)
 const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍率
 const WHIP_HURRICANE_FADE_IN_MS = 160;  // 立ち上がりフェード
 const WHIP_HURRICANE_FADE_OUT_MS = 280; // 消滅フェード
+// 鞭 lash スプライト(右向き素材: 手元=左, 先端=右)。手元グリップを振り起点に固定して回転/伸縮。
+const WHIP_SPRITE_ANCHOR_X = 0.10;  // テクスチャ内の手元(グリップ)= プレイヤー位置のピボット
+const WHIP_SPRITE_ANCHOR_Y = 0.676; // 手元の縦位置
+const WHIP_SPRITE_TIP_X = 0.99;     // テクスチャ内の鞭先端位置
 
 // Tilt-shift depth-of-field: keeps a horizontal band sharp and blurs the far
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
@@ -535,9 +539,8 @@ export class PixiScene {
       this.shadowGfx,
     );
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
-    // 加算発光・既定は非表示。アンカーは竜巻の根元(地面の渦)= 吸引中心。
+    // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
     this.whipHurricane.anchor.set(0.5, WHIP_HURRICANE_ANCHOR_Y);
-    this.whipHurricane.blendMode = 'add';
     this.whipHurricane.alpha = 0;
     this.whipHurricane.visible = false;
     this.L.effectLayer.addChild(this.whipHurricane);
@@ -1048,7 +1051,7 @@ export class PixiScene {
     this.whipHurricane.visible = true;
     this.whipHurricane.position.set(hurricane.rootX, hurricane.rootY);
     this.whipHurricane.width = width;
-    this.whipHurricane.height = width * (512 / 768); // テクスチャ比を維持
+    this.whipHurricane.height = width; // 512x512 正方(縦長竜巻)
     // 竜巻の鼓動: わずかな横揺れ的スケール脈動で生命感を出す(回転はしない)。
     const pulse = 1 + 0.05 * Math.sin(now / 80);
     this.whipHurricane.scale.x *= pulse;
@@ -2568,6 +2571,8 @@ export class PixiScene {
         this.drawDogFetchSprite(e, now);
       } else if (e.kind === 'glow' && e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) {
         this.drawSmallGlowSprite(e, now);
+      } else if (e.kind === 'whip') {
+        this.drawWhipSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
         const targetLayer = e.kind === 'trail' || (e.kind === 'glow' && e.radius >= STRONG_GLOW_RADIUS)
@@ -2715,6 +2720,33 @@ export class PixiScene {
     sprite.width = radius * 2;
     sprite.height = radius * 2;
     sprite.alpha = life * SMALL_GLOW_ALPHA_SCALE;
+  }
+
+  // 鞭 lash を実スプライトで描画。手元(WHIP_SPRITE_ANCHOR)をプレイヤー位置に固定し、
+  // 振り方向へ回転、手元→先端が strike 距離(reach)に一致するよう伸縮。一振りごとにフェード。
+  private drawWhipSprite(e: Extract<VisualEffect, { kind: 'whip' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite)) {
+      if (sprite) sprite.destroy();
+      sprite = new Sprite();
+      sprite.anchor.set(WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_ANCHOR_Y);
+      this.L.effectLayer.addChild(sprite);
+      this.effects.set(e.id, sprite);
+    }
+    const tex = getTexture('whip');
+    if (!tex) { sprite.visible = false; return; }
+    if (sprite.texture !== tex) sprite.texture = tex;
+    const dx = e.toX - e.fromX;
+    const dy = e.toY - e.fromY;
+    const reach = Math.hypot(dx, dy) || 1;
+    // 手元(ANCHOR_X)→先端(TIP_X)のテクスチャ幅が reach に一致するよう等倍スケール。
+    const span = Math.max(1, tex.width * (WHIP_SPRITE_TIP_X - WHIP_SPRITE_ANCHOR_X));
+    sprite.scale.set(reach / span);
+    sprite.position.set(e.fromX, e.fromY);
+    sprite.rotation = Math.atan2(dy, dx); // 素材は右向き=+x基準
+    sprite.alpha = Math.max(0, 1 - t);
+    sprite.visible = true;
   }
 
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {

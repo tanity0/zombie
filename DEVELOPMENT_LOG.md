@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.215 - 鞭lash実スプライト + ハリケーン新ドット絵/非発光/滞在4倍 (Claude Code)
+
+### Summary
+- **鞭 lash を実スプライト化**(素材IMG_5742をチャット直添付で受領)。紫クロマ背景をキーアウト→クロップして
+  `public/sprites/whip.png`(996×132)。Pixi効果に `drawWhipSprite` を追加: **手元グリップをプレイヤー位置に固定し、
+  振り方向へ回転・手元→先端が strike 距離(reach)に一致するよう伸縮**、一振りごとにフェード。素材は右向き(+x基準)。
+  手続き的lashストロークは `whip` を `drawWhipSprite` へ振り分けて置換。当たり判定(±120)は不変=視覚と判定は別。
+- **ハリケーンを新ドット絵竜巻に差し替え**(素材IMG_5750)。クロマキーで元色保持(白〜水色)。
+- **ハリケーンを光らせない**: 竜巻スプライトを加算合成→**通常合成**に変更(発光をやめ素材本来の見た目に)。
+  アンカー/比率を新素材(正方・縦長竜巻)に合わせ更新(`ANCHOR_Y=0.92`, 高さ=幅)。
+- **ハリケーン滞在時間をさらに2倍**(計4倍): `HURRICANE_DURATION_MS_BY_LEVEL` `[0,2400,2800,3200]` → **`[0,4800,5600,6400]`**。
+- 負荷スコア: **1/10**(効果スプライト1枚を一振り中のみ更新 / 竜巻は常設1枚)。検証: `lint` クリーン / `build` 成功 / dist出力確認。
+
+### Files changed
+- `public/sprites/whip.png`(新規), `public/sprites/whip-hurricane.png`(差替), `src/pixi/pixiTextures.ts`,
+  `src/pixi/pixiScene.ts`, `src/store/gameStore.ts`, `package.json`
+
+### Next handoff notes
+- 鞭lashのアンカー(`WHIP_SPRITE_ANCHOR_X=0.10, _Y=0.676`)・太さ(スケール等倍)、ハリケーンの竜巻アンカー/サイズは実機で要微調整。定数のみ。
+
 ## 2026-06-12 - v0.25.214 - 鞭がナイフ枠を占有(HUD表示) (Claude Code)
 
 ### Summary

@@ -66,13 +66,14 @@ export const ensureTextures = (): Promise<void> => {
       // 設置型デコイ(全方向の単体装置スプライト)。
       'decoy',
     ];
-    const [atlas, player, torch, castle, magicCircle, whipHurricane, ...playerWalk] = await Promise.all([
+    const [atlas, player, torch, castle, magicCircle, whipHurricane, whip, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
       Assets.load(spritePath('castle')),
       Assets.load(spritePath('magic-circle')),
       Assets.load(spritePath('whip-hurricane')),
+      Assets.load(spritePath('whip')),
       ...playerWalkNames.map(name => Assets.load(spritePath(name))),
     ]);
     atlas.source.scaleMode = 'nearest';
@@ -98,6 +99,7 @@ export const ensureTextures = (): Promise<void> => {
     textures.set('castle', castle);
     textures.set('magic-circle', magicCircle);
     textures.set('whip-hurricane', whipHurricane);
+    textures.set('whip', whip);
     ready = true;
   })();
   return loading;
