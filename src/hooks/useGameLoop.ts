@@ -37,10 +37,11 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, getMusicTimeMs } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
-  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
+  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
+  RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_RADIUS, SUZAKU_BLAST_DAMAGE,
   GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE,
@@ -597,7 +598,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             rhythmMoveStartRef.current = 0;
             if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
-              useGameStore.getState().setRhythmActive(true);
+              // 最初のジャストを BGM(120BPM)の拍頭に位相同期する。音楽が再生中なら currentTime を
+              // 基準に、LEAD 以上先で最も近い拍を firstBeatAt にする。未再生時は従来の LEAD。
+              const musicMs = getMusicTimeMs();
+              let firstBeatAt = newGameTime + RHYTHM_LEAD_MS;
+              if (musicMs !== null) {
+                const m = musicMs - RHYTHM_MUSIC_OFFSET_MS;
+                const nextBeatMusic = Math.ceil((m + RHYTHM_LEAD_MS) / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS;
+                firstBeatAt = newGameTime + (nextBeatMusic - m);
+              }
+              useGameStore.getState().setRhythmActive(true, firstBeatAt);
             }
           }
 

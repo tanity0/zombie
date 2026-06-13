@@ -5,6 +5,8 @@ import type { RhythmArrow, ShijinGod } from '../types/game';
 // --- リズム ---------------------------------------------------------------
 export const RHYTHM_INTERVAL_MS = 500;        // サークル間隔(0.5秒 = 120BPM)
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
+// BGM(120BPM)の拍頭に対する補正(ms)。pulse-grid の currentTime=0 が拍頭からズレている場合に調整。
+export const RHYTHM_MUSIC_OFFSET_MS = 0;
 export const RHYTHM_SUCCESS_WINDOW_MS = 180;  // 成功判定幅(±ms)。ほんの少し甘めに調整
 export const RHYTHM_JUST_WINDOW_MS = 75;      // ジャスト判定幅(±ms)。演出区別+少し甘め
 export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多重判定防止)

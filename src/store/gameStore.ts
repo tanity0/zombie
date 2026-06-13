@@ -683,7 +683,7 @@ interface GameState {
   setStartWithTestStraps: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
-  setRhythmActive: (active: boolean) => void;
+  setRhythmActive: (active: boolean, firstBeatAt?: number) => void;
   rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
   tickRhythm: () => void;
   startByakko: () => void;
@@ -3376,7 +3376,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // --- 四神舞(リズム) -------------------------------------------------------
   // store は状態と判定のみを持つ。実際の攻撃(タップ/フリック/四神技/全体フィニッシュ/
   // 白虎の斬撃)は useGameLoop が pending を消化して実行する(効果音・XP・エフェクトのため)。
-  setRhythmActive: (active) => {
+  setRhythmActive: (active, firstBeatAt) => {
     if (active === get().rhythm.active) return;
     if (active) {
       const gt = get().gameTime;
@@ -3384,7 +3384,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         rhythm: {
           ...state.rhythm,
           active: true,
-          firstBeatAt: gt + RHYTHM_LEAD_MS,
+          // BGMの拍に同期した firstBeatAt(loopが算出)を優先。無ければ従来のLEAD。
+          firstBeatAt: firstBeatAt ?? gt + RHYTHM_LEAD_MS,
           expectBeat: 0,
           inputIndex: 0,
           inputArrows: [],

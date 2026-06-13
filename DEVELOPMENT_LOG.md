@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.233 - 四神舞: リズムをBGM(120BPM)の拍に位相同期 + pulse-grid.mp3 をBGMに追加 (Claude Code)
+
+### Summary
+- リズムのビート(500ms=120BPM)を、これまでモード開始時点から刻んでいたのを、BGMの再生位置に位相同期。
+- 提供の 120BPM トラック pulse-grid.mp3 を public/audio に追加し、BGM の先頭トラック(=再生される)に設定。
+  現状の実装は BGM_TRACKS[0] のみ再生するため、これで 120BPM トラックが流れ、リズムがその拍に合う。
+
+### 実装
+- `public/audio/pulse-grid.mp3` 追加。`audioManager.ts`: BGM_TRACKS 先頭に追加 + getMusicTimeMs()(再生位置ms)。
+- `src/config/shijin.ts`: RHYTHM_MUSIC_OFFSET_MS(拍頭補正, 0)。
+- `src/store/gameStore.ts`: setRhythmActive(active, firstBeatAt?) で外部から拍同期した開始拍を受ける。
+- `src/hooks/useGameLoop.ts`: モード開始時、getMusicTimeMs() を基準に LEAD 以上先の最も近い拍を firstBeatAt に。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### Note / TODO
+- BGMの先頭トラックを pulse-grid に変更(現状[0]のみ再生)。元BGMに戻す/リズム中のみ流す等は要望次第。
+- currentTime=0 を拍頭とみなす。ズレる場合は RHYTHM_MUSIC_OFFSET_MS で補正。長時間は gameTime と音楽の
+  微小ドリフトの可能性あり(必要なら定期再同期)。
+
 ## 2026-06-13 - v0.25.232 - 四神舞: 地面さらに暗く / フリックKB2倍 / 矢印を太いドット絵+入力履歴4つスクロール (Claude Code)
 
 ### Summary

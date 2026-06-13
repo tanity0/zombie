@@ -9,6 +9,8 @@ const DEFAULT_BGM_VOLUME = 1;
 const DEFAULT_SFX_VOLUME = 1;
 
 const BGM_TRACKS = [
+  // 120BPMのリズム基盤トラック(四神舞のビート同期はこの再生位置に合わせる)。
+  `${import.meta.env.BASE_URL}audio/pulse-grid.mp3`,
   `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
   `${import.meta.env.BASE_URL}audio/rusting-grave-circuit.mp3`,
 ];
@@ -234,6 +236,11 @@ const ensureBgm = () => {
   bgm.playsInline = true;
   bgm.volume = 1; // real level is set by the WebAudio gain (iOS-safe)
 };
+
+// BGMの再生位置(ms)。再生中のみ返す。四神舞のビートをこの音楽クロックに位相同期するのに使う。
+// 先頭トラック(pulse-grid)が120BPM想定で、currentTime=0 を拍頭とみなす。
+export const getMusicTimeMs = (): number | null =>
+  bgm && bgmActive && !bgm.paused ? bgm.currentTime * 1000 : null;
 
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
