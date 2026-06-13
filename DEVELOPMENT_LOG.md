@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.240 - 全キャラ同一性能化(ステータス表示撤廃)・キャラ選択は初期装備+専用スキルのみ表示 (Claude Code)
+
+### Summary
+- 全キャラの性能差を撤廃。maxHp を全員同一(110)に。速度はもともと PLAYER_BASE_SPEED で共通、攻撃力は
+  装備武器依存(=初期装備の違い)。差は「初期装備」と「専用スキル」のみ。
+- キャラ選択UIから体力/速度/攻撃力のステータス表示を撤廃。各カードは「初期装備」と「専用スキル(名+説明)」のみ表示。
+- 専用スキルは既存のクラス限定カードに準拠: warrior=heavy-grenade / mage=marksman-trap / rogue=striker-hunting /
+  necromancer=striker-quick-mag。
+
+### 実装
+- `src/data/playerProfiles.ts`: maxHp を全員 STANDARD_MAX_HP=110 に統一。
+- `src/components/MainMenu.tsx`: characterClasses を {gear, skillKey, skillDesc} に作り替え、stats/description 撤廃。
+  カードJSXのステータス3列を初期装備+専用スキル表示へ。
+- `src/components/LoadingScreen.tsx`: 起動時専用に簡素化(profile依存を撤去、タイトル固定)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.239 - 表示位置修正(コンボ左上/コマンドはPixi頭上)・ダンス中はLv保留→終了で一括Lv・起動時ローディングで全DL・タレット持続3倍 (Claude Code)
 
 ### Summary

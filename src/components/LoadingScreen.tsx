@@ -1,16 +1,12 @@
 import React from 'react';
-import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { CharacterClass } from '../types/game';
 
 interface LoadingScreenProps {
-  characterClass?: CharacterClass;
   benchmarkMode?: boolean;
-  startup?: boolean; // 起動時の全素材ダウンロード用(キャラ未選択)
+  startup?: boolean; // 起動時の全素材ダウンロード用
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass, benchmarkMode = false, startup = false }) => {
-  const profile = PLAYER_PROFILES[characterClass ?? 'warrior'] ?? PLAYER_PROFILES.warrior;
-  const title = startup ? 'ZOMBIE' : profile.name;
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, startup = false }) => {
+  const title = 'ゾンビサバイバル';
   const subtitle = startup
     ? '素材をダウンロード中…'
     : benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中';

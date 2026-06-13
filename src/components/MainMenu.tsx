@@ -76,54 +76,46 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   };
   const spriteVersion = encodeURIComponent(__APP_VERSION__);
   
-  const characterClasses = [
+  // 性能差は撤廃(全員同一性能)。違いは「初期装備」と「専用スキル」のみ表示。
+  const characterClasses: {
+    id: string; name: string; sprite: string; accent: string;
+    gear: string; skillKey: SubWeaponKey; skillDesc: string;
+  }[] = [
     {
       id: 'warrior',
       name: 'ヘビーガンナー',
-      description: 'ソードオフ・ショットガンとダガーで近距離を制圧する。',
       sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(248, 113, 113, 0.55)',
-      stats: {
-        health: 'Medium',
-        speed: 'Medium',
-        damage: 'Medium'
-      }
+      gear: 'ソードオフ・ショットガン ＋ ハチェット',
+      skillKey: 'heavy-grenade',
+      skillDesc: '前方へ炸裂弾(グレネードランチャー)を放ち範囲を制圧',
     },
     {
       id: 'mage',
       name: 'マークスマン',
-      description: 'マグナムとナイフ。一撃の重さで遠距離から狙撃する。',
       sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(168, 85, 247, 0.52)',
-      stats: {
-        health: 'Low',
-        speed: 'Medium',
-        damage: 'High'
-      }
+      gear: 'マグナム ＋ ナイフ',
+      skillKey: 'marksman-trap',
+      skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
     },
     {
       id: 'rogue',
       name: 'ストライカー',
-      description: 'ハンドガンとファイティングナイフ。手数とフィニッシュで攻める。',
       sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(52, 211, 153, 0.48)',
-      stats: {
-        health: 'Low',
-        speed: 'High',
-        damage: 'Medium'
-      }
+      gear: 'ハンドガン ＋ ファイティングナイフ',
+      skillKey: 'striker-hunting',
+      skillDesc: '近接の間合いを広げる狩猟術(チャージで強化)',
     },
     {
       id: 'necromancer',
       name: 'スカベンジャー',
-      description: 'ハンドガンとナイフ。拾った武器で戦況を変える。',
       sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(129, 140, 248, 0.48)',
-      stats: {
-        health: 'Medium',
-        speed: 'Low',
-        damage: 'High'
-      }
+      gear: 'ハンドガン ＋ ナイフ',
+      skillKey: 'striker-quick-mag',
+      skillDesc: 'クイックリロードでマガジンを即装填',
     }
   ];
   const ammoDebugFields: { type: AmmoType; label: string }[] = [
@@ -219,44 +211,16 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                   </div>
                   <div className="relative flex-1 min-w-0 px-2.5 py-3">
                     <h3 className="text-base font-semibold text-white leading-tight">{charClass.name}</h3>
-                    <p className="mt-1 text-[11px] leading-snug text-gray-300">{charClass.description}</p>
-                    
-                    <div className="mt-2 grid grid-cols-3 w-full text-center text-xs text-gray-300">
+
+                    <div className="mt-2 space-y-2 text-left">
                       <div>
-                        <div className="font-semibold mb-1 text-[10px]">体力</div>
-                        <div className={`text-[10px] ${
-                          charClass.stats.health === 'High' ? 'text-green-400' : 
-                          charClass.stats.health === 'Medium' ? 'text-yellow-400' : 
-                          'text-red-400'
-                        }`}>
-                          {charClass.stats.health === 'High' ? '高い' : 
-                           charClass.stats.health === 'Medium' ? '普通' : 
-                           '低い'}
-                        </div>
+                        <div className="text-[9px] uppercase tracking-wider text-white/40">初期装備</div>
+                        <div className="text-[11px] leading-snug text-gray-200">{charClass.gear}</div>
                       </div>
                       <div>
-                        <div className="font-semibold mb-1 text-[10px]">速度</div>
-                        <div className={`text-[10px] ${
-                          charClass.stats.speed === 'High' ? 'text-green-400' : 
-                          charClass.stats.speed === 'Medium' ? 'text-yellow-400' : 
-                          'text-red-400'
-                        }`}>
-                          {charClass.stats.speed === 'High' ? '高い' : 
-                           charClass.stats.speed === 'Medium' ? '普通' : 
-                           '低い'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="font-semibold mb-1 text-[10px]">攻撃力</div>
-                        <div className={`text-[10px] ${
-                          charClass.stats.damage === 'High' ? 'text-green-400' : 
-                          charClass.stats.damage === 'Medium' ? 'text-yellow-400' : 
-                          'text-red-400'
-                        }`}>
-                          {charClass.stats.damage === 'High' ? '高い' : 
-                           charClass.stats.damage === 'Medium' ? '普通' : 
-                           '低い'}
-                        </div>
+                        <div className="text-[9px] uppercase tracking-wider text-white/40">専用スキル</div>
+                        <div className="text-[12px] font-semibold leading-tight text-amber-200/90">{subWeaponDisplayName(charClass.skillKey)}</div>
+                        <div className="text-[10px] leading-snug text-gray-300">{charClass.skillDesc}</div>
                       </div>
                     </div>
                   </div>

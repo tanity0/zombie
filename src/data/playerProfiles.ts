@@ -16,9 +16,12 @@ export interface PlayerProfile {
   maxHp: number;
 }
 
+// 全キャラの性能差は撤廃: maxHp は全員同一(普通)。速度は PLAYER_BASE_SPEED で共通、攻撃力は
+// 装備武器依存。差は「初期装備(gun/melee)」と「専用スキル」のみ。
+const STANDARD_MAX_HP = 110;
 export const PLAYER_PROFILES: Record<CharacterClass, PlayerProfile> = {
-  warrior:     { gunKey: 'shotgun-t1', meleeKey: 'hatchet-t2', maxHp: 130 },
-  rogue:       { gunKey: 'handgun-t1', meleeKey: 'machete-t3', maxHp: 105 },
-  mage:        { gunKey: 'rifle-t1',   meleeKey: 'knife-t1',   maxHp: 100 },
-  necromancer: { gunKey: 'handgun-t1', meleeKey: 'knife-t1',   maxHp: 120 }
+  warrior:     { gunKey: 'shotgun-t1', meleeKey: 'hatchet-t2', maxHp: STANDARD_MAX_HP },
+  rogue:       { gunKey: 'handgun-t1', meleeKey: 'machete-t3', maxHp: STANDARD_MAX_HP },
+  mage:        { gunKey: 'rifle-t1',   meleeKey: 'knife-t1',   maxHp: STANDARD_MAX_HP },
+  necromancer: { gunKey: 'handgun-t1', meleeKey: 'knife-t1',   maxHp: STANDARD_MAX_HP }
 };
