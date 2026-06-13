@@ -76,6 +76,7 @@ export const rhythmComboStage = (combo: number): number =>
 // タップ(ジャスト): 近接ナイフ範囲(MELEE_RADIUS)内の敵を強制ノックバック。
 export const RHYTHM_TAP_DAMAGE = 4;           // TODO: タップの軽ダメージ(主目的はノックバック)
 export const RHYTHM_TAP_KNOCKBACK_MULT = 3.4; // タップの強制ノックバック(強め)
+export const RHYTHM_TAP_INVULN_MS = 500;      // ジャストタップ成功時の無敵時間(0.5秒)
 // フリック(ジャスト): 盾バッシュ風に滑りながら方向攻撃。
 export const RHYTHM_FLICK_RANGE = 130;        // TODO: フリック方向攻撃の射程
 export const RHYTHM_FLICK_HALF_W = 34;        // TODO: フリック方向攻撃の帯半幅

@@ -484,8 +484,12 @@ export const setBgmActive = async (nextActive: boolean) => {
   applyBgm();
 };
 
+// ダンスタイム中はリズムに乗りやすいよう近接ダメージ音(スラッシュ/メレー)を鳴らさない。
+const DANCE_MUTED_SFX = new Set<SfxKey>(['slash-damage', 'melee']);
+
 export const playSfx = (key: SfxKey) => {
   if (muted) return;
+  if (danceActive && DANCE_MUTED_SFX.has(key)) return;
   const config = SFX_SOURCES[key];
   if (!config) return;
 

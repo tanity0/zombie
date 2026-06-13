@@ -8,7 +8,7 @@ import {
   RhythmState, RhythmArrow, ShijinGod, RhythmPending
 } from '../types/game';
 import {
-  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
+  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS, RHYTHM_TAP_INVULN_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
@@ -3525,7 +3525,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
       player: slideVec
         ? { ...s.player, shijinSlideUntil: Date.now() + SHIJIN_SLIDE_MS, shijinSlideDirX: slideVec.x, shijinSlideDirY: slideVec.y }
-        : s.player,
+        : (!arrow
+          // ジャストタップ成功で0.5秒無敵。invulnerableTime をずらしてループの INVULN_MS 自動解除を0.5sにする。
+          ? { ...s.player, invulnerable: true, invulnerableTime: Date.now() - Math.max(0, INVULN_MS - RHYTHM_TAP_INVULN_MS) }
+          : s.player),
     }));
     // JUST 表示(技発動時は四神名の callout が別に出るので JUST は出さない)。
     if (judged === 'hit') get().spawnCallout(pcx, headY, 'JUST!', '#fde68a', { scale: 1.4 });

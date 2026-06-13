@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.246 - 四神舞: ダンス中は近接ダメージ音オフ / ジャストタップで0.5秒無敵 (Claude Code)
+
+### Summary
+- ダンス中はリズムに乗りやすいよう近接ダメージ音(slash-damage / melee)をミュート。
+- ジャストタップ成功時にプレイヤーへ0.5秒の無敵を付与(ビート毎にタップすれば実質無敵を維持)。
+
+### 実装
+- `src/audio/audioManager.ts`: DANCE_MUTED_SFX(slash-damage/melee)を追加し、danceActive 中は playSfx で無視。
+- `src/config/shijin.ts`: RHYTHM_TAP_INVULN_MS=500。
+- `src/store/gameStore.ts` rhythmInput: タップ成功時に invulnerable=true + invulnerableTime をずらして
+  ループの INVULN_MS 自動解除を 0.5s に(ダッシュ無敵と同手法)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.244 - 四神舞: タップでは技リストが変わらないように(タップはミス扱いにしない) (Claude Code)
 
 ### Summary
