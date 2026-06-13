@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.242 - 重さ対策(続き): HUDの毎フレーム/頻繁再描画を全て解消 (Claude Code)
+
+### 調査で判明した毎フレーム再描画源と対策
+- `Game.tsx` が `player` 全体を購読(用途は health のみ)→ `player.health` 購読に。親再描画の子(HUD/Stage)波及を解消。
+- `GameHUD` が `player` 全体 / `gameTime` / `gameStats`(与ダメ毎に変化) を購読 →
+  - player は使用フィールドのみ shallow 購読、gameTime は秒で購読(時計/ボス警告は1秒粒度)。
+  - 撃破/DMG/SCRAP の Stats パネルを `StatsHud` に分離(damageDealt の頻繁更新をHUD本体から切離し)。
+- (前版で) FPS/負荷表示は `PerfOverlay` に分離済み。
+- 補足: `GameCanvas`(全配列購読)は Canvas2D モード専用で、デフォルトの Pixi では未マウント(無関係)。
+
+これで GameHUD 本体は HP/EXP/Lv/武器/弾/サブ武器/コンボ/敵数/ボス/秒 の変化時のみ再描画。毎フレーム更新は
+PerfOverlay と StatsHud の小コンポーネントだけに限定。
+
+### Files
+- `src/components/PerfOverlay.tsx`(前版) / `src/components/StatsHud.tsx`(新規)
+- `src/components/GameHUD.tsx`: shallow購読/秒購読/派生購読化、Stats・perf撤去。
+- `src/components/Game.tsx`: player.health 購読、StatsHud/PerfOverlay を別レンダ。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.241 - 重さ対策: FPS/負荷表示を分離しHUDの毎フレーム再描画を解消 + スカベンジャー装備変更 (Claude Code)
 
 ### Summary

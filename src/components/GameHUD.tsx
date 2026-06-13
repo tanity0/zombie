@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName } from '../utils/weaponUtils';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
@@ -38,11 +39,24 @@ const BOSS_WARN_LEAD = 12 * 1000;
 
 const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
-  const player = useGameStore(state => state.player);
+  // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
+  const player = useGameStore(s => ({
+    health: s.player.health,
+    maxHealth: s.player.maxHealth,
+    experience: s.player.experience,
+    experienceToNextLevel: s.player.experienceToNextLevel,
+    level: s.player.level,
+    weapons: s.player.weapons,
+    activeWeaponId: s.player.activeWeaponId,
+    ammoHandgun: s.player.ammoHandgun,
+    ammoShotgun: s.player.ammoShotgun,
+    ammoRifle: s.player.ammoRifle,
+    subWeapons: s.player.subWeapons,
+  }), shallow);
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
-  const gameTime = useGameStore(state => state.gameTime);
-  const gameStats = useGameStore(state => state.gameStats);
+  // 時計/ボス警告は1秒粒度で十分。秒で購読し、毎フレーム再描画を避ける。
+  const gameTime = useGameStore(state => Math.floor(state.gameTime / 1000)) * 1000;
   // 個別フィールドを購読(rhythm全体を購読すると resync の firstBeatAt 更新で毎フレーム再描画になり重い)。
   // コマンド/入力矢印は Pixi オーバーレイ側で描画。HUDはコンボ数のみ(左上)。
   const rhythmActive = useGameStore(state => state.rhythm.active);
@@ -297,20 +311,7 @@ const GameHUD: React.FC = () => {
         );
       })()}
 
-      {/* Stats */}
-      <div
-        className="absolute"
-        style={{
-          right: 'max(env(safe-area-inset-right), 12px)',
-          top: 'calc(max(env(safe-area-inset-top), 8px) + 116px)'
-        }}
-      >
-        <div className="glass-panel rounded-2xl px-2.5 py-1.5 text-[11px] leading-tight text-white/80">
-          <div>撃破 {gameStats.enemiesKilled}</div>
-          <div>DMG {Math.floor(gameStats.damageDealt)}</div>
-          <div>SCRAP {player.straps}</div>
-        </div>
-      </div>
+      {/* Stats(撃破/DMG/SCRAP)は StatsHud に分離(頻繁な再描画をHUD本体から切り離す)。 */}
 
       {/* BGM toggle */}
       <button

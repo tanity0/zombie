@@ -5,6 +5,7 @@ import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer } from '../config/renderer';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
+import StatsHud from './StatsHud';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import ShopMenu from './ShopMenu';
@@ -42,7 +43,8 @@ const Game: React.FC<GameProps> = ({
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
   const [showUpgradeOverlay, setShowUpgradeOverlay] = useState(false);
   const gameWon = useGameStore(state => state.gameWon);
-  const player = useGameStore(state => state.player);
+  // 死亡判定に使うのは health だけ。player 全体を購読すると移動で毎フレーム再描画され、子(HUD/Stage)へ波及する。
+  const playerHealth = useGameStore(state => state.player.health);
   const setGameBounds = useGameStore(state => state.setGameBounds);
   const setPaused = useGameStore(state => state.setPaused);
 
@@ -90,11 +92,11 @@ const Game: React.FC<GameProps> = ({
   
   // Check if player is dead
   useEffect(() => {
-    if (player.health <= 0) {
+    if (playerHealth <= 0) {
       const timer = window.setTimeout(onGameOver, 700);
       return () => window.clearTimeout(timer);
     }
-  }, [player.health, onGameOver]);
+  }, [playerHealth, onGameOver]);
 
   // Win the run the moment the finale boss is defeated.
   useEffect(() => {
@@ -154,6 +156,7 @@ const Game: React.FC<GameProps> = ({
       {isTouch && <VirtualJoystick />}
 
       <GameHUD />
+      <StatsHud />
       <PerfOverlay fps={fps} />
       {benchmarkMode && (
         <div
