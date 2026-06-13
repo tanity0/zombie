@@ -113,7 +113,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       name: 'スカベンジャー',
       sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(129, 140, 248, 0.48)',
-      gear: 'ハンドガン ＋ ナイフ',
+      gear: 'ハンドガン ＋ ハチェット',
       skillKey: 'striker-quick-mag',
       skillDesc: 'クイックリロードでマガジンを即装填',
     }

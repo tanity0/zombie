@@ -4,6 +4,7 @@ import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer } from '../config/renderer';
 import GameHUD from './GameHUD';
+import PerfOverlay from './PerfOverlay';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import ShopMenu from './ShopMenu';
@@ -152,7 +153,8 @@ const Game: React.FC<GameProps> = ({
           it BEFORE the HUD/buttons so those render on top and stay tappable. */}
       {isTouch && <VirtualJoystick />}
 
-      <GameHUD fps={fps} />
+      <GameHUD />
+      <PerfOverlay fps={fps} />
       {benchmarkMode && (
         <div
           className="pointer-events-none absolute left-2 top-[calc(max(env(safe-area-inset-top),8px)+94px)] z-50 rounded-md border border-cyan-200/35 bg-cyan-950/55 px-2 py-1 text-[10px] font-bold tracking-widest text-cyan-100 shadow-lg backdrop-blur-sm"

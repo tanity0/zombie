@@ -35,19 +35,8 @@ const KatanaIcon: React.FC<{ size?: number; variant?: KatanaVariant }> = ({ size
 };
 
 const BOSS_WARN_LEAD = 12 * 1000;
-const PERF_THRESHOLDS = {
-  fps: 45,
-  effects: 180,
-  projectiles: 45,
-  pickups: 130,
-  enemies: 12,
-};
 
-interface GameHUDProps {
-  fps: number;
-}
-
-const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
+const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   const player = useGameStore(state => state.player);
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
@@ -58,17 +47,16 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   // コマンド/入力矢印は Pixi オーバーレイ側で描画。HUDはコンボ数のみ(左上)。
   const rhythmActive = useGameStore(state => state.rhythm.active);
   const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
-  const enemies = useGameStore(state => state.enemies);
-  const effectsCount = useGameStore(state => state.effects.length);
-  const projectilesCount = useGameStore(state => state.projectiles.length);
-  const pickupsCount = useGameStore(state => state.pickups.length);
+  // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
+  // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
+  const enemyCount = useGameStore(state => state.enemies.length);
+  const bossActive = useGameStore(state => state.enemies.some(e => e.type === 'giantbat'));
 
   const formattedTime = formatTime(gameTime / 1000);
   // ダンス中はレベルアップ保留でEXPが溢れるため、表示は100%でカンスト(止める)。
   const expPercentage = Math.min(100, (player.experience / player.experienceToNextLevel) * 100);
   const healthPercentage = (player.health / player.maxHealth) * 100;
 
-  const bossActive = enemies.some(e => e.type === 'giantbat');
   const bossImminent =
     !bossActive &&
     gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
@@ -76,22 +64,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
   const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
-  const perfIssues = useMemo(() => {
-    const issues: string[] = [];
-    if (fps > 0 && fps < PERF_THRESHOLDS.fps) issues.push(`fps<${PERF_THRESHOLDS.fps}`);
-    if (effectsCount > PERF_THRESHOLDS.effects) issues.push(`fx>${PERF_THRESHOLDS.effects}`);
-    if (projectilesCount > PERF_THRESHOLDS.projectiles) issues.push(`p>${PERF_THRESHOLDS.projectiles}`);
-    if (pickupsCount > PERF_THRESHOLDS.pickups) issues.push(`item>${PERF_THRESHOLDS.pickups}`);
-    if (enemies.length > PERF_THRESHOLDS.enemies) issues.push(`enemy>${PERF_THRESHOLDS.enemies}`);
-    return issues;
-  }, [fps, effectsCount, projectilesCount, pickupsCount, enemies.length]);
-  const perfWarning = perfIssues.length > 0;
-  const perfDebugLines = useMemo(() => [
-    `FPS ${fps}`,
-    `fx ${effectsCount} p ${projectilesCount}`,
-    `item ${pickupsCount} enemy ${enemies.length}`,
-    ...(perfWarning ? [`WARN ${perfIssues.join(',')}`] : []),
-  ], [fps, effectsCount, projectilesCount, pickupsCount, enemies.length, perfWarning, perfIssues]);
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
     e?.preventDefault();
@@ -179,7 +151,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
           {formattedTime}
         </div>
         <div className="glass-pill px-3 py-1 text-[13px] font-semibold">
-          敵 {enemies.length}
+          敵 {enemyCount}
         </div>
       </div>
 
@@ -354,23 +326,6 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
       >
         {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
       </button>
-
-      {/* Test perf indicator */}
-      <div
-        className={`fixed px-2 py-1 rounded-lg text-[10px] tabular-nums leading-tight shadow-lg ${
-          perfWarning
-            ? 'text-red-50 ring-1 ring-red-300/90 bg-red-950/90'
-            : 'text-white/90 ring-1 ring-white/15 bg-black/75'
-        }`}
-        style={{
-          right: 'max(env(safe-area-inset-right), 12px)',
-          top: 'calc(max(env(safe-area-inset-top), 8px) + 212px)',
-          zIndex: 90,
-          textShadow: '0 1px 2px rgba(0,0,0,0.95)'
-        }}
-      >
-        {perfDebugLines.map(line => <div key={line}>{line}</div>)}
-      </div>
     </div>
   );
 };

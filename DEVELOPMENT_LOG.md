@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.241 - 重さ対策: FPS/負荷表示を分離しHUDの毎フレーム再描画を解消 + スカベンジャー装備変更 (Claude Code)
+
+### Summary
+- GameHUD が fps プロップ + effects/projectiles/pickups 件数 + enemies 配列(毎フレーム新参照)を購読していたため
+  HUD全体が毎フレーム再描画されていた。FPS/負荷表示を PerfOverlay に分離し、HUDは派生値(enemyCount/bossActive)
+  のみ購読に。これでHUD本体は意味のある変化時だけ再描画。
+- スカベンジャーの初期装備をハンドガン＋ハチェットに変更。
+
+### 実装
+- `src/components/PerfOverlay.tsx`: 新規。fps + 各カウントを購読し小さく毎フレーム再描画(HUDから分離)。
+- `src/components/GameHUD.tsx`: fpsプロップ/件数購読/perfオーバーレイを撤去。enemies配列→enemyCount/bossActive 派生購読。
+- `src/components/Game.tsx`: GameHUD は props無し、PerfOverlay を別途レンダ。
+- `src/data/playerProfiles.ts` / `src/components/MainMenu.tsx`: necromancer(スカベンジャー) melee を hatchet-t2 に、表示も更新。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.240 - 全キャラ同一性能化(ステータス表示撤廃)・キャラ選択は初期装備+専用スキルのみ表示 (Claude Code)
 
 ### Summary
