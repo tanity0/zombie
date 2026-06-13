@@ -168,6 +168,21 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // 四神舞(リズム/四神舞)は全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
+  // TODO(四神舞): 現在は取得/強化の土台のみ(リズム入力・ミラーボール・四神技は実装予定)。
+  const shijinLvl = player.subWeaponLevels['shijin'] ?? 0;
+  if (!ownsKatana && shijinLvl < 3) {
+    const nextLevel = shijinLvl + 1;
+    subWeaponOptions.push({
+      id: 'subweapon-shijin',
+      name: nextLevel === 1 ? '四神舞' : `四神舞 Lv${nextLevel}`,
+      description: 'リズム入力で戦う四神モチーフのサブウェポン（実装予定: ミラーボール/リズム判定/朱雀・玄武・青龍・白虎/四神技4回で全体フィニッシュ）',
+      type: 'subWeapon',
+      subWeaponKey: 'shijin',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);

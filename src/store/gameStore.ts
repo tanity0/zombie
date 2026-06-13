@@ -261,6 +261,7 @@ export const HURRICANE_MAX_TARGETS_PER_FRAME = 12;               // 負荷cap: 1
 export const HURRICANE_TICK_MS = 60;                             // 吸引tickのスロットル
 export const SHOP_WHIP_COST = 100;                               // TODO(鞭): 商人での鞭カード価格
 export const SHOP_TURRET_COST = 100;                             // TODO(自動タレット): 仮値。商人でのタレットカード価格
+export const SHOP_SHIJIN_COST = 100;                             // TODO(四神舞): 仮値。商人での四神舞カード価格
 
 export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
 // 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
@@ -421,6 +422,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'whip': return '鞭';
     case 'alchemy': return '錬金術';
     case 'turret': return '自動タレット';
+    case 'shijin': return '四神舞';
     default: return 'サブウェポン';
   }
 };
@@ -2316,7 +2318,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : key === 'shijin' ? SHOP_SHIJIN_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
       return {

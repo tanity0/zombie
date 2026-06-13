@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.222 - 通常サブウェポン「四神舞(リズム)」取得/強化の土台のみ (Claude Code)
+
+### Summary
+「ベースだけ」要望に対応し、四神舞(リズム/四神舞)を**取得/強化の配管(土台)のみ**実装。リズム入力・ミラーボール・
+四神技(朱雀/玄武/青龍/白虎)・四神技4回後の全体フィニッシュ等の**インタラクティブ部分は未実装**(後続)。
+理由: 仕様が「リズムモード開始操作は現行入力と衝突しないか実装前に確認」を明記しており、開始操作の決定が
+インタラクティブ実装の前提になるため。数値の多くも未確定(TODO)で、勝手に固定しない方針に従う。
+
+### 実装(土台)
+- `SubWeaponKey` に `'shijin'` 追加。表示名 `四神舞`。
+- 取得/強化フローへ登録: レベルアップカード(upgradeUtils, 説明に実装予定明記)、商人スキルカード
+  (MainMenu陳列 / ShopMenu(CLASS_SKILL既定100) / buySkillCardFromShop, `SHOP_SHIJIN_COST=100`/TODO)。
+- 刀/村雨装備中は併用不可(他サブと同様)。取得しても現状は無動作(副作用なし)。
+
+### 未実装(後続・要確認/TODO)
+- **リズムモード開始/維持操作**(専用ボタン無し→現行入力と非衝突の方式を要確認=次の決定事項)。
+- ミラーボール/左右サークルUI(プレイヤー追従)、0.5秒(120BPM)判定、判定幅(TODO)。
+- フリック方向パターン→四神技、コンボ全リセット、四神技4回後の全体フィニッシュ。
+- 朱雀(近場3体グレネード爆破)/玄武(十字地割れ)/青龍(X字水流)/白虎(5秒・0.5秒毎・最大10斬り)。
+- 「フィニッシュカウンター」表示の削除(コンボ統合時に対応予定)、開始時無敵(TODO秒数)。
+
+### Files changed
+- `src/types/game.ts` — SubWeaponKey に 'shijin'
+- `src/store/gameStore.ts` — subWeaponDisplayName、SHOP_SHIJIN_COST、buySkillCardFromShop価格
+- `src/utils/upgradeUtils.ts` — レベルアップカード(実装予定の説明付き)
+- `src/components/MainMenu.tsx` — skillShopEntries に 'shijin'
+- `package.json` — version 0.25.222
+
+### Verification
+- `npx tsc --noEmit` パス。
+
+### Next handoff notes
+- 次の決定事項: リズムモードの開始操作(片手操作維持・現行入力と非衝突)。決定後にUI/判定/四神技を実装する。
+
 ## 2026-06-13 - v0.25.221 - 通常サブウェポン「自動タレット」実装 (Claude Code)
 
 ### Summary
