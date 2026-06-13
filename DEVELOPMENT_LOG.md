@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.243 - 四神舞: ミラーボールが画面全体を覆うバグを修正(テクスチャ未準備時の巨大化対策) (Claude Code)
+
+### Summary
+- ダンス時にミラーボールが画面全体を覆って見えなくなる不具合を修正。原因はスケール計算
+  `RHYTHM_BALL_DIAM / ball.texture.width` で、ロード中/異常なテクスチャの width が極小(1等)のまま
+  256px の画像を巨大スケールで描画していたこと(リロードで直る=テクスチャ状態依存と一致)。
+
+### 実装
+- `src/pixi/pixiScene.ts`(syncRhythmOverlay): テクスチャ width>=32 を満たす時だけスプライト表示し、その時の
+  実 width で等倍化(巨大化しない)。未準備/異常時はスプライトを隠し、簡易ミラーボール円(Graphics)で代替。
+  さらに毎フレーム、無効テクスチャなら getTexture で取り直す(破棄/再生成にも追従)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.242 - 重さ対策(続き): HUDの毎フレーム/頻繁再描画を全て解消 (Claude Code)
 
 ### 調査で判明した毎フレーム再描画源と対策

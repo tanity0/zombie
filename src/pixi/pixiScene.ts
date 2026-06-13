@@ -1091,29 +1091,37 @@ export class PixiScene {
     // ミラーボール本体: 実テクスチャのスプライト。0.5秒ごとに左右反転して回転して見せる。
     const r = RHYTHM_BALL_DIAM / 2;
     const ball = this.rhythmBall;
-    if (!this.rhythmBallTextured) {
+    // 有効なテクスチャ(十分な解像度)が無ければ取得し直す。ロード中/破棄済みのテクスチャを掴むと
+    // width が極小になり、スプライトが巨大化して画面全体を覆うバグになるのを防ぐ。
+    if (!ball.texture || ball.texture.width < 32) {
       const tex = getTexture('mirror-ball');
-      if (tex) { ball.texture = tex; this.rhythmBallTextured = true; }
+      if (tex && tex.width >= 32) { ball.texture = tex; this.rhythmBallTextured = true; }
     }
-    const texW = ball.texture && ball.texture.width > 0 ? ball.texture.width : 64;
-    const baseScale = RHYTHM_BALL_DIAM / texW;
+    const texOk = !!ball.texture && ball.texture.width >= 32;
     const flipSign = Math.floor(gameTime / RHYTHM_INTERVAL_MS) % 2 === 0 ? 1 : -1;
     // タップ発光: 直後に少し拡大して光る + 背面に暖色ハロー。
     const tapT = Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS);
     const pulse = 1 + 0.18 * tapT;
-    ball.scale.set(baseScale * pulse * flipSign, baseScale * pulse);
-    ball.position.set(cx, cy);
     // 色: フィニッシュ虹 > 段階色(0白/1青/2緑/3赤)。
     const sinceFinish = gameTime - rhythm.lastFinishAt;
-    if (sinceFinish >= 0 && sinceFinish < RHYTHM_FINISH_RAINBOW_MS) {
-      ball.tint = RHYTHM_RAINBOW_PALETTE[Math.floor(gameTime / 70) % RHYTHM_RAINBOW_PALETTE.length];
-    } else {
-      ball.tint = RHYTHM_STAGE_COLORS[Math.max(0, Math.min(RHYTHM_STAGE_COLORS.length - 1, rhythm.godSuccess))];
-    }
-    ball.alpha = 1;
-    ball.visible = true;
+    const tint = (sinceFinish >= 0 && sinceFinish < RHYTHM_FINISH_RAINBOW_MS)
+      ? RHYTHM_RAINBOW_PALETTE[Math.floor(gameTime / 70) % RHYTHM_RAINBOW_PALETTE.length]
+      : RHYTHM_STAGE_COLORS[Math.max(0, Math.min(RHYTHM_STAGE_COLORS.length - 1, rhythm.godSuccess))];
     // タップ発光のハロー(暖色)。先に敷く。
     if (tapT > 0.01) g.circle(cx, cy, r + 4 + tapT * 8).fill({ color: 0xfff2cc, alpha: 0.32 * tapT });
+    if (texOk) {
+      const s = (RHYTHM_BALL_DIAM / ball.texture.width) * pulse; // width>=32 を保証済みなので巨大化しない
+      ball.scale.set(s * flipSign, s);
+      ball.position.set(cx, cy);
+      ball.tint = tint;
+      ball.alpha = 1;
+      ball.visible = true;
+    } else {
+      // テクスチャ未準備/異常: スプライトは隠し、簡易ミラーボール円で代替(画面全体化を防止)。
+      if (ball.visible) ball.visible = false;
+      g.circle(cx, cy, r * pulse).fill({ color: tint, alpha: 0.92 });
+      g.circle(cx, cy, r * pulse).stroke({ color: 0x0b1020, width: 1.5, alpha: 0.8 });
+    }
     // ドロップシャドウ: ボール背面の少し右下に暗い円。発光時も影が出るようハローの上に重ねる。
     g.circle(cx + 4, cy + 6, r).fill({ color: 0x05070d, alpha: 0.34 + 0.18 * tapT });
 
