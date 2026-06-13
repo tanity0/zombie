@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.227 - 四神舞: リズム中の画面暗転 + タップ発光の演出追加 (Claude Code)
+
+### Summary
+- リズム開始中は画面を少し暗く(フェードで自然に入る/抜ける)。タップ成功で画面が少し光る。
+- screen-space(Pixi uiLayer 最下層)に実装。DOMのHUDは canvas の上なので暗転対象外=視認性維持。
+
+### 実装
+- `src/config/shijin.ts`: RHYTHM_DIM_ALPHA(0.26)/RHYTHM_DIM_EASE(0.16)/RHYTHM_TAP_GLOW_MS(200)/RHYTHM_TAP_GLOW_ALPHA(0.18)。
+- `src/types/game.ts` + `gameStore.ts`: RhythmState に lastTapAt。タップ(方向なし)成功時に記録。
+- `src/pixi/pixiScene.ts`: rhythmScreenFx(uiLayer最下層)。dim を毎フレームイージング、暗転の上にタップ発光を重ねる。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- 暗さ0.26/発光0.18は仮。毎ビート発光が強い場合は alpha 低下。リズムUI(頭上)も暗転対象=必要なら uiLayer へ移して非暗転化。
+
 ## 2026-06-13 - v0.25.226 - 四神舞: ジャスト判定を少し甘く / 入力矢印のみ頭上表示 / コマンドを左上表示 (Claude Code)
 
 ### Summary

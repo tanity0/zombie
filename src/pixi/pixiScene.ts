@@ -28,6 +28,7 @@ import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
+import { RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA } from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
@@ -400,6 +401,9 @@ export class PixiScene {
   private whipHurricaneTextured = false;
   // 四神舞(リズム): プレイヤー頭上のミラーボール+左右サークル+矢印プロンプト(軽量Graphics)。
   private rhythmOverlay = new Graphics();
+  // リズム中の画面暗転 + タップ発光(screen-space, uiLayer)。dim は現在のイージング済み濃さ。
+  private rhythmScreenFx = new Graphics();
+  private rhythmDim = 0;
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -556,6 +560,9 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.whipHurricane);
     this.rhythmOverlay.visible = false;
     this.L.effectLayer.addChild(this.rhythmOverlay);
+    // 暗転/発光は screen-space。uiLayer の最下層に置き、画面端マーカー等は上に残す。
+    this.rhythmScreenFx.visible = false;
+    this.L.uiLayer.addChildAt(this.rhythmScreenFx, 0);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -1031,6 +1038,7 @@ export class PixiScene {
 
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
+    this.syncRhythmScreenFx(s.rhythm, s.gameTime);
     this.syncRhythmOverlay(s.rhythm, s.player, s.gameTime);
     this.syncFireflies(s.camera, now);
   }
@@ -1116,6 +1124,25 @@ export class PixiScene {
     else if (dir === 'left') pts = [x - s, y, x + s, y - s, x + s, y + s];
     else pts = [x + s, y, x - s, y - s, x - s, y + s];
     g.poly(pts).fill({ color, alpha });
+  }
+
+  // リズム中の画面暗転(フェード追従)+ タップ発光。screen-space(uiLayer最下層)。
+  // DOMのHUDは canvas の上なので暗くならない(視認性は維持)。
+  private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number }, gameTime: number) {
+    const target = rhythm.active ? RHYTHM_DIM_ALPHA : 0;
+    this.rhythmDim += (target - this.rhythmDim) * RHYTHM_DIM_EASE;
+    const tapGlow = rhythm.active
+      ? Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS) * RHYTHM_TAP_GLOW_ALPHA
+      : 0;
+    const g = this.rhythmScreenFx;
+    if (this.rhythmDim < 0.004 && tapGlow < 0.004) {
+      if (g.visible) { g.visible = false; g.clear(); }
+      return;
+    }
+    g.visible = true;
+    g.clear();
+    if (this.rhythmDim > 0.004) g.rect(0, 0, this.screenW, this.screenH).fill({ color: 0x010512, alpha: this.rhythmDim });
+    if (tapGlow > 0.004) g.rect(0, 0, this.screenW, this.screenH).fill({ color: 0xfff2cc, alpha: tapGlow }); // 暗転の上に重ねて少し光る
   }
 
   // ---- 鞭ハリケーン(吸引中心に立つ竜巻スプライト) -----------------------

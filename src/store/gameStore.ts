@@ -34,7 +34,7 @@ import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
   active: false, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0,
-  godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastGod: null,
+  godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastTapAt: 0, lastGod: null,
   invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, pending: [],
 });
 
@@ -3480,6 +3480,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastInputAt: gt,
         lastJudge: judged === 'fire' ? 'fire' : 'hit',
         lastJudgeAt: gt,
+        lastTapAt: arrow ? s.rhythm.lastTapAt : gt, // タップ(方向なし)成功で発光
         lastGod: firedGod ?? s.rhythm.lastGod,
         pending: [...s.rhythm.pending, ...newPending],
       },

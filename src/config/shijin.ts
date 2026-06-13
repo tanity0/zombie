@@ -71,3 +71,9 @@ export const BYAKKO_DAMAGE = 16;              // TODO
 // 全体フィニッシュ: 画面内の雑魚は近接フィニッシュ、ボスは即死でなく大ダメージ。
 export const SHIJIN_FINISH_BOSS_DAMAGE = 120; // TODO: ボスへの近接フィニッシュ相当大ダメージ
 export const SHIJIN_FINISH_SCREEN_MARGIN = 180; // 画面内判定の余白(EFFECT_VIEWPORT_MARGIN相当)
+
+// --- 演出: リズム中の画面暗転 / タップ発光 -------------------------------
+export const RHYTHM_DIM_ALPHA = 0.26;         // リズム中の画面暗転の濃さ(少し暗く)
+export const RHYTHM_DIM_EASE = 0.16;          // 暗転フェードの追従(フレーム毎)
+export const RHYTHM_TAP_GLOW_MS = 200;        // タップ発光の持続
+export const RHYTHM_TAP_GLOW_ALPHA = 0.18;    // タップ発光の最大強さ(少し光る)
