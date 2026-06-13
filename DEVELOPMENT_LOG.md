@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.230 - 四神舞: 暗転を地面/遠景のみに限定 + コマンドが入力途中で変わらないよう修正 (Claude Code)
+
+### Summary
+- 暗転がオブジェクト/アクターまで暗くしていたのを、地面/遠景だけに限定。worldGroup の filteredWorld
+  手前に暗転Graphicsを挿入(地面/horizon/遠景の上、背景木・影・アクター・エフェクトの下)。タップ発光は
+  従来通り uiLayer 最前面(全画面)に分離。
+- コマンドが入力途中で別の四神に切り替わる不具合を修正。ミス/誤フリック時にプロンプトを再生成して
+  いたのをやめ、コマンドは保持し頭からやり直し。新コマンドは技の発動(完成)時のみ生成。
+
+### 実装
+- `src/pixi/pixiScene.ts`: rhythmDimGfx を worldGroup の filteredWorld 直前に挿入。syncRhythmScreenFx を
+  暗転(dimGfx)とタップ発光(screenFx)に分離。
+- `src/store/gameStore.ts`: rhythmInput のタイミングミス/誤フリック、tickRhythm のミスで randomRhythmPrompt()
+  を呼ばないように変更(発動成功時と開始時のみ生成)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.229 - 四神舞: ミラーボール素材入替(透過化) + フリック判定の遅延補正 (Claude Code)
 
 ### Summary

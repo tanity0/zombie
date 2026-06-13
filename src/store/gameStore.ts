@@ -3423,10 +3423,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const win = RHYTHM_SUCCESS_WINDOW_MS + (kind === 'flick' ? RHYTHM_FLICK_EXTRA_WINDOW_MS : 0);
     // タイミングを外したら(早すぎ/遅すぎ)コンボ全リセット(硬直は入れない)。
     if (Math.abs(judgeTime - beatT) > win) {
+      // コマンドは作り直さない(入力途中で別の四神に切り替わらないように)。頭からやり直し。
       set(s => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
-        rhythm: { ...s.rhythm, inputIndex: 0, prompt: randomRhythmPrompt(), comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
+        rhythm: { ...s.rhythm, inputIndex: 0, comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
       }));
       return { judged: 'miss' };
     }
@@ -3463,9 +3464,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
       } else {
-        // プロンプトと違う向き(タイミングは成功): 入力進行のみリセット(コンボは継続)。
+        // プロンプトと違う向き(タイミングは成功): コマンドは保持し、入力進行のみ頭に戻す
+        // (入力途中で別の四神コマンドに切り替わらないように)。コンボは継続。
         inputIndex = 0;
-        prompt = randomRhythmPrompt();
       }
     }
     // フリックは盾バッシュ風にプレイヤーがその方向(上下左右の主軸)へ短く滑る。
@@ -3512,10 +3513,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (missed) {
       const playing = state.meleeFinishComboCount > 0 || r.inputIndex > 0;
       if (playing) {
+        // コマンドは保持(入力途中で別の四神に変わらない)。頭からやり直し。
         set(s => ({
           meleeFinishComboCount: 0,
           meleeFinishComboUntil: 0,
-          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, prompt: randomRhythmPrompt(), comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
+          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
         }));
       } else {
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));

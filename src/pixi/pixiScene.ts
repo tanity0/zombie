@@ -404,9 +404,12 @@ export class PixiScene {
   private whipHurricaneTextured = false;
   // 四神舞(リズム): プレイヤー頭上のミラーボール+左右サークル+矢印プロンプト(軽量Graphics)。
   private rhythmOverlay = new Graphics();
-  // リズム中の画面暗転 + タップ発光(screen-space, uiLayer)。dim は現在のイージング済み濃さ。
+  // リズム中のタップ発光(screen-space, uiLayer 最前面)。
   private rhythmScreenFx = new Graphics();
   private rhythmDim = 0;
+  // リズム中の暗転: 地面/遠景だけを暗くする(worldGroup の filteredWorld 手前に置くので、
+  // 背景木・影・アクター等のオブジェクトは暗くならない)。dim は共通のイージング濃さ。
+  private rhythmDimGfx = new Graphics();
   // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
   private rhythmBall = new Sprite();
   private rhythmBallTextured = false;
@@ -566,9 +569,12 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.whipHurricane);
     this.rhythmOverlay.visible = false;
     this.L.effectLayer.addChild(this.rhythmOverlay);
-    // 暗転/発光は screen-space。uiLayer の最下層に置き、画面端マーカー等は上に残す。
+    // タップ発光は screen-space。uiLayer の最下層に置き、画面端マーカー等は上に残す。
     this.rhythmScreenFx.visible = false;
     this.L.uiLayer.addChildAt(this.rhythmScreenFx, 0);
+    // 暗転は worldGroup の filteredWorld 直前に挿す(地面/遠景の上、オブジェクト/アクターの下)。
+    this.rhythmDimGfx.visible = false;
+    this.L.worldGroup.addChildAt(this.rhythmDimGfx, Math.max(0, this.L.worldGroup.children.length - 1));
     // ミラーボール: 頭上に表示。rhythmOverlay(リング/矢印)より上に描く。
     this.rhythmBall.anchor.set(0.5, 0.5);
     this.rhythmBall.visible = false;
@@ -1153,23 +1159,31 @@ export class PixiScene {
     g.poly(pts).fill({ color, alpha });
   }
 
-  // リズム中の画面暗転(フェード追従)+ タップ発光。screen-space(uiLayer最下層)。
-  // DOMのHUDは canvas の上なので暗くならない(視認性は維持)。
+  // リズム中の暗転(地面/遠景だけ・フェード追従)+ タップ発光(全画面・最前面)。
   private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number }, gameTime: number) {
     const target = rhythm.active ? RHYTHM_DIM_ALPHA : 0;
     this.rhythmDim += (target - this.rhythmDim) * RHYTHM_DIM_EASE;
+    // 暗転(worldGroup の filteredWorld 手前): 地面/遠景のみ暗くなる。
+    const d = this.rhythmDimGfx;
+    if (this.rhythmDim < 0.004) {
+      if (d.visible) { d.visible = false; d.clear(); }
+    } else {
+      d.visible = true;
+      d.clear();
+      d.rect(0, 0, this.screenW, this.screenH).fill({ color: 0x010512, alpha: this.rhythmDim });
+    }
+    // タップ発光(uiLayer 最前面・全画面)。
     const tapGlow = rhythm.active
       ? Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS) * RHYTHM_TAP_GLOW_ALPHA
       : 0;
     const g = this.rhythmScreenFx;
-    if (this.rhythmDim < 0.004 && tapGlow < 0.004) {
+    if (tapGlow < 0.004) {
       if (g.visible) { g.visible = false; g.clear(); }
-      return;
+    } else {
+      g.visible = true;
+      g.clear();
+      g.rect(0, 0, this.screenW, this.screenH).fill({ color: 0xfff2cc, alpha: tapGlow });
     }
-    g.visible = true;
-    g.clear();
-    if (this.rhythmDim > 0.004) g.rect(0, 0, this.screenW, this.screenH).fill({ color: 0x010512, alpha: this.rhythmDim });
-    if (tapGlow > 0.004) g.rect(0, 0, this.screenW, this.screenH).fill({ color: 0xfff2cc, alpha: tapGlow }); // 暗転の上に重ねて少し光る
   }
 
   // ---- 鞭ハリケーン(吸引中心に立つ竜巻スプライト) -----------------------
