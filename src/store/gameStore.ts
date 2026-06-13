@@ -260,6 +260,7 @@ export const HURRICANE_SUCTION_SPEED = 320;                      // TODO(鞭): �
 export const HURRICANE_MAX_TARGETS_PER_FRAME = 12;               // 負荷cap: 1tickで吸引する最大敵数
 export const HURRICANE_TICK_MS = 60;                             // 吸引tickのスロットル
 export const SHOP_WHIP_COST = 100;                               // TODO(鞭): 商人での鞭カード価格
+export const SHOP_TURRET_COST = 100;                             // TODO(自動タレット): 仮値。商人でのタレットカード価格
 
 export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
 // 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
@@ -419,6 +420,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'shield': return 'シールド';
     case 'whip': return '鞭';
     case 'alchemy': return '錬金術';
+    case 'turret': return '自動タレット';
     default: return 'サブウェポン';
   }
 };
@@ -929,6 +931,33 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
+
+    // 自動タレットを叩いてモード切替: メレー範囲内のタレットを前方集中⇔全方位でトグル。
+    // 既存の近接接触(=スイング)を再利用。counterCooldown が連打を抑えるのでスイング毎に
+    // 一度だけ反転する。スイングは消費せず通常の近接判定もそのまま続行する。
+    const turretsInReach = projectiles.filter(p => {
+      if (p.weaponType !== 'turret') return false;
+      const nx = Math.max(p.x, Math.min(pcx, p.x + p.width));
+      const ny = Math.max(p.y, Math.min(pcy, p.y + p.height));
+      return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
+    });
+    if (turretsInReach.length > 0) {
+      const toggleIds = new Set(turretsInReach.map(p => p.id));
+      set(state => ({
+        projectiles: state.projectiles.map(p =>
+          toggleIds.has(p.id)
+            ? { ...p, turretMode: p.turretMode === 'omni' ? 'forward' : 'omni', turretModeSwitchedAt: now }
+            : p
+        )
+      }));
+      for (const t of turretsInReach) {
+        const cx = t.x + t.width / 2;
+        const cy = t.y + t.height / 2;
+        get().spawnRing(cx, cy, 6, 30, 'rgba(125,211,252,0.8)', 2, 220);
+        get().spawnSlash(cx, cy, 'rgba(186,230,253,0.9)');
+      }
+    }
+
     const mdx = weaponMerchant.x - pcx;
     const mdy = weaponMerchant.y - pcy;
     if (
@@ -2287,7 +2316,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
       return {

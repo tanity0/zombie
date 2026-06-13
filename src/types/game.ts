@@ -223,8 +223,8 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret';
 export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'
@@ -305,6 +305,12 @@ export interface Projectile {
   // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
   // then is force-destroyed once Date.now() reaches this timestamp (slide end).
   shieldBreakAt?: number;
+  // Auto-turret: a stationary placed support unit (weaponType 'turret'). `direction`
+  // holds the forward facing captured at placement. `turretMode` toggles between
+  // 'forward' (tier-3 SMG, long straight line) and 'omni' (handgun, short radius)
+  // when the player melee-hits it. `turretModeSwitchedAt` drives the swap VFX.
+  turretMode?: 'forward' | 'omni';
+  turretModeSwitchedAt?: number;
 }
 
 // Pickup types

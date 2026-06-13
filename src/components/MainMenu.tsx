@@ -141,7 +141,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
     'decoy',
     'shield',
     'whip',
-    'alchemy'
+    'alchemy',
+    'turret'
   ];
   
   return (

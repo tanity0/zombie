@@ -154,6 +154,20 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
+  // 自動タレットは全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
+  const turretLvl = player.subWeaponLevels['turret'] ?? 0;
+  if (!ownsKatana && turretLvl < 3) {
+    const nextLevel = turretLvl + 1;
+    subWeaponOptions.push({
+      id: 'subweapon-turret',
+      name: nextLevel === 1 ? '自動タレット' : `自動タレット Lv${nextLevel}`,
+      description: '10秒ごとに前方へ自動設置。留まって5秒オート射撃(前方集中=SMG相当の長射程)。叩くと全方位(ハンドガン相当)へ切替。10%でグレネード弾、消滅時に小爆発',
+      type: 'subWeapon',
+      subWeaponKey: 'turret',
+      level: nextLevel
+    });
+  }
+
   // Shuffle the pool and take 3 distinct passives.
   const shuffled = [...PASSIVE_POOL].sort(() => 0.5 - Math.random());
   const picks = shuffled.slice(0, 3 - subWeaponOptions.length);

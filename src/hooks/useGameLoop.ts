@@ -89,6 +89,28 @@ const SHIELD_FOOT_H = 16;                     // フットプリント奥行(下
 const SHIELD_SIDE_DROP = 18;                  // 左右向き時、当たり/効果範囲(と絵)を下へずらす量
 const SHIELD_HIT_INTERVAL_MS = 400;          // 同一敵が連続で耐久を削る最短間隔
 const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ弾く強さ(store側で≤3にクランプ)
+// 自動タレット: 10秒ごとにプレイヤー少し前方へ設置する定点支援。設置地点に留まり一定時間
+// オート射撃。デフォルト=前方集中(ティア3SMG=handgun-t3 相当/長射程の直線制圧)。叩くと
+// 全方位(ハンドガン=handgun-t1 相当/短射程の周囲対応)へ切替。通常弾の代わりに低確率で
+// グレネード弾(既存ヘビーグレネードを流用)。消滅時に小爆発。数値は実機調整前提(TODO)。
+const TURRET_COOLDOWN_MS = 10000;                       // 設置間隔(全Lv共通10秒)
+const TURRET_DURATION_BY_LEVEL = [0, 5000, 5000, 5000]; // 持続: Lv1=5s確定。Lv2/3はTODO(未確定→暫定5s据置)
+const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
+const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
+const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
+const TURRET_FWD_FIRE_MS = 130;                         // 前方集中の発射間隔(handgun-t3 cooldown 相当)
+const TURRET_FWD_DAMAGE = 7;                            // 前方集中の弾ダメージ(handgun-t3 相当)
+const TURRET_FWD_BULLET_SPEED = 560 * 1.5;             // handgun-t3 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
+const TURRET_FWD_RANGE = 420;                           // 前方集中の射程(長射程)。TODO: 実機調整
+const TURRET_FWD_LINE_HALF_W = 60;                      // 前方制圧の射線帯の半幅(この帯内の敵がいる時だけ撃つ)
+const TURRET_OMNI_FIRE_MS = 420;                        // 全方位の発射間隔(handgun-t1 cooldown 相当)
+const TURRET_OMNI_DAMAGE = 9;                           // 全方位の弾ダメージ(handgun-t1 相当)
+const TURRET_OMNI_BULLET_SPEED = 520 * 1.5;            // handgun-t1 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
+const TURRET_OMNI_RANGE = 200;                          // 全方位の射程(短射程)。TODO: 実機調整
+const TURRET_BULLET_SIZE = 7;
+const TURRET_GRENADE_CHANCE = 0.10;                     // 通常弾の代わりにグレネード弾を撃つ確率(全モード共通)
+const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発・範囲。TODO: 実機調整(既存爆発演出を流用)
+const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -146,6 +168,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // Shield contact debounce: next-allowed durability-hit time (gameTime ms) per
   // `${shieldId}:${enemyId}`, so each enemy only chips a shield once per interval.
   const shieldHitRef = useRef<Map<string, number>>(new Map());
+  // 自動タレットの発射スロットル: タレットid -> 次に撃てる gameTime(ms)。
+  const turretFireRef = useRef<Map<string, number>>(new Map());
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -821,6 +845,56 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setSubWeaponCooldown('shield', gameTime + SHIELD_COOLDOWN_MS);
         }
 
+        // 自動タレット: 10秒ごとにプレイヤー少し前方へ設置。設置地点に留まりオート射撃。
+        // 追従しない=移動すると置き去り。設置時は必ず前方集中モードで開始する。
+        if (
+          subWeaponPlayer.subWeapons.includes('turret') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'turret') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['turret'] ?? 0)
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['turret'] ?? 1));
+          const dir = subWeaponPlayer.lastDirection ?? { x: 1, y: 0 };
+          const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+          const ux = dir.x / dmag;
+          const uy = dir.y / dmag;
+          const nowMs = Date.now();
+          // 同時設置は1個: 既存タレットがあれば消す(デコイ/シールドと同じ流儀)。
+          for (const t of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
+            removeProjectile(t.id);
+            turretFireRef.current.delete(t.id);
+          }
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // 足元(下辺中央)= プレイヤー中心から進行方向へ少し前方。設置物ルール(footRect)に合わせ
+          // x,y は足元から当たり判定矩形を作る(下辺=足元)。
+          const footX = pcx + ux * TURRET_PLACE_FORWARD;
+          const footY = pcy + uy * TURRET_PLACE_FORWARD;
+          addProjectile({
+            id: `proj-turret-${nowMs}`,
+            x: footX - TURRET_FOOT_W / 2,
+            y: footY - TURRET_FOOT_H,
+            width: TURRET_FOOT_W,
+            height: TURRET_FOOT_H,
+            speed: 0,
+            damage: 0,
+            direction: { x: ux, y: uy }, // 設置時の向き(前方集中モードの砲身方向)
+            weaponType: 'turret',
+            weaponKey: 'sub-turret',
+            duration: TURRET_DURATION_BY_LEVEL[level],
+            createdAt: nowMs,
+            passthrough: false,
+            hitEnemies: [],
+            hostile: false,
+            reflected: false,
+            turretMode: 'forward', // 設置時は必ず前方集中モードで開始
+          });
+          // 設置演出: 軽い着地リング+小ダスト(短命・軽量)。
+          spawnRing(footX, footY, 4, 26, 'rgba(148,163,184,0.7)', 2, 220);
+          spawnBurst(footX, footY, '#94a3b8', 6);
+          playSfx('shield-deploy');
+          setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
+        }
+
         // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
         // パルス方式。距離は二乗比較。高速弾の取りこぼしは許容(swept判定なし)。
         {
@@ -910,6 +984,109 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 錬金術: 召喚ユニットの追従/攻撃/レア吸引/消滅を毎フレーム更新。
         useGameStore.getState().updateSummons(deltaTime);
+
+        // 自動タレット: 設置中は留まってオート射撃。前方集中=SMG相当の長射程直線、全方位=
+        // ハンドガン相当の短射程ターゲット。低確率でグレネード弾。寿命終了で小爆発(範囲ダメージ)。
+        // updateProjectiles の duration カリングより前に寿命を処理して爆発を出す。
+        {
+          const nowMs = Date.now();
+          for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
+            const tcx = turret.x + turret.width / 2;
+            const tcy = turret.y + turret.height / 2;
+            // --- 消滅時の小爆発(既存ヘビーグレネード爆発を流用、控えめ威力/範囲)。味方/プレイヤーは無傷。
+            if (nowMs - turret.createdAt >= turret.duration) {
+              removeProjectile(turret.id);
+              turretFireRef.current.delete(turret.id);
+              playSfx('bomb');
+              spawnRing(tcx, tcy, 8, TURRET_EXPLOSION_RADIUS, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              spawnBurst(tcx, tcy, '#f97316', 16);
+              useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              for (const enemy of useGameStore.getState().enemies) {
+                if (enemy.type === 'reaper') continue;
+                const ex = enemy.x + enemy.width / 2;
+                const ey = enemy.y + enemy.height / 2;
+                const dist = Math.hypot(ex - tcx, ey - tcy);
+                if (dist > TURRET_EXPLOSION_RADIUS) continue;
+                const falloff = 1 - dist / TURRET_EXPLOSION_RADIUS;
+                const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
+                const killed = damageEnemy(enemy.id, dmg);
+                spawnDamageNumber(ex, enemy.y, dmg, false);
+                if (killed) {
+                  playEnemyDeath();
+                  addPickup({
+                    id: `pickup-xp-turret-${enemy.id}-${nowMs}`,
+                    x: ex - 8,
+                    y: ey - 8,
+                    type: 'experience',
+                    value: enemy.experienceValue
+                  });
+                }
+              }
+              continue;
+            }
+            // --- オート射撃(モード別スロットル)。
+            const mode = turret.turretMode ?? 'forward';
+            const interval = mode === 'omni' ? TURRET_OMNI_FIRE_MS : TURRET_FWD_FIRE_MS;
+            if (gameTime < (turretFireRef.current.get(turret.id) ?? 0)) continue;
+            let dir: { x: number; y: number } | null = null;
+            if (mode === 'omni') {
+              // 全方位: 射程内の最も近い敵を狙う(近い敵優先)。範囲内に敵がいなければ撃たない。
+              const target = useGameStore.getState().enemies
+                .filter(e => e.type !== 'reaper')
+                .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - tcx, e.y + e.height / 2 - tcy) }))
+                .filter(h => h.d <= TURRET_OMNI_RANGE)
+                .sort((a, b) => a.d - b.d)[0]?.e;
+              if (!target) continue;
+              const ax = target.x + target.width / 2 - tcx;
+              const ay = target.y + target.height / 2 - tcy;
+              const am = Math.max(0.001, Math.hypot(ax, ay));
+              dir = { x: ax / am, y: ay / am };
+            } else {
+              // 前方集中: 設置時の向きへ直線射撃。前方の射線帯に敵がいる時だけ撃つ(空撃ち抑制)。
+              const fx = turret.direction.x;
+              const fy = turret.direction.y;
+              const hasFwdTarget = useGameStore.getState().enemies.some(e => {
+                if (e.type === 'reaper') return false;
+                const dx = e.x + e.width / 2 - tcx;
+                const dy = e.y + e.height / 2 - tcy;
+                const along = dx * fx + dy * fy;          // 前方への射影
+                if (along <= 0 || along > TURRET_FWD_RANGE) return false;
+                const perp = Math.abs(dx * fy - dy * fx); // 射線からの直交距離
+                return perp <= TURRET_FWD_LINE_HALF_W;
+              });
+              if (!hasFwdTarget) continue;
+              dir = { x: fx, y: fy };
+            }
+            if (!dir) continue;
+            // 10%でグレネード弾(既存ヘビーグレネードを流用=fuseで爆発)、それ以外は通常弾。
+            // 全方位モードでもグレネード弾は現在のターゲット方向へ撃つ。
+            if (Math.random() < TURRET_GRENADE_CHANCE) {
+              addProjectile({
+                id: `proj-turret-gr-${turret.id}-${nowMs}`,
+                x: tcx - 7, y: tcy - 7, width: 14, height: 14,
+                speed: HEAVY_GRENADE_SPEED, damage: HEAVY_GRENADE_DAMAGE,
+                direction: dir, weaponType: 'grenade', weaponKey: 'sub-turret-grenade',
+                duration: HEAVY_GRENADE_FUSE_MS, createdAt: nowMs,
+                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+              });
+              playSfx('rifle-fire');
+            } else {
+              const dmg = mode === 'omni' ? TURRET_OMNI_DAMAGE : TURRET_FWD_DAMAGE;
+              const spd = mode === 'omni' ? TURRET_OMNI_BULLET_SPEED : TURRET_FWD_BULLET_SPEED;
+              addProjectile({
+                id: `proj-turret-b-${turret.id}-${nowMs}`,
+                x: tcx - TURRET_BULLET_SIZE / 2, y: tcy - TURRET_BULLET_SIZE / 2,
+                width: TURRET_BULLET_SIZE, height: TURRET_BULLET_SIZE,
+                speed: spd, damage: dmg, direction: dir,
+                weaponType: 'handgun', weaponKey: 'sub-turret',
+                duration: 1400, createdAt: nowMs,
+                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+              });
+              playSfx('handgun-fire');
+            }
+            turretFireRef.current.set(turret.id, gameTime + interval);
+          }
+        }
 
         // Update projectiles
         updateProjectiles(deltaTime);

@@ -10,6 +10,52 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.221 - 通常サブウェポン「自動タレット」実装 (Claude Code)
+
+### Summary
+定点支援サブウェポン「自動タレット」を既存サブウェポン構造に乗せて実装(decoy/shieldの設置物パターンを踏襲)。
+
+- **基本挙動**: 10秒ごと(`TURRET_COOLDOWN_MS`)にプレイヤー少し前方(`TURRET_PLACE_FORWARD=24`)へ設置。
+  設置物は `weaponType:'turret'` の projectile(speed0・足元アンカー)。追従せず留まる=移動で置き去り。
+  同時設置1個(既存があれば消す)。**Lv1持続5秒確定** / Lv2・Lv3は `TURRET_DURATION_BY_LEVEL` で暫定5s据置+TODO。
+- **モード**: 設置時は必ず**前方集中**(`turretMode:'forward'`)。プレイヤーが**叩く**(triggerCounter のメレー接触を
+  再利用、メレー範囲内のタレットを検出)と**全方位**(`'omni'`)へトグル。切替で見た目変化(色/砲身) + 短いリングVFX。
+  - 前方集中: 設置向きへ直線射撃。射程`TURRET_FWD_RANGE=420`、間隔130ms/ダメージ7(handgun-t3=ティア3SMG相当)。
+    前方の射線帯(半幅60)に敵がいる時だけ撃つ(空撃ち抑制)。
+  - 全方位: 周囲の最も近い敵(近い敵優先)を狙う。射程`TURRET_OMNI_RANGE=200`、間隔420ms/ダメージ9(handgun-t1相当)。
+- **グレネード弾**: 通常弾の代わりに**10%**(`TURRET_GRENADE_CHANCE`)でグレネード弾。既存ヘビーグレネードを流用
+  (`weaponType:'grenade'`/HEAVY_GRENADE_* / fuse爆発=既存 timedGrenades ブロックで爆発)。全モードで現ターゲット方向へ発射。
+- **消滅時爆発**: 寿命終了で小爆発(`TURRET_EXPLOSION_RADIUS=64`/`_DAMAGE=36`、既存爆発演出を流用)。範囲ダメージ+ノック無し。
+  updateProjectiles のカリング前に寿命処理して爆発。味方/プレイヤーは無傷(敵のみ)。
+- **取得/強化**: 通常サブウェポンとしてレベルアップカード(upgradeUtils)+ 商人スキルカード(MainMenu陳列/ShopMenu/
+  buySkillCardFromShop, `SHOP_TURRET_COST=100`/TODO)に登録。刀/村雨装備中は併用不可(他サブと同様)。
+- **干渉なし**: タレットは敵を引きつけない/敵弾を消さない/反射しない/味方弾に干渉しない。`weaponType:'turret'` を
+  collisionUtils の被弾除外に追加(敵接触で消費されない)。スロー誘発なし(CLAUDE.md準拠)。
+- **描画**: pixiScene に `syncTurrets`/`drawTurret`(Graphics、テクスチャ不要)。actorLayer で足元Y y-sort。
+  前方集中=設置向きの単一砲身(琥珀)、全方位=放射状の短い砲身(シアン)。設置ポップ/寿命フェード/切替リングのみの軽量演出。
+
+### Files changed
+- `src/types/game.ts` — WeaponType/SubWeaponKey に 'turret'、Projectile に turretMode/turretModeSwitchedAt
+- `src/utils/collisionUtils.ts` — 'turret' を被弾除外に追加
+- `src/store/gameStore.ts` — subWeaponDisplayName、SHOP_TURRET_COST、buySkillCardFromShop価格、triggerCounter でモードトグル
+- `src/hooks/useGameLoop.ts` — TURRET_* 定数、turretFireRef、設置ブロック、射撃+消滅爆発ブロック
+- `src/utils/upgradeUtils.ts` — レベルアップカード追加
+- `src/components/MainMenu.tsx` — skillShopEntries に 'turret'
+- `package.json` — version 0.25.221
+
+### Performance
+- 3/10(Low-Mid)。10秒に1回・同時1個・Lv1で5秒のみ存在。射撃は既存弾/グレネード/爆発処理を流用。
+  ターゲット探索はタレット単体(通常1個)で毎フレーム軽量スキャン。常時glow/大量パーティクル/重い常時エフェクトなし。
+  安全弁: 同時設置1個、前方は射線帯ヒット時のみ発射、全方位は範囲内のみ、グレネード/爆発は既存の単発処理。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功(2366 modules)。
+
+### Next handoff notes
+- 未確定値(TODOで明示): Lv2/Lv3持続・各強化(発射間隔/グレネード率/爆発威力・範囲/射程)、グレネード弾の専用バランス、
+  消滅爆発の威力/範囲、SHOP_TURRET_COST。実機で調整。
+- タレット見た目は Graphics 仮実装。専用スプライトが用意できたら drawTurret を差し替え可。
+
 ## 2026-06-13 - v0.25.220 - 鞭判定をLv非依存化 + ハリケーンチャージ軽減 + 巻き込み中は通常ダメージ + 鳴動音 (Claude Code)
 
 ### Summary

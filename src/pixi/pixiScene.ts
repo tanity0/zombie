@@ -386,6 +386,8 @@ export class PixiScene {
   private shieldViews = new Map<string, { container: Container; sprite: Sprite }>();
   // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
   private decoyViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
+  // 自動タレット: 砲台ボディ(Graphics)。前方集中/全方位でモード別の見た目。
+  private turretViews = new Map<string, { container: Container; gfx: Graphics }>();
   private effects = new Map<string, EffectView>();
 
   private shadowGfx = new Graphics();
@@ -994,6 +996,7 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncDecoys(s.projectiles, now);
+    this.syncTurrets(s.projectiles, now);
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -2118,6 +2121,7 @@ export class PixiScene {
       if (p.createdAt > now) continue; // scheduled / inactive
       if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
       if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
+      if (p.weaponType === 'turret') continue; // タレットは syncTurrets で別管理(actorLayer/y-sort)
       seen.add(p.id);
       let g = this.projectiles.get(p.id);
       if (!g) {
@@ -2180,6 +2184,88 @@ export class PixiScene {
       if (v.sprite.texture !== tex) v.sprite.texture = tex;
       const scale = tex.height > 0 ? DECOY_DISPLAY_H / tex.height : 1;
       v.sprite.scale.set(scale);
+    }
+  }
+
+  // 自動タレットは Graphics の砲台ボディを足元アンカーで描画。actorLayer に置いて
+  // 足元Yで y-sort。前方集中=砲身が設置向きへ、全方位=周囲に複数の短い砲身。
+  // 重い常時エフェクトは使わず、形状/向き/色でモードが分かるようにする(視覚のみ)。
+  private syncTurrets(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.weaponType !== 'turret') continue;
+      if (p.createdAt > now) continue;
+      seen.add(p.id);
+      let v = this.turretViews.get(p.id);
+      if (!v) {
+        const container = new Container();
+        const gfx = new Graphics();
+        container.addChild(gfx);
+        this.L.actorLayer.addChild(container);
+        v = { container, gfx };
+        this.turretViews.set(p.id, v);
+      }
+      this.drawTurret(v, p);
+    }
+    for (const [id, v] of this.turretViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.turretViews.delete(id);
+      }
+    }
+  }
+
+  private drawTurret(v: { container: Container; gfx: Graphics }, p: Projectile) {
+    const footX = p.x + p.width / 2;
+    const footY = p.y + p.height; // 下辺 = 足元
+    const age = Date.now() - p.createdAt;
+    // 設置ポップ(最初の180ms)で小さく出現→等倍。
+    const pop = age < 180 ? 0.6 + 0.4 * (age / 180) : 1;
+    // 寿命末の600msでフェードアウト。
+    const remaining = p.duration - age;
+    const alpha = Math.max(0, Math.min(1, remaining / 600));
+    v.container.position.set(footX, footY);
+    v.container.zIndex = footY;
+    v.container.alpha = alpha;
+    v.container.scale.set(pop);
+
+    const mode = p.turretMode ?? 'forward';
+    const accent = mode === 'omni' ? 0x38bdf8 : 0xf59e0b; // 全方位=シアン / 前方集中=琥珀
+    const g = v.gfx;
+    g.clear();
+    // 接地影。
+    g.ellipse(0, 0, 16, 6).fill({ color: 0x000000, alpha: 0.28 });
+    // 脚 + ボディ(足元から上へ)。
+    g.roundRect(-11, -22, 22, 20, 4).fill({ color: 0x334155 });
+    g.roundRect(-11, -22, 22, 20, 4).stroke({ color: 0x0f172a, alpha: 0.9, width: 1.5 });
+    // モード切替の一瞬だけリング(短命・軽量)。
+    const sinceSwitch = p.turretModeSwitchedAt ? Date.now() - p.turretModeSwitchedAt : Infinity;
+    if (sinceSwitch < 200) {
+      const t = sinceSwitch / 200;
+      g.circle(0, -12, 8 + t * 16).stroke({ color: accent, alpha: 0.7 * (1 - t), width: 2 });
+    }
+    const cy = -12; // ボディ中心(足元から上)
+    if (mode === 'forward') {
+      // 前方集中: 設置向きへ伸びる単一砲身。
+      const dx = p.direction.x;
+      const dy = p.direction.y;
+      const dm = Math.max(0.001, Math.hypot(dx, dy));
+      const ux = dx / dm;
+      const uy = dy / dm;
+      const len = 18;
+      g.moveTo(0, cy).lineTo(ux * len, cy + uy * len).stroke({ color: accent, width: 5, cap: 'round' });
+      g.circle(0, cy, 5).fill({ color: accent });
+    } else {
+      // 全方位: 周囲へ短い砲身を放射(センサーが周囲対応している見た目)。
+      g.circle(0, cy, 6).fill({ color: accent });
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const ix = Math.cos(a) * 6;
+        const iy = Math.sin(a) * 6;
+        const ox = Math.cos(a) * 12;
+        const oy = Math.sin(a) * 12;
+        g.moveTo(ix, cy + iy).lineTo(ox, cy + oy).stroke({ color: accent, width: 2.5, cap: 'round' });
+      }
     }
   }
 
