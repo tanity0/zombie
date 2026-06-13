@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.217 - ハリケーン吸引半径2倍 + 鞭ダメージ判定の調査 (Claude Code)
+
+### Summary
+- **惹きつけ範囲を2倍**: `HURRICANE_RADIUS_BY_LEVEL` [0,90,110,130] → **[0,180,220,260]**。
+  視覚スプライト幅は `radius × WHIP_HURRICANE_WIDTH_MULT(3.0)` なので竜巻の見た目も比例して拡大する
+  (Lv1で270→540px幅)。見た目を据え置きたい場合は WIDTH_MULT を下げて相殺可(視覚のみ)。
+- **鞭ダメージ判定の調査**: `performWhipStrike`(gameStore.ts:1544–1640)に**実ダメージ判定あり**。
+  `baseDamage = meleeWeapon.damage × WHIP_DAMAGE_MULT(0.25)`(ナイフ8→2/ダガー14→3.5/FN20→5)。
+  health 減算・ダメージ数字・kill計上あり、**スタン敵は即処刑(finisher)**、ボスはstun時 ×BOSS_MELEE_STUN_MULT。
+  設計コメント上は「低/最小ダメージ」で意図的。完全ノックバック特化(ダメージ0)にするか要確認。
+
+### Files changed
+- `src/store/gameStore.ts` — HURRICANE_RADIUS_BY_LEVEL 2倍
+- `package.json` — version 0.25.217
+
+### Verification
+- 数値定数変更のみ。tsc 影響なし。
+
+### Next handoff notes
+- 鞭ダメージを残す/消すはユーザー確認待ち。消す場合は WHIP_DAMAGE_MULT=0 か performWhipStrike の health 減算を分岐。
+
 ## 2026-06-13 - v0.25.216 - ハリケーン: 0.1秒毎ミラー + 発光完全停止 + 吸引半径プレビュー (Claude Code)
 
 ### Summary

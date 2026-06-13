@@ -251,7 +251,7 @@ export const WHIP_HIT_HALF_WIDTH = 120;                          // カプセル
 export const WHIP_LENGTH_BY_LEVEL = [0, 150, 180, 210] as const; // TODO(鞭): 進行方向に長く伸びる直線射程
 export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
 export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 20, 20, 20] as const; // ハリケーン必要ヒット数(仕様20)
-export const HURRICANE_RADIUS_BY_LEVEL = [0, 90, 110, 130] as const;        // TODO(鞭): 吸引半径
+export const HURRICANE_RADIUS_BY_LEVEL = [0, 180, 220, 260] as const;       // 吸引半径(惹きつけ範囲を従来の2倍に)
 export const HURRICANE_DURATION_MS_BY_LEVEL = [0, 4800, 5600, 6400] as const; // 持続(滞在時間 さらに2倍=計4倍)
 export const HURRICANE_SUCTION_SPEED = 320;                      // TODO(鞭): 吸引速度(px/s)
 export const HURRICANE_MAX_TARGETS_PER_FRAME = 12;               // 負荷cap: 1tickで吸引する最大敵数
