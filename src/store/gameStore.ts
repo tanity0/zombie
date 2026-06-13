@@ -3446,8 +3446,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const headY = state.player.y - 24; // 頭上(JUST!/MISS... 表示位置)
     // タイミングを外しても「ダンスは続く」。コンボと技の蓄積(godSuccess)だけリセット、頭からやり直し。
     if (!onBeat) {
+      if (kind === 'tap') {
+        // タップはミス扱いにしない。技リスト/コンボ/進行に一切影響させず空振り。
+        // ビートだけ現在位置に合わせ、空振り後に tick がミス扱いしないようにする(早すぎる時は据え置き)。
+        const nextBeat = Math.floor((gt - r.firstBeatAt) / RHYTHM_INTERVAL_MS) + 1;
+        set(s => ({ rhythm: { ...s.rhythm, expectBeat: Math.max(s.rhythm.expectBeat, nextBeat), lastInputAt: gt } }));
+        return { judged: 'none' };
+      }
+      // フリックのミスのみ: コンボ/進行/蓄積リセット + 技リスト(コマンド)を引き直す。
       get().spawnCallout(pcx, headY, 'MISS...', '#fb7185', { scale: 1.3 });
-      // missしたら技リスト(コマンド)もリセット=新しいコマンドを引き直す。
       set(s => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
@@ -3546,10 +3553,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (playing) {
         // 失敗してもダンスは継続。コンボと技の蓄積(godSuccess)だけリセット、頭からやり直し。
         get().spawnCallout(state.player.x + state.player.width / 2, state.player.y - 24, 'MISS...', '#fb7185', { scale: 1.3 });
+        // 技リスト(prompt)は保持。コンボと進行/蓄積だけリセット(リスト引き直しはフリックミス/発動時のみ)。
         set(s => ({
           meleeFinishComboCount: 0,
           meleeFinishComboUntil: 0,
-          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], prompt: randomRhythmPrompt(), godSuccess: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
+          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], godSuccess: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
         }));
       } else {
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));

@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.244 - 四神舞: タップでは技リストが変わらないように(タップはミス扱いにしない) (Claude Code)
+
+### Summary
+- タップだけで踊っている時に技リスト(コマンド)が変わる不具合を修正。原因はミスタイミングのタップが
+  「ミス」判定になり技リストを引き直していたこと。タップはミス扱いにしない仕様に。
+- 技リストの引き直しは「フリックのミス」と「発動(完成)」時のみに限定。タップ/スキップ(tickミス)では保持。
+
+### 実装
+- `src/store/gameStore.ts` rhythmInput: !onBeat のとき kind==='tap' は空振り(コンボ/進行/リスト不変、ビートだけ
+  現在位置へ追従して tick ミスも誘発しない)。フリックのミスのみ従来通りフルリセット+リスト引き直し。
+- tickRhythm の miss でも prompt 引き直しを廃止(コンボ/進行/蓄積はリセットするがリストは保持)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.243 - 四神舞: ミラーボールが画面全体を覆うバグを修正(テクスチャ未準備時の巨大化対策) (Claude Code)
 
 ### Summary
