@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.226 - 四神舞: ジャスト判定を少し甘く / 入力矢印のみ頭上表示 / コマンドを左上表示 (Claude Code)
+
+### Summary
+- 成功判定幅を 150→180ms に拡大(ほんの少し甘め)。
+- 頭上の矢印は「入力した分だけ」を左から順に最大4表示(発動/リセットで消える)。目標プロンプト全表示は廃止。
+- 目標コマンド(4矢印+1本目=四神の和名)を HUD 左上に表示(入力済みは淡色)。rhythm.active 時のみ。
+
+### Files changed
+- `src/config/shijin.ts` — RHYTHM_SUCCESS_WINDOW_MS=180, RHYTHM_JUST_WINDOW_MS=75。ARROW_GLYPH/SHIJIN_JP 追加。
+- `src/pixi/pixiScene.ts` — 頭上矢印を入力済み(prompt[0..inputIndex-1])のみ描画に変更。
+- `src/components/GameHUD.tsx` — 左上に「コマンド」(目標4矢印+四神和名)を追加。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- 判定幅180msは仮。実機で甘さ再調整。「順番に消えていく」は発動/リセット時クリアで表現(1本ずつのフェードは要望あれば追加)。
+
 ## 2026-06-13 - v0.25.225 - 四神舞: タップ=近接範囲ノックバック / フリック=盾バッシュ風スライド攻撃 (Claude Code)
 
 ### Summary

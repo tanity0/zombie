@@ -5,8 +5,8 @@ import type { RhythmArrow, ShijinGod } from '../types/game';
 // --- リズム ---------------------------------------------------------------
 export const RHYTHM_INTERVAL_MS = 500;        // サークル間隔(0.5秒 = 120BPM)
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
-export const RHYTHM_SUCCESS_WINDOW_MS = 150;  // TODO: 成功判定幅(±ms)。実機調整
-export const RHYTHM_JUST_WINDOW_MS = 60;      // TODO: ジャスト判定幅(±ms)。今は演出区別のみ
+export const RHYTHM_SUCCESS_WINDOW_MS = 180;  // 成功判定幅(±ms)。ほんの少し甘めに調整
+export const RHYTHM_JUST_WINDOW_MS = 75;      // ジャスト判定幅(±ms)。演出区別+少し甘め
 export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多重判定防止)
 export const RHYTHM_ENTER_IDLE_MS = 600;      // 停止からリズムモード開始までの時間
 // リズム終了はこの時間「動き続けた」場合のみ(短いフリックのドラッグ/スライドでは抜けない)。
@@ -24,6 +24,9 @@ export const randomRhythmPrompt = (): RhythmArrow[] =>
 // フリックのベクトル → 主軸の矢印。
 export const arrowFromDir = (x: number, y: number): RhythmArrow =>
   Math.abs(x) >= Math.abs(y) ? (x >= 0 ? 'right' : 'left') : (y >= 0 ? 'down' : 'up');
+// 表示用: 矢印グリフと四神の和名(コマンドUI/オーバーレイで使用)。
+export const ARROW_GLYPH: Record<RhythmArrow, string> = { up: '↑', down: '↓', left: '←', right: '→' };
+export const SHIJIN_JP: Record<ShijinGod, string> = { suzaku: '朱雀', genbu: '玄武', seiryu: '青龍', byakko: '白虎' };
 // 1本目の矢印 → 四神(上=朱雀/下=玄武/左=青龍/右=白虎)。
 export const SHIJIN_BY_ARROW: Record<RhythmArrow, ShijinGod> = {
   up: 'suzaku',

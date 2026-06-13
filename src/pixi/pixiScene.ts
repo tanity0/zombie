@@ -1094,17 +1094,16 @@ export class PixiScene {
       g.circle(cx, cy, r + 4 + t * 10).stroke({ color: jc, alpha: 0.7 * (1 - t), width: 2 });
     }
 
-    // 矢印プロンプト(4本)。完了済みは淡色、現在位置は強調。1本目=四神決定。
-    const arrowY = cy - r - 12;
-    const gap = 13;
-    const startX = cx - (gap * (rhythm.prompt.length - 1)) / 2;
-    for (let i = 0; i < rhythm.prompt.length; i++) {
-      const ax = startX + i * gap;
-      const done = i < rhythm.inputIndex;
-      const cur = i === rhythm.inputIndex;
-      const a = done ? 0.3 : cur ? 1 : 0.7;
-      const acol = i === 0 ? 0xfca5a5 : 0xe2e8f0; // 1本目だけ色を変えて四神決定を示す
-      this.drawRhythmArrow(g, ax, arrowY, rhythm.prompt[i], acol, a, cur ? 1.25 : 1);
+    // 入力した矢印「だけ」を頭上に左から順に表示(最大4)。発動/リセットで消える。1本目=四神色。
+    const inputN = Math.min(rhythm.inputIndex, rhythm.prompt.length);
+    if (inputN > 0) {
+      const arrowY = cy - r - 12;
+      const gap = 13;
+      const startX = cx - (gap * (inputN - 1)) / 2;
+      for (let i = 0; i < inputN; i++) {
+        const acol = i === 0 ? 0xfca5a5 : 0xe2e8f0; // 1本目だけ色を変えて四神決定を示す
+        this.drawRhythmArrow(g, startX + i * gap, arrowY, rhythm.prompt[i], acol, 0.95, 1.1);
+      }
     }
   }
 

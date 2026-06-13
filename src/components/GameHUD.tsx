@@ -7,6 +7,7 @@ import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
+import { ARROW_GLYPH, SHIJIN_JP, SHIJIN_BY_ARROW } from '../config/shijin';
 
 // 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。背面の刀と
 // 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。村雨はシルバー。
@@ -54,6 +55,7 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
+  const rhythm = useGameStore(state => state.rhythm);
   const enemies = useGameStore(state => state.enemies);
   const effectsCount = useGameStore(state => state.effects.length);
   const projectilesCount = useGameStore(state => state.projectiles.length);
@@ -131,6 +133,47 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
 
       {/* フィニッシュカウンター表示は四神舞仕様で廃止(コンボ段階はミラーボールの色で表現)。
           コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
+
+      {/* 四神舞: 目標コマンド(4矢印+1本目=四神)を左上に表示。入力済みは淡色。 */}
+      {rhythm.active && (
+        <div
+          className="absolute text-left"
+          style={{
+            top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+            left: 'max(env(safe-area-inset-left), 18px)',
+          }}
+        >
+          <div
+            className="text-[9px] tracking-[0.18em] text-sky-100/75 font-bold"
+            style={{ textShadow: '0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(56,189,248,0.35)' }}
+          >
+            コマンド
+          </div>
+          <div className="flex items-center gap-1 leading-none mt-0.5">
+            {rhythm.prompt.map((ar, i) => (
+              <span
+                key={i}
+                className="font-black tabular-nums"
+                style={{
+                  fontSize: '20px',
+                  opacity: i < rhythm.inputIndex ? 0.3 : 1,
+                  color: i === 0 ? '#fca5a5' : '#e2e8f0',
+                  WebkitTextStroke: '1px rgba(10,14,24,0.85)',
+                  textShadow: '0 2px 0 rgba(0,0,0,0.55)',
+                }}
+              >
+                {ARROW_GLYPH[ar]}
+              </span>
+            ))}
+            <span
+              className="ml-1 text-[12px] font-bold align-baseline"
+              style={{ color: '#fca5a5', textShadow: '0 1px 0 rgba(0,0,0,0.8)' }}
+            >
+              {SHIJIN_JP[SHIJIN_BY_ARROW[rhythm.prompt[0]]]}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Top bar */}
       <div
