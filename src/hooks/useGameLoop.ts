@@ -37,7 +37,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, getMusicTimeMs } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, getMusicTimeMs, setDanceMode } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
@@ -187,6 +187,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
   // (フリックのドラッグやバッシュのスライド程度では抜けない)。
   const rhythmMoveStartRef = useRef<number>(0);
+  // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
+  const danceModeRef = useRef<boolean>(false);
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -598,21 +600,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             rhythmMoveStartRef.current = 0;
             if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
-              // 最初のジャストを BGM(120BPM)の拍頭に位相同期する。音楽が再生中なら currentTime を
-              // 基準に、LEAD 以上先で最も近い拍を firstBeatAt にする。未再生時は従来の LEAD。
-              const musicMs = getMusicTimeMs();
-              let firstBeatAt = newGameTime + RHYTHM_LEAD_MS;
-              if (musicMs !== null) {
-                const m = musicMs - RHYTHM_MUSIC_OFFSET_MS;
-                const nextBeatMusic = Math.ceil((m + RHYTHM_LEAD_MS) / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS;
-                firstBeatAt = newGameTime + (nextBeatMusic - m);
-              }
+              // ダンストラックを先頭から再生開始(=拍頭が今)。最初のジャストは LEAD 以上先の拍に置く。
+              // 以降は resyncRhythm が音楽の再生位置へ位相を再同期し続ける。
+              const firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS + RHYTHM_MUSIC_OFFSET_MS;
               useGameStore.getState().setRhythmActive(true, firstBeatAt);
             }
           }
 
           if (useGameStore.getState().rhythm.active) {
             useGameStore.getState().tickRhythm();
+            // BGM(ダンストラック)の再生位置にビート位相を再同期(ドリフト対策)。
+            const musicMs = getMusicTimeMs();
+            if (musicMs !== null) useGameStore.getState().resyncRhythm(musicMs);
             // pending(タップ/フリック/四神技/全体フィニッシュ)を消化して実行。
             for (const pa of useGameStore.getState().drainRhythmPending()) {
               executeRhythmPending(pa);
@@ -638,6 +637,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               useGameStore.getState().advanceByakko();
             }
+          }
+
+          // ダンスタイムの音楽切替: リズムの active 変化に追従(中だけ pulse-grid、メインBGMはダック)。
+          const danceNow = useGameStore.getState().rhythm.active;
+          if (danceNow !== danceModeRef.current) {
+            setDanceMode(danceNow);
+            danceModeRef.current = danceNow;
           }
         }
 
@@ -2434,6 +2440,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     return () => {
       cancelAnimationFrame(frameRef.current);
       setHurricaneRumble(false); // アンマウント時に鳴動を確実に停止
+      setDanceMode(false);       // ダンスタイム解除(メインBGMの音量を確実に戻す)
+      danceModeRef.current = false;
     };
   }, [
     movePlayer,

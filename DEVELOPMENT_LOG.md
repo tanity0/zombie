@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.234 - 四神舞: pulse-gridはダンスタイム中だけ/メインBGMはダック(0)で流し続け終了でフェードイン/拍を再同期 (Claude Code)
+
+### Summary
+- pulse-grid(120BPM)はグローバルBGMから外し、ダンスタイム(四神舞リズムモード)中だけ別エレメントで再生。
+- メインBGMはダンス中「ボリューム0だが再生は継続(位置・設定値は保持)」、ダンス終了で元の設定値へフェードイン(0.6s)。
+- リズムのビート位相を毎フレーム、ダンストラックの再生位置へPLL風に再同期(長時間のドリフト対策)。
+
+### 実装
+- `src/audio/audioManager.ts`: BGM_TRACKS を元に戻し pulse-grid は DANCE_TRACK に。danceBgm/danceGain と
+  setDanceMode(active)(ダック&フェード, rampGain)、getMusicTimeMs()(ダンストラック位置)。
+- `src/store/gameStore.ts`: resyncRhythm(musicMs) で expectBeat を変えず firstBeatAt の位相だけ最寄り音楽拍へ
+  滑らかに(0.2)寄せる。
+- `src/hooks/useGameLoop.ts`: 開始時 firstBeatAt=LEAD整列の拍、毎フレーム getMusicTimeMs→resyncRhythm、
+  rhythm.active 変化で setDanceMode。effectクリーンアップで setDanceMode(false)(BGM音量を確実に復帰)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### Note / TODO
+- ダンス中に音量/ミュート変更すると applyBgm がダックを一瞬上書きする可能性(まれ)。必要なら danceActive ガード。
+- 開始直後の音声レイテンシは RHYTHM_MUSIC_OFFSET_MS で補正可。
+
 ## 2026-06-13 - v0.25.233 - 四神舞: リズムをBGM(120BPM)の拍に位相同期 + pulse-grid.mp3 をBGMに追加 (Claude Code)
 
 ### Summary

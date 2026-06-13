@@ -8,7 +8,7 @@ import {
   RhythmState, RhythmArrow, ShijinGod, RhythmPending
 } from '../types/game';
 import {
-  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
+  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
@@ -686,6 +686,7 @@ interface GameState {
   setRhythmActive: (active: boolean, firstBeatAt?: number) => void;
   rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
   tickRhythm: () => void;
+  resyncRhythm: (musicMs: number) => void;
   startByakko: () => void;
   advanceByakko: () => void;
   drainRhythmPending: () => RhythmPending[];
@@ -3538,6 +3539,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));
       }
     }
+  },
+
+  // BGM(ダンストラック)の再生位置にビート位相をPLL風に再同期(長時間のドリフト対策)。
+  // expectBeat は変えず、firstBeatAt の位相だけを最寄りの音楽拍へ滑らかに寄せる。
+  resyncRhythm: (musicMs) => {
+    const r = get().rhythm;
+    if (!r.active) return;
+    const gt = get().gameTime;
+    const interval = RHYTHM_INTERVAL_MS;
+    const mod = (v: number) => ((v % interval) + interval) % interval;
+    const musicPhase = mod(musicMs - RHYTHM_MUSIC_OFFSET_MS); // 現在拍内の音楽位相
+    const desiredPhase = mod(gt - musicPhase);                // firstBeatAt が取るべき位相
+    let delta = desiredPhase - mod(r.firstBeatAt);
+    if (delta > interval / 2) delta -= interval;             // 最寄り拍へ(±半拍)
+    if (delta < -interval / 2) delta += interval;
+    if (Math.abs(delta) < 0.5) return;                       // 既に合っている
+    set(s => ({ rhythm: { ...s.rhythm, firstBeatAt: s.rhythm.firstBeatAt + delta * 0.2 } })); // 滑らかに追従
   },
 
   startByakko: () => {

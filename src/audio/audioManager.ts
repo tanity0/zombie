@@ -9,11 +9,11 @@ const DEFAULT_BGM_VOLUME = 1;
 const DEFAULT_SFX_VOLUME = 1;
 
 const BGM_TRACKS = [
-  // 120BPMのリズム基盤トラック(四神舞のビート同期はこの再生位置に合わせる)。
-  `${import.meta.env.BASE_URL}audio/pulse-grid.mp3`,
   `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
   `${import.meta.env.BASE_URL}audio/rusting-grave-circuit.mp3`,
 ];
+// ダンスタイム(四神舞リズムモード)中だけ流す 120BPM トラック。メインBGMとは別エレメント。
+const DANCE_TRACK = `${import.meta.env.BASE_URL}audio/pulse-grid.mp3`;
 
 type SfxConfig = {
   src: string;
@@ -237,10 +237,80 @@ const ensureBgm = () => {
   bgm.volume = 1; // real level is set by the WebAudio gain (iOS-safe)
 };
 
-// BGMの再生位置(ms)。再生中のみ返す。四神舞のビートをこの音楽クロックに位相同期するのに使う。
-// 先頭トラック(pulse-grid)が120BPM想定で、currentTime=0 を拍頭とみなす。
+// --- ダンスタイム(四神舞)専用トラック ----------------------------------
+// メインBGMとは別の HTMLAudioElement。リズムモード中だけ pulse-grid を鳴らし、メインBGMは
+// その間ダック(0)する。終了でメインへフェード復帰。
+let danceBgm: HTMLAudioElement | null = null;
+let danceGain: GainNode | null = null;
+let danceRouted = false;
+let danceActive = false;
+const DANCE_VOLUME = 1;
+
+const ensureDanceBgm = () => {
+  if (danceBgm || typeof Audio === 'undefined') return;
+  danceBgm = new Audio(DANCE_TRACK);
+  danceBgm.loop = true;
+  danceBgm.preload = 'auto';
+  danceBgm.playsInline = true;
+  danceBgm.volume = 1; // 実音量は WebAudio gain 側で制御
+};
+
+const ensureDanceRouting = () => {
+  if (danceRouted) return;
+  const ctx = ensureSfxContext();
+  ensureDanceBgm();
+  if (!ctx || !danceBgm) return;
+  try {
+    const source = ctx.createMediaElementSource(danceBgm);
+    danceGain = ctx.createGain();
+    danceGain.gain.value = 0;
+    source.connect(danceGain);
+    danceGain.connect(ctx.destination);
+    danceRouted = true;
+  } catch {
+    danceRouted = false;
+  }
+};
+
+// GainNode を滑らかにランプ(WebAudio不可なら element.volume にフォールバック)。
+const rampGain = (gain: GainNode | null, el: HTMLAudioElement | null, target: number, sec: number) => {
+  const ctx = sfxContext;
+  if (gain && ctx) {
+    const now = ctx.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(target, now + sec);
+  } else if (el) {
+    el.volume = target;
+  }
+};
+
+// ダンスタイムの切替。active で pulse-grid をその場(先頭)から再生しメインBGMをダック。
+// 非active でメインBGMへフェード復帰し pulse-grid を停止。
+export const setDanceMode = (active: boolean) => {
+  if (active === danceActive) return;
+  danceActive = active;
+  ensureDanceBgm();
+  if (!danceBgm) return;
+  if (active) {
+    resumeSfxContext();
+    ensureDanceRouting();
+    try { danceBgm.currentTime = 0; } catch { /* ignore */ }
+    if (!muted) void danceBgm.play().catch(() => {});
+    rampGain(danceGain, danceBgm, muted ? 0 : DANCE_VOLUME, 0.12);
+    // メインBGMはダック(ボリューム0)。再生は止めず位置を保持し、設定値(bgmVolume)も保持。
+    rampGain(bgmGain, bgm, 0, 0.2);
+  } else {
+    rampGain(danceGain, danceBgm, 0, 0.25);
+    window.setTimeout(() => { if (!danceActive && danceBgm) danceBgm.pause(); }, 320);
+    // 終了でメインBGMを元の設定値へフェードイン。
+    rampGain(bgmGain, bgm, muted ? 0 : bgmVolume, 0.6);
+  }
+};
+
+// ダンストラックの再生位置(ms)。位相同期の参考用(現状ロジックは gameTime グリッドで十分)。
 export const getMusicTimeMs = (): number | null =>
-  bgm && bgmActive && !bgm.paused ? bgm.currentTime * 1000 : null;
+  danceBgm && danceActive && !danceBgm.paused ? danceBgm.currentTime * 1000 : null;
 
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
