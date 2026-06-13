@@ -247,8 +247,11 @@ export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boo
 // ---------------------------------------------------------------------------
 export const WHIP_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3;          // 通常近接の約3倍(仕様アンカー)
 export const WHIP_DAMAGE_MULT = 0.25;                            // TODO(鞭): 低/最小ダメージ
-export const WHIP_HIT_HALF_WIDTH = 120;                          // カプセル半幅(=振り方向に直交するx軸判定。従来24の5倍)
+export const WHIP_HIT_HALF_WIDTH = 60;                           // カプセル半幅(=振り方向に直交するx軸判定。進行方向yに対しxを半分=従来120の半分)
 export const WHIP_LENGTH_BY_LEVEL = [0, 150, 180, 210] as const; // TODO(鞭): 進行方向に長く伸びる直線射程
+// 鞭の描画(lash表示)時間。従来220msの倍。描画延長分だけクールダウンも後ろへずらす。
+export const WHIP_DRAW_MS = 440;
+export const WHIP_COOLDOWN_EXTRA_MS = WHIP_DRAW_MS - 220;        // = 220: 描画を倍にした増分
 export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
 export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 20, 20, 20] as const; // ハリケーン必要ヒット数(仕様20)
 export const HURRICANE_RADIUS_BY_LEVEL = [0, 180, 220, 260] as const;       // 吸引半径(惹きつけ範囲を従来の2倍に)
@@ -1009,11 +1012,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const tipX = pcx + ux * reach; // 鞭先端 = ハリケーンの根元
       const tipY = pcy + uy * reach;
       // カウンター窓+クールダウンを通常どおり開く(反射はループ側)。
+      // 描画時間を倍にした分(WHIP_COOLDOWN_EXTRA_MS)だけクールダウンも後ろへずらす。
       set(state => ({
         player: {
           ...state.player,
           counterWindowEnd: now + COUNTER_WINDOW,
-          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS,
         }
       }));
       // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
@@ -1022,7 +1026,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         id: `fx-whip-${now}`,
         fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
         halfWidth: WHIP_HIT_HALF_WIDTH,
-        color: 'rgba(186,230,253,0.95)', createdAt: now, duration: 220,
+        color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
       });
       // チャージ満タンなら、この一振りでハリケーン発動(チャージ消費)。自動発動しない。
       if (player.whipCharged) {
@@ -1630,7 +1634,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
     }));
 
-    for (const s of slashAt) get().spawnSlash(s.x, s.y, 'rgba(186,230,253,0.9)', 1);
+    // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);

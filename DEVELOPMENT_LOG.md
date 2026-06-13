@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.219 - 鞭: 射程x半分 + 描画時間2倍/CD後ろ倒し + 近接クレスト非表示 (Claude Code)
+
+### Summary
+- **射程範囲の x(直交)を半分**: `WHIP_HIT_HALF_WIDTH` 120 → **60**。進行方向y(reach)はそのまま、
+  振り方向に直交する当たり幅だけ半分に。当たり判定(performWhipStrike の perp 判定)が細くなる。
+- **描画時間を倍 + クールダウンを後ろ倒し**: lash表示 `duration` 220 → **WHIP_DRAW_MS=440**。
+  増分(`WHIP_COOLDOWN_EXTRA_MS`=220)を `counterCooldownEnd` に加算し、描画が伸びた分だけ次の振りも後ろへ。
+- **鞭時は近接クレスト非表示**: `performWhipStrike` の per-hit `spawnSlash`(slashストリーク=近接クレスト)を削除。
+  鞭は自身の lash スプライトのみで表現。ダメージ数字/ノックバック/弾薬ドロップ等は不変。
+
+### Files changed
+- `src/store/gameStore.ts` — WHIP_HIT_HALF_WIDTH半減、WHIP_DRAW_MS/WHIP_COOLDOWN_EXTRA_MS追加、
+  triggerCounter(鞭)で duration/CD更新、performWhipStrike の spawnSlash 削除
+- `package.json` — version 0.25.219
+
+### Verification
+- `npx tsc --noEmit` パス。
+
+### Next handoff notes
+- 鞭の太さ(見た目)は lash スプライト由来で当たり幅とは別。当たり幅は WHIP_HIT_HALF_WIDTH 一箇所。
+- 描画時間/CD増分は WHIP_DRAW_MS / WHIP_COOLDOWN_EXTRA_MS で調整可。
+
 ## 2026-06-13 - v0.25.218 - ハリケーン発光の真因対応(tintをスモーキー暗色へ) (Claude Code)
 
 ### Summary
