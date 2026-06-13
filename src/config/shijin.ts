@@ -8,6 +8,9 @@ export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジ�
 export const RHYTHM_SUCCESS_WINDOW_MS = 180;  // 成功判定幅(±ms)。ほんの少し甘めに調整
 export const RHYTHM_JUST_WINDOW_MS = 75;      // ジャスト判定幅(±ms)。演出区別+少し甘め
 export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多重判定防止)
+// フリックは「触れてから振り終わるまで」の所要時間ぶん遅れて確定するため、その遅延を差し引いて
+// 判定し(=指が動き始めた瞬間で見る)、さらにフリックだけ少しだけ判定窓を広げる。
+export const RHYTHM_FLICK_EXTRA_WINDOW_MS = 55;
 export const RHYTHM_ENTER_IDLE_MS = 600;      // 停止からリズムモード開始までの時間
 // リズム終了はこの時間「動き続けた」場合のみ(短いフリックのドラッグ/スライドでは抜けない)。
 export const RHYTHM_EXIT_MOVE_MS = 320;        // TODO: 歩いて抜けたと見なすまでの時間

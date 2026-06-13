@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.229 - 四神舞: ミラーボール素材入替(透過化) + フリック判定の遅延補正 (Claude Code)
+
+### Summary
+- ミラーボール素材を新しい高解像度画像に差し替え。元は黒背景・アルファ無し(1254x1254)だったため、
+  PILで黒背景を透過化→トリム→256pxへ高品質縮小し、描画は linear(滑らか)に変更。
+- フリックは「触れてから振り終わるまで」の所要時間ぶん確定が遅れるので、その遅延(dt)を差し引いて
+  判定(=指が動き始めた瞬間で見る)。さらにフリックだけ判定窓を少し拡張(少し甘く)。タップは従来通り。
+
+### 実装
+- `public/sprites/mirror-ball.png` 差し替え(黒透過/256px)。`pixiTextures.ts` を nearest→linear。
+- `src/config/shijin.ts`: RHYTHM_FLICK_EXTRA_WINDOW_MS(55)。
+- `src/components/VirtualJoystick.tsx`: detectFlick が所要時間 dt を返し、rhythmInput('flick', dir, dt)。
+- `src/store/gameStore.ts`: rhythmInput に lagMs。フリックは judgeTime=gt-lag、窓=success+extra で判定。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- 透過の縁に薄いハローが残る場合あり(暗部ランプ22-60)。気になれば閾値調整。フリック甘さ55msは仮。
+
 ## 2026-06-13 - v0.25.228 - 四神舞: ミラーボール実素材化(0.5秒左右反転)+ タップ発光 + 連続回数で色変化 (Claude Code)
 
 ### Summary

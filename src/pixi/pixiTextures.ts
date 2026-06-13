@@ -81,7 +81,7 @@ export const ensureTextures = (): Promise<void> => {
     player.source.scaleMode = 'nearest';
     torch.source.scaleMode = 'nearest';
     castle.source.scaleMode = 'nearest';
-    mirrorBall.source.scaleMode = 'nearest'; // ピクセル調を維持
+    mirrorBall.source.scaleMode = 'linear'; // 高解像度の球を縮小描画するため linear で滑らかに
     // 魔法陣はソフトな発光なので linear(既定)のまま — nearest にしない。
     playerWalk.forEach((tex) => {
       tex.source.scaleMode = 'nearest';

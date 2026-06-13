@@ -34,7 +34,7 @@ const VirtualJoystick: React.FC = () => {
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
   // ドラッグは低速・小移動なのでしきい値に届かず、一閃は暴発しない。
-  const detectFlick = useCallback((): { x: number; y: number } | null => {
+  const detectFlick = useCallback((): { x: number; y: number; dt: number } | null => {
     const samples = flickSamplesRef.current;
     if (samples.length < 2) return null;
     const last = samples[samples.length - 1];
@@ -47,7 +47,8 @@ const VirtualJoystick: React.FC = () => {
     const dist = Math.hypot(dx, dy);
     const dt = Math.max(1, last.t - first.t);
     if (dist < KATANA_FLICK_MIN_DIST || dist / dt < KATANA_FLICK_MIN_SPEED) return null;
-    return { x: dx / dist, y: dy / dist };
+    // dt = フリックの所要時間(振り始め→振り終わり)。リズム判定の遅延補正に使う。
+    return { x: dx / dist, y: dy / dist, dt };
   }, []);
 
   const release = useCallback((fireCounter = true) => {
@@ -59,7 +60,7 @@ const VirtualJoystick: React.FC = () => {
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
         const flick = detectFlick();
-        if (flick) rhythmInput('flick', flick);
+        if (flick) rhythmInput('flick', flick, flick.dt); // dt=フリック所要時間ぶん手前で判定
         else rhythmInput('tap');
       } else {
         // カウンター優先: 既存のカウンター処理を先に通す(刀装備中はナイフ
