@@ -10,6 +10,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.220 - 鞭判定をLv非依存化 + ハリケーンチャージ軽減 + 巻き込み中は通常ダメージ + 鳴動音 (Claude Code)
+
+### Summary
+- **鞭の判定をレベルで変えない**: `WHIP_LENGTH_BY_LEVEL` [150,180,210] → **全Lv150固定**。射程(進行方向)が
+  レベルで変動しなくなった(半幅は既に固定60)。
+- **ハリケーンチャージ条件をレベルで軽減**: `WHIP_CHARGE_HITS_BY_LEVEL` [20,20,20] → **[40,35,30]**。
+  Lv1=40(従来の倍)を基準に、レベルが上がるごとに-5で必要ヒット数が減る(=育てるほど早く撃てる)。
+- **巻き込み中の敵への鞭は通常倍率**: `performWhipStrike` で、発動中ハリケーンの吸引半径内にいる敵には
+  鞭の低倍率(0.25)ではなく**通常倍率(1.0)**でダメージ。ボスstun処刑/通常ヒット双方に適用。
+- **ハリケーン鳴動「ゴゴゴゴ」音**: 手続き生成した低周波ランブル(`public/audio/sfx/hurricane.wav`,
+  2.4sシームレスループ, 7.5Hzトレモロで go-go-go 感)を追加。`setHurricaneRumble(active)` で発動中だけ
+  ループ再生(フェードイン/アウト, idempotent)。useGameLoop が毎フレーム現状態で駆動、死亡/アンマウントで停止。
+
+### Files changed
+- `src/store/gameStore.ts` — WHIP_LENGTH_BY_LEVEL固定、WHIP_CHARGE_HITS_BY_LEVEL軽減、performWhipStrikeに
+  巻き込み判定(inHurricane)と whipMult を追加
+- `src/audio/audioManager.ts` — 'hurricane' SfxKey/config、ループ再生 setHurricaneRumble
+- `src/hooks/useGameLoop.ts` — 毎フレーム setHurricaneRumble 駆動、死亡/cleanup で停止
+- `public/audio/sfx/hurricane.wav` — 新規(手続き生成ランブル, 約207KB)
+- `package.json` — version 0.25.220
+
+### Performance
+- 鳴動音: 1/10。単一ループのBufferSource(発動中のみ)、毎フレームの駆動は遷移時以外no-op。
+  メモリは約207KBのデコード済みバッファ1つ。フォールバック: muted時/buffer未ロード時は無音で安全。
+
+### Verification
+- `npx tsc --noEmit` パス。wav はシームレス(seam delta 24/65534)・peak85%で検証済み。
+
+### Next handoff notes
+- 鳴動の音量は audioManager の HURRICANE_VOLUME(0.7)で調整可。差し替え音源があれば src を変更。
+- 巻き込み中の通常倍率は performWhipStrike の whipMult=1 を別値にすれば微調整可。
+
 ## 2026-06-13 - v0.25.219 - 鞭: 射程x半分 + 描画時間2倍/CD後ろ倒し + 近接クレスト非表示 (Claude Code)
 
 ### Summary

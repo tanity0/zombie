@@ -56,7 +56,8 @@ export type SfxKey =
   | 'zombie-1'
   | 'zombie-2'
   | 'zombie-3'
-  | 'zombie-4';
+  | 'zombie-4'
+  | 'hurricane';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
@@ -165,6 +166,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'zombie-2': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-2.mp3`, volume: 0.7, minIntervalMs: 50 },
   'zombie-3': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-3.mp3`, volume: 0.7, minIntervalMs: 50 },
   'zombie-4': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-4.mp3`, volume: 0.7, minIntervalMs: 50 },
+  // 鞭ハリケーンの「ゴゴゴゴ」鳴動。発動中だけループ再生(setHurricaneRumble)。
+  hurricane: { src: `${import.meta.env.BASE_URL}audio/sfx/hurricane.wav`, volume: 0.7 },
 };
 
 let bgm: HTMLAudioElement | null = null;
@@ -394,6 +397,55 @@ export const playSfx = (key: SfxKey) => {
   } catch {
     // Ignore playback failures; gameplay must stay responsive.
   }
+};
+
+// --- Hurricane rumble: a single looping low "ゴゴゴゴ" that runs only while a
+// whip-hurricane is active. Driven every frame from useGameLoop with the current
+// boolean; the call is idempotent so it starts/stops on the transition only.
+let hurricaneSource: AudioBufferSourceNode | null = null;
+let hurricaneGain: GainNode | null = null;
+let hurricaneActive = false;
+const HURRICANE_VOLUME = 0.7;
+
+const startHurricaneNode = () => {
+  const context = ensureSfxContext();
+  if (!context) { hurricaneActive = false; return; }
+  resumeSfxContext();
+  const buffer = sfxBuffers.get('hurricane');
+  if (!buffer) { loadSfxBuffer('hurricane'); hurricaneActive = false; return; } // retry next frame
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  source.loop = true;
+  gain.gain.value = 0;
+  source.connect(gain);
+  gain.connect(context.destination);
+  try { source.start(0); } catch { /* ignore */ }
+  gain.gain.setTargetAtTime(HURRICANE_VOLUME * sfxVolume, context.currentTime, 0.10); // fade in
+  hurricaneSource = source;
+  hurricaneGain = gain;
+};
+
+const stopHurricaneNode = () => {
+  const context = sfxContext;
+  const src = hurricaneSource;
+  const gain = hurricaneGain;
+  hurricaneSource = null;
+  hurricaneGain = null;
+  if (src && gain && context) {
+    try { gain.gain.setTargetAtTime(0, context.currentTime, 0.12); } catch { /* ignore */ }
+    window.setTimeout(() => { try { src.stop(); } catch { /* ignore */ } }, 450); // stop after fade
+  } else if (src) {
+    try { src.stop(); } catch { /* ignore */ }
+  }
+};
+
+export const setHurricaneRumble = (active: boolean) => {
+  const shouldPlay = active && !muted;
+  if (shouldPlay === hurricaneActive) return; // idempotent: cheap per-frame no-op
+  hurricaneActive = shouldPlay;
+  if (shouldPlay) startHurricaneNode();
+  else stopHurricaneNode();
 };
 
 // Random zombie death grunt on a kill. A shared throttle stops mass deaths

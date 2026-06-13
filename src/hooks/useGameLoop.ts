@@ -36,7 +36,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 
 const GRENADE_WEAPON_KEY = 'rifle-t3';
@@ -188,6 +188,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const triggerPlayerDeath = useCallback((x: number, y: number) => {
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
+    setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
     playSfx('player-damage');
     spawnFlash('rgba(127, 29, 29, 0.48)', 520);
     spawnRing(x, y, 8, 118, 'rgba(220,38,38,0.9)', 7, 620);
@@ -253,6 +254,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         frameRef.current = requestAnimationFrame(gameLoop);
         return;
       }
+
+      // ハリケーン鳴動「ゴゴゴゴ」: 発動中(かつ非ポーズ)だけループ。毎フレーム現状態で
+      // 駆動。idempotent なので遷移時のみ start/stop する。
+      setHurricaneRumble(
+        !useGameStore.getState().isPaused && !!useGameStore.getState().hurricane
+      );
 
       // Update FPS counter
       fpsCounterRef.current.frames++;
@@ -2024,6 +2031,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // Cleanup
     return () => {
       cancelAnimationFrame(frameRef.current);
+      setHurricaneRumble(false); // アンマウント時に鳴動を確実に停止
     };
   }, [
     movePlayer,

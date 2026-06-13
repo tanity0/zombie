@@ -248,12 +248,12 @@ export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boo
 export const WHIP_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3;          // 通常近接の約3倍(仕様アンカー)
 export const WHIP_DAMAGE_MULT = 0.25;                            // TODO(鞭): 低/最小ダメージ
 export const WHIP_HIT_HALF_WIDTH = 60;                           // カプセル半幅(=振り方向に直交するx軸判定。進行方向yに対しxを半分=従来120の半分)
-export const WHIP_LENGTH_BY_LEVEL = [0, 150, 180, 210] as const; // TODO(鞭): 進行方向に長く伸びる直線射程
+export const WHIP_LENGTH_BY_LEVEL = [0, 150, 150, 150] as const; // 進行方向の射程。鞭の判定はレベルで変えない(全Lv共通150)
 // 鞭の描画(lash表示)時間。従来220msの倍。描画延長分だけクールダウンも後ろへずらす。
 export const WHIP_DRAW_MS = 440;
 export const WHIP_COOLDOWN_EXTRA_MS = WHIP_DRAW_MS - 220;        // = 220: 描画を倍にした増分
 export const WHIP_AMMO_DROP_CHANCE = 0.20;                       // 鞭ヒット時の弾薬ドロップ率(仕様)
-export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 20, 20, 20] as const; // ハリケーン必要ヒット数(仕様20)
+export const WHIP_CHARGE_HITS_BY_LEVEL = [0, 40, 35, 30] as const; // ハリケーン必要ヒット数(Lv1=40、レベルが上がるごとに-5で軽くなる)
 export const HURRICANE_RADIUS_BY_LEVEL = [0, 180, 220, 260] as const;       // 吸引半径(惹きつけ範囲を従来の2倍に)
 export const HURRICANE_DURATION_MS_BY_LEVEL = [0, 4800, 5600, 6400] as const; // 持続(滞在時間 さらに2倍=計4倍)
 export const HURRICANE_SUCTION_SPEED = 320;                      // TODO(鞭): 吸引速度(px/s)
@@ -1547,13 +1547,18 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   performWhipStrike: (targetIds) => {
     const now = Date.now();
-    const { player, gameTime, enemies } = get();
+    const { player, gameTime, enemies, hurricane } = get();
     if (targetIds.length === 0) return { hit: false, finish: false, killed: 0, hits: 0 };
 
     const gun = getActiveGun(player);
     const meleeWeapon = player.weapons.find(w => w.isMelee);
-    const baseDamage = (meleeWeapon?.damage ?? 6) * WHIP_DAMAGE_MULT; // 低/最小ダメージ
+    const meleeBase = meleeWeapon?.damage ?? 6;     // 近接の素ダメージ。鞭は通常0.25倍
     const meleeCritChance = meleeWeapon?.critChance ?? 0;
+    // ハリケーン発動中の吸引半径内にいる敵は「巻き込み中」とみなし、鞭を通常倍率(1.0)で当てる。
+    const hurricaneR2 = hurricane ? hurricane.radius * hurricane.radius : 0;
+    const inHurricane = (ecx: number, ecy: number) =>
+      !!hurricane && now < hurricane.endsAt &&
+      (ecx - hurricane.rootX) ** 2 + (ecy - hurricane.rootY) ** 2 <= hurricaneR2;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     // 鞭の線(進行方向)に直交する単位ベクトル。敵を「線のどちら側にいるか」で
@@ -1578,12 +1583,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       slashAt.push({ x: ecx, y: ecy });
+      // 巻き込み中は通常倍率(1.0)、それ以外は鞭の低倍率(0.25)。
+      const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除)。
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
-          const dmg = baseDamage * BOSS_MELEE_STUN_MULT;
+          const dmg = meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
@@ -1595,7 +1602,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus);
-      const dmg = baseDamage * (crit ? CRIT_DAMAGE_MULT : 1);
+      const dmg = meleeBase * whipMult * (crit ? CRIT_DAMAGE_MULT : 1);
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
