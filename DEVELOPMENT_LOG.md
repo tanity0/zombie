@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.218 - ハリケーン発光の真因対応(tintをスモーキー暗色へ) (Claude Code)
+
+### Summary
+- **「full-alpha で光って見える」問題の真因を特定**: bloom ではなかった(tint 0x646a70 は輝度0.41で
+  閾値0.45未満、かつ bloom の輝度抽出は alpha を割り戻すので全 alpha で非bloom と確認)。
+  実体は **テクスチャのうずが明るい灰色(≈41%グレー)**で、alpha が上がると自発光に見えていた
+  (フェードイン/アウトの低alpha時は暗く見える=「光らない時もある」と一致)。
+- **対策**: `WHIP_HURRICANE_TINT` を 0x646a70 → **0x3c4248**(最大輝度0.41→0.26、平均0.33→0.21)へ。
+  はっきり暗いスモーキー竜巻になり、full-alpha でも発光して見えない。暗い戦場でも視認は維持。
+
+### Files changed
+- `src/pixi/pixiScene.ts` — WHIP_HURRICANE_TINT を暗色化
+- `package.json` — version 0.25.218
+
+### Verification
+- 比較プレビュー `/tmp/hurricane_tint_cmp.png` で新tintが明確に暗く非発光なのを確認。max輝度0.256。
+
+### Next handoff notes
+- 暗すぎて見えにくければ `WHIP_HURRICANE_TINT` を一段明るく(例 0x484e54)。一箇所で調整可。
+
 ## 2026-06-13 - v0.25.217 - ハリケーン吸引半径2倍 + 鞭ダメージ判定の調査 (Claude Code)
 
 ### Summary

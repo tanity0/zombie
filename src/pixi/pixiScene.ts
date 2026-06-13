@@ -70,9 +70,10 @@ const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍
 const WHIP_HURRICANE_FADE_IN_MS = 160;  // 立ち上がりフェード
 const WHIP_HURRICANE_FADE_OUT_MS = 280; // 消滅フェード
 const WHIP_HURRICANE_FLIP_MS = 100;     // 左右反転の周期(0.1秒毎にミラー)
-// 竜巻スプライトを沈める tint。全チャンネルを bloom 閾値(0.45 ≒ 114/255)未満に
-// 抑え、effectLayer(bloom フィルタ配下)でも一切発光しないようにする。
-const WHIP_HURRICANE_TINT = 0x646a70;
+// 竜巻スプライトを沈める tint。bloom 閾値(0.45)未満にするだけでなく、
+// 「明るい灰色のうず」が full-alpha で自発光に見える問題も消すため、はっきり暗い
+// スモーキー値(輝度≈0.25)まで落とす。これで alpha が上がっても発光して見えない。
+const WHIP_HURRICANE_TINT = 0x3c4248;
 // 鞭 lash スプライト(右向き素材: 手元=左, 先端=右)。手元グリップを振り起点に固定して回転/伸縮。
 const WHIP_SPRITE_ANCHOR_X = 0.10;  // テクスチャ内の手元(グリップ)= プレイヤー位置のピボット
 const WHIP_SPRITE_ANCHOR_Y = 0.676; // 手元の縦位置
