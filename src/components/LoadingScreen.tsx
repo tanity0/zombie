@@ -3,12 +3,17 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { CharacterClass } from '../types/game';
 
 interface LoadingScreenProps {
-  characterClass: CharacterClass;
+  characterClass?: CharacterClass;
   benchmarkMode?: boolean;
+  startup?: boolean; // 起動時の全素材ダウンロード用(キャラ未選択)
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass, benchmarkMode = false }) => {
-  const profile = PLAYER_PROFILES[characterClass] ?? PLAYER_PROFILES.warrior;
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass, benchmarkMode = false, startup = false }) => {
+  const profile = PLAYER_PROFILES[characterClass ?? 'warrior'] ?? PLAYER_PROFILES.warrior;
+  const title = startup ? 'ZOMBIE' : profile.name;
+  const subtitle = startup
+    ? '素材をダウンロード中…'
+    : benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中';
 
   return (
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#06070d] px-6 text-white">
@@ -21,9 +26,9 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ characterClass, benchmark
         <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-100/50">
           {benchmarkMode ? 'Benchmark Loading' : 'Loading'}
         </div>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{profile.name}</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-2 text-[12px] leading-relaxed text-white/50">
-          {benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中'}
+          {subtitle}
         </p>
         <div className="mx-auto mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
           <div className="loading-bar h-full rounded-full bg-gradient-to-r from-cyan-300 via-emerald-200 to-amber-200" />

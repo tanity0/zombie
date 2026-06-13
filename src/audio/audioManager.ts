@@ -412,19 +412,35 @@ const warmSfxBuffers = () => {
     .forEach(loadSfxBuffer);
 };
 
-// ゲーム開始時に音声素材を全て先読み(ダウンロード)しておく。再生はしない(ジェスチャ待ち)。
-// SFXバッファ + メインBGM(先頭) + ダンストラック + 残りのBGMトラックをキャッシュへ。
-export const preloadAllAudio = () => {
+// ゲーム起動時に音声素材を全てダウンロードし切る。再生はしない(ジェスチャ待ち)。
+// SFXバッファ + メインBGM + ダンストラックの読み込み完了を待つ Promise を返す(安全タイムアウト付き)。
+const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise<void> =>
+  new Promise(resolve => {
+    if (!el) return resolve();
+    if (el.readyState >= 4) return resolve(); // HAVE_ENOUGH_DATA
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      el.removeEventListener('canplaythrough', finish);
+      el.removeEventListener('error', finish);
+      resolve();
+    };
+    el.addEventListener('canplaythrough', finish, { once: true });
+    el.addEventListener('error', finish, { once: true });
+    try { el.load(); } catch { /* ignore */ }
+    window.setTimeout(finish, timeoutMs); // ダウンロードが長引いてもローディングを止めない
+  });
+
+export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
   ensureDanceBgm();
-  try { bgm?.load(); } catch { /* ignore */ }
-  try { danceBgm?.load(); } catch { /* ignore */ }
-  if (typeof Audio !== 'undefined') {
-    for (const src of BGM_TRACKS) {
-      try { const a = new Audio(src); a.preload = 'auto'; a.load(); } catch { /* ignore */ }
-    }
-  }
+  const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
+  return Promise.all([
+    waitAudioReady(bgm),
+    waitAudioReady(danceBgm),
+    Promise.allSettled(sfxWaits),
+  ]).then(() => {});
 };
 
 const playBgm = async () => {

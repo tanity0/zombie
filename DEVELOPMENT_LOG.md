@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.239 - 表示位置修正(コンボ左上/コマンドはPixi頭上)・ダンス中はLv保留→終了で一括Lv・起動時ローディングで全DL・タレット持続3倍 (Claude Code)
+
+### Summary
+- コンボ数を左上(元位置)へ戻す(HP等と被らない)。目標コマンド+四神名を Pixi 頭上オーバーレイの「入力矢印のすぐ上」へ移動。
+- ダンス中はレベルアップを保留(EXPは溜め続け、HP下のEXP表示は100%カンスト)。ダンス終了で溜めた分を一気にレベルアップ
+  (アップグレードメニューが連鎖表示。余剰EXPは繰り越し)。
+- 起動時にローディング画面を設け、全素材(テクスチャ+BGM+ダンス+SFX)をダウンロードし切ってからメニューへ。
+  キャラ選択後のローディングは廃止(即プレイ)。
+- 自動タレットの持続を3倍(5s→15s)。
+
+### 実装
+- `src/components/GameHUD.tsx`: コンボを左上に。コマンド/入力矢印HUDは撤去(Pixiへ)。EXP表示を min(100%)。
+- `src/pixi/pixiScene.ts`: 目標コマンド(ドット矢印)+四神名(Text)を入力矢印の上に描画。
+- `src/store/gameStore.ts`: gainExperience はダンス中Lvアップ保留。levelUp は余剰EXP繰り越し。selectUpgrade と
+  setRhythmActive(false) でバンクEXPぶんを連鎖Lvアップ。
+- `src/audio/audioManager.ts`: preloadAllAudio を完了待ち Promise 化(canplaythrough/タイムアウト)。
+- `src/App.tsx` / `src/components/LoadingScreen.tsx`: 起動時ローディング(startup)で全DL→menu。選択後は即playing。
+- `src/hooks/useGameLoop.ts`: TURRET_DURATION_BY_LEVEL 5000→15000。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.238 - ダンスBGM混在/音量修正・素材プリロード・タレットもランチャー級・コマンド移動+コンボ表示・重さ対策 (Claude Code)
 
 ### Summary

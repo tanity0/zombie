@@ -7,26 +7,6 @@ import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
-import { SHIJIN_JP, SHIJIN_BY_ARROW, RHYTHM_ARROW_GRID } from '../config/shijin';
-import type { RhythmArrow } from '../types/game';
-
-// 太いドット絵矢印(Pixiオーバーレイと同じ7x7グリッド)を SVG で描く。暗い縁取り付き。
-const PixelArrow: React.FC<{ dir: RhythmArrow; size: number; color: string }> = ({ dir, size, color }) => {
-  const grid = RHYTHM_ARROW_GRID[dir];
-  const n = grid.length;
-  const cells: [number, number][] = [];
-  grid.forEach((row, r) => row.forEach((v, c) => { if (v) cells.push([r, c]); }));
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${n} ${n}`} style={{ display: 'block' }}>
-      {cells.map(([r, c]) => (
-        <rect key={`o${r}-${c}`} x={c - 0.14} y={r - 0.14} width={1.28} height={1.28} fill="#0b1020" />
-      ))}
-      {cells.map(([r, c]) => (
-        <rect key={`f${r}-${c}`} x={c} y={r} width={1.02} height={1.02} fill={color} />
-      ))}
-    </svg>
-  );
-};
 
 // 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。背面の刀と
 // 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。村雨はシルバー。
@@ -75,9 +55,8 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const gameTime = useGameStore(state => state.gameTime);
   const gameStats = useGameStore(state => state.gameStats);
   // 個別フィールドを購読(rhythm全体を購読すると resync の firstBeatAt 更新で毎フレーム再描画になり重い)。
+  // コマンド/入力矢印は Pixi オーバーレイ側で描画。HUDはコンボ数のみ(左上)。
   const rhythmActive = useGameStore(state => state.rhythm.active);
-  const rhythmPrompt = useGameStore(state => state.rhythm.prompt);
-  const rhythmInputIndex = useGameStore(state => state.rhythm.inputIndex);
   const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
   const enemies = useGameStore(state => state.enemies);
   const effectsCount = useGameStore(state => state.effects.length);
@@ -85,7 +64,8 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
   const pickupsCount = useGameStore(state => state.pickups.length);
 
   const formattedTime = formatTime(gameTime / 1000);
-  const expPercentage = (player.experience / player.experienceToNextLevel) * 100;
+  // ダンス中はレベルアップ保留でEXPが溢れるため、表示は100%でカンスト(止める)。
+  const expPercentage = Math.min(100, (player.experience / player.experienceToNextLevel) * 100);
   const healthPercentage = (player.health / player.maxHealth) * 100;
 
   const bossActive = enemies.some(e => e.type === 'giantbat');
@@ -157,43 +137,28 @@ const GameHUD: React.FC<GameHUDProps> = ({ fps }) => {
       {/* フィニッシュカウンター表示は四神舞仕様で廃止(コンボ段階はミラーボールの色で表現)。
           コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
 
-      {/* 四神舞: コンボ + 目標コマンド(4矢印+1本目=四神)を上部中央(=頭上の入力矢印の上)に表示。 */}
-      {rhythmActive && (
+      {/* 四神舞: コンボ数を左上(元の位置)に表示。コマンド/入力矢印は Pixi 頭上オーバーレイ側。 */}
+      {rhythmActive && rhythmCombo >= 2 && (
         <div
-          className="absolute flex flex-col items-center pointer-events-none"
+          className="absolute text-left"
           style={{
-            top: 'calc(max(env(safe-area-inset-top), 8px) + 76px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
+            top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+            left: 'max(env(safe-area-inset-left), 18px)',
           }}
         >
-          {rhythmCombo >= 2 && (
+          <div className="leading-none">
             <div
-              className="font-black tabular-nums text-amber-100 leading-none mb-1"
-              style={{ WebkitTextStroke: '1px rgba(20,12,4,0.86)', textShadow: '0 2px 0 rgba(0,0,0,0.55), 0 0 14px rgba(251,191,36,0.3)' }}
+              className="text-[9px] tracking-[0.18em] text-amber-100/75 font-bold"
+              style={{ textShadow: '0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(251,191,36,0.35)' }}
+            >
+              COMBO
+            </div>
+            <div
+              className="font-black tabular-nums text-amber-100"
+              style={{ WebkitTextStroke: '1px rgba(20,12,4,0.86)', textShadow: '0 2px 0 rgba(0,0,0,0.55), 0 0 14px rgba(251,191,36,0.28)' }}
             >
               <span key={`combo-${rhythmCombo}`} className="combo-count-pop inline-block text-3xl">{rhythmCombo}</span>
-              <span className="ml-1 align-baseline text-[9px] tracking-[0.16em] text-amber-100/75">COMBO</span>
             </div>
-          )}
-          <div
-            className="text-[9px] tracking-[0.18em] text-sky-100/75 font-bold"
-            style={{ textShadow: '0 1px 0 rgba(0,0,0,0.9), 0 0 6px rgba(56,189,248,0.35)' }}
-          >
-            コマンド
-          </div>
-          <div className="flex items-center gap-1.5 leading-none mt-1">
-            {rhythmPrompt.map((ar, i) => (
-              <span key={i} style={{ opacity: i < rhythmInputIndex ? 0.3 : 1, display: 'block' }}>
-                <PixelArrow dir={ar} size={20} color={i === 0 ? '#fca5a5' : '#e2e8f0'} />
-              </span>
-            ))}
-            <span
-              className="ml-1 text-[12px] font-bold"
-              style={{ color: '#fca5a5', textShadow: '0 1px 0 rgba(0,0,0,0.8)' }}
-            >
-              {SHIJIN_JP[SHIJIN_BY_ARROW[rhythmPrompt[0]]]}
-            </span>
           </div>
         </div>
       )}

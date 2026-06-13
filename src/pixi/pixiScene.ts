@@ -31,7 +31,7 @@ import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_INTERVAL_MS, RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
-  RHYTHM_ARROW_GRID,
+  RHYTHM_ARROW_GRID, SHIJIN_JP, SHIJIN_BY_ARROW,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
@@ -414,6 +414,9 @@ export class PixiScene {
   // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
   private rhythmBall = new Sprite();
   private rhythmBallTextured = false;
+  // 四神名(コマンドの右に出すテキスト)。テキスト変化時のみ更新。
+  private rhythmGodText = new Text({ text: '', style: { fontFamily: 'serif', fontSize: 13, fontWeight: 'bold', fill: 0xfca5a5, stroke: { color: 0x0b1020, width: 3 } } });
+  private rhythmGodLast = '';
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -580,6 +583,9 @@ export class PixiScene {
     this.rhythmBall.anchor.set(0.5, 0.5);
     this.rhythmBall.visible = false;
     this.L.effectLayer.addChild(this.rhythmBall);
+    this.rhythmGodText.anchor.set(0, 0.5);
+    this.rhythmGodText.visible = false;
+    this.L.effectLayer.addChild(this.rhythmGodText);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -1065,7 +1071,7 @@ export class PixiScene {
   // (godSuccess)」で 0白/1青/2緑/3赤、フィニッシュで虹。0.5秒ごとに左右反転して回転に見せる。
   // 左右サークルは 0.5秒ごとに足元で重なる(=ジャスト)。リング/矢印は軽量Graphics。
   private syncRhythmOverlay(
-    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
+    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
     player: Player,
     gameTime: number
   ) {
@@ -1073,6 +1079,7 @@ export class PixiScene {
     if (!rhythm.active) {
       if (g.visible) { g.visible = false; g.clear(); }
       if (this.rhythmBall.visible) this.rhythmBall.visible = false;
+      if (this.rhythmGodText.visible) this.rhythmGodText.visible = false;
       return;
     }
     const fb = playerFootBox(player);
@@ -1142,18 +1149,34 @@ export class PixiScene {
 
     // 入力したフリックを頭上に左から順に表示(末尾最大4。5つ目以降は古いものから1つずつ消える)。
     // リズムゲーム風の太いドット絵矢印。最新の1つは明るく強調。
+    const inputRowY = cy - r - 18;
     const shown = rhythm.inputArrows.slice(-4);
     if (shown.length > 0) {
       const block = 2.4;             // ドット1マスのサイズ
       const aw = 7 * block;          // 矢印1個の幅(7x7)
       const gap = aw + 6;
-      const arrowY = cy - r - 18;
       const startX = cx - (gap * (shown.length - 1)) / 2;
       for (let i = 0; i < shown.length; i++) {
         const latest = i === shown.length - 1;
-        this.drawRhythmArrow(g, startX + i * gap, arrowY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
+        this.drawRhythmArrow(g, startX + i * gap, inputRowY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
       }
     }
+
+    // 目標コマンド(4矢印 + 四神名)を入力矢印の「すぐ上」に表示。入力済みは淡色、1本目=四神色。
+    const cblock = 2.2;
+    const cgap = 7 * cblock + 5;
+    const cmdY = inputRowY - 7 * cblock - 7; // 入力矢印のすぐ上
+    const prompt = rhythm.prompt;
+    const cstartX = cx - (cgap * (prompt.length - 1)) / 2 - 8; // 名前ぶん少し左寄せ
+    for (let i = 0; i < prompt.length; i++) {
+      const a = i < rhythm.inputIndex ? 0.3 : 1;
+      const col = i === 0 ? 0xfca5a5 : 0xe2e8f0;
+      this.drawRhythmArrow(g, cstartX + i * cgap, cmdY, prompt[i], col, a, cblock);
+    }
+    const godJp = SHIJIN_JP[SHIJIN_BY_ARROW[prompt[0]]];
+    if (this.rhythmGodLast !== godJp) { this.rhythmGodText.text = godJp; this.rhythmGodLast = godJp; }
+    this.rhythmGodText.position.set(cstartX + (prompt.length - 1) * cgap + cgap * 0.6, cmdY);
+    this.rhythmGodText.visible = true;
   }
 
   // リズムゲーム風の太いドット絵矢印を描く(7x7のドット行列。暗い縁取り付き)。

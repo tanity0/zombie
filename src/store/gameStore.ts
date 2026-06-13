@@ -2097,13 +2097,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
     
+    // ダンスタイム中はレベルアップを保留(EXPは溜め続け、表示はカンスト)。終了時に一気に処理する。
+    if (get().rhythm.active) return;
     // Check if player should level up
     const { player } = get();
     if (player.experience >= player.experienceToNextLevel) {
       get().levelUp();
     }
   },
-  
+
   levelUp: () => {
     set(state => {
       const { player } = state;
@@ -2127,7 +2129,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...player,
           level: newLevel,
           experienceToNextLevel: newExpToNextLevel,
-          experience: 0
+          // 余剰EXPは繰り越す(ダンス中に溜めた分で複数レベルを連鎖処理できるように)。
+          experience: Math.max(0, player.experience - player.experienceToNextLevel)
         },
         showUpgradeMenu: true,
         upgradeOptions,
@@ -2235,6 +2238,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: false
       };
     });
+    // バンクしたEXPがまだレベル分あれば、次のレベルアップ(メニュー)へ連鎖。ダンス中は保留のまま。
+    if (!get().rhythm.active) {
+      const p = get().player;
+      if (p.experience >= p.experienceToNextLevel) get().levelUp();
+    }
   },
 
   learnSubWeapon: (key) => {
@@ -3410,6 +3418,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         rhythm: { ...state.rhythm, active: false, byakkoUntil: 0, pending: [] },
         player: { ...state.player, invulnerable: false },
       }));
+      // ダンス中に溜めたEXPで一気にレベルアップ(以降は selectUpgrade が連鎖)。
+      const p = get().player;
+      if (p.experience >= p.experienceToNextLevel) get().levelUp();
     }
   },
 

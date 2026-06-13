@@ -12,8 +12,7 @@ import { ensureTextures } from './pixi/pixiTextures';
 const LOADING_MIN_MS = 650;
 
 function App() {
-  const [gameState, setGameState] = useState<GameState>('menu');
-  const [loadingClass, setLoadingClass] = useState<CharacterClass>('warrior');
+  const [gameState, setGameState] = useState<GameState>('loading'); // 起動時ローディングから開始
   const [benchmarkMode, setBenchmarkMode] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
@@ -22,9 +21,17 @@ function App() {
   const gameStats = useGameStore(state => state.gameStats);
 
   useEffect(() => {
-    // 起動時に必要な素材を全て先読み(テクスチャ + 音声/BGM/ダンストラック/SFX)。再生はしない。
-    preloadPromiseRef.current = ensureTextures().catch(() => {});
-    preloadAllAudio();
+    // 起動時に必要な素材を全てダウンロードし切ってからメニューへ(テクスチャ + 音声/BGM/ダンス/SFX)。
+    const boot = async () => {
+      const started = performance.now();
+      const tex = ensureTextures().catch(() => {});
+      preloadPromiseRef.current = tex;
+      await Promise.all([tex, preloadAllAudio()]);
+      const remaining = LOADING_MIN_MS - (performance.now() - started);
+      if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
+      setGameState('menu');
+    };
+    void boot();
   }, []);
 
   useEffect(() => {
@@ -36,24 +43,11 @@ function App() {
       ? characterClass as CharacterClass
       : 'warrior';
 
-    setLoadingClass(validClass);
     pendingBenchmarkRef.current = benchmark;
     setBenchmarkMode(benchmark);
     setBenchmarkResult(null);
-    setGameState('loading');
-
-    const startedAt = performance.now();
-    const preloadPromise = preloadPromiseRef.current ?? ensureTextures().catch(() => {});
-    preloadPromiseRef.current = preloadPromise;
-    await Promise.all([
-      preloadPromise,
-      new Promise(resolve => window.setTimeout(resolve, LOADING_MIN_MS)),
-    ]);
-    const remaining = LOADING_MIN_MS - (performance.now() - startedAt);
-    if (remaining > 0) {
-      await new Promise(resolve => window.setTimeout(resolve, remaining));
-    }
-
+    // 素材は起動時にDL済み。テクスチャだけ念のため確実化(通常は即時)。ローディング画面は挟まない。
+    await (preloadPromiseRef.current ?? ensureTextures().catch(() => {}));
     resetGame(validClass);
     setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
@@ -88,9 +82,7 @@ function App() {
         />
       )}
 
-      {gameState === 'loading' && (
-        <LoadingScreen characterClass={loadingClass} benchmarkMode={benchmarkMode} />
-      )}
+      {gameState === 'loading' && <LoadingScreen startup />}
       
       {gameState === 'playing' && (
         <Game

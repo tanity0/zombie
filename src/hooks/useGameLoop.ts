@@ -106,7 +106,7 @@ const SHIELD_KNOCKBACK_MULT = 1.4;           // 接触した敵を外向きへ�
 // 全方位(ハンドガン=handgun-t1 相当/短射程の周囲対応)へ切替。通常弾の代わりに低確率で
 // グレネード弾(既存ヘビーグレネードを流用)。消滅時に小爆発。数値は実機調整前提(TODO)。
 const TURRET_COOLDOWN_MS = 10000;                       // 設置間隔(全Lv共通10秒)
-const TURRET_DURATION_BY_LEVEL = [0, 5000, 5000, 5000]; // 持続: Lv1=5s確定。Lv2/3はTODO(未確定→暫定5s据置)
+const TURRET_DURATION_BY_LEVEL = [0, 15000, 15000, 15000]; // 持続を3倍(5s→15s)。Lv2/3はTODO(暫定据置)
 const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
