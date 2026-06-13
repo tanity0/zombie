@@ -49,6 +49,26 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
 - Periodic weapon explosions, including grenade-launcher-style projectile
   explosions, also must not trigger slow motion unless explicitly requested.
 
+## React re-render discipline (per-frame cost) — ALWAYS check this
+Confirmed to matter a lot on-device. Whenever you add or touch React UI (HUD,
+overlays, menus shown during play), make sure it does NOT re-render every frame:
+- **Never subscribe a component to a whole object/array that changes every frame**
+  via `useGameStore(s => s.player | s.enemies | s.projectiles | s.effects |
+  s.pickups | s.gameTime | s.gameStats)` etc. The store rewrites these (new
+  reference) each tick, so the component re-renders 60×/s and drags the frame.
+- **Subscribe to the exact fields used, or a derived primitive** instead:
+  `s.enemies.length`, `s.enemies.some(...)` (boolean), `Math.floor(s.gameTime/1000)`
+  (seconds), `s.player.health`, … Use a `shallow` selector when you need a small
+  bag of fields (`import { shallow } from 'zustand/shallow'`).
+- **Isolate genuinely per-frame UI** (FPS, live counters, damage totals, anything
+  that must update each frame) into its own tiny component so the heavy HUD body
+  stays still. See `PerfOverlay.tsx` / `StatsHud.tsx` for the pattern.
+- The PixiJS renderer reads the store in its ticker (not via React) — that's the
+  intended path and is fine. The rule here is about **React** subscriptions only.
+- Also avoid per-frame `set()` churn in the store waking many subscribers; if a
+  per-frame writer (e.g. resync) is unavoidable, keep its result a stable
+  reference for fields others read, and gate the write when nothing changed.
+
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left
