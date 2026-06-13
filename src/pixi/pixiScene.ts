@@ -69,6 +69,10 @@ const WHIP_HURRICANE_ANCHOR_Y = 0.92;   // テクスチャ内の地面の渦(根
 const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍率
 const WHIP_HURRICANE_FADE_IN_MS = 160;  // 立ち上がりフェード
 const WHIP_HURRICANE_FADE_OUT_MS = 280; // 消滅フェード
+const WHIP_HURRICANE_FLIP_MS = 100;     // 左右反転の周期(0.1秒毎にミラー)
+// 竜巻スプライトを沈める tint。全チャンネルを bloom 閾値(0.45 ≒ 114/255)未満に
+// 抑え、effectLayer(bloom フィルタ配下)でも一切発光しないようにする。
+const WHIP_HURRICANE_TINT = 0x646a70;
 // 鞭 lash スプライト(右向き素材: 手元=左, 先端=右)。手元グリップを振り起点に固定して回転/伸縮。
 const WHIP_SPRITE_ANCHOR_X = 0.10;  // テクスチャ内の手元(グリップ)= プレイヤー位置のピボット
 const WHIP_SPRITE_ANCHOR_Y = 0.676; // 手元の縦位置
@@ -541,6 +545,7 @@ export class PixiScene {
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
     this.whipHurricane.anchor.set(0.5, WHIP_HURRICANE_ANCHOR_Y);
+    this.whipHurricane.tint = WHIP_HURRICANE_TINT; // 発光を完全に消す(bloom 閾値未満)
     this.whipHurricane.alpha = 0;
     this.whipHurricane.visible = false;
     this.L.effectLayer.addChild(this.whipHurricane);
@@ -1054,7 +1059,9 @@ export class PixiScene {
     this.whipHurricane.height = width; // 512x512 正方(縦長竜巻)
     // 竜巻の鼓動: わずかな横揺れ的スケール脈動で生命感を出す(回転はしない)。
     const pulse = 1 + 0.05 * Math.sin(now / 80);
-    this.whipHurricane.scale.x *= pulse;
+    // 0.1秒毎に左右反転(scale.x の符号トグル)。渦が回って見えるミラー演出。
+    const flip = Math.floor(now / WHIP_HURRICANE_FLIP_MS) % 2 === 0 ? 1 : -1;
+    this.whipHurricane.scale.x = Math.abs(this.whipHurricane.scale.x) * pulse * flip;
     this.whipHurricane.alpha = Math.min(1, fadeIn * fadeOut);
   }
 

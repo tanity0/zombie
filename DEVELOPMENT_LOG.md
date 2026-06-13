@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.216 - ハリケーン: 0.1秒毎ミラー + 発光完全停止 + 吸引半径プレビュー (Claude Code)
+
+### Summary
+- **0.1秒毎に左右反転**: `syncWhipHurricane` で `scale.x` の符号を `WHIP_HURRICANE_FLIP_MS=100` 周期でトグル。
+  脈動(pulse)・伸縮(width)はそのままに符号だけ反転させ、渦が回って見えるミラー演出を追加。
+- **発光を完全停止**: ハリケーンは `effectLayer`(AdvancedBloom フィルタ配下)にあり、テクスチャが明る過ぎて
+  (不透明画素の99.4%が bloom 閾値0.45超、平均輝度0.806)alpha 脈動に応じて「光ったり光らなかったり」していた。
+  `WHIP_HURRICANE_TINT=0x646a70`(全チャンネル<114=0.45×255)を sprite に常設し、合成後輝度を閾値未満に沈めて
+  bloom を完全に抑止。スモーキーなブルーグレーの竜巻になり一切発光しない。視覚のみ=吸引/ダメージは不変。
+- **吸引半径プレビュー**(確認用画像、ゲームには非投入): 実吸引半径 `HURRICANE_RADIUS_BY_LEVEL`(Lv1=90)を
+  赤のピクセルサークルで根元中心に描画。描画スプライト幅=半径×3.0(Lv1で270)は黄ドットで併記。
+  **見た目の竜巻(270幅)に対し実際に巻き込む範囲は直径180**と判明=視覚は判定の約3倍幅。
+
+### Files changed
+- `src/pixi/pixiScene.ts` — flip周期/tint定数追加、setupでtint常設、syncWhipHurricaneでscale.x符号トグル
+- `package.json` — version 0.25.216
+
+### Verification
+- `npx tsc --noEmit` パス。吸引半径プレビュー `/tmp/hurricane_range.png` で非発光・ミラー素材・実半径を確認。
+
+### Next handoff notes
+- 竜巻の色味/暗さは `WHIP_HURRICANE_TINT` 一箇所で調整可。もっと暗く/明るく/青みは値変更だけ。
+- 視覚幅と実吸引半径の乖離(3倍)が気になる場合は `WHIP_HURRICANE_WIDTH_MULT` を下げる(視覚のみ)。
+
 ## 2026-06-13 - v0.25.215 - 鞭lash実スプライト + ハリケーン新ドット絵/非発光/滞在4倍 (Claude Code)
 
 ### Summary
