@@ -247,6 +247,8 @@ export interface RhythmState {
   expectBeat: number;      // 次に取るべき beat index(毎ビート入力が要る)
   prompt: RhythmArrow[];   // 現在の4矢印プロンプト(1本目=四神を決定)
   inputIndex: number;      // 一致した矢印数(0..4)
+  inputArrows: RhythmArrow[]; // 実際に入力したフリック履歴(頭上表示用。末尾4つを表示)
+
   godSuccess: number;      // 四神技の成功回数(SHIJIN_FINISH_COUNT で全体フィニッシュ)
   comboStage: number;      // ミラーボール色段階(コンボから導出)
   lastInputAt: number;     // 連打デバウンス用

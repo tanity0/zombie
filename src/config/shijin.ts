@@ -59,7 +59,7 @@ export const RHYTHM_TAP_KNOCKBACK_MULT = 3.4; // タップの強制ノックバ�
 export const RHYTHM_FLICK_RANGE = 130;        // TODO: フリック方向攻撃の射程
 export const RHYTHM_FLICK_HALF_W = 34;        // TODO: フリック方向攻撃の帯半幅
 export const RHYTHM_FLICK_DAMAGE = 12;        // TODO: バッシュのダメージ
-export const RHYTHM_FLICK_KNOCKBACK_MULT = 3.6; // バッシュの強ノックバック
+export const RHYTHM_FLICK_KNOCKBACK_MULT = 7.2; // バッシュの強ノックバック(2倍に増強)
 
 // --- 四神技(すべて近接フィニッシュ可・数値TODO) -------------------------
 // 朱雀: 近場最大3体をグレネード相当の範囲爆破(既存ヘビーグレネード値を流用)。
@@ -85,7 +85,7 @@ export const SHIJIN_FINISH_BOSS_DAMAGE = 120; // TODO: ボスへの近接フィ�
 export const SHIJIN_FINISH_SCREEN_MARGIN = 180; // 画面内判定の余白(EFFECT_VIEWPORT_MARGIN相当)
 
 // --- 演出: リズム中の画面暗転 / タップ発光 -------------------------------
-export const RHYTHM_DIM_ALPHA = 0.26;         // リズム中の画面暗転の濃さ(少し暗く)
+export const RHYTHM_DIM_ALPHA = 0.42;         // リズム中の地面暗転の濃さ(さらに暗く)
 export const RHYTHM_DIM_EASE = 0.16;          // 暗転フェードの追従(フレーム毎)
 export const RHYTHM_TAP_GLOW_MS = 200;        // タップ発光の持続
 export const RHYTHM_TAP_GLOW_ALPHA = 0.18;    // タップ発光の最大強さ(少し光る)

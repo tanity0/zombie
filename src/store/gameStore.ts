@@ -33,7 +33,7 @@ import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
-  active: false, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0,
+  active: false, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0, inputArrows: [],
   godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastTapAt: 0, lastFinishAt: 0, lastGod: null,
   invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, pending: [],
 });
@@ -3387,6 +3387,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           firstBeatAt: gt + RHYTHM_LEAD_MS,
           expectBeat: 0,
           inputIndex: 0,
+          inputArrows: [],
           prompt: randomRhythmPrompt(),
           godSuccess: 0,
           comboStage: rhythmComboStage(state.meleeFinishComboCount),
@@ -3433,7 +3434,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(s => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
-        rhythm: { ...s.rhythm, inputIndex: 0, comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
+        rhythm: { ...s.rhythm, inputIndex: 0, inputArrows: [], comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
       }));
       return { judged: 'miss' };
     }
@@ -3450,6 +3451,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     let firedGod: ShijinGod | undefined;
     let finish = false;
     const arrow: RhythmArrow | null = (kind === 'flick' && dir) ? arrowFromDir(dir.x, dir.y) : null;
+    // 頭上表示用の入力履歴: フリックを末尾に追加(末尾4つを表示、5つ目以降は古いものから消える)。
+    let inputArrows = arrow ? [...r.inputArrows, arrow].slice(-8) : r.inputArrows;
     if (!arrow) {
       newPending.push({ kind: 'tap' }); // タップ=周囲を軽く吹き飛ばし
     } else {
@@ -3462,6 +3465,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           judged = 'fire';
           godSuccess++;
           inputIndex = 0;
+          inputArrows = []; // 技が完成したら履歴をクリア
           prompt = randomRhythmPrompt();
           if (godSuccess >= SHIJIN_FINISH_COUNT) {
             newPending.push({ kind: 'finish' });
@@ -3485,6 +3489,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...s.rhythm,
         expectBeat: s.rhythm.expectBeat + 1,
         inputIndex,
+        inputArrows,
         prompt,
         godSuccess,
         comboStage: rhythmComboStage(combo),
@@ -3526,7 +3531,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(s => ({
           meleeFinishComboCount: 0,
           meleeFinishComboUntil: 0,
-          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
+          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
         }));
       } else {
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));

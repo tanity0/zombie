@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.232 - 四神舞: 地面さらに暗く / フリックKB2倍 / 矢印を太いドット絵+入力履歴4つスクロール (Claude Code)
+
+### Summary
+- 地面暗転を 0.26→0.42 にさらに暗く。
+- フリック攻撃のノックバックを2倍(3.6→7.2)。
+- 頭上の入力矢印リストを「リズムゲーム風の太いドット絵矢印(7x7・縁取り)」に刷新。
+- 表示を入力フリック履歴ベースに変更: 末尾最大4つを順番に表示、5つ目以降は古いものから1つずつ消える。
+  最新の1つは金色で強調。技完成/ミス/開始でクリア。
+
+### 実装
+- `src/config/shijin.ts`: RHYTHM_DIM_ALPHA=0.42、RHYTHM_FLICK_KNOCKBACK_MULT=7.2。
+- `src/types/game.ts` + `gameStore.ts`: RhythmState.inputArrows(入力フリック履歴, 末尾8保持)。フリックで追加、
+  発動/ミスでクリア。
+- `src/pixi/pixiScene.ts`: ドット行列の矢印グリッド(上基準を回転で4方向)+ drawRhythmArrow をドット絵描画に。
+  頭上表示を inputArrows.slice(-4) に。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### Note
+- 「矢印リスト」は頭上の入力矢印リストに適用。左上「コマンド」(目標)はUnicodeのまま。必要ならそちらもドット絵化可。
+
 ## 2026-06-13 - v0.25.231 - 四神舞: ミラーボールにドロップシャドウ + フリックを接触区間ジャスト判定に (Claude Code)
 
 ### Summary

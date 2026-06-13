@@ -363,6 +363,24 @@ interface Firefly {
   phase: number; freq: number; base: number; size: number;
 }
 
+// リズムゲーム風の太いドット絵矢印(7x7)。上向きを基準に90°回転で4方向を作る。
+const RHYTHM_ARROW_UP = [
+  '...X...',
+  '..XXX..',
+  '.XXXXX.',
+  'XXXXXXX',
+  '..XXX..',
+  '..XXX..',
+  '..XXX..',
+].map(row => row.split('').map(c => (c === 'X' ? 1 : 0)));
+const rotateCW = (m: number[][]): number[][] => m.map((row, i) => row.map((_, j) => m[m.length - 1 - j][i]));
+const RHYTHM_ARROW_GRID: Record<'up' | 'down' | 'left' | 'right', number[][]> = {
+  up: RHYTHM_ARROW_UP,
+  right: rotateCW(RHYTHM_ARROW_UP),
+  down: rotateCW(rotateCW(RHYTHM_ARROW_UP)),
+  left: rotateCW(rotateCW(rotateCW(RHYTHM_ARROW_UP))),
+};
+
 export class PixiScene {
   private L: SceneLayers;
 
@@ -1064,7 +1082,7 @@ export class PixiScene {
   // (godSuccess)」で 0白/1青/2緑/3赤、フィニッシュで虹。0.5秒ごとに左右反転して回転に見せる。
   // 左右サークルは 0.5秒ごとに足元で重なる(=ジャスト)。リング/矢印は軽量Graphics。
   private syncRhythmOverlay(
-    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
+    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
     player: Player,
     gameTime: number
   ) {
@@ -1138,28 +1156,39 @@ export class PixiScene {
       g.circle(cx, cy, r + 4 + t * 10).stroke({ color: jc, alpha: 0.7 * (1 - t), width: 2 });
     }
 
-    // 入力した矢印「だけ」を頭上に左から順に表示(最大4)。発動/リセットで消える。1本目=四神色。
-    const inputN = Math.min(rhythm.inputIndex, rhythm.prompt.length);
-    if (inputN > 0) {
-      const arrowY = cy - r - 12;
-      const gap = 13;
-      const startX = cx - (gap * (inputN - 1)) / 2;
-      for (let i = 0; i < inputN; i++) {
-        const acol = i === 0 ? 0xfca5a5 : 0xe2e8f0; // 1本目だけ色を変えて四神決定を示す
-        this.drawRhythmArrow(g, startX + i * gap, arrowY, rhythm.prompt[i], acol, 0.95, 1.1);
+    // 入力したフリックを頭上に左から順に表示(末尾最大4。5つ目以降は古いものから1つずつ消える)。
+    // リズムゲーム風の太いドット絵矢印。最新の1つは明るく強調。
+    const shown = rhythm.inputArrows.slice(-4);
+    if (shown.length > 0) {
+      const block = 2.4;             // ドット1マスのサイズ
+      const aw = 7 * block;          // 矢印1個の幅(7x7)
+      const gap = aw + 6;
+      const arrowY = cy - r - 18;
+      const startX = cx - (gap * (shown.length - 1)) / 2;
+      for (let i = 0; i < shown.length; i++) {
+        const latest = i === shown.length - 1;
+        this.drawRhythmArrow(g, startX + i * gap, arrowY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
       }
     }
   }
 
-  // 小さな三角形の矢印を描く(上下左右)。
-  private drawRhythmArrow(g: Graphics, x: number, y: number, dir: 'up' | 'down' | 'left' | 'right', color: number, alpha: number, scale: number) {
-    const s = 4 * scale;
-    let pts: number[];
-    if (dir === 'up') pts = [x, y - s, x - s, y + s, x + s, y + s];
-    else if (dir === 'down') pts = [x, y + s, x - s, y - s, x + s, y - s];
-    else if (dir === 'left') pts = [x - s, y, x + s, y - s, x + s, y + s];
-    else pts = [x + s, y, x - s, y - s, x - s, y + s];
-    g.poly(pts).fill({ color, alpha });
+  // リズムゲーム風の太いドット絵矢印を描く(7x7のドット行列。暗い縁取り付き)。
+  private drawRhythmArrow(g: Graphics, x: number, y: number, dir: 'up' | 'down' | 'left' | 'right', color: number, alpha: number, block: number) {
+    const grid = RHYTHM_ARROW_GRID[dir];
+    const n = grid.length;
+    const off = (n - 1) / 2;
+    // 縁取り(各ドットを一回り大きい暗色で先に敷く)。
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (grid[r][c]) {
+      const px = x + (c - off) * block;
+      const py = y + (r - off) * block;
+      g.rect(px - block / 2 - 1, py - block / 2 - 1, block + 2, block + 2).fill({ color: 0x0b1020, alpha });
+    }
+    // 本体ドット。
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (grid[r][c]) {
+      const px = x + (c - off) * block;
+      const py = y + (r - off) * block;
+      g.rect(px - block / 2, py - block / 2, block, block).fill({ color, alpha });
+    }
   }
 
   // リズム中の暗転(地面/遠景だけ・フェード追従)+ タップ発光(全画面・最前面)。
