@@ -3430,21 +3430,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     } else {
       onBeat = Math.abs(gt - beatT) <= win;
     }
-    // タイミングを外したらコンボ全リセット(硬直は入れない)。
+    const pcx = state.player.x + state.player.width / 2;
+    const pcy = state.player.y + state.player.height / 2;
+    const headY = state.player.y - 24; // 頭上(JUST!/MISS... 表示位置)
+    // タイミングを外しても「ダンスは続く」。コンボと技の蓄積(godSuccess)だけリセット、頭からやり直し。
     if (!onBeat) {
-      // コマンドは作り直さない(入力途中で別の四神に切り替わらないように)。頭からやり直し。
+      get().spawnCallout(pcx, headY, 'MISS...', '#fb7185', { scale: 1.3 });
       set(s => ({
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
-        rhythm: { ...s.rhythm, inputIndex: 0, inputArrows: [], comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
+        rhythm: { ...s.rhythm, inputIndex: 0, inputArrows: [], godSuccess: 0, comboStage: 0, lastInputAt: gt, lastJudge: 'miss', lastJudgeAt: gt },
       }));
       return { judged: 'miss' };
     }
-    // 成功タイミング。既存コンボカウンターを進める。
+    // 成功タイミング(JUST)。既存コンボカウンターを進める。
     get().addMeleeFinishCombo(1);
     const combo = get().meleeFinishComboCount;
-    const pcx = state.player.x + state.player.width / 2;
-    const pcy = state.player.y + state.player.height / 2;
     const newPending: RhythmPending[] = [];
     let inputIndex = r.inputIndex;
     let prompt = r.prompt;
@@ -3507,6 +3508,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? { ...s.player, shijinSlideUntil: Date.now() + SHIJIN_SLIDE_MS, shijinSlideDirX: slideVec.x, shijinSlideDirY: slideVec.y }
         : s.player,
     }));
+    // JUST 表示(技発動時は四神名の callout が別に出るので JUST は出さない)。
+    if (judged === 'hit') get().spawnCallout(pcx, headY, 'JUST!', '#fde68a', { scale: 1.4 });
     return { judged, god: firedGod, finish };
   },
 
@@ -3527,13 +3530,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       missed = true;
     }
     if (missed) {
-      const playing = state.meleeFinishComboCount > 0 || r.inputIndex > 0;
+      const playing = state.meleeFinishComboCount > 0 || r.inputIndex > 0 || r.godSuccess > 0;
       if (playing) {
-        // コマンドは保持(入力途中で別の四神に変わらない)。頭からやり直し。
+        // 失敗してもダンスは継続。コンボと技の蓄積(godSuccess)だけリセット、頭からやり直し。
+        get().spawnCallout(state.player.x + state.player.width / 2, state.player.y - 24, 'MISS...', '#fb7185', { scale: 1.3 });
         set(s => ({
           meleeFinishComboCount: 0,
           meleeFinishComboUntil: 0,
-          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
+          rhythm: { ...s.rhythm, expectBeat: expect, inputIndex: 0, inputArrows: [], godSuccess: 0, comboStage: 0, lastJudge: 'miss', lastJudgeAt: gt },
         }));
       } else {
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: expect } }));

@@ -1129,9 +1129,10 @@ export class PixiScene {
 
     // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
     // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。
+    // サークルは入力の成否に関係なく、固定の120BPMグリッド位相で流れ続ける(音楽とズレない)。
     const interval = RHYTHM_INTERVAL_MS;
-    const beatT = rhythm.firstBeatAt + rhythm.expectBeat * interval;
-    const toBeat = Math.max(0, Math.min(1, (beatT - gameTime) / interval));
+    const intoBeat = (((gameTime - rhythm.firstBeatAt) % interval) + interval) % interval; // 拍内経過(0..interval)
+    const toBeat = (interval - intoBeat) / interval; // 1(拍直後)→0(次の拍で足元に重なる)
     const footCx = fb.footX;
     const footCy = fb.footY - 2; // ほぼ接地点
     const spread = 64;           // どれだけ外(左右)から流れてくるか

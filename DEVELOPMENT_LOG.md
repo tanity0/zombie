@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.235 - 四神舞: 失敗してもダンス継続(コンボ/技蓄積リセット) / サークルは120BPMで流れ続ける / JUST!・MISS表示 (Claude Code)
+
+### Summary
+- ダンスは失敗しても継続。ミス時はコンボに加え技の蓄積(godSuccess)も0にリセット(ミラーボール色も白に戻る)。
+- 左右サークルの収束を expectBeat 依存から「固定120BPMグリッド位相」に変更。成功/失敗に関係なく一定間隔で
+  流れ続け、音楽とズレない。
+- ジャスト成功で頭上に「JUST!」(金)、ミスで「MISS...」(赤)を表示(spawnCallout)。技発動時は四神名を優先。
+
+### 実装
+- `src/store/gameStore.ts`: rhythmInput/tickRhythm のミスで godSuccess:0 を追加。JUST!/MISS... の callout。
+  tick の playing 判定に godSuccess>0 も含める。
+- `src/pixi/pixiScene.ts`: サークル位相を (gameTime-firstBeatAt)%interval ベースに(expectBeat非依存)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.234 - 四神舞: pulse-gridはダンスタイム中だけ/メインBGMはダック(0)で流し続け終了でフェードイン/拍を再同期 (Claude Code)
 
 ### Summary
