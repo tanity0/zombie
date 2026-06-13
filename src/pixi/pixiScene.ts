@@ -1104,7 +1104,10 @@ export class PixiScene {
     }
     ball.alpha = 1;
     ball.visible = true;
-    if (tapT > 0.01) g.circle(cx, cy, r + 4 + tapT * 8).fill({ color: 0xfff2cc, alpha: 0.3 * tapT });
+    // タップ発光のハロー(暖色)。先に敷く。
+    if (tapT > 0.01) g.circle(cx, cy, r + 4 + tapT * 8).fill({ color: 0xfff2cc, alpha: 0.32 * tapT });
+    // ドロップシャドウ: ボール背面の少し右下に暗い円。発光時も影が出るようハローの上に重ねる。
+    g.circle(cx + 4, cy + 6, r).fill({ color: 0x05070d, alpha: 0.34 + 0.18 * tapT });
 
     // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
     // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。

@@ -8,7 +8,7 @@ import {
   RhythmState, RhythmArrow, ShijinGod, RhythmPending
 } from '../types/game';
 import {
-  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_INPUT_DEBOUNCE_MS,
+  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
@@ -684,7 +684,7 @@ interface GameState {
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean) => void;
-  rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, lagMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
+  rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
   tickRhythm: () => void;
   startByakko: () => void;
   advanceByakko: () => void;
@@ -3410,19 +3410,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  rhythmInput: (kind, dir, lagMs = 0) => {
+  rhythmInput: (kind, dir, contactMs = 0) => {
     const state = get();
     const r = state.rhythm;
     if (!r.active) return { judged: 'none' };
     const gt = state.gameTime;
     if (gt - r.lastInputAt < RHYTHM_INPUT_DEBOUNCE_MS) return { judged: 'none' };
     const beatT = r.firstBeatAt + r.expectBeat * RHYTHM_INTERVAL_MS;
-    // フリックは「触れてから振り終わるまで」の遅延ぶん手前で判定し(指が動き始めた瞬間で見る)、
-    // さらにフリックだけ判定窓を少し広げる。タップは従来通り。
-    const judgeTime = kind === 'flick' ? gt - Math.max(0, lagMs) : gt;
     const win = RHYTHM_SUCCESS_WINDOW_MS + (kind === 'flick' ? RHYTHM_FLICK_EXTRA_WINDOW_MS : 0);
-    // タイミングを外したら(早すぎ/遅すぎ)コンボ全リセット(硬直は入れない)。
-    if (Math.abs(judgeTime - beatT) > win) {
+    // フリックは「触れてから離すまで(contactMs)」の接触区間のどこかにジャストが入っていれば成功
+    // (離す瞬間は不問)。または離した瞬間がジャストでもOK。タップは離した瞬間で判定。
+    let onBeat: boolean;
+    if (kind === 'flick') {
+      const downGT = gt - Math.max(0, Math.min(contactMs, RHYTHM_FLICK_MAX_CONTACT_MS));
+      onBeat = beatT >= downGT - win && beatT <= gt + win;
+    } else {
+      onBeat = Math.abs(gt - beatT) <= win;
+    }
+    // タイミングを外したらコンボ全リセット(硬直は入れない)。
+    if (!onBeat) {
       // コマンドは作り直さない(入力途中で別の四神に切り替わらないように)。頭からやり直し。
       set(s => ({
         meleeFinishComboCount: 0,
@@ -3501,6 +3507,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     const r = state.rhythm;
     if (!r.active) return;
+    // 指が触れている間はビートを失効させない(タッチ中にジャストが過ぎても、離した時の
+    // フリックでそのビートを取れるように)。離している間だけ通常の失効判定を行う。
+    if (state.touchActive) return;
     const gt = state.gameTime;
     // 過ぎたビートはミス扱い。ただし「プレイ中(コンボ>0 または 入力進行>0)」でなければ静かに送る
     // (ただ立っているだけで毎ビート"ミス"が点滅しないように)。

@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.231 - 四神舞: ミラーボールにドロップシャドウ + フリックを接触区間ジャスト判定に (Claude Code)
+
+### Summary
+- ミラーボールにドロップシャドウを追加(光る時も影が出る=ハローの上に重ねて常時表示、発光時は濃く)。
+- フリック判定を大幅に寛容化: 「触れてから離すまで(接触区間)」のどこかにジャストが入っていれば成功
+  (離す瞬間は不問)。または離した瞬間がジャストでもOK。タップは従来通り離した瞬間で判定。
+- 接触中(touchActive)はビートを失効させない(タッチ中にジャストが過ぎても離した時のフリックで取れる)。
+
+### 実装
+- `src/config/shijin.ts`: RHYTHM_FLICK_MAX_CONTACT_MS(700)=接触区間の上限。
+- `src/components/VirtualJoystick.tsx`: pointerDownTimeRef で接触時間を計測し rhythmInput('flick', dir, contactMs)。
+- `src/store/gameStore.ts`: フリックは beatT が [downGT-win, gt+win] に入れば成功。tickRhythm は touchActive 中は失効しない。
+- `src/pixi/pixiScene.ts`: ボール背面に暗い円のドロップシャドウ(発光時は濃く)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- 接触中は失効しない=長押しでコンボ保持できる軽い猶予あり(上限700ms)。問題あれば調整。影の位置/濃さは仮。
+
 ## 2026-06-13 - v0.25.230 - 四神舞: 暗転を地面/遠景のみに限定 + コマンドが入力途中で変わらないよう修正 (Claude Code)
 
 ### Summary

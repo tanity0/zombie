@@ -11,6 +11,9 @@ export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多
 // フリックは「触れてから振り終わるまで」の所要時間ぶん遅れて確定するため、その遅延を差し引いて
 // 判定し(=指が動き始めた瞬間で見る)、さらにフリックだけ少しだけ判定窓を広げる。
 export const RHYTHM_FLICK_EXTRA_WINDOW_MS = 55;
+// フリックは「触れてから離すまで」の接触区間のどこかにジャストが入っていれば成功(離す瞬間は不問)。
+// 区間が長すぎる場合の上限(長押ししっぱなしで何でも成功になるのを防ぐ)。
+export const RHYTHM_FLICK_MAX_CONTACT_MS = 700;
 export const RHYTHM_ENTER_IDLE_MS = 600;      // 停止からリズムモード開始までの時間
 // リズム終了はこの時間「動き続けた」場合のみ(短いフリックのドラッグ/スライドでは抜けない)。
 export const RHYTHM_EXIT_MOVE_MS = 320;        // TODO: 歩いて抜けたと見なすまでの時間

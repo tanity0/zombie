@@ -21,6 +21,8 @@ const VirtualJoystick: React.FC = () => {
   const originRef = useRef<{ x: number; y: number } | null>(null);
   // 刀フリック判定用の直近ポインタ軌跡(古いサンプルは捨てる)。
   const flickSamplesRef = useRef<{ x: number; y: number; t: number }[]>([]);
+  // 指が触れ始めた時刻(performance.now)。リズムのフリックは接触区間でジャスト判定するのに使う。
+  const pointerDownTimeRef = useRef<number>(0);
 
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [delta, setDelta] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -60,8 +62,13 @@ const VirtualJoystick: React.FC = () => {
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
         const flick = detectFlick();
-        if (flick) rhythmInput('flick', flick, flick.dt); // dt=フリック所要時間ぶん手前で判定
-        else rhythmInput('tap');
+        if (flick) {
+          // 接触時間(触れ始め→離す)。この区間のどこかにジャストが入っていれば成功。
+          const contactMs = pointerDownTimeRef.current ? performance.now() - pointerDownTimeRef.current : 0;
+          rhythmInput('flick', flick, contactMs);
+        } else {
+          rhythmInput('tap');
+        }
       } else {
         // カウンター優先: 既存のカウンター処理を先に通す(刀装備中はナイフ
         // スイープなしで窓だけ開く)。その後、フリック成立時のみ一閃ダッシュ。
@@ -92,6 +99,7 @@ const VirtualJoystick: React.FC = () => {
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
     setTouchActive(true);
+    pointerDownTimeRef.current = performance.now();
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
     flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
