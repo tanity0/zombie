@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.224 - 四神舞: リズムの輪を「足元めがけて左右→足元中央で重なる」へ修正 (Claude Code)
+
+### Summary
+リズムのサークルが頭上で横収束していたのを、ユーザー指定の挙動に修正。輪っかが左右からプレイヤーの
+足元めがけて流れ込み、足元のど真ん中(footX,footY)で重なり合う(=ジャスト)。ミラーボール/矢印は頭上のまま。
+
+### 実装
+- `src/pixi/pixiScene.ts` `syncRhythmOverlay`: 収束サークルを頭上→足元へ移設。地面に置いた輪に見えるよう
+  縦つぶし楕円で描画。spread=64で左右外から接近、足元中央に薄いターゲット、重なる瞬間に発光リング。
+  近づくほど alpha が上がりくっきり。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- 楕円サイズ/接近距離/色は仮値。実機の見やすさで調整。
+
 ## 2026-06-13 - v0.25.223 - 「四神舞(リズム)」インタラクティブ実装(リズム判定/四神技/ミラーボールUI) (Claude Code)
 
 ### Summary

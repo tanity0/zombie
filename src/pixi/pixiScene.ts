@@ -1065,17 +1065,26 @@ export class PixiScene {
       g.moveTo(cx - r, cy + i * 5).lineTo(cx + r, cy + i * 5).stroke({ color: 0x0b1020, alpha: 0.35, width: 1 });
     }
 
-    // 左右サークル: 次のジャストへ向かって中央へ収束(重なった瞬間=ジャスト)。
+    // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
+    // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。
     const interval = 500; // RHYTHM_INTERVAL_MS
     const beatT = rhythm.firstBeatAt + rhythm.expectBeat * interval;
     const toBeat = Math.max(0, Math.min(1, (beatT - gameTime) / interval));
-    const spread = 34;
+    const footCx = fb.footX;
+    const footCy = fb.footY - 2; // ほぼ接地点
+    const spread = 64;           // どれだけ外(左右)から流れてくるか
     const off = spread * toBeat;
-    const ringY = cy + r + 12;
-    const justCol = off < 4 ? 0xfde68a : 0x94a3b8;
-    g.circle(cx - off, ringY, 7).stroke({ color: justCol, alpha: 0.9, width: 2 });
-    g.circle(cx + off, ringY, 7).stroke({ color: justCol, alpha: 0.9, width: 2 });
-    g.circle(cx, ringY, 2).fill({ color: 0xfde68a, alpha: 0.8 }); // 中央=ジャスト点
+    const rw = 16, rh = 7;       // 地面の輪(縦つぶし楕円)
+    const just = off < 5;
+    const ringCol = just ? 0xfde68a : 0xbae6fd;
+    const ringAlpha = 0.5 + 0.4 * (1 - toBeat); // 近づくほどくっきり
+    // 重なる場所(足元中央)のターゲットを薄く常時表示。
+    g.ellipse(footCx, footCy, rw, rh).stroke({ color: 0x94a3b8, alpha: 0.35, width: 1 });
+    // 左右から接近する2つの輪。
+    g.ellipse(footCx - off, footCy, rw, rh).stroke({ color: ringCol, alpha: ringAlpha, width: 2.5 });
+    g.ellipse(footCx + off, footCy, rw, rh).stroke({ color: ringCol, alpha: ringAlpha, width: 2.5 });
+    // ジャスト(重なった瞬間)に小さな発光リング。
+    if (just) g.ellipse(footCx, footCy, rw + 3, rh + 2).stroke({ color: 0xfde68a, alpha: 0.85, width: 2 });
 
     // 判定フラッシュ(hit/miss/fire を一瞬の色リングで)。lastJudgeAt は gameTime 基準。
     const sinceJudge = gameTime - rhythm.lastJudgeAt;
