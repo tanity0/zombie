@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.237 - 四神舞・朱雀を「グレネードランチャー(rifle-t3)」相当の爆発に修正(手榴弾ではない) (Claude Code)
+
+### Summary
+- 「グレネード相当の爆発」という表現は手榴弾(heavy-grenade)ではなくグレネードランチャー(rifle-t3)を指す、との
+  指摘を反映。朱雀の爆発をランチャーの爆発に合わせた。半径66→92(GRENADE_BLAST_RADIUS)、演出時間も
+  GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS(440)に。色は朱雀(朱)のまま、バーストも大きめに。
+
+### 実装
+- `src/config/shijin.ts`: SUZAKU_BLAST_RADIUS を撤去(ランチャー定数を直接流用)。SUZAKU_BLAST_DAMAGE 42→48。
+  コメントを「グレネードランチャー相当(手榴弾ではない)」に。
+- `src/hooks/useGameLoop.ts`: 朱雀の爆発で GRENADE_BLAST_RADIUS / GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS を使用。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。「グレネード相当」表現は src から消去。
+
+### Note
+- 自動タレットは例示。タレットの小爆発(半径64)は別物で behavior は変更なし。heavy-grenadeサブ武器も変更なし。
+
 ## 2026-06-13 - v0.25.236 - 四神舞: ダンスBGMが鳴らない問題を修正(常時再生でアンロック) + 左上コマンドの矢印も太いドット絵に (Claude Code)
 
 ### Summary

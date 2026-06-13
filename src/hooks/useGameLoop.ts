@@ -43,7 +43,7 @@ import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT,
-  SUZAKU_MAX_TARGETS, SUZAKU_BLAST_RADIUS, SUZAKU_BLAST_DAMAGE,
+  SUZAKU_MAX_TARGETS, SUZAKU_BLAST_DAMAGE,
   GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE,
   SEIRYU_LINE_LENGTH, SEIRYU_LINE_HALF_W, SEIRYU_DAMAGE,
   BYAKKO_RANGE, BYAKKO_DAMAGE, BYAKKO_MAX_HITS,
@@ -319,7 +319,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
     const fireShijinGod = (god: ShijinGod, x: number, y: number) => {
       if (god === 'suzaku') {
-        // 朱雀: 近場最大3体をグレネード相当で爆破(範囲ダメージ・フォールオフ)。
+        // 朱雀: 近場最大3体を「グレネードランチャー(rifle-t3)」相当で爆破(手榴弾heavy-grenadeではない)。
+        // 半径・演出時間はランチャーの爆発(GRENADE_BLAST_RADIUS / GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS)に合わせ、
+        // 色だけ朱雀(朱)に。範囲ダメージはフォールオフ。
+        const blastR = GRENADE_BLAST_RADIUS;
+        const fxMs = GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS;
         const targets = useGameStore.getState().enemies
           .filter(e => e.type !== 'reaper')
           .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - x, e.y + e.height / 2 - y) }))
@@ -328,15 +332,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         for (const t of targets) {
           const bx = t.x + t.width / 2;
           const by = t.y + t.height / 2;
-          spawnRing(bx, by, 8, SUZAKU_BLAST_RADIUS, 'rgba(248,113,113,0.85)', 4, 360);
-          spawnBurst(bx, by, '#f87171', 14);
-          spawnBurst(bx, by, '#7f1d1d', 6);
-          useGameStore.getState().spawnGlow(bx, by, 46, 'rgba(248,113,113,', 360);
+          spawnRing(bx, by, 10, blastR, 'rgba(248,113,113,0.85)', 5, fxMs);
+          spawnBurst(bx, by, '#f87171', 20);
+          spawnBurst(bx, by, '#7f1d1d', 8);
+          useGameStore.getState().spawnGlow(bx, by, 58, 'rgba(248,113,113,', fxMs);
           for (const e of useGameStore.getState().enemies) {
             if (e.type === 'reaper') continue;
             const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
-            if (dist > SUZAKU_BLAST_RADIUS) continue;
-            const falloff = 1 - dist / SUZAKU_BLAST_RADIUS;
+            if (dist > blastR) continue;
+            const falloff = 1 - dist / blastR;
             shijinHitEnemy(e.id, Math.max(1, Math.round(SUZAKU_BLAST_DAMAGE * (0.55 + falloff * 0.45))), true);
           }
         }

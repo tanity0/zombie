@@ -83,10 +83,11 @@ export const RHYTHM_FLICK_DAMAGE = 12;        // TODO: バッシュのダメー�
 export const RHYTHM_FLICK_KNOCKBACK_MULT = 7.2; // バッシュの強ノックバック(2倍に増強)
 
 // --- 四神技(すべて近接フィニッシュ可・数値TODO) -------------------------
-// 朱雀: 近場最大3体をグレネード相当の範囲爆破(既存ヘビーグレネード値を流用)。
+// 朱雀: 近場最大3体を「グレネードランチャー(rifle-t3)」相当の範囲爆破。手榴弾(heavy-grenade)ではない。
+// 半径・演出時間はランチャーの爆発(GRENADE_BLAST_RADIUS=92 / GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS)に合わせる
+// ため、useGameLoop 側でランチャー定数を直接流用する(ここでは威力と対象数のみ)。
 export const SUZAKU_MAX_TARGETS = 3;
-export const SUZAKU_BLAST_RADIUS = 66;        // 既存ヘビーグレネード相当
-export const SUZAKU_BLAST_DAMAGE = 42;        // 既存ヘビーグレネード相当
+export const SUZAKU_BLAST_DAMAGE = 48;        // TODO: グレネードランチャー相当の威力(実機調整)
 // 玄武: 上下左右へプレイヤー幅程度の十字直線。
 export const GENBU_LINE_LENGTH = 260;         // TODO
 export const GENBU_LINE_HALF_W = 18;          // プレイヤー幅程度
