@@ -600,9 +600,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             rhythmMoveStartRef.current = 0;
             if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
-              // ダンストラックを先頭から再生開始(=拍頭が今)。最初のジャストは LEAD 以上先の拍に置く。
-              // 以降は resyncRhythm が音楽の再生位置へ位相を再同期し続ける。
-              const firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS + RHYTHM_MUSIC_OFFSET_MS;
+              // 最初のジャストを、連続再生中のダンストラック(120BPM)の拍に合わせる。以降 resyncRhythm が維持。
+              const musicMs = getMusicTimeMs();
+              let firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS + RHYTHM_MUSIC_OFFSET_MS;
+              if (musicMs !== null) {
+                const m = musicMs - RHYTHM_MUSIC_OFFSET_MS;
+                const nextBeatMusic = Math.ceil((m + RHYTHM_LEAD_MS) / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS;
+                firstBeatAt = newGameTime + (nextBeatMusic - m);
+              }
               useGameStore.getState().setRhythmActive(true, firstBeatAt);
             }
           }

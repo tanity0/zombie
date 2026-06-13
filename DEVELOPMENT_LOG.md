@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.236 - 四神舞: ダンスBGMが鳴らない問題を修正(常時再生でアンロック) + 左上コマンドの矢印も太いドット絵に (Claude Code)
+
+### Summary
+- ダンスBGM(pulse-grid)が鳴らない問題を修正。別エレメントの play() が操作ジェスチャ外でブロックされるため、
+  メインBGM開始時(ジェスチャ内)にダンストラックも「無音(gain 0)で再生開始」してアンロック。以後は常時再生の
+  連続クロックとし、ダンス中だけ音量を上げる(メインはダック0)。開始拍は再生位置に合わせ、resyncで維持。
+- 左上「コマンド」の矢印も、頭上と同じ太いドット絵矢印に統一(SVGで描画)。
+
+### 実装
+- `src/audio/audioManager.ts`: applyBgm でダンストラックも再生駆動+メインのダック維持。setDanceMode は停止せず
+  gain ランプのみ。getMusicTimeMs は連続再生クロックを返す。playDanceBgm 追加。
+- `src/hooks/useGameLoop.ts`: 開始時 firstBeatAt を getMusicTimeMs(連続クロック)の拍に合わせる。
+- `src/config/shijin.ts`: RHYTHM_ARROW_GRID を共有化(export)。
+- `src/pixi/pixiScene.ts`: ローカル矢印グリッド定義を撤去し共有を import。
+- `src/components/GameHUD.tsx`: PixelArrow(SVG) を追加し、コマンドの矢印をドット絵化。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。pulse-grid.mp3 追跡確認。
+
+### Note
+- 自動再生方針の都合上、最初のユーザー操作(開始/音声トグル)後にアンロックされる。実機で要確認。
+
 ## 2026-06-13 - v0.25.235 - 四神舞: 失敗してもダンス継続(コンボ/技蓄積リセット) / サークルは120BPMで流れ続ける / JUST!・MISS表示 (Claude Code)
 
 ### Summary

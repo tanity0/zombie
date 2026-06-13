@@ -285,32 +285,37 @@ const rampGain = (gain: GainNode | null, el: HTMLAudioElement | null, target: nu
   }
 };
 
-// ダンスタイムの切替。active で pulse-grid をその場(先頭)から再生しメインBGMをダック。
-// 非active でメインBGMへフェード復帰し pulse-grid を停止。
+// ダンストラックの再生(失敗は無視)。BGM開始の操作ジェスチャ内で呼ぶことでアンロックされる。
+const playDanceBgm = async () => {
+  ensureDanceBgm();
+  if (!danceBgm) return;
+  try { await danceBgm.play(); } catch { /* autoplay policy: 後続のジェスチャで再試行 */ }
+};
+
+// ダンストラックは BGM が有効な間ずっと再生(通常は gain 0 で無音=連続クロック)。ダンス中だけ
+// 音量を上げ、メインBGMをダック(0)する。非ダンスでメインへフェード復帰。停止はしない。
 export const setDanceMode = (active: boolean) => {
   if (active === danceActive) return;
   danceActive = active;
   ensureDanceBgm();
+  ensureDanceRouting();
+  resumeSfxContext();
   if (!danceBgm) return;
+  if (bgmActive && !muted) void playDanceBgm(); // 念のため再生継続を保証
   if (active) {
-    resumeSfxContext();
-    ensureDanceRouting();
-    try { danceBgm.currentTime = 0; } catch { /* ignore */ }
-    if (!muted) void danceBgm.play().catch(() => {});
     rampGain(danceGain, danceBgm, muted ? 0 : DANCE_VOLUME, 0.12);
-    // メインBGMはダック(ボリューム0)。再生は止めず位置を保持し、設定値(bgmVolume)も保持。
+    // メインBGMはダック(0)。再生は止めず位置・設定値(bgmVolume)を保持。
     rampGain(bgmGain, bgm, 0, 0.2);
   } else {
     rampGain(danceGain, danceBgm, 0, 0.25);
-    window.setTimeout(() => { if (!danceActive && danceBgm) danceBgm.pause(); }, 320);
     // 終了でメインBGMを元の設定値へフェードイン。
     rampGain(bgmGain, bgm, muted ? 0 : bgmVolume, 0.6);
   }
 };
 
-// ダンストラックの再生位置(ms)。位相同期の参考用(現状ロジックは gameTime グリッドで十分)。
+// ダンストラックの再生位置(ms)。連続再生クロック。開始時の拍合わせ + 毎フレーム再同期に使う。
 export const getMusicTimeMs = (): number | null =>
-  danceBgm && danceActive && !danceBgm.paused ? danceBgm.currentTime * 1000 : null;
+  danceBgm && !danceBgm.paused ? danceBgm.currentTime * 1000 : null;
 
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
@@ -341,11 +346,17 @@ const applyBgm = () => {
   if (bgmActive && !muted) {
     resumeSfxContext();
     ensureBgmRouting();
-    if (bgmGain) bgmGain.gain.value = bgmVolume;
-    else bgm.volume = bgmVolume;
+    // ダンス中はメインBGMをダック(0)で維持。それ以外は設定値。
+    if (bgmGain) bgmGain.gain.value = danceActive ? 0 : bgmVolume;
+    else bgm.volume = danceActive ? 0 : bgmVolume;
     void playBgm();
+    // ダンストラックも(操作ジェスチャ内で)再生開始してアンロック。通常は gain 0 の無音=連続クロック。
+    ensureDanceRouting();
+    if (danceGain) danceGain.gain.value = danceActive ? DANCE_VOLUME : 0;
+    void playDanceBgm();
   } else {
     bgm.pause();
+    if (danceBgm) danceBgm.pause();
   }
 };
 

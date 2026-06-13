@@ -31,6 +31,7 @@ import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_INTERVAL_MS, RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
+  RHYTHM_ARROW_GRID,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
@@ -362,24 +363,6 @@ interface Firefly {
   vx: number; vy: number; // drift velocity (px/s)
   phase: number; freq: number; base: number; size: number;
 }
-
-// リズムゲーム風の太いドット絵矢印(7x7)。上向きを基準に90°回転で4方向を作る。
-const RHYTHM_ARROW_UP = [
-  '...X...',
-  '..XXX..',
-  '.XXXXX.',
-  'XXXXXXX',
-  '..XXX..',
-  '..XXX..',
-  '..XXX..',
-].map(row => row.split('').map(c => (c === 'X' ? 1 : 0)));
-const rotateCW = (m: number[][]): number[][] => m.map((row, i) => row.map((_, j) => m[m.length - 1 - j][i]));
-const RHYTHM_ARROW_GRID: Record<'up' | 'down' | 'left' | 'right', number[][]> = {
-  up: RHYTHM_ARROW_UP,
-  right: rotateCW(RHYTHM_ARROW_UP),
-  down: rotateCW(rotateCW(RHYTHM_ARROW_UP)),
-  left: rotateCW(rotateCW(rotateCW(RHYTHM_ARROW_UP))),
-};
 
 export class PixiScene {
   private L: SceneLayers;

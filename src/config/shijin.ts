@@ -34,6 +34,25 @@ export const arrowFromDir = (x: number, y: number): RhythmArrow =>
   Math.abs(x) >= Math.abs(y) ? (x >= 0 ? 'right' : 'left') : (y >= 0 ? 'down' : 'up');
 // 表示用: 矢印グリフと四神の和名(コマンドUI/オーバーレイで使用)。
 export const ARROW_GLYPH: Record<RhythmArrow, string> = { up: '↑', down: '↓', left: '←', right: '→' };
+
+// リズムゲーム風の太いドット絵矢印(7x7)。上向きを基準に90°回転で4方向。Pixiオーバーレイと
+// HUD(左上コマンド)の両方で同じ形を使う。
+const RHYTHM_ARROW_UP: number[][] = [
+  '...X...',
+  '..XXX..',
+  '.XXXXX.',
+  'XXXXXXX',
+  '..XXX..',
+  '..XXX..',
+  '..XXX..',
+].map(row => row.split('').map(c => (c === 'X' ? 1 : 0)));
+const rotateArrowCW = (m: number[][]): number[][] => m.map((row, i) => row.map((_, j) => m[m.length - 1 - j][i]));
+export const RHYTHM_ARROW_GRID: Record<RhythmArrow, number[][]> = {
+  up: RHYTHM_ARROW_UP,
+  right: rotateArrowCW(RHYTHM_ARROW_UP),
+  down: rotateArrowCW(rotateArrowCW(RHYTHM_ARROW_UP)),
+  left: rotateArrowCW(rotateArrowCW(rotateArrowCW(RHYTHM_ARROW_UP))),
+};
 export const SHIJIN_JP: Record<ShijinGod, string> = { suzaku: '朱雀', genbu: '玄武', seiryu: '青龍', byakko: '白虎' };
 // 技を連続で出した回数(godSuccess)で変わるミラーボールの色。0白/1青/2緑/3赤、4でフィニッシュ=虹。
 export const RHYTHM_STAGE_COLORS = [0xffffff, 0x3b82f6, 0x22c55e, 0xef4444];
