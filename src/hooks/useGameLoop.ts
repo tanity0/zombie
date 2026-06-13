@@ -10,7 +10,8 @@ import {
   isKatanaMode,
   subWeaponBlockedByKatana,
   katanaRange,
-  KATANA_SLASH_INTERVAL_MS
+  KATANA_SLASH_INTERVAL_MS,
+  huntingMeleeRadius
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -39,7 +40,7 @@ import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
-  RHYTHM_ENTER_IDLE_MS, RHYTHM_TAP_RADIUS, RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
+  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_RADIUS, SUZAKU_BLAST_DAMAGE,
   GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE,
@@ -182,6 +183,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const turretFireRef = useRef<Map<string, number>>(new Map());
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
   const rhythmIdleStartRef = useRef<number>(0);
+  // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
+  // (フリックのドラッグやバッシュのスライド程度では抜けない)。
+  const rhythmMoveStartRef = useRef<number>(0);
   
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -381,13 +385,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       const pcx = p.x + p.width / 2;
       const pcy = p.y + p.height / 2;
       if (pa.kind === 'tap') {
-        spawnRing(pcx, pcy, 6, RHYTHM_TAP_RADIUS, 'rgba(167,139,250,0.6)', 2, 200);
+        // ジャストのタップ: 近接ナイフ範囲(MELEE_RADIUS+ハンティング補正)内の敵を強制ノックバック。
+        const meleeR = huntingMeleeRadius(p);
+        spawnRing(pcx, pcy, 6, meleeR, 'rgba(167,139,250,0.6)', 2, 200);
         for (const e of useGameStore.getState().enemies) {
           if (e.type === 'reaper') continue;
           const ex = e.x + e.width / 2;
           const ey = e.y + e.height / 2;
           const d = Math.hypot(ex - pcx, ey - pcy);
-          if (d > RHYTHM_TAP_RADIUS) continue;
+          if (d > meleeR) continue;
           shijinHitEnemy(e.id, RHYTHM_TAP_DAMAGE, false);
           const n = Math.max(0.001, d);
           useGameStore.getState().knockbackEnemy(e.id, (ex - pcx) / n, (ey - pcy) / n, RHYTHM_TAP_KNOCKBACK_MULT);
@@ -577,11 +583,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!ownsRhythm) {
             if (rs.rhythm.active) useGameStore.getState().setRhythmActive(false);
             rhythmIdleStartRef.current = 0;
+            rhythmMoveStartRef.current = 0;
           } else if (rp.isMoving) {
-            // 動いたら終了(UI消滅)。停止計測リセット。
-            rhythmIdleStartRef.current = newGameTime;
-            if (rs.rhythm.active) useGameStore.getState().setRhythmActive(false);
+            // 動いている: 一定時間「歩き続けた」場合のみ終了。短いフリックのドラッグや
+            // バッシュのスライド(~150ms)では抜けない。
+            if (rhythmMoveStartRef.current === 0) rhythmMoveStartRef.current = newGameTime;
+            rhythmIdleStartRef.current = 0;
+            if (rs.rhythm.active && newGameTime - rhythmMoveStartRef.current >= RHYTHM_EXIT_MOVE_MS) {
+              useGameStore.getState().setRhythmActive(false);
+            }
           } else {
+            // 停止中: 一定時間でモード開始。
+            rhythmMoveStartRef.current = 0;
             if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
               useGameStore.getState().setRhythmActive(true);

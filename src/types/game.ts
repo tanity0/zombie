@@ -81,6 +81,11 @@ export interface Player {
   // 一閃の着地後に動けない硬直(後隙)が切れる時刻。刀・村雨共通。
   // 着地(katanaDashUntil)から KATANA_DASH_RECOVERY_MS の間は移動も次の一閃も不可。
   katanaRecoveryUntil: number;
+  // 四神舞フリック=盾バッシュ風スライド。shijinSlideUntil が未来の間、入力を無視して
+  // shijinSlideDir 方向へ一定速で滑る(movePlayer がダッシュと同様に上書き)。
+  shijinSlideUntil: number;
+  shijinSlideDirX: number;
+  shijinSlideDirY: number;
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.

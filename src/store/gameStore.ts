@@ -10,7 +10,8 @@ import {
 import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
-  randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS
+  randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
+  SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
@@ -751,6 +752,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     katanaDashDirY: 0,
     katanaDashCooldownEnd: 0,
     katanaRecoveryUntil: 0,
+    shijinSlideUntil: 0,
+    shijinSlideDirX: 0,
+    shijinSlideDirY: 0,
     straps: 0,
     vaccineRevives: 0
   },
@@ -825,9 +829,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dashing = nowMs < player.katanaDashUntil;
       // 着地後の硬直中(刀・村雨共通)は移動入力を受け付けない(その場で停止)。
       const recovering = !dashing && nowMs < player.katanaRecoveryUntil;
+      // 四神舞フリックの盾バッシュ風スライド(入力を無視して固定方向へ短く滑る)。
+      const sliding = !dashing && !recovering && nowMs < player.shijinSlideUntil;
       const moveSpeed = dashing
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
         : recovering ? 0
+        : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
         : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT : player.speed;
 
       // Target direction from swipe (touch) or keys.
@@ -839,6 +846,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       } else if (recovering) {
         tx = 0;
         ty = 0;
+      } else if (sliding) {
+        tx = player.shijinSlideDirX;
+        ty = player.shijinSlideDirY;
       } else if (swipeDirection) {
         tx = swipeDirection.x;
         ty = swipeDirection.y;
@@ -3454,6 +3464,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         prompt = randomRhythmPrompt();
       }
     }
+    // フリックは盾バッシュ風にプレイヤーがその方向(上下左右の主軸)へ短く滑る。
+    const slideVec = arrow === 'up' ? { x: 0, y: -1 }
+      : arrow === 'down' ? { x: 0, y: 1 }
+      : arrow === 'left' ? { x: -1, y: 0 }
+      : arrow === 'right' ? { x: 1, y: 0 } : null;
     set(s => ({
       rhythm: {
         ...s.rhythm,
@@ -3468,6 +3483,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastGod: firedGod ?? s.rhythm.lastGod,
         pending: [...s.rhythm.pending, ...newPending],
       },
+      player: slideVec
+        ? { ...s.player, shijinSlideUntil: Date.now() + SHIJIN_SLIDE_MS, shijinSlideDirX: slideVec.x, shijinSlideDirY: slideVec.y }
+        : s.player,
     }));
     return { judged, god: firedGod, finish };
   },
@@ -3583,6 +3601,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           katanaDashDirX: 0,
           katanaDashDirY: 0,
           katanaDashCooldownEnd: 0,
+          shijinSlideUntil: 0,
+          shijinSlideDirX: 0,
+          shijinSlideDirY: 0,
           straps: state.startWithTestStraps ? 1000 : 0,
           vaccineRevives: 0
         },

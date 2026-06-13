@@ -9,7 +9,12 @@ export const RHYTHM_SUCCESS_WINDOW_MS = 150;  // TODO: 成功判定幅(±ms)。�
 export const RHYTHM_JUST_WINDOW_MS = 60;      // TODO: ジャスト判定幅(±ms)。今は演出区別のみ
 export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多重判定防止)
 export const RHYTHM_ENTER_IDLE_MS = 600;      // 停止からリズムモード開始までの時間
+// リズム終了はこの時間「動き続けた」場合のみ(短いフリックのドラッグ/スライドでは抜けない)。
+export const RHYTHM_EXIT_MOVE_MS = 320;        // TODO: 歩いて抜けたと見なすまでの時間
 export const RHYTHM_START_INVULN_MS = 600;    // TODO: 開始直後の無敵(仮値0.6s)
+// フリック=盾バッシュ風スライド。プレイヤーがフリック方向へ短く滑って攻撃する。
+export const SHIJIN_SLIDE_DISTANCE = 58;       // TODO: 滑る距離(盾バッシュ50相当)
+export const SHIJIN_SLIDE_MS = 150;            // TODO: 滑りの所要時間
 export const RHYTHM_PROMPT_LEN = 4;           // 1パターンの矢印数(全部で4)
 export const SHIJIN_FINISH_COUNT = 4;         // 四神技4回成功で全体フィニッシュ
 export const RHYTHM_ARROWS: RhythmArrow[] = ['up', 'down', 'left', 'right'];
@@ -32,13 +37,14 @@ export const rhythmComboStage = (combo: number): number =>
   Math.max(0, Math.min(RHYTHM_COMBO_STAGE_COLORS.length - 1, Math.floor(combo / 4)));
 
 // --- 通常リズム入力(控えめ。コンボで威力は伸ばさない) -------------------
-export const RHYTHM_TAP_RADIUS = 90;          // TODO: タップの周囲吹き飛ばし半径
-export const RHYTHM_TAP_DAMAGE = 4;           // TODO: タップの軽ダメージ
-export const RHYTHM_TAP_KNOCKBACK_MULT = 1.2; // TODO: タップの軽ノックバック
+// タップ(ジャスト): 近接ナイフ範囲(MELEE_RADIUS)内の敵を強制ノックバック。
+export const RHYTHM_TAP_DAMAGE = 4;           // TODO: タップの軽ダメージ(主目的はノックバック)
+export const RHYTHM_TAP_KNOCKBACK_MULT = 3.4; // タップの強制ノックバック(強め)
+// フリック(ジャスト): 盾バッシュ風に滑りながら方向攻撃。
 export const RHYTHM_FLICK_RANGE = 130;        // TODO: フリック方向攻撃の射程
-export const RHYTHM_FLICK_HALF_W = 32;        // TODO: フリック方向攻撃の帯半幅
-export const RHYTHM_FLICK_DAMAGE = 8;         // TODO: フリック方向攻撃のダメージ(シールドバッシュ感)
-export const RHYTHM_FLICK_KNOCKBACK_MULT = 2.0; // TODO
+export const RHYTHM_FLICK_HALF_W = 34;        // TODO: フリック方向攻撃の帯半幅
+export const RHYTHM_FLICK_DAMAGE = 12;        // TODO: バッシュのダメージ
+export const RHYTHM_FLICK_KNOCKBACK_MULT = 3.6; // バッシュの強ノックバック
 
 // --- 四神技(すべて近接フィニッシュ可・数値TODO) -------------------------
 // 朱雀: 近場最大3体をグレネード相当の範囲爆破(既存ヘビーグレネード値を流用)。

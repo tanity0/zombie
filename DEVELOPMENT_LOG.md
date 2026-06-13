@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-13 - v0.25.225 - 四神舞: タップ=近接範囲ノックバック / フリック=盾バッシュ風スライド攻撃 (Claude Code)
+
+### Summary
+リズム入力の挙動をユーザー指定へ変更。(1)ジャストのタップ=近接ナイフ範囲(MELEE_RADIUS+ハンティング補正)
+内の敵を強制ノックバック。(2)上下左右フリック=その方向へプレイヤーが短く滑って攻撃(盾バッシュ風)。
+さらにフリックのドラッグやスライドでリズムが即終了しないよう、終了条件を「一定時間歩き続けた時のみ」に変更。
+
+### 実装
+- `src/config/shijin.ts`: RHYTHM_EXIT_MOVE_MS(320), SHIJIN_SLIDE_DISTANCE(58)/SHIJIN_SLIDE_MS(150) 追加。
+  タップは半径廃止し近接範囲基準へ。ノックバック強化(tap=3.4 / flick=3.6)、フリックダメージ12。
+- `src/types/game.ts` + `gameStore.ts`: Player に shijinSlideUntil/DirX/DirY。movePlayer にスライド上書き
+  (ダッシュと同様、入力無視で固定方向へ SHIJIN_SLIDE_DISTANCE/SHIJIN_SLIDE_MS の速度)。rhythmInput の
+  フリック時に主軸(上下左右)方向へスライド開始。
+- `src/hooks/useGameLoop.ts`: タップは huntingMeleeRadius(p) 範囲で強制ノックバック。enter/exit を
+  rhythmMoveStartRef で「歩き続け RHYTHM_EXIT_MOVE_MS で終了」へ。短いフリック/スライドでは抜けない。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### TODO
+- スライド距離/時間、ノックバック強度、終了までの歩行時間は仮値。実機で調整。
+- スライド中の壁衝突は movePlayer の AABB に従う(貫通しない)。
+
 ## 2026-06-13 - v0.25.224 - 四神舞: リズムの輪を「足元めがけて左右→足元中央で重なる」へ修正 (Claude Code)
 
 ### Summary
