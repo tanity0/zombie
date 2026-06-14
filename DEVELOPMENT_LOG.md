@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.268 - ダンス専用BGMは断念し263の軽い構成へ戻す + 端末発熱の疑い (Claude Code)
+
+### 重要な観測
+- v0.25.267 は **ミュートしても30fps**(ユーザー報告)。音を切れば音声コードは何も再生しないのに30fps。
+  → 直近の30fpsは **音声コードが原因ではない**。約1時間の重いビルド連続テストで **端末が発熱(サーマルスロットリング)**
+    している可能性が高い(263を「軽い」と確認した時刻より後に悪化)。
+- ここまで(257〜267)でダンス専用音声は全方式が重い/無音と判明。唯一「単一 routed 要素を差し替えず鳴らす」=263 が軽い。
+
+### 対応
+- ダンス専用BGMを断念し、**ダンス中も戦闘BGMをそのまま流す**(音声は一切いじらない=最も軽い=263相当)を正式版に。
+- `src/audio/audioManager.ts`: ダンス専用要素/ルーティング/prewarm/applyDanceEl を全撤去。setDanceMode は
+  danceActive を更新するだけ(音声は戦闘BGMのまま)。applyBgm から `!danceActive` 条件を除去。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+- 推奨: **端末を一度冷ましてから** v0.25.268 をフル再読込し、通常プレイの素のFPSを確認。これで60fpsに戻るなら
+  直近の30/10fpsはスロットリング由来。冷えた端末でなら 267 の「2 routed 要素」方式の再評価も可能。
+
 ## 2026-06-14 - v0.25.267 - ダンスBGM本実装: 専用の2つ目の要素もWebAuidoルーティングして鳴らす (Claude Code)
 
 ### 266の結果(決定的)
