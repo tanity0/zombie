@@ -248,8 +248,7 @@ const ensureBgm = () => {
 // メインBGMとは別の HTMLAudioElement。リズムモード中だけ pulse-grid を鳴らし、メインBGMは
 // その間ダック(0)する。終了でメインへフェード復帰。
 let danceBgm: HTMLAudioElement | null = null;
-let danceGain: GainNode | null = null;
-let danceRouted = false;
+let dancePrimed = false; // ダンス曲はWebAudioに通さずネイティブ再生。初回ジェスチャでアンロックする。
 let danceActive = false;
 // 診断用: URLに ?danceaudio=0 を付けるとダンス音声を一切再生しない(重さ切り分け用)。
 const DANCE_AUDIO_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('danceaudio') === '0';
@@ -260,24 +259,20 @@ const ensureDanceBgm = () => {
   danceBgm.loop = true;
   danceBgm.preload = 'auto';
   danceBgm.playsInline = true;
-  danceBgm.volume = 1; // 実音量は WebAudio gain 側で制御
+  danceBgm.volume = 0; // ネイティブ音量で制御(ダンス中だけ上げる)
 };
 
-const ensureDanceRouting = () => {
-  if (danceRouted) return;
-  const ctx = ensureSfxContext();
+// ダンス曲のアンロック: BGM開始の操作ジェスチャ内で一度だけ無音再生→停止しておく(後でダンス中に
+// play() できるように)。WebAudio(MediaElementSource)には通さない=常時処理が無く軽い。
+const primeDanceBgm = () => {
+  if (dancePrimed || DANCE_AUDIO_OFF || typeof window === 'undefined') return;
   ensureDanceBgm();
-  if (!ctx || !danceBgm) return;
-  try {
-    const source = ctx.createMediaElementSource(danceBgm);
-    danceGain = ctx.createGain();
-    danceGain.gain.value = 0;
-    source.connect(danceGain);
-    danceGain.connect(ctx.destination);
-    danceRouted = true;
-  } catch {
-    danceRouted = false;
-  }
+  if (!danceBgm) return;
+  dancePrimed = true;
+  const el = danceBgm;
+  el.muted = true; el.volume = 0;
+  el.play().then(() => { el.pause(); el.muted = false; try { el.currentTime = 0; } catch { /* ignore */ } })
+    .catch(() => { dancePrimed = false; });
 };
 
 // GainNode を滑らかにランプ(WebAudio不可なら element.volume にフォールバック)。
@@ -315,13 +310,13 @@ const playDanceBgm = async () => {
 // ダンストラックは BGM が有効な間ずっと再生(通常は gain 0 で無音=連続クロック)。ダンス中だけ
 // 音量を上げ、メインBGMは即0で確実に無音化(混ざり防止)。非ダンスでメインへフェード復帰。停止しない。
 // ダンスの音量はメインBGMと同じ設定値(bgmVolume)に合わせる。
+// ダンス曲は WebAudio に通さず、ダンス中だけネイティブ再生(element.volume/muted で制御)。終了で停止。
+// これで MediaElementSource の常時処理(重さの原因)が無くなる。メインBGMのダックは WebAudio(bgmGain)。
 export const setDanceMode = (active: boolean, level = 2) => {
   if (DANCE_AUDIO_OFF) { danceActive = active; return; } // 診断: ダンス音声・ダックを一切いじらない
   ensureDanceBgm();
-  ensureDanceRouting();
   resumeSfxContext();
   if (!danceBgm) return;
-  const vol = muted ? 0 : bgmVolume; // ダンス音量 = BGM設定値
   if (active) {
     if (danceActive && level === currentDanceLevel) return; // 同レベルで既にダンス中なら何もしない
     danceActive = true;
@@ -331,18 +326,19 @@ export const setDanceMode = (active: boolean, level = 2) => {
       try { danceBgm.src = DANCE_TRACKS[level] ?? DANCE_TRACKS[2]; danceBgm.load(); } catch { /* ignore */ }
     }
     try { danceBgm.currentTime = 0; } catch { /* ignore */ }
+    danceBgm.muted = muted;              // iOSは muted で消音(element.volume無視対策)
+    danceBgm.volume = muted ? 0 : bgmVolume;
     if (bgmActive && !muted) void playDanceBgm();
-    setGainNow(bgmGain, bgm, 0);            // メインBGMを即0(混ざらない)。位置・設定は保持。
-    rampGain(danceGain, danceBgm, vol, 0.1);
+    setGainNow(bgmGain, bgm, 0);          // メインBGMを即0(混ざらない)。位置・設定は保持。
   } else {
     if (!danceActive) return;
     danceActive = false;
-    rampGain(danceGain, danceBgm, 0, 0.2);
-    rampGain(bgmGain, bgm, vol, 0.6);       // 元の設定値へフェードイン
+    try { danceBgm.pause(); } catch { /* ignore */ } // ダンス曲は停止(連続再生/デコードしない=軽い)
+    rampGain(bgmGain, bgm, muted ? 0 : bgmVolume, 0.6); // 元の設定値へフェードイン
   }
 };
 
-// ダンストラックの再生位置(ms)。連続再生クロック。開始時の拍合わせ + 毎フレーム再同期に使う。
+// ダンストラックの再生位置(ms)。開始時の拍合わせに使う(再生中のみ)。
 export const getMusicTimeMs = (): number | null =>
   danceBgm && !danceBgm.paused ? danceBgm.currentTime * 1000 : null;
 
@@ -379,10 +375,9 @@ const applyBgm = () => {
     if (bgmGain) bgmGain.gain.value = danceActive ? 0 : bgmVolume;
     else bgm.volume = danceActive ? 0 : bgmVolume;
     void playBgm();
-    // ダンストラックも(操作ジェスチャ内で)再生開始してアンロック。通常は gain 0 の無音=連続クロック。
-    ensureDanceRouting();
-    if (danceGain) danceGain.gain.value = danceActive ? bgmVolume : 0;
-    void playDanceBgm();
+    // ダンス曲は WebAudio 非経由のネイティブ再生。ここでは(操作ジェスチャ内で)アンロックのみ。
+    // 常時再生はしない(ダンス中だけ setDanceMode で再生)。
+    primeDanceBgm();
   } else {
     bgm.pause();
     if (danceBgm) danceBgm.pause();

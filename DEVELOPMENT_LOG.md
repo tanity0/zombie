@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.254 - ダンス重さの本対策: ダンス曲をWebAudio非経由のネイティブ再生に (Claude Code)
+
+### Summary
+- 診断の結果 ?danceaudio=0 でのみ60fpsに回復=原因は「ダンス曲の再生処理」と確定(描画/ビットレートは無関係)。
+- 原因はダンス曲を WebAudio(MediaElementSource→GainNode)経由で常時再生していたこと。メインBGMは
+  問題ないが、ダンス曲を2つ目の MediaElementSource として処理するのが重かった。
+- 対策: ダンス曲を WebAudio に通さず、ダンス中だけ HTMLAudioElement のネイティブ再生(element.volume/muted)。
+  終了で pause(連続デコードしない)。メインBGMのダックは従来通り WebAudio(bgmGain)。
+- iOS対策で element.muted も併用。アンロックは BGM 開始ジェスチャ内で一度だけ無音再生→停止(primeDanceBgm)。
+
+### 実装
+- `src/audio/audioManager.ts`: ensureDanceRouting/danceGain/danceRouted 撤去。primeDanceBgm 追加。
+  setDanceMode をネイティブ再生(開始でplay/終了でpause、音量はelement側)に。applyBgm はアンロックのみ。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### Note
+- 診断トグル(?danceaudio=0 / ?dancevfx=0)は当面残置(確認用)。問題なければ後で撤去。
+
 ## 2026-06-14 - v0.25.253 - 診断: ダンス重さの切り分け用 URLトグル(?danceaudio=0 / ?dancevfx=0) (Claude Code)
 
 ### Summary
