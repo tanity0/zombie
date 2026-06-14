@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.271 - ダンスBGM本実装: 単一要素のsrc差し替え+canplay待ちで無音解消 (Claude Code)
+
+### 確定した端末特性(低電力OFFで再計測)
+- 269(=266/単一要素・src差し替え)= 通常60/ダンス57fps(軽い)。270(=267/2つのrouted要素)= ダンス9fps(重い)。
+  → **HTMLAudioElementは「1つだけ」なら軽い、「2つ以上」だと片方をpauseしても重い**。1要素ならsrc差し替えも軽い。
+- 残課題は「src差し替え直後にすぐ play() すると無音」(265/266)。
+
+### 実装
+- **唯一の BGM 要素**の src を 戦闘↔ダンス で差し替える(2要素は作らない=軽い)。
+  通常=戦闘曲(BGM_TRACKS[0])、ダンス=そのレベルのダンス曲(DANCE_LOOP_TRACKS[level])。
+- 無音対策: `applyBgm` で src を変えたら、すぐ play() せず **canplay を待ってから再生**(既に読めていれば即時)。
+- `preloadAllAudio` でダンス曲3つを HTTP キャッシュへ事前ウォーム(差し替え時のヒッチ抑制)。
+- BGMは素再生(element.volume / `?bgmroute=on`で従来ルーティング。routedだと差し替え後に無音になるので既定は素)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機(低電力OFF)で「ダンス中:ダンス曲が鳴る＆57fps前後」を確認待ち。
+
+### Performance（load score: 1/10）
+- 同時に存在する HTMLAudioElement は常に1つ。重い経路(2要素/AudioBufferSource)は不使用。
+- 既知点: iOSは素再生で音量スライダーが効かない(再生はする)。ループ継ぎ目は要素 loop の微小ギャップ(WAVなので小)。
+
 ## 2026-06-14 - v0.25.270 - v0.25.267相当(2つのrouted要素)を低電力OFFで再評価 (Claude Code)
 
 ### 判明
