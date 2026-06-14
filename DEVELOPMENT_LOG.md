@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.261 - 診断: 戦闘BGMの素をダンスlevel1曲に差し替え (Claude Code)
+
+### 目的(切り分け)
+- 戦闘BGM=単一要素・起動時ロード・通常再生は軽いと実証済み。その素を `dance-100-loop.wav` に差し替え、
+  ダンス曲を「1要素・通常再生」したとき軽いか重いかを見る。
+  - 軽ければ → 曲の中身は無罪。重さの正体は「2系統目の音声を持つこと」。次は1要素で曲を切り替える方向。
+  - 重ければ → この WAV(巨大PCM)を要素で鳴らすこと自体が重い。次は小さいMP3を試す。
+- `src/audio/audioManager.ts`: `BGM_DIAG_DANCE`(既定true)で ensureBgm の src を DANCE_LOOP_TRACKS[1] に。
+  `?bgm=normal` で通常の戦闘BGM(rotten-iron-march.mp3)に戻せる。
+- ※これは診断用。確認が取れたら通常BGMに戻す。
+
 ## 2026-06-14 - v0.25.260 - ダンス専用音声を既定OFFに(戦闘BGM継続=60fps)。別トラックは全方式で重いと判明 (Claude Code)
 
 ### 結論(重要)
