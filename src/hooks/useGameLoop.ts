@@ -37,7 +37,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, getMusicTimeMs, setDanceMode } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
@@ -604,16 +604,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             rhythmMoveStartRef.current = 0;
             if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
-              // 四神舞レベルでBPM(=interval)が変わる。レベルのトラックに切替え、その拍に合わせる。
+              // 四神舞レベルでBPM(=interval)が変わる。拍は固定 gameTime グリッドで合わせる(音楽同期はしない)。
               const lvl = Math.max(1, Math.min(3, rp.subWeaponLevels['shijin'] ?? 1));
               const interval = rhythmIntervalForLevel(lvl);
-              const musicMs = getMusicTimeMs();
-              let firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + RHYTHM_MUSIC_OFFSET_MS;
-              if (musicMs !== null) {
-                const m = musicMs - RHYTHM_MUSIC_OFFSET_MS;
-                const nextBeatMusic = Math.ceil((m + RHYTHM_LEAD_MS) / interval) * interval;
-                firstBeatAt = newGameTime + (nextBeatMusic - m);
-              }
+              const firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + RHYTHM_MUSIC_OFFSET_MS;
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
             }
           }

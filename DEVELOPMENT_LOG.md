@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.277 - 音楽同期の死にコードを完全撤去(フレーム処理に残骸なしを確定) (Claude Code)
+
+### 背景(ユーザー確認依頼)
+- 「サークルと曲を同期させる動き・フレーム処理に残ってる処理はない?」
+- 調査結果: 毎フレームの位相再同期(resync)は v0.25.250 で既に廃止済み。サークルは固定 gameTime グリッドで
+  一定に動く。ただし紛らわしい死にコードが残っていた:
+  - `resyncRhythm`(store): 定義のみでどこからも未呼び出し。
+  - `getMusicTimeMs()`(audioManager): null 固定。useGameLoop でダンス開始の1回だけ呼ばれ、`if(musicMs!==null)`
+    ブロックは常にスキップ＝実質no-op。
+  - `RhythmState.lastMusicMs`: resync 専用フィールド。
+
+### 撤去
+- `gameStore.ts`: `resyncRhythm` 実装・interface・`lastMusicMs` 初期化/リセットを削除。
+- `types/game.ts`: `RhythmState.lastMusicMs` を削除。
+- `audioManager.ts`: `getMusicTimeMs` を削除。
+- `useGameLoop.ts`: `getMusicTimeMs` import と、ダンス開始時の musicMs 分岐(死にコード)を削除。
+  firstBeatAt は固定 gameTime グリッドのみで算出(挙動は変わらない=従来も null 分岐は通っていない)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。フレーム処理系に音楽同期の残骸なしを確定。挙動は不変。
+- 毎フレーム走るのは tickRhythm(固定グリッド上の取りこぼし判定のみ)で音楽同期はしない。
+
 ## 2026-06-14 - v0.25.276 - 軽い単一要素src差し替えへ回帰＋差し替え後再生を堅牢化(無音解消) (Claude Code)
 
 ### 275の結果(低電力OFF)

@@ -272,9 +272,6 @@ export const setDanceMode = (active: boolean, level = 2) => {
   applyBgm(); // 要素の src を desiredBgmSrc に合わせて差し替え/再生
 };
 
-// 拍合わせは gameTime グリッドで行う(開始時に LEAD で合わせる)ため、音楽位置は使わない。
-export const getMusicTimeMs = (): number | null => null;
-
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
 // and balance it against the SFX. Falls back to element.volume if unavailable.
