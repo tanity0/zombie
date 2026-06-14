@@ -20,7 +20,7 @@ const DANCE_TRACKS: Record<number, string> = {
   2: `${import.meta.env.BASE_URL}audio/dance-120.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
   3: `${import.meta.env.BASE_URL}audio/dance-140.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
 };
-let currentDanceLevel = 2; // 現在 danceBgm に読み込まれているトラックのレベル
+let currentDanceLevel = 2; // 現在 bgm に読み込まれているダンストラックのレベル
 
 type SfxConfig = {
   src: string;
@@ -245,104 +245,65 @@ const ensureBgm = () => {
 };
 
 // --- ダンスタイム(四神舞)専用トラック ----------------------------------
-// メインBGMとは別の HTMLAudioElement。リズムモード中だけ pulse-grid を鳴らし、メインBGMは
-// その間ダック(0)する。終了でメインへフェード復帰。
-let danceBgm: HTMLAudioElement | null = null;
-let dancePrimed = false; // ダンス曲はWebAudioに通さずネイティブ再生。初回ジェスチャでアンロックする。
+// メインBGMと同じ bgm エレメントで src を入れ替える(2つ目の音声要素は作らない)。
+// 開始でダンス曲を頭から、終了でメインBGMを保存位置から復帰。
 let danceActive = false;
-// 診断用: URLに ?danceaudio=0 を付けるとダンス音声を一切再生しない(重さ切り分け用)。
+// 診断用: URLに ?danceaudio=0 を付けるとダンス曲に切り替えない(重さ切り分け用)。
 const DANCE_AUDIO_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('danceaudio') === '0';
+// ダンスは「メインBGMと同じ1つの音声要素(bgm)で曲を入れ替える」方式。2つ目の音声要素を作らないので
+// この端末でも重くならない(2つ目はMP3デコードがソフト処理に落ちて重い)。メインBGMの位置は保存して復帰。
+let savedMainSrc = '';
+let savedMainTime = 0;
 
-const ensureDanceBgm = () => {
-  if (danceBgm || typeof Audio === 'undefined') return;
-  danceBgm = new Audio(DANCE_TRACKS[currentDanceLevel] ?? DANCE_TRACKS[2]);
-  danceBgm.loop = true;
-  danceBgm.preload = 'auto';
-  danceBgm.playsInline = true;
-  danceBgm.volume = 0; // ネイティブ音量で制御(ダンス中だけ上げる)
-};
-
-// ダンス曲のアンロック: BGM開始の操作ジェスチャ内で一度だけ無音再生→停止しておく(後でダンス中に
-// play() できるように)。WebAudio(MediaElementSource)には通さない=常時処理が無く軽い。
-const primeDanceBgm = () => {
-  if (dancePrimed || DANCE_AUDIO_OFF || typeof window === 'undefined') return;
-  ensureDanceBgm();
-  if (!danceBgm) return;
-  dancePrimed = true;
-  const el = danceBgm;
-  el.muted = true; el.volume = 0;
-  el.play().then(() => { el.pause(); el.muted = false; try { el.currentTime = 0; } catch { /* ignore */ } })
-    .catch(() => { dancePrimed = false; });
-};
-
-// GainNode を滑らかにランプ(WebAudio不可なら element.volume にフォールバック)。
-const rampGain = (gain: GainNode | null, el: HTMLAudioElement | null, target: number, sec: number) => {
-  const ctx = sfxContext;
-  if (gain && ctx) {
-    const now = ctx.currentTime;
-    gain.gain.cancelScheduledValues(now);
-    gain.gain.setValueAtTime(gain.gain.value, now);
-    gain.gain.linearRampToValueAtTime(target, now + sec);
-  } else if (el) {
-    el.volume = target;
-  }
-};
-
-// gain を即時設定(ランプなし)。混ざり防止のため、ダンス開始でメインを即0にするのに使う。
-const setGainNow = (gain: GainNode | null, el: HTMLAudioElement | null, v: number) => {
-  const ctx = sfxContext;
-  if (gain && ctx) {
-    gain.gain.cancelScheduledValues(ctx.currentTime);
-    gain.gain.setValueAtTime(v, ctx.currentTime);
-  } else if (el) {
-    el.volume = v;
-  }
-};
-
-// ダンストラックの再生(失敗は無視)。BGM開始の操作ジェスチャ内で呼ぶことでアンロックされる。
-const playDanceBgm = async () => {
-  if (DANCE_AUDIO_OFF) return; // 診断: ダンス音声を鳴らさない
-  ensureDanceBgm();
-  if (!danceBgm) return;
-  try { await danceBgm.play(); } catch { /* autoplay policy: 後続のジェスチャで再試行 */ }
-};
-
-// ダンストラックは BGM が有効な間ずっと再生(通常は gain 0 で無音=連続クロック)。ダンス中だけ
-// 音量を上げ、メインBGMは即0で確実に無音化(混ざり防止)。非ダンスでメインへフェード復帰。停止しない。
-// ダンスの音量はメインBGMと同じ設定値(bgmVolume)に合わせる。
-// ダンス曲は WebAudio に通さず、ダンス中だけネイティブ再生(element.volume/muted で制御)。終了で停止。
-// これで MediaElementSource の常時処理(重さの原因)が無くなる。メインBGMのダックは WebAudio(bgmGain)。
-export const setDanceMode = (active: boolean, level = 2) => {
-  if (DANCE_AUDIO_OFF) { danceActive = active; return; } // 診断: ダンス音声・ダックを一切いじらない
-  ensureDanceBgm();
-  resumeSfxContext();
-  if (!danceBgm) return;
-  if (active) {
-    if (danceActive && level === currentDanceLevel) return; // 同レベルで既にダンス中なら何もしない
-    danceActive = true;
-    // 四神舞レベルのトラックへ切替(BPMと一致)。
-    if (level !== currentDanceLevel) {
-      currentDanceLevel = level;
-      try { danceBgm.src = DANCE_TRACKS[level] ?? DANCE_TRACKS[2]; danceBgm.load(); } catch { /* ignore */ }
+// bgm の src を切替えて(time>0なら位置合わせして)再生。位置合わせはメタデータ読込後に行う。
+const swapBgmTo = (src: string, time: number) => {
+  if (!bgm) return;
+  const el = bgm;
+  const apply = () => { try { if (time > 0) el.currentTime = time; } catch { /* ignore */ } void el.play().catch(() => {}); };
+  try {
+    el.src = src;
+    el.load();
+    if (time > 0 && typeof window !== 'undefined') {
+      const onMeta = () => { el.removeEventListener('loadedmetadata', onMeta); apply(); };
+      el.addEventListener('loadedmetadata', onMeta, { once: true });
+      window.setTimeout(() => { el.removeEventListener('loadedmetadata', onMeta); apply(); }, 400);
+    } else {
+      apply();
     }
-    try { danceBgm.currentTime = 0; } catch { /* ignore */ }
-    danceBgm.muted = muted;              // iOSは muted で消音(element.volume無視対策)
-    danceBgm.volume = muted ? 0 : bgmVolume;
-    // ★ 同時2ストリーム(メイン+ダンス)がこの端末で重い → メインBGMは「停止」(位置は保持)して
-    //   常に1ストリームに保つ。ダックではなく pause。
-    try { bgm?.pause(); } catch { /* ignore */ }
-    if (bgmActive && !muted) void playDanceBgm();
+  } catch { /* ignore */ }
+};
+
+// ダンスの開始/終了。メインBGMと同じ bgm エレメントで曲を入れ替える(=常に音声1本=戦闘曲と同じ軽さ)。
+// 開始: メインBGMの位置/srcを保存し、ダンス曲を頭から再生。終了: メインBGMを位置復帰して再生。
+export const setDanceMode = (active: boolean, level = 2) => {
+  if (DANCE_AUDIO_OFF) { danceActive = active; return; }
+  ensureBgm();
+  if (!bgm) return;
+  if (active) {
+    if (danceActive && level === currentDanceLevel) return; // 同レベルで既にダンス中
+    if (!danceActive) {
+      savedMainSrc = bgm.currentSrc || bgm.src || BGM_TRACKS[0]; // メインBGMの位置/srcを退避
+      savedMainTime = bgm.currentTime || 0;
+    }
+    danceActive = true;
+    currentDanceLevel = level;
+    resumeSfxContext();
+    if (bgmActive && !muted) swapBgmTo(DANCE_TRACKS[level] ?? DANCE_TRACKS[2], 0); // ダンス曲は頭から
   } else {
     if (!danceActive) return;
     danceActive = false;
-    try { danceBgm.pause(); } catch { /* ignore */ } // ダンス曲は停止
-    if (bgmActive && !muted) void playBgm();          // メインBGMを停止位置から再開
+    const restoreSrc = savedMainSrc || BGM_TRACKS[0];
+    if (bgmActive && !muted) {
+      swapBgmTo(restoreSrc, savedMainTime); // メインBGMを位置復帰して再生
+    } else if (bgm) {
+      // 再生していない(ゲーム離脱等)時も src だけは戦闘曲へ戻しておく(次回ダンス曲が残らないように)。
+      try { bgm.src = restoreSrc; bgm.load(); } catch { /* ignore */ }
+    }
   }
 };
 
-// ダンストラックの再生位置(ms)。開始時の拍合わせに使う(再生中のみ)。
-export const getMusicTimeMs = (): number | null =>
-  danceBgm && !danceBgm.paused ? danceBgm.currentTime * 1000 : null;
+// 拍合わせは gameTime グリッドで行う(開始時に LEAD で合わせる)ため、音楽位置は使わない。
+export const getMusicTimeMs = (): number | null => null;
 
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
@@ -373,16 +334,11 @@ const applyBgm = () => {
   if (bgmActive && !muted) {
     resumeSfxContext();
     ensureBgmRouting();
-    if (bgmGain) bgmGain.gain.value = bgmVolume; // メイン音量は設定値(ダンス中はダックでなく停止で対応)
+    if (bgmGain) bgmGain.gain.value = bgmVolume;
     else bgm.volume = bgmVolume;
-    // ★ 同時2ストリーム回避: ダンス中はメインBGMを停止し、ダンス曲だけ鳴らす。非ダンス時のみメイン再生。
-    if (danceActive) { try { bgm.pause(); } catch { /* ignore */ } }
-    else void playBgm();
-    // ダンス曲は WebAudio 非経由のネイティブ再生。ここでは(操作ジェスチャ内で)アンロックのみ。
-    primeDanceBgm();
+    void playBgm(); // bgm の src は setDanceMode が管理(ダンス中はダンス曲)。ここは再生と音量のみ。
   } else {
     bgm.pause();
-    if (danceBgm) danceBgm.pause();
   }
 };
 
@@ -450,18 +406,16 @@ const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise
 export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
-  ensureDanceBgm();
-  // 各レベルのダンストラックも先読み(存在しないものは error で即終了)。danceBgm の現在トラックは別途待つ。
-  if (typeof Audio !== 'undefined') {
-    for (const lvl of [1, 2, 3]) {
-      if (lvl === currentDanceLevel) continue;
-      try { const a = new Audio(DANCE_TRACKS[lvl]); a.preload = 'auto'; a.load(); } catch { /* ignore */ }
-    }
+  // ダンス曲はメインBGMと同じ bgm エレメントで src を入れ替える方式。各レベルの曲を HTTP キャッシュに
+  // 温めておけば、ダンス開始時の差し替えが速い(別エレメントは作らない)。
+  const danceWarms: Promise<void>[] = [];
+  for (const lvl of [1, 2, 3]) {
+    danceWarms.push(fetch(DANCE_TRACKS[lvl]).then(() => {}).catch(() => {}));
   }
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
   return Promise.all([
     waitAudioReady(bgm),
-    waitAudioReady(danceBgm),
+    Promise.allSettled(danceWarms),
     Promise.allSettled(sfxWaits),
   ]).then(() => {});
 };

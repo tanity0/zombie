@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.256 - ダンス重さ: 1音声要素のsrc入れ替え方式(2つ目の<audio>を作らない) (Claude Code)
+
+### Summary
+- v0.25.255(ダンス中メイン停止+ダンス曲を別<audio>で再生)でもまだ重い=「2本同時」ではなく
+  「2つ目のHTMLAudioElementの存在」自体がこの端末で重い(2本目はMP3デコードがソフト処理に落ちる)と判明。
+- ユーザー指示:「戦闘曲と何か違った? 結局であれば1曲ずつちゃんと再生すれば?」
+  → 戦闘BGMと完全に同じ1つの bgm エレメントで、再生する曲(src)だけ入れ替える方式に変更。
+  ダンス専用の <audio> は廃止。常に音声要素は1本=戦闘時とまったく同じ負荷。
+
+### 実装
+- `src/audio/audioManager.ts`:
+  - danceBgm / primeDanceBgm / ensureDanceBgm / playDanceBgm を削除。
+  - setDanceMode 開始: メインBGMの src/位置を savedMainSrc/savedMainTime に退避 → bgm の src を
+    DANCE_TRACKS[level] に差し替えて頭から再生(swapBgmTo)。
+  - setDanceMode 終了: bgm の src をメインBGMへ戻し、保存位置(savedMainTime)から再開。
+  - applyBgm はダンス状態に依存せず「bgmActiveなら再生・音量設定」のみ(srcはsetDanceModeが管理)。
+  - getMusicTimeMs は null を返す(拍合わせは gameTime グリッドで実施)。
+  - 未使用化していた rampGain / setGainNow を削除。
+- `public/audio/dance-{100,120,140}.mp3`: フル尺・128k/44.1k/stereoへ再エンコード(シームレスループ用)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+- 体感FPS確認は実機待ち(ダンス中も60fps復帰を期待)。
+
+### Note
+- トレードオフ: ダンス開始/終了でBGMが一瞬切れる(同一要素のsrc差し替えのためクロスフェード無し)。
+  戦闘曲の再生位置は保持して復帰。
+- 確認後の掃除候補: 診断トグル `?danceaudio=0`(audioManager) / `?dancevfx=0`(pixiScene)。
+
 ## 2026-06-14 - v0.25.255 - ダンス重さ: 同時2ストリーム回避(ダンス中はメインBGMを停止し1本だけ) (Claude Code)
 
 ### Summary
