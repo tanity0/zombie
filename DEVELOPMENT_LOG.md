@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.267 - ダンスBGM本実装: 専用の2つ目の要素もWebAuidoルーティングして鳴らす (Claude Code)
+
+### 266の結果(決定的)
+- BGMを素再生(element.volume)にしたら **全体30fps/ダンス25fps・無音**。
+  → この端末は **WebAudio(MediaElementSource)経由=軽い、要素の素再生=重い**(259が重かったのも素再生だったから)。
+  → 一方 routed 要素は **src 差し替え後に無音**(265)。「routed要素を差し替えず鳴らす」だけが軽い＆音が出る(261/263)。
+
+### 本実装(勝ち筋)
+- ダンス曲は **専用の2つ目の要素(レベル毎)を用意し、それも WebAudio へルーティングして鳴らす**(src差し替えしない)。
+  ダンス中は戦闘要素を pause し、同時に鳴る系統を常に1つに保つ(=戦闘時と同じ負荷=軽い)。
+- `src/audio/audioManager.ts`:
+  - 戦闘BGMは BGM_TRACKS[0] 固定・常時ルーティング(266の素再生フラグ撤去)。
+  - `danceEls`(level→{el,gain,routed})。`ensureDanceEl`/`ensureDanceRouting`(要素毎に createMediaElementSource→
+    gain→destination)/`applyDanceEl`(現レベルのみ再生・他は pause)。
+  - setDanceMode: danceActive更新→applyBgm(戦闘pause)→applyDanceEl(ダンス再生)。
+  - setBgmVolume/Muted/Active で dance gain 更新・applyDanceEl。preload で prewarmDanceTracks。
+- 261で「routed要素+ダンスWAV=軽い+音が出る」を実証済みなので、これが本命。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機で「ダンス中:音が出る＆60fps」を確認待ち。
+
+### Performance（load score: 1/10）
+- 同時に鳴る系統は常に1つ(=戦闘時と同じ)。重い経路(素再生/AudioBufferSource/大WAVへのsrc差し替え)は不使用。
+- 既知点: routed 要素は src を変えないため、レベル毎に要素を持つ(最大3)。再生中は常に1つだけ。
+
 ## 2026-06-14 - v0.25.266 - 診断: BGMをWebAudio経由にせず素再生(差し替え後の無音を解消できるか) (Claude Code)
 
 ### 265の結果(超重要)

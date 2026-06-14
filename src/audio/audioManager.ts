@@ -236,12 +236,10 @@ const persistMuted = () => {
   }
 };
 
-// いま BGM 要素に読み込ませてあるトラックURL。差し替えは applyBgm が冪等に行う。
-// 起動時の通常プレイ曲はテスト構成のダンスlevel1。
-let bgmSrc = DANCE_LOOP_TRACKS[1];
+const BATTLE_TRACK = BGM_TRACKS[0];
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
-  bgm = new Audio(bgmSrc);
+  bgm = new Audio(BATTLE_TRACK);
   bgm.loop = true;
   bgm.preload = 'auto';
   bgm.playsInline = true;
@@ -249,21 +247,78 @@ const ensureBgm = () => {
 };
 
 // --- ダンスタイム(四神舞) -------------------------------------------------
-// 切り分けの結論(v0.25.257〜264):
-//  - 「2系統目の音声を同時に持つ」と必ず重い(WebAudioバッファ=258、専用追加要素=259、10〜30fps)。
-//  - 「ゲーム中に要素の src を“大きいダンスWAV”へ差し替える/読み込む」と、その間ずっと重い(262で再現、263で解消)。
-//  - 一方「単一要素を起動時から鳴らしっぱなし(差し替えなし)」は何の曲でも軽い(261/263で実証)。
-// 切り分け(v0.25.265): 通常プレイ=ダンスlevel1(大きいWAV/起動時から)、ダンス中=戦闘曲(小さいMP3)へ差し替え。
-//  → これで軽ければ「重いのは“大きいWAVへの差し替え”であって、小さいMP3への差し替えは軽い」=ダンス曲を
-//     小さいMP3にすれば差し替え方式で実現できる、と分かる。重ければ「差し替え自体が重い」と確定する。
+// 切り分けの結論(v0.25.257〜266):
+//  - この端末は WebAudio(MediaElementSource)経由の再生=軽い、要素の素再生(element.volume)=重い(266で30fps)。
+//  - WebAudioバッファ(AudioBufferSource)=重い(258)。1要素の src 差し替えは、routed だと差し替え後に無音(265)。
+//  - 「routed 要素を src 差し替えせず鳴らす」のは何の曲でも軽く音も出る(261/263で実証)。
+// → ダンス曲は「専用の2つ目の要素」を用意し、それも WebAudio でルーティングして鳴らす(src差し替えはしない)。
+//   ダンス中は戦闘要素を pause し、同時に鳴る系統を常に1つに保つ(=戦闘時と同じ負荷)。
 let danceActive = false;
 
-// テスト構成: 通常プレイ=ダンスlevel1の曲、ダンス中=戦闘用の曲(小さいMP3)。
-const NORMAL_TRACK = DANCE_LOOP_TRACKS[1]; // 通常プレイ(=ダンスlevel1)
-const DANCE_SWAP_TRACK = BGM_TRACKS[0];    // ダンス中(=戦闘曲MP3)
-const desiredBgmSrc = () => (danceActive ? DANCE_SWAP_TRACK : NORMAL_TRACK);
+// レベル毎の専用ダンス要素(それぞれ WebAudio へルーティング)。
+type RoutedEl = { el: HTMLAudioElement; gain: GainNode | null; routed: boolean };
+const danceEls = new Map<number, RoutedEl>();
 
-// ダンスの開始/終了。唯一の BGM 要素の src を 通常↔ダンス で差し替える。
+const ensureDanceEl = (level: number): RoutedEl | null => {
+  const existing = danceEls.get(level);
+  if (existing) return existing;
+  if (typeof Audio === 'undefined') return null;
+  const url = DANCE_LOOP_TRACKS[level];
+  if (!url) return null;
+  const el = new Audio(url);
+  el.loop = true;
+  el.preload = 'auto';
+  el.playsInline = true;
+  el.volume = 1; // 実音量は WebAudio gain 側(素再生は重いので必ずルーティングする)
+  const entry: RoutedEl = { el, gain: null, routed: false };
+  danceEls.set(level, entry);
+  return entry;
+};
+
+// ダンス要素を SFX AudioContext 経由でルーティング(戦闘BGMと同じ軽い経路)。要素1つにつき1回だけ。
+const ensureDanceRouting = (entry: RoutedEl) => {
+  if (entry.routed) return;
+  const ctx = ensureSfxContext();
+  if (!ctx) return;
+  try {
+    const source = ctx.createMediaElementSource(entry.el);
+    const gain = ctx.createGain();
+    gain.gain.value = bgmVolume;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    entry.gain = gain;
+    entry.routed = true;
+  } catch {
+    entry.routed = false; // ルーティング不可ならフォールバック(素再生)
+    entry.el.volume = bgmVolume;
+  }
+};
+
+// ダンス曲の再生状態を (danceActive && bgmActive && !muted) に合わせる。冪等。同時に鳴るのは常に1系統。
+const applyDanceEl = () => {
+  const shouldPlay = danceActive && bgmActive && !muted;
+  danceEls.forEach((entry, lvl) => {
+    if (!shouldPlay || lvl !== currentDanceLevel) { try { entry.el.pause(); } catch { /* ignore */ } }
+  });
+  if (!shouldPlay) return;
+  const entry = ensureDanceEl(currentDanceLevel);
+  if (!entry) return;
+  resumeSfxContext();
+  ensureDanceRouting(entry);
+  if (entry.gain) entry.gain.gain.value = bgmVolume; else entry.el.volume = bgmVolume;
+  if (entry.el.paused) { try { entry.el.currentTime = 0; } catch { /* ignore */ } void entry.el.play().catch(() => {}); }
+};
+
+// ダンス曲を事前に HTTP キャッシュへ載せておく(初回再生のヒッチ抑制)。
+const prewarmDanceTracks = () => {
+  if (typeof fetch === 'undefined') return;
+  for (const lvl of [1, 2, 3]) {
+    const url = DANCE_LOOP_TRACKS[lvl];
+    if (url) void fetch(url).then(r => r.blob()).catch(() => {});
+  }
+};
+
+// ダンスの開始/終了。戦闘要素を pause し、専用 routed ダンス要素を再生(src差し替えはしない)。
 export const setDanceMode = (active: boolean, level = 2) => {
   ensureBgm();
   if (active) {
@@ -274,7 +329,8 @@ export const setDanceMode = (active: boolean, level = 2) => {
     if (!danceActive) return;
     danceActive = false;
   }
-  applyBgm(); // 要素の src を desiredBgmSrc に合わせて差し替え/再生
+  applyBgm();     // 戦闘要素を pause/再開
+  applyDanceEl(); // ダンス要素を再生/停止
 };
 
 // 拍合わせは gameTime グリッドで行う(開始時に LEAD で合わせる)ため、音楽位置は使わない。
@@ -283,12 +339,7 @@ export const getMusicTimeMs = (): number | null => null;
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
 // and balance it against the SFX. Falls back to element.volume if unavailable.
-// 切り分け(v0.25.266): BGM を WebAudio(MediaElementSource)経由にすると、要素を一度掴んだ後の src 差し替えで
-// 無音になる(265で再現)。ここを false にして“要素の素再生(element.volume)”にし、差し替え後に音が出るか確認。
-// ?bgmroute=on を付けると従来の WebAudio ルーティングに戻す。
-const BGM_USE_WEBAUDIO_ROUTING = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bgmroute') === 'on';
 const ensureBgmRouting = () => {
-  if (!BGM_USE_WEBAUDIO_ROUTING) return; // 素再生(element.volume)を使う
   if (bgmRouted) return;
   const ctx = ensureSfxContext();
   ensureBgm();
@@ -311,13 +362,8 @@ const ensureBgmRouting = () => {
 const applyBgm = () => {
   ensureBgm();
   if (!bgm) return;
-  // 唯一の要素の src を、戦闘↔ダンスで必要なトラックに合わせる(2系統目は作らない=軽い)。
-  const want = desiredBgmSrc();
-  if (bgmSrc !== want) {
-    bgmSrc = want;
-    try { bgm.src = want; bgm.currentTime = 0; bgm.load(); } catch { /* ignore */ }
-  }
-  if (bgmActive && !muted) {
+  // ダンス中は戦闘要素を pause(同時に鳴る系統を1つに)。ダンス曲は専用 routed 要素が鳴らす。
+  if (bgmActive && !muted && !danceActive) {
     resumeSfxContext();
     ensureBgmRouting();
     if (bgmGain) bgmGain.gain.value = bgmVolume;
@@ -392,8 +438,8 @@ const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise
 export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
-  // ダンス突入時に差し替える戦闘MP3を事前に HTTP キャッシュへ載せておく(差し替え時の読み込みヒッチ抑制)。
-  if (typeof fetch !== 'undefined') void fetch(DANCE_SWAP_TRACK).then(r => r.blob()).catch(() => {});
+  // ダンス曲は初回再生まで要素を作らない(routed要素は作る=軽い経路)。読み込みヒッチ抑制に HTTP キャッシュへ事前ウォーム。
+  prewarmDanceTracks();
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
   return Promise.all([
     waitAudioReady(bgm),
@@ -423,12 +469,15 @@ export const setAudioMuted = (nextMuted: boolean) => {
   persistMuted();
   if (!muted) warmSfxBuffers();
   applyBgm();
+  applyDanceEl();
 };
 
 export const setBgmVolume = (volume: number) => {
   bgmVolume = Math.max(0, Math.min(1, volume));
   try { localStorage.setItem(BGM_VOLUME_KEY, String(bgmVolume)); } catch { /* ignore */ }
+  danceEls.forEach(entry => { if (entry.gain) entry.gain.gain.value = bgmVolume; else entry.el.volume = bgmVolume; });
   applyBgm();
+  applyDanceEl();
 };
 
 export const setSfxVolume = (volume: number) => {
@@ -440,6 +489,7 @@ export const setBgmActive = async (nextActive: boolean) => {
   bgmActive = nextActive;
   if (bgmActive && !muted) warmSfxBuffers();
   applyBgm();
+  applyDanceEl();
 };
 
 // ダンスタイム中はリズムに乗りやすいよう近接ダメージ音(スラッシュ/メレー)を鳴らさない。
