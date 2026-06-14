@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.284 - ダンス曲を軽量フル尺に戻す(8小節ループの継ぎ目ぶつ切り対策) (Claude Code)
+
+### 症状
+- ダンス曲(8小節シームレスループMP3)を要素 `loop=true` で回すと、**継ぎ目がぶつ切り**になる
+  (HTMLAudioElement の loop はギャップが出る。13〜19秒ごとに当たるので目立つ)。
+
+### 対応
+- ダンス曲を**軽量フル尺**に戻す。`git` 履歴(26c214d, 160k/48k)からフル尺を復元し、**128k/48k/stereo**へ再エンコード。
+  - `public/audio/dance-100.mp3`(268s/4.3MB) / `dance-120.mp3`(205s/3.3MB) / `dance-140.mp3`(187s/3.0MB)
+- フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い(現行方式のまま)。
+- `src/audio/audioManager.ts`: `DANCE_LOOP_TRACKS` を `-loop.mp3` → フル尺 `dance-1{00,20,40}.mp3` に変更。
+  `unlockDanceAudio` は同定数を参照するので自動追従。方式(単一要素src差し替え+gesture unlock)は不変。
+- 旧 8小節ループ素材(`dance-*-loop.{wav,mp3}`)は未使用化(当面残置)。
+
+### 備考
+- フル尺は各ダンス突入で頭(イントロ)から再生される。盛り上がり頭出しが欲しい場合は別途調整 or 素材差し替えで対応可。
+- もっと良い軽量フル素材があればユーザー提供で差し替え可能。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機で「継ぎ目のぶつ切りが減ったか」を確認待ち。
+
 ## 2026-06-14 - v0.25.283 - スタート時に複数曲が重なる代償を解消(unlockの一時要素をミュート維持) (Claude Code)
 
 ### 症状

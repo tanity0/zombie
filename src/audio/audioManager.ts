@@ -12,13 +12,13 @@ const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
   `${import.meta.env.BASE_URL}audio/rusting-grave-circuit.mp3`,
 ];
-// ダンスタイム(四神舞)中だけ流すループ。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
-// 各レベルに固定HTMLAudioElementを1つずつ持たせ、ゲーム中のsrc差し替えを避ける。
-// 各曲の一番盛り上がる8小節を継ぎ目クロスフェードでシームレスループ化したものを MP3 化。
+// ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
+// v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。
+// フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い。
 const DANCE_LOOP_TRACKS: Record<number, string> = {
-  1: `${import.meta.env.BASE_URL}audio/dance-100-loop.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
-  2: `${import.meta.env.BASE_URL}audio/dance-120-loop.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
-  3: `${import.meta.env.BASE_URL}audio/dance-140-loop.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
 };
 let currentDanceLevel = 2; // 現在ダンスループに使っているレベル
 
