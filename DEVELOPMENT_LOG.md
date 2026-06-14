@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.276 - 軽い単一要素src差し替えへ回帰＋差し替え後再生を堅牢化(無音解消) (Claude Code)
+
+### 275の結果(低電力OFF)
+- 連打(ダダダ)は解消。だが **Web Audio バッファのループ再生はダンス中20fpsで重い**(258の重さは低電力では
+  なくバッファ再生そのものだった。短いSFXは軽いが、長いループ常時再生はこの端末で重い)。
+- 端末特性の最終整理: 連続バッファ=重い(20)、要素2つ=重い(9)、**要素1つ・src差し替え=軽い(57)**。
+- 271の「差し替え無音」は自動再生ブロックではない(戦闘曲への戻りは鳴った=既ロードだから)。
+  ダンス曲は差し替え直後まだ未ロードで、1回の play()/canplay 待ちが外れて鳴らなかった可能性。
+
+### 対策
+- バッファ方式を捨て、**軽い「要素1つ・src差し替え」へ回帰**(通常=戦闘曲、ダンス=ダンスMP3)。
+- `playBgmRobust()`: 差し替え後は即時 play() に加え `loadeddata/canplay/canplaythrough` でも再生を試行。
+  token で「さらに差し替え/停止」した古い試行を無効化。これで未ロードでも準備でき次第“確実に”鳴る。
+- `src/audio/audioManager.ts` を 272(単一要素MP3差し替え)から復元し applyBgm の再生だけ堅牢化。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機(低電力OFF)で「ダンス曲が鳴る＋57fps前後」を確認待ち。
+
 ## 2026-06-14 - v0.25.275 - ダンス曲の連打(ダダダ)を防止: 同レベル再起動なし＋停止ディレイ (Claude Code)
 
 ### 274の結果
