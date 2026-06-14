@@ -364,6 +364,9 @@ interface Firefly {
   phase: number; freq: number; base: number; size: number;
 }
 
+// 診断用: URLに ?dancevfx=0 を付けるとダンスのPixi描画(ミラーボール/サークル/矢印/暗転/発光)を一切出さない。
+const RHYTHM_VFX_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancevfx') === '0';
+
 export class PixiScene {
   private L: SceneLayers;
 
@@ -1082,7 +1085,7 @@ export class PixiScene {
     gameTime: number
   ) {
     const g = this.rhythmOverlay;
-    if (!rhythm.active) {
+    if (!rhythm.active || RHYTHM_VFX_OFF) {
       if (g.visible) { g.visible = false; g.clear(); }
       if (this.rhythmBall.visible) this.rhythmBall.visible = false;
       if (this.rhythmGodText.visible) this.rhythmGodText.visible = false;
@@ -1225,7 +1228,7 @@ export class PixiScene {
 
   // リズム中の暗転(地面/遠景だけ・フェード追従)+ タップ発光(全画面・最前面)。
   private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number }, gameTime: number) {
-    const target = rhythm.active ? RHYTHM_DIM_ALPHA : 0;
+    const target = (rhythm.active && !RHYTHM_VFX_OFF) ? RHYTHM_DIM_ALPHA : 0;
     this.rhythmDim += (target - this.rhythmDim) * RHYTHM_DIM_EASE;
     // 暗転(worldGroup の filteredWorld 手前): 地面/遠景のみ暗くなる。
     const d = this.rhythmDimGfx;
@@ -1237,7 +1240,7 @@ export class PixiScene {
       d.rect(0, 0, this.screenW, this.screenH).fill({ color: 0x010512, alpha: this.rhythmDim });
     }
     // タップ発光(uiLayer 最前面・全画面)。
-    const tapGlow = rhythm.active
+    const tapGlow = (rhythm.active && !RHYTHM_VFX_OFF)
       ? Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS) * RHYTHM_TAP_GLOW_ALPHA
       : 0;
     const g = this.rhythmScreenFx;

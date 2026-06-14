@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.253 - 診断: ダンス重さの切り分け用 URLトグル(?danceaudio=0 / ?dancevfx=0) (Claude Code)
+
+### Summary
+- 再エンコード(252)で改善せず=ビットレートではない。原因切り分けのため、URLパラメータで
+  「ダンス音声OFF」「ダンス描画OFF」を個別に無効化できる診断トグルを追加(1ビルドで原因特定)。
+  - `?danceaudio=0`: ダンス曲を一切再生せず、メインBGMのダックもしない。
+  - `?dancevfx=0`: ダンスのPixi描画(ミラーボール/サークル/矢印/暗転/発光)を一切出さない。
+
+### 実装
+- `src/audio/audioManager.ts`: DANCE_AUDIO_OFF。playDanceBgm/setDanceMode をガード。
+- `src/pixi/pixiScene.ts`: RHYTHM_VFX_OFF。syncRhythmOverlay/syncRhythmScreenFx をガード。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### Note
+- 原因が特定でき次第トグルは撤去予定。
+
 ## 2026-06-14 - v0.25.252 - ダンス曲を軽量再エンコード(320k/48kHz→128k/44.1kHz)。ダンス中の重さ対策本命 (Claude Code)
 
 ### Summary

@@ -251,6 +251,8 @@ let danceBgm: HTMLAudioElement | null = null;
 let danceGain: GainNode | null = null;
 let danceRouted = false;
 let danceActive = false;
+// 診断用: URLに ?danceaudio=0 を付けるとダンス音声を一切再生しない(重さ切り分け用)。
+const DANCE_AUDIO_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('danceaudio') === '0';
 
 const ensureDanceBgm = () => {
   if (danceBgm || typeof Audio === 'undefined') return;
@@ -304,6 +306,7 @@ const setGainNow = (gain: GainNode | null, el: HTMLAudioElement | null, v: numbe
 
 // ダンストラックの再生(失敗は無視)。BGM開始の操作ジェスチャ内で呼ぶことでアンロックされる。
 const playDanceBgm = async () => {
+  if (DANCE_AUDIO_OFF) return; // 診断: ダンス音声を鳴らさない
   ensureDanceBgm();
   if (!danceBgm) return;
   try { await danceBgm.play(); } catch { /* autoplay policy: 後続のジェスチャで再試行 */ }
@@ -313,6 +316,7 @@ const playDanceBgm = async () => {
 // 音量を上げ、メインBGMは即0で確実に無音化(混ざり防止)。非ダンスでメインへフェード復帰。停止しない。
 // ダンスの音量はメインBGMと同じ設定値(bgmVolume)に合わせる。
 export const setDanceMode = (active: boolean, level = 2) => {
+  if (DANCE_AUDIO_OFF) { danceActive = active; return; } // 診断: ダンス音声・ダックを一切いじらない
   ensureDanceBgm();
   ensureDanceRouting();
   resumeSfxContext();
