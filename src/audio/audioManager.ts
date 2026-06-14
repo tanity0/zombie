@@ -236,9 +236,14 @@ const persistMuted = () => {
   }
 };
 
+// 診断(v0.25.261): 戦闘BGMの「素」を起動時からダンスlevel1の曲(dance-100-loop.wav)に差し替える。
+// 戦闘BGM=単一要素・起動時ロード・通常再生で軽いことは実証済み。これでダンス曲を“1要素・通常再生”したとき
+// 軽いか重いかを切り分ける。軽ければ「曲の中身は無罪、重さは2系統目を持つこと」が確定する。
+// ?bgm=normal を付けると通常の戦闘BGM(rotten-iron-march.mp3)に戻す。
+const BGM_DIAG_DANCE = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bgm') !== 'normal';
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
-  bgm = new Audio(BGM_TRACKS[0]);
+  bgm = new Audio(BGM_DIAG_DANCE ? DANCE_LOOP_TRACKS[1] : BGM_TRACKS[0]);
   bgm.loop = true;
   bgm.preload = 'auto';
   bgm.playsInline = true;
