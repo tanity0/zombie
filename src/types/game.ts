@@ -262,6 +262,7 @@ export interface RhythmState {
   byakkoUntil: number;     // 白虎の持続終了(gameTime)
   byakkoNextAt: number;    // 次の斬撃パルス
   byakkoHits: number;      // 斬撃回数(BYAKKO_MAX_HITS で打ち止め)
+  lastMusicMs: number;     // 直近の音楽再生位置(ms)。resyncの「音楽が進んでいるか」判定に使う
   pending: RhythmPending[];// loop が消化する実行待ち
 }
 export type ShopItemKey =

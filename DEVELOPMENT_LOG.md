@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.249 - 四神舞: サークルが固まって微振動するバグを修正(resyncを音楽進行時のみに) (Claude Code)
+
+### Summary
+- ダンスのサークルが流れず固まって微振動(ブルブル)する不具合を修正。原因は resync が、曲のロード中など
+  音楽再生位置が進んでいない時にも位相補正を行い、firstBeatAt を gameTime ごと引きずっていたこと(大きい
+  ダンス曲に差し替えてロードが長くなり顕在化)。
+- resync を「音楽が通常再生(realtimeで進行)している時だけ」に限定。ロード中/ループ巻き戻り/大ジャンプ時は
+  位相補正をスキップ(サークルは gameTime のグリッドで滑らかに流れ続ける)。
+
+### 実装
+- `src/types/game.ts` + `gameStore.ts`: RhythmState.lastMusicMs。resyncRhythm は musicDelta が 1〜200ms の時
+  だけ位相補正。ダンス開始時に lastMusicMs を0リセット。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-14 - v0.25.248 - 四神舞: レベル別ダンス曲を実配置(100/120/140) + URLキャッシュバスト (Claude Code)
 
 ### Summary

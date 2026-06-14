@@ -35,7 +35,7 @@ import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 const initialRhythm = (): RhythmState => ({
   active: false, interval: RHYTHM_INTERVAL_MS, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0, inputArrows: [],
   godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastTapAt: 0, lastFinishAt: 0, lastGod: null,
-  invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, pending: [],
+  invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, lastMusicMs: 0, pending: [],
 });
 
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
@@ -3408,6 +3408,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           byakkoUntil: 0,
           byakkoNextAt: 0,
           byakkoHits: 0,
+          lastMusicMs: 0,
           pending: [],
         },
         // 立ち上がり無敵: 既存の invulnerable を流用(INVULN_MS で自動解除)。TODO: 専用秒数。
@@ -3577,14 +3578,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!r.active) return;
     const gt = get().gameTime;
     const interval = r.interval;
+    // 音楽が「通常再生(realtime進行)」している時だけ位相補正する。ロード中(進まない)やループ(巻き戻り)、
+    // 大ジャンプ時に firstBeatAt を引きずると、サークルが固まって微振動するため必ずスキップする。
+    const musicDelta = musicMs - r.lastMusicMs;
+    if (!(musicDelta > 1 && musicDelta < 200)) {
+      set(s => ({ rhythm: { ...s.rhythm, lastMusicMs: musicMs } }));
+      return;
+    }
     const mod = (v: number) => ((v % interval) + interval) % interval;
     const musicPhase = mod(musicMs - RHYTHM_MUSIC_OFFSET_MS); // 現在拍内の音楽位相
     const desiredPhase = mod(gt - musicPhase);                // firstBeatAt が取るべき位相
     let delta = desiredPhase - mod(r.firstBeatAt);
     if (delta > interval / 2) delta -= interval;             // 最寄り拍へ(±半拍)
     if (delta < -interval / 2) delta += interval;
-    if (Math.abs(delta) < 0.5) return;                       // 既に合っている
-    set(s => ({ rhythm: { ...s.rhythm, firstBeatAt: s.rhythm.firstBeatAt + delta * 0.2 } })); // 滑らかに追従
+    const firstBeatAt = Math.abs(delta) < 0.5 ? r.firstBeatAt : r.firstBeatAt + delta * 0.2; // 滑らかに追従
+    set(s => ({ rhythm: { ...s.rhythm, firstBeatAt, lastMusicMs: musicMs } }));
   },
 
   startByakko: () => {
