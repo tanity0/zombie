@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.287 - ダンスのフリック判定をスマホ音ゲー方式(スワイプ即発火)に (Claude Code)
+
+### 背景
+- フリックが「不安定」。原因は**判定が指を離した瞬間の速度依存**だったこと(素早く振って止めて離すとタップに化ける)。
+
+### 変更(ユーザー選択: スワイプ即発火＋発火時方向優先・許容広め)
+- リズム中のフリックを**スワイプが閾値を超えたその瞬間に即確定**(離す瞬間に依存しない)。1接触1回、
+  方向は発火時の直近軌跡ベクトルで固定(arrowFromDirの90°コーン=許容広め)。判定はその時刻でジャスト判定。
+- `VirtualJoystick.tsx`: `tryFireRhythmFlick()` を pointermove 中(rhythm.active時)に呼ぶ。`rhythmFlickFiredRef`
+  で1接触1回に制御。release は「未発火ならタップ」。離す瞬間の `detectFlick`(rhythm経路)は撤去。
+  戦闘の一閃ダッシュ(非rhythm)は従来の離す判定のまま=手触り不変。
+- `config/shijin.ts`: 即発火しきい値 `RHYTHM_FLICK_FIRE_DIST=30px` / `RHYTHM_FLICK_FIRE_SPEED=0.5px/ms` /
+  `RHYTHM_FLICK_FIRE_WINDOW_MS=120`(距離主体・速度は katana 0.9 より緩め)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。実機で手触り(発火しやすさ/誤爆/方向)を調整。
+
 ## 2026-06-14 - v0.25.286 - ダンス中のカウンター反射はスローモー無しに (Claude Code)
 
 ### 変更

@@ -92,6 +92,12 @@ export const RHYTHM_FLICK_DAMAGE = 24;        // バッシュのダメージ(2�
 export const RHYTHM_FLICK_KNOCKBACK_MULT = 7.2; // バッシュの強ノックバック
 // バッシュ(フリック)だけノックバック上限を 6 まで許可(通常クランプ3の2倍=距離2倍)。
 export const RHYTHM_FLICK_KNOCKBACK_MAX = 6;
+// スマホ音ゲー方式のフリック即発火(v0.25.287)。離す瞬間ではなく、スワイプが下記しきい値を超えた
+// 「その瞬間」にフリック確定(1接触1回・方向はその瞬間で固定)。離し方に依存しないので安定する。
+// 距離主体・速度は緩め。直近 FIRE_WINDOW_MS の軌跡で判定。
+export const RHYTHM_FLICK_FIRE_DIST = 30;     // 発火に必要な移動距離(px)
+export const RHYTHM_FLICK_FIRE_SPEED = 0.5;   // 発火に必要な速度(px/ms。katana 0.9 より緩め)
+export const RHYTHM_FLICK_FIRE_WINDOW_MS = 120;// 直近この時間の軌跡で距離/速度を見る
 
 // --- 四神技(すべて近接フィニッシュ可・数値TODO) -------------------------
 // 朱雀: 近場最大3体を「グレネードランチャー(rifle-t3)」相当の範囲爆破。手榴弾(heavy-grenade)ではない。

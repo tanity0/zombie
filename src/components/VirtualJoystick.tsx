@@ -6,6 +6,11 @@ import {
   KATANA_FLICK_MIN_DIST,
   KATANA_FLICK_MIN_SPEED
 } from '../store/gameStore';
+import {
+  RHYTHM_FLICK_FIRE_DIST,
+  RHYTHM_FLICK_FIRE_SPEED,
+  RHYTHM_FLICK_FIRE_WINDOW_MS
+} from '../config/shijin';
 
 // Floating thumb-stick. The user can place a finger anywhere inside the
 // activation zone (the left half of the screen, below the HUD), and the
@@ -23,6 +28,8 @@ const VirtualJoystick: React.FC = () => {
   const flickSamplesRef = useRef<{ x: number; y: number; t: number }[]>([]);
   // 指が触れ始めた時刻(performance.now)。リズムのフリックは接触区間でジャスト判定するのに使う。
   const pointerDownTimeRef = useRef<number>(0);
+  // リズムのフリックは「スワイプした瞬間に即発火」する(スマホ音ゲー方式)。1接触で一度だけ。
+  const rhythmFlickFiredRef = useRef<boolean>(false);
 
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [delta, setDelta] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -53,6 +60,27 @@ const VirtualJoystick: React.FC = () => {
     return { x: dx / dist, y: dy / dist, dt };
   }, []);
 
+  // リズム中: スワイプが閾値を超えた「その瞬間」にフリックを即確定する(離す瞬間に依存しない)。
+  // 1接触につき一度だけ。方向は発火時の直近軌跡ベクトルで固定(=取り違えにくい)。
+  const tryFireRhythmFlick = useCallback(() => {
+    if (rhythmFlickFiredRef.current) return;
+    const samples = flickSamplesRef.current;
+    if (samples.length < 2) return;
+    const last = samples[samples.length - 1];
+    let first = samples[0];
+    for (const s of samples) {
+      if (s.t >= last.t - RHYTHM_FLICK_FIRE_WINDOW_MS) { first = s; break; }
+    }
+    const dx = last.x - first.x;
+    const dy = last.y - first.y;
+    const dist = Math.hypot(dx, dy);
+    const dt = Math.max(1, last.t - first.t);
+    if (dist < RHYTHM_FLICK_FIRE_DIST || dist / dt < RHYTHM_FLICK_FIRE_SPEED) return;
+    rhythmFlickFiredRef.current = true;
+    // 発火の瞬間で判定(contactMs は渡さない=その時刻でジャスト判定)。攻撃実行は useGameLoop 側。
+    rhythmInput('flick', { x: dx / dist, y: dy / dist });
+  }, [rhythmInput]);
+
   const release = useCallback((fireCounter = true) => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
@@ -61,14 +89,8 @@ const VirtualJoystick: React.FC = () => {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
-        const flick = detectFlick();
-        if (flick) {
-          // 接触時間(触れ始め→離す)。この区間のどこかにジャストが入っていれば成功。
-          const contactMs = pointerDownTimeRef.current ? performance.now() - pointerDownTimeRef.current : 0;
-          rhythmInput('flick', flick, contactMs);
-        } else {
-          rhythmInput('tap');
-        }
+        // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
+        if (!rhythmFlickFiredRef.current) rhythmInput('tap');
       } else {
         // カウンター優先: 既存のカウンター処理を先に通す(刀装備中はナイフ
         // スイープなしで窓だけ開く)。その後、フリック成立時のみ一閃ダッシュ。
@@ -100,6 +122,7 @@ const VirtualJoystick: React.FC = () => {
     pointerIdRef.current = e.pointerId;
     setTouchActive(true);
     pointerDownTimeRef.current = performance.now();
+    rhythmFlickFiredRef.current = false;
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
     flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
@@ -122,6 +145,9 @@ const VirtualJoystick: React.FC = () => {
         samples.shift();
       }
 
+      // リズム中は、スワイプした瞬間にフリックを即発火(離す前に確定)。
+      if (useGameStore.getState().rhythm.active) tryFireRhythmFlick();
+
       const rawX = e.clientX - o.x;
       const rawY = e.clientY - o.y;
       const dist = Math.hypot(rawX, rawY);
@@ -142,7 +168,7 @@ const VirtualJoystick: React.FC = () => {
       setSwipeDirection(dir);
       setLastDirection(dir);
     },
-    [setSwipeDirection, setLastDirection]
+    [setSwipeDirection, setLastDirection, tryFireRhythmFlick]
   );
 
   const handlePointerEnd = useCallback(
