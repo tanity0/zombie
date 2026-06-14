@@ -254,8 +254,18 @@ export const katanaRange = (player: Player): number =>
 // 刀装備中に併用を許可するサブウェポン(許可制)。現状は全サブウェポン停止。
 // TODO(刀): 併用を解禁する時はこの配列にキーを追加する。
 export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
-export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean =>
-  isKatanaMode(player) && key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
+// サブウェポンの実行時ブロック。排他サブ(刀/村雨, ダンスフロア=shijin)を装備していると、その仲間以外の
+// サブウェポンは停止する(銃は別系統なので影響なし)。ダンスフロアは刀と同じく他サブと共存不可。
+export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean => {
+  if (isKatanaMode(player)) {
+    return key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
+  }
+  // ダンスフロア(shijin)装備中: shijin 以外のサブを停止。
+  if (player.subWeapons.includes('shijin')) {
+    return key !== 'shijin';
+  }
+  return false;
+};
 
 // ---------------------------------------------------------------------------
 // 鞭 (whip): 通常サブウェポン。装備中はナイフ近接を鞭に置き換える(刀と排他)。
@@ -440,7 +450,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'whip': return '鞭';
     case 'alchemy': return '錬金術';
     case 'turret': return '自動タレット';
-    case 'shijin': return '四神舞';
+    case 'shijin': return 'ダンスフロア';
     default: return 'サブウェポン';
   }
 };

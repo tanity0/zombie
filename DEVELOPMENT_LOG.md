@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.288 - ダンススキルを「ダンスフロア」に改名+刀と同じ排他 / 刀フリックも即発火に統一 (Claude Code)
+
+### ダンスフロア(旧 四神舞)
+- 表示名を **四神舞 → ダンスフロア** に(`gameStore` 表示名 / `upgradeUtils` カード名・説明)。
+- **刀と同じ排他**: ダンスフロア装備中は他の通常サブウェポン(鞭/シールド/タレット/錬金/デコイ/各クラス技/刀・村雨)を
+  レベルアップに出さない。ダンスフロア自身の昇格カードは出る。**銃のみ共存**。
+  - `upgradeUtils`: `ownsShijin`/`blockNormalSubs` を追加し、通常サブを `!blockNormalSubs` に。刀カードは `!ownsShijin`。
+  - `subWeaponBlockedByKatana`(実行時ブロック)を拡張: shijin 装備中は shijin 以外のサブを停止(銃は別系統で影響なし)。
+
+### 刀フリックの即発火統一
+- 刀の一閃ダッシュも v0.25.287 と同じ「スワイプした瞬間に即発火」に統一(離す瞬間ではなく振った瞬間)。
+  - `VirtualJoystick`: `tryFireKatanaDash` を move 中(非リズム)に呼ぶ。1接触一度・ダッシュ成立時のみ消費(CD中は再試行)。
+    カウンターは従来どおり「指を離した瞬間」。release からダッシュ判定を撤去。`flickFiredRef` を四神/刀で共用。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-14 - v0.25.287 - ダンスのフリック判定をスマホ音ゲー方式(スワイプ即発火)に (Claude Code)
 
 ### 背景

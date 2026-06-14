@@ -28,8 +28,9 @@ const VirtualJoystick: React.FC = () => {
   const flickSamplesRef = useRef<{ x: number; y: number; t: number }[]>([]);
   // 指が触れ始めた時刻(performance.now)。リズムのフリックは接触区間でジャスト判定するのに使う。
   const pointerDownTimeRef = useRef<number>(0);
-  // リズムのフリックは「スワイプした瞬間に即発火」する(スマホ音ゲー方式)。1接触で一度だけ。
-  const rhythmFlickFiredRef = useRef<boolean>(false);
+  // フリックは「スワイプした瞬間に即発火」する(スマホ音ゲー方式)。リズムの四神技も刀の一閃ダッシュも共通。
+  // 1接触で一度だけ発火。
+  const flickFiredRef = useRef<boolean>(false);
 
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [delta, setDelta] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -63,7 +64,7 @@ const VirtualJoystick: React.FC = () => {
   // リズム中: スワイプが閾値を超えた「その瞬間」にフリックを即確定する(離す瞬間に依存しない)。
   // 1接触につき一度だけ。方向は発火時の直近軌跡ベクトルで固定(=取り違えにくい)。
   const tryFireRhythmFlick = useCallback(() => {
-    if (rhythmFlickFiredRef.current) return;
+    if (flickFiredRef.current) return;
     const samples = flickSamplesRef.current;
     if (samples.length < 2) return;
     const last = samples[samples.length - 1];
@@ -76,10 +77,22 @@ const VirtualJoystick: React.FC = () => {
     const dist = Math.hypot(dx, dy);
     const dt = Math.max(1, last.t - first.t);
     if (dist < RHYTHM_FLICK_FIRE_DIST || dist / dt < RHYTHM_FLICK_FIRE_SPEED) return;
-    rhythmFlickFiredRef.current = true;
+    flickFiredRef.current = true;
     // 発火の瞬間で判定(contactMs は渡さない=その時刻でジャスト判定)。攻撃実行は useGameLoop 側。
     rhythmInput('flick', { x: dx / dist, y: dy / dist });
   }, [rhythmInput]);
+
+  // 刀の一閃ダッシュも同じ「スワイプ即発火」に揃える(離す瞬間ではなく、振った瞬間にダッシュ)。
+  // 1接触一度だけ。実際にダッシュした(triggerKatanaDash=true)時だけ消費し、クールダウン中は再試行する。
+  const tryFireKatanaDash = useCallback(() => {
+    if (flickFiredRef.current) return;
+    const flick = detectFlick();
+    if (!flick) return;
+    if (triggerKatanaDash(flick.x, flick.y)) {
+      flickFiredRef.current = true;
+      playSfx('katana-dash');
+    }
+  }, [detectFlick, triggerKatanaDash]);
 
   const release = useCallback((fireCounter = true) => {
     // The core gameplay hook: lifting the finger fires the counter window.
@@ -90,19 +103,15 @@ const VirtualJoystick: React.FC = () => {
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
         // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
-        if (!rhythmFlickFiredRef.current) rhythmInput('tap');
+        if (!flickFiredRef.current) rhythmInput('tap');
       } else {
-        // カウンター優先: 既存のカウンター処理を先に通す(刀装備中はナイフ
-        // スイープなしで窓だけ開く)。その後、フリック成立時のみ一閃ダッシュ。
+        // カウンターは従来どおり「指を離した瞬間」に発火(刀装備中はナイフスイープなしで窓だけ開く)。
+        // 一閃ダッシュは move 中に即発火済み(今回のフリック仕様に統一)ので、ここでは出さない。
         const counter = triggerCounter();
         if (counter.swung) playSfx('melee');
         if (counter.finish) playSfx('melee-finish');
         else if (counter.hit) playSfx('slash-damage');
         if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
-        const flick = detectFlick();
-        if (flick && triggerKatanaDash(flick.x, flick.y)) {
-          playSfx('katana-dash');
-        }
       }
     }
     flickSamplesRef.current = [];
@@ -115,14 +124,14 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, triggerCounter, triggerKatanaDash, detectFlick, rhythmInput]);
+  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
     setTouchActive(true);
     pointerDownTimeRef.current = performance.now();
-    rhythmFlickFiredRef.current = false;
+    flickFiredRef.current = false;
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
     flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
@@ -145,8 +154,9 @@ const VirtualJoystick: React.FC = () => {
         samples.shift();
       }
 
-      // リズム中は、スワイプした瞬間にフリックを即発火(離す前に確定)。
+      // スワイプした瞬間にフリックを即発火(離す前に確定)。リズム中=四神技 / それ以外=刀の一閃ダッシュ。
       if (useGameStore.getState().rhythm.active) tryFireRhythmFlick();
+      else tryFireKatanaDash();
 
       const rawX = e.clientX - o.x;
       const rawY = e.clientY - o.y;
@@ -168,7 +178,7 @@ const VirtualJoystick: React.FC = () => {
       setSwipeDirection(dir);
       setLastDirection(dir);
     },
-    [setSwipeDirection, setLastDirection, tryFireRhythmFlick]
+    [setSwipeDirection, setLastDirection, tryFireRhythmFlick, tryFireKatanaDash]
   );
 
   const handlePointerEnd = useCallback(
