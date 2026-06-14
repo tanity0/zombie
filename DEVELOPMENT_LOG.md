@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.257 - ダンス重さの真因: サンプルレート不一致(44.1k→48kリサンプル)を解消 (Claude Code)
+
+### Summary
+- v0.25.256(1音声要素のsrc入れ替え)でも「ダンス中だけ重い」が継続。これで「2つ目の<audio>」説は否定。
+- ffprobeで符号化を比較し真因を特定:
+  - 戦闘曲 = 48000Hz / ダンス曲 = 44100Hz(ビットレートはダンスの方が低いので圧縮負荷ではない)。
+- BGMは createMediaElementSource で SFX用 AudioContext(端末既定=おそらく48000Hz)に流している。
+  ファイルのレートがContextと食い違うと、MediaElementSourceが**再生中ずっとリアルタイム・リサンプリング
+  (44100→48000)を回す**。戦闘曲は48kで一致=リサンプル無し=軽い。ダンス曲は44.1k=常時リサンプル=重い。
+  → 即時・持続・時間無関係・`?danceaudio=0`で軽い、という全症状に合致。
+
+### 実装
+- `public/audio/dance-{100,120,140}.mp3`: 48000Hz / stereo / 160k へ再エンコード(戦闘曲とレート一致)。
+  DANCE_TRACKS の `?v=__APP_VERSION__` キャッシュバストでバージョン更新により実機が取り直す。
+
+### Verification
+- `ffprobe` で3曲とも 48000Hz/stereo を確認。`npm run build` 成功。
+- 体感FPSは実機確認待ち(リサンプル消失でダンス中も60fps復帰を期待)。
+
 ## 2026-06-14 - v0.25.256 - ダンス重さ: 1音声要素のsrc入れ替え方式(2つ目の<audio>を作らない) (Claude Code)
 
 ### Summary
