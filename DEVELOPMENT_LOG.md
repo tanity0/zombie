@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.263 - 診断: ダンス中もBGMを戦闘曲のまま(src差し替えを起こさない) (Claude Code)
+
+### きっかけ
+- v0.25.262(単一要素のsrc差し替え)で「プレイは軽い・**ダンスだけ重い**」。261(ダンスWAVを起動時から
+  読み単一要素で再生)は軽かった。差は「mid-game で src をダンスWAVへ差し替える/読み込む」点だけ。
+
+### この版(切り分け)
+- 既定で **ダンス中も BGM を戦闘曲のまま**にし、src 差し替えを一切起こさない(`desiredBgmSrc` が常に
+  BATTLE_TRACK)。これで「ダンスだけ重い」が消えれば、重さ＝「mid-game の src 差し替え/WAV読み込み」と確定。
+- `?dancesrc=on` で従来のレベル毎ダンス曲差し替えに戻せる(比較用)。
+- `src/audio/audioManager.ts`: `DANCE_SRC_SWAP`(既定false)を追加。
+
+### 次の手(予想)
+- 軽ければ: 差し替えをやめ、261方式=「起動時にダンス曲を要素へ読み込んでおく」必要。ただし1要素では戦闘と
+  両立できないので、要素は1つのまま「戦闘曲とダンス曲を“1ファイルに連結/切替”」等、mid-game読み込みを
+  避ける設計を検討。
+
 ## 2026-06-14 - v0.25.262 - ダンスBGM本実装: 単一要素の src 差し替え方式(2系統目を作らない) (Claude Code)
 
 ### 確定した原因と方針

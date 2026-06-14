@@ -255,9 +255,14 @@ const ensureBgm = () => {
 // 差し替えるだけにする。差し替え時の読み込みヒッチは事前ウォーム(HTTPキャッシュ)で抑える。
 let danceActive = false;
 
+// 診断(v0.25.263): ダンス中も BGM を戦闘曲のままにする(=src 差し替えを起こさない)。
+// これで「ダンスだけ重い」が消えれば、重さの正体は「mid-game で要素 src をダンスWAVへ差し替える/読み込む」
+// 行為だと確定する(261はダンスWAVを起動時から読んでいたので軽かった)。
+// ?dancesrc=on を付けると本来のレベル毎ダンス曲に差し替える(従来動作)。
+const DANCE_SRC_SWAP = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancesrc') === 'on';
 // ダンスで読み込むトラック(レベル毎)。ダンス中でなければ戦闘トラック。
 const desiredBgmSrc = () =>
-  danceActive ? (DANCE_LOOP_TRACKS[currentDanceLevel] ?? BATTLE_TRACK) : BATTLE_TRACK;
+  danceActive && DANCE_SRC_SWAP ? (DANCE_LOOP_TRACKS[currentDanceLevel] ?? BATTLE_TRACK) : BATTLE_TRACK;
 
 // ダンス曲を事前に HTTP キャッシュへ載せておく(src 差し替え時の読み込みヒッチを抑える)。
 const prewarmDanceTracks = () => {
