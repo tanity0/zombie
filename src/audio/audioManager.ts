@@ -12,8 +12,15 @@ const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
   `${import.meta.env.BASE_URL}audio/rusting-grave-circuit.mp3`,
 ];
-// ダンスタイム(四神舞リズムモード)中だけ流す 120BPM トラック。メインBGMとは別エレメント。
-const DANCE_TRACK = `${import.meta.env.BASE_URL}audio/pulse-grid.mp3`;
+// ダンスタイム(四神舞)中だけ流すトラック。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
+// メインBGMとは別エレメントで、開始時にレベルのトラックへ src を切替える。
+// TODO(曲): dance-100.mp3 / dance-140.mp3 はユーザー提供待ち。dance-120.mp3 は pulse-grid を流用。
+const DANCE_TRACKS: Record<number, string> = {
+  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3`,
+  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3`,
+  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3`,
+};
+let currentDanceLevel = 2; // 現在 danceBgm に読み込まれているトラックのレベル
 
 type SfxConfig = {
   src: string;
@@ -247,7 +254,7 @@ let danceActive = false;
 
 const ensureDanceBgm = () => {
   if (danceBgm || typeof Audio === 'undefined') return;
-  danceBgm = new Audio(DANCE_TRACK);
+  danceBgm = new Audio(DANCE_TRACKS[currentDanceLevel] ?? DANCE_TRACKS[2]);
   danceBgm.loop = true;
   danceBgm.preload = 'auto';
   danceBgm.playsInline = true;
@@ -305,21 +312,29 @@ const playDanceBgm = async () => {
 // ダンストラックは BGM が有効な間ずっと再生(通常は gain 0 で無音=連続クロック)。ダンス中だけ
 // 音量を上げ、メインBGMは即0で確実に無音化(混ざり防止)。非ダンスでメインへフェード復帰。停止しない。
 // ダンスの音量はメインBGMと同じ設定値(bgmVolume)に合わせる。
-export const setDanceMode = (active: boolean) => {
-  if (active === danceActive) return;
-  danceActive = active;
+export const setDanceMode = (active: boolean, level = 2) => {
   ensureDanceBgm();
   ensureDanceRouting();
   resumeSfxContext();
   if (!danceBgm) return;
-  if (bgmActive && !muted) void playDanceBgm();
-  const lvl = muted ? 0 : bgmVolume; // ダンス音量 = BGM設定値
+  const vol = muted ? 0 : bgmVolume; // ダンス音量 = BGM設定値
   if (active) {
+    if (danceActive && level === currentDanceLevel) return; // 同レベルで既にダンス中なら何もしない
+    danceActive = true;
+    // 四神舞レベルのトラックへ切替(BPMと一致)。
+    if (level !== currentDanceLevel) {
+      currentDanceLevel = level;
+      try { danceBgm.src = DANCE_TRACKS[level] ?? DANCE_TRACKS[2]; danceBgm.load(); } catch { /* ignore */ }
+    }
+    try { danceBgm.currentTime = 0; } catch { /* ignore */ }
+    if (bgmActive && !muted) void playDanceBgm();
     setGainNow(bgmGain, bgm, 0);            // メインBGMを即0(混ざらない)。位置・設定は保持。
-    rampGain(danceGain, danceBgm, lvl, 0.1);
+    rampGain(danceGain, danceBgm, vol, 0.1);
   } else {
+    if (!danceActive) return;
+    danceActive = false;
     rampGain(danceGain, danceBgm, 0, 0.2);
-    rampGain(bgmGain, bgm, lvl, 0.6);       // 元の設定値へフェードイン
+    rampGain(bgmGain, bgm, vol, 0.6);       // 元の設定値へフェードイン
   }
 };
 
@@ -435,6 +450,13 @@ export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
   ensureDanceBgm();
+  // 各レベルのダンストラックも先読み(存在しないものは error で即終了)。danceBgm の現在トラックは別途待つ。
+  if (typeof Audio !== 'undefined') {
+    for (const lvl of [1, 2, 3]) {
+      if (lvl === currentDanceLevel) continue;
+      try { const a = new Audio(DANCE_TRACKS[lvl]); a.preload = 'auto'; a.load(); } catch { /* ignore */ }
+    }
+  }
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
   return Promise.all([
     waitAudioReady(bgm),

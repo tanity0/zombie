@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.247 - 四神舞: レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。トラックも切替 + 無敵=1ビート (Claude Code)
+
+### Summary
+- 四神舞レベルの違いをBPM(手数)で表現。Lv1=100/Lv2=120/Lv3=140BPM。間隔(interval)=600/500/≈429ms。
+- ダンストラックをレベルで切替(BPMと一致)。ジャストタップ無敵は固定0.5sから「1ビート分(=interval)」に。
+- リズム判定/サークル/再同期/ミラーボール反転は全て rhythm.interval を使用。
+
+### 実装
+- `src/config/shijin.ts`: RHYTHM_BPM_BY_LEVEL[120,100,120,140] + rhythmIntervalForLevel()。RHYTHM_TAP_INVULN_MS 廃止。
+- `src/types/game.ts` + `gameStore.ts`: RhythmState.interval 追加。setRhythmActive(active, firstBeatAt?, interval?)。
+  rhythmInput/tickRhythm/resyncRhythm が r.interval を使用。タップ無敵=interval。
+- `src/pixi/pixiScene.ts`: オーバーレイ/反転が rhythm.interval。
+- `src/hooks/useGameLoop.ts`: 開始時に shijin レベルから interval を算出し setRhythmActive、setDanceMode(true, lvl)。
+- `src/audio/audioManager.ts`: DANCE_TRACKS[1/2/3]=dance-100/120/140.mp3、setDanceMode(active, level)で src 切替。
+  preloadAllAudio で3トラック先読み。
+- `public/audio/dance-120.mp3`: 既存 pulse-grid を流用(Lv2=120は即動作)。
+
+### TODO(曲・ユーザー提供待ち)
+- `public/audio/dance-100.mp3`(Lv1/100BPM) と `public/audio/dance-140.mp3`(Lv3/140BPM) を配置すれば各レベルで鳴る。
+  未配置の間は Lv1/Lv3 は「正しいテンポの無音(視覚リズムのみ)」で動作。dance-120 も差し替え可。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-13 - v0.25.246 - 四神舞: ダンス中は近接ダメージ音オフ / ジャストタップで0.5秒無敵 (Claude Code)
 
 ### Summary

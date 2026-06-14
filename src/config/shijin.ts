@@ -3,7 +3,13 @@
 import type { RhythmArrow, ShijinGod } from '../types/game';
 
 // --- リズム ---------------------------------------------------------------
-export const RHYTHM_INTERVAL_MS = 500;        // サークル間隔(0.5秒 = 120BPM)
+export const RHYTHM_INTERVAL_MS = 500;        // 既定(120BPM)。レベル未指定時のフォールバック
+// 四神舞レベルでBPMが上がる(手数が増える)。Lv1=100 / Lv2=120 / Lv3=140。idx0はフォールバック。
+export const RHYTHM_BPM_BY_LEVEL = [120, 100, 120, 140];
+export const rhythmIntervalForLevel = (level: number): number => {
+  const lvl = Math.max(1, Math.min(3, Math.floor(level) || 1));
+  return 60000 / RHYTHM_BPM_BY_LEVEL[lvl];
+};
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
 // BGM(120BPM)の拍頭に対する補正(ms)。pulse-grid の currentTime=0 が拍頭からズレている場合に調整。
 export const RHYTHM_MUSIC_OFFSET_MS = 0;
@@ -76,7 +82,8 @@ export const rhythmComboStage = (combo: number): number =>
 // タップ(ジャスト): 近接ナイフ範囲(MELEE_RADIUS)内の敵を強制ノックバック。
 export const RHYTHM_TAP_DAMAGE = 4;           // TODO: タップの軽ダメージ(主目的はノックバック)
 export const RHYTHM_TAP_KNOCKBACK_MULT = 3.4; // タップの強制ノックバック(強め)
-export const RHYTHM_TAP_INVULN_MS = 500;      // ジャストタップ成功時の無敵時間(0.5秒)
+// ジャストタップ成功時の無敵時間は「1ビート分」(=現在の interval)。BPMが遅いほど長く、
+// どのレベルでもビートに乗れば無敵が途切れない。
 // フリック(ジャスト): 盾バッシュ風に滑りながら方向攻撃。
 export const RHYTHM_FLICK_RANGE = 130;        // TODO: フリック方向攻撃の射程
 export const RHYTHM_FLICK_HALF_W = 34;        // TODO: フリック方向攻撃の帯半幅

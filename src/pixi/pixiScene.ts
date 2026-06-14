@@ -30,7 +30,7 @@ import { getGlowTexture, getVignetteTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
-  RHYTHM_INTERVAL_MS, RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
+  RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
   RHYTHM_ARROW_GRID, SHIJIN_JP, SHIJIN_BY_ARROW,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
@@ -1071,7 +1071,7 @@ export class PixiScene {
   // (godSuccess)」で 0白/1青/2緑/3赤、フィニッシュで虹。0.5秒ごとに左右反転して回転に見せる。
   // 左右サークルは 0.5秒ごとに足元で重なる(=ジャスト)。リング/矢印は軽量Graphics。
   private syncRhythmOverlay(
-    rhythm: { active: boolean; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
+    rhythm: { active: boolean; interval: number; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
     player: Player,
     gameTime: number
   ) {
@@ -1098,7 +1098,7 @@ export class PixiScene {
       if (tex && tex.width >= 32) { ball.texture = tex; this.rhythmBallTextured = true; }
     }
     const texOk = !!ball.texture && ball.texture.width >= 32;
-    const flipSign = Math.floor(gameTime / RHYTHM_INTERVAL_MS) % 2 === 0 ? 1 : -1;
+    const flipSign = Math.floor(gameTime / rhythm.interval) % 2 === 0 ? 1 : -1;
     // タップ発光: 直後に少し拡大して光る + 背面に暖色ハロー。
     const tapT = Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS);
     const pulse = 1 + 0.18 * tapT;
@@ -1128,7 +1128,7 @@ export class PixiScene {
     // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
     // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。
     // サークルは入力の成否に関係なく、固定の120BPMグリッド位相で流れ続ける(音楽とズレない)。
-    const interval = RHYTHM_INTERVAL_MS;
+    const interval = rhythm.interval;
     const intoBeat = (((gameTime - rhythm.firstBeatAt) % interval) + interval) % interval; // 拍内経過(0..interval)
     const toBeat = (interval - intoBeat) / interval; // 1(拍直後)→0(次の拍で足元に重なる)
     const footCx = fb.footX;

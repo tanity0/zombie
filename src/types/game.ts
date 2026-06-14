@@ -243,6 +243,7 @@ export type RhythmPending =
   | { kind: 'finish' };
 export interface RhythmState {
   active: boolean;
+  interval: number;        // 1ビートの長さ(ms)。四神舞レベルのBPMで決まる(Lv1=600/Lv2=500/Lv3≈429)
   firstBeatAt: number;     // gameTime(ms) の beat index 0 の時刻
   expectBeat: number;      // 次に取るべき beat index(毎ビート入力が要る)
   prompt: RhythmArrow[];   // 現在の4矢印プロンプト(1本目=四神を決定)

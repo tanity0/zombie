@@ -8,7 +8,7 @@ import {
   RhythmState, RhythmArrow, ShijinGod, RhythmPending
 } from '../types/game';
 import {
-  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS, RHYTHM_TAP_INVULN_MS,
+  RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
@@ -33,7 +33,7 @@ import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
-  active: false, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0, inputArrows: [],
+  active: false, interval: RHYTHM_INTERVAL_MS, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0, inputArrows: [],
   godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastTapAt: 0, lastFinishAt: 0, lastGod: null,
   invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, pending: [],
 });
@@ -683,7 +683,7 @@ interface GameState {
   setStartWithTestStraps: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
-  setRhythmActive: (active: boolean, firstBeatAt?: number) => void;
+  setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
   rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
   tickRhythm: () => void;
   resyncRhythm: (musicMs: number) => void;
@@ -3385,7 +3385,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // --- 四神舞(リズム) -------------------------------------------------------
   // store は状態と判定のみを持つ。実際の攻撃(タップ/フリック/四神技/全体フィニッシュ/
   // 白虎の斬撃)は useGameLoop が pending を消化して実行する(効果音・XP・エフェクトのため)。
-  setRhythmActive: (active, firstBeatAt) => {
+  setRhythmActive: (active, firstBeatAt, interval) => {
     if (active === get().rhythm.active) return;
     if (active) {
       const gt = get().gameTime;
@@ -3393,6 +3393,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         rhythm: {
           ...state.rhythm,
           active: true,
+          interval: interval ?? RHYTHM_INTERVAL_MS, // 四神舞レベルのBPMで決まる1ビート長
           // BGMの拍に同期した firstBeatAt(loopが算出)を優先。無ければ従来のLEAD。
           firstBeatAt: firstBeatAt ?? gt + RHYTHM_LEAD_MS,
           expectBeat: 0,
@@ -3430,7 +3431,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!r.active) return { judged: 'none' };
     const gt = state.gameTime;
     if (gt - r.lastInputAt < RHYTHM_INPUT_DEBOUNCE_MS) return { judged: 'none' };
-    const beatT = r.firstBeatAt + r.expectBeat * RHYTHM_INTERVAL_MS;
+    const beatT = r.firstBeatAt + r.expectBeat * r.interval;
     const win = RHYTHM_SUCCESS_WINDOW_MS + (kind === 'flick' ? RHYTHM_FLICK_EXTRA_WINDOW_MS : 0);
     // フリックは「触れてから離すまで(contactMs)」の接触区間のどこかにジャストが入っていれば成功
     // (離す瞬間は不問)。または離した瞬間がジャストでもOK。タップは離した瞬間で判定。
@@ -3449,7 +3450,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (kind === 'tap') {
         // タップはミス扱いにしない。技リスト/コンボ/進行に一切影響させず空振り。
         // ビートだけ現在位置に合わせ、空振り後に tick がミス扱いしないようにする(早すぎる時は据え置き)。
-        const nextBeat = Math.floor((gt - r.firstBeatAt) / RHYTHM_INTERVAL_MS) + 1;
+        const nextBeat = Math.floor((gt - r.firstBeatAt) / r.interval) + 1;
         set(s => ({ rhythm: { ...s.rhythm, expectBeat: Math.max(s.rhythm.expectBeat, nextBeat), lastInputAt: gt } }));
         return { judged: 'none' };
       }
@@ -3526,8 +3527,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       player: slideVec
         ? { ...s.player, shijinSlideUntil: Date.now() + SHIJIN_SLIDE_MS, shijinSlideDirX: slideVec.x, shijinSlideDirY: slideVec.y }
         : (!arrow
-          // ジャストタップ成功で0.5秒無敵。invulnerableTime をずらしてループの INVULN_MS 自動解除を0.5sにする。
-          ? { ...s.player, invulnerable: true, invulnerableTime: Date.now() - Math.max(0, INVULN_MS - RHYTHM_TAP_INVULN_MS) }
+          // ジャストタップ成功で「1ビート分」無敵。invulnerableTime をずらしてループの INVULN_MS 自動解除を
+          // interval(=1ビート)に縮める。ビート毎にタップすれば無敵が途切れない。
+          ? { ...s.player, invulnerable: true, invulnerableTime: Date.now() - Math.max(0, INVULN_MS - r.interval) }
           : s.player),
     }));
     // JUST 表示(技発動時は四神名の callout が別に出るので JUST は出さない)。
@@ -3547,7 +3549,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (ただ立っているだけで毎ビート"ミス"が点滅しないように)。
     let expect = r.expectBeat;
     let missed = false;
-    while (gt > r.firstBeatAt + expect * RHYTHM_INTERVAL_MS + RHYTHM_SUCCESS_WINDOW_MS) {
+    while (gt > r.firstBeatAt + expect * r.interval + RHYTHM_SUCCESS_WINDOW_MS) {
       expect++;
       missed = true;
     }
@@ -3574,7 +3576,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const r = get().rhythm;
     if (!r.active) return;
     const gt = get().gameTime;
-    const interval = RHYTHM_INTERVAL_MS;
+    const interval = r.interval;
     const mod = (v: number) => ((v % interval) + interval) % interval;
     const musicPhase = mod(musicMs - RHYTHM_MUSIC_OFFSET_MS); // 現在拍内の音楽位相
     const desiredPhase = mod(gt - musicPhase);                // firstBeatAt が取るべき位相

@@ -40,7 +40,7 @@ import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, getMusicTimeMs, setDanceMode } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
-  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
+  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_DAMAGE,
@@ -604,15 +604,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             rhythmMoveStartRef.current = 0;
             if (rhythmIdleStartRef.current === 0) rhythmIdleStartRef.current = newGameTime;
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
-              // 最初のジャストを、連続再生中のダンストラック(120BPM)の拍に合わせる。以降 resyncRhythm が維持。
+              // 四神舞レベルでBPM(=interval)が変わる。レベルのトラックに切替え、その拍に合わせる。
+              const lvl = Math.max(1, Math.min(3, rp.subWeaponLevels['shijin'] ?? 1));
+              const interval = rhythmIntervalForLevel(lvl);
               const musicMs = getMusicTimeMs();
-              let firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS + RHYTHM_MUSIC_OFFSET_MS;
+              let firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + RHYTHM_MUSIC_OFFSET_MS;
               if (musicMs !== null) {
                 const m = musicMs - RHYTHM_MUSIC_OFFSET_MS;
-                const nextBeatMusic = Math.ceil((m + RHYTHM_LEAD_MS) / RHYTHM_INTERVAL_MS) * RHYTHM_INTERVAL_MS;
+                const nextBeatMusic = Math.ceil((m + RHYTHM_LEAD_MS) / interval) * interval;
                 firstBeatAt = newGameTime + (nextBeatMusic - m);
               }
-              useGameStore.getState().setRhythmActive(true, firstBeatAt);
+              useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
             }
           }
 
@@ -651,7 +653,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ダンスタイムの音楽切替: リズムの active 変化に追従(中だけ pulse-grid、メインBGMはダック)。
           const danceNow = useGameStore.getState().rhythm.active;
           if (danceNow !== danceModeRef.current) {
-            setDanceMode(danceNow);
+            if (danceNow) {
+              // 開始時は四神舞レベルのトラックへ切替(BPMと一致)。
+              const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
+              setDanceMode(true, lvl);
+            } else {
+              setDanceMode(false);
+            }
             danceModeRef.current = danceNow;
           }
         }
