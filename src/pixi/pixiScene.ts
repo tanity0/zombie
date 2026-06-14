@@ -417,6 +417,10 @@ export class PixiScene {
   // 四神名(コマンドの右に出すテキスト)。テキスト変化時のみ更新。
   private rhythmGodText = new Text({ text: '', style: { fontFamily: 'serif', fontSize: 13, fontWeight: 'bold', fill: 0xfca5a5, stroke: { color: 0x0b1020, width: 3 } } });
   private rhythmGodLast = '';
+  // コマンド/入力の矢印は別Graphicsに分離し、内容が変わった時だけ再描画(毎フレームの矩形リビルドを回避)。
+  // 位置(プレイヤー追従)は毎フレーム transform だけ更新する。
+  private rhythmArrowsGfx = new Graphics();
+  private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
@@ -586,6 +590,8 @@ export class PixiScene {
     this.rhythmGodText.anchor.set(0, 0.5);
     this.rhythmGodText.visible = false;
     this.L.effectLayer.addChild(this.rhythmGodText);
+    this.rhythmArrowsGfx.visible = false;
+    this.L.effectLayer.addChild(this.rhythmArrowsGfx);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -1080,6 +1086,8 @@ export class PixiScene {
       if (g.visible) { g.visible = false; g.clear(); }
       if (this.rhythmBall.visible) this.rhythmBall.visible = false;
       if (this.rhythmGodText.visible) this.rhythmGodText.visible = false;
+      if (this.rhythmArrowsGfx.visible) { this.rhythmArrowsGfx.visible = false; }
+      this.rhythmArrowsKey = ''; // 次回開始時に必ず再描画
       return;
     }
     const fb = playerFootBox(player);
@@ -1155,35 +1163,44 @@ export class PixiScene {
       g.circle(cx, cy, r + 4 + t * 10).stroke({ color: jc, alpha: 0.7 * (1 - t), width: 2 });
     }
 
-    // 入力したフリックを頭上に左から順に表示(末尾最大4。5つ目以降は古いものから1つずつ消える)。
-    // リズムゲーム風の太いドット絵矢印。最新の1つは明るく強調。
-    const inputRowY = cy - r - 18;
+    // --- 矢印(入力フリック + 目標コマンド) ---------------------------------
+    // 別Graphics(rhythmArrowsGfx)に原点(0,0)基準で描き、位置は毎フレーム transform だけ追従。
+    // 内容(入力履歴/コマンド/進行)が変わった時だけ再描画する(毎フレームの矩形リビルドを回避)。
     const shown = rhythm.inputArrows.slice(-4);
-    if (shown.length > 0) {
-      const block = 2.4;             // ドット1マスのサイズ
-      const aw = 7 * block;          // 矢印1個の幅(7x7)
-      const gap = aw + 6;
-      const startX = cx - (gap * (shown.length - 1)) / 2;
-      for (let i = 0; i < shown.length; i++) {
-        const latest = i === shown.length - 1;
-        this.drawRhythmArrow(g, startX + i * gap, inputRowY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
-      }
-    }
-
-    // 目標コマンド(4矢印 + 四神名)を入力矢印の「すぐ上」に表示。入力済みは淡色、1本目=四神色。
+    const prompt = rhythm.prompt;
+    const inputRowY = -r - 18;                 // 原点(cx,cy)基準
     const cblock = 2.2;
     const cgap = 7 * cblock + 5;
-    const cmdY = inputRowY - 7 * cblock - 7; // 入力矢印のすぐ上
-    const prompt = rhythm.prompt;
-    const cstartX = cx - (cgap * (prompt.length - 1)) / 2 - 8; // 名前ぶん少し左寄せ
-    for (let i = 0; i < prompt.length; i++) {
-      const a = i < rhythm.inputIndex ? 0.3 : 1;
-      const col = i === 0 ? 0xfca5a5 : 0xe2e8f0;
-      this.drawRhythmArrow(g, cstartX + i * cgap, cmdY, prompt[i], col, a, cblock);
+    const cmdY = inputRowY - 7 * cblock - 7;   // 入力矢印のすぐ上
+    const cstartX = -(cgap * (prompt.length - 1)) / 2 - 8; // 名前ぶん少し左寄せ
+    const ag = this.rhythmArrowsGfx;
+    ag.position.set(cx, cy);
+    ag.visible = true;
+    const key = `${shown.join('')}|${prompt.join('')}|${rhythm.inputIndex}`;
+    if (key !== this.rhythmArrowsKey) {
+      this.rhythmArrowsKey = key;
+      ag.clear();
+      // 入力フリック(末尾最大4)。最新は明るく強調。
+      if (shown.length > 0) {
+        const block = 2.4;
+        const gap = 7 * block + 6;
+        const startX = -(gap * (shown.length - 1)) / 2;
+        for (let i = 0; i < shown.length; i++) {
+          const latest = i === shown.length - 1;
+          this.drawRhythmArrow(ag, startX + i * gap, inputRowY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
+        }
+      }
+      // 目標コマンド(入力済みは淡色、1本目=四神色)。
+      for (let i = 0; i < prompt.length; i++) {
+        const a = i < rhythm.inputIndex ? 0.3 : 1;
+        const col = i === 0 ? 0xfca5a5 : 0xe2e8f0;
+        this.drawRhythmArrow(ag, cstartX + i * cgap, cmdY, prompt[i], col, a, cblock);
+      }
     }
+    // 四神名(Text): 位置は毎フレーム追従(cheap)、テキストは変化時のみ更新。
     const godJp = SHIJIN_JP[SHIJIN_BY_ARROW[prompt[0]]];
     if (this.rhythmGodLast !== godJp) { this.rhythmGodText.text = godJp; this.rhythmGodLast = godJp; }
-    this.rhythmGodText.position.set(cstartX + (prompt.length - 1) * cgap + cgap * 0.6, cmdY);
+    this.rhythmGodText.position.set(cx + cstartX + (prompt.length - 1) * cgap + cgap * 0.6, cy + cmdY);
     this.rhythmGodText.visible = true;
   }
 

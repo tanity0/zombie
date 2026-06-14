@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.251 - 四神舞: 重さ対策。頭上の矢印を毎フレーム描き直さない(内容変化時のみ) (Claude Code)
+
+### Summary
+- ダンス中が極端に重い件。ダンス中だけ走る Pixi オーバーレイで、コマンド+入力の矢印を毎フレーム
+  ~400個の矩形で描き直していたのが主因(リング/ボールは数個だが矢印が重い)。
+- 矢印を別 Graphics(rhythmArrowsGfx)に分離。原点基準で描き、位置は毎フレーム transform だけ追従。
+  内容(入力履歴/コマンド/進行)が変わった時だけ再描画(キー比較)。四神名 Text も位置追従のみ。
+- rhythmOverlay 本体の毎フレーム描画はリング/ボールのハロー/影/判定フラッシュの数個だけに。
+
+### 実装
+- `src/pixi/pixiScene.ts`: rhythmArrowsGfx + rhythmArrowsKey。矢印描画を分離・キャッシュ化。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
+### Note
+- まだ重い場合、提供mp3(320kbps/7.5〜10.7MB)の再生負荷の可能性。ビットレート/尺の最適化で軽くできる。
+
 ## 2026-06-14 - v0.25.250 - 四神舞: 毎フレームの位相再同期(resync)を廃止し、一定リズムに (Claude Code)
 
 ### Summary
