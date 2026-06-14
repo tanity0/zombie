@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.264 - 診断: 戦闘中の曲を起動時からダンスlevel1に (Claude Code)
+
+### 確定事項
+- v0.25.263(ダンス中も戦闘曲のまま=src差し替えなし)で **軽い**(ユーザー確認)。
+  → 重さの正体は「**ゲーム中に要素 src をダンスWAVへ差し替える/読み込むこと**」で確定。
+
+### この版
+- 戦闘中の曲を起動時から `dance-100-loop.wav`(ダンスlevel1)にする(`BGM_USE_DANCE1`、既定true)。
+  src 差し替えは起こさない設定のまま。`?bgm=normal` で通常戦闘BGMへ。
+- `src/audio/audioManager.ts`: BATTLE_TRACK を切替式に。
+
 ## 2026-06-14 - v0.25.263 - 診断: ダンス中もBGMを戦闘曲のまま(src差し替えを起こさない) (Claude Code)
 
 ### きっかけ

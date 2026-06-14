@@ -236,7 +236,10 @@ const persistMuted = () => {
   }
 };
 
-const BATTLE_TRACK = BGM_TRACKS[0];
+// 診断(v0.25.264): 戦闘中の曲を起動時からダンスlevel1(dance-100-loop.wav)にする。
+// ?bgm=normal を付けると通常の戦闘BGM(rotten-iron-march.mp3)に戻す。
+const BGM_USE_DANCE1 = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bgm') !== 'normal';
+const BATTLE_TRACK = BGM_USE_DANCE1 ? DANCE_LOOP_TRACKS[1] : BGM_TRACKS[0];
 // いま BGM 要素に読み込ませてあるトラックURL(戦闘 or ダンス)。差し替えは applyBgm が冪等に行う。
 let bgmSrc = BATTLE_TRACK;
 const ensureBgm = () => {
