@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.255 - ダンス重さ: 同時2ストリーム回避(ダンス中はメインBGMを停止し1本だけ) (Claude Code)
+
+### Summary
+- v0.25.254のネイティブ化でも重いまま=「再生方式」ではなく「メディア要素を2本同時再生」が重さの核心と判明。
+  (?danceaudio=0 でメインだけ=1本=60fps、通常はメイン+ダンス=2本=25fps)
+- 対策: ダンス中はメインBGMを「ダック(音量0で再生継続)」ではなく「停止(pause)」し、ダンス曲だけ再生。
+  常に音声1本に保つ。終了でダンス曲をpause→メインBGMを停止位置から再開(playBgm)。位置は保持される。
+- フル尺(187〜268秒)はAudioBuffer化はメモリ過大(60〜90MB)で不可なため、この方式を採用。
+
+### 実装
+- `src/audio/audioManager.ts`: setDanceMode 開始で bgm.pause()、終了で playBgm()。applyBgm もダンス中は
+  メイン停止に整合(ダック廃止)。rampGain/setGainNow は未使用化(残置)。
+
+### Verification
+- `npm run build` 成功。
+
+### Note
+- トレードオフ: ダンス開始/終了でメインBGMが一瞬切れる(クロスフェード無し)。位置は保持。気になれば短い
+  フェードを後で。診断トグル(?danceaudio=0 / ?dancevfx=0)は残置。
+
 ## 2026-06-14 - v0.25.254 - ダンス重さの本対策: ダンス曲をWebAudio非経由のネイティブ再生に (Claude Code)
 
 ### Summary

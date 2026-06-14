@@ -328,13 +328,15 @@ export const setDanceMode = (active: boolean, level = 2) => {
     try { danceBgm.currentTime = 0; } catch { /* ignore */ }
     danceBgm.muted = muted;              // iOSは muted で消音(element.volume無視対策)
     danceBgm.volume = muted ? 0 : bgmVolume;
+    // ★ 同時2ストリーム(メイン+ダンス)がこの端末で重い → メインBGMは「停止」(位置は保持)して
+    //   常に1ストリームに保つ。ダックではなく pause。
+    try { bgm?.pause(); } catch { /* ignore */ }
     if (bgmActive && !muted) void playDanceBgm();
-    setGainNow(bgmGain, bgm, 0);          // メインBGMを即0(混ざらない)。位置・設定は保持。
   } else {
     if (!danceActive) return;
     danceActive = false;
-    try { danceBgm.pause(); } catch { /* ignore */ } // ダンス曲は停止(連続再生/デコードしない=軽い)
-    rampGain(bgmGain, bgm, muted ? 0 : bgmVolume, 0.6); // 元の設定値へフェードイン
+    try { danceBgm.pause(); } catch { /* ignore */ } // ダンス曲は停止
+    if (bgmActive && !muted) void playBgm();          // メインBGMを停止位置から再開
   }
 };
 
@@ -371,12 +373,12 @@ const applyBgm = () => {
   if (bgmActive && !muted) {
     resumeSfxContext();
     ensureBgmRouting();
-    // ダンス中はメインBGMをダック(0)で維持。それ以外は設定値。
-    if (bgmGain) bgmGain.gain.value = danceActive ? 0 : bgmVolume;
-    else bgm.volume = danceActive ? 0 : bgmVolume;
-    void playBgm();
+    if (bgmGain) bgmGain.gain.value = bgmVolume; // メイン音量は設定値(ダンス中はダックでなく停止で対応)
+    else bgm.volume = bgmVolume;
+    // ★ 同時2ストリーム回避: ダンス中はメインBGMを停止し、ダンス曲だけ鳴らす。非ダンス時のみメイン再生。
+    if (danceActive) { try { bgm.pause(); } catch { /* ignore */ } }
+    else void playBgm();
     // ダンス曲は WebAudio 非経由のネイティブ再生。ここでは(操作ジェスチャ内で)アンロックのみ。
-    // 常時再生はしない(ダンス中だけ setDanceMode で再生)。
     primeDanceBgm();
   } else {
     bgm.pause();
