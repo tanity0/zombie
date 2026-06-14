@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.283 - スタート時に複数曲が重なる代償を解消(unlockの一時要素をミュート維持) (Claude Code)
+
+### 症状
+- v0.25.280+ の `unlockDanceAudio()`(スタート操作でダンス曲リソースを解錠)の代償で、
+  **ゲーム開始時に複数の曲が一瞬重なって鳴る**。
+
+### 原因
+- 解錠用の一時 `Audio` 要素を `muted` で play した後、`.then` で **pause 直後に `muted=false`/`volume` を戻していた**。
+  pause が効き切る前に un-mute するため、4本(戦闘+ダンスLv1/2/3)それぞれの頭が一瞬鳴って重なる。
+
+### 修正
+- `src/audio/audioManager.ts` `unlockDanceAudio`: 一時要素は使い捨てなので **最後までミュート維持**。
+  pause 後の `muted`/`volume` 復帰を削除。解錠(=ジェスチャ内 play)はミュートのままでも成立する。
+- 方式(単一BGM要素 src差し替え + gesture unlock)は維持。Web/iOS Safari 向け暫定対策である点も不変。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機で「スタート時に曲が重ならない」を確認待ち。
+
 ## 2026-06-15 - v0.25.282 - Claude Code移行準備とダンスBGM成功候補の確定メモ (Codex)
 
 ### Summary

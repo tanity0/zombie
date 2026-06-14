@@ -462,26 +462,22 @@ export const preloadAllAudio = (): Promise<void> => {
 export const unlockDanceAudio = () => {
   // Web/iOS Safari only: unlock likely dance BGM resources during the start tap.
   // Native app builds should remove this and use the app audio session/engine instead.
+  // 一時要素は解錠専用で使い捨て。最後までミュートのままにする(pause直後に un-mute すると
+  // pause が効き切る前の一瞬が鳴り、スタート時に複数曲が重なって聞こえる ← v0.25.282の代償)。
   const urls = [BGM_TRACKS[0], DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3]].filter(Boolean);
   for (const url of urls) {
     if (typeof Audio === 'undefined') continue;
     const el = new Audio(url);
     el.preload = 'auto';
     el.playsInline = true;
-    const wasMuted = el.muted;
     el.muted = true;
     el.volume = 0;
     void el.play()
       .then(() => {
         el.pause();
         try { el.currentTime = 0; } catch { /* ignore */ }
-        el.muted = wasMuted;
-        el.volume = bgmVolume;
       })
-      .catch(() => {
-        el.muted = wasMuted;
-        el.volume = bgmVolume;
-      });
+      .catch(() => { /* 解錠失敗してもゲームは止めない */ });
   }
 };
 
