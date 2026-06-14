@@ -283,7 +283,12 @@ export const getMusicTimeMs = (): number | null => null;
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
 // and balance it against the SFX. Falls back to element.volume if unavailable.
+// 切り分け(v0.25.266): BGM を WebAudio(MediaElementSource)経由にすると、要素を一度掴んだ後の src 差し替えで
+// 無音になる(265で再現)。ここを false にして“要素の素再生(element.volume)”にし、差し替え後に音が出るか確認。
+// ?bgmroute=on を付けると従来の WebAudio ルーティングに戻す。
+const BGM_USE_WEBAUDIO_ROUTING = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bgmroute') === 'on';
 const ensureBgmRouting = () => {
+  if (!BGM_USE_WEBAUDIO_ROUTING) return; // 素再生(element.volume)を使う
   if (bgmRouted) return;
   const ctx = ensureSfxContext();
   ensureBgm();

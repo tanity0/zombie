@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.266 - 診断: BGMをWebAudio経由にせず素再生(差し替え後の無音を解消できるか) (Claude Code)
+
+### 265の結果(超重要)
+- ダンス突入で「BGM無音・でも軽い」。→ **小さいMP3への src 差し替えは軽い**(262の重さは“大WAVのデコード”だけ)。
+  残る問題は「差し替えると無音」。
+
+### 仮説と検証
+- 原因はほぼ確実に **BGM を WebAudio(createMediaElementSource)で掴んでいるせい**。要素を一度ノード化すると
+  src 差し替え後の音がグラフに乗らず無音になる既知挙動(起動時の最初の曲は鳴る)。
+- 検証: `BGM_USE_WEBAUDIO_ROUTING=false`(既定)で BGM を“要素の素再生(element.volume)”にする。これで差し替え後に
+  音が出れば原因確定。`?bgmroute=on` で従来ルーティングに戻せる。
+- トレードオフ: 素再生だと iOS で element.volume が無視され音量調整が効かない(再生自体はする)。音が出る方を優先。
+- 構成は265のまま(通常=ダンスlevel1 / ダンス中=戦闘MP3へ差し替え)。
+
 ## 2026-06-14 - v0.25.265 - 診断: 通常=ダンスlevel1、ダンス中=戦闘曲MP3へ差し替え (Claude Code)
 
 ### 目的(切り分け)
