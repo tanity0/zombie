@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.282 - Claude Code移行準備とダンスBGM成功候補の確定メモ (Codex)
+
+### Summary
+- Claude Codeへactive developerを戻すための引き継ぎ準備。
+- `v0.25.280` の実機結果を成功候補として明記:
+  - ユーザー確認: 「うん、上手くいってる。微調整は必要だけど。」
+  - 方式: 単一BGM要素の `src` 差し替え + スタート操作時の `unlockDanceAudio()`
+  - 問題の主因: Web/iOS Safariの自動再生制限と音声再生経路差。ダンスVFXではない。
+- `v0.25.281` のコメントどおり、この音声対策はWeb/iOS Safari向け。ネイティブアプリ移行時は削除し、アプリ側音声エンジンでBGM切替を実装する。
+- 次のClaude Code側作業は、`v0.25.280/281`の方式を維持したまま微調整すること。Web音声対策を不要に戻さない。
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-15 - v0.25.281 - アプリ移行時に消すWeb音声対策メモを追記 (Codex)
 
 ### Summary
