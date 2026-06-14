@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.262 - ダンスBGM本実装: 単一要素の src 差し替え方式(2系統目を作らない) (Claude Code)
+
+### 確定した原因と方針
+- v0.25.261 の診断で、戦闘BGM要素の src をダンスlevel1曲にしたところ **プレイ中もダンス中も軽く、音も
+  切れない(ユーザー確認済み)**。
+- → **ダンス曲の中身/WAV/WebAudioルーティングは無罪**。重さの正体は「2系統目の音声を同時に持つこと」だけ
+  (v0.25.258 のAudioBufferSource、v0.25.259 の追加要素)。
+- 方針確定: **2系統目は作らず、唯一の BGM 要素の src を戦闘↔ダンスで差し替える**。
+
+### 実装
+- `src/audio/audioManager.ts`:
+  - ダンス専用要素(danceEls)・WebAudioバッファ機構を撤去。診断フラグも撤去。
+  - `desiredBgmSrc()`= ダンス中はレベル毎のダンスループ、それ以外は戦闘トラック。
+  - `applyBgm()` が要素の `src` を desiredBgmSrc に冪等に合わせて再生(WebAudioルーティングは従来通り、
+    src 差し替え後も維持される=軽い)。
+  - `setDanceMode` は danceActive/level を更新して applyBgm を呼ぶだけ。
+  - `prewarmDanceTracks()`(preload時)でダンス曲を HTTP キャッシュへ事前ウォーム→ src 差し替え時の
+    読み込みヒッチを抑制。
+  - setAudioMuted/setBgmVolume/setBgmActive の applyDanceEl 呼び出しを撤去(単一要素なので applyBgm のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。v0.25.261で単一要素=軽い+音切れなしは実機確認済み。
+
+### Performance（load score: 1/10）
+- 同時に持つ音声系統は常に1つ(=戦闘時と同じ)。WebAudioバッファ等の重い経路は不使用。
+- 既知の軽微点: ダンス→戦闘へ戻る際、戦闘BGMは src 再読込のため先頭から再生(位置は保持されない)。
+  ダンスは一時的な演出なので許容。ループ継ぎ目は要素 loop の微小ギャップのみ(WAVなので小)。
+
 ## 2026-06-14 - v0.25.261 - 診断: 戦闘BGMの素をダンスlevel1曲に差し替え (Claude Code)
 
 ### 目的(切り分け)
