@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.278 - 音が出る唯一の方式=Web Audioバッファへ確定。低電力OFFで素のFPS再測定 (Claude Code)
+
+### 276の結果と判断
+- 差し替え後再生を堅牢化(即時+各種canplayイベント)してもダンス曲は無音 → **やはり自動再生ポリシー**で
+  「ゲーム中に新しい曲へ差し替え」はブロックされる(戦闘曲への戻りは最初に許可済みだから鳴る)。
+  → **src差し替え方式ではダンス曲は構造的に鳴らせない**(確定)。
+- 276のFPS30は**低電力モード再ON**のサイン(本来60の土台が30固定は低電力の典型)。
+- 音が出るのは自動再生ブロックを受けない **Web Audioバッファ方式だけ**。275の20fpsも低電力の可能性大。
+  (ループ buffer の再生CPUはバッファ長に依らず一定。ハリケーンの loop buffer は軽い=長尺ダンスも本来軽いはず。)
+
+### 対応
+- audioManager を 275(Web Audioバッファでダンス曲再生＋連打防止)に戻す。getMusicTimeMs は再削除(277の掃除を維持)。
+- 低電力モードを**確実にOFF＋充電ケーブル接続**で、通常/ダンスの素のFPSを取り直してもらう。
+
+### 確認してほしいこと
+- 低電力OFF(電池が減ると自動再ONするので充電しながら)で v0.25.278:
+  (1)通常FPS (2)ダンスFPS (3)ダンス曲が鳴るか。バッファ方式は音は出るはず=FPSが土台60付近なら完成。
+
 ## 2026-06-14 - v0.25.277 - 音楽同期の死にコードを完全撤去(フレーム処理に残骸なしを確定) (Claude Code)
 
 ### 背景(ユーザー確認依頼)
