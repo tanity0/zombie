@@ -248,7 +248,8 @@ const ensureBgm = () => {
 
 // --- ダンスタイム(四神舞) -------------------------------------------------
 // v0.25.279でレベル別の固定HTMLAudioElementは音が出たが、実機ダンス中だけ約20fpsまで落ちた。
-// 次は唯一軽かった「BGM要素1本のsrc差し替え」に戻し、スタート操作中の事前解錠で差し替え後無音を潰せるか試す。
+// v0.25.280の単一BGM要素src差し替え + 事前解錠はWeb/iOS Safari向けの暫定対策。
+// ネイティブアプリへ移行する時は、この解錠/src差し替え処理を削り、アプリ側の音声エンジンでBGM切替を実装する。
 let danceActive = false;
 
 let bgmTargetSrc = BGM_TRACKS[0];
@@ -459,6 +460,8 @@ export const preloadAllAudio = (): Promise<void> => {
 };
 
 export const unlockDanceAudio = () => {
+  // Web/iOS Safari only: unlock likely dance BGM resources during the start tap.
+  // Native app builds should remove this and use the app audio session/engine instead.
   const urls = [BGM_TRACKS[0], DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3]].filter(Boolean);
   for (const url of urls) {
     if (typeof Audio === 'undefined') continue;

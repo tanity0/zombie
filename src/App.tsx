@@ -39,6 +39,7 @@ function App() {
   }, [gameState]);
   
   const startGame = async (characterClass: string, benchmark = false) => {
+    // Web/iOS Safari BGM unlock workaround. Remove for native-app audio.
     unlockDanceAudio();
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass

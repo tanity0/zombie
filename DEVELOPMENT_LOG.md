@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.281 - アプリ移行時に消すWeb音声対策メモを追記 (Codex)
+
+### Summary
+- `v0.25.280` のダンスタイムBGM対策について、ソースコメントに明記:
+  - 単一BGM要素 `src` 差し替え
+  - スタート操作時の `unlockDanceAudio()`
+  - どちらも Web/iOS Safari 向けの暫定対策
+  - ネイティブアプリ移行時は削除し、アプリ側の音声エンジンでBGM切替を実装する
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-15 - v0.25.280 - 単一BGM要素src差し替えをジェスチャ解錠付きで再検証 (Codex)
 
 ### 279の実機結果
