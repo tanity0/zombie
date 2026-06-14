@@ -235,8 +235,8 @@ const persistMuted = () => {
   }
 };
 
-// いま BGM 要素に読み込ませてあるトラックURL(戦闘曲固定。ダンス曲は別HTMLAudioElementで鳴らす)。
-const bgmSrc = BGM_TRACKS[0];
+// いま BGM 要素に読み込ませてあるトラックURL。v0.25.280ではこの1要素だけを戦闘/ダンスで差し替える。
+let bgmSrc = BGM_TRACKS[0];
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
   bgm = new Audio(bgmSrc);
@@ -247,74 +247,82 @@ const ensureBgm = () => {
 };
 
 // --- ダンスタイム(四神舞) -------------------------------------------------
-// v0.25.278で長尺Web Audioバッファの連続ループは音が出る一方、実機ダンス中だけ約20fpsまで落ちた。
-// 次の切り分けとして、低電力OFFで未再評価だった「レベル別の固定HTMLAudioElement」を素再生で試す。
-// src差し替えはしないので差し替え後無音を避け、Web Audioバッファの連続出力コストも避ける。
+// v0.25.279でレベル別の固定HTMLAudioElementは音が出たが、実機ダンス中だけ約20fpsまで落ちた。
+// 次は唯一軽かった「BGM要素1本のsrc差し替え」に戻し、スタート操作中の事前解錠で差し替え後無音を潰せるか試す。
 let danceActive = false;
 
-const danceEls = new Map<number, HTMLAudioElement>();
-let dancePlayingLevel = 0;          // いま鳴らしているダンス曲のレベル(同レベルなら鳴らし直さない)
+let bgmTargetSrc = BGM_TRACKS[0];
+let bgmTargetDanceLevel = 0;        // 0=戦闘曲、1〜3=ダンス曲
+let bgmPlayToken = 0;
 let danceStopTimer: number | null = null; // 停止を少し遅延して、rhythm.active の一瞬のチラつきで止め→鳴り直しが起きないように
 
 const cancelDanceStop = () => {
   if (danceStopTimer !== null) { clearTimeout(danceStopTimer); danceStopTimer = null; }
 };
 
-const ensureDanceEl = (level: number) => {
-  const url = DANCE_LOOP_TRACKS[level];
-  if (!url || typeof Audio === 'undefined') return null;
-  const existing = danceEls.get(level);
-  if (existing) return existing;
-  const el = new Audio(url);
-  el.loop = true;
-  el.preload = 'auto';
-  el.playsInline = true;
-  el.volume = bgmVolume;
-  danceEls.set(level, el);
-  return el;
+const danceTrackForLevel = (level: number) => DANCE_LOOP_TRACKS[Math.max(1, Math.min(3, level))] ?? DANCE_LOOP_TRACKS[2];
+
+const playBgmRobust = () => {
+  ensureBgm();
+  if (!bgm || !bgmActive || muted) return;
+  const token = ++bgmPlayToken;
+  const tryPlay = () => {
+    if (!bgm || token !== bgmPlayToken || !bgmActive || muted) return;
+    if (bgmGain) bgmGain.gain.value = bgmVolume;
+    else bgm.volume = bgmVolume;
+    void bgm.play().catch(() => {});
+  };
+  tryPlay();
+  const events: Array<keyof HTMLMediaElementEventMap> = ['loadeddata', 'canplay', 'canplaythrough'];
+  const cleanup = () => {
+    if (!bgm) return;
+    events.forEach(event => bgm?.removeEventListener(event, onReady));
+  };
+  const onReady = () => {
+    cleanup();
+    tryPlay();
+  };
+  events.forEach(event => bgm?.addEventListener(event, onReady, { once: true }));
+  window.setTimeout(cleanup, 2200);
 };
 
-const stopDanceEl = (level: number) => {
-  const el = danceEls.get(level);
-  if (!el) return;
-  el.pause();
-  try { el.currentTime = 0; } catch { /* ignore */ }
-};
-
-const stopDanceElements = () => {
-  cancelDanceStop();
-  for (const level of danceEls.keys()) stopDanceEl(level);
-  dancePlayingLevel = 0;
-};
-
-const startDanceElement = (level: number) => {
-  cancelDanceStop();
-  if (dancePlayingLevel === level) return; // 既に同レベルを再生中: 鳴らし直さない(連打防止)
-  for (const other of danceEls.keys()) {
-    if (other !== level) stopDanceEl(other);
+const setBgmTrack = (nextSrc: string, danceLevel = 0) => {
+  ensureBgm();
+  if (!bgm) return;
+  if (bgmTargetSrc === nextSrc && bgmTargetDanceLevel === danceLevel && bgmSrc === nextSrc) {
+    playBgmRobust();
+    return;
   }
-  const el = ensureDanceEl(level);
-  if (!el) return;
-  el.muted = false;
-  el.volume = bgmVolume;
-  void el.play()
-    .then(() => { dancePlayingLevel = level; })
-    .catch(() => { dancePlayingLevel = 0; });
+  bgmTargetSrc = nextSrc;
+  bgmTargetDanceLevel = danceLevel;
+  if (bgmSrc !== nextSrc) {
+    bgmSrc = nextSrc;
+    bgm.pause();
+    bgm.src = nextSrc;
+    try { bgm.load(); } catch { /* ignore */ }
+  }
+  playBgmRobust();
 };
 
-// ダンス曲要素の再生を (danceActive && bgmActive && !muted) に合わせる。冪等。
-// 停止は少し遅延する: rhythm.active が一瞬だけ false に揺れても止め→鳴り直し(連打=ダダダ)にならないように。
 const applyDanceAudio = () => {
-  const shouldPlay = danceActive && bgmActive && !muted;
-  if (shouldPlay) {
+  if (!bgmActive || muted) {
+    bgm?.pause();
+    return;
+  }
+  if (danceActive) {
     cancelDanceStop();
-    if (dancePlayingLevel !== currentDanceLevel) startDanceElement(currentDanceLevel);
-  } else if (dancePlayingLevel !== 0 && danceStopTimer === null) {
-    danceStopTimer = window.setTimeout(() => { danceStopTimer = null; stopDanceElements(); }, 300);
+    setBgmTrack(danceTrackForLevel(currentDanceLevel), currentDanceLevel);
+  } else if (bgmTargetDanceLevel !== 0 && danceStopTimer === null) {
+    danceStopTimer = window.setTimeout(() => {
+      danceStopTimer = null;
+      setBgmTrack(BGM_TRACKS[0], 0);
+    }, 300);
+  } else if (bgmTargetDanceLevel === 0) {
+    setBgmTrack(BGM_TRACKS[0], 0);
   }
 };
 
-// ダンスの開始/終了。戦闘要素(1つ)を pause し、ダンス曲は固定HTMLAudioElementで鳴らす(src差し替えなし=無音回避)。
+// ダンスの開始/終了。BGM要素1本だけを使い、戦闘曲/ダンス曲でsrcを差し替える。
 export const setDanceMode = (active: boolean, level = 2) => {
   ensureBgm();
   if (active) {
@@ -322,13 +330,12 @@ export const setDanceMode = (active: boolean, level = 2) => {
     const levelChanged = danceActive && level !== currentDanceLevel;
     danceActive = true;
     currentDanceLevel = level;
-    if (levelChanged) stopDanceElements(); // レベルが変わったら鳴らし直す
+    if (levelChanged) setBgmTrack(danceTrackForLevel(currentDanceLevel), currentDanceLevel);
   } else {
     if (!danceActive) return;
     danceActive = false;
   }
-  applyBgm();         // ダンス中は戦闘要素を pause、終了で再開
-  applyDanceAudio();  // ダンス曲要素を再生/停止
+  applyBgm();
 };
 
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
@@ -357,19 +364,16 @@ const ensureBgmRouting = () => {
   }
 };
 
-// Drive the BGM to match (bgmActive && !muted). Play/pause does the real on/off
-// (the only thing that works on iOS); the gain sets the level.
+// Drive the single BGM element to the current battle/dance target.
 const applyBgm = () => {
   ensureBgm();
   if (!bgm) return;
-  // ダンス中は戦闘要素を pause(ダンス曲は固定HTMLAudioElementに任せる)。
-  if (bgmActive && !muted && !danceActive) {
+  if (bgmActive && !muted) {
     resumeSfxContext();
     ensureBgmRouting();
-    if (bgmGain) bgmGain.gain.value = bgmVolume;
-    else bgm.volume = bgmVolume;
-    void playBgm();
+    applyDanceAudio();
   } else {
+    ++bgmPlayToken;
     bgm.pause();
   }
 };
@@ -438,7 +442,14 @@ const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise
 export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
-  const danceWaits = [1, 2, 3].map(level => waitAudioReady(ensureDanceEl(level)));
+  const danceWaits = [1, 2, 3].map(level => {
+    const url = danceTrackForLevel(level);
+    if (!url || typeof Audio === 'undefined') return Promise.resolve();
+    const el = new Audio(url);
+    el.preload = 'auto';
+    el.playsInline = true;
+    return waitAudioReady(el);
+  });
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
   return Promise.all([
     waitAudioReady(bgm),
@@ -447,21 +458,13 @@ export const preloadAllAudio = (): Promise<void> => {
   ]).then(() => {});
 };
 
-const playBgm = async () => {
-  ensureBgm();
-  if (!bgm) return;
-  try {
-    await bgm.play();
-  } catch {
-    // Browser autoplay policy may deny playback outside a user gesture.
-    // Start / audio-toggle interactions call this again.
-  }
-};
-
 export const unlockDanceAudio = () => {
-  for (const level of [1, 2, 3]) {
-    const el = ensureDanceEl(level);
-    if (!el) continue;
+  const urls = [BGM_TRACKS[0], DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3]].filter(Boolean);
+  for (const url of urls) {
+    if (typeof Audio === 'undefined') continue;
+    const el = new Audio(url);
+    el.preload = 'auto';
+    el.playsInline = true;
     const wasMuted = el.muted;
     el.muted = true;
     el.volume = 0;
@@ -496,7 +499,6 @@ export const setAudioMuted = (nextMuted: boolean) => {
 export const setBgmVolume = (volume: number) => {
   bgmVolume = Math.max(0, Math.min(1, volume));
   try { localStorage.setItem(BGM_VOLUME_KEY, String(bgmVolume)); } catch { /* ignore */ }
-  for (const el of danceEls.values()) el.volume = bgmVolume;
   applyBgm();
   applyDanceAudio();
 };

@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.280 - 単一BGM要素src差し替えをジェスチャ解錠付きで再検証 (Codex)
+
+### 279の実機結果
+- 表示version: `0.25.279`
+- 通常FPS: `60`
+- ダンスFPS: `20`
+- ダンス曲: 鳴る
+
+結論: レベル別固定 `HTMLAudioElement` 方式は「鳴る」が、実機では `v0.25.278` の Web Audio buffer loop と同じくダンス中だけ20fpsまで落ちる。固定複数要素方式も最終解ではない。
+
+### Summary
+- handoff の次順位案に進めた:
+  - BGM要素を1本だけに戻す。
+  - ダンス中は同じBGM要素の `src` を該当ダンスMP3へ差し替える。
+  - ダンス終了時は300ms遅延して戦闘BGMへ戻す。
+  - `loadeddata` / `canplay` / `canplaythrough` でも再生を再試行する。
+  - スタート操作中に戦闘曲とLv1/Lv2/Lv3ダンス曲を一時HTMLAudioElementで muted play/pause し、リソース解錠を試す。
+- 狙い:
+  - `v0.25.269` 系で確認済みの「単一要素src差し替えは軽い」を維持。
+  - これまでの無音問題をジェスチャ解錠で潰せるか確認する。
+
+### Performance
+- Old load score: `1/10` expected if the single-element swap remains the same as the low-power-OFF `v0.25.269` behavior.
+- Performance Budget Score impact: 未確認。狙いは通常60 / ダンス57〜60付近。
+- 実機確認が必要:
+  - 画面表示 version `0.25.280`
+  - 通常FPS / ダンス中FPS / ダンス曲が鳴るか
+- もし音が鳴らずFPSだけ軽い場合は、temporary element の muted unlock では単一BGM要素の差し替え先解錠に不十分。
+- もし音が鳴ってFPSも軽ければ採用候補。
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-15 - v0.25.279 - ダンスBGMをレベル別固定HTMLAudioElementで再評価 (Codex)
 
 ### Summary
