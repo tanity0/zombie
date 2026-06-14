@@ -1638,7 +1638,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
           useGameStore.getState().spawnGlow(pcx, pcy, 78, 'rgba(56,189,248,', COUNTER_REFLECT_SLOW_MS);
-          useGameStore.getState().triggerTimeSlow(0.34, COUNTER_REFLECT_SLOW_MS);
+          // ダンス中(四神舞)はスローモーを入れない(リズムが乱れるため)。演出(グロー/リング/バースト)は残す。
+          if (!useGameStore.getState().rhythm.active) {
+            useGameStore.getState().triggerTimeSlow(0.34, COUNTER_REFLECT_SLOW_MS);
+          }
           spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');

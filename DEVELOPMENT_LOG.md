@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.286 - ダンス中のカウンター反射はスローモー無しに (Claude Code)
+
+### 変更
+- カウンター(敵弾反射)成立時のスローモー(`triggerTimeSlow`)を、**四神舞(ダンス)中は発動しない**よう gate。
+  リズムが乱れないように。グロー/リング/バースト/Counter!表示などの演出は残す。
+- `useGameLoop.ts`: 反射成立ブロックで `!rhythm.active` の時だけ `triggerTimeSlow`。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
 ## 2026-06-14 - v0.25.285 - 性能調整: レベルアップ周辺ノックバック / ダンスのバッシュ・ダメージ・カウンター (Claude Code)
 
 ### ゲーム全般
