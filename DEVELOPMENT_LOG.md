@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.260 - ダンス専用音声を既定OFFに(戦闘BGM継続=60fps)。別トラックは全方式で重いと判明 (Claude Code)
+
+### 結論(重要)
+- v0.25.259(専用HTMLAudioElement)は **10fps以下=過去最悪**。これで主要3方式すべてが重いと確定:
+  - v0.25.257 要素src差し替え → 重い/無音
+  - v0.25.258 WebAudioバッファループ → 重い+ブツ切れ
+  - v0.25.259 専用HTMLAudioElement(WAVループ)→ **10fps以下**
+- 一方 **ダンス中も戦闘BGMを流したまま(?danceaudio=0)= 60fpsで安定**。これは何度も実証済み。
+- → **この端末は「ダンス用の別音声を同時に持つ/鳴らす」こと自体が重い**。原因は曲の中身でも方式でもなく
+  「2系統目の音声を抱えること」。VFX/リズムは store 側で軽い。
+
+### 対策(まず軽さを最優先で復旧)
+- ダンス専用トラックを **既定で完全停止**。ダンス中は戦闘BGMを継続(=実証済み60fps)。
+- `?danceaudio=1` のときだけ実験的に専用トラックを鳴らす(将来の切り分け用)。既定では専用要素を
+  生成すらしない(余計なデコード/メモリも持たない)。
+- `src/audio/audioManager.ts`: `DANCE_TRACK_ENABLED`(既定false)を追加。setDanceMode は無効時 early return、
+  preloadAllAudio も無効時は danceEls を作らない。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。既定で別音声を一切持たないため 60fps 復帰を期待(実機確認待ち)。
+
+### 次の判断材料
+- 「ダンス専用BGM」をこの端末で鳴らすのは現実的でない可能性が高い。
+- もし諦めず試すなら次の唯一の未検証案 = **小さいMP3(戦闘BGMと同形式・低ビットレート)1要素**。今までは巨大WAVを
+  要素に食わせていた。要否はユーザー判断。
+
 ## 2026-06-14 - v0.25.259 - ダンス重さ: 重い経路を特定し HTMLAudioElement 直再生へ (Claude Code)
 
 ### 原因特定(更新)

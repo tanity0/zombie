@@ -251,8 +251,12 @@ const ensureBgm = () => {
 // ループ再生し、WebAudioには通さない。ダンス中はメインBGM要素を pause するので、同時にデコード/再生
 // する要素は常に1つ=戦闘時と同じ負荷=軽い。
 let danceActive = false;
-// 診断用: URLに ?danceaudio=0 を付けるとダンス曲を鳴らさずメインBGMを流し続ける(重さ切り分け用)。
-const DANCE_AUDIO_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('danceaudio') === '0';
+// この端末では「ダンス専用の音声を別に鳴らす」と必ず重くなる(要素src差し替え=v0.25.257、WebAudioバッファ
+// ループ=v0.25.258、専用HTMLAudioElement=v0.25.259、いずれも10〜30fps)。一方ダンス中も戦闘BGMを流したまま
+// =60fpsで安定。よって既定ではダンス専用トラックを鳴らさず戦闘BGMを継続する(VFX/リズムはそのまま)。
+// ?danceaudio=1 を付けたときだけ実験的にダンス専用トラックを鳴らす(切り分け用)。
+const DANCE_TRACK_ENABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('danceaudio') === '1';
+const DANCE_AUDIO_OFF = !DANCE_TRACK_ENABLED;
 
 // レベル毎の専用 HTMLAudioElement。事前に生成・ロードし、ダンス開始で該当レベルだけ play(loop)。
 const danceEls = new Map<number, HTMLAudioElement>();
@@ -292,6 +296,8 @@ const applyDanceEl = () => {
 // ?danceaudio=0 のときはダンス曲を鳴らさずメインBGMを流したまま(診断・切り分け用)。
 export const setDanceMode = (active: boolean, level = 2) => {
   ensureBgm();
+  // 既定: ダンス専用トラックは鳴らさない(戦闘BGMを流したまま=軽い)。VFX/リズムは store 側で動く。
+  if (!DANCE_TRACK_ENABLED) return;
   if (active) {
     if (danceActive && level === currentDanceLevel) return; // 同レベルで既にダンス中
     danceActive = true;
@@ -413,8 +419,8 @@ const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise
 export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
-  // ダンス専用要素を事前生成してロード(ダンス開始で即 play できるように)。
-  ensureDanceEls();
+  // ダンス専用要素は ?danceaudio=1 のときだけ事前生成(既定では作らない=余計なデコード/メモリを持たない)。
+  if (DANCE_TRACK_ENABLED) ensureDanceEls();
   const danceWaits = Array.from(danceEls.values()).map(el => waitAudioReady(el));
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
   return Promise.all([
