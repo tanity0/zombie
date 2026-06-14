@@ -10,6 +10,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.258 - ダンス重さ確定解消: ダンス曲をPCMバッファのループ再生に変更 (Claude Code)
+
+### 原因特定(確定)
+- 診断トグルで切り分け: `?danceaudio=0`(ダンス曲を差し替えず戦闘BGMのまま)= 軽い。
+- v0.25.257(48k化・src差し替え)でも重く、しかも「ダンス中は無音なのに重い/ミュートで軽い」。
+  → 真因は **HTMLAudioElement にダンスMP3をデコードさせること自体**(この端末でソフトデコード経路に
+  落ちて常時CPUを食う)。要素の数でもサンプルレートでもなく「要素での新規MP3デコード」が重さの核心。
+
+### 対策(ユーザー承認方針)
+- ダンス曲を SFX と同じ **デコード済みPCMバッファのループ再生(AudioBufferSourceNode)** に変更。
+  HTMLAudioElement での再生をやめたので、件のデコード負荷が消える(ハリケーンSEと同じ軽い経路)。
+- ダンス中はメインBGM要素を pause し、ダンスループだけ再生。終了でメインBGM再開。
+- ループ素材: 各曲の **後半で最も音量の高い8小節フレーズ**(ユーザー指定=盛り上がる所をキリよく)を
+  抽出し、継ぎ目をイコールパワー・クロスフェード(0.35s)してシームレス化した WAV。
+  - dance-100-loop.wav: 153.6s〜 / 19.2s, dance-120-loop.wav: 160.0s〜 / 16.0s,
+    dance-140-loop.wav: 150.857s〜 / 13.714s(いずれも48k/16bit/stereo)。
+
+### 実装
+- `src/audio/audioManager.ts`:
+  - DANCE_TRACKS(mp3 src差し替え)/swapBgmTo/savedMainSrc/savedMainTime を削除。
+  - DANCE_LOOP_TRACKS(wav)+ danceBuffers/loadDanceBuffer/startDanceLoop/stopDanceLoop/applyDanceLoop を追加。
+  - setDanceMode: 要素 pause + ダンスループ開始/停止。applyBgm はダンス中(かつ ?danceaudio=0 でない時)
+    メインBGM要素を停止。setAudioMuted/setBgmActive/setBgmVolume が applyDanceLoop も呼ぶ。
+  - preloadAllAudio: 起動時にループWAVを3本デコードして温める。
+- `public/audio/dance-{100,120,140}.mp3`: 不要になったため削除(loop.wavに置換)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。継ぎ目クロスフェードでループは解析上シームレス。
+- 体感FPSは実機確認待ち(ダンス中も60fps復帰を期待)。
+
+### Performance（load score: 1/10）
+- 毎フレームの要素MP3デコードを排除し、ループは単一の AudioBufferSourceNode(=SE1個分)。
+- メモリ: デコード済みバッファ3本で約18MB(支払いはmemory)。安全策: レベル毎に1回だけデコードして使い回し。
+
 ## 2026-06-14 - v0.25.257 - ダンス重さの真因: サンプルレート不一致(44.1k→48kリサンプル)を解消 (Claude Code)
 
 ### Summary
