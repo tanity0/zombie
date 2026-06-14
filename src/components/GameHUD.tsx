@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName } from '../utils/weaponUtils';
@@ -52,7 +52,12 @@ const GameHUD: React.FC = () => {
     ammoShotgun: s.player.ammoShotgun,
     ammoRifle: s.player.ammoRifle,
     subWeapons: s.player.subWeapons,
+    subWeaponLevels: s.player.subWeaponLevels,
   }), shallow);
+  // 装備中スキル(サブウェポン)のチップ表示用。村雨を持っていれば刀チップは出さない(同一系統)。
+  const equippedSkills = player.subWeapons.filter(
+    k => !(k === 'katana' && player.subWeapons.includes('murasame'))
+  );
   const setActiveWeapon = useGameStore(state => state.setActiveWeapon);
   const lastWeaponGet = useGameStore(state => state.lastWeaponGet);
   // 時計/ボス警告は1秒粒度で十分。秒で購読し、毎フレーム再描画を避ける。
@@ -227,6 +232,27 @@ const GameHUD: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 装備中スキル(サブウェポン)のチップ。武器パネルの上に並べる。 */}
+      {equippedSkills.length > 0 && (
+        <div
+          className="absolute flex flex-wrap gap-1 max-w-[62vw]"
+          style={{
+            left: 'max(env(safe-area-inset-left), 12px)',
+            bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 66px)'
+          }}
+        >
+          {equippedSkills.map(key => (
+            <div
+              key={key}
+              className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
+            >
+              <span className="text-sky-200/90">{subWeaponDisplayName(key)}</span>
+              <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Equipped weapons + ammo. Guns are tappable to switch the active one. */}
       {(() => {

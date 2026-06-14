@@ -21,8 +21,14 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const ownsShijin = player.subWeapons.includes('shijin');
   // 通常サブウェポン(鞭/シールド/タレット/錬金/デコイ/各クラス技)は、排他サブ(刀 or ダンスフロア)装備中は出さない。
   const blockNormalSubs = ownsKatana || ownsShijin;
+  // スキル(=排他を除く通常サブウェポン)はゲーム全体で2つまで。刀/村雨/ダンスフロアはこの上限から除外。
+  // 既に持っているスキルの昇格は常に可。新規取得は所持数が2未満のときだけ。
+  const EXCLUSIVE_SUBS: string[] = ['katana', 'murasame', 'shijin'];
+  const ownedSkillCount = player.subWeapons.filter(k => !EXCLUSIVE_SUBS.includes(k)).length;
+  const atSkillCap = ownedSkillCount >= 2;
+  const canNewSkill = (lvl: number) => lvl > 0 || !atSkillCap; // lvl>0=既所持(昇格)、それ以外は上限チェック
 
-  if (!blockNormalSubs && player.characterClass === 'warrior' && grenadeLevel < 3) {
+  if (!blockNormalSubs && player.characterClass === 'warrior' && canNewSkill(grenadeLevel) && grenadeLevel < 3) {
     const nextLevel = grenadeLevel + 1;
     subWeaponOptions.push({
       id: 'subweapon-heavy-grenade',
@@ -34,7 +40,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
-  if (!blockNormalSubs && player.characterClass === 'mage' && trapLevel < 3) {
+  if (!blockNormalSubs && player.characterClass === 'mage' && canNewSkill(trapLevel) && trapLevel < 3) {
     const nextLevel = trapLevel + 1;
     subWeaponOptions.push({
       id: 'subweapon-marksman-trap',
@@ -46,7 +52,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
-  if (!blockNormalSubs && player.characterClass === 'necromancer' && quickMagLevel < 3) {
+  if (!blockNormalSubs && player.characterClass === 'necromancer' && canNewSkill(quickMagLevel) && quickMagLevel < 3) {
     const nextLevel = quickMagLevel + 1;
     const cooldown = 12 - nextLevel * 2;
     subWeaponOptions.push({
@@ -59,7 +65,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
     });
   }
 
-  if (!blockNormalSubs && player.characterClass === 'rogue' && huntingLevel < 3) {
+  if (!blockNormalSubs && player.characterClass === 'rogue' && canNewSkill(huntingLevel) && huntingLevel < 3) {
     const nextLevel = huntingLevel + 1;
     const chargeSeconds = huntingChargeSecondsLabel(nextLevel);
     const radiusBonus = HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[nextLevel];
@@ -101,7 +107,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
 
   // デコイは全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
   const decoyLevel = player.subWeaponLevels['decoy'] ?? 0;
-  if (!blockNormalSubs && decoyLevel < 3) {
+  if (!blockNormalSubs && canNewSkill(decoyLevel) && decoyLevel < 3) {
     const nextLevel = decoyLevel + 1;
     const durationSec = 4 + nextLevel; // Lv1=5s, Lv2=6s, Lv3=7s
     subWeaponOptions.push({
@@ -116,7 +122,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
 
   // 設置型シールドは全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
   const shieldLevel = player.subWeaponLevels['shield'] ?? 0;
-  if (!blockNormalSubs && shieldLevel < 3) {
+  if (!blockNormalSubs && canNewSkill(shieldLevel) && shieldLevel < 3) {
     const nextLevel = shieldLevel + 1;
     const hp = [0, 10, 30, 60][nextLevel]; // 耐久(Lv1=10/Lv2=30/Lv3=60)
     subWeaponOptions.push({
@@ -131,7 +137,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
 
   // 鞭は全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可=排他)。
   const whipLvl = player.subWeaponLevels['whip'] ?? 0;
-  if (!blockNormalSubs && whipLvl < 3) {
+  if (!blockNormalSubs && canNewSkill(whipLvl) && whipLvl < 3) {
     const nextLevel = whipLvl + 1;
     subWeaponOptions.push({
       id: 'subweapon-whip',
@@ -145,7 +151,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
 
   // 錬金術は全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可=排他)。
   const alchemyLvl = player.subWeaponLevels['alchemy'] ?? 0;
-  if (!blockNormalSubs && alchemyLvl < 3) {
+  if (!blockNormalSubs && canNewSkill(alchemyLvl) && alchemyLvl < 3) {
     const nextLevel = alchemyLvl + 1;
     const hp = [0, 50, 70, 100][nextLevel];
     subWeaponOptions.push({
@@ -160,7 +166,7 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
 
   // 自動タレットは全クラス共通の通常サブウェポン。刀/村雨装備中は出さない(併用不可)。
   const turretLvl = player.subWeaponLevels['turret'] ?? 0;
-  if (!blockNormalSubs && turretLvl < 3) {
+  if (!blockNormalSubs && canNewSkill(turretLvl) && turretLvl < 3) {
     const nextLevel = turretLvl + 1;
     subWeaponOptions.push({
       id: 'subweapon-turret',

@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.289 - スキルは通常2つまで(排他除く) / 装備中スキルをHUD表示 (Claude Code)
+
+### スキル所持上限
+- 通常スキル(=排他サブ 刀/村雨/ダンスフロアを除くサブウェポン)は**ゲーム全体で2つまで**。
+  - `upgradeUtils`: `EXCLUSIVE_SUBS`(katana/murasame/shijin)を除いた所持数を数え `atSkillCap`(>=2)。
+    新規取得カードは `canNewSkill(lvl)=lvl>0||!atSkillCap` でゲート(既所持の昇格は常に可)。刀/ダンスフロアは上限外。
+
+### 装備中スキルの表示
+- `GameHUD`: 武器パネルの上(左下)に**装備中スキルのチップ**(名前+Lv)を表示。`subWeaponDisplayName` を使用。
+  村雨所持時は刀チップを出さない。`player.subWeaponLevels` を shallow 購読に追加(参照安定=毎フレーム再描画しない)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-14 - v0.25.288 - ダンススキルを「ダンスフロア」に改名+刀と同じ排他 / 刀フリックも即発火に統一 (Claude Code)
 
 ### ダンスフロア(旧 四神舞)
