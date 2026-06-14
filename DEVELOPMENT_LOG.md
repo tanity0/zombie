@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.259 - ダンス重さ: 重い経路を特定し HTMLAudioElement 直再生へ (Claude Code)
+
+### 原因特定(更新)
+- v0.25.258(WebAudio AudioBufferSourceでループ)でも重く、ダンス曲が「ブツブツ」=オーディオ
+  アンダーラン(CPU逼迫)。`?danceaudio=0`(WebAudioでダンス音を出さない)は軽い(60fps)。
+- 結論: **この端末は WebAudio(AudioContext)で連続再生すると重い**。一方 **HTMLAudioElement の
+  直再生は軽い**(戦闘BGMがこれ)。重さの核心は「要素のMP3デコード」でも「サンプルレート」でもなく
+  「**WebAudioで連続再生すること**」だった(SE一発は短いので露見せず、連続ループで露見)。
+- 決定打: 戦闘BGMは「1要素がMP3をデコードしながら再生」で軽い。なら同時にデコード/再生する要素を
+  常に1つに保てば戦闘時と同負荷=軽いはず。
+
+### 対策
+- ダンス曲を **専用の HTMLAudioElement(レベル毎)で loop 再生**。WebAudio(createMediaElementSource)
+  には通さない=重い経路を回避。ダンス中はメインBGM要素を pause するので、再生中の要素は常に1つだけ。
+- `src/audio/audioManager.ts`: AudioBufferSource機構(danceBuffers/loadDanceBuffer/startDanceLoop等)を
+  削除し、danceEls(Map<level,HTMLAudioElement>)+ ensureDanceEls/applyDanceEl/stopDanceEls に置換。
+  setDanceMode は要素 pause + ダンス要素 play。preloadAllAudio で3要素を事前ロード。
+  ループ素材は v0.25.258 のシームレスループWAVをそのまま要素で再生。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。体感FPSは実機確認待ち(今度こそ60fps期待)。
+
+### Performance（load score: 1/10）
+- WebAudio連続再生を排除。再生中のHTMLAudioElementは常に1つ(戦闘時と同じ)。
+- 注意: HTMLAudioElement の loop=true は継ぎ目に微小ギャップが出る場合あり(WAVなので小)。
+  気になれば2要素ピンポン等で後日詰める。iOSは element.volume 無視(ダンスは素再生=フル音量)。
+
 ## 2026-06-14 - v0.25.258 - ダンス重さ確定解消: ダンス曲をPCMバッファのループ再生に変更 (Claude Code)
 
 ### 原因特定(確定)
