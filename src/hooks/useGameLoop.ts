@@ -620,9 +620,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           if (useGameStore.getState().rhythm.active) {
             useGameStore.getState().tickRhythm();
-            // BGM(ダンストラック)の再生位置にビート位相を再同期(ドリフト対策)。
-            const musicMs = getMusicTimeMs();
-            if (musicMs !== null) useGameStore.getState().resyncRhythm(musicMs);
+            // ※毎フレームの位相再同期(resync)は廃止。音楽クロックの微ノイズを追いかけて
+            //   サークルが微振動(ブルブル)するため、開始時に合わせた固定グリッドで一定に流す。
             // pending(タップ/フリック/四神技/全体フィニッシュ)を消化して実行。
             for (const pa of useGameStore.getState().drainRhythmPending()) {
               executeRhythmPending(pa);

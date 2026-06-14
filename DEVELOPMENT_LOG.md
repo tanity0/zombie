@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.250 - 四神舞: 毎フレームの位相再同期(resync)を廃止し、一定リズムに (Claude Code)
+
+### Summary
+- サークルがまだ微振動(ブルブル)する件。原因は resync が音楽クロックの微ノイズを毎フレーム追いかけ、
+  firstBeatAt を細かく動かしていたこと。毎フレーム再同期を廃止し、開始時に一度だけ合わせた固定グリッドで
+  一定に流すように変更(gameTime ベースなので滑らか・一定)。
+- 開始拍は従来通りダンストラックの再生位置に合わせる(LEAD は interval の倍数なので拍は概ね一致)。ズレが
+  気になる場合は RHYTHM_MUSIC_OFFSET_MS で一定オフセット調整可能。
+
+### 実装
+- `src/hooks/useGameLoop.ts`: ダンス中の resyncRhythm 呼び出しを削除(resyncRhythm 自体は未使用で残置)。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-14 - v0.25.249 - 四神舞: サークルが固まって微振動するバグを修正(resyncを音楽進行時のみに) (Claude Code)
 
 ### Summary
