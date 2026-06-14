@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.272 - ダンス曲をMP3化(WAVへの差し替えは無音、MP3なら鳴る) (Claude Code)
+
+### 271の結果
+- 通常=戦闘曲OK。**ダンス曲(WAV)だけ鳴らない**。ダンス終了→戦闘曲(MP3)へ戻ると鳴る。FPS 45-50。
+- → mid-game の src 差し替えは機能している。ただし **WAVへの差し替えは無音、MP3への差し替えは鳴る**。
+
+### 対策
+- ダンス曲を **MP3 化**(`ffmpeg -c:a libmp3lame -b:a 192k -ar 48000`)。
+  `public/audio/dance-100/120/140-loop.mp3`(各約330〜460KB。WAVの3.7MB→大幅軽量)。
+- `DANCE_LOOP_TRACKS` を `.mp3` に変更。実装は271のまま(単一要素・src差し替え・canplay待ち・素再生)。
+- MP3は小さいので差し替え時の読み込みも軽く、FPSも改善が期待できる。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機(低電力OFF)で「ダンス曲が鳴る＋FPS」を確認待ち。
+
+### Performance（load score: 1/10）
+- 同時に存在する音声要素は常に1つ。ダンス曲は約400KBのMP3。重い経路は不使用。
+- 既知点: MP3ループは継ぎ目に小さな隙間が出る場合あり(エンコーダのパディング由来)。気になれば後日詰める。
+
 ## 2026-06-14 - v0.25.271 - ダンスBGM本実装: 単一要素のsrc差し替え+canplay待ちで無音解消 (Claude Code)
 
 ### 確定した端末特性(低電力OFFで再計測)

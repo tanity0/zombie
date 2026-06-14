@@ -13,13 +13,12 @@ const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/rusting-grave-circuit.mp3`,
 ];
 // ダンスタイム(四神舞)中だけ流すループ。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
-// この端末では HTMLAudioElement でダンスMP3をデコードさせると常時ソフトデコードが回って重い。
-// そこで SFX と同じ「デコード済みPCMバッファ(AudioBufferSourceNode)のループ再生」にする。
-// 各曲の一番盛り上がる8小節を継ぎ目クロスフェードでシームレスループ化した WAV を使う。
+// 唯一の BGM 要素の src をこの曲へ差し替えて鳴らす(2要素=重い、WAVへの差し替え=無音 のため MP3 を使う)。
+// 各曲の一番盛り上がる8小節を継ぎ目クロスフェードでシームレスループ化したものを MP3 化。
 const DANCE_LOOP_TRACKS: Record<number, string> = {
-  1: `${import.meta.env.BASE_URL}audio/dance-100-loop.wav?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
-  2: `${import.meta.env.BASE_URL}audio/dance-120-loop.wav?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
-  3: `${import.meta.env.BASE_URL}audio/dance-140-loop.wav?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  1: `${import.meta.env.BASE_URL}audio/dance-100-loop.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  2: `${import.meta.env.BASE_URL}audio/dance-120-loop.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  3: `${import.meta.env.BASE_URL}audio/dance-140-loop.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
 };
 let currentDanceLevel = 2; // 現在ダンスループに使っているレベル
 
