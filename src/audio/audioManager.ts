@@ -235,8 +235,13 @@ const persistMuted = () => {
   }
 };
 
-// いま BGM 要素に読み込ませてあるトラックURL。差し替えは applyBgm が冪等に行う。起動時は戦闘曲。
-let bgmSrc = BGM_TRACKS[0];
+// 診断(v0.25.273): 起動時の通常曲(=戦闘曲の枠)をダンス1ファイルに設定。これで起動時に鳴れば
+// 「ファイルは無罪・差し替え固有の問題」、鳴らなければ「このファイルは要素で鳴らない」と切り分く。
+// ?bgm=normal で本来の戦闘曲に戻す。
+const BGM_DIAG_DANCE1 = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bgm') !== 'normal';
+const NORMAL_TRACK = BGM_DIAG_DANCE1 ? DANCE_LOOP_TRACKS[1] : BGM_TRACKS[0];
+// いま BGM 要素に読み込ませてあるトラックURL。差し替えは applyBgm が冪等に行う。起動時は通常曲。
+let bgmSrc = NORMAL_TRACK;
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
   bgm = new Audio(bgmSrc);
@@ -254,9 +259,9 @@ const ensureBgm = () => {
 // よって「唯一の BGM 要素の src を 戦闘↔ダンス で差し替える」方式を採る(2要素は作らない)。
 let danceActive = false;
 
-// 通常プレイ=戦闘曲、ダンス中=そのレベルのダンス曲。要素は1つのまま src を差し替える。
+// 通常プレイ=通常曲(診断中はダンス1)、ダンス中=そのレベルのダンス曲。要素は1つのまま src を差し替える。
 const desiredBgmSrc = () =>
-  danceActive ? (DANCE_LOOP_TRACKS[currentDanceLevel] ?? BGM_TRACKS[0]) : BGM_TRACKS[0];
+  danceActive ? (DANCE_LOOP_TRACKS[currentDanceLevel] ?? NORMAL_TRACK) : NORMAL_TRACK;
 
 // ダンスの開始/終了。唯一の BGM 要素の src を 戦闘↔ダンス で差し替える。
 export const setDanceMode = (active: boolean, level = 2) => {
