@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.274 - ダンスBGM本実装: SFXと同じWeb Audioバッファで鳴らす(差し替え無音を根治) (Claude Code)
+
+### 273の結果＝原因確定
+- 起動時の曲をダンス1ファイルにしたら **起動時は鳴った**(ファイルは無罪)。だがゲーム中の差し替えは無音。
+- → 無音の正体は **ブラウザの自動再生ポリシー**。起動時はスタートのタップで許可され鳴るが、ダンスは操作なしで
+  始まるため、要素に新しい src を読ませて play() してもブロックされる(MP3でも同じ)。
+
+### 本実装(根治)
+- ダンス曲は **SFXと同じ Web Audio のデコード済みバッファ**で鳴らす(`AudioBufferSourceNode` ループ)。
+  Web Audio は一度解錠すれば操作なしで鳴り続けられる(SFXが実証)＝自動再生ブロックを受けない。
+- **2つ目の HTMLAudioElement を作らない**ので軽い(端末特性: 要素2つ以上で重い)。ダンス中は戦闘要素(1つ)を pause。
+- `src/audio/audioManager.ts`: src差し替え/canplay実装を撤去。danceBuffers/loadDanceBuffer/startDanceBuffer/
+  stopDanceBuffer/applyDanceBuffer を追加。preload で3レベル分を decodeAudioData 事前デコード。
+  setDanceMode は戦闘要素 pause + ダンスバッファ再生。volume/mute/active で danceGain・applyDanceBuffer 反映。
+- 注: 258 でも同じバッファ方式を試して重かったが、それは**低電力モードの汚染**(今回は低電力OFF前提)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機(低電力OFF)で「ダンス曲が鳴る＋57fps前後」を確認待ち。
+
+### Performance（load score: 1/10）
+- 追加は AudioBufferSource 1本(SFXと同経路)。HTMLAudioElement は常に1つ。差し替えも2要素も不使用。
+
 ## 2026-06-14 - v0.25.273 - 診断: 起動時の通常曲をダンス1ファイルに設定 (Claude Code)
 
 ### 272の結果
