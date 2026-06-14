@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.273 - 診断: 起動時の通常曲をダンス1ファイルに設定 (Claude Code)
+
+### 272の結果
+- 両方軽い(MP3差し替えは軽い)が、**ダンス曲はMP3でも無音**(戦闘曲への戻りは鳴る)。
+  → フォーマット(WAV/MP3)ではなく「**ダンス曲ファイルへの差し替え固有**」の問題の疑い。
+
+### 切り分け
+- 起動時の通常曲(=戦闘曲の枠)を `dance-100-loop.mp3` に設定(`BGM_DIAG_DANCE1`、既定true)。
+  - 起動時に鳴る → ファイルは無罪。無音は「差し替え」固有(canplay待ちの実装/タイミング等)を疑う。
+  - 起動時も鳴らない → このダンスMP3が要素で鳴らない(エンコード等ファイル側)。
+- `?bgm=normal` で本来の戦闘曲へ。
+
 ## 2026-06-14 - v0.25.272 - ダンス曲をMP3化(WAVへの差し替えは無音、MP3なら鳴る) (Claude Code)
 
 ### 271の結果
