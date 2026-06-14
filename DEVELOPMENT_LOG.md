@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.252 - ダンス曲を軽量再エンコード(320k/48kHz→128k/44.1kHz)。ダンス中の重さ対策本命 (Claude Code)
+
+### Summary
+- 「ダンス突入で60→25fps、抜けで即60fps、時間無関係」を調査。v0.25.244(軽)からの差分で毎フレームの描画/処理は
+  重くなっておらず(むしろ250/251で軽量化)、実質増えたのは「ダンス曲」だけと判明。
+- 軽かった頃の pulse-grid は 64kbps/48kHz、提供曲は 320kbps/48kHz(5倍, 7.5〜10.7MB)。ダンス中だけ高ビットレート曲を
+  WebAudio で処理する間CPUを食い、音量0(抜け)でアイドル化しFPSが戻る挙動と一致。
+- 3曲を 128kbps / 44.1kHz / stereo に再エンコード(ffmpeg)。合計約26MB→約11MB。48→44.1kでランタイムのリサンプリングも解消。
+
+### 実装
+- `public/audio/dance-100/120/140.mp3` を再エンコードで差し替え(元アップロードから変換)。コード変更なし。
+- URL は ?v=__APP_VERSION__ 付与済みなのでバージョン更新でキャッシュ更新される。
+
+### Verification
+- `npm run build` 成功。
+
+### Note
+- これで改善しなければ、追加で 96kbps化 / mono化(デコード半減) も可能。元の320k版は uploads に残存。
+
 ## 2026-06-14 - v0.25.251 - 四神舞: 重さ対策。頭上の矢印を毎フレーム描き直さない(内容変化時のみ) (Claude Code)
 
 ### Summary
