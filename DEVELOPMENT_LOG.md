@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.248 - 四神舞: レベル別ダンス曲を実配置(100/120/140) + URLキャッシュバスト (Claude Code)
+
+### Summary
+- ユーザー提供のダンス曲を配置: dance-100.mp3(Lv1/100BPM) / dance-120.mp3(Lv2/120BPM, 提供版へ差替) /
+  dance-140.mp3(Lv3/140BPM)。これで全レベルで音+同期が動作。
+- ダンストラックURLに ?v=__APP_VERSION__ を付与し、曲差し替え時の旧ファイルキャッシュを防止。
+
+### Note
+- 提供mp3は 320kbps/48kHz で各 7.5〜10.7MB と大きめ。起動時プリロードは dance-120 を待ち、他は先読み。
+  ボードが重ければ後でビットレート/長さ最適化を検討可。
+
+### Verification
+- `npx tsc --noEmit` パス。`npm run build` 成功。
+
 ## 2026-06-14 - v0.25.247 - 四神舞: レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。トラックも切替 + 無敵=1ビート (Claude Code)
 
 ### Summary

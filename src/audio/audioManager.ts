@@ -16,9 +16,9 @@ const BGM_TRACKS = [
 // メインBGMとは別エレメントで、開始時にレベルのトラックへ src を切替える。
 // TODO(曲): dance-100.mp3 / dance-140.mp3 はユーザー提供待ち。dance-120.mp3 は pulse-grid を流用。
 const DANCE_TRACKS: Record<number, string> = {
-  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3`,
-  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3`,
-  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3`,
+  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
 };
 let currentDanceLevel = 2; // 現在 danceBgm に読み込まれているトラックのレベル
 
