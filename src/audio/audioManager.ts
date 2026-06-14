@@ -260,6 +260,12 @@ const danceBuffers = new Map<number, AudioBuffer>();
 const danceLoading = new Map<number, Promise<void>>();
 let danceSource: AudioBufferSourceNode | null = null;
 let danceGain: GainNode | null = null;
+let danceSourceLevel = 0;           // いま鳴らしているダンス曲のレベル(同レベルなら鳴らし直さない)
+let danceStopTimer: number | null = null; // 停止を少し遅延して、rhythm.active の一瞬のチラつきで止め→鳴り直しが起きないように
+
+const cancelDanceStop = () => {
+  if (danceStopTimer !== null) { clearTimeout(danceStopTimer); danceStopTimer = null; }
+};
 
 const loadDanceBuffer = (level: number) => {
   const ctx = ensureSfxContext();
@@ -275,15 +281,19 @@ const loadDanceBuffer = (level: number) => {
 };
 
 const stopDanceBuffer = () => {
+  cancelDanceStop();
   const src = danceSource;
   const gain = danceGain;
   danceSource = null;
   danceGain = null;
+  danceSourceLevel = 0;
   if (src) { try { src.stop(); } catch { /* ignore */ } try { src.disconnect(); } catch { /* ignore */ } }
   if (gain) { try { gain.disconnect(); } catch { /* ignore */ } }
 };
 
 const startDanceBuffer = (level: number) => {
+  cancelDanceStop();
+  if (danceSource && danceSourceLevel === level) return; // 既に同レベルを再生中: 鳴らし直さない(連打防止)
   const ctx = ensureSfxContext();
   if (!ctx) return;
   const buffer = danceBuffers.get(level);
@@ -300,15 +310,18 @@ const startDanceBuffer = (level: number) => {
   try { source.start(0); } catch { /* ignore */ }
   danceSource = source;
   danceGain = gain;
+  danceSourceLevel = level;
 };
 
 // ダンス曲(バッファ)の再生を (danceActive && bgmActive && !muted) に合わせる。冪等。
+// 停止は少し遅延する: rhythm.active が一瞬だけ false に揺れても止め→鳴り直し(連打=ダダダ)にならないように。
 const applyDanceBuffer = () => {
   const shouldPlay = danceActive && bgmActive && !muted;
   if (shouldPlay) {
-    if (!danceSource) startDanceBuffer(currentDanceLevel);
-  } else if (danceSource) {
-    stopDanceBuffer();
+    cancelDanceStop();
+    if (!danceSource || danceSourceLevel !== currentDanceLevel) startDanceBuffer(currentDanceLevel);
+  } else if (danceSource && danceStopTimer === null) {
+    danceStopTimer = window.setTimeout(() => { danceStopTimer = null; stopDanceBuffer(); }, 300);
   }
 };
 

@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.275 - ダンス曲の連打(ダダダ)を防止: 同レベル再起動なし＋停止ディレイ (Claude Code)
+
+### 274の結果
+- ダンス曲は**鳴った**(バッファ方式で自動再生もクリア)。が「ダダダダダ」=頭から高速で鳴り直す連打。
+- 原因: `rhythm.active` が一瞬 false に揺れると `setDanceMode(false)→(true)` が高速往復し、バッファが
+  stop→start を繰り返す(267の要素再生は冪等寄りで目立たなかっただけ)。コード自体は単発呼び出しなら正しい。
+
+### 対策
+- `startDanceBuffer`: 既に同レベルを再生中なら**鳴らし直さない**(`danceSourceLevel` で判定)。
+- `applyDanceBuffer`: 停止を即時にせず **300ms ディレイ**。再生条件が戻れば cancel = 一瞬のチラつきで止め→
+  鳴り直しが起きない。レベル変更時のみ即 stop。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機(低電力OFF)で「ダンス曲が普通にループ＋連打しない」を確認待ち。
+
 ## 2026-06-14 - v0.25.274 - ダンスBGM本実装: SFXと同じWeb Audioバッファで鳴らす(差し替え無音を根治) (Claude Code)
 
 ### 273の結果＝原因確定
