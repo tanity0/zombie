@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.269 - v0.25.266相当に巻き戻し(低電力モードOFFで再計測するため) (Claude Code)
+
+### 経緯
+- 直近の「常時30fps」は **端末の低電力モード**が原因(ユーザーが気づく)。264〜267の計測は全部これに汚染されていた。
+  特に266は通常30/ダンス25fps=ダンスの追加負荷がごく小さい(-5fps)のに、267は-19fps。266の方式の方が軽い可能性。
+- そこでユーザー指示により **音声まわりを v0.25.266 相当に巻き戻し**、低電力モードOFFで素のFPSを取り直す。
+
+### 内容
+- `src/audio/audioManager.ts` を 266 のコミット(6d6332c)から復元。
+  - 通常プレイ=ダンスlevel1(routed要素・起動時)、ダンス中=戦闘MP3へ src 差し替え。
+  - `BGM_USE_WEBAUDIO_ROUTING`(既定false)=BGMは素再生(element.volume)。`?bgmroute=on`で従来ルーティング。
+  - ※266ではダンス中が無音だった(差し替え後の無音)。今回は「低電力OFFでのFPS」を見るのが目的。
+
+### 確認してほしいこと
+- 低電力モードOFFでフル再読込し、(1)通常プレイのFPS (2)ダンス中のFPS (3)音の有無 を計測。
+
 ## 2026-06-14 - v0.25.268 - ダンス専用BGMは断念し263の軽い構成へ戻す + 端末発熱の疑い (Claude Code)
 
 ### 重要な観測
