@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.285 - 性能調整: レベルアップ周辺ノックバック / ダンスのバッシュ・ダメージ・カウンター (Claude Code)
+
+### ゲーム全般
+- **レベルアップ時、プレイヤー周辺の敵を強制ノックバック(2倍相当)**。アップグレードメニューで即ポーズする
+  ため velocity 式だと失効する → その場で**位置を即押し出す**(木/小物の当たりは解決、reaper除外)。黄色リング演出付き。
+  - `gameStore.ts` `levelUp`: 半径 `LEVELUP_KNOCKBACK_RADIUS=240` 内を `LEVELUP_KNOCKBACK_DISTANCE=96` 押し出す。
+
+### ダンス(四神舞)調整
+1. **バッシュ(フリック): ノックバック距離2倍 + 近接フィニッシュ可**。
+   - `knockbackEnemy` の強度クランプ(従来 min3)に `maxStrength` 引数を追加。フリックだけ `RHYTHM_FLICK_KNOCKBACK_MAX=6`
+     を渡して上限6(=距離2倍)。`rhythmLineAttack` に `kbMax` を追加し透過。
+   - フリックの `execute` を `true` に(スタン中の雑魚を近接フィニッシュで処刑。ボスは処刑しない既存仕様のまま)。
+2. **ダンス全体のダメージ効率2倍**(`shijin.ts`): タップ4→8 / フリック12→24 / 朱雀48→96 / 玄武30→60 /
+   青龍30→60 / 白虎16→32 / 全体フィニッシュ(ボス)120→240。
+3. **タップ/フリックでカウンターが発動していなかったのを修正**。`openCounterWindow()` を追加し、タップ・フリック
+   実行時にカウンター窓を開く。窓中に当たった敵弾はループ側で反射(=Counter!)。クールダウンは見ない(拍ごとに張れる)。
+   - 注: 反射成立時のスローモーは既存のカウンター演出(弾を実際に反射した時のみ)。不要ならダンス中は抑制可能。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。実機での手触り調整待ち(数値は config 一箇所で変更可)。
+
 ## 2026-06-14 - v0.25.284 - ダンス曲を軽量フル尺に戻す(8小節ループの継ぎ目ぶつ切り対策) (Claude Code)
 
 ### 症状

@@ -168,6 +168,10 @@ export const huntingMeleeRadius = (player: Player): number => {
 // hostile projectile that hits the player during the window is reflected.
 export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
 export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
+// レベルアップ時に周辺の敵を強制的に押しのける(2倍ノックバック相当)。アップグレードメニューで
+// 即ポーズするため velocity だと失効する → 位置を即時に動かす(menu を跨いでも効く)。
+export const LEVELUP_KNOCKBACK_RADIUS = 240;   // 押しのける範囲(プレイヤー中心)
+export const LEVELUP_KNOCKBACK_DISTANCE = 96;  // 押しのける距離(通常ノックバックの約2倍の体感)
 // Each successful reflect refreshes the window by this much so a chained
 // barrage can be turned back in full. No hard cap — the cooldown still
 // kicks in once the chain finally lapses.
@@ -644,7 +648,8 @@ interface GameState {
   updateEnemies: (deltaTime: number) => void;
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
-  knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number) => void;
+  knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
+  openCounterWindow: () => void;
   markCastleBossSpawned: () => void;
 
   // Ammo
@@ -2108,6 +2113,26 @@ export const useGameStore = create<GameState>((set, get) => ({
   levelUp: () => {
     set(state => {
       const { player } = state;
+      // レベルアップ: 周辺の敵を強制ノックバック(2倍相当)。メニューで即ポーズするので velocity だと
+      // 失効する → その場で位置を押し出す(木/小物の当たりは解決)。
+      const pcx = player.x + player.width / 2;
+      const pcy = player.y + player.height / 2;
+      const solidPropsForShove = state.breakableProps.filter(pr => pr.type !== 'mine');
+      const shovedEnemies = state.enemies.map(e => {
+        if (e.type === 'reaper') return e;
+        const ex = e.x + e.width / 2;
+        const ey = e.y + e.height / 2;
+        const dx = ex - pcx;
+        const dy = ey - pcy;
+        const d = Math.hypot(dx, dy);
+        if (d > LEVELUP_KNOCKBACK_RADIUS) return e;
+        const n = Math.max(0.001, d);
+        const tx = e.x + (dx / n) * LEVELUP_KNOCKBACK_DISTANCE;
+        const ty = e.y + (dy / n) * LEVELUP_KNOCKBACK_DISTANCE;
+        const tr = resolveTreeCollision({ x: tx, y: ty, width: e.width, height: e.height });
+        const fin = resolveTorchCollision({ x: tr.x, y: tr.y, width: e.width, height: e.height }, solidPropsForShove);
+        return { ...e, x: fin.x, y: fin.y };
+      });
       const newLevel = player.level + 1;
       // VS-style ramp: cheap levels early so the upgrade menu shows up often,
       // then progressively steeper. +2 per level for levels 1-9, then a
@@ -2131,6 +2156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 余剰EXPは繰り越す(ダンス中に溜めた分で複数レベルを連鎖処理できるように)。
           experience: Math.max(0, player.experience - player.experienceToNextLevel)
         },
+        enemies: shovedEnemies,
         showUpgradeMenu: true,
         upgradeOptions,
         isPaused: true,
@@ -2140,6 +2166,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+    // 押しのけの視覚フィードバック(リング)。
+    const lp = get().player;
+    get().spawnRing(lp.x + lp.width / 2, lp.y + lp.height / 2, 14, LEVELUP_KNOCKBACK_RADIUS, 'rgba(250,204,21,0.7)', 3, 260);
   },
   
   // Weapon actions
@@ -2596,9 +2625,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Light bullet knockback: nudge an enemy along the shot direction. Reuses the
   // same decay model as the melee shove (KNOCKBACK_DURATION) but at a much
   // lower speed so it only staggers, never launches.
-  knockbackEnemy: (id, dirX, dirY, multiplier = 1) => {
+  knockbackEnemy: (id, dirX, dirY, multiplier = 1, maxStrength = 3) => {
     const now = Date.now();
-    const strength = Math.max(1, Math.min(3, multiplier));
+    const strength = Math.max(1, Math.min(maxStrength, multiplier));
     set(state => ({
       enemies: state.enemies.map(e =>
         e.id === id
@@ -2610,6 +2639,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
           : e
       )
+    }));
+  },
+
+  // 四神舞のタップ/フリックでカウンター(敵弾反射)窓を開く。窓が開いている間に当たった敵弾は
+  // ループ側(useGameLoop)で反射される。クールダウンは見ない(ダンス中は拍ごとに自由に張れる)。
+  openCounterWindow: () => {
+    const now = Date.now();
+    set(state => ({
+      player: { ...state.player, counterWindowEnd: now + COUNTER_WINDOW },
     }));
   },
 

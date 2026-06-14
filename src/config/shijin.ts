@@ -80,38 +80,41 @@ export const rhythmComboStage = (combo: number): number =>
 
 // --- 通常リズム入力(控えめ。コンボで威力は伸ばさない) -------------------
 // タップ(ジャスト): 近接ナイフ範囲(MELEE_RADIUS)内の敵を強制ノックバック。
-export const RHYTHM_TAP_DAMAGE = 4;           // TODO: タップの軽ダメージ(主目的はノックバック)
+// v0.25.285: ダンス全体のダメージ効率を2倍に(タップ/フリック/四神技いずれも倍化)。
+export const RHYTHM_TAP_DAMAGE = 8;            // タップの軽ダメージ(2倍。主目的はノックバック)
 export const RHYTHM_TAP_KNOCKBACK_MULT = 3.4; // タップの強制ノックバック(強め)
 // ジャストタップ成功時の無敵時間は「1ビート分」(=現在の interval)。BPMが遅いほど長く、
 // どのレベルでもビートに乗れば無敵が途切れない。
 // フリック(ジャスト): 盾バッシュ風に滑りながら方向攻撃。
 export const RHYTHM_FLICK_RANGE = 130;        // TODO: フリック方向攻撃の射程
 export const RHYTHM_FLICK_HALF_W = 34;        // TODO: フリック方向攻撃の帯半幅
-export const RHYTHM_FLICK_DAMAGE = 12;        // TODO: バッシュのダメージ
-export const RHYTHM_FLICK_KNOCKBACK_MULT = 7.2; // バッシュの強ノックバック(2倍に増強)
+export const RHYTHM_FLICK_DAMAGE = 24;        // バッシュのダメージ(2倍)
+export const RHYTHM_FLICK_KNOCKBACK_MULT = 7.2; // バッシュの強ノックバック
+// バッシュ(フリック)だけノックバック上限を 6 まで許可(通常クランプ3の2倍=距離2倍)。
+export const RHYTHM_FLICK_KNOCKBACK_MAX = 6;
 
 // --- 四神技(すべて近接フィニッシュ可・数値TODO) -------------------------
 // 朱雀: 近場最大3体を「グレネードランチャー(rifle-t3)」相当の範囲爆破。手榴弾(heavy-grenade)ではない。
 // 半径・演出時間はランチャーの爆発(GRENADE_BLAST_RADIUS=92 / GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS)に合わせる
 // ため、useGameLoop 側でランチャー定数を直接流用する(ここでは威力と対象数のみ)。
 export const SUZAKU_MAX_TARGETS = 3;
-export const SUZAKU_BLAST_DAMAGE = 48;        // TODO: グレネードランチャー相当の威力(実機調整)
+export const SUZAKU_BLAST_DAMAGE = 96;        // グレネードランチャー相当の威力(2倍)
 // 玄武: 上下左右へプレイヤー幅程度の十字直線。
 export const GENBU_LINE_LENGTH = 260;         // TODO
 export const GENBU_LINE_HALF_W = 18;          // プレイヤー幅程度
-export const GENBU_DAMAGE = 30;               // TODO
+export const GENBU_DAMAGE = 60;               // 2倍
 // 青龍: 斜めX字の直線。
 export const SEIRYU_LINE_LENGTH = 260;        // TODO
 export const SEIRYU_LINE_HALF_W = 18;
-export const SEIRYU_DAMAGE = 30;              // TODO
+export const SEIRYU_DAMAGE = 60;              // 2倍
 // 白虎: 5秒間、0.5秒ごとにハンドガン射程内の近い敵を1体斬る(最大10回)。
 export const BYAKKO_DURATION_MS = 5000;
 export const BYAKKO_INTERVAL_MS = 500;
 export const BYAKKO_MAX_HITS = 10;            // 5s ÷ 0.5s = 10
 export const BYAKKO_RANGE = 200;              // TODO: ハンドガン射程くらい
-export const BYAKKO_DAMAGE = 16;              // TODO
+export const BYAKKO_DAMAGE = 32;              // 2倍
 // 全体フィニッシュ: 画面内の雑魚は近接フィニッシュ、ボスは即死でなく大ダメージ。
-export const SHIJIN_FINISH_BOSS_DAMAGE = 120; // TODO: ボスへの近接フィニッシュ相当大ダメージ
+export const SHIJIN_FINISH_BOSS_DAMAGE = 240; // ボスへの近接フィニッシュ相当大ダメージ(2倍)
 export const SHIJIN_FINISH_SCREEN_MARGIN = 180; // 画面内判定の余白(EFFECT_VIEWPORT_MARGIN相当)
 
 // --- 演出: リズム中の画面暗転 / タップ発光 -------------------------------

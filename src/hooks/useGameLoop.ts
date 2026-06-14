@@ -42,7 +42,7 @@ import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
-  RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT,
+  RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, RHYTHM_FLICK_KNOCKBACK_MAX,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_DAMAGE,
   GENBU_LINE_LENGTH, GENBU_LINE_HALF_W, GENBU_DAMAGE,
   SEIRYU_LINE_LENGTH, SEIRYU_LINE_HALF_W, SEIRYU_DAMAGE,
@@ -296,7 +296,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       return killed;
     };
     // 直線(帯)攻撃: 起点から(dx,dy)方向 length まで、半幅 halfW の帯に入る敵へ。
-    const rhythmLineAttack = (cx: number, cy: number, dx: number, dy: number, length: number, halfW: number, damage: number, kbMult: number, execute: boolean) => {
+    const rhythmLineAttack = (cx: number, cy: number, dx: number, dy: number, length: number, halfW: number, damage: number, kbMult: number, execute: boolean, kbMax = 3) => {
       for (const e of useGameStore.getState().enemies) {
         if (e.type === 'reaper') continue;
         const rx = e.x + e.width / 2 - cx;
@@ -306,7 +306,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const perp = Math.abs(rx * dy - ry * dx);
         if (perp > halfW + e.width / 2) continue;
         shijinHitEnemy(e.id, damage, execute);
-        if (kbMult > 0) useGameStore.getState().knockbackEnemy(e.id, dx, dy, kbMult);
+        if (kbMult > 0) useGameStore.getState().knockbackEnemy(e.id, dx, dy, kbMult, kbMax);
       }
     };
     // 玄武/青龍の直線VFX: 少しクネクネさせた短命のスラッシュ点 + 端のバースト(軽量・ピクセル調)。
@@ -393,6 +393,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       const pcy = p.y + p.height / 2;
       if (pa.kind === 'tap') {
         // ジャストのタップ: 近接ナイフ範囲(MELEE_RADIUS+ハンティング補正)内の敵を強制ノックバック。
+        // カウンター窓も開く(ダンス中はタップで敵弾を弾ける)。
+        useGameStore.getState().openCounterWindow();
         const meleeR = huntingMeleeRadius(p);
         spawnRing(pcx, pcy, 6, meleeR, 'rgba(167,139,250,0.6)', 2, 200);
         for (const e of useGameStore.getState().enemies) {
@@ -407,8 +409,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         playSfx('melee');
       } else if (pa.kind === 'flick') {
+        // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、
+        // ノックバックは上限6(=距離2倍)で強く弾く。
+        useGameStore.getState().openCounterWindow();
         const v = ARROW_VEC[pa.arrow];
-        rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, false);
+        rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, true, RHYTHM_FLICK_KNOCKBACK_MAX);
         useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
         playSfx('katana-dash');
       } else if (pa.kind === 'god') {
