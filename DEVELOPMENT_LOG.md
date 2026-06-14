@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.279 - ダンスBGMをレベル別固定HTMLAudioElementで再評価 (Codex)
+
+### Summary
+- GitHub latest `v0.25.278` / `77a6b6c` を fast-forward で取り込み。
+- `HANDOFF_DANCE_AUDIO.md` を読み直し、未検証の本命案に合わせて実装:
+  - ダンス曲の長尺 `AudioBufferSourceNode` ループを停止。
+  - Lv1/Lv2/Lv3 それぞれに固定 `HTMLAudioElement` を生成。
+  - ダンス中は戦闘BGM要素を pause し、該当レベルのダンス要素だけを play。
+  - `src` 差し替えはしない。
+  - `rhythm.active` の一瞬の揺れによる「ダダダ」防止として、同レベル再生中は鳴らし直さず、停止は300ms遅延。
+  - スタート操作時に `unlockDanceAudio()` を呼び、各ダンス要素を muted で短く play/pause して解錠を試す。
+- 音楽同期撤去後に残っていた `RHYTHM_MUSIC_OFFSET_MS` の未使用 import を削除。
+- `package-lock.json` の自プロジェクト version が古い `0.25.207` のままだったため、`0.25.279` に合わせた。
+
+### Performance
+- Old load score: `2/10` expected, but device-dependent.
+- Performance Budget Score impact: 未確認。狙いは `v0.25.278` の長尺Web Audio buffer loopより低負荷化。
+- 実機確認が必要:
+  - 低電力モードOFF
+  - 充電ケーブル接続
+  - 画面表示 version `0.25.279`
+  - 通常FPS / ダンス中FPS / ダンス曲が鳴るか
+- もし音が鳴らない場合は、muted unlock では iOS の per-resource 解錠に不十分だった可能性。
+- もし鳴るが重い場合は、固定複数HTMLAudioElement自体が端末で重い可能性。
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
 ## 2026-06-14 - v0.25.278 - 音が出る唯一の方式=Web Audioバッファへ確定。低電力OFFで素のFPS再測定 (Claude Code)
 
 ### 276の結果と判断

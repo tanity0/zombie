@@ -6,7 +6,7 @@ import LoadingScreen from './components/LoadingScreen';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmActive, preloadAllAudio } from './audio/audioManager';
+import { setBgmActive, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
 import { ensureTextures } from './pixi/pixiTextures';
 
 const LOADING_MIN_MS = 650;
@@ -39,6 +39,7 @@ function App() {
   }, [gameState]);
   
   const startGame = async (characterClass: string, benchmark = false) => {
+    unlockDanceAudio();
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass
       : 'warrior';
