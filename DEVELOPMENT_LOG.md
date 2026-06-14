@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.270 - v0.25.267相当(2つのrouted要素)を低電力OFFで再評価 (Claude Code)
+
+### 判明
+- 269(=266相当)を低電力OFFで計測 → **通常60fps / ダンス57fps**(追加負荷-3fps)。266方式は元から軽かった。
+  これまでの「重い」はほぼ全部 **低電力モード**の汚染だった。
+- ただし 269/266 は **ダンス中が無音**(routed/un-routed問わず src 差し替え後は鳴らない=本物の課題)。
+
+### 方針
+- 無音を避けるには src 差し替えをしない=「専用の2つ目の要素」方式(267)が正解。267の10fpsも低電力のせいの
+  はずなので、**低電力OFFで再評価**する。267コミット(99510f3)から audioManager.ts を復元。
+  - 戦闘BGM=routed単一要素(固定)。ダンス=レベル毎の専用要素を各々ルーティング(src差し替えなし=音が出る)。
+  - ダンス中は戦闘要素を pause、同時に鳴る系統は常に1つ。
+
+### 確認してほしいこと（低電力OFFで）
+- 通常プレイFPS / ダンス中FPS / ダンス中に**ダンス曲が鳴るか**。60/57前後＋音アリなら完成。
+
 ## 2026-06-14 - v0.25.269 - v0.25.266相当に巻き戻し(低電力モードOFFで再計測するため) (Claude Code)
 
 ### 経緯
