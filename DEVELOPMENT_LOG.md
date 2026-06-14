@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-14 - v0.25.265 - 診断: 通常=ダンスlevel1、ダンス中=戦闘曲MP3へ差し替え (Claude Code)
+
+### 目的(切り分け)
+- 262で「ダンス突入時に“大きいダンスWAV”へ src 差し替え→重い」。今回は逆向き:通常プレイは起動時から
+  ダンスlevel1(大WAV)、**ダンス中だけ“小さい戦闘MP3”へ差し替える**。
+  - 軽ければ → 重いのは「大きいWAVへの差し替え/デコード」だけ。**ダンス曲を小さいMP3にすれば差し替え方式でOK**。
+  - 重ければ → 「mid-game の src 差し替え自体」が重いと確定。
+- `src/audio/audioManager.ts`: NORMAL_TRACK=DANCE_LOOP_TRACKS[1]、DANCE_SWAP_TRACK=BGM_TRACKS[0]。
+  起動時 bgmSrc=ダンスlevel1。ダンス突入で戦闘MP3へ差し替え。差し替え先MP3は preload で事前ウォーム。
+
 ## 2026-06-14 - v0.25.264 - 診断: 戦闘中の曲を起動時からダンスlevel1に (Claude Code)
 
 ### 確定事項

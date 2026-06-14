@@ -236,12 +236,9 @@ const persistMuted = () => {
   }
 };
 
-// 診断(v0.25.264): 戦闘中の曲を起動時からダンスlevel1(dance-100-loop.wav)にする。
-// ?bgm=normal を付けると通常の戦闘BGM(rotten-iron-march.mp3)に戻す。
-const BGM_USE_DANCE1 = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bgm') !== 'normal';
-const BATTLE_TRACK = BGM_USE_DANCE1 ? DANCE_LOOP_TRACKS[1] : BGM_TRACKS[0];
-// いま BGM 要素に読み込ませてあるトラックURL(戦闘 or ダンス)。差し替えは applyBgm が冪等に行う。
-let bgmSrc = BATTLE_TRACK;
+// いま BGM 要素に読み込ませてあるトラックURL。差し替えは applyBgm が冪等に行う。
+// 起動時の通常プレイ曲はテスト構成のダンスlevel1。
+let bgmSrc = DANCE_LOOP_TRACKS[1];
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
   bgm = new Audio(bgmSrc);
@@ -252,42 +249,32 @@ const ensureBgm = () => {
 };
 
 // --- ダンスタイム(四神舞) -------------------------------------------------
-// この端末では「2系統目の音声を同時に持つ」と必ず重くなる(WebAudioバッファ=v0.25.258、専用追加要素=
-// v0.25.259、いずれも10〜30fps)。一方「単一要素・通常再生(WebAudioルーティング込み)」はダンス曲でも
-// 軽く音も切れない(v0.25.261で実証)。よって2系統目は作らず、唯一の BGM 要素の src を戦闘↔ダンスで
-// 差し替えるだけにする。差し替え時の読み込みヒッチは事前ウォーム(HTTPキャッシュ)で抑える。
+// 切り分けの結論(v0.25.257〜264):
+//  - 「2系統目の音声を同時に持つ」と必ず重い(WebAudioバッファ=258、専用追加要素=259、10〜30fps)。
+//  - 「ゲーム中に要素の src を“大きいダンスWAV”へ差し替える/読み込む」と、その間ずっと重い(262で再現、263で解消)。
+//  - 一方「単一要素を起動時から鳴らしっぱなし(差し替えなし)」は何の曲でも軽い(261/263で実証)。
+// 切り分け(v0.25.265): 通常プレイ=ダンスlevel1(大きいWAV/起動時から)、ダンス中=戦闘曲(小さいMP3)へ差し替え。
+//  → これで軽ければ「重いのは“大きいWAVへの差し替え”であって、小さいMP3への差し替えは軽い」=ダンス曲を
+//     小さいMP3にすれば差し替え方式で実現できる、と分かる。重ければ「差し替え自体が重い」と確定する。
 let danceActive = false;
 
-// 診断(v0.25.263): ダンス中も BGM を戦闘曲のままにする(=src 差し替えを起こさない)。
-// これで「ダンスだけ重い」が消えれば、重さの正体は「mid-game で要素 src をダンスWAVへ差し替える/読み込む」
-// 行為だと確定する(261はダンスWAVを起動時から読んでいたので軽かった)。
-// ?dancesrc=on を付けると本来のレベル毎ダンス曲に差し替える(従来動作)。
-const DANCE_SRC_SWAP = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancesrc') === 'on';
-// ダンスで読み込むトラック(レベル毎)。ダンス中でなければ戦闘トラック。
-const desiredBgmSrc = () =>
-  danceActive && DANCE_SRC_SWAP ? (DANCE_LOOP_TRACKS[currentDanceLevel] ?? BATTLE_TRACK) : BATTLE_TRACK;
+// テスト構成: 通常プレイ=ダンスlevel1の曲、ダンス中=戦闘用の曲(小さいMP3)。
+const NORMAL_TRACK = DANCE_LOOP_TRACKS[1]; // 通常プレイ(=ダンスlevel1)
+const DANCE_SWAP_TRACK = BGM_TRACKS[0];    // ダンス中(=戦闘曲MP3)
+const desiredBgmSrc = () => (danceActive ? DANCE_SWAP_TRACK : NORMAL_TRACK);
 
-// ダンス曲を事前に HTTP キャッシュへ載せておく(src 差し替え時の読み込みヒッチを抑える)。
-const prewarmDanceTracks = () => {
-  if (typeof fetch === 'undefined') return;
-  for (const lvl of [1, 2, 3]) {
-    const url = DANCE_LOOP_TRACKS[lvl];
-    if (url) void fetch(url).then(r => r.blob()).catch(() => {});
-  }
-};
-
-// ダンスの開始/終了。唯一の BGM 要素の src を切り替えるだけ(2系統目は作らない=軽い)。
+// ダンスの開始/終了。唯一の BGM 要素の src を 通常↔ダンス で差し替える。
 export const setDanceMode = (active: boolean, level = 2) => {
   ensureBgm();
   if (active) {
-    if (danceActive && level === currentDanceLevel) return; // 同レベルで既にダンス中
+    if (danceActive && level === currentDanceLevel) return;
     danceActive = true;
     currentDanceLevel = level;
   } else {
     if (!danceActive) return;
     danceActive = false;
   }
-  applyBgm(); // 要素の src を必要なトラックへ差し替えて再生
+  applyBgm(); // 要素の src を desiredBgmSrc に合わせて差し替え/再生
 };
 
 // 拍合わせは gameTime グリッドで行う(開始時に LEAD で合わせる)ため、音楽位置は使わない。
@@ -400,8 +387,8 @@ const waitAudioReady = (el: HTMLAudioElement | null, timeoutMs = 12000): Promise
 export const preloadAllAudio = (): Promise<void> => {
   warmSfxBuffers();
   ensureBgm();
-  // ダンス曲は別要素を作らず、src 差し替え時に備えて HTTP キャッシュへ事前ウォームしておく。
-  prewarmDanceTracks();
+  // ダンス突入時に差し替える戦闘MP3を事前に HTTP キャッシュへ載せておく(差し替え時の読み込みヒッチ抑制)。
+  if (typeof fetch !== 'undefined') void fetch(DANCE_SWAP_TRACK).then(r => r.blob()).catch(() => {});
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
   return Promise.all([
     waitAudioReady(bgm),
