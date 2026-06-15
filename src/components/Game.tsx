@@ -10,6 +10,7 @@ import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import ShopMenu from './ShopMenu';
 import EventQuestMenu from './EventQuestMenu';
+import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
 import FullscreenButton from './FullscreenButton';
@@ -189,6 +190,9 @@ const Game: React.FC<GameProps> = ({
       {showEventQuestMenu && (
         <EventQuestMenu />
       )}
+
+      {/* 登場時のセリフ(時間停止・オートタイプ)。表示中だけ自前 raf で更新。 */}
+      <IntroDialogue />
 
       {/* In-play version marker (bottom-left): same source as the title's
           top-right badge (__APP_VERSION__ = package.json version) so the

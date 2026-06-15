@@ -14,7 +14,9 @@ import {
   huntingMeleeRadius,
   PLAYER_INTRO_MS,
   playerIntroOffset,
-  playerIntroCamFollow
+  playerIntroCamFollow,
+  INTRO_DIALOGUE_TRIGGER_T,
+  INTRO_DIALOGUE_TOTAL_MS
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -512,9 +514,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         if (introUntil > 0 && nowMs < introUntil) {
           introWasActiveRef.current = true;
+          // セリフ(登場時): ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると再開。
+          const introStateNow = useGameStore.getState();
+          const rawIntroT = 1 - (introUntil - nowMs) / PLAYER_INTRO_MS;
+          if (!introStateNow.introDialogueShown && rawIntroT >= INTRO_DIALOGUE_TRIGGER_T) {
+            useGameStore.getState().startIntroDialogue();
+          }
+          if (useGameStore.getState().introDialogueActive) {
+            if (nowMs - useGameStore.getState().introDialogueStartedAt >= INTRO_DIALOGUE_TOTAL_MS) {
+              useGameStore.getState().endIntroDialogue(); // 流れ終わり → 再開
+            } else {
+              // 時間停止: 終了時刻を delta 分だけ後ろへ送り、登場進行 t を固定(ヘリ/キャラ静止)。
+              useGameStore.setState({ introUntil: introUntil + baseDeltaTime * 1000 });
+            }
+          }
           // カメラがステージを横断して飛行キャラXに追従(<1でキャラが少し左から入る)。
           // 縦は着地面(player.y)に固定し、飛行アーチは見た目側で見せる。
-          const introT = Math.max(0, Math.min(1, 1 - (introUntil - nowMs) / PLAYER_INTRO_MS));
+          const introT = Math.max(0, Math.min(1, 1 - (useGameStore.getState().introUntil - nowMs) / PLAYER_INTRO_MS));
           const introOff = playerIntroOffset(introT);
           const camFollow = playerIntroCamFollow(introT);
           const targetCameraX = (player.x + introOff.x * camFollow) - gameBounds.width / 2 + player.width / 2;

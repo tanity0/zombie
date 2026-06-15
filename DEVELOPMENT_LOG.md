@@ -45,6 +45,26 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.338 - 登場セリフ(ヘリ画面内で時間停止・オートタイプ) (Claude Code)
+
+### 変更
+- 登場演出で**ヘリが画面内に入った頃(進行 t≈`INTRO_DIALOGUE_TRIGGER_T=0.3`)に時間停止**してセリフを自動表示。
+  流れ終わると自動でゲーム開始。
+  - セリフ:通信「本任務は研究所奪還に向けて施設の位置特定となる。座標確定後は速やかに帰還せよ。」/
+    プレイヤー「…了解。」
+- `gameStore.ts`: `INTRO_DIALOGUE_LINES`/速度(`_CHAR_MS=55`)/保持/合計時間/トリガー t を定義。状態
+  `introDialogueActive/StartedAt/Shown` と `startIntroDialogue`/`endIntroDialogue` を追加。stamp/リスタートで初期化。
+- `useGameLoop.ts`: 登場中に t がトリガーを越えたら `startIntroDialogue`。表示中は `introUntil` を毎フレーム
+  delta 分後ろへ送り **t を固定(ヘリ/キャラ静止)**。合計時間経過で `endIntroDialogue`→再開。
+- `IntroDialogue.tsx`(新規): VN風の下部ボックス。**表示中だけ自前 raf** でこの小コンポーネントのみ更新
+  (毎フレーム再描画の波及を回避)。購読は active(bool)/startedAt(number)のみ。Game.tsx にマウント。
+
+### 負荷スコア
+1/10。セリフ中(約4.4秒・1回)だけ小コンポーネントを raf 更新。シミュレーションは停止中。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。文字速度/タイミング/トリガー位置は各定数で調整可。
+
 ## 2026-06-15 - v0.25.337 - 登場:乗車位置をヘリ中心から直接ピン留め(ぶら下がり修正) (Claude Code)
 
 ### 変更(`pixiScene.ts`)

@@ -394,6 +394,23 @@ export const playerIntroCamFollow = (t: number): number => {
   return PLAYER_INTRO_HELI_CAM_FOLLOW + (PLAYER_INTRO_CAM_FOLLOW - PLAYER_INTRO_HELI_CAM_FOLLOW) * s;
 };
 
+// 登場セリフ(ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると開始)。
+export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
+  { speaker: null, text: '本任務は研究所奪還に向けて施設の位置特定となる。座標確定後は速やかに帰還せよ。' },
+  { speaker: 'プレイヤー', text: '…了解。' },
+];
+export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
+export const INTRO_DIALOGUE_LINE_HOLD_MS = 750;  // 各行を打ち終えた後の保持
+export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この後ゲーム開始)
+// 全体時間(useGameLoop が終了判定に使用)。
+export const INTRO_DIALOGUE_TOTAL_MS =
+  INTRO_DIALOGUE_LINES.reduce(
+    (sum, l) => sum + l.text.length * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS,
+    0
+  ) + INTRO_DIALOGUE_END_HOLD_MS;
+// セリフを出す登場進行 t(ヘリが画面内に入ったあたり)。
+export const INTRO_DIALOGUE_TRIGGER_T = 0.3;
+
 // World is effectively infinite. We still need a finite number for spawn
 // math elsewhere, but we use a very large clamp to remove the wall feel.
 export const WORLD_HALF_EXTENT = 200000;
@@ -646,6 +663,9 @@ interface GameState {
   startWithTestStraps: boolean;
   showStatsOverlay: boolean; // 撃破/DMG/SCRAP + FPS/負荷オーバーレイの表示(TOPで選択。既定OFF)
   introUntil: number; // キャラ登場演出の終了時刻(Date.now基準)。-1=未確定(初フレームで確定)、0=演出なし
+  introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
+  introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
+  introDialogueShown: boolean;   // この登場で既にセリフを出したか(再トリガー防止)
   danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   meleeFinishComboCount: number;
@@ -782,6 +802,8 @@ interface GameState {
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
+  startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
+  endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
   setDanceTestMode: (enabled: boolean) => void;
   setDanceTestLevel: (level: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
@@ -885,6 +907,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
+  introDialogueActive: false,
+  introDialogueStartedAt: 0,
+  introDialogueShown: false,
   danceTestMode: false,
   danceTestLevel: 1,
   meleeFinishComboCount: 0,
@@ -3545,7 +3570,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   stampPlayerIntro: () => {
-    set({ introUntil: Date.now() + PLAYER_INTRO_MS });
+    set({ introUntil: Date.now() + PLAYER_INTRO_MS, introDialogueActive: false, introDialogueShown: false });
+  },
+
+  startIntroDialogue: () => {
+    set({ introDialogueActive: true, introDialogueStartedAt: Date.now(), introDialogueShown: true });
+  },
+
+  endIntroDialogue: () => {
+    set({ introDialogueActive: false });
   },
 
   setDanceTestMode: (enabled) => {
@@ -3858,6 +3891,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         introUntil: state.danceTestMode ? 0 : -1,
+        introDialogueActive: false,
+        introDialogueStartedAt: 0,
+        introDialogueShown: false,
         enemies: [],
         projectiles: [],
         pickups: [],
