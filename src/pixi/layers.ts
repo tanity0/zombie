@@ -38,6 +38,9 @@ export interface SceneLayers {
   frontObjectLayer: Container;
   effectLayer: Container;
   lightingLayer: Container;
+  // ダンスUI(ミラーボール/サークル/矢印/四神名)専用。filteredWorld の外＝被写体深度(tilt-shift)で
+  // ボケない。ワールド座標で追従させるため、毎フレーム world と同じカメラオフセットを適用する。
+  danceUiLayer: Container;
   uiLayer: Container;
 }
 
@@ -87,7 +90,10 @@ export const buildLayers = (
   // Filters are applied to filteredWorld only, so the ground never bleeds into
   // the far panorama through blur while world still draws above it.
   const worldGroup = new Container();
-  worldGroup.addChild(groundBase, horizonForest, filteredWorld);
+  // danceUiLayer は filteredWorld の後(=上)に置く: フィルタ外なのでボケず、front forest より下=従来の
+  // effectLayer と同じ重なり順を保つ。位置(カメラオフセット)は pixiScene が毎フレーム world と同期する。
+  const danceUiLayer = new Container();
+  worldGroup.addChild(groundBase, horizonForest, filteredWorld, danceUiLayer);
 
   const uiLayer = new Container();
 
@@ -108,6 +114,7 @@ export const buildLayers = (
     frontObjectLayer,
     effectLayer,
     lightingLayer,
+    danceUiLayer,
     uiLayer,
   };
 };

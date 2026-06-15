@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.304 - ダンスUIを被写体深度(tilt-shift)の影響外に(技VFXは従来どおり) (Claude Code)
+
+### 変更
+- ダンスUI(ミラーボール/左右サークル/矢印/四神名)は filteredWorld 配下の effectLayer にあり tilt-shift でボケていた。
+  → 新レイヤー **`danceUiLayer`**(filteredWorld の兄弟=フィルタ外、front forest の下=従来の重なり順)を追加し、
+    これら4要素を移動。毎フレーム world と同じカメラオフセットを適用してワールド座標で追従。**常にくっきり**に。
+- 四神技などの spawn される VFX(斬撃/バースト/リング)は effectLayer のまま=従来どおり被写体深度の影響を受ける。
+- 暗転の挿入位置を `getChildIndex(filteredWorld)` 基準に修正(danceUiLayer 追加で index がズレるため)。
+- `layers.ts`: `danceUiLayer` を SceneLayers に追加し worldGroup へ(filteredWorld の後)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.303 - dance-140 をさらに140へ寄せる(再引き伸ばし) (Claude Code)
 
 ### 変更

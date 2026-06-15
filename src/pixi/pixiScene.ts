@@ -589,23 +589,25 @@ export class PixiScene {
     this.whipHurricane.alpha = 0;
     this.whipHurricane.visible = false;
     this.L.effectLayer.addChild(this.whipHurricane);
+    // ダンスUI(サークル/矢印/ミラーボール/四神名)は danceUiLayer(filteredWorld外=被写体深度でボケない)へ。
+    // spawnされるVFX(四神技の斬撃/バーストなど)は effectLayer のまま=従来どおりボケる。
     this.rhythmOverlay.visible = false;
-    this.L.effectLayer.addChild(this.rhythmOverlay);
+    this.L.danceUiLayer.addChild(this.rhythmOverlay);
     // タップ発光は screen-space。uiLayer の最下層に置き、画面端マーカー等は上に残す。
     this.rhythmScreenFx.visible = false;
     this.L.uiLayer.addChildAt(this.rhythmScreenFx, 0);
     // 暗転は worldGroup の filteredWorld 直前に挿す(地面/遠景の上、オブジェクト/アクターの下)。
     this.rhythmDimGfx.visible = false;
-    this.L.worldGroup.addChildAt(this.rhythmDimGfx, Math.max(0, this.L.worldGroup.children.length - 1));
+    this.L.worldGroup.addChildAt(this.rhythmDimGfx, this.L.worldGroup.getChildIndex(this.L.filteredWorld));
     // ミラーボール: 頭上に表示。rhythmOverlay(リング/矢印)より上に描く。
     this.rhythmBall.anchor.set(0.5, 0.5);
     this.rhythmBall.visible = false;
-    this.L.effectLayer.addChild(this.rhythmBall);
+    this.L.danceUiLayer.addChild(this.rhythmBall);
     this.rhythmGodText.anchor.set(0, 0.5);
     this.rhythmGodText.visible = false;
-    this.L.effectLayer.addChild(this.rhythmGodText);
+    this.L.danceUiLayer.addChild(this.rhythmGodText);
     this.rhythmArrowsGfx.visible = false;
-    this.L.effectLayer.addChild(this.rhythmArrowsGfx);
+    this.L.danceUiLayer.addChild(this.rhythmArrowsGfx);
 
     this.castleSprite.anchor.set(0.5, 1);
     this.castleGlow.anchor.set(0.5);
@@ -1014,6 +1016,8 @@ export class PixiScene {
       sy = (Math.random() * 2 - 1) * mag;
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
+    // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
+    this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
     const farH = this.farBackdropHeight();
     this.L.farBackdrop.position.set(sx * 0.25, 0);
     this.L.farBackdrop.tilePosition.set(
