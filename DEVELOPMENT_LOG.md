@@ -45,6 +45,20 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.339 - 登場:ヘリが低く降りてから飛び降りる (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 飛び降りが高すぎる問題を是正。ヘリの随伴高度を固定 `HELI_ABOVE` から、飛来終盤に
+  **`HELI_ABOVE(210)→HELI_DROP_ABOVE(70)` へ降下**(`heliAboveAt(t)`、`HELI_DESCEND_FROM=0.5` から
+  `HELI_RIDE_RELEASE_FROM=0.85` で低ホバー完了)。キャラはヘリ中心にピン留めなので**一緒に下がって**から
+  飛び降りる。`introHeliBase` と `syncIntroHelicopter` の両方で `heliAboveAt(t)` を使用。
+
+### 負荷スコア
+0/10。登場演出中のオフセット計算のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。降下開始/低ホバー高度は `HELI_DESCEND_FROM`/`HELI_DROP_ABOVE` で調整可。
+
 ## 2026-06-15 - v0.25.338 - 登場セリフ(ヘリ画面内で時間停止・オートタイプ) (Claude Code)
 
 ### 変更
