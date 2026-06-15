@@ -1264,10 +1264,12 @@ export class PixiScene {
     // 内容(入力履歴/コマンド/進行)が変わった時だけ再描画する(毎フレームの矩形リビルドを回避)。
     const shown = rhythm.inputArrows.slice(-4);
     const prompt = rhythm.prompt;
-    const inputRowY = -r - 18;                 // 原点(cx,cy)基準
     const cblock = 2.8; // コマンド矢印のドットサイズ(全体的に大きめに)
     const cgap = 7 * cblock + 5;
-    const cmdY = inputRowY - 7 * cblock - 7;   // 入力矢印のすぐ上
+    // 技リスト(目標コマンド)= 旧・入力矢印の位置(頭上)へ下げる。
+    const cmdY = -r - 18;                       // 原点(cx,cy=頭上)基準
+    // 入力済み矢印 = キャラの下(足元の下)へ移動。cy は頭上なので 足元 = boxH+26、その少し下。
+    const inputArrowsY = fb.boxH + 26 + 20;
     const cstartX = -(cgap * (prompt.length - 1)) / 2 - 8; // 名前ぶん少し左寄せ
     const ag = this.rhythmArrowsGfx;
     ag.position.set(cx, cy);
@@ -1276,17 +1278,17 @@ export class PixiScene {
     if (key !== this.rhythmArrowsKey) {
       this.rhythmArrowsKey = key;
       ag.clear();
-      // 入力フリック(末尾最大4)。最新は明るく強調。
+      // 入力フリック(末尾最大4)。最新は明るく強調。キャラの下に表示。
       if (shown.length > 0) {
         const block = 3.0; // 入力フリック矢印のドットサイズ(全体的に大きめに)
         const gap = 7 * block + 6;
         const startX = -(gap * (shown.length - 1)) / 2;
         for (let i = 0; i < shown.length; i++) {
           const latest = i === shown.length - 1;
-          this.drawRhythmArrow(ag, startX + i * gap, inputRowY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
+          this.drawRhythmArrow(ag, startX + i * gap, inputArrowsY, shown[i], latest ? 0xfde68a : 0xbae6fd, latest ? 1 : 0.85, block);
         }
       }
-      // 目標コマンド(入力済みは淡色、1本目=四神色)。
+      // 目標コマンド(技リスト。入力済みは淡色、1本目=四神色)。
       for (let i = 0; i < prompt.length; i++) {
         const a = i < rhythm.inputIndex ? 0.3 : 1;
         const col = i === 0 ? 0xfca5a5 : 0xe2e8f0;

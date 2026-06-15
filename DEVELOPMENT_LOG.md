@@ -45,6 +45,19 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.336 - ダンスUI:技リストを下げ/入力済み矢印をキャラ下へ (Claude Code)
+
+### 変更(`pixiScene.ts` `syncRhythmOverlay`)
+- **技リスト(目標コマンド)**を、旧・入力矢印の位置(`cmdY = -r - 18`、頭上)へ**下げた**。四神名テキストも追従。
+- **入力済み矢印(入力フリック)**を**キャラの下(足元の下、`inputArrowsY = boxH + 26 + 20`)**へ移動。
+- 表示の上下関係: 技リスト(頭上)→ ミラーボール → キャラ → 入力済み矢印(足元下)。
+
+### 負荷スコア
+0/10。描画位置定数の変更のみ(内容変化時のみ再描画は従来どおり)。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。位置(`cmdY` / `inputArrowsY`)は実機で微調整可。
+
 ## 2026-06-15 - v0.25.335 - 登場:キャラをヘリの「ドア」に重ねる/飛び降りと同時にヘリ上昇 (Claude Code)
 
 ### 変更(`pixiScene.ts`)
