@@ -102,7 +102,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       gear: 'マグナム ＋ ナイフ',
       skillKey: 'marksman-trap',
       skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
-      portraitNudgeY: 12, // 暗いコートで視認上の足元が高く浮くため下げる(裾はカード下で見切れる)
+      portraitNudgeY: 0, // 構造修正(行をカード高さに伸ばす)で浮きは解消。足元はキャンバス底=他と同じ
     },
     {
       id: 'rogue',
@@ -185,7 +185,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
             {characterClasses.map((charClass) => (
               <div
                 key={charClass.id}
-                className={`relative min-h-[154px] overflow-hidden rounded-2xl transition-colors cursor-pointer border ${
+                className={`relative flex flex-col min-h-[154px] overflow-hidden rounded-2xl transition-colors cursor-pointer border ${
                   selectedClass === charClass.id
                     ? 'bg-blue-500/15 border-blue-400/60'
                     : 'bg-white/5 border-white/10 active:bg-white/10'
@@ -196,7 +196,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                   className="pointer-events-none absolute -left-7 -bottom-8 w-32 h-32 rounded-full blur-2xl opacity-40"
                   style={{ backgroundColor: charClass.accent }}
                 />
-                <div className="relative flex min-h-[154px]">
+                {/* flex-1 でカード(グリッドで等高に伸びる)の高さいっぱいに行を広げ、立ち絵を「説明文の量」ではなく
+                    カード下端に揃える(説明文が短いカードで立ち絵が浮くのを防ぐ)。 */}
+                <div className="relative flex min-h-[154px] flex-1">
                   <div className="relative w-[86px] flex-shrink-0 flex items-end justify-center pt-3 pb-2">
                     <div
                       className={`absolute bottom-2 h-6 w-16 rounded-full blur-md transition-opacity ${

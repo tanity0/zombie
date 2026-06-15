@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.296 - キャラ選択立ち絵のズレを構造修正(説明文の量に左右されていた) (Claude Code)
+
+### 原因(ユーザーの指摘が正解)
+- カードはグリッドで等高に伸びるが、中の「立ち絵+説明文」行は `min-h-[154px]` のままでカード高さを埋めず、
+  立ち絵が**説明文ブロックの下端**に揃っていた。説明文が短いカード(マークスマン)ほど立ち絵が浮く。
+
+### 修正
+- `MainMenu`: カードを `flex flex-col`、中の行に `flex-1` を付けてカード高さいっぱいに伸ばし、立ち絵を**カード下端**に
+  揃える(説明文の量に依存しない)。マークスマンの暫定ナッジ(12)を 0 に戻す(構造修正で浮き解消)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
 ## 2026-06-15 - v0.25.295 - 鞭ハリケーンに巻き込みダメージ追加 / 死神・召喚の攻撃をダメージ数字で可視化 (Claude Code)
 
 ### 鞭ハリケーン(トルネード)に攻撃を追加
