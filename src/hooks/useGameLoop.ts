@@ -120,7 +120,8 @@ const TURRET_OMNI_DAMAGE = 9;                           // 全方位の弾ダメ
 const TURRET_OMNI_BULLET_SPEED = 520 * 1.5;            // handgun-t1 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
 const TURRET_OMNI_RANGE = 200;                          // 全方位の射程(短射程)。TODO: 実機調整
 const TURRET_BULLET_SIZE = 7;
-const TURRET_GRENADE_CHANCE = 0.10;                     // 通常弾の代わりにグレネード弾を撃つ確率(全モード共通)
+const TURRET_GRENADE_CHANCE = 0.10;                     // 通常弾の代わりにグレネードランチャー弾を撃つ確率(全モード共通)
+const TURRET_LAUNCHER_DAMAGE = 44;                      // タレットのグレネードランチャー弾の直撃ダメージ(手榴弾とは別物)
 const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発・範囲。TODO: 実機調整(既存爆発演出を流用)
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
@@ -1307,16 +1308,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               dir = { x: fx, y: fy };
             }
             if (!dir) continue;
-            // 10%でグレネード弾(既存ヘビーグレネードを流用=fuseで爆発)、それ以外は通常弾。
-            // 全方位モードでもグレネード弾は現在のターゲット方向へ撃つ。
+            // 10%でグレネードランチャー弾(rifle-t3 と同じ直進・着弾爆発=GRENADE_WEAPON_KEY)、
+            // それ以外は通常弾。手榴弾(heavy-grenade)とは別物: fuse転がしではなく直進ランチャー弾。
+            // 全方位モードでもランチャー弾は現在のターゲット方向へ撃つ。
             if (Math.random() < TURRET_GRENADE_CHANCE) {
               addProjectile({
-                id: `proj-turret-gr-${turret.id}-${nowMs}`,
+                id: `proj-turret-gl-${turret.id}-${nowMs}`,
                 x: tcx - 7, y: tcy - 7, width: 14, height: 14,
-                speed: HEAVY_GRENADE_SPEED, damage: HEAVY_GRENADE_DAMAGE,
-                direction: dir, weaponType: 'grenade', weaponKey: 'sub-turret-grenade',
-                duration: HEAVY_GRENADE_FUSE_MS, createdAt: nowMs,
-                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                speed: TURRET_FWD_BULLET_SPEED, damage: TURRET_LAUNCHER_DAMAGE,
+                direction: dir, weaponType: 'rifle', weaponKey: GRENADE_WEAPON_KEY,
+                duration: 1400, createdAt: nowMs,
+                passthrough: true, hitEnemies: [], hostile: false, reflected: false,
               });
               playSfx('rifle-fire');
             } else {
@@ -1347,15 +1349,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gy = grenade.y + grenade.height / 2;
           removeProjectile(grenade.id);
           playSfx('bomb');
-          // 自動タレットのグレネード弾は「グレネードランチャー級」(半径92・演出440)。
-          // heavy-grenade サブ武器(手榴弾系)は従来の半径66のまま。
-          const isLauncher = grenade.weaponKey === 'sub-turret-grenade';
-          const blastR = isLauncher ? GRENADE_BLAST_RADIUS : HEAVY_GRENADE_RADIUS;
-          const fxMs = isLauncher ? GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS : HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
-          spawnRing(gx, gy, isLauncher ? 10 : 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
-          spawnBurst(gx, gy, '#f97316', isLauncher ? 24 : 20);
-          spawnBurst(gx, gy, '#7f1d1d', isLauncher ? 10 : 8);
-          useGameStore.getState().spawnGlow(gx, gy, isLauncher ? 58 : 50, 'rgba(251,146,60,', fxMs);
+          // weaponType:'grenade' は手榴弾(heavy-grenade)専用。fuseで爆発し、半径66の小範囲。
+          // グレネードランチャー(rifle-t3/タレットのランチャー弾)は別物で、着弾爆発の別経路で処理する。
+          const blastR = HEAVY_GRENADE_RADIUS;
+          const fxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
+          spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
+          spawnBurst(gx, gy, '#f97316', 20);
+          spawnBurst(gx, gy, '#7f1d1d', 8);
+          useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', fxMs);
           for (const enemy of useGameStore.getState().enemies) {
             if (enemy.type === 'reaper') continue;
             const ex = enemy.x + enemy.width / 2;

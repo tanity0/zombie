@@ -93,7 +93,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       accent: 'rgba(248, 113, 113, 0.55)',
       gear: 'ソードオフ・ショットガン ＋ ハチェット',
       skillKey: 'heavy-grenade',
-      skillDesc: '前方へ炸裂弾(グレネードランチャー)を放ち範囲を制圧',
+      skillDesc: '前方へ手榴弾を転がし、着弾で小範囲を爆破',
       portraitNudgeY: 2.7, // 足元が4px上 → 底へ
     },
     {

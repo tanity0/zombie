@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.306 - 手榴弾とグレネードランチャーの混同を解消 (Claude Code)
+
+### 背景
+手榴弾(heavy-grenade サブ武器)とグレネードランチャー(rifle-t3/マグナム系列の最後)が
+混同されていた。特に自動タレットの「グレネード弾」が、見た目もロジックも実態は手榴弾
+(fuse転がし・半径66)で、演出だけランチャー級に差し替える形になっていた。
+
+### 変更
+- 自動タレットの特殊弾(10%)を、本物のグレネードランチャー弾に変更。
+  `weaponType:'rifle'` / `weaponKey: GRENADE_WEAPON_KEY('rifle-t3')` で発射し、rifle-t3 と
+  同じ直進・着弾爆発(半径92)の経路を通る。見た目もランチャー弾の軌跡になる(従来は
+  ホップする手榴弾の見た目)。直撃ダメージは `TURRET_LAUNCHER_DAMAGE=44`(手榴弾とは別値)。
+- `weaponType:'grenade'` の爆発処理を手榴弾専用に整理。`sub-turret-grenade` 用の
+  `isLauncher` 分岐(死にコード化)を削除し、常に半径66/演出440の手榴弾爆発に。
+- `MainMenu` のヘビーガンナー説明文を修正: 「炸裂弾(グレネードランチャー)」→
+  「手榴弾を転がし、着弾で小範囲を爆破」(実際の heavy-grenade に一致)。
+
+### 設計の整理(別物として確定)
+- 手榴弾(heavy-grenade): warrior サブ武器。fuse転がし、半径66、ダメージ42。
+- グレネードランチャー(rifle-t3): マグナム系列の最後の銃。直進・着弾爆発、半径92、ダメージ95。
+  自動タレットのランチャー弾もこの経路を共有。
+
+### 負荷スコア
+1/10。発射経路を既存の rifle-t3 着弾爆発に統合しただけで、毎フレームの新規コストなし。
+むしろタレット用の fuse 監視分岐(isLauncher)が消えて分岐が減った。
+
+### Verification
+- `npm run lint` / `npm run build` 成功。
+
 ## 2026-06-15 - v0.25.305 - ダンスの矢印を全体的に大きく (Claude Code)
 
 ### 変更
