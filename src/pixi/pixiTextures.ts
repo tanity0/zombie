@@ -66,7 +66,7 @@ export const ensureTextures = (): Promise<void> => {
       // 設置型デコイ(全方向の単体装置スプライト)。
       'decoy',
     ];
-    const [atlas, player, torch, castle, magicCircle, whipHurricane, whip, mirrorBall, ...playerWalk] = await Promise.all([
+    const [atlas, player, torch, castle, magicCircle, whipHurricane, whip, mirrorBall, helicopter, ...playerWalk] = await Promise.all([
       Assets.load(spritePath('atlas')),
       Assets.load(spritePath('player')),
       Assets.load(spritePath('torch')),
@@ -75,6 +75,7 @@ export const ensureTextures = (): Promise<void> => {
       Assets.load(spritePath('whip-hurricane')),
       Assets.load(spritePath('whip')),
       Assets.load(spritePath('mirror-ball')),
+      Assets.load(spritePath('helicopter')),
       ...playerWalkNames.map(name => Assets.load(spritePath(name))),
     ]);
     atlas.source.scaleMode = 'nearest';
@@ -82,6 +83,7 @@ export const ensureTextures = (): Promise<void> => {
     torch.source.scaleMode = 'nearest';
     castle.source.scaleMode = 'nearest';
     mirrorBall.source.scaleMode = 'linear'; // 高解像度の球を縮小描画するため linear で滑らかに
+    helicopter.source.scaleMode = 'linear'; // 高解像度の登場ヘリを縮小描画するため linear で滑らかに
     // 魔法陣はソフトな発光なので linear(既定)のまま — nearest にしない。
     playerWalk.forEach((tex) => {
       tex.source.scaleMode = 'nearest';
@@ -103,6 +105,7 @@ export const ensureTextures = (): Promise<void> => {
     textures.set('whip-hurricane', whipHurricane);
     textures.set('whip', whip);
     textures.set('mirror-ball', mirrorBall);
+    textures.set('helicopter', helicopter);
     ready = true;
   })();
   return loading;

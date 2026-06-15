@@ -36,11 +36,33 @@ on the zombie game. Append a new entry after each meaningful change.
   定数: `PLAYER_INTRO_MS=1700` / `FLY_X=2200` / `LOW_Y=28` / `ARC_H=110` / `CAM_FOLLOW=0.82`。
 
 ### ⏳ 未完了・次にやること
-1. **ヘリコプター画像待ち**: 社長が `helicopter` 画像を用意予定。受領後の有効化は v0.25.328 エントリ参照
-   (`public/sprites/helicopter.png` 配置 + `pixiTextures.ts` の `playerWalkNames` に `'helicopter'` 追加)。
-   演出ロジックは実装済み・画像が無い間は安全に非表示。位置/サイズは `HELI_*` 定数。
+1. ✅ **ヘリコプター画像 完了(v0.25.329)**: 画像受領→紫背景クロマキー透過+内容クロップ→2x縮小で
+   `public/sprites/helicopter.png` 配置。`pixiTextures.ts` で `linear` ロード&登録。登場演出のヘリ表示が有効に。
+   位置/サイズは `HELI_*` 定数。
 2. ライティング各 `?パラメータ` の最終値を実機で決めて既定へ焼き込む(現状は既定値で運用中)。
 3. (任意)城・拾い物の影もソフト方向影に統一 / ②強イベントの動的影もソフト化 / stage2-4のステージ別BGM。
+   ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
+   (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
+
+## 2026-06-15 - v0.25.329 - 登場ヘリ画像を登録・有効化 (Claude Code)
+
+### 変更
+- **ヘリ画像受領→有効化**。社長提供の `helicopter` 画像(紫1色背景)を、Node 標準 `zlib` のみで
+  PNG デコード→**紫クロマキー透過**(フチをフェザー)→**内容バウンディングボックスでクロップ**→
+  **2x ボックス縮小**して `public/sprites/helicopter.png`(452×251 / 130KB)として配置。
+  処理スクリプトは `scripts/process-heli.mjs`(ワンオフ・再現用に残置)。
+- `src/pixi/pixiTextures.ts`: `helicopter` を **別ロードで登録**。高解像度の縮小描画なので
+  `mirror-ball` と同様に **`scaleMode = 'linear'`**(playerWalkNames=nearest 群には入れない)。
+- これで `syncIntroHelicopter`(v0.25.328 実装済み)の `getTexture('helicopter')` が解決し、
+  登場演出でヘリが表示される。位置/サイズ/挙動は既存 `HELI_*` 定数のまま。
+
+### 負荷スコア
+2/10(rendering/memory)。452×251 RGBA テクスチャ1枚=約0.45MB を起動時1回ロードし、登場演出中だけ
+1スプライトを動かすのみ。元1254px から 2x 縮小済みでメモリ/転送を削減(742KB→130KB)。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。透過結果を目視確認(紫フチ無し)。
+- 実機での登場演出表示・サイズ感は次回 dev 起動時に最終確認(`HELI_DISPLAY_H` 等で微調整可)。
 
 ## 2026-06-15 - v0.25.328 - 登場演出にヘリコプター(画像待ち・現状は安全に非表示) (Claude Code)
 
