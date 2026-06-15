@@ -179,7 +179,7 @@ const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
 const HELI_RIDE_DOOR_FRAC = 0.16;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く。大きいほど下)
 const HELI_RIDE_DOOR_X = 4;          // ドアの横位置(ヘリ中心からのオフセット px*scale。+で進行方向寄り)
 const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合から飛び降り開始
-const HELI_DEPART_DELAY_MS = 500;    // 飛び降りてからヘリがその場でホバーして待つ時間(0.5秒)→上昇離脱
+const HELI_DEPART_DELAY_MS = 300;    // 飛び降りてからヘリがその場でホバーして待つ時間(0.3秒)→上昇離脱
 // ヘリの随伴高度(キャラ上方への距離)。飛来終盤に HELI_ABOVE→HELI_DROP_ABOVE へ降下し、
 // 低ホバー完了(=飛び降り開始 HELI_RIDE_RELEASE_FROM)してからキャラが飛び降りる。
 // キャラはヘリ中心にピン留めなので、ヘリと一緒に下がってから飛び降りる。
@@ -2382,33 +2382,28 @@ export class PixiScene {
     let introScale = 1; // フェーズA(ヘリ飛来)で小さく見せて遠さを表現
     let riding = false; // フェーズA中=ヘリのドアに重なって乗っている
     const hfPlayer = PLAYER_INTRO_HELI_FRAC;
+    const jumpOffT = hfPlayer * HELI_RIDE_RELEASE_FROM; // 飛び降り開始の t
     const computeIntro = (t: number) => {
       const off = playerIntroOffset(t);
       introScale = playerIntroScale(t);
-      if (t < hfPlayer) {
-        // フェーズA: 足元をヘリのドアへ直接ピン留め(ヘリ中心から一定オフセット=ドリフトしない)。
+      if (t < jumpOffT) {
+        // 乗車中: 足元をヘリのドアへ直接ピン留め(ヘリ中心から一定オフセット)。
         const base = this.introHeliBase(p, t);
-        const doorOffX = base.cx + HELI_RIDE_DOOR_X * base.scale - fb.footX;
-        const doorOffY = base.cy + HELI_DISPLAY_H * HELI_RIDE_DOOR_FRAC * base.scale - fb.footY;
-        const a = t / hfPlayer;
-        if (a < HELI_RIDE_RELEASE_FROM) {
-          introOffX = doorOffX;
-          introOffY = doorOffY;
-        } else {
-          // 飛び降り: ドア位置 → 通常オフセット(フェーズB開始点)へ加速補間。
-          const k = (a - HELI_RIDE_RELEASE_FROM) / (1 - HELI_RIDE_RELEASE_FROM);
-          const e = k * k;
-          introOffX = doorOffX * (1 - e) + off.x * e;
-          introOffY = doorOffY * (1 - e) + off.y * e;
-        }
+        introOffX = base.cx + HELI_RIDE_DOOR_X * base.scale - fb.footX;
+        introOffY = base.cy + HELI_DISPLAY_H * HELI_RIDE_DOOR_FRAC * base.scale - fb.footY;
         riding = true;
       } else {
-        // フェーズB: 従来のジャンプ着地。終盤20%で着地スカッシュ。
-        introOffX = off.x;
-        introOffY = off.y;
-        const b = (t - hfPlayer) / (1 - hfPlayer);
-        if (b > 0.8) {
-          const sQ = Math.sin(((b - 0.8) / 0.2) * Math.PI); // 着地でぐにゃっ
+        // 飛び降り後: 横はダッシュ(off.x)、縦はドア高さ→着地(0)へ単調に加速落下。
+        // フェーズBのアーチ(下→上)を通さないので「一瞬下に下がる」谷が出ない。
+        const jb = this.introHeliBase(p, jumpOffT);
+        const jumpStartOffY = jb.cy + HELI_DISPLAY_H * HELI_RIDE_DOOR_FRAC * jb.scale - fb.footY;
+        const fall = Math.min(1, (t - jumpOffT) / (1 - jumpOffT)); // 0→1
+        const e = fall * fall; // 加速して落下
+        introOffX = off.x;                    // 横は従来のダッシュ(中央へ寄る)
+        introOffY = jumpStartOffY * (1 - e);  // ドア高さ→0(着地)へ単調降下
+        riding = t < hfPlayer;                // フェーズA内(jumpOffT〜hf)はまだ前面レイヤー
+        if (fall > 0.85) {
+          const sQ = Math.sin(((fall - 0.85) / 0.15) * Math.PI); // 着地でぐにゃっ
           introSqX = 1 + 0.3 * sQ;
           introSqY = 1 - 0.22 * sQ;
         }

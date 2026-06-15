@@ -45,6 +45,20 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.345 - 登場:飛び降りの谷を解消/ヘリ待ち0.3秒 (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 飛び降り時にキャラが一瞬下がる「谷」を解消。従来は飛び降りでフェーズB開始の低位置(-LOW_Y)へ下りてから
+  アーチで上昇(下→上)していた。**ドア高さ→着地(0)へ単調に加速落下**(横はダッシュ off.x を維持)に変更。
+  着地スカッシュは落下進行 `fall>0.85` で。
+- ヘリのホバー待ちを 0.5→0.3秒(`HELI_DEPART_DELAY_MS=300`)。
+
+### 負荷スコア
+0/10。登場演出中の位置計算のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。
+
 ## 2026-06-15 - v0.25.344 - 登場:ヘリを飛び降り地点でホバー固定→待って離脱(一緒に飛ぶバグ修正) (Claude Code)
 
 ### 変更(`pixiScene.ts`)
