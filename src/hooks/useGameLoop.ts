@@ -118,6 +118,7 @@ const TURRET_FWD_DAMAGE = 7;                            // 前方集中の弾ダ
 const TURRET_FWD_BULLET_SPEED = 560 * 1.5;             // handgun-t3 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
 const TURRET_FWD_RANGE = 420;                           // 前方集中の射程(長射程)。TODO: 実機調整
 const TURRET_FWD_LINE_HALF_W = 60;                      // 前方制圧の射線帯の半幅(この帯内の敵がいる時だけ撃つ)
+const TURRET_SCAN_SPEED = 1.1;                          // 索敵スキャンの回転速度(rad/sec。射程に敵がいない時)
 const TURRET_OMNI_FIRE_MS = 420;                        // 全方位の発射間隔(handgun-t1 cooldown 相当)
 const TURRET_OMNI_DAMAGE = 9;                           // 全方位の弾ダメージ(handgun-t1 相当)
 const TURRET_OMNI_BULLET_SPEED = 520 * 1.5;            // handgun-t1 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
@@ -187,6 +188,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const shieldHitRef = useRef<Map<string, number>>(new Map());
   // 自動タレットの発射スロットル: タレットid -> 次に撃てる gameTime(ms)。
   const turretFireRef = useRef<Map<string, number>>(new Map());
+  // 前方集中(連射)タレットの索敵スキャン角(rad)。射程に敵がいない間ゆっくり回転する。
+  const turretAimRef = useRef<Map<string, number>>(new Map());
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
   const rhythmIdleStartRef = useRef<number>(0);
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
@@ -1281,6 +1284,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // updateProjectiles の duration カリングより前に寿命を処理して爆発を出す。
         {
           const nowMs = Date.now();
+          // 前方集中タレットの索敵スキャンで更新した向きを、描画(砲身の向き)へ反映するための一括書き込み。
+          const turretAimWrites: { id: string; x: number; y: number }[] = [];
           for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
             const tcx = turret.x + turret.width / 2;
             const tcy = turret.y + turret.height / 2;
@@ -1288,6 +1293,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (nowMs - turret.createdAt >= turret.duration) {
               removeProjectile(turret.id);
               turretFireRef.current.delete(turret.id);
+              turretAimRef.current.delete(turret.id);
               playSfx('bomb');
               spawnRing(tcx, tcy, 8, TURRET_EXPLOSION_RADIUS, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(tcx, tcy, '#f97316', 16);
@@ -1315,12 +1321,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               continue;
             }
-            // --- オート射撃(モード別スロットル)。
+            // --- オート射撃(モード別スロットル)+ 前方集中の索敵スキャン。
             const mode = turret.turretMode ?? 'forward';
             const interval = mode === 'omni' ? TURRET_OMNI_FIRE_MS : TURRET_FWD_FIRE_MS;
-            if (gameTime < (turretFireRef.current.get(turret.id) ?? 0)) continue;
+            const fireReady = gameTime >= (turretFireRef.current.get(turret.id) ?? 0);
             let dir: { x: number; y: number } | null = null;
             if (mode === 'omni') {
+              if (!fireReady) continue;
               // 全方位: 射程内の最も近い敵を狙う(近い敵優先)。範囲内に敵がいなければ撃たない。
               const target = useGameStore.getState().enemies
                 .filter(e => e.type !== 'reaper')
@@ -1333,9 +1340,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const am = Math.max(0.001, Math.hypot(ax, ay));
               dir = { x: ax / am, y: ay / am };
             } else {
-              // 前方集中: 設置時の向きへ直線射撃。前方の射線帯に敵がいる時だけ撃つ(空撃ち抑制)。
-              const fx = turret.direction.x;
-              const fy = turret.direction.y;
+              // 前方集中(連射): 現在の索敵向き(初期=設置向き)の射線帯に敵がいる時だけ撃つ。
+              let aim = turretAimRef.current.get(turret.id);
+              if (aim === undefined) {
+                aim = Math.atan2(turret.direction.y, turret.direction.x);
+                turretAimRef.current.set(turret.id, aim);
+              }
+              const fx = Math.cos(aim);
+              const fy = Math.sin(aim);
               const hasFwdTarget = useGameStore.getState().enemies.some(e => {
                 if (e.type === 'reaper') return false;
                 const dx = e.x + e.width / 2 - tcx;
@@ -1345,7 +1357,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const perp = Math.abs(dx * fy - dy * fx); // 射線からの直交距離
                 return perp <= TURRET_FWD_LINE_HALF_W;
               });
-              if (!hasFwdTarget) continue;
+              if (!hasFwdTarget) {
+                // 射程に敵なし: ゆっくり回転して索敵(発射しない)。向きを store へ反映し砲身を回す。
+                const na = aim + TURRET_SCAN_SPEED * (deltaTime / 1000);
+                turretAimRef.current.set(turret.id, na);
+                turretAimWrites.push({ id: turret.id, x: Math.cos(na), y: Math.sin(na) });
+                continue;
+              }
+              // 敵を捕捉: スキャン停止して現在の向きへ連射。
+              if (!fireReady) continue;
               dir = { x: fx, y: fy };
             }
             if (!dir) continue;
@@ -1377,6 +1397,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('handgun-fire');
             }
             turretFireRef.current.set(turret.id, gameTime + interval);
+          }
+          // 索敵スキャンで回した向きを描画へ反映(砲身が回る)。変化があった時だけ1回 set。
+          if (turretAimWrites.length > 0) {
+            const aimMap = new Map(turretAimWrites.map(w => [w.id, w]));
+            useGameStore.setState(state => ({
+              projectiles: state.projectiles.map(p =>
+                aimMap.has(p.id)
+                  ? { ...p, direction: { x: aimMap.get(p.id)!.x, y: aimMap.get(p.id)!.y } }
+                  : p
+              )
+            }));
           }
         }
 

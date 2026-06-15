@@ -45,6 +45,24 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.334 - 連射タレット:射程に敵が無い時ゆっくり回転して索敵 (Claude Code)
+
+### 変更(`useGameLoop.ts`)
+- 前方集中(連射, `TURRET_FWD_FIRE_MS=130`)タレットに**索敵スキャン**を追加。射線帯に敵がいない間は
+  砲身の向き(`direction`)を `TURRET_SCAN_SPEED=1.1 rad/s` で**ゆっくり回転**(発射しない)。
+  現在の向きの射線帯に敵が入ったら回転停止して連射。スキャン角は `turretAimRef`(id→rad)で保持し、
+  敵を捕捉中は固定。
+- 回した向きを描画(砲身)へ反映するため、変化のあったタレットだけ1回 `setState` で `direction` を更新。
+- omni(全方位)は従来どおり(最寄り敵を狙う)で変更なし。
+- タレット消滅時に `turretAimRef` も掃除。
+
+### 負荷スコア
+1/10。タレット数は少数(設置上限)。スキャン中のみ向き更新(変化時1回 set/フレーム、既存の毎フレーム
+projectiles 更新の範囲内)。描画は既存 `p.direction` 読みのまま。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。回転速度/挙動は `TURRET_SCAN_SPEED` で調整可。
+
 ## 2026-06-15 - v0.25.333 - 登場:キャラをヘリに乗せて重ねる (Claude Code)
 
 ### 変更(`pixiScene.ts`)
