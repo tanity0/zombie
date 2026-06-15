@@ -530,18 +530,27 @@ const grantMeleeKillRewards = (
   }
 };
 
+// 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
+const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin']];
+
 const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: number): Player => {
   const known = player.subWeapons.includes(key);
   const currentLevel = player.subWeaponLevels[key] ?? 0;
   const nextLevel = Math.min(3, Math.max(currentLevel + 1, cardLevel || 1));
-  return {
-    ...player,
-    subWeapons: known ? player.subWeapons : [...player.subWeapons, key],
-    subWeaponLevels: {
-      ...player.subWeaponLevels,
-      [key]: nextLevel
-    }
+  let subWeapons = known ? player.subWeapons : [...player.subWeapons, key];
+  let subWeaponLevels: Partial<Record<SubWeaponKey, number>> = {
+    ...player.subWeaponLevels,
+    [key]: nextLevel
   };
+  // 共存不可スキル(刀/村雨/ダンスフロア)を取得したら、同グループ以外の取得済みスキルをリセット(除去)。
+  const group = EXCLUSIVE_SUBWEAPON_GROUPS.find(g => g.includes(key));
+  if (group) {
+    subWeapons = subWeapons.filter(k => group.includes(k));
+    const cleaned: Partial<Record<SubWeaponKey, number>> = {};
+    for (const k of subWeapons) cleaned[k] = subWeaponLevels[k];
+    subWeaponLevels = cleaned;
+  }
+  return { ...player, subWeapons, subWeaponLevels };
 };
 
 interface GameState {
@@ -3727,6 +3736,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameWon: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
+        // 四神舞(ダンスフロア)状態を初期化。これを忘れると再プレイ時に lastTapAt 等が前ゲームのまま残り、
+        // gameTime が 0 に戻るためミラーボールの発光倍率(pulse)が巨大化して画面を埋め尽くすバグになる。
+        rhythm: initialRhythm(),
         upgradeOptions: [],
         touchActive: false,
         swipeDirection: null,

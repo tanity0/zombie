@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.290 - 共存不可スキル取得で他スキルをリセット / 再プレイのミラーボール巨大化を修正 (Claude Code)
+
+### 共存不可スキル取得時のリセット
+- 刀/村雨/ダンスフロアなどの**排他スキルを取得したら、同グループ以外の取得済みスキルを除去(リセット)**。
+  - `gameStore` `applySubWeaponCard`: `EXCLUSIVE_SUBWEAPON_GROUPS`([katana,murasame] / [shijin])を追加。排他キー取得時に
+    subWeapons/subWeaponLevels を同グループのみへ絞る。レベルアップ・ショップ購入の両経路に適用される。
+
+### ミラーボール巨大化バグ(再プレイ)修正
+- 症状: ダンスフロア取得→ゲームオーバー→再プレイ→またダンスフロアでミラーボールが画面を埋め尽くす。
+- 原因: `resetGame` が **rhythm 状態をリセットしていなかった**。前ゲームの `lastTapAt`(大きい値)が残り、再プレイで
+  gameTime が0に戻るため `tapT = 1-(gameTime-lastTapAt)/GLOW` が1を大幅超過 → 発光倍率 `pulse` 巨大化 → 球が巨大化。
+- 修正: ①`resetGame` に `rhythm: initialRhythm()` を追加(根本)。②`pixiScene` で `tapT` を [0,1] にクランプ(保険)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-14 - v0.25.289 - スキルは通常2つまで(排他除く) / 装備中スキルをHUD表示 (Claude Code)
 
 ### スキル所持上限

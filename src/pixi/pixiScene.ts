@@ -1111,7 +1111,8 @@ export class PixiScene {
     const texOk = !!ball.texture && ball.texture.width >= 32;
     const flipSign = Math.floor(gameTime / rhythm.interval) % 2 === 0 ? 1 : -1;
     // タップ発光: 直後に少し拡大して光る + 背面に暖色ハロー。
-    const tapT = Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS);
+    // [0,1] にクランプ(保険)。lastTapAt が gameTime より未来=異常値でも pulse が暴れて巨大化しないように。
+    const tapT = Math.max(0, Math.min(1, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS));
     const pulse = 1 + 0.18 * tapT;
     // 色: フィニッシュ虹 > 段階色(0白/1青/2緑/3赤)。
     const sinceFinish = gameTime - rhythm.lastFinishAt;
