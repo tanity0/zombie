@@ -179,7 +179,7 @@ const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
 const HELI_RIDE_DOOR_FRAC = 0.16;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く。大きいほど下)
 const HELI_RIDE_DOOR_X = 4;          // ドアの横位置(ヘリ中心からのオフセット px*scale。+で進行方向寄り)
 const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合から飛び降り開始
-const HELI_DEPART_DELAY_MS = 100;    // 飛び降りてからヘリが飛び去るまでの待ち(0.1秒)
+const HELI_DEPART_DELAY_MS = 200;    // 飛び降りてからヘリが飛び去るまでの待ち(0.2秒)
 // ヘリの随伴高度(キャラ上方への距離)。飛来終盤に HELI_ABOVE→HELI_DROP_ABOVE へ降下し、
 // 低ホバー完了(=飛び降り開始 HELI_RIDE_RELEASE_FROM)してからキャラが飛び降りる。
 // キャラはヘリ中心にピン留めなので、ヘリと一緒に下がってから飛び降りる。
