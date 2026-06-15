@@ -171,6 +171,10 @@ const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチ
 const HELI_ABOVE = 210;      // 序盤、キャラ上方への随伴オフセット(px)
 const HELI_RISE = 820;       // 後半、上へ逃げる距離(px)
 const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
+// フェーズA(飛来)中、キャラをヘリの上に乗せて重ねる量。ヘリは最前面(danceUiLayer)なので
+// キャラはヘリ画像の上(屋根)に出るよう持ち上げる。終端でリフト解除=飛び降りて着地ダッシュへ。
+const HELI_RIDE_SINK = 12;        // 屋根に足を少しめり込ませる(scaled by introScale)
+const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合からリフトを解除(飛び降り)
 // 敵の被弾しなり(頭が後ろにぐにゃっ): 撃たれた直後だけ skew + 軽い縦縮みで反らせる。
 const ENEMY_HIT_FLINCH_MS = 230;    // 少しだけゆっくり(0.13s→0.23s)
 const ENEMY_HIT_FLINCH_SKEW = 0.42; // 最大skew(ラジアン相当)
@@ -2108,6 +2112,20 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  // フェーズA(飛来)で、プレイヤーをヘリの上に乗せるための上方リフト量(screen px、正=上)。
+  // 足をヘリ屋根(= ヘリ中心の上方 HELI_ABOVE + ヘリ上半分)に置き、ヘリ画像の上に重なって見せる。
+  // フェーズA終端で 0 に戻し(飛び降り)、フェーズBの着地ダッシュ開始点へ連続させる。
+  private introRideLift(t: number, introScale: number, playerHeight: number): number {
+    const hf = PLAYER_INTRO_HELI_FRAC;
+    if (t >= hf) return 0;
+    const a = t / hf;
+    const release = a < HELI_RIDE_RELEASE_FROM
+      ? 1
+      : Math.max(0, 1 - (a - HELI_RIDE_RELEASE_FROM) / (1 - HELI_RIDE_RELEASE_FROM));
+    const seat = playerHeight / 2 + (HELI_ABOVE + HELI_DISPLAY_H * 0.5 - HELI_RIDE_SINK) * introScale;
+    return seat * release;
+  }
+
   // 登場演出のヘリ。
   //  フェーズA(飛来): プレイヤーを乗せて遠く高くから随伴(同じ縮尺で拡大しながら降下)。
   //  フェーズB(ジャンプ着地): プレイヤーが飛び降りる→ヘリは上へ逃げて横ドリフト+フェードアウト。
@@ -2348,6 +2366,7 @@ export class PixiScene {
       introOffX = off.x;
       introOffY = off.y;
       introScale = playerIntroScale(0);
+      introOffY -= this.introRideLift(0, introScale, p.height); // ヘリに乗せる
     } else if (this.introUntil > 0) {
       const t = Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
       if (t < 1) {
@@ -2355,6 +2374,7 @@ export class PixiScene {
         introOffX = off.x;
         introOffY = off.y;
         introScale = playerIntroScale(t);
+        introOffY -= this.introRideLift(t, introScale, p.height); // フェーズAはヘリに乗せる
         // 着地スカッシュはフェーズB(ジャンプ着地)終盤の 20% で。
         const hf = PLAYER_INTRO_HELI_FRAC;
         const b = t >= hf ? (t - hf) / (1 - hf) : 0;

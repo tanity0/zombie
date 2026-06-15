@@ -45,6 +45,23 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.333 - 登場:キャラをヘリに乗せて重ねる (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- フェーズA(飛来)中、**プレイヤーをヘリの上に乗せる**よう上方リフトを追加(`introRideLift`)。
+  ヘリは最前面(danceUiLayer、ぼかさないため)なので、キャラを**ヘリ屋根(画像の上)に重ねて**見せる
+  (ヘリ内部だと前面ヘリに隠れて見えないため)。足はヘリ屋根に少しめり込ませる(`HELI_RIDE_SINK`)。
+- フェーズA終端(`HELI_RIDE_RELEASE_FROM=0.85` から)でリフトを 0 に解除=**ヘリから飛び降り**、
+  フェーズB(ジャンプ着地)開始点へ連続。
+- 調整定数: `HELI_RIDE_SINK` / `HELI_RIDE_RELEASE_FROM`(+ 既存 `HELI_ABOVE` / `HELI_DISPLAY_H`)。
+
+### 負荷スコア
+0/10。登場演出中のオフセット計算のみ。実行時コスト増なし。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。乗車位置(屋根の高さ/めり込み)は実機で微調整可。
+  ※キャラは actorLayer のため上空で被写界深度が弱くかかる場合あり(ヘリは非ぼかし)。気になれば次回調整。
+
 ## 2026-06-15 - v0.25.332 - 真っ暗バグ対策(テクスチャ堅牢化)+ ヘリ:非ぼかし/右向き (Claude Code)
 
 ### 変更
