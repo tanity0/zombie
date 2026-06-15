@@ -176,9 +176,10 @@ const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
 // フェーズA(飛来)中、キャラをヘリの「ドア」に重ねて乗せる。フェーズA中はキャラのコンテナを
 // ヘリと同じ danceUiLayer の前面へ移し、ヘリ画像に重なって(かぶって)見えるようにする。
 // 終端でリフト解除=飛び降り、同時にヘリは上昇していく。
-const HELI_RIDE_DOOR_FRAC = 0.10;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く)
+const HELI_RIDE_DOOR_FRAC = 0.16;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く。大きいほど下)
 const HELI_RIDE_DOOR_X = 4;          // ドアの横位置(ヘリ中心からのオフセット px*scale。+で進行方向寄り)
-const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合から飛び降り開始=ヘリ上昇開始
+const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合から飛び降り開始
+const HELI_DEPART_DELAY_MS = 100;    // 飛び降りてからヘリが飛び去るまでの待ち(0.1秒)
 // ヘリの随伴高度(キャラ上方への距離)。飛来終盤に HELI_ABOVE→HELI_DROP_ABOVE へ降下し、
 // 低ホバー完了(=飛び降り開始 HELI_RIDE_RELEASE_FROM)してからキャラが飛び降りる。
 // キャラはヘリ中心にピン留めなので、ヘリと一緒に下がってから飛び降りる。
@@ -2161,10 +2162,9 @@ export class PixiScene {
     const pcy = player.y + player.height / 2;
     if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
     const baseSc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
-    // キャラが飛び降りる(= フェーズAの HELI_RIDE_RELEASE_FROM)と同時にヘリは上昇開始
-    // (上昇+横ドリフト+フェード)。
+    // キャラが飛び降りた 0.1秒後にヘリが離脱(上昇+横ドリフト+フェード)。
     const hf = PLAYER_INTRO_HELI_FRAC;
-    const releaseStart = hf * HELI_RIDE_RELEASE_FROM;
+    const releaseStart = hf * HELI_RIDE_RELEASE_FROM + HELI_DEPART_DELAY_MS / PLAYER_INTRO_MS;
     const depart = t <= releaseStart ? 0 : Math.min(1, (t - releaseStart) / (1 - releaseStart));
     const dEase = depart * depart;
     // 離脱中は少し拡大して画面外へ抜ける感じ(縮尺はフェーズA終端の1から微増)。

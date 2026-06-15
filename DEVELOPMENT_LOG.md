@@ -45,6 +45,20 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.341 - 登場:ヘリ離脱を0.1秒待つ/乗車位置を少し下げる (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- **ヘリ離脱を 0.1秒待つ**: キャラ飛び降り(`HELI_RIDE_RELEASE_FROM`)後、`HELI_DEPART_DELAY_MS=100` 分
+  待ってからヘリが上昇・離脱するように `releaseStart` をずらした。
+- **乗車中の立ち位置を少し下げる**: `HELI_RIDE_DOOR_FRAC` 0.10→0.16。
+
+### 負荷スコア
+0/10。定数・オフセット計算のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。待ち時間は `HELI_DEPART_DELAY_MS`、立ち位置は
+  `HELI_RIDE_DOOR_FRAC` で調整可。
+
 ## 2026-06-15 - v0.25.340 - 登場セリフをヘリ降下後のタイミングに (Claude Code)
 
 ### 変更(`gameStore.ts`)
