@@ -45,6 +45,23 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.346 - リズム:判定グリッドをダンス曲へ同期(ズレ修正) (Claude Code)
+
+### 変更
+- リズムの拍グリッド(`firstBeatAt`)を、開始リード中に**ダンス曲の実再生位置(`audio.currentTime`)へ1回だけ
+  アンカー**。`play()` レイテンシ・開始ズレを解消し、サークル/判定を「耳の拍」へ一致させる。1回だけ(最初の拍より前)
+  なので毎フレーム追従のジッターは出ない。
+- `audioManager.ts`: `getDanceAudioTimeMs()` を追加(ダンス曲が実際に鳴っている再生位置ms。鳴っていなければnull)。
+- `useGameLoop.ts`: リズム開始で `rhythmBeatSyncedRef=false`。active中、未同期かつ曲が鳴っていてリード中なら、
+  曲の拍境界に合わせて `firstBeatAt` を再設定(`expectBeat=0`)。残テンポ微差は `?int1/2/3`、位相は `?bo1/2/3` で
+  既定へ焼き込み可(mp3の拍1が currentTime=0 でない場合は `?bo` で補正)。
+
+### 負荷スコア
+1/10。同期は開始リード中の1回のみ(以後はフラグでスキップ)。audio.currentTime 読み取りは軽量。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。実機で曲と判定の一致を確認 → 残ズレがあれば `?int`/`?bo` で微調整。
+
 ## 2026-06-15 - v0.25.345 - 登場:飛び降りの谷を解消/ヘリ待ち0.3秒 (Claude Code)
 
 ### 変更(`pixiScene.ts`)
