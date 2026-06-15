@@ -77,9 +77,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const spriteVersion = encodeURIComponent(__APP_VERSION__);
   
   // 性能差は撤廃(全員同一性能)。違いは「初期装備」と「専用スキル」のみ表示。
+  // 立ち絵スプライト(128x108)はキャラごとに足元位置が微妙に違う(キャンバス底からの隙間: shotgun=4px /
+  // magnum=0 / scavenger=0 / striker=1px)。足元を底ライン(影)へ揃えるため、各キャラを少し下へずらす(画面px)。
+  // 画面拡縮 = 86/128 ≒ 0.672 を掛けた値。
   const characterClasses: {
     id: string; name: string; sprite: string; accent: string;
-    gear: string; skillKey: SubWeaponKey; skillDesc: string;
+    gear: string; skillKey: SubWeaponKey; skillDesc: string; portraitNudgeY: number;
   }[] = [
     {
       id: 'warrior',
@@ -89,6 +92,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       gear: 'ソードオフ・ショットガン ＋ ハチェット',
       skillKey: 'heavy-grenade',
       skillDesc: '前方へ炸裂弾(グレネードランチャー)を放ち範囲を制圧',
+      portraitNudgeY: 2.7, // 足元が4px上 → 底へ
     },
     {
       id: 'mage',
@@ -98,6 +102,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       gear: 'マグナム ＋ ナイフ',
       skillKey: 'marksman-trap',
       skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
+      portraitNudgeY: 0,
     },
     {
       id: 'rogue',
@@ -107,6 +112,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       gear: 'ハンドガン ＋ ファイティングナイフ',
       skillKey: 'striker-hunting',
       skillDesc: '近接の間合いを広げる狩猟術(チャージで強化)',
+      portraitNudgeY: 0,
     },
     {
       id: 'necromancer',
@@ -116,6 +122,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       gear: 'ハンドガン ＋ ハチェット',
       skillKey: 'striker-quick-mag',
       skillDesc: 'クイックリロードでマガジンを即装填',
+      portraitNudgeY: 0.7, // 足元が1px上 → 底へ
     }
   ];
   const ammoDebugFields: { type: AmmoType; label: string }[] = [
@@ -203,7 +210,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                       className="relative z-10 max-h-[122px] max-w-[86px] object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.55)]"
                       style={{
                         imageRendering: 'pixelated',
-                        transform: selectedClass === charClass.id ? 'scale(1.06)' : 'scale(1)',
+                        // 足元を底ラインへ揃える微小ナッジ + 選択時の拡大。
+                        transform: `translateY(${charClass.portraitNudgeY}px) ${selectedClass === charClass.id ? 'scale(1.06)' : 'scale(1)'}`,
                         transformOrigin: '50% 100%',
                         transition: 'transform 140ms ease-out'
                       }}

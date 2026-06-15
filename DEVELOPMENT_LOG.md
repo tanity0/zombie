@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.292 - キャラ選択の立ち絵の上下ズレを足元揃えに (Claude Code)
+
+### 原因
+- 立ち絵スプライト(128x108)はキャラごとにキャンバス底からの足元の隙間が違う: shotgun=4px / magnum=0 /
+  scavenger=0 / striker=1px。`items-end`(下揃え)でキャンバス底は揃うが、中の足元がズレて見えていた。
+
+### 修正
+- `MainMenu`: 各キャラに `portraitNudgeY`(画面px)を追加し、立ち絵を少し下へずらして**足元を底ライン(影)へ揃える**。
+  値 = 隙間(canvas px) × 描画拡縮(86/128≒0.672)。warrior=2.7 / necromancer=0.7 / 他=0。img の transform に translateY を追加。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.291 - サークル位相をレベル別の決め打ちオフセットで合わせる(同期なし) (Claude Code)
 
 ### 背景/方針
