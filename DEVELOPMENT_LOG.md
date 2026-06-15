@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.299 - サークルの累積ドリフト対策: 1拍の長さ(interval)をURL上書き可能に + 切り分け (Claude Code)
+
+### 背景
+- 「サークルが段々ズレて遅くなる」=累積ドリフト。固定オフセット(bo)では直らない。原因候補:
+  (a) 曲の実テンポが公称BPMとズレ → interval が合わず累積。 (b) gameTime が実時間より遅れ(fps低下)→ 音楽に対しサークルが遅れる。
+- 「遅くなる」方向は (b) と整合(テンポ遅めの曲なら逆に"早くなる"はず)。実測BPM≈99.4/117.5/136(自動推定・誤差あり)。
+
+### 追加
+- `config/shijin.ts`: `rhythmIntervalForLevel` に URL 上書き `?int1=603&int2=511&int3=441`(1拍ms)。大=遅く/小=速く。
+  ダンス練習モードで「サークルが曲と段々ズレるか」を見て調整。合えば既定に焼き込む。
+- 切り分け: 練習モード(高fps)でもズレる → テンポ要因(interval で直る)。練習モードでズレず通常プレイ(低fps)でのみズレる
+  → gameTime 遅れ要因(別途、リズムを壁時計基準にする修正を実施予定)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
 ## 2026-06-15 - v0.25.298 - 仮: ダンス練習モード(敵なし+ダンスフロアLv1所持で開始) (Claude Code)
 
 ### 追加

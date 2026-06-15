@@ -6,9 +6,22 @@ import type { RhythmArrow, ShijinGod } from '../types/game';
 export const RHYTHM_INTERVAL_MS = 500;        // 既定(120BPM)。レベル未指定時のフォールバック
 // 四神舞レベルでBPMが上がる(手数が増える)。Lv1=100 / Lv2=120 / Lv3=140。idx0はフォールバック。
 export const RHYTHM_BPM_BY_LEVEL = [120, 100, 120, 140];
+// サークルの1拍の長さ(ms)。既定は公称BPMから算出(600/500/428.6)。曲の実テンポが公称とズレていると
+// サークルが累積でズレる(段々早く/遅くなる)ので、URLで上書きして合わせられる: ?int1=603&int2=511&int3=441
+// 値を大きくする=サークルが遅くなる(間隔が広がる) / 小さく=速くなる。合ったら下の既定に焼き込む。
+const intervalOverrides: Record<number, number> = (() => {
+  if (typeof window === 'undefined') return {};
+  const p = new URLSearchParams(window.location.search);
+  const out: Record<number, number> = {};
+  for (const lvl of [1, 2, 3]) {
+    const v = p.get('int' + lvl);
+    if (v !== null && v.trim() !== '' && Number(v) > 0) out[lvl] = Number(v);
+  }
+  return out;
+})();
 export const rhythmIntervalForLevel = (level: number): number => {
   const lvl = Math.max(1, Math.min(3, Math.floor(level) || 1));
-  return 60000 / RHYTHM_BPM_BY_LEVEL[lvl];
+  return intervalOverrides[lvl] ?? (60000 / RHYTHM_BPM_BY_LEVEL[lvl]);
 };
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
 // サークルが足元中央で重なる(=拍を踏む)タイミングを、各レベル(BPM)ごとに決め打ちで前後にずらす(ms)。
