@@ -34,6 +34,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   const setDanceTestMode = useGameStore(s => s.setDanceTestMode);
+  const setDanceTestLevel = useGameStore(s => s.setDanceTestLevel);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
     handgun: String(ammoPickupAmounts.handgun),
@@ -421,14 +422,20 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
               はじめる
             </button>
 
-            {/* 仮: ダンス練習モード。敵なし + ダンスフロアLv1所持で開始(サークル/フリックの調整用)。 */}
-            <button
-              onClick={() => { setDanceTestMode(true); onStartGame(selectedClass); }}
-              className="w-full mt-2 py-2.5 rounded-2xl text-sm font-semibold text-fuchsia-100 border border-fuchsia-400/40"
-              style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}
-            >
-              🕺 ダンスモード（練習・敵なし）
-            </button>
+            {/* 仮: ダンス練習モード。敵なし + 指定レベルのダンスフロア所持で開始(サークル/フリック/曲合わせの調整用)。 */}
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[11px] text-fuchsia-200/80 shrink-0">🕺 ダンス練習</span>
+              {[1, 2, 3].map(lv => (
+                <button
+                  key={lv}
+                  onClick={() => { setDanceTestMode(true); setDanceTestLevel(lv); onStartGame(selectedClass); }}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold text-fuchsia-100 border border-fuchsia-400/40"
+                  style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}
+                >
+                  Lv{lv}
+                </button>
+              ))}
+            </div>
 
             <div className="mt-3 text-[12px] text-white/60 space-y-1 text-center">
               <p>画面のどこでも指を置いてスワイプ＝移動。銃は自動で発射。</p>

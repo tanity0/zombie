@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.301 - ダンス練習モードでレベル(1-3)を選べるように (Claude Code)
+
+### 変更
+- ダンス練習モードは敵なし=XPが入らずLv上げ不可だったため、キャラ選択の「🕺 ダンス練習」を **Lv1/Lv2/Lv3 ボタン**に。
+  押したレベルのダンスフロアを所持して開始(サークル/曲合わせをレベル別に調整できる)。
+- `gameStore`: `danceTestLevel`(1-3) + `setDanceTestLevel`。`resetGame` で `{ shijin: danceTestLevel }`。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.300 - リズムの拍グリッドを実時間(Date.now)基準に: サークルの累積ドリフト(遅れ)を解消 (Claude Code)
 
 ### 原因(確定)

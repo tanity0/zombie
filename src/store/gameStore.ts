@@ -583,7 +583,8 @@ interface GameState {
   ammoPickupAmounts: Record<AmmoType, number>;
   unlockedShopSkillCards: Partial<Record<SubWeaponKey, number>>;
   startWithTestStraps: boolean;
-  danceTestMode: boolean; // 仮: 敵なし+ダンスフロアLv1所持で開始(練習用)
+  danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
+  danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   rhythm: RhythmState;
@@ -710,6 +711,7 @@ interface GameState {
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   setDanceTestMode: (enabled: boolean) => void;
+  setDanceTestLevel: (level: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
@@ -810,6 +812,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   unlockedShopSkillCards: {},
   startWithTestStraps: false,
   danceTestMode: false,
+  danceTestLevel: 1,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   rhythm: initialRhythm(),
@@ -3447,6 +3450,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ danceTestMode: enabled });
   },
 
+  setDanceTestLevel: (level) => {
+    set({ danceTestLevel: Math.max(1, Math.min(3, Math.floor(level) || 1)) });
+  },
+
   addMeleeFinishCombo: (amount = 1) => {
     const gain = Math.max(1, Math.floor(amount));
     set(state => {
@@ -3728,9 +3735,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           magBonus: 0,
           reloadMult: 1,
-          // 仮: ダンスモードはダンスフロア(shijin)Lv1だけ覚えた状態で開始(敵なしで練習)。
+          // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
           subWeapons: state.danceTestMode ? ['shijin'] : [],
-          subWeaponLevels: state.danceTestMode ? { shijin: 1 } : {},
+          subWeaponLevels: state.danceTestMode ? { shijin: state.danceTestLevel } : {},
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,
