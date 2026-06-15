@@ -24,8 +24,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
   // StrictMode double-mount / fast-unmount race.
   useEffect(() => {
     let cancelled = false;
+    let syncErrorLogged = false;
     const host = hostRef.current;
     const app = new Application();
+    appRef.current = app; // 早期に保持: 非同期init中にunmountしても cleanup で確実に破棄できる
 
     (async () => {
       await app.init({
@@ -37,16 +39,14 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         resolution: Math.min(window.devicePixelRatio || 1, 2),
         autoDensity: true,
       });
+      if (cancelled) return;
       await ensureTextures();
       const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
       frontForestTexture.source.scaleMode = 'linear';
-      if (cancelled) {
-        app.destroy(true);
-        return;
-      }
+      if (cancelled) return;
 
       if (host) {
         app.canvas.style.position = 'absolute';
@@ -60,29 +60,31 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const scene = new PixiScene(layers);
       scene.resize(width, height);
 
-      appRef.current = app;
       sceneRef.current = scene;
 
-      const tick = () => scene.sync();
+      // 1フレームの例外で描画が固まって真っ暗になるのを防ぐ(ログは初回だけ。再生は継続)。
+      const tick = () => {
+        try {
+          scene.sync();
+        } catch (e) {
+          if (!syncErrorLogged) { syncErrorLogged = true; console.error('[PixiStage] sync error (suppressed after first):', e); }
+        }
+      };
       tickerCallbackRef.current = tick;
       app.ticker.add(tick);
-    })();
+    })().catch((e) => { console.error('[PixiStage] init error:', e); });
 
     return () => {
       cancelled = true;
-      const app = appRef.current;
+      const a = appRef.current;
       const tick = tickerCallbackRef.current;
-      if (app && tick) {
-        app.ticker.remove(tick);
-      }
+      try { if (a && tick) a.ticker.remove(tick); } catch { /* ignore */ }
       tickerCallbackRef.current = null;
-      sceneRef.current?.destroy();
+      try { sceneRef.current?.destroy(); } catch { /* ignore */ }
       sceneRef.current = null;
-      if (app) {
-        app.destroy(true);
-        appRef.current = null;
-      }
-      host?.replaceChildren();
+      try { a?.destroy(true); } catch { /* ignore */ }
+      appRef.current = null;
+      try { host?.replaceChildren(); } catch { /* ignore */ }
     };
     // Init runs once; resize is handled by the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps

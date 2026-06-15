@@ -45,6 +45,22 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.351 - ゲームオーバー真っ暗対策(描画堅牢化)/登場を左遠方から高速 (Claude Code)
+
+### 変更
+- **🩹 「ゲームオーバーが真っ暗で固まる」対策**(`PixiStage.tsx`): ティッカーの `scene.sync()` を try/catch で保護し、
+  1フレームの例外で描画が固まって真っ暗になるのを防止(ログは初回のみ・再生継続)。破棄処理も全て try/catch 化。
+  非同期 init と unmount の競合を修正(app を早期に `appRef` 保持→cleanup で確実に破棄、各 await 後に cancelled チェック、
+  init は `.catch` で握る)。これでゲームオーバー時の破棄/再生成で固まらない。
+- **登場を「もっと左の遠くから高速」に**: `PLAYER_INTRO_HELI_FAR_X` 2600→4500、開始縮尺 0.26→0.22(遠さ強調)、
+  フェーズA横移動を easeOut(遠方から猛スピード→収束)に、フェーズA追従 0.98→0.92(左から飛び込んで見える)。
+
+### 負荷スコア
+0/10。try/catch と定数/イージング変更のみ。実行時コスト増なし(むしろ例外時の暴走を防止)。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。真っ暗が残る場合はコンソールの `[PixiStage] sync error` で原因特定可。
+
 ## 2026-06-15 - v0.25.350 - 登場セリフ:プレイヤー返事を削除/各行+0.2s延長 (Claude Code)
 
 ### 変更(`gameStore.ts`)

@@ -343,25 +343,27 @@ export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; //
 export const PLAYER_INTRO_FLY_X = 2200;     // (フェーズB)左への飛距離(world px)
 export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
 export const PLAYER_INTRO_ARC_H = 110;      // (フェーズB)飛行アーチ高
-export const PLAYER_INTRO_HELI_FAR_X = 2600; // (フェーズA)飛来開始の遠方X(world px)
+export const PLAYER_INTRO_HELI_FAR_X = 4500; // (フェーズA)飛来開始の遠方X(world px。もっと左の遠くから)
 export const PLAYER_INTRO_HELI_HIGH_Y = 300; // (フェーズA)飛来開始の高度(画面上方 px)
-export const PLAYER_INTRO_HELI_START_SCALE = 0.26; // (フェーズA)飛来開始の見た目縮尺(遠さの主表現)
+export const PLAYER_INTRO_HELI_START_SCALE = 0.22; // (フェーズA)飛来開始の見た目縮尺(遠さの主表現)
 export const PLAYER_INTRO_CAM_FOLLOW = 0.82; // (フェーズB)カメラが飛行Xに追従する割合
-export const PLAYER_INTRO_HELI_CAM_FOLLOW = 0.98; // (フェーズA)ヘリを画面に保持する強追従
+export const PLAYER_INTRO_HELI_CAM_FOLLOW = 0.92; // (フェーズA)カメラ追従(やや弱め=ヘリが左から飛び込んで見える)
 // t:0→1 の登場オフセット(着地位置からの相対 world px)。x<0=左, y<0=上。
 // カメラ(useGameLoop)と見た目(pixiScene)で同じ式を使い、ズレなく同期させる。
 export const playerIntroOffset = (t: number): { x: number; y: number } => {
   const tc = Math.max(0, Math.min(1, t));
   const hf = PLAYER_INTRO_HELI_FRAC;
   if (tc < hf) {
-    // フェーズA: 遠方・高所からフェーズB開始点(-FLY_X, -LOW_Y)へ smoothstep で接続。
+    // フェーズA: 遠方・高所からフェーズB開始点(-FLY_X, -LOW_Y)へ接続。
+    // 横は easeOut(遠くから猛スピードで来て収束)、縦は smoothstep(滑らかに降下)。
     const a = tc / hf;
-    const s = a * a * (3 - 2 * a);
+    const sX = 1 - (1 - a) * (1 - a); // easeOut: 高速で飛来
+    const sY = a * a * (3 - 2 * a);   // smoothstep: なめらか降下
     const startX = -PLAYER_INTRO_HELI_FAR_X;
     const startY = -PLAYER_INTRO_HELI_HIGH_Y;
     const endX = -PLAYER_INTRO_FLY_X;
     const endY = -PLAYER_INTRO_LOW_Y;
-    return { x: startX + (endX - startX) * s, y: startY + (endY - startY) * s };
+    return { x: startX + (endX - startX) * sX, y: startY + (endY - startY) * sY };
   }
   // フェーズB: 従来のジャンプ着地(b:0→1)。フェーズA終端と連続。
   const b = (tc - hf) / (1 - hf);
