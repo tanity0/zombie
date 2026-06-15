@@ -102,7 +102,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       gear: 'マグナム ＋ ナイフ',
       skillKey: 'marksman-trap',
       skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
-      portraitNudgeY: 0,
+      portraitNudgeY: 12, // 暗いコートで視認上の足元が高く浮くため下げる(裾はカード下で見切れる)
     },
     {
       id: 'rogue',

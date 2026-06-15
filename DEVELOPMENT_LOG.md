@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.294 - マークスマン立ち絵を下げる / 被写体深度(tilt-shift)をURL生調整可能に (Claude Code)
+
+### マークスマン立ち絵
+- 実機スクショで他3人より浮いて見える(暗いコートで視認上の足元が高い)。`portraitNudgeY` を 0→12 に下げる。
+  ※コート裾はカード下端で見切れるが暗色で目立たない。次のスクショで微調整予定。
+
+### 被写体深度(tilt-shift)のURL生調整
+- 参考(HD-2D)に合わせて範囲を詰められるよう、URLで上書き可能に(`pixiScene.ts`):
+  `?tsblur=18`(端の最大ボケ) / `?tsgrad=280`(くっきり→ボケの距離px。小=焦点帯が狭い) / `?tsband=0.5`(くっきり帯中心0..1) / `?ts=0`(無効化)。
+  合った値を既定(BLUR=14 / GRADIENT=440 / BAND=0.46)に焼き込む。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功(既定値据え置き)。
+
 ## 2026-06-15 - v0.25.293 - サークル位相オフセットの実機生調整用URLパラメータ (Claude Code)
 
 ### 追加

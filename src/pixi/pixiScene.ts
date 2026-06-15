@@ -88,10 +88,21 @@ const WHIP_SPRITE_TIP_X = 0.99;     // テクスチャ内の鞭先端位置
 // (top) and near (bottom) edges for the HD-2D "diorama" feel. The sharp band is
 // centred a touch above middle so the player (slightly below centre) stays
 // crisp. Set ENABLED false if it costs too much on-device.
-const TILT_SHIFT_ENABLED = true;
-const TILT_SHIFT_BLUR = 14;       // max blur strength at the edges
-const TILT_SHIFT_GRADIENT = 440;  // px over which sharp ramps into blur
-const TILT_SHIFT_BAND = 0.46;     // sharp-band centre as a fraction of height
+// 被写体深度(tilt-shift)の生調整: URLで上書きできる。?ts=0 で無効化(比較用)。
+//   ?tsblur=18   端の最大ボケ強度(大=強くボケる)
+//   ?tsgrad=280  くっきり→ボケへ移る距離(px。小=焦点帯が狭くなり上下が強くボケる)
+//   ?tsband=0.5  くっきり帯の中心(画面高さに対する割合 0..1。0.5=中央)
+// 参考画像(HD-2D)に合わせて値を探し、合ったら下の既定値に焼き込む。
+const tsNum = (key: string, def: number): number => {
+  if (typeof window === 'undefined') return def;
+  const v = new URLSearchParams(window.location.search).get(key);
+  const n = v == null ? NaN : Number(v);
+  return Number.isFinite(n) ? n : def;
+};
+const TILT_SHIFT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ts') !== '0';
+const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the edges
+const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
+const TILT_SHIFT_BAND = tsNum('tsband', 0.46);     // sharp-band centre as a fraction of height
 
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
 // forest stays clean while gems / muzzle flashes / crits / lights bloom.
