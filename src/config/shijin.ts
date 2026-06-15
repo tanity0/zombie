@@ -16,9 +16,21 @@ export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジ�
 // オフセットでビート位相を合わせられる。正=サークルが遅れて中央に来る / 負=早く来る。
 // 実機でサークルと曲のビートを見比べながら各レベルを調整する(BPMから逆算した秒数を決め打ち)。
 export const RHYTHM_BEAT_OFFSET_MS_BY_LEVEL = [0, 0, 0, 0]; // idx0=フォールバック / 1=Lv1(100) / 2=Lv2(120) / 3=Lv3(140)
+// 実機で生調整するためのURLオーバーライド: ?bo1=80&bo2=-40&bo3=120 のように指定すると、その値(ms)で上書きされる。
+// 合う値が見つかったら RHYTHM_BEAT_OFFSET_MS_BY_LEVEL の既定値に焼き込む。
+const beatOffsetOverrides: Record<number, number> = (() => {
+  if (typeof window === 'undefined') return {};
+  const p = new URLSearchParams(window.location.search);
+  const out: Record<number, number> = {};
+  for (const lvl of [1, 2, 3]) {
+    const v = p.get('bo' + lvl);
+    if (v !== null && v.trim() !== '' && !Number.isNaN(Number(v))) out[lvl] = Number(v);
+  }
+  return out;
+})();
 export const rhythmBeatOffsetForLevel = (level: number): number => {
   const lvl = Math.max(1, Math.min(3, Math.floor(level) || 1));
-  return RHYTHM_BEAT_OFFSET_MS_BY_LEVEL[lvl];
+  return beatOffsetOverrides[lvl] ?? RHYTHM_BEAT_OFFSET_MS_BY_LEVEL[lvl];
 };
 export const RHYTHM_SUCCESS_WINDOW_MS = 180;  // 成功判定幅(±ms)。ほんの少し甘めに調整
 export const RHYTHM_JUST_WINDOW_MS = 75;      // ジャスト判定幅(±ms)。演出区別+少し甘め

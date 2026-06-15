@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.293 - サークル位相オフセットの実機生調整用URLパラメータ (Claude Code)
+
+### 追加
+- `?bo1=80&bo2=-40&bo3=120` のようにURLで各レベルのビートオフセット(ms)を上書きできる(`config/shijin.ts`)。
+  実機でサークルと曲のビートを見比べながら値を探し、合ったら `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL` に焼き込む。
+- 正=サークルが遅れて中央に来る / 負=早く来る。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
 ## 2026-06-15 - v0.25.292 - キャラ選択の立ち絵の上下ズレを足元揃えに (Claude Code)
 
 ### 原因
