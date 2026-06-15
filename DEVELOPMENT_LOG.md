@@ -45,6 +45,30 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.331 - 登場演出を2段化(ヘリ飛来2s→ジャンプ着地) (Claude Code)
+
+### 変更
+- 登場演出を**2フェーズ**に再設計(社長要望:「ヘリで超遠くから飛来→途中で今のジャンプ着地へ移行、+2秒」)。
+  - **フェーズA(ヘリ飛来 `PLAYER_INTRO_HELI_MS=2000`)**: プレイヤー+ヘリが遠方・高所から**小さく**飛来し、
+    降下しながら拡大してフェーズB開始点へ**連続**接続。カメラは強追従(`0.98`)でヘリを画面に保持。
+  - **フェーズB(ジャンプ着地 `PLAYER_INTRO_LAND_MS=1700`)**: 従来のロックマン的ダッシュ着地そのまま。
+    この間にヘリが上昇+横ドリフト+フェードで離脱。カメラ追従は移行域で `0.98→0.82` に滑らかランプ。
+  - 全体 `PLAYER_INTRO_MS` = 2000+1700 = **3700ms**(+2秒)。
+- `gameStore.ts`: `playerIntroOffset(t)` を2段化、`playerIntroScale(t)`(遠さ=縮尺)/`playerIntroCamFollow(t)`
+  を追加。定数 `PLAYER_INTRO_HELI_FAR_X/HIGH_Y/START_SCALE/HELI_CAM_FOLLOW/HELI_FRAC`。
+- `useGameLoop.ts`: カメラ追従を `playerIntroCamFollow(introT)` で毎フレーム取得。
+- `pixiScene.ts`: プレイヤー描画に `introScale` を乗算、着地スカッシュをフェーズB局所進捗 `b>0.8` に補正。
+  `syncIntroHelicopter` をフェーズA随伴(同縮尺で拡大降下)→フェーズB離脱に書き換え。
+- 「ヘリが見えない」原因=旧設計はヘリが演出40%で上昇フェードし、プレイヤーが中央到達時には消えていたため。
+  フェーズAで2秒間しっかり見えるよう是正。
+
+### 負荷スコア
+1/10(rendering)。登場演出中だけスプライト1枚を動かす。演出尺が+2秒延びる=その間ゲーム進行停止(要望どおり)。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。飛来軌道/高度/縮尺/カメラ追従は実機で微調整可
+  (`PLAYER_INTRO_HELI_*` 定数、`HELI_DISPLAY_H/ABOVE/RISE/DRIFT_X`)。
+
 ## 2026-06-15 - v0.25.330 - 城・拾い物の影をソフト方向影に統一 (Claude Code)
 
 ### 変更(`pixiScene.ts`)

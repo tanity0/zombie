@@ -13,8 +13,8 @@ import {
   KATANA_SLASH_INTERVAL_MS,
   huntingMeleeRadius,
   PLAYER_INTRO_MS,
-  PLAYER_INTRO_CAM_FOLLOW,
-  playerIntroOffset
+  playerIntroOffset,
+  playerIntroCamFollow
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -513,7 +513,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 縦は着地面(player.y)に固定し、飛行アーチは見た目側で見せる。
           const introT = Math.max(0, Math.min(1, 1 - (introUntil - nowMs) / PLAYER_INTRO_MS));
           const introOff = playerIntroOffset(introT);
-          const targetCameraX = (player.x + introOff.x * PLAYER_INTRO_CAM_FOLLOW) - gameBounds.width / 2 + player.width / 2;
+          const camFollow = playerIntroCamFollow(introT);
+          const targetCameraX = (player.x + introOff.x * camFollow) - gameBounds.width / 2 + player.width / 2;
           const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
           setCameraPosition(targetCameraX, targetCameraY);
           updateEffects(deltaTime);

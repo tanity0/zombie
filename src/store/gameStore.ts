@@ -332,23 +332,66 @@ export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
 const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 700;
-// キャラ登場演出(ロックマン的: フィールドを左の遠くから低く猛スピードで飛んできて中央着地)。
-// この間はゲーム進行/入力/敵スポーンを止め、カメラがステージを横断追従し、見た目は飛行する。
-export const PLAYER_INTRO_MS = 1700;        // 演出長(約1秒長く)
-export const PLAYER_INTRO_FLY_X = 2200;     // 左への飛距離(world px。さらに遠く)
-export const PLAYER_INTRO_LOW_Y = 28;       // 開始のわずかな高さ(より低く)
-export const PLAYER_INTRO_ARC_H = 110;      // 飛行アーチ高(低めの山なり)
-export const PLAYER_INTRO_CAM_FOLLOW = 0.82; // カメラが飛行Xに追従する割合(1=完全追従/<1=キャラが少し左から入る)
-// t:0→1 の登場オフセット(スタート地点からの相対 world px)。x<0=左, y<0=上。
+// キャラ登場演出。2段構成:
+//  フェーズA(ヘリ飛来): 超遠く・高くから小さく飛来し、降下しながら拡大して着地ダッシュの開始点へ。
+//  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
+// この間はゲーム進行/入力/敵スポーンを止め、カメラが追従/横断し、見た目は飛行する。
+export const PLAYER_INTRO_HELI_MS = 2000;    // フェーズA(ヘリ飛来)長
+export const PLAYER_INTRO_LAND_MS = 1700;    // フェーズB(ジャンプ着地)長 = 従来の演出長
+export const PLAYER_INTRO_MS = PLAYER_INTRO_HELI_MS + PLAYER_INTRO_LAND_MS; // 全体(=3700)
+export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; // A/全体の境目 t
+export const PLAYER_INTRO_FLY_X = 2200;     // (フェーズB)左への飛距離(world px)
+export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
+export const PLAYER_INTRO_ARC_H = 110;      // (フェーズB)飛行アーチ高
+export const PLAYER_INTRO_HELI_FAR_X = 2600; // (フェーズA)飛来開始の遠方X(world px)
+export const PLAYER_INTRO_HELI_HIGH_Y = 300; // (フェーズA)飛来開始の高度(画面上方 px)
+export const PLAYER_INTRO_HELI_START_SCALE = 0.26; // (フェーズA)飛来開始の見た目縮尺(遠さの主表現)
+export const PLAYER_INTRO_CAM_FOLLOW = 0.82; // (フェーズB)カメラが飛行Xに追従する割合
+export const PLAYER_INTRO_HELI_CAM_FOLLOW = 0.98; // (フェーズA)ヘリを画面に保持する強追従
+// t:0→1 の登場オフセット(着地位置からの相対 world px)。x<0=左, y<0=上。
 // カメラ(useGameLoop)と見た目(pixiScene)で同じ式を使い、ズレなく同期させる。
 export const playerIntroOffset = (t: number): { x: number; y: number } => {
   const tc = Math.max(0, Math.min(1, t));
-  const easeX = 1 - (1 - tc) * (1 - tc); // 横: easeOut(猛スピードで来て収束)
-  const easeY = tc * tc;                  // 縦: easeIn(着地で落ちる)
+  const hf = PLAYER_INTRO_HELI_FRAC;
+  if (tc < hf) {
+    // フェーズA: 遠方・高所からフェーズB開始点(-FLY_X, -LOW_Y)へ smoothstep で接続。
+    const a = tc / hf;
+    const s = a * a * (3 - 2 * a);
+    const startX = -PLAYER_INTRO_HELI_FAR_X;
+    const startY = -PLAYER_INTRO_HELI_HIGH_Y;
+    const endX = -PLAYER_INTRO_FLY_X;
+    const endY = -PLAYER_INTRO_LOW_Y;
+    return { x: startX + (endX - startX) * s, y: startY + (endY - startY) * s };
+  }
+  // フェーズB: 従来のジャンプ着地(b:0→1)。フェーズA終端と連続。
+  const b = (tc - hf) / (1 - hf);
+  const easeX = 1 - (1 - b) * (1 - b); // 横: easeOut(猛スピードで来て収束)
+  const easeY = b * b;                  // 縦: easeIn(着地で落ちる)
   return {
     x: -PLAYER_INTRO_FLY_X * (1 - easeX),
-    y: -PLAYER_INTRO_LOW_Y * (1 - easeY) - PLAYER_INTRO_ARC_H * Math.sin(tc * Math.PI),
+    y: -PLAYER_INTRO_LOW_Y * (1 - easeY) - PLAYER_INTRO_ARC_H * Math.sin(b * Math.PI),
   };
+};
+// 登場の見た目縮尺: フェーズA序盤は小さく(遠い)→フェーズA終端で1。フェーズBは常に1。
+export const playerIntroScale = (t: number): number => {
+  const tc = Math.max(0, Math.min(1, t));
+  const hf = PLAYER_INTRO_HELI_FRAC;
+  if (tc >= hf) return 1;
+  const a = tc / hf;
+  const s = a * a * (3 - 2 * a);
+  return PLAYER_INTRO_HELI_START_SCALE + (1 - PLAYER_INTRO_HELI_START_SCALE) * s;
+};
+// カメラ追従割合: フェーズAは強追従でヘリを画面保持→移行域で 0.82 へ滑らかにランプ(段差防止)。
+export const playerIntroCamFollow = (t: number): number => {
+  const tc = Math.max(0, Math.min(1, t));
+  const hf = PLAYER_INTRO_HELI_FRAC;
+  const w0 = hf - 0.05;
+  const w1 = hf + 0.18;
+  if (tc <= w0) return PLAYER_INTRO_HELI_CAM_FOLLOW;
+  if (tc >= w1) return PLAYER_INTRO_CAM_FOLLOW;
+  const k = (tc - w0) / (w1 - w0);
+  const s = k * k * (3 - 2 * k);
+  return PLAYER_INTRO_HELI_CAM_FOLLOW + (PLAYER_INTRO_CAM_FOLLOW - PLAYER_INTRO_HELI_CAM_FOLLOW) * s;
 };
 
 // World is effectively infinite. We still need a finite number for spawn

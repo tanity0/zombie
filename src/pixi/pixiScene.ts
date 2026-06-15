@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, playerIntroOffset } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -2107,7 +2107,9 @@ export class PixiScene {
     sp.visible = true;
   }
 
-  // 登場演出のヘリ: 序盤はキャラ上方に随伴(降ろした直後)、後半は上へ逃げてフェードアウト。
+  // 登場演出のヘリ。
+  //  フェーズA(飛来): プレイヤーを乗せて遠く高くから随伴(同じ縮尺で拡大しながら降下)。
+  //  フェーズB(ジャンプ着地): プレイヤーが飛び降りる→ヘリは上へ逃げて横ドリフト+フェードアウト。
   // 画像 'helicopter' が未登録なら何もしない(画像受領後に表示)。
   private syncIntroHelicopter(player: Player, now: number) {
     const tex = getTexture('helicopter');
@@ -2119,16 +2121,21 @@ export class PixiScene {
       ? 0
       : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
     const off = playerIntroOffset(t);
+    const introScale = playerIntroScale(t);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
-    const depart = Math.max(0, Math.min(1, (t - 0.4) / 0.6)); // 40%以降に上へ逃げる
-    const dEase = depart * depart;
     if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
-    const sc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
+    const baseSc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
+    // フェーズB(着地ダッシュ)に入ってからヘリは離脱(上昇+横ドリフト+フェード)。
+    const hf = PLAYER_INTRO_HELI_FRAC;
+    const depart = t < hf ? 0 : Math.min(1, (t - hf) / (1 - hf));
+    const dEase = depart * depart;
+    // 離脱中は少し拡大して画面外へ抜ける感じ(縮尺はフェーズA終端の1から微増)。
+    const sc = baseSc * (introScale + 0.35 * dEase);
     this.helicopter.scale.set(sc);
     this.helicopter.position.set(
       pcx + off.x + HELI_DRIFT_X * dEase,
-      pcy + off.y - HELI_ABOVE - HELI_RISE * dEase,
+      pcy + off.y - HELI_ABOVE * introScale - HELI_RISE * dEase,
     );
     this.helicopter.rotation = 0.12 * dEase; // 逃げる時に少し機体を傾ける
     this.helicopter.alpha = 1 - dEase;       // 上へ逃げながらフェード(終盤で消える)
@@ -2333,18 +2340,24 @@ export class PixiScene {
     let introOffY = 0;
     let introSqX = 1;
     let introSqY = 1;
+    let introScale = 1; // フェーズA(ヘリ飛来)で小さく見せて遠さを表現
     if (this.introUntil === -1) {
       const off = playerIntroOffset(0);
       introOffX = off.x;
       introOffY = off.y;
+      introScale = playerIntroScale(0);
     } else if (this.introUntil > 0) {
       const t = Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
       if (t < 1) {
         const off = playerIntroOffset(t);
         introOffX = off.x;
         introOffY = off.y;
-        if (t > 0.8) {
-          const sQ = Math.sin(((t - 0.8) / 0.2) * Math.PI); // 着地でぐにゃっ
+        introScale = playerIntroScale(t);
+        // 着地スカッシュはフェーズB(ジャンプ着地)終盤の 20% で。
+        const hf = PLAYER_INTRO_HELI_FRAC;
+        const b = t >= hf ? (t - hf) / (1 - hf) : 0;
+        if (b > 0.8) {
+          const sQ = Math.sin(((b - 0.8) / 0.2) * Math.PI); // 着地でぐにゃっ
           introSqX = 1 + 0.3 * sQ;
           introSqY = 1 - 0.22 * sQ;
         }
@@ -2355,7 +2368,7 @@ export class PixiScene {
       const baseScale = usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
         ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
-      const sc = baseScale * this.depthScale(fb.footY);
+      const sc = baseScale * this.depthScale(fb.footY) * introScale;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       view.sprite.scale.set((flip ? -sc : sc) * introSqX, sc * introSqY);
       view.sprite.rotation = 0;
