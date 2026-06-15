@@ -7,6 +7,7 @@ import { Texture } from 'pixi.js';
 
 let glowTex: Texture | null = null;
 let vignetteTex: Texture | null = null;
+let softShadowTex: Texture | null = null;
 
 // Soft round light: opaque white centre fading to transparent at the rim.
 // Tinted warm + 'add' blended for the player halo.
@@ -47,4 +48,26 @@ export const getVignetteTexture = (): Texture => {
   ctx.fillRect(0, 0, size, size);
   vignetteTex = Texture.from(canvas);
   return vignetteTex;
+};
+
+// Soft shadow blob: black, opaque-ish centre fading to transparent at the rim.
+// Drawn as a sprite stretched/rotated so foot shadows get soft edges (no per-frame
+// blur filter). Tinted black + normal alpha by the caller.
+export const getSoftShadowTexture = (): Texture => {
+  if (softShadowTex) return softShadowTex;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  // 実体(濃い部分)を広めに取り、フェードは外周だけ=ぼかし弱め(エッジがはっきり)。
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(0.66, 'rgba(0,0,0,0.94)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  softShadowTex = Texture.from(canvas);
+  return softShadowTex;
 };

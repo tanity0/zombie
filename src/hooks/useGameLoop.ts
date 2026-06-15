@@ -309,6 +309,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         shijinHitEnemy(e.id, damage, execute);
         if (kbMult > 0) useGameStore.getState().knockbackEnemy(e.id, dx, dy, kbMult, kbMax);
       }
+      // ダンスの線攻撃(フリック/玄武/青龍)でも松明・卵を破壊(min 30 で確実に砕く)。
+      useGameStore.getState().breakPropsAlong(cx, cy, dx, dy, length, halfW, Math.max(damage, 30));
     };
     // 玄武/青龍の直線VFX: 少しクネクネさせた短命のスラッシュ点 + 端のバースト(軽量・ピクセル調)。
     const lineVfx = (cx: number, cy: number, dx: number, dy: number, length: number, sparkColor: string, burstHex: string) => {
@@ -408,6 +410,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const n = Math.max(0.001, d);
           useGameStore.getState().knockbackEnemy(e.id, (ex - pcx) / n, (ey - pcy) / n, RHYTHM_TAP_KNOCKBACK_MULT);
         }
+        // ダンスのタップ(近接円)でも松明・卵を破壊。
+        useGameStore.getState().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeR, 30);
         playSfx('melee');
       } else if (pa.kind === 'flick') {
         // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、

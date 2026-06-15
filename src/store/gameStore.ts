@@ -21,7 +21,7 @@ import {
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
   ALCHEMY_ATTACK_RANGE, ALCHEMY_ATTACK_INTERVAL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE,
   ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST,
-  ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE
+  ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
@@ -583,6 +583,7 @@ interface GameState {
   ammoPickupAmounts: Record<AmmoType, number>;
   unlockedShopSkillCards: Partial<Record<SubWeaponKey, number>>;
   startWithTestStraps: boolean;
+  showStatsOverlay: boolean; // 撃破/DMG/SCRAP + FPS/負荷オーバーレイの表示(TOPで選択。既定OFF)
   danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   meleeFinishComboCount: number;
@@ -702,6 +703,13 @@ interface GameState {
   syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds) => void;
   damageBreakableProp: (id: string, amount: number) => BreakableProp | null;
   dropBreakablePropLoot: (prop: BreakableProp) => void;
+  // 近接系武器の共通「小物破壊」: 始点(x0,y0)から向き(ux,uy)へ length までの
+  // カプセル(halfWidth)に入った松明・卵を damage で壊す。length=0 なら半径 halfWidth の
+  // 円(刀/ナイフ/ダンスタップ向け)。破壊演出+ドロップも内包。何か当たれば true。
+  breakPropsAlong: (
+    x0: number, y0: number, ux: number, uy: number,
+    length: number, halfWidth: number, damage: number
+  ) => boolean;
   
   // Game state actions
   setGameTime: (time: number) => void;
@@ -710,6 +718,7 @@ interface GameState {
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
+  setShowStatsOverlay: (enabled: boolean) => void;
   setDanceTestMode: (enabled: boolean) => void;
   setDanceTestLevel: (level: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
@@ -811,6 +820,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
   startWithTestStraps: false,
+  showStatsOverlay: false,
   danceTestMode: false,
   danceTestLevel: 1,
   meleeFinishComboCount: 0,
@@ -985,7 +995,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   triggerCounter: () => {
     const now = Date.now();
     const {
-      player, gameTime, enemies, breakableProps, projectiles, weaponMerchant,
+      player, gameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
       shopReopenAt, eventQuestReopenAt
     } = get();
@@ -1092,6 +1102,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: counterCd,
         }
       }));
+      // 刀でも松明・卵を破壊できる(刀の間合いの円)。
+      get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), meleeDamage * 2.5);
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
@@ -1124,6 +1136,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         halfWidth: WHIP_HIT_HALF_WIDTH,
         color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
       });
+      // 鞭でも松明・卵を破壊できる(線=カプセル範囲。ハリケーン有無に関わらず毎振り)。
+      get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, meleeDamage * 2.5);
       // チャージ満タンなら、この一振りでハリケーン発動(チャージ消費)。自動発動しない。
       if (player.whipCharged) {
         get().performHurricane(tipX, tipY);
@@ -1451,29 +1465,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
     }
 
-    let propHit = false;
-    for (const prop of breakableProps) {
-      const dx = prop.footX - pcx;
-      const dy = prop.footY - pcy;
-      if (Math.hypot(dx, dy) > meleeRange) continue;
-      propHit = true;
-      const broken = get().damageBreakableProp(prop.id, meleeDamage * 2.5);
-      get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
-      if (broken) {
-        if (broken.type === 'mine') {
-          get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
-          get().spawnBurst(broken.footX, broken.footY - 8, '#166534', 16);
-          get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
-          get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(132,204,22,', 320);
-        } else {
-          get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
-          get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
-          get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
-          get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
-          get().dropBreakablePropLoot(broken);
-        }
-      }
-    }
+    // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
+    const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
 
     return {
       swung: true,
@@ -1908,11 +1901,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
         }
-        // 死神は 0.5秒ごとに巻き込み範囲の敵へ近接AoEダメージ(吸引で寄せた敵を削る)。
+        // 死神は 0.5秒ごとに「オーラの円(SUCTION_RADIUS)内の非reaper敵すべて」へ近接AoEダメージ。
+        // 吸引対象(PULL_RANGE/最大12体)に依存させると、オーラ外周の敵が無傷に見えるため範囲基準に統一。
         let sr = s0;
         if (now - (s0.lastContactAt ?? 0) >= ALCHEMY_RARE_MELEE_INTERVAL_MS) {
-          for (const o of inRange) {
-            const e = enemiesNext[o.i];
+          const aura2 = ALCHEMY_RARE_SUCTION_RADIUS * ALCHEMY_RARE_SUCTION_RADIUS;
+          for (const e of enemiesNext) {
+            if (e.type === 'reaper') continue;
+            const d2 = (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2;
+            if (d2 > aura2) continue;
             attackHits.push({ id: e.id, amount: ALCHEMY_RARE_MELEE_DAMAGE, x: e.x + e.width / 2, y: e.y });
           }
           sr = { ...s0, lastContactAt: now };
@@ -3229,6 +3226,39 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  breakPropsAlong: (x0, y0, ux, uy, length, halfWidth, damage) => {
+    const { breakableProps } = get();
+    let hitAny = false;
+    for (const prop of breakableProps) {
+      // 始点からの相対ベクトルを線上に射影してカプセル距離を取る(length=0 で純円)。
+      const rx = prop.footX - x0;
+      const ry = prop.footY - y0;
+      let along = rx * ux + ry * uy;
+      if (along < 0) along = 0;
+      else if (along > length) along = length;
+      const nx = x0 + ux * along;
+      const ny = y0 + uy * along;
+      if (Math.hypot(prop.footX - nx, prop.footY - ny) > halfWidth) continue;
+      hitAny = true;
+      const broken = get().damageBreakableProp(prop.id, damage);
+      get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
+      if (!broken) continue;
+      if (broken.type === 'mine') {
+        get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
+        get().spawnBurst(broken.footX, broken.footY - 8, '#166534', 16);
+        get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
+        get().spawnGlow(broken.footX, broken.footY - 8, 54, 'rgba(132,204,22,', 320);
+      } else {
+        get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
+        get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
+        get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
+        get().spawnGlow(broken.footX, broken.footY - 18, 44, 'rgba(251,146,60,', 360);
+        get().dropBreakablePropLoot(broken);
+      }
+    }
+    return hitAny;
+  },
+
   // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
   // replaces the current gun/melee if it is a higher tier (so a
   // stray T1 drop never downgrades a T3). Existing guns convert to ammo.
@@ -3444,6 +3474,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setStartWithTestStraps: (enabled) => {
     set({ startWithTestStraps: enabled });
+  },
+
+  setShowStatsOverlay: (enabled) => {
+    set({ showStatsOverlay: enabled });
   },
 
   setDanceTestMode: (enabled) => {
@@ -3697,6 +3731,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const startingWeapons = getStartingWeapons(validClass);
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
     const maxHealth = profile.maxHp;
+    // 固有スキル(クラス標準サブ武器)を最初から Lv1 所持で開始する。
+    const innateSub = classSubWeaponFor(validClass);
     
     set(state => {
       // World is infinite; player starts at the origin and the camera
@@ -3736,8 +3772,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           magBonus: 0,
           reloadMult: 1,
           // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
-          subWeapons: state.danceTestMode ? ['shijin'] : [],
-          subWeaponLevels: state.danceTestMode ? { shijin: state.danceTestLevel } : {},
+          // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
+          subWeapons: state.danceTestMode ? ['shijin'] : [innateSub],
+          subWeaponLevels: state.danceTestMode ? { shijin: state.danceTestLevel } : { [innateSub]: 1 },
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,

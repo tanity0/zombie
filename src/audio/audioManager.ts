@@ -8,9 +8,10 @@ const SFX_VOLUME_KEY = 'zombie:sfxVolume';
 const DEFAULT_BGM_VOLUME = 1;
 const DEFAULT_SFX_VOLUME = 1;
 
+// ステージBGM。stage1 に差し替え(旧 rotten-iron-march / rusting-grave-circuit は public に残置)。
+// 将来ステージ別BGM(stage2-4)を足す場合はここに並べる。
 const BGM_TRACKS = [
-  `${import.meta.env.BASE_URL}audio/rotten-iron-march.mp3`,
-  `${import.meta.env.BASE_URL}audio/rusting-grave-circuit.mp3`,
+  `${import.meta.env.BASE_URL}audio/stage1.mp3`,
 ];
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
 // v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。

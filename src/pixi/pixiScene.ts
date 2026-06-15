@@ -26,7 +26,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getSoftShadowTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -39,7 +39,6 @@ import { treesInRegion, TREE_CELL } from '../world/trees';
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
 const GRADE_ALPHA = 0.4;       // strength of the cool grade
 const PLAYER_HUNTING_LIGHT_TINT = 0x60a5fa;
-const VIGNETTE_ALPHA = 0.85;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
 const FAR_BACKDROP_PARALLAX_X = 0.09;
@@ -104,6 +103,41 @@ const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the e
 const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
 const TILT_SHIFT_BAND = tsNum('tsband', 0.46);     // sharp-band centre as a fraction of height
 
+// --- フェーズ1: 環境(地面・森・遠景・木)だけを暗く沈める「ベースの闇」----------
+// 全体コントラストではなく、環境スプライトの tint を下げるだけ(GPU tint=追加パスなし=無料)。
+// アクター(キャラ/敵/拾い物/光)は沈めないので、暗い背景の上で相対的に明るく浮く。
+// 実機生調整 → 合った値を既定へ焼き込む:
+//   ?envdark=0.6  環境の明るさ倍率(1=従来 / 小さいほど暗い。0.5〜0.7 目安)
+//   ?vig=0.95     周辺減光(vignette)の濃さ(0=なし)。既定 0.70(周辺暗部をもう少し明るく)
+const ENV_DARKEN = Math.max(0, Math.min(1, tsNum('envdark', 0.62)));
+const ENV_TINT = (() => {
+  const g = Math.round(255 * ENV_DARKEN);
+  return (g << 16) | (g << 8) | g;
+})();
+const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
+
+// --- フェーズ2-A: 月明り(光のシャフト)を明るく --------------------------------
+// 暗くしたベース(フェーズ1)の上で、暖色シャフトを加算(add)で強めに光らせる。加算なので
+// 光の当たる筋だけが明るくなり、周りの暗さはそのまま=メリハリ。新規パスなし=無料。
+//   ?shaft=0.2  シャフトの明るさ(0=なし。従来の素の値は 0.085)
+const SHAFT_ALPHA = Math.max(0, tsNum('shaft', 0.11));
+// 環境光シャフトの横パララックス: 左右の移動(camera.x)に連動して森のように流れる。
+// 0=動かない。森より遅め(front forest=0.68)。?shaftpara= で生調整。
+const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
+// シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定0=なし。?shaftblur= で有効化。
+const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
+
+// --- A: 光だまり(プレイヤー足元の地面に敷く加算ライト) ------------------------
+// 暗いベース(envdark)の上で「光の島」を作る。groundLayer(world座標・アクターの下)に
+// 加算スプライト1枚。既存の playerLight(hero補助の控えめな光)とは別に、もっと広く濃い
+// 地面プールを足してメリハリを出す。負荷 Low(加算スプライト1枚)。
+// すぐ戻せる: ?pool=0 で無効化 / ?pool=濃さ / ?poolr=半径 で生調整。
+const LIGHT_POOL_ENABLED =
+  typeof window === 'undefined' || new URLSearchParams(window.location.search).get('pool') !== '0';
+const LIGHT_POOL_ALPHA = Math.max(0, tsNum('pool', 0.4));
+const LIGHT_POOL_RADIUS = Math.max(0, tsNum('poolr', 210));
+const LIGHT_POOL_TINT = 0xffe3a3; // 暖色(月明り/松明と同系)
+
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
 // forest stays clean while gems / muzzle flashes / crits / lights bloom.
 // Applied to the world group alongside the tilt-shift.
@@ -128,8 +162,6 @@ type StageLightingPreset = {
 };
 
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
-const STAGE_LIGHT_SHAFT_DRIFT_PX = 18;
-const STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX = 620;
 const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
 const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
@@ -307,31 +339,6 @@ const drawShadow = (g: Graphics, cx: number, cy: number, w: number, alpha: numbe
   g.ellipse(cx, cy, w * 0.55, w * 0.18).fill({ color: 0x000000, alpha });
 };
 
-const drawDirectionalShadow = (
-  g: Graphics,
-  cx: number,
-  cy: number,
-  w: number,
-  alpha: number,
-  lighting: StageLightingPreset
-) => {
-  const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
-  const ux = lighting.direction.x / mag;
-  const uy = lighting.direction.y / mag;
-  const scale = Math.max(0.7, Math.min(1.55, w / 42));
-  const length = lighting.shadowLength * scale;
-  const radiusX = w * 0.55;
-  const radiusY = w * 0.18;
-  const width = Math.max(3, Math.hypot(radiusX * uy, radiusY * ux) * 2);
-  g.moveTo(cx + ux * 1.5, cy - 1 + uy * 1.5)
-    .lineTo(cx + ux * length, cy - 1 + uy * length)
-    .stroke({
-      width,
-      color: 0x000000,
-      alpha: alpha * lighting.shadowAlpha,
-      cap: 'round',
-    });
-};
 
 const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallbackW: number) => {
   const spriteW = view?.sprite.visible === false ? 0 : Math.abs(view?.sprite.width ?? 0);
@@ -409,7 +416,13 @@ export class PixiScene {
   private turretViews = new Map<string, { container: Container; gfx: Graphics }>();
   private effects = new Map<string, EffectView>();
 
-  private shadowGfx = new Graphics();
+  // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
+  // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
+  private shadowContainer = new Container();
+  private shadowPool = new Map<string, Sprite>();
+  // 商人/イベントNPC のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
+  private merchantShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private npcShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
@@ -445,6 +458,7 @@ export class PixiScene {
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
   private gradeSprite = new Sprite(Texture.WHITE);
   private playerLight = new Sprite(getGlowTexture());
+  private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private worldFadeMask = new Sprite(Texture.WHITE);
@@ -498,6 +512,19 @@ export class PixiScene {
       worldFilters.push(this.tiltShift);
     }
     if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
+
+    // フェーズ1: 環境(地面・森・遠景)を tint で暗く沈める。tint は持続するので一度だけ。
+    // 木(actorLayer 内の環境物)は生成時に syncTrees で同じ tint を掛ける。
+    for (const strip of this.L.groundStrips) strip.tint = ENV_TINT;
+    this.L.farBackdrop.tint = ENV_TINT;
+    this.L.horizonForest.tint = ENV_TINT;
+    this.L.frontForest.tint = ENV_TINT;
+
+    // 環境光シャフトを軽くぼかしてエッジを柔らかく(加算レイヤー1枚のBlur。?shaftblur=0 でOFF)。
+    if (SHAFT_BLUR > 0) {
+      this.stageLightShaftGfx.filters = [new BlurFilter({ strength: SHAFT_BLUR, quality: 1 })];
+    }
+
     this.L.filteredWorld.mask = this.worldFadeMask;
     this.L.worldGroup.addChild(this.worldFadeMask);
     this.L.horizonForest.mask = this.horizonForestFadeMask;
@@ -568,6 +595,11 @@ export class PixiScene {
     this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha;
     this.playerLight.blendMode = 'add';
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * 2;
+    // A: 光だまり(足元の広い地面プール)。playerLight より広く濃い。位置/濃さは毎フレーム更新。
+    this.playerGroundPool.anchor.set(0.5);
+    this.playerGroundPool.tint = LIGHT_POOL_TINT;
+    this.playerGroundPool.blendMode = 'add';
+    this.playerGroundPool.visible = LIGHT_POOL_ENABLED && LIGHT_POOL_ALPHA > 0;
     this.groundReflectionGfx.blendMode = 'add';
     // 魔法陣スプライト: 加算発光・中心アンカー・既定は非表示(alpha 0)。地面の
     // 反射/光の上、足元シャドウの下に置き、キャラ絵を塗り潰さない。
@@ -578,9 +610,10 @@ export class PixiScene {
     // tint は付けない: テクスチャに焼いたシアン→白ホットの階調をそのまま活かす。
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
+      this.playerGroundPool,
       this.playerLight,
       this.alchemyCircle,
-      this.shadowGfx,
+      this.shadowContainer,
     );
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
@@ -640,7 +673,7 @@ export class PixiScene {
     this.gradeSprite.alpha = GRADE_ALPHA;
     this.gradeSprite.blendMode = 'multiply';
 
-    this.vignette.alpha = VIGNETTE_ALPHA;
+    this.vignette.alpha = ENV_VIGNETTE_ALPHA;
 
     // Screen-space overlays: cool multiply grade darkens/cools the whole scene
     // (multiply preserves detail/outlines), then the vignette, then damage
@@ -695,40 +728,53 @@ export class PixiScene {
     }
   }
 
+  private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
+
   private updateStageLightShafts(w: number, h: number) {
     const g = this.stageLightShaftGfx;
     g.clear();
-    const alpha = ACTIVE_STAGE_LIGHTING.shaftAlpha;
-    if (alpha <= 0) return;
+    const alpha = SHAFT_ALPHA; // 可変の明るさ(?shaft=)
+    if (alpha <= 0) { this.shaftPeriod = 0; return; }
     g.blendMode = 'add';
     const color = ACTIVE_STAGE_LIGHTING.color;
-    const shafts = [
-      { x: -w * 0.18, y: -h * 0.08, width: w * 0.18, length: h * 1.22, alpha: 0.42 },
-      { x: w * 0.08, y: -h * 0.14, width: w * 0.12, length: h * 1.06, alpha: 0.28 },
-      { x: w * 0.34, y: -h * 0.2, width: w * 0.16, length: h * 1.18, alpha: 0.22 },
+    // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
+    // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
+    const period = Math.max(180, w * 0.5);
+    this.shaftPeriod = period;
+    // 1 period 内に配置するビーム(period 比のオフセット / 幅 / 相対濃さ)。少し間引いて2本に。
+    const beams = [
+      { off: 0.06, width: w * 0.17, length: h * 1.22, alpha: 0.42 },
+      { off: 0.52, width: w * 0.12, length: h * 1.14, alpha: 0.24 },
     ];
-    for (const s of shafts) {
-      const x1 = s.x;
-      const y1 = s.y;
-      const x2 = s.x + s.length * STAGE_LIGHT_SHAFT_DIRECTION.x;
-      const y2 = s.y + s.length * STAGE_LIGHT_SHAFT_DIRECTION.y;
-      g.poly([
-        x1,
-        y1,
-        x1 + s.width,
-        y1,
-        x2 + s.width * 0.32,
-        y2,
-        x2 - s.width * 0.68,
-        y2,
-      ]).fill({ color, alpha: alpha * s.alpha });
+    // 画面 + 両端 period ぶんをカバー(折り返し後も隙間が出ないように)。
+    for (let base = -period; base <= w + period; base += period) {
+      for (const b of beams) {
+        const x1 = base + b.off * period;
+        const y1 = -h * 0.14;
+        const x2 = x1 + b.length * STAGE_LIGHT_SHAFT_DIRECTION.x;
+        const y2 = y1 + b.length * STAGE_LIGHT_SHAFT_DIRECTION.y;
+        g.poly([
+          x1,
+          y1,
+          x1 + b.width,
+          y1,
+          x2 + b.width * 0.32,
+          y2,
+          x2 - b.width * 0.68,
+          y2,
+        ]).fill({ color, alpha: alpha * b.alpha });
+      }
     }
   }
 
-  private syncStageLightShaftDrift(player: Player, now: number) {
-    const t = (playerFootBox(player).footX % STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX) / STAGE_LIGHT_SHAFT_DRIFT_WORLD_PX;
-    const drift = Math.sin(t * Math.PI * 2) * STAGE_LIGHT_SHAFT_DRIFT_PX;
-    this.stageLightShaftGfx.position.set(drift, 0);
+  private syncStageLightShaftDrift(camera: { x: number; y: number }, now: number) {
+    // 左右の移動(camera.x)に連動して森のように横へ流す。period 単位で折り返して継ぎ目なし。
+    let px = 0;
+    if (this.shaftPeriod > 0) {
+      px = (-camera.x * SHAFT_PARALLAX_X) % this.shaftPeriod;
+      if (px > 0) px -= this.shaftPeriod; // [-period, 0] に正規化
+    }
+    this.stageLightShaftGfx.position.set(px, 0);
     this.stageLightShaftGfx.alpha =
       1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT;
   }
@@ -1049,8 +1095,8 @@ export class PixiScene {
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
-    this.syncShadows(s.player, s.enemies);
-    this.syncStageLightShaftDrift(s.player, now);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
+    this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncDecoys(s.projectiles, now);
@@ -1082,6 +1128,13 @@ export class PixiScene {
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : ACTIVE_STAGE_LIGHTING.color;
     this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
     this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2);
+
+    // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
+    if (this.playerGroundPool.visible) {
+      this.playerGroundPool.position.set(lx, ly);
+      this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * (0.94 + 0.06 * Math.sin(now / 700));
+      this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2;
+    }
 
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
@@ -1427,12 +1480,14 @@ export class PixiScene {
     const tex = getTexture('weapon-merchant');
     if (!tex) {
       this.merchantView.visible = false;
+      this.merchantShadow = null;
       return;
     }
 
     const horizonAlpha = this.horizonActorAlpha(merchant.y);
     if (horizonAlpha <= 0) {
       this.merchantView.visible = false;
+      this.merchantShadow = null;
       return;
     }
 
@@ -1459,9 +1514,11 @@ export class PixiScene {
     this.merchantGlow.height = targetH * 0.72;
     this.merchantGlow.alpha = (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025);
 
+    // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト)。
+    this.merchantShadow = { x: merchant.x, y: merchant.y, w: 82 * d, alpha: horizonAlpha };
+
     const g = this.merchantGfx;
     g.clear();
-    drawShadow(g, 0, 0, 82 * d, 0.34);
     if (near) {
       g.circle(0, -8 * d, merchant.radius * d)
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
@@ -1474,6 +1531,7 @@ export class PixiScene {
     const tex = getTexture('quest-futari');
     if (!tex) {
       this.eventNpcView.visible = false;
+      this.npcShadow = null;
       return;
     }
 
@@ -1482,12 +1540,14 @@ export class PixiScene {
       : 0;
     if (npc.status === 'completed' && fadeElapsed >= EVENT_NPC_FADE_MS) {
       this.eventNpcView.visible = false;
+      this.npcShadow = null;
       return;
     }
 
     const horizonAlpha = this.horizonActorAlpha(npc.y);
     if (horizonAlpha <= 0) {
       this.eventNpcView.visible = false;
+      this.npcShadow = null;
       return;
     }
 
@@ -1520,9 +1580,11 @@ export class PixiScene {
     this.eventNpcGlow.height = targetH * 0.72;
     this.eventNpcGlow.alpha = (near ? 0.16 : 0.06) + pulse * (near ? 0.08 : 0.02);
 
+    // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト。フェード中は statusAlpha 反映)。
+    this.npcShadow = { x: npc.x, y: npc.y, w: 84 * d, alpha: horizonAlpha * statusAlpha };
+
     const g = this.eventNpcGfx;
     g.clear();
-    g.ellipse(0, 0, 76 * d * 0.66, 76 * d * 0.18).fill({ color: 0x000000, alpha: 0.32 });
     if (near) {
       g.circle(0, -8 * d, npc.radius * d)
         .stroke({ width: 2 * d, color: 0x60a5fa, alpha: 0.34 + pulse * 0.2 });
@@ -1552,6 +1614,7 @@ export class PixiScene {
       if (!entry) {
         const sprite = new Sprite(tex ?? undefined);
         sprite.anchor.set(0.5, 1);
+        sprite.tint = ENV_TINT; // フェーズ1: 木も環境として暗く沈める
         sprite.x = t.footX;
         sprite.y = t.footY;
         // Y-sort together with the player & enemies by foot Y, so the hero can
@@ -1910,8 +1973,9 @@ export class PixiScene {
     const outsideScreenDistance = this.distanceOutsideViewport(prop.footX, prop.footY, 0);
     const farFade = 1 - Math.max(0, Math.min(1, outsideScreenDistance / TORCH_FAR_FADE_MARGIN));
     const torchAlpha = horizonAlpha * (0.84 + 0.16 * farFade);
+    // 不規則な炎の揺らぎ: 2つの異なる周期を合成して単調なサインに見えないようにする。
     const pulse = visibleTorch
-      ? 0.82 + 0.18 * Math.sin(now / 130 + prop.footX * 0.03)
+      ? 0.80 + 0.13 * Math.sin(now / 125 + prop.footX * 0.03) + 0.07 * Math.sin(now / 53 + prop.footY * 0.05)
       : 0.94;
 
     view.container.zIndex = prop.footY;
@@ -1938,12 +2002,14 @@ export class PixiScene {
     view.light.height = TORCH_LIGHT_RADIUS * d * pulse * 1.45;
     view.light.alpha = 0.18 * torchAlpha * pulse * (0.84 + 0.16 * farFade);
 
+    // 地面の光だまり(reflection を活用): 暗いベースの上で松明が光源として読めるよう、
+    // 従来より広く・丸く・少し濃く。揺らぎで微かに脈動。
     view.reflection.visible = true;
     view.reflection.position.set(prop.footX, prop.footY + 3 * d);
     view.reflection.tint = 0xff9f1c;
-    view.reflection.width = TORCH_REFLECTION_W * d * prop.scale * pulse;
-    view.reflection.height = TORCH_REFLECTION_H * d * prop.scale * (0.86 + 0.14 * pulse);
-    view.reflection.alpha = 0.2 * torchAlpha * pulse * (0.82 + 0.18 * farFade);
+    view.reflection.width = TORCH_REFLECTION_W * d * prop.scale * (1.5 + 0.16 * pulse);
+    view.reflection.height = TORCH_REFLECTION_H * d * prop.scale * (1.35 + 0.18 * pulse);
+    view.reflection.alpha = 0.24 * torchAlpha * (0.82 + 0.18 * farFade) * (0.9 + 0.1 * pulse);
 
     const f = view.flame;
     f.clear();
@@ -1982,13 +2048,65 @@ export class PixiScene {
 
   // ---- foot shadows (player + enemies) into one graphics -------------------
 
-  private syncShadows(player: Player, enemies: Enemy[]) {
-    const g = this.shadowGfx;
-    g.clear();
+  // ソフト影スプライトを1体ぶん配置(光方向へ回転+伸縮)。drawDirectionalShadow の
+  // 幾何(足元から direction へ length 伸ばす / 太さは断面)をスプライトで再現する。
+  private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>) {
+    if (alpha <= 0) return;
+    const lighting = ACTIVE_STAGE_LIGHTING;
+    const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
+    const ux = lighting.direction.x / mag;
+    const uy = lighting.direction.y / mag;
+    const scale = Math.max(0.7, Math.min(1.55, w / 42));
+    const length = lighting.shadowLength * scale;               // 光方向への伸び
+    const radiusX = w * 0.55;
+    const radiusY = w * 0.18;
+    const width = Math.max(3, Math.hypot(radiusX * uy, radiusY * ux) * 2); // 断面(太さ)
+    seen.add(id);
+    let sp = this.shadowPool.get(id);
+    if (!sp) {
+      sp = new Sprite(getSoftShadowTexture());
+      sp.anchor.set(0.5, 0.5);
+      sp.tint = 0x000000;
+      this.shadowContainer.addChild(sp);
+      this.shadowPool.set(id, sp);
+    }
+    sp.rotation = Math.atan2(uy, ux);
+    sp.width = length + width;   // 全長 = 基部ブロブ + 伸び
+    sp.height = width;           // 太さ
+    sp.alpha = alpha * lighting.shadowAlpha;
+    // 中心を足元から光方向へ length/2 ずらし、足元→先端に伸びるように。
+    sp.position.set(footX + ux * (length * 0.5), footY - 1 + uy * (length * 0.5));
+    sp.visible = true;
+  }
+
+  // 設置物の影幅(= スプライト実描画幅 × 0.55。アクターと同じ基準に揃える)。
+  // p.width(ヒットボックス)ではなく見た目の大きさからテクスチャ比で算出する。
+  private placedWeaponShadowWidth(p: Projectile): number {
+    if (p.weaponType === 'turret') return 26; // Graphics砲台(本体~22px)相当
+    if (p.weaponType === 'decoy') {
+      const tex = getTexture('decoy');
+      const rw = tex && tex.height > 0 ? tex.width * (DECOY_DISPLAY_H / tex.height) : p.width;
+      return rw * 0.55;
+    }
+    if (p.weaponType === 'shield') {
+      const tex = getTexture('shield-down');
+      const rw = tex && tex.height > 0 ? tex.width * (SHIELD_DISPLAY_H / tex.height) : p.width;
+      return rw * 0.55;
+    }
+    return p.width * 0.55;
+  }
+
+  private syncShadows(
+    player: Player,
+    enemies: Enemy[],
+    summons: Summon[],
+    projectiles: Projectile[]
+  ) {
+    const seen = new Set<string>();
     const pf = playerFootBox(player);
     const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
     const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW) * PLAYER_SHADOW_SCALE;
-    drawDirectionalShadow(g, pf.footX, pf.footY - 2, playerShadowW, 1, ACTIVE_STAGE_LIGHTING);
+    this.placeShadowSprite('__player__', pf.footX, pf.footY - 2, playerShadowW, 1, seen);
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
       const fb = enemyFootBox(e);
@@ -1997,7 +2115,37 @@ export class PixiScene {
       if (horizonAlpha <= 0) continue;
       const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
       const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
-      drawDirectionalShadow(g, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, ACTIVE_STAGE_LIGHTING);
+      this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen);
+    }
+    // 召喚(味方ユニット)も敵と同じ方向影で揃える。
+    for (const s of summons) {
+      const fb = summonFootBox(s);
+      const horizonAlpha = this.horizonActorAlpha(fb.footY);
+      if (horizonAlpha <= 0) continue;
+      const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(fb.footY);
+      const shadowW = actorShadowWidthFromSprite(this.summonViews.get(s.id), fallbackW);
+      this.placeShadowSprite('sum:' + s.id, fb.footX, fb.footY - 2, shadowW, horizonAlpha, seen);
+    }
+    // 設置型ウェポン(盾/デコイ/タレット)にも接地影を付ける。
+    for (const p of projectiles) {
+      if (p.weaponType !== 'shield' && p.weaponType !== 'decoy' && p.weaponType !== 'turret') continue;
+      const footY = p.y + p.height;
+      const horizonAlpha = this.horizonActorAlpha(footY);
+      if (horizonAlpha <= 0) continue;
+      this.placeShadowSprite('pw:' + p.id, p.x + p.width / 2, footY - 2, this.placedWeaponShadowWidth(p), horizonAlpha, seen);
+    }
+    // 商人 / イベントNPC(各 sync が可視時にリクエストを立てる)。
+    if (this.merchantShadow) {
+      const m = this.merchantShadow;
+      this.placeShadowSprite('merchant', m.x, m.y, m.w, m.alpha, seen);
+    }
+    if (this.npcShadow) {
+      const n = this.npcShadow;
+      this.placeShadowSprite('npc', n.x, n.y, n.w, n.alpha, seen);
+    }
+    // mark-and-sweep: 消えたアクター/設置物の影スプライトを破棄。
+    for (const [id, sp] of this.shadowPool) {
+      if (!seen.has(id)) { sp.destroy(); this.shadowPool.delete(id); }
     }
   }
 
@@ -2473,8 +2621,7 @@ export class PixiScene {
     const accent = mode === 'omni' ? 0x38bdf8 : 0xf59e0b; // 全方位=シアン / 前方集中=琥珀
     const g = v.gfx;
     g.clear();
-    // 接地影。
-    g.ellipse(0, 0, 16, 6).fill({ color: 0x000000, alpha: 0.28 });
+    // 接地影は syncShadows のソフト影に統一(自前の楕円影は廃止)。
     // 脚 + ボディ(足元から上へ)。
     g.roundRect(-11, -22, 22, 20, 4).fill({ color: 0x334155 });
     g.roundRect(-11, -22, 22, 20, 4).stroke({ color: 0x0f172a, alpha: 0.9, width: 1.5 });

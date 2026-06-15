@@ -38,6 +38,7 @@ const Game: React.FC<GameProps> = ({
   );
 
   const isPaused = useGameStore(state => state.isPaused);
+  const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
   const showShopMenu = useGameStore(state => state.showShopMenu);
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
@@ -156,8 +157,9 @@ const Game: React.FC<GameProps> = ({
       {isTouch && <VirtualJoystick />}
 
       <GameHUD />
-      <StatsHud />
-      <PerfOverlay fps={fps} />
+      {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
+      {showStatsOverlay && <StatsHud />}
+      {showStatsOverlay && <PerfOverlay fps={fps} />}
       {benchmarkMode && (
         <div
           className="pointer-events-none absolute left-2 top-[calc(max(env(safe-area-inset-top),8px)+94px)] z-50 rounded-md border border-cyan-200/35 bg-cyan-950/55 px-2 py-1 text-[10px] font-bold tracking-widest text-cyan-100 shadow-lg backdrop-blur-sm"

@@ -10,6 +10,347 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.324 - 商人/イベントNPCの影もソフト方向影に統一 (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 商人(`syncMerchant`)とイベントNPC(`syncEventQuestNpc`)の平たい楕円影を撤去し、
+  v0.25.320 のソフト方向影スプライトに統一。
+  - 各 sync は可視時のみ `merchantShadow` / `npcShadow`(world座標・幅・alpha)を立て、`syncShadows`(後段)が
+    `placeShadowSprite('merchant'|'npc', ...)` で配置。非可視/フェード完了時は null=mark-and-sweep で消える。
+  - NPC はフェード中の `statusAlpha` も影に反映。
+- 城(`syncCastle`)は元々ground影なし=巨大構造物なので今回は対象外。拾い物の小楕円も据え置き。
+- `drawShadow`(平たい楕円)は拾い物でまだ使用=残置。
+
+### 負荷スコア
+1/10。フィルタ無しのスプライト2枚追加(商人/NPC、可視時のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で商人/NPCの影の向き・サイズ確認。
+
+## 2026-06-15 - v0.25.323 - 設置物の影サイズ修正 / 松明の改善(不規則flicker+地面光だまり) (Claude Code)
+
+### 1. 設置物の影が見た目と不釣り合いだった件(`pixiScene.ts`)
+- 原因: 影幅に `p.width`(ヒットボックス)を使っていて実描画サイズと不一致。さらに**タレットは
+  自前の楕円影と二重**だった。
+- 修正:
+  - タレットの自前楕円影(`g.ellipse(0,0,16,6)`)を撤去し、ソフト影に一本化。
+  - `placedWeaponShadowWidth(p)` を追加。盾/デコイは**テクスチャ比×表示高(SHIELD/DECOY_DISPLAY_H)**から
+    実描画幅を出し、アクターと同じ基準(×0.55)で影幅を算出。タレットは本体相当の固定値。
+  - 召喚はアクターと同経路なので据え置き(基準一致)。
+
+### 2. 松明の改善(プランC)(`pixiScene.ts`)
+- **不規則な炎の揺らぎ**: 単一サインの pulse を2周期合成に(0.80 + 0.13·sin(/125) + 0.07·sin(/53))。
+  炎・光・地面反射が機械的に見えないように。
+- **地面の光だまりを活かす**: reflection を従来比 約1.5倍幅・丸め・やや濃く(alpha 0.2→0.24)。暗い
+  ベースの上で松明が光源として読めるように。
+
+### 負荷スコア
+1/10。新規オブジェクト無し。影はサイズ算出の変更のみ、松明は既存スプライトのパラメータ調整のみ。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。見た目は実機確認(影の釣り合い・松明の揺らぎ/光だまり)。
+
+## 2026-06-15 - v0.25.322 - ステージBGMを stage1 に差し替え / 設置物・召喚にもソフト影 (Claude Code)
+
+### ステージBGM差し替え(`audioManager.ts`)
+- `BGM_TRACKS` を `audio/stage1.mp3` に差し替え(社長提供のローカルファイルを `public/audio/stage1.mp3` へ配置)。
+  旧 `rotten-iron-march.mp3` / `rusting-grave-circuit.mp3` は public に残置。stage2-4 は将来ここに並べれば
+  ステージ別BGM化できる(今回は stage1 のみ)。
+- 取得経緯: Drive フォルダは非公開でcurl不可・MCPはbase64 8MBで文脈破綻 → 社長が `Downloads\stage1.mp3` を
+  用意 → それをコピー。
+
+### 影の統一・追加(`pixiScene.ts`)
+- `syncShadows` に **召喚(味方ユニット)** と **設置型ウェポン(盾/デコイ/タレット)** を追加。いずれも
+  v0.25.320 のソフト方向影スプライト(`placeShadowSprite`/`shadowPool`)で統一。
+  - 召喚: `summonFootBox` + `summonViews` 幅、敵と同じ方向影。id=`sum:<id>`。
+  - 設置物: 足元=`p.y+p.height` / 幅=`p.width`。id=`pw:<id>`。mark-and-sweep で消滅時に破棄。
+- 商人/イベントNPC/城/拾い物の平たい楕円影は今回据え置き(静的構造物。必要なら次で統一)。
+
+### 負荷スコア
+1/10。影はフィルタ無しのスプライト transform 更新。BGMはファイル差し替えのみ(8.2MBはやや大きめ=必要なら後で再エンコード可)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で BGM 再生と各影を確認。
+
+## 2026-06-15 - v0.25.321 - ソフト影のぼかしを少し弱める (Claude Code)
+
+### 変更(`lighting.ts`)
+- `getSoftShadowTexture` のグラデを調整(実体部 0.5→**0.66**・濃さ 0.82→**0.94**)。フェードを外周だけに
+  寄せ、影のエッジを少しはっきりさせた(=ぼかし弱め)。負荷 0/10。
+
+### Verification
+- `npm run build` 成功。
+
+## 2026-06-15 - v0.25.320 - 描画改善: 通常足影をソフト影スプライト化(ぼかしフィルタ不要) (Claude Code)
+
+### 背景
+影を柔らかくしたい。BlurFilter は敵が増えると全画面ブラーで重い。代わりに「最初からボケた影
+テクスチャ」をスプライトで貼る方式(B)に。光方向への伸び/向きはそのまま保つ。
+
+### 変更
+- `lighting.ts`: `getSoftShadowTexture()` 追加(黒のソフト放射状ブロブ。1回だけ生成)。
+- `pixiScene.ts`: 通常足影を `shadowGfx`(毎フレーム全描き直しのGraphics)から **ソフト影スプライトの
+  プール**(`shadowContainer` + `shadowPool`)へ置換。
+  - `placeShadowSprite`: 旧 `drawDirectionalShadow` の幾何(足元→光方向へ length 伸ばす / 太さ=断面)を
+    スプライトの **回転(向き)+ width/height(伸び・太さ)+ 位置** で再現。→ 伸び/向きは従来どおり。
+  - mark-and-sweep で消えたアクターの影を破棄。
+  - 旧 `drawDirectionalShadow` は撤去(`drawShadow` は商人/その他で使用継続)。
+- ②(強イベントの動的影 `localEventShadeGfx`)は今回未変更(別系統)。
+
+### 負荷スコア
+影に関しては実質 ±0〜微減。フィルタパスは増えない(敵が増えてもブラー無し)。Graphics の毎フレーム
+全再描画 → スプライトの transform 更新に変わっただけ。エッジが柔らかくなる分の見た目向上。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。見た目は実機確認。
+
+### 次(任意)
+- 良ければ②(イベント影)も同方式へ。極端に長い影でスメアが気になれば「伸び上限/カプセル型テクスチャ」。
+
+## 2026-06-15 - v0.25.319 - シャフトのぼかしを既定OFFに戻す (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- `SHAFT_BLUR` 既定 4 → **0**(ぼかし無し)。`?shaftblur=` で再有効化は可能。
+- 間引き(2本)・明るさ(0.11)・横パララックスはそのまま。
+
+### Verification
+- `npm run build` 成功。
+
+## 2026-06-15 - v0.25.318 - 環境光シャフト: 本数間引き / 明るさ抑え / 軽くぼかし (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- **間引き**: period 内のビームを 3本 → **2本**に(オフセット/幅も再調整)。
+- **明るさ**: `SHAFT_ALPHA` 0.13 → **0.11**(気持ち抑える)。
+- **ぼかし**: `stageLightShaftGfx` に `BlurFilter`(strength=`SHAFT_BLUR` 既定4 / quality=1)を1枚適用しエッジを柔らかく。
+  `?shaftblur=0` でOFF、`?shaftblur=` で調整。
+
+### 負荷スコア
+2〜3/10。ぼかしは加算シャフトレイヤー1枚への低品質Blur=毎フレーム1パスだが、対象が単純なので軽め。
+重い端末では `?shaftblur=0` で即無効化可。間引きでむしろポリゴン数は減。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。見た目/負荷は実機確認。
+
+## 2026-06-15 - v0.25.317 - 環境光シャフトの横パララックスを少し速く 0.22→0.35 (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- `SHAFT_PARALLAX_X` 既定 0.22 → **0.35**(左右移動への追従を速く)。`?shaftpara=` で生調整は維持。
+
+### 負荷スコア
+0/10(定数値のみ)。
+
+### Verification
+- `npm run build` 成功。
+
+## 2026-06-15 - v0.25.316 - 環境光シャフトを弱める＋左右移動に連動して森のように流す (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 明るさを少し弱め: `SHAFT_ALPHA` 既定 0.18 → **0.13**(`?shaft=`)。
+- **横パララックス追加**: シャフトを camera.x に連動して横へ流す(森と同じ発想)。`updateStageLightShafts` を
+  「period 単位のタイル反復描画」に作り替え、`syncStageLightShaftDrift` で position.x を
+  `(-camera.x * SHAFT_PARALLAX_X) % period` を [-period,0] に折り返して継ぎ目なくスクロール。
+  - `SHAFT_PARALLAX_X` 既定 **0.22**(front forest=0.68 より遅め)。`?shaftpara=` で生調整(0=動かない)。
+  - 旧: 足元X基準のサイン揺れ(`STAGE_LIGHT_SHAFT_DRIFT_*`)は撤去。
+- 縦の脈動(`STAGE_LIGHT_SHAFT_PULSE_*`)は従来どおり。
+
+### 負荷スコア
+0〜1/10。描画は resize 時のみ(タイル数本)。毎フレームは position.x 更新だけ(redraw無し)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。流れ方/強さは実機確認(`?shaft=` `?shaftpara=`)。
+
+## 2026-06-15 - v0.25.315 - 周辺暗部(vignette)をもう少し明るく 0.85→0.70 (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- `ENV_VIGNETTE_ALPHA` の既定を 0.85 → **0.70** に。周辺の減光を弱め、画面端をもう少し明るく。
+  `?vig=` で生調整は維持。環境暗化(envdark)・光だまり(pool)・シャフト(shaft)はそのまま。
+
+### 負荷スコア
+0/10(定数値のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
+## 2026-06-15 - v0.25.314 - 描画改善A: 光だまり(足元の地面プール)追加 (Claude Code)
+
+### 背景
+描画改善プランの A。暗いベース(envdark)の上で「光の島」を作りメリハリを出す。すぐ戻せる前提。
+
+### 変更(`pixiScene.ts`)
+- プレイヤー足元の groundLayer(world座標・アクターの下)に、加算スプライト1枚の「光だまり」
+  `playerGroundPool` を追加。既存 playerLight(hero補助の控えめな光)とは別に、広く濃いプールを敷く。
+  毎フレーム位置追従＋微脈動。暖色 tint(0xffe3a3)。
+- すぐ戻せる設計: `?pool=0` で完全無効(visible=false=描画も走らない)。`?pool=濃さ`(既定0.4)/
+  `?poolr=半径`(既定210)で実機生調整。コードを残したまま既定で切るのも容易。
+
+### 負荷スコア
+1〜2/10。加算スプライト1枚を毎フレーム位置更新するだけ。新規フィルタパス/パーティクル無し。
+`?pool=0` 時は visible=false で描画もスキップ。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。見た目は実機確認・値調整待ち。
+
+### 戻し方(メモ)
+- 既定で切るだけなら `LIGHT_POOL_ENABLED` を false 相当(既定 `?pool=0`)に。
+- 完全撤去は本コミットを revert(`playerGroundPool` の定義/追加/同期の3箇所)。
+
+## 2026-06-15 - v0.25.313 - vignette(円形の周辺減光)を元の濃さ 0.85 に戻す (Claude Code)
+
+### 背景
+Phase1 で vignette を 0.85→0.92 に上げていたが、環境暗化と重なり円形の暗部が目立ちすぎ。元に戻す指示。
+
+### 変更(`pixiScene.ts`)
+- `ENV_VIGNETTE_ALPHA` の既定を 0.92 → **0.85**(導入前の値)に戻した。`?vig=` での生調整は維持。
+- 環境暗化(`?envdark`)・月明りシャフト(`?shaft`)はそのまま。
+
+### 負荷スコア
+0/10(定数値のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
+## 2026-06-15 - v0.25.312 - 撃破数/FPS表示をTOP画面で有り/無しスタート選択(既定=無し) (Claude Code)
+
+### 背景
+音量ボタンの上下に出る撃破数/DMG/SCRAP(StatsHud)と FPS/負荷(PerfOverlay)を、TOP画面で
+「表示ありスタート / 無しスタート」選べるようにしたい。通常プレイは無し。
+
+### 変更
+- `gameStore.ts`: 設定フラグ `showStatsOverlay`(既定 **false**)+ `setShowStatsOverlay` を追加。
+  resetGame では触らない=開始しても設定が維持される。
+- `Game.tsx`: `<StatsHud />` と `<PerfOverlay />` を `showStatsOverlay` でゲート(false=非表示)。
+- `MainMenu.tsx`: 「はじめる」直下にトグル「撃破数/FPS表示 ON/OFF」を追加(既定OFF)。
+
+### 負荷スコア
+0/10。むしろ既定では2つの毎フレーム再描画コンポーネント(StatsHud/PerfOverlay)が描画されなくなり軽くなる。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。
+
+## 2026-06-15 - v0.25.311 - 刀のフリック(一閃ダッシュ)を「指を離した瞬間」に判定 (Claude Code)
+
+### 背景
+刀の一閃ダッシュはスワイプ中に即発火していた(スマホ音ゲー方式)。社長指示で、刀のフリックは
+**指を離したときにフリックかどうか判定**する方式へ戻す。ダンス(四神技)のフリックは即発火のまま。
+
+### 変更(`VirtualJoystick.tsx`)
+- `handlePointerMove` から刀の `tryFireKatanaDash()` 即発火呼び出しを撤去(リズム中の `tryFireRhythmFlick` は維持)。
+- `release`(指を離した瞬間・pointerup のみ)で、非リズム時に `tryFireKatanaDash()` を実行=ここでフリック判定。
+  非刀装備なら `triggerKatanaDash` が false を返すので無害。カウンター窓の発火は従来どおり同タイミングで継続。
+- 依存配列を整理(move から tryFireKatanaDash を除去、release に追加)。
+
+### 負荷スコア
+0/10。入力判定タイミングの移動のみ。毎フレームの新規コストはむしろ減る(move 中の flick 試行が消える)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。操作感は実機確認待ち。
+
+## 2026-06-15 - v0.25.310 - レベルアップのスクロール / 死神AoEを範囲基準に / スキル装備=固有+1個 (Claude Code)
+
+### 背景
+別チャット(2台構成のもう一方)が同等の修正を v0.25.307 として push 済みだったが、本チャットの版
+(近接破壊+ライティング)を正本として進めるため、その修正指示をこの版の上で再実装した。
+
+### 1. レベルアップで選択肢が多いとスクロールできない (`UpgradeMenu.tsx`)
+- パネルを `flex flex-col max-h-[88dvh]`、ヘッダを `shrink-0`、選択肢リストを
+  `overflow-y-auto min-h-0 overscroll-contain` に。ヘッダ固定・リストだけスクロール。
+
+### 2. 死神(錬金術レア召喚)の攻撃が当たって見えない (`gameStore.ts` `updateSummons`)
+- レア近接AoEを「吸引対象(PULL_RANGE=380/最大12体)」依存から、**オーラの円
+  (`ALCHEMY_RARE_SUCTION_RADIUS`=570)内の非reaper敵すべて**へ 0.5秒ごとに変更。
+  外周の敵が無傷に見える問題を解消。ダメージ数字も全対象で表示。
+
+### 3. スキル装備=「固有スキル + 新規1個」 (`gameStore.ts` resetGame / `upgradeUtils.ts`)
+- `resetGame`: 通常開始時に固有スキル(`classSubWeaponFor`)を Lv1 所持で開始
+  (warrior=手榴弾 / mage=トラップ / rogue=ハンティング / necromancer=クイックマガジン)。
+  ※ダンス練習モードは従来どおり shijin のみ。
+- `upgradeUtils.ts`: 新規取得上限を 2→**1**。さらに固有スキルを上限カウントから除外
+  (`classSubWeaponFor(player.characterClass)` を除く)。既所持の昇格カードは従来どおり。
+  刀/村雨/ダンスフロアは排他=上限外、取得時の他スキルリセット挙動は維持。
+
+### 負荷スコア
+1/10。死神AoEは 0.5秒throttleで範囲判定するだけ。他はUI/初期化/取得条件の変更。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。挙動は実機確認待ち。
+
+## 2026-06-15 - v0.25.309 - ライティングのメリハリ フェーズ2-A: 月明り(光のシャフト)を明るく (Claude Code)
+
+### 背景
+フェーズ1で環境のベースを暗く沈めた上で、「月明りの当たる部分は今までみたいに明るく」したい(社長要望)。
+A/B案のうち **A=今の暖色シャフトを明るくする(最小変更・確実に軽い)** を選択。
+
+### 変更(`pixiScene.ts`)
+- 光のシャフト(`stageLightShaftGfx`)の明るさを可変化し、既定を従来 0.085 → **0.18** に引き上げ。
+  シャフトは加算(blendMode 'add')描画なので、暗いベースの上で**光の筋だけが明るく**なり周りの暗さは保たれる=メリハリ。
+- `updateStageLightShafts` の参照を preset の素値から可変 `SHAFT_ALPHA` に変更。
+- 実機生調整URL: `?shaft=0.2`(0=なし。従来素値は 0.085)。
+- 暖色のまま(`sunlight` preset の color 0xffe3a3)。B案(寒色 moonlight)へは preset 切替で対応可能(今回は未実施)。
+
+### 負荷スコア
+0/10。既存の加算Graphics(3ポリゴン1枚)の塗り濃度を上げるだけ。新規パス/glow/パーティクル無し。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。明るさ量は実機確認待ち(`?shaft=` で調整)。
+
+### 次の候補(未着手)
+- 物足りなければ、月明りが地面に落ちる位置へ加算の「光だまり」を足す(キャッシュ済み加算スプライト=軽い)。
+- B案(寒色の月明りプリセット)に切替えたい場合は `ACTIVE_STAGE_LIGHTING_NAME` を 'moonlight' に。
+
+## 2026-06-15 - v0.25.308 - ライティングのメリハリ フェーズ1: 環境のベース闇を深く (Claude Code)
+
+### 背景
+前回の「全体コントラスト(ColorMatrix)」はシーン全体が一律に濃く沈むだけ=メリハリにならず却下、
+v0.25.307 へ戻した。HD-2D のメリハリは「光がある所だけ明るい」=ローカル光で作るもの。その第一歩として
+**環境(地面・森・遠景・木)のベースだけを暗く沈める**(アクター/光は沈めない)。フェーズ1。
+
+### 変更(`pixiScene.ts`)
+- 環境スプライトに **GPU tint で暗色を掛ける**(追加フィルタパス無し=無料):
+  地面ストリップ(groundStrips)/遠景(farBackdrop)/森の継ぎ目(horizonForest)/前景の森(frontForest)を
+  constructor で一度 tint。木(actorLayer 内の環境物)は `syncTrees` 生成時に同 tint。
+- 周辺減光(vignette)の濃さを可変化し既定を 0.85→**0.92** に微増。
+- アクター(キャラ/敵)・拾い物・松明やプレイヤーの光・各種グロウは**沈めない**ので、暗いベースの上で
+  相対的に明るく浮く=「暗い所はとことん暗く、光の周りは明るい」の土台。
+- 実機生調整URL(合った値を既定へ焼き込む):
+  - `?envdark=0.6` 環境の明るさ倍率(1=従来 / 小さいほど暗い。既定 **0.62**)
+  - `?vig=0.95`   周辺減光の濃さ(既定 **0.92**)
+- 全体コントラスト(ColorMatrix)は使わない(前回の失敗)。
+
+### 負荷スコア
+0/10。tint と既存スプライトの alpha 変更のみ。新規フィルタパス・パーティクル・glow の追加なし。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。暗さの量は実機確認待ち(`?envdark=` で調整)。
+
+### 次フェーズ(未着手)
+- フェーズ2: 光源まわり(松明/プレイヤー光/グロウ)の加算光を強め、bloom 閾値を少し下げて
+  「明るい所をより明るく」。フェーズ3: 必要なら方向性の地面明暗(light shaft/影流用)を最小限。
+  ※社長の参考画像(公開URL)が来たらそれに寄せて値を詰める。
+
+## 2026-06-15 - v0.25.307 - ナイフ以外の近接(刀/鞭/ダンス)でも松明・卵を破壊可能に (Claude Code)
+
+### 背景
+小物破壊(松明=HP12 / 虫の卵=HP1)は**通常ナイフのスイング(`triggerCounter`)だけ**に実装されており、
+刀・鞭は早期return、ダンス(四神舞)は敵のみ攻撃のため、これらナイフ以外の近接では壊せなかった。
+
+### 変更
+- 共通ヘルパ `breakPropsAlong(x0,y0,ux,uy,length,halfWidth,damage)` を `gameStore` に追加。
+  始点から向きへ length までのカプセル(halfWidth)内の小物を破壊。`length=0` で純円(円範囲)。
+  破壊演出(スラッシュ/バースト/リング/グロー)とドロップを内包。何か当たれば true。
+- 呼び出しを4経路に統一:
+  - **ナイフ**: 既存のインラインループを `breakPropsAlong(円: メレー範囲)` に置換(挙動同じ)。
+  - **刀**: カウンタースイング時に `breakPropsAlong(円: katanaRange)`。
+  - **鞭**: 毎振り `breakPropsAlong(カプセル: 進行方向×reach, WHIP_HIT_HALF_WIDTH)`。ハリケーン有無に関わらず。
+  - **ダンス**: タップ=`breakPropsAlong(円: meleeR)`、線攻撃(フリック/玄武/青龍)=`rhythmLineAttack` 内で
+    `breakPropsAlong(カプセル)`。威力は `max(攻撃ダメージ,30)` で松明(12)を確実に砕く。
+- 威力は近接各種とも `meleeDamage*2.5`(≈15>12)で松明を一撃破壊。
+
+### 負荷スコア
+1/10。破壊時のみ既存の軽量エフェクトを出すだけ。毎フレームの新規コストなし(振った時だけ走る)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。
+
 ## 2026-06-15 - v0.25.306 - 手榴弾とグレネードランチャーの混同を解消 (Claude Code)
 
 ### 背景

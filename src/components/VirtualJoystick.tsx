@@ -82,8 +82,8 @@ const VirtualJoystick: React.FC = () => {
     rhythmInput('flick', { x: dx / dist, y: dy / dist });
   }, [rhythmInput]);
 
-  // 刀の一閃ダッシュも同じ「スワイプ即発火」に揃える(離す瞬間ではなく、振った瞬間にダッシュ)。
-  // 1接触一度だけ。実際にダッシュした(triggerKatanaDash=true)時だけ消費し、クールダウン中は再試行する。
+  // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定して発火する(即発火ではない)。
+  // 1接触一度だけ。実際にダッシュした(triggerKatanaDash=true)時だけ消費する。
   const tryFireKatanaDash = useCallback(() => {
     if (flickFiredRef.current) return;
     const flick = detectFlick();
@@ -105,8 +105,10 @@ const VirtualJoystick: React.FC = () => {
         // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
         if (!flickFiredRef.current) rhythmInput('tap');
       } else {
+        // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定して発火(即発火しない)。
+        // 非刀装備なら triggerKatanaDash が false を返すので無害(=何も起きない)。
+        tryFireKatanaDash();
         // カウンターは従来どおり「指を離した瞬間」に発火(刀装備中はナイフスイープなしで窓だけ開く)。
-        // 一閃ダッシュは move 中に即発火済み(今回のフリック仕様に統一)ので、ここでは出さない。
         const counter = triggerCounter();
         if (counter.swung) playSfx('melee');
         if (counter.finish) playSfx('melee-finish');
@@ -124,7 +126,7 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput]);
+  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (pointerIdRef.current !== null) release(false);
@@ -154,9 +156,9 @@ const VirtualJoystick: React.FC = () => {
         samples.shift();
       }
 
-      // スワイプした瞬間にフリックを即発火(離す前に確定)。リズム中=四神技 / それ以外=刀の一閃ダッシュ。
+      // リズム中(四神技)はスワイプ即発火(スマホ音ゲー方式)のまま。
+      // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定する(= release 側で実行。即発火しない)。
       if (useGameStore.getState().rhythm.active) tryFireRhythmFlick();
-      else tryFireKatanaDash();
 
       const rawX = e.clientX - o.x;
       const rawY = e.clientY - o.y;
@@ -178,7 +180,7 @@ const VirtualJoystick: React.FC = () => {
       setSwipeDirection(dir);
       setLastDirection(dir);
     },
-    [setSwipeDirection, setLastDirection, tryFireRhythmFlick, tryFireKatanaDash]
+    [setSwipeDirection, setLastDirection, tryFireRhythmFlick]
   );
 
   const handlePointerEnd = useCallback(

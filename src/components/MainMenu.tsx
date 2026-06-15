@@ -33,6 +33,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
+  const showStatsOverlay = useGameStore(s => s.showStatsOverlay);
+  const setShowStatsOverlay = useGameStore(s => s.setShowStatsOverlay);
   const setDanceTestMode = useGameStore(s => s.setDanceTestMode);
   const setDanceTestLevel = useGameStore(s => s.setDanceTestLevel);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
@@ -420,6 +422,26 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
               }}
             >
               はじめる
+            </button>
+
+            {/* 撃破数/FPS表示の有り・無しスタート(既定=無し)。音量ボタン上下のオーバーレイを制御。 */}
+            <button
+              type="button"
+              onClick={() => setShowStatsOverlay(!showStatsOverlay)}
+              className={`mt-2 w-full flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-left ${
+                showStatsOverlay
+                  ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50'
+                  : 'border-white/10 bg-white/5 text-white/80 active:bg-white/10'
+              }`}
+              aria-pressed={showStatsOverlay}
+            >
+              <span>
+                <span className="block text-[13px] font-semibold">撃破数/FPS表示</span>
+                <span className="block text-[11px] text-white/50">
+                  {showStatsOverlay ? '表示ありで開始' : '通常は無し(デバッグ用)'}
+                </span>
+              </span>
+              <span className="text-[11px] font-semibold shrink-0">{showStatsOverlay ? 'ON' : 'OFF'}</span>
             </button>
 
             {/* 仮: ダンス練習モード。敵なし + 指定レベルのダンスフロア所持で開始(サークル/フリック/曲合わせの調整用)。 */}
