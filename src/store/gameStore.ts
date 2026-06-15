@@ -336,7 +336,7 @@ export const INVULN_MS = 700;
 //  フェーズA(ヘリ飛来): 超遠く・高くから小さく飛来し、降下しながら拡大して着地ダッシュの開始点へ。
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
 // この間はゲーム進行/入力/敵スポーンを止め、カメラが追従/横断し、見た目は飛行する。
-export const PLAYER_INTRO_HELI_MS = 2000;    // フェーズA(ヘリ飛来)長
+export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来)長(少しゆっくり目)
 export const PLAYER_INTRO_LAND_MS = 1700;    // フェーズB(ジャンプ着地)長 = 従来の演出長
 export const PLAYER_INTRO_MS = PLAYER_INTRO_HELI_MS + PLAYER_INTRO_LAND_MS; // 全体(=3700)
 export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; // A/全体の境目 t
@@ -402,12 +402,13 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
   rogue: 'ストライカー',
   necromancer: 'スカベンジャー',
 };
-// speaker '__class__' は表示時に選択中の職業名へ置換する。1行ずつ切り替えて表示。
+// speaker: null=通信 / '__voice__'=生存者の声(別スタイル) / '__class__'=職業名(置換)。1行ずつ切替表示。
 export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
   { speaker: null, text: 'この先の村に例の研究者もいるはずだ。' },
   { speaker: null, text: '先発の調査隊の情報によると生存者は…' },
   { speaker: null, text: '絶望的。望みは薄いが掛けるしかない。' },
-  { speaker: null, text: '感染者を殲滅しつつ森の奥へ進め。' },
+  { speaker: '__voice__', text: '……マー……ママー！' },
+  { speaker: null, text: '生存者確認！感染者を殲滅しつつ急行せよ。' },
   { speaker: '__class__', text: '了解。' },
 ];
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)

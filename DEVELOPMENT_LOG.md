@@ -45,6 +45,21 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.349 - ヘリ登場ゆっくり/セリフ5行+生存者の声/ダンス近接音→バスドラム (Claude Code)
+
+### 変更
+- **ヘリ登場を少しゆっくり**: `PLAYER_INTRO_HELI_MS` 2000→2600(フェーズA飛来を緩やかに)。
+- **登場セリフ変更**(1行ずつ切替): 通信3行→生存者の声「……マー……ママー！」(`__voice__`=通信タグ無し/斜体/かすれ色)
+  →通信「生存者確認！感染者を殲滅しつつ急行せよ。」→(職業名)「了解。」。
+- **ダンスの近接音(タップ)を太いバスドラムに**: `playSfx('melee')` → `playDanceKick()`(Web Audio 合成キック=
+  サイン波のピッチ落ち160→46Hz+速い減衰、サンプル不要)。拍を踏む「ドンッ」に。フリック(katana-dash)は据え置き。
+
+### 負荷スコア
+1/10。合成キックは短いオシレータ1本/タップのみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。キックの太さ/音程は `playDanceKick` 内の周波数・減衰で調整可。
+
 ## 2026-06-15 - v0.25.348 - リズム:音声アンカー(v0.25.346)を撤回 (Claude Code)
 
 ### 変更

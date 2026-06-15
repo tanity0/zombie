@@ -395,6 +395,30 @@ const resumeSfxContext = () => {
   void context.resume().catch(() => {});
 };
 
+// 太いバスドラム(キック)を合成再生。サンプル不要(サイン波のピッチ落ち+速い減衰)。
+// ダンスのタップ(拍踏み)音として使う。
+export const playDanceKick = () => {
+  if (muted) return;
+  const ctx = ensureSfxContext();
+  if (!ctx) return;
+  resumeSfxContext();
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  // ピッチを高め→低めへ滑らせて「ドンッ」という太いアタック。
+  osc.frequency.setValueAtTime(165, t);
+  osc.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+  const vol = 0.95 * sfxVolume;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.linearRampToValueAtTime(vol, t + 0.006);       // パンチの立ち上がり
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.34); // 太く長めの減衰
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.36);
+};
+
 const loadSfxBuffer = (key: SfxKey) => {
   const context = ensureSfxContext();
   const config = SFX_SOURCES[key];

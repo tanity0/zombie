@@ -66,6 +66,14 @@ const IntroDialogue: React.FC = () => {
         {rendered.map((l, i) => {
           const last = i === rendered.length - 1;
           const cursor = last && l.typing;
+          // 生存者の声(通信に割り込む別声)。通信タグ無し・かすれた色・斜体で区別。
+          if (l.speaker === '__voice__') {
+            return (
+              <p key={i} className="text-[13px] italic leading-relaxed text-rose-200/90">
+                「{l.text}{cursor && <span className="opacity-70">▌</span>}」
+              </p>
+            );
+          }
           if (l.speaker) {
             // '__class__' は選択中の職業名へ置換。
             const speaker = l.speaker === '__class__'

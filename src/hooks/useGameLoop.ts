@@ -42,7 +42,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, playDanceKick } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
@@ -421,7 +421,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // ダンスのタップ(近接円)でも松明・卵を破壊。
         useGameStore.getState().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeR, 30);
-        playSfx('melee');
+        playDanceKick(); // 近接音 → 太いバスドラム(拍踏み)
       } else if (pa.kind === 'flick') {
         // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、
         // ノックバックは上限6(=距離2倍)で強く弾く。
