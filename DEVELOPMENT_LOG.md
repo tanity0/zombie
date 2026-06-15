@@ -45,6 +45,18 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.350 - 登場セリフ:プレイヤー返事を削除/各行+0.2s延長 (Claude Code)
+
+### 変更(`gameStore.ts`)
+- 登場セリフから**プレイヤーの返事(職業名「了解。」)を削除**。通信3行→生存者の声→通信1行で終了。
+- 各行の保持を **+0.2s 延長**(`INTRO_DIALOGUE_LINE_HOLD_MS` 750→950)。切替がゆっくりに。合計時間/時間停止も自動追従。
+
+### 負荷スコア
+0/10。定数・配列のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。
+
 ## 2026-06-15 - v0.25.349 - ヘリ登場ゆっくり/セリフ5行+生存者の声/ダンス近接音→バスドラム (Claude Code)
 
 ### 変更

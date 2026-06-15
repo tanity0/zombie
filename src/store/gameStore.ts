@@ -402,17 +402,16 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
   rogue: 'ストライカー',
   necromancer: 'スカベンジャー',
 };
-// speaker: null=通信 / '__voice__'=生存者の声(別スタイル) / '__class__'=職業名(置換)。1行ずつ切替表示。
+// speaker: null=通信 / '__voice__'=生存者の声(別スタイル)。1行ずつ切替表示。
 export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
   { speaker: null, text: 'この先の村に例の研究者もいるはずだ。' },
   { speaker: null, text: '先発の調査隊の情報によると生存者は…' },
   { speaker: null, text: '絶望的。望みは薄いが掛けるしかない。' },
   { speaker: '__voice__', text: '……マー……ママー！' },
   { speaker: null, text: '生存者確認！感染者を殲滅しつつ急行せよ。' },
-  { speaker: '__class__', text: '了解。' },
 ];
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
-export const INTRO_DIALOGUE_LINE_HOLD_MS = 750;  // 各行を打ち終えた後の保持
+export const INTRO_DIALOGUE_LINE_HOLD_MS = 950;  // 各行を打ち終えた後の保持(+0.2s 延長)
 export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この後ゲーム開始)
 // 全体時間(useGameLoop が終了判定に使用)。
 export const INTRO_DIALOGUE_TOTAL_MS =
