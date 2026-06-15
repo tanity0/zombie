@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.300 - リズムの拍グリッドを実時間(Date.now)基準に: サークルの累積ドリフト(遅れ)を解消 (Claude Code)
+
+### 原因(確定)
+- 精密測定で曲はほぼ公称BPM(100.05/119.70/139.50)=テンポずれはごく小。「遅くなる」方向はテンポ要因では説明できず、
+  **gameTime が実時間より遅れる(fps低下時)** のが主因。音楽は実時間で鳴るのでサークルが累積で遅れていた。
+
+### 修正
+- リズムの**拍グリッド/判定/描画を実時間(Date.now)基準**に統一(音楽と同じ時計)。毎フレーム音声同期ではない=軽いまま。
+  - `useGameLoop`: firstBeatAt を `Date.now()` 起点に。
+  - `gameStore`: `setRhythmActive`/`rhythmInput`/`tickRhythm` の拍判定 gt を `Date.now()` に。
+  - `pixiScene`: `syncRhythmOverlay`/`syncRhythmScreenFx` に `now`(Date.now) を渡す。
+  - byakko タイマー/enter-exit(停止)タイマーは gameTime のまま(自己完結)。invulnUntil は未読で無害。
+- 残る微小なテンポずれは `?int1=600&int2=501&int3=430`(実測値)で詰められる。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.299 - サークルの累積ドリフト対策: 1拍の長さ(interval)をURL上書き可能に + 切り分け (Claude Code)
 
 ### 背景

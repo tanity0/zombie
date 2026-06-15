@@ -613,8 +613,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 四神舞レベルでBPM(=interval)が変わる。拍は固定 gameTime グリッドで合わせる(音楽同期はしない)。
               const lvl = Math.max(1, Math.min(3, rp.subWeaponLevels['shijin'] ?? 1));
               const interval = rhythmIntervalForLevel(lvl);
-              // サークルが足元中央で重なる位相を、レベル別の決め打ちオフセットでビートに合わせる(同期はしない)。
-              const firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + rhythmBeatOffsetForLevel(lvl);
+              // サークル/拍グリッドは実時間(Date.now)基準。音楽も実時間で鳴るので、fps低下で gameTime が
+              // 遅れても音楽からズレない(累積ドリフト対策)。レベル別オフセットで位相を合わせる。
+              const firstBeatAt = Date.now() + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + rhythmBeatOffsetForLevel(lvl);
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
             }
           }

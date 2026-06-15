@@ -1081,8 +1081,9 @@ export class PixiScene {
 
     this.syncAlchemyCircle(s.player, s.gameTime, now);
     this.syncWhipHurricane(s.hurricane, now);
-    this.syncRhythmScreenFx(s.rhythm, s.gameTime);
-    this.syncRhythmOverlay(s.rhythm, s.player, s.gameTime);
+    // リズムの拍/演出は実時間(now=Date.now)基準。store の firstBeatAt/lastTapAt 等も Date.now ベース。
+    this.syncRhythmScreenFx(s.rhythm, now);
+    this.syncRhythmOverlay(s.rhythm, s.player, now);
     this.syncFireflies(s.camera, now);
   }
 

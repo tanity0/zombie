@@ -3470,7 +3470,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   setRhythmActive: (active, firstBeatAt, interval) => {
     if (active === get().rhythm.active) return;
     if (active) {
-      const gt = get().gameTime;
+      // 拍グリッドは実時間(Date.now)基準: fps低下で gameTime が遅れても音楽からズレないように。
+      const gt = Date.now();
       set(state => ({
         rhythm: {
           ...state.rhythm,
@@ -3511,7 +3512,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     const r = state.rhythm;
     if (!r.active) return { judged: 'none' };
-    const gt = state.gameTime;
+    const gt = Date.now(); // 拍グリッドは実時間基準(firstBeatAt も Date.now ベース)
     if (gt - r.lastInputAt < RHYTHM_INPUT_DEBOUNCE_MS) return { judged: 'none' };
     const beatT = r.firstBeatAt + r.expectBeat * r.interval;
     const win = RHYTHM_SUCCESS_WINDOW_MS + (kind === 'flick' ? RHYTHM_FLICK_EXTRA_WINDOW_MS : 0);
@@ -3626,7 +3627,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 指が触れている間はビートを失効させない(タッチ中にジャストが過ぎても、離した時の
     // フリックでそのビートを取れるように)。離している間だけ通常の失効判定を行う。
     if (state.touchActive) return;
-    const gt = state.gameTime;
+    const gt = Date.now(); // 拍グリッドは実時間基準(firstBeatAt も Date.now ベース)
     // 過ぎたビートはミス扱い。ただし「プレイ中(コンボ>0 または 入力進行>0)」でなければ静かに送る
     // (ただ立っているだけで毎ビート"ミス"が点滅しないように)。
     let expect = r.expectBeat;
