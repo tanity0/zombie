@@ -395,9 +395,17 @@ export const playerIntroCamFollow = (t: number): number => {
 };
 
 // 登場セリフ(ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると開始)。
+// 職業表示名(MainMenu のキャラ定義と一致)。登場セリフの話者などで使用。
+export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
+  warrior: 'ヘビーガンナー',
+  mage: 'マークスマン',
+  rogue: 'ストライカー',
+  necromancer: 'スカベンジャー',
+};
+// speaker '__class__' は表示時に選択中の職業名へ置換する。
 export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
-  { speaker: null, text: '本任務は研究所奪還に向けて施設の位置特定となる。座標確定後は速やかに帰還せよ。' },
-  { speaker: 'プレイヤー', text: '…了解。' },
+  { speaker: null, text: '任務は研究所奪還の位置特定となる。座標確定後は速やかに帰還せよ。' },
+  { speaker: '__class__', text: '了解。' },
 ];
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
 export const INTRO_DIALOGUE_LINE_HOLD_MS = 750;  // 各行を打ち終えた後の保持

@@ -45,6 +45,20 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.343 - 登場セリフ文面/話者=職業名・ヘリ離脱0.3秒 (Claude Code)
+
+### 変更
+- セリフ文面を変更:「任務は研究所奪還の位置特定となる。座標確定後は速やかに帰還せよ。」/ (職業名)「了解。」。
+  2行目の話者を**選択中の職業名**に(`CHARACTER_CLASS_NAMES`、speaker `__class__` を置換)。
+  warrior=ヘビーガンナー / mage=マークスマン / rogue=ストライカー / necromancer=スカベンジャー。
+- ヘリ離脱の待ちを 0.2→0.3秒(`HELI_DEPART_DELAY_MS=300`。セリフ後さらに遅らせる)。
+
+### 負荷スコア
+0/10。定数/文言/話者解決のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。
+
 ## 2026-06-15 - v0.25.342 - 登場:ヘリ離脱の待ちを0.2秒に (Claude Code)
 
 ### 変更(`pixiScene.ts`)

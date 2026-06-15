@@ -4,6 +4,7 @@ import {
   INTRO_DIALOGUE_LINES,
   INTRO_DIALOGUE_CHAR_MS,
   INTRO_DIALOGUE_LINE_HOLD_MS,
+  CHARACTER_CLASS_NAMES,
 } from '../store/gameStore';
 
 // 登場時のセリフ(時間停止中に自動で文字が流れる)。VN風の下部ボックス。
@@ -12,6 +13,7 @@ import {
 const IntroDialogue: React.FC = () => {
   const active = useGameStore((s) => s.introDialogueActive);
   const startedAt = useGameStore((s) => s.introDialogueStartedAt);
+  const characterClass = useGameStore((s) => s.player.characterClass);
   const [, setTick] = useState(0);
   const rafRef = useRef<number | undefined>(undefined);
 
@@ -54,9 +56,13 @@ const IntroDialogue: React.FC = () => {
           const last = i === rendered.length - 1;
           const cursor = last && l.typing;
           if (l.speaker) {
+            // '__class__' は選択中の職業名へ置換。
+            const speaker = l.speaker === '__class__'
+              ? (CHARACTER_CLASS_NAMES[characterClass] ?? 'プレイヤー')
+              : l.speaker;
             return (
               <p key={i} className="text-[13px] leading-relaxed text-amber-100">
-                <span className="mr-1 font-bold text-amber-300">{l.speaker}</span>
+                <span className="mr-1 font-bold text-amber-300">{speaker}</span>
                 「{l.text}{cursor && <span className="opacity-70">▌</span>}」
               </p>
             );
