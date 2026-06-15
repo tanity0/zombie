@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.302 - ダンス曲を正確な公称BPMに時間引き伸ばし補正(120/140) (Claude Code)
+
+### 背景
+- 実測でdance-120≈119.70 / dance-140≈139.50 BPM(公称よりわずかに遅い)。ユーザー要望「曲側を120/140ちょうどに直したい」。
+  Lv1(実測100.05)はユーザーが int1=600 でズレなしと確認済み=測定精度は~0.05BPMで信頼できる。
+
+### 修正
+- `public/audio/dance-120.mp3` / `dance-140.mp3` を **ffmpeg atempo(ピッチ維持)** で公称BPMへ時間引き伸ばし:
+  - 120: ×1.002506 → 再測定 **120.00 BPM**
+  - 140: ×1.003584 → 再測定 **139.96 BPM**
+  - 素材は git 26c214d の高音質(160k)版から、128k/48k/stereo で再エンコード。
+- dance-100 は実測100.05でほぼ公称のため据え置き。
+- これでゲームは公称間隔(Lv2=500 / Lv3=428.6ms)のままで曲と一致(int 上書き不要)。バージョン更新で ?v= キャッシュ更新。
+
+### Verification
+- 出力を再測定し 120.00 / 139.96 BPM を確認。`npm run build` 成功。
+
 ## 2026-06-15 - v0.25.301 - ダンス練習モードでレベル(1-3)を選べるように (Claude Code)
 
 ### 変更
