@@ -45,6 +45,23 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.335 - 登場:キャラをヘリの「ドア」に重ねる/飛び降りと同時にヘリ上昇 (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 乗車表現を「屋根の上」→**「ドアに重なる」**に変更。フェーズA(乗車中)は**プレイヤーのコンテナを
+  ヘリと同じ `danceUiLayer` の前面へ移動**(danceUiLayer は world と同一トランスフォームなので座標そのまま)。
+  これでキャラがヘリ画像に**かぶって(前面で重なって)**ドアに乗っているように見える。降車後 `actorLayer` へ戻す。
+- 乗車位置を客室/ドア(ヘリ中心のやや下=`HELI_RIDE_DOOR_FRAC`)に調整。
+- **飛び降りと同時にヘリ上昇**: ヘリの離脱開始を `hf*HELI_RIDE_RELEASE_FROM`(=キャラが飛び降りる瞬間)へ
+  前倒し。キャラ落下とヘリ上昇が同時に始まる。
+
+### 負荷スコア
+0/10。レイヤー移動(登場中の addChild 1回)+ オフセット計算のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。ドアの縦位置は `HELI_RIDE_DOOR_FRAC`、
+  飛び降り/上昇の同時タイミングは `HELI_RIDE_RELEASE_FROM` で調整可。
+
 ## 2026-06-15 - v0.25.334 - 連射タレット:射程に敵が無い時ゆっくり回転して索敵 (Claude Code)
 
 ### 変更(`useGameLoop.ts`)

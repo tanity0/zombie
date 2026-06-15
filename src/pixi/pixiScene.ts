@@ -171,10 +171,11 @@ const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチ
 const HELI_ABOVE = 210;      // 序盤、キャラ上方への随伴オフセット(px)
 const HELI_RISE = 820;       // 後半、上へ逃げる距離(px)
 const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
-// フェーズA(飛来)中、キャラをヘリの上に乗せて重ねる量。ヘリは最前面(danceUiLayer)なので
-// キャラはヘリ画像の上(屋根)に出るよう持ち上げる。終端でリフト解除=飛び降りて着地ダッシュへ。
-const HELI_RIDE_SINK = 12;        // 屋根に足を少しめり込ませる(scaled by introScale)
-const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合からリフトを解除(飛び降り)
+// フェーズA(飛来)中、キャラをヘリの「ドア」に重ねて乗せる。フェーズA中はキャラのコンテナを
+// ヘリと同じ danceUiLayer の前面へ移し、ヘリ画像に重なって(かぶって)見えるようにする。
+// 終端でリフト解除=飛び降り、同時にヘリは上昇していく。
+const HELI_RIDE_DOOR_FRAC = 0.18;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く)
+const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合からリフト解除(飛び降り)=ヘリ上昇開始
 // 敵の被弾しなり(頭が後ろにぐにゃっ): 撃たれた直後だけ skew + 軽い縦縮みで反らせる。
 const ENEMY_HIT_FLINCH_MS = 230;    // 少しだけゆっくり(0.13s→0.23s)
 const ENEMY_HIT_FLINCH_SKEW = 0.42; // 最大skew(ラジアン相当)
@@ -434,6 +435,7 @@ export class PixiScene {
   private pickupShadows: { id: string; x: number; y: number; w: number; alpha: number }[] = [];
   private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
   private introActive = false;  // 登場演出中(影スキップ判定用)
+  private playerRidingHeli = false; // フェーズA中=プレイヤーをヘリ前面(danceUiLayer)へ移しているか
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
@@ -2112,8 +2114,8 @@ export class PixiScene {
     sp.visible = true;
   }
 
-  // フェーズA(飛来)で、プレイヤーをヘリの上に乗せるための上方リフト量(screen px、正=上)。
-  // 足をヘリ屋根(= ヘリ中心の上方 HELI_ABOVE + ヘリ上半分)に置き、ヘリ画像の上に重なって見せる。
+  // フェーズA(飛来)で、プレイヤーをヘリの「ドア」位置へ重ねるための上方リフト量(screen px、正=上)。
+  // 足をヘリ中心のやや下(= ドア/客室)に置き、前面レイヤーでヘリ画像にかぶって見せる。
   // フェーズA終端で 0 に戻し(飛び降り)、フェーズBの着地ダッシュ開始点へ連続させる。
   private introRideLift(t: number, introScale: number, playerHeight: number): number {
     const hf = PLAYER_INTRO_HELI_FRAC;
@@ -2122,7 +2124,7 @@ export class PixiScene {
     const release = a < HELI_RIDE_RELEASE_FROM
       ? 1
       : Math.max(0, 1 - (a - HELI_RIDE_RELEASE_FROM) / (1 - HELI_RIDE_RELEASE_FROM));
-    const seat = playerHeight / 2 + (HELI_ABOVE + HELI_DISPLAY_H * 0.5 - HELI_RIDE_SINK) * introScale;
+    const seat = playerHeight / 2 + (HELI_ABOVE - HELI_DISPLAY_H * HELI_RIDE_DOOR_FRAC) * introScale;
     return seat * release;
   }
 
@@ -2145,9 +2147,11 @@ export class PixiScene {
     const pcy = player.y + player.height / 2;
     if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
     const baseSc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
-    // フェーズB(着地ダッシュ)に入ってからヘリは離脱(上昇+横ドリフト+フェード)。
+    // キャラが飛び降りる(= フェーズAの HELI_RIDE_RELEASE_FROM)と同時にヘリは上昇開始
+    // (上昇+横ドリフト+フェード)。
     const hf = PLAYER_INTRO_HELI_FRAC;
-    const depart = t < hf ? 0 : Math.min(1, (t - hf) / (1 - hf));
+    const releaseStart = hf * HELI_RIDE_RELEASE_FROM;
+    const depart = t <= releaseStart ? 0 : Math.min(1, (t - releaseStart) / (1 - releaseStart));
     const dEase = depart * depart;
     // 離脱中は少し拡大して画面外へ抜ける感じ(縮尺はフェーズA終端の1から微増)。
     const sc = baseSc * (introScale + 0.35 * dEase);
@@ -2361,12 +2365,15 @@ export class PixiScene {
     let introSqX = 1;
     let introSqY = 1;
     let introScale = 1; // フェーズA(ヘリ飛来)で小さく見せて遠さを表現
+    let riding = false; // フェーズA中=ヘリのドアに重なって乗っている
+    const hfPlayer = PLAYER_INTRO_HELI_FRAC;
     if (this.introUntil === -1) {
       const off = playerIntroOffset(0);
       introOffX = off.x;
       introOffY = off.y;
       introScale = playerIntroScale(0);
-      introOffY -= this.introRideLift(0, introScale, p.height); // ヘリに乗せる
+      introOffY -= this.introRideLift(0, introScale, p.height); // ヘリのドアに乗せる
+      riding = true;
     } else if (this.introUntil > 0) {
       const t = Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
       if (t < 1) {
@@ -2374,7 +2381,8 @@ export class PixiScene {
         introOffX = off.x;
         introOffY = off.y;
         introScale = playerIntroScale(t);
-        introOffY -= this.introRideLift(t, introScale, p.height); // フェーズAはヘリに乗せる
+        introOffY -= this.introRideLift(t, introScale, p.height); // フェーズAはヘリのドアに乗せる
+        riding = t < hfPlayer;
         // 着地スカッシュはフェーズB(ジャンプ着地)終盤の 20% で。
         const hf = PLAYER_INTRO_HELI_FRAC;
         const b = t >= hf ? (t - hf) / (1 - hf) : 0;
@@ -2384,6 +2392,16 @@ export class PixiScene {
           introSqY = 1 - 0.22 * sQ;
         }
       }
+    }
+
+    // フェーズA(乗車中)はプレイヤーをヘリと同じ danceUiLayer の前面へ移し、ヘリのドアに重ねて見せる
+    // (danceUiLayer は world と同一トランスフォームなので座標はそのまま)。降りたら actorLayer へ戻す。
+    if (riding && !this.playerRidingHeli) {
+      this.L.danceUiLayer.addChild(view.container); // ヘリ(同レイヤー・先に追加)より前面=ドアに重なる
+      this.playerRidingHeli = true;
+    } else if (!riding && this.playerRidingHeli) {
+      this.L.actorLayer.addChild(view.container);
+      this.playerRidingHeli = false;
     }
 
     if (tex) {
