@@ -342,13 +342,6 @@ const stablePhase = (id: string) => {
   return (Math.abs(h) % 1000) / 1000 * Math.PI * 2;
 };
 
-// Flat elliptical foot shadow, matching renderUtils.drawGroundShadow's geometry
-// (the passed `w` is pre-scaled by the caller; ellipse radii are w*0.55/w*0.18).
-const drawShadow = (g: Graphics, cx: number, cy: number, w: number, alpha: number) => {
-  g.ellipse(cx, cy, w * 0.55, w * 0.18).fill({ color: 0x000000, alpha });
-};
-
-
 const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallbackW: number) => {
   const spriteW = view?.sprite.visible === false ? 0 : Math.abs(view?.sprite.width ?? 0);
   return spriteW > 0 ? spriteW * 0.55 : fallbackW;
@@ -429,9 +422,12 @@ export class PixiScene {
   // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
   private shadowContainer = new Container();
   private shadowPool = new Map<string, Sprite>();
-  // 商人/イベントNPC のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
+  // 商人/イベントNPC/城/拾い物 のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
   private merchantShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   private npcShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private castleShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  // 拾い物は複数あるので配列で要求(id は 'pk:'+pickup.id)。syncPickups が毎フレーム作り直す。
+  private pickupShadows: { id: string; x: number; y: number; w: number; alpha: number }[] = [];
   private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
   private introActive = false;  // 登場演出中(影スキップ判定用)
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
@@ -1466,6 +1462,7 @@ export class PixiScene {
     const tex = getTexture('castle');
     if (!tex) {
       this.castleView.visible = false;
+      this.castleShadow = null;
       return;
     }
 
@@ -1473,6 +1470,7 @@ export class PixiScene {
     const horizonAlpha = this.horizonActorAlpha(footY);
     if (horizonAlpha <= 0) {
       this.castleView.visible = false;
+      this.castleShadow = null;
       return;
     }
 
@@ -1480,6 +1478,16 @@ export class PixiScene {
     const pulse = castle.bossSpawned ? 0.75 + 0.25 * Math.sin(now / 260) : 0;
     const targetH = CASTLE_TARGET_HEIGHT * d;
     const sc = targetH / tex.height;
+
+    // 接地影は syncShadows のソフト方向影に統一(他のオブジェクトと同じプール経路)。
+    // 幅は城スプライトの見た目幅基準だが、巨大ブロブを避けるため控えめに抑える。
+    const castleFootScreenY = castle.y + CASTLE_FOOT_OFFSET_Y * d;
+    this.castleShadow = {
+      x: castle.x,
+      y: castleFootScreenY,
+      w: Math.min(120 * d, tex.width * sc * 0.42),
+      alpha: horizonAlpha * 0.8,
+    };
 
     this.castleView.visible = true;
     this.castleView.position.set(Math.round(castle.x), Math.round(castle.y + CASTLE_FOOT_OFFSET_Y * d));
@@ -2193,6 +2201,15 @@ export class PixiScene {
     if (this.npcShadow) {
       const n = this.npcShadow;
       this.placeShadowSprite('npc', n.x, n.y, n.w, n.alpha, seen);
+    }
+    // 城(可視時のみ syncCastle がリクエスト)。
+    if (this.castleShadow) {
+      const c = this.castleShadow;
+      this.placeShadowSprite('castle', c.x, c.y, c.w, c.alpha, seen);
+    }
+    // 拾い物(syncPickups が毎フレーム配列を作り直す)。
+    for (const ps of this.pickupShadows) {
+      this.placeShadowSprite(ps.id, ps.x, ps.y, ps.w, ps.alpha, seen);
     }
     // mark-and-sweep: 消えたアクター/設置物の影スプライトを破棄。
     for (const [id, sp] of this.shadowPool) {
@@ -2964,6 +2981,8 @@ export class PixiScene {
 
   private syncPickups(pickups: Pickup[], now: number) {
     const seen = new Set<string>();
+    // 接地影は syncShadows のソフト方向影に統一。毎フレーム作り直す(後段で syncShadows が配置)。
+    this.pickupShadows.length = 0;
     for (const p of pickups) {
       seen.add(p.id);
       let entry = this.pickups.get(p.id);
@@ -3011,8 +3030,16 @@ export class PixiScene {
     if (horizonAlpha <= 0) return;
 
     // Shadow stays at the base (not floating) so the bob lifts the item off it.
-    const shadowAlpha = Math.max(0.22, 0.35 - floatOffset * 0.025);
-    drawShadow(g, cx, footY, size * 0.85 * d, shadowAlpha);
+    // ソフト方向影に統一(他オブジェクトと同じプール経路。重みは lighting.shadowAlpha 基準で
+    // アクターと揃え、bob で少しだけ薄れて浮遊感を出す)。syncShadows が配置する。
+    const lift = Math.max(0.62, 1 - Math.abs(floatOffset) * 0.07);
+    this.pickupShadows.push({
+      id: 'pk:' + p.id,
+      x: cx,
+      y: footY,
+      w: size * 0.85 * d,
+      alpha: horizonAlpha * lift,
+    });
 
     if (SPRITE_PICKUPS.has(p.type)) {
         const name =

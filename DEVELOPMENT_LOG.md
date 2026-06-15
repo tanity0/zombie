@@ -40,9 +40,30 @@ on the zombie game. Append a new entry after each meaningful change.
    `public/sprites/helicopter.png` 配置。`pixiTextures.ts` で `linear` ロード&登録。登場演出のヘリ表示が有効に。
    位置/サイズは `HELI_*` 定数。
 2. ライティング各 `?パラメータ` の最終値を実機で決めて既定へ焼き込む(現状は既定値で運用中)。
-3. (任意)城・拾い物の影もソフト方向影に統一 / ②強イベントの動的影もソフト化 / stage2-4のステージ別BGM。
+3. (任意)✅ 城・拾い物の影をソフト方向影に統一(v0.25.330 完了) / ②強イベントの動的影もソフト化(未) /
+   stage2-4のステージ別BGM(未)。
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
+
+## 2026-06-15 - v0.25.330 - 城・拾い物の影をソフト方向影に統一 (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- **拾い物**: 足元の平たい楕円(`drawShadow` の Graphics fill)を廃止し、アクターと同じ
+  **ソフト方向影(プール式 `placeShadowSprite` → `shadowContainer`)** に統一。`drawPickup` は
+  影を直接描かず、`pickupShadows[]`(id=`pk:<id>`)に要求を積み、`syncShadows` が配置。
+  重みは `lighting.shadowAlpha` 基準でアクターと揃え、bob で僅かに薄れて浮遊感を残す。
+- **城**: これまで足元の接地影なし。`syncCastle` が可視時に `castleShadow` を要求(幅は城スプライト
+  幅基準だが巨大ブロブ回避のため `min(120*d, texW*sc*0.42)` に抑制)、`syncShadows` が `'castle'` で配置。
+- 未使用化した `drawShadow` ヘルパを削除。これで足影は **全オブジェクトがソフト方向影に統一**
+  (プレイヤー/敵/召喚/設置物/商人/NPC/城/拾い物)。
+
+### 負荷スコア
+1/10(rendering)。拾い物は「毎フレーム楕円 fill」→「プール Sprite の transform 更新」に置換(微減)。
+城は +1スプライト/frame。新規確保は小さな `pickupShadows` 配列の作り直しのみ(可視数で上限)。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功、`eslint src/pixi/pixiScene.ts` クリーン。
+- 影の見た目(特に城の幅/濃さ、拾い物の方向影の長さ)は次回 dev 起動で実機確認し微調整可。
 
 ## 2026-06-15 - v0.25.329 - 登場ヘリ画像を登録・有効化 (Claude Code)
 
