@@ -1,5 +1,6 @@
 import { UpgradeOption, Player, PassiveType } from '../types/game';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL, huntingChargeSecondsLabel } from '../config/hunting';
+import { classSubWeaponFor } from '../store/gameStore';
 
 // RE rework: level-ups only strengthen the survivor. New weapons come from
 // world drops and crates, never the level-up menu — so every option here is
@@ -21,11 +22,15 @@ export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
   const ownsShijin = player.subWeapons.includes('shijin');
   // 通常サブウェポン(鞭/シールド/タレット/錬金/デコイ/各クラス技)は、排他サブ(刀 or ダンスフロア)装備中は出さない。
   const blockNormalSubs = ownsKatana || ownsShijin;
-  // スキル(=排他を除く通常サブウェポン)はゲーム全体で2つまで。刀/村雨/ダンスフロアはこの上限から除外。
-  // 既に持っているスキルの昇格は常に可。新規取得は所持数が2未満のときだけ。
+  // 新規取得できるスキル(=排他/固有を除く通常サブウェポン)はゲーム全体で1つまで。
+  // 固有スキル(クラス標準=最初から所持)と刀/村雨/ダンスフロア(排他)はこの上限から除外。
+  // 既に持っているスキルの昇格は常に可。新規取得は所持数が1未満のときだけ。
   const EXCLUSIVE_SUBS: string[] = ['katana', 'murasame', 'shijin'];
-  const ownedSkillCount = player.subWeapons.filter(k => !EXCLUSIVE_SUBS.includes(k)).length;
-  const atSkillCap = ownedSkillCount >= 2;
+  const classSig = classSubWeaponFor(player.characterClass);
+  const ownedSkillCount = player.subWeapons.filter(
+    k => !EXCLUSIVE_SUBS.includes(k) && k !== classSig
+  ).length;
+  const atSkillCap = ownedSkillCount >= 1;
   const canNewSkill = (lvl: number) => lvl > 0 || !atSkillCap; // lvl>0=既所持(昇格)、それ以外は上限チェック
 
   if (!blockNormalSubs && player.characterClass === 'warrior' && canNewSkill(grenadeLevel) && grenadeLevel < 3) {

@@ -21,7 +21,7 @@ import {
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
   ALCHEMY_ATTACK_RANGE, ALCHEMY_ATTACK_INTERVAL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE,
   ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST,
-  ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE
+  ALCHEMY_RARE_SUCTION_RADIUS, ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
@@ -1908,12 +1908,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
         }
-        // 死神は 0.5秒ごとに巻き込み範囲の敵へ近接AoEダメージ(吸引で寄せた敵を削る)。
+        // 死神は 0.5秒ごとに「見た目の死神オーラ範囲(ALCHEMY_RARE_SUCTION_RADIUS)内の敵すべて」へ
+        // 近接AoEダメージ。吸引対象(cap12/pull range)に依存せず、ボケた円の中の敵を確実に削る
+        // (=オーラ内の敵に攻撃が出ていなく見える問題の対策)。
         let sr = s0;
         if (now - (s0.lastContactAt ?? 0) >= ALCHEMY_RARE_MELEE_INTERVAL_MS) {
-          for (const o of inRange) {
-            const e = enemiesNext[o.i];
-            attackHits.push({ id: e.id, amount: ALCHEMY_RARE_MELEE_DAMAGE, x: e.x + e.width / 2, y: e.y });
+          const ar2 = ALCHEMY_RARE_SUCTION_RADIUS * ALCHEMY_RARE_SUCTION_RADIUS;
+          for (const e of enemiesNext) {
+            if (e.type === 'reaper') continue;
+            const ex = e.x + e.width / 2;
+            const ey = e.y + e.height / 2;
+            if ((ex - rcx) ** 2 + (ey - rcy) ** 2 > ar2) continue;
+            attackHits.push({ id: e.id, amount: ALCHEMY_RARE_MELEE_DAMAGE, x: ex, y: e.y });
           }
           sr = { ...s0, lastContactAt: now };
         }
@@ -3735,9 +3741,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           magBonus: 0,
           reloadMult: 1,
+          // 固有スキル(クラス標準のサブウェポン)は最初から所持(Lv1)。これとは別に新規スキルを1つまで取得可。
           // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
-          subWeapons: state.danceTestMode ? ['shijin'] : [],
-          subWeaponLevels: state.danceTestMode ? { shijin: state.danceTestLevel } : {},
+          subWeapons: state.danceTestMode ? ['shijin'] : [classSubWeaponFor(validClass)],
+          subWeaponLevels: state.danceTestMode
+            ? { shijin: state.danceTestLevel }
+            : { [classSubWeaponFor(validClass)]: 1 },
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,

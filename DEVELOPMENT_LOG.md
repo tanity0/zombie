@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.307 - レベルアップのスクロール / 死神の攻撃範囲 / スキル装備1個+固有スキル (Claude Code)
+
+### 変更
+1. **レベルアップ選択肢のスクロール**: 選択肢が多いと画面外に溢れて押せなかった。`UpgradeMenu`
+   のパネルを `flex flex-col max-h-[88dvh]`、選択肢リストを `overflow-y-auto min-h-0
+   overscroll-contain` にして、ヘッダ固定+リストだけスクロール可能に。
+2. **死神(錬金レア召喚)の攻撃範囲**: ダメージ判定が吸引対象(cap12 / pull range=380)に依存し、
+   見た目の死神オーラ(`ALCHEMY_RARE_SUCTION_RADIUS`=570)内でも外周の敵が無傷=「攻撃してない」
+   ように見えていた。`updateSummons` のレア近接AoEを、吸引対象に依存せず「オーラ範囲(570)内の
+   非reaper敵すべて」へ 0.5秒ごとに当てるよう書き換え。ダメージ数字も全対象で表示。
+3. **スキル装備を1個までに変更 + 固有スキルは最初から所持**:
+   - `resetGame` で各クラスの固有スキル(`classSubWeaponFor`: warrior=手榴弾 / mage=トラップ /
+     rogue=ハンティング / necromancer=クイックマガジン)を Lv1 所持の状態で開始。
+   - `upgradeUtils` の新規取得上限を 2→1 に。さらに固有スキルを上限カウントから除外したので、
+     実質「固有スキル + 新規スキル1個」。固有スキル・所持スキルの昇格カードは従来どおり出る。
+   - 刀/村雨/ダンスフロア(排他)は従来どおり上限から除外し、取得時に他スキルをリセット。
+
+### 負荷スコア
+1/10。死神AoEは0.5秒スロットル・敵数で有界。スクロールはCSSのみ。スキル変更は分岐のみ。
+
+### Verification
+- `npm run lint` / `npm run build` 成功。
+- 注意: 死神の根本ロジックは元から正しく動いていたが、判定範囲が見た目より狭かった。範囲を
+  オーラに合わせたので実機で当たりを再確認してほしい。
+
 ## 2026-06-15 - v0.25.306 - 手榴弾とグレネードランチャーの混同を解消 (Claude Code)
 
 ### 背景
