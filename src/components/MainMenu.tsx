@@ -196,9 +196,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                   className="pointer-events-none absolute -left-7 -bottom-8 w-32 h-32 rounded-full blur-2xl opacity-40"
                   style={{ backgroundColor: charClass.accent }}
                 />
+                {/* 職名はカード上部に横一列(フル幅)で置く。立ち絵の上の空きを使い、名前が窮屈にならない。 */}
+                <h3 className="relative px-3 pt-2.5 pb-1 text-base font-semibold text-white leading-tight">
+                  {charClass.name}
+                </h3>
                 {/* flex-1 でカード(グリッドで等高に伸びる)の高さいっぱいに行を広げ、立ち絵を「説明文の量」ではなく
                     カード下端に揃える(説明文が短いカードで立ち絵が浮くのを防ぐ)。 */}
-                <div className="relative flex min-h-[154px] flex-1">
+                <div className="relative flex min-h-[122px] flex-1">
                   <div className="relative w-[86px] flex-shrink-0 flex items-end justify-center pt-3 pb-2">
                     <div
                       className={`absolute bottom-2 h-6 w-16 rounded-full blur-md transition-opacity ${
@@ -220,9 +224,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
                     />
                   </div>
                   <div className="relative flex-1 min-w-0 px-2.5 py-3">
-                    <h3 className="text-base font-semibold text-white leading-tight">{charClass.name}</h3>
-
-                    <div className="mt-2 space-y-2 text-left">
+                    <div className="space-y-2 text-left">
                       <div>
                         <div className="text-[9px] uppercase tracking-wider text-white/40">初期装備</div>
                         <div className="text-[11px] leading-snug text-gray-200">{charClass.gear}</div>

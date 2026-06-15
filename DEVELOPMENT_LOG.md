@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.297 - キャラ選択: 職名をカード上部の横一列(フル幅)に (Claude Code)
+
+### 変更
+- 職名(h3)をテキスト列から出し、カード上部に**フル幅のヘッダー**として配置。立ち絵の上の空きを使い、
+  名前が右の狭い列で折り返して窮屈になるのを解消。立ち絵+説明(初期装備/専用スキル)の行は下に残す。
+- `MainMenu`: h3 をカード直下(accentブラーの後)へ移動、テキスト列の h3 と mt-2 を撤去。行は min-h を 122 に。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.296 - キャラ選択立ち絵のズレを構造修正(説明文の量に左右されていた) (Claude Code)
 
 ### 原因(ユーザーの指摘が正解)
