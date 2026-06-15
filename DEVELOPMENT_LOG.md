@@ -45,6 +45,21 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.348 - リズム:音声アンカー(v0.25.346)を撤回 (Claude Code)
+
+### 変更
+- v0.25.346 の「グリッドを `audio.currentTime` へアンカー」を**撤回**(元の固定グリッドへ)。
+  理由: `audio.currentTime`(デコード位置)に合わせても、実際に耳へ届く音は出力レイテンシ(端末/BT で100〜200ms)
+  分だけ遅れるため、グリッドが音より早くなり**かえってズレが悪化**した。`getDanceAudioTimeMs` も削除。
+- 残る「たまにズレる」は mp3 実テンポと公称BPMの差による累積ドリフトの可能性が高く、`?int1/2/3`(1拍ms)での
+  テンポ較正→既定焼き込みが正攻法。位相の定数オフセットは `?bo1/2/3`。
+
+### 負荷スコア
+0/10。コード撤回のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。
+
 ## 2026-06-15 - v0.25.347 - 登場セリフを4行+了解に変更・1行ずつ切替表示 (Claude Code)
 
 ### 変更

@@ -42,7 +42,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceAudioTimeMs } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
@@ -194,7 +194,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const turretAimRef = useRef<Map<string, number>>(new Map());
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
   const rhythmIdleStartRef = useRef<number>(0);
-  const rhythmBeatSyncedRef = useRef<boolean>(false); // 拍グリッドをダンス曲へアンカー済みか(開始リード中に1回)
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
   // (フリックのドラッグやバッシュのスライド程度では抜けない)。
   const rhythmMoveStartRef = useRef<number>(0);
@@ -679,29 +678,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 遅れても音楽からズレない(累積ドリフト対策)。レベル別オフセットで位相を合わせる。
               const firstBeatAt = Date.now() + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + rhythmBeatOffsetForLevel(lvl);
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
-              rhythmBeatSyncedRef.current = false; // 開始リード中にダンス曲へ再アンカーする
             }
           }
 
           if (useGameStore.getState().rhythm.active) {
-            // 開始リード中に1回だけ、拍グリッドをダンス曲の実再生位置へアンカーする。
-            // play() レイテンシ/開始ズレを解消し、サークル・判定を「耳の拍」へ一致させる。
-            // 1回だけ(リード中=最初の拍より前)なので毎フレーム追従のジッターは出ない。
-            if (!rhythmBeatSyncedRef.current) {
-              const audioMs = getDanceAudioTimeMs();
-              const rr0 = useGameStore.getState().rhythm;
-              if (audioMs !== null && Date.now() < rr0.firstBeatAt) {
-                const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
-                const interval = rr0.interval;
-                const offset = rhythmBeatOffsetForLevel(lvl);
-                const beat0Wall = Date.now() - audioMs;            // 曲の拍0の実時刻
-                const targetMin = Date.now() + 80;                 // 少し先の拍に合わせる
-                const n = Math.max(1, Math.ceil((targetMin - beat0Wall) / interval));
-                const newFirst = beat0Wall + n * interval + offset; // 曲の拍境界へ一致
-                useGameStore.setState(s => ({ rhythm: { ...s.rhythm, firstBeatAt: newFirst, expectBeat: 0 } }));
-                rhythmBeatSyncedRef.current = true;
-              }
-            }
             useGameStore.getState().tickRhythm();
             // ※毎フレームの位相再同期(resync)は廃止。音楽クロックの微ノイズを追いかけて
             //   サークルが微振動(ブルブル)するため、開始時に合わせた固定グリッドで一定に流す。

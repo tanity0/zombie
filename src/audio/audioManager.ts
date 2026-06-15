@@ -340,15 +340,6 @@ export const setDanceMode = (active: boolean, level = 2) => {
   applyBgm();
 };
 
-// ダンス曲が実際に鳴っている再生位置(ms)。鳴っていなければ null。
-// リズムの拍グリッドを曲(audio.currentTime)へアンカーするために使う(useGameLoop)。
-export const getDanceAudioTimeMs = (): number | null => {
-  if (!danceActive || !bgm || bgm.paused) return null;
-  if (!bgmSrc.includes('dance')) return null; // まだ戦闘曲→ダンス曲へ差し替え中
-  const t = bgm.currentTime;
-  return t > 0 ? t * 1000 : null;
-};
-
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
 // and balance it against the SFX. Falls back to element.volume if unavailable.
