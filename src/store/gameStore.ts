@@ -287,6 +287,9 @@ export const HURRICANE_DURATION_MS_BY_LEVEL = [0, 4800, 5600, 6400] as const; //
 export const HURRICANE_SUCTION_SPEED = 320;                      // TODO(鞭): 吸引速度(px/s)
 export const HURRICANE_MAX_TARGETS_PER_FRAME = 12;               // 負荷cap: 1tickで吸引する最大敵数
 export const HURRICANE_TICK_MS = 60;                             // 吸引tickのスロットル
+// 鞭ハリケーンも死神と同様、巻き込んだ敵へ周期ダメージ(吸引で寄せた敵を削る)。
+export const HURRICANE_DAMAGE = 10;                              // 1回のAoEダメージ(死神 ALCHEMY_RARE_MELEE_DAMAGE と同値)
+export const HURRICANE_DAMAGE_INTERVAL_MS = 500;                 // ダメージ周期(死神と同じ0.5秒)
 export const SHOP_WHIP_COST = 100;                               // TODO(鞭): 商人での鞭カード価格
 export const SHOP_TURRET_COST = 100;                             // TODO(自動タレット): 仮値。商人でのタレットカード価格
 export const SHOP_SHIJIN_COST = 100;                             // TODO(四神舞): 仮値。商人での四神舞カード価格
@@ -610,7 +613,7 @@ interface GameState {
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
   // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
   hurricane: {
-    rootX: number; rootY: number; endsAt: number; radius: number; level: number; lastTickAt: number;
+    rootX: number; rootY: number; endsAt: number; radius: number; level: number; lastTickAt: number; lastDamageAt: number;
   } | null;
   // 錬金術で召喚した味方ユニット。enemies とは別配列(副作用回避)。
   summons: Summon[];
@@ -1747,6 +1750,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         radius: HURRICANE_RADIUS_BY_LEVEL[lvl],
         level: lvl,
         lastTickAt: 0,
+        lastDamageAt: 0,
       }
     });
     // 渦の表現は Pixi 側(syncWhipHurricane)が hurricane 状態で竜巻スプライトを描画。
@@ -1767,7 +1771,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       .map(e => {
         const ex = e.x + e.width / 2;
         const ey = e.y + e.height / 2;
-        return { id: e.id, d2: (ex - h.rootX) * (ex - h.rootX) + (ey - h.rootY) * (ey - h.rootY) };
+        return { id: e.id, d2: (ex - h.rootX) * (ex - h.rootX) + (ey - h.rootY) * (ey - h.rootY), x: ex, y: e.y };
       })
       .filter(o => o.d2 <= r2)
       .sort((a, b) => a.d2 - b.d2)
@@ -1788,7 +1792,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackUntil: now + HURRICANE_TICK_MS * 2, // 次tickまで吸引を維持
       };
     });
-    set({ enemies, hurricane: { ...h, lastTickAt: now } });
+    // 巻き込んだ敵へ周期ダメージ(死神と同じ方式)。0.5秒ごとに吸引対象へAoE。
+    const dealDamage = now - h.lastDamageAt >= HURRICANE_DAMAGE_INTERVAL_MS;
+    set({ enemies, hurricane: { ...h, lastTickAt: now, lastDamageAt: dealDamage ? now : h.lastDamageAt } });
+    if (dealDamage) {
+      for (const o of inRange) {
+        get().damageEnemy(o.id, HURRICANE_DAMAGE);
+        get().spawnDamageNumber(o.x, o.y, HURRICANE_DAMAGE); // 巻き込みダメージを可視化
+      }
+    }
   },
 
   updateAlchemyChannel: (startedAt) => {
@@ -1841,7 +1853,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
 
-    const attackHits: { id: string; amount: number }[] = [];
+    const attackHits: { id: string; amount: number; x: number; y: number }[] = [];
     let enemiesNext = state.enemies;
     let enemiesChanged = false;
 
@@ -1893,7 +1905,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 死神は 0.5秒ごとに巻き込み範囲の敵へ近接AoEダメージ(吸引で寄せた敵を削る)。
         let sr = s0;
         if (now - (s0.lastContactAt ?? 0) >= ALCHEMY_RARE_MELEE_INTERVAL_MS) {
-          for (const o of inRange) attackHits.push({ id: enemiesNext[o.i].id, amount: ALCHEMY_RARE_MELEE_DAMAGE });
+          for (const o of inRange) {
+            const e = enemiesNext[o.i];
+            attackHits.push({ id: e.id, amount: ALCHEMY_RARE_MELEE_DAMAGE, x: e.x + e.width / 2, y: e.y });
+          }
           sr = { ...s0, lastContactAt: now };
         }
         nextSummons.push(moveFollow(sr));
@@ -1908,17 +1923,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (now - (s.lastContactAt ?? 0) >= ALCHEMY_ATTACK_INTERVAL_MS) {
         let nearestId: string | null = null;
         let nd2 = ALCHEMY_ATTACK_RANGE * ALCHEMY_ATTACK_RANGE;
+        let nx = 0, ny = 0;
         for (const e of enemiesNext) {
           if (e.type === 'reaper') continue;
           const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
-          if (d2 <= nd2) { nd2 = d2; nearestId = e.id; }
+          if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
         }
-        if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage }); s = { ...s, lastContactAt: now }; }
+        if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage, x: nx, y: ny }); s = { ...s, lastContactAt: now }; }
       }
       nextSummons.push(moveFollow(s));
     }
     set({ summons: nextSummons, ...(enemiesChanged ? { enemies: enemiesNext } : {}) });
-    for (const h of attackHits) get().damageEnemy(h.id, h.amount);
+    for (const h of attackHits) {
+      get().damageEnemy(h.id, h.amount);
+      get().spawnDamageNumber(h.x, h.y, h.amount); // 召喚(死神AoE/通常接触)の攻撃を可視化
+    }
   },
 
   damageSummon: (id, amount) => {

@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.295 - 鞭ハリケーンに巻き込みダメージ追加 / 死神・召喚の攻撃をダメージ数字で可視化 (Claude Code)
+
+### 鞭ハリケーン(トルネード)に攻撃を追加
+- これまで吸引のみ。死神と同じく**巻き込んだ敵へ0.5秒ごとにAoEダメージ**(`HURRICANE_DAMAGE=10` / `HURRICANE_DAMAGE_INTERVAL_MS=500`)。
+  `tickHurricane` に `lastDamageAt` を追加し周期判定。`damageEnemy`+`spawnDamageNumber` で適用＆可視化。
+
+### 死神・召喚の攻撃が「見えない」問題
+- 死神(レア召喚)は元々AoEダメージ(10/0.5s)を与えていたが、`damageEnemy` は**ダメージ数字を出さない**ため
+  「攻撃してない」ように見えていた。`updateSummons` の attackHits に座標を持たせ、適用時に `spawnDamageNumber` で可視化。
+  通常召喚の接触攻撃も同様に数字表示。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.294 - マークスマン立ち絵を下げる / 被写体深度(tilt-shift)をURL生調整可能に (Claude Code)
 
 ### マークスマン立ち絵
