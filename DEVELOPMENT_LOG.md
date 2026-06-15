@@ -45,6 +45,21 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.344 - 登場:ヘリを飛び降り地点でホバー固定→待って離脱(一緒に飛ぶバグ修正) (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- **バグ修正**: 飛び降り後もヘリが `off`(=プレイヤーの着地ダッシュ軌道)を参照し続け、プレイヤーと一緒に
+  飛んで行っていた(=「待たずにすぐ飛ぶ」の原因)。飛び降り時点 `jumpOffT` で基準位置を凍結し、
+  **その場でホバー固定**(`introHeliBase(player, min(t, jumpOffT))`)。離脱は上昇+横ドリフト+フェードのみ。
+- 待ち時間 `HELI_DEPART_DELAY_MS` 300→500(0.5秒ホバーしてから上昇)。これで「飛び降り→ヘリが少し待つ→上昇」が
+  見える。
+
+### 負荷スコア
+0/10。登場演出中の位置計算のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。待ち時間は `HELI_DEPART_DELAY_MS` で調整可。
+
 ## 2026-06-15 - v0.25.343 - 登場セリフ文面/話者=職業名・ヘリ離脱0.3秒 (Claude Code)
 
 ### 変更

@@ -179,7 +179,7 @@ const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
 const HELI_RIDE_DOOR_FRAC = 0.16;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く。大きいほど下)
 const HELI_RIDE_DOOR_X = 4;          // ドアの横位置(ヘリ中心からのオフセット px*scale。+で進行方向寄り)
 const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合から飛び降り開始
-const HELI_DEPART_DELAY_MS = 300;    // 飛び降りてからヘリが飛び去るまでの待ち(0.3秒。セリフ後さらに遅らせる)
+const HELI_DEPART_DELAY_MS = 500;    // 飛び降りてからヘリがその場でホバーして待つ時間(0.5秒)→上昇離脱
 // ヘリの随伴高度(キャラ上方への距離)。飛来終盤に HELI_ABOVE→HELI_DROP_ABOVE へ降下し、
 // 低ホバー完了(=飛び降り開始 HELI_RIDE_RELEASE_FROM)してからキャラが飛び降りる。
 // キャラはヘリ中心にピン留めなので、ヘリと一緒に下がってから飛び降りる。
@@ -2156,24 +2156,25 @@ export class PixiScene {
     const t = this.introUntil === -1
       ? 0
       : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-    const off = playerIntroOffset(t);
-    const introScale = playerIntroScale(t);
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
     if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
     const baseSc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
-    // キャラが飛び降りた 0.1秒後にヘリが離脱(上昇+横ドリフト+フェード)。
+    // 飛び降り時点(jumpOffT)。飛び降り後はヘリを「その場でホバー固定」する(プレイヤーの着地ダッシュ
+    // 軌道=off を参照し続けると一緒に飛んで行ってしまうため)。基準位置はこの t で凍結。
     const hf = PLAYER_INTRO_HELI_FRAC;
-    const releaseStart = hf * HELI_RIDE_RELEASE_FROM + HELI_DEPART_DELAY_MS / PLAYER_INTRO_MS;
+    const jumpOffT = hf * HELI_RIDE_RELEASE_FROM;
+    const baseT = Math.min(t, jumpOffT);            // 飛び降り後はホバー位置で固定
+    const base = this.introHeliBase(player, baseT); // ヘリ中心(world)+縮尺
+    // 飛び降りから HELI_DEPART_DELAY_MS 待ってから離脱(上昇+横ドリフト+フェード)。
+    const releaseStart = jumpOffT + HELI_DEPART_DELAY_MS / PLAYER_INTRO_MS;
     const depart = t <= releaseStart ? 0 : Math.min(1, (t - releaseStart) / (1 - releaseStart));
     const dEase = depart * depart;
-    // 離脱中は少し拡大して画面外へ抜ける感じ(縮尺はフェーズA終端の1から微増)。
-    const sc = baseSc * (introScale + 0.35 * dEase);
+    // 離脱中は少し拡大して画面外へ抜ける感じ。
+    const sc = baseSc * (base.scale + 0.35 * dEase);
     // 画像は左向きなので X 反転して右向きに(進行=右へ飛来)。
     this.helicopter.scale.set(-sc, sc);
     this.helicopter.position.set(
-      pcx + off.x + HELI_DRIFT_X * dEase,
-      pcy + off.y - heliAboveAt(t) * introScale - HELI_RISE * dEase,
+      base.cx + HELI_DRIFT_X * dEase,
+      base.cy - HELI_RISE * dEase,
     );
     this.helicopter.rotation = 0.12 * dEase; // 逃げる時に少し機体を傾ける
     this.helicopter.alpha = 1 - dEase;       // 上へ逃げながらフェード(終盤で消える)
