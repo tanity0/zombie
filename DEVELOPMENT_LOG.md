@@ -45,6 +45,18 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.340 - 登場セリフをヘリ降下後のタイミングに (Claude Code)
+
+### 変更(`gameStore.ts`)
+- 登場セリフのトリガーを `t=0.3` から **`PLAYER_INTRO_HELI_FRAC * 0.82`**(フェーズA内 a≈0.82=ヘリが
+  低ホバーまで降りてきた頃)へ変更。ヘリが下に降りた状態でセリフ→飛び降り、になる。
+
+### 負荷スコア
+0/10。定数変更のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。タイミングは係数(0.82)で調整可。
+
 ## 2026-06-15 - v0.25.339 - 登場:ヘリが低く降りてから飛び降りる (Claude Code)
 
 ### 変更(`pixiScene.ts`)
