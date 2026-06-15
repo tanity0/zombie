@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.298 - 仮: ダンス練習モード(敵なし+ダンスフロアLv1所持で開始) (Claude Code)
+
+### 追加
+- キャラ選択に「🕺 ダンスモード（練習・敵なし）」ボタン。押すと選択中クラスで開始するが、**敵を一切スポーンせず**、
+  **ダンスフロア(shijin)Lv1だけ覚えた状態**でスタート。サークル/フリック/曲合わせの調整用。
+- `gameStore`: `danceTestMode` フラグ + `setDanceTestMode`。`resetGame` で true 時は subWeapons=['shijin'], levels={shijin:1}。
+- `useGameLoop`: `danceTestMode` 時は敵スポーン3経路(連続スポナー/スクリプトwave/城ボス)を全てゲート。
+- 通常「はじめる」は `setDanceTestMode(false)` を明示。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功。
+
 ## 2026-06-15 - v0.25.297 - キャラ選択: 職名をカード上部の横一列(フル幅)に (Claude Code)
 
 ### 変更

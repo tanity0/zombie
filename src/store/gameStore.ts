@@ -583,6 +583,7 @@ interface GameState {
   ammoPickupAmounts: Record<AmmoType, number>;
   unlockedShopSkillCards: Partial<Record<SubWeaponKey, number>>;
   startWithTestStraps: boolean;
+  danceTestMode: boolean; // 仮: 敵なし+ダンスフロアLv1所持で開始(練習用)
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   rhythm: RhythmState;
@@ -708,6 +709,7 @@ interface GameState {
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
+  setDanceTestMode: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
@@ -807,6 +809,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
   startWithTestStraps: false,
+  danceTestMode: false,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   rhythm: initialRhythm(),
@@ -3440,6 +3443,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ startWithTestStraps: enabled });
   },
 
+  setDanceTestMode: (enabled) => {
+    set({ danceTestMode: enabled });
+  },
+
   addMeleeFinishCombo: (amount = 1) => {
     const gain = Math.max(1, Math.floor(amount));
     set(state => {
@@ -3720,8 +3727,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadingWeaponId: '',
           magBonus: 0,
           reloadMult: 1,
-          subWeapons: [],
-          subWeaponLevels: {},
+          // 仮: ダンスモードはダンスフロア(shijin)Lv1だけ覚えた状態で開始(敵なしで練習)。
+          subWeapons: state.danceTestMode ? ['shijin'] : [],
+          subWeaponLevels: state.danceTestMode ? { shijin: 1 } : {},
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,

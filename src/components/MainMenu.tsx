@@ -33,6 +33,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
   const startWithTestStraps = useGameStore(s => s.startWithTestStraps);
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
+  const setDanceTestMode = useGameStore(s => s.setDanceTestMode);
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
     handgun: String(ammoPickupAmounts.handgun),
@@ -410,7 +411,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
             )}
 
             <button
-              onClick={() => onStartGame(selectedClass)}
+              onClick={() => { setDanceTestMode(false); onStartGame(selectedClass); }}
               className="w-full py-3 rounded-2xl text-base font-semibold text-white"
               style={{
                 background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
@@ -418,6 +419,15 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
               }}
             >
               はじめる
+            </button>
+
+            {/* 仮: ダンス練習モード。敵なし + ダンスフロアLv1所持で開始(サークル/フリックの調整用)。 */}
+            <button
+              onClick={() => { setDanceTestMode(true); onStartGame(selectedClass); }}
+              className="w-full mt-2 py-2.5 rounded-2xl text-sm font-semibold text-fuchsia-100 border border-fuchsia-400/40"
+              style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}
+            >
+              🕺 ダンスモード（練習・敵なし）
             </button>
 
             <div className="mt-3 text-[12px] text-white/60 space-y-1 text-center">

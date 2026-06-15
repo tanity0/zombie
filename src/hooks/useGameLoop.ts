@@ -478,6 +478,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           swipeDirection,
           gameBounds,
         } = loopState;
+        const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const timeScale = nowMs < loopState.timeSlowUntil ? loopState.timeSlowScale : 1;
         const deltaTime = baseDeltaTime * timeScale;
 
@@ -506,7 +507,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         lastSeenGameTimeRef.current = newGameTime;
 
         const castle = useGameStore.getState().castleEvent;
-        if (!castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
+        if (!danceTest && !castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
           markCastleBossSpawned();
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
@@ -2167,6 +2168,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Continuous spawner — drip enemies onto the field from off-screen.
         const enemyCountBeforeSpawn = useGameStore.getState().enemies.length;
         if (
+          !danceTest &&
           enemyCountBeforeSpawn < MAX_ENEMIES &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime)
         ) {
@@ -2300,13 +2302,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Scripted wave/elite events (compressed 5-min schedule: early plant,
         // mid-boss spikes, the 7-strong onslaught, finale giantbat).
         // consumeDueWaves fires each event exactly once.
-        const waveEnemies = consumeDueWaves(
-          gameTime,
-          consumedWavesRef.current,
-          player,
-          gameBounds
-        );
-        waveEnemies.forEach(addEnemy);
+        if (!danceTest) {
+          const waveEnemies = consumeDueWaves(
+            gameTime,
+            consumedWavesRef.current,
+            player,
+            gameBounds
+          );
+          waveEnemies.forEach(addEnemy);
+        }
 
         // VS-style recycling: when an enemy drifts far beyond the viewport,
         // bring it back just outside the current screen instead of letting the
