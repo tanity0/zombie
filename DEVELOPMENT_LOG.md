@@ -45,6 +45,23 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.337 - 登場:乗車位置をヘリ中心から直接ピン留め(ぶら下がり修正) (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 乗車位置の計算を作り直し。`height/2` 経由のリフト(`introRideLift` 廃止)をやめ、**ヘリ中心(`introHeliBase`)
+  からの一定オフセットで足元を直接ピン留め**。フェーズA中はドリフトせず常にドアに重なる。
+  → 「飛び降りる前にキャラが下にズレてぶら下がる」現象の是正。
+- ドア位置を少し上げ(`HELI_RIDE_DOOR_FRAC` 0.18→0.10)、横位置に `HELI_RIDE_DOOR_X` を追加。
+- 飛び降り(`a>=HELI_RIDE_RELEASE_FROM`)はドア位置→通常オフセットへ加速補間。ヘリ本体の位置式は
+  `introHeliBase` と同一なのでキャラと完全一致。
+
+### 負荷スコア
+0/10。登場演出中のオフセット計算のみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。ドアの上下/左右は `HELI_RIDE_DOOR_FRAC`/`HELI_RIDE_DOOR_X` で調整可。
+  ※もしキャラがヘリに隠れて見えない場合はレイヤー前後(reparent)側の問題なので連絡を。
+
 ## 2026-06-15 - v0.25.336 - ダンスUI:技リストを下げ/入力済み矢印をキャラ下へ (Claude Code)
 
 ### 変更(`pixiScene.ts` `syncRhythmOverlay`)
