@@ -45,6 +45,21 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.347 - 登場セリフを4行+了解に変更・1行ずつ切替表示 (Claude Code)
+
+### 変更
+- 登場セリフを4行(通信)+職業名「了解。」に変更。文面:
+  「この先の村に例の研究者もいるはずだ。」/「先発の調査隊の情報によると生存者は…」/
+  「絶望的。望みは薄いが掛けるしかない。」/「感染者を殲滅しつつ森の奥へ進め。」/(職業名)「了解。」
+- `IntroDialogue.tsx`: 表示を**1行ずつ切り替え**(現在行のみ表示。打ち終え→保持→次行に差し替え)に変更。
+- 合計時間は行数から自動算出(`INTRO_DIALOGUE_TOTAL_MS`)。時間停止もそれに追従。
+
+### 負荷スコア
+0/10。文言・表示ロジックのみ。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。文字速度/保持は `INTRO_DIALOGUE_CHAR_MS`/`_LINE_HOLD_MS` で調整可。
+
 ## 2026-06-15 - v0.25.346 - リズム:判定グリッドをダンス曲へ同期(ズレ修正) (Claude Code)
 
 ### 変更

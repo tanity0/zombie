@@ -34,17 +34,28 @@ const IntroDialogue: React.FC = () => {
 
   if (!active) return null;
 
+  // 1行ずつ切り替えて表示: 現在の行だけを出す(打ち終えたら次の行へ差し替わる)。
   const elapsed = Date.now() - startedAt;
-  // 行ごとの可視文字数を算出(前の行は打ち終え、現在行だけオートタイプ)。
   let remaining = elapsed;
-  const rendered: { speaker: string | null; text: string; typing: boolean }[] = [];
-  for (const line of INTRO_DIALOGUE_LINES) {
-    if (remaining <= 0) break;
-    const shown = Math.max(0, Math.min(line.text.length, Math.floor(remaining / INTRO_DIALOGUE_CHAR_MS)));
-    rendered.push({ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length });
-    remaining -= line.text.length * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS;
+  let curIdx = -1;
+  let shown = 0;
+  for (let i = 0; i < INTRO_DIALOGUE_LINES.length; i++) {
+    const len = INTRO_DIALOGUE_LINES[i].text.length;
+    const lineTotal = len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS;
+    if (remaining < lineTotal) {
+      curIdx = i;
+      shown = Math.max(0, Math.min(len, Math.floor(remaining / INTRO_DIALOGUE_CHAR_MS)));
+      break;
+    }
+    remaining -= lineTotal;
   }
-  if (rendered.length === 0) return null;
+  if (curIdx === -1) {
+    // 最終保持中: 最後の行を出し切ったまま。
+    curIdx = INTRO_DIALOGUE_LINES.length - 1;
+    shown = INTRO_DIALOGUE_LINES[curIdx].text.length;
+  }
+  const line = INTRO_DIALOGUE_LINES[curIdx];
+  const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(env(safe-area-inset-bottom),18px)]">

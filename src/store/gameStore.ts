@@ -402,9 +402,12 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
   rogue: 'ストライカー',
   necromancer: 'スカベンジャー',
 };
-// speaker '__class__' は表示時に選択中の職業名へ置換する。
+// speaker '__class__' は表示時に選択中の職業名へ置換する。1行ずつ切り替えて表示。
 export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
-  { speaker: null, text: '任務は研究所奪還の位置特定となる。座標確定後は速やかに帰還せよ。' },
+  { speaker: null, text: 'この先の村に例の研究者もいるはずだ。' },
+  { speaker: null, text: '先発の調査隊の情報によると生存者は…' },
+  { speaker: null, text: '絶望的。望みは薄いが掛けるしかない。' },
+  { speaker: null, text: '感染者を殲滅しつつ森の奥へ進め。' },
   { speaker: '__class__', text: '了解。' },
 ];
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
