@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.305 - ダンスの矢印を全体的に大きく (Claude Code)
+
+### 変更
+- `pixiScene` の矢印ドットサイズ(`block`)を拡大: 入力フリック矢印 2.4→3.0 / コマンド矢印 2.2→2.8(約+25%)。
+  間隔(`gap`/`cgap`)は block 依存なので自動で広がる。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。
+
 ## 2026-06-15 - v0.25.304 - ダンスUIを被写体深度(tilt-shift)の影響外に(技VFXは従来どおり) (Claude Code)
 
 ### 変更

@@ -1189,7 +1189,7 @@ export class PixiScene {
     const shown = rhythm.inputArrows.slice(-4);
     const prompt = rhythm.prompt;
     const inputRowY = -r - 18;                 // 原点(cx,cy)基準
-    const cblock = 2.2;
+    const cblock = 2.8; // コマンド矢印のドットサイズ(全体的に大きめに)
     const cgap = 7 * cblock + 5;
     const cmdY = inputRowY - 7 * cblock - 7;   // 入力矢印のすぐ上
     const cstartX = -(cgap * (prompt.length - 1)) / 2 - 8; // 名前ぶん少し左寄せ
@@ -1202,7 +1202,7 @@ export class PixiScene {
       ag.clear();
       // 入力フリック(末尾最大4)。最新は明るく強調。
       if (shown.length > 0) {
-        const block = 2.4;
+        const block = 3.0; // 入力フリック矢印のドットサイズ(全体的に大きめに)
         const gap = 7 * block + 6;
         const startX = -(gap * (shown.length - 1)) / 2;
         for (let i = 0; i < shown.length; i++) {
