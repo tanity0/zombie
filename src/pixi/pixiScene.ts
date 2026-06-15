@@ -608,10 +608,11 @@ export class PixiScene {
     this.playerGroundPool.tint = LIGHT_POOL_TINT;
     this.playerGroundPool.blendMode = 'add';
     this.playerGroundPool.visible = LIGHT_POOL_ENABLED && LIGHT_POOL_ALPHA > 0;
-    // 登場演出のヘリ。アクターより上(effectLayer)に置き、画像登場時のみ表示。
+    // 登場演出のヘリ。danceUiLayer(filteredWorld外=被写界深度でボケない/world座標で追従)に置く。
+    // ぼかさない要件のため effectLayer(=tilt-shiftでボケる)からこちらへ移動。画像登場時のみ表示。
     this.helicopter.anchor.set(0.5);
     this.helicopter.visible = false;
-    this.L.effectLayer.addChild(this.helicopter);
+    this.L.danceUiLayer.addChild(this.helicopter);
     this.groundReflectionGfx.blendMode = 'add';
     // 魔法陣スプライト: 加算発光・中心アンカー・既定は非表示(alpha 0)。地面の
     // 反射/光の上、足元シャドウの下に置き、キャラ絵を塗り潰さない。
@@ -2132,7 +2133,8 @@ export class PixiScene {
     const dEase = depart * depart;
     // 離脱中は少し拡大して画面外へ抜ける感じ(縮尺はフェーズA終端の1から微増)。
     const sc = baseSc * (introScale + 0.35 * dEase);
-    this.helicopter.scale.set(sc);
+    // 画像は左向きなので X 反転して右向きに(進行=右へ飛来)。
+    this.helicopter.scale.set(-sc, sc);
     this.helicopter.position.set(
       pcx + off.x + HELI_DRIFT_X * dEase,
       pcy + off.y - HELI_ABOVE * introScale - HELI_RISE * dEase,

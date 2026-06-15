@@ -45,6 +45,26 @@ on the zombie game. Append a new entry after each meaningful change.
    ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
    (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
 
+## 2026-06-15 - v0.25.332 - 真っ暗バグ対策(テクスチャ堅牢化)+ ヘリ:非ぼかし/右向き (Claude Code)
+
+### 変更
+- **🩹 スタート時「真っ暗」対策(以前から発生していた長年の原因)**: `pixiTextures.ensureTextures` が
+  `Promise.all` で全アセットを読み込んでおり、**1つでもロード失敗すると全体が reject → `ready` が永久に
+  立たず画面が真っ暗**(失敗 promise がキャッシュされ再試行もされない)になっていた。各アセットを
+  **個別 try/catch** で読み込み、失敗した絵は未登録(`getTexture=null`→その描画だけスキップ)にして
+  **`ready` は必ず true** に。1枚の取りこぼしで全画面が落ちないようにした。各 `scaleMode` は現状維持。
+- **ヘリ:ぼかさない**: テクスチャ `scaleMode` を `linear`→`nearest`(平滑化なし)に。さらに被写界深度
+  (tilt-shift)でボケる `effectLayer` から、**`danceUiLayer`(filteredWorld外=ボケない/world座標で追従)**
+  へ移動。これで登場ヘリはくっきり表示。
+- **ヘリ:右向き**: 画像が左向きのため X 反転(`scale.set(-sc, sc)`)して右向き(=右へ飛来)に。
+
+### 負荷スコア
+0/10。ロード方式の変更(同時実行は同等)+ レイヤー移動 + スケール符号反転のみ。実行時コスト増なし。
+
+### Verification
+- `npx tsc --noEmit` パス、`npm run build` 成功。真っ暗の再現は環境依存のため、改善はするが残る場合は
+  コンソール警告(`[pixiTextures] failed to load sprite ...`)の有無で原因アセットを特定可能。
+
 ## 2026-06-15 - v0.25.331 - 登場演出を2段化(ヘリ飛来2s→ジャンプ着地) (Claude Code)
 
 ### 変更

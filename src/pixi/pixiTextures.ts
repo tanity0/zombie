@@ -66,47 +66,55 @@ export const ensureTextures = (): Promise<void> => {
       // 設置型デコイ(全方向の単体装置スプライト)。
       'decoy',
     ];
-    const [atlas, player, torch, castle, magicCircle, whipHurricane, whip, mirrorBall, helicopter, ...playerWalk] = await Promise.all([
-      Assets.load(spritePath('atlas')),
-      Assets.load(spritePath('player')),
-      Assets.load(spritePath('torch')),
-      Assets.load(spritePath('castle')),
-      Assets.load(spritePath('magic-circle')),
-      Assets.load(spritePath('whip-hurricane')),
-      Assets.load(spritePath('whip')),
-      Assets.load(spritePath('mirror-ball')),
-      Assets.load(spritePath('helicopter')),
-      ...playerWalkNames.map(name => Assets.load(spritePath(name))),
-    ]);
-    atlas.source.scaleMode = 'nearest';
-    player.source.scaleMode = 'nearest';
-    torch.source.scaleMode = 'nearest';
-    castle.source.scaleMode = 'nearest';
-    mirrorBall.source.scaleMode = 'linear'; // 高解像度の球を縮小描画するため linear で滑らかに
-    helicopter.source.scaleMode = 'linear'; // 高解像度の登場ヘリを縮小描画するため linear で滑らかに
-    // 魔法陣はソフトな発光なので linear(既定)のまま — nearest にしない。
-    playerWalk.forEach((tex) => {
-      tex.source.scaleMode = 'nearest';
-    });
+    // 単体PNG。scaleMode 未指定は既定(linear)のまま(魔法陣/鞭のソフト発光用)。
+    // nearest=ピクセルアート、linear=高解像度を縮小描画するもの(球/ヘリ)。
+    const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
+      { name: 'player', scaleMode: 'nearest' },
+      { name: 'torch', scaleMode: 'nearest' },
+      { name: 'castle', scaleMode: 'nearest' },
+      { name: 'magic-circle' },        // 既定(linear)のまま
+      { name: 'whip-hurricane' },      // 既定のまま
+      { name: 'whip' },                // 既定のまま
+      { name: 'mirror-ball', scaleMode: 'linear' },
+      { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
 
-    for (const [name, [sx, sy, sw, sh]] of Object.entries(ATLAS_RECTS)) {
-      textures.set(
-        name,
-        new Texture({ source: atlas.source, frame: new Rectangle(sx, sy, sw, sh) })
-      );
-    }
-    textures.set('player', player);
-    playerWalk.forEach((tex, i) => {
-      textures.set(playerWalkNames[i], tex);
-    });
-    textures.set('torch', torch);
-    textures.set('castle', castle);
-    textures.set('magic-circle', magicCircle);
-    textures.set('whip-hurricane', whipHurricane);
-    textures.set('whip', whip);
-    textures.set('mirror-ball', mirrorBall);
-    textures.set('helicopter', helicopter);
-    ready = true;
+      ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
+    ];
+
+    // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
+    // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
+    // 以前は Promise.all で1つでも失敗すると ready が永久に立たず画面が真っ暗になっていた。
+    const loadOne = async (name: string): Promise<Texture | null> => {
+      try {
+        return await Assets.load(spritePath(name));
+      } catch (e) {
+        console.warn(`[pixiTextures] failed to load sprite "${name}":`, e);
+        return null;
+      }
+    };
+
+    await Promise.all([
+      // アトラス(敵/木/一部拾い物)。読めたらフレームを切り出す。失敗時はその絵だけ欠落。
+      (async () => {
+        const atlas = await loadOne('atlas');
+        if (!atlas) return;
+        atlas.source.scaleMode = 'nearest';
+        for (const [name, [sx, sy, sw, sh]] of Object.entries(ATLAS_RECTS)) {
+          textures.set(
+            name,
+            new Texture({ source: atlas.source, frame: new Rectangle(sx, sy, sw, sh) })
+          );
+        }
+      })(),
+      ...standalone.map(async ({ name, scaleMode }) => {
+        const tex = await loadOne(name);
+        if (!tex) return;
+        if (scaleMode) tex.source.scaleMode = scaleMode;
+        textures.set(name, tex);
+      }),
+    ]);
+
+    ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
   })();
   return loading;
 };
