@@ -11,8 +11,15 @@ export const rhythmIntervalForLevel = (level: number): number => {
   return 60000 / RHYTHM_BPM_BY_LEVEL[lvl];
 };
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
-// BGM(120BPM)の拍頭に対する補正(ms)。pulse-grid の currentTime=0 が拍頭からズレている場合に調整。
-export const RHYTHM_MUSIC_OFFSET_MS = 0;
+// サークルが足元中央で重なる(=拍を踏む)タイミングを、各レベル(BPM)ごとに決め打ちで前後にずらす(ms)。
+// 同期はしない(重いので避ける)。曲はダンス開始で currentTime=0 から鳴るので、ダンス開始からの固定
+// オフセットでビート位相を合わせられる。正=サークルが遅れて中央に来る / 負=早く来る。
+// 実機でサークルと曲のビートを見比べながら各レベルを調整する(BPMから逆算した秒数を決め打ち)。
+export const RHYTHM_BEAT_OFFSET_MS_BY_LEVEL = [0, 0, 0, 0]; // idx0=フォールバック / 1=Lv1(100) / 2=Lv2(120) / 3=Lv3(140)
+export const rhythmBeatOffsetForLevel = (level: number): number => {
+  const lvl = Math.max(1, Math.min(3, Math.floor(level) || 1));
+  return RHYTHM_BEAT_OFFSET_MS_BY_LEVEL[lvl];
+};
 export const RHYTHM_SUCCESS_WINDOW_MS = 180;  // 成功判定幅(±ms)。ほんの少し甘めに調整
 export const RHYTHM_JUST_WINDOW_MS = 75;      // ジャスト判定幅(±ms)。演出区別+少し甘め
 export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多重判定防止)

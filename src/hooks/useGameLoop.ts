@@ -40,7 +40,7 @@ import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import {
-  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, RHYTHM_MUSIC_OFFSET_MS,
+  RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, RHYTHM_FLICK_KNOCKBACK_MAX,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_DAMAGE,
@@ -612,7 +612,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 四神舞レベルでBPM(=interval)が変わる。拍は固定 gameTime グリッドで合わせる(音楽同期はしない)。
               const lvl = Math.max(1, Math.min(3, rp.subWeaponLevels['shijin'] ?? 1));
               const interval = rhythmIntervalForLevel(lvl);
-              const firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + RHYTHM_MUSIC_OFFSET_MS;
+              // サークルが足元中央で重なる位相を、レベル別の決め打ちオフセットでビートに合わせる(同期はしない)。
+              const firstBeatAt = newGameTime + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + rhythmBeatOffsetForLevel(lvl);
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
             }
           }

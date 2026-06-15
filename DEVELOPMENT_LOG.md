@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.291 - サークル位相をレベル別の決め打ちオフセットで合わせる(同期なし) (Claude Code)
+
+### 背景/方針
+- ダンスのサークル(足元で重なる=拍)は既に固定 gameTime グリッドだけで動作(同期なし・軽い)。
+- 「ずれ」の正体は、視覚グリッドの位相(firstBeatAt=開始+LEAD)と曲の実ビート位相のズレ。曲はダンス開始で
+  currentTime=0 から鳴るので、**ダンス開始からの固定オフセット**でビート位相を合わせられる(同期不要)。
+
+### 変更
+- `config/shijin.ts`: `RHYTHM_MUSIC_OFFSET_MS`(単一0)を撤去し、**レベル別の決め打ちオフセット**
+  `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL = [0,0,0,0]`(idx0=フォールバック/1/2/3)+ `rhythmBeatOffsetForLevel(level)` を追加。
+  正=サークルが遅れて中央に来る / 負=早く来る。
+- `useGameLoop`: firstBeatAt に `rhythmBeatOffsetForLevel(lvl)` を加算。
+- 調整方法: 実機でサークルと曲のビートを見比べ、各レベルの値(ms)を決め打ちで詰める。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` / `npm run lint` 成功(既定値0=従来挙動)。
+
 ## 2026-06-15 - v0.25.290 - 共存不可スキル取得で他スキルをリセット / 再プレイのミラーボール巨大化を修正 (Claude Code)
 
 ### 共存不可スキル取得時のリセット
