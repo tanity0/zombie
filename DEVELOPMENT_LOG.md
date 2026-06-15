@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 引き継ぎメモ (next chat / 2026-06-15 時点)
+- **現在の最新バージョン: v0.25.307**（push 済み・`claude/chat-context-continuity-saxlH`）。
+  作業ツリーはクリーン。次の作業はここから続ける。
+- **直近の変更（v0.25.306〜307）**:
+  - 手榴弾(heavy-grenade)とグレネードランチャー(rifle-t3)の混同を解消。自動タレットの特殊弾を
+    本物のランチャー弾(直進・着弾爆発)に変更。
+  - レベルアップ選択肢のスクロール対応。
+  - 死神(錬金レア召喚)の近接AoEを「見た目のオーラ範囲(570)内の全敵」に拡張。
+  - スキル装備上限を 1 個に。各クラスの固有スキルは最初から Lv1 所持（上限外）。
+- **実機で要確認（ユーザー検証待ち）**:
+  - 死神の攻撃がオーラ内の敵に当たって見えるか（範囲を 380→570 に合わせた）。
+  - スキル「固有 + 新規1個」の挙動（HUD表示・排他スキル取得時のリセット含む）。
+  - レベルアップ選択肢が多い時に最後までスクロール/タップできるか。
+  - ダンス練習モードの Lv2/Lv3 のサークルずれ、矢印サイズ、ダンスUIの非ボケ化。
+- **継続中の制約（必ず守る）**:
+  - ダンス音声は v0.25.280 方式（単一 BGM HTMLAudioElement の src 差し替え + unlockDanceAudio）。
+    Web Audio バッファ方式や複数要素方式へ戻さない（iOS Safari 回避策。ネイティブ版では撤去予定）。
+  - push 毎に `package.json` の version を上げる。push 毎に本ログへ追記。
+  - コミット/コード/PR にモデル識別子を書かない。
+  - React は毎フレーム再レンダーしない（narrow field 購読）。
+  - サブウェポン/グレネード系イベントはスローモーションを発火させない（明示指定がない限り）。
+
 ## 2026-06-15 - v0.25.307 - レベルアップのスクロール / 死神の攻撃範囲 / スキル装備1個+固有スキル (Claude Code)
 
 ### 変更
