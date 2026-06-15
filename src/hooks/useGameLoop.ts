@@ -11,7 +11,10 @@ import {
   subWeaponBlockedByKatana,
   katanaRange,
   KATANA_SLASH_INTERVAL_MS,
-  huntingMeleeRadius
+  huntingMeleeRadius,
+  PLAYER_INTRO_MS,
+  PLAYER_INTRO_CAM_FOLLOW,
+  playerIntroOffset
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -158,6 +161,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
+  const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
   // Scripted-wave consumption set; survives across frames within one run
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
@@ -494,6 +498,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           updateEffects(deltaTime);
           frameRef.current = requestAnimationFrame(gameLoop);
           return;
+        }
+
+        // --- キャラ登場演出(ロックマン的な飛び込み)---
+        // 初フレームで終了時刻を確定。演出中はゲーム進行/入力/敵スポーンを止め、見た目だけ進める。
+        let introUntil = loopState.introUntil;
+        if (introUntil === -1) {
+          useGameStore.getState().stampPlayerIntro();
+          introUntil = useGameStore.getState().introUntil;
+        }
+        if (introUntil > 0 && nowMs < introUntil) {
+          introWasActiveRef.current = true;
+          // カメラがステージを横断して飛行キャラXに追従(<1でキャラが少し左から入る)。
+          // 縦は着地面(player.y)に固定し、飛行アーチは見た目側で見せる。
+          const introT = Math.max(0, Math.min(1, 1 - (introUntil - nowMs) / PLAYER_INTRO_MS));
+          const introOff = playerIntroOffset(introT);
+          const targetCameraX = (player.x + introOff.x * PLAYER_INTRO_CAM_FOLLOW) - gameBounds.width / 2 + player.width / 2;
+          const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
+          setCameraPosition(targetCameraX, targetCameraY);
+          updateEffects(deltaTime);
+          frameRef.current = requestAnimationFrame(gameLoop);
+          return;
+        }
+        if (introWasActiveRef.current) {
+          // 着地! 衝撃演出(リング/バースト/フラッシュ/軽いシェイク)。
+          introWasActiveRef.current = false;
+          const pcx = player.x + player.width / 2;
+          const pcy = player.y + player.height / 2;
+          spawnRing(pcx, pcy + 6, 8, 78, 'rgba(255,255,255,0.7)', 4, 300);
+          spawnRing(pcx, pcy + 6, 4, 46, 'rgba(186,230,253,0.85)', 3, 380);
+          spawnBurst(pcx, pcy + 10, '#cbd5e1', 16);
+          spawnFlash('rgba(255,255,255,0.12)', 130);
+          useGameStore.setState({ shakeUntil: Date.now() + 220 });
         }
 
         // Update game time

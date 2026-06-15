@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, playerIntroOffset } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -165,6 +165,15 @@ const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
 const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
 const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
+// 登場演出のオフセットは store の playerIntroOffset(t) を共有(カメラと同期)。
+// 登場演出のヘリコプター(キャラを降ろして上へ逃げる)。画像 'helicopter' 登録時のみ表示。
+const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
+const HELI_ABOVE = 210;      // 序盤、キャラ上方への随伴オフセット(px)
+const HELI_RISE = 820;       // 後半、上へ逃げる距離(px)
+const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
+// 敵の被弾しなり(頭が後ろにぐにゃっ): 撃たれた直後だけ skew + 軽い縦縮みで反らせる。
+const ENEMY_HIT_FLINCH_MS = 230;    // 少しだけゆっくり(0.13s→0.23s)
+const ENEMY_HIT_FLINCH_SKEW = 0.42; // 最大skew(ラジアン相当)
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
   name: 'sunlight',
@@ -423,6 +432,9 @@ export class PixiScene {
   // 商人/イベントNPC のソフト影リクエスト(各 sync が可視時に設定、syncShadows が配置)。
   private merchantShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   private npcShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
+  private introActive = false;  // 登場演出中(影スキップ判定用)
+  private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
@@ -600,6 +612,10 @@ export class PixiScene {
     this.playerGroundPool.tint = LIGHT_POOL_TINT;
     this.playerGroundPool.blendMode = 'add';
     this.playerGroundPool.visible = LIGHT_POOL_ENABLED && LIGHT_POOL_ALPHA > 0;
+    // 登場演出のヘリ。アクターより上(effectLayer)に置き、画像登場時のみ表示。
+    this.helicopter.anchor.set(0.5);
+    this.helicopter.visible = false;
+    this.L.effectLayer.addChild(this.helicopter);
     this.groundReflectionGfx.blendMode = 'add';
     // 魔法陣スプライト: 加算発光・中心アンカー・既定は非表示(alpha 0)。地面の
     // 反射/光の上、足元シャドウの下に置き、キャラ絵を塗り潰さない。
@@ -1048,6 +1064,10 @@ export class PixiScene {
     const s = useGameStore.getState();
     const now = Date.now();
     this.cameraY = s.camera.y;
+    // 登場演出の状態を反映(drawPlayer の飛び込みオフセット / 影スキップ / ヘリに使う)。
+    this.introUntil = s.introUntil;
+    this.introActive = s.introUntil === -1 || (s.introUntil > 0 && now < s.introUntil);
+    this.syncIntroHelicopter(s.player, now);
 
     // Focal plane for the pseudo-perspective scale = the player's feet.
     this.depthRefY = playerFootBox(s.player).footY;
@@ -2079,6 +2099,34 @@ export class PixiScene {
     sp.visible = true;
   }
 
+  // 登場演出のヘリ: 序盤はキャラ上方に随伴(降ろした直後)、後半は上へ逃げてフェードアウト。
+  // 画像 'helicopter' が未登録なら何もしない(画像受領後に表示)。
+  private syncIntroHelicopter(player: Player, now: number) {
+    const tex = getTexture('helicopter');
+    if (!this.introActive || !tex) {
+      this.helicopter.visible = false;
+      return;
+    }
+    const t = this.introUntil === -1
+      ? 0
+      : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
+    const off = playerIntroOffset(t);
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const depart = Math.max(0, Math.min(1, (t - 0.4) / 0.6)); // 40%以降に上へ逃げる
+    const dEase = depart * depart;
+    if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
+    const sc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
+    this.helicopter.scale.set(sc);
+    this.helicopter.position.set(
+      pcx + off.x + HELI_DRIFT_X * dEase,
+      pcy + off.y - HELI_ABOVE - HELI_RISE * dEase,
+    );
+    this.helicopter.rotation = 0.12 * dEase; // 逃げる時に少し機体を傾ける
+    this.helicopter.alpha = 1 - dEase;       // 上へ逃げながらフェード(終盤で消える)
+    this.helicopter.visible = this.helicopter.alpha > 0.02;
+  }
+
   // 設置物の影幅(= スプライト実描画幅 × 0.55。アクターと同じ基準に揃える)。
   // p.width(ヒットボックス)ではなく見た目の大きさからテクスチャ比で算出する。
   private placedWeaponShadowWidth(p: Projectile): number {
@@ -2103,10 +2151,13 @@ export class PixiScene {
     projectiles: Projectile[]
   ) {
     const seen = new Set<string>();
-    const pf = playerFootBox(player);
-    const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
-    const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW) * PLAYER_SHADOW_SCALE;
-    this.placeShadowSprite('__player__', pf.footX, pf.footY - 2, playerShadowW, 1, seen);
+    // 登場演出中はプレイヤーが空中なので足影は出さない(着地後に出る)。
+    if (!this.introActive) {
+      const pf = playerFootBox(player);
+      const playerFallbackW = pf.boxW * 0.55 * this.depthScale(pf.footY);
+      const playerShadowW = actorShadowWidthFromSprite(this.playerView, playerFallbackW) * PLAYER_SHADOW_SCALE;
+      this.placeShadowSprite('__player__', pf.footX, pf.footY - 2, playerShadowW, 1, seen);
+    }
     for (const e of enemies) {
       if (e.type === 'ghost') continue;
       const fb = enemyFootBox(e);
@@ -2258,18 +2309,43 @@ export class PixiScene {
     const phase = walking ? (now / PLAYER_WALK_CYCLE_MS) * Math.PI * 2 : 0;
     const step = Math.sin(phase);
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
+
+    // 登場演出: store 共有の playerIntroOffset(t) で見た目オフセット + 着地スカッシュ。
+    // カメラ(useGameLoop)が同じ式で飛行Xに追従するので、キャラは画面内を低く飛んで着地する。
+    let introOffX = 0;
+    let introOffY = 0;
+    let introSqX = 1;
+    let introSqY = 1;
+    if (this.introUntil === -1) {
+      const off = playerIntroOffset(0);
+      introOffX = off.x;
+      introOffY = off.y;
+    } else if (this.introUntil > 0) {
+      const t = Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
+      if (t < 1) {
+        const off = playerIntroOffset(t);
+        introOffX = off.x;
+        introOffY = off.y;
+        if (t > 0.8) {
+          const sQ = Math.sin(((t - 0.8) / 0.2) * Math.PI); // 着地でぐにゃっ
+          introSqX = 1 + 0.3 * sQ;
+          introSqY = 1 - 0.22 * sQ;
+        }
+      }
+    }
+
     if (tex) {
       const baseScale = usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
         ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
       const sc = baseScale * this.depthScale(fb.footY);
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      view.sprite.scale.set(flip ? -sc : sc, sc);
+      view.sprite.scale.set((flip ? -sc : sc) * introSqX, sc * introSqY);
       view.sprite.rotation = 0;
     }
     view.sprite.position.set(
-      this.snapToScreenPixel(fb.footX, this.L.world.position.x),
-      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y),
+      this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX,
+      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY,
     );
     view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
     view.container.zIndex = fb.footY;
@@ -2284,7 +2360,7 @@ export class PixiScene {
         : null;
     if (katanaVariant) {
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      this.drawPlayerKatanaOnBack(view.reticle, fb.footX, fb.footY - bob, fb.boxH, flip, katanaVariant);
+      this.drawPlayerKatanaOnBack(view.reticle, fb.footX + introOffX, fb.footY - bob + introOffY, fb.boxH, flip, katanaVariant);
     }
     view.overlay.clear();
   }
@@ -2339,9 +2415,22 @@ export class PixiScene {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
       const breath = this.enemyBreath(e, now);
-      view.sprite.scale.set(sc * breath.x, sc * breath.y);
+      // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
+      // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
+      const sinceHit = now - e.lastHit;
+      let flinchSqY = 1;
+      if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
+        const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS; // 1→0 減衰
+        const dir = e.knockbackVx > 0.01 ? 1 : e.knockbackVx < -0.01 ? -1 : 1;
+        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob; // 頭が後ろへ反る
+        flinchSqY = 1 - 0.1 * wob;
+      } else {
+        view.sprite.skew.x = 0;
+      }
+      view.sprite.scale.set(sc * breath.x, sc * breath.y * flinchSqY);
       view.sprite.visible = true;
     } else {
+      view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
 

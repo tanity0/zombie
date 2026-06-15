@@ -332,6 +332,24 @@ export const PLAYER_BASE_HP = 120;
 export const PLAYER_HITBOX = 28;
 const RELOAD_MOVE_SPEED_MULT = 1;
 export const INVULN_MS = 700;
+// キャラ登場演出(ロックマン的: フィールドを左の遠くから低く猛スピードで飛んできて中央着地)。
+// この間はゲーム進行/入力/敵スポーンを止め、カメラがステージを横断追従し、見た目は飛行する。
+export const PLAYER_INTRO_MS = 1700;        // 演出長(約1秒長く)
+export const PLAYER_INTRO_FLY_X = 2200;     // 左への飛距離(world px。さらに遠く)
+export const PLAYER_INTRO_LOW_Y = 28;       // 開始のわずかな高さ(より低く)
+export const PLAYER_INTRO_ARC_H = 110;      // 飛行アーチ高(低めの山なり)
+export const PLAYER_INTRO_CAM_FOLLOW = 0.82; // カメラが飛行Xに追従する割合(1=完全追従/<1=キャラが少し左から入る)
+// t:0→1 の登場オフセット(スタート地点からの相対 world px)。x<0=左, y<0=上。
+// カメラ(useGameLoop)と見た目(pixiScene)で同じ式を使い、ズレなく同期させる。
+export const playerIntroOffset = (t: number): { x: number; y: number } => {
+  const tc = Math.max(0, Math.min(1, t));
+  const easeX = 1 - (1 - tc) * (1 - tc); // 横: easeOut(猛スピードで来て収束)
+  const easeY = tc * tc;                  // 縦: easeIn(着地で落ちる)
+  return {
+    x: -PLAYER_INTRO_FLY_X * (1 - easeX),
+    y: -PLAYER_INTRO_LOW_Y * (1 - easeY) - PLAYER_INTRO_ARC_H * Math.sin(tc * Math.PI),
+  };
+};
 
 // World is effectively infinite. We still need a finite number for spawn
 // math elsewhere, but we use a very large clamp to remove the wall feel.
@@ -584,6 +602,7 @@ interface GameState {
   unlockedShopSkillCards: Partial<Record<SubWeaponKey, number>>;
   startWithTestStraps: boolean;
   showStatsOverlay: boolean; // 撃破/DMG/SCRAP + FPS/負荷オーバーレイの表示(TOPで選択。既定OFF)
+  introUntil: number; // キャラ登場演出の終了時刻(Date.now基準)。-1=未確定(初フレームで確定)、0=演出なし
   danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   meleeFinishComboCount: number;
@@ -719,6 +738,7 @@ interface GameState {
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
+  stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
   setDanceTestMode: (enabled: boolean) => void;
   setDanceTestLevel: (level: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
@@ -821,6 +841,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   unlockedShopSkillCards: {},
   startWithTestStraps: false,
   showStatsOverlay: false,
+  introUntil: 0,
   danceTestMode: false,
   danceTestLevel: 1,
   meleeFinishComboCount: 0,
@@ -3480,6 +3501,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ showStatsOverlay: enabled });
   },
 
+  stampPlayerIntro: () => {
+    set({ introUntil: Date.now() + PLAYER_INTRO_MS });
+  },
+
   setDanceTestMode: (enabled) => {
     set({ danceTestMode: enabled });
   },
@@ -3788,6 +3813,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           straps: state.startWithTestStraps ? 1000 : 0,
           vaccineRevives: 0
         },
+        // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
+        introUntil: state.danceTestMode ? 0 : -1,
         enemies: [],
         projectiles: [],
         pickups: [],

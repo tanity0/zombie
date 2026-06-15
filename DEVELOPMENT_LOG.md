@@ -10,6 +10,115 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 🔖 引き継ぎメモ (next chat / 完全オンライン運用) — 2026-06-15
+
+**運用**: ここから先は**完全オンライン環境(GitHub)で作業。オフライン(ローカル)更新はストップ**。
+次チャットは GitHub から取得して続ける(`git fetch` → 最新へ)。コード正本=このブランチ。
+
+- **ブランチ**: `claude/chat-context-continuity-saxlH` / GitHub: `tanity0/zombie`
+- **最新 version**: `v0.25.328`(この push 時点。`package.json`)
+- push毎に version 上げ + このログに追記。モデル識別子は書かない。React毎フレーム再描画を避ける。
+  サブウェポン/グレネード系はスロー禁止。2DHDの blur/fog/bloom は全削除しない。
+
+### このセッション(v0.25.307→328)でやったこと
+- 近接(刀/鞭/ダンス)で松明・虫の卵を破壊 / レベルアップのスクロール / 死神AoEを範囲基準 /
+  スキル装備=固有+1 / 刀フリックは指を離した時判定 / 撃破数・FPS表示をTOPで有無選択(既定OFF)。
+- **ライティング**: 環境ベース暗化(`?envdark`)/ vignette(`?vig` 既定0.70)/ 月明りシャフト=弱め+
+  横パララックス(`?shaft` `?shaftpara`)/ 足元の光だまり(`?pool` `?poolr`)。
+- **ソフト影に統一**(ブラー無しスプライト): プレイヤー/敵/召喚/設置物(盾/デコイ/タレット)/商人/NPC。
+  ぼかし量は `getSoftShadowTexture` のグラデで調整。城/拾い物は平たい楕円のまま(未統一)。
+- **松明改善**: 不規則flicker + 地面の光だまり強化。
+- **stage1 BGM** に差し替え(`public/audio/stage1.mp3`、`BGM_TRACKS`)。stage2-4 は Drive にあり(未配置)。
+- **敵の被弾しなり**: 撃たれた直後だけ skew で頭が後ろにしなる(`ENEMY_HIT_FLINCH_MS=230` /
+  `ENEMY_HIT_FLINCH_SKEW=0.42`、`drawEnemy`)。社長評価◎。
+- **登場演出(ロックマン的)**: 左の遠く低くから猛スピードで飛来→中央着地。カメラがステージを横断追従
+  (`gameStore.playerIntroOffset(t)` をカメラ=useGameLoop と見た目=pixiScene で共有)。
+  定数: `PLAYER_INTRO_MS=1700` / `FLY_X=2200` / `LOW_Y=28` / `ARC_H=110` / `CAM_FOLLOW=0.82`。
+
+### ⏳ 未完了・次にやること
+1. **ヘリコプター画像待ち**: 社長が `helicopter` 画像を用意予定。受領後の有効化は v0.25.328 エントリ参照
+   (`public/sprites/helicopter.png` 配置 + `pixiTextures.ts` の `playerWalkNames` に `'helicopter'` 追加)。
+   演出ロジックは実装済み・画像が無い間は安全に非表示。位置/サイズは `HELI_*` 定数。
+2. ライティング各 `?パラメータ` の最終値を実機で決めて既定へ焼き込む(現状は既定値で運用中)。
+3. (任意)城・拾い物の影もソフト方向影に統一 / ②強イベントの動的影もソフト化 / stage2-4のステージ別BGM。
+
+## 2026-06-15 - v0.25.328 - 登場演出にヘリコプター(画像待ち・現状は安全に非表示) (Claude Code)
+
+### 変更(`pixiScene.ts`)
+- 登場演出に**ヘリコプター**を追加。序盤はキャラ上方に随伴(=降ろした直後)、後半(t>0.4)で**上へ逃げて
+  フェードアウト**。`syncIntroHelicopter` を `sync()` で毎フレーム駆動。world(effectLayer)配置でカメラ追従。
+- テクスチャキー **`helicopter`**。**まだ画像が無い**ので getTexture が null → **安全に非表示**(クラッシュなし)。
+- 調整定数: `HELI_DISPLAY_H=120` / `HELI_ABOVE=210` / `HELI_RISE=820` / `HELI_DRIFT_X=240`。
+
+### ⚠️ 画像受領後の有効化手順(次チャット向け)
+1. `public/sprites/helicopter.png` を配置。
+2. `src/pixi/pixiTextures.ts` の `playerWalkNames` 配列に `'helicopter'` を追加(これでロード&登録される)。
+   ※先に配列へ足すと画像が無い間 `Assets.load` が失敗するので、**ファイル配置とセットで**行う。
+3. dev再起動 → 登場演出でヘリ表示。位置/サイズは上記定数で調整。
+
+### 負荷スコア
+0〜1/10(スプライト1枚を登場演出中だけ動かす)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機確認は画像配置後。
+
+## 2026-06-15 - v0.25.327 - 登場演出: 低く飛行＋カメラがステージを横断追従(ロックマン的) (Claude Code)
+
+### 変更
+- 登場演出を「カメラがステージを横断してキャラに追従する」方式に。`gameStore` に共有関数
+  `playerIntroOffset(t)`(world相対オフセット)を追加し、**カメラ(useGameLoop)と見た目(pixiScene)が
+  同じ式**で動くよう同期。
+  - `useGameLoop` 演出中: カメラXを `player.x + off.x * PLAYER_INTRO_CAM_FOLLOW(0.82)` に追従(<1なので
+    キャラは少し左から入って中央へ)。カメラYは着地面に固定し、飛行アーチは見た目で見せる。
+  - キャラは**低く**(`PLAYER_INTRO_LOW_Y=36` + アーチ`120`)、**遠く**(`PLAYER_INTRO_FLY_X=1200`)から猛スピードで
+    横断。`PLAYER_INTRO_MS` 650→**700**。
+  - 旧: 上から飛び込む方式(pixiローカル定数 `PLAYER_INTRO_START_*`)は撤去し store 共有式へ統一。
+
+### 負荷スコア
+0/10(カメラ位置と見た目オフセットの式変更のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機でカメラ横断の速さ・キャラの低空飛行・着地を確認。
+  調整: `PLAYER_INTRO_FLY_X`(遠さ)/ `PLAYER_INTRO_LOW_Y`・`ARC_H`(高さ)/ `PLAYER_INTRO_CAM_FOLLOW`(追従)/ `PLAYER_INTRO_MS`(速さ)。
+
+## 2026-06-15 - v0.25.326 - 登場演出を「左の遠くから飛行→着地」に変更 / しなりを少しゆっくり (Claude Code)
+
+### 変更(`pixiScene.ts` / `gameStore.ts`)
+- 登場演出: 左上からの短い飛び込み → **フィールドを左の遠く(画面外 -1100px)から猛スピードで飛んできて
+  中央着地**に変更。`PLAYER_INTRO_START_X=-1100` / `START_Y=-120` / 飛行中の山なり `PLAYER_INTRO_ARC_H=170`
+  (introOffY に `-ARC_H*sin(t*π)` を加算)。滞空確保のため `PLAYER_INTRO_MS` 600→**650**。
+- 敵の被弾しなり: `ENEMY_HIT_FLINCH_MS` 130→**230**(少しだけゆっくり)。skew量/向きは据え置き。
+
+### 負荷スコア
+0/10(定数・軌道式の変更のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run build` 成功。実機で飛行軌道(距離/高さ/速さ)としなりの速さを確認。
+  調整: `PLAYER_INTRO_START_X/Y` `PLAYER_INTRO_ARC_H` `PLAYER_INTRO_MS` / `ENEMY_HIT_FLINCH_MS`。
+
+## 2026-06-15 - v0.25.325 - キャラ登場演出(ロックマン的飛び込み) / 敵の被弾しなり (Claude Code)
+
+### 1. キャラ登場演出(左上から高速ジャンプ→中央着地→開始)
+- `gameStore`: `PLAYER_INTRO_MS=600` / state `introUntil`(-1=アーム, 0=なし, それ以外=終了時刻)/ `stampPlayerIntro`。
+  `resetGame` で `introUntil = -1`(練習モードは 0=演出なし)。
+- `useGameLoop`: 初プレイフレームで `stampPlayerIntro` し終了時刻を確定。演出中はゲーム進行/入力/敵スポーンを
+  止めて見た目だけ進める(カメラ/エフェクトのみ更新)。着地時にリング/バースト/フラッシュ/軽いシェイク。
+- `pixiScene` drawPlayer: 左上(`PLAYER_INTRO_START_X/Y`)→中央へ、横=easeOut/縦=easeIn で飛び込み、
+  着地でスカッシュ。背負い刀も追従。登場中は足影を出さない(空中なので)。
+
+### 2. 敵の被弾しなり(頭が後ろにぐにゃっ)
+- `pixiScene` drawEnemy: 撃たれた直後(`ENEMY_HIT_FLINCH_MS=130`)だけ、スプライトを後ろ(ノックバック方向)へ
+  `skew.x`(最大 `ENEMY_HIT_FLINCH_SKEW=0.42`)+ 軽い縦縮みで反らせ、短時間で戻す。アンカーが足元寄りのため
+  skew だけで頭が大きく振れる。新規描画/フィルタ無し=ほぼ無負荷。
+  ※単一スプライトの傾けなので「頭だけ」ではなく上半身ごとしなる表現(足元支点)。
+
+### 負荷スコア
+登場演出 1/10(演出中はむしろ進行停止)/ 被弾しなり 0〜1/10(transform更新のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で登場の飛び込み感・着地、被弾しなりの向き/強さを確認。
+  しなりの向きが逆なら `drawEnemy` の `dir` 符号、強さは `ENEMY_HIT_FLINCH_SKEW` で調整。
+
 ## 2026-06-15 - v0.25.324 - 商人/イベントNPCの影もソフト方向影に統一 (Claude Code)
 
 ### 変更(`pixiScene.ts`)
