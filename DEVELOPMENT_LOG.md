@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 2026-06-15 - v0.25.303 - dance-140 をさらに140へ寄せる(再引き伸ばし) (Claude Code)
+
+### 変更
+- 元素材(160k)を高解像度で再測定=139.485 BPM。`atempo=1.003692` で引き伸ばし → 再測定 **139.975 BPM**。
+  140との差0.025BPMは測定精度(±0.02)内=ダンス1回(~20s/47拍)で累積~4ms=知覚不可。実質ちょうど140。
+- これ以上は測定ノイズの追従になるため確定。`?v=` でキャッシュ更新。
+
+### Verification
+- 再測定 139.975 BPM。`npm run build` 成功。
+
 ## 2026-06-15 - v0.25.302 - ダンス曲を正確な公称BPMに時間引き伸ばし補正(120/140) (Claude Code)
 
 ### 背景
