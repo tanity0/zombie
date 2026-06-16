@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.414`**（ダンス: ミラーボールの影削除/フリック斬撃音オフ。導線・自動アンカーとも実機確認待ち）。
+- **最新 version**: **`v0.25.415`**（ステージ1ダンスの実測テンポ598.339ms焼き込み。導線・自動アンカー・テンポとも実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,19 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.415 - ステージ1ダンス: 実測テンポを焼き込み(累積ドリフト対策) (Claude Code)
+
+### 変更（社長指摘: ステージ1の曲が噛み合わない・598付近）
+- `dance-100.mp3` をフレーム解析（268.056s / 128kbps / 48kHz）。公称600ms(100BPM)では割り切れず、
+  **448拍(=112小節ちょうど)で割り切れる 598.339ms(≒100.28BPM)** が真の1拍と判定（599.678/597.007 は小節割り不可）。
+- `config/shijin.ts` に `RHYTHM_INTERVAL_MS_BY_LEVEL = [0, 598.339, 0, 0]` を追加し、Lv1 の既定をこの実測値に焼き込み。
+  `rhythmIntervalForLevel` の優先順を「`?intN`(実機調整) > 焼き込み実測値 > 公称BPM算出」に。
+- これで開始位相(自動アンカー v0.25.406)＋正確な1拍で、曲全体を通してサークルが追従するはず。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機(ステージ1/ダンス練習Lv1=既定598)で要確認。
+  なお微調整は `?int1=598.3` 等で可能。Lv2/3 も同様に実測して焼ける(現状0=BPM算出)。
 
 ## 2026-06-16 - v0.25.414 - ダンス: ミラーボールの影削除 / フリック斬撃音オフ (Claude Code)
 

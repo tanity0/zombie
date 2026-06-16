@@ -6,6 +6,10 @@ import type { RhythmArrow, ShijinGod } from '../types/game';
 export const RHYTHM_INTERVAL_MS = 500;        // 既定(120BPM)。レベル未指定時のフォールバック
 // 四神舞レベルでBPMが上がる(手数が増える)。Lv1=100 / Lv2=120 / Lv3=140。idx0はフォールバック。
 export const RHYTHM_BPM_BY_LEVEL = [120, 100, 120, 140];
+// 実測で焼き込んだ「正確な1拍(ms)」。0=未設定(下のBPMから算出)。曲の実テンポが公称BPMと僅かにズレていると
+// サークルが累積ドリフトするので、実ファイル長から逆算した値をここに焼く(?intN より弱い・BPM算出より優先)。
+// Lv1(ステージ1 dance-100.mp3): 実測 268.056s。448拍(=112小節)で割り切れる → 598.339ms(≒100.28BPM)。
+export const RHYTHM_INTERVAL_MS_BY_LEVEL = [0, 598.339, 0, 0]; // idx0=フォールバック / 1=Lv1 / 2=Lv2 / 3=Lv3
 // サークルの1拍の長さ(ms)。既定は公称BPMから算出(600/500/428.6)。曲の実テンポが公称とズレていると
 // サークルが累積でズレる(段々早く/遅くなる)ので、URLで上書きして合わせられる: ?int1=603&int2=511&int3=441
 // 値を大きくする=サークルが遅くなる(間隔が広がる) / 小さく=速くなる。合ったら下の既定に焼き込む。
@@ -21,7 +25,10 @@ const intervalOverrides: Record<number, number> = (() => {
 })();
 export const rhythmIntervalForLevel = (level: number): number => {
   const lvl = Math.max(1, Math.min(3, Math.floor(level) || 1));
-  return intervalOverrides[lvl] ?? (60000 / RHYTHM_BPM_BY_LEVEL[lvl]);
+  // 優先順: URL ?intN(実機調整) > 焼き込み実測値 > 公称BPMから算出。
+  if (intervalOverrides[lvl] !== undefined) return intervalOverrides[lvl];
+  if (RHYTHM_INTERVAL_MS_BY_LEVEL[lvl] > 0) return RHYTHM_INTERVAL_MS_BY_LEVEL[lvl];
+  return 60000 / RHYTHM_BPM_BY_LEVEL[lvl];
 };
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
 // サークルが足元中央で重なる(=拍を踏む)タイミングを、各レベル(BPM)ごとに決め打ちで前後にずらす(ms)。
