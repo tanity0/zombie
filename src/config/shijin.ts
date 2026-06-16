@@ -160,3 +160,10 @@ export const RHYTHM_DIM_ALPHA = 0.42;         // リズム中の地面暗転の�
 export const RHYTHM_DIM_EASE = 0.16;          // 暗転フェードの追従(フレーム毎)
 export const RHYTHM_TAP_GLOW_MS = 200;        // タップ発光の持続
 export const RHYTHM_TAP_GLOW_ALPHA = 0.18;    // タップ発光の最大強さ(少し光る)
+// JUST成功時の足元バースト演出(音ゲー風)。すべて lastJudgeAt から時間で減衰し、既存の rhythmOverlay
+// Graphics に描く(新規オブジェクト/テクスチャ無し=軽量)。タップ=広がるサークル / フリック=広がる矢印。
+export const RHYTHM_JUST_BURST_MS = 360;       // バースト演出の長さ(これを過ぎたら描かない)
+export const RHYTHM_JUST_RING_MAX_SCALE = 3.4; // サークルが最終的に広がる倍率(足元の輪 rw/rh 基準)
+export const RHYTHM_JUST_FLICK_TRAVEL = 46;    // フリック矢印が向き方向へ飛ぶ距離(px)
+export const RHYTHM_JUST_HIT_COLOR = 0xfde68a;  // 通常JUST(金)
+export const RHYTHM_JUST_FIRE_COLOR = 0x7dd3fc; // 四神技完成(水色で差別化)

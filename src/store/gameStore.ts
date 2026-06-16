@@ -34,7 +34,7 @@ import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
   active: false, interval: RHYTHM_INTERVAL_MS, firstBeatAt: 0, expectBeat: 0, prompt: randomRhythmPrompt(), inputIndex: 0, inputArrows: [],
-  godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastTapAt: 0, lastFinishAt: 0, lastGod: null,
+  godSuccess: 0, comboStage: 0, lastInputAt: 0, lastJudge: 'none', lastJudgeAt: 0, lastJudgeKind: 'none', lastJudgeArrow: null, lastTapAt: 0, lastFinishAt: 0, lastGod: null,
   invulnUntil: 0, byakkoUntil: 0, byakkoNextAt: 0, byakkoHits: 0, pending: [],
 });
 
@@ -3691,6 +3691,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           comboStage: rhythmComboStage(state.meleeFinishComboCount),
           lastJudge: 'none',
           lastJudgeAt: gt,
+          lastJudgeKind: 'none',
+          lastJudgeArrow: null,
           invulnUntil: gt + RHYTHM_START_INVULN_MS,
           byakkoUntil: 0,
           byakkoNextAt: 0,
@@ -3806,6 +3808,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastInputAt: gt,
         lastJudge: judged === 'fire' ? 'fire' : 'hit',
         lastJudgeAt: gt,
+        lastJudgeKind: arrow ? 'flick' : 'tap', // 演出: フリック=矢印 / タップ=サークル
+        lastJudgeArrow: arrow ?? null,
         lastTapAt: arrow ? s.rhythm.lastTapAt : gt, // タップ(方向なし)成功で発光
         lastFinishAt: finish ? gt : s.rhythm.lastFinishAt, // 4回成功(全体フィニッシュ)で虹
         lastGod: firedGod ?? s.rhythm.lastGod,

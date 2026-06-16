@@ -32,6 +32,8 @@ import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
   RHYTHM_ARROW_GRID, SHIJIN_JP, SHIJIN_BY_ARROW,
+  RHYTHM_JUST_BURST_MS, RHYTHM_JUST_RING_MAX_SCALE, RHYTHM_JUST_FLICK_TRAVEL,
+  RHYTHM_JUST_HIT_COLOR, RHYTHM_JUST_FIRE_COLOR,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
@@ -1325,7 +1327,7 @@ export class PixiScene {
   // (godSuccess)」で 0白/1青/2緑/3赤、フィニッシュで虹。0.5秒ごとに左右反転して回転に見せる。
   // 左右サークルは 0.5秒ごとに足元で重なる(=ジャスト)。リング/矢印は軽量Graphics。
   private syncRhythmOverlay(
-    rhythm: { active: boolean; interval: number; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastTapAt: number; lastFinishAt: number },
+    rhythm: { active: boolean; interval: number; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastJudgeKind: 'tap' | 'flick' | 'none'; lastJudgeArrow: 'up' | 'down' | 'left' | 'right' | null; lastTapAt: number; lastFinishAt: number },
     player: Player,
     gameTime: number
   ) {
@@ -1403,6 +1405,44 @@ export class PixiScene {
     g.ellipse(footCx + off, footCy, rw, rh).stroke({ color: ringCol, alpha: ringAlpha, width: 2.5 });
     // ジャスト(重なった瞬間)に小さな発光リング。
     if (just) g.ellipse(footCx, footCy, rw + 3, rh + 2).stroke({ color: 0xfde68a, alpha: 0.85, width: 2 });
+
+    // --- JUST バースト演出(音ゲー風・足元) -----------------------------------
+    // 直近JUST(hit/fire)から時間で減衰。タップ=広がって消えるサークル / フリック=入力方向へ飛んで
+    // 拡大して消える矢印。加えて足元が一瞬光る。すべて既存 g(rhythmOverlay)に描くので新規オブジェクト
+    // やテクスチャを作らず軽量(発生から RHYTHM_JUST_BURST_MS の間だけ数本のdraw)。
+    const sinceBurst = gameTime - rhythm.lastJudgeAt;
+    if ((rhythm.lastJudge === 'hit' || rhythm.lastJudge === 'fire') && sinceBurst >= 0 && sinceBurst < RHYTHM_JUST_BURST_MS) {
+      const bt = sinceBurst / RHYTHM_JUST_BURST_MS;   // 0→1
+      const ease = 1 - (1 - bt) * (1 - bt);           // ease-out(序盤に速く広がる)
+      const fade = 1 - bt;                            // 透明度の減衰
+      const isFire = rhythm.lastJudge === 'fire';
+      const burstCol = isFire ? RHYTHM_JUST_FIRE_COLOR : RHYTHM_JUST_HIT_COLOR;
+      // 足元発光(地面が一瞬光る): 明るい潰し楕円を2枚重ねて柔らかく。
+      const glowA = 0.5 * fade * fade;
+      g.ellipse(footCx, footCy, rw * (1.4 + ease * 1.2), rh * (1.6 + ease)).fill({ color: burstCol, alpha: glowA * 0.6 });
+      g.ellipse(footCx, footCy, rw * (0.8 + ease * 0.6), rh * (0.9 + ease * 0.5)).fill({ color: 0xffffff, alpha: glowA });
+      if (rhythm.lastJudgeKind === 'flick' && rhythm.lastJudgeArrow) {
+        // フリック: 入力方向へ飛びながら拡大して消える矢印。
+        const dir = rhythm.lastJudgeArrow;
+        const dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
+        const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+        const ax = footCx + dx * RHYTHM_JUST_FLICK_TRAVEL * ease;
+        const ay = footCy + dy * RHYTHM_JUST_FLICK_TRAVEL * ease - 4;
+        const block = 2.6 + ease * 4.2;               // ドットを拡大
+        this.drawRhythmArrow(g, ax, ay, dir, burstCol, Math.max(0, fade), block);
+      } else {
+        // タップ: 広がって消えるサークル(地面の輪を多重に)。
+        const s1 = 1 + ease * RHYTHM_JUST_RING_MAX_SCALE;
+        g.ellipse(footCx, footCy, rw * s1, rh * s1).stroke({ color: burstCol, alpha: 0.85 * fade, width: 3 });
+        const s2 = 1 + ease * (RHYTHM_JUST_RING_MAX_SCALE * 0.6);
+        g.ellipse(footCx, footCy, rw * s2, rh * s2).stroke({ color: 0xffffff, alpha: 0.5 * fade, width: 1.5 });
+      }
+      // 四神技完成(fire)は一段派手に: もう1本外側のリングを足す。
+      if (isFire) {
+        const s3 = 1 + ease * (RHYTHM_JUST_RING_MAX_SCALE * 1.4);
+        g.ellipse(footCx, footCy, rw * s3, rh * s3).stroke({ color: burstCol, alpha: 0.6 * fade, width: 2 });
+      }
+    }
 
     // 判定フラッシュ(hit/miss/fire を一瞬の色リングで)。lastJudgeAt は gameTime 基準。
     const sinceJudge = gameTime - rhythm.lastJudgeAt;

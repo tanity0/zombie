@@ -257,6 +257,8 @@ export interface RhythmState {
   lastInputAt: number;     // 連打デバウンス用
   lastJudge: 'none' | 'hit' | 'miss' | 'fire';
   lastJudgeAt: number;     // 演出用(gameTime)
+  lastJudgeKind: 'tap' | 'flick' | 'none'; // 直近JUSTの種類(演出: タップ=サークル / フリック=矢印)
+  lastJudgeArrow: RhythmArrow | null;       // フリックの向き(演出用。タップはnull)
   lastTapAt: number;       // タップ成功の時刻(gameTime)。タップ発光演出に使用
   lastFinishAt: number;    // 四神技4回成功(全体フィニッシュ)の時刻(gameTime)。虹色演出に使用
   lastGod: ShijinGod | null;
