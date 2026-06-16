@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Game from './components/Game';
 import MainMenu from './components/MainMenu';
+import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
 import LoadingScreen from './components/LoadingScreen';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
@@ -29,7 +30,7 @@ function App() {
       await Promise.all([tex, preloadAllAudio()]);
       const remaining = LOADING_MIN_MS - (performance.now() - started);
       if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
-      setGameState('menu');
+      setGameState('title'); // ローディング後はタイトル(START待機)へ。タップでBGM解禁→メニュー。
     };
     void boot();
   }, []);
@@ -78,8 +79,17 @@ function App() {
     setGameState('gameOver');
   };
 
+  const handleTitleStart = () => {
+    // 最初のユーザー操作。ここで音声を解禁(iOS含む)してタイトルBGMを鳴らし、メニューへ。
+    unlockDanceAudio();
+    setBgmScene('menu');
+    setGameState('menu');
+  };
+
   return (
     <div className="w-full h-full bg-gray-900 text-white">
+      {gameState === 'title' && <TitleScreen onStart={handleTitleStart} />}
+
       {gameState === 'menu' && (
         <MainMenu
           onStartGame={(characterClass) => startGame(characterClass, false)}

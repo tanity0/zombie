@@ -60,6 +60,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.385 - タイトル画面(START タップ待機)を追加=BGM自動再生制限の対策 (Claude Code)
+
+### 変更(社長指示: ローディング後、タイトル画面に「START」でタップ待機)
+- 新 `GameState 'title'` + `TitleScreen.tsx`(背景=the ONE 全面・「START」点滅+「画面をタップして開始」)。
+- フロー: loading → **title(START待機)** → タップ → menu。`App.tsx` boot を `setGameState('title')` に。
+- START タップ(=最初のユーザー操作)で `unlockDanceAudio()` + `setBgmScene('menu')` を呼んでから menu へ → **タイトルBGMがその瞬間から再生**(Webの自動再生制限は最初の1タップが必須なので、ここで取得)。
+- BGMシーン: title=off(無音=操作前) / menu=タイトル曲 / playing=ステージ曲。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview: タイトル表示→STARTタップ→メニュー遷移を確認。
+
 ## 2026-06-16 - v0.25.384 - タイトル/ローディング背景画像 + 自動タレットをスプライト化 (Claude Code)
 
 ### アセット(社長が material ブランチに用意 → git show で取得・ローカル配置)
