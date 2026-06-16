@@ -60,6 +60,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.383 - 霧をさらに横へ引き伸ばし (Claude Code)
+
+### 変更(社長フィードバック)
+- 全霧層の `widthFrac 1.6 → 2.2`(texture を横ストレッチ。雲/山がさらに横に広がる)。
+
+### Verification
+- `npm run build` 成功。dev 再起動・LAN 200。
+
 ## 2026-06-16 - v0.25.382 - 死神: 0.9倍速+回り込みワープ / 近接が効くよう修正 / 帰還で退去 (Claude Code)
 
 ### 変更(社長フィードバック)
