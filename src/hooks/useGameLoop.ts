@@ -44,6 +44,7 @@ import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, playDanceKick } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
+import { REAPER_CONFIG, REAPER_TEST, getReaperMoveSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
@@ -199,7 +200,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rhythmMoveStartRef = useRef<number>(0);
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
-  
+  // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
+  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null }>(
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null }
+  );
+
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
   const fireWeapons = useGameStore(state => state.fireWeapons);
@@ -564,6 +569,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           lastAmmoDropRef.current = 0;
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null };
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -578,6 +584,72 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
           useGameStore.getState().triggerTimeSlow(0.36, CASTLE_SPAWN_SLOW_MS);
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
+        }
+
+        // --- 死神(深奥リスク)システム v1 ---
+        // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
+        // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
+        if (!danceTest) {
+          const rs = reaperRef.current;
+          const pcx = player.x + player.width / 2;
+          const pcy = player.y + player.height / 2;
+          const depth = REAPER_TEST ? REAPER_CONFIG.extremeDepthPx + 1 : Math.hypot(pcx, pcy);
+          const liveEnemies = useGameStore.getState().enemies;
+          const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);
+          // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
+          if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; }
+
+          if (!chaserAlive) {
+            // リスク更新(深奥滞在で増加・深奥外で減少)。
+            if (depth >= REAPER_CONFIG.extremeDepthPx) rs.risk += REAPER_CONFIG.riskGainPerSecExtreme * deltaTime;
+            else if (depth >= REAPER_CONFIG.spawnRiskDepthPx) rs.risk += REAPER_CONFIG.riskGainPerSecDeep * deltaTime;
+            else rs.risk -= REAPER_CONFIG.riskDecayPerSec * deltaTime;
+            rs.risk = Math.max(0, Math.min(REAPER_CONFIG.riskMax, rs.risk));
+
+            // 横切り(警告/頻発)。深いほど頻発。無害(当たり判定なし)。
+            if (depth >= REAPER_CONFIG.warningDepthPx) {
+              const interval = reaperPassIntervalMs(depth);
+              if (newGameTime - rs.lastPassAt >= interval) {
+                rs.lastPassAt = newGameTime;
+                rs.passCount += 1;
+                useGameStore.setState({
+                  reaperCross: {
+                    startedAt: Date.now(),
+                    durationMs: REAPER_CONFIG.crossDurationMs,
+                    yFrac: 0.26 + Math.random() * 0.34,
+                    dir: Math.random() < 0.5 ? 1 : -1,
+                  },
+                });
+                // SFX(短い不穏音)は専用アセット待ち。配置後 playSfx('reaper-pass') を有効化。
+              }
+            }
+
+            // 完全出現(追跡)。リスク最大で、プレイヤーから少し離して1体だけ出す。
+            if (rs.risk >= REAPER_CONFIG.spawnRiskThreshold) {
+              const ang = Math.random() * Math.PI * 2;
+              const sx = pcx + Math.cos(ang) * REAPER_CONFIG.spawnDistFromPlayer;
+              const sy = pcy + Math.sin(ang) * REAPER_CONFIG.spawnDistFromPlayer;
+              const chaser = spawnEnemyAt('reaper', sx - 40, sy - 40, newGameTime);
+              chaser.reaperChaser = true;
+              chaser.health = REAPER_CONFIG.chaserHealth;
+              chaser.maxHealth = REAPER_CONFIG.chaserHealth;
+              chaser.damage = REAPER_CONFIG.contactDamage;
+              chaser.speed = getReaperMoveSpeed(player.speed);
+              addEnemy(chaser);
+              rs.chaserId = chaser.id;
+              rs.risk = REAPER_CONFIG.riskMax;
+              spawnFlash('rgba(10,10,16,0.30)', 360);
+              // SFX(完全出現の短い警告音)は専用アセット待ち。
+            }
+          } else {
+            // 追跡中: 死神の速度をプレイヤー現在移動速度×1.2へ毎フレ追従(成長反映・ダッシュ等は除外=player.speed)。
+            const targetSpeed = getReaperMoveSpeed(player.speed);
+            useGameStore.setState({
+              enemies: useGameStore.getState().enemies.map(e =>
+                e.id === rs.chaserId ? { ...e, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage } : e
+              ),
+            });
+          }
         }
 
         // Update player invulnerability

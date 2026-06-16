@@ -689,6 +689,8 @@ interface GameState {
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
   introDialogueShown: boolean;   // この登場で既にセリフを出したか(再トリガー防止)
+  // 死神の横切り演出(無害・pixiScene が画面横断で描画)。null=非表示。
+  reaperCross: { startedAt: number; durationMs: number; yFrac: number; dir: number } | null;
   danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   meleeFinishComboCount: number;
@@ -933,6 +935,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   introDialogueActive: false,
   introDialogueStartedAt: 0,
   introDialogueShown: false,
+  reaperCross: null,
   danceTestMode: false,
   danceTestLevel: 1,
   meleeFinishComboCount: 0,
@@ -3917,6 +3920,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         introDialogueActive: false,
         introDialogueStartedAt: 0,
         introDialogueShown: false,
+        reaperCross: null,
         enemies: [],
         projectiles: [],
         pickups: [],

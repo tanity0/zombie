@@ -143,6 +143,8 @@ export interface Enemy {
   distanceZone?: number;
   difficultyRank?: DifficultyRank;
   difficultyMultiplier?: number;
+  // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
+  reaperChaser?: boolean;
 }
 
 export type SummonKind = 'normal' | 'rare';

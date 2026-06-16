@@ -540,6 +540,7 @@ export class PixiScene {
   private frontBankLayer = new Container();   // 森上 = uiLayer(最前面)
   private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(右へ流れる+揺らめき)
   private fogT0 = 0;                          // 流れ(tilePosition)の基準時刻
+  private reaperCrossSprite = new Sprite();   // 死神の横切り演出(無害・画面横断のシルエット)
 
   private screenW = 1;
   private screenH = 1;
@@ -667,6 +668,13 @@ export class PixiScene {
     this.helicopter.anchor.set(0.5);
     this.helicopter.visible = false;
     this.L.danceUiLayer.addChild(this.helicopter);
+    // 死神の横切り演出: 画面を横断する黒シルエット(無害)。uiLayer 最下層(world の前・HUD の下)。
+    this.reaperCrossSprite.anchor.set(0.5);
+    this.reaperCrossSprite.tint = 0x000000;
+    this.reaperCrossSprite.alpha = 0.42;
+    this.reaperCrossSprite.eventMode = 'none';
+    this.reaperCrossSprite.visible = false;
+    this.L.uiLayer.addChildAt(this.reaperCrossSprite, 0);
     this.groundReflectionGfx.blendMode = 'add';
     // 魔法陣スプライト: 加算発光・中心アンカー・既定は非表示(alpha 0)。地面の
     // 反射/光の上、足元シャドウの下に置き、キャラ絵を塗り潰さない。
@@ -1183,6 +1191,29 @@ export class PixiScene {
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
+
+    // 死神の横切り演出(store.reaperCross から駆動・画面を横断する黒シルエット)。
+    const rc = s.reaperCross;
+    const rsp = this.reaperCrossSprite;
+    if (rc && now - rc.startedAt >= 0 && now - rc.startedAt < rc.durationMs) {
+      if (!rsp.texture || rsp.texture.width <= 1) {
+        const rtex = getTexture('reaper');
+        if (rtex) rsp.texture = rtex;
+      }
+      const t = (now - rc.startedAt) / rc.durationMs;
+      const margin = 180;
+      const span = this.screenW + margin * 2;
+      rsp.x = rc.dir > 0 ? -margin + span * t : this.screenW + margin - span * t;
+      rsp.y = rc.yFrac * this.screenH;
+      if (rsp.texture && rsp.texture.height > 0) {
+        const sc = (this.screenH * 0.20) / rsp.texture.height;
+        rsp.scale.set(rc.dir > 0 ? sc : -sc, sc); // 進行方向へ向ける
+      }
+      rsp.visible = true;
+    } else {
+      rsp.visible = false;
+    }
+
     const farH = this.farBackdropHeight();
     this.L.farBackdrop.position.set(sx * 0.25, 0);
     this.L.farBackdrop.tilePosition.set(

@@ -60,6 +60,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.379 - 死神(深奥リスク)システム v1 実装 (Claude Code)
+
+### 概要(仕様: repo ルート reaper_spec.md)
+無限マップで原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現してプレイヤーを追跡する。既存 `reaper` 敵(召喚レアと同じ黒い絵)を流用。BGM変更なし。v1範囲のみ実装。
+
+### 実装
+- **config**: `src/config/reaper.ts`(`REAPER_CONFIG` 距離閾値px・横切り間隔・リスク・追跡速度・接触ダメージ等 / `getReaperMoveSpeed` / `reaperPassIntervalMs` / `?reapertest=1` テストモード)。
+- **フェーズ管理**: `useGameLoop` に `reaperRef`(risk/lastPassAt/passCount/chaserId)+毎フレ manager。原点からの距離 depth で:
+  warning(≥1200px)→ 横切り、frequent(≥2200)→ 頻発、spawnRisk(≥3200)/extreme(≥4400)→ リスク蓄積、リスク100で完全出現。
+  深奥外ではリスク減衰。新ラン(gameTime rewind)で reset。
+- **横切り(無害)**: `store.reaperCross` をセット → `pixiScene` が画面横断する黒シルエット(uiLayer最下層・当たり判定/オートエイム対象外)を描画。
+- **追跡(本物の敵)**: `spawnEnemyAt('reaper')` をプレイヤーから 620px 離して1体。`reaperChaser` フラグ・HP6000(有限=討伐可)・接触9999・
+  速度=毎フレ `player.speed × 1.2`(成長反映・ダッシュ等は除外)。既存のチェイスAI/接触ダメージ/被弾/カリング保護(type==='reaper')を流用。
+  討伐/消滅でリスク0へクールダウン(深奥に居続ければ再蓄積)。
+- 型: `Enemy.reaperChaser?`、store `reaperCross` 追加。
+
+### v1の範囲外(後回し)
+専用BGM/専用SE(アセット未配置=現状無音。`playSfx('reaper-pass')` フックのみ)/複雑な討伐報酬/専用UI・カットイン/トレジャー・ボス接近によるリスク増加。
+
+### 負荷スコア
+1/10(距離計算+横切り1スプライト+追跡1体。新規の重い処理なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview の `?reapertest=1` で完全出現→追跡→接触→ゲームオーバー(「闇に飲み込まれました」)を確認。console エラーなし。通常プレイは原点付近では出現しない(深追いで発生)。
+- 実機テスト用URL: `http://192.168.11.17:5173/zombie/?reapertest=1`(常に深奥扱い)。通常は深く進むと自然発生。
+
 ## 2026-06-16 - v0.25.378 - タイトル曲(メニューBGM)を配線(ファイル設置待ち) (Claude Code)
 
 ### 変更(社長指示: 「the RUIN of LAY」をタイトル曲に)
