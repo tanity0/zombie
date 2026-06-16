@@ -101,7 +101,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
       name: 'ヘビーガンナー',
       sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png?v=${spriteVersion}`,
       accent: 'rgba(248, 113, 113, 0.55)',
-      gear: 'ソードオフ・ショットガン ＋ ハチェット',
+      gear: 'ショットガン ＋ ハチェット',
       skillKey: 'heavy-grenade',
       skillDesc: '前方へ手榴弾を転がし、着弾で小範囲を爆破',
       portraitNudgeY: 2.7, // 足元が4px上 → 底へ

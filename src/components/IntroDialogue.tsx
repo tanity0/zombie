@@ -74,14 +74,26 @@ const IntroDialogue: React.FC = () => {
               </p>
             );
           }
+          // 無線SE/ノイズのト書き(発話ではない)。中央寄せ・かすれ・等幅で区別。
+          if (l.speaker === '__radio__') {
+            return (
+              <p key={i} className="text-center text-sm italic tracking-widest text-white/40" style={{ fontFamily: 'monospace' }}>
+                {l.text}{cursor && <span className="opacity-70">▌</span>}
+              </p>
+            );
+          }
           if (l.speaker) {
             // '__class__' は選択中の職業名へ置換。
             const speaker = l.speaker === '__class__'
               ? (CHARACTER_CLASS_NAMES[characterClass] ?? 'プレイヤー')
               : l.speaker;
+            // 偵察兵=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
+            const isField = speaker === '偵察兵';
+            const bodyCls = isField ? 'text-lg leading-relaxed text-rose-100' : 'text-lg leading-relaxed text-amber-100';
+            const nameCls = isField ? 'mr-1.5 font-bold text-rose-300' : 'mr-1.5 font-bold text-amber-300';
             return (
-              <p key={i} className="text-lg leading-relaxed text-amber-100">
-                <span className="mr-1.5 font-bold text-amber-300">{speaker}</span>
+              <p key={i} className={bodyCls}>
+                <span className={nameCls}>{speaker}</span>
                 「{l.text}{cursor && <span className="opacity-70">▌</span>}」
               </p>
             );

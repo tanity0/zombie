@@ -60,6 +60,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.386 - ショットガン改名 / ステージ1冒頭会話を差し替え (Claude Code)
+
+### 変更(社長指示)
+- 武器名 **ソードオフ → ショットガン**: `weaponUtils` shotgun-t1 の name、`MainMenu` ヘビーガンナーの gear 表記。HUD/拾得テキストも自動反映。
+- **ステージ1冒頭会話を差し替え**(`INTRO_DIALOGUE_LINES`): 通信兵3行 → 無線SE(ノイズ) → 偵察兵2行(救助任務の導入)。
+  `IntroDialogue` に `__radio__`(中央寄せ・かすれ等幅のSEト書き)分岐を追加、偵察兵は赤系(切迫した別声)で表示。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview: メニュー/HUDが「ショットガン」表示・「ソードオフ」消滅、
+  登場会話で 通信兵/無線SE/偵察兵 の全行表示を確認。
+
 ## 2026-06-16 - v0.25.385 - タイトル画面(START タップ待機)を追加=BGM自動再生制限の対策 (Claude Code)
 
 ### 変更(社長指示: ローディング後、タイトル画面に「START」でタップ待機)

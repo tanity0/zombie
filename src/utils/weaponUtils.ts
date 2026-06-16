@@ -52,7 +52,7 @@ const CATALOG: Record<string, WeaponDef> = {
 
   // B — Shotgun family (12g). One trigger pull = one shell (the spread is free),
   // so the magazine is sized in SHOTS, not pellets (3 shots per mag).
-  'shotgun-t1':       { key: 'shotgun-t1', name: 'ソードオフ',     type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 3, reloadMs: 1100 },
+  'shotgun-t1':       { key: 'shotgun-t1', name: 'ショットガン',   type: 'shotgun', category: 'shotgun', tier: 1, damage: 6,  cooldown: 950, projectileSpeed: 440, projectileSize: 7, count: 5, magSize: 3, reloadMs: 1100 },
   'shotgun-t2':       { key: 'shotgun-t2', name: 'ポンプ式',       type: 'shotgun', category: 'shotgun', tier: 2, damage: 7,  cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 6, magSize: 3, reloadMs: 1800 },
   'shotgun-t3':       { key: 'shotgun-t3', name: 'オートショット', type: 'shotgun', category: 'shotgun', tier: 3, damage: 6,  cooldown: 430, projectileSpeed: 480, projectileSize: 7, count: 7, magSize: 3, reloadMs: 1700 },
 

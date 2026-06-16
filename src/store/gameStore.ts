@@ -408,11 +408,12 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
 };
 // speaker: null=通信 / '__voice__'=生存者の声(別スタイル)。1行ずつ切替表示。
 export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
-  { speaker: null, text: 'この先の村に例の研究者もいるはずだ。' },
-  { speaker: null, text: '先発の調査隊の情報によると生存者は…' },
-  { speaker: null, text: '絶望的。望みは薄いが掛けるしかない。' },
-  { speaker: '__voice__', text: '……マー……ママー！' },
-  { speaker: null, text: '生存者確認！感染者を殲滅しつつ急行せよ。' },
+  { speaker: '通信兵', text: '緊急通信。任務を一時中断する' },
+  { speaker: '通信兵', text: '研究所から帰還中の偵察部隊が、変異体に包囲された' },
+  { speaker: '通信兵', text: '現在地から近い。座標を送る。救助を優先してくれ' },
+  { speaker: '__radio__', text: '［無線SE:ガガー……］' },
+  { speaker: '偵察兵', text: '……聞こえるか! くそ、弾がねぇ!' },
+  { speaker: '偵察兵', text: 'グレッグ……! ちくしょう、助け……' },
 ];
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
 export const INTRO_DIALOGUE_LINE_HOLD_MS = 950;  // 各行を打ち終えた後の保持(+0.2s 延長)
