@@ -1,16 +1,15 @@
 import React, { useState, useRef } from 'react';
 
 interface TitleScreenProps {
-  onStart: () => void;               // 同意時: BGM解禁(再生)
-  waitForAssets?: () => Promise<void>; // 同意後に待つ本物の素材ロード完了
-  onDone: () => void;                // 暗転し切ったらメニューへ
+  onStart: () => void;                 // 同意時: BGM解禁(再生開始)
+  waitForAssets?: () => Promise<void>; // STARTタップ後に待つ本物の素材ロード完了
+  onDone: () => void;                  // ローディング完了でメニューへ
 }
 
-// タイトル(the ONE)。流れ: START → ご利用注意(同意) → 音楽再生＆本物ローディング → ゆっくり暗転 → セレクト。
-// 「ゾンビサバイバル」起動ローディングは廃止し、実際の素材DL待ちはここ(同意後)で行う。
+// 流れ: 同意画面(最初) → 同意でBGM開始 → タイトル(the ONE) → STARTタップ → ゆっくり暗転 → 本物ローディング → セレクト。
 // 注意書きは毎起動(タイトル到達ごと)に表示する。
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {
-  const [phase, setPhase] = useState<'idle' | 'notice' | 'loading' | 'blackout'>('idle');
+  const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
   const doneRef = useRef(false);
 
   const finish = () => {
@@ -19,36 +18,43 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     onDone();
   };
 
-  const begin = () => { if (phase === 'idle') setPhase('notice'); };
-
+  // 同意 → BGM開始 → タイトルへ
   const agree = () => {
     if (phase !== 'notice') return;
-    onStart();                                            // 同意の瞬間にBGM解禁＆再生
-    setPhase('loading');                                  // 本物の素材ロード(完了待ち)
+    onStart();          // 同意の瞬間にBGM解禁＆再生
+    setPhase('title');
+  };
+
+  // STARTタップ → ゆっくり暗転
+  const tapStart = () => { if (phase === 'title') setPhase('blackout'); };
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
+  };
+
+  // 暗転し切ったら → 本物の素材ロード(完了待ち) → 完了でメニュー
+  const onBlackoutDone = () => {
+    if (phase !== 'blackout') return;
+    setPhase('loading');
     const startedAt = performance.now();
-    const MIN_LOADING_MS = 900;                           // ロードが速すぎてもスピナーを一瞬見せる
+    const MIN_LOADING_MS = 900; // ロードが速すぎてもスピナーを一瞬は見せる
     void Promise.resolve(waitForAssets?.()).then(async () => {
       const remaining = MIN_LOADING_MS - (performance.now() - startedAt);
       if (remaining > 0) await new Promise(r => window.setTimeout(r, remaining));
-      setPhase('blackout');                               // ロード完了 → ゆっくり暗転
-      window.setTimeout(finish, 1300);                    // 暗転フォールバック
+      finish();
     });
-  };
-
-  const handleKey = (e: React.KeyboardEvent) => {
-    if ((e.key === 'Enter' || e.key === ' ') && phase === 'idle') { e.preventDefault(); begin(); }
   };
 
   return (
     <div
-      onClick={phase === 'idle' ? begin : undefined}
+      onClick={phase === 'title' ? tapStart : undefined}
       onKeyDown={handleKey}
-      role={phase === 'idle' ? 'button' : undefined}
-      tabIndex={phase === 'idle' ? 0 : -1}
-      aria-label={phase === 'idle' ? 'タップして開始' : undefined}
+      role={phase === 'title' ? 'button' : undefined}
+      tabIndex={phase === 'title' ? 0 : -1}
+      aria-label={phase === 'title' ? 'タップして開始' : undefined}
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
       style={{
-        cursor: phase === 'idle' ? 'pointer' : 'default',
+        cursor: phase === 'title' ? 'pointer' : 'default',
         backgroundImage: `url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
         backgroundSize: 'cover',
         backgroundPosition: 'center'
@@ -56,21 +62,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     >
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
-      {phase === 'idle' && (
-        <div
-          className="absolute inset-x-0 flex flex-col items-center"
-          style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 12%), 13%)' }}
-        >
-          <span className="animate-pulse text-3xl font-semibold tracking-[0.45em] text-white/90 drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]">
-            START
-          </span>
-          <span className="mt-3 text-[11px] tracking-[0.3em] text-white/45">画面をタップして開始</span>
-        </div>
-      )}
-
-      {/* ご利用にあたって(同意画面) */}
+      {/* ご利用にあたって(同意画面・最初に表示) */}
       {phase === 'notice' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/70 px-4 py-6">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
           <div
             className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0c0c14]/95 shadow-2xl"
             style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
@@ -100,19 +94,35 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </div>
       )}
 
-      {/* ローディング処理 */}
-      {(phase === 'loading' || phase === 'blackout') && (
-        <div className="absolute inset-0 flex flex-col items-center justify-end pb-[18%]">
+      {/* タイトル(the ONE): STARTタップ待機 */}
+      {phase === 'title' && (
+        <div
+          className="absolute inset-x-0 flex flex-col items-center"
+          style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 12%), 13%)' }}
+        >
+          <span className="animate-pulse text-3xl font-semibold tracking-[0.45em] text-white/90 drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]">
+            START
+          </span>
+          <span className="mt-3 text-[11px] tracking-[0.3em] text-white/45">画面をタップして開始</span>
+        </div>
+      )}
+
+      {/* 本物ローディング(START後・暗転後に素材完了を待つ) */}
+      {phase === 'loading' && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-end pb-[18%]">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white/75" />
           <span className="mt-4 text-[11px] tracking-[0.34em] text-white/55">LOADING…</span>
         </div>
       )}
 
-      {/* ゆっくり暗転 → 完了でメニューへ */}
+      {/* ゆっくり暗転(START後) → 暗転し切ったらローディングへ。ローディング中も黒のまま。 */}
       <div
-        className="pointer-events-none absolute inset-0 bg-black"
-        style={{ opacity: phase === 'blackout' ? 1 : 0, transition: 'opacity 1000ms ease-in' }}
-        onTransitionEnd={(e) => { if (e.propertyName === 'opacity' && phase === 'blackout') finish(); }}
+        className="pointer-events-none absolute inset-0 z-20 bg-black"
+        style={{
+          opacity: (phase === 'blackout' || phase === 'loading') ? 1 : 0,
+          transition: 'opacity 1000ms ease-in',
+        }}
+        onTransitionEnd={(e) => { if (e.propertyName === 'opacity' && phase === 'blackout') onBlackoutDone(); }}
       />
     </div>
   );

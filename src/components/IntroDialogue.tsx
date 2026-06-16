@@ -15,6 +15,7 @@ const IntroDialogue: React.FC = () => {
   const active = useGameStore((s) => s.introDialogueActive);
   const startedAt = useGameStore((s) => s.introDialogueStartedAt);
   const characterClass = useGameStore((s) => s.player.characterClass);
+  const endIntroDialogue = useGameStore((s) => s.endIntroDialogue);
   const [, setTick] = useState(0);
   const rafRef = useRef<number | undefined>(undefined);
   const radioFiredAtRef = useRef<number>(-1); // この登場(startedAt)で無線SEを鳴らしたか
@@ -58,19 +59,36 @@ const IntroDialogue: React.FC = () => {
   }
   const line = INTRO_DIALOGUE_LINES[curIdx];
 
-  // 無線SEの「間」: テキストは出さず、実際の無線ノイズ音を1回だけ鳴らす(ボックスも隠す)。
+  // 会話シーン中だけ右下に出すスキップ(ミッション最初の会話=この登場セリフのみ)。
+  // タップで会話を即終了→ゲーム再開。タップが下層の攻撃入力に伝播しないよう stopPropagation。
+  const skipButton = (
+    <button
+      onClick={(e) => { e.stopPropagation(); endIntroDialogue(); }}
+      className="pointer-events-auto absolute z-50 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[11px] font-bold tracking-[0.22em] text-white/80 shadow-lg backdrop-blur-sm active:bg-black/75"
+      style={{ right: 'max(env(safe-area-inset-right), 16px)', bottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}
+    >
+      SKIP ▶▶
+    </button>
+  );
+
+  // 無線SEの「間」: テキストは出さず、実際の無線ノイズ音を1回だけ鳴らす(ボックスは隠すがスキップは出す)。
   if (line.speaker === '__radio__') {
     if (radioFiredAtRef.current !== startedAt) {
       radioFiredAtRef.current = startedAt;
       playRadioStatic();
     }
-    return null;
+    return (
+      <div className="pointer-events-none absolute inset-0 z-40">
+        {skipButton}
+      </div>
+    );
   }
 
   const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
     <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center px-4">
+      {skipButton}
       <div
         className="flex min-h-[5rem] w-full max-w-xl items-center rounded-2xl border-2 border-cyan-300/40 bg-slate-950/90 px-6 py-6 shadow-2xl ring-1 ring-black/40 backdrop-blur-md"
         style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
