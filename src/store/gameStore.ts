@@ -41,8 +41,9 @@ const initialRhythm = (): RhythmState => ({
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
-export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 40, rifle: 24 };
-export const AMMO_MAX: Record<AmmoType, number> = { handgun: 240, shotgun: 96, rifle: 60 };
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 18, rifle: 36 };
+// 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。
+export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
 // drops, and the boxes melee kills now drop). Modest relative to the reserve
 // cap — resupply is scarce.

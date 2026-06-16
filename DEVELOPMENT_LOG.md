@@ -60,6 +60,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.375 - 銃のリザーブ弾プール上限を変更(handgun72/shotgun18/rifle36) (Claude Code)
+
+### 変更(社長指示: 最大弾数)
+- `AMMO_MAX`(リザーブ弾プールの上限。HUDの「装填/プール」のプール側)を変更: handgun `240→72` / shotgun `96→18` / rifle `60→36`。
+- `AMMO_INITIAL.shotgun` を `40→18` に(新上限を超えないように。handgun60≤72 / rifle24≤36 は据え置き)。
+- 注: magSize(マガジン装填数=12/3/6 等)は別物で未変更。AMMO_PICKUP(40/10/20)は各上限内なので問題なし。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview の HUD で「ソードオフ 0/18」=shotgunプール上限18を確認。console エラーなし。
+
 ## 2026-06-16 - v0.25.374 - 奥を薄く / 森下を少し上へ(下端は隙間なし) (Claude Code)
 
 ### 変更(社長フィードバック)
