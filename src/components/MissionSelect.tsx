@@ -136,7 +136,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         type="button"
         disabled={!unlocked}
         onClick={() => setScreen({ name: 'missionDetail', stageId: stage.id })}
-        className={`w-full flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors ${
+        className={`w-full flex items-start gap-3 rounded-2xl border px-3 py-3 text-left transition-colors ${
           unlocked ? 'border-white/12 bg-white/5 active:bg-white/10' : 'border-white/8 bg-black/25 opacity-60'
         }`}
       >
@@ -146,16 +146,22 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {stage.main.code}
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-[15px] font-semibold text-white truncate">
-            {stage.name}
+          <span className="block text-[15px] font-semibold text-white">
+            {stage.main.title}
             {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">クリア済</span>}
           </span>
-          <span className="block text-[11px] text-white/45 truncate">{stage.main.title}・{stage.area}</span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-white/70">
-            {unlocked ? stage.main.summary : '前ステージのクリアで解放'}
-          </span>
+          <span className="block text-[11px] text-white/45">{stage.name}・{stage.area}</span>
+          {unlocked
+            ? (
+              <span className="mt-1 block space-y-0.5">
+                {stage.main.summary.map((line, i) => (
+                  <span key={i} className="block text-[12px] leading-snug text-white/70">{line}</span>
+                ))}
+              </span>
+            )
+            : <span className="mt-1 block text-[12px] leading-snug text-white/50">前ステージのクリアで解放</span>}
         </span>
-        {unlocked ? <ChevronLeft size={16} className="rotate-180 text-white/40" /> : <Lock size={15} className="text-white/40" />}
+        {unlocked ? <ChevronLeft size={16} className="mt-0.5 rotate-180 text-white/40" /> : <Lock size={15} className="mt-0.5 text-white/40" />}
       </button>
     );
   };
