@@ -1264,6 +1264,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       // 鞭でも松明・卵を破壊できる(線=カプセル範囲。ハリケーン有無に関わらず毎振り)。
       get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, meleeDamage * 2.5);
+      // 鞭でもスキルの手榴弾を起爆できる(鞭の当たり範囲=線カプセル内の手榴弾を即起爆)。通常近接と同じ挙動。
+      {
+        const whipGrenadeIds = get().projectiles
+          .filter(p => p.weaponType === 'grenade')
+          .filter(p => {
+            const gx = p.x + p.width / 2, gy = p.y + p.height / 2;
+            const rx = gx - pcx, ry = gy - pcy;
+            let along = rx * ux + ry * uy;
+            if (along < 0) along = 0; else if (along > reach) along = reach;
+            const nx = pcx + ux * along, ny = pcy + uy * along;
+            return Math.hypot(gx - nx, gy - ny) <= WHIP_HIT_HALF_WIDTH;
+          })
+          .map(p => p.id);
+        if (whipGrenadeIds.length > 0) {
+          set(state => ({
+            projectiles: state.projectiles.map(p =>
+              whipGrenadeIds.includes(p.id) ? { ...p, createdAt: now - Math.max(1, p.duration) } : p
+            ),
+          }));
+          for (const id of whipGrenadeIds) {
+            const g = get().projectiles.find(p => p.id === id);
+            if (g) get().spawnSlash(g.x + g.width / 2, g.y + g.height / 2);
+          }
+        }
+      }
       // チャージ満タンなら、この一振りでハリケーン発動(チャージ消費)。自動発動しない。
       if (player.whipCharged) {
         get().performHurricane(tipX, tipY);

@@ -73,6 +73,15 @@ on the zombie game. Append a new entry after each meaningful change.
 ### Verification
 - `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。鞭はサブ武器設置/装備時のみ出るため idle プレビュー未確認(描画コードは検証)。
 
+## 2026-06-16 - v0.25.389 - 鞭でスキルの手榴弾を起爆できるように (Claude Code)
+
+### 変更(社長確認: 「手りゅう弾」=スキルの手榴弾)
+- 通常近接(ナイフカウンター)は手榴弾を起爆するが、鞭/刀モードは早期returnで起爆しなかった。
+- 鞭ブランチに、**鞭の当たり範囲(線カプセル WHIP_HIT_HALF_WIDTH)内の手榴弾を即起爆**する処理を追加(通常近接と同じく createdAt を寿命切れにして爆発+spawnSlash)。チャージ有無に関わらず毎振り。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。鞭+手榴弾の同時条件は idle プレビューで再現困難 → 実機確認推奨。
+
 ## 2026-06-16 - v0.25.387 - START後にゆっくり暗転→セレクト / 無線SEを実音(合成)に (Claude Code)
 
 ### 変更(社長指示)
