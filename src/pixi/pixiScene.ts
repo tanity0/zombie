@@ -26,7 +26,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture, getFogBankTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -148,6 +148,7 @@ interface FogLayer {
   spdX: number; spdY: number; // 揺らめき速度(rad/ms)
   flow: number;      // 右への流れ(px/ms。tilePosition.x を増やす)
   ph: number;        // 位相
+  texKey?: string;   // 外部PNGテクスチャ(非同期ロード)。指定時は sync で getTexture して割当+tileScale。
 }
 
 // --- A: 光だまり(プレイヤー足元の地面に敷く加算ライト) ------------------------
@@ -769,10 +770,13 @@ export class PixiScene {
     if (fogStage) fogStage.addChildAt(this.forestUnderLayer, fogStage.getChildIndex(this.L.frontForest));
     else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
     this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
-    const mkFog = (layer: Container, tex: Texture, alpha: number, cfg: Omit<FogLayer, 'sp'>) => {
+    const mkFog = (
+      layer: Container, tex: Texture, alpha: number, cfg: Omit<FogLayer, 'sp'>,
+      opts?: { additive?: boolean; whiteTint?: boolean }
+    ) => {
       const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
-      sp.tint = FOG_TINT;
-      sp.blendMode = 'screen';
+      sp.tint = opts?.whiteTint ? 0xffffff : FOG_TINT;
+      sp.blendMode = opts?.additive ? 'add' : 'screen'; // 黒背景の素材は加算で黒を消す
       sp.eventMode = 'none';
       sp.alpha = alpha;
       sp.visible = alpha > 0;
@@ -783,9 +787,11 @@ export class PixiScene {
     // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。もうちょい上。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
       { yFrac: 0.16, widthFrac: 2.2, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, flow: 0.012, ph: 1.9 });
-    // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。少し上へ(下端は画面外まで伸ばし隙間なし)。
-    mkFog(this.forestUnderLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
-      { yFrac: 0.80, widthFrac: 2.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1 });
+    // 森下霧: front forest の後ろ。霧素材 fog.png(黒背景+白霧)を加算で合成(エフェクトなし・素材そのまま)。
+    // 非同期ロードのため texKey で sync 時に割当。
+    mkFog(this.forestUnderLayer, Texture.EMPTY, FOG_FRONT_ALPHA,
+      { yFrac: 0.80, widthFrac: 2.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1, texKey: 'fog' },
+      { additive: true, whiteTint: true });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 1.06, widthFrac: 2.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });
@@ -1189,6 +1195,15 @@ export class PixiScene {
     const fogT = now - this.fogT0;
     for (const f of this.fogLayers) {
       if (!f.sp.visible) continue;
+      // 外部PNG(fog.png 等)は非同期ロード。読めたら割当+サイズ/tileScale を確定。
+      if (f.texKey && (!f.sp.texture || f.sp.texture.width <= 1)) {
+        const ft = getTexture(f.texKey);
+        if (!ft) continue;
+        f.sp.texture = ft;
+        f.sp.width = this.screenW * f.widthFrac;
+        f.sp.height = this.screenH * f.heightFrac;
+        f.sp.tileScale.set(f.sp.width / ft.width, f.sp.height / ft.height);
+      }
       f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
       f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき

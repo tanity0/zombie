@@ -73,6 +73,20 @@ on the zombie game. Append a new entry after each meaningful change.
 ### Verification
 - `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。鞭はサブ武器設置/装備時のみ出るため idle プレビュー未確認(描画コードは検証)。
 
+## 2026-06-16 - v0.25.390 - 森下霧を fog.png(加算)に置換 / タイトル流れを loading→暗転 に (Claude Code)
+
+### 変更(社長指示)
+- **森下霧を素材 fog.png に置換**(やまぎり手描き廃止): `public/sprites/fog.png`(黒背景+白霧)を **加算(add)合成・白tint**で森下レイヤーに。
+  fog は非同期ロードのため `FogLayer.texKey='fog'` を追加し、sync 時に getTexture して割当+tileScale 確定。流れ/揺れは既存の霧システムのまま(特別なエフェクトなし)。
+  pixiTextures の standalone に `fog`(linear)を追加。getFogBankTexture は不使用に(import削除)。
+- **タイトルの流れを明確化**: START タップ → 音楽再生(BGM解禁) → **ローディング処理(スピナー+LOADING表示, ~1s)** → **ゆっくり暗転(1s)** → セレクト。
+  `TitleScreen` を phase('idle'→'loading'→'blackout')制に。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview: STARTタップで LOADING 表示→暗転→メニュー到達、ゲーム中に fog.png の霧描画を確認、console エラーなし。
+- 注: fog.png の背景は暗灰のため加算でごく僅かに霞が乗る。気になれば `fog-alpha.png`(透過版)+通常合成に切替可。
+- ※大容量PNG はコミットせず(素材ブランチに正本・ローカル public/ に配置)。
+
 ## 2026-06-16 - v0.25.389 - 鞭でスキルの手榴弾を起爆できるように (Claude Code)
 
 ### 変更(社長確認: 「手りゅう弾」=スキルの手榴弾)
