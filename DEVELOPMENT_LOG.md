@@ -60,6 +60,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.373 - 森下の山を浅め+ランダムに (Claude Code)
+
+### 変更(社長フィードバック: 山が鋭すぎる → 浅め+ランダム感)
+- `getFogBankTexture()` の山生成: 振幅 `0.14〜0.36h → 0.05〜0.23h`(浅め+ばらつき)、裾 `0.85〜1.5 → 1.0〜1.9`(広く=なだらか)、
+  間隔ジッタ `±0.40 → ±0.70`(ランダム感)、N `8 → 9`。横タイル(±w周期)は維持。
+
+### Verification
+- `npm run build` 成功。テクスチャ単体(チャットwidget)で浅め+ランダムを確認。dev 再起動。console エラーなし。
+
 ## 2026-06-16 - v0.25.372 - 霧を全層「右へ流れる+揺らめき」に(TilingSprite横スクロール) (Claude Code)
 
 ### 変更(社長フィードバック: 霧は全部、揺らめきながら右へ流れていく)

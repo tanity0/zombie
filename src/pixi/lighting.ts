@@ -115,14 +115,14 @@ export const getFogBankTexture = (): Texture => {
   ctx.clearRect(0, 0, w, h);
   // 連なる山の稜線(リッジ)。複数の raised-cosine の山を重ねて連続した尾根を作り、その下を霧で満たす。
   // 谷は底まで落とさない(=山が繋がって見える)。各列を上端フェザー付き・下ほど濃い縦グラデで塗る。
-  const N = 8;
+  const N = 9;
   const valley = h * 0.50; // 谷(尾根の最も低い位置)
   const peaks: { cx: number; a: number; wd: number }[] = [];
   for (let j = 0; j < N; j++) {
     peaks.push({
-      cx: w * ((j + 0.5) / N) + (hash(j * 4 + 1) - 0.5) * (w / N) * 0.40,
-      a: h * (0.14 + hash(j * 4 + 2) * 0.22),         // 山の高さ(ばらつき=山並み)
-      wd: (w / N) * (0.85 + hash(j * 4 + 3) * 0.65),  // 山の裾の広さ(隣と重なって連なる)
+      cx: w * ((j + 0.5) / N) + (hash(j * 4 + 1) - 0.5) * (w / N) * 0.70, // 間隔のばらつき大(ランダム感)
+      a: h * (0.05 + hash(j * 4 + 2) * 0.18),         // 山の高さ=浅め+ばらつき(0.05〜0.23h)
+      wd: (w / N) * (1.0 + hash(j * 4 + 3) * 0.9),    // 裾を広く=なだらか(鋭さを抑える)
     });
   }
   const ridge = (x: number): number => {
