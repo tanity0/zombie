@@ -12,7 +12,14 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
     : benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中';
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#06070d] px-6 text-white">
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#06070d] px-6 text-white"
+      style={{
+        backgroundImage: `linear-gradient(rgba(6,7,13,0.45), rgba(6,7,13,0.72)), url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}
+    >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(56,189,248,0.12),transparent_34%),radial-gradient(circle_at_50%_80%,rgba(16,185,129,0.09),transparent_42%)]" />
       <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-slate-900/80 to-transparent" />
       <div className="relative z-10 w-full max-w-sm text-center">

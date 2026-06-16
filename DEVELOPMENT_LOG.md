@@ -60,6 +60,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.384 - タイトル/ローディング背景画像 + 自動タレットをスプライト化 (Claude Code)
+
+### アセット(社長が material ブランチに用意 → git show で取得・ローカル配置)
+- `public/backgrounds/title-the-one.png`(タイトル/ローディング兼用・全面)
+- `public/sprites/turret-fixed.png`(前方集中/定点)・`public/sprites/turret-omni.png`(全方位) ※背景が紫ベタ(未透過)
+
+### 変更
+- **タイトル/ローディング背景**: `MainMenu` と `LoadingScreen` の最外 div に title-the-one.png を cover で敷く(暗幕グラデで可読性確保)。
+- **自動タレットをスプライト化**: `drawTurret` を Graphics手描き → スプライト描画に。
+  - 前方集中=`turret-fixed` を**照準(`p.direction`)へ回転**(art は砲身が下向き基準 → `rotation = atan2(-dx, dy)`)。スキャンで照準が更新されるので回る。
+  - 全方位=`turret-omni` を回転なし。テクスチャ未読込時は従来の手描きにフォールバック。
+  - モード切替リングはオーバーレイ Graphics で維持。
+- **紫背景の透過キー**: `pixiTextures` に `loadKeyed`(左上隅の色を基準に tol=80 で透過)を追加し turret-fixed/omni をキー処理して登録。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview でタイトル背景表示を確認、3アセット配信 HTTP 200、boot色キー読込で warn/error なし。
+  タレット本体はサブ武器設置時に表示(棒立ちプレビューには出ない)→ 設置時に要目視。
+- ※大容量PNG(計~6.5MB)はコミットせず(素材ブランチに正本)。ローカル public/ に配置済みで dev 配信。
+
 ## 2026-06-16 - v0.25.383 - 霧をさらに横へ引き伸ばし (Claude Code)
 
 ### 変更(社長フィードバック)

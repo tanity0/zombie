@@ -458,7 +458,7 @@ export class PixiScene {
   // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
   private decoyViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 自動タレット: 砲台ボディ(Graphics)。前方集中/全方位でモード別の見た目。
-  private turretViews = new Map<string, { container: Container; gfx: Graphics }>();
+  private turretViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   private effects = new Map<string, EffectView>();
 
   // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
@@ -2891,10 +2891,13 @@ export class PixiScene {
       let v = this.turretViews.get(p.id);
       if (!v) {
         const container = new Container();
+        const sprite = new Sprite();
+        sprite.anchor.set(0.5);
+        sprite.visible = false;
         const gfx = new Graphics();
-        container.addChild(gfx);
+        container.addChild(sprite, gfx); // sprite=本体絵 / gfx=モード切替リング等のオーバーレイ
         this.L.actorLayer.addChild(container);
-        v = { container, gfx };
+        v = { container, gfx, sprite };
         this.turretViews.set(p.id, v);
       }
       this.drawTurret(v, p);
@@ -2907,7 +2910,7 @@ export class PixiScene {
     }
   }
 
-  private drawTurret(v: { container: Container; gfx: Graphics }, p: Projectile) {
+  private drawTurret(v: { container: Container; gfx: Graphics; sprite: Sprite }, p: Projectile) {
     const footX = p.x + p.width / 2;
     const footY = p.y + p.height; // 下辺 = 足元
     const age = Date.now() - p.createdAt;
@@ -2923,39 +2926,47 @@ export class PixiScene {
 
     const mode = p.turretMode ?? 'forward';
     const accent = mode === 'omni' ? 0x38bdf8 : 0xf59e0b; // 全方位=シアン / 前方集中=琥珀
+    const tex = getTexture(mode === 'omni' ? 'turret-omni' : 'turret-fixed');
     const g = v.gfx;
     g.clear();
-    // 接地影は syncShadows のソフト影に統一(自前の楕円影は廃止)。
-    // 脚 + ボディ(足元から上へ)。
+    const sinceSwitch = p.turretModeSwitchedAt ? Date.now() - p.turretModeSwitchedAt : Infinity;
+
+    if (tex) {
+      // スプライト描画(紫背景は読込時に透過済み)。前方=照準へ回転(art は砲身が下向き基準)、全方位=回転なし。
+      v.sprite.visible = true;
+      v.sprite.texture = tex;
+      const targetH = 54;
+      const sc = targetH / tex.height;
+      v.sprite.scale.set(sc);
+      v.sprite.position.set(0, -targetH * 0.45); // 足元アンカーから本体を上へ
+      v.sprite.rotation = mode === 'forward' ? Math.atan2(-p.direction.x, p.direction.y) : 0;
+      if (sinceSwitch < 200) {
+        const t = sinceSwitch / 200;
+        g.circle(0, -targetH * 0.45, 16 + t * 22).stroke({ color: accent, alpha: 0.7 * (1 - t), width: 2 });
+      }
+      return;
+    }
+
+    // フォールバック: テクスチャ未読込時は従来の手描き。
+    v.sprite.visible = false;
     g.roundRect(-11, -22, 22, 20, 4).fill({ color: 0x334155 });
     g.roundRect(-11, -22, 22, 20, 4).stroke({ color: 0x0f172a, alpha: 0.9, width: 1.5 });
-    // モード切替の一瞬だけリング(短命・軽量)。
-    const sinceSwitch = p.turretModeSwitchedAt ? Date.now() - p.turretModeSwitchedAt : Infinity;
     if (sinceSwitch < 200) {
       const t = sinceSwitch / 200;
       g.circle(0, -12, 8 + t * 16).stroke({ color: accent, alpha: 0.7 * (1 - t), width: 2 });
     }
-    const cy = -12; // ボディ中心(足元から上)
+    const cy = -12;
     if (mode === 'forward') {
-      // 前方集中: 設置向きへ伸びる単一砲身。
-      const dx = p.direction.x;
-      const dy = p.direction.y;
+      const dx = p.direction.x, dy = p.direction.y;
       const dm = Math.max(0.001, Math.hypot(dx, dy));
-      const ux = dx / dm;
-      const uy = dy / dm;
       const len = 18;
-      g.moveTo(0, cy).lineTo(ux * len, cy + uy * len).stroke({ color: accent, width: 5, cap: 'round' });
+      g.moveTo(0, cy).lineTo((dx / dm) * len, cy + (dy / dm) * len).stroke({ color: accent, width: 5, cap: 'round' });
       g.circle(0, cy, 5).fill({ color: accent });
     } else {
-      // 全方位: 周囲へ短い砲身を放射(センサーが周囲対応している見た目)。
       g.circle(0, cy, 6).fill({ color: accent });
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
-        const ix = Math.cos(a) * 6;
-        const iy = Math.sin(a) * 6;
-        const ox = Math.cos(a) * 12;
-        const oy = Math.sin(a) * 12;
-        g.moveTo(ix, cy + iy).lineTo(ox, cy + oy).stroke({ color: accent, width: 2.5, cap: 'round' });
+        g.moveTo(Math.cos(a) * 6, cy + Math.sin(a) * 6).lineTo(Math.cos(a) * 12, cy + Math.sin(a) * 12).stroke({ color: accent, width: 2.5, cap: 'round' });
       }
     }
   }

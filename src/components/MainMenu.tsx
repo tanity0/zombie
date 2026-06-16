@@ -161,6 +161,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
     <div
       className="h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-y-auto overscroll-contain"
       style={{
+        backgroundImage: `linear-gradient(rgba(8,7,14,0.55), rgba(8,7,14,0.78)), url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center top',
+        backgroundAttachment: 'local',
         paddingTop: 'max(env(safe-area-inset-top), 16px)',
         paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 24px), 40px)',
         paddingLeft: 'max(env(safe-area-inset-left), 12px)',

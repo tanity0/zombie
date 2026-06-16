@@ -93,6 +93,35 @@ export const ensureTextures = (): Promise<void> => {
       }
     };
 
+    // 紫ベタ背景の単体PNGを「左上隅の色をキーに透過」して登録(自動タレット絵など。背景未透過対策)。
+    const loadKeyed = async (name: string, scaleMode: 'nearest' | 'linear' = 'nearest') => {
+      try {
+        const img = new Image();
+        await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = spritePath(name); });
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return;
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const im = ctx.getImageData(0, 0, w, h);
+        const d = im.data;
+        const kr = d[0], kg = d[1], kb = d[2]; // 左上隅 = 背景(紫)を基準色に
+        const tol2 = 80 * 80;
+        for (let i = 0; i < d.length; i += 4) {
+          const dr = d[i] - kr, dg = d[i + 1] - kg, db = d[i + 2] - kb;
+          if (dr * dr + dg * dg + db * db <= tol2) d[i + 3] = 0;
+        }
+        ctx.putImageData(im, 0, 0);
+        const tex = Texture.from(cv);
+        tex.source.scaleMode = scaleMode;
+        textures.set(name, tex);
+      } catch (e) {
+        console.warn(`[pixiTextures] failed to color-key "${name}":`, e);
+      }
+    };
+
     await Promise.all([
       // アトラス(敵/木/一部拾い物)。読めたらフレームを切り出す。失敗時はその絵だけ欠落。
       (async () => {
@@ -113,6 +142,9 @@ export const ensureTextures = (): Promise<void> => {
         textures.set(name, tex);
       }),
     ]);
+
+    // 自動タレット(紫背景未透過)を色キーで透過して登録。
+    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni')]);
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
   })();
