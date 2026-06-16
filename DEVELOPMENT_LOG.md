@@ -60,6 +60,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.372 - 霧を全層「右へ流れる+揺らめき」に(TilingSprite横スクロール) (Claude Code)
+
+### 変更(社長フィードバック: 霧は全部、揺らめきながら右へ流れていく)
+- 霧3層を Sprite → **TilingSprite** 化し、`tilePosition.x` を右へ流す(`flow` px/ms)+横の揺らめき(sin)。縦は位置 bob で揺らめき。
+  - flow: 奥 0.012 / 森下 0.030 / 森上 0.020(px/ms。`?fogspd` 倍率)。
+- テクスチャを**横方向に継ぎ目なくタイル可**に: `getFogTexture` は各パフを ±w にも描画、`getFogBankTexture` は ridge を ±w 周期化。
+- 位置/サイズは従来同様(anchorは使わず top-left 計算で中央配置)。`tileScale` は帯にテクスチャ1枚がちょうど収まる値(横1/縦1)。
+- レイヤー深度(奥=world / 森下=frontForest後ろ / 森上=最前面)は v371 のまま。
+
+### 負荷スコア
+0〜1/10(TilingSprite 3枚・tilePosition更新のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview で描画/エラー無しを確認(流れは動作のため静止画では出ない)。
+
 ## 2026-06-16 - v0.25.371 - 森下を front forest の後ろレイヤーへ移動(森が手前で隠す) (Claude Code)
 
 ### 変更(社長指摘: 森下は本当に森の下(後ろ)レイヤーにいる? → いなかった)

@@ -80,12 +80,16 @@ export const getFogTexture = (): Texture => {
     const cy = h * (0.34 + hash(i * 5 + 2) * 0.32);
     const r = 48 + hash(i * 5 + 3) * 78;
     const a = 0.16 + hash(i * 5 + 4) * 0.20;
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, `rgba(255,255,255,${a})`);
-    g.addColorStop(0.55, `rgba(255,255,255,${a * 0.5})`);
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // 横方向に継ぎ目なくタイルできるよう、各パフを ±w にも描く(端をまたぐ雲を繋ぐ)。
+    for (const dx of [-w, 0, w]) {
+      const x = cx + dx;
+      const g = ctx.createRadialGradient(x, cy, 0, x, cy, r);
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(0.55, `rgba(255,255,255,${a * 0.5})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, cy - r, r * 2, r * 2);
+    }
   }
   ctx.globalCompositeOperation = 'source-over';
   fogTex = Texture.from(canvas);
@@ -124,8 +128,11 @@ export const getFogBankTexture = (): Texture => {
   const ridge = (x: number): number => {
     let y = valley;
     for (const p of peaks) {
-      const d = Math.abs(x - p.cx);
-      if (d < p.wd) y -= p.a * 0.5 * (1 + Math.cos((Math.PI * d) / p.wd));
+      // 横方向に周期的(継ぎ目なくタイル可)にするため、±w にずらした山の寄与も加える。
+      for (const off of [-w, 0, w]) {
+        const d = Math.abs(x - (p.cx + off));
+        if (d < p.wd) y -= p.a * 0.5 * (1 + Math.cos((Math.PI * d) / p.wd));
+      }
     }
     return y;
   };

@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
@@ -140,12 +140,13 @@ const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
-  sp: Sprite;
+  sp: TilingSprite;
   yFrac: number;     // 帯の中心Y(画面高さに対する割合)
-  widthFrac: number; // スプライト幅(画面幅に対する割合。>1=揺れても端が見えない)
+  widthFrac: number; // スプライト幅(画面幅に対する割合。>=1で画面を覆う)
   heightFrac: number;
-  ampX: number; ampY: number; // sway 振幅(px)
-  spdX: number; spdY: number; // sway 速度(rad/ms)
+  ampX: number; ampY: number; // 揺らめき振幅(px)。ampX=texture横, ampY=縦位置
+  spdX: number; spdY: number; // 揺らめき速度(rad/ms)
+  flow: number;      // 右への流れ(px/ms。tilePosition.x を増やす)
   ph: number;        // 位相
 }
 
@@ -537,7 +538,8 @@ export class PixiScene {
   private bgCloudLayer = new Container();     // 奥 = world 内(キャラの後ろ)
   private forestUnderLayer = new Container(); // 森下(やまぎり)= front forest の後ろ
   private frontBankLayer = new Container();   // 森上 = uiLayer(最前面)
-  private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(ゆらゆら sway)
+  private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(右へ流れる+揺らめき)
+  private fogT0 = 0;                          // 流れ(tilePosition)の基準時刻
 
   private screenW = 1;
   private screenH = 1;
@@ -757,8 +759,7 @@ export class PixiScene {
     else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
     this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
     const mkFog = (layer: Container, tex: Texture, alpha: number, cfg: Omit<FogLayer, 'sp'>) => {
-      const sp = new Sprite(tex);
-      sp.anchor.set(0.5);
+      const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
       sp.tint = FOG_TINT;
       sp.blendMode = 'screen';
       sp.eventMode = 'none';
@@ -767,16 +768,16 @@ export class PixiScene {
       layer.addChild(sp);
       this.fogLayers.push({ sp, ...cfg });
     };
-    // 各レイヤー“1枚ずつ”。幅は画面より広く取り(揺れても端が出ない)、ゆっくり sway させる。
-    // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。さらに上へ。
+    // 各レイヤー1枚ずつ。横は texture を tilePosition で右へ流す+揺らめき、縦は位置の bob で揺らめき。
+    // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
-      { yFrac: 0.24, widthFrac: 1.5, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
-    // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。かなり下げて稜線が下端から覗く。薄め+少し速めの揺れ。
+      { yFrac: 0.24, widthFrac: 1.2, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, flow: 0.012, ph: 1.9 });
+    // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。かなり下げて稜線が下端から覗く。
     mkFog(this.forestUnderLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
-      { yFrac: 0.88, widthFrac: 1.6, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, ph: 3.1 });
+      { yFrac: 0.88, widthFrac: 1.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1 });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
-      { yFrac: 1.06, widthFrac: 1.6, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, ph: 0.7 });
+      { yFrac: 1.06, widthFrac: 1.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });
   }
 
   resize(w: number, h: number) {
@@ -811,10 +812,13 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
-    // スモッグ各層は1枚を画面より広く引き伸ばす(揺れても端が出ない)。位置/揺れは sync。
+    // スモッグ各層: テクスチャ1枚分が帯にちょうど収まる tileScale(横1枚/縦1枚)。位置/流れは sync。
     for (const f of this.fogLayers) {
       f.sp.width = w * f.widthFrac;
       f.sp.height = h * f.heightFrac;
+      const tw = f.sp.texture.width || 1;
+      const th = f.sp.texture.height || 1;
+      f.sp.tileScale.set(f.sp.width / tw, f.sp.height / th);
     }
     this.updateStageLightShafts(w, h);
 
@@ -1167,13 +1171,17 @@ export class PixiScene {
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
-    // スモッグ: 各層1枚を画面中央基準でゆっくり sway(ゆらゆら)させるだけ。ドリフト/ラップなし。
+    // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
+    if (this.fogT0 === 0) this.fogT0 = now;
+    const fogT = now - this.fogT0;
     for (const f of this.fogLayers) {
       if (!f.sp.visible) continue;
-      f.sp.x = this.screenW / 2 + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;
-      f.sp.y = f.yFrac * this.screenH + Math.sin(now * f.spdY * FOG_SPEED + f.ph * 1.3) * f.ampY;
+      f.sp.x = (this.screenW - f.sp.width) / 2; // 画面中央に固定(横の動きは texture スクロールで)
+      f.sp.y = f.yFrac * this.screenH - f.sp.height / 2 + Math.sin(now * f.spdY * FOG_SPEED + f.ph) * f.ampY; // 縦の揺らめき
+      f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
+      f.sp.tilePosition.y = 0;
     }
     const farH = this.farBackdropHeight();
     this.L.farBackdrop.position.set(sx * 0.25, 0);
