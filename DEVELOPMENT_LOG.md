@@ -60,6 +60,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.374 - 奥を薄く / 森下を少し上へ(下端は隙間なし) (Claude Code)
+
+### 変更(社長フィードバック)
+- 奥を薄く: `?fogback` 既定 `0.85 → 0.65`。
+- 森下を少し上へ: `yFrac 0.88 → 0.80`。スプライト下端(yFrac+heightFrac/2=1.275h)は画面外まで伸びるので下に隙間は出ない(Preview実測で確認)。
+
+### Verification
+- `npm run build` 成功。Claude Preview で確認(奥が薄い・森下が少し上・下端の隙間なし)。console エラーなし。
+
 ## 2026-06-16 - v0.25.373 - 森下の山を浅め+ランダムに (Claude Code)
 
 ### 変更(社長フィードバック: 山が鋭すぎる → 浅め+ランダム感)

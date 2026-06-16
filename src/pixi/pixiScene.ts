@@ -135,7 +135,7 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 //   ?fogspd=1    揺れの速さ
 // ★お試し中(2026-06-16): 奥は「めっちゃ濃く」0.85 のまま検証中。基準(戻り)値 → 森下=0.52 / 奥=0.45
 const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.55));     // 森下霧(やまぎり・薄め)
-const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.85));  // 奥(遠景+地面・キャラの後ろ)※検証中
+const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
@@ -772,9 +772,9 @@ export class PixiScene {
     // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
       { yFrac: 0.24, widthFrac: 1.2, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, flow: 0.012, ph: 1.9 });
-    // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。かなり下げて稜線が下端から覗く。
+    // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。少し上へ(下端は画面外まで伸ばし隙間なし)。
     mkFog(this.forestUnderLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
-      { yFrac: 0.88, widthFrac: 1.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1 });
+      { yFrac: 0.80, widthFrac: 1.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1 });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 1.06, widthFrac: 1.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });
