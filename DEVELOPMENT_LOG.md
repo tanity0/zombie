@@ -60,6 +60,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.376 - 霧を「離散した雲の個体」に+奥を上へ(ブルーム発光の白い塊を解消) (Claude Code)
+
+### 変更(社長フィードバック)
+- 「一部だけ強いハイライト」の正体 = 奥霧(filteredWorld内=ブルーム対象)が重なって閾値0.45を超え発光していたもの。
+- 雲テクスチャ `getFogTexture` を連続帯 → **離散した雲の個体(K=3、間に隙間)**に。重なり減でブルーム発光も解消。横タイル維持。
+- `getFogBankTexture`(森下)も山を離散化: N `9→6`、valley `0.50→0.62`(山の間は薄い)、裾 `wd` を狭めて山どうしを離す。
+- 奥をもう少し上: `yFrac 0.24 → 0.16`。
+
+### Verification
+- `npm run build` 成功。Claude Preview で確認: 白い強ハイライト消失/奥が上+離散の雲/シャフトがクリア。console エラーなし。
+
 ## 2026-06-16 - v0.25.375 - 銃のリザーブ弾プール上限を変更(handgun72/shotgun18/rifle36) (Claude Code)
 
 ### 変更(社長指示: 最大弾数)

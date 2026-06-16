@@ -72,23 +72,28 @@ export const getFogTexture = (): Texture => {
   };
   ctx.clearRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'lighter';
-  const PUFFS = 30;
-  for (let i = 0; i < PUFFS; i++) {
-    // Spread across the whole width; cluster vertically near the middle so the
-    // band has a soft billowy top/bottom contour and fades to transparent.
-    const cx = w * (0.03 + hash(i * 5 + 1) * 0.94);
-    const cy = h * (0.34 + hash(i * 5 + 2) * 0.32);
-    const r = 48 + hash(i * 5 + 3) * 78;
-    const a = 0.16 + hash(i * 5 + 4) * 0.20;
-    // 横方向に継ぎ目なくタイルできるよう、各パフを ±w にも描く(端をまたぐ雲を繋ぐ)。
-    for (const dx of [-w, 0, w]) {
-      const x = cx + dx;
-      const g = ctx.createRadialGradient(x, cy, 0, x, cy, r);
-      g.addColorStop(0, `rgba(255,255,255,${a})`);
-      g.addColorStop(0.55, `rgba(255,255,255,${a * 0.5})`);
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x - r, cy - r, r * 2, r * 2);
+  // 連続した帯ではなく「離散した雲の個体」を横に間隔を空けて並べる(本物の雲のように)。
+  // 各個体は数個のパフのまとまり。横方向は ±w で継ぎ目なくタイル可。
+  const K = 3; // 横に並ぶ雲の個体数(間に隙間ができる)
+  for (let k = 0; k < K; k++) {
+    const ccx = w * ((k + 0.5) / K) + (hash(k * 7 + 1) - 0.5) * (w / K) * 0.30;
+    const ccy = h * (0.40 + hash(k * 7 + 2) * 0.20);
+    const puffN = 4 + Math.floor(hash(k * 7 + 3) * 3); // 4〜6
+    for (let pi = 0; pi < puffN; pi++) {
+      const s = k * 40 + pi * 3;
+      const px = ccx + (hash(s + 1) - 0.5) * w * 0.10; // 個体内のまとまり(狭め=隙間を残す)
+      const py = ccy + (hash(s + 2) - 0.5) * h * 0.28;
+      const r = 30 + hash(s + 3) * 45;
+      const a = 0.14 + hash(s + 4) * 0.16;
+      for (const dx of [-w, 0, w]) {
+        const x = px + dx;
+        const g = ctx.createRadialGradient(x, py, 0, x, py, r);
+        g.addColorStop(0, `rgba(255,255,255,${a})`);
+        g.addColorStop(0.55, `rgba(255,255,255,${a * 0.5})`);
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x - r, py - r, r * 2, r * 2);
+      }
     }
   }
   ctx.globalCompositeOperation = 'source-over';
@@ -115,14 +120,14 @@ export const getFogBankTexture = (): Texture => {
   ctx.clearRect(0, 0, w, h);
   // 連なる山の稜線(リッジ)。複数の raised-cosine の山を重ねて連続した尾根を作り、その下を霧で満たす。
   // 谷は底まで落とさない(=山が繋がって見える)。各列を上端フェザー付き・下ほど濃い縦グラデで塗る。
-  const N = 9;
-  const valley = h * 0.50; // 谷(尾根の最も低い位置)
+  const N = 6;
+  const valley = h * 0.62; // 谷を高め(=山の間は霧が薄く、個体が離れて見える)
   const peaks: { cx: number; a: number; wd: number }[] = [];
   for (let j = 0; j < N; j++) {
     peaks.push({
-      cx: w * ((j + 0.5) / N) + (hash(j * 4 + 1) - 0.5) * (w / N) * 0.70, // 間隔のばらつき大(ランダム感)
-      a: h * (0.05 + hash(j * 4 + 2) * 0.18),         // 山の高さ=浅め+ばらつき(0.05〜0.23h)
-      wd: (w / N) * (1.0 + hash(j * 4 + 3) * 0.9),    // 裾を広く=なだらか(鋭さを抑える)
+      cx: w * ((j + 0.5) / N) + (hash(j * 4 + 1) - 0.5) * (w / N) * 0.55, // 間隔のばらつき(ランダム感)
+      a: h * (0.10 + hash(j * 4 + 2) * 0.22),         // 山の高さ=浅め+ばらつき
+      wd: (w / N) * (0.55 + hash(j * 4 + 3) * 0.45),  // 裾を狭めて山どうしを離す(隙間)
     });
   }
   const ridge = (x: number): number => {

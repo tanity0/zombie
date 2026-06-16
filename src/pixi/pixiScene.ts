@@ -769,9 +769,9 @@ export class PixiScene {
       this.fogLayers.push({ sp, ...cfg });
     };
     // 各レイヤー1枚ずつ。横は texture を tilePosition で右へ流す+揺らめき、縦は位置の bob で揺らめき。
-    // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。
+    // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。もうちょい上。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
-      { yFrac: 0.24, widthFrac: 1.2, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, flow: 0.012, ph: 1.9 });
+      { yFrac: 0.16, widthFrac: 1.2, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, flow: 0.012, ph: 1.9 });
     // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。少し上へ(下端は画面外まで伸ばし隙間なし)。
     mkFog(this.forestUnderLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
       { yFrac: 0.80, widthFrac: 1.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1 });
