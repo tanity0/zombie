@@ -133,8 +133,8 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 //   ?fogbg=0.18  背景霧(キャラの後ろ・遠景の前)の濃さ(0=なし)
 //   ?fog=0.10    全面霧(画面全体の薄いヴェール)の濃さ(0=なし)
 //   ?fogspd=1    霧の流れる速さ倍率(0=止まる)
-const FOG_BG_ALPHA = Math.max(0, tsNum('fogbg', 0.18));
-const FOG_FULL_ALPHA = Math.max(0, tsNum('fog', 0.10));
+const FOG_BG_ALPHA = Math.max(0, tsNum('fogbg', 0.45));
+const FOG_FULL_ALPHA = Math.max(0, tsNum('fog', 0.22));
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0x9fb6c8;          // 寒色の霞(青灰)。screen合成で淡く乗る
 const FOG_BG_PARALLAX_X = 0.32;     // 背景霧の横パララックス(森より遅い=奥に見える)

@@ -60,6 +60,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.356 - スモッグが見えない問題を修正(濃さ・テクスチャ強化) (Claude Code)
+
+### 変更
+- v0.25.355 のスモッグが薄すぎて視認できなかったため強化:
+  - `lighting.ts` `getFogTexture()`: **連続した薄霧のベース(白 α0.34)を追加**+ブロブを 30→36・peak α0.05〜0.15 → 0.10〜0.32 に。
+    まばらで見えない問題を解消し、面で霞むように。
+  - 既定の濃さを引き上げ: `FOG_BG_ALPHA` 0.18→**0.45**、`FOG_FULL_ALPHA` 0.10→**0.22**(`pixiScene.ts`)。
+- 原因は描画バグではなく**既定値が薄すぎた**こと(Pixi v8 で `screen` は基本ブレンド=動作OK)。
+- **プレビューで実描画を確認**: `?fogbg=0.7&fog=0.35` で濃霧を確認(パイプライン正常)→ 既定 0.45/0.22 で
+  オクトパス的な霞に着地。console エラーなし。`.claude/launch.json` を追加(preview 用)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview でゲーム画面の霧描画を目視確認。
+
+### 調整
+- 濃すぎ/薄すぎは `?fogbg` / `?fog`、流れは `?fogspd`。好みが出たら既定へ再焼き込み。
+
 ## 2026-06-16 - v0.25.355 - スモッグ(オクトパス的な空気感): 背景霧+全面霧(軽量) (Claude Code)
 
 ### 変更

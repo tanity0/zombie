@@ -69,13 +69,16 @@ export const getFogTexture = (): Texture => {
     return v - Math.floor(v);
   };
   ctx.clearRect(0, 0, size, size);
-  ctx.globalCompositeOperation = 'lighter'; // accumulate blobs softly
-  const BLOBS = 30;
+  // 連続したベース霧(一様な薄い白)。これで「まばらで見えない」を防ぎ、面で霞む。
+  ctx.fillStyle = 'rgba(255,255,255,0.34)';
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'lighter'; // accumulate blobs softly on top of the base
+  const BLOBS = 36;
   for (let i = 0; i < BLOBS; i++) {
     const cx = hash(i * 3 + 1) * size;
     const cy = hash(i * 3 + 2) * size;
-    const r = 70 + hash(i * 3 + 3) * 120;     // 70..190 px soft puffs
-    const a = 0.05 + hash(i * 7 + 5) * 0.10;  // 0.05..0.15 peak alpha
+    const r = 80 + hash(i * 3 + 3) * 130;     // 80..210 px soft puffs
+    const a = 0.10 + hash(i * 7 + 5) * 0.22;  // 0.10..0.32 peak alpha (濃淡をはっきり)
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         const x = cx + dx * size;
