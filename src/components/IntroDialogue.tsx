@@ -6,6 +6,7 @@ import {
   INTRO_DIALOGUE_LINE_HOLD_MS,
   CHARACTER_CLASS_NAMES,
 } from '../store/gameStore';
+import { playRadioStatic } from '../audio/audioManager';
 
 // 登場時のセリフ(時間停止中に自動で文字が流れる)。VN風の下部ボックス。
 // 入力不要(オートタイプ→流れ終わると useGameLoop 側がゲームを再開)。
@@ -16,6 +17,7 @@ const IntroDialogue: React.FC = () => {
   const characterClass = useGameStore((s) => s.player.characterClass);
   const [, setTick] = useState(0);
   const rafRef = useRef<number | undefined>(undefined);
+  const radioFiredAtRef = useRef<number>(-1); // この登場(startedAt)で無線SEを鳴らしたか
 
   useEffect(() => {
     if (!active) return;
@@ -41,7 +43,7 @@ const IntroDialogue: React.FC = () => {
   let shown = 0;
   for (let i = 0; i < INTRO_DIALOGUE_LINES.length; i++) {
     const len = INTRO_DIALOGUE_LINES[i].text.length;
-    const lineTotal = len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS;
+    const lineTotal = INTRO_DIALOGUE_LINES[i].holdMs ?? (len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS);
     if (remaining < lineTotal) {
       curIdx = i;
       shown = Math.max(0, Math.min(len, Math.floor(remaining / INTRO_DIALOGUE_CHAR_MS)));
@@ -55,6 +57,16 @@ const IntroDialogue: React.FC = () => {
     shown = INTRO_DIALOGUE_LINES[curIdx].text.length;
   }
   const line = INTRO_DIALOGUE_LINES[curIdx];
+
+  // 無線SEの「間」: テキストは出さず、実際の無線ノイズ音を1回だけ鳴らす(ボックスも隠す)。
+  if (line.speaker === '__radio__') {
+    if (radioFiredAtRef.current !== startedAt) {
+      radioFiredAtRef.current = startedAt;
+      playRadioStatic();
+    }
+    return null;
+  }
+
   const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
@@ -71,14 +83,6 @@ const IntroDialogue: React.FC = () => {
             return (
               <p key={i} className="text-lg italic leading-relaxed text-rose-200/90">
                 「{l.text}{cursor && <span className="opacity-70">▌</span>}」
-              </p>
-            );
-          }
-          // 無線SE/ノイズのト書き(発話ではない)。中央寄せ・かすれ・等幅で区別。
-          if (l.speaker === '__radio__') {
-            return (
-              <p key={i} className="text-center text-sm italic tracking-widest text-white/40" style={{ fontFamily: 'monospace' }}>
-                {l.text}{cursor && <span className="opacity-70">▌</span>}
               </p>
             );
           }

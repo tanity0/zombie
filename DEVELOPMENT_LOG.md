@@ -60,6 +60,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.387 - START後にゆっくり暗転→セレクト / 無線SEを実音(合成)に (Claude Code)
+
+### 変更(社長指示)
+- **START タップ後の遷移**: タップ瞬間に BGM 解禁(unlockDanceAudio + setBgmScene('menu'))→ `TitleScreen` が **ゆっくり暗転(1.4s)+LOADING表示** →
+  暗転し切ったら(transitionend / 1.6s フォールバック)メニュー(セレクト)へ。`onStart`/`onDone` の2コールバックに分離。
+- **無線SE を実音化**: 会話の `［無線SE…］` テキストを廃止し、`__radio__` 行を **無発話の「間」(holdMs=1500)**に。
+  `audioManager.playRadioStatic()`(ホワイトノイズ+バンドパス+途切れエンベロープの合成。アセット不要)を `IntroDialogue` がその間に1回だけ再生。
+  行に `holdMs?` を追加し、表示タイミングと `INTRO_DIALOGUE_TOTAL_MS` の計算を上書き対応。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview: STARTタップ→暗転→メニュー到達を確認、
+  会話で「無線SE」テキスト非表示(=間+音に置換)・他行表示を確認。console エラーなし(無線音は合成・ヘッドレスでは可聴確認不可)。
+
 ## 2026-06-16 - v0.25.386 - ショットガン改名 / ステージ1冒頭会話を差し替え (Claude Code)
 
 ### 変更(社長指示)

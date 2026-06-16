@@ -407,11 +407,13 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
   necromancer: 'スカベンジャー',
 };
 // speaker: null=通信 / '__voice__'=生存者の声(別スタイル)。1行ずつ切替表示。
-export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string }[] = [
+// holdMs を指定した行はその時間だけ「間」を取る(text 長さからの自動計算を上書き)。
+// __radio__ 行は無発話の「間」で、IntroDialogue が実際の無線ノイズ音(playRadioStatic)を1回鳴らす。
+export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string; holdMs?: number }[] = [
   { speaker: '通信兵', text: '緊急通信。任務を一時中断する' },
   { speaker: '通信兵', text: '研究所から帰還中の偵察部隊が、変異体に包囲された' },
   { speaker: '通信兵', text: '現在地から近い。座標を送る。救助を優先してくれ' },
-  { speaker: '__radio__', text: '［無線SE:ガガー……］' },
+  { speaker: '__radio__', text: '', holdMs: 1500 }, // 無線ノイズの間(音だけ・テキストなし)
   { speaker: '偵察兵', text: '……聞こえるか! くそ、弾がねぇ!' },
   { speaker: '偵察兵', text: 'グレッグ……! ちくしょう、助け……' },
 ];
@@ -421,7 +423,7 @@ export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この
 // 全体時間(useGameLoop が終了判定に使用)。
 export const INTRO_DIALOGUE_TOTAL_MS =
   INTRO_DIALOGUE_LINES.reduce(
-    (sum, l) => sum + l.text.length * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS,
+    (sum, l) => sum + (l.holdMs ?? (l.text.length * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS)),
     0
   ) + INTRO_DIALOGUE_END_HOLD_MS;
 // セリフを出す登場進行 t。ヘリが低ホバーまで降りてきた頃(フェーズA内 a≈0.82。降下0.5〜飛び降り0.85の終盤)。

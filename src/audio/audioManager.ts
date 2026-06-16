@@ -422,6 +422,43 @@ export const playDanceKick = () => {
   osc.stop(t + 0.36);
 };
 
+// 無線のノイズ(ザッ…ザザッ)を合成再生。サンプル不要(ホワイトノイズ+バンドパス+途切れエンベロープ)。
+// 登場会話の「無線SE」用。アセット無しで「ガガー…」っぽい途切れ音を出す。
+export const playRadioStatic = () => {
+  if (muted) return;
+  const ctx = ensureSfxContext();
+  if (!ctx) return;
+  resumeSfxContext();
+  const t = ctx.currentTime;
+  const dur = 1.0;
+  const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+  const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1700; // 無線っぽい中域
+  bp.Q.value = 0.7;
+  const gain = ctx.createGain();
+  const v = 0.5 * sfxVolume;
+  const lo = 0.05 * sfxVolume + 0.0001;
+  // 途切れる無線: ザッ→プツ→ザザッ→フェードアウト。
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.linearRampToValueAtTime(v, t + 0.04);
+  gain.gain.exponentialRampToValueAtTime(lo, t + 0.30);
+  gain.gain.linearRampToValueAtTime(v * 0.9, t + 0.40);
+  gain.gain.exponentialRampToValueAtTime(lo, t + 0.66);
+  gain.gain.linearRampToValueAtTime(v * 0.6, t + 0.74);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp);
+  bp.connect(gain);
+  gain.connect(ctx.destination);
+  src.start(t);
+  src.stop(t + dur);
+};
+
 const loadSfxBuffer = (key: SfxKey) => {
   const context = ensureSfxContext();
   const config = SFX_SOURCES[key];

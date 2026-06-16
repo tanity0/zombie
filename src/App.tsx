@@ -79,16 +79,14 @@ function App() {
     setGameState('gameOver');
   };
 
-  const handleTitleStart = () => {
-    // 最初のユーザー操作。ここで音声を解禁(iOS含む)してタイトルBGMを鳴らし、メニューへ。
-    unlockDanceAudio();
-    setBgmScene('menu');
-    setGameState('menu');
-  };
-
   return (
     <div className="w-full h-full bg-gray-900 text-white">
-      {gameState === 'title' && <TitleScreen onStart={handleTitleStart} />}
+      {gameState === 'title' && (
+        <TitleScreen
+          onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
+          onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
+        />
+      )}
 
       {gameState === 'menu' && (
         <MainMenu
