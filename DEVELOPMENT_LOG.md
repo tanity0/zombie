@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.417`**（ダンス曲を素材ロスレスWAVから正確な600で再生成＋定期リシンク。実機確認待ち）。
+- **最新 version**: **`v0.25.418`**（曲テンポは一定600と検証済み・定期リシンクを1秒/3msにタイト化。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,19 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.418 - 曲テンポ検証(一定600)＋定期リシンクをタイト化 (Claude Code)
+
+### 調査（社長: まだズレる/途中からズレる?）
+- ループWAVのオンセットをコム解析。**テンポは一定 ~600ms**(前半599.25 / 後半599.00)で**途中ドリフト無し**。
+  → 曲ではなく「実時間グリッド vs 音声再生クロック(＋出力遅延)」のズレが原因。
+### 変更
+- 定期リシンクを **4000ms→1000ms / 閾値6ms→3ms** にタイト化。ドリフトを溜めず追従(currentTime読み＋必要時setのみで軽量)。
+### 残課題メモ
+- Bluetooth等の**音声出力遅延**は固定オフセットで効く。残るなら `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL` かキャリブレーションで対応。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機(v0.25.418にハードリロード)で要確認。
 
 ## 2026-06-16 - v0.25.417 - ダンス曲を素材ロスレスWAVから正確な600で再生成 (Claude Code)
 
