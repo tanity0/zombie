@@ -133,8 +133,9 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 //   ?fogback=0.45 奥(キャラの後ろ・遠景〜地面に被る。0=なし)
 //   ?fogbg=0.45  森上霧(最下部・手前の森に被る低い霧。0=なし)
 //   ?fogspd=1    揺れの速さ
-const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.52));     // 森下霧(やまぎり・上がプレイヤーに少し被る)
-const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.45));  // 奥(遠景+地面・キャラの後ろ)
+// ★お試し: 奥/森下を「めっちゃ濃く」中(2026-06-16)。戻す時の既定値 → 森下=0.52 / 奥=0.45
+const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.90));     // 森下霧(やまぎり・上がプレイヤーに少し被る)※通常 0.52
+const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.85));  // 奥(遠景+地面・キャラの後ろ)※通常 0.45
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ

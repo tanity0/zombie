@@ -60,6 +60,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.366 - スモッグ濃さ検証(奥/森下を「めっちゃ濃く」) (Claude Code)
+
+### 変更(社長: 現状の濃さを覚えつつ、めっちゃ濃くして見たい)
+- お試しで濃く: 奥 `?fogback 0.45 → 0.85` / 森下 `?fog 0.52 → 0.90`。
+- **戻り値(現状の良かった濃さ)をコード/メモリに控え**: 奥=0.45 / 森下=0.52(コメント `★お試し` 参照)。
+- 注: 森下は `yFrac 0.98` と低く本体が画面外なので、濃く見えるのは主に山の上端。本体濃度を見るなら森下を上げる。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview で確認(奥が大幅に濃い)。console エラーなし。
+
 ## 2026-06-16 - v0.25.365 - スモッグ微調整2(奥=さらに上 / 森下=さらに下) (Claude Code)
 
 ### 変更(社長フィードバック)
