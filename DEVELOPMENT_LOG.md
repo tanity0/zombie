@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.418`**（曲テンポは一定600と検証済み・定期リシンクを1秒/3msにタイト化。実機確認待ち）。
+- **最新 version**: **`v0.25.419`**（ステージ1フル曲を復元＝ループ置換の誤り是正・テンポ≒600一定をnumpyで検証・リシンク4秒。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,25 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.419 - ステージ1フル曲を復元(ループ置換の誤りを是正)＋numpy精密計測 (Claude Code)
+
+### 修正（社長指摘: 途中で短く切られた曲になってる / numpyで測れ）
+- **誤り是正**: v0.25.417 で `dance-100.mp3` を「ループWAV×14」に置換していたが、フル曲は単純ループ反復ではなく
+  **構成のあるフル尺曲**だった(=短く切られて聞こえた)。素材ブランチの**元フル曲(268.032s/128k)を復元**。
+- **numpy精密計測**(スペクトラルフラックス＋自己相関/コム): フル曲のテンポは **≒600ms/拍で一定**(前半599.42/後半599.38、
+  ループ周期≒19.18s。方式間で±1ms程度のばらつき)。**途中ドリフトは無し**=曲は悪くない。ロスレスのループ素材は600ちょうどで、
+  フル曲の書き出しが極僅か(0.08%程度)速いだけ。
+- **方針**: フル曲はそのまま(無劣化)。`interval=600`(BPM既定)を維持し、**4秒ごとの定期リシンク**が音声の実再生位置へ
+  グリッドを合わせ続けるので、±1msのテンポ差は吸収される(ストレッチ等の再エンコードはしない)。
+- リシンク間隔は社長指示で **4秒/6msに戻し**(v0.25.418の1秒/3msから)。
+
+### 残課題（次の候補）
+- 一定量だけ常にズレる場合は曲ではなく**音声出力遅延**(特にBluetooth、数十〜数百ms)。固定オフセット
+  `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL` か簡易キャリブレーション(基準音にタップしてズレ量を保存)で対応可能。
+
+### Verification
+- `npm run build` 成功。実機(v0.25.419にハードリロード)で全曲が流れる(切れない)こと＆ズレを確認。
 
 ## 2026-06-16 - v0.25.418 - 曲テンポ検証(一定600)＋定期リシンクをタイト化 (Claude Code)
 
