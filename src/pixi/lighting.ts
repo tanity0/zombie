@@ -8,6 +8,7 @@ import { Texture } from 'pixi.js';
 let glowTex: Texture | null = null;
 let vignetteTex: Texture | null = null;
 let softShadowTex: Texture | null = null;
+let fogTex: Texture | null = null;
 
 // Soft round light: opaque white centre fading to transparent at the rim.
 // Tinted warm + 'add' blended for the player halo.
@@ -48,6 +49,48 @@ export const getVignetteTexture = (): Texture => {
   ctx.fillRect(0, 0, size, size);
   vignetteTex = Texture.from(canvas);
   return vignetteTex;
+};
+
+// Tileable soft "smog" / cloud texture, baked once. White alpha field built from
+// many soft radial blobs; each blob is drawn at its 9 wrap positions (±size) so
+// the texture tiles seamlessly when scrolled by a TilingSprite. The caller tints
+// it cool and screen-blends it at low alpha — no per-frame blur / particles, so
+// drifting it is essentially free (just a tilePosition assignment).
+export const getFogTexture = (): Texture => {
+  if (fogTex) return fogTex;
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  // Deterministic hash so the cloud shape is stable across reloads/machines.
+  const hash = (n: number) => {
+    const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  ctx.clearRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'lighter'; // accumulate blobs softly
+  const BLOBS = 30;
+  for (let i = 0; i < BLOBS; i++) {
+    const cx = hash(i * 3 + 1) * size;
+    const cy = hash(i * 3 + 2) * size;
+    const r = 70 + hash(i * 3 + 3) * 120;     // 70..190 px soft puffs
+    const a = 0.05 + hash(i * 7 + 5) * 0.10;  // 0.05..0.15 peak alpha
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const x = cx + dx * size;
+        const y = cy + dy * size;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,255,255,${a})`);
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  fogTex = Texture.from(canvas);
+  return fogTex;
 };
 
 // Soft shadow blob: black, opaque-ish centre fading to transparent at the rim.

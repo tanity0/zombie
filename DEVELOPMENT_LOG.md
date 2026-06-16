@@ -60,6 +60,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.355 - スモッグ(オクトパス的な空気感): 背景霧+全面霧(軽量) (Claude Code)
+
+### 変更
+- **焼きテクスチャ方式の軽量スモッグ**を追加。`lighting.ts` に `getFogTexture()`(512²のタイル可能なソフト雲を
+  起動時1回だけ焼く。30個のソフトブロブを9方向ラップ描画で継ぎ目なし)。
+- `pixiScene.ts` に2枚の `TilingSprite` を追加し、`tilePosition` を camera パララックス + 時間ドリフトで流すだけ
+  (毎フレームの blur/シェーダ/粒子なし=ほぼ無料。コストは全画面α合成のフィルレートのみ)。
+  - **背景霧 `bgFog`**: `world` 内の `actorLayer` 直前(=キャラの後ろ・遠景の前)。`filteredWorld` 内なので
+    tilt-shift と envtint が乗り、遠景がふわっと霞んで奥行きが出る。camera-shake は打ち消して画面固定。
+  - **全面霧 `fullFog`**: `uiLayer`(全フィルタ外=スクリーン空間)。colour grade/シャフトの上・vignette の下に薄く。
+  - 合成は `screen`、tint は寒色(`0x9fb6c8`)。
+- **URLチューニング**(他のライティングと同方式): `?fogbg=0.18`(背景霧の濃さ)/ `?fog=0.10`(全面霧)/
+  `?fogspd=1`(流れる速さ)/ それぞれ `0` で無効化。実機で詰めて既定へ焼き込む。
+- 触ったファイル: `src/pixi/lighting.ts` / `src/pixi/pixiScene.ts`(`layers.ts` は変更なし=world内へ addChildAt で挿入)。
+
+### 負荷スコア
+1〜2/10(全画面α合成の TilingSprite 2枚。CPUはほぼゼロ、GPUフィルレートのみ。既存の遠景/前景森と同等)。
+退避策: `?fog=0&fogbg=0` で完全無効 / 全面を切って背景のみ / テクスチャ 512→256。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機での見た目/FPSは dev 再起動後に確認。
+- 既存ルール順守: blur/fog/bloom は削除せず追加のみ。React 無関係(Pixi側で完結)。
+
+### 次の調整候補
+- 実機で濃さ/速度/tint を詰めて既定へ焼き込み。必要なら背景霧を2枚(多重パララックス)に。強イベント時の局所濃化フック。
+
 ## 2026-06-16 - v0.25.354 - 会話中はゲーム時間停止(攻撃入力を抑止)/会話ボックスを画面中央・大きく (Claude Code)
 
 ### 変更

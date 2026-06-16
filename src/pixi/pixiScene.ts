@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
@@ -26,7 +26,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getSoftShadowTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -126,6 +126,25 @@ const SHAFT_ALPHA = Math.max(0, tsNum('shaft', 0.11));
 const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
 // シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定0=なし。?shaftblur= で有効化。
 const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
+
+// --- スモッグ(オクトパス的な空気感)----------------------------------------------
+// 焼きテクスチャ(getFogTexture, 起動時1回)を TilingSprite でスクロールするだけ。毎フレームの
+// blur/シェーダ/粒子なし=ほぼ無料(コストは全画面α合成のフィルレートのみ。既存の遠景/前景森と同等)。
+//   ?fogbg=0.18  背景霧(キャラの後ろ・遠景の前)の濃さ(0=なし)
+//   ?fog=0.10    全面霧(画面全体の薄いヴェール)の濃さ(0=なし)
+//   ?fogspd=1    霧の流れる速さ倍率(0=止まる)
+const FOG_BG_ALPHA = Math.max(0, tsNum('fogbg', 0.18));
+const FOG_FULL_ALPHA = Math.max(0, tsNum('fog', 0.10));
+const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
+const FOG_TINT = 0x9fb6c8;          // 寒色の霞(青灰)。screen合成で淡く乗る
+const FOG_BG_PARALLAX_X = 0.32;     // 背景霧の横パララックス(森より遅い=奥に見える)
+const FOG_BG_PARALLAX_Y = 0.32;
+const FOG_BG_DRIFT_X = 6;           // 時間ドリフト(px/sec)。ゆっくり右へ流れる
+const FOG_BG_DRIFT_Y = -1.5;        // わずかに上へ(立ちのぼる空気感)
+const FOG_FULL_PARALLAX_X = 0.12;   // 全面はごく弱いパララックス
+const FOG_FULL_DRIFT_X = 10;
+const FOG_FULL_DRIFT_Y = -2;
+const FOG_TILE_SCALE = 1.4;         // テクスチャの見かけ大きさ(大=粒の大きい霞)
 
 // --- A: 光だまり(プレイヤー足元の地面に敷く加算ライト) ------------------------
 // 暗いベース(envdark)の上で「光の島」を作る。groundLayer(world座標・アクターの下)に
@@ -508,6 +527,11 @@ export class PixiScene {
   private firefliesPlaced = false;
   private fxPrevNow = 0;
 
+  // スモッグ。bgFog=world内(キャラの後ろ・tilt-shift/envtintが乗る)、fullFog=uiLayer(全面・フィルタ外)。
+  private bgFog = new TilingSprite({ texture: getFogTexture(), width: 1, height: 1 });
+  private fullFog = new TilingSprite({ texture: getFogTexture(), width: 1, height: 1 });
+  private fogT0 = 0; // ドリフト用の基準時刻(初回syncで確定)
+
   private screenW = 1;
   private screenH = 1;
   private cameraY = 0;
@@ -717,6 +741,25 @@ export class PixiScene {
       this.gradeSprite, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
+
+    // --- スモッグ(オクトパス的な空気感)。焼きテクスチャを TilingSprite でスクロール ---
+    // 背景霧: world 内の actorLayer 直前(=キャラの後ろ・遠景の前)。filteredWorld 内なので
+    // tilt-shift と envtint が乗り、遠景がふわっと霞んで奥行きが出る。
+    this.bgFog.tileScale.set(FOG_TILE_SCALE);
+    this.bgFog.tint = FOG_TINT;
+    this.bgFog.blendMode = 'screen';
+    this.bgFog.alpha = FOG_BG_ALPHA;
+    this.bgFog.visible = FOG_BG_ALPHA > 0;
+    this.bgFog.eventMode = 'none';
+    this.L.world.addChildAt(this.bgFog, this.L.world.getChildIndex(this.L.actorLayer));
+    // 全面霧: uiLayer(全フィルタ外=スクリーン空間)。colour grade/シャフトの上・vignette の下に薄く敷く。
+    this.fullFog.tileScale.set(FOG_TILE_SCALE);
+    this.fullFog.tint = FOG_TINT;
+    this.fullFog.blendMode = 'screen';
+    this.fullFog.alpha = FOG_FULL_ALPHA;
+    this.fullFog.visible = FOG_FULL_ALPHA > 0;
+    this.fullFog.eventMode = 'none';
+    this.L.uiLayer.addChildAt(this.fullFog, this.L.uiLayer.getChildIndex(this.vignette));
   }
 
   resize(w: number, h: number) {
@@ -751,6 +794,11 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
+    // スモッグは画面を覆うサイズ(位置/スクロールは sync で毎フレーム更新)。
+    this.bgFog.width = w;
+    this.bgFog.height = h;
+    this.fullFog.width = w;
+    this.fullFog.height = h;
     this.updateStageLightShafts(w, h);
 
     // Pin the DoF filter to the screen and put its sharp band at TILT_SHIFT_BAND.
@@ -1102,6 +1150,23 @@ export class PixiScene {
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
+    // スモッグのスクロール。位置は画面ピン留め、texture を camera パララックス + 時間ドリフトで流す。
+    if (this.fogT0 === 0) this.fogT0 = now;
+    const fogSec = (now - this.fogT0) / 1000;
+    if (this.bgFog.visible) {
+      // world 内なので camera-shake を打ち消して画面に固定(霧自体は揺れない)。
+      this.bgFog.position.set(s.camera.x - sx, s.camera.y - sy);
+      this.bgFog.tilePosition.set(
+        -s.camera.x * FOG_BG_PARALLAX_X + fogSec * FOG_BG_DRIFT_X * FOG_SPEED,
+        -s.camera.y * FOG_BG_PARALLAX_Y + fogSec * FOG_BG_DRIFT_Y * FOG_SPEED,
+      );
+    }
+    if (this.fullFog.visible) {
+      this.fullFog.tilePosition.set(
+        -s.camera.x * FOG_FULL_PARALLAX_X + fogSec * FOG_FULL_DRIFT_X * FOG_SPEED,
+        fogSec * FOG_FULL_DRIFT_Y * FOG_SPEED,
+      );
+    }
     const farH = this.farBackdropHeight();
     this.L.farBackdrop.position.set(sx * 0.25, 0);
     this.L.farBackdrop.tilePosition.set(
