@@ -6,6 +6,7 @@ import { isPixiRenderer } from '../config/renderer';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import StatsHud from './StatsHud';
+import DanceTapMeter from './DanceTapMeter';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import ShopMenu from './ShopMenu';
@@ -161,6 +162,7 @@ const Game: React.FC<GameProps> = ({
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
+      <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
       {benchmarkMode && (
         <div
           className="pointer-events-none absolute left-2 top-[calc(max(env(safe-area-inset-top),8px)+94px)] z-50 rounded-md border border-cyan-200/35 bg-cyan-950/55 px-2 py-1 text-[10px] font-bold tracking-widest text-cyan-100 shadow-lg backdrop-blur-sm"

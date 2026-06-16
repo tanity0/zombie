@@ -853,7 +853,8 @@ interface GameState {
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
   setRhythmFirstBeat: (firstBeatAt: number) => void; // 自動アンカー: ビートグリッド起点だけ差し替え
-  rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
+  rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number, opts?: { noLog?: boolean }) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
+  danceTapLog: number[]; // テスト用: 各タップの拍からの符号付きズレ(ms。負=早い/正=遅い)。最新が末尾。
   tickRhythm: () => void;
   startByakko: () => void;
   advanceByakko: () => void;
@@ -992,6 +993,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   shakeUntil: 0,
   zoomUntil: 0,
   zoomMag: 0,
+  danceTapLog: [],
   hurricane: null,
   summons: [],
 
@@ -3733,6 +3735,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           byakkoHits: 0,
           pending: [],
         },
+        danceTapLog: [], // 計測ログは開始ごとにクリア
         // 立ち上がり無敵: 既存の invulnerable を流用(INVULN_MS で自動解除)。TODO: 専用秒数。
         player: { ...state.player, invulnerable: true, invulnerableTime: Date.now() },
       }));
@@ -3755,12 +3758,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => (state.rhythm.active ? { rhythm: { ...state.rhythm, firstBeatAt } } : {}));
   },
 
-  rhythmInput: (kind, dir, contactMs = 0) => {
+  rhythmInput: (kind, dir, contactMs = 0, opts) => {
     const state = get();
     const r = state.rhythm;
     if (!r.active) return { judged: 'none' };
     const gt = Date.now(); // 拍グリッドは実時間基準(firstBeatAt も Date.now ベース)
     if (gt - r.lastInputAt < RHYTHM_INPUT_DEBOUNCE_MS) return { judged: 'none' };
+    // テスト用ms計測: 実タップ(自動タップ以外)の「最寄り拍からの符号付きズレ」を記録。
+    // 負=拍より早い / 正=遅い。これが時間とともに増えるならグリッド⇔曲のテンポずれ(累積)。
+    if (kind === 'tap' && !opts?.noLog && r.interval > 0) {
+      const nb = Math.round((gt - r.firstBeatAt) / r.interval);
+      const off = gt - (r.firstBeatAt + nb * r.interval);
+      set(s => {
+        const lg = s.danceTapLog.length >= 60 ? s.danceTapLog.slice(-59) : s.danceTapLog.slice();
+        lg.push(off);
+        return { danceTapLog: lg };
+      });
+    }
     const beatT = r.firstBeatAt + r.expectBeat * r.interval;
     const win = RHYTHM_SUCCESS_WINDOW_MS + (kind === 'flick' ? RHYTHM_FLICK_EXTRA_WINDOW_MS : 0);
     // フリックは「触れてから離すまで(contactMs)」の接触区間のどこかにジャストが入っていれば成功
