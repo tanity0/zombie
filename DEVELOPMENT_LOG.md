@@ -60,6 +60,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.380 - 死神: 横切りを進行方向側に+被写界深度/追跡速度ランプ、タイトル曲配置 (Claude Code)
+
+### 死神(社長フィードバック2点)
+- **横切りを進行方向側に配置**(`useGameLoop` で player の速度→向きから判定):
+  上=上部奥を横断(小さく)/ 下=下部手前を横断(大きく)/ 右=右側を縦断 / 左=左側を縦断。`reaperCross` に axis/band/dir/scale を持たせる。
+- **被写界深度を乗せる**: 横切りスプライトを uiLayer → **world 内(`reaperCrossLayer`、actorLayer 前)**へ移し、tilt-shift DoF が乗るように。
+  レイヤーは毎フレ画面へピン留め。奥=小スケール・上帯(ボケ)、手前=大スケール・下帯。
+- **追跡速度ランプ**: 出現直後は `player.speed × 0.5`、**10秒かけて smoothstep で ×1.2 までフェードイン加速**(`getReaperRampedSpeed`)。
+  慣性は既存の updateEnemies チェイス inertia がそのまま(他の敵と同じ)。出現直後の即死緩和にもなる。
+
+### タイトル曲
+- 社長が GitHub ブランチ `claude/zombie-material-handoff-chat-13tpmh` の `public/audio/the-lay-of-ruin.mp3` を用意 → `git show` で取得し
+  ローカル `public/audio/title.mp3`(4.16MB)へ配置(Drive base64 制約を回避)。dev で HTTP 200 配信確認。実機の初回タップでメニュー再生。
+  ※ 4MB バイナリは本コミットには含めない(リポジトリ肥大回避。素材ブランチに正本あり)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview の `?reapertest=1` で追跡(ランプで生存時間が延びる)・接触を確認、
+  title.mp3 配信(HTTP 200/audio/mpeg)確認。console エラーなし。横切りの一瞬フレームは未キャプチャ(描画コードは検証済み)。
+
 ## 2026-06-16 - v0.25.379 - 死神(深奥リスク)システム v1 実装 (Claude Code)
 
 ### 概要(仕様: repo ルート reaper_spec.md)

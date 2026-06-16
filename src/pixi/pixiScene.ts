@@ -541,6 +541,7 @@ export class PixiScene {
   private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(右へ流れる+揺らめき)
   private fogT0 = 0;                          // 流れ(tilePosition)の基準時刻
   private reaperCrossSprite = new Sprite();   // 死神の横切り演出(無害・画面横断のシルエット)
+  private reaperCrossLayer = new Container();  // 死神横切り用(world内=被写界深度tilt-shiftが乗る。actorLayer前に画面ピン留め)
 
   private screenW = 1;
   private screenH = 1;
@@ -668,13 +669,15 @@ export class PixiScene {
     this.helicopter.anchor.set(0.5);
     this.helicopter.visible = false;
     this.L.danceUiLayer.addChild(this.helicopter);
-    // 死神の横切り演出: 画面を横断する黒シルエット(無害)。uiLayer 最下層(world の前・HUD の下)。
+    // 死神の横切り演出: 進行方向側の奥/手前を横断する黒シルエット(無害)。world 内(actorLayer 前)に置き
+    // 被写界深度(tilt-shift)を乗せる。レイヤーは毎フレ画面へピン留め(子は素の画面座標)。
     this.reaperCrossSprite.anchor.set(0.5);
     this.reaperCrossSprite.tint = 0x000000;
     this.reaperCrossSprite.alpha = 0.42;
     this.reaperCrossSprite.eventMode = 'none';
     this.reaperCrossSprite.visible = false;
-    this.L.uiLayer.addChildAt(this.reaperCrossSprite, 0);
+    this.reaperCrossLayer.addChild(this.reaperCrossSprite);
+    this.L.world.addChildAt(this.reaperCrossLayer, this.L.world.getChildIndex(this.L.actorLayer));
     this.groundReflectionGfx.blendMode = 'add';
     // 魔法陣スプライト: 加算発光・中心アンカー・既定は非表示(alpha 0)。地面の
     // 反射/光の上、足元シャドウの下に置き、キャラ絵を塗り潰さない。
@@ -1192,7 +1195,8 @@ export class PixiScene {
       f.sp.tilePosition.y = 0;
     }
 
-    // 死神の横切り演出(store.reaperCross から駆動・画面を横断する黒シルエット)。
+    // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
+    this.reaperCrossLayer.position.set(s.camera.x - sx, s.camera.y - sy);
     const rc = s.reaperCross;
     const rsp = this.reaperCrossSprite;
     if (rc && now - rc.startedAt >= 0 && now - rc.startedAt < rc.durationMs) {
@@ -1201,13 +1205,20 @@ export class PixiScene {
         if (rtex) rsp.texture = rtex;
       }
       const t = (now - rc.startedAt) / rc.durationMs;
-      const margin = 180;
-      const span = this.screenW + margin * 2;
-      rsp.x = rc.dir > 0 ? -margin + span * t : this.screenW + margin - span * t;
-      rsp.y = rc.yFrac * this.screenH;
+      const margin = 200;
+      if (rc.axis === 'h') {
+        const span = this.screenW + margin * 2;
+        rsp.x = rc.dir > 0 ? -margin + span * t : this.screenW + margin - span * t;
+        rsp.y = rc.band * this.screenH;
+      } else {
+        const span = this.screenH + margin * 2;
+        rsp.y = rc.dir > 0 ? -margin + span * t : this.screenH + margin - span * t;
+        rsp.x = rc.band * this.screenW;
+      }
       if (rsp.texture && rsp.texture.height > 0) {
-        const sc = (this.screenH * 0.20) / rsp.texture.height;
-        rsp.scale.set(rc.dir > 0 ? sc : -sc, sc); // 進行方向へ向ける
+        const sc = ((this.screenH * 0.22) / rsp.texture.height) * rc.scale; // 奥=小さく / 手前=大きく
+        const faceLeft = rc.axis === 'h' && rc.dir < 0; // 横断は進行方向へ向ける
+        rsp.scale.set(faceLeft ? -sc : sc, sc);
       }
       rsp.visible = true;
     } else {

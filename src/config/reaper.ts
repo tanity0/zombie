@@ -27,7 +27,9 @@ export const REAPER_CONFIG = {
   // 完全出現(追跡)
   spawnDistFromPlayer: 620,   // プレイヤーから少し離して出す(=即接触させない猶予)
   contactDamage: 9999,        // 接触ダメージ(ほぼ即死)
-  moveSpeedMultiplier: 1.2,   // 追跡速度 = プレイヤー現在移動速度 × 1.2
+  moveSpeedMultiplier: 1.2,   // 追跡の最終速度 = プレイヤー現在移動速度 × 1.2
+  chaseStartMult: 0.5,        // 出現直後の速度倍率(プレイヤーの約半分)
+  chaseRampMs: 10000,         // 0.5倍 → 1.2倍 へフェードインで加速する時間(最初の10秒)
   chaserHealth: 6000,         // 高いが有限(極まれば討伐可能)
   canBeKilled: true,
 } as const;
@@ -38,6 +40,14 @@ export type ReaperPhase = 'none' | 'warning_pass' | 'frequent_pass' | 'spawned' 
 // (ダッシュ・ノックバック・強制移動は含めない=呼び出し側で player.speed を渡す)。
 export const getReaperMoveSpeed = (currentPlayerMoveSpeed: number): number =>
   currentPlayerMoveSpeed * REAPER_CONFIG.moveSpeedMultiplier;
+
+// 出現からの経過(ms)で倍率を 0.5 → 1.2 へフェードイン(smoothstep)。慣性は updateEnemies 側で別途かかる。
+export const getReaperRampedSpeed = (currentPlayerMoveSpeed: number, elapsedMs: number): number => {
+  const p = Math.max(0, Math.min(1, elapsedMs / REAPER_CONFIG.chaseRampMs));
+  const eased = p * p * (3 - 2 * p);
+  const mult = REAPER_CONFIG.chaseStartMult + (REAPER_CONFIG.moveSpeedMultiplier - REAPER_CONFIG.chaseStartMult) * eased;
+  return currentPlayerMoveSpeed * mult;
+};
 
 // 深度(px)→ 横切り間隔(ms)。
 export const reaperPassIntervalMs = (depthPx: number): number => {

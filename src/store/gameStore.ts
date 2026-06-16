@@ -690,7 +690,8 @@ interface GameState {
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
   introDialogueShown: boolean;   // この登場で既にセリフを出したか(再トリガー防止)
   // 死神の横切り演出(無害・pixiScene が画面横断で描画)。null=非表示。
-  reaperCross: { startedAt: number; durationMs: number; yFrac: number; dir: number } | null;
+  // axis: 'h'=横断(上下の帯)/'v'=縦断(左右の側)。band=軸に直交する固定位置(画面比)。dir=進む向き。scale=奥行き(小=奥)。
+  reaperCross: { startedAt: number; durationMs: number; axis: 'h' | 'v'; band: number; dir: number; scale: number } | null;
   danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   meleeFinishComboCount: number;
