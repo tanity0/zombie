@@ -33,7 +33,7 @@ import {
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
   RHYTHM_ARROW_GRID, SHIJIN_JP, SHIJIN_BY_ARROW,
   RHYTHM_JUST_BURST_MS, RHYTHM_JUST_RING_MAX_SCALE, RHYTHM_JUST_FLICK_TRAVEL,
-  RHYTHM_JUST_HIT_COLOR, RHYTHM_JUST_FIRE_COLOR,
+  RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL } from '../world/trees';
 
@@ -1327,7 +1327,7 @@ export class PixiScene {
   // (godSuccess)」で 0白/1青/2緑/3赤、フィニッシュで虹。0.5秒ごとに左右反転して回転に見せる。
   // 左右サークルは 0.5秒ごとに足元で重なる(=ジャスト)。リング/矢印は軽量Graphics。
   private syncRhythmOverlay(
-    rhythm: { active: boolean; interval: number; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastJudgeKind: 'tap' | 'flick' | 'none'; lastJudgeArrow: 'up' | 'down' | 'left' | 'right' | null; lastTapAt: number; lastFinishAt: number },
+    rhythm: { active: boolean; interval: number; firstBeatAt: number; expectBeat: number; prompt: ('up' | 'down' | 'left' | 'right')[]; inputIndex: number; inputArrows: ('up' | 'down' | 'left' | 'right')[]; godSuccess: number; lastJudge: string; lastJudgeAt: number; lastJudgeKind: 'tap' | 'flick' | 'none'; lastJudgeArrow: 'up' | 'down' | 'left' | 'right' | null; judgeSeq: number; lastTapAt: number; lastFinishAt: number },
     player: Player,
     gameTime: number
   ) {
@@ -1361,6 +1361,9 @@ export class PixiScene {
     // (以前は lastTapAt 基準でタップ専用だった)。[0,1] にクランプ(保険。異常値でも pulse が暴れて巨大化しない)。
     const okJudge = rhythm.lastJudge === 'hit' || rhythm.lastJudge === 'fire';
     const tapT = okJudge ? Math.max(0, Math.min(1, 1 - (gameTime - rhythm.lastJudgeAt) / RHYTHM_TAP_GLOW_MS)) : 0;
+    // JUST成功ごとに 赤→青→緑→黄 を巡回する発光色(judgeSeqで選択)。
+    const cycN = RHYTHM_JUST_CYCLE_COLORS.length;
+    const cycleCol = RHYTHM_JUST_CYCLE_COLORS[((rhythm.judgeSeq % cycN) + cycN) % cycN];
     const pulse = 1 + 0.18 * tapT;
     // 色: フィニッシュ虹 > 段階色(0白/1青/2緑/3赤)。
     const sinceFinish = gameTime - rhythm.lastFinishAt;
@@ -1368,7 +1371,7 @@ export class PixiScene {
       ? RHYTHM_RAINBOW_PALETTE[Math.floor(gameTime / 70) % RHYTHM_RAINBOW_PALETTE.length]
       : RHYTHM_STAGE_COLORS[Math.max(0, Math.min(RHYTHM_STAGE_COLORS.length - 1, rhythm.godSuccess))];
     // タップ発光のハロー(暖色)。先に敷く。
-    if (tapT > 0.01) g.circle(cx, cy, r + 4 + tapT * 8).fill({ color: 0xfff2cc, alpha: 0.32 * tapT });
+    if (tapT > 0.01) g.circle(cx, cy, r + 4 + tapT * 8).fill({ color: cycleCol, alpha: 0.32 * tapT });
     if (texOk) {
       const s = (RHYTHM_BALL_DIAM / ball.texture.width) * pulse; // width>=32 を保証済みなので巨大化しない
       ball.scale.set(s * flipSign, s);
@@ -1417,7 +1420,7 @@ export class PixiScene {
       const ease = 1 - (1 - bt) * (1 - bt);           // ease-out(序盤に速く広がる)
       const fade = 1 - bt;                            // 透明度の減衰
       const isFire = rhythm.lastJudge === 'fire';
-      const burstCol = isFire ? RHYTHM_JUST_FIRE_COLOR : RHYTHM_JUST_HIT_COLOR;
+      const burstCol = cycleCol; // JUST毎に 赤→青→緑→黄 を巡回
       // 足元発光(地面が一瞬光る): 明るい潰し楕円を2枚重ねて柔らかく。
       const glowA = 0.5 * fade * fade;
       g.ellipse(footCx, footCy, rw * (1.4 + ease * 1.2), rh * (1.6 + ease)).fill({ color: burstCol, alpha: glowA * 0.6 });
@@ -1516,7 +1519,7 @@ export class PixiScene {
   }
 
   // リズム中の暗転(地面/遠景だけ・フェード追従)+ タップ発光(全画面・最前面)。
-  private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number; lastJudge: string; lastJudgeAt: number }, gameTime: number) {
+  private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number; lastJudge: string; lastJudgeAt: number; judgeSeq: number }, gameTime: number) {
     const target = (rhythm.active && !RHYTHM_VFX_OFF) ? RHYTHM_DIM_ALPHA : 0;
     this.rhythmDim += (target - this.rhythmDim) * RHYTHM_DIM_EASE;
     // 暗転(worldGroup の filteredWorld 手前): 地面/遠景のみ暗くなる。
@@ -1539,7 +1542,10 @@ export class PixiScene {
     } else {
       g.visible = true;
       g.clear();
-      g.rect(0, 0, this.screenW, this.screenH).fill({ color: 0xfff2cc, alpha: tapGlow });
+      // 全画面フラッシュも JUST毎に 赤→青→緑→黄 を巡回。
+      const cycN = RHYTHM_JUST_CYCLE_COLORS.length;
+      const cycleCol = RHYTHM_JUST_CYCLE_COLORS[((rhythm.judgeSeq % cycN) + cycN) % cycN];
+      g.rect(0, 0, this.screenW, this.screenH).fill({ color: cycleCol, alpha: tapGlow });
     }
   }
 

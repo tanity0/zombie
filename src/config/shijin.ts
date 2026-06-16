@@ -165,5 +165,7 @@ export const RHYTHM_TAP_GLOW_ALPHA = 0.18;    // タップ発光の最大強さ(
 export const RHYTHM_JUST_BURST_MS = 360;       // バースト演出の長さ(これを過ぎたら描かない)
 export const RHYTHM_JUST_RING_MAX_SCALE = 3.4; // サークルが最終的に広がる倍率(足元の輪 rw/rh 基準)
 export const RHYTHM_JUST_FLICK_TRAVEL = 46;    // フリック矢印が向き方向へ飛ぶ距離(px)
-export const RHYTHM_JUST_HIT_COLOR = 0xfde68a;  // 通常JUST(金)
+export const RHYTHM_JUST_HIT_COLOR = 0xfde68a;  // 通常JUST(金)※巡回色未使用時のフォールバック
 export const RHYTHM_JUST_FIRE_COLOR = 0x7dd3fc; // 四神技完成(水色で差別化)
+// JUST成功ごとに巡回する発光色: 赤→青→緑→黄(judgeSeq % 4 で選択)。
+export const RHYTHM_JUST_CYCLE_COLORS = [0xff3b30, 0x3b82f6, 0x22c55e, 0xfacc15];
