@@ -129,13 +129,13 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 
 // --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広霧をゆっくり揺らすだけ(枚数は増やさない)。
 // ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。
-//   ?fog=0.62    手前下(やまぎりカット・最前面・主役。山がたまにプレイヤーに被る。0=なし)
-//   ?fogback=0.55 奥(キャラの後ろ・遠景〜地面に被る。0=なし)
-//   ?fogbg=0.30  森上の霧(画面上部。変更なし。0=なし)
+//   ?fog=0.52    森下霧(やまぎり・最前面。山の上端が少しだけプレイヤーに被る。0=なし)
+//   ?fogback=0.45 奥(キャラの後ろ・遠景〜地面に被る。0=なし)
+//   ?fogbg=0.45  森上霧(最下部・手前の森に被る低い霧。0=なし)
 //   ?fogspd=1    揺れの速さ
-const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.62));     // 手前下(やまぎり・主役)
-const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.55));  // 奥(遠景+地面)
-const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.48));     // 森上手前霧(もっと濃く)
+const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.52));     // 森下霧(やまぎり・上がプレイヤーに少し被る)
+const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.45));  // 奥(遠景+地面・キャラの後ろ)
+const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.45));     // 森上霧(手前の森に被る最下部)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
@@ -761,15 +761,15 @@ export class PixiScene {
       this.fogLayers.push({ sp, ...cfg });
     };
     // 各レイヤー“1枚ずつ”。幅は画面より広く取り(揺れても端が出ない)、ゆっくり sway させる。
-    // 森上の霧(変更なし): world 内・画面上部。
-    mkFog(this.bgCloudLayer, getFogTexture(), FOG_TOP_ALPHA,
-      { yFrac: 0.12, widthFrac: 1.5, heightFrac: 0.34, ampX: 18, ampY: 7, spdX: 0.00045, spdY: 0.0006, ph: 0.4 });
-    // 遠景霧(=奥): world 内・遠景〜地面に被る背の高い霧。もう少し下へ。
+    // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
-      { yFrac: 0.62, widthFrac: 1.5, heightFrac: 0.80, ampX: 20, ampY: 9, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
-    // 森下手前霧(やまぎりカット): 最前面・もっと下げて森と被る位置に。山がゆっくり上下。
+      { yFrac: 0.40, widthFrac: 1.5, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
+    // 森下霧(やまぎり): 最前面・プレイヤーより下。山の上端が少しだけプレイヤーに被る位置。
     mkFog(this.frontBankLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
-      { yFrac: 1.13, widthFrac: 1.6, heightFrac: 0.72, ampX: 22, ampY: 28, spdX: 0.0003, spdY: 0.00026, ph: 3.1 });
+      { yFrac: 0.82, widthFrac: 1.6, heightFrac: 0.70, ampX: 22, ampY: 16, spdX: 0.0003, spdY: 0.0003, ph: 3.1 });
+    // 森上霧: 最前面・最下部。手前の森に被る低い霧。
+    mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
+      { yFrac: 1.06, widthFrac: 1.6, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, ph: 0.7 });
   }
 
   resize(w: number, h: number) {

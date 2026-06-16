@@ -60,6 +60,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.363 - スモッグ層を再定義(奥 / 森下やまぎり=プレイヤーに少し被る / 森上=手前の森に被る) (Claude Code)
+
+### 変更(社長フィードバック・層の再定義)
+- 上部horizon霧を廃止し、3層を以下に再構成:
+  - **奥**: world 内(キャラの後ろ)。遠景〜地面に被る背の高い霧。`yFrac 0.40` / `heightFrac 0.85` / `?fogback=0.45`。
+  - **森下霧(やまぎり)**: 最前面(frontBankLayer)。プレイヤーより下で、**山の上端が少しだけプレイヤーに被る**位置。
+    `yFrac 0.82` / `heightFrac 0.70` / `ampY 16` / `?fog=0.52`。
+  - **森上霧**: 最前面・最下部。**手前の森に被る**低い霧。`yFrac 1.06` / `heightFrac 0.46` / `?fogbg=0.45`(getFogTexture)。
+- レイヤー親: 奥=bgCloudLayer(world)、森下霧+森上霧=frontBankLayer(uiLayer 最前面)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview のゲーム本編で確認:奥が遠景+地面/森下が
+  プレイヤー下で少し被る/森上が最下部の森に被る。console エラーなし。
+
 ## 2026-06-16 - v0.25.362 - スモッグ位置/濃さ微調整(遠景=下げ / 森上=濃く / 森下やまぎり=さらに下げ森と被る) (Claude Code)
 
 ### 変更(社長フィードバック)
