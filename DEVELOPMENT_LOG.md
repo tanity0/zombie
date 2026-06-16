@@ -60,6 +60,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.377 - 霧全般を横に引き伸ばし(山のとんがり軽減) (Claude Code)
+
+### 変更(社長フィードバック)
+- 全霧層の `widthFrac 1.2 → 1.6`(tileScale.x が上がり texture を横ストレッチ)。山/雲が横に広がり、とんがりがなだらかに。縦は不変。
+
+### Verification
+- `npm run build` 成功。Claude Preview で確認。console エラーなし。
+
 ## 2026-06-16 - v0.25.376 - 霧を「離散した雲の個体」に+奥を上へ(ブルーム発光の白い塊を解消) (Claude Code)
 
 ### 変更(社長フィードバック)
