@@ -60,6 +60,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.370 - 森下を薄く+揺れを速く (Claude Code)
+
+### 変更(社長フィードバック)
+- 森下(やまぎり)を薄く: `?fog` 既定 `0.90 → 0.55`。
+- 揺れを速く+振幅を少し戻す: `ampY 3 → 9` / `ampX 22 → 26` / `spdX,spdY 0.0003 → 0.0008`。
+- 位置(yFrac 0.88)は据え置き。奥は検証濃さ 0.85 のまま(基準=0.45)。
+
+### Verification
+- `npm run build` 成功。Claude Preview で確認(薄くなった/位置据え置き)。console エラーなし。
+
 ## 2026-06-16 - v0.25.369 - 森下をかなり下げる(稜線が下端から覗く) (Claude Code)
 
 ### 変更(社長フィードバック・少しずつ調整の1手目)
