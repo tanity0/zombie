@@ -135,7 +135,7 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 //   ?fogspd=1    揺れの速さ
 const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.62));     // 手前下(やまぎり・主役)
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.55));  // 奥(遠景+地面)
-const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.30));     // 森上(変更なし)
+const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.48));     // 森上手前霧(もっと濃く)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
@@ -764,12 +764,12 @@ export class PixiScene {
     // 森上の霧(変更なし): world 内・画面上部。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 0.12, widthFrac: 1.5, heightFrac: 0.34, ampX: 18, ampY: 7, spdX: 0.00045, spdY: 0.0006, ph: 0.4 });
-    // 奥: world 内・遠景〜地面に被る背の高い霧(濃いめ)。
+    // 遠景霧(=奥): world 内・遠景〜地面に被る背の高い霧。もう少し下へ。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
-      { yFrac: 0.52, widthFrac: 1.5, heightFrac: 0.80, ampX: 20, ampY: 9, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
-    // 手前下(やまぎりカット): 最前面・下端に厚く、山の稜線。ampY 大きめで山がたまにプレイヤーに少し被る。
+      { yFrac: 0.62, widthFrac: 1.5, heightFrac: 0.80, ampX: 20, ampY: 9, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
+    // 森下手前霧(やまぎりカット): 最前面・もっと下げて森と被る位置に。山がゆっくり上下。
     mkFog(this.frontBankLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
-      { yFrac: 1.00, widthFrac: 1.6, heightFrac: 0.72, ampX: 22, ampY: 40, spdX: 0.0003, spdY: 0.00026, ph: 3.1 });
+      { yFrac: 1.13, widthFrac: 1.6, heightFrac: 0.72, ampX: 22, ampY: 28, spdX: 0.0003, spdY: 0.00026, ph: 3.1 });
   }
 
   resize(w: number, h: number) {

@@ -60,6 +60,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.362 - スモッグ位置/濃さ微調整(遠景=下げ / 森上=濃く / 森下やまぎり=さらに下げ森と被る) (Claude Code)
+
+### 変更(社長フィードバック)
+- **遠景霧(=奥)**: もう少し下へ。`yFrac 0.52 → 0.62`。
+- **森上手前霧(=画面上部)**: もっと濃く。`?fogbg` 既定 `0.30 → 0.48`。
+- **森下手前霧(=最前面やまぎり)**: もっと下げて森と被る位置へ。`yFrac 1.00 → 1.13`、`ampY 40 → 28`(下がった分、山の上下は控えめ)。
+- ※対応(社長用語→実装層): 遠景霧=奥(中景・world内) / 森上手前霧=上部(world内) / 森下手前霧=最前面やまぎり(uiLayer)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview のゲーム本編で確認:上部が濃く/奥が下がり/やまぎりが最下部の森に被る。console エラーなし。
+
 ## 2026-06-16 - v0.25.361 - スモッグ: 奥を遠景+地面に濃く / 手前下をやまぎりカット(山がたまにプレイヤーに被る) (Claude Code)
 
 ### 変更(社長フィードバック)
