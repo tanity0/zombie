@@ -341,8 +341,9 @@ export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来)長(�
 export const PLAYER_INTRO_LAND_MS = 1700;    // フェーズB(ジャンプ着地)長 = 従来の演出長
 export const PLAYER_INTRO_MS = PLAYER_INTRO_HELI_MS + PLAYER_INTRO_LAND_MS; // 全体(=3700)
 export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; // A/全体の境目 t
-export const PLAYER_INTRO_FLY_X = 900;      // (フェーズB)人間の飛び降り飛距離(world px)。小さくすると人間の飛距離が減り、
+export const PLAYER_INTRO_FLY_X = 450;      // (フェーズB)人間の飛び降り飛距離(world px)。小さくすると人間の飛距離が減り、
                                             // その分ヘリの飛来距離(FAR_X−FLY_X)が増える=左からの移動をヘリで確保。
+                                            // v0.25.411: 900→450(着地距離を更に半分、ヘリ移動はその分長く)。
 export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
 export const PLAYER_INTRO_ARC_H = 110;      // (フェーズB)飛行アーチ高
 export const PLAYER_INTRO_HELI_FAR_X = 4500; // (フェーズA)飛来開始の遠方X(world px。もっと左の遠くから)
