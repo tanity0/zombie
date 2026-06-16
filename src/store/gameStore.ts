@@ -1255,6 +1255,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         halfWidth: WHIP_HIT_HALF_WIDTH,
         color: 'rgba(186,230,253,0.95)', createdAt: now, duration: WHIP_DRAW_MS,
       });
+      // 視認性アップ(軽量): 鞭の軌道に沿って明るい加算ストリークを重ねる(発光=bloomで暗い画面でも映える)。
+      get().spawnEffect({
+        kind: 'trail',
+        id: `fx-whip-glow-${now}`,
+        fromX: pcx, fromY: pcy, toX: tipX, toY: tipY,
+        color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
+      });
       // 鞭でも松明・卵を破壊できる(線=カプセル範囲。ハリケーン有無に関わらず毎振り)。
       get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, meleeDamage * 2.5);
       // チャージ満タンなら、この一振りでハリケーン発動(チャージ消費)。自動発動しない。

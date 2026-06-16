@@ -60,6 +60,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.388 - 鞭の視認性アップ(発光トレイル+フェード粘り) (Claude Code)
+
+### 変更(社長フィードバック: 鞭が見えづらい)
+- 鞭スイング時に軌道へ**明るい加算トレイル**(`trail` エフェクト・シアン)を重ねて発光(bloomで暗い画面でも映える)。軽量(1エフェクト)。
+- 鞭スプライトのフェードを「前半は不透明維持→後半でフェード」に(速く消えて見えづらいのを緩和)。`drawWhipSprite` alpha。
+
+### 調査メモ(鞭の破壊について)
+- 鞭は既に `breakPropsAlong` を毎振り呼んでおり、**松明(torch HP12)・緑のmine(HP1)は破壊済み**(meleeDamage*2.5 ≈ 15-25 で足りる)。
+- 破壊可能オブジェクトは torch/mine のみ(weapon-crate はピックアップで破壊対象外)。「手りゅう弾」に該当する破壊対象は現状コードに無い → 社長に要確認(別記)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。鞭はサブ武器設置/装備時のみ出るため idle プレビュー未確認(描画コードは検証)。
+
 ## 2026-06-16 - v0.25.387 - START後にゆっくり暗転→セレクト / 無線SEを実音(合成)に (Claude Code)
 
 ### 変更(社長指示)

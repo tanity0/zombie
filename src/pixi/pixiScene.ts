@@ -3551,7 +3551,8 @@ export class PixiScene {
     sprite.scale.set(reach / span);
     sprite.position.set(e.fromX, e.fromY);
     sprite.rotation = Math.atan2(dy, dx); // 素材は右向き=+x基準
-    sprite.alpha = Math.max(0, 1 - t);
+    // 視認性: 前半は不透明を保ち、後半でフェード(速く消えて見えづらいのを緩和)。
+    sprite.alpha = t < 0.45 ? 1 : Math.max(0, 1 - (t - 0.45) / 0.55);
     sprite.visible = true;
   }
 
