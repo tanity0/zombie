@@ -792,7 +792,7 @@ export class PixiScene {
     // 森下霧: front forest の後ろ。霧素材 fog-alpha.png(アルファ透過版)を通常合成でそのまま重ねる(エフェクトなし)。
     // 非同期ロードのため texKey で sync 時に割当。素材の最大αが約67%なので不透明度は高めに。
     mkFog(this.forestUnderLayer, Texture.EMPTY, FOG_FRONT_ALPHA,
-      { yFrac: 0.80, widthFrac: 2.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1, texKey: 'fog-alpha' },
+      { yFrac: 0.74, widthFrac: 2.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1, texKey: 'fog-alpha' },
       { blend: 'normal', whiteTint: true });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,

@@ -54,7 +54,7 @@ export const RHYTHM_FLICK_EXTRA_WINDOW_MS = 55;
 // フリックは「触れてから離すまで」の接触区間のどこかにジャストが入っていれば成功(離す瞬間は不問)。
 // 区間が長すぎる場合の上限(長押ししっぱなしで何でも成功になるのを防ぐ)。
 export const RHYTHM_FLICK_MAX_CONTACT_MS = 700;
-export const RHYTHM_ENTER_IDLE_MS = 600;      // 停止からリズムモード開始までの時間
+export const RHYTHM_ENTER_IDLE_MS = 3000;     // 停止からリズムモード開始までの時間(立ち止まって3秒)
 // リズム終了はこの時間「動き続けた」場合のみ(短いフリックのドラッグ/スライドでは抜けない)。
 export const RHYTHM_EXIT_MOVE_MS = 320;        // TODO: 歩いて抜けたと見なすまでの時間
 export const RHYTHM_START_INVULN_MS = 600;    // TODO: 開始直後の無敵(仮値0.6s)
