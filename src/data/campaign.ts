@@ -19,9 +19,10 @@ export interface StageVoiceLine {
 export interface StageMission {
   code: string;          // 'M1' / 'EX1' など
   title: string;         // ミッション名(例: 救助)
-  summary: string[];     // ステージ選択一覧に出すあらすじ(数行・ネタバレ控えめ)
-  briefing: string[];    // ステージ開始前の説明(段落配列)
-  debrief: string[];     // ステージクリア後の説明(段落配列)
+  summary: string;       // ステージ選択「一覧」に出す短い目的説明(1行)
+  synopsis: string[];    // 選択した中(ミッション詳細)に出すあらすじ(数行)。クリア後は debrief に切替表示
+  briefing: string[];    // ステージ開始前の説明(段落配列。ゲーム内導入向け)
+  debrief: string[];     // ステージクリア後の説明(段落配列。詳細の説明欄にクリア後表示)
   radio?: boolean;       // ブリーフィング中に無線ノイズSEの「間」を挟むか
   voices?: StageVoiceLine[]; // 生存者などの声(ブリーフィング後段)
 }
@@ -56,7 +57,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M1',
       title: '救助任務',
-      summary: [
+      summary: '変異体に包囲された偵察部隊を救出する。',
+      synopsis: [
         '研究所の場所を特定した偵察部隊が、帰還中に変異体に包囲された。',
         '研究所奪還に向かう予定だった抗体部隊は、急遽、偵察部隊の救助に向かう。',
       ],
@@ -88,7 +90,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M2',
       title: '研究所再突入',
-      summary: [
+      summary: '壊滅した研究所へ突入し、中枢データを回収して撤退する。',
+      synopsis: [
         '偵察部隊が持ち帰った座標により、研究所の場所が判明した。',
         '抗体部隊は研究所に再突入し、残された中枢データの回収を行う。',
       ],
@@ -117,7 +120,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M3',
       title: 'リモート研究所',
-      summary: [
+      summary: '連携研究施設の責任者を救出する。再生薬データを握る人物。',
+      synopsis: [
         '研究所本体とリモートで協力していた研究施設がある。',
         'その責任者は、事故前の再生薬データを解析していた。',
         '通信は途絶えているが、生存の可能性がある。',
@@ -147,7 +151,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M4',
       title: '封鎖地域',
-      summary: [
+      summary: '封鎖地域へ強行突入し、戻らない医師団と接触する。',
+      synopsis: [
         '壁に囲まれ、完全にロックダウンされた地域がある。',
         '通信網は死に、救済に向かった医師団も戻っていない。',
         '抗体部隊は医師団との接触に向かう。',
@@ -186,7 +191,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M5',
       title: '軍本部防衛',
-      summary: [
+      summary: '押し寄せる変異体の群れから、軍本部の防衛線を守り抜く。',
+      synopsis: [
         '軍本部に変異体の群れが押し寄せている。',
         '本部が落ちれば、研究者も設備も失われる。',
         '抗体部隊は防衛線の援護に向かう。',
@@ -219,7 +225,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M6',
       title: '古い洋館',
-      summary: [
+      summary: '変異体の発生源と疑われる古い洋館へ向かい、内部を確認する。',
+      synopsis: [
         'M5で現れた変異体たちの経路を逆算した結果、特定地域から来ている個体が多いことが判明した。',
         'その地域には古い洋館がある。',
         '内部には、外観と不釣り合いな最新設備が確認されている。',
@@ -259,7 +266,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M7',
       title: '逆探知地点',
-      summary: [
+      summary: '謎の救難信号を逆探知。発信地点へ向かい、その正体と対峙する。',
+      synopsis: [
         'M6の最後に、軍用暗号通信へ不明な救難信号が入った。',
         '内容は断片的だが、ワクチンに関わる可能性がある。',
         '抗体部隊は逆探知した発信地点へ向かう。',
@@ -296,7 +304,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'EX1',
       title: '洋館再訪',
-      summary: [
+      summary: '洋館の未確認区画へ。冷凍保存設備を調べる（任意）。',
+      synopsis: [
         'ワクチンを受け取った。',
         'だが、男が最後に残した言葉がある。',
         '洋館には、まだ確認していない冷凍保存設備が残っている。',
@@ -329,7 +338,8 @@ export const STAGES: Stage[] = [
     main: {
       code: 'EX2',
       title: '変異した洋館跡',
-      summary: [
+      summary: '異常反応の地点に潜む、巨大変異体を討伐する。',
+      synopsis: [
         '新たな異常反応が検知された。',
         '地形は大きく変わっているが、構造はあの洋館周辺と酷似している。',
         '奥には、破壊された洋館のようなものがある。',

@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.411`**（登場演出の着地距離を半分・ヘリ移動を延長。導線・自動アンカーとも実機確認待ち）。
+- **最新 version**: **`v0.25.412`**（あらすじの置き場所修正: 一覧=1行/詳細=あらすじ→クリア後。導線・自動アンカーとも実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,17 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.412 - あらすじの置き場所を修正(一覧=1行/詳細=あらすじ→クリア後) (Claude Code)
+
+### 変更（社長指摘: 置き場所が違う）
+- `StageMission` を `summary`（一覧用1行）と `synopsis`（詳細用あらすじ・数行）に分離。
+- **ステージ選択一覧**: 短い1行 `summary` に戻す（v0.25.408 相当のレイアウト: 地名/タイトル・エリア/1行）。
+- **ミッション詳細の説明欄**: 未クリアは `synopsis`（社長提供のあらすじ）、**クリア後は `debrief`（クリア後の記録）** を表示。
+- `briefing`/`voices`/`radio` はデータとして保持（ゲーム内導入向け。メニューでは未使用に）。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。
 
 ## 2026-06-16 - v0.25.411 - 登場演出: 着地距離を半分・ヘリ移動を延長 (Claude Code)
 
