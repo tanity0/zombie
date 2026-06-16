@@ -60,6 +60,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.369 - 森下をかなり下げる(稜線が下端から覗く) (Claude Code)
+
+### 変更(社長フィードバック・少しずつ調整の1手目)
+- 森下(やまぎり)の位置をかなり下へ: `yFrac 0.52 → 0.88`。霧は画面下〜下端、プレイヤーはその上に出る。
+
+### Verification
+- `npm run build` 成功。Claude Preview で確認。console エラーなし。
+
 ## 2026-06-16 - v0.25.368 - 森下テクスチャを「連なる山の稜線」に作り直し (Claude Code)
 
 ### 変更(社長フィードバック: 森下を山が連なってる感じに)
