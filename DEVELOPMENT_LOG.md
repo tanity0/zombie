@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.406`**（ダンス曲↔サークルの開始位相を自動アンカーで合わせる実装を追加。実機確認待ち）。
+- **最新 version**: **`v0.25.407`**（ストーリー/ステージ導線＋ミッション選択画面を追加。導線・自動アンカーとも実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,34 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.407 - ストーリー/ステージ導線 + ミッション選択画面 (Claude Code)
+
+### 変更（社長指示: ストーリー＆ステージをざっくり仕上げ＋導線整備）
+- **キャンペーン本文をデータ化**（`src/data/campaign.ts`）: 社長提供の本編シナリオ **M1〜M7 + EX1/EX2** を
+  ステージ/ミッションのデータとして格納（各メインの「ステージ開始前」「ステージクリア後」本文・無線SEの間・偵察兵の声）。
+  地名(name/area)は文脈からの仮置き。**サブミッションは構造のみ（今は空＝準備中）**。キャラ職業データと
+  サブウェポン一覧、資料室用の世界観/変異体図鑑もここへ集約（MainMenu から移設）。
+- **進行解放**（`src/data/progress.ts`, localStorage のみ・ゲームロジック非依存）: メインミッションをクリアすると
+  次ステージ解放。EX1=M7クリア / EX2=EX1クリアで解放。勝利時に `App` が選択中ステージをクリア扱いにする。
+- **新しい導線（`src/components/MissionSelect.tsx`）**: ミッション選択(ホーム) → ステージ選択 → ミッション詳細
+  (メインのブリーフィング＋サブミッション枠) → キャラ選択 → 装備選択(サブウェポン) → スタート。ホームから
+  オプション / 武器開発 / 資料室 へ分岐。**MainMenu は役割を MissionSelect に置換し削除**（キャラカード等は再利用）。
+- **装備選択**: サブウェポンを複数選んで保持（**今は記録のみ**。ゲーム付与は今後配線）。
+- **テスト開発ツールをオプション内へ集約**（`src/config/devtools.ts` の `DEV_TOOLS_ENABLED`、既定ON / `?dev=0`で非表示）:
+  **FPS/撃破数表示 on/off・ダンスモード(練習)・BENCH** を移植。加えて弾ドロップ率/弾薬箱取得量のデバッグ入力、
+  導線テスト用の「全ステージ解放/進行リセット」。武器開発はスキルショップ（陳列レベル解放＋1000スクラップ）。
+
+### 負荷スコア
+- **1/10**（rendering/UI）。メニュー画面のみ。per-frame で変わる store フィールドは購読しておらず（設定値のみ）、
+  HUD/ゲームループには触れていない。ゲームプレイは当面ステージ1の内容を全ステージで流用（後で差し替え）。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。UI見た目は仮（導線優先）。実機での画面遷移は確認待ち。
+
+### 次にやること
+- 各ステージのサブミッション本文と、ステージ固有のゲームプレイ（stageDirector のステージ別波/敵テーマ）差し替え。
+- 装備選択の「開始時付与」をゲームロジックへ配線。地名(name/area)の確定。資料室UIの作り込み。
 
 ## 2026-06-16 - v0.25.406 - ダンス曲↔サークル 開始位相の自動アンカー (Claude Code)
 

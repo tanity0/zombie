@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Game from './components/Game';
-import MainMenu from './components/MainMenu';
+import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
 import LoadingScreen from './components/LoadingScreen';
@@ -9,6 +9,7 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
 import { ensureTextures } from './pixi/pixiTextures';
+import { getSelectedStageId, markStageCleared } from './data/progress';
 
 const LOADING_MIN_MS = 650;
 
@@ -71,6 +72,10 @@ function App() {
   };
 
   const handleVictory = () => {
+    // 勝利したら選択中ステージのメインミッションをクリア扱いにし、次ステージを解放する。
+    // (ダンス練習/ベンチは選択ステージを空にしているのでここでは何も起きない)
+    const stageId = getSelectedStageId();
+    if (stageId) markStageCleared(stageId);
     setGameState('victory');
   };
 
@@ -97,7 +102,7 @@ function App() {
       )}
 
       {gameState === 'menu' && (
-        <MainMenu
+        <MissionSelect
           onStartGame={(characterClass) => startGame(characterClass, false)}
           onStartBenchmark={(characterClass) => startGame(characterClass, true)}
         />
