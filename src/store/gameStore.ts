@@ -1263,7 +1263,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 通常の鞭スイープ: 進行方向の細長いカプセルに掛かる敵を選択(刀ダッシュと同じ幾何)。
       const targetIds: string[] = [];
       for (const e of enemies) {
-        if (e.type === 'reaper') continue;
+        if (e.type === 'reaper' && !e.reaperChaser) continue; // 深奥チェイサーは近接対象(ボス級)
         const ex = e.x + e.width / 2 - pcx;
         const ey = e.y + e.height / 2 - pcy;
         const along = ex * ux + ey * uy;
@@ -1369,7 +1369,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const hasShieldShove = shieldShoves.length > 0;
 
     for (const enemy of enemies) {
-      if (enemy.type === 'reaper') { survivors.push(enemy); continue; }
+      if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       const dx = ecx - pcx;
@@ -1611,7 +1611,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = [];
 
     for (const enemy of enemies) {
-      if (!targetIds.includes(enemy.id) || enemy.type === 'reaper') {
+      if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser)) {
         survivors.push(enemy);
         continue;
       }
@@ -1780,7 +1780,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let hits = 0;
 
     for (const enemy of enemies) {
-      if (!targetIds.includes(enemy.id) || enemy.type === 'reaper') {
+      if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser)) {
         survivors.push(enemy);
         continue;
       }

@@ -60,6 +60,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.382 - 死神: 0.9倍速+回り込みワープ / 近接が効くよう修正 / 帰還で退去 (Claude Code)
+
+### 変更(社長フィードバック)
+- **追跡を 0.9倍速+ワープ回り込みに変更**(前の0.5→1.2ランプは撤回): `chaseSpeedMult=0.9`(慣性は既存どおり)。
+  `warpIntervalMs=4000` ごとにプレイヤーの上下左右いずれか(多少ランダム)へ `warpDistPx=520` でワープして挟み込む(ワープ時 vx/vy=0)。
+- **退去条件をスタート帰還に変更**: プレイヤーが原点から `homeRadiusPx=900` 内へ戻ると死神は去る(リスク0へ)。旧 escapeDistance は撤去。
+- **近接が効くよう修正(重要バグ)**: 近接(鞭/刀/カウンター)3箇所が `type==='reaper'` を一律スキップしていた → `&& !reaperChaser`
+  に変更し、**深奥チェイサーだけは通常の敵(ボス級)として近接が効く**(isBossType経由=5倍ダメージ・即死不可)。通常reaper(召喚レア/終端)は従来どおり除外。
+
+### 補足(質問回答)
+- 死神(チェイサー)HP = 6000(有限=極まれば討伐可)。横切りはHPなし(演出のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。dev 再起動・LAN 200・console エラーなし(`?reapertest=1`)。
+
 ## 2026-06-16 - v0.25.381 - 死神: 進行方向の画面外から出現 / 引き離すと消える (Claude Code)
 
 ### 変更(社長フィードバック)

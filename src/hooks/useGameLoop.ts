@@ -44,7 +44,7 @@ import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, playDanceKick } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
-import { REAPER_CONFIG, REAPER_TEST, getReaperRampedSpeed, reaperPassIntervalMs } from '../config/reaper';
+import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
@@ -201,8 +201,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
-  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number }>(
-    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0 }
+  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number }>(
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0 }
   );
 
   // Game actions
@@ -569,7 +569,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           lastAmmoDropRef.current = 0;
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
-          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0 };
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0 };
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -650,29 +650,41 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               chaser.health = REAPER_CONFIG.chaserHealth;
               chaser.maxHealth = REAPER_CONFIG.chaserHealth;
               chaser.damage = REAPER_CONFIG.contactDamage;
-              chaser.speed = getReaperRampedSpeed(player.speed, 0); // 出現直後は約0.5倍
+              chaser.speed = getReaperChaseSpeed(player.speed); // 0.9倍速(ワープで回り込む)
               addEnemy(chaser);
               rs.chaserId = chaser.id;
               rs.chaserSpawnAt = newGameTime;
+              rs.lastWarpAt = newGameTime;
               rs.risk = REAPER_CONFIG.riskMax;
               spawnFlash('rgba(10,10,16,0.30)', 360);
               // SFX(完全出現の短い警告音)は専用アセット待ち。
             }
           } else {
-            // プレイヤーが画面外へ引き離す(escapeDistancePx 超え)と死神は消える=逃げ切り。リスクは0へクールダウン。
-            const chaser = liveEnemies.find(e => e.id === rs.chaserId);
-            const far = chaser && Math.hypot((chaser.x + chaser.width / 2) - pcx, (chaser.y + chaser.height / 2) - pcy) > REAPER_CONFIG.escapeDistancePx;
-            if (far) {
+            // プレイヤーがスタート(原点)付近 homeRadiusPx 内へ戻れば死神は去る=逃げ切り。リスクは0へクールダウン。
+            if (Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
               useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== rs.chaserId) });
               rs.chaserId = null;
               rs.risk = 0;
             } else {
-              // 追跡中: 出現から10秒かけて 0.5倍→1.2倍 へフェードイン加速(player.speed基準=成長反映・ダッシュ等は除外)。
-              // 慣性は updateEnemies のチェイス inertia がそのままかかる(他の敵と同じ)。
-              const targetSpeed = getReaperRampedSpeed(player.speed, newGameTime - rs.chaserSpawnAt);
+              // 追跡: 0.9倍速(player.speed基準=成長反映・ダッシュ等は除外)。慣性は updateEnemies のチェイス inertia がかかる。
+              const targetSpeed = getReaperChaseSpeed(player.speed);
+              // 回り込みワープ: 一定間隔で、プレイヤーの上下左右いずれか(多少ランダム)へ warp して挟み込む。
+              const doWarp = newGameTime - rs.lastWarpAt >= REAPER_CONFIG.warpIntervalMs;
+              if (doWarp) rs.lastWarpAt = newGameTime;
+              let warpX = 0; let warpY = 0;
+              if (doWarp) {
+                const card = [[0, -1], [0, 1], [-1, 0], [1, 0]][Math.floor(Math.random() * 4)];
+                const jit = (Math.random() - 0.5) * REAPER_CONFIG.warpDistPx * 0.5;
+                warpX = pcx + card[0] * REAPER_CONFIG.warpDistPx + (card[0] === 0 ? jit : 0);
+                warpY = pcy + card[1] * REAPER_CONFIG.warpDistPx + (card[1] === 0 ? jit : 0);
+              }
               useGameStore.setState({
                 enemies: useGameStore.getState().enemies.map(e =>
-                  e.id === rs.chaserId ? { ...e, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage } : e
+                  e.id === rs.chaserId
+                    ? doWarp
+                      ? { ...e, x: warpX - e.width / 2, y: warpY - e.height / 2, vx: 0, vy: 0, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage }
+                      : { ...e, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage }
+                    : e
                 ),
               });
             }
