@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.412`**（あらすじの置き場所修正: 一覧=1行/詳細=あらすじ→クリア後。導線・自動アンカーとも実機確認待ち）。
+- **最新 version**: **`v0.25.413`**（登場演出: ヘリをより上空から・横移動を更に半分。導線・自動アンカーとも実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,16 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.413 - 登場演出: ヘリをより上空から・横移動を更に半分 (Claude Code)
+
+### 変更（社長指示）
+- `PLAYER_INTRO_HELI_HIGH_Y` **300→420**（ヘリ飛来開始をもう少し上空から）。
+- `PLAYER_INTRO_FLY_X` **450→225**（人間の横移動を更に半分）。着地点=ヘリ降下終点(-FLY_X)のため、
+  ヘリ飛来距離(FAR_X−FLY_X)が 4050→4275 へ +225 自動延長。視覚(登場演出)のみ・ゲーム性影響なし。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。映像は実機(ステージ1登場シーン)で確認。
 
 ## 2026-06-16 - v0.25.412 - あらすじの置き場所を修正(一覧=1行/詳細=あらすじ→クリア後) (Claude Code)
 
