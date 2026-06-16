@@ -17,7 +17,8 @@ import {
   playerIntroCamFollow,
   INTRO_DIALOGUE_TRIGGER_T,
   INTRO_DIALOGUE_TOTAL_MS,
-  INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG
+  INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
+  CAMERA_FOLLOW_TAU, CAMERA_SNAP_DIST
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -915,7 +916,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Infinite-world camera: center the player exactly.
         const targetCameraX = player.x - gameBounds.width / 2 + player.width / 2;
         const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
-        setCameraPosition(targetCameraX, targetCameraY);
+        // 追尾カメラ(描画のみ): 描画用カメラだけ τ 秒で遅れて寄せる(fps非依存の指数追従)。
+        // 判定/スポーン/プロップ生成は実プレイヤー基準(target)のまま=ゲーム性に影響なし。
+        let camX = targetCameraX, camY = targetCameraY;
+        if (CAMERA_FOLLOW_TAU > 0) {
+          const prevCam = useGameStore.getState().camera;
+          const k = 1 - Math.exp(-baseDeltaTime / CAMERA_FOLLOW_TAU);
+          camX = prevCam.x + (targetCameraX - prevCam.x) * k;
+          camY = prevCam.y + (targetCameraY - prevCam.y) * k;
+          // 開始/復帰などで大きく離れていたら即スナップ(ゆっくり寄るのを防ぐ)。
+          if (Math.hypot(targetCameraX - camX, targetCameraY - camY) > CAMERA_SNAP_DIST) { camX = targetCameraX; camY = targetCameraY; }
+        }
+        setCameraPosition(camX, camY);
         syncBreakableProps({ x: targetCameraX, y: targetCameraY }, gameBounds);
         
         // Complete any finished reload, then ensure the active gun is

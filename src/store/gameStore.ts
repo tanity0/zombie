@@ -330,6 +330,16 @@ export const REAPER_SUMMON_SHAKE_MS = 340;
 export const REAPER_SUMMON_SHAKE_MAG = 8;    // 死神召喚=強め(短くはないが演出として)
 export const INTRO_LAND_SHAKE_MS = 240;
 export const INTRO_LAND_SHAKE_MAG = 7.5;
+// --- 追尾カメラ(描画のみ) -------------------------------------------------
+// 描画用カメラをプレイヤーへ τ 秒で遅れて寄せる指数追従(fps非依存)。判定/スポーン/プロップ生成は
+// 実プレイヤー座標のまま=ゲーム性に影響なし。0=即追従(無効)。実機調整は ?camtau=0.18 (秒)。
+export const CAMERA_FOLLOW_TAU = (() => {
+  if (typeof window === 'undefined') return 0.18;
+  const v = new URLSearchParams(window.location.search).get('camtau');
+  const n = v != null ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : 0.18;
+})();
+export const CAMERA_SNAP_DIST = 600; // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
 // 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
 export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
 export const MELEE_FINISH_ZOOM_MAG = 0.06; // ズーム量(+6%程度=少し)
