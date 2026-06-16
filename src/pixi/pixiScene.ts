@@ -127,32 +127,25 @@ const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
 // シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定0=なし。?shaftblur= で有効化。
 const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 
-// --- スモッグ(オクトパス的な「雲の塊」)-----------------------------------------
-// 参考(HD-2D)に合わせ、ソフトな雲スプライト(getFogTexture)を3つの帯で泳がせる。全面ベタ塗りはしない。
-// 1枚=1ドロー=軽量。毎フレームの blur/シェーダ/粒子なし。
-//   ?fog=0.50    手前の分厚いもくもくバンク(最前面・主役。0=なし)
+// --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広もくもく霧をゆっくり揺らすだけ(枚数は増やさない)。
+// ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。
+//   ?fog=0.50    手前の分厚いバンク(最前面・主役。0=なし)
 //   ?fogsub=0.22 front forest の下の薄い手前霧(0=なし)
 //   ?fogbg=0.30  奥(キャラの後ろ・画面上部)の薄い霞(0=なし)
-//   ?fogspd=1    流れる速さ
-const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.50));   // 最前面の分厚いバンク(主役)
-const FOG_SUB_ALPHA = Math.max(0, tsNum('fogsub', 0.22));  // front forest 下の薄い手前霧
-const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.30));   // 奥・上部の薄い霞
+//   ?fogspd=1    揺れの速さ
+const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.50));
+const FOG_SUB_ALPHA = Math.max(0, tsNum('fogsub', 0.22));
+const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.30));
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
-const FOG_TOP_COUNT = 7;     // 奥(画面上部)
-const FOG_SUB_COUNT = 5;     // front forest 下
-const FOG_FRONT_COUNT = 6;   // 最前面バンク
-// 0=奥(上部・world内) / 1=front forest下(stage) / 2=最前面バンク(uiLayer)
-interface FogCloud {
+interface FogLayer {
   sp: Sprite;
-  group: number;
-  x: number;       // screen x (px)
-  yFrac: number;   // screen y as a fraction of height (fixed per cloud)
-  vx: number;      // px/sec horizontal drift (signed)
-  halfW: number;   // half display width, for off-screen wrap
-  bobAmp: number;  // vertical bob amplitude (px)
-  bobSpd: number;  // vertical bob speed
-  bobPh: number;   // vertical bob phase
+  yFrac: number;     // 帯の中心Y(画面高さに対する割合)
+  widthFrac: number; // スプライト幅(画面幅に対する割合。>1=揺れても端が見えない)
+  heightFrac: number;
+  ampX: number; ampY: number; // sway 振幅(px)
+  spdX: number; spdY: number; // sway 速度(rad/ms)
+  ph: number;        // 位相
 }
 
 // --- A: 光だまり(プレイヤー足元の地面に敷く加算ライト) ------------------------
@@ -541,8 +534,7 @@ export class PixiScene {
   private bgCloudLayer = new Container();   // 奥(画面上部)= world 内
   private fgCloudLayer = new Container();   // front forest の下 = stage(frontForest 直前)
   private frontBankLayer = new Container(); // 最前面の分厚いバンク = uiLayer(grade上/vignette下)
-  private fogClouds: FogCloud[] = [];
-  private fogPrevNow = 0; // ドリフトの delta 用
+  private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(ゆらゆら sway)
 
   private screenW = 1;
   private screenH = 1;
@@ -763,49 +755,27 @@ export class PixiScene {
     if (stage) stage.addChildAt(this.fgCloudLayer, stage.getChildIndex(this.L.frontForest));
     else this.L.uiLayer.addChildAt(this.fgCloudLayer, 0);
     this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
-    const frand = (n: number) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
-    interface FogGroupCfg {
-      layer: Container; group: number; count: number; alpha: number; seed0: number;
-      yMin: number; yRange: number; scaleMin: number; scaleRange: number;
-      vxMin: number; vxRange: number; dir: number; bobMin: number; bobRange: number;
-    }
-    const groups: FogGroupCfg[] = [
-      // 奥・上部の薄い霞
-      { layer: this.bgCloudLayer, group: 0, count: FOG_TOP_COUNT, alpha: FOG_TOP_ALPHA, seed0: 1,
-        yMin: 0.03, yRange: 0.18, scaleMin: 0.7, scaleRange: 0.7, vxMin: 8, vxRange: 6, dir: 1, bobMin: 3, bobRange: 4 },
-      // front forest 下の薄い手前霧
-      { layer: this.fgCloudLayer, group: 1, count: FOG_SUB_COUNT, alpha: FOG_SUB_ALPHA, seed0: 101,
-        yMin: 0.72, yRange: 0.22, scaleMin: 1.3, scaleRange: 1.0, vxMin: 12, vxRange: 8, dir: -1, bobMin: 4, bobRange: 5 },
-      // 最前面の分厚いもくもくバンク(下端に密集・主役)
-      { layer: this.frontBankLayer, group: 2, count: FOG_FRONT_COUNT, alpha: FOG_FRONT_ALPHA, seed0: 201,
-        yMin: 0.92, yRange: 0.20, scaleMin: 2.2, scaleRange: 1.2, vxMin: 8, vxRange: 8, dir: -1, bobMin: 5, bobRange: 6 },
-    ];
-    for (const cfg of groups) {
-      for (let i = 0; i < cfg.count; i++) {
-        const seed = cfg.seed0 + i;
-        const sp = new Sprite(getFogTexture());
-        sp.anchor.set(0.5);
-        sp.tint = FOG_TINT;
-        sp.blendMode = 'screen';
-        sp.eventMode = 'none';
-        const scale = cfg.scaleMin + frand(seed * 9 + 1) * cfg.scaleRange;
-        sp.scale.set(scale);
-        sp.alpha = cfg.alpha * (0.7 + frand(seed * 9 + 3) * 0.5);
-        sp.visible = cfg.alpha > 0;
-        cfg.layer.addChild(sp);
-        this.fogClouds.push({
-          sp,
-          group: cfg.group,
-          x: 0, // resize() で画面幅に分散配置
-          yFrac: cfg.yMin + frand(seed * 9 + 4) * cfg.yRange,
-          vx: cfg.dir * (cfg.vxMin + frand(seed * 9 + 6) * cfg.vxRange), // 同じ帯は同方向=まとまって流れる
-          halfW: (sp.texture.width * scale) / 2,
-          bobAmp: cfg.bobMin + frand(seed * 9 + 9) * cfg.bobRange,
-          bobSpd: 0.0003 + frand(seed * 9 + 11) * 0.0004,
-          bobPh: frand(seed * 9 + 12) * Math.PI * 2,
-        });
-      }
-    }
+    const mkFog = (layer: Container, alpha: number, cfg: Omit<FogLayer, 'sp'>) => {
+      const sp = new Sprite(getFogTexture());
+      sp.anchor.set(0.5);
+      sp.tint = FOG_TINT;
+      sp.blendMode = 'screen';
+      sp.eventMode = 'none';
+      sp.alpha = alpha;
+      sp.visible = alpha > 0;
+      layer.addChild(sp);
+      this.fogLayers.push({ sp, ...cfg });
+    };
+    // 各レイヤー“1枚ずつ”。幅は画面より広く取り(揺れても端が出ない)、ゆっくり sway させる。
+    // 奥(上部・world内): カメラ追従を打ち消して画面ピン留め。
+    mkFog(this.bgCloudLayer, FOG_TOP_ALPHA,
+      { yFrac: 0.12, widthFrac: 1.5, heightFrac: 0.34, ampX: 18, ampY: 7, spdX: 0.00045, spdY: 0.0006, ph: 0.4 });
+    // front forest の下(薄い手前霧)。
+    mkFog(this.fgCloudLayer, FOG_SUB_ALPHA,
+      { yFrac: 0.84, widthFrac: 1.5, heightFrac: 0.40, ampX: 22, ampY: 9, spdX: 0.00038, spdY: 0.00052, ph: 1.7 });
+    // 最前面の分厚いバンク(下端に厚く・主役)。
+    mkFog(this.frontBankLayer, FOG_FRONT_ALPHA,
+      { yFrac: 1.02, widthFrac: 1.6, heightFrac: 0.52, ampX: 26, ampY: 11, spdX: 0.0003, spdY: 0.00044, ph: 3.1 });
   }
 
   resize(w: number, h: number) {
@@ -840,14 +810,10 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
-    // 雲スモッグ: 画面幅にまたがって x をグループごとに分散配置(初期/リサイズ時)。位置の更新は sync。
-    const span = w + 240;
-    const counts = [FOG_TOP_COUNT, FOG_SUB_COUNT, FOG_FRONT_COUNT];
-    const idx = [0, 0, 0];
-    for (const c of this.fogClouds) {
-      const n = counts[c.group] ?? 1;
-      const k = idx[c.group]++;
-      c.x = -120 + ((k + 0.5) / Math.max(1, n)) * span;
+    // スモッグ各層は1枚を画面より広く引き伸ばす(揺れても端が出ない)。位置/揺れは sync。
+    for (const f of this.fogLayers) {
+      f.sp.width = w * f.widthFrac;
+      f.sp.height = h * f.heightFrac;
     }
     this.updateStageLightShafts(w, h);
 
@@ -1200,21 +1166,13 @@ export class PixiScene {
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
-    // 雲スモッグのドリフト(時間で横へ泳ぐ。画面外に出たら反対側へラップ)。
-    if (this.fogPrevNow === 0) this.fogPrevNow = now;
-    const fdt = Math.min(50, now - this.fogPrevNow) / 1000;
-    this.fogPrevNow = now;
+    // スモッグ: 各層1枚を画面中央基準でゆっくり sway(ゆらゆら)させるだけ。ドリフト/ラップなし。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
-    for (const c of this.fogClouds) {
-      if (!c.sp.visible) continue;
-      c.x += c.vx * FOG_SPEED * fdt;
-      const right = this.screenW + 140 + c.halfW;
-      const left = -140 - c.halfW;
-      if (c.x > right) c.x = left;
-      else if (c.x < left) c.x = right;
-      c.sp.x = c.x;
-      c.sp.y = c.yFrac * this.screenH + Math.sin(now * c.bobSpd + c.bobPh) * c.bobAmp;
+    for (const f of this.fogLayers) {
+      if (!f.sp.visible) continue;
+      f.sp.x = this.screenW / 2 + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;
+      f.sp.y = f.yFrac * this.screenH + Math.sin(now * f.spdY * FOG_SPEED + f.ph * 1.3) * f.ampY;
     }
     const farH = this.farBackdropHeight();
     this.L.farBackdrop.position.set(sx * 0.25, 0);

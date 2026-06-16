@@ -60,6 +60,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.360 - スモッグを「各層1枚をゆらゆら」方式に簡素化(オクトラ準拠) (Claude Code)
+
+### 変更(社長相談: オクトラは枚数を増やさず、各層1枚をゆらゆらさせてるだけ)
+- 雲スプライトを多数ドリフトさせる方式(計18枚)を廃止し、**各レイヤー1枚ずつ(計3枚)の幅広もくもく霧**を
+  ゆっくり sway(上下左右に微小オシレート)させるだけに簡素化。ドリフト/ラップ撤去。
+- `lighting.ts` `getFogTexture()`: 単一パフ → **幅広の帯状もくもくテクスチャ**(1024×320、30パフを横全幅に散らし
+  上下は透明にフェード=連続した霧バンク)に変更。
+- `pixiScene.ts`: 3層(奥=上部/ front forest下 / 最前面バンク)それぞれに1枚を配置。`widthFrac>1` で画面より広く伸ばし
+  揺れても端が出ない。各層は `ampX/ampY`(振幅)・`spdX/spdY`(速さ)・位相で sin 揺れ。奥は world 内でカメラ追従打ち消し。
+- URL は据え置き: `?fog`(最前面)/ `?fogsub`(forest下)/ `?fogbg`(奥上部)/ `?fogspd`(揺れの速さ)。
+
+### 負荷スコア
+0〜1/10(霧スプライト3枚・sin計算のみ。フィルタ/粒子なし)。前方式(18枚)よりさらに軽量。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview のゲーム本編で確認:
+  下部に連続ソフト霧バンク+上部に薄霞、中央クリア、ゆらゆら sway。console エラーなし。
+
 ## 2026-06-16 - v0.25.359 - スモッグを参考HD-2Dに寄せ3層化(最前面の分厚いバンク追加) (Claude Code)
 
 ### 変更(社長の参考画像 public/references/reference-field-hd2d.png / reference-battle-hd2d.png に準拠)

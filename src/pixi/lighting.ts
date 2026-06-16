@@ -51,16 +51,16 @@ export const getVignetteTexture = (): Texture => {
   return vignetteTex;
 };
 
-// Soft irregular "cloud puff" sprite, baked once. Several overlapping soft white
-// blobs are clustered into one wide clump that tapers to fully transparent at the
-// edges. Used as drifting fog CLUMPS (not a full-screen veil): the scene
-// instantiates a handful at different scales/speeds in the deep background and in
-// the foreground so they swim across like the fog in Octopath's forest. Tinted
-// cool + screen-blended at low alpha by the caller — no per-frame blur/particles.
+// Wide billowy fog STRIP, baked once. Many soft white blobs spread across the
+// full width and clustered toward the vertical centre, tapering to transparent at
+// the top/bottom so the strip reads as one continuous "もくもく" cloud bank.
+// Octopath's fog is essentially one wide sprite per layer gently swaying — so the
+// scene stretches ONE of these per layer (no particle swarm) and just wobbles it.
+// Tinted cool + screen-blended at low alpha by the caller; no per-frame blur.
 export const getFogTexture = (): Texture => {
   if (fogTex) return fogTex;
-  const w = 360;
-  const h = 200;
+  const w = 1024;
+  const h = 320;
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -71,14 +71,14 @@ export const getFogTexture = (): Texture => {
   };
   ctx.clearRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'lighter';
-  const PUFFS = 13;
+  const PUFFS = 30;
   for (let i = 0; i < PUFFS; i++) {
-    // Cluster around the centre (wider than tall); keep clear of the borders so
-    // the clump fades to transparent and reads as a billowy cloud, not a rectangle.
-    const cx = w * (0.20 + hash(i * 5 + 1) * 0.60);
-    const cy = h * (0.34 + hash(i * 5 + 2) * 0.30);
-    const r = 30 + hash(i * 5 + 3) * 56;
-    const a = 0.22 + hash(i * 5 + 4) * 0.26; // dense cores → billowy "もくもく" clumps, not flat haze
+    // Spread across the whole width; cluster vertically near the middle so the
+    // band has a soft billowy top/bottom contour and fades to transparent.
+    const cx = w * (0.03 + hash(i * 5 + 1) * 0.94);
+    const cy = h * (0.34 + hash(i * 5 + 2) * 0.32);
+    const r = 48 + hash(i * 5 + 3) * 78;
+    const a = 0.16 + hash(i * 5 + 4) * 0.20;
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
     g.addColorStop(0, `rgba(255,255,255,${a})`);
     g.addColorStop(0.55, `rgba(255,255,255,${a * 0.5})`);
