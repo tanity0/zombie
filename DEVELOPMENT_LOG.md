@@ -60,6 +60,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.353 - 登場演出: 人間の飛距離を縮小しヘリの左移動でカバー (Claude Code)
+
+### 変更(`src/store/gameStore.ts`)
+- `PLAYER_INTRO_FLY_X` を **2200→900** に縮小。
+  - フェーズB(人間の飛び降り)の飛距離が ~2250px → **~980px**(約56%減)。
+  - フェーズA(ヘリ飛来)の終点が中央寄り(`-FLY_X`)になるため、ヘリの飛来距離が `FAR_X−FLY_X`=2300px → **3600px** に増加。
+    総左移動 `FAR_X`(4500)は据え置き=「左からの移動はヘリで確保」。
+- カメラと見た目は同じ `playerIntroOffset(t)` を共有しているため追加配線は不要(両方に自動反映)。
+
+### 負荷スコア
+0/10(定数1個の変更のみ。新規描画なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機での見た目確認は dev 再起動後に行う。
+
+### 運用メモ
+- ルール追加(2026-06-16): **コード変更のたびに dev サーバを必ず再起動**(`__APP_VERSION__`/挙動を確実に反映)。
+- 微調整したい場合: 人間の飛距離=`PLAYER_INTRO_FLY_X`(小=人間が飛ばない)、ヘリ飛来の遠さ=`PLAYER_INTRO_HELI_FAR_X`。
+
 ## 2026-06-15 - v0.25.351 - ゲームオーバー真っ暗対策(描画堅牢化)/登場を左遠方から高速 (Claude Code)
 
 ### 変更
