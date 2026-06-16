@@ -10,12 +10,10 @@ const SHOTGUN_SPREAD_CONE_RAD_BY_TIER: Record<number, number> = {
   2: 0.70,
   3: 0.36,
 };
-const TIER_CRIT_STEP = 0.03;
-const BASE_CRIT_BY_CATEGORY: Record<AmmoType, number> = {
-  handgun: 0.10,
-  shotgun: 0.05,
-  rifle: 0.20,
-};
+// 銃の「純粋な(基礎)」クリティカル率。プレイヤー強化やクイックマガジン等の加算分はこれと別に上乗せ。
+// マシンピストルT3(handgun-t3)がカテゴリ+ティア上振れで16%に達しバランスブレイカーだったため、
+// カテゴリ/ティアによる上振れを廃止し全銃一律5%に固定。
+const GUN_BASE_CRIT = 0.05;
 
 // ---------------------------------------------------------------------------
 // Weapon catalog
@@ -70,9 +68,9 @@ const CATALOG: Record<string, WeaponDef> = {
 };
 
 const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
-  if (def.critChance !== undefined) return def.critChance;
+  if (def.critChance !== undefined) return def.critChance; // 近接は個別指定(0.05/0.08/0.12)を尊重
   if (!def.category) return undefined;
-  return BASE_CRIT_BY_CATEGORY[def.category] + Math.max(0, def.tier - 1) * TIER_CRIT_STEP;
+  return GUN_BASE_CRIT; // 全銃一律5%(加算分は別)
 };
 
 export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
