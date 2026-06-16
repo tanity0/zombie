@@ -42,11 +42,12 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
+  RHYTHM_SUCCESS_WINDOW_MS,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, RHYTHM_FLICK_KNOCKBACK_MAX,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_DAMAGE,
@@ -200,6 +201,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rhythmMoveStartRef = useRef<number>(0);
   // 練習モードの自動タップ: 最後に自動タップした拍インデックス(-1=未)。拍が進むたびに1回タップ。
   const autoTapBeatRef = useRef<number>(-1);
+  // 自動アンカー: ダンス曲が鳴り出した瞬間にビートグリッド起点を1回だけ合わせ直したか
+  // (毎フレーム同期はしない=ブルブル防止)。リズム開始ごとに false へ戻す。
+  const rhythmAnchoredRef = useRef<boolean>(false);
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
@@ -799,11 +803,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const firstBeatAt = Date.now() + leadBeats * interval + rhythmBeatOffsetForLevel(lvl);
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
               autoTapBeatRef.current = -1; // 自動タップの拍カウンタを開始時にリセット
+              rhythmAnchoredRef.current = false; // 曲が鳴り出したら1回だけ位相合わせし直す
             }
           }
 
           if (useGameStore.getState().rhythm.active) {
             useGameStore.getState().tickRhythm();
+            // 自動アンカー(ダンス曲↔サークルの開始位相合わせ): ダンス曲は src 差し替え→load→play の
+            // 可変レイテンシ後に鳴り出すため、開始時刻基準のグリッドだと一定オフセットでズレる。曲が
+            // 実際に鳴り出した瞬間の currentTime からグリッド起点を「1回だけ」スナップして位相を合わせる
+            // (毎フレーム同期はしない=ブルブル回避)。
+            if (!rhythmAnchoredRef.current) {
+              const rA = useGameStore.getState().rhythm;
+              if (rA.interval > 0 && rA.expectBeat === 0) {
+                // 先頭ビートを消化する前(リードイン中)だけ補正する。
+                const anchor = getDanceBeatAnchorMs();
+                if (anchor != null) {
+                  const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
+                  // 曲のビート位相 = currentTime=0 の壁時計 + レベル別ダウンビート補正。
+                  const gridBase = anchor + rhythmBeatOffsetForLevel(lvl);
+                  // 元の firstBeatAt にいちばん近いビート境界へスナップ(リードはほぼ維持・位相だけ補正)。
+                  let snapped = gridBase + Math.round((rA.firstBeatAt - gridBase) / rA.interval) * rA.interval;
+                  // 既に過ぎ(かけ)ていたら、最初のサークルを取りこぼさないよう1拍ずつ未来へ送る。
+                  while (snapped <= Date.now() + RHYTHM_SUCCESS_WINDOW_MS) snapped += rA.interval;
+                  useGameStore.getState().setRhythmFirstBeat(snapped);
+                  autoTapBeatRef.current = -1; // グリッド移動に合わせ自動タップの拍カウンタも再起
+                  rhythmAnchoredRef.current = true;
+                }
+              } else if (rA.expectBeat > 0) {
+                // 先頭ビートを過ぎてしまった場合はスナップせず固定グリッドのまま継続(途中ジャンプ回避)。
+                rhythmAnchoredRef.current = true;
+              }
+            }
             // 練習モードの自動タップ: 各拍(JUST)で1回だけ自動タップ→ドラムが拍に乗る(ズレ確認用)。
             if (danceTest && useGameStore.getState().danceTestAutoTap) {
               const rAT = useGameStore.getState().rhythm;

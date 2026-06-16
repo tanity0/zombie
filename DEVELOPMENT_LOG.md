@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.405`**（ローカル・origin・本番サイトすべて一致。確認済み）。
+- **最新 version**: **`v0.25.406`**（ダンス曲↔サークルの開始位相を自動アンカーで合わせる実装を追加。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -29,7 +29,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - **v0.25.405**: 練習モードで `interval<600` のとき最初のサークルにオートタップ/キックが出ないバグを修正（練習はリードを1拍に固定）。
 
 ### 次の課題（未対応）
-- **ダンス曲↔サークルの開始位相ズレ（本命・未実装）**: `firstBeatAt` は `setRhythmActive` 時刻にピン留め（[useGameLoop.ts](src/hooks/useGameLoop.ts) 付近）だが、曲は単一BGM要素の `src` 差し替え→`load()`→`play()` のレイテンシ後に鳴り出すため一定オフセット。補正用 `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL` は `[0,0,0,0]` で未補正。**推奨修正＝自動アンカー**（曲が実際に鳴り出した瞬間の `bgm.currentTime` からビートグリッド起点を開始時1回だけ合わせ直す。毎フレーム同期はしない＝ブルブル回避）。練習モードの自動タップ＋キック＋間隔入力がズレ計測ツールとして使える。
+- **ダンス曲↔サークルの開始位相ズレ（本命）→ v0.25.406 で自動アンカー実装済み**。
+  曲が実際に鳴り出した瞬間（`getDanceBeatAnchorMs()` が `Date.now() - bgm.currentTime*1000` を返す）に、
+  ビートグリッド起点 `firstBeatAt` を **開始時1回だけ** 最寄りのビート境界へスナップして位相を合わせる
+  （毎フレーム同期はしない＝ブルブル回避）。可変な `load()`→`play()` レイテンシはこれで除去される。
+  残るのは曲ごとの固定ダウンビート補正のみ → `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL`（`?bo1/2/3` で実機調整 → 既定へ焼く）。
+  **実機（ダンス練習・自動タップON）で確認待ち**: それでも頭がズレるなら `?bo*` で各レベルのダウンビートを詰める。
 - 検証は音×映像のため自動テスト不可 → 実機（ダンス練習）で確認。
 
 ## 🔖 引き継ぎメモ (next: ローカル移行 + チャットfork) — 2026-06-16
@@ -81,6 +86,34 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.406 - ダンス曲↔サークル 開始位相の自動アンカー (Claude Code)
+
+### 変更（本命タスク: ダンス曲とサークルの開始位相ズレ）
+- **自動アンカーを実装**。ダンス曲はメインBGM要素の `src` 差し替え→`load()`→`play()` の可変レイテンシ後に
+  鳴り出すため、これまでの「ダンス開始時刻（`Date.now()`）基準」の固定ビートグリッドだと毎回ズレていた。
+  曲が **実際に鳴り出した瞬間** にグリッド起点 `firstBeatAt` を最寄りのビート境界へ **1回だけ** スナップして
+  位相を合わせる。毎フレーム同期はしない（音楽クロックの微ノイズでサークルが微振動する＝ブルブルを回避）。
+- 仕組み:
+  - `audioManager.getDanceBeatAnchorMs()`: いま鳴っているダンス曲の `currentTime=0` に対応する壁時計時刻
+    （`Date.now() - bgm.currentTime*1000`）を返す。差し替え/ロード中・一時停止・先頭停止中は `null`
+    （`bgmTargetDanceLevel!==0` / `!paused` / `readyState>=2` / `currentTime>0` でガード）。
+  - `gameStore.setRhythmFirstBeat(firstBeatAt)`: `rhythm.firstBeatAt` だけ差し替える軽量アクション
+    （`expectBeat`/`inputIndex` 等は触らない＝位相補正のみ）。
+  - `useGameLoop`: リズム開始ごとに `rhythmAnchoredRef=false`。先頭ビートを消化する前（`expectBeat===0`）に
+    アンカーが取れたら `gridBase = anchor + rhythmBeatOffsetForLevel(lvl)` に対し元の `firstBeatAt` を
+    `Math.round` で最寄り境界へスナップ→ `setRhythmFirstBeat`。1回適用したら以後やらない。先頭ビートを
+    過ぎてしまった場合（取得が遅れた）はスナップせず固定グリッドのまま継続（途中ジャンプ回避）。
+- 残りの曲ごと固定ダウンビート補正は従来どおり `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL`（`?bo1/2/3` で実機調整→焼き込み）。
+
+### 負荷スコア
+- **1/10**（rendering/simulation）。アンカー判定はリズム開始直後の数フレームのみ実行し、成立したら
+  `rhythmAnchoredRef` で打ち切り。毎フレーム同期や新規オブジェクト/テクスチャ生成は無し。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。
+- 音×映像の位相は自動テスト不可 → **実機（セレクト画面のダンス練習・自動タップON）で確認待ち**。
+  ズレが残るなら `?bo1/2/3=ms`（正=遅らせる）で各レベルのダウンビートを詰めて既定へ焼く。
 
 ## 2026-06-16 - v0.25.388 - 鞭の視認性アップ(発光トレイル+フェード粘り) (Claude Code)
 

@@ -842,6 +842,7 @@ interface GameState {
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
+  setRhythmFirstBeat: (firstBeatAt: number) => void; // 自動アンカー: ビートグリッド起点だけ差し替え
   rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
   tickRhythm: () => void;
   startByakko: () => void;
@@ -3728,6 +3729,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = get().player;
       if (p.experience >= p.experienceToNextLevel) get().levelUp();
     }
+  },
+
+  // 自動アンカー: ダンス曲が実際に鳴り出した瞬間に、ビートグリッド起点(firstBeatAt)を
+  // 開始時1回だけ合わせ直す。位相だけ補正するので expectBeat/inputIndex 等は触らない。
+  // 毎フレーム同期はしない(ブルブル防止)ため、呼ぶのは useGameLoop が開始直後に1回だけ。
+  setRhythmFirstBeat: (firstBeatAt) => {
+    set(state => (state.rhythm.active ? { rhythm: { ...state.rhythm, firstBeatAt } } : {}));
   },
 
   rhythmInput: (kind, dir, contactMs = 0) => {

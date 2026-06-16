@@ -346,6 +346,22 @@ export const setDanceMode = (active: boolean, level = 2) => {
   applyBgm();
 };
 
+// ダンス曲↔サークルの開始位相合わせ用(自動アンカー)。
+// 戻り値 = いま鳴っているダンス曲の currentTime=0 に対応する壁時計時刻(Date.now 基準・ms)。
+// ダンス曲はメインBGM要素の src 差し替え→load()→play() のレイテンシ後に鳴り出すため、
+// 「ダンス開始時刻」基準のビートグリッドだと一定オフセットでズレる。曲が実際に鳴り出した
+// 瞬間にこの値でグリッド起点を1回だけ合わせ直すと、その可変レイテンシを取り除ける。
+// まだ鳴り出していない(差し替え/ロード中・一時停止・先頭で停止)場合は null を返す。
+export const getDanceBeatAnchorMs = (): number | null => {
+  if (!bgm) return null;
+  if (bgmTargetDanceLevel === 0) return null;   // ダンス曲がターゲットでない(戦闘曲のまま)
+  if (bgm.paused || bgm.ended) return null;     // まだ再生していない
+  if (bgm.readyState < 2) return null;          // HAVE_CURRENT_DATA 未満(デコード前)
+  const ct = bgm.currentTime;                   // src差し替え直後は load() で 0 に戻る
+  if (!(ct > 0)) return null;                   // 新しいダンス曲が進み始めて初めて > 0 になる
+  return Date.now() - ct * 1000;
+};
+
 // Route the BGM element through the SFX AudioContext + a gain node, so we can
 // actually control its volume on iOS (where HTMLAudioElement.volume is ignored)
 // and balance it against the SFX. Falls back to element.volume if unavailable.
