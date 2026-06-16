@@ -316,8 +316,19 @@ const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
-// 近接スイングの軽い画面シェイク(短い=控えめ。視覚のみ・ゲーム性に影響なし)。
-export const MELEE_SWING_SHAKE_MS = 90;
+export const SHAKE_MAG = 7;                  // 既定の揺れ幅(px)。被弾シェイク等。
+// 行動別の画面シェイク(視覚のみ・ゲーム性に影響なし)。mag=振幅px / ms=長さ。短く強い「パンチ」も出せる。
+// ウザくならない範囲で、近接スイング<シールドバッシュ<ハリケーン<死神召喚 の順で強める。
+export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
+export const MELEE_SWING_SHAKE_MAG = 3.5;    // (旧: 90ms×7px換算の~2.25→少し強く)
+export const SHIELD_BASH_SHAKE_MS = 160;
+export const SHIELD_BASH_SHAKE_MAG = 5;
+export const HURRICANE_SHAKE_MS = 220;
+export const HURRICANE_SHAKE_MAG = 5.5;
+export const REAPER_SUMMON_SHAKE_MS = 340;
+export const REAPER_SUMMON_SHAKE_MAG = 8;    // 死神召喚=強め(短くはないが演出として)
+export const INTRO_LAND_SHAKE_MS = 240;
+export const INTRO_LAND_SHAKE_MAG = 7.5;
 // 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
 export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
 export const MELEE_FINISH_ZOOM_MAG = 0.06; // ズーム量(+6%程度=少し)
@@ -731,7 +742,10 @@ interface GameState {
   timeSlowUntil: number;
   timeSlowScale: number;
   // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
+  // shakeMag=振幅px / shakeDur=フェード基準の長さ(ms)。triggerShake で行動別に設定。
   shakeUntil: number;
+  shakeMag: number;
+  shakeDur: number;
   // Punch-zoom (render-only): while Date.now() < zoomUntil, the renderer scales the
   // world by zoomMag around screen center. Triggered on melee finish. No gameplay effect.
   zoomUntil: number;
@@ -865,6 +879,7 @@ interface GameState {
   setCameraPosition: (x: number, y: number) => void;
   triggerTimeSlow: (scale: number, durationMs: number) => void;
   triggerZoom: (mag: number, durationMs?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
+  triggerShake: (durationMs: number, mag?: number) => void; // 行動別の画面シェイク(描画のみ)
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
@@ -991,6 +1006,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   timeSlowUntil: 0,
   timeSlowScale: 1,
   shakeUntil: 0,
+  shakeMag: SHAKE_MAG,
+  shakeDur: SHAKE_MS,
   zoomUntil: 0,
   zoomMag: 0,
   danceTapLog: [],
@@ -1143,8 +1160,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
-    // 近接スイングの軽い画面シェイク(短時間=控えめ。視覚のみ・進行中の強い揺れは縮めない)。
-    set(state => ({ shakeUntil: Math.max(state.shakeUntil, now + MELEE_SWING_SHAKE_MS) }));
+    // 近接スイングの軽い画面シェイク(視覚のみ・強い揺れは triggerShake 側で優先)。
+    get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
@@ -1611,6 +1628,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(trap.cx, trap.cy, 4, 22, 'rgba(56,189,248,0.58)', 2, 220);
     }
 
+    // シールドバッシュ: 押し出しが発生したら少し強めの画面シェイク(描画のみ)。
+    if (hasShieldShove) get().triggerShake(SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG);
     // シールドバッシュの押し出し演出(押し出し先で衝撃スラッシュ+リング)。
     for (const s of shieldShoves) {
       const ecx = s.x + (s.cx - s.fromX);
@@ -1929,6 +1948,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastDamageAt: 0,
       }
     });
+    get().triggerShake(HURRICANE_SHAKE_MS, HURRICANE_SHAKE_MAG); // 竜巻発生の画面シェイク(描画のみ)
     // 渦の表現は Pixi 側(syncWhipHurricane)が hurricane 状態で竜巻スプライトを描画。
     get().tickHurricane(); // 初回吸引を即実行(反応を出す)
   },
@@ -2266,6 +2286,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (wouldDie && player.vaccineRevives > 0) {
       set(state => ({
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
+        shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
+        shakeDur: amount > 0 ? SHAKE_MS : state.shakeDur,
         player: {
           ...state.player,
           health: Math.max(1, Math.floor(state.player.maxHealth * 0.5)),
@@ -2289,6 +2311,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         // Real damage kicks off a screen shake.
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
+        shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
+        shakeDur: amount > 0 ? SHAKE_MS : state.shakeDur,
         player: {
           ...state.player,
           health: newHealth,
@@ -4066,6 +4090,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         timeSlowUntil: 0,
         timeSlowScale: 1,
         shakeUntil: 0,
+        shakeMag: SHAKE_MAG,
+        shakeDur: SHAKE_MS,
         zoomUntil: 0,
         zoomMag: 0,
         hurricane: null,
@@ -4077,6 +4103,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   setCameraPosition: (x, y) => {
     // Infinite world: the camera follows the player one-to-one with no clamp.
     set({ camera: { x, y } });
+  },
+
+  triggerShake: (durationMs, mag = SHAKE_MAG) => {
+    // 描画のみ。重なった時は「強い方(振幅)」を優先(弱い揺れが強い揺れを潰さない)。長さは延長。
+    const now = Date.now();
+    set(state => {
+      const active = now < state.shakeUntil;
+      if (active && state.shakeMag >= mag) {
+        return { shakeUntil: Math.max(state.shakeUntil, now + Math.max(0, durationMs)) };
+      }
+      return { shakeUntil: now + Math.max(0, durationMs), shakeMag: Math.max(0, mag), shakeDur: Math.max(1, durationMs) };
+    });
   },
 
   triggerZoom: (mag, durationMs = MELEE_FINISH_ZOOM_MS) => {

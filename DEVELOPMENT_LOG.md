@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.421`**（タップms計測オーバーレイ追加=ズレ切り分け用。近接シェイク/ズーム済・カメラ慣性は相談中。実機確認待ち）。
+- **最新 version**: **`v0.25.422`**（画面シェイク振幅化＋シールド/ハリケーン/死神召喚に追加。タップms計測あり・カメラ慣性は相談中。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,21 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.422 - 画面シェイクに振幅(mag)+行動別に追加(近接強化/シールド/ハリケーン/死神) (Claude Code)
+
+### 変更（社長指示: 近接シェイク強化＋似合う行動に追加・ウザくない範囲）
+- シェイクに**振幅 `shakeMag`＋長さ `shakeDur`** を持たせ、`triggerShake(durationMs, mag)` で行動別に強さ設定
+  (短く強いパンチも可)。重なりは「強い方優先・長さ延長」。被弾シェイクは従来どおり(7px/280ms)。Pixi は
+  `shakeMag×(残り/長さ)` で揺らす。**描画のみ・ゲーム性に影響なし**。
+- 追加/強化(px×ms): 近接スイング 3.5×110(やや強く) / **シールドバッシュ** 5×160 / **ハリケーン発生** 5.5×220 /
+  **死神召喚** 8×340 / 登場着地 7.5×240。順に強くなる(ウザくならない範囲)。
+
+### 負荷スコア
+- **1/10**（rendering）。イベント駆動のみ・per-frame新規コスト無し。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で各行動の手応えを要確認(強すぎれば mag を下げる)。
 
 ## 2026-06-16 - v0.25.421 - タップms計測オーバーレイ(テスト用) (Claude Code)
 

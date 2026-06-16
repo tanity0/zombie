@@ -1184,7 +1184,8 @@ export class PixiScene {
     let sy = 0;
     const shakeLeft = s.shakeUntil ? s.shakeUntil - now : 0;
     if (shakeLeft > 0) {
-      const mag = 7 * Math.min(1, shakeLeft / SHAKE_MS);
+      // 振幅(shakeMag)×フェード(残り/長さ)。行動別に triggerShake で強さを設定。
+      const mag = (s.shakeMag || 7) * Math.min(1, shakeLeft / (s.shakeDur || SHAKE_MS));
       sx = (Math.random() * 2 - 1) * mag;
       sy = (Math.random() * 2 - 1) * mag;
     }

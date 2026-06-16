@@ -16,7 +16,8 @@ import {
   playerIntroOffset,
   playerIntroCamFollow,
   INTRO_DIALOGUE_TRIGGER_T,
-  INTRO_DIALOGUE_TOTAL_MS
+  INTRO_DIALOGUE_TOTAL_MS,
+  INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -563,7 +564,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnRing(pcx, pcy + 6, 4, 46, 'rgba(186,230,253,0.85)', 3, 380);
           spawnBurst(pcx, pcy + 10, '#cbd5e1', 16);
           spawnFlash('rgba(255,255,255,0.12)', 130);
-          useGameStore.setState({ shakeUntil: Date.now() + 220 });
+          useGameStore.getState().triggerShake(INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG);
         }
 
         // Update game time
@@ -661,6 +662,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               chaser.damage = REAPER_CONFIG.contactDamage;
               chaser.speed = getReaperChaseSpeed(player.speed); // 0.9倍速(ワープで回り込む)
               addEnemy(chaser);
+              useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG); // 死神召喚=強めの画面シェイク
               rs.chaserId = chaser.id;
               rs.chaserSpawnAt = newGameTime;
               rs.lastWarpAt = newGameTime;
