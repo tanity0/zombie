@@ -425,6 +425,14 @@ export const INTRO_DIALOGUE_TOTAL_MS =
 // セリフを出す登場進行 t。ヘリが低ホバーまで降りてきた頃(フェーズA内 a≈0.82。降下0.5〜飛び降り0.85の終盤)。
 export const INTRO_DIALOGUE_TRIGGER_T = PLAYER_INTRO_HELI_FRAC * 0.82;
 
+// ゲーム内時間が停止している(= 会話/登場演出中)か。停止中は攻撃入力(タップ近接/刀ダッシュ/カウンター)を
+// 受け付けない。登場演出中はループ自体が早期 return で停止するが、タップ近接は入力ハンドラから直接 store を
+// 叩くためループ停止をバイパスしてしまう。その抑止に使う。今後の通常会話もここに足せば一括で止まる。
+export const isGameTimeStopped = (): boolean => {
+  const s = useGameStore.getState();
+  return s.introDialogueActive || (s.introUntil > 0 && Date.now() < s.introUntil);
+};
+
 // World is effectively infinite. We still need a finite number for spawn
 // math elsewhere, but we use a very large clamp to remove the wall feel.
 export const WORLD_HALF_EXTENT = 200000;

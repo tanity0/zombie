@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import {
   useGameStore,
+  isGameTimeStopped,
   KATANA_FLICK_WINDOW_MS,
   KATANA_FLICK_MIN_DIST,
   KATANA_FLICK_MIN_SPEED
@@ -98,7 +99,8 @@ const VirtualJoystick: React.FC = () => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
     const pointerId = pointerIdRef.current;
-    if (pointerId !== null && fireCounter) {
+    // 会話/登場演出中(ゲーム内時間停止中)は攻撃入力を一切受け付けない(タップ近接が出ないように)。
+    if (pointerId !== null && fireCounter && !isGameTimeStopped()) {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {

@@ -58,9 +58,9 @@ const IntroDialogue: React.FC = () => {
   const rendered = [{ speaker: line.speaker, text: line.text.slice(0, shown), typing: shown < line.text.length }];
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(env(safe-area-inset-bottom),18px)]">
+    <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center px-4">
       <div
-        className="w-full max-w-xl rounded-lg border border-cyan-200/30 bg-slate-950/85 px-4 py-3 shadow-2xl backdrop-blur-sm"
+        className="flex min-h-[5rem] w-full max-w-xl items-center rounded-2xl border-2 border-cyan-300/40 bg-slate-950/90 px-6 py-6 shadow-2xl ring-1 ring-black/40 backdrop-blur-md"
         style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
       >
         {rendered.map((l, i) => {
@@ -69,7 +69,7 @@ const IntroDialogue: React.FC = () => {
           // 生存者の声(通信に割り込む別声)。通信タグ無し・かすれた色・斜体で区別。
           if (l.speaker === '__voice__') {
             return (
-              <p key={i} className="text-[13px] italic leading-relaxed text-rose-200/90">
+              <p key={i} className="text-lg italic leading-relaxed text-rose-200/90">
                 「{l.text}{cursor && <span className="opacity-70">▌</span>}」
               </p>
             );
@@ -80,15 +80,15 @@ const IntroDialogue: React.FC = () => {
               ? (CHARACTER_CLASS_NAMES[characterClass] ?? 'プレイヤー')
               : l.speaker;
             return (
-              <p key={i} className="text-[13px] leading-relaxed text-amber-100">
-                <span className="mr-1 font-bold text-amber-300">{speaker}</span>
+              <p key={i} className="text-lg leading-relaxed text-amber-100">
+                <span className="mr-1.5 font-bold text-amber-300">{speaker}</span>
                 「{l.text}{cursor && <span className="opacity-70">▌</span>}」
               </p>
             );
           }
           return (
-            <p key={i} className="text-[13px] leading-relaxed text-cyan-100">
-              <span className="mr-2 align-middle text-[10px] font-bold tracking-widest text-cyan-400">▶ 通信</span>
+            <p key={i} className="text-lg leading-relaxed text-cyan-100">
+              <span className="mr-2 align-middle text-xs font-bold tracking-widest text-cyan-400">▶ 通信</span>
               {l.text}{cursor && <span className="opacity-70">▌</span>}
             </p>
           );

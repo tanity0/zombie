@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
-import { useGameStore, KATANA_DOUBLE_TAP_MS } from '../store/gameStore';
+import { useGameStore, isGameTimeStopped, KATANA_DOUBLE_TAP_MS } from '../store/gameStore';
 
 // Keyboard fallback — the game is touch-first now, but we keep WASD/arrow
 // movement and Space-to-counter so the game is still playable on a laptop.
@@ -79,7 +79,7 @@ export const useGameControls = () => {
       }
 
       const moveDir = moveDirFromKey(key);
-      if (moveDir && !e.repeat) {
+      if (moveDir && !e.repeat && !isGameTimeStopped()) {
         const nowMs = Date.now();
         if (lastDirTap.dir === moveDir && nowMs - lastDirTap.at <= KATANA_DOUBLE_TAP_MS) {
           const v = DIR_VECTORS[moveDir];
@@ -94,8 +94,9 @@ export const useGameControls = () => {
 
       if (isCounterKey(key)) {
         e.preventDefault();
-        // First press only — auto-repeat shouldn't keep refiring the counter
-        if (!e.repeat) {
+        // First press only — auto-repeat shouldn't keep refiring the counter.
+        // 会話/登場演出中(時間停止中)はカウンターを出さない。
+        if (!e.repeat && !isGameTimeStopped()) {
           const counter = useGameStore.getState().triggerCounter();
           if (counter.swung) playSfx('melee');
           if (counter.finish) playSfx('melee-finish');

@@ -60,6 +60,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.354 - 会話中はゲーム時間停止(攻撃入力を抑止)/会話ボックスを画面中央・大きく (Claude Code)
+
+### 変更
+- **会話/登場中の攻撃入力を抑止**(`store/gameStore.ts` に `isGameTimeStopped()` 追加):
+  `introDialogueActive` か登場演出中(`introUntil>0 && now<introUntil`)を「ゲーム内時間停止中」と定義。
+  - バグ: 登場演出中はループ自体が早期 return で停止しているが、**タップ近接(`triggerCounter`)は入力ハンドラから
+    直接 store を叩く**ためループ停止をバイパスして発火していた(=会話中にタップで近接攻撃が出ていた)。
+  - 修正: `VirtualJoystick.release()`(タップ近接/刀ダッシュ)と `useGameControls`(Space=カウンター/方向二連打=刀ダッシュ)を
+    `isGameTimeStopped()` でガード。停止中は一切発火しない。今後の通常会話も同関数に条件を足せば一括で止まる。
+- **会話ボックスを画面中央・読みやすく**(`components/IntroDialogue.tsx`):
+  下部VNボックス → **画面中央(`inset-0` + `items-center`)** の枠に変更。枠を強調(`border-2 border-cyan-300/40`・
+  `rounded-2xl`・`backdrop-blur-md`・`ring`)、本文/話者/生存者の声を **13px → `text-lg`(18px)** に拡大、
+  通信タグ 10px → `text-xs`。行入替時の縦揺れ防止に `min-h-[5rem]`。
+
+### 負荷スコア
+0/10(入力ガードの分岐とUIクラスのみ。新規描画・毎フレーム処理なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機での見た目/タップ抑止は dev 再起動後に確認。
+
 ## 2026-06-16 - v0.25.353 - 登場演出: 人間の飛距離を縮小しヘリの左移動でカバー (Claude Code)
 
 ### 変更(`src/store/gameStore.ts`)
