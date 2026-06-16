@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.422`**（画面シェイク振幅化＋シールド/ハリケーン/死神召喚に追加。タップms計測あり・カメラ慣性は相談中。実機確認待ち）。
+- **最新 version**: **`v0.25.423`**（タップ計測に曲基準の絶対ms(a)を追加=ドリフト切り分け。シェイク振幅化済・カメラ慣性は相談中。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,18 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.423 - タップ計測に「曲基準の絶対ms(a)」を追加 (Claude Code)
+
+### 変更（社長指示: 人間側タップの絶対値も算出。相対ではなく絶対）
+- `danceTapLog` を `{g,a}` に拡張。**a=曲の実再生位置(`getDanceBeatAnchorMs`=bgm.currentTime)基準の符号付きズレ
+  =人間の絶対タップms**、g=ゲームのビートグリッド基準(従来の相対値)。store→audioManager の循環import無し(確認済)。
+- `DanceTapMeter`: 各タップを「**太字=a(曲基準)** ／括弧=g(グリッド基準)」で表示。下部に「曲 avg / 曲 drift / n」と
+  「grid avg / drift」。**a がほぼ一定オフセット→出力レイテンシ等の固定ズレ / g だけ増える→グリッドが曲からドリフト(リシンク不全)**
+  を数値で切り分けられる。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機(ダンス中に手動タップ)で a/g の値を確認。
 
 ## 2026-06-16 - v0.25.422 - 画面シェイクに振幅(mag)+行動別に追加(近接強化/シールド/ハリケーン/死神) (Claude Code)
 
