@@ -73,6 +73,18 @@ on the zombie game. Append a new entry after each meaningful change.
 ### Verification
 - `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。鞭はサブ武器設置/装備時のみ出るため idle プレビュー未確認(描画コードは検証)。
 
+## 2026-06-16 - v0.25.391 - START後に利用注意(同意画面) / 森下霧を fog-alpha(通常合成)に (Claude Code)
+
+### 変更(社長指示)
+- **利用注意(同意画面)を追加**: START → ご利用注意(⚠ 光/音/死戦闘描写/個人情報なし/開発中)を表示 → [同意して始める] → 音楽+ローディング→暗転→セレクト。
+  `TitleScreen` を phase('idle'→'notice'→'loading'→'blackout')制に。注意書きは毎起動(タイトル到達ごと)表示。文面は社長提供そのまま。
+- **森下霧を fog-alpha.png(アルファ透過版)に切替**: 加算(fog.png) → **通常合成(normal blend)**。素材の最大α~67%のため不透明度を上げる(`?fog` 既定 0.55→0.9)。
+  pixiTextures の standalone を `fog`→`fog-alpha`(linear)に。mkFog の blend オプションを add/screen/normal の3択に拡張。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview: START→注意画面表示→同意→メニュー到達、ゲーム中に fog-alpha の霧描画を確認、console エラーなし。
+- ※「くわしく(フル版)」は未実装(計画ファイル golden-crafting-hopcroft.md のフル版Aを使う場合は指示で着手)。大容量PNGはコミットせず(素材ブランチ正本)。
+
 ## 2026-06-16 - v0.25.390 - 森下霧を fog.png(加算)に置換 / タイトル流れを loading→暗転 に (Claude Code)
 
 ### 変更(社長指示)

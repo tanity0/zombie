@@ -134,7 +134,7 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 //   ?fogbg=0.45  森上霧(最下部・手前の森に被る低い霧。0=なし)
 //   ?fogspd=1    揺れの速さ
 // ★お試し中(2026-06-16): 奥は「めっちゃ濃く」0.85 のまま検証中。基準(戻り)値 → 森下=0.52 / 奥=0.45
-const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.55));     // 森下霧(やまぎり・薄め)
+const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.9));      // 森下霧(fog-alpha素材・最大α~67%なので濃いめに)
 const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.65));  // 奥(遠景+地面・キャラの後ろ)
 const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.32));     // 森上霧(手前の森に被る最下部・薄め)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
@@ -772,11 +772,11 @@ export class PixiScene {
     this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
     const mkFog = (
       layer: Container, tex: Texture, alpha: number, cfg: Omit<FogLayer, 'sp'>,
-      opts?: { additive?: boolean; whiteTint?: boolean }
+      opts?: { blend?: 'add' | 'screen' | 'normal'; whiteTint?: boolean }
     ) => {
       const sp = new TilingSprite({ texture: tex, width: 1, height: 1 });
       sp.tint = opts?.whiteTint ? 0xffffff : FOG_TINT;
-      sp.blendMode = opts?.additive ? 'add' : 'screen'; // 黒背景の素材は加算で黒を消す
+      sp.blendMode = opts?.blend ?? 'screen'; // 既定 screen / アルファ透過素材は normal / 黒背景素材は add
       sp.eventMode = 'none';
       sp.alpha = alpha;
       sp.visible = alpha > 0;
@@ -787,11 +787,11 @@ export class PixiScene {
     // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。もうちょい上。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
       { yFrac: 0.16, widthFrac: 2.2, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, flow: 0.012, ph: 1.9 });
-    // 森下霧: front forest の後ろ。霧素材 fog.png(黒背景+白霧)を加算で合成(エフェクトなし・素材そのまま)。
-    // 非同期ロードのため texKey で sync 時に割当。
+    // 森下霧: front forest の後ろ。霧素材 fog-alpha.png(アルファ透過版)を通常合成でそのまま重ねる(エフェクトなし)。
+    // 非同期ロードのため texKey で sync 時に割当。素材の最大αが約67%なので不透明度は高めに。
     mkFog(this.forestUnderLayer, Texture.EMPTY, FOG_FRONT_ALPHA,
-      { yFrac: 0.80, widthFrac: 2.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1, texKey: 'fog' },
-      { additive: true, whiteTint: true });
+      { yFrac: 0.80, widthFrac: 2.2, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, flow: 0.030, ph: 3.1, texKey: 'fog-alpha' },
+      { blend: 'normal', whiteTint: true });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 1.06, widthFrac: 2.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });

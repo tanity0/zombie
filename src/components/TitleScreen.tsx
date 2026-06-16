@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
 
 interface TitleScreenProps {
-  onStart: () => void; // 最初のユーザー操作: BGM解禁(タップ直後に呼ぶ)
+  onStart: () => void; // 同意時: BGM解禁(再生)
   onDone: () => void;  // 暗転し切ったらメニューへ
 }
 
-// ローディング後のタイトル(the ONE)。流れ: STARTタップ → 音楽再生＆ローディング処理 → ゆっくり暗転 → セレクト。
-// Webの自動再生制限の最初の1タップをここで取得する。
+// タイトル(the ONE)。流れ: START → ご利用注意(同意) → 音楽再生＆ローディング → ゆっくり暗転 → セレクト。
+// 注意書きは毎起動(タイトル到達ごと)に表示する。
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onDone }) => {
-  const [phase, setPhase] = useState<'idle' | 'loading' | 'blackout'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'notice' | 'loading' | 'blackout'>('idle');
   const doneRef = useRef(false);
 
   const finish = () => {
@@ -17,27 +17,30 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onDone }) => {
     onDone();
   };
 
-  const begin = () => {
-    if (phase !== 'idle') return;
-    onStart();                                       // タップ瞬間にBGM解禁＆再生
-    setPhase('loading');                             // ローディング処理(表示)
-    window.setTimeout(() => setPhase('blackout'), 1000); // → ゆっくり暗転へ
-    window.setTimeout(finish, 2100);                 // フォールバック(暗転完了でメニュー)
+  const begin = () => { if (phase === 'idle') setPhase('notice'); };
+
+  const agree = () => {
+    if (phase !== 'notice') return;
+    onStart();                                            // 同意の瞬間にBGM解禁＆再生
+    setPhase('loading');                                  // ローディング処理
+    window.setTimeout(() => setPhase('blackout'), 1000);  // → ゆっくり暗転
+    window.setTimeout(finish, 2100);                      // フォールバック
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(); }
+    if ((e.key === 'Enter' || e.key === ' ') && phase === 'idle') { e.preventDefault(); begin(); }
   };
 
   return (
     <div
-      onClick={begin}
+      onClick={phase === 'idle' ? begin : undefined}
       onKeyDown={handleKey}
-      role="button"
-      tabIndex={0}
-      aria-label="タップして開始"
-      className="relative h-full w-full overflow-hidden bg-[#06070d] cursor-pointer select-none outline-none"
+      role={phase === 'idle' ? 'button' : undefined}
+      tabIndex={phase === 'idle' ? 0 : -1}
+      aria-label={phase === 'idle' ? 'タップして開始' : undefined}
+      className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
       style={{
+        cursor: phase === 'idle' ? 'pointer' : 'default',
         backgroundImage: `url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
         backgroundSize: 'cover',
         backgroundPosition: 'center'
@@ -57,8 +60,40 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onDone }) => {
         </div>
       )}
 
-      {/* ローディング処理(タップ後に表示) */}
-      {phase !== 'idle' && (
+      {/* ご利用にあたって(同意画面) */}
+      {phase === 'notice' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div
+            className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0c0c14]/95 shadow-2xl"
+            style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
+          >
+            <div className="overflow-y-auto px-5 pt-5 pb-3 text-white/85">
+              <h2 className="text-base font-semibold text-amber-200">⚠ ご利用にあたって</h2>
+              <p className="mt-3 text-[13px] leading-relaxed text-white/70">
+                本作は戦闘を含むアクションゲーム(フィクション)です。
+              </p>
+              <ul className="mt-3 space-y-2.5 text-[12.5px] leading-relaxed text-white/75">
+                <li>・光/点滅/画面揺れの演出があります。光過敏性発作の経験がある方は注意し、明るい部屋で離れて・休憩しながら遊んでください。異常を感じたら中止し医師へ。</li>
+                <li>・突然の大きな音が出ます。音量にご注意ください(設定で変更可)。</li>
+                <li>・死/戦闘の描写を含みます(過度なグロ表現はありません)。</li>
+                <li>・個人情報は収集しません。設定はブラウザ内にのみ保存。課金なし。</li>
+                <li>・開発中のため不具合が生じる場合があります。自己責任でお楽しみください。</li>
+              </ul>
+            </div>
+            <div className="border-t border-white/10 p-4">
+              <button
+                onClick={(e) => { e.stopPropagation(); agree(); }}
+                className="w-full rounded-xl bg-gradient-to-b from-sky-500 to-sky-600 py-3 text-[15px] font-semibold text-white shadow-lg active:from-sky-600 active:to-sky-700"
+              >
+                同意して始める
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ローディング処理 */}
+      {(phase === 'loading' || phase === 'blackout') && (
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-[18%]">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white/75" />
           <span className="mt-4 text-[11px] tracking-[0.34em] text-white/55">LOADING…</span>

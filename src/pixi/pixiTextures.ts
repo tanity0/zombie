@@ -77,7 +77,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'whip' },                // 既定のまま
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
-      { name: 'fog', scaleMode: 'linear' },          // 森下の霧素材(黒背景+白霧=加算で合成)
+      { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
 
       ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];
