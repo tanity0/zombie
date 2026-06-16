@@ -69,7 +69,8 @@ export type SfxKey =
   | 'zombie-2'
   | 'zombie-3'
   | 'zombie-4'
-  | 'hurricane';
+  | 'hurricane'
+  | 'dance-kick';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
@@ -180,6 +181,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'zombie-4': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-4.mp3`, volume: 0.7, minIntervalMs: 50 },
   // 鞭ハリケーンの「ゴゴゴゴ」鳴動。発動中だけループ再生(setHurricaneRumble)。
   hurricane: { src: `${import.meta.env.BASE_URL}audio/sfx/hurricane.wav`, volume: 0.7 },
+  // ダンスフロアのジャスト成功(タップ/フリック両方)で鳴らすキックドラム。
+  'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
 };
 
 let bgm: HTMLAudioElement | null = null;

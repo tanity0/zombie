@@ -42,7 +42,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, playDanceKick } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
@@ -426,7 +426,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // ダンスのタップ(近接円)でも松明・卵を破壊。
         useGameStore.getState().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeR, 30);
-        playDanceKick(); // 近接音 → 太いバスドラム(拍踏み)
+        playSfx('dance-kick'); // ジャスト成功 → キックドラム(拍踏み)
       } else if (pa.kind === 'flick') {
         // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、
         // ノックバックは上限6(=距離2倍)で強く弾く。
@@ -435,6 +435,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, true, RHYTHM_FLICK_KNOCKBACK_MAX);
         useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
         playSfx('katana-dash');
+        playSfx('dance-kick'); // フリックのジャスト成功でもキックドラム(拍踏み)
       } else if (pa.kind === 'god') {
         fireShijinGod(pa.god, pa.x, pa.y);
       } else if (pa.kind === 'finish') {
