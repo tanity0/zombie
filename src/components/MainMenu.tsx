@@ -179,9 +179,6 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
           <p className="text-[13px] text-white/60 mt-1">
             弾を節約し、群れを捌いて生き延びろ
           </p>
-          <span className="absolute top-3 right-3 glass-pill px-2 py-0.5 text-[10px] font-mono tabular-nums text-white/70">
-            v{__APP_VERSION__}
-          </span>
           <button
             onClick={() => setSettingsOpen(v => !v)}
             className="absolute top-3 left-3 w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-white/80 flex items-center justify-center active:bg-white/10"

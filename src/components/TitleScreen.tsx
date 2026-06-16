@@ -62,6 +62,13 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     >
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
+      {/* バージョン表示: スタート画面(タイトル)の右上 */}
+      {phase === 'title' && (
+        <span className="absolute top-3 right-3 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-mono tabular-nums text-white/70 backdrop-blur-sm">
+          v{__APP_VERSION__}
+        </span>
+      )}
+
       {/* ご利用にあたって(同意画面・最初に表示) */}
       {phase === 'notice' && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
