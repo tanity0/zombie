@@ -1,13 +1,15 @@
 import React, { useState, useRef } from 'react';
 
 interface TitleScreenProps {
-  onStart: () => void; // 同意時: BGM解禁(再生)
-  onDone: () => void;  // 暗転し切ったらメニューへ
+  onStart: () => void;               // 同意時: BGM解禁(再生)
+  waitForAssets?: () => Promise<void>; // 同意後に待つ本物の素材ロード完了
+  onDone: () => void;                // 暗転し切ったらメニューへ
 }
 
-// タイトル(the ONE)。流れ: START → ご利用注意(同意) → 音楽再生＆ローディング → ゆっくり暗転 → セレクト。
+// タイトル(the ONE)。流れ: START → ご利用注意(同意) → 音楽再生＆本物ローディング → ゆっくり暗転 → セレクト。
+// 「ゾンビサバイバル」起動ローディングは廃止し、実際の素材DL待ちはここ(同意後)で行う。
 // 注意書きは毎起動(タイトル到達ごと)に表示する。
-const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onDone }) => {
+const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {
   const [phase, setPhase] = useState<'idle' | 'notice' | 'loading' | 'blackout'>('idle');
   const doneRef = useRef(false);
 
@@ -22,9 +24,15 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onDone }) => {
   const agree = () => {
     if (phase !== 'notice') return;
     onStart();                                            // 同意の瞬間にBGM解禁＆再生
-    setPhase('loading');                                  // ローディング処理
-    window.setTimeout(() => setPhase('blackout'), 1000);  // → ゆっくり暗転
-    window.setTimeout(finish, 2100);                      // フォールバック
+    setPhase('loading');                                  // 本物の素材ロード(完了待ち)
+    const startedAt = performance.now();
+    const MIN_LOADING_MS = 900;                           // ロードが速すぎてもスピナーを一瞬見せる
+    void Promise.resolve(waitForAssets?.()).then(async () => {
+      const remaining = MIN_LOADING_MS - (performance.now() - startedAt);
+      if (remaining > 0) await new Promise(r => window.setTimeout(r, remaining));
+      setPhase('blackout');                               // ロード完了 → ゆっくり暗転
+      window.setTimeout(finish, 1300);                    // 暗転フォールバック
+    });
   };
 
   const handleKey = (e: React.KeyboardEvent) => {

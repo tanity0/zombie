@@ -13,7 +13,7 @@ import { ensureTextures } from './pixi/pixiTextures';
 const LOADING_MIN_MS = 650;
 
 function App() {
-  const [gameState, setGameState] = useState<GameState>('loading'); // 起動時ローディングから開始
+  const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
   const [benchmarkMode, setBenchmarkMode] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
@@ -21,18 +21,25 @@ function App() {
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
 
-  useEffect(() => {
-    // 起動時に必要な素材を全てダウンロードし切ってからメニューへ(テクスチャ + 音声/BGM/ダンス/SFX)。
-    const boot = async () => {
+  // 本物の素材ロード(テクスチャ+音声/BGM/SFX)を起動直後にバックグラウンドで開始。
+  // ただし「ゾンビサバイバル」ローディング画面は出さず、タイトルを先に見せる。
+  // 実際のロード完了待ちは START(同意)後の TitleScreen 'loading' フェーズで行う。
+  const ensurePreload = (): Promise<void> => {
+    if (!preloadPromiseRef.current) {
       const started = performance.now();
-      const tex = ensureTextures().catch(() => {});
-      preloadPromiseRef.current = tex;
-      await Promise.all([tex, preloadAllAudio()]);
-      const remaining = LOADING_MIN_MS - (performance.now() - started);
-      if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
-      setGameState('title'); // ローディング後はタイトル(START待機)へ。タップでBGM解禁→メニュー。
-    };
-    void boot();
+      preloadPromiseRef.current = Promise.all([
+        ensureTextures().catch(() => {}),
+        preloadAllAudio(),
+      ]).then(async () => {
+        const remaining = LOADING_MIN_MS - (performance.now() - started);
+        if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
+      });
+    }
+    return preloadPromiseRef.current;
+  };
+
+  useEffect(() => {
+    void ensurePreload(); // タイトル表示と並行して素材DLを先行開始(体感待ち時間を短縮)
   }, []);
 
   useEffect(() => {
@@ -52,8 +59,8 @@ function App() {
     pendingBenchmarkRef.current = benchmark;
     setBenchmarkMode(benchmark);
     setBenchmarkResult(null);
-    // 素材は起動時にDL済み。テクスチャだけ念のため確実化(通常は即時)。ローディング画面は挟まない。
-    await (preloadPromiseRef.current ?? ensureTextures().catch(() => {}));
+    // 素材ロード完了を待ってからゲーム開始(通常はタイトルのローディング段階で既に完了)。
+    await ensurePreload();
     resetGame(validClass);
     setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
@@ -84,6 +91,7 @@ function App() {
       {gameState === 'title' && (
         <TitleScreen
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
+          waitForAssets={ensurePreload}                                // 同意後の本物ローディング(完了待ち)
           onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
         />
       )}
