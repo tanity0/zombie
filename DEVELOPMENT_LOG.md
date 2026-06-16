@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.415`**（ステージ1ダンスの実測テンポ598.339ms焼き込み。導線・自動アンカー・テンポとも実機確認待ち）。
+- **最新 version**: **`v0.25.416`**（ダンス曲を正確な600ms/拍へリタイム＋プレイ中の定期リシンク。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,26 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.416 - ダンス曲を正確な600ms/拍へリタイム + 定期リシンク (Claude Code)
+
+### 変更（社長指示: 曲のBPMをキリよく / 既定値に / 重くせずズレないように）
+- **調査**: オプションの「サークル間隔」入力は `danceTestInterval` で、`useGameLoop` の分岐により
+  **練習モード時のみ**反映（本編プレイには未反映）と判明。新機能は足さず、下記方針に変更。
+- **曲自体をリタイム**: `public/audio/dance-100.mp3` を ffmpeg `atempo=0.997143`(ピッチ保持)で 268.032s→268.8s に
+  引き伸ばし、**正確に 600ms/拍(=100BPMちょうど)** へ。128k/48kで再エンコード（サイズはほぼ同じ4.30MB）。
+- **既定値をクリーンに**: `RHYTHM_INTERVAL_MS_BY_LEVEL[1]` を 598.339→**0** に戻し、Lv1=BPM100=**600** が既定に
+  （オプションの規定表示も自動で600）。
+- **プレイ中の定期リシンク**（`useGameLoop` + `RHYTHM_RESYNC_MS=4000`/`RHYTHM_RESYNC_MIN_MS=6`）: アンカー後、
+  数秒に1回だけ曲の実再生位置から位相ズレを測り、閾値(±6ms)を超えた分のみ最小補正（拍indexは不変・1拍未満）。
+  毎フレーム同期はしないのでブルブルせず、負荷もほぼ0（数秒に1回 getDanceBeatAnchorMs + 必要時のみ set）。
+
+### 負荷
+- 1/10（rendering/simulation）。リシンクは数秒に1回・新規オブジェクト無し。曲は素材の差し替えのみ。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。ffprobe で per-beat≈599.95ms(=実質600)を確認。
+  実機(ステージ1の四神舞ダンス)で通しでズレないか要確認。残差は定期リシンクが吸収する想定。
 
 ## 2026-06-16 - v0.25.415 - ステージ1ダンス: 実測テンポを焼き込み(累積ドリフト対策) (Claude Code)
 

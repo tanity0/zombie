@@ -47,7 +47,7 @@ import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
   RHYTHM_ENTER_IDLE_MS, RHYTHM_EXIT_MOVE_MS, rhythmIntervalForLevel, RHYTHM_LEAD_MS, rhythmBeatOffsetForLevel,
-  RHYTHM_SUCCESS_WINDOW_MS,
+  RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_RESYNC_MS, RHYTHM_RESYNC_MIN_MS,
   RHYTHM_TAP_DAMAGE, RHYTHM_TAP_KNOCKBACK_MULT,
   RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, RHYTHM_FLICK_KNOCKBACK_MAX,
   SUZAKU_MAX_TARGETS, SUZAKU_BLAST_DAMAGE,
@@ -204,6 +204,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 自動アンカー: ダンス曲が鳴り出した瞬間にビートグリッド起点を1回だけ合わせ直したか
   // (毎フレーム同期はしない=ブルブル防止)。リズム開始ごとに false へ戻す。
   const rhythmAnchoredRef = useRef<boolean>(false);
+  // 定期リシンク: 次に位相を合わせ直す時刻(Date.now基準, ms)。0=未予約。
+  const rhythmResyncAtRef = useRef<number>(0);
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
@@ -804,6 +806,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
               autoTapBeatRef.current = -1; // 自動タップの拍カウンタを開始時にリセット
               rhythmAnchoredRef.current = false; // 曲が鳴り出したら1回だけ位相合わせし直す
+              rhythmResyncAtRef.current = 0;      // 定期リシンクの予約もリセット
             }
           }
 
@@ -829,10 +832,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().setRhythmFirstBeat(snapped);
                   autoTapBeatRef.current = -1; // グリッド移動に合わせ自動タップの拍カウンタも再起
                   rhythmAnchoredRef.current = true;
+                  rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
                 }
               } else if (rA.expectBeat > 0) {
                 // 先頭ビートを過ぎてしまった場合はスナップせず固定グリッドのまま継続(途中ジャンプ回避)。
                 rhythmAnchoredRef.current = true;
+                rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
+              }
+            } else if (Date.now() >= rhythmResyncAtRef.current) {
+              // 定期リシンク(アンカー後): 曲の実再生位置から位相のズレを測り、閾値を超えた分だけ最小補正。
+              // 数秒に1回・1拍未満の微調整のみなので軽く、毎フレーム同期のブルブルも起きない。
+              rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
+              const rR = useGameStore.getState().rhythm;
+              const anchor = rR.interval > 0 ? getDanceBeatAnchorMs() : null;
+              if (anchor != null) {
+                const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
+                const gridBase = anchor + rhythmBeatOffsetForLevel(lvl);
+                const iv = rR.interval;
+                let err = (((rR.firstBeatAt - gridBase) % iv) + iv) % iv; // [0, iv)
+                if (err > iv / 2) err -= iv;                              // [-iv/2, iv/2) 最寄りビートへの符号付きズレ
+                if (Math.abs(err) > RHYTHM_RESYNC_MIN_MS) {
+                  useGameStore.getState().setRhythmFirstBeat(rR.firstBeatAt - err); // 位相だけ最小補正(拍indexは不変)
+                }
               }
             }
             // 練習モードの自動タップ: 各拍(JUST)で1回だけ自動タップ→ドラムが拍に乗る(ズレ確認用)。
