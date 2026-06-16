@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.416`**（ダンス曲を正確な600ms/拍へリタイム＋プレイ中の定期リシンク。実機確認待ち）。
+- **最新 version**: **`v0.25.417`**（ダンス曲を素材ロスレスWAVから正確な600で再生成＋定期リシンク。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,24 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.417 - ダンス曲を素材ロスレスWAVから正確な600で再生成 (Claude Code)
+
+### 変更（社長指摘: githubに素材あり / 600になってない）
+- 素材ブランチ `claude/zombie-material-handoff-chat-13tpmh` に **ロスレス `dance-100-loop.wav` = 19.200s
+  = 32拍×600ms ちょうど(=100BPM・8小節)の完璧なループ** があると判明。現行 `dance-100.mp3`(268s)は
+  このループを14回(448拍)レンダリングしたものだが、テンポが僅かに狂って598.3になっていた(=同一曲・テンポだけ誤り)。
+- **対応**: ループWAVを `-stream_loop 13`(=14回)連結し 268.8s(448拍) にして 128k mp3 へ**1回だけ**エンコード→
+  `public/audio/dance-100.mp3` を差し替え。ビート間隔は**正確に600ms**・継ぎ目なし・**ロスレス由来(1世代)** で
+  従来(128k由来)より高品質。先頭の約24msはmp3エンコード遅延の固定オフセット(ドリフトではない/ギャップレス再生＋
+  自動アンカー＋定期リシンクが吸収)。コード変更なし(Lv1=BPM100=600の既定のまま)。前版v0.25.416の128kストレッチは破棄。
+
+### 負荷 / 注意
+- 1/10(素材差し替えのみ)。WAV(3.68MB)はコミットせず素材ブランチ正本のまま。最終mp3のみ commit。
+- Lv2(dance-120-loop.wav=16.0s=32拍×500ms)/Lv3(dance-140-loop.wav=13.714s=32拍×428.57ms)も同手順で是正可能(未対応)。
+
+### Verification
+- `npm run build` 成功。dist の dance-100.mp3 を ffprobe 確認(再生上はギャップレスで実質600ms/拍)。実機確認待ち。
 
 ## 2026-06-16 - v0.25.416 - ダンス曲を正確な600ms/拍へリタイム + 定期リシンク (Claude Code)
 
