@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## 🔖 引き継ぎメモ (クラウドで継続) — 2026-06-16 (最新・ここを最初に読む)
+
+**運用**: 開始時に `git fetch` → 最新へ。コード正本＝下記ブランチ。変更ごとに version を上げ → dev 再起動 → 応答末尾に現バージョン明記。作業ブランチへの push は可（push で自動デプロイ）。
+
+- **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
+  `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
+- **最新 version**: **`v0.25.405`**（ローカル・origin・本番サイトすべて一致。確認済み）。
+- **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
+
+### このセッション(v0.25.352→405)でやったこと
+- **タイトル/起動フロー**: 同意画面→（同意でBGM）→タイトル(the ONE)→STARTタップ→暗転→本物ローディング→セレクト。起動時の「ゾンビサバイバル」ローディングは廃止。ミッション最初の会話に右下スキップ。
+- **バージョン表示**: スタート画面の右上へ移動／セレクト画面からは削除。
+- **武器バランス**: マシンピストルT3(`handgun-t3`)のみ基礎クリ率を5%に固定（`critChance:0.05`）。
+- **リズム/ダンス**: JUST足元バースト（タップ=サークル/フリック=矢印）＋足元発光。フリック成功でも光る。JUST発光は **赤→青→緑→黄** を巡回（`rhythm.judgeSeq`）。**キックドラム** `public/audio/sfx/kick-drum.mp3`（SFX `dance-kick`）をタップ/フリックのJUSTで再生。ダンス開始は**立ち止まり3秒**（`RHYTHM_ENTER_IDLE_MS=3000`）。
+- **ダンス練習(セレクト画面下部)**: Lv1/2/3 はレベル選択＝サークル間隔入力欄に既定値(600/500/429ms)が入る → 編集 → **決定で開始**（`danceTestInterval` が実グリッドへ連携）。**自動タップ(JUSTでドラム)** トグル（既定ON、`danceTestAutoTap`）。
+- **fog**: 森下＝`fog-alpha.png`（通常合成・森の後ろ）。位置 yFrac 0.66。森上 yFrac 0.92（下すぎを修正）。奥は手続き生成のまま。
+- **v0.25.405**: 練習モードで `interval<600` のとき最初のサークルにオートタップ/キックが出ないバグを修正（練習はリードを1拍に固定）。
+
+### 次の課題（未対応）
+- **ダンス曲↔サークルの開始位相ズレ（本命・未実装）**: `firstBeatAt` は `setRhythmActive` 時刻にピン留め（[useGameLoop.ts](src/hooks/useGameLoop.ts) 付近）だが、曲は単一BGM要素の `src` 差し替え→`load()`→`play()` のレイテンシ後に鳴り出すため一定オフセット。補正用 `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL` は `[0,0,0,0]` で未補正。**推奨修正＝自動アンカー**（曲が実際に鳴り出した瞬間の `bgm.currentTime` からビートグリッド起点を開始時1回だけ合わせ直す。毎フレーム同期はしない＝ブルブル回避）。練習モードの自動タップ＋キック＋間隔入力がズレ計測ツールとして使える。
+- 検証は音×映像のため自動テスト不可 → 実機（ダンス練習）で確認。
+
 ## 🔖 引き継ぎメモ (next: ローカル移行 + チャットfork) — 2026-06-16
 
 **運用**: このチャットを fork してローカルへ移行。開始時に `git fetch` → 最新へ。コード正本は下記ブランチ。
