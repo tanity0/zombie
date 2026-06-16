@@ -150,7 +150,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {stage.name}
             {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">クリア済</span>}
           </span>
-          <span className="block text-[11px] text-white/50 truncate">{stage.main.title}・{stage.area}</span>
+          <span className="block text-[11px] text-white/45 truncate">{stage.main.title}・{stage.area}</span>
+          <span className="mt-0.5 block text-[12px] leading-snug text-white/70">
+            {unlocked ? stage.main.summary : '前ステージのクリアで解放'}
+          </span>
         </span>
         {unlocked ? <ChevronLeft size={16} className="rotate-180 text-white/40" /> : <Lock size={15} className="text-white/40" />}
       </button>

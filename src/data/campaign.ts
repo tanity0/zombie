@@ -19,6 +19,7 @@ export interface StageVoiceLine {
 export interface StageMission {
   code: string;          // 'M1' / 'EX1' など
   title: string;         // ミッション名(例: 救助)
+  summary: string;       // ステージ選択一覧に出す短い目的説明(1行・ネタバレ控えめ)
   briefing: string[];    // ステージ開始前の説明(段落配列)
   debrief: string[];     // ステージクリア後の説明(段落配列)
   radio?: boolean;       // ブリーフィング中に無線ノイズSEの「間」を挟むか
@@ -55,6 +56,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M1',
       title: '救助',
+      summary: '変異体に包囲された偵察部隊を救出する。',
       radio: true,
       briefing: [
         '緊急通信。任務を一時中断する。',
@@ -83,6 +85,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M2',
       title: '研究所突入',
+      summary: '壊滅した研究所へ突入し、中枢データを回収して撤退する。',
       briefing: [
         '偵察部隊が持ち帰った座標により、研究所の場所が特定された。',
         '研究所はすでに壊滅状態にあるが、中枢データが残っている可能性がある。',
@@ -108,6 +111,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M3',
       title: 'リモート研究所責任者',
+      summary: '連携研究施設の責任者を救出する。再生薬データを握る人物。',
       briefing: [
         '研究所本体とリモートで協力していた研究施設がある。',
         'そこの責任者は、事故前の再生薬データを解析していた。',
@@ -133,6 +137,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M4',
       title: '封鎖地域の医師団',
+      summary: '封鎖地域へ強行突入し、戻らない医師団と接触する。',
       briefing: [
         '壁に囲まれ、完全にロックダウンされた地域がある。',
         '通信網は死んでいる。',
@@ -167,6 +172,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M5',
       title: '軍本部防衛',
+      summary: '押し寄せる変異体の群れから、軍本部の防衛線を守り抜く。',
       briefing: [
         '軍本部の防衛線が突破されかけている。',
         '変異体の群れが押し寄せている。',
@@ -195,6 +201,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M6',
       title: '古い洋館',
+      summary: '変異体の発生源と疑われる古い洋館へ向かい、内部を確認する。',
       radio: true,
       briefing: [
         'M5で現れた変異体たちの経路を逆算した。',
@@ -230,6 +237,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'M7',
       title: '逆探知地点',
+      summary: '謎の救難信号を逆探知。発信地点へ向かい、その正体と対峙する。',
       briefing: [
         '不明な救難信号の発信地点を逆探知した。',
         '発信者は軍用暗号網を使用している。',
@@ -262,6 +270,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'EX1',
       title: '洋館再訪',
+      summary: '洋館の未確認区画へ。冷凍保存設備を調べる（任意）。',
       briefing: [
         'ワクチンを受け取った。',
         'だが、あの男の最後の言葉が残っている。',
@@ -290,6 +299,7 @@ export const STAGES: Stage[] = [
     main: {
       code: 'EX2',
       title: '変異した洋館跡',
+      summary: '異常反応の地点に潜む、巨大変異体を討伐する。',
       briefing: [
         '新たに検知された異常反応の地点へ向かう。',
         '地形は大きく変わっている。',
