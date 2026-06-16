@@ -60,6 +60,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.358 - スモッグを上下の帯(サンドウィッチ)に・手前霧をfront forestの下へ (Claude Code)
+
+### 変更(社長フィードバック: Y を狭めて帯に、X はまとまって、中央くっきり帯を上下から挟むサンドウィッチ)
+- **Y を狭い帯に集約**(`pixiScene.ts` makeCloud の yFrac):
+  - 奥(bg)= 画面上部の帯 `yFrac 0.05〜0.24`(地平の木立沿い)。
+  - 手前(fg)= 画面下部の帯 `yFrac 0.80〜1.04`。
+  - 中央のくっきり帯(tilt-shift sharp band ≈0.46)は空け、大きめの雲が上下から少しだけ被る=サンドウィッチ。
+- **X はまとまって流れる**: 同じ帯は**同方向・近い速度**に統一(奥=右へ `vx 8〜14` / 手前=左へ `vx -16〜-26`)。
+  ランダム逆走をやめ、群れが散らばらず帯として一体に動く。雲を大きく(奥 scale 0.7〜1.4 / 手前 1.6〜2.6)+枚数増
+  (`FOG_BG_COUNT 6→7` / `FOG_FG_COUNT 4→5`)で横に重なり連続した帯に。
+- **手前の霧を front forest(下部の森)より下のレイヤーへ**: `fgCloudLayer` を uiLayer から **stage 直下の frontForest 直前**へ移動
+  (`worldGroup < fgCloudLayer < frontForest < uiLayer`)。下部の森が手前で霧を隠す。
+- 既定濃さは据え置き(`?fogbg=0.38` / `?fog=0.34` / `?fogspd=1`)。
+
+### 負荷スコア
+1/10(雲スプライト計12枚。フィルタ追加なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview のゲーム本編で確認:
+  上部に奥の霧バンク+下部に手前の霧、中央クリアのサンドウィッチ。console エラーなし。
+
 ## 2026-06-16 - v0.25.357 - スモッグを全面ベタ→「雲の塊」が奥/手前を泳ぐ方式に作り替え (Claude Code)
 
 ### 変更(社長フィードバック: 全面にかけたいのではなく、オクトラの森のように雲の塊を手前と奥で泳がせたい)

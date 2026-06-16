@@ -135,8 +135,8 @@ const FOG_BG_ALPHA = Math.max(0, tsNum('fogbg', 0.38));
 const FOG_FG_ALPHA = Math.max(0, tsNum('fog', 0.34));
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xaebfce;   // 寒色の霞
-const FOG_BG_COUNT = 6;      // 奥(キャラの後ろ)を漂う雲の枚数
-const FOG_FG_COUNT = 4;      // 手前(最前面)を横切る雲の枚数
+const FOG_BG_COUNT = 7;      // 奥(キャラの後ろ・画面上部の帯)を流れる雲の枚数
+const FOG_FG_COUNT = 5;      // 手前(front forestの下・画面下部の帯)を流れる雲の枚数
 interface FogCloud {
   sp: Sprite;
   x: number;       // screen x (px)
@@ -751,7 +751,11 @@ export class PixiScene {
     //   tilt-shift と envtint が乗り、遠くでふわっとボケて奥行きが出る。
     // 手前(fgCloudLayer): uiLayer 内の colour grade の上・vignette の下(=front forest より前=最前面)。
     this.L.world.addChildAt(this.bgCloudLayer, this.L.world.getChildIndex(this.L.actorLayer));
-    this.L.uiLayer.addChildAt(this.fgCloudLayer, this.L.uiLayer.getChildIndex(this.vignette));
+    // 手前の霧は front forest(下部の森)より下のレイヤーに置く(=森が手前で霧を隠す)。
+    // stage 直下に front forest の直前で挿入: worldGroup < fgCloudLayer < frontForest < uiLayer。
+    const stage = this.L.uiLayer.parent;
+    if (stage) stage.addChildAt(this.fgCloudLayer, stage.getChildIndex(this.L.frontForest));
+    else this.L.uiLayer.addChildAt(this.fgCloudLayer, 0);
     const frand = (n: number) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
     const makeCloud = (layer: Container, seed: number, far: boolean): FogCloud => {
       const sp = new Sprite(getFogTexture());
@@ -759,7 +763,8 @@ export class PixiScene {
       sp.tint = FOG_TINT;
       sp.blendMode = 'screen';
       sp.eventMode = 'none';
-      const scale = far ? 0.5 + frand(seed * 9 + 1) * 0.7 : 1.3 + frand(seed * 9 + 2) * 1.1;
+      // 横に重なって帯(バンク)に繋がるよう大きめ。奥=上の帯、手前=下の帯。
+      const scale = far ? 0.7 + frand(seed * 9 + 1) * 0.7 : 1.6 + frand(seed * 9 + 2) * 1.0;
       sp.scale.set(scale);
       const alpha = far ? FOG_BG_ALPHA : FOG_FG_ALPHA;
       sp.alpha = alpha * (0.7 + frand(seed * 9 + 3) * 0.5);
@@ -768,10 +773,12 @@ export class PixiScene {
       return {
         sp,
         x: 0, // resize() で画面幅に分散配置
-        yFrac: far ? 0.16 + frand(seed * 9 + 4) * 0.40 : 0.55 + frand(seed * 9 + 5) * 0.5,
-        vx: (far ? 7 + frand(seed * 9 + 6) * 12 : 18 + frand(seed * 9 + 7) * 30) * (frand(seed * 9 + 8) < 0.5 ? -1 : 1),
+        // Y は狭い帯に集約: 奥=画面上部 / 手前=画面下部(中央のくっきり帯を上下から少しだけ覆う)。
+        yFrac: far ? 0.05 + frand(seed * 9 + 4) * 0.19 : 0.80 + frand(seed * 9 + 5) * 0.24,
+        // 同じ帯は同方向・近い速度で流し、群れがまとまって動く(奥=右へ / 手前=左へ)。
+        vx: far ? (8 + frand(seed * 9 + 6) * 6) : -(16 + frand(seed * 9 + 7) * 10),
         halfW: (sp.texture.width * scale) / 2,
-        bobAmp: far ? 4 + frand(seed * 9 + 9) * 6 : 8 + frand(seed * 9 + 10) * 10,
+        bobAmp: far ? 3 + frand(seed * 9 + 9) * 4 : 5 + frand(seed * 9 + 10) * 6,
         bobSpd: 0.0003 + frand(seed * 9 + 11) * 0.0004,
         bobPh: frand(seed * 9 + 12) * Math.PI * 2,
       };
