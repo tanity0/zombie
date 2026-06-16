@@ -74,6 +74,10 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left
   in-game (with the active renderer), so the build loaded on-device can be
   confirmed at a glance. There is one version number — do not add a second.
+- **ALWAYS state the current `version` in every chat reply** (e.g. end the
+  response with `v0.25.xxx`). This is a hard rule — never omit it, even for
+  questions, doc-only changes, or replies with no code change. After bumping,
+  quote the new version.
 
 ## Development environment / handoff
 - Local repository path: `/Users/tanity/zombie`
