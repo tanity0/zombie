@@ -438,6 +438,8 @@ const DevTools: React.FC<{
   const setDanceTestInterval = useGameStore(s => s.setDanceTestInterval);
   const danceTestAutoTap = useGameStore(s => s.danceTestAutoTap);
   const setDanceTestAutoTap = useGameStore(s => s.setDanceTestAutoTap);
+  const danceForceJust = useGameStore(s => s.danceForceJust);
+  const setDanceForceJust = useGameStore(s => s.setDanceForceJust);
   const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
   const setMeleeAmmoDropPercent = useGameStore(s => s.setMeleeAmmoDropPercent);
   const ammoPickupAmounts = useGameStore(s => s.ammoPickupAmounts);
@@ -497,6 +499,10 @@ const DevTools: React.FC<{
         <button type="button" onClick={() => setDanceTestAutoTap(!danceTestAutoTap)} aria-pressed={danceTestAutoTap}
           className={`w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-left text-[12px] ${danceTestAutoTap ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/75 active:bg-white/10'}`}>
           <span>自動タップ(JUSTでドラム)</span><span className="shrink-0 font-semibold">{danceTestAutoTap ? 'ON' : 'OFF'}</span>
+        </button>
+        <button type="button" onClick={() => setDanceForceJust(!danceForceJust)} aria-pressed={danceForceJust}
+          className={`w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-left text-[12px] ${danceForceJust ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/75 active:bg-white/10'}`}>
+          <span>強制JUST判定(タップ常に成功)</span><span className="shrink-0 font-semibold">{danceForceJust ? 'ON' : 'OFF'}</span>
         </button>
         <button type="button" onClick={startDancePractice} className="w-full py-2 rounded-xl text-sm font-bold text-white border border-fuchsia-300/60"
           style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.45), rgba(168,85,247,0.45))' }}>決定（開始）</button>

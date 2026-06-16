@@ -726,6 +726,7 @@ interface GameState {
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
   danceTestInterval: number; // 練習モードのサークル間隔(ms/拍)。0=レベル既定。入力欄で調整しサークルへ連携。
   danceTestAutoTap: boolean;  // 練習モード: JUSTタイミングで自動タップ(ドラムを拍に乗せてズレ確認)
+  danceForceJust: boolean;    // テスト: タップを常にJUST判定にする(計測時の紛らわしさ回避)
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   rhythm: RhythmState;
@@ -873,6 +874,7 @@ interface GameState {
   setDanceTestLevel: (level: number) => void;
   setDanceTestInterval: (ms: number) => void;
   setDanceTestAutoTap: (enabled: boolean) => void;
+  setDanceForceJust: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
@@ -988,6 +990,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   danceTestLevel: 1,
   danceTestInterval: 0,
   danceTestAutoTap: true,
+  danceForceJust: false,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   rhythm: initialRhythm(),
@@ -3718,6 +3721,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ danceTestInterval: Number.isFinite(n) && n > 0 ? Math.max(120, Math.min(2000, n)) : 0 });
   },
 
+  setDanceForceJust: (enabled) => {
+    set({ danceForceJust: enabled });
+  },
+
   setDanceTestAutoTap: (enabled) => {
     set({ danceTestAutoTap: enabled });
   },
@@ -3818,7 +3825,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const downGT = gt - Math.max(0, Math.min(contactMs, RHYTHM_FLICK_MAX_CONTACT_MS));
       onBeat = beatT >= downGT - win && beatT <= gt + win;
     } else {
-      onBeat = Math.abs(gt - beatT) <= win;
+      // テスト: 強制JUSTモードはタップを常に成功(JUST)扱い(計測時の紛らわしさ回避)。
+      onBeat = state.danceForceJust ? true : Math.abs(gt - beatT) <= win;
     }
     const pcx = state.player.x + state.player.width / 2;
     const pcy = state.player.y + state.player.height / 2;
