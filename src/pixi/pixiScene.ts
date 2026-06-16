@@ -128,17 +128,24 @@ const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
 const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 
 // --- スモッグ(オクトパス的な「雲の塊」)-----------------------------------------
-// 全面ベタ塗りではなく、ソフトな雲スプライト(getFogTexture)を「ステージの奥(キャラの後ろ)」と
-// 「手前(最前面)」に数枚ずつ漂わせて泳がせる。1枚=1ドロー=軽量。毎フレームの blur/シェーダ/粒子なし。
-//   ?fogbg=0.30  奥の雲の濃さ(0=なし) / ?fog=0.24 手前の雲の濃さ(0=なし) / ?fogspd=1 流れる速さ
-const FOG_BG_ALPHA = Math.max(0, tsNum('fogbg', 0.38));
-const FOG_FG_ALPHA = Math.max(0, tsNum('fog', 0.34));
+// 参考(HD-2D)に合わせ、ソフトな雲スプライト(getFogTexture)を3つの帯で泳がせる。全面ベタ塗りはしない。
+// 1枚=1ドロー=軽量。毎フレームの blur/シェーダ/粒子なし。
+//   ?fog=0.50    手前の分厚いもくもくバンク(最前面・主役。0=なし)
+//   ?fogsub=0.22 front forest の下の薄い手前霧(0=なし)
+//   ?fogbg=0.30  奥(キャラの後ろ・画面上部)の薄い霞(0=なし)
+//   ?fogspd=1    流れる速さ
+const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.50));   // 最前面の分厚いバンク(主役)
+const FOG_SUB_ALPHA = Math.max(0, tsNum('fogsub', 0.22));  // front forest 下の薄い手前霧
+const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.30));   // 奥・上部の薄い霞
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
-const FOG_TINT = 0xaebfce;   // 寒色の霞
-const FOG_BG_COUNT = 7;      // 奥(キャラの後ろ・画面上部の帯)を流れる雲の枚数
-const FOG_FG_COUNT = 5;      // 手前(front forestの下・画面下部の帯)を流れる雲の枚数
+const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
+const FOG_TOP_COUNT = 7;     // 奥(画面上部)
+const FOG_SUB_COUNT = 5;     // front forest 下
+const FOG_FRONT_COUNT = 6;   // 最前面バンク
+// 0=奥(上部・world内) / 1=front forest下(stage) / 2=最前面バンク(uiLayer)
 interface FogCloud {
   sp: Sprite;
+  group: number;
   x: number;       // screen x (px)
   yFrac: number;   // screen y as a fraction of height (fixed per cloud)
   vx: number;      // px/sec horizontal drift (signed)
@@ -531,8 +538,9 @@ export class PixiScene {
 
   // スモッグ(雲の塊)。bgCloudLayer=world内 actorLayer直前(キャラの後ろ・tilt-shift/envtintが乗る)、
   // fgCloudLayer=uiLayer内 grade上/vignette下(手前=最前面の雲)。雲スプライトを数枚ずつ漂わせる。
-  private bgCloudLayer = new Container();
-  private fgCloudLayer = new Container();
+  private bgCloudLayer = new Container();   // 奥(画面上部)= world 内
+  private fgCloudLayer = new Container();   // front forest の下 = stage(frontForest 直前)
+  private frontBankLayer = new Container(); // 最前面の分厚いバンク = uiLayer(grade上/vignette下)
   private fogClouds: FogCloud[] = [];
   private fogPrevNow = 0; // ドリフトの delta 用
 
@@ -746,45 +754,58 @@ export class PixiScene {
       this.flashGfx, this.arrowGfx,
     );
 
-    // --- スモッグ(雲の塊)。ソフト雲スプライトを奥と手前に数枚ずつ漂わせる ---
-    // 奥(bgCloudLayer): world 内 actorLayer 直前(=キャラの後ろ・遠景の前)。filteredWorld 内なので
-    //   tilt-shift と envtint が乗り、遠くでふわっとボケて奥行きが出る。
-    // 手前(fgCloudLayer): uiLayer 内の colour grade の上・vignette の下(=front forest より前=最前面)。
+    // --- スモッグ(雲の塊)。参考HD-2Dに合わせ、3つの帯を漂わせる ---
+    // 奥(bgCloudLayer): world 内 actorLayer 直前(=キャラの後ろ)。filteredWorld 内で tilt-shift/envtint が乗り遠くでボケる。
+    // front forest 下(fgCloudLayer): stage の frontForest 直前(=下部の森が手前で隠す薄い霧)。
+    // 最前面バンク(frontBankLayer): uiLayer の colour grade の上・vignette の下(=分厚いもくもくが最前面に出る・主役)。
     this.L.world.addChildAt(this.bgCloudLayer, this.L.world.getChildIndex(this.L.actorLayer));
-    // 手前の霧は front forest(下部の森)より下のレイヤーに置く(=森が手前で霧を隠す)。
-    // stage 直下に front forest の直前で挿入: worldGroup < fgCloudLayer < frontForest < uiLayer。
     const stage = this.L.uiLayer.parent;
     if (stage) stage.addChildAt(this.fgCloudLayer, stage.getChildIndex(this.L.frontForest));
     else this.L.uiLayer.addChildAt(this.fgCloudLayer, 0);
+    this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
     const frand = (n: number) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
-    const makeCloud = (layer: Container, seed: number, far: boolean): FogCloud => {
-      const sp = new Sprite(getFogTexture());
-      sp.anchor.set(0.5);
-      sp.tint = FOG_TINT;
-      sp.blendMode = 'screen';
-      sp.eventMode = 'none';
-      // 横に重なって帯(バンク)に繋がるよう大きめ。奥=上の帯、手前=下の帯。
-      const scale = far ? 0.7 + frand(seed * 9 + 1) * 0.7 : 1.6 + frand(seed * 9 + 2) * 1.0;
-      sp.scale.set(scale);
-      const alpha = far ? FOG_BG_ALPHA : FOG_FG_ALPHA;
-      sp.alpha = alpha * (0.7 + frand(seed * 9 + 3) * 0.5);
-      sp.visible = alpha > 0;
-      layer.addChild(sp);
-      return {
-        sp,
-        x: 0, // resize() で画面幅に分散配置
-        // Y は狭い帯に集約: 奥=画面上部 / 手前=画面下部(中央のくっきり帯を上下から少しだけ覆う)。
-        yFrac: far ? 0.05 + frand(seed * 9 + 4) * 0.19 : 0.80 + frand(seed * 9 + 5) * 0.24,
-        // 同じ帯は同方向・近い速度で流し、群れがまとまって動く(奥=右へ / 手前=左へ)。
-        vx: far ? (8 + frand(seed * 9 + 6) * 6) : -(16 + frand(seed * 9 + 7) * 10),
-        halfW: (sp.texture.width * scale) / 2,
-        bobAmp: far ? 3 + frand(seed * 9 + 9) * 4 : 5 + frand(seed * 9 + 10) * 6,
-        bobSpd: 0.0003 + frand(seed * 9 + 11) * 0.0004,
-        bobPh: frand(seed * 9 + 12) * Math.PI * 2,
-      };
-    };
-    for (let i = 0; i < FOG_BG_COUNT; i++) this.fogClouds.push(makeCloud(this.bgCloudLayer, i + 1, true));
-    for (let i = 0; i < FOG_FG_COUNT; i++) this.fogClouds.push(makeCloud(this.fgCloudLayer, i + 101, false));
+    interface FogGroupCfg {
+      layer: Container; group: number; count: number; alpha: number; seed0: number;
+      yMin: number; yRange: number; scaleMin: number; scaleRange: number;
+      vxMin: number; vxRange: number; dir: number; bobMin: number; bobRange: number;
+    }
+    const groups: FogGroupCfg[] = [
+      // 奥・上部の薄い霞
+      { layer: this.bgCloudLayer, group: 0, count: FOG_TOP_COUNT, alpha: FOG_TOP_ALPHA, seed0: 1,
+        yMin: 0.03, yRange: 0.18, scaleMin: 0.7, scaleRange: 0.7, vxMin: 8, vxRange: 6, dir: 1, bobMin: 3, bobRange: 4 },
+      // front forest 下の薄い手前霧
+      { layer: this.fgCloudLayer, group: 1, count: FOG_SUB_COUNT, alpha: FOG_SUB_ALPHA, seed0: 101,
+        yMin: 0.72, yRange: 0.22, scaleMin: 1.3, scaleRange: 1.0, vxMin: 12, vxRange: 8, dir: -1, bobMin: 4, bobRange: 5 },
+      // 最前面の分厚いもくもくバンク(下端に密集・主役)
+      { layer: this.frontBankLayer, group: 2, count: FOG_FRONT_COUNT, alpha: FOG_FRONT_ALPHA, seed0: 201,
+        yMin: 0.92, yRange: 0.20, scaleMin: 2.2, scaleRange: 1.2, vxMin: 8, vxRange: 8, dir: -1, bobMin: 5, bobRange: 6 },
+    ];
+    for (const cfg of groups) {
+      for (let i = 0; i < cfg.count; i++) {
+        const seed = cfg.seed0 + i;
+        const sp = new Sprite(getFogTexture());
+        sp.anchor.set(0.5);
+        sp.tint = FOG_TINT;
+        sp.blendMode = 'screen';
+        sp.eventMode = 'none';
+        const scale = cfg.scaleMin + frand(seed * 9 + 1) * cfg.scaleRange;
+        sp.scale.set(scale);
+        sp.alpha = cfg.alpha * (0.7 + frand(seed * 9 + 3) * 0.5);
+        sp.visible = cfg.alpha > 0;
+        cfg.layer.addChild(sp);
+        this.fogClouds.push({
+          sp,
+          group: cfg.group,
+          x: 0, // resize() で画面幅に分散配置
+          yFrac: cfg.yMin + frand(seed * 9 + 4) * cfg.yRange,
+          vx: cfg.dir * (cfg.vxMin + frand(seed * 9 + 6) * cfg.vxRange), // 同じ帯は同方向=まとまって流れる
+          halfW: (sp.texture.width * scale) / 2,
+          bobAmp: cfg.bobMin + frand(seed * 9 + 9) * cfg.bobRange,
+          bobSpd: 0.0003 + frand(seed * 9 + 11) * 0.0004,
+          bobPh: frand(seed * 9 + 12) * Math.PI * 2,
+        });
+      }
+    }
   }
 
   resize(w: number, h: number) {
@@ -819,14 +840,13 @@ export class PixiScene {
     this.gradeSprite.height = h;
     this.vignette.width = w;
     this.vignette.height = h;
-    // 雲スモッグ: 画面幅にまたがって x を分散配置(初期/リサイズ時)。位置の更新は sync。
+    // 雲スモッグ: 画面幅にまたがって x をグループごとに分散配置(初期/リサイズ時)。位置の更新は sync。
     const span = w + 240;
-    let bi = 0;
-    let fi = 0;
+    const counts = [FOG_TOP_COUNT, FOG_SUB_COUNT, FOG_FRONT_COUNT];
+    const idx = [0, 0, 0];
     for (const c of this.fogClouds) {
-      const far = c.sp.parent === this.bgCloudLayer;
-      const n = far ? FOG_BG_COUNT : FOG_FG_COUNT;
-      const k = far ? bi++ : fi++;
+      const n = counts[c.group] ?? 1;
+      const k = idx[c.group]++;
       c.x = -120 + ((k + 0.5) / Math.max(1, n)) * span;
     }
     this.updateStageLightShafts(w, h);

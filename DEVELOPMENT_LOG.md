@@ -60,6 +60,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.359 - スモッグを参考HD-2Dに寄せ3層化(最前面の分厚いバンク追加) (Claude Code)
+
+### 変更(社長の参考画像 public/references/reference-field-hd2d.png / reference-battle-hd2d.png に準拠)
+- 参考は「**画面下部の分厚い白青もくもく霧バンクが最前面**(柵より手前)+ 中景〜奥は大気の霞」。これに合わせて霧を**3層**に。
+  - **最前面バンク `frontBankLayer`**(主役): `uiLayer` の grade 上・vignette 下(=front forest より前=最前面)。
+    下端に密集(yFrac 0.92〜1.12)・大きい(scale 2.2〜3.4)・濃いめ(`?fog=0.50`)。社長選択の「二層」に対応。
+  - **front forest 下の薄霧 `fgCloudLayer`**: 据え置き(`?fogsub=0.22`)。下部の森が手前で隠す。
+  - **奥・上部の薄い霞 `bgCloudLayer`**: 弱め(`?fogbg=0.30`。参考は上部が暗いので控えめ)。
+- 霧色を参考の白青に寄せて明るめへ(`FOG_TINT` 0xaebfce→0xb8ccdd)。雲テクスチャを「もくもく」化(PUFFS 9→13・コア濃度↑・中間ストップ追加)。
+- 各帯は同方向・近速度でまとまって流れる(前回の方針を踏襲)。グループ構成は `groups[]` 設定で管理、resize はグループ別に x 分散。
+- URL: `?fog`(最前面バンク)/ `?fogsub`(forest下)/ `?fogbg`(奥上部)/ `?fogspd`(速さ)。各0で無効。
+
+### 負荷スコア
+1〜2/10(雲スプライト計18枚=18ドロー。フィルタ追加なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview のゲーム本編で参考と並べて確認:
+  下部に明るい白青の分厚いもくもくバンク+上部に薄霞、中央クリア。console エラーなし。
+- 参考画像は branch `claude/zombie-material-handoff-chat-13tpmh` の `public/references/` にあり(本ブランチには未取り込み)。
+
 ## 2026-06-16 - v0.25.358 - スモッグを上下の帯(サンドウィッチ)に・手前霧をfront forestの下へ (Claude Code)
 
 ### 変更(社長フィードバック: Y を狭めて帯に、X はまとまって、中央くっきり帯を上下から挟むサンドウィッチ)

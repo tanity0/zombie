@@ -71,16 +71,17 @@ export const getFogTexture = (): Texture => {
   };
   ctx.clearRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'lighter';
-  const PUFFS = 9;
+  const PUFFS = 13;
   for (let i = 0; i < PUFFS; i++) {
     // Cluster around the centre (wider than tall); keep clear of the borders so
-    // the clump fades to transparent and reads as a soft cloud, not a rectangle.
-    const cx = w * (0.22 + hash(i * 5 + 1) * 0.56);
-    const cy = h * (0.32 + hash(i * 5 + 2) * 0.34);
-    const r = 34 + hash(i * 5 + 3) * 52;
-    const a = 0.18 + hash(i * 5 + 4) * 0.24; // denser cores so each clump reads as a cloud, not flat haze
+    // the clump fades to transparent and reads as a billowy cloud, not a rectangle.
+    const cx = w * (0.20 + hash(i * 5 + 1) * 0.60);
+    const cy = h * (0.34 + hash(i * 5 + 2) * 0.30);
+    const r = 30 + hash(i * 5 + 3) * 56;
+    const a = 0.22 + hash(i * 5 + 4) * 0.26; // dense cores → billowy "もくもく" clumps, not flat haze
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
     g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(0.55, `rgba(255,255,255,${a * 0.5})`);
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
