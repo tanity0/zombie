@@ -316,6 +316,11 @@ const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
+// 近接スイングの軽い画面シェイク(短い=控えめ。視覚のみ・ゲーム性に影響なし)。
+export const MELEE_SWING_SHAKE_MS = 90;
+// 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
+export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
+export const MELEE_FINISH_ZOOM_MAG = 0.06; // ズーム量(+6%程度=少し)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
@@ -727,6 +732,10 @@ interface GameState {
   timeSlowScale: number;
   // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
   shakeUntil: number;
+  // Punch-zoom (render-only): while Date.now() < zoomUntil, the renderer scales the
+  // world by zoomMag around screen center. Triggered on melee finish. No gameplay effect.
+  zoomUntil: number;
+  zoomMag: number;
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
   // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
   hurricane: {
@@ -854,6 +863,7 @@ interface GameState {
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
   triggerTimeSlow: (scale: number, durationMs: number) => void;
+  triggerZoom: (mag: number, durationMs?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
@@ -980,6 +990,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   timeSlowUntil: 0,
   timeSlowScale: 1,
   shakeUntil: 0,
+  zoomUntil: 0,
+  zoomMag: 0,
   hurricane: null,
   summons: [],
 
@@ -1128,6 +1140,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
+
+    // 近接スイングの軽い画面シェイク(短時間=控えめ。視覚のみ・進行中の強い揺れは縮めない)。
+    set(state => ({ shakeUntil: Math.max(state.shakeUntil, now + MELEE_SWING_SHAKE_MS) }));
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
@@ -1622,6 +1637,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (finisherHit || bossFinishHit) {
       get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG); // 近接フィニッシュの軽いパンチズーム(描画のみ)
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
@@ -4036,6 +4052,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         timeSlowUntil: 0,
         timeSlowScale: 1,
         shakeUntil: 0,
+        zoomUntil: 0,
+        zoomMag: 0,
         hurricane: null,
         summons: []
       };
@@ -4045,6 +4063,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   setCameraPosition: (x, y) => {
     // Infinite world: the camera follows the player one-to-one with no clamp.
     set({ camera: { x, y } });
+  },
+
+  triggerZoom: (mag, durationMs = MELEE_FINISH_ZOOM_MS) => {
+    // 描画のみのパンチズーム。重なった場合は強い方/長い方を採用。ゲーム性(カメラ座標/判定)は不変。
+    const now = Date.now();
+    set(state => ({
+      zoomUntil: Math.max(state.zoomUntil, now + Math.max(0, durationMs)),
+      zoomMag: Math.max(state.zoomMag, Math.max(0, mag)),
+    }));
   },
 
   triggerTimeSlow: (scale, durationMs) => {

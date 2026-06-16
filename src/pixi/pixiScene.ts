@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -549,6 +549,7 @@ export class PixiScene {
   private screenW = 1;
   private screenH = 1;
   private cameraY = 0;
+  private zoomApplied = false; // 近接フィニッシュのパンチズームを worldGroup に適用中か(終了時に1度だけ戻す)
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
@@ -1190,6 +1191,20 @@ export class PixiScene {
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
+
+    // 近接フィニッシュのパンチズーム(描画のみ): worldGroup を画面中央=プレイヤー基準で少しだけ拡大して戻す。
+    // 終わり際は env=zoomLeft/MS が 1→0 になり 1.0 へ収束。アイドル時は何も触らない(終了時に1度だけリセット)。
+    const zoomLeft = s.zoomUntil ? s.zoomUntil - now : 0;
+    if (zoomLeft > 0 && s.zoomMag > 0) {
+      const zoom = 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS);
+      this.L.worldGroup.scale.set(zoom);
+      this.L.worldGroup.position.set((this.screenW / 2) * (1 - zoom), (this.screenH / 2) * (1 - zoom));
+      this.zoomApplied = true;
+    } else if (this.zoomApplied) {
+      this.L.worldGroup.scale.set(1);
+      this.L.worldGroup.position.set(0, 0);
+      this.zoomApplied = false;
+    }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);

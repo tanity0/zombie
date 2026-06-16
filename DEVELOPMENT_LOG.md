@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.419`**（ステージ1フル曲を復元＝ループ置換の誤り是正・テンポ≒600一定をnumpyで検証・リシンク4秒。実機確認待ち）。
+- **最新 version**: **`v0.25.420`**（近接攻撃シェイク＋近接フィニッシュ パンチズーム。カメラ慣性は相談中。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,28 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.420 - 近接攻撃シェイク＋近接フィニッシュ パンチズーム (Claude Code)
+
+### 変更（社長指示）
+- **近接攻撃で軽い画面シェイク**: `triggerCounter`(基本近接スイング)発動時に既存シェイク機構を短時間
+  (`MELEE_SWING_SHAKE_MS=90`)だけ発火(mag は shakeLeft/SHAKE_MS で自動的に小さくなる=控えめ)。
+  進行中の強い揺れは `Math.max` で縮めない。
+- **近接フィニッシュで少しズーム(描画のみ)**: store に `zoomUntil/zoomMag` + `triggerZoom(mag,ms)` を追加。
+  finisherHit 時に `triggerZoom(MELEE_FINISH_ZOOM_MAG=0.06, 320ms)`。Pixi は `worldGroup` を**画面中央
+  (=プレイヤー)基準**で 1+mag*(env) に拡大→1.0へ収束(env=zoomLeft/MS)。カメラ座標/判定は不変。
+
+### 負荷スコア
+- **1/10**（rendering）。イベント駆動のみ。シェイクは既存機構の再利用、ズームはアイドル時 worldGroup を一切触らず
+  (zoomApplied フラグで終了時に1度だけリセット)。per-frame の新規コスト無し。
+
+### 相談中（未実装）
+- カメラ慣性(プレイヤーに0.2sほど遅れて追従)は実装可能。`setCameraPosition` の前で目標カメラへ指数追従
+  (`cam += (target-cam)*(1-exp(-dt/τ))`, τ≒0.12-0.2s)させればよい。**描画カメラのみ**に入れ、判定や敵の
+  ターゲット座標には影響させない方針。要望あれば実装。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で近接スイング/フィニッシュの手応えを要確認。
 
 ## 2026-06-16 - v0.25.419 - ステージ1フル曲を復元(ループ置換の誤りを是正)＋numpy精密計測 (Claude Code)
 
