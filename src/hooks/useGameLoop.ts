@@ -866,7 +866,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const bi = Math.floor((Date.now() - rAT.firstBeatAt) / rAT.interval);
                 if (bi >= 0 && bi !== autoTapBeatRef.current) {
                   autoTapBeatRef.current = bi;
-                  useGameStore.getState().rhythmInput('tap', undefined, 0, { noLog: true }); // JUST判定→pendingでキックが鳴る(計測ログには含めない)
+                  useGameStore.getState().rhythmInput('tap'); // JUST判定→pendingでキックが鳴る(自動タップも計測対象=間隔は~interval)
                 }
               }
             }

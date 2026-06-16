@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.426`**（テスト: 強制JUST判定モードをオプションに追加。タップ間隔計測/追尾カメラ/シェイク済。実機確認待ち）。
+- **最新 version**: **`v0.25.427`**（自動タップも間隔計測対象に。強制JUST/タップ間隔/追尾カメラ/シェイク済。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,15 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.427 - 自動タップも計測対象に (Claude Code)
+
+### 変更（社長指示: 自動タップの間隔も測る）
+- 練習の自動タップ呼び出しから `noLog` を外し、**自動タップも `danceTapLog` に記録**。自動タップは練習モード専用なので、
+  ON→自動タップの間隔(=~interval、グリッドの一定性確認) / OFF→人間の間隔、がメーターに出る。実ゲームは人間のみ(従来どおり)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機: 練習で自動タップON時に間隔~600(±フレーム量子化)を確認。
 
 ## 2026-06-16 - v0.25.426 - テスト: 強制JUST判定モード(オプション) (Claude Code)
 
