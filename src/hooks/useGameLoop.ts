@@ -792,7 +792,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const interval = (danceTest && dti > 0) ? dti : rhythmIntervalForLevel(lvl);
               // サークル/拍グリッドは実時間(Date.now)基準。音楽も実時間で鳴るので、fps低下で gameTime が
               // 遅れても音楽からズレない(累積ドリフト対策)。レベル別オフセットで位相を合わせる。
-              const firstBeatAt = Date.now() + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + rhythmBeatOffsetForLevel(lvl);
+              // 練習モードはリードを1拍に固定。LEAD(600ms)より速いテンポ(interval<600)だと
+              // ceil(600/interval)が2拍以上になり、本譜前にサークルが複数回重なる→その分は
+              // 自動タップ/JUST対象外でドラムが鳴らない(=最初のサークルが反応しない)不具合になるため。
+              const leadBeats = danceTest ? 1 : Math.ceil(RHYTHM_LEAD_MS / interval);
+              const firstBeatAt = Date.now() + leadBeats * interval + rhythmBeatOffsetForLevel(lvl);
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
               autoTapBeatRef.current = -1; // 自動タップの拍カウンタを開始時にリセット
             }
