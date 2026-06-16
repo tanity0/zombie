@@ -11,9 +11,8 @@ import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
-  SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, rhythmBeatOffsetForLevel
+  SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getDanceBeatAnchorMs } from '../audio/audioManager';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, resolveEnemyTarget } from '../utils/enemyUtils';
@@ -879,9 +878,9 @@ interface GameState {
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
   setRhythmFirstBeat: (firstBeatAt: number) => void; // 自動アンカー: ビートグリッド起点だけ差し替え
   rhythmInput: (kind: 'tap' | 'flick', dir?: { x: number; y: number }, contactMs?: number, opts?: { noLog?: boolean }) => { judged: 'hit' | 'miss' | 'fire' | 'none'; god?: ShijinGod; finish?: boolean };
-  // テスト用: 各タップの符号付きズレ(ms。負=早い/正=遅い)。最新が末尾。
-  // g=ゲームのビートグリッド基準(相対) / a=曲の実再生位置(currentTime)基準=人間の絶対タップ(audio未再生時 null)。
-  danceTapLog: { g: number; a: number | null }[];
+  // テスト用: 実タップの絶対時刻(ms, Date.now)。連続タップの差分=「人間の実タップ間隔(ms)」。
+  // 例: Lv1で正しく拍を刻めば差分は ~600ms になる。最新が末尾。
+  danceTapLog: number[];
   tickRhythm: () => void;
   startByakko: () => void;
   advanceByakko: () => void;
@@ -3801,25 +3800,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!r.active) return { judged: 'none' };
     const gt = Date.now(); // 拍グリッドは実時間基準(firstBeatAt も Date.now ベース)
     if (gt - r.lastInputAt < RHYTHM_INPUT_DEBOUNCE_MS) return { judged: 'none' };
-    // テスト用ms計測: 実タップ(自動タップ以外)の符号付きズレを記録。負=早い/正=遅い。
-    // g=ゲームのビートグリッド基準 / a=曲の実再生位置(currentTime)基準=人間の絶対タップ。
-    // g は増えるのに a が一定なら「グリッドが曲からドリフト(=リシンク不全)」、a も一定オフセットなら出力遅延等。
-    if (kind === 'tap' && !opts?.noLog && r.interval > 0) {
-      const iv = r.interval;
-      const nb = Math.round((gt - r.firstBeatAt) / iv);
-      const g = gt - (r.firstBeatAt + nb * iv);
-      let a: number | null = null;
-      const anchor = getDanceBeatAnchorMs(); // = Date.now() - bgm.currentTime*1000(曲のbeat0の壁時計)
-      if (anchor != null) {
-        const lvl = Math.max(1, Math.min(3, state.player.subWeaponLevels['shijin'] ?? 1));
-        const base = anchor + rhythmBeatOffsetForLevel(lvl);
-        let off = (((gt - base) % iv) + iv) % iv;
-        if (off > iv / 2) off -= iv;
-        a = Math.round(off);
-      }
+    // テスト用ms計測: 実タップ(自動タップ以外)の絶対時刻を記録。連続差分=「人間の実タップ間隔(ms)」。
+    // Lv1で正しく刻めば差分は ~600ms になる(= 人間で測った実テンポ)。
+    if (kind === 'tap' && !opts?.noLog) {
       set(s => {
         const lg = s.danceTapLog.length >= 60 ? s.danceTapLog.slice(-59) : s.danceTapLog.slice();
-        lg.push({ g: Math.round(g), a });
+        lg.push(gt);
         return { danceTapLog: lg };
       });
     }

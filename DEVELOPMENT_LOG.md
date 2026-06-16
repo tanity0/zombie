@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.424`**（追尾カメラ=慣性追従(描画のみ・?camtau調整可)を追加。シェイク/ズーム/タップ計測済。実機確認待ち）。
+- **最新 version**: **`v0.25.425`**（タップ計測を連続タップ間隔ms＋平均に変更(Lv1なら~600)。追尾カメラ/シェイク/ズーム済。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,16 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-16 - v0.25.425 - タップ計測を「連続タップ間隔(ms)」に変更 (Claude Code)
+
+### 変更（社長指摘: 相対オフセットではなく実タップ間隔が欲しい）
+- 前回の相対/曲基準オフセット(g/a)を撤去。`danceTapLog` を**実タップの絶対時刻(ms)**に。
+- `DanceTapMeter`: **連続タップの間隔(ms)** を右下から上へ表示＋**平均**。Lv1で正しく刻めば各間隔は ~600ms
+  (=人間で測った実テンポ)。期待間隔(`rhythm.interval`)に近いほど緑。平均は拍抜け(>1.5倍)を除外。数値は増やさず最小限。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機(ダンス中に拍へ手動タップ)で間隔と平均を確認。
 
 ## 2026-06-16 - v0.25.424 - 追尾カメラ(慣性・描画のみ) (Claude Code)
 

@@ -2,29 +2,26 @@ import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 
-// テスト用: ダンス中の実タップのズレ(ms)を画面右下から上へログ表示し平均も出す。負=早い/正=遅い。
-//  a = 曲の実再生位置(currentTime)基準 = 「人間の絶対タップ」(これが本命)
-//  g = ゲームのビートグリッド基準(相対・内部値)
-// a がほぼ一定オフセット → 出力レイテンシ等の固定ズレ。g だけ時間で増える → グリッドが曲からドリフト(リシンク不全)。
-// 再描画はタップ時のみ(active=bool / danceTapLog=配列ref はタップでしか変わらない)。
-const avgOf = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-const driftOf = (xs: number[]) => {
-  if (xs.length < 6) return 0;
-  const h = Math.floor(xs.length / 2);
-  return avgOf(xs.slice(h)) - avgOf(xs.slice(0, h));
-};
-const fmt = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(0);
-const col = (v: number) => (Math.abs(v) <= 40 ? '#4ade80' : Math.abs(v) <= 90 ? '#fbbf24' : '#f87171');
-
+// テスト用: ダンス中の「連続タップの間隔(ms)」を画面右下から上へ表示し、平均も出す。
+// Lv1で正しく拍を刻めば各間隔は ~600ms になる(= 人間で測った実テンポ)。
+// 期待間隔(rhythm.interval)に近いほど緑。平均は飛ばし(>1.5倍=拍抜け)を除いて算出。
 const DanceTapMeter: React.FC = () => {
   const active = useGameStore(s => s.rhythm.active);
-  const log = useGameStore(s => s.danceTapLog);
-  if (!DEV_TOOLS_ENABLED || !active || log.length === 0) return null;
+  const interval = useGameStore(s => s.rhythm.interval); // 期待間隔(Lv1=600)
+  const times = useGameStore(s => s.danceTapLog);        // タップ絶対時刻
+  if (!DEV_TOOLS_ENABLED || !active || times.length < 2) return null;
 
-  const recent = log.slice(-14);
-  const audioVals = log.map(e => e.a).filter((v): v is number => v != null);
-  const gridVals = log.map(e => e.g);
-  const hasAudio = audioVals.length > 0;
+  const deltas: number[] = [];
+  for (let i = 1; i < times.length; i++) deltas.push(times[i] - times[i - 1]);
+  const recent = deltas.slice(-14);
+  // 平均は拍抜け(期待の1.5倍超)を除外して算出。
+  const clean = interval > 0 ? deltas.filter(d => d <= interval * 1.5) : deltas;
+  const avg = clean.length ? clean.reduce((a, b) => a + b, 0) / clean.length : 0;
+  const col = (d: number) => {
+    if (interval <= 0) return '#e2e8f0';
+    const e = Math.abs(d - interval);
+    return e <= 25 ? '#4ade80' : e <= 60 ? '#fbbf24' : '#f87171';
+  };
 
   return (
     <div
@@ -39,26 +36,13 @@ const DanceTapMeter: React.FC = () => {
         textShadow: '0 1px 2px rgba(0,0,0,0.85)',
       }}
     >
-      {/* 1行=1タップ: 太字=絶対(曲基準a) / 括弧=グリッド基準g */}
-      {recent.map((e, i) => {
-        const av = e.a;
-        return (
-          <div key={log.length - recent.length + i} style={{ opacity: 0.35 + 0.65 * ((i + 1) / recent.length) }}>
-            <span style={{ color: av != null ? col(av) : '#64748b', fontWeight: 700 }}>{av != null ? fmt(av) : '—'}</span>
-            <span style={{ color: '#64748b' }}> ({fmt(e.g)})</span>
-          </div>
-        );
-      })}
-      <div style={{ marginTop: 3, color: '#e2e8f0', fontWeight: 700 }}>
-        曲 avg {hasAudio ? fmt(avgOf(audioVals)) : '—'}ms
-      </div>
-      {hasAudio && (
-        <div style={{ color: col(driftOf(audioVals)) }}>
-          曲 drift {fmt(driftOf(audioVals))} / n {audioVals.length}
+      {recent.map((d, i) => (
+        <div key={times.length - recent.length + i} style={{ color: col(d), opacity: 0.35 + 0.65 * ((i + 1) / recent.length) }}>
+          {d.toFixed(0)}ms
         </div>
-      )}
-      <div style={{ color: '#64748b' }}>
-        grid avg {fmt(avgOf(gridVals))} / drift {fmt(driftOf(gridVals))}
+      ))}
+      <div style={{ marginTop: 3, color: '#e2e8f0', fontWeight: 700 }}>
+        avg {avg.toFixed(0)}ms{interval > 0 ? ` / 期待${interval.toFixed(0)}` : ''}
       </div>
     </div>
   );
