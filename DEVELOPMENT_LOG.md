@@ -60,6 +60,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.364 - スモッグ微調整(奥=上へ / 森下=下へ / 森上=薄く) (Claude Code)
+
+### 変更(社長フィードバック)
+- 奥: もうちょい上。`yFrac 0.40 → 0.32`。
+- 森下霧(やまぎり): もうちょい下。`yFrac 0.82 → 0.90`。
+- 森上霧: もうちょい薄く。`?fogbg` 既定 `0.45 → 0.32`。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview で確認。console エラーなし。
+
 ## 2026-06-16 - v0.25.363 - スモッグ層を再定義(奥 / 森下やまぎり=プレイヤーに少し被る / 森上=手前の森に被る) (Claude Code)
 
 ### 変更(社長フィードバック・層の再定義)
