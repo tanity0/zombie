@@ -796,7 +796,7 @@ export class PixiScene {
       { blend: 'normal', whiteTint: true });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
-      { yFrac: 1.06, widthFrac: 2.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });
+      { yFrac: 0.92, widthFrac: 2.2, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, flow: 0.020, ph: 0.7 });
   }
 
   resize(w: number, h: number) {
