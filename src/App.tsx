@@ -6,7 +6,7 @@ import LoadingScreen from './components/LoadingScreen';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmActive, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
 import { ensureTextures } from './pixi/pixiTextures';
 
 const LOADING_MIN_MS = 650;
@@ -35,7 +35,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    void setBgmActive(gameState === 'playing');
+    // menu=タイトル曲 / playing=ステージ曲 / その他(loading・gameOver・victory)=停止。
+    if (gameState === 'playing') setBgmScene('game');
+    else if (gameState === 'menu') setBgmScene('menu');
+    else setBgmScene('off');
   }, [gameState]);
   
   const startGame = async (characterClass: string, benchmark = false) => {

@@ -13,6 +13,8 @@ const DEFAULT_SFX_VOLUME = 1;
 const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/stage1.mp3`,
 ];
+// タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
+const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
 // v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。
 // フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い。
@@ -254,6 +256,7 @@ const ensureBgm = () => {
 let danceActive = false;
 
 let bgmTargetSrc = BGM_TRACKS[0];
+let bgmBaseTrack = BGM_TRACKS[0];   // 非ダンス時の基準曲(menu=タイトル / game=ステージ)
 let bgmTargetDanceLevel = 0;        // 0=戦闘曲、1〜3=ダンス曲
 let bgmPlayToken = 0;
 let danceStopTimer: number | null = null; // 停止を少し遅延して、rhythm.active の一瞬のチラつきで止め→鳴り直しが起きないように
@@ -317,10 +320,10 @@ const applyDanceAudio = () => {
   } else if (bgmTargetDanceLevel !== 0 && danceStopTimer === null) {
     danceStopTimer = window.setTimeout(() => {
       danceStopTimer = null;
-      setBgmTrack(BGM_TRACKS[0], 0);
+      setBgmTrack(bgmBaseTrack, 0);
     }, 300);
   } else if (bgmTargetDanceLevel === 0) {
-    setBgmTrack(BGM_TRACKS[0], 0);
+    setBgmTrack(bgmBaseTrack, 0);
   }
 };
 
@@ -537,6 +540,15 @@ export const setBgmActive = async (nextActive: boolean) => {
   if (bgmActive && !muted) warmSfxBuffers();
   applyBgm();
   applyDanceAudio();
+};
+
+// 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
+// menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
+// ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
+export const setBgmScene = (scene: 'menu' | 'game' | 'off') => {
+  if (scene === 'off') { void setBgmActive(false); return; }
+  bgmBaseTrack = scene === 'menu' ? TITLE_TRACK : BGM_TRACKS[0];
+  void setBgmActive(true);
 };
 
 // ダンスタイム中はリズムに乗りやすいよう近接ダメージ音(スラッシュ/メレー)を鳴らさない。

@@ -60,6 +60,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.378 - タイトル曲(メニューBGM)を配線(ファイル設置待ち) (Claude Code)
+
+### 変更(社長指示: 「the RUIN of LAY」をタイトル曲に)
+- Drive 素材フォルダに同名ファイルは無く、本日追加の音声は「Ruined Heartbeat」2つ。社長が **Ruined Heartbeat (1).mp3 (4.2MB)** を選択。
+- BGM を画面シーンで切替える方式に: `audioManager` に `TITLE_TRACK`(`public/audio/title.mp3`)・`bgmBaseTrack`・`setBgmScene('menu'|'game'|'off')` を追加。
+  `applyDanceAudio` の非ダンス基準曲を `BGM_TRACKS[0]` 固定 → `bgmBaseTrack` に。menu=タイトル / playing=ステージ / 他=停止。
+- `App.tsx`: gameState で `setBgmScene` を呼ぶ(menu/playing/off)。`MainMenu`: 自動再生制限対策で初回 pointerdown に `setBgmScene('menu')`。
+- **未配置**: `public/audio/title.mp3` 本体。4.2MB バイナリは Drive MCP(base64)では文脈に載らず取り込めない(stage2-4 BGM が「Driveにあるが未配置」なのと同じ制約)。
+  → 社長が Drive の「Ruined Heartbeat (1).mp3」を `C:\Users\tanity\zombie\public\audio\title.mp3` として保存すれば、メニューで自動再生(無い間は無音・クラッシュなし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。ファイル設置後に実機でタイトル再生を確認予定。
+
 ## 2026-06-16 - v0.25.377 - 霧全般を横に引き伸ばし(山のとんがり軽減) (Claude Code)
 
 ### 変更(社長フィードバック)

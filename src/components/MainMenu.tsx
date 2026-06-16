@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings, ShoppingBag, Volume2, VolumeX } from 'lucide-react';
 import { subWeaponDisplayName, useGameStore } from '../store/gameStore';
 import type { AmmoType, SubWeaponKey } from '../types/game';
@@ -8,7 +8,8 @@ import {
   isAudioMuted,
   setAudioMuted,
   setBgmVolume,
-  setSfxVolume
+  setSfxVolume,
+  setBgmScene
 } from '../audio/audioManager';
 
 interface MainMenuProps {
@@ -23,6 +24,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   const [bgmVol, setBgmVol] = useState(getBgmVolume);
   const [sfxVol, setSfxVol] = useState(getSfxVolume);
+
+  // タイトル曲。ブラウザの自動再生制限で起動直後は鳴らないため、初回タップで確実に再生開始する。
+  useEffect(() => {
+    const kick = () => setBgmScene('menu');
+    window.addEventListener('pointerdown', kick, { once: true });
+    return () => window.removeEventListener('pointerdown', kick);
+  }, []);
 
   // Start-screen ammo drop-rate setting (persisted in the store/localStorage).
   const meleeAmmoDropPercent = useGameStore(s => s.meleeAmmoDropPercent);
