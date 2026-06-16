@@ -60,6 +60,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.368 - 森下テクスチャを「連なる山の稜線」に作り直し (Claude Code)
+
+### 変更(社長フィードバック: 森下を山が連なってる感じに)
+- `lighting.ts` `getFogBankTexture()` を再設計: 丸い瘤の連なり → **連続した尾根(リッジ)**。8個の raised-cosine の山を重ね
+  (谷は底まで落とさない=山が繋がる)、稜線の下を各列の縦グラデ(上端フェザー+下ほど濃い)で塗る。
+- 位置/濃さは v367 のまま(yFrac 0.52 / heightFrac 0.95 / 検証濃さ ?fog=0.90)。
+- 注: ゲーム内は現在の濃さ(0.90)が厚く稜線がやや潰れる。山並みを強調するなら濃さ↓ or 位置↑で稜線を暗部に出す。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。テクスチャ単体(チャットwidget)で連なる山を確認。Claude Preview のゲーム内も確認。console エラーなし。
+
 ## 2026-06-16 - v0.25.367 - 森下霧: 濃い上端をプレイヤーの足元に固定(足元に溜まる地面霧) (Claude Code)
 
 ### 変更(社長フィードバック: 下げる指示なのに位置が上にずれていく → 上端を足元に固定したい)

@@ -109,30 +109,36 @@ export const getFogBankTexture = (): Texture => {
     return v - Math.floor(v);
   };
   ctx.clearRect(0, 0, w, h);
-  // Solid-ish base toward the bottom (the body of the bank).
-  const base = ctx.createLinearGradient(0, h * 0.5, 0, h);
-  base.addColorStop(0, 'rgba(255,255,255,0)');
-  base.addColorStop(0.5, 'rgba(255,255,255,0.30)');
-  base.addColorStop(1, 'rgba(255,255,255,0.62)');
-  ctx.fillStyle = base;
-  ctx.fillRect(0, h * 0.5, w, h * 0.5);
-  // Mountain-ridge top: overlapping rounded humps centred below the bottom edge,
-  // each reaching up to a varying peak height → a soft jagged silhouette.
-  ctx.globalCompositeOperation = 'lighter';
-  const PEAKS = 9;
-  for (let i = 0; i < PEAKS; i++) {
-    const cx = w * ((i + 0.5) / PEAKS) + (hash(i * 3 + 1) - 0.5) * (w / PEAKS) * 0.7;
-    const topY = h * (0.16 + hash(i * 3 + 2) * 0.34); // peak height varies (mountain silhouette)
-    const cy = h * 1.04;                               // hump centre just below the bottom edge
-    const r = cy - topY;                               // radius reaches up to the peak
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, 'rgba(255,255,255,0.50)');
-    g.addColorStop(0.65, 'rgba(255,255,255,0.26)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  // 連なる山の稜線(リッジ)。複数の raised-cosine の山を重ねて連続した尾根を作り、その下を霧で満たす。
+  // 谷は底まで落とさない(=山が繋がって見える)。各列を上端フェザー付き・下ほど濃い縦グラデで塗る。
+  const N = 8;
+  const valley = h * 0.50; // 谷(尾根の最も低い位置)
+  const peaks: { cx: number; a: number; wd: number }[] = [];
+  for (let j = 0; j < N; j++) {
+    peaks.push({
+      cx: w * ((j + 0.5) / N) + (hash(j * 4 + 1) - 0.5) * (w / N) * 0.40,
+      a: h * (0.14 + hash(j * 4 + 2) * 0.22),         // 山の高さ(ばらつき=山並み)
+      wd: (w / N) * (0.85 + hash(j * 4 + 3) * 0.65),  // 山の裾の広さ(隣と重なって連なる)
+    });
   }
-  ctx.globalCompositeOperation = 'source-over';
+  const ridge = (x: number): number => {
+    let y = valley;
+    for (const p of peaks) {
+      const d = Math.abs(x - p.cx);
+      if (d < p.wd) y -= p.a * 0.5 * (1 + Math.cos((Math.PI * d) / p.wd));
+    }
+    return y;
+  };
+  const step = 2;
+  for (let x = 0; x < w; x += step) {
+    const top = ridge(x);
+    const g = ctx.createLinearGradient(0, top, 0, h);
+    g.addColorStop(0, 'rgba(255,255,255,0)');     // 稜線の縁はフェザー(霧らしく)
+    g.addColorStop(0.14, 'rgba(255,255,255,0.30)');
+    g.addColorStop(1, 'rgba(255,255,255,0.62)');  // 下ほど濃い本体
+    ctx.fillStyle = g;
+    ctx.fillRect(x, top, step + 1, h - top);
+  }
   fogBankTex = Texture.from(canvas);
   return fogBankTex;
 };
