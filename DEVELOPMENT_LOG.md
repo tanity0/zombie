@@ -10,40 +10,55 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
-## 🔖 引き継ぎメモ (next chat / 完全オンライン運用) — 2026-06-15
+## 🔖 引き継ぎメモ (next: ローカル移行 + チャットfork) — 2026-06-16
 
-**運用**: ここから先は**完全オンライン環境(GitHub)で作業。オフライン(ローカル)更新はストップ**。
-次チャットは GitHub から取得して続ける(`git fetch` → 最新へ)。コード正本=このブランチ。
+**運用**: このチャットを fork してローカルへ移行。開始時に `git fetch` → 最新へ。コード正本は下記ブランチ。
+- **デプロイ元 / 正本ブランチ**: `claude/chat-context-continuity-saxlH`(GitHub `tanity0/zombie`)。
+  GitHub Pages はこのブランチ(と `main`)への push で自動デプロイ → https://tanity0.github.io/zombie/ 。
+- **ミラー**: `claude/zombie-online-handoff-nand99`(オンライン作業中は両方へ同一コミットを push していた)。
+  ローカルでは `claude/chat-context-continuity-saxlH` を正本にして進めるのが安全。
+- **最新 version**: `v0.25.351`(両ブランチとも commit `bc2d7ee`)。
+- ルール据え置き: push毎に version 上げ + このログ追記 / モデル識別子は書かない / React毎フレーム再描画を避ける /
+  サブウェポン・グレネード系はスロー禁止 / 2DHDの blur/fog/bloom は全削除しない / 無断パッケージ install しない。
+- ローカル: `npm install` → `npm run dev`(`http://localhost:5173/zombie/`。実機 `npm run dev -- --host 0.0.0.0`)。
+  version表示はVite起動時固定なので version 更新後は dev 再起動。
 
-- **ブランチ**: `claude/chat-context-continuity-saxlH` / GitHub: `tanity0/zombie`
-- **最新 version**: `v0.25.328`(この push 時点。`package.json`)
-- push毎に version 上げ + このログに追記。モデル識別子は書かない。React毎フレーム再描画を避ける。
-  サブウェポン/グレネード系はスロー禁止。2DHDの blur/fog/bloom は全削除しない。
-
-### このセッション(v0.25.307→328)でやったこと
-- 近接(刀/鞭/ダンス)で松明・虫の卵を破壊 / レベルアップのスクロール / 死神AoEを範囲基準 /
-  スキル装備=固有+1 / 刀フリックは指を離した時判定 / 撃破数・FPS表示をTOPで有無選択(既定OFF)。
-- **ライティング**: 環境ベース暗化(`?envdark`)/ vignette(`?vig` 既定0.70)/ 月明りシャフト=弱め+
-  横パララックス(`?shaft` `?shaftpara`)/ 足元の光だまり(`?pool` `?poolr`)。
-- **ソフト影に統一**(ブラー無しスプライト): プレイヤー/敵/召喚/設置物(盾/デコイ/タレット)/商人/NPC。
-  ぼかし量は `getSoftShadowTexture` のグラデで調整。城/拾い物は平たい楕円のまま(未統一)。
-- **松明改善**: 不規則flicker + 地面の光だまり強化。
-- **stage1 BGM** に差し替え(`public/audio/stage1.mp3`、`BGM_TRACKS`)。stage2-4 は Drive にあり(未配置)。
-- **敵の被弾しなり**: 撃たれた直後だけ skew で頭が後ろにしなる(`ENEMY_HIT_FLINCH_MS=230` /
-  `ENEMY_HIT_FLINCH_SKEW=0.42`、`drawEnemy`)。社長評価◎。
-- **登場演出(ロックマン的)**: 左の遠く低くから猛スピードで飛来→中央着地。カメラがステージを横断追従
-  (`gameStore.playerIntroOffset(t)` をカメラ=useGameLoop と見た目=pixiScene で共有)。
-  定数: `PLAYER_INTRO_MS=1700` / `FLY_X=2200` / `LOW_Y=28` / `ARC_H=110` / `CAM_FOLLOW=0.82`。
+### このオンラインセッション(v0.25.328→351)でやったこと
+- **ヘリ登場演出の全面強化**: ヘリ画像を透過処理して登録(`public/sprites/helicopter.png`、`pixiTextures` で nearest・
+  非ぼかし)。登場を2段化 = フェーズA(ヘリ飛来 `PLAYER_INTRO_HELI_MS=2600`)→フェーズB(従来のジャンプ着地
+  `PLAYER_INTRO_LAND_MS=1700`)。キャラはヘリの**ドアに前面(danceUiLayer)で重ねて乗車**(`introHeliBase`/
+  `HELI_RIDE_DOOR_FRAC` 等)、低ホバーまで降下(`heliAboveAt`/`HELI_DROP_ABOVE`)→飛び降り(単調落下=谷なし)→
+  ヘリは0.3s待って離脱(`HELI_DEPART_DELAY_MS`、ホバー固定で離脱)。右向き。飛来は左遠方(`FAR_X=4500`)から easeOut で高速。
+- **登場セリフ(時間停止・オートタイプ・1行ずつ切替)**: `IntroDialogue.tsx`(表示中だけ自前rAF更新)。
+  ヘリ低ホバー時(`INTRO_DIALOGUE_TRIGGER_T=PLAYER_INTRO_HELI_FRAC*0.82`)に時間停止。文面は通信3行+生存者の声
+  `__voice__`+通信1行(`gameStore.INTRO_DIALOGUE_LINES`、各行保持950ms)。
+- **連射タレットの索敵回転**: 前方集中は射線帯に敵が無い間 `TURRET_SCAN_SPEED` でゆっくり回転、捕捉で連射(`useGameLoop`)。
+- **ダンスUI再配置**: 技リストを頭上へ、入力済み矢印をキャラ下へ(`pixiScene.syncRhythmOverlay`)。
+- **ダンスの近接(タップ)音を合成バスドラムに**: `audioManager.playDanceKick()`(Web Audio、サンプル不要)。
+- **影**: 城・拾い物もソフト方向影に統一(v0.25.330)。
+- **🩹 真っ暗対策**: (a) `pixiTextures.ensureTextures` を個別try/catch化(1アセット失敗で全画面落ちない)。
+  (b) `PixiStage` のティッカー `scene.sync()` と破棄を try/catch、非同期init×unmount競合を修正(ゲームオーバーの真っ暗固まり対策)。
 
 ### ⏳ 未完了・次にやること
-1. ✅ **ヘリコプター画像 完了(v0.25.329)**: 画像受領→紫背景クロマキー透過+内容クロップ→2x縮小で
-   `public/sprites/helicopter.png` 配置。`pixiTextures.ts` で `linear` ロード&登録。登場演出のヘリ表示が有効に。
-   位置/サイズは `HELI_*` 定数。
-2. ライティング各 `?パラメータ` の最終値を実機で決めて既定へ焼き込む(現状は既定値で運用中)。
-3. (任意)✅ 城・拾い物の影をソフト方向影に統一(v0.25.330 完了) / ②強イベントの動的影もソフト化(未) /
-   stage2-4のステージ別BGM(未)。
-   ※ stage2-4 BGM は Drive に揃済み(`stage2/3/4.mp3`)。配置 + `BGM_TRACKS` 拡張 + ステージ→曲選択の配線が必要
-   (現状 `audioManager.ts` は全箇所 `BGM_TRACKS[0]` 固定)。
+1. **リズム同期(最重要・未解決)**: 音楽と判定グリッドがズレる(特にLv3)。`audio.currentTime` アンカーは出力レイテンシで
+   悪化したため撤回済み(固定グリッドに戻した)。**実機キャリブレーションが正攻法**: 位相 `?bo1/2/3`(ms、正=遅らせる)、
+   テンポ `?int1/2/3`(1拍ms)で合わせ、`config/shijin.ts` の `RHYTHM_BEAT_OFFSET_MS_BY_LEVEL`/`intervalOverrides` 既定へ焼く。
+   それでも忙しすぎる場合の難易度緩和案(未着手): ミスで全リセットしない/空ビートを見逃す/Lv3半拍ごと/判定窓拡大。
+2. **stage2-4 のステージ別BGM**: Drive に `stage2/3/4.mp3` 揃済み(未配置)。配置 + `audioManager` の `BGM_TRACKS` 拡張 +
+   ステージ→曲選択の配線が必要(現状 `BGM_TRACKS[0]` 固定)。
+3. ライティング各 `?パラメータ` の最終値を実機で決めて既定へ焼く / 強イベントの動的影もソフト化(未)。
+4. (任意)登場セリフの「了解。」は一旦削除済み。必要なら職業名話者(`CHARACTER_CLASS_NAMES`/speaker `__class__`)で復活可。
+
+
+## 2026-06-16 - v0.25.352 - 引き継ぎメモ更新(ローカル移行 + チャットfork準備) (Claude Code)
+
+### 変更
+- 先頭の「🔖 引き継ぎメモ」をローカル移行/fork向けに最新化(version/ブランチ/このセッション成果/未完了)。
+- コード変更なし(push ルールに従い version のみ bump)。両ブランチ同一コミットで push 済み。
+
+### 引き継ぎ要点
+- 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
+- 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
 ## 2026-06-15 - v0.25.351 - ゲームオーバー真っ暗対策(描画堅牢化)/登場を左遠方から高速 (Claude Code)
 
