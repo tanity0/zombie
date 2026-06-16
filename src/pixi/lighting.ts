@@ -51,45 +51,39 @@ export const getVignetteTexture = (): Texture => {
   return vignetteTex;
 };
 
-// Tileable soft "smog" / cloud texture, baked once. White alpha field built from
-// many soft radial blobs; each blob is drawn at its 9 wrap positions (±size) so
-// the texture tiles seamlessly when scrolled by a TilingSprite. The caller tints
-// it cool and screen-blends it at low alpha — no per-frame blur / particles, so
-// drifting it is essentially free (just a tilePosition assignment).
+// Soft irregular "cloud puff" sprite, baked once. Several overlapping soft white
+// blobs are clustered into one wide clump that tapers to fully transparent at the
+// edges. Used as drifting fog CLUMPS (not a full-screen veil): the scene
+// instantiates a handful at different scales/speeds in the deep background and in
+// the foreground so they swim across like the fog in Octopath's forest. Tinted
+// cool + screen-blended at low alpha by the caller — no per-frame blur/particles.
 export const getFogTexture = (): Texture => {
   if (fogTex) return fogTex;
-  const size = 512;
+  const w = 360;
+  const h = 200;
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d')!;
-  // Deterministic hash so the cloud shape is stable across reloads/machines.
   const hash = (n: number) => {
     const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
     return v - Math.floor(v);
   };
-  ctx.clearRect(0, 0, size, size);
-  // 連続したベース霧(一様な薄い白)。これで「まばらで見えない」を防ぎ、面で霞む。
-  ctx.fillStyle = 'rgba(255,255,255,0.34)';
-  ctx.fillRect(0, 0, size, size);
-  ctx.globalCompositeOperation = 'lighter'; // accumulate blobs softly on top of the base
-  const BLOBS = 36;
-  for (let i = 0; i < BLOBS; i++) {
-    const cx = hash(i * 3 + 1) * size;
-    const cy = hash(i * 3 + 2) * size;
-    const r = 80 + hash(i * 3 + 3) * 130;     // 80..210 px soft puffs
-    const a = 0.10 + hash(i * 7 + 5) * 0.22;  // 0.10..0.32 peak alpha (濃淡をはっきり)
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const x = cx + dx * size;
-        const y = cy + dy * size;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, `rgba(255,255,255,${a})`);
-        g.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(x - r, y - r, r * 2, r * 2);
-      }
-    }
+  ctx.clearRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
+  const PUFFS = 9;
+  for (let i = 0; i < PUFFS; i++) {
+    // Cluster around the centre (wider than tall); keep clear of the borders so
+    // the clump fades to transparent and reads as a soft cloud, not a rectangle.
+    const cx = w * (0.22 + hash(i * 5 + 1) * 0.56);
+    const cy = h * (0.32 + hash(i * 5 + 2) * 0.34);
+    const r = 34 + hash(i * 5 + 3) * 52;
+    const a = 0.18 + hash(i * 5 + 4) * 0.24; // denser cores so each clump reads as a cloud, not flat haze
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   }
   ctx.globalCompositeOperation = 'source-over';
   fogTex = Texture.from(canvas);

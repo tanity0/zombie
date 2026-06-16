@@ -60,6 +60,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.357 - スモッグを全面ベタ→「雲の塊」が奥/手前を泳ぐ方式に作り替え (Claude Code)
+
+### 変更(社長フィードバック: 全面にかけたいのではなく、オクトラの森のように雲の塊を手前と奥で泳がせたい)
+- 全画面ベタ塗りの霧(TilingSprite veil)を**廃止**し、**離散したソフト雲スプライト**を奥と手前に数枚ずつ漂わせる方式へ。
+  - `lighting.ts` `getFogTexture()`: タイル可能ベタ霧 → **不規則なソフト雲パフ1枚**(360×200、縁は完全透明)に作り替え。コア濃度を上げて塊として読めるように。
+  - `pixiScene.ts`: 雲レイヤー2枚を追加。
+    - **奥 `bgCloudLayer`**: `world` 内 `actorLayer` 直前(=キャラの後ろ・遠景の前)。filteredWorld 内で tilt-shift/envtint が乗り遠くでボケる。
+      world内なので camera/shake を打ち消して画面ピン留め。小さめ・遅い・上方(yFrac 0.16〜0.56)。`FOG_BG_COUNT=6`。
+    - **手前 `fgCloudLayer`**: `uiLayer` 内 grade の上・vignette の下(=front forest より前=最前面)。大きめ・速い・下方(yFrac 0.55〜1.05)。`FOG_FG_COUNT=4`。
+  - 各雲: 時間で横へドリフト(左右ランダム)、画面外でラップ、わずかに上下 bob。screen 合成・寒色 tint(`0xaebfce`)。
+- 既定濃さ: 奥 `?fogbg=0.38` / 手前 `?fog=0.34` / 速さ `?fogspd=1`(各0で無効化)。
+- 旧 v0.25.355/356 の全面 veil 実装(bgFog/fullFog TilingSprite・パララックス/ドリフト定数)は撤去。
+
+### 負荷スコア
+1/10(雲スプライト計10枚=10ドロー。CPUは線形ループのみ、フィルタ追加なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview でゲーム画面を目視確認(全面veil消失、奥の地平に霞+手前に雲の塊が漂う)。console エラーなし。
+
+### 調整候補
+- 枚数 `FOG_BG_COUNT`/`FOG_FG_COUNT`、濃さ `?fogbg`/`?fog`、速さ `?fogspd`。塊をもっと大きく/くっきりは texture コア濃度 or scale を上げる。色味は `FOG_TINT`。
+
 ## 2026-06-16 - v0.25.356 - スモッグが見えない問題を修正(濃さ・テクスチャ強化) (Claude Code)
 
 ### 変更
