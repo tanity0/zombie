@@ -1385,8 +1385,7 @@ export class PixiScene {
       g.circle(cx, cy, r * pulse).fill({ color: tint, alpha: 0.92 });
       g.circle(cx, cy, r * pulse).stroke({ color: 0x0b1020, width: 1.5, alpha: 0.8 });
     }
-    // ドロップシャドウ: ボール背面の少し右下に暗い円。発光時も影が出るようハローの上に重ねる。
-    g.circle(cx + 4, cy + 6, r).fill({ color: 0x05070d, alpha: 0.34 + 0.18 * tapT });
+    // ミラーボールは空中に吊られている演出なので地面影は描かない(影は不自然)。
 
     // 左右の輪っか: プレイヤーの「足元」めがけて左右から流れ込み、足元のど真ん中(footX,footY)で
     // 重なり合う(=ジャスト)。地面に置いた輪に見えるよう縦をつぶした楕円で描く。

@@ -440,7 +440,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const v = ARROW_VEC[pa.arrow];
         rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, true, RHYTHM_FLICK_KNOCKBACK_MAX);
         useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
-        playSfx('katana-dash');
+        // フリックの斬撃音(katana-dash)は無し。拍踏みのキックドラムのみ鳴らす。
         playSfx('dance-kick'); // フリックのジャスト成功でもキックドラム(拍踏み)
       } else if (pa.kind === 'god') {
         fireShijinGod(pa.god, pa.x, pa.y);
