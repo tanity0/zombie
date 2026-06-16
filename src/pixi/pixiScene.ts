@@ -765,9 +765,9 @@ export class PixiScene {
     // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。さらに上へ。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
       { yFrac: 0.24, widthFrac: 1.5, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
-    // 森下霧(やまぎり): 最前面・プレイヤーより下。さらに下げて、山の上端が少しだけプレイヤーに被る。
+    // 森下霧(やまぎり): 最前面。濃い本体の上端がプレイヤーの足元に来て、そこから画面下まで覆う。揺れはほぼ止める。
     mkFog(this.frontBankLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
-      { yFrac: 0.98, widthFrac: 1.6, heightFrac: 0.70, ampX: 22, ampY: 16, spdX: 0.0003, spdY: 0.0003, ph: 3.1 });
+      { yFrac: 0.52, widthFrac: 1.6, heightFrac: 0.95, ampX: 22, ampY: 3, spdX: 0.0003, spdY: 0.0003, ph: 3.1 });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 1.06, widthFrac: 1.6, heightFrac: 0.46, ampX: 18, ampY: 8, spdX: 0.00036, spdY: 0.0004, ph: 0.7 });

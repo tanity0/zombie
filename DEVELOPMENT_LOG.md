@@ -60,6 +60,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.367 - 森下霧: 濃い上端をプレイヤーの足元に固定(足元に溜まる地面霧) (Claude Code)
+
+### 変更(社長フィードバック: 下げる指示なのに位置が上にずれていく → 上端を足元に固定したい)
+- 原因: yFrac を上げる(=下げる)と濃い本体が画面外へ沈み、薄い上部だけ残って「上にずれた」ように見えていた。
+- 対応: 森下(やまぎり)の**濃い本体の上端=プレイヤーの足元**に来るよう実測で配置。`yFrac 0.98→0.52`・`heightFrac 0.70→0.95`
+  (本体が足元〜画面下を覆う)。`ampY 16→3`(ほぼ静止=位置が動いて見えない)。
+- 濃さは前回の検証値(森下 `?fog=0.90` / 奥 `?fogback=0.85`)のまま。基準(戻り)値=森下0.52/奥0.45は [[zombie-fog-baseline-densities]] と
+  コード `★お試し` コメントに控え。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview で実測確認(濃い上端が足元、下まで充填、位置固定)。console エラーなし。
+
 ## 2026-06-16 - v0.25.366 - スモッグ濃さ検証(奥/森下を「めっちゃ濃く」) (Claude Code)
 
 ### 変更(社長: 現状の濃さを覚えつつ、めっちゃ濃くして見たい)
