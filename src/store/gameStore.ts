@@ -697,6 +697,8 @@ interface GameState {
   reaperCross: { startedAt: number; durationMs: number; axis: 'h' | 'v'; band: number; dir: number; scale: number } | null;
   danceTestMode: boolean; // 仮: 敵なし+ダンスフロアを所持で開始(練習用)
   danceTestLevel: number; // 仮ダンスモードで開始する四神舞レベル(1-3)
+  danceTestInterval: number; // 練習モードのサークル間隔(ms/拍)。0=レベル既定。入力欄で調整しサークルへ連携。
+  danceTestAutoTap: boolean;  // 練習モード: JUSTタイミングで自動タップ(ドラムを拍に乗せてズレ確認)
   meleeFinishComboCount: number;
   meleeFinishComboUntil: number;
   rhythm: RhythmState;
@@ -835,6 +837,8 @@ interface GameState {
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
   setDanceTestMode: (enabled: boolean) => void;
   setDanceTestLevel: (level: number) => void;
+  setDanceTestInterval: (ms: number) => void;
+  setDanceTestAutoTap: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
@@ -942,6 +946,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   reaperCross: null,
   danceTestMode: false,
   danceTestLevel: 1,
+  danceTestInterval: 0,
+  danceTestAutoTap: true,
   meleeFinishComboCount: 0,
   meleeFinishComboUntil: 0,
   rhythm: initialRhythm(),
@@ -3649,6 +3655,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setDanceTestLevel: (level) => {
     set({ danceTestLevel: Math.max(1, Math.min(3, Math.floor(level) || 1)) });
+  },
+
+  setDanceTestInterval: (ms) => {
+    const n = Math.floor(ms);
+    set({ danceTestInterval: Number.isFinite(n) && n > 0 ? Math.max(120, Math.min(2000, n)) : 0 });
+  },
+
+  setDanceTestAutoTap: (enabled) => {
+    set({ danceTestAutoTap: enabled });
   },
 
   addMeleeFinishCombo: (amount = 1) => {

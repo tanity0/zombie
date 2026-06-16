@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, ShoppingBag, Volume2, VolumeX } from 'lucide-react';
 import { subWeaponDisplayName, useGameStore } from '../store/gameStore';
+import { rhythmIntervalForLevel } from '../config/shijin';
 import type { AmmoType, SubWeaponKey } from '../types/game';
 import {
   getBgmVolume,
@@ -45,6 +46,23 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
   const setShowStatsOverlay = useGameStore(s => s.setShowStatsOverlay);
   const setDanceTestMode = useGameStore(s => s.setDanceTestMode);
   const setDanceTestLevel = useGameStore(s => s.setDanceTestLevel);
+  const setDanceTestInterval = useGameStore(s => s.setDanceTestInterval);
+  const danceTestAutoTap = useGameStore(s => s.danceTestAutoTap);
+  const setDanceTestAutoTap = useGameStore(s => s.setDanceTestAutoTap);
+  // ダンス練習: 選択中レベルとサークル間隔(ms/拍)の入力欄。レベル選択で既定値が入る。
+  const [danceLevel, setDanceLevel] = useState(1);
+  const [danceIntervalInput, setDanceIntervalInput] = useState(String(Math.round(rhythmIntervalForLevel(1))));
+  const selectDanceLevel = (lv: number) => {
+    setDanceLevel(lv);
+    setDanceIntervalInput(String(Math.round(rhythmIntervalForLevel(lv))));
+  };
+  const startDancePractice = () => {
+    const n = parseInt(danceIntervalInput, 10);
+    setDanceTestInterval(Number.isFinite(n) ? n : 0); // 0=レベル既定
+    setDanceTestLevel(danceLevel);
+    setDanceTestMode(true);
+    onStartGame(selectedClass);
+  };
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
   const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
     handgun: String(ammoPickupAmounts.handgun),
@@ -454,18 +472,58 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onStartBenchmark }) =>
             </button>
 
             {/* 仮: ダンス練習モード。敵なし + 指定レベルのダンスフロア所持で開始(サークル/フリック/曲合わせの調整用)。 */}
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[11px] text-fuchsia-200/80 shrink-0">🕺 ダンス練習</span>
-              {[1, 2, 3].map(lv => (
-                <button
-                  key={lv}
-                  onClick={() => { setDanceTestMode(true); setDanceTestLevel(lv); onStartGame(selectedClass); }}
-                  className="flex-1 py-2 rounded-xl text-sm font-semibold text-fuchsia-100 border border-fuchsia-400/40"
-                  style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}
-                >
-                  Lv{lv}
-                </button>
-              ))}
+            {/* レベル選択=入力欄に既定のサークル間隔が入る → 値を編集 → 決定で開始(その値でサークルが回る)。 */}
+            <div className="mt-2 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/5 p-2.5 space-y-2">
+              <span className="block text-[11px] text-fuchsia-200/80">🕺 ダンス練習</span>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3].map(lv => (
+                  <button
+                    key={lv}
+                    onClick={() => selectDanceLevel(lv)}
+                    aria-pressed={danceLevel === lv}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border ${
+                      danceLevel === lv
+                        ? 'text-white border-fuchsia-300/80 ring-1 ring-fuchsia-300/60'
+                        : 'text-fuchsia-100 border-fuchsia-400/40'
+                    }`}
+                    style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}
+                  >
+                    Lv{lv}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-[12px] text-white/75">
+                <span className="shrink-0">サークル間隔</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={danceIntervalInput}
+                  onChange={(e) => setDanceIntervalInput(e.target.value)}
+                  className="w-20 rounded-lg border border-white/15 bg-black/30 px-2 py-1 text-right font-mono tabular-nums text-white/90 outline-none focus:border-fuchsia-300/60"
+                />
+                <span className="shrink-0 text-white/45">ms/拍</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setDanceTestAutoTap(!danceTestAutoTap)}
+                aria-pressed={danceTestAutoTap}
+                className={`w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-left text-[12px] ${
+                  danceTestAutoTap
+                    ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50'
+                    : 'border-white/10 bg-white/5 text-white/75 active:bg-white/10'
+                }`}
+              >
+                <span>自動タップ(JUSTでドラム)</span>
+                <span className="shrink-0 font-semibold">{danceTestAutoTap ? 'ON' : 'OFF'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={startDancePractice}
+                className="w-full py-2 rounded-xl text-sm font-bold text-white border border-fuchsia-300/60"
+                style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.45), rgba(168,85,247,0.45))' }}
+              >
+                決定（開始）
+              </button>
             </div>
 
             <div className="mt-3 text-[12px] text-white/60 space-y-1 text-center">

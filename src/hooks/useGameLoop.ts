@@ -198,6 +198,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
   // (フリックのドラッグやバッシュのスライド程度では抜けない)。
   const rhythmMoveStartRef = useRef<number>(0);
+  // 練習モードの自動タップ: 最後に自動タップした拍インデックス(-1=未)。拍が進むたびに1回タップ。
+  const autoTapBeatRef = useRef<number>(-1);
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
@@ -785,16 +787,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (!rs.rhythm.active && newGameTime - rhythmIdleStartRef.current >= RHYTHM_ENTER_IDLE_MS) {
               // 四神舞レベルでBPM(=interval)が変わる。拍は固定 gameTime グリッドで合わせる(音楽同期はしない)。
               const lvl = Math.max(1, Math.min(3, rp.subWeaponLevels['shijin'] ?? 1));
-              const interval = rhythmIntervalForLevel(lvl);
+              // 練習モードでは入力欄のサークル間隔(danceTestInterval)を優先(サークルへ連携)。
+              const dti = useGameStore.getState().danceTestInterval;
+              const interval = (danceTest && dti > 0) ? dti : rhythmIntervalForLevel(lvl);
               // サークル/拍グリッドは実時間(Date.now)基準。音楽も実時間で鳴るので、fps低下で gameTime が
               // 遅れても音楽からズレない(累積ドリフト対策)。レベル別オフセットで位相を合わせる。
               const firstBeatAt = Date.now() + Math.ceil(RHYTHM_LEAD_MS / interval) * interval + rhythmBeatOffsetForLevel(lvl);
               useGameStore.getState().setRhythmActive(true, firstBeatAt, interval);
+              autoTapBeatRef.current = -1; // 自動タップの拍カウンタを開始時にリセット
             }
           }
 
           if (useGameStore.getState().rhythm.active) {
             useGameStore.getState().tickRhythm();
+            // 練習モードの自動タップ: 各拍(JUST)で1回だけ自動タップ→ドラムが拍に乗る(ズレ確認用)。
+            if (danceTest && useGameStore.getState().danceTestAutoTap) {
+              const rAT = useGameStore.getState().rhythm;
+              if (rAT.interval > 0 && rAT.firstBeatAt > 0) {
+                const bi = Math.floor((Date.now() - rAT.firstBeatAt) / rAT.interval);
+                if (bi >= 0 && bi !== autoTapBeatRef.current) {
+                  autoTapBeatRef.current = bi;
+                  useGameStore.getState().rhythmInput('tap'); // JUST判定→pendingでキックが鳴る
+                }
+              }
+            }
             // ※毎フレームの位相再同期(resync)は廃止。音楽クロックの微ノイズを追いかけて
             //   サークルが微振動(ブルブル)するため、開始時に合わせた固定グリッドで一定に流す。
             // pending(タップ/フリック/四神技/全体フィニッシュ)を消化して実行。
