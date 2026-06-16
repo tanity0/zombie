@@ -530,10 +530,13 @@ export class PixiScene {
   private firefliesPlaced = false;
   private fxPrevNow = 0;
 
-  // スモッグ(各層1枚をゆらゆら)。bgCloudLayer=world内 actorLayer直前(森上+奥・キャラの後ろ・tilt-shift/envtintが乗る)、
-  // frontBankLayer=uiLayer内 grade上/vignette下(手前下=やまぎり・最前面)。
-  private bgCloudLayer = new Container();   // 森上+奥 = world 内(キャラの後ろ)
-  private frontBankLayer = new Container(); // 手前下(やまぎり)= uiLayer(grade上/vignette下=最前面)
+  // スモッグ(各層1枚をゆらゆら)。
+  // bgCloudLayer=world内 actorLayer直前(奥・キャラの後ろ・tilt-shift/envtintが乗る)、
+  // forestUnderLayer=stageのfrontForest直前(森下=やまぎり・森の後ろ=森が手前で隠す)、
+  // frontBankLayer=uiLayer内 grade上/vignette下(森上=最前面・手前の森に被る)。
+  private bgCloudLayer = new Container();     // 奥 = world 内(キャラの後ろ)
+  private forestUnderLayer = new Container(); // 森下(やまぎり)= front forest の後ろ
+  private frontBankLayer = new Container();   // 森上 = uiLayer(最前面)
   private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(ゆらゆら sway)
 
   private screenW = 1;
@@ -746,9 +749,12 @@ export class PixiScene {
       this.flashGfx, this.arrowGfx,
     );
 
-    // --- スモッグ。参考HD-2Dに合わせ、森上/奥/手前下(やまぎり)の3層を各1枚で揺らす ---
-    // 森上+奥は world 内 actorLayer 直前(=キャラの後ろ・tilt-shift/envtintが乗る)。手前下は uiLayer の最前面(grade上/vignette下)。
+    // --- スモッグ。奥/森下(やまぎり)/森上 の3層を各1枚で揺らす ---
+    // 奥=world内 actorLayer直前(キャラの後ろ)。森下=stageのfrontForest直前(=森の後ろ。森が手前で隠す)。森上=uiLayer最前面。
     this.L.world.addChildAt(this.bgCloudLayer, this.L.world.getChildIndex(this.L.actorLayer));
+    const fogStage = this.L.uiLayer.parent;
+    if (fogStage) fogStage.addChildAt(this.forestUnderLayer, fogStage.getChildIndex(this.L.frontForest));
+    else this.L.uiLayer.addChildAt(this.forestUnderLayer, 0);
     this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
     const mkFog = (layer: Container, tex: Texture, alpha: number, cfg: Omit<FogLayer, 'sp'>) => {
       const sp = new Sprite(tex);
@@ -765,8 +771,8 @@ export class PixiScene {
     // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。さらに上へ。
     mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
       { yFrac: 0.24, widthFrac: 1.5, heightFrac: 0.85, ampX: 18, ampY: 8, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
-    // 森下霧(やまぎり): 最前面。かなり下げて稜線が下端から覗く。薄め+少し速めの揺れ。
-    mkFog(this.frontBankLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
+    // 森下霧(やまぎり): front forest の後ろ(森が手前で隠す)。かなり下げて稜線が下端から覗く。薄め+少し速めの揺れ。
+    mkFog(this.forestUnderLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
       { yFrac: 0.88, widthFrac: 1.6, heightFrac: 0.95, ampX: 26, ampY: 9, spdX: 0.0008, spdY: 0.0008, ph: 3.1 });
     // 森上霧: 最前面・最下部。手前の森に被る低い霧。
     mkFog(this.frontBankLayer, getFogTexture(), FOG_TOP_ALPHA,

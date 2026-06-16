@@ -60,6 +60,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.371 - 森下を front forest の後ろレイヤーへ移動(森が手前で隠す) (Claude Code)
+
+### 変更(社長指摘: 森下は本当に森の下(後ろ)レイヤーにいる? → いなかった)
+- v363 の再編以降、森下は frontBankLayer(uiLayer=front forest より前=最前面)にいた=森の手前だった。
+- 新コンテナ `forestUnderLayer` を **stage の frontForest 直前**に挿入し、森下(やまぎり)をそこへ移動。
+  stage順: `worldGroup(player) → forestUnderLayer(森下) → frontForest → uiLayer(森上)`。
+  = 森下はプレイヤーより前・front forest より後ろ(森が手前で霧を隠す)。
+- 森上は uiLayer 最前面のまま(手前の森に被る、の定義どおり)。位置/濃さ/揺れは v370 のまま。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview で確認(森下が前景森の後ろに)。console エラーなし。
+
 ## 2026-06-16 - v0.25.370 - 森下を薄く+揺れを速く (Claude Code)
 
 ### 変更(社長フィードバック)
