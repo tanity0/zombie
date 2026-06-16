@@ -60,6 +60,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.361 - スモッグ: 奥を遠景+地面に濃く / 手前下をやまぎりカット(山がたまにプレイヤーに被る) (Claude Code)
+
+### 変更(社長フィードバック)
+- **奥**: world 内(キャラの後ろ)に「遠景〜地面に被る背の高い霧」を配置し**濃く**。`yFrac 0.52` / `heightFrac 0.80` /
+  `?fogback=0.55`(既定濃いめ)。森上とは別の2枚目として bgCloudLayer に追加。
+- **手前下(やまぎりカット)**: 最前面(frontBankLayer)を**山の稜線シルエットの霧**に。`lighting.ts` に `getFogBankTexture()` を追加
+  (下が厚い本体+上が rounded humps の山稜線)。**濃く**(`?fog=0.62`)し、`ampY=40`・遅い `spdY`(周期≈24s)で
+  **たまに山部分がプレイヤーに少し被る**。
+- **森上の霧**: 変更なし(`yFrac 0.12` / `?fogbg=0.30`)。
+- レイヤー整理: 旧「front forest 下の薄霧(fgCloudLayer)」は廃止し、3層=森上 / 奥 / 手前下 に再編。
+- URL: `?fog`(手前下やまぎり)/ `?fogback`(奥)/ `?fogbg`(森上)/ `?fogspd`(揺れ速さ)。各0で無効。
+
+### 負荷スコア
+0〜1/10(霧スプライト3枚・sin揺れのみ。フィルタ/粒子なし)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview のゲーム本編で確認:
+  奥が遠景+地面に濃く乗る/森上は据え置き/手前下が山稜線で揺れる。console エラーなし。
+
 ## 2026-06-16 - v0.25.360 - スモッグを「各層1枚をゆらゆら」方式に簡素化(オクトラ準拠) (Claude Code)
 
 ### 変更(社長相談: オクトラは枚数を増やさず、各層1枚をゆらゆらさせてるだけ)

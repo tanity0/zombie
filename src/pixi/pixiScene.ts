@@ -26,7 +26,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture, getFogBankTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -127,15 +127,15 @@ const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
 // シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定0=なし。?shaftblur= で有効化。
 const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
 
-// --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広もくもく霧をゆっくり揺らすだけ(枚数は増やさない)。
+// --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広霧をゆっくり揺らすだけ(枚数は増やさない)。
 // ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。
-//   ?fog=0.50    手前の分厚いバンク(最前面・主役。0=なし)
-//   ?fogsub=0.22 front forest の下の薄い手前霧(0=なし)
-//   ?fogbg=0.30  奥(キャラの後ろ・画面上部)の薄い霞(0=なし)
+//   ?fog=0.62    手前下(やまぎりカット・最前面・主役。山がたまにプレイヤーに被る。0=なし)
+//   ?fogback=0.55 奥(キャラの後ろ・遠景〜地面に被る。0=なし)
+//   ?fogbg=0.30  森上の霧(画面上部。変更なし。0=なし)
 //   ?fogspd=1    揺れの速さ
-const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.50));
-const FOG_SUB_ALPHA = Math.max(0, tsNum('fogsub', 0.22));
-const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.30));
+const FOG_FRONT_ALPHA = Math.max(0, tsNum('fog', 0.62));     // 手前下(やまぎり・主役)
+const FOG_BACK_ALPHA = Math.max(0, tsNum('fogback', 0.55));  // 奥(遠景+地面)
+const FOG_TOP_ALPHA = Math.max(0, tsNum('fogbg', 0.30));     // 森上(変更なし)
 const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
@@ -529,11 +529,10 @@ export class PixiScene {
   private firefliesPlaced = false;
   private fxPrevNow = 0;
 
-  // スモッグ(雲の塊)。bgCloudLayer=world内 actorLayer直前(キャラの後ろ・tilt-shift/envtintが乗る)、
-  // fgCloudLayer=uiLayer内 grade上/vignette下(手前=最前面の雲)。雲スプライトを数枚ずつ漂わせる。
-  private bgCloudLayer = new Container();   // 奥(画面上部)= world 内
-  private fgCloudLayer = new Container();   // front forest の下 = stage(frontForest 直前)
-  private frontBankLayer = new Container(); // 最前面の分厚いバンク = uiLayer(grade上/vignette下)
+  // スモッグ(各層1枚をゆらゆら)。bgCloudLayer=world内 actorLayer直前(森上+奥・キャラの後ろ・tilt-shift/envtintが乗る)、
+  // frontBankLayer=uiLayer内 grade上/vignette下(手前下=やまぎり・最前面)。
+  private bgCloudLayer = new Container();   // 森上+奥 = world 内(キャラの後ろ)
+  private frontBankLayer = new Container(); // 手前下(やまぎり)= uiLayer(grade上/vignette下=最前面)
   private fogLayers: FogLayer[] = [];       // 各レイヤー1枚ずつの幅広霧(ゆらゆら sway)
 
   private screenW = 1;
@@ -746,17 +745,12 @@ export class PixiScene {
       this.flashGfx, this.arrowGfx,
     );
 
-    // --- スモッグ(雲の塊)。参考HD-2Dに合わせ、3つの帯を漂わせる ---
-    // 奥(bgCloudLayer): world 内 actorLayer 直前(=キャラの後ろ)。filteredWorld 内で tilt-shift/envtint が乗り遠くでボケる。
-    // front forest 下(fgCloudLayer): stage の frontForest 直前(=下部の森が手前で隠す薄い霧)。
-    // 最前面バンク(frontBankLayer): uiLayer の colour grade の上・vignette の下(=分厚いもくもくが最前面に出る・主役)。
+    // --- スモッグ。参考HD-2Dに合わせ、森上/奥/手前下(やまぎり)の3層を各1枚で揺らす ---
+    // 森上+奥は world 内 actorLayer 直前(=キャラの後ろ・tilt-shift/envtintが乗る)。手前下は uiLayer の最前面(grade上/vignette下)。
     this.L.world.addChildAt(this.bgCloudLayer, this.L.world.getChildIndex(this.L.actorLayer));
-    const stage = this.L.uiLayer.parent;
-    if (stage) stage.addChildAt(this.fgCloudLayer, stage.getChildIndex(this.L.frontForest));
-    else this.L.uiLayer.addChildAt(this.fgCloudLayer, 0);
     this.L.uiLayer.addChildAt(this.frontBankLayer, this.L.uiLayer.getChildIndex(this.vignette));
-    const mkFog = (layer: Container, alpha: number, cfg: Omit<FogLayer, 'sp'>) => {
-      const sp = new Sprite(getFogTexture());
+    const mkFog = (layer: Container, tex: Texture, alpha: number, cfg: Omit<FogLayer, 'sp'>) => {
+      const sp = new Sprite(tex);
       sp.anchor.set(0.5);
       sp.tint = FOG_TINT;
       sp.blendMode = 'screen';
@@ -767,15 +761,15 @@ export class PixiScene {
       this.fogLayers.push({ sp, ...cfg });
     };
     // 各レイヤー“1枚ずつ”。幅は画面より広く取り(揺れても端が出ない)、ゆっくり sway させる。
-    // 奥(上部・world内): カメラ追従を打ち消して画面ピン留め。
-    mkFog(this.bgCloudLayer, FOG_TOP_ALPHA,
+    // 森上の霧(変更なし): world 内・画面上部。
+    mkFog(this.bgCloudLayer, getFogTexture(), FOG_TOP_ALPHA,
       { yFrac: 0.12, widthFrac: 1.5, heightFrac: 0.34, ampX: 18, ampY: 7, spdX: 0.00045, spdY: 0.0006, ph: 0.4 });
-    // front forest の下(薄い手前霧)。
-    mkFog(this.fgCloudLayer, FOG_SUB_ALPHA,
-      { yFrac: 0.84, widthFrac: 1.5, heightFrac: 0.40, ampX: 22, ampY: 9, spdX: 0.00038, spdY: 0.00052, ph: 1.7 });
-    // 最前面の分厚いバンク(下端に厚く・主役)。
-    mkFog(this.frontBankLayer, FOG_FRONT_ALPHA,
-      { yFrac: 1.02, widthFrac: 1.6, heightFrac: 0.52, ampX: 26, ampY: 11, spdX: 0.0003, spdY: 0.00044, ph: 3.1 });
+    // 奥: world 内・遠景〜地面に被る背の高い霧(濃いめ)。
+    mkFog(this.bgCloudLayer, getFogTexture(), FOG_BACK_ALPHA,
+      { yFrac: 0.52, widthFrac: 1.5, heightFrac: 0.80, ampX: 20, ampY: 9, spdX: 0.00034, spdY: 0.00048, ph: 1.9 });
+    // 手前下(やまぎりカット): 最前面・下端に厚く、山の稜線。ampY 大きめで山がたまにプレイヤーに少し被る。
+    mkFog(this.frontBankLayer, getFogBankTexture(), FOG_FRONT_ALPHA,
+      { yFrac: 1.00, widthFrac: 1.6, heightFrac: 0.72, ampX: 22, ampY: 40, spdX: 0.0003, spdY: 0.00026, ph: 3.1 });
   }
 
   resize(w: number, h: number) {
