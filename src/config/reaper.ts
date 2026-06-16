@@ -25,7 +25,8 @@ export const REAPER_CONFIG = {
   riskDecayPerSec: 18,        // 深奥外へ戻ると /秒 減少
   spawnRiskThreshold: 100,    // これで完全出現
   // 完全出現(追跡)
-  spawnDistFromPlayer: 620,   // プレイヤーから少し離して出す(=即接触させない猶予)
+  spawnDistFromPlayer: 780,   // 進行方向の画面外から出す距離(=即接触させない猶予+前方から迫る)
+  escapeDistancePx: 1250,     // プレイヤーがこの距離より引き離す(=画面外へ逃げ切る)と死神は消える
   contactDamage: 9999,        // 接触ダメージ(ほぼ即死)
   moveSpeedMultiplier: 1.2,   // 追跡の最終速度 = プレイヤー現在移動速度 × 1.2
   chaseStartMult: 0.5,        // 出現直後の速度倍率(プレイヤーの約半分)

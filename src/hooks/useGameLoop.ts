@@ -636,11 +636,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
 
-            // 完全出現(追跡)。リスク最大で、プレイヤーから少し離して1体だけ出す。
+            // 完全出現(追跡)。リスク最大で、進行方向の画面外から1体だけ出す(前方から迫る)。
             if (rs.risk >= REAPER_CONFIG.spawnRiskThreshold) {
-              const ang = Math.random() * Math.PI * 2;
-              const sx = pcx + Math.cos(ang) * REAPER_CONFIG.spawnDistFromPlayer;
-              const sy = pcy + Math.sin(ang) * REAPER_CONFIG.spawnDistFromPlayer;
+              let hx = player.vx ?? 0;
+              let hy = player.vy ?? 0;
+              if (Math.abs(hx) + Math.abs(hy) < 0.01 && player.lastDirection) { hx = player.lastDirection.x; hy = player.lastDirection.y; }
+              if (Math.abs(hx) + Math.abs(hy) < 0.01) hy = -1; // idle→上(奥)
+              const hlen = Math.hypot(hx, hy) || 1;
+              const sx = pcx + (hx / hlen) * REAPER_CONFIG.spawnDistFromPlayer;
+              const sy = pcy + (hy / hlen) * REAPER_CONFIG.spawnDistFromPlayer;
               const chaser = spawnEnemyAt('reaper', sx - 40, sy - 40, newGameTime);
               chaser.reaperChaser = true;
               chaser.health = REAPER_CONFIG.chaserHealth;
@@ -655,14 +659,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // SFX(完全出現の短い警告音)は専用アセット待ち。
             }
           } else {
-            // 追跡中: 出現から10秒かけて 0.5倍→1.2倍 へフェードイン加速(player.speed基準=成長反映・ダッシュ等は除外)。
-            // 慣性は updateEnemies のチェイス inertia がそのままかかる(他の敵と同じ)。
-            const targetSpeed = getReaperRampedSpeed(player.speed, newGameTime - rs.chaserSpawnAt);
-            useGameStore.setState({
-              enemies: useGameStore.getState().enemies.map(e =>
-                e.id === rs.chaserId ? { ...e, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage } : e
-              ),
-            });
+            // プレイヤーが画面外へ引き離す(escapeDistancePx 超え)と死神は消える=逃げ切り。リスクは0へクールダウン。
+            const chaser = liveEnemies.find(e => e.id === rs.chaserId);
+            const far = chaser && Math.hypot((chaser.x + chaser.width / 2) - pcx, (chaser.y + chaser.height / 2) - pcy) > REAPER_CONFIG.escapeDistancePx;
+            if (far) {
+              useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== rs.chaserId) });
+              rs.chaserId = null;
+              rs.risk = 0;
+            } else {
+              // 追跡中: 出現から10秒かけて 0.5倍→1.2倍 へフェードイン加速(player.speed基準=成長反映・ダッシュ等は除外)。
+              // 慣性は updateEnemies のチェイス inertia がそのままかかる(他の敵と同じ)。
+              const targetSpeed = getReaperRampedSpeed(player.speed, newGameTime - rs.chaserSpawnAt);
+              useGameStore.setState({
+                enemies: useGameStore.getState().enemies.map(e =>
+                  e.id === rs.chaserId ? { ...e, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage } : e
+                ),
+              });
+            }
           }
         }
 

@@ -60,6 +60,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
 
+## 2026-06-16 - v0.25.381 - 死神: 進行方向の画面外から出現 / 引き離すと消える (Claude Code)
+
+### 変更(社長フィードバック)
+- **出現を進行方向の画面外から**: 完全出現の spawn をランダム角 → **プレイヤーの進行方向(速度→なければ最終向き→idleは上)**へ
+  `spawnDistFromPlayer=780`(画面外)で配置。前方から迫る。
+- **引き離すと消える**: 追跡中、プレイヤー↔死神の距離が `escapeDistancePx=1250` を超えたら死神を despawn(=画面外へ逃げ切り)。
+  リスクは0へクールダウン(深奥に留まれば再蓄積→再出現)。ランプ序盤(0.5倍)やダッシュ/移動ビルドで逃走可能。
+- 補足: 死神(チェイサー)の **HP=6000**(高いが有限=極まれば討伐可)。横切りはHPなし(演出のみ)。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。Claude Preview `?reapertest=1` で起動・console エラーなし。
+
 ## 2026-06-16 - v0.25.380 - 死神: 横切りを進行方向側に+被写界深度/追跡速度ランプ、タイトル曲配置 (Claude Code)
 
 ### 死神(社長フィードバック2点)
