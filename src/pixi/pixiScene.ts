@@ -1357,9 +1357,10 @@ export class PixiScene {
     }
     const texOk = !!ball.texture && ball.texture.width >= 32;
     const flipSign = Math.floor(gameTime / rhythm.interval) % 2 === 0 ? 1 : -1;
-    // タップ発光: 直後に少し拡大して光る + 背面に暖色ハロー。
-    // [0,1] にクランプ(保険)。lastTapAt が gameTime より未来=異常値でも pulse が暴れて巨大化しないように。
-    const tapT = Math.max(0, Math.min(1, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS));
+    // 成功発光: 直後に少し拡大して光る + 背面に暖色ハロー。タップ/フリックどちらの成功(JUST=hit/fire)でも光る
+    // (以前は lastTapAt 基準でタップ専用だった)。[0,1] にクランプ(保険。異常値でも pulse が暴れて巨大化しない)。
+    const okJudge = rhythm.lastJudge === 'hit' || rhythm.lastJudge === 'fire';
+    const tapT = okJudge ? Math.max(0, Math.min(1, 1 - (gameTime - rhythm.lastJudgeAt) / RHYTHM_TAP_GLOW_MS)) : 0;
     const pulse = 1 + 0.18 * tapT;
     // 色: フィニッシュ虹 > 段階色(0白/1青/2緑/3赤)。
     const sinceFinish = gameTime - rhythm.lastFinishAt;
@@ -1515,7 +1516,7 @@ export class PixiScene {
   }
 
   // リズム中の暗転(地面/遠景だけ・フェード追従)+ タップ発光(全画面・最前面)。
-  private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number }, gameTime: number) {
+  private syncRhythmScreenFx(rhythm: { active: boolean; lastTapAt: number; lastJudge: string; lastJudgeAt: number }, gameTime: number) {
     const target = (rhythm.active && !RHYTHM_VFX_OFF) ? RHYTHM_DIM_ALPHA : 0;
     this.rhythmDim += (target - this.rhythmDim) * RHYTHM_DIM_EASE;
     // 暗転(worldGroup の filteredWorld 手前): 地面/遠景のみ暗くなる。
@@ -1527,9 +1528,10 @@ export class PixiScene {
       d.clear();
       d.rect(0, 0, this.screenW, this.screenH).fill({ color: 0x010512, alpha: this.rhythmDim });
     }
-    // タップ発光(uiLayer 最前面・全画面)。
-    const tapGlow = (rhythm.active && !RHYTHM_VFX_OFF)
-      ? Math.max(0, 1 - (gameTime - rhythm.lastTapAt) / RHYTHM_TAP_GLOW_MS) * RHYTHM_TAP_GLOW_ALPHA
+    // 成功発光(uiLayer 最前面・全画面)。タップ/フリックどちらの成功(JUST=hit/fire)でも光る。
+    const okJudge = rhythm.lastJudge === 'hit' || rhythm.lastJudge === 'fire';
+    const tapGlow = (rhythm.active && !RHYTHM_VFX_OFF && okJudge)
+      ? Math.max(0, 1 - (gameTime - rhythm.lastJudgeAt) / RHYTHM_TAP_GLOW_MS) * RHYTHM_TAP_GLOW_ALPHA
       : 0;
     const g = this.rhythmScreenFx;
     if (tapGlow < 0.004) {
