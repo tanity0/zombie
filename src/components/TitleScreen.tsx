@@ -6,7 +6,7 @@ interface TitleScreenProps {
   onDone: () => void;                  // ローディング完了でメニューへ
 }
 
-// 流れ: 同意画面(最初) → 同意でBGM開始 → タイトル(the ONE) → STARTタップ → ゆっくり暗転 → 本物ローディング → セレクト。
+// 流れ: 同意画面(最初) → 同意でBGM開始 → タイトル(the ONE) → STARTタップ → 本物ローディング → ロード完了でゆっくり暗転 → セレクト。
 // 注意書きは毎起動(タイトル到達ごと)に表示する。
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {
   const [phase, setPhase] = useState<'notice' | 'title' | 'blackout' | 'loading'>('notice');
@@ -25,24 +25,21 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     setPhase('title');
   };
 
-  // STARTタップ → ゆっくり暗転
-  const tapStart = () => { if (phase === 'title') setPhase('blackout'); };
-
-  const handleKey = (e: React.KeyboardEvent) => {
-    if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
-  };
-
-  // 暗転し切ったら → 本物の素材ロード(完了待ち) → 完了でメニュー
-  const onBlackoutDone = () => {
-    if (phase !== 'blackout') return;
+  // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転
+  const tapStart = () => {
+    if (phase !== 'title') return;
     setPhase('loading');
     const startedAt = performance.now();
     const MIN_LOADING_MS = 900; // ロードが速すぎてもスピナーを一瞬は見せる
     void Promise.resolve(waitForAssets?.()).then(async () => {
       const remaining = MIN_LOADING_MS - (performance.now() - startedAt);
       if (remaining > 0) await new Promise(r => window.setTimeout(r, remaining));
-      finish();
+      setPhase('blackout'); // ロード完了 → ゆっくり暗転へ
     });
+  };
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
   };
 
   return (
@@ -117,22 +114,22 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </div>
       )}
 
-      {/* 本物ローディング(START後・暗転後に素材完了を待つ) */}
+      {/* 本物ローディング(START後・暗転の前に素材完了を待つ) */}
       {phase === 'loading' && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-end pb-[18%]">
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-end bg-black/45 pb-[18%]">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white/75" />
           <span className="mt-4 text-[11px] tracking-[0.34em] text-white/55">LOADING…</span>
         </div>
       )}
 
-      {/* ゆっくり暗転(START後) → 暗転し切ったらローディングへ。ローディング中も黒のまま。 */}
+      {/* ゆっくり暗転(ロード完了後) → 暗転し切ったらメニューへ。 */}
       <div
-        className="pointer-events-none absolute inset-0 z-20 bg-black"
+        className="pointer-events-none absolute inset-0 z-40 bg-black"
         style={{
-          opacity: (phase === 'blackout' || phase === 'loading') ? 1 : 0,
+          opacity: phase === 'blackout' ? 1 : 0,
           transition: 'opacity 1000ms ease-in',
         }}
-        onTransitionEnd={(e) => { if (e.propertyName === 'opacity' && phase === 'blackout') onBlackoutDone(); }}
+        onTransitionEnd={(e) => { if (e.propertyName === 'opacity' && phase === 'blackout') finish(); }}
       />
     </div>
   );
