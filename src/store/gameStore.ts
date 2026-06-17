@@ -252,7 +252,7 @@ export const WIRE_ANCHOR_RANGE = 110;   // 青サークル距離(飛距離。全
 // 強度0(デッドゾーン直上)でも完全停止にはせず、最低係数だけ残す(操作不能を避ける)。
 // キャラ移動: 弱い傾き=ゆっくり歩く(最低 STICK_WALK_MIN_FACTOR 倍)。
 // 狙い距離(ワイヤーアンカー/PHILLレティクル): 弱い傾き=近く(最低 STICK_AIM_MIN_FACTOR 倍)。
-export const STICK_WALK_MIN_FACTOR = 0.35; // 歩行速度の最低倍率(強度0時)
+export const STICK_WALK_MIN_FACTOR = 0.20; // 歩行速度の最低倍率(強度0時。弱タッチ=さらにゆっくり)
 export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度0時)
 // 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
 export const stickAimFactor = (strength: number) =>
