@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale } from '../store/gameStore';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -549,7 +549,9 @@ export class PixiScene {
   private screenW = 1;
   private screenH = 1;
   private cameraY = 0;
-  private zoomApplied = false; // 近接フィニッシュのパンチズームを worldGroup に適用中か(終了時に1度だけ戻す)
+  private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
+  private idleZoom = 1;        // 手を離して待機中だけ寄る持続ズーム(滑らかに 1↔1+mag)
+  private lastZoomNow = 0;     // 待機ズームのフレーム間 dt 計算用
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
@@ -1193,11 +1195,19 @@ export class PixiScene {
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
 
-    // 近接フィニッシュのパンチズーム(描画のみ): worldGroup を画面中央=プレイヤー基準で少しだけ拡大して戻す。
-    // 終わり際は env=zoomLeft/MS が 1→0 になり 1.0 へ収束。アイドル時は何も触らない(終了時に1度だけリセット)。
+    // ズーム(描画のみ): worldGroup を画面中央=プレイヤー基準で拡大。
+    //  ・待機ズーム: 手を離して静止している間だけ少し寄る(滑らかに/操作再開で1.0へ)。
+    //  ・パンチズーム: 近接フィニッシュで一瞬寄って戻る。両者を掛け合わせる。
+    const zdt = this.lastZoomNow ? Math.min(0.1, (now - this.lastZoomNow) / 1000) : 0;
+    this.lastZoomNow = now;
+    // 待機ズームは「手を離して静止」中のみ。登場演出/ダンス中は出さない(演出を妨げない)。
+    const idleActive = !this.introActive && !s.rhythm.active && !s.touchActive && !s.player.isMoving;
+    const idleTarget = idleActive ? (1 + CAMERA_IDLE_ZOOM_MAG) : 1;
+    this.idleZoom += (idleTarget - this.idleZoom) * (1 - Math.exp(-zdt / Math.max(0.001, CAMERA_IDLE_ZOOM_TAU)));
     const zoomLeft = s.zoomUntil ? s.zoomUntil - now : 0;
-    if (zoomLeft > 0 && s.zoomMag > 0) {
-      const zoom = 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS);
+    const punch = (zoomLeft > 0 && s.zoomMag > 0) ? 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS) : 1;
+    const zoom = this.idleZoom * punch;
+    if (Math.abs(zoom - 1) > 0.0005) {
       this.L.worldGroup.scale.set(zoom);
       this.L.worldGroup.position.set((this.screenW / 2) * (1 - zoom), (this.screenH / 2) * (1 - zoom));
       this.zoomApplied = true;

@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.429`**（追尾カメラ強化=先読み/危険時タイト/中心クランプを最大値で実装。?cam系で調整可。実機確認待ち）。
+- **最新 version**: **`v0.25.430`**（手を離して待機中に少しズーム=待機ズーム追加。追尾カメラ/シェイク/計測済。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,19 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-17 - v0.25.430 - 手を離して待機中に少しズーム (Claude Code)
+
+### 変更（社長指示）
+- 手を離して静止している間だけ worldGroup を少し拡大する**待機ズーム**(描画のみ)を追加。`CAMERA_IDLE_ZOOM_MAG=+0.05`
+  (?camidle、負で引き)・`CAMERA_IDLE_ZOOM_TAU=0.3`s(?camidletau)で滑らかに寄り、操作再開で1.0へ戻る。既存のパンチズームと掛け合わせ。
+- 条件: `!touchActive && !player.isMoving`。**登場演出/ダンス中は無効**(演出を妨げない)。Pixi 側で fps非依存に ease。
+
+### 負荷スコア
+- **1/10**（rendering）。worldGroup スケール1つ＋1lerp/フレーム。アイドル(=ズーム1.0)時は worldGroup を触らない。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で寄り具合を確認(?camidle で量・向き調整、負で引き)。
 
 ## 2026-06-17 - v0.25.429 - 追尾カメラ強化(先読み/危険時タイト/中心クランプ) 最大値で実装 (Claude Code)
 
