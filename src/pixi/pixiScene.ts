@@ -1235,7 +1235,7 @@ export class PixiScene {
       sy = (Math.random() * 2 - 1) * mag;
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
-    this.syncLab(now); // 屋内ステージの床/壁/扉描画＋屋外レイヤーの表示切替
+    this.syncLab(); // 屋内ステージの床/壁/扉描画＋屋外レイヤーの表示切替
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
 
@@ -3440,7 +3440,7 @@ export class PixiScene {
   }
 
   // ---- 屋内(研究施設)ステージの床/壁/扉/マーカー(仮実装=塗り矩形) ----------
-  private syncLab(now: number) {
+  private syncLab() {
     const s = useGameStore.getState();
     const indoor = s.indoorMode;
     // 屋外の screen-space 背景/床/前景と world の木は屋内では隠す。
