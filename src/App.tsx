@@ -10,6 +10,7 @@ import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
 import { ensureTextures } from './pixi/pixiTextures';
 import { getSelectedStageId, markStageCleared } from './data/progress';
+import { getStage } from './data/campaign';
 
 const LOADING_MIN_MS = 650;
 
@@ -63,6 +64,9 @@ function App() {
     // 素材ロード完了を待ってからゲーム開始(通常はタイトルのローディング段階で既に完了)。
     await ensurePreload();
     resetGame(validClass);
+    // 出撃ごとの会話は選択ミッションから設定(フリーミッション/未選択/ベンチは空=会話なし)。
+    const selectedStage = benchmark ? undefined : getStage(getSelectedStageId());
+    useGameStore.getState().setIntroDialogueLines(selectedStage?.main.dialogue ?? []);
     setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
   };

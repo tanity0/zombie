@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   useGameStore,
-  INTRO_DIALOGUE_LINES,
   INTRO_DIALOGUE_CHAR_MS,
   INTRO_DIALOGUE_LINE_HOLD_MS,
   CHARACTER_CLASS_NAMES,
@@ -14,6 +13,7 @@ import { playRadioStatic } from '../audio/audioManager';
 const IntroDialogue: React.FC = () => {
   const active = useGameStore((s) => s.introDialogueActive);
   const startedAt = useGameStore((s) => s.introDialogueStartedAt);
+  const lines = useGameStore((s) => s.introDialogueLines); // この出撃の会話(ミッション別)
   const characterClass = useGameStore((s) => s.player.characterClass);
   const endIntroDialogue = useGameStore((s) => s.endIntroDialogue);
   const [, setTick] = useState(0);
@@ -35,16 +35,16 @@ const IntroDialogue: React.FC = () => {
     };
   }, [active]);
 
-  if (!active) return null;
+  if (!active || lines.length === 0) return null;
 
   // 1行ずつ切り替えて表示: 現在の行だけを出す(打ち終えたら次の行へ差し替わる)。
   const elapsed = Date.now() - startedAt;
   let remaining = elapsed;
   let curIdx = -1;
   let shown = 0;
-  for (let i = 0; i < INTRO_DIALOGUE_LINES.length; i++) {
-    const len = INTRO_DIALOGUE_LINES[i].text.length;
-    const lineTotal = INTRO_DIALOGUE_LINES[i].holdMs ?? (len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS);
+  for (let i = 0; i < lines.length; i++) {
+    const len = lines[i].text.length;
+    const lineTotal = lines[i].holdMs ?? (len * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS);
     if (remaining < lineTotal) {
       curIdx = i;
       shown = Math.max(0, Math.min(len, Math.floor(remaining / INTRO_DIALOGUE_CHAR_MS)));
@@ -54,10 +54,10 @@ const IntroDialogue: React.FC = () => {
   }
   if (curIdx === -1) {
     // 最終保持中: 最後の行を出し切ったまま。
-    curIdx = INTRO_DIALOGUE_LINES.length - 1;
-    shown = INTRO_DIALOGUE_LINES[curIdx].text.length;
+    curIdx = lines.length - 1;
+    shown = lines[curIdx].text.length;
   }
-  const line = INTRO_DIALOGUE_LINES[curIdx];
+  const line = lines[curIdx];
 
   // 会話シーン中だけ右下に出すスキップ(ミッション最初の会話=この登場セリフのみ)。
   // タップで会話を即終了→ゲーム再開。タップが下層の攻撃入力に伝播しないよう stopPropagation。

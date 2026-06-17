@@ -4,6 +4,11 @@ export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'g
 // Character class types
 export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'necromancer';
 
+// ステージ開始時の会話イベント1行。speaker: null=通信 / '__voice__'=生存者の声 / '__radio__'=無線ノイズの間 /
+// '__class__'=選択中の職業名。ミッションごとに内容/有無が変わる(フリーミッションは空=会話なし)。
+export interface IntroLine { speaker: string | null; text: string; holdMs?: number }
+
+
 // Player types
 export interface Player {
   x: number;

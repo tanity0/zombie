@@ -16,7 +16,7 @@ import {
   playerIntroOffset,
   playerIntroCamFollow,
   INTRO_DIALOGUE_TRIGGER_T,
-  INTRO_DIALOGUE_TOTAL_MS,
+  introDialogueTotalMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   CAMERA_FOLLOW_TAU, CAMERA_SNAP_DIST
 } from '../store/gameStore';
@@ -533,11 +533,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // セリフ(登場時): ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると再開。
           const introStateNow = useGameStore.getState();
           const rawIntroT = 1 - (introUntil - nowMs) / PLAYER_INTRO_MS;
-          if (!introStateNow.introDialogueShown && rawIntroT >= INTRO_DIALOGUE_TRIGGER_T) {
+          // 会話があるミッションのみ開始(フリーミッション等=空なら会話自体発生しない)。
+          if (!introStateNow.introDialogueShown && rawIntroT >= INTRO_DIALOGUE_TRIGGER_T && introStateNow.introDialogueLines.length > 0) {
             useGameStore.getState().startIntroDialogue();
           }
           if (useGameStore.getState().introDialogueActive) {
-            if (nowMs - useGameStore.getState().introDialogueStartedAt >= INTRO_DIALOGUE_TOTAL_MS) {
+            if (nowMs - useGameStore.getState().introDialogueStartedAt >= introDialogueTotalMs(useGameStore.getState().introDialogueLines)) {
               useGameStore.getState().endIntroDialogue(); // 流れ終わり → 再開
             } else {
               // 時間停止: 終了時刻を delta 分だけ後ろへ送り、登場進行 t を固定(ヘリ/キャラ静止)。

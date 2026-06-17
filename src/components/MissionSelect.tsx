@@ -110,12 +110,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ステージ選択
   // ====================================================================
   const renderStageSelect = () => {
+    const frees = STAGES.filter(s => s.kind === 'free');
     const mains = STAGES.filter(s => s.kind === 'main');
     const exs = STAGES.filter(s => s.kind === 'ex');
     return (
       <>
         <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-2">
+          {frees.map(stage => <StageRow key={stage.id} stage={stage} />)}
+          {frees.length > 0 && <div className="pt-1 text-[11px] uppercase tracking-widest text-blue-200/55 px-1">メインミッション</div>}
           {mains.map(stage => <StageRow key={stage.id} stage={stage} />)}
           {exs.some(s => isStageUnlocked(s, cleared)) && (
             <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">クリア後 / 隠しステージ</div>
@@ -141,7 +144,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         }`}
       >
         <span className={`shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-[12px] font-bold ${
-          stage.kind === 'ex' ? 'bg-fuchsia-400/15 text-fuchsia-100' : 'bg-blue-400/15 text-blue-100'
+          stage.kind === 'ex' ? 'bg-fuchsia-400/15 text-fuchsia-100'
+            : stage.kind === 'free' ? 'bg-emerald-400/15 text-emerald-100'
+            : 'bg-blue-400/15 text-blue-100'
         }`}>
           {stage.main.code}
         </span>
@@ -188,7 +193,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           <Section label="サブミッション">
             {stage.subs.length === 0
-              ? <p className="text-[12px] text-white/45">準備中（後日追加）</p>
+              ? <p className="text-[12px] text-white/45">{stage.kind === 'free' ? 'なし（周回ミッション）' : '準備中（後日追加）'}</p>
               : stage.subs.map(s => (
                 <div key={s.id} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                   <div className="text-[13px] font-semibold text-white">{s.title}</div>

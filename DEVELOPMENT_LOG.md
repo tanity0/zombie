@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.427`**（自動タップも間隔計測対象に。強制JUST/タップ間隔/追尾カメラ/シェイク済。実機確認待ち）。
+- **最新 version**: **`v0.25.428`**（フリーミッション/会話のミッション別化/ヘリ飛び降り3倍速。追尾カメラ/シェイク/計測済。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,20 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-17 - v0.25.428 - フリーミッション＋会話のミッション別化＋ヘリ飛び降り3倍速 (Claude Code)
+
+### 変更（社長指示）
+- **ヘリから飛び降り演出を3倍速**: `PLAYER_INTRO_LAND_MS` 1700→567(フェーズB=飛び降り/着地のみ短縮)。フェーズA(ヘリ飛来)/
+  会話トリガー位置は不変(HELI_FRAC基準)。
+- **会話をミッション別に**: `IntroLine` 型(types)を新設。`StageMission.dialogue?` を追加し**M1のみ会話を実装**(従来の通信/偵察兵)。
+  実行時の会話はストア `introDialogueLines`(出撃時に選択ミッションから設定)。`introDialogueTotalMs(lines)` で所要時間を算出。
+  `useGameLoop` は **lines が空なら会話を発生させない**。`IntroDialogue` はストアの行を描画。`INTRO_DIALOGUE_LINES`/`_TOTAL_MS` 定数は廃止。
+- **フリーミッション追加**: `STAGES` に kind `free`(`stage-free`、常時選択可・ミッション/会話なし)。ステージ選択の最上段に表示。
+  選択→キャラ→装備→開始で**会話なしの周回**ができる。ベンチ/未選択も会話なし。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機: フリー=会話なし、M1=会話あり、飛び降りが速いことを確認。
 
 ## 2026-06-16 - v0.25.427 - 自動タップも計測対象に (Claude Code)
 

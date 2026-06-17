@@ -5,7 +5,7 @@ import {
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction, SubWeaponKey, CastleEvent, DifficultyRank,
   WeaponMerchant, ShopItemKey, EventQuestNpc, Summon,
-  RhythmState, RhythmArrow, ShijinGod, RhythmPending
+  RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine
 } from '../types/game';
 import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
@@ -364,7 +364,7 @@ export const INVULN_MS = 700;
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
 // この間はゲーム進行/入力/敵スポーンを止め、カメラが追従/横断し、見た目は飛行する。
 export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来)長(少しゆっくり目)
-export const PLAYER_INTRO_LAND_MS = 1700;    // フェーズB(ジャンプ着地)長 = 従来の演出長
+export const PLAYER_INTRO_LAND_MS = 567;     // フェーズB(ヘリから飛び降り→着地)長。v0.25.428: 1700→567(3倍速)
 export const PLAYER_INTRO_MS = PLAYER_INTRO_HELI_MS + PLAYER_INTRO_LAND_MS; // 全体(=3700)
 export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; // A/全体の境目 t
 export const PLAYER_INTRO_FLY_X = 225;      // (フェーズB)人間の飛び降り飛距離(world px)。小さくすると人間の飛距離が減り、
@@ -436,20 +436,14 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
 // speaker: null=通信 / '__voice__'=生存者の声(別スタイル)。1行ずつ切替表示。
 // holdMs を指定した行はその時間だけ「間」を取る(text 長さからの自動計算を上書き)。
 // __radio__ 行は無発話の「間」で、IntroDialogue が実際の無線ノイズ音(playRadioStatic)を1回鳴らす。
-export const INTRO_DIALOGUE_LINES: { speaker: string | null; text: string; holdMs?: number }[] = [
-  { speaker: '通信兵', text: '緊急通信。任務を一時中断する' },
-  { speaker: '通信兵', text: '研究所から帰還中の偵察部隊が、変異体に包囲された' },
-  { speaker: '通信兵', text: '現在地から近い。座標を送る。救助を優先してくれ' },
-  { speaker: '__radio__', text: '', holdMs: 1500 }, // 無線ノイズの間(音だけ・テキストなし)
-  { speaker: '偵察兵', text: '……聞こえるか! くそ、弾がねぇ!' },
-  { speaker: '偵察兵', text: 'グレッグ……! ちくしょう、助け……' },
-];
+// 会話はミッションごとに内容/有無が変わる(各ミッションの dialogue を campaign 側に持つ)。実行時の行は
+// ストアの introDialogueLines(ゲーム開始時に選択ミッションから設定。フリーミッションは空=会話なし)。
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
 export const INTRO_DIALOGUE_LINE_HOLD_MS = 950;  // 各行を打ち終えた後の保持(+0.2s 延長)
 export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この後ゲーム開始)
-// 全体時間(useGameLoop が終了判定に使用)。
-export const INTRO_DIALOGUE_TOTAL_MS =
-  INTRO_DIALOGUE_LINES.reduce(
+// 会話全体の所要時間(useGameLoop が終了判定に使用)。行配列から算出。空なら 0。
+export const introDialogueTotalMs = (lines: IntroLine[]): number =>
+  lines.length === 0 ? 0 : lines.reduce(
     (sum, l) => sum + (l.holdMs ?? (l.text.length * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS)),
     0
   ) + INTRO_DIALOGUE_END_HOLD_MS;
@@ -719,6 +713,7 @@ interface GameState {
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
   introDialogueShown: boolean;   // この登場で既にセリフを出したか(再トリガー防止)
+  introDialogueLines: IntroLine[]; // この出撃の会話(選択ミッションから設定。空=会話なし=フリーミッション等)
   // 死神の横切り演出(無害・pixiScene が画面横断で描画)。null=非表示。
   // axis: 'h'=横断(上下の帯)/'v'=縦断(左右の側)。band=軸に直交する固定位置(画面比)。dir=進む向き。scale=奥行き(小=奥)。
   reaperCross: { startedAt: number; durationMs: number; axis: 'h' | 'v'; band: number; dir: number; scale: number } | null;
@@ -869,6 +864,7 @@ interface GameState {
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
   startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
+  setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
   setDanceTestMode: (enabled: boolean) => void;
   setDanceTestLevel: (level: number) => void;
@@ -985,6 +981,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   introDialogueActive: false,
   introDialogueStartedAt: 0,
   introDialogueShown: false,
+  introDialogueLines: [],
   reaperCross: null,
   danceTestMode: false,
   danceTestLevel: 1,
@@ -3702,6 +3699,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   startIntroDialogue: () => {
     set({ introDialogueActive: true, introDialogueStartedAt: Date.now(), introDialogueShown: true });
+  },
+
+  setIntroDialogueLines: (lines) => {
+    set({ introDialogueLines: lines });
   },
 
   endIntroDialogue: () => {

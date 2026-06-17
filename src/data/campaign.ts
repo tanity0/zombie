@@ -8,7 +8,7 @@
 // - 各ステージには複数のサブミッションがぶら下がる予定(今はメインのみ並べる。後で差し替え)。
 // - ゲームプレイは当面ステージ1の内容を流用(後で各ステージ用に差し替える)。
 
-import type { CharacterClass, SubWeaponKey } from '../types/game';
+import type { CharacterClass, SubWeaponKey, IntroLine } from '../types/game';
 
 // --- ステージ / ミッションの型 -------------------------------------------
 export interface StageVoiceLine {
@@ -25,6 +25,9 @@ export interface StageMission {
   debrief: string[];     // ステージクリア後の説明(段落配列。詳細の説明欄にクリア後表示)
   radio?: boolean;       // ブリーフィング中に無線ノイズSEの「間」を挟むか
   voices?: StageVoiceLine[]; // 生存者などの声(ブリーフィング後段)
+  // ステージ開始時の会話イベント(時間停止・オートタイプ)。ミッションごとに内容/有無が変わる。
+  // 未指定/空 = 会話なし(フリーミッション等)。
+  dialogue?: IntroLine[];
 }
 
 export interface SubMission {
@@ -35,8 +38,8 @@ export interface SubMission {
 
 export interface Stage {
   id: string;            // 'stage-1' / 'stage-ex1'
-  index: number;         // 表示順(1..7、EXは100以降)
-  kind: 'main' | 'ex';   // main=本編 / ex=クリア後の隠しステージ
+  index: number;         // 表示順(1..7、EXは100以降、freeは0)
+  kind: 'main' | 'ex' | 'free'; // main=本編 / ex=クリア後の隠しステージ / free=周回(ミッション無し・会話なし)
   name: string;          // ステージ名(地名寄り)
   area: string;          // 舞台の短い説明
   main: StageMission;    // メインミッション
@@ -46,6 +49,28 @@ export interface Stage {
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
 export const STAGES: Stage[] = [
+  {
+    id: 'stage-free',
+    index: 0,
+    kind: 'free',
+    name: 'フリーミッション',
+    area: '周回 / ミッション無し',
+    unlockBy: null, // 常に選択可
+    subs: [],
+    main: {
+      code: 'FREE',
+      title: 'フリーミッション',
+      summary: '特定の任務なし。自由に周回して素材・経験・スキルを集める。',
+      synopsis: [
+        '特定の任務は無い周回モード。',
+        '自由に動いて素材・経験・スキルを集める。',
+        '開始時の会話イベントは発生しない。',
+      ],
+      briefing: [],
+      debrief: [],
+      // dialogue 未指定 = 会話なし
+    },
+  },
   {
     id: 'stage-1',
     index: 1,
@@ -76,6 +101,15 @@ export const STAGES: Stage[] = [
         '偵察部隊の生存者を救助。',
         '研究所の座標データを回収した。',
         '研究所奪還作戦が開始される。',
+      ],
+      // ゲーム内の登場会話(時間停止・オートタイプ)。M1のみ実装、他ミッションは今後。
+      dialogue: [
+        { speaker: '通信兵', text: '緊急通信。任務を一時中断する' },
+        { speaker: '通信兵', text: '研究所から帰還中の偵察部隊が、変異体に包囲された' },
+        { speaker: '通信兵', text: '現在地から近い。座標を送る。救助を優先してくれ' },
+        { speaker: '__radio__', text: '', holdMs: 1500 },
+        { speaker: '偵察兵', text: '……聞こえるか! くそ、弾がねぇ!' },
+        { speaker: '偵察兵', text: 'グレッグ……! ちくしょう、助け……' },
       ],
     },
   },
