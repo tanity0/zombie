@@ -316,7 +316,7 @@ const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
-export const SHAKE_MAG = 7;                  // 既定の揺れ幅(px)。被弾シェイク等。
+export const SHAKE_MAG = 8;                  // 既定/通常時の揺れ幅(px)。通常時の上限の目安(8px前後)。
 // 行動別の画面シェイク(視覚のみ・ゲーム性に影響なし)。mag=振幅px / ms=長さ。短く強い「パンチ」も出せる。
 // ウザくならない範囲で、近接スイング<シールドバッシュ<ハリケーン<死神召喚 の順で強める。
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
@@ -330,15 +330,21 @@ export const REAPER_SUMMON_SHAKE_MAG = 8;    // 死神召喚=強め(短くはな
 export const INTRO_LAND_SHAKE_MS = 240;
 export const INTRO_LAND_SHAKE_MAG = 7.5;
 // --- 追尾カメラ(描画のみ) -------------------------------------------------
-// 描画用カメラをプレイヤーへ τ 秒で遅れて寄せる指数追従(fps非依存)。判定/スポーン/プロップ生成は
-// 実プレイヤー座標のまま=ゲーム性に影響なし。0=即追従(無効)。実機調整は ?camtau=0.18 (秒)。
-export const CAMERA_FOLLOW_TAU = (() => {
-  if (typeof window === 'undefined') return 0.18;
-  const v = new URLSearchParams(window.location.search).get('camtau');
+// 描画用カメラだけをプレイヤーへ追従させる(判定/スポーン/プロップ生成は実プレイヤー座標のまま=ゲーム性に影響なし)。
+// 「一旦最大値で実装」。各値は ?キー=数値 で実機調整可。
+const camNum = (key: string, def: number): number => {
+  if (typeof window === 'undefined') return def;
+  const v = new URLSearchParams(window.location.search).get(key);
   const n = v != null ? Number(v) : NaN;
-  return Number.isFinite(n) && n >= 0 ? n : 0.18;
-})();
-export const CAMERA_SNAP_DIST = 600; // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
+  return Number.isFinite(n) ? n : def;
+};
+export const CAMERA_FOLLOW_TAU = camNum('camtau', 0.14);          // 追従遅延(秒)。わずかな重さ。範囲0.08〜0.14
+export const CAMERA_DANGER_TAU = camNum('camdanger', 0.08);       // 危険時(接近戦)の追従遅延(秒)。安定。範囲0.04〜0.08
+export const CAMERA_RETURN_TAU = camNum('camret', 0.20);          // 停止時に先読みオフセットを戻す時定数(秒)。ピタ止まり回避。範囲0.12〜0.20
+export const CAMERA_LOOKAHEAD_MAX = camNum('camlook', 40);        // 進行方向への最大オフセット(px)。進行方向に余白。範囲24〜40
+export const CAMERA_CENTER_CLAMP_FRAC = camNum('camclamp', 0.07); // 強制中心復帰距離(画面幅比)。見失い防止。範囲0.05〜0.07
+export const CAMERA_DANGER_RADIUS = 150;                          // この距離内に敵が居たら「危険時」とみなす(px)
+export const CAMERA_SNAP_DIST = 600;                             // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
 // 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
 export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
 export const MELEE_FINISH_ZOOM_MAG = 0.06; // ズーム量(+6%程度=少し)

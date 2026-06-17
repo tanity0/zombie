@@ -18,7 +18,8 @@ import {
   INTRO_DIALOGUE_TRIGGER_T,
   introDialogueTotalMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
-  CAMERA_FOLLOW_TAU, CAMERA_SNAP_DIST
+  CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
+  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST
 } from '../store/gameStore';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
@@ -208,6 +209,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rhythmAnchoredRef = useRef<boolean>(false);
   // 定期リシンク: 次に位相を合わせ直す時刻(Date.now基準, ms)。0=未予約。
   const rhythmResyncAtRef = useRef<number>(0);
+  // 追尾カメラの進行方向先読みオフセット(px、描画のみ。フレーム間で保持)。
+  const camLookAheadRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
@@ -914,22 +917,50 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // Infinite-world camera: center the player exactly.
-        const targetCameraX = player.x - gameBounds.width / 2 + player.width / 2;
-        const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
-        // 追尾カメラ(描画のみ): 描画用カメラだけ τ 秒で遅れて寄せる(fps非依存の指数追従)。
-        // 判定/スポーン/プロップ生成は実プレイヤー基準(target)のまま=ゲーム性に影響なし。
-        let camX = targetCameraX, camY = targetCameraY;
-        if (CAMERA_FOLLOW_TAU > 0) {
-          const prevCam = useGameStore.getState().camera;
-          const k = 1 - Math.exp(-baseDeltaTime / CAMERA_FOLLOW_TAU);
-          camX = prevCam.x + (targetCameraX - prevCam.x) * k;
-          camY = prevCam.y + (targetCameraY - prevCam.y) * k;
-          // 開始/復帰などで大きく離れていたら即スナップ(ゆっくり寄るのを防ぐ)。
-          if (Math.hypot(targetCameraX - camX, targetCameraY - camY) > CAMERA_SNAP_DIST) { camX = targetCameraX; camY = targetCameraY; }
+        // 追尾カメラ(描画のみ): 慣性追従 + 進行方向の余白(先読み) + 危険時タイト + 強制中心復帰。
+        // 判定/スポーン/プロップ生成は実プレイヤー基準(baseCam)のまま=ゲーム性に影響なし。
+        const pcCamX = player.x + player.width / 2;
+        const pcCamY = player.y + player.height / 2;
+        const baseCamX = pcCamX - gameBounds.width / 2;  // プレイヤーをちょうど中央に置くカメラ(先読み無し)
+        const baseCamY = pcCamY - gameBounds.height / 2;
+        // 危険時(敵が近い): 追従をタイトにし先読みを切ってプレイヤーを中心寄りに(接近戦で安定)。
+        const dangerR2 = CAMERA_DANGER_RADIUS * CAMERA_DANGER_RADIUS;
+        const danger = enemies.some(e => {
+          const dx = (e.x + e.width / 2) - pcCamX, dy = (e.y + e.height / 2) - pcCamY;
+          return dx * dx + dy * dy < dangerR2;
+        });
+        // 進行方向の先読みオフセット(移動中=方向×最大 / 停止・危険時=0へ戻す)。
+        const sp = Math.hypot(player.vx, player.vy);
+        let offTx = 0, offTy = 0, offTau = CAMERA_RETURN_TAU;
+        if (!danger && player.isMoving && sp > 0.001) {
+          offTx = (player.vx / sp) * CAMERA_LOOKAHEAD_MAX;
+          offTy = (player.vy / sp) * CAMERA_LOOKAHEAD_MAX;
+          offTau = CAMERA_FOLLOW_TAU;
+        }
+        const ok = 1 - Math.exp(-baseDeltaTime / Math.max(0.001, offTau));
+        const look = camLookAheadRef.current;
+        look.x += (offTx - look.x) * ok;
+        look.y += (offTy - look.y) * ok;
+        const targetCameraX = baseCamX + look.x;
+        const targetCameraY = baseCamY + look.y;
+        // 指数追従(危険時はタイトな τ)。
+        const followTau = Math.max(0.001, danger ? CAMERA_DANGER_TAU : CAMERA_FOLLOW_TAU);
+        const prevCam = useGameStore.getState().camera;
+        const fk = 1 - Math.exp(-baseDeltaTime / followTau);
+        let camX = prevCam.x + (targetCameraX - prevCam.x) * fk;
+        let camY = prevCam.y + (targetCameraY - prevCam.y) * fk;
+        // 強制中心復帰: プレイヤーが画面中心から離れすぎたらクランプ(見失い防止)。
+        const maxLag = gameBounds.width * CAMERA_CENTER_CLAMP_FRAC;
+        const offX = (pcCamX - camX) - gameBounds.width / 2;
+        const offY = (pcCamY - camY) - gameBounds.height / 2;
+        const offD = Math.hypot(offX, offY);
+        if (offD > maxLag && maxLag > 0) { const s2 = 1 - maxLag / offD; camX += offX * s2; camY += offY * s2; }
+        // 開始/復帰などで大きく離れていたら即スナップ。
+        if (Math.hypot(baseCamX - camX, baseCamY - camY) > CAMERA_SNAP_DIST) {
+          camX = baseCamX; camY = baseCamY; look.x = 0; look.y = 0;
         }
         setCameraPosition(camX, camY);
-        syncBreakableProps({ x: targetCameraX, y: targetCameraY }, gameBounds);
+        syncBreakableProps({ x: baseCamX, y: baseCamY }, gameBounds);
         
         // Complete any finished reload, then ensure the active gun is
         // shootable (reload it / swap off a fully-dry gun), then fire it.

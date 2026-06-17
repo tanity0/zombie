@@ -16,7 +16,7 @@ on the zombie game. Append a new entry after each meaningful change.
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
-- **最新 version**: **`v0.25.428`**（フリーミッション/会話のミッション別化/ヘリ飛び降り3倍速。追尾カメラ/シェイク/計測済。実機確認待ち）。
+- **最新 version**: **`v0.25.429`**（追尾カメラ強化=先読み/危険時タイト/中心クランプを最大値で実装。?cam系で調整可。実機確認待ち）。
 - **Windows 環境メモ**: dev 再起動に `Start-Process "npm"` を使うと `npm.ps1` がメモ帳で開く（`.ps1`→Notepad 関連付け＋ShellExecute）。**`npm.cmd` を明示するか preview_start を使う**こと。npm.ps1 本体は無傷（壊れていない）。
 
 ### このセッション(v0.25.352→405)でやったこと
@@ -86,6 +86,24 @@ on the zombie game. Append a new entry after each meaningful change.
 ### 引き継ぎ要点
 - 正本/デプロイ元: `claude/chat-context-continuity-saxlH`(Pages 自動デプロイ)。ミラー: `claude/zombie-online-handoff-nand99`。
 - 最重要の残課題: リズムの音楽⇔判定グリッドのズレ(実機キャリブレーション `?bo`/`?int` → 既定焼き込み)。
+
+## 2026-06-17 - v0.25.429 - 追尾カメラ強化(先読み/危険時タイト/中心クランプ) 最大値で実装 (Claude Code)
+
+### 変更（社長指示: 各パラメータを一旦最大値で実装）
+- 追従カメラ(描画のみ)を多パラメータ化。すべて ?キー で実機調整可。**最大値を既定に**:
+  - 追従遅延 `CAMERA_FOLLOW_TAU=0.14`s(?camtau) / 危険時 `CAMERA_DANGER_TAU=0.08`s(?camdanger)
+  - 進行方向先読み `CAMERA_LOOKAHEAD_MAX=40`px(?camlook、移動中だけ方向へ余白)
+  - 停止時の戻り `CAMERA_RETURN_TAU=0.20`s(?camret、先読みを0へ戻す=ピタ止まり回避)
+  - 強制中心復帰 `CAMERA_CENTER_CLAMP_FRAC=0.07`(?camclamp、画面幅比。離れ過ぎたらクランプ=見失い防止)
+  - 危険判定半径 `CAMERA_DANGER_RADIUS=150`px(敵が近いと先読みを切りτをタイトに=接近戦で安定)
+- シェイク通常上限の目安として `SHAKE_MAG` 7→**8**px(通常時の揺れ幅)。
+- 判定/スポーン/プロップ生成は実プレイヤー基準(baseCam)のまま=ゲーム性に影響なし。
+
+### 負荷スコア
+- **1/10**（rendering）。1フレーム数式＋敵への近接 some ループ(O(敵数)・距離二乗比較)のみ。新規オブジェクト無し。
+
+### Verification
+- `npx tsc --noEmit` / `npm run lint` / `npm run build` 成功。実機で挙動確認→範囲内(例 0.08〜0.14 等)へ詰める。
 
 ## 2026-06-17 - v0.25.428 - フリーミッション＋会話のミッション別化＋ヘリ飛び降り3倍速 (Claude Code)
 
