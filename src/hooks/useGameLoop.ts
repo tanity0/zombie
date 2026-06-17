@@ -2647,6 +2647,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         playerEnemyCollisions.forEach(enemy => {
           if (wireDashingNow) return;
+          // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は、ぶつかってもプレイヤーは被弾しない。
+          if (enemy.aiPhase === 'jump') return;
           const damageWasApplied = !player.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {

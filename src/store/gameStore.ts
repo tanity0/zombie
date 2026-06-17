@@ -3071,7 +3071,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const enemy = enemies.find(e => e.id === id);
       
       if (!enemy) return { enemies };
-      
+
+      // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は無敵。被弾もヒット表示もしない。
+      // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
+      if (enemy.aiPhase === 'jump') return { enemies };
+
       const newHealth = Math.max(0, enemy.health - amount);
       const updatedEnemies = enemies.map(e => 
         e.id === id ? { ...e, health: newHealth, lastHit: Date.now() } : e
