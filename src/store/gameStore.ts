@@ -4499,10 +4499,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   resetGame: (characterClass) => {
-    const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass) 
-      ? characterClass as CharacterClass 
+    const state = get();
+    const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
+      ? characterClass as CharacterClass
       : 'warrior';
-      
+
     let startingWeapons = getStartingWeapons(validClass);
     // 屋内(研究施設)は初期銃を専用の「ＰＨＩＬＬ-銃」に固定(近接はクラスのプロフィール据え置き)。
     if (state.pendingIndoor && !state.danceTestMode) {
