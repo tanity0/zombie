@@ -47,6 +47,102 @@ on the zombie game. Append a new entry after each meaningful change.
 5. **装備選択の開始時付与**: 今は選択を記録するのみ。ゲームへの付与を配線。
 6. UIデザインの作り込み(導線は仮UI)。
 
+### ローカル更新 (v0.25.432→433) — 2026-06-17
+- **追従カメラ**: `CAMERA_FOLLOW_TAU` 既定 0.14→**0.16**(`?camtau`)。
+- **持続ズーム整理** (`pixiScene.ts` 描画ループ): 待機ズームは既定(`CAMERA_IDLE_ZOOM_MAG=+0.05`)のまま。
+  **移動中だけ引き** = `CAMERA_MOVE_ZOOM_MAG`(既定 **-0.09**=最大引きを少し深く、`?cammove`)。
+  優先順: 移動中→引き / 手放し静止→寄り / それ以外(指タッチ静止・登場・ダンス)→等倍。
+- **引きに慣性 (v0.25.433)**: 引きが広がる方向だけ長い時定数 `CAMERA_MOVE_ZOOM_TAU`(既定 **1.5s**≈約3秒でじわっと広がる、`?cammovetau`)。
+  **戻り(寄り/等倍へ)は従来の `CAMERA_IDLE_ZOOM_TAU`(0.3s)** をそのまま使用。方向判定 `zoomingOut = zoomTarget < idleZoom`。
+  → 実機で `?cammove` / `?cammovetau` / `?camtau` で詰めて既定へ焼く。
+- **登場(ヘリ)カメラ (v0.25.434)**: 高いヘリを画面に収めるため **引きから開始→キャラ降下に同期して既定へ戻す**。
+  - 高さ係数を1か所に集約: `playerIntroDescent(t)`(=`-playerIntroOffset(t).y / PLAYER_INTRO_HELI_HIGH_Y`、1=開始/最高→0=着地)。
+  - カメラ縦をヘリ高度へ寄せる: useGameLoop の登場カメラ縦を `player.y + introOff.y * CAMERA_INTRO_LIFT_FRAC`(既定 0.7、`?camintrolift`)。降下で `introOff.y→0` のため自動で着地面へ戻る。
+  - ズーム: pixiScene で登場中だけ `idleZoom = 1 + CAMERA_INTRO_ZOOM_MAG * h`(既定 `-0.35`、`?camintro`)。h が滑らかなので直接代入(ease無し=開始から引き)。
+  - 検証: ビルド/起動クリーン。見た目(枠/引き量)は実機で `?camintro` / `?camintrolift` を振って既定へ焼く。
+- **衝撃演出: ストップ/スロー/揺れの再設計 (v0.25.435)** — 社長指示。
+  - **四神技発動に揺れ**: `fireShijinGod` 冒頭で `triggerShake(SHIJIN_TECH_SHAKE_MS=160, MAG=5)`。描画のみ=リズム不変(stop/slow無し)。
+  - **カウンターはスロー廃止→ストップ**: 反射時の `triggerTimeSlow(0.34,560)` を削除し、`triggerHitstop(COUNTER_HITSTOP_MS=65)`(50〜80ms)+`triggerShake(100ms/4px)`(3〜5px・80〜120ms)。
+    ストップは gameTime を止めるためダンス中(`rhythm.active`)は入れない。揺れは常時。近接カウンター成立エッジにも同じ揺れを追加。
+  - **近接フィニッシュ=ストップ→スロー(半分)**: 既存の `hitstopUntil` 全停止機構はそのまま。`HITSTOP_MS` 300→**65**(ストップを上記カウンターと同じ短さに)、
+    `MELEE_FINISH_SLOW_MS` 820→**410**(スローを半分に)。`triggerTimeSlow(0.4, 410)` は既存のまま。
+  - 新規: store に `triggerHitstop(ms)` アクション(`hitstopUntil` を max 更新)。本物の全停止はループ早期return(useGameLoop:482)が担当。
+  - 検証: `tsc --noEmit` 通過 / dev 起動・コンソールともクリーン。手応え(数値)は実機で確認。
+- **ストップ調整 (v0.25.436→437)** — 社長フィードバック「もっと長く」「止まってない」「バッシュにもストップ」。
+  - `HITSTOP_MS` 65→**120**(カウンター/近接フィニッシュ/バッシュ共通)。
+  - **「止まってない」原因**: カウンターのストップを「弾を反射した時(reflect経路)」だけに入れていた。弾を撃たない敵に近接カウンターを当てても
+    ストップが入らなかった。→ **カウンター成立エッジ(`lastCounterSuccessTime`、近接カウンター全般)にもストップを追加**(ダンス中は除外)。
+  - **バッシュ**: シールドバッシュが敵にヒット(`bashShove`)したら `triggerHitstop(HITSTOP_MS)`(`updateMelee` 内、ダンス中は除外)。
+  - 描画は `PixiStage` の app.ticker で毎フレーム `scene.sync()`(gameLoop と独立)。ストップは gameLoop 早期return(useGameLoop:485)で sim を凍結→静止描画。
+  - 検証: `tsc --noEmit` 通過 / dev クリーン。停止の体感は実機で再確認(まだ弱ければ HITSTOP_MS をさらに増やす)。
+- **インパクト演出の順序統一+寄りズーム+各ズーム強化 (v0.25.438→439)** — 社長指示。
+  - **全揺れ倍化 (438)**: 各 `*_SHAKE_MAG` を2倍(SHAKE_MAG 8→16 ほか全種)。
+  - **順序を「ストップ→(後で)演出」に統一 (439)**: 揺れがストップに被って止まりが分かりにくい問題を解消。
+    - `triggerHitImpact(stopMs, shakeMs, shakeMag, zoomMag)`: ストップ→`setTimeout(stopMs)`後に 揺れ+寄りズーム。ダンス中はストップ抜きで即時。
+    - `triggerFinishImpact()`: ストップ後に 揺れ+スロー+寄りズーム(hitstop は呼び出し側 set で設定済み)。
+    - カウンター(reflect/成立エッジ)=`triggerHitImpact`、バッシュ命中=`triggerHitImpact`、近接フィニッシュ3経路=`triggerFinishImpact` に置換。
+  - **寄りパンチズームを強烈に**: `MELEE_FINISH_ZOOM_MAG` 0.06→**0.7**、新規 `COUNTER_ZOOM_MAG=0.7` / `BASH_ZOOM_MAG=0.7`。命中時に大きく寄る。
+  - **移動中の引きを強化**: `CAMERA_MOVE_ZOOM_MAG` -0.09→**-0.25**(`?cammove`)。
+  - **登場ヘリ搭乗を寄りに反転**: `CAMERA_INTRO_ZOOM_MAG` -0.35(引き)→**+0.8(寄り/めっちゃズーム)**(`?camintro`)。降下で既定へ戻るのは従来どおり。
+    ※以前の「ヘリを収めるため引きから開始」とは逆向き。社長の最新指示「ヘリ搭乗シーンはめっちゃズーム寄り」に合わせて反転。
+  - 検証: `tsc --noEmit` 通過 / dev クリーン。寄り/引き/ストップの強さは実機で `?camintro` `?cammove` 等で調整。
+- **参考クリップに合わせた stop→slow 調整 (v0.25.446)** — 社長が参考動画(`references/reference-clip.mov`)を提示「これと同じに」。
+  - ffmpeg(社長承認で winget 導入)で解析: フリーズ実測 **約50〜65ms**(4.2s/7.15s/8.75s)、衝撃後に**ほぼ静止に近いスローが約290msかけて等速へ戻る**。
+  - 「ぶつ切り」の主因2つを修正: ①フリーズ500ms→**70ms**(`HITSTOP_MS`)。②スローを `setTimeout` 遅延起動から**同期起動**へ(フリーズ明けと競合して一瞬等速に戻る不具合を解消)。
+  - スロー: `MELEE_FINISH_SLOW_MS` 410→**300**、開始倍率 0.4→**0.2**(強め)→ smoothstep で 1.0 へランプ(v0.25.445 のランプ機構 `timeSlowStart` を使用)。
+  - 検証: `tsc --noEmit` 通過 / dev クリーン。最終の体感は実機で確認し微調整。
+- **通常サブウェポン「発火ナイフ」実装 (v0.25.448)** — 敵1体にナイフを投げて刺し、命中時単体ダメージ→2秒後に刺さった位置(敵に追従)で範囲爆発する遅延爆弾型サブ。
+  - 型: `SubWeaponKey += 'fire-knife'` / `WeaponType += 'fire-knife-projectile'` / `Projectile += stuckToEnemyId?, isStuck?, explodeAt?`([types/game.ts])。
+  - 衝突: `checkProjectileEnemyCollisions` から `fire-knife-projectile` を除外(専用処理)([collisionUtils.ts])。
+  - 自動発動: タレット直後に投擲ブロック追加。最も近い非リーパー敵へ投擲(敵が居る時のみ)。Lv別CD `[8000,7000,6000]`、`FIRE_KNIFE_*` 定数群([useGameLoop.ts])。
+  - 命中→刺さる→爆発: 専用ブロック(timedGrenades の後)。命中で単体ダメージ+`stickFireKnife` で敵追従化、2秒後に半径 `[54,62,70]` で範囲爆発(falloff+軽ノックバック、reaper除外、プレイヤー/味方無傷)。敵死亡でも死亡地点で爆発。
+  - 追従/寿命: `updateProjectiles` に stuck-follow ケース追加。飛行中は `duration=1200ms` で未命中なら消滅(外れ→消える)。刺さると `stickFireKnife` が createdAt/duration をリセットして爆発まで生存。
+  - 取得/強化: 汎用 `applySubWeaponCard` に乗るのみ。レベルアップカード追加(全クラス共通・刀/村雨/ダンス装備中は非表示)([upgradeUtils.ts])、`SUB_WEAPON_KEYS += 'fire-knife'`(商人/スタート画面/装備一覧に自動掲載)、`subWeaponDisplayName` に「発火ナイフ」。
+  - 演出: ドット調ナイフ(飛行=銀+橙、刺さり=赤橙の火種明滅=導火線)、爆発は既存グレネード演出系を流用(橙リング/バースト/グロー、短命)。スロー対象外・常時glowなし。
+  - ダメージ値は仮(命中24/爆発30)で `TODO` コメント。射程・威力は実機調整前提。
+  - 検証: `tsc --noEmit` 通過 / dev クリーン起動・コンソールエラーなし。実挙動はゲーム内(カード取得→戦闘)で確認推奨。
+- **サブウェポン/敵AI調整 (v0.25.449)** — 社長指示。
+  - **ストップ中の揺れ無し**: 既に v0.25.441 で全揺れ共通に実装済み(`now >= s.hitstopUntil` で抑制+停止中はアニメ時計固定)。新規の揺れも自動的に対象。
+  - **ドッグ(サブ)が移動軌道上の敵を噛む**: `DogFetchJob` に出発座標/開始時刻/噛み済みSetを追加。往復軌道(出発→対象→プレイヤー)を補間してドッグ位置を毎フレ算出し、`DOG_BITE_RADIUS=28` 内の未噛み敵へ小ダメージ(6)+小ノックバック(0.8)。1往復1回。
+  - **犬型(werewolf)突進AI**: 汎用AI状態(`aiPhase` 等)を Enemy に追加。ハンドガン射程+70 で `windup`(0.6s減速)→`charge`(開始時のプレイヤー位置へ通常2倍速で突進)→cooldown。`updateEnemies`(gameStore)に実装。
+  - **パンプキン(pumpkin)ジャンプ攻撃AI**: 射程+70 で `crouch`(縮みながら3秒溜め)→`jump`(1秒でその時のプレイヤー位置へ着地・空中は障害物無視)→`recover`(1秒停止)。着地で `pumpkinLanded` を検出し set 後に画面揺れ(`triggerShake`)。描画(`drawEnemy`)に縮み(crouch)/ジャンプアーク/着地スカッシュを追加。
+  - 定数は調整可能(`WEREWOLF_*` / `PUMPKIN_*`、ダメージ等に `TODO`)。werewolf は t≥3:15、pumpkin は wave で出現=実機/ゲーム内確認推奨。
+  - 検証: `tsc --noEmit` 通過 / dev クリーン起動・コンソールエラーなし。
+- **近接揺れの整理 + 登場飛び降り調整 (v0.25.450)** — 社長指示。
+  - **スイング揺れは通常ヒット時のみ**: `triggerCounter` 冒頭の無条件スイング揺れを廃止し、関数末尾で `slashAt.length>0 && !finisher` のときだけ発火。空振り→揺れ無し / フィニッシュ→`triggerFinishImpact` の揺れに一本化。
+  - **カウンター/フィニッシュ時は近接スイング揺れを出さない**: フィニッシュは上記条件で除外。カウンター(reflect)は `triggerHitImpact` 開始時に `shakeUntil=0` で進行中の揺れを消去→ストップ後のインパクト揺れだけ残す。
+  - **登場の飛び降りを真下＋少し速く**: `PLAYER_INTRO_FLY_X` 225→**0**(前進せず垂直落下)、`PLAYER_INTRO_LAND_MS` 567→**460**。横移動はヘリ飛来で確保。
+  - 検証: `tsc --noEmit` 通過 / dev クリーン。
+- **インパクト微調整 (v0.25.451〜454)**: ストップ`HITSTOP_MS` 70→**140** / スロー`MELEE_FINISH_SLOW_MS` 700→**1400**(倍)。バッシュのエフェクトは**敵ヒット時のみ**(壁押し出しのみは無し)、かつ**寄りズーム無し**(ストップ+揺れのみ)。フィニッシュ/カウンターの寄りズーム`*_ZOOM_MAG` 0.7→**0.5**(控えめ)。
+- **フリーミッションを各ステージにぶら下げ (v0.25.455)** — 社長指示「フリーは各ステージにぶら下がってる感じ」。
+  - 独立した `stage-free`(kind:'free')を廃止([campaign.ts])。ステージ選択のフリー枠も撤去。
+  - 各ステージの**ミッション詳細**に「フリー(周回)で出撃 ・ 会話なし」ボタンを追加([MissionSelect.tsx])。メイン出撃=会話あり/進行解放、フリー=会話なし/進行に影響なし。
+  - フリー判定を `progress.ts` の `getSelectedFreeMode/setSelectedFreeMode` で保持。`App.tsx` 開始時にフリーなら会話を空に、勝利時はフリーならクリア扱いにしない。ダンス練習/ベンチ開始でもフラグをクリア。
+  - 検証: `tsc --noEmit` 通過 / dev でメニュー導線を実操作確認(M1 詳細に2ボタン表示=メイン出撃＋フリー周回)。
+- **装備選択の開始時付与を配線 (v0.25.456→457)** — 社長指示「選んだサブをLv1所持で開始＋商人でそれらのLvアップ販売＋レベルアップ選択肢もそれら(他は非表示)」。
+  - インパクト微調整(456): 全ストップ`HITSTOP_MS`=**100ms(0.1s)**、カウンター/バッシュにも**スロー復帰**追加(`triggerHitImpact` に `triggerTimeSlow`)、寄りズーム`*_ZOOM_MAG`=**0.3**。
+  - 装備配線(457): 出撃時の `loadout` をストア `pendingLoadout` に保持(`startMission`)。`resetGame` で `subWeapons`=選んだサブ(空なら固有スキルへフォールバック)各Lv1、`unlockedShopSkillCards`=そのサブ群Lv3(=商人はそれらの昇格のみ販売)に設定。
+  - `generateUpgradeOptions`: クラス専用サブを所持判定に変更＋**最後に所持サブのみへフィルタ**(村雨=刀Lv3昇格は例外)。サブ昇格は最大2枠+残りパッシブ。ドッグの昇格カードも追加。
+  - 検証: `tsc --noEmit` 通過。dev で 同意→START→ステージ→M1→キャラ→装備で「自動タレット＋発火ナイフ」を選び出撃 → HUD に両方Lv1表示・固有手榴弾なし、レベルアップ候補にも自動タレット表示=配線成功を確認。
+- **通常サブ「ドローンブーメラン」実装 (v0.25.458)** — 手動発動(立ち止まり中の近接入力)・3フェーズ・CD UI。
+  - 型: `SubWeaponKey += 'drone-boomerang'` / `WeaponType += 'drone-boomerang-projectile'` / `Projectile += boomPhase,boomOriginX/Y,boomMaxDist,boomStopMs,boomStopUntil`([types/game.ts])。
+  - 発動: `triggerCounter`(近接スイング)内で「`drone-boomerang`所持 & 非排他 & **立ち止まり中(!isMoving)** & CD明け」なら進行方向へ投擲＋5秒CD([gameStore.ts])。自動発動ではない。
+  - 挙動: `updateProjectiles` に out(直進貫通)→stop(一定距離で停止)→return(プレイヤー現在地へホーミング)→done(消滅)を実装。安全消滅=`duration` 上限カリング。
+  - ダメージ(useGameLoop専用ブロック): 行き/戻り=貫通・通常近接同等(各フェーズ hitEnemies で1回)、停止中=`DRONE_BOOM_PULSE_MS=250ms` パルスで範囲内へ近接1/4。敵弾/反射/ヘイト無し・爆発無し。
+  - CD UI: `syncPlayerFx` に gameTime を渡し、CD中は近接CDサークルより一回り大きい円(`r*1.28`)を表示([pixiScene.ts])。
+  - 取得/強化: `SUB_WEAPON_KEYS += 'drone-boomerang'`、`subWeaponDisplayName`、`generateUpgradeOptions` に所持時昇格カード。Lv別: 停止2/3/4秒・飛距離200/236/270。
+  - 検証: `tsc --noEmit` 通過 / dev でバンドル・全スプライト200 OK・コンソールエラーなし。※preview は音声 `ERR_ABORTED` で START 後のローディングが進まず in-combat 実操作確認は不可(環境制約)。実機で投擲挙動を確認推奨。
+- **後続調整 (v0.25.459〜462)**: フリー/メインで固有(デフォルト)サブが落ちる不具合修正(常に固有所持＋選択分)/ ブーメラン発動を近接攻撃と統一・行き速480/距離半減/画面外即帰還 / プレイ中HUDにスクラップ数表示 / 経験値・宝石の呼称を「PHILL」に(HUDの EXP→PHILL)。
+- **屋内ステージ「研究施設」仮実装 (v0.25.463)** — 手書き固定レイアウトの屋内ステージ追加(`indoorMode` フラグ+最小フック)。
+  - 新規 `src/world/labMap.ts`: `LAB_BOUNDS`(2600²)/`LAB_WALLS`/`LAB_DOORS`(weaponRoom/goal)/`LAB_ROOMS`(6)/`LAB_ENEMIES`(固定休眠5)/カードキー/ボタン/武器箱/ゴール/`resolveLabWalls`。
+  - 型: `PickupType+='card-key'` / `Enemy+=dormant?,aggroRange?,fixed?` / `LabDoor`/`LabButton`。
+  - 状態: `indoorMode/labDoors/labButtons/hasCardKey/goalReachedAt/pendingIndoor`、`resetGame` で labMap 初期化、action `triggerEventVictory/openLabDoor/setHasCardKey/pressLabButton/setPendingIndoor`。
+  - 衝突: `movePlayer`/`updateEnemies` を屋内は `resolveLabWalls`(閉ドアのみ壁)へ分岐。休眠→aggroRangeで起床。
+  - useGameLoop: 屋内で自動湧き/wave/城/死神を停止(`&& !indoor`)、`fixed`敵をカリング除外、カメラを`LAB_BOUNDS`にクランプ。カードキー収集→ゴール扉解錠/ボタン近接→武器庫扉/ゴール侵入→演出→`triggerEventVictory`。
+  - 描画: `pixiScene.syncLab`(屋外レイヤー非表示＋床/壁/扉/ボタン/ゴールの矩形描画)、card-keyドット絵。
+  - 入口: `campaign.ts` に `stage-lab`(常時解放)、`App.startGame` で indoor 橋渡し。
+  - 検証: `tsc --noEmit` 通過(各段階)/dev クリーン/ステージ選択に「研究施設(LAB)」表示確認。※preview 音声制約で屋内の実操作は未確認 → 実機で確認推奨。寸法/敵配置/aggro は labMap 定数で微調整。
+
 ### v0.25.351 までの旧経緯は下記の過去メモ参照。
 
 

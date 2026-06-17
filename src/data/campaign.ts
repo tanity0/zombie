@@ -45,32 +45,13 @@ export interface Stage {
   main: StageMission;    // メインミッション
   subs: SubMission[];    // サブミッション(今は空=準備中。後で追加)
   unlockBy: string | null; // このステージ解放に必要な「直前ステージのid」(null=最初から解放)
+  indoor?: boolean;      // 屋内(研究施設)ステージ=手書き壁マップ/カメラクランプ/湧き抑制
 }
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
+// フリーミッションは独立ステージではなく、各ステージにぶら下がる「周回(会話なし)」出撃として
+// ミッション詳細から選べる(社長指示)。'free' kind の独立ステージは廃止。
 export const STAGES: Stage[] = [
-  {
-    id: 'stage-free',
-    index: 0,
-    kind: 'free',
-    name: 'フリーミッション',
-    area: '周回 / ミッション無し',
-    unlockBy: null, // 常に選択可
-    subs: [],
-    main: {
-      code: 'FREE',
-      title: 'フリーミッション',
-      summary: '特定の任務なし。自由に周回して素材・経験・スキルを集める。',
-      synopsis: [
-        '特定の任務は無い周回モード。',
-        '自由に動いて素材・経験・スキルを集める。',
-        '開始時の会話イベントは発生しない。',
-      ],
-      briefing: [],
-      debrief: [],
-      // dialogue 未指定 = 会話なし
-    },
-  },
   {
     id: 'stage-1',
     index: 1,
@@ -121,6 +102,7 @@ export const STAGES: Stage[] = [
     area: '壊滅した研究所 / 中枢データ回収',
     unlockBy: 'stage-1',
     subs: [],
+    indoor: true, // 研究所=屋内ステージ(labMap で壁/カードキー/ゴール)。
     main: {
       code: 'M2',
       title: '研究所再突入',
@@ -476,6 +458,9 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
   'alchemy',
   'turret',
   'shijin',
+  'fire-knife',
+  'drone-boomerang',
+  'wire-anchor',
 ];
 
 // --- 資料室(世界観 / 変異体図鑑)のドラフト -------------------------------

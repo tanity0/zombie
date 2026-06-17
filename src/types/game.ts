@@ -47,6 +47,7 @@ export interface Player {
   ammoHandgun: number;
   ammoShotgun: number;
   ammoRifle: number;
+  ammoPhill: number; // 研究所専用 PHILL銃のリザーブ弾。共有弾とは別プール。
   // Level-up crit bonus [0, 0.30]. Gun shots add this to the weapon's base
   // crit chance; melee uses its weapon crit chance directly.
   critChance: number;
@@ -62,6 +63,13 @@ export interface Player {
   // magazine capacity; reloadMult scales reload time (<1 = faster).
   magBonus: number;
   reloadMult: number;
+  // パッシブ(レベルアップ)の累積効果。stunDurationMult=敵気絶時間倍率(初期1)、
+  // ammoDropBonus=弾薬ドロップ率への加算(初期0)、scrapMult=スクラップ獲得倍率(初期1)。
+  // passiveCounts=各パッシブの取得回数(個別上限の管理)。
+  stunDurationMult: number;
+  ammoDropBonus: number;
+  scrapMult: number;
+  passiveCounts: Partial<Record<PassiveType, number>>;
   // Temporary sub-weapon skill test bed. Keys are unlocked by level-up cards;
   // cooldowns are gameTime timestamps, so they pause with the game.
   subWeapons: SubWeaponKey[];
@@ -91,6 +99,20 @@ export interface Player {
   shijinSlideUntil: number;
   shijinSlideDirX: number;
   shijinSlideDirY: number;
+  // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
+  // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
+  // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。
+  // wireAnchorX/Y=打ち込み地点。wireAnchored=打ち込み済みか。wirePlantUntil=溜の完了時刻(Date.now)。
+  // wireDashUntil=高速移動の終了時刻。wireDashSpeed=高速移動速度(px/s)。高速移動中は敵接触ダメージ無効。
+  wireAnchorX: number;
+  wireAnchorY: number;
+  wireAnchored: boolean;
+  wirePlantUntil: number;
+  wireDashUntil: number;
+  wireDashSpeed: number;
+  // アンカーが敵に刺さった(吸着)場合: その敵ID と、引き寄せ→近接→ノックバックを解決する時刻。
+  wireStuckEnemyId: string;
+  wireStuckUntil: number;
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.
@@ -150,6 +172,22 @@ export interface Enemy {
   difficultyMultiplier?: number;
   // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
   reaperChaser?: boolean;
+  // 特殊AI(犬型=突進 / パンプキン=ジャンプ攻撃)の状態機械。すべて gameTime(ms)基準。
+  //  werewolf: undefined→'windup'(減速)→'charge'(2倍速で aiTarget へ突進)→cooldown。
+  //  pumpkin : undefined→'crouch'(縮みながら3秒溜め)→'jump'(1秒でaiTargetへ着地)→'recover'(1秒停止)。
+  aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover';
+  aiPhaseUntil?: number; // 現フェーズの終了 gameTime
+  aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
+  aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
+  aiTargetY?: number;
+  aiFromX?: number;      // ジャンプ開始座標(着地までの補間元)
+  aiFromY?: number;
+  aiStartedAt?: number;  // ジャンプ開始 gameTime(アーク進行に使用)
+  // 屋内ステージ用: 固定配置の休眠敵。dormant 中は静止し、aggroRange 内にプレイヤーが
+  // 入ると起床(dormant=false)して以後通常追跡。fixed=距離カリングの対象外(常駐)。
+  dormant?: boolean;
+  aggroRange?: number;
+  fixed?: boolean;
 }
 
 export type SummonKind = 'normal' | 'rare';
@@ -188,7 +226,10 @@ export type EnemyType =
   | 'werewolf'  // mid-game fast bruiser
   | 'pumpkin'   // elite (wave events)
   | 'giantbat'  // mini-boss every ~10 minutes
-  | 'reaper';   // terminal entity at 30:00
+  | 'reaper'    // terminal entity at 30:00
+  | 'lab-zombie-1' // 研究所Lv1(通常・男女)
+  | 'lab-zombie-2' // 研究所Lv2(変異・男女)
+  | 'lab-zombie-3'; // 研究所Lv3(巨体・パンプキン相当)
 
 // Weapon types
 export interface Weapon {
@@ -229,14 +270,14 @@ export interface Weapon {
 }
 
 // Gun families. Each shares an ammo pool with the matching AmmoType.
-export type WeaponCategory = 'handgun' | 'shotgun' | 'rifle';
+export type WeaponCategory = 'handgun' | 'shotgun' | 'rifle' | 'phill';
 export type AmmoType = WeaponCategory;
 
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。
@@ -278,6 +319,7 @@ export type ShopItemKey =
   | 'ammo-handgun'
   | 'ammo-shotgun'
   | 'ammo-rifle'
+  | 'ammo-phill'
   | 'dog'
   | 'class-skill'
   | 'medkit'
@@ -360,6 +402,19 @@ export interface Projectile {
   // when the player melee-hits it. `turretModeSwitchedAt` drives the swap VFX.
   turretMode?: 'forward' | 'omni';
   turretModeSwitchedAt?: number;
+  // 発火ナイフ(weaponType 'fire-knife-projectile'): 敵に命中すると刺さり、`stuckToEnemyId`
+  // の敵へ追従。`explodeAt`(Date.now ms)で範囲爆発。敵が死んでも最後の位置で爆発する。
+  stuckToEnemyId?: string;
+  isStuck?: boolean;
+  explodeAt?: number;
+  // ドローンブーメラン(weaponType 'drone-boomerang-projectile'): 行き('out')→停止('stop')→
+  // 戻り('return')→消滅('done')。停止は回転+周囲パルス。戻りはプレイヤー現在地へ。
+  boomPhase?: 'out' | 'stop' | 'return' | 'done';
+  boomOriginX?: number;  // 投擲開始位置(飛距離計測の基点)
+  boomOriginY?: number;
+  boomMaxDist?: number;  // 行きの最大飛距離(Lv別)
+  boomStopMs?: number;   // 停止時間(Lv別)
+  boomStopUntil?: number; // 停止終了 Date.now(out→stop時に設定)
 }
 
 // Pickup types
@@ -402,7 +457,7 @@ export interface BreakableProp {
   lastHit: number;
 }
 
-export type BreakablePropType = 'torch' | 'mine';
+export type BreakablePropType = 'torch' | 'mine' | 'uv-bar';
 
 export interface CastleEvent {
   x: number;
@@ -414,7 +469,14 @@ export type PickupType =
   | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'
   | 'strap' | 'treasure'
   | 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle'
-  | 'weapon-drop' | 'weapon-crate' | 'quick-magazine';
+  | 'weapon-drop' | 'weapon-crate' | 'quick-magazine'
+  | 'card-key' | 'lab-clear-item' | 'ammo-phill';
+
+// 屋内(研究施設)ステージのギミック状態。
+export interface LabDoor { id: string; rect: { x: number; y: number; width: number; height: number }; open: boolean; }
+export interface LabButton { id: string; x: number; y: number; radius: number; pressed: boolean; opensDoorId: string; }
+// 屋内の障害物プロップ(木の代わり)。x=中心 / y=足元(下辺) / variant=テクスチャ名 / rect=足元の当たり判定。
+export interface LabProp { id: string; x: number; y: number; variant: string; rect: { x: number; y: number; width: number; height: number }; }
 
 // Upgrade options
 export interface UpgradeOption {
@@ -428,7 +490,7 @@ export interface UpgradeOption {
   level: number;
 }
 
-export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance';
+export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance' | 'stunDuration' | 'ammoDrop' | 'scrapGain';
 
 // Game statistics
 export interface GameStats {

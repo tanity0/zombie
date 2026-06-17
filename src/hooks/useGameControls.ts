@@ -97,6 +97,15 @@ export const useGameControls = () => {
         // First press only — auto-repeat shouldn't keep refiring the counter.
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
         if (!e.repeat && !isGameTimeStopped()) {
+          // PHILL銃(研究所): Spaceで狙い方向へ1発(手動)。撃てたら発砲SE。
+          const gs = useGameStore.getState();
+          const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
+          if (gun?.key === 'phill-revolver') {
+            const before = gun.magazine ?? 0;
+            gs.firePhillShot();
+            const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
+            if (after < before) playSfx('handgun-fire');
+          }
           const counter = useGameStore.getState().triggerCounter();
           if (counter.swung) playSfx('melee');
           if (counter.finish) playSfx('melee-finish');

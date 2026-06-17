@@ -15,12 +15,20 @@ import {
   PLAYER_INTRO_MS,
   playerIntroOffset,
   playerIntroCamFollow,
+  CAMERA_INTRO_LIFT_FRAC,
   INTRO_DIALOGUE_TRIGGER_T,
   introDialogueTotalMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
+  COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
+  DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
-  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST
+  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
+  WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
+  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS
 } from '../store/gameStore';
+import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
+import { segmentBlocked, type Rect } from '../world/obstacles';
+import { treesInRegion, trunkRect } from '../world/trees';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile } from '../types/game';
 import {
@@ -85,6 +93,10 @@ const DOG_COLLECT_RADIUS_BY_LEVEL = [0, 48, 64, 80];
 const DOG_COLLECT_BURST_LIMIT = 8;
 const DOG_FETCH_PICKUP_MS = 330;
 const DOG_FETCH_DURATION_MS = 620;
+// ドッグは移動軌道上の敵を噛む(小ダメージ+小ノックバック)。1往復につき同じ敵は1回だけ。
+const DOG_BITE_RADIUS = 28;
+const DOG_BITE_DAMAGE = 6;            // TODO(ドッグ): 小ダメージ。仮値
+const DOG_BITE_KNOCKBACK_MULT = 0.8;  // 小ノックバック
 // デコイ: 進行方向へ投げる円盤型の弾迎撃装置。設置中0.5秒ごとに、射程内の
 // 最も近い敵弾を1発だけ迎撃して消す(高速弾の取りこぼしは許容)。
 const DECOY_COOLDOWN_MS = 10000;                  // 全Lv共通
@@ -135,6 +147,17 @@ const TURRET_GRENADE_CHANCE = 0.10;                     // 通常弾の代わり
 const TURRET_LAUNCHER_DAMAGE = 44;                      // タレットのグレネードランチャー弾の直撃ダメージ(手榴弾とは別物)
 const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発・範囲。TODO: 実機調整(既存爆発演出を流用)
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
+// 発火ナイフ(通常サブウェポン): クールダウンごとに敵1体へナイフを自動投擲。命中で刺さり、
+// 単体ダメージ→2秒後に刺さった位置(敵に追従)で範囲爆発。敵を爆弾化する遅延範囲武器。
+const FIRE_KNIFE_COOLDOWN_BY_LEVEL = [0, 8000, 7000, 6000]; // Lv1=8s / Lv2=7s / Lv3=6s
+const FIRE_KNIFE_FUSE_MS = 2000;                            // 刺さってから爆発までの遅延(全Lv共通)
+const FIRE_KNIFE_RADIUS_BY_LEVEL = [0, 54, 62, 70];         // 爆発半径(Lv1/2/3)。調整可
+const FIRE_KNIFE_SPEED = 300;                               // 投擲速度(px/s)
+const FIRE_KNIFE_FLIGHT_MS = 1200;                          // 飛行寿命。これを超えて未命中なら消滅(外れ)
+const FIRE_KNIFE_HIT_DAMAGE = 24;                           // TODO(発火ナイフ): 命中時単体ダメージ。仮値。手榴弾直撃42より低め
+const FIRE_KNIFE_EXPLOSION_DAMAGE = 30;                     // TODO(発火ナイフ): 爆発ダメージ。仮値。手榴弾42より低め(2段ヒットなので抑えめ)
+const FIRE_KNIFE_KNOCKBACK_MULT = 1.6;                      // 爆発の軽いノックバック(吹き飛ばし主目的ではない)
+const FIRE_KNIFE_EXPLOSION_EFFECT_MS = 420;                 // 爆発演出の長さ
 const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   1: [0],
   2: [-0.9, 0.9],
@@ -156,10 +179,14 @@ const GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS = 440;
 type DogFetchJob = {
   collectAt: number;
   finishAt: number;
+  startedAt: number;   // 出発時刻(軌道補間に使用)
+  fromX: number;       // 出発座標(プレイヤー位置)
+  fromY: number;
   targetX: number;
   targetY: number;
   radius: number;
   collected: boolean;
+  bitten: Set<string>; // この往復で既に噛んだ敵(重複噛み防止)
 };
 
 export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean } = {}) => {
@@ -195,6 +222,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const shieldHitRef = useRef<Map<string, number>>(new Map());
   // 自動タレットの発射スロットル: タレットid -> 次に撃てる gameTime(ms)。
   const turretFireRef = useRef<Map<string, number>>(new Map());
+  // ドローンブーメラン停止中の周囲パルス: boomerang id -> 次パルスの gameTime(ms)。
+  const boomPulseRef = useRef<Map<string, number>>(new Map());
   // 前方集中(連射)タレットの索敵スキャン角(rad)。射程に敵がいない間ゆっくり回転する。
   const turretAimRef = useRef<Map<string, number>>(new Map());
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
@@ -348,6 +377,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       spawnBurst(cx + dx * length, cy + dy * length, burstHex, 6);
     };
     const fireShijinGod = (god: ShijinGod, x: number, y: number) => {
+      // 四神技発動の揺れ(描画のみ=リズム不変)。
+      useGameStore.getState().triggerShake(SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG);
       if (god === 'suzaku') {
         // 朱雀: 近場最大3体を「グレネードランチャー(rifle-t3)」相当で爆破(手榴弾heavy-grenadeではない)。
         // 半径・演出時間はランチャーの爆発(GRENADE_BLAST_RADIUS / GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS)に合わせ、
@@ -512,7 +543,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gameBounds,
         } = loopState;
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
-        const timeScale = nowMs < loopState.timeSlowUntil ? loopState.timeSlowScale : 1;
+        const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
+        // 範囲攻撃(爆発)の壁ブロック用。爆心地周辺の壁を1回だけ取得 → 各敵へ視線判定。
+        // 爆発は時々のイベント+敵数上限なので軽い。屋内=lab壁 / 屋外=近傍の木。
+        const aoeWalls = (cx: number, cy: number): Rect[] => {
+          if (indoor) return [...labBlockingWalls(loopState.labDoors.filter(d => d.open).map(d => d.id)), ...loopState.labProps.map(p => p.rect)];
+          const pad = 200;
+          return treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
+        };
+        // スロー中は倍率を一定にせず、開始倍率→1.0 へ滑らかにランプ(満了で等速に切り替わる
+        // 「ぶつ切り」を解消)。ヒットストップ(全停止)はループ先頭で別途処理済み。
+        let timeScale = 1;
+        if (nowMs < loopState.timeSlowUntil) {
+          const span = Math.max(1, loopState.timeSlowUntil - loopState.timeSlowStart);
+          const k = Math.max(0, Math.min(1, (nowMs - loopState.timeSlowStart) / span));
+          const ease = k * k * (3 - 2 * k); // smoothstep
+          timeScale = loopState.timeSlowScale + (1 - loopState.timeSlowScale) * ease;
+        }
         const deltaTime = baseDeltaTime * timeScale;
 
         if (benchmarkModeRef.current) {
@@ -549,12 +596,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
           // カメラがステージを横断して飛行キャラXに追従(<1でキャラが少し左から入る)。
-          // 縦は着地面(player.y)に固定し、飛行アーチは見た目側で見せる。
+          // 縦はヘリ高度へ寄せる(introOff.y は上=負。被写体を上方に置く)→ 降下に同期して着地面へ戻る。
           const introT = Math.max(0, Math.min(1, 1 - (useGameStore.getState().introUntil - nowMs) / PLAYER_INTRO_MS));
           const introOff = playerIntroOffset(introT);
           const camFollow = playerIntroCamFollow(introT);
           const targetCameraX = (player.x + introOff.x * camFollow) - gameBounds.width / 2 + player.width / 2;
-          const targetCameraY = player.y - gameBounds.height / 2 + player.height / 2;
+          const targetCameraY = (player.y + introOff.y * CAMERA_INTRO_LIFT_FRAC) - gameBounds.height / 2 + player.height / 2;
           setCameraPosition(targetCameraX, targetCameraY);
           updateEffects(deltaTime);
           frameRef.current = requestAnimationFrame(gameLoop);
@@ -589,7 +636,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         lastSeenGameTimeRef.current = newGameTime;
 
         const castle = useGameStore.getState().castleEvent;
-        if (!danceTest && !castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
+        if (!danceTest && !indoor && !castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
           markCastleBossSpawned();
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
@@ -604,7 +651,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // --- 死神(深奥リスク)システム v1 ---
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
-        if (!danceTest) {
+        if (!danceTest && !indoor) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -959,6 +1006,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (Math.hypot(baseCamX - camX, baseCamY - camY) > CAMERA_SNAP_DIST) {
           camX = baseCamX; camY = baseCamY; look.x = 0; look.y = 0;
         }
+        // 屋内はカメラを「野外マージン込みの外周」にクランプ。壁の外に野外を設けたので、端でも
+        // プレイヤーが画面中心を保てる(壁で進めなくてもカメラは野外側へ寄れる)。
+        if (indoor) {
+          const maxCamX = LAB_OUTER_BOUNDS.x + LAB_OUTER_BOUNDS.width - gameBounds.width;
+          const maxCamY = LAB_OUTER_BOUNDS.y + LAB_OUTER_BOUNDS.height - gameBounds.height;
+          camX = Math.max(LAB_OUTER_BOUNDS.x, Math.min(maxCamX, camX));
+          camY = Math.max(LAB_OUTER_BOUNDS.y, Math.min(maxCamY, camY));
+        }
         setCameraPosition(camX, camY);
         syncBreakableProps({ x: baseCamX, y: baseCamY }, gameBounds);
         
@@ -975,7 +1030,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 進むので、刀を外す実装が将来入っても副作用が残らない)。
         const katanaActive = isKatanaMode(postReloadPlayer);
         const activeGun = getActiveGun(postReloadPlayer);
-        if (activeGun && !katanaActive) {
+        // PHILL銃は自動射撃しない(指離しの手動発砲のみ=firePhillShot)。
+        if (activeGun && !katanaActive && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             if (activeGun.category === 'handgun') playSfx('handgun-fire');
@@ -1166,6 +1222,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const activeFetch = dogFetchRef.current;
 
           if (activeFetch) {
+            // 移動軌道上の敵を噛む: 現在のドッグ位置(出発→対象→プレイヤーへ戻る)を補間で求め、
+            // 近接した未噛みの敵に小ダメージ+小ノックバック。
+            {
+              const t = Math.max(0, Math.min(1, (nowMs - activeFetch.startedAt) / DOG_FETCH_DURATION_MS));
+              const outFrac = DOG_FETCH_PICKUP_MS / DOG_FETCH_DURATION_MS;
+              const bstate = useGameStore.getState();
+              const homeX = bstate.player.x + bstate.player.width / 2;
+              const homeY = bstate.player.y + bstate.player.height / 2;
+              let dogX: number, dogY: number;
+              if (t <= outFrac) {
+                const k = outFrac <= 0 ? 1 : t / outFrac;
+                dogX = activeFetch.fromX + (activeFetch.targetX - activeFetch.fromX) * k;
+                dogY = activeFetch.fromY + (activeFetch.targetY - activeFetch.fromY) * k;
+              } else {
+                const k = (t - outFrac) / Math.max(0.001, 1 - outFrac);
+                dogX = activeFetch.targetX + (homeX - activeFetch.targetX) * k;
+                dogY = activeFetch.targetY + (homeY - activeFetch.targetY) * k;
+              }
+              for (const enemy of bstate.enemies) {
+                if (enemy.type === 'reaper') continue;
+                if (activeFetch.bitten.has(enemy.id)) continue;
+                const ex = enemy.x + enemy.width / 2;
+                const ey = enemy.y + enemy.height / 2;
+                if (Math.hypot(ex - dogX, ey - dogY) > DOG_BITE_RADIUS) continue;
+                activeFetch.bitten.add(enemy.id);
+                const killed = damageEnemy(enemy.id, DOG_BITE_DAMAGE);
+                spawnDamageNumber(ex, enemy.y, DOG_BITE_DAMAGE, false);
+                spawnBurst(ex, ey, '#cbd5e1', 4);
+                if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                  const n = Math.max(0.001, Math.hypot(ex - dogX, ey - dogY));
+                  useGameStore.getState().knockbackEnemy(enemy.id, (ex - dogX) / n, (ey - dogY) / n, DOG_BITE_KNOCKBACK_MULT);
+                }
+                if (killed) {
+                  playEnemyDeath();
+                  addPickup({ id: `pickup-xp-dog-${enemy.id}`, x: ex - 8, y: ey - 8, type: 'experience', value: enemy.experienceValue });
+                }
+              }
+            }
             if (!activeFetch.collected && nowMs >= activeFetch.collectAt) {
               const state = useGameStore.getState();
               const eligiblePickups = state.pickups
@@ -1222,6 +1316,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const playerX = state.player.x + state.player.width / 2;
             const playerY = state.player.y + state.player.height / 2;
             const eligiblePickups = state.pickups
+              // 目標アイテム(カードキー/武器箱/クリアアイテム)はドッグで遠隔回収させない(壁越し誤発火防止)。
+              .filter(p => p.type !== 'card-key' && p.type !== 'weapon-crate' && p.type !== 'lab-clear-item')
               .filter(p => p.type !== 'health' || state.player.health < state.player.maxHealth)
               .filter(p => {
                 if (
@@ -1250,10 +1346,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               dogFetchRef.current = {
                 collectAt: nowMs + DOG_FETCH_PICKUP_MS,
                 finishAt: nowMs + DOG_FETCH_DURATION_MS,
+                startedAt: nowMs,
+                fromX: playerX,
+                fromY: playerY,
                 targetX,
                 targetY,
                 radius: collectRadius,
                 collected: false,
+                bitten: new Set<string>(),
               };
               spawnEffect({
                 kind: 'dogFetch',
@@ -1435,6 +1535,48 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
         }
 
+        // 発火ナイフ: クールダウンごとに最も近い敵1体へナイフを投擲(敵が居る時だけ)。
+        if (
+          subWeaponPlayer.subWeapons.includes('fire-knife') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'fire-knife') &&
+          gameTime >= (subWeaponPlayer.subWeaponCooldowns['fire-knife'] ?? 0)
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['fire-knife'] ?? 1));
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // ターゲット = プレイヤーに最も近い非リーパー敵(既存の自動射撃に準拠)。
+          const target = useGameStore.getState().enemies
+            .filter(e => e.type !== 'reaper')
+            .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
+            .sort((a, b) => a.dist - b.dist)[0]?.enemy;
+          if (target) {
+            const aimX = target.x + target.width / 2 - pcx;
+            const aimY = target.y + target.height / 2 - pcy;
+            const mag = Math.max(0.001, Math.hypot(aimX, aimY));
+            addProjectile({
+              id: `proj-fire-knife-${Date.now()}`,
+              x: pcx - 7,
+              y: pcy - 7,
+              width: 14,
+              height: 14,
+              speed: FIRE_KNIFE_SPEED,
+              damage: FIRE_KNIFE_HIT_DAMAGE,
+              direction: { x: aimX / mag, y: aimY / mag },
+              weaponType: 'fire-knife-projectile',
+              weaponKey: 'sub-fire-knife',
+              duration: FIRE_KNIFE_FLIGHT_MS, // 未命中ならこの寿命で消滅(外れ→消える)
+              createdAt: Date.now(),
+              passthrough: false,
+              hitEnemies: [],
+              hostile: false,
+              reflected: false,
+              area: FIRE_KNIFE_RADIUS_BY_LEVEL[level], // 爆発半径(命中後の爆発で参照)
+            });
+            playSfx('shot-damage');
+            setSubWeaponCooldown('fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
+          }
+        }
+
         // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
         // パルス方式。距離は二乗比較。高速弾の取りこぼしは許容(swept判定なし)。
         {
@@ -1544,12 +1686,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(tcx, tcy, 8, TURRET_EXPLOSION_RADIUS, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(tcx, tcy, '#f97316', 16);
               useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              const tWalls = aoeWalls(tcx, tcy);
               for (const enemy of useGameStore.getState().enemies) {
                 if (enemy.type === 'reaper') continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - tcx, ey - tcy);
                 if (dist > TURRET_EXPLOSION_RADIUS) continue;
+                if (tWalls.length > 0 && segmentBlocked(tcx, tcy, ex, ey, tWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / TURRET_EXPLOSION_RADIUS;
                 const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, dmg);
@@ -1675,12 +1819,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(gx, gy, '#f97316', 20);
           spawnBurst(gx, gy, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', fxMs);
+          const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
             if (enemy.type === 'reaper') continue;
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
             const dist = Math.hypot(ex - gx, ey - gy);
             if (dist > blastR) continue;
+            if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
             const falloff = 1 - dist / blastR;
             const splashDamage = Math.max(1, Math.round(HEAVY_GRENADE_DAMAGE * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage);
@@ -1708,6 +1854,126 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 type: 'experience',
                 value: enemy.experienceValue
               });
+            }
+          }
+        }
+
+        // 発火ナイフ: 飛行中は敵に当たると刺さり(単体ダメージ)、2秒後に刺さった位置で範囲爆発。
+        // 刺さった後の追従は updateProjectiles 側(stuckToEnemyId)。ここでは命中判定と爆発を処理。
+        {
+          const fkState = useGameStore.getState();
+          const knives = fkState.projectiles.filter(p => p.weaponType === 'fire-knife-projectile');
+          for (const knife of knives) {
+            // すでに刺さっている: 2秒経過で爆発。
+            if (knife.stuckToEnemyId) {
+              if (Date.now() < (knife.explodeAt ?? 0)) continue;
+              const bx = knife.x + knife.width / 2;
+              const by = knife.y + knife.height / 2;
+              const blastR = knife.area ?? FIRE_KNIFE_RADIUS_BY_LEVEL[1];
+              removeProjectile(knife.id);
+              playSfx('bomb');
+              spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+              spawnBurst(bx, by, '#f97316', 18);
+              spawnBurst(bx, by, '#7f1d1d', 8);
+              useGameStore.getState().spawnGlow(bx, by, 46, 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+              const fkWalls = aoeWalls(bx, by);
+              for (const enemy of useGameStore.getState().enemies) {
+                if (enemy.type === 'reaper') continue;
+                const ex = enemy.x + enemy.width / 2;
+                const ey = enemy.y + enemy.height / 2;
+                const dist = Math.hypot(ex - bx, ey - by);
+                if (dist > blastR) continue;
+                if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
+                const falloff = 1 - dist / blastR;
+                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
+                const killed = damageEnemy(enemy.id, splashDamage);
+                spawnDamageNumber(ex, enemy.y, splashDamage, false);
+                spawnBurst(ex, ey, '#b91c1c', 4);
+                if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                  const norm = Math.max(0.001, dist);
+                  useGameStore.getState().knockbackEnemy(enemy.id, (ex - bx) / norm, (ey - by) / norm, FIRE_KNIFE_KNOCKBACK_MULT * (0.55 + falloff * 0.45));
+                }
+                if (killed) {
+                  playEnemyDeath();
+                  addPickup({ id: `pickup-xp-fire-knife-${enemy.id}`, x: ex - 8, y: ey - 8, type: 'experience', value: enemy.experienceValue });
+                }
+              }
+              continue;
+            }
+            // 飛行中: 非リーパー敵への命中判定(1体目に刺さる)。
+            let hit: typeof fkState.enemies[number] | undefined;
+            for (const e of fkState.enemies) {
+              if (e.type === 'reaper') continue;
+              if (checkCollision(knife, e)) { hit = e; break; }
+            }
+            if (hit) {
+              const hx = hit.x + hit.width / 2;
+              const hy = hit.y + hit.height / 2;
+              const killed = damageEnemy(hit.id, knife.damage);
+              spawnDamageNumber(hx, hit.y, knife.damage, false);
+              spawnBurst(hx, hy, '#fb923c', 5); // 刺さった火花(軽量)
+              playSfx('shot-damage');
+              // 刺さる: 敵に追従し2秒後に爆発(敵が死んでも死亡地点で爆発)。
+              useGameStore.getState().stickFireKnife(knife.id, hit.id, hx - knife.width / 2, hy - knife.height / 2, FIRE_KNIFE_FUSE_MS);
+              if (killed) {
+                playEnemyDeath();
+                addPickup({ id: `pickup-xp-fire-knife-hit-${hit.id}`, x: hx - 8, y: hy - 8, type: 'experience', value: hit.experienceValue });
+              }
+            }
+          }
+        }
+
+        // ドローンブーメラン: 行き/戻りは貫通接触(近接同等)、停止中は0.25秒パルスで周囲に1/4ダメージ。
+        // 移動/フェーズ遷移は updateProjectiles 側。ここはダメージと消滅のみ。敵弾/ヘイトには干渉しない。
+        {
+          const bs = useGameStore.getState();
+          const booms = bs.projectiles.filter(p => p.weaponType === 'drone-boomerang-projectile');
+          const liveBoomIds = new Set(booms.map(b => b.id));
+          for (const id of [...boomPulseRef.current.keys()]) {
+            if (!liveBoomIds.has(id)) boomPulseRef.current.delete(id);
+          }
+          for (const boom of booms) {
+            if (boom.boomPhase === 'done') { removeProjectile(boom.id); boomPulseRef.current.delete(boom.id); continue; }
+            const bx = boom.x + boom.width / 2;
+            const by = boom.y + boom.height / 2;
+            const phase = boom.boomPhase ?? 'out';
+            if (phase === 'out' || phase === 'return') {
+              // 貫通接触: 同一敵はこのフェーズで1回(hitEnemies)。行き/戻りで配列はリセット済み。
+              for (const e of bs.enemies) {
+                if (e.type === 'reaper') continue;
+                if (boom.hitEnemies.includes(e.id)) continue;
+                if (!checkCollision(boom, e)) continue;
+                boom.hitEnemies.push(e.id); // store配列を直接更新(既存の貫通弾と同じ手法)
+                const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                const killed = damageEnemy(e.id, boom.damage);
+                spawnDamageNumber(ex, e.y, boom.damage, false);
+                spawnBurst(ex, ey, '#a5f3fc', 4);
+                if (killed) {
+                  playEnemyDeath();
+                  addPickup({ id: `pickup-xp-boom-${e.id}-${Math.floor(Date.now())}`, x: ex - 8, y: ey - 8, type: 'experience', value: e.experienceValue });
+                }
+              }
+            } else if (phase === 'stop') {
+              // 0.25秒ごとのパルス。範囲内の敵へ 1/4 ダメージ(同一敵は0.25秒間隔=パルス間隔)。
+              const nextPulse = boomPulseRef.current.get(boom.id) ?? 0;
+              if (gameTime >= nextPulse) {
+                boomPulseRef.current.set(boom.id, gameTime + DRONE_BOOM_PULSE_MS);
+                const r = boom.area ?? DRONE_BOOM_RADIUS;
+                const dmg = Math.max(1, Math.round(boom.damage / DRONE_BOOM_STOP_DMG_DIV));
+                const boomWalls = aoeWalls(bx, by);
+                for (const e of bs.enemies) {
+                  if (e.type === 'reaper') continue;
+                  const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                  if (Math.hypot(ex - bx, ey - by) > r) continue;
+                  if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
+                  const killed = damageEnemy(e.id, dmg);
+                  spawnDamageNumber(ex, e.y, dmg, false);
+                  if (killed) {
+                    playEnemyDeath();
+                    addPickup({ id: `pickup-xp-boom-${e.id}-${Math.floor(Date.now())}`, x: ex - 8, y: ey - 8, type: 'experience', value: e.experienceValue });
+                  }
+                }
+              }
             }
           }
         }
@@ -1960,10 +2226,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
           useGameStore.getState().spawnGlow(pcx, pcy, 78, 'rgba(56,189,248,', COUNTER_REFLECT_SLOW_MS);
-          // ダンス中(四神舞)はスローモーを入れない(リズムが乱れるため)。演出(グロー/リング/バースト)は残す。
-          if (!useGameStore.getState().rhythm.active) {
-            useGameStore.getState().triggerTimeSlow(0.34, COUNTER_REFLECT_SLOW_MS);
-          }
+          // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
+          useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
           spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
@@ -1983,7 +2247,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const projectilesRemovedThisFrame = new Set<string>();
         const grenadeExplodedThisFrame = new Set<string>();
         
-        projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage }) => {
+        projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage, headshot }) => {
           const enemyForFx = collisionEnemies.find(e => e.id === enemyId);
           const projectile = collisionProjectiles.find(p => p.id === projectileId);
 
@@ -1994,7 +2258,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             enemyForFx?.rootUntil !== undefined &&
             gameTime < enemyForFx.rootUntil &&
             Math.random() < MARKSMAN_TRAP_CRIT_BONUS;
-          const hitCrit = !!projectile?.crit || trapCritBonus;
+          // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
+          const hitCrit = !!projectile?.crit || trapCritBonus || headshot === true;
           const critMult = hitCrit
             ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
             : 1;
@@ -2032,12 +2297,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT;
+            const glWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
               if (splashEnemy.id === enemyId || splashEnemy.type === 'reaper') continue;
               const sx = splashEnemy.x + splashEnemy.width / 2;
               const sy = splashEnemy.y + splashEnemy.height / 2;
               const dist = Math.hypot(sx - blastX, sy - blastY);
               if (dist > GRENADE_BLAST_RADIUS) continue;
+              if (glWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, glWalls)) continue; // 壁越し不可
               const falloff = 1 - dist / GRENADE_BLAST_RADIUS;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
@@ -2079,18 +2346,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ) {
             const hitCount = projectileHitCountsByEnemy.get(enemyId) ?? 1;
             const pelletKnockback = projectile.weaponType === 'shotgun' ? 1.35 : 1;
+            // PHILL銃の胴体(非ヘッドショット)命中は通常の2倍ノックバック。
+            const phillBody = projectile.weaponType === 'phill-bullet' && headshot !== true;
+            const baseKb = Math.min(3, hitCount * pelletKnockback);
             useGameStore.getState().knockbackEnemy(
               enemyId,
               projectile.direction.x,
               projectile.direction.y,
-              Math.min(3, hitCount * pelletKnockback)
+              phillBody ? baseKb * 2 : baseKb
             );
           }
 
           // Crit that didn't outright kill → stun the target so it can be
           // executed with a melee finisher. Mark it with a brief yellow ring.
           if (hitCrit && !enemyKilled && enemyForFx) {
-            useGameStore.getState().stunEnemy(enemyId, gameTime + STUN_DURATION_MS);
+            // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
+            const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
+            useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);
             spawnRing(
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y + enemyForFx.height / 2,
@@ -2169,7 +2441,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // drop rate, so the slider governs the whole ammo economy. (Before,
               // only melee kills dropped — but the gun lands most killing blows,
               // so the rate felt far lower than set.) Active gun's family.
-              const gunKillDropRate = useGameStore.getState().meleeAmmoDropPercent / 100;
+              // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
+              const gunKillDropRate = Math.max(0, Math.min(1,
+                useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0)
+              ));
               if (Math.random() < gunKillDropRate) {
                 const equippedAmmo = getActiveGun(player)?.ammoType;
                 const owned = getGuns(player)
@@ -2221,7 +2496,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   value: 0
                 });
               }
-              if (Math.random() < bombChance) {
+              if (!indoor && Math.random() < bombChance) { // 研究所(屋内)は爆弾を出さない(社長指示)
                 addPickup({
                   id: `pickup-bomb-${enemy.id}`,
                   x: enemy.x + enemy.width / 2 - 8 - 14,
@@ -2253,10 +2528,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (broken.type === 'mine') {
               spawnEggFluidSplash(fxX, fxY, 0.82);
             } else {
-              spawnBurst(fxX, fxY, '#f97316', 20);
-              spawnBurst(fxX, fxY, '#fde68a', 8);
-              spawnRing(fxX, fxY, 6, 36, 'rgba(251,146,60,0.86)', 3, 340);
-              useGameStore.getState().spawnGlow(fxX, fxY, 48, 'rgba(251,146,60,', 380);
+              const isUv = broken.type === 'uv-bar'; // UVバーは紫の破壊エフェクト
+              spawnBurst(fxX, fxY, isUv ? '#a855f7' : '#f97316', 20);
+              spawnBurst(fxX, fxY, isUv ? '#e9d5ff' : '#fde68a', 8);
+              spawnRing(fxX, fxY, 6, 36, isUv ? 'rgba(168,85,247,0.86)' : 'rgba(251,146,60,0.86)', 3, 340);
+              useGameStore.getState().spawnGlow(fxX, fxY, 48, isUv ? 'rgba(168,85,247,' : 'rgba(251,146,60,', 380);
               dropBreakablePropLoot(broken);
             }
           } else {
@@ -2290,10 +2566,87 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
         
+        // ワイヤーアンカーの毎フレーム処理。
+        {
+          const wp = useGameStore.getState().player;
+          const nowW = Date.now();
+          const pcx = wp.x + wp.width / 2;
+          const pcy = wp.y + wp.height / 2;
+          if (wp.wireStuckEnemyId) {
+            // 敵に吸着中: 0.1秒で引き寄せ → 近接ダメージ → 大幅ノックバック。
+            const liveE = useGameStore.getState().enemies.find(e => e.id === wp.wireStuckEnemyId);
+            if (!liveE) {
+              // 敵が消滅 → アンカー解除。
+              useGameStore.setState({ player: { ...useGameStore.getState().player, wireStuckEnemyId: '', wireStuckUntil: 0, wireAnchored: false, wirePlantUntil: 0, wireAnchorX: 0, wireAnchorY: 0 } });
+            } else if (nowW < wp.wireStuckUntil) {
+              // 引き寄せ: 敵をプレイヤー近接間合いへ寄せる。ワイヤー先端は敵に追従。
+              const ecx = liveE.x + liveE.width / 2;
+              const ecy = liveE.y + liveE.height / 2;
+              const dx = pcx - ecx, dy = pcy - ecy;
+              const dist = Math.hypot(dx, dy) || 1;
+              const target = MELEE_RADIUS * 0.7;             // ここまで寄せる
+              const remain = Math.max(1, wp.wireStuckUntil - nowW);
+              const frac = Math.min(1, (baseDeltaTime * 1000) / remain);
+              const pull = Math.max(0, dist - target) * frac;
+              const nx = ecx + (dx / dist) * pull - liveE.width / 2;
+              const ny = ecy + (dy / dist) * pull - liveE.height / 2;
+              useGameStore.setState({
+                enemies: useGameStore.getState().enemies.map(e => e.id === liveE.id ? { ...e, x: nx, y: ny, vx: 0, vy: 0, dormant: false, knockbackUntil: 0 } : e),
+                player: { ...useGameStore.getState().player, wireAnchorX: ecx, wireAnchorY: ecy },
+              });
+            } else {
+              // 解決: 近接ダメージ + 大幅ノックバック(プレイヤーから外向き)。
+              const ecx = liveE.x + liveE.width / 2;
+              const ecy = liveE.y + liveE.height / 2;
+              const dx = ecx - pcx, dy = ecy - pcy;
+              const dist = Math.hypot(dx, dy) || 1;
+              const melee = wp.weapons.find(w => w.isMelee);
+              const dmg = melee?.damage ?? 6;
+              const killed = useGameStore.getState().damageEnemy(liveE.id, dmg);
+              if (!killed) {
+                useGameStore.setState({
+                  enemies: useGameStore.getState().enemies.map(e => e.id === liveE.id ? {
+                    ...e,
+                    knockbackVx: (dx / dist) * WIRE_KNOCKBACK_SPEED,
+                    knockbackVy: (dy / dist) * WIRE_KNOCKBACK_SPEED,
+                    knockbackUntil: nowW + KNOCKBACK_DURATION,
+                    knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
+                  } : e),
+                });
+              }
+              spawnBurst(ecx, ecy, '#93c5fd', 16);
+              spawnRing(ecx, ecy, 6, 44, 'rgba(147,197,253,0.85)', 3, 300);
+              playSfx('melee');
+              const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
+              useGameStore.getState().setSubWeaponCooldown('wire-anchor', useGameStore.getState().gameTime + WIRE_COOLDOWN_BY_LEVEL[lvl]);
+              useGameStore.setState({ player: { ...useGameStore.getState().player, wireStuckEnemyId: '', wireStuckUntil: 0, wireAnchored: false, wirePlantUntil: 0, wireAnchorX: 0, wireAnchorY: 0 } });
+            }
+          } else if (wp.wireAnchored && nowW < wp.wirePlantUntil) {
+            // 打ち込み中(飛行中): 先端が敵に当たったら吸着(発火ナイフ風)。
+            const p = Math.max(0, Math.min(1, 1 - (wp.wirePlantUntil - nowW) / WIRE_PLANT_MS));
+            const tipX = pcx + (wp.wireAnchorX - pcx) * p;
+            const tipY = pcy + (wp.wireAnchorY - pcy) * p;
+            const hit = useGameStore.getState().enemies.find(e =>
+              tipX >= e.x - 6 && tipX <= e.x + e.width + 6 && tipY >= e.y - 6 && tipY <= e.y + e.height + 6
+            );
+            if (hit) {
+              // 吸着確定: 溜は即完了扱い(wirePlantUntil=now)にして引き寄せフェーズへ。
+              useGameStore.setState({ player: { ...useGameStore.getState().player, wireStuckEnemyId: hit.id, wireStuckUntil: nowW + WIRE_STICK_MS, wirePlantUntil: nowW } });
+            }
+          } else if (wp.wireAnchored && nowW >= wp.wireDashUntil && nowW > (wp.wirePlantUntil - WIRE_PLANT_MS) + 150 && wp.isMoving) {
+            // 地面アンカー(敵に当たらなかった): 移動したらリセット(従来通り)。
+            useGameStore.setState({ player: { ...useGameStore.getState().player, wireAnchored: false, wirePlantUntil: 0 } });
+          }
+        }
+
         // Check for collisions between player and enemies
         const playerEnemyCollisions = checkPlayerEnemyCollisions(player, enemies);
-        
+        // ワイヤーアンカーの高速移動中/敵吸着コンボ中は敵接触ダメージを無効化(敵弾は別経路でそのまま当たる)。
+        const wpImmune = useGameStore.getState().player;
+        const wireDashingNow = Date.now() < wpImmune.wireDashUntil || !!wpImmune.wireStuckEnemyId;
+
         playerEnemyCollisions.forEach(enemy => {
+          if (wireDashingNow) return;
           const damageWasApplied = !player.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
@@ -2341,7 +2694,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hasAmmoPickup = collidedPickups.some(pk =>
             pk.type === 'ammo-handgun' ||
             pk.type === 'ammo-shotgun' ||
-            pk.type === 'ammo-rifle'
+            pk.type === 'ammo-rifle' ||
+            pk.type === 'ammo-phill'
           );
           const hasWeaponPickup = collidedPickups.some(pk =>
             pk.type === 'weapon-drop' ||
@@ -2353,6 +2707,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             pk.type !== 'ammo-handgun' &&
             pk.type !== 'ammo-shotgun' &&
             pk.type !== 'ammo-rifle' &&
+            pk.type !== 'ammo-phill' &&
             pk.type !== 'weapon-drop' &&
             pk.type !== 'weapon-crate' &&
             pk.type !== 'health' &&
@@ -2479,16 +2834,61 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnRing(pk.x + 8, pk.y + 8, 4, 34, 'rgba(250,204,21,0.82)', 3, 320);
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 38, 'rgba(250,204,21,', 340);
                   break;
+                case 'card-key':
+                  // 屋内: カードキー取得 → ゴール部屋の扉を解錠。取得表示は武器などと同じ取得バナーUIに統一。
+                  spawnFlash('rgba(56,189,248,0.28)', 240);
+                  spawnRing(pk.x + 8, pk.y + 8, 6, 60, 'rgba(56,189,248,0.9)', 4, 380);
+                  spawnBurst(pk.x + 8, pk.y + 8, '#67e8f9', 16);
+                  useGameStore.getState().setHasCardKey(true);
+                  useGameStore.getState().openLabDoor('goal');
+                  useGameStore.setState({ lastWeaponGet: { name: 'カードキー', at: Date.now(), color: '#67e8f9', kind: 'weapon' } });
+                  break;
+                case 'lab-clear-item': {
+                  // 研究所クリア条件アイテム: 拾うと勝利。到達演出(~1.5s)を挟んでイベント勝利へ。
+                  const gw = useGameStore.getState();
+                  if (gw.goalReachedAt === 0 && !gw.gameWon) {
+                    useGameStore.setState({ goalReachedAt: Date.now() });
+                    spawnFlash('rgba(255,255,255,0.28)', 420);
+                    spawnRing(pk.x + 8, pk.y + 8, 6, 64, 'rgba(253,230,138,0.9)', 4, 420);
+                    spawnBurst(pk.x + 8, pk.y + 8, '#fde68a', 20);
+                    useGameStore.getState().spawnCallout(player.x + player.width / 2, player.y - 14, 'データ確保！ 研究所クリア', '#fde68a');
+                  }
+                  break;
+                }
               }
             }
             collectPickup(pickupId);
           });
         }
-        
+
+        // 屋内ギミック: ボタン近接押下 → 武器庫扉解錠 / ゴール扉が開いた状態でゴール区画に入る → 演出 → 勝利。
+        if (indoor) {
+          const gs = useGameStore.getState();
+          const gpcx = gs.player.x + gs.player.width / 2;
+          const gpcy = gs.player.y + gs.player.height / 2;
+          for (const btn of gs.labButtons) {
+            if (btn.pressed) continue;
+            const bdx = gpcx - btn.x, bdy = gpcy - btn.y;
+            if (bdx * bdx + bdy * bdy <= btn.radius * btn.radius) {
+              gs.pressLabButton(btn.id);
+              playSfx('shield-deploy');
+              spawnRing(btn.x, btn.y, 6, 70, 'rgba(96,165,250,0.9)', 4, 360);
+              spawnBurst(btn.x, btn.y, '#bfdbfe', 14);
+              useGameStore.getState().spawnCallout(btn.x, btn.y - 18, '武器庫の扉が開いた', '#bfdbfe');
+            }
+          }
+          // クリア条件はゴール部屋のクリアアイテム拾得(上のピックアップ処理で goalReachedAt を設定)。
+          // 到達演出後(~1.5s)にイベント勝利。
+          if (gs.goalReachedAt > 0 && Date.now() - gs.goalReachedAt >= 1500 && !gs.gameWon) {
+            useGameStore.getState().triggerEventVictory();
+          }
+        }
+
         // Continuous spawner — drip enemies onto the field from off-screen.
         const enemyCountBeforeSpawn = useGameStore.getState().enemies.length;
         if (
           !danceTest &&
+          !indoor &&
           enemyCountBeforeSpawn < MAX_ENEMIES &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime)
         ) {
@@ -2622,7 +3022,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Scripted wave/elite events (compressed 5-min schedule: early plant,
         // mid-boss spikes, the 7-strong onslaught, finale giantbat).
         // consumeDueWaves fires each event exactly once.
-        if (!danceTest) {
+        if (!danceTest && !indoor) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,
@@ -2645,7 +3045,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const enemyCenterY = enemy.y + enemy.height / 2;
           const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
           const waveProtected = enemy.isWave && gameTime - (enemy.spawnedAt ?? 0) < WAVE_GRACE_MS;
-          if (distFromPlayer <= recycleDistance || waveProtected) return enemy;
+          // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。
+          if (enemy.fixed || distFromPlayer <= recycleDistance || waveProtected) return enemy;
 
           const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
           const replacement = generateEnemy(
@@ -2687,6 +3088,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const currentEnemiesForCap = useGameStore.getState().enemies;
         if (currentEnemiesForCap.length > MAX_ENEMIES) {
           const isProtected = (e: typeof currentEnemiesForCap[number]) =>
+            e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
             e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
             (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
           const cullable = [...currentEnemiesForCap]
@@ -2747,7 +3149,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           prevLevelRef.current = currentPlayer.level; // reset after game over
         }
 
-        // Detect successful-counter edge: gold burst + ring.
+        // Detect successful-counter edge: gold burst + ring(視覚のみ)。
+        // 注: lastCounterSuccessTime は弾反射時のみ更新されるため、インパクト(ストップ/揺れ/寄り)は
+        // reflect 経路側で一度だけ入れる(ここで重ねると二重発火になる)。
         if (currentPlayer.lastCounterSuccessTime > prevCounterSuccessRef.current) {
           spawnRing(
             currentPlayer.x + currentPlayer.width / 2,

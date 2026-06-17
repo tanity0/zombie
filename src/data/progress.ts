@@ -6,6 +6,7 @@ import { STAGES, type Stage } from './campaign';
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
+const FREE_KEY = 'zombie.progress.selectedFree'; // 直近の出撃がフリー(周回)か
 
 const readSet = (): Set<string> => {
   if (typeof localStorage === 'undefined') return new Set();
@@ -56,6 +57,26 @@ export const setSelectedStageId = (stageId: string): void => {
   try {
     if (stageId) localStorage.setItem(SELECTED_KEY, stageId);
     else localStorage.removeItem(SELECTED_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
+// フリー(周回)出撃フラグ。会話なし & クリア進行に影響させない出撃かどうか。
+export const getSelectedFreeMode = (): boolean => {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    return localStorage.getItem(FREE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const setSelectedFreeMode = (free: boolean): void => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (free) localStorage.setItem(FREE_KEY, '1');
+    else localStorage.removeItem(FREE_KEY);
   } catch {
     /* ignore */
   }

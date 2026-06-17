@@ -10,7 +10,7 @@ import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, WORLD_INTRO, BESTIARY, type Stage
 } from '../data/campaign';
 import {
-  getClearedStages, isStageUnlocked, setSelectedStageId, unlockAllStages, resetProgress
+  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress
 } from '../data/progress';
 import {
   getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene
@@ -71,6 +71,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
   const [loadout, setLoadout] = useState<SubWeaponKey[]>([]);     // 装備選択(今は記録のみ)
+  const [freeMode, setFreeMode] = useState(false);               // 出撃がフリー(周回・会話なし)か
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
 
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
@@ -86,7 +87,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const startMission = (stageId: string, charId: CharacterClass) => {
     useGameStore.getState().setDanceTestMode(false);
     setSelectedStageId(stageId);          // 勝利時にこのステージをクリア扱いにする(App側)
-    // loadout は当面「記録のみ」。ゲームへの付与は今後配線する。
+    setSelectedFreeMode(freeMode);        // フリー(周回)=会話なし & クリア進行に影響させない
+    useGameStore.getState().setPendingLoadout(loadout); // 選んだサブを開始時所持へ(resetGame が反映)
     onStartGame(charId);
   };
 
@@ -110,15 +112,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ステージ選択
   // ====================================================================
   const renderStageSelect = () => {
-    const frees = STAGES.filter(s => s.kind === 'free');
     const mains = STAGES.filter(s => s.kind === 'main');
     const exs = STAGES.filter(s => s.kind === 'ex');
     return (
       <>
         <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-2">
-          {frees.map(stage => <StageRow key={stage.id} stage={stage} />)}
-          {frees.length > 0 && <div className="pt-1 text-[11px] uppercase tracking-widest text-blue-200/55 px-1">メインミッション</div>}
           {mains.map(stage => <StageRow key={stage.id} stage={stage} />)}
           {exs.some(s => isStageUnlocked(s, cleared)) && (
             <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">クリア後 / 隠しステージ</div>
@@ -203,11 +202,19 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </Section>
 
           <button
-            onClick={() => setScreen({ name: 'characterSelect', stageId })}
+            onClick={() => { setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
             className="w-full py-3 rounded-2xl text-base font-semibold text-white"
             style={{ background: 'linear-gradient(180deg, rgba(96,165,250,0.95), rgba(59,130,246,0.95))', boxShadow: '0 8px 24px rgba(59,130,246,0.35)' }}
           >
             出撃準備（キャラ選択へ）
+          </button>
+
+          {/* このステージのフリー(周回)出撃: 会話なし・クリア進行に影響しない。同じ舞台を周回。 */}
+          <button
+            onClick={() => { setFreeMode(true); setScreen({ name: 'characterSelect', stageId }); }}
+            className="w-full py-2.5 rounded-2xl text-[13px] font-semibold text-emerald-50 border border-emerald-300/40 bg-emerald-400/10 active:bg-emerald-400/20"
+          >
+            フリー（周回）で出撃 ・ 会話なし
           </button>
         </div>
       </>
@@ -464,6 +471,8 @@ const DevTools: React.FC<{
     setDanceTestLevel(danceLevel);
     setDanceTestMode(true);
     setSelectedStageId('');     // 練習はステージ進行に影響させない
+    setSelectedFreeMode(false);
+    useGameStore.getState().setPendingLoadout([]);
     onStartGame(selectedClass);
   };
   const ammoFields: { type: AmmoType; label: string }[] = [
@@ -514,7 +523,7 @@ const DevTools: React.FC<{
       </div>
 
       {/* BENCH */}
-      <button type="button" onClick={() => { setSelectedStageId(''); onStartBenchmark(selectedClass); }}
+      <button type="button" onClick={() => { setSelectedStageId(''); setSelectedFreeMode(false); useGameStore.getState().setPendingLoadout([]); onStartBenchmark(selectedClass); }}
         className="w-full py-2.5 rounded-2xl text-sm font-semibold border border-cyan-200/30 bg-cyan-300/10 text-cyan-100 active:bg-cyan-300/15">
         BENCH（ベンチマーク開始）
       </button>

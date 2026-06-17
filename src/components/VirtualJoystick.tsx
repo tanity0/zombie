@@ -107,6 +107,15 @@ const VirtualJoystick: React.FC = () => {
         // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
         if (!flickFiredRef.current) rhythmInput('tap');
       } else {
+        // PHILL銃(研究所): 指を離した瞬間に狙いサークル方向へ1発(手動)。撃てたら発砲SE。
+        const gs = useGameStore.getState();
+        const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
+        if (gun?.key === 'phill-revolver') {
+          const before = gun.magazine ?? 0;
+          gs.firePhillShot();
+          const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
+          if (after < before) playSfx('handgun-fire');
+        }
         // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定して発火(即発火しない)。
         // 非刀装備なら triggerKatanaDash が false を返すので無害(=何も起きない)。
         tryFireKatanaDash();

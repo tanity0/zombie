@@ -5,7 +5,7 @@ import {
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction, SubWeaponKey, CastleEvent, DifficultyRank,
   WeaponMerchant, ShopItemKey, EventQuestNpc, Summon,
-  RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine
+  RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp
 } from '../types/game';
 import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
@@ -13,9 +13,9 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, resolveEnemyTarget } from '../utils/enemyUtils';
+import { isBossType, resolveEnemyTarget, spawnEnemyAt } from '../utils/enemyUtils';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
@@ -28,7 +28,8 @@ import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torc
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { footRect, rectsOverlap, resolveAabb, type Rect } from '../world/obstacles';
+import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
@@ -41,20 +42,20 @@ const initialRhythm = (): RhythmState => ({
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
-export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 18, rifle: 36 };
-// 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。
-export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24 };
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 18, rifle: 36, phill: 48 };
+// 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
+export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24, phill: 24 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
 // drops, and the boxes melee kills now drop). Modest relative to the reserve
-// cap — resupply is scarce.
-export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10, rifle: 20 };
+// cap — resupply is scarce。phill=1ピックアップ/購入で6発。
+export const AMMO_PICKUP: Record<AmmoType, number> = { handgun: 40, shotgun: 10, rifle: 20, phill: 6 };
 
 // Player-tunable melee ammo-drop rate (percent), set on the start screen and
 // persisted across reloads. A melee kill drops ammo at this rate; a melee
 // finisher rolls at 1.5× (capped at 100%). Counter (reflect) kills are separate.
 const DROP_PCT_KEY = 'zombie:meleeAmmoDropPercent';
 const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
-export const DEFAULT_MELEE_DROP_PCT = 50;
+export const DEFAULT_MELEE_DROP_PCT = 30;
 const CASTLE_MIN_DISTANCE = 900;
 const CASTLE_MAX_DISTANCE = 1300;
 const CASTLE_COLLISION_W = 112;
@@ -138,7 +139,8 @@ const loadAmmoPickupAmounts = (): Record<AmmoType, number> => {
     return {
       handgun: clampAmmoPickupAmount(parsed.handgun ?? AMMO_PICKUP.handgun),
       shotgun: clampAmmoPickupAmount(parsed.shotgun ?? AMMO_PICKUP.shotgun),
-      rifle: clampAmmoPickupAmount(parsed.rifle ?? AMMO_PICKUP.rifle)
+      rifle: clampAmmoPickupAmount(parsed.rifle ?? AMMO_PICKUP.rifle),
+      phill: clampAmmoPickupAmount(parsed.phill ?? AMMO_PICKUP.phill)
     };
   } catch {
     return { ...AMMO_PICKUP };
@@ -241,6 +243,18 @@ export const KATANA_FLICK_MIN_DIST = 34;
 export const KATANA_FLICK_MIN_SPEED = 0.9; // px/ms
 export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カード価格。
 
+// ---- ワイヤーアンカー(移動系サブウェポン) ------------------------------------
+// 装備中、前方(ショットガン射程くらい)に青サークルを常時表示。指離しでアンカー打ち込み開始
+// (WIRE_PLANT_MS=1秒)、完了後 WIRE_WINDOW_MS(~1秒)以内の追加タップでアンカー地点へ高速移動。
+// 高速移動中は敵接触ダメージ無効(敵弾は通る/敵にダメージ・ノックバックなし)。CD はレベルで短縮。
+export const WIRE_ANCHOR_RANGE = 110;   // 青サークル距離(飛距離。全レベル共通=半分に短縮)
+export const WIRE_PLANT_MS = 300;       // 打ち込み(先端が飛んで刺さるまで)=0.3秒。刺さると高速移動可。
+export const WIRE_DASH_MS = 200;        // 高速移動の所要時間
+export const WIRE_COOLDOWN_BY_LEVEL = [0, 2000, 1000, 0] as const; // Lv1=2s / Lv2=1s / Lv3=0s
+// 敵に刺さった時(発火ナイフ風吸着): 0.1秒で敵を引き寄せ→近接ダメージ→大幅ノックバック。
+export const WIRE_STICK_MS = 100;       // 引き寄せ時間(0.1秒)
+export const WIRE_KNOCKBACK_SPEED = 1100; // 大幅ノックバックの初速(px/s)
+
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 // 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。
 // 刀身シルバー。それ以外の仕様(オート斬撃・一閃3倍・斬・銃/ナイフ無効など)は
@@ -309,26 +323,38 @@ export const alchemyLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['alchemy'] ?? 1));
 export const hasRareSummon = (summons: Summon[]): boolean => summons.some(s => s.kind === 'rare');
 
-// Hitstop: a melee finisher freezes the whole game briefly for impact.
-export const HITSTOP_MS = 300;
-const MELEE_FINISH_SLOW_MS = HITSTOP_MS + 520;
+// Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
+// この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
+export const HITSTOP_MS = 100;
+// 近接フィニッシュ: ストップ→スロー。社長指示で倍に(700→1400)。
+const MELEE_FINISH_SLOW_MS = 1400;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
-export const SHAKE_MAG = 8;                  // 既定/通常時の揺れ幅(px)。通常時の上限の目安(8px前後)。
+export const SHAKE_MAG = 16;                 // 既定/通常時の揺れ幅(px)。社長指示で倍化(8→16)。
 // 行動別の画面シェイク(視覚のみ・ゲーム性に影響なし)。mag=振幅px / ms=長さ。短く強い「パンチ」も出せる。
 // ウザくならない範囲で、近接スイング<シールドバッシュ<ハリケーン<死神召喚 の順で強める。
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
-export const MELEE_SWING_SHAKE_MAG = 3.5;    // (旧: 90ms×7px換算の~2.25→少し強く)
+export const MELEE_SWING_SHAKE_MAG = 7;      // 社長指示で倍化(3.5→7)
 export const SHIELD_BASH_SHAKE_MS = 160;
-export const SHIELD_BASH_SHAKE_MAG = 5;
+export const SHIELD_BASH_SHAKE_MAG = 10;     // 社長指示で倍化(5→10)
 export const HURRICANE_SHAKE_MS = 220;
-export const HURRICANE_SHAKE_MAG = 5.5;
+export const HURRICANE_SHAKE_MAG = 11;       // 社長指示で倍化(5.5→11)
 export const REAPER_SUMMON_SHAKE_MS = 340;
-export const REAPER_SUMMON_SHAKE_MAG = 8;    // 死神召喚=強め(短くはないが演出として)
+export const REAPER_SUMMON_SHAKE_MAG = 16;   // 死神召喚=強め。社長指示で倍化(8→16)
 export const INTRO_LAND_SHAKE_MS = 240;
-export const INTRO_LAND_SHAKE_MAG = 7.5;
+export const INTRO_LAND_SHAKE_MAG = 15;      // 社長指示で倍化(7.5→15)
+// カウンター成立: スローを廃止しヒットストップ+短い揺れに(社長指示)。
+export const COUNTER_HITSTOP_MS = HITSTOP_MS;  // 50〜80ms の瞬間ストップ(スロー無し)
+export const COUNTER_SHAKE_MS = 100;           // 80〜120ms
+export const COUNTER_SHAKE_MAG = 8;            // 社長指示で倍化(4→8)
+// 四神技(ダンス)発動の揺れ。リズムを乱さぬよう描画のみ(stop/slow は入れない)。
+export const SHIJIN_TECH_SHAKE_MS = 160;
+export const SHIJIN_TECH_SHAKE_MAG = 10;     // 社長指示で倍化(5→10)
+// 近接フィニッシュ: ストップ後に出す揺れ(揺れ+スローを HITSTOP_MS 後にまとめて出す)。
+export const MELEE_FINISH_SHAKE_MS = 180;
+export const MELEE_FINISH_SHAKE_MAG = 14;
 // --- 追尾カメラ(描画のみ) -------------------------------------------------
 // 描画用カメラだけをプレイヤーへ追従させる(判定/スポーン/プロップ生成は実プレイヤー座標のまま=ゲーム性に影響なし)。
 // 「一旦最大値で実装」。各値は ?キー=数値 で実機調整可。
@@ -338,7 +364,7 @@ const camNum = (key: string, def: number): number => {
   const n = v != null ? Number(v) : NaN;
   return Number.isFinite(n) ? n : def;
 };
-export const CAMERA_FOLLOW_TAU = camNum('camtau', 0.14);          // 追従遅延(秒)。わずかな重さ。範囲0.08〜0.14
+export const CAMERA_FOLLOW_TAU = camNum('camtau', 0.16);          // 追従遅延(秒)。わずかな重さ。範囲0.08〜0.16
 export const CAMERA_DANGER_TAU = camNum('camdanger', 0.08);       // 危険時(接近戦)の追従遅延(秒)。安定。範囲0.04〜0.08
 export const CAMERA_RETURN_TAU = camNum('camret', 0.20);          // 停止時に先読みオフセットを戻す時定数(秒)。ピタ止まり回避。範囲0.12〜0.20
 export const CAMERA_LOOKAHEAD_MAX = camNum('camlook', 40);        // 進行方向への最大オフセット(px)。進行方向に余白。範囲24〜40
@@ -348,14 +374,52 @@ export const CAMERA_SNAP_DIST = 600;                             // これ以上
 // 手を離して待機している間だけ少しズーム(描画のみ)。正=寄る / 負=引く。操作再開で1.0へ戻る。
 export const CAMERA_IDLE_ZOOM_MAG = camNum('camidle', 0.05);      // 待機ズーム量(+5%)。?camidle で調整(負で引き)
 export const CAMERA_IDLE_ZOOM_TAU = camNum('camidletau', 0.3);    // 待機ズームの寄り/戻りの時定数(秒)
+export const CAMERA_MOVE_ZOOM_MAG = camNum('cammove', 0);         // 移動中だけのズーム量(負=引き)。社長指示で無効化(引きやめる)。?cammove で調整
+export const CAMERA_MOVE_ZOOM_TAU = camNum('cammovetau', 1.5);    // 引きが広がる時定数(秒)。慣性でじわっと。戻りは CAMERA_IDLE_ZOOM_TAU を使用
+// 登場(ヘリ)演出のカメラ: 高いヘリを画面へ収めるため引きから開始し、キャラの降下に同期して既定へ戻す。
+export const CAMERA_INTRO_ZOOM_MAG = camNum('camintro', 1.0);     // 登場ヘリ搭乗シーンの寄り(正=寄り/めっちゃズーム)。社長指示でもう少し寄りスタート。降下で既定へ。?camintro
+export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中、カメラをヘリ高度へ寄せる割合(0=従来の着地面固定 / 1=被写体を中央)。?camintrolift
 // 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
 export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
-export const MELEE_FINISH_ZOOM_MAG = 0.06; // ズーム量(+6%程度=少し)
+// 衝撃時の寄りパンチズーム。社長指示で 0.3。
+export const MELEE_FINISH_ZOOM_MAG = 0.3;  // 近接フィニッシュの寄り(+30%)
+export const COUNTER_ZOOM_MAG = 0.3;       // カウンター成立の寄り
+export const BASH_ZOOM_MAG = 0.3;          // バッシュ命中の寄り(現在は未使用=バッシュは寄り無し)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
 export const PLAYER_INERTIA_TAU = 0;
 export const ENEMY_INERTIA_TAU = 0.3;
+
+// 特殊AI(犬型=突進 / パンプキン=ジャンプ)の調整値。射程基準=ハンドガン射程176px(RANGE_BY_CATEGORY.handgun)。
+const HANDGUN_RANGE_REF = 176;
+// 犬型(werewolf): ハンドガン射程より少し外で減速→2倍速で突進。
+export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
+export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
+export const WEREWOLF_WINDUP_SPEED_MULT = 0.3;
+export const WEREWOLF_CHARGE_SPEED_MULT = 2;   // 通常の2倍速
+export const WEREWOLF_CHARGE_MAX_MS = 1400; // 突進の最大時間(到達できなくても打ち切り)
+export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予
+// パンプキン(pumpkin): ハンドガン射程より少し外で縮みながら3秒溜め→1秒でジャンプ着地→1秒停止+揺れ。
+export const PUMPKIN_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70;
+export const PUMPKIN_CROUCH_MS = 3000;     // 縮み溜め
+export const PUMPKIN_JUMP_MS = 1000;       // ジャンプ(着地まで)
+export const PUMPKIN_RECOVER_MS = 1000;    // 着地後の停止
+export const PUMPKIN_COOLDOWN_MS = 800;    // 復帰後、次の溜めまでの猶予
+export const PUMPKIN_JUMP_HEIGHT = 90;     // ジャンプの見た目の高さ(px・描画のみ)
+export const PUMPKIN_LAND_SHAKE_MS = 220;  // 着地時の画面揺れ
+export const PUMPKIN_LAND_SHAKE_MAG = 9;
+// ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
+// 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
+export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒
+export const DRONE_BOOM_STOP_MS_BY_LEVEL = [0, 2000, 3000, 4000]; // 停止時間(Lv1/2/3)
+export const DRONE_BOOM_DIST_BY_LEVEL = [0, 100, 118, 135]; // 飛距離(Lv1/2/3)。社長指示で従来の半分(200/236/270→)
+export const DRONE_BOOM_SPEED = 480;                       // 行きの飛行速度(px/s)。社長指示で少し速く(360→480)
+export const DRONE_BOOM_RETURN_SPEED = 360;               // 戻りの速度(px/s)。従来どおり
+export const DRONE_BOOM_RADIUS = 72;                       // 停止中のダメージ範囲(半径)
+export const DRONE_BOOM_PULSE_MS = 250;                    // 停止中の判定パルス間隔=同一敵への再ヒット間隔
+export const DRONE_BOOM_STOP_DMG_DIV = 4;                  // 停止中の1ヒット=近接ダメージの1/4
+export const DRONE_BOOM_SAFETY_MS = 12000;                 // 安全消滅(戻れない場合の保険)
 
 // Easing factor for a given time constant. tau <= 0 means instant (alpha = 1).
 const inertiaAlpha = (deltaTime: number, tau: number): number =>
@@ -373,12 +437,12 @@ export const INVULN_MS = 700;
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
 // この間はゲーム進行/入力/敵スポーンを止め、カメラが追従/横断し、見た目は飛行する。
 export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来)長(少しゆっくり目)
-export const PLAYER_INTRO_LAND_MS = 567;     // フェーズB(ヘリから飛び降り→着地)長。v0.25.428: 1700→567(3倍速)
+export const PLAYER_INTRO_LAND_MS = 460;     // フェーズB(ヘリから飛び降り→着地)長。v0.25.450: 567→460(少し速く)
 export const PLAYER_INTRO_MS = PLAYER_INTRO_HELI_MS + PLAYER_INTRO_LAND_MS; // 全体(=3700)
 export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; // A/全体の境目 t
-export const PLAYER_INTRO_FLY_X = 225;      // (フェーズB)人間の飛び降り飛距離(world px)。小さくすると人間の飛距離が減り、
-                                            // その分ヘリの飛来距離(FAR_X−FLY_X)が増える=左からの移動をヘリで確保。
-                                            // v0.25.411: 900→450 / v0.25.413: 450→225(横移動を更に半分、ヘリ移動はその分長く)。
+export const PLAYER_INTRO_FLY_X = 0;        // (フェーズB)人間の飛び降り横移動。0=その場から真下に飛び降りる(社長指示)。
+                                            // 横移動はすべてヘリの飛来(FAR_X)で確保し、飛び降りは前進せず垂直落下。
+                                            // v0.25.411: 900→450 / v0.25.413: 450→225 / v0.25.450: 225→0(前進やめ)。
 export const PLAYER_INTRO_LOW_Y = 28;       // (フェーズB)開始のわずかな高さ
 export const PLAYER_INTRO_ARC_H = 110;      // (フェーズB)飛行アーチ高
 export const PLAYER_INTRO_HELI_FAR_X = 4500; // (フェーズA)飛来開始の遠方X(world px。もっと左の遠くから)
@@ -432,6 +496,13 @@ export const playerIntroCamFollow = (t: number): number => {
   const k = (tc - w0) / (w1 - w0);
   const s = k * k * (3 - 2 * k);
   return PLAYER_INTRO_HELI_CAM_FOLLOW + (PLAYER_INTRO_CAM_FOLLOW - PLAYER_INTRO_HELI_CAM_FOLLOW) * s;
+};
+
+// 登場の高さ係数 h(t): 1=最も高い(開始/ヘリ高度) → 0=着地。見た目の縦オフセットから算出するため
+// キャラの降下に自動同期する。カメラの縦寄せ(useGameLoop)とズーム(pixiScene)で共有し、ズレなく連動させる。
+export const playerIntroDescent = (t: number): number => {
+  const oy = playerIntroOffset(t).y; // 上=負
+  return Math.max(0, Math.min(1, -oy / PLAYER_INTRO_HELI_HIGH_Y));
 };
 
 // 登場セリフ(ヘリが画面内に入った頃に時間停止して自動表示→流れ終わると開始)。
@@ -588,6 +659,9 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'alchemy': return '錬金術';
     case 'turret': return '自動タレット';
     case 'shijin': return 'ダンスフロア';
+    case 'fire-knife': return '発火ナイフ';
+    case 'drone-boomerang': return 'ドローンブーメラン';
+    case 'wire-anchor': return 'ワイヤーアンカー';
     default: return 'サブウェポン';
   }
 };
@@ -619,7 +693,8 @@ const grantMeleeKillRewards = (
     // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
     // Prefer the active gun's family; if the active pointer is temporarily
     // invalid, fall back to any owned gun so the slider still governs melee.
-    const baseRate = get().meleeAmmoDropPercent / 100;
+    // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
+    const baseRate = Math.max(0, Math.min(1, get().meleeAmmoDropPercent / 100 + (player.ammoDropBonus ?? 0)));
     const ammoChance = ammoChanceOverride !== undefined
       ? ammoChanceOverride
       : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
@@ -756,6 +831,7 @@ interface GameState {
   // multiplied by timeSlowScale until this timestamp.
   timeSlowUntil: number;
   timeSlowScale: number;
+  timeSlowStart: number; // スロー開始時刻。倍率を滑らかに 1.0 へ戻す(ランプ)ために使う。
   // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
   // shakeMag=振幅px / shakeDur=フェード基準の長さ(ms)。triggerShake で行動別に設定。
   shakeUntil: number;
@@ -805,6 +881,7 @@ interface GameState {
 
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
+  firePhillShot: () => void; // PHILL銃: 指離しで狙いサークル方向へ1発(手動)。
   selectUpgrade: (upgrade: UpgradeOption) => void;
   learnSubWeapon: (key: SubWeaponKey) => void;
   setSubWeaponCooldown: (key: SubWeaponKey, readyAt: number) => void;
@@ -843,6 +920,7 @@ interface GameState {
   addProjectile: (projectile: Projectile) => void;
   removeProjectile: (id: string) => void;
   updateProjectiles: (deltaTime: number) => void;
+  stickFireKnife: (id: string, enemyId: string, x: number, y: number, fuseMs: number) => void; // 発火ナイフを敵に刺す(追従+遅延爆発)
   reflectProjectile: (id: string, multiplier?: number) => void;
   
   // Pickup actions
@@ -874,6 +952,21 @@ interface GameState {
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
   startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
+  pendingLoadout: SubWeaponKey[];                       // 装備選択で選んだサブ(出撃時に resetGame が所持へ反映)
+  setPendingLoadout: (keys: SubWeaponKey[]) => void;
+  // 屋内(研究施設)ステージ
+  indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
+  labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
+  labButtons: LabButton[];                              // ボタン(押下状態)
+  labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
+  hasCardKey: boolean;                                  // カードキー取得済みか
+  goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
+  pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
+  setPendingIndoor: (indoor: boolean) => void;
+  triggerEventVictory: () => void;                      // ボス無しのイベント勝利(gameWon=true)
+  openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
+  setHasCardKey: (v: boolean) => void;
+  pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
   endIntroDialogue: () => void;   // 登場セリフ終了(ゲーム開始へ)
   setDanceTestMode: (enabled: boolean) => void;
   setDanceTestLevel: (level: number) => void;
@@ -897,6 +990,9 @@ interface GameState {
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
   triggerTimeSlow: (scale: number, durationMs: number) => void;
+  triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
+  triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
+  triggerFinishImpact: () => void; // 近接フィニッシュ: ストップ→(後で)揺れ+スロー+寄り
   triggerZoom: (mag: number, durationMs?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
   triggerShake: (durationMs: number, mag?: number) => void; // 行動別の画面シェイク(描画のみ)
 
@@ -941,12 +1037,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     ammoHandgun: AMMO_INITIAL.handgun,
     ammoShotgun: AMMO_INITIAL.shotgun,
     ammoRifle: AMMO_INITIAL.rifle,
+    ammoPhill: AMMO_INITIAL.phill,
     critChance: 0,
     quickMagCritUntil: 0,
     reloadEndsAt: 0,
     reloadingWeaponId: '',
     magBonus: 0,
     reloadMult: 1,
+    stunDurationMult: 1,
+    ammoDropBonus: 0,
+    scrapMult: 1,
+    passiveCounts: {},
     subWeapons: [],
     subWeaponLevels: {},
     subWeaponCooldowns: {},
@@ -960,6 +1061,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     shijinSlideUntil: 0,
     shijinSlideDirX: 0,
     shijinSlideDirY: 0,
+    wireAnchorX: 0,
+    wireAnchorY: 0,
+    wireAnchored: false,
+    wirePlantUntil: 0,
+    wireDashUntil: 0,
+    wireDashSpeed: 0,
+    wireStuckEnemyId: '',
+    wireStuckUntil: 0,
     straps: 0,
     vaccineRevives: 0
   },
@@ -984,6 +1093,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
+  pendingLoadout: [],
+  indoorMode: false,
+  labDoors: [],
+  labButtons: [],
+  labProps: [],
+  hasCardKey: false,
+  goalReachedAt: 0,
+  pendingIndoor: false,
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
@@ -1026,6 +1143,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   hitstopUntil: 0,
   timeSlowUntil: 0,
   timeSlowScale: 1,
+  timeSlowStart: 0,
   shakeUntil: 0,
   shakeMag: SHAKE_MAG,
   shakeDur: SHAKE_MS,
@@ -1048,12 +1166,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         player.reloadingWeaponId !== '' && Date.now() < player.reloadEndsAt;
       // 一閃ダッシュ中は入力を無視して固定方向へ高速移動する。
       const nowMs = Date.now();
-      const dashing = nowMs < player.katanaDashUntil;
+      // ワイヤーアンカーの高速移動中は入力を無視してアンカー地点へ高速で向かう(最優先)。
+      const wireDashing = nowMs < player.wireDashUntil;
+      const dashing = !wireDashing && nowMs < player.katanaDashUntil;
       // 着地後の硬直中(刀・村雨共通)は移動入力を受け付けない(その場で停止)。
-      const recovering = !dashing && nowMs < player.katanaRecoveryUntil;
+      const recovering = !wireDashing && !dashing && nowMs < player.katanaRecoveryUntil;
       // 四神舞フリックの盾バッシュ風スライド(入力を無視して固定方向へ短く滑る)。
-      const sliding = !dashing && !recovering && nowMs < player.shijinSlideUntil;
-      const moveSpeed = dashing
+      const sliding = !wireDashing && !dashing && !recovering && nowMs < player.shijinSlideUntil;
+      const moveSpeed = wireDashing
+        ? player.wireDashSpeed
+        : dashing
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
         : recovering ? 0
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
@@ -1062,7 +1184,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Target direction from swipe (touch) or keys.
       let tx = 0;
       let ty = 0;
-      if (dashing) {
+      if (wireDashing) {
+        // アンカー地点へ向かう単位ベクトル(プレイヤー中心基準)。
+        const wcx = player.x + player.width / 2;
+        const wcy = player.y + player.height / 2;
+        tx = player.wireAnchorX - wcx;
+        ty = player.wireAnchorY - wcy;
+      } else if (dashing) {
         tx = player.katanaDashDirX;
         ty = player.katanaDashDirY;
       } else if (recovering) {
@@ -1089,27 +1217,32 @@ export const useGameStore = create<GameState>((set, get) => ({
       const vx = player.vx + (tx * moveSpeed - player.vx) * alpha;
       const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
 
-      // Block the player's hitbox out of tree trunks (rectangle AABB only).
-      const treeResolved = resolveTreeCollision({
-        x: player.x + vx * deltaTime,
-        y: player.y + vy * deltaTime,
-        width: player.width,
-        height: player.height,
-      });
-      const resolved = resolveTorchCollision({
-        x: treeResolved.x,
-        y: treeResolved.y,
-        width: player.width,
-        height: player.height,
-      }, solidProps);
-      const castleResolved = resolveCastleCollision({
-        x: resolved.x,
-        y: resolved.y,
-        width: player.width,
-        height: player.height,
-      }, castleEvent);
-      const newX = castleResolved.x;
-      const newY = castleResolved.y;
+      // 壁解決。屋内は labMap の壁(+閉ドア)のみ。屋外は従来の木/トーチ/城。
+      let newX: number;
+      let newY: number;
+      const candidate = { x: player.x + vx * deltaTime, y: player.y + vy * deltaTime, width: player.width, height: player.height };
+      if (state.indoorMode) {
+        const openIds = state.labDoors.filter(d => d.open).map(d => d.id);
+        const r = resolveAabb(candidate, [...labBlockingWalls(openIds), ...state.labProps.map(p => p.rect)]);
+        newX = r.x; newY = r.y;
+      } else {
+        // Block the player's hitbox out of tree trunks (rectangle AABB only).
+        const treeResolved = resolveTreeCollision(candidate);
+        const resolved = resolveTorchCollision({
+          x: treeResolved.x,
+          y: treeResolved.y,
+          width: player.width,
+          height: player.height,
+        }, solidProps);
+        const castleResolved = resolveCastleCollision({
+          x: resolved.x,
+          y: resolved.y,
+          width: player.width,
+          height: player.height,
+        }, castleEvent);
+        newX = castleResolved.x;
+        newY = castleResolved.y;
+      }
       // 設置型シールドはプレイヤーを止めない: 触れたら進行方向へ盾を押す(邪魔しない)。
       // 押された盾は既存の毎フレーム処理(盾→敵 resolveAabb)で進行方向の敵を比例して押し出す。
       const pMoveDx = newX - player.x;
@@ -1176,13 +1309,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const {
       player, gameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
-      shopReopenAt, eventQuestReopenAt
+      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
     } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
-    // 近接スイングの軽い画面シェイク(視覚のみ・強い揺れは triggerShake 側で優先)。
-    get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
+    // 近接スイングの揺れは「通常ヒット時のみ」(空振りは揺らさない/フィニッシュ・カウンターは
+    // それぞれのインパクト演出に任せる)。判定が出揃う関数末尾で発火する(社長指示)。
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
@@ -1190,6 +1323,94 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
+    // 近接の壁越し不可(視線判定)。屋内=lab壁(閉ドア含む) / 屋外=近傍の木。
+    const meleeWalls: Rect[] = indoorMode
+      ? [...labBlockingWalls(labDoors.filter(d => d.open).map(d => d.id)), ...get().labProps.map(p => p.rect)]
+      : treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect);
+
+    // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
+    // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
+    if (
+      player.subWeapons.includes('drone-boomerang') &&
+      !subWeaponBlockedByKatana(player, 'drone-boomerang') &&
+      gameTime >= (player.subWeaponCooldowns['drone-boomerang'] ?? 0)
+    ) {
+      const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['drone-boomerang'] ?? 1));
+      const dir = player.lastDirection ?? { x: 1, y: 0 };
+      const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+      get().addProjectile({
+        id: `proj-drone-boom-${Date.now()}`,
+        x: pcx - 9, y: pcy - 9, width: 18, height: 18,
+        speed: DRONE_BOOM_SPEED,
+        damage: meleeDamage, // 行き/戻りの接触=通常近接ダメージ同等
+        direction: { x: dir.x / dmag, y: dir.y / dmag },
+        weaponType: 'drone-boomerang-projectile',
+        weaponKey: 'sub-drone-boomerang',
+        duration: DRONE_BOOM_SAFETY_MS, // 安全消滅の上限
+        createdAt: Date.now(),
+        passthrough: true,
+        hitEnemies: [],
+        hostile: false,
+        reflected: false,
+        area: DRONE_BOOM_RADIUS,
+        boomPhase: 'out',
+        boomOriginX: pcx,
+        boomOriginY: pcy,
+        boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl],
+        boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl],
+      });
+      get().setSubWeaponCooldown('drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
+    }
+
+    // ワイヤーアンカー: 指離し(このスイング)で発動する移動系サブ。攻撃はしない。
+    //  1) 打ち込み完了後の受付窓内なら → アンカー地点へ高速移動(=追加タップ)。
+    //  2) それ以外で、打ち込み中でなく、クールダウンも明けていれば → アンカー打ち込み開始。
+    // ※近接スイング/カウンター窓自体は従来どおり継続(下のコードに任せる)。発動条件は重複しない。
+    if (
+      player.subWeapons.includes('wire-anchor') &&
+      !subWeaponBlockedByKatana(player, 'wire-anchor')
+    ) {
+      const dashing = now < player.wireDashUntil;
+      const charging = player.wireAnchored && now < player.wirePlantUntil; // 溜中(まだ移動できない)
+      // 敵に吸着中は自動コンボ(引き寄せ→近接→ノックバック)が走るので、タップ移動は無効。
+      const armed = player.wireAnchored && now >= player.wirePlantUntil && !player.wireStuckEnemyId;
+      const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['wire-anchor'] ?? 1));
+      if (dashing) {
+        // 移動中は何もしない。
+      } else if (armed) {
+        // 追加タップ → アンカー地点へ高速移動。CD はここで開始(=「使用後」)。アンカーは消費。
+        const dx = player.wireAnchorX - pcx;
+        const dy = player.wireAnchorY - pcy;
+        const dist = Math.max(0.001, Math.hypot(dx, dy));
+        set(s => ({
+          player: {
+            ...s.player,
+            wireDashUntil: now + WIRE_DASH_MS,
+            wireDashSpeed: dist / (WIRE_DASH_MS / 1000),
+            wireAnchored: false,
+            wirePlantUntil: 0,
+          }
+        }));
+        get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_COOLDOWN_BY_LEVEL[lvl]);
+        get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
+      } else if (!charging && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
+        // 指離し → 前方の青サークル地点へ「即座に」アンカー打ち込み(ワイヤー表示)。溜(WIRE_PLANT_MS)後に移動可。
+        const dir = player.lastDirection ?? { x: 1, y: 0 };
+        const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+        const ax = pcx + (dir.x / dmag) * WIRE_ANCHOR_RANGE;
+        const ay = pcy + (dir.y / dmag) * WIRE_ANCHOR_RANGE;
+        set(s => ({
+          player: {
+            ...s.player,
+            wireAnchorX: ax,
+            wireAnchorY: ay,
+            wireAnchored: true,
+            wirePlantUntil: now + WIRE_PLANT_MS,
+          }
+        }));
+        get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 打ち込みの小ポップ
+      }
+    }
 
     // 自動タレットを叩いてモード切替: メレー範囲内のタレットを前方集中⇔全方位でトグル。
     // 既存の近接接触(=スイング)を再利用。counterCooldown が連打を抑えるのでスイング毎に
@@ -1245,6 +1466,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const qdx = eventQuestNpc.x - pcx;
     const qdy = eventQuestNpc.y - pcy;
     if (
+      !get().indoorMode && // 屋内ステージは二人組(クエストNPC)不在=相互作用しない
       eventQuestNpc.status === 'available' &&
       !showShopMenu &&
       !showEventQuestMenu &&
@@ -1465,6 +1687,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { id: p.id, fromX: p.x, fromY: p.y, x: ex, y: ey, dux, duy, swept, cx: p.x + p.width / 2, cy: p.y + p.height / 2 };
       });
     const hasShieldShove = shieldShoves.length > 0;
+    let bashHitEnemy = false; // バッシュが敵に当たったか(ストップ用)
 
     for (const enemy of enemies) {
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
@@ -1478,9 +1701,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? shieldShoves.find(s => rectsOverlap({ x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height }, s.swept))
         : undefined;
       if (dist > meleeRange && !bashShove) { survivors.push(enemy); continue; }
+      // 壁越しには当てない(視線が壁で遮られている敵はスキップ)。
+      if (meleeWalls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, meleeWalls)) { survivors.push(enemy); continue; }
 
       // バッシュ: 近接ダメージ×3 + 押し出し方向への強ノックバック。フィニッシュ無し。
       if (bashShove) {
+        bashHitEnemy = true; // 敵にヒット → 後でストップ
         slashAt.push({ x: ecx, y: ecy });
         const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
@@ -1649,8 +1875,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(trap.cx, trap.cy, 4, 22, 'rgba(56,189,248,0.58)', 2, 220);
     }
 
-    // シールドバッシュ: 押し出しが発生したら少し強めの画面シェイク(描画のみ)。
-    if (hasShieldShove) get().triggerShake(SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG);
+    // シールドバッシュのエフェクト(ストップ→揺れ+寄り)は「敵に当たった時のみ」(社長指示)。
+    // 壁押し出しだけ(敵に当たっていない)では何も出さない。
+    if (bashHitEnemy) {
+      get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); // 寄りズーム無し(社長指示)。ストップ+揺れのみ
+    }
     // シールドバッシュの押し出し演出(押し出し先で衝撃スラッシュ+リング)。
     for (const s of shieldShoves) {
       const ecx = s.x + (s.cx - s.fromX);
@@ -1678,8 +1907,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
     if (finisherHit || bossFinishHit) {
-      get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG); // 近接フィニッシュの軽いパンチズーム(描画のみ)
+      get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
+    } else if (slashAt.length > 0) {
+      // 通常ヒット(空振りでもフィニッシュでもない)のときだけスイングの揺れを出す。
+      get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
@@ -1845,7 +2076,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
     if (finisherHit || bossFinishHit) {
-      get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
+      get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
     }
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
@@ -1951,7 +2182,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
-    if (finisherHit || bossFinishHit) get().triggerTimeSlow(0.4, MELEE_FINISH_SLOW_MS);
+    if (finisherHit || bossFinishHit) get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },
@@ -2454,6 +2685,36 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   
+  // PHILL銃の手動発砲(指離し): 狙いサークル(=lastDirection)方向へ1発。CD=武器のcooldown(1秒)。
+  firePhillShot: () => {
+    const { player } = get();
+    const weapon = getActiveGun(player);
+    if (!weapon || weapon.key !== 'phill-revolver') return;
+    const now = Date.now();
+    if (isReloading(player, weapon.id)) return;
+    if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1000)) return;
+    const dir = player.lastDirection ?? { x: 1, y: 0 };
+    const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
+    const size = weapon.projectileSize || 9;
+    const speed = (weapon.projectileSpeed || 640) * 1.5; // PROJECTILE_SPEED_MULT 相当
+    get().addProjectile({
+      id: `proj-phill-${now}`,
+      x: player.x + player.width / 2 - size / 2,
+      y: player.y + player.height / 2 - size / 2,
+      width: size, height: size, speed,
+      damage: weapon.damage, // クリ(ヘッドショット)は命中位置で確定付与
+      direction: { x: dir.x / dl, y: dir.y / dl },
+      weaponType: 'phill-bullet',
+      weaponKey: weapon.key,
+      duration: 1400, createdAt: now,
+      passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+    });
+    const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
+    set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
+    if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
+  },
+
   selectUpgrade: (upgrade) => {
     set(state => {
       const { player } = state;
@@ -2478,7 +2739,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             updatedPlayer.health = updatedPlayer.maxHealth;
             break;
           case 'speed':
-            updatedPlayer.speed = Math.round(updatedPlayer.speed * 1.05);
+            updatedPlayer.speed = Math.round(updatedPlayer.speed * 1.10);
             break;
           case 'might':
             // Boost damage on both the gun and the melee weapon.
@@ -2493,13 +2754,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             }));
             break;
           case 'magSize': {
-            // 装填数アップ — bigger magazines for every gun. Top up the
-            // currently-loaded rounds too so the boost is immediately useful.
-            updatedPlayer.magBonus += 1;
+            // 装填数アップ — マガジン +20%(最低+1)。合計上限は取得回数(CAP=5)で +100% に収まる。
+            // magBonus は全銃共通のフラット加算。代表マガジン(最大の銃)を基準に増分を決める。
+            const gunMags = updatedPlayer.weapons
+              .filter(w => w.magSize != null)
+              .map(w => w.magSize as number);
+            const repBase = gunMags.length ? Math.max(...gunMags) : 5;
+            const inc = Math.max(1, Math.round(repBase * 0.2));
+            updatedPlayer.magBonus += inc;
             const bonus = updatedPlayer.magBonus;
             updatedPlayer.weapons = updatedPlayer.weapons.map(w =>
               w.magSize != null
-                ? { ...w, magazine: Math.min((w.magazine ?? 0) + 1, w.magSize + bonus) }
+                ? { ...w, magazine: Math.min((w.magazine ?? 0) + inc, w.magSize + bonus) }
                 : w
             );
             break;
@@ -2511,12 +2777,29 @@ export const useGameStore = create<GameState>((set, get) => ({
           case 'critChance':
             updatedPlayer.critChance = Math.min(0.3, updatedPlayer.critChance + 0.03);
             break;
+          case 'stunDuration':
+            // 気絶時間アップ — 敵の気絶(フィニッシュ受付)時間 +20%。
+            updatedPlayer.stunDurationMult += 0.20;
+            break;
+          case 'ammoDrop':
+            // 弾薬ドロップ率アップ — ドロップ率に +10%(加算)。
+            updatedPlayer.ammoDropBonus += 0.10;
+            break;
+          case 'scrapGain':
+            // スクラップ獲得数アップ — スクラップ獲得 +30%。
+            updatedPlayer.scrapMult += 0.30;
+            break;
           // 'area' / 'duration' are no longer offered (no area weapons), but
           // keep harmless no-op cases for type completeness.
           case 'area':
           case 'duration':
             break;
         }
+        // 個別上限の管理用に取得回数を加算。
+        updatedPlayer.passiveCounts = {
+          ...updatedPlayer.passiveCounts,
+          [upgrade.passiveType]: (updatedPlayer.passiveCounts?.[upgrade.passiveType] ?? 0) + 1,
+        };
         return {
           player: updatedPlayer,
           showUpgradeMenu: false,
@@ -2613,6 +2896,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (key === 'ammo-rifle' || ammoType === 'rifle') {
         return spend(SHOP_AMMO_COST, {
           ammoRifle: Math.min(AMMO_MAX.rifle, state.player.ammoRifle + state.ammoPickupAmounts.rifle)
+        });
+      }
+      if (key === 'ammo-phill' || ammoType === 'phill') { // 研究所: 商人はPHILL弾のみ販売
+        return spend(SHOP_AMMO_COST, {
+          ammoPhill: Math.min(AMMO_MAX.phill, state.player.ammoPhill + state.ammoPickupAmounts.phill)
         });
       }
       if (key === 'medkit') {
@@ -2787,29 +3075,33 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   updateEnemies: (deltaTime) => {
+    let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine');
       const now = Date.now();
+      const pcx = player.x + player.width / 2;
+      const pcy = player.y + player.height / 2;
+      const indoor = state.indoorMode;
+      const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
+      const indoorWalls = indoor ? [...labBlockingWalls(openDoorIds), ...state.labProps.map(p => p.rect)] : [];
 
       const updatedEnemies = enemies.map(enemy => {
+        // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁(+閉ドア+プロップ)、屋外は木/松明。
+        const resolveMove = (nx: number, ny: number) => {
+          if (indoor) return resolveAabb({ x: nx, y: ny, width: enemy.width, height: enemy.height }, indoorWalls);
+          const tr = resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
+          return resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
+        };
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
         if (enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
-          const treeResolved = resolveTreeCollision({
-            x: enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
-            y: enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
-            width: enemy.width,
-            height: enemy.height,
-          });
-          const kb = resolveTorchCollision({
-            x: treeResolved.x,
-            y: treeResolved.y,
-            width: enemy.width,
-            height: enemy.height,
-          }, solidProps);
+          const kb = resolveMove(
+            enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
+            enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
+          );
           return { ...enemy, x: kb.x, y: kb.y };
         }
 
@@ -2822,6 +3114,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Stun (from a crit) freezes the enemy in place — it's a sitting duck
         // for a melee finisher. gameTime-based so pauses don't cheat the timer.
         if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
+          // 気絶したら、突進/ジャンプ等の特殊挙動(aiPhase)を必ずリセットして「着地・静止」させる。
+          // パンプキンのジャンプ準備/ジャンプ中、werewolf の溜め/突進、今後の特殊敵も aiPhase 基準で同様にキャンセル。
+          if (enemy.aiPhase !== undefined) {
+            return {
+              ...enemy, vx: 0, vy: 0,
+              aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+              aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+              aiReadyAt: enemy.stunUntil + 300, // 気絶明け後しばらくは特殊行動を再発動しない
+            };
+          }
           return enemy;
         }
 
@@ -2829,6 +3131,95 @@ export const useGameStore = create<GameState>((set, get) => ({
         // crit stun state, so rooted enemies are not melee-finisher targets.
         if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil) {
           return { ...enemy, vx: 0, vy: 0 };
+        }
+
+        // 屋内: 休眠敵は静止。索敵範囲(aggroRange×2=二倍)内 かつ 壁越しでない 時だけ起床(社長指示)。
+        if (enemy.dormant) {
+          const ecx2 = enemy.x + enemy.width / 2;
+          const ecy2 = enemy.y + enemy.height / 2;
+          const ddx = pcx - ecx2, ddy = pcy - ecy2;
+          const ar = (enemy.aggroRange ?? 200) * 1; // 索敵範囲(PHILL運用に合わせ従来の半分=base等倍)
+          const inRange = ddx * ddx + ddy * ddy <= ar * ar;
+          const seen = inRange && !(indoorWalls.length > 0 && segmentBlocked(pcx, pcy, ecx2, ecy2, indoorWalls)); // 壁越しは見つからない
+          if (!seen) return { ...enemy, vx: 0, vy: 0 };
+          return { ...enemy, dormant: false, vx: 0, vy: 0 };
+        }
+
+        // 犬型(werewolf)突進AI: ハンドガン射程より少し外で減速(溜め)→開始時のプレイヤー位置へ2倍速で突進。
+        if (enemy.type === 'werewolf') {
+          const ecx = enemy.x + enemy.width / 2;
+          const ecy = enemy.y + enemy.height / 2;
+          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          if (enemy.aiPhase === 'charge') {
+            const tx = enemy.aiTargetX ?? pcx;
+            const ty = enemy.aiTargetY ?? pcy;
+            const cdx = tx - ecx, cdy = ty - ecy;
+            const cdist = Math.hypot(cdx, cdy);
+            if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS };
+            }
+            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT;
+            const cvx = (cdx / cdist) * cs, cvy = (cdy / cdist) * cs;
+            const moved = resolveMove(enemy.x + cvx * deltaTime, enemy.y + cvy * deltaTime);
+            return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
+          }
+          if (enemy.aiPhase === 'windup') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              // 溜め終了 → 突進開始(この瞬間のプレイヤー位置を狙う)。
+              return { ...enemy, aiPhase: 'charge', aiTargetX: pcx, aiTargetY: pcy, aiPhaseUntil: gameTime + WEREWOLF_CHARGE_MAX_MS, vx: 0, vy: 0 };
+            }
+            const ws = enemy.speed * WEREWOLF_WINDUP_SPEED_MULT;
+            const wvx = (pcx - ecx) / Math.max(0.001, dist) * ws;
+            const wvy = (pcy - ecy) / Math.max(0.001, dist) * ws;
+            const moved = resolveMove(enemy.x + wvx * deltaTime, enemy.y + wvy * deltaTime);
+            return { ...enemy, vx: wvx, vy: wvy, x: moved.x, y: moved.y };
+          }
+          if (dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, vx: 0, vy: 0 };
+          }
+          // それ以外は通常チェイス(下へフォールスルー)。
+        }
+
+        // パンプキン(pumpkin)ジャンプ攻撃AI: 少し外で縮み溜め(3秒)→1秒でその時のプレイヤー位置へ着地→1秒停止。
+        // 研究所Lv3(lab-zombie-3)もパンプキンと同じ挙動(社長指示)。
+        if (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3') {
+          const ecx = enemy.x + enemy.width / 2;
+          const ecy = enemy.y + enemy.height / 2;
+          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          if (enemy.aiPhase === 'crouch') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              // 溜め終了 → ジャンプ開始(この瞬間のプレイヤー位置へ。アークは描画側)。
+              return {
+                ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
+                aiFromX: enemy.x, aiFromY: enemy.y,
+                aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2,
+                aiStartedAt: gameTime, aiPhaseUntil: gameTime + PUMPKIN_JUMP_MS,
+              };
+            }
+            return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(縮みは描画側)
+          }
+          if (enemy.aiPhase === 'jump') {
+            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / PUMPKIN_JUMP_MS));
+            const fx = enemy.aiFromX ?? enemy.x, fy = enemy.aiFromY ?? enemy.y;
+            const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
+            const nx = fx + (tx - fx) * t;
+            const ny = fy + (ty - fy) * t;
+            if (t >= 1) {
+              pumpkinLanded = true; // 着地 → set 後に画面揺れ
+              return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
+            }
+            return { ...enemy, x: nx, y: ny, vx: 0, vy: 0 }; // 空中は障害物を飛び越える(衝突無視)
+          }
+          if (enemy.aiPhase === 'recover') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + PUMPKIN_COOLDOWN_MS };
+            }
+            return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
+          }
+          if (dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0 };
+          }
+          // それ以外は通常チェイス(下へフォールスルー)。
         }
 
         // Plants are nearly stationary — they shuffle slightly toward the
@@ -2849,24 +3240,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 
-        const treeResolved = resolveTreeCollision({
-          x: enemy.x + vx * deltaTime,
-          y: enemy.y + vy * deltaTime,
-          width: enemy.width,
-          height: enemy.height,
-        });
-        const moved = resolveTorchCollision({
-          x: treeResolved.x,
-          y: treeResolved.y,
-          width: enemy.width,
-          height: enemy.height,
-        }, solidProps);
+        const moved = resolveMove(enemy.x + vx * deltaTime, enemy.y + vy * deltaTime);
 
         return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
 
       return { enemies: updatedEnemies };
     });
+    if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
   },
 
   stunEnemy: (id, until) => {
@@ -2950,6 +3331,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
+  stickFireKnife: (id, enemyId, x, y, fuseMs) => {
+    // 飛行中のナイフを敵に刺す。位置を命中点へ固定し、追従用に enemyId を保持。
+    // duration を延長 & createdAt をリセットして、爆発前に寿命カリングで消えないようにする。
+    const now = Date.now();
+    set(state => ({
+      projectiles: state.projectiles.map(p =>
+        p.id === id
+          ? { ...p, x, y, speed: 0, stuckToEnemyId: enemyId, isStuck: true, createdAt: now, duration: fuseMs + 600, explodeAt: now + fuseMs }
+          : p
+      )
+    }));
+  },
+
   reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER) => {
     set(state => ({
       projectiles: state.projectiles.map(p => {
@@ -2976,11 +3370,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const currentTime = Date.now();
 
     set(state => {
-      const { projectiles, player, gameBounds, breakableProps, castleEvent } = state;
+      const { projectiles, player, gameBounds, breakableProps, castleEvent, camera } = state;
       const cullRadius = Math.max(gameBounds.width, gameBounds.height);
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
+      const indoor = state.indoorMode;
+      const indoorWalls = indoor ? [...labBlockingWalls(state.labDoors.filter(d => d.open).map(d => d.id)), ...state.labProps.map(p => p.rect)] : [];
       const grenadeWallsFor = (p: Projectile) => {
+        if (indoor) return indoorWalls; // 屋内は labMap の壁(+閉ドア)。木/トーチは無し。
         const pad = 260;
         const cx = p.x + p.width / 2;
         const cy = p.y + p.height / 2;
@@ -2989,6 +3386,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           .filter(prop => prop.type === 'torch' && prop.health > 0)
           .map(torchRect);
         return [...trunks, ...torches, castleRect(castleEvent)];
+      };
+      // 弾が壁に当たったら消す(貫通させない)。全ステージ共通(屋内=lab壁 / 屋外=木/トーチ/城)。
+      // 対象: 銃弾/敵弾 + 飛行中の発火ナイフ(刺さった後は除外)。grenade はバウンド、ブーメランは戻る(各々別処理)。
+      const BULLET_TYPES = new Set(['handgun', 'shotgun', 'rifle', 'enemy_bolt']);
+      const hitsWall = (p: Projectile): boolean => {
+        const blockable = BULLET_TYPES.has(p.weaponType) || (p.weaponType === 'fire-knife-projectile' && !p.stuckToEnemyId);
+        if (!blockable) return false;
+        const walls = grenadeWallsFor(p);
+        const rect = { x: p.x, y: p.y, width: p.width, height: p.height };
+        return walls.some(w => rectsOverlap(rect, w));
       };
 
       const updatedProjectiles = projectiles
@@ -3021,6 +3428,57 @@ export const useGameStore = create<GameState>((set, get) => ({
               x: playerCX - p.width / 2,
               y: playerCY - p.height / 2
             };
+          }
+          // Fire-knife: once stuck, follow the impaled enemy. If that enemy is
+          // gone (died), hold the last position so the delayed AoE fires at the
+          // death spot. In-flight knives fall through to normal linear motion.
+          if (p.weaponType === 'fire-knife-projectile' && p.stuckToEnemyId) {
+            const host = state.enemies.find(en => en.id === p.stuckToEnemyId);
+            if (host) {
+              return { ...p, x: host.x + host.width / 2 - p.width / 2, y: host.y + host.height / 2 - p.height / 2 };
+            }
+            return p;
+          }
+          // Drone-boomerang: out(直進貫通)→stop(その場で停止)→return(プレイヤー現在地へ)→done(消滅)。
+          // 移動とフェーズ遷移はここ(純粋state)。ダメージは useGameLoop 側の専用パスで処理。
+          if (p.weaponType === 'drone-boomerang-projectile') {
+            const phase = p.boomPhase ?? 'out';
+            if (phase === 'out') {
+              const nx = p.x + p.direction.x * p.speed * deltaTime;
+              const ny = p.y + p.direction.y * p.speed * deltaTime;
+              const ncx = nx + p.width / 2, ncy = ny + p.height / 2;
+              // 壁に当たったらその場で戻り動作へ切替(貫通しない)。
+              const bwalls = indoor ? indoorWalls : grenadeWallsFor(p);
+              if (bwalls.some(w => rectsOverlap({ x: nx, y: ny, width: p.width, height: p.height }, w))) {
+                return { ...p, boomPhase: 'return', hitEnemies: [] };
+              }
+              // 画面外に出たらすぐ戻り動作へ切替(停止せず帰還)。可視範囲=カメラ+画面サイズ。
+              const offScreen = ncx < camera.x || ncx > camera.x + gameBounds.width || ncy < camera.y || ncy > camera.y + gameBounds.height;
+              const traveled = Math.hypot(ncx - (p.boomOriginX ?? ncx), ncy - (p.boomOriginY ?? ncy));
+              if (offScreen) {
+                return { ...p, x: nx, y: ny, boomPhase: 'return', hitEnemies: [] };
+              }
+              if (traveled >= (p.boomMaxDist ?? 99999)) {
+                // 到達 → 停止フェーズ。貫通リストをリセット(戻りで再ヒットできるよう)。
+                return { ...p, x: nx, y: ny, boomPhase: 'stop', boomStopUntil: currentTime + (p.boomStopMs ?? 2000), hitEnemies: [] };
+              }
+              return { ...p, x: nx, y: ny };
+            }
+            if (phase === 'stop') {
+              if (currentTime >= (p.boomStopUntil ?? 0)) {
+                return { ...p, boomPhase: 'return', hitEnemies: [] };
+              }
+              return p; // 停止中は動かない(回転は描画側)
+            }
+            if (phase === 'return') {
+              const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
+              const ddx = playerCX - cx, ddy = playerCY - cy;
+              const dd = Math.hypot(ddx, ddy);
+              if (dd <= 18) return { ...p, boomPhase: 'done' }; // 到達 → 消滅(useGameLoop が除去)
+              const rsp = DRONE_BOOM_RETURN_SPEED; // 戻りは従来速度
+              return { ...p, x: p.x + (ddx / dd) * rsp * deltaTime, y: p.y + (ddy / dd) * rsp * deltaTime };
+            }
+            return p; // 'done'
           }
           // Decoy: travels in the throw direction until it lands, then holds
           // position (a stationary placed device) for the rest of its life.
@@ -3065,7 +3523,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             x: p.x + dir.x * p.speed * deltaTime,
             y: p.y + dir.y * p.speed * deltaTime
           };
-        });
+        })
+        // 銃弾/敵弾は壁に当たったら消滅(貫通不可)。grenade はバウンド、特殊弾は対象外。
+        .filter(p => !hitsWall(p));
 
       return { projectiles: updatedProjectiles };
     });
@@ -3122,7 +3582,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(state => ({
           player: {
             ...state.player,
-            straps: state.player.straps + pickup.value
+            // スクラップ獲得数アップ(パッシブ): 取得量を scrapMult 倍に(+30%/回)。
+            straps: state.player.straps + Math.max(1, Math.round(pickup.value * (state.player.scrapMult ?? 1)))
           },
           gameStats: {
             ...state.gameStats,
@@ -3197,7 +3658,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       case 'ammo-handgun':
       case 'ammo-shotgun':
-      case 'ammo-rifle': {
+      case 'ammo-rifle':
+      case 'ammo-phill': {
         const fam = pickup.type.slice('ammo-'.length) as AmmoType;
         const amount = get().ammoPickupAmounts[fam];
         get().addAmmo(fam, amount);
@@ -3271,6 +3733,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   syncBreakableProps: (camera, bounds) => {
     const pad = 520;
     set(state => {
+      // 屋内(研究施設)はステージ1の松明/地雷を「生成」しない。ただし resetGame で置いた
+      // UVバー(type:'uv-bar'=破壊可能)はそのまま保持する(壊れたら damageBreakableProp が除去)。
+      if (state.indoorMode) {
+        return {};
+      }
       const mineAmbushAnchor = state.mineAmbushAnchor ?? (
         state.gameTime >= MINE_AMBUSH_TIME_MS
           ? {
@@ -3430,7 +3897,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
-    if (roll < 0.9) {
+    if (roll < 0.9 && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)
       get().addPickup({
         id: `pickup-torch-bomb-${prop.id}`,
         x, y,
@@ -3712,6 +4179,38 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setIntroDialogueLines: (lines) => {
     set({ introDialogueLines: lines });
+  },
+
+  setPendingLoadout: (keys) => {
+    set({ pendingLoadout: keys });
+  },
+
+  setPendingIndoor: (indoor) => {
+    set({ pendingIndoor: indoor });
+  },
+
+  triggerEventVictory: () => {
+    // ボス無しのイベント勝利。giantbat 撃破と同様に gameWon=true(Game.tsx が監視→onVictory)。
+    set({ gameWon: true });
+  },
+
+  openLabDoor: (id) => {
+    set(state => ({ labDoors: state.labDoors.map(d => d.id === id ? { ...d, open: true } : d) }));
+  },
+
+  setHasCardKey: (v) => {
+    set({ hasCardKey: v });
+  },
+
+  pressLabButton: (id) => {
+    set(state => {
+      const btn = state.labButtons.find(b => b.id === id);
+      if (!btn || btn.pressed) return {};
+      return {
+        labButtons: state.labButtons.map(b => b.id === id ? { ...b, pressed: true } : b),
+        labDoors: state.labDoors.map(d => d.id === btn.opensDoorId ? { ...d, open: true } : d),
+      };
+    });
   },
 
   endIntroDialogue: () => {
@@ -4004,19 +4503,78 @@ export const useGameStore = create<GameState>((set, get) => ({
       ? characterClass as CharacterClass 
       : 'warrior';
       
-    const startingWeapons = getStartingWeapons(validClass);
+    let startingWeapons = getStartingWeapons(validClass);
+    // 屋内(研究施設)は初期銃を専用の「ＰＨＩＬＬ-銃」に固定(近接はクラスのプロフィール据え置き)。
+    if (state.pendingIndoor && !state.danceTestMode) {
+      const melee = startingWeapons.find(w => w.isMelee);
+      startingWeapons = [createWeapon('phill-revolver'), ...(melee ? [melee] : [])];
+    }
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
     const maxHealth = profile.maxHp;
     // 固有スキル(クラス標準サブ武器)を最初から Lv1 所持で開始する。
     const innateSub = classSubWeaponFor(validClass);
     
     set(state => {
+      // 出撃時の所持サブ = クラス固有(デフォルト)サブは常に所持 + 装備選択で選んだサブ。
+      // フリー/メイン/(将来の)サブクエスト共通の経路。固有サブが落ちないようにする(社長指示)。
+      // 商人(unlockedShopSkillCards)とレベルアップ候補(generateUpgradeOptions)もこの所持サブに絞られる。
+      const loDedup = state.pendingLoadout.filter((k, i) => state.pendingLoadout.indexOf(k) === i);
+      const runSubs: SubWeaponKey[] = state.danceTestMode
+        ? ['shijin']
+        : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
+      const runLevels: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
+        ? { shijin: state.danceTestLevel }
+        : Object.fromEntries(runSubs.map(k => [k, 1])) as Partial<Record<SubWeaponKey, number>>;
+      // 商人はこの出撃のサブだけ Lv3 まで販売(他は陳列しない)。練習/ベンチは空。
+      const runShopUnlocks: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
+        ? {}
+        : Object.fromEntries(runSubs.map(k => [k, 3])) as Partial<Record<SubWeaponKey, number>>;
+      // 屋内(研究施設)ステージ初期化。選択ステージが indoor なら labMap から構築。
+      const indoor = state.pendingIndoor && !state.danceTestMode;
+      const spawnTL = indoor
+        ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
+        : { x: 0, y: 0 };
+      const runDoors: LabDoor[] = indoor ? LAB_DOORS.map(d => ({ id: d.id, rect: d.rect, open: false })) : [];
+      const runButtons: LabButton[] = indoor ? [{ ...LAB_BUTTON, pressed: false }] : [];
+      const runProps: LabProp[] = indoor ? generateLabProps() : []; // 障害物をランダム配置(壁/ギミック回避)
+      // UVライトバー=松明と同じ扱い(破壊可能)。type:'uv-bar' の breakableProp として配置(当たり判定は無し=屋内移動は labWalls/labProps のみ)。
+      const runBreakables: BreakableProp[] = indoor
+        ? LAB_UV_BARS.map((b, i) => ({
+            id: `lab-uv-${i}`,
+            x: b.x - 15, y: b.y - 24, width: 30, height: 26,
+            footX: b.x, footY: b.y, scale: 1,
+            health: 12, maxHealth: 12, type: 'uv-bar' as const, lastHit: 0,
+          }))
+        : [];
+      // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
+      const runEnemies: Enemy[] = indoor
+        ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0 }))
+        : [];
+      // 屋内ギミックの初期ピックアップ: カードキー(E部屋)+ 武器箱(A部屋・ボタン解錠後に到達)
+      // + クリア条件アイテム(C部屋=ゴール・カードキーで扉解錠後に到達。拾うとクリア)。
+      const runPickups: Pickup[] = indoor
+        ? [
+            { id: 'lab-cardkey', x: LAB_CARD_KEY.x - 8, y: LAB_CARD_KEY.y - 8, type: 'card-key', value: 0 },
+            { id: 'lab-weaponcrate', x: LAB_WEAPON_CRATE.x - 8, y: LAB_WEAPON_CRATE.y - 8, type: 'weapon-crate', value: 1 },
+            { id: 'lab-clear-item', x: LAB_CLEAR_ITEM.x - 8, y: LAB_CLEAR_ITEM.y - 8, type: 'lab-clear-item', value: 0 },
+            // PHILL弾の固定配置(研究所限定)。
+            ...LAB_AMMO_PICKUPS.map((a, i) => ({ id: `lab-phill-${i}`, x: a.x - 8, y: a.y - 8, type: 'ammo-phill' as const, value: 0 })),
+          ]
+        : [];
+
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
       return {
+        unlockedShopSkillCards: runShopUnlocks,
+        indoorMode: indoor,
+        labDoors: runDoors,
+        labButtons: runButtons,
+        labProps: runProps,
+        hasCardKey: false,
+        goalReachedAt: 0,
         player: {
-          x: 0,
-          y: 0,
+          x: spawnTL.x,
+          y: spawnTL.y,
           vx: 0,
           vy: 0,
           width: PLAYER_HITBOX,
@@ -4041,16 +4599,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoHandgun: AMMO_INITIAL.handgun,
           ammoShotgun: AMMO_INITIAL.shotgun,
           ammoRifle: AMMO_INITIAL.rifle,
+          ammoPhill: AMMO_INITIAL.phill,
           critChance: 0,
           quickMagCritUntil: 0,
           reloadEndsAt: 0,
           reloadingWeaponId: '',
           magBonus: 0,
           reloadMult: 1,
+          stunDurationMult: 1,
+          ammoDropBonus: 0,
+          scrapMult: 1,
+          passiveCounts: {},
           // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
-          subWeapons: state.danceTestMode ? ['shijin'] : [innateSub],
-          subWeaponLevels: state.danceTestMode ? { shijin: state.danceTestLevel } : { [innateSub]: 1 },
+          subWeapons: runSubs,
+          subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
           huntingCharged: false,
@@ -4061,6 +4624,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           shijinSlideUntil: 0,
           shijinSlideDirX: 0,
           shijinSlideDirY: 0,
+          wireAnchorX: 0,
+          wireAnchorY: 0,
+          wireAnchored: false,
+          wirePlantUntil: 0,
+          wireDashUntil: 0,
+          wireDashSpeed: 0,
+          wireStuckEnemyId: '',
+          wireStuckUntil: 0,
           straps: state.startWithTestStraps ? 1000 : 0,
           vaccineRevives: 0
         },
@@ -4070,14 +4641,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         introDialogueStartedAt: 0,
         introDialogueShown: false,
         reaperCross: null,
-        enemies: [],
+        enemies: runEnemies,
+        pickups: runPickups,
         projectiles: [],
-        pickups: [],
-        breakableProps: [],
+        breakableProps: runBreakables,
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
+        // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
+        // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
         castleEvent: createCastleEvent(),
-        weaponMerchant: createWeaponMerchant(),
+        weaponMerchant: indoor
+          ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
+          : createWeaponMerchant(),
         eventQuestNpc: createEventQuestNpc(),
         gameTime: 0,
         isPaused: false,
@@ -4117,6 +4692,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         hitstopUntil: 0,
         timeSlowUntil: 0,
         timeSlowScale: 1,
+        timeSlowStart: 0,
         shakeUntil: 0,
         shakeMag: SHAKE_MAG,
         shakeDur: SHAKE_MS,
@@ -4145,6 +4721,37 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  triggerHitstop: (durationMs) => {
+    // 全停止(ループが早期returnで凍結)。重なった時は長い方を採用。
+    const now = Date.now();
+    set(state => ({ hitstopUntil: Math.max(state.hitstopUntil, now + Math.max(0, durationMs)) }));
+  },
+
+  triggerHitImpact: (stopMs, shakeMs, shakeMag, zoomMag) => {
+    // カウンター/バッシュの衝撃: 寄りパンチズームは命中の瞬間に即(=早く寄る)。
+    // ストップを入れ、揺れはストップ後に(止まりが揺れに埋もれないよう)。
+    // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
+    get().triggerZoom(zoomMag); // 即・寄り
+    if (get().rhythm.active) {
+      get().triggerShake(shakeMs, shakeMag);
+      return;
+    }
+    // ストップ開始時、進行中の(スイング等の)揺れを消す=ストップ後に出すこのインパクトの揺れだけ残す。
+    set({ shakeUntil: 0 });
+    get().triggerHitstop(stopMs);
+    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS); // ストップから必ずスローで等速へ戻す(社長指示)
+    setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
+  },
+
+  triggerFinishImpact: () => {
+    // 近接フィニッシュ: 寄りは即。スローも即開始(ストップ中はループ早期returnで凍結 → 明けてから
+    // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
+    // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
+    get().triggerZoom(MELEE_FINISH_ZOOM_MAG);             // 即・寄り
+    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS);     // 即・スロー(強め→等速へランプ)
+    setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
+  },
+
   triggerZoom: (mag, durationMs = MELEE_FINISH_ZOOM_MS) => {
     // 描画のみのパンチズーム。重なった場合は強い方/長い方を採用。ゲーム性(カメラ座標/判定)は不変。
     const now = Date.now();
@@ -4164,7 +4771,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         timeSlowUntil: Math.max(active ? state.timeSlowUntil : 0, until),
         timeSlowScale: active
           ? Math.min(state.timeSlowScale, clampedScale)
-          : clampedScale
+          : clampedScale,
+        // 新規開始時のみ開始時刻を更新(継続中は維持してランプ区間を保つ)。
+        timeSlowStart: active ? state.timeSlowStart : now,
       };
     });
   },

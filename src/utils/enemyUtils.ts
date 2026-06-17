@@ -22,13 +22,18 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
   giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 22,  experienceValue: 30 },
-  reaper:    { width: 80, height: 80, speed: 130, health: 99999,damage: 999, experienceValue: 0 }
+  reaper:    { width: 80, height: 80, speed: 130, health: 99999,damage: 999, experienceValue: 0 },
+  // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
+  // 社長指示: 耐久値(health)はデフォルトに戻す(2倍化を撤回)。damage は据え置き(2倍のまま)。
+  'lab-zombie-1': { width: 28, height: 28, speed: 52, health: 40,  damage: 20, experienceValue: 4 },
+  'lab-zombie-2': { width: 34, height: 34, speed: 66, health: 90,  damage: 28, experienceValue: 8 },
+  'lab-zombie-3': { width: 46, height: 46, speed: 48, health: 160, damage: 36, experienceValue: 20 }
 };
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
 export const isBossType = (t: EnemyType): boolean =>
-  t === 'pumpkin' || t === 'giantbat' || t === 'reaper';
+  t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3';
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.

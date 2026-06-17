@@ -77,7 +77,10 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
             style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
           >
             <div className="overflow-y-auto px-5 pt-5 pb-3 text-white/85">
-              <h2 className="text-base font-semibold text-amber-200">⚠ ご利用にあたって</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-amber-200">⚠ ご利用にあたって</h2>
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-mono tabular-nums text-white/70">v{__APP_VERSION__}</span>
+              </div>
               <p className="mt-3 text-[13px] leading-relaxed text-white/70">
                 本作は戦闘を含むアクションゲーム(フィクション)です。
               </p>

@@ -9,7 +9,7 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
 import { ensureTextures } from './pixi/pixiTextures';
-import { getSelectedStageId, markStageCleared } from './data/progress';
+import { getSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
 import { getStage } from './data/campaign';
 
 const LOADING_MIN_MS = 650;
@@ -46,7 +46,7 @@ function App() {
 
   useEffect(() => {
     // menu=タイトル曲 / playing=ステージ曲 / その他(loading・gameOver・victory)=停止。
-    if (gameState === 'playing') setBgmScene('game');
+    if (gameState === 'playing') setBgmScene('game', useGameStore.getState().indoorMode ? 'lab' : 'default');
     else if (gameState === 'menu') setBgmScene('menu');
     else setBgmScene('off');
   }, [gameState]);
@@ -63,9 +63,13 @@ function App() {
     setBenchmarkResult(null);
     // 素材ロード完了を待ってからゲーム開始(通常はタイトルのローディング段階で既に完了)。
     await ensurePreload();
+    // 屋内(研究施設)ステージか。resetGame が labMap で初期化するため reset 前に渡す。ベンチは除外。
+    const stageForRun = benchmark ? undefined : getStage(getSelectedStageId());
+    useGameStore.getState().setPendingIndoor(!!stageForRun?.indoor);
     resetGame(validClass);
-    // 出撃ごとの会話は選択ミッションから設定(フリーミッション/未選択/ベンチは空=会話なし)。
-    const selectedStage = benchmark ? undefined : getStage(getSelectedStageId());
+    // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチは空=会話なし。
+    const free = getSelectedFreeMode();
+    const selectedStage = (benchmark || free) ? undefined : stageForRun;
     useGameStore.getState().setIntroDialogueLines(selectedStage?.main.dialogue ?? []);
     setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
@@ -78,8 +82,9 @@ function App() {
   const handleVictory = () => {
     // 勝利したら選択中ステージのメインミッションをクリア扱いにし、次ステージを解放する。
     // (ダンス練習/ベンチは選択ステージを空にしているのでここでは何も起きない)
+    // フリー(周回)出撃は進行に影響させない=クリア扱いにしない。
     const stageId = getSelectedStageId();
-    if (stageId) markStageCleared(stageId);
+    if (stageId && !getSelectedFreeMode()) markStageCleared(stageId);
     setGameState('victory');
   };
 

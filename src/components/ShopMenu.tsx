@@ -32,13 +32,15 @@ type SkillShopEntry = {
 const ammoLabel: Record<AmmoType, string> = {
   handgun: 'ハンドガン弾',
   shotgun: 'ショットガン弾',
-  rifle: 'ライフル弾'
+  rifle: 'ライフル弾',
+  phill: 'ＰＨＩＬＬ弾'
 };
 
 const ammoShopKey: Record<AmmoType, ShopItemKey> = {
   handgun: 'ammo-handgun',
   shotgun: 'ammo-shotgun',
-  rifle: 'ammo-rifle'
+  rifle: 'ammo-rifle',
+  phill: 'ammo-phill'
 };
 
 const ShopMenu: React.FC = () => {
@@ -50,7 +52,10 @@ const ShopMenu: React.FC = () => {
   const buySkillCardFromShop = useGameStore(state => state.buySkillCardFromShop);
   const closeShop = useGameStore(state => state.closeShop);
 
-  const ammoEntries = (['handgun', 'shotgun', 'rifle'] as AmmoType[]).map(type => ({
+  // 研究所(屋内)では商人はPHILL弾のみ販売。屋外は従来3種。
+  const indoorMode = useGameStore(state => state.indoorMode);
+  const ammoTypes: AmmoType[] = indoorMode ? ['phill'] : ['handgun', 'shotgun', 'rifle'];
+  const ammoEntries = ammoTypes.map(type => ({
     key: ammoShopKey[type],
     name: ammoLabel[type],
     description: `+${ammoPickupAmounts[type]}発`,

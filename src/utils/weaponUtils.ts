@@ -15,6 +15,7 @@ const BASE_CRIT_BY_CATEGORY: Record<AmmoType, number> = {
   handgun: 0.10,
   shotgun: 0.05,
   rifle: 0.20,
+  phill: 0, // PHILL銃のクリ(ヘッドショット)は命中位置で確定付与。基礎クリ率は0。
 };
 
 // ---------------------------------------------------------------------------
@@ -67,7 +68,11 @@ const CATALOG: Record<string, WeaponDef> = {
   // Each carries a fixed crit chance that rises with tier.
   'knife-t1':         { key: 'knife-t1',   name: 'ナイフ',         type: 'knife',   tier: 1, isMelee: true, damage: 8,  cooldown: 0, critChance: 0.05 },
   'hatchet-t2':       { key: 'hatchet-t2', name: 'ダガー',         type: 'hatchet', tier: 2, isMelee: true, damage: 14, cooldown: 0, critChance: 0.08 },
-  'machete-t3':       { key: 'machete-t3', name: 'ファイティングナイフ', type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 }
+  'machete-t3':       { key: 'machete-t3', name: 'ファイティングナイフ', type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 },
+
+  // 研究所専用リボルバー「ＰＨＩＬＬ-銃」。狙って撃つ手動武器(自動射撃しない)。頭部命中で確定ヘッドショット、
+  // 胴体は通常ダメージ＋2倍ノックバック。ダメージ40(頭部60×3で lab-zombie-3=160HP を3発撃破)。射撃CD=1秒。
+  'phill-revolver':   { key: 'phill-revolver', name: 'ＰＨＩＬＬ-銃', type: 'phill-bullet', category: 'phill', tier: 1, damage: 40, cooldown: 1000, projectileSpeed: 640, projectileSize: 9, count: 1, magSize: 6, reloadMs: 900 }
 };
 
 const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
@@ -79,15 +84,17 @@ const weaponBaseCritChance = (def: WeaponDef): number | undefined => {
 export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
   handgun: ['handgun-t1', 'handgun-t2', 'handgun-t3'],
   shotgun: ['shotgun-t1', 'shotgun-t2', 'shotgun-t3'],
-  rifle:   ['rifle-t1', 'rifle-t2', 'rifle-t3']
+  rifle:   ['rifle-t1', 'rifle-t2', 'rifle-t3'],
+  phill:   ['phill-revolver'] // 屋内固定銃。ドロップ/商人の銃ラインには出ない(weaponDrop は handgun/shotgun/rifle のみ抽選)。
 };
 export const MELEE_KEYS = ['knife-t1', 'hatchet-t2', 'machete-t3'];
 
 // Player-state field name that holds the pool for a given ammo type.
-export const AMMO_FIELD: Record<AmmoType, 'ammoHandgun' | 'ammoShotgun' | 'ammoRifle'> = {
+export const AMMO_FIELD: Record<AmmoType, 'ammoHandgun' | 'ammoShotgun' | 'ammoRifle' | 'ammoPhill'> = {
   handgun: 'ammoHandgun',
   shotgun: 'ammoShotgun',
-  rifle: 'ammoRifle'
+  rifle: 'ammoRifle',
+  phill: 'ammoPhill'
 };
 
 let weaponSeq = 0;
@@ -165,7 +172,8 @@ export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => 
 export const RANGE_BY_CATEGORY: Record<AmmoType, number> = {
   handgun: 176,
   shotgun: 120,
-  rifle: 312
+  rifle: 312,
+  phill: 260 // 手動照準の精密射撃。自動射程判定には使わない(自動射撃しない)。
 };
 
 // A stunned enemy is a low-priority target — the player should be putting
@@ -322,6 +330,7 @@ export const getWeaponShortName = (type: WeaponType): string => {
     case 'knife':   return 'ナイフ';
     case 'hatchet': return 'ダガー';
     case 'machete': return 'ファイティングナイフ';
+    case 'phill-bullet': return 'ＰＨＩＬＬ-銃';
     default:        return '武器';
   }
 };

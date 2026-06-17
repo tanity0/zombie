@@ -78,6 +78,42 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
+      // 研究施設(屋内)アセット。サブディレクトリ込みの名前で登録(spritePath が sprites/<name>.png)。
+      { name: 'lab/lab-wall-open-top', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-open-mid', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-open-bottom', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-closed-top', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-closed-mid', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-closed-bottom', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-side-long', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-side-block1', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-side-block2', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-side-block3', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-r1-c1', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-r5-c1', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' }, // シームレス床(ステージ1風)
+      { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)
+      { name: 'lab-clear-item', scaleMode: 'nearest' }, // 研究所クリア条件アイテム(拾うとクリア)
+      { name: 'wire-anchor-tip', scaleMode: 'nearest' }, // ワイヤーアンカー先端(爪=左下基準。穴=右上にワイヤー接続)
+      // 研究所オブジェ(木の代わりの障害物。紫透過済み)。
+      { name: 'lab-props/lab-prop-r1-c1', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r1-c2', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r1-c3', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r1-c4', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r2-c1', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r2-c2', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r2-c3', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r2-c4', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r3-c1', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r3-c2', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r3-c3', scaleMode: 'nearest' },
+      { name: 'lab-props/lab-prop-r3-c4', scaleMode: 'nearest' },
+      // 研究所ゾンビ(Lv1/2 は男女、Lv3 は巨体1種)。
+      { name: 'lab-zombie/lab-zombie-lv1-male', scaleMode: 'nearest' },
+      { name: 'lab-zombie/lab-zombie-lv1-female', scaleMode: 'nearest' },
+      { name: 'lab-zombie/lab-zombie-lv2-male', scaleMode: 'nearest' },
+      { name: 'lab-zombie/lab-zombie-lv2-female', scaleMode: 'nearest' },
+      { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
 
       ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];

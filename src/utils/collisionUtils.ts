@@ -1,4 +1,8 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
+import { enemyFootBox } from '../pixi/renderSpec';
+
+// PHILL銃の頭部リージョン(見た目の上部)= 描画ボックス上端から boxH×この割合。
+const HEAD_FRACTION = 0.33;
 
 // Check collision between two rectangles
 export const checkCollision = (
@@ -59,8 +63,8 @@ export const pickupDisplayPosition = (pickup: Pickup, now = Date.now()) => {
 export const checkProjectileEnemyCollisions = (
   projectiles: Projectile[],
   enemies: Enemy[]
-): { projectileId: string; enemyId: string; damage: number }[] => {
-  const collisions: { projectileId: string; enemyId: string; damage: number }[] = [];
+): { projectileId: string; enemyId: string; damage: number; headshot?: boolean }[] => {
+  const collisions: { projectileId: string; enemyId: string; damage: number; headshot?: boolean }[] = [];
   const now = Date.now();
 
   projectiles.forEach(projectile => {
@@ -74,12 +78,16 @@ export const checkProjectileEnemyCollisions = (
     // Turrets are stationary placed support units handled by their own pass
     // (auto-fire + on-expiry explosion); they must not be consumed as a
     // damaging projectile on enemy body contact.
+    // Fire-knife throws are handled by their own pass (stick-on-hit + delayed
+    // AoE); they must not be consumed/damaged by the generic projectile pass.
     if (
       projectile.weaponType === 'grenade' ||
       projectile.weaponType === 'trap' ||
       projectile.weaponType === 'decoy' ||
       projectile.weaponType === 'shield' ||
-      projectile.weaponType === 'turret'
+      projectile.weaponType === 'turret' ||
+      projectile.weaponType === 'fire-knife-projectile' ||
+      projectile.weaponType === 'drone-boomerang-projectile'
     ) return;
     // Scheduled-but-not-yet-active projectiles (e.g. the second slash of a
     // whip chain) shouldn't deal damage until their start time arrives.
@@ -87,6 +95,20 @@ export const checkProjectileEnemyCollisions = (
     enemies.forEach(enemy => {
       // Skip if already hit by this projectile (for passthrough weapons)
       if (projectile.hitEnemies.includes(enemy.id)) {
+        return;
+      }
+
+      // PHILL弾は「胴体ボックス または 頭部リージョン」で当たり判定し、頭部命中を headshot として返す。
+      if (projectile.weaponType === 'phill-bullet') {
+        const fb = enemyFootBox(enemy);
+        const top = fb.footY - fb.boxH;
+        const headRect = { x: fb.footX - fb.boxW / 2, y: top, width: fb.boxW, height: fb.boxH * HEAD_FRACTION };
+        const hitHead = checkCollision(projectile, headRect);
+        const hitBody = checkCollision(projectile, enemy);
+        if (hitHead || hitBody) {
+          collisions.push({ projectileId: projectile.id, enemyId: enemy.id, damage: projectile.damage, headshot: hitHead });
+          if (projectile.passthrough) projectile.hitEnemies.push(enemy.id);
+        }
         return;
       }
 

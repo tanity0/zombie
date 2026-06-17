@@ -53,6 +53,7 @@ const GameHUD: React.FC = () => {
     ammoRifle: s.player.ammoRifle,
     subWeapons: s.player.subWeapons,
     subWeaponLevels: s.player.subWeaponLevels,
+    straps: s.player.straps,
   }), shallow);
   // 装備中スキル(サブウェポン)のチップ表示用。村雨を持っていれば刀チップは出さない(同一系統)。
   const equippedSkills = player.subWeapons.filter(
@@ -172,6 +173,10 @@ const GameHUD: React.FC = () => {
         <div className="glass-pill px-3 py-1 text-[13px] font-semibold">
           敵 {enemyCount}
         </div>
+        {/* 拾ったスクラップ数(表示のみ)。 */}
+        <div className="glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums">
+          🔩 {player.straps}
+        </div>
       </div>
 
       {/* Stage label */}
@@ -219,7 +224,7 @@ const GameHUD: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[10px] uppercase tracking-widest text-emerald-200/80 w-8">EXP</span>
+            <span className="text-[10px] uppercase tracking-widest text-emerald-200/80 w-12">PHILL</span>
             <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all duration-300"
@@ -260,7 +265,7 @@ const GameHUD: React.FC = () => {
         const melee = player.weapons.find(w => w.isMelee);
         const activeGun = guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
         const ammoFieldFor = (t: AmmoType) =>
-          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : player.ammoRifle;
+          t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : player.ammoRifle;
         return (
           <div
             className="absolute"

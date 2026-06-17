@@ -18,7 +18,8 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
+import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -117,6 +118,16 @@ const ENV_TINT = (() => {
   return (g << 16) | (g << 8) | g;
 })();
 const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
+
+// --- 研究施設(屋内)の暗さ -------------------------------------------------------
+// ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
+const LAB_ENV_TINT = 0x4f5a6b;       // 研究所の床/壁を暗くする(寒色の暗灰)。小さいほど暗い。
+// 壁の外側=野外マージンの地面(より暗い)。プレイヤーが端でも中心を保てる余白(野外)。
+const LAB_OUTER_TINT = 0x161d16;     // 野外(夜の地面)。かなり暗い緑寄り。
+// 屋内の周辺減光(vignette)を屋外より広範囲に暗く(社長指示)。明るい部分を狭く=さらに強める。
+const LAB_VIGNETTE_ALPHA = 0.97;
+// 壁テクスチャは「線画＋内側が透明」なので、そのままだと床が透ける。各壁の背面に不透明な下地を敷く色。
+const LAB_WALL_FILL = 0x2b3240;
 
 // --- フェーズ2-A: 月明り(光のシャフト)を明るく --------------------------------
 // 暗くしたベース(フェーズ1)の上で、暖色シャフトを加算(add)で強めに光らせる。加算なので
@@ -366,7 +377,19 @@ const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 
-const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure']);
+const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
+
+// 研究所ゾンビのテクスチャ名(Lv1/2 は敵idで男女を固定振り分け、Lv3 は1種)。lab以外は null。
+const labEnemyTextureName = (type: string, id: string): string | null => {
+  if (type === 'lab-zombie-3') return 'lab-zombie/lab-zombie-lv3';
+  if (type === 'lab-zombie-1' || type === 'lab-zombie-2') {
+    const lvl = type === 'lab-zombie-2' ? 'lv2' : 'lv1';
+    let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    const sex = (h & 1) === 0 ? 'male' : 'female';
+    return `lab-zombie/lab-zombie-${lvl}-${sex}`;
+  }
+  return null;
+};
 
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
@@ -506,6 +529,7 @@ export class PixiScene {
   private groundReflectionGfx = new Graphics();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
+  private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
 
@@ -550,8 +574,16 @@ export class PixiScene {
   private screenH = 1;
   private cameraY = 0;
   private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
+  private labGfx: Graphics | null = null; // 屋内ステージのマーカー(ボタン/ゴール)(world座標・遅延生成)
+  private labFloor: TilingSprite | null = null; // 屋内ステージの床タイル(world座標・遅延生成)
+  private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
+  private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
+  private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
+  private labPropSprites: Sprite[] = [];          // 屋内の障害物プロップ(木の代わり)。アクター層で深度ソート。
+  private labPropSig = '';                        // プロップ配置シグネチャ(変化時のみ再構築)
   private idleZoom = 1;        // 手を離して待機中だけ寄る持続ズーム(滑らかに 1↔1+mag)
   private lastZoomNow = 0;     // 待機ズームのフレーム間 dt 計算用
+  private hitstopFreezeNow = 0; // ヒットストップ中に固定するアニメ時計(0=非固定)
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
@@ -1171,7 +1203,16 @@ export class PixiScene {
 
   sync() {
     const s = useGameStore.getState();
-    const now = Date.now();
+    const realNow = Date.now();
+    // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
+    // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の
+    // 「ストップ感」が出る。シミュレーション自体は useGameLoop 側の早期returnで既に凍結済み。
+    if (realNow < s.hitstopUntil) {
+      if (this.hitstopFreezeNow === 0) this.hitstopFreezeNow = realNow;
+    } else {
+      this.hitstopFreezeNow = 0;
+    }
+    const now = this.hitstopFreezeNow || realNow;
     this.cameraY = s.camera.y;
     // 登場演出の状態を反映(drawPlayer の飛び込みオフセット / 影スキップ / ヘリに使う)。
     this.introUntil = s.introUntil;
@@ -1184,7 +1225,9 @@ export class PixiScene {
     // Camera offset + screen shake on the whole world (and the floor).
     let sx = 0;
     let sy = 0;
-    const shakeLeft = s.shakeUntil ? s.shakeUntil - now : 0;
+    // ストップ(ヒットストップ)中は揺れを描画しない=ストップと揺れを重ねない(社長指示)。
+    // インパクトの揺れはストップ後にトリガーされるので、停止が明けてから揺れ始める。
+    const shakeLeft = (s.shakeUntil && now >= s.hitstopUntil) ? s.shakeUntil - now : 0;
     if (shakeLeft > 0) {
       // 振幅(shakeMag)×フェード(残り/長さ)。行動別に triggerShake で強さを設定。
       const mag = (s.shakeMag || 7) * Math.min(1, shakeLeft / (s.shakeDur || SHAKE_MS));
@@ -1192,6 +1235,7 @@ export class PixiScene {
       sy = (Math.random() * 2 - 1) * mag;
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
+    this.syncLab(now); // 屋内ステージの床/壁/扉描画＋屋外レイヤーの表示切替
     // ダンスUI層は world と同じカメラオフセットで追従(ワールド座標のまま、被写体深度の外で描く)。
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
 
@@ -1200,10 +1244,27 @@ export class PixiScene {
     //  ・パンチズーム: 近接フィニッシュで一瞬寄って戻る。両者を掛け合わせる。
     const zdt = this.lastZoomNow ? Math.min(0.1, (now - this.lastZoomNow) / 1000) : 0;
     this.lastZoomNow = now;
-    // 待機ズームは「手を離して静止」中のみ。登場演出/ダンス中は出さない(演出を妨げない)。
-    const idleActive = !this.introActive && !s.rhythm.active && !s.touchActive && !s.player.isMoving;
-    const idleTarget = idleActive ? (1 + CAMERA_IDLE_ZOOM_MAG) : 1;
-    this.idleZoom += (idleTarget - this.idleZoom) * (1 - Math.exp(-zdt / Math.max(0.001, CAMERA_IDLE_ZOOM_TAU)));
+    // 持続ズーム:
+    //  ・登場(ヘリ)中: 高いヘリを収めるため引きから開始 → キャラの降下に同期して既定へ(playerIntroDescent)。
+    //  ・移動中: 少し引く(CAMERA_MOVE_ZOOM_MAG=負)。
+    //  ・手を離して静止中: 少し寄る(待機ズーム CAMERA_IDLE_ZOOM_MAG=正)。
+    if (this.introActive && !s.rhythm.active) {
+      const introT = this.introUntil === -1
+        ? 0
+        : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
+      const h = playerIntroDescent(introT);          // 1=開始(最も高い) → 0=着地
+      this.idleZoom = 1 + CAMERA_INTRO_ZOOM_MAG * h; // 引きから開始、降下で既定へ(hが滑らかなので直接代入)
+    } else {
+      let zoomTarget = 1;
+      if (!s.rhythm.active) {
+        if (s.player.isMoving) zoomTarget = 1 + CAMERA_MOVE_ZOOM_MAG;       // 移動中だけ引き
+        else if (!s.touchActive) zoomTarget = 1 + CAMERA_IDLE_ZOOM_MAG;     // 手放し静止で待機ズーム
+      }
+      // 引き(さらに広がる方向)は慣性でじわっと=長い時定数。戻り(寄り/等倍へ)は従来の戻り時定数。
+      const zoomingOut = zoomTarget < this.idleZoom - 0.0001;
+      const zoomTau = zoomingOut ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
+      this.idleZoom += (zoomTarget - this.idleZoom) * (1 - Math.exp(-zdt / Math.max(0.001, zoomTau)));
+    }
     const zoomLeft = s.zoomUntil ? s.zoomUntil - now : 0;
     const punch = (zoomLeft > 0 && s.zoomMag > 0) ? 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS) : 1;
     const zoom = this.idleZoom * punch;
@@ -1293,9 +1354,15 @@ export class PixiScene {
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
 
     this.syncTrees(s.camera);
-    this.syncCastle(s.castleEvent, now);
-    this.syncMerchant(s.weaponMerchant, s.player, now);
-    this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
+    // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
+    if (s.indoorMode) {
+      this.castleView.visible = false; this.castleShadow = null; this.castleGlow.visible = false;
+      this.eventNpcView.visible = false; this.npcShadow = null;
+    } else {
+      this.syncCastle(s.castleEvent, now);
+      this.syncEventQuestNpc(s.eventQuestNpc, s.player, now);
+    }
+    this.syncMerchant(s.weaponMerchant, s.player, now); // 商人は屋内でも(最初の部屋に)出す
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
@@ -1320,7 +1387,7 @@ export class PixiScene {
       s.camera,
       now
     );
-    this.syncPlayerFx(s.player, now);
+    this.syncPlayerFx(s.player, now, s.gameTime);
     this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera);
     this.syncFlash(s.effects, now);
 
@@ -1328,16 +1395,18 @@ export class PixiScene {
     // (camera-offset already applied to the parent), so plain world coords.
     const lx = s.player.x + s.player.width / 2;
     const ly = s.player.y + s.player.height / 2;
+    // 屋内(研究施設)は「明るい部分」を狭くする(社長指示): プレイヤー光/光だまりを縮小。
+    const lightScale = s.indoorMode ? 0.62 : 1;
     this.playerLight.position.set(lx, ly);
     this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : ACTIVE_STAGE_LIGHTING.color;
     this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
-    this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2);
+    this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
     if (this.playerGroundPool.visible) {
       this.playerGroundPool.position.set(lx, ly);
       this.playerGroundPool.alpha = LIGHT_POOL_ALPHA * (0.94 + 0.06 * Math.sin(now / 700));
-      this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2;
+      this.playerGroundPool.width = this.playerGroundPool.height = LIGHT_POOL_RADIUS * 2 * lightScale;
     }
 
     this.syncAlchemyCircle(s.player, s.gameTime, now);
@@ -1863,12 +1932,20 @@ export class PixiScene {
   // ---- trees: Y-sorted with the actors so you stand in front / behind -------
 
   private syncTrees(camera: { x: number; y: number }) {
+    const indoor = useGameStore.getState().indoorMode;
     const tex = getTexture('tree');
     const margin = TREE_CELL;
-    const trees = treesInRegion(
+    let trees = treesInRegion(
       camera.x - margin, camera.y - margin,
       camera.x + this.screenW + margin, camera.y + this.screenH + margin,
     );
+    // 屋内(研究施設): 内部には木を出さない。壁の外側=野外マージンだけ「森」として残す(社長指示)。
+    if (indoor) {
+      const b = LAB_BOUNDS;
+      trees = trees.filter(t =>
+        t.footX < b.x || t.footX > b.x + b.width || t.footY < b.y || t.footY > b.y + b.height
+      );
+    }
 
     const seen = new Set<string>();
     for (const t of trees) {
@@ -2219,6 +2296,37 @@ export class PixiScene {
       o.clear();
       if (now - prop.lastHit < 90) {
         o.circle(x, y, Math.max(13, w * 0.62)).fill({ color: 0xffffff, alpha: 0.28 });
+      }
+      return;
+    }
+
+    if (prop.type === 'uv-bar') {
+      // UVライトバー(松明と同じ扱い=破壊可能)。バー本体+紫グロー。container.zIndex=footY で
+      // 木/敵と深度ソート(裏に回り込むと上に被る)。当たり判定は無し(屋内移動は壁/プロップのみ)。
+      const d = this.depthScale(prop.footY);
+      const horizonAlpha = this.horizonActorAlpha(prop.footY);
+      const tex = getTexture('lab-uv-bar');
+      view.container.zIndex = prop.footY;
+      view.container.alpha = horizonAlpha;
+      view.reflection.visible = false;
+      view.flame.clear();
+      view.sprite.visible = !!tex;
+      if (tex) {
+        view.sprite.texture = tex;
+        view.sprite.position.set(Math.round(prop.footX), Math.round(prop.footY));
+        view.sprite.scale.set(containScale(22, 13, tex.width, tex.height) * d); // 1/5サイズ
+      }
+      // 紫グロー(薄暗め・脈動)。groundLayer 上の加算スプライト。
+      view.light.visible = true;
+      view.light.position.set(prop.footX, prop.footY - 4 * d);
+      view.light.tint = 0x9a4fd6;
+      const uvPulse = 0.30 + 0.12 * Math.sin(now * 0.0018 + prop.footX * 0.05);
+      view.light.width = view.light.height = 64 * d;
+      view.light.alpha = uvPulse * horizonAlpha;
+      const o = view.overlay;
+      o.clear();
+      if (now - prop.lastHit < 90) {
+        o.circle(Math.round(prop.footX), Math.round(prop.footY - 8 * d), 16 * d).fill({ color: 0xffffff, alpha: 0.3 });
       }
       return;
     }
@@ -2701,14 +2809,30 @@ export class PixiScene {
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
     const fb = enemyFootBox(e);
-    const tex = getTexture(e.type);
+    const tex = getTexture(labEnemyTextureName(e.type, e.id) ?? e.type);
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
+
+    // パンプキン特殊AI演出(描画のみ): 縮み(しゃがみ)/ジャンプのアーク/着地スカッシュ。Lv3も同様。
+    let aiSqX = 1, aiSqY = 1, aiHop = 0;
+    if (e.type === 'pumpkin' || e.type === 'lab-zombie-3') {
+      if (e.aiPhase === 'crouch') {
+        const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / PUMPKIN_CROUCH_MS));
+        aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
+      } else if (e.aiPhase === 'jump') {
+        const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / PUMPKIN_JUMP_MS));
+        aiHop = Math.sin(t * Math.PI) * PUMPKIN_JUMP_HEIGHT; // 1秒のジャンプアーク(描画のみ)
+        aiSqY = 1.08; aiSqX = 0.94;                          // 空中は少し縦伸び
+      } else if (e.aiPhase === 'recover') {
+        const since = gameTime - ((e.aiPhaseUntil ?? gameTime) - PUMPKIN_RECOVER_MS);
+        if (since >= 0 && since < 170) { const w = 1 - since / 170; aiSqY = 1 - 0.4 * w; aiSqX = 1 + 0.18 * w; } // 着地スカッシュ
+      }
+    }
 
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop));
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     view.container.alpha = horizonAlpha;
@@ -2730,7 +2854,7 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      view.sprite.scale.set(sc * breath.x, sc * breath.y * flinchSqY);
+      view.sprite.scale.set(sc * breath.x * aiSqX, sc * breath.y * flinchSqY * aiSqY);
       view.sprite.visible = true;
     } else {
       view.sprite.skew.x = 0;
@@ -3185,6 +3309,15 @@ export class PixiScene {
         g.circle(0, 0, Math.max(2, p.width / 2)).fill({ color: p.crit ? 0xfde047 : 0xfdba74 });
         break;
       }
+      case 'phill-bullet': {
+        // リボルバー弾=やや大きめ・輝度高めの弾。橙の芯＋白い軌跡。
+        g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        const len = Math.max(p.width, 8) * 2.2;
+        const hh = Math.max(3, p.height / 2);
+        g.rect(-len / 2, -hh / 2, len, hh).fill({ color: 0xffedd5 });
+        g.circle(len / 2 - 2, 0, hh * 0.9).fill({ color: 0xfb923c });
+        break;
+      }
       case 'enemy_bolt': {
         if (p.reflected) break;
         g.circle(0, 0, p.width / 2).fill({ color: 0xb91c1c });
@@ -3199,6 +3332,38 @@ export class PixiScene {
           .fill({ color: 0x000000, alpha: 0.28 });
         g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: 0x1f2937 });
         g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
+        break;
+      }
+      case 'fire-knife-projectile': {
+        // 飛行中: 進行方向へ向いた小さなドット調ナイフ(刃=銀+橙)。
+        // 刺さった後: 短い火種(赤橙の明滅)を足して導火線感を出す(常時glowなし・軽量)。
+        g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        const len = 13;
+        const hh = 3;
+        g.rect(-len / 2, -hh / 2, len * 0.62, hh).fill({ color: 0xcbd5e1 });       // 刃
+        g.rect(len / 2 - len * 0.42, -hh / 2 - 0.5, len * 0.42, hh + 1).fill({ color: 0x7c2d12 }); // 柄
+        g.poly([len / 2, 0, len * 0.1, -hh, len * 0.1, hh]).fill({ color: 0xf1f5f9 }); // 切先
+        if (p.isStuck) {
+          const blink = 0.55 + Math.sin(Date.now() / 90) * 0.45; // 火種の明滅(導火線)
+          g.circle(-len / 2 - 1, 0, 2.6).fill({ color: 0xf97316, alpha: 0.9 * blink });
+          g.circle(-len / 2 - 1, 0, 1.3).fill({ color: 0xfde047, alpha: blink });
+        }
+        break;
+      }
+      case 'drone-boomerang-projectile': {
+        // ドット調のドローン/ブーメラン。常時回転(停止中は強めの周囲リングで判定範囲を示す)。
+        g.rotation = (Date.now() / 90) % (Math.PI * 2);
+        const rr = Math.max(5, p.width * 0.5);
+        // 「く」の字(ブーメラン)2枚羽。
+        g.poly([-rr, -2, rr * 0.2, -2, rr * 0.2, -rr, rr * 0.2 + 4, -rr, rr * 0.2 + 4, 2, -rr, 2]).fill({ color: 0x67e8f9 });
+        g.circle(0, 0, 2.2).fill({ color: 0xecfeff });
+        if (p.boomPhase === 'stop') {
+          // 範囲リング(円は回転しても見た目同じなので g.rotation はそのままでOK)。
+          const range = p.area ?? 0;
+          const pulse = 0.7 + Math.sin(Date.now() / 120) * 0.3;
+          g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
+          g.circle(0, 0, range).stroke({ color: 0x22d3ee, alpha: 0.5 * pulse, width: 1.5 });
+        }
         break;
       }
       case 'trap': {
@@ -3274,6 +3439,147 @@ export class PixiScene {
     }
   }
 
+  // ---- 屋内(研究施設)ステージの床/壁/扉/マーカー(仮実装=塗り矩形) ----------
+  private syncLab(now: number) {
+    const s = useGameStore.getState();
+    const indoor = s.indoorMode;
+    // 屋外の screen-space 背景/床/前景と world の木は屋内では隠す。
+    this.L.farBackdrop.visible = !indoor;
+    this.L.horizonForest.visible = !indoor;
+    this.L.groundBase.visible = !indoor;
+    this.L.frontForest.visible = !indoor;
+    this.L.backgroundLayer.visible = !indoor;
+    if (!indoor) {
+      if (this.labGfx) this.labGfx.visible = false;
+      if (this.labFloor) this.labFloor.visible = false;
+      if (this.labWalls) this.labWalls.visible = false;
+      for (const ts of this.labWallActors) ts.visible = false;
+      for (const sp of this.labPropSprites) sp.visible = false;
+      this.vignette.alpha = ENV_VIGNETTE_ALPHA; // 屋外は通常の周辺減光に戻す
+      return;
+    }
+    // 屋内は周辺減光(環境の暗がり)を広範囲に強める(社長指示)。
+    this.vignette.alpha = LAB_VIGNETTE_ALPHA;
+    // 床(シームレステクスチャ=ステージ1風)。外周の野外マージンまで地面を敷く(四隅が壁で終わらない)。
+    const floorTex = getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-r1-c1');
+    if (floorTex) {
+      if (!this.labFloor) {
+        this.labFloor = new TilingSprite({ texture: floorTex, width: LAB_OUTER_BOUNDS.width, height: LAB_OUTER_BOUNDS.height });
+        this.labFloor.position.set(LAB_OUTER_BOUNDS.x, LAB_OUTER_BOUNDS.y);
+        const tile = 300; // 1タイルの world サイズ(px)。シームレスなので大きめで継ぎ目を目立たせない
+        this.labFloor.tileScale.set(tile / floorTex.width, tile / floorTex.height);
+        this.labFloor.tint = LAB_ENV_TINT; // ステージ全体(床)を沈める(オブジェクトは別)
+        this.L.world.addChildAt(this.labFloor, 0); // 最下層(壁/アクターの下)
+      }
+      this.labFloor.visible = true;
+    }
+    // 壁スプライト(横壁=closed-mid を少し立ち上げて奥行き / 縦壁=side-long)。扉開閉が変わった時だけ再構築。
+    const sideTex = getTexture('lab/lab-wall-side-long');
+    const midTex = getTexture('lab/lab-wall-closed-mid');
+    if (sideTex && midTex) {
+      if (!this.labWalls) {
+        this.labWalls = new Container();
+        this.L.world.addChildAt(this.labWalls, this.labFloor ? 1 : 0); // 床の上・アクターの下
+      }
+      this.labWalls.visible = true;
+      const sig = LAB_DOORS.map(d => (s.labDoors.some(sd => sd.id === d.id && sd.open) ? '1' : '0')).join('');
+      if (this.labWallsSig !== sig) {
+        this.labWallsSig = sig;
+        this.labWalls.removeChildren().forEach(c => c.destroy());
+        for (const c of this.labWallActors) c.destroy({ children: true });
+        this.labWallActors = [];
+        const RISE = 40; // 横壁を足元から立ち上げる高さ(px)=「裏側(北面)」の見え。判定は足元(下辺)のみ。
+        const addWall = (rect: { x: number; y: number; width: number; height: number }) => {
+          const horizontal = rect.width >= rect.height;
+          if (horizontal) {
+            // 横壁: アクター層に足元アンカー(下辺=当たり判定の下辺)で配置し、足元Yで深度ソート。
+            // → 木/城と同じく、プレイヤーが北(裏)に回り込むと壁の立ち上がり面に隠れる。判定は足元のみ。
+            // 線画テクスチャは内側が透明なので、下地(不透明)→線画 の順で重ねて床が透けないようにする。
+            const h = rect.height + RISE;
+            const cont = new Container();
+            const bg = new Graphics();
+            bg.rect(0, 0, rect.width, h).fill({ color: LAB_WALL_FILL }); // 不透明な下地
+            const ts = new TilingSprite({ texture: midTex, width: rect.width, height: h });
+            const sc = h / midTex.height;
+            ts.tileScale.set(sc, sc);
+            ts.tint = LAB_ENV_TINT;           // 線画を環境色に沈める
+            cont.addChild(bg, ts);
+            cont.position.set(rect.x, rect.y - RISE);
+            cont.zIndex = rect.y + rect.height; // 下辺=足元Y。アクター(footY)と同じ尺度でソート。
+            this.L.actorLayer.addChild(cont);
+            this.labWallActors.push(cont);
+          } else {
+            // 縦壁/外周: 迷路の境界。常にアクターの下(固定コンテナ)。下地→線画 で床が透けないように。
+            const bg = new Graphics();
+            bg.rect(rect.x, rect.y, rect.width, rect.height).fill({ color: LAB_WALL_FILL });
+            this.labWalls!.addChild(bg);
+            const ts = new TilingSprite({ texture: sideTex, width: rect.width, height: rect.height });
+            ts.position.set(rect.x, rect.y);
+            const sc = rect.height / sideTex.height;
+            ts.tileScale.set(sc, sc);
+            ts.tint = LAB_ENV_TINT;           // 線画を環境色に沈める
+            this.labWalls!.addChild(ts);
+          }
+        };
+        for (const w of LAB_WALLS) addWall(w);
+        for (const d of LAB_DOORS) {
+          const open = s.labDoors.some(sd => sd.id === d.id && sd.open);
+          if (!open) addWall(d.rect); // 閉=壁を置く / 開=何も置かない(床が見える)
+        }
+      }
+      for (const ts of this.labWallActors) ts.visible = true; // 屋内中は常に表示(深度ソートはアクター層が処理)
+    }
+    // マーカー(ボタン/ゴール)。床/壁の上・アクターの下に重ねる。
+    if (!this.labGfx) {
+      this.labGfx = new Graphics();
+      this.L.world.addChildAt(this.labGfx, (this.labFloor ? 1 : 0) + (this.labWalls ? 1 : 0));
+    }
+    const g = this.labGfx;
+    g.visible = true;
+    g.clear();
+    if (!floorTex) g.rect(LAB_BOUNDS.x, LAB_BOUNDS.y, LAB_BOUNDS.width, LAB_BOUNDS.height).fill({ color: 0x10151c }); // 床フォールバック
+    // 野外マージン(壁の外周)を暗く沈める=「夜の野外」。LAB_BOUNDS の外側リング4枚を半透明の暗色で塗る。
+    // (labGfx は壁の上・アクターの下なので、外周の床だけ暗くなり、木やプレイヤーはその上に見える)
+    {
+      const o = LAB_OUTER_BOUNDS, b = LAB_BOUNDS;
+      const col = LAB_OUTER_TINT, a = 0.82;
+      g.rect(o.x, o.y, o.width, b.y - o.y).fill({ color: col, alpha: a });                              // 上
+      g.rect(o.x, b.y + b.height, o.width, (o.y + o.height) - (b.y + b.height)).fill({ color: col, alpha: a }); // 下
+      g.rect(o.x, b.y, b.x - o.x, b.height).fill({ color: col, alpha: a });                              // 左
+      g.rect(b.x + b.width, b.y, (o.x + o.width) - (b.x + b.width), b.height).fill({ color: col, alpha: a }); // 右
+    }
+    const btnPressed = s.labButtons.some(b => b.id === LAB_BUTTON.id && b.pressed);
+    g.circle(LAB_BUTTON.x, LAB_BUTTON.y, LAB_BUTTON.radius).stroke({ color: btnPressed ? 0x22c55e : 0x60a5fa, width: 3, alpha: 0.8 });
+    g.circle(LAB_BUTTON.x, LAB_BUTTON.y, 14).fill({ color: btnPressed ? 0x22c55e : 0xf87171 });
+    g.rect(LAB_GOAL_TRIGGER.x, LAB_GOAL_TRIGGER.y, LAB_GOAL_TRIGGER.width, LAB_GOAL_TRIGGER.height).fill({ color: 0xfde68a, alpha: 0.06 }); // ゴール区画
+
+    // 障害物プロップ(木の代わり)。木と同じくアクター層に足元アンカーで配置し、足元Yで深度ソート
+    // (裏に回り込むとプレイヤー/敵の上に被る)。配置が変わった時だけ作り直す。
+    const propSig = s.labProps.map(p => p.id + ':' + p.variant).join(',');
+    if (this.labPropSig !== propSig) {
+      this.labPropSig = propSig;
+      for (const sp of this.labPropSprites) sp.destroy();
+      this.labPropSprites = [];
+      for (const p of s.labProps) {
+        const tex = getTexture(p.variant);
+        if (!tex) continue;
+        const sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1);            // 足元アンカー
+        sp.position.set(Math.round(p.x), Math.round(p.y));
+        sp.zIndex = p.y;                  // 木/敵と同じ尺度で深度ソート
+        this.L.actorLayer.addChild(sp);
+        this.labPropSprites.push(sp);
+      }
+    }
+    // 毎フレーム depth スケール(プレイヤー足元基準の擬似遠近)。プロップは数個なので軽い。
+    const PROP_DISPLAY = 76; // 表示の基準高さ(px)
+    for (const sp of this.labPropSprites) {
+      sp.visible = true;
+      const t = sp.texture;
+      sp.scale.set(containScale(PROP_DISPLAY, PROP_DISPLAY, t.width, t.height) * this.depthScaleEnemy(sp.position.y));
+    }
+  }
+
   // ---- pickups -------------------------------------------------------------
 
   private syncPickups(pickups: Pickup[], now: number) {
@@ -3314,7 +3620,8 @@ export class PixiScene {
     const cy = pos.y + hitSize / 2;
     const footY = pos.y + hitSize;
     const size = PICKUP_VISUAL_SIZE;
-    const floatOffset = Math.sin(now / 300 + p.x * 0.01) * 2;
+    // クリアアイテム(書類)は床置きなので浮遊(bob)させない=「浮いて見える」対策。
+    const floatOffset = p.type === 'lab-clear-item' ? 0 : Math.sin(now / 300 + p.x * 0.01) * 2;
     const d = this.depthScale(footY); // foot = base of the pickup hitbox
     const horizonAlpha = this.horizonActorAlpha(footY);
     const glow = entry.glow;
@@ -3346,6 +3653,8 @@ export class PixiScene {
               ? `treasure-${Math.max(1, Math.min(6, p.variant ?? p.value ?? 1))}`
           : p.type === 'weapon-crate'
             ? 'pickup-chest'
+          : p.type === 'lab-clear-item'
+            ? 'lab-clear-item'
             : `pickup-${p.type}`;
       const tex = getTexture(name);
       if (tex) {
@@ -3366,7 +3675,8 @@ export class PixiScene {
           entry.container.addChild(entry.sprite);
         }
         entry.sprite.texture = tex;
-        const sc = containScale(size, size, tex.width, tex.height) * d;
+        const itemBox = p.type === 'lab-clear-item' ? size * 2.4 : size; // クリアアイテムは目立つよう大きめ
+        const sc = containScale(itemBox, itemBox, tex.width, tex.height) * d;
         entry.sprite.scale.set(sc);
         entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));
         entry.sprite.visible = true;
@@ -3382,8 +3692,9 @@ export class PixiScene {
     switch (p.type) {
       case 'ammo-handgun':
       case 'ammo-shotgun':
-      case 'ammo-rifle': {
-        const box = p.type === 'ammo-shotgun' ? 0xb91c1c : p.type === 'ammo-rifle' ? 0xb45309 : 0xa16207;
+      case 'ammo-rifle':
+      case 'ammo-phill': {
+        const box = p.type === 'ammo-shotgun' ? 0xb91c1c : p.type === 'ammo-rifle' ? 0xb45309 : p.type === 'ammo-phill' ? 0xf97316 : 0xa16207;
         g.rect(cx - 7, drawY - 4, 14, 9).fill({ color: 0x1f2937 });
         g.rect(cx - 7, drawY - 4, 14, 3).fill({ color: box });
         g.rect(cx - 5, drawY - 6, 2, 3).fill({ color: 0xfde68a });
@@ -3395,6 +3706,14 @@ export class PixiScene {
         g.rect(cx - 8, drawY - 2, 14, 4).fill({ color: 0xcbd5e1 });
         g.rect(cx - 8, drawY + 2, 4, 5).fill({ color: 0xcbd5e1 });
         g.rect(cx - 3, drawY + 2, 3, 3).fill({ color: 0x64748b });
+        break;
+      }
+      case 'card-key': {
+        // カードキー(ドット調): シアンのカード + 明滅。
+        const blink = 0.6 + Math.sin(now / 150) * 0.4;
+        g.rect(cx - 7, drawY - 5, 14, 10).fill({ color: 0x0e7490 });
+        g.rect(cx - 7, drawY - 5, 14, 10).stroke({ color: 0x67e8f9, width: 1.4, alpha: 0.9 });
+        g.rect(cx - 4, drawY - 2, 6, 4).fill({ color: 0x67e8f9, alpha: blink });
         break;
       }
       case 'weapon-crate': {
@@ -3734,12 +4053,93 @@ export class PixiScene {
 
   // ---- player FX: counter ring + reload meter (world space) ----------------
 
-  private syncPlayerFx(player: Player, now: number) {
+  private syncPlayerFx(player: Player, now: number, gameTime: number) {
     const g = this.playerFx;
     g.clear();
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
     const r = huntingMeleeRadius(player);
+    // ワイヤーアンカー: 装備中は前方(ショットガン射程)に青サークルを常時表示。打ち込み中/受付中/移動中は
+    // アンカー地点を表示。重いglow/大量パーティクルは使わない(軽い円・線のみ)。
+    if (this.wireTip) this.wireTip.visible = false; // 既定は非表示(設置中のみ表示)
+    if (player.subWeapons.includes('wire-anchor')) {
+      const dashing = now < player.wireDashUntil;
+      const anchorSet = (player.wireAnchored || dashing) && (player.wireAnchorX !== 0 || player.wireAnchorY !== 0);
+      const charging = player.wireAnchored && now < player.wirePlantUntil; // 溜中
+      const ax = player.wireAnchorX, ay = player.wireAnchorY;
+      if (anchorSet) {
+        // 投げた方向(プレイヤー→アンカー)。先端の「爪」はこの向きへ刺さる(素材の基準向き=左下)。
+        let tdx = ax - cx, tdy = ay - cy;
+        const tdl = Math.hypot(tdx, tdy) || 1;
+        tdx /= tdl; tdy /= tdl;
+        // 打ち込む挙動: 溜中(1秒)は先端がプレイヤー→アンカーへ飛んでいき、溜完了でアンカー地点に刺さる
+        // (=ドット絵が「打ち込まれる」のは1秒後)。溜完了/移動中は刺さった位置(ax,ay)に固定。
+        let tipX = ax, tipY = ay;
+        if (charging) {
+          const p = Math.max(0, Math.min(1, 1 - (player.wirePlantUntil - now) / WIRE_PLANT_MS));
+          tipX = cx + (ax - cx) * p;
+          tipY = cy + (ay - cy) * p;
+        }
+        const tipTex = getTexture('wire-anchor-tip');
+        const TIP = 34; // 先端の表示サイズ(px)
+        if (tipTex) {
+          if (!this.wireTip) {
+            this.wireTip = new Sprite();
+            this.wireTip.anchor.set(0.5);
+            this.L.effectLayer.addChild(this.wireTip); // playerFx と同じ world レイヤー(ワイヤーの上)
+          }
+          this.wireTip.texture = tipTex;
+          this.wireTip.scale.set(containScale(TIP, TIP, tipTex.width, tipTex.height));
+          this.wireTip.position.set(Math.round(tipX), Math.round(tipY));
+          // 素材の爪は左下(角度135°)向き。投擲方向へ回す。
+          this.wireTip.rotation = Math.atan2(tdy, tdx) - Math.atan2(1, -1);
+          this.wireTip.alpha = charging ? 0.9 : 1; // 飛行中は少しだけ薄く、刺さると不透明
+          this.wireTip.visible = true;
+        }
+        // 穴(eyelet)は爪と反対=プレイヤー側。ワイヤーはここに繋ぐ(about)。飛行中も先端基準で算出。
+        const holeDist = TIP * 0.4;
+        const hx = tipX - tdx * holeDist;
+        const hy = tipY - tdy * holeDist;
+        // ワイヤー線(穴→プレイヤー)。単独の moveTo→lineTo→stroke(飛ぶにつれ伸びる)。
+        const lineAlpha = dashing ? 0.85 : charging ? 0.6 : 0.7;
+        g.moveTo(hx, hy).lineTo(cx, cy).stroke({ width: 2.5, color: 0x93c5fd, alpha: lineAlpha });
+      } else if (!player.wireAnchored && !dashing) {
+        // 待機(アンカー未設置): 前方(現在/最後の移動方向)に青サークルプレビュー。CD中は薄く。線は引かない。
+        const dir = player.lastDirection ?? { x: 1, y: 0 };
+        const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
+        const px = cx + (dir.x / dl) * WIRE_ANCHOR_RANGE;
+        const py = cy + (dir.y / dl) * WIRE_ANCHOR_RANGE;
+        const onCd = gameTime < (player.subWeaponCooldowns['wire-anchor'] ?? 0);
+        const a = onCd ? 0.16 : 0.7;
+        g.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: a });
+        g.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: a });
+      }
+    }
+    // PHILL銃: アクティブ銃が phill-revolver のとき、狙いサークル(赤橙レティクル)を前方に表示。
+    // 射撃クールダウン中は薄く(=今は撃てないことを示す)。アンカー(青)と差別化。
+    {
+      const phill = player.weapons.find(w => w.id === player.activeWeaponId);
+      if (phill?.key === 'phill-revolver') {
+        const dir = player.lastDirection ?? { x: 1, y: 0 };
+        const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
+        const PHILL_AIM_RANGE = 190;
+        const ax = cx + (dir.x / dl) * PHILL_AIM_RANGE;
+        const ay = cy + (dir.y / dl) * PHILL_AIM_RANGE;
+        const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
+        const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
+        const a = (onCd || reloading) ? 0.2 : 0.85;
+        g.circle(ax, ay, 9).stroke({ width: 2, color: 0xf97316, alpha: a });          // 外リング(橙)
+        g.circle(ax, ay, 3).fill({ color: 0xfca5a5, alpha: a });                        // 中心ドット(赤)
+        // 照準の十字(小)。
+        g.moveTo(ax - 13, ay).lineTo(ax - 6, ay).moveTo(ax + 6, ay).lineTo(ax + 13, ay)
+          .moveTo(ax, ay - 13).lineTo(ax, ay - 6).moveTo(ax, ay + 6).lineTo(ax, ay + 13)
+          .stroke({ width: 1.5, color: 0xf97316, alpha: a * 0.8 });
+      }
+    }
+    // ドローンブーメランのクールダウン表示: 近接クールダウンサークルより一回り大きい円(社長指示)。
+    if (player.subWeapons.includes('drone-boomerang') && gameTime < (player.subWeaponCooldowns['drone-boomerang'] ?? 0)) {
+      g.circle(cx, cy, r * 1.28).stroke({ width: 1.5, color: 0x67e8f9, alpha: 0.28 });
+    }
     // 刀装備中は通常ナイフの剣閃テレグラフを出さない。カウンターが実際に
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');

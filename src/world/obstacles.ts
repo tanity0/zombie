@@ -27,6 +27,30 @@ export const rectsOverlap = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && a.x + a.width > b.x &&
   a.y < b.y + b.height && a.y + a.height > b.y;
 
+// 線分(x1,y1)-(x2,y2)が矩形 w と交差するか(Liang-Barsky クリップ)。視線/近接の壁越し判定用。
+export const segmentIntersectsRect = (
+  x1: number, y1: number, x2: number, y2: number, w: Rect
+): boolean => {
+  const dx = x2 - x1, dy = y2 - y1;
+  let t0 = 0, t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;          // 平行: 内側ならOK
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+    else { if (t < t0) return false; if (t < t1) t1 = t; }
+    return true;
+  };
+  return clip(-dx, x1 - w.x)
+    && clip(dx, (w.x + w.width) - x1)
+    && clip(-dy, y1 - w.y)
+    && clip(dy, (w.y + w.height) - y1);
+};
+
+// いずれかの壁が線分を遮るか。
+export const segmentBlocked = (
+  x1: number, y1: number, x2: number, y2: number, walls: Rect[]
+): boolean => walls.some(w => segmentIntersectsRect(x1, y1, x2, y2, w));
+
 // Push `actor` out of every wall along the axis of least penetration and return
 // the corrected top-left. Velocity is intentionally left to the caller, so the
 // actor slides along a wall edge instead of sticking.

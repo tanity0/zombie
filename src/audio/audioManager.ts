@@ -13,6 +13,8 @@ const DEFAULT_SFX_VOLUME = 1;
 const BGM_TRACKS = [
   `${import.meta.env.BASE_URL}audio/stage1.mp3`,
 ];
+// 屋内(研究施設)ステージ専用BGM。public/audio/lab-stage.mp3。
+const LAB_TRACK = `${import.meta.env.BASE_URL}audio/lab-stage.mp3`;
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
 const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
@@ -601,9 +603,11 @@ export const setBgmActive = async (nextActive: boolean) => {
 // 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
-export const setBgmScene = (scene: 'menu' | 'game' | 'off') => {
+export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: 'default' | 'lab' = 'default') => {
   if (scene === 'off') { void setBgmActive(false); return; }
-  bgmBaseTrack = scene === 'menu' ? TITLE_TRACK : BGM_TRACKS[0];
+  bgmBaseTrack = scene === 'menu'
+    ? TITLE_TRACK
+    : (variant === 'lab' ? LAB_TRACK : BGM_TRACKS[0]); // 屋内ステージは専用BGM
   void setBgmActive(true);
 };
 
