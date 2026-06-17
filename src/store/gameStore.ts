@@ -248,6 +248,15 @@ export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カ�
 // (WIRE_PLANT_MS=1秒)、完了後 WIRE_WINDOW_MS(~1秒)以内の追加タップでアンカー地点へ高速移動。
 // 高速移動中は敵接触ダメージ無効(敵弾は通る/敵にダメージ・ノックバックなし)。CD はレベルで短縮。
 export const WIRE_ANCHOR_RANGE = 110;   // 青サークル距離(飛距離。全レベル共通=半分に短縮)
+// アナログスティックの傾き強度(swipeStrength: 0..1)で、移動速度と狙い距離を可変にする。
+// 強度0(デッドゾーン直上)でも完全停止にはせず、最低係数だけ残す(操作不能を避ける)。
+// キャラ移動: 弱い傾き=ゆっくり歩く(最低 STICK_WALK_MIN_FACTOR 倍)。
+// 狙い距離(ワイヤーアンカー/PHILLレティクル): 弱い傾き=近く(最低 STICK_AIM_MIN_FACTOR 倍)。
+export const STICK_WALK_MIN_FACTOR = 0.35; // 歩行速度の最低倍率(強度0時)
+export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度0時)
+// 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
+export const stickAimFactor = (strength: number) =>
+  STICK_AIM_MIN_FACTOR + (1 - STICK_AIM_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
 export const WIRE_PLANT_MS = 300;       // 打ち込み(先端が飛んで刺さるまで)=0.3秒。刺さると高速移動可。
 export const WIRE_DASH_MS = 200;        // 高速移動の所要時間
 export const WIRE_COOLDOWN_BY_LEVEL = [0, 2000, 1000, 0] as const; // Lv1=2s / Lv2=1s / Lv3=0s
@@ -812,6 +821,9 @@ interface GameState {
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
+  // スティックの傾き強度(0..1)。離しても直前値を保持(lastDirection と同様)。
+  // 既定 1 = 最大(キーボードや未操作はフル速度・最大距離)。
+  swipeStrength: number;
   touchActive: boolean;
   gameBounds: GameBounds;
   gameStats: GameStats;
@@ -851,7 +863,7 @@ interface GameState {
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
-  setSwipeDirection: (direction: { x: number; y: number } | null) => void;
+  setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
   damagePlayer: (amount: number) => boolean;
@@ -1120,6 +1132,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
+  swipeStrength: 1,
   touchActive: false,
   gameBounds: { width: 800, height: 600 },
   gameStats: {
@@ -1156,7 +1169,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Player actions
   movePlayer: (input, deltaTime) => {
     set(state => {
-      const { player, gameBounds, swipeDirection, breakableProps, castleEvent } = state;
+      const { player, gameBounds, swipeDirection, swipeStrength, breakableProps, castleEvent } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine');
       void gameBounds; // World is effectively infinite — no clamp.
 
@@ -1211,11 +1224,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const tlen = Math.hypot(tx, ty);
       if (tlen > 0) { tx /= tlen; ty /= tlen; }
 
+      // タッチ歩行のみアナログ速度: スティックの傾きが弱いとゆっくり歩く。
+      // キーボードと特殊ロコモーション(ダッシュ等)はフル速度(speedScale=1)。
+      const speedScale =
+        swipeDirection && !wireDashing && !dashing && !recovering && !sliding
+          ? STICK_WALK_MIN_FACTOR + (1 - STICK_WALK_MIN_FACTOR) * Math.max(0, Math.min(1, swipeStrength))
+          : 1;
+
       // Inertia: ease the velocity toward the target. Player tau is 0 → fully
       // instant, responsive control.
       const alpha = inertiaAlpha(deltaTime, PLAYER_INERTIA_TAU);
-      const vx = player.vx + (tx * moveSpeed - player.vx) * alpha;
-      const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
+      const vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
+      const vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
 
       // 壁解決。屋内は labMap の壁(+閉ドア)のみ。屋外は従来の木/トーチ/城。
       let newX: number;
@@ -1287,8 +1307,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   
-  setSwipeDirection: (direction) => {
-    set({ swipeDirection: direction });
+  setSwipeDirection: (direction, strength) => {
+    // 強度は省略時は据え置き(離した瞬間は方向 null だけ更新し、直前の強度を保持)。
+    // → 1回の set() に畳み込み、毎フレームの set() 追加を避ける(CLAUDE.md)。
+    set(strength != null ? { swipeDirection: direction, swipeStrength: strength } : { swipeDirection: direction });
   },
 
   setTouchActive: (active) => {
@@ -1309,7 +1331,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const {
       player, gameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
-      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
+      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors, swipeStrength
     } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -1397,8 +1419,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 指離し → 前方の青サークル地点へ「即座に」アンカー打ち込み(ワイヤー表示)。溜(WIRE_PLANT_MS)後に移動可。
         const dir = player.lastDirection ?? { x: 1, y: 0 };
         const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
-        const ax = pcx + (dir.x / dmag) * WIRE_ANCHOR_RANGE;
-        const ay = pcy + (dir.y / dmag) * WIRE_ANCHOR_RANGE;
+        // 傾き強度で飛距離を可変(最大=WIRE_ANCHOR_RANGE)。ダッシュ速度は飛距離から
+        // 算出される(上の armed 分岐)ので、短い狙いは自動で短く遅いダッシュになる。
+        const reach = WIRE_ANCHOR_RANGE * stickAimFactor(swipeStrength);
+        const ax = pcx + (dir.x / dmag) * reach;
+        const ay = pcy + (dir.y / dmag) * reach;
         set(s => ({
           player: {
             ...s.player,
@@ -1451,6 +1476,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: true,
         touchActive: false,
         swipeDirection: null,
+        swipeStrength: 1,
         player: {
           ...player,
           counterWindowEnd: now + COUNTER_WINDOW,
@@ -1479,6 +1505,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: true,
         touchActive: false,
         swipeDirection: null,
+        swipeStrength: 1,
         player: {
           ...player,
           counterWindowEnd: now + COUNTER_WINDOW,
@@ -2967,7 +2994,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       showShopMenu: true,
       isPaused: true,
       touchActive: false,
-      swipeDirection: null
+      swipeDirection: null,
+      swipeStrength: 1
     });
   },
 
@@ -2984,7 +3012,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       showEventQuestMenu: true,
       isPaused: true,
       touchActive: false,
-      swipeDirection: null
+      swipeDirection: null,
+      swipeStrength: 1
     });
   },
 
@@ -4674,6 +4703,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         upgradeOptions: [],
         touchActive: false,
         swipeDirection: null,
+        swipeStrength: 1,
         gameStats: {
           timeAlive: 0,
           enemiesKilled: 0,

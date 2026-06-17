@@ -11882,3 +11882,35 @@ swallows missing/undecodable buffers).
 - User wants Codex and Claude Code to hand off development through this log.
 - Development environment is `/Users/tanity/zombie`, not `/Users/tanity/AI_MEGLIO`.
 - If a sound feels late or quiet, tune `SFX_SOURCES` in `src/audio/audioManager.ts`.
+
+## v0.25.498 — アナログスティック強度で移動速度・狙い距離を可変化 (2026-06-17)
+
+### 概要
+フローティングジョイスティックの傾き強度(これまで方向だけ使い大きさは破棄していた)を
+`swipeStrength`(0..1)として活用。従来の固定距離を「最大」とし、傾きが弱いほど近く/遅く。
+- キャラ移動(タッチのみ・全ステージ): 弱い傾き=ゆっくり歩く(最低 `STICK_WALK_MIN_FACTOR=0.35` 倍)。
+  キーボード・特殊ロコモーション(ワイヤー/刀ダッシュ等)はフル速度のまま。
+- ワイヤーアンカー: 飛距離 = `WIRE_ANCHOR_RANGE × stickAimFactor(strength)`。ダッシュ速度は
+  飛距離由来なので自動で短く遅くなる。
+- PHILLレティクル・アンカープレビュー: 描画のみ距離を同係数で可変。PHILLの弾は従来どおり
+  狙い方向へ直進(射程・挙動は不変)。
+- 強度はデッドゾーン未満では更新せず直前値を保持(離してもアンカー/レティクル/歩行が固定)。
+  既定 1 = 最大。`setSwipeDirection(dir, strength?)` に畳み込み、毎フレームの set() 追加なし。
+
+### 負荷スコア
+1/10(無視可能)。ストア値1つ + スカラー乗算のみ。新規ループ・確保・描画パスなし。
+
+### Code touched
+- `src/store/gameStore.ts`
+- `src/components/VirtualJoystick.tsx`
+- `src/pixi/pixiScene.ts`
+- `package.json`
+- `DEVELOPMENT_LOG.md`
+
+### Verification
+- `npm run lint`
+- `npm run build`
+
+### Handoff notes
+- `STICK_WALK_MIN_FACTOR` / `STICK_AIM_MIN_FACTOR` は調整用の名前付き定数(gameStore.ts)。
+- 実機/dev でタッチ操作の手触りを確認(弱タッチ=ゆっくり、フル=従来速度。キーボードは不変)。

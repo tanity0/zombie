@@ -184,12 +184,16 @@ const VirtualJoystick: React.FC = () => {
 
       const norm = clamped / max;
       if (norm < DEAD_ZONE) {
+        // デッドゾーン未満では強度を更新しない(直前値を保持 → 離してもアンカー/
+        // レティクル/歩行強度が固定される)。方向のみ null にして停止。
         setSwipeDirection(null);
         return;
       }
 
+      // デッドゾーンを0、外周を1に正規化した傾き強度。
+      const strength = Math.max(0, Math.min(1, (norm - DEAD_ZONE) / (1 - DEAD_ZONE)));
       const dir = { x: nx, y: ny };
-      setSwipeDirection(dir);
+      setSwipeDirection(dir, strength);
       setLastDirection(dir);
     },
     [setSwipeDirection, setLastDirection, tryFireRhythmFlick]
