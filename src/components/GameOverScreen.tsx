@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore } from '../utils/resultScoring';
+import { useGameStore } from '../store/gameStore';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 
 interface GameOverScreenProps {
@@ -62,15 +63,18 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   benchmarkResult = null
 }) => {
   const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  // 研究所(屋内)クリアかどうか。勝利後も indoorMode は保持されている。
+  const indoor = useGameStore(s => s.indoorMode);
   const {
     damageScore,
     comboScore,
     treasureScore,
     strapScore,
+    timeBonus,
     clearMultiplier,
     totalScore,
     goldEarned,
-  } = calculateResultScore(stats, won);
+  } = calculateResultScore(stats, won, indoor);
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
   const statsItems = [
     { label: '生存時間', value: formatTime(stats.timeAlive) },
@@ -87,6 +91,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: '最大コンボ', value: comboScore },
     { label: 'トレジャー', value: treasureScore },
     { label: '残スクラップ', value: strapScore },
+    // 研究所クリア時のみ「残り時間」ボーナスを表示(早いほど高い)。
+    ...(timeBonus > 0 ? [{ label: '残り時間', value: timeBonus }] : []),
     { label: 'クリア倍率', value: `x${clearMultiplier}` }
   ];
   const isBenchmark = benchmarkResult !== null;

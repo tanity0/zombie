@@ -597,6 +597,9 @@ const treasureValueForRank = (rank?: DifficultyRank): number => {
 };
 const treasureVariantForValue = (value: number): number =>
   TREASURE_VARIANTS_BY_RARITY[Math.max(0, Math.min(TREASURE_VARIANTS_BY_RARITY.length - 1, value - 1))];
+// 研究所(屋内)の武器庫(weapon-crate)はトレジャー+スクラップのみ(武器は出さない)。
+// 1回限りのロック部屋報酬なので価値はやや高め(=スコア treasureValue*10000)。
+const LAB_CRATE_TREASURE_VALUE = 3;
 const treasureNameForVariant = (variant?: number): string => {
   switch (variant) {
     case 1: return 'ニケ像';
@@ -3704,8 +3707,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (pickup.weaponKey) get().grantWeapon(pickup.weaponKey);
         break;
       case 'weapon-crate':
-        // Open the crate: roll a gun by category & tier and equip it.
-        get().grantWeapon(openCrate(get().gameTime));
+        if (get().indoorMode) {
+          // 研究所の武器庫: 武器は出さず、トレジャー+スクラップのみ。
+          get().addPickup({
+            id: `pickup-treasure-crate-${pickup.id}`,
+            x: pickup.x,
+            y: pickup.y,
+            type: 'treasure',
+            value: LAB_CRATE_TREASURE_VALUE,
+            variant: treasureVariantForValue(LAB_CRATE_TREASURE_VALUE)
+          });
+        } else {
+          // 屋外: 従来どおりカテゴリ&ティアで銃を抽選して装備。
+          get().grantWeapon(openCrate(get().gameTime));
+        }
         strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
           .forEach((value, index) => {
             get().addPickup({

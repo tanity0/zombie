@@ -530,6 +530,11 @@ export class PixiScene {
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
+  // PHILL照準サークルの「プレイヤー中心からのオフセット」を毎フレームなめらかに追従させる。
+  // (スティック操作にカクッと追従せず少し遅れて動く=見た目のみ。弾道は store の direction を直進)
+  private aimReticleOffX = 190;
+  private aimReticleOffY = 0;
+  private aimReticleInit = false;
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
 
@@ -4126,8 +4131,16 @@ export class PixiScene {
         const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
         // 傾き強度でレティクル距離を可変(見た目のみ。弾は従来どおり狙い方向へ直進)。
         const PHILL_AIM_RANGE = 190 * stickAimFactor(useGameStore.getState().swipeStrength);
-        const ax = cx + (dir.x / dl) * PHILL_AIM_RANGE;
-        const ay = cy + (dir.y / dl) * PHILL_AIM_RANGE;
+        // 目標オフセット(プレイヤー中心基準)。これへ向けて毎フレームイージングし、
+        // 照準サークルが少し遅れてなめらかに動くようにする(初回だけ即スナップ)。
+        const targetOffX = (dir.x / dl) * PHILL_AIM_RANGE;
+        const targetOffY = (dir.y / dl) * PHILL_AIM_RANGE;
+        const ease = this.aimReticleInit ? 0.15 : 1;
+        this.aimReticleInit = true;
+        this.aimReticleOffX += (targetOffX - this.aimReticleOffX) * ease;
+        this.aimReticleOffY += (targetOffY - this.aimReticleOffY) * ease;
+        const ax = cx + this.aimReticleOffX;
+        const ay = cy + this.aimReticleOffY;
         const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
         const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
         const a = (onCd || reloading) ? 0.2 : 0.85;
