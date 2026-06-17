@@ -10,9 +10,45 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
-## 🔖 引き継ぎメモ (クラウドで継続) — 2026-06-16 (最新・ここを最初に読む)
+## 🔖 引き継ぎメモ (ローカルで再開) — 2026-06-17 (最新・ここを最初に読む)
 
-**運用**: 開始時に `git fetch` → 最新へ。コード正本＝下記ブランチ。変更ごとに version を上げ → dev 再起動 → 応答末尾に現バージョン明記。作業ブランチへの push は可（push で自動デプロイ）。
+**運用**: 開始時に `git fetch` → 最新へ。変更ごとに version を上げ → dev 再起動 → **応答末尾に現バージョン明記**（CLAUDE.md の規約）。
+
+- **ブランチ**: 正本/デプロイ元 `claude/chat-context-continuity-saxlH`、作業ミラー `claude/sharp-euler-hvqloh`。
+  **現状この2つは同一コミット**（クラウドでは毎push両方へ反映していた）。ローカルでは正本へ進めればOK
+  （push で GitHub Pages 自動デプロイ → https://tanity0.github.io/zombie/）。
+- **最新 version**: **`v0.25.431`**（= v0.25.430 の機能＋本引き継ぎメモ整備）。ローカル: `npm install` → `npm run dev`（`http://localhost:5173/zombie/`）。version表示はVite起動時固定なので更新後は dev 再起動。
+- **実機調整用URLパラメータ**（既定へ焼く前のチューニング）:
+  - カメラ: `?camtau`(追従0.14s) `?camdanger`(危険時0.08) `?camlook`(先読み40px) `?camret`(停止戻り0.20s)
+    `?camclamp`(中心復帰0.07=画面幅比) `?camidle`(待機ズーム+0.05 / 負で引き) `?camidletau`(0.3s)。**今“最大値”で実装済→実機で範囲内へ詰める**。
+  - ダンス: `?int1/2/3`(1拍ms上書き) `?bo1/2/3`(レベル別ダウンビートoffset ms)。テスト枠: `?dev=0`で開発ツール非表示。
+
+### このクラウドセッション(v0.25.405→430)でやったこと
+- **導線/画面刷新 (v0.25.407〜)**: `MainMenu` を廃止し **`MissionSelect.tsx`** に置換。導線=ミッション選択(ホーム)→ステージ選択
+  →ミッション詳細→キャラ選択→装備選択→スタート。ホームから オプション/武器開発/資料室。**フリーミッション**(kind=free, 周回・会話なし)追加。
+- **ストーリー/ステージのデータ化** `src/data/campaign.ts`: 本編 M1〜M7 + EX1/EX2(社長提供本文)。一覧=`summary`(1行)/詳細=
+  `synopsis`(あらすじ)→クリアで`debrief`。進行解放 `src/data/progress.ts`(localStorage、メインクリアで次解放)。`src/config/devtools.ts`(DEV_TOOLS_ENABLED)。
+- **会話のミッション別化 (v0.25.428)**: `IntroLine`型 + `StageMission.dialogue`(M1のみ実装)。出撃時にストア `introDialogueLines` へ設定、
+  空=会話なし(フリー/ベンチ)。`INTRO_DIALOGUE_LINES`定数は廃止し `introDialogueTotalMs(lines)` に。
+- **ダンス同期**: 自動アンカー(v0.25.406)＋**定期リシンク**(4秒/6ms, `RHYTHM_RESYNC_MS`)。曲は**正しいフル曲を復元**(ループ置換の誤りを是正、
+  v0.25.419)。numpy解析で**テンポはほぼ600一定・途中ドリフト無し**を確認。計測ツール: **タップ間隔メーター**(`DanceTapMeter`、連続タップ間隔ms＋平均)
+  と**強制JUST判定**(オプション)、自動タップも計測対象。ffmpeg/numpyはクラウドに入れたが**非永続**。
+- **演出(ジューシー)**: 近接スイングで画面シェイク＋近接フィニッシュでパンチズーム。シェイクに振幅(`triggerShake(dur,mag)`)。
+  行動別: シールドバッシュ/ハリケーン/死神召喚/登場着地。**追尾カメラ**(描画のみ・慣性/先読み/危険時タイト/中心クランプ)。
+  **待機ズーム**(手を離して静止中に少し寄る)。登場の**飛び降りを3倍速**(`PLAYER_INTRO_LAND_MS` 1700→567)。
+- 細部: ミラーボールの影削除 / フリック斬撃音オフ。
+
+### 次の課題（未対応・優先度順の目安）
+1. **ダンス「どんどんズレる」検証中**: 実機で `DanceTapMeter`(間隔ms/平均)＋強制JUSTで計測 → 一定オフセットなら**出力遅延**
+   (`RHYTHM_BEAT_OFFSET_MS_BY_LEVEL` か簡易キャリブレーション)、増え続けるならリシンク不全を疑い調査。社長報告の数値待ち。
+2. **カメラ各値の実機決定**: 今“最大値”実装。`?cam*` で範囲内へ詰めて既定(`gameStore` の CAMERA_* )へ焼く。待機ズームの向き(寄り/引き)も確定。
+3. **ステージ固有ゲームプレイ**: 現状**全ステージがステージ1を流用**(`stageDirector.ts`)。ステージ別の波/敵テーマへ差し替え。
+4. **会話・サブミッションの本文**: M2以降の `dialogue`、各ステージの `subs`(今は空)。地名(name/area)の確定。
+5. **装備選択の開始時付与**: 今は選択を記録するのみ。ゲームへの付与を配線。
+6. UIデザインの作り込み(導線は仮UI)。
+
+### v0.25.351 までの旧経緯は下記の過去メモ参照。
+
 
 - **正本 / デプロイ元ブランチ**: `claude/chat-context-continuity-saxlH`（GitHub `tanity0/zombie`）。
   `.github/workflows/pages.yml` は **このブランチ（と `main`）への push で GitHub Pages を自動デプロイ** → https://tanity0.github.io/zombie/ 。
