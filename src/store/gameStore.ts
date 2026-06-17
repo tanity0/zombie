@@ -245,8 +245,8 @@ export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カ�
 
 // ---- ワイヤーアンカー(移動系サブウェポン) ------------------------------------
 // 装備中、前方(ショットガン射程くらい)に青サークルを常時表示。指離しでアンカー打ち込み開始
-// (WIRE_PLANT_MS=1秒)、完了後 WIRE_WINDOW_MS(~1秒)以内の追加タップでアンカー地点へ高速移動。
-// 高速移動中は敵接触ダメージ無効(敵弾は通る/敵にダメージ・ノックバックなし)。CD はレベルで短縮。
+// (WIRE_PLANT_MS=0.1秒で発射)、完了後の追加タップでアンカー地点へ高速移動。着地時に周囲へ
+// 近接攻撃(2倍ノックバック)。高速移動中は敵接触ダメージ無効。CD は全Lv 1秒(クールダウン中はサークル非表示)。
 export const WIRE_ANCHOR_RANGE = 110;   // 青サークル距離(飛距離。全レベル共通=半分に短縮)
 // アナログスティックの傾き強度(swipeStrength: 0..1)で、移動速度と狙い距離を可変にする。
 // 強度0(デッドゾーン直上)でも完全停止にはせず、最低係数だけ残す(操作不能を避ける)。
@@ -257,12 +257,14 @@ export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度
 // 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
 export const stickAimFactor = (strength: number) =>
   STICK_AIM_MIN_FACTOR + (1 - STICK_AIM_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
-export const WIRE_PLANT_MS = 300;       // 打ち込み(先端が飛んで刺さるまで)=0.3秒。刺さると高速移動可。
+export const WIRE_PLANT_MS = 100;       // 打ち込み(先端が飛んで刺さるまで)=0.1秒で発射。刺さると高速移動可。
 export const WIRE_DASH_MS = 200;        // 高速移動の所要時間
-export const WIRE_COOLDOWN_BY_LEVEL = [0, 2000, 1000, 0] as const; // Lv1=2s / Lv2=1s / Lv3=0s
+export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 全Lv共通=1秒(発射が速い代わり)
 // 敵に刺さった時(発火ナイフ風吸着): 0.1秒で敵を引き寄せ→近接ダメージ→大幅ノックバック。
 export const WIRE_STICK_MS = 100;       // 引き寄せ時間(0.1秒)
 export const WIRE_KNOCKBACK_SPEED = 1100; // 大幅ノックバックの初速(px/s)
+// ワイヤーダッシュ着地時の近接攻撃: 通常近接の2倍ノックバック。
+export const WIRE_LAND_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 2;
 
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 // 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。

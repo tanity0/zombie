@@ -4108,18 +4108,17 @@ export class PixiScene {
         // ワイヤー線(穴→プレイヤー)。単独の moveTo→lineTo→stroke(飛ぶにつれ伸びる)。
         const lineAlpha = dashing ? 0.85 : charging ? 0.6 : 0.7;
         g.moveTo(hx, hy).lineTo(cx, cy).stroke({ width: 2.5, color: 0x93c5fd, alpha: lineAlpha });
-      } else if (!player.wireAnchored && !dashing) {
-        // 待機(アンカー未設置): 前方(現在/最後の移動方向)に青サークルプレビュー。CD中は薄く。線は引かない。
+      } else if (!player.wireAnchored && !dashing && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
+        // 待機(アンカー未設置・CD明け): 前方(現在/最後の移動方向)に青サークルプレビュー。
+        // クールダウン中はサークル自体を非表示にする(撃てないことを明示)。線は引かない。
         const dir = player.lastDirection ?? { x: 1, y: 0 };
         const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
         // 傾き強度で狙い距離を可変(描画のみ。実際の飛距離は store 側で同係数を適用)。
         const reach = WIRE_ANCHOR_RANGE * stickAimFactor(useGameStore.getState().swipeStrength);
         const px = cx + (dir.x / dl) * reach;
         const py = cy + (dir.y / dl) * reach;
-        const onCd = gameTime < (player.subWeaponCooldowns['wire-anchor'] ?? 0);
-        const a = onCd ? 0.16 : 0.7;
-        g.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: a });
-        g.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: a });
+        g.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: 0.7 });
+        g.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: 0.7 });
       }
     }
     // PHILL銃: アクティブ銃が phill-revolver のとき、狙いサークル(赤橙レティクル)を前方に表示。
