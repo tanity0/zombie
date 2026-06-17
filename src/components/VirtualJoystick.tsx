@@ -107,7 +107,8 @@ const VirtualJoystick: React.FC = () => {
         // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
         if (!flickFiredRef.current) rhythmInput('tap');
       } else {
-        // PHILL銃(研究所): 指を離した瞬間に狙いサークル方向へ1発(手動)。撃てたら発砲SE。
+        // PHILL銃(研究所): 立ち止まってタップ(=移動せず指を離す)で狙いサークル方向へ1発。
+        // 移動中(ドラッグ)に離した時は store 側の isMoving ガードで発砲しない。撃てたら発砲SE。
         const gs = useGameStore.getState();
         const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
         if (gun?.key === 'phill-revolver') {

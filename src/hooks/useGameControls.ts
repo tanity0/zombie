@@ -97,7 +97,8 @@ export const useGameControls = () => {
         // First press only — auto-repeat shouldn't keep refiring the counter.
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
         if (!e.repeat && !isGameTimeStopped()) {
-          // PHILL銃(研究所): Spaceで狙い方向へ1発(手動)。撃てたら発砲SE。
+          // PHILL銃(研究所): 立ち止まってSpaceで狙い方向へ1発。移動キー保持中は
+          // store 側の isMoving ガードで発砲しない。撃てたら発砲SE。
           const gs = useGameStore.getState();
           const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
           if (gun?.key === 'phill-revolver') {

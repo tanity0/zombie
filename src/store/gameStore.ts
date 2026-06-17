@@ -2685,11 +2685,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   
-  // PHILL銃の手動発砲(指離し): 狙いサークル(=lastDirection)方向へ1発。CD=武器のcooldown(1秒)。
+  // PHILL銃の手動発砲: 立ち止まってタップした時だけ狙いサークル(=lastDirection)方向へ1発。
+  // 移動中(ドラッグ移動/移動キー保持)は撃たない=「立ち止まって撃つ」武器。CD=武器のcooldown(1秒)。
   firePhillShot: () => {
     const { player } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
+    if (player.isMoving) return; // 立ち止まりが条件(移動中は発砲しない)
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
