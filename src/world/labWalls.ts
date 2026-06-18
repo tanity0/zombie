@@ -19,8 +19,9 @@ export interface PlacedWall {
 export const LAB_ZONE = 900;
 // スタート地点(原点)付近にはオブジェクト/敵を出さない安全半径。
 export const LAB_START_SAFE_RADIUS = 700;
-// 通常帯の縦の広がり(約2画面)。|セル中心Y| がこれを超えると「奥(deep)」=壁だらけ・UV/アイテム無し。
-export const LAB_DEEP_Y = 2 * LAB_ZONE; // 1800
+// 通常帯の縦の広がり。|セル中心Y| がこれを超えると「奥(deep)」=壁だらけ・UV/アイテム無し。
+// 縦移動は控えめ(約1画面ぶんずつ)=横移動重視。
+export const LAB_DEEP_Y = 1 * LAB_ZONE; // 900
 // 連なり壁の間隔(=壁の当たり幅。縁を接して横バリアになる)。
 const WALL_RUN_SPACING = 150;
 const H_LEN = 150, H_DEPTH = 22;

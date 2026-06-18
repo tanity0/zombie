@@ -3184,11 +3184,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (distFromPlayer <= recycleDistance || waveProtected) return enemy;
 
           const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
+          // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
+          const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
           const replacement = generateEnemy(
             gameTime,
             player,
             gameBounds,
-            preserveEnemyState ? enemy.type : undefined,
+            recycleType,
             player.lastDirection
           );
           recycledAnyEnemy = true;
@@ -3209,7 +3211,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           return {
             ...replacement,
-            id: enemy.id
+            id: enemy.id,
+            // ラボはリサイクル個体も索敵仕様(休眠+半径)で再配置。
+            ...(labTheme ? { dormant: true, aggroRange: LAB_SPAWN_AGGRO_RANGE, vx: 0, vy: 0 } : {})
           };
         });
         if (recycledAnyEnemy) {

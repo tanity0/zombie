@@ -12347,3 +12347,15 @@ applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた
 
 ### Verification
 - lint/build 通過。stage-2 は死神も含め非ラボ敵が一切出ない。
+
+## v0.25.533 — ステージ2: 縦帯を半分 / リサイクル機構の森敵混入を修正 (claude/cool-edison-7b8jrl)
+- 縦帯(LAB_DEEP_Y)を 2*LAB_ZONE(1800)→ 1*LAB_ZONE(900)へ半減。通常帯を狭め横移動重視を強める。
+- 「ラボ敵以外が湧く」残因を修正: 敵リサイクル機構(遠方の敵を generateAt で作り替え)が
+  タイプ未指定=森の selectEnemyType を使っていた。labテーマでは selectLabEnemyType(Lv1/2/3)に固定し、
+  リサイクル個体も dormant+aggroRange(索敵仕様)で再配置。これで lab は完全にラボ敵のみ。
+
+### 負荷スコア
+1/10。定数変更とリサイクル時の型選択分岐のみ。
+
+### Verification
+- lint/build 通過。stage-2 は森敵が一切混ざらず、縦帯が約半分に。
