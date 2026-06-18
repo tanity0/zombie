@@ -12623,3 +12623,11 @@ v0.25.564 までで完了済みの12種に続き、残る効果を3グループ�
 - desc を「コンボ中は全攻撃のダメージ増加」に更新。
 load 1/10(定数係数の乗算のみ)。
 ### Verification: npx tsc --noEmit + npm run build 通過。
+
+## v0.25.572 — ステージ2: 城マーカー抑制＋クリアアイテム位置表示 (claude/cool-edison-7b8jrl)
+- 城が描かれないラボ/屋内(ステージ2)で、画面端の城位置マーカーだけが出ていた不具合を修正。
+  syncArrows に castleVisible(=!(indoorMode||stageTheme==='lab'))を渡し、城マーカーをゲート。
+- クリアアイテム(lab-clear-item=重要データ)の位置マーカーを追加。画面外のとき画面端に
+  書類アイコン+矢印(シアン)で誘導。描画のみ(レンダラ read-only)。
+load 1/10(boolean分岐＋既存pickup走査に相乗り)。
+### Verification: tsc + build 通過。

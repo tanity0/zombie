@@ -1680,7 +1680,7 @@ export class PixiScene {
       now
     );
     this.syncPlayerFx(s.player, now, s.gameTime);
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera);
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'));
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -4911,7 +4911,8 @@ export class PixiScene {
     pickups: Pickup[],
     castle: CastleEvent,
     merchant: WeaponMerchant,
-    camera: { x: number; y: number }
+    camera: { x: number; y: number },
+    castleVisible: boolean
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -4958,7 +4959,9 @@ export class PixiScene {
 
     const castleX = castle.x - camera.x;
     const castleY = castle.y + 40 - camera.y;
-    if (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH) {
+    // 城マーカーは城が実在するステージ(屋外・非ラボ)でのみ表示。
+    // ステージ2(ラボ/屋内)は城を描かないので、位置マーカーも出さない。
+    if (castleVisible && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
       const angle = Math.atan2(castleY - cyC, castleX - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
@@ -5019,6 +5022,39 @@ export class PixiScene {
         const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
         g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
       }
+    }
+
+    // 研究所クリアアイテム(重要データ)の場所マーカー。画面外のとき画面端に書類アイコン+矢印で誘導。
+    for (const p of pickups) {
+      if (p.type !== 'lab-clear-item') continue;
+      const tx = p.x + 8 - camera.x;
+      const ty = p.y + 8 - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist;
+      const ey = cyC + dy * tdist;
+      const color = 0x22d3ee; // シアン=重要データ(クリア目標)
+
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
+      // 書類アイコン(白い紙+折れ角)。
+      g.rect(ex - 5, ey - 6, 10, 12).fill({ color: 0xe2e8f0, alpha: 0.96 });
+      g.poly([ex + 1, ey - 6, ex + 5, ey - 6, ex + 5, ey - 2]).fill({ color: 0x94a3b8, alpha: 0.98 });
+      g.rect(ex - 3, ey - 2, 6, 1.5).fill({ color: 0x0e7490, alpha: 0.9 });
+      g.rect(ex - 3, ey + 1, 6, 1.5).fill({ color: 0x0e7490, alpha: 0.9 });
+      g.rect(ex - 3, ey + 4, 4, 1.5).fill({ color: 0x0e7490, alpha: 0.9 });
+
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
   }
 
