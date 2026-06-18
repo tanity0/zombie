@@ -36,6 +36,10 @@ export interface Player {
   invulnerable: boolean;
   invulnerableTime: number;
   lastDirection: { x: number; y: number } | null;
+  // 照準サークルの慣性付きベクトル(向き×傾き強度, 長さ0..1)。PHILL弾/ワイヤーアンカー/
+  // サークル描画はすべてこれに揃える(進行方向ではなくサークル方向へ)。movePlayer が毎フレーム更新。
+  aimX: number;
+  aimY: number;
   // Counter-on-release state. Releasing the touch opens a brief window
   // during which any incoming hostile projectile is reflected.
   counterWindowEnd: number;     // ms timestamp; window is open while now <= this

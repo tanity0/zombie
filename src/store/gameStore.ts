@@ -401,6 +401,8 @@ export const BASH_ZOOM_MAG = 0.3;          // バッシュ命中の寄り(現在
 // keep 0.3s so they curve into turns instead of snapping.
 export const PLAYER_INERTIA_TAU = 0;
 export const ENEMY_INERTIA_TAU = 0.3;
+// 照準サークル(=PHILL弾/アンカーの狙い)の慣性。向き/距離の変化に少し遅れて追従(秒)。
+export const AIM_INERTIA_TAU = 0.10;
 
 // 特殊AI(犬型=突進 / パンプキン=ジャンプ)の調整値。射程基準=ハンドガン射程176px(RANGE_BY_CATEGORY.handgun)。
 const HANDGUN_RANGE_REF = 176;
@@ -1045,6 +1047,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     characterClass: 'warrior',
     direction: 'idle',
     isMoving: false,
+    aimX: 1,
+    aimY: 0,
     invulnerable: false,
     invulnerableTime: 0,
     lastDirection: null,
@@ -1296,6 +1300,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const isMoving = speedNow > moveSpeed * 0.15;
 
+      // 照準サークルの慣性付きベクトル。向き=lastDirection、長さ=stickAimFactor(strength)。
+      // PHILL弾/ワイヤーアンカー/サークル描画はすべてこの aim に揃える(進行方向ではなくサークル方向)。
+      const aimMag = stickAimFactor(swipeStrength);
+      const ld = lastDirection ?? { x: 1, y: 0 };
+      const ldl = Math.max(0.001, Math.hypot(ld.x, ld.y));
+      const aimAlpha = inertiaAlpha(deltaTime, AIM_INERTIA_TAU);
+      const aimX = player.aimX + ((ld.x / ldl) * aimMag - player.aimX) * aimAlpha;
+      const aimY = player.aimY + ((ld.y / ldl) * aimMag - player.aimY) * aimAlpha;
+
       return {
         ...(pushedProjectiles ? { projectiles: pushedProjectiles } : {}),
         player: {
@@ -1306,7 +1319,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           vy,
           direction,
           isMoving,
-          lastDirection
+          lastDirection,
+          aimX,
+          aimY
         }
       };
     });
@@ -1336,7 +1351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const {
       player, gameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
-      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors, swipeStrength
+      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
     } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -1421,14 +1436,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_COOLDOWN_BY_LEVEL[lvl]);
         get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
       } else if (!charging && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
-        // 指離し → 前方の青サークル地点へ「即座に」アンカー打ち込み(ワイヤー表示)。溜(WIRE_PLANT_MS)後に移動可。
-        const dir = player.lastDirection ?? { x: 1, y: 0 };
-        const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
-        // 傾き強度で飛距離を可変(最大=WIRE_ANCHOR_RANGE)。ダッシュ速度は飛距離から
-        // 算出される(上の armed 分岐)ので、短い狙いは自動で短く遅いダッシュになる。
-        const reach = WIRE_ANCHOR_RANGE * stickAimFactor(swipeStrength);
-        const ax = pcx + (dir.x / dmag) * reach;
-        const ay = pcy + (dir.y / dmag) * reach;
+        // 指離し → 青サークル地点へ「即座に」アンカー打ち込み(ワイヤー表示)。溜(WIRE_PLANT_MS)後に移動可。
+        // 進行方向ではなく狙いサークル(慣性付き aim=向き×傾き強度)へ。飛距離も aim の長さで可変。
+        // ダッシュ速度は飛距離から算出(上の armed 分岐)なので、短い狙いは自動で短く遅いダッシュになる。
+        const ax = pcx + player.aimX * WIRE_ANCHOR_RANGE;
+        const ay = pcy + player.aimY * WIRE_ANCHOR_RANGE;
         set(s => ({
           player: {
             ...s.player,
@@ -2728,7 +2740,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
     if (now - weapon.lastFired < (weapon.cooldown ?? 1000)) return;
-    const dir = player.lastDirection ?? { x: 1, y: 0 };
+    // 進行方向ではなく狙いサークル(慣性付き aim)方向へ撃つ。
+    const dir = (Math.hypot(player.aimX, player.aimY) > 0.001)
+      ? { x: player.aimX, y: player.aimY }
+      : (player.lastDirection ?? { x: 1, y: 0 });
     const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
     const size = weapon.projectileSize || 9;
     const speed = (weapon.projectileSpeed || 640) * 1.5; // PROJECTILE_SPEED_MULT 相当
@@ -4647,6 +4662,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           invulnerable: false,
           invulnerableTime: 0,
           lastDirection: null,
+          aimX: 1,
+          aimY: 0,
           counterWindowEnd: 0,
           counterCooldownEnd: 0,
           lastCounterSuccessTime: 0,

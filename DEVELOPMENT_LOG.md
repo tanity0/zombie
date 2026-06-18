@@ -11942,3 +11942,10 @@ gameStore・useGameLoop・GameHUD 等のゲーム調整はクリーンに合流�
 研究所クリアアイテム(lab-clear-item)取得時の表示を、独自の浮きコールアウトから武器/トレジャーと同じ
 取得バナー(lastWeaponGet)へ変更。専用 kind='data'(💾・「データを確保！」・エメラルド)を追加し、GameHUD の
 バナー分岐に反映。到達演出(flash/ring/burst→1.5s後にイベント勝利)はそのまま。負荷スコア 1/10。lint/build 通過。
+
+## v0.25.509 — PHILL弾/アンカーの弾道をサークル方向に統一＋サークルに慣性 (claude/cool-edison-7b8jrl)
+進行方向(lastDirection 瞬時)ではなく「照準サークル方向」へ撃つよう統一。store に慣性付き照準ベクトル
+`player.aimX/aimY`(向き=lastDirection×傾き強度、長さ0..1)を追加し、movePlayer で毎フレーム `AIM_INERTIA_TAU=0.10`
+で更新。firePhillShot とワイヤーアンカー打ち込みは aim 方向/距離を使用。レンダラの PHILL レティクル・ワイヤー
+プレビューは store の aim をそのまま使用(center+aim*range)＝サークル位置と弾道が一致。旧レンダラ側イージング
+(aimReticleOff*)は撤去。負荷スコア 1/10(スカラー数個/フレーム)。lint/build 通過。
