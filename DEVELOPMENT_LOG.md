@@ -11974,3 +11974,19 @@ lint/build 通過。
 - 前景 `lab-fg/lab-fg-beam|-pipe|-duct|-cable.png`(マスターシート Row4 から縮小・減色)
 - 背景 `lab/lab-bg-void.png`(暗い天井/void が上へ消える縦長シームレス・ドット絵)
 素材が入り次第、frontObjectLayer(前景・パララックス＋微ぼかし)＋外周暗リング置換(背景プレート・低速パララックス)を実装。
+
+## v0.25.512 — 研究所 遠近(2)背景: 天井/void プレート＋低速パララックス (claude/cool-edison-7b8jrl)
+描画のみ・当たり判定/store/屋外不変。
+- 新規アセット `public/sprites/lab/lab-bg-void.png`(240x768・148KB・縦横シームレス seam=0)。受領素材(724x2172/1.2MB)を
+  ハイライト保持ダウンスケール(暗部=ブロック平均/光源=ブロック最大で窓・赤灯を残す)＋エッジブレンドで作成。
+  ※暗部99.97%に対し光源が極小高輝度コアのため median-cut 量子化では潰れる → RGB保存(それでも148KB)。
+- `pixiScene::syncLab()`: 背景 void を `TilingSprite` で最下層(床の下)に敷設。**床(labFloor)は LAB_BOUNDS のみ**を
+  覆うよう変更し、外周マージンに void が見える形に。旧「暗リング塗り」(labGfx)は廃止(void 未ロード時のみ保険で残す)。
+- 低速パララックス: `tilePosition = camera*LAB_VOID_PARALLAX(0.12)`。タイル幅 `LAB_VOID_TILE=420` で外周の繰り返しを抑制。
+
+### 負荷スコア
+2/10(rendering)。TilingSprite 1枚＋毎フレーム tilePosition 更新のみ。geometry 再生成なし。
+
+### 残: 遠近(2)前景(オーバーヘッド梁/配管) — 要アセット未受領
+`lab-fg/lab-fg-beam|-pipe|-duct|-cable.png`(マスターシート Row4)が入り次第、frontObjectLayer に疎配置＋微ぼかし＋
+軽パララックスで実装予定。

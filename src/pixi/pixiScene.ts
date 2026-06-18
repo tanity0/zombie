@@ -345,6 +345,9 @@ const ENEMY_DEPTH_MAX = 1.85;
 const LAB_WALL_DEPTH_STRENGTH = Math.max(0, tsNum('labdepth', 0.6));
 const LAB_WALL_DEPTH_MIN = 0.8;
 const LAB_WALL_DEPTH_MAX = 1.35;
+// 背景 void プレートの低速パララックス係数(0=世界と一緒に動く / 大きいほど奥に見える=ゆっくり)。
+const LAB_VOID_PARALLAX = 0.12;
+const LAB_VOID_TILE = 420; // 1タイルの world 幅(px)。大きめにして外周での繰り返しを目立たせない。
 const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
@@ -583,6 +586,7 @@ export class PixiScene {
   private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
   private labGfx: Graphics | null = null; // 屋内ステージのマーカー(ボタン/ゴール)(world座標・遅延生成)
   private labFloor: TilingSprite | null = null; // 屋内ステージの床タイル(world座標・遅延生成)
+  private labVoid: TilingSprite | null = null;  // 背景の天井/void プレート(外周マージンに敷く・低速パララックス)
   private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
   private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
   private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
@@ -3464,6 +3468,7 @@ export class PixiScene {
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
       if (this.labGfx) this.labGfx.visible = false;
+      if (this.labVoid) this.labVoid.visible = false;
       if (this.labFloor) this.labFloor.visible = false;
       if (this.labFloorDecor) this.labFloorDecor.visible = false;
       if (this.labWallShadow) this.labWallShadow.visible = false;
@@ -3475,17 +3480,33 @@ export class PixiScene {
     }
     // 屋内は周辺減光(環境の暗がり)を広範囲に強める(社長指示)。
     this.vignette.alpha = LAB_VIGNETTE_ALPHA;
-    // 床(新ドット絵シームレスタイル=clean をベースに全面に敷く)。外周の野外マージンまで地面を敷く。
+    // 背景: 天井/void プレートを外周マージンに敷く(床の下=最下層)。床は迷路グリッド(LAB_BOUNDS)だけを
+    // 覆い、外側マージンはこの void が見える。低速パララックスで「奥」を表現。
+    const voidTex = getTexture('lab/lab-bg-void');
+    if (voidTex) {
+      if (!this.labVoid) {
+        this.labVoid = new TilingSprite({ texture: voidTex, width: LAB_OUTER_BOUNDS.width, height: LAB_OUTER_BOUNDS.height });
+        this.labVoid.position.set(LAB_OUTER_BOUNDS.x, LAB_OUTER_BOUNDS.y);
+        const vsc = LAB_VOID_TILE / voidTex.width;
+        this.labVoid.tileScale.set(vsc, vsc);
+        this.L.world.addChildAt(this.labVoid, 0); // 最下層
+      }
+      this.labVoid.visible = true;
+      // パララックス: world は -camera で動くので、tilePosition を +camera*係数 ずらすと見かけ上ゆっくり流れる。
+      this.labVoid.tilePosition.set(s.camera.x * LAB_VOID_PARALLAX, s.camera.y * LAB_VOID_PARALLAX);
+    }
+    // 床(新ドット絵シームレスタイル=clean)。迷路グリッド(LAB_BOUNDS)のみを覆う(外側は void が見える)。
     const LAB_FLOOR_TILE = 120; // 1タイルの world サイズ(px)。ドット絵が読める粒度(旧300は大きすぎた)。
     const floorTex = getTexture('lab-floor/lab-floor-clean')
       ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-r1-c1');
     if (floorTex) {
       if (!this.labFloor) {
-        this.labFloor = new TilingSprite({ texture: floorTex, width: LAB_OUTER_BOUNDS.width, height: LAB_OUTER_BOUNDS.height });
-        this.labFloor.position.set(LAB_OUTER_BOUNDS.x, LAB_OUTER_BOUNDS.y);
+        this.labFloor = new TilingSprite({ texture: floorTex, width: LAB_BOUNDS.width, height: LAB_BOUNDS.height });
+        this.labFloor.position.set(LAB_BOUNDS.x, LAB_BOUNDS.y);
         this.labFloor.tileScale.set(LAB_FLOOR_TILE / floorTex.width, LAB_FLOOR_TILE / floorTex.height);
         this.labFloor.tint = LAB_ENV_TINT; // ステージ全体(床)を沈める(オブジェクトは別)
-        this.L.world.addChildAt(this.labFloor, 0); // 最下層(壁/アクターの下)
+        const vidx = this.labVoid ? this.L.world.getChildIndex(this.labVoid) + 1 : 0;
+        this.L.world.addChildAt(this.labFloor, vidx); // void の上・壁/アクターの下
       }
       this.labFloor.visible = true;
     }
@@ -3617,15 +3638,15 @@ export class PixiScene {
     g.visible = true;
     g.clear();
     if (!floorTex) g.rect(LAB_BOUNDS.x, LAB_BOUNDS.y, LAB_BOUNDS.width, LAB_BOUNDS.height).fill({ color: 0x10151c }); // 床フォールバック
-    // 野外マージン(壁の外周)を暗く沈める=「夜の野外」。LAB_BOUNDS の外側リング4枚を半透明の暗色で塗る。
-    // (labGfx は壁の上・アクターの下なので、外周の床だけ暗くなり、木やプレイヤーはその上に見える)
-    {
+    // 外周マージンは背景 void プレート(labVoid・床の下)で表現するため、旧「暗リング塗り」は廃止。
+    // void が見えない場合(テクスチャ未ロード)の保険として、マージンを従来色で薄く沈めておく。
+    if (!voidTex) {
       const o = LAB_OUTER_BOUNDS, b = LAB_BOUNDS;
       const col = LAB_OUTER_TINT, a = 0.82;
-      g.rect(o.x, o.y, o.width, b.y - o.y).fill({ color: col, alpha: a });                              // 上
-      g.rect(o.x, b.y + b.height, o.width, (o.y + o.height) - (b.y + b.height)).fill({ color: col, alpha: a }); // 下
-      g.rect(o.x, b.y, b.x - o.x, b.height).fill({ color: col, alpha: a });                              // 左
-      g.rect(b.x + b.width, b.y, (o.x + o.width) - (b.x + b.width), b.height).fill({ color: col, alpha: a }); // 右
+      g.rect(o.x, o.y, o.width, b.y - o.y).fill({ color: col, alpha: a });
+      g.rect(o.x, b.y + b.height, o.width, (o.y + o.height) - (b.y + b.height)).fill({ color: col, alpha: a });
+      g.rect(o.x, b.y, b.x - o.x, b.height).fill({ color: col, alpha: a });
+      g.rect(b.x + b.width, b.y, (o.x + o.width) - (b.x + b.width), b.height).fill({ color: col, alpha: a });
     }
     const btnPressed = s.labButtons.some(b => b.id === LAB_BUTTON.id && b.pressed);
     g.circle(LAB_BUTTON.x, LAB_BUTTON.y, LAB_BUTTON.radius).stroke({ color: btnPressed ? 0x22c55e : 0x60a5fa, width: 3, alpha: 0.8 });
