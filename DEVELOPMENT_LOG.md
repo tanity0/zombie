@@ -12007,3 +12007,20 @@ lint/build 通過。
 
 ### Verification
 - `npm run lint` / `npm run build` 通過。屋外は groundBase=ENV_TINT/元テクスチャで無変更。?labpersp=1 で研究所の床が斜め遠近に。
+
+## v0.25.514 — 研究所 擬似3D遠近 A1強化: 強カーブ＋地平フェード＋グリッド床 (claude/cool-edison-7b8jrl)
+?labpersp 配下のみ・屋外無変更・OFFで回帰なし。描画のみ(当たり判定/移動/aim 不変)。
+1. 研究所専用の強い遠近(屋外定数を流用せず分離)。`updatePerspectiveGround` を (farScale, nearScale, curve) 受け取りに
+   拡張し、研究所では `LAB_PERSP_FAR=0.04`(屋外0.12より奥を強く縮める)・`LAB_PERSP_CURVE=2.8`(収束を急に)を使用。
+   `?labperspfar=` / `?labperspcurve=` で生調整可。屋外は従来定数のまま。
+2. 擬似地平フェード `labHorizonFade`: 上=ほぼ黒→下=透明の縦グラデ(canvas生成1枚をキャッシュ)を worldGroup の
+   groundBase 直上に重ね、遠近床の奥を暗がりへ沈める。`?labhorizon=`(既定0.85, 0でOFF)。壁/アクターは暗くしない
+   (groundBase の直上=床のみに掛かる)。
+3. 強グリッド床テクスチャ `public/sprites/lab-floor/lab-floor-persp.png`(128²・20KB・シームレス seam=0、受領素材を
+   減色48色・エッジブレンド)。?labpersp 時の遠近ストリップに使用(無ければ lab-floor-clean にフォールバック)。
+
+### 負荷スコア
+1〜2/10(rendering)。遠近更新は既存ループにスカラー数個追加のみ。地平フェードは Sprite 1枚。新規確保は起動時1テクスチャ。
+
+### Verification
+- lint/build 通過。屋外=従来定数/元床で無変更。?labpersp=1 で奥が強く縮み、上方が暗幕で消える。

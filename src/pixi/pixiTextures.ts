@@ -99,6 +99,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-floor/lab-floor-crack', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-scorch', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-ao', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-persp', scaleMode: 'nearest' }, // 遠近床用 強グリッド(?labpersp)
       // 無地壁スライス(前面=左右シームレス / 上端キャップ)＋装飾壁(ガラス窓パネル/横ビーム)。
       { name: 'lab/lab-wall-front', scaleMode: 'nearest' },
       { name: 'lab/lab-wall-top', scaleMode: 'nearest' },
