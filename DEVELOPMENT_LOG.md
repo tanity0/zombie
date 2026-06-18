@@ -12488,3 +12488,10 @@ pts[0]=プレイヤー(狭) / pts[1..]=UVバー(通常)で半径を出し分け�
 
 ### 負荷スコア 1/10(定数/分岐中心。UVは区画生成の延長、ガードは3体)。
 ### Verification lint/build 通過。
+
+## v0.25.548 — ノックバックのずらし速さを約2/3に (claude/cool-edison-7b8jrl)
+社長指示。通常のノックバック速度を約2/3へ。
+- BULLET_KNOCKBACK_SPEED 64→43(射撃ヒットの押し戻し)。KNOCKBACK_SPEED 200→133(近接カウンターの押し)。
+- 特殊スキルのノックバックは弱体化しないよう従来の絶対値に固定: SHIELD_BASH=960, WIRE_LAND=400, WHIP=600
+  (以前は KNOCKBACK_SPEED 連動だったため、基準2/3化の巻き添えを回避)。WIRE大launch/レベルアップ押しは据え置き。
+### Verification lint/build 通過。

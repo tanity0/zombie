@@ -167,7 +167,8 @@ const saveStringArray = (key: string, arr: string[]): void => {
 
 // Light knockback applied to a normal enemy each time a bullet connects.
 // Guns shove only half as hard as the melee counter's push.
-export const BULLET_KNOCKBACK_SPEED = 64;
+// ノックバックでずらす速さを約2/3に(社長指示): 64→43。
+export const BULLET_KNOCKBACK_SPEED = 43;
 
 // Crit → stun duration (gameTime ms). A stunned enemy is a finisher target.
 export const STUN_DURATION_MS = 5000;
@@ -204,7 +205,7 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // player read the attack while the actual catch zone stays disciplined.
 export const KNOCKBACK_HIT_RADIUS = 55;
 export const KNOCKBACK_RING_RADIUS = 180;
-export const KNOCKBACK_SPEED = 200; // melee counter shove (halved again)
+export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
 const TRAP_MELEE_SHOVE_DISTANCE = 68;
 const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
@@ -214,7 +215,7 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 const SHIELD_BASH_DAMAGE_MULT = 3;
 const SHIELD_BASH_SHOVE_DISTANCE = 50;        // バッシュの飛び出し距離(少し短め)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
-const SHIELD_BASH_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 4.8;
+const SHIELD_BASH_KNOCKBACK_SPEED = 960; // 従来値を維持(KNOCKBACK_SPEED 200×4.8 相当。基準2/3化の影響を受けない)
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
@@ -281,8 +282,8 @@ export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 全Lv�
 // 敵に刺さった時(発火ナイフ風吸着): 0.1秒で敵を引き寄せ→近接ダメージ→大幅ノックバック。
 export const WIRE_STICK_MS = 100;       // 引き寄せ時間(0.1秒)
 export const WIRE_KNOCKBACK_SPEED = 1100; // 大幅ノックバックの初速(px/s)
-// ワイヤーダッシュ着地時の近接攻撃: 通常近接の2倍ノックバック。
-export const WIRE_LAND_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 2;
+// ワイヤーダッシュ着地時の近接攻撃: 従来値を維持(KNOCKBACK_SPEED 200×2 相当)。
+export const WIRE_LAND_KNOCKBACK_SPEED = 400;
 
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 // 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。
@@ -317,7 +318,7 @@ export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boo
 // 当て続けてチャージ満タン(ヒット数)で、次の一振りがハリケーン(鞭先端へ吸引)。
 // 数値は実機調整前提の仮値(TODO)。
 // ---------------------------------------------------------------------------
-export const WHIP_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3;          // 通常近接の約3倍(仕様アンカー)
+export const WHIP_KNOCKBACK_SPEED = 600;          // 従来値を維持(KNOCKBACK_SPEED 200×3 相当・仕様アンカー)
 export const WHIP_DAMAGE_MULT = 0.25;                            // TODO(鞭): 低/最小ダメージ
 export const WHIP_HIT_HALF_WIDTH = 60;                           // カプセル半幅(=振り方向に直交するx軸判定。進行方向yに対しxを半分=従来120の半分)
 export const WHIP_LENGTH_BY_LEVEL = [0, 150, 150, 150] as const; // 進行方向の射程。鞭の判定はレベルで変えない(全Lv共通150)
