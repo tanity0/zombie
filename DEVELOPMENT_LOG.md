@@ -12250,3 +12250,14 @@ v0.25.525 で `const LAB_CEILING_ALPHA = tsNum('ceil', 0.55)` を `tsNum` 定義
 
 ### Verification
 - lint/build 通過。タイトル/ゲームが再び描画される(天井帯・背景差し替え・死神3倍は v0.25.525 のまま有効)。
+
+## v0.25.527 — 研究所スキンの地面 色味調整(LAB_ENV_TINT)を一旦外す (claude/cool-edison-7b8jrl)
+applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた LAB_ENV_TINT を白(0xffffff=無補正)へ。
+テクスチャ本来の色で表示して評価するため(社長指示「一旦色味調整を外して」)。レイヤー構造/本数(72)は不変。
+背景3層(far/horizon/front)の tint(ENV_TINT)は今回そのまま。LAB_ENV_TINT 定義は屋内ラボ床等で引き続き使用。
+
+### 負荷スコア
+1/10。tint 値の変更のみ。
+
+### Verification
+- build 通過。stage-2 の地面が暗色補正なしのテクスチャ本来色に。

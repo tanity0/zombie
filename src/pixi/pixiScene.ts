@@ -1385,7 +1385,8 @@ export class PixiScene {
       const tex = getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
       if (!this.groundStripBaseTex) this.groundStripBaseTex = strips[0]?.texture ?? null; // 屋外地面を復元用に退避
-      for (const strip of strips) { strip.texture = tex; strip.tint = LAB_ENV_TINT; }
+      // 一旦 色味調整(LAB_ENV_TINT)を外す=テクスチャ本来の色で表示(tint 白=無補正)。
+      for (const strip of strips) { strip.texture = tex; strip.tint = 0xffffff; }
       // 背景3層を研究所版へ(森→ラボ)。元テクスチャは復元用に一度だけ退避。
       const far = getTexture('lab/lab-far-backdrop');
       if (far) { if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture; this.L.farBackdrop.texture = far; }
