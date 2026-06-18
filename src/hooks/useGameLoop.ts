@@ -47,6 +47,7 @@ import {
   getEnemySpawnInterval,
   isBossType,
   spawnEnemyAt,
+  selectLabEnemyType,
   resolveEnemyTarget
 } from '../utils/enemyUtils';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
@@ -550,6 +551,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         } = loopState;
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
+        const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
         // 範囲攻撃(爆発)の壁ブロック用。爆心地周辺の壁を1回だけ取得 → 各敵へ視線判定。
         // 爆発は時々のイベント+敵数上限なので軽い。屋内=lab壁 / 屋外=近傍の木。
         const aoeWalls = (cx: number, cy: number): Rect[] => {
@@ -2966,6 +2968,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             .filter(e => e.type === 'plant').length;
 
           for (let i = 0; i < spawnCount; i++) {
+            // 研究所スキンは湧きをラボ用ゾンビ(Lv1/2/3)に固定。画面外ランダム配置は generateEnemy を流用。
+            if (labTheme) {
+              addEnemy(generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection));
+              continue;
+            }
             let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
@@ -3088,7 +3095,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Scripted wave/elite events (compressed 5-min schedule: early plant,
         // mid-boss spikes, the 7-strong onslaught, finale giantbat).
         // consumeDueWaves fires each event exactly once.
-        if (!danceTest && !indoor) {
+        // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
+        // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
+        if (!danceTest && !indoor && !labTheme) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,

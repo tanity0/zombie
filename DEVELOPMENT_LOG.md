@@ -12261,3 +12261,20 @@ applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた
 
 ### Verification
 - build 通過。stage-2 の地面が暗色補正なしのテクスチャ本来色に。
+
+## v0.25.528 — 研究所スキンの湧きをラボ用ゾンビのみに + 床素材入れ替え (claude/cool-edison-7b8jrl)
+1) 敵: stage-2(lab テーマ)の湧きを研究所テストで作ったラボ用ゾンビ(lab-zombie-1/2/3)だけに。
+   - enemyUtils に selectLabEnemyType(gameTime) 追加(序盤Lv1中心→中盤Lv2→後半に巨体Lv3が控えめに混ざる)。
+   - useGameLoop 継続スポナー: lab テーマ時は generateEnemy に forcedType=selectLabEnemyType を渡す
+     (画面外ランダム配置の仕組みはそのまま流用)。森の plant 上限ロジックは非 lab のみ。
+   - 森系の演出波(consumeDueWaves: plant/pumpkin/zombie/skeleton/werewolf + finale)を lab では発火させない。
+   - ※クリアボス giantbat は別経路(城ボス spawn)で維持=ステージは引き続きクリア可能。
+2) 床: stage-2 の地面テクスチャを新素材(フラットなトップダウンのシームレス床)へ差し替え。1254×1254、
+   public/sprites/lab/lab-floor-ground.png を更新。レイヤー構造(72ストリップ)/tint(白=無補正)は不変。
+
+### 負荷スコア
+1/10。湧きは型選択の分岐のみ(数・間隔は据え置き)。床はテクスチャ差し替えのみ。
+
+### Verification
+- lint/build 通過。stage-2 で湧きがラボゾンビのみ・画面外ランダム。床が新素材に。
+### 未確定: 「ラボ用の敵だけ」に giantbat(クリアボス)を含めるか。今回は維持。要望あれば lab ボスへ差し替え/撤去。

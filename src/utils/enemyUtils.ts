@@ -69,6 +69,24 @@ const selectEnemyType = (gameTime: number): EnemyType => {
   return pool[pool.length - 1].type;
 };
 
+// 研究所スキン(stage-2)専用の湧き選択: 研究所テストで作ったラボ用ゾンビ(Lv1/2/3)のみ。
+// 序盤=Lv1中心、中盤でLv2、後半に巨体Lv3がたまに混ざる(時間で難度上昇)。
+export const selectLabEnemyType = (gameTime: number): EnemyType => {
+  const t = gameTime;
+  const pool: EnemyWeight[] = [{ type: 'lab-zombie-1', weight: 100 }];
+  if (t >= 45000)  pool.push({ type: 'lab-zombie-2', weight: 45 });  // 0:45
+  if (t >= 150000) pool.push({ type: 'lab-zombie-3', weight: 16 });  // 2:30 巨体は控えめ
+  if (t >= 150000) pool[0].weight = 55; // 後半は Lv1 を減らして重い個体を増やす
+  if (t >= 240000) pool[0].weight = 32;
+  const total = pool.reduce((s, p) => s + p.weight, 0);
+  let r = Math.random() * total;
+  for (const entry of pool) {
+    r -= entry.weight;
+    if (r <= 0) return entry.type;
+  }
+  return pool[pool.length - 1].type;
+};
+
 // Compute a difficulty multiplier. Retuned for the compressed ~5-min run: it
 // climbs to ~2.5× by the finale instead of 5× over 30 min, so enemies get
 // meaningfully tougher across the sprint without becoming bullet sponges. HP
