@@ -451,7 +451,7 @@ export const DRONE_BOOM_STOP_MS_BY_LEVEL = [0, 2000, 3000, 4000]; // 停止時�
 export const DRONE_BOOM_DIST_BY_LEVEL = [0, 100, 118, 135]; // 飛距離(Lv1/2/3)。社長指示で従来の半分(200/236/270→)
 export const DRONE_BOOM_SPEED = 480;                       // 行きの飛行速度(px/s)。社長指示で少し速く(360→480)
 export const DRONE_BOOM_RETURN_SPEED = 360;               // 戻りの速度(px/s)。従来どおり
-export const DRONE_BOOM_RADIUS = 72;                       // 停止中のダメージ範囲(半径)
+export const DRONE_BOOM_RADIUS = 50;                       // 停止中のダメージ範囲(半径)。トラップと同程度に縮小(72→50。社長指示)
 export const DRONE_BOOM_PULSE_MS = 250;                    // 停止中の判定パルス間隔=同一敵への再ヒット間隔
 export const DRONE_BOOM_STOP_DMG_DIV = 4;                  // 停止中の1ヒット=近接ダメージの1/4
 export const DRONE_BOOM_SAFETY_MS = 12000;                 // 安全消滅(戻れない場合の保険)
@@ -808,6 +808,7 @@ interface GameState {
   enemies: Enemy[];
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
   pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[];
+  boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
   projectiles: Projectile[];
   pickups: Pickup[];
   breakableProps: BreakableProp[];
@@ -1125,6 +1126,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   enemies: [],
   pumpkinBlasts: [],
+  boomerangReadyFxAt: 0,
   projectiles: [],
   pickups: [],
   breakableProps: [],

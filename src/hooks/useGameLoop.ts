@@ -84,7 +84,7 @@ const MARKSMAN_TRAP_COOLDOWN_MS = 6500;
 const MARKSMAN_TRAP_DURATION_MS = 9000;
 const MARKSMAN_TRAP_STUN_MS = 3000;
 const MARKSMAN_TRAP_CRIT_BONUS = 0.10;
-const MARKSMAN_TRAP_RADIUS_BY_LEVEL = [0, 34, 42, 50];
+const MARKSMAN_TRAP_RADIUS_BY_LEVEL = [0, 44, 52, 60]; // トラップ範囲を少し拡大(34/42/50→44/52/60。社長指示)
 const STRIKER_QUICK_MAG_COOLDOWN_BY_LEVEL = [0, 10000, 8000, 6000];
 const STRIKER_QUICK_MAG_THROW_DISTANCE = 82;
 const STRIKER_QUICK_MAG_THROW_MS = 360;
@@ -209,6 +209,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const frameRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
+  const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
   // Scripted-wave consumption set; survives across frames within one run
@@ -2971,6 +2972,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.goalReachedAt > 0 && Date.now() - gs.goalReachedAt >= 1500 && !gs.gameWon) {
             useGameStore.getState().triggerEventVictory();
           }
+        }
+
+        // ドローンブーメランのCD明け: not-ready→ready の瞬間に カチッSE + 頭上マーク発火。
+        {
+          const hasBoom = player.subWeapons.includes('drone-boomerang');
+          const ready = hasBoom && gameTime >= (player.subWeaponCooldowns['drone-boomerang'] ?? 0);
+          if (ready && !boomReadyRef.current) {
+            playSfx('ui-select'); // 「カチッ」相当(専用SE未用意のためUIクリック音を流用)
+            useGameStore.setState({ boomerangReadyFxAt: Date.now() });
+          }
+          boomReadyRef.current = ready;
         }
 
         // Continuous spawner — drip enemies onto the field from off-screen.

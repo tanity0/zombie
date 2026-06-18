@@ -12508,3 +12508,12 @@ pts[0]=プレイヤー(狭) / pts[1..]=UVバー(通常)で半径を出し分け�
 SEは存在(weapon-pickup=武器クレート/ドロップ取得時に鳴るもの)。ShopMenu の武器購入(buy-phill 成功時)に
 playSfx('weapon-pickup') を追加。武器庫取得と同じ音が鳴る。
 ### Verification lint/build 通過。
+
+## v0.25.551 — ブーメランCD表示刷新 / 回転刃&トラップ範囲調整 (claude/cool-edison-7b8jrl)
+- ブーメランのCDサークルを廃止。CD明け(not-ready→ready)の瞬間にプレイヤー頭上へブーメランマーク(シアンの「へ」字)が
+  一瞬出てふわっと上へ消える(updateBoomerangReadyMark, effectLayer)。同時に「カチッ」SE(専用音未用意のため ui-select を流用)。
+  検出は useGameLoop(boomReadyRef)、store に boomerangReadyFxAt を追加。
+- 回転刃(停止中)範囲 DRONE_BOOM_RADIUS 72→50(トラップと同程度に)。
+- トラップ範囲 MARKSMAN_TRAP_RADIUS_BY_LEVEL 34/42/50→44/52/60(少し拡大)。ブーメランは拡大しない。
+### 負荷スコア 1/10(Graphics1枚・650ms演出, 定数変更)。
+### Verification lint/build 通過。※カチッ専用SEがあれば差し替え予定。

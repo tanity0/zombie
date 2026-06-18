@@ -582,6 +582,7 @@ export class PixiScene {
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
+  private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
@@ -814,6 +815,7 @@ export class PixiScene {
       this.alchemyCircle,
       this.shadowContainer,
     );
+    this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
     this.whipHurricane.anchor.set(0.5, WHIP_HURRICANE_ANCHOR_Y);
@@ -1653,6 +1655,7 @@ export class PixiScene {
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now); // ジャンプ攻撃の着地予告(赤い影)
+    this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
@@ -2425,6 +2428,29 @@ export class PixiScene {
     this.labVeilSprite.height = H;
     // 背景4層(遠景/地平帯/手前帯/天井)を暗幕の上へ=暗くしない。
     this.setLabSceneryAboveVeil(true);
+  }
+
+  // ドローンブーメランCD明け: プレイヤー頭上にブーメランマークが一瞬出て、ふわっと上へ消える。
+  private updateBoomerangReadyMark(player: Player, now: number) {
+    const g = this.boomReadyGfx;
+    g.clear();
+    const at = useGameStore.getState().boomerangReadyFxAt;
+    const life = 650;
+    const dt = now - at;
+    if (at <= 0 || dt < 0 || dt > life) return;
+    const t = dt / life;                       // 0→1
+    const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // 立ち上がり速→ふわっと減衰
+    const rise = -18 * t;                      // 上へ少し浮く
+    const cx = player.x + player.width / 2;
+    const cy = player.y - 26 + rise;           // 頭上
+    const s = 9 * (0.85 + 0.25 * t);           // 少しだけ拡大
+    // ブーメラン「へ」字マーク(シアン)。縁(濃)+本体(明)。
+    const draw = (w: number, col: number, a: number) => {
+      g.moveTo(cx - s, cy + s * 0.55).lineTo(cx, cy - s * 0.55).lineTo(cx + s, cy + s * 0.55)
+        .stroke({ width: w, color: col, alpha: Math.max(0, a) * Math.max(0, alpha), cap: 'round', join: 'round' });
+    };
+    draw(5.2, 0x06121f, 0.7);
+    draw(2.8, 0x7dd3fc, 1.0);
   }
 
   // ジャンプ攻撃(パンプキン/lab-zombie-3)の着地予告。空中(aiPhase='jump')の間、着地点に赤い影を出す。
@@ -4788,10 +4814,7 @@ export class PixiScene {
           .stroke({ width: 1.5, color: 0xf97316, alpha: a * 0.8 });
       }
     }
-    // ドローンブーメランのクールダウン表示: 近接クールダウンサークルより一回り大きい円(社長指示)。
-    if (player.subWeapons.includes('drone-boomerang') && gameTime < (player.subWeaponCooldowns['drone-boomerang'] ?? 0)) {
-      g.circle(cx, cy, r * 1.28).stroke({ width: 1.5, color: 0x67e8f9, alpha: 0.28 });
-    }
+    // ドローンブーメランのクールダウンサークルは廃止(復帰時に頭上マーク+SEで通知=updateBoomerangReadyMark)。
     // 刀装備中は通常ナイフの剣閃テレグラフを出さない。カウンターが実際に
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
