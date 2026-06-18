@@ -12471,3 +12471,8 @@ Container を setMask に使うとステンシル(矩形)扱いになり四角�
 社長指示。v0.25.538 で lab のビネットを0.5倍にしていたのを、ステージ1同様 ENV_VIGNETTE_ALPHA(等倍)へ戻す。
 四隅の周辺減光は通常どおり。可視可能ゾーン(暗幕)とは別効果。グレード弱め/フォグOFF は維持。
 ### Verification lint/build 通過。
+
+## v0.25.546 — 可視可能ゾーン: プレイヤーの明域を一回り狭く (claude/cool-edison-7b8jrl)
+社長指示。プレイヤー周辺の可視半径だけ縮小(LAB_VIS_RANGE_PLAYER=160, UVバーは LAB_VIS_RANGE=200 のまま)。
+pts[0]=プレイヤー(狭) / pts[1..]=UVバー(通常)で半径を出し分け。?vrangep で調整可。
+### Verification lint/build 通過。
