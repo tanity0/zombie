@@ -3907,8 +3907,8 @@ export class PixiScene {
       if (this.labWalls) this.labWalls.visible = false;
       for (const ts of this.labWallActors) ts.visible = false;
       for (const sp of this.labPropSprites) sp.visible = false;
-      // 研究所スキンは床を見せるため周辺減光を弱める。森は通常。
-      this.vignette.alpha = (s.stageTheme === 'lab') ? ENV_VIGNETTE_ALPHA * 0.5 : ENV_VIGNETTE_ALPHA;
+      // 四隅の周辺減光(ビネット)はステージ1と同じ強さで適用(社長指示)。
+      this.vignette.alpha = ENV_VIGNETTE_ALPHA;
       return;
     }
     // 屋内は周辺減光(環境の暗がり)を広範囲に強める(社長指示)。

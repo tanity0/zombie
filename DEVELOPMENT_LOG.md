@@ -12466,3 +12466,8 @@ Container を setMask に使うとステンシル(矩形)扱いになり四角�
 - 非lab/非表示時は元の親・位置へ復元(labSceneryOrig)。
 ### 負荷スコア 4/10(据え置き。退避は親付け替えのみ・RT合成は既存1パス)。
 ### Verification lint/build 通過。
+
+## v0.25.545 — 四隅ビネットをステージ1と同じ強さに戻す (claude/cool-edison-7b8jrl)
+社長指示。v0.25.538 で lab のビネットを0.5倍にしていたのを、ステージ1同様 ENV_VIGNETTE_ALPHA(等倍)へ戻す。
+四隅の周辺減光は通常どおり。可視可能ゾーン(暗幕)とは別効果。グレード弱め/フォグOFF は維持。
+### Verification lint/build 通過。
