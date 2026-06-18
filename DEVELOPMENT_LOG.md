@@ -11916,3 +11916,36 @@ swallows missing/undecodable buffers).
 ### 次の Phase
 - Phase B: `addWall` を縦横統一の立体規約へ(foot-anchored Container＋前面 lab-wall-front＋上端 lab-wall-top、
   zIndex=footY、RISE 控えめ＋?labrise= 化、装飾壁 lab-wall2-* は要所のみ)。
+
+## v0.25.505 — 研究所 描画刷新 Phase B(壁の立体規約統一) (claude/cool-edison-7b8jrl)
+
+### 概要
+作戦書 Phase B。描画のみ・当たり判定/屋外は不変。`syncLab()` の壁生成を縦横統一の立体規約へ。
+- 迷路の内壁: 各矩形を **foot-anchored Container** として `actorLayer` に配置、`zIndex=footY`(下辺)で
+  深度ソート → プレイヤー/敵が壁の北(上)側へ回り込める。**背の高い壁は SEG=160px で Y方向スライス**し、
+  各スライスを自分の footY でソート(長い壁でも前後が破綻しない)。
+- 各ブロック=不透明下地＋前面 `lab-wall-front`(左右シームレス・縦に伸ばしてタイル)＋上端 `lab-wall-top`
+  キャップ。立ち上がり高さ `LAB_WALL_RISE`(既定38)は **?labrise= で実機調整可**。
+- **外周リング(マップ境界・暗い野外)**は従来どおりアクター下に平面で敷く(回り込み不要・枚数が多い=軽量)。
+  内/外判定は LAB_BOUNDS 端への接触で分岐。
+- 装飾窓壁 `lab-wall2-panel` は「広い横壁(幅≥360)の約半数」を決定的ハッシュで選び前面に採用(=要所のみ)。
+- 落ち影(Phase A)は同じ壁シグネチャ＋?labrise で再構築。
+
+### 負荷スコア
+**3/10**(rendering)。壁ブロックは扉開閉/?labrise 変更時のみ再構築(シグネチャゲート)。actorLayer の
+ソート対象が内壁スライス分(概算 数十〜百)増えるが、ソートは O(n log n) で軽微・描画は単純 tint タイル。
+外周リングを平面据え置きにして枚数を抑制。安全策=配置不変なら再構築なし/外周は据え置き。
+※モバイル実機で枚数が重い場合は SEG を上げる(スライス減)・装飾壁を減らすで軽量化可能。
+
+### Code touched
+- `src/pixi/pixiScene.ts`(壁生成ブロック刷新 / `LAB_WALL_RISE` 追加)
+- `package.json` / `DEVELOPMENT_LOG.md`
+
+### Verification
+- `npm run lint` / `npm run build` 通過。
+- 実機/dev 確認推奨: 内壁が立体(前面＋上端キャップ)になり、プレイヤーが壁の上端側へ回り込むと前後が
+  入れ替わること / 長い壁でもソート破綻が無いこと / 広い横壁の一部が窓パネルになること / 外周は従来どおり。
+  `?labrise=` で立ち上がり高さを調整。
+
+### 次の Phase
+- Phase C: 部屋の光だまり/UVバー発光＋破壊消灯/天井シャフト/埃モート/屋内専用グレード(点滅・赤は有界・低頻度)。

@@ -128,6 +128,8 @@ const LAB_OUTER_TINT = 0x161d16;     // 野外(夜の地面)。かなり暗い�
 const LAB_VIGNETTE_ALPHA = 0.97;
 // 壁テクスチャは「線画＋内側が透明」なので、そのままだと床が透ける。各壁の背面に不透明な下地を敷く色。
 const LAB_WALL_FILL = 0x2b3240;
+// 立体壁の「立ち上がり高さ」(px)。実機調整 → 既定へ。?labrise=38 で上書き。
+const LAB_WALL_RISE = Math.max(0, tsNum('labrise', 38));
 
 // --- フェーズ2-A: 月明り(光のシャフト)を明るく --------------------------------
 // 暗くしたベース(フェーズ1)の上で、暖色シャフトを加算(add)で強めに光らせる。加算なので
@@ -3481,12 +3483,17 @@ export class PixiScene {
     }
     // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO を各部屋に決定的散布(1度だけ生成)。
     this.buildLabFloorDecor(LAB_FLOOR_TILE);
-    // 壁スプライト(横壁=closed-mid を少し立ち上げて奥行き / 縦壁=side-long)。扉開閉が変わった時だけ再構築。
-    const sideTex = getTexture('lab/lab-wall-side-long');
-    const midTex = getTexture('lab/lab-wall-closed-mid');
-    if (sideTex && midTex) {
+    // 壁: 縦横を統一した立体規約。各壁矩形を foot-anchored Container として actorLayer に置き、
+    // zIndex=footY(下辺)で深度ソート → プレイヤー/敵が壁の「上(北)」へ回り込める。背の高い壁は
+    // Y方向にスライスし各スライスを自分の footY でソート(長い壁でも正しく前後)。前面=lab-wall-front
+    // (左右シームレス)/ 上端=lab-wall-top キャップ。外周リング(マップ境界・暗い野外)は従来どおり
+    // アクター下に平面で敷く(数が多く・回り込み不要)。装飾窓壁 lab-wall2-panel は広い横壁の要所のみ。
+    const frontTex = getTexture('lab/lab-wall-front');
+    const topTex = getTexture('lab/lab-wall-top');
+    const panelTex = getTexture('lab/lab-wall2-panel');
+    {
       if (!this.labWalls) {
-        this.labWalls = new Container();
+        this.labWalls = new Container(); // 外周リング(平面)＋z順アンカー
         const base = this.labFloorDecor ?? this.labFloor;
         this.L.world.addChildAt(this.labWalls, base ? this.L.world.getChildIndex(base) + 1 : 0); // 床/変種の上・アクターの下
       }
@@ -3497,66 +3504,85 @@ export class PixiScene {
         this.L.world.addChildAt(this.labWallShadow, this.L.world.getChildIndex(this.labWalls)); // 壁の直下
       }
       this.labWallShadow.visible = true;
-      const sig = LAB_DOORS.map(d => (s.labDoors.some(sd => sd.id === d.id && sd.open) ? '1' : '0')).join('');
-      if (this.labWallsSig !== sig) {
-        // 落ち影を壁配置に合わせて再構築(扉開閉で壁が増減するため同シグネチャ)。
-        const sh = this.labWallShadow;
-        sh.clear();
-        const shadowRect = (rect: { x: number; y: number; width: number; height: number }) => {
-          for (const [d, a] of [[16, 0.22], [8, 0.16]] as [number, number][]) {
-            sh.rect(rect.x - d, rect.y + d, rect.width, rect.height).fill({ color: 0x04060a, alpha: a });
-          }
-        };
-        for (const w of LAB_WALLS) shadowRect(w);
-        for (const d of LAB_DOORS) {
-          if (!s.labDoors.some(sd => sd.id === d.id && sd.open)) shadowRect(d.rect);
-        }
-      }
+      const sig = LAB_DOORS.map(d => (s.labDoors.some(sd => sd.id === d.id && sd.open) ? '1' : '0')).join('') + `|${LAB_WALL_RISE}`;
       if (this.labWallsSig !== sig) {
         this.labWallsSig = sig;
+        const sh = this.labWallShadow; sh.clear();
         this.labWalls.removeChildren().forEach(c => c.destroy());
         for (const c of this.labWallActors) c.destroy({ children: true });
         this.labWallActors = [];
-        const RISE = 40; // 横壁を足元から立ち上げる高さ(px)=「裏側(北面)」の見え。判定は足元(下辺)のみ。
+        const RISE = LAB_WALL_RISE;
+        const SEG = 160; // 背の高い壁のスライス高(px)。各スライスが自分の footY でソート。
+        const b = LAB_BOUNDS;
+        const isOuter = (r: { x: number; y: number; width: number; height: number }) =>
+          r.x <= b.x + 1 || r.y <= b.y + 1 || r.x + r.width >= b.x + b.width - 1 || r.y + r.height >= b.y + b.height - 1;
+        const shadowRect = (r: { x: number; y: number; width: number; height: number }) => {
+          for (const [d, a] of [[16, 0.22], [8, 0.16]] as [number, number][]) {
+            sh.rect(r.x - d, r.y + d, r.width, r.height).fill({ color: 0x04060a, alpha: a });
+          }
+        };
+        // 立体ブロック(actorLayer・足元アンカー)。前面＋上端キャップ＋不透明下地。
+        const addBlock = (x: number, y: number, w: number, h: number, footY: number, decorative: boolean) => {
+          const cont = new Container();
+          const bg = new Graphics();
+          bg.rect(0, 0, w, h + RISE).fill({ color: LAB_WALL_FILL });
+          cont.addChild(bg);
+          const faceTex = decorative && panelTex ? panelTex : frontTex;
+          if (faceTex) {
+            const front = new TilingSprite({ texture: faceTex, width: w, height: h + RISE });
+            const fsc = (h + RISE) / faceTex.height;
+            front.tileScale.set(fsc, fsc);
+            front.tint = LAB_ENV_TINT;
+            cont.addChild(front);
+          }
+          if (topTex) {
+            const capH = Math.min(h + RISE, Math.max(8, Math.round(topTex.height * (w / topTex.width))), 26);
+            const cap = new TilingSprite({ texture: topTex, width: w, height: capH });
+            const csc = capH / topTex.height;
+            cap.tileScale.set(csc, csc);
+            cap.tint = LAB_ENV_TINT;
+            cont.addChild(cap); // 上端キャップ(コンテナ最上部=北端)
+          }
+          cont.position.set(x, footY - (h + RISE));
+          cont.zIndex = footY;
+          this.L.actorLayer.addChild(cont);
+          this.labWallActors.push(cont);
+        };
         const addWall = (rect: { x: number; y: number; width: number; height: number }) => {
-          const horizontal = rect.width >= rect.height;
-          if (horizontal) {
-            // 横壁: アクター層に足元アンカー(下辺=当たり判定の下辺)で配置し、足元Yで深度ソート。
-            // → 木/城と同じく、プレイヤーが北(裏)に回り込むと壁の立ち上がり面に隠れる。判定は足元のみ。
-            // 線画テクスチャは内側が透明なので、下地(不透明)→線画 の順で重ねて床が透けないようにする。
-            const h = rect.height + RISE;
-            const cont = new Container();
-            const bg = new Graphics();
-            bg.rect(0, 0, rect.width, h).fill({ color: LAB_WALL_FILL }); // 不透明な下地
-            const ts = new TilingSprite({ texture: midTex, width: rect.width, height: h });
-            const sc = h / midTex.height;
-            ts.tileScale.set(sc, sc);
-            ts.tint = LAB_ENV_TINT;           // 線画を環境色に沈める
-            cont.addChild(bg, ts);
-            cont.position.set(rect.x, rect.y - RISE);
-            cont.zIndex = rect.y + rect.height; // 下辺=足元Y。アクター(footY)と同じ尺度でソート。
-            this.L.actorLayer.addChild(cont);
-            this.labWallActors.push(cont);
-          } else {
-            // 縦壁/外周: 迷路の境界。常にアクターの下(固定コンテナ)。下地→線画 で床が透けないように。
+          shadowRect(rect);
+          if (isOuter(rect)) {
+            // 外周リング: アクター下に平面で敷く(下地→前面)。回り込み不要・数が多いので軽量に。
             const bg = new Graphics();
             bg.rect(rect.x, rect.y, rect.width, rect.height).fill({ color: LAB_WALL_FILL });
             this.labWalls!.addChild(bg);
-            const ts = new TilingSprite({ texture: sideTex, width: rect.width, height: rect.height });
-            ts.position.set(rect.x, rect.y);
-            const sc = rect.height / sideTex.height;
-            ts.tileScale.set(sc, sc);
-            ts.tint = LAB_ENV_TINT;           // 線画を環境色に沈める
-            this.labWalls!.addChild(ts);
+            if (frontTex) {
+              const ts = new TilingSprite({ texture: frontTex, width: rect.width, height: rect.height });
+              ts.position.set(rect.x, rect.y);
+              const sc = rect.height / frontTex.height;
+              ts.tileScale.set(sc, sc);
+              ts.tint = LAB_ENV_TINT;
+              this.labWalls!.addChild(ts);
+            }
+            return;
+          }
+          const horizontal = rect.width >= rect.height;
+          const decorative = horizontal && rect.width >= 360 && panelTex !== null
+            && treeHash(rect.x + 3, rect.y + 5) >= 0.5; // 要所のみ(広い横壁の約半数)
+          if (rect.height <= SEG) {
+            addBlock(rect.x, rect.y, rect.width, rect.height, rect.y + rect.height, decorative);
+          } else {
+            for (let yy = rect.y; yy < rect.y + rect.height; yy += SEG) {
+              const segH = Math.min(SEG, rect.y + rect.height - yy);
+              addBlock(rect.x, yy, rect.width, segH, yy + segH, false);
+            }
           }
         };
         for (const w of LAB_WALLS) addWall(w);
         for (const d of LAB_DOORS) {
-          const open = s.labDoors.some(sd => sd.id === d.id && sd.open);
-          if (!open) addWall(d.rect); // 閉=壁を置く / 開=何も置かない(床が見える)
+          if (!s.labDoors.some(sd => sd.id === d.id && sd.open)) addWall(d.rect); // 閉=壁 / 開=床
         }
       }
-      for (const ts of this.labWallActors) ts.visible = true; // 屋内中は常に表示(深度ソートはアクター層が処理)
+      for (const c of this.labWallActors) c.visible = true; // 屋内中は常に表示(深度ソートはアクター層が処理)
     }
     // マーカー(ボタン/ゴール)。床/壁の上・アクターの下に重ねる。
     if (!this.labGfx) {
