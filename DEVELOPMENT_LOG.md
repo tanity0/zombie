@@ -12064,3 +12064,8 @@ lint/build 通過。
 - lint/build 通過。屋外/OFF 不変。?labpersp=1 で床が台形に奥へ収束。?labvp/labtop/labhorizon/labtiles/labvig/labfade で調整。
 ### 次
 - Step2: 台形と同じ H で 壁/プロップ/(その後)敵・プレイヤー・弾 の足元を screen 投影＋深度スケール(ビルボード維持)。
+
+## v0.25.517 — 修正: ?labpersp 時に床フォールバック塗りが遠近メッシュを覆う不具合 (claude/cool-edison-7b8jrl)
+Step1(台形メッシュ床)で `?labpersp` 時に `floorTex=null` にしていたため、labGfx の保険塗り
+`if (!floorTex) fill(LAB_BOUNDS, 0x10151c)` が迷路全体を不透明で塗り、遠近床メッシュ(world の下)を覆っていた。
+`!persp` でガード(?labpersp 時は台形メッシュを使うので塗らない)。負荷増なし。lint/build 通過。

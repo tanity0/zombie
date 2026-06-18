@@ -3825,7 +3825,7 @@ export class PixiScene {
     const g = this.labGfx;
     g.visible = true;
     g.clear();
-    if (!floorTex) g.rect(LAB_BOUNDS.x, LAB_BOUNDS.y, LAB_BOUNDS.width, LAB_BOUNDS.height).fill({ color: 0x10151c }); // 床フォールバック
+    if (!floorTex && !persp) g.rect(LAB_BOUNDS.x, LAB_BOUNDS.y, LAB_BOUNDS.width, LAB_BOUNDS.height).fill({ color: 0x10151c }); // 床フォールバック(?labpersp 時は台形メッシュを使うので塗らない)
     // 外周マージンは背景 void プレート(labVoid・床の下)で表現するため、旧「暗リング塗り」は廃止。
     // void が見えない場合(テクスチャ未ロード)の保険として、マージンを従来色で薄く沈めておく。
     if (!voidTex && !persp) {
