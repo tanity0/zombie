@@ -943,37 +943,34 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number) 
   }
 };
 
-// スキル: スラッシャー = 直前の近接から0.5s以内なら、このスイングの当たり位置に ×0.3 の追撃を1回だけ。
-// 0.5s 窓外なら窓を開くだけ。FX/ダメージとも有界(slashAt の位置に対し1パスのみ)。
+// スキル: スラッシャー = 近接が当たった位置へ ×0.3 の追撃を1回(命中ごと・毎スイング)。
+// ※旧実装は「直前の近接から0.5s以内」を条件にしていたが、カウンターの最短間隔
+//   (COUNTER_WINDOW+COUNTER_COOLDOWN=820ms〜)が窓0.5sより長く、二度と窓内に入らず
+//   一切発動しなかった。説明どおり「近接直後の追撃」として毎スイング発動に修正。
+// FX/ダメージとも有界(slashAt の位置に対し1パスのみ)。
 const applySlasherFollowup = (
   get: () => GameState,
   player: Player,
-  gameTime: number,
   slashAt: { x: number; y: number }[],
   meleeDamage: number,
   comboMult: number,
 ) => {
-  const within = gameTime < player.slasherWindowUntil;
-  if (within) {
-    const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
-    const r2 = (MELEE_RADIUS * 0.5) ** 2; // 当たり位置近傍の敵にだけ追撃
-    const hit = new Set<string>();
-    for (const s of slashAt) {
-      for (const e of get().enemies) {
-        if (hit.has(e.id) || e.type === 'reaper') continue;
-        const ecx = e.x + e.width / 2;
-        const ecy = e.y + e.height / 2;
-        if ((ecx - s.x) ** 2 + (ecy - s.y) ** 2 > r2) continue;
-        hit.add(e.id);
-        const killed = get().damageEnemy(e.id, followDmg);
-        get().spawnDamageNumber(ecx, e.y, Math.round(followDmg), false);
-        get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
-        if (killed) get().spawnBurst(ecx, ecy, '#bef264', 10);
-      }
+  const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
+  const r2 = (MELEE_RADIUS * 0.5) ** 2; // 当たり位置近傍の敵にだけ追撃
+  const hit = new Set<string>();
+  for (const s of slashAt) {
+    for (const e of get().enemies) {
+      if (hit.has(e.id) || e.type === 'reaper') continue;
+      const ecx = e.x + e.width / 2;
+      const ecy = e.y + e.height / 2;
+      if ((ecx - s.x) ** 2 + (ecy - s.y) ** 2 > r2) continue;
+      hit.add(e.id);
+      const killed = get().damageEnemy(e.id, followDmg);
+      get().spawnDamageNumber(ecx, e.y, Math.round(followDmg), false);
+      get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
+      if (killed) get().spawnBurst(ecx, ecy, '#bef264', 10);
     }
   }
-  // どちらの場合も次の窓を開く(連続スイングで交互に発動)。
-  get().setSlasherWindow(gameTime + 500);
 };
 
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
@@ -2276,7 +2273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // スキル: スラッシャー = 直前の近接から0.5s以内の追撃は ×0.3 の追加ヒット(1回・有界)。
     if (hasSkill(player, 'slasher') && slashAt.length > 0) {
-      applySlasherFollowup(get, player, gameTime, slashAt, meleeDamage, meleeComboMult);
+      applySlasherFollowup(get, player, slashAt, meleeDamage, meleeComboMult);
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。

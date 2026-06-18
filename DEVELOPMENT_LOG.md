@@ -12692,3 +12692,11 @@ hasSkill('skater') の速度倍率 2→3(現在値×1.5)。リロード移動に
 排他: activeEvent非null + arenaFiredRef で多重発火/通常湧きを抑止(卵等と重ねない)。
 load 2/10(発火は一過性バースト・終了監視は≤20体filter/フレーム・描画は1図形/フレーム)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.581 — スラッシャー発動不能を修正 (claude/cool-edison-7b8jrl)
+原因: 旧実装は「直前の近接から0.5s以内のスイング」に追撃を限定していたが、カウンターの最短
+間隔=COUNTER_WINDOW(400)+COUNTER_COOLDOWN(420)=820ms〜 が窓0.5sより長く、二度と窓内に
+入らないため一切発動しなかった。
+修正: 説明(「近接直後の追撃(0.3倍)」)どおり、命中したスイングごとに ×0.3 追撃を発動(窓判定を撤去)。
+slasherWindowUntil/setSlasherWindow は未使用化(無害・残置)。load 1/10(命中位置の近傍走査1パス)。
+### Verification: tsc(exit0) + build 通過。
