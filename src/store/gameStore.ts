@@ -367,6 +367,42 @@ export const hasSageStone = (player: Player): boolean => player.subWeapons.inclu
 // 装備スキル判定。effect 層はすべてこのヘルパで分岐(非装備時は完全に従来挙動)。
 export const hasSkill = (player: Player, key: SkillKey): boolean => player.skills.includes(key);
 
+// --- 装備スキルの数値補正ヘルパ(effect層・全て純粋関数) -------------------
+// ナイト: 被ダメ×0.8 / バーサーカー: 被ダメ×1.2。両立可(乗算)。
+export const skillIncomingDamageMult = (player: Player): number =>
+  (hasSkill(player, 'knight') ? 0.8 : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1);
+// バーサーカー: 全攻撃 ×(1 + 失ったHP割合)。上限なし(満タンで×1、瀕死で最大~×2)。
+export const skillOutgoingDamageMult = (player: Player): number =>
+  hasSkill(player, 'berserker') && player.maxHealth > 0
+    ? 1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth)
+    : 1;
+// クリティカルD上昇: crit倍率 +0.5(通常1.5→2.0 / boss 5→5.5)。
+export const skillCritMult = (player: Player, base: number): number =>
+  base + (hasSkill(player, 'crit-up') ? 0.5 : 0);
+// ナイト: 盾/召喚の最大HP ×1.5。
+export const skillSummonHpMult = (player: Player): number => (hasSkill(player, 'knight') ? 1.5 : 1);
+// タイムキーパー: サブCDのΔ ×0.7。
+export const skillCooldownMult = (player: Player): number => (hasSkill(player, 'time-keeper') ? 0.7 : 1);
+// エクスプローダー: 全爆発の半径/ダメージ ×1.2。賢者の石はハリケーン等に別途+20%。
+export const skillExplosionMult = (player: Player): number => (hasSkill(player, 'exploder') ? 1.2 : 1);
+// スナイパー: 銃ダメージ ×(1 + 停止敵0.5 + 距離補正最大0.5)。refDist=狙撃最大射程(要調整)。
+// その85%地点で距離補正が+0.5上限に到達。射程自体は不変(ダメージのみ)。
+export const SNIPER_REF_DIST = 480;
+export const sniperGunMult = (
+  player: Player,
+  enemy?: { x: number; y: number; width: number; height: number; vx?: number; vy?: number },
+): number => {
+  if (!hasSkill(player, 'sniper') || !enemy) return 1;
+  const stopped = Math.hypot(enemy.vx ?? 0, enemy.vy ?? 0) < 4; // 停止中(ほぼ静止)
+  const pcx = player.x + player.width / 2;
+  const pcy = player.y + player.height / 2;
+  const ecx = enemy.x + enemy.width / 2;
+  const ecy = enemy.y + enemy.height / 2;
+  const dist = Math.hypot(ecx - pcx, ecy - pcy);
+  const distBonus = Math.min(0.5, (dist / (SNIPER_REF_DIST * 0.85)) * 0.5);
+  return 1 + (stopped ? 0.5 : 0) + distBonus;
+};
+
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
@@ -1894,7 +1930,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus);
-      const dmg = meleeDamage * (crit ? CRIT_DAMAGE_MULT : 1);
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -2124,7 +2160,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      const dmg = baseDamage * damageMult * (crit ? CRIT_DAMAGE_MULT : 1);
+      const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -2277,7 +2313,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus);
-      const dmg = meleeBase * whipMult * (crit ? CRIT_DAMAGE_MULT : 1);
+      const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
@@ -2668,10 +2704,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
-  damagePlayer: (amount) => {
+  damagePlayer: (rawAmount) => {
     const { player } = get();
 
     if (player.invulnerable) return false;
+
+    // スキル: ナイト(×0.8)/バーサーカー(×1.2) の被ダメ補正。amount>0 のみ補正。
+    const amount = rawAmount > 0 ? rawAmount * skillIncomingDamageMult(player) : rawAmount;
 
     const wouldDie = player.health - amount <= 0;
     if (wouldDie && player.vaccineRevives > 0) {
@@ -2980,15 +3019,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setSubWeaponCooldown: (key, readyAt) => {
-    set(state => ({
-      player: {
-        ...state.player,
-        subWeaponCooldowns: {
-          ...state.player.subWeaponCooldowns,
-          [key]: readyAt
+    set(state => {
+      // スキル: タイムキーパー = サブCDのΔ(残り時間)を ×0.7。CDは gameTime 基準。
+      const mult = skillCooldownMult(state.player);
+      const delta = readyAt - state.gameTime;
+      const effReadyAt = mult !== 1 && delta > 0 ? state.gameTime + delta * mult : readyAt;
+      return {
+        player: {
+          ...state.player,
+          subWeaponCooldowns: {
+            ...state.player.subWeaponCooldowns,
+            [key]: effReadyAt
+          }
         }
-      }
-    }));
+      };
+    });
   },
 
   updateHuntingCharge: (startedAt, charged) => {
@@ -3761,17 +3806,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         }));
         break;
       case 'strap':
-        set(state => ({
+        set(state => {
+          // スキル: ゴールドラッシュ = 取得量 ×(1 + rand 0.10〜0.30)を取得毎にロール。
+          const goldRush = hasSkill(state.player, 'gold-rush') ? 1 + 0.10 + Math.random() * 0.20 : 1;
+          return {
           player: {
             ...state.player,
             // スクラップ獲得数アップ(パッシブ): 取得量を scrapMult 倍に(+30%/回)。
-            straps: state.player.straps + Math.max(1, Math.round(pickup.value * (state.player.scrapMult ?? 1)))
+            straps: state.player.straps + Math.max(1, Math.round(pickup.value * (state.player.scrapMult ?? 1) * goldRush))
           },
           gameStats: {
             ...state.gameStats,
             strapsCollected: state.gameStats.strapsCollected + pickup.value
           }
-        }));
+          };
+        });
         break;
       case 'treasure':
         set(state => ({
