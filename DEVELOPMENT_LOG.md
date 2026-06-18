@@ -12374,3 +12374,9 @@ applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた
 
 ### Verification
 - lint/build 通過。
+
+## v0.25.535 — 出撃中HUDのステージ名を選択ステージに連動 (claude/cool-edison-7b8jrl)
+GameHUD のステージ名が「マッド・フォレスト」ハードコードで、研究所(stage-2)でも森名が出ていた。
+getStage(getSelectedStageId()).name に連動(未取得=ベンチ/フリー等は従来名フォールバック)。研究所では「研究所跡」表示。
+### 負荷スコア 1/10(描画時に選択ID参照のみ)。
+### Verification lint/build 通過。

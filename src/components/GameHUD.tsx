@@ -5,6 +5,8 @@ import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName } from '../utils/weaponUtils';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
+import { getStage } from '../data/campaign';
+import { getSelectedStageId } from '../data/progress';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
@@ -75,6 +77,8 @@ const GameHUD: React.FC = () => {
   const enemyCount = useGameStore(state => state.enemies.length);
   const bossActive = useGameStore(state => state.enemies.some(e => e.type === 'giantbat'));
 
+  // 出撃中ステージ名(選択ステージに連動。研究所なら「研究所跡」。未取得時は従来名)。
+  const stageName = getStage(getSelectedStageId())?.name ?? 'マッド・フォレスト';
   const formattedTime = formatTime(gameTime / 1000);
   // ダンス中はレベルアップ保留でEXPが溢れるため、表示は100%でカンスト(止める)。
   const expPercentage = Math.min(100, (player.experience / player.experienceToNextLevel) * 100);
@@ -183,12 +187,12 @@ const GameHUD: React.FC = () => {
         </div>
       </div>
 
-      {/* Stage label */}
+      {/* Stage label(選択ステージ名に連動。ベンチ/フリー等で未取得なら従来名) */}
       <div
         className="absolute left-1/2 -translate-x-1/2 text-[10px] uppercase tracking-[0.3em] text-white/40"
         style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 30px)' }}
       >
-        マッド・フォレスト
+        {stageName}
       </div>
 
       {/* Finale boss warning / arrival banner */}
