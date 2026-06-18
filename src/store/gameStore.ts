@@ -3186,7 +3186,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
 
         // 犬型(werewolf)突進AI: ハンドガン射程より少し外で減速(溜め)→開始時のプレイヤー位置へ2倍速で突進。
-        if (enemy.type === 'werewolf') {
+        // 研究所Lv2(lab-zombie-2)も犬と同じ突進挙動(社長指示)。
+        if (enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2') {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
@@ -4601,7 +4602,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : [];
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
-        ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0 }))
+        ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
         : [];
       // 屋内ギミックの初期ピックアップ: カードキー(E部屋)+ 武器箱(A部屋・ボタン解錠後に到達)
       // + クリア条件アイテム(C部屋=ゴール・カードキーで扉解錠後に到達。拾うとクリア)。

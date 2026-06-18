@@ -166,6 +166,9 @@ const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
 const MAX_ENEMIES = 10;
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
+// 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
+// 画面の半分+この余白を超えたら確実に画面外なので home へ復帰させる。
+const LAB_RETURN_HOME_MARGIN = 140;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
@@ -2448,7 +2451,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const gunKillDropRate = Math.max(0, Math.min(1,
                 useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0)
               ));
-              if (Math.random() < gunKillDropRate) {
+              // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
+              if (!indoor && Math.random() < gunKillDropRate) {
                 const equippedAmmo = getActiveGun(player)?.ammoType;
                 const owned = getGuns(player)
                   .map(w => w.ammoType)
@@ -3083,8 +3087,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const enemyCenterY = enemy.y + enemy.height / 2;
           const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
           const waveProtected = enemy.isWave && gameTime - (enemy.spawnedAt ?? 0) < WAVE_GRACE_MS;
-          // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。
-          if (enemy.fixed || distFromPlayer <= recycleDistance || waveProtected) return enemy;
+          // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。ただし「画面外に出たら最初の
+          // 定位置へ戻して再休眠」する(社長指示)。プレイヤーは常に画面中心なので、画面の半分+
+          // 余白を超えたら画面外と判定。
+          if (enemy.fixed) {
+            if (
+              indoor && !enemy.dormant &&
+              enemy.homeX !== undefined && enemy.homeY !== undefined &&
+              (Math.abs(enemyCenterX - playerCenterX) > gameBounds.width / 2 + LAB_RETURN_HOME_MARGIN ||
+               Math.abs(enemyCenterY - playerCenterY) > gameBounds.height / 2 + LAB_RETURN_HOME_MARGIN)
+            ) {
+              recycledAnyEnemy = true;
+              return {
+                ...enemy,
+                x: enemy.homeX, y: enemy.homeY, vx: 0, vy: 0,
+                dormant: true,
+                aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+                aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+                aiReadyAt: undefined,
+                knockbackUntil: undefined, knockbackVx: undefined, knockbackVy: undefined,
+              };
+            }
+            return enemy;
+          }
+          if (distFromPlayer <= recycleDistance || waveProtected) return enemy;
 
           const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
           const replacement = generateEnemy(
