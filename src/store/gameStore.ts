@@ -1997,11 +1997,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
       })
       .map(p => {
-        // バッシュ方向はプレイヤーの進行方向(設置時の向きではない)。停止中は設置法線にフォールバック。
-        const ld = player.lastDirection;
-        const lm = Math.hypot(ld?.x ?? 0, ld?.y ?? 0);
-        const dux = lm > 0.01 ? ld.x / lm : p.direction.x;
-        const duy = lm > 0.01 ? ld.y / lm : p.direction.y;
+        // バッシュ方向は「どちらの面から叩いたか」で決める: プレイヤー中心→盾中心の向き
+        // (=叩いた側の反対=叩かれた面へ押し出す)。中心がほぼ重なる場合のみ設置法線へフォールバック。
+        const scx = p.x + p.width / 2;
+        const scy = p.y + p.height / 2;
+        const sm = Math.hypot(scx - pcx, scy - pcy);
+        const dux = sm > 0.01 ? (scx - pcx) / sm : p.direction.x;
+        const duy = sm > 0.01 ? (scy - pcy) / sm : p.direction.y;
         const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
         const ey = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;
         // 始点〜終点の壁を覆う掃過AABB(敵の被弾判定用)。

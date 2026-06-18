@@ -12665,3 +12665,10 @@ ReferenceError でメインループ後半が丸ごと中断。結果、盾設�
 ## v0.25.577 — スケーター慣性をさらに倍 (claude/cool-edison-7b8jrl)
 inertiaTau 0.6 → 1.2s(=倍。かなり滑る/高リスク)。移動速度2倍は据え置き。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.578 — シールドバッシュの押し出し方向を「叩いた面」基準に (claude/cool-edison-7b8jrl)
+従来: プレイヤー進行方向(lastDirection)へ押し出し。
+変更: プレイヤー中心→盾中心の向き(=叩いた側の反対=叩かれた面)へ押し出す。
+進行方向に依存しないので、盾のどの面から叩いてもその面の先へ滑る。
+中心がほぼ重なる時のみ設置法線へフォールバック。掃過AABB/敵ノックバックも同方向(dux/duy)を継続使用。
+### Verification: tsc(exit0) + build 通過。
