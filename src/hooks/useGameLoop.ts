@@ -665,7 +665,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // --- 死神(深奥リスク)システム v1 ---
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
-        if (!danceTest && !indoor) {
+        // 研究所スキンは「ラボ敵以外は沸かない」(社長指示)=死神も出さない。
+        if (!danceTest && !indoor && !labTheme) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
