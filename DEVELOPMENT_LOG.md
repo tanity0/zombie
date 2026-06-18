@@ -12386,3 +12386,12 @@ getStage(getSelectedStageId()).name に連動(未取得=ベンチ/フリー等�
 確認するデバッグを左下バージョン横に追加: `floor:SGC`(S=lab-floor-stage2 / G=lab-floor-ground / C=lab-floor-clean、
 ロード済み=その文字、未ロード=ハイフン)。これで「読み込み失敗(=---/--C等)」か「読込OKだがスワップ未反映」かを切り分ける。
 ### Verification lint/build 通過。確認後にデバッグ表示は除去予定。
+
+## v0.25.537 — ラボ床を「森の地面と同じ Assets.load 経路」で確実読み込み (claude/cool-edison-7b8jrl)
+床が切り替わらない件の本命対策。マニフェスト(getTexture)経由の読込に何らかの不具合がある可能性を回避し、
+PixiStage で森の地面/背景と同じ Assets.load(`sprites/lab-floor/lab-floor-stage2.png`、?v無し=別URLでキャッシュ回避)
+でラボ床を直接ロード→ scene.setLabGroundTexture() で注入。applyOutdoorGroundTheme は this.labGroundTex を最優先で
+使用(repeat wrap/nearest 設定済み)。注入時に outdoorGroundTheme を null へ戻し再適用。
+念のため正規アップロード画像で lab-floor-stage2/ground.png を再保存(バイト一致保証)。
+### 負荷スコア 1/10(テクスチャ1枚の追加ロード)。
+### Verification lint/build 通過。左下 floor: デバッグは継続(確認後に除去)。

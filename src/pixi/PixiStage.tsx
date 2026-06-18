@@ -46,6 +46,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
       frontForestTexture.source.scaleMode = 'linear';
+      // ラボ床(研究所スキン)は森の地面と同じ経路で確実に読み込む(マニフェスト getTexture の不具合回避)。
+      const labGroundTexture = await Assets
+        .load(`${import.meta.env.BASE_URL}sprites/lab-floor/lab-floor-stage2.png`)
+        .catch(() => null);
       if (cancelled) return;
 
       if (host) {
@@ -58,6 +62,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
 
       const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
       const scene = new PixiScene(layers);
+      scene.setLabGroundTexture(labGroundTexture); // 研究所スキンの床に使用(最優先)
       scene.resize(width, height);
 
       sceneRef.current = scene;

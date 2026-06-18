@@ -1377,10 +1377,24 @@ export class PixiScene {
   private farBackdropBaseTex: Texture | null = null;
   private horizonForestBaseTex: Texture | null = null;
   private frontForestBaseTex: Texture | null = null;
+  // ラボ床テクスチャ(PixiStage が森の地面と同じ Assets.load で読み込み、ここへ注入)。
+  // マニフェスト(getTexture)が万一読めなくても、こちらを最優先で使う=確実に張り替わる。
+  private labGroundTex: Texture | null = null;
+  setLabGroundTexture(t: Texture | null) {
+    this.labGroundTex = t;
+    if (t) {
+      try {
+        const st = t.source.style as { addressMode?: string; update?: () => void };
+        st.addressMode = 'repeat'; st.update?.();
+      } catch { /* ignore */ }
+      try { t.source.scaleMode = 'nearest'; } catch { /* ignore */ }
+      this.outdoorGroundTheme = null; // 注入後に再適用させる
+    }
+  }
   private applyOutdoorGroundTheme(theme: StageTheme) {
     const strips = this.L.groundStrips;
     if (theme === 'lab') {
-      const tex = getTexture('lab-floor/lab-floor-stage2') ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
+      const tex = this.labGroundTex ?? getTexture('lab-floor/lab-floor-stage2') ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
       // NPOT でもタイル反復できるよう wrap=repeat を明示(屋内ラボ床と同じ扱い)。
       try {
