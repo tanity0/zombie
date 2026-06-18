@@ -267,6 +267,16 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const size = weapon.projectileSize || 8;
   const speed = (weapon.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
 
+  // スキル: ファイアシューター = 20%の射撃が爆発弾化(×0.3 ダメージ・半径66)。
+  // 連続爆発を防ぐため player.fireShooterCdUntil(gameTime ms)で 3秒の裏クールダウン。
+  const gtFire = useGameStore.getState().gameTime;
+  const fireShooterReady = hasSkill(player, 'fire-shooter') && gtFire >= player.fireShooterCdUntil;
+  const fireShooterShot = fireShooterReady && Math.random() < 0.2;
+  if (fireShooterShot) {
+    useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
+  }
+  const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
+
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
     let pd = { ...baseDir };
@@ -301,7 +311,11 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
         : weapon.pierce,
       hostile: false,
       reflected: false,
-      crit
+      crit,
+      // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
+      ...(fireShooterShot
+        ? { explodeOnHit: true, explodeRadius: FIRE_SHOOTER_RADIUS, explodeDamageMult: 1, damage: weapon.damage * 0.3 }
+        : {}),
     });
   }
 

@@ -456,6 +456,8 @@ export interface Projectile {
   explodeOnHit?: boolean;
   explodeRadius?: number;
   explodeDamageMult?: number;
+  // ボマー: 手榴弾が一度だけ子グレネードを散布して再アーム済みであることを示す(再散布の防止)。
+  bomberSpawned?: boolean;
 }
 
 // Pickup types

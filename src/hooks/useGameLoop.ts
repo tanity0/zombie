@@ -1867,13 +1867,43 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         for (const grenade of timedGrenades) {
           const gx = grenade.x + grenade.width / 2;
           const gy = grenade.y + grenade.height / 2;
+          // スキル: ボマー = 手榴弾が起爆する前に一度だけ、周囲へ子グレネード3発を散布し
+          // 親の信管を +1s 延長(再アームは1回のみ)。子は ×1/3 ダメージの小型手榴弾。
+          // 周期/サブ武器の爆発なのでスロー無し(CLAUDE.md)。
+          if (hasSkill(useGameStore.getState().player, 'bomber') && !grenade.bomberSpawned) {
+            const nowB = Date.now();
+            useGameStore.setState(state => ({
+              projectiles: state.projectiles.map(p =>
+                p.id === grenade.id ? { ...p, bomberSpawned: true, createdAt: nowB - p.duration + 1000 } : p
+              ),
+            }));
+            for (let k = 0; k < 3; k++) {
+              const ang = (Math.PI * 2 * k) / 3 + Math.random() * 0.5;
+              addProjectile({
+                id: `proj-bomber-mini-${grenade.id}-${nowB}-${k}`,
+                x: gx - 5, y: gy - 5, width: 10, height: 10,
+                speed: HEAVY_GRENADE_SPEED * 0.8,
+                damage: HEAVY_GRENADE_DAMAGE / 3,
+                direction: { x: Math.cos(ang), y: Math.sin(ang) },
+                weaponType: 'grenade', weaponKey: 'sub-heavy-grenade',
+                duration: 600, createdAt: nowB,
+                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                bomberSpawned: true, // 子はこれ以上散布しない
+                explodeRadius: HEAVY_GRENADE_RADIUS * 0.6, // 小ブラスト(下の爆発が blastR を参照)
+              });
+            }
+            spawnBurst(gx, gy, '#fbbf24', 8);
+            continue; // 親は +1s 後に通常どおり起爆する
+          }
           removeProjectile(grenade.id);
           playSfx('bomb');
           // weaponType:'grenade' は手榴弾(heavy-grenade)専用。fuseで爆発し、半径66の小範囲。
           // グレネードランチャー(rifle-t3/タレットのランチャー弾)は別物で、着弾爆発の別経路で処理する。
           // スキル: エクスプローダー = 半径/ダメージ ×1.2(手榴弾も対象)。
           const grenadeExMult = skillExplosionMult(useGameStore.getState().player);
-          const blastR = HEAVY_GRENADE_RADIUS * grenadeExMult;
+          // 子グレネード(ボマー)は固有の半径/ダメージを持つ。未指定は通常の手榴弾値。
+          const blastR = (grenade.explodeRadius ?? HEAVY_GRENADE_RADIUS) * grenadeExMult;
+          const grenadeBaseDamage = grenade.damage || HEAVY_GRENADE_DAMAGE;
           const fxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
           spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
           spawnBurst(gx, gy, '#f97316', 20);
@@ -1888,7 +1918,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (dist > blastR) continue;
             if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
             const falloff = 1 - dist / blastR;
-            const splashDamage = Math.max(1, Math.round(HEAVY_GRENADE_DAMAGE * grenadeExMult * (0.55 + falloff * 0.45)));
+            const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage);
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
             spawnBurst(ex, ey, '#b91c1c', 4);
@@ -2243,6 +2273,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const currentPlayer = useGameStore.getState().player;
           if (now <= currentPlayer.counterWindowEnd) {
             reflectProjectile(proj.id);
+            // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
+            if (hasSkill(currentPlayer, 'bomb-counter')) {
+              useGameStore.setState(state => ({
+                projectiles: state.projectiles.map(p =>
+                  p.id === proj.id
+                    ? { ...p, explodeOnHit: true, explodeRadius: GRENADE_BLAST_RADIUS, explodeDamageMult: GRENADE_BLAST_DAMAGE_MULT }
+                    : p
+                ),
+              }));
+            }
             reflectedAny = true;
             // Each successful reflect refreshes the window so a barrage
             // can be turned back fully. The cooldown still gates a NEW
@@ -2387,6 +2427,76 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   value: splashEnemy.experienceValue
                 });
               }
+            }
+          }
+
+          // スキル弾: explodeOnHit(ファイアシューター/ボムカウンター)の小爆発。
+          // 命中位置で爆発し、周囲の敵に dmg×explodeDamageMult を半径フォールオフで与える。
+          // 周期/弾の爆発なのでスロー無し(CLAUDE.md)。
+          if (projectile?.explodeOnHit && enemyForFx && !grenadeExplodedThisFrame.has(projectileId)) {
+            grenadeExplodedThisFrame.add(projectileId);
+            const exMult = skillExplosionMult(skillPlayer);
+            const exRadius = (projectile.explodeRadius ?? HEAVY_GRENADE_RADIUS) * exMult;
+            const blastX = enemyForFx.x + enemyForFx.width / 2;
+            const blastY = enemyForFx.y + enemyForFx.height / 2;
+            spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            spawnBurst(blastX, blastY, '#f97316', 16);
+            spawnBurst(blastX, blastY, '#7f1d1d', 6);
+            useGameStore.getState().spawnGlow(blastX, blastY, 46, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
+            const exWalls = aoeWalls(blastX, blastY);
+            for (const splashEnemy of useGameStore.getState().enemies) {
+              if (splashEnemy.id === enemyId || splashEnemy.type === 'reaper') continue;
+              const sx = splashEnemy.x + splashEnemy.width / 2;
+              const sy = splashEnemy.y + splashEnemy.height / 2;
+              const dist = Math.hypot(sx - blastX, sy - blastY);
+              if (dist > exRadius) continue;
+              if (exWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, exWalls)) continue;
+              const falloff = 1 - dist / exRadius;
+              const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
+              const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
+              spawnDamageNumber(sx, splashEnemy.y, splashDamage, false);
+              if (splashKilled) {
+                playEnemyDeath();
+                useGameStore.getState().dropEnemyCurrency(splashEnemy, sx, sy);
+                addPickup({ id: `pickup-xp-skillblast-${splashEnemy.id}`, x: sx - 8, y: sy - 8, type: 'experience', value: splashEnemy.experienceValue });
+              }
+            }
+          }
+
+          // スキル: リコシェ = 通常銃弾命中時に20%で最寄りの別の敵へ ×0.5 の跳弾を1発。
+          // 二次跳弾は禁止(ricochet フラグ)。グレネード/反射弾/爆発弾/既跳弾は対象外。1バウンドで有界。
+          if (
+            projectile && enemyForFx && !projectile.ricochet && !projectile.reflected &&
+            !projectile.explodeOnHit && projectile.weaponKey !== GRENADE_WEAPON_KEY &&
+            hasSkill(skillPlayer, 'ricochet') && Math.random() < 0.2
+          ) {
+            const ox = enemyForFx.x + enemyForFx.width / 2;
+            const oy = enemyForFx.y + enemyForFx.height / 2;
+            let target: typeof enemyForFx | undefined;
+            let bestD2 = Infinity;
+            for (const other of useGameStore.getState().enemies) {
+              if (other.id === enemyId || other.type === 'reaper') continue;
+              const d2 = (other.x + other.width / 2 - ox) ** 2 + (other.y + other.height / 2 - oy) ** 2;
+              if (d2 < bestD2) { bestD2 = d2; target = other; }
+            }
+            if (target) {
+              const tx = target.x + target.width / 2;
+              const ty = target.y + target.height / 2;
+              const rd = Math.max(0.001, Math.hypot(tx - ox, ty - oy));
+              addProjectile({
+                id: `proj-ricochet-${projectileId}-${Date.now()}`,
+                x: ox - 4, y: oy - 4, width: 8, height: 8,
+                speed: Math.max(420, projectile.speed),
+                damage: projectile.damage * 0.5,
+                direction: { x: (tx - ox) / rd, y: (ty - oy) / rd },
+                weaponType: projectile.weaponType,
+                weaponKey: projectile.weaponKey,
+                duration: 900, createdAt: Date.now(),
+                passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                ricochet: true,
+              });
+              spawnBurst(ox, oy, '#fcd34d', 5);
             }
           }
 

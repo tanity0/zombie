@@ -230,6 +230,9 @@ const SHIELD_BASH_KNOCKBACK_SPEED = 960; // 従来値を維持(KNOCKBACK_SPEED 2
 export const KNOCKBACK_IMMUNE_MS = 1750;
 export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered bullets hit 5× harder
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
+// スキル: 反射神経の反撃爆発。ランチャー相当の半径・ダメージ(useGameLoop GRENADE_* に準拠の仮値)。
+export const REFLEX_BLAST_RADIUS = 92;  // = GRENADE_BLAST_RADIUS
+export const REFLEX_BLAST_DAMAGE = 60;  // ランチャー級の反撃(要実機調整)
 
 // ---------------------------------------------------------------------------
 // Katana (刀) sub-weapon. Owning the card switches the player to katana mode:
@@ -2910,6 +2913,42 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+
+    // スキル: 反射神経 = 被弾時(amount>0)、CD明けならプレイヤー中心に反撃爆発(ランチャー値)+
+    // 近傍敵を 2× ノックバック。CD 1秒。被弾イベント由来なのでスロー無し(CLAUDE.md)。
+    if (amount > 0) {
+      const cur = get();
+      const p = cur.player;
+      if (hasSkill(p, 'reflex') && cur.gameTime >= p.reflexCdUntil) {
+        const pcx = p.x + p.width / 2;
+        const pcy = p.y + p.height / 2;
+        const exMult = skillExplosionMult(p);
+        const radius = REFLEX_BLAST_RADIUS * exMult;
+        const baseDmg = REFLEX_BLAST_DAMAGE * exMult;
+        get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
+        get().spawnBurst(pcx, pcy, '#38bdf8', 18);
+        get().spawnGlow(pcx, pcy, 56, 'rgba(56,189,248,', 360);
+        const kbMult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
+        for (const e of get().enemies) {
+          if (e.type === 'reaper') continue;
+          const ecx = e.x + e.width / 2;
+          const ecy = e.y + e.height / 2;
+          const dx = ecx - pcx;
+          const dy = ecy - pcy;
+          const dist = Math.hypot(dx, dy);
+          if (dist > radius) continue;
+          const falloff = 1 - dist / radius;
+          const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
+          const killed = get().damageEnemy(e.id, dmg);
+          get().spawnDamageNumber(ecx, e.y, dmg, false);
+          if (!killed) {
+            const nrm = Math.max(0.001, dist);
+            get().knockbackEnemy(e.id, dx / nrm, dy / nrm, kbMult, kbMult);
+          }
+        }
+        set(state => ({ player: { ...state.player, reflexCdUntil: state.gameTime + 1000 } }));
+      }
+    }
 
     // Return whether player is dead
     return get().player.health <= 0;
