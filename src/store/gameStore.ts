@@ -350,6 +350,7 @@ export const HURRICANE_DAMAGE_INTERVAL_MS = 500;                 // ダメージ
 export const SHOP_WHIP_COST = 100;                               // TODO(鞭): 商人での鞭カード価格
 export const SHOP_TURRET_COST = 100;                             // TODO(自動タレット): 仮値。商人でのタレットカード価格
 export const SHOP_SHIJIN_COST = 100;                             // TODO(四神舞): 仮値。商人での四神舞カード価格
+export const SHOP_SAGE_STONE_COST = 100;                         // TODO(賢者の石): 仮値。錬金術Lv3で武器商人に並ぶ特殊枠サブ価格
 
 export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
 // 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
@@ -366,6 +367,16 @@ export const alchemyLevel = (player: Player): number =>
 export const hasRareSummon = (summons: Summon[]): boolean => summons.some(s => s.kind === 'rare');
 // 特殊枠サブ「賢者の石」(錬金術Lv3で武器商人に並ぶ。錬金術と同居の排他枠)。
 export const hasSageStone = (player: Player): boolean => player.subWeapons.includes('sage-stone');
+// 村雨が刀Lv3で商人に並ぶのと同じ仕組み: 錬金術がLv3に達したら賢者の石を商人在庫(Lv1陳列)へ解禁。
+// 解禁が必要なら新しい unlockedShopSkillCards を返す。不要(未達/既解禁)なら null。
+export const maybeUnlockSageStone = (
+  player: Player,
+  unlocked: Partial<Record<SubWeaponKey, number>>,
+): Partial<Record<SubWeaponKey, number>> | null => {
+  if (alchemyLevel(player) < 3 || !player.subWeapons.includes('alchemy')) return null;
+  if ((unlocked['sage-stone'] ?? 0) >= 1) return null;
+  return { ...unlocked, 'sage-stone': 1 };
+};
 
 // 装備スキル判定。effect 層はすべてこのヘルパで分岐(非装備時は完全に従来挙動)。
 export const hasSkill = (player: Player, key: SkillKey): boolean => player.skills.includes(key);
@@ -788,6 +799,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'fire-knife': return '発火ナイフ';
     case 'drone-boomerang': return 'ドローンブーメラン';
     case 'wire-anchor': return 'ワイヤーアンカー';
+    case 'sage-stone': return '賢者の石';
     default: return 'サブウェポン';
   }
 };
@@ -2525,12 +2537,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   performHurricane: (rootX, rootY) => {
     const now = Date.now();
-    const lvl = whipLevel(get().player);
+    const player = get().player;
+    const lvl = whipLevel(player);
+    // スキル: 賢者の石 = ハリケーン半径 +20%(ダメージは tickHurricane 側で +20%)。
+    const sageMult = sageStoneHurricaneMult(player);
     set({
       hurricane: {
         rootX, rootY,
         endsAt: now + HURRICANE_DURATION_MS_BY_LEVEL[lvl],
-        radius: HURRICANE_RADIUS_BY_LEVEL[lvl],
+        radius: HURRICANE_RADIUS_BY_LEVEL[lvl] * sageMult,
         level: lvl,
         lastTickAt: 0,
         lastDamageAt: 0,
@@ -2580,9 +2595,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dealDamage = now - h.lastDamageAt >= HURRICANE_DAMAGE_INTERVAL_MS;
     set({ enemies, hurricane: { ...h, lastTickAt: now, lastDamageAt: dealDamage ? now : h.lastDamageAt } });
     if (dealDamage) {
+      // スキル: 賢者の石 = ハリケーンの巻き込みダメージ +20%。
+      const hurDmg = Math.round(HURRICANE_DAMAGE * sageStoneHurricaneMult(state.player));
       for (const o of inRange) {
-        get().damageEnemy(o.id, HURRICANE_DAMAGE);
-        get().spawnDamageNumber(o.x, o.y, HURRICANE_DAMAGE); // 巻き込みダメージを可視化
+        get().damageEnemy(o.id, hurDmg);
+        get().spawnDamageNumber(o.x, o.y, hurDmg); // 巻き込みダメージを可視化
       }
     }
   },
@@ -2637,6 +2654,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player } = state;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
+    // スキル: 賢者の石 = 錬金術の召喚強化。
+    //  ・通常召喚: 単体接触 → 半径 SAGE_NORMAL_AOE_RADIUS の AoE
+    //  ・レア(死神): 近接ダメージ +50% / 巻き込み(オーラ)半径 +30%
+    const sage = hasSageStone(player);
+    const SAGE_NORMAL_AOE_RADIUS = 90; // 仮値(実機調整前提)
+    const rareDamageMult = sage ? 1.5 : 1;
+    const rareAuraMult = sage ? 1.3 : 1;
 
     const attackHits: { id: string; amount: number; x: number; y: number }[] = [];
     let enemiesNext = state.enemies;
@@ -2691,12 +2715,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 吸引対象(PULL_RANGE/最大12体)に依存させると、オーラ外周の敵が無傷に見えるため範囲基準に統一。
         let sr = s0;
         if (now - (s0.lastContactAt ?? 0) >= ALCHEMY_RARE_MELEE_INTERVAL_MS) {
-          const aura2 = ALCHEMY_RARE_SUCTION_RADIUS * ALCHEMY_RARE_SUCTION_RADIUS;
+          const auraR = ALCHEMY_RARE_SUCTION_RADIUS * rareAuraMult; // 賢者の石: 巻き込み +30%
+          const aura2 = auraR * auraR;
+          const rareDmg = Math.round(ALCHEMY_RARE_MELEE_DAMAGE * rareDamageMult); // 賢者の石: +50%
           for (const e of enemiesNext) {
             if (e.type === 'reaper') continue;
             const d2 = (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2;
             if (d2 > aura2) continue;
-            attackHits.push({ id: e.id, amount: ALCHEMY_RARE_MELEE_DAMAGE, x: e.x + e.width / 2, y: e.y });
+            attackHits.push({ id: e.id, amount: rareDmg, x: e.x + e.width / 2, y: e.y });
           }
           sr = { ...s0, lastContactAt: now };
         }
@@ -2709,16 +2735,30 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (Math.hypot(scx - pcx, scy - pcy) > ALCHEMY_DESPAWN_DIST) continue; // 距離消滅
       let s = s0;
       // 攻撃: 近接間合いの最寄り敵に接触ダメージ(throttle)。
+      // 賢者の石装備時は単体接触ではなく半径 SAGE_NORMAL_AOE_RADIUS の AoE。
       if (now - (s.lastContactAt ?? 0) >= ALCHEMY_ATTACK_INTERVAL_MS) {
-        let nearestId: string | null = null;
-        let nd2 = ALCHEMY_ATTACK_RANGE * ALCHEMY_ATTACK_RANGE;
-        let nx = 0, ny = 0;
-        for (const e of enemiesNext) {
-          if (e.type === 'reaper') continue;
-          const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
-          if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
+        if (sage) {
+          const aoe2 = SAGE_NORMAL_AOE_RADIUS * SAGE_NORMAL_AOE_RADIUS;
+          let hitAny = false;
+          for (const e of enemiesNext) {
+            if (e.type === 'reaper') continue;
+            const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
+            if (d2 > aoe2) continue;
+            attackHits.push({ id: e.id, amount: s.damage, x: e.x + e.width / 2, y: e.y });
+            hitAny = true;
+          }
+          if (hitAny) s = { ...s, lastContactAt: now };
+        } else {
+          let nearestId: string | null = null;
+          let nd2 = ALCHEMY_ATTACK_RANGE * ALCHEMY_ATTACK_RANGE;
+          let nx = 0, ny = 0;
+          for (const e of enemiesNext) {
+            if (e.type === 'reaper') continue;
+            const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
+            if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
+          }
+          if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage, x: nx, y: ny }); s = { ...s, lastContactAt: now }; }
         }
-        if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage, x: nx, y: ny }); s = { ...s, lastContactAt: now }; }
       }
       nextSummons.push(moveFollow(s));
     }
@@ -3102,8 +3142,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const { player } = state;
 
       if (upgrade.type === 'subWeapon' && upgrade.subWeaponKey) {
+        const nextPlayer = applySubWeaponCard(player, upgrade.subWeaponKey, upgrade.level);
+        const sageUnlock = maybeUnlockSageStone(nextPlayer, state.unlockedShopSkillCards);
         return {
-          player: applySubWeaponCard(player, upgrade.subWeaponKey, upgrade.level),
+          player: nextPlayer,
+          ...(sageUnlock ? { unlockedShopSkillCards: sageUnlock } : {}),
           showUpgradeMenu: false,
           isPaused: false
         };
@@ -3323,7 +3366,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cost = key === 'dog' ? SHOP_DOG_COST : SHOP_CLASS_SKILL_COST;
       const currentLevel = state.player.subWeaponLevels[subWeaponKey] ?? 0;
       if (currentLevel >= 3) return {};
-      return spend(cost, applySubWeaponCard(state.player, subWeaponKey));
+      const result = spend(cost, applySubWeaponCard(state.player, subWeaponKey));
+      if ('player' in result && result.player) {
+        const sageUnlock = maybeUnlockSageStone(result.player as Player, state.unlockedShopSkillCards);
+        if (sageUnlock) return { ...result, unlockedShopSkillCards: sageUnlock };
+      }
+      return result;
     });
 
     if (purchased) {
@@ -3339,14 +3387,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : key === 'shijin' ? SHOP_SHIJIN_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : key === 'shijin' ? SHOP_SHIJIN_COST : key === 'sage-stone' ? SHOP_SAGE_STONE_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
+      const nextPlayer = {
+        ...applySubWeaponCard(state.player, key),
+        straps: state.player.straps - cost
+      };
+      // 錬金術がLv3に達したら賢者の石を商人在庫へ解禁(村雨と同じ仕組み)。
+      const sageUnlock = maybeUnlockSageStone(nextPlayer, state.unlockedShopSkillCards);
       return {
-        player: {
-          ...applySubWeaponCard(state.player, key),
-          straps: state.player.straps - cost
-        },
+        player: nextPlayer,
+        ...(sageUnlock ? { unlockedShopSkillCards: sageUnlock } : {}),
         gameStats: {
           ...state.gameStats,
           strapsSpent: state.gameStats.strapsSpent + cost

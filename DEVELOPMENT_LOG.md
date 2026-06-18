@@ -12589,3 +12589,29 @@ counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hi
 - E: 賢者の石（錬金術Lv3で武器商人に陳列・購入導線＋効果: 召喚AoE/死神召喚強化/ハリケーン+20%）。
 - 要確認: コンボマスターの「ダメージ増加」は finisher が即死のため、コンボ中の通常近接/銃ダメージに掛ける解釈で進める想定。賢者の石の各数値は仮値。
 ### Verification: 各コミットで npx tsc --noEmit + npm run build 通過。
+
+## v0.25.565〜567 — 装備スキル 残り効果＋賢者の石（完了） (claude/cool-edison-7b8jrl)
+v0.25.564 までで完了済みの12種に続き、残る効果を3グループで実装。各コミットで tsc+build 通過。
+### C近接/カウンター (v0.25.565)
+- knife-master: 近接ヒットで knifeComboCount を加算（窓3s・窓切れで1にリセット）。近接ダメ ×(1+min(0.20, floor(count/2)*0.01))。
+- combo-master: combo-master 装備時 meleeFinishComboUntil を +1s。近接ダメ ×(1+min(0.50, meleeFinishComboCount*0.02))。
+  finisher は即死のため、コンボ生存中の非フィニッシュ近接/カウンターダメージに反映（社長確認の解釈）。
+  → 3近接ダメージ地点（カウンター/刀/鞭）とカウンター斬撃に共通の skillMeleeComboMult を適用。
+- slasher: 近接後 0.5s の窓（slasherWindowUntil）。窓内の追撃は当たり位置近傍へ ×0.3 の追加ヒット1回（有界・自動追撃方式を採用）。
+- counter-master: COUNTER_WINDOW +0.5s（triggerCounter の窓アサイン＝sweep/刀/鞭で共通）。成立スイングで MELEE_RADIUS*1.5 内を 2×KNOCKBACK_SPEED で弾く。
+- reaper(super): finisher 発生時、仕留めた敵の MELEE_RADIUS 内の他敵へ即死を波及（ボス/reaper 除外・有界）。カウンター/刀/鞭の3経路。
+- benkei CD終了VFX: useGameLoop で benkeiCdUntil 跨ぎを useRef でエッジ検出し、頭上に「閃き」フラッシュ（描画のみ・スロー無し）。
+- load 2/10（simulation）: 近接イベント毎の近傍走査のみ。毎フレーム全体ループ無し。
+### B弾/爆発spawn (v0.25.566)
+- ricochet: 通常銃弾命中で20%、最寄りの別敵へ ×0.5 跳弾1発（ricochet フラグで二次跳弾禁止）。
+- fire-shooter: 20%の射撃が爆発弾化（×0.3・半径66）。player.fireShooterCdUntil で 3s 裏CD。Projectile.explodeOnHit 経路を新設。
+- bomber: 手榴弾が起爆前に一度だけ子グレネード3発を散布（×1/3）＋親の信管 +1s。timed-grenade 爆発が per-grenade の半径/ダメージを参照するよう拡張。
+- bomb-counter: 反射カウンター弾に explodeOnHit(GRENADE_*) を付与し命中で爆発。
+- reflex: 被弾時、CD明けならプレイヤー中心に GRENADE 級反撃爆発＋近傍2×ノックバック。reflexCdUntil で 1s CD。
+- いずれもサブ武器/周期/projectile 爆発のためスロー無し（CLAUDE.md）。load 2/10。
+### E賢者の石 (v0.25.567)
+- 商人陳列: maybeUnlockSageStone（alchemyLevel>=3 で unlockedShopSkillCards に 'sage-stone' を Lv1 解禁）を selectUpgrade/buyShopItem/buySkillCardFromShop に配線。SHOP_SAGE_STONE_COST=100。EXCLUSIVE_SUBWEAPON_GROUPS の ['alchemy','sage-stone'] で同居。
+- 効果: 通常召喚=単体接触→半径90 AoE / レア(死神)=近接ダメ+50%・巻き込み半径+30% / 鞭ハリケーン=半径&ダメージ+20%。
+- 各数値は仮値（実機調整前提）。load 2/10。
+### Verification: 各グループで npx tsc --noEmit + npm run build 通過。
+### 次ハンドオフ: D ドッグラン(犬CD0・射程解除)は別途実装済み（v0.25.564 まで）。全23種＋賢者の石の効果配線が完了。実機での数値調整（コンボ上限/賢者の石の半径・倍率/reflex 威力）が残課題。
