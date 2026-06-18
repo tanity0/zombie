@@ -4,7 +4,7 @@ import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank,
-  WeaponMerchant, ShopItemKey, EventQuestNpc, Summon,
+  WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp
 } from '../types/game';
 import {
@@ -1003,6 +1003,9 @@ interface GameState {
   goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
   pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
   setPendingIndoor: (indoor: boolean) => void;
+  pendingStageTheme: StageTheme;                        // 出撃ステージの見た目テーマ(resetGame で stageTheme へ)
+  setPendingStageTheme: (theme: StageTheme) => void;
+  stageTheme: StageTheme;                               // この出撃の見た目テーマ('lab'=研究所スキン。描画/商人が参照)
   triggerEventVictory: () => void;                      // ボス無しのイベント勝利(gameWon=true)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
@@ -1146,6 +1149,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   hasCardKey: false,
   goalReachedAt: 0,
   pendingIndoor: false,
+  pendingStageTheme: 'forest',
+  stageTheme: 'forest',
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
@@ -2976,6 +2981,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           ammoPhill: Math.min(AMMO_MAX.phill, state.player.ammoPhill + state.ammoPickupAmounts.phill)
         });
       }
+      if (key === 'buy-phill') { // 研究所(lab テーマ): 武器商人がPHILL銃を無料配布(1挺・所持済みなら無効)
+        if (state.player.weapons.some(w => !w.isMelee && w.category === 'phill')) return {};
+        const phill = createWeapon('phill-revolver');
+        purchased = true;
+        return {
+          player: {
+            ...state.player,
+            weapons: [...state.player.weapons, phill],
+            activeWeaponId: phill.id, // 入手したら即装備に切り替え
+            ammoPhill: Math.max(state.player.ammoPhill, AMMO_INITIAL.phill),
+          },
+        };
+      }
       if (key === 'medkit') {
         if (state.player.health >= state.player.maxHealth) return {};
         return spend(SHOP_MEDKIT_COST, {
@@ -4289,6 +4307,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingIndoor: (indoor) => {
     set({ pendingIndoor: indoor });
   },
+  setPendingStageTheme: (theme) => {
+    set({ pendingStageTheme: theme });
+  },
 
   triggerEventVictory: () => {
     // ボス無しのイベント勝利。giantbat 撃破と同様に gameWon=true(Game.tsx が監視→onVictory)。
@@ -4637,6 +4658,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         : Object.fromEntries(runSubs.map(k => [k, 3])) as Partial<Record<SubWeaponKey, number>>;
       // 屋内(研究施設)ステージ初期化。選択ステージが indoor なら labMap から構築。
       const indoor = state.pendingIndoor && !state.danceTestMode;
+      // 見た目テーマ(屋外構造のままテクスチャ差し替え)。'lab'=研究所スキン(地面=ラボ床/商人がPHILL無料配布)。
+      const stageTheme: StageTheme = (!state.danceTestMode && state.pendingStageTheme === 'lab') ? 'lab' : 'forest';
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         : { x: 0, y: 0 };
@@ -4673,6 +4696,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
+        stageTheme,
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,

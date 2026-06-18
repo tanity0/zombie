@@ -332,10 +332,14 @@ export type ShopItemKey =
   | 'ammo-shotgun'
   | 'ammo-rifle'
   | 'ammo-phill'
+  | 'buy-phill'   // 研究所(lab テーマ)で武器商人が無料配布する PHILL 銃
   | 'dog'
   | 'class-skill'
   | 'medkit'
   | 'vaccine';
+
+// ステージ見た目テーマ。屋外サバイバル構造のまま地面などのテクスチャを差し替える。
+export type StageTheme = 'forest' | 'lab';
 
 export interface WeaponMerchant {
   x: number;

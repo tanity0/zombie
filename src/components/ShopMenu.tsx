@@ -52,9 +52,14 @@ const ShopMenu: React.FC = () => {
   const buySkillCardFromShop = useGameStore(state => state.buySkillCardFromShop);
   const closeShop = useGameStore(state => state.closeShop);
 
-  // 研究所(屋内)では商人はPHILL弾のみ販売。屋外は従来3種。
+  // 研究所(屋内)では商人はPHILL弾のみ販売。研究所スキン(lab テーマ)の屋外は従来3種＋PHILL弾。屋外は従来3種。
   const indoorMode = useGameStore(state => state.indoorMode);
-  const ammoTypes: AmmoType[] = indoorMode ? ['phill'] : ['handgun', 'shotgun', 'rifle'];
+  const labTheme = useGameStore(state => state.stageTheme) === 'lab';
+  const ammoTypes: AmmoType[] = indoorMode
+    ? ['phill']
+    : labTheme ? ['handgun', 'shotgun', 'rifle', 'phill'] : ['handgun', 'shotgun', 'rifle'];
+  // lab テーマでは PHILL 銃を無料配布(未所持時のみ)。社長指示: 武器商人が無料で販売。
+  const hasPhillGun = player.weapons.some(w => !w.isMelee && w.category === 'phill');
   const ammoEntries = ammoTypes.map(type => ({
     key: ammoShopKey[type],
     name: ammoLabel[type],
@@ -78,6 +83,13 @@ const ShopMenu: React.FC = () => {
       };
     });
   const entries: (ShopEntry | SkillShopEntry)[] = [
+    ...(labTheme ? [{
+      key: 'buy-phill' as const,
+      name: 'ＰＨＩＬＬ-銃',
+      description: hasPhillGun ? '所持済み' : '無料配布・ヘッドショット対応',
+      cost: 0,
+      disabled: hasPhillGun,
+    }] : []),
     ...ammoEntries,
     ...skillEntries,
     {
@@ -140,7 +152,7 @@ const ShopMenu: React.FC = () => {
                     <div className="text-[10px] leading-tight text-white/50">{entry.description}</div>
                   </div>
                   <div className="text-[12px] font-black text-amber-200 tabular-nums whitespace-nowrap">
-                    {entry.cost}s
+                    {entry.cost === 0 ? '無料' : `${entry.cost}s`}
                   </div>
                 </div>
               </button>

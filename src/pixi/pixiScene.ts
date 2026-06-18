@@ -16,7 +16,7 @@
 import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
-  BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
+  BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
@@ -1362,6 +1362,24 @@ export class PixiScene {
       if (strip.texture !== this.groundStripBaseTex) strip.texture = this.groundStripBaseTex;
       strip.tint = ENV_TINT;
     }
+  }
+
+  // 屋外サバイバル構造のまま、見た目テーマで地面ストリップのテクスチャ/色味を差し替える。
+  // 'lab'=研究所スキン(シームレスなラボ床＋LAB_ENV_TINT)、'forest'=従来の屋外地面。
+  // テクスチャ/tint は持続するので、テーマが変わった時だけ貼り替える(毎フレームの再代入を避ける)。
+  private outdoorGroundTheme: StageTheme | null = null;
+  private applyOutdoorGroundTheme(theme: StageTheme) {
+    if (this.outdoorGroundTheme === theme) return;
+    const strips = this.L.groundStrips;
+    if (theme === 'lab') {
+      const tex = getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
+      if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
+      if (!this.groundStripBaseTex) this.groundStripBaseTex = strips[0]?.texture ?? null; // 屋外地面を復元用に退避
+      for (const strip of strips) { strip.texture = tex; strip.tint = LAB_ENV_TINT; }
+    } else {
+      this.restoreGroundStrips();
+    }
+    this.outdoorGroundTheme = theme;
   }
 
   private updatePerspectiveGround(
@@ -3651,7 +3669,7 @@ export class PixiScene {
     this.L.frontForest.visible = !indoor;
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
-      this.restoreGroundStrips(); // 屋外復帰: ?labpersp で差し替えた床を元へ
+      this.applyOutdoorGroundTheme(s.stageTheme); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。
       this.updateLabFloorPlate(false);
       this.updateLabFloorMesh(false);
       this.updateLabHorizonFade(false);

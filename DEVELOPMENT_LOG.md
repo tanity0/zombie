@@ -12105,3 +12105,26 @@ Step1(台形メッシュ床)で `?labpersp` 時に `floorTex=null` にしてい�
 - lint/build 通過。トップ「装備」でサブ/スキルを選び自動保存→出撃に反映。スキル効果は後続で配線。
 ### 次
 - スキルのアクティブ効果(発動操作・クールダウン・各能力)の実装。能力仕様が来たら配線。
+
+## v0.25.520 — ステージ2を「ステージ1構造＋研究所スキン」に作り直し / PHILL=商人が無料配布 (claude/cool-edison-7b8jrl)
+研究所(stage-2)の屋内迷路は一旦保留。stage-2 を屋外サバイバル構造(stage1同等: 波/オープン/木/進行)に戻し、
+テクスチャだけ研究所に張り替えるテーマ機構を追加。壁は無し(=屋外構造そのまま)。
+- campaign: Stage に `theme?: 'lab'`。stage-2 は `indoor:true` をコメントアウトし `theme:'lab'` を付与
+  (labMap 迷路/カードキー/ゴールは温存・未使用)。
+- types: `StageTheme='forest'|'lab'`、ShopItemKey に `buy-phill`。
+- store: `pendingStageTheme`/`setPendingStageTheme`/`stageTheme`。resetGame で stageTheme を確定。
+  buyShopItem に `buy-phill`(PHILL銃を無料配布・未所持時のみ・即装備・PHILL弾を初期量まで補充)。
+- App: 出撃時に stage.theme を pendingStageTheme へ受け渡し。
+- 描画(pixiScene): `applyOutdoorGroundTheme` 追加。lab テーマ時は屋外地面ストリップを
+  `lab-floor/lab-floor-ground`(シームレス・ステージ1風)＋LAB_ENV_TINT に貼り替え(テーマ変化時のみ・毎フレーム再代入なし)。
+  forest は従来地面へ復元。判定/移動/aim/store 不変。
+- ShopMenu: lab テーマで「ＰＨＩＬＬ-銃(無料配布)」を陳列＋弾4種目に phill を追加。0コストは「無料」表示。
+- ヘッドショット: 既存実装のまま(PHILL弾のみ頭部判定・全敵共通=enemyFootBox の上部リージョン)。追加変更なし。
+
+### 負荷スコア
+1/10。地面テクスチャ差し替えはテーマ変化時の1回のみ(TilingSprite.texture 再代入)。商人/陳列はUIイベント。
+
+### Verification
+- lint/build 通過。stage-2 出撃で屋外構造＋ラボ床スキン、武器商人で PHILL を無料入手→ヘッドショット動作。
+### 次
+- 研究所スキンの調整(床タイル密度/色味、敵スキンや背景のラボ化は要望次第)。屋内迷路の作り直しは別途。

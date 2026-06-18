@@ -46,6 +46,7 @@ export interface Stage {
   subs: SubMission[];    // サブミッション(今は空=準備中。後で追加)
   unlockBy: string | null; // このステージ解放に必要な「直前ステージのid」(null=最初から解放)
   indoor?: boolean;      // 屋内(研究施設)ステージ=手書き壁マップ/カメラクランプ/湧き抑制
+  theme?: 'lab';         // 見た目テーマ(屋外構造のままテクスチャだけ差し替え)。'lab'=研究所スキン。
 }
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
@@ -102,7 +103,10 @@ export const STAGES: Stage[] = [
     area: '壊滅した研究所 / 中枢データ回収',
     unlockBy: 'stage-1',
     subs: [],
-    indoor: true, // 研究所=屋内ステージ(labMap で壁/カードキー/ゴール)。
+    // 研究所は当面「ステージ1構造のテクスチャ張り替え版」(屋外サバイバル+研究所スキン)で運用。
+    // 屋内迷路(labMap で壁/カードキー/ゴール)は作り直しのため保留: indoor は外し、theme:'lab' のみ付与。
+    // indoor: true,
+    theme: 'lab',
     main: {
       code: 'M2',
       title: '研究所再突入',
