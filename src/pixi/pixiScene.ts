@@ -1378,28 +1378,36 @@ export class PixiScene {
   private horizonForestBaseTex: Texture | null = null;
   private frontForestBaseTex: Texture | null = null;
   private applyOutdoorGroundTheme(theme: StageTheme) {
-    if (this.outdoorGroundTheme === theme) return;
     const strips = this.L.groundStrips;
     if (theme === 'lab') {
       const tex = getTexture('lab-floor/lab-floor-stage2') ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
+      // NPOT でもタイル反復できるよう wrap=repeat を明示(屋内ラボ床と同じ扱い)。
+      try {
+        const st = tex.source.style as { addressMode?: string; update?: () => void };
+        if (st.addressMode !== 'repeat') { st.addressMode = 'repeat'; st.update?.(); }
+      } catch { /* ignore */ }
       if (!this.groundStripBaseTex) this.groundStripBaseTex = strips[0]?.texture ?? null; // 屋外地面を復元用に退避
-      // 一旦 色味調整(LAB_ENV_TINT)を外す=テクスチャ本来の色で表示(tint 白=無補正)。
-      for (const strip of strips) { strip.texture = tex; strip.tint = 0xffffff; }
-      // 背景3層を研究所版へ(森→ラボ)。元テクスチャは復元用に一度だけ退避。
-      const far = getTexture('lab/lab-far-backdrop');
-      if (far) { if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture; this.L.farBackdrop.texture = far; }
-      const horizon = getTexture('lab/lab-horizon-band');
-      if (horizon) { if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; this.L.horizonForest.texture = horizon; }
-      const front = getTexture('lab/lab-front-band');
-      if (front) { if (!this.frontForestBaseTex) this.frontForestBaseTex = this.L.frontForest.texture; this.L.frontForest.texture = front; }
-    } else {
+      // 毎フレーム再適用(何かがテクスチャを戻しても確実に張り替わる)。差分があるときだけ代入。
+      // 色味調整(LAB_ENV_TINT)は外し、テクスチャ本来の色で表示(tint 白=無補正)。
+      for (const strip of strips) { if (strip.texture !== tex) strip.texture = tex; strip.tint = 0xffffff; }
+      if (this.outdoorGroundTheme !== 'lab') {
+        // 背景3層を研究所版へ(森→ラボ)。元テクスチャは復元用に一度だけ退避。テーマ変化時のみ。
+        const far = getTexture('lab/lab-far-backdrop');
+        if (far) { if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture; this.L.farBackdrop.texture = far; }
+        const horizon = getTexture('lab/lab-horizon-band');
+        if (horizon) { if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; this.L.horizonForest.texture = horizon; }
+        const front = getTexture('lab/lab-front-band');
+        if (front) { if (!this.frontForestBaseTex) this.frontForestBaseTex = this.L.frontForest.texture; this.L.frontForest.texture = front; }
+        this.outdoorGroundTheme = 'lab';
+      }
+    } else if (this.outdoorGroundTheme !== 'forest') {
       this.restoreGroundStrips();
       if (this.farBackdropBaseTex) this.L.farBackdrop.texture = this.farBackdropBaseTex;
       if (this.horizonForestBaseTex) this.L.horizonForest.texture = this.horizonForestBaseTex;
       if (this.frontForestBaseTex) this.L.frontForest.texture = this.frontForestBaseTex;
+      this.outdoorGroundTheme = 'forest';
     }
-    this.outdoorGroundTheme = theme;
   }
 
   private updatePerspectiveGround(

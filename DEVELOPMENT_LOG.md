@@ -12359,3 +12359,18 @@ applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた
 
 ### Verification
 - lint/build 通過。stage-2 は森敵が一切混ざらず、縦帯が約半分に。
+
+## v0.25.534 — ステージ2の床が切り替わらない件: 毎フレーム強制再適用 + repeat wrap (claude/cool-edison-7b8jrl)
+コード/アセット/gitは正常(lab-floor-stage2.png 追加済み・applyOutdoorGroundTheme は lab で参照)だが
+現地で床が変わらない報告。確実化のため applyOutdoorGroundTheme を変更:
+- 変更ゲートで早期 return せず、lab の間は毎フレーム ground ストリップへ床テクスチャを再適用
+  (strip.texture!==tex のときだけ代入=churn 回避)。何かが戻しても確実に張り替わる。
+- NPOT でもタイル反復できるよう tex.source の addressMode='repeat' を明示(屋内ラボ床と同じ)。
+- 背景3層の差し替え/森への復元はテーマ変化時のみ(従来どおり)。
+注: それでも変わらない場合はブラウザの強キャッシュが濃厚 → ハードリロード推奨(?v=版バージョンでバスト)。
+
+### 負荷スコア
+1/10。lab 時に72ストリップの参照比較+tint 設定/フレーム(代入は初回のみ)。
+
+### Verification
+- lint/build 通過。
