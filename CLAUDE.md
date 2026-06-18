@@ -2,6 +2,18 @@
 
 Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 
+## Working agreement — stop and ask when blind
+- **If you cannot see or verify something the task depends on, STOP and ask the
+  user before proceeding — do not guess and keep going.** This applies to (but is
+  not limited to): a URL/site you cannot fetch (403, blocked host, not on the
+  network allowlist), a file or asset you cannot open, or a rendered result you
+  cannot actually confirm.
+- When this happens, say plainly "I couldn't access/confirm X" and ask how to
+  proceed (e.g. paste the content, share a screenshot, add the host to the
+  allowlist) instead of building on assumptions.
+- If you proceed on placeholder/assumed data after being unblocked, label it
+  clearly as provisional.
+
 ## Renderer
 - **PixiJS is the default and the only actively-developed renderer.** The legacy
   Canvas2D renderer is still reachable via `?renderer=canvas` as a fallback/
