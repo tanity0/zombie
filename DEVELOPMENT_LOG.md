@@ -12085,3 +12085,23 @@ Step1(台形メッシュ床)で `?labpersp` 時に `floorTex=null` にしてい�
 
 ### Verification
 - lint/build 通過。屋外/OFF 不変。?labpersp=1&labvig=0.6 でプレート床が全画面に。
+
+## v0.25.519 — 装備メニュー(トップ独立)＋スキル枠(最大2) (claude/cool-edison-7b8jrl)
+サブウェポンとは別系統の「スキル枠」を新設。装備はステージ選択フローから切り離し、トップメニューの独立
+「装備」メニューで選択(自動保存・全ステージ共通)。
+- 型: `SkillKey`('adrenaline'|'emp-pulse'|'nano-heal'|'overload')＋ `player.skills: SkillKey[]`。
+  campaign に `SKILL_KEYS`/`SKILLS`(表示名・説明)/`MAX_EQUIPPED_SKILLS=2`(プレースホルダ。効果は今後配線)。
+- store: `pendingSkills`(最大2)＋`setPendingSkills`、`pendingLoadout`(サブ)も localStorage 永続化
+  (`zombie:loadoutSubs`/`zombie:loadoutSkills`、起動時復元)。resetGame で `player.skills = pendingSkills`(≤2)、
+  サブは既存の runSubs(=固有＋pendingLoadout)経路でそのまま反映。
+- MissionSelect: ホームに「装備」HubButton→独立 `loadout` 画面(スキル最大2＋サブ複数、自動保存)。
+  ステージ選択フローの旧「装備選択(サブ)」工程は廃止し、キャラ選択→そのままスタート。
+- 反映: 出撃時にサブ＝初期装備、スキル＝player.skills に保持(アクティブ効果は未配線=枠/保存/UIのみ)。
+
+### 負荷スコア
+0〜1/10。UI＋localStorage 永続のみ。ゲームループへの新規コストなし(スキル効果は未実装)。
+
+### Verification
+- lint/build 通過。トップ「装備」でサブ/スキルを選び自動保存→出撃に反映。スキル効果は後続で配線。
+### 次
+- スキルのアクティブ効果(発動操作・クールダウン・各能力)の実装。能力仕様が来たら配線。

@@ -8,7 +8,7 @@
 // - 各ステージには複数のサブミッションがぶら下がる予定(今はメインのみ並べる。後で差し替え)。
 // - ゲームプレイは当面ステージ1の内容を流用(後で各ステージ用に差し替える)。
 
-import type { CharacterClass, SubWeaponKey, IntroLine } from '../types/game';
+import type { CharacterClass, SubWeaponKey, SkillKey, IntroLine } from '../types/game';
 
 // --- ステージ / ミッションの型 -------------------------------------------
 export interface StageVoiceLine {
@@ -462,6 +462,17 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
   'drone-boomerang',
   'wire-anchor',
 ];
+
+// 装備スキル(サブウェポンとは別系統のアクティブ能力)。最大2装備。
+// ※効果は今後配線(プレースホルダ)。ここでは選択肢/表示名/説明のみ定義する。
+export const SKILL_KEYS: SkillKey[] = ['adrenaline', 'emp-pulse', 'nano-heal', 'overload'];
+export const SKILLS: Record<SkillKey, { name: string; desc: string }> = {
+  'adrenaline': { name: 'アドレナリン', desc: '一定時間、移動と攻撃が速くなる（効果は今後実装）' },
+  'emp-pulse':  { name: 'EMPパルス',   desc: '周囲の敵を短時間スタンさせる（効果は今後実装）' },
+  'nano-heal':  { name: 'ナノヒール',   desc: '体力を即時回復する（効果は今後実装）' },
+  'overload':   { name: 'オーバーロード', desc: '一定時間、与ダメージが上がる（効果は今後実装）' },
+};
+export const MAX_EQUIPPED_SKILLS = 2;
 
 // --- 資料室(世界観 / 変異体図鑑)のドラフト -------------------------------
 export const WORLD_INTRO: string[] = [

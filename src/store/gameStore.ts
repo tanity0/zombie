@@ -3,7 +3,7 @@ import { generateUpgradeOptions } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  VisualEffect, AmmoType, Direction, SubWeaponKey, CastleEvent, DifficultyRank,
+  VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank,
   WeaponMerchant, ShopItemKey, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp
 } from '../types/game';
@@ -145,6 +145,21 @@ const loadAmmoPickupAmounts = (): Record<AmmoType, number> => {
   } catch {
     return { ...AMMO_PICKUP };
   }
+};
+
+// 装備メニュー(サブ/スキル)の永続化。トップメニューで選んだ装備を localStorage に保存し、起動時に復元する。
+const LOADOUT_SUBS_KEY = 'zombie:loadoutSubs';
+const LOADOUT_SKILLS_KEY = 'zombie:loadoutSkills';
+const loadStringArray = (key: string): string[] => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const a = JSON.parse(raw);
+    return Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : [];
+  } catch { return []; }
+};
+const saveStringArray = (key: string, arr: string[]): void => {
+  try { localStorage.setItem(key, JSON.stringify(arr)); } catch { /* ignore */ }
 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
@@ -975,8 +990,10 @@ interface GameState {
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
   startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
-  pendingLoadout: SubWeaponKey[];                       // 装備選択で選んだサブ(出撃時に resetGame が所持へ反映)
+  pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
   setPendingLoadout: (keys: SubWeaponKey[]) => void;
+  pendingSkills: SkillKey[];                            // 装備メニューで選んだスキル(最大2・永続。効果は今後配線)
+  setPendingSkills: (keys: SkillKey[]) => void;
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
@@ -1076,6 +1093,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeapons: [],
     subWeaponLevels: {},
     subWeaponCooldowns: {},
+    skills: [],
     huntingChargeStartedAt: 0,
     huntingCharged: false,
     katanaDashUntil: 0,
@@ -1119,7 +1137,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
-  pendingLoadout: [],
+  pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
+  pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).slice(0, 2),
   indoorMode: false,
   labDoors: [],
   labButtons: [],
@@ -4258,7 +4277,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setPendingLoadout: (keys) => {
+    saveStringArray(LOADOUT_SUBS_KEY, keys);
     set({ pendingLoadout: keys });
+  },
+  setPendingSkills: (keys) => {
+    const capped = keys.slice(0, 2); // 装備は最大2
+    saveStringArray(LOADOUT_SKILLS_KEY, capped);
+    set({ pendingSkills: capped });
   },
 
   setPendingIndoor: (indoor) => {
@@ -4599,6 +4624,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const runSubs: SubWeaponKey[] = state.danceTestMode
         ? ['shijin']
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));
+      // 装備スキル(別枠アクティブ・最大2)。出撃時に player.skills へ反映(効果は今後配線)。
+      const runSkills: SkillKey[] = state.danceTestMode
+        ? []
+        : Array.from(new Set<SkillKey>(state.pendingSkills)).slice(0, 2);
       const runLevels: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
         ? { shijin: state.danceTestLevel }
         : Object.fromEntries(runSubs.map(k => [k, 1])) as Partial<Record<SubWeaponKey, number>>;
@@ -4692,6 +4721,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
           subWeapons: runSubs,
+          skills: runSkills,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,

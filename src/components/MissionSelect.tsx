@@ -5,9 +5,9 @@ import {
 import { subWeaponDisplayName, useGameStore } from '../store/gameStore';
 import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
-import type { AmmoType, CharacterClass, SubWeaponKey } from '../types/game';
+import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, WORLD_INTRO, BESTIARY, type Stage
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY, type Stage
 } from '../data/campaign';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress
@@ -31,7 +31,7 @@ type Screen =
   | { name: 'stageSelect' }
   | { name: 'missionDetail'; stageId: string }
   | { name: 'characterSelect'; stageId: string }
-  | { name: 'equipment'; stageId: string; charId: CharacterClass };
+  | { name: 'loadout' };
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div
@@ -70,8 +70,12 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
-  const [loadout, setLoadout] = useState<SubWeaponKey[]>([]);     // 装備選択(今は記録のみ)
   const [freeMode, setFreeMode] = useState(false);               // 出撃がフリー(周回・会話なし)か
+  // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
+  const equippedSubs = useGameStore(state => state.pendingLoadout);
+  const equippedSkills = useGameStore(state => state.pendingSkills);
+  const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
+  const setPendingSkills = useGameStore(state => state.setPendingSkills);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
 
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
@@ -88,7 +92,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     useGameStore.getState().setDanceTestMode(false);
     setSelectedStageId(stageId);          // 勝利時にこのステージをクリア扱いにする(App側)
     setSelectedFreeMode(freeMode);        // フリー(周回)=会話なし & クリア進行に影響させない
-    useGameStore.getState().setPendingLoadout(loadout); // 選んだサブを開始時所持へ(resetGame が反映)
+    // 装備(サブ/スキル)はトップの装備メニューで選んだ永続値を resetGame がそのまま反映する(ここでは触らない)。
     onStartGame(charId);
   };
 
@@ -100,6 +104,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="ミッション選択" subtitle="the ONE" />
       <div className="p-3 space-y-2">
         <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent />
+        <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン / スキル（最大${MAX_EQUIPPED_SKILLS}）`} onClick={() => setScreen({ name: 'loadout' })} />
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} />
         <HubButton icon={<ShoppingBag size={18} />} label="武器開発" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={() => setScreen({ name: 'archive' })} />
@@ -270,50 +275,88 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           ))}
         </div>
         <button
-          onClick={() => setScreen({ name: 'equipment', stageId, charId: selectedClass })}
-          className="w-full py-3 rounded-2xl text-base font-semibold text-white"
-          style={{ background: 'linear-gradient(180deg, rgba(96,165,250,0.95), rgba(59,130,246,0.95))', boxShadow: '0 8px 24px rgba(59,130,246,0.35)' }}
+          onClick={() => startMission(stageId, selectedClass)}
+          className="w-full py-3.5 rounded-2xl text-lg font-bold text-white flex items-center justify-center gap-2"
+          style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.95), rgba(16,185,129,0.95))', boxShadow: '0 8px 24px rgba(16,185,129,0.35)' }}
         >
-          装備選択へ
+          <Play size={20} /> スタート
         </button>
+        <p className="pt-2 text-center text-[11px] text-white/40">装備の変更はホームの「装備」から</p>
       </div>
     </>
   );
 
   // ====================================================================
-  // 装備選択(サブウェポン) — 今は選択を記録するだけ
+  // 装備メニュー(トップから独立) — サブウェポン + スキル(最大2)。store に永続。出撃時に反映。
   // ====================================================================
-  const renderEquipment = (stageId: string, charId: CharacterClass) => {
-    const toggle = (k: SubWeaponKey) => setLoadout(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]);
+  const renderLoadout = () => {
+    const toggleSub = (k: SubWeaponKey) =>
+      setPendingLoadout(equippedSubs.includes(k) ? equippedSubs.filter(x => x !== k) : [...equippedSubs, k]);
+    const toggleSkill = (k: SkillKey) => {
+      if (equippedSkills.includes(k)) { setPendingSkills(equippedSkills.filter(x => x !== k)); return; }
+      if (equippedSkills.length >= MAX_EQUIPPED_SKILLS) return; // 最大2(満杯なら無視)
+      setPendingSkills([...equippedSkills, k]);
+    };
     return (
       <>
-        <Header title="装備選択（サブウェポン）" subtitle="選んだ装備でスタート（反映は今後）" onBack={() => setScreen({ name: 'characterSelect', stageId })} />
-        <div className="p-3 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            {SUB_WEAPON_KEYS.map(k => {
-              const on = loadout.includes(k);
-              return (
-                <button
-                  key={k}
-                  onClick={() => toggle(k)}
-                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left ${
-                    on ? 'border-emerald-300/45 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/85 active:bg-white/10'
-                  }`}
-                >
-                  <span className="text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
-                  {on && <Check size={15} className="shrink-0" />}
-                </button>
-              );
-            })}
+        <Header title="装備" subtitle="ステージ共通。サブウェポンとスキルを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
+        <div className="p-3 space-y-4">
+          {/* スキル(別枠・最大2) */}
+          <div>
+            <div className="flex items-center justify-between px-1 mb-1.5">
+              <span className="text-[11px] uppercase tracking-widest text-fuchsia-200/70">スキル</span>
+              <span className="text-[11px] text-white/45">{equippedSkills.length}/{MAX_EQUIPPED_SKILLS}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {SKILL_KEYS.map(k => {
+                const on = equippedSkills.includes(k);
+                const full = !on && equippedSkills.length >= MAX_EQUIPPED_SKILLS;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => toggleSkill(k)}
+                    disabled={full}
+                    className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left ${
+                      on ? 'border-fuchsia-300/55 bg-fuchsia-300/15 text-fuchsia-50'
+                        : full ? 'border-white/5 bg-white/[0.03] text-white/30'
+                        : 'border-white/10 bg-white/5 text-white/85 active:bg-white/10'
+                    }`}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="text-[13px] font-semibold">{SKILLS[k].name}</span>
+                      {on && <Check size={15} className="shrink-0" />}
+                    </span>
+                    <span className="text-[10px] leading-snug text-white/50">{SKILLS[k].desc}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <p className="text-[11px] text-white/45 text-center">選択中: {loadout.length === 0 ? 'なし' : loadout.map(k => subWeaponDisplayName(k)).join(' / ')}</p>
-          <button
-            onClick={() => startMission(stageId, charId)}
-            className="w-full py-3.5 rounded-2xl text-lg font-bold text-white flex items-center justify-center gap-2"
-            style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.95), rgba(16,185,129,0.95))', boxShadow: '0 8px 24px rgba(16,185,129,0.35)' }}
-          >
-            <Play size={20} /> スタート
-          </button>
+          {/* サブウェポン */}
+          <div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン</div>
+            <div className="grid grid-cols-2 gap-2">
+              {SUB_WEAPON_KEYS.map(k => {
+                const on = equippedSubs.includes(k);
+                return (
+                  <button
+                    key={k}
+                    onClick={() => toggleSub(k)}
+                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left ${
+                      on ? 'border-emerald-300/45 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/85 active:bg-white/10'
+                    }`}
+                  >
+                    <span className="text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
+                    {on && <Check size={15} className="shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <p className="text-[11px] text-white/45 text-center">
+            スキル: {equippedSkills.length === 0 ? 'なし' : equippedSkills.map(k => SKILLS[k].name).join(' / ')}
+            {' ／ '}サブ: {equippedSubs.length === 0 ? 'なし' : equippedSubs.map(k => subWeaponDisplayName(k)).join(' / ')}
+          </p>
         </div>
       </>
     );
@@ -379,7 +422,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId)}
       {screen.name === 'characterSelect' && renderCharacterSelect(screen.stageId)}
-      {screen.name === 'equipment' && renderEquipment(screen.stageId, screen.charId)}
+      {screen.name === 'loadout' && renderLoadout()}
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}
       {screen.name === 'archive' && renderArchive()}
