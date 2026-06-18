@@ -64,8 +64,6 @@ const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 2.2;
-// 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
-const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 const FRONT_FOREST_FADE_IN_RATIO = 0.52;
 const FRONT_FOREST_FADE_TOP_ALPHA = 0.58;
 const FRONT_FOREST_FADE_MID_ALPHA = 0.82;
@@ -112,6 +110,8 @@ const tsBool = (key: string, def: boolean): boolean => {
 // 研究所の擬似3D(斜め遠近)試作フラグ。?labpersp=1 で床だけ遠近(A1)。既定OFF=現状維持(回帰なし)。
 // 描画のみ。当たり判定/移動/aim は不変(store の値そのまま)。
 const LAB_PERSP = tsBool('labpersp', false);
+// 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
+const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 // 研究所専用の強い遠近(屋外定数を流用せず分離)。奥(FAR)を強く縮め、収束カーブを急に。?で生調整。
 const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み(小=奥が強く縮む。屋外は0.12)
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)

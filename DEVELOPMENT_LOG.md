@@ -12238,3 +12238,15 @@ syncBreakableProps/solidProps×3/木・城ゲート/grenadeWallsFor), src/pixi/p
 - lint/build 通過。stage-2 で天井ケーブル帯が画面上端に半透明表示。死神は約3倍遠方まで出現しない。
 ### 次
 - 天井帯の横タイリング要否(現状は1枚を画面幅にフィット)・alpha 微調整は実機確認後に。
+
+## v0.25.526 — 修正: 全画面真っ暗(TDZ)回帰 (claude/cool-edison-7b8jrl)
+v0.25.525 で `const LAB_CEILING_ALPHA = tsNum('ceil', 0.55)` を `tsNum` 定義(99行目)より前(67行目付近)に
+置いてしまい、モジュール初期化時に「Cannot access 'tsNum' before initialization」(TDZ)で pixiScene の
+読み込みが失敗→レンダラ全体がクラッシュ→タイトル含め真っ暗だった。ビルド/lint は通る(実行時エラー)ため見逃した。
+- 修正: LAB_CEILING_ALPHA の定義を tsNum/tsBool の後ろ(LAB_PERSP の直後)へ移動。挙動は v0.25.525 と同じ。
+
+### 負荷スコア
+1/10。定義位置の移動のみ。
+
+### Verification
+- lint/build 通過。タイトル/ゲームが再び描画される(天井帯・背景差し替え・死神3倍は v0.25.525 のまま有効)。
