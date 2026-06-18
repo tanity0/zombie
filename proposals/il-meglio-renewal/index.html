@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>il meglio｜美容に特化したSNSマーケティング — Renewal Concept</title>
+<meta name="description" content="il meglio（イルメリオ）— 美容業界に特化したSNSマーケティング。世界観で、数字を伸ばす。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Shippori+Mincho:wght@500;600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ivory:#F2EBE0;
+    --ivory-2:#EAE0D2;
+    --ink:#1C1714;
+    --ink-soft:#4A413A;
+    --rouge:#D8412F;
+    --rouge-deep:#A82B22;
+    --blush:#EBC9BE;
+    --gold:#B79256;
+    --line:rgba(28,23,20,.16);
+    --serif:"Fraunces",serif;
+    --mincho:"Shippori Mincho",serif;
+    --sans:"Zen Kaku Gothic New",sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--ivory);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-weight:400;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+    cursor:default;
+  }
+  /* film grain + warm glow atmosphere */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(60% 50% at 78% 8%, rgba(235,201,190,.55), transparent 60%),
+      radial-gradient(50% 40% at 6% 92%, rgba(183,146,86,.18), transparent 60%);
+    mix-blend-mode:multiply;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:999;pointer-events:none;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:1280px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--rouge);color:var(--ivory)}
+
+  /* ---------- NAV ---------- */
+  header{position:fixed;top:0;left:0;right:0;z-index:100;transition:.4s}
+  header.scrolled{background:rgba(242,235,224,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  nav{display:flex;align-items:center;justify-content:space-between;height:74px}
+  .brand{font-family:var(--serif);font-weight:600;font-size:25px;letter-spacing:.02em;font-style:italic}
+  .brand b{font-style:normal;font-weight:900}
+  .brand .dot{color:var(--rouge)}
+  .nav-links{display:flex;gap:34px;align-items:center;font-size:13px;letter-spacing:.12em;font-weight:500}
+  .nav-links a{position:relative;padding:4px 0;text-transform:uppercase}
+  .nav-links a::after{content:"";position:absolute;left:0;bottom:0;width:0;height:1px;background:var(--rouge);transition:.35s}
+  .nav-links a:hover::after{width:100%}
+  .nav-cta{border:1px solid var(--ink);border-radius:40px;padding:11px 22px;font-size:12px;letter-spacing:.14em;font-weight:700;transition:.35s}
+  .nav-cta:hover{background:var(--ink);color:var(--ivory)}
+  .burger{display:none;flex-direction:column;gap:5px;cursor:pointer}
+  .burger span{width:26px;height:2px;background:var(--ink)}
+  @media(max-width:880px){.nav-links{display:none}.burger{display:flex}}
+
+  /* ---------- HERO ---------- */
+  .hero{position:relative;padding:158px 0 70px;overflow:hidden}
+  .eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.24em;font-weight:700;color:var(--rouge-deep);text-transform:uppercase}
+  .eyebrow::before{content:"";width:34px;height:1px;background:var(--rouge)}
+  .hero h1{
+    font-family:var(--mincho);font-weight:800;
+    font-size:clamp(44px,8.4vw,118px);line-height:1.02;letter-spacing:-.01em;
+    margin:26px 0 8px;
+  }
+  .hero h1 .it{font-family:var(--serif);font-style:italic;font-weight:500;color:var(--rouge)}
+  .hero h1 .out{-webkit-text-stroke:1.4px var(--ink);color:transparent}
+  .hero-sub{max-width:520px;font-size:16px;color:var(--ink-soft);margin:30px 0 38px;font-weight:500}
+  .hero-actions{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .btn-primary{background:var(--rouge);color:var(--ivory);border-radius:44px;padding:17px 34px;font-weight:700;font-size:14px;letter-spacing:.06em;display:inline-flex;align-items:center;gap:12px;transition:.4s;box-shadow:0 14px 30px -12px rgba(216,65,47,.6)}
+  .btn-primary:hover{background:var(--rouge-deep);transform:translateY(-2px)}
+  .btn-primary .arr{transition:.4s}
+  .btn-primary:hover .arr{transform:translateX(5px)}
+  .btn-ghost{font-weight:700;font-size:14px;letter-spacing:.04em;border-bottom:1.5px solid var(--ink);padding-bottom:3px}
+
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:40px;align-items:end}
+  @media(max-width:900px){.hero-grid{grid-template-columns:1fr}}
+
+  /* hero visual card */
+  .hero-card{position:relative;border-radius:22px;overflow:hidden;aspect-ratio:4/5;background:
+    linear-gradient(160deg,#2a201c,#5a3b34 55%,var(--rouge) 130%);
+    box-shadow:0 40px 80px -30px rgba(28,23,20,.5);isolation:isolate}
+  .hero-card::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 80% at 80% 0%,rgba(235,201,190,.4),transparent 50%)}
+  .hero-card .tag{position:absolute;z-index:2;background:rgba(242,235,224,.92);color:var(--ink);font-size:11px;font-weight:700;letter-spacing:.1em;padding:9px 15px;border-radius:30px}
+  .hero-card .tag.t1{top:22px;left:22px}
+  .hero-card .tag.t2{bottom:96px;right:22px;background:var(--rouge);color:var(--ivory)}
+  .hero-card .glyph{position:absolute;z-index:1;font-family:var(--serif);font-style:italic;font-weight:300;font-size:240px;color:rgba(242,235,224,.1);bottom:-70px;left:-20px;line-height:1}
+  .hero-card .metric{position:absolute;z-index:2;left:24px;bottom:26px;color:var(--ivory)}
+  .hero-card .metric .num{font-family:var(--serif);font-size:54px;font-weight:600;line-height:1}
+  .hero-card .metric .lbl{font-size:12px;letter-spacing:.08em;opacity:.85;margin-top:4px}
+
+  /* ---------- MARQUEE ---------- */
+  .marquee{border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:64px;padding:20px 0;overflow:hidden;white-space:nowrap}
+  .marquee-track{display:inline-flex;gap:46px;animation:scroll 26s linear infinite;will-change:transform}
+  .marquee:hover .marquee-track{animation-play-state:paused}
+  .marquee span{font-family:var(--serif);font-style:italic;font-size:26px;font-weight:400;color:var(--ink)}
+  .marquee span .x{color:var(--rouge);font-style:normal;font-weight:900;margin:0 6px}
+  @keyframes scroll{to{transform:translateX(-50%)}}
+
+  /* ---------- SECTION SHELL ---------- */
+  section{position:relative;z-index:1}
+  .sec{padding:120px 0}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;margin-bottom:60px;flex-wrap:wrap}
+  .sec-head h2{font-family:var(--mincho);font-weight:800;font-size:clamp(30px,4.4vw,56px);line-height:1.1}
+  .sec-head h2 .en{display:block;font-family:var(--serif);font-style:italic;font-weight:400;font-size:.42em;color:var(--rouge);letter-spacing:.02em;margin-bottom:8px}
+  .sec-head p{max-width:380px;color:var(--ink-soft);font-size:15px;font-weight:500}
+
+  /* ---------- SERVICES bento ---------- */
+  .bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+  .card{background:var(--ivory-2);border:1px solid var(--line);border-radius:20px;padding:32px;position:relative;overflow:hidden;transition:.45s cubic-bezier(.2,.7,.2,1)}
+  .card:hover{transform:translateY(-6px);border-color:var(--ink)}
+  .card .no{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--rouge)}
+  .card h3{font-family:var(--mincho);font-weight:700;font-size:23px;margin:14px 0 10px}
+  .card p{font-size:14px;color:var(--ink-soft);font-weight:500}
+  .card .ico{position:absolute;top:26px;right:26px;font-family:var(--serif);font-size:30px;font-style:italic;color:var(--ink);opacity:.18;transition:.45s}
+  .card:hover .ico{opacity:1;color:var(--rouge)}
+  .c-wide{grid-column:span 4}.c-norm{grid-column:span 2}.c-half{grid-column:span 3}
+  .card.feature{background:var(--ink);color:var(--ivory);grid-column:span 2;grid-row:span 2;display:flex;flex-direction:column;justify-content:space-between}
+  .card.feature h3{color:var(--ivory);font-size:28px}
+  .card.feature p{color:rgba(242,235,224,.75)}
+  .card.feature .ico{opacity:.3;color:var(--blush)}
+  @media(max-width:760px){.bento{grid-template-columns:1fr}.c-wide,.c-norm,.c-half,.card.feature{grid-column:span 1;grid-row:auto}}
+
+  /* ---------- WORKS ---------- */
+  .works{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  @media(max-width:880px){.works{grid-template-columns:1fr}}
+  .work{border-radius:18px;overflow:hidden;background:var(--ivory-2);border:1px solid var(--line);transition:.4s}
+  .work:hover{transform:translateY(-5px);box-shadow:0 30px 50px -28px rgba(28,23,20,.45)}
+  .work .vis{aspect-ratio:5/4;position:relative;overflow:hidden}
+  .w1 .vis{background:linear-gradient(150deg,#3a2b26,var(--rouge))}
+  .w2 .vis{background:linear-gradient(150deg,#2c2a30,var(--gold))}
+  .w3 .vis{background:linear-gradient(150deg,#42302b,var(--blush))}
+  .work .vis .cat{position:absolute;top:16px;left:16px;background:rgba(242,235,224,.9);font-size:11px;font-weight:700;letter-spacing:.08em;padding:7px 13px;border-radius:30px}
+  .work .vis .big{position:absolute;bottom:-12px;right:14px;font-family:var(--serif);font-style:italic;font-weight:600;font-size:84px;color:rgba(242,235,224,.92);line-height:1}
+  .work .vis .big sub{font-size:26px;font-style:normal}
+  .work .body{padding:22px}
+  .work .body h4{font-family:var(--mincho);font-weight:700;font-size:18px;margin-bottom:6px}
+  .work .body span{font-size:13px;color:var(--ink-soft)}
+
+  /* ---------- PROCESS ---------- */
+  .flow{border-top:1px solid var(--line)}
+  .step{display:grid;grid-template-columns:90px 1fr auto;gap:28px;align-items:center;padding:30px 0;border-bottom:1px solid var(--line);transition:.4s}
+  .step:hover{padding-left:14px;background:linear-gradient(90deg,rgba(216,65,47,.05),transparent)}
+  .step .n{font-family:var(--serif);font-style:italic;font-size:40px;color:var(--rouge)}
+  .step .t h4{font-family:var(--mincho);font-weight:700;font-size:21px}
+  .step .t p{font-size:14px;color:var(--ink-soft);margin-top:4px;font-weight:500}
+  .step .meta{font-size:12px;letter-spacing:.12em;color:var(--ink-soft);text-transform:uppercase}
+  @media(max-width:680px){.step{grid-template-columns:60px 1fr}.step .meta{display:none}}
+
+  /* ---------- CTA ---------- */
+  .cta{background:var(--ink);color:var(--ivory);border-radius:30px;padding:clamp(48px,7vw,96px);text-align:center;position:relative;overflow:hidden}
+  .cta::before{content:"";position:absolute;inset:0;background:radial-gradient(60% 90% at 50% 130%,rgba(216,65,47,.7),transparent 60%)}
+  .cta-inner{position:relative;z-index:1}
+  .cta h2{font-family:var(--mincho);font-weight:800;font-size:clamp(32px,5.5vw,72px);line-height:1.08;margin-bottom:18px}
+  .cta h2 .it{font-family:var(--serif);font-style:italic;color:var(--blush);font-weight:400}
+  .cta p{color:rgba(242,235,224,.78);max-width:480px;margin:0 auto 38px;font-weight:500}
+  .cta .btn-primary{background:var(--ivory);color:var(--ink);box-shadow:0 14px 40px -10px rgba(0,0,0,.5)}
+  .cta .btn-primary:hover{background:var(--rouge);color:var(--ivory)}
+
+  /* ---------- FOOTER ---------- */
+  footer{padding:70px 0 40px}
+  .foot-top{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:46px}
+  .foot-brand{font-family:var(--serif);font-style:italic;font-size:40px;font-weight:600}
+  .foot-brand b{font-style:normal;font-weight:900}
+  .foot-cols{display:flex;gap:64px;flex-wrap:wrap}
+  .foot-cols h5{font-size:11px;letter-spacing:.16em;color:var(--ink-soft);text-transform:uppercase;margin-bottom:16px}
+  .foot-cols a{display:block;font-size:14px;font-weight:500;padding:5px 0;transition:.3s}
+  .foot-cols a:hover{color:var(--rouge);transform:translateX(3px)}
+  .foot-bot{display:flex;justify-content:space-between;margin-top:50px;font-size:12px;color:var(--ink-soft);flex-wrap:wrap;gap:10px}
+
+  /* ---------- reveal animation ---------- */
+  .reveal{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  .load{opacity:0;transform:translateY(26px);animation:rise .95s cubic-bezier(.2,.75,.2,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .d1{animation-delay:.05s}.d2{animation-delay:.18s}.d3{animation-delay:.31s}.d4{animation-delay:.44s}.d5{animation-delay:.57s}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<header id="hdr">
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="#"><span class="it">il</span> <b>meglio</b><span class="dot">.</span></a>
+      <div class="nav-links">
+        <a href="#service">Service</a>
+        <a href="#works">Works</a>
+        <a href="#flow">Process</a>
+        <a href="#about">About</a>
+      </div>
+      <a href="#contact" class="nav-cta">無料相談する</a>
+      <div class="burger"><span></span><span></span><span></span></div>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow load d1">Beauty × SNS Marketing</span>
+        <h1>
+          <span class="load d1">美しさを、</span><br/>
+          <span class="it load d2">伸びる</span><span class="load d2">数字に。</span>
+        </h1>
+        <p class="hero-sub load d3">il meglio（イルメリオ）は、美容業界に特化したSNSマーケティングカンパニー。ブランドの世界観を磨き上げ、“映え”を「予約」と「売上」へと翻訳します。</p>
+        <div class="hero-actions load d4">
+          <a href="#contact" class="btn-primary">無料でプランを相談 <span class="arr">→</span></a>
+          <a href="#works" class="btn-ghost">実績を見る</a>
+        </div>
+      </div>
+
+      <div class="hero-card load d3">
+        <span class="tag t1">Instagram / TikTok</span>
+        <span class="tag t2">運用代行</span>
+        <span class="glyph">m</span>
+        <div class="metric">
+          <div class="num">+312%</div>
+          <div class="lbl">平均フォロワー成長率 / 6ヶ月</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MARQUEE -->
+    <div class="marquee">
+      <div class="marquee-track">
+        <span>SNS運用代行<i class="x">/</i></span><span>クリエイティブ制作<i class="x">/</i></span><span>インフルエンサー<i class="x">/</i></span><span>広告運用<i class="x">/</i></span><span>ブランディング<i class="x">/</i></span>
+        <span>SNS運用代行<i class="x">/</i></span><span>クリエイティブ制作<i class="x">/</i></span><span>インフルエンサー<i class="x">/</i></span><span>広告運用<i class="x">/</i></span><span>ブランディング<i class="x">/</i></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICE -->
+<section class="sec" id="service">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2><span class="en">What we do</span>美容に、効くマーケティング。</h2>
+      <p>サロン・コスメ・クリニック・エステ。“美”を扱うブランドに必要な施策を、戦略から制作・運用まで一気通貫で。</p>
+    </div>
+    <div class="bento">
+      <div class="card feature reveal">
+        <div><span class="no">01</span><span class="ico">✦</span><h3>SNSアカウント<br/>運用代行</h3></div>
+        <p>戦略設計・投稿企画・撮影・分析までフルサポート。“なんとなく更新”を、勝てる運用へ。</p>
+      </div>
+      <div class="card c-half reveal"><span class="no">02</span><span class="ico">◐</span><h3>クリエイティブ制作</h3><p>リール・縦型動画・バナー。世界観を一貫させる撮影とデザイン。</p></div>
+      <div class="card c-half reveal"><span class="no">03</span><span class="ico">❀</span><h3>インフルエンサー施策</h3><p>美容領域に強いキャスティングとPR設計で“信頼ある拡散”を。</p></div>
+      <div class="card c-half reveal"><span class="no">04</span><span class="ico">↗</span><h3>広告運用</h3><p>Meta / TikTok広告をデータドリブンに最適化し、来店・購入へ。</p></div>
+      <div class="card c-half reveal"><span class="no">05</span><span class="ico">◆</span><h3>ブランディング</h3><p>トーン＆マナー設計で、“選ばれる理由”をビジュアル化。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- WORKS -->
+<section class="sec" id="works" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2><span class="en">Selected works</span>数字で語る、実績。</h2>
+      <p>世界観の構築と運用改善で、フォロワーだけでなく“予約数”を動かしてきました。</p>
+    </div>
+    <div class="works">
+      <div class="work w1 reveal">
+        <div class="vis"><span class="cat">Beauty Salon</span><span class="big">+5.2<sub>x</sub></span></div>
+        <div class="body"><h4>表参道ヘアサロン</h4><span>予約経由DM 5.2倍 / 半年</span></div>
+      </div>
+      <div class="work w2 reveal">
+        <div class="vis"><span class="cat">Cosmetics</span><span class="big">68<sub>k</sub></span></div>
+        <div class="body"><h4>D2Cコスメブランド</h4><span>フォロワー +68,000 / リール起点</span></div>
+      </div>
+      <div class="work w3 reveal">
+        <div class="vis"><span class="cat">Clinic</span><span class="big">+240<sub>%</sub></span></div>
+        <div class="body"><h4>美容クリニック</h4><span>指名来院 前年比 +240%</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FLOW -->
+<section class="sec" id="flow" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2><span class="en">How it works</span>はじめ方は、シンプル。</h2>
+      <p>ヒアリングから運用開始まで最短2週間。伴走しながら、改善し続けます。</p>
+    </div>
+    <div class="flow">
+      <div class="step reveal"><div class="n">01</div><div class="t"><h4>無料ヒアリング</h4><p>現状の課題・目標・ブランドの世界観を丁寧にうかがいます。</p></div><div class="meta">Day 0</div></div>
+      <div class="step reveal"><div class="n">02</div><div class="t"><h4>戦略 & 世界観設計</h4><p>ターゲットとKPIを定義し、トーン＆マナーを構築。</p></div><div class="meta">Week 1</div></div>
+      <div class="step reveal"><div class="n">03</div><div class="t"><h4>制作 & 運用開始</h4><p>撮影・編集・投稿・広告まで実行に移します。</p></div><div class="meta">Week 2</div></div>
+      <div class="step reveal"><div class="n">04</div><div class="t"><h4>分析 & 改善</h4><p>数値レポートと定例MTGで、PDCAを高速に回します。</p></div><div class="meta">Monthly</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="sec" id="contact" style="padding-top:0">
+  <div class="wrap">
+    <div class="cta reveal">
+      <div class="cta-inner">
+        <h2>その美しさ、<br/><span class="it">ちゃんと</span>届いていますか？</h2>
+        <p>まずは無料相談から。あなたのブランドに最適なSNS戦略を、その場でご提案します。</p>
+        <a href="#" class="btn-primary">無料相談を予約する <span class="arr">→</span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer id="about">
+  <div class="wrap">
+    <div class="foot-top">
+      <div>
+        <div class="foot-brand"><span style="font-style:italic">il</span> <b>meglio</b><span style="color:var(--rouge)">.</span></div>
+        <p style="max-width:320px;margin-top:16px;color:var(--ink-soft);font-size:14px;font-weight:500">美容に特化したSNSマーケティングカンパニー。“最高”を、あなたのブランドに。</p>
+      </div>
+      <div class="foot-cols">
+        <div><h5>Service</h5><a href="#service">SNS運用代行</a><a href="#service">クリエイティブ制作</a><a href="#service">広告運用</a><a href="#service">ブランディング</a></div>
+        <div><h5>Company</h5><a href="#about">私たちについて</a><a href="#works">実績</a><a href="#contact">お問い合わせ</a><a href="#">採用情報</a></div>
+        <div><h5>Follow</h5><a href="#">Instagram</a><a href="#">TikTok</a><a href="#">X</a><a href="#">note</a></div>
+      </div>
+    </div>
+    <div class="foot-bot">
+      <span>© 2026 il meglio inc. All rights reserved.</span>
+      <span>Renewal concept — designed for il-meglio.net</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // sticky nav state
+  const hdr=document.getElementById('hdr');
+  addEventListener('scroll',()=>hdr.classList.toggle('scrolled',scrollY>30),{passive:true});
+  // scroll reveal with stagger
+  const io=new IntersectionObserver((es)=>{
+    es.forEach((e,i)=>{if(e.isIntersecting){setTimeout(()=>e.target.classList.add('in'),i*70);io.unobserve(e.target);}});
+  },{threshold:.16});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>
