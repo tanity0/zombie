@@ -23,7 +23,7 @@ import {
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
-  WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
+  WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS
 } from '../store/gameStore';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -166,6 +166,9 @@ const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
 const MAX_ENEMIES = 10;
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
+// 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
+// 画面の半分+この余白を超えたら確実に画面外なので home へ復帰させる。
+const LAB_RETURN_HOME_MARGIN = 140;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
@@ -224,6 +227,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const turretFireRef = useRef<Map<string, number>>(new Map());
   // ドローンブーメラン停止中の周囲パルス: boomerang id -> 次パルスの gameTime(ms)。
   const boomPulseRef = useRef<Map<string, number>>(new Map());
+  // ワイヤーダッシュ着地の近接攻撃を1ダッシュにつき1回だけ発火させるためのマーカー
+  // (処理済みの wireDashUntil を覚える。常に増加するタイムスタンプなので衝突しない)。
+  const wireLandedDashRef = useRef(0);
   // 前方集中(連射)タレットの索敵スキャン角(rad)。射程に敵がいない間ゆっくり回転する。
   const turretAimRef = useRef<Map<string, number>>(new Map());
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
@@ -2445,7 +2451,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const gunKillDropRate = Math.max(0, Math.min(1,
                 useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0)
               ));
-              if (Math.random() < gunKillDropRate) {
+              // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
+              if (!indoor && Math.random() < gunKillDropRate) {
                 const equippedAmmo = getActiveGun(player)?.ammoType;
                 const owned = getGuns(player)
                   .map(w => w.ammoType)
@@ -2572,6 +2579,39 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const nowW = Date.now();
           const pcx = wp.x + wp.width / 2;
           const pcy = wp.y + wp.height / 2;
+          // ワイヤーダッシュ着地: 到着フレームで1回だけ、周囲へ近接攻撃(2倍ノックバック)。
+          // wireDashUntil は常に増加するタイムスタンプなので、処理済みの値を覚えて重複発火を防ぐ。
+          if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current !== wp.wireDashUntil) {
+            wireLandedDashRef.current = wp.wireDashUntil;
+            const melee = wp.weapons.find(w => w.isMelee);
+            const dmg = melee?.damage ?? 6;
+            const hits = useGameStore.getState().enemies.filter(e => {
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              return Math.hypot(ecx - pcx, ecy - pcy) <= MELEE_RADIUS + Math.max(e.width, e.height) / 2;
+            });
+            let landedAny = false;
+            hits.forEach(e => {
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              const dx = ecx - pcx, dy = ecy - pcy;
+              const dist = Math.hypot(dx, dy) || 1;
+              const killed = useGameStore.getState().damageEnemy(e.id, dmg);
+              landedAny = true;
+              if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
+                useGameStore.setState({
+                  enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
+                    ...x,
+                    knockbackVx: (dx / dist) * WIRE_LAND_KNOCKBACK_SPEED,
+                    knockbackVy: (dy / dist) * WIRE_LAND_KNOCKBACK_SPEED,
+                    knockbackUntil: nowW + KNOCKBACK_DURATION,
+                    knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
+                  } : x),
+                });
+              }
+            });
+            spawnRing(pcx, pcy, 8, MELEE_RADIUS, 'rgba(147,197,253,0.9)', 4, 320);
+            spawnBurst(pcx, pcy, '#93c5fd', landedAny ? 18 : 10);
+            playSfx('melee');
+          }
           if (wp.wireStuckEnemyId) {
             // 敵に吸着中: 0.1秒で引き寄せ → 近接ダメージ → 大幅ノックバック。
             const liveE = useGameStore.getState().enemies.find(e => e.id === wp.wireStuckEnemyId);
@@ -2647,6 +2687,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         playerEnemyCollisions.forEach(enemy => {
           if (wireDashingNow) return;
+          // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は、ぶつかってもプレイヤーは被弾しない。
+          if (enemy.aiPhase === 'jump') return;
           const damageWasApplied = !player.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
@@ -3045,8 +3087,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const enemyCenterY = enemy.y + enemy.height / 2;
           const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
           const waveProtected = enemy.isWave && gameTime - (enemy.spawnedAt ?? 0) < WAVE_GRACE_MS;
-          // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。
-          if (enemy.fixed || distFromPlayer <= recycleDistance || waveProtected) return enemy;
+          // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。ただし「画面外に出たら最初の
+          // 定位置へ戻して再休眠」する(社長指示)。プレイヤーは常に画面中心なので、画面の半分+
+          // 余白を超えたら画面外と判定。
+          if (enemy.fixed) {
+            if (
+              indoor && !enemy.dormant &&
+              enemy.homeX !== undefined && enemy.homeY !== undefined &&
+              (Math.abs(enemyCenterX - playerCenterX) > gameBounds.width / 2 + LAB_RETURN_HOME_MARGIN ||
+               Math.abs(enemyCenterY - playerCenterY) > gameBounds.height / 2 + LAB_RETURN_HOME_MARGIN)
+            ) {
+              recycledAnyEnemy = true;
+              return {
+                ...enemy,
+                x: enemy.homeX, y: enemy.homeY, vx: 0, vy: 0,
+                dormant: true,
+                aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+                aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+                aiReadyAt: undefined,
+                knockbackUntil: undefined, knockbackVx: undefined, knockbackVy: undefined,
+              };
+            }
+            return enemy;
+          }
+          if (distFromPlayer <= recycleDistance || waveProtected) return enemy;
 
           const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
           const replacement = generateEnemy(

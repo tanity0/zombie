@@ -1,5 +1,5 @@
 // 屋内ステージ「研究施設」(ステージ2)= グリッド文字マップ＋パーサ方式(迷路化・拡大・敵ゾーン制)。
-// 1文字=1セル(CELL=140px=通路幅/部屋の広さは従来据え置き)。マップを編集すれば迷路が変わる。
+// 1文字=1セル(列=CELL_W px・行=CELL_H px の横長セル)。マップを編集すれば迷路が変わる。
 //   #=壁 / .=床(通路・部屋) / 空白=外(壁扱い)
 //   P=初期位置 / M=武器商人 / K=カードキー / B=ボタン / W=武器箱 / X=クリアアイテム
 //   d=武器庫の扉(weaponRoom・ボタンで解錠) / g=ゴールの扉(goal・カードキーで解錠)
@@ -8,7 +8,10 @@
 import { rectsOverlap, type Rect } from './obstacles';
 import type { EnemyType, LabProp } from '../types/game';
 
-const CELL = 140; // 1セルの実寸(px)。従来の通路幅と同じ。
+// セルは横長・縦短(社長指示: 部屋を横長に、その分縦を短く。縦の廊下は短く、横の廊下は長く)。
+// 列方向(x)= CELL_W、行方向(y)= CELL_H。面積は従来(140²)とほぼ同等に保つ。
+const CELL_W = 180; // 列幅(px)。大きいほど部屋が横長・横通路が長い。
+const CELL_H = 110; // 行高(px)。小さいほど部屋が縦に短い・縦通路が短い。
 
 // 4(列)×3(行)の部屋格子＋曲がり通路。スポーン=左下(P,M) / ゴール=右上(X・最遠・小・敵なし、手前にg+Lv3)。
 // 武器庫(W)はボタン(B)で開くd扉の奥(右下)。カードキー(K)は左上の枝部屋。距離で敵Lvを配分。
@@ -25,7 +28,7 @@ const MAP: string[] = [
   '##.#########.####.####.####.##', // 5
   '##.#########.####d####.####.##', // 6 d=武器庫扉(ボタンで解錠)
   '#...##1..##1..##..2##..2##..2#', // 7 下段: スポーン / 部屋… (右ほど高Lv)
-  '#.M..........................#', // 8 メインの横通路(左右に長い射線)
+  '#.M.......1.........1........#', // 8 メインの横通路(左右に長い射線)+ 廊下敵Lv1×2
   '#.P.##..1##..2##2..##2..##2..#', // 9 P/M=スポーン(左)
   '##############################', // 10
   '##############################', // 11 外周
@@ -33,10 +36,10 @@ const MAP: string[] = [
 
 const ROWS = MAP.length;
 const COLS = MAP[0].length;
-const center = (col: number, row: number) => ({ x: col * CELL + CELL / 2, y: row * CELL + CELL / 2 });
-const cellRect = (col: number, row: number): Rect => ({ x: col * CELL, y: row * CELL, width: CELL, height: CELL });
+const center = (col: number, row: number) => ({ x: col * CELL_W + CELL_W / 2, y: row * CELL_H + CELL_H / 2 });
+const cellRect = (col: number, row: number): Rect => ({ x: col * CELL_W, y: row * CELL_H, width: CELL_W, height: CELL_H });
 
-export const LAB_BOUNDS: Rect = { x: 0, y: 0, width: COLS * CELL, height: ROWS * CELL };
+export const LAB_BOUNDS: Rect = { x: 0, y: 0, width: COLS * CELL_W, height: ROWS * CELL_H };
 
 // 外周の「野外」マージン(端でもプレイヤーが画面中心を保てる)。カメラはこの外周にクランプ。
 export const LAB_MARGIN = 720;
@@ -68,7 +71,7 @@ const buildWalls = (): Rect[] => {
         h++;
       }
       for (let dr = 0; dr < h; dr++) for (let dc = 0; dc < w; dc++) used[r + dr][c + dc] = true;
-      rects.push({ x: c * CELL, y: r * CELL, width: w * CELL, height: h * CELL });
+      rects.push({ x: c * CELL_W, y: r * CELL_H, width: w * CELL_W, height: h * CELL_H });
     }
   }
   return rects;
@@ -131,7 +134,7 @@ const ROOM_CELLS: [number, number, number, number][] = [
   [26, 7, 28, 9],
 ];
 const roomRect = ([c0, r0, c1, r1]: [number, number, number, number]): Rect => ({
-  x: c0 * CELL, y: r0 * CELL, width: (c1 - c0 + 1) * CELL, height: (r1 - r0 + 1) * CELL,
+  x: c0 * CELL_W, y: r0 * CELL_H, width: (c1 - c0 + 1) * CELL_W, height: (r1 - r0 + 1) * CELL_H,
 });
 export const LAB_ROOMS: { id: string; rect: Rect }[] = ROOM_CELLS.map((rc, i) => ({ id: `room-${i}`, rect: roomRect(rc) }));
 
@@ -163,9 +166,10 @@ export const LAB_ENEMIES: { type: EnemyType; x: number; y: number; aggroRange: n
 // UVライトバー(松明と同じ扱い=破壊可能。当たり判定なし)。各部屋の上部中央に1本。
 export const LAB_UV_BARS = LAB_ROOMS.map(rm => ({ x: rm.rect.x + rm.rect.width / 2, y: rm.rect.y + 56 }));
 
-// PHILL弾の固定ピックアップ(研究所限定)。通路要所に手置き。1個=6発(AMMO_PICKUP.phill)。
+// PHILL弾の固定ピックアップ(研究所限定)。通路要所に手置き=ステージ中3箇所のみ(通常ドロップ無し)。
+// 1個=6発(AMMO_PICKUP.phill)。近接フィニッシュのドロップは別経路でそのまま。
 export const LAB_AMMO_PICKUPS = [
-  center(7, 7), center(12, 8), center(17, 8), center(22, 8),
+  center(7, 8), center(16, 8), center(25, 8),
 ];
 
 // 弾/近接の壁判定用: 現在通行不可な壁矩形(固定壁 + 閉ドア)を返す。

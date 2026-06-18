@@ -51,6 +51,7 @@ const GameHUD: React.FC = () => {
     ammoHandgun: s.player.ammoHandgun,
     ammoShotgun: s.player.ammoShotgun,
     ammoRifle: s.player.ammoRifle,
+    ammoPhill: s.player.ammoPhill,
     subWeapons: s.player.subWeapons,
     subWeaponLevels: s.player.subWeaponLevels,
     straps: s.player.straps,

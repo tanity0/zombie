@@ -245,15 +245,26 @@ export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カ�
 
 // ---- ワイヤーアンカー(移動系サブウェポン) ------------------------------------
 // 装備中、前方(ショットガン射程くらい)に青サークルを常時表示。指離しでアンカー打ち込み開始
-// (WIRE_PLANT_MS=1秒)、完了後 WIRE_WINDOW_MS(~1秒)以内の追加タップでアンカー地点へ高速移動。
-// 高速移動中は敵接触ダメージ無効(敵弾は通る/敵にダメージ・ノックバックなし)。CD はレベルで短縮。
+// (WIRE_PLANT_MS=0.1秒で発射)、完了後の追加タップでアンカー地点へ高速移動。着地時に周囲へ
+// 近接攻撃(2倍ノックバック)。高速移動中は敵接触ダメージ無効。CD は全Lv 1秒(クールダウン中はサークル非表示)。
 export const WIRE_ANCHOR_RANGE = 110;   // 青サークル距離(飛距離。全レベル共通=半分に短縮)
-export const WIRE_PLANT_MS = 300;       // 打ち込み(先端が飛んで刺さるまで)=0.3秒。刺さると高速移動可。
+// アナログスティックの傾き強度(swipeStrength: 0..1)で、移動速度と狙い距離を可変にする。
+// 強度0(デッドゾーン直上)でも完全停止にはせず、最低係数だけ残す(操作不能を避ける)。
+// キャラ移動: 弱い傾き=ゆっくり歩く(最低 STICK_WALK_MIN_FACTOR 倍)。
+// 狙い距離(ワイヤーアンカー/PHILLレティクル): 弱い傾き=近く(最低 STICK_AIM_MIN_FACTOR 倍)。
+export const STICK_WALK_MIN_FACTOR = 0.20; // 歩行速度の最低倍率(強度0時。弱タッチ=さらにゆっくり)
+export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度0時)
+// 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
+export const stickAimFactor = (strength: number) =>
+  STICK_AIM_MIN_FACTOR + (1 - STICK_AIM_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
+export const WIRE_PLANT_MS = 100;       // 打ち込み(先端が飛んで刺さるまで)=0.1秒で発射。刺さると高速移動可。
 export const WIRE_DASH_MS = 200;        // 高速移動の所要時間
-export const WIRE_COOLDOWN_BY_LEVEL = [0, 2000, 1000, 0] as const; // Lv1=2s / Lv2=1s / Lv3=0s
+export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 全Lv共通=1秒(発射が速い代わり)
 // 敵に刺さった時(発火ナイフ風吸着): 0.1秒で敵を引き寄せ→近接ダメージ→大幅ノックバック。
 export const WIRE_STICK_MS = 100;       // 引き寄せ時間(0.1秒)
 export const WIRE_KNOCKBACK_SPEED = 1100; // 大幅ノックバックの初速(px/s)
+// ワイヤーダッシュ着地時の近接攻撃: 通常近接の2倍ノックバック。
+export const WIRE_LAND_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 2;
 
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 // 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。
@@ -588,6 +599,9 @@ const treasureValueForRank = (rank?: DifficultyRank): number => {
 };
 const treasureVariantForValue = (value: number): number =>
   TREASURE_VARIANTS_BY_RARITY[Math.max(0, Math.min(TREASURE_VARIANTS_BY_RARITY.length - 1, value - 1))];
+// 研究所(屋内)の武器庫(weapon-crate)はトレジャー+スクラップのみ(武器は出さない)。
+// 1回限りのロック部屋報酬なので価値はやや高め(=スコア treasureValue*10000)。
+const LAB_CRATE_TREASURE_VALUE = 3;
 const treasureNameForVariant = (variant?: number): string => {
   switch (variant) {
     case 1: return 'ニケ像';
@@ -812,6 +826,9 @@ interface GameState {
   upgradeOptions: UpgradeOption[];
   inputState: InputState;
   swipeDirection: { x: number; y: number } | null;
+  // スティックの傾き強度(0..1)。離しても直前値を保持(lastDirection と同様)。
+  // 既定 1 = 最大(キーボードや未操作はフル速度・最大距離)。
+  swipeStrength: number;
   touchActive: boolean;
   gameBounds: GameBounds;
   gameStats: GameStats;
@@ -851,7 +868,7 @@ interface GameState {
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
-  setSwipeDirection: (direction: { x: number; y: number } | null) => void;
+  setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
   damagePlayer: (amount: number) => boolean;
@@ -1120,6 +1137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   upgradeOptions: [],
   inputState: { up: false, down: false, left: false, right: false },
   swipeDirection: null,
+  swipeStrength: 1,
   touchActive: false,
   gameBounds: { width: 800, height: 600 },
   gameStats: {
@@ -1156,7 +1174,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Player actions
   movePlayer: (input, deltaTime) => {
     set(state => {
-      const { player, gameBounds, swipeDirection, breakableProps, castleEvent } = state;
+      const { player, gameBounds, swipeDirection, swipeStrength, breakableProps, castleEvent } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine');
       void gameBounds; // World is effectively infinite — no clamp.
 
@@ -1211,11 +1229,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const tlen = Math.hypot(tx, ty);
       if (tlen > 0) { tx /= tlen; ty /= tlen; }
 
+      // タッチ歩行のみアナログ速度: スティックの傾きが弱いとゆっくり歩く。
+      // キーボードと特殊ロコモーション(ダッシュ等)はフル速度(speedScale=1)。
+      const speedScale =
+        swipeDirection && !wireDashing && !dashing && !recovering && !sliding
+          ? STICK_WALK_MIN_FACTOR + (1 - STICK_WALK_MIN_FACTOR) * Math.max(0, Math.min(1, swipeStrength))
+          : 1;
+
       // Inertia: ease the velocity toward the target. Player tau is 0 → fully
       // instant, responsive control.
       const alpha = inertiaAlpha(deltaTime, PLAYER_INERTIA_TAU);
-      const vx = player.vx + (tx * moveSpeed - player.vx) * alpha;
-      const vy = player.vy + (ty * moveSpeed - player.vy) * alpha;
+      const vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
+      const vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
 
       // 壁解決。屋内は labMap の壁(+閉ドア)のみ。屋外は従来の木/トーチ/城。
       let newX: number;
@@ -1287,8 +1312,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   
-  setSwipeDirection: (direction) => {
-    set({ swipeDirection: direction });
+  setSwipeDirection: (direction, strength) => {
+    // 強度は省略時は据え置き(離した瞬間は方向 null だけ更新し、直前の強度を保持)。
+    // → 1回の set() に畳み込み、毎フレームの set() 追加を避ける(CLAUDE.md)。
+    set(strength != null ? { swipeDirection: direction, swipeStrength: strength } : { swipeDirection: direction });
   },
 
   setTouchActive: (active) => {
@@ -1309,7 +1336,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const {
       player, gameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
-      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
+      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors, swipeStrength
     } = get();
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -1397,8 +1424,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 指離し → 前方の青サークル地点へ「即座に」アンカー打ち込み(ワイヤー表示)。溜(WIRE_PLANT_MS)後に移動可。
         const dir = player.lastDirection ?? { x: 1, y: 0 };
         const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
-        const ax = pcx + (dir.x / dmag) * WIRE_ANCHOR_RANGE;
-        const ay = pcy + (dir.y / dmag) * WIRE_ANCHOR_RANGE;
+        // 傾き強度で飛距離を可変(最大=WIRE_ANCHOR_RANGE)。ダッシュ速度は飛距離から
+        // 算出される(上の armed 分岐)ので、短い狙いは自動で短く遅いダッシュになる。
+        const reach = WIRE_ANCHOR_RANGE * stickAimFactor(swipeStrength);
+        const ax = pcx + (dir.x / dmag) * reach;
+        const ay = pcy + (dir.y / dmag) * reach;
         set(s => ({
           player: {
             ...s.player,
@@ -1451,6 +1481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: true,
         touchActive: false,
         swipeDirection: null,
+        swipeStrength: 1,
         player: {
           ...player,
           counterWindowEnd: now + COUNTER_WINDOW,
@@ -1479,6 +1510,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: true,
         touchActive: false,
         swipeDirection: null,
+        swipeStrength: 1,
         player: {
           ...player,
           counterWindowEnd: now + COUNTER_WINDOW,
@@ -2967,7 +2999,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       showShopMenu: true,
       isPaused: true,
       touchActive: false,
-      swipeDirection: null
+      swipeDirection: null,
+      swipeStrength: 1
     });
   },
 
@@ -2984,7 +3017,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       showEventQuestMenu: true,
       isPaused: true,
       touchActive: false,
-      swipeDirection: null
+      swipeDirection: null,
+      swipeStrength: 1
     });
   },
 
@@ -3039,7 +3073,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       const enemy = enemies.find(e => e.id === id);
       
       if (!enemy) return { enemies };
-      
+
+      // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は無敵。被弾もヒット表示もしない。
+      // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
+      if (enemy.aiPhase === 'jump') return { enemies };
+
       const newHealth = Math.max(0, enemy.health - amount);
       const updatedEnemies = enemies.map(e => 
         e.id === id ? { ...e, health: newHealth, lastHit: Date.now() } : e
@@ -3148,7 +3186,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
 
         // 犬型(werewolf)突進AI: ハンドガン射程より少し外で減速(溜め)→開始時のプレイヤー位置へ2倍速で突進。
-        if (enemy.type === 'werewolf') {
+        // 研究所Lv2(lab-zombie-2)も犬と同じ突進挙動(社長指示)。
+        if (enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2') {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
@@ -3675,8 +3714,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (pickup.weaponKey) get().grantWeapon(pickup.weaponKey);
         break;
       case 'weapon-crate':
-        // Open the crate: roll a gun by category & tier and equip it.
-        get().grantWeapon(openCrate(get().gameTime));
+        if (get().indoorMode) {
+          // 研究所の武器庫: 武器は出さず、トレジャー+スクラップのみ。
+          get().addPickup({
+            id: `pickup-treasure-crate-${pickup.id}`,
+            x: pickup.x,
+            y: pickup.y,
+            type: 'treasure',
+            value: LAB_CRATE_TREASURE_VALUE,
+            variant: treasureVariantForValue(LAB_CRATE_TREASURE_VALUE)
+          });
+        } else {
+          // 屋外: 従来どおりカテゴリ&ティアで銃を抽選して装備。
+          get().grantWeapon(openCrate(get().gameTime));
+        }
         strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
           .forEach((value, index) => {
             get().addPickup({
@@ -4551,7 +4602,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : [];
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
-        ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0 }))
+        ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
         : [];
       // 屋内ギミックの初期ピックアップ: カードキー(E部屋)+ 武器箱(A部屋・ボタン解錠後に到達)
       // + クリア条件アイテム(C部屋=ゴール・カードキーで扉解錠後に到達。拾うとクリア)。
@@ -4674,6 +4725,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         upgradeOptions: [],
         touchActive: false,
         swipeDirection: null,
+        swipeStrength: 1,
         gameStats: {
           timeAlive: 0,
           enemiesKilled: 0,

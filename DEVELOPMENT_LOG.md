@@ -11882,70 +11882,52 @@ swallows missing/undecodable buffers).
 - User wants Codex and Claude Code to hand off development through this log.
 - Development environment is `/Users/tanity/zombie`, not `/Users/tanity/AI_MEGLIO`.
 - If a sound feels late or quiet, tune `SFX_SOURCES` in `src/audio/audioManager.ts`.
+## v0.25.498 — アナログスティック強度で移動速度・狙い距離を可変化 (2026-06-17)
+
+### 概要
+フローティングジョイスティックの傾き強度(これまで方向だけ使い大きさは破棄していた)を
+`swipeStrength`(0..1)として活用。従来の固定距離を「最大」とし、傾きが弱いほど近く/遅く。
+- キャラ移動(タッチのみ・全ステージ): 弱い傾き=ゆっくり歩く(最低 `STICK_WALK_MIN_FACTOR` 倍)。
+- ワイヤーアンカー飛距離・PHILLレティクル/プレビュー距離も同係数で可変(描画/距離のみ。弾は直進)。
+- 後続: 歩行下限 0.35→0.20(v0.25.499) / PHILL残弾HUD修正・ラボ武器庫・ラボ時間スコア・照準なめらか化
+  (v0.25.500) / ジャンプ攻撃中の無敵(v0.25.501) / ワイヤー着地2倍ノックバック・0.1s発射・CD1s(v0.25.502)
+  / ラボLv2=犬AI・図面比率・廊下敵・PHILL3箇所・画面外復帰(v0.25.503)。
+
+### 負荷スコア
+1/10〜(各項目とも軽微。詳細は各コミットメッセージ参照)。
+
+### Code touched
+- `src/store/gameStore.ts` / `src/components/VirtualJoystick.tsx` / `src/components/GameHUD.tsx`
+- `src/components/GameOverScreen.tsx` / `src/utils/resultScoring.ts` / `src/hooks/useGameLoop.ts`
+- `src/world/labMap.ts` / `src/types/game.ts` / `src/pixi/pixiScene.ts`
+
+### Verification
+- `npm run lint` / `npm run build`
 
 ## v0.25.504 — 研究所 描画刷新 Phase A(床テクスチャ/変種散布/隅AO/壁落ち影) (claude/cool-edison-7b8jrl)
 
 ### 概要
 作戦書(moonlit-bubbling-avalanche.md)の実装ハンドオフ Phase A。描画のみ・当たり判定/屋外は不変。
-- `pixiTextures.ts`: 新ドット絵タイルを scaleMode:'nearest' で登録
-  (lab-floor/lab-floor-clean/-blood/-grime/-crack/-scorch/-ao、lab/lab-wall-front/-top/-wall2-panel/-wall2-beam)。
-- `pixiScene.ts::syncLab()`: 床ベースを `lab-floor-clean` に差し替え、tileScale を 300→120 に縮小して
-  ドット絵が読める粒度に。`LAB_ENV_TINT` を 0x4f5a6b→0x6b7686 と弱め、床のディテールを出す。
-- `buildLabFloorDecor()`(新規): `LAB_ROOMS` 各部屋をタイル格子で走査し、`treeHash` 流の決定的ハッシュで
-  ~28%のセルに変種(grime/crack/blood/scorch)を疎に散布＋四隅に -ao スタンプ。**部屋集合は静的なので
-  シグネチャで1度だけ生成**(毎フレーム作り直さない)。
-- 壁の焼き込み落ち影 `labWallShadow`(新規): 右上光源→左下オフセットの暗色矩形2層を LAB_WALLS＋閉ドアに敷く。
-  壁/扉シグネチャで再構築。床/変種の上・壁の下に配置(z順は getChildIndex 相対挿入で堅牢化)。
+- `pixiTextures.ts`: 新ドット絵タイルを scaleMode:'nearest' で登録(lab-floor clean/blood/grime/crack/scorch/ao、
+  lab/lab-wall-front/-top/-wall2-panel/-wall2-beam)。
+- `syncLab()`: 床ベースを lab-floor-clean に、tileScale 300→120、`LAB_ENV_TINT` 0x4f5a6b→0x6b7686。
+- `buildLabFloorDecor()`: 各部屋に treeHash 決定的散布(~28%セルに変種)＋四隅 -ao。シグネチャで1度だけ生成。
+- 壁の焼き込み落ち影 `labWallShadow`: 右上光源→左下オフセット。壁/扉シグネチャで再構築。
 
 ### 負荷スコア
-**2/10**(rendering)。生成物はすべて静的・シグネチャでゲートし1度だけ構築(変種スプライト~30＋AO~48＋
-影矩形~数十、いずれも毎フレーム再生成しない)。毎フレームのコストは既存と同じ可視制御のみ。安全策=配置が
-変わらない限り再構築なし、扉開閉時のみ影/壁を作り直す。
-
-### Code touched
-- `src/pixi/pixiTextures.ts`
-- `src/pixi/pixiScene.ts`
-- `package.json`
-- `DEVELOPMENT_LOG.md`
-
-### Verification
-- `npm run lint` / `npm run build` 通過。
-- 実機/dev 確認推奨: 研究所の床にドット絵タイル＋部屋ごとの汚し/ひび/血/焦げパッチ、隅の陰、壁の左下落ち影。
-  屋外ステージは不変・当たり判定不変。
-
-### 次の Phase
-- Phase B: `addWall` を縦横統一の立体規約へ(foot-anchored Container＋前面 lab-wall-front＋上端 lab-wall-top、
-  zIndex=footY、RISE 控えめ＋?labrise= 化、装飾壁 lab-wall2-* は要所のみ)。
+2/10(rendering)。静的・シグネチャゲートで1度だけ構築。
 
 ## v0.25.505 — 研究所 描画刷新 Phase B(壁の立体規約統一) (claude/cool-edison-7b8jrl)
 
 ### 概要
-作戦書 Phase B。描画のみ・当たり判定/屋外は不変。`syncLab()` の壁生成を縦横統一の立体規約へ。
-- 迷路の内壁: 各矩形を **foot-anchored Container** として `actorLayer` に配置、`zIndex=footY`(下辺)で
-  深度ソート → プレイヤー/敵が壁の北(上)側へ回り込める。**背の高い壁は SEG=160px で Y方向スライス**し、
-  各スライスを自分の footY でソート(長い壁でも前後が破綻しない)。
-- 各ブロック=不透明下地＋前面 `lab-wall-front`(左右シームレス・縦に伸ばしてタイル)＋上端 `lab-wall-top`
-  キャップ。立ち上がり高さ `LAB_WALL_RISE`(既定38)は **?labrise= で実機調整可**。
-- **外周リング(マップ境界・暗い野外)**は従来どおりアクター下に平面で敷く(回り込み不要・枚数が多い=軽量)。
-  内/外判定は LAB_BOUNDS 端への接触で分岐。
-- 装飾窓壁 `lab-wall2-panel` は「広い横壁(幅≥360)の約半数」を決定的ハッシュで選び前面に採用(=要所のみ)。
-- 落ち影(Phase A)は同じ壁シグネチャ＋?labrise で再構築。
+`syncLab()` の壁を縦横統一の立体規約へ。内壁=foot-anchored Container(actorLayer・zIndex=footY)、背の高い壁は
+SEG=160px で Y方向スライス。前面 lab-wall-front＋上端 lab-wall-top キャップ。立ち上がり `LAB_WALL_RISE`(既定38、
+?labrise= 可)。外周リングは平面据え置き。装飾窓壁 lab-wall2-panel は広い横壁(≥360)の約半数(要所のみ)。
 
 ### 負荷スコア
-**3/10**(rendering)。壁ブロックは扉開閉/?labrise 変更時のみ再構築(シグネチャゲート)。actorLayer の
-ソート対象が内壁スライス分(概算 数十〜百)増えるが、ソートは O(n log n) で軽微・描画は単純 tint タイル。
-外周リングを平面据え置きにして枚数を抑制。安全策=配置不変なら再構築なし/外周は据え置き。
-※モバイル実機で枚数が重い場合は SEG を上げる(スライス減)・装飾壁を減らすで軽量化可能。
+3/10(rendering)。扉開閉/?labrise 時のみ再構築。外周平面据え置きで枚数抑制。
 
-### Code touched
-- `src/pixi/pixiScene.ts`(壁生成ブロック刷新 / `LAB_WALL_RISE` 追加)
-- `package.json` / `DEVELOPMENT_LOG.md`
-
-### Verification
-- `npm run lint` / `npm run build` 通過。
-- 実機/dev 確認推奨: 内壁が立体(前面＋上端キャップ)になり、プレイヤーが壁の上端側へ回り込むと前後が
-  入れ替わること / 長い壁でもソート破綻が無いこと / 広い横壁の一部が窓パネルになること / 外周は従来どおり。
-  `?labrise=` で立ち上がり高さを調整。
-
-### 次の Phase
-- Phase C: 部屋の光だまり/UVバー発光＋破壊消灯/天井シャフト/埃モート/屋内専用グレード(点滅・赤は有界・低頻度)。
+## v0.25.506 — マージ: 描画(Phase A/B) ＋ ゲーム調整(v0.25.498〜503) 統合 (claude/cool-edison-7b8jrl)
+chat-context のゲーム調整(アナログ歩行/PHILL残弾/ワイヤー/ジャンプ無敵/ラボ敵AI・地形・スコア等)を
+cool-edison にマージし、研究所描画 Phase A/B と1本に統合。競合は pixiScene.ts(import)/package.json/本ログのみ。
+gameStore・useGameLoop・GameHUD 等のゲーム調整はクリーンに合流。lint/build 通過。

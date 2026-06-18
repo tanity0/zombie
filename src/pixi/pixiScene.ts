@@ -18,7 +18,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS, stickAimFactor } from '../store/gameStore';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
@@ -532,6 +532,11 @@ export class PixiScene {
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
+  // PHILL照準サークルの「プレイヤー中心からのオフセット」を毎フレームなめらかに追従させる。
+  // (スティック操作にカクッと追従せず少し遅れて動く=見た目のみ。弾道は store の direction を直進)
+  private aimReticleOffX = 190;
+  private aimReticleOffY = 0;
+  private aimReticleInit = false;
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
 
@@ -4220,16 +4225,17 @@ export class PixiScene {
         // ワイヤー線(穴→プレイヤー)。単独の moveTo→lineTo→stroke(飛ぶにつれ伸びる)。
         const lineAlpha = dashing ? 0.85 : charging ? 0.6 : 0.7;
         g.moveTo(hx, hy).lineTo(cx, cy).stroke({ width: 2.5, color: 0x93c5fd, alpha: lineAlpha });
-      } else if (!player.wireAnchored && !dashing) {
-        // 待機(アンカー未設置): 前方(現在/最後の移動方向)に青サークルプレビュー。CD中は薄く。線は引かない。
+      } else if (!player.wireAnchored && !dashing && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
+        // 待機(アンカー未設置・CD明け): 前方(現在/最後の移動方向)に青サークルプレビュー。
+        // クールダウン中はサークル自体を非表示にする(撃てないことを明示)。線は引かない。
         const dir = player.lastDirection ?? { x: 1, y: 0 };
         const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
-        const px = cx + (dir.x / dl) * WIRE_ANCHOR_RANGE;
-        const py = cy + (dir.y / dl) * WIRE_ANCHOR_RANGE;
-        const onCd = gameTime < (player.subWeaponCooldowns['wire-anchor'] ?? 0);
-        const a = onCd ? 0.16 : 0.7;
-        g.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: a });
-        g.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: a });
+        // 傾き強度で狙い距離を可変(描画のみ。実際の飛距離は store 側で同係数を適用)。
+        const reach = WIRE_ANCHOR_RANGE * stickAimFactor(useGameStore.getState().swipeStrength);
+        const px = cx + (dir.x / dl) * reach;
+        const py = cy + (dir.y / dl) * reach;
+        g.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: 0.7 });
+        g.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: 0.7 });
       }
     }
     // PHILL銃: アクティブ銃が phill-revolver のとき、狙いサークル(赤橙レティクル)を前方に表示。
@@ -4239,9 +4245,18 @@ export class PixiScene {
       if (phill?.key === 'phill-revolver') {
         const dir = player.lastDirection ?? { x: 1, y: 0 };
         const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
-        const PHILL_AIM_RANGE = 190;
-        const ax = cx + (dir.x / dl) * PHILL_AIM_RANGE;
-        const ay = cy + (dir.y / dl) * PHILL_AIM_RANGE;
+        // 傾き強度でレティクル距離を可変(見た目のみ。弾は従来どおり狙い方向へ直進)。
+        const PHILL_AIM_RANGE = 190 * stickAimFactor(useGameStore.getState().swipeStrength);
+        // 目標オフセット(プレイヤー中心基準)。これへ向けて毎フレームイージングし、
+        // 照準サークルが少し遅れてなめらかに動くようにする(初回だけ即スナップ)。
+        const targetOffX = (dir.x / dl) * PHILL_AIM_RANGE;
+        const targetOffY = (dir.y / dl) * PHILL_AIM_RANGE;
+        const ease = this.aimReticleInit ? 0.15 : 1;
+        this.aimReticleInit = true;
+        this.aimReticleOffX += (targetOffX - this.aimReticleOffX) * ease;
+        this.aimReticleOffY += (targetOffY - this.aimReticleOffY) * ease;
+        const ax = cx + this.aimReticleOffX;
+        const ay = cy + this.aimReticleOffY;
         const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
         const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
         const a = (onCd || reloading) ? 0.2 : 0.85;
