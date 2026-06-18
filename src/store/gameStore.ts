@@ -1456,9 +1456,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
         : recovering ? 0
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
-        // スキル: スケーター = 通常歩行の移動速度 ×2(特殊ロコモーションは対象外)。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 2 : 1)
-        : player.speed * (hasSkill(player, 'skater') ? 2 : 1);
+        // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。
+        // 社長指示で段階的に強化: 2→3=1.5倍)。
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1)
+        : player.speed * (hasSkill(player, 'skater') ? 3 : 1);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
