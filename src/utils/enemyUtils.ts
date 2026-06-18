@@ -25,9 +25,10 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   reaper:    { width: 80, height: 80, speed: 130, health: 99999,damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
   // 社長指示: 耐久値(health)はデフォルトに戻す(2倍化を撤回)。damage は据え置き(2倍のまま)。
-  'lab-zombie-1': { width: 28, height: 28, speed: 52, health: 40,  damage: 20, experienceValue: 4 },
-  'lab-zombie-2': { width: 34, height: 34, speed: 66, health: 90,  damage: 28, experienceValue: 8 },
-  'lab-zombie-3': { width: 46, height: 46, speed: 48, health: 160, damage: 36, experienceValue: 20 }
+  // 研究所(ステージ2)の敵は耐久値を全員2倍(社長指示)。lab-zombie はこのステージ専用。
+  'lab-zombie-1': { width: 28, height: 28, speed: 52, health: 80,  damage: 20, experienceValue: 4 },
+  'lab-zombie-2': { width: 34, height: 34, speed: 66, health: 180, damage: 28, experienceValue: 8 },
+  'lab-zombie-3': { width: 46, height: 46, speed: 48, health: 320, damage: 36, experienceValue: 20 }
 };
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee

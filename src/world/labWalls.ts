@@ -72,6 +72,12 @@ export const labUvBarsInRegion = (minX: number, minY: number, maxX: number, maxY
       const x = cx * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx + 9.1, cy + 4.7));
       const y = cy * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx - 3.3, cy + 8.8));
       out.push({ id: `luv-${cx}-${cy}`, x, y });
+      // 区画の一部(約45%)に2本目を追加=UVバーを少しだけ増やす。
+      if (hash2(cx + 2.7, cy - 6.4) > 0.55) {
+        const x2 = cx * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx + 13.3, cy - 2.1));
+        const y2 = cy * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx - 7.7, cy + 3.9));
+        out.push({ id: `luv2-${cx}-${cy}`, x: x2, y: y2 });
+      }
     }
   }
   return out;

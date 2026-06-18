@@ -29,7 +29,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
-import { labWallsInRegion, labUvBarsInRegion, STAGE2_DOCUMENT, wallRect } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
@@ -44,6 +44,8 @@ const initialRhythm = (): RhythmState => ({
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
 export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 18, rifle: 36, phill: 48 };
+// 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
+export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
 export const AMMO_INITIAL: Record<AmmoType, number> = { handgun: 60, shotgun: 18, rifle: 24, phill: 24 };
 // How much a world/melee ammo pickup grants for each family (enemy drops, air
@@ -418,7 +420,8 @@ export const BASH_ZOOM_MAG = 0.3;          // バッシュ命中の寄り(現在
 export const PLAYER_INERTIA_TAU = 0;
 export const ENEMY_INERTIA_TAU = 0.3;
 // 照準サークル(=PHILL弾/アンカーの狙い)の慣性。向き/距離の変化に少し遅れて追従(秒)。
-export const AIM_INERTIA_TAU = 0.10;
+// 値を上げるほどサークルがゆっくり動く(社長指示でさらにゆっくりに 0.10→0.20)。
+export const AIM_INERTIA_TAU = 0.20;
 
 // 特殊AI(犬型=突進 / パンプキン=ジャンプ)の調整値。射程基準=ハンドガン射程176px(RANGE_BY_CATEGORY.handgun)。
 const HANDGUN_RANGE_REF = 176;
@@ -2666,10 +2669,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   gainExperience: (amount) => {
+    const gained = amount * XP_GAIN_MULT; // 全体調整: 経験値1/3
     set(state => {
       const { player, gameStats } = state;
-      const newExperience = player.experience + amount;
-      const newExpCollected = gameStats.experienceCollected + amount;
+      const newExperience = player.experience + gained;
+      const newExpCollected = gameStats.experienceCollected + gained;
       return {
         player: {
           ...player,
@@ -4724,10 +4728,28 @@ export const useGameStore = create<GameState>((set, get) => ({
             health: 12, maxHealth: 12, type: 'uv-bar' as const, lastHit: 0,
           }))
         : [];
+      // 研究所スキン(屋外): クリア書類を左右どちらかの端にランダム配置。その手前(原点側)に Lv3/2/1 を1体ずつ。
+      const labDoc = (stageTheme === 'lab' && !indoor)
+        ? (() => {
+            const side = Math.random() < 0.5 ? -1 : 1;       // 左(-1)か右(+1)
+            const x = side * (1400 + Math.random() * 600);   // 端の方(原点から遠い横方向)
+            const y = -400 + Math.random() * 800;            // 縦は帯の範囲内
+            return { x, y, side };
+          })()
+        : null;
+      // ガード(固定・休眠・aggroRange内で起床)。書類の手前(原点側)に密集配置。
+      const mkGuard = (type: EnemyType, gx: number, gy: number): Enemy =>
+        ({ ...spawnEnemyAt(type, gx, gy, 0), fixed: true, dormant: true, aggroRange: 220, vx: 0, vy: 0, homeX: gx, homeY: gy });
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
         ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
-        : [];
+        : labDoc
+          ? [
+              mkGuard('lab-zombie-3', labDoc.x - labDoc.side * 170, labDoc.y),
+              mkGuard('lab-zombie-2', labDoc.x - labDoc.side * 250, labDoc.y - 70),
+              mkGuard('lab-zombie-1', labDoc.x - labDoc.side * 250, labDoc.y + 70),
+            ]
+          : [];
       // 屋内ギミックの初期ピックアップ: カードキー(E部屋)+ 武器箱(A部屋・ボタン解錠後に到達)
       // + クリア条件アイテム(C部屋=ゴール・カードキーで扉解錠後に到達。拾うとクリア)。
       const runPickups: Pickup[] = indoor
@@ -4738,9 +4760,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             // PHILL弾の固定配置(研究所限定)。
             ...LAB_AMMO_PICKUPS.map((a, i) => ({ id: `lab-phill-${i}`, x: a.x - 8, y: a.y - 8, type: 'ammo-phill' as const, value: 0 })),
           ]
-        : stageTheme === 'lab'
-          // 研究所スキン(屋外)のクリア条件=書類(重要データ)を1つ手置き。拾うと勝利。
-          ? [{ id: 'lab-document', x: STAGE2_DOCUMENT.x - 8, y: STAGE2_DOCUMENT.y - 8, type: 'lab-clear-item' as const, value: 0 }]
+        : labDoc
+          // 研究所スキン(屋外)のクリア条件=書類(重要データ)を左右端にランダム配置。拾うと勝利。
+          ? [{ id: 'lab-document', x: labDoc.x - 8, y: labDoc.y - 8, type: 'lab-clear-item' as const, value: 0 }]
           : [];
 
       // 壁/UVバーは区画ごとに手続き生成(labWallsInRegion/labUvBarsInRegion)するので reset では持たない。

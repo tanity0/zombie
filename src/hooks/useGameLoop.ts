@@ -178,7 +178,12 @@ const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 const LAB_SPAWN_AGGRO_RANGE = 150;
 // 1画面区画あたりのラボ敵の上限(密度制御)。
-const LAB_ENEMIES_PER_ZONE = 3;
+const LAB_ENEMIES_PER_ZONE = 2;
+// ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
+const LAB_SPAWN_INTERVAL_MULT = 1.6;
+const LAB_SPAWN_COUNT_MAX = 1;
+// ラボ敵を画面外の遠くに湧かせる距離(プレイヤー中心からの半径。ビューポート最大辺×係数+ゆらぎ)。
+const LAB_SPAWN_DIST_MULT = 0.62;
 const PLAYER_DEATH_SLOW_MS = 820;
 const CASTLE_SPAWN_SLOW_MS = 900;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
@@ -2974,10 +2979,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !danceTest &&
           !indoor &&
           enemyCountBeforeSpawn < MAX_ENEMIES &&
-          timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime)
+          timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1)
         ) {
           const spawnCount = Math.min(
-            getEnemySpawnCount(gameTime),
+            labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(gameTime),
             MAX_ENEMIES - enemyCountBeforeSpawn
           );
           let plantCount = useGameStore.getState().enemies
@@ -2997,6 +3002,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
               const labEnemy = generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection);
+              // 画面外の遠くにリング配置(=急に画面内に湧いて見えないように)。
+              const ang = Math.random() * Math.PI * 2;
+              const dist = Math.max(gameBounds.width, gameBounds.height) * LAB_SPAWN_DIST_MULT + Math.random() * 160;
+              const pcx0 = player.x + player.width / 2, pcy0 = player.y + player.height / 2;
+              labEnemy.x = pcx0 + Math.cos(ang) * dist - labEnemy.width / 2;
+              labEnemy.y = pcy0 + Math.sin(ang) * dist - labEnemy.height / 2;
               const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
               // スタート地点(原点)付近には湧かせない。
               if (Math.hypot(ecx, ecy) < LAB_START_SAFE_RADIUS) continue;
