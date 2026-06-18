@@ -2979,7 +2979,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hasBoom = player.subWeapons.includes('drone-boomerang');
           const ready = hasBoom && gameTime >= (player.subWeaponCooldowns['drone-boomerang'] ?? 0);
           if (ready && !boomReadyRef.current) {
-            playSfx('ui-select'); // 「カチッ」相当(専用SE未用意のためUIクリック音を流用)
+            playSfx('reload'); // 「カチッ」相当(音源のある reload を流用。ui-select は音源未定義で無音だった)
             useGameStore.setState({ boomerangReadyFxAt: Date.now() });
           }
           boomReadyRef.current = ready;

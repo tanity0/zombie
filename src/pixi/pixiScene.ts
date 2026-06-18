@@ -815,6 +815,7 @@ export class PixiScene {
       this.alchemyCircle,
       this.shadowContainer,
     );
+    this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
@@ -2442,15 +2443,17 @@ export class PixiScene {
     const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // 立ち上がり速→ふわっと減衰
     const rise = -18 * t;                      // 上へ少し浮く
     const cx = player.x + player.width / 2;
-    const cy = player.y - 26 + rise;           // 頭上
+    const cy = player.y - 46 + rise;           // 頭上(もう少し上)
     const s = 9 * (0.85 + 0.25 * t);           // 少しだけ拡大
-    // ブーメラン「へ」字マーク(シアン)。縁(濃)+本体(明)。
-    const draw = (w: number, col: number, a: number) => {
-      g.moveTo(cx - s, cy + s * 0.55).lineTo(cx, cy - s * 0.55).lineTo(cx + s, cy + s * 0.55)
-        .stroke({ width: w, color: col, alpha: Math.max(0, a) * Math.max(0, alpha), cap: 'round', join: 'round' });
-    };
-    draw(5.2, 0x06121f, 0.7);
-    draw(2.8, 0x7dd3fc, 1.0);
+    // 「ピカ!」フラッシュ: 出現直後に白く強く光って素早く消える(加算)。
+    const flash = Math.max(0, 1 - dt / 170);
+    if (flash > 0) {
+      g.circle(cx, cy, 11 + 18 * (1 - flash)).fill({ color: 0xbfefff, alpha: 0.5 * flash });
+      g.circle(cx, cy, 5).fill({ color: 0xffffff, alpha: 0.95 * flash });
+    }
+    // ブーメラン「へ」字マーク(シアン・加算で発光)。
+    g.moveTo(cx - s, cy + s * 0.55).lineTo(cx, cy - s * 0.55).lineTo(cx + s, cy + s * 0.55)
+      .stroke({ width: 3.0, color: 0x9be8ff, alpha: Math.max(0, alpha), cap: 'round', join: 'round' });
   }
 
   // ジャンプ攻撃(パンプキン/lab-zombie-3)の着地予告。空中(aiPhase='jump')の間、着地点に赤い影を出す。

@@ -12517,3 +12517,9 @@ playSfx('weapon-pickup') を追加。武器庫取得と同じ音が鳴る。
 - トラップ範囲 MARKSMAN_TRAP_RADIUS_BY_LEVEL 34/42/50→44/52/60(少し拡大)。ブーメランは拡大しない。
 ### 負荷スコア 1/10(Graphics1枚・650ms演出, 定数変更)。
 ### Verification lint/build 通過。※カチッ専用SEがあれば差し替え予定。
+
+## v0.25.552 — ブーメランCD明け演出: 位置↑/ピカ!/SE可聴化 (claude/cool-edison-7b8jrl)
+- SEが無音だった原因=流用した 'ui-select' に音源未定義。音源のある 'reload'(カチッ系)に変更。
+- 頭上マークの表示位置を上げる(player.y-26→-46)。
+- 出現直後に「ピカ!」フラッシュ(白い加算グロー、~170msで素早く消える)を追加。boomReadyGfx を blendMode='add' に。
+### Verification lint/build 通過。※専用「カチッ」SEがあれば差し替え可。
