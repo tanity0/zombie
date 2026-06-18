@@ -12024,3 +12024,22 @@ lint/build 通過。
 
 ### Verification
 - lint/build 通過。屋外=従来定数/元床で無変更。?labpersp=1 で奥が強く縮み、上方が暗幕で消える。
+
+## v0.25.515 — 研究所 擬似3D遠近 A2: 壁・プロップを遠近床に乗せる＋?labvig (claude/cool-edison-7b8jrl)
+?labpersp 配下のみ・描画のみ(判定/移動/aim/store 不変)・屋外無変更・OFFで回帰なし。
+- 写像 `labProjectFootY(footY)`: 焦点面=プレイヤー足元(depthRefY)から床に沿った表示距離 = ∫相対スケール dy を
+  数値積分(4サンプル)し、表示 worldY＋uniform スケールを返す。床と同じ lab カーブ(LAB_PERSP_FAR/CURVE)で算出。
+  `groundScaleAt`/`groundRelativeScale` を (far,near,curve) 引数化して流用。
+- 壁ブロック(addBlock): ?labpersp 時は A1.5 の高さのみスケールに代えて labProjectFootY で位置＋高さ＋幅を写像
+  (幅は足元中心基準で対称に縮小)、z は写像後Yでソート → 収束する床に乗る。x0/w を保持。
+- プロップ: 同写像で位置＋スケール、z も写像後Y。元 foot を labPropFoot に保持し、非persp/屋外は従来 depthScaleEnemy。
+- 敵/プレイヤー/弾は据え置き(線形＋depthScale=ステージ1の割り切り)。まず環境だけで評価。
+- 評価レバー: `LAB_VIGNETTE_ALPHA` を `?labvig=`(既定0.97)で可変に。明るくして見え方を調整可(最終値はPhase C)。
+
+### 負荷スコア
+2〜3/10(rendering)。壁(数十)＋プロップ(数個)に毎フレーム 4サンプル積分の写像。壁は depthRefY 変化時のみ。新規確保なし。
+
+### Verification
+- lint/build 通過。屋外/OFF 不変。?labpersp=1 で壁・プロップが収束床に乗り、奥ほど上方＋縮小。?labvig=0.7 で明るく確認。
+### 次
+- A3(任意): 敵/プレイヤー/弾の Y も写像＋aim/タップ移動の screen↔world 逆写像。A2で十分なら見送り。

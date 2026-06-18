@@ -154,7 +154,7 @@ const LAB_ENV_TINT = 0x6b7686;       // 研究所の床/壁を暗くする(寒�
 // 壁の外側=野外マージンの地面(より暗い)。プレイヤーが端でも中心を保てる余白(野外)。
 const LAB_OUTER_TINT = 0x161d16;     // 野外(夜の地面)。かなり暗い緑寄り。
 // 屋内の周辺減光(vignette)を屋外より広範囲に暗く(社長指示)。明るい部分を狭く=さらに強める。
-const LAB_VIGNETTE_ALPHA = 0.97;
+const LAB_VIGNETTE_ALPHA = tsNum('labvig', 0.97); // 評価用レバー: ?labvig=0.7 等で明るく見て調整(最終値はPhase Cで決定)
 // 壁テクスチャは「線画＋内側が透明」なので、そのままだと床が透ける。各壁の背面に不透明な下地を敷く色。
 const LAB_WALL_FILL = 0x2b3240;
 // 立体壁の「立ち上がり高さ」(px)。実機調整 → 既定へ。?labrise=38 で上書き。
@@ -622,12 +622,13 @@ export class PixiScene {
   private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
   private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
   // 立体壁の擬似遠近(高さ方向のみ)。各ブロックの footY と元の総高(h+RISE)を保持し、毎フレーム scale.y を更新。
-  private labWallDepth: { cont: Container; footY: number; fullH: number }[] = [];
+  private labWallDepth: { cont: Container; footY: number; fullH: number; x0: number; w: number }[] = [];
   private labWallDepthRefY = NaN; // 直近の depthRefY(変化なしなら更新スキップ)
   private labFloorDecor: Container | null = null;  // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO。決定的ハッシュで1度だけ生成。
   private labFloorDecorSig = '';                   // 変種散布の生成シグネチャ(部屋集合は静的なので実質1回)。
   private labWallShadow: Graphics | null = null;   // 壁下辺の焼き込み落ち影(右上光源→左下オフセット)。壁/扉と同シグネチャで再構築。
   private labPropSprites: Sprite[] = [];          // 屋内の障害物プロップ(木の代わり)。アクター層で深度ソート。
+  private labPropFoot: { sp: Sprite; x: number; y: number }[] = []; // プロップの元 foot(?labpersp 投影/復元用)
   private labPropSig = '';                        // プロップ配置シグネチャ(変化時のみ再構築)
   private idleZoom = 1;        // 手を離して待機中だけ寄る持続ズーム(滑らかに 1↔1+mag)
   private lastZoomNow = 0;     // 待機ズームのフレーム間 dt 計算用
@@ -1142,20 +1143,46 @@ export class PixiScene {
     return f < min ? min : f > max ? max : f;
   }
 
-  private groundScaleAt(footWorldY: number): number {
+  private groundScaleAt(
+    footWorldY: number,
+    far: number = GROUND_TILE_SCALE_Y_FAR,
+    near: number = GROUND_TILE_SCALE_Y_NEAR,
+    curve: number = GROUND_PERSPECTIVE_CURVE,
+  ): number {
     const farH = this.farBackdropHeight();
     const groundH = Math.max(1, this.screenH - farH);
     const screenY = footWorldY - this.cameraY;
     const t = Math.max(0, Math.min(1, (screenY - farH) / groundH));
-    const perspective = Math.pow(t, GROUND_PERSPECTIVE_CURVE);
-    return GROUND_TILE_SCALE_Y_FAR
-      + (GROUND_TILE_SCALE_Y_NEAR - GROUND_TILE_SCALE_Y_FAR) * perspective;
+    const perspective = Math.pow(t, curve);
+    return far + (near - far) * perspective;
   }
 
-  private groundRelativeScale(footWorldY: number): number {
-    const base = Math.max(0.001, this.groundScaleAt(this.depthRefY));
-    const ratio = this.groundScaleAt(footWorldY) / base;
+  private groundRelativeScale(
+    footWorldY: number,
+    far: number = GROUND_TILE_SCALE_Y_FAR,
+    near: number = GROUND_TILE_SCALE_Y_NEAR,
+    curve: number = GROUND_PERSPECTIVE_CURVE,
+  ): number {
+    const base = Math.max(0.001, this.groundScaleAt(this.depthRefY, far, near, curve));
+    const ratio = this.groundScaleAt(footWorldY, far, near, curve) / base;
     return Math.max(OBJECT_GROUND_RELATIVE_MIN, Math.min(OBJECT_GROUND_RELATIVE_MAX, ratio));
+  }
+
+  // A2(?labpersp): 遠近床のカーブと整合する world→表示位置の写像。footY を「収束する床の上」に乗せる
+  // 表示用 worldY と uniform スケールを返す(描画のみ。判定/移動は不変)。床の screen ステップ=worldステップ×相対
+  // スケール を積分して算出(焦点面=プレイヤー足元 depthRefY)。lab 専用カーブ(LAB_PERSP_FAR/CURVE)を使用。
+  private labProjectFootY(footWorldY: number): { worldY: number; scale: number } {
+    const far = LAB_PERSP_FAR, near = GROUND_TILE_SCALE_Y_NEAR, curve = LAB_PERSP_CURVE;
+    const ref = this.depthRefY;
+    const span = footWorldY - ref;
+    const n = 4;
+    let integ = 0;
+    for (let i = 0; i < n; i++) {
+      const y = ref + span * ((i + 0.5) / n);
+      integ += this.groundRelativeScale(y, far, near, curve);
+    }
+    integ *= span / n; // ∫ 相対スケール dy(=床に沿った表示距離)
+    return { worldY: ref + integ, scale: this.groundRelativeScale(footWorldY, far, near, curve) };
   }
 
   private depthScale(footWorldY: number): number {
@@ -3669,7 +3696,7 @@ export class PixiScene {
           cont.zIndex = footY;
           this.L.actorLayer.addChild(cont);
           this.labWallActors.push(cont);
-          this.labWallDepth.push({ cont, footY, fullH: h + RISE }); // 擬似遠近(高さのみ)用に保持
+          this.labWallDepth.push({ cont, footY, fullH: h + RISE, x0: x, w }); // 擬似遠近(A1高さ/A2投影)用に保持
         };
         const addWall = (rect: { x: number; y: number; width: number; height: number }) => {
           shadowRect(rect);
@@ -3706,15 +3733,27 @@ export class PixiScene {
         }
       }
       for (const c of this.labWallActors) c.visible = true; // 屋内中は常に表示(深度ソートはアクター層が処理)
-      // 擬似遠近(高さ方向のみ): 手前(footY 大)ほど高く、奥ほど低く。足元(下辺)をピン留め、width は不変。
-      // depthRefY(プレイヤー足元)が変わった時だけ更新(変化なしならスキップ)。
-      if (LAB_WALL_DEPTH_STRENGTH > 0 && this.labWallDepthRefY !== this.depthRefY) {
+      // 壁の擬似遠近。depthRefY(プレイヤー足元)が変わった時だけ更新(静止中スキップ)。
+      if (this.labWallDepthRefY !== this.depthRefY) {
         this.labWallDepthRefY = this.depthRefY;
-        const k = DEPTH_K * LAB_WALL_DEPTH_STRENGTH;
-        for (const e of this.labWallDepth) {
-          const d = this.depthScaleWith(e.footY, k, LAB_WALL_DEPTH_MIN, LAB_WALL_DEPTH_MAX);
-          e.cont.scale.y = d;                       // 高さのみスケール(scale.x は 1 のまま)
-          e.cont.position.y = e.footY - e.fullH * d; // 足元(下辺)を footY に固定
+        if (persp) {
+          // A2: 収束する床に乗せる。footY を写像して表示位置へ。高さ/幅も写像スケールで縮める。
+          // 幅は足元中心(footCenterX)基準で対称に縮め、z は写像後Yでソート。
+          for (const e of this.labWallDepth) {
+            const p = this.labProjectFootY(e.footY);
+            e.cont.scale.set(p.scale, p.scale);
+            e.cont.position.set(e.x0 + e.w / 2 - (e.w * p.scale) / 2, p.worldY - e.fullH * p.scale);
+            e.cont.zIndex = p.worldY;
+          }
+        } else if (LAB_WALL_DEPTH_STRENGTH > 0) {
+          // A1.5: 高さ方向のみの擬似遠近。足元(下辺)をピン留め、width は不変。
+          const k = DEPTH_K * LAB_WALL_DEPTH_STRENGTH;
+          for (const e of this.labWallDepth) {
+            const d = this.depthScaleWith(e.footY, k, LAB_WALL_DEPTH_MIN, LAB_WALL_DEPTH_MAX);
+            e.cont.scale.set(1, d);
+            e.cont.position.set(e.x0, e.footY - e.fullH * d);
+            e.cont.zIndex = e.footY;
+          }
         }
       }
     }
@@ -3751,6 +3790,7 @@ export class PixiScene {
       this.labPropSig = propSig;
       for (const sp of this.labPropSprites) sp.destroy();
       this.labPropSprites = [];
+      this.labPropFoot = [];
       for (const p of s.labProps) {
         const tex = getTexture(p.variant);
         if (!tex) continue;
@@ -3760,14 +3800,27 @@ export class PixiScene {
         sp.zIndex = p.y;                  // 木/敵と同じ尺度で深度ソート
         this.L.actorLayer.addChild(sp);
         this.labPropSprites.push(sp);
+        this.labPropFoot.push({ sp, x: Math.round(p.x), y: Math.round(p.y) });
       }
     }
     // 毎フレーム depth スケール(プレイヤー足元基準の擬似遠近)。プロップは数個なので軽い。
+    // ?labpersp 時は壁と同じ写像で収束する床に乗せる(位置＋scale)。それ以外は従来の depthScaleEnemy。
     const PROP_DISPLAY = 76; // 表示の基準高さ(px)
-    for (const sp of this.labPropSprites) {
+    for (const e of this.labPropFoot) {
+      const sp = e.sp;
       sp.visible = true;
       const t = sp.texture;
-      sp.scale.set(containScale(PROP_DISPLAY, PROP_DISPLAY, t.width, t.height) * this.depthScaleEnemy(sp.position.y));
+      const base = containScale(PROP_DISPLAY, PROP_DISPLAY, t.width, t.height);
+      if (persp) {
+        const p = this.labProjectFootY(e.y);
+        sp.position.set(e.x, p.worldY);
+        sp.zIndex = p.worldY;
+        sp.scale.set(base * p.scale);
+      } else {
+        sp.position.set(e.x, e.y);
+        sp.zIndex = e.y;
+        sp.scale.set(base * this.depthScaleEnemy(e.y));
+      }
     }
   }
 
