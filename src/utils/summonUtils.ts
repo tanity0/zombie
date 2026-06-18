@@ -31,7 +31,8 @@ export const SHOP_ALCHEMY_COST = 100;                   // 商人での錬金術
 const clampLevel = (lvl: number): number => Math.max(1, Math.min(3, Math.round(lvl)));
 
 // 召喚ユニット生成。x,y は中心座標(内部で左上に変換)。
-export const buildSummon = (level: number, kind: SummonKind, x: number, y: number): Summon => {
+// hpMult: スキル「ナイト」(召喚最大HP ×1.5)用。既定1。
+export const buildSummon = (level: number, kind: SummonKind, x: number, y: number, hpMult = 1): Summon => {
   const lvl = clampLevel(level);
   const now = Date.now();
   const rng = Math.random().toString(36).slice(2, 7);
@@ -59,7 +60,7 @@ export const buildSummon = (level: number, kind: SummonKind, x: number, y: numbe
 
   const type = ALCHEMY_SUMMON_TYPE_BY_LEVEL[lvl] ?? 'zombie';
   const size = getEnemyBaseSize(type);
-  const hp = ALCHEMY_SUMMON_HP_BY_LEVEL[lvl];
+  const hp = Math.round(ALCHEMY_SUMMON_HP_BY_LEVEL[lvl] * hpMult);
   return {
     id: `summon-${lvl}-${now}-${rng}`,
     x: x - size.width / 2,

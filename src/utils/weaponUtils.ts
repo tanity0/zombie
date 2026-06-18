@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, hasSkill } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
@@ -294,7 +294,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       createdAt: now,
       passthrough: weapon.passthrough || false,
       hitEnemies: [],
-      pierce: weapon.pierce,
+      // スキル: シャープシューター = 貫通+1(passthrough武器=貫通自由なので据置)。
+      pierce: !weapon.passthrough && hasSkill(player, 'sharpshooter')
+        ? (weapon.pierce ?? 0) + 1
+        : weapon.pierce,
       hostile: false,
       reflected: false,
       crit
@@ -304,7 +307,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // Drain the magazine and record the fire time. One trigger pull = one round
   // for EVERY family, including the shotgun (a shell fires the whole pellet
   // spread for a single round).
-  const consume = 1;
+  // スキル: ゴーストシューター = 20%で弾を消費しない。
+  const consume = hasSkill(player, 'ghost-shooter') && Math.random() < 0.2 ? 0 : 1;
   useGameStore.setState(state => ({
     player: {
       ...state.player,

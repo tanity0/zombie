@@ -2458,7 +2458,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const kept = normals.length >= ALCHEMY_MAX_NORMAL
       ? normals.slice(normals.length - (ALCHEMY_MAX_NORMAL - 1))
       : normals;
-    const unit = buildSummon(lvl, 'normal', sx, sy);
+    const unit = buildSummon(lvl, 'normal', sx, sy, skillSummonHpMult(player)); // スキル: ナイト=召喚HP×1.5
     set({ summons: [...kept, unit] });
     get().spawnGlow(sx, sy, 54, 'rgba(125,211,252,', 360);
     // 召喚完了演出: 暗転 + スロー + シアンのパーティクル。

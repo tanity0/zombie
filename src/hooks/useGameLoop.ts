@@ -1505,8 +1505,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hitEnemies: [],
             hostile: false,
             reflected: false,
-            shieldHp: SHIELD_HP_BY_LEVEL[level],
-            shieldMaxHp: SHIELD_HP_BY_LEVEL[level],
+            // スキル: ナイト = 盾の最大HP ×1.5。
+            shieldHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
+            shieldMaxHp: Math.round(SHIELD_HP_BY_LEVEL[level] * skillSummonHpMult(useGameStore.getState().player)),
           });
           // ガチャンッ!: 着地ダスト + 金属音(構えた感)。スプライト側で着地スラム。
           spawnRing(footX, footY, 6, 64, 'rgba(203,213,225,0.7)', 3, 260);
@@ -1866,7 +1867,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           playSfx('bomb');
           // weaponType:'grenade' は手榴弾(heavy-grenade)専用。fuseで爆発し、半径66の小範囲。
           // グレネードランチャー(rifle-t3/タレットのランチャー弾)は別物で、着弾爆発の別経路で処理する。
-          const blastR = HEAVY_GRENADE_RADIUS;
+          // スキル: エクスプローダー = 半径/ダメージ ×1.2(手榴弾も対象)。
+          const grenadeExMult = skillExplosionMult(useGameStore.getState().player);
+          const blastR = HEAVY_GRENADE_RADIUS * grenadeExMult;
           const fxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
           spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
           spawnBurst(gx, gy, '#f97316', 20);
@@ -1881,7 +1884,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (dist > blastR) continue;
             if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
             const falloff = 1 - dist / blastR;
-            const splashDamage = Math.max(1, Math.round(HEAVY_GRENADE_DAMAGE * (0.55 + falloff * 0.45)));
+            const splashDamage = Math.max(1, Math.round(HEAVY_GRENADE_DAMAGE * grenadeExMult * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage);
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
             spawnBurst(ex, ey, '#b91c1c', 4);
@@ -2344,23 +2347,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             !grenadeExplodedThisFrame.has(projectileId)
           ) {
             grenadeExplodedThisFrame.add(projectileId);
+            // スキル: エクスプローダー = 爆発の半径/ダメージ ×1.2。
+            const exMult = skillExplosionMult(skillPlayer);
+            const exRadius = GRENADE_BLAST_RADIUS * exMult;
             const blastX = enemyForFx.x + enemyForFx.width / 2;
             const blastY = enemyForFx.y + enemyForFx.height / 2;
-            spawnRing(blastX, blastY, 10, GRENADE_BLAST_RADIUS, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
+            spawnRing(blastX, blastY, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
             useGameStore.getState().spawnGlow(blastX, blastY, 58, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
-            const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT;
+            const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
             const glWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
               if (splashEnemy.id === enemyId || splashEnemy.type === 'reaper') continue;
               const sx = splashEnemy.x + splashEnemy.width / 2;
               const sy = splashEnemy.y + splashEnemy.height / 2;
               const dist = Math.hypot(sx - blastX, sy - blastY);
-              if (dist > GRENADE_BLAST_RADIUS) continue;
+              if (dist > exRadius) continue;
               if (glWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, glWalls)) continue; // 壁越し不可
-              const falloff = 1 - dist / GRENADE_BLAST_RADIUS;
+              const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit);
