@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: [main, claude/chat-context-continuity-saxlH, claude/cool-edison-7b8jrl]
+    branches: [main, claude/chat-context-continuity-saxlH]
 
 permissions:
   contents: read
