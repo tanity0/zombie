@@ -12069,3 +12069,19 @@ lint/build 通過。
 Step1(台形メッシュ床)で `?labpersp` 時に `floorTex=null` にしていたため、labGfx の保険塗り
 `if (!floorTex) fill(LAB_BOUNDS, 0x10151c)` が迷路全体を不透明で塗り、遠近床メッシュ(world の下)を覆っていた。
 `!persp` でガード(?labpersp 時は台形メッシュを使うので塗らない)。負荷増なし。lint/build 通過。
+
+## v0.25.518 — 研究所 ?labpersp 床を焼き込み遠近プレート(一枚絵)に差し替え (claude/cool-edison-7b8jrl)
+?labpersp 配下のみ・描画のみ(判定/移動/aim/store 不変)・屋外無変更・OFFで回帰。
+- 新規 `public/sprites/lab-floor/lab-floor-persp-plate.png`(560x373・284KB、受領素材1536x1024をLANCZOS縮小・RGB)。
+- `?labpersp` 時: 縦ストリップ/台形メッシュは使わず、この一枚絵を screen-space 背景として全画面に敷く
+  (`updateLabFloorPlate`)。worldGroup の groundBase 直上・world の下。tint=LAB_ENV_TINT。少し大きめ(×1.10)に敷き、
+  カメラ×0.02 のごく弱いパララックス(オーバスキャン内クランプ)。消失点=上中央で固定。
+- 台形メッシュ床(updateLabFloorMesh)は休止(常に false)。地平フェードはプレートが焼き込み済みのため未使用。
+- 壁/アクターは現状のまま上に重ねる(まず床の見た目を評価)。?labvig=(既定0.97)併用。
+- 既知の割り切り: 一枚絵なのでカメラ移動で床は厳密にスクロールしない/壁と整合しない(試作)。
+
+### 負荷スコア
+1/10(rendering)。Sprite 1枚＋毎フレーム position/size 更新のみ。新規確保は起動時テクスチャ1枚。
+
+### Verification
+- lint/build 通過。屋外/OFF 不変。?labpersp=1&labvig=0.6 でプレート床が全画面に。

@@ -624,6 +624,7 @@ export class PixiScene {
   private groundStripBaseTex: Texture | null = null; // 屋外の地面ストリップ元テクスチャ(?labpersp で研究所床に差し替える際の復元用)
   private labHorizonFade: Sprite | null = null;      // ?labpersp の擬似地平フェード(上=暗→下=透明の縦グラデ・screen-space)
   private labFloorMesh: PerspectiveMesh | null = null; // ?labpersp の台形透視床(screen-space・worldGroup)
+  private labFloorPlate: Sprite | null = null;        // ?labpersp の焼き込み遠近プレート(一枚絵・screen-space)
   private labFloorMeshBaseUV: Float32Array | null = null; // 床メッシュの基準UV(0..1グリッド。タイル/スクロールの元)
   private labFloorMeshSig = '';                      // 台形コーナーの再計算シグネチャ(画面/パラメータ変化時のみ)
   private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
@@ -1309,6 +1310,31 @@ export class PixiScene {
       }
       buf.update();
     }
+  }
+
+  // 焼き込み遠近プレート(一枚絵)を screen-space 背景として全画面に敷く(farBackdrop と同様の固定＋ごく弱いパララックス)。
+  // 消失点=上中央で固定。?labpersp Step1' の評価用。一枚絵なのでカメラでスクロールしない/壁とは整合しない(割り切り)。
+  private updateLabFloorPlate(show: boolean) {
+    if (!show) { if (this.labFloorPlate) this.labFloorPlate.visible = false; return; }
+    const tex = getTexture('lab-floor/lab-floor-persp-plate');
+    if (!tex) { if (this.labFloorPlate) this.labFloorPlate.visible = false; return; }
+    if (!this.labFloorPlate) {
+      const sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      this.L.worldGroup.addChildAt(sp, this.L.worldGroup.getChildIndex(this.L.groundBase) + 1); // groundBase 直上・world の下
+      this.labFloorPlate = sp;
+    }
+    const sp = this.labFloorPlate;
+    sp.visible = true;
+    sp.tint = LAB_ENV_TINT;
+    const over = 1.10; // 少し大きめに敷き、弱パララックスでも端が出ないようにする
+    sp.width = this.screenW * over;
+    sp.height = this.screenH * over;
+    const cam = useGameStore.getState().camera;
+    const mx = (this.screenW * (over - 1)) / 2, my = (this.screenH * (over - 1)) / 2;
+    const px = Math.max(-mx, Math.min(mx, -cam.x * 0.02)); // ごく弱いパララックス(端のオーバスキャン内にクランプ)
+    const py = Math.max(-my, Math.min(my, -cam.y * 0.02));
+    sp.position.set(this.screenW / 2 + px, this.screenH / 2 + py);
   }
 
   // 擬似地平フェード(上=ほぼ黒→下=透明の縦グラデ)。遠近床の上側(奥)を暗がりへ沈め、床が遠くへ消える基準を作る。
@@ -3626,6 +3652,7 @@ export class PixiScene {
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
       this.restoreGroundStrips(); // 屋外復帰: ?labpersp で差し替えた床を元へ
+      this.updateLabFloorPlate(false);
       this.updateLabFloorMesh(false);
       this.updateLabHorizonFade(false);
       if (this.labGfx) this.labGfx.visible = false;
@@ -3644,13 +3671,15 @@ export class PixiScene {
     // A1 試作(?labpersp): フラット床/変種/void を使わず、ステージ1の遠近 ground を研究所床テクスチャで流用。
     // 当たり判定/移動/aim は不変(描画だけ斜め遠近)。壁/プロップ/アクターは現状(depthScale)のまま。
     if (persp) {
-      // Step1: 台形透視床(PerspectiveMesh)を使う。フラット床/変種/void は使わない。
-      this.updateLabFloorMesh(true);
-      this.updateLabHorizonFade(true); // 擬似地平の暗幕(上=暗→下=透明)
+      // 焼き込み遠近プレート(一枚絵)を全画面に敷く。フラット床/変種/void/台形メッシュは使わない。
+      this.updateLabFloorPlate(true);
+      this.updateLabFloorMesh(false);
+      this.updateLabHorizonFade(false); // プレート自体が奥を暗く焼き込み済み
       if (this.labVoid) this.labVoid.visible = false;
       if (this.labFloor) this.labFloor.visible = false;
       if (this.labFloorDecor) this.labFloorDecor.visible = false;
     } else {
+      this.updateLabFloorPlate(false);
       this.updateLabFloorMesh(false);
       this.updateLabHorizonFade(false);
     }
