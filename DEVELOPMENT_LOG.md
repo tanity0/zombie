@@ -12563,3 +12563,29 @@ counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hi
 ## v0.25.559 — 召喚音(社長提供SE) (claude/cool-edison-7b8jrl)
 錬金術の召喚(summonAlchemy)時に summon SE。public/audio/sfx/summon.mp3 登録、store summonFxAt 更新→useGameLoop 再生。
 ### Verification lint/build 通過。
+
+## v0.25.560〜563 — 装備スキル23種＋ゴールドガチャ＋永続財布（段階実装・進行中） (claude/cool-edison-7b8jrl)
+既存スキル規格を流用し、23種の装備スキル＋特殊枠（賢者の石）と効果層を新設中。入手はゴールドガチャ、装備は所持から2枠。
+### 基盤 (v0.25.560)
+- types/game.ts: SkillKey を23種へ。SubWeaponKey に 'sage-stone'。Player に状態フィールド7種（fireShooterCdUntil ほか）。
+- campaign.ts: SKILLS に rarity(normal/rare/super)、GACHA_RARITY_WEIGHTS(60/35/5)、GACHA_PULL_COST=150、
+  GACHA_REFUND_BY_RARITY(50/150/500)、rollGachaSkill()、RARITY_LABEL。
+- gameStore.ts: hasSkill/hasSageStone、EXCLUSIVE_SUBWEAPON_GROUPS に ['alchemy','sage-stone']、
+  永続 ownedSkills(localStorage)・goldBalance(localStorage)＋ grantSkill/addGold/spendGold。
+- 武器開発(MissionSelect)トップにスキルガチャを組込（ゴールド消費・重複は返金）。装備画面は所持済みスキルのみ表示（レア度色）。
+- GameOverScreen: ランの goldEarned を財布へ加算（マウント1回・ベンチ除外）。所持ゴールド表示。
+### 効果 Group A core (v0.25.561)
+ナイト(被ダメ-20%)/バーサーカー(被ダメ+20%・失HP%で全攻撃増)/クリD上昇(+0.5・近接+銃)/スナイパー(停止敵・遠距離で銃増)/
+ゴールドラッシュ(+10〜30%)/タイムキーパー(サブCD-30%)。純粋関数 skill* ヘルパに集約。load 1/10。
+### 効果 (v0.25.562)
+シャープシューター(非貫通銃に貫通+1)/ゴーストシューター(20%弾消費なし)/エクスプローダー(爆発半径&ダメ+20%・ランチャー/手榴弾)/
+ナイト追加(盾・召喚の最大HP+50%)。load 1〜2/10。
+### 効果 (v0.25.563)
+スケーター(歩行速度×2・慣性0.4s)/弁慶(武器切替で10s crit率+10%→3sCD)。load 1/10。
+### 未実装（次バッチ）
+- C近接/カウンター: 死神(finisher波及)/コンボマスター/ナイフマスター/カウンターマスター/スラッシャー/パニッシャー、弁慶のCD終了閃きVFX。
+- B弾/爆発spawn: 跳弾/ボマー/ファイアシューター/反射神経/ボムカウンター。
+- D: ドッグラン(犬CD0・射程解除)。
+- E: 賢者の石（錬金術Lv3で武器商人に陳列・購入導線＋効果: 召喚AoE/死神召喚強化/ハリケーン+20%）。
+- 要確認: コンボマスターの「ダメージ増加」は finisher が即死のため、コンボ中の通常近接/銃ダメージに掛ける解釈で進める想定。賢者の石の各数値は仮値。
+### Verification: 各コミットで npx tsc --noEmit + npm run build 通過。

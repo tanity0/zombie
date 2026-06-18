@@ -1336,11 +1336,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             if (nowMs >= activeFetch.finishAt) {
               dogFetchRef.current = null;
-              setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[level]);
+              // スキル: ドッグラン = 犬のCDを0に。
+              const dogRun = hasSkill(useGameStore.getState().player, 'dog-run');
+              setSubWeaponCooldown('dog', gameTime + (dogRun ? 0 : DOG_PICKUP_COOLDOWN_BY_LEVEL[level]));
             }
           } else if (gameTime >= dogReadyAt) {
             const state = useGameStore.getState();
-            const targetRadius = DOG_FETCH_TARGET_RADIUS_BY_LEVEL[level];
+            // スキル: ドッグラン = 射程制限を解除(実質無限)。
+            const targetRadius = hasSkill(state.player, 'dog-run') ? Infinity : DOG_FETCH_TARGET_RADIUS_BY_LEVEL[level];
             const collectRadius = DOG_COLLECT_RADIUS_BY_LEVEL[level];
             const playerX = state.player.x + state.player.width / 2;
             const playerY = state.player.y + state.player.height / 2;
