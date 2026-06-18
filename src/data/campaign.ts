@@ -467,16 +467,67 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
   'wire-anchor',
 ];
 
-// 装備スキル(サブウェポンとは別系統のアクティブ能力)。最大2装備。
-// ※効果は今後配線(プレースホルダ)。ここでは選択肢/表示名/説明のみ定義する。
-export const SKILL_KEYS: SkillKey[] = ['adrenaline', 'emp-pulse', 'nano-heal', 'overload'];
-export const SKILLS: Record<SkillKey, { name: string; desc: string }> = {
-  'adrenaline': { name: 'アドレナリン', desc: '一定時間、移動と攻撃が速くなる（効果は今後実装）' },
-  'emp-pulse':  { name: 'EMPパルス',   desc: '周囲の敵を短時間スタンさせる（効果は今後実装）' },
-  'nano-heal':  { name: 'ナノヒール',   desc: '体力を即時回復する（効果は今後実装）' },
-  'overload':   { name: 'オーバーロード', desc: '一定時間、与ダメージが上がる（効果は今後実装）' },
+// 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備は所持から2枠選択。
+// rarity: normal/rare/super(超レア)。ガチャのレア度枠と装備UIの色分けに使用。
+export type SkillRarity = 'normal' | 'rare' | 'super';
+export const SKILL_KEYS: SkillKey[] = [
+  'reaper', 'berserker', 'skater',
+  'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet',
+  'bomber', 'fire-shooter', 'bomb-counter', 'punisher', 'combo-master',
+  'knife-master', 'benkei', 'reflex',
+  'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
+];
+export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: SkillRarity }> = {
+  // 超レア
+  'reaper':       { name: '死神',           desc: '近接フィニッシュ発生時、周囲の敵にも同じ即死判定が波及する', rarity: 'super' },
+  'berserker':    { name: 'バーサーカー',   desc: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', rarity: 'super' },
+  'skater':       { name: 'スケーター',     desc: '移動速度2倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
+  // レア
+  'crit-up':      { name: 'クリティカルD上昇', desc: 'クリティカル倍率+0.5', rarity: 'rare' },
+  'knight':       { name: 'ナイト',         desc: '被ダメージ-20%。盾/召喚の最大HP+50%', rarity: 'rare' },
+  'exploder':     { name: 'エクスプローダー', desc: '全ての爆発の範囲とダメージ+20%', rarity: 'rare' },
+  'sharpshooter': { name: 'シャープシューター', desc: '銃弾の貫通+1', rarity: 'rare' },
+  'sniper':       { name: 'スナイパー',     desc: '銃ダメージが停止中の敵/遠距離ほど増加', rarity: 'rare' },
+  'ricochet':     { name: '跳弾',           desc: '命中弾が20%で近くの別の敵へ跳ねる(0.5倍)', rarity: 'rare' },
+  'bomber':       { name: 'ボマー',         desc: '手榴弾の爆発時にミニ手榴弾を3個撒く', rarity: 'rare' },
+  'fire-shooter': { name: 'ファイアシューター', desc: '発射の20%が爆発弾になる(裏CDあり)', rarity: 'rare' },
+  'bomb-counter': { name: 'ボムカウンター', desc: 'カウンターの反射弾が爆発する', rarity: 'rare' },
+  'punisher':     { name: 'パニッシャー',   desc: 'ノックバック中の敵が他の敵に当たると巻き込む', rarity: 'rare' },
+  'combo-master': { name: 'コンボマスター', desc: '近接フィニッシュのコンボ窓延長＋コンボでダメージ増加', rarity: 'rare' },
+  'knife-master': { name: 'ナイフマスター', desc: '近接ダメージのコンボでダメージ増加', rarity: 'rare' },
+  'benkei':       { name: '弁慶',           desc: '武器を切り替えると10秒間クリティカル率+10%', rarity: 'rare' },
+  'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'rare' },
+  // 通常
+  'gold-rush':    { name: 'ゴールドラッシュ', desc: 'ゴールド取得量が増加', rarity: 'normal' },
+  'time-keeper':  { name: 'タイムキーパー', desc: 'サブウェポンのクールダウン-30%', rarity: 'normal' },
+  'ghost-shooter':{ name: 'ゴーストシューター', desc: '20%の確率で弾を消費しない', rarity: 'normal' },
+  'dog-run':      { name: 'ドッグラン',     desc: '犬のクールダウン0・射程制限解除(犬装備時)', rarity: 'normal' },
+  'counter-master':{ name: 'カウンターマスター', desc: 'カウンター窓延長＋成功時に周囲を強ノックバック', rarity: 'normal' },
+  'slasher':      { name: 'スラッシャー',   desc: '近接直後の追撃(0.3倍)', rarity: 'normal' },
 };
 export const MAX_EQUIPPED_SKILLS = 2;
+// ガチャのレア度枠(%)。枠内は均等抽選。重複(所持済み)はゴールド返金。
+export const GACHA_RARITY_WEIGHTS: Record<SkillRarity, number> = { normal: 60, rare: 35, super: 5 };
+export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(k => SKILLS[k].rarity === r);
+// ガチャ1回の価格 / 重複時のレア度別返金額。
+export const GACHA_PULL_COST = 150;
+export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 50, rare: 150, super: 500 };
+// レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
+export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
+
+// ゴールドガチャを1回引く。レア度枠→枠内均等で SkillKey を返す(純粋関数)。
+export const rollGachaSkill = (rng: () => number = Math.random): SkillKey => {
+  const weights = GACHA_RARITY_WEIGHTS;
+  const total = weights.normal + weights.rare + weights.super;
+  let r = rng() * total;
+  let rarity: SkillRarity = 'normal';
+  for (const tier of ['super', 'rare', 'normal'] as SkillRarity[]) {
+    if (r < weights[tier]) { rarity = tier; break; }
+    r -= weights[tier];
+  }
+  const pool = skillsByRarity(rarity);
+  return pool[Math.floor(rng() * pool.length)] ?? pool[0];
+};
 
 // --- 資料室(世界観 / 変異体図鑑)のドラフト -------------------------------
 export const WORLD_INTRO: string[] = [

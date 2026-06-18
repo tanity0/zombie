@@ -164,6 +164,15 @@ const loadStringArray = (key: string): string[] => {
 const saveStringArray = (key: string, arr: string[]): void => {
   try { localStorage.setItem(key, JSON.stringify(arr)); } catch { /* ignore */ }
 };
+// 永続: ガチャで解禁したスキル所持 / 永続ゴールド残高(in-run の strap とは別系統)。
+const OWNED_SKILLS_KEY = 'zombie:ownedSkills';
+const GOLD_BALANCE_KEY = 'zombie:goldBalance';
+const loadNumber = (key: string, def: number): number => {
+  try { const r = localStorage.getItem(key); const n = r == null ? def : Number(r); return Number.isFinite(n) ? n : def; } catch { return def; }
+};
+const saveNumber = (key: string, n: number): void => {
+  try { localStorage.setItem(key, String(n)); } catch { /* ignore */ }
+};
 
 // Light knockback applied to a normal enemy each time a bullet connects.
 // Guns shove only half as hard as the melee counter's push.
@@ -352,6 +361,11 @@ export const hasAlchemy = (player: Player): boolean => player.subWeapons.include
 export const alchemyLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['alchemy'] ?? 1));
 export const hasRareSummon = (summons: Summon[]): boolean => summons.some(s => s.kind === 'rare');
+// 特殊枠サブ「賢者の石」(錬金術Lv3で武器商人に並ぶ。錬金術と同居の排他枠)。
+export const hasSageStone = (player: Player): boolean => player.subWeapons.includes('sage-stone');
+
+// 装備スキル判定。effect 層はすべてこのヘルパで分岐(非装備時は完全に従来挙動)。
+export const hasSkill = (player: Player, key: SkillKey): boolean => player.skills.includes(key);
 
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
@@ -781,7 +795,7 @@ const grantMeleeKillRewards = (
 };
 
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
-const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin']];
+const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone']];
 
 const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: number): Player => {
   const known = player.subWeapons.includes(key);
@@ -1005,8 +1019,13 @@ interface GameState {
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
   setPendingLoadout: (keys: SubWeaponKey[]) => void;
-  pendingSkills: SkillKey[];                            // 装備メニューで選んだスキル(最大2・永続。効果は今後配線)
+  pendingSkills: SkillKey[];                            // 装備メニューで選んだスキル(最大2・永続)
   setPendingSkills: (keys: SkillKey[]) => void;
+  ownedSkills: SkillKey[];                              // ガチャで解禁済みスキル(永続)。装備候補はここから。
+  grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
+  goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
+  addGold: (amount: number) => void;                    // ラン結果のゴールドを加算(永続)
+  spendGold: (amount: number) => boolean;               // ガチャ消費。足りれば true
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
@@ -1110,6 +1129,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponLevels: {},
     subWeaponCooldowns: {},
     skills: [],
+    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
+    knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
     katanaDashUntil: 0,
@@ -1163,6 +1184,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   unlockedShopSkillCards: {},
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
   pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).slice(0, 2),
+  ownedSkills: loadStringArray(OWNED_SKILLS_KEY) as SkillKey[],
+  goldBalance: loadNumber(GOLD_BALANCE_KEY, 0),
   indoorMode: false,
   labDoors: [],
   labButtons: [],
@@ -4380,6 +4403,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ pendingSkills: capped });
   },
 
+  grantSkill: (key) => {
+    const owned = get().ownedSkills;
+    if (owned.includes(key)) return;
+    const next = [...owned, key];
+    saveStringArray(OWNED_SKILLS_KEY, next);
+    set({ ownedSkills: next });
+  },
+  addGold: (amount) => {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const next = Math.max(0, Math.round(get().goldBalance + amount));
+    saveNumber(GOLD_BALANCE_KEY, next);
+    set({ goldBalance: next });
+  },
+  spendGold: (amount) => {
+    const bal = get().goldBalance;
+    if (amount <= 0 || bal < amount) return false;
+    const next = Math.max(0, Math.round(bal - amount));
+    saveNumber(GOLD_BALANCE_KEY, next);
+    set({ goldBalance: next });
+    return true;
+  },
+
   setPendingIndoor: (indoor) => {
     set({ pendingIndoor: indoor });
   },
@@ -4847,6 +4892,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
           subWeapons: runSubs,
           skills: runSkills,
+          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
+          knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,

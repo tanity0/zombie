@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore } from '../utils/resultScoring';
@@ -75,6 +75,17 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     totalScore,
     goldEarned,
   } = calculateResultScore(stats, won, indoor);
+  // このランで得たゴールドを永続財布へ加算(マウント時1回。ベンチマークは加算しない)。
+  const isBenchmarkRun = benchmarkResult !== null;
+  const addGold = useGameStore(s => s.addGold);
+  const goldBalance = useGameStore(s => s.goldBalance);
+  const creditedRef = useRef(false);
+  useEffect(() => {
+    if (creditedRef.current || isBenchmarkRun || goldEarned <= 0) return;
+    creditedRef.current = true;
+    addGold(goldEarned);
+  }, [isBenchmarkRun, goldEarned, addGold]);
+
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
   const statsItems = [
     { label: '生存時間', value: formatTime(stats.timeAlive) },
@@ -84,7 +95,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: '最大コンボ', value: stats.maxCombo },
     { label: 'トレジャー', value: stats.treasuresCollected },
     { label: 'スクラップ残', value: remainingStraps },
-    { label: 'ゴールド', value: goldEarned }
+    { label: 'ゴールド', value: goldEarned },
+    ...(isBenchmarkRun ? [] : [{ label: '所持ゴールド', value: goldBalance }]),
   ];
   const scoreItems = [
     { label: '与ダメ', value: damageScore },

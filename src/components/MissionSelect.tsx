@@ -7,7 +7,8 @@ import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY, type Stage
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
+  GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, RARITY_LABEL, rollGachaSkill, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress
@@ -67,6 +68,14 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
   </div>
 );
 
+// スキルのレア度別カラー(装備カード枠/ガチャ結果で共用)。
+const RARITY_TEXT: Record<SkillRarity, string> = {
+  normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
+};
+const RARITY_BORDER: Record<SkillRarity, string> = {
+  normal: 'border-white/10', rare: 'border-sky-400/40', super: 'border-amber-300/55',
+};
+
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
@@ -74,6 +83,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 装備(サブ/スキル)はトップの独立「装備メニュー」で選び、store に永続。出撃時に resetGame が反映。
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const equippedSkills = useGameStore(state => state.pendingSkills);
+  const ownedSkills = useGameStore(state => state.ownedSkills);
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
   const setPendingSkills = useGameStore(state => state.setPendingSkills);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
@@ -302,36 +312,45 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <>
         <Header title="装備" subtitle="ステージ共通。サブウェポンとスキルを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
-          {/* スキル(別枠・最大2) */}
+          {/* スキル(別枠・最大2)。装備候補はガチャで解禁済み(ownedSkills)のみ。 */}
           <div>
             <div className="flex items-center justify-between px-1 mb-1.5">
               <span className="text-[11px] uppercase tracking-widest text-fuchsia-200/70">スキル</span>
               <span className="text-[11px] text-white/45">{equippedSkills.length}/{MAX_EQUIPPED_SKILLS}</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {SKILL_KEYS.map(k => {
-                const on = equippedSkills.includes(k);
-                const full = !on && equippedSkills.length >= MAX_EQUIPPED_SKILLS;
-                return (
-                  <button
-                    key={k}
-                    onClick={() => toggleSkill(k)}
-                    disabled={full}
-                    className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left ${
-                      on ? 'border-fuchsia-300/55 bg-fuchsia-300/15 text-fuchsia-50'
-                        : full ? 'border-white/5 bg-white/[0.03] text-white/30'
-                        : 'border-white/10 bg-white/5 text-white/85 active:bg-white/10'
-                    }`}
-                  >
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span className="text-[13px] font-semibold">{SKILLS[k].name}</span>
-                      {on && <Check size={15} className="shrink-0" />}
-                    </span>
-                    <span className="text-[10px] leading-snug text-white/50">{SKILLS[k].desc}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {ownedSkills.length === 0 ? (
+              <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[11px] leading-snug text-white/50">
+                解禁済みのスキルがありません。武器開発のスキルガチャでゴールドを使って解禁してください。
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {/* SKILL_KEYS 順に、所持済みのみ表示(レア度色付き)。 */}
+                {SKILL_KEYS.filter(k => ownedSkills.includes(k)).map(k => {
+                  const on = equippedSkills.includes(k);
+                  const full = !on && equippedSkills.length >= MAX_EQUIPPED_SKILLS;
+                  const rarity = SKILLS[k].rarity;
+                  return (
+                    <button
+                      key={k}
+                      onClick={() => toggleSkill(k)}
+                      disabled={full}
+                      className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left ${
+                        on ? 'border-fuchsia-300/55 bg-fuchsia-300/15 text-fuchsia-50'
+                          : full ? 'border-white/5 bg-white/[0.03] text-white/30'
+                          : `${RARITY_BORDER[rarity]} bg-white/5 text-white/85 active:bg-white/10`
+                      }`}
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold">{SKILLS[k].name}</span>
+                        {on && <Check size={15} className="shrink-0" />}
+                      </span>
+                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>
+                      <span className="text-[10px] leading-snug text-white/50">{SKILLS[k].desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           {/* サブウェポン */}
           <div>
@@ -606,6 +625,72 @@ const DevTools: React.FC<{
   );
 };
 
+// === スキルガチャ(武器開発トップに組み込み) ===========================
+// ゴールド残高で1回引く。当選=所持解禁、重複=レア度別ゴールド返金。
+type GachaResult = { key: SkillKey; rarity: SkillRarity; duplicate: boolean; refund: number };
+const SkillGacha: React.FC = () => {
+  const goldBalance = useGameStore(s => s.goldBalance);
+  const ownedCount = useGameStore(s => s.ownedSkills.length);
+  const grantSkill = useGameStore(s => s.grantSkill);
+  const spendGold = useGameStore(s => s.spendGold);
+  const addGold = useGameStore(s => s.addGold);
+  const [result, setResult] = useState<GachaResult | null>(null);
+  const [noGold, setNoGold] = useState(false);
+
+  const pull = () => {
+    setNoGold(false);
+    if (!spendGold(GACHA_PULL_COST)) { setNoGold(true); setResult(null); return; }
+    const key = rollGachaSkill();
+    const rarity = SKILLS[key].rarity;
+    const duplicate = useGameStore.getState().ownedSkills.includes(key);
+    if (duplicate) {
+      const refund = GACHA_REFUND_BY_RARITY[rarity];
+      addGold(refund);
+      setResult({ key, rarity, duplicate, refund });
+    } else {
+      grantSkill(key);
+      setResult({ key, rarity, duplicate, refund: 0 });
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
+      <div className="flex items-center justify-between px-0.5 mb-2">
+        <span className="text-[12px] font-semibold text-fuchsia-100">スキルガチャ</span>
+        <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
+      </div>
+      <p className="text-[10px] leading-snug text-white/50 mb-2">
+        装備スキルをゴールドで解禁。{RARITY_LABEL.normal}60% / {RARITY_LABEL.rare}35% / {RARITY_LABEL.super}5%。重複はゴールド返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
+      </p>
+      <button
+        type="button"
+        onClick={pull}
+        disabled={goldBalance < GACHA_PULL_COST}
+        className={`w-full rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+          goldBalance < GACHA_PULL_COST
+            ? 'border border-white/10 bg-white/[0.03] text-white/30'
+            : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
+        }`}
+      >
+        1回引く（{GACHA_PULL_COST} ゴールド）
+      </button>
+      {noGold && <p className="mt-2 text-[11px] text-rose-300 text-center">ゴールドが足りません。</p>}
+      {result && (
+        <div className={`mt-2 rounded-xl border px-3 py-2 ${RARITY_BORDER[result.rarity]} bg-black/20`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-white">{SKILLS[result.key].name}</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${RARITY_TEXT[result.rarity]}`}>{RARITY_LABEL[result.rarity]}</span>
+          </div>
+          <p className="text-[10px] leading-snug text-white/55 mt-0.5">{SKILLS[result.key].desc}</p>
+          <p className={`text-[11px] mt-1 font-semibold ${result.duplicate ? 'text-amber-200' : 'text-emerald-300'}`}>
+            {result.duplicate ? `重複 → ${result.refund} ゴールド返金` : '新規解禁！'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // === 武器開発(スキルショップ) ==========================================
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const unlockedShopSkillCards = useGameStore(s => s.unlockedShopSkillCards);
@@ -614,8 +699,11 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   return (
     <>
-      <Header title="武器開発" subtitle="サブウェポン(スキル)の陳列レベル解放" onBack={onBack} />
-      <div className="p-3 grid grid-cols-1 gap-2">
+      <Header title="武器開発" subtitle="スキルガチャ / サブウェポン陳列レベル解放" onBack={onBack} />
+      <div className="p-3">
+        <SkillGacha />
+      </div>
+      <div className="px-3 pb-3 grid grid-cols-1 gap-2">
         <button type="button" onClick={() => setStartWithTestStraps(!startWithTestStraps)}
           className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${startWithTestStraps ? 'border-amber-300/35 bg-amber-300/15 text-amber-50' : 'border-white/10 bg-white/5 text-white active:bg-white/10'}`}>
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>

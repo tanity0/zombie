@@ -81,6 +81,14 @@ export interface Player {
   subWeaponCooldowns: Partial<Record<SubWeaponKey, number>>;
   // 装備スキル(サブウェポンとは別枠のアクティブ能力。最大2。効果は今後配線=現状は枠/保持のみ)。
   skills: SkillKey[];
+  // 装備スキルの状態フィールド(状態を持つスキルのみ。全て number・既定0。resetGame で初期化)。
+  fireShooterCdUntil: number;  // ファイアシューター: 爆発弾化の裏CD(gameTime)
+  reflexCdUntil: number;       // 反射神経: 反撃CD(gameTime)
+  slasherWindowUntil: number;  // スラッシャー: 追撃受付窓(gameTime)
+  knifeComboCount: number;     // ナイフマスター: 近接ダメージコンボ数
+  knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)
+  benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
+  benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
   // Whip (鞭) sub-weapon charge. Each whip hit increments whipHitCount; at the
@@ -286,10 +294,19 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone';
 
-// 装備スキル(サブウェポンとは別系統のアクティブ能力)。最大2装備。効果は今後配線(現状は枠/保持/UIのみ)。
-export type SkillKey = 'adrenaline' | 'emp-pulse' | 'nano-heal' | 'overload';
+// 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
+// レア度: normal/rare/super(超レア=死神/バーサーカー/スケーター)。
+export type SkillKey =
+  // 超レア
+  | 'reaper' | 'berserker' | 'skater'
+  // レア
+  | 'crit-up' | 'knight' | 'exploder' | 'sharpshooter' | 'sniper' | 'ricochet'
+  | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'
+  | 'knife-master' | 'benkei' | 'reflex'
+  // 通常
+  | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。
