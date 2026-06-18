@@ -11957,3 +11957,20 @@ gameStore・useGameLoop・GameHUD 等のゲーム調整はクリーンに合流�
   「空中はすり抜け→着地で爆発」の駆け引きになる。スロー演出は付けない(社長規約遵守)。負荷 1/10(着地時のみ)。
 - 盾(設置型シールド)のクールダウンを 5000ms→**6000ms**(`SHIELD_COOLDOWN_MS`)。
 lint/build 通過。
+
+## v0.25.511 — 研究所 遠近(1): 立体壁を擬似遠近(depthScale)に参加 (claude/cool-edison-7b8jrl)
+描画のみ・当たり判定/store/屋外不変。立体壁(addBlock の actorLayer ブロック)を高さ方向だけ擬似遠近に参加。
+- 各ブロックの footY と元総高(h+RISE)を `labWallDepth` に保持。毎フレーム `depthScaleWith(footY, DEPTH_K*labdepth,
+  0.8, 1.35)` で `scale.y` を更新し、`position.y = footY - fullH*scaleY` で**足元(下辺)をピン留め**。
+- **width は不変**(scale.x=1。横に伸ばすと床グリッド/隣接/判定とズレるため)。SEG スライス壁は各スライスの footY で個別。
+- `depthRefY`(プレイヤー足元)が変化した時だけ更新(静止中はスキップ)。外周リング(平面)は対象外。
+- 強さ `?labdepth=`(既定0.6=床オブジェクトより緩め)。RISE は既存 `?labrise=`(既定38。視認性中間なら48〜56)。
+- 床(labFloor/変種/AO)は据え置き(world-space で歪めると壁とズレるため)。遠近は壁＋アクター＋(後続)前後層で表現。
+
+### 負荷スコア
+1〜2/10(rendering)。毎フレームは壁数ぶん(数十)の scale.y/position.y 更新のみ・geometry 再生成なし・静止中スキップ。
+
+### 次: 遠近(2) 前後パララックス層 — 要新規アセット(未受領)
+- 前景 `lab-fg/lab-fg-beam|-pipe|-duct|-cable.png`(マスターシート Row4 から縮小・減色)
+- 背景 `lab/lab-bg-void.png`(暗い天井/void が上へ消える縦長シームレス・ドット絵)
+素材が入り次第、frontObjectLayer(前景・パララックス＋微ぼかし)＋外周暗リング置換(背景プレート・低速パララックス)を実装。

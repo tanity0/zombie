@@ -340,6 +340,11 @@ const DEPTH_MAX = 1.45;
 const ENEMY_DEPTH_K = 0.00145;
 const ENEMY_DEPTH_MIN = 0.55;
 const ENEMY_DEPTH_MAX = 1.85;
+// 研究所の立体壁を擬似遠近(高さ方向のみ)に参加させる強さ。?labdepth= で調整(既定0.6=床オブジェクトより緩め)。
+// 既存 DEPTH_K に対する倍率。clamp はゆるめ(下記)。width は絶対にスケールしない(床/隣接/判定とズレるため)。
+const LAB_WALL_DEPTH_STRENGTH = Math.max(0, tsNum('labdepth', 0.6));
+const LAB_WALL_DEPTH_MIN = 0.8;
+const LAB_WALL_DEPTH_MAX = 1.35;
 const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 const GROUND_TILE_SCALE_Y_FAR = 0.12;
@@ -581,6 +586,9 @@ export class PixiScene {
   private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
   private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
   private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
+  // 立体壁の擬似遠近(高さ方向のみ)。各ブロックの footY と元の総高(h+RISE)を保持し、毎フレーム scale.y を更新。
+  private labWallDepth: { cont: Container; footY: number; fullH: number }[] = [];
+  private labWallDepthRefY = NaN; // 直近の depthRefY(変化なしなら更新スキップ)
   private labFloorDecor: Container | null = null;  // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO。決定的ハッシュで1度だけ生成。
   private labFloorDecorSig = '';                   // 変種散布の生成シグネチャ(部屋集合は静的なので実質1回)。
   private labWallShadow: Graphics | null = null;   // 壁下辺の焼き込み落ち影(右上光源→左下オフセット)。壁/扉と同シグネチャで再構築。
@@ -3511,6 +3519,8 @@ export class PixiScene {
         this.labWalls.removeChildren().forEach(c => c.destroy());
         for (const c of this.labWallActors) c.destroy({ children: true });
         this.labWallActors = [];
+        this.labWallDepth = [];
+        this.labWallDepthRefY = NaN; // 再構築後は次フレームで必ず深度再計算
         const RISE = LAB_WALL_RISE;
         const SEG = 160; // 背の高い壁のスライス高(px)。各スライスが自分の footY でソート。
         const b = LAB_BOUNDS;
@@ -3547,6 +3557,7 @@ export class PixiScene {
           cont.zIndex = footY;
           this.L.actorLayer.addChild(cont);
           this.labWallActors.push(cont);
+          this.labWallDepth.push({ cont, footY, fullH: h + RISE }); // 擬似遠近(高さのみ)用に保持
         };
         const addWall = (rect: { x: number; y: number; width: number; height: number }) => {
           shadowRect(rect);
@@ -3583,6 +3594,17 @@ export class PixiScene {
         }
       }
       for (const c of this.labWallActors) c.visible = true; // 屋内中は常に表示(深度ソートはアクター層が処理)
+      // 擬似遠近(高さ方向のみ): 手前(footY 大)ほど高く、奥ほど低く。足元(下辺)をピン留め、width は不変。
+      // depthRefY(プレイヤー足元)が変わった時だけ更新(変化なしならスキップ)。
+      if (LAB_WALL_DEPTH_STRENGTH > 0 && this.labWallDepthRefY !== this.depthRefY) {
+        this.labWallDepthRefY = this.depthRefY;
+        const k = DEPTH_K * LAB_WALL_DEPTH_STRENGTH;
+        for (const e of this.labWallDepth) {
+          const d = this.depthScaleWith(e.footY, k, LAB_WALL_DEPTH_MIN, LAB_WALL_DEPTH_MAX);
+          e.cont.scale.y = d;                       // 高さのみスケール(scale.x は 1 のまま)
+          e.cont.position.y = e.footY - e.fullH * d; // 足元(下辺)を footY に固定
+        }
+      }
     }
     // マーカー(ボタン/ゴール)。床/壁の上・アクターの下に重ねる。
     if (!this.labGfx) {
