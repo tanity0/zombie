@@ -101,6 +101,14 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
+const tsBool = (key: string, def: boolean): boolean => {
+  if (typeof window === 'undefined') return def;
+  const v = new URLSearchParams(window.location.search).get(key);
+  return v == null ? def : (v === '1' || v === 'true');
+};
+// 研究所の擬似3D(斜め遠近)試作フラグ。?labpersp=1 で床だけ遠近(A1)。既定OFF=現状維持(回帰なし)。
+// 描画のみ。当たり判定/移動/aim は不変(store の値そのまま)。
+const LAB_PERSP = tsBool('labpersp', false);
 const TILT_SHIFT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ts') !== '0';
 const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the edges
 const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
@@ -587,6 +595,7 @@ export class PixiScene {
   private labGfx: Graphics | null = null; // 屋内ステージのマーカー(ボタン/ゴール)(world座標・遅延生成)
   private labFloor: TilingSprite | null = null; // 屋内ステージの床タイル(world座標・遅延生成)
   private labVoid: TilingSprite | null = null;  // 背景の天井/void プレート(外周マージンに敷く・低速パララックス)
+  private groundStripBaseTex: Texture | null = null; // 屋外の地面ストリップ元テクスチャ(?labpersp で研究所床に差し替える際の復元用)
   private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
   private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
   private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
@@ -1192,6 +1201,15 @@ export class PixiScene {
 
   private snapToScreenPixel(worldValue: number, worldOffset: number): number {
     return Math.round(worldValue + worldOffset) - worldOffset;
+  }
+
+  // ?labpersp で研究所床に差し替えた地面ストリップを、屋外/非persp 時に元(屋外地面・ENV_TINT)へ戻す。
+  private restoreGroundStrips() {
+    if (!this.groundStripBaseTex) return; // 一度も差し替えていなければ何もしない
+    for (const strip of this.L.groundStrips) {
+      if (strip.texture !== this.groundStripBaseTex) strip.texture = this.groundStripBaseTex;
+      strip.tint = ENV_TINT;
+    }
   }
 
   private updatePerspectiveGround(cameraX: number, cameraY: number, shakeX: number, shakeY: number) {
@@ -3460,13 +3478,16 @@ export class PixiScene {
   private syncLab() {
     const s = useGameStore.getState();
     const indoor = s.indoorMode;
+    const persp = indoor && LAB_PERSP; // A1: 研究所だけ「床を遠近」にする試作(フラグ時のみ)。
     // 屋外の screen-space 背景/床/前景と world の木は屋内では隠す。
+    // ただし ?labpersp の屋内では地面ストリップ(遠近床)を流用するので groundBase は表示する。
     this.L.farBackdrop.visible = !indoor;
     this.L.horizonForest.visible = !indoor;
-    this.L.groundBase.visible = !indoor;
+    this.L.groundBase.visible = !indoor || persp;
     this.L.frontForest.visible = !indoor;
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
+      this.restoreGroundStrips(); // 屋外復帰: ?labpersp で差し替えた床を元へ
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;
       if (this.labFloor) this.labFloor.visible = false;
@@ -3480,9 +3501,23 @@ export class PixiScene {
     }
     // 屋内は周辺減光(環境の暗がり)を広範囲に強める(社長指示)。
     this.vignette.alpha = LAB_VIGNETTE_ALPHA;
+    // A1 試作(?labpersp): フラット床/変種/void を使わず、ステージ1の遠近 ground を研究所床テクスチャで流用。
+    // 当たり判定/移動/aim は不変(描画だけ斜め遠近)。壁/プロップ/アクターは現状(depthScale)のまま。
+    if (persp) {
+      const labTex = getTexture('lab-floor/lab-floor-clean');
+      if (labTex) {
+        if (!this.groundStripBaseTex && this.L.groundStrips[0]) this.groundStripBaseTex = this.L.groundStrips[0].texture;
+        for (const strip of this.L.groundStrips) { strip.texture = labTex; strip.tint = LAB_ENV_TINT; }
+      }
+      if (this.labVoid) this.labVoid.visible = false;
+      if (this.labFloor) this.labFloor.visible = false;
+      if (this.labFloorDecor) this.labFloorDecor.visible = false;
+    } else {
+      this.restoreGroundStrips();
+    }
     // 背景: 天井/void プレートを外周マージンに敷く(床の下=最下層)。床は迷路グリッド(LAB_BOUNDS)だけを
-    // 覆い、外側マージンはこの void が見える。低速パララックスで「奥」を表現。
-    const voidTex = getTexture('lab/lab-bg-void');
+    // 覆い、外側マージンはこの void が見える。低速パララックスで「奥」を表現。(?labpersp 時は使わない)
+    const voidTex = persp ? null : getTexture('lab/lab-bg-void');
     if (voidTex) {
       if (!this.labVoid) {
         this.labVoid = new TilingSprite({ texture: voidTex, width: LAB_OUTER_BOUNDS.width, height: LAB_OUTER_BOUNDS.height });
@@ -3497,8 +3532,8 @@ export class PixiScene {
     }
     // 床(新ドット絵シームレスタイル=clean)。迷路グリッド(LAB_BOUNDS)のみを覆う(外側は void が見える)。
     const LAB_FLOOR_TILE = 120; // 1タイルの world サイズ(px)。ドット絵が読める粒度(旧300は大きすぎた)。
-    const floorTex = getTexture('lab-floor/lab-floor-clean')
-      ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-r1-c1');
+    const floorTex = persp ? null : (getTexture('lab-floor/lab-floor-clean')
+      ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-r1-c1'));
     if (floorTex) {
       if (!this.labFloor) {
         this.labFloor = new TilingSprite({ texture: floorTex, width: LAB_BOUNDS.width, height: LAB_BOUNDS.height });
@@ -3510,8 +3545,10 @@ export class PixiScene {
       }
       this.labFloor.visible = true;
     }
-    // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO を各部屋に決定的散布(1度だけ生成)。
-    this.buildLabFloorDecor(LAB_FLOOR_TILE);
+    // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO を各部屋に決定的散布(1度だけ生成)。?labpersp 時は world-space で
+    // 遠近床と整合しないので生成しない(A1)。
+    if (!persp) this.buildLabFloorDecor(LAB_FLOOR_TILE);
+    else if (this.labFloorDecor) this.labFloorDecor.visible = false;
     // 壁: 縦横を統一した立体規約。各壁矩形を foot-anchored Container として actorLayer に置き、
     // zIndex=footY(下辺)で深度ソート → プレイヤー/敵が壁の「上(北)」へ回り込める。背の高い壁は
     // Y方向にスライスし各スライスを自分の footY でソート(長い壁でも正しく前後)。前面=lab-wall-front
@@ -3640,7 +3677,7 @@ export class PixiScene {
     if (!floorTex) g.rect(LAB_BOUNDS.x, LAB_BOUNDS.y, LAB_BOUNDS.width, LAB_BOUNDS.height).fill({ color: 0x10151c }); // 床フォールバック
     // 外周マージンは背景 void プレート(labVoid・床の下)で表現するため、旧「暗リング塗り」は廃止。
     // void が見えない場合(テクスチャ未ロード)の保険として、マージンを従来色で薄く沈めておく。
-    if (!voidTex) {
+    if (!voidTex && !persp) {
       const o = LAB_OUTER_BOUNDS, b = LAB_BOUNDS;
       const col = LAB_OUTER_TINT, a = 0.82;
       g.rect(o.x, o.y, o.width, b.y - o.y).fill({ color: col, alpha: a });

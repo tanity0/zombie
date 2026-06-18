@@ -11990,3 +11990,20 @@ lint/build 通過。
 ### 残: 遠近(2)前景(オーバーヘッド梁/配管) — 要アセット未受領
 `lab-fg/lab-fg-beam|-pipe|-duct|-cable.png`(マスターシート Row4)が入り次第、frontObjectLayer に疎配置＋微ぼかし＋
 軽パララックスで実装予定。
+
+## v0.25.513 — 研究所 擬似3D遠近 試作 A1: 床だけ遠近(?labpersp=1) (claude/cool-edison-7b8jrl)
+描画のみ・当たり判定/store/移動/aim 不変・屋外無変更。試作フラグ `LAB_PERSP = tsBool('labpersp', false)`(既定OFF)。
+- A1: ?labpersp 時、研究所のフラット床(labFloor)/変種/AO/void を使わず、ステージ1の遠近 ground(groundBase/
+  groundStrips + updatePerspectiveGround)を流用。ストリップのテクスチャを `lab-floor-clean` に差し替え、tint=LAB_ENV_TINT。
+  既存の遠近定数(GROUND_TILE_SCALE_Y_FAR/NEAR・GROUND_PERSPECTIVE_CURVE)をそのまま使用。
+- groundBase の表示を `!indoor || persp` に。屋外復帰/非persp では `restoreGroundStrips()` で元テクスチャ/ENV_TINT へ戻す
+  (groundStripBaseTex に屋外テクスチャを退避)。壁/プロップ/アクターは現状(depthScale)のまま=A1の評価対象は床のみ。
+- OFF(既定)では persp=false 固定で完全に現状動作(回帰なし)。
+- 未実装(評価後判断): A2(壁/プロップの footY を遠近写像で床に乗せる)、A3(アクター/aim のフル投影＋逆写像)。
+  ?labperspk(NEAR/FAR 可変)は A1 では未追加。
+
+### 負荷スコア
+1〜2/10(rendering)。既存の updatePerspectiveGround を屋内でも回すだけ(ストリップ数ぶんのタイル更新)。新規確保なし。
+
+### Verification
+- `npm run lint` / `npm run build` 通過。屋外は groundBase=ENV_TINT/元テクスチャで無変更。?labpersp=1 で研究所の床が斜め遠近に。
