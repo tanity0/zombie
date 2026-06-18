@@ -12432,3 +12432,12 @@ PixiStage で森の地面/背景と同じ Assets.load(`sprites/lab-floor/lab-flo
 
 ### Verification
 - lint/build 通過。stage-2 でプレイヤー/UVバー周辺だけ明るく、外周は急に暗くなる。
+
+## v0.25.541 — 可視可能ゾーンを「暗幕＋反転マスク」方式に作り直し(真っ暗バグ修正) (claude/cool-edison-7b8jrl)
+v0.25.540 の AlphaFilter+multiply 合成では明かりの穴が抜けず全画面が真っ暗だった。確実な方式へ変更:
+- 暗幕(labVeil): 全画面の暗い Sprite(tint=LAB_VIS_DARK, alpha=LAB_VIS_ALPHA=0.9)を uiLayer 最下に。
+- マスク(labMaskLayer): プレイヤー+画面内UVバー位置に光テクスチャ(中心ベタ→際で急落)を配置。
+- veil.setMask({ mask: labMaskLayer, inverse: true }) で「光の形をくり抜く」。穴の中=通常の明るさ、外=暗幕で暗い。
+- 半径=LAB_VIS_RANGE(176=ハンドガン射程)。lab+屋外のみ。?vrange/?vdark/?valpha 調整可。AlphaFilter 依存を撤去。
+### 負荷スコア 4/10(マスク=render-to-texture 1パス。lab限定・ライトはプール/画面内カリング)。
+### Verification lint/build 通過。

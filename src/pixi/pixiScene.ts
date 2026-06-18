@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { AlphaFilter, BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
@@ -114,7 +114,8 @@ const LAB_PERSP = tsBool('labpersp', false);
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 // 研究所スキン専用「可視可能ゾーン」: プレイヤー/UVバー周辺(=ハンドガン射程)だけ明るく、外は急に暗い。
 const LAB_VIS_RANGE = tsNum('vrange', 176);     // 明るく見える半径(px=ハンドガン射程)
-const LAB_VIS_DARK = tsNum('vdark', 0x14141c);  // 可視ゾーン外の暗さ(乗算tint。小さいほど暗い=かすかに見える)
+const LAB_VIS_DARK = tsNum('vdark', 0x05060a);  // 可視ゾーン外の暗幕の色(暗いほど黒)
+const LAB_VIS_ALPHA = tsNum('valpha', 0.9);     // 暗幕の濃さ(1=真っ黒, 0.9=かすかに見える)
 // 研究所専用の強い遠近(屋外定数を流用せず分離)。奥(FAR)を強く縮め、収束カーブを急に。?で生調整。
 const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み(小=奥が強く縮む。屋外は0.12)
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)
@@ -605,10 +606,10 @@ export class PixiScene {
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
   private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
-  // 可視可能ゾーン(研究所スキン): 乗算の暗闇レイヤー。プレイヤー/UVバーに「明かりの穴」を空ける。
-  // フィルタで一度テクスチャ化してから multiply 合成=穴の中だけ通常の明るさ、外は急に暗い。
-  private labVisibility: Container | null = null;
-  private labDarkBase: Sprite | null = null;
+  // 可視可能ゾーン(研究所スキン): 暗幕(dark veil)を全画面に敷き、プレイヤー/UVバーの「光の形」で
+  // 反転マスクしてくり抜く=穴の中だけ通常の明るさ、外は暗い。
+  private labVeil: Sprite | null = null;
+  private labMaskLayer: Container | null = null;
   private labVisLights: Sprite[] = [];
 
   private fireflies: Firefly[] = [];
@@ -2318,23 +2319,29 @@ export class PixiScene {
   // フィルタで一度テクスチャ化→whole を multiply 合成: 穴の中=通常の明るさ、外=急に暗い(LAB_VIS_DARK)。
   // 壁/敵/アイテムは uiLayer(このレイヤー)の下=暗所では見えづらくなる(社長指示)。
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
-    if (!show) { if (this.labVisibility) this.labVisibility.visible = false; return; }
-    if (!this.labVisibility) {
-      const cont = new Container();
-      const dark = new Sprite(Texture.WHITE);
-      dark.tint = LAB_VIS_DARK; dark.alpha = 1; dark.position.set(0, 0);
-      cont.addChild(dark);
-      cont.filters = [new AlphaFilter()]; // テクスチャ化を強制(内部で暗+穴を合成→全体を multiply)
-      cont.blendMode = 'multiply';
-      this.L.uiLayer.addChildAt(cont, 0); // uiLayer 最下=ワールドを暗くし、グレード/ビネット/HUDは上に出す
-      this.labVisibility = cont;
-      this.labDarkBase = dark;
+    if (!show) {
+      if (this.labVeil) this.labVeil.visible = false;
+      if (this.labMaskLayer) this.labMaskLayer.visible = false;
+      return;
     }
-    const cont = this.labVisibility;
-    const dark = this.labDarkBase!;
-    cont.visible = true;
-    dark.width = this.screenW;
-    dark.height = this.screenH;
+    if (!this.labVeil) {
+      const maskLayer = new Container();
+      const veil = new Sprite(Texture.WHITE);
+      veil.tint = LAB_VIS_DARK;
+      veil.alpha = LAB_VIS_ALPHA;
+      veil.position.set(0, 0);
+      this.L.uiLayer.addChildAt(maskLayer, 0); // マスク用(透明な光の形)。Pixiがマスクとして描画。
+      this.L.uiLayer.addChildAt(veil, 0);      // 暗幕。uiLayer 最下=ワールドの上・HUDの下。
+      veil.setMask({ mask: maskLayer, inverse: true }); // 光の形を「くり抜く」(反転マスク)
+      this.labVeil = veil;
+      this.labMaskLayer = maskLayer;
+    }
+    const veil = this.labVeil;
+    const maskLayer = this.labMaskLayer!;
+    veil.visible = true;
+    maskLayer.visible = true;
+    veil.width = this.screenW;
+    veil.height = this.screenH;
     // 明かりの穴位置(world→screen = world - camera + shake)。プレイヤー + 画面内のUVバー。
     const s = useGameStore.getState();
     const cam = s.camera;
@@ -2351,7 +2358,7 @@ export class PixiScene {
     while (this.labVisLights.length < pts.length) {
       const sp = new Sprite(tex);
       sp.anchor.set(0.5);
-      cont.addChild(sp);
+      maskLayer.addChild(sp);
       this.labVisLights.push(sp);
     }
     const d = LAB_VIS_RANGE * 2;
