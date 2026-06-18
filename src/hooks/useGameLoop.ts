@@ -50,6 +50,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget
 } from '../utils/enemyUtils';
+import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
@@ -175,7 +176,9 @@ const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
 const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
-const LAB_SPAWN_AGGRO_RANGE = 300;
+const LAB_SPAWN_AGGRO_RANGE = 150;
+// 1画面区画あたりのラボ敵の上限(密度制御)。
+const LAB_ENEMIES_PER_ZONE = 3;
 const PLAYER_DEATH_SLOW_MS = 820;
 const CASTLE_SPAWN_SLOW_MS = 900;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
@@ -2978,6 +2981,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           );
           let plantCount = useGameStore.getState().enemies
             .filter(e => e.type === 'plant').length;
+          // 研究所スキン: 区画(LAB_ZONE)ごとの現在の敵数を集計(1区画 LAB_ENEMIES_PER_ZONE 体まで)。
+          const labZoneCounts = new Map<string, number>();
+          if (labTheme) {
+            for (const e of useGameStore.getState().enemies) {
+              const k = labZoneKey(e.x + e.width / 2, e.y + e.height / 2);
+              labZoneCounts.set(k, (labZoneCounts.get(k) ?? 0) + 1);
+            }
+          }
 
           for (let i = 0; i < spawnCount; i++) {
             // 研究所スキンは湧きをラボ用ゾンビ(Lv1/2/3)に固定。画面外ランダム配置は generateEnemy を流用。
@@ -2985,6 +2996,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
               const labEnemy = generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection);
+              const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
+              // スタート地点(原点)付近には湧かせない。
+              if (Math.hypot(ecx, ecy) < LAB_START_SAFE_RADIUS) continue;
+              // 1画面区画あたりの上限を超える区画には湧かせない。
+              const zk = labZoneKey(ecx, ecy);
+              if ((labZoneCounts.get(zk) ?? 0) >= LAB_ENEMIES_PER_ZONE) continue;
+              labZoneCounts.set(zk, (labZoneCounts.get(zk) ?? 0) + 1);
               labEnemy.dormant = true;
               labEnemy.aggroRange = LAB_SPAWN_AGGRO_RANGE;
               labEnemy.vx = 0;

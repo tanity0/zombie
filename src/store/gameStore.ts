@@ -29,7 +29,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
-import { STAGE2_WALLS, STAGE2_UV_BARS, STAGE2_DOCUMENT, wallRect, type PlacedWall } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, STAGE2_DOCUMENT, wallRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
@@ -1000,8 +1000,6 @@ interface GameState {
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
   labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
-  placedWalls: PlacedWall[];                            // 手置き壁オブジェクト(stage-2 研究所スキン。描画用)
-  wallRects: Rect[];                                    // 手置き壁の AABB(precompute・移動/視線遮りに使用)
   hasCardKey: boolean;                                  // カードキー取得済みか
   goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
   pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
@@ -1149,8 +1147,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   labDoors: [],
   labButtons: [],
   labProps: [],
-  placedWalls: [],
-  wallRects: [],
   hasCardKey: false,
   goalReachedAt: 0,
   pendingIndoor: false,
@@ -1306,10 +1302,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: player.width,
           height: player.height,
         }, castleEvent);
-        // 手置き壁オブジェクト(研究所スキン)を遮蔽物として解決。壁が無い出撃は no-op。
-        const wallResolved = state.wallRects.length
-          ? resolveAabb({ x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height }, state.wallRects)
-          : castleResolved;
+        // 壁オブジェクト(研究所スキン・区画生成)を遮蔽物として解決。近傍区画のみ問い合わせ。
+        let wallResolved = castleResolved;
+        if (labTheme) {
+          const cx = castleResolved.x, cy = castleResolved.y;
+          const walls = labWallsInRegion(cx - 120, cy - 120, cx + player.width + 120, cy + player.height + 120).map(wallRect);
+          wallResolved = resolveAabb({ x: cx, y: cy, width: player.width, height: player.height }, walls);
+        }
         newX = wallResolved.x;
         newY = wallResolved.y;
       }
@@ -1410,8 +1409,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeWalls: Rect[] = indoorMode
       ? [...labBlockingWalls(labDoors.filter(d => d.open).map(d => d.id)), ...get().labProps.map(p => p.rect)]
       : get().stageTheme === 'lab'
-        ? [...get().wallRects] // 研究所スキンは木なし=壁オブジェクトだけが視線を遮る
-        : [...treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect), ...get().wallRects];
+        // 研究所スキンは木なし=壁オブジェクト(区画生成)だけが視線を遮る。近傍区画を問い合わせ。
+        ? labWallsInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(wallRect)
+        : treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect);
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
@@ -3197,18 +3197,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       const indoor = state.indoorMode;
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
       const indoorWalls = indoor ? [...labBlockingWalls(openDoorIds), ...state.labProps.map(p => p.rect)] : [];
-      // 視線/移動の遮蔽物: 屋内=lab壁 / 屋外=手置き壁オブジェクト。
-      const losWalls = indoor ? indoorWalls : state.wallRects;
       const labTheme = state.stageTheme === 'lab'; // 研究所スキンは木を出さない=木の当たり判定もスキップ。
+      // 研究所スキンの壁オブジェクト(区画生成)。プレイヤー周辺1ビューポート分を1回だけ問い合わせて使い回す
+      // (敵は湧き=ビューポート端〜、遠方はカリングされるのでこの範囲で十分)。移動/視線の両方に使用。
+      const labWallRects = labTheme
+        ? labWallsInRegion(pcx - state.gameBounds.width, pcy - state.gameBounds.height, pcx + state.gameBounds.width, pcy + state.gameBounds.height).map(wallRect)
+        : [];
+      // 視線/移動の遮蔽物: 屋内=lab壁 / 研究所スキン=壁オブジェクト / 森=なし。
+      const losWalls = indoor ? indoorWalls : labWallRects;
 
       const updatedEnemies = enemies.map(enemy => {
-        // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+手置き壁(研究所スキンは壁のみ)。
+        // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+壁(研究所スキンは壁のみ)。
         const resolveMove = (nx: number, ny: number) => {
           if (indoor) return resolveAabb({ x: nx, y: ny, width: enemy.width, height: enemy.height }, indoorWalls);
           const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
           const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
-          return state.wallRects.length
-            ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.wallRects)
+          return labWallRects.length
+            ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, labWallRects)
             : torchR;
         };
         // Knockback overrides chase AI: while it's active, slide outward
@@ -3500,7 +3505,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const labTheme = state.stageTheme === 'lab';
       const grenadeWallsFor = (p: Projectile) => {
         if (indoor) return indoorWalls; // 屋内は labMap の壁(+閉ドア)。木/トーチは無し。
-        if (labTheme) return state.wallRects; // 研究所スキン: 木/松明/城なし。手置き壁オブジェクトだけが弾を遮る。
+        const cxp = p.x + p.width / 2, cyp = p.y + p.height / 2;
+        if (labTheme) return labWallsInRegion(cxp - 260, cyp - 260, cxp + 260, cyp + 260).map(wallRect); // 研究所スキン: 壁オブジェクトのみ
         const pad = 260;
         const cx = p.x + p.width / 2;
         const cy = p.y + p.height / 2;
@@ -3905,12 +3911,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         state.gameTime
       );
       const ambushMines = mineAmbushAnchor ? mineAmbushAround(mineAmbushAnchor) : [];
+      // 研究所スキン: UV バーを区画ごと(1区画1本)に生成。松明と同じ region 方式・破壊済みは destroyed で除外。
+      const generatedUv = labTheme ? labUvBarsInRegion(
+        camera.x - pad, camera.y - pad, camera.x + bounds.width + pad, camera.y + bounds.height + pad
+      ) : [];
       const current = new Map(state.breakableProps.map(p => [p.id, p]));
       const next: BreakableProp[] = [];
 
-      // 研究所スキン: 手置き UV バーは再生成されないので、生存分を持ち越す(壊れたら除去済み)。
-      if (labTheme) {
-        for (const p of state.breakableProps) if (p.type === 'uv-bar') next.push(p);
+      for (const uv of generatedUv) {
+        if (state.destroyedBreakableProps[uv.id]) continue;
+        const existing = current.get(uv.id);
+        if (existing) { next.push(existing); continue; }
+        next.push({
+          id: uv.id,
+          x: uv.x - 15, y: uv.y - 24, width: 30, height: 26,
+          footX: uv.x, footY: uv.y, scale: 1,
+          health: 12, maxHealth: 12, type: 'uv-bar', lastHit: 0,
+        });
       }
 
       for (const torch of generated) {
@@ -4695,15 +4712,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       const runDoors: LabDoor[] = indoor ? LAB_DOORS.map(d => ({ id: d.id, rect: d.rect, open: false })) : [];
       const runButtons: LabButton[] = indoor ? [{ ...LAB_BUTTON, pressed: false }] : [];
       const runProps: LabProp[] = indoor ? generateLabProps() : []; // 障害物をランダム配置(壁/ギミック回避)
-      // UVライトバー=松明と同じ扱い(破壊可能)。type:'uv-bar' の breakableProp として配置(当たり判定は無し=屋内移動は labWalls/labProps のみ)。
-      // 研究所スキン(屋外)では松明の代わりに UV バーを手置き。屋内は labMap の UV バー。それ以外は空(松明は毎フレーム生成)。
-      const uvBarSource = indoor ? LAB_UV_BARS : (stageTheme === 'lab' ? STAGE2_UV_BARS : []);
-      const runBreakables: BreakableProp[] = uvBarSource.map((b, i) => ({
-        id: `lab-uv-${i}`,
-        x: b.x - 15, y: b.y - 24, width: 30, height: 26,
-        footX: b.x, footY: b.y, scale: 1,
-        health: 12, maxHealth: 12, type: 'uv-bar' as const, lastHit: 0,
-      }));
+      // UVライトバー=松明と同じ扱い(破壊可能)。type:'uv-bar' の breakableProp。当たり判定は無し。
+      // 屋内は labMap の固定 UV バーを初期配置。研究所スキン(屋外)は区画ごとに毎フレーム生成(syncBreakableProps)
+      // するので初期配置は空。それ以外(森)も空(松明は毎フレーム生成)。
+      const runBreakables: BreakableProp[] = indoor
+        ? LAB_UV_BARS.map((b, i) => ({
+            id: `lab-uv-${i}`,
+            x: b.x - 15, y: b.y - 24, width: 30, height: 26,
+            footX: b.x, footY: b.y, scale: 1,
+            health: 12, maxHealth: 12, type: 'uv-bar' as const, lastHit: 0,
+          }))
+        : [];
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
         ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
@@ -4723,11 +4742,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? [{ id: 'lab-document', x: STAGE2_DOCUMENT.x - 8, y: STAGE2_DOCUMENT.y - 8, type: 'lab-clear-item' as const, value: 0 }]
           : [];
 
-      // 手置き壁オブジェクト: 研究所スキン(屋外)でのみ点在。迷路/ゲートにはしない=遮蔽物。
-      // AABB は静的なので reset 時に一度だけ precompute(毎フレーム再生成しない)。
-      const runWalls: PlacedWall[] = (stageTheme === 'lab' && !indoor) ? STAGE2_WALLS : [];
-      const runWallRects: Rect[] = runWalls.map(wallRect);
-
+      // 壁/UVバーは区画ごとに手続き生成(labWallsInRegion/labUvBarsInRegion)するので reset では持たない。
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
       return {
@@ -4737,8 +4752,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,
-        placedWalls: runWalls,
-        wallRects: runWallRects,
         hasCardKey: false,
         goalReachedAt: 0,
         player: {

@@ -92,6 +92,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-floor/lab-floor-r1-c1', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-r5-c1', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' }, // シームレス床(ステージ1風)
+      { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' }, // stage-2 屋外ラボ床(社長提供の最新タイル。専用名でキャッシュ確実更新)
       // 新ドット絵タイル(64²・シームレス・16色)。床ベース＝clean、変種＝blood/grime/crack/scorch、隅AO。
       { name: 'lab-floor/lab-floor-clean', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-blood', scaleMode: 'nearest' },

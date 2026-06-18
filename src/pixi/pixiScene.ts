@@ -37,7 +37,7 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
-import { WALL_DISPLAY_H, WALL_DISPLAY_V } from '../world/labWalls';
+import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H } from '../world/labWalls';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -507,8 +507,7 @@ export class PixiScene {
   private L: SceneLayers;
 
   private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
-  private wallObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 手置き壁オブジェクト
-  private wallObjsSig = ''; // 配置(id/向き)の生成シグネチャ。reset 時だけ変わる。
+  private wallObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 壁オブジェクト(区画生成)
   private enemies = new Map<string, ActorView>();
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
@@ -1382,7 +1381,7 @@ export class PixiScene {
     if (this.outdoorGroundTheme === theme) return;
     const strips = this.L.groundStrips;
     if (theme === 'lab') {
-      const tex = getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
+      const tex = getTexture('lab-floor/lab-floor-stage2') ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
       if (!this.groundStripBaseTex) this.groundStripBaseTex = strips[0]?.texture ?? null; // 屋外地面を復元用に退避
       // 一旦 色味調整(LAB_ENV_TINT)を外す=テクスチャ本来の色で表示(tint 白=無補正)。
@@ -1592,7 +1591,7 @@ export class PixiScene {
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
 
     this.syncTrees(s.camera);
-    this.syncLabWalls(); // 手置き壁オブジェクト(研究所スキン。placedWalls が空なら no-op)
+    this.syncLabWalls(); // 壁オブジェクト(研究所スキン・区画生成。森では no-op)
     this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
@@ -2223,20 +2222,22 @@ export class PixiScene {
     }
   }
 
-  // ---- 手置き壁オブジェクト: 木/lab-props と同じ足元アンカー(0.5,1)+zIndex=footY+depthScale -
-  // で actorLayer に並べる。背面は被る(=ビルボード遮蔽)。配置は静的なので生成は reset 時だけ。
+  // ---- 壁オブジェクト(研究所スキン・区画生成): 木と同じく足元アンカー(0.5,1)+zIndex=footY+depthScale で
+  // actorLayer に並べ、カメラ周辺の区画分だけ生成/リサイクル。背面は被る(=ビルボード遮蔽)。
   private syncLabWalls() {
-    const walls = useGameStore.getState().placedWalls;
-    const sig = walls.map(w => w.id + w.orient).join(',');
-    if (this.wallObjsSig !== sig) {
-      this.wallObjsSig = sig;
-      const ids = new Set(walls.map(w => w.id));
-      for (const [id, e] of this.wallObjs) {
-        if (!ids.has(id)) { e.sprite.destroy(); this.wallObjs.delete(id); }
-      }
-      for (const w of walls) {
-        if (this.wallObjs.has(w.id)) continue;
-        const tex = getTexture(w.orient === 'h' ? 'lab/lab-wall-obj-h' : 'lab/lab-wall-obj-v');
+    const s = useGameStore.getState();
+    const labTheme = s.stageTheme === 'lab' && !s.indoorMode;
+    const cam = s.camera;
+    const m = LAB_ZONE;
+    const walls = labTheme
+      ? labWallsInRegion(cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m)
+      : [];
+    const seen = new Set<string>();
+    for (const w of walls) {
+      seen.add(w.id);
+      let entry = this.wallObjs.get(w.id);
+      if (!entry) {
+        const tex = getTexture('lab/lab-wall-obj-h');
         const sprite = new Sprite(tex ?? undefined);
         sprite.anchor.set(0.5, 1);
         sprite.tint = ENV_TINT; // 環境として暗く沈める(木と同じ)
@@ -2244,15 +2245,15 @@ export class PixiScene {
         sprite.y = w.footY;
         sprite.zIndex = w.footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
         this.L.actorLayer.addChild(sprite);
-        const disp = w.orient === 'h' ? WALL_DISPLAY_H : WALL_DISPLAY_V;
-        const baseScale = tex ? containScale(disp.w, disp.h, tex.width, tex.height) : 1;
-        this.wallObjs.set(w.id, { sprite, baseScale, footY: w.footY });
+        const baseScale = tex ? containScale(WALL_DISPLAY_H.w, WALL_DISPLAY_H.h, tex.width, tex.height) : 1;
+        entry = { sprite, baseScale, footY: w.footY };
+        this.wallObjs.set(w.id, entry);
       }
+      entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
     }
-    // depthScale を毎フレーム適用(他オブジェクトと同様。プレイヤー=焦点面の移動で見かけが変わる)。
-    for (const e of this.wallObjs.values()) {
-      e.sprite.scale.set(e.baseScale * this.depthScale(e.footY));
-      e.sprite.alpha = this.horizonActorAlpha(e.footY);
+    for (const [id, entry] of this.wallObjs) {
+      if (!seen.has(id)) { entry.sprite.destroy(); this.wallObjs.delete(id); }
     }
   }
 
@@ -2614,12 +2615,12 @@ export class PixiScene {
         view.sprite.position.set(Math.round(prop.footX), Math.round(prop.footY));
         view.sprite.scale.set(containScale(22, 13, tex.width, tex.height) * d); // 1/5サイズ
       }
-      // 紫グロー(薄暗め・脈動)。groundLayer 上の加算スプライト。
+      // 紫グロー(広く弱く=周囲を照らす)。加算スプライト。ハイライトは抑え、暗部を紫がかって少し明るく。
       view.light.visible = true;
       view.light.position.set(prop.footX, prop.footY - 4 * d);
       view.light.tint = 0x9a4fd6;
-      const uvPulse = 0.30 + 0.12 * Math.sin(now * 0.0018 + prop.footX * 0.05);
-      view.light.width = view.light.height = 64 * d;
+      const uvPulse = 0.22 + 0.06 * Math.sin(now * 0.0018 + prop.footX * 0.05); // ピーク控えめ(~0.28)
+      view.light.width = view.light.height = 190 * d; // 広めに敷いて周囲を照らす
       view.light.alpha = uvPulse * horizonAlpha;
       const o = view.overlay;
       o.clear();
