@@ -12538,3 +12538,9 @@ store に whipHitFxAt / whipSwingFxAt / anchorPlantFxAt を追加し、各イベ
 - アンカー打ち込み: wire-anchor 設置時 → anchor-plant。
 useGameLoop が各タイムスタンプの更新を検出して playSfx(対応キー)。
 ### Verification lint/build 通過。
+
+## v0.25.555 — 鞭命中音がナイフ音と重複する問題を修正 (claude/cool-edison-7b8jrl)
+counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hit→'slash-damage'(ナイフ音)を鳴らしており、
+鞭でも重複していた。鞭装備時(subWeapons.includes('whip'))は汎用の melee/slash-damage を抑制し、
+鞭専用SE(whip-swing/whip-hit)に一本化。finisher(melee-finish)/敵死亡は据え置き。
+### Verification lint/build 通過。

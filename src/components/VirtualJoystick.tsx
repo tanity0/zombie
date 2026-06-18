@@ -124,9 +124,11 @@ const VirtualJoystick: React.FC = () => {
         tryFireKatanaDash();
         // カウンターは従来どおり「指を離した瞬間」に発火(刀装備中はナイフスイープなしで窓だけ開く)。
         const counter = triggerCounter();
-        if (counter.swung) playSfx('melee');
+        // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
+        const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
+        if (counter.swung && !isWhip) playSfx('melee');
         if (counter.finish) playSfx('melee-finish');
-        else if (counter.hit) playSfx('slash-damage');
+        else if (counter.hit && !isWhip) playSfx('slash-damage');
         if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
       }
     }
