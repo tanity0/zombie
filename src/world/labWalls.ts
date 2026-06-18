@@ -29,20 +29,30 @@ export const WALL_DISPLAY_H = { w: 176, h: 108 };
 export const WALL_DISPLAY_V = { w: 108, h: 176 };
 
 // 手置き配置。プレイヤー初期位置(原点付近)を中心に、開けた探索域へ点在。
-// 中心(スポーン)周辺は空けて閉じ込めない。迷路にはせず、L字/孤立片で「隠れられるカバー」を散らす。
+// 中心(スポーン)周辺は空けて閉じ込めない。迷路にはせず、孤立片で「隠れられるカバー」を散らす。
+// 横壁(h)のみ使用(縦壁オブジェクトは廃止=社長指示)。
 export const STAGE2_WALLS: PlacedWall[] = [
   { id: 'w1',  orient: 'h', footX: -360, footY: -250 },
-  { id: 'w2',  orient: 'h', footX: -190, footY: -250 },
-  { id: 'w3',  orient: 'v', footX: -480, footY: -110 },
-  { id: 'w4',  orient: 'v', footX:  380, footY: -150 },
-  { id: 'w5',  orient: 'h', footX:  270, footY: -300 },
-  { id: 'w6',  orient: 'h', footX:  470, footY: -300 },
-  { id: 'w7',  orient: 'v', footX: -520, footY:  250 },
-  { id: 'w8',  orient: 'h', footX: -300, footY:  360 },
-  { id: 'w9',  orient: 'h', footX:  120, footY:  430 },
-  { id: 'w10', orient: 'v', footX:  520, footY:  220 },
-  { id: 'w11', orient: 'v', footX:  -60, footY: -460 },
-  { id: 'w12', orient: 'h', footX:  320, footY:   70 },
-  { id: 'w13', orient: 'v', footX: -340, footY:   60 },
-  { id: 'w14', orient: 'h', footX:  -40, footY:  240 },
+  { id: 'w2',  orient: 'h', footX: -180, footY: -250 },
+  { id: 'w3',  orient: 'h', footX:  270, footY: -300 },
+  { id: 'w4',  orient: 'h', footX:  460, footY: -300 },
+  { id: 'w5',  orient: 'h', footX: -460, footY:  120 },
+  { id: 'w6',  orient: 'h', footX:  430, footY:  130 },
+  { id: 'w7',  orient: 'h', footX: -300, footY:  360 },
+  { id: 'w8',  orient: 'h', footX:  120, footY:  430 },
+  { id: 'w9',  orient: 'h', footX:  320, footY:   70 },
+  { id: 'w10', orient: 'h', footX:  -40, footY:  240 },
+];
+
+// 松明の代わりに置く研究所UVバー(type:'uv-bar' の破壊可能プロップ)。光源/装飾で、当たり判定は無し
+// (移動/弾は通す)。foot 位置(床に立つ基準)を手置き。breakableProp はこの (x,y) から store が組む。
+export const STAGE2_UV_BARS: { x: number; y: number }[] = [
+  { x: -260, y: -120 },
+  { x:  240, y: -120 },
+  { x: -120, y:  120 },
+  { x:  180, y:  220 },
+  { x: -420, y:  300 },
+  { x:  420, y: -40 },
+  { x:   40, y: -320 },
+  { x: -360, y: -40 },
 ];

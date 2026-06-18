@@ -12159,3 +12159,25 @@ Step1(台形メッシュ床)で `?labpersp` 時に `floorTex=null` にしてい�
 - lint/build 通過。stage-2 出撃で壁が点在描画され、プレイヤー/敵が衝突・回り込み、背面は壁に被る。
 ### 次
 - 壁テクスチャの本制作(現状はアップロード画像の自動縮小/減色版)。配置バランス調整。キーアイテム要否の確定。
+
+## v0.25.522 — 研究所(stage-2)を整理: 縦壁/木/城/松明を排除し UV バー設置 (claude/cool-edison-7b8jrl)
+研究所スキン(stageTheme==='lab')専用の調整。社長指示:
+- 縦壁オブジェクト廃止 → STAGE2_WALLS は横壁(h)のみ(10枚)。
+- 木を出さない → syncTrees は lab で空、移動/敵/近接の木当たり判定もスキップ。
+- 城(建物)を出さない → 描画/当たり判定を抑止。※ giantbat ボスは城座標に湧く(クリア条件)ので湧き自体は維持。
+- 松明を出さない → syncBreakableProps は lab で torchesInRegion を呼ばない。
+- 代わりに UV バーを手置き(STAGE2_UV_BARS=8本)。type:'uv-bar' の破壊可能プロップ(光源/装飾)。
+  reset で配置し、syncBreakableProps が毎フレーム持ち越す(壊れたら除去)。UV バーは当たり判定なし
+  (solidProps/solidPropsForShove から 'uv-bar' を除外)=移動/弾は通す。遮蔽は壁オブジェクトが担当。
+- 弾の遮蔽(grenadeWallsFor)も lab では木/松明/城を使わず wallRects のみ。
+- 死神(Reaper)・波・クリア(giantbat)はステージ1のまま。
+変更: src/world/labWalls.ts(縦壁削除＋STAGE2_UV_BARS), src/store/gameStore.ts(reset UV配置/
+syncBreakableProps/solidProps×3/木・城ゲート/grenadeWallsFor), src/pixi/pixiScene.ts(syncTrees lab空/城非表示).
+
+### 負荷スコア
+1/10(むしろ軽量化)。lab では木/松明の手続き生成を停止。UV バー8・壁10は静的。差分は無視できる。
+
+### Verification
+- lint/build 通過。stage-2 で木/城/松明が消え、横壁＋UVバー(紫グロー)配置。壁は移動/弾/視線を遮る。
+### 次
+- 壁/UVバーの配置バランス調整。壁テクスチャ本制作。地雷を lab で残すか要確認(今回は維持)。

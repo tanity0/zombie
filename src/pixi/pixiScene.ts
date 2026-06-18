@@ -1576,7 +1576,8 @@ export class PixiScene {
     this.syncTrees(s.camera);
     this.syncLabWalls(); // 手置き壁オブジェクト(研究所スキン。placedWalls が空なら no-op)
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
-    if (s.indoorMode) {
+    if (s.indoorMode || s.stageTheme === 'lab') {
+      // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。
       this.castleView.visible = false; this.castleShadow = null; this.castleGlow.visible = false;
       this.eventNpcView.visible = false; this.npcShadow = null;
     } else {
@@ -2153,10 +2154,12 @@ export class PixiScene {
   // ---- trees: Y-sorted with the actors so you stand in front / behind -------
 
   private syncTrees(camera: { x: number; y: number }) {
-    const indoor = useGameStore.getState().indoorMode;
+    const st = useGameStore.getState();
+    const indoor = st.indoorMode;
+    const labTheme = st.stageTheme === 'lab'; // 研究所スキンは木を出さない(社長指示)
     const tex = getTexture('tree');
     const margin = TREE_CELL;
-    let trees = treesInRegion(
+    let trees = labTheme ? [] : treesInRegion(
       camera.x - margin, camera.y - margin,
       camera.x + this.screenW + margin, camera.y + this.screenH + margin,
     );
