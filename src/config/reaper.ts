@@ -9,10 +9,11 @@ export const REAPER_TEST = url?.get('reapertest') === '1';
 export const REAPER_CONFIG = {
   // 原点(スタート/商人付近)からの距離(px)でフェーズ判定。商人~360px・城~900-1300px の外側で警告開始。
   // ※仕様は「商人から何秒ぶん離れたか」基準だが、v1は実装しやすいピクセル距離で近似(調整可)。
-  warningDepthPx: 1200,    // ここから横切り警告
-  frequentDepthPx: 2200,   // 横切り頻発
-  spawnRiskDepthPx: 3200,  // リスク蓄積(完全出現へ)
-  extremeDepthPx: 4400,    // リスク急増
+  // 死神が出現する領域を従来比 3倍の距離へ(社長指示)。原点からより遠くまで安全に探索できる。
+  warningDepthPx: 3600,    // ここから横切り警告(従来1200×3)
+  frequentDepthPx: 6600,   // 横切り頻発(従来2200×3)
+  spawnRiskDepthPx: 9600,  // リスク蓄積=完全出現へ(従来3200×3)
+  extremeDepthPx: 13200,   // リスク急増(従来4400×3)
   // 横切り間隔(ms)。深いほど頻発。
   passIntervalWarningMs: 9000,
   passIntervalFrequentMs: 5000,

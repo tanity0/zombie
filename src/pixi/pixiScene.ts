@@ -64,6 +64,8 @@ const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 2.2;
+// 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
+const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 const FRONT_FOREST_FADE_IN_RATIO = 0.52;
 const FRONT_FOREST_FADE_TOP_ALPHA = 0.58;
 const FRONT_FOREST_FADE_MID_ALPHA = 0.82;
@@ -600,6 +602,7 @@ export class PixiScene {
   private farBackdropBlur: BlurFilter | null = null;
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
+  private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
@@ -1589,6 +1592,7 @@ export class PixiScene {
 
     this.syncTrees(s.camera);
     this.syncLabWalls(); // 手置き壁オブジェクト(研究所スキン。placedWalls が空なら no-op)
+    this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
       // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。
@@ -2249,6 +2253,28 @@ export class PixiScene {
       e.sprite.scale.set(e.baseScale * this.depthScale(e.footY));
       e.sprite.alpha = this.horizonActorAlpha(e.footY);
     }
+  }
+
+  // 研究所スキンの最前面オーバーレイ: 天井から吊られたケーブル帯を screen-space で画面上端に上寄せ配置。
+  // 半透明(LAB_CEILING_ALPHA)。frontForest の直前(uiLayer の下)に置く=ゲームプレイ/前景森より手前。
+  // アスペクト維持で画面幅にフィット(縦は溢れた透過部がクリップされるだけ)。lab テーマ以外は非表示。
+  private updateLabCeiling(show: boolean) {
+    const tex = show ? getTexture('lab/lab-ceiling-band') : null;
+    if (!tex || LAB_CEILING_ALPHA <= 0) { if (this.labCeiling) this.labCeiling.visible = false; return; }
+    if (!this.labCeiling) {
+      const sp = new Sprite(tex);
+      sp.anchor.set(0, 0); // 左上基準=上寄せ
+      const parent = this.L.frontForest.parent;
+      parent.addChildAt(sp, parent.getChildIndex(this.L.frontForest) + 1); // frontForest の手前・uiLayer の下
+      this.labCeiling = sp;
+    }
+    const sp = this.labCeiling;
+    sp.visible = true;
+    sp.texture = tex;
+    sp.width = this.screenW;
+    sp.height = this.screenW * (tex.height / tex.width); // アスペクト維持
+    sp.position.set(0, 0);
+    sp.alpha = LAB_CEILING_ALPHA;
   }
 
   private syncBreakableProps(props: BreakableProp[], now: number) {

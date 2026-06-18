@@ -113,6 +113,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab/lab-far-backdrop' },  // 遠景パノラマ(不透明)
       { name: 'lab/lab-horizon-band' },  // 地平の機械帯(紫=透過)
       { name: 'lab/lab-front-band' },    // 手前のボヤけ機械帯(紫=透過。ブラーは既存フィルタで継続)
+      { name: 'lab/lab-ceiling-band' },  // 最前面の天井ケーブル帯(紫=透過・上寄せ・半透明オーバーレイ)
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)

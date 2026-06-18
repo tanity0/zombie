@@ -12219,3 +12219,22 @@ syncBreakableProps/solidProps×3/木・城ゲート/grenadeWallsFor), src/pixi/p
 - lint/build 通過。stage-2(研究所スキン)で遠景/地平/手前がラボ機械背景に。手前帯はボヤけ維持。森は透過。
 ### 次
 - 各帯の横タイリング継ぎ目や明るさ(ENV_TINT 下での視認性)を実機確認して微調整。
+
+## v0.25.525 — 最前面の天井ケーブル帯(研究所スキン) + 死神出現距離3倍 (claude/cool-edison-7b8jrl)
+1) 天井オーバーレイ: 社長提供画像(天井から吊られたケーブル/チェーン/フック)を最前面レイヤーとして上寄せ・
+   紫透過・半透明で追加。
+   - 素材: 紫背景(≈85,52,142)を距離キーで透過→内容bboxにクロップ(1536×747)→public/sprites/lab/lab-ceiling-band.png。
+     pixiTextures に登録。
+   - 描画: updateLabCeiling()。screen-space の Sprite を anchor(0,0)=上寄せ、幅=画面幅・アスペクト維持、
+     alpha=LAB_CEILING_ALPHA(?ceil 既定0.55)。frontForest の直前(uiLayer の下)=ゲームプレイ/前景より手前。
+     lab テーマ かつ 非屋内 のときのみ表示。
+2) 死神(Reaper)出現領域を従来比3倍へ(config/reaper.ts): warning 1200→3600 / frequent 2200→6600 /
+   spawnRisk 3200→9600 / extreme 4400→13200。原点からより遠くまで安全に探索できる。
+
+### 負荷スコア
+1/10。天井帯は screen-space スプライト1枚(毎フレーム位置/サイズ更新のみ)。reaper はしきい値定数の変更のみ。
+
+### Verification
+- lint/build 通過。stage-2 で天井ケーブル帯が画面上端に半透明表示。死神は約3倍遠方まで出現しない。
+### 次
+- 天井帯の横タイリング要否(現状は1枚を画面幅にフィット)・alpha 微調整は実機確認後に。
