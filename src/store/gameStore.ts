@@ -4687,7 +4687,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 出撃時の所持サブ = クラス固有(デフォルト)サブは常に所持 + 装備選択で選んだサブ。
       // フリー/メイン/(将来の)サブクエスト共通の経路。固有サブが落ちないようにする(社長指示)。
       // 商人(unlockedShopSkillCards)とレベルアップ候補(generateUpgradeOptions)もこの所持サブに絞られる。
-      const loDedup = state.pendingLoadout.filter((k, i) => state.pendingLoadout.indexOf(k) === i);
+      // 装備サブは1つだけ採用(重複除去のうえ先頭1件)。クラス固有サブは別途常時所持。
+      const loDedup = state.pendingLoadout.filter((k, i) => state.pendingLoadout.indexOf(k) === i).slice(0, 1);
       const runSubs: SubWeaponKey[] = state.danceTestMode
         ? ['shijin']
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup]));

@@ -7,9 +7,11 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 // 期待間隔(rhythm.interval)に近いほど緑。平均は飛ばし(>1.5倍=拍抜け)を除いて算出。
 const DanceTapMeter: React.FC = () => {
   const active = useGameStore(s => s.rhythm.active);
+  const danceTest = useGameStore(s => s.danceTestMode);  // ダンス練習(テスト)モードか
   const interval = useGameStore(s => s.rhythm.interval); // 期待間隔(Lv1=600)
   const times = useGameStore(s => s.danceTapLog);        // タップ絶対時刻
-  if (!DEV_TOOLS_ENABLED || !active || times.length < 2) return null;
+  // 拍数計測はダンス練習モード専用。通常プレイ(四神舞でrhythm.active)では出さない。
+  if (!DEV_TOOLS_ENABLED || !danceTest || !active || times.length < 2) return null;
 
   const deltas: number[] = [];
   for (let i = 1; i < times.length; i++) deltas.push(times[i] - times[i - 1]);

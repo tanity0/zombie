@@ -104,7 +104,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="ミッション選択" subtitle="the ONE" />
       <div className="p-3 space-y-2">
         <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent />
-        <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン / スキル（最大${MAX_EQUIPPED_SKILLS}）`} onClick={() => setScreen({ name: 'loadout' })} />
+        <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} />
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} />
         <HubButton icon={<ShoppingBag size={18} />} label="武器開発" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={() => setScreen({ name: 'archive' })} />
@@ -290,8 +290,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 装備メニュー(トップから独立) — サブウェポン + スキル(最大2)。store に永続。出撃時に反映。
   // ====================================================================
   const renderLoadout = () => {
+    // サブウェポンは1つだけ選択(単一選択=選び直しで置き換え。同じものを再タップで解除)。
     const toggleSub = (k: SubWeaponKey) =>
-      setPendingLoadout(equippedSubs.includes(k) ? equippedSubs.filter(x => x !== k) : [...equippedSubs, k]);
+      setPendingLoadout(equippedSubs.includes(k) ? [] : [k]);
     const toggleSkill = (k: SkillKey) => {
       if (equippedSkills.includes(k)) { setPendingSkills(equippedSkills.filter(x => x !== k)); return; }
       if (equippedSkills.length >= MAX_EQUIPPED_SKILLS) return; // 最大2(満杯なら無視)
@@ -334,7 +335,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </div>
           {/* サブウェポン */}
           <div>
-            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン</div>
+            <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
             <div className="grid grid-cols-2 gap-2">
               {SUB_WEAPON_KEYS.map(k => {
                 const on = equippedSubs.includes(k);
