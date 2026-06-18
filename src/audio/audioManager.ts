@@ -72,7 +72,8 @@ export type SfxKey =
   | 'zombie-3'
   | 'zombie-4'
   | 'hurricane'
-  | 'dance-kick';
+  | 'dance-kick'
+  | 'heavy-impact';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
@@ -185,6 +186,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   hurricane: { src: `${import.meta.env.BASE_URL}audio/sfx/hurricane.wav`, volume: 0.7 },
   // ダンスフロアのジャスト成功(タップ/フリック両方)で鳴らすキックドラム。
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
+  // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。
+  'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 0.9, minIntervalMs: 60 },
 };
 
 let bgm: HTMLAudioElement | null = null;

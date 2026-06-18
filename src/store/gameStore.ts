@@ -809,6 +809,7 @@ interface GameState {
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
   pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
+  bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   projectiles: Projectile[];
   pickups: Pickup[];
   breakableProps: BreakableProp[];
@@ -1127,6 +1128,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   enemies: [],
   pumpkinBlasts: [],
   boomerangReadyFxAt: 0,
+  bashHitFxAt: 0,
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -1972,6 +1974,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 壁押し出しだけ(敵に当たっていない)では何も出さない。
     if (bashHitEnemy) {
       get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); // 寄りズーム無し(社長指示)。ストップ+揺れのみ
+      set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)のトリガ。useGameLoop が検出して再生。
     }
     // シールドバッシュの押し出し演出(押し出し先で衝撃スラッシュ+リング)。
     for (const s of shieldShoves) {

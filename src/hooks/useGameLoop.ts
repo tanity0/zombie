@@ -210,6 +210,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
+  const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
   // Scripted-wave consumption set; survives across frames within one run
@@ -1662,6 +1663,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const blasts = useGameStore.getState().pumpkinBlasts;
           if (blasts.length > 0) {
+            playSfx('heavy-impact'); // ジャンプ攻撃の着地音
             const bp = useGameStore.getState().player;
             const bpcx = bp.x + bp.width / 2;
             const bpcy = bp.y + bp.height / 2;
@@ -2983,6 +2985,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ boomerangReadyFxAt: Date.now() });
           }
           boomReadyRef.current = ready;
+        }
+        // 盾バッシュが敵に当たった時のSE(store が bashHitFxAt を更新 → ここで検出して鳴らす)。
+        {
+          const at = useGameStore.getState().bashHitFxAt;
+          if (at > bashHitFxRef.current) { bashHitFxRef.current = at; playSfx('heavy-impact'); }
         }
 
         // Continuous spawner — drip enemies onto the field from off-screen.

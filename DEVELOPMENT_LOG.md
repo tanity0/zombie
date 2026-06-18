@@ -12523,3 +12523,9 @@ playSfx('weapon-pickup') を追加。武器庫取得と同じ音が鳴る。
 - 頭上マークの表示位置を上げる(player.y-26→-46)。
 - 出現直後に「ピカ!」フラッシュ(白い加算グロー、~170msで素早く消える)を追加。boomReadyGfx を blendMode='add' に。
 ### Verification lint/build 通過。※専用「カチッ」SEがあれば差し替え可。
+
+## v0.25.553 — 盾バッシュ命中音 / ジャンプ着地音(社長提供SE) (claude/cool-edison-7b8jrl)
+- 提供SEを public/audio/sfx/heavy-impact.mp3 として配置。SfxKey 'heavy-impact' 登録。
+- ジャンプ攻撃(パンプキン/lab-zombie-3)の着地: pumpkinBlasts 消化時に playSfx('heavy-impact')。
+- 盾バッシュ命中: triggerCounter の bashHitEnemy 時に store.bashHitFxAt を更新 → useGameLoop が検出して playSfx('heavy-impact')。
+### Verification lint/build 通過。
