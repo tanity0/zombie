@@ -12448,3 +12448,13 @@ v0.25.540 の AlphaFilter+multiply 合成では明かりの穴が抜けず全画
 - なだらか化で明域が狭く感じるため半径既定 176→200(?vrange 調整可)。
 ### 負荷スコア 4/10(据え置き)。
 ### Verification lint/build 通過。
+
+## v0.25.543 — 可視可能ゾーンの四角問題を修正: RenderTexture+erase で円形ソフトに (claude/cool-edison-7b8jrl)
+Container を setMask に使うとステンシル(矩形)扱いになり四角く切り取られていた。方式変更:
+- オフスクリーン Container(labRTScene)に 暗幕rect(alpha=LAB_VIS_ALPHA) + 光ディスク(blend='erase') を描き、
+  renderer.render で画面サイズの RenderTexture(labRT)へ合成。erase がアルファを削る=円形・なだらかな穴。
+- その labRT を1枚のスプライトとして uiLayer 最下に重ねる。PixiScene に setRenderer を追加(PixiStage から app.renderer 注入)。
+- ライトテクスチャは滑らかな放射状グラデ(前版)。半径=LAB_VIS_RANGE(200)、暗さ=LAB_VIS_ALPHA(0.8)。
+- destroy で labRT 解放。
+### 負荷スコア 4/10(RT合成1パス。lab限定・ライトはプール/画面内カリング)。
+### Verification lint/build 通過。

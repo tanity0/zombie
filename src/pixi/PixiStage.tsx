@@ -62,6 +62,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
 
       const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
       const scene = new PixiScene(layers);
+      scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
       scene.setLabGroundTexture(labGroundTexture); // 研究所スキンの床に使用(最優先)
       scene.resize(width, height);
 

@@ -13,7 +13,8 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh, RenderTexture } from 'pixi.js';
+import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
@@ -606,11 +607,15 @@ export class PixiScene {
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
   private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
-  // 可視可能ゾーン(研究所スキン): 暗幕(dark veil)を全画面に敷き、プレイヤー/UVバーの「光の形」で
-  // 反転マスクしてくり抜く=穴の中だけ通常の明るさ、外は暗い。
-  private labVeil: Sprite | null = null;
-  private labMaskLayer: Container | null = null;
+  // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
+  // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
+  private renderer: Renderer | null = null;
+  private labRT: RenderTexture | null = null;     // 暗幕(穴あき)の描画先
+  private labRTScene = new Container();            // 暗幕rect + 光ディスク(eraseで穴)を描く中身(オフスクリーン)
+  private labDarkRect = new Sprite(Texture.WHITE); // 暗幕ベース
+  private labVeilSprite: Sprite | null = null;     // 画面に重ねる暗幕(=labRT)
   private labVisLights: Sprite[] = [];
+  setRenderer(r: Renderer) { this.renderer = r; }
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
@@ -2319,30 +2324,35 @@ export class PixiScene {
   // フィルタで一度テクスチャ化→whole を multiply 合成: 穴の中=通常の明るさ、外=急に暗い(LAB_VIS_DARK)。
   // 壁/敵/アイテムは uiLayer(このレイヤー)の下=暗所では見えづらくなる(社長指示)。
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
-    if (!show) {
-      if (this.labVeil) this.labVeil.visible = false;
-      if (this.labMaskLayer) this.labMaskLayer.visible = false;
+    if (!show || !this.renderer) {
+      if (this.labVeilSprite) this.labVeilSprite.visible = false;
       return;
     }
-    if (!this.labVeil) {
-      const maskLayer = new Container();
-      const veil = new Sprite(Texture.WHITE);
-      veil.tint = LAB_VIS_DARK;
-      veil.alpha = LAB_VIS_ALPHA;
-      veil.position.set(0, 0);
-      this.L.uiLayer.addChildAt(maskLayer, 0); // マスク用(透明な光の形)。Pixiがマスクとして描画。
-      this.L.uiLayer.addChildAt(veil, 0);      // 暗幕。uiLayer 最下=ワールドの上・HUDの下。
-      veil.setMask({ mask: maskLayer, inverse: true }); // 光の形を「くり抜く」(反転マスク)
-      this.labVeil = veil;
-      this.labMaskLayer = maskLayer;
+    const W = Math.max(1, Math.round(this.screenW));
+    const H = Math.max(1, Math.round(this.screenH));
+    // 描画先 RenderTexture(画面サイズ。リサイズで作り直し)。
+    if (!this.labRT || this.labRT.width !== W || this.labRT.height !== H) {
+      this.labRT?.destroy(true);
+      this.labRT = RenderTexture.create({ width: W, height: H, antialias: false });
+      if (this.labVeilSprite) this.labVeilSprite.texture = this.labRT;
     }
-    const veil = this.labVeil;
-    const maskLayer = this.labMaskLayer!;
-    veil.visible = true;
-    maskLayer.visible = true;
-    veil.width = this.screenW;
-    veil.height = this.screenH;
-    // 明かりの穴位置(world→screen = world - camera + shake)。プレイヤー + 画面内のUVバー。
+    // オフスクリーンの中身(暗幕 + erase 光ディスク)を用意。
+    if (this.labDarkRect.parent !== this.labRTScene) {
+      this.labDarkRect.tint = LAB_VIS_DARK;
+      this.labDarkRect.alpha = LAB_VIS_ALPHA;
+      this.labDarkRect.position.set(0, 0);
+      this.labRTScene.addChild(this.labDarkRect);
+    }
+    this.labDarkRect.width = W;
+    this.labDarkRect.height = H;
+    // 画面に重ねる暗幕スプライト(=labRT)。uiLayer 最下=ワールドの上・HUDの下。
+    if (!this.labVeilSprite) {
+      const sp = new Sprite(this.labRT);
+      sp.position.set(0, 0);
+      this.L.uiLayer.addChildAt(sp, 0);
+      this.labVeilSprite = sp;
+    }
+    // 穴位置(world→screen = world - camera + shake)。プレイヤー + 画面内のUVバー。
     const s = useGameStore.getState();
     const cam = s.camera;
     const pts: { x: number; y: number }[] = [
@@ -2351,14 +2361,15 @@ export class PixiScene {
     for (const p of s.breakableProps) {
       if (p.type !== 'uv-bar') continue;
       const px = p.footX - cam.x + sx, py = p.footY - cam.y + sy;
-      if (px < -LAB_VIS_RANGE || px > this.screenW + LAB_VIS_RANGE || py < -LAB_VIS_RANGE || py > this.screenH + LAB_VIS_RANGE) continue;
+      if (px < -LAB_VIS_RANGE || px > W + LAB_VIS_RANGE || py < -LAB_VIS_RANGE || py > H + LAB_VIS_RANGE) continue;
       pts.push({ x: px, y: py });
     }
     const tex = getVisibilityLightTexture();
     while (this.labVisLights.length < pts.length) {
       const sp = new Sprite(tex);
       sp.anchor.set(0.5);
-      maskLayer.addChild(sp);
+      sp.blendMode = 'erase'; // 暗幕のアルファを削る=円形の穴(なだらか)
+      this.labRTScene.addChild(sp);
       this.labVisLights.push(sp);
     }
     const d = LAB_VIS_RANGE * 2;
@@ -2372,6 +2383,11 @@ export class PixiScene {
         sp.visible = false;
       }
     }
+    // オフスクリーン合成 → labRT(暗幕に円形の穴)。
+    this.renderer.render({ container: this.labRTScene, target: this.labRT, clear: true });
+    this.labVeilSprite.visible = true;
+    this.labVeilSprite.width = W;
+    this.labVeilSprite.height = H;
   }
 
   private syncBreakableProps(props: BreakableProp[], now: number) {
@@ -4940,6 +4956,8 @@ export class PixiScene {
   }
 
   destroy() {
+    try { this.labRT?.destroy(true); } catch { /* ignore */ }
+    this.labRT = null;
     for (const e of this.trees.values()) e.sprite.destroy();
     for (const v of this.enemies.values()) {
       v.light.destroy();
