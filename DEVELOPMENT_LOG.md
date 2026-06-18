@@ -12555,3 +12555,7 @@ counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hi
 - ブーメラン投擲音: 提供SEを public/audio/sfx/boomerang-throw.mp3 として登録。投擲時(store)に boomerangThrowFxAt 更新→
   useGameLoop が検出して playSfx('boomerang-throw')。
 ### Verification lint/build 通過。
+
+## v0.25.558 — anchor-plant SE 音量を少し下げる (claude/cool-edison-7b8jrl)
+打ち込み音 anchor-plant の volume 0.85→0.65。
+### Verification lint/build 通過。
