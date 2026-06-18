@@ -32,7 +32,7 @@ import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees';
 import { rollWeaponKey } from '../utils/weaponDrop';
-import type { AmmoType, Pickup, Projectile } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType } from '../types/game';
 import {
   checkCollision,
   checkProjectileEnemyCollisions,
@@ -168,6 +168,16 @@ const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   3: [0, (Math.PI * 2) / 3, -(Math.PI * 2) / 3]
 };
 const MAX_ENEMIES = 10;
+// --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
+const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
+const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
+const ARENA_FIRE_AFTER_MS = 120000;    // 発火可能になる時刻(=ゲーム開始2分以降)
+const ARENA_FIRE_CHANCE_PER_SEC = 0.06; // 発火確率/秒(1ゲーム1回ガードあり。条件成立後ランダムで1回)
+const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
+const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基本は全滅で終了)
+const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
+const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
+const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -225,6 +235,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // Scripted-wave consumption set; survives across frames within one run
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
+  const arenaFiredRef = useRef(false); // 囲い系イベントの「1ゲーム1回」ガード(新ランでリセット)
   const lastSeenGameTimeRef = useRef(0);
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
@@ -660,6 +671,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           lastAmmoDropRef.current = 0;
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
+          arenaFiredRef.current = false;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0 };
         }
         lastSeenGameTimeRef.current = newGameTime;
@@ -676,6 +688,73 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
           useGameStore.getState().triggerTimeSlow(0.36, CASTLE_SPAWN_SLOW_MS);
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
+        }
+
+        // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
+        // 開始2分以降にランダムで1回だけ発火。開始時に囲い周辺の通常敵を一掃し、イベント用の敵
+        // (ゾンビ大量 or giantbot ミニボス)を円内に湧かせる。終了=全滅/撃破 or 制限時間。
+        // 研究所/屋内/ダンスでは出さない(通常の森ステージ専用)。
+        if (!danceTest && !indoor && !labTheme) {
+          const ae = useGameStore.getState().activeEvent;
+          if (!ae) {
+            // 発火: activeEvent中でない・未発火・2分経過後。排他制御は activeEvent と arenaFiredRef で担保。
+            if (!arenaFiredRef.current && newGameTime >= ARENA_FIRE_AFTER_MS &&
+                Math.random() < ARENA_FIRE_CHANCE_PER_SEC * deltaTime) {
+              arenaFiredRef.current = true;
+              const pcx = player.x + player.width / 2;
+              const pcy = player.y + player.height / 2;
+              const kind: 'horde' | 'boss' = Math.random() < 0.5 ? 'horde' : 'boss';
+              const duration = kind === 'boss' ? ARENA_BOSS_DURATION_MS : ARENA_HORDE_DURATION_MS;
+              const event = { kind, x: pcx, y: pcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + duration };
+              useGameStore.getState().beginArenaEvent(event); // 状態セット＋周辺の通常敵一掃
+              // 円内に敵を配置(中心=プレイヤーは避ける)。fromEvent で終了判定/カリング保護。
+              const placeInRing = (minFrac: number) => {
+                const ang = Math.random() * Math.PI * 2;
+                const dist = ARENA_EVENT_RADIUS * (minFrac + Math.random() * (0.92 - minFrac));
+                return { x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist };
+              };
+              if (kind === 'horde') {
+                const types: EnemyType[] = ['zombie', 'skeleton', 'bat'];
+                for (let i = 0; i < ARENA_HORDE_COUNT; i++) {
+                  const t = types[Math.floor(Math.random() * types.length)];
+                  const pos = placeInRing(0.4);
+                  const e = spawnEnemyAt(t, pos.x - 16, pos.y - 16, newGameTime);
+                  e.fromEvent = true;
+                  addEnemy(e);
+                }
+              } else {
+                // ミニボス: giantbat 流用。プレイヤーから少し離した円内へ。取り巻きゾンビも少数。
+                const bx = pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
+                const by = pcy + Math.sin(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
+                const boss = spawnEnemyAt('giantbat', bx - 24, by - 24, newGameTime);
+                boss.fromEvent = true;
+                addEnemy(boss);
+                for (let i = 0; i < ARENA_BOSS_ADDS; i++) {
+                  const pos = placeInRing(0.5);
+                  const e = spawnEnemyAt('zombie', pos.x - 16, pos.y - 16, newGameTime);
+                  e.fromEvent = true;
+                  addEnemy(e);
+                }
+              }
+              // 発火演出: 囲いリング + 暗転フラッシュ + シェイク + 軽いスロー。
+              const ringColor = kind === 'boss' ? 'rgba(239,68,68,0.9)' : 'rgba(56,189,248,0.9)';
+              spawnRing(pcx, pcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, ringColor, 6, 700);
+              spawnRing(pcx, pcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, ringColor, 3, 760);
+              spawnFlash(kind === 'boss' ? 'rgba(127,29,29,0.26)' : 'rgba(8,47,73,0.24)', 360);
+              useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+              useGameStore.getState().triggerTimeSlow(0.4, 520);
+            }
+          } else {
+            // 終了判定: 全滅(イベント敵0・開始直後グレース後) or 制限時間切れ。
+            const eventEnemies = useGameStore.getState().enemies.filter(e => e.fromEvent).length;
+            const cleared = newGameTime - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0;
+            const timedOut = newGameTime >= ae.endsAt;
+            if (cleared || timedOut) {
+              useGameStore.getState().endArenaEvent(); // 拘束解除＋取りこぼし撤去
+              spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
+              spawnFlash('rgba(255,255,255,0.10)', 200);
+            }
+          }
         }
 
         // --- 死神(深奥リスク)システム v1 ---
@@ -3144,11 +3223,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.summonFxAt > summonFxRef.current) { summonFxRef.current = gs.summonFxAt; playSfx('summon'); }
         }
 
+        // 囲い系イベント中は同時敵上限を引き上げ(10→20)、通常スポーナ/演出波は停止する(卵等と重ねない)。
+        const arenaActive = useGameStore.getState().activeEvent;
+        const enemyCap = arenaActive ? ARENA_EVENT_CAP : MAX_ENEMIES;
+
         // Continuous spawner — drip enemies onto the field from off-screen.
         const enemyCountBeforeSpawn = useGameStore.getState().enemies.length;
         if (
           !danceTest &&
           !indoor &&
+          !arenaActive &&
           enemyCountBeforeSpawn < MAX_ENEMIES &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1)
         ) {
@@ -3317,7 +3401,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // consumeDueWaves fires each event exactly once.
         // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
         // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
-        if (!danceTest && !indoor && !labTheme) {
+        if (!danceTest && !indoor && !labTheme && !arenaActive) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,
@@ -3336,6 +3420,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const recycleDistance = Math.max(gameBounds.width, gameBounds.height) * ENEMY_RECYCLE_DISTANCE_MULT;
         let recycledAnyEnemy = false;
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
+          // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
+          if (enemy.fromEvent) return enemy;
           const enemyCenterX = enemy.x + enemy.width / 2;
           const enemyCenterY = enemy.y + enemy.height / 2;
           const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
@@ -3407,9 +3493,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // grace period before they're eligible (otherwise a boss wave gets
         // deleted the instant it spawns under the low cap).
         const currentEnemiesForCap = useGameStore.getState().enemies;
-        if (currentEnemiesForCap.length > MAX_ENEMIES) {
+        if (currentEnemiesForCap.length > enemyCap) {
           const isProtected = (e: typeof currentEnemiesForCap[number]) =>
             e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
+            e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
             e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
             (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
           const cullable = [...currentEnemiesForCap]
@@ -3422,7 +3509,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           const toRemoveIds = new Set(
             cullable
-              .slice(0, currentEnemiesForCap.length - MAX_ENEMIES)
+              .slice(0, currentEnemiesForCap.length - enemyCap)
               .map(enemy => enemy.id)
           );
           if (toRemoveIds.size > 0) {

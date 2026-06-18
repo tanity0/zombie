@@ -5,8 +5,10 @@ import {
   InputState, UpgradeOption, GameBounds, CharacterClass,
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
-  RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp
+  RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
+  ActiveEvent
 } from '../types/game';
+import { clampRectInsideCircle } from '../world/arena';
 import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
@@ -1016,6 +1018,8 @@ interface GameState {
   destroyedBreakableProps: Record<string, true>;
   mineAmbushAnchor: MineAmbushAnchor | null;
   castleEvent: CastleEvent;
+  // 囲い系イベント(小イベント=アリーナ/ミニボス)。非nullの間だけプレイヤーを円内に拘束。
+  activeEvent: ActiveEvent | null;
   weaponMerchant: WeaponMerchant;
   eventQuestNpc: EventQuestNpc;
   gameTime: number;
@@ -1151,6 +1155,9 @@ interface GameState {
   openCounterWindow: () => void;
   setSlasherWindow: (until: number) => void;
   markCastleBossSpawned: () => void;
+  // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
+  beginArenaEvent: (event: ActiveEvent) => void;
+  endArenaEvent: () => void;
 
   // Ammo
   addAmmo: (type: AmmoType, amount: number) => void;
@@ -1349,6 +1356,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   destroyedBreakableProps: {},
   mineAmbushAnchor: null,
   castleEvent: createCastleEvent(),
+  activeEvent: null,
   weaponMerchant: createWeaponMerchant(),
   eventQuestNpc: createEventQuestNpc(),
   gameTime: 0,
@@ -1540,6 +1548,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         newX = wallResolved.x;
         newY = wallResolved.y;
+      }
+      // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
+      if (state.activeEvent) {
+        const ae = state.activeEvent;
+        const clamped = clampRectInsideCircle(
+          { x: newX, y: newY, width: player.width, height: player.height },
+          { x: ae.x, y: ae.y, radius: ae.radius },
+        );
+        newX = clamped.x;
+        newY = clamped.y;
       }
       // 設置型シールドはプレイヤーを止めない: 触れたら進行方向へ盾を押す(邪魔しない)。
       // 押された盾は既存の毎フレーム処理(盾→敵 resolveAabb)で進行方向の敵を比例して押し出す。
@@ -2128,7 +2146,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // A melee finisher (instant execute) triggers a brief full-game hitstop.
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
-    const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     // スキル: ナイフマスターの近接コンボ加算(近接ダメージが当たったスイングで +1)。
     const meleeHitLanded = slashAt.length > 0;
     const knifeCombo = computeKnifeCombo(player, gameTime, meleeHitLanded);
@@ -2382,7 +2400,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 1回だけ発火する。一閃で複数敵を同時フィニッシュしても多重発火しない。
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
-    const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
     set(state => ({
@@ -2516,7 +2534,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
-    const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
     set(state => ({
@@ -3531,7 +3549,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           enemies: updatedEnemies.filter(e => e.id !== id),
           gameStats: newStats,
           // The giantbat is the run's finale boss — killing it wins the game.
-          gameWon: state.gameWon || enemy.type === 'giantbat'
+          // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。
+          gameWon: state.gameWon || (enemy.type === 'giantbat' && !enemy.fromEvent)
         };
       }
       
@@ -3794,6 +3813,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...state.castleEvent,
         bossSpawned: true,
       },
+    }));
+  },
+
+  // 囲い系イベント開始: activeEvent をセットし、囲い周辺(半径×1.5)内の通常敵を一掃する。
+  // ボス級(reaper/giantbat/pumpkin)と屋内固定敵(fixed)は除外(=消さない)。イベント敵の湧きは
+  // 呼び出し側(useGameLoop)が beginArenaEvent の直後に addEnemy(fromEvent) で行う。
+  beginArenaEvent: (event) => {
+    set(state => {
+      const clearR2 = (event.radius * 1.5) ** 2;
+      const kept = state.enemies.filter(e => {
+        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.fixed) return true;
+        const ecx = e.x + e.width / 2;
+        const ecy = e.y + e.height / 2;
+        return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2; // 範囲外だけ残す
+      });
+      return { activeEvent: event, enemies: kept };
+    });
+  },
+
+  // 囲い系イベント終了: 拘束を解除し、残存イベント敵(時間切れ時の取りこぼし)を撤去して通常へ戻す。
+  endArenaEvent: () => {
+    set(state => ({
+      activeEvent: null,
+      enemies: state.enemies.filter(e => !e.fromEvent),
     }));
   },
 
@@ -5254,6 +5297,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         breakableProps: runBreakables,
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
+        activeEvent: null,
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
         castleEvent: createCastleEvent(),

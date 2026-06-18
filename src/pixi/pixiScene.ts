@@ -18,6 +18,7 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
+  ActiveEvent,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
@@ -581,6 +582,7 @@ export class PixiScene {
   private rhythmArrowsGfx = new Graphics();
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
+  private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private localEventShadeGfx = new Graphics();
@@ -809,12 +811,14 @@ export class PixiScene {
     // tint は付けない: テクスチャに焼いたシアン→白ホットの階調をそのまま活かす。
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
+      this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
       this.pumpkinTelegraph,
       this.playerGroundPool,
       this.playerLight,
       this.alchemyCircle,
       this.shadowContainer,
     );
+    this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
@@ -1662,6 +1666,7 @@ export class PixiScene {
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
+    this.syncArena(s.activeEvent, now);
     this.syncDecoys(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
     this.syncSummons(s.summons, now);
@@ -3676,6 +3681,21 @@ export class PixiScene {
   }
 
   // 設置型シールドは向き別スプライトを足元アンカーで描画。actorLayer に置いて
+  // 囲い系イベントの柵リング: 半透明の光る円ストローク(world座標・地面=アクターの下)。
+  // 単一 Graphics に円を数本引くだけ。負荷 1/10(描画のみ・毎フレーム1図形)。
+  private syncArena(ae: ActiveEvent | null, now: number) {
+    const g = this.arenaGfx;
+    g.clear();
+    if (!ae) return;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+    const a = 0.30 + 0.18 * pulse;
+    const color = ae.kind === 'boss' ? 0xef4444 : 0x38bdf8;
+    // 内側の淡い塗り(囲われている感)+ 二重リング(太い半透明の外周 / 細く明るい内周)。
+    g.circle(ae.x, ae.y, ae.radius - 4).fill({ color, alpha: 0.05 + 0.04 * pulse });
+    g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
+  }
+
   // 足元Yで y-sort するので、キャラが盾の上部に被る(当たりは下部のみ)。
   private syncShields(projectiles: Projectile[], now: number) {
     const seen = new Set<string>();

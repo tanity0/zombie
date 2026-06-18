@@ -179,6 +179,8 @@ export interface Enemy {
   // set-piece hordes aren't deleted the instant they appear.
   spawnedAt?: number; // gameTime ms when spawned
   isWave?: boolean;
+  // 囲い系イベント(アリーナ/ミニボス)で湧いた敵。終了判定(全滅)とカリング保護に使う。
+  fromEvent?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this
   // at spawn time. Renderer uses rank for lightweight ornaments; gameplay uses multiplier.
   distanceZone?: number;
@@ -506,6 +508,18 @@ export interface CastleEvent {
   x: number;
   y: number;
   bossSpawned: boolean;
+}
+
+// 囲い系イベント(小イベント=短時間の強制アリーナ戦/ミニボス戦)。
+// activeEvent が非nullの間は: プレイヤーを円内に閉じ込め、敵capを上げ、通常スポーナを止める。
+export type ActiveEventKind = 'horde' | 'boss';
+export interface ActiveEvent {
+  kind: ActiveEventKind; // horde=ゾンビ大量 / boss=ミニボス(giantbat)
+  x: number;             // 囲い中心(world)
+  y: number;
+  radius: number;        // 囲い半径(閉じ込め円=円コリジョン)
+  startedAt: number;     // gameTime(ms)。開始直後の誤終了防止グレースに使う
+  endsAt: number;        // gameTime(ms)。制限時間の保険(これを過ぎたら強制終了)
 }
 
 export type PickupType =

@@ -12677,3 +12677,18 @@ inertiaTau 0.6 → 1.2s(=倍。かなり滑る/高リスク)。移動速度2倍�
 hasSkill('skater') の速度倍率 2→3(現在値×1.5)。リロード移動にも適用。desc も「3倍」に更新。
 慣性(1.2s)は据え置き=さらに高リスク・高速。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.580 — 囲い系イベント(強制アリーナ戦/ミニボス戦)新規実装 (claude/cool-edison-7b8jrl)
+小イベント。開始2分以降ランダムで1回(1ゲーム1回)。プレイヤーを半透明の光る円(柵)に閉じ込め、
+円内をイベント用の敵構成に置き換え、全滅/撃破 or 制限時間で終了→通常湧きへ復帰。
+- 新規 src/world/arena.ts: clampRectInsideCircle(円コリジョン。renderer非依存)。movePlayer で壁解決の後に最終クランプ。
+- types: Enemy.fromEvent / ActiveEvent(kind/x/y/radius/startedAt/endsAt)。
+- store: activeEvent 状態 + beginArenaEvent(周辺×1.5の通常敵一掃。reaper/giantbat/pumpkin/fixed除外)/ endArenaEvent(残存fromEvent撤去)。
+- useGameLoop: 発火/抑止/終了監視/cap切替。通常スポーナ・演出波は activeEvent 中停止。cap 10→20。
+  ・horde=ゾンビ18体(zombie/skeleton/bat)・全滅/30s保険。 boss=giantbat+取り巻き4・撃破/60s保険。
+  ・giantbat 流用だが fromEvent は finale勝利(gameWon)から除外(4箇所)。
+  ・リサイクル/カリングは fromEvent を保護(円内に保持)。
+- pixiScene: syncArena = groundLayer に光る二重リング+淡い塗り(加算)。
+排他: activeEvent非null + arenaFiredRef で多重発火/通常湧きを抑止(卵等と重ねない)。
+load 2/10(発火は一過性バースト・終了監視は≤20体filter/フレーム・描画は1図形/フレーム)。
+### Verification: tsc(exit0) + build 通過。
