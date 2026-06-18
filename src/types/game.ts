@@ -448,6 +448,14 @@ export interface Projectile {
   boomMaxDist?: number;  // 行きの最大飛距離(Lv別)
   boomStopMs?: number;   // 停止時間(Lv別)
   boomStopUntil?: number; // 停止終了 Date.now(out→stop時に設定)
+  // スキル弾フラグ。
+  // ricochet: リコシェスキルで生成した跳弾。true の弾はもう跳ねない(二次跳弾を禁止)。
+  ricochet?: boolean;
+  // explodeOnHit: 命中時に小爆発を起こす弾(ファイアシューター/ボムカウンター)。
+  // explodeRadius/explodeDamageMult で爆発半径・周囲ダメージ倍率を指定。
+  explodeOnHit?: boolean;
+  explodeRadius?: number;
+  explodeDamageMult?: number;
 }
 
 // Pickup types

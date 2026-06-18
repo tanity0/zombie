@@ -211,6 +211,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
+  const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
@@ -3003,6 +3004,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ boomerangReadyFxAt: Date.now() });
           }
           boomReadyRef.current = ready;
+        }
+        // スキル: 弁慶のCD明け(再発動可)を not-ready→ready の瞬間に検出して
+        // プレイヤー頭上に短い「閃き」フラッシュ(描画のみ・スロー無し・~0.6s)。
+        {
+          const hasBenkei = hasSkill(player, 'benkei');
+          const benkeiReady = hasBenkei && gameTime >= player.benkeiCdUntil;
+          if (benkeiReady && !benkeiReadyRef.current) {
+            const bx = player.x + player.width / 2;
+            const by = player.y - 18;
+            spawnRing(bx, by, 6, 38, 'rgba(250,204,21,0.9)', 2, 600);
+            useGameStore.getState().spawnGlow(bx, by, 30, 'rgba(250,204,21,', 600);
+            useGameStore.getState().spawnCallout(bx, by - 8, '閃き', '#fde047');
+          }
+          benkeiReadyRef.current = benkeiReady;
         }
         // store が更新する FX タイムスタンプを検出して対応SEを鳴らす(盾バッシュ命中/鞭命中/鞭振り/アンカー打ち込み)。
         {

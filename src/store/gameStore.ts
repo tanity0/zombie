@@ -388,6 +388,38 @@ export const skillExplosionMult = (player: Player): number => (hasSkill(player, 
 // 弁慶: バフ中(benkeiBuffUntil > gameTime)は crit率 +0.10。
 export const skillBenkeiCritBonus = (player: Player, gameTime: number): number =>
   hasSkill(player, 'benkei') && gameTime < player.benkeiBuffUntil ? 0.10 : 0;
+// 近接コンボ倍率(ナイフマスター × コンボマスター)。3つの近接ダメージ地点とカウンター斬撃で共通使用。
+//  ・knife-master: 近接ヒットで knifeComboCount を貯め、+1%/2hit(上限+20%)。窓3秒。
+//  ・combo-master: フィニッシュコンボ(meleeFinishComboCount)生存中、+2%/combo(上限+50%)。
+// どちらも非装備なら ×1。窓の有効判定は呼び出し側の gameTime に依存。
+export const skillMeleeComboMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
+  let mult = 1;
+  if (hasSkill(player, 'knife-master') && gameTime < player.knifeComboUntil) {
+    mult *= 1 + Math.min(0.20, Math.floor(player.knifeComboCount / 2) * 0.01);
+  }
+  if (hasSkill(player, 'combo-master') && finishComboUntil >= gameTime) {
+    mult *= 1 + Math.min(0.50, finishComboCount * 0.02);
+  }
+  return mult;
+};
+// combo-master: フィニッシュコンボ窓を +1s 延長(装備時)。
+export const skillFinishComboWindowBonus = (player: Player): number =>
+  hasSkill(player, 'combo-master') ? 1000 : 0;
+// 賢者の石: 鞭ハリケーンの半径/ダメージ +20%。
+export const sageStoneHurricaneMult = (player: Player): number => (hasSageStone(player) ? 1.2 : 1);
+// ナイフマスター: 近接ヒットでコンボを加算(窓3秒)。非ヒット/非装備時は据え置き。
+// 窓切れ後の最初のヒットは 1 にリセット。
+export const computeKnifeCombo = (
+  player: Player,
+  gameTime: number,
+  hitLanded: boolean,
+): { count: number; until: number } => {
+  if (!hasSkill(player, 'knife-master') || !hitLanded) {
+    return { count: player.knifeComboCount, until: player.knifeComboUntil };
+  }
+  const alive = gameTime < player.knifeComboUntil;
+  return { count: alive ? player.knifeComboCount + 1 : 1, until: gameTime + 3000 };
+};
 // スナイパー: 銃ダメージ ×(1 + 停止敵0.5 + 距離補正最大0.5)。refDist=狙撃最大射程(要調整)。
 // その85%地点で距離補正が+0.5上限に到達。射程自体は不変(ダメージのみ)。
 export const SNIPER_REF_DIST = 480;
@@ -833,6 +865,90 @@ const grantMeleeKillRewards = (
   }
 };
 
+// スキル: リーパー(super) = フィニッシュ発生時、仕留めた敵の MELEE_RADIUS 内の他の敵にも
+// 同じ即死を伝播。ボス/リーパー型は除外(既存フィニッシュ除外と一致)。近傍のみで有界。
+const applyMeleeFinishSkillSpread = (
+  get: () => GameState,
+  player: Player,
+  finishedEnemies: Enemy[],
+) => {
+  if (!hasSkill(player, 'reaper') || finishedEnemies.length === 0) return;
+  const r2 = MELEE_RADIUS * MELEE_RADIUS;
+  const alreadyHit = new Set<string>();
+  for (const fin of finishedEnemies) {
+    const fcx = fin.x + fin.width / 2;
+    const fcy = fin.y + fin.height / 2;
+    // スナップショット(都度取得)で、既に消えた敵は対象外。
+    for (const e of get().enemies) {
+      if (alreadyHit.has(e.id)) continue;
+      if (isBossType(e.type) || e.type === 'reaper') continue;
+      const ecx = e.x + e.width / 2;
+      const ecy = e.y + e.height / 2;
+      if ((ecx - fcx) ** 2 + (ecy - fcy) ** 2 > r2) continue;
+      alreadyHit.add(e.id);
+      const killed = get().damageEnemy(e.id, e.health + 1); // 即死
+      get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
+      if (killed) {
+        get().spawnBurst(ecx, ecy, '#a855f7', 14);
+        get().addPickup({ id: `pickup-xp-reaper-${e.id}`, x: ecx - 8, y: ecy - 8, type: 'experience', value: e.experienceValue });
+      }
+    }
+  }
+};
+
+// スキル: カウンターマスター = カウンター成立スイングで、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
+// 2× KNOCKBACK_SPEED で弾く。近傍だけ走査(有界)。
+const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number) => {
+  const reach = MELEE_RADIUS * 1.5;
+  const reach2 = reach * reach;
+  for (const e of get().enemies) {
+    if (e.type === 'reaper') continue;
+    const ecx = e.x + e.width / 2;
+    const ecy = e.y + e.height / 2;
+    const dx = ecx - pcx;
+    const dy = ecy - pcy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > reach2) continue;
+    const dist = Math.max(0.001, Math.sqrt(d2));
+    // KNOCKBACK_SPEED の 2倍相当。knockbackEnemy は BULLET_KNOCKBACK_SPEED 基準なので比率換算。
+    const mult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
+    get().knockbackEnemy(e.id, dx / dist, dy / dist, mult, mult);
+  }
+};
+
+// スキル: スラッシャー = 直前の近接から0.5s以内なら、このスイングの当たり位置に ×0.3 の追撃を1回だけ。
+// 0.5s 窓外なら窓を開くだけ。FX/ダメージとも有界(slashAt の位置に対し1パスのみ)。
+const applySlasherFollowup = (
+  get: () => GameState,
+  player: Player,
+  gameTime: number,
+  slashAt: { x: number; y: number }[],
+  meleeDamage: number,
+  comboMult: number,
+) => {
+  const within = gameTime < player.slasherWindowUntil;
+  if (within) {
+    const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
+    const r2 = (MELEE_RADIUS * 0.5) ** 2; // 当たり位置近傍の敵にだけ追撃
+    const hit = new Set<string>();
+    for (const s of slashAt) {
+      for (const e of get().enemies) {
+        if (hit.has(e.id) || e.type === 'reaper') continue;
+        const ecx = e.x + e.width / 2;
+        const ecy = e.y + e.height / 2;
+        if ((ecx - s.x) ** 2 + (ecy - s.y) ** 2 > r2) continue;
+        hit.add(e.id);
+        const killed = get().damageEnemy(e.id, followDmg);
+        get().spawnDamageNumber(ecx, e.y, Math.round(followDmg), false);
+        get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
+        if (killed) get().spawnBurst(ecx, ecy, '#bef264', 10);
+      }
+    }
+  }
+  // どちらの場合も次の窓を開く(連続スイングで交互に発動)。
+  get().setSlasherWindow(gameTime + 500);
+};
+
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
 const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone']];
 
@@ -1008,6 +1124,7 @@ interface GameState {
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
   openCounterWindow: () => void;
+  setSlasherWindow: (until: number) => void;
   markCastleBossSpawned: () => void;
 
   // Ammo
@@ -1481,6 +1598,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
 
+    // スキル: カウンターマスター = カウンター窓 +0.5s(全アサイン地点で共通使用)。
+    const counterWindowMs = COUNTER_WINDOW + (hasSkill(player, 'counter-master') ? 500 : 0);
+
     // 近接スイングの揺れは「通常ヒット時のみ」(空振りは揺らさない/フィニッシュ・カウンターは
     // それぞれのインパクト演出に任せる)。判定が出揃う関数末尾で発火する(社長指示)。
 
@@ -1675,11 +1795,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (成立エフェクトはループ側の lastCounterSuccessTime エッジ検出が担当)。
     if (isKatanaMode(player)) {
       // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
-      const counterCd = hasMurasame(player) ? now : now + COUNTER_WINDOW + COUNTER_COOLDOWN;
+      const counterCd = hasMurasame(player) ? now : now + counterWindowMs + COUNTER_COOLDOWN;
       set(state => ({
         player: {
           ...state.player,
-          counterWindowEnd: now + COUNTER_WINDOW,
+          counterWindowEnd: now + counterWindowMs,
           counterCooldownEnd: counterCd,
         }
       }));
@@ -1705,8 +1825,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({
         player: {
           ...state.player,
-          counterWindowEnd: now + COUNTER_WINDOW,
-          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS,
+          counterWindowEnd: now + counterWindowMs,
+          counterCooldownEnd: now + counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS,
         }
       }));
       set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
@@ -1804,6 +1924,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
+    // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
+    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
     const grenadesToDetonate = projectiles
       .filter(p => p.weaponType === 'grenade')
       .filter(p => {
@@ -1936,7 +2058,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -1978,6 +2100,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    // スキル: ナイフマスターの近接コンボ加算(近接ダメージが当たったスイングで +1)。
+    const meleeHitLanded = slashAt.length > 0;
+    const knifeCombo = computeKnifeCombo(player, gameTime, meleeHitLanded);
+    // スキル: コンボマスター = フィニッシュコンボ窓 +1s。
+    const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
     set(state => ({
       enemies: survivors,
       gameStats: {
@@ -1999,15 +2126,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
       meleeFinishComboUntil: comboFinishCount > 0
-        ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS
+        ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
       player: {
         ...state.player,
-        counterWindowEnd: now + COUNTER_WINDOW,
-        counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+        counterWindowEnd: now + counterWindowMs,
+        counterCooldownEnd: now + counterWindowMs + COUNTER_COOLDOWN,
         huntingCharged: false,
-        huntingChargeStartedAt: 0
+        huntingChargeStartedAt: 0,
+        knifeComboCount: knifeCombo.count,
+        knifeComboUntil: knifeCombo.until,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {
@@ -2093,6 +2222,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
     }
 
+    // スキル: リーパー(フィニッシュ伝播)/ カウンターマスター(成立時ノックバック)。
+    applyMeleeFinishSkillSpread(get, player, killed.filter(k => k.finisher).map(k => k.enemy));
+    if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
+      counterMasterKnockback(get, pcx, pcy);
+    }
+    // スキル: スラッシャー = 直前の近接から0.5s以内の追撃は ×0.3 の追加ヒット(1回・有界)。
+    if (hasSkill(player, 'slasher') && slashAt.length > 0) {
+      applySlasherFollowup(get, player, gameTime, slashAt, meleeDamage, meleeComboMult);
+    }
+
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
 
@@ -2115,6 +2254,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const baseDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(player)];
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
+    // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
+    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
@@ -2166,7 +2307,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
+      const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -2213,6 +2354,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
+    const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
     set(state => ({
       enemies: survivors,
       gameStats: {
@@ -2234,9 +2377,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
       meleeFinishComboUntil: comboFinishCount > 0
-        ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS
+        ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
-      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil
+      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
+      player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
     }));
 
     // 軽量な短命斬撃のみ(常時glowなし)。刀はやや青白い斬閃で識別。
@@ -2258,6 +2402,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (finisherHit || bossFinishHit) {
       get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
     }
+    // スキル: リーパー(フィニッシュ伝播)。刀の一閃フィニッシュでも周囲へ波及。
+    applyMeleeFinishSkillSpread(get, player, killed.filter(k => k.finisher).map(k => k.enemy));
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
@@ -2290,6 +2436,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     let hits = 0;
+    // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
+    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
 
     for (const enemy of enemies) {
       if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser)) {
@@ -2319,7 +2467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
-      const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
+      const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
@@ -2340,6 +2488,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finisherHit = killed.some(k => k.finisher);
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat');
+    const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
+    const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
     set(state => ({
       enemies: survivors,
       gameStats: {
@@ -2354,8 +2504,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       meleeFinishComboCount: comboFinishCount > 0
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
-      meleeFinishComboUntil: comboFinishCount > 0 ? gameTime + MELEE_FINISH_COMBO_WINDOW_MS : state.meleeFinishComboUntil,
+      meleeFinishComboUntil: comboFinishCount > 0 ? gameTime + finishWindowMs : state.meleeFinishComboUntil,
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
+      player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
     }));
 
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
@@ -2363,6 +2514,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
     if (finisherHit || bossFinishHit) get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
+    // スキル: リーパー(フィニッシュ伝播)。鞭フィニッシュでも周囲へ波及。
+    applyMeleeFinishSkillSpread(get, player, killed.filter(k => k.finisher).map(k => k.enemy));
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },
@@ -3523,6 +3676,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       player: { ...state.player, counterWindowEnd: now + COUNTER_WINDOW },
     }));
+  },
+
+  // スキル: スラッシャーの追撃受付窓(gameTime ms)を設定。
+  setSlasherWindow: (until) => {
+    set(state => ({ player: { ...state.player, slasherWindowUntil: until } }));
   },
 
   markCastleBossSpawned: () => {
