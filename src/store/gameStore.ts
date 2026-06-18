@@ -884,29 +884,35 @@ const grantMeleeKillRewards = (
   }
 };
 
-// スキル: リーパー(super) = フィニッシュ発生時、仕留めた敵の MELEE_RADIUS 内の他の敵にも
-// 同じ即死を伝播。ボス/リーパー型は除外(既存フィニッシュ除外と一致)。近傍のみで有界。
+// スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
+// 同じスイング範囲)内の敵全員にもフィニッシュ(即死)を波及。ボスは即死せず、近接フィニッシュ
+// 相当ダメージ(スタン中ボスへの近接と同じ ×BOSS_MELEE_STUN_MULT)。reaper型(特殊敵)は対象外。
+// finisherOccurred=このスイングで finisher:true が1体でも出たか。範囲内のみで有界。
 const applyMeleeFinishSkillSpread = (
   get: () => GameState,
   player: Player,
-  finishedEnemies: Enemy[],
+  finisherOccurred: boolean,
+  pcx: number,
+  pcy: number,
+  range: number,
+  baseMeleeDamage: number,
 ) => {
-  if (!hasSkill(player, 'reaper') || finishedEnemies.length === 0) return;
-  const r2 = MELEE_RADIUS * MELEE_RADIUS;
-  const alreadyHit = new Set<string>();
-  for (const fin of finishedEnemies) {
-    const fcx = fin.x + fin.width / 2;
-    const fcy = fin.y + fin.height / 2;
-    // スナップショット(都度取得)で、既に消えた敵は対象外。
-    for (const e of get().enemies) {
-      if (alreadyHit.has(e.id)) continue;
-      if (isBossType(e.type) || e.type === 'reaper') continue;
-      const ecx = e.x + e.width / 2;
-      const ecy = e.y + e.height / 2;
-      if ((ecx - fcx) ** 2 + (ecy - fcy) ** 2 > r2) continue;
-      alreadyHit.add(e.id);
-      const killed = get().damageEnemy(e.id, e.health + 1); // 即死
-      get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
+  if (!hasSkill(player, 'reaper') || !finisherOccurred) return;
+  const r2 = range * range;
+  for (const e of get().enemies) {
+    if (e.type === 'reaper') continue; // 深奥チェイサー等の特殊敵は対象外
+    const ecx = e.x + e.width / 2;
+    const ecy = e.y + e.height / 2;
+    if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
+    get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
+    if (isBossType(e.type)) {
+      // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。
+      const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT));
+      get().damageEnemy(e.id, dmg);
+      get().spawnDamageNumber(ecx, e.y, dmg, true);
+      get().spawnBurst(ecx, ecy, '#a855f7', 10);
+    } else {
+      const killed = get().damageEnemy(e.id, e.health + 1); // 即死(フィニッシュ波及)
       if (killed) {
         get().spawnBurst(ecx, ecy, '#a855f7', 14);
         get().addPickup({ id: `pickup-xp-reaper-${e.id}`, x: ecx - 8, y: ecy - 8, type: 'experience', value: e.experienceValue });
@@ -2241,8 +2247,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
     }
 
-    // スキル: リーパー(フィニッシュ伝播)/ カウンターマスター(成立時ノックバック)。
-    applyMeleeFinishSkillSpread(get, player, killed.filter(k => k.finisher).map(k => k.enemy));
+    // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage);
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy);
     }
@@ -2421,8 +2427,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (finisherHit || bossFinishHit) {
       get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
     }
-    // スキル: リーパー(フィニッシュ伝播)。刀の一閃フィニッシュでも周囲へ波及。
-    applyMeleeFinishSkillSpread(get, player, killed.filter(k => k.finisher).map(k => k.enemy));
+    // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult);
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
@@ -2533,8 +2539,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
     if (finisherHit || bossFinishHit) get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
-    // スキル: リーパー(フィニッシュ伝播)。鞭フィニッシュでも周囲へ波及。
-    applyMeleeFinishSkillSpread(get, player, killed.filter(k => k.finisher).map(k => k.enemy));
+    // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase);
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length, hits };
   },

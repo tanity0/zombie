@@ -12631,3 +12631,13 @@ load 1/10(定数係数の乗算のみ)。
   書類アイコン+矢印(シアン)で誘導。描画のみ(レンダラ read-only)。
 load 1/10(boolean分岐＋既存pickup走査に相乗り)。
 ### Verification: tsc + build 通過。
+
+## v0.25.573 — 死神(reaper)の挙動を仕様に合わせ修正 (claude/cool-edison-7b8jrl)
+社長の認識確定: 近接フィニッシュを決めた瞬間、その「近接攻撃範囲(プレイヤー中心の同じスイング範囲)」内の
+敵を全員フィニッシュ。ボスは即死せず近接フィニッシュ相当ダメージ(=スタン中ボス近接と同じ ×5)。
+- 旧実装は「仕留めた敵の周囲MELEE_RADIUS」で中心がズレ＆ボス除外だった。
+- applyMeleeFinishSkillSpread を (finisherOccurred, pcx, pcy, range, baseMeleeDamage) 化。
+  カウンター=huntingMeleeRadius / 刀=katanaRange / 鞭=WHIP_LENGTH を範囲に使用。ボスは BOSS_MELEE_STUN_MULT(×5)。
+- 発動条件は従来どおり「finisher が1体でも出たスイング」(=スタン敵を近接処刑)。
+load 1/10(イベント時・範囲内のみ走査)。
+### Verification: tsc + build 通過。

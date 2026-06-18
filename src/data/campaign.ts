@@ -479,7 +479,7 @@ export const SKILL_KEYS: SkillKey[] = [
 ];
 export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: SkillRarity }> = {
   // 超レア
-  'reaper':       { name: '死神',           desc: '近接フィニッシュ発生時、周囲の敵にも同じ即死判定が波及する', rarity: 'super' },
+  'reaper':       { name: '死神',           desc: '近接フィニッシュ時、その攻撃範囲内の敵を全員フィニッシュ（ボスは即死せず5倍ダメージ）', rarity: 'super' },
   'berserker':    { name: 'バーサーカー',   desc: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', rarity: 'super' },
   'skater':       { name: 'スケーター',     desc: '移動速度2倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
   // レア
