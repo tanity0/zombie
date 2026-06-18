@@ -44,10 +44,12 @@ export const getVisibilityLightTexture = (): Texture => {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const r = size / 2;
+  // 円形でなだらかに減衰(中心=明るい → 縁=透明)。硬い縁/四角さを避ける。
   const g = ctx.createRadialGradient(r, r, 0, r, r, r);
   g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.74, 'rgba(255,255,255,1)');    // ~射程まではベタ明るい
-  g.addColorStop(0.9, 'rgba(255,255,255,0.45)');  // 際で急に落ちる
+  g.addColorStop(0.35, 'rgba(255,255,255,0.92)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.6)');
+  g.addColorStop(0.82, 'rgba(255,255,255,0.25)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);

@@ -113,9 +113,9 @@ const LAB_PERSP = tsBool('labpersp', false);
 // 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
 // 研究所スキン専用「可視可能ゾーン」: プレイヤー/UVバー周辺(=ハンドガン射程)だけ明るく、外は急に暗い。
-const LAB_VIS_RANGE = tsNum('vrange', 176);     // 明るく見える半径(px=ハンドガン射程)
+const LAB_VIS_RANGE = tsNum('vrange', 200);     // 明るく見える半径(px≈ハンドガン射程。縁はなだらかに減衰)
 const LAB_VIS_DARK = tsNum('vdark', 0x05060a);  // 可視ゾーン外の暗幕の色(暗いほど黒)
-const LAB_VIS_ALPHA = tsNum('valpha', 0.9);     // 暗幕の濃さ(1=真っ黒, 0.9=かすかに見える)
+const LAB_VIS_ALPHA = tsNum('valpha', 0.8);     // 暗幕の濃さ(1=真っ黒, 0.8=ほんの少し見える)
 // 研究所専用の強い遠近(屋外定数を流用せず分離)。奥(FAR)を強く縮め、収束カーブを急に。?で生調整。
 const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み(小=奥が強く縮む。屋外は0.12)
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)

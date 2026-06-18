@@ -12441,3 +12441,10 @@ v0.25.540 の AlphaFilter+multiply 合成では明かりの穴が抜けず全画
 - 半径=LAB_VIS_RANGE(176=ハンドガン射程)。lab+屋外のみ。?vrange/?vdark/?valpha 調整可。AlphaFilter 依存を撤去。
 ### 負荷スコア 4/10(マスク=render-to-texture 1パス。lab限定・ライトはプール/画面内カリング)。
 ### Verification lint/build 通過。
+
+## v0.25.542 — 可視可能ゾーン調整: 円形でなだらか/暗ゾーンを少し明るく (claude/cool-edison-7b8jrl)
+- ライトテクスチャを滑らかな放射状グラデに(中心明→縁透明)。硬い縁/四角い見えを解消=円形でなだらかに暗くなる。
+- 暗幕の濃さ LAB_VIS_ALPHA 0.9→0.8(ほんの少し見える)。
+- なだらか化で明域が狭く感じるため半径既定 176→200(?vrange 調整可)。
+### 負荷スコア 4/10(据え置き)。
+### Verification lint/build 通過。
