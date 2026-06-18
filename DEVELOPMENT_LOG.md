@@ -12395,3 +12395,14 @@ PixiStage で森の地面/背景と同じ Assets.load(`sprites/lab-floor/lab-flo
 念のため正規アップロード画像で lab-floor-stage2/ground.png を再保存(バイト一致保証)。
 ### 負荷スコア 1/10(テクスチャ1枚の追加ロード)。
 ### Verification lint/build 通過。左下 floor: デバッグは継続(確認後に除去)。
+
+## v0.25.538 — 研究所の床が見えない件: 床は適用済み、霧/暗さで隠れていた → ラボは霧OFF+暗さ緩和 (claude/cool-edison-7b8jrl)
+左下デバッグ `floor:SGC` で3種ロード成功を確認、syncLab→applyOutdoorGroundTheme も毎フレーム実行。
+=床テクスチャ(がれき床)は正しく適用済み。見えにくい原因は 森の霧(FOG)+クールグレード+ビネット の重なり。
+研究所スキンでの対策:
+- 森の霧(fogLayers)を renderable=false で非表示(visible 有効フラグは保持・森は従来どおり)。
+- クールグレード gradeSprite.alpha を lab では 0.45 倍に。
+- 周辺減光 vignette を lab では 0.5 倍に。
+これで がれき床がはっきり見える。
+### 負荷スコア 1/10(フラグ/α変更のみ)。
+### Verification lint/build 通過。確認後 floor: デバッグ表示は除去予定。

@@ -1534,7 +1534,9 @@ export class PixiScene {
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
     if (this.fogT0 === 0) this.fogT0 = now;
     const fogT = now - this.fogT0;
+    const labThemeFog = s.stageTheme === 'lab'; // 研究所スキンは森の霧を出さない(床を見せる)
     for (const f of this.fogLayers) {
+      f.sp.renderable = !labThemeFog; // ラボでは霧を非表示(visible 設定=有効フラグは保持)
       if (!f.sp.visible) continue;
       // 外部PNG(fog.png 等)は非同期ロード。読めたら割当+サイズ/tileScale を確定。
       if (f.texKey && (!f.sp.texture || f.sp.texture.width <= 1)) {
@@ -1550,6 +1552,8 @@ export class PixiScene {
       f.sp.tilePosition.x = fogT * f.flow * FOG_SPEED + Math.sin(now * f.spdX * FOG_SPEED + f.ph) * f.ampX;    // 右へ流れる+横の揺らめき
       f.sp.tilePosition.y = 0;
     }
+    // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
+    this.gradeSprite.alpha = labThemeFog ? GRADE_ALPHA * 0.45 : GRADE_ALPHA;
 
     // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
     this.reaperCrossLayer.position.set(s.camera.x - sx, s.camera.y - sy);
@@ -3785,7 +3789,8 @@ export class PixiScene {
       if (this.labWalls) this.labWalls.visible = false;
       for (const ts of this.labWallActors) ts.visible = false;
       for (const sp of this.labPropSprites) sp.visible = false;
-      this.vignette.alpha = ENV_VIGNETTE_ALPHA; // 屋外は通常の周辺減光に戻す
+      // 研究所スキンは床を見せるため周辺減光を弱める。森は通常。
+      this.vignette.alpha = (s.stageTheme === 'lab') ? ENV_VIGNETTE_ALPHA * 0.5 : ENV_VIGNETTE_ALPHA;
       return;
     }
     // 屋内は周辺減光(環境の暗がり)を広範囲に強める(社長指示)。
