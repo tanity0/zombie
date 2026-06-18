@@ -11931,3 +11931,9 @@ SEG=160px で Y方向スライス。前面 lab-wall-front＋上端 lab-wall-top 
 chat-context のゲーム調整(アナログ歩行/PHILL残弾/ワイヤー/ジャンプ無敵/ラボ敵AI・地形・スコア等)を
 cool-edison にマージし、研究所描画 Phase A/B と1本に統合。競合は pixiScene.ts(import)/package.json/本ログのみ。
 gameStore・useGameLoop・GameHUD 等のゲーム調整はクリーンに合流。lint/build 通過。
+
+## v0.25.507 — レベルアップ等メニュー中の指離し暴発を防止 (claude/cool-edison-7b8jrl)
+`VirtualJoystick.release()` の攻撃ガードに `isPaused` を追加。これまで `isGameTimeStopped()`(会話/登場演出)
+のみで、レベルアップ/ショップ/クエスト等の一時停止(isPaused=true)を見ておらず、メニュー中に指を離すと
+カウンター/PHILL発射/一閃ダッシュが暴発していた。停止中は指離しの攻撃入力を一切受け付けないように修正。
+負荷スコア 1/10(条件1つ追加のみ)。lint/build 通過。

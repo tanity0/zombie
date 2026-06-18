@@ -99,8 +99,10 @@ const VirtualJoystick: React.FC = () => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
     const pointerId = pointerIdRef.current;
-    // 会話/登場演出中(ゲーム内時間停止中)は攻撃入力を一切受け付けない(タップ近接が出ないように)。
-    if (pointerId !== null && fireCounter && !isGameTimeStopped()) {
+    // 会話/登場演出(ゲーム内時間停止)＋一時停止(レベルアップ/ショップ/クエスト等のメニュー)中は
+    // 指離しの攻撃入力を一切受け付けない(メニューを閉じた瞬間にカウンター/PHILL/一閃が暴発しないように)。
+    const paused = useGameStore.getState().isPaused;
+    if (pointerId !== null && fireCounter && !isGameTimeStopped() && !paused) {
       // 四神舞リズムモード中は、タップ/フリックをリズム入力へ振り分ける(カウンター/一閃は出さない)。
       // 攻撃の実行と効果音は useGameLoop 側(pending 消化)が担当する。
       if (useGameStore.getState().rhythm.active) {
