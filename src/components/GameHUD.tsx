@@ -85,6 +85,7 @@ const GameHUD: React.FC = () => {
 
   const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
+  const isDataGet = lastWeaponGet?.kind === 'data'; // 研究所の重要データ確保(武器/トレジャーと同じバナーUI)
 
   const toggleBgm = (e?: React.PointerEvent<HTMLButtonElement>) => {
     e?.preventDefault();
@@ -104,17 +105,17 @@ const GameHUD: React.FC = () => {
         >
           <div
             className={`glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 shadow-lg animate-pulse ${
-              isTreasureGet ? 'ring-amber-300/70' : 'ring-sky-400/70'
+              isTreasureGet ? 'ring-amber-300/70' : isDataGet ? 'ring-emerald-300/70' : 'ring-sky-400/70'
             }`}
           >
-            <span className="text-xl">{isTreasureGet ? '💎' : '🔫'}</span>
+            <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>
             <div className="leading-tight">
               <div
                 className={`text-[10px] font-bold tracking-wide ${
-                  isTreasureGet ? 'text-amber-100/85' : 'text-sky-200/80'
+                  isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-sky-200/80'
                 }`}
               >
-                {isTreasureGet ? 'トレジャーを入手！' : '新しい銃器を入手！'}
+                {isTreasureGet ? 'トレジャーを入手！' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
               </div>
               <div
                 className="text-sm font-bold"

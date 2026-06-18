@@ -2893,7 +2893,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     spawnFlash('rgba(255,255,255,0.28)', 420);
                     spawnRing(pk.x + 8, pk.y + 8, 6, 64, 'rgba(253,230,138,0.9)', 4, 420);
                     spawnBurst(pk.x + 8, pk.y + 8, '#fde68a', 20);
-                    useGameStore.getState().spawnCallout(player.x + player.width / 2, player.y - 14, 'データ確保！ 研究所クリア', '#fde68a');
+                    // 武器/トレジャー取得と同じ取得バナーUIで表示(専用 kind='data')。
+                    useGameStore.setState({ lastWeaponGet: { name: '重要データ', at: Date.now(), color: '#fde68a', kind: 'data' } });
                   }
                   break;
                 }
