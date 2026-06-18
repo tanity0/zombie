@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>document.documentElement.classList.add('js')</script>
 <title>il meglio｜美容に特化したSNSマーケティング — Renewal Concept</title>
 <meta name="description" content="il meglio（イルメリオ）— 美容業界に特化したSNSマーケティング。世界観で、数字を伸ばす。" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -183,12 +184,15 @@
   .foot-bot{display:flex;justify-content:space-between;margin-top:50px;font-size:12px;color:var(--ink-soft);flex-wrap:wrap;gap:10px}
 
   /* ---------- reveal animation ---------- */
-  .reveal{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
-  .reveal.in{opacity:1;transform:none}
-  .load{opacity:0;transform:translateY(26px);animation:rise .95s cubic-bezier(.2,.75,.2,1) forwards}
+  /* visible by default; only hidden-then-animated when JS is active */
+  .reveal{opacity:1;transform:none}
+  .js .reveal{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
+  .js .reveal.in{opacity:1;transform:none}
+  .load{opacity:1;transform:none}
+  .js .load{opacity:0;transform:translateY(26px);animation:rise .95s cubic-bezier(.2,.75,.2,1) forwards}
   @keyframes rise{to{opacity:1;transform:none}}
   .d1{animation-delay:.05s}.d2{animation-delay:.18s}.d3{animation-delay:.31s}.d4{animation-delay:.44s}.d5{animation-delay:.57s}
-  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal,.load,.js .reveal,.js .load{opacity:1!important;transform:none!important}}
 </style>
 </head>
 <body>
