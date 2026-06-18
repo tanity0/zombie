@@ -92,6 +92,18 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-floor/lab-floor-r1-c1', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-r5-c1', scaleMode: 'nearest' },
       { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' }, // シームレス床(ステージ1風)
+      // 新ドット絵タイル(64²・シームレス・16色)。床ベース＝clean、変種＝blood/grime/crack/scorch、隅AO。
+      { name: 'lab-floor/lab-floor-clean', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-blood', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-grime', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-crack', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-scorch', scaleMode: 'nearest' },
+      { name: 'lab-floor/lab-floor-ao', scaleMode: 'nearest' },
+      // 無地壁スライス(前面=左右シームレス / 上端キャップ)＋装飾壁(ガラス窓パネル/横ビーム)。
+      { name: 'lab/lab-wall-front', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-top', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall2-panel', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall2-beam', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)
       { name: 'lab-clear-item', scaleMode: 'nearest' }, // 研究所クリア条件アイテム(拾うとクリア)
       { name: 'wire-anchor-tip', scaleMode: 'nearest' }, // ワイヤーアンカー先端(爪=左下基準。穴=右上にワイヤー接続)

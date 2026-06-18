@@ -11882,3 +11882,37 @@ swallows missing/undecodable buffers).
 - User wants Codex and Claude Code to hand off development through this log.
 - Development environment is `/Users/tanity/zombie`, not `/Users/tanity/AI_MEGLIO`.
 - If a sound feels late or quiet, tune `SFX_SOURCES` in `src/audio/audioManager.ts`.
+
+## v0.25.504 — 研究所 描画刷新 Phase A(床テクスチャ/変種散布/隅AO/壁落ち影) (claude/cool-edison-7b8jrl)
+
+### 概要
+作戦書(moonlit-bubbling-avalanche.md)の実装ハンドオフ Phase A。描画のみ・当たり判定/屋外は不変。
+- `pixiTextures.ts`: 新ドット絵タイルを scaleMode:'nearest' で登録
+  (lab-floor/lab-floor-clean/-blood/-grime/-crack/-scorch/-ao、lab/lab-wall-front/-top/-wall2-panel/-wall2-beam)。
+- `pixiScene.ts::syncLab()`: 床ベースを `lab-floor-clean` に差し替え、tileScale を 300→120 に縮小して
+  ドット絵が読める粒度に。`LAB_ENV_TINT` を 0x4f5a6b→0x6b7686 と弱め、床のディテールを出す。
+- `buildLabFloorDecor()`(新規): `LAB_ROOMS` 各部屋をタイル格子で走査し、`treeHash` 流の決定的ハッシュで
+  ~28%のセルに変種(grime/crack/blood/scorch)を疎に散布＋四隅に -ao スタンプ。**部屋集合は静的なので
+  シグネチャで1度だけ生成**(毎フレーム作り直さない)。
+- 壁の焼き込み落ち影 `labWallShadow`(新規): 右上光源→左下オフセットの暗色矩形2層を LAB_WALLS＋閉ドアに敷く。
+  壁/扉シグネチャで再構築。床/変種の上・壁の下に配置(z順は getChildIndex 相対挿入で堅牢化)。
+
+### 負荷スコア
+**2/10**(rendering)。生成物はすべて静的・シグネチャでゲートし1度だけ構築(変種スプライト~30＋AO~48＋
+影矩形~数十、いずれも毎フレーム再生成しない)。毎フレームのコストは既存と同じ可視制御のみ。安全策=配置が
+変わらない限り再構築なし、扉開閉時のみ影/壁を作り直す。
+
+### Code touched
+- `src/pixi/pixiTextures.ts`
+- `src/pixi/pixiScene.ts`
+- `package.json`
+- `DEVELOPMENT_LOG.md`
+
+### Verification
+- `npm run lint` / `npm run build` 通過。
+- 実機/dev 確認推奨: 研究所の床にドット絵タイル＋部屋ごとの汚し/ひび/血/焦げパッチ、隅の陰、壁の左下落ち影。
+  屋外ステージは不変・当たり判定不変。
+
+### 次の Phase
+- Phase B: `addWall` を縦横統一の立体規約へ(foot-anchored Container＋前面 lab-wall-front＋上端 lab-wall-top、
+  zIndex=footY、RISE 控えめ＋?labrise= 化、装飾壁 lab-wall2-* は要所のみ)。

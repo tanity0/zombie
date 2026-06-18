@@ -19,7 +19,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
-import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER } from '../world/labMap';
+import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs } from '../utils/weaponUtils';
@@ -36,7 +36,7 @@ import {
   RHYTHM_JUST_BURST_MS, RHYTHM_JUST_RING_MAX_SCALE, RHYTHM_JUST_FLICK_TRAVEL,
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
-import { treesInRegion, TREE_CELL } from '../world/trees';
+import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -121,7 +121,7 @@ const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
 
 // --- 研究施設(屋内)の暗さ -------------------------------------------------------
 // ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
-const LAB_ENV_TINT = 0x4f5a6b;       // 研究所の床/壁を暗くする(寒色の暗灰)。小さいほど暗い。
+const LAB_ENV_TINT = 0x6b7686;       // 研究所の床/壁を暗くする(寒色の暗灰)。小さいほど暗い。ドット絵床が読めるよう従来より弱め。
 // 壁の外側=野外マージンの地面(より暗い)。プレイヤーが端でも中心を保てる余白(野外)。
 const LAB_OUTER_TINT = 0x161d16;     // 野外(夜の地面)。かなり暗い緑寄り。
 // 屋内の周辺減光(vignette)を屋外より広範囲に暗く(社長指示)。明るい部分を狭く=さらに強める。
@@ -579,6 +579,9 @@ export class PixiScene {
   private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
   private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
   private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
+  private labFloorDecor: Container | null = null;  // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO。決定的ハッシュで1度だけ生成。
+  private labFloorDecorSig = '';                   // 変種散布の生成シグネチャ(部屋集合は静的なので実質1回)。
+  private labWallShadow: Graphics | null = null;   // 壁下辺の焼き込み落ち影(右上光源→左下オフセット)。壁/扉と同シグネチャで再構築。
   private labPropSprites: Sprite[] = [];          // 屋内の障害物プロップ(木の代わり)。アクター層で深度ソート。
   private labPropSig = '';                        // プロップ配置シグネチャ(変化時のみ再構築)
   private idleZoom = 1;        // 手を離して待機中だけ寄る持続ズーム(滑らかに 1↔1+mag)
@@ -3452,6 +3455,8 @@ export class PixiScene {
     if (!indoor) {
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labFloor) this.labFloor.visible = false;
+      if (this.labFloorDecor) this.labFloorDecor.visible = false;
+      if (this.labWallShadow) this.labWallShadow.visible = false;
       if (this.labWalls) this.labWalls.visible = false;
       for (const ts of this.labWallActors) ts.visible = false;
       for (const sp of this.labPropSprites) sp.visible = false;
@@ -3460,29 +3465,53 @@ export class PixiScene {
     }
     // 屋内は周辺減光(環境の暗がり)を広範囲に強める(社長指示)。
     this.vignette.alpha = LAB_VIGNETTE_ALPHA;
-    // 床(シームレステクスチャ=ステージ1風)。外周の野外マージンまで地面を敷く(四隅が壁で終わらない)。
-    const floorTex = getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-r1-c1');
+    // 床(新ドット絵シームレスタイル=clean をベースに全面に敷く)。外周の野外マージンまで地面を敷く。
+    const LAB_FLOOR_TILE = 120; // 1タイルの world サイズ(px)。ドット絵が読める粒度(旧300は大きすぎた)。
+    const floorTex = getTexture('lab-floor/lab-floor-clean')
+      ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-r1-c1');
     if (floorTex) {
       if (!this.labFloor) {
         this.labFloor = new TilingSprite({ texture: floorTex, width: LAB_OUTER_BOUNDS.width, height: LAB_OUTER_BOUNDS.height });
         this.labFloor.position.set(LAB_OUTER_BOUNDS.x, LAB_OUTER_BOUNDS.y);
-        const tile = 300; // 1タイルの world サイズ(px)。シームレスなので大きめで継ぎ目を目立たせない
-        this.labFloor.tileScale.set(tile / floorTex.width, tile / floorTex.height);
+        this.labFloor.tileScale.set(LAB_FLOOR_TILE / floorTex.width, LAB_FLOOR_TILE / floorTex.height);
         this.labFloor.tint = LAB_ENV_TINT; // ステージ全体(床)を沈める(オブジェクトは別)
         this.L.world.addChildAt(this.labFloor, 0); // 最下層(壁/アクターの下)
       }
       this.labFloor.visible = true;
     }
+    // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO を各部屋に決定的散布(1度だけ生成)。
+    this.buildLabFloorDecor(LAB_FLOOR_TILE);
     // 壁スプライト(横壁=closed-mid を少し立ち上げて奥行き / 縦壁=side-long)。扉開閉が変わった時だけ再構築。
     const sideTex = getTexture('lab/lab-wall-side-long');
     const midTex = getTexture('lab/lab-wall-closed-mid');
     if (sideTex && midTex) {
       if (!this.labWalls) {
         this.labWalls = new Container();
-        this.L.world.addChildAt(this.labWalls, this.labFloor ? 1 : 0); // 床の上・アクターの下
+        const base = this.labFloorDecor ?? this.labFloor;
+        this.L.world.addChildAt(this.labWalls, base ? this.L.world.getChildIndex(base) + 1 : 0); // 床/変種の上・アクターの下
       }
       this.labWalls.visible = true;
+      // 壁下辺の焼き込み落ち影(右上光源→左下へオフセット)。床/変種の上・壁の下に置く。
+      if (!this.labWallShadow) {
+        this.labWallShadow = new Graphics();
+        this.L.world.addChildAt(this.labWallShadow, this.L.world.getChildIndex(this.labWalls)); // 壁の直下
+      }
+      this.labWallShadow.visible = true;
       const sig = LAB_DOORS.map(d => (s.labDoors.some(sd => sd.id === d.id && sd.open) ? '1' : '0')).join('');
+      if (this.labWallsSig !== sig) {
+        // 落ち影を壁配置に合わせて再構築(扉開閉で壁が増減するため同シグネチャ)。
+        const sh = this.labWallShadow;
+        sh.clear();
+        const shadowRect = (rect: { x: number; y: number; width: number; height: number }) => {
+          for (const [d, a] of [[16, 0.22], [8, 0.16]] as [number, number][]) {
+            sh.rect(rect.x - d, rect.y + d, rect.width, rect.height).fill({ color: 0x04060a, alpha: a });
+          }
+        };
+        for (const w of LAB_WALLS) shadowRect(w);
+        for (const d of LAB_DOORS) {
+          if (!s.labDoors.some(sd => sd.id === d.id && sd.open)) shadowRect(d.rect);
+        }
+      }
       if (this.labWallsSig !== sig) {
         this.labWallsSig = sig;
         this.labWalls.removeChildren().forEach(c => c.destroy());
@@ -3532,7 +3561,9 @@ export class PixiScene {
     // マーカー(ボタン/ゴール)。床/壁の上・アクターの下に重ねる。
     if (!this.labGfx) {
       this.labGfx = new Graphics();
-      this.L.world.addChildAt(this.labGfx, (this.labFloor ? 1 : 0) + (this.labWalls ? 1 : 0));
+      const idx = this.labWalls ? this.L.world.getChildIndex(this.labWalls) + 1
+        : (this.labFloorDecor ? this.L.world.getChildIndex(this.labFloorDecor) + 1 : (this.labFloor ? 1 : 0));
+      this.L.world.addChildAt(this.labGfx, idx);
     }
     const g = this.labGfx;
     g.visible = true;
@@ -3577,6 +3608,66 @@ export class PixiScene {
       sp.visible = true;
       const t = sp.texture;
       sp.scale.set(containScale(PROP_DISPLAY, PROP_DISPLAY, t.width, t.height) * this.depthScaleEnemy(sp.position.y));
+    }
+  }
+
+  // 床の変種パッチ(blood/grime/crack/scorch)＋隅AO を各部屋に決定的散布。部屋集合は静的なので
+  // 1度だけ生成し、以後は可視制御のみ(毎フレーム作り直さない=負荷を持たない)。
+  private buildLabFloorDecor(tile: number) {
+    if (!this.labFloorDecor) {
+      this.labFloorDecor = new Container();
+      const idx = this.labFloor ? this.L.world.getChildIndex(this.labFloor) + 1 : 0;
+      this.L.world.addChildAt(this.labFloorDecor, idx);
+    }
+    this.labFloorDecor.visible = true;
+    const sig = `${LAB_ROOMS.length}:${tile}`;
+    if (this.labFloorDecorSig === sig) return;
+    this.labFloorDecorSig = sig;
+    this.labFloorDecor.removeChildren().forEach(c => c.destroy());
+
+    const variantTex = [
+      getTexture('lab-floor/lab-floor-grime'),
+      getTexture('lab-floor/lab-floor-crack'),
+      getTexture('lab-floor/lab-floor-blood'),
+      getTexture('lab-floor/lab-floor-scorch'),
+    ].filter((t): t is Texture => !!t);
+    const aoTex = getTexture('lab-floor/lab-floor-ao');
+
+    for (const room of LAB_ROOMS) {
+      const r = room.rect;
+      const cols = Math.max(1, Math.floor(r.width / tile));
+      const rows = Math.max(1, Math.floor(r.height / tile));
+      // 部屋内をタイル格子で走査し、ハッシュで一部セルにだけ変種を敷く(疎)。決定的=毎回同じ絵。
+      if (variantTex.length > 0) {
+        for (let cyi = 0; cyi < rows; cyi++) {
+          for (let cxi = 0; cxi < cols; cxi++) {
+            const gx = r.x + cxi * tile, gy = r.y + cyi * tile;
+            if (treeHash(gx * 0.13 + 7, gy * 0.17 + 3) < 0.72) continue; // ~28% のセルのみ
+            const tex = variantTex[Math.floor(treeHash(gx + 31, gy + 17) * variantTex.length) % variantTex.length];
+            const sp = new Sprite(tex);
+            sp.position.set(gx, gy);
+            sp.width = tile; sp.height = tile;
+            sp.tint = LAB_ENV_TINT; sp.alpha = 0.92;
+            this.labFloorDecor.addChild(sp);
+          }
+        }
+      }
+      // 隅AO(4角)。透過スタンプを内側へ向けて反転配置(右上光源の逆=隅を沈める)。
+      if (aoTex) {
+        const aw = Math.min(tile * 1.7, r.width * 0.5), ah = Math.min(tile * 1.7, r.height * 0.5);
+        const corners: [number, number, number, number][] = [
+          [r.x, r.y, 1, 1], [r.x + r.width, r.y, -1, 1],
+          [r.x, r.y + r.height, 1, -1], [r.x + r.width, r.y + r.height, -1, -1],
+        ];
+        for (const [px, py, sx, sy] of corners) {
+          const ao = new Sprite(aoTex);
+          ao.anchor.set(0, 0);
+          ao.width = aw * sx; ao.height = ah * sy;
+          ao.position.set(px, py);
+          ao.alpha = 0.5;
+          this.labFloorDecor.addChild(ao);
+        }
+      }
     }
   }
 
