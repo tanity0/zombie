@@ -1498,8 +1498,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           : 1;
 
       // Inertia: ease the velocity toward the target. Player tau is 0 → fully
-      // instant, responsive control. スキル: スケーター = 慣性0.4sで滑る(高リスク操作)。
-      const inertiaTau = hasSkill(player, 'skater') ? 0.4 : PLAYER_INERTIA_TAU;
+      // instant, responsive control. スキル: スケーター = 慣性0.6sで滑る(高リスク操作。
+      // 社長指示で1.5倍=0.4→0.6)。
+      const inertiaTau = hasSkill(player, 'skater') ? 0.6 : PLAYER_INERTIA_TAU;
       const alpha = inertiaAlpha(deltaTime, inertiaTau);
       const vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
       const vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
