@@ -66,8 +66,10 @@ const GameHUD: React.FC = () => {
   const gameTime = useGameStore(state => Math.floor(state.gameTime / 1000)) * 1000;
   // 個別フィールドを購読(rhythm全体を購読すると resync の firstBeatAt 更新で毎フレーム再描画になり重い)。
   // コマンド/入力矢印は Pixi オーバーレイ側で描画。HUDはコンボ数のみ(左上)。
-  const rhythmActive = useGameStore(state => state.rhythm.active);
+  // 近接フィニッシュのコンボ。ダンス(rhythm)中だけでなく通常の連続フィニッシュでも表示する。
+  // コンボ窓(meleeFinishComboUntil)が有効な間だけ出す(7s窓・gameTimeは秒粒度なので失効後~1sで消える)。
   const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
+  const rhythmComboUntil = useGameStore(state => state.meleeFinishComboUntil);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
   const enemyCount = useGameStore(state => state.enemies.length);
@@ -131,8 +133,8 @@ const GameHUD: React.FC = () => {
       {/* フィニッシュカウンター表示は四神舞仕様で廃止(コンボ段階はミラーボールの色で表現)。
           コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
 
-      {/* 四神舞: コンボ数を左上(元の位置)に表示。コマンド/入力矢印は Pixi 頭上オーバーレイ側。 */}
-      {rhythmActive && rhythmCombo >= 2 && (
+      {/* コンボ数を左上に表示(近接フィニッシュ/四神舞 共通)。コマンド/入力矢印は Pixi 頭上オーバーレイ側。 */}
+      {rhythmCombo >= 2 && rhythmComboUntil >= gameTime && (
         <div
           className="absolute text-left"
           style={{

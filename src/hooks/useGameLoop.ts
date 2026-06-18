@@ -174,6 +174,8 @@ const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
 const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
+// 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
+const LAB_SPAWN_AGGRO_RANGE = 300;
 const PLAYER_DEATH_SLOW_MS = 820;
 const CASTLE_SPAWN_SLOW_MS = 900;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
@@ -2979,8 +2981,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           for (let i = 0; i < spawnCount; i++) {
             // 研究所スキンは湧きをラボ用ゾンビ(Lv1/2/3)に固定。画面外ランダム配置は generateEnemy を流用。
+            // 索敵仕様: 湧いた時点は休眠(dormant)。プレイヤーが aggroRange 内 かつ 壁越しでない(視界)時に起床。
+            // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
-              addEnemy(generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection));
+              const labEnemy = generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection);
+              labEnemy.dormant = true;
+              labEnemy.aggroRange = LAB_SPAWN_AGGRO_RANGE;
+              labEnemy.vx = 0;
+              labEnemy.vy = 0;
+              addEnemy(labEnemy);
               continue;
             }
             let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection);

@@ -12295,3 +12295,19 @@ applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた
 ### Verification
 - lint/build 通過。stage-2 は書類取得でクリア、giantbat 非出現、湧きはラボ敵のみ。
 ### 次: 書類への誘導(エッジ矢印/マーカー)要否。現状は探索で発見。
+
+## v0.25.530 — 近接フィニッシュのコンボ表示を復活 / ステージ2敵を索敵仕様に (claude/cool-edison-7b8jrl)
+1) コンボ表示: GameHUD のコンボ数表示が `rhythmActive`(ダンス中)ゲートに取られて近接フィニッシュ単体で
+   出なくなっていた。条件を「コンボ窓(meleeFinishComboUntil)が有効 かつ count>=2」に変更し、
+   近接フィニッシュでも四神舞でも表示。gameTime は秒粒度なので失効後~1sで自然に消える。
+   (rhythmActive 購読は不要になり削除。)
+2) ステージ2の索敵仕様: lab テーマの湧き敵を休眠(dormant)+aggroRange(=300)付きで生成。
+   既存 updateEnemies の dormant ブロックにより、プレイヤーが aggroRange 内 かつ 壁越しでない(視界)
+   ときだけ起床(視界遮蔽は wallRects=手置き壁オブジェクトで segmentBlocked)。
+   fixed は付けないので、遠くで眠ったままの個体は敵数キャップで通常カリングされ溜まらない。
+
+### 負荷スコア
+1/10。表示条件の変更と、湧き時のフラグ付与のみ。索敵判定は既存ロジックを流用。
+
+### Verification
+- lint/build 通過。近接フィニッシュ連続でコンボ数が左上に表示。ステージ2の敵は視界+距離で起床。
