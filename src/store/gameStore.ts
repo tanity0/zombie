@@ -193,7 +193,7 @@ export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
 // レベルアップ時に周辺の敵を強制的に押しのける(2倍ノックバック相当)。アップグレードメニューで
 // 即ポーズするため velocity だと失効する → 位置を即時に動かす(menu を跨いでも効く)。
 export const LEVELUP_KNOCKBACK_RADIUS = 240;   // 押しのける範囲(プレイヤー中心)
-export const LEVELUP_KNOCKBACK_DISTANCE = 96;  // 押しのける距離(通常ノックバックの約2倍の体感)
+export const LEVELUP_KNOCKBACK_DISTANCE = 64;  // 押しのける距離(96→64=今の2/3。社長指示)
 // Each successful reflect refreshes the window by this much so a chained
 // barrage can be turned back in full. No hard cap — the cooldown still
 // kicks in once the chain finally lapses.
@@ -443,7 +443,7 @@ export const PUMPKIN_JUMP_HEIGHT = 90;     // ジャンプの見た目の高さ(
 export const PUMPKIN_LAND_SHAKE_MS = 220;  // 着地時の画面揺れ
 export const PUMPKIN_LAND_SHAKE_MAG = 9;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
-export const PUMPKIN_EXPLOSION_RADIUS = 66;
+export const PUMPKIN_EXPLOSION_RADIUS = 54; // 爆撃範囲を少し狭く(66→54。社長指示)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
 // 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
 export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒

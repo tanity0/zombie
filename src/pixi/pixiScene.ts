@@ -19,7 +19,7 @@ import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
@@ -581,6 +581,7 @@ export class PixiScene {
   private rhythmArrowsGfx = new Graphics();
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
+  private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
@@ -807,6 +808,7 @@ export class PixiScene {
     // tint は付けない: テクスチャに焼いたシアン→白ホットの階調をそのまま活かす。
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
+      this.pumpkinTelegraph,
       this.playerGroundPool,
       this.playerLight,
       this.alchemyCircle,
@@ -1650,6 +1652,7 @@ export class PixiScene {
     this.syncMerchant(s.weaponMerchant, s.player, now); // 商人は屋内でも(最初の部屋に)出す
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
+    this.syncPumpkinTelegraph(s.enemies, now); // ジャンプ攻撃の着地予告(赤い影)
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
@@ -2422,6 +2425,22 @@ export class PixiScene {
     this.labVeilSprite.height = H;
     // 背景4層(遠景/地平帯/手前帯/天井)を暗幕の上へ=暗くしない。
     this.setLabSceneryAboveVeil(true);
+  }
+
+  // ジャンプ攻撃(パンプキン/lab-zombie-3)の着地予告。空中(aiPhase='jump')の間、着地点に赤い影を出す。
+  private syncPumpkinTelegraph(enemies: Enemy[], now: number) {
+    const g = this.pumpkinTelegraph;
+    g.clear();
+    const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+    for (const e of enemies) {
+      if (e.aiPhase !== 'jump') continue;
+      if (e.type !== 'pumpkin' && e.type !== 'lab-zombie-3') continue;
+      const tx = (e.aiTargetX ?? e.x) + e.width / 2;
+      const ty = (e.aiTargetY ?? e.y) + e.height / 2;
+      const R = PUMPKIN_EXPLOSION_RADIUS; // 実際の爆撃範囲に一致
+      g.ellipse(tx, ty, R, R * 0.55).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+      g.ellipse(tx, ty, R, R * 0.55).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+    }
   }
 
   private syncBreakableProps(props: BreakableProp[], now: number) {

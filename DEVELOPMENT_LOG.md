@@ -12495,3 +12495,11 @@ pts[0]=プレイヤー(狭) / pts[1..]=UVバー(通常)で半径を出し分け�
 - 特殊スキルのノックバックは弱体化しないよう従来の絶対値に固定: SHIELD_BASH=960, WIRE_LAND=400, WHIP=600
   (以前は KNOCKBACK_SPEED 連動だったため、基準2/3化の巻き添えを回避)。WIRE大launch/レベルアップ押しは据え置き。
 ### Verification lint/build 通過。
+
+## v0.25.549 — パンプキン着地予告(赤影)+爆撃範囲縮小 / レベルアップNB 2/3 (claude/cool-edison-7b8jrl)
+- パンプキン/lab-zombie-3 のジャンプ攻撃: 空中(aiPhase='jump')の間、着地点に赤い影(楕円・脈動)を表示
+  (syncPumpkinTelegraph, groundLayer)。半径=実爆撃範囲に一致。
+- 爆撃範囲 PUMPKIN_EXPLOSION_RADIUS 66→54(少し狭く)。
+- レベルアップ時ノックバック LEVELUP_KNOCKBACK_DISTANCE 96→64(今の2/3)。
+### 負荷スコア 1/10(Graphics1枚に着地中の敵分だけ楕円。通常は0)。
+### Verification lint/build 通過。
