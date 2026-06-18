@@ -12548,3 +12548,10 @@ counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hi
 ## v0.25.556 — heavy-impact(バッシュ命中/ジャンプ着地)SEの音量UP (claude/cool-edison-7b8jrl)
 小さいとの指摘。GainNode は1超で増幅可なので volume 0.9→1.8 に。
 ### Verification lint/build 通過。
+
+## v0.25.557 — アンカー敵命中=近接音 / ブーメラン投擲音(社長提供) (claude/cool-edison-7b8jrl)
+- ワイヤーアンカー: 打ち込み経路に敵がいる(segmentBlocked で判定)場合は近接命中音(slash-damage)だけ、
+  いない場合は打ち込み音(anchor-plant)。store に anchorEnemyHitFxAt を追加。
+- ブーメラン投擲音: 提供SEを public/audio/sfx/boomerang-throw.mp3 として登録。投擲時(store)に boomerangThrowFxAt 更新→
+  useGameLoop が検出して playSfx('boomerang-throw')。
+### Verification lint/build 通過。

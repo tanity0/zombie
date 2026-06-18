@@ -812,7 +812,9 @@ interface GameState {
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
-  anchorPlantFxAt: number;    // ワイヤーアンカーを打ち込んだ時刻(Date.now)。SEのトリガ
+  anchorPlantFxAt: number;    // ワイヤーアンカーを(地面に)打ち込んだ時刻(Date.now)。打ち込み音SEのトリガ
+  anchorEnemyHitFxAt: number; // ワイヤーアンカーが敵に当たった時刻(Date.now)。近接命中音SEのトリガ
+  boomerangThrowFxAt: number; // ドローンブーメランを投げた時刻(Date.now)。投擲音SEのトリガ
   projectiles: Projectile[];
   pickups: Pickup[];
   breakableProps: BreakableProp[];
@@ -1135,6 +1137,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
   anchorPlantFxAt: 0,
+  anchorEnemyHitFxAt: 0,
+  boomerangThrowFxAt: 0,
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -1459,6 +1463,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl],
       });
       get().setSubWeaponCooldown('drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
+      set({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
     }
 
     // ワイヤーアンカー: 指離し(このスイング)で発動する移動系サブ。攻撃はしない。
@@ -1508,7 +1513,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }));
         get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 打ち込みの小ポップ
-        set({ anchorPlantFxAt: now }); // アンカー打ち込み音SEのトリガ
+        // 打ち込み経路上に敵がいる=アンカーが敵に当たる → 近接命中音だけ。いない=地面に打ち込み音。
+        const enemyRects = get().enemies.map(e => ({ x: e.x, y: e.y, width: e.width, height: e.height }));
+        if (segmentBlocked(pcx, pcy, ax, ay, enemyRects)) set({ anchorEnemyHitFxAt: now });
+        else set({ anchorPlantFxAt: now });
       }
     }
 

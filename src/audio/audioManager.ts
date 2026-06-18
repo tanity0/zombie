@@ -76,7 +76,8 @@ export type SfxKey =
   | 'heavy-impact'
   | 'whip-hit'
   | 'whip-swing'
-  | 'anchor-plant';
+  | 'anchor-plant'
+  | 'boomerang-throw';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
@@ -197,6 +198,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'whip-swing': { src: `${import.meta.env.BASE_URL}audio/sfx/whip-swing.mp3`, volume: 0.8, minIntervalMs: 60 },
   // ワイヤーアンカーを打ち込んだ音(社長提供SE)。
   'anchor-plant': { src: `${import.meta.env.BASE_URL}audio/sfx/anchor-plant.mp3`, volume: 0.85, minIntervalMs: 60 },
+  // ブーメランを投げた音(社長提供SE)。
+  'boomerang-throw': { src: `${import.meta.env.BASE_URL}audio/sfx/boomerang-throw.mp3`, volume: 0.82, minIntervalMs: 60 },
 };
 
 let bgm: HTMLAudioElement | null = null;
