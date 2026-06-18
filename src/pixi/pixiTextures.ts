@@ -106,6 +106,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab/lab-wall-top', scaleMode: 'nearest' },
       { name: 'lab/lab-wall2-panel', scaleMode: 'nearest' },
       { name: 'lab/lab-wall2-beam', scaleMode: 'nearest' },
+      // 手置き壁オブジェクト(横/縦の一枚絵ビルボード。足元アンカーで配置・遮蔽物)。
+      { name: 'lab/lab-wall-obj-h', scaleMode: 'nearest' },
+      { name: 'lab/lab-wall-obj-v', scaleMode: 'nearest' },
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)

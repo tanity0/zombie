@@ -29,6 +29,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+import { STAGE2_WALLS, wallRect, type PlacedWall } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
@@ -999,6 +1000,8 @@ interface GameState {
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
   labButtons: LabButton[];                              // ボタン(押下状態)
   labProps: LabProp[];                                  // 障害物プロップ(木の代わり・当たり判定あり)
+  placedWalls: PlacedWall[];                            // 手置き壁オブジェクト(stage-2 研究所スキン。描画用)
+  wallRects: Rect[];                                    // 手置き壁の AABB(precompute・移動/視線遮りに使用)
   hasCardKey: boolean;                                  // カードキー取得済みか
   goalReachedAt: number;                                // ゴール到達時刻(0=未到達)。演出後に勝利
   pendingIndoor: boolean;                               // 出撃が屋内ステージか(startMission→resetGame で受け渡し)
@@ -1146,6 +1149,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   labDoors: [],
   labButtons: [],
   labProps: [],
+  placedWalls: [],
+  wallRects: [],
   hasCardKey: false,
   goalReachedAt: 0,
   pendingIndoor: false,
@@ -1298,8 +1303,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: player.width,
           height: player.height,
         }, castleEvent);
-        newX = castleResolved.x;
-        newY = castleResolved.y;
+        // 手置き壁オブジェクト(研究所スキン)を遮蔽物として解決。壁が無い出撃は no-op。
+        const wallResolved = state.wallRects.length
+          ? resolveAabb({ x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height }, state.wallRects)
+          : castleResolved;
+        newX = wallResolved.x;
+        newY = wallResolved.y;
       }
       // 設置型シールドはプレイヤーを止めない: 触れたら進行方向へ盾を押す(邪魔しない)。
       // 押された盾は既存の毎フレーム処理(盾→敵 resolveAabb)で進行方向の敵を比例して押し出す。
@@ -1397,7 +1406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 近接の壁越し不可(視線判定)。屋内=lab壁(閉ドア含む) / 屋外=近傍の木。
     const meleeWalls: Rect[] = indoorMode
       ? [...labBlockingWalls(labDoors.filter(d => d.open).map(d => d.id)), ...get().labProps.map(p => p.rect)]
-      : treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect);
+      : [...treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect), ...get().wallRects];
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
@@ -3183,13 +3192,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       const indoor = state.indoorMode;
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
       const indoorWalls = indoor ? [...labBlockingWalls(openDoorIds), ...state.labProps.map(p => p.rect)] : [];
+      // 視線/移動の遮蔽物: 屋内=lab壁 / 屋外=手置き壁オブジェクト。
+      const losWalls = indoor ? indoorWalls : state.wallRects;
 
       const updatedEnemies = enemies.map(enemy => {
-        // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁(+閉ドア+プロップ)、屋外は木/松明。
+        // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁(+閉ドア+プロップ)、屋外は木/松明+手置き壁。
         const resolveMove = (nx: number, ny: number) => {
           if (indoor) return resolveAabb({ x: nx, y: ny, width: enemy.width, height: enemy.height }, indoorWalls);
           const tr = resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
-          return resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
+          const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
+          return state.wallRects.length
+            ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.wallRects)
+            : torchR;
         };
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
@@ -3238,7 +3252,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ddx = pcx - ecx2, ddy = pcy - ecy2;
           const ar = (enemy.aggroRange ?? 200) * 1; // 索敵範囲(PHILL運用に合わせ従来の半分=base等倍)
           const inRange = ddx * ddx + ddy * ddy <= ar * ar;
-          const seen = inRange && !(indoorWalls.length > 0 && segmentBlocked(pcx, pcy, ecx2, ecy2, indoorWalls)); // 壁越しは見つからない
+          const seen = inRange && !(losWalls.length > 0 && segmentBlocked(pcx, pcy, ecx2, ecy2, losWalls)); // 壁越しは見つからない
           if (!seen) return { ...enemy, vx: 0, vy: 0 };
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
         }
@@ -4691,6 +4705,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           ]
         : [];
 
+      // 手置き壁オブジェクト: 研究所スキン(屋外)でのみ点在。迷路/ゲートにはしない=遮蔽物。
+      // AABB は静的なので reset 時に一度だけ precompute(毎フレーム再生成しない)。
+      const runWalls: PlacedWall[] = (stageTheme === 'lab' && !indoor) ? STAGE2_WALLS : [];
+      const runWallRects: Rect[] = runWalls.map(wallRect);
+
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
       return {
@@ -4700,6 +4719,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,
+        placedWalls: runWalls,
+        wallRects: runWallRects,
         hasCardKey: false,
         goalReachedAt: 0,
         player: {

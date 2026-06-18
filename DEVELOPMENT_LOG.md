@@ -12128,3 +12128,34 @@ Step1(台形メッシュ床)で `?labpersp` 時に `floorTex=null` にしてい�
 - lint/build 通過。stage-2 出撃で屋外構造＋ラボ床スキン、武器商人で PHILL を無料入手→ヘッドショット動作。
 ### 次
 - 研究所スキンの調整(床タイル密度/色味、敵スキンや背景のラボ化は要望次第)。屋内迷路の作り直しは別途。
+
+## v0.25.521 — 研究所(stage-2)の壁を「横/縦2種の一枚絵オブジェクト手置き」方式に (claude/cool-edison-7b8jrl)
+旧 procedural 迷路壁(LAB_WALLS)はもともと indoorMode 限定で、stage-2 は屋外化済み=不使用。
+代わりに開けたステージ1規模マップ上に、足元アンカーのビルボード壁を手置きで点在(迷路/進行ゲートにしない=遮蔽物)。
+- 素材: アップロード画像(横長ラボ壁・5パネル)を PIL でトリミング→256幅へ縮小→40色へ減色→近黒を透過し
+  `public/sprites/lab/lab-wall-obj-h.png`(256x153)。90°回転で `lab-wall-obj-v.png`(153x256)。
+  pixiTextures に nearest 登録(`lab/lab-wall-obj-h`,`lab/lab-wall-obj-v`)。
+- world データ: `src/world/labWalls.ts`(renderer-agnostic)。`PlacedWall{id,orient,footX,footY}`、
+  `wallRect()`(横=幅広薄帯 footRect(150,22)/縦=細長帯 footRect(22,150))、表示箱 WALL_DISPLAY_H/V、
+  手置き配置 `STAGE2_WALLS`(14枚・原点周辺を空けてL字/孤立片で散布)。
+- store: `placedWalls`/`wallRects` を追加。resetGame で `stageTheme==='lab' && !indoor` のとき STAGE2_WALLS を
+  セットし wallRects を precompute。
+  - 移動ブロック: プレイヤー屋外解決チェーン末尾＋敵 resolveMove に resolveAabb(wallRects) を追加。
+  - 視線遮り: 敵の起床判定 segmentBlocked を losWalls(屋内=lab壁 / 屋外=wallRects)に統一。近接フィニッシャの
+    meleeWalls(屋外)にも wallRects を加え、壁越し不可に。
+- 描画(pixiScene): `syncLabWalls()` 追加。木/lab-props と同じ足元アンカー(0.5,1)+zIndex=footY+depthScale で
+  actorLayer に配置(背面は被る=ビルボード遮蔽)。配置は静的なので生成は reset 時のみ・以後は depthScale だけ毎フレーム。
+- クリア条件は据え置き(ステージ1同様 giantbat 撃破)/死神(Reaper)もステージ1ロジックのまま。壁は移動・敵にも作用。
+
+### 負荷スコア
+1/10(simulation/rendering)。当たり判定=毎フレーム14矩形の resolveAabb をアクター毎に1回(無視できる)。
+描画=14ビルボードを生成1回、以後 depthScale のみ。視線は近接スイング時のみ14矩形。pooled/静的で安全。
+
+### 未確定(要判断)
+- 「キーアイテムを探索範囲内に手置き」は、屋外クリアが giantbat 撃破でキーアイテム機構が無いため今回は見送り。
+  データ回収を実クリア条件にするなら別途、手置きピックアップ＋勝利配線を追加可能。
+
+### Verification
+- lint/build 通過。stage-2 出撃で壁が点在描画され、プレイヤー/敵が衝突・回り込み、背面は壁に被る。
+### 次
+- 壁テクスチャの本制作(現状はアップロード画像の自動縮小/減色版)。配置バランス調整。キーアイテム要否の確定。

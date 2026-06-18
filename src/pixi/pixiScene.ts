@@ -37,6 +37,7 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
+import { WALL_DISPLAY_H, WALL_DISPLAY_V } from '../world/labWalls';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -504,6 +505,8 @@ export class PixiScene {
   private L: SceneLayers;
 
   private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
+  private wallObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 手置き壁オブジェクト
+  private wallObjsSig = ''; // 配置(id/向き)の生成シグネチャ。reset 時だけ変わる。
   private enemies = new Map<string, ActorView>();
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
@@ -1571,6 +1574,7 @@ export class PixiScene {
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
 
     this.syncTrees(s.camera);
+    this.syncLabWalls(); // 手置き壁オブジェクト(研究所スキン。placedWalls が空なら no-op)
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode) {
       this.castleView.visible = false; this.castleShadow = null; this.castleGlow.visible = false;
@@ -2194,6 +2198,39 @@ export class PixiScene {
         entry.sprite.destroy();
         this.trees.delete(key);
       }
+    }
+  }
+
+  // ---- 手置き壁オブジェクト: 木/lab-props と同じ足元アンカー(0.5,1)+zIndex=footY+depthScale -
+  // で actorLayer に並べる。背面は被る(=ビルボード遮蔽)。配置は静的なので生成は reset 時だけ。
+  private syncLabWalls() {
+    const walls = useGameStore.getState().placedWalls;
+    const sig = walls.map(w => w.id + w.orient).join(',');
+    if (this.wallObjsSig !== sig) {
+      this.wallObjsSig = sig;
+      const ids = new Set(walls.map(w => w.id));
+      for (const [id, e] of this.wallObjs) {
+        if (!ids.has(id)) { e.sprite.destroy(); this.wallObjs.delete(id); }
+      }
+      for (const w of walls) {
+        if (this.wallObjs.has(w.id)) continue;
+        const tex = getTexture(w.orient === 'h' ? 'lab/lab-wall-obj-h' : 'lab/lab-wall-obj-v');
+        const sprite = new Sprite(tex ?? undefined);
+        sprite.anchor.set(0.5, 1);
+        sprite.tint = ENV_TINT; // 環境として暗く沈める(木と同じ)
+        sprite.x = w.footX;
+        sprite.y = w.footY;
+        sprite.zIndex = w.footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
+        this.L.actorLayer.addChild(sprite);
+        const disp = w.orient === 'h' ? WALL_DISPLAY_H : WALL_DISPLAY_V;
+        const baseScale = tex ? containScale(disp.w, disp.h, tex.width, tex.height) : 1;
+        this.wallObjs.set(w.id, { sprite, baseScale, footY: w.footY });
+      }
+    }
+    // depthScale を毎フレーム適用(他オブジェクトと同様。プレイヤー=焦点面の移動で見かけが変わる)。
+    for (const e of this.wallObjs.values()) {
+      e.sprite.scale.set(e.baseScale * this.depthScale(e.footY));
+      e.sprite.alpha = this.horizonActorAlpha(e.footY);
     }
   }
 
