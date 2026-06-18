@@ -644,7 +644,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         lastSeenGameTimeRef.current = newGameTime;
 
         const castle = useGameStore.getState().castleEvent;
-        if (!danceTest && !indoor && !castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
+        // 研究所スキンはクリア条件=書類(重要データ)取得なので giantbat ボスは出さない(=湧きは完全にラボ敵のみ)。
+        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
           markCastleBossSpawned();
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
@@ -2947,6 +2948,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // クリア条件はゴール部屋のクリアアイテム拾得(上のピックアップ処理で goalReachedAt を設定)。
           // 到達演出後(~1.5s)にイベント勝利。
+          if (gs.goalReachedAt > 0 && Date.now() - gs.goalReachedAt >= 1500 && !gs.gameWon) {
+            useGameStore.getState().triggerEventVictory();
+          }
+        }
+
+        // 研究所スキン(屋外)のクリア: 書類(重要データ=lab-clear-item)取得で goalReachedAt がセットされ、
+        // 演出後(~1.5s)にイベント勝利。屋内ゴール演出と同じ流れを屋外でも回す。
+        if (labTheme) {
+          const gs = useGameStore.getState();
           if (gs.goalReachedAt > 0 && Date.now() - gs.goalReachedAt >= 1500 && !gs.gameWon) {
             useGameStore.getState().triggerEventVictory();
           }

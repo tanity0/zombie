@@ -56,3 +56,7 @@ export const STAGE2_UV_BARS: { x: number; y: number }[] = [
   { x:   40, y: -320 },
   { x: -360, y: -40 },
 ];
+
+// クリア条件の「書類(重要データ)」。探索域に手置き(原点から少し離れた壁の奥)。拾うと勝利。
+// type は既存の 'lab-clear-item'(拾うとクリア・取得表示=「重要データ」)を流用。
+export const STAGE2_DOCUMENT: { x: number; y: number } = { x: 720, y: -470 };

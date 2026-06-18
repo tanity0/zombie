@@ -29,7 +29,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
-import { STAGE2_WALLS, STAGE2_UV_BARS, wallRect, type PlacedWall } from '../world/labWalls';
+import { STAGE2_WALLS, STAGE2_UV_BARS, STAGE2_DOCUMENT, wallRect, type PlacedWall } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
@@ -4718,7 +4718,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             // PHILL弾の固定配置(研究所限定)。
             ...LAB_AMMO_PICKUPS.map((a, i) => ({ id: `lab-phill-${i}`, x: a.x - 8, y: a.y - 8, type: 'ammo-phill' as const, value: 0 })),
           ]
-        : [];
+        : stageTheme === 'lab'
+          // 研究所スキン(屋外)のクリア条件=書類(重要データ)を1つ手置き。拾うと勝利。
+          ? [{ id: 'lab-document', x: STAGE2_DOCUMENT.x - 8, y: STAGE2_DOCUMENT.y - 8, type: 'lab-clear-item' as const, value: 0 }]
+          : [];
 
       // 手置き壁オブジェクト: 研究所スキン(屋外)でのみ点在。迷路/ゲートにはしない=遮蔽物。
       // AABB は静的なので reset 時に一度だけ precompute(毎フレーム再生成しない)。

@@ -12278,3 +12278,20 @@ applyOutdoorGroundTheme の lab 分岐で地面ストリップに掛けていた
 ### Verification
 - lint/build 通過。stage-2 で湧きがラボゾンビのみ・画面外ランダム。床が新素材に。
 ### 未確定: 「ラボ用の敵だけ」に giantbat(クリアボス)を含めるか。今回は維持。要望あれば lab ボスへ差し替え/撤去。
+
+## v0.25.529 — 研究所スキンのクリア条件=書類(重要データ)取得に / giantbat 撤去 (claude/cool-edison-7b8jrl)
+社長指示「クリア条件は書類を見つけること」。
+- 書類(クリアアイテム)を探索域に手置き。type は既存 'lab-clear-item'(拾うと goalReachedAt→演出後に
+  triggerEventVictory。取得表示は「重要データ」)を流用。配置 STAGE2_DOCUMENT={720,-470}(labWalls.ts)。
+  resetGame の lab テーマ分岐で runPickups に追加。
+- 勝利判定: 屋内ゴール用の goalReachedAt→triggerEventVictory チェックを lab テーマでも回す
+  (useGameLoop に labTheme 用の同等チェックを追加)。
+- giantbat(旧クリアボス)は lab では出さない: 城ボス spawn を !labTheme でゲート。これで湧きは完全にラボ敵のみ。
+  (森の演出波は前版で既に lab 無効化済み。giantbat 撃破による gameWon 経路は giantbat 不在で発火しない。)
+
+### 負荷スコア
+1/10。ピックアップ1個追加と勝利判定の分岐のみ。
+
+### Verification
+- lint/build 通過。stage-2 は書類取得でクリア、giantbat 非出現、湧きはラボ敵のみ。
+### 次: 書類への誘導(エッジ矢印/マーカー)要否。現状は探索で発見。
