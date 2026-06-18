@@ -810,6 +810,9 @@ interface GameState {
   pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
+  whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
+  whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
+  anchorPlantFxAt: number;    // ワイヤーアンカーを打ち込んだ時刻(Date.now)。SEのトリガ
   projectiles: Projectile[];
   pickups: Pickup[];
   breakableProps: BreakableProp[];
@@ -1129,6 +1132,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   pumpkinBlasts: [],
   boomerangReadyFxAt: 0,
   bashHitFxAt: 0,
+  whipHitFxAt: 0,
+  whipSwingFxAt: 0,
+  anchorPlantFxAt: 0,
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -1502,6 +1508,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }));
         get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 打ち込みの小ポップ
+        set({ anchorPlantFxAt: now }); // アンカー打ち込み音SEのトリガ
       }
     }
 
@@ -1627,6 +1634,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS,
         }
       }));
+      set({ whipSwingFxAt: now }); // 鞭を振る音SEのトリガ(命中の有無に関わらず鳴る)
       // 鞭の軌跡 + 当たり範囲の可視化(全長を即表示→フェード。太い帯=当たり範囲)。
       get().spawnEffect({
         kind: 'whip',
@@ -1687,6 +1695,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (perp <= WHIP_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
       }
       const res = get().performWhipStrike(targetIds);
+      if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
       // チャージ加算(空振りは0)。閾値到達でハリケーン待機。
       if (res.hits > 0) {
         const threshold = whipChargeThreshold(player);

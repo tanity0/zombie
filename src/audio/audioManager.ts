@@ -73,7 +73,10 @@ export type SfxKey =
   | 'zombie-4'
   | 'hurricane'
   | 'dance-kick'
-  | 'heavy-impact';
+  | 'heavy-impact'
+  | 'whip-hit'
+  | 'whip-swing'
+  | 'anchor-plant';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   pickup: {
@@ -188,6 +191,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 0.9, minIntervalMs: 60 },
+  // 鞭が敵に当たった時(社長提供SE)。
+  'whip-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/whip-hit.mp3`, volume: 0.85, minIntervalMs: 60 },
+  // 鞭を振る音(社長提供SE)。
+  'whip-swing': { src: `${import.meta.env.BASE_URL}audio/sfx/whip-swing.mp3`, volume: 0.8, minIntervalMs: 60 },
+  // ワイヤーアンカーを打ち込んだ音(社長提供SE)。
+  'anchor-plant': { src: `${import.meta.env.BASE_URL}audio/sfx/anchor-plant.mp3`, volume: 0.85, minIntervalMs: 60 },
 };
 
 let bgm: HTMLAudioElement | null = null;

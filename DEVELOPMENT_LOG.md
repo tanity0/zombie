@@ -12529,3 +12529,12 @@ playSfx('weapon-pickup') を追加。武器庫取得と同じ音が鳴る。
 - ジャンプ攻撃(パンプキン/lab-zombie-3)の着地: pumpkinBlasts 消化時に playSfx('heavy-impact')。
 - 盾バッシュ命中: triggerCounter の bashHitEnemy 時に store.bashHitFxAt を更新 → useGameLoop が検出して playSfx('heavy-impact')。
 ### Verification lint/build 通過。
+
+## v0.25.554 — 鞭命中/鞭振り/アンカー打ち込み SE(社長提供) (claude/cool-edison-7b8jrl)
+提供3SEを public/audio/sfx/ に配置・登録(whip-hit / whip-swing / anchor-plant)。
+store に whipHitFxAt / whipSwingFxAt / anchorPlantFxAt を追加し、各イベントで更新:
+- 鞭振り: triggerCounter の鞭分岐(命中問わず) → whip-swing。
+- 鞭命中: performWhipStrike の res.hits>0 → whip-hit。
+- アンカー打ち込み: wire-anchor 設置時 → anchor-plant。
+useGameLoop が各タイムスタンプの更新を検出して playSfx(対応キー)。
+### Verification lint/build 通過。

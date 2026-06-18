@@ -211,6 +211,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastEnemySpawnRef = useRef(0);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
+  const whipHitFxRef = useRef(0);    // 鞭命中SE
+  const whipSwingFxRef = useRef(0);  // 鞭振りSE
+  const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
   // Scripted-wave consumption set; survives across frames within one run
@@ -2986,10 +2989,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           boomReadyRef.current = ready;
         }
-        // 盾バッシュが敵に当たった時のSE(store が bashHitFxAt を更新 → ここで検出して鳴らす)。
+        // store が更新する FX タイムスタンプを検出して対応SEを鳴らす(盾バッシュ命中/鞭命中/鞭振り/アンカー打ち込み)。
         {
-          const at = useGameStore.getState().bashHitFxAt;
-          if (at > bashHitFxRef.current) { bashHitFxRef.current = at; playSfx('heavy-impact'); }
+          const gs = useGameStore.getState();
+          if (gs.bashHitFxAt > bashHitFxRef.current) { bashHitFxRef.current = gs.bashHitFxAt; playSfx('heavy-impact'); }
+          if (gs.whipSwingFxAt > whipSwingFxRef.current) { whipSwingFxRef.current = gs.whipSwingFxAt; playSfx('whip-swing'); }
+          if (gs.whipHitFxAt > whipHitFxRef.current) { whipHitFxRef.current = gs.whipHitFxAt; playSfx('whip-hit'); }
+          if (gs.anchorPlantFxAt > anchorPlantFxRef.current) { anchorPlantFxRef.current = gs.anchorPlantFxAt; playSfx('anchor-plant'); }
         }
 
         // Continuous spawner — drip enemies onto the field from off-screen.
