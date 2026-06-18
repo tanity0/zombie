@@ -12661,3 +12661,7 @@ ReferenceError でメインループ後半が丸ごと中断。結果、盾設�
 修正: skillSummonHpMult を import に追加。
 注意: `tsc --noEmit` がこの未importを検出できていない(型チェックの穴)。別途要確認。
 ### Verification: tsc(exit0) + build 通過。盾装備時に後半処理が走る想定。
+
+## v0.25.577 — スケーター慣性をさらに倍 (claude/cool-edison-7b8jrl)
+inertiaTau 0.6 → 1.2s(=倍。かなり滑る/高リスク)。移動速度2倍は据え置き。
+### Verification: tsc(exit0) + build 通過。
