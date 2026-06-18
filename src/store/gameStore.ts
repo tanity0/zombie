@@ -385,6 +385,9 @@ export const skillSummonHpMult = (player: Player): number => (hasSkill(player, '
 export const skillCooldownMult = (player: Player): number => (hasSkill(player, 'time-keeper') ? 0.7 : 1);
 // エクスプローダー: 全爆発の半径/ダメージ ×1.2。賢者の石はハリケーン等に別途+20%。
 export const skillExplosionMult = (player: Player): number => (hasSkill(player, 'exploder') ? 1.2 : 1);
+// 弁慶: バフ中(benkeiBuffUntil > gameTime)は crit率 +0.10。
+export const skillBenkeiCritBonus = (player: Player, gameTime: number): number =>
+  hasSkill(player, 'benkei') && gameTime < player.benkeiBuffUntil ? 0.10 : 0;
 // スナイパー: 銃ダメージ ×(1 + 停止敵0.5 + 距離補正最大0.5)。refDist=狙撃最大射程(要調整)。
 // その85%地点で距離補正が+0.5上限に到達。射程自体は不変(ダメージのみ)。
 export const SNIPER_REF_DIST = 480;
@@ -1311,7 +1314,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? KATANA_DASH_DISTANCE / (KATANA_DASH_MS / 1000)
         : recovering ? 0
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT : player.speed;
+        // スキル: スケーター = 通常歩行の移動速度 ×2(特殊ロコモーションは対象外)。
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 2 : 1)
+        : player.speed * (hasSkill(player, 'skater') ? 2 : 1);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -1351,8 +1356,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           : 1;
 
       // Inertia: ease the velocity toward the target. Player tau is 0 → fully
-      // instant, responsive control.
-      const alpha = inertiaAlpha(deltaTime, PLAYER_INERTIA_TAU);
+      // instant, responsive control. スキル: スケーター = 慣性0.4sで滑る(高リスク操作)。
+      const inertiaTau = hasSkill(player, 'skater') ? 0.4 : PLAYER_INERTIA_TAU;
+      const alpha = inertiaAlpha(deltaTime, inertiaTau);
       const vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
       const vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
 
@@ -1929,7 +1935,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus);
+      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -2157,7 +2163,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ
       // クリティカル率アップ(player.critChance) + トラップ拘束ボーナス。
       const crit = Math.random() <
-        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus);
+        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
@@ -2312,7 +2318,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus);
+      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player);
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -4302,12 +4308,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const target = state.player.weapons.find(w => w.id === id && !w.isMelee);
       if (!target) return {};
+      const changed = id !== state.player.activeWeaponId;
+      // スキル: 弁慶 = 武器切替で10s crit率+10%。終了後3sのCD中は再発動しない。
+      const gt = state.gameTime;
+      const benkei =
+        changed && hasSkill(state.player, 'benkei') && gt >= state.player.benkeiCdUntil
+          ? { benkeiBuffUntil: gt + 10000, benkeiCdUntil: gt + 10000 + 3000 }
+          : {};
       return {
         player: {
           ...state.player,
           activeWeaponId: id,
           reloadingWeaponId: '',
-          reloadEndsAt: 0
+          reloadEndsAt: 0,
+          ...benkei
         }
       };
     });
