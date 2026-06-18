@@ -639,7 +639,8 @@ const SkillGacha: React.FC = () => {
 
   const pull = () => {
     setNoGold(false);
-    if (!spendGold(GACHA_PULL_COST)) { setNoGold(true); setResult(null); return; }
+    // コスト0(無料)のときは課金スキップ。有料のときだけ残高を消費。
+    if (GACHA_PULL_COST > 0 && !spendGold(GACHA_PULL_COST)) { setNoGold(true); setResult(null); return; }
     const key = rollGachaSkill();
     const rarity = SKILLS[key].rarity;
     const duplicate = useGameStore.getState().ownedSkills.includes(key);
@@ -672,7 +673,7 @@ const SkillGacha: React.FC = () => {
             : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
         }`}
       >
-        1回引く（{GACHA_PULL_COST} ゴールド）
+        {GACHA_PULL_COST > 0 ? `1回引く（${GACHA_PULL_COST} ゴールド）` : '1回引く（無料）'}
       </button>
       {noGold && <p className="mt-2 text-[11px] text-rose-300 text-center">ゴールドが足りません。</p>}
       {result && (
