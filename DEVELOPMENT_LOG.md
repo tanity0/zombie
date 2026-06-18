@@ -12544,3 +12544,7 @@ counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hi
 鞭でも重複していた。鞭装備時(subWeapons.includes('whip'))は汎用の melee/slash-damage を抑制し、
 鞭専用SE(whip-swing/whip-hit)に一本化。finisher(melee-finish)/敵死亡は据え置き。
 ### Verification lint/build 通過。
+
+## v0.25.556 — heavy-impact(バッシュ命中/ジャンプ着地)SEの音量UP (claude/cool-edison-7b8jrl)
+小さいとの指摘。GainNode は1超で増幅可なので volume 0.9→1.8 に。
+### Verification lint/build 通過。
