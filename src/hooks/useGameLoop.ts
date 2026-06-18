@@ -154,7 +154,7 @@ const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発
 // 単体ダメージ→2秒後に刺さった位置(敵に追従)で範囲爆発。敵を爆弾化する遅延範囲武器。
 const FIRE_KNIFE_COOLDOWN_BY_LEVEL = [0, 8000, 7000, 6000]; // Lv1=8s / Lv2=7s / Lv3=6s
 const FIRE_KNIFE_FUSE_MS = 2000;                            // 刺さってから爆発までの遅延(全Lv共通)
-const FIRE_KNIFE_RADIUS_BY_LEVEL = [0, 54, 62, 70];         // 爆発半径(Lv1/2/3)。調整可
+const FIRE_KNIFE_RADIUS_BY_LEVEL = [0, 80, 94, 108];        // 爆発半径(Lv1/2/3)。社長指示で範囲アップ(旧54/62/70)
 const FIRE_KNIFE_SPEED = 300;                               // 投擲速度(px/s)
 const FIRE_KNIFE_FLIGHT_MS = 1200;                          // 飛行寿命。これを超えて未命中なら消滅(外れ)
 const FIRE_KNIFE_HIT_DAMAGE = 24;                           // TODO(発火ナイフ): 命中時単体ダメージ。仮値。手榴弾直撃42より低め
@@ -1965,7 +1965,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               spawnBurst(bx, by, '#f97316', 18);
               spawnBurst(bx, by, '#7f1d1d', 8);
-              useGameStore.getState().spawnGlow(bx, by, 46, 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
+              useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               const fkWalls = aoeWalls(bx, by);
               for (const enemy of useGameStore.getState().enemies) {
                 if (enemy.type === 'reaper') continue;

@@ -12641,3 +12641,8 @@ load 1/10(boolean分岐＋既存pickup走査に相乗り)。
 - 発動条件は従来どおり「finisher が1体でも出たスイング」(=スタン敵を近接処刑)。
 load 1/10(イベント時・範囲内のみ走査)。
 ### Verification: tsc + build 通過。
+
+## v0.25.574 — 発火(投げ)ナイフの爆発範囲アップ (claude/cool-edison-7b8jrl)
+FIRE_KNIFE_RADIUS_BY_LEVEL を 54/62/70 → 80/94/108 に拡大。爆発グロウも blastR*0.68 で半径に追従。
+ダメージ式・ノックバックは据え置き(falloffのみ広がる)。load 1/10。
+### Verification: tsc + build 通過。
