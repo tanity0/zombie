@@ -112,7 +112,7 @@ const DECOY_FOOT_H = 20;   // デコイの当たり判定奥行
 // 設置型シールド: 進行方向の反対側に建てる遮蔽壁。敵の通行を止め、敵弾を消す
 // (味方弾は貫通)。設置間隔/持続は全Lv共通、レベルで耐久だけ上がる。各値は独立に
 // 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
-const SHIELD_COOLDOWN_MS = 5000;             // 設置間隔(全Lv共通)
+const SHIELD_COOLDOWN_MS = 6000;             // 設置間隔(全Lv共通)
 const SHIELD_DURATION_MS = 5000;             // 持続(全Lv共通)。duration 自動カリングで消滅
 const SHIELD_HP_BY_LEVEL = [0, 10, 30, 60];  // 耐久(Lv1/2/3)。敵接触1回・敵弾1発=各1消費
 const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から設置足元までの距離
@@ -1641,6 +1641,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // Update enemies
         updateEnemies(deltaTime);
+
+        // パンプキン(/lab-zombie-3)のジャンプ着地爆発(範囲狭め)。store が記録した着地点を消化し、
+        // 爆発FXを出しつつ半径内ならプレイヤーへダメージ(無敵中は無効)。死亡時は通常の死亡演出へ。
+        {
+          const blasts = useGameStore.getState().pumpkinBlasts;
+          if (blasts.length > 0) {
+            const bp = useGameStore.getState().player;
+            const bpcx = bp.x + bp.width / 2;
+            const bpcy = bp.y + bp.height / 2;
+            for (const b of blasts) {
+              spawnFlash('rgba(255,150,60,0.16)', 200);
+              spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
+              spawnBurst(b.x, b.y, '#fb923c', 16);
+              const pr = Math.max(bp.width, bp.height) / 2;
+              if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr && !bp.invulnerable) {
+                const died = damagePlayer(b.damage);
+                playSfx('player-damage');
+                if (died) triggerPlayerDeath(bpcx, bpcy);
+              }
+            }
+            useGameStore.setState({ pumpkinBlasts: [] });
+          }
+        }
 
         // デコイ(着地後)は敵のみ通行不可。プレイヤーは通す。reaper は貫通。
         {

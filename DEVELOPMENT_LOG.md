@@ -11949,3 +11949,11 @@ gameStore・useGameLoop・GameHUD 等のゲーム調整はクリーンに合流�
 で更新。firePhillShot とワイヤーアンカー打ち込みは aim 方向/距離を使用。レンダラの PHILL レティクル・ワイヤー
 プレビューは store の aim をそのまま使用(center+aim*range)＝サークル位置と弾道が一致。旧レンダラ側イージング
 (aimReticleOff*)は撤去。負荷スコア 1/10(スカラー数個/フレーム)。lint/build 通過。
+
+## v0.25.510 — パンプキン着地爆発(範囲狭め)＋盾CD 6秒 (claude/cool-edison-7b8jrl)
+- パンプキン(/lab-zombie-3)のジャンプ攻撃が**着地時に爆発攻撃**。範囲狭め(`PUMPKIN_EXPLOSION_RADIUS=66`)、
+  ダメージは各敵の `damage`。着地点を store `pumpkinBlasts` に記録し、useGameLoop が消化(爆発FL/リング/バースト＋
+  半径内ならプレイヤー被弾、無敵中は無効、死亡時は通常の死亡演出)。空中無敵(v0.25.501)はそのままなので、
+  「空中はすり抜け→着地で爆発」の駆け引きになる。スロー演出は付けない(社長規約遵守)。負荷 1/10(着地時のみ)。
+- 盾(設置型シールド)のクールダウンを 5000ms→**6000ms**(`SHIELD_COOLDOWN_MS`)。
+lint/build 通過。

@@ -422,6 +422,8 @@ export const PUMPKIN_COOLDOWN_MS = 800;    // 復帰後、次の溜めまでの�
 export const PUMPKIN_JUMP_HEIGHT = 90;     // ジャンプの見た目の高さ(px・描画のみ)
 export const PUMPKIN_LAND_SHAKE_MS = 220;  // 着地時の画面揺れ
 export const PUMPKIN_LAND_SHAKE_MAG = 9;
+// パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
+export const PUMPKIN_EXPLOSION_RADIUS = 66;
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
 // 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
 export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒
@@ -784,6 +786,8 @@ const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: numbe
 interface GameState {
   player: Player;
   enemies: Enemy[];
+  // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
+  pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[];
   projectiles: Projectile[];
   pickups: Pickup[];
   breakableProps: BreakableProp[];
@@ -1094,6 +1098,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     vaccineRevives: 0
   },
   enemies: [],
+  pumpkinBlasts: [],
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -3131,6 +3136,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
+    const pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[] = []; // 着地爆発イベント
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine');
@@ -3262,6 +3268,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const ny = fy + (ty - fy) * t;
             if (t >= 1) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
+              // 着地爆発(範囲狭め)。被弾判定/FX は useGameLoop が pumpkinBlasts を消化して行う。
+              pumpkinBlasts.push({ x: tx + enemy.width / 2, y: ty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage });
               return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
             }
             return { ...enemy, x: nx, y: ny, vx: 0, vy: 0 }; // 空中は障害物を飛び越える(衝突無視)
@@ -3301,7 +3309,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
 
-      return { enemies: updatedEnemies };
+      return { enemies: updatedEnemies, pumpkinBlasts };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
   },
