@@ -31,6 +31,30 @@ export const getGlowTexture = (): Texture => {
   return glowTex;
 };
 
+// Visibility light: a near-solid white disc that drops off abruptly near the rim.
+// Used as a "hole" in the stage-2 darkness overlay (player + UV bars). The flat
+// core keeps the lit zone at full visibility, then it darkens sharply past ~radius
+// (社長指示「ハンドガン射程くらいから外は急激に暗い」).
+let visLightTex: Texture | null = null;
+export const getVisibilityLightTexture = (): Texture => {
+  if (visLightTex) return visLightTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.74, 'rgba(255,255,255,1)');    // ~射程まではベタ明るい
+  g.addColorStop(0.9, 'rgba(255,255,255,0.45)');  // 際で急に落ちる
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  visLightTex = Texture.from(canvas);
+  return visLightTex;
+};
+
 // Vignette: transparent through the centre, darkening to near-black at the
 // corners. Stretched to the screen (so it reads as an ellipse, which is the
 // usual cinematic vignette shape).

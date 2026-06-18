@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
+import { AlphaFilter, BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
@@ -27,7 +27,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -112,6 +112,9 @@ const tsBool = (key: string, def: boolean): boolean => {
 const LAB_PERSP = tsBool('labpersp', false);
 // 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
+// 研究所スキン専用「可視可能ゾーン」: プレイヤー/UVバー周辺(=ハンドガン射程)だけ明るく、外は急に暗い。
+const LAB_VIS_RANGE = tsNum('vrange', 176);     // 明るく見える半径(px=ハンドガン射程)
+const LAB_VIS_DARK = tsNum('vdark', 0x14141c);  // 可視ゾーン外の暗さ(乗算tint。小さいほど暗い=かすかに見える)
 // 研究所専用の強い遠近(屋外定数を流用せず分離)。奥(FAR)を強く縮め、収束カーブを急に。?で生調整。
 const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み(小=奥が強く縮む。屋外は0.12)
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)
@@ -602,6 +605,11 @@ export class PixiScene {
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
   private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
+  // 可視可能ゾーン(研究所スキン): 乗算の暗闇レイヤー。プレイヤー/UVバーに「明かりの穴」を空ける。
+  // フィルタで一度テクスチャ化してから multiply 合成=穴の中だけ通常の明るさ、外は急に暗い。
+  private labVisibility: Container | null = null;
+  private labDarkBase: Sprite | null = null;
+  private labVisLights: Sprite[] = [];
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
@@ -1619,6 +1627,7 @@ export class PixiScene {
     this.syncTrees(s.camera);
     this.syncLabWalls(); // 壁オブジェクト(研究所スキン・区画生成。森では no-op)
     this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
+    this.updateLabVisibility(s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 可視可能ゾーン(暗闇+明かりの穴)
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
       // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。
@@ -2303,6 +2312,59 @@ export class PixiScene {
     sp.height = this.screenW * (tex.height / tex.width); // アスペクト維持
     sp.position.set(0, 0);
     sp.alpha = LAB_CEILING_ALPHA;
+  }
+
+  // 可視可能ゾーン(研究所スキン): 画面全体を乗算で暗くし、プレイヤー/UVバー(=ハンドガン射程)に明かりの穴。
+  // フィルタで一度テクスチャ化→whole を multiply 合成: 穴の中=通常の明るさ、外=急に暗い(LAB_VIS_DARK)。
+  // 壁/敵/アイテムは uiLayer(このレイヤー)の下=暗所では見えづらくなる(社長指示)。
+  private updateLabVisibility(show: boolean, sx: number, sy: number) {
+    if (!show) { if (this.labVisibility) this.labVisibility.visible = false; return; }
+    if (!this.labVisibility) {
+      const cont = new Container();
+      const dark = new Sprite(Texture.WHITE);
+      dark.tint = LAB_VIS_DARK; dark.alpha = 1; dark.position.set(0, 0);
+      cont.addChild(dark);
+      cont.filters = [new AlphaFilter()]; // テクスチャ化を強制(内部で暗+穴を合成→全体を multiply)
+      cont.blendMode = 'multiply';
+      this.L.uiLayer.addChildAt(cont, 0); // uiLayer 最下=ワールドを暗くし、グレード/ビネット/HUDは上に出す
+      this.labVisibility = cont;
+      this.labDarkBase = dark;
+    }
+    const cont = this.labVisibility;
+    const dark = this.labDarkBase!;
+    cont.visible = true;
+    dark.width = this.screenW;
+    dark.height = this.screenH;
+    // 明かりの穴位置(world→screen = world - camera + shake)。プレイヤー + 画面内のUVバー。
+    const s = useGameStore.getState();
+    const cam = s.camera;
+    const pts: { x: number; y: number }[] = [
+      { x: (s.player.x + s.player.width / 2) - cam.x + sx, y: (s.player.y + s.player.height / 2) - cam.y + sy },
+    ];
+    for (const p of s.breakableProps) {
+      if (p.type !== 'uv-bar') continue;
+      const px = p.footX - cam.x + sx, py = p.footY - cam.y + sy;
+      if (px < -LAB_VIS_RANGE || px > this.screenW + LAB_VIS_RANGE || py < -LAB_VIS_RANGE || py > this.screenH + LAB_VIS_RANGE) continue;
+      pts.push({ x: px, y: py });
+    }
+    const tex = getVisibilityLightTexture();
+    while (this.labVisLights.length < pts.length) {
+      const sp = new Sprite(tex);
+      sp.anchor.set(0.5);
+      cont.addChild(sp);
+      this.labVisLights.push(sp);
+    }
+    const d = LAB_VIS_RANGE * 2;
+    for (let i = 0; i < this.labVisLights.length; i++) {
+      const sp = this.labVisLights[i];
+      if (i < pts.length) {
+        sp.visible = true;
+        sp.position.set(pts[i].x, pts[i].y);
+        sp.width = sp.height = d;
+      } else {
+        sp.visible = false;
+      }
+    }
   }
 
   private syncBreakableProps(props: BreakableProp[], now: number) {

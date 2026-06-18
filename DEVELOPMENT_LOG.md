@@ -12415,3 +12415,20 @@ PixiStage で森の地面/背景と同じ Assets.load(`sprites/lab-floor/lab-flo
 （※床反映は v0.25.538 で解決済み=がれき床適用済み、霧/暗さ緩和で視認可に。）
 ### 負荷スコア 1/10。
 ### Verification lint/build 通過。
+
+## v0.25.540 — ステージ2「可視可能ゾーン」(フォグ・オブ・ウォー風) (claude/cool-edison-7b8jrl)
+研究所スキン専用の新効果。
+- 乗算の暗闇レイヤー labVisibility を uiLayer 最下に追加(=ワールド/前景の上、グレード/ビネット/HUDの下)。
+  AlphaFilter で一度テクスチャ化→全体を blendMode='multiply' で合成。
+  内訳: 暗ベース(Sprite, tint=LAB_VIS_DARK=0x14141c) + 明かりの穴(getVisibilityLightTexture: 中心ベタ→際で急落)。
+- 穴はプレイヤー + 画面内のUVバー位置(world→screen = world-camera+shake)、半径=LAB_VIS_RANGE(=176=ハンドガン射程)。
+  穴の中=通常の明るさ、外=急に暗い(かすかに見える程度)。壁/敵/アイテムはこの層の下=暗所で見えづらい。
+- lab テーマ かつ 非屋内 のときのみ表示。?vrange / ?vdark で調整可。ライトはプール(UVバー数分)。
+
+### 負荷スコア
+4/10(rendering)。毎フレーム全画面のフィルタ(render-to-texture)+multiply 合成が1パス増える。
+研究所スキン限定・森や他ステージは不変。ライトはプール/画面内カリングで bounded。重い端末向けに ?vrange 縮小や
+将来 simpler パスへ切替の余地あり。
+
+### Verification
+- lint/build 通過。stage-2 でプレイヤー/UVバー周辺だけ明るく、外周は急に暗くなる。
