@@ -10,6 +10,7 @@ import {
   useGameStore
 } from '../store/gameStore';
 import type { AmmoType, ShopItemKey, SubWeaponKey } from '../types/game';
+import { playSfx } from '../audio/audioManager';
 
 type ShopEntry = {
   key: ShopItemKey;
@@ -113,7 +114,9 @@ const ShopMenu: React.FC = () => {
     if ('skillKey' in entry) {
       buySkillCardFromShop(entry.skillKey);
     } else {
-      buyShopItem(entry.key, entry.ammoType);
+      const ok = buyShopItem(entry.key, entry.ammoType);
+      // 武器購入(PHILL銃)は武器庫(武器クレート)取得と同じSEを鳴らす。
+      if (ok && entry.key === 'buy-phill') playSfx('weapon-pickup');
     }
   };
 

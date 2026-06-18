@@ -12503,3 +12503,8 @@ pts[0]=プレイヤー(狭) / pts[1..]=UVバー(通常)で半径を出し分け�
 - レベルアップ時ノックバック LEVELUP_KNOCKBACK_DISTANCE 96→64(今の2/3)。
 ### 負荷スコア 1/10(Graphics1枚に着地中の敵分だけ楕円。通常は0)。
 ### Verification lint/build 通過。
+
+## v0.25.550 — 武器商人で武器購入時に武器庫取得と同じSE (claude/cool-edison-7b8jrl)
+SEは存在(weapon-pickup=武器クレート/ドロップ取得時に鳴るもの)。ShopMenu の武器購入(buy-phill 成功時)に
+playSfx('weapon-pickup') を追加。武器庫取得と同じ音が鳴る。
+### Verification lint/build 通過。
