@@ -616,6 +616,9 @@ export class PixiScene {
   private labVeilSprite: Sprite | null = null;     // 画面に重ねる暗幕(=labRT)
   private labVisLights: Sprite[] = [];
   setRenderer(r: Renderer) { this.renderer = r; }
+  // 背景4層(遠景/地平帯/手前帯/天井)を暗幕の「上」へ退避し、暗くしない(社長指示)。元位置は復元用に保持。
+  private labBrightScenery: Container | null = null;
+  private labSceneryOrig: { obj: Container; parent: Container; index: number }[] = [];
 
   private fireflies: Firefly[] = [];
   private firefliesPlaced = false;
@@ -2323,9 +2326,37 @@ export class PixiScene {
   // 可視可能ゾーン(研究所スキン): 画面全体を乗算で暗くし、プレイヤー/UVバー(=ハンドガン射程)に明かりの穴。
   // フィルタで一度テクスチャ化→whole を multiply 合成: 穴の中=通常の明るさ、外=急に暗い(LAB_VIS_DARK)。
   // 壁/敵/アイテムは uiLayer(このレイヤー)の下=暗所では見えづらくなる(社長指示)。
+  // 背景4層を暗幕の上へ移す/戻す。lab時のみ上へ(=暗幕で暗くしない)。
+  private setLabSceneryAboveVeil(above: boolean) {
+    if (above) {
+      if (!this.labVeilSprite) return; // 暗幕がまだなら次フレーム
+      if (!this.labBrightScenery) this.labBrightScenery = new Container();
+      const ui = this.L.uiLayer;
+      const veilIdx = ui.getChildIndex(this.labVeilSprite);
+      if (this.labBrightScenery.parent !== ui) ui.addChildAt(this.labBrightScenery, veilIdx + 1);
+      else ui.setChildIndex(this.labBrightScenery, Math.min(veilIdx + 1, ui.children.length - 1));
+      const cont = this.labBrightScenery;
+      const items = [this.L.farBackdrop, this.L.horizonForest, this.L.frontForest, this.labCeiling].filter(Boolean) as Container[];
+      for (const obj of items) {
+        if (obj.parent === cont) continue;
+        if (obj.parent && !this.labSceneryOrig.some(o => o.obj === obj)) {
+          this.labSceneryOrig.push({ obj, parent: obj.parent, index: obj.parent.getChildIndex(obj) });
+        }
+        cont.addChild(obj); // far→horizon→front→ceiling の順で奥→手前
+      }
+    } else if (this.labSceneryOrig.length) {
+      for (const o of this.labSceneryOrig) {
+        o.parent.addChildAt(o.obj, Math.min(o.index, o.parent.children.length));
+      }
+      this.labSceneryOrig = [];
+      if (this.labBrightScenery?.parent) this.labBrightScenery.parent.removeChild(this.labBrightScenery);
+    }
+  }
+
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
     if (!show || !this.renderer) {
       if (this.labVeilSprite) this.labVeilSprite.visible = false;
+      this.setLabSceneryAboveVeil(false); // 背景を元の位置へ戻す
       return;
     }
     const W = Math.max(1, Math.round(this.screenW));
@@ -2388,6 +2419,8 @@ export class PixiScene {
     this.labVeilSprite.visible = true;
     this.labVeilSprite.width = W;
     this.labVeilSprite.height = H;
+    // 背景4層(遠景/地平帯/手前帯/天井)を暗幕の上へ=暗くしない。
+    this.setLabSceneryAboveVeil(true);
   }
 
   private syncBreakableProps(props: BreakableProp[], now: number) {

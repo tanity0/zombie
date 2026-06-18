@@ -12458,3 +12458,11 @@ Container を setMask に使うとステンシル(矩形)扱いになり四角�
 - destroy で labRT 解放。
 ### 負荷スコア 4/10(RT合成1パス。lab限定・ライトはプール/画面内カリング)。
 ### Verification lint/build 通過。
+
+## v0.25.544 — 可視可能ゾーン: 背景4層を効果の外に(暗くしない) (claude/cool-edison-7b8jrl)
+社長指示「背景はこの効果の外に」。lab 時、暗幕(veil)の上へ 遠景/地平帯/手前帯/天井 を退避(setLabSceneryAboveVeil)。
+- uiLayer 内で veil の直上に labBrightScenery を置き、farBackdrop/horizonForest/frontForest/labCeiling を奥→手前順で移動。
+- 暗幕で暗くなるのはゲームプレイ(床/壁/敵/アイテム/プレイヤー)だけ。背景は明るいまま(グレード/ビネットは従来どおり乗る)。
+- 非lab/非表示時は元の親・位置へ復元(labSceneryOrig)。
+### 負荷スコア 4/10(据え置き。退避は親付け替えのみ・RT合成は既存1パス)。
+### Verification lint/build 通過。
