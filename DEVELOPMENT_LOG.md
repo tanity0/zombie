@@ -12559,3 +12559,7 @@ counter 呼び出し側(useGameControls/VirtualJoystick)が swung→'melee'、hi
 ## v0.25.558 — anchor-plant SE 音量を少し下げる (claude/cool-edison-7b8jrl)
 打ち込み音 anchor-plant の volume 0.85→0.65。
 ### Verification lint/build 通過。
+
+## v0.25.559 — 召喚音(社長提供SE) (claude/cool-edison-7b8jrl)
+錬金術の召喚(summonAlchemy)時に summon SE。public/audio/sfx/summon.mp3 登録、store summonFxAt 更新→useGameLoop 再生。
+### Verification lint/build 通過。

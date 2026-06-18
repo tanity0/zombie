@@ -216,6 +216,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
   const anchorEnemyHitFxRef = useRef(0); // アンカーが敵に当たった時のSE(近接命中音)
   const boomThrowFxRef = useRef(0);  // ブーメラン投擲SE
+  const summonFxRef = useRef(0);     // 召喚SE
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
   // Scripted-wave consumption set; survives across frames within one run
@@ -3000,6 +3001,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.anchorPlantFxAt > anchorPlantFxRef.current) { anchorPlantFxRef.current = gs.anchorPlantFxAt; playSfx('anchor-plant'); }
           if (gs.anchorEnemyHitFxAt > anchorEnemyHitFxRef.current) { anchorEnemyHitFxRef.current = gs.anchorEnemyHitFxAt; playSfx('slash-damage'); } // アンカーが敵に当たった=近接命中音
           if (gs.boomerangThrowFxAt > boomThrowFxRef.current) { boomThrowFxRef.current = gs.boomerangThrowFxAt; playSfx('boomerang-throw'); }
+          if (gs.summonFxAt > summonFxRef.current) { summonFxRef.current = gs.summonFxAt; playSfx('summon'); }
         }
 
         // Continuous spawner — drip enemies onto the field from off-screen.

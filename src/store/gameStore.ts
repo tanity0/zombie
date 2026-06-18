@@ -815,6 +815,7 @@ interface GameState {
   anchorPlantFxAt: number;    // ワイヤーアンカーを(地面に)打ち込んだ時刻(Date.now)。打ち込み音SEのトリガ
   anchorEnemyHitFxAt: number; // ワイヤーアンカーが敵に当たった時刻(Date.now)。近接命中音SEのトリガ
   boomerangThrowFxAt: number; // ドローンブーメランを投げた時刻(Date.now)。投擲音SEのトリガ
+  summonFxAt: number;         // 錬金術で召喚した時刻(Date.now)。召喚音SEのトリガ
   projectiles: Projectile[];
   pickups: Pickup[];
   breakableProps: BreakableProp[];
@@ -1139,6 +1140,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   anchorPlantFxAt: 0,
   anchorEnemyHitFxAt: 0,
   boomerangThrowFxAt: 0,
+  summonFxAt: 0,
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -2378,6 +2380,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const sx = pcx + (ld.x / lmag) * 40;
     const sy = pcy + (ld.y / lmag) * 40;
     const lvl = alchemyLevel(player);
+    set({ summonFxAt: Date.now() }); // 召喚音SEのトリガ(通常/レアとも)
     if (Math.random() < ALCHEMY_RARE_CHANCE) {
       // レア: 既存の通常個体を全消去し、レア1体を召喚(枠を専有)。
       const rare = buildSummon(lvl, 'rare', sx, sy);
