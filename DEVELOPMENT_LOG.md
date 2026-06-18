@@ -12043,3 +12043,24 @@ lint/build 通過。
 - lint/build 通過。屋外/OFF 不変。?labpersp=1 で壁・プロップが収束床に乗り、奥ほど上方＋縮小。?labvig=0.7 で明るく確認。
 ### 次
 - A3(任意): 敵/プレイヤー/弾の Y も写像＋aim/タップ移動の screen↔world 逆写像。A2で十分なら見送り。
+
+## v0.25.516 — 研究所 台形透視床 Step1: PerspectiveMesh 床 (claude/cool-edison-7b8jrl)
+?labpersp 配下のみ・描画のみ(判定/移動/aim/store 不変)・屋外無変更・OFFで完全回帰。
+- Step1: 縦ストリップ流用を ?labpersp 時はやめ、PixiJS 8.19 の `PerspectiveMesh` で床平面を1枚描く。
+  - texture=`lab-floor/lab-floor-persp`(source.style.addressMode='repeat')、tint=LAB_ENV_TINT、verticesX/Y=24。
+  - 台形コーナー: 下辺=全幅@screenH(手前) / 上辺=中央付近に狭く@horizonY(奥・消失点)。
+    `?labvp`(消失点X比=0.5) `?labtop`(上辺幅比=0.22) `?labhorizon`(上辺Y比=0.34)。画面/パラメータ変化時のみ setCorners。
+  - タイル密度 `?labtiles`(=7)＝基準UV(0..1)×tiles。UV を camera.x/y で遠近スクロール(手前ほど速く=メッシュ前方短縮の自然効果)。
+    repeat ラップで継ぎ目なく巡回。毎フレーム UV バッファ(24×24×2)更新。
+  - worldGroup 内・groundBase 直上(=world/壁/アクターの下)に配置。屋内では屋外ストリップ groundBase は非表示。
+  - 擬似地平フェード(?labfade=0.6, 旧 labhorizon から改名)を床メッシュ直上に重ね、奥(上辺)を暗がりへ。
+- 評価レバー ?labvig=(ヴィネット可変, 既定0.97)併用。
+- 壁/プロップは現状(A2写像)のまま=Step1は床の見え方を評価。Step2 で同じホモグラフィ H に統一予定。
+
+### 負荷スコア
+2/10(rendering)。PerspectiveMesh 1枚＋毎フレーム UV 更新(約1152 float)。setCorners は変化時のみ。新規確保は起動時のみ。
+
+### Verification
+- lint/build 通過。屋外/OFF 不変。?labpersp=1 で床が台形に奥へ収束。?labvp/labtop/labhorizon/labtiles/labvig/labfade で調整。
+### 次
+- Step2: 台形と同じ H で 壁/プロップ/(その後)敵・プレイヤー・弾 の足元を screen 投影＋深度スケール(ビルボード維持)。

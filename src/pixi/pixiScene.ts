@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, PerspectiveMesh } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon,
@@ -112,8 +112,13 @@ const LAB_PERSP = tsBool('labpersp', false);
 // 研究所専用の強い遠近(屋外定数を流用せず分離)。奥(FAR)を強く縮め、収束カーブを急に。?で生調整。
 const LAB_PERSP_FAR = tsNum('labperspfar', 0.04);    // 奥のタイル縦縮み(小=奥が強く縮む。屋外は0.12)
 const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手前が急に大きく/奥へ急収束)
-// 擬似地平フェード: 遠近床の上側(奥)に縦グラデの暗幕を重ね、床が遠くの暗がりへ消える基準を作る。
-const LAB_HORIZON = Math.max(0, Math.min(1, tsNum('labhorizon', 0.85))); // 0=なし / 1=最大濃さ
+// 台形透視(PerspectiveMesh)床の形/消失点。?で生調整。
+const LAB_VP = tsNum('labvp', 0.5);          // 消失点X(画面幅に対する比 0..1。0.5=中央)
+const LAB_TOP = tsNum('labtop', 0.22);       // 上辺(奥)の幅比(下辺=全幅に対する比。小=強く収束)
+const LAB_HORIZON_Y = tsNum('labhorizon', 0.34); // 上辺(地平)のY(画面高さ比。小=上=奥行き深い)
+const LAB_TILES = tsNum('labtiles', 7);      // 床テクスチャのタイル数(密度)
+// 擬似地平フェード(上=黒→下=透明)。台形の奥(上辺)を暗がりへ沈める。
+const LAB_FADE = Math.max(0, Math.min(1, tsNum('labfade', 0.6)));
 // 擬似地平フェードの縦グラデ texture(上=黒→下=透明)。1度だけ生成してキャッシュ。
 let _labHorizonTex: Texture | null = null;
 const getLabHorizonTexture = (): Texture => {
@@ -618,6 +623,9 @@ export class PixiScene {
   private labVoid: TilingSprite | null = null;  // 背景の天井/void プレート(外周マージンに敷く・低速パララックス)
   private groundStripBaseTex: Texture | null = null; // 屋外の地面ストリップ元テクスチャ(?labpersp で研究所床に差し替える際の復元用)
   private labHorizonFade: Sprite | null = null;      // ?labpersp の擬似地平フェード(上=暗→下=透明の縦グラデ・screen-space)
+  private labFloorMesh: PerspectiveMesh | null = null; // ?labpersp の台形透視床(screen-space・worldGroup)
+  private labFloorMeshBaseUV: Float32Array | null = null; // 床メッシュの基準UV(0..1グリッド。タイル/スクロールの元)
+  private labFloorMeshSig = '';                      // 台形コーナーの再計算シグネチャ(画面/パラメータ変化時のみ)
   private labWalls: Container | null = null;    // 屋内ステージの壁スプライト群(縦壁/外周=アクターの下に固定)
   private labWallsSig = '';                      // 壁/扉の現状シグネチャ(変化時のみ再構築)
   private labWallActors: Container[] = [];        // 横壁=アクター層に足元アンカーで配置(裏側=北側に回り込める)。下地+線画の Container。
@@ -1252,21 +1260,73 @@ export class PixiScene {
     return Math.round(worldValue + worldOffset) - worldOffset;
   }
 
+  // 台形透視(PerspectiveMesh)床。?labpersp Step1: 縦ストリップの代わりに床平面を1枚、screen-space の台形で描く。
+  // 下辺=全幅(手前)、上辺=中央付近に狭く(奥/消失点)。texture=lab-floor-persp(repeat)、tint=LAB_ENV_TINT。
+  // タイル密度=LAB_TILES、UV を camera で遠近スクロール。判定/移動は不変(描画のみ)。
+  private updateLabFloorMesh(show: boolean) {
+    if (!show) { if (this.labFloorMesh) this.labFloorMesh.visible = false; return; }
+    const tex = getTexture('lab-floor/lab-floor-persp') ?? getTexture('lab-floor/lab-floor-clean');
+    if (!tex) { if (this.labFloorMesh) this.labFloorMesh.visible = false; return; }
+    const W = this.screenW, H = this.screenH;
+    const horizonY = H * LAB_HORIZON_Y;
+    const vpX = W * LAB_VP;
+    const topHalf = (W * LAB_TOP) / 2;
+    if (!this.labFloorMesh) {
+      try {
+        const st = tex.source.style as { addressMode?: string; update?: () => void };
+        st.addressMode = 'repeat';
+        st.update?.();
+      } catch { /* ignore */ }
+      const m = new PerspectiveMesh({
+        texture: tex, verticesX: 24, verticesY: 24,
+        x0: vpX - topHalf, y0: horizonY, x1: vpX + topHalf, y1: horizonY, x2: W, y2: H, x3: 0, y3: H,
+      });
+      m.tint = LAB_ENV_TINT;
+      this.labFloorMeshBaseUV = Float32Array.from(m.geometry.buffers[1].data as Float32Array); // 0..1 グリッドを退避
+      this.L.worldGroup.addChildAt(m, this.L.worldGroup.getChildIndex(this.L.groundBase) + 1); // groundBase 直上・world の下
+      this.labFloorMesh = m;
+      this.labFloorMeshSig = '';
+    }
+    const m = this.labFloorMesh;
+    m.visible = true;
+    m.tint = LAB_ENV_TINT;
+    const sig = `${W}x${H}|${LAB_VP}|${LAB_TOP}|${LAB_HORIZON_Y}`;
+    if (this.labFloorMeshSig !== sig) {
+      this.labFloorMeshSig = sig;
+      m.setCorners(vpX - topHalf, horizonY, vpX + topHalf, horizonY, W, H, 0, H); // positions のみ更新(uvは保持)
+    }
+    // タイル密度＋遠近スクロール: UV = base*tiles + camera offset。repeat なので端は継ぎ目なく巡回。
+    const base = this.labFloorMeshBaseUV;
+    if (base) {
+      const cam = useGameStore.getState().camera;
+      const offX = (cam.x / Math.max(1, tex.width)) * 0.5;
+      const offY = (cam.y / Math.max(1, tex.height)) * 0.5;
+      const buf = m.geometry.buffers[1];
+      const data = buf.data as Float32Array;
+      for (let i = 0; i < data.length; i += 2) {
+        data[i] = base[i] * LAB_TILES + offX;
+        data[i + 1] = base[i + 1] * LAB_TILES + offY;
+      }
+      buf.update();
+    }
+  }
+
   // 擬似地平フェード(上=ほぼ黒→下=透明の縦グラデ)。遠近床の上側(奥)を暗がりへ沈め、床が遠くへ消える基準を作る。
-  // worldGroup 内・groundBase の直上に置く(=遠近床は暗くするが、その上に描く壁/アクターは暗くしない)。screen-space。
+  // worldGroup 内・床メッシュの直上に置く(=遠近床は暗くするが、その上に描く壁/アクターは暗くしない)。screen-space。
   private updateLabHorizonFade(show: boolean) {
     if (!show) { if (this.labHorizonFade) this.labHorizonFade.visible = false; return; }
-    if (LAB_HORIZON <= 0) { if (this.labHorizonFade) this.labHorizonFade.visible = false; return; }
+    if (LAB_FADE <= 0) { if (this.labHorizonFade) this.labHorizonFade.visible = false; return; }
     if (!this.labHorizonFade) {
       this.labHorizonFade = new Sprite(getLabHorizonTexture());
-      this.L.worldGroup.addChildAt(this.labHorizonFade, this.L.worldGroup.getChildIndex(this.L.groundBase) + 1);
+      const anchor = this.labFloorMesh ?? this.L.groundBase;
+      this.L.worldGroup.addChildAt(this.labHorizonFade, this.L.worldGroup.getChildIndex(anchor) + 1);
     }
     const f = this.labHorizonFade;
     f.visible = true;
     f.position.set(0, 0);
     f.width = this.screenW;
     f.height = this.screenH;     // グラデ自体が下側で透明になるので全高でOK
-    f.alpha = LAB_HORIZON;
+    f.alpha = LAB_FADE;
   }
 
   // ?labpersp で研究所床に差し替えた地面ストリップを、屋外/非persp 時に元(屋外地面・ENV_TINT)へ戻す。
@@ -3558,14 +3618,15 @@ export class PixiScene {
     const indoor = s.indoorMode;
     const persp = indoor && LAB_PERSP; // A1: 研究所だけ「床を遠近」にする試作(フラグ時のみ)。
     // 屋外の screen-space 背景/床/前景と world の木は屋内では隠す。
-    // ただし ?labpersp の屋内では地面ストリップ(遠近床)を流用するので groundBase は表示する。
+    // ?labpersp の屋内床は PerspectiveMesh(台形)で描くので、屋外用の縦ストリップ groundBase は屋内では隠す。
     this.L.farBackdrop.visible = !indoor;
     this.L.horizonForest.visible = !indoor;
-    this.L.groundBase.visible = !indoor || persp;
+    this.L.groundBase.visible = !indoor;
     this.L.frontForest.visible = !indoor;
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
       this.restoreGroundStrips(); // 屋外復帰: ?labpersp で差し替えた床を元へ
+      this.updateLabFloorMesh(false);
       this.updateLabHorizonFade(false);
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;
@@ -3583,17 +3644,14 @@ export class PixiScene {
     // A1 試作(?labpersp): フラット床/変種/void を使わず、ステージ1の遠近 ground を研究所床テクスチャで流用。
     // 当たり判定/移動/aim は不変(描画だけ斜め遠近)。壁/プロップ/アクターは現状(depthScale)のまま。
     if (persp) {
-      const labTex = getTexture('lab-floor/lab-floor-persp') ?? getTexture('lab-floor/lab-floor-clean');
-      if (labTex) {
-        if (!this.groundStripBaseTex && this.L.groundStrips[0]) this.groundStripBaseTex = this.L.groundStrips[0].texture;
-        for (const strip of this.L.groundStrips) { strip.texture = labTex; strip.tint = LAB_ENV_TINT; }
-      }
+      // Step1: 台形透視床(PerspectiveMesh)を使う。フラット床/変種/void は使わない。
+      this.updateLabFloorMesh(true);
+      this.updateLabHorizonFade(true); // 擬似地平の暗幕(上=暗→下=透明)
       if (this.labVoid) this.labVoid.visible = false;
       if (this.labFloor) this.labFloor.visible = false;
       if (this.labFloorDecor) this.labFloorDecor.visible = false;
-      this.updateLabHorizonFade(true); // 擬似地平の暗幕(上=暗→下=透明)
     } else {
-      this.restoreGroundStrips();
+      this.updateLabFloorMesh(false);
       this.updateLabHorizonFade(false);
     }
     // 背景: 天井/void プレートを外周マージンに敷く(床の下=最下層)。床は迷路グリッド(LAB_BOUNDS)だけを
