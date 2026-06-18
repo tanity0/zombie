@@ -109,6 +109,10 @@ export const ensureTextures = (): Promise<void> => {
       // 手置き壁オブジェクト(横/縦の一枚絵ビルボード。足元アンカーで配置・遮蔽物)。
       { name: 'lab/lab-wall-obj-h', scaleMode: 'nearest' },
       { name: 'lab/lab-wall-obj-v', scaleMode: 'nearest' },
+      // 研究所スキンの背景3層(屋外テーマ時に森レイヤーを差し替える。レイヤー構造は不変)。
+      { name: 'lab/lab-far-backdrop' },  // 遠景パノラマ(不透明)
+      { name: 'lab/lab-horizon-band' },  // 地平の機械帯(紫=透過)
+      { name: 'lab/lab-front-band' },    // 手前のボヤけ機械帯(紫=透過。ブラーは既存フィルタで継続)
       // 背景の天井/void プレート(外周マージンに低速パララックスで敷く・縦横シームレス)。
       { name: 'lab/lab-bg-void', scaleMode: 'nearest' },
       { name: 'lab-uv-bar', scaleMode: 'nearest' }, // 研究所のUVライトバー(松明の代わり)

@@ -1367,10 +1367,14 @@ export class PixiScene {
     }
   }
 
-  // 屋外サバイバル構造のまま、見た目テーマで地面ストリップのテクスチャ/色味を差し替える。
-  // 'lab'=研究所スキン(シームレスなラボ床＋LAB_ENV_TINT)、'forest'=従来の屋外地面。
-  // テクスチャ/tint は持続するので、テーマが変わった時だけ貼り替える(毎フレームの再代入を避ける)。
+  // 屋外サバイバル構造のまま、見た目テーマで地面＋背景3層(遠景/地平帯/手前帯)のテクスチャを差し替える。
+  // 'lab'=研究所スキン、'forest'=従来の森。レイヤー構造(パララックス/ブラー/フェード/マスク)は不変=
+  // TilingSprite の .texture を貼り替えるだけ。tint は地面=LAB_ENV_TINT、背景3層は据え置き(ENV_TINT)。
+  // テーマが変わった時だけ貼り替える(毎フレームの再代入を避ける)。
   private outdoorGroundTheme: StageTheme | null = null;
+  private farBackdropBaseTex: Texture | null = null;
+  private horizonForestBaseTex: Texture | null = null;
+  private frontForestBaseTex: Texture | null = null;
   private applyOutdoorGroundTheme(theme: StageTheme) {
     if (this.outdoorGroundTheme === theme) return;
     const strips = this.L.groundStrips;
@@ -1379,8 +1383,18 @@ export class PixiScene {
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
       if (!this.groundStripBaseTex) this.groundStripBaseTex = strips[0]?.texture ?? null; // 屋外地面を復元用に退避
       for (const strip of strips) { strip.texture = tex; strip.tint = LAB_ENV_TINT; }
+      // 背景3層を研究所版へ(森→ラボ)。元テクスチャは復元用に一度だけ退避。
+      const far = getTexture('lab/lab-far-backdrop');
+      if (far) { if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture; this.L.farBackdrop.texture = far; }
+      const horizon = getTexture('lab/lab-horizon-band');
+      if (horizon) { if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; this.L.horizonForest.texture = horizon; }
+      const front = getTexture('lab/lab-front-band');
+      if (front) { if (!this.frontForestBaseTex) this.frontForestBaseTex = this.L.frontForest.texture; this.L.frontForest.texture = front; }
     } else {
       this.restoreGroundStrips();
+      if (this.farBackdropBaseTex) this.L.farBackdrop.texture = this.farBackdropBaseTex;
+      if (this.horizonForestBaseTex) this.L.horizonForest.texture = this.horizonForestBaseTex;
+      if (this.frontForestBaseTex) this.L.frontForest.texture = this.frontForestBaseTex;
     }
     this.outdoorGroundTheme = theme;
   }

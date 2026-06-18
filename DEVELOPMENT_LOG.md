@@ -12197,3 +12197,25 @@ syncBreakableProps/solidProps×3/木・城ゲート/grenadeWallsFor), src/pixi/p
 - build 通過。stage-2(研究所スキン)で地面が新タイル床に置き換わる。
 ### 次
 - 反復時の見栄えが気になる場合はシームレス・タイル化(面直クロップ/継ぎ目処理)を検討。
+
+## v0.25.524 — 研究所スキンの背景3層(遠景/地平帯/手前帯)を差し替え (claude/cool-edison-7b8jrl)
+社長提供の3枚で、屋外ラボテーマ時の森系背景レイヤーをラボ版に差し替え。レイヤー構造
+(パララックス/ブラー/フェード/マスク)は不変=TilingSprite の .texture を貼り替えるだけ。ステージ1(森)は不変。
+- 素材(PIL生成・public/sprites/lab/):
+  - lab-far-backdrop.png … 遠景パノラマ(不透明・1672x941)。
+  - lab-horizon-band.png … 地平の機械帯。紫背景(≈86,54,138)を距離キーで透過。
+  - lab-front-band.png … 手前のボヤけ機械帯。紫背景(≈65,27,117)を透過。発光タンクは明るく残存。
+    ※ブラーは frontForest 既存の BlurFilter がテクスチャに依らず継続=指示通りボヤけ維持。
+  - pixiTextures に登録(linear)。
+- 描画: applyOutdoorGroundTheme を拡張。lab で far/horizon/front の .texture をラボ版へ、forest で元の森へ復元
+  (元テクスチャは初回に一度だけ退避)。tint は据え置き(地面=LAB_ENV_TINT / 背景3層=ENV_TINT)。
+  テーマ変化時のみ貼り替え(毎フレーム再代入なし)。
+- レイアウト(tileScale/位置/フェードマスク)は既存の毎フレーム処理が新テクスチャ寸法から再計算=変更不要。
+
+### 負荷スコア
+1/10。差し替えはテーマ変化時の3回のみ。実行時の追加コストなし。メモリは背景PNG3枚分(数MB)増のみ。
+
+### Verification
+- lint/build 通過。stage-2(研究所スキン)で遠景/地平/手前がラボ機械背景に。手前帯はボヤけ維持。森は透過。
+### 次
+- 各帯の横タイリング継ぎ目や明るさ(ENV_TINT 下での視認性)を実機確認して微調整。
