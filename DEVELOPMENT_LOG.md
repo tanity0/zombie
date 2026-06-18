@@ -12615,3 +12615,11 @@ v0.25.564 までで完了済みの12種に続き、残る効果を3グループ�
 - 各数値は仮値（実機調整前提）。load 2/10。
 ### Verification: 各グループで npx tsc --noEmit + npm run build 通過。
 ### 次ハンドオフ: D ドッグラン(犬CD0・射程解除)は別途実装済み（v0.25.564 まで）。全23種＋賢者の石の効果配線が完了。実機での数値調整（コンボ上限/賢者の石の半径・倍率/reflex 威力）が残課題。
+
+## v0.25.568 — コンボマスターを全攻撃へ拡張(社長指示) (claude/cool-edison-7b8jrl)
+コンボマスターの「コンボでダメージ増加」を近接限定から**全攻撃(銃含む)**へ。
+- skillMeleeComboMult から combo-master 分を skillComboMasterMult として分離(knife-master は近接専用なので銃には乗せない)。
+- 銃ヒット処理(useGameLoop)の dmg にも skillComboMasterMult を適用(フィニッシュコンボ生存中 +2%/combo・上限+50%)。
+- desc を「コンボ中は全攻撃のダメージ増加」に更新。
+load 1/10(定数係数の乗算のみ)。
+### Verification: npx tsc --noEmit + npm run build 通過。

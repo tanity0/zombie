@@ -411,11 +411,15 @@ export const skillMeleeComboMult = (player: Player, gameTime: number, finishComb
   if (hasSkill(player, 'knife-master') && gameTime < player.knifeComboUntil) {
     mult *= 1 + Math.min(0.20, Math.floor(player.knifeComboCount / 2) * 0.01);
   }
-  if (hasSkill(player, 'combo-master') && finishComboUntil >= gameTime) {
-    mult *= 1 + Math.min(0.50, finishComboCount * 0.02);
-  }
+  mult *= skillComboMasterMult(player, gameTime, finishComboCount, finishComboUntil);
   return mult;
 };
+// combo-master のダメージ倍率のみ(全攻撃=近接/銃に適用)。フィニッシュコンボ生存中 +2%/combo(上限+50%)。
+// ※ knife-master は近接専用なので含めない。銃ヒット処理は本関数だけを使う。
+export const skillComboMasterMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number =>
+  hasSkill(player, 'combo-master') && finishComboUntil >= gameTime
+    ? 1 + Math.min(0.50, finishComboCount * 0.02)
+    : 1;
 // combo-master: フィニッシュコンボ窓を +1s 延長(装備時)。
 export const skillFinishComboWindowBonus = (player: Player): number =>
   hasSkill(player, 'combo-master') ? 1000 : 0;
