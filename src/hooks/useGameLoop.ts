@@ -25,7 +25,8 @@ import {
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
   WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS,
-  skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult
+  skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
+  skillSummonHpMult
 } from '../store/gameStore';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';

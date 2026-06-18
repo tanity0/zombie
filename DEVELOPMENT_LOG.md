@@ -12650,3 +12650,14 @@ FIRE_KNIFE_RADIUS_BY_LEVEL を 54/62/70 → 80/94/108 に拡大。爆発グロ�
 ## v0.25.575 — スケーター慣性を1.5倍 (claude/cool-edison-7b8jrl)
 inertiaTau 0.4 → 0.6s(=1.5倍。よりよく滑る/高リスク)。移動速度2倍は据え置き。
 ### Verification: tsc + build 通過。
+
+## v0.25.576 — シールド致命バグ修正(skillSummonHpMult 未import) (claude/cool-edison-7b8jrl)
+原因: useGameLoop の盾設置(1513-1514)が skillSummonHpMult を未importで参照 → 毎フレーム
+ReferenceError でメインループ後半が丸ごと中断。結果、盾設置ブロック以降が全て動かず:
+  - 敵が湧かない(spawn は後半)
+  - コインが拾えない(pickup collection は後半)
+  - 手榴弾が転がらない/切っても爆発しない(グレネード物理・爆発も後半)
+プレイヤー移動/プロップ破壊は前半なので動いていた=症状が「一部だけ生きてる」状態に。
+修正: skillSummonHpMult を import に追加。
+注意: `tsc --noEmit` がこの未importを検出できていない(型チェックの穴)。別途要確認。
+### Verification: tsc(exit0) + build 通過。盾装備時に後半処理が走る想定。
