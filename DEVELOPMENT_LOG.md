@@ -12380,3 +12380,9 @@ GameHUD のステージ名が「マッド・フォレスト」ハードコード
 getStage(getSelectedStageId()).name に連動(未取得=ベンチ/フリー等は従来名フォールバック)。研究所では「研究所跡」表示。
 ### 負荷スコア 1/10(描画時に選択ID参照のみ)。
 ### Verification lint/build 通過。
+
+## v0.25.536 — 床切り替わらない件の切り分け用デバッグ表示 (claude/cool-edison-7b8jrl)
+床がまだ変わらない報告。コード/アセット/git は正常に見えるため、実機で「ラボ床テクスチャがロードできているか」を
+確認するデバッグを左下バージョン横に追加: `floor:SGC`(S=lab-floor-stage2 / G=lab-floor-ground / C=lab-floor-clean、
+ロード済み=その文字、未ロード=ハイフン)。これで「読み込み失敗(=---/--C等)」か「読込OKだがスワップ未反映」かを切り分ける。
+### Verification lint/build 通過。確認後にデバッグ表示は除去予定。
