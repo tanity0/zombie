@@ -3942,7 +3942,37 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
 
-      return { enemies: updatedEnemies, pumpkinBlasts };
+      // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック)。
+      // ノックバック中の敵(発射体)とそれ以外(被弾側)の重なりを検出し、被弾側へ KNOCKBACK_SPEED×2 を付与。
+      let finalEnemies = updatedEnemies;
+      if (hasSkill(player, 'punisher')) {
+        const movers = updatedEnemies.filter(e =>
+          e.knockbackUntil !== undefined && now < e.knockbackUntil &&
+          Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
+        if (movers.length > 0) {
+          finalEnemies = updatedEnemies.map(b => {
+            if (b.type === 'reaper') return b;
+            if (b.knockbackUntil !== undefined && now < b.knockbackUntil) return b; // 既にKB中は二重適用しない
+            for (const a of movers) {
+              if (a.id === b.id) return b;
+              if (!rectsOverlap(
+                { x: a.x, y: a.y, width: a.width, height: a.height },
+                { x: b.x, y: b.y, width: b.width, height: b.height },
+              )) continue;
+              const d = Math.max(0.001, Math.hypot(a.knockbackVx ?? 0, a.knockbackVy ?? 0));
+              return {
+                ...b,
+                knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * 2,
+                knockbackVy: ((a.knockbackVy ?? 0) / d) * KNOCKBACK_SPEED * 2,
+                knockbackUntil: now + KNOCKBACK_DURATION,
+              };
+            }
+            return b;
+          });
+        }
+      }
+
+      return { enemies: finalEnemies, pumpkinBlasts };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
   },

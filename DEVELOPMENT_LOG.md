@@ -12996,3 +12996,9 @@ HUDの色分けを更新: 成功/達成/救難=緑、危険=赤、それ以外=�
 - useGameLoop の arena cleared 分岐＋ updateRescue 成功 set に eventBannerText/Until を追加。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.620 — パニッシャー(敵同士の巻き込み)を実装＝2倍ノックバック (claude/sweet-brown-bw8ixm)
+パニッシャー(punisher)は型/説明のみで未実装だった。`updateEnemies` の後段に処理を追加:
+ノックバック中の敵(速度>30)が他の敵に重なったら、その敵を**同方向へ KNOCKBACK_SPEED×2 で巻き込む**(連鎖)。既にKB中の敵/死神は対象外。所持時のみ。
+- **Load score 1〜2/10**(KB中の敵×全敵の重なり判定。KB中の敵は通常少数)。
+### Verification: `npx tsc --noEmit` exit:0。
