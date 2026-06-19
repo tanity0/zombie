@@ -943,34 +943,40 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number) 
   }
 };
 
-// スキル: スラッシャー = 近接が当たった位置へ ×0.3 の追撃を1回(命中ごと・毎スイング)。
-// ※旧実装は「直前の近接から0.5s以内」を条件にしていたが、カウンターの最短間隔
-//   (COUNTER_WINDOW+COUNTER_COOLDOWN=820ms〜)が窓0.5sより長く、二度と窓内に入らず
-//   一切発動しなかった。説明どおり「近接直後の追撃」として毎スイング発動に修正。
-// FX/ダメージとも有界(slashAt の位置に対し1パスのみ)。
-const applySlasherFollowup = (
+// スキル: スラッシャー = 「近接攻撃が成功した後のタップ追撃」(0.3倍)。
+// 自動では出ない。専用クールダウンも持たず、近接(カウンター)のCDサイクルに自然に縛られる:
+//   カウンターが命中すると arm(slasherWindowUntil=CD明け時刻)→ CD中にタップすると1回だけ
+//   0.3倍スラッシュを出して消費する(1回の成功カウンターにつき追撃1回)。
+// プレイヤー近傍(meleeRange)の敵へ。FX/ダメージとも有界(敵1走査1パス)。
+const applySlasherTapStrike = (
   get: () => GameState,
   player: Player,
-  slashAt: { x: number; y: number }[],
-  meleeDamage: number,
-  comboMult: number,
-) => {
+  gameTime: number,
+): CounterTriggerResult => {
+  const pcx = player.x + player.width / 2;
+  const pcy = player.y + player.height / 2;
+  const meleeRange = huntingMeleeRadius(player);
+  const melee = player.weapons.find(w => w.isMelee);
+  const meleeDamage = melee?.damage ?? 6;
+  const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
   const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
-  const r2 = (MELEE_RADIUS * 0.5) ** 2; // 当たり位置近傍の敵にだけ追撃
-  const hit = new Set<string>();
-  for (const s of slashAt) {
-    for (const e of get().enemies) {
-      if (hit.has(e.id) || e.type === 'reaper') continue;
-      const ecx = e.x + e.width / 2;
-      const ecy = e.y + e.height / 2;
-      if ((ecx - s.x) ** 2 + (ecy - s.y) ** 2 > r2) continue;
-      hit.add(e.id);
-      const killed = get().damageEnemy(e.id, followDmg);
-      get().spawnDamageNumber(ecx, e.y, Math.round(followDmg), false);
-      get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
-      if (killed) get().spawnBurst(ecx, ecy, '#bef264', 10);
-    }
+  const r2 = meleeRange * meleeRange;
+  let killed = 0;
+  let hit = false;
+  for (const e of get().enemies) {
+    if (e.type === 'reaper') continue;
+    const ecx = e.x + e.width / 2;
+    const ecy = e.y + e.height / 2;
+    if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
+    hit = true;
+    const k = get().damageEnemy(e.id, followDmg);
+    get().spawnDamageNumber(ecx, e.y, Math.round(followDmg), false);
+    get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
+    if (k) { killed += 1; get().spawnBurst(ecx, ecy, '#bef264', 10); }
   }
+  if (!hit) get().spawnSlash(pcx, pcy, 'rgba(190,242,100,0.55)'); // 空振りでも軽く振る
+  get().setSlasherWindow(0); // 消費(1成功カウンターにつき追撃1回)
+  return { swung: true, hit, finish: false, killed };
 };
 
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
@@ -1638,7 +1644,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
     } = get();
     // Respect cooldown — no swing, no knockback, no window.
-    if (now < player.counterCooldownEnd) return { swung: false, hit: false, finish: false, killed: 0 };
+    if (now < player.counterCooldownEnd) {
+      // スキル スラッシャー: カウンターCD中のタップで「近接成功の追撃」(0.3倍)を1回。
+      // arm されている(=直前のカウンターが命中した)ときだけ。自動ではなくタップで発動。
+      if (hasSkill(player, 'slasher') && now < player.slasherWindowUntil) {
+        return applySlasherTapStrike(get, player, gameTime);
+      }
+      return { swung: false, hit: false, finish: false, killed: 0 };
+    }
 
     // スキル: カウンターマスター = カウンター窓 +0.5s(全アサイン地点で共通使用)。
     const counterWindowMs = COUNTER_WINDOW + (hasSkill(player, 'counter-master') ? 500 : 0);
@@ -2181,6 +2194,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         huntingChargeStartedAt: 0,
         knifeComboCount: knifeCombo.count,
         knifeComboUntil: knifeCombo.until,
+        // スキル スラッシャー: この近接が命中(slashAt有)したら追撃をarm(CD明けまで)。
+        // CD中のタップで1回だけ消費。命中しなければ arm しない(=追撃なし)。
+        slasherWindowUntil: hasSkill(state.player, 'slasher') && slashAt.length > 0
+          ? now + counterWindowMs + COUNTER_COOLDOWN
+          : 0,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {
@@ -2271,10 +2289,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy);
     }
-    // スキル: スラッシャー = 直前の近接から0.5s以内の追撃は ×0.3 の追加ヒット(1回・有界)。
-    if (hasSkill(player, 'slasher') && slashAt.length > 0) {
-      applySlasherFollowup(get, player, slashAt, meleeDamage, meleeComboMult);
-    }
+    // スキル スラッシャーの arm はこの近接スイングの set()(player.slasherWindowUntil)で行う。
+    // 追撃自体は「CD中のタップ」で applySlasherTapStrike が出す(自動ではない)。
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);

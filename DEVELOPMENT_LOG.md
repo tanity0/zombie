@@ -12700,3 +12700,13 @@ load 2/10(発火は一過性バースト・終了監視は≤20体filter/フレ�
 修正: 説明(「近接直後の追撃(0.3倍)」)どおり、命中したスイングごとに ×0.3 追撃を発動(窓判定を撤去)。
 slasherWindowUntil/setSlasherWindow は未使用化(無害・残置)。load 1/10(命中位置の近傍走査1パス)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.582 — スラッシャーを「近接成功→タップ追撃」に修正 (claude/cool-edison-7b8jrl)
+社長確定仕様: 自動ではない。近接(カウンター)が命中したら arm され、そのCD中にタップで0.3倍追撃を
+1回だけ出す。専用CDは持たず、カウンターのCDサイクルに自然に縛られる(1成功カウンター=追撃1回)。
+- arm: カウンタースイングの set() で slashAt.length>0 のとき player.slasherWindowUntil = CD明け時刻。
+- 発火: triggerCounter のCD早期returnで、hasSkill('slasher') && now<slasherWindowUntil ならタップ追撃
+  (applySlasherTapStrike: meleeRange内の敵へ0.3倍・緑スラッシュ)→ setSlasherWindow(0) で消費。
+- 旧「毎スイング自動追撃(v0.25.581)」「0.5s窓(発動不能)」は撤去。
+load 1/10(タップ時に敵1走査1パス)。
+### Verification: tsc(exit0) + build 通過。

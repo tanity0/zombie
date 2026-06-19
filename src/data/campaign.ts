@@ -503,7 +503,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'ghost-shooter':{ name: 'ゴーストシューター', desc: '20%の確率で弾を消費しない', rarity: 'normal' },
   'dog-run':      { name: 'ドッグラン',     desc: '犬のクールダウン0・射程制限解除(犬装備時)', rarity: 'normal' },
   'counter-master':{ name: 'カウンターマスター', desc: 'カウンター窓延長＋成功時に周囲を強ノックバック', rarity: 'normal' },
-  'slasher':      { name: 'スラッシャー',   desc: '近接直後の追撃(0.3倍)', rarity: 'normal' },
+  'slasher':      { name: 'スラッシャー',   desc: '近接命中後、CD中のタップで追撃(0.3倍)', rarity: 'normal' },
 };
 export const MAX_EQUIPPED_SKILLS = 2;
 // ガチャのレア度枠(%)。枠内は均等抽選。重複(所持済み)はゴールド返金。
