@@ -18,8 +18,8 @@ export const RESCUE_SHOOTER_RANGE = 240;
 export const RESCUE_SHOOTER_INTERVAL_MS = 900;
 export const RESCUE_SHOOTER_DAMAGE = 5;
 
-export const RESCUE_CIVILIAN_HP = 60;
-export const RESCUE_SHOOTER_HP = 80;
+export const RESCUE_CIVILIAN_HP = 30; // 社長指示で半減(旧60)
+export const RESCUE_SHOOTER_HP = 40;  // 社長指示で半減(旧80)
 
 export type RescueSubtype = 'shooter' | 'civilian';
 export type RescueGender = 'm' | 'f';

@@ -12888,3 +12888,10 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - `pixiScene.drawRescueSurvivors`: Graphicsプレースホルダ → 本体スプライト(足元アンカー・footYで y-sort・depthScale・移動で2コマ歩き・進行方向で左右反転)。HPバー/被弾コールアウトは rescueGfx(最前)に分離。subtype/gender でテクスチャ選択。
 - **Load score 1/10**(最大3体・スプライトプール/プルーン、毎フレ軽量)。dist +約110KB。
 ### Verification: `npx tsc --noEmit` exit:0。透過/分割は出力PNGを目視確認(背景除去・シルエット良好)。
+
+## v0.25.603 — 全イベントにマップマーカー必須 / 緑の卵が近くで消える不具合 / 救助NPC耐久半減 (claude/sweet-brown-bw8ixm)
+1. **イベントのマップ表示(社長指示=各イベントは基本マップに表示必須)**: `syncArrows` に `activeEvent`(囲い/救助)の画面端マーカーを追加(画面外のとき位置＋矢印＋「!」、色=boss赤/rescue緑/horde青)。城マーカーは従来どおり。
+2. **緑の卵(mine)が近くにあるのに消える不具合**: 圧力地雷(`pressureMinesNearPlayer`)が時間セグメント(18秒)＆出撃方向で ID が変わるため、切替のたびに近くの卵まで再生リストから外れて消えていた。`syncBreakableProps` で「カメラ領域(±pad)内・未破壊・今回未再生」の既存 mine を保持するよう変更(画面外へ離れたら除外=蓄積しない)。
+3. **救助NPC耐久半減(社長指示)**: civilian 60→30 / shooter 80→40(`rescue.ts`)。
+- **Load score 1/10**(マーカー描画1個＋保持ループは領域内の数個のみ)。
+### Verification: `npx tsc --noEmit` exit:0。

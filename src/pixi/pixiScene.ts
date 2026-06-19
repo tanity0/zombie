@@ -1714,7 +1714,7 @@ export class PixiScene {
       now
     );
     this.syncPlayerFx(s.player, now, s.gameTime);
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'));
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -5120,7 +5120,8 @@ export class PixiScene {
     castle: CastleEvent,
     merchant: WeaponMerchant,
     camera: { x: number; y: number },
-    castleVisible: boolean
+    castleVisible: boolean,
+    event: ActiveEvent | null
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -5229,6 +5230,34 @@ export class PixiScene {
         const ca = Math.cos(angle), sa = Math.sin(angle);
         const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
         g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+      }
+    }
+
+    // イベント(囲い/救助)の場所マーカー。画面外のとき必ず位置を示す(社長指示=各イベントは常にマップ表示)。
+    if (event) {
+      const exC = event.x - camera.x, eyC = event.y - camera.y;
+      if (exC < 0 || exC > this.screenW || eyC < 0 || eyC > this.screenH) {
+        const angle = Math.atan2(eyC - cyC, exC - cxC);
+        const dx = Math.cos(angle), dy = Math.sin(angle);
+        let tdist = Infinity;
+        if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+        else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+        if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+        else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+        if (isFinite(tdist)) {
+          const ex = cxC + dx * tdist;
+          const ey = cyC + dy * tdist;
+          const color = event.kind === 'boss' ? 0xef4444 : event.kind === 'rescue' ? 0x4ade80 : 0x38bdf8;
+          g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
+          g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
+          // 中央に「!」マーク(イベント発生中の注意喚起)。
+          g.rect(ex - 1.5, ey - 6, 3, 7).fill({ color, alpha: 0.6 + 0.3 * pulse });
+          g.rect(ex - 1.5, ey + 3, 3, 3).fill({ color, alpha: 0.6 + 0.3 * pulse });
+          const hx = ex + dx * 15, hy = ey + dy * 15;
+          const ca = Math.cos(angle), sa = Math.sin(angle);
+          const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+          g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+        }
       }
     }
 

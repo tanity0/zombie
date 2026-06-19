@@ -4695,6 +4695,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
+      // 卵(mine)の取りこぼし対策: 圧力地雷(pressureMines)は時間セグメント(18秒)依存、出撃方向依存で
+      // ID が変わるため、セグメント切替/方向転換のたびに「近くにあるのに消える」不具合があった。
+      // → 既存の mine プロップで「カメラ領域(±pad)内・未破壊・今回未再生」のものは保持する
+      //   (画面外へ離れたら自然に除外=無限蓄積しない)。
+      const added = new Set(next.map(p => p.id));
+      const rx0 = camera.x - pad, ry0 = camera.y - pad;
+      const rx1 = camera.x + bounds.width + pad, ry1 = camera.y + bounds.height + pad;
+      for (const p of state.breakableProps) {
+        if (p.type !== 'mine' || added.has(p.id) || state.destroyedBreakableProps[p.id]) continue;
+        if (p.footX >= rx0 && p.footX <= rx1 && p.footY >= ry0 && p.footY <= ry1) next.push(p);
+      }
       return { breakableProps: next, mineAmbushAnchor };
     });
   },
