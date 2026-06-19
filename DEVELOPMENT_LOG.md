@@ -12797,3 +12797,12 @@ load 1/10(描画数不変・レイヤー移動＋座標変換のみ)。
 ## v0.25.591 — チャット引き継ぎドキュメント追加 (claude/cool-edison-7b8jrl)
 CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール、tsc型チェックの穴、本セッションの実装一覧、
 現状(v0.25.590/dist62MB)、一時ツール(sharp/ffmpeg-static --no-save)、未対応/任意項目(段階B床タイル・音声・ガチャ無料の暫定)を集約。次チャットはこれ＋CLAUDE.md＋本ログを最初に読む。
+
+## v0.25.592 — PHILL: 移動中でも頭スナップ中は指離しで即発砲 (claude/sweet-brown-bw8ixm)
+- **サークルの吸い付き=頭**: 既に実装済みを確認(`movePlayer` が毎フレーム頭部リージョン中心 `footY - boxH*0.83` へスナップ、ヘッドショット判定リージョンと一致。描画と発砲が共有)。変更なし。
+- **移動中の速射**: `firePhillShot` の `if (player.isMoving) return` を、スナップ中(`phillSnapEnemyId`)は素通りさせるよう変更。`snapEnemy` 判定を先頭へ移動し `if (player.isMoving && !snapEnemy) return;` に。
+  - 効果: 頭に吸い付いた状態で指を離す(=停止)と、移動中でも従来の即ヘッドショット(`即被弾`)が発動。非スナップの通常射撃は従来どおり立ち止まり必須。
+  - 速射の中身は「既存の即被弾ヘッドショット」そのもの(社長確認済み)。CD=武器cooldown(1秒)も従来どおり維持。
+- 入力経路は既存のまま(VirtualJoystick `release()` / Space keydown の firePhillShot 呼び出し)。SE/弾消費も既存ロジックを共有。
+- 影響範囲: `src/store/gameStore.ts` のみ。**Load score 1/10**(シム: 発砲時1回の分岐変更のみ。毎フレームコスト増なし)。
+### Verification: `npx tsc --noEmit` exit:0。

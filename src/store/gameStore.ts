@@ -3212,23 +3212,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   
-  // PHILL銃の手動発砲: 立ち止まってタップした時だけ狙いサークル(=lastDirection)方向へ1発。
-  // 移動中(ドラッグ移動/移動キー保持)は撃たない=「立ち止まって撃つ」武器。CD=武器のcooldown(1秒)。
+  // PHILL銃の手動発砲: 指を離した(タップ/Space)瞬間に狙いサークル方向へ1発。
+  // 通常射撃(非スナップ)は「立ち止まって撃つ」武器のまま=移動中は撃たない。
+  // ただし頭に吸い付き中(phillSnapEnemyId)は移動中でも発砲OK=離した瞬間に即ヘッドショット
+  // (指を離す=停止なので操作上も自然)。CD=武器のcooldown(1秒)。
   firePhillShot: () => {
     const { player } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
-    if (player.isMoving) return; // 立ち止まりが条件(移動中は発砲しない)
+    // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
+    const snapEnemy = player.phillSnapEnemyId != null
+      ? get().enemies.find(e => e.id === player.phillSnapEnemyId)
+      : undefined;
+    // 立ち止まりガード: スナップ中は移動中でも撃てる(離した瞬間=停止)。非スナップは従来どおり立ち止まり必須。
+    if (player.isMoving && !snapEnemy) return;
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
     if (now - weapon.lastFired < (weapon.cooldown ?? 1000)) return;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
-    // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
-    const snapEnemy = player.phillSnapEnemyId != null
-      ? get().enemies.find(e => e.id === player.phillSnapEnemyId)
-      : undefined;
     if (snapEnemy) {
       // サークルが頭に乗った状態 → 即射撃・即被弾(ヘッドショット)。通常弾は出さない。
       // 発砲時点の敵の頭中心へ静止・短命の phill-bullet を置き、既存の頭部コリジョンで確定ヘッドショット。
