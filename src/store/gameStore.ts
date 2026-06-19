@@ -3722,6 +3722,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
     const pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[] = []; // 着地爆発イベント
+    const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
+    let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
@@ -3942,10 +3944,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { ...enemy, vx, vy, x: moved.x, y: moved.y };
       });
 
-      // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック)。
-      // ノックバック中の敵(発射体)とそれ以外(被弾側)の重なりを検出し、被弾側へ KNOCKBACK_SPEED×2 を付与。
+      // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック＋近接ダメージの半分)。
       let finalEnemies = updatedEnemies;
       if (hasSkill(player, 'punisher')) {
+        const melee = player.weapons.find(w => w.isMelee);
+        punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * 0.5)); // 近接の半分
         const movers = updatedEnemies.filter(e =>
           e.knockbackUntil !== undefined && now < e.knockbackUntil &&
           Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
@@ -3960,6 +3963,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 { x: b.x, y: b.y, width: b.width, height: b.height },
               )) continue;
               const d = Math.max(0.001, Math.hypot(a.knockbackVx ?? 0, a.knockbackVy ?? 0));
+              punisherHits.push(b.id); // ダメージは set 後に damageEnemy で適用(死亡処理を正規経路に乗せる)
               return {
                 ...b,
                 knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * 2,
@@ -3975,6 +3979,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { enemies: finalEnemies, pumpkinBlasts };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
+    // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
+    if (punisherHits.length > 0 && punisherDmg > 0) {
+      for (const id of punisherHits) {
+        const e = get().enemies.find(en => en.id === id);
+        if (!e) continue;
+        get().damageEnemy(id, punisherDmg);
+        get().spawnDamageNumber(e.x + e.width / 2, e.y, punisherDmg);
+      }
+    }
   },
 
   stunEnemy: (id, until) => {

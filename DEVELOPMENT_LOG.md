@@ -13002,3 +13002,9 @@ HUDの色分けを更新: 成功/達成/救難=緑、危険=赤、それ以外=�
 ノックバック中の敵(速度>30)が他の敵に重なったら、その敵を**同方向へ KNOCKBACK_SPEED×2 で巻き込む**(連鎖)。既にKB中の敵/死神は対象外。所持時のみ。
 - **Load score 1〜2/10**(KB中の敵×全敵の重なり判定。KB中の敵は通常少数)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.621 — パニッシャーの巻き込みに近接半分ダメージを追加 (claude/sweet-brown-bw8ixm)
+v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近接ダメージの半分**を与えるよう追加(社長指示)。
+`(melee.damage ?? 6) * strikerMeleeMult * 0.5`。ダメージは set 後に `damageEnemy` で適用(死亡処理/演出を正規経路に)＋ダメージ数字表示。説明文も更新。
+- **Load score 1〜2/10**。
+### Verification: `npx tsc --noEmit` exit:0。
