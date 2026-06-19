@@ -12866,3 +12866,10 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 3. **クリ表記**: スキル `crit-up` の表示を「クリティカルD上昇 / クリティカル倍率+0.5」→**「クリティカルダメージ上昇 / クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)」**に(社長指示=ダメージなら倍率値を明記)。「クリティカル率(発生確率)」表記は据え置き。
 - **Load score 1/10**(イベント分岐の差し替え＋短命スプライト1枚＋文言変更)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.600 — マークスマン射程上昇の発動を頭上ターゲットマークで通知 (claude/sweet-brown-bw8ixm)
+マークスマン(mage)の「移動3秒+で射程+10%」が発動した瞬間、プレイヤー頭上に一瞬ターゲットマーク(照準=二重円+十字・緑)を表示(ブーメランCD明けマークと同じ「ふわっと出て消える」演出)。
+- store: top-level `marksmanRangeFxAt`(発火Date.now)/`marksmanRangeFxShownFor`(演出済みの連続移動streak=marksmanMovingSince)。`movePlayer` で射程上昇がこのstreakで初めて3秒到達したフレームに発火(streakごと一度)。
+- pixiScene: `updateMarksmanRangeMark`(effectLayer・加算)。`marksmanRangeFxAt` 起点に life650ms でフラッシュ→フェード。射程倍率(marksmanRangeMult)の判定は不変=描画のみ。
+- **Load score 1/10**(毎フレ1枚のGraphics描画は発動後650msのみ・通常はclearのみ)。
+### Verification: `npx tsc --noEmit` exit:0。

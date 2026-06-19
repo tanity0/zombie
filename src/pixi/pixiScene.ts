@@ -591,6 +591,7 @@ export class PixiScene {
   private rescueGfx = new Graphics(); // 救助イベントの守る対象NPC(survivor)プレースホルダ描画(actorLayer 最前)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
+  private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
@@ -838,6 +839,8 @@ export class PixiScene {
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
+    this.L.effectLayer.addChild(this.marksmanMarkGfx);
+    this.marksmanMarkGfx.blendMode = 'add';
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
     this.whipHurricane.anchor.set(0.5, WHIP_HURRICANE_ANCHOR_Y);
@@ -1684,6 +1687,7 @@ export class PixiScene {
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now); // ジャンプ攻撃の着地予告(赤い影)
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
+    this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
@@ -2541,6 +2545,35 @@ export class PixiScene {
     // ブーメラン「へ」字マーク(シアン・加算で発光)。
     g.moveTo(cx - s, cy + s * 0.55).lineTo(cx, cy - s * 0.55).lineTo(cx + s, cy + s * 0.55)
       .stroke({ width: 3.0, color: 0x9be8ff, alpha: Math.max(0, alpha), cap: 'round', join: 'round' });
+  }
+
+  // マークスマン射程上昇の発動マーク: ブーメランの頭上マークと同じ「一瞬出て消える」ノリで、
+  // プレイヤー頭上にターゲット(照準)マーク=円＋十字を出す。緑系で「射程UP」を示す。
+  private updateMarksmanRangeMark(player: Player, now: number) {
+    const g = this.marksmanMarkGfx;
+    g.clear();
+    const at = useGameStore.getState().marksmanRangeFxAt;
+    const life = 650;
+    const dt = now - at;
+    if (at <= 0 || dt < 0 || dt > life) return;
+    const t = dt / life;                       // 0→1
+    const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
+    const a = Math.max(0, alpha);
+    const cx = player.x + player.width / 2;
+    const cy = player.y - 46 - 18 * t;         // 頭上(ブーメランと同じ高さ)＋少し浮上
+    const r = 9 * (0.85 + 0.35 * t);           // 少し拡大
+    const color = 0x86efac;                    // 射程UP=緑
+    // 出現フラッシュ。
+    const flash = Math.max(0, 1 - dt / 170);
+    if (flash > 0) g.circle(cx, cy, 12 + 16 * (1 - flash)).fill({ color: 0xbbf7d0, alpha: 0.45 * flash });
+    // ターゲット(照準)マーク: 二重円＋十字。
+    g.circle(cx, cy, r).stroke({ width: 2, color, alpha: a });
+    g.circle(cx, cy, r * 0.45).stroke({ width: 1.5, color, alpha: a * 0.9 });
+    g.moveTo(cx - r * 1.5, cy).lineTo(cx - r * 0.7, cy)
+      .moveTo(cx + r * 0.7, cy).lineTo(cx + r * 1.5, cy)
+      .moveTo(cx, cy - r * 1.5).lineTo(cx, cy - r * 0.7)
+      .moveTo(cx, cy + r * 0.7).lineTo(cx, cy + r * 1.5)
+      .stroke({ width: 1.5, color, alpha: a * 0.85, cap: 'round' });
   }
 
   // ジャンプ攻撃(パンプキン/lab-zombie-3)の着地予告。空中(aiPhase='jump')の間、着地点に赤い影を出す。

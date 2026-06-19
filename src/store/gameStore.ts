@@ -1040,6 +1040,10 @@ interface GameState {
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
   pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
+  // マークスマン(mage)の射程上昇が発動した瞬間の頭上マーク演出。fxAt=発火時刻(Date.now)、
+  // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
+  marksmanRangeFxAt: number;
+  marksmanRangeFxShownFor: number;
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
@@ -1389,6 +1393,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   enemies: [],
   pumpkinBlasts: [],
   boomerangReadyFxAt: 0,
+  marksmanRangeFxAt: 0,
+  marksmanRangeFxShownFor: 0,
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
@@ -1650,6 +1656,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
+      // 射程上昇(移動3s+)が発動した瞬間=この streak で初めて 3秒を超えたフレームで頭上マークを出す。
+      const marksmanRangeActive = player.characterClass === 'mage' && isMoving &&
+        marksmanMovingSince > 0 && state.gameTime - marksmanMovingSince >= 3000;
+      const marksmanProc = marksmanRangeActive && state.marksmanRangeFxShownFor !== marksmanMovingSince;
 
       // PHILL銃: 狙いサークルの「吸い付き」。基準=プレイヤー中心+aim×190。近い敵の頭(SNAP半径内)が
       // あればその頭中心へスナップ。発砲(firePhillShot)と描画(pixiScene)はこの結果を共有する。
@@ -1680,6 +1690,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return {
         ...(pushedProjectiles ? { projectiles: pushedProjectiles } : {}),
+        ...(marksmanProc ? { marksmanRangeFxAt: Date.now(), marksmanRangeFxShownFor: marksmanMovingSince } : {}),
         player: {
           ...player,
           x: newX,
