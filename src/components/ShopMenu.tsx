@@ -10,6 +10,7 @@ import {
   useGameStore
 } from '../store/gameStore';
 import type { AmmoType, ShopItemKey, SubWeaponKey } from '../types/game';
+import { CHARACTER_SUBWEAPON_KEYS } from '../data/campaign';
 import { playSfx } from '../audio/audioManager';
 
 type ShopEntry = {
@@ -69,7 +70,8 @@ const ShopMenu: React.FC = () => {
     ammoType: type
   }));
   const skillEntries: SkillShopEntry[] = (Object.entries(unlockedShopSkillCards) as [SubWeaponKey, number][])
-    .filter(([, unlockedLevel]) => unlockedLevel > 0)
+    // キャラ固有サブウェポン(職スキル枠)はショップで扱わない(キャラ固有スキル化)。
+    .filter(([skillKey, unlockedLevel]) => unlockedLevel > 0 && !CHARACTER_SUBWEAPON_KEYS.includes(skillKey))
     .map(([skillKey, unlockedLevel]) => {
       const currentLevel = player.subWeaponLevels[skillKey] ?? 0;
       const cappedUnlock = Math.min(3, Math.max(0, unlockedLevel));

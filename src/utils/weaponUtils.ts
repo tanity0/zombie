@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, hasSkill, skillBenkeiCritBonus } from '../store/gameStore';
+import { useGameStore, hasSkill, skillBenkeiCritBonus, scavengerGunMult, marksmanRangeMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
@@ -254,7 +254,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   // Range gate: hold fire (and ammo) unless an enemy is within reach. Don't
   // advance lastFired here so the gun fires the instant a target enters range.
-  if (nearestEnemyDistance(player, enemies) > RANGE_BY_CATEGORY[weapon.ammoType]) {
+  // キャラ固有 マークスマン(mage): 3秒以上連続移動中は射程 ×1.1。
+  const gtRange = useGameStore.getState().gameTime;
+  const gunRange = RANGE_BY_CATEGORY[weapon.ammoType] * marksmanRangeMult(player, gtRange);
+  if (nearestEnemyDistance(player, enemies) > gunRange) {
     return [];
   }
 
@@ -276,6 +279,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
   }
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
+  // キャラ固有 スカベンジャー(necromancer): 弾薬取得後3秒は銃ダメージ ×1.1。発射時の素ダメージへ反映。
+  const scavMult = scavengerGunMult(player, gtFire);
+  const shotDamage = weapon.damage * scavMult;
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
@@ -297,7 +303,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       speed,
       // Base damage only — the crit multiplier is applied at hit time so it can
       // scale differently against bosses (×5) vs normal enemies (×1.5).
-      damage: weapon.damage,
+      // (スカベンジャーの+10%は素ダメージへ既に反映済み = shotDamage)
+      damage: shotDamage,
       direction: pd,
       weaponType: weapon.category as WeaponType, // 'handgun' | 'shotgun' | 'rifle'
       weaponKey: weapon.key,
@@ -314,7 +321,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       crit,
       // スキル: ファイアシューターの爆発弾。直撃ダメージ ×0.3、命中で半径66の小爆発。
       ...(fireShooterShot
-        ? { explodeOnHit: true, explodeRadius: FIRE_SHOOTER_RADIUS, explodeDamageMult: 1, damage: weapon.damage * 0.3 }
+        ? { explodeOnHit: true, explodeRadius: FIRE_SHOOTER_RADIUS, explodeDamageMult: 1, damage: shotDamage * 0.3 }
         : {}),
     });
   }

@@ -383,6 +383,28 @@ export const maybeUnlockSageStone = (
 // 装備スキル判定。effect 層はすべてこのヘルパで分岐(非装備時は完全に従来挙動)。
 export const hasSkill = (player: Player, key: SkillKey): boolean => player.skills.includes(key);
 
+// === キャラ固有スキル(特別枠) ============================================
+// 通常の装備スキル(player.skills)とは別枠で、選択キャラ(player.characterClass)により自動有効。
+// 装備スキル枠を消費しない。ラン中に変更しない。スキル名は職名そのまま。
+//   rogue=ストライカー / necromancer=スカベンジャー / mage=マークスマン / warrior=ヘビーガンナー
+// ストライカー: 装備銃が弾切れ(マガジン+リザーブ=0)のとき近接攻撃力 ×1.5。
+export const strikerMeleeMult = (player: Player): number => {
+  if (player.characterClass !== 'rogue') return 1;
+  const gun = getActiveGun(player);
+  if (!gun || !gun.ammoType) return 1.5; // 銃/弾種なし=弾切れ扱い
+  return ((gun.magazine ?? 0) + ammoPoolFor(player, gun.ammoType)) <= 0 ? 1.5 : 1;
+};
+// スカベンジャー: 弾薬取得後3秒、銃ダメージ ×1.1。
+export const scavengerGunMult = (player: Player, gameTime: number): number =>
+  player.characterClass === 'necromancer' && gameTime < player.scavengerBuffUntil ? 1.1 : 1;
+// マークスマン: 3秒以上連続移動中、射程 ×1.1(停止で即解除)。
+export const marksmanRangeMult = (player: Player, gameTime: number): number =>
+  player.characterClass === 'mage' && player.isMoving && player.marksmanMovingSince > 0 &&
+  gameTime - player.marksmanMovingSince >= 3000 ? 1.1 : 1;
+// ヘビーガンナー: 同一攻撃で2体以上に当てた後3秒、すべての爆発範囲 ×1.1。
+export const heavyGunnerExplosionMult = (player: Player, gameTime: number): number =>
+  player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
+
 // --- 装備スキルの数値補正ヘルパ(effect層・全て純粋関数) -------------------
 // ナイト: 被ダメ×0.8 / バーサーカー: 被ダメ×1.2。両立可(乗算)。
 export const skillIncomingDamageMult = (player: Player): number =>
@@ -957,7 +979,7 @@ const applySlasherTapStrike = (
   const pcy = player.y + player.height / 2;
   const meleeRange = huntingMeleeRadius(player);
   const melee = player.weapons.find(w => w.isMelee);
-  const meleeDamage = melee?.damage ?? 6;
+  const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player); // キャラ固有: ストライカー弾切れ時×1.5
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
   const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
   const r2 = meleeRange * meleeRange;
@@ -1161,6 +1183,8 @@ interface GameState {
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
   endArenaEvent: () => void;
+  // キャラ固有スキル ヘビーガンナー: 1回の攻撃が2体以上に当たった通知(warriorのみ爆発範囲バフ)。
+  registerMultiHit: (count: number) => void;
 
   // Ammo
   addAmmo: (type: AmmoType, amount: number) => void;
@@ -1321,6 +1345,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponCooldowns: {},
     skills: [],
     fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
+    scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
@@ -1599,6 +1624,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const aimX = player.aimX + ((ld.x / ldl) * aimMag - player.aimX) * aimAlpha;
       const aimY = player.aimY + ((ld.y / ldl) * aimMag - player.aimY) * aimAlpha;
 
+      // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
+      const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
       return {
         ...(pushedProjectiles ? { projectiles: pushedProjectiles } : {}),
         player: {
@@ -1609,6 +1636,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           vy,
           direction,
           isMoving,
+          marksmanMovingSince,
           lastDirection,
           aimX,
           aimY
@@ -1661,7 +1689,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
-    const meleeDamage = melee?.damage ?? 6;
+    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player); // キャラ固有: ストライカー弾切れ時×1.5
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
@@ -2286,6 +2314,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage);
+    get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy);
     }
@@ -3853,6 +3882,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
+  // キャラ固有スキル ヘビーガンナー(warrior): 同一攻撃で2体以上に当てたら3秒バフをarm。
+  // それ以外のキャラ/2体未満では何もしない(=set 抑止)。
+  registerMultiHit: (count) => {
+    const state = get();
+    if (state.player.characterClass !== 'warrior' || count < 2) return;
+    set(s => ({ player: { ...s.player, heavyGunnerExpBuffUntil: s.gameTime + 3000 } }));
+  },
+
   // Ammo
   addAmmo: (type, amount) => {
     set(state => {
@@ -4219,6 +4256,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         const fam = pickup.type.slice('ammo-'.length) as AmmoType;
         const amount = get().ammoPickupAmounts[fam];
         get().addAmmo(fam, amount);
+        // キャラ固有 スカベンジャー(necromancer): 弾薬取得で銃ダメージ+10%を3秒arm。
+        if (get().player.characterClass === 'necromancer') {
+          set(s => ({ player: { ...s.player, scavengerBuffUntil: s.gameTime + 3000 } }));
+        }
         // Floating "+N" over the player's head, cyan so it reads apart from
         // damage numbers.
         const p = get().player;
@@ -5275,6 +5316,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeapons: runSubs,
           skills: runSkills,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
+    scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},

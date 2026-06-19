@@ -26,7 +26,7 @@ import {
   WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
-  skillSummonHpMult
+  skillSummonHpMult, heavyGunnerExplosionMult
 } from '../store/gameStore';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -1981,8 +1981,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // グレネードランチャー(rifle-t3/タレットのランチャー弾)は別物で、着弾爆発の別経路で処理する。
           // スキル: エクスプローダー = 半径/ダメージ ×1.2(手榴弾も対象)。
           const grenadeExMult = skillExplosionMult(useGameStore.getState().player);
+          // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
+          const hgExMult = heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
           // 子グレネード(ボマー)は固有の半径/ダメージを持つ。未指定は通常の手榴弾値。
-          const blastR = (grenade.explodeRadius ?? HEAVY_GRENADE_RADIUS) * grenadeExMult;
+          const blastR = (grenade.explodeRadius ?? HEAVY_GRENADE_RADIUS) * grenadeExMult * hgExMult;
+          let hgHitCount = 0;
           const grenadeBaseDamage = grenade.damage || HEAVY_GRENADE_DAMAGE;
           const fxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
           spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
@@ -2000,6 +2003,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const falloff = 1 - dist / blastR;
             const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage);
+            hgHitCount += 1;
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
             spawnBurst(ex, ey, '#b91c1c', 4);
             if (
@@ -2026,6 +2030,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               });
             }
           }
+          useGameStore.getState().registerMultiHit(hgHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
         }
 
         // 発火ナイフ: 飛行中は敵に当たると刺さり(単体ダメージ)、2秒後に刺さった位置で範囲爆発。
@@ -2039,7 +2044,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (Date.now() < (knife.explodeAt ?? 0)) continue;
               const bx = knife.x + knife.width / 2;
               const by = knife.y + knife.height / 2;
-              const blastR = knife.area ?? FIRE_KNIFE_RADIUS_BY_LEVEL[1];
+              // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
+              const blastR = (knife.area ?? FIRE_KNIFE_RADIUS_BY_LEVEL[1]) * heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
+              let fkHitCount = 0;
               removeProjectile(knife.id);
               playSfx('bomb');
               spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
@@ -2057,6 +2064,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const falloff = 1 - dist / blastR;
                 const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, splashDamage);
+                fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
                 spawnBurst(ex, ey, '#b91c1c', 4);
                 if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
@@ -2068,6 +2076,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   addPickup({ id: `pickup-xp-fire-knife-${enemy.id}`, x: ex - 8, y: ey - 8, type: 'experience', value: enemy.experienceValue });
                 }
               }
+              useGameStore.getState().registerMultiHit(fkHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
               continue;
             }
             // 飛行中: 非リーパー敵への命中判定(1体目に刺さる)。
@@ -2474,8 +2483,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ) {
             grenadeExplodedThisFrame.add(projectileId);
             // スキル: エクスプローダー = 爆発の半径/ダメージ ×1.2。
+            // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
             const exMult = skillExplosionMult(skillPlayer);
-            const exRadius = GRENADE_BLAST_RADIUS * exMult;
+            const exRadius = GRENADE_BLAST_RADIUS * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime);
+            let glHitCount = 1; // 直撃した敵を含む
             const blastX = enemyForFx.x + enemyForFx.width / 2;
             const blastY = enemyForFx.y + enemyForFx.height / 2;
             spawnRing(blastX, blastY, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
@@ -2495,6 +2506,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
+              glHitCount += 1;
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit);
               spawnBurst(sx, sy, '#b91c1c', hitCrit ? 7 : 4);
               if (splashKilled) {
@@ -2510,6 +2522,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 });
               }
             }
+            useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
           }
 
           // スキル弾: explodeOnHit(ファイアシューター/ボムカウンター)の小爆発。
@@ -2518,7 +2531,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (projectile?.explodeOnHit && enemyForFx && !grenadeExplodedThisFrame.has(projectileId)) {
             grenadeExplodedThisFrame.add(projectileId);
             const exMult = skillExplosionMult(skillPlayer);
-            const exRadius = (projectile.explodeRadius ?? HEAVY_GRENADE_RADIUS) * exMult;
+            // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
+            const exRadius = (projectile.explodeRadius ?? HEAVY_GRENADE_RADIUS) * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime);
+            let exHitCount = 1; // 直撃した敵を含む
             const blastX = enemyForFx.x + enemyForFx.width / 2;
             const blastY = enemyForFx.y + enemyForFx.height / 2;
             spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -2537,6 +2552,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
+              exHitCount += 1;
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, false);
               if (splashKilled) {
                 playEnemyDeath();
@@ -2544,6 +2560,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 addPickup({ id: `pickup-xp-skillblast-${splashEnemy.id}`, x: sx - 8, y: sy - 8, type: 'experience', value: splashEnemy.experienceValue });
               }
             }
+            useGameStore.getState().registerMultiHit(exHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
           }
 
           // スキル: リコシェ = 通常銃弾命中時に20%で最寄りの別の敵へ ×0.5 の跳弾を1発。

@@ -12710,3 +12710,21 @@ slasherWindowUntil/setSlasherWindow は未使用化(無害・残置)。load 1/10
 - 旧「毎スイング自動追撃(v0.25.581)」「0.5s窓(発動不能)」は撤去。
 load 1/10(タップ時に敵1走査1パス)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.583 — キャラ固有スキル(特別枠)追加＋ショップからキャラ固有サブウェポン削除 (claude/cool-edison-7b8jrl)
+[Part1] 在ショップ(武器商人 ShopMenu)からキャラ固有サブウェポン(heavy-grenade/marksman-trap/
+striker-hunting/striker-quick-mag)を非表示に。campaign.ts に CHARACTER_SUBWEAPON_KEYS を新設し
+skillEntries で除外。キャラの初期サブウェポン保持/equip/武器開発は据え置き(社長指示は「ショップ」)。
+[Part2] キャラ固有スキル(特別枠・player.characterClass で自動有効・装備スキル枠を消費しない・ラン中不変)。
+  ・ストライカー(rogue): 装備銃が弾切れ(マガジン+リザーブ=0)で近接攻撃力 ×1.5。strikerMeleeMult を
+    triggerCounter/スラッシャー追撃の meleeDamage へ。
+  ・スカベンジャー(necromancer): 弾薬取得で3秒 銃ダメージ ×1.1。collectPickup で arm、fireWeapon の
+    素ダメージへ反映(scavengerGunMult)。
+  ・マークスマン(mage): 3秒以上連続移動で射程 ×1.1、停止で即解除。movePlayer で marksmanMovingSince 追跡、
+    fireWeapon の射程ゲートへ marksmanRangeMult。
+  ・ヘビーガンナー(warrior): 同一攻撃で2体以上ヒットで3秒 全爆発範囲 ×1.1。registerMultiHit(count>=2)で arm、
+    grenade/explodeOnHit/fire-knife/heavy-grenade/近接 の各サイトで heavyGunnerExplosionMult を半径へ。
+  ・新フィールド: scavengerBuffUntil / marksmanMovingSince / heavyGunnerExpBuffUntil(0初期化・resetでも0)。
+  ・キャラ選択UIに「固有スキル(自動)」行を追加(名=職名、説明=charSkillDesc)。
+load 1/10(全てイベント駆動 or 既存ループ相乗り。movePlayer の追跡はO(1)で既存setに同梱)。
+### Verification: tsc(exit0) + build 通過。

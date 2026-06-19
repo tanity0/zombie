@@ -397,6 +397,7 @@ export interface CharacterClassInfo {
   gear: string;
   skillKey: SubWeaponKey;
   skillDesc: string;
+  charSkillDesc: string; // キャラ固有スキル(職名そのまま=name)の効果説明。選択時に自動有効。
   portraitNudgeY: number;
   profile: string; // 資料室用の人物紹介(ドラフト)
 }
@@ -410,6 +411,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'ショットガン ＋ ハチェット',
     skillKey: 'heavy-grenade',
     skillDesc: '前方へ手榴弾を転がし、着弾で小範囲を爆破',
+    charSkillDesc: '同一攻撃で2体以上に当てると、3秒間すべての爆発範囲が10%広がる',
     portraitNudgeY: 2.7,
     profile: '近距離での制圧を得意とする重火力兵。群れに飛び込み、退路をこじ開ける。',
   },
@@ -421,6 +423,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'マグナム ＋ ナイフ',
     skillKey: 'marksman-trap',
     skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
+    charSkillDesc: '3秒以上移動を続けると射程が10%アップ。止まると解除',
     portraitNudgeY: 0,
     profile: '一撃の精度を信条とする狙撃手。トラップで戦場を区切り、確実に仕留める。',
   },
@@ -432,6 +435,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'ハンドガン ＋ ファイティングナイフ',
     skillKey: 'striker-hunting',
     skillDesc: '近接の間合いを広げる狩猟術(チャージで強化)',
+    charSkillDesc: '弾が切れた状態だと、近接攻撃力が1.5倍になる',
     portraitNudgeY: 0,
     profile: '接近戦に長けた前衛。狩猟術で間合いを支配し、変異体を捌き続ける。',
   },
@@ -443,9 +447,18 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'ハンドガン ＋ ハチェット',
     skillKey: 'striker-quick-mag',
     skillDesc: 'クイックリロードでマガジンを即装填',
+    charSkillDesc: '弾薬を拾うと、3秒間銃のダメージが10%アップする',
     portraitNudgeY: 0.7,
     profile: '物資の確保と継戦に強い拾い屋。素早い再装填で火力を切らさない。',
   },
+];
+
+// キャラ固有サブウェポン(各キャラの職スキル枠)。キャラ固有スキル化に伴い、ショップでは扱わない。
+export const CHARACTER_SUBWEAPON_KEYS: SubWeaponKey[] = [
+  'heavy-grenade',   // ヘビーガンナー
+  'marksman-trap',   // マークスマン
+  'striker-hunting', // ストライカー
+  'striker-quick-mag', // スカベンジャー
 ];
 
 // 装備選択(サブウェポン)で選べる候補。スキルショップ(武器開発)の陳列とも共通。

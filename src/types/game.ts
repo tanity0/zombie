@@ -89,6 +89,10 @@ export interface Player {
   knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
+  // キャラ固有スキル(characterClass で自動有効。装備スキル枠は消費しない)の状態フィールド。
+  scavengerBuffUntil: number;   // スカベンジャー(necromancer): 弾薬取得で銃ダメ+10%(gameTime)
+  marksmanMovingSince: number;  // マークスマン(mage): 連続移動の開始gameTime。0=停止中
+  heavyGunnerExpBuffUntil: number; // ヘビーガンナー(warrior): 同一攻撃2体以上で爆発範囲+10%(gameTime)
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
   // Whip (鞭) sub-weapon charge. Each whip hit increments whipHitCount; at the

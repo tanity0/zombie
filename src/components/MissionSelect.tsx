@@ -278,6 +278,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                     <div className="text-[12px] font-semibold leading-tight text-amber-200/90">{subWeaponDisplayName(c.skillKey)}</div>
                     <div className="text-[10px] leading-snug text-gray-300">{c.skillDesc}</div>
                   </div>
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider text-white/40">固有スキル（自動）</div>
+                    <div className="text-[12px] font-semibold leading-tight text-emerald-200/90">{c.name}</div>
+                    <div className="text-[10px] leading-snug text-gray-300">{c.charSkillDesc}</div>
+                  </div>
                 </div>
               </div>
               {selectedClass === c.id && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-300/80 shadow-[0_0_14px_rgba(147,197,253,0.9)]" />}
