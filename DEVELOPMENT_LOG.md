@@ -12806,3 +12806,8 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 入力経路は既存のまま(VirtualJoystick `release()` / Space keydown の firePhillShot 呼び出し)。SE/弾消費も既存ロジックを共有。
 - 影響範囲: `src/store/gameStore.ts` のみ。**Load score 1/10**(シム: 発砲時1回の分岐変更のみ。毎フレームコスト増なし)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.593 — ステージ2: クリアアイテムを少し遠くへ (claude/sweet-brown-bw8ixm)
+- 研究所スキン(屋外)のクリア書類(lab-document)の横方向距離を `1400 + rand*600`(1400〜2000) → `2000 + rand*600`(2000〜2600) に拡大(`gameStore.ts` reset の labDoc)。
+- ガード(Lv3/2/1)は labDoc 相対配置、画面端マーカーも書類位置参照なので自動追従。変更は1値のみ。
+- 影響範囲: `src/store/gameStore.ts` のみ。**Load score 1/10**(初期配置の定数変更のみ・実行コスト増なし)。

@@ -5293,7 +5293,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const labDoc = (stageTheme === 'lab' && !indoor)
         ? (() => {
             const side = Math.random() < 0.5 ? -1 : 1;       // 左(-1)か右(+1)
-            const x = side * (1400 + Math.random() * 600);   // 端の方(原点から遠い横方向)
+            const x = side * (2000 + Math.random() * 600);   // 端の方(原点から遠い横方向。少し遠めへ)
             const y = -400 + Math.random() * 800;            // 縦は帯の範囲内
             return { x, y, side };
           })()
