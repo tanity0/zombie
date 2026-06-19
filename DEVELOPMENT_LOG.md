@@ -13041,3 +13041,7 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 3. 救助成功報酬: 生存人数で **トレジャー1個(価値=生存人数) ＋ スクラップ=生存人数×20** を worldDrop(撤収地点)。旧・経験ジェムは廃止。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.627 — ゴールド換算を /3000→/2000 (claude/sweet-brown-bw8ixm)
+`goldEarned = floor(totalScore / 2000)`(社長指示・3000→2000で取得ゴールド増)。**Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

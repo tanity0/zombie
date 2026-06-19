@@ -43,6 +43,6 @@ export const calculateResultScore = (
     timeBonus,
     clearBonus,
     totalScore,
-    goldEarned: Math.floor(totalScore / 3000),
+    goldEarned: Math.floor(totalScore / 2000),
   };
 };
