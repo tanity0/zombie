@@ -12750,3 +12750,12 @@ load 1/10(既存プロジェクタイル経路を流用・1ショット1静止�
 - 新フィールド: phillReticleDX/phillReticleDY/phillSnapEnemyId(0/null初期化)。PHILL_AIM_RANGE/PHILL_SNAP_RADIUS定数化。
 load 1/10(PHILL有効時のみ敵≤cap走査/フレーム。描画・発砲は既存経路流用)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.586 — 照準サークル(PHILL/アンカー)を環境光の影響外に (claude/cool-edison-7b8jrl)
+PHILL狙いサークル＋ワイヤーアンカーのプレビュー円を、playerFx(effectLayer=filteredWorld内・暗転/
+tilt-shift/bloom が乗る)から新規 reticleGfx へ分離し danceUiLayer に配置。danceUiLayer は
+filteredWorld の外＝フィルタ/暗転(環境光)が乗らず、world座標で追従(camera同期は既存 1519)。
+→ 暗い場所でもサークルが減光・ボケせず常に視認可能。
+他の playerFx 描画(カウンター/リロード/ワイヤー線・先端)は据え置き。
+load 1/10(描画数は不変・レイヤー移動のみ)。
+### Verification: tsc(exit0) + build 通過。

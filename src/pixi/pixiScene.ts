@@ -587,6 +587,9 @@ export class PixiScene {
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
+  // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。danceUiLayer(filteredWorld外＝
+  // tilt-shift/bloom も暗転/環境光も乗らない・world座標追従)に置き、環境光の影響を受けない。
+  private reticleGfx = new Graphics();
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
@@ -867,6 +870,8 @@ export class PixiScene {
     this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlow, this.eventNpcSprite);
 
     this.L.effectLayer.addChild(this.playerFx);
+    // 照準サークルは環境光/フィルタ外の danceUiLayer へ(world座標で追従)。
+    this.L.danceUiLayer.addChild(this.reticleGfx);
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
       this.localEventShadeGfx,
@@ -4761,6 +4766,8 @@ export class PixiScene {
   private syncPlayerFx(player: Player, now: number, gameTime: number) {
     const g = this.playerFx;
     g.clear();
+    const rg = this.reticleGfx; // 照準サークル専用(環境光の影響を受けない層)
+    rg.clear();
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
     const r = huntingMeleeRadius(player);
@@ -4813,8 +4820,8 @@ export class PixiScene {
         // store の打ち込み地点(=center+aim*RANGE)と一致。クールダウン中は非表示(撃てないことを明示)。
         const px = cx + player.aimX * WIRE_ANCHOR_RANGE;
         const py = cy + player.aimY * WIRE_ANCHOR_RANGE;
-        g.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: 0.7 });
-        g.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: 0.7 });
+        rg.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: 0.7 });
+        rg.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: 0.7 });
       }
     }
     // PHILL銃: アクティブ銃が phill-revolver のとき、狙いサークル(赤橙レティクル)を前方に表示。
@@ -4832,10 +4839,10 @@ export class PixiScene {
         const snapped = player.phillSnapEnemyId != null;
         const ringColor = snapped ? 0x34d399 : 0xf97316; // 緑=ヘッドショット狙撃可 / 橙=通常
         const dotColor = snapped ? 0xa7f3d0 : 0xfca5a5;
-        g.circle(ax, ay, snapped ? 11 : 9).stroke({ width: snapped ? 2.5 : 2, color: ringColor, alpha: a });
-        g.circle(ax, ay, 3).fill({ color: dotColor, alpha: a });
+        rg.circle(ax, ay, snapped ? 11 : 9).stroke({ width: snapped ? 2.5 : 2, color: ringColor, alpha: a });
+        rg.circle(ax, ay, 3).fill({ color: dotColor, alpha: a });
         // 照準の十字(小)。
-        g.moveTo(ax - 13, ay).lineTo(ax - 6, ay).moveTo(ax + 6, ay).lineTo(ax + 13, ay)
+        rg.moveTo(ax - 13, ay).lineTo(ax - 6, ay).moveTo(ax + 6, ay).lineTo(ax + 13, ay)
           .moveTo(ax, ay - 13).lineTo(ax, ay - 6).moveTo(ax, ay + 6).lineTo(ax, ay + 13)
           .stroke({ width: 1.5, color: ringColor, alpha: a * 0.8 });
       }
@@ -5115,6 +5122,7 @@ export class PixiScene {
     for (const o of this.effects.values()) o.destroy();
     this.shadowGfx.destroy();
     this.playerFx.destroy();
+    this.reticleGfx.destroy();
     this.flashGfx.destroy();
     this.arrowGfx.destroy();
     this.L.farBackdrop.destroy();
