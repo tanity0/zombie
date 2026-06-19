@@ -13022,3 +13022,9 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 - rescue 中の通常敵上限はイベント攻撃者(fromEvent)を除いた数で判定(通常密度維持)、enemyCap は `MAX_ENEMIES+RESCUE_ATTACKERS` で攻撃者がカリングされない。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.624 — パニッシャーは1次まで(連鎖なし) / ジャンプ・ダッシュ中は不可中断 (claude/sweet-brown-bw8ixm)
+- **パニッシャー連鎖なし**: 巻き込まれて飛んだ敵に `punisherHopped` 印を付け、movers から除外=2次以降に連鎖しない(1次まで)。ノックバックが切れたら印を解除(再び直接KBされれば巻き込み元に戻れる)。
+- **ジャンプ/ダッシュの不可中断**: `committed = aiPhase==='jump'||'charge'` の間は通常の気絶/ノックバック/リフトを受け付けず**モーションを全う**(ダメージは受ける)。溜め(crouch)/ダッシュ溜め(windup)は committed でない=**気絶/ノックバックで中断可**。カウンター(パリィ)は aiPhase を解除してから弾くので committed ガードに掛からず機能。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

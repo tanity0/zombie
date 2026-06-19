@@ -223,6 +223,8 @@ export interface Enemy {
   // ジャイアントバットの行動パターン別クールダウン(gameTime ms)。弾(fire profile)とは別系統。
   gbJumpReadyAt?: number;
   gbDashReadyAt?: number;
+  // パニッシャーで「巻き込まれて」ノックバックした敵の印。これ以上は連鎖させない(1次まで)。
+  punisherHopped?: boolean;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;

@@ -3765,9 +3765,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, labWallRects)
             : torchR;
         };
+        // 攻撃モーションを「全う」する不可中断フェーズ: ジャンプ中(空中)とダッシュ突進中。
+        // この間は通常の気絶/ノックバック/リフトを受け付けず、モーションを完了する(ダメージは別経路で受ける)。
+        // 溜め(crouch)/ダッシュ溜め(windup)は committed ではない=気絶/ノックバックで中断できる(社長指示)。
+        // カウンター(パリィ)は aiPhase を解除してから弾くので、この committed ガードに引っかからず機能する。
+        const committed = enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge';
+
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
-        if (enemy.knockbackUntil && now < enemy.knockbackUntil) {
+        if (!committed && enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
           const kb = resolveMove(
@@ -3779,13 +3785,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
-        if (enemy.liftUntil !== undefined && now < enemy.liftUntil) {
+        if (!committed && enemy.liftUntil !== undefined && now < enemy.liftUntil) {
           return { ...enemy, vx: 0, vy: 0 };
         }
 
         // Stun (from a crit) freezes the enemy in place — it's a sitting duck
         // for a melee finisher. gameTime-based so pauses don't cheat the timer.
-        if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
+        if (!committed && enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
           // 気絶したら、突進/ジャンプ等の特殊挙動(aiPhase)を必ずリセットして「着地・静止」させる。
           // パンプキンのジャンプ準備/ジャンプ中、werewolf の溜め/突進、今後の特殊敵も aiPhase 基準で同様にキャンセル。
           if (enemy.aiPhase !== undefined) {
@@ -3958,35 +3964,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
 
       // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック＋近接ダメージの半分)。
+      // ただし「巻き込まれて」飛んだ敵(punisherHopped)は movers から除外=連鎖しない(1次まで・社長指示)。
       let finalEnemies = updatedEnemies;
       if (hasSkill(player, 'punisher')) {
         const melee = player.weapons.find(w => w.isMelee);
         punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * 0.5)); // 近接の半分
         const movers = updatedEnemies.filter(e =>
-          e.knockbackUntil !== undefined && now < e.knockbackUntil &&
+          e.knockbackUntil !== undefined && now < e.knockbackUntil && !e.punisherHopped &&
           Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
-        if (movers.length > 0) {
-          finalEnemies = updatedEnemies.map(b => {
-            if (b.type === 'reaper') return b;
-            if (b.knockbackUntil !== undefined && now < b.knockbackUntil) return b; // 既にKB中は二重適用しない
-            for (const a of movers) {
-              if (a.id === b.id) return b;
-              if (!rectsOverlap(
-                { x: a.x, y: a.y, width: a.width, height: a.height },
-                { x: b.x, y: b.y, width: b.width, height: b.height },
-              )) continue;
-              const d = Math.max(0.001, Math.hypot(a.knockbackVx ?? 0, a.knockbackVy ?? 0));
-              punisherHits.push(b.id); // ダメージは set 後に damageEnemy で適用(死亡処理を正規経路に乗せる)
-              return {
-                ...b,
-                knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * 2,
-                knockbackVy: ((a.knockbackVy ?? 0) / d) * KNOCKBACK_SPEED * 2,
-                knockbackUntil: now + KNOCKBACK_DURATION,
-              };
-            }
-            return b;
-          });
-        }
+        finalEnemies = updatedEnemies.map(b => {
+          const bKbActive = b.knockbackUntil !== undefined && now < b.knockbackUntil;
+          // ノックバックが切れたら hop 印を解除(次に直接ノックバックされたら再び巻き込み元になれる)。
+          const cleared = (b.punisherHopped && !bKbActive) ? { ...b, punisherHopped: false } : b;
+          if (cleared.type === 'reaper' || bKbActive) return cleared; // KB中(被弾側/連鎖元)は新規付与しない
+          for (const a of movers) {
+            if (a.id === cleared.id) continue;
+            if (!rectsOverlap(
+              { x: a.x, y: a.y, width: a.width, height: a.height },
+              { x: cleared.x, y: cleared.y, width: cleared.width, height: cleared.height },
+            )) continue;
+            const d = Math.max(0.001, Math.hypot(a.knockbackVx ?? 0, a.knockbackVy ?? 0));
+            punisherHits.push(cleared.id); // ダメージは set 後に damageEnemy で適用(死亡処理を正規経路に)
+            return {
+              ...cleared,
+              punisherHopped: true, // 連鎖防止の印
+              knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * 2,
+              knockbackVy: ((a.knockbackVy ?? 0) / d) * KNOCKBACK_SPEED * 2,
+              knockbackUntil: now + KNOCKBACK_DURATION,
+            };
+          }
+          return cleared;
+        });
       }
 
       return { enemies: finalEnemies, pumpkinBlasts };
