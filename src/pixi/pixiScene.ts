@@ -3811,11 +3811,15 @@ export class PixiScene {
     g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
     g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
     // rescue: ホールド進捗を外周の円弧で表示(上端始点・時計回り)。
+    // ※ arc の前に開始点へ moveTo しないと、直前に描いた円の終点から弧開始点まで
+    //   直線が引かれてしまう(地面を横切る線として見える)。必ず moveTo してから arc。
     if (ae.kind === 'rescue') {
       const frac = Math.max(0, Math.min(1, (ae.holdMs ?? 0) / RESCUE_HOLD_NEED_MS));
       if (frac > 0) {
         const start = -Math.PI / 2;
-        g.arc(ae.x, ae.y, ae.radius + 5, start, start + Math.PI * 2 * frac)
+        const rr = ae.radius + 5;
+        g.moveTo(ae.x + Math.cos(start) * rr, ae.y + Math.sin(start) * rr)
+          .arc(ae.x, ae.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
       }
     }

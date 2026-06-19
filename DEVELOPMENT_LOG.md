@@ -12873,3 +12873,10 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - pixiScene: `updateMarksmanRangeMark`(effectLayer・加算)。`marksmanRangeFxAt` 起点に life650ms でフラッシュ→フェード。射程倍率(marksmanRangeMult)の判定は不変=描画のみ。
 - **Load score 1/10**(毎フレ1枚のGraphics描画は発動後650msのみ・通常はclearのみ)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.601 — 救助イベント: 進捗円弧の不要な線を修正 / NPC射撃音(接近時) (claude/sweet-brown-bw8ixm)
+1. **バグ修正**: ホールド進捗円弧(`syncArena`)が、直前の円描画の終点から弧開始点まで直線で繋がれ「地面を横切る白線」が出ていた。`arc` の前に開始点へ `moveTo` して解消(円弧自体は不変)。
+2. **NPC射撃音**: 救助NPC(shooter)発砲時にハンドガンSEを再生。**サークル中心から `radius+320px` 以内のときだけ**鳴らす。誰かが撃ったら1フレーム1発(同時多発でも重ねない)。
+   - store: `rescueShooterFxAt`(Date.now)を updateRescue で shooter発砲フレームにセット。useGameLoop が既存のFXタイムスタンプ検出パターンで距離判定＋`playSfx('handgun-fire')`。
+- **Load score 1/10**(SE発火は最大~3発/秒・距離ゲートあり。描画修正はコスト不変)。
+### Verification: `npx tsc --noEmit` exit:0。

@@ -232,6 +232,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
+  const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -3283,6 +3284,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const gs = useGameStore.getState();
           if (gs.bashHitFxAt > bashHitFxRef.current) { bashHitFxRef.current = gs.bashHitFxAt; playSfx('heavy-impact'); }
+          // 救助NPC(shooter)の発砲音: サークル接近時のみ(誰かが撃ったら1フレーム1発)。
+          if (gs.rescueShooterFxAt > rescueShootFxRef.current) {
+            rescueShootFxRef.current = gs.rescueShooterFxAt;
+            const rae = gs.activeEvent;
+            if (rae && rae.kind === 'rescue') {
+              const px = gs.player.x + gs.player.width / 2, py = gs.player.y + gs.player.height / 2;
+              const audible = rae.radius + 320;
+              if ((px - rae.x) ** 2 + (py - rae.y) ** 2 < audible * audible) playSfx('handgun-fire');
+            }
+          }
           if (gs.whipSwingFxAt > whipSwingFxRef.current) { whipSwingFxRef.current = gs.whipSwingFxAt; playSfx('whip-swing'); }
           if (gs.whipHitFxAt > whipHitFxRef.current) { whipHitFxRef.current = gs.whipHitFxAt; playSfx('whip-hit'); }
           if (gs.anchorPlantFxAt > anchorPlantFxRef.current) { anchorPlantFxRef.current = gs.anchorPlantFxAt; playSfx('anchor-plant'); }

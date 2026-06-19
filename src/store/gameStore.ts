@@ -1044,6 +1044,7 @@ interface GameState {
   // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
   marksmanRangeFxAt: number;
   marksmanRangeFxShownFor: number;
+  rescueShooterFxAt: number;  // 救助NPC(shooter)が発砲した時刻(Date.now)。サークル接近時のハンドガンSE用。
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
@@ -1395,6 +1396,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   boomerangReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
+  rescueShooterFxAt: 0,
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
@@ -4085,7 +4087,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return next;
     });
-    set({ rescueSurvivors: moved });
+    set({ rescueSurvivors: moved, ...(shooterShots.length > 0 ? { rescueShooterFxAt: now } : {}) });
     for (const c of contactDamage) {
       if (c.id.startsWith('rescue-')) get().damageRescueSurvivor(c.id, c.amount);
       else get().damageEnemy(c.id, c.amount);
