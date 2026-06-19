@@ -3854,6 +3854,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・直進(目標固定なので曲がらない)
             const cvx = (cdx / cdist) * cs, cvy = (cdy / cdist) * cs;
             const moved = resolveMove(enemy.x + cvx * deltaTime, enemy.y + cvy * deltaTime);
+            // 盾にぶつかったら突進をキャンセル(その場で停止・クールダウンへ)。
+            if (shieldRects.length > 0 &&
+                shieldRects.some(s => rectsOverlap({ x: moved.x, y: moved.y, width: enemy.width, height: enemy.height }, s))) {
+              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS };
+            }
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
           }
           if (enemy.aiPhase === 'windup') {

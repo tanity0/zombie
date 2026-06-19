@@ -13070,3 +13070,8 @@ health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HP�
 - **緑の卵(mine)除外**: 武器商人/イベントNPC(2人)のサークル内(radius+24)には mine を生成しない(`syncBreakableProps`)。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.632 — ダッシュ攻撃も盾でキャンセル (claude/sweet-brown-bw8ixm)
+突進(charge)中に設置シールドへ重なったら突進をキャンセル=その場で停止しクールダウンへ(`shieldRects` overlap)。ジャンプ(落ちる)に続きダッシュも対応。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。
