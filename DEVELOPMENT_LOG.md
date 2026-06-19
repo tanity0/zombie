@@ -12737,3 +12737,16 @@ load 1/10(全てイベント駆動 or 既存ループ相乗り。movePlayer の�
    乗っていればヘッドショット(crit)。着弾リングFXを追加。弾道移動は廃止。
 load 1/10(既存プロジェクタイル経路を流用・1ショット1静止弾)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.585 — PHILL: トグル廃止＋狙いサークルの頭吸い付き/スナップ即ヘッドショット (claude/cool-edison-7b8jrl)
+- v0.25.584の「スロットのトグル」を廃止(銃スロットは従来どおりタップで持ち替え)。
+- 通常PHILLに追加:
+  ・吸い付き: 狙いサークル(基準=player中心+aim×190)が敵の頭(PHILL_SNAP_RADIUS=46px内)に近づくと
+    その頭中心へスナップ。movePlayer が毎フレーム算出し、phillReticleDX/DY/phillSnapEnemyId に格納。
+    描画(緑リング=スナップ中/橙=通常)と発砲が同じ結果を共有。
+  ・スナップ中に手を離す(発砲)= 即射撃・即被弾: 敵の頭中心に静止phill-bulletを置き既存頭部判定で
+    確定ヘッドショット。通常弾は出さない。
+  ・非スナップ時は通常通り弾を飛ばす(従来挙動)。
+- 新フィールド: phillReticleDX/phillReticleDY/phillSnapEnemyId(0/null初期化)。PHILL_AIM_RANGE/PHILL_SNAP_RADIUS定数化。
+load 1/10(PHILL有効時のみ敵≤cap走査/フレーム。描画・発砲は既存経路流用)。
+### Verification: tsc(exit0) + build 通過。

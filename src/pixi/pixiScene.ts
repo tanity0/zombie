@@ -4822,19 +4822,22 @@ export class PixiScene {
     {
       const phill = player.weapons.find(w => w.id === player.activeWeaponId);
       if (phill?.key === 'phill-revolver') {
-        // 照準サークルは store の慣性付き aim(向き×傾き強度)に揃える。弾も同じ aim 方向へ撃つ
-        // ので、サークル位置と弾道が一致する(慣性は movePlayer 側で付与)。
-        const ax = cx + player.aimX * 190; // 190=PHILL_AIM_RANGE。aim 長(0..1)で距離も可変。
-        const ay = cy + player.aimY * 190;
+        // 照準サークルは movePlayer が算出した「吸い付き済み」オフセットに揃える(発砲と完全一致)。
+        // 頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
+        const ax = cx + player.phillReticleDX;
+        const ay = cy + player.phillReticleDY;
         const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
         const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
-        const a = (onCd || reloading) ? 0.2 : 0.85;
-        g.circle(ax, ay, 9).stroke({ width: 2, color: 0xf97316, alpha: a });          // 外リング(橙)
-        g.circle(ax, ay, 3).fill({ color: 0xfca5a5, alpha: a });                        // 中心ドット(赤)
+        const a = (onCd || reloading) ? 0.2 : 0.9;
+        const snapped = player.phillSnapEnemyId != null;
+        const ringColor = snapped ? 0x34d399 : 0xf97316; // 緑=ヘッドショット狙撃可 / 橙=通常
+        const dotColor = snapped ? 0xa7f3d0 : 0xfca5a5;
+        g.circle(ax, ay, snapped ? 11 : 9).stroke({ width: snapped ? 2.5 : 2, color: ringColor, alpha: a });
+        g.circle(ax, ay, 3).fill({ color: dotColor, alpha: a });
         // 照準の十字(小)。
         g.moveTo(ax - 13, ay).lineTo(ax - 6, ay).moveTo(ax + 6, ay).lineTo(ax + 13, ay)
           .moveTo(ax, ay - 13).lineTo(ax, ay - 6).moveTo(ax, ay + 6).lineTo(ax, ay + 13)
-          .stroke({ width: 1.5, color: 0xf97316, alpha: a * 0.8 });
+          .stroke({ width: 1.5, color: ringColor, alpha: a * 0.8 });
       }
     }
     // ドローンブーメランのクールダウンサークルは廃止(復帰時に頭上マーク+SEで通知=updateBoomerangReadyMark)。

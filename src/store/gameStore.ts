@@ -31,6 +31,7 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+import { enemyFootBox } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
@@ -201,6 +202,9 @@ export const huntingMeleeRadius = (player: Player): number => {
 // hostile projectile that hits the player during the window is reflected.
 export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
 export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
+// PHILL銃の狙いサークル: 距離(レティクルの前方距離)と「吸い付き」半径(この距離内に頭があればスナップ)。
+export const PHILL_AIM_RANGE = 190;
+export const PHILL_SNAP_RADIUS = 46;
 // レベルアップ時に周辺の敵を強制的に押しのける(2倍ノックバック相当)。アップグレードメニューで
 // 即ポーズするため velocity だと失効する → 位置を即時に動かす(menu を跨いでも効く)。
 export const LEVELUP_KNOCKBACK_RADIUS = 240;   // 押しのける範囲(プレイヤー中心)
@@ -1346,6 +1350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     skills: [],
     fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
+    phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
@@ -1626,6 +1631,34 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
+
+      // PHILL銃: 狙いサークルの「吸い付き」。基準=プレイヤー中心+aim×190。近い敵の頭(SNAP半径内)が
+      // あればその頭中心へスナップ。発砲(firePhillShot)と描画(pixiScene)はこの結果を共有する。
+      let phillReticleDX = player.phillReticleDX;
+      let phillReticleDY = player.phillReticleDY;
+      let phillSnapEnemyId: string | null = null;
+      if (getActiveGun(player)?.key === 'phill-revolver') {
+        const rcx = newX + player.width / 2;
+        const rcy = newY + player.height / 2;
+        const hasAim = Math.hypot(aimX, aimY) > 0.001;
+        const dirx = hasAim ? aimX : (lastDirection?.x ?? 1);
+        const diry = hasAim ? aimY : (lastDirection?.y ?? 0);
+        const scale = hasAim ? PHILL_AIM_RANGE : PHILL_AIM_RANGE / Math.max(0.001, Math.hypot(dirx, diry));
+        const baseX = rcx + dirx * scale;
+        const baseY = rcy + diry * scale;
+        let bestD2 = PHILL_SNAP_RADIUS * PHILL_SNAP_RADIUS;
+        let snapX = baseX, snapY = baseY;
+        for (const e of state.enemies) {
+          if (e.type === 'reaper') continue;
+          const fb = enemyFootBox(e);
+          const hx = fb.footX;
+          const hy = fb.footY - fb.boxH * 0.83; // 頭部リージョン中心の目安(HEAD_FRACTION=0.33)
+          const d2 = (hx - baseX) ** 2 + (hy - baseY) ** 2;
+          if (d2 <= bestD2) { bestD2 = d2; snapX = hx; snapY = hy; phillSnapEnemyId = e.id; }
+        }
+        phillReticleDX = snapX - rcx;
+        phillReticleDY = snapY - rcy;
+      }
       return {
         ...(pushedProjectiles ? { projectiles: pushedProjectiles } : {}),
         player: {
@@ -1637,6 +1670,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           direction,
           isMoving,
           marksmanMovingSince,
+          phillReticleDX,
+          phillReticleDY,
+          phillSnapEnemyId,
           lastDirection,
           aimX,
           aimY
@@ -3187,34 +3223,53 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
     if (now - weapon.lastFired < (weapon.cooldown ?? 1000)) return;
-    // 「サークル内に即被弾」: 弾を飛ばさず、狙いサークルの位置に当たり判定を即時発生させる。
-    // = 静止・短命の phill-bullet を「レティクル位置」に置く。既存の頭部/胴体コリジョンがそこで
-    //   解決され、頭にサークルが乗っていればヘッドショット(crit)になる。弾道の移動は無し。
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
-    const PHILL_AIM_RANGE = 190; // pixiScene のレティクル距離と一致させる
-    const hasAim = Math.hypot(player.aimX, player.aimY) > 0.001;
-    const aimx = hasAim ? player.aimX : (player.lastDirection?.x ?? 1);
-    const aimy = hasAim ? player.aimY : (player.lastDirection?.y ?? 0);
-    // aim は 0..1 の慣性ベクトル(レティクルは raw aim×190)。idle フォールバックのみ正規化。
-    const reach = hasAim ? PHILL_AIM_RANGE : PHILL_AIM_RANGE / Math.max(0.001, Math.hypot(aimx, aimy));
-    const rx = pcx + aimx * reach;
-    const ry = pcy + aimy * reach;
-    const size = 16; // レティクル(外リング半径~9)相当のヒット範囲。頭/胴に重なれば命中。
-    get().addProjectile({
-      id: `proj-phill-${now}`,
-      x: rx - size / 2,
-      y: ry - size / 2,
-      width: size, height: size, speed: 0, // 静止=即時にその場で被弾判定
-      damage: weapon.damage, // クリ(ヘッドショット)は命中位置で確定付与
-      direction: { x: aimx, y: aimy },
-      weaponType: 'phill-bullet',
-      weaponKey: weapon.key,
-      duration: 60, createdAt: now, // 1〜数フレームで消滅(置きっぱなしの当たり残りを防ぐ)
-      passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
-    });
-    // 着弾サークルのフラッシュ(即被弾の視認性)。
-    get().spawnRing(rx, ry, 4, 16, 'rgba(249,115,22,0.9)', 2, 200);
+    // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
+    const snapEnemy = player.phillSnapEnemyId != null
+      ? get().enemies.find(e => e.id === player.phillSnapEnemyId)
+      : undefined;
+    if (snapEnemy) {
+      // サークルが頭に乗った状態 → 即射撃・即被弾(ヘッドショット)。通常弾は出さない。
+      // 発砲時点の敵の頭中心へ静止・短命の phill-bullet を置き、既存の頭部コリジョンで確定ヘッドショット。
+      const fb = enemyFootBox(snapEnemy);
+      const hx = fb.footX;
+      const hy = fb.footY - fb.boxH * 0.83;
+      const size = 16;
+      get().addProjectile({
+        id: `proj-phill-${now}`,
+        x: hx - size / 2,
+        y: hy - size / 2,
+        width: size, height: size, speed: 0,
+        damage: weapon.damage,
+        direction: { x: 0, y: -1 },
+        weaponType: 'phill-bullet',
+        weaponKey: weapon.key,
+        duration: 60, createdAt: now,
+        passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+      });
+      get().spawnRing(hx, hy, 4, 18, 'rgba(52,211,153,0.95)', 2, 220); // 緑=ヘッドショット
+    } else {
+      // それ以外は通常通り射撃(レティクル方向へ弾を飛ばす)。
+      const hasAim = Math.hypot(player.aimX, player.aimY) > 0.001;
+      const dirx = hasAim ? player.aimX : (player.lastDirection?.x ?? 1);
+      const diry = hasAim ? player.aimY : (player.lastDirection?.y ?? 0);
+      const dl = Math.max(0.001, Math.hypot(dirx, diry));
+      const size = weapon.projectileSize || 9;
+      const speed = (weapon.projectileSpeed || 640) * 1.5;
+      get().addProjectile({
+        id: `proj-phill-${now}`,
+        x: pcx - size / 2,
+        y: pcy - size / 2,
+        width: size, height: size, speed,
+        damage: weapon.damage,
+        direction: { x: dirx / dl, y: diry / dl },
+        weaponType: 'phill-bullet',
+        weaponKey: weapon.key,
+        duration: 1400, createdAt: now,
+        passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+      });
+    }
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
     set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
     if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
@@ -5326,6 +5381,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           skills: runSkills,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
+    phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},

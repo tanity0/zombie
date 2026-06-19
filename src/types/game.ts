@@ -93,6 +93,11 @@ export interface Player {
   scavengerBuffUntil: number;   // スカベンジャー(necromancer): 弾薬取得で銃ダメ+10%(gameTime)
   marksmanMovingSince: number;  // マークスマン(mage): 連続移動の開始gameTime。0=停止中
   heavyGunnerExpBuffUntil: number; // ヘビーガンナー(warrior): 同一攻撃2体以上で爆発範囲+10%(gameTime)
+  // PHILL銃の狙いサークル(レティクル)の吸い付き。プレイヤー中心からのオフセット(px)＋スナップ中の敵ID。
+  // movePlayer が毎フレーム算出 → 描画(pixiScene)と発砲(firePhillShot)で共有。
+  phillReticleDX: number;
+  phillReticleDY: number;
+  phillSnapEnemyId: string | null;
   huntingChargeStartedAt: number;
   huntingCharged: boolean;
   // Whip (鞭) sub-weapon charge. Each whip hit increments whipHitCount; at the

@@ -294,20 +294,7 @@ const GameHUD: React.FC = () => {
                 return (
                   <button
                     key={gun.id}
-                    onClick={() => {
-                      // PHILL銃スロットはトグル: 有効中にタップで直前の通常銃へ戻る/それ以外はPHILLへ。
-                      // 他の銃は従来どおり「タップで持ち替え」。
-                      if (gun.category === 'phill') {
-                        if (active) {
-                          const other = guns.find(g => g.category !== 'phill');
-                          if (other) setActiveWeapon(other.id);
-                        } else {
-                          setActiveWeapon(gun.id);
-                        }
-                      } else {
-                        setActiveWeapon(gun.id);
-                      }
-                    }}
+                    onClick={() => setActiveWeapon(gun.id)}
                     className={`pointer-events-auto flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors ${
                       active ? 'bg-amber-500/25 ring-2 ring-amber-400/70' : 'bg-white/5 opacity-70'
                     }`}
