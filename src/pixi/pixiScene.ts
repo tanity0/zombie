@@ -562,6 +562,9 @@ export class PixiScene {
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
   private alchemyCircleTextured = false;
+  // 城フィナーレボスの出現魔法陣(錬金と同じ magic-circle テクスチャを流用)。bossSummonAt 起点に短時間表示。
+  private castleSummonCircle = new Sprite();
+  private castleSummonTextured = false;
   // 鞭ハリケーン: 吸引中心に立つ竜巻スプライト。store の hurricane 状態で駆動。
   private whipHurricane = new Sprite();
   private whipHurricaneTextured = false;
@@ -815,6 +818,12 @@ export class PixiScene {
     this.alchemyCircle.blendMode = 'add';
     this.alchemyCircle.alpha = 0;
     this.alchemyCircle.visible = false;
+    // 城ボスの出現魔法陣も同様(加算発光・中心アンカー・既定非表示)。城の足元の地面に置く。
+    this.castleSummonCircle.anchor.set(0.5);
+    this.castleSummonCircle.blendMode = 'add';
+    this.castleSummonCircle.alpha = 0;
+    this.castleSummonCircle.visible = false;
+    this.castleSummonCircle.tint = 0xfca5a5; // 城ボスは赤系(錬金のシアンと差別化)
     // tint は付けない: テクスチャに焼いたシアン→白ホットの階調をそのまま活かす。
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
@@ -823,6 +832,7 @@ export class PixiScene {
       this.playerGroundPool,
       this.playerLight,
       this.alchemyCircle,
+      this.castleSummonCircle,
       this.shadowContainer,
     );
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
@@ -2117,6 +2127,28 @@ export class PixiScene {
     this.castleGlow.width = targetH * 1.35;
     this.castleGlow.height = targetH * 0.9;
     this.castleGlow.alpha = castle.bossSpawned ? 0.14 + 0.08 * pulse : 0;
+
+    // 出現魔法陣(錬金と同じ magic-circle テクスチャ)を城の足元に短時間表示(拡大しながらフェードアウト)。
+    const SUMMON_MS = 1100;
+    const sc2 = this.castleSummonCircle;
+    const t = castle.bossSummonAt ? (now - castle.bossSummonAt) / SUMMON_MS : 1;
+    if (castle.bossSummonAt && t >= 0 && t < 1) {
+      if (!this.castleSummonTextured) {
+        const mtex = getTexture('magic-circle');
+        if (mtex) { sc2.texture = mtex; this.castleSummonTextured = true; }
+      }
+      if (this.castleSummonTextured) {
+        const size = (160 + 120 * t) * d;       // 拡大
+        sc2.visible = true;
+        sc2.position.set(castle.x, castleFootScreenY);
+        sc2.width = sc2.height = size;
+        sc2.alpha = (1 - t) * 0.95;             // フェードアウト
+        sc2.rotation = t * 1.2;                 // ゆっくり回転
+      }
+    } else if (sc2.visible) {
+      sc2.visible = false;
+      sc2.alpha = 0;
+    }
   }
 
   private syncMerchant(merchant: WeaponMerchant, player: Player, now: number) {

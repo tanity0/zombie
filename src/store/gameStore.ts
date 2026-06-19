@@ -3957,6 +3957,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       castleEvent: {
         ...state.castleEvent,
         bossSpawned: true,
+        bossSummonAt: Date.now(), // 魔法陣演出(錬金と同じ)の開始時刻
       },
     }));
   },

@@ -519,6 +519,7 @@ export interface CastleEvent {
   x: number;
   y: number;
   bossSpawned: boolean;
+  bossSummonAt?: number; // ボス出現の魔法陣演出を再生する Date.now(ms)。描画(pixiScene)が参照。
 }
 
 // 囲い系イベント(小イベント=短時間の強制アリーナ戦/ミニボス戦)。

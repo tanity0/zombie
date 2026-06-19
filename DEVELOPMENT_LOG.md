@@ -12857,3 +12857,12 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 報酬は仮置き(生存人数×経験ジェム3)。数値は決め打ち(半径150/25秒/逃走40/トリガー120/反発30/攻撃者3)で実機調整前提。
 - **Load score 1〜2/10**(イベント制・NPC最大3＋攻撃者3。毎フレ処理は軽量・新規確保なし)。将来「目的地へ向かう護衛」へ拡張可(座標データ駆動・カイトAI流用)。
 ### Verification: `npx tsc --noEmit` exit:0(import漏れ目視確認: RESCUE_HOLD_NEED_MS の未import を1件発見し修正済み)。本env未 npm install のため build未実行。
+
+## v0.25.599 — アリーナボス=パンプキン化 / 城ボス=接近で魔法陣出現 / クリ表記の明確化 (claude/sweet-brown-bw8ixm)
+1. **囲い系イベント(boss種)**: giantbat → **パンプキン+雑魚**に変更(社長指示)。`useGameLoop` の boss 分岐の spawn を pumpkin に(取り巻きゾンビは従来どおり)。
+2. **城のフィナーレボス**: 「5分で出現」→「**城へ接近(<CASTLE_BOSS_APPROACH_DIST=380px)で出現**」に変更。出現時に**錬金と同じ magic-circle テクスチャの魔法陣演出**を城足元に再生(拡大しながらフェード・回転、赤系tint)。
+   - 型 `CastleEvent.bossSummonAt?`、`markCastleBossSpawned` で Date.now をセット、`pixiScene` に `castleSummonCircle` スプライト(groundLayer・加算)を追加し `syncCastle` で駆動。ボス種は giantbat のまま。
+   - `?castlenow=1` は従来どおり即出現(テスト用)。
+3. **クリ表記**: スキル `crit-up` の表示を「クリティカルD上昇 / クリティカル倍率+0.5」→**「クリティカルダメージ上昇 / クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)」**に(社長指示=ダメージなら倍率値を明記)。「クリティカル率(発生確率)」表記は据え置き。
+- **Load score 1/10**(イベント分岐の差し替え＋短命スプライト1枚＋文言変更)。
+### Verification: `npx tsc --noEmit` exit:0。

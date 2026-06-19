@@ -193,7 +193,8 @@ const LAB_RETURN_HOME_MARGIN = 140;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
-const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000;
+const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000; // (旧)時限出現。現在は城への接近で出現に変更。
+const CASTLE_BOSS_APPROACH_DIST = 380;      // この距離まで城へ近づくとフィナーレボスが魔法陣で出現。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 const LAB_SPAWN_AGGRO_RANGE = 150;
 // 1画面区画あたりのラボ敵の上限(密度制御)。
@@ -684,8 +685,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         lastSeenGameTimeRef.current = newGameTime;
 
         const castle = useGameStore.getState().castleEvent;
-        // 研究所スキンはクリア条件=書類(重要データ)取得なので giantbat ボスは出さない(=湧きは完全にラボ敵のみ)。
-        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && (FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_SPAWN_MS)) {
+        // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
+        // 旧「5分で出現」→「城へ接近で出現」に変更。研究所/屋内/ダンスでは出さない。
+        const pcxCastle = player.x + player.width / 2, pcyCastle = player.y + player.height / 2;
+        const nearCastle = Math.hypot(pcxCastle - castle.x, pcyCastle - castle.y) < CASTLE_BOSS_APPROACH_DIST;
+        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && (FORCE_CASTLE_BOSS || nearCastle)) {
           markCastleBossSpawned();
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
@@ -747,10 +751,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   addEnemy(e);
                 }
               } else {
-                // ミニボス: giantbat 流用。プレイヤーから少し離した円内へ。取り巻きゾンビも少数。
+                // ミニボス: パンプキン+雑魚(社長指示。giantbat は使わない)。プレイヤーから少し離した円内へ。
                 const bx = pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
                 const by = pcy + Math.sin(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
-                const boss = spawnEnemyAt('giantbat', bx - 24, by - 24, newGameTime);
+                const boss = spawnEnemyAt('pumpkin', bx - 24, by - 24, newGameTime);
                 boss.fromEvent = true;
                 addEnemy(boss);
                 for (let i = 0; i < ARENA_BOSS_ADDS; i++) {
