@@ -24,7 +24,6 @@ export const ALCHEMY_RARE_SUCTION_RADIUS = ALCHEMY_AGGRO_RANGE * 1.5; // レア�
 export const ALCHEMY_RARE_SUCTION_PULL_RANGE = ALCHEMY_AGGRO_RANGE;   // 実際に吸引が発生する距離
 export const ALCHEMY_RARE_SUCTION_MAX_TARGETS = 12;     // 1tickの吸引対象上限(負荷cap)
 export const ALCHEMY_RARE_SUCTION_SPEED = 320;          // 吸引速度(px/s)
-export const ALCHEMY_RARE_TICK_MS = 60;                 // 吸引tickのスロットル
 export const ALCHEMY_SUMMON_TINT = 0x38bdf8;            // 味方識別のシアンtint
 export const SHOP_ALCHEMY_COST = 100;                   // 商人での錬金術カード価格
 

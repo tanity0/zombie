@@ -13075,3 +13075,19 @@ health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HP�
 突進(charge)中に設置シールドへ重なったら突進をキャンセル=その場で停止しクールダウンへ(`shieldRects` overlap)。ジャンプ(落ちる)に続きダッシュも対応。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.633 — 全体コードレビュー: バグ修正＋デッドコード整理
+- **バグ修正**
+  - `knockbackEnemy`: 強度の下限を `Math.max(1,…)` → `Math.max(0,…)` に。1未満の弱ノックバック(犬の噛みつき 0.8、ファイアナイフの減衰 ~0.88)が 1 に切り上げられて無効化されていたのを修正。
+  - `useGameLoop` 接触判定の鮮度: プレイヤー/敵/ピックアップの接触判定を、フレーム先頭スナップショットではなく `getState()` の最新状態で行うように変更(`movePlayer`/`updateEnemies`/敵ドロップ後の最新座標で当たり・カウンター・ダッシュ弾きを解決)。
+  - `getEnemySpawnCount(gameTime)` → `getEnemySpawnCount()`(関数は引数を無視して常に 1 を返すため、誤解を招く未使用引数を除去)。
+- **React 再描画規律**
+  - `ShopMenu`: `player` 全体購読を `shallow` で {health,maxHealth,straps,weapons,subWeaponLevels} のフィールド抽出に変更(シム稼働中の毎フレーム再描画を回避)。
+- **デッドコード整理(?labpersp の遠回り変種を撤去)**
+  - `pixiScene`: 一度も表示されない `updateLabFloorMesh`(PerspectiveMesh 台形床)と `updateLabHorizonFade`(擬似地平フェード)を削除。付随して `LAB_VP/LAB_TOP/LAB_HORIZON_Y/LAB_TILES/LAB_FADE`、`getLabHorizonTexture`/`_labHorizonTex`、フィールド `labFloorMesh/labHorizonFade/labFloorMeshBaseUV/labFloorMeshSig`、`PerspectiveMesh` import を削除。**ライブの `?labpersp` 床(焼き込み遠近プレート `updateLabFloorPlate`)はそのまま維持。**
+  - 宣言のみで未使用の定数/関数/型を削除: `KNOCKBACK_HIT_RADIUS`/`KNOCKBACK_RING_RADIUS`/`BASH_ZOOM_MAG`/`WEREWOLF_WINDUP_SPEED_MULT`/`WORLD_HALF_EXTENT`/`MAGNET_DURATION_MS`(gameStore)、`CASTLE_BOSS_SPAWN_MS`(useGameLoop)、`getDistance`(collisionUtils)、`getWeaponDef`/`getWeaponDisplayName`(weaponUtils)、`ALCHEMY_RARE_TICK_MS`(summonUtils)、`huntingChargeSecondsLabel`(hunting)、`ReaperPhase`(reaper)、`AtlasSpriteName`(spriteAtlas)、`getRenderer`(renderer)。
+  - 古いコメントを修正: `REFLECT_DAMAGE_MULTIPLIER`(「5×」→「60×」)、`PixiStage` ヘッダ(「phase-1 spike」→「default/only-maintained renderer」)、`pixiScene` syncLab の屋内床コメント(PerspectiveMesh → 焼き込み遠近プレート)。
+- **負荷スコア**: 1/10。削除と判定鮮度化のみで新規の毎フレームコストは追加なし(むしろ未使用 mesh 関連の余地を削減)。
+- **検証**: `npx tsc --noEmit` 通過(`noUnusedLocals`/`noUnusedParameters` 有効下で exit 0)。削除シンボルの残参照を repo 全体 grep で 0 件確認。vite はこのコンテナ未導入のため build 未実施。
+- **変更ファイル**: src/store/gameStore.ts, src/hooks/useGameLoop.ts, src/pixi/pixiScene.ts, src/pixi/PixiStage.tsx, src/components/ShopMenu.tsx, src/utils/{weaponUtils,collisionUtils,summonUtils,spriteAtlas}.ts, src/config/{renderer,reaper,hunting}.ts, package.json
+- **次の引き継ぎ**: shijin.ts の要確認シンボル(RHYTHM_JUST_WINDOW_MS / RHYTHM_JUST_HIT_COLOR / RHYTHM_JUST_FIRE_COLOR / RHYTHM_PROMPT_LEN / ARROW_GLYPH)はチューニング用の意図的な未配線の可能性があり、削除は要オーナー判断のため保留。

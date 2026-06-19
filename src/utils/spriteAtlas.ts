@@ -25,5 +25,3 @@ export const ATLAS_RECTS = {
   'pickup-bomb': [434, 594, 153, 187],
   'pickup-chest': [599, 594, 202, 207],
 } as const satisfies Record<string, readonly [number, number, number, number]>;
-
-export type AtlasSpriteName = keyof typeof ATLAS_RECTS;

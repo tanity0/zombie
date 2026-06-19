@@ -204,7 +204,7 @@ const LAB_RETURN_HOME_MARGIN = 140;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
-const CASTLE_BOSS_SPAWN_MS = 5 * 60 * 1000; // (旧)時限出現。現在は城への接近で出現に変更。
+// (旧)時限出現は廃止。現在はフィナーレボスは城への接近(CASTLE_BOSS_APPROACH_DIST)で出現。
 const CASTLE_BOSS_APPROACH_DIST = 380;      // この距離まで城へ近づくとフィナーレボスが魔法陣で出現。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 const LAB_SPAWN_AGGRO_RANGE = 150;
@@ -3084,10 +3084,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // Check for collisions between player and enemies
-        const playerEnemyCollisions = checkPlayerEnemyCollisions(player, enemies);
+        // Check for collisions between player and enemies.
+        // フレーム先頭スナップショット(player/enemies)は movePlayer / updateEnemies 後に
+        // 古い座標になるため、接触判定は最新状態(getState)で行う。移動後の位置で当たり/
+        // カウンター/ダッシュ弾きを正しく解決する。
+        const collState = useGameStore.getState();
+        const collPlayer = collState.player;
+        const collEnemies = collState.enemies;
+        const playerEnemyCollisions = checkPlayerEnemyCollisions(collPlayer, collEnemies);
         // ワイヤーアンカーの高速移動中/敵吸着コンボ中は敵接触ダメージを無効化(敵弾は別経路でそのまま当たる)。
-        const wpImmune = useGameStore.getState().player;
+        const wpImmune = collPlayer;
         const wireDashingNow = Date.now() < wpImmune.wireDashUntil || !!wpImmune.wireStuckEnemyId;
         // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
         // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
@@ -3103,28 +3109,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             dashParried.push(enemy.id);
             return;
           }
-          const damageWasApplied = !player.invulnerable;
+          const damageWasApplied = !collPlayer.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
             playSfx('player-damage');
             spawnFlash('rgba(239,68,68,0.22)', 200);
             spawnBurst(
-              player.x + player.width / 2,
-              player.y + player.height / 2,
+              collPlayer.x + collPlayer.width / 2,
+              collPlayer.y + collPlayer.height / 2,
               '#ef4444',
               6
             );
           }
           if (playerDied) {
             triggerPlayerDeath(
-              player.x + player.width / 2,
-              player.y + player.height / 2
+              collPlayer.x + collPlayer.width / 2,
+              collPlayer.y + collPlayer.height / 2
             );
           }
         });
         if (dashParried.length > 0) {
           const pnow = Date.now();
-          const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+          const ppx = collPlayer.x + collPlayer.width / 2, ppy = collPlayer.y + collPlayer.height / 2;
           // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
           addMeleeFinishCombo(1);
           playSfx('counter');
@@ -3170,12 +3176,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // Check for collisions between player and pickups
-        const pickupCollisions = checkPlayerPickupCollisions(player, pickups);
+        // Check for collisions between player and pickups.
+        // 同上: ピックアップは本フレーム中に敵ドロップで増えるため、最新状態(getState)で判定する。
+        const collPickups = useGameStore.getState().pickups;
+        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups);
 
         if (pickupCollisions.length > 0) {
           const collidedPickups = pickupCollisions
-            .map(pickupId => pickups.find(p => p.id === pickupId))
+            .map(pickupId => collPickups.find(p => p.id === pickupId))
             .filter((pk): pk is NonNullable<typeof pk> => pk !== undefined);
           const hasAmmoPickup = collidedPickups.some(pk =>
             pk.type === 'ammo-handgun' ||
@@ -3206,7 +3214,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (hasBombPickup) playSfx('bomb');
 
           pickupCollisions.forEach(pickupId => {
-            const pk = pickups.find(p => p.id === pickupId);
+            const pk = collPickups.find(p => p.id === pickupId);
             if (pk) {
               // Pickup-specific feedback. Gems get a small color-coded
               // sparkle; heart/magnet/bomb get bolder bursts.
@@ -3444,7 +3452,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1)
         ) {
           const spawnCount = Math.min(
-            labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(gameTime),
+            labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(),
             MAX_ENEMIES - fieldCount
           );
           let plantCount = useGameStore.getState().enemies

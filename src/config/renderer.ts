@@ -34,5 +34,4 @@ const read = (): RendererKind => {
 
 const SELECTED: RendererKind = read();
 
-export const getRenderer = (): RendererKind => SELECTED;
 export const isPixiRenderer = (): boolean => SELECTED === 'pixi';

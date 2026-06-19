@@ -9,9 +9,11 @@ interface PixiStageProps {
   height: number;
 }
 
-// PixiJS world renderer (phase-1 spike). Drop-in alternative to <GameCanvas>:
-// it reads the SAME store every ticker frame and never writes gameplay state.
-// useGameLoop stays the sole simulation clock; this only draws.
+// PixiJS world renderer — the default and only actively-developed renderer.
+// (The legacy Canvas2D <GameCanvas> stays reachable via ?renderer=canvas as a
+// fallback/reference only.) It reads the SAME store every ticker frame and
+// never writes gameplay state. useGameLoop stays the sole simulation clock;
+// this only draws.
 //
 // The React HUD renders unchanged as DOM on top of this canvas.
 const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {

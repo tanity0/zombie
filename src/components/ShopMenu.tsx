@@ -1,4 +1,5 @@
 import React from 'react';
+import { shallow } from 'zustand/shallow';
 import {
   SHOP_AMMO_COST,
   SHOP_CLASS_SKILL_COST,
@@ -46,7 +47,18 @@ const ammoShopKey: Record<AmmoType, ShopItemKey> = {
 };
 
 const ShopMenu: React.FC = () => {
-  const player = useGameStore(state => state.player);
+  // player 全体を購読するとシム稼働中は毎フレーム再描画になるため、ショップで使う
+  // フィールドだけを shallow で抜き出す(React 再描画規律: CLAUDE.md 参照)。
+  const player = useGameStore(
+    state => ({
+      health: state.player.health,
+      maxHealth: state.player.maxHealth,
+      straps: state.player.straps,
+      weapons: state.player.weapons,
+      subWeaponLevels: state.player.subWeaponLevels
+    }),
+    shallow
+  );
   const ammoPickupAmounts = useGameStore(state => state.ammoPickupAmounts);
   const unlockedShopSkillCards = useGameStore(state => state.unlockedShopSkillCards);
   const vaccinePurchased = useGameStore(state => state.vaccinePurchased);

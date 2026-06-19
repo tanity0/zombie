@@ -36,8 +36,6 @@ export const REAPER_CONFIG = {
   canBeKilled: true,
 } as const;
 
-export type ReaperPhase = 'none' | 'warning_pass' | 'frequent_pass' | 'spawned' | 'chasing';
-
 // 追跡速度 = プレイヤー現在移動速度 × 1.2。currentPlayerMoveSpeed は成長/強化を反映した通常速度
 // (ダッシュ・ノックバック・強制移動は含めない=呼び出し側で player.speed を渡す)。
 // 追跡速度 = プレイヤー現在移動速度 × 0.9(成長/強化反映・ダッシュ等は除外=呼び出し側で player.speed)。慣性は updateEnemies 側で別途かかる。

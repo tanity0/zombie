@@ -222,11 +222,6 @@ export const LEVELUP_KNOCKBACK_DISTANCE = 64;  // 押しのける距離(96→64=
 export const COUNTER_EXTEND_PER_HIT = 200;
 
 // Counter knockback (additional effect on top of the bullet reflect).
-// Two radii: HIT_RADIUS is where enemies actually get pushed; RING_RADIUS
-// is the visual telegraph (wider). Keeping the telegraph wide lets the
-// player read the attack while the actual catch zone stays disciplined.
-export const KNOCKBACK_HIT_RADIUS = 55;
-export const KNOCKBACK_RING_RADIUS = 180;
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
 // プレイヤー被弾ノックバック(ジャンプ攻撃で弾き出される)。movePlayer が減衰しながら適用。
@@ -244,7 +239,7 @@ const SHIELD_BASH_KNOCKBACK_SPEED = 960; // 従来値を維持(KNOCKBACK_SPEED 2
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
-export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered bullets hit 5× harder
+export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered/reflected bullets hit 60× harder
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
 // スキル: 反射神経の反撃爆発。ランチャー相当の半径・ダメージ(useGameLoop GRENADE_* に準拠の仮値)。
 export const REFLEX_BLAST_RADIUS = 92;  // = GRENADE_BLAST_RADIUS
@@ -555,7 +550,6 @@ export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わり
 // 衝撃時の寄りパンチズーム。社長指示で 0.3。
 export const MELEE_FINISH_ZOOM_MAG = 0.3;  // 近接フィニッシュの寄り(+30%)
 export const COUNTER_ZOOM_MAG = 0.3;       // カウンター成立の寄り
-export const BASH_ZOOM_MAG = 0.3;          // バッシュ命中の寄り(現在は未使用=バッシュは寄り無し)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
@@ -570,7 +564,6 @@ const HANDGUN_RANGE_REF = 176;
 // 犬型(werewolf): ハンドガン射程より少し外で減速→2倍速で突進。
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
-export const WEREWOLF_WINDUP_SPEED_MULT = 0.3;
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
 export const WEREWOLF_CHARGE_MAX_MS = 1400; // 突進の最大時間(到達できなくても打ち切り)
 export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予
@@ -716,14 +709,6 @@ export const isGameTimeStopped = (): boolean => {
   const s = useGameStore.getState();
   return s.introDialogueActive || (s.introUntil > 0 && Date.now() < s.introUntil);
 };
-
-// World is effectively infinite. We still need a finite number for spawn
-// math elsewhere, but we use a very large clamp to remove the wall feel.
-export const WORLD_HALF_EXTENT = 200000;
-
-// Magnet pickup pulls every XP gem to the player. Bomb clears every enemy
-// currently on screen.
-export const MAGNET_DURATION_MS = 1; // we just sweep the field once, no timer needed
 
 const BREAKABLE_PROP_DROP_CHANCE = 0.42;
 const TORCH_STRAP_DROP_MIN = 5;
@@ -4069,7 +4054,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // lower speed so it only staggers, never launches.
   knockbackEnemy: (id, dirX, dirY, multiplier = 1, maxStrength = 3) => {
     const now = Date.now();
-    const strength = Math.max(1, Math.min(maxStrength, multiplier));
+    const strength = Math.max(0, Math.min(maxStrength, multiplier));
     set(state => ({
       enemies: state.enemies.map(e =>
         e.id === id
@@ -4636,8 +4621,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // VS rosary: kill every enemy currently on screen by zeroing their
         // HP. We don't grant experience for this — it's a panic button.
         const reachable = get().enemies.filter(e => e.type !== 'reaper');
+        // フィナーレボス(giantbat・非イベント)を爆弾で消したらクリアにする(他のキル経路と同じ勝利判定)。
+        const bombWon = reachable.some(e => e.type === 'giantbat' && !e.fromEvent);
         set(state => ({
           enemies: state.enemies.filter(e => e.type === 'reaper'),
+          gameWon: state.gameWon || bombWon,
           gameStats: {
             ...state.gameStats,
             enemiesKilled: state.gameStats.enemiesKilled + reachable.length

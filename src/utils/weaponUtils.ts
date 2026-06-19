@@ -126,8 +126,6 @@ export const createWeapon = (key: string): Weapon => {
   };
 };
 
-export const getWeaponDef = (key: string): WeaponDef | undefined => CATALOG[key];
-
 // All guns the player owns (excludes the melee weapon).
 export const getGuns = (player: Player): Weapon[] =>
   player.weapons.filter(w => !w.isMelee);
@@ -343,9 +341,6 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   return projectiles;
 };
-
-export const getWeaponDisplayName = (key: string): string =>
-  CATALOG[key]?.name ?? '武器';
 
 export const getWeaponShortName = (type: WeaponType): string => {
   switch (type) {
