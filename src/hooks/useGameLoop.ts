@@ -1859,9 +1859,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (counterActive) {
                   // カウンターで弾く: プレイヤー無傷・敵にダメージ無し・2倍ノックバックで吹き飛ばす。
                   parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
-                  spawnRing(b.x, b.y, 8, b.radius + 24, 'rgba(186,230,253,0.95)', 4, 280); // 弾き返しの青リング
-                  spawnBurst(b.x, b.y, '#bae6fd', 12);
-                  playSfx('melee-finish');
                 } else {
                   const died = damagePlayer(b.damage);
                   playSfx('player-damage');
@@ -1880,10 +1877,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (parriedEnemyIds.length > 0) {
               const pnow = Date.now();
+              // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
+              addMeleeFinishCombo(1);
+              playSfx('counter');
+              useGameStore.getState().spawnGlow(bpcx, bpcy, 78, 'rgba(56,189,248,', 360);
+              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+              spawnRing(bpcx, bpcy, 12, 110, 'rgba(56,189,248,0.9)', 3, 360);
+              spawnBurst(bpcx, bpcy, '#38bdf8', 14);
+              useGameStore.getState().spawnCallout(bpcx, bpcy - 12, 'Counter!', '#38bdf8');
               useGameStore.setState(st => ({
                 // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
                 // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
-                player: { ...st.player, invulnerable: true, invulnerableTime: pnow },
+                player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },
                 enemies: st.enemies.map(e => {
                   const hit = parriedEnemyIds.find(p => p.id === e.id);
                   if (!hit) return e;
@@ -3096,10 +3101,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 突進をカウンターで弾く: 被弾せず、敵を2倍ノックバックして突進を中断。
           if (enemy.aiPhase === 'charge' && counterActiveNow) {
             dashParried.push(enemy.id);
-            const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-            spawnRing(ecx, ecy, 8, 44, 'rgba(186,230,253,0.95)', 4, 280);
-            spawnBurst(ecx, ecy, '#bae6fd', 12);
-            playSfx('melee-finish');
             return;
           }
           const damageWasApplied = !player.invulnerable;
@@ -3124,9 +3125,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (dashParried.length > 0) {
           const pnow = Date.now();
           const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+          // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
+          addMeleeFinishCombo(1);
+          playSfx('counter');
+          useGameStore.getState().spawnGlow(ppx, ppy, 78, 'rgba(56,189,248,', 360);
+          useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+          spawnRing(ppx, ppy, 12, 110, 'rgba(56,189,248,0.9)', 3, 360);
+          spawnBurst(ppx, ppy, '#38bdf8', 14);
+          useGameStore.getState().spawnCallout(ppx, ppy - 12, 'Counter!', '#38bdf8');
           useGameStore.setState(st => ({
             // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
-            player: { ...st.player, invulnerable: true, invulnerableTime: pnow },
+            player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },
             enemies: st.enemies.map(e => {
               if (!dashParried.includes(e.id)) return e;
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;

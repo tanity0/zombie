@@ -13063,3 +13063,10 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HPの30%**に(救急セットと共通の `HEAL_FRACTION=0.3`)。定数名を SHOP_MEDKIT_HEAL_FRAC→HEAL_FRACTION に汎用化。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.631 — ジャンプ/ダッシュのカウンター演出を通常カウンターと統一 / ジャンプは盾でキャンセル / 商人・NPCサークルに卵を出さない (claude/sweet-brown-bw8ixm)
+- **カウンター表示の統一**: ジャンプ着地パリィ／ダッシュ突進パリィ成功時に、通常カウンター(弾反射)と同じ演出= **「Counter!」コールアウト＋`counter`SE＋ヒットインパクト(ストップ/揺れ/寄り)＋コンボ加算＋`lastCounterSuccessTime`**。旧 `melee-finish` SE/個別リングは廃止。ダッシュも同仕様で見直し済み。
+- **ジャンプ攻撃を盾でキャンセル**: 空中(jump)で設置シールドに重なったら、その場に落ちる(recover)だけ=爆発(pumpkinBlasts)を出さない。
+- **緑の卵(mine)除外**: 武器商人/イベントNPC(2人)のサークル内(radius+24)には mine を生成しない(`syncBreakableProps`)。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

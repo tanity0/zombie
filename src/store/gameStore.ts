@@ -3755,6 +3755,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
       const indoorWalls = indoor ? [...labBlockingWalls(openDoorIds), ...state.labProps.map(p => p.rect)] : [];
       const labTheme = state.stageTheme === 'lab'; // 研究所スキンは木を出さない=木の当たり判定もスキップ。
+      // 設置型シールドの矩形(ジャンプ攻撃が当たると攻撃キャンセル=その場に落ちる、に使う)。
+      const shieldRects = state.projectiles
+        .filter(p => p.weaponType === 'shield')
+        .map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height }));
       // 研究所スキンの壁オブジェクト(区画生成)。プレイヤー周辺1ビューポート分を1回だけ問い合わせて使い回す
       // (敵は湧き=ビューポート端〜、遠方はカリングされるのでこの範囲で十分)。移動/視線の両方に使用。
       const labWallRects = labTheme
@@ -3891,6 +3895,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
             const nx = fx + (tx - fx) * t;
             const ny = fy + (ty - fy) * t;
+            // 盾にぶつかったらジャンプ攻撃をキャンセルして、その場に落ちるだけ(爆発なし)。
+            if (shieldRects.length > 0 &&
+                shieldRects.some(s => rectsOverlap({ x: nx, y: ny, width: enemy.width, height: enemy.height }, s))) {
+              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
+            }
             if (t >= 1) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
               // 着地爆発(範囲狭め)。被弾判定/FX は useGameLoop が pumpkinBlasts を消化して行う。
@@ -4818,7 +4827,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
+      // 武器商人 / イベントNPC(例の2人)のサークル内には緑の卵(mine)を出さない(社長指示)。
+      const noEggCircles = [state.weaponMerchant, state.eventQuestNpc]
+        .filter((c): c is { x: number; y: number; radius: number } => !!c && c.radius > 0)
+        .map(c => ({ x: c.x, y: c.y, r2: (c.radius + 24) ** 2 }));
       for (const mine of [...generatedMines, ...pressureMines, ...ambushMines]) {
+        if (noEggCircles.some(c => (mine.footX - c.x) ** 2 + (mine.footY - c.y) ** 2 < c.r2)) continue;
         if (state.destroyedBreakableProps[mine.id]) continue;
         const existing = current.get(mine.id);
         if (existing) {
