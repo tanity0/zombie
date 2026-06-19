@@ -411,10 +411,10 @@ export const strikerMeleeMult = (player: Player): number => {
 // スカベンジャー: 弾薬取得後3秒、銃ダメージ ×1.1。
 export const scavengerGunMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'necromancer' && gameTime < player.scavengerBuffUntil ? 1.1 : 1;
-// マークスマン: 3秒以上連続移動中、射程 ×1.1(停止で即解除)。
-export const marksmanRangeMult = (player: Player, gameTime: number): number =>
+// マークスマン: 3秒以上連続移動すると移動速度 ×1.2(停止で即解除。社長指示で射程UP→移動速度UPに変更)。
+export const marksmanSpeedMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'mage' && player.isMoving && player.marksmanMovingSince > 0 &&
-  gameTime - player.marksmanMovingSince >= 3000 ? 1.1 : 1;
+  gameTime - player.marksmanMovingSince >= 3000 ? 1.2 : 1;
 // ヘビーガンナー: 同一攻撃で2体以上に当てた後3秒、すべての爆発範囲 ×1.1。
 export const heavyGunnerExplosionMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
@@ -1540,9 +1540,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         : recovering ? 0
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。
-        // 社長指示で段階的に強化: 2→3=1.5倍)。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1)
-        : player.speed * (hasSkill(player, 'skater') ? 3 : 1);
+        // 社長指示で段階的に強化: 2→3=1.5倍)。マークスマン = 3秒連続移動で ×1.2(通常歩行/リロード移動に乗る)。
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime)
+        : player.speed * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;

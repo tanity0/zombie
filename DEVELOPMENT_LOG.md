@@ -13045,3 +13045,11 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 ## v0.25.627 — ゴールド換算を /3000→/2000 (claude/sweet-brown-bw8ixm)
 `goldEarned = floor(totalScore / 2000)`(社長指示・3000→2000で取得ゴールド増)。**Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.628 — マークスマン: 射程+10%→移動速度+20% / お知らせをブーツマークに (claude/sweet-brown-bw8ixm)
+キャラ固有スキル マークスマン(mage)の効果を「3秒連続移動で射程×1.1」→「**3秒連続移動で移動速度×1.2**」に変更(停止で即解除は同じ)。
+- `marksmanRangeMult`→`marksmanSpeedMult`(1.2)。`movePlayer` の通常歩行/リロード移動速度に乗算。`weaponUtils` の射程倍率は廃止(import除去)。
+- 発動お知らせの頭上マークを照準マーク→**ブーツのシルエット**(L字・靴底ハイライト)に変更(`updateMarksmanRangeMark`)。発動検出(marksmanRangeFxAt、3秒条件)は流用。
+- 表示文(`campaign.ts charSkillDesc`)も更新。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

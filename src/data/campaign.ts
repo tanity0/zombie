@@ -423,7 +423,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
     gear: 'マグナム ＋ ナイフ',
     skillKey: 'marksman-trap',
     skillDesc: '足元に起爆トラップを設置して足止め＆爆破',
-    charSkillDesc: '3秒以上移動を続けると射程が10%アップ。止まると解除',
+    charSkillDesc: '3秒以上移動を続けると移動速度が20%アップ。止まると解除',
     portraitNudgeY: 0,
     profile: '一撃の精度を信条とする狙撃手。トラップで戦場を区切り、確実に仕留める。',
   },

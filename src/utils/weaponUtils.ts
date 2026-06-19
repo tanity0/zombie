@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, hasSkill, skillBenkeiCritBonus, scavengerGunMult, marksmanRangeMult } from '../store/gameStore';
+import { useGameStore, hasSkill, skillBenkeiCritBonus, scavengerGunMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
@@ -254,9 +254,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
 
   // Range gate: hold fire (and ammo) unless an enemy is within reach. Don't
   // advance lastFired here so the gun fires the instant a target enters range.
-  // キャラ固有 マークスマン(mage): 3秒以上連続移動中は射程 ×1.1。
-  const gtRange = useGameStore.getState().gameTime;
-  const gunRange = RANGE_BY_CATEGORY[weapon.ammoType] * marksmanRangeMult(player, gtRange);
+  // (マークスマンは射程UP→移動速度UPに変更したため、射程倍率は廃止)
+  const gunRange = RANGE_BY_CATEGORY[weapon.ammoType];
   if (nearestEnemyDistance(player, enemies) > gunRange) {
     return [];
   }

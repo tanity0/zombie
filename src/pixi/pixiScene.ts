@@ -2566,18 +2566,34 @@ export class PixiScene {
     const cx = player.x + player.width / 2;
     const cy = player.y - 46 - 18 * t;         // 頭上(ブーメランと同じ高さ)＋少し浮上
     const r = 9 * (0.85 + 0.35 * t);           // 少し拡大
-    const color = 0x86efac;                    // 射程UP=緑
+    const color = 0x86efac;                    // 移動速度UP=緑
     // 出現フラッシュ。
     const flash = Math.max(0, 1 - dt / 170);
     if (flash > 0) g.circle(cx, cy, 12 + 16 * (1 - flash)).fill({ color: 0xbbf7d0, alpha: 0.45 * flash });
-    // ターゲット(照準)マーク: 二重円＋十字。
-    g.circle(cx, cy, r).stroke({ width: 2, color, alpha: a });
-    g.circle(cx, cy, r * 0.45).stroke({ width: 1.5, color, alpha: a * 0.9 });
-    g.moveTo(cx - r * 1.5, cy).lineTo(cx - r * 0.7, cy)
-      .moveTo(cx + r * 0.7, cy).lineTo(cx + r * 1.5, cy)
-      .moveTo(cx, cy - r * 1.5).lineTo(cx, cy - r * 0.7)
-      .moveTo(cx, cy + r * 0.7).lineTo(cx, cy + r * 1.5)
-      .stroke({ width: 1.5, color, alpha: a * 0.85, cap: 'round' });
+    // 移動速度UPの「ブーツ」マーク(L字シルエット・つま先は右向き)。
+    const sw = r * 0.62;                         // 筒の幅
+    const top = cy - r * 1.25;                   // 筒の上端
+    const ankle = cy + r * 0.35;                 // 足首
+    const sole = cy + r * 0.95;                  // 靴底
+    const toe = cx + r * 1.45;                   // つま先
+    g.poly([
+      cx - sw, top,
+      cx + sw, top,
+      cx + sw, ankle,
+      toe, sole - r * 0.32,
+      toe, sole,
+      cx - sw, sole,
+    ]).fill({ color, alpha: a * 0.92 });
+    g.poly([
+      cx - sw, top,
+      cx + sw, top,
+      cx + sw, ankle,
+      toe, sole - r * 0.32,
+      toe, sole,
+      cx - sw, sole,
+    ]).stroke({ width: 1.2, color: 0x14532d, alpha: a * 0.8 });
+    // 靴底のハイライト(スピード感の白線)。
+    g.moveTo(cx - sw, sole).lineTo(toe, sole).stroke({ width: 1.4, color: 0xeafff1, alpha: a });
   }
 
   // 特殊行動の予告。ジャンプ着地点(赤い影)＋ダッシュの移動先(赤ライン=直線距離)。
