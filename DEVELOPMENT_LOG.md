@@ -12785,3 +12785,11 @@ load 1/10(描画数不変・レイヤー移動＋座標変換のみ)。
 - 変更8枚: 4.68MB → 0.60MB(−87%)。主因 turret-omni/fixed(1254²→480²)、castle、lab-clear-item、lab-zombie-lv3。
 - VRAM も大型テクスチャ(1254² RGBA≈6.3MB×2 等)が 480² に縮小=実メモリ大幅減。
 ### Verification: 寸法/PNG有効 確認・build(exit0) 通過・git差分は public/*.png 8枚のみ。
+
+## v0.25.590 — 音声最適化(配信PNG非改変・コード非改変) (claude/cool-edison-7b8jrl)
+- 未参照の旧ループ素材を削除: dance-*-loop.wav(3本=9.2MB) + dance-*-loop.mp3(3本=1.15MB)。repo全体でgrep参照ゼロ確認。
+- 非リズムBGM(7本)を 177〜197k → 144k に再エンコード(同ファイル名=コード非改変)。41.9MB→28.3MB(−32%)。
+  ・ffmpeg-static を --no-save 導入(package.json/lock 非改変)。
+- リズム曲 dance-100/120/140.mp3 は無改変(位相キャリブレーション保護。bytes一致確認)。SFX wav(計261KB)もクリアさ優先で据え置き。
+- 結果: dist 88.85MB → 62MB。dist音声 65MB → 40.5MB。
+### Verification: dance3本のbytes不変・src/package非改変・build(exit0)・git差分はpublic/audioのみ。
