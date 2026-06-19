@@ -13008,3 +13008,10 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 `(melee.damage ?? 6) * strikerMeleeMult * 0.5`。ダメージは set 後に `damageEnemy` で適用(死亡処理/演出を正規経路に)＋ダメージ数字表示。説明文も更新。
 - **Load score 1〜2/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.622 — ジャンプ攻撃被弾でプレイヤーが弾き出される(ノックバック) (claude/sweet-brown-bw8ixm)
+ジャンプ着地爆発を弾けず被弾したとき、プレイヤーを爆心から外向きにノックバック。
+- `Player.knockbackUntil/Vx/Vy`(Date.now基準)を追加。`movePlayer` はノックバック中、入力を無視して減衰速度(`PLAYER_KNOCKBACK_SPEED=460`/`PLAYER_KNOCKBACK_MS=260`)で滑らす。壁/イベント円クランプは従来どおり後段で適用。
+- useGameLoop の被弾(非カウンター)時に爆心→プレイヤー方向のノックバックをセット。被弾i-frame(700ms)で連続被弾は防止。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

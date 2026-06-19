@@ -25,6 +25,7 @@ import {
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
   WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, KNOCKBACK_SPEED, MELEE_RADIUS,
+  PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult
 } from '../store/gameStore';
@@ -1864,6 +1865,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } else {
                   const died = damagePlayer(b.damage);
                   playSfx('player-damage');
+                  // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
+                  const ddx = bpcx - b.x, ddy = bpcy - b.y;
+                  const dd = Math.max(0.001, Math.hypot(ddx, ddy));
+                  useGameStore.setState(st => ({ player: {
+                    ...st.player,
+                    knockbackVx: (ddx / dd) * PLAYER_KNOCKBACK_SPEED,
+                    knockbackVy: (ddy / dd) * PLAYER_KNOCKBACK_SPEED,
+                    knockbackUntil: Date.now() + PLAYER_KNOCKBACK_MS,
+                  } }));
                   if (died) triggerPlayerDeath(bpcx, bpcy);
                 }
               }

@@ -229,6 +229,9 @@ export const KNOCKBACK_HIT_RADIUS = 55;
 export const KNOCKBACK_RING_RADIUS = 180;
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
+// プレイヤー被弾ノックバック(ジャンプ攻撃で弾き出される)。movePlayer が減衰しながら適用。
+export const PLAYER_KNOCKBACK_SPEED = 460;
+export const PLAYER_KNOCKBACK_MS = 260;
 const TRAP_MELEE_SHOVE_DISTANCE = 68;
 const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 // 設置型シールドへの近接攻撃=シールドバッシュ。壁を法線方向へ SHIELD_BASH_SHOVE_DISTANCE
@@ -1575,8 +1578,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 社長指示で段階的に強化: 0.4→0.6→1.2)。
       const inertiaTau = hasSkill(player, 'skater') ? 1.2 : PLAYER_INERTIA_TAU;
       const alpha = inertiaAlpha(deltaTime, inertiaTau);
-      const vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
-      const vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
+      // 被弾ノックバック中は入力を無視して、減衰する弾き出し速度で滑る(ジャンプ攻撃被弾など)。
+      const kbNow = Date.now();
+      const kbActive = player.knockbackUntil !== undefined && kbNow < player.knockbackUntil;
+      let vx: number, vy: number;
+      if (kbActive) {
+        const decay = Math.max(0, (player.knockbackUntil! - kbNow) / PLAYER_KNOCKBACK_MS); // 1→0
+        vx = (player.knockbackVx ?? 0) * decay;
+        vy = (player.knockbackVy ?? 0) * decay;
+      } else {
+        vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
+        vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
+      }
 
       // 壁解決。屋内は labMap の壁(+閉ドア)のみ。屋外は従来の木/トーチ/城。
       let newX: number;

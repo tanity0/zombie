@@ -17,6 +17,11 @@ export interface Player {
   // has ~0.3s of inertia on starting, stopping, and turning.
   vx: number;
   vy: number;
+  // 被弾ノックバック(ジャンプ攻撃などで弾き出される)。Date.now ms 基準。movePlayer が
+  // この間は入力を無視して減衰速度で滑らす。
+  knockbackUntil?: number;
+  knockbackVx?: number;
+  knockbackVy?: number;
   width: number;
   height: number;
   speed: number;
