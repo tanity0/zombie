@@ -12909,3 +12909,8 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - パニック中は頭上に**汗マーク(水色のしずく・揺れる)**。環境光(カラーグレード/暗幕/ティルトシフト)の影響を受けないよう、PHILL照準と同じく **uiLayer(screen座標)** の `rescueSweatGfx` に描画(world.position で world→screen 変換)。
 - **Load score 1/10**(乗算1つ＋汗マークは該当NPCのみ)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.606 — ステージ2の暗がりを少し広げる(可視範囲を少し縮小) (claude/sweet-brown-bw8ixm)
+可視可能ゾーンの明かりの穴を縮小=暗がりを拡大(社長指示)。`LAB_VIS_RANGE` 200→170、`LAB_VIS_RANGE_PLAYER` 160→135。URL `?vrange`/`?vrangep` で引き続き微調整可。
+- **Load score 0/10**(定数変更のみ・描画コスト不変)。
+### Verification: `npx tsc --noEmit` exit:0。
