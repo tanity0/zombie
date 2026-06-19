@@ -12838,3 +12838,10 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - いずれも森ステージ専用(`!indoor && !labTheme` のまま)。ステージ2(研究所)/屋内/ダンスでは従来どおり発火しない。
 - **Load score 0/10**(起動時にURLを1回読むだけ。毎フレームコスト増なし)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.597 — ハンドガン系の連射速度(cooldown)調整 (claude/sweet-brown-bw8ixm)
+連射間隔＝`cooldown`(次弾までのms。小=速い)を調整(社長指示)。弾速(projectileSpeed)/リロード(reloadMs)は不変。
+- 二丁ハンドガン(handgun-t2): cooldown **300→420**(ハンドガンt1と同じ連射速度。※弾は2発のまま)。
+- マシンピストル(handgun-t3, ≒サブマシンガン): cooldown **130→87**(今の2/3＝より速い連射。130×2/3≈86.7)。
+- **Load score 0/10**(武器定義の定数変更のみ)。
+### Verification: `npx tsc --noEmit` exit:0。

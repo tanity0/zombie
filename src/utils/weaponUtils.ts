@@ -48,9 +48,9 @@ interface WeaponDef {
 const CATALOG: Record<string, WeaponDef> = {
   // A — Handgun family (9mm). Fast, low damage, cheap to feed.
   'handgun-t1':       { key: 'handgun-t1', name: 'ハンドガン',     type: 'handgun', category: 'handgun', tier: 1, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 1, magSize: 12, reloadMs: 900 },
-  'handgun-t2':       { key: 'handgun-t2', name: '二丁ハンドガン', type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 300, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
+  'handgun-t2':       { key: 'handgun-t2', name: '二丁ハンドガン', type: 'handgun', category: 'handgun', tier: 2, damage: 9,  cooldown: 420, projectileSpeed: 520, projectileSize: 8, count: 2, magSize: 10, reloadMs: 1100 },
   // マシンピストルT3: 連射×大容量でクリ上振れ(16%)がバランスブレイカーだったため、純粋クリ率を5%に固定(加算分は別)。
-  'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 130, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300, critChance: 0.05 },
+  'handgun-t3':       { key: 'handgun-t3', name: 'マシンピストル', type: 'handgun', category: 'handgun', tier: 3, damage: 7,  cooldown: 87, projectileSpeed: 560, projectileSize: 7, count: 1, magSize: 30, reloadMs: 1300, critChance: 0.05 },
 
   // B — Shotgun family (12g). One trigger pull = one shell (the spread is free),
   // so the magazine is sized in SHOTS, not pellets (3 shots per mag).
