@@ -12960,3 +12960,11 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - `useGameLoop` の敵接触ダメージ loop に分岐追加(`counterWindowEnd` 判定→ parried を収集→ 後段で当該敵に knockback＋aiPhase解除)。
 - **Load score 1/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.614 — 松明/UVバーの頻度・密度を少し上げる (claude/sweet-brown-bw8ixm)
+社長指示の調整値。いずれも“少し上げる”狙い(出過ぎたら戻す)。
+- 松明(`torches.ts`): 出現閾値 `>= 0.3`→`>= 0.40`(出現セル ≒30%→40%)、`TORCH_CELL` 460→410(グリッドを詰めて密度UP)。
+- UVバー屋外(`labWalls.ts` `labUvBarsInRegion`): 2本目 `> 0.55`→`> 0.42`(≒45%→58%)、**3本目を約20%の区画に追加**(luv3)。`LAB_ZONE` は不変(敵密度/`labZoneKey` に影響するため本数で密度調整)。
+- 屋内固定UV(`LAB_UV_BARS`)は別系統で今回対象外。
+- **Load score 1/10**(区画クエリ件数が微増。決定的生成で新規確保なし)。
+### Verification: `npx tsc --noEmit` exit:0。

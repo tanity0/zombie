@@ -1,6 +1,6 @@
 import { Rect, footRect, resolveAabb } from './obstacles';
 
-export const TORCH_CELL = 460;
+export const TORCH_CELL = 410; // 密度UP(社長指示・460→410=グリッドを詰める)。出過ぎたら430へ。
 
 export interface TorchInstance {
   id: string;
@@ -15,7 +15,7 @@ const torchHash = (x: number, y: number): number => {
 };
 
 const torchInCell = (cx: number, cy: number): TorchInstance | null => {
-  if (torchHash(cx + 31, cy - 19) >= 0.3) return null;
+  if (torchHash(cx + 31, cy - 19) >= 0.40) return null; // 頻度UP(社長指示・出現セル≒30%→40%)。出過ぎたら0.35へ。
   const scale = 0.78 + torchHash(cx - 11, cy + 29) * 0.22;
   const ox = (torchHash(cx, cy + 7) - 0.5) * TORCH_CELL * 0.72;
   const oy = (torchHash(cx + 7, cy) - 0.5) * TORCH_CELL * 0.72;
