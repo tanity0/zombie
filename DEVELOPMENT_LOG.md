@@ -12793,3 +12793,7 @@ load 1/10(描画数不変・レイヤー移動＋座標変換のみ)。
 - リズム曲 dance-100/120/140.mp3 は無改変(位相キャリブレーション保護。bytes一致確認)。SFX wav(計261KB)もクリアさ優先で据え置き。
 - 結果: dist 88.85MB → 62MB。dist音声 65MB → 40.5MB。
 ### Verification: dance3本のbytes不変・src/package非改変・build(exit0)・git差分はpublic/audioのみ。
+
+## v0.25.591 — チャット引き継ぎドキュメント追加 (claude/cool-edison-7b8jrl)
+CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール、tsc型チェックの穴、本セッションの実装一覧、
+現状(v0.25.590/dist62MB)、一時ツール(sharp/ffmpeg-static --no-save)、未対応/任意項目(段階B床タイル・音声・ガチャ無料の暫定)を集約。次チャットはこれ＋CLAUDE.md＋本ログを最初に読む。
