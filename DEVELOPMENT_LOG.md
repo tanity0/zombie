@@ -12920,3 +12920,8 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - `pumpkinBlasts` に `enemyId` を追加。着地 blast がプレイヤーに当たる瞬間、カウンター中なら: プレイヤー無傷・敵へのダメージ無し・該当敵を**プレイヤーから外向きに2倍ノックバック**(`KNOCKBACK_SPEED*2`)＋青い弾き返しリング＋melee-finish音。非カウンター時は従来どおり被弾。
 - **Load score 1/10**(blast消化時の分岐＋該当敵のみ knockback)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.608 — 救助イベントの発火位置をランダム(プレイヤーから離す)に (claude/sweet-brown-bw8ixm)
+強制/通常ともに救助イベントがプレイヤー位置(=スタート地点)直下に出ていたのを、**プレイヤーから 600〜1000px のランダム位置**に出すよう変更(端マーカーで誘導→現地へ向かう設計)。`?rescuemin`/`?rescuemax` で距離を実機調整可。発火FX(リング)も新位置基準に。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

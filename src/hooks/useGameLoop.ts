@@ -184,6 +184,14 @@ const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤�
 const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
+// 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
+// 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
+const evNum = (key: string, def: number): number => {
+  const v = evParam(key); const n = v != null ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : def;
+};
+const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 600);
+const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
@@ -723,11 +731,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 : FORCE_ARENA === 'rescue' ? 'rescue'
                 : (['horde', 'boss', 'rescue'] as const)[Math.floor(Math.random() * 3)];
               if (kind === 'rescue') {
-                // 救助ホールド: 固定半径の円に survivor3人＋攻撃者を配置(store側)。endsAt は安全用の保険。
-                const event = { kind, x: pcx, y: pcy, radius: RESCUE_RADIUS, startedAt: newGameTime, endsAt: newGameTime + 120000 };
+                // 救助ホールド: プレイヤー位置(=スタート地点)ではなく、少し離れたランダム位置に出す。
+                // 画面端マーカーで誘導 → 現地へ向かう設計。距離は実機調整しやすいよう定数化。
+                const rang = Math.random() * Math.PI * 2;
+                const rdist = RESCUE_SPAWN_DIST_MIN + Math.random() * (RESCUE_SPAWN_DIST_MAX - RESCUE_SPAWN_DIST_MIN);
+                const rx = pcx + Math.cos(rang) * rdist;
+                const ry = pcy + Math.sin(rang) * rdist;
+                const event = { kind, x: rx, y: ry, radius: RESCUE_RADIUS, startedAt: newGameTime, endsAt: newGameTime + 120000 };
                 useGameStore.getState().beginRescueEvent(event);
-                spawnRing(pcx, pcy, RESCUE_RADIUS * 0.2, RESCUE_RADIUS, 'rgba(74,222,128,0.9)', 6, 700);
-                spawnRing(pcx, pcy, RESCUE_RADIUS, RESCUE_RADIUS + 30, 'rgba(74,222,128,0.9)', 3, 760);
+                spawnRing(rx, ry, RESCUE_RADIUS * 0.2, RESCUE_RADIUS, 'rgba(74,222,128,0.9)', 6, 700);
+                spawnRing(rx, ry, RESCUE_RADIUS, RESCUE_RADIUS + 30, 'rgba(74,222,128,0.9)', 3, 760);
                 spawnFlash('rgba(8,47,73,0.20)', 320);
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                 useGameStore.getState().triggerTimeSlow(0.4, 520);
