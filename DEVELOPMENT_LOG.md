@@ -12954,3 +12954,9 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - `pixiScene`: 退場中は本体スプライトをフェード＋頭上ハート(浮上+フェード)。退場中は汗マーク非表示。
 - **Load score 1/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.613 — 突進(ダッシュ)もカウンターで弾けるように (claude/sweet-brown-bw8ixm)
+犬(werewolf)/lab-zombie-2/ジャイアントバットの突進(aiPhase==='charge')中の敵にカウンター窓中で接触すると弾く: プレイヤー無傷・敵ダメージ無し・**2倍ノックバック＋突進中断**＋青い弾きリング/SE。ジャンプ着地カウンターと同じ挙動。
+- `useGameLoop` の敵接触ダメージ loop に分岐追加(`counterWindowEnd` 判定→ parried を収集→ 後段で当該敵に knockback＋aiPhase解除)。
+- **Load score 1/10**。
+### Verification: `npx tsc --noEmit` exit:0。

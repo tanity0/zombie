@@ -3056,11 +3056,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ワイヤーアンカーの高速移動中/敵吸着コンボ中は敵接触ダメージを無効化(敵弾は別経路でそのまま当たる)。
         const wpImmune = useGameStore.getState().player;
         const wireDashingNow = Date.now() < wpImmune.wireDashUntil || !!wpImmune.wireStuckEnemyId;
+        // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
+        // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
+        const counterActiveNow = Date.now() <= wpImmune.counterWindowEnd;
+        const dashParried: string[] = [];
 
         playerEnemyCollisions.forEach(enemy => {
           if (wireDashingNow) return;
           // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は、ぶつかってもプレイヤーは被弾しない。
           if (enemy.aiPhase === 'jump') return;
+          // 突進をカウンターで弾く: 被弾せず、敵を2倍ノックバックして突進を中断。
+          if (enemy.aiPhase === 'charge' && counterActiveNow) {
+            dashParried.push(enemy.id);
+            const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+            spawnRing(ecx, ecy, 8, 44, 'rgba(186,230,253,0.95)', 4, 280);
+            spawnBurst(ecx, ecy, '#bae6fd', 12);
+            playSfx('melee-finish');
+            return;
+          }
           const damageWasApplied = !player.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
@@ -3080,6 +3093,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             );
           }
         });
+        if (dashParried.length > 0) {
+          const pnow = Date.now();
+          const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+          useGameStore.setState(st => ({
+            enemies: st.enemies.map(e => {
+              if (!dashParried.includes(e.id)) return e;
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              const dx = ecx - ppx, dy = ecy - ppy;
+              const d = Math.max(0.001, Math.hypot(dx, dy));
+              return {
+                ...e,
+                aiPhase: undefined, // 突進中断
+                aiReadyAt: st.gameTime + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
+                knockbackVx: (dx / d) * KNOCKBACK_SPEED * 2,
+                knockbackVy: (dy / d) * KNOCKBACK_SPEED * 2,
+                knockbackUntil: pnow + KNOCKBACK_DURATION,
+              };
+            }),
+          }));
+        }
 
         // 錬金術: 敵 ↔ 召喚(通常個体)の接触ダメージ。召喚は物理ブロックしない。
         // 被弾頻度の制限は damageSummon 側の無敵時間(プレイヤーと同じ INVULN_MS
