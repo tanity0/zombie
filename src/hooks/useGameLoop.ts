@@ -831,6 +831,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const cleared = newGameTime - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0;
             const timedOut = newGameTime >= ae.endsAt;
             if (cleared || timedOut) {
+              if (cleared) {
+                // クリア告知(発生バナーと同じ機構)。horde=駆除達成 / boss=討伐成功。
+                useGameStore.setState({
+                  eventBannerText: ae.kind === 'boss' ? '討伐成功！' : '駆除達成！',
+                  eventBannerUntil: newGameTime + EVENT_BANNER_MS,
+                });
+              }
               useGameStore.getState().endArenaEvent(); // 拘束解除＋取りこぼし撤去
               spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
               spawnFlash('rgba(255,255,255,0.10)', 200);

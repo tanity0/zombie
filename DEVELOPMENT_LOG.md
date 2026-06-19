@@ -12989,3 +12989,10 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - **パニック走り中(被弾後2秒)は無敵**=接触ダメージを受けない(`updateRescue` で speedBoostUntil 中はダメージスキップ)。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.619 — イベントクリア告知バナー(駆除達成/討伐成功/〇人救助成功) (claude/sweet-brown-bw8ixm)
+発生バナーと同じ機構で、クリア時にも告知。horde 全滅=「駆除達成！」/ boss 撃破=「討伐成功！」/ 救助成功=「〇人救助成功！」(生存人数)。
+HUDの色分けを更新: 成功/達成/救難=緑、危険=赤、それ以外=青。クリアは緑で「成功」感を出す。
+- useGameLoop の arena cleared 分岐＋ updateRescue 成功 set に eventBannerText/Until を追加。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

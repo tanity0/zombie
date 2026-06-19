@@ -4157,6 +4157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
       // 成功アウトロへ突入: 攻撃者退場、survivor はハート→フェードしつつ円の外へ走って退場(savedAt+外向き速度)。
+      // クリア告知(発生バナーと同じ機構)=「〇人救助成功！」。
       set(state => ({
         enemies: state.enemies.filter(e => !e.fromEvent),
         rescueSurvivors: state.rescueSurvivors.map(s => {
@@ -4164,6 +4165,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const sp = RESCUE_SURVIVOR_SPEED * 2.4; // 走って退場
           return { ...s, savedAt: now, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp };
         }),
+        eventBannerText: `${saved}人救助成功！`,
+        eventBannerUntil: state.gameTime + 3500,
       }));
       get().spawnRing(ae.x, ae.y, ae.radius * 0.2, ae.radius, 'rgba(74,222,128,0.9)', 6, 700);
       return;
