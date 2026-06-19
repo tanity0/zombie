@@ -12977,3 +12977,9 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 攻撃者の補充を「即3体維持」→**5秒CDで1体ずつトリクル補充**に(社長指示・`RESCUE_SPAWN_CD_MS=5000`、`rescueSpawnCdRef`)。CDの起点はイベント発火時(初期3体直後)。上限は RESCUE_ATTACKERS=3 のまま。倒すと最大3体まで5秒間隔で戻ってくる=殲滅の手応え/猶予が出る。
 - **Load score 0/10**(分岐＋ref1つ)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.617 — カウンター成立時に短い無敵=「弾いたのに被弾」修正(ジャンプ/ダッシュ共通) (claude/sweet-brown-bw8ixm)
+ジャンプ着地を弾いても、着地した敵がプレイヤーに重なって**通常接触ダメージ**で被弾していた(ダッシュも同様に次フレーム接触で起きうる)。
+- 対策: パリィ成立時(ジャンプ blast パリィ / ダッシュ接触パリィ)に **プレイヤーへ短い無敵(INVULN_MS=700ms)** を付与(`invulnerable=true, invulnerableTime=now`、既存の自動解除に乗る)。これで弾いた直後の重なり被弾を防止。2倍ノックバックは従来どおり。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

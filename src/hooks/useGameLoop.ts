@@ -1860,6 +1860,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (parriedEnemyIds.length > 0) {
               const pnow = Date.now();
               useGameStore.setState(st => ({
+                // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
+                // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
+                player: { ...st.player, invulnerable: true, invulnerableTime: pnow },
                 enemies: st.enemies.map(e => {
                   const hit = parriedEnemyIds.find(p => p.id === e.id);
                   if (!hit) return e;
@@ -3101,6 +3104,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pnow = Date.now();
           const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
           useGameStore.setState(st => ({
+            // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
+            player: { ...st.player, invulnerable: true, invulnerableTime: pnow },
             enemies: st.enemies.map(e => {
               if (!dashParried.includes(e.id)) return e;
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
