@@ -590,6 +590,7 @@ export class PixiScene {
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
+  private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
@@ -3847,16 +3848,19 @@ export class PixiScene {
         const boxH = PixiScene.RESCUE_NPC_DISPLAY_H;
         const boxW = boxH; // contain-fit(縦合わせ)
         const sc = containScale(boxW, boxH, tex.width, tex.height) * this.depthScaleEnemy(footY);
-        // 進行方向で左右反転(素材は右向き想定)。停止時は直前の向きを保持。
-        const face = s.vx < -2 ? -1 : 1;
-        sp.scale.set(sc * (s.vx > 2 || s.vx < -2 ? face : Math.sign(sp.scale.x) || 1), sc);
+        // 左右の向き: vx を平滑化(EMA)＋デッドゾーンで決め、パタパタ反転を防ぐ(素材は右向き想定)。
+        let fs = this.rescueFace.get(s.id);
+        if (!fs) { fs = { vx: s.vx, face: 1 }; this.rescueFace.set(s.id, fs); }
+        fs.vx = fs.vx * 0.82 + s.vx * 0.18;
+        if (fs.vx > 7) fs.face = 1; else if (fs.vx < -7) fs.face = -1; // 範囲内は現状維持
+        sp.scale.set(sc * fs.face, sc);
         sp.visible = true;
       }
       sp.position.set(Math.round(footX), Math.round(footY));
       sp.zIndex = footY;
     }
     for (const [id, sp] of this.rescueSurvivorSprites) {
-      if (!seen.has(id)) { sp.destroy(); this.rescueSurvivorSprites.delete(id); }
+      if (!seen.has(id)) { sp.destroy(); this.rescueSurvivorSprites.delete(id); this.rescueFace.delete(id); }
     }
     // HPバー＋コールアウト(常に最前=rescueGfx)。
     const g = this.rescueGfx;

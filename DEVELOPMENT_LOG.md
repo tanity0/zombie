@@ -12895,3 +12895,9 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 3. **救助NPC耐久半減(社長指示)**: civilian 60→30 / shooter 80→40(`rescue.ts`)。
 - **Load score 1/10**(マーカー描画1個＋保持ループは領域内の数個のみ)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.604 — 救助NPCの左右反転がパタパタする不具合 (claude/sweet-brown-bw8ixm)
+カイト中は vx が細かく振動するため、毎フレ vx符号で向きを決めていた救助NPCが高速で左右反転して見えた。
+- 向きを **vx の EMA(平滑化, α=0.18)＋デッドゾーン(±7)** で決定するよう変更(`rescueFace` Map で id ごとに保持)。範囲内は現状維持＝ヒステリシスで反転を抑制。スプライト除去時に face 状態もプルーン。
+- **Load score 1/10**(NPCごとにスカラー1つのEMA)。
+### Verification: `npx tsc --noEmit` exit:0。
