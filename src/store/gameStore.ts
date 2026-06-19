@@ -13,7 +13,7 @@ import {
   RescueSurvivor, computeSurvivorStep, pickRescueComposition,
   RESCUE_RADIUS, RESCUE_SURVIVOR_SIZE, RESCUE_CIVILIAN_HP, RESCUE_SHOOTER_HP,
   RESCUE_ATTACKERS, RESCUE_SHOOTER_RANGE, RESCUE_SHOOTER_INTERVAL_MS, RESCUE_SHOOTER_DAMAGE,
-  RESCUE_HOLD_NEED_MS,
+  RESCUE_HOLD_NEED_MS, RESCUE_SURVIVOR_SPEED, RESCUE_HIT_SPEED_BOOST_MS, RESCUE_HIT_SPEED_MULT,
 } from '../world/rescue';
 import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
@@ -4058,17 +4058,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     const contactDamage: { id: string; amount: number }[] = [];
     const shooterShots: { x: number; y: number }[] = [];
     const moved: RescueSurvivor[] = survivors.map(s => {
-      const step = computeSurvivorStep(s, survivors, enemyCenters, circle, deltaTime);
+      // 被弾パニック中(speedBoostUntil)は移動速度2倍。
+      const spd = RESCUE_SURVIVOR_SPEED * (s.speedBoostUntil && now < s.speedBoostUntil ? RESCUE_HIT_SPEED_MULT : 1);
+      const step = computeSurvivorStep(s, survivors, enemyCenters, circle, deltaTime, spd);
       let next: RescueSurvivor = { ...s, x: step.x, y: step.y, vx: step.vx, vy: step.vy };
       const scx = next.x + next.width / 2, scy = next.y + next.height / 2;
-      // 敵接触ダメージ(throttle 500ms)
+      // 敵接触ダメージ(throttle 500ms)。被弾したらパニックで2秒スピード2倍。
       if (now - (next.lastContactAt ?? 0) >= 500) {
         for (const e of state.enemies) {
           if (!e.fromEvent) continue;
           const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
           if ((ex - scx) ** 2 + (ey - scy) ** 2 <= (24) ** 2) {
             contactDamage.push({ id: next.id, amount: Math.round(e.damage * 0.5) });
-            next = { ...next, lastContactAt: now, helpUntil: now + 1200 };
+            next = { ...next, lastContactAt: now, helpUntil: now + 1200, speedBoostUntil: now + RESCUE_HIT_SPEED_BOOST_MS };
             break;
           }
         }

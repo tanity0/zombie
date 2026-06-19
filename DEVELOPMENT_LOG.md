@@ -12901,3 +12901,11 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 向きを **vx の EMA(平滑化, α=0.18)＋デッドゾーン(±7)** で決定するよう変更(`rescueFace` Map で id ごとに保持)。範囲内は現状維持＝ヒステリシスで反転を抑制。スプライト除去時に face 状態もプルーン。
 - **Load score 1/10**(NPCごとにスカラー1つのEMA)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.605 — 救助NPCが被弾したら2秒間スピード2倍(パニック) (claude/sweet-brown-bw8ixm)
+敵接触ダメージを受けた救助NPCを `speedBoostUntil = now+2000` にし、その間 `computeSurvivorStep` の速度を ×2(パニック逃走)。
+- `rescue.ts`: `RescueSurvivor.speedBoostUntil?`、`RESCUE_HIT_SPEED_BOOST_MS=2000`/`RESCUE_HIT_SPEED_MULT=2`、`computeSurvivorStep` に speed 引数追加。
+- `gameStore.updateRescue`: 被弾時に speedBoostUntil をセット、毎フレ boost 中なら速度2倍で移動。
+- パニック中は頭上に**汗マーク(水色のしずく・揺れる)**。環境光(カラーグレード/暗幕/ティルトシフト)の影響を受けないよう、PHILL照準と同じく **uiLayer(screen座標)** の `rescueSweatGfx` に描画(world.position で world→screen 変換)。
+- **Load score 1/10**(乗算1つ＋汗マークは該当NPCのみ)。
+### Verification: `npx tsc --noEmit` exit:0。

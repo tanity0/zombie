@@ -591,6 +591,7 @@ export class PixiScene {
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
+  private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
@@ -891,6 +892,7 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.playerFx);
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
     this.L.uiLayer.addChild(this.reticleGfx);
+    this.L.uiLayer.addChild(this.rescueSweatGfx); // 汗マーク=環境光の影響外(uiLayer)
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
       this.localEventShadeGfx,
@@ -3877,6 +3879,23 @@ export class PixiScene {
         g.circle(cx + bw * 0.6, by - 6, 5).fill({ color: 0xfca5a5, alpha: 0.92 });
         g.circle(cx + bw * 0.6, by - 6, 5).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.92 });
       }
+    }
+    // パニック逃走中(被弾2秒)の汗マークは、環境光(カラーグレード/暗幕/ティルトシフト)の影響を
+    // 受けないよう uiLayer(screen座標)に描く。world.position を足して world→screen 変換。
+    const sg = this.rescueSweatGfx;
+    sg.clear();
+    const rox = this.L.world.position.x, roy = this.L.world.position.y;
+    for (const s of survivors) {
+      if (!(s.speedBoostUntil && now < s.speedBoostUntil)) continue;
+      const cx = s.x + s.width / 2 + rox;
+      const headY = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 6 + roy;
+      const bob = Math.sin(now / 90) * 1.5;
+      const sxp = cx - PixiScene.RESCUE_NPC_DISPLAY_H * 0.3;
+      const syp = headY + bob;
+      // しずく(上が尖り・下が丸い)＋ハイライト。
+      sg.poly([sxp, syp - 5, sxp - 3, syp + 1.5, sxp + 3, syp + 1.5]).fill({ color: 0x7dd3fc, alpha: 0.96 });
+      sg.circle(sxp, syp + 2, 3.2).fill({ color: 0x7dd3fc, alpha: 0.96 });
+      sg.circle(sxp - 1, syp + 1, 1).fill({ color: 0xeaf6ff, alpha: 0.96 });
     }
   }
 

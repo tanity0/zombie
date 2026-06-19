@@ -54,7 +54,11 @@ export interface RescueSurvivor {
   lastContactAt?: number; // 敵接触ダメージの throttle
   lastShotAt?: number;    // shooter の射撃 throttle
   helpUntil?: number;     // 「助けて」コールアウト表示の gameTime 期限
+  speedBoostUntil?: number; // 被弾でパニック=この Date.now まで移動速度2倍
 }
+
+export const RESCUE_HIT_SPEED_BOOST_MS = 2000; // 被弾後パニックで速度2倍になる時間
+export const RESCUE_HIT_SPEED_MULT = 2;
 
 interface Pt { x: number; y: number; }
 
@@ -67,6 +71,7 @@ export const computeSurvivorStep = (
   enemyCenters: Pt[],
   circle: Circle,
   deltaTime: number,
+  speed: number = RESCUE_SURVIVOR_SPEED,
 ): { x: number; y: number; vx: number; vy: number } => {
   const cx = s.x + s.width / 2;
   const cy = s.y + s.height / 2;
@@ -106,8 +111,8 @@ export const computeSurvivorStep = (
 
   const len = Math.hypot(dirX, dirY);
   if (len < 0.0001) return { x: s.x, y: s.y, vx: 0, vy: 0 };
-  let vx = (dirX / len) * RESCUE_SURVIVOR_SPEED;
-  let vy = (dirY / len) * RESCUE_SURVIVOR_SPEED;
+  let vx = (dirX / len) * speed;
+  let vy = (dirY / len) * speed;
 
   // 円の縁: 外向き成分を除去して接線スライド(外へ出ない)
   const inset = Math.max(0, circle.radius - Math.max(s.width, s.height) / 2);
