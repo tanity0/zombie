@@ -12776,3 +12776,12 @@ load 1/10(描画数不変・レイヤー移動＋座標変換のみ)。
 - **結果**: `public/` PNG **40.75MB → 24.73MB(-16.02MB / -39.3%)**、134枚中**112枚**を縮小。
 - **Verification**: 寸法不変を sharp で確認 / サンプル `file` でPNG有効 / `npm run build` exit0。
 - load: ビルド時のみ・実行時コスト0(配信が軽くなる分ロードは速くなる)。
+
+## v0.25.589 — 段階A: 単体スプライトのリサイズ(配信PNGのみ・ロジック非改変) (claude/cool-edison-7b8jrl)
+表示の8〜20倍あったソース解像度を「長辺480px(≒表示×4・ズーム/DPR余裕込み)」へ縮小。
+描画は containScale / targetH/tex.height で表示サイズに自動フィットするためコード変更ゼロ・見た目ほぼ不変。
+- sharp を --no-save で一時導入(package.json/lock 非改変)、resize(lanczos3)+png(palette)で再エンコード。
+- 縮小しても元より小さくならない6枚はスキップ(再圧縮済みの小物=退行防止)。タイトル/背景/床タイル/atlas は対象外(社長指示:タイトルそのまま/段階Bは別途)。
+- 変更8枚: 4.68MB → 0.60MB(−87%)。主因 turret-omni/fixed(1254²→480²)、castle、lab-clear-item、lab-zombie-lv3。
+- VRAM も大型テクスチャ(1254² RGBA≈6.3MB×2 等)が 480² に縮小=実メモリ大幅減。
+### Verification: 寸法/PNG有効 確認・build(exit0) 通過・git差分は public/*.png 8枚のみ。
