@@ -24,7 +24,7 @@ import {
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
   WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
-  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS,
+  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, KNOCKBACK_SPEED, MELEE_RADIUS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult
 } from '../store/gameStore';
@@ -1811,16 +1811,45 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bp = useGameStore.getState().player;
             const bpcx = bp.x + bp.width / 2;
             const bpcy = bp.y + bp.height / 2;
+            const counterActive = Date.now() <= bp.counterWindowEnd;
+            const parriedEnemyIds: { id: string; bx: number; by: number }[] = [];
             for (const b of blasts) {
               spawnFlash('rgba(255,150,60,0.16)', 200);
               spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
               spawnBurst(b.x, b.y, '#fb923c', 16);
               const pr = Math.max(bp.width, bp.height) / 2;
               if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr && !bp.invulnerable) {
-                const died = damagePlayer(b.damage);
-                playSfx('player-damage');
-                if (died) triggerPlayerDeath(bpcx, bpcy);
+                if (counterActive) {
+                  // カウンターで弾く: プレイヤー無傷・敵にダメージ無し・2倍ノックバックで吹き飛ばす。
+                  parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
+                  spawnRing(b.x, b.y, 8, b.radius + 24, 'rgba(186,230,253,0.95)', 4, 280); // 弾き返しの青リング
+                  spawnBurst(b.x, b.y, '#bae6fd', 12);
+                  playSfx('melee-finish');
+                } else {
+                  const died = damagePlayer(b.damage);
+                  playSfx('player-damage');
+                  if (died) triggerPlayerDeath(bpcx, bpcy);
+                }
               }
+            }
+            if (parriedEnemyIds.length > 0) {
+              const pnow = Date.now();
+              useGameStore.setState(st => ({
+                enemies: st.enemies.map(e => {
+                  const hit = parriedEnemyIds.find(p => p.id === e.id);
+                  if (!hit) return e;
+                  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+                  const dx = ecx - bpcx, dy = ecy - bpcy;
+                  const d = Math.max(0.001, Math.hypot(dx, dy));
+                  return {
+                    ...e,
+                    aiPhase: 'recover' as const, // ジャンプ後の硬直のまま吹き飛ばす
+                    knockbackVx: (dx / d) * KNOCKBACK_SPEED * 2, // 2倍ノックバック
+                    knockbackVy: (dy / d) * KNOCKBACK_SPEED * 2,
+                    knockbackUntil: pnow + KNOCKBACK_DURATION,
+                  };
+                }),
+              }));
             }
             useGameStore.setState({ pumpkinBlasts: [] });
           }

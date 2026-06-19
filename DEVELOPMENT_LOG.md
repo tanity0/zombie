@@ -12914,3 +12914,9 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 可視可能ゾーンの明かりの穴を縮小=暗がりを拡大(社長指示)。`LAB_VIS_RANGE` 200→170、`LAB_VIS_RANGE_PLAYER` 160→135。URL `?vrange`/`?vrangep` で引き続き微調整可。
 - **Load score 0/10**(定数変更のみ・描画コスト不変)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.607 — ジャンプ攻撃をカウンターで弾く(ノーダメージ＋2倍ノックバック) (claude/sweet-brown-bw8ixm)
+パンプキン/lab-zombie-3 のジャンプ着地爆発を、カウンター窓中(`counterWindowEnd`)に受けると弾き返す。
+- `pumpkinBlasts` に `enemyId` を追加。着地 blast がプレイヤーに当たる瞬間、カウンター中なら: プレイヤー無傷・敵へのダメージ無し・該当敵を**プレイヤーから外向きに2倍ノックバック**(`KNOCKBACK_SPEED*2`)＋青い弾き返しリング＋melee-finish音。非カウンター時は従来どおり被弾。
+- **Load score 1/10**(blast消化時の分岐＋該当敵のみ knockback)。
+### Verification: `npx tsc --noEmit` exit:0。

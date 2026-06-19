@@ -1038,7 +1038,7 @@ interface GameState {
   player: Player;
   enemies: Enemy[];
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
-  pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[];
+  pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
   // マークスマン(mage)の射程上昇が発動した瞬間の頭上マーク演出。fxAt=発火時刻(Date.now)、
   // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
@@ -3712,7 +3712,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
-    const pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[] = []; // 着地爆発イベント
+    const pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[] = []; // 着地爆発イベント
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
@@ -3856,7 +3856,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (t >= 1) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
               // 着地爆発(範囲狭め)。被弾判定/FX は useGameLoop が pumpkinBlasts を消化して行う。
-              pumpkinBlasts.push({ x: tx + enemy.width / 2, y: ty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage });
+              pumpkinBlasts.push({ x: tx + enemy.width / 2, y: ty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
               return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
             }
             return { ...enemy, x: nx, y: ny, vx: 0, vy: 0 }; // 空中は障害物を飛び越える(衝突無視)
