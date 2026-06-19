@@ -12937,3 +12937,11 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 描画: `syncPumpkinTelegraph` にダッシュ赤ライン予告を追加＋ジャンプ着地予告を giantbat にも適用。
 - **Load score 1/10**(既存AI分岐の流用＋予告ライン1本)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.611 — イベント発生告知バナー / 救助発火距離1000-2000 (claude/sweet-brown-bw8ixm)
+1. **イベント告知バナー**(社長指示): イベント発生時にコンボ表示付近へ文言バナーを表示。horde=「変異者大量発生」/ arena boss・城ボス=「危険変異者出現」/ rescue=「救難信号受信」。色も種別で変化(緑/赤/青)。
+   - store: `eventBannerText`/`eventBannerUntil`(gameTime ms)。useGameLoop のイベント発火時に `EVENT_BANNER_MS=3500` でセット。resetGame で初期化。
+   - HUD(`GameHUD.tsx`): 第二次プリミティブ購読のみ(再レンダー規律順守)。コンボ表示中はバナーを **その下(top+190px)へ CSS transition でシームレスにずらす**。バナーは規定秒数まで消えない(コンボが後から出ても継続)。
+2. 救助イベント発火距離を **1000〜2000px** に(社長指示。`?rescuemin`/`?rescuemax` 可)。
+- **Load score 0〜1/10**(HUDはプリミティブ購読・毎フレ再レンダー無し)。
+### Verification: `npx tsc --noEmit` exit:0。

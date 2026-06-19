@@ -72,6 +72,9 @@ const GameHUD: React.FC = () => {
   // コンボ窓(meleeFinishComboUntil)が有効な間だけ出す(7s窓・gameTimeは秒粒度なので失効後~1sで消える)。
   const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
   const rhythmComboUntil = useGameStore(state => state.meleeFinishComboUntil);
+  // イベント発生告知バナー(コンボ表示付近。コンボがあればその下にずらす)。
+  const eventBannerText = useGameStore(state => state.eventBannerText);
+  const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
   const enemyCount = useGameStore(state => state.enemies.length);
@@ -136,6 +139,31 @@ const GameHUD: React.FC = () => {
 
       {/* フィニッシュカウンター表示は四神舞仕様で廃止(コンボ段階はミラーボールの色で表現)。
           コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
+
+      {/* イベント発生告知バナー。コンボ表示があるときはその下にシームレスにずらす(規定秒数まで消えない)。 */}
+      {eventBannerText && eventBannerUntil >= gameTime && (
+        <div
+          className="absolute text-left"
+          style={{
+            top: (rhythmCombo >= 2 && rhythmComboUntil >= gameTime)
+              ? 'calc(max(env(safe-area-inset-top), 8px) + 190px)'
+              : 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
+            left: 'max(env(safe-area-inset-left), 18px)',
+            transition: 'top 0.25s ease',
+          }}
+        >
+          <div
+            className="glass-pill px-3 py-1 text-[13px] font-bold tracking-wide"
+            style={{
+              color: eventBannerText.includes('救難') ? '#bbf7d0' : eventBannerText.includes('危険') ? '#fecaca' : '#bae6fd',
+              border: `1px solid ${eventBannerText.includes('救難') ? 'rgba(74,222,128,0.6)' : eventBannerText.includes('危険') ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
+              textShadow: '0 1px 0 rgba(0,0,0,0.9)',
+            }}
+          >
+            {eventBannerText}
+          </div>
+        </div>
+      )}
 
       {/* コンボ数を左上に表示(近接フィニッシュ/四神舞 共通)。コマンド/入力矢印は Pixi 頭上オーバーレイ側。 */}
       {rhythmCombo >= 2 && rhythmComboUntil >= gameTime && (

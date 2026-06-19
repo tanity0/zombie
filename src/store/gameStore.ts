@@ -1048,6 +1048,9 @@ interface GameState {
   marksmanRangeFxAt: number;
   marksmanRangeFxShownFor: number;
   rescueShooterFxAt: number;  // 救助NPC(shooter)が発砲した時刻(Date.now)。サークル接近時のハンドガンSE用。
+  // イベント発生告知バナー(コンボ表示の近く)。gameTime(ms)基準。HUDが gameTime<eventBannerUntil の間表示。
+  eventBannerText: string;
+  eventBannerUntil: number;
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
@@ -1400,6 +1403,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
   rescueShooterFxAt: 0,
+  eventBannerText: '',
+  eventBannerUntil: 0,
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
@@ -5642,6 +5647,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
         activeEvent: null,
+        eventBannerText: '',
+        eventBannerUntil: 0,
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。
         castleEvent: createCastleEvent(),

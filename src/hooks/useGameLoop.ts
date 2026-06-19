@@ -179,6 +179,7 @@ const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基�
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
+const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの表示時間(gameTime ms)
 // テスト用URLパラメータ(実機/開発で強制発火)。?arenanow=1|horde|boss → 囲い系イベントを開始直後に発火
 // (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
 const evParam = (key: string): string | null =>
@@ -190,8 +191,8 @@ const evNum = (key: string, def: number): number => {
   const v = evParam(key); const n = v != null ? Number(v) : NaN;
   return Number.isFinite(n) ? n : def;
 };
-const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 2000);
-const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 3000);
+const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 1000);
+const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 2000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
@@ -700,6 +701,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const nearCastle = Math.hypot(pcxCastle - castle.x, pcyCastle - castle.y) < CASTLE_BOSS_APPROACH_DIST;
         if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && (FORCE_CASTLE_BOSS || nearCastle)) {
           markCastleBossSpawned();
+          useGameStore.setState({ eventBannerText: '危険変異者出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
           spawnFlash('rgba(127,29,29,0.28)', 420);
@@ -730,6 +732,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 : FORCE_ARENA === 'boss' ? 'boss'
                 : FORCE_ARENA === 'rescue' ? 'rescue'
                 : (['horde', 'boss', 'rescue'] as const)[Math.floor(Math.random() * 3)];
+              // イベント発生告知バナー(コンボ表示付近)。kind 別の文言。
+              useGameStore.setState({
+                eventBannerText: kind === 'rescue' ? '救難信号受信' : kind === 'boss' ? '危険変異者出現' : '変異者大量発生',
+                eventBannerUntil: newGameTime + EVENT_BANNER_MS,
+              });
               if (kind === 'rescue') {
                 // 救助ホールド: プレイヤー位置(=スタート地点)ではなく、少し離れたランダム位置に出す。
                 // 画面端マーカーで誘導 → 現地へ向かう設計。距離は実機調整しやすいよう定数化。
