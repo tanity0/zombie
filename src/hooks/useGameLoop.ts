@@ -178,6 +178,12 @@ const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基�
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
+// テスト用URLパラメータ(実機/開発で強制発火)。?arenanow=1|horde|boss → 囲い系イベントを開始直後に発火
+// (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
+const evParam = (key: string): string | null =>
+  typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
+const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss'
+const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -678,7 +684,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         const castle = useGameStore.getState().castleEvent;
         // 研究所スキンはクリア条件=書類(重要データ)取得なので giantbat ボスは出さない(=湧きは完全にラボ敵のみ)。
-        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && newGameTime >= CASTLE_BOSS_SPAWN_MS) {
+        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && (FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_SPAWN_MS)) {
           markCastleBossSpawned();
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
@@ -698,12 +704,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
             // 発火: activeEvent中でない・未発火・2分経過後。排他制御は activeEvent と arenaFiredRef で担保。
-            if (!arenaFiredRef.current && newGameTime >= ARENA_FIRE_AFTER_MS &&
-                Math.random() < ARENA_FIRE_CHANCE_PER_SEC * deltaTime) {
+            // ?arenanow 指定時は 2分待ち＋発火確率を無視して開始直後に1回だけ発火。
+            const arenaReady = FORCE_ARENA != null
+              || (newGameTime >= ARENA_FIRE_AFTER_MS && Math.random() < ARENA_FIRE_CHANCE_PER_SEC * deltaTime);
+            if (!arenaFiredRef.current && arenaReady) {
               arenaFiredRef.current = true;
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
-              const kind: 'horde' | 'boss' = Math.random() < 0.5 ? 'horde' : 'boss';
+              const kind: 'horde' | 'boss' = FORCE_ARENA === 'horde' ? 'horde'
+                : FORCE_ARENA === 'boss' ? 'boss'
+                : Math.random() < 0.5 ? 'horde' : 'boss';
               const duration = kind === 'boss' ? ARENA_BOSS_DURATION_MS : ARENA_HORDE_DURATION_MS;
               const event = { kind, x: pcx, y: pcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + duration };
               useGameStore.getState().beginArenaEvent(event); // 状態セット＋周辺の通常敵一掃

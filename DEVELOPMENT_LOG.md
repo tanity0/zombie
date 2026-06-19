@@ -12829,3 +12829,12 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 既存12テクスチャはディスク+pixiTextures に登録済み(追加アセットなし)。
 - **Load score 2/10**(rendering+sim)。可視区画ぶんのSprite生成/プルーン(壁と同様)、当たりは近傍区画クエリ(境界つき)。毎フレーム新規確保なし。
 ### Verification: `npx tsc --noEmit` exit:0(本env未 npm install のため build未実行。esbuildは型チェックしない=tscで担保)。import漏れ目視確認済み。
+
+## v0.25.596 — イベント強制発火のテスト用URLパラメータ (claude/sweet-brown-bw8ixm)
+森ステージのイベントを開始直後に強制発火させる調整用パラメータを追加(`useGameLoop.ts`)。描画/判定の本ロジックは不変、発火ゲートのみ上書き。
+- `?arenanow=1` … 囲い系イベント(activeEvent)を開始直後に1回発火(2分待ち＋発火確率を無視)。kind はランダム。
+  - `?arenanow=horde`(ゾンビ大量) / `?arenanow=boss`(giantbatミニボス) で種類を固定。
+- `?castlenow=1` … 城フィナーレボス(giantbat)を開始直後に出現(通常5分→即時)。撃破でクリア。
+- いずれも森ステージ専用(`!indoor && !labTheme` のまま)。ステージ2(研究所)/屋内/ダンスでは従来どおり発火しない。
+- **Load score 0/10**(起動時にURLを1回読むだけ。毎フレームコスト増なし)。
+### Verification: `npx tsc --noEmit` exit:0。
