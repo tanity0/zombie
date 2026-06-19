@@ -12728,3 +12728,12 @@ skillEntries で除外。キャラの初期サブウェポン保持/equip/武器
   ・キャラ選択UIに「固有スキル(自動)」行を追加(名=職名、説明=charSkillDesc)。
 load 1/10(全てイベント駆動 or 既存ループ相乗り。movePlayer の追跡はO(1)で既存setに同梱)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.584 — PHILLガン仕様追加(サークル内即被弾＋スロットトグル) (claude/cool-edison-7b8jrl)
+1) 下部PHILLガンスロットをタップでトグル: 有効中タップ→直前の通常銃へ、無効時タップ→PHILLへ
+   (他の銃は従来どおり持ち替え)。GameHUD の銃スロット onClick を分岐。
+2) サークル内に即被弾へ変更: 弾を飛ばさず、狙いサークル(レティクル=player中心+aim×190)の位置に
+   静止・短命(60ms)の phill-bullet を出し、既存の頭部/胴体コリジョンでその場解決。頭にサークルが
+   乗っていればヘッドショット(crit)。着弾リングFXを追加。弾道移動は廃止。
+load 1/10(既存プロジェクタイル経路を流用・1ショット1静止弾)。
+### Verification: tsc(exit0) + build 通過。

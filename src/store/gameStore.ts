@@ -3187,25 +3187,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
     if (now - weapon.lastFired < (weapon.cooldown ?? 1000)) return;
-    // 進行方向ではなく狙いサークル(慣性付き aim)方向へ撃つ。
-    const dir = (Math.hypot(player.aimX, player.aimY) > 0.001)
-      ? { x: player.aimX, y: player.aimY }
-      : (player.lastDirection ?? { x: 1, y: 0 });
-    const dl = Math.max(0.001, Math.hypot(dir.x, dir.y));
-    const size = weapon.projectileSize || 9;
-    const speed = (weapon.projectileSpeed || 640) * 1.5; // PROJECTILE_SPEED_MULT 相当
+    // 「サークル内に即被弾」: 弾を飛ばさず、狙いサークルの位置に当たり判定を即時発生させる。
+    // = 静止・短命の phill-bullet を「レティクル位置」に置く。既存の頭部/胴体コリジョンがそこで
+    //   解決され、頭にサークルが乗っていればヘッドショット(crit)になる。弾道の移動は無し。
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const PHILL_AIM_RANGE = 190; // pixiScene のレティクル距離と一致させる
+    const hasAim = Math.hypot(player.aimX, player.aimY) > 0.001;
+    const aimx = hasAim ? player.aimX : (player.lastDirection?.x ?? 1);
+    const aimy = hasAim ? player.aimY : (player.lastDirection?.y ?? 0);
+    // aim は 0..1 の慣性ベクトル(レティクルは raw aim×190)。idle フォールバックのみ正規化。
+    const reach = hasAim ? PHILL_AIM_RANGE : PHILL_AIM_RANGE / Math.max(0.001, Math.hypot(aimx, aimy));
+    const rx = pcx + aimx * reach;
+    const ry = pcy + aimy * reach;
+    const size = 16; // レティクル(外リング半径~9)相当のヒット範囲。頭/胴に重なれば命中。
     get().addProjectile({
       id: `proj-phill-${now}`,
-      x: player.x + player.width / 2 - size / 2,
-      y: player.y + player.height / 2 - size / 2,
-      width: size, height: size, speed,
+      x: rx - size / 2,
+      y: ry - size / 2,
+      width: size, height: size, speed: 0, // 静止=即時にその場で被弾判定
       damage: weapon.damage, // クリ(ヘッドショット)は命中位置で確定付与
-      direction: { x: dir.x / dl, y: dir.y / dl },
+      direction: { x: aimx, y: aimy },
       weaponType: 'phill-bullet',
       weaponKey: weapon.key,
-      duration: 1400, createdAt: now,
+      duration: 60, createdAt: now, // 1〜数フレームで消滅(置きっぱなしの当たり残りを防ぐ)
       passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
     });
+    // 着弾サークルのフラッシュ(即被弾の視認性)。
+    get().spawnRing(rx, ry, 4, 16, 'rgba(249,115,22,0.9)', 2, 200);
     const nextMag = Math.max(0, (weapon.magazine ?? 0) - 1);
     set(state => ({ player: { ...state.player, weapons: state.player.weapons.map(w => w.id === weapon.id ? { ...w, lastFired: now, magazine: nextMag } : w) } }));
     if (nextMag <= 0) get().autoSwitchIfDry(); // 空なら既存経路でリロード
