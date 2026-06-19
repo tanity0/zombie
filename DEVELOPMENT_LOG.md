@@ -12880,3 +12880,11 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
    - store: `rescueShooterFxAt`(Date.now)を updateRescue で shooter発砲フレームにセット。useGameLoop が既存のFXタイムスタンプ検出パターンで距離判定＋`playSfx('handgun-fire')`。
 - **Load score 1/10**(SE発火は最大~3発/秒・距離ゲートあり。描画修正はコスト不変)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.602 — 救助NPCを受領素材スプライト(2コマ歩き)に差し替え (claude/sweet-brown-bw8ixm)
+社長提供の素材(射撃手＝兵士/一般人 男＝緑パーカー/女＝ポニーテール、各2コマ)を救助NPCに適用。
+- 画像処理(Pillow、--no-save相当の一時利用): 紫背景(青ドミナント)を hue キーで透過＋2フレーム分割＋縦120pxへ縮小 → `public/sprites/rescue/{shooter,civ-m,civ-f}-{0,1}.png`(計6枚・約110KB)。
+- `pixiTextures`: 6枚を nearest で登録。
+- `pixiScene.drawRescueSurvivors`: Graphicsプレースホルダ → 本体スプライト(足元アンカー・footYで y-sort・depthScale・移動で2コマ歩き・進行方向で左右反転)。HPバー/被弾コールアウトは rescueGfx(最前)に分離。subtype/gender でテクスチャ選択。
+- **Load score 1/10**(最大3体・スプライトプール/プルーン、毎フレ軽量)。dist +約110KB。
+### Verification: `npx tsc --noEmit` exit:0。透過/分割は出力PNGを目視確認(背景除去・シルエット良好)。

@@ -133,6 +133,13 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-props/lab-prop-r3-c2', scaleMode: 'nearest' },
       { name: 'lab-props/lab-prop-r3-c3', scaleMode: 'nearest' },
       { name: 'lab-props/lab-prop-r3-c4', scaleMode: 'nearest' },
+      // 救助イベントのNPC(射撃手/一般人 男女)。各2コマ歩き(0=待機,1=歩き)。紫背景は透過済み。
+      { name: 'rescue/shooter-0', scaleMode: 'nearest' },
+      { name: 'rescue/shooter-1', scaleMode: 'nearest' },
+      { name: 'rescue/civ-m-0', scaleMode: 'nearest' },
+      { name: 'rescue/civ-m-1', scaleMode: 'nearest' },
+      { name: 'rescue/civ-f-0', scaleMode: 'nearest' },
+      { name: 'rescue/civ-f-1', scaleMode: 'nearest' },
       // 研究所ゾンビ(Lv1/2 は男女、Lv3 は巨体1種)。
       { name: 'lab-zombie/lab-zombie-lv1-male', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv1-female', scaleMode: 'nearest' },

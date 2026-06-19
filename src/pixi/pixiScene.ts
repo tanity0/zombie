@@ -588,7 +588,8 @@ export class PixiScene {
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
-  private rescueGfx = new Graphics(); // 救助イベントの守る対象NPC(survivor)プレースホルダ描画(actorLayer 最前)
+  private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
+  private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
@@ -3825,31 +3826,52 @@ export class PixiScene {
     }
   }
 
-  // 救助NPC(survivor)の描画。テクスチャ資産が無いので Graphics の人型プレースホルダ＋HPバー＋
-  // 瀕死コールアウト。rescueGfx(actorLayer 最前)へ毎フレ描き直す(最大3体=軽量)。
+  // 救助NPC(survivor)の描画。本体は受領素材スプライト(2コマ歩き・足元アンカーで y-sort)、
+  // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
+  private static readonly RESCUE_NPC_DISPLAY_H = 54; // 表示の基準高さ(px)
+  private static readonly RESCUE_WALK_FRAME_MS = 170;
   private drawRescueSurvivors(survivors: RescueSurvivor[], now: number) {
+    const seen = new Set<string>();
+    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
+    for (const s of survivors) {
+      seen.add(s.id);
+      const base = s.subtype === 'shooter' ? 'rescue/shooter' : s.gender === 'f' ? 'rescue/civ-f' : 'rescue/civ-m';
+      const moving = Math.hypot(s.vx, s.vy) > 4;
+      const tex = getTexture(`${base}-${moving ? walkFrame : 0}`) ?? getTexture(`${base}-0`);
+      let sp = this.rescueSurvivorSprites.get(s.id);
+      if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.rescueSurvivorSprites.set(s.id, sp); }
+      const footX = s.x + s.width / 2;
+      const footY = s.y + s.height;
+      if (tex) {
+        sp.texture = tex;
+        const boxH = PixiScene.RESCUE_NPC_DISPLAY_H;
+        const boxW = boxH; // contain-fit(縦合わせ)
+        const sc = containScale(boxW, boxH, tex.width, tex.height) * this.depthScaleEnemy(footY);
+        // 進行方向で左右反転(素材は右向き想定)。停止時は直前の向きを保持。
+        const face = s.vx < -2 ? -1 : 1;
+        sp.scale.set(sc * (s.vx > 2 || s.vx < -2 ? face : Math.sign(sp.scale.x) || 1), sc);
+        sp.visible = true;
+      }
+      sp.position.set(Math.round(footX), Math.round(footY));
+      sp.zIndex = footY;
+    }
+    for (const [id, sp] of this.rescueSurvivorSprites) {
+      if (!seen.has(id)) { sp.destroy(); this.rescueSurvivorSprites.delete(id); }
+    }
+    // HPバー＋コールアウト(常に最前=rescueGfx)。
     const g = this.rescueGfx;
     g.clear();
     for (const s of survivors) {
       const cx = s.x + s.width / 2;
-      const cy = s.y + s.height / 2;
-      // shooter=オレンジ / civilian: 男=青系・女=ピンク系
-      const body = s.subtype === 'shooter' ? 0xf59e0b : s.gender === 'f' ? 0xf472b6 : 0x60a5fa;
-      // 体(縦長カプセル)＋頭。
-      g.roundRect(cx - s.width * 0.35, cy - s.height * 0.4, s.width * 0.7, s.height * 0.8, 4).fill({ color: body, alpha: 0.95 });
-      g.circle(cx, cy - s.height * 0.5, s.width * 0.26).fill({ color: 0xfde9c8, alpha: 0.95 });
-      g.circle(cx, cy - s.height * 0.5, s.width * 0.26).stroke({ width: 1, color: 0x1f2937, alpha: 0.5 });
-      // 頭上HPバー。
       const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
-      const bw = s.width * 1.1;
+      const bw = PixiScene.RESCUE_NPC_DISPLAY_H * 0.5;
       const bx = cx - bw / 2;
-      const by = cy - s.height * 0.95;
+      const by = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 8;
       g.rect(bx, by, bw, 3).fill({ color: 0x000000, alpha: 0.55 });
       g.rect(bx, by, bw * frac, 3).fill({ color: 0x4ade80 });
-      // 瀕死/被弾の「助けて」コールアウト(被弾時 helpUntil をセット)。
       if (s.helpUntil && now < s.helpUntil) {
-        g.circle(cx + s.width * 0.5, by - 6, 6).fill({ color: 0xfca5a5, alpha: 0.9 });
-        g.circle(cx + s.width * 0.5, by - 6, 6).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.9 });
+        g.circle(cx + bw * 0.6, by - 6, 5).fill({ color: 0xfca5a5, alpha: 0.92 });
+        g.circle(cx + bw * 0.6, by - 6, 5).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.92 });
       }
     }
   }
