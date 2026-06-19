@@ -13053,3 +13053,8 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 - 表示文(`campaign.ts charSkillDesc`)も更新。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.629 — 商人の救急セットを最大HP30%回復に (claude/sweet-brown-bw8ixm)
+救急セット(medkit)の回復を固定+20→**最大HPの30%**(`SHOP_MEDKIT_HEAL_FRAC=0.3`、`round(maxHP*0.3)`、上限クランプ)。価格50G/満タン時購入不可は据え置き。ショップ説明文も更新。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

@@ -98,7 +98,7 @@ const ShopMenu: React.FC = () => {
     {
       key: 'medkit',
       name: '救急セット',
-      description: '即時回復',
+      description: '即時にHP30%回復',
       cost: SHOP_MEDKIT_COST,
       disabled: player.health >= player.maxHealth
     },

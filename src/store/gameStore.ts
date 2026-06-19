@@ -87,7 +87,7 @@ export const SHOP_DOG_COST = 100;
 export const SHOP_CLASS_SKILL_COST = 100;
 export const SHOP_MEDKIT_COST = 50;
 export const SHOP_VACCINE_COST = 1000;
-const SHOP_MEDKIT_HEAL = 20;
+const SHOP_MEDKIT_HEAL_FRAC = 0.3; // 救急セット: 最大HPの30%回復(社長指示・固定20から変更)
 const SHOP_INTERACT_RING_MS = 360;
 const STRONG_GLOW_RADIUS = 44;
 const SMALL_GLOW_RADIUS_SCALE = 0.9;
@@ -3556,7 +3556,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (key === 'medkit') {
         if (state.player.health >= state.player.maxHealth) return {};
         return spend(SHOP_MEDKIT_COST, {
-          health: Math.min(state.player.maxHealth, state.player.health + SHOP_MEDKIT_HEAL)
+          health: Math.min(state.player.maxHealth, state.player.health + Math.round(state.player.maxHealth * SHOP_MEDKIT_HEAL_FRAC))
         });
       }
       if (key === 'vaccine') {
