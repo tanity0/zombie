@@ -13099,3 +13099,7 @@ health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HP�
 - **負荷スコア**: 1/10。追加は per-enemy の小さな Map 2つ(描画側・敵IDで掃除)と、イベント時のみの FX 消化のみ。毎フレームの新規コストなし。
 - **検証**: `npx tsc --noEmit` 通過(exit 0)。
 - **変更ファイル**: src/store/gameStore.ts(shieldBlocks 状態＋収集、ブロック時 aiStartedAt 整列、SHIELD_BLOCK_SHAKE 定数)、src/hooks/useGameLoop.ts(カウンター方向フォールバック×2、shieldBlocks 消化FX)、src/pixi/pixiScene.ts(落下補間・giantbat 追加・Map 掃除)、package.json
+
+## v0.25.635 — ワクチン価格を500sに
+- 武器商人のワクチン(死亡時1度だけ復活)価格を 1000s → 500s に変更(`SHOP_VACCINE_COST`)。
+- 変更ファイル: src/store/gameStore.ts, package.json
