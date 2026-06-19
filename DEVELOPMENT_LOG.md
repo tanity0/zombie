@@ -13033,3 +13033,11 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 救助サークル内へ通常(アンビエント)敵が侵入しないよう、`updateEnemies` 後段で**非fromEvent敵を円の外周へ押し出す**。専用攻撃者(fromEvent)は救助対象を脅かす役なので中に入れる(=失敗条件を維持)。
 - **Load score 0/10**(rescue時のみ・敵数ぶんの円判定)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.626 — スコア式/トレジャー価値/救助報酬の改定(確定版) (claude/sweet-brown-bw8ixm)
+社長確定仕様。
+1. スコア式(`resultScoring.ts`): treasureScore ×10000→**×5000**。クリア×3倍を廃止し **+30000 フラット**(`clearBonus`)。timeBonus は従来どおり加算。`ResultScore.clearMultiplier`→`clearBonus` に置換、GameOverScreen は「クリアボーナス」表示に変更。
+2. トレジャー(`gameStore`): ドロップ率を **strong/elite/danger 一律2%**(通常0)。価値はランク別の**重み付き抽選**(strong 1:60/2:30/3:10、elite 1:30/2:40/3:20/4:10、danger 3:40/4:30/5:20/6:10)。価値→スコア=価値×5000。treasuresCollected は価値合計(既存)。
+3. 救助成功報酬: 生存人数で **トレジャー1個(価値=生存人数) ＋ スクラップ=生存人数×20** を worldDrop(撤収地点)。旧・経験ジェムは廃止。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

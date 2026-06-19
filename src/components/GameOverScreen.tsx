@@ -71,7 +71,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     treasureScore,
     strapScore,
     timeBonus,
-    clearMultiplier,
+    clearBonus,
     totalScore,
     goldEarned,
   } = calculateResultScore(stats, won, indoor);
@@ -105,7 +105,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: '残スクラップ', value: strapScore },
     // 研究所クリア時のみ「残り時間」ボーナスを表示(早いほど高い)。
     ...(timeBonus > 0 ? [{ label: '残り時間', value: timeBonus }] : []),
-    { label: 'クリア倍率', value: `x${clearMultiplier}` }
+    ...(clearBonus > 0 ? [{ label: 'クリアボーナス', value: clearBonus }] : [])
   ];
   const isBenchmark = benchmarkResult !== null;
   const safeBenchmarkStage = benchmarkResult?.stages.filter(stage => stage.grade === 'PASS').at(-1);

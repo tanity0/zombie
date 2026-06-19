@@ -736,9 +736,9 @@ const WEAPON_CRATE_SCATTER_RADIUS = 92;
 const DROP_THROW_DURATION_MS = 360;
 const TREASURE_DROP_CHANCE_BY_RANK = {
   strong: 0.02,
-  elite: 0.05,
-  danger: 0.10,
-} as const;
+  elite: 0.02,
+  danger: 0.02,
+} as const; // 一律2%/撃破(社長指示)。通常ランクは0(treasureDropChance)。
 const TREASURE_VARIANTS_BY_RARITY = [4, 2, 3, 1, 5, 6] as const;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const MINE_AMBUSH_TIME_MS = 150000;
@@ -760,10 +760,18 @@ const treasureDropChance = (rank?: DifficultyRank): number => {
   if (rank === 'danger') return TREASURE_DROP_CHANCE_BY_RANK.danger;
   return 0;
 };
+// 価値の重み付き抽選(社長指示)。[価値, 重み] の配列から1つ引く。
+const weightedTreasureValue = (entries: [number, number][]): number => {
+  const total = entries.reduce((s, [, w]) => s + w, 0);
+  let r = Math.random() * total;
+  for (const [v, w] of entries) { if ((r -= w) < 0) return v; }
+  return entries[entries.length - 1][0];
+};
 const treasureValueForRank = (rank?: DifficultyRank): number => {
-  if (rank === 'danger') return 4 + Math.floor(Math.random() * 3);
-  if (rank === 'elite') return 2 + Math.floor(Math.random() * 3);
-  return 1 + Math.floor(Math.random() * 2);
+  if (rank === 'danger') return weightedTreasureValue([[3, 40], [4, 30], [5, 20], [6, 10]]);
+  if (rank === 'elite') return weightedTreasureValue([[1, 30], [2, 40], [3, 20], [4, 10]]);
+  if (rank === 'strong') return weightedTreasureValue([[1, 60], [2, 30], [3, 10]]);
+  return weightedTreasureValue([[1, 60], [2, 30], [3, 10]]); // 既定(=strong相当)
 };
 const treasureVariantForValue = (value: number): number =>
   TREASURE_VARIANTS_BY_RARITY[Math.max(0, Math.min(TREASURE_VARIANTS_BY_RARITY.length - 1, value - 1))];
@@ -4227,14 +4235,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     const inside = (pcx - ae.x) ** 2 + (pcy - ae.y) ** 2 <= ae.radius * ae.radius;
     const holdMs = (ae.holdMs ?? 0) + (inside ? deltaTime * 1000 : 0);
     if (holdMs >= RESCUE_HOLD_NEED_MS) {
-      // 成功: 生存人数で報酬スケール(仮: 1人につき経験ジェム3 + 全員無事ボーナス)。
+      // 成功報酬(社長指示・生存人数で決定): 価値=生存人数のトレジャー1個 ＋ スクラップ=生存人数×20。
+      // どちらも worldDrop で撤収地点に出して拾わせる(端マーカー誘導を流用)。
       const saved = alive.length;
-      for (let i = 0; i < saved * 3; i++) {
-        get().addPickup({
-          id: `rescue-reward-${now}-${i}`, x: ae.x, y: ae.y,
-          type: 'experience', value: 5, scatterRadius: ae.radius * 0.8,
-        });
-      }
+      get().addPickup({
+        id: `rescue-treasure-${now}`, x: ae.x, y: ae.y,
+        type: 'treasure', value: saved, variant: treasureVariantForValue(saved),
+        worldDrop: true, scatterRadius: ae.radius * 0.5,
+      });
+      get().addPickup({
+        id: `rescue-strap-${now}`, x: ae.x, y: ae.y,
+        type: 'strap', value: saved * 20,
+        worldDrop: true, scatterRadius: ae.radius * 0.5,
+      });
       // 成功アウトロへ突入: 攻撃者退場、survivor はハート→フェードしつつ円の外へ走って退場(savedAt+外向き速度)。
       // クリア告知(発生バナーと同じ機構)=「〇人救助成功！」。
       set(state => ({
