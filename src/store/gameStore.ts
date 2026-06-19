@@ -14,6 +14,7 @@ import {
   RESCUE_RADIUS, RESCUE_SURVIVOR_SIZE, RESCUE_CIVILIAN_HP, RESCUE_SHOOTER_HP,
   RESCUE_ATTACKERS, RESCUE_SHOOTER_RANGE, RESCUE_SHOOTER_INTERVAL_MS, RESCUE_SHOOTER_DAMAGE,
   RESCUE_HOLD_NEED_MS, RESCUE_SURVIVOR_SPEED, RESCUE_HIT_SPEED_BOOST_MS, RESCUE_HIT_SPEED_MULT,
+  RESCUE_OUTRO_MS,
 } from '../world/rescue';
 import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
@@ -4079,6 +4080,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const ae = state.activeEvent;
     if (!ae || ae.kind !== 'rescue') return;
     const now = Date.now();
+    // 救助成功アウトロ: 退場(走って外へ)を進め、OUTRO 経過で撤収。ハート/フェードは描画側。
+    if (state.rescueSurvivors.length > 0 && state.rescueSurvivors[0].savedAt != null) {
+      const out = state.rescueSurvivors.map(s => ({ ...s, x: s.x + s.vx * deltaTime, y: s.y + s.vy * deltaTime }));
+      set({ rescueSurvivors: out });
+      if (now - (state.rescueSurvivors[0].savedAt ?? now) >= RESCUE_OUTRO_MS) get().endArenaEvent();
+      return;
+    }
     const circle = { x: ae.x, y: ae.y, radius: ae.radius };
     const enemyCenters = state.enemies
       .filter(e => e.fromEvent)
@@ -4146,7 +4154,15 @@ export const useGameStore = create<GameState>((set, get) => ({
           type: 'experience', value: 5, scatterRadius: ae.radius * 0.8,
         });
       }
-      get().endArenaEvent();
+      // 成功アウトロへ突入: 攻撃者退場、survivor はハート→フェードしつつ円の外へ走って退場(savedAt+外向き速度)。
+      set(state => ({
+        enemies: state.enemies.filter(e => !e.fromEvent),
+        rescueSurvivors: state.rescueSurvivors.map(s => {
+          const a = Math.atan2((s.y + s.height / 2) - ae.y, (s.x + s.width / 2) - ae.x);
+          const sp = RESCUE_SURVIVOR_SPEED * 2.4; // 走って退場
+          return { ...s, savedAt: now, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp };
+        }),
+      }));
       get().spawnRing(ae.x, ae.y, ae.radius * 0.2, ae.radius, 'rgba(74,222,128,0.9)', 6, 700);
       return;
     }

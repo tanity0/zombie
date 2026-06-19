@@ -12945,3 +12945,12 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 2. 救助イベント発火距離を **1000〜2000px** に(社長指示。`?rescuemin`/`?rescuemax` 可)。
 - **Load score 0〜1/10**(HUDはプリミティブ購読・毎フレ再レンダー無し)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.612 — 救助成功の退場演出(ハート→フェード→走り去り) (claude/sweet-brown-bw8ixm)
+ホールド成功時、即撤収せず**退場アウトロ**(`RESCUE_OUTRO_MS=1200`)に入る: 攻撃者は退場、survivor は円中心から外向きに走り(速度×2.4)ながら**頭上にハート**を出し**フェードアウト**して消える。
+- `rescue.ts`: `RescueSurvivor.savedAt?`、`RESCUE_OUTRO_MS`。
+- `gameStore.updateRescue`: 成功時に savedAt+外向き速度をセット(endArenaEvent は遅延)。先頭に outro 分岐(走り続け、OUTRO 経過で撤収)。
+- `useGameLoop`: outro 中は攻撃者を補充しない。
+- `pixiScene`: 退場中は本体スプライトをフェード＋頭上ハート(浮上+フェード)。退場中は汗マーク非表示。
+- **Load score 1/10**。
+### Verification: `npx tsc --noEmit` exit:0。

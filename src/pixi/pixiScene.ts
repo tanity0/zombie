@@ -40,7 +40,7 @@ import {
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
-import { RescueSurvivor, RESCUE_HOLD_NEED_MS } from '../world/rescue';
+import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -3872,6 +3872,8 @@ export class PixiScene {
         sp.scale.set(sc * fs.face, sc);
         sp.visible = true;
       }
+      // 救助成功の退場: 走りながらフェードアウト。
+      sp.alpha = s.savedAt ? Math.max(0, 1 - (now - s.savedAt) / RESCUE_OUTRO_MS) : 1;
       sp.position.set(Math.round(footX), Math.round(footY));
       sp.zIndex = footY;
     }
@@ -3893,6 +3895,20 @@ export class PixiScene {
         g.circle(cx + bw * 0.6, by - 6, 5).fill({ color: 0xfca5a5, alpha: 0.92 });
         g.circle(cx + bw * 0.6, by - 6, 5).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.92 });
       }
+      // 救助成功: 頭上にハートマーク(少し浮上＋フェード)。
+      if (s.savedAt) {
+        const t = (now - s.savedAt) / RESCUE_OUTRO_MS;
+        if (t >= 0 && t < 1) {
+          const ha = Math.max(0, 1 - t);
+          const hy = by - 8 - 14 * t; // ふわっと上昇
+          const hs = 4.2;
+          const col = 0xfb7185;
+          // ハート(左右の丸＋下の三角)。
+          g.circle(cx - hs * 0.5, hy - hs * 0.3, hs * 0.62).fill({ color: col, alpha: ha });
+          g.circle(cx + hs * 0.5, hy - hs * 0.3, hs * 0.62).fill({ color: col, alpha: ha });
+          g.poly([cx - hs, hy, cx + hs, hy, cx, hy + hs * 1.25]).fill({ color: col, alpha: ha });
+        }
+      }
     }
     // パニック逃走中(被弾2秒)の汗マークは、環境光(カラーグレード/暗幕/ティルトシフト)の影響を
     // 受けないよう uiLayer(screen座標)に描く。world.position を足して world→screen 変換。
@@ -3900,6 +3916,7 @@ export class PixiScene {
     sg.clear();
     const rox = this.L.world.position.x, roy = this.L.world.position.y;
     for (const s of survivors) {
+      if (s.savedAt) continue; // 退場中はハートを優先(汗は出さない)
       if (!(s.speedBoostUntil && now < s.speedBoostUntil)) continue;
       const cx = s.x + s.width / 2 + rox;
       const headY = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 6 + roy;

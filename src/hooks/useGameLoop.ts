@@ -799,7 +799,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gs = useGameStore.getState();
             const survivors = gs.rescueSurvivors;
             const attackers = gs.enemies.filter(e => e.fromEvent);
-            if (survivors.length > 0) {
+            // 成功アウトロ中(savedAt)は補充しない。
+            if (survivors.length > 0 && !survivors[0].savedAt) {
               for (let i = attackers.length; i < RESCUE_ATTACKERS; i++) {
                 const tgt = survivors[Math.floor(Math.random() * survivors.length)];
                 const ang = Math.random() * Math.PI * 2;

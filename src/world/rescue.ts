@@ -55,10 +55,12 @@ export interface RescueSurvivor {
   lastShotAt?: number;    // shooter の射撃 throttle
   helpUntil?: number;     // 「助けて」コールアウト表示の gameTime 期限
   speedBoostUntil?: number; // 被弾でパニック=この Date.now まで移動速度2倍
+  savedAt?: number;         // 救助成功の退場アニメ開始(Date.now)。ハート→フェード→走って退場。
 }
 
 export const RESCUE_HIT_SPEED_BOOST_MS = 2000; // 被弾後パニックで速度2倍になる時間
 export const RESCUE_HIT_SPEED_MULT = 2;
+export const RESCUE_OUTRO_MS = 1200;           // 救助成功→退場(ハート/フェード/走り去り)の時間
 
 interface Pt { x: number; y: number; }
 
