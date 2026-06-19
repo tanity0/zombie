@@ -579,6 +579,9 @@ export const PUMPKIN_COOLDOWN_MS = 800;    // 復帰後、次の溜めまでの�
 export const PUMPKIN_JUMP_HEIGHT = 90;     // ジャンプの見た目の高さ(px・描画のみ)
 export const PUMPKIN_LAND_SHAKE_MS = 220;  // 着地時の画面揺れ
 export const PUMPKIN_LAND_SHAKE_MAG = 9;
+// 設置シールドでジャンプ/ダッシュを弾いた瞬間の「ぶつかった感」用シェイク(着地より軽め)。
+export const SHIELD_BLOCK_SHAKE_MS = 140;
+export const SHIELD_BLOCK_SHAKE_MAG = 5;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
 export const PUMPKIN_EXPLOSION_RADIUS = 54; // 爆撃範囲を少し狭く(66→54。社長指示)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
@@ -1039,6 +1042,8 @@ interface GameState {
   enemies: Enemy[];
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
   pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[];
+  // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
+  shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
   // マークスマン(mage)の射程上昇が発動した瞬間の頭上マーク演出。fxAt=発火時刻(Date.now)、
   // fxShownFor=その演出を出した連続移動streak(=marksmanMovingSince)。streakごとに一度だけ出す。
@@ -1396,6 +1401,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   enemies: [],
   pumpkinBlasts: [],
+  shieldBlocks: [],
   boomerangReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
@@ -3728,6 +3734,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
     const pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[] = []; // 着地爆発イベント
+    const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
     set(state => {
@@ -3842,6 +3849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 盾にぶつかったら突進をキャンセル(その場で停止・クールダウンへ)。
             if (shieldRects.length > 0 &&
                 shieldRects.some(s => rectsOverlap({ x: moved.x, y: moved.y, width: enemy.width, height: enemy.height }, s))) {
+              shieldBlocks.push({ x: moved.x + enemy.width / 2, y: moved.y + enemy.height / 2, kind: 'dash' });
               return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS };
             }
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
@@ -3886,9 +3894,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             const nx = fx + (tx - fx) * t;
             const ny = fy + (ty - fy) * t;
             // 盾にぶつかったらジャンプ攻撃をキャンセルして、その場に落ちるだけ(爆発なし)。
+            // 接触点を shieldBlocks に積んで、useGameLoop 側で衝突FX+SE を出す。描画は drawEnemy が
+            // 空中→着地のホップ高を滑らかに 0 まで補間して「シームレスに落ちる」よう見せる(描画のみ)。
             if (shieldRects.length > 0 &&
                 shieldRects.some(s => rectsOverlap({ x: nx, y: ny, width: enemy.width, height: enemy.height }, s))) {
-              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
+              shieldBlocks.push({ x: nx + enemy.width / 2, y: ny + enemy.height / 2, kind: 'jump' });
+              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiStartedAt: gameTime, aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
             }
             if (t >= 1) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
@@ -4019,7 +4030,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
-      return { enemies: finalEnemies, pumpkinBlasts };
+      return { enemies: finalEnemies, pumpkinBlasts, shieldBlocks };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。

@@ -13091,3 +13091,11 @@ health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HP�
 - **検証**: `npx tsc --noEmit` 通過(`noUnusedLocals`/`noUnusedParameters` 有効下で exit 0)。削除シンボルの残参照を repo 全体 grep で 0 件確認。vite はこのコンテナ未導入のため build 未実施。
 - **変更ファイル**: src/store/gameStore.ts, src/hooks/useGameLoop.ts, src/pixi/pixiScene.ts, src/pixi/PixiStage.tsx, src/components/ShopMenu.tsx, src/utils/{weaponUtils,collisionUtils,summonUtils,spriteAtlas}.ts, src/config/{renderer,reaper,hunting}.ts, package.json
 - **次の引き継ぎ**: shijin.ts の要確認シンボル(RHYTHM_JUST_WINDOW_MS / RHYTHM_JUST_HIT_COLOR / RHYTHM_JUST_FIRE_COLOR / RHYTHM_PROMPT_LEN / ARROW_GLYPH)はチューニング用の意図的な未配線の可能性があり、削除は要オーナー判断のため保留。
+
+## v0.25.634 — 盾ブロックの衝突FX/シームレス落下＋ジャンプカウンターのノックバック修正
+- **ジャンプ攻撃カウンターのノックバック不発を修正**: ジャンプ攻撃はプレイヤー位置めがけて着地するため、弾き返し方向を「プレイヤー→敵中心」で計算すると両者がほぼ重なり、方向ベクトルが 0 に潰れてノックバック速度が 0 になっていた。距離が小さい(<12px)ときは「敵が飛んできた向き(aiFrom→着地点)」を使って来た方へ弾き返すフォールバックを追加。ダッシュカウンターにも同じ潰れが起き得るため同様に修正。
+- **盾で防いだ瞬間の「ぶつかった感」エフェクト(ジャンプ/ダッシュ共通)**: store が接触点を `shieldBlocks`(kind: jump/dash)に積み、useGameLoop が消化して白い衝撃リング＋内側シアンリング＋火花バースト＋衝突音(heavy-impact)＋ごく軽い画面揺れ(SHIELD_BLOCK_SHAKE)を出す。イベント時のみ発火。
+- **盾で弾かれたジャンプのシームレス落下(描画のみ)**: 従来は空中高からいきなり地面へスナップしていた。store はブロック時に `aiStartedAt=recover開始` へ揃え、`drawEnemy` がこれを検出して最後の空中ホップ高から 0 まで重力ふう(ease-in)に補間して落とす。通常着地(aiStartedAt=ジャンプ開始のまま)とは判別され、誤発火しない。ジャイアントバットもジャンプのアーク/しゃがみ/着地スカッシュ演出に追加(従来は無補間だった)。
+- **負荷スコア**: 1/10。追加は per-enemy の小さな Map 2つ(描画側・敵IDで掃除)と、イベント時のみの FX 消化のみ。毎フレームの新規コストなし。
+- **検証**: `npx tsc --noEmit` 通過(exit 0)。
+- **変更ファイル**: src/store/gameStore.ts(shieldBlocks 状態＋収集、ブロック時 aiStartedAt 整列、SHIELD_BLOCK_SHAKE 定数)、src/hooks/useGameLoop.ts(カウンター方向フォールバック×2、shieldBlocks 消化FX)、src/pixi/pixiScene.ts(落下補間・giantbat 追加・Map 掃除)、package.json

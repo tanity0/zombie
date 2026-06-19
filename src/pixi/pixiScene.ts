@@ -255,6 +255,7 @@ const heliAboveAt = (t: number): number => {
 // 敵の被弾しなり(頭が後ろにぐにゃっ): 撃たれた直後だけ skew + 軽い縦縮みで反らせる。
 const ENEMY_HIT_FLINCH_MS = 230;    // 少しだけゆっくり(0.13s→0.23s)
 const ENEMY_HIT_FLINCH_SKEW = 0.42; // 最大skew(ラジアン相当)
+const SHIELD_BLOCK_FALL_MS = 180;   // 盾で弾かれたジャンプの空中→着地の落下補間時間(描画のみ)
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
   name: 'sunlight',
@@ -568,6 +569,8 @@ export class PixiScene {
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
+  private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
+  private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
   private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
@@ -3157,6 +3160,8 @@ export class PixiScene {
         view.light.destroy();
         view.container.destroy({ children: true });
         this.enemies.delete(id);
+        this.enemyJumpHop.delete(id);
+        this.enemyBlockFall.delete(id);
       }
     }
   }
@@ -3363,9 +3368,9 @@ export class PixiScene {
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
-    // パンプキン特殊AI演出(描画のみ): 縮み(しゃがみ)/ジャンプのアーク/着地スカッシュ。Lv3も同様。
+    // パンプキン特殊AI演出(描画のみ): 縮み(しゃがみ)/ジャンプのアーク/着地スカッシュ。Lv3・ジャイアントバットも同様。
     let aiSqX = 1, aiSqY = 1, aiHop = 0;
-    if (e.type === 'pumpkin' || e.type === 'lab-zombie-3') {
+    if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat') {
       if (e.aiPhase === 'crouch') {
         const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / PUMPKIN_CROUCH_MS));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
@@ -3373,9 +3378,29 @@ export class PixiScene {
         const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / PUMPKIN_JUMP_MS));
         aiHop = Math.sin(t * Math.PI) * PUMPKIN_JUMP_HEIGHT; // 1秒のジャンプアーク(描画のみ)
         aiSqY = 1.08; aiSqX = 0.94;                          // 空中は少し縦伸び
+        this.enemyJumpHop.set(e.id, aiHop);                  // 盾ブロック時の落下起点として最新ホップ高を退避
+        this.enemyBlockFall.delete(e.id);
       } else if (e.aiPhase === 'recover') {
-        const since = gameTime - ((e.aiPhaseUntil ?? gameTime) - PUMPKIN_RECOVER_MS);
-        if (since >= 0 && since < 170) { const w = 1 - since / 170; aiSqY = 1 - 0.4 * w; aiSqX = 1 + 0.18 * w; } // 着地スカッシュ
+        // 盾で空中から弾かれた着地(store が block 時に aiStartedAt=recover開始へ揃える)は、
+        // 通常着地と違い空中高から始まるので、ホップ高を 0 まで重力ふうに補間して「シームレスに落とす」。
+        const recoverStart = (e.aiPhaseUntil ?? gameTime) - PUMPKIN_RECOVER_MS;
+        const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
+        if (blockedFall) {
+          let fall = this.enemyBlockFall.get(e.id);
+          if (!fall) { fall = { from: this.enemyJumpHop.get(e.id) ?? PUMPKIN_JUMP_HEIGHT * 0.6, start: gameTime }; this.enemyBlockFall.set(e.id, fall); }
+          const p = Math.max(0, Math.min(1, (gameTime - fall.start) / SHIELD_BLOCK_FALL_MS));
+          aiHop = fall.from * (1 - p * p); // ease-in(加速して落下)
+          aiSqY = 1.05; aiSqX = 0.97;      // 落下中は少しだけ縦伸び
+          if (p >= 1) { this.enemyBlockFall.delete(e.id); this.enemyJumpHop.delete(e.id); }
+        } else {
+          const since = gameTime - recoverStart;
+          if (since >= 0 && since < 170) { const w = 1 - since / 170; aiSqY = 1 - 0.4 * w; aiSqX = 1 + 0.18 * w; } // 着地スカッシュ
+          this.enemyJumpHop.delete(e.id);
+          this.enemyBlockFall.delete(e.id);
+        }
+      } else {
+        this.enemyJumpHop.delete(e.id);
+        this.enemyBlockFall.delete(e.id);
       }
     }
 

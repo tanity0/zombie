@@ -20,6 +20,7 @@ import {
   introDialogueTotalMs,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
+  SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
@@ -1893,19 +1894,46 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const hit = parriedEnemyIds.find(p => p.id === e.id);
                   if (!hit) return e;
                   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-                  const dx = ecx - bpcx, dy = ecy - bpcy;
-                  const d = Math.max(0.001, Math.hypot(dx, dy));
+                  // ジャンプ攻撃はプレイヤーの位置めがけて着地する=敵中心がプレイヤー中心とほぼ重なり、
+                  // 「プレイヤー→敵」方向だと向きが 0 に潰れてノックバックが効かない(社長報告のバグ)。
+                  // 距離が小さいときは、敵がジャンプしてきた向き(aiFrom→着地点)の逆=「飛んできた方へ弾き返す」を使う。
+                  let ndx = ecx - bpcx, ndy = ecy - bpcy;
+                  let d = Math.hypot(ndx, ndy);
+                  if (d < 12) {
+                    const ox = e.x - (e.aiFromX ?? e.x), oy = e.y - (e.aiFromY ?? e.y);
+                    const od = Math.hypot(ox, oy);
+                    if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
+                    else { ndx = 0; ndy = -1; d = 1; } // それも潰れていれば上方へ弾く
+                  }
                   return {
                     ...e,
                     aiPhase: 'recover' as const, // ジャンプ後の硬直のまま吹き飛ばす
-                    knockbackVx: (dx / d) * KNOCKBACK_SPEED * 2, // 2倍ノックバック
-                    knockbackVy: (dy / d) * KNOCKBACK_SPEED * 2,
+                    knockbackVx: (ndx / d) * KNOCKBACK_SPEED * 2, // 2倍ノックバック
+                    knockbackVy: (ndy / d) * KNOCKBACK_SPEED * 2,
                     knockbackUntil: pnow + KNOCKBACK_DURATION,
                   };
                 }),
               }));
             }
             useGameStore.setState({ pumpkinBlasts: [] });
+          }
+        }
+
+        // 設置シールドでジャンプ/ダッシュを防いだ瞬間の「ぶつかった感」: 接触点に火花バースト＋
+        // 衝撃リング＋衝突音＋ごく短い画面揺れ。ジャンプ/ダッシュ共通(store が kind を付けて積む)。
+        {
+          const blocks = useGameStore.getState().shieldBlocks;
+          if (blocks.length > 0) {
+            playSfx('heavy-impact');
+            for (const b of blocks) {
+              spawnFlash('rgba(226,232,240,0.14)', 120);
+              spawnRing(b.x, b.y, 8, 46, 'rgba(226,232,240,0.95)', 4, 260);   // 白い衝撃リング(金属で弾いた感)
+              spawnRing(b.x, b.y, 4, 28, 'rgba(125,211,252,0.9)', 3, 220);    // 内側シアン
+              spawnBurst(b.x, b.y, '#e2e8f0', 12);                            // 火花
+              spawnBurst(b.x, b.y, '#7dd3fc', 6);
+            }
+            useGameStore.getState().triggerShake(SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG);
+            useGameStore.setState({ shieldBlocks: [] });
           }
         }
 
@@ -3145,14 +3173,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             enemies: st.enemies.map(e => {
               if (!dashParried.includes(e.id)) return e;
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-              const dx = ecx - ppx, dy = ecy - ppy;
-              const d = Math.max(0.001, Math.hypot(dx, dy));
+              // ジャンプ同様、突進中の敵はプレイヤーに重なって向きが潰れることがある。
+              // 距離が小さいときは突進してきた向き(aiFrom→現在)の逆=「来た方へ弾き返す」を使う。
+              let ndx = ecx - ppx, ndy = ecy - ppy;
+              let d = Math.hypot(ndx, ndy);
+              if (d < 12) {
+                const ox = e.x - (e.aiFromX ?? e.x), oy = e.y - (e.aiFromY ?? e.y);
+                const od = Math.hypot(ox, oy);
+                if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
+                else { ndx = 0; ndy = -1; d = 1; }
+              }
               return {
                 ...e,
                 aiPhase: undefined, // 突進中断
                 aiReadyAt: st.gameTime + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
-                knockbackVx: (dx / d) * KNOCKBACK_SPEED * 2,
-                knockbackVy: (dy / d) * KNOCKBACK_SPEED * 2,
+                knockbackVx: (ndx / d) * KNOCKBACK_SPEED * 2,
+                knockbackVy: (ndy / d) * KNOCKBACK_SPEED * 2,
                 knockbackUntil: pnow + KNOCKBACK_DURATION,
               };
             }),
