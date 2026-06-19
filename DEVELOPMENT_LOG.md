@@ -12845,3 +12845,15 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - マシンピストル(handgun-t3, ≒サブマシンガン): cooldown **130→87**(今の2/3＝より速い連射。130×2/3≈86.7)。
 - **Load score 0/10**(武器定義の定数変更のみ)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.598 — 新イベント「救助ホールド」(activeEvent kind=rescue) (claude/sweet-brown-bw8ixm)
+既存の囲い系イベント(activeEvent)を流用した時限防衛イベント。サークル内の逃げ惑うNPC3人を守り、累計25秒しのげば救助成功。
+**プレイヤーは円に閉じ込めない=出入り自由**(社長指示)。森ステージ専用・他イベントと排他・2分以降ランダム1回(`?arenanow=rescue` で即発火)。
+- 新規 `src/world/rescue.ts`(renderer-agnostic): 定数/編成抽選(1難→3易)/純粋AI `computeSurvivorStep`(円内バウンドカイト=最寄り敵120px内なら逃走・いなければ中央帰還・NPC反発30・円縁は外向き成分除去で接線スライド)/`RescueSurvivor` 型。
+- 型(`types/game.ts`): `ActiveEventKind` に `'rescue'`、`ActiveEvent.holdMs?`、`Enemy.escortTarget?`(攻撃者が狙うNPC id)。
+- store(`gameStore.ts`): state `rescueSurvivors[]`、`beginRescueEvent`(survivor3人配置＋攻撃者割当)/`updateRescue`(カイト移動・敵接触ダメージ・shooter自衛射撃・ホールドゲージ・勝敗/報酬)/`damageRescueSurvivor`。`endArenaEvent` で survivor も後片付け。`movePlayer` の円拘束は rescue を除外(出入り自由)。`updateEnemies` に escort retarget 分岐(担当NPC死亡時は最寄り生存NPCへ乗換、全滅でプレイヤー)。
+- loop(`useGameLoop.ts`): アリーナ抽選を horde/boss/rescue の3択に拡張。rescue は `beginRescueEvent`＋緑リング演出。発火中は攻撃者を3体維持(補充)＋毎フレ `updateRescue`。誤終了する「敵全滅=clear」判定は rescue では使わず、成功(25秒)/全滅(失敗)/保険タイムアウトで終了。
+- 描画(`pixiScene.ts`): `syncArena` を rescue=緑＋外周にホールド進捗の円弧へ拡張。`drawRescueSurvivors`(Graphics プレースホルダ人型＋頭上HPバー＋被弾コールアウト、actorLayer 最前)。テクスチャ資産は未使用(将来差し替え可)。
+- 報酬は仮置き(生存人数×経験ジェム3)。数値は決め打ち(半径150/25秒/逃走40/トリガー120/反発30/攻撃者3)で実機調整前提。
+- **Load score 1〜2/10**(イベント制・NPC最大3＋攻撃者3。毎フレ処理は軽量・新規確保なし)。将来「目的地へ向かう護衛」へ拡張可(座標データ駆動・カイトAI流用)。
+### Verification: `npx tsc --noEmit` exit:0(import漏れ目視確認: RESCUE_HOLD_NEED_MS の未import を1件発見し修正済み)。本env未 npm install のため build未実行。

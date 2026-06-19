@@ -40,6 +40,7 @@ import {
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
+import { RescueSurvivor, RESCUE_HOLD_NEED_MS } from '../world/rescue';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -584,6 +585,7 @@ export class PixiScene {
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
+  private rescueGfx = new Graphics(); // 救助イベントの守る対象NPC(survivor)プレースホルダ描画(actorLayer 最前)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private localEventShadeGfx = new Graphics();
@@ -881,6 +883,9 @@ export class PixiScene {
       this.merchantView,
       this.eventNpcView,
     );
+    // 救助NPCはアクター最前(zIndex 大)に描く=常に見える(プレースホルダ)。
+    this.rescueGfx.zIndex = 1_000_000;
+    this.L.actorLayer.addChild(this.rescueGfx);
 
     this.gradeSprite.tint = GRADE_TINT;
     this.gradeSprite.alpha = GRADE_ALPHA;
@@ -1675,6 +1680,7 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
+    this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
     this.syncSummons(s.summons, now);
@@ -3733,11 +3739,50 @@ export class PixiScene {
     if (!ae) return;
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
     const a = 0.30 + 0.18 * pulse;
-    const color = ae.kind === 'boss' ? 0xef4444 : 0x38bdf8;
+    // rescue=緑(ホールド帯) / boss=赤 / horde=青
+    const color = ae.kind === 'boss' ? 0xef4444 : ae.kind === 'rescue' ? 0x4ade80 : 0x38bdf8;
     // 内側の淡い塗り(囲われている感)+ 二重リング(太い半透明の外周 / 細く明るい内周)。
     g.circle(ae.x, ae.y, ae.radius - 4).fill({ color, alpha: 0.05 + 0.04 * pulse });
     g.circle(ae.x, ae.y, ae.radius).stroke({ width: 6, color, alpha: a * 0.6 });
     g.circle(ae.x, ae.y, ae.radius - 3).stroke({ width: 2, color, alpha: a });
+    // rescue: ホールド進捗を外周の円弧で表示(上端始点・時計回り)。
+    if (ae.kind === 'rescue') {
+      const frac = Math.max(0, Math.min(1, (ae.holdMs ?? 0) / RESCUE_HOLD_NEED_MS));
+      if (frac > 0) {
+        const start = -Math.PI / 2;
+        g.arc(ae.x, ae.y, ae.radius + 5, start, start + Math.PI * 2 * frac)
+          .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
+      }
+    }
+  }
+
+  // 救助NPC(survivor)の描画。テクスチャ資産が無いので Graphics の人型プレースホルダ＋HPバー＋
+  // 瀕死コールアウト。rescueGfx(actorLayer 最前)へ毎フレ描き直す(最大3体=軽量)。
+  private drawRescueSurvivors(survivors: RescueSurvivor[], now: number) {
+    const g = this.rescueGfx;
+    g.clear();
+    for (const s of survivors) {
+      const cx = s.x + s.width / 2;
+      const cy = s.y + s.height / 2;
+      // shooter=オレンジ / civilian: 男=青系・女=ピンク系
+      const body = s.subtype === 'shooter' ? 0xf59e0b : s.gender === 'f' ? 0xf472b6 : 0x60a5fa;
+      // 体(縦長カプセル)＋頭。
+      g.roundRect(cx - s.width * 0.35, cy - s.height * 0.4, s.width * 0.7, s.height * 0.8, 4).fill({ color: body, alpha: 0.95 });
+      g.circle(cx, cy - s.height * 0.5, s.width * 0.26).fill({ color: 0xfde9c8, alpha: 0.95 });
+      g.circle(cx, cy - s.height * 0.5, s.width * 0.26).stroke({ width: 1, color: 0x1f2937, alpha: 0.5 });
+      // 頭上HPバー。
+      const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
+      const bw = s.width * 1.1;
+      const bx = cx - bw / 2;
+      const by = cy - s.height * 0.95;
+      g.rect(bx, by, bw, 3).fill({ color: 0x000000, alpha: 0.55 });
+      g.rect(bx, by, bw * frac, 3).fill({ color: 0x4ade80 });
+      // 瀕死/被弾の「助けて」コールアウト(被弾時 helpUntil をセット)。
+      if (s.helpUntil && now < s.helpUntil) {
+        g.circle(cx + s.width * 0.5, by - 6, 6).fill({ color: 0xfca5a5, alpha: 0.9 });
+        g.circle(cx + s.width * 0.5, by - 6, 6).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.9 });
+      }
+    }
   }
 
   // 足元Yで y-sort するので、キャラが盾の上部に被る(当たりは下部のみ)。

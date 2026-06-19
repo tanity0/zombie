@@ -53,6 +53,7 @@ import {
   resolveEnemyTarget
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
+import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
@@ -182,7 +183,7 @@ const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤�
 // (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
 const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
-const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss'
+const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
@@ -711,9 +712,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               arenaFiredRef.current = true;
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
-              const kind: 'horde' | 'boss' = FORCE_ARENA === 'horde' ? 'horde'
+              const kind: 'horde' | 'boss' | 'rescue' =
+                FORCE_ARENA === 'horde' ? 'horde'
                 : FORCE_ARENA === 'boss' ? 'boss'
-                : Math.random() < 0.5 ? 'horde' : 'boss';
+                : FORCE_ARENA === 'rescue' ? 'rescue'
+                : (['horde', 'boss', 'rescue'] as const)[Math.floor(Math.random() * 3)];
+              if (kind === 'rescue') {
+                // 救助ホールド: 固定半径の円に survivor3人＋攻撃者を配置(store側)。endsAt は安全用の保険。
+                const event = { kind, x: pcx, y: pcy, radius: RESCUE_RADIUS, startedAt: newGameTime, endsAt: newGameTime + 120000 };
+                useGameStore.getState().beginRescueEvent(event);
+                spawnRing(pcx, pcy, RESCUE_RADIUS * 0.2, RESCUE_RADIUS, 'rgba(74,222,128,0.9)', 6, 700);
+                spawnRing(pcx, pcy, RESCUE_RADIUS, RESCUE_RADIUS + 30, 'rgba(74,222,128,0.9)', 3, 760);
+                spawnFlash('rgba(8,47,73,0.20)', 320);
+                useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+                useGameStore.getState().triggerTimeSlow(0.4, 520);
+                return; // この set コールバックでの以降のアリーナ配置はスキップ(rescue は store が配置済み)
+              }
               const duration = kind === 'boss' ? ARENA_BOSS_DURATION_MS : ARENA_HORDE_DURATION_MS;
               const event = { kind, x: pcx, y: pcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + duration };
               useGameStore.getState().beginArenaEvent(event); // 状態セット＋周辺の通常敵一掃
@@ -753,6 +767,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnFlash(kind === 'boss' ? 'rgba(127,29,29,0.26)' : 'rgba(8,47,73,0.24)', 360);
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               useGameStore.getState().triggerTimeSlow(0.4, 520);
+            }
+          } else if (ae.kind === 'rescue') {
+            // 救助: 攻撃者を RESCUE_ATTACKERS 体維持(死んだら補充=生存NPCへ割り当て)。
+            // 勝敗/ホールドゲージ/NPCカイトは updateRescue が処理。時間切れ保険のみここで見る。
+            const gs = useGameStore.getState();
+            const survivors = gs.rescueSurvivors;
+            const attackers = gs.enemies.filter(e => e.fromEvent);
+            if (survivors.length > 0) {
+              for (let i = attackers.length; i < RESCUE_ATTACKERS; i++) {
+                const tgt = survivors[Math.floor(Math.random() * survivors.length)];
+                const ang = Math.random() * Math.PI * 2;
+                const bx = ae.x + Math.cos(ang) * ae.radius * 1.05;
+                const by = ae.y + Math.sin(ang) * ae.radius * 1.05;
+                const e = spawnEnemyAt('zombie', bx - 16, by - 16, newGameTime);
+                e.fromEvent = true;
+                e.escortTarget = tgt.id;
+                addEnemy(e);
+              }
+            }
+            gs.updateRescue(deltaTime);
+            if (newGameTime >= ae.endsAt) { // 保険のタイムアウト(通常は成功/全滅で終了)
+              useGameStore.getState().endArenaEvent();
+              spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
             }
           } else {
             // 終了判定: 全滅(イベント敵0・開始直後グレース後) or 制限時間切れ。

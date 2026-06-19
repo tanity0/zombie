@@ -10,6 +10,12 @@ import {
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
+  RescueSurvivor, computeSurvivorStep, pickRescueComposition,
+  RESCUE_RADIUS, RESCUE_SURVIVOR_SIZE, RESCUE_CIVILIAN_HP, RESCUE_SHOOTER_HP,
+  RESCUE_ATTACKERS, RESCUE_SHOOTER_RANGE, RESCUE_SHOOTER_INTERVAL_MS, RESCUE_SHOOTER_DAMAGE,
+  RESCUE_HOLD_NEED_MS,
+} from '../world/rescue';
+import {
   RHYTHM_INTERVAL_MS, RHYTHM_LEAD_MS, RHYTHM_SUCCESS_WINDOW_MS, RHYTHM_FLICK_EXTRA_WINDOW_MS, RHYTHM_FLICK_MAX_CONTACT_MS, RHYTHM_INPUT_DEBOUNCE_MS,
   RHYTHM_START_INVULN_MS, SHIJIN_FINISH_COUNT, SHIJIN_BY_ARROW, rhythmComboStage,
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
@@ -1126,6 +1132,8 @@ interface GameState {
   } | null;
   // 錬金術で召喚した味方ユニット。enemies とは別配列(副作用回避)。
   summons: Summon[];
+  // 救助ホールドイベントの守る対象NPC(逃げ惑う3人)。alchemy summons とは別系統。
+  rescueSurvivors: RescueSurvivor[];
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -1187,6 +1195,11 @@ interface GameState {
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
   endArenaEvent: () => void;
+  // 救助ホールドイベント: 開始(survivor3人を配置＋activeEvent rescue をセット)/ 毎フレーム更新(NPCカイト・
+  // ホールドゲージ・攻撃者補充・勝敗/報酬)/ 敵接触ダメージ。
+  beginRescueEvent: (event: ActiveEvent) => void;
+  updateRescue: (deltaTime: number) => void;
+  damageRescueSurvivor: (id: string, amount: number) => void;
   // キャラ固有スキル ヘビーガンナー: 1回の攻撃が2体以上に当たった通知(warriorのみ爆発範囲バフ)。
   registerMultiHit: (count: number) => void;
 
@@ -1469,6 +1482,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   danceTapLog: [],
   hurricane: null,
   summons: [],
+  rescueSurvivors: [],
 
   // Player actions
   movePlayer: (input, deltaTime) => {
@@ -1587,7 +1601,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         newY = wallResolved.y;
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
-      if (state.activeEvent) {
+      // ただし救助(rescue)イベントはプレイヤーを閉じ込めない=出入り自由(社長指示)。
+      if (state.activeEvent && state.activeEvent.kind !== 'rescue') {
         const ae = state.activeEvent;
         const clamped = clampRectInsideCircle(
           { x: newX, y: newY, width: player.width, height: player.height },
@@ -3686,7 +3701,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
     const pumpkinBlasts: { x: number; y: number; radius: number; damage: number }[] = []; // 着地爆発イベント
     set(state => {
-      const { enemies, player, gameTime, breakableProps, summons } = state;
+      const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       const now = Date.now();
       const pcx = player.x + player.width / 2;
@@ -3851,7 +3866,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         // chase velocity eases toward the heading so enemies curve into turns
         // (~0.3s) rather than snapping to face the player.
         // 錬金術: aggro範囲内に通常召喚がいればそれを、いなければプレイヤーを狙う(中心同士)。
-        const tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE);
+        // 救助イベントの攻撃者: escortTarget の survivor を狙う(全体AIは無改修)。割り当て先が死んでいたら
+        // 最寄りの生存NPCへ乗り換える(全滅していればプレイヤーへフォールバック)。
+        let tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE);
+        if (enemy.escortTarget && rescueSurvivors.length > 0) {
+          let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
+          if (!sv) {
+            const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
+            let best = Infinity;
+            for (const s of rescueSurvivors) {
+              const d2 = (s.x + s.width / 2 - ex) ** 2 + (s.y + s.height / 2 - ey) ** 2;
+              if (d2 < best) { best = d2; sv = s; }
+            }
+          }
+          if (sv) tgt = { x: sv.x + sv.width / 2, y: sv.y + sv.height / 2, isSummon: false };
+        }
         const dx = tgt.x - (enemy.x + enemy.width / 2);
         const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
@@ -3949,10 +3978,139 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // 囲い系イベント終了: 拘束を解除し、残存イベント敵(時間切れ時の取りこぼし)を撤去して通常へ戻す。
+  // 救助イベントの守る対象NPC(rescueSurvivors)も後片付け(撤収)。
   endArenaEvent: () => {
     set(state => ({
       activeEvent: null,
       enemies: state.enemies.filter(e => !e.fromEvent),
+      rescueSurvivors: [],
+    }));
+  },
+
+  // 救助ホールドイベント開始: 円中央付近に survivor3人を配置し、各人に攻撃者を割り当てて湧かせる。
+  // beginArenaEvent と同様に円周辺の通常敵を一掃(ボス級/固定敵は残す)。プレイヤーは閉じ込めない。
+  beginRescueEvent: (event) => {
+    const comp = pickRescueComposition();
+    const now = Date.now();
+    const sz = RESCUE_SURVIVOR_SIZE;
+    const survivors: RescueSurvivor[] = comp.map((m, i) => {
+      const ang = (i / comp.length) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = RESCUE_RADIUS * (0.18 + Math.random() * 0.32); // 中央寄りに散らす
+      const cx = event.x + Math.cos(ang) * dist;
+      const cy = event.y + Math.sin(ang) * dist;
+      const hp = m.subtype === 'shooter' ? RESCUE_SHOOTER_HP : RESCUE_CIVILIAN_HP;
+      return {
+        id: `rescue-${now}-${i}`,
+        x: cx - sz / 2, y: cy - sz / 2, width: sz, height: sz, vx: 0, vy: 0,
+        health: hp, maxHealth: hp, subtype: m.subtype, gender: m.gender,
+      };
+    });
+    set(state => {
+      const clearR2 = (event.radius * 1.5) ** 2;
+      const kept = state.enemies.filter(e => {
+        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.fixed) return true;
+        const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+        return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2;
+      });
+      return { activeEvent: { ...event, kind: 'rescue', holdMs: 0 }, enemies: kept, rescueSurvivors: survivors };
+    });
+    // 初期攻撃者を survivor へ割り当てて湧かせる(以後は useGameLoop が補充)。
+    for (let i = 0; i < RESCUE_ATTACKERS; i++) {
+      const tgt = survivors[i % survivors.length];
+      const ang = Math.random() * Math.PI * 2;
+      const bx = event.x + Math.cos(ang) * event.radius * 0.95;
+      const by = event.y + Math.sin(ang) * event.radius * 0.95;
+      const e = spawnEnemyAt('zombie', bx - 16, by - 16, get().gameTime);
+      e.fromEvent = true;
+      e.escortTarget = tgt.id;
+      get().addEnemy(e);
+    }
+  },
+
+  // 毎フレーム: NPCカイト移動・ホールドゲージ・攻撃者補充・shooter自衛射撃・敵接触ダメージ・勝敗判定。
+  // useGameLoop からのみ呼ばれる(唯一のシム書き込み経路)。
+  updateRescue: (deltaTime) => {
+    const state = get();
+    const ae = state.activeEvent;
+    if (!ae || ae.kind !== 'rescue') return;
+    const now = Date.now();
+    const circle = { x: ae.x, y: ae.y, radius: ae.radius };
+    const enemyCenters = state.enemies
+      .filter(e => e.fromEvent)
+      .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+
+    // NPCカイト移動 + 敵接触ダメージ + shooter自衛射撃
+    const survivors = state.rescueSurvivors;
+    const contactDamage: { id: string; amount: number }[] = [];
+    const shooterShots: { x: number; y: number }[] = [];
+    const moved: RescueSurvivor[] = survivors.map(s => {
+      const step = computeSurvivorStep(s, survivors, enemyCenters, circle, deltaTime);
+      let next: RescueSurvivor = { ...s, x: step.x, y: step.y, vx: step.vx, vy: step.vy };
+      const scx = next.x + next.width / 2, scy = next.y + next.height / 2;
+      // 敵接触ダメージ(throttle 500ms)
+      if (now - (next.lastContactAt ?? 0) >= 500) {
+        for (const e of state.enemies) {
+          if (!e.fromEvent) continue;
+          const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+          if ((ex - scx) ** 2 + (ey - scy) ** 2 <= (24) ** 2) {
+            contactDamage.push({ id: next.id, amount: Math.round(e.damage * 0.5) });
+            next = { ...next, lastContactAt: now, helpUntil: now + 1200 };
+            break;
+          }
+        }
+      }
+      // shooter の控えめ自衛射撃(最寄り攻撃者へ。足止め程度)
+      if (next.subtype === 'shooter' && now - (next.lastShotAt ?? 0) >= RESCUE_SHOOTER_INTERVAL_MS) {
+        let nearestId: string | null = null; let nd2 = RESCUE_SHOOTER_RANGE * RESCUE_SHOOTER_RANGE;
+        let tx = 0, ty = 0;
+        for (const e of state.enemies) {
+          if (!e.fromEvent) continue;
+          const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+          const d2 = (ex - scx) ** 2 + (ey - scy) ** 2;
+          if (d2 <= nd2) { nd2 = d2; nearestId = e.id; tx = ex; ty = ey; }
+        }
+        if (nearestId) { contactDamage.push({ id: nearestId, amount: RESCUE_SHOOTER_DAMAGE }); shooterShots.push({ x: tx, y: ty }); next = { ...next, lastShotAt: now }; }
+      }
+      return next;
+    });
+    set({ rescueSurvivors: moved });
+    for (const c of contactDamage) {
+      if (c.id.startsWith('rescue-')) get().damageRescueSurvivor(c.id, c.amount);
+      else get().damageEnemy(c.id, c.amount);
+    }
+    for (const sh of shooterShots) get().spawnDamageNumber(sh.x, sh.y, RESCUE_SHOOTER_DAMAGE);
+
+    const after = get();
+    const alive = after.rescueSurvivors;
+    // 失敗: 全員死亡
+    if (alive.length === 0) { get().endArenaEvent(); return; }
+
+    // ホールドゲージ: プレイヤー中心が円内なら加算(外なら保持)。
+    const pcx = after.player.x + after.player.width / 2;
+    const pcy = after.player.y + after.player.height / 2;
+    const inside = (pcx - ae.x) ** 2 + (pcy - ae.y) ** 2 <= ae.radius * ae.radius;
+    const holdMs = (ae.holdMs ?? 0) + (inside ? deltaTime * 1000 : 0);
+    if (holdMs >= RESCUE_HOLD_NEED_MS) {
+      // 成功: 生存人数で報酬スケール(仮: 1人につき経験ジェム3 + 全員無事ボーナス)。
+      const saved = alive.length;
+      for (let i = 0; i < saved * 3; i++) {
+        get().addPickup({
+          id: `rescue-reward-${now}-${i}`, x: ae.x, y: ae.y,
+          type: 'experience', value: 5, scatterRadius: ae.radius * 0.8,
+        });
+      }
+      get().endArenaEvent();
+      get().spawnRing(ae.x, ae.y, ae.radius * 0.2, ae.radius, 'rgba(74,222,128,0.9)', 6, 700);
+      return;
+    }
+    set({ activeEvent: { ...ae, holdMs } });
+  },
+
+  damageRescueSurvivor: (id, amount) => {
+    set(state => ({
+      rescueSurvivors: state.rescueSurvivors
+        .map(s => s.id === id ? { ...s, health: Math.max(0, s.health - amount) } : s)
+        .filter(s => s.health > 0),
     }));
   },
 
@@ -5484,7 +5642,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         zoomUntil: 0,
         zoomMag: 0,
         hurricane: null,
-        summons: []
+        summons: [],
+        rescueSurvivors: [],
       };
     });
   },
