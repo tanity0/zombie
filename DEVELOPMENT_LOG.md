@@ -13058,3 +13058,8 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 救急セット(medkit)の回復を固定+20→**最大HPの30%**(`SHOP_MEDKIT_HEAL_FRAC=0.3`、`round(maxHP*0.3)`、上限クランプ)。価格50G/満タン時購入不可は据え置き。ショップ説明文も更新。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.630 — 肉(health pickup)の回復も最大HP30%に (claude/sweet-brown-bw8ixm)
+health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HPの30%**に(救急セットと共通の `HEAL_FRACTION=0.3`)。定数名を SHOP_MEDKIT_HEAL_FRAC→HEAL_FRACTION に汎用化。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。
