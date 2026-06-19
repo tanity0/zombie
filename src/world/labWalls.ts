@@ -61,6 +61,45 @@ export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY:
   return out;
 };
 
+// 障害物プロップ(パソコン/割れたカプセル等の遮蔽物)。テスト(屋内)ステージで置いていた
+// lab-props を、このステージ(研究所スキン・屋外)にも区画ごとにランダム散布する。
+// 当たり判定=足元アンカーの矩形(壁と同じ遮蔽物扱い)。奥(deep)/原点付近には置かない。
+export interface PlacedProp {
+  id: string;
+  footX: number;
+  footY: number;
+  variant: number; // 0..LAB_PROP_VARIANT_COUNT-1(=テクスチャ lab-prop-r{row}-c{col} を選ぶ)
+}
+
+// lab-props は r1..r3 × c1..c4 の12種。
+export const LAB_PROP_VARIANT_COUNT = 12;
+// 表示の基準高さ(px)と足元当たり矩形。壁(176×108)より一回り小さめの遮蔽物。
+export const PROP_DISPLAY_H = 92;
+const PROP_HIT_W = 46, PROP_HIT_H = 30;
+
+export const propRect = (p: PlacedProp): Rect => footRect(p.footX, p.footY, PROP_HIT_W, PROP_HIT_H);
+
+// 区画(セル)ごとに 2〜4 個のプロップを散布。決定的ハッシュなので描画と当たり判定が必ず一致する。
+export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
+  const out: PlacedProp[] = [];
+  const cx0 = Math.floor(minX / LAB_ZONE) - 1, cx1 = Math.floor(maxX / LAB_ZONE) + 1;
+  const cy0 = Math.floor(minY / LAB_ZONE) - 1, cy1 = Math.floor(maxY / LAB_ZONE) + 1;
+  for (let cy = cy0; cy <= cy1; cy++) {
+    if (isDeepCell(cy)) continue; // 奥は敵以外を置かない(壁/UVバーと同じ方針)
+    for (let cx = cx0; cx <= cx1; cx++) {
+      const n = 2 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 3); // 2〜4個/区画
+      for (let k = 0; k < n; k++) {
+        const footX = cx * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
+        const footY = cy * LAB_ZONE + LAB_ZONE * (0.1 + 0.8 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
+        if (Math.hypot(footX, footY) < LAB_START_SAFE_RADIUS) continue; // 原点(スタート)付近は空ける
+        const variant = Math.floor(hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6) * LAB_PROP_VARIANT_COUNT) % LAB_PROP_VARIANT_COUNT;
+        out.push({ id: `lp-${cx}-${cy}-${k}`, footX, footY, variant });
+      }
+    }
+  }
+  return out;
+};
+
 // 区画ごとに UV バーを1本(通常帯のみ・奥には置かない)。松明の代わりの光源/装飾。当たり判定なし。
 export const labUvBarsInRegion = (minX: number, minY: number, maxX: number, maxY: number): { id: string; x: number; y: number }[] => {
   const out: { id: string; x: number; y: number }[] = [];

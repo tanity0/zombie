@@ -39,7 +39,7 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
-import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H } from '../world/labWalls';
+import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -515,6 +515,7 @@ export class PixiScene {
 
   private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
   private wallObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 壁オブジェクト(区画生成)
+  private propObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private enemies = new Map<string, ActorView>();
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
@@ -1651,6 +1652,7 @@ export class PixiScene {
 
     this.syncTrees(s.camera);
     this.syncLabWalls(); // 壁オブジェクト(研究所スキン・区画生成。森では no-op)
+    this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
     this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
     this.updateLabVisibility(s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 可視可能ゾーン(暗闇+明かりの穴)
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
@@ -2317,6 +2319,42 @@ export class PixiScene {
     }
     for (const [id, entry] of this.wallObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.wallObjs.delete(id); }
+    }
+  }
+
+  // ---- 遮蔽物プロップ(研究所スキン・区画生成): テストステージのパソコン/割れたカプセル等を
+  // ランダム散布。壁オブジェクトと同じく足元アンカー+zIndex=footY+depthScale で actorLayer に並べる。
+  private syncLabProps() {
+    const s = useGameStore.getState();
+    const labTheme = s.stageTheme === 'lab' && !s.indoorMode;
+    const cam = s.camera;
+    const m = LAB_ZONE;
+    const props = labTheme
+      ? labPropsInRegion(cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m)
+      : [];
+    const seen = new Set<string>();
+    for (const p of props) {
+      seen.add(p.id);
+      let entry = this.propObjs.get(p.id);
+      if (!entry) {
+        const row = Math.floor(p.variant / 4) + 1, col = (p.variant % 4) + 1;
+        const tex = getTexture(`lab-props/lab-prop-r${row}-c${col}`);
+        const sprite = new Sprite(tex ?? undefined);
+        sprite.anchor.set(0.5, 1);
+        sprite.tint = ENV_TINT; // 環境として暗く沈める(木/壁オブジェクトと同じ)
+        sprite.x = p.footX;
+        sprite.y = p.footY;
+        sprite.zIndex = p.footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
+        this.L.actorLayer.addChild(sprite);
+        const baseScale = tex ? containScale(PROP_DISPLAY_H, PROP_DISPLAY_H, tex.width, tex.height) : 1;
+        entry = { sprite, baseScale, footY: p.footY };
+        this.propObjs.set(p.id, entry);
+      }
+      entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
+      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
+    }
+    for (const [id, entry] of this.propObjs) {
+      if (!seen.has(id)) { entry.sprite.destroy(); this.propObjs.delete(id); }
     }
   }
 

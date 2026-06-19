@@ -32,7 +32,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox } from '../pixi/renderSpec';
-import { labWallsInRegion, labUvBarsInRegion, wallRect } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 
@@ -1576,7 +1576,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         let wallResolved = castleResolved;
         if (labTheme) {
           const cx = castleResolved.x, cy = castleResolved.y;
-          const walls = labWallsInRegion(cx - 120, cy - 120, cx + player.width + 120, cy + player.height + 120).map(wallRect);
+          const rgn = [cx - 120, cy - 120, cx + player.width + 120, cy + player.height + 120] as const;
+          const walls = [
+            ...labWallsInRegion(...rgn).map(wallRect),
+            ...labPropsInRegion(...rgn).map(propRect), // パソコン/割れたカプセル等の遮蔽物
+          ];
           wallResolved = resolveAabb({ x: cx, y: cy, width: player.width, height: player.height }, walls);
         }
         newX = wallResolved.x;
@@ -1733,8 +1737,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeWalls: Rect[] = indoorMode
       ? [...labBlockingWalls(labDoors.filter(d => d.open).map(d => d.id)), ...get().labProps.map(p => p.rect)]
       : get().stageTheme === 'lab'
-        // 研究所スキンは木なし=壁オブジェクト(区画生成)だけが視線を遮る。近傍区画を問い合わせ。
-        ? labWallsInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(wallRect)
+        // 研究所スキンは木なし=壁オブジェクト＋遮蔽物プロップ(区画生成)が視線を遮る。近傍区画を問い合わせ。
+        ? [
+            ...labWallsInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(wallRect),
+            ...labPropsInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(propRect),
+          ]
         : treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect);
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
@@ -4033,7 +4040,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const grenadeWallsFor = (p: Projectile) => {
         if (indoor) return indoorWalls; // 屋内は labMap の壁(+閉ドア)。木/トーチは無し。
         const cxp = p.x + p.width / 2, cyp = p.y + p.height / 2;
-        if (labTheme) return labWallsInRegion(cxp - 260, cyp - 260, cxp + 260, cyp + 260).map(wallRect); // 研究所スキン: 壁オブジェクトのみ
+        if (labTheme) return [ // 研究所スキン: 壁オブジェクト＋遮蔽物プロップ
+          ...labWallsInRegion(cxp - 260, cyp - 260, cxp + 260, cyp + 260).map(wallRect),
+          ...labPropsInRegion(cxp - 260, cyp - 260, cxp + 260, cyp + 260).map(propRect),
+        ];
         const pad = 260;
         const cx = p.x + p.width / 2;
         const cy = p.y + p.height / 2;

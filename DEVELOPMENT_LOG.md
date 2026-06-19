@@ -12815,3 +12815,17 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 ## v0.25.594 — ステージ2: クリアアイテムを約3倍遠くへ (claude/sweet-brown-bw8ixm)
 - 書類(lab-document)の横方向距離を `2000 + rand*600`(2000〜2600) → `6000 + rand*1800`(6000〜7800)に拡大(約3倍。社長指示)。
 - ガード/画面端マーカーは書類位置相対なので自動追従。変更は1値のみ。**Load score 1/10**。
+
+## v0.25.595 — ステージ2: テストステージのプロップ(パソコン/割れたカプセル等)を遮蔽物として散布 (claude/sweet-brown-bw8ixm)
+旧テスト(屋内)ステージで置いていた `lab-props`(12種:パソコン/割れたカプセル等)を、現ステージ2(研究所スキン・屋外)にも
+区画ごとにランダム生成で再現(社長指示)。木と壁オブジェクトと同じ「決定的ハッシュ→区画クエリ」方式で、描画と当たり判定が必ず一致。
+- `src/world/labWalls.ts`: `labPropsInRegion(minX,minY,maxX,maxY)` 追加。LAB_ZONE(900px)区画ごとに 2〜4 個散布。
+  奥(deep)/原点(LAB_START_SAFE_RADIUS)付近には置かない(壁/UVバーと同じ方針)。`propRect`(足元当たり46×30)/`PROP_DISPLAY_H`(92px)/`PlacedProp`/`LAB_PROP_VARIANT_COUNT=12` を公開。
+- 当たり判定(game logic): labTheme(=研究所スキン屋外)の壁解決3箇所に `labPropsInRegion().map(propRect)` を併用 →
+  プレイヤー移動(`movePlayer`)/近接の視線(`triggerCounter` meleeWalls)/グレネード壁(`grenadeWallsFor`)。壁オブジェクトと同列の遮蔽物。
+- 描画(pixiScene): `syncLabProps()` 追加(`syncLabWalls` をミラー)。actorLayer に足元アンカー+zIndex=footY、tint=ENV_TINT、
+  depthScale+horizonActorAlpha。variant→`lab-props/lab-prop-r{row}-c{col}` テクスチャ。カメラ周辺区画のみ生成/リサイクル(seen で prune)。
+  森/屋内では labTheme=false → props=[] で全 prune(no-op)。
+- 既存12テクスチャはディスク+pixiTextures に登録済み(追加アセットなし)。
+- **Load score 2/10**(rendering+sim)。可視区画ぶんのSprite生成/プルーン(壁と同様)、当たりは近傍区画クエリ(境界つき)。毎フレーム新規確保なし。
+### Verification: `npx tsc --noEmit` exit:0(本env未 npm install のため build未実行。esbuildは型チェックしない=tscで担保)。import漏れ目視確認済み。
