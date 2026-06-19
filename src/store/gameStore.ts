@@ -3997,6 +3997,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
+      // 救助サークル内には通常(アンビエント)敵は入れない=円の外周へ押し出す。専用攻撃者(fromEvent)は
+      // 救助対象を脅かす役なので中に入ってOK(社長指示「敵は入ってこない」=通常敵)。
+      const rescueEv = state.activeEvent;
+      if (rescueEv && rescueEv.kind === 'rescue') {
+        finalEnemies = finalEnemies.map(e => {
+          if (e.fromEvent) return e;
+          const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+          const dx = ecx - rescueEv.x, dy = ecy - rescueEv.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist >= rescueEv.radius || dist < 0.001) return e;
+          const k = rescueEv.radius / dist; // 中心を外周ちょうどへ押し出す
+          return { ...e, x: rescueEv.x + dx * k - e.width / 2, y: rescueEv.y + dy * k - e.height / 2 };
+        });
+      }
+
       return { enemies: finalEnemies, pumpkinBlasts };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);

@@ -13028,3 +13028,8 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 - **ジャンプ/ダッシュの不可中断**: `committed = aiPhase==='jump'||'charge'` の間は通常の気絶/ノックバック/リフトを受け付けず**モーションを全う**(ダメージは受ける)。溜め(crouch)/ダッシュ溜め(windup)は committed でない=**気絶/ノックバックで中断可**。カウンター(パリィ)は aiPhase を解除してから弾くので committed ガードに掛からず機能。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.625 — 救助サークル内に通常敵は入れない (claude/sweet-brown-bw8ixm)
+救助サークル内へ通常(アンビエント)敵が侵入しないよう、`updateEnemies` 後段で**非fromEvent敵を円の外周へ押し出す**。専用攻撃者(fromEvent)は救助対象を脅かす役なので中に入れる(=失敗条件を維持)。
+- **Load score 0/10**(rescue時のみ・敵数ぶんの円判定)。
+### Verification: `npx tsc --noEmit` exit:0。
