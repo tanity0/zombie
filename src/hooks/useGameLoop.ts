@@ -2426,6 +2426,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         liveEnemies.forEach(enemy => {
           // Stunned enemies are frozen — they can't spit projectiles either.
           if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
+          // 特殊行動中(ジャンプ/ダッシュの溜め・動作中)は発砲しない(giantbat の弾/ジャンプ/ダッシュを排他に)。
+          if (enemy.aiPhase) return;
           const profile = getEnemyFireProfile(enemy);
           if (!profile) return;
           if (now - enemy.lastShot < profile.interval) return;

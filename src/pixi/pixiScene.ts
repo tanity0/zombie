@@ -2580,19 +2580,33 @@ export class PixiScene {
       .stroke({ width: 1.5, color, alpha: a * 0.85, cap: 'round' });
   }
 
-  // ジャンプ攻撃(パンプキン/lab-zombie-3)の着地予告。空中(aiPhase='jump')の間、着地点に赤い影を出す。
+  // 特殊行動の予告。ジャンプ着地点(赤い影)＋ダッシュの移動先(赤ライン=直線距離)。
   private syncPumpkinTelegraph(enemies: Enemy[], now: number) {
     const g = this.pumpkinTelegraph;
     g.clear();
     const pulse = 0.5 + 0.5 * Math.sin(now / 110);
     for (const e of enemies) {
-      if (e.aiPhase !== 'jump') continue;
-      if (e.type !== 'pumpkin' && e.type !== 'lab-zombie-3') continue;
-      const tx = (e.aiTargetX ?? e.x) + e.width / 2;
-      const ty = (e.aiTargetY ?? e.y) + e.height / 2;
-      const R = PUMPKIN_EXPLOSION_RADIUS; // 実際の爆撃範囲に一致
-      g.ellipse(tx, ty, R, R * 0.55).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
-      g.ellipse(tx, ty, R, R * 0.55).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+      // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット)。
+      if (e.aiPhase === 'jump' && (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat')) {
+        const tx = (e.aiTargetX ?? e.x) + e.width / 2;
+        const ty = (e.aiTargetY ?? e.y) + e.height / 2;
+        const R = PUMPKIN_EXPLOSION_RADIUS;
+        g.ellipse(tx, ty, R, R * 0.55).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+        g.ellipse(tx, ty, R, R * 0.55).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        continue;
+      }
+      // ダッシュ突進予告(犬/lab-zombie-2/ジャイアントバット): 溜め中(windup)に移動先まで赤ラインで距離表示。
+      if (e.aiPhase === 'windup' && (e.type === 'werewolf' || e.type === 'lab-zombie-2' || e.type === 'giantbat')
+          && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
+        const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+        const tx = e.aiTargetX, ty = e.aiTargetY; // dash の狙い点は中心座標
+        const a = 0.45 + 0.4 * pulse;
+        // 太い半透明の下地＋細い明るい芯のラインで「突進経路」を強調。
+        g.moveTo(ex, ey).lineTo(tx, ty).stroke({ width: 6, color: 0xff2a2a, alpha: a * 0.4, cap: 'round' });
+        g.moveTo(ex, ey).lineTo(tx, ty).stroke({ width: 2, color: 0xff5a5a, alpha: a, cap: 'round' });
+        // 終点に着弾リング。
+        g.circle(tx, ty, 9 + 3 * pulse).stroke({ width: 2, color: 0xff5a5a, alpha: a });
+      }
     }
   }
 

@@ -567,9 +567,12 @@ const HANDGUN_RANGE_REF = 176;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_WINDUP_SPEED_MULT = 0.3;
-export const WEREWOLF_CHARGE_SPEED_MULT = 2;   // 通常の2倍速
+export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
 export const WEREWOLF_CHARGE_MAX_MS = 1400; // 突進の最大時間(到達できなくても打ち切り)
 export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予
+// ジャイアントバットの行動パターン別クールダウン(ランダム揺らぎ±20%)。弾=fire profile側(約3秒)。
+export const GIANTBAT_JUMP_CD_MS = 5000;
+export const GIANTBAT_DASH_CD_MS = 7000;
 // パンプキン(pumpkin): ハンドガン射程より少し外で縮みながら3秒溜め→1秒でジャンプ着地→1秒停止+揺れ。
 export const PUMPKIN_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70;
 export const PUMPKIN_CROUCH_MS = 3000;     // 縮み溜め
@@ -3793,9 +3796,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
         }
 
-        // 犬型(werewolf)突進AI: ハンドガン射程より少し外で減速(溜め)→開始時のプレイヤー位置へ2倍速で突進。
-        // 研究所Lv2(lab-zombie-2)も犬と同じ突進挙動(社長指示)。
-        if (enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2') {
+        // ダッシュ(突進)AI: 溜め中に「赤ライン」で移動先(直線距離)を予告→確定した狙い点へ3倍速で直進(曲がらない)。
+        // 犬型(werewolf)・研究所Lv2(lab-zombie-2)・ジャイアントバット共通。狙い点は溜め開始時に確定(=赤ラインの終点)。
+        // 発動トリガーは werewolf/lab-zombie-2 は射程ベース、giantbat は専用スケジューラ(下)が起動する。
+        const isDashType = enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2' || enemy.type === 'giantbat';
+        if (isDashType) {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
@@ -3807,31 +3812,29 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
               return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS };
             }
-            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT;
+            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・直進(目標固定なので曲がらない)
             const cvx = (cdx / cdist) * cs, cvy = (cdy / cdist) * cs;
             const moved = resolveMove(enemy.x + cvx * deltaTime, enemy.y + cvy * deltaTime);
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
           }
           if (enemy.aiPhase === 'windup') {
+            // 溜め中は静止して赤ライン予告(描画側)。狙い点は溜め開始時に確定済み。
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              // 溜め終了 → 突進開始(この瞬間のプレイヤー位置を狙う)。
-              return { ...enemy, aiPhase: 'charge', aiTargetX: pcx, aiTargetY: pcy, aiPhaseUntil: gameTime + WEREWOLF_CHARGE_MAX_MS, vx: 0, vy: 0 };
+              return { ...enemy, aiPhase: 'charge', aiPhaseUntil: gameTime + WEREWOLF_CHARGE_MAX_MS, vx: 0, vy: 0 };
             }
-            const ws = enemy.speed * WEREWOLF_WINDUP_SPEED_MULT;
-            const wvx = (pcx - ecx) / Math.max(0.001, dist) * ws;
-            const wvy = (pcy - ecy) / Math.max(0.001, dist) * ws;
-            const moved = resolveMove(enemy.x + wvx * deltaTime, enemy.y + wvy * deltaTime);
-            return { ...enemy, vx: wvx, vy: wvy, x: moved.x, y: moved.y };
+            return { ...enemy, vx: 0, vy: 0 };
           }
-          if (dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
-            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, vx: 0, vy: 0 };
+          if (enemy.type !== 'giantbat' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+            // 溜め開始時に狙い点を確定(=赤ラインの終点)。
+            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: pcx, aiTargetY: pcy, vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
 
         // パンプキン(pumpkin)ジャンプ攻撃AI: 少し外で縮み溜め(3秒)→1秒でその時のプレイヤー位置へ着地→1秒停止。
-        // 研究所Lv3(lab-zombie-3)もパンプキンと同じ挙動(社長指示)。
-        if (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3') {
+        // 研究所Lv3(lab-zombie-3)もパンプキンと同じ挙動。ジャイアントバットも同じジャンプ着地攻撃を流用(社長指示)。
+        // トリガーは pumpkin/lab-zombie-3 は射程ベース、giantbat は専用スケジューラ(下)が起動する。
+        if (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3' || enemy.type === 'giantbat') {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
@@ -3867,10 +3870,33 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
           }
-          if (dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+          if (enemy.type !== 'giantbat' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
+        }
+
+        // ジャイアントバットの行動スケジューラ: 待機中(aiPhase無し)に、ジャンプ(約5秒CD)/ダッシュ(約7秒CD)を
+        // それぞれのCDが明けたらランダムに発動。弾(約3秒CD)は fire profile 側が別系統で処理。
+        if (enemy.type === 'giantbat' && !enemy.aiPhase) {
+          // 出現直後は少し待ってから行動(即突進しない)。初回だけ初期CDをセット。
+          if (enemy.gbDashReadyAt === undefined) {
+            return { ...enemy, vx: 0, vy: 0, gbDashReadyAt: gameTime + 2000, gbJumpReadyAt: gameTime + 3500 };
+          }
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          const opts: ('dash' | 'jump')[] = [];
+          if (gameTime >= (enemy.gbDashReadyAt ?? 0) && dist > 80 && dist < 1000) opts.push('dash');
+          if (gameTime >= (enemy.gbJumpReadyAt ?? 0) && dist > 40 && dist < 700) opts.push('jump');
+          if (opts.length > 0) {
+            const pick = opts[Math.floor(Math.random() * opts.length)];
+            const jitter = (ms: number) => ms * (0.8 + Math.random() * 0.4);
+            if (pick === 'dash') {
+              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: pcx, aiTargetY: pcy, vx: 0, vy: 0, gbDashReadyAt: gameTime + jitter(GIANTBAT_DASH_CD_MS) };
+            }
+            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0, gbJumpReadyAt: gameTime + jitter(GIANTBAT_JUMP_CD_MS) };
+          }
+          // CD中はフォールスルーして通常チェイス。
         }
 
         // Plants are nearly stationary — they shuffle slightly toward the

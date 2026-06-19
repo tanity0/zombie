@@ -215,6 +215,9 @@ export interface Enemy {
   dormant?: boolean;
   aggroRange?: number;
   fixed?: boolean;
+  // ジャイアントバットの行動パターン別クールダウン(gameTime ms)。弾(fire profile)とは別系統。
+  gbJumpReadyAt?: number;
+  gbDashReadyAt?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;

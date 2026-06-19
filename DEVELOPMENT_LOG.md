@@ -12925,3 +12925,15 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 強制/通常ともに救助イベントがプレイヤー位置(=スタート地点)直下に出ていたのを、**プレイヤーから 600〜1000px のランダム位置**に出すよう変更(端マーカーで誘導→現地へ向かう設計)。`?rescuemin`/`?rescuemax` で距離を実機調整可。発火FX(リング)も新位置基準に。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.610 — ジャイアントバットの行動パターン＋ダッシュ攻撃を赤ライン予告→3倍直進に刷新 (claude/sweet-brown-bw8ixm)
+**ダッシュ攻撃の刷新(犬/lab-zombie-2/giantbat 共通・社長指示)**: 溜め中は静止して**移動先まで赤ライン(直線距離)を予告**→確定した狙い点へ**3倍速で直進(曲がらない)**。狙い点は溜め開始時に確定(=赤ラインの終点)。`WEREWOLF_CHARGE_SPEED_MULT` 2→3、windup は静止に変更。
+**ジャイアントバットの行動パターン**(`updateEnemies` に専用スケジューラ):
+- 弾発射: 約3秒CD(`getEnemyFireProfile` に giantbat 追加=interval3000/range620)。特殊行動中は発砲しない(fire loop に `aiPhase` ガード)。
+- ジャンプ攻撃: 約5秒CD(`GIANTBAT_JUMP_CD_MS`±20%)。パンプキンのジャンプ着地(pumpkinBlasts・AoE・カウンター可)を流用。
+- ダッシュ攻撃: 約7秒CD(`GIANTBAT_DASH_CD_MS`±20%)。上記の赤ライン→3倍直進を流用。
+- 3行動は排他(aiPhase中は他を出さない)。CDが明けた行動からランダム選択。待機中は通常チェイス。出現直後は初期CD(dash2s/jump3.5s)で即突進しない。
+- 型: `Enemy.gbJumpReadyAt/gbDashReadyAt`。giantbat を dash/jump のフェーズ処理に追加(トリガーはスケジューラのみ)。
+- 描画: `syncPumpkinTelegraph` にダッシュ赤ライン予告を追加＋ジャンプ着地予告を giantbat にも適用。
+- **Load score 1/10**(既存AI分岐の流用＋予告ライン1本)。
+### Verification: `npx tsc --noEmit` exit:0。

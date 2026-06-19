@@ -276,6 +276,11 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
   if (enemy.type === 'plant') {
     return { interval: 2200, range: 380, speed: 230, damage: 7, size: 12 };
   }
+  // ジャイアントバット: 約3秒ごとに弾を撃つ(行動パターンの1つ)。特殊行動(ジャンプ/ダッシュ)中は
+  // 呼び出し側(useGameLoop)が aiPhase を見て発砲をスキップする。
+  if (enemy.type === 'giantbat') {
+    return { interval: 3000, range: 620, speed: 300, damage: 10, size: 14 };
+  }
   return null;
 };
 
