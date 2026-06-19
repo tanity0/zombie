@@ -13015,3 +13015,10 @@ v0.25.620 はノックバックのみだったが、巻き込んだ敵に**近�
 - useGameLoop の被弾(非カウンター)時に爆心→プレイヤー方向のノックバックをセット。被弾i-frame(700ms)で連続被弾は防止。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.623 — 閉じ込めない系イベント(救助)は通常スポーナも回す (claude/sweet-brown-bw8ixm)
+通常スポーナ/演出波の停止条件を「activeEvent中」→「**閉じ込め系(horde/boss)中のみ**」に変更(社長指示)。救助(rescue)は閉じ込めないので通常敵も通常通り湧く=板挟みの緊張。
+- `confining = activeEvent && kind!=='rescue'`。スポーナ/waves のゲートを `!confining` に。
+- rescue 中の通常敵上限はイベント攻撃者(fromEvent)を除いた数で判定(通常密度維持)、enemyCap は `MAX_ENEMIES+RESCUE_ATTACKERS` で攻撃者がカリングされない。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。

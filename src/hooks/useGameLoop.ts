@@ -3417,22 +3417,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.summonFxAt > summonFxRef.current) { summonFxRef.current = gs.summonFxAt; playSfx('summon'); }
         }
 
-        // 囲い系イベント中は同時敵上限を引き上げ(10→20)、通常スポーナ/演出波は停止する(卵等と重ねない)。
-        const arenaActive = useGameStore.getState().activeEvent;
-        const enemyCap = arenaActive ? ARENA_EVENT_CAP : MAX_ENEMIES;
+        // 囲い系(閉じ込め)イベント中だけ通常スポーナ/演出波を止める。閉じ込めない救助(rescue)は通常通り湧かせる(社長指示)。
+        const ae = useGameStore.getState().activeEvent;
+        const confining = !!ae && ae.kind !== 'rescue';
+        const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? MAX_ENEMIES + RESCUE_ATTACKERS : MAX_ENEMIES);
 
         // Continuous spawner — drip enemies onto the field from off-screen.
-        const enemyCountBeforeSpawn = useGameStore.getState().enemies.length;
+        // rescue 中はイベント攻撃者(fromEvent)を除いた通常敵の数で上限判定し、通常通りの密度を維持。
+        const allEnemiesNow = useGameStore.getState().enemies;
+        const enemyCountBeforeSpawn = allEnemiesNow.length;
+        const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
         if (
           !danceTest &&
           !indoor &&
-          !arenaActive &&
-          enemyCountBeforeSpawn < MAX_ENEMIES &&
+          !confining &&
+          fieldCount < MAX_ENEMIES &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1)
         ) {
           const spawnCount = Math.min(
             labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(gameTime),
-            MAX_ENEMIES - enemyCountBeforeSpawn
+            MAX_ENEMIES - fieldCount
           );
           let plantCount = useGameStore.getState().enemies
             .filter(e => e.type === 'plant').length;
@@ -3595,7 +3599,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // consumeDueWaves fires each event exactly once.
         // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
         // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
-        if (!danceTest && !indoor && !labTheme && !arenaActive) {
+        if (!danceTest && !indoor && !labTheme && !confining) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,
