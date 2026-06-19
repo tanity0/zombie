@@ -60,7 +60,7 @@ export interface RescueSurvivor {
 
 export const RESCUE_HIT_SPEED_BOOST_MS = 2000; // 被弾後パニックで速度2倍になる時間
 export const RESCUE_HIT_SPEED_MULT = 2;
-export const RESCUE_OUTRO_MS = 1200;           // 救助成功→退場(ハート/フェード/走り去り)の時間
+export const RESCUE_OUTRO_MS = 3000;           // 救助成功→退場(ハート/フェード/走り去り)の時間。社長指示で約3秒。
 
 interface Pt { x: number; y: number; }
 

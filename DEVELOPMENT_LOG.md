@@ -12968,3 +12968,7 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 屋内固定UV(`LAB_UV_BARS`)は別系統で今回対象外。
 - **Load score 1/10**(区画クエリ件数が微増。決定的生成で新規確保なし)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.615 — 救助成功の退場を約3秒に延長 (claude/sweet-brown-bw8ixm)
+`RESCUE_OUTRO_MS` 1200→3000(社長指示)。走り去り＋ハート＋フェードが約3秒かけて進む。**Load score 0/10**(定数のみ)。
+### Verification: `npx tsc --noEmit` exit:0。
