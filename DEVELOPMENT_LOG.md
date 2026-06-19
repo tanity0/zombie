@@ -12759,3 +12759,11 @@ filteredWorld の外＝フィルタ/暗転(環境光)が乗らず、world座標�
 他の playerFx 描画(カウンター/リロード/ワイヤー線・先端)は据え置き。
 load 1/10(描画数は不変・レイヤー移動のみ)。
 ### Verification: tsc(exit0) + build 通過。
+
+## v0.25.587 — 照準サークルが研究所の暗幕で減光される件を修正 (claude/cool-edison-7b8jrl)
+v0.25.586 で danceUiLayer に移したが、研究所の暗幕(labVeilSprite)は uiLayer 最下(index0)=
+worldGroup/danceUiLayer より上に重なるため、ラボではまだ減光されていた。
+→ reticleGfx を uiLayer(暗幕より上)へ移動。uiLayer は screen 座標なので world.position(-camera+shake)
+を足して world→screen 変換して描画。森の暗転(filteredWorld内)もラボ暗幕も両方回避。
+load 1/10(描画数不変・レイヤー移動＋座標変換のみ)。
+### Verification: tsc(exit0) + build 通過。

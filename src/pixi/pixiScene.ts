@@ -587,8 +587,9 @@ export class PixiScene {
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
-  // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。danceUiLayer(filteredWorld外＝
-  // tilt-shift/bloom も暗転/環境光も乗らない・world座標追従)に置き、環境光の影響を受けない。
+  // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
+  // 森の暗転/tilt-shift より上)に置き、環境光の影響を一切受けない。uiLayer は screen 座標なので
+  // 描画時に world.position(=-camera+shake)を足して world→screen 変換する。
   private reticleGfx = new Graphics();
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
@@ -870,8 +871,8 @@ export class PixiScene {
     this.eventNpcView.addChild(this.eventNpcGfx, this.eventNpcGlow, this.eventNpcSprite);
 
     this.L.effectLayer.addChild(this.playerFx);
-    // 照準サークルは環境光/フィルタ外の danceUiLayer へ(world座標で追従)。
-    this.L.danceUiLayer.addChild(this.reticleGfx);
+    // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
+    this.L.uiLayer.addChild(this.reticleGfx);
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
       this.localEventShadeGfx,
@@ -4766,8 +4767,11 @@ export class PixiScene {
   private syncPlayerFx(player: Player, now: number, gameTime: number) {
     const g = this.playerFx;
     g.clear();
-    const rg = this.reticleGfx; // 照準サークル専用(環境光の影響を受けない層)
+    const rg = this.reticleGfx; // 照準サークル専用(環境光の影響を受けない層=uiLayer・screen座標)
     rg.clear();
+    // uiLayer は screen 座標。world.position(=-camera+shake)を足して world→screen 変換する。
+    const rox = this.L.world.position.x;
+    const roy = this.L.world.position.y;
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
     const r = huntingMeleeRadius(player);
@@ -4818,8 +4822,8 @@ export class PixiScene {
       } else if (!player.wireAnchored && !dashing && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
         // 待機(アンカー未設置・CD明け): 慣性付き aim(向き×傾き強度)の先に青サークルプレビュー。
         // store の打ち込み地点(=center+aim*RANGE)と一致。クールダウン中は非表示(撃てないことを明示)。
-        const px = cx + player.aimX * WIRE_ANCHOR_RANGE;
-        const py = cy + player.aimY * WIRE_ANCHOR_RANGE;
+        const px = cx + player.aimX * WIRE_ANCHOR_RANGE + rox;
+        const py = cy + player.aimY * WIRE_ANCHOR_RANGE + roy;
         rg.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: 0.7 });
         rg.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: 0.7 });
       }
@@ -4831,8 +4835,8 @@ export class PixiScene {
       if (phill?.key === 'phill-revolver') {
         // 照準サークルは movePlayer が算出した「吸い付き済み」オフセットに揃える(発砲と完全一致)。
         // 頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
-        const ax = cx + player.phillReticleDX;
-        const ay = cy + player.phillReticleDY;
+        const ax = cx + player.phillReticleDX + rox;
+        const ay = cy + player.phillReticleDY + roy;
         const onCd = now - (phill.lastFired ?? 0) < (phill.cooldown ?? 1000);
         const reloading = phill.id === player.reloadingWeaponId && now < player.reloadEndsAt;
         const a = (onCd || reloading) ? 0.2 : 0.9;
