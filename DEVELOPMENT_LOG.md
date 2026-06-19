@@ -12767,3 +12767,12 @@ worldGroup/danceUiLayer より上に重なるため、ラボではまだ減光�
 を足して world→screen 変換して描画。森の暗転(filteredWorld内)もラボ暗幕も両方回避。
 load 1/10(描画数不変・レイヤー移動＋座標変換のみ)。
 ### Verification: tsc(exit0) + build 通過。
+## 2026-06-19 — public/ PNG 軽量化（v0.25.588・ゲームロジック非改変）
+- **目的**: 配信PNGペイロード削減。`src/**`(ゲームロジック)・参照パス・寸法・ファイル名は**一切不変**。`references/`は対象外。
+- **手法**: `sharp`(0.35.1, `npm i --no-save`で一時導入)で `public/**/*.png` を**その場で再圧縮**。
+  - 透過(RGBA)スプライト: パレット量子化 `{palette:true,quality:90,effort:10,compressionLevel:9}`(準ロスレス)。
+  - 透過なし(RGB)背景: `{compressionLevel:9,effort:10}` の**ロスレス再圧縮**(無劣化)。
+  - **小さくなった時だけ上書き**(退行防止)。各ファイルで寸法不変を検証。
+- **結果**: `public/` PNG **40.75MB → 24.73MB(-16.02MB / -39.3%)**、134枚中**112枚**を縮小。
+- **Verification**: 寸法不変を sharp で確認 / サンプル `file` でPNG有効 / `npm run build` exit0。
+- load: ビルド時のみ・実行時コスト0(配信が軽くなる分ロードは速くなる)。
