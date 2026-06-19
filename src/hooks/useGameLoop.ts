@@ -180,6 +180,7 @@ const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
 const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの表示時間(gameTime ms)
+const RESCUE_SPAWN_CD_MS = 5000;       // 救助イベントの攻撃者沸きクールダウン(社長指示)
 // テスト用URLパラメータ(実機/開発で強制発火)。?arenanow=1|horde|boss → 囲い系イベントを開始直後に発火
 // (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
 const evParam = (key: string): string | null =>
@@ -242,6 +243,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
+  const rescueSpawnCdRef = useRef(0); // 救助イベントの攻撃者沸きCD(gameTime ms。前回沸き時刻)
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -746,6 +748,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ry = pcy + Math.sin(rang) * rdist;
                 const event = { kind, x: rx, y: ry, radius: RESCUE_RADIUS, startedAt: newGameTime, endsAt: newGameTime + 120000 };
                 useGameStore.getState().beginRescueEvent(event);
+                rescueSpawnCdRef.current = newGameTime; // 沸きCDの起点(初期3体の直後から5秒)
                 spawnRing(rx, ry, RESCUE_RADIUS * 0.2, RESCUE_RADIUS, 'rgba(74,222,128,0.9)', 6, 700);
                 spawnRing(rx, ry, RESCUE_RADIUS, RESCUE_RADIUS + 30, 'rgba(74,222,128,0.9)', 3, 760);
                 spawnFlash('rgba(8,47,73,0.20)', 320);
@@ -799,18 +802,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gs = useGameStore.getState();
             const survivors = gs.rescueSurvivors;
             const attackers = gs.enemies.filter(e => e.fromEvent);
-            // 成功アウトロ中(savedAt)は補充しない。
-            if (survivors.length > 0 && !survivors[0].savedAt) {
-              for (let i = attackers.length; i < RESCUE_ATTACKERS; i++) {
-                const tgt = survivors[Math.floor(Math.random() * survivors.length)];
-                const ang = Math.random() * Math.PI * 2;
-                const bx = ae.x + Math.cos(ang) * ae.radius * 1.05;
-                const by = ae.y + Math.sin(ang) * ae.radius * 1.05;
-                const e = spawnEnemyAt('zombie', bx - 16, by - 16, newGameTime);
-                e.fromEvent = true;
-                e.escortTarget = tgt.id;
-                addEnemy(e);
-              }
+            // 成功アウトロ中(savedAt)は補充しない。沸きには 5秒CD(社長指示)=1体ずつトリクル補充。
+            if (survivors.length > 0 && !survivors[0].savedAt
+                && attackers.length < RESCUE_ATTACKERS
+                && newGameTime - rescueSpawnCdRef.current >= RESCUE_SPAWN_CD_MS) {
+              const tgt = survivors[Math.floor(Math.random() * survivors.length)];
+              const ang = Math.random() * Math.PI * 2;
+              const bx = ae.x + Math.cos(ang) * ae.radius * 1.05;
+              const by = ae.y + Math.sin(ang) * ae.radius * 1.05;
+              const e = spawnEnemyAt('zombie', bx - 16, by - 16, newGameTime);
+              e.fromEvent = true;
+              e.escortTarget = tgt.id;
+              addEnemy(e);
+              rescueSpawnCdRef.current = newGameTime;
             }
             gs.updateRescue(deltaTime);
             if (newGameTime >= ae.endsAt) { // 保険のタイムアウト(通常は成功/全滅で終了)

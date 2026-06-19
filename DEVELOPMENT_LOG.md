@@ -12972,3 +12972,8 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 ## v0.25.615 — 救助成功の退場を約3秒に延長 (claude/sweet-brown-bw8ixm)
 `RESCUE_OUTRO_MS` 1200→3000(社長指示)。走り去り＋ハート＋フェードが約3秒かけて進む。**Load score 0/10**(定数のみ)。
 ### Verification: `npx tsc --noEmit` exit:0。
+
+## v0.25.616 — 救助イベントの攻撃者沸きに5秒CD (claude/sweet-brown-bw8ixm)
+攻撃者の補充を「即3体維持」→**5秒CDで1体ずつトリクル補充**に(社長指示・`RESCUE_SPAWN_CD_MS=5000`、`rescueSpawnCdRef`)。CDの起点はイベント発火時(初期3体直後)。上限は RESCUE_ATTACKERS=3 のまま。倒すと最大3体まで5秒間隔で戻ってくる=殲滅の手応え/猶予が出る。
+- **Load score 0/10**(分岐＋ref1つ)。
+### Verification: `npx tsc --noEmit` exit:0。
