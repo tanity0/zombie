@@ -4102,8 +4102,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const step = computeSurvivorStep(s, survivors, enemyCenters, circle, deltaTime, spd);
       let next: RescueSurvivor = { ...s, x: step.x, y: step.y, vx: step.vx, vy: step.vy };
       const scx = next.x + next.width / 2, scy = next.y + next.height / 2;
+      // パニック走り中(被弾後2秒)は無敵=接触ダメージを受けない(社長指示)。
+      const panicking = next.speedBoostUntil != null && now < next.speedBoostUntil;
       // 敵接触ダメージ(throttle 500ms)。被弾したらパニックで2秒スピード2倍。
-      if (now - (next.lastContactAt ?? 0) >= 500) {
+      if (!panicking && now - (next.lastContactAt ?? 0) >= 500) {
         for (const e of state.enemies) {
           if (!e.fromEvent) continue;
           const ex = e.x + e.width / 2, ey = e.y + e.height / 2;

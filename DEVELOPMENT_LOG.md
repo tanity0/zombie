@@ -12983,3 +12983,9 @@ CHAT_HANDOFF.md を新規作成。ブランチ/配信フロー、必須ルール
 - 対策: パリィ成立時(ジャンプ blast パリィ / ダッシュ接触パリィ)に **プレイヤーへ短い無敵(INVULN_MS=700ms)** を付与(`invulnerable=true, invulnerableTime=now`、既存の自動解除に乗る)。これで弾いた直後の重なり被弾を防止。2倍ノックバックは従来どおり。
 - **Load score 0/10**。
 ### Verification: `npx tsc --noEmit` exit:0。
+## v0.25.618 — 救助: 倒して3秒後に復活 / NPC耐久2倍 / パニック走り中は無敵 (claude/sweet-brown-bw8ixm)
+- 攻撃者の沸きを「5秒トリクル」→**「倒して空きができてから3秒後に1体復活」**へ(`RESCUE_RESPAWN_MS=3000`、`rescueRespawnRef`=次回復活予定 gameTime)。満杯/アウトロ中は予約クリア。上限3体。
+- 救助NPC耐久を**2倍**(civilian 30→60 / shooter 40→80)。
+- **パニック走り中(被弾後2秒)は無敵**=接触ダメージを受けない(`updateRescue` で speedBoostUntil 中はダメージスキップ)。
+- **Load score 0/10**。
+### Verification: `npx tsc --noEmit` exit:0。
