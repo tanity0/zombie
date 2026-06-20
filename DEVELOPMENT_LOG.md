@@ -13238,3 +13238,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - accessory-crit-1..5 を新シートで差し替え。紫っぽさ判定キーア+列ギャップ検出で再処理→96x96上書き。
 - 懸念だったランク5の紫スターバーストレンズも、暗いスコープ本体に囲まれており縁フラッドフィルが届かないため完全保持(赤背景で透過穴ゼロ確認)。左→右=ランク昇順。
 - 検証: 画像のみ。変更: public/sprites/equip/accessory-crit-1..5.png(上書き), package.json
+
+## v0.25.656 — リザルトの「ゴールド = SCORE / N」表記を実値2000へ修正
+- 不具合: ゴールド換算は既に SCORE/2000(resultScoring.ts、6/19に3000→2000へ変更済み)だが、リザルト画面の説明テキストだけ旧表記「SCORE / 3000」のままだった=表示と実計算の不一致。
+- 修正: GameOverScreen の注記を「ゴールド = SCORE / 2000」に更新(計算ロジックは変更なし=元から正しい)。
+- 検証: tsc --noEmit 通過。変更: src/components/GameOverScreen.tsx, package.json

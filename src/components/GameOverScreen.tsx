@@ -267,7 +267,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 ))}
               </div>
               <div className="mt-2 text-[9px] leading-tight text-white/45">
-                ゴールド = SCORE / 3000
+                ゴールド = SCORE / 2000
               </div>
             </div>
           </div>
