@@ -152,7 +152,8 @@ const RELOAD_TIME_MULT = 2;
 // Reload duration including the global multiplier and the player's リロード時間
 // 短縮 upgrade.
 export const effectiveReloadMs = (w: Weapon, p: Player): number =>
-  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult);
+  // 装備(腕・取り回し系)のリロード短縮を乗算(中立=1)。
+  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1));
 
 // Is this specific gun currently mid-reload?
 export const isReloading = (p: Player, weaponId: string): boolean =>
@@ -243,7 +244,9 @@ const rotate = (v: { x: number; y: number }, angle: number) => {
 export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Projectile[] => {
   const now = Date.now();
   if (weapon.isMelee || !weapon.ammoType) return [];
-  if (now - weapon.lastFired < weapon.cooldown) return [];
+  // 装備(腕)の連射倍率で実効cooldownを短縮(中立=1)。fireRateMult>1 ほど間隔が縮む。
+  const effCooldown = weapon.cooldown / (player.equipBonus?.fireRateMult ?? 1);
+  if (now - weapon.lastFired < effCooldown) return [];
 
   // Can't fire while reloading, or with an empty magazine. Reloads are kicked
   // off by autoSwitchIfDry/startReload, not here — firing just stops.
@@ -278,7 +281,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
   // キャラ固有 スカベンジャー(necromancer): 弾薬取得後3秒は銃ダメージ ×1.1。発射時の素ダメージへ反映。
   const scavMult = scavengerGunMult(player, gtFire);
-  const shotDamage = weapon.damage * scavMult;
+  // 装備(腕・火力系)のダメージ倍率を素ダメージへ反映。中立=1。
+  const shotDamage = weapon.damage * scavMult * (player.equipBonus?.damageMult ?? 1);
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
@@ -289,7 +293,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     }
     const gt = useGameStore.getState().gameTime;
     const quickMagCritBonus = player.quickMagCritUntil > gt ? 0.10 : 0;
-    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gt));
+    // 装備(アクセ・クリ系)のクリ率は player.critChance とは別枠で加算(装備内上限とスキル枠は独立)。
+    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gt));
     const crit = Math.random() < critChance;
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,

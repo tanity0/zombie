@@ -13109,3 +13109,14 @@ health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HP�
 - 負荷スコア: 1/10。毎フレームの軽い some() 判定のみ、新規音源なし。
 - 検証: npx tsc --noEmit 通過(exit 0)。
 - 変更ファイル: src/hooks/useGameLoop.ts, package.json
+
+## v0.25.637 — 装備システム(レベルアップ報酬)の裏側を実装【UI後付け前提・旧パッシブは併存】
+仕様書 zombie_equipment_spec_v2.md に基づく装備システムの「裏側だけ」を実装。レベルアップ時の見せ方(選択UI・段階の出し方)は後でプレゼン仕様を受領して接続する。旧パッシブ報酬は一切触らず併存(generateUpgradeOptions/UpgradeMenu/selectUpgrade はそのまま)。装備が付与されるまで全効果は中立=現状のゲームプレイに変化なし。
+- **データ(src/data/equipment.ts)**: 体/腕/アクセ × 2系統 × 5段階の通常装備(仕様3.1〜3.6)＋特殊装備(部位ごと1種・5%・3ステ・仕様4章)を全網羅。id=`slot-line-tier`/`special-slot`。集計ヘルパー(aggregateEquipBonus=最大体力以外を集計、equipMaxHealthOf=最大体力加算)、rollEquipment(building block: 5%特殊・段階は引数)。
+- **型(src/types/game.ts)**: EquipSlot/EquipLine/EquipStatKey/EquipStat/EquipmentDef/EquipLoadout/EquipBonus を追加。Player に `equipment`(部位別defId)と `equipBonus`(集計効果)を追加。
+- **ステータス適用(消費側)**: ダメージ=銃/近接の素ダメージ×damageMult、連射=実効cooldown÷fireRateMult(自動射撃/PHILL)、リロード=effectiveReloadMs×reloadMult、クリ率=銃クリ合算に加算(パッシブ30%枠とは独立)、移動速度=通常歩行/リロード移動×moveSpeedMult、弾薬ドロップ=ドロップ率に加算(store/loop両方)、スクラップ=取得量に加算、最大体力=player.maxHealth へ加算ベイク(消費側据え置き)、KILL猶予=KILLコンボ維持窓(MELEE_FINISH_COMBO_WINDOW)×killGraceMult。**仕様5章の最大値は装備内の上限で、スキル/パッシブの伸びは別枠で上乗せ(社長補足)**=各効果は既存値に独立加算/乗算。
+- **持ち帰り/死亡(帰還)**: localStorage `zombie:carriedEquip` に1点だけ永続。resetGame で読み込み→該当部位へ装備しmaxHealthへ反映→永続キーは即クリア(=途中離脱は失う)。`takeHomeEquipment(defId)` で帰還/クリア時に1点だけ再保存。`damagePlayer` 死亡時に永続キーをクリア(持ち込み含め全ロスト)。装備の着脱は `equipItem(defId)` アクション(同部位置換・最大体力増減を現HPへ反映)。
+- **未接続(=後で)**: レベルアップ→装備生成の段階カーブ/選択UI、商人の「帰還」ボタンUI、クリア時の持ち帰り選択UI。価格改定・サブLv5化は今回対象外(社長指示)。
+- 負荷スコア: 1/10。消費側は既存ホットパスでのキャッシュ値の乗加算のみ。集計(aggregateEquipBonus)は装備変更/run開始時のみ。毎フレーム新規コストなし。
+- 検証: npx tsc --noEmit 通過(exit 0, noUnusedLocals/Parameters 有効)。Player リテラル2箇所とも新フィールド充足。装備未付与時は全効果中立=挙動不変。
+- 変更ファイル: src/types/game.ts, src/data/equipment.ts(新規), src/store/gameStore.ts, src/utils/weaponUtils.ts, src/hooks/useGameLoop.ts, package.json

@@ -145,7 +145,58 @@ export interface Player {
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.
   vaccineRevives: number;
+  // === 装備システム(レベルアップ報酬) ===
+  // 各部位に1つずつ装備。defId は data/equipment.ts の EQUIPMENT のキー(null=未装備)。
+  // 死亡で全ロスト(持ち込み含む)。商人帰還/クリア時に1つだけ持ち帰り(localStorage 永続)。
+  equipment: EquipLoadout;
+  // 装備3点から集計した効果(消費側はここを読む)。装備変更/run開始時のみ再計算。
+  // 最大体力は player.maxHealth へ加算ベイクするためここには含めない(二重計上防止)。
+  equipBonus: EquipBonus;
 }
+
+// 装備部位 / 系統 / ステータスキー。
+export type EquipSlot = 'body' | 'arms' | 'accessory';
+export type EquipLine =
+  | 'protection' | 'mobility'   // 体: 防護系 / 機動系
+  | 'firepower' | 'handling'    // 腕: 火力系 / 取り回し系
+  | 'crit' | 'ammo'             // アクセ: クリ系 / 弾薬系
+  | 'special';                  // 特殊装備(系統に依存しない・3ステ)
+export type EquipStatKey =
+  | 'maxHealth'   // 最大体力(HP加算)
+  | 'moveSpeed'   // 移動速度(割合)
+  | 'killGrace'   // KILL猶予(KILLコンボ維持時間の割合延長)
+  | 'damage'      // ダメージ(割合)
+  | 'fireRate'    // 連射(割合)
+  | 'reload'      // リロード時間短縮(正の割合=短縮量)
+  | 'critChance'  // クリ率(割合・3%刻み)
+  | 'ammoDrop'    // 弾薬ドロップ(割合)
+  | 'scrap';      // スクラップ(割合)
+// 1ステータス分の効果。value の単位: maxHealth=HPポイント、それ以外=割合(0.20=+20%、reloadは短縮量)。
+export interface EquipStat { key: EquipStatKey; value: number }
+// 静的な装備定義(data/equipment.ts)。
+export interface EquipmentDef {
+  id: string;        // 安定キー 例: 'body-protection-3' / 'special-arms'
+  slot: EquipSlot;
+  line: EquipLine;
+  tier: number;      // 通常=1..5、特殊=0
+  name: string;
+  special: boolean;  // 特殊装備(3ステ・レア度非依存)
+  stats: EquipStat[];
+}
+// 装備中の defId(部位ごと)。
+export interface EquipLoadout { body: string | null; arms: string | null; accessory: string | null }
+// 集計済み効果。中立値: mult=1 / bonus=0。
+export interface EquipBonus {
+  moveSpeedMult: number;  // 1 + Σ移動速度
+  killGraceMult: number;  // 1 + ΣKILL猶予
+  damageMult: number;     // 1 + Σダメージ
+  fireRateMult: number;   // 1 + Σ連射(実効cooldown = cooldown / これ)
+  reloadMult: number;     // Π(1 - リロード短縮)
+  critBonus: number;      // Σクリ率(加算)
+  ammoDropBonus: number;  // Σ弾薬ドロップ(加算)
+  scrapBonus: number;     // Σスクラップ(加算)
+}
+
 
 // Movement direction
 export type Direction = 'up' | 'down' | 'left' | 'right' | 'idle';

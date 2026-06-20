@@ -37,6 +37,8 @@ import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torc
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
+import type { EquipSlot } from '../types/game';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
@@ -177,6 +179,17 @@ const saveStringArray = (key: string, arr: string[]): void => {
 // 永続: ガチャで解禁したスキル所持 / 永続ゴールド残高(in-run の strap とは別系統)。
 const OWNED_SKILLS_KEY = 'zombie:ownedSkills';
 const GOLD_BALANCE_KEY = 'zombie:goldBalance';
+// 装備の持ち帰り: 商人帰還/クリア時に1つだけ次run へ引き継ぐ(死亡で破棄)。defId 1件のみ保存。
+const CARRIED_EQUIP_KEY = 'zombie:carriedEquip';
+const loadCarriedEquip = (): string | null => {
+  try { const r = localStorage.getItem(CARRIED_EQUIP_KEY); return r && EQUIPMENT[r] ? r : null; } catch { return null; }
+};
+const saveCarriedEquip = (defId: string | null): void => {
+  try {
+    if (defId && EQUIPMENT[defId]) localStorage.setItem(CARRIED_EQUIP_KEY, defId);
+    else localStorage.removeItem(CARRIED_EQUIP_KEY);
+  } catch { /* ignore */ }
+};
 const loadNumber = (key: string, def: number): number => {
   try { const r = localStorage.getItem(key); const n = r == null ? def : Number(r); return Number.isFinite(n) ? n : def; } catch { return def; }
 };
@@ -873,7 +886,7 @@ const grantMeleeKillRewards = (
     // Prefer the active gun's family; if the active pointer is temporarily
     // invalid, fall back to any owned gun so the slider still governs melee.
     // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
-    const baseRate = Math.max(0, Math.min(1, get().meleeAmmoDropPercent / 100 + (player.ammoDropBonus ?? 0)));
+    const baseRate = Math.max(0, Math.min(1, get().meleeAmmoDropPercent / 100 + (player.ammoDropBonus ?? 0) + (player.equipBonus?.ammoDropBonus ?? 0)));
     const ammoChance = ammoChanceOverride !== undefined
       ? ammoChanceOverride
       : (finisher ? Math.min(1, baseRate * 1.5) : baseRate);
@@ -992,7 +1005,7 @@ const applySlasherTapStrike = (
   const pcy = player.y + player.height / 2;
   const meleeRange = huntingMeleeRadius(player);
   const melee = player.weapons.find(w => w.isMelee);
-  const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player); // キャラ固有: ストライカー弾切れ時×1.5
+  const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
   const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
   const r2 = meleeRange * meleeRange;
@@ -1294,6 +1307,11 @@ interface GameState {
   setDanceTestAutoTap: (enabled: boolean) => void;
   setDanceForceJust: (enabled: boolean) => void;
   addMeleeFinishCombo: (amount?: number) => void;
+  // 装備システム(裏側): 装備の着脱と持ち帰り。レベルアップ時の選択UIは別途接続する。
+  // equipItem: defId の装備を該当部位へ装着(同部位は置換)。最大体力は加算ベイクし現HPも増分だけ底上げ。
+  equipItem: (defId: string) => void;
+  // takeHomeEquipment: 現在装備中の1点を次run へ持ち帰り(null=持ち帰らない)。商人帰還/クリア時に呼ぶ。
+  takeHomeEquipment: (defId: string | null) => void;
   // 四神舞(リズム): store は状態/判定のみ。攻撃実行は useGameLoop が pending を消化して行う。
   setRhythmActive: (active: boolean, firstBeatAt?: number, interval?: number) => void;
   setRhythmFirstBeat: (firstBeatAt: number) => void; // 自動アンカー: ビートグリッド起点だけ差し替え
@@ -1397,7 +1415,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     wireStuckEnemyId: '',
     wireStuckUntil: 0,
     straps: 0,
-    vaccineRevives: 0
+    vaccineRevives: 0,
+    equipment: emptyEquipLoadout(),
+    equipBonus: neutralEquipBonus()
   },
   enemies: [],
   pumpkinBlasts: [],
@@ -1532,8 +1552,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         : sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000)
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。
         // 社長指示で段階的に強化: 2→3=1.5倍)。マークスマン = 3秒連続移動で ×1.2(通常歩行/リロード移動に乗る)。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime)
-        : player.speed * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime);
+        // 装備(体・機動系)の移動速度倍率は通常歩行/リロード移動に乗る(特殊ロコモーションは対象外)。中立=1。
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
+        : player.speed * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -1778,7 +1799,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
-    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player); // キャラ固有: ストライカー弾切れ時×1.5
+    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
@@ -2281,7 +2302,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeHitLanded = slashAt.length > 0;
     const knifeCombo = computeKnifeCombo(player, gameTime, meleeHitLanded);
     // スキル: コンボマスター = フィニッシュコンボ窓 +1s。
-    const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
+    const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     set(state => ({
       enemies: survivors,
       gameStats: {
@@ -2536,7 +2557,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
-    const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
+    const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     set(state => ({
       enemies: survivors,
       gameStats: {
@@ -2670,7 +2691,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const comboFinishCount = killed.filter(k => k.finisher).length + (bossFinishHit ? 1 : 0);
     const bossKilled = killed.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
     const knifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
-    const finishWindowMs = MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player);
+    const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     set(state => ({
       enemies: survivors,
       gameStats: {
@@ -3157,9 +3178,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // Return whether player is dead
-    return get().player.health <= 0;
+    const died = get().player.health <= 0;
+    // 死亡で装備は全ロスト(持ち込み含む)。持ち帰り永続も破棄する。
+    if (died) saveCarriedEquip(null);
+    return died;
   },
-  
+
   gainExperience: (amount) => {
     const gained = amount * XP_GAIN_MULT; // 全体調整: 経験値1/3
     set(state => {
@@ -3285,7 +3309,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
-    if (now - weapon.lastFired < (weapon.cooldown ?? 1000)) return;
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / (player.equipBonus?.fireRateMult ?? 1)) return;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     if (snapEnemy) {
@@ -4581,7 +4605,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           player: {
             ...state.player,
             // スクラップ獲得数アップ(パッシブ): 取得量を scrapMult 倍に(+30%/回)。
-            straps: state.player.straps + Math.max(1, Math.round(pickup.value * (state.player.scrapMult ?? 1) * goldRush))
+            straps: state.player.straps + Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * goldRush))
           },
           gameStats: {
             ...state.gameStats,
@@ -5337,13 +5361,46 @@ export const useGameStore = create<GameState>((set, get) => ({
         : gain;
       return {
         meleeFinishComboCount: nextCombo,
-        meleeFinishComboUntil: state.gameTime + MELEE_FINISH_COMBO_WINDOW_MS,
+        meleeFinishComboUntil: state.gameTime + Math.round(MELEE_FINISH_COMBO_WINDOW_MS * (state.player.equipBonus?.killGraceMult ?? 1)),
         gameStats: {
           ...state.gameStats,
           maxCombo: Math.max(state.gameStats.maxCombo, nextCombo)
         }
       };
     });
+  },
+
+  // 装備を該当部位へ装着(同部位は置換)。最大体力の増減は player.maxHealth へベイクし、増分だけ現HPも上げる。
+  equipItem: (defId) => {
+    const def = equipmentById(defId);
+    if (!def) return;
+    set(state => {
+      const slot: EquipSlot = def.slot;
+      const prevLoadout = state.player.equipment;
+      const nextLoadout = { ...prevLoadout, [slot]: def.id };
+      const prevHp = equipMaxHealthOf(prevLoadout);
+      const nextHp = equipMaxHealthOf(nextLoadout);
+      const hpDelta = nextHp - prevHp;
+      const newMaxHealth = Math.max(1, state.player.maxHealth + hpDelta);
+      // 増分は現HPも底上げ(防具で全快はしないが上限ぶんは反映)。減少時は上限へクランプ。
+      const newHealth = Math.min(newMaxHealth, hpDelta > 0 ? state.player.health + hpDelta : state.player.health);
+      return {
+        player: {
+          ...state.player,
+          equipment: nextLoadout,
+          equipBonus: aggregateEquipBonus(nextLoadout),
+          maxHealth: newMaxHealth,
+          health: newHealth
+        }
+      };
+    });
+  },
+
+  // 現在装備中の1点を次run へ持ち帰り(localStorage)。null または未装備IDなら持ち帰り無し。
+  takeHomeEquipment: (defId) => {
+    const eq = get().player.equipment;
+    const owned = defId != null && (eq.body === defId || eq.arms === defId || eq.accessory === defId);
+    saveCarriedEquip(owned ? defId : null);
   },
 
   // --- 四神舞(リズム) -------------------------------------------------------
@@ -5602,7 +5659,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       startingWeapons = [createWeapon('phill-revolver'), ...(melee ? [melee] : [])];
     }
     const profile = PLAYER_PROFILES[validClass] ?? PLAYER_PROFILES.warrior;
-    const maxHealth = profile.maxHp;
+    // 装備の持ち帰り: localStorage の1件を該当部位へ装備して run 開始(死亡で破棄=ロード時に空なら無装備)。
+    const runLoadout = emptyEquipLoadout();
+    const carried = equipmentById(loadCarriedEquip());
+    if (carried) runLoadout[carried.slot] = carried.id;
+    // 持ち帰りは run 開始で「銀行から引き出し」=永続キーを空に。再度貯めるのは帰還/クリア時のみ
+    // (=途中離脱や死亡では失う。死亡時は damagePlayer でも明示クリア)。
+    saveCarriedEquip(null);
+    const runEquipBonus = aggregateEquipBonus(runLoadout);
+    // 最大体力は装備分を加算してベイク(消費側を据え置きにするため)。
+    const maxHealth = profile.maxHp + equipMaxHealthOf(runLoadout);
     // 固有スキル(クラス標準サブ武器)を最初から Lv1 所持で開始する。
     const innateSub = classSubWeaponFor(validClass);
     
@@ -5764,7 +5830,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           wireStuckEnemyId: '',
           wireStuckUntil: 0,
           straps: state.startWithTestStraps ? 1000 : 0,
-          vaccineRevives: 0
+          vaccineRevives: 0,
+          equipment: runLoadout,
+          equipBonus: runEquipBonus
         },
         // 登場演出をアーム(初フレームで終了時刻確定)。練習モードは演出なし。
         introUntil: state.danceTestMode ? 0 : -1,

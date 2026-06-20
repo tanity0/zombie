@@ -2885,7 +2885,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // so the rate felt far lower than set.) Active gun's family.
               // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
               const gunKillDropRate = Math.max(0, Math.min(1,
-                useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0)
+                useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0) + (useGameStore.getState().player.equipBonus?.ammoDropBonus ?? 0)
               ));
               // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
               if (!indoor && Math.random() < gunKillDropRate) {
