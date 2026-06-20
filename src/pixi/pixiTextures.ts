@@ -89,6 +89,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t2', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3', scaleMode: 'nearest' },
       { name: 'weapons/phill-revolver', scaleMode: 'nearest' },
+      { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま

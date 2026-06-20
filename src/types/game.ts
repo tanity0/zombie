@@ -687,6 +687,17 @@ export type VisualEffect =
       serif?: boolean;
     }
   | {
+      // 一枚絵のマーク表示(例: 刀フィニッシュの習字「斬」)。pop-in→保持→フェード。
+      kind: 'image';
+      id: string;
+      x: number; y: number;
+      createdAt: number;
+      duration: number;
+      texture: string;     // pixiTextures の論理名
+      scale?: number;      // 表示スケール基準
+      color?: string;      // 任意tint(未指定=素のまま)
+    }
+  | {
       kind: 'ring';
       id: string;
       x: number; y: number;

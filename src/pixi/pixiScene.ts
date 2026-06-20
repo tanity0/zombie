@@ -4715,6 +4715,8 @@ export class PixiScene {
       }
       if (e.kind === 'damageNumber') {
         this.drawDamageNumber(e, now);
+      } else if (e.kind === 'image') {
+        this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
         this.drawDogFetchSprite(e, now);
       } else if (e.kind === 'glow' && e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) {
@@ -4984,6 +4986,28 @@ export class PixiScene {
     txt.position.set(e.x, e.y - t * 12);
     txt.scale.set(pop);
     txt.alpha = Math.max(0, 1 - t);
+  }
+
+  // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。
+  private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {
+    const tex = getTexture(e.texture);
+    let sp = this.effects.get(e.id);
+    if (!tex) { if (sp) sp.visible = false; return; }
+    if (!(sp instanceof Sprite)) {
+      if (sp) sp.destroy();
+      sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      this.L.effectLayer.addChild(sp);
+      this.effects.set(e.id, sp);
+    }
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    const targetH = 130 * (e.scale ?? 1);            // 表示高さ(world px)
+    const pop = 1 + Math.max(0, 1 - t * 4) * 0.18;   // 出だしを少し大きく
+    sp.visible = true;
+    sp.texture = tex;
+    sp.scale.set((targetH / tex.height) * pop);
+    sp.position.set(e.x, e.y);
+    sp.alpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3); // 後半でフェード
   }
 
   // ---- player FX: counter ring + reload meter (world space) ----------------

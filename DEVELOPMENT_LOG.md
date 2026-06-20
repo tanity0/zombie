@@ -13328,3 +13328,10 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - プレイヤー⇔敵の接触ダメージ判定で、敵が気絶中(フィニッシュ受付: gameTime < enemy.stunUntil)なら被弾をスキップ。気絶した敵に近づいてフィニッシュを狙う動きが安全に。
 - ジャンプ/突進カウンター・無敵などの既存分岐の後に判定を追加(攻撃中フェーズとは別)。
 - 負荷 1/10: 接触ループ内の比較1つ。検証: tsc 通過。変更: src/hooks/useGameLoop.ts, package.json
+
+## v0.25.670 — 刀フィニッシュの「斬」を習字の一枚絵へ差し替え
+- 従来は赤い明朝テキストのコールアウト「斬」。これを習字素材 zan.png(白・透過)の一枚絵表示へ変更。
+- 仕組み: VisualEffect に 'image' 種別を追加(texture/scale/duration)。store.spawnImageMark で発生。pixiScene.drawImageEffect が effectLayer(world座標)へSpriteを pop-in→保持→末尾フェードで描画。zan テクスチャを pixiTextures に登録(拡大表示なので linear で滑らか)。
+- 刀一閃フィニッシュ(result.finish)で spawnImageMark(zanX,zanY,'zan',{scale:1,duration:1000})。画面暗転は据え置き。表示高さ ~130px(world)。
+- 負荷 1/10: フィニッシュ毎に一枚スプライト1つ。汎用なので他の一枚絵演出にも再利用可。
+- 検証: tsc --noEmit 通過。変更: src/types/game.ts, src/store/gameStore.ts, src/pixi/pixiScene.ts, src/pixi/pixiTextures.ts, package.json

@@ -1364,6 +1364,7 @@ interface GameState {
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean }) => void;
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
@@ -3108,10 +3109,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
         // 一閃でフィニッシュした時だけ「斬」を軌道の真ん中に1つ表示
-        // (何体巻き込んでも1ダッシュにつき1つ)。大きい赤の明朝文字+画面暗転。
+        // (何体巻き込んでも1ダッシュにつき1つ)。習字「斬」の一枚絵+画面暗転。
         if (result.finish) {
           get().spawnFlash('rgba(0,0,0,0.6)', 420);                      // 暗転
-          get().spawnCallout(zanX, zanY, '斬', '#ef4444', { scale: 3.6, serif: true });
+          get().spawnImageMark(zanX, zanY, 'zan', { scale: 1.0, duration: 1000 });
         }
       }, KATANA_DASH_MS);
     }
@@ -6039,6 +6040,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     set(state => {
       const next = [...state.effects, ...fresh];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+
+  spawnImageMark: (x, y, texture, opts) => {
+    const now = Date.now();
+    const effect: VisualEffect = {
+      kind: 'image',
+      id: `fx-img-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y,
+      texture,
+      scale: opts?.scale ?? 1,
+      color: opts?.color,
+      createdAt: now,
+      duration: opts?.duration ?? 900,
+    };
+    set(state => {
+      const next = [...state.effects, effect];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });
