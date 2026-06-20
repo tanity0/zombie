@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.682 — 犬ダッシュ距離を「プレイヤー距離+80px」に
+
+- 犬(werewolf)/lab-zombie-2 のダッシュ突進の狙い点を、従来の「プレイヤー位置の2倍オーバーシュート」から
+  **プレイヤーまでの距離 + 80px**(`DASH_OVERSHOOT_PX`)に変更。プレイヤーの少し先で止まる挙動に。
+- giantbat の専用スケジューラ側は対象外(社長指示は犬)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.681 — ジャンプ/ダッシュカウンターのノックバック根治
 
 - **症状**: パンプキンのジャンプ攻撃をカウンターしても「その場で痺れているだけ」で弾き飛ばない。

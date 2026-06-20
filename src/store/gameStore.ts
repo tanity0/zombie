@@ -263,6 +263,8 @@ export const KNOCKBACK_DURATION = 280;
 // なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
 export const COUNTER_KNOCKBACK_LAUNCH = 64; // 即時に飛ばす距離(px)
 export const COUNTER_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3; // 続く速度スライド(従来は×2)
+// 敵ダッシュ(犬/lab-zombie-2)の突進距離: プレイヤーまでの距離 + この値(プレイヤーの少し先で止まる)。
+export const DASH_OVERSHOOT_PX = 80;
 // プレイヤー被弾ノックバック(ジャンプ攻撃で弾き出される)。movePlayer が減衰しながら適用。
 export const PLAYER_KNOCKBACK_SPEED = 460;
 export const PLAYER_KNOCKBACK_MS = 260;
@@ -3939,8 +3941,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (enemy.type !== 'giantbat' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
-            // 突進距離を2倍に: プレイヤー位置で止まらず、その方向へ2倍の距離(オーバーシュート)を狙う。
-            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - ecx, aiTargetY: 2 * pcy - ecy, vx: 0, vy: 0 };
+            // 突進距離 = プレイヤーまでの距離 + 80px(プレイヤーの少し先で止まる。社長指示)。
+            const reach = dist + DASH_OVERSHOOT_PX;
+            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx + ((pcx - ecx) / dist) * reach, aiTargetY: ecy + ((pcy - ecy) / dist) * reach, vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
