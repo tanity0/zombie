@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.693 — ステージ3を完全な昼ステージ化(足元まで正午)
+
+- 遠景だけでなく環境全体を昼へ(`s.farBackdrop === 'city'` を昼フラグとして使用):
+  - 地面ストリップ / 木 / 地平の森 / 手前の森 の暗転tint(ENV_TINT)→ **昼=本来色(0xffffff)**。
+  - 寒色カラーグレード: tint を薄い暖色(0xfff1da)、α を `GRADE_ALPHA×0.3` に弱める。
+  - ビネット(周辺減光) 0.70 → **0.30**。
+  - 寒色フォグ 3層の α を **×0.4**(薄く)。
+- 仕組み: `applyDaylight(on)`(状態変化時のみ一括適用)＋ `envTintNow()`(木/地面の都度tint)＋ sync 毎フレームの
+  グレードα分岐。fog は基準α(baseAlpha)を保持して昼で減衰。夜/ラボは従来どおり。
+- 遠景の明るさは applyFarBackdrop が city=白tintで別管理(v0.25.692)。アクター(敵/プレイヤー)は元々非tintで明るい。
+- 負荷: 描画方式は不変(tint/α値の変更のみ)。1/10。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.692 — ステージ3遠景を昼の廃都(正午ステージ)に差し替え
 
 - ステージ3の遠景を、夜の廃都→**昼の廃都パノラマ(青空・雪山)= 正午ステージ**へ差し替え。

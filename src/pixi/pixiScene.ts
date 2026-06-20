@@ -46,7 +46,14 @@ import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/r
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
+// 昼ステージ(正午=farBackdrop 'city')の環境補正: 夜の暗転・寒色グレード・濃霧・周辺減光を弱め、
+// 足元まで明るく見せる。遠景は applyFarBackdrop が tint=白で明るく出す(別管理)。
+const DAY_ENV_TINT = 0xffffff;             // 地面/木/森レイヤーを暗転させない(本来色)
+const DAY_GRADE_TINT = 0xfff1da;           // 寒色→ごく薄い暖色グレード
+const DAY_VIGNETTE_ALPHA = 0.30;           // 周辺減光を薄く
+const DAY_FOG_MULT = 0.4;                  // 寒色フォグを薄く
 const GRADE_ALPHA = 0.4;       // strength of the cool grade
+const DAY_GRADE_ALPHA = GRADE_ALPHA * 0.3; // 昼はグレードをかなり弱く
 const PLAYER_HUNTING_LIGHT_TINT = 0x60a5fa;
 const FAR_BACKDROP_HEIGHT_RATIO = 0.22;
 const FAR_BACKDROP_MIN_HEIGHT = 150;
@@ -180,6 +187,7 @@ const FOG_SPEED = Math.max(0, tsNum('fogspd', 1));
 const FOG_TINT = 0xb8ccdd;   // 寒色の白青(参考の霧色)。やや明るめ
 interface FogLayer {
   sp: TilingSprite;
+  baseAlpha?: number; // 夜の基準α(昼は DAY_FOG_MULT で薄める)
   yFrac: number;     // 帯の中心Y(画面高さに対する割合)
   widthFrac: number; // スプライト幅(画面幅に対する割合。>=1で画面を覆う)
   heightFrac: number;
@@ -610,6 +618,24 @@ export class PixiScene {
   private bloom: AdvancedBloomFilter | null = null;
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
+  // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
+  private daylight = false;
+  private daylightApplied: boolean | null = null;
+  // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
+  private envTintNow() { return this.daylight ? DAY_ENV_TINT : ENV_TINT; }
+  // 昼/夜の一括切り替え(状態変化時のみ適用)。毎フレームのグレードα/木tintは各所が envTintNow / daylight を参照。
+  private applyDaylight(on: boolean) {
+    if (this.daylightApplied === on) return;
+    this.daylightApplied = on;
+    const tint = on ? DAY_ENV_TINT : ENV_TINT;
+    for (const strip of this.L.groundStrips) strip.tint = tint;
+    this.L.horizonForest.tint = tint;
+    this.L.frontForest.tint = tint;
+    this.gradeSprite.tint = on ? DAY_GRADE_TINT : GRADE_TINT;
+    this.vignette.alpha = on ? DAY_VIGNETTE_ALPHA : ENV_VIGNETTE_ALPHA;
+    for (const f of this.fogLayers) f.sp.alpha = (f.baseAlpha ?? f.sp.alpha) * (on ? DAY_FOG_MULT : 1);
+  }
+
   // 現在の設定に応じて gameplay world(filteredWorld)のフィルタ配列を作り直す(bloom はON時のみ含める)。
   private rebuildWorldFilters() {
     const filters: Filter[] = [];
@@ -927,7 +953,7 @@ export class PixiScene {
       sp.alpha = alpha;
       sp.visible = alpha > 0;
       layer.addChild(sp);
-      this.fogLayers.push({ sp, ...cfg });
+      this.fogLayers.push({ sp, baseAlpha: alpha, ...cfg });
     };
     // 各レイヤー1枚ずつ。横は texture を tilePosition で右へ流す+揺らめき、縦は位置の bob で揺らめき。
     // 奥: world 内(キャラの後ろ)・遠景〜地面に被る背の高い霧。もうちょい上。
@@ -1344,7 +1370,7 @@ export class PixiScene {
     if (!this.groundStripBaseTex) return; // 一度も差し替えていなければ何もしない
     for (const strip of this.L.groundStrips) {
       if (strip.texture !== this.groundStripBaseTex) strip.texture = this.groundStripBaseTex;
-      strip.tint = ENV_TINT;
+      strip.tint = this.envTintNow();
     }
   }
 
@@ -1478,6 +1504,9 @@ export class PixiScene {
     // オプションのブルームON/OFFをリロード無しで反映(変化時だけフィルタ配列を作り直す)。
     const wantBloom = getBloomEnabled();
     if (wantBloom !== this.bloomActive) { this.bloomActive = wantBloom; this.rebuildWorldFilters(); }
+    // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
+    this.daylight = s.farBackdrop === 'city';
+    this.applyDaylight(this.daylight);
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
     // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の
     // 「ストップ感」が出る。シミュレーション自体は useGameLoop 側の早期returnで既に凍結済み。
@@ -1575,7 +1604,7 @@ export class PixiScene {
       f.sp.tilePosition.y = 0;
     }
     // 研究所スキンは床/素材を見せるため、クール調整を弱める(森はそのまま)。
-    this.gradeSprite.alpha = labThemeFog ? GRADE_ALPHA * 0.45 : GRADE_ALPHA;
+    this.gradeSprite.alpha = labThemeFog ? GRADE_ALPHA * 0.45 : (this.daylight ? DAY_GRADE_ALPHA : GRADE_ALPHA);
 
     // 死神の横切り演出(store.reaperCross から駆動)。world内レイヤーを画面へピン留め(被写界深度が乗る)。
     this.reaperCrossLayer.position.set(s.camera.x - sx, s.camera.y - sy);
@@ -2273,7 +2302,7 @@ export class PixiScene {
       if (!entry) {
         const sprite = new Sprite(tex ?? undefined);
         sprite.anchor.set(0.5, 1);
-        sprite.tint = ENV_TINT; // フェーズ1: 木も環境として暗く沈める
+        sprite.tint = this.envTintNow(); // 木も環境として暗く沈める(昼ステージは本来色)
         sprite.x = t.footX;
         sprite.y = t.footY;
         // Y-sort together with the player & enemies by foot Y, so the hero can
