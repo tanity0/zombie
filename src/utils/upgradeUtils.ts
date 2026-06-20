@@ -1,75 +1,87 @@
-import { UpgradeOption, Player, PassiveType } from '../types/game';
+import { UpgradeOption, Player, EquipSlot, EquipmentDef } from '../types/game';
+import {
+  EQUIP_SLOTS, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, SPECIAL_EQUIP_CHANCE,
+  equipmentById, equipmentDef, specialEquipmentForSlot, equipmentDescription
+} from '../data/equipment';
 
-// レベルアップはパッシブ強化のみ(社長指示)。サブウェポンの強化/新規取得はレベルアップでは起きず、
-// 武器商人での購入・装備選択に一本化。各パッシブは1回効果＋個別上限(最大取得回数)を持つ。
-const PASSIVE_POOL: PassiveType[] = [
-  'maxHealth', 'speed', 'might', 'cooldown', 'magSize',
-  'reloadSpeed', 'critChance', 'stunDuration', 'ammoDrop', 'scrapGain'
-];
+// レベルアップ報酬 = 装備の3選択肢(確定版 仕様4章)。
+//   ①進化  : スロット抽選→次ランク提示(未装備/特殊スロットはランク1=特殊から通常へ戻せる)。
+//   ②補完/特殊: 未装備スロットからランダム1個。空きありは95%空き埋め/5%特殊、空き無しは特殊10%。
+//   ③スクラップ: 常設 +50(特殊で置換しない)。
+//   枯渇で①or②は消滅。①②両方カンスト時のみ「HP30%回復」を追加提示。
+//   系統分岐は引き(出たカードから選ぶ)。選択は即時反映・同スロット既存は入れ替え(破棄)。
+const SPECIAL_CHANCE_NO_EMPTY = 0.10; // 空きスロット無しでの特殊出現率
 
-// 各パッシブの取得回数上限(後で調整しやすいよう定数化)。
-const PASSIVE_CAP: Record<PassiveType, number> = {
-  maxHealth: 5,
-  speed: 3,
-  might: 5,
-  cooldown: 5,
-  magSize: 5,
-  reloadSpeed: 5,
-  critChance: 5,
-  stunDuration: 3,
-  ammoDrop: 3,
-  scrapGain: 5,
-  // 廃止済み(提示しない)。型網羅のため 0。
-  area: 0,
-  duration: 0,
-};
+const randPick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-export const generateUpgradeOptions = (player: Player): UpgradeOption[] => {
-  // 上限に達していないパッシブだけを候補にしてシャッフル→最大3枚。
-  const counts = player.passiveCounts ?? {};
-  const available = PASSIVE_POOL.filter(type => (counts[type] ?? 0) < PASSIVE_CAP[type]);
-  const picks = [...available].sort(() => 0.5 - Math.random()).slice(0, 3);
+const equipOption = (def: EquipmentDef, tag: string): UpgradeOption => ({
+  id: `equip-${tag}-${def.id}`,
+  name: def.name,
+  description: equipmentDescription(def),
+  type: 'equipment',
+  equipDefId: def.id,
+  level: def.tier, // ランク(特殊=0)
+});
 
-  return picks.map(passiveType => ({
-    id: `passive-${passiveType}`,
-    name: getPassiveDisplayName(passiveType),
-    description: getPassiveDescription(passiveType),
-    type: 'passive' as const,
-    passiveType,
-    level: 1
-  }));
-};
+export const generateEquipmentChoices = (player: Player): UpgradeOption[] => {
+  const loadout = player.equipment;
+  const options: UpgradeOption[] = [];
 
-export const getPassiveDisplayName = (type: PassiveType): string => {
-  switch (type) {
-    case 'maxHealth': return '最大体力アップ';
-    case 'speed': return '移動速度アップ';
-    case 'might': return 'ダメージ強化';
-    case 'cooldown': return '連射速度アップ';
-    case 'magSize': return '装填数アップ';
-    case 'reloadSpeed': return 'リロード時間短縮';
-    case 'critChance': return 'クリティカル率アップ';
-    case 'stunDuration': return '気絶時間アップ';
-    case 'ammoDrop': return '弾薬ドロップ率アップ';
-    case 'scrapGain': return 'スクラップ獲得数アップ';
-    case 'area': return '効果範囲アップ';
-    case 'duration': return '効果時間延長';
-    default: return '不明なアップグレード';
+  // 選択肢①: 進化(ランク有りで提示できるスロット=未装備/特殊/通常R<5)。
+  const evolvable: EquipSlot[] = EQUIP_SLOTS.filter(slot => {
+    const def = equipmentById(loadout[slot]);
+    if (!def) return true;            // 未装備 → R1
+    if (def.special) return true;     // 特殊 → R1へ戻せる(カンストしない)
+    return def.tier < EQUIP_TIER_MAX; // 通常 R<5
+  });
+  let evoDef: EquipmentDef | null = null;
+  if (evolvable.length > 0) {
+    const slot = randPick(evolvable);
+    const cur = equipmentById(loadout[slot]);
+    if (!cur || cur.special) {
+      evoDef = equipmentDef(slot, randPick(EQUIP_LINES_BY_SLOT[slot]), 1);
+    } else {
+      evoDef = equipmentDef(slot, cur.line, cur.tier + 1);
+    }
   }
+  if (evoDef) options.push(equipOption(evoDef, 'evo'));
+
+  // 選択肢②: 補完(空き埋め)/特殊。
+  const emptySlots = EQUIP_SLOTS.filter(s => !loadout[s]);
+  const unownedSpecials = EQUIP_SLOTS
+    .map(specialEquipmentForSlot)
+    .filter(sp => loadout[sp.slot] !== sp.id); // まだ装備していない特殊のみ
+  let compDef: EquipmentDef | null = null;
+  if (emptySlots.length > 0) {
+    if (Math.random() < SPECIAL_EQUIP_CHANCE && unownedSpecials.length > 0) {
+      compDef = randPick(unownedSpecials);
+    } else {
+      const slot = randPick(emptySlots);
+      const line = randPick(EQUIP_LINES_BY_SLOT[slot]);
+      let d = equipmentDef(slot, line, 1)!;
+      // ①と完全重複(同スロット同系統R1)なら別系統へ振り直し。
+      if (evoDef && d.id === evoDef.id) {
+        const other = EQUIP_LINES_BY_SLOT[slot].find(l => l !== line);
+        if (other) d = equipmentDef(slot, other, 1)!;
+      }
+      compDef = d;
+    }
+  } else if (Math.random() < SPECIAL_CHANCE_NO_EMPTY && unownedSpecials.length > 0) {
+    compDef = randPick(unownedSpecials);
+  }
+  if (compDef) options.push(equipOption(compDef, compDef.special ? 'sp' : 'fill'));
+
+  // 選択肢③: スクラップ +50(常設)。
+  options.push({ id: 'lvl-scrap', name: 'スクラップ +50', description: 'スクラップを 50 獲得', type: 'scrap', level: 50 });
+
+  // ①②両方カンスト → HP30%回復を1つ提示。
+  if (!evoDef && !compDef) {
+    options.push({ id: 'lvl-heal', name: 'HP30%回復', description: '最大HPの 30% を回復', type: 'heal', level: 1 });
+  }
+
+  return options;
 };
 
-export const getPassiveDescription = (type: PassiveType): string => {
-  switch (type) {
-    case 'maxHealth': return '最大体力が30ポイント増加します';
-    case 'speed': return '移動速度が10%向上します';
-    case 'might': return '銃・近接のダメージが20%増加します';
-    case 'cooldown': return '銃の発射間隔が5%短縮されます（下限80ms）';
-    case 'magSize': return 'マガジンが20%増加します（最低+1）';
-    case 'reloadSpeed': return '全ての銃のリロード時間が短縮されます';
-    case 'critChance': return 'クリティカル率が3%上昇します';
-    case 'stunDuration': return '敵の気絶（フィニッシュ受付）時間が20%延びます';
-    case 'ammoDrop': return '弾薬ドロップ率が10%上昇します';
-    case 'scrapGain': return 'スクラップ獲得数が30%増加します';
-    default: return '不明なアップグレード';
-  }
-};
+// 旧「直接パッシブ強化」報酬(generateUpgradeOptions / getPassiveDisplayName など)は確定版で全面廃止し、
+// 上の装備3選択肢へ置換した。装填数(magSize/magBonus)は候補から除外(player の magBonus フィールドは残置)。
+// selectUpgrade 側の passive 分岐は型網羅のため残置(この経路は今後生成されない)。

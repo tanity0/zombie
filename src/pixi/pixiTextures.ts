@@ -48,6 +48,13 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-game-0',
       'player-scavenger-game-1',
       'player-scavenger-game-2',
+      // 武将セット(特殊3点)フル装備時の立ち絵。小烏丸も装備していれば刀バージョン。
+      'player-warlord-gun-walk-0',
+      'player-warlord-gun-walk-1',
+      'player-warlord-gun-walk-2',
+      'player-warlord-katana-walk-0',
+      'player-warlord-katana-walk-1',
+      'player-warlord-katana-walk-2',
       'dog-walk-0',
       'dog-walk-1',
       'treasure-1',

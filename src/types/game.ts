@@ -614,11 +614,14 @@ export interface UpgradeOption {
   id: string;
   name: string;
   description: string;
-  type: 'weapon' | 'passive' | 'subWeapon';
+  // 'equipment'=装備取得(選択肢①進化/②補完・特殊)、'scrap'=スクラップ+50(選択肢③)、
+  // 'heal'=HP30%回復(①②カンスト時の代替)。'weapon'/'passive'/'subWeapon' は旧仕様の残置。
+  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal';
   weaponType?: WeaponType;
   passiveType?: PassiveType;
   subWeaponKey?: SubWeaponKey;
-  level: number;
+  equipDefId?: string; // type==='equipment' のとき装備定義ID(data/equipment.ts)
+  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量
 }
 
 export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance' | 'stunDuration' | 'ammoDrop' | 'scrapGain';

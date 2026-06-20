@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { generateUpgradeOptions } from '../utils/upgradeUtils';
+import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
@@ -38,7 +38,6 @@ import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } fr
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
-import type { EquipSlot } from '../types/game';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
@@ -189,6 +188,25 @@ const saveCarriedEquip = (defId: string | null): void => {
     if (defId && EQUIPMENT[defId]) localStorage.setItem(CARRIED_EQUIP_KEY, defId);
     else localStorage.removeItem(CARRIED_EQUIP_KEY);
   } catch { /* ignore */ }
+};
+
+// 装備を該当スロットへ装着した新 Player を返す純関数(同スロットは置換=破棄)。最大体力の増減は
+// player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。equipItem と
+// selectUpgrade(装備取得)の双方から使う。
+const equipDefOnPlayer = (player: Player, defId: string): Player => {
+  const def = equipmentById(defId);
+  if (!def) return player;
+  const nextLoadout = { ...player.equipment, [def.slot]: def.id };
+  const hpDelta = equipMaxHealthOf(nextLoadout) - equipMaxHealthOf(player.equipment);
+  const newMaxHealth = Math.max(1, player.maxHealth + hpDelta);
+  const newHealth = Math.min(newMaxHealth, hpDelta > 0 ? player.health + hpDelta : player.health);
+  return {
+    ...player,
+    equipment: nextLoadout,
+    equipBonus: aggregateEquipBonus(nextLoadout),
+    maxHealth: newMaxHealth,
+    health: newHealth,
+  };
 };
 const loadNumber = (key: string, def: number): number => {
   try { const r = localStorage.getItem(key); const n = r == null ? def : Number(r); return Number.isFinite(n) ? n : def; } catch { return def; }
@@ -3242,7 +3260,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const newExpToNextLevel = Math.floor(player.experienceToNextLevel * (newLevel < 10 ? 1.1 : 1.18) + stepLinear);
       
       // Generate upgrade options when leveling up
-      const upgradeOptions = generateUpgradeOptions(player);
+      const upgradeOptions = generateEquipmentChoices(player);
       
       // Update max level in stats if needed
       const newMaxLevel = Math.max(state.gameStats.maxLevel, newLevel);
@@ -3371,6 +3389,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           showUpgradeMenu: false,
           isPaused: false
         };
+      }
+
+      // 確定版 装備システム: レベルアップ報酬の3選択肢。即時反映・同スロット既存は入れ替え(破棄)。
+      if (upgrade.type === 'equipment' && upgrade.equipDefId) {
+        return { player: equipDefOnPlayer(player, upgrade.equipDefId), showUpgradeMenu: false, isPaused: false };
+      }
+      if (upgrade.type === 'scrap') {
+        const gain = upgrade.level > 0 ? upgrade.level : 50;
+        return { player: { ...player, straps: player.straps + gain }, showUpgradeMenu: false, isPaused: false };
+      }
+      if (upgrade.type === 'heal') {
+        const healed = Math.min(player.maxHealth, player.health + Math.round(player.maxHealth * 0.30));
+        return { player: { ...player, health: healed }, showUpgradeMenu: false, isPaused: false };
       }
 
       // RE rework: level-ups only strengthen the player — new weapons come
@@ -4643,7 +4674,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Boss-drop treasure chest. Behaves like a level-up's upgrade menu
         // but without bumping the level or resetting XP. Player just gets
         // a free pick.
-        const upgradeOptions = generateUpgradeOptions(get().player);
+        const upgradeOptions = generateEquipmentChoices(get().player);
         set(state => ({
           upgradeOptions,
           showUpgradeMenu: true,
@@ -5372,28 +5403,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 装備を該当部位へ装着(同部位は置換)。最大体力の増減は player.maxHealth へベイクし、増分だけ現HPも上げる。
   equipItem: (defId) => {
-    const def = equipmentById(defId);
-    if (!def) return;
-    set(state => {
-      const slot: EquipSlot = def.slot;
-      const prevLoadout = state.player.equipment;
-      const nextLoadout = { ...prevLoadout, [slot]: def.id };
-      const prevHp = equipMaxHealthOf(prevLoadout);
-      const nextHp = equipMaxHealthOf(nextLoadout);
-      const hpDelta = nextHp - prevHp;
-      const newMaxHealth = Math.max(1, state.player.maxHealth + hpDelta);
-      // 増分は現HPも底上げ(防具で全快はしないが上限ぶんは反映)。減少時は上限へクランプ。
-      const newHealth = Math.min(newMaxHealth, hpDelta > 0 ? state.player.health + hpDelta : state.player.health);
-      return {
-        player: {
-          ...state.player,
-          equipment: nextLoadout,
-          equipBonus: aggregateEquipBonus(nextLoadout),
-          maxHealth: newMaxHealth,
-          health: newHealth
-        }
-      };
-    });
+    if (!equipmentById(defId)) return;
+    set(state => ({ player: equipDefOnPlayer(state.player, defId) }));
   },
 
   // 現在装備中の1点を次run へ持ち帰り(localStorage)。null または未装備IDなら持ち帰り無し。

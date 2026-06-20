@@ -20,7 +20,8 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
+import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
@@ -3232,7 +3233,15 @@ export class PixiScene {
     const usesStrikerSprite = p.characterClass === 'rogue';
     const usesScavengerSprite = p.characterClass === 'necromancer';
     const frame = playerWalkFrame(p, now, walking);
-    const textureName = usesMagnumSprite
+    // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
+    // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。
+    const warlordFull = hasFullWarlordSet(p.equipment);
+    const warlordKatana = warlordFull && hasMurasame(p);
+    const textureName = warlordKatana
+      ? `player-warlord-katana-walk-${frame}`
+      : warlordFull
+      ? `player-warlord-gun-walk-${frame}`
+      : usesMagnumSprite
       ? `player-magnum-walk-${frame}`
       : usesShotgunSprite
         ? `player-shotgun-walk-${frame}`
@@ -3301,7 +3310,12 @@ export class PixiScene {
     }
 
     if (tex) {
-      const baseScale = usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
+      // 武将立ち絵は高さ基準で正規化(標準クラス絵=幅86px相当の128x108 と同じ画面上の高さに合わせる)。
+      // 通常クラス絵は従来どおり幅基準。
+      const warlordTargetH = (PLAYER_CLASS_MENU_SPRITE_WIDTH / 128) * 108;
+      const baseScale = warlordFull
+        ? warlordTargetH / tex.height
+        : usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
         ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width
         : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
       const sc = baseScale * this.depthScale(fb.footY) * introScale;

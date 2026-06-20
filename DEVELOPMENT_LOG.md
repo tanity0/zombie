@@ -13147,3 +13147,17 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 「鳴ってない」について: アセット(hurricane.wav 16bit/mono/44.1k)・読み込み・配線は稼働中の他SEと同条件で、コード経路に無音化バグは特定できず。継ぎ目の沈み込みが原因の可能性が高く、本リワークで解消見込み。なお完全無音が続く場合は端末のSFX音量/クリップ自体が要因なので別途確認したい。
 - 負荷スコア 1/10: 音声サブシステム。毎フレーム処理なし、稼働中のみ約1.8s毎に短ボイス1本をスケジュール、ボイスは自動stop+配列prune、新規依存なし。
 - 検証: npx tsc --noEmit 通過。変更ファイル: src/audio/audioManager.ts, package.json
+
+## v0.25.641 — 【確定版】装備システム: レベルアップ報酬を装備3選択肢へ全面置換+武将フル装備の立ち絵差し替え
+レベルアップ報酬を「直接パッシブ強化」→「装備取得」へ全面置換(仕様 確定版)。旧 generateUpgradeOptions/パッシブ表示は廃止。
+- **生成(upgradeUtils.generateEquipmentChoices)**: ①進化=スロット抽選→次ランク(未装備/特殊スロットはR1=特殊から通常へ戻せる)、②補完/特殊=未装備スロットからランダム(空きあり95%空き埋め/5%特殊、空き無し特殊10%)、③スクラップ+50(常設)。①or②枯渇で消滅、①②両カンストで「HP30%回復」を提示。①②完全重複は別系統へ振り直し。
+- **適用(selectUpgrade)**: equipment=equipDefOnPlayer(同スロット入替・破棄、最大体力は加算ベイク+現HP底上げ、equipBonus再集計)、scrap=straps+50、heal=最大HP30%回復。equipItem も同純関数へ集約。
+- **特殊=武将セット**: 名称確定(武将の鎧/武将の小手/武将の兜)。5%出現・3ステ・ランク無し。持ち帰り対象に含む。
+- **UI(UpgradeMenu)**: 装備は🛡️+「R{rank}」、特殊は🏯+金枠「特殊」、③🔩スクラップ、HP30%は❤️。
+- **立ち絵差し替え(pixiScene.drawPlayer)**: 武将セット(特殊3点)フル装備で立ち絵を差し替え。さらに小烏丸(村雨)装備で刀バージョン、揃わなければ通常クラス絵へ復帰。提供スプライト2種(各3フレーム)を青クロマキー除去→128x108規格にスライス(public/sprites/player-warlord-gun|katana-walk-0..2.png)。刀が横に伸びても体サイズを保つため武将のみ高さ基準で正規化。
+- **死亡明示(GameOverScreen)**: 死亡(非クリア)かつ装備所持時に「装備をすべてロストしました」を表示。
+- **持ち帰り backend**: localStorage 永続(zombie:carriedEquip)、run開始ロード→該当スロット装備、死亡で破棄は既存実装のまま。**クリア/帰還時の「1個選んで持ち帰り」選択UIは別タスク(帰還は社長指示で別)として未接続=次の作業**。価格改定・サブLv5は対象外。
+- 装填数(magSize)は候補から除外(magBonus フィールドは残置)。
+- 負荷スコア 1/10: 生成はレベルアップ時のみ(イベント)。立ち絵判定(hasFullWarlordSet/hasMurasame)はdrawPlayerで毎フレームだがO(1)の極小チェック。新規アセット6枚計~93KB(初回ロードのみ)。
+- 検証: tsc --noEmit 通過(vite未導入環境のためビルドは未実行/アセットパスは spritePath 規約に一致を確認)。立ち絵2種はキー処理後のプレビューで目視確認済み。
+- 変更ファイル: src/data/equipment.ts, src/utils/upgradeUtils.ts, src/types/game.ts, src/store/gameStore.ts, src/components/UpgradeMenu.tsx, src/components/GameOverScreen.tsx, src/pixi/pixiTextures.ts, src/pixi/pixiScene.ts, public/sprites/player-warlord-*.png(新規6), package.json

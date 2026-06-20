@@ -65,6 +65,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   // 研究所(屋内)クリアかどうか。勝利後も indoorMode は保持されている。
   const indoor = useGameStore(s => s.indoorMode);
+  // 死亡時の「装備ロスト」明示用。装備していたかの派生ブール(静的画面なので再描画コスト無し)。
+  const hadEquipment = useGameStore(s => Object.values(s.player.equipment).some(Boolean));
   const {
     damageScore,
     comboScore,
@@ -140,6 +142,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <p className="text-[13px] text-white/60 mt-1">
             {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '闇に飲み込まれました'}
           </p>
+          {!isBenchmark && !won && hadEquipment && (
+            <p className="mt-2 inline-block rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1 text-[12px] font-semibold text-rose-200">
+              装備をすべてロストしました
+            </p>
+          )}
         </div>
         <div className="px-4 pb-4">
           {benchmarkResult && (

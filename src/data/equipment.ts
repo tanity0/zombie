@@ -98,11 +98,11 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
   special: []
 };
 
-// 特殊装備(部位ごと1種。3ステ・レア度非依存・5%出現。名称は仕様書「特殊装備」シート準拠)。
+// 特殊装備(部位ごと1種。3ステ・レア度非依存・5%出現。名称は仕様書「特殊装備」シート準拠=武将セット)。
 const SPECIAL_DEFS: Record<EquipSlot, { name: string; stats: EquipStat[] }> = {
   body: { name: '武将の鎧', stats: [s('maxHealth', 150), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
-  arms: { name: 'ガントレットオブゴッド', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
-  accessory: { name: 'クリスタルスカル', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
+  arms: { name: '武将の小手', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
+  accessory: { name: '武将の兜', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
 };
 
 export const EQUIP_TIER_MAX = 5;
@@ -198,3 +198,30 @@ export const equipMaxHealthOf = (loadout: EquipLoadout): number => {
 };
 
 export const emptyEquipLoadout = (): EquipLoadout => ({ body: null, arms: null, accessory: null });
+
+// 装備スロットの並び順(内部分類 1=体/2=腕/3=アクセ。ゲーム内に部位名は出さない=裏設定)。
+export const EQUIP_SLOTS: EquipSlot[] = ['body', 'arms', 'accessory'];
+
+// 1ステータスの表示文字列(レベルアップ選択肢などのUI用)。
+export const equipStatLabel = (st: EquipStat): string => {
+  const pct = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
+  switch (st.key) {
+    case 'maxHealth': return `最大体力 +${st.value}`;
+    case 'moveSpeed': return `移動速度 ${pct(st.value)}`;
+    case 'killGrace': return `KILL猶予 ${pct(st.value)}`;
+    case 'damage': return `ダメージ ${pct(st.value)}`;
+    case 'fireRate': return `連射 ${pct(st.value)}`;
+    case 'reload': return `リロード -${Math.round(st.value * 100)}%`;
+    case 'critChance': return `クリ率 ${pct(st.value)}`;
+    case 'ammoDrop': return `弾薬ドロップ ${pct(st.value)}`;
+    case 'scrap': return `スクラップ ${pct(st.value)}`;
+  }
+};
+
+// 装備の効果テキスト(全ステを ' / ' で連結)。
+export const equipmentDescription = (def: EquipmentDef): string =>
+  def.stats.map(equipStatLabel).join(' / ');
+
+// 武将セット(特殊3点)をフル装備しているか。立ち絵差し替えの判定に使う。
+export const hasFullWarlordSet = (loadout: EquipLoadout): boolean =>
+  EQUIP_SLOTS.every(slot => equipmentById(loadout[slot])?.special === true);
