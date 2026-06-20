@@ -13359,3 +13359,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 負荷 1/10: ダッシュ中のみ・敵数ぶんの重なり判定。
 - 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, src/hooks/useGameLoop.ts, package.json
 - 備考: 指示「アンカーは」が途中で途切れていたため、その続きは未対応(要追記)。
+
+## v0.25.675 — 刀ダッシュ距離を戻す+敵の突進(ダッシュ攻撃)を2倍距離に
+- KATANA_DASH_DISTANCE を 256→128 へ復帰(前回の刀一閃2倍を撤回)。
+- 敵の突進(ダッシュ攻撃)をプレイヤー位置止まり→「その方向へ2倍の距離(オーバーシュート)」に。狙い点を 2*player - enemy にして、プレイヤーを通り越して突進。werewolf/lab-zombie-2(3935) と giantbat(4009) の両方の溜め開始で適用。赤ライン予告も2倍ラインで表示。
+- WEREWOLF_CHARGE_MAX_MS 1400→2800(2倍距離を3倍速で到達し切れるよう打ち切り時間を延長)。
+- 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, package.json

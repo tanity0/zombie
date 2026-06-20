@@ -304,7 +304,7 @@ export const KATANA_DASH_DAMAGE_MULT = 3; // 一閃 = 刀オート斬撃の3倍(
 // TODO(刀): 仮値。一閃の所要時間は操作感を見て調整する。
 export const KATANA_DASH_MS = 180;
 // 一閃の距離・当たり幅も現状より少し狭く(128/26)。
-export const KATANA_DASH_DISTANCE = 256;
+export const KATANA_DASH_DISTANCE = 128;
 export const KATANA_DASH_HIT_HALF_WIDTH = 26;
 // 一閃後のクールダウンは既存近接(カウンター)と同じ長さ。
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
@@ -599,7 +599,7 @@ const HANDGUN_RANGE_REF = 176;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
-export const WEREWOLF_CHARGE_MAX_MS = 1400; // 突進の最大時間(到達できなくても打ち切り)
+export const WEREWOLF_CHARGE_MAX_MS = 2800; // 突進の最大時間(到達できなくても打ち切り)。距離2倍化に合わせ延長。
 export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予
 // ジャイアントバットの行動パターン別クールダウン(ランダム揺らぎ±20%)。弾=fire profile側(約3秒)。
 export const GIANTBAT_JUMP_CD_MS = 5000;
@@ -3932,7 +3932,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (enemy.type !== 'giantbat' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
-            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: pcx, aiTargetY: pcy, vx: 0, vy: 0 };
+            // 突進距離を2倍に: プレイヤー位置で止まらず、その方向へ2倍の距離(オーバーシュート)を狙う。
+            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - ecx, aiTargetY: 2 * pcy - ecy, vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
@@ -4006,7 +4007,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const pick = opts[Math.floor(Math.random() * opts.length)];
             const jitter = (ms: number) => ms * (0.8 + Math.random() * 0.4);
             if (pick === 'dash') {
-              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: pcx, aiTargetY: pcy, vx: 0, vy: 0, gbDashReadyAt: gameTime + jitter(GIANTBAT_DASH_CD_MS) };
+              // 突進距離を2倍に(giantbat も同様にオーバーシュート)。
+              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: gameTime + jitter(GIANTBAT_DASH_CD_MS) };
             }
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0, gbJumpReadyAt: gameTime + jitter(GIANTBAT_JUMP_CD_MS) };
           }
