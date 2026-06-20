@@ -304,7 +304,7 @@ export const KATANA_DASH_DAMAGE_MULT = 3; // 一閃 = 刀オート斬撃の3倍(
 // TODO(刀): 仮値。一閃の所要時間は操作感を見て調整する。
 export const KATANA_DASH_MS = 180;
 // 一閃の距離・当たり幅も現状より少し狭く(128/26)。
-export const KATANA_DASH_DISTANCE = 128;
+export const KATANA_DASH_DISTANCE = 256;
 export const KATANA_DASH_HIT_HALF_WIDTH = 26;
 // 一閃後のクールダウンは既存近接(カウンター)と同じ長さ。
 export const KATANA_DASH_COOLDOWN_MS = COUNTER_WINDOW + COUNTER_COOLDOWN;
