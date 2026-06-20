@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.689 — ブルームを全画面化(オクトラ風・社長指示)
+
+- 社長選択: 「範囲だけ全画面化」。ブルームを従来の filteredWorld(ゲームプレイ層)のみから、
+  **sceneRoot(遠景パノラマ＋ground/world＋前景森を束ねた親)= HUD以外の画面全体**へ移動。
+  背景の月・街灯・地面・森の明るい部分も発光する=オクトラ寄りの見た目。
+- HUD系(uiLayer: フラッシュ/ビネット/画面外矢印)はブルーム対象外のまま。tilt-shift(被写界深度)も
+  従来どおり filteredWorld のみ。
+- layers.ts に `sceneRoot` コンテナを新設(farBackdrop+worldGroup+frontForest を内包)。
+  pixiScene はブルームを sceneRoot に、tilt-shift を filteredWorld に分離適用。ON/OFFトグルは sceneRoot 側。
+- **注意(事前に共有済み)**: これは見た目の変更で**FPSは改善しない**(重いのはText/毎フレームGraphicsの
+  描画方式で、ブルームの範囲ではないため)。描画本体の軽量化は別途。
+- 負荷: ブルームは全画面1パスのまま(対象範囲が増えるだけ)。実測でブルームは〜1〜2fps=ほぼ不変。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.688 — 描画負荷の真因を特定(Bloom無罪)+ 純ライトベンチ + 基準更新
 
 - 社長のベンチ実測: **Bloom OFFでも改善せず → Bloomは主犯ではない**。重さは各FXの

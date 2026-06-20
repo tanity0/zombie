@@ -24,6 +24,7 @@
 import { Container, TilingSprite, Texture } from 'pixi.js';
 
 export interface SceneLayers {
+  sceneRoot: Container;
   farBackdrop: TilingSprite;
   horizonForest: TilingSprite;
   worldGroup: Container;
@@ -97,9 +98,14 @@ export const buildLayers = (
 
   const uiLayer = new Container();
 
-  stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
+  // sceneRoot = HUD以外の絵(遠景・ground/world・前景森)をまとめる親。ここへブルームを掛けると
+  // オクトラ風に「画面全体が発光」する(uiLayer=フラッシュ/ビネット/矢印 はブルーム対象外で残す)。
+  const sceneRoot = new Container();
+  sceneRoot.addChild(farBackdrop, worldGroup, frontForest);
+  stage.addChild(sceneRoot, uiLayer);
 
   return {
+    sceneRoot,
     farBackdrop,
     horizonForest,
     worldGroup,

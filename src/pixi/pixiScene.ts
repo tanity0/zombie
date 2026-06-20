@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, TilingSprite, RenderTexture } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
@@ -610,12 +610,10 @@ export class PixiScene {
   private bloom: AdvancedBloomFilter | null = null;
   private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
-  // 現在の設定に応じて gameplay world のフィルタ配列を作り直す(bloom はON時のみ含める)。
+  // ブルームは sceneRoot(背景含む全画面=オクトラ風)に掛ける。ON時のみ。
+  // tilt-shift は従来どおり filteredWorld(ゲームプレイ層)のみ(constructor で固定)。
   private rebuildWorldFilters() {
-    const filters: Filter[] = [];
-    if (this.bloom && this.bloomActive) filters.push(this.bloom);
-    if (this.tiltShift) filters.push(this.tiltShift);
-    this.L.filteredWorld.filters = filters;
+    this.L.sceneRoot.filters = (this.bloom && this.bloomActive) ? [this.bloom] : [];
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
@@ -700,9 +698,10 @@ export class PixiScene {
         blur: TILT_SHIFT_BLUR,
         gradientBlur: TILT_SHIFT_GRADIENT,
       });
+      this.L.filteredWorld.filters = [this.tiltShift]; // 被写界深度はゲームプレイ層のみ(固定)
     }
     this.bloomActive = getBloomEnabled();
-    this.rebuildWorldFilters();
+    this.rebuildWorldFilters(); // ブルームは sceneRoot(全画面)へ
 
     // フェーズ1: 環境(地面・森・遠景)を tint で暗く沈める。tint は持続するので一度だけ。
     // 木(actorLayer 内の環境物)は生成時に syncTrees で同じ tint を掛ける。
