@@ -3202,8 +3202,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (counterActiveNow) dashParried.push(enemy.id);
             return;
           }
-          // 突進(ダッシュ)もカウンターで弾く: 被弾せず弾き返し、同じくクリ反撃を返す。
-          if (enemy.aiPhase === 'charge' && counterActiveNow) {
+          // 突進(charge)/ジャンプの着地硬直(recover)/溜め(crouch)も、カウンター窓中は弾く。
+          // パンプキンは空中で重なる窓が一瞬→着地直後は recover で「その場硬直(痺れ)」になり拾えなかったため、
+          // recover/crouch も対象にして広い猶予で確実にノックバック+クリ反撃する。
+          if ((enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch') && counterActiveNow) {
             dashParried.push(enemy.id);
             return;
           }
