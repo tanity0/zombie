@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.692 — ステージ3遠景を昼の廃都(正午ステージ)に差し替え
+
+- ステージ3の遠景を、夜の廃都→**昼の廃都パノラマ(青空・雪山)= 正午ステージ**へ差し替え。
+- `public/backgrounds/stage3-distant-city-day.jpg`(新ファイル名=端末キャッシュ回避。JPG q85 約410KB)。
+  旧 `stage3-distant-city.jpg`(夜)は削除。PixiStage のロードパスを更新。
+- `applyFarBackdrop`: 遠景キーが `city` の時は**夜用の暗転tint(ENV_TINT)を外して 0xffffff(本来の明るさ)**で表示。
+  森/ラボは従来どおり暗転tint。
+- 注意: 地面/前景/フォグは従来(夜寄り)のまま=遠景だけ昼。完全な「昼ステージ化」(地面・環境光・フォグも昼)に
+  したい場合は別途対応(要相談)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.691 — ダメージ数字を BitmapText 化(最重 FX-D の軽量化・段階1)
 
 - ベンチ最重の `FX-D`(ダメージ数字)の真因=spawn毎の Pixi `Text` 生成(canvasラスタライズ+GPU

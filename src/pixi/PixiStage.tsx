@@ -44,9 +44,9 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       if (cancelled) return;
       await ensureTextures();
       const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
-      // ステージ3の遠景(夜の廃都パノラマ)。森テーマのまま遠景だけ差し替えるのに使う。
+      // ステージ3の遠景(昼の廃都パノラマ=正午ステージ)。森テーマのまま遠景だけ差し替えるのに使う。
       const stage3FarTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-distant-city.jpg`)
+        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-distant-city-day.jpg`)
         .catch(() => null);
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);

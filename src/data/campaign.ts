@@ -137,7 +137,7 @@ export const STAGES: Stage[] = [
     name: 'リモート研究施設',
     area: '連携研究施設 / 責任者 救出',
     unlockBy: 'stage-2',
-    farBackdrop: 'city', // 遠景を夜の廃都パノラマへ差し替え(森の地形・地平はそのまま)。
+    farBackdrop: 'city', // 遠景を昼の廃都パノラマ(正午ステージ)へ差し替え(森の地形・地平はそのまま)。
     subs: [],
     main: {
       code: 'M3',

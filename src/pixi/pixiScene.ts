@@ -1393,6 +1393,9 @@ export class PixiScene {
     if (tex) {
       this.L.farBackdrop.texture = tex;
       this.currentFarKey = desired;
+      // 昼の廃都(city=正午ステージ)は夜用の暗転tintを外して本来の明るさで出す。
+      // それ以外(森/ラボ)は従来どおり環境の暗転tintを掛ける。
+      this.L.farBackdrop.tint = desired === 'city' ? 0xffffff : ENV_TINT;
       // tileScale は resize() でしか計算されないため、差し替えテクスチャの寸法が違うと
       // 旧テクスチャ基準のスケールのまま=見た目が変わらない/崩れる。ここで再レイアウトする。
       this.layoutFarBackdrop();
