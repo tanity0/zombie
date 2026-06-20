@@ -3210,7 +3210,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             return;
           }
           // 気絶中(フィニッシュ受付)の敵に触れても被弾しない。
-          if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) return;
+          // ただしカウンター窓中ならパリィ=弾き返す。カウンターの近接スイングがジャンプ敵を
+          // クリ気絶させると aiPhase が undefined にリセットされ、recover/charge 判定を抜けて
+          // ノックバックしなくなるため、気絶敵もカウンター中は dashParried で確実に弾く。
+          if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
+            if (counterActiveNow) dashParried.push(enemy.id);
+            return;
+          }
           const damageWasApplied = !collPlayer.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {

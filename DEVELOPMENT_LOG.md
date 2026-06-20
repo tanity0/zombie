@@ -13389,3 +13389,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
   - 範囲/その他: damageEnemy が従来から jump を弾く(grenade/reflex/bomb-counter/hurricane/wire 等はここ経由)。
   - 盾: パンプキンのジャンプ vs 設置盾は敵AI(updateEnemies の shieldRects 判定)で処理=今回の変更とは別経路なので維持。
 - 検証: tsc --noEmit 通過。変更: src/utils/collisionUtils.ts, src/store/gameStore.ts, package.json
+
+## v0.25.680 — 盾ブロックの上下ループ修正 + ジャンプカウンターのノックバック修正(気絶敵もパリィ)
+- 盾ジッタ: 盾でジャンプを弾いた後の落下描画が p>=1 で enemyBlockFall/enemyJumpHop を delete→まだ recover 中だと次フレームで再生成されホップが 0.6*JUMP_HEIGHT に戻って再落下…を recover 中ずっと繰り返していた(上下ループ)。delete を廃止し、後片付けは recover を抜けた時のみに。p>=1 で aiHop=0 のまま静止。
+- ジャンプカウンターのノックバック不発: カウンターの近接スイングがパンプキンをクリ気絶→気絶ハンドラが aiPhase を undefined にリセット→接触カウンターの recover/charge/crouch 判定を抜けてパリィ未発火=その場で痺れるだけだった。修正: 接触処理で「気絶中でもカウンター窓中なら dashParried(パリィ=ノックバック+クリ反撃)」にして確実に弾く。
+- 検証: tsc --noEmit 通過。変更: src/pixi/pixiScene.ts, src/hooks/useGameLoop.ts, package.json

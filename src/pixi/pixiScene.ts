@@ -3430,9 +3430,11 @@ export class PixiScene {
           let fall = this.enemyBlockFall.get(e.id);
           if (!fall) { fall = { from: this.enemyJumpHop.get(e.id) ?? PUMPKIN_JUMP_HEIGHT * 0.6, start: gameTime }; this.enemyBlockFall.set(e.id, fall); }
           const p = Math.max(0, Math.min(1, (gameTime - fall.start) / SHIELD_BLOCK_FALL_MS));
-          aiHop = fall.from * (1 - p * p); // ease-in(加速して落下)
+          aiHop = fall.from * (1 - p * p); // ease-in(加速して落下)。p>=1 で 0 になりそのまま。
           aiSqY = 1.05; aiSqX = 0.97;      // 落下中は少しだけ縦伸び
-          if (p >= 1) { this.enemyBlockFall.delete(e.id); this.enemyJumpHop.delete(e.id); }
+          // 注: ここで fall/jumpHop を delete すると、まだ recover 中だと次フレームで再生成され
+          //     ホップ高が 0.6*JUMP_HEIGHT に戻って再落下=上下ループになる(社長報告)。後片付けは
+          //     recover を抜けた時(下の else 枝)で行う。
         } else {
           const since = gameTime - recoverStart;
           if (since >= 0 && since < 170) { const w = 1 - since / 170; aiSqY = 1 - 0.4 * w; aiSqX = 1 + 0.18 * w; } // 着地スカッシュ
