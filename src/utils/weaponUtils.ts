@@ -165,6 +165,16 @@ export const getStartingWeapons = (characterClass: CharacterClass): Weapon[] => 
   return [createWeapon(profile.gunKey), createWeapon(profile.meleeKey)];
 };
 
+// 専用スプライト(public/sprites/weapons/<key>.png)を持つ銃の武器key。素材受領のたびに追加。
+// ワールドのドロップ/ピックアップ表示と HUD の武器アイコンで使用。未登録keyは絵文字フォールバック。
+export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
+  'handgun-t1', 'handgun-t2', 'handgun-t3',
+  'rifle-t1', 'rifle-t2', 'rifle-t3',
+  'shotgun-t1', 'shotgun-t2', 'shotgun-t3',
+]);
+export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
+export const weaponIconName = (key: string): string => `weapons/${key}`;
+
 // Effective firing range per gun family (px). A gun only fires when an enemy
 // is within this reach, so the player doesn't burn rounds into empty space.
 // RE-flavored: shotgun is close-quarters, rifle reaches far, handgun is mid.

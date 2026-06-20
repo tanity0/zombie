@@ -78,6 +78,16 @@ export const ensureTextures = (): Promise<void> => {
     const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
       { name: 'player', scaleMode: 'nearest' },
       { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
+      // 銃スプライト(ワールドのドロップ/ピックアップ表示 + HUDの武器アイコン)。武器keyで引く。
+      { name: 'weapons/handgun-t1', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t2', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t3', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t1', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t2', scaleMode: 'nearest' },
+      { name: 'weapons/rifle-t3', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t1', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t2', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t3', scaleMode: 'nearest' },
       { name: 'torch', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま

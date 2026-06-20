@@ -3,7 +3,8 @@ import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
-import { getWeaponShortName } from '../utils/weaponUtils';
+import { getWeaponShortName, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
+import { spritePath } from '../utils/spriteLoader';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import { getStage } from '../data/campaign';
 import { getSelectedStageId } from '../data/progress';
@@ -117,7 +118,9 @@ const GameHUD: React.FC = () => {
               isTreasureGet ? 'ring-amber-300/70' : isDataGet ? 'ring-emerald-300/70' : 'ring-sky-400/70'
             }`}
           >
-            <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>
+            {!isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
+              ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+              : <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
             <div className="leading-tight">
               <div
                 className={`text-[10px] font-bold tracking-wide ${
@@ -329,11 +332,13 @@ const GameHUD: React.FC = () => {
                     title={gun.name}
                   >
                     <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-base overflow-hidden ${
                         dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/20'
                       }`}
                     >
-                      🔫
+                      {hasWeaponIcon(gun.key)
+                        ? <img src={spritePath(weaponIconName(gun.key!))} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                        : '🔫'}
                     </div>
                     <div className="leading-tight text-left">
                       <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>

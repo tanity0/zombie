@@ -13265,3 +13265,15 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 死亡(gameOver)時のみ「装備ロスト」表示・持ち帰り不可は据え置き。新state 'returned' のBGMは停止(その他扱い)。store/Game/App/GameOverScreen/ShopMenu/型 を更新。
 - 負荷スコア 1/10: フラグ監視+静的UIのみ。
 - 検証: tsc --noEmit 通過。変更: src/types/game.ts, src/store/gameStore.ts, src/components/Game.tsx, src/App.tsx, src/components/GameOverScreen.tsx, src/components/ShopMenu.tsx, package.json
+
+## v0.25.660 — 銃スプライト(全9種)をドロップ/ピックアップ/HUDへ反映
+- 提供素材を武器keyへマッピング: handgun-t1/t2/t3(ハンドガン/二丁ハンドガン/マシンピストル)、rifle-t1/t2/t3(マグナム/スナイパー/グレネードランチャー)、shotgun-t1/t2/t3(ショットガン/ポンプ式/オートショット)。
+- クロマキー: 紫背景は「紫っぽさ判定」フラッドフィル。shotgun-t1のみ黒背景だったため角色距離フラッドフィルで除去(暗い銃本体は連結保持)。全て128px以下へ縮小(各11-23KB)。
+- 反映3箇所:
+  - ワールドの weapon-drop: 該当銃のスプライトで表示(従来は簡易ダイヤ)。pixiScene.drawPickup に weaponKey 別の銃テクスチャ分岐を追加。
+  - HUD 武器スロット: 🔫 絵文字を実アイコンへ(素材がある銃のみ・無ければ絵文字)。
+  - 入手バナー(ピックアップ通知): 🔫 を実アイコンへ。lastWeaponGet に weaponKey を追加。
+- 仕組み: weaponUtils に WEAPON_ICON_KEYS / hasWeaponIcon / weaponIconName。pixiTextures に weapons/<key> を nearest 登録。未登録key(将来のPHILL等)は絵文字フォールバック。
+- 負荷スコア 1/10: ドロップは他スプライトpickupと同経路、HUD/バナーはDOM<img>少数。新規アセット9枚計~145KB。
+- 検証: tsc --noEmit 通過。各銃は赤背景プレビューで透過確認。
+- 変更: src/utils/weaponUtils.ts, src/pixi/pixiTextures.ts, src/pixi/pixiScene.ts, src/components/GameHUD.tsx, src/store/gameStore.ts, public/sprites/weapons/*.png(新規9), package.json

@@ -25,7 +25,7 @@ import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
-import { effectiveReloadMs } from '../utils/weaponUtils';
+import { effectiveReloadMs, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
@@ -4563,6 +4563,23 @@ export class PixiScene {
       alpha: horizonAlpha * lift,
     });
 
+    // weapon-drop: ドロップした具体的な銃のスプライト(weaponKey 別)。素材がある銃のみ。
+    if (p.type === 'weapon-drop' && hasWeaponIcon(p.weaponKey)) {
+      const tex = getTexture(weaponIconName(p.weaponKey!));
+      if (tex) {
+        if (!entry.sprite) {
+          entry.sprite = new Sprite();
+          entry.sprite.anchor.set(0.5, 1);
+          entry.container.addChild(entry.sprite);
+        }
+        entry.sprite.texture = tex;
+        const sc = containScale(size * 1.5, size * 1.5, tex.width, tex.height) * d; // 銃は横長なので少し大きめ枠
+        entry.sprite.scale.set(sc);
+        entry.sprite.position.set(Math.round(cx), Math.round(footY + floatOffset));
+        entry.sprite.visible = true;
+        return;
+      }
+    }
     if (SPRITE_PICKUPS.has(p.type)) {
         const name =
           p.type === 'experience'

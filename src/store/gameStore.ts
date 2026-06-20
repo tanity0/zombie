@@ -1156,7 +1156,7 @@ interface GameState {
   };
   // Most recent weapon the player acquired (drop/crate). The HUD shows a
   // 5-second "got a weapon" popup off this. null until the first pickup.
-  lastWeaponGet: { name: string; at: number; color?: string; kind?: 'weapon' | 'treasure' | 'data' } | null;
+  lastWeaponGet: { name: string; at: number; color?: string; kind?: 'weapon' | 'treasure' | 'data'; weaponKey?: string } | null;
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
@@ -5109,7 +5109,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           name: `${weaponTierLabel(weapon.tier)} ${weapon.name} -> 弾薬 +${amount}`,
           at: Date.now(),
           color: weaponTierColor(weapon.tier),
-          kind: 'weapon'
+          kind: 'weapon',
+          weaponKey: weapon.key
         }
         };
       }
@@ -5143,7 +5144,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           name: `${weaponTierLabel(weapon.tier)} ${weapon.name}`,
           at: Date.now(),
           color: weaponTierColor(weapon.tier),
-          kind: 'weapon'
+          kind: 'weapon',
+          weaponKey: weapon.key
         }
       };
     });
