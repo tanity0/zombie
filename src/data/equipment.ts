@@ -225,3 +225,15 @@ export const equipmentDescription = (def: EquipmentDef): string =>
 // 武将セット(特殊3点)をフル装備しているか。立ち絵差し替えの判定に使う。
 export const hasFullWarlordSet = (loadout: EquipLoadout): boolean =>
   EQUIP_SLOTS.every(slot => equipmentById(loadout[slot])?.special === true);
+
+// 専用アイコン画像(public/sprites/equip/<defId>.png)が用意済みの装備ID。
+// 社長から素材を受領するたびにここへ追加していく。未登録IDはUI側で絵文字フォールバック。
+export const EQUIP_ICON_IDS: ReadonlySet<string> = new Set<string>([
+  'body-protection-1', 'body-protection-2', 'body-protection-3', 'body-protection-4', 'body-protection-5',
+]);
+
+export const hasEquipIcon = (defId: string | null | undefined): boolean =>
+  !!defId && EQUIP_ICON_IDS.has(defId);
+
+// アイコン画像の論理名(spritePath('equip/<defId>') で実パスへ)。
+export const equipIconName = (defId: string): string => `equip/${defId}`;

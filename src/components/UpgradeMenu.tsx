@@ -1,6 +1,8 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
+import { hasEquipIcon, equipIconName } from '../data/equipment';
+import { spritePath } from '../utils/spriteLoader';
 
 const UpgradeMenu: React.FC = () => {
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
@@ -29,6 +31,10 @@ const UpgradeMenu: React.FC = () => {
               : upgrade.type === 'heal' ? '❤️'
               : upgrade.type === 'equipment' ? (isSpecial ? '🏯' : '🛡️')
               : upgrade.type === 'weapon' ? '⚔️' : '🔮';
+            // 装備に専用アイコン素材があれば実画像、無ければ絵文字フォールバック。
+            const iconImg = upgrade.type === 'equipment' && hasEquipIcon(upgrade.equipDefId)
+              ? spritePath(equipIconName(upgrade.equipDefId!))
+              : null;
             return (
               <button
                 key={upgrade.id}
@@ -36,8 +42,10 @@ const UpgradeMenu: React.FC = () => {
                 onClick={() => handleSelect(upgrade)}
                 className={`text-left p-3 rounded-2xl active:bg-white/10 border transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10 border-amber-300/40' : 'bg-white/5 border-white/10'}`}
               >
-                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-base ${isSpecial ? 'bg-amber-400/20' : 'bg-white/10'}`}>
-                  {icon}
+                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-base overflow-hidden ${isSpecial ? 'bg-amber-400/20' : 'bg-white/10'}`}>
+                  {iconImg
+                    ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                    : icon}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">

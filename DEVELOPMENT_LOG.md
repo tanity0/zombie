@@ -13182,3 +13182,11 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 囲い系(horde/boss)・救助(rescue)イベントの発生告知バナーをセットする単一箇所(useGameLoop)で playSfx('event-start') を再生(全kind共通)。前回の完了音 event-clear と対になる発生→完了の音演出。
 - 負荷スコア 1/10: イベント発生時1回再生のみ。毎フレームコスト無し。新規アセット~100KB。
 - 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/hooks/useGameLoop.ts, public/audio/sfx/event-start.mp3(新規), package.json
+
+## v0.25.645 — 装備アイコン素材システム+部位1・防護系(体)1-5を反映
+- 装備のレベルアップ選択肢に専用アイコン画像を表示する仕組みを追加。public/sprites/equip/<defId>.png 規約、EQUIP_ICON_IDS 許可リストに載ったIDのみ実画像・未登録は従来の絵文字フォールバック(404を出さない)。素材受領のたびにIDを追記して拡張。
+- 第1弾: 部位1(体)防護系 ランク1-5(body-protection-1..5)= 防弾ベスト/強化防弾ベスト/軍用防弾ベスト/サバイバルアーマー/対変異体アーマー。提供シート(左→右=ランク昇順)を紫クロマキー除去→96x96規格へ整形。
+- UpgradeMenu: 装備オプションは hasEquipIcon なら <img>(pixelated)で表示、無ければ絵文字。特殊は引き続き金枠。
+- 負荷スコア 1/10: アイコンはレベルアップ表示時のみのDOM<img>数枚。毎フレームコスト無し。1枚~8-16KB。
+- 検証: tsc --noEmit 通過。アイコンはキー処理後プレビューで目視確認済み。
+- 変更: src/data/equipment.ts, src/components/UpgradeMenu.tsx, public/sprites/equip/body-protection-1..5.png(新規), package.json
