@@ -13218,3 +13218,7 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - accessory-ammo-1..5(弾薬ポーチ/予備弾薬袋/軍用弾薬ベルト/弾薬収納ベスト/ミリタリー収納ベスト)を列ギャップ自動検出スライサで処理→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
 - これで通常装備30種(体/腕/アクセ × 2系統 × 5ランク)のアイコンが全て揃った。残るは特殊装備(武将セット3種)のアイコン素材のみ(未受領)。
 - 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/accessory-ammo-1..5.png(新規), package.json
+
+## v0.25.652 — 装備アイコン: 部位1 機動系(ブーツ/スラスター)を差し替え
+- body-mobility-1..5 を新シートで差し替え。列ギャップ自動検出スライサで再処理→96x96で上書き。左→右=ランク昇順。
+- 検証: 画像のみ差し替え(tsc 影響なし)。変更: public/sprites/equip/body-mobility-1..5.png(上書き), package.json
