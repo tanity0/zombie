@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.687 — ブルーム(発光)のON/OFFをオプションに追加
+
+- ベンチで判明した最大ボトルネック=gameplay world にかかる **AdvancedBloomFilter**(全画面の選択的
+  ブルーム。しきい値0.45超の明るいピクセル=光/炎/宝石/クリ/松明/月などを全画面ブラーでにじませ、
+  HD-2Dの発光感を出す)。明るい演出が増えるほど全画面ブラーが重くなるため、ユーザー切替を追加。
+- 仕組み: `src/config/graphics.ts`(localStorage `zombie:gfx:bloom`、既定ON)。pixiScene は bloom/
+  tiltShift インスタンスを常時生成し、`rebuildWorldFilters()` で配列の出し入れ。`sync()` 毎フレームで
+  `getBloomEnabled()` を見て**変化時だけ**フィルタを作り直す=リロード不要で反映。
+- UI: オプションに「グラフィック」セクション + 「ブルーム(発光)あり/なし」トグル。
+- 負荷: OFFで全画面ブラー1パスが消える=実機で軽くなる(本機能自体の追加コストは 0/10。フィルタ
+  配列の作り直しは切替時のみ)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.686 — ステージ3遠景が変わらない不具合修正(tileScale再計算)
 
 - 症状: ステージ3の遠景差し替えが見た目に反映されない。

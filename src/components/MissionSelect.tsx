@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play, Sparkles
 } from 'lucide-react';
+import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId } from '../store/gameStore';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
@@ -420,6 +421,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <Header title="オプション" onBack={() => setScreen({ name: 'home' })} />
       <div className="p-3 space-y-3">
         <AudioSettings />
+        <GraphicsSettings />
         {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartGame={onStartGame} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
       </div>
     </>
@@ -525,6 +527,28 @@ const AudioSettings: React.FC = () => {
       >
         {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}{audioMuted ? '音なし' : '音あり'}
       </button>
+    </Section>
+  );
+};
+
+// === オプション内: グラフィック設定 =====================================
+// ブルーム(発光)= gameplay world 全体にかかる AdvancedBloomFilter。明るいピクセル(光・
+// 銃口炎・宝石・クリ・松明・月など)を全画面でにじませて HD-2D らしい発光感を出す効果。
+// 反面、明るい演出が増えるほど全画面ブラーが重くなる=実機の最大ボトルネック。OFFで軽くなる。
+const GraphicsSettings: React.FC = () => {
+  const [bloom, setBloom] = useState(getBloomEnabled);
+  return (
+    <Section label="グラフィック">
+      <button
+        onClick={() => { const next = !bloom; setBloom(next); setBloomEnabled(next); playSfx('ui-select'); }}
+        className={`w-full py-2.5 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 ${bloom ? 'bg-amber-400/10 border-amber-300/35 text-amber-100' : 'bg-white/5 border-white/10 text-white/70'}`}
+      >
+        <Sparkles size={17} />ブルーム(発光){bloom ? 'あり' : 'なし'}
+      </button>
+      <p className="text-[11px] leading-relaxed text-white/45">
+        光・炎・宝石などをにじませて発光させる演出。華やかになる反面、実機では最も重い処理。
+        カクつく時はOFFにすると軽くなります(リロード不要)。
+      </p>
     </Section>
   );
 };

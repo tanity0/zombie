@@ -31,6 +31,7 @@ import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
+import { getBloomEnabled } from '../config/graphics';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -607,7 +608,15 @@ export class PixiScene {
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
+  private bloomActive = true; // 現在ブルームをフィルタ配列に入れているか(オプション反映用)
   private farBackdropBlur: BlurFilter | null = null;
+  // 現在の設定に応じて gameplay world のフィルタ配列を作り直す(bloom はON時のみ含める)。
+  private rebuildWorldFilters() {
+    const filters: Filter[] = [];
+    if (this.bloom && this.bloomActive) filters.push(this.bloom);
+    if (this.tiltShift) filters.push(this.tiltShift);
+    this.L.filteredWorld.filters = filters;
+  }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
   private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
@@ -676,7 +685,8 @@ export class PixiScene {
     // The fixed ground and horizon seam stay outside these filters so blur never
     // smears ground pixels upward over the far panorama. The wrapper itself is
     // screen-space; the camera-offset `world` remains its child.
-    const worldFilters: Filter[] = [];
+    // ブルーム/ティルトシフトのインスタンスは「常に」生成しておき、フィルタ配列への
+    // 出し入れで切り替える(オプションのON/OFFをリロード無しで反映できる)。
     if (BLOOM_ENABLED) {
       this.bloom = new AdvancedBloomFilter({
         threshold: BLOOM_THRESHOLD,
@@ -684,16 +694,15 @@ export class PixiScene {
         blur: BLOOM_BLUR,
         quality: 4,
       });
-      worldFilters.push(this.bloom);
     }
     if (TILT_SHIFT_ENABLED) {
       this.tiltShift = new TiltShiftFilter({
         blur: TILT_SHIFT_BLUR,
         gradientBlur: TILT_SHIFT_GRADIENT,
       });
-      worldFilters.push(this.tiltShift);
     }
-    if (worldFilters.length) this.L.filteredWorld.filters = worldFilters;
+    this.bloomActive = getBloomEnabled();
+    this.rebuildWorldFilters();
 
     // フェーズ1: 環境(地面・森・遠景)を tint で暗く沈める。tint は持続するので一度だけ。
     // 木(actorLayer 内の環境物)は生成時に syncTrees で同じ tint を掛ける。
@@ -1463,6 +1472,9 @@ export class PixiScene {
   sync() {
     const s = useGameStore.getState();
     const realNow = Date.now();
+    // オプションのブルームON/OFFをリロード無しで反映(変化時だけフィルタ配列を作り直す)。
+    const wantBloom = getBloomEnabled();
+    if (wantBloom !== this.bloomActive) { this.bloomActive = wantBloom; this.rebuildWorldFilters(); }
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
     // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の
     // 「ストップ感」が出る。シミュレーション自体は useGameLoop 側の早期returnで既に凍結済み。
@@ -1995,7 +2007,7 @@ export class PixiScene {
   }
 
   private syncEventBloom(effects: VisualEffect[], now: number) {
-    if (!this.bloom) return;
+    if (!this.bloom || !this.bloomActive) return; // OFF時はフィルタ配列に無いので調整不要
     const hasStrongEventGlow = effects.some(e => {
       if (e.kind !== 'glow' || e.radius < STRONG_GLOW_RADIUS) return false;
       const t = (now - e.createdAt) / e.duration;
