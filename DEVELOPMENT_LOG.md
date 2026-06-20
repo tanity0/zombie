@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.685 — 負荷スコア基準を実測で更新 + FX単軸分解ベンチ
+
+- ベンチ実測(社長報告)を CLAUDE.md「Performance review」に反映:
+  - **ボトルネックは敵数・弾数ではない。** enemy E60 / projectile J130 は単独 safe。
+  - 重いのは **glow/ring/particle の複合FX(F1=G6 R6 P40 でFAIL)/ 画像系(IMG I4 FAIL)/
+    ライト(LIGHT T8 FAIL)/ 全部盛り(ALL A1 FAIL, avg15)**。
+  - 新演出の評価は「同時に生きる glow/ring/light/image の数」で重み付けする、と明記。
+    対処は敵/弾の削減ではなく**描画方式を軽くする**方向。
+- ベンチに **FX単軸分解**ステージ追加(F1の主犯特定用。各々独立カテゴリでFAILしても全走):
+  FX-G(G12)/ FX-R(R12)/ FX-P(P90)/ FX-S(slash16)/ FX-D(dmg20)。
+- 調査メモ(次の確認材料): gameplay world に **AdvancedBloomFilter(全画面・しきい値0.45・blur8)**＋
+  TiltShift がかかっており、glow/ring/particle/image/torch が出す「明るいピクセル」をすべて
+  ブルームが全画面ポストで増幅する構造。FX/IMG/LIGHT/全部盛りが一様に重い説明として有力
+  (敵/弾は不透明・閾値下で安いことと整合)。軽量化候補=モバイルで bloom の blur/scale を下げる/
+  重い瞬間だけ抑制/加算オーバードロー(同時グロー・ライト)を減らす。※実装は未着手(方針共有のみ)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.684 — ステージ3の遠景差し替え(夜の廃都パノラマ)
 
 - 社長提供の「月夜の廃都」遠景をステージ3に適用。森テーマの地形・地平・前景はそのままで

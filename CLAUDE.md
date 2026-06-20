@@ -43,6 +43,39 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
 - Prefer bounded, event-only, pooled, or delta-scaling approaches over constant
   per-frame global effects, per-pixel passes, unbounded loops, or new heavy
   dependencies.
+
+### Empirical render budget (from the in-game benchmark — keep scores aligned to this)
+The current bottleneck is **NOT enemy count or projectile count.** It is the
+**rendering** of composite FX, image-based effects, and lights. Score new work
+by how many of those it adds, not by how many enemies/bullets are on screen.
+- **Cheap (score low):**
+  - `enemy` — 60 enemies on screen is *safe* (E60 PASS). Spawn/AI/sprite draw is light.
+  - `projectile` — 130 projectiles is *safe* (J130 PASS). Movement + collision is light.
+  - `particle` alone — likely light on its own (still verify in composites).
+- **Expensive (score high — this is where frames die):**
+  - **glow + ring + particle COMPOSITE** — even a small/medium set fails:
+    `F1 = G6 R6 P40 T2` already FAILs (avg ~25). Treat each simultaneous
+    glow/ring as costly; do not stack them.
+  - **image-based effects** (textured marks like `zan`, large sprites, filters,
+    blend modes, alpha compositing) — `IMG I4` (4 image marks) FAILs (avg ~30).
+  - **lights / torches** — `LIGHT T8` (8 torch lights) FAILs (avg ~31). Do not
+    keep many local lights alive at once.
+  - **everything-at-once** — `ALL A1 = E36 J70 G8 R8 P64 I6 T12` FAILs hard
+    (avg ~15). This combination is the current **forbidden line** on-device.
+- **Current safe lines (update as the benchmark re-runs):**
+  `enemy E60 safe / projectile J130 safe / FX-composite F1 fail / image I4 fail /
+  light T8 fail / all A1 fail`.
+- **Scoring rule of thumb for new visual features:** weigh **how many
+  glow/ring/light/image effects are alive simultaneously**, not enemy/bullet
+  counts. A feature that adds a couple of enemies or a burst of bullets is
+  cheap; a feature that lights several local lights, stacks glows/rings, or
+  draws multiple image/filtered sprites per moment is expensive — cap it,
+  pool it, or render it more cheaply (fewer simultaneous glows/lights, bake
+  instead of layering live filters, reuse one sprite, shorten lifetimes).
+- The fix path for heavy effects is **a cheaper render method, not fewer
+  enemies/bullets.**
+- (Benchmark caveat: the net diagnostic reads `network unstable`, so trust the
+  FPS/render verdicts here, not the network line.)
 - Sub-weapon events, including grenades and similar class skills, must not
   trigger slow motion unless the user explicitly names that sub-weapon as a
   slow-motion target.
