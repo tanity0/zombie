@@ -13168,3 +13168,11 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 刀素材(public/sprites/katana-item.png)は紫クロマキー除去+内部残渣も除去して用意済み。配置先(商人の小烏丸カード/背負い刀の実画像化/武器ドロップ表示 等)は社長確認待ちのため未接続=このコミットには未含。
 - 負荷スコア 1/10: 既存SFX経路の1キー追加+選択時1回再生のみ。毎フレームコスト無し。
 - 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/components/UpgradeMenu.tsx, public/audio/sfx/ui-select.mp3, package.json
+
+## v0.25.643 — 背負い刀を実画像化 / 選択音を全メニュー適用 / 戦闘中の小イベント完了音
+- **背負い刀の実画像化**: 提供の刀素材を紫クロマキー除去→220px へ縮小(public/sprites/katana-item.png)。刀/小烏丸(村雨)装備中、プレイヤー本体スプライトの背面に専用Spriteで表示(playerView.container の sprite 直下へ一度だけ親子付け)。胸あたり中心・体高基準サイズ・進行方向で左右反転。武将フル装備の立ち絵中は二重表示回避で非表示。従来の手描きドット(drawPlayerKatanaOnBack)呼び出しは廃止(関数は残置)。素材は既に斜めのため追加回転は既定0(KATANA_BACK_IMG_ROT、実機微調整可)。
+- **選択音(ui-select)を全メニューへ**: タイトル(開始/規約同意)、ミッション/ステージ/職業選択・出撃・スキル/サブのトグル・HubButton、ショップ購入、ポーズ(再開/終了)、イベントクエスト(受諾/辞退)の各「選択/決定」タップで再生。戻る/閉じるは対象外。
+- **戦闘中の小イベント完了音(event-clear)**: 囲い系イベントの駆除達成/討伐成功、救助イベントの制限時間守り切り(成功)時に再生。タイムアウト失敗時は鳴らさない。public/audio/sfx/event-clear.mp3 を 'event-clear' キーで登録。
+- 負荷スコア 1/10: 背負い刀は装備時のみ1スプライト追加(drawPlayerで配置)。各SEはイベント時1回再生・毎フレームコスト無し。新規アセット計~54KB。
+- 検証: tsc --noEmit 通過(全変更)。刀素材はキー処理後プレビューで目視確認済み。背面表示の位置/サイズは実機で要微調整の可能性。
+- 変更: src/pixi/pixiScene.ts, src/pixi/pixiTextures.ts, src/audio/audioManager.ts, src/hooks/useGameLoop.ts, src/components/{TitleScreen,MissionSelect,PauseMenu,EventQuestMenu,ShopMenu,UpgradeMenu}.tsx, public/sprites/katana-item.png(新規), public/audio/sfx/event-clear.mp3(新規), package.json

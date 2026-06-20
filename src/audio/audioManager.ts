@@ -43,6 +43,7 @@ type WindowWithWebAudio = Window & {
 
 export type SfxKey =
   | 'ui-select'
+  | 'event-clear'
   | 'shoot'
   | 'reload'
   | 'melee'
@@ -86,6 +87,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/ui-select.mp3`,
     volume: 0.7,
     minIntervalMs: 50,
+  },
+  // 戦闘中の小イベント(囲い/救助など)完了音(社長提供SE)。
+  'event-clear': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/event-clear.mp3`,
+    volume: 0.85,
+    minIntervalMs: 200,
   },
   pickup: {
     src: `${import.meta.env.BASE_URL}audio/sfx/pickup.wav`,

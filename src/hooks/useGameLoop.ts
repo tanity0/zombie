@@ -826,9 +826,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               rescueRespawnRef.current = 0; // 満杯/アウトロ中は予約クリア
             }
             gs.updateRescue(deltaTime);
-            if (newGameTime >= ae.endsAt) { // 保険のタイムアウト(通常は成功/全滅で終了)
+            if (newGameTime >= ae.endsAt) { // 救助は制限時間を守り切れば完了(=成功)
               useGameStore.getState().endArenaEvent();
               spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
+              playSfx('event-clear'); // 小イベント完了音
             }
           } else {
             // 終了判定: 全滅(イベント敵0・開始直後グレース後) or 制限時間切れ。
@@ -842,6 +843,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   eventBannerText: ae.kind === 'boss' ? '討伐成功！' : '駆除達成！',
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
                 });
+                playSfx('event-clear'); // 小イベント完了音(成功時のみ)
               }
               useGameStore.getState().endArenaEvent(); // 拘束解除＋取りこぼし撤去
               spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);

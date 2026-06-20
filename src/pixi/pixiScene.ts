@@ -314,6 +314,8 @@ const KATANA_BACK_ROT_DEG = 32;
 const KATANA_BACK_ROT = (KATANA_BACK_ROT_DEG * Math.PI) / 180;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
 const KATANA_BACK_SCALE = 0.72;
+// 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
+const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
 const playerWalkSequence = (p: Player): number[] =>
@@ -591,6 +593,8 @@ export class PixiScene {
   private gradeSprite = new Sprite(Texture.WHITE);
   private playerLight = new Sprite(getGlowTexture());
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
+  private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
+  private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private worldFadeMask = new Sprite(Texture.WHITE);
@@ -3143,6 +3147,14 @@ export class PixiScene {
 
     // Player
     if (!this.playerView) this.playerView = this.makeActor();
+    // 背負い刀スプライトをプレイヤーコンテナの「本体スプライトの背面」へ一度だけ親子付け。
+    // makeActor の子順 [reticle, sprite, overlay] の reticle と sprite の間(index 1)へ挿入。
+    if (!this.playerKatanaBackAttached) {
+      this.playerKatanaBack.anchor.set(0.5, 0.5);
+      this.playerKatanaBack.visible = false;
+      this.playerView.container.addChildAt(this.playerKatanaBack, 1);
+      this.playerKatanaBackAttached = true;
+    }
     this.drawPlayer(this.playerView, player, now);
 
     // Enemies (mark-and-sweep pool)
@@ -3331,16 +3343,29 @@ export class PixiScene {
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();
-    // 刀/村雨装備中: スプライトの下レイヤー(reticle)に背負い刀のドットを描く。
-    // 村雨は刀身シルバー。
-    const katanaVariant: KatanaVariant | null = p.subWeapons.includes('murasame')
-      ? 'murasame'
-      : p.subWeapons.includes('katana')
-        ? 'katana'
-        : null;
-    if (katanaVariant) {
+    // 刀/小烏丸(村雨)装備中: 実画像(katana-item)をプレイヤー背面へ表示。
+    // 武将フル装備の立ち絵中は武器を描いた一枚絵なので背負い刀は隠す(二重表示回避)。
+    const hasKatanaSub = p.subWeapons.includes('murasame') || p.subWeapons.includes('katana');
+    const katanaTex = getTexture('katana-item');
+    const kb = this.playerKatanaBack;
+    if (hasKatanaSub && !warlordFull && katanaTex) {
+      const d = this.depthScale(fb.footY);
+      const h = fb.boxH * d;
+      // 画像の対角(=刀の全長)を体高基準のサイズへ。位置は胸あたり中心。向きで左右反転。
+      const targetLen = h * 1.7 * KATANA_BACK_SCALE;
+      const sc = targetLen / Math.max(katanaTex.width, katanaTex.height);
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      this.drawPlayerKatanaOnBack(view.reticle, fb.footX + introOffX, fb.footY - bob + introOffY, fb.boxH, flip, katanaVariant);
+      kb.texture = katanaTex;
+      kb.visible = true;
+      kb.scale.set((flip ? -1 : 1) * sc, sc);
+      kb.rotation = KATANA_BACK_IMG_ROT;
+      kb.position.set(
+        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX,
+        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY - h * 0.55,
+      );
+      kb.alpha = view.sprite.alpha;
+    } else {
+      kb.visible = false;
     }
     view.overlay.clear();
   }

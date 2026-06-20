@@ -14,7 +14,7 @@ import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress
 } from '../data/progress';
 import {
-  getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene
+  getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
 
 interface MissionSelectProps {
@@ -95,10 +95,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return () => window.removeEventListener('pointerdown', kick);
   }, []);
   // ステージ選択へ入るたびにクリア状況を読み直す(ゲームから戻った直後の解放を反映)。
-  const goStageSelect = () => { setCleared(getClearedStages()); setScreen({ name: 'stageSelect' }); };
+  const goStageSelect = () => { playSfx('ui-select'); setCleared(getClearedStages()); setScreen({ name: 'stageSelect' }); };
 
   // --- 開始処理 ---------------------------------------------------------
   const startMission = (stageId: string, charId: CharacterClass) => {
+    playSfx('ui-select');
     useGameStore.getState().setDanceTestMode(false);
     setSelectedStageId(stageId);          // 勝利時にこのステージをクリア扱いにする(App側)
     setSelectedFreeMode(freeMode);        // フリー(周回)=会話なし & クリア進行に影響させない
@@ -152,7 +153,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <button
         type="button"
         disabled={!unlocked}
-        onClick={() => setScreen({ name: 'missionDetail', stageId: stage.id })}
+        onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
         className={`w-full flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors ${
           unlocked ? 'border-white/12 bg-white/5 active:bg-white/10' : 'border-white/8 bg-black/25 opacity-60'
         }`}
@@ -217,7 +218,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </Section>
 
           <button
-            onClick={() => { setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
+            onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
             className="w-full py-3 rounded-2xl text-base font-semibold text-white"
             style={{ background: 'linear-gradient(180deg, rgba(96,165,250,0.95), rgba(59,130,246,0.95))', boxShadow: '0 8px 24px rgba(59,130,246,0.35)' }}
           >
@@ -226,7 +227,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {/* このステージのフリー(周回)出撃: 会話なし・クリア進行に影響しない。同じ舞台を周回。 */}
           <button
-            onClick={() => { setFreeMode(true); setScreen({ name: 'characterSelect', stageId }); }}
+            onClick={() => { playSfx('ui-select'); setFreeMode(true); setScreen({ name: 'characterSelect', stageId }); }}
             className="w-full py-2.5 rounded-2xl text-[13px] font-semibold text-emerald-50 border border-emerald-300/40 bg-emerald-400/10 active:bg-emerald-400/20"
           >
             フリー（周回）で出撃 ・ 会話なし
@@ -247,7 +248,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {CHARACTER_CLASSES.map(c => (
             <div
               key={c.id}
-              onClick={() => setSelectedClass(c.id)}
+              onClick={() => { playSfx('ui-select'); setSelectedClass(c.id); }}
               className={`relative flex flex-col min-h-[154px] overflow-hidden rounded-2xl cursor-pointer border ${
                 selectedClass === c.id ? 'bg-blue-500/15 border-blue-400/60' : 'bg-white/5 border-white/10 active:bg-white/10'
               }`}
@@ -306,9 +307,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderLoadout = () => {
     // サブウェポンは1つだけ選択(単一選択=選び直しで置き換え。同じものを再タップで解除)。
-    const toggleSub = (k: SubWeaponKey) =>
+    const toggleSub = (k: SubWeaponKey) => {
+      playSfx('ui-select');
       setPendingLoadout(equippedSubs.includes(k) ? [] : [k]);
+    };
     const toggleSkill = (k: SkillKey) => {
+      playSfx('ui-select');
       if (equippedSkills.includes(k)) { setPendingSkills(equippedSkills.filter(x => x !== k)); return; }
       if (equippedSkills.length >= MAX_EQUIPPED_SKILLS) return; // 最大2(満杯なら無視)
       setPendingSkills([...equippedSkills, k]);
@@ -458,7 +462,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 // === 共通の小物 =========================================================
 const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; onClick: () => void; accent?: boolean }> = ({ icon, label, desc, onClick, accent }) => (
   <button
-    onClick={onClick}
+    onClick={() => { playSfx('ui-select'); onClick?.(); }}
     className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left active:bg-white/10 ${
       accent ? 'border-blue-400/40 bg-blue-400/10' : 'border-white/10 bg-white/5'
     }`}

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { playSfx } from '../audio/audioManager';
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -37,7 +38,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
         </div>
         <div className="px-5 pb-5 flex flex-col gap-2">
           <button
-            onClick={onResume}
+            onClick={() => { playSfx('ui-select'); onResume(); }}
             className="w-full py-3 rounded-2xl text-base font-semibold text-white"
             style={{
               background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
@@ -47,7 +48,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
             続ける
           </button>
           <button
-            onClick={onQuit}
+            onClick={() => { playSfx('ui-select'); onQuit(); }}
             className="w-full py-3 rounded-2xl text-base font-semibold text-white/90 bg-white/10 border border-white/10"
           >
             メニューに戻る

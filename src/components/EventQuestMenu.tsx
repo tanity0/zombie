@@ -1,5 +1,6 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
+import { playSfx } from '../audio/audioManager';
 
 const dialogue = [
   { speaker: '女', text: '隊長！感染者じゃなさそう！' },
@@ -32,13 +33,13 @@ const EventQuestMenu: React.FC = () => {
 
         <div className="grid grid-cols-2 gap-2 px-4 pb-4">
           <button
-            onClick={acceptEventQuest}
+            onClick={() => { playSfx('ui-select'); acceptEventQuest(); }}
             className="rounded-2xl bg-sky-300/18 border border-sky-200/20 py-3 text-sm font-bold text-sky-50 active:scale-[0.98]"
           >
             受ける
           </button>
           <button
-            onClick={declineEventQuest}
+            onClick={() => { playSfx('ui-select'); declineEventQuest(); }}
             className="rounded-2xl bg-white/8 border border-white/10 py-3 text-sm font-bold text-white/80 active:scale-[0.98]"
           >
             受けない

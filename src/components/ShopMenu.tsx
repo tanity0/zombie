@@ -124,6 +124,7 @@ const ShopMenu: React.FC = () => {
   ];
 
   const handleBuy = (entry: ShopEntry | SkillShopEntry) => {
+    playSfx('ui-select');
     if (entry.disabled || player.straps < entry.cost) return;
     if ('skillKey' in entry) {
       buySkillCardFromShop(entry.skillKey);

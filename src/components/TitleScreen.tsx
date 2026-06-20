@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { playSfx } from '../audio/audioManager';
 
 interface TitleScreenProps {
   onStart: () => void;                 // 同意時: BGM解禁(再生開始)
@@ -21,6 +22,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
   // 同意 → BGM開始 → タイトルへ
   const agree = () => {
     if (phase !== 'notice') return;
+    playSfx('ui-select');
     onStart();          // 同意の瞬間にBGM解禁＆再生
     setPhase('title');
   };
@@ -28,6 +30,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
   // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転
   const tapStart = () => {
     if (phase !== 'title') return;
+    playSfx('ui-select');
     setPhase('loading');
     const startedAt = performance.now();
     const MIN_LOADING_MS = 900; // ロードが速すぎてもスピナーを一瞬は見せる

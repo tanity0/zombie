@@ -77,6 +77,7 @@ export const ensureTextures = (): Promise<void> => {
     // nearest=ピクセルアート、linear=高解像度を縮小描画するもの(球/ヘリ)。
     const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
       { name: 'player', scaleMode: 'nearest' },
+      { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
       { name: 'torch', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま
