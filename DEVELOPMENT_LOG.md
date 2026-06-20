@@ -13209,3 +13209,7 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - arms-handling-1..5(マガジンウェル/強磁石マガジンウェル/スピードローダー/ダブルマガジン/フルオートリローダー)を列ギャップ自動検出スライサで処理→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
 - 部位2(腕)=火力系・取り回し系の計10種が完了。残るはアクセ(クリ系/弾薬系)。
 - 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/arms-handling-1..5.png(新規), package.json
+
+## v0.25.650 — 装備アイコン: 部位3 クリ系(アクセ)1-5 を反映
+- accessory-crit-1..5(精密スコープ/レーザースコープ/ミリタリースコープ/AI搭載スコープ/神経伝達スコープ)を列ギャップ自動検出スライサで処理→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
+- 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/accessory-crit-1..5.png(新規), package.json
