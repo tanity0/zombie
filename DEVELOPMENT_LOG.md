@@ -13176,3 +13176,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 負荷スコア 1/10: 背負い刀は装備時のみ1スプライト追加(drawPlayerで配置)。各SEはイベント時1回再生・毎フレームコスト無し。新規アセット計~54KB。
 - 検証: tsc --noEmit 通過(全変更)。刀素材はキー処理後プレビューで目視確認済み。背面表示の位置/サイズは実機で要微調整の可能性。
 - 変更: src/pixi/pixiScene.ts, src/pixi/pixiTextures.ts, src/audio/audioManager.ts, src/hooks/useGameLoop.ts, src/components/{TitleScreen,MissionSelect,PauseMenu,EventQuestMenu,ShopMenu,UpgradeMenu}.tsx, public/sprites/katana-item.png(新規), public/audio/sfx/event-clear.mp3(新規), package.json
+
+## v0.25.644 — 戦闘中の小イベント発生音を追加
+- 提供SEを public/audio/sfx/event-start.mp3 として 'event-start' キーで登録。
+- 囲い系(horde/boss)・救助(rescue)イベントの発生告知バナーをセットする単一箇所(useGameLoop)で playSfx('event-start') を再生(全kind共通)。前回の完了音 event-clear と対になる発生→完了の音演出。
+- 負荷スコア 1/10: イベント発生時1回再生のみ。毎フレームコスト無し。新規アセット~100KB。
+- 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/hooks/useGameLoop.ts, public/audio/sfx/event-start.mp3(新規), package.json
