@@ -45,35 +45,47 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
   dependencies.
 
 ### Empirical render budget (from the in-game benchmark — keep scores aligned to this)
-The current bottleneck is **NOT enemy count or projectile count.** It is the
-**rendering** of composite FX, image-based effects, and lights. Score new work
-by how many of those it adds, not by how many enemies/bullets are on screen.
+The bottleneck is **NOT enemy/projectile count, and NOT the bloom post-process.**
+A bloom-OFF run barely changed any result (FX/IMG/LIGHT still FAIL), so the cost
+is the **per-effect DRAW METHOD itself**, not the full-screen filter. Score new
+work by what kind of effect-draw it adds and how many are alive at once.
 - **Cheap (score low):**
-  - `enemy` — 60 enemies on screen is *safe* (E60 PASS). Spawn/AI/sprite draw is light.
-  - `projectile` — 130 projectiles is *safe* (J130 PASS). Movement + collision is light.
-  - `particle` alone — likely light on its own (still verify in composites).
-- **Expensive (score high — this is where frames die):**
-  - **glow + ring + particle COMPOSITE** — even a small/medium set fails:
-    `F1 = G6 R6 P40 T2` already FAILs (avg ~25). Treat each simultaneous
-    glow/ring as costly; do not stack them.
-  - **image-based effects** (textured marks like `zan`, large sprites, filters,
-    blend modes, alpha compositing) — `IMG I4` (4 image marks) FAILs (avg ~30).
-  - **lights / torches** — `LIGHT T8` (8 torch lights) FAILs (avg ~31). Do not
-    keep many local lights alive at once.
+  - `enemy` — 60 on screen is *safe* (E60 PASS). Sprite draw is light.
+  - `projectile` — 130 *safe* (J130 PASS). Movement + collision is light.
+  - **small glow** (radius < `STRONG_GLOW_RADIUS` ~44) — drawn as a pooled
+    tinted sprite (`drawSmallGlowSprite`), cheap.
+  - **Bloom (AdvancedBloomFilter)** — turning it off barely moves FPS; treat its
+    marginal cost as small. It is NOT the thing to cut first.
+- **Expensive (score high) — and WHY (the actual draw path):**
+  - **damage numbers / any text (`FX-D`) = WORST** (`drawDamageNumber`): each is
+    a Pixi `Text` → glyph rasterization to canvas + GPU texture upload on
+    create. `D20` ≈ avg 17 / min 10. Never spawn many Text per moment; use a
+    bitmap-font / pre-rendered digit atlas / pooled sprites.
+  - **strong glow (`FX-G`) = per-frame `Graphics`** (`drawEffectGfx` glow case):
+    `clear()` + ~7 circle fills/strokes re-tessellated EVERY frame. `G12` FAILs
+    (avg ~24). Fix = draw strong glows as the pooled glow *sprite* too.
+  - **ring / particle / slash (`FX-R/P/S`) = per-frame `Graphics`** (each its own
+    object, cleared + several shapes/frame). CAUTION single, FAIL stacked.
+  - **image marks (`IMG`, e.g. `zan`)** = one large (~130px) alpha sprite →
+    fill-rate / overdraw bound, not filter. `I4` FAILs (avg ~30). Cap count,
+    shrink size, shorten lifetime.
+  - **lights / torches (`LIGHT`)** — each torch = additive light sprite +
+    reflection + per-frame flame `Graphics`. `T8` FAILs (avg ~31). (Use the
+    `LIGHT-P` pure-light bench stage to separate torch-light cost from the
+    effect-glow cost.)
   - **everything-at-once** — `ALL A1 = E36 J70 G8 R8 P64 I6 T12` FAILs hard
-    (avg ~15). This combination is the current **forbidden line** on-device.
+    (avg ~15-17). Current **forbidden line** on-device.
 - **Current safe lines (update as the benchmark re-runs):**
-  `enemy E60 safe / projectile J130 safe / FX-composite F1 fail / image I4 fail /
-  light T8 fail / all A1 fail`.
-- **Scoring rule of thumb for new visual features:** weigh **how many
-  glow/ring/light/image effects are alive simultaneously**, not enemy/bullet
-  counts. A feature that adds a couple of enemies or a burst of bullets is
-  cheap; a feature that lights several local lights, stacks glows/rings, or
-  draws multiple image/filtered sprites per moment is expensive — cap it,
-  pool it, or render it more cheaply (fewer simultaneous glows/lights, bake
-  instead of layering live filters, reuse one sprite, shorten lifetimes).
-- The fix path for heavy effects is **a cheaper render method, not fewer
-  enemies/bullets.**
+  `enemy E60 safe / projectile J130 safe / bloom≈free / FX-D worst /
+  glow G12 fail / FX composite F1 fail / image I4 fail / light T8 fail / all A1 fail`.
+- **Scoring rule of thumb:** the cost is **draw-method × simultaneous count**.
+  Rank by: text/`Text` (worst) > per-frame `Graphics` (glow/ring/particle/slash)
+  > large alpha sprites (images) > additive lights — all far above
+  enemies/bullets. A feature that adds enemies/bullets is cheap; one that spawns
+  text, several live glows/rings/lights, or big alpha sprites per moment is
+  expensive — cap it, pool it, or switch it to a **pooled sprite** draw.
+- The fix path for heavy effects is **a cheaper render method (pooled sprite /
+  bitmap text / baked texture), not fewer enemies/bullets, and not cutting bloom.**
 - (Benchmark caveat: the net diagnostic reads `network unstable`, so trust the
   FPS/render verdicts here, not the network line.)
 - Sub-weapon events, including grenades and similar class skills, must not

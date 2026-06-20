@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.688 — 描画負荷の真因を特定(Bloom無罪)+ 純ライトベンチ + 基準更新
+
+- 社長のベンチ実測: **Bloom OFFでも改善せず → Bloomは主犯ではない**。重さは各FXの
+  「描画方式そのもの」。コード調査で確定した真因:
+  - **FX-D(ダメージ数字)=最重**: `drawDamageNumber` は spawn毎に Pixi `Text` を生成
+    (グリフのcanvasラスタライズ＋GPUテクスチャ生成)。D20で avg17/min10。
+  - **FX-G(強glow)=毎フレーム `Graphics`**: `drawEffectGfx` の glow が `clear()`＋円7枚を
+    毎フレーム再テッセレート。小glow(半径<44)だけは pooled sprite で安い。
+  - **ring/particle/slash も毎フレーム Graphics**(各自オブジェクト・複数shape/フレーム)。
+  - **IMG(斬)=大きいαスプライト1枚**(~130px)。フィルタではなく塗り面積(fill-rate)。
+  - **LIGHT=松明ごとに 加算ライトsprite＋反射＋炎Graphics(毎フレーム)**。
+- ベンチに **LIGHT-P(純ライト)** ステージ追加(effectLayerのglowを足さず松明だけ。T8p/T16p/T24p)。
+  「局所ライト本体」と「effect glow」のコストを切り分け可能に。
+- CLAUDE.md「Empirical render budget」を実測ベースで全面更新: Bloomを軽い扱いへ降格、
+  コストは **描画方式 × 同時数**(text > 毎フレームGraphics > 大αsprite > 加算light ≫ 敵/弾)。
+  修正方針は **pooled sprite / bitmap text / 焼き込み** へ置換(Bloom削減や敵/弾削減ではない)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.687 — ブルーム(発光)のON/OFFをオプションに追加
 
 - ベンチで判明した最大ボトルネック=gameplay world にかかる **AdvancedBloomFilter**(全画面の選択的
