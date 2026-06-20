@@ -44,6 +44,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       if (cancelled) return;
       await ensureTextures();
       const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
+      // ステージ3の遠景(夜の廃都パノラマ)。森テーマのまま遠景だけ差し替えるのに使う。
+      const stage3FarTexture = await Assets
+        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-distant-city.jpg`)
+        .catch(() => null);
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
@@ -66,6 +70,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const scene = new PixiScene(layers);
       scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
       scene.setLabGroundTexture(labGroundTexture); // 研究所スキンの床に使用(最優先)
+      scene.setFarBackdropTexture('city', stage3FarTexture); // ステージ3の遠景差し替え用
       scene.resize(width, height);
 
       sceneRef.current = scene;

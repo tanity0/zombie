@@ -1327,6 +1327,9 @@ interface GameState {
   pendingStageTheme: StageTheme;                        // 出撃ステージの見た目テーマ(resetGame で stageTheme へ)
   setPendingStageTheme: (theme: StageTheme) => void;
   stageTheme: StageTheme;                               // この出撃の見た目テーマ('lab'=研究所スキン。描画/商人が参照)
+  pendingFarBackdrop: string;                           // 出撃ステージの遠景差し替えキー(resetGame で farBackdrop へ)
+  setPendingFarBackdrop: (key: string) => void;
+  farBackdrop: string;                                  // この出撃の遠景差し替えキー(''=既定の森遠景 / 'city'=夜の廃都。描画が参照)
   triggerEventVictory: () => void;                      // ボス無しのイベント勝利(gameWon=true)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
@@ -1502,6 +1505,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingIndoor: false,
   pendingStageTheme: 'forest',
   stageTheme: 'forest',
+  pendingFarBackdrop: '',
+  farBackdrop: '',
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
@@ -5362,6 +5367,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingStageTheme: (theme) => {
     set({ pendingStageTheme: theme });
   },
+  setPendingFarBackdrop: (key) => {
+    set({ pendingFarBackdrop: key });
+  },
 
   triggerEventVictory: () => {
     // ボス無しのイベント勝利。giantbat 撃破と同様に gameWon=true(Game.tsx が監視→onVictory)。
@@ -5735,6 +5743,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const indoor = state.pendingIndoor && !state.danceTestMode;
       // 見た目テーマ(屋外構造のままテクスチャ差し替え)。'lab'=研究所スキン(地面=ラボ床/商人がPHILL無料配布)。
       const stageTheme: StageTheme = (!state.danceTestMode && state.pendingStageTheme === 'lab') ? 'lab' : 'forest';
+      // 遠景差し替え(forestテーマの距離パノラマのみ。ダンステスト/labでは無効)。
+      const farBackdrop = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingFarBackdrop : '';
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         : { x: 0, y: 0 };
@@ -5796,6 +5806,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
         stageTheme,
+        farBackdrop,
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,

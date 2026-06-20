@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.684 — ステージ3の遠景差し替え(夜の廃都パノラマ)
+
+- 社長提供の「月夜の廃都」遠景をステージ3に適用。森テーマの地形・地平・前景はそのままで
+  **距離パノラマ(遠景)だけ**を差し替え。
+- 仕組み(テーマ系統とは独立した per-stage 遠景オーバーライド):
+  - `public/backgrounds/stage3-distant-city.jpg`(不透明遠景。2.5MB PNG → JPG q85 で約350KBに最適化)。
+  - `Stage.farBackdrop?: string`(campaign)→ store `pendingFarBackdrop`/`farBackdrop`(resetGameで確定。
+    forestテーマ時のみ有効、lab/ダンステストは無効)→ App.startGame で受け渡し。
+  - PixiStage が backgrounds/ から読み込み `scene.setFarBackdropTexture('city', tex)` で注入。
+  - pixiScene に `applyFarBackdrop(theme, farKey)` を新設し、遠景の張り替えを一元管理(theme=lab→lab遠景 /
+    farKey一致→差し替え / それ以外→森遠景へ復元)。差分時のみ代入。lab/forest 分岐から遠景処理を分離。
+- 描画のみの変更(当たり判定・ワールドデータに非干渉)。負荷スコア **1/10**(遠景は元々1枚の
+  TilingSprite。テクスチャ差し替えのみで毎フレームコスト増なし。初回ロードに350KB追加)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.683 — ベンチマークを現仕様の最大負荷向けに作り直し
 
 - 旧ベンチは「グロー/リング/粒子/松明」と固定敵リストだけで、**弾を1発も出さず**、重量級の敵・

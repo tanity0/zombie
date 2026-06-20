@@ -47,6 +47,7 @@ export interface Stage {
   unlockBy: string | null; // このステージ解放に必要な「直前ステージのid」(null=最初から解放)
   indoor?: boolean;      // 屋内(研究施設)ステージ=手書き壁マップ/カメラクランプ/湧き抑制
   theme?: 'lab';         // 見た目テーマ(屋外構造のままテクスチャだけ差し替え)。'lab'=研究所スキン。
+  farBackdrop?: string;  // 遠景パノラマの差し替えキー(forestテーマの距離パノラマだけ変える)。'city'=夜の廃都。
 }
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
@@ -136,6 +137,7 @@ export const STAGES: Stage[] = [
     name: 'リモート研究施設',
     area: '連携研究施設 / 責任者 救出',
     unlockBy: 'stage-2',
+    farBackdrop: 'city', // 遠景を夜の廃都パノラマへ差し替え(森の地形・地平はそのまま)。
     subs: [],
     main: {
       code: 'M3',

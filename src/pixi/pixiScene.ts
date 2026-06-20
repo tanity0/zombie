@@ -1350,6 +1350,14 @@ export class PixiScene {
   // ラボ床テクスチャ(PixiStage が森の地面と同じ Assets.load で読み込み、ここへ注入)。
   // マニフェスト(getTexture)が万一読めなくても、こちらを最優先で使う=確実に張り替わる。
   private labGroundTex: Texture | null = null;
+  // ステージ別の遠景差し替えテクスチャ(PixiStage が backgrounds/ から読み込み注入)。キー='city' 等。
+  private farBackdropOverrides: Record<string, Texture | null> = {};
+  // いま遠景に張っている種別。'forest'(既定)/'lab'/差し替えキー。差分があるときだけ張り替える。
+  private currentFarKey = 'forest';
+  setFarBackdropTexture(key: string, t: Texture | null) {
+    if (!t) return;
+    this.farBackdropOverrides[key] = t;
+  }
   setLabGroundTexture(t: Texture | null) {
     this.labGroundTex = t;
     if (t) {
@@ -1361,8 +1369,23 @@ export class PixiScene {
       this.outdoorGroundTheme = null; // 注入後に再適用させる
     }
   }
-  private applyOutdoorGroundTheme(theme: StageTheme) {
+  // 遠景パノラマの張り替え。theme と farKey('city'等)から張るテクスチャを決め、差分時のみ代入。
+  // 森の地形/地平/前景はそのままで「距離パノラマだけ」を差し替えられる(ステージ3の遠景差し替え)。
+  private applyFarBackdrop(theme: StageTheme, farKey: string) {
+    const override = farKey ? this.farBackdropOverrides[farKey] : null;
+    const desired: string = theme === 'lab' ? 'lab' : (override ? farKey : 'forest');
+    if (this.currentFarKey === desired) return;
+    // 初回の森遠景(distant-night-panorama)を復元用に退避。
+    if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture;
+    let tex: Texture | null = null;
+    if (desired === 'lab') tex = getTexture('lab/lab-far-backdrop') ?? null;
+    else if (desired === 'forest') tex = this.farBackdropBaseTex;
+    else tex = this.farBackdropOverrides[desired] ?? this.farBackdropBaseTex;
+    if (tex) { this.L.farBackdrop.texture = tex; this.currentFarKey = desired; }
+  }
+  private applyOutdoorGroundTheme(theme: StageTheme, farKey = '') {
     const strips = this.L.groundStrips;
+    this.applyFarBackdrop(theme, farKey);
     if (theme === 'lab') {
       const tex = this.labGroundTex ?? getTexture('lab-floor/lab-floor-stage2') ?? getTexture('lab-floor/lab-floor-ground') ?? getTexture('lab-floor/lab-floor-clean');
       if (!tex) return; // まだロードされていなければ次フレームで再試行(テーマは未確定のまま)
@@ -1376,9 +1399,8 @@ export class PixiScene {
       // 色味調整(LAB_ENV_TINT)は外し、テクスチャ本来の色で表示(tint 白=無補正)。
       for (const strip of strips) { if (strip.texture !== tex) strip.texture = tex; strip.tint = 0xffffff; }
       if (this.outdoorGroundTheme !== 'lab') {
-        // 背景3層を研究所版へ(森→ラボ)。元テクスチャは復元用に一度だけ退避。テーマ変化時のみ。
-        const far = getTexture('lab/lab-far-backdrop');
-        if (far) { if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture; this.L.farBackdrop.texture = far; }
+        // 背景2層(地平帯/手前帯)を研究所版へ(森→ラボ)。遠景は applyFarBackdrop が管理。
+        // 元テクスチャは復元用に一度だけ退避。テーマ変化時のみ。
         const horizon = getTexture('lab/lab-horizon-band');
         if (horizon) { if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; this.L.horizonForest.texture = horizon; }
         const front = getTexture('lab/lab-front-band');
@@ -1387,7 +1409,6 @@ export class PixiScene {
       }
     } else if (this.outdoorGroundTheme !== 'forest') {
       this.restoreGroundStrips();
-      if (this.farBackdropBaseTex) this.L.farBackdrop.texture = this.farBackdropBaseTex;
       if (this.horizonForestBaseTex) this.L.horizonForest.texture = this.horizonForestBaseTex;
       if (this.frontForestBaseTex) this.L.frontForest.texture = this.frontForestBaseTex;
       this.outdoorGroundTheme = 'forest';
@@ -4187,7 +4208,7 @@ export class PixiScene {
     this.L.frontForest.visible = !indoor;
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
-      this.applyOutdoorGroundTheme(s.stageTheme); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。
+      this.applyOutdoorGroundTheme(s.stageTheme, s.farBackdrop); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。遠景差し替えは farBackdrop。
       this.updateLabFloorPlate(false);
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;

@@ -67,6 +67,7 @@ function App() {
     const stageForRun = benchmark ? undefined : getStage(getSelectedStageId());
     useGameStore.getState().setPendingIndoor(!!stageForRun?.indoor);
     useGameStore.getState().setPendingStageTheme(stageForRun?.theme === 'lab' ? 'lab' : 'forest');
+    useGameStore.getState().setPendingFarBackdrop(stageForRun?.farBackdrop ?? '');
     resetGame(validClass);
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチは空=会話なし。
     const free = getSelectedFreeMode();
