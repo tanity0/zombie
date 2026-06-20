@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.697 — 夜の斜め光を月明かりっぽく(拡散・淡い・蒼白)
+
+- god ray(updateStageLightShafts)を昼/夜で出し分け:
+  - 明るさを preset の `shaftAlpha` 連動に(夜=moonlight 0.045 で弱く / 昼=sunlight 0.085)。`?shaft=` は昼基準の
+    マスター倍率として継続。
+  - 夜のビームを**広く・淡く**(width ×1.6前後 / alpha 下げ)=鋭い日差しではなく拡散した月明り。
+  - 夜のシャフト色を**蒼白(0xc9d6ff)**へ(プレイヤー光の色には不干渉)。
+- 斜め光は resize 時しか再生成しないため、`applyDaylight` で昼/夜切替時に `updateStageLightShafts` を再実行
+  (これで昼ステージのシャフトも正しく sunlight 設定になる副次修正も入る)。
+- 調整つまみ: `MOONLIGHT_PRESET.shaftAlpha`(濃さ)/ 夜ビームの width・alpha / 夜シャフト色 / `?shaftblur=`(柔らか)。
+- 負荷: シャフトは状態変化時のみ1回再描画。1/10。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.696 — 昼の影を気持ち下げる
 
 - `SUNLIGHT_SHADOW_DIRECTION` の y を -0.45 → **-0.28**(右奥の上向き成分を弱め、少し下=手前寄りに)。x=0.7据置。

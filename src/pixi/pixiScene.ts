@@ -640,6 +640,9 @@ export class PixiScene {
     this.gradeSprite.tint = on ? DAY_GRADE_TINT : GRADE_TINT;
     this.vignette.alpha = on ? DAY_VIGNETTE_ALPHA : ENV_VIGNETTE_ALPHA;
     for (const f of this.fogLayers) f.sp.alpha = (f.baseAlpha ?? f.sp.alpha) * (on ? DAY_FOG_MULT : 1);
+    // 斜め光(god ray)は resize 時しか再生成しないので、昼/夜切替時にここで描き直す
+    // (色・濃さ・拡散具合が preset で変わるため)。
+    this.updateStageLightShafts(this.screenW, this.screenH);
   }
 
   // 現在の設定に応じて gameplay world(filteredWorld)のフィルタ配列を作り直す(bloom はON時のみ含める)。
@@ -1031,19 +1034,29 @@ export class PixiScene {
   private updateStageLightShafts(w: number, h: number) {
     const g = this.stageLightShaftGfx;
     g.clear();
-    const alpha = SHAFT_ALPHA; // 可変の明るさ(?shaft=)
+    const lp = this.lighting();
+    const night = !this.daylight;
+    // 明るさは preset の shaftAlpha 連動(夜=月明りで弱く)。?shaft= は昼基準のマスター倍率として効かせる。
+    const alpha = SHAFT_ALPHA * (lp.shaftAlpha / SUNLIGHT_PRESET.shaftAlpha);
     if (alpha <= 0) { this.shaftPeriod = 0; return; }
     g.blendMode = 'add';
-    const color = this.lighting().color;
+    // 月明りは淡く青白い拡散光。夜はシャフト色を少しパステル寄りの蒼白へ(プレイヤー光の色には影響しない)。
+    const color = night ? 0xc9d6ff : lp.color;
     // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
     // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
     const period = Math.max(180, w * 0.5);
     this.shaftPeriod = period;
-    // 1 period 内に配置するビーム(period 比のオフセット / 幅 / 相対濃さ)。少し間引いて2本に。
-    const beams = [
-      { off: 0.06, width: w * 0.17, length: h * 1.22, alpha: 0.42 },
-      { off: 0.52, width: w * 0.12, length: h * 1.14, alpha: 0.24 },
-    ];
+    // 1 period 内に配置するビーム(period 比のオフセット / 幅 / 相対濃さ)。
+    // 夜=「広く淡く」=拡散した月明り。昼=「細く強い」=日差し。
+    const beams = night
+      ? [
+          { off: 0.06, width: w * 0.28, length: h * 1.24, alpha: 0.30 },
+          { off: 0.54, width: w * 0.22, length: h * 1.16, alpha: 0.20 },
+        ]
+      : [
+          { off: 0.06, width: w * 0.17, length: h * 1.22, alpha: 0.42 },
+          { off: 0.52, width: w * 0.12, length: h * 1.14, alpha: 0.24 },
+        ];
     // 画面 + 両端 period ぶんをカバー(折り返し後も隙間が出ないように)。
     for (let base = -period; base <= w + period; base += period) {
       for (const b of beams) {
