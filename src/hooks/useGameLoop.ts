@@ -3136,9 +3136,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         playerEnemyCollisions.forEach(enemy => {
           if (wireDashingNow) return;
-          // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は、ぶつかってもプレイヤーは被弾しない。
-          if (enemy.aiPhase === 'jump') return;
-          // 突進をカウンターで弾く: 被弾せず、敵を2倍ノックバックして突進を中断。
+          // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
+          // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
+          if (enemy.aiPhase === 'jump') {
+            if (counterActiveNow) dashParried.push(enemy.id);
+            return;
+          }
+          // 突進(ダッシュ)もカウンターで弾く: 被弾せず弾き返し、同じくクリ反撃を返す。
           if (enemy.aiPhase === 'charge' && counterActiveNow) {
             dashParried.push(enemy.id);
             return;
@@ -3191,7 +3195,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               return {
                 ...e,
-                aiPhase: undefined, // 突進中断
+                aiPhase: undefined, // 突進/ジャンプ中断
                 aiReadyAt: st.gameTime + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
                 knockbackVx: (ndx / d) * KNOCKBACK_SPEED * 2,
                 knockbackVy: (ndy / d) * KNOCKBACK_SPEED * 2,
@@ -3199,6 +3203,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
             }),
           }));
+          // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
+          // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。
+          const counterBase = getActiveGun(collPlayer)?.damage ?? 12;
+          let counterKill = false;
+          for (const eid of dashParried) {
+            const e = useGameStore.getState().enemies.find(en => en.id === eid);
+            if (!e) continue;
+            const boss = isBossType(e.type);
+            const critMult = skillCritMult(collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
+            const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(collPlayer) * (collPlayer.equipBonus?.damageMult ?? 1)));
+            const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+            counterKill = damageEnemy(eid, dmg) || counterKill;
+            spawnDamageNumber(ex, e.y, dmg, true); // 金色クリ表示
+            spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+            spawnBurst(ex, ey, '#fde047', 10);
+            useGameStore.getState().spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);
+          }
+          playSfx('headshot'); // ヘッドショット反撃音(Counter SE と重ねる)
+          void counterKill;
         }
 
         // 錬金術: 敵 ↔ 召喚(通常個体)の接触ダメージ。召喚は物理ブロックしない。

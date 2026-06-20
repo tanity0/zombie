@@ -13307,3 +13307,12 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 ## v0.25.666 — タイトルSTART音を追加(同意画面の後のSTART)
 - 'title-start' を登録(public/audio/sfx/title-start.mp3)。タイトル(the ONE)のSTARTタップ(tapStart)で再生。従来の汎用 ui-select を専用音へ置換。同意ボタン(agree)は ui-select のまま。
 - 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/components/TitleScreen.tsx, public/audio/sfx/title-start.mp3(新規), package.json
+
+## v0.25.667 — ジャンプ/ダッシュ攻撃をカウンターするとクリティカル反撃(ヘッドショット)
+- 仕様: カウンター窓中に敵のジャンプ攻撃(aiPhase 'jump')またはダッシュ突進(aiPhase 'charge')へ接触すると、無傷で弾き返し＋相手にクリティカル反撃(ヘッドショット)を返す。
+- 実装(useGameLoop の接触処理):
+  - jump は従来「空中=被弾しない(回避)」のみだったが、カウンター窓中なら dashParried に入れてカウンター成立扱いに(窓外は従来どおり回避)。
+  - parry 後、まず弾き返し setState で aiPhase を解除(ジャンプ中無敵を回避してから)→ damageEnemy でクリダメージ。威力=装備中の銃ダメージ × クリ倍率(通常CRIT_DAMAGE_MULT/ボスBOSS_CRIT_DAMAGE_MULT)× スキル/装備ダメージ補正。金色クリ数値＋金リング/バースト/グロー＋headshot SE。
+  - ダッシュは従来弾き返しのみ→クリ反撃を追加。Counter! 表示・コンボ＋1・短無敵は据え置き。
+- 負荷スコア 1/10: カウンター成立時のみ、対象数ぶんの処理。毎フレームコスト無し。
+- 検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json
