@@ -13190,3 +13190,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 負荷スコア 1/10: アイコンはレベルアップ表示時のみのDOM<img>数枚。毎フレームコスト無し。1枚~8-16KB。
 - 検証: tsc --noEmit 通過。アイコンはキー処理後プレビューで目視確認済み。
 - 変更: src/data/equipment.ts, src/components/UpgradeMenu.tsx, public/sprites/equip/body-protection-1..5.png(新規), package.json
+
+## v0.25.646 — 装備アイコン: 部位1・機動系(体)1-5 を反映
+- body-mobility-1..5(ランニングシューズ/エアブーツ/ジェットブーツ/エアスラスト/カーボンエアスラスト)を紫クロマキー除去→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
+- これで部位1(体)の防護系・機動系=計10種のアイコンが揃った。
+- 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/body-mobility-1..5.png(新規), package.json

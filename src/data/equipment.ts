@@ -230,6 +230,7 @@ export const hasFullWarlordSet = (loadout: EquipLoadout): boolean =>
 // 社長から素材を受領するたびにここへ追加していく。未登録IDはUI側で絵文字フォールバック。
 export const EQUIP_ICON_IDS: ReadonlySet<string> = new Set<string>([
   'body-protection-1', 'body-protection-2', 'body-protection-3', 'body-protection-4', 'body-protection-5',
+  'body-mobility-1', 'body-mobility-2', 'body-mobility-3', 'body-mobility-4', 'body-mobility-5',
 ]);
 
 export const hasEquipIcon = (defId: string | null | undefined): boolean =>
