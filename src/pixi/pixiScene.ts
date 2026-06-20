@@ -207,7 +207,8 @@ const LIGHT_POOL_ENABLED =
   typeof window === 'undefined' || new URLSearchParams(window.location.search).get('pool') !== '0';
 const LIGHT_POOL_ALPHA = Math.max(0, tsNum('pool', 0.4));
 const LIGHT_POOL_RADIUS = Math.max(0, tsNum('poolr', 210));
-const LIGHT_POOL_TINT = 0xffe3a3; // 暖色(月明り/松明と同系)
+const LIGHT_POOL_TINT = 0xffe3a3; // 昼/日差し用の暖色(足元プール)
+const MOON_POOL_TINT = 0xbcd0f5;  // 夜(月明り)用の寒色プール。暖色のままだと夜に黄色く浮く
 
 // Selective bloom — only pixels brighter than the threshold glow, so the dark
 // forest stays clean while gems / muzzle flashes / crits / lights bloom.
@@ -634,11 +635,22 @@ export class PixiScene {
     if (this.daylightApplied === on) return;
     this.daylightApplied = on;
     const tint = on ? DAY_ENV_TINT : ENV_TINT;
+    // 昼(ステージ3)は床=石畳 / 地平帯=廃墟都市 に差し替え(注入済みなら)。夜/ラボは触らない
+    // (=テーマ側の管理に任せる)。tint は昼=本来色(白)。
+    if (on && this.stage3GroundTex) {
+      for (const strip of this.L.groundStrips) if (strip.texture !== this.stage3GroundTex) strip.texture = this.stage3GroundTex;
+    }
+    if (on && this.stage3HorizonTex && this.L.horizonForest.texture !== this.stage3HorizonTex) {
+      this.L.horizonForest.texture = this.stage3HorizonTex;
+      this.layoutHorizonForest();
+    }
     for (const strip of this.L.groundStrips) strip.tint = tint;
     this.L.horizonForest.tint = tint;
     this.L.frontForest.tint = tint;
     this.gradeSprite.tint = on ? DAY_GRADE_TINT : GRADE_TINT;
     this.vignette.alpha = on ? DAY_VIGNETTE_ALPHA : ENV_VIGNETTE_ALPHA;
+    // 足元の光だまり: 昼=暖色 / 夜=寒色(月明り)。暖色のままだと夜に黄色く見える(社長指摘)。
+    this.playerGroundPool.tint = on ? LIGHT_POOL_TINT : MOON_POOL_TINT;
     for (const f of this.fogLayers) f.sp.alpha = (f.baseAlpha ?? f.sp.alpha) * (on ? DAY_FOG_MULT : 1);
     // 斜め光(god ray)は resize 時しか再生成しないので、昼/夜切替時にここで描き直す
     // (色・濃さ・拡散具合が preset で変わるため)。
@@ -1411,6 +1423,29 @@ export class PixiScene {
   setFarBackdropTexture(key: string, t: Texture | null) {
     if (!t) return;
     this.farBackdropOverrides[key] = t;
+  }
+  // ステージ3(昼/city)用の床・地平帯の差し替えテクスチャ(PixiStage が注入)。
+  private stage3GroundTex: Texture | null = null;
+  private stage3HorizonTex: Texture | null = null;
+  setStage3Ground(t: Texture | null) {
+    if (!t) return;
+    try { const st = t.source.style as { addressMode?: string; update?: () => void }; st.addressMode = 'repeat'; st.update?.(); } catch { /* ignore */ }
+    this.stage3GroundTex = t;
+    this.daylightApplied = null; // 注入後に再適用
+  }
+  setStage3Horizon(t: Texture | null) {
+    if (!t) return;
+    this.stage3HorizonTex = t;
+    this.daylightApplied = null;
+  }
+  // 地平帯(horizonForest)の寸法/タイルスケールを現在のテクスチャと画面幅で再計算(差し替え時に必要)。
+  private layoutHorizonForest() {
+    const tex = this.L.horizonForest.texture;
+    if (!tex || tex.width <= 0 || tex.height <= 0) return;
+    const horizonH = this.horizonForestHeight();
+    this.L.horizonForest.width = this.screenW;
+    this.L.horizonForest.height = horizonH;
+    this.L.horizonForest.tileScale.set(this.screenW / tex.width, horizonH / tex.height);
   }
   setLabGroundTexture(t: Texture | null) {
     this.labGroundTex = t;

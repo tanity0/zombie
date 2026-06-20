@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.698 — ステージ3の床/地平帯差し替え + 夜の足元プールを寒色化
+
+- ステージ3(昼/city)の床を**石畳/土**、地平帯(horizonForest)を**廃墟都市スカイライン**へ差し替え。
+  - `public/backgrounds/stage3-ground-cobble.jpg`(タイル床)/ `stage3-horizon-city.png`
+    (元は白背景RGB→端からの白フラッドフィルで透過化、66%を抜去)。
+  - PixiStage がロードして `setStage3Ground/​setStage3Horizon` で注入。`applyDaylight(on)` で昼の時だけ
+    床テクスチャ(addressMode=repeat)＋地平帯テクスチャを差し替え(地平は layoutHorizonForest で tileScale 再計算)。
+    夜/ラボは従来管理に非干渉。
+- **夜のプレイヤー足元プールが黄色い**問題を修正: `playerGroundPool` の tint を昼=暖色(LIGHT_POOL_TINT)/
+  夜=寒色(MOON_POOL_TINT 0xbcd0f5)に。プレイヤー補助光は既に moonlight 色(青)だが、足元プールが暖色固定で
+  黄色く浮いていた。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.697 — 夜の斜め光を月明かりっぽく(拡散・淡い・蒼白)
 
 - god ray(updateStageLightShafts)を昼/夜で出し分け:

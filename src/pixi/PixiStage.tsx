@@ -48,6 +48,13 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const stage3FarTexture = await Assets
         .load(`${import.meta.env.BASE_URL}backgrounds/stage3-distant-city-day.jpg`)
         .catch(() => null);
+      // ステージ3の床(石畳/土)と地平帯(廃墟都市スカイライン=透過)。
+      const stage3GroundTexture = await Assets
+        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-ground-cobble.jpg`)
+        .catch(() => null);
+      const stage3HorizonTexture = await Assets
+        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-horizon-city.png`)
+        .catch(() => null);
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
@@ -71,6 +78,8 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
       scene.setLabGroundTexture(labGroundTexture); // 研究所スキンの床に使用(最優先)
       scene.setFarBackdropTexture('city', stage3FarTexture); // ステージ3の遠景差し替え用
+      scene.setStage3Ground(stage3GroundTexture);   // ステージ3の床(石畳)
+      scene.setStage3Horizon(stage3HorizonTexture); // ステージ3の地平帯(廃墟都市)
       scene.resize(width, height);
 
       sceneRef.current = scene;
