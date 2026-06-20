@@ -13340,3 +13340,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 原因: effectNearViewport に 'image' 種別の case が無く undefined(=画面外扱い)を返すため、毎フレーム間引かれて描画されなかった。
 - 修正: case 'image' を追加(EFFECT_VIEWPORT_MARGIN+200 の余裕で画面内判定)。これで刀フィニッシュの習字「斬」が表示される。
 - 検証: tsc --noEmit 通過。変更: src/pixi/pixiScene.ts, package.json
+
+## v0.25.672 — ジャンプ攻撃カウンターでノックバックしない不具合を修正+クリ反撃を適用
+- 原因: ジャンプ攻撃のカウンターは「着地爆発のパリィ」経路(pumpkinBlasts 消化)で処理されており、弾いた敵の aiPhase を 'recover' のままにしていたためノックバックが安定して乗らなかった(突進パリィは undefined にしていて正常)。
+- 修正: 着地パリィでも aiPhase を undefined に統一し ai系フィールドを全リセット+aiReadyAt 設定(突進パリィと同挙動)→ ノックバックが確実に乗る。
+- 併せて、この経路にもクリティカル反撃(ヘッドショット: 銃ダメージ×クリ倍率×補正・金クリ数値・headshot SE)を追加。v0.25.667 の「ジャンプ/ダッシュ カウンターでクリ反撃」がジャンプでも実際に発動するように。
+- 負荷 1/10: パリィ成立時のみ。検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json

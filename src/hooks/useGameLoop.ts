@@ -1916,13 +1916,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                   return {
                     ...e,
-                    aiPhase: 'recover' as const, // ジャンプ後の硬直のまま吹き飛ばす
+                    // 突進パリィと同じく aiPhase を完全解除して弾き返す。'recover' のままだと
+                    // ノックバックが乗らない(社長報告)ため undefined に統一+ai系をリセット。
+                    aiPhase: undefined,
+                    aiPhaseUntil: undefined, aiStartedAt: undefined,
+                    aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+                    aiReadyAt: st.gameTime + 1200,
                     knockbackVx: (ndx / d) * KNOCKBACK_SPEED * 2, // 2倍ノックバック
                     knockbackVy: (ndy / d) * KNOCKBACK_SPEED * 2,
                     knockbackUntil: pnow + KNOCKBACK_DURATION,
                   };
                 }),
               }));
+              // クリティカル反撃(ヘッドショット): 弾いたジャンプ敵へ。aiPhase 解除済みでダメージが通る。
+              const cBase = getActiveGun(bp)?.damage ?? 12;
+              for (const hit of parriedEnemyIds) {
+                const e = useGameStore.getState().enemies.find(en => en.id === hit.id);
+                if (!e) continue;
+                const boss = isBossType(e.type);
+                const critMult = skillCritMult(bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
+                const dmg = Math.max(1, Math.round(cBase * critMult * skillOutgoingDamageMult(bp) * (bp.equipBonus?.damageMult ?? 1)));
+                const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                damageEnemy(hit.id, dmg);
+                spawnDamageNumber(ex, e.y, dmg, true);
+                spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+                spawnBurst(ex, ey, '#fde047', 10);
+                useGameStore.getState().spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);
+              }
+              playSfx('headshot');
             }
             useGameStore.setState({ pumpkinBlasts: [] });
           }
