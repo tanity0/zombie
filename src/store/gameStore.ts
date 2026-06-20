@@ -190,6 +190,9 @@ const saveCarriedEquip = (defId: string | null): void => {
   } catch { /* ignore */ }
 };
 
+// 次ランへ持ち越す装備ID(localStorage)。キャラ選択画面の「持ち越し装備」表示などから参照する。
+export const getCarriedEquipId = (): string | null => loadCarriedEquip();
+
 // 装備を該当スロットへ装着した新 Player を返す純関数(同スロットは置換=破棄)。最大体力の増減は
 // player.maxHealth へベイクし、増分ぶんだけ現HPも底上げ(減少時は上限へクランプ)。equipItem と
 // selectUpgrade(装備取得)の双方から使う。

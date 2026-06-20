@@ -13249,3 +13249,11 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 提供シートは左→右が 兜/小手/鎧 の順だったため def(slot)へ明示マッピング。小手は左右手の対で2塊に分かれるため、近接runを結合(<80px)して1アイコンに統合。紫っぽさ判定キーアで金縁も保持(赤背景で透過穴ゼロ確認)。
 - これで通常30+特殊3=全33装備アイコンが揃った。UpgradeMenu の特殊選択肢は金枠+実アイコン表示に。
 - 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/special-{body,arms,accessory}.png(新規), package.json
+
+## v0.25.658 — 装備の持ち帰り: クリア時の選択UI + キャラ選択に「持ち越し装備」表示
+- クリア(勝利)リザルトに「持ち帰る装備を1つ選択(他は破棄)」ピッカーを追加(レベルアップ3択と同系のカードUI)。装備中スロット(最大3)をアイコン+名称+効果+R/特殊バッジで提示し、タップで takeHomeEquipment(defId) を即時localStorage保存。「持ち帰らない」も選択可。未選択なら持ち帰りなし。選択音 ui-select。
+- キャラクター選択画面に「持ち越し装備」パネルを追加(スタート下)。getCarriedEquipId() の defId をアイコン+名称+効果で表示。ラン開始時(resetGame)に該当スロットへ自動装備され、装備後はlocalStorageを消費(死亡/途中離脱で消える既存仕様)。
+- gameStore に getCarriedEquipId() を公開。
+- 帰還(商人)経由の持ち帰りUIは別タスクのまま(takeHomeEquipment アクションは流用可能)。
+- 負荷スコア 1/10: いずれも静的メニューUI、毎フレームコスト無し。
+- 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, src/components/GameOverScreen.tsx, src/components/MissionSelect.tsx, package.json

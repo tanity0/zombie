@@ -3,6 +3,10 @@ import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore } from '../utils/resultScoring';
 import { useGameStore } from '../store/gameStore';
+import { playSfx } from '../audio/audioManager';
+import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from '../data/equipment';
+import { spritePath } from '../utils/spriteLoader';
+import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 
 interface GameOverScreenProps {
@@ -67,6 +71,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const indoor = useGameStore(s => s.indoorMode);
   // 死亡時の「装備ロスト」明示用。装備していたかの派生ブール(静的画面なので再描画コスト無し)。
   const hadEquipment = useGameStore(s => Object.values(s.player.equipment).some(Boolean));
+  // クリア時の「装備1個持ち帰り」選択。装備ロードアウト(静的画面なので安定参照)。
+  const carriedLoadout = useGameStore(s => s.player.equipment);
+  const takeHomeEquipment = useGameStore(s => s.takeHomeEquipment);
+  const [carriedPick, setCarriedPick] = useState<string | null>(null); // null=未選択 / '__none__'=持ち帰らない / defId
+  const pickCarry = (defId: string | null) => {
+    playSfx('ui-select');
+    takeHomeEquipment(defId);   // localStorage へ即時保存(持ち帰り確定)
+    setCarriedPick(defId ?? '__none__');
+  };
   const {
     damageScore,
     comboScore,
@@ -271,6 +284,60 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           </div>
+          {won && hadEquipment && (
+            <div className="mb-3 rounded-2xl bg-amber-400/5 border border-amber-300/30 px-3 py-2.5">
+              <div className="text-[11px] font-semibold text-amber-200 mb-2">持ち帰る装備を1つ選択（他は破棄）</div>
+              <div className="flex flex-col gap-1.5">
+                {(['body', 'arms', 'accessory'] as EquipSlot[]).map(slot => {
+                  const defId = carriedLoadout[slot];
+                  if (!defId) return null;
+                  const def = equipmentById(defId);
+                  if (!def) return null;
+                  const sel = carriedPick === defId;
+                  const isSp = def.special;
+                  const iconImg = hasEquipIcon(defId) ? spritePath(equipIconName(defId)) : null;
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => pickCarry(defId)}
+                      className={`text-left p-2 rounded-xl border flex items-center gap-2.5 transition-colors ${sel ? 'bg-amber-400/25 border-amber-300/70' : isSp ? 'bg-amber-400/10 border-amber-300/40 active:bg-amber-400/20' : 'bg-white/5 border-white/10 active:bg-white/10'}`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-base">
+                        {iconImg
+                          ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                          : (isSp ? '🏯' : '🛡️')}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-semibold text-white truncate">{def.name}</span>
+                          {isSp
+                            ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/30 text-amber-100 border border-amber-300/40 shrink-0">特殊</span>
+                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-blue-500/30 text-blue-100 border border-blue-300/30 shrink-0">R{def.tier}</span>}
+                        </div>
+                        <div className="text-[10px] text-white/65 leading-snug truncate">{equipmentDescription(def)}</div>
+                      </div>
+                      {sel && <span className="text-amber-200 text-sm shrink-0">✓</span>}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => pickCarry(null)}
+                  className={`text-left p-2 rounded-xl border text-[12px] ${carriedPick === '__none__' ? 'bg-white/15 border-white/40 text-white' : 'bg-white/5 border-white/10 text-white/60 active:bg-white/10'}`}
+                >
+                  持ち帰らない
+                </button>
+              </div>
+              <div className="mt-1.5 text-[9px] text-white/45">
+                {carriedPick && carriedPick !== '__none__'
+                  ? '次のランに持ち越されます（死亡で全ロスト）'
+                  : carriedPick === '__none__'
+                    ? '持ち帰りません'
+                    : 'タップで選択。未選択なら持ち帰りなし'}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onPlayAgain}

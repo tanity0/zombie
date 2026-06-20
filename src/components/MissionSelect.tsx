@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play
 } from 'lucide-react';
-import { subWeaponDisplayName, useGameStore } from '../store/gameStore';
+import { subWeaponDisplayName, useGameStore, getCarriedEquipId } from '../store/gameStore';
+import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from '../data/equipment';
+import { spritePath } from '../utils/spriteLoader';
 import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
@@ -240,7 +242,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   // キャラクター選択
   // ====================================================================
-  const renderCharacterSelect = (stageId: string) => (
+  const renderCharacterSelect = (stageId: string) => {
+    // 前ランからの持ち越し装備(localStorage)。ラン開始時に該当スロットへ自動装備される。
+    const carriedDef = equipmentById(getCarriedEquipId());
+    const carriedIcon = carriedDef && hasEquipIcon(carriedDef.id) ? spritePath(equipIconName(carriedDef.id)) : null;
+    return (
     <>
       <Header title="キャラクター選択" subtitle="性能差なし。初期装備と専用スキルで選ぶ" onBack={() => setScreen({ name: 'missionDetail', stageId })} />
       <div className="p-3">
@@ -297,10 +303,25 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         >
           <Play size={20} /> スタート
         </button>
+        {carriedDef && (
+          <div className="mt-3 rounded-2xl bg-amber-400/10 border border-amber-300/30 px-3 py-2 flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-base">
+              {carriedIcon
+                ? <img src={carriedIcon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                : (carriedDef.special ? '🏯' : '🛡️')}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] uppercase tracking-wider text-amber-200/70">持ち越し装備</div>
+              <div className="text-[13px] font-semibold text-white truncate">{carriedDef.name}</div>
+              <div className="text-[10px] text-white/60 leading-snug truncate">{equipmentDescription(carriedDef)}</div>
+            </div>
+          </div>
+        )}
         <p className="pt-2 text-center text-[11px] text-white/40">装備の変更はホームの「装備」から</p>
       </div>
     </>
-  );
+    );
+  };
 
   // ====================================================================
   // 装備メニュー(トップから独立) — サブウェポン + スキル(最大2)。store に永続。出撃時に反映。
