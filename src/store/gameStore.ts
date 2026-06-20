@@ -2492,6 +2492,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = [];
 
     for (const enemy of enemies) {
+      // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
+      if (enemy.aiPhase === 'jump') { survivors.push(enemy); continue; }
       if (!targetIds.includes(enemy.id) || (enemy.type === 'reaper' && !enemy.reaperChaser)) {
         survivors.push(enemy);
         continue;

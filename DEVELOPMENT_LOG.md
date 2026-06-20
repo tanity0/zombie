@@ -13380,3 +13380,12 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 原因: パンプキンは空中(jump)無敵でプレイヤーに重なる窓が一瞬。着地直後は recover(その場硬直)へ移行し、接触カウンター判定(jump/charge のみ対象)が拾えず、弾き(ノックバック)もクリ反撃も発火しなかった。突進(charge)は重なり窓が長いので拾えていた=「突進は効くがジャンプは効かない」の根本。
 - 修正: 接触カウンターの対象フェーズに recover(着地硬直)と crouch(溜め)を追加。これで着地後の硬直中(=痺れて見える間)にカウンターすると確実にパリィ→aiPhase解除+ノックバック+クリ反撃が発火する。広い猶予で安定。
 - 検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json
+
+## v0.25.679 — ジャンプ攻撃中(空中)はあらゆる攻撃の当たり判定を外す(盾は別)
+- 仕様(社長指示): パンプキン等のジャンプ攻撃中(aiPhase 'jump'=空中)は、あらゆる攻撃から無敵=当たり判定そのものを外してすり抜けさせる。盾だけは例外(従来どおりブロック)。
+- 実装:
+  - 飛び道具: checkProjectileEnemyCollisions で aiPhase==='jump' の敵をスキップ(弾がすり抜ける)。
+  - 近接: performMelee の対象ループ先頭で aiPhase==='jump' を survivors へ流して除外(直接health改変経路だったため明示スキップ)。
+  - 範囲/その他: damageEnemy が従来から jump を弾く(grenade/reflex/bomb-counter/hurricane/wire 等はここ経由)。
+  - 盾: パンプキンのジャンプ vs 設置盾は敵AI(updateEnemies の shieldRects 判定)で処理=今回の変更とは別経路なので維持。
+- 検証: tsc --noEmit 通過。変更: src/utils/collisionUtils.ts, src/store/gameStore.ts, package.json

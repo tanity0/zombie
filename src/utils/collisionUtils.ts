@@ -98,6 +98,10 @@ export const checkProjectileEnemyCollisions = (
         return;
       }
 
+      // ジャンプ攻撃中(空中)の敵は当たり判定そのものを外す=あらゆる飛び道具をすり抜けさせる
+      // (盾は別経路=敵AIの shield 判定で処理されるので影響しない)。
+      if (enemy.aiPhase === 'jump') return;
+
       // PHILL弾は「胴体ボックス または 頭部リージョン」で当たり判定し、頭部命中を headshot として返す。
       if (projectile.weaponType === 'phill-bullet') {
         const fb = enemyFootBox(enemy);
