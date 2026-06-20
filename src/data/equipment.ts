@@ -51,58 +51,58 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
     { name: '防弾ベスト', stats: [s('maxHealth', 80)] },
     { name: '強化防弾ベスト', stats: [s('maxHealth', 120)] },
     { name: '軍用防弾ベスト', stats: [s('maxHealth', 160), s('killGrace', 0.10)] },
-    { name: '重装サバイバルアーマー', stats: [s('maxHealth', 200), s('killGrace', 0.15)] },
+    { name: 'サバイバルアーマー', stats: [s('maxHealth', 200), s('killGrace', 0.15)] },
     { name: '対変異体アーマー', stats: [s('maxHealth', 240), s('killGrace', 0.20)] }
   ],
   // 体: 機動系(移動速度 / KILL猶予)
   mobility: [
-    { name: '軽量ベスト', stats: [s('moveSpeed', 0.10)] },
-    { name: '逃亡者のベスト', stats: [s('moveSpeed', 0.20)] },
-    { name: '逃亡者のコート', stats: [s('moveSpeed', 0.30), s('killGrace', 0.10)] },
-    { name: '生存者のジャケット', stats: [s('moveSpeed', 0.35), s('killGrace', 0.15)] },
-    { name: 'レンジャーコート', stats: [s('moveSpeed', 0.40), s('killGrace', 0.20)] }
+    { name: 'ランニングシューズ', stats: [s('moveSpeed', 0.10)] },
+    { name: 'エアブーツ', stats: [s('moveSpeed', 0.20)] },
+    { name: 'ジェットブーツ', stats: [s('moveSpeed', 0.30), s('killGrace', 0.10)] },
+    { name: 'エアスラスト', stats: [s('moveSpeed', 0.35), s('killGrace', 0.15)] },
+    { name: 'カーボンエアスラスト', stats: [s('moveSpeed', 0.40), s('killGrace', 0.20)] }
   ],
   // 腕: 火力系(ダメージ / 連射)
   firepower: [
-    { name: '射撃グローブ', stats: [s('damage', 0.20)] },
-    { name: '強化射撃グローブ', stats: [s('damage', 0.40)] },
-    { name: '制圧射撃グリップ', stats: [s('damage', 0.60), s('fireRate', 0.05)] },
-    { name: '強化射撃アーム', stats: [s('damage', 0.80), s('fireRate', 0.05)] },
-    { name: '対変異体トリガー', stats: [s('damage', 1.00), s('fireRate', 0.10)] }
+    { name: '強化バレル', stats: [s('damage', 0.20)] },
+    { name: 'ロングバレル', stats: [s('damage', 0.40)] },
+    { name: 'アサルトバレル', stats: [s('damage', 0.60), s('fireRate', 0.05)] },
+    { name: 'エレクトロバレル', stats: [s('damage', 0.80), s('fireRate', 0.05)] },
+    { name: '対変異体バレル', stats: [s('damage', 1.00), s('fireRate', 0.10)] }
   ],
   // 腕: 取り回し系(リロード / 連射)
   handling: [
-    { name: 'クイックローダー', stats: [s('reload', 0.10)] },
-    { name: '改良クイックローダー', stats: [s('reload', 0.20)] },
-    { name: '連射補助グローブ', stats: [s('reload', 0.30), s('fireRate', 0.05)] },
-    { name: 'ガンマンの手袋', stats: [s('reload', 0.40), s('fireRate', 0.05)] },
-    { name: '神速ローダー', stats: [s('reload', 0.50), s('fireRate', 0.10)] }
+    { name: 'マガジンウェル', stats: [s('reload', 0.10)] },
+    { name: '強磁石マガジンウェル', stats: [s('reload', 0.20)] },
+    { name: 'スピードローダー', stats: [s('reload', 0.30), s('fireRate', 0.05)] },
+    { name: 'ダブルマガジン', stats: [s('reload', 0.40), s('fireRate', 0.05)] },
+    { name: 'フルオートリローダー', stats: [s('reload', 0.50), s('fireRate', 0.10)] }
   ],
   // アクセ: クリ系(クリ率 / スクラップ)
   crit: [
-    { name: '幸運の薬莢', stats: [s('critChance', 0.03)] },
-    { name: '精密照準チャーム', stats: [s('critChance', 0.06)] },
-    { name: '処刑人のタグ', stats: [s('critChance', 0.09), s('scrap', 0.20)] },
-    { name: '血の弾帯', stats: [s('critChance', 0.12), s('scrap', 0.30)] },
-    { name: '死線の照準器', stats: [s('critChance', 0.15), s('scrap', 0.40)] }
+    { name: '精密スコープ', stats: [s('critChance', 0.03)] },
+    { name: 'レーザースコープ', stats: [s('critChance', 0.06)] },
+    { name: 'ミリタリースコープ', stats: [s('critChance', 0.09), s('scrap', 0.20)] },
+    { name: 'AI搭載スコープ', stats: [s('critChance', 0.12), s('scrap', 0.30)] },
+    { name: '神経伝達スコープ', stats: [s('critChance', 0.15), s('scrap', 0.40)] }
   ],
   // アクセ: 弾薬系(弾薬ドロップ / スクラップ)
   ammo: [
     { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10)] },
     { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15)] },
-    { name: '補給隊のタグ', stats: [s('ammoDrop', 0.20), s('scrap', 0.20)] },
-    { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.25), s('scrap', 0.30)] },
-    { name: '無尽の弾帯', stats: [s('ammoDrop', 0.30), s('scrap', 0.40)] }
+    { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.20), s('scrap', 0.20)] },
+    { name: '弾薬収納ベスト', stats: [s('ammoDrop', 0.25), s('scrap', 0.30)] },
+    { name: 'ミリタリー収納ベスト', stats: [s('ammoDrop', 0.30), s('scrap', 0.40)] }
   ],
   // special は通常テーブルを持たない(SPECIAL_DEFS で別管理)。
   special: []
 };
 
-// 特殊装備(部位ごと1種。3ステ・レア度非依存・5%出現)。
+// 特殊装備(部位ごと1種。3ステ・レア度非依存・5%出現。名称は仕様書「特殊装備」シート準拠)。
 const SPECIAL_DEFS: Record<EquipSlot, { name: string; stats: EquipStat[] }> = {
-  body: { name: '試作強化外骨格', stats: [s('maxHealth', 150), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
-  arms: { name: '統合射撃モジュール', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
-  accessory: { name: '戦術データチップ', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
+  body: { name: '武将の鎧', stats: [s('maxHealth', 150), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
+  arms: { name: 'ガントレットオブゴッド', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
+  accessory: { name: 'クリスタルスカル', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
 };
 
 export const EQUIP_TIER_MAX = 5;
