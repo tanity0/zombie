@@ -677,44 +677,80 @@ export const playSfx = (key: SfxKey) => {
   }
 };
 
-// --- Hurricane rumble: a single looping low "ゴゴゴゴ" that runs only while a
-// whip-hurricane is active. Driven every frame from useGameLoop with the current
-// boolean; the call is idempotent so it starts/stops on the transition only.
-let hurricaneSource: AudioBufferSourceNode | null = null;
-let hurricaneGain: GainNode | null = null;
+// --- Hurricane rumble: a continuous low "ゴゴゴゴ" bed that runs only while a
+// whip-hurricane (or reaper suction) is active. The source clip is ~2.4s, so a
+// hard native loop pulses at the seam. Instead we crossfade OVERLAPPING voices:
+// each voice fades in while the previous fades out, so the tail of one loop
+// overlaps the head of the next for a seamless bed (社長要望: 終わりかけに次の
+// ループを重ねる). A short look-ahead timer schedules voices a little before they
+// are needed; it only runs while active (event-bounded), so cost is negligible.
+// Driven every frame from useGameLoop with the current boolean; idempotent so it
+// starts/stops on the transition only.
+type HurricaneVoice = { source: AudioBufferSourceNode; gain: GainNode; endsAt: number };
 let hurricaneActive = false;
+let hurricaneVoices: HurricaneVoice[] = [];
+let hurricaneTimer: number | null = null;
+let hurricaneNextStartAt = 0;            // context-time the next voice should begin
 const HURRICANE_VOLUME = 0.7;
+const HURRICANE_CROSSFADE = 0.6;         // tail/head overlap per loop (s)
+const HURRICANE_SCHED_AHEAD = 1.0;       // queue voices this far ahead (s)
 
-const startHurricaneNode = () => {
-  const context = ensureSfxContext();
-  if (!context) { hurricaneActive = false; return; }
-  resumeSfxContext();
+// Schedule one overlapping voice starting at startAt. Returns how far to advance
+// the next voice start (loopLen − crossfade), or null if the buffer isn't ready.
+const scheduleHurricaneVoice = (context: AudioContext, startAt: number): number | null => {
   const buffer = sfxBuffers.get('hurricane');
-  if (!buffer) { loadSfxBuffer('hurricane'); hurricaneActive = false; return; } // retry next frame
+  if (!buffer) { loadSfxBuffer('hurricane'); return null; }
+  const dur = buffer.duration;
+  const xf = Math.min(HURRICANE_CROSSFADE, dur / 2);
+  const vol = HURRICANE_VOLUME * sfxVolume;
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = buffer;
-  source.loop = true;
-  gain.gain.value = 0;
   source.connect(gain);
   gain.connect(context.destination);
-  try { source.start(0); } catch { /* ignore */ }
-  gain.gain.setTargetAtTime(HURRICANE_VOLUME * sfxVolume, context.currentTime, 0.10); // fade in
-  hurricaneSource = source;
-  hurricaneGain = gain;
+  // Fade in over the crossfade, hold, then fade the tail out so the next voice
+  // (which starts xf before this one ends) covers the seam.
+  gain.gain.setValueAtTime(0, startAt);
+  gain.gain.linearRampToValueAtTime(vol, startAt + xf);
+  gain.gain.setValueAtTime(vol, startAt + dur - xf);
+  gain.gain.linearRampToValueAtTime(0, startAt + dur);
+  try { source.start(startAt); source.stop(startAt + dur + 0.05); } catch { /* ignore */ }
+  hurricaneVoices.push({ source, gain, endsAt: startAt + dur });
+  return dur - xf;
+};
+
+const pumpHurricane = () => {
+  hurricaneTimer = null;
+  if (!hurricaneActive) return;
+  const context = ensureSfxContext();
+  if (!context) { hurricaneTimer = window.setTimeout(pumpHurricane, 120); return; }
+  resumeSfxContext();
+  const now = context.currentTime;
+  hurricaneVoices = hurricaneVoices.filter(v => v.endsAt > now - 0.1); // drop finished
+  if (hurricaneNextStartAt < now) hurricaneNextStartAt = now;
+  let guard = 0;
+  while (hurricaneNextStartAt < now + HURRICANE_SCHED_AHEAD && guard++ < 8) {
+    const advance = scheduleHurricaneVoice(context, hurricaneNextStartAt);
+    if (advance == null) { hurricaneTimer = window.setTimeout(pumpHurricane, 100); return; } // buffer not ready: retry
+    hurricaneNextStartAt += advance;
+  }
+  hurricaneTimer = window.setTimeout(pumpHurricane, 200);
 };
 
 const stopHurricaneNode = () => {
   const context = sfxContext;
-  const src = hurricaneSource;
-  const gain = hurricaneGain;
-  hurricaneSource = null;
-  hurricaneGain = null;
-  if (src && gain && context) {
-    try { gain.gain.setTargetAtTime(0, context.currentTime, 0.12); } catch { /* ignore */ }
-    window.setTimeout(() => { try { src.stop(); } catch { /* ignore */ } }, 450); // stop after fade
-  } else if (src) {
-    try { src.stop(); } catch { /* ignore */ }
+  const voices = hurricaneVoices;
+  hurricaneVoices = [];
+  hurricaneNextStartAt = 0;
+  if (hurricaneTimer != null) { clearTimeout(hurricaneTimer); hurricaneTimer = null; }
+  if (context) {
+    const now = context.currentTime;
+    for (const v of voices) {
+      try { v.gain.gain.cancelScheduledValues(now); v.gain.gain.setTargetAtTime(0, now, 0.12); } catch { /* ignore */ }
+      try { v.source.stop(now + 0.45); } catch { /* ignore */ }
+    }
+  } else {
+    for (const v of voices) { try { v.source.stop(); } catch { /* ignore */ } }
   }
 };
 
@@ -722,7 +758,7 @@ export const setHurricaneRumble = (active: boolean) => {
   const shouldPlay = active && !muted;
   if (shouldPlay === hurricaneActive) return; // idempotent: cheap per-frame no-op
   hurricaneActive = shouldPlay;
-  if (shouldPlay) startHurricaneNode();
+  if (shouldPlay) { hurricaneNextStartAt = 0; pumpHurricane(); }
   else stopHurricaneNode();
 };
 
