@@ -13213,3 +13213,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 ## v0.25.650 — 装備アイコン: 部位3 クリ系(アクセ)1-5 を反映
 - accessory-crit-1..5(精密スコープ/レーザースコープ/ミリタリースコープ/AI搭載スコープ/神経伝達スコープ)を列ギャップ自動検出スライサで処理→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
 - 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/accessory-crit-1..5.png(新規), package.json
+
+## v0.25.651 — 装備アイコン: 部位3 弾薬系(アクセ)1-5 を反映=通常装備30種すべて完了
+- accessory-ammo-1..5(弾薬ポーチ/予備弾薬袋/軍用弾薬ベルト/弾薬収納ベスト/ミリタリー収納ベスト)を列ギャップ自動検出スライサで処理→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
+- これで通常装備30種(体/腕/アクセ × 2系統 × 5ランク)のアイコンが全て揃った。残るは特殊装備(武将セット3種)のアイコン素材のみ(未受領)。
+- 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/accessory-ammo-1..5.png(新規), package.json
