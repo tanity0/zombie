@@ -13298,3 +13298,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 ## v0.25.664 — ミッション開始音を追加(キャラ選択→スタート)
 - 'mission-start' を登録(public/audio/sfx/mission-start.mp3)。キャラ選択画面のスタート(startMission)で再生。従来そこで鳴っていた汎用 ui-select を専用のミッション開始音へ置換。
 - 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/components/MissionSelect.tsx, public/audio/sfx/mission-start.mp3(新規), package.json
+
+## v0.25.665 — 「斬」文字素材を白・透過で用意
+- 提供の達筆「斬」(RGBA: RGB黒/アルファに字形)を、RGBを白へ置換しアルファ維持→背景透過の白文字に変換。筆のかすれ/エッジ保持。public/sprites/zan.png(187x239)。
+- 黒だとステージに埋もれるため白化(社長指示)。配置先(刀/小烏丸フィニッシュ等の演出)は未接続=要指定。
+- 検証: 画像のみ。変更: public/sprites/zan.png(新規), package.json
