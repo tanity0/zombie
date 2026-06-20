@@ -575,11 +575,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         return;
       }
 
-      // ハリケーン鳴動「ゴゴゴゴ」: 発動中(かつ非ポーズ)だけループ。毎フレーム現状態で
-      // 駆動。idempotent なので遷移時のみ start/stop する。
-      setHurricaneRumble(
-        !useGameStore.getState().isPaused && !!useGameStore.getState().hurricane
-      );
+      // ハリケーン鳴動「ゴゴゴゴ」: 鞭ハリケーン発動中、または錬金術レア(死神)の吸引中だけループ。
+      // どちらも「中心へ敵を吸い寄せる渦」なので同じ鳴動を流用。毎フレーム現状態で駆動し、
+      // idempotent なので遷移時のみ start/stop する(非ポーズ時のみ)。
+      {
+        const gs = useGameStore.getState();
+        const reaperSuctionActive = gs.summons.some(s => s.kind === 'rare');
+        setHurricaneRumble(!gs.isPaused && (!!gs.hurricane || reaperSuctionActive));
+      }
 
       // Update FPS counter
       fpsCounterRef.current.frames++;

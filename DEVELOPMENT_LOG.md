@@ -13103,3 +13103,9 @@ health ピックアップ(肉)の回復を固定値(pickup.value)→**最大HP�
 ## v0.25.635 — ワクチン価格を500sに
 - 武器商人のワクチン(死亡時1度だけ復活)価格を 1000s → 500s に変更(`SHOP_VACCINE_COST`)。
 - 変更ファイル: src/store/gameStore.ts, package.json
+
+## v0.25.636 — 錬金術レア(死神)の吸引にもハリケーン音
+- 鞭ハリケーンと同じ「ゴゴゴゴ」鳴動を、錬金術レア(死神)召喚の吸引中もループ再生(どちらも中心へ敵を吸い寄せる渦のため流用)。`setHurricaneRumble` の条件に「kind==='rare' の召喚が存在」を追加。非ポーズ時のみ・idempotent 駆動は従来通り。
+- 負荷スコア: 1/10。毎フレームの軽い some() 判定のみ、新規音源なし。
+- 検証: npx tsc --noEmit 通過(exit 0)。
+- 変更ファイル: src/hooks/useGameLoop.ts, package.json
