@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.683 — ベンチマークを現仕様の最大負荷向けに作り直し
+
+- 旧ベンチは「グロー/リング/粒子/松明」と固定敵リストだけで、**弾を1発も出さず**、重量級の敵・
+  斬(テクスチャ)マーク・ライティングなど現状の重い系統を一切踏んでいなかった(=機能していない)。
+- `BenchmarkOverlay.tsx` を全面改修(**外部型 `BenchmarkResult`/`BenchmarkStageResult` は維持**、
+  GameOverScreen 互換):
+  - ステージを系統別にランプ: **BASE / ENEMY(重量級スプライト多数=影・光源) / PROJ(弾幕=移動+衝突判定) /
+    FX(リング・グロー・粒子・斬撃・ダメージ数字の嵐) / IMG(斬テクスチャマーク=最重量FX) /
+    LIGHT(松明+グロー=光源) / ALL(全系統同時を「考えうる最大」までA1→A2→MAX)**。
+  - 重量級プール=pumpkin/lab-zombie-3/giantbat/werewolf/reaper/lab-zombie-2、軽量プール=雑魚。
+  - 弾幕は phill-bullet を orbit でプレイヤー周囲に常駐させ、毎フレームの移動更新・衝突判定・描画を負荷化
+    (壁カリング対象外なので松明があっても消えない)。各tickで目標数へ補充/間引き。
+  - 結果表示に proj 最大数を追加。クリーンアップで bench-proj-* も除去。
+- **負荷スコア: 実行中のみ意図的に重い(最大ステージで敵72/弾140/FX数百)。手動起動の開発ツールで通常
+  プレイには一切関与しないため常時コストは 0/10**。計測の安定のため敵は root で静止(特殊AIを止める)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.682 — 犬ダッシュ距離を「プレイヤー距離+80px」に
 
 - 犬(werewolf)/lab-zombie-2 のダッシュ突進の狙い点を、従来の「プレイヤー位置の2倍オーバーシュート」から
