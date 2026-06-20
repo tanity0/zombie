@@ -13277,3 +13277,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 負荷スコア 1/10: ドロップは他スプライトpickupと同経路、HUD/バナーはDOM<img>少数。新規アセット9枚計~145KB。
 - 検証: tsc --noEmit 通過。各銃は赤背景プレビューで透過確認。
 - 変更: src/utils/weaponUtils.ts, src/pixi/pixiTextures.ts, src/pixi/pixiScene.ts, src/components/GameHUD.tsx, src/store/gameStore.ts, public/sprites/weapons/*.png(新規9), package.json
+
+## v0.25.661 — マークスマンのトラップ: レベルで発動範囲を明確に拡大
+- MARKSMAN_TRAP_RADIUS_BY_LEVEL を 44/52/60 → 50/78/106(+28/Lv)に変更。レベルアップで範囲が体感できるよう拡大(社長指示)。同時拘束数(=Lv)・3秒ルート・ルート中クリ率+10%・CD6.5s・持続9sは据え置き。
+- 設置時リング/発動リング等のVFXは同定数を参照するため自動追従。
+- 負荷スコア 1/10: 半径定数のみ変更。判定は既存の距離比較。
+- 検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json
