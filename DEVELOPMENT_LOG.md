@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.681 — ジャンプ/ダッシュカウンターのノックバック根治
+
+- **症状**: パンプキンのジャンプ攻撃をカウンターしても「その場で痺れているだけ」で弾き飛ばない。
+- **原因**: パリィは速度ノックバック(`knockbackVx/Vy`+`knockbackUntil`)のみを付与し、これは
+  `updateEnemies` が**翌フレーム以降**に適用する。着地時に付く `stun/lift`(ボス近接フィニッシュ経路)や
+  `recover` 再突入、`knockbackImmuneUntil` に上書きされ、小さな速度(KNOCKBACK_SPEED×2≒37px)が
+  見えないまま消えていた。
+- **修正** (`src/hooks/useGameLoop.ts` の2パリィ経路=着地ブラスト/接触forEach):
+  パリィ成立の瞬間に **即時の位置弾き飛ばし** `COUNTER_KNOCKBACK_LAUNCH=64px` を適用し、
+  `stunUntil/liftUntil/rootUntil` と `knockbackImmuneUntil` を全解除、続く速度スライドを
+  `COUNTER_KNOCKBACK_SPEED=KNOCKBACK_SPEED×3` に強化。aiPhase/ai系も完全リセット。
+  定数は `src/store/gameStore.ts` に追加。
+- **負荷**: 1/10(イベント時の1回の座標代入のみ。毎フレーム処理は増えない)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## 🔖 引き継ぎメモ (ローカルで再開) — 2026-06-17 (最新・ここを最初に読む)
 
 **運用**: 開始時に `git fetch` → 最新へ。変更ごとに version を上げ → dev 再起動 → **応答末尾に現バージョン明記**（CLAUDE.md の規約）。

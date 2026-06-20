@@ -258,6 +258,11 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // Counter knockback (additional effect on top of the bullet reflect).
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
+// ジャンプ/ダッシュ攻撃をカウンターした時の「弾き飛ばし」。速度ノックバックは updateEnemies が
+// 翌フレーム以降に適用するため、着地で付与される stun/lift に上書きされ「その場で痺れる」だけに
+// なっていた。→ パリィ成立の瞬間に即時で位置を飛ばす(LAUNCH)+その後も速く滑らせる(SPEED)。
+export const COUNTER_KNOCKBACK_LAUNCH = 64; // 即時に飛ばす距離(px)
+export const COUNTER_KNOCKBACK_SPEED = KNOCKBACK_SPEED * 3; // 続く速度スライド(従来は×2)
 // プレイヤー被弾ノックバック(ジャンプ攻撃で弾き出される)。movePlayer が減衰しながら適用。
 export const PLAYER_KNOCKBACK_SPEED = 460;
 export const PLAYER_KNOCKBACK_MS = 260;

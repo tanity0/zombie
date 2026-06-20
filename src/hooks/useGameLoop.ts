@@ -25,7 +25,8 @@ import {
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
   WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
-  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, KNOCKBACK_SPEED, MELEE_RADIUS,
+  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS,
+  COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult
@@ -1918,6 +1919,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
                     else { ndx = 0; ndy = -1; d = 1; } // それも潰れていれば上方へ弾く
                   }
+                  const ux = ndx / d, uy = ndy / d;
                   return {
                     ...e,
                     // 突進パリィと同じく aiPhase を完全解除して弾き返す。'recover' のままだと
@@ -1926,8 +1928,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     aiPhaseUntil: undefined, aiStartedAt: undefined,
                     aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
                     aiReadyAt: st.gameTime + 1200,
-                    knockbackVx: (ndx / d) * KNOCKBACK_SPEED * 2, // 2倍ノックバック
-                    knockbackVy: (ndy / d) * KNOCKBACK_SPEED * 2,
+                    // 【ジャンプカウンターのノックバック不発の根治】
+                    // ① 速度ノックバックは updateEnemies が「翌フレーム以降」に適用する=ジャンプ着地で
+                    //    付与される stun/lift/recover に上書きされて「その場で痺れる」だけになっていた。
+                    //    → ここで“即時に”位置を弾き飛ばす(COUNTER_KNOCKBACK_LAUNCH)。
+                    // ② 凍結系(stun/lift/root)と ノックバック無敵窓を全解除して、続く速度スライドを
+                    //    何にも邪魔させない。
+                    x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
+                    y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
+                    vx: 0, vy: 0,
+                    stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
+                    knockbackImmuneUntil: 0,
+                    knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
+                    knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
                     knockbackUntil: pnow + KNOCKBACK_DURATION,
                   };
                 }),
@@ -3263,12 +3276,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
                 else { ndx = 0; ndy = -1; d = 1; }
               }
+              const ux = ndx / d, uy = ndy / d;
               return {
                 ...e,
                 aiPhase: undefined, // 突進/ジャンプ中断
+                aiPhaseUntil: undefined, aiStartedAt: undefined,
+                aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
                 aiReadyAt: st.gameTime + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
-                knockbackVx: (ndx / d) * KNOCKBACK_SPEED * 2,
-                knockbackVy: (ndy / d) * KNOCKBACK_SPEED * 2,
+                // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
+                x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
+                y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
+                vx: 0, vy: 0,
+                stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
+                knockbackImmuneUntil: 0,
+                knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
+                knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
                 knockbackUntil: pnow + KNOCKBACK_DURATION,
               };
             }),
