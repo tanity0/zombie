@@ -13352,3 +13352,10 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - KATANA_DASH_MS は180のままなので、所要時間据え置き=ダッシュ速度も約2倍(長く速い一閃)。
 - 解釈: 「ダッシュ攻撃」=プレイヤーの刀一閃(敵の突進は 'charge'/突進)。敵の突進距離を2倍にしたい場合は別途対応。
 - 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, package.json
+
+## v0.25.674 — アンカー: 距離200 + ダッシュで通過した敵に自動近接
+- WIRE_ANCHOR_RANGE 110→200(飛距離=ダッシュ到達距離を延長)。
+- ワイヤーダッシュ中、プレイヤーが重なった(通過した)敵へ自動で近接ダメージ(近接武器ダメージ)。1ダッシュにつき敵1回(wirePassHitRef で記録)。斬撃FX+ダメージ数値+ノックバック(WIRE_LAND_KNOCKBACK_SPEED)。空中(jump)無敵は対象外。着地時の周囲近接(従来)はそのまま。
+- 負荷 1/10: ダッシュ中のみ・敵数ぶんの重なり判定。
+- 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, src/hooks/useGameLoop.ts, package.json
+- 備考: 指示「アンカーは」が途中で途切れていたため、その続きは未対応(要追記)。

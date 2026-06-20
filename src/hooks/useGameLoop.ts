@@ -288,6 +288,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ワイヤーダッシュ着地の近接攻撃を1ダッシュにつき1回だけ発火させるためのマーカー
   // (処理済みの wireDashUntil を覚える。常に増加するタイムスタンプなので衝突しない)。
   const wireLandedDashRef = useRef(0);
+  // ワイヤーダッシュ中に「通過した敵」へ自動近接する際、1ダッシュにつき敵1回だけ当てるための記録。
+  const wirePassHitRef = useRef<{ dash: number; ids: Set<string> }>({ dash: 0, ids: new Set() });
   // 前方集中(連射)タレットの索敵スキャン角(rad)。射程に敵がいない間ゆっくり回転する。
   const turretAimRef = useRef<Map<string, number>>(new Map());
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
@@ -3042,6 +3044,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const nowW = Date.now();
           const pcx = wp.x + wp.width / 2;
           const pcy = wp.y + wp.height / 2;
+          // ワイヤーダッシュ中: 通過した敵に自動で近接攻撃(1ダッシュにつき敵1回)。
+          if (wp.wireDashUntil > 0 && nowW < wp.wireDashUntil) {
+            if (wirePassHitRef.current.dash !== wp.wireDashUntil) {
+              wirePassHitRef.current = { dash: wp.wireDashUntil, ids: new Set() };
+            }
+            const seen = wirePassHitRef.current.ids;
+            const melee = wp.weapons.find(w => w.isMelee);
+            const dmg = melee?.damage ?? 6;
+            for (const e of useGameStore.getState().enemies) {
+              if (seen.has(e.id)) continue;
+              if (e.aiPhase === 'jump') continue; // 空中無敵は対象外
+              if (!checkCollision(wp, e)) continue; // プレイヤーが重なった=通過
+              seen.add(e.id);
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              const killed = useGameStore.getState().damageEnemy(e.id, dmg);
+              spawnDamageNumber(ecx, e.y, dmg, false);
+              spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
+              if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
+                const dx = ecx - pcx, dy = ecy - pcy;
+                const dd = Math.hypot(dx, dy) || 1;
+                useGameStore.setState({
+                  enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
+                    ...x,
+                    knockbackVx: (dx / dd) * WIRE_LAND_KNOCKBACK_SPEED,
+                    knockbackVy: (dy / dd) * WIRE_LAND_KNOCKBACK_SPEED,
+                    knockbackUntil: nowW + KNOCKBACK_DURATION,
+                    knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
+                  } : x),
+                });
+              }
+            }
+          }
           // ワイヤーダッシュ着地: 到着フレームで1回だけ、周囲へ近接攻撃(2倍ノックバック)。
           // wireDashUntil は常に増加するタイムスタンプなので、処理済みの値を覚えて重複発火を防ぐ。
           if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current !== wp.wireDashUntil) {
