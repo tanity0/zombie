@@ -13195,3 +13195,7 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - body-mobility-1..5(ランニングシューズ/エアブーツ/ジェットブーツ/エアスラスト/カーボンエアスラスト)を紫クロマキー除去→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
 - これで部位1(体)の防護系・機動系=計10種のアイコンが揃った。
 - 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/body-mobility-1..5.png(新規), package.json
+
+## v0.25.647 — 装備アイコン: 部位2・火力系(腕)1-5 を反映
+- arms-firepower-1..5(強化バレル/ロングバレル/アサルトバレル/エレクトロバレル/対変異体バレル)を紫クロマキー除去→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
+- 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/arms-firepower-1..5.png(新規), package.json
