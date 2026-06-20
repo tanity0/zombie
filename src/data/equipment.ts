@@ -232,6 +232,7 @@ export const EQUIP_ICON_IDS: ReadonlySet<string> = new Set<string>([
   'body-protection-1', 'body-protection-2', 'body-protection-3', 'body-protection-4', 'body-protection-5',
   'body-mobility-1', 'body-mobility-2', 'body-mobility-3', 'body-mobility-4', 'body-mobility-5',
   'arms-firepower-1', 'arms-firepower-2', 'arms-firepower-3', 'arms-firepower-4', 'arms-firepower-5',
+  'arms-handling-1', 'arms-handling-2', 'arms-handling-3', 'arms-handling-4', 'arms-handling-5',
 ]);
 
 export const hasEquipIcon = (defId: string | null | undefined): boolean =>

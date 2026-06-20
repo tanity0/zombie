@@ -13204,3 +13204,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 旧シートは等分スライスで隣アイテムが写り込んでいた。間隔を空けた差し替えシートを、列の空白で自動的にアイテム境界を検出するスライサで再処理し arms-firepower-1..5 を上書き(各アイテムを正しく分離)。
 - 今後の素材も列ギャップ自動検出スライサ(/tmp/equip_proc2.py 相当)で処理する。
 - 検証: tsc 影響なし(画像のみ差し替え)。変更: public/sprites/equip/arms-firepower-1..5.png(上書き), package.json
+
+## v0.25.649 — 装備アイコン: 部位2 取り回し系(腕)1-5 を反映
+- arms-handling-1..5(マガジンウェル/強磁石マガジンウェル/スピードローダー/ダブルマガジン/フルオートリローダー)を列ギャップ自動検出スライサで処理→96x96で追加し EQUIP_ICON_IDS に登録。左→右=ランク昇順。
+- 部位2(腕)=火力系・取り回し系の計10種が完了。残るはアクセ(クリ系/弾薬系)。
+- 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/arms-handling-1..5.png(新規), package.json
