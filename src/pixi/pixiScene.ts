@@ -13,7 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
+import { BlurFilter, Container, Graphics, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
@@ -5010,10 +5010,43 @@ export class PixiScene {
     }
   }
 
+  // 数値ダメージ用のビットマップフォント(共有グリフアトラス)。一度だけ生成。
+  // 数字は毎フレーム大量に出るので、Text(spawn毎にcanvasラスタライズ+GPUアップロード)を避け、
+  // BitmapText(アトラスから描画・プール再利用・色はtint)にする=最重だった FX-D を軽くする。
+  private static DAMAGE_FONT = 'dmg-num';
+  private static DAMAGE_FONT_SIZE = 30; // アトラスのベースサイズ(表示はscaleで縮める)
+  private damageFontReady = false;
+  private ensureDamageFont() {
+    if (this.damageFontReady) return;
+    try {
+      BitmapFont.install({
+        name: PixiScene.DAMAGE_FONT,
+        style: {
+          // 白で焼き、色は tint で出し分ける(crit=金 / 通常=白 など)。黒フチも焼き込む。
+          fontFamily: '"Special Elite", ui-rounded, system-ui, sans-serif',
+          fontSize: PixiScene.DAMAGE_FONT_SIZE,
+          fontWeight: 'bold',
+          fill: 0xffffff,
+          stroke: { color: 0x020617, width: 5 },
+        },
+        chars: '0123456789',
+        resolution: 2,
+      });
+      this.damageFontReady = true;
+    } catch {
+      // 生成失敗時は Text フォールバックのまま(damageFontReady=false)。
+    }
+  }
+
   private drawDamageNumber(e: Extract<VisualEffect, { kind: 'damageNumber' }>, now: number) {
     const t = (now - e.createdAt) / e.duration;
     const scale = e.scale ?? (e.crit ? 1.35 : 1);
     const bold = e.crit || scale > 1.2;
+    // 数値のみ(コールアウト文字や明朝でない)は BitmapText の高速パス。
+    if (e.text === undefined && !e.serif) {
+      this.ensureDamageFont();
+      if (this.damageFontReady) { this.drawDamageNumberBitmap(e, t, scale, bold); return; }
+    }
     let txt = this.effects.get(e.id) as Text | undefined;
     if (!txt || !(txt instanceof Text)) {
       txt = new Text({
@@ -5039,6 +5072,27 @@ export class PixiScene {
     txt.position.set(e.x, e.y - t * 12);
     txt.scale.set(pop);
     txt.alpha = Math.max(0, 1 - t);
+  }
+
+  // 数値ダメージの BitmapText 描画(プール再利用・色は tint)。Text のラスタライズコストを回避。
+  private drawDamageNumberBitmap(
+    e: Extract<VisualEffect, { kind: 'damageNumber' }>, t: number, scale: number, bold: boolean
+  ) {
+    let bt = this.effects.get(e.id);
+    if (!(bt instanceof BitmapText)) {
+      if (bt) bt.destroy();
+      bt = new BitmapText({ text: String(e.value), style: { fontFamily: PixiScene.DAMAGE_FONT, fontSize: PixiScene.DAMAGE_FONT_SIZE } });
+      bt.anchor.set(0.5, 0.5);
+      this.L.effectLayer.addChild(bt);
+      this.effects.set(e.id, bt);
+    }
+    bt.visible = true;
+    // 表示高さ(=従来 Text の 15*scale)に合わせてアトラスを縮小 + 出だしの pop。
+    const pop = 1 + Math.max(0, 1 - t * 5) * (bold ? 0.22 : 0.14);
+    bt.scale.set(((15 * scale) / PixiScene.DAMAGE_FONT_SIZE) * pop);
+    bt.position.set(e.x, e.y - t * 12);
+    bt.tint = e.color; // crit=金 / 通常=白 などを tint で
+    bt.alpha = Math.max(0, 1 - t);
   }
 
   // 一枚絵マーク(刀フィニッシュの習字「斬」など)。pop-in→保持→末尾フェード。world座標(effectLayer)。

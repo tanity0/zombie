@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.691 — ダメージ数字を BitmapText 化(最重 FX-D の軽量化・段階1)
+
+- ベンチ最重の `FX-D`(ダメージ数字)の真因=spawn毎の Pixi `Text` 生成(canvasラスタライズ+GPU
+  アップロード)。これを **BitmapText(共有グリフアトラスから描画・プール再利用・色は tint)** に置換。
+- 実装(`pixiScene.ts`):
+  - `BitmapFont.install('dmg-num')` を初回1回だけ生成(白で焼き・黒フチ焼き込み・chars='0-9'・resolution2)。
+  - `drawDamageNumber`: **数値のみ(text未指定かつ非serif)は BitmapText 高速パス**、色は `tint`(crit=金/通常=淡黄)。
+    任意テキストのコールアウト(Counter!/斬/四神名 等・日本語含む・低頻度)は従来 `Text` のまま。
+  - フォント生成失敗時は Text フォールバック。
+- 期待効果: `FX-D D20`(avg17/min10)が大幅改善するはず(要・次回ベンチで確認)。敵/弾の削減ではなく描画方式の置換。
+- 負荷: 既存 Text 経路より軽い(毎spawnのラスタライズ消滅)。アトラスは1回だけ生成。
+- 検証: `npx tsc --noEmit` パス。次の段階候補: glow/ring/particle の pooled スプライト化。
+
 ## v0.25.690 — 全画面ブルームを撤回(ワールド真っ黒バグ)
 
 - v0.25.689 の全画面ブルーム(sceneRoot)で**ワールドが真っ黒**になる不具合(社長報告)。
