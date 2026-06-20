@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.695 — 影の調整(夜=従来へ / 昼=濃く・右奥向き)
+
+- **夜の影を従来仕様へ戻す**: MOONLIGHT_PRESET の shadowLength 18→**32** / shadowAlpha 0.12→**0.26**
+  (= v0.25.694 以前に全ステージで使っていた値)。向きは従来(右手前=STAGE_LIGHT_SHAFT_DIRECTION)。
+- **昼の影**: shadowAlpha 0.26→**0.38**(少し濃く)、長さ 32→36、向きを **右奥寄り**
+  (`SUNLIGHT_SHADOW_DIRECTION = {x:0.7, y:-0.45}`)。
+- god ray(光シャフト)は `STAGE_LIGHT_SHAFT_DIRECTION` 定数を使うため、昼の影向き変更の影響を受けない
+  (影だけが右奥へ)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.694 — ライティングpresetを昼/夜で配線(sunlight/moonlight)
 
 - これまで未配線だった `SUNLIGHT_PRESET`(昼)/`MOONLIGHT_PRESET`(夜)を `daylight` フラグに接続。

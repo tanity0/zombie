@@ -233,6 +233,8 @@ type StageLightingPreset = {
 };
 
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
+// 昼(sunlight)の影だけの方向: 右奥寄り(右＋奥=画面上方向 -y)。god ray は上の定数を使うので影だけに効く。
+const SUNLIGHT_SHADOW_DIRECTION = { x: 0.7, y: -0.45 };
 const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
 const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
@@ -269,12 +271,12 @@ const SHIELD_BLOCK_FALL_MS = 180;   // 盾で弾かれたジャンプの空中�
 
 const SUNLIGHT_PRESET: StageLightingPreset = {
   name: 'sunlight',
-  direction: STAGE_LIGHT_SHAFT_DIRECTION,
+  direction: SUNLIGHT_SHADOW_DIRECTION, // 影は右奥寄り(god ray は別=STAGE_LIGHT_SHAFT_DIRECTION)
   color: 0xffe3a3,
   intensity: 0.24,
   contrast: 0.18,
-  shadowLength: 32,
-  shadowAlpha: 0.26,
+  shadowLength: 36,
+  shadowAlpha: 0.38, // 昼の影を少し濃く(0.26→0.38)
   shaftAlpha: 0.085,
   bloomScale: 1.16,
   playerAssistAlpha: 0.1,
@@ -287,8 +289,9 @@ const MOONLIGHT_PRESET: StageLightingPreset = {
   color: 0x9fb7ff,
   intensity: 0.16,
   contrast: 0.12,
-  shadowLength: 18,
-  shadowAlpha: 0.12,
+  // 夜の影は従来仕様(全ステージ sunlight 時)に戻す: 長さ32 / 濃さ0.26 / 向きは従来(右手前)。
+  shadowLength: 32,
+  shadowAlpha: 0.26,
   shaftAlpha: 0.045,
   bloomScale: 1.08,
   playerAssistAlpha: 0.09,
