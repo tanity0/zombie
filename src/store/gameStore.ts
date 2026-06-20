@@ -1114,6 +1114,8 @@ interface GameState {
   vaccinePurchased: boolean;
   // Flipped true the moment the finale boss (giantbat) dies — the run is won.
   gameWon: boolean;
+  // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
+  gameReturned: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
   meleeAmmoDropPercent: number;
   // Debug setting: ammo granted by one ammo-box pickup per weapon family.
@@ -1223,6 +1225,7 @@ interface GameState {
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
   openShop: () => void;
   closeShop: () => void;
+  returnToBase: () => void;                              // 商人「帰還」=任意撤収(スコア計上・進行なし・装備持ち帰り)
   openEventQuest: () => void;
   acceptEventQuest: () => void;
   declineEventQuest: () => void;
@@ -1474,6 +1477,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   eventQuestReopenAt: 0,
   vaccinePurchased: false,
   gameWon: false,
+  gameReturned: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
   unlockedShopSkillCards: {},
@@ -3686,6 +3690,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
+  // 商人「帰還」: 任意撤収。スコアは計上(リザルトで算出)、クリアボーナス/進行は無し、
+  // 装備は持ち帰り可(=死亡ではないのでロストしない)。Game.tsx が gameReturned を監視して onReturn を呼ぶ。
+  returnToBase: () => {
+    set({ gameReturned: true, showShopMenu: false, isPaused: false });
+  },
+
   openEventQuest: () => {
     set({
       showEventQuestMenu: true,
@@ -5879,6 +5889,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         eventQuestReopenAt: 0,
         vaccinePurchased: false,
         gameWon: false,
+        gameReturned: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,
         // 四神舞(ダンスフロア)状態を初期化。これを忘れると再プレイ時に lastTapAt 等が前ゲームのまま残り、

@@ -23,6 +23,7 @@ import { useGameControls } from '../hooks/useGameControls';
 interface GameProps {
   onGameOver: () => void;
   onVictory: () => void;
+  onReturn?: () => void;
   benchmarkMode?: boolean;
   onBenchmarkComplete?: (result: BenchmarkResult) => void;
 }
@@ -30,6 +31,7 @@ interface GameProps {
 const Game: React.FC<GameProps> = ({
   onGameOver,
   onVictory,
+  onReturn,
   benchmarkMode = false,
   onBenchmarkComplete
 }) => {
@@ -47,6 +49,7 @@ const Game: React.FC<GameProps> = ({
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
   const [showUpgradeOverlay, setShowUpgradeOverlay] = useState(false);
   const gameWon = useGameStore(state => state.gameWon);
+  const gameReturned = useGameStore(state => state.gameReturned);
   // 死亡判定に使うのは health だけ。player 全体を購読すると移動で毎フレーム再描画され、子(HUD/Stage)へ波及する。
   const playerHealth = useGameStore(state => state.player.health);
   const setGameBounds = useGameStore(state => state.setGameBounds);
@@ -108,6 +111,13 @@ const Game: React.FC<GameProps> = ({
       onVictory();
     }
   }, [gameWon, onVictory]);
+
+  // 商人「帰還」で任意撤収したらリザルト(撤収)へ。
+  useEffect(() => {
+    if (gameReturned) {
+      onReturn?.();
+    }
+  }, [gameReturned, onReturn]);
   
   // Handle keyboard pause toggle
   useEffect(() => {

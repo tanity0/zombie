@@ -14,6 +14,7 @@ interface GameOverScreenProps {
   onReturnToMenu: () => void;
   onPlayAgain: () => void;
   won?: boolean;
+  withdraw?: boolean; // 商人「帰還」=任意撤収。死亡ではない(装備ロスト無し)・クリアでもない(ボーナス/進行なし)。
   benchmarkResult?: BenchmarkResult | null;
 }
 
@@ -64,6 +65,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   onReturnToMenu,
   onPlayAgain,
   won = false,
+  withdraw = false,
   benchmarkResult = null
 }) => {
   const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -149,13 +151,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     >
       <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto rounded-3xl">
         <div className="px-4 pt-5 pb-2 text-center">
-          <h2 className={`text-2xl font-semibold tracking-tight ${won ? 'text-amber-300' : 'text-white'}`}>
-            {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : 'ゲームオーバー'}
+          <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
+            {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : withdraw ? '帰還' : 'ゲームオーバー'}
           </h2>
           <p className="text-[13px] text-white/60 mt-1">
-            {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '闇に飲み込まれました'}
+            {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : withdraw ? '装備を持って撤収した' : '闇に飲み込まれました'}
           </p>
-          {!isBenchmark && !won && hadEquipment && (
+          {!isBenchmark && !won && !withdraw && hadEquipment && (
             <p className="mt-2 inline-block rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1 text-[12px] font-semibold text-rose-200">
               装備をすべてロストしました
             </p>
@@ -284,7 +286,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           </div>
-          {won && hadEquipment && (
+          {(won || withdraw) && hadEquipment && (
             <div className="mb-3 rounded-2xl bg-amber-400/5 border border-amber-300/30 px-3 py-2.5">
               <div className="text-[11px] font-semibold text-amber-200 mb-2">持ち帰る装備を1つ選択（他は破棄）</div>
               <div className="flex flex-col gap-1.5">

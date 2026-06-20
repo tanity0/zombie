@@ -1,5 +1,5 @@
 // Game state types
-export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory';
+export type GameState = 'title' | 'menu' | 'loading' | 'playing' | 'paused' | 'gameOver' | 'victory' | 'returned';
 
 // Character class types
 export type CharacterClass = 'warrior' | 'mage' | 'rogue' | 'necromancer';

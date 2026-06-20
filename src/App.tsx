@@ -80,6 +80,11 @@ function App() {
     setGameState('gameOver');
   };
 
+  const handleReturn = () => {
+    // 商人「帰還」=任意撤収。進行(クリア解放)はさせず、スコア計上のリザルトへ。装備は持ち帰り可。
+    setGameState('returned');
+  };
+
   const handleVictory = () => {
     // 勝利したら選択中ステージのメインミッションをクリア扱いにし、次ステージを解放する。
     // (ダンス練習/ベンチは選択ステージを空にしているのでここでは何も起きない)
@@ -124,14 +129,16 @@ function App() {
         <Game
           onGameOver={handleGameOver}
           onVictory={handleVictory}
+          onReturn={handleReturn}
           benchmarkMode={benchmarkMode}
           onBenchmarkComplete={handleBenchmarkComplete}
         />
       )}
 
-      {(gameState === 'gameOver' || gameState === 'victory') && (
+      {(gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
         <GameOverScreen
           won={gameState === 'victory'}
+          withdraw={gameState === 'returned'}
           stats={gameStats}
           benchmarkResult={benchmarkResult}
           onReturnToMenu={returnToMenu}

@@ -13257,3 +13257,11 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 帰還(商人)経由の持ち帰りUIは別タスクのまま(takeHomeEquipment アクションは流用可能)。
 - 負荷スコア 1/10: いずれも静的メニューUI、毎フレームコスト無し。
 - 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, src/components/GameOverScreen.tsx, src/components/MissionSelect.tsx, package.json
+
+## v0.25.659 — 商人「帰還」(任意撤収)を実装
+- 武器商人に「帰還する」ボタンを追加(コスト0)。タップで returnToBase() → gameReturned=true。
+- フロー: Game.tsx が gameReturned を監視→onReturn→App handleReturn→gameState 'returned'(新規)→GameOverScreen(withdraw)。
+- 帰還リザルト: タイトル「帰還/装備を持って撤収した」。スコアは計上(ゴールド換算も適用)、クリアボーナス/時間ボーナス無し(won=false)、ステージ進行(markStageCleared)も無し。死亡ではないので「装備ロスト」非表示&装備の持ち帰りピッカーを表示(クリア時と同一UI)。
+- 死亡(gameOver)時のみ「装備ロスト」表示・持ち帰り不可は据え置き。新state 'returned' のBGMは停止(その他扱い)。store/Game/App/GameOverScreen/ShopMenu/型 を更新。
+- 負荷スコア 1/10: フラグ監視+静的UIのみ。
+- 検証: tsc --noEmit 通過。変更: src/types/game.ts, src/store/gameStore.ts, src/components/Game.tsx, src/App.tsx, src/components/GameOverScreen.tsx, src/components/ShopMenu.tsx, package.json

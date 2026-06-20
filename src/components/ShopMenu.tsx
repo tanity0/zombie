@@ -65,6 +65,7 @@ const ShopMenu: React.FC = () => {
   const buyShopItem = useGameStore(state => state.buyShopItem);
   const buySkillCardFromShop = useGameStore(state => state.buySkillCardFromShop);
   const closeShop = useGameStore(state => state.closeShop);
+  const returnToBase = useGameStore(state => state.returnToBase);
 
   // 研究所(屋内)では商人はPHILL弾のみ販売。研究所スキン(lab テーマ)の屋外は従来3種＋PHILL弾。屋外は従来3種。
   const indoorMode = useGameStore(state => state.indoorMode);
@@ -178,7 +179,14 @@ const ShopMenu: React.FC = () => {
           })}
         </div>
 
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-2">
+          <button
+            onClick={() => { playSfx('ui-select'); returnToBase(); }}
+            className="w-full rounded-2xl border border-amber-300/40 bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
+          >
+            帰還する
+            <span className="block text-[10px] font-normal text-amber-100/70">装備を1つ持ち帰り撤収（スコア計上・進行/クリアボーナスなし）</span>
+          </button>
           <button
             onClick={closeShop}
             className="w-full rounded-2xl bg-white/10 border border-white/10 py-3 text-sm font-bold text-white/90"
