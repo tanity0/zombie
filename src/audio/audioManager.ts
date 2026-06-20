@@ -44,6 +44,7 @@ type WindowWithWebAudio = Window & {
 export type SfxKey =
   | 'ui-select'
   | 'mission-start'
+  | 'title-start'
   | 'event-clear'
   | 'event-start'
   | 'shoot'
@@ -93,6 +94,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // キャラ選択を終えてミッション開始するときの音(社長提供SE)。
   'mission-start': {
     src: `${import.meta.env.BASE_URL}audio/sfx/mission-start.mp3`,
+    volume: 0.85,
+  },
+  // 同意画面の後、タイトルのSTARTを押したときの音(社長提供SE)。
+  'title-start': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/title-start.mp3`,
     volume: 0.85,
   },
   // 戦闘中の小イベント(囲い/救助など)発生音(社長提供SE)。

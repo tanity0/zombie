@@ -30,7 +30,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
   // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転
   const tapStart = () => {
     if (phase !== 'title') return;
-    playSfx('ui-select');
+    playSfx('title-start');
     setPhase('loading');
     const startedAt = performance.now();
     const MIN_LOADING_MS = 900; // ロードが速すぎてもスピナーを一瞬は見せる

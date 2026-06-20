@@ -13303,3 +13303,7 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 提供の達筆「斬」(RGBA: RGB黒/アルファに字形)を、RGBを白へ置換しアルファ維持→背景透過の白文字に変換。筆のかすれ/エッジ保持。public/sprites/zan.png(187x239)。
 - 黒だとステージに埋もれるため白化(社長指示)。配置先(刀/小烏丸フィニッシュ等の演出)は未接続=要指定。
 - 検証: 画像のみ。変更: public/sprites/zan.png(新規), package.json
+
+## v0.25.666 — タイトルSTART音を追加(同意画面の後のSTART)
+- 'title-start' を登録(public/audio/sfx/title-start.mp3)。タイトル(the ONE)のSTARTタップ(tapStart)で再生。従来の汎用 ui-select を専用音へ置換。同意ボタン(agree)は ui-select のまま。
+- 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/components/TitleScreen.tsx, public/audio/sfx/title-start.mp3(新規), package.json
