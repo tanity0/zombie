@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.686 — ステージ3遠景が変わらない不具合修正(tileScale再計算)
+
+- 症状: ステージ3の遠景差し替えが見た目に反映されない。
+- 原因: 遠景は TilingSprite で、その `tileScale` は `resize()` でしか算出していなかった。
+  実行中に `applyFarBackdrop` でテクスチャを差し替えても、**旧テクスチャ(森パノラマ)寸法基準の
+  tileScale のまま**になり、寸法の違う廃都テクスチャが崩れて表示=「変わってない」ように見えていた。
+- 修正: `layoutFarBackdrop()` を新設し、テクスチャ差し替え直後に現在のテクスチャ寸法＋画面サイズで
+  width/height/tileScale を再計算。`applyFarBackdrop` から呼ぶ。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.685 — 負荷スコア基準を実測で更新 + FX単軸分解ベンチ
 
 - ベンチ実測(社長報告)を CLAUDE.md「Performance review」に反映:

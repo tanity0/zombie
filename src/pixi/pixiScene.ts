@@ -1381,7 +1381,23 @@ export class PixiScene {
     if (desired === 'lab') tex = getTexture('lab/lab-far-backdrop') ?? null;
     else if (desired === 'forest') tex = this.farBackdropBaseTex;
     else tex = this.farBackdropOverrides[desired] ?? this.farBackdropBaseTex;
-    if (tex) { this.L.farBackdrop.texture = tex; this.currentFarKey = desired; }
+    if (tex) {
+      this.L.farBackdrop.texture = tex;
+      this.currentFarKey = desired;
+      // tileScale は resize() でしか計算されないため、差し替えテクスチャの寸法が違うと
+      // 旧テクスチャ基準のスケールのまま=見た目が変わらない/崩れる。ここで再レイアウトする。
+      this.layoutFarBackdrop();
+    }
+  }
+  // 遠景TilingSpriteの寸法/タイルスケールを現在のテクスチャと画面サイズで再計算。
+  private layoutFarBackdrop() {
+    const tex = this.L.farBackdrop.texture;
+    if (!tex || tex.width <= 0 || tex.height <= 0) return;
+    const farH = this.farBackdropHeight();
+    const farScale = Math.max(this.screenW / tex.width, farH / tex.height);
+    this.L.farBackdrop.width = this.screenW;
+    this.L.farBackdrop.height = farH;
+    this.L.farBackdrop.tileScale.set(farScale);
   }
   private applyOutdoorGroundTheme(theme: StageTheme, farKey = '') {
     const strips = this.L.groundStrips;
