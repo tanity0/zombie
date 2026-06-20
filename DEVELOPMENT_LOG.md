@@ -13243,3 +13243,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 不具合: ゴールド換算は既に SCORE/2000(resultScoring.ts、6/19に3000→2000へ変更済み)だが、リザルト画面の説明テキストだけ旧表記「SCORE / 3000」のままだった=表示と実計算の不一致。
 - 修正: GameOverScreen の注記を「ゴールド = SCORE / 2000」に更新(計算ロジックは変更なし=元から正しい)。
 - 検証: tsc --noEmit 通過。変更: src/components/GameOverScreen.tsx, package.json
+
+## v0.25.657 — 装備アイコン: 特殊装備(武将セット)3種を反映=全33アイコン完了
+- special-accessory(武将の兜)/special-arms(武将の小手)/special-body(武将の鎧)を追加し EQUIP_ICON_IDS に登録。
+- 提供シートは左→右が 兜/小手/鎧 の順だったため def(slot)へ明示マッピング。小手は左右手の対で2塊に分かれるため、近接runを結合(<80px)して1アイコンに統合。紫っぽさ判定キーアで金縁も保持(赤背景で透過穴ゼロ確認)。
+- これで通常30+特殊3=全33装備アイコンが揃った。UpgradeMenu の特殊選択肢は金枠+実アイコン表示に。
+- 検証: tsc --noEmit 通過。変更: src/data/equipment.ts, public/sprites/equip/special-{body,arms,accessory}.png(新規), package.json
