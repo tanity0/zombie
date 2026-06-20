@@ -13365,3 +13365,7 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 敵の突進(ダッシュ攻撃)をプレイヤー位置止まり→「その方向へ2倍の距離(オーバーシュート)」に。狙い点を 2*player - enemy にして、プレイヤーを通り越して突進。werewolf/lab-zombie-2(3935) と giantbat(4009) の両方の溜め開始で適用。赤ライン予告も2倍ラインで表示。
 - WEREWOLF_CHARGE_MAX_MS 1400→2800(2倍距離を3倍速で到達し切れるよう打ち切り時間を延長)。
 - 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, package.json
+
+## v0.25.676 — 刀ダッシュ(一閃)距離を1.2倍に
+- KATANA_DASH_DISTANCE 128→154(×1.2、四捨五入)。刀/小烏丸 共通。移動距離・命中判定・軌跡・「斬」位置はこの定数由来で一括反映。所要時間(180ms)据え置き=速度わずかに増。
+- 検証: tsc --noEmit 通過。変更: src/store/gameStore.ts, package.json
