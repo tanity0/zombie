@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.696 — 昼の影を気持ち下げる
+
+- `SUNLIGHT_SHADOW_DIRECTION` の y を -0.45 → **-0.28**(右奥の上向き成分を弱め、少し下=手前寄りに)。x=0.7据置。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.695 — 影の調整(夜=従来へ / 昼=濃く・右奥向き)
 
 - **夜の影を従来仕様へ戻す**: MOONLIGHT_PRESET の shadowLength 18→**32** / shadowAlpha 0.12→**0.26**

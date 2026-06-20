@@ -234,7 +234,7 @@ type StageLightingPreset = {
 
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
 // 昼(sunlight)の影だけの方向: 右奥寄り(右＋奥=画面上方向 -y)。god ray は上の定数を使うので影だけに効く。
-const SUNLIGHT_SHADOW_DIRECTION = { x: 0.7, y: -0.45 };
+const SUNLIGHT_SHADOW_DIRECTION = { x: 0.7, y: -0.28 };
 const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
 const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
