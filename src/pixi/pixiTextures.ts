@@ -88,6 +88,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t1', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t2', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3', scaleMode: 'nearest' },
+      { name: 'weapons/phill-revolver', scaleMode: 'nearest' },
       { name: 'torch', scaleMode: 'nearest' },
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま

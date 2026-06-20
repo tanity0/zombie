@@ -13283,3 +13283,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 設置時リング/発動リング等のVFXは同定数を参照するため自動追従。
 - 負荷スコア 1/10: 半径定数のみ変更。判定は既存の距離比較。
 - 検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json
+
+## v0.25.662 — 銃スプライト: PHILL銃を追加=全10種完了
+- phill-revolver(ＰＨＩＬＬ-銃)を追加。黒背景だったため角色距離フラッドフィルで除去(明るい銃体は保持)→128px化し WEAPON_ICON_KEYS / pixiTextures に登録。
+- これで全銃(handgun/shotgun/rifle 各3 + PHILL)のスプライトが揃い、ドロップ/ピックアップ/HUD/入手バナーで実アイコン表示。
+- 検証: tsc --noEmit 通過。変更: src/utils/weaponUtils.ts, src/pixi/pixiTextures.ts, public/sprites/weapons/phill-revolver.png(新規), package.json
