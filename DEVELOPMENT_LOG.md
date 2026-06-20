@@ -13131,3 +13131,11 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - アクセ・弾薬系: 弾薬ポーチ/予備弾薬袋/軍用弾薬ベルト/弾薬収納ベスト/ミリタリー収納ベスト
 - 特殊装備(3ステ・5%): 体=武将の鎧 / 腕=ガントレットオブゴッド / アクセ=クリスタルスカル(暫定名から確定)
 - 検証: npx tsc --noEmit 通過。装備未付与のため挙動不変。変更ファイル: src/data/equipment.ts, package.json
+
+## v0.25.639 — 商人微調整: 村雨→小烏丸リネーム(表示名のみ)/賢者の石 価格100s確定
+- 「村雨」を表示名のみ「小烏丸」へリネーム。内部キー murasame・性能・刀Lv3解放・価格100s は据え置き。
+  - subWeaponDisplayName('murasame') → '小烏丸'(商人/HUDチップ等の表示はこの関数経由で一括反映)。
+  - GameHUD の刀チップ名(murasameEquipped 時)も '小烏丸' に。
+  - コード内コメントの「村雨」は内部用語として温存(表示には出ない)。
+- 賢者の石の価格は SHOP_SAGE_STONE_COST=100 で既に100s。仕様確定としてコメントの「仮値/TODO」を除去(値は不変)。錬金術Lv3解放は既存どおり。
+- 検証: npx tsc --noEmit 通過。変更ファイル: src/store/gameStore.ts, src/components/GameHUD.tsx, package.json

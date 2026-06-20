@@ -354,7 +354,7 @@ const GameHUD: React.FC = () => {
               {melee && (() => {
                 const murasameEquipped = player.subWeapons.includes('murasame');
                 const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
-                const katanaName = murasameEquipped ? '村雨' : '刀';
+                const katanaName = murasameEquipped ? '小烏丸' : '刀';
                 // 鞭を取得するとナイフ枠を鞭が占有(刀装備が優先)。ナイフ表示は消える。
                 const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
                 return (

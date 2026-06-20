@@ -374,7 +374,7 @@ export const HURRICANE_DAMAGE_INTERVAL_MS = 500;                 // ダメージ
 export const SHOP_WHIP_COST = 100;                               // TODO(鞭): 商人での鞭カード価格
 export const SHOP_TURRET_COST = 100;                             // TODO(自動タレット): 仮値。商人でのタレットカード価格
 export const SHOP_SHIJIN_COST = 100;                             // TODO(四神舞): 仮値。商人での四神舞カード価格
-export const SHOP_SAGE_STONE_COST = 100;                         // TODO(賢者の石): 仮値。錬金術Lv3で武器商人に並ぶ特殊枠サブ価格
+export const SHOP_SAGE_STONE_COST = 100;                         // 賢者の石: 100s(仕様確定)。錬金術Lv3で武器商人に並ぶ特殊枠サブ価格
 
 export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
 // 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
@@ -843,7 +843,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'striker-hunting': return 'ハンティング';
     case 'dog': return 'ドッグ';
     case 'katana': return '刀';
-    case 'murasame': return '村雨';
+    case 'murasame': return '小烏丸'; // 表示名のみ小烏丸へ(内部キー murasame・性能/解放は据え置き)
     case 'decoy': return 'デコイ';
     case 'shield': return 'シールド';
     case 'whip': return '鞭';
