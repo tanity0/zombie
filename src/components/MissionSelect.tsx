@@ -101,7 +101,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
   // --- 開始処理 ---------------------------------------------------------
   const startMission = (stageId: string, charId: CharacterClass) => {
-    playSfx('ui-select');
+    playSfx('mission-start');
     useGameStore.getState().setDanceTestMode(false);
     setSelectedStageId(stageId);          // 勝利時にこのステージをクリア扱いにする(App側)
     setSelectedFreeMode(freeMode);        // フリー(周回)=会話なし & クリア進行に影響させない

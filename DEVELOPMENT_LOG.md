@@ -13294,3 +13294,7 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 修正: 背景判定を「中性の近黒のみ(r<18 g<18 b<22 かつ b-g<=12)」に限定。暗紫(b-g大)の銃体・ルーンは保持。真の黒背景と銃の開口部(フレームの実際の穴)のみ透過。
 - phill-revolver.png を再生成(128px・透過確認済み)。
 - 検証: 画像のみ。変更: public/sprites/weapons/phill-revolver.png(上書き), package.json
+
+## v0.25.664 — ミッション開始音を追加(キャラ選択→スタート)
+- 'mission-start' を登録(public/audio/sfx/mission-start.mp3)。キャラ選択画面のスタート(startMission)で再生。従来そこで鳴っていた汎用 ui-select を専用のミッション開始音へ置換。
+- 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/components/MissionSelect.tsx, public/audio/sfx/mission-start.mp3(新規), package.json
