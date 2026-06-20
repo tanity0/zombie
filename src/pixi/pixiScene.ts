@@ -1275,6 +1275,8 @@ export class PixiScene {
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.size * 4);
       case 'damageNumber':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
+      case 'image':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + 200);
       case 'ring':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.endRadius);
       case 'glow':

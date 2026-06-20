@@ -13335,3 +13335,8 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 刀一閃フィニッシュ(result.finish)で spawnImageMark(zanX,zanY,'zan',{scale:1,duration:1000})。画面暗転は据え置き。表示高さ ~130px(world)。
 - 負荷 1/10: フィニッシュ毎に一枚スプライト1つ。汎用なので他の一枚絵演出にも再利用可。
 - 検証: tsc --noEmit 通過。変更: src/types/game.ts, src/store/gameStore.ts, src/pixi/pixiScene.ts, src/pixi/pixiTextures.ts, package.json
+
+## v0.25.671 — 「斬」一枚絵が表示されない不具合を修正
+- 原因: effectNearViewport に 'image' 種別の case が無く undefined(=画面外扱い)を返すため、毎フレーム間引かれて描画されなかった。
+- 修正: case 'image' を追加(EFFECT_VIEWPORT_MARGIN+200 の余裕で画面内判定)。これで刀フィニッシュの習字「斬」が表示される。
+- 検証: tsc --noEmit 通過。変更: src/pixi/pixiScene.ts, package.json
