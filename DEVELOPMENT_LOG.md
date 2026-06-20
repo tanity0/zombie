@@ -13161,3 +13161,10 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 負荷スコア 1/10: 生成はレベルアップ時のみ(イベント)。立ち絵判定(hasFullWarlordSet/hasMurasame)はdrawPlayerで毎フレームだがO(1)の極小チェック。新規アセット6枚計~93KB(初回ロードのみ)。
 - 検証: tsc --noEmit 通過(vite未導入環境のためビルドは未実行/アセットパスは spritePath 規約に一致を確認)。立ち絵2種はキー処理後のプレビューで目視確認済み。
 - 変更ファイル: src/data/equipment.ts, src/utils/upgradeUtils.ts, src/types/game.ts, src/store/gameStore.ts, src/components/UpgradeMenu.tsx, src/components/GameOverScreen.tsx, src/pixi/pixiTextures.ts, src/pixi/pixiScene.ts, public/sprites/player-warlord-*.png(新規6), package.json
+
+## v0.25.642 — UI選択音(社長提供SE)を登録しレベルアップ選択へ接続
+- 'ui-select' は型キーのみ存在し音源未定義=無音だった。提供mp3を public/audio/sfx/ui-select.mp3 として登録(volume 0.7 / minInterval 50ms / 既定で warm 対象)。
+- UpgradeMenu の選択肢タップで playSfx('ui-select') を再生(handleSelect 経由)。
+- 刀素材(public/sprites/katana-item.png)は紫クロマキー除去+内部残渣も除去して用意済み。配置先(商人の小烏丸カード/背負い刀の実画像化/武器ドロップ表示 等)は社長確認待ちのため未接続=このコミットには未含。
+- 負荷スコア 1/10: 既存SFX経路の1キー追加+選択時1回再生のみ。毎フレームコスト無し。
+- 検証: tsc --noEmit 通過。変更: src/audio/audioManager.ts, src/components/UpgradeMenu.tsx, public/audio/sfx/ui-select.mp3, package.json

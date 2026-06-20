@@ -81,6 +81,12 @@ export type SfxKey =
   | 'summon';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
+  // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
+  'ui-select': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/ui-select.mp3`,
+    volume: 0.7,
+    minIntervalMs: 50,
+  },
   pickup: {
     src: `${import.meta.env.BASE_URL}audio/sfx/pickup.wav`,
     volume: 0.74,

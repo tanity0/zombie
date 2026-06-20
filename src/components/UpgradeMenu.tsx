@@ -1,9 +1,15 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
+import { playSfx } from '../audio/audioManager';
 
 const UpgradeMenu: React.FC = () => {
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
   const selectUpgrade = useGameStore(state => state.selectUpgrade);
+  // 選択肢タップ時の選択音(社長提供SE)。
+  const handleSelect = (upgrade: Parameters<typeof selectUpgrade>[0]) => {
+    playSfx('ui-select');
+    selectUpgrade(upgrade);
+  };
   
   return (
     <div
@@ -27,7 +33,7 @@ const UpgradeMenu: React.FC = () => {
               <button
                 key={upgrade.id}
                 type="button"
-                onClick={() => selectUpgrade(upgrade)}
+                onClick={() => handleSelect(upgrade)}
                 className={`text-left p-3 rounded-2xl active:bg-white/10 border transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10 border-amber-300/40' : 'bg-white/5 border-white/10'}`}
               >
                 <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-base ${isSpecial ? 'bg-amber-400/20' : 'bg-white/10'}`}>
