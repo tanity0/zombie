@@ -13288,3 +13288,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - phill-revolver(ＰＨＩＬＬ-銃)を追加。黒背景だったため角色距離フラッドフィルで除去(明るい銃体は保持)→128px化し WEAPON_ICON_KEYS / pixiTextures に登録。
 - これで全銃(handgun/shotgun/rifle 各3 + PHILL)のスプライトが揃い、ドロップ/ピックアップ/HUD/入手バナーで実アイコン表示。
 - 検証: tsc --noEmit 通過。変更: src/utils/weaponUtils.ts, src/pixi/pixiTextures.ts, public/sprites/weapons/phill-revolver.png(新規), package.json
+
+## v0.25.663 — PHILL銃の透過修正(内側の暗部が抜けていた)
+- 不具合: 黒背景を色距離フラッドフィルで抜いた際、銃の内側の暗部(実は暗紫=青チャンネル高)まで背景と同距離で除去されていた。
+- 修正: 背景判定を「中性の近黒のみ(r<18 g<18 b<22 かつ b-g<=12)」に限定。暗紫(b-g大)の銃体・ルーンは保持。真の黒背景と銃の開口部(フレームの実際の穴)のみ透過。
+- phill-revolver.png を再生成(128px・透過確認済み)。
+- 検証: 画像のみ。変更: public/sprites/weapons/phill-revolver.png(上書き), package.json
