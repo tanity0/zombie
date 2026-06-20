@@ -3150,6 +3150,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             dashParried.push(enemy.id);
             return;
           }
+          // 気絶中(フィニッシュ受付)の敵に触れても被弾しない。
+          if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) return;
           const damageWasApplied = !collPlayer.invulnerable;
           const playerDied = damagePlayer(enemy.damage);
           if (damageWasApplied) {
