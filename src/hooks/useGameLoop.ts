@@ -79,6 +79,9 @@ import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
+// スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発(反射弾の爆発に加えて)。
+// 威力は反射神経の反撃爆発と同等のランチャー級フラット値(要実機調整)。
+const BOMB_COUNTER_BLAST_DAMAGE = 60;
 const HEAVY_GRENADE_COOLDOWN_MS = 5000;
 const HEAVY_GRENADE_FUSE_MS = 2000;
 const HEAVY_GRENADE_RADIUS = 66;
@@ -3852,6 +3855,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             '#fcd34d',
             12
           );
+          // スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発ダメージ。
+          if (hasSkill(currentPlayer, 'bomb-counter')) {
+            const bcx = currentPlayer.x + currentPlayer.width / 2;
+            const bcy = currentPlayer.y + currentPlayer.height / 2;
+            const exMult = skillExplosionMult(currentPlayer);
+            const radius = GRENADE_BLAST_RADIUS * exMult;
+            const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * (currentPlayer.equipBonus?.damageMult ?? 1);
+            spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380);
+            spawnBurst(bcx, bcy, '#f97316', 20);
+            spawnBurst(bcx, bcy, '#7f1d1d', 8);
+            useGameStore.getState().spawnGlow(bcx, bcy, 58, 'rgba(251,146,60,', 380);
+            playSfx('bomb');
+            for (const e of useGameStore.getState().enemies) {
+              if (e.type === 'reaper' || e.aiPhase === 'jump') continue; // reaper除外・空中無敵は対象外
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              const dist = Math.hypot(ecx - bcx, ecy - bcy);
+              if (dist > radius) continue;
+              const falloff = 1 - dist / radius;
+              const dmg = Math.max(1, Math.round(base * (0.55 + falloff * 0.45)));
+              damageEnemy(e.id, dmg);
+              spawnDamageNumber(ecx, e.y, dmg, false);
+            }
+          }
           prevCounterSuccessRef.current = currentPlayer.lastCounterSuccessTime;
         }
 

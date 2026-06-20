@@ -13316,3 +13316,10 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
   - ダッシュは従来弾き返しのみ→クリ反撃を追加。Counter! 表示・コンボ＋1・短無敵は据え置き。
 - 負荷スコア 1/10: カウンター成立時のみ、対象数ぶんの処理。毎フレームコスト無し。
 - 検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json
+
+## v0.25.668 — ボムカウンター: カウンター成立の瞬間にも爆発ダメージ
+- 従来は「反射弾が爆発」のみ。これに加え、bomb-counter 所持時は カウンター成立の瞬間(lastCounterSuccessTime のエッジ=弾反射/ジャンプ・ダッシュ パリィ)にプレイヤー中心の爆発を発生。
+- 実装: useGameLoop のカウンター成立エッジ検出に、hasSkill('bomb-counter') 時のAoEを追加。半径=GRENADE_BLAST_RADIUS(92)×爆発倍率、威力=BOMB_COUNTER_BLAST_DAMAGE(60・反射神経と同等)×爆発倍率×装備ダメージ補正、距離フォールオフ0.55〜1.0。reaper除外・空中(jump)無敵は対象外。橙の爆発VFX＋bomb SE。
+- 既存のジャンプ/ダッシュ カウンターのクリ反撃(ヘッドショット)と併発(両取り)。
+- 負荷スコア 1/10: カウンター成立時のみ・敵数ぶんの距離判定。毎フレームコスト無し。
+- 検証: tsc --noEmit 通過。変更: src/hooks/useGameLoop.ts, package.json
