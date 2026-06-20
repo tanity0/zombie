@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.694 — ライティングpresetを昼/夜で配線(sunlight/moonlight)
+
+- これまで未配線だった `SUNLIGHT_PRESET`(昼)/`MOONLIGHT_PRESET`(夜)を `daylight` フラグに接続。
+  `this.lighting()` を新設し、固定 `ACTIVE_STAGE_LIGHTING` 参照(プレイヤー補助光・god ray色・bloomScale・
+  影の長さ/濃さ)を毎フレーム preset 切替へ置換。昼(ステージ3=city)=sunlight / 夜(その他)=moonlight。
+- 効果: 夜ステージはプレイヤー光が寒色・影が短く淡い・god ray も寒色弱め・bloomScale 1.08 に。
+  昼ステージは暖色・影長め・bloomScale 1.16。
+- **注意**: これまで全ステージ sunlight 固定でチューニングしていたため、**夜ステージの見た目(影・ライト色)が
+  変わる**。気になる場合は MOONLIGHT_PRESET の shadowLength/shadowAlpha/color を調整。
+- `ACTIVE_STAGE_LIGHTING` は constructor 初期化のデフォルト用にのみ残置(毎フレーム上書き)。
+- 負荷: preset 値の読み替えのみ。1/10。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.693 — ステージ3を完全な昼ステージ化(足元まで正午)
 
 - 遠景だけでなく環境全体を昼へ(`s.farBackdrop === 'city'` を昼フラグとして使用):

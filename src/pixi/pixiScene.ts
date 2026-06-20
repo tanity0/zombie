@@ -623,6 +623,9 @@ export class PixiScene {
   private daylightApplied: boolean | null = null;
   // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
   private envTintNow() { return this.daylight ? DAY_ENV_TINT : ENV_TINT; }
+  // 現在のステージライティング preset。昼=sunlight(暖色・影長め)/ 夜=moonlight(寒色・影短く淡い)。
+  // プレイヤー補助光の色/影の長さ・濃さ/god ray色/bloomScale を駆動する。
+  private lighting(): StageLightingPreset { return this.daylight ? SUNLIGHT_PRESET : MOONLIGHT_PRESET; }
   // 昼/夜の一括切り替え(状態変化時のみ適用)。毎フレームのグレードα/木tintは各所が envTintNow / daylight を参照。
   private applyDaylight(on: boolean) {
     if (this.daylightApplied === on) return;
@@ -1028,7 +1031,7 @@ export class PixiScene {
     const alpha = SHAFT_ALPHA; // 可変の明るさ(?shaft=)
     if (alpha <= 0) { this.shaftPeriod = 0; return; }
     g.blendMode = 'add';
-    const color = ACTIVE_STAGE_LIGHTING.color;
+    const color = this.lighting().color;
     // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
     // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
     const period = Math.max(180, w * 0.5);
@@ -1721,10 +1724,11 @@ export class PixiScene {
     const ly = s.player.y + s.player.height / 2;
     // 屋内(研究施設)は「明るい部分」を狭くする(社長指示): プレイヤー光/光だまりを縮小。
     const lightScale = s.indoorMode ? 0.62 : 1;
+    const lp = this.lighting();
     this.playerLight.position.set(lx, ly);
-    this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : ACTIVE_STAGE_LIGHTING.color;
-    this.playerLight.alpha = ACTIVE_STAGE_LIGHTING.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
-    this.playerLight.width = this.playerLight.height = ACTIVE_STAGE_LIGHTING.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
+    this.playerLight.tint = s.player.huntingCharged ? PLAYER_HUNTING_LIGHT_TINT : lp.color;
+    this.playerLight.alpha = lp.playerAssistAlpha * (s.player.huntingCharged ? 1.3 : 1) * (0.92 + 0.08 * Math.sin(now / 600));
+    this.playerLight.width = this.playerLight.height = lp.playerAssistRadius * (s.player.huntingCharged ? 2.2 : 2) * lightScale;
 
     // A: 光だまり(足元の地面プール)を追従。?pool=0 で無効。微かに脈動。
     if (this.playerGroundPool.visible) {
@@ -2045,7 +2049,7 @@ export class PixiScene {
       const t = (now - e.createdAt) / e.duration;
       return t >= 0 && t < 1;
     });
-    this.bloom.bloomScale = hasStrongEventGlow ? BLOOM_STRONG_EVENT_SCALE : ACTIVE_STAGE_LIGHTING.bloomScale;
+    this.bloom.bloomScale = hasStrongEventGlow ? BLOOM_STRONG_EVENT_SCALE : this.lighting().bloomScale;
   }
 
   // ---- ambient fireflies ---------------------------------------------------
@@ -3064,7 +3068,7 @@ export class PixiScene {
   // 幾何(足元から direction へ length 伸ばす / 太さは断面)をスプライトで再現する。
   private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>) {
     if (alpha <= 0) return;
-    const lighting = ACTIVE_STAGE_LIGHTING;
+    const lighting = this.lighting();
     const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
     const ux = lighting.direction.x / mag;
     const uy = lighting.direction.y / mag;
