@@ -1867,11 +1867,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
               spawnBurst(b.x, b.y, '#fb923c', 16);
               const pr = Math.max(bp.width, bp.height) / 2;
-              if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr && !bp.invulnerable) {
+              if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr) {
                 if (counterActive) {
-                  // カウンターで弾く: プレイヤー無傷・敵にダメージ無し・2倍ノックバックで吹き飛ばす。
+                  // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
+                  // ※以前は !invulnerable を前提にしていたため、被弾i-frame中だとパリィが
+                  //   丸ごとスキップされ「カウンターしたのにノックバックしない」が起きていた。
                   parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
-                } else {
+                } else if (!bp.invulnerable) {
                   const died = damagePlayer(b.damage);
                   playSfx('player-damage');
                   // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
