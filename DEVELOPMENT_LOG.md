@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.690 — 全画面ブルームを撤回(ワールド真っ黒バグ)
+
+- v0.25.689 の全画面ブルーム(sceneRoot)で**ワールドが真っ黒**になる不具合(社長報告)。
+  原因: sceneRoot に被せたブルームが、内側のマスク付き＋自前フィルタ(tilt-shift)付き filteredWorld を
+  内包し、入れ子フィルタ×マスクで描画領域が破綻(Pixiの黒落ち)。
+- 対処: ブルームを**元の filteredWorld(ゲームプレイ層)のみ**へ戻し、`sceneRoot` を撤去(既知の正常状態)。
+  全画面化はFPS改善もないため撤退。ON/OFFトグルは従来どおり filteredWorld で機能。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.689 — ブルームを全画面化(オクトラ風・社長指示)
 
 - 社長選択: 「範囲だけ全画面化」。ブルームを従来の filteredWorld(ゲームプレイ層)のみから、
