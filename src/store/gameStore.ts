@@ -244,7 +244,7 @@ export const huntingMeleeRadius = (player: Player): number => {
 export const COUNTER_WINDOW = 400; // ms the window stays open after trigger
 export const COUNTER_COOLDOWN = 420; // ms between counters (anti-spam)
 // PHILL銃の狙いサークル: 距離(レティクルの前方距離)と「吸い付き」半径(この距離内に頭があればスナップ)。
-export const PHILL_AIM_RANGE = 190;
+export const PHILL_AIM_RANGE = 130; // レティクル基準距離(手前寄りに。旧190)
 export const PHILL_SNAP_RADIUS = 46;
 // レベルアップ時に周辺の敵を強制的に押しのける(2倍ノックバック相当)。アップグレードメニューで
 // 即ポーズするため velocity だと失効する → 位置を即時に動かす(menu を跨いでも効く)。
@@ -615,7 +615,7 @@ export const PLAYER_INERTIA_TAU = 0;
 export const ENEMY_INERTIA_TAU = 0.3;
 // 照準サークル(=PHILL弾/アンカーの狙い)の慣性。向き/距離の変化に少し遅れて追従(秒)。
 // 値を上げるほどサークルがゆっくり動く(社長指示でさらにゆっくりに 0.10→0.20)。
-export const AIM_INERTIA_TAU = 0.20;
+export const AIM_INERTIA_TAU = 0.34; // 照準サークルの追従(大きいほど遅い。PHILLカーソルが速すぎたので緩く。旧0.20)
 
 // 特殊AI(犬型=突進 / パンプキン=ジャンプ)の調整値。射程基準=ハンドガン射程176px(RANGE_BY_CATEGORY.handgun)。
 const HANDGUN_RANGE_REF = 176;

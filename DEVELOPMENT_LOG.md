@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.720 — PHILLカーソル: 追従を遅く + 基準を手前に
+
+- `AIM_INERTIA_TAU 0.20→0.34`(照準サークルの追従を緩く=速すぎ解消)。
+- `PHILL_AIM_RANGE 190→130`(レティクル基準距離を手前へ。振り向きで即最遠に行くのを緩和)。
+- 弾の進行方向/射程には不干渉(レティクル距離とスナップ基準のみ)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.719 — ステージ2: 影を右向きに
 
 - lab テーマ(ステージ2)のときだけ影の向きを右向き(`LAB_SHADOW_DIRECTION={x:1,y:0.2}`)に上書き。
