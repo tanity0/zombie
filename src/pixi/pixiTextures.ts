@@ -249,7 +249,7 @@ export const ensureTextures = (): Promise<void> => {
     const atlasPxNames = ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
       'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
     await Promise.all(atlasPxNames.map(async (n) => {
-      const t = await loadOne(`atlas-px/${n}`);
+      const t = await loadOne(`atlas-px2/${n}`);
       if (t) { t.source.scaleMode = 'nearest'; textures.set(n, t); }
     }));
     // ステージ3(廃都)用の木=ドット絵の葉付き木(syncTrees が farBackdrop で出し分け)。既定 'tree' は枯れ木(stage1)。

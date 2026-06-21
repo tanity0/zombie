@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.771 — ステージ1セット差し替え(透過済み新ドット絵)
+
+- 透過済みPNGを連結成分抽出→atlas名にマッピングし `atlas-px2/<name>.png` に保存(白キー不要)。
+  loadOne 参照を `atlas-px/` → `atlas-px2/` に更新(キャッシュ回避)。白残りなし。
+- 検証: `npx tsc --noEmit` パス＋目視。
+
+## v0.25.770 — ステージ1セットの白背景残りを除去(旧atlas-px)
+
+- atlas-px の取り残し近白bgを全画素カット＋縁フェザー(ghost等の彩度ある明色は温存)。
+
 ## v0.25.769 — ステージ4の手前森(氷壁)を100pxへ
 
 - `FRONT_SNOW_Y_OFFSET` 30→100(社長指示)。
