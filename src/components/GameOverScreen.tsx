@@ -177,17 +177,14 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : withdraw ? '帰還' : 'ゲームオーバー'}
           </h2>
-          <p className="text-[13px] text-white/60 mt-1">
-            {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : withdraw ? '装備を持って撤収した' : '闇に飲み込まれました'}
-          </p>
+          {(isBenchmark || won || withdraw) && (
+            <p className="text-[13px] text-white/60 mt-1">
+              {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '装備を持って撤収した'}
+            </p>
+          )}
           {!isBenchmark && !won && !withdraw && deathCause && (
             <p className="mt-2 text-[12px] text-white/70">
               死因：<span className="font-semibold text-rose-200">{deathCause}</span>
-            </p>
-          )}
-          {!isBenchmark && !won && !withdraw && hadEquipment && (
-            <p className="mt-2 inline-block rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1 text-[12px] font-semibold text-rose-200">
-              装備をすべてロストしました
             </p>
           )}
         </div>

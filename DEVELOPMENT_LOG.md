@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.714 — 死亡リザルトの文言削除
+
+- 「装備をすべてロストしました」ピルと、死亡サブタイトル「闇に飲み込まれました」を削除
+  (死因表示と「失った装備(換金)」は残す)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.713 — ステージ別ハイスコア(選択欄+リザルト)/ 遠景手前森を少し上へ
 
 - ハイスコア永続化(progress.ts): `getStageHighScore` / `submitStageHighScore`(stageId→best totalScore、localStorage)。
