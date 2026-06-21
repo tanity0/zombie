@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.766 — ステージ2の障害物プロップをドット絵に差し替え
+
+- 社長提供のドット絵(同じ12種・3×4)をマゼンタ透過で抽出し `lab-props/lab-prop2-r{r}-c{c}.png` に。
+  キャッシュ回避でファイル名を `lab-prop2-` へ更新し、参照(manifest / syncLabProps の名前解決 / labMap)も一括更新。
+- 物は同一(PC/モニタ/培養槽/カート/バイオ樽/棚/装置/ロボアーム…)。当たり判定/配置は不変。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.765 — ステージ4: 近景を30px下げ＋蛍を雪エフェクトに置換
 
 - 近景(氷壁)を `FRONT_SNOW_Y_OFFSET=30` だけ下げる(snowステージのみ。layout/parallax 両方)。

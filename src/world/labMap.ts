@@ -180,9 +180,9 @@ export const labBlockingWalls = (openDoorIds: string[]): Rect[] => {
 
 // 障害物プロップ(木の代わり)。テクスチャ名のバリエーション。
 export const LAB_PROP_VARIANTS = [
-  'lab-props/lab-prop-r1-c1', 'lab-props/lab-prop-r1-c2', 'lab-props/lab-prop-r1-c3', 'lab-props/lab-prop-r1-c4',
-  'lab-props/lab-prop-r2-c1', 'lab-props/lab-prop-r2-c2', 'lab-props/lab-prop-r2-c3', 'lab-props/lab-prop-r2-c4',
-  'lab-props/lab-prop-r3-c1', 'lab-props/lab-prop-r3-c2', 'lab-props/lab-prop-r3-c3', 'lab-props/lab-prop-r3-c4',
+  'lab-props/lab-prop2-r1-c1', 'lab-props/lab-prop2-r1-c2', 'lab-props/lab-prop2-r1-c3', 'lab-props/lab-prop2-r1-c4',
+  'lab-props/lab-prop2-r2-c1', 'lab-props/lab-prop2-r2-c2', 'lab-props/lab-prop2-r2-c3', 'lab-props/lab-prop2-r2-c4',
+  'lab-props/lab-prop2-r3-c1', 'lab-props/lab-prop2-r3-c2', 'lab-props/lab-prop2-r3-c3', 'lab-props/lab-prop2-r3-c4',
 ];
 
 // 各部屋に障害物をランダム配置(壁/ドア/スポーン/ギミックを避ける=壁貫通しない & 進路を塞ぎにくい)。

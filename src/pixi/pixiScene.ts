@@ -2675,7 +2675,7 @@ export class PixiScene {
       let entry = this.propObjs.get(p.id);
       if (!entry) {
         const row = Math.floor(p.variant / 4) + 1, col = (p.variant % 4) + 1;
-        const tex = getTexture(`lab-props/lab-prop-r${row}-c${col}`);
+        const tex = getTexture(`lab-props/lab-prop2-r${row}-c${col}`);
         const sprite = new Sprite(tex ?? undefined);
         sprite.anchor.set(0.5, 1);
         sprite.tint = ENV_TINT; // 環境として暗く沈める(木/壁オブジェクトと同じ)
