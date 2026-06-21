@@ -70,6 +70,11 @@ const HORIZON_FOREST_MAX_HEIGHT = 185;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
+// 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
+const NEAR_HORIZON_HEIGHT_RATIO = 0.42;      // screenH 比の高さ
+const NEAR_HORIZON_PARALLAX_X = 0.26;        // 横パララックス(horizon 0.16 より速い=近い)
+const NEAR_HORIZON_BOTTOM_INTO_GROUND = 16;  // 地面シーム(farH)から底をどれだけ下げるか(px)
+const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
 const HORIZON_ACTOR_FADE_PX = 120;
 const HORIZON_REVEAL_OFFSET_PX = 200;
@@ -653,6 +658,17 @@ export class PixiScene {
       this.L.horizonForest.texture = this.stage3HorizonTex;
       this.layoutHorizonForest();
     }
+    // 遠景手前森(ステージ3のみ): 昼かつ注入済みなら表示、それ以外は非表示。
+    if (on && this.stage3NearHorizonTex) {
+      if (this.L.nearHorizon.texture !== this.stage3NearHorizonTex) {
+        this.L.nearHorizon.texture = this.stage3NearHorizonTex;
+        this.layoutNearHorizon();
+      }
+      this.L.nearHorizon.visible = true;
+      this.L.nearHorizon.tint = tint;
+    } else {
+      this.L.nearHorizon.visible = false;
+    }
     for (const strip of this.L.groundStrips) strip.tint = tint;
     this.L.horizonForest.tint = tint;
     this.L.frontForest.tint = tint;
@@ -676,6 +692,7 @@ export class PixiScene {
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
   private horizonForestBlur: BlurFilter | null = null;
+  private nearHorizonBlur: BlurFilter | null = null;
   private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
   // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
   // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
@@ -840,6 +857,14 @@ export class PixiScene {
         quality: 2,
       });
       this.L.horizonForest.filters = [this.horizonForestBlur];
+    }
+
+    if (NEAR_HORIZON_BLUR > 0) {
+      this.nearHorizonBlur = new BlurFilter({
+        strength: NEAR_HORIZON_BLUR,
+        quality: 2,
+      });
+      this.L.nearHorizon.filters = [this.nearHorizonBlur];
     }
 
     // Ambient fireflies: screen-space sprites driven by world coordinates.
@@ -1043,6 +1068,7 @@ export class PixiScene {
     this.L.horizonForest.height = horizonH;
     this.L.horizonForest.tileScale.set(w / this.L.horizonForest.texture.width, horizonH / this.L.horizonForest.texture.height);
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
     this.updatePerspectiveGround(0, 0, 0, 0);
@@ -1465,6 +1491,24 @@ export class PixiScene {
   // ステージ3(昼/city)用の床・地平帯の差し替えテクスチャ(PixiStage が注入)。
   private stage3GroundTex: Texture | null = null;
   private stage3HorizonTex: Texture | null = null;
+  private stage3NearHorizonTex: Texture | null = null;
+  setStage3NearHorizon(t: Texture | null) {
+    if (!t) return;
+    this.stage3NearHorizonTex = t;
+    this.daylightApplied = null;
+  }
+  // 遠景手前森(nearHorizon)の寸法/位置を現在のテクスチャと画面から再計算。底を地面シーム少し下に置く。
+  private layoutNearHorizon() {
+    const tex = this.L.nearHorizon.texture;
+    if (!tex || tex.width <= 1 || tex.height <= 1) return;
+    const farH = this.farBackdropHeight();
+    const height = this.screenH * NEAR_HORIZON_HEIGHT_RATIO;
+    const bottom = farH + NEAR_HORIZON_BOTTOM_INTO_GROUND;
+    this.L.nearHorizon.width = this.screenW;
+    this.L.nearHorizon.height = height;
+    this.L.nearHorizon.tileScale.set(this.screenW / tex.width, height / tex.height);
+    this.L.nearHorizon.position.set(0, bottom - height);
+  }
   setStage3Ground(t: Texture | null) {
     if (!t) return;
     try { const st = t.source.style as { addressMode?: string; update?: () => void }; st.addressMode = 'repeat'; st.update?.(); } catch { /* ignore */ }
@@ -1741,6 +1785,10 @@ export class PixiScene {
       0
     );
     this.horizonForestFadeMask.position.copyFrom(this.L.horizonForest.position);
+    // 遠景手前森(ステージ3): 縦位置は layout 固定、横だけパララックス(地平より速い=近い)。
+    if (this.L.nearHorizon.visible) {
+      this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
+    }
     this.horizonFadeZeroScreenY = this.horizonRevealZeroScreenY();
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
@@ -5656,6 +5704,8 @@ export class PixiScene {
     this.frontForestBlur = null;
     this.horizonForestBlur?.destroy();
     this.horizonForestBlur = null;
+    this.nearHorizonBlur?.destroy();
+    this.nearHorizonBlur = null;
     this.stageLightShaftGfx.destroy();
     this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();

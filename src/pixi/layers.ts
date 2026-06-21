@@ -26,6 +26,7 @@ import { Container, TilingSprite, Texture } from 'pixi.js';
 export interface SceneLayers {
   farBackdrop: TilingSprite;
   horizonForest: TilingSprite;
+  nearHorizon: TilingSprite;
   worldGroup: Container;
   groundBase: Container;
   groundStrips: TilingSprite[];
@@ -53,6 +54,9 @@ export const buildLayers = (
 ): SceneLayers => {
   const farBackdrop = new TilingSprite({ texture: farTexture, width: 1, height: 1 });
   const horizonForest = new TilingSprite({ texture: horizonForestTexture, width: 1, height: 1 });
+  // 遠景手前森(地平の森の「手前」に重なる近めの帯。ステージ3のみ使用。既定は空テクスチャ/非表示)。
+  const nearHorizon = new TilingSprite({ texture: Texture.EMPTY, width: 1, height: 1 });
+  nearHorizon.visible = false;
   const groundBase = new Container();
   const groundStrips = Array.from(
     { length: 72 },
@@ -93,7 +97,8 @@ export const buildLayers = (
   // danceUiLayer は filteredWorld の後(=上)に置く: フィルタ外なのでボケず、front forest より下=従来の
   // effectLayer と同じ重なり順を保つ。位置(カメラオフセット)は pixiScene が毎フレーム world と同期する。
   const danceUiLayer = new Container();
-  worldGroup.addChild(groundBase, horizonForest, filteredWorld, danceUiLayer);
+  // nearHorizon は horizonForest の「手前(上=後で描画)」・gameplay(filteredWorld)の「後ろ」に置く。
+  worldGroup.addChild(groundBase, horizonForest, nearHorizon, filteredWorld, danceUiLayer);
 
   const uiLayer = new Container();
 
@@ -102,6 +107,7 @@ export const buildLayers = (
   return {
     farBackdrop,
     horizonForest,
+    nearHorizon,
     worldGroup,
     groundBase,
     groundStrips,

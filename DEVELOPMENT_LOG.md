@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.709 — ステージ3: 遠景手前森レイヤー追加(地平の森の手前に重ねる)
+
+- 新レイヤー `nearHorizon`(layers.ts)を worldGroup の horizonForest と filteredWorld の間に追加
+  (=地平の森の手前・gameplay の後ろ)。ステージ3(daylight)のみ表示、他は非表示。
+- 素材 `public/backgrounds/stage3-near-horizon-city.png`(提供の透過PNG=都市部のみ不透明・上は alpha 0、キーイング不要)。
+- 配置: closer 表現として地平の森より大きく・低く・速い横パララックス(`NEAR_HORIZON_*` 定数)、弱ブラー(0.35)。
+  底は地面シーム(farH)少し下。tint は昼=本来色。
+- PixiStage がロード→`setStage3NearHorizon` で注入。resize/applyDaylight で寸法・表示を更新。destroy で後始末。
+- 調整つまみ: `NEAR_HORIZON_HEIGHT_RATIO / BOTTOM_INTO_GROUND / PARALLAX_X / BLUR`。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.708 — タイマー中央化 / HPを上へ / ステージ名非表示
 
 - タイマーを上部中央へ(スクラップは右に維持)。空いた分、バイタル(HPオーブ)を top+40→top+8 へ上げる。
