@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.749 — スコア計算式を刷新(スキル評価＋スコア青天井/ゴールドcap)
+
+- 新式(`utils/resultScoring.ts`): clear30000 / treasure×5000 / damage×0.25 / KILL(finisher)×800 /
+  combo×300(50でMAX) / elite(pumpkin)×3000・boss(giantbat)×8000 / scrap(net)×20 /
+  survival(20000−被弾×80) / speed(ラボ勝利のみ・par8:00・1秒+100・上限20000)。装備換金は現状維持(スコア外)。
+- **2系統**: `totalScore`=青天井(ハイスコア)、`goldScore`=各項目を換金MAXでクランプ(damage25k/finisher25k/
+  combo15k/scrap8k、treasure・eliteBossはcap無し)→ `gold=floor(goldScore/2000)`。
+- **結果別**: clearBonusはwonのみ / speedBonusはラボ勝利のみ / survival含む他は常に計上(死亡でもクリアボーナス以外は全計上)。
+- 新規Stats追加＋計測: `damageTaken`(takeDamage) / `meleeFinishers`(近接killedのfinisher) /
+  `eliteKills`(pumpkin) / `bossKills`(giantbat)。撃破は近接/銃(damageEnemy)/爆弾の各経路で計上。
+- ラボ判定は `stageTheme==='lab'`(ステージ2は屋外ラボ=indoorMode falseのため)。
+- GameOverScreen のスコア内訳に KILL!/強敵撃破/被弾の少なさ を追加表示。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.748 — ステージ3敵絵の白残り除去(脚の間など内側ポケット)
 
 - 縁フラッドフィルだけでは届かない内側の純白ポケット(脚の間/細部)が残っていた。

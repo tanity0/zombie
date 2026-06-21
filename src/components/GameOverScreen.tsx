@@ -70,8 +70,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   benchmarkResult = null
 }) => {
   const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  // 研究所(屋内)クリアかどうか。勝利後も indoorMode は保持されている。
-  const indoor = useGameStore(s => s.indoorMode);
+  // 研究所(ラボ)ステージか。speedBonus はラボ勝利のみ。stageTheme は勝利後も保持される
+  // (ステージ2は屋外ラボ=indoorMode は false なので theme で判定する)。
+  const isLab = useGameStore(s => s.stageTheme === 'lab');
   // 死亡時の「装備ロスト」明示用。装備していたかの派生ブール(静的画面なので再描画コスト無し)。
   const hadEquipment = useGameStore(s => Object.values(s.player.equipment).some(Boolean));
   // 死因(直近の被弾原因)。
@@ -87,14 +88,17 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   };
   const {
     damageScore,
+    finisherScore,
     comboScore,
     treasureScore,
-    strapScore,
-    timeBonus,
+    eliteBossScore,
+    scrapScore,
+    survivalScore,
+    speedBonus,
     clearBonus,
     totalScore,
     goldEarned,
-  } = calculateResultScore(stats, won, indoor);
+  } = calculateResultScore(stats, won, isLab);
   // このランで得たゴールドを永続財布へ加算(マウント時1回。ベンチマークは加算しない)。
   const isBenchmarkRun = benchmarkResult !== null;
   const addGold = useGameStore(s => s.addGold);
@@ -140,11 +144,14 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   ];
   const scoreItems = [
     { label: '与ダメ', value: damageScore },
+    { label: 'KILL!', value: finisherScore },
     { label: '最大コンボ', value: comboScore },
     { label: 'トレジャー', value: treasureScore },
-    { label: '残スクラップ', value: strapScore },
+    ...(eliteBossScore > 0 ? [{ label: '強敵撃破', value: eliteBossScore }] : []),
+    { label: '残スクラップ', value: scrapScore },
+    ...(survivalScore > 0 ? [{ label: '被弾の少なさ', value: survivalScore }] : []),
     // 研究所クリア時のみ「残り時間」ボーナスを表示(早いほど高い)。
-    ...(timeBonus > 0 ? [{ label: '残り時間', value: timeBonus }] : []),
+    ...(speedBonus > 0 ? [{ label: '残り時間', value: speedBonus }] : []),
     ...(clearBonus > 0 ? [{ label: 'クリアボーナス', value: clearBonus }] : [])
   ];
   const isBenchmark = benchmarkResult !== null;

@@ -666,6 +666,14 @@ export const DRONE_BOOM_SAFETY_MS = 12000;                 // 安全消滅(戻�
 const inertiaAlpha = (deltaTime: number, tau: number): number =>
   tau <= 0 ? 1 : 1 - Math.exp(-deltaTime / tau);
 
+// スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。
+const isScoreElite = (t: string): boolean => t === 'pumpkin';
+const isScoreBoss = (t: string): boolean => t === 'giantbat';
+const countScoreEliteBoss = (enemies: { type: string }[]): { elite: number; boss: number } => ({
+  elite: enemies.reduce((n, e) => n + (isScoreElite(e.type) ? 1 : 0), 0),
+  boss: enemies.reduce((n, e) => n + (isScoreBoss(e.type) ? 1 : 0), 0),
+});
+
 // Player base stats tuned to feel like Vampire Survivors' Antonio: slower
 // than the previous build (so weapons matter more), modest HP, small body.
 export const PLAYER_BASE_SPEED = 87;
@@ -1570,7 +1578,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     maxCombo: 0,
     strapsCollected: 0,
     strapsSpent: 0,
-    treasuresCollected: 0
+    treasuresCollected: 0,
+    damageTaken: 0,
+    meleeFinishers: 0,
+    eliteKills: 0,
+    bossKills: 0
   },
   characterClass: 'warrior',
   effects: [],
@@ -2382,6 +2394,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
+        eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
+        bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt +
           meleeDamageNumbers.reduce((sum, n) => sum + n.value, 0),
         maxCombo: comboFinishCount > 0
@@ -2639,6 +2654,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
+        eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
+        bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt +
           damageNumbers.reduce((sum, n) => sum + n.value, 0),
         maxCombo: comboFinishCount > 0
@@ -2773,6 +2791,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
+        eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
+        bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((s, n) => s + n.value, 0),
         maxCombo: comboFinishCount > 0
           ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
@@ -3204,6 +3225,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const newHealth = Math.max(0, state.player.health - amount);
       return {
+        // 被弾総量(survivalScore用)。実ダメージ(amount>0)のみ加算。
+        gameStats: amount > 0 ? { ...state.gameStats, damageTaken: state.gameStats.damageTaken + amount } : state.gameStats,
         // 死因表示: 実ダメージ(amount>0)かつ source 指定時に更新。
         lastDamageSource: (amount > 0 && source) ? source : state.lastDamageSource,
         // Real damage kicks off a screen shake.
@@ -3828,7 +3851,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         const newStats = {
           ...gameStats,
           enemiesKilled: gameStats.enemiesKilled + 1,
-          damageDealt: gameStats.damageDealt + amount
+          damageDealt: gameStats.damageDealt + amount,
+          eliteKills: gameStats.eliteKills + (isScoreElite(enemy.type) ? 1 : 0), // 銃/弾でのpumpkin撃破も計上
+          bossKills: gameStats.bossKills + (isScoreBoss(enemy.type) ? 1 : 0)     // 同 giantbat
         };
 
         return {
@@ -4764,7 +4789,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           gameWon: state.gameWon || bombWon,
           gameStats: {
             ...state.gameStats,
-            enemiesKilled: state.gameStats.enemiesKilled + reachable.length
+            enemiesKilled: state.gameStats.enemiesKilled + reachable.length,
+            eliteKills: state.gameStats.eliteKills + countScoreEliteBoss(reachable).elite, // 爆弾のpumpkin撃破も計上
+            bossKills: state.gameStats.bossKills + countScoreEliteBoss(reachable).boss     // 同 giantbat
           }
         }));
         // Drop XP gems where each killed enemy was so the cleanup feels
@@ -5980,7 +6007,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           maxCombo: 0,
           strapsCollected: 0,
           strapsSpent: 0,
-          treasuresCollected: 0
+          treasuresCollected: 0,
+          damageTaken: 0,
+          meleeFinishers: 0,
+          eliteKills: 0,
+          bossKills: 0
         },
         characterClass: validClass,
         effects: [],

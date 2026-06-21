@@ -637,6 +637,10 @@ export interface GameStats {
   strapsCollected: number;
   strapsSpent: number;
   treasuresCollected: number;
+  damageTaken: number;     // 被弾総量(survivalScore用)
+  meleeFinishers: number;  // 近接フィニッシュ(KILL!)回数(finisherScore用)
+  eliteKills: number;      // エリート(pumpkin)撃破数
+  bossKills: number;       // ボス(giantbat)撃破数
 }
 
 // Input state — keyboard fallback only. Touch is handled directly by the
