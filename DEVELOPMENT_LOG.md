@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.706 — 遠景森ブラー弱め + 地面遠方ブラーのピークを森に合わせる
+
+- `HORIZON_FOREST_BLUR 1.0→0.65`(遠景森を少し弱める)。
+- `FAR_GROUND_BLUR_STRENGTHS [1.5,0.8]→[0.65,0.35]`(最遠ピークを遠景森と同程度に揃える)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.705 — 遠景森(地平帯)も少しぼかす
 
 - 地平の森(horizonForest=ステージ3は廃墟都市スカイライン)に軽いブラーを追加(`HORIZON_FOREST_BLUR=1.0`)。

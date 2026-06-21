@@ -63,7 +63,7 @@ const FAR_BACKDROP_MIN_HEIGHT = 168;    // 旧 150 → 185(少し戻す)
 const FAR_BACKDROP_PARALLAX_X = 0.09;
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
-const HORIZON_FOREST_BLUR = 1.0; // 地平の森(遠景森)を少しだけぼかす(0=なし)
+const HORIZON_FOREST_BLUR = 0.65; // 地平の森(遠景森)を少しだけぼかす(0=なし)。少し弱めた
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
@@ -403,7 +403,7 @@ const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
 const FAR_GROUND_BLUR_STRIP_RATIO = 0.28;
-const FAR_GROUND_BLUR_STRENGTHS = [1.5, 0.8]; // [最遠, やや遠]
+const FAR_GROUND_BLUR_STRENGTHS = [0.65, 0.35]; // [最遠, やや遠]。ピークを遠景森(0.65)と同程度に
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
 const OBJECT_GROUND_RELATIVE_MAX = 1.45;
