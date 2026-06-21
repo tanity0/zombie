@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.748 — ステージ3敵絵の白残り除去(脚の間など内側ポケット)
+
+- 縁フラッドフィルだけでは届かない内側の純白ポケット(脚の間/細部)が残っていた。
+  ソースから再抽出: ①縁フラッド(whitish/低彩度・AA跨ぎ) ②取り残しの純白(min≥230・彩度≤16)を全画素から除去
+  ③de-fringe＋1pxフェザー。色付き/グレーのスプライト部は温存。
+- 検証: 目視(マゼンタ背景で白残りなし)。
+
 ## v0.25.747 — ステージ3ボス(giantbat)の見た目を1.2倍
 
 - 新絵が少し小さいので、ステージ3(daylight)のときの giantbat だけ表示スケールを1.2倍(`STAGE3_BOSS_VISUAL_SCALE`)。
