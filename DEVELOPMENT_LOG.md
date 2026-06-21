@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.743 — 抽出スプライトの紫フチを除去(ベイク・実行時コスト0)
+
+- 縁の紫(クロマキー残りのアンチエイリアス・フリンジ)対策。実行時の毎フレーム処理(シェーダ/画素処理)は
+  不要・無駄なので、PNG側に焼き込み: ①透明隣接のマゼンタ寄り画素をカット ②縁1pxを半透明(α≤128)にフェザー。
+- 対象: ステージ3プロップ全種 + 新しい木(tree-new/-b/-bush) + 廃教会(castle-church)。窓等の内側は不変。
+- 実行時コスト 0(素材だけ差し替え)。
+- 検証: 目視(窓/穴の欠けなし)。コード変更なし。
+
 ## v0.25.742 — ステージ3に廃都オブジェクトをランダム散布＋城を廃教会に差し替え
 
 - **廃都オブジェクトのランダム散布(ステージ3のみ)**: シートから31種を抽出し `public/sprites/props/` に登録。
