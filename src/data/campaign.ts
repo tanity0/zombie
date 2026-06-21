@@ -176,6 +176,8 @@ export const STAGES: Stage[] = [
     name: '封鎖地域',
     area: 'ロックダウン地域 / 医師団 接触',
     unlockBy: 'stage-3',
+    farBackdrop: 'snow', // 遠景を雪原の要塞パノラマへ差し替え(地形/地平は森のまま)
+    bgm: 'stage4',       // ステージ4専用BGM(public/audio/stage4.mp3)
     subs: [],
     main: {
       code: 'M4',

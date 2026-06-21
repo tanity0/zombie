@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.759 — ステージ4の遠景＋BGMを追加
+
+- 遠景: 雪原の要塞パノラマ `stage4-far.jpg` を farBackdrop キー `'snow'` で追加(applyFarBackdrop の汎用キー経路。
+  city以外なのでENV_TINT=夜寄り)。campaign stage-4 に `farBackdrop:'snow'`。地形/地平は森のまま。
+- BGM: `stage4.mp3` を配置、`GAME_BGM.stage4` 登録、stage-4 に `bgm:'stage4'`。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.758 — 描画解像度capを端末別に(スマホ1.5/PC2.0)で電池対策
 
 - スマホ(タッチ端末=`userAgentData.mobile` or `pointer:coarse`)は解像度cap 1.5、PCは2.0(高画質)に出し分け。
