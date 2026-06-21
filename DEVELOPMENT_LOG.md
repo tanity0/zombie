@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.761 — ステージ4の地面(雪原)＋地平帯(遠景森1=氷壁・下フェード)を追加
+
+- 地面: `stage4-ground.jpg`(雪原・シームレス)。キー別地面override(`setGroundOverride`/`applyGroundOverride`)を新設。
+  city(石畳)/lab は別管理なので除外、snow=雪原、override無しは森。daylight非依存(夜でも適用)。
+- 地平帯(遠景森1): 提供素材を近白キーで透過＋**下端22%を下からフェードイン透過**して `stage4-horizon.png`。
+  キー別horizon override(`setHorizonOverride`/`applyHorizonOverride`)を新設し snow に適用(layout再計算込み)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.760 — ステージ4の近景森(氷壁)を追加＋近景差し替えをキー汎用化
 
 - 提供素材(近白背景=未透過)をフラッドフィルで透過→`stage4-front.png`。ステージ4の近景森(氷壁帯)に。

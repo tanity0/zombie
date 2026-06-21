@@ -1595,6 +1595,47 @@ export class PixiScene {
     this.stage3HorizonTex = t;
     this.daylightApplied = null;
   }
+  // farBackdropキー別の地面差し替え(snow=雪原 等)。stage3(city)の床は applyDaylight が石畳に差し替えるので
+  // ここでは扱わない(二重管理回避)。lab も applyOutdoorGroundTheme 管理なので対象外。
+  private groundOverrides: Record<string, Texture> = {};
+  private currentGroundKey = '';
+  setGroundOverride(key: string, t: Texture | null) {
+    if (!t) return;
+    try { const st = t.source.style as { addressMode?: string; update?: () => void }; st.addressMode = 'repeat'; st.update?.(); } catch { /* ignore */ }
+    this.groundOverrides[key] = t;
+    this.currentGroundKey = ''; // 注入後に再適用
+  }
+  private applyGroundOverride(farKey: string) {
+    if (this.isLabStage || farKey === 'city') return; // lab / stage3(city=石畳) は別管理
+    const override = farKey ? this.groundOverrides[farKey] : null;
+    const desired = override ? farKey : 'forest';
+    if (this.currentGroundKey === desired) return;
+    if (!this.groundStripBaseTex) this.groundStripBaseTex = this.L.groundStrips[0]?.texture ?? null; // 森の地面を退避
+    const tex = override ?? this.groundStripBaseTex;
+    if (!tex) return;
+    for (const strip of this.L.groundStrips) if (strip.texture !== tex) strip.texture = tex;
+    this.currentGroundKey = desired;
+  }
+  // farBackdropキー別の地平帯(遠景森1=horizonForest)差し替え。snow=氷壁帯 等。city/labは別管理。
+  private horizonOverrides: Record<string, Texture> = {};
+  private currentHorizonKey = '';
+  setHorizonOverride(key: string, t: Texture | null) {
+    if (!t) return;
+    this.horizonOverrides[key] = t;
+    this.currentHorizonKey = ''; // 注入後に再適用
+  }
+  private applyHorizonOverride(farKey: string) {
+    if (this.isLabStage || farKey === 'city') return; // lab / stage3(city) は別管理
+    const override = farKey ? this.horizonOverrides[farKey] : null;
+    const desired = override ? farKey : 'forest';
+    if (this.currentHorizonKey === desired) return;
+    if (!this.horizonForestBaseTex) this.horizonForestBaseTex = this.L.horizonForest.texture; // 森の地平帯を退避
+    const tex = override ?? this.horizonForestBaseTex;
+    if (!tex) return;
+    this.L.horizonForest.texture = tex;
+    this.layoutHorizonForest(); // テクスチャ寸法が違うので再レイアウト
+    this.currentHorizonKey = desired;
+  }
   // 地平帯(horizonForest)の寸法/タイルスケールを現在のテクスチャと画面幅で再計算(差し替え時に必要)。
   private layoutHorizonForest() {
     const tex = this.L.horizonForest.texture;
@@ -4543,6 +4584,8 @@ export class PixiScene {
     if (!indoor) {
       this.applyOutdoorGroundTheme(s.stageTheme, s.farBackdrop); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。遠景差し替えは farBackdrop。
       this.applyStage3Front(s.farBackdrop); // 近景森の差し替え(city=屋根帯/snow=氷壁。override無しは森・mask不変)
+      this.applyGroundOverride(s.farBackdrop); // 地面の差し替え(snow=雪原。city/labは別管理、override無しは森)
+      this.applyHorizonOverride(s.farBackdrop); // 地平帯(遠景森1)の差し替え(snow=氷壁帯。city/labは別管理)
       this.updateLabFloorPlate(false);
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;
