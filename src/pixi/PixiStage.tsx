@@ -43,33 +43,16 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       });
       if (cancelled) return;
       await ensureTextures();
-      const farTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/distant-night-panorama.jpg`);
-      // ステージ3の遠景(昼の廃都パノラマ=正午ステージ)。森テーマのまま遠景だけ差し替えるのに使う。
-      const stage3FarTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-distant-city-day.jpg`)
-        .catch(() => null);
-      // ステージ3の床(石畳/土)と地平帯(廃墟都市スカイライン=透過)。
-      const stage3GroundTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-ground-cobble.jpg`)
-        .catch(() => null);
-      const stage3HorizonTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-horizon-city.png`)
-        .catch(() => null);
-      const stage3NearHorizonTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage3-near-horizon-city.png`)
-        .catch(() => null);
-      // ステージ1の遠景森2(手前の森シルエット帯)。
-      const stage1NearForestTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage1-near-forest.png`)
-        .catch(() => null);
-      const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
-      const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
-      const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
+      const BASE = import.meta.env.BASE_URL;
+      // コア背景4枚だけ並列で待ってシーンを即起動(黒画面を最短化)。ステージ別の追加テクスチャは
+      // シーン開始後に非同期注入する(セッターは遅延注入対応=後から差し替わる)。
+      const [farTexture, groundTexture, horizonForestTexture, frontForestTexture] = await Promise.all([
+        Assets.load(`${BASE}backgrounds/distant-night-panorama.jpg`),
+        Assets.load(`${BASE}backgrounds/ground-moss-dirt.jpg`),
+        Assets.load(`${BASE}backgrounds/horizon-forest-band.png`),
+        Assets.load(`${BASE}backgrounds/front-forest-foreground.png`),
+      ]);
       frontForestTexture.source.scaleMode = 'linear';
-      // ラボ床(研究所スキン)は森の地面と同じ経路で確実に読み込む(マニフェスト getTexture の不具合回避)。
-      const labGroundTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}sprites/lab-floor/lab-floor-stage2.png`)
-        .catch(() => null);
       if (cancelled) return;
 
       if (host) {
@@ -83,12 +66,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
       const scene = new PixiScene(layers);
       scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
-      scene.setLabGroundTexture(labGroundTexture); // 研究所スキンの床に使用(最優先)
-      scene.setFarBackdropTexture('city', stage3FarTexture); // ステージ3の遠景差し替え用
-      scene.setStage3Ground(stage3GroundTexture);   // ステージ3の床(石畳)
-      scene.setStage3Horizon(stage3HorizonTexture); // ステージ3の地平帯(廃墟都市)
-      scene.setNearHorizonTexture('city', stage3NearHorizonTexture); // 遠景森2: 廃墟都市(ステージ3)
-      scene.setNearHorizonTexture('forest', stage1NearForestTexture); // 遠景森2: 森シルエット(ステージ1)
       scene.resize(width, height);
 
       sceneRef.current = scene;
@@ -103,6 +80,26 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       };
       tickerCallbackRef.current = tick;
       app.ticker.add(tick);
+
+      // ステージ別/ラボの追加テクスチャは後から並列ロード→注入(黒画面を伸ばさない)。
+      void (async () => {
+        const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near] = await Promise.all([
+          load('sprites/lab-floor/lab-floor-stage2.png'),
+          load('backgrounds/stage3-distant-city-day.jpg'),
+          load('backgrounds/stage3-ground-cobble.jpg'),
+          load('backgrounds/stage3-horizon-city.png'),
+          load('backgrounds/stage3-near-horizon-city.png'),
+          load('backgrounds/stage1-near-forest.png'),
+        ]);
+        if (cancelled || sceneRef.current !== scene) return;
+        scene.setLabGroundTexture(labGround);            // 研究所スキンの床
+        scene.setFarBackdropTexture('city', s3Far);      // ステージ3の遠景
+        scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)
+        scene.setStage3Horizon(s3Horizon);               // ステージ3の地平帯(廃墟都市)
+        scene.setNearHorizonTexture('city', s3Near);     // 遠景森2: 廃墟都市(ステージ3)
+        scene.setNearHorizonTexture('forest', s1Near);   // 遠景森2: 森シルエット(ステージ1)
+      })();
     })().catch((e) => { console.error('[PixiStage] init error:', e); });
 
     return () => {

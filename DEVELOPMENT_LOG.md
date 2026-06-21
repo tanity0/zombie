@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.725 — 起動時の黒画面を短縮(背景ロードの並列化+遅延注入)
+
+- 症状: たまに最初真っ暗で開始(裏でゲームは進行)→ 少しして描画。原因は PixiStage 初期化が
+  ステージ別の追加テクスチャ(stage3/stage1 の遠景・床・近景=5枚)をシーン生成前に逐次 await していたため。
+- 修正: **コア背景4枚(遠景/地面/地平森/前景森)だけ Promise.all で待ってシーン即起動**。
+  ステージ別/ラボのテクスチャは**シーン開始後に並列ロード→セッターで遅延注入**(後から差し替わる)。
+- トレードオフ: ステージ別の見た目(都市遠景/石畳/近景)は起動直後の一瞬だけ森ベースで出て、ロード完了で
+  差し替わる(黒画面よりは大幅改善)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.724 — ステージ1の遠景森2を元に戻す
 
 - v0.25.723 の差し替えが微妙だったため、元の `stage1-near-forest.png`(v721版)へ復帰。v2 は削除。
