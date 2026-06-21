@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.732 — 犬(突進)に追加クールダウン(3〜10秒・ランダム)
+
+- 突進が頻繁すぎる対策(社長指示)。突進終了/盾ブロック時に、基本CD(WEREWOLF_COOLDOWN_MS=1200ms)へ
+  **ランダムな追加CD(3〜10秒)** を上乗せ。突進ごとに毎回抽選(`werewolfExtraCd`)。
+- 対象は犬型(werewolf / lab-zombie-2)。giantbat は専用スケジューラ(gbDashReadyAt)のため対象外(extra=0)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.731 — 出撃フラッシュ解消(背景先読み＋表示前注入)＋ステージ2の遠景森2
 
 - **「出撃直後に一瞬ステージ1(森)が映る」解消**:

@@ -624,7 +624,13 @@ export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
 export const WEREWOLF_CHARGE_MAX_MS = 2800; // 突進の最大時間(到達できなくても打ち切り)。距離2倍化に合わせ延長。
-export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予
+export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予(基本CD)
+// 突進後、上記の基本CDに加えてランダムな追加クールダウン(3〜10秒)を持たせる。
+// 頻繁に突進してくるのを抑える(社長指示)。突進ごとに毎回ランダム抽選。犬型のみ(giantbatは別スケジューラ)。
+export const WEREWOLF_EXTRA_CD_MIN_MS = 3000;
+export const WEREWOLF_EXTRA_CD_MAX_MS = 10000;
+const werewolfExtraCd = (type: string): number =>
+  type === 'giantbat' ? 0 : WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS);
 // ジャイアントバットの行動パターン別クールダウン(ランダム揺らぎ±20%)。弾=fire profile側(約3秒)。
 export const GIANTBAT_JUMP_CD_MS = 5000;
 export const GIANTBAT_DASH_CD_MS = 7000;
@@ -3950,7 +3956,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const cdx = tx - ecx, cdy = ty - ecy;
             const cdist = Math.hypot(cdx, cdy);
             if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS };
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type) };
             }
             const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・直進(目標固定なので曲がらない)
             const cvx = (cdx / cdist) * cs, cvy = (cdy / cdist) * cs;
@@ -3959,7 +3965,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (shieldRects.length > 0 &&
                 shieldRects.some(s => rectsOverlap({ x: moved.x, y: moved.y, width: enemy.width, height: enemy.height }, s))) {
               shieldBlocks.push({ x: moved.x + enemy.width / 2, y: moved.y + enemy.height / 2, kind: 'dash' });
-              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS };
+              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type) };
             }
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
           }
