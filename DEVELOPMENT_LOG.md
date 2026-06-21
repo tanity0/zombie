@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.734 — 床の遠景効果を強化＋URLパラメータ化
+
+- 奥行きをさらに強く(社長指示)。既定値: `GROUND_TILE_SCALE_Y_FAR` 0.09→0.055、
+  `GROUND_PERSPECTIVE_CURVE` 2.35→2.6。
+- 生調整用にURLパラメータを追加(`tsNum`):
+  - `?gfar=`  奥の縦圧縮(小=遠くが強く縮む=遠く見える。既定0.055)
+  - `?gcurve=` 遠近カーブ(大=手前まで圧縮が効く=奥行き強。既定2.6)
+  - 例: `?gfar=0.04&gcurve=3` で端末上で詰められる。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.733 — ステージ2の遠景森2が見えない対策(暗化除外＋素材を明るく)
 
 - 機材帯が暗い素材で、夜の暗化(ENV_TINT)に飲まれて見えなかった。

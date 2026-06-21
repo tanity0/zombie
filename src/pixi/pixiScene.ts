@@ -402,10 +402,14 @@ const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
 // 遠近を少し強める(遠くをもっと遠くへ): 最遠を more 圧縮 + カーブを立てて圧縮域を広げる。
 // 戻すなら FAR 0.12 / CURVE 2.05。
-const GROUND_TILE_SCALE_Y_FAR = 0.09; // 旧 0.12(小さいほど遠くが圧縮=遠く見える)
+// 床の遠景効果(奥の縦圧縮)。?gfar=0.04 等でURL生調整可。小さいほど遠くが圧縮=遠く見える。
+// 既定 0.055(旧 0.12→0.09→0.055。社長指示でさらに強化)。
+const GROUND_TILE_SCALE_Y_FAR = tsNum('gfar', 0.055);
 const GROUND_SCROLL_X_FEEL = 1.2;
 const GROUND_SCROLL_Y_FEEL = 3.0;
-const GROUND_PERSPECTIVE_CURVE = 2.35; // 旧 2.05(大きいほど手前まで圧縮が効く=奥行き強)
+// 床の遠近カーブ。?gcurve=3 等でURL生調整可。大きいほど手前まで圧縮が効く=奥行き強。
+// 既定 2.6(旧 2.05→2.35→2.6。社長指示で強化)。
+const GROUND_PERSPECTIVE_CURVE = tsNum('gcurve', 2.6);
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
