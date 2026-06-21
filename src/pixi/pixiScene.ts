@@ -1535,7 +1535,9 @@ export class PixiScene {
       this.currentNearHorizonKey = key;
     }
     this.L.nearHorizon.visible = true;
-    this.L.nearHorizon.tint = this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
+    // lab の機材帯は暗い素材なので、夜の暗化(ENV_TINT)に飲まれて見えなくなる。
+    // ステージ2の前帯と同様に暗化から除外し、本来色(白tint)で出して視認性を確保する。
+    this.L.nearHorizon.tint = key === 'lab' ? 0xffffff : this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
   }
   // 遠景手前森(nearHorizon)の寸法/位置を現在のテクスチャと画面から再計算。底を地面シーム少し下に置く。
   private layoutNearHorizon() {

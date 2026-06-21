@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.733 — ステージ2の遠景森2が見えない対策(暗化除外＋素材を明るく)
+
+- 機材帯が暗い素材で、夜の暗化(ENV_TINT)に飲まれて見えなかった。
+- 対策1: applyNearHorizon で key==='lab' のときは暗化から除外し白tint(本来色)で表示。
+- 対策2: 素材の機材部分を明るく持ち上げ(ガンマ0.72＋ゲイン)。端末キャッシュ回避で
+  ファイル名を `stage2-near-horizon2.png` に更新(PixiStage / preloadBackgrounds 参照も更新)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.732 — 犬(突進)に追加クールダウン(3〜10秒・ランダム)
 
 - 突進が頻繁すぎる対策(社長指示)。突進終了/盾ブロック時に、基本CD(WEREWOLF_COOLDOWN_MS=1200ms)へ

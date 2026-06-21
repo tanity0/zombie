@@ -74,7 +74,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         load('backgrounds/stage3-near-horizon-city.png'),
         load('backgrounds/stage1-near-forest.png'),
         load('backgrounds/stage2-lab-far.jpg'),
-        load('backgrounds/stage2-near-horizon.png'),
+        load('backgrounds/stage2-near-horizon2.png'),
         load('backgrounds/stage3-front-rooftops.png'),
       ]);
       if (cancelled || sceneRef.current !== scene) return;
