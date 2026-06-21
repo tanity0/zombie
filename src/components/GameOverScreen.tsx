@@ -4,7 +4,7 @@ import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore } from '../utils/resultScoring';
 import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
-import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from '../data/equipment';
+import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equipScrapGold } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
@@ -98,12 +98,23 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const isBenchmarkRun = benchmarkResult !== null;
   const addGold = useGameStore(s => s.addGold);
   const goldBalance = useGameStore(s => s.goldBalance);
+  // 死亡時: 失う装備を tier ぶんゴールド換金(各部位ごと。銃は装備外なので対象外)。
+  const isDeathRun = !isBenchmarkRun && !won && !withdraw;
+  const equipmentGold = isDeathRun
+    ? (['body', 'arms', 'accessory'] as EquipSlot[]).reduce((sum, slot) => {
+        const id = carriedLoadout[slot];
+        const def = id ? equipmentById(id) : null;
+        return sum + (def ? equipScrapGold(def) : 0);
+      }, 0)
+    : 0;
   const creditedRef = useRef(false);
   useEffect(() => {
-    if (creditedRef.current || isBenchmarkRun || goldEarned <= 0) return;
+    if (creditedRef.current || isBenchmarkRun) return;
+    const total = goldEarned + equipmentGold;
+    if (total <= 0) return;
     creditedRef.current = true;
-    addGold(goldEarned);
-  }, [isBenchmarkRun, goldEarned, addGold]);
+    addGold(total);
+  }, [isBenchmarkRun, goldEarned, equipmentGold, addGold]);
 
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
   const statsItems = [
@@ -295,7 +306,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           </div>
           {!isBenchmark && !won && !withdraw && hadEquipment && (
             <div className="mb-3 rounded-2xl bg-rose-400/5 border border-rose-300/25 px-3 py-2.5">
-              <div className="text-[11px] font-semibold text-rose-200 mb-2">失った装備</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-rose-200">失った装備</span>
+                {equipmentGold > 0 && (
+                  <span className="text-[11px] font-semibold text-amber-200 tabular-nums">換金 +{equipmentGold}g</span>
+                )}
+              </div>
               <div className="flex flex-col gap-1.5">
                 {(['body', 'arms', 'accessory'] as EquipSlot[]).map(slot => {
                   const defId = carriedLoadout[slot];
@@ -323,6 +339,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                         </div>
                         <div className="text-[10px] text-white/55 leading-snug truncate">{equipmentDescription(def)}</div>
                       </div>
+                      <span className="text-[11px] font-semibold text-amber-200 tabular-nums shrink-0">+{equipScrapGold(def)}g</span>
                     </div>
                   );
                 })}

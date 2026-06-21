@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.712 — 死亡時に装備をゴールド換金(各部位 tier ぶん)
+
+- 死亡時、失う装備を tier ぶんゴールド換金: tier1=1g 〜 tier5=5g、各部位ごと(`equipScrapGold`)。
+  特殊(武将・tier0)は最高扱い 5g。銃は装備外なので対象外。
+- GameOverScreen: 死亡時のゴールド加算に換金分を合算。「失った装備」枠に各 +Ng と合計「換金 +Ng」を表示。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.711 — 死亡スコアに死因+失った装備 / 遠景手前森パララックス再調整
 
 - 死亡画面(GameOverScreen)に追加:

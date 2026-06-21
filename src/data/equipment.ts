@@ -244,3 +244,7 @@ export const hasEquipIcon = (defId: string | null | undefined): boolean =>
 
 // アイコン画像の論理名(spritePath('equip/<defId>') で実パスへ)。
 export const equipIconName = (defId: string): string => `equip/${defId}`;
+
+// 死亡時の装備換金額(ゴールド)。tier1=1g 〜 tier5=5g。特殊(武将・tier0)は最高扱いで 5g。
+export const equipScrapGold = (def: EquipmentDef): number =>
+  def.special ? 5 : Math.max(1, Math.min(5, def.tier));
