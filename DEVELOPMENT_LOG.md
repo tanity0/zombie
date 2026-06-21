@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.707 — HP(オーブ)右隣に装備アイコン表示
+
+- `VitalsOrb` に装備アイコン列を追加(HPオーブの右)。`player.equipment` の body/arms/accessory を個別購読
+  (装備変更時のみ再描画)、`hasEquipIcon` を持つ装備だけ `equip/<defId>` を `spritePath` で表示。
+- 半透明背景(hud-translucent)の小アイコン(24px)を縦並び。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.706 — 遠景森ブラー弱め + 地面遠方ブラーのピークを森に合わせる
 
 - `HORIZON_FOREST_BLUR 1.0→0.65`(遠景森を少し弱める)。

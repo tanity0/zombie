@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { hasEquipIcon, equipIconName } from '../data/equipment';
+import { spritePath } from '../utils/spriteLoader';
 
 // コンパクトなバイタル表示: HP は「数字主体の球体(オーブ)」、その外周を EXP の白いリングが一周。
 // 一周溜まる=レベルアップ。被弾した瞬間はオーブを点滅+パンチさせて分かりやすくする。
@@ -19,6 +21,13 @@ const VitalsOrb: React.FC = () => {
   const experience = useGameStore(s => s.player.experience);
   const expToNext = useGameStore(s => s.player.experienceToNextLevel);
   const level = useGameStore(s => s.player.level);
+  // 装備(部位ごとに個別購読=装備変更時のみ再描画)。アイコンがある装備だけ表示。
+  const equipBody = useGameStore(s => s.player.equipment.body);
+  const equipArms = useGameStore(s => s.player.equipment.arms);
+  const equipAccessory = useGameStore(s => s.player.equipment.accessory);
+  const equipIcons = [equipBody, equipArms, equipAccessory]
+    .filter((id): id is string => hasEquipIcon(id))
+    .map(id => ({ id, src: spritePath(equipIconName(id)) }));
 
   // 被弾検知: HP が下がった瞬間にアニメをキー変更で再生。
   const prevHealth = useRef(health);
@@ -41,7 +50,8 @@ const VitalsOrb: React.FC = () => {
   const dash = `${RING_C * expFrac} ${RING_C}`;
 
   return (
-    <div className="relative" style={{ width: SIZE, height: SIZE }}>
+    <div className="flex items-center gap-1.5">
+      <div className="relative" style={{ width: SIZE, height: SIZE }}>
       {/* 被弾パンチ: key 変更で都度アニメ再生。中身全体を軽くスケール。 */}
       <div key={hitKey} className={hitKey ? 'hud-orb-hit' : undefined} style={{ width: SIZE, height: SIZE }}>
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
@@ -134,6 +144,23 @@ const VitalsOrb: React.FC = () => {
       >
         Lv {level}
       </div>
+      </div>
+
+      {/* 装備アイコン(HP右隣)。アイコンを持つ装備のみ縦に並べる。 */}
+      {equipIcons.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {equipIcons.map(ic => (
+            <img
+              key={ic.id}
+              src={ic.src}
+              alt=""
+              draggable={false}
+              className="w-6 h-6 rounded-md hud-translucent p-0.5 object-contain"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
