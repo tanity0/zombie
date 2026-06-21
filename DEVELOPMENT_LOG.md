@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.718 — ステージ2: 手前の近景を暗化から除外
+
+- lab テーマ(ステージ2)の手前の近景(lab-front-band=`frontForest`)を ENV_TINT 暗化から除外し、
+  本来の明るさ(tint 白)で表示。applyOutdoorGroundTheme の lab 分岐で毎フレーム白tint(applyDaylight より後勝ち)。
+  ※veil(暗幕)からは元々除外済み。
+- 検証: `npx tsc --noEmit` パス。
+
+## v0.25.716/717 — 遠景森パララックス調整
+
+- 遠景森2(`nearHorizon`)= 0.2 → 0.5、遠景森1(`horizonForest`)= 0.16(据え置き)。
+
 ## v0.25.715 — 遠景手前森の速度を気持ち速く
 
 - `NEAR_HORIZON_PARALLAX_X 0.13→0.16`。

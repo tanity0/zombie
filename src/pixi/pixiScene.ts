@@ -1588,6 +1588,8 @@ export class PixiScene {
       // 毎フレーム再適用(何かがテクスチャを戻しても確実に張り替わる)。差分があるときだけ代入。
       // 色味調整(LAB_ENV_TINT)は外し、テクスチャ本来の色で表示(tint 白=無補正)。
       for (const strip of strips) { if (strip.texture !== tex) strip.texture = tex; strip.tint = 0xffffff; }
+      // 手前の近景(lab-front-band)はステージ2の暗化(ENV_TINT)対象から除外=本来の明るさで表示(社長指示)。
+      this.L.frontForest.tint = 0xffffff;
       if (this.outdoorGroundTheme !== 'lab') {
         // 背景2層(地平帯/手前帯)を研究所版へ(森→ラボ)。遠景は applyFarBackdrop が管理。
         // 元テクスチャは復元用に一度だけ退避。テーマ変化時のみ。
