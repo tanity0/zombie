@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.757 — ステージ3のBGMを割当
+
+- 社長提供のステージ3曲を `public/audio/stage3.mp3` として配置。`GAME_BGM.stage3` に登録し、
+  campaign stage-3 に `bgm:'stage3'` を設定。ステージ3で専用BGMが流れる(基盤はv755で用意済み)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.756 — 電池対策: 一時停止/裏(hidden)で描画停止＋BGM一時停止
 
 - 一時停止中(メニュー等 isPaused)・タブ/アプリが裏(document.hidden)では Pixi ticker を停止=GPUを焼かない。

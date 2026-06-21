@@ -144,6 +144,7 @@ export const STAGES: Stage[] = [
     unlockBy: 'stage-2',
     farBackdrop: 'city', // 遠景を昼の廃都パノラマ(正午ステージ)へ差し替え(森の地形・地平はそのまま)。
     nearHorizon: 'city', // 遠景森2(手前の廃墟都市帯)
+    bgm: 'stage3',       // ステージ3専用BGM(public/audio/stage3.mp3)
     subs: [],
     main: {
       code: 'M3',

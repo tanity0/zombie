@@ -14,7 +14,7 @@ const DEFAULT_SFX_VOLUME = 1;
 const GAME_BGM: Record<string, string> = {
   default: `${import.meta.env.BASE_URL}audio/stage1.mp3`,
   lab: `${import.meta.env.BASE_URL}audio/lab-stage.mp3`, // 研究所(ステージ2)。theme==='lab' で選択
-  // stage3: `${import.meta.env.BASE_URL}audio/<stage3>.mp3`, // 廃都(ステージ3)。ファイル確定後に割当
+  stage3: `${import.meta.env.BASE_URL}audio/stage3.mp3`, // 廃都(ステージ3)。stage.bgm='stage3' で選択
 };
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
 const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
