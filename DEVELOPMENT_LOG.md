@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.768 — ステージ1セット(アトラス=敵/ピックアップ/木)をドット絵に差し替え
+
+- 提供ドット絵(白背景)を連結成分抽出→アトラス名にマッピングし `atlas-px/<name>.png` に保存、
+  atlas切り出し後に `textures.set` で上書き(nearest)。zombie/bat/skeleton/plant/ghost/werewolf/pumpkin/
+  giantbat/reaper/tree ＋ pickup-xp-blue/green/red/health/magnet/bomb/chest の17種。余り(フード姿)は未使用。
+- 木の出し分け: 既定 'tree'=枯れ木(ステージ1/森)、'tree-city'=葉付き木(ステージ3)。syncTrees が farBackdrop で選択。
+- 当たり判定/サイズ/配置は不変(描画のみ)。PHILL頭スナップ用アスペクトも上書き後の絵で再登録。
+- 検証: `npx tsc --noEmit` パス＋目視。
+
 ## v0.25.767 — ステージ3のオブジェクトをドット絵に差し替え(木も)
 
 - 提供ドット絵(同レイアウト5行・33個)を再分割し `props/prop2-r{r}-c{c}.png` に。CITY_PROPS の tex 参照を一括 prop2 へ。

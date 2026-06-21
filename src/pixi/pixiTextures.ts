@@ -244,10 +244,17 @@ export const ensureTextures = (): Promise<void> => {
     // 自動タレット(紫背景未透過)を色キーで透過して登録。
     await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni')]);
 
-    // 既存の木(atlasの'tree')を新しいドット絵の木で差し替える(社長指示)。atlas切り出しの後に
-    // 上書きしてキーを確実に置き換える。ドット絵なので nearest。キャッシュ回避で tree-new2。
-    const newTree = await loadOne('tree-new2');
-    if (newTree) { newTree.source.scaleMode = 'nearest'; textures.set('tree', newTree); }
+    // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
+    // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。
+    const atlasPxNames = ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'tree',
+      'pickup-xp-blue', 'pickup-xp-green', 'pickup-xp-red', 'pickup-health', 'pickup-magnet', 'pickup-bomb', 'pickup-chest'];
+    await Promise.all(atlasPxNames.map(async (n) => {
+      const t = await loadOne(`atlas-px/${n}`);
+      if (t) { t.source.scaleMode = 'nearest'; textures.set(n, t); }
+    }));
+    // ステージ3(廃都)用の木=ドット絵の葉付き木(syncTrees が farBackdrop で出し分け)。既定 'tree' は枯れ木(stage1)。
+    const cityTree = await loadOne('tree-new2');
+    if (cityTree) { cityTree.source.scaleMode = 'nearest'; textures.set('tree-city', cityTree); }
     // 城(ステージ3のフィナーレ拠点)を廃教会の絵に差し替え(社長提供)。足元アンカー・高さ基準スケールは不変。
     const church = await loadOne('castle-church');
     if (church) { church.source.scaleMode = 'nearest'; textures.set('castle', church); }
