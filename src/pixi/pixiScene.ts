@@ -184,6 +184,9 @@ const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 1.3));
 const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
 // シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定2=軽く柔らかく(社長指示)。?shaftblur=0 でOFF。
 const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 2));
+// シャフトの反復間隔(period)= 画面幅 × この係数。大きいほど筋の間隔が広がる=重なり減。
+// 既定0.5。?shaftperiod= で生調整(例: 0.8 で隙間を広く)。下限は内部で180pxにクランプ。
+const SHAFT_PERIOD_FACTOR = Math.max(0.05, tsNum('shaftperiod', 0.5));
 
 // --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広霧をゆっくり揺らすだけ(枚数は増やさない)。
 // ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。
@@ -1120,7 +1123,7 @@ export class PixiScene {
     const color = night ? 0xc9d6ff : lp.color;
     // 一定間隔の斜めビームを period 単位でタイル反復して描く。横パララックスで position.x を
     // [-period, 0] に折り返すと継ぎ目なくスクロールできる(森の tilePosition と同じ発想)。
-    const period = Math.max(180, w * 0.5);
+    const period = Math.max(180, w * SHAFT_PERIOD_FACTOR);
     this.shaftPeriod = period;
     // 1 period 内に配置するビーム(period 比のオフセット / 幅 / 相対濃さ)。
     // 夜=「広く淡く」=拡散した月明り。昼=「細く強い」=日差し。

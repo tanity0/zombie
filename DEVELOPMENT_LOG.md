@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.738 — シャフトの間隔(period)をURLパラメータ化
+
+- これまでハードコードだった period(画面幅×0.5)を `SHAFT_PERIOD_FACTOR` に切り出し、`?shaftperiod=` で生調整可。
+  大きいほど筋の間隔が広がる=重なり減(例: `?shaftperiod=0.8`)。既定0.5(従来同値=見た目不変)。下限180pxクランプ。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.737 — 日光シャフトに軽いぼかし(shaftblur 既定2)
 
 - シャフトのエッジを柔らかく。`SHAFT_BLUR` 既定 0→2(BlurFilter 1枚・加算レイヤーのみ)。`?shaftblur=0` でOFF。
