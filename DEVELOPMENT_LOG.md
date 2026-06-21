@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.708 — タイマー中央化 / HPを上へ / ステージ名非表示
+
+- タイマーを上部中央へ(スクラップは右に維持)。空いた分、バイタル(HPオーブ)を top+40→top+8 へ上げる。
+- ステージ名表示を撤去(`stageName` と getStage/getSelectedStageId import も削除)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.707 — HP(オーブ)右隣に装備アイコン表示
 
 - `VitalsOrb` に装備アイコン列を追加(HPオーブの右)。`player.equipment` の body/arms/accessory を個別購読

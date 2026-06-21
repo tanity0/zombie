@@ -6,8 +6,6 @@ import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
-import { getStage } from '../data/campaign';
-import { getSelectedStageId } from '../data/progress';
 import VitalsOrb from './VitalsOrb';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
@@ -76,8 +74,6 @@ const GameHUD: React.FC = () => {
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
   const bossActive = useGameStore(state => state.enemies.some(e => e.type === 'giantbat'));
 
-  // 出撃中ステージ名(選択ステージに連動。研究所なら「研究所跡」。未取得時は従来名)。
-  const stageName = getStage(getSelectedStageId())?.name ?? 'マッド・フォレスト';
   const formattedTime = formatTime(gameTime / 1000);
 
   const bossImminent =
@@ -186,30 +182,22 @@ const GameHUD: React.FC = () => {
         </div>
       )}
 
-      {/* Top bar */}
+      {/* Timer(中央) */}
       <div
-        className="absolute left-0 right-0 flex items-center justify-between gap-2 px-3"
+        className="absolute left-1/2 -translate-x-1/2 hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums"
+        style={{ top: 'max(env(safe-area-inset-top), 8px)' }}
+      >
+        {formattedTime}
+      </div>
+      {/* スクラップ(右) */}
+      <div
+        className="absolute hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums"
         style={{
           top: 'max(env(safe-area-inset-top), 8px)',
-          paddingLeft: 'max(env(safe-area-inset-left), 12px)',
-          paddingRight: 'max(env(safe-area-inset-right), 12px)'
+          right: 'max(env(safe-area-inset-right), 12px)'
         }}
       >
-        <div className="hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums">
-          {formattedTime}
-        </div>
-        {/* 拾ったスクラップ数(表示のみ)。 */}
-        <div className="hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums">
-          🔩 {player.straps}
-        </div>
-      </div>
-
-      {/* Stage label(選択ステージ名に連動。ベンチ/フリー等で未取得なら従来名) */}
-      <div
-        className="absolute left-1/2 -translate-x-1/2 text-[10px] uppercase tracking-[0.3em] text-white/40"
-        style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 30px)' }}
-      >
-        {stageName}
+        🔩 {player.straps}
       </div>
 
       {/* Finale boss warning / arrival banner */}
@@ -226,11 +214,11 @@ const GameHUD: React.FC = () => {
         </div>
       )}
 
-      {/* バイタル: HP球体 + 外周EXPリング(被弾点滅)。左上にコンパクト配置。 */}
+      {/* バイタル: HP球体 + 外周EXPリング(被弾点滅)。左上に配置(タイマーが中央へ移った分、上へ)。 */}
       <div
         className="absolute"
         style={{
-          top: 'calc(max(env(safe-area-inset-top), 8px) + 40px)',
+          top: 'max(env(safe-area-inset-top), 8px)',
           left: 'max(env(safe-area-inset-left), 12px)'
         }}
       >
