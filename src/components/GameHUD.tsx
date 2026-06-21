@@ -74,7 +74,6 @@ const GameHUD: React.FC = () => {
   const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
-  const enemyCount = useGameStore(state => state.enemies.length);
   const bossActive = useGameStore(state => state.enemies.some(e => e.type === 'giantbat'));
 
   // 出撃中ステージ名(選択ステージに連動。研究所なら「研究所跡」。未取得時は従来名)。
@@ -196,14 +195,11 @@ const GameHUD: React.FC = () => {
           paddingRight: 'max(env(safe-area-inset-right), 12px)'
         }}
       >
-        <div className="glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums">
+        <div className="hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums">
           {formattedTime}
         </div>
-        <div className="glass-pill px-3 py-1 text-[13px] font-semibold">
-          敵 {enemyCount}
-        </div>
         {/* 拾ったスクラップ数(表示のみ)。 */}
-        <div className="glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums">
+        <div className="hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums">
           🔩 {player.straps}
         </div>
       </div>
@@ -253,7 +249,7 @@ const GameHUD: React.FC = () => {
           {equippedSkills.map(key => (
             <div
               key={key}
-              className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
+              className="hud-translucent rounded-full px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
             >
               <span className="text-sky-200/90">{subWeaponDisplayName(key)}</span>
               <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
@@ -277,7 +273,7 @@ const GameHUD: React.FC = () => {
               bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
             }}
           >
-            <div className="glass-panel rounded-2xl px-2.5 py-2 flex items-center gap-2">
+            <div className="hud-translucent rounded-2xl px-2.5 py-2 flex items-center gap-2">
               {/* Gun slots — one per owned category; tap to switch. Shows
                   装填弾 / 母数(リザーブ) and a reload indicator. */}
               {guns.map(gun => {
@@ -353,7 +349,7 @@ const GameHUD: React.FC = () => {
       <button
         type="button"
         onPointerDown={toggleBgm}
-        className="pointer-events-auto absolute w-9 h-9 rounded-full glass-pill flex items-center justify-center text-white/70 active:text-white"
+        className="pointer-events-auto absolute w-9 h-9 rounded-full hud-translucent flex items-center justify-center text-white/70 active:text-white"
         style={{
           right: 'max(env(safe-area-inset-right), 12px)',
           top: 'calc(max(env(safe-area-inset-top), 8px) + 168px)'

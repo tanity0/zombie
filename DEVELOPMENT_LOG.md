@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.702 — 敵数表示を削除 + HUD背景を薄い半透明に
+
+- 上部バーの「敵 N」表示を削除(`enemyCount` 購読も撤去)。
+- 対戦中HUDの黒板感を軽減: 新クラス `hud-translucent`(rgba(10,10,16,0.42)+薄blur+細枠)を、
+  タイマー/スクラップ/ステータス(撃破・DMG・SCRAP)/スキルチップ/武器パネル/BGMボタンに適用
+  (メニュー用 glass-pill/panel はそのまま=メニューの可読性は維持)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.701 — オーブ微調整 + 遠景を少し戻す
 
 - HPの色をより赤く(上部 #fb7185→#ef4444 等、全体に赤寄り/危険時は暗赤)。
