@@ -84,6 +84,7 @@ const FRONT_FOREST_PARALLAX_X = 0.68;
 const FRONT_FOREST_HEIGHT_RATIO = 0.5;
 const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
+const FRONT_SNOW_Y_OFFSET = 30; // ステージ4の近景(氷壁)だけ少し下げる(社長指示)
 const FRONT_FOREST_ALPHA = 0.78;
 const FRONT_FOREST_BLUR = 2.2;
 const FRONT_FOREST_FADE_IN_RATIO = 0.52;
@@ -534,13 +535,18 @@ interface PickupView {
 
 type EffectView = Container | Graphics | Text | Sprite;
 
-// One drifting ambient mote.
+// One drifting ambient mote (蛍 or 雪 — 同じプールを使い回す)。
 interface Firefly {
   sprite: Sprite;
   x: number; y: number;   // world position
   vx: number; vy: number; // drift velocity (px/s)
   phase: number; freq: number; base: number; size: number;
+  snowFall: number;       // 雪モード時の落下速度(px/s)
+  snowDrift: number;      // 雪モード時の横ドリフト(px/s)
 }
+// ステージ4の雪(蛍プールを流用)。進行方向(プレイヤー速度)に連動して流れる。
+const SNOW_TINT = 0xeaf2ff;
+const SNOW_WIND_FACTOR = 0.5; // プレイヤー速度に対する雪の流れ係数(逆向き=進む方向へ流れて見える)
 
 // 診断用: URLに ?dancevfx=0 を付けるとダンスのPixi描画(ミラーボール/サークル/矢印/暗転/発光)を一切出さない。
 const RHYTHM_VFX_OFF = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dancevfx') === '0';
@@ -903,6 +909,8 @@ export class PixiScene {
           freq: 0.001 + Math.random() * 0.0016,
           base: 0.22 + Math.random() * 0.33,
           size: 4 + Math.random() * 6,
+          snowFall: 28 + Math.random() * 34,   // 落下速度(px/s)
+          snowDrift: (Math.random() - 0.5) * 18, // 横の自然な揺れ
         });
       }
     }
@@ -1093,7 +1101,7 @@ export class PixiScene {
     this.updatePerspectiveGround(0, 0, 0, 0);
     const frontH = this.frontForestHeight();
     const frontScale = frontH / this.L.frontForest.texture.height;
-    this.L.frontForest.position.set(0, h - frontH);
+    this.L.frontForest.position.set(0, h - frontH + (this.snowStage ? FRONT_SNOW_Y_OFFSET : 0));
     this.L.frontForest.width = w;
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
@@ -1925,7 +1933,7 @@ export class PixiScene {
       labPerspNow ? LAB_PERSP_CURVE : GROUND_PERSPECTIVE_CURVE,
     );
     const frontH = this.frontForestHeight();
-    this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH);
+    this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + (this.snowStage ? FRONT_SNOW_Y_OFFSET : 0));
     this.L.frontForest.tilePosition.set(
       -s.camera.x * FRONT_FOREST_PARALLAX_X,
       0
@@ -2340,16 +2348,36 @@ export class PixiScene {
     }
 
     const sec = dt / 1000;
+    // ステージ4は蛍をやめて雪に置き換え(社長指示)。雪は落下＋進行方向(プレイヤー速度)連動で流れる。
+    const snow = this.snowStage;
+    let windX = 0, windY = 0;
+    if (snow) {
+      const p = useGameStore.getState().player;
+      windX = -(p.vx ?? 0) * SNOW_WIND_FACTOR; // 進む方向と逆へ雪が流れる=移動連動
+      windY = -(p.vy ?? 0) * SNOW_WIND_FACTOR;
+    }
     for (const f of this.fireflies) {
-      f.x += f.vx * sec;
-      f.y += f.vy * sec;
+      if (snow) {
+        f.x += (f.snowDrift + windX) * sec;
+        f.y += (f.snowFall + windY) * sec; // +y=下へ落下
+      } else {
+        f.x += f.vx * sec;
+        f.y += f.vy * sec;
+      }
       // Wrap into the visible band so density follows the camera.
       if (f.x < minX) f.x = maxX; else if (f.x > maxX) f.x = minX;
       if (f.y < minY) f.y = maxY; else if (f.y > maxY) f.y = minY;
-      const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * f.freq + f.phase));
       f.sprite.position.set(f.x - camera.x, f.y - camera.y);
-      f.sprite.alpha = f.base * twinkle;
-      f.sprite.width = f.sprite.height = f.size;
+      if (snow) {
+        f.sprite.tint = SNOW_TINT;
+        f.sprite.alpha = f.base * 0.95;          // 雪はほぼ一定の淡い白(瞬きなし)
+        f.sprite.width = f.sprite.height = f.size * 0.7;
+      } else {
+        const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * f.freq + f.phase));
+        f.sprite.tint = FIREFLY_TINT;
+        f.sprite.alpha = f.base * twinkle;
+        f.sprite.width = f.sprite.height = f.size;
+      }
     }
   }
 

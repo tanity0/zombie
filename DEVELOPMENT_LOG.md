@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.765 — ステージ4: 近景を30px下げ＋蛍を雪エフェクトに置換
+
+- 近景(氷壁)を `FRONT_SNOW_Y_OFFSET=30` だけ下げる(snowステージのみ。layout/parallax 両方)。
+- ステージ4は蛍をやめ、同じプール(40スプライト)を雪に転用。落下＋プレイヤー速度連動の風(`SNOW_WIND_FACTOR`)で
+  進行方向に流れる。瞬きOFF・白tint・小さめ。**新規プールなし=蛍を置換しただけ≒負荷ニュートラル(2/10)**。
+- ステージ1-3の蛍は従来どおり。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.764 — 城(ボス)マーカーをボス出現まで非表示
 
 - 画面外の城マーカーは `castle.bossSpawned` まで描かない(社長指示)。ボス出現後のみ方向表示。
