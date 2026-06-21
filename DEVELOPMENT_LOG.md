@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.760 — ステージ4の近景森(氷壁)を追加＋近景差し替えをキー汎用化
+
+- 提供素材(近白背景=未透過)をフラッドフィルで透過→`stage4-front.png`。ステージ4の近景森(氷壁帯)に。
+- 近景森の差し替えを farBackdropキー汎用化: `frontOverrides[key]`＋`setFrontOverride(key,t)`。
+  `applyStage3Front(farKey)` が override あれば不透明(フェードOFF)、無ければ森(半透明)。city=屋根帯/snow=氷壁。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.759 — ステージ4の遠景＋BGMを追加
 
 - 遠景: 雪原の要塞パノラマ `stage4-far.jpg` を farBackdrop キー `'snow'` で追加(applyFarBackdrop の汎用キー経路。

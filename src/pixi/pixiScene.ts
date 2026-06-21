@@ -1512,26 +1512,36 @@ export class PixiScene {
   // 重要: マスクは作り直さない(テクスチャ+tileScaleのみ)。前回 updateFrontForestFadeMask の
   // destroy(true) を同期中に呼んで描画破綻したため(v726不具合)。
   private stage3FrontTex: Texture | null = null;
+  private frontOverrides: Record<string, Texture> = {}; // farBackdropキー別の近景差し替え(city=屋根帯/snow=氷壁 等)
   private frontBaseTex: Texture | null = null;
   private currentFrontKey = '';
   setStage3Front(t: Texture | null) {
     if (!t) return;
     this.stage3FrontTex = t;
+    this.frontOverrides['city'] = t; // ステージ3=廃都の近景(屋根帯)
     this.currentFrontKey = ''; // 注入後に再適用
   }
-  private applyStage3Front(useCity: boolean) {
+  // 近景森(frontForest)の farBackdropキー別差し替え。city=屋根帯(stage3)/snow=氷壁(stage4)等。
+  setFrontOverride(key: string, t: Texture | null) {
+    if (!t) return;
+    this.frontOverrides[key] = t;
+    this.currentFrontKey = '';
+  }
+  // farKey(=s.farBackdrop)に応じて近景森を差し替え。override があればそれ(不透明・フェードOFF)、無ければ森(半透明)。
+  private applyStage3Front(farKey: string) {
     if (this.isLabStage) return; // lab は lab-front-band 管理
     if (!this.frontBaseTex) this.frontBaseTex = this.L.frontForest.texture; // 森の近景baseを捕捉
-    const desired = (useCity && this.stage3FrontTex) ? 'city' : 'forest';
+    const override = farKey ? this.frontOverrides[farKey] : null;
+    const desired = override ? farKey : 'forest';
     if (this.currentFrontKey === desired) return;
-    const tex = desired === 'city' ? this.stage3FrontTex : this.frontBaseTex;
+    const tex = override ?? this.frontBaseTex;
     if (!tex) return;
     this.L.frontForest.texture = tex;
     // tileScale だけ更新(maskは不変=安全)。
     const frontH = this.frontForestHeight();
     this.L.frontForest.tileScale.set(frontH / Math.max(1, tex.height));
-    // ステージ3の屋根帯は半透明にしない(不透明・フェードマスクOFF)。森に戻すと半透明+フェード復帰。
-    if (desired === 'city') {
+    // 差し替え近景(屋根帯/氷壁)は半透明にしない(不透明・フェードOFF)。森に戻すと半透明+フェード復帰。
+    if (override) {
       this.L.frontForest.alpha = 1;
       this.L.frontForest.mask = null;
     } else {
@@ -4532,7 +4542,7 @@ export class PixiScene {
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
       this.applyOutdoorGroundTheme(s.stageTheme, s.farBackdrop); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。遠景差し替えは farBackdrop。
-      this.applyStage3Front(s.farBackdrop === 'city'); // ステージ3の近景=屋根帯(テクスチャ+tileScaleのみ・mask不変)
+      this.applyStage3Front(s.farBackdrop); // 近景森の差し替え(city=屋根帯/snow=氷壁。override無しは森・mask不変)
       this.updateLabFloorPlate(false);
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;

@@ -130,7 +130,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
       const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
       void (async () => {
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s3Front] = await Promise.all([
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s3Front] = await Promise.all([
           load('sprites/lab-floor/lab-floor-stage2.png'),
           load('backgrounds/stage3-distant-city-day.jpg'),
           load('backgrounds/stage3-ground-cobble2.jpg'),
@@ -140,6 +140,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
           load('backgrounds/stage2-lab-far.jpg'),
           load('backgrounds/stage2-near-horizon2.png'),
           load('backgrounds/stage4-far.jpg'),
+          load('backgrounds/stage4-front.png'),
           load('backgrounds/stage3-front-rooftops.png'),
         ]);
         if (cancelled || sceneRef.current !== scene) return;
@@ -153,6 +154,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setNearHorizonTexture('forest', s1Near);   // 遠景森2: 森シルエット(ステージ1)
         scene.setNearHorizonTexture('lab', s2Near);      // 遠景森2: ステージ2(lab)
         scene.setStage3Front(s3Front);                   // 近景森: 屋根帯(ステージ3・mask不変方式)
+        scene.setFrontOverride('snow', s4Front);         // 近景森: 氷壁(ステージ4・不透明)
       })();
     })().catch((e) => { console.error('[PixiStage] init error:', e); });
 
