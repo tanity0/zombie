@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.764 — 城(ボス)マーカーをボス出現まで非表示
+
+- 画面外の城マーカーは `castle.bossSpawned` まで描かない(社長指示)。ボス出現後のみ方向表示。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.763 — ステージ4のオブジェクト(塔/バス/テント/焚き火)＋木を除去
 
 - 木をステージ4(farBackdrop'snow')で非表示=専用オブジェクトに置換(社長指示)。

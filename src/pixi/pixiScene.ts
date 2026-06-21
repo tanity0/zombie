@@ -5711,7 +5711,8 @@ export class PixiScene {
     const castleY = castle.y + 40 - camera.y;
     // 城マーカーは城が実在するステージ(屋外・非ラボ)でのみ表示。
     // ステージ2(ラボ/屋内)は城を描かないので、位置マーカーも出さない。
-    if (castleVisible && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
+    // さらにボス出現まで(bossSpawned)はマーカー非表示(社長指示)。
+    if (castleVisible && castle.bossSpawned && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
       const angle = Math.atan2(castleY - cyC, castleX - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
