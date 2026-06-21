@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.758 — 描画解像度capを端末別に(スマホ1.5/PC2.0)で電池対策
+
+- スマホ(タッチ端末=`userAgentData.mobile` or `pointer:coarse`)は解像度cap 1.5、PCは2.0(高画質)に出し分け。
+  塗り面積は倍率の2乗で効くのでスマホは約44%削減=GPU/電池に直結。HUDはDOMなので文字は不変。
+- `?rescap=` でURL上書き可(検証/微調整。例 ?rescap=1.75)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.757 — ステージ3のBGMを割当
 
 - 社長提供のステージ3曲を `public/audio/stage3.mp3` として配置。`GAME_BGM.stage3` に登録し、

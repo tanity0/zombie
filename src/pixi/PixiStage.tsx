@@ -6,6 +6,22 @@ import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 
+// 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
+// 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
+const resolutionCap = (): number => {
+  if (typeof window !== 'undefined') {
+    const q = Number(new URLSearchParams(window.location.search).get('rescap'));
+    if (Number.isFinite(q) && q > 0) return q; // 明示指定が最優先
+  }
+  let mobile = false;
+  if (typeof navigator !== 'undefined') {
+    const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
+    if (uaData && typeof uaData.mobile === 'boolean') mobile = uaData.mobile;
+    else if (typeof window !== 'undefined' && window.matchMedia) mobile = window.matchMedia('(pointer: coarse)').matches;
+  }
+  return mobile ? 1.5 : 2; // スマホ=1.5(省電力) / PC=2.0(高画質)
+};
+
 interface PixiStageProps {
   width: number;
   height: number;
@@ -42,7 +58,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         antialias: false, // pixel art — keep edges crisp
         roundPixels: true,
         background: 0x0b0b12,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
+        resolution: Math.min(window.devicePixelRatio || 1, resolutionCap()),
         autoDensity: true,
       });
       if (cancelled) return;
