@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.726 — ステージ3の近景森(frontForest)を屋根の帯に差し替え
+
+- ステージ3(city)のみ近景森(最前面 `frontForest`)を「廃墟の屋根の帯」へ差し替え。素材
+  `stage3-front-rooftops.png`(マゼンタ背景をクロマキー透過)。lab(ステージ2)は従来の lab-front-band 管理のまま。
+- 仕組み: `setStage3Front` で注入、`applyFrontForestOverride(s.farBackdrop==='city')` を applyOutdoorGroundTheme の
+  後に毎フレーム適用(non-lab のみ。base捕捉して切替)。`layoutFrontForest` を新設(resize と差し替えで共用)。
+- tint は昼夜連動(ステージ3=昼で本来色)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.725 — 起動時の黒画面を短縮(背景ロードの並列化+遅延注入)
 
 - 症状: たまに最初真っ暗で開始(裏でゲームは進行)→ 少しして描画。原因は PixiStage 初期化が

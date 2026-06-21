@@ -1065,15 +1065,7 @@ export class PixiScene {
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
     this.updatePerspectiveGround(0, 0, 0, 0);
-    const frontH = this.frontForestHeight();
-    const frontScale = frontH / this.L.frontForest.texture.height;
-    this.L.frontForest.position.set(0, h - frontH);
-    this.L.frontForest.width = w;
-    this.L.frontForest.height = frontH;
-    this.L.frontForest.tileScale.set(frontScale);
-    this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
-    this.updateFrontForestFadeMask(w, frontH);
-    this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
+    this.layoutFrontForest();
     // Full-screen atmosphere overlays.
     this.gradeSprite.width = w;
     this.gradeSprite.height = h;
@@ -1503,6 +1495,36 @@ export class PixiScene {
     }
     this.L.nearHorizon.visible = true;
     this.L.nearHorizon.tint = this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
+  }
+  // 近景森(frontForest)のステージ3差し替え(屋根の帯)。lab は applyOutdoorGroundTheme が管理するので触らない。
+  private frontCityTex: Texture | null = null;
+  private frontForestNormalTex: Texture | null = null;
+  private currentFrontKey = '';
+  setStage3Front(t: Texture | null) {
+    if (!t) return;
+    this.frontCityTex = t;
+    this.currentFrontKey = ''; // 注入後に再適用
+  }
+  private applyFrontForestOverride(useCity: boolean) {
+    if (this.isLabStage) return; // ラボは lab-front-band 管理に任せる
+    const desired = (useCity && this.frontCityTex) ? 'city' : 'forest';
+    if (this.currentFrontKey === desired) return;
+    if (!this.frontForestNormalTex) this.frontForestNormalTex = this.L.frontForest.texture; // 森の近景baseを捕捉
+    const tex = desired === 'city' ? this.frontCityTex : this.frontForestNormalTex;
+    if (tex) { this.L.frontForest.texture = tex; this.layoutFrontForest(); this.currentFrontKey = desired; }
+  }
+  // 近景森(frontForest)の寸法/位置を現テクスチャと画面で再計算(差し替え時に必要)。
+  private layoutFrontForest() {
+    const frontH = this.frontForestHeight();
+    const tex = this.L.frontForest.texture;
+    const frontScale = frontH / Math.max(1, tex.height);
+    this.L.frontForest.position.set(0, this.screenH - frontH);
+    this.L.frontForest.width = this.screenW;
+    this.L.frontForest.height = frontH;
+    this.L.frontForest.tileScale.set(frontScale);
+    this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
+    this.updateFrontForestFadeMask(this.screenW, frontH);
+    this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
   }
   // 遠景手前森(nearHorizon)の寸法/位置を現在のテクスチャと画面から再計算。底を地面シーム少し下に置く。
   private layoutNearHorizon() {
@@ -4423,6 +4445,7 @@ export class PixiScene {
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
       this.applyOutdoorGroundTheme(s.stageTheme, s.farBackdrop); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。遠景差し替えは farBackdrop。
+      this.applyFrontForestOverride(s.farBackdrop === 'city'); // ステージ3の近景森を屋根の帯へ(applyOutdoorGroundTheme の後に上書き)
       this.updateLabFloorPlate(false);
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;
