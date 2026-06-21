@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.762 — ステージ4の近景崖を「崖部分だけ」にトリム(軽量化＋崖が映える)
+
+- 近景崖 `stage4-front2.png`: 透明な上部60%を捨て、崖の不透明部分(alpha bbox)だけにトリム(1672×941→1672×470)。
+  テクスチャ半分=軽量、かつ近景帯いっぱいに崖が出る(=崖化が分かりやすい)。キャッシュ回避でファイル名更新。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.761 — ステージ4の地面(雪原)＋地平帯(遠景森1=氷壁・下フェード)を追加
 
 - 地面: `stage4-ground.jpg`(雪原・シームレス)。キー別地面override(`setGroundOverride`/`applyGroundOverride`)を新設。

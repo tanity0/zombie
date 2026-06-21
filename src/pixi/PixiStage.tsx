@@ -140,7 +140,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
           load('backgrounds/stage2-lab-far.jpg'),
           load('backgrounds/stage2-near-horizon2.png'),
           load('backgrounds/stage4-far.jpg'),
-          load('backgrounds/stage4-front.png'),
+          load('backgrounds/stage4-front2.png'),
           load('backgrounds/stage4-ground.jpg'),
           load('backgrounds/stage4-horizon.png'),
           load('backgrounds/stage3-front-rooftops.png'),
