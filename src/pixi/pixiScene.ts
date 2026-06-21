@@ -175,20 +175,20 @@ const LAB_WALL_RISE = Math.max(0, tsNum('labrise', 38));
 // 暗くしたベース(フェーズ1)の上で、暖色シャフトを加算(add)で強めに光らせる。加算なので
 // 光の当たる筋だけが明るくなり、周りの暗さはそのまま=メリハリ。新規パスなし=無料。
 //   ?shaft=0.2  シャフトの明るさ(0=なし。従来の素の値は 0.085)
-const SHAFT_ALPHA = Math.max(0, tsNum('shaft', 0.11));
+const SHAFT_ALPHA = Math.max(0, tsNum('shaft', 0.5));
 // 昼ステージ(ステージ3=正午)の斜め日光シャフトだけ濃く(明るく)する倍率。夜(月明り)は不変。
-// ?shaftday= で生調整。既定1.3=少しだけ濃く(社長指示)。
-const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 1.3));
+// ?shaftday= で生調整。既定1.6(社長指示で暫定確定)。
+const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 1.6));
 // 環境光シャフトの横パララックス: 左右の移動(camera.x)に連動して森のように流れる。
 // 0=動かない。森より遅め(front forest=0.68)。?shaftpara= で生調整。
 const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
-// シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定2=軽く柔らかく(社長指示)。?shaftblur=0 でOFF。
-const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 2));
+// シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定4(社長指示で暫定確定)。?shaftblur=0 でOFF。
+const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 4));
 // シャフトの反復間隔(period)= 画面幅 × この係数。大きいほど筋の間隔が広がる=重なり減。
-// 既定0.5。?shaftperiod= で生調整(例: 0.8 で隙間を広く)。下限は内部で180pxにクランプ。
-const SHAFT_PERIOD_FACTOR = Math.max(0.05, tsNum('shaftperiod', 0.5));
-// 筋そのものの太さ倍率。小さいほど細い。既定1.0。?shaftwidth= で生調整(例: 0.5 で半分の細さ)。
-const SHAFT_WIDTH_FACTOR = Math.max(0.05, tsNum('shaftwidth', 1));
+// 既定0.8(社長指示で暫定確定)。?shaftperiod= で生調整。下限は内部で180pxにクランプ。
+const SHAFT_PERIOD_FACTOR = Math.max(0.05, tsNum('shaftperiod', 0.8));
+// 筋そのものの太さ倍率。小さいほど細い。既定0.5(社長指示で暫定確定)。?shaftwidth= で生調整。
+const SHAFT_WIDTH_FACTOR = Math.max(0.05, tsNum('shaftwidth', 0.5));
 
 // --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広霧をゆっくり揺らすだけ(枚数は増やさない)。
 // ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。

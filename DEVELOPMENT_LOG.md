@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.740 — シャフト調整値を既定に焼き込み(暫定確定)
+
+- 社長確定値を既定化: `shaft=0.5` / `shaftday=1.6` / `shaftblur=4` / `shaftperiod=0.8` / `shaftwidth=0.5`。
+  各 `?param=` で引き続き上書き可。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.739 — シャフトの太さをURLパラメータ化
 
 - 筋の太さ倍率 `SHAFT_WIDTH_FACTOR` を追加。`?shaftwidth=`(既定1.0)で生調整。小さいほど細い(例: 0.5)。
