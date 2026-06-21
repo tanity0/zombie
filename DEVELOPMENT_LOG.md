@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.710 — 遠景手前森: 位置を下げ + パララックス反転
+
+- 上に来すぎて地平帯と変に重なっていたのを修正。底アンカーを `farH + screenH*0.16`(下げ)へ
+  (`NEAR_HORIZON_BOTTOM_RATIO`、旧 farH+16px)。
+- 横パララックスの向きを反転(`NEAR_HORIZON_PARALLAX_X` を負に=社長指摘)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.709 — ステージ3: 遠景手前森レイヤー追加(地平の森の手前に重ねる)
 
 - 新レイヤー `nearHorizon`(layers.ts)を worldGroup の horizonForest と filteredWorld の間に追加
