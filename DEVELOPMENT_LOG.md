@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.744 — ステージ3敵絵の抽出素材を保存(マッピング待ち)
+
+- 社長提供のステージ3敵シートから11体(e0〜e10)を抽出。白背景を縁フラッドフィルで透過＋
+  白/紫フチ除去(de-fringe+1pxフェザー)。`public/sprites/stage3-enemies/e0..e10.png`。
+- まだコードには未配線(敵タイプ→スプライトの対応を社長確認中)。確定後にステージ3限定の
+  敵テクスチャ上書き(`getTexture(stage3名 ?? lab名 ?? type)`)を入れる予定。
+- コンテナ揮発対策で素材のみ先行コミット。
+
 ## v0.25.743 — 抽出スプライトの紫フチを除去(ベイク・実行時コスト0)
 
 - 縁の紫(クロマキー残りのアンチエイリアス・フリンジ)対策。実行時の毎フレーム処理(シェーダ/画素処理)は
