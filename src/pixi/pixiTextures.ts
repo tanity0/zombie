@@ -13,6 +13,7 @@ import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
 import { CITY_PROPS } from '../world/cityProps';
+import { setEnemyArtAspect } from './renderSpec';
 
 const textures = new Map<string, Texture>();
 let ready = false;
@@ -249,6 +250,19 @@ export const ensureTextures = (): Promise<void> => {
     // 城(ステージ3のフィナーレ拠点)を廃教会の絵に差し替え(社長提供)。足元アンカー・高さ基準スケールは不変。
     const church = await loadOne('castle-church');
     if (church) { church.source.scaleMode = 'nearest'; textures.set('castle', church); }
+
+    // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。
+    const regAspect = (key: string, texName: string) => {
+      const t = textures.get(texName);
+      if (t && t.width > 0) setEnemyArtAspect(key, t.height / t.width);
+    };
+    for (const ty of ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']) {
+      regAspect(`default:${ty}`, ty);                 // アトラス(森系)の敵絵
+      regAspect(`stage3:${ty}`, `stage3-enemies/${ty}`); // 廃都(ステージ3)の敵絵
+    }
+    regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
+    regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2-male');
+    regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
   })();

@@ -56,6 +56,23 @@ export const enemyFootBox = (e: Enemy): FootBox => {
   };
 };
 
+// 敵スプライト素材の縦横比(texH/texW)を type×バリアント(default/stage3)別に登録する小さなレジストリ。
+// 描画は containScale で枠(boxW×boxH)に内接させるため、横長素材は実描画が枠より低くなる=頭の位置が
+// 素材ごとに変わる。PHILLサークルの「頭スナップ」を実描画に合わせるためのデータ橋渡し(描画→ロジック)。
+const enemyArtAspect = new Map<string, number>();
+export const setEnemyArtAspect = (key: string, aspect: number): void => { if (aspect > 0 && Number.isFinite(aspect)) enemyArtAspect.set(key, aspect); };
+
+// 足元から見た「頭付近」の世界Y。実描画の縦範囲(box内接フィット)に基づき、その上部=頭へスナップさせる。
+// stage3=廃都の敵絵バリアント。アスペクト未登録時は従来どおり box の 0.83 にフォールバック。
+export const enemyHeadY = (e: Enemy, stage3: boolean): number => {
+  const fb = enemyFootBox(e);
+  const aspect = enemyArtAspect.get((stage3 ? 'stage3:' : 'default:') + e.type) ?? enemyArtAspect.get('default:' + e.type);
+  if (aspect == null) return fb.footY - fb.boxH * 0.83;
+  // 実描画の縦割合 = min(1, (boxW/boxH)×(texH/texW))。その上部(×0.86)を頭中心の目安に。
+  const dispFrac = Math.min(1, (fb.boxW / Math.max(1, fb.boxH)) * aspect);
+  return fb.footY - fb.boxH * dispFrac * 0.86;
+};
+
 // 召喚ユニットは流用元の敵タイプと同じ視覚スケールで描く(敵と大きさを揃える)。
 export const summonFootBox = (s: Summon): FootBox => {
   const scale = ENEMY_VISUAL_SCALE[s.reusedType] ?? 2;

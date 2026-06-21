@@ -40,7 +40,7 @@ import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
-import { enemyFootBox } from '../pixi/renderSpec';
+import { enemyFootBox, enemyHeadY } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
@@ -1812,11 +1812,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         const baseY = rcy + diry * scale;
         let bestD2 = PHILL_SNAP_RADIUS * PHILL_SNAP_RADIUS;
         let snapX = baseX, snapY = baseY;
+        const stage3 = state.farBackdrop === 'city';
         for (const e of state.enemies) {
           if (e.type === 'reaper') continue;
           const fb = enemyFootBox(e);
           const hx = fb.footX;
-          const hy = fb.footY - fb.boxH * 0.83; // 頭部リージョン中心の目安(HEAD_FRACTION=0.33)
+          const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
           const d2 = (hx - baseX) ** 2 + (hy - baseY) ** 2;
           if (d2 <= bestD2) { bestD2 = d2; snapX = hx; snapY = hy; phillSnapEnemyId = e.id; }
         }
