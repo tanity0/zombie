@@ -10,6 +10,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.769 — ステージ4の手前森(氷壁)を100pxへ
+
+- `FRONT_SNOW_Y_OFFSET` 30→100(社長指示)。
+
 ## v0.25.768 — ステージ1セット(アトラス=敵/ピックアップ/木)をドット絵に差し替え
 
 - 提供ドット絵(白背景)を連結成分抽出→アトラス名にマッピングし `atlas-px/<name>.png` に保存、
