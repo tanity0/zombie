@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.723 — ステージ1の遠景森2差し替え(マゼンタ透過)
+
+- 新素材(マゼンタ単色背景)をクロマキー透過し `stage1-near-forest2.png` として保存(キャッシュ回避で新名)。
+  PixiStage のロードパスを更新。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.722 — PHILLカーソルを気持ち速く
 
 - `AIM_INERTIA_TAU 0.34→0.28`。
