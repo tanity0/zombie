@@ -349,6 +349,23 @@ export const WIRE_KNOCKBACK_SPEED = 1100; // 大幅ノックバックの初速(p
 // ワイヤーダッシュ着地時の近接攻撃: 従来値を維持(KNOCKBACK_SPEED 200×2 相当)。
 export const WIRE_LAND_KNOCKBACK_SPEED = 400;
 
+// 敵タイプ → 死因表示用の日本語ラベル。
+const ENEMY_DEATH_LABELS: Record<string, string> = {
+  zombie: '変異体(徘徊型)',
+  skeleton: '変異体(痩躯型)',
+  ghost: '幽鬼',
+  bat: '吸血コウモリ',
+  werewolf: '変異体(獣化型)',
+  plant: '変異体(定着型)',
+  pumpkin: '変異体(肥大型)',
+  giantbat: '変異体(飛行型)',
+  reaper: '死神',
+  'lab-zombie-1': '研究施設の変異体(Lv1)',
+  'lab-zombie-2': '研究施設の変異体(Lv2)',
+  'lab-zombie-3': '研究施設の変異体(Lv3)',
+};
+export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
+
 export const hasKatana = (player: Player): boolean => player.subWeapons.includes('katana');
 // 村雨(むらさめ): 刀Lv3の上位。弾の打ち返し・一閃のクールダウンが無く連発可能。
 // 刀身シルバー。それ以外の仕様(オート斬撃・一閃3倍・斬・銃/ナイフ無効など)は
@@ -1196,7 +1213,8 @@ interface GameState {
   setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number) => boolean;
+  damagePlayer: (amount: number, source?: string) => boolean;
+  lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
   triggerCounter: () => CounterTriggerResult;
@@ -1502,6 +1520,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   labProps: [],
   hasCardKey: false,
   goalReachedAt: 0,
+  lastDamageSource: '',
   pendingIndoor: false,
   pendingStageTheme: 'forest',
   stageTheme: 'forest',
@@ -3133,7 +3152,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
-  damagePlayer: (rawAmount) => {
+  damagePlayer: (rawAmount, source) => {
     const { player } = get();
 
     if (player.invulnerable) return false;
@@ -3168,6 +3187,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const newHealth = Math.max(0, state.player.health - amount);
       return {
+        // 死因表示: 実ダメージ(amount>0)かつ source 指定時に更新。
+        lastDamageSource: (amount > 0 && source) ? source : state.lastDamageSource,
         // Real damage kicks off a screen shake.
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
@@ -5812,6 +5833,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         labProps: runProps,
         hasCardKey: false,
         goalReachedAt: 0,
+        lastDamageSource: '',
         player: {
           x: spawnTL.x,
           y: spawnTL.y,

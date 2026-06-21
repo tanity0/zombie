@@ -73,6 +73,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const indoor = useGameStore(s => s.indoorMode);
   // 死亡時の「装備ロスト」明示用。装備していたかの派生ブール(静的画面なので再描画コスト無し)。
   const hadEquipment = useGameStore(s => Object.values(s.player.equipment).some(Boolean));
+  // 死因(直近の被弾原因)。
+  const deathCause = useGameStore(s => s.lastDamageSource);
   // クリア時の「装備1個持ち帰り」選択。装備ロードアウト(静的画面なので安定参照)。
   const carriedLoadout = useGameStore(s => s.player.equipment);
   const takeHomeEquipment = useGameStore(s => s.takeHomeEquipment);
@@ -157,6 +159,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <p className="text-[13px] text-white/60 mt-1">
             {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : withdraw ? '装備を持って撤収した' : '闇に飲み込まれました'}
           </p>
+          {!isBenchmark && !won && !withdraw && deathCause && (
+            <p className="mt-2 text-[12px] text-white/70">
+              死因：<span className="font-semibold text-rose-200">{deathCause}</span>
+            </p>
+          )}
           {!isBenchmark && !won && !withdraw && hadEquipment && (
             <p className="mt-2 inline-block rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1 text-[12px] font-semibold text-rose-200">
               装備をすべてロストしました
@@ -286,6 +293,42 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           </div>
+          {!isBenchmark && !won && !withdraw && hadEquipment && (
+            <div className="mb-3 rounded-2xl bg-rose-400/5 border border-rose-300/25 px-3 py-2.5">
+              <div className="text-[11px] font-semibold text-rose-200 mb-2">失った装備</div>
+              <div className="flex flex-col gap-1.5">
+                {(['body', 'arms', 'accessory'] as EquipSlot[]).map(slot => {
+                  const defId = carriedLoadout[slot];
+                  if (!defId) return null;
+                  const def = equipmentById(defId);
+                  if (!def) return null;
+                  const isSp = def.special;
+                  const iconImg = hasEquipIcon(defId) ? spritePath(equipIconName(defId)) : null;
+                  return (
+                    <div
+                      key={slot}
+                      className="text-left p-2 rounded-xl border border-white/10 bg-white/5 flex items-center gap-2.5 opacity-80"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-base grayscale">
+                        {iconImg
+                          ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                          : (isSp ? '🏯' : '🛡️')}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-semibold text-white/85 truncate line-through decoration-rose-300/60">{def.name}</span>
+                          {isSp
+                            ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/25 text-amber-100 border border-amber-300/30 shrink-0">特殊</span>
+                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-blue-500/25 text-blue-100 border border-blue-300/25 shrink-0">R{def.tier}</span>}
+                        </div>
+                        <div className="text-[10px] text-white/55 leading-snug truncate">{equipmentDescription(def)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {(won || withdraw) && hadEquipment && (
             <div className="mb-3 rounded-2xl bg-amber-400/5 border border-amber-300/30 px-3 py-2.5">
               <div className="text-[11px] font-semibold text-amber-200 mb-2">持ち帰る装備を1つ選択（他は破棄）</div>

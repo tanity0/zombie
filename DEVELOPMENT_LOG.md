@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.711 — 死亡スコアに死因+失った装備 / 遠景手前森パララックス再調整
+
+- 死亡画面(GameOverScreen)に追加:
+  - **死因表示**: `lastDamageSource`(直近の被弾原因)を表示。`damagePlayer(amount, source)` に source 引数を追加し、
+    敵接触=敵名(`enemyDeathLabel`)/ 敵弾='敵の飛び道具' / 地雷='地雷' / パンプキン落下='<敵名>の落下攻撃' を記録。
+  - **失った装備**: 装備3枠を「レベルアップ/持ち帰りと同じ情報量」(アイコン+名前+R/特殊バッジ+説明)で表示
+    (取り消し線・グレースケールでロスト表現)。
+- 遠景手前森(nearHorizon)のパララックスを再反転+速度半分(`NEAR_HORIZON_PARALLAX_X -0.26→0.13`)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.710 — 遠景手前森: 位置を下げ + パララックス反転
 
 - 上に来すぎて地平帯と変に重なっていたのを修正。底アンカーを `farH + screenH*0.16`(下げ)へ

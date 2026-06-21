@@ -29,7 +29,7 @@ import {
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel
 } from '../store/gameStore';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -1875,7 +1875,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   //   丸ごとスキップされ「カウンターしたのにノックバックしない」が起きていた。
                   parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
                 } else if (!bp.invulnerable) {
-                  const died = damagePlayer(b.damage);
+                  const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
+                  const died = damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の落下攻撃`);
                   playSfx('player-damage');
                   // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
                   const ddx = bpcx - b.x, ddy = bpcy - b.y;
@@ -2600,7 +2601,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }));
           } else {
             const wasVulnerable = !useGameStore.getState().player.invulnerable;
-            const playerDied = damagePlayer(proj.damage);
+            const playerDied = damagePlayer(proj.damage, '敵の飛び道具');
             if (wasVulnerable) {
               playSfx('player-damage');
               spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -3041,7 +3042,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const fxY = mineHit.footY - mineHit.height * 0.5;
           spawnEggFluidSplash(fxX, fxY, 1.28);
           if (broken && !currentPlayerForMine.invulnerable) {
-            const playerDied = damagePlayer(MINE_DAMAGE);
+            const playerDied = damagePlayer(MINE_DAMAGE, '地雷');
             playSfx('bomb');
             spawnFlash('rgba(239,68,68,0.18)', 180);
             if (playerDied) {
@@ -3231,7 +3232,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             return;
           }
           const damageWasApplied = !collPlayer.invulnerable;
-          const playerDied = damagePlayer(enemy.damage);
+          const playerDied = damagePlayer(enemy.damage, enemyDeathLabel(enemy.type));
           if (damageWasApplied) {
             playSfx('player-damage');
             spawnFlash('rgba(239,68,68,0.22)', 200);
