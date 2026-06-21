@@ -187,6 +187,8 @@ const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 2));
 // シャフトの反復間隔(period)= 画面幅 × この係数。大きいほど筋の間隔が広がる=重なり減。
 // 既定0.5。?shaftperiod= で生調整(例: 0.8 で隙間を広く)。下限は内部で180pxにクランプ。
 const SHAFT_PERIOD_FACTOR = Math.max(0.05, tsNum('shaftperiod', 0.5));
+// 筋そのものの太さ倍率。小さいほど細い。既定1.0。?shaftwidth= で生調整(例: 0.5 で半分の細さ)。
+const SHAFT_WIDTH_FACTOR = Math.max(0.05, tsNum('shaftwidth', 1));
 
 // --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広霧をゆっくり揺らすだけ(枚数は増やさない)。
 // ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。
@@ -1127,14 +1129,15 @@ export class PixiScene {
     this.shaftPeriod = period;
     // 1 period 内に配置するビーム(period 比のオフセット / 幅 / 相対濃さ)。
     // 夜=「広く淡く」=拡散した月明り。昼=「細く強い」=日差し。
+    const wf = SHAFT_WIDTH_FACTOR;
     const beams = night
       ? [
-          { off: 0.06, width: w * 0.28, length: h * 1.24, alpha: 0.30 },
-          { off: 0.54, width: w * 0.22, length: h * 1.16, alpha: 0.20 },
+          { off: 0.06, width: w * 0.28 * wf, length: h * 1.24, alpha: 0.30 },
+          { off: 0.54, width: w * 0.22 * wf, length: h * 1.16, alpha: 0.20 },
         ]
       : [
-          { off: 0.06, width: w * 0.17, length: h * 1.22, alpha: 0.42 },
-          { off: 0.52, width: w * 0.12, length: h * 1.14, alpha: 0.24 },
+          { off: 0.06, width: w * 0.17 * wf, length: h * 1.22, alpha: 0.42 },
+          { off: 0.52, width: w * 0.12 * wf, length: h * 1.14, alpha: 0.24 },
         ];
     // 画面 + 両端 period ぶんをカバー(折り返し後も隙間が出ないように)。
     for (let base = -period; base <= w + period; base += period) {

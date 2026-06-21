@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.739 — シャフトの太さをURLパラメータ化
+
+- 筋の太さ倍率 `SHAFT_WIDTH_FACTOR` を追加。`?shaftwidth=`(既定1.0)で生調整。小さいほど細い(例: 0.5)。
+  昼夜の各ビーム幅(w×0.28等)にこの係数を乗算。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.738 — シャフトの間隔(period)をURLパラメータ化
 
 - これまでハードコードだった period(画面幅×0.5)を `SHAFT_PERIOD_FACTOR` に切り出し、`?shaftperiod=` で生調整可。
