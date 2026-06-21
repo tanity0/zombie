@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.729 — ステージ3の近景=屋根帯を安全に再導入
+
+- v726 崩れの真因: 近景差し替えで `updateFrontForestFadeMask`(canvas生成+旧マスクtextureの destroy(true))を
+  同期中に呼び、描画中のマスクが壊れて非labステージが破綻していた。
+- 対策: `applyStage3Front` を新設し、**テクスチャ + tileScale のみ**差し替え(マスクは作り直さない)。lab はスキップ。
+  `setStage3Front` で注入、syncLab の applyOutdoorGroundTheme 後に毎フレーム適用(差分時のみ)。
+- 素材 `stage3-front-rooftops.png` 再生成。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.728 — ステージ2の遠景差し替え(ラボ内部パノラマ)
 
 - ステージ2(lab)の遠景を新しいラボ内部パノラマへ。`stage2-lab-far.jpg`(不透明・JPG)。

@@ -1485,6 +1485,30 @@ export class PixiScene {
   // ステージ3(昼/city)用の床・地平帯の差し替えテクスチャ(PixiStage が注入)。
   private stage3GroundTex: Texture | null = null;
   private stage3HorizonTex: Texture | null = null;
+  // 近景森(frontForest)のステージ3差し替え=屋根帯。lab は applyOutdoorGroundTheme 管理なので触らない。
+  // 重要: マスクは作り直さない(テクスチャ+tileScaleのみ)。前回 updateFrontForestFadeMask の
+  // destroy(true) を同期中に呼んで描画破綻したため(v726不具合)。
+  private stage3FrontTex: Texture | null = null;
+  private frontBaseTex: Texture | null = null;
+  private currentFrontKey = '';
+  setStage3Front(t: Texture | null) {
+    if (!t) return;
+    this.stage3FrontTex = t;
+    this.currentFrontKey = ''; // 注入後に再適用
+  }
+  private applyStage3Front(useCity: boolean) {
+    if (this.isLabStage) return; // lab は lab-front-band 管理
+    if (!this.frontBaseTex) this.frontBaseTex = this.L.frontForest.texture; // 森の近景baseを捕捉
+    const desired = (useCity && this.stage3FrontTex) ? 'city' : 'forest';
+    if (this.currentFrontKey === desired) return;
+    const tex = desired === 'city' ? this.stage3FrontTex : this.frontBaseTex;
+    if (!tex) return;
+    this.L.frontForest.texture = tex;
+    // tileScale だけ更新(maskは不変=安全)。
+    const frontH = this.frontForestHeight();
+    this.L.frontForest.tileScale.set(frontH / Math.max(1, tex.height));
+    this.currentFrontKey = desired;
+  }
   // 遠景森2(nearHorizon)のステージ別テクスチャ。キー='forest'(森シルエット)/'city'(廃墟都市)等。
   private nearHorizonOverrides: Record<string, Texture | null> = {};
   private currentNearHorizonKey = '';
@@ -4424,6 +4448,7 @@ export class PixiScene {
     this.L.backgroundLayer.visible = !indoor;
     if (!indoor) {
       this.applyOutdoorGroundTheme(s.stageTheme, s.farBackdrop); // 研究所スキン(lab)なら屋外地面をラボ床へ。forest は従来へ復元。遠景差し替えは farBackdrop。
+      this.applyStage3Front(s.farBackdrop === 'city'); // ステージ3の近景=屋根帯(テクスチャ+tileScaleのみ・mask不変)
       this.updateLabFloorPlate(false);
       if (this.labGfx) this.labGfx.visible = false;
       if (this.labVoid) this.labVoid.visible = false;
