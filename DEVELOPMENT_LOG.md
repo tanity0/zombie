@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.736 — ステージ3の日光シャフトを少し濃く(昼のみ)
+
+- 斜めの日光シャフト(god ray)を昼ステージだけ濃く。`SHAFT_DAY_BOOST`(既定1.3)を昼の時だけ乗算。
+  夜(月明り)シャフトは不変。`?shaftday=` でURL生調整可。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.735 — ジャイアントのダッシュにも追加CD＋研究所の犬を犬と同速に
 
 - giantbat のダッシュにもランダム追加CD(3〜10秒)を上乗せ(全ステージ)。専用スケジューラ

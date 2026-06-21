@@ -176,6 +176,9 @@ const LAB_WALL_RISE = Math.max(0, tsNum('labrise', 38));
 // 光の当たる筋だけが明るくなり、周りの暗さはそのまま=メリハリ。新規パスなし=無料。
 //   ?shaft=0.2  シャフトの明るさ(0=なし。従来の素の値は 0.085)
 const SHAFT_ALPHA = Math.max(0, tsNum('shaft', 0.11));
+// 昼ステージ(ステージ3=正午)の斜め日光シャフトだけ濃く(明るく)する倍率。夜(月明り)は不変。
+// ?shaftday= で生調整。既定1.3=少しだけ濃く(社長指示)。
+const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 1.3));
 // 環境光シャフトの横パララックス: 左右の移動(camera.x)に連動して森のように流れる。
 // 0=動かない。森より遅め(front forest=0.68)。?shaftpara= で生調整。
 const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
@@ -1110,7 +1113,7 @@ export class PixiScene {
     const lp = this.lighting();
     const night = !this.daylight;
     // 明るさは preset の shaftAlpha 連動(夜=月明りで弱く)。?shaft= は昼基準のマスター倍率として効かせる。
-    const alpha = SHAFT_ALPHA * (lp.shaftAlpha / SUNLIGHT_PRESET.shaftAlpha);
+    const alpha = SHAFT_ALPHA * (lp.shaftAlpha / SUNLIGHT_PRESET.shaftAlpha) * (this.daylight ? SHAFT_DAY_BOOST : 1);
     if (alpha <= 0) { this.shaftPeriod = 0; return; }
     g.blendMode = 'add';
     // 月明りは淡く青白い拡散光。夜はシャフト色を少しパステル寄りの蒼白へ(プレイヤー光の色には影響しない)。
