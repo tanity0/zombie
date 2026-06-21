@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.715 — 遠景手前森の速度を気持ち速く
+
+- `NEAR_HORIZON_PARALLAX_X 0.13→0.16`。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.714 — 死亡リザルトの文言削除
 
 - 「装備をすべてロストしました」ピルと、死亡サブタイトル「闇に飲み込まれました」を削除

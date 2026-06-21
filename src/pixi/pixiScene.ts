@@ -72,7 +72,7 @@ const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
 const NEAR_HORIZON_HEIGHT_RATIO = 0.42;      // screenH 比の高さ
-const NEAR_HORIZON_PARALLAX_X = 0.13;        // 横パララックス(社長指示で再反転+速度半分)。|大|=近い
+const NEAR_HORIZON_PARALLAX_X = 0.16;        // 横パララックス。気持ち速く(0.13→0.16)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
