@@ -1507,6 +1507,14 @@ export class PixiScene {
     // tileScale だけ更新(maskは不変=安全)。
     const frontH = this.frontForestHeight();
     this.L.frontForest.tileScale.set(frontH / Math.max(1, tex.height));
+    // ステージ3の屋根帯は半透明にしない(不透明・フェードマスクOFF)。森に戻すと半透明+フェード復帰。
+    if (desired === 'city') {
+      this.L.frontForest.alpha = 1;
+      this.L.frontForest.mask = null;
+    } else {
+      this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
+      this.L.frontForest.mask = this.frontForestFadeMask;
+    }
     this.currentFrontKey = desired;
   }
   // 遠景森2(nearHorizon)のステージ別テクスチャ。キー='forest'(森シルエット)/'city'(廃墟都市)等。

@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.730 — ステージ3の床素材入れ替え＋屋根帯を不透明化
+
+- ステージ3の床(石畳)を新素材へ差し替え。`stage3-ground-cobble2.jpg`(石畳＋草・継ぎ目あり=
+  繰り返しタイル想定、1254px、不透明JPG q88)。端末キャッシュ回避のため新ファイル名。
+  PixiStage 遅延ロードを `stage3-ground-cobble.jpg` → `stage3-ground-cobble2.jpg` に変更
+  (`setStage3Ground` は addressMode='repeat' 済み)。
+- ステージ3の近景=屋根帯は**半透明にしない**。`applyStage3Front` で desired==='city' のとき
+  `alpha=1` ＋ `mask=null`(フェードOFF)、森に戻すと `FRONT_FOREST_ALPHA`(0.78)＋フェードマスク復帰。
+- 検証: `npx tsc --noEmit` パス。
+- メモ(未対応): 出撃直後に一瞬ステージ1(森)が映るのは、シーンを森のコア4枚で即起動し、
+  ステージ別テクスチャを**遅延注入**しているため。注入完了＋次sync までは既定の森(=ステージ1の見た目)が出る。
+  解消は「選択ステージ専用テクスチャをコア読込に含める」だが、その分だけ黒画面が伸びるトレードオフ。
+
 ## v0.25.729 — ステージ3の近景=屋根帯を安全に再導入
 
 - v726 崩れの真因: 近景差し替えで `updateFrontForestFadeMask`(canvas生成+旧マスクtextureの destroy(true))を

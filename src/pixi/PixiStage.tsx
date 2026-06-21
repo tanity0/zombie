@@ -87,7 +87,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s3Front] = await Promise.all([
           load('sprites/lab-floor/lab-floor-stage2.png'),
           load('backgrounds/stage3-distant-city-day.jpg'),
-          load('backgrounds/stage3-ground-cobble.jpg'),
+          load('backgrounds/stage3-ground-cobble2.jpg'),
           load('backgrounds/stage3-horizon-city.png'),
           load('backgrounds/stage3-near-horizon-city.png'),
           load('backgrounds/stage1-near-forest.png'),
