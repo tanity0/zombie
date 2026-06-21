@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.763 — ステージ4のオブジェクト(塔/バス/テント/焚き火)＋木を除去
+
+- 木をステージ4(farBackdrop'snow')で非表示=専用オブジェクトに置換(社長指示)。
+- 散布システムをキー汎用化: `STAGE_PROPS[farKey]`(city=廃都/snow=雪原)。snow=監視塔/廃バス/テント(大きいので
+  1〜2個/区画とまばら・当たり判定あり)。`cityPropsInRegion/cityPropRect/resolveCityPropCollision` は farKey 引数化。
+- 焚き火=松明(torch)の置き換え: ステージ4では torch を `props/stage4-campfire` で描画し、炎は台の中央(低め)へ、
+  幅広サイズに調整。**破壊可能・炎エフェクト・光は torch システムをそのまま流用**(health 0 で消滅)。
+- 抽出: 4オブジェクトをマゼンタキー＋de-fringe。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.762 — ステージ4の近景崖を「崖部分だけ」にトリム(軽量化＋崖が映える)
 
 - 近景崖 `stage4-front2.png`: 透明な上部60%を捨て、崖の不透明部分(alpha bbox)だけにトリム(1672×941→1672×470)。

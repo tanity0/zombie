@@ -1723,9 +1723,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: player.width,
           height: player.height,
         }, castleEvent);
-        // ステージ3(廃都): 大きい散布オブジェクト(瓦礫/構造物等)を遮蔽物として解決(プレイヤーのみ)。
-        const cityResolved = (!labTheme && state.farBackdrop === 'city')
-          ? resolveCityPropCollision({ x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height })
+        // 散布オブジェクト(廃都の瓦礫/雪原の塔・バス・テント等)を遮蔽物として解決(プレイヤーのみ)。
+        // カタログの無いステージ(forest等)は resolveCityPropCollision が即 return(no-op)。
+        const cityResolved = !labTheme
+          ? resolveCityPropCollision(state.farBackdrop, { x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height })
           : castleResolved;
         // 壁オブジェクト(研究所スキン・区画生成)を遮蔽物として解決。近傍区画のみ問い合わせ。
         let wallResolved = cityResolved;

@@ -41,7 +41,7 @@ import {
   RHYTHM_JUST_CYCLE_COLORS,
 } from '../config/shijin';
 import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
-import { cityPropsInRegion, CITY_PROPS, CITY_ZONE } from '../world/cityProps';
+import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
 
@@ -431,6 +431,9 @@ const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
+// ステージ4の焚き火(松明の置き換え)。横長の焚き火台なので幅広・低め。炎は台の中央(低い位置)。
+const CAMPFIRE_VISUAL_W = 60;
+const CAMPFIRE_VISUAL_H = 34;
 const TORCH_LIGHT_RADIUS = 92;
 const TORCH_EMBER_COUNT = 7;
 const TORCH_REFLECTION_W = 92;
@@ -662,6 +665,7 @@ export class PixiScene {
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
   private daylight = false;
+  private snowStage = false; // ステージ4(farBackdrop'snow'): 松明を焚き火スプライトに置き換え
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private daylightApplied: boolean | null = null;
   // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
@@ -1760,6 +1764,7 @@ export class PixiScene {
     if (wantBloom !== this.bloomActive) { this.bloomActive = wantBloom; this.rebuildWorldFilters(); }
     // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
     this.daylight = s.farBackdrop === 'city';
+    this.snowStage = s.farBackdrop === 'snow';
     this.isLabStage = s.stageTheme === 'lab';
     this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
     this.applyDaylight(this.daylight);
@@ -2543,9 +2548,10 @@ export class PixiScene {
     const st = useGameStore.getState();
     const indoor = st.indoorMode;
     const labTheme = st.stageTheme === 'lab'; // 研究所スキンは木を出さない(社長指示)
+    const noTrees = labTheme || st.farBackdrop === 'snow'; // ステージ4(雪原)も木を出さない=専用オブジェクトに置換(社長指示)
     const tex = getTexture('tree');
     const margin = TREE_CELL;
-    let trees = labTheme ? [] : treesInRegion(
+    let trees = noTrees ? [] : treesInRegion(
       camera.x - margin, camera.y - margin,
       camera.x + this.screenW + margin, camera.y + this.screenH + margin,
     );
@@ -2666,17 +2672,19 @@ export class PixiScene {
   // アクターの下に敷く(Y-sortなし)。当たり判定は store 側(大きい物だけ)。farBackdrop==='city' のみ。
   private syncCityProps() {
     const s = useGameStore.getState();
-    const enabled = s.farBackdrop === 'city' && !s.indoorMode; // ステージ3(廃都・正午)のみ
+    const farKey = s.farBackdrop;
+    const enabled = !s.indoorMode && !!STAGE_PROPS[farKey]; // city(廃都)/snow(雪原) など散布カタログがある時だけ
     const cam = s.camera;
     const m = CITY_ZONE;
     const props = enabled
-      ? cityPropsInRegion(cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m)
+      ? cityPropsInRegion(farKey, cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m)
       : [];
-    const tint = this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT(ステージ3は昼)
+    const tint = this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
     const seen = new Set<string>();
     for (const p of props) {
       seen.add(p.id);
-      const def = CITY_PROPS[p.variant];
+      const def = cityPropDef(farKey, p.variant);
+      if (!def) continue;
       let entry = this.cityPropObjs.get(p.id);
       if (!entry) {
         const tex = getTexture(def.tex);
@@ -3277,14 +3285,17 @@ export class PixiScene {
       return;
     }
 
-    const tex = getTexture(prop.type);
+    // ステージ4は松明を焚き火に置き換え(破壊可能・炎エフェクトはこのまま流用)。torch型のみ。
+    const campfire = this.snowStage && prop.type === 'torch';
+    const tex = campfire ? (getTexture('props/stage4-campfire') ?? getTexture(prop.type)) : getTexture(prop.type);
     const d = this.depthScale(prop.footY);
-    const visualW = TORCH_VISUAL_W * prop.scale;
-    const visualH = TORCH_VISUAL_H * prop.scale;
+    const visualW = (campfire ? CAMPFIRE_VISUAL_W : TORCH_VISUAL_W) * prop.scale;
+    const visualH = (campfire ? CAMPFIRE_VISUAL_H : TORCH_VISUAL_H) * prop.scale;
     const sc = tex ? containScale(visualW, visualH, tex.width, tex.height) * d : d;
     const horizonAlpha = this.horizonActorAlpha(prop.footY);
     const flameX = Math.round(prop.footX);
-    const flameY = Math.round(prop.footY - visualH * d * 0.72);
+    // 松明=先端(高い)/焚き火=台の中央付近(低い)に炎を置く。
+    const flameY = Math.round(prop.footY - visualH * d * (campfire ? 0.42 : 0.72));
     const viewportDistance = this.distanceOutsideViewport(prop.footX, prop.footY, TORCH_VIEWPORT_MARGIN);
     const visibleTorch = viewportDistance <= 0 && horizonAlpha > 0;
     const outsideScreenDistance = this.distanceOutsideViewport(prop.footX, prop.footY, 0);

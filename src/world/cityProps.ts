@@ -52,15 +52,29 @@ export const CITY_PROPS: CityPropDef[] = [
   { tex: 'props/prop-r4-c8', displayH: 42,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 6 },  // 枯れ草(立ち・素通り)
 ];
 
-const TOTAL_WEIGHT = CITY_PROPS.reduce((s, d) => s + d.weight, 0);
-// 重み付き抽選(0..1 のハッシュ値で CITY_PROPS のインデックスを引く)。
-const pickVariant = (h: number): number => {
-  let t = h * TOTAL_WEIGHT;
-  for (let i = 0; i < CITY_PROPS.length; i++) {
-    t -= CITY_PROPS[i].weight;
-    if (t <= 0) return i;
-  }
-  return CITY_PROPS.length - 1;
+// ステージ4(雪原)の散布オブジェクト(社長提供: 監視塔/廃バス/テント)。焚き火は torch 置き換えなので別管理。
+export const SNOW_PROPS: CityPropDef[] = [
+  { tex: 'props/stage4-tower', displayH: 150, collide: true, decal: false, colW: 54,  colH: 26, weight: 2 }, // 監視塔(高い)
+  { tex: 'props/stage4-bus',   displayH: 96,  collide: true, decal: false, colW: 140, colH: 32, weight: 3 }, // 廃バス(横長)
+  { tex: 'props/stage4-tent',  displayH: 86,  collide: true, decal: false, colW: 104, colH: 28, weight: 3 }, // テント
+];
+
+// farBackdropキー別の散布カタログ。'' / forest は散布なし(木システムが担当)。
+export const STAGE_PROPS: Record<string, CityPropDef[]> = {
+  city: CITY_PROPS,
+  snow: SNOW_PROPS,
+};
+// 区画あたりの散布数 [min, 追加レンジ]。大きい物が多いステージは控えめに。
+const STAGE_PROP_COUNT: Record<string, [number, number]> = {
+  city: [3, 4], // 3〜6
+  snow: [1, 2], // 1〜2(塔/バス/テントは大きいのでまばら)
+};
+
+const totalWeightFor = (defs: CityPropDef[]) => defs.reduce((s, d) => s + d.weight, 0);
+const pickVariant = (defs: CityPropDef[], h: number): number => {
+  let t = h * totalWeightFor(defs);
+  for (let i = 0; i < defs.length; i++) { t -= defs[i].weight; if (t <= 0) return i; }
+  return defs.length - 1;
 };
 
 // 1区画(セル)のサイズ。木(220)より広め=構造物がまばらに点在。
@@ -73,7 +87,7 @@ export interface CityProp {
   footX: number; // 足元(=Y-sortキー / 当たり矩形の中心X・底辺)
   footY: number;
   scale: number;
-  variant: number; // CITY_PROPS のインデックス
+  variant: number; // 該当カタログ(STAGE_PROPS[farKey])のインデックス
 }
 
 const hash2 = (x: number, y: number): number => {
@@ -81,21 +95,24 @@ const hash2 = (x: number, y: number): number => {
   return s - Math.floor(s);
 };
 
-// 区画ごとに 3〜6 個を決定的散布。原点付近はスキップ。
+// farKey の散布カタログを区画ごとに決定的散布。カタログ無し(forest等)は空。
 export const cityPropsInRegion = (
-  minX: number, minY: number, maxX: number, maxY: number
+  farKey: string, minX: number, minY: number, maxX: number, maxY: number
 ): CityProp[] => {
+  const defs = STAGE_PROPS[farKey];
+  if (!defs || defs.length === 0) return [];
+  const [cmin, cextra] = STAGE_PROP_COUNT[farKey] ?? [3, 4];
   const out: CityProp[] = [];
   const cx0 = Math.floor(minX / CITY_ZONE) - 1, cx1 = Math.floor(maxX / CITY_ZONE) + 1;
   const cy0 = Math.floor(minY / CITY_ZONE) - 1, cy1 = Math.floor(maxY / CITY_ZONE) + 1;
   for (let cy = cy0; cy <= cy1; cy++) {
     for (let cx = cx0; cx <= cx1; cx++) {
-      const n = 3 + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * 4); // 3〜6個/区画
+      const n = cmin + Math.floor(hash2(cx * 3.1 + 0.7, cy * 2.7 - 1.9) * (cextra + 1));
       for (let k = 0; k < n; k++) {
         const footX = cx * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
         const footY = cy * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
         if (Math.hypot(footX, footY) < CITY_SAFE_RADIUS) continue;
-        const variant = pickVariant(hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
+        const variant = pickVariant(defs, hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
         const scale = 0.85 + hash2(cx * 0.9 + k * 4.2, cy * 1.6 - k * 0.8) * 0.3; // 0.85〜1.15
         out.push({ id: `cp-${cx}-${cy}-${k}`, footX, footY, scale, variant });
       }
@@ -104,21 +121,26 @@ export const cityPropsInRegion = (
   return out;
 };
 
+// カタログ定義(描画側が tex/displayH/decal を参照)。
+export const cityPropDef = (farKey: string, variant: number): CityPropDef | null =>
+  STAGE_PROPS[farKey]?.[variant] ?? null;
+
 // 当たり矩形(collide=true のみ)。底辺が足元=描画の足元と一致(obstacles 規約)。
-export const cityPropRect = (p: CityProp): Rect | null => {
-  const def = CITY_PROPS[p.variant];
-  if (!def.collide) return null;
+export const cityPropRect = (farKey: string, p: CityProp): Rect | null => {
+  const def = STAGE_PROPS[farKey]?.[p.variant];
+  if (!def || !def.collide) return null;
   return footRect(p.footX, p.footY, def.colW * p.scale, def.colH * p.scale);
 };
 
 // 矩形を近傍の大きいプロップから押し出して補正後の左上を返す(木と同じ AABB 解決)。
-export const resolveCityPropCollision = (rect: Rect): { x: number; y: number } => {
+export const resolveCityPropCollision = (farKey: string, rect: Rect): { x: number; y: number } => {
+  if (!STAGE_PROPS[farKey]) return { x: rect.x, y: rect.y };
   const cx = rect.x + rect.width / 2;
   const cy = rect.y + rect.height / 2;
   const pad = CITY_ZONE;
   const walls: Rect[] = [];
-  for (const p of cityPropsInRegion(cx - pad, cy - pad, cx + pad, cy + pad)) {
-    const r = cityPropRect(p);
+  for (const p of cityPropsInRegion(farKey, cx - pad, cy - pad, cx + pad, cy + pad)) {
+    const r = cityPropRect(farKey, p);
     if (r) walls.push(r);
   }
   return resolveAabb(rect, walls);

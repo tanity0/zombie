@@ -12,7 +12,7 @@
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
-import { CITY_PROPS } from '../world/cityProps';
+import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 
 const textures = new Map<string, Texture>();
@@ -93,6 +93,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/phill-revolver', scaleMode: 'nearest' },
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
+      { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま
       { name: 'whip-hurricane' },      // 既定のまま
@@ -169,8 +170,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-zombie/lab-zombie-lv2-female', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
 
-      // ステージ3(廃都)のランダム散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
-      ...CITY_PROPS.map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
+      // ステージ別(廃都/雪原)の散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
+      ...Object.values(STAGE_PROPS).flat().map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
       // ステージ3(廃都)専用の敵絵(アトラス敵を見た目で差し替え)。アトラス敵と同じピクセル調=nearest。
       ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
