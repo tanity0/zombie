@@ -661,17 +661,7 @@ export class PixiScene {
       this.L.horizonForest.texture = this.stage3HorizonTex;
       this.layoutHorizonForest();
     }
-    // 遠景手前森(ステージ3のみ): 昼かつ注入済みなら表示、それ以外は非表示。
-    if (on && this.stage3NearHorizonTex) {
-      if (this.L.nearHorizon.texture !== this.stage3NearHorizonTex) {
-        this.L.nearHorizon.texture = this.stage3NearHorizonTex;
-        this.layoutNearHorizon();
-      }
-      this.L.nearHorizon.visible = true;
-      this.L.nearHorizon.tint = tint;
-    } else {
-      this.L.nearHorizon.visible = false;
-    }
+    // 遠景森2(nearHorizon)はステージ別キー(s.nearHorizon)で applyNearHorizon が毎フレーム管理。
     for (const strip of this.L.groundStrips) strip.tint = tint;
     this.L.horizonForest.tint = tint;
     this.L.frontForest.tint = tint;
@@ -1494,11 +1484,25 @@ export class PixiScene {
   // ステージ3(昼/city)用の床・地平帯の差し替えテクスチャ(PixiStage が注入)。
   private stage3GroundTex: Texture | null = null;
   private stage3HorizonTex: Texture | null = null;
-  private stage3NearHorizonTex: Texture | null = null;
-  setStage3NearHorizon(t: Texture | null) {
+  // 遠景森2(nearHorizon)のステージ別テクスチャ。キー='forest'(森シルエット)/'city'(廃墟都市)等。
+  private nearHorizonOverrides: Record<string, Texture | null> = {};
+  private currentNearHorizonKey = '';
+  setNearHorizonTexture(key: string, t: Texture | null) {
     if (!t) return;
-    this.stage3NearHorizonTex = t;
-    this.daylightApplied = null;
+    this.nearHorizonOverrides[key] = t;
+    this.currentNearHorizonKey = ''; // 注入後に再適用させる
+  }
+  // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
+  private applyNearHorizon(key: string) {
+    const tex = key ? this.nearHorizonOverrides[key] : null;
+    if (!tex) { this.L.nearHorizon.visible = false; this.currentNearHorizonKey = ''; return; }
+    if (this.currentNearHorizonKey !== key || this.L.nearHorizon.texture !== tex) {
+      this.L.nearHorizon.texture = tex;
+      this.layoutNearHorizon();
+      this.currentNearHorizonKey = key;
+    }
+    this.L.nearHorizon.visible = true;
+    this.L.nearHorizon.tint = this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
   }
   // 遠景手前森(nearHorizon)の寸法/位置を現在のテクスチャと画面から再計算。底を地面シーム少し下に置く。
   private layoutNearHorizon() {
@@ -1648,6 +1652,7 @@ export class PixiScene {
     // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
     this.daylight = s.farBackdrop === 'city';
     this.isLabStage = s.stageTheme === 'lab';
+    this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
     this.applyDaylight(this.daylight);
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
     // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の

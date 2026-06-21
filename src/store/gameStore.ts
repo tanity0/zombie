@@ -1348,6 +1348,9 @@ interface GameState {
   pendingFarBackdrop: string;                           // 出撃ステージの遠景差し替えキー(resetGame で farBackdrop へ)
   setPendingFarBackdrop: (key: string) => void;
   farBackdrop: string;                                  // この出撃の遠景差し替えキー(''=既定の森遠景 / 'city'=夜の廃都。描画が参照)
+  pendingNearHorizon: string;                           // 出撃ステージの遠景森2キー(resetGame で nearHorizon へ)
+  setPendingNearHorizon: (key: string) => void;
+  nearHorizon: string;                                  // この出撃の遠景森2キー(''=なし / 'forest' / 'city'。描画が参照)
   triggerEventVictory: () => void;                      // ボス無しのイベント勝利(gameWon=true)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
@@ -1526,6 +1529,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   stageTheme: 'forest',
   pendingFarBackdrop: '',
   farBackdrop: '',
+  pendingNearHorizon: '',
+  nearHorizon: '',
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
@@ -5391,6 +5396,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingFarBackdrop: (key) => {
     set({ pendingFarBackdrop: key });
   },
+  setPendingNearHorizon: (key) => {
+    set({ pendingNearHorizon: key });
+  },
 
   triggerEventVictory: () => {
     // ボス無しのイベント勝利。giantbat 撃破と同様に gameWon=true(Game.tsx が監視→onVictory)。
@@ -5766,6 +5774,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stageTheme: StageTheme = (!state.danceTestMode && state.pendingStageTheme === 'lab') ? 'lab' : 'forest';
       // 遠景差し替え(forestテーマの距離パノラマのみ。ダンステスト/labでは無効)。
       const farBackdrop = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingFarBackdrop : '';
+      const nearHorizon = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingNearHorizon : '';
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         : { x: 0, y: 0 };
@@ -5828,6 +5837,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         indoorMode: indoor,
         stageTheme,
         farBackdrop,
+        nearHorizon,
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,

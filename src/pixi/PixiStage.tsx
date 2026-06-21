@@ -58,6 +58,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const stage3NearHorizonTexture = await Assets
         .load(`${import.meta.env.BASE_URL}backgrounds/stage3-near-horizon-city.png`)
         .catch(() => null);
+      // ステージ1の遠景森2(手前の森シルエット帯)。
+      const stage1NearForestTexture = await Assets
+        .load(`${import.meta.env.BASE_URL}backgrounds/stage1-near-forest.png`)
+        .catch(() => null);
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
       const frontForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/front-forest-foreground.png`);
@@ -83,7 +87,8 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       scene.setFarBackdropTexture('city', stage3FarTexture); // ステージ3の遠景差し替え用
       scene.setStage3Ground(stage3GroundTexture);   // ステージ3の床(石畳)
       scene.setStage3Horizon(stage3HorizonTexture); // ステージ3の地平帯(廃墟都市)
-      scene.setStage3NearHorizon(stage3NearHorizonTexture); // ステージ3の遠景手前森(廃墟都市・手前)
+      scene.setNearHorizonTexture('city', stage3NearHorizonTexture); // 遠景森2: 廃墟都市(ステージ3)
+      scene.setNearHorizonTexture('forest', stage1NearForestTexture); // 遠景森2: 森シルエット(ステージ1)
       scene.resize(width, height);
 
       sceneRef.current = scene;

@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.721 — 遠景森2をステージ別化(ステージ1=森シルエット追加)
+
+- nearHorizon(遠景森2)をステージ別キーに一般化: `Stage.nearHorizon`('forest'/'city')→ store
+  `pendingNearHorizon`/`nearHorizon`(forestテーマ時のみ)→ App.startGame 受け渡し。
+  pixiScene は `nearHorizonOverrides` マップ＋`applyNearHorizon(key)` で毎フレーム出し分け(差分時のみ差し替え、
+  tint は昼夜連動)。stage3 専用処理(applyDaylight 内)は撤去。
+- ステージ1に遠景森2(`stage1-near-forest.png`=森シルエット透過)を**ステージ3と同設定**で配置(位置/速度/ブラーは
+  NEAR_HORIZON_* 共通)。
+- PixiStage: `setNearHorizonTexture('forest'|'city', tex)` で注入。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.720 — PHILLカーソル: 追従を遅く + 基準を手前に
 
 - `AIM_INERTIA_TAU 0.20→0.34`(照準サークルの追従を緩く=速すぎ解消)。

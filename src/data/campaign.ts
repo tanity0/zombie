@@ -48,6 +48,7 @@ export interface Stage {
   indoor?: boolean;      // 屋内(研究施設)ステージ=手書き壁マップ/カメラクランプ/湧き抑制
   theme?: 'lab';         // 見た目テーマ(屋外構造のままテクスチャだけ差し替え)。'lab'=研究所スキン。
   farBackdrop?: string;  // 遠景パノラマの差し替えキー(forestテーマの距離パノラマだけ変える)。'city'=夜の廃都。
+  nearHorizon?: string;  // 遠景森2(手前に重ねる帯)のキー。'forest'=森シルエット / 'city'=廃墟都市。未指定=なし。
 }
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
@@ -61,6 +62,7 @@ export const STAGES: Stage[] = [
     name: '狂い咲きの森',
     area: '森林地帯 / 偵察部隊 救助',
     unlockBy: null,
+    nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)
     subs: [],
     main: {
       code: 'M1',
@@ -138,6 +140,7 @@ export const STAGES: Stage[] = [
     area: '連携研究施設 / 責任者 救出',
     unlockBy: 'stage-2',
     farBackdrop: 'city', // 遠景を昼の廃都パノラマ(正午ステージ)へ差し替え(森の地形・地平はそのまま)。
+    nearHorizon: 'city', // 遠景森2(手前の廃墟都市帯)
     subs: [],
     main: {
       code: 'M3',
