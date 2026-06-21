@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.719 — ステージ2: 影を右向きに
+
+- lab テーマ(ステージ2)のときだけ影の向きを右向き(`LAB_SHADOW_DIRECTION={x:1,y:0.2}`)に上書き。
+  長さ/濃さは preset 据え置き。`isLabStage`(stageTheme==='lab')を sync で更新し placeShadowSprite で分岐。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.718 — ステージ2: 手前の近景を暗化から除外
 
 - lab テーマ(ステージ2)の手前の近景(lab-front-band=`frontForest`)を ENV_TINT 暗化から除外し、

@@ -245,6 +245,8 @@ type StageLightingPreset = {
 const STAGE_LIGHT_SHAFT_DIRECTION = { x: 0.42, y: 1 };
 // 昼(sunlight)の影だけの方向: 右奥寄り(右＋奥=画面上方向 -y)。god ray は上の定数を使うので影だけに効く。
 const SUNLIGHT_SHADOW_DIRECTION = { x: 0.7, y: -0.28 };
+// ステージ2(lab)の影だけ右向きにする方向。
+const LAB_SHADOW_DIRECTION = { x: 1, y: 0.2 };
 const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
 const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
@@ -638,6 +640,7 @@ export class PixiScene {
   private farBackdropBlur: BlurFilter | null = null;
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
   private daylight = false;
+  private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private daylightApplied: boolean | null = null;
   // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
   private envTintNow() { return this.daylight ? DAY_ENV_TINT : ENV_TINT; }
@@ -1644,6 +1647,7 @@ export class PixiScene {
     if (wantBloom !== this.bloomActive) { this.bloomActive = wantBloom; this.rebuildWorldFilters(); }
     // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
     this.daylight = s.farBackdrop === 'city';
+    this.isLabStage = s.stageTheme === 'lab';
     this.applyDaylight(this.daylight);
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
     // (歩きアニメ・スモッグの流れ・グロー明滅・各種sin揺らぎ等)も止まり、画面ほぼ全停止の
@@ -3208,9 +3212,11 @@ export class PixiScene {
   private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>) {
     if (alpha <= 0) return;
     const lighting = this.lighting();
-    const mag = Math.hypot(lighting.direction.x, lighting.direction.y) || 1;
-    const ux = lighting.direction.x / mag;
-    const uy = lighting.direction.y / mag;
+    // ステージ2(lab)だけ影を右向きに(社長指示)。長さ/濃さは preset 据え置き。
+    const dir = this.isLabStage ? LAB_SHADOW_DIRECTION : lighting.direction;
+    const mag = Math.hypot(dir.x, dir.y) || 1;
+    const ux = dir.x / mag;
+    const uy = dir.y / mag;
     const scale = Math.max(0.7, Math.min(1.55, w / 42));
     const length = lighting.shadowLength * scale;               // 光方向への伸び
     const radiusX = w * 0.55;
