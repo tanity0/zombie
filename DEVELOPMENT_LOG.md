@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.745 — ステージ3の敵絵を差し替え(9種・見た目1:1)
+
+- 抽出素材を敵タイプ名にリネーム(stage3-enemies/{zombie,bat,skeleton,plant,ghost,werewolf,pumpkin,giantbat,reaper}.png)。
+  社長確認: stage1アトラス敵と見た目1:1対応(bat=四足獣 / skeleton=重装ブルート など、名前と絵の対応はアトラス準拠)。
+- `stage3EnemyTextureName` を追加し drawEnemy で `daylight(=farBackdrop'city')` のときだけ優先適用
+  (次にlab、無ければ既定アトラス)。当たり判定/サイズは不変(enemyFootBox+containScaleで枠に収めるだけ)。
+- 余り: e3(僧服・杖)/ e10(樹人)は未使用(対応する stage1 敵なし)。要望あれば割当/活用。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.744 — ステージ3敵絵の抽出素材を保存(マッピング待ち)
 
 - 社長提供のステージ3敵シートから11体(e0〜e10)を抽出。白背景を縁フラッドフィルで透過＋

@@ -469,6 +469,12 @@ const labEnemyTextureName = (type: string, id: string): string | null => {
   return null;
 };
 
+// ステージ3(廃都)専用の敵絵。stage1のアトラス敵を見た目で1:1差し替え(社長提供シート)。
+// 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='city' のみ。
+const STAGE3_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
+const stage3EnemyTextureName = (type: string): string | null =>
+  STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
+
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
   'ammo-shotgun': '#ef4444',
@@ -3734,7 +3740,12 @@ export class PixiScene {
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
     const fb = enemyFootBox(e);
-    const tex = getTexture(labEnemyTextureName(e.type, e.id) ?? e.type);
+    // ステージ3(daylight=farBackdrop'city')は敵絵を廃都セットに差し替え。次にlab、無ければ既定アトラス。
+    const tex = getTexture(
+      (this.daylight ? stage3EnemyTextureName(e.type) : null)
+      ?? labEnemyTextureName(e.type, e.id)
+      ?? e.type
+    );
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 

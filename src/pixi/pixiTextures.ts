@@ -170,6 +170,9 @@ export const ensureTextures = (): Promise<void> => {
 
       // ステージ3(廃都)のランダム散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
       ...CITY_PROPS.map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
+      // ステージ3(廃都)専用の敵絵(アトラス敵を見た目で差し替え)。アトラス敵と同じピクセル調=nearest。
+      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+        .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
 
       ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];
