@@ -63,6 +63,7 @@ const FAR_BACKDROP_MIN_HEIGHT = 168;    // 旧 150 → 185(少し戻す)
 const FAR_BACKDROP_PARALLAX_X = 0.09;
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;
+const HORIZON_FOREST_BLUR = 1.0; // 地平の森(遠景森)を少しだけぼかす(0=なし)
 const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
@@ -674,6 +675,7 @@ export class PixiScene {
   }
   private nearGroundBlurFilters: BlurFilter[] = [];
   private frontForestBlur: BlurFilter | null = null;
+  private horizonForestBlur: BlurFilter | null = null;
   private labCeiling: Sprite | null = null; // 研究所スキンの最前面 天井ケーブル帯(上寄せ・半透明)
   // 可視可能ゾーン(研究所スキン): RenderTexture に「暗幕 + erase で円形の穴」を描き、その1枚を
   // 画面に重ねる。erase はテクスチャのアルファを削る=円形・なだらかな穴(マスクのステンシル矩形問題を回避)。
@@ -830,6 +832,14 @@ export class PixiScene {
         quality: 3,
       });
       this.L.frontForest.filters = [this.frontForestBlur];
+    }
+
+    if (HORIZON_FOREST_BLUR > 0) {
+      this.horizonForestBlur = new BlurFilter({
+        strength: HORIZON_FOREST_BLUR,
+        quality: 2,
+      });
+      this.L.horizonForest.filters = [this.horizonForestBlur];
     }
 
     // Ambient fireflies: screen-space sprites driven by world coordinates.
@@ -5644,6 +5654,8 @@ export class PixiScene {
     this.L.frontForest.filters = [];
     this.frontForestBlur?.destroy();
     this.frontForestBlur = null;
+    this.horizonForestBlur?.destroy();
+    this.horizonForestBlur = null;
     this.stageLightShaftGfx.destroy();
     this.L.filteredWorld.mask = null;
     this.worldFadeMask.destroy();

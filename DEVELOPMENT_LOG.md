@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.705 — 遠景森(地平帯)も少しぼかす
+
+- 地平の森(horizonForest=ステージ3は廃墟都市スカイライン)に軽いブラーを追加(`HORIZON_FOREST_BLUR=1.0`)。
+  far backdrop / front forest と同じ BlurFilter 方式。destroy で後始末。
+- 負荷: ブラー1層追加(帯1枚・面積小)。2/10。0 で無効化可。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.704 — 遠景地面も被写界深度でぼかす(全ステージ)
 
 - これまで地面DoFは near(手前)側だけだったのを、far(奥)側にもミラー追加。最上(最遠)ほど強く、
