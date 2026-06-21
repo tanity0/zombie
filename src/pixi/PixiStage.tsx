@@ -3,6 +3,8 @@ import { Application, Assets } from 'pixi.js';
 import { buildLayers } from './layers';
 import { ensureTextures } from './pixiTextures';
 import { PixiScene } from './pixiScene';
+import { useGameStore } from '../store/gameStore';
+import { setAudioSuspended } from '../audio/audioManager';
 
 interface PixiStageProps {
   width: number;
@@ -21,6 +23,8 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
   const appRef = useRef<Application | null>(null);
   const sceneRef = useRef<PixiScene | null>(null);
   const tickerCallbackRef = useRef<(() => void) | null>(null);
+  const pauseUnsubRef = useRef<(() => void) | null>(null);   // isPaused購読の解除(電池対策)
+  const visHandlerRef = useRef<(() => void) | null>(null);   // visibilitychangeハンドラ(電池対策)
 
   // One-time init. Async (Pixi v8 + texture load); a cancel flag guards the
   // StrictMode double-mount / fast-unmount race.
@@ -87,6 +91,24 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       tickerCallbackRef.current = tick;
       app.ticker.add(tick);
 
+      // 電池対策: 一時停止中(メニュー等)・裏(hidden)では描画tickerを止める=GPUを焼かない。
+      //   ・isPaused: メニュー/一時停止中は静止画でいい=描画停止(見た目の劣化なし)。
+      //   ・hidden:   タブ/アプリが裏に回ったら描画停止＋BGM一時停止。復帰で再開。
+      const applyTickerState = () => {
+        const a = appRef.current;
+        if (!a) return;
+        const shouldRun = !useGameStore.getState().isPaused && !document.hidden;
+        if (shouldRun) { if (!a.ticker.started) a.ticker.start(); }
+        else if (a.ticker.started) a.ticker.stop();
+      };
+      pauseUnsubRef.current = useGameStore.subscribe((s, prev) => {
+        if (s.isPaused !== prev.isPaused) applyTickerState();
+      });
+      const onVis = () => { setAudioSuspended(document.hidden); applyTickerState(); };
+      visHandlerRef.current = onVis;
+      document.addEventListener('visibilitychange', onVis);
+      applyTickerState();
+
       // ステージ別/ラボの追加テクスチャは「表示後」に非同期注入(セッターは遅延注入対応)。
       // 起動時 preloadBackgrounds でキャッシュ済みなので通常はマイクロタスクで解決=初回tick前に注入完了
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
@@ -120,6 +142,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       cancelled = true;
       const a = appRef.current;
       const tick = tickerCallbackRef.current;
+      try { pauseUnsubRef.current?.(); } catch { /* ignore */ }
+      pauseUnsubRef.current = null;
+      try { if (visHandlerRef.current) document.removeEventListener('visibilitychange', visHandlerRef.current); } catch { /* ignore */ }
+      visHandlerRef.current = null;
+      try { setAudioSuspended(false); } catch { /* ignore */ } // 復帰側で確実にBGMを戻す
       try { if (a && tick) a.ticker.remove(tick); } catch { /* ignore */ }
       tickerCallbackRef.current = null;
       try { sceneRef.current?.destroy(); } catch { /* ignore */ }

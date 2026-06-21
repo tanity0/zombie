@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.756 — 電池対策: 一時停止/裏(hidden)で描画停止＋BGM一時停止
+
+- 一時停止中(メニュー等 isPaused)・タブ/アプリが裏(document.hidden)では Pixi ticker を停止=GPUを焼かない。
+  復帰(unpause/visible)で再開。見た目の劣化なし(停止中は静止画でよい)。
+- hidden時は BGM も一時停止(`setAudioSuspended`)。HTMLAudioElement は裏でも鳴り電池を食うため。復帰で再開。
+- 実装: PixiStage で isPaused 購読＋ visibilitychange で `applyTickerState()`(`!isPaused && !hidden` のみ start)。
+- 解像度cap/フィルタ軽量化は今回見送り(社長指示=この2つのみ)。
+- 検証: `npx tsc --noEmit` パス。
+
+## v0.25.755 — ステージ2のBGMがstage1になる不具合修正＋ステージ別BGM基盤
+
+- BGM選択を indoorMode→stageテーマ基準に。stage2(theme:lab/屋外)は lab-stage.mp3 を再生。
+- audioManager の GAME_BGM をキー別マップ化、Stage に `bgm` フィールド追加(stage3は曲確定後に割当)。
+
+## v0.25.754 — PHILLサークルの頭スナップを実描画に合わせる
+
+- 横長素材の敵で頭の上に浮く問題を修正。素材アスペクト(texH/texW)をレジストリ登録し、実描画の縦範囲
+  (box内接)から頭付近へスナップ(`enemyHeadY`)。未登録時は従来0.83フォールバック。
+
+## v0.25.753 — ナイフマスターに効果追加(近接クリ+20%/弾薬ドロップ0%)
+
+- 既存のコンボ増加に加え近接クリ率+20%(`skillKnifeMasterMeleeCrit`、sweep/katana/whip)。
+  弾薬ドロップ0%(近接フィニッシュ/銃キル/時限エアドロの3経路を hasSkill で抑止)。skill説明文も更新。
+
 ## v0.25.752 — 出撃時の稀な真っ暗を解消(キャンバス表示をステージ別ロード待ちから切り離す)
 
 - 原因: v731で「ステージ別テクスチャ(9枚)の await 完了後にキャンバス append」にしたため、稀にそのロードが

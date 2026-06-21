@@ -662,6 +662,14 @@ export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'd
   void setBgmActive(true);
 };
 
+// 電池対策: 裏(タブ/アプリ非表示)に回ったら BGM を一時停止し、復帰で再開(scene状態は保持)。
+// HTMLAudioElement は hidden でも鳴り続け電池を食うため明示停止。SFXのAudioContextは
+// ブラウザが hidden で自動 suspend するので復帰時に resume するだけ。
+export const setAudioSuspended = (suspended: boolean) => {
+  if (suspended) { try { bgm?.pause(); } catch { /* ignore */ } }
+  else { resumeSfxContext(); playBgmRobust(); } // bgmActive/muted を尊重して復帰
+};
+
 // ダンスタイム中はリズムに乗りやすいよう近接ダメージ音(スラッシュ/メレー)を鳴らさない。
 const DANCE_MUTED_SFX = new Set<SfxKey>(['slash-damage', 'melee']);
 
