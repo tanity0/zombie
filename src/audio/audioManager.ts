@@ -8,13 +8,14 @@ const SFX_VOLUME_KEY = 'zombie:sfxVolume';
 const DEFAULT_BGM_VOLUME = 1;
 const DEFAULT_SFX_VOLUME = 1;
 
-// ステージBGM。stage1 に差し替え(旧 rotten-iron-march / rusting-grave-circuit は public に残置)。
-// 将来ステージ別BGM(stage2-4)を足す場合はここに並べる。
-const BGM_TRACKS = [
-  `${import.meta.env.BASE_URL}audio/stage1.mp3`,
-];
-// 屋内(研究施設)ステージ専用BGM。public/audio/lab-stage.mp3。
-const LAB_TRACK = `${import.meta.env.BASE_URL}audio/lab-stage.mp3`;
+// ステージBGM。キー別に並べる(default=森/stage1、lab=研究所、stage3=廃都…)。
+// App 側がステージから key を解決して setBgmScene('game', key) で指定する。
+// 未割当 key は default(stage1)へフォールバック。
+const GAME_BGM: Record<string, string> = {
+  default: `${import.meta.env.BASE_URL}audio/stage1.mp3`,
+  lab: `${import.meta.env.BASE_URL}audio/lab-stage.mp3`, // 研究所(ステージ2)。theme==='lab' で選択
+  // stage3: `${import.meta.env.BASE_URL}audio/<stage3>.mp3`, // 廃都(ステージ3)。ファイル確定後に割当
+};
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
 const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
@@ -294,7 +295,7 @@ const persistMuted = () => {
 };
 
 // いま BGM 要素に読み込ませてあるトラックURL。v0.25.280ではこの1要素だけを戦闘/ダンスで差し替える。
-let bgmSrc = BGM_TRACKS[0];
+let bgmSrc = GAME_BGM.default;
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
   bgm = new Audio(bgmSrc);
@@ -310,8 +311,8 @@ const ensureBgm = () => {
 // ネイティブアプリへ移行する時は、この解錠/src差し替え処理を削り、アプリ側の音声エンジンでBGM切替を実装する。
 let danceActive = false;
 
-let bgmTargetSrc = BGM_TRACKS[0];
-let bgmBaseTrack = BGM_TRACKS[0];   // 非ダンス時の基準曲(menu=タイトル / game=ステージ)
+let bgmTargetSrc = GAME_BGM.default;
+let bgmBaseTrack = GAME_BGM.default;   // 非ダンス時の基準曲(menu=タイトル / game=ステージ)
 let bgmTargetDanceLevel = 0;        // 0=戦闘曲、1〜3=ダンス曲
 let bgmPlayToken = 0;
 let danceStopTimer: number | null = null; // 停止を少し遅延して、rhythm.active の一瞬のチラつきで止め→鳴り直しが起きないように
@@ -600,7 +601,7 @@ export const unlockDanceAudio = () => {
   // Native app builds should remove this and use the app audio session/engine instead.
   // 一時要素は解錠専用で使い捨て。最後までミュートのままにする(pause直後に un-mute すると
   // pause が効き切る前の一瞬が鳴り、スタート時に複数曲が重なって聞こえる ← v0.25.282の代償)。
-  const urls = [BGM_TRACKS[0], DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3]].filter(Boolean);
+  const urls = [GAME_BGM.default, DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3]].filter(Boolean);
   for (const url of urls) {
     if (typeof Audio === 'undefined') continue;
     const el = new Audio(url);
@@ -653,11 +654,11 @@ export const setBgmActive = async (nextActive: boolean) => {
 // 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
-export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: 'default' | 'lab' = 'default') => {
+export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'default') => {
   if (scene === 'off') { void setBgmActive(false); return; }
   bgmBaseTrack = scene === 'menu'
     ? TITLE_TRACK
-    : (variant === 'lab' ? LAB_TRACK : BGM_TRACKS[0]); // 屋内ステージは専用BGM
+    : (GAME_BGM[variant] ?? GAME_BGM.default); // ステージ別BGM(未割当はdefault=stage1)
   void setBgmActive(true);
 };
 

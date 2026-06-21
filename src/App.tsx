@@ -47,7 +47,13 @@ function App() {
 
   useEffect(() => {
     // menu=タイトル曲 / playing=ステージ曲 / その他(loading・gameOver・victory)=停止。
-    if (gameState === 'playing') setBgmScene('game', useGameStore.getState().indoorMode ? 'lab' : 'default');
+    // ステージBGMはステージデータから解決(stage.bgm 明示 > theme==='lab'は研究所曲 > 既定=stage1)。
+    // ※ステージ2は屋外ラボ(indoorMode=false)なので、indoorMode ではなく theme で判定する。
+    if (gameState === 'playing') {
+      const st = getStage(getSelectedStageId());
+      const bgmKey = st?.bgm ?? (st?.theme === 'lab' ? 'lab' : 'default');
+      setBgmScene('game', bgmKey);
+    }
     else if (gameState === 'menu') setBgmScene('menu');
     else setBgmScene('off');
   }, [gameState]);
