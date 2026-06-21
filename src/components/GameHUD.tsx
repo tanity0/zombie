@@ -8,6 +8,7 @@ import { spritePath } from '../utils/spriteLoader';
 import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import { getStage } from '../data/campaign';
 import { getSelectedStageId } from '../data/progress';
+import VitalsOrb from './VitalsOrb';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
@@ -44,11 +45,6 @@ const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
   const player = useGameStore(s => ({
-    health: s.player.health,
-    maxHealth: s.player.maxHealth,
-    experience: s.player.experience,
-    experienceToNextLevel: s.player.experienceToNextLevel,
-    level: s.player.level,
     weapons: s.player.weapons,
     activeWeaponId: s.player.activeWeaponId,
     ammoHandgun: s.player.ammoHandgun,
@@ -84,9 +80,6 @@ const GameHUD: React.FC = () => {
   // 出撃中ステージ名(選択ステージに連動。研究所なら「研究所跡」。未取得時は従来名)。
   const stageName = getStage(getSelectedStageId())?.name ?? 'マッド・フォレスト';
   const formattedTime = formatTime(gameTime / 1000);
-  // ダンス中はレベルアップ保留でEXPが溢れるため、表示は100%でカンスト(止める)。
-  const expPercentage = Math.min(100, (player.experience / player.experienceToNextLevel) * 100);
-  const healthPercentage = (player.health / player.maxHealth) * 100;
 
   const bossImminent =
     !bossActive &&
@@ -203,9 +196,6 @@ const GameHUD: React.FC = () => {
           paddingRight: 'max(env(safe-area-inset-right), 12px)'
         }}
       >
-        <div className="glass-pill px-3 py-1 text-[13px] font-semibold tracking-tight">
-          Lv {player.level}
-        </div>
         <div className="glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums">
           {formattedTime}
         </div>
@@ -240,41 +230,15 @@ const GameHUD: React.FC = () => {
         </div>
       )}
 
-      {/* Health + XP card */}
+      {/* バイタル: HP球体 + 外周EXPリング(被弾点滅)。左上にコンパクト配置。 */}
       <div
-        className="absolute left-0 right-0 px-3"
+        className="absolute"
         style={{
           top: 'calc(max(env(safe-area-inset-top), 8px) + 40px)',
-          paddingLeft: 'max(env(safe-area-inset-left), 12px)',
-          paddingRight: 'max(env(safe-area-inset-right), 12px)'
+          left: 'max(env(safe-area-inset-left), 12px)'
         }}
       >
-        <div className="glass-panel rounded-2xl px-3 py-2 mx-auto max-w-md">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-red-200/80 w-8">HP</span>
-            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-rose-500 to-red-400 transition-all duration-300"
-                style={{ width: `${healthPercentage}%` }}
-              />
-            </div>
-            <span className="text-[11px] tabular-nums text-white/80 w-12 text-right">
-              {Math.floor(player.health)}/{player.maxHealth}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[10px] uppercase tracking-widest text-emerald-200/80 w-12">PHILL</span>
-            <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all duration-300"
-                style={{ width: `${expPercentage}%` }}
-              />
-            </div>
-            <span className="text-[11px] tabular-nums text-white/60 w-12 text-right">
-              {Math.floor(expPercentage)}%
-            </span>
-          </div>
-        </div>
+        <VitalsOrb />
       </div>
 
       {/* 装備中スキル(サブウェポン)のチップ。武器パネルの上に並べる。 */}

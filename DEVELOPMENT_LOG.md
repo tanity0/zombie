@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.700 — HP/EXP をバイタルオーブに刷新(球体HP+外周EXPリング+被弾点滅)
+
+- 旧「HP/EXP 横バーのカード」を廃止し、**`VitalsOrb`(球体)** に集約してコンパクト化(左上)。
+  - **HP=数字主体の球体**: 中央に大きくHP数値、球の中は下から満ちる液面(残量で黄→赤)+ガラス艶。
+  - **EXP=外周の白いリング**: 12時から時計回りに溜まり、一周=レベルアップ。Lv はオーブ下の小バッジ。
+  - **被弾点滅**: HPが減った瞬間に key 変更でオーブを scale パンチ＋白フラッシュ(`hud-orb-hit`/`hud-orb-flash`)。
+- 再描画規律: HP/EXP/Lv は `VitalsOrb` が個別primitive購読。**GameHUD本体からHP/EXP/Lv購読を撤去**し、
+  上部バーの Lv ピルも削除(オーブに集約)。これでHP/EXP変動でHUD本体が再描画されない。
+- 追加: `src/index.css` に `hud-orb-hit` / `hud-orb-flash` キーフレーム。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.699 — 遠景バンドを下に拡張(全ステージ・地平森も連動)※戻す可能性あり
 
 - 遠景(far backdrop)の高さを拡張: `FAR_BACKDROP_HEIGHT_RATIO` 0.22→**0.30** / 上限 0.30→**0.44** / 最小
