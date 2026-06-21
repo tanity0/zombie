@@ -82,9 +82,38 @@ export const setSelectedFreeMode = (free: boolean): void => {
   }
 };
 
+// ステージ別ハイスコア(stageId -> best totalScore)。localStorage に JSON で保存。
+const HIGHSCORE_KEY = 'zombie.progress.highscores';
+const readScores = (): Record<string, number> => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(HIGHSCORE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj as Record<string, number> : {};
+  } catch {
+    return {};
+  }
+};
+const writeScores = (m: Record<string, number>): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(HIGHSCORE_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+export const getStageHighScore = (stageId: string): number => (stageId ? (readScores()[stageId] ?? 0) : 0);
+// 記録更新なら true(=ハイスコア達成)。同点以下は false。
+export const submitStageHighScore = (stageId: string, score: number): boolean => {
+  if (!stageId || score <= 0) return false;
+  const m = readScores();
+  if ((m[stageId] ?? 0) >= score) return false;
+  m[stageId] = score;
+  writeScores(m);
+  return true;
+};
+
 // 開発用: 全ステージ解放 / 進行リセット。
 export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
 export const resetProgress = (): void => {
   writeSet(new Set());
   setSelectedStageId('');
+  writeScores({});
 };

@@ -8,6 +8,7 @@ import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equip
 import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
+import { getSelectedStageId, submitStageHighScore } from '../data/progress';
 
 interface GameOverScreenProps {
   stats: GameStats;
@@ -115,6 +116,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     creditedRef.current = true;
     addGold(total);
   }, [isBenchmarkRun, goldEarned, equipmentGold, addGold]);
+
+  // ハイスコア更新(ベンチ以外。死亡/クリア問わずスコアを記録)。更新できたら HIGH SCORE 表示。
+  const [isHighScore, setIsHighScore] = useState(false);
+  const hsRef = useRef(false);
+  useEffect(() => {
+    if (hsRef.current || isBenchmarkRun) return;
+    hsRef.current = true;
+    if (submitStageHighScore(getSelectedStageId(), totalScore)) setIsHighScore(true);
+  }, [isBenchmarkRun, totalScore]);
 
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
   const statsItems = [
@@ -288,7 +298,14 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
             <div className="rounded-2xl bg-black/25 border border-white/10 px-3 py-2">
               <div className="mb-2">
-                <div className="text-[10px] uppercase tracking-widest text-white/45">SCORE</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-widest text-white/45">SCORE</span>
+                  {isHighScore && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 border border-amber-300/50 animate-pulse">
+                      HIGH SCORE
+                    </span>
+                  )}
+                </div>
                 <div className="text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
               </div>
               <div className="space-y-1 text-[11px] text-white/65 tabular-nums">

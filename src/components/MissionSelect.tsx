@@ -14,7 +14,7 @@ import {
   GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, RARITY_LABEL, rollGachaSkill, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
-  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress
+  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore
 } from '../data/progress';
 import {
   getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
@@ -152,6 +152,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const StageRow: React.FC<{ stage: Stage }> = ({ stage }) => {
     const unlocked = isStageUnlocked(stage, cleared);
     const done = cleared.has(stage.id);
+    const hiScore = getStageHighScore(stage.id);
     return (
       <button
         type="button"
@@ -172,6 +173,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <span className="block text-[15px] font-semibold text-white truncate">
             {stage.name}
             {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">クリア済</span>}
+            {unlocked && hiScore > 0 && (
+              <span className="ml-2 align-middle text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>
+            )}
           </span>
           <span className="block text-[11px] text-white/45 truncate">{stage.main.title}・{stage.area}</span>
           <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">

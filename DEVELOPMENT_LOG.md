@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.713 — ステージ別ハイスコア(選択欄+リザルト)/ 遠景手前森を少し上へ
+
+- ハイスコア永続化(progress.ts): `getStageHighScore` / `submitStageHighScore`(stageId→best totalScore、localStorage)。
+  resetProgress でクリア。
+- ステージ選択(MissionSelect StageRow): 解放済みでスコアありなら名前行に小さく「HI <score>」表示。
+- リザルト(GameOverScreen): ベンチ以外で totalScore を記録、更新できたら SCORE 横に「HIGH SCORE」バッジ(点滅)。
+  死亡/クリア問わず記録。
+- 遠景手前森(nearHorizon)を少し上へ(`NEAR_HORIZON_BOTTOM_RATIO 0.16→0.10`)。
+- 備考: クリア後の装備持ち越し選択は既存(GameOverScreen の「持ち帰る装備を1つ選択」)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.712 — 死亡時に装備をゴールド換金(各部位 tier ぶん)
 
 - 死亡時、失う装備を tier ぶんゴールド換金: tier1=1g 〜 tier5=5g、各部位ごと(`equipScrapGold`)。
