@@ -615,7 +615,7 @@ export const PLAYER_INERTIA_TAU = 0;
 export const ENEMY_INERTIA_TAU = 0.3;
 // 照準サークル(=PHILL弾/アンカーの狙い)の慣性。向き/距離の変化に少し遅れて追従(秒)。
 // 値を上げるほどサークルがゆっくり動く(社長指示でさらにゆっくりに 0.10→0.20)。
-export const AIM_INERTIA_TAU = 0.34; // 照準サークルの追従(大きいほど遅い。PHILLカーソルが速すぎたので緩く。旧0.20)
+export const AIM_INERTIA_TAU = 0.28; // 照準サークルの追従(大きいほど遅い)。気持ち速く(0.34→0.28)
 
 // 特殊AI(犬型=突進 / パンプキン=ジャンプ)の調整値。射程基準=ハンドガン射程176px(RANGE_BY_CATEGORY.handgun)。
 const HANDGUN_RANGE_REF = 176;

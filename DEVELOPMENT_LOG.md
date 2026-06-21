@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.722 — PHILLカーソルを気持ち速く
+
+- `AIM_INERTIA_TAU 0.34→0.28`。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.721 — 遠景森2をステージ別化(ステージ1=森シルエット追加)
 
 - nearHorizon(遠景森2)をステージ別キーに一般化: `Stage.nearHorizon`('forest'/'city')→ store
