@@ -248,6 +248,8 @@ export interface Enemy {
   fromEvent?: boolean;
   // 救助イベントの攻撃者: この survivor の id を狙う(updateEnemies の retarget 分岐で参照)。
   escortTarget?: string;
+  // プレイヤーが近接ダメージを与えた敵=以後プレイヤーを狙う(救助の survivor 狙いから切替。社長指示)。
+  meleeAggro?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this
   // at spawn time. Renderer uses rank for lightweight ornaments; gameplay uses multiplier.
   distanceZone?: number;

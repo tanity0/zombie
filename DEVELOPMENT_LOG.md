@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.751 — レスキューの敵は「近接ダメージを与えた敵だけ」プレイヤー狙いに
+
+- v750を改修(社長指示): レスキュー敵は既定では survivor 狙いに戻し、**プレイヤーが近接ダメージを与えた敵
+  (`meleeAggro`)だけ**プレイヤーへターゲット切替。
+- `Enemy.meleeAggro` を追加。近接3経路の `set({enemies})` で、このスイングで被弾した敵(lastHit===now)に付与。
+  一度付くと永続。銃/爆弾では付かない(近接のみ)。
+- updateEnemies: `escortTarget && !meleeAggro` のときだけ survivor 狙い。それ以外は通常AI(プレイヤー狙い)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.750 — レスキューの敵をプレイヤー狙いに変更
 
 - 救助イベントの攻撃者(escortTarget持ち)が survivor を狙っていたのを、**プレイヤー狙い**へ変更(社長指示)。
