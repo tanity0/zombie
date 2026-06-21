@@ -57,9 +57,9 @@ const DAY_GRADE_ALPHA = GRADE_ALPHA * 0.3; // 昼はグレードをかなり弱�
 const PLAYER_HUNTING_LIGHT_TINT = 0x60a5fa;
 // 遠景バンドの高さ。下に広げると「遠景エリアが広く・地面が下がり・地平の森も一緒に下がる」(地平森は
 // farH 基準で配置されるため自動連動)。戻すときは ratio 0.22 / cap 0.30 / min 150 に戻す(社長:戻す可能性あり)。
-const FAR_BACKDROP_HEIGHT_RATIO = 0.30; // 旧 0.22
-const FAR_BACKDROP_HEIGHT_CAP = 0.44;   // 旧 0.30(screenH 比の上限)
-const FAR_BACKDROP_MIN_HEIGHT = 185;    // 旧 150
+const FAR_BACKDROP_HEIGHT_RATIO = 0.26; // 旧 0.22 → 0.30(広げすぎたので少し戻す)
+const FAR_BACKDROP_HEIGHT_CAP = 0.38;   // 旧 0.30 → 0.44(少し戻す)
+const FAR_BACKDROP_MIN_HEIGHT = 168;    // 旧 150 → 185(少し戻す)
 const FAR_BACKDROP_PARALLAX_X = 0.09;
 const FAR_BACKDROP_BLUR = 1.1;
 const HORIZON_FOREST_PARALLAX_X = 0.16;

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.701 — オーブ微調整 + 遠景を少し戻す
+
+- HPの色をより赤く(上部 #fb7185→#ef4444 等、全体に赤寄り/危険時は暗赤)。
+- Lvバッジ: glass-pill→専用の**半透明背景**(rgba(10,10,16,0.5)+細枠)に、`whitespace-nowrap` で**折り返し防止**。
+- 遠景可視領域を少し上に戻す: `FAR_BACKDROP_HEIGHT_RATIO 0.30→0.26 / CAP 0.44→0.38 / MIN 185→168`
+  (広げすぎを緩和。元に完全に戻すなら 0.22/0.30/150)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.700 — HP/EXP をバイタルオーブに刷新(球体HP+外周EXPリング+被弾点滅)
 
 - 旧「HP/EXP 横バーのカード」を廃止し、**`VitalsOrb`(球体)** に集約してコンパクト化(左上)。

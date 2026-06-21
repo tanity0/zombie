@@ -33,9 +33,9 @@ const VitalsOrb: React.FC = () => {
 
   // 液面(下から hpFrac ぶん満ちる)。clip 内の矩形の上端 y。
   const fillTopY = CY + ORB_R - 2 * ORB_R * hpFrac;
-  // HP低下で色を黄→赤へ寄せる(危険ほど赤)。
-  const hpHi = hpFrac > 0.5 ? '#fb7185' : hpFrac > 0.25 ? '#f87171' : '#ef4444';
-  const hpLo = hpFrac > 0.25 ? '#7f1d1d' : '#991b1b';
+  // HP低下で色を赤→暗赤へ(全体に赤寄り。危険ほど暗い赤)。
+  const hpHi = hpFrac > 0.5 ? '#ef4444' : hpFrac > 0.25 ? '#dc2626' : '#b91c1c';
+  const hpLo = hpFrac > 0.25 ? '#7f1d1d' : '#641414';
 
   // EXP リングの描画(上=12時から時計回り)。
   const dash = `${RING_C * expFrac} ${RING_C}`;
@@ -127,10 +127,10 @@ const VitalsOrb: React.FC = () => {
         )}
       </div>
 
-      {/* レベル(オーブ下の小バッジ) */}
+      {/* レベル(オーブ下の小バッジ): 半透明の背景・1行固定(折り返さない) */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 glass-pill px-2 py-0.5 text-[10px] font-bold leading-none"
-        style={{ bottom: -8 }}
+        className="absolute left-1/2 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none whitespace-nowrap"
+        style={{ bottom: -8, backgroundColor: 'rgba(10,10,16,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}
       >
         Lv {level}
       </div>
