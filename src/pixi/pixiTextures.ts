@@ -12,6 +12,7 @@
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
+import { CITY_PROPS } from '../world/cityProps';
 
 const textures = new Map<string, Texture>();
 let ready = false;
@@ -167,6 +168,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-zombie/lab-zombie-lv2-female', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
 
+      // ステージ3(廃都)のランダム散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
+      ...CITY_PROPS.map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
+
       ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];
 
@@ -239,6 +243,9 @@ export const ensureTextures = (): Promise<void> => {
     // 上書きしてキーを確実に置き換える。詳細イラスト調なので linear で滑らかに縮小描画。
     const newTree = await loadOne('tree-new');
     if (newTree) { newTree.source.scaleMode = 'linear'; textures.set('tree', newTree); }
+    // 城(ステージ3のフィナーレ拠点)を廃教会の絵に差し替え(社長提供)。足元アンカー・高さ基準スケールは不変。
+    const church = await loadOne('castle-church');
+    if (church) { church.source.scaleMode = 'nearest'; textures.set('castle', church); }
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
   })();

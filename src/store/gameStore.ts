@@ -33,6 +33,7 @@ import {
   ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
+import { resolveCityPropCollision } from '../world/cityProps';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
@@ -1705,8 +1706,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: player.width,
           height: player.height,
         }, castleEvent);
+        // ステージ3(廃都): 大きい散布オブジェクト(瓦礫/構造物等)を遮蔽物として解決(プレイヤーのみ)。
+        const cityResolved = (!labTheme && state.farBackdrop === 'city')
+          ? resolveCityPropCollision({ x: castleResolved.x, y: castleResolved.y, width: player.width, height: player.height })
+          : castleResolved;
         // 壁オブジェクト(研究所スキン・区画生成)を遮蔽物として解決。近傍区画のみ問い合わせ。
-        let wallResolved = castleResolved;
+        let wallResolved = cityResolved;
         if (labTheme) {
           const cx = castleResolved.x, cy = castleResolved.y;
           const rgn = [cx - 120, cy - 120, cx + player.width + 120, cy + player.height + 120] as const;

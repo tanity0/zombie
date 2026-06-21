@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.742 — ステージ3に廃都オブジェクトをランダム散布＋城を廃教会に差し替え
+
+- **廃都オブジェクトのランダム散布(ステージ3のみ)**: シートから31種を抽出し `public/sprites/props/` に登録。
+  - 新モジュール `src/world/cityProps.ts`(renderer-agnostic): 区画(CITY_ZONE=680)ごとに3〜6個を
+    決定的散布(重み付き抽選・原点付近は安全半径240で空ける)。木と同じ足元アンカー規約。
+  - 描画 `syncCityProps`(pixiScene): 立ち物=actorLayerでfootYをzIndexにY-sort、decal(血痕/小石)=
+    groundLayerでアクター下に敷く。tintは昼夜連動(ステージ3は昼=本来色)。`farBackdrop==='city'` のみ。
+  - 当たり判定は「大きい物だけ」(社長指示)。`resolveCityPropCollision` をプレイヤー移動解決に追加。
+    敵はlabプロップと同様に素通り(コスト抑制)。decal/低木/草は素通り。
+  - 負荷: 2/10。静的スプライト散布(CLAUDE.md上スプライトは安価)。当たりはプレイヤー1体が近傍区画の
+    矩形にAABB解決のみ。per-frame Graphics/text/light なし。ステージ3限定でゲート。
+- **城を廃教会に差し替え**: `castle-church.png`(マゼンタ透過)で 'castle' を上書き。足元アンカー・
+  高さ基準スケール(CASTLE_TARGET_HEIGHT)は不変。※城アセットは全ステージ共通(stage3指定だが森系の
+  フィナーレでも同じ絵になる。ステージ別にしたい場合は別途オーバーライド機構が必要)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.741 — 木の絵を差し替え(新しい木)
 
 - 既存の木(atlas 'tree')を、社長提供のシート(ステージ3オブジェクト集)から抽出した木の一枚絵に差し替え。
