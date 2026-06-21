@@ -8,7 +8,7 @@ import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
-import { ensureTextures } from './pixi/pixiTextures';
+import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { getSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
 import { getStage } from './data/campaign';
 
@@ -31,6 +31,7 @@ function App() {
       const started = performance.now();
       preloadPromiseRef.current = Promise.all([
         ensureTextures().catch(() => {}),
+        preloadBackgrounds().catch(() => {}), // 背景パノラマ/床/地平帯=出撃時フラッシュ防止のため先読み
         preloadAllAudio(),
       ]).then(async () => {
         const remaining = LOADING_MIN_MS - (performance.now() - started);

@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.731 — 出撃フラッシュ解消(背景先読み＋表示前注入)＋ステージ2の遠景森2
+
+- **「出撃直後に一瞬ステージ1(森)が映る」解消**:
+  - 背景パノラマ/床/地平帯を起動時に先読みする `preloadBackgrounds()` を pixiTextures に追加し、
+    App の起動ローディング(「素材をダウンロード中…」)で他素材と並行ロード。
+  - PixiStage を再構成: ステージ別テクスチャを**キャンバスを DOM に出す前**に読み込んで注入し、
+    `scene.sync()` + `app.render()` で正しい初回フレームを作ってから append。先読み済みなので待ち時間ほぼ0。
+- **ステージ2の遠景森2(nearHorizon)を追加**: 研究所の機材シルエット帯。
+  - 素材 `stage2-near-horizon.png`(マゼンタをクロマキー透過, 2172×724)。
+  - `nearHorizon` を lab テーマでも有効化(store: forest 限定→ダンステスト以外で常に有効)。
+  - campaign stage-2 に `nearHorizon: 'lab'`、`setNearHorizonTexture('lab', …)` で注入。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.730 — ステージ3の床素材入れ替え＋屋根帯を不透明化
 
 - ステージ3の床(石畳)を新素材へ差し替え。`stage3-ground-cobble2.jpg`(石畳＋草・継ぎ目あり=

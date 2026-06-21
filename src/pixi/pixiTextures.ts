@@ -242,6 +242,35 @@ export const ensureTextures = (): Promise<void> => {
 
 export const texturesReady = (): boolean => ready;
 
+// 背景パノラマ/床/地平帯はマニフェスト外で URL 直読みする(PixiStage が Assets.load)。
+// これらを起動時のローディング画面で先読みしておくと、出撃時に Assets キャッシュから即取得でき、
+// 「出撃直後に一瞬ステージ1(森)が映る」フラッシュを防げる(注入を初回ペイント前に間に合わせる)。
+const BACKGROUND_PATHS = [
+  'backgrounds/distant-night-panorama.jpg',
+  'backgrounds/ground-moss-dirt.jpg',
+  'backgrounds/horizon-forest-band.png',
+  'backgrounds/front-forest-foreground.png',
+  'backgrounds/stage3-distant-city-day.jpg',
+  'backgrounds/stage3-ground-cobble2.jpg',
+  'backgrounds/stage3-horizon-city.png',
+  'backgrounds/stage3-near-horizon-city.png',
+  'backgrounds/stage1-near-forest.png',
+  'backgrounds/stage2-lab-far.jpg',
+  'backgrounds/stage2-near-horizon.png',
+  'backgrounds/stage3-front-rooftops.png',
+  'sprites/lab-floor/lab-floor-stage2.png',
+];
+let bgLoading: Promise<void> | null = null;
+export const preloadBackgrounds = (): Promise<void> => {
+  if (!bgLoading) {
+    const BASE = import.meta.env.BASE_URL;
+    bgLoading = Promise.all(
+      BACKGROUND_PATHS.map((p) => Assets.load(`${BASE}${p}`).catch(() => null))
+    ).then(() => {});
+  }
+  return bgLoading;
+};
+
 // Texture for an actor/pickup name, or null when there's no art for it (the
 // RE-specific pickups and projectiles are drawn procedurally instead).
 export const getTexture = (name: string): Texture | null =>

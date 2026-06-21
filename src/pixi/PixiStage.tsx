@@ -55,6 +55,43 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       frontForestTexture.source.scaleMode = 'linear';
       if (cancelled) return;
 
+      const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
+      const scene = new PixiScene(layers);
+      scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
+      scene.resize(width, height);
+
+      sceneRef.current = scene;
+
+      // ステージ別/ラボの追加テクスチャは「キャンバスを見せる前」に読み込んで注入する。
+      // 起動時の preloadBackgrounds で Assets キャッシュ済みなので通常は即時(=待ち時間ほぼ0)。
+      // これで出撃直後に既定の森(=ステージ1)が一瞬映るフラッシュを防ぐ(初回ペイントから正しい絵)。
+      const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
+      const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s3Front] = await Promise.all([
+        load('sprites/lab-floor/lab-floor-stage2.png'),
+        load('backgrounds/stage3-distant-city-day.jpg'),
+        load('backgrounds/stage3-ground-cobble2.jpg'),
+        load('backgrounds/stage3-horizon-city.png'),
+        load('backgrounds/stage3-near-horizon-city.png'),
+        load('backgrounds/stage1-near-forest.png'),
+        load('backgrounds/stage2-lab-far.jpg'),
+        load('backgrounds/stage2-near-horizon.png'),
+        load('backgrounds/stage3-front-rooftops.png'),
+      ]);
+      if (cancelled || sceneRef.current !== scene) return;
+      scene.setLabGroundTexture(labGround);            // 研究所スキンの床
+      scene.setFarBackdropTexture('lab', s2Far);       // ステージ2(lab)の遠景
+      scene.setFarBackdropTexture('city', s3Far);      // ステージ3の遠景
+      scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)
+      scene.setStage3Horizon(s3Horizon);               // ステージ3の地平帯(廃墟都市)
+      scene.setNearHorizonTexture('city', s3Near);     // 遠景森2: 廃墟都市(ステージ3)
+      scene.setNearHorizonTexture('forest', s1Near);   // 遠景森2: 森シルエット(ステージ1)
+      scene.setNearHorizonTexture('lab', s2Near);      // 遠景森2: ステージ2(lab)
+      scene.setStage3Front(s3Front);                   // 近景森: 屋根帯(ステージ3・mask不変方式)
+
+      // 注入を初回フレームに反映してからキャンバスを表示(=フラッシュ無しで正しい絵を最初に出す)。
+      try { scene.sync(); } catch { /* 初回syncの失敗は握りつぶす(tickで継続) */ }
+      try { app.render(); } catch { /* ignore */ }
+
       if (host) {
         app.canvas.style.position = 'absolute';
         app.canvas.style.top = '0';
@@ -62,13 +99,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         app.canvas.style.touchAction = 'none';
         host.appendChild(app.canvas);
       }
-
-      const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
-      const scene = new PixiScene(layers);
-      scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
-      scene.resize(width, height);
-
-      sceneRef.current = scene;
 
       // 1フレームの例外で描画が固まって真っ暗になるのを防ぐ(ログは初回だけ。再生は継続)。
       const tick = () => {
@@ -80,30 +110,6 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       };
       tickerCallbackRef.current = tick;
       app.ticker.add(tick);
-
-      // ステージ別/ラボの追加テクスチャは後から並列ロード→注入(黒画面を伸ばさない)。
-      void (async () => {
-        const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s3Front] = await Promise.all([
-          load('sprites/lab-floor/lab-floor-stage2.png'),
-          load('backgrounds/stage3-distant-city-day.jpg'),
-          load('backgrounds/stage3-ground-cobble2.jpg'),
-          load('backgrounds/stage3-horizon-city.png'),
-          load('backgrounds/stage3-near-horizon-city.png'),
-          load('backgrounds/stage1-near-forest.png'),
-          load('backgrounds/stage2-lab-far.jpg'),
-          load('backgrounds/stage3-front-rooftops.png'),
-        ]);
-        if (cancelled || sceneRef.current !== scene) return;
-        scene.setLabGroundTexture(labGround);            // 研究所スキンの床
-        scene.setFarBackdropTexture('lab', s2Far);       // ステージ2(lab)の遠景
-        scene.setFarBackdropTexture('city', s3Far);      // ステージ3の遠景
-        scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)
-        scene.setStage3Horizon(s3Horizon);               // ステージ3の地平帯(廃墟都市)
-        scene.setNearHorizonTexture('city', s3Near);     // 遠景森2: 廃墟都市(ステージ3)
-        scene.setNearHorizonTexture('forest', s1Near);   // 遠景森2: 森シルエット(ステージ1)
-        scene.setStage3Front(s3Front);                   // 近景森: 屋根帯(ステージ3・mask不変方式)
-      })();
     })().catch((e) => { console.error('[PixiStage] init error:', e); });
 
     return () => {

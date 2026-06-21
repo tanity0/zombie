@@ -5774,7 +5774,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stageTheme: StageTheme = (!state.danceTestMode && state.pendingStageTheme === 'lab') ? 'lab' : 'forest';
       // 遠景差し替え(forestテーマの距離パノラマのみ。ダンステスト/labでは無効)。
       const farBackdrop = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingFarBackdrop : '';
-      const nearHorizon = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingNearHorizon : '';
+      // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
+      const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         : { x: 0, y: 0 };

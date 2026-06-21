@@ -110,6 +110,8 @@ export const STAGES: Stage[] = [
     // 屋内迷路(labMap で壁/カードキー/ゴール)は作り直しのため保留: indoor は外し、theme:'lab' のみ付与。
     // indoor: true,
     theme: 'lab',
+    nearHorizon: 'lab', // 遠景森2(手前に重ねる帯)= 研究所の機材シルエット
+
     main: {
       code: 'M2',
       title: '研究所再突入',
