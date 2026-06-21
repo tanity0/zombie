@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.737 — 日光シャフトに軽いぼかし(shaftblur 既定2)
+
+- シャフトのエッジを柔らかく。`SHAFT_BLUR` 既定 0→2(BlurFilter 1枚・加算レイヤーのみ)。`?shaftblur=0` でOFF。
+- 負荷: 1/10(uiLayer の加算 Graphics 1枚に BlurFilter 1枚。フルスクリーンではなく帯のみ。bloom非対象)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.736 — ステージ3の日光シャフトを少し濃く(昼のみ)
 
 - 斜めの日光シャフト(god ray)を昼ステージだけ濃く。`SHAFT_DAY_BOOST`(既定1.3)を昼の時だけ乗算。

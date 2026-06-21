@@ -182,8 +182,8 @@ const SHAFT_DAY_BOOST = Math.max(0, tsNum('shaftday', 1.3));
 // 環境光シャフトの横パララックス: 左右の移動(camera.x)に連動して森のように流れる。
 // 0=動かない。森より遅め(front forest=0.68)。?shaftpara= で生調整。
 const SHAFT_PARALLAX_X = Math.max(0, tsNum('shaftpara', 0.35));
-// シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定0=なし。?shaftblur= で有効化。
-const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 0));
+// シャフトのぼかし(エッジを柔らかく)。BlurFilter 1枚。既定2=軽く柔らかく(社長指示)。?shaftblur=0 でOFF。
+const SHAFT_BLUR = Math.max(0, tsNum('shaftblur', 2));
 
 // --- スモッグ(オクトパス的)。各レイヤー“1枚ずつ”の幅広霧をゆっくり揺らすだけ(枚数は増やさない)。
 // ドリフト/ラップはせず、1枚を上下左右に微妙に sway させる(=オクトラの見え方)。計3枚=軽量。
