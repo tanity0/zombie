@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.703 — 地面の遠近を少し強める(全ステージ)
+
+- 地面パースを強化(遠くをもっと遠くへ): `GROUND_TILE_SCALE_Y_FAR 0.12→0.09`(最遠をより圧縮)、
+  `GROUND_PERSPECTIVE_CURVE 2.05→2.35`(圧縮域を手前へ広げる)。near は据置。戻すなら 0.12 / 2.05。
+- 描画方式は不変(係数のみ)。1/10。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.702 — 敵数表示を削除 + HUD背景を薄い半透明に
 
 - 上部バーの「敵 N」表示を削除(`enemyCount` 購読も撤去)。

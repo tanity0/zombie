@@ -392,10 +392,12 @@ const LAB_VOID_PARALLAX = 0.12;
 const LAB_VOID_TILE = 420; // 1タイルの world 幅(px)。大きめにして外周での繰り返しを目立たせない。
 const GROUND_TILE_SCALE_X = 0.82;
 const GROUND_TILE_SCALE_Y_NEAR = 0.82;
-const GROUND_TILE_SCALE_Y_FAR = 0.12;
+// 遠近を少し強める(遠くをもっと遠くへ): 最遠を more 圧縮 + カーブを立てて圧縮域を広げる。
+// 戻すなら FAR 0.12 / CURVE 2.05。
+const GROUND_TILE_SCALE_Y_FAR = 0.09; // 旧 0.12(小さいほど遠くが圧縮=遠く見える)
 const GROUND_SCROLL_X_FEEL = 1.2;
 const GROUND_SCROLL_Y_FEEL = 3.0;
-const GROUND_PERSPECTIVE_CURVE = 2.05;
+const GROUND_PERSPECTIVE_CURVE = 2.35; // 旧 2.05(大きいほど手前まで圧縮が効く=奥行き強)
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
