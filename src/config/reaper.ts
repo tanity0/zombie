@@ -34,6 +34,13 @@ export const REAPER_CONFIG = {
   homeRadiusPx: 900,          // プレイヤーがスタート(原点)から この距離内へ戻ると死神は去る
   chaserHealth: 6000,         // 高いが有限(極まれば討伐可能)
   canBeKilled: true,
+  // --- 時間による出現(社長指示) ---
+  // 距離(深奥)とは別系統。7分経過後、20秒ごとに抽選。確率=10%+(7分以降の経過分×10%)で最大100%。
+  // 抽選ごとに「気配演出」(横切り)を出し、当選で完全出現(深奥と同じ追跡 reaper)。
+  timeStartMs: 7 * 60 * 1000,   // 7分から開始
+  timeRollIntervalMs: 20000,    // 20秒に1回抽選
+  timeBaseChance: 0.10,         // 7分時点 10%
+  timeChancePerMin: 0.10,       // 以降1分ごとに +10%
 } as const;
 
 // 追跡速度 = プレイヤー現在移動速度 × 1.2。currentPlayerMoveSpeed は成長/強化を反映した通常速度

@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.746 — 城ボスを5分ゲート＋時間による死神(時間制限デス)
+
+- **城ボス(A)**: 出現条件を「城へ接近 かつ 5分経過」に変更(`CASTLE_BOSS_MIN_TIME_MS=5分`)。
+  序盤に城へ突っ込んでも出ない。`?castlenow=1` は従来どおり即時(時間ゲート無視)。
+- **時間による死神(社長指示)**: 距離(深奥)とは別系統を追加。7分経過後、20秒ごとに抽選。
+  確率=10%+(7分以降の経過分×10%)で最大100%(8分20%…16分100%)。抽選ごとに気配演出(横切り)を出し、
+  当選で完全出現(深奥と同じ追跡reaper)。`config/reaper.ts` に time* 定数追加。
+  - 時間死神は「時間制限のデス」なので原点(homeRadius)に戻っても去らない(`timeSpawned` フラグで逃げ切り無効)。討伐は可能。
+  - 横切り生成を `doReaperCross()` に共通化(距離系/時間系で再利用)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.745 — ステージ3の敵絵を差し替え(9種・見た目1:1)
 
 - 抽出素材を敵タイプ名にリネーム(stage3-enemies/{zombie,bat,skeleton,plant,ghost,werewolf,pumpkin,giantbat,reaper}.png)。

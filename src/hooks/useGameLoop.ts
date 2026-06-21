@@ -211,6 +211,7 @@ const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
 // (旧)時限出現は廃止。現在はフィナーレボスは城への接近(CASTLE_BOSS_APPROACH_DIST)で出現。
 const CASTLE_BOSS_APPROACH_DIST = 380;      // この距離まで城へ近づくとフィナーレボスが魔法陣で出現。
+const CASTLE_BOSS_MIN_TIME_MS = 5 * 60 * 1000; // ただし出現は5分経過後のみ(社長指示=接近＋時間の両方)。?castlenow=1 は無視。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 const LAB_SPAWN_AGGRO_RANGE = 150;
 // 1画面区画あたりのラボ敵の上限(密度制御)。
@@ -310,8 +311,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
-  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number }>(
-    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0 }
+  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean }>(
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false }
   );
 
   // Game actions
@@ -703,7 +704,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           arenaFiredRef.current = false;
-          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0 };
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false };
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -712,7 +713,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 旧「5分で出現」→「城へ接近で出現」に変更。研究所/屋内/ダンスでは出さない。
         const pcxCastle = player.x + player.width / 2, pcyCastle = player.y + player.height / 2;
         const nearCastle = Math.hypot(pcxCastle - castle.x, pcyCastle - castle.y) < CASTLE_BOSS_APPROACH_DIST;
-        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && (FORCE_CASTLE_BOSS || nearCastle)) {
+        // 出現条件: 城へ接近 かつ 5分経過(社長指示=A)。?castlenow=1 は即時(時間ゲート無視)。
+        const castleBossReady = FORCE_CASTLE_BOSS || (nearCastle && newGameTime >= CASTLE_BOSS_MIN_TIME_MS);
+        if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異者出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
@@ -871,7 +874,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const liveEnemies = useGameStore.getState().enemies;
           const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);
           // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
-          if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; }
+          if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; }
 
           if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。
@@ -880,34 +883,49 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             else rs.risk -= REAPER_CONFIG.riskDecayPerSec * deltaTime;
             rs.risk = Math.max(0, Math.min(REAPER_CONFIG.riskMax, rs.risk));
 
-            // 横切り(警告/頻発)。深いほど頻発。無害(当たり判定なし)。横切る場所は進行方向で決まる:
+            // 横切り(気配演出)。無害(当たり判定なし)。横切る場所は進行方向で決まる:
             //   上=上部奥を横断 / 下=下部手前を横断 / 右=右側を縦断 / 左=左側を縦断。被写界深度(tilt-shift)も乗る。
+            const doReaperCross = () => {
+              // 進行方向(速度→なければ最終向き)。
+              let mvx = player.vx ?? 0;
+              let mvy = player.vy ?? 0;
+              if (Math.abs(mvx) + Math.abs(mvy) < 0.01 && player.lastDirection) {
+                mvx = player.lastDirection.x; mvy = player.lastDirection.y;
+              }
+              let moveDir: 'up' | 'down' | 'left' | 'right';
+              if (Math.abs(mvx) < 0.01 && Math.abs(mvy) < 0.01) moveDir = 'up';
+              else if (Math.abs(mvx) >= Math.abs(mvy)) moveDir = mvx >= 0 ? 'right' : 'left';
+              else moveDir = mvy >= 0 ? 'down' : 'up';
+              const rnd = Math.random() < 0.5 ? 1 : -1;
+              const cross =
+                moveDir === 'up'   ? { axis: 'h' as const, band: 0.15, dir: rnd, scale: 0.5 }   // 上部奥・小さく
+                : moveDir === 'down' ? { axis: 'h' as const, band: 0.86, dir: rnd, scale: 1.1 } // 下部手前・大きく
+                : moveDir === 'right' ? { axis: 'v' as const, band: 0.84, dir: rnd, scale: 0.7 } // 右側を縦断
+                :                       { axis: 'v' as const, band: 0.16, dir: rnd, scale: 0.7 }; // 左側を縦断
+              useGameStore.setState({
+                reaperCross: { startedAt: Date.now(), durationMs: REAPER_CONFIG.crossDurationMs, ...cross },
+              });
+              // SFX(短い不穏音)は専用アセット待ち。配置後 playSfx('reaper-pass') を有効化。
+            };
+            // 距離(深奥)による横切り。深いほど頻発。
             if (depth >= REAPER_CONFIG.warningDepthPx) {
               const interval = reaperPassIntervalMs(depth);
               if (newGameTime - rs.lastPassAt >= interval) {
                 rs.lastPassAt = newGameTime;
                 rs.passCount += 1;
-                // 進行方向(速度→なければ最終向き)。
-                let mvx = player.vx ?? 0;
-                let mvy = player.vy ?? 0;
-                if (Math.abs(mvx) + Math.abs(mvy) < 0.01 && player.lastDirection) {
-                  mvx = player.lastDirection.x; mvy = player.lastDirection.y;
-                }
-                let moveDir: 'up' | 'down' | 'left' | 'right';
-                if (Math.abs(mvx) < 0.01 && Math.abs(mvy) < 0.01) moveDir = 'up';
-                else if (Math.abs(mvx) >= Math.abs(mvy)) moveDir = mvx >= 0 ? 'right' : 'left';
-                else moveDir = mvy >= 0 ? 'down' : 'up';
-                const rnd = Math.random() < 0.5 ? 1 : -1;
-                const cross =
-                  moveDir === 'up'   ? { axis: 'h' as const, band: 0.15, dir: rnd, scale: 0.5 }   // 上部奥・小さく
-                  : moveDir === 'down' ? { axis: 'h' as const, band: 0.86, dir: rnd, scale: 1.1 } // 下部手前・大きく
-                  : moveDir === 'right' ? { axis: 'v' as const, band: 0.84, dir: rnd, scale: 0.7 } // 右側を縦断
-                  :                       { axis: 'v' as const, band: 0.16, dir: rnd, scale: 0.7 }; // 左側を縦断
-                useGameStore.setState({
-                  reaperCross: { startedAt: Date.now(), durationMs: REAPER_CONFIG.crossDurationMs, ...cross },
-                });
-                // SFX(短い不穏音)は専用アセット待ち。配置後 playSfx('reaper-pass') を有効化。
+                doReaperCross();
               }
+            }
+
+            // 時間による出現(社長指示): 7分経過後、20秒ごとに抽選。確率=10%+(7分以降の経過分×10%)で最大100%。
+            // 抽選ごとに気配演出(横切り)を出し、当選で risk を最大化=直後の完全出現へ。距離条件は不問。
+            if (newGameTime >= REAPER_CONFIG.timeStartMs
+                && newGameTime - rs.lastTimeRollAt >= REAPER_CONFIG.timeRollIntervalMs) {
+              rs.lastTimeRollAt = newGameTime;
+              const minsPast = Math.floor((newGameTime - REAPER_CONFIG.timeStartMs) / 60000);
+              const chance = Math.min(1, REAPER_CONFIG.timeBaseChance + REAPER_CONFIG.timeChancePerMin * minsPast);
+              doReaperCross(); // 気配演出
+              if (Math.random() < chance) { rs.risk = REAPER_CONFIG.spawnRiskThreshold; rs.timeSpawned = true; } // 当選=完全出現(時間死神)
             }
 
             // 完全出現(追跡)。リスク最大で、進行方向の画面外から1体だけ出す(前方から迫る)。
@@ -936,7 +954,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           } else {
             // プレイヤーがスタート(原点)付近 homeRadiusPx 内へ戻れば死神は去る=逃げ切り。リスクは0へクールダウン。
-            if (Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
+            // ただし「時間による死神」(timeSpawned)は時間制限のデスなので原点に戻っても去らない(逃げ場なし)。
+            if (!rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
               useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== rs.chaserId) });
               rs.chaserId = null;
               rs.risk = 0;
