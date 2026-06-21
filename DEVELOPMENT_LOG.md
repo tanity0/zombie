@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.727 — ステージ1/3崩れの修正(v726 近景森オーバーライドを撤回)
+
+- 症状: ステージ1・3が地面だけになり遠景/地平/近景・アクターが消える。ステージ2(lab)は無事。
+- 切り分け: lab(stage2)無事=全ステージ共通の遅延ロード(v725)は無実。非labのみ走る v726 の
+  `applyFrontForestOverride`(近景森=屋根帯)が原因と判断 → **v726 を revert**。
+- ステージ1/3は v725 状態(遠景森2あり・近景は通常前景森)に復帰。屋根帯の近景は後日、安全な方法で再導入。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.725 — 起動時の黒画面を短縮(背景ロードの並列化+遅延注入)
 
 - 症状: たまに最初真っ暗で開始(裏でゲームは進行)→ 少しして描画。原因は PixiStage 初期化が
