@@ -60,7 +60,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         .catch(() => null);
       // ステージ1の遠景森2(手前の森シルエット帯)。
       const stage1NearForestTexture = await Assets
-        .load(`${import.meta.env.BASE_URL}backgrounds/stage1-near-forest2.png`)
+        .load(`${import.meta.env.BASE_URL}backgrounds/stage1-near-forest.png`)
         .catch(() => null);
       const groundTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/ground-moss-dirt.jpg`);
       const horizonForestTexture = await Assets.load(`${import.meta.env.BASE_URL}backgrounds/horizon-forest-band.png`);
