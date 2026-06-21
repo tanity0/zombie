@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.767 — ステージ3のオブジェクトをドット絵に差し替え(木も)
+
+- 提供ドット絵(同レイアウト5行・33個)を再分割し `props/prop2-r{r}-c{c}.png` に。CITY_PROPS の tex 参照を一括 prop2 へ。
+- 木(global tree)も新ドット絵に: 大きい木を `tree-new2.png` にして 'tree' 上書き(nearest)。キャッシュ回避でファイル名更新。
+- 物/当たり判定/配置は不変。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.766 — ステージ2の障害物プロップをドット絵に差し替え
 
 - 社長提供のドット絵(同じ12種・3×4)をマゼンタ透過で抽出し `lab-props/lab-prop2-r{r}-c{c}.png` に。

@@ -19,37 +19,37 @@ export interface CityPropDef {
 
 // シートから抽出した素材(木 r0-c0/r0-c2 は tree システム側なので除外)。
 export const CITY_PROPS: CityPropDef[] = [
-  { tex: 'props/prop-r0-c1', displayH: 50,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 5 },  // 低木
-  { tex: 'props/prop-r0-c3', displayH: 132, collide: true,  decal: false, colW: 96,  colH: 26, weight: 2 },  // 廃墟(角)
-  { tex: 'props/prop-r0-c4', displayH: 122, collide: true,  decal: false, colW: 120, colH: 26, weight: 2 },  // 廃墟(壁)
-  { tex: 'props/prop-r1-c0', displayH: 80,  collide: true,  decal: false, colW: 108, colH: 22, weight: 5 },  // 瓦礫(横長)
-  { tex: 'props/prop-r1-c1', displayH: 82,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 5 },  // 瓦礫2
-  { tex: 'props/prop-r1-c2', displayH: 96,  collide: true,  decal: false, colW: 40,  colH: 20, weight: 4 },  // 石柱
-  { tex: 'props/prop-r1-c3', displayH: 96,  collide: true,  decal: false, colW: 26,  colH: 14, weight: 2 },  // 旗竿
-  { tex: 'props/prop-r1-c4', displayH: 86,  collide: true,  decal: false, colW: 26,  colH: 14, weight: 2 },  // 標識
-  { tex: 'props/prop-r1-c5', displayH: 60,  collide: true,  decal: false, colW: 34,  colH: 20, weight: 5 },  // 木樽
-  { tex: 'props/prop-r1-c6', displayH: 62,  collide: true,  decal: false, colW: 34,  colH: 20, weight: 5 },  // 金属ドラム
-  { tex: 'props/prop-r2-c0', displayH: 92,  collide: true,  decal: false, colW: 128, colH: 26, weight: 3 },  // 荷車
-  { tex: 'props/prop-r2-c1', displayH: 58,  collide: true,  decal: false, colW: 30,  colH: 18, weight: 3 },  // 車輪
-  { tex: 'props/prop-r2-c2', displayH: 82,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 4 },  // 壊れた荷車
-  { tex: 'props/prop-r2-c3', displayH: 36,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 7 },  // 瓦礫(小・デカール)
-  { tex: 'props/prop-r2-c4', displayH: 92,  collide: true,  decal: false, colW: 118, colH: 24, weight: 3 },  // バリケード
-  { tex: 'props/prop-r2-c5', displayH: 92,  collide: true,  decal: false, colW: 130, colH: 18, weight: 3 },  // 木柵
-  { tex: 'props/prop-r3-c0', displayH: 82,  collide: true,  decal: false, colW: 70,  colH: 22, weight: 3 },  // ポンプ
-  { tex: 'props/prop-r3-c1', displayH: 98,  collide: true,  decal: false, colW: 24,  colH: 14, weight: 3 },  // 街灯
-  { tex: 'props/prop-r3-c2', displayH: 84,  collide: true,  decal: false, colW: 130, colH: 18, weight: 3 },  // 石の手すり
-  { tex: 'props/prop-r3-c3', displayH: 64,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 4 },  // 土嚢
-  { tex: 'props/prop-r3-c4', displayH: 70,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 3 },  // コンクリ防護壁
-  { tex: 'props/prop-r3-c5', displayH: 92,  collide: true,  decal: false, colW: 130, colH: 16, weight: 3 },  // 金網フェンス
-  { tex: 'props/prop-r4-c0', displayH: 58,  collide: true,  decal: false, colW: 26,  colH: 16, weight: 3 },  // 消火栓
-  { tex: 'props/prop-r4-c1', displayH: 56,  collide: true,  decal: false, colW: 38,  colH: 22, weight: 4 },  // 石ブロック
-  { tex: 'props/prop-r4-c2', displayH: 48,  collide: true,  decal: false, colW: 50,  colH: 20, weight: 4 },  // ブロック群
-  { tex: 'props/prop-r4-c3', displayH: 40,  collide: true,  decal: false, colW: 32,  colH: 18, weight: 4 },  // 小ブロック
-  { tex: 'props/prop-r4-c4', displayH: 34,  collide: true,  decal: false, colW: 30,  colH: 16, weight: 4 },  // 小ブロック2
-  { tex: 'props/prop-r4-c5', displayH: 26,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 7 },  // 小石(デカール)
-  { tex: 'props/prop-r4-c6', displayH: 22,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 7 },  // 小石2(デカール)
-  { tex: 'props/prop-r4-c7', displayH: 40,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 6 },  // 血痕(デカール)
-  { tex: 'props/prop-r4-c8', displayH: 42,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 6 },  // 枯れ草(立ち・素通り)
+  { tex: 'props/prop2-r0-c1', displayH: 50,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 5 },  // 低木
+  { tex: 'props/prop2-r0-c3', displayH: 132, collide: true,  decal: false, colW: 96,  colH: 26, weight: 2 },  // 廃墟(角)
+  { tex: 'props/prop2-r0-c4', displayH: 122, collide: true,  decal: false, colW: 120, colH: 26, weight: 2 },  // 廃墟(壁)
+  { tex: 'props/prop2-r1-c0', displayH: 80,  collide: true,  decal: false, colW: 108, colH: 22, weight: 5 },  // 瓦礫(横長)
+  { tex: 'props/prop2-r1-c1', displayH: 82,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 5 },  // 瓦礫2
+  { tex: 'props/prop2-r1-c2', displayH: 96,  collide: true,  decal: false, colW: 40,  colH: 20, weight: 4 },  // 石柱
+  { tex: 'props/prop2-r1-c3', displayH: 96,  collide: true,  decal: false, colW: 26,  colH: 14, weight: 2 },  // 旗竿
+  { tex: 'props/prop2-r1-c4', displayH: 86,  collide: true,  decal: false, colW: 26,  colH: 14, weight: 2 },  // 標識
+  { tex: 'props/prop2-r1-c5', displayH: 60,  collide: true,  decal: false, colW: 34,  colH: 20, weight: 5 },  // 木樽
+  { tex: 'props/prop2-r1-c6', displayH: 62,  collide: true,  decal: false, colW: 34,  colH: 20, weight: 5 },  // 金属ドラム
+  { tex: 'props/prop2-r2-c0', displayH: 92,  collide: true,  decal: false, colW: 128, colH: 26, weight: 3 },  // 荷車
+  { tex: 'props/prop2-r2-c1', displayH: 58,  collide: true,  decal: false, colW: 30,  colH: 18, weight: 3 },  // 車輪
+  { tex: 'props/prop2-r2-c2', displayH: 82,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 4 },  // 壊れた荷車
+  { tex: 'props/prop2-r2-c3', displayH: 36,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 7 },  // 瓦礫(小・デカール)
+  { tex: 'props/prop2-r2-c4', displayH: 92,  collide: true,  decal: false, colW: 118, colH: 24, weight: 3 },  // バリケード
+  { tex: 'props/prop2-r2-c5', displayH: 92,  collide: true,  decal: false, colW: 130, colH: 18, weight: 3 },  // 木柵
+  { tex: 'props/prop2-r3-c0', displayH: 82,  collide: true,  decal: false, colW: 70,  colH: 22, weight: 3 },  // ポンプ
+  { tex: 'props/prop2-r3-c1', displayH: 98,  collide: true,  decal: false, colW: 24,  colH: 14, weight: 3 },  // 街灯
+  { tex: 'props/prop2-r3-c2', displayH: 84,  collide: true,  decal: false, colW: 130, colH: 18, weight: 3 },  // 石の手すり
+  { tex: 'props/prop2-r3-c3', displayH: 64,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 4 },  // 土嚢
+  { tex: 'props/prop2-r3-c4', displayH: 70,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 3 },  // コンクリ防護壁
+  { tex: 'props/prop2-r3-c5', displayH: 92,  collide: true,  decal: false, colW: 130, colH: 16, weight: 3 },  // 金網フェンス
+  { tex: 'props/prop2-r4-c0', displayH: 58,  collide: true,  decal: false, colW: 26,  colH: 16, weight: 3 },  // 消火栓
+  { tex: 'props/prop2-r4-c1', displayH: 56,  collide: true,  decal: false, colW: 38,  colH: 22, weight: 4 },  // 石ブロック
+  { tex: 'props/prop2-r4-c2', displayH: 48,  collide: true,  decal: false, colW: 50,  colH: 20, weight: 4 },  // ブロック群
+  { tex: 'props/prop2-r4-c3', displayH: 40,  collide: true,  decal: false, colW: 32,  colH: 18, weight: 4 },  // 小ブロック
+  { tex: 'props/prop2-r4-c4', displayH: 34,  collide: true,  decal: false, colW: 30,  colH: 16, weight: 4 },  // 小ブロック2
+  { tex: 'props/prop2-r4-c5', displayH: 26,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 7 },  // 小石(デカール)
+  { tex: 'props/prop2-r4-c6', displayH: 22,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 7 },  // 小石2(デカール)
+  { tex: 'props/prop2-r4-c7', displayH: 40,  collide: false, decal: true,  colW: 0,   colH: 0,  weight: 6 },  // 血痕(デカール)
+  { tex: 'props/prop2-r4-c8', displayH: 42,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 6 },  // 枯れ草(立ち・素通り)
 ];
 
 // ステージ4(雪原)の散布オブジェクト(社長提供: 監視塔/廃バス/テント)。焚き火は torch 置き換えなので別管理。

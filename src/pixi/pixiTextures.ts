@@ -244,10 +244,10 @@ export const ensureTextures = (): Promise<void> => {
     // 自動タレット(紫背景未透過)を色キーで透過して登録。
     await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni')]);
 
-    // 既存の木(atlasの'tree')を新しい木の一枚絵で差し替える(社長指示)。atlas切り出しの後に
-    // 上書きしてキーを確実に置き換える。詳細イラスト調なので linear で滑らかに縮小描画。
-    const newTree = await loadOne('tree-new');
-    if (newTree) { newTree.source.scaleMode = 'linear'; textures.set('tree', newTree); }
+    // 既存の木(atlasの'tree')を新しいドット絵の木で差し替える(社長指示)。atlas切り出しの後に
+    // 上書きしてキーを確実に置き換える。ドット絵なので nearest。キャッシュ回避で tree-new2。
+    const newTree = await loadOne('tree-new2');
+    if (newTree) { newTree.source.scaleMode = 'nearest'; textures.set('tree', newTree); }
     // 城(ステージ3のフィナーレ拠点)を廃教会の絵に差し替え(社長提供)。足元アンカー・高さ基準スケールは不変。
     const church = await loadOne('castle-church');
     if (church) { church.source.scaleMode = 'nearest'; textures.set('castle', church); }
