@@ -400,6 +400,9 @@ const GROUND_SCROLL_Y_FEEL = 3.0;
 const GROUND_PERSPECTIVE_CURVE = 2.35; // 旧 2.05(大きいほど手前まで圧縮が効く=奥行き強)
 const NEAR_GROUND_BLUR_STRIP_RATIO = 0.34;
 const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
+// 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
+const FAR_GROUND_BLUR_STRIP_RATIO = 0.28;
+const FAR_GROUND_BLUR_STRENGTHS = [1.5, 0.8]; // [最遠, やや遠]
 const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
 const OBJECT_GROUND_RELATIVE_MIN = 0.68;
 const OBJECT_GROUND_RELATIVE_MAX = 1.45;
@@ -786,6 +789,26 @@ export class PixiScene {
       const layer = new Container();
       const filter = new BlurFilter({
         strength: NEAR_GROUND_BLUR_STRENGTHS[i] ?? NEAR_GROUND_BLUR_STRENGTHS[bandCount - 1],
+        quality: 2,
+      });
+      layer.filters = [filter];
+      layer.addChild(...bandStrips);
+      this.nearGroundBlurLayers.push(layer);
+      this.nearGroundBlurFilters.push(filter);
+      this.L.groundBase.addChild(layer);
+    }
+
+    // 奥(far)側の地面ストリップも帯状ブラー(最遠ほど強く)。near と同じ仕組み・同じ片付け配列を再利用。
+    const farGroundStripCount = Math.max(1, Math.ceil(this.L.groundStrips.length * FAR_GROUND_BLUR_STRIP_RATIO));
+    const farGroundStrips = this.L.groundStrips.slice(0, farGroundStripCount); // 配列先頭=画面上=最遠
+    const farBandCount = FAR_GROUND_BLUR_STRENGTHS.length;
+    const farBandSize = Math.max(1, Math.ceil(farGroundStrips.length / farBandCount));
+    for (let i = 0; i < farBandCount; i++) {
+      const bandStrips = farGroundStrips.slice(i * farBandSize, (i + 1) * farBandSize);
+      if (!bandStrips.length) continue;
+      const layer = new Container();
+      const filter = new BlurFilter({
+        strength: FAR_GROUND_BLUR_STRENGTHS[i] ?? FAR_GROUND_BLUR_STRENGTHS[farBandCount - 1],
         quality: 2,
       });
       layer.filters = [filter];

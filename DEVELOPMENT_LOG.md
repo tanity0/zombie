@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.704 — 遠景地面も被写界深度でぼかす(全ステージ)
+
+- これまで地面DoFは near(手前)側だけだったのを、far(奥)側にもミラー追加。最上(最遠)ほど強く、
+  中央の合焦帯は鮮明のまま=ティルトシフト的な奥行き。
+- 定数 `FAR_GROUND_BLUR_STRIP_RATIO=0.28` / `FAR_GROUND_BLUR_STRENGTHS=[1.5,0.8]`。near と同じ仕組み・
+  片付け配列を再利用。中央~38%は非ブラー(focal)。
+- 負荷: 奥の薄い帯にブラー2層追加(面積小・bounded)。**3/10**(filter増)。重ければ band数/強度を下げる。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.703 — 地面の遠近を少し強める(全ステージ)
 
 - 地面パースを強化(遠くをもっと遠くへ): `GROUND_TILE_SCALE_Y_FAR 0.12→0.09`(最遠をより圧縮)、
