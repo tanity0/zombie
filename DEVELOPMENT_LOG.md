@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.747 — ステージ3ボス(giantbat)の見た目を1.2倍
+
+- 新絵が少し小さいので、ステージ3(daylight)のときの giantbat だけ表示スケールを1.2倍(`STAGE3_BOSS_VISUAL_SCALE`)。
+  視覚のみ=hitbox/射程/当たり判定は不変(CLAUDE.mdの視覚↔hitbox分離に準拠)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.746 — 城ボスを5分ゲート＋時間による死神(時間制限デス)
 
 - **城ボス(A)**: 出現条件を「城へ接近 かつ 5分経過」に変更(`CASTLE_BOSS_MIN_TIME_MS=5分`)。
