@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.741 — 木の絵を差し替え(新しい木)
+
+- 既存の木(atlas 'tree')を、社長提供のシート(ステージ3オブジェクト集)から抽出した木の一枚絵に差し替え。
+  - マゼンタ背景をクロマキー透過し、大きい木を `tree-new.png` として登録。atlas切り出し後に
+    `textures.set('tree', …)` で上書き(linearで滑らかに縮小)。
+  - 予備として中くらいの木 `tree-new-b.png` / 低木 `tree-new-bush.png` も `public/sprites/` に保存(将来のバリエーション用)。
+- 適用範囲: 木を出す全ステージ共通(forest系)。ステージ2(lab)は元から木なし。
+- 城は後日素材受領後に対応(保留)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.740 — シャフト調整値を既定に焼き込み(暫定確定)
 
 - 社長確定値を既定化: `shaft=0.5` / `shaftday=1.6` / `shaftblur=4` / `shaftperiod=0.8` / `shaftwidth=0.5`。
