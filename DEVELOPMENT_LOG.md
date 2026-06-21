@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.735 — ジャイアントのダッシュにも追加CD＋研究所の犬を犬と同速に
+
+- giantbat のダッシュにもランダム追加CD(3〜10秒)を上乗せ(全ステージ)。専用スケジューラ
+  `gbDashReadyAt` 側に加算(通常CD ±20% + 追加3〜10秒)。犬と同様に頻度を抑制(社長指示)。
+- 研究所の犬(lab-zombie-2)が遅い対策: 速度 66→105(犬=werewolf と同値)。チェイス/突進(×3)とも犬と同等に。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.734 — 床の遠景効果を強化＋URLパラメータ化
 
 - 奥行きをさらに強く(社長指示)。既定値: `GROUND_TILE_SCALE_Y_FAR` 0.09→0.055、

@@ -626,7 +626,8 @@ export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン�
 export const WEREWOLF_CHARGE_MAX_MS = 2800; // 突進の最大時間(到達できなくても打ち切り)。距離2倍化に合わせ延長。
 export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予(基本CD)
 // 突進後、上記の基本CDに加えてランダムな追加クールダウン(3〜10秒)を持たせる。
-// 頻繁に突進してくるのを抑える(社長指示)。突進ごとに毎回ランダム抽選。犬型のみ(giantbatは別スケジューラ)。
+// 頻繁に突進してくるのを抑える(社長指示)。突進ごとに毎回ランダム抽選。
+// 犬型(werewolf/lab-zombie-2)は charge 終了時の aiReadyAt に、giantbat は専用スケジューラ gbDashReadyAt に上乗せ。
 export const WEREWOLF_EXTRA_CD_MIN_MS = 3000;
 export const WEREWOLF_EXTRA_CD_MAX_MS = 10000;
 const werewolfExtraCd = (type: string): number =>
@@ -4055,7 +4056,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const jitter = (ms: number) => ms * (0.8 + Math.random() * 0.4);
             if (pick === 'dash') {
               // 突進距離を2倍に(giantbat も同様にオーバーシュート)。
-              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: gameTime + jitter(GIANTBAT_DASH_CD_MS) };
+              // ダッシュ頻度を抑える(社長指示): 通常CD(±20%)にランダム追加CD(3〜10秒)を上乗せ=犬と同様。
+              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: gameTime + jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS)) };
             }
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0, gbJumpReadyAt: gameTime + jitter(GIANTBAT_JUMP_CD_MS) };
           }
