@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.752 — 出撃時の稀な真っ暗を解消(キャンバス表示をステージ別ロード待ちから切り離す)
+
+- 原因: v731で「ステージ別テクスチャ(9枚)の await 完了後にキャンバス append」にしたため、稀にそのロードが
+  遅延すると append されず真っ暗のままになっていた。
+- 対策: コア(森)で初回フレームを作って**即 append + ticker**。ステージ別テクスチャは表示後に**非同期注入**
+  (遅延注入セッター)。preloadBackgrounds でキャッシュ済みなので通常は初回tick前に注入完了≒フラッシュ無し。
+  万一キャッシュ未温でも黒画面にはならず一瞬森が見えるだけ(=黒画面 < フラッシュの安全側)。
+- チュートリアル用メモ `TUTORIAL_NOTES.md` を追加(城ボス5分/時間死神/レスキュー近接アグロ/スコア仕様)。
+  ※ナイフマスターは対象外(社長指示で取り下げ)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.751 — レスキューの敵は「近接ダメージを与えた敵だけ」プレイヤー狙いに
 
 - v750を改修(社長指示): レスキュー敵は既定では survivor 狙いに戻し、**プレイヤーが近接ダメージを与えた敵
