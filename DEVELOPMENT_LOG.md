@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.750 — レスキューの敵をプレイヤー狙いに変更
+
+- 救助イベントの攻撃者(escortTarget持ち)が survivor を狙っていたのを、**プレイヤー狙い**へ変更(社長指示)。
+  updateEnemies の escortTarget→survivor 上書きを廃止し通常AI(`resolveEnemyTarget`)に統一。
+  survivor への接触ダメージ判定は `updateRescue` 側で従来どおり継続(近接した場合のみ)。勝敗(ホールド/全滅)は不変。
+- 適用範囲: レスキューイベントのみ(escortTarget は救助敵だけに付与)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.749 — スコア計算式を刷新(スキル評価＋スコア青天井/ゴールドcap)
 
 - 新式(`utils/resultScoring.ts`): clear30000 / treasure×5000 / damage×0.25 / KILL(finisher)×800 /

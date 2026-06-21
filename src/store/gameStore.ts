@@ -4100,21 +4100,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // chase velocity eases toward the heading so enemies curve into turns
         // (~0.3s) rather than snapping to face the player.
         // 錬金術: aggro範囲内に通常召喚がいればそれを、いなければプレイヤーを狙う(中心同士)。
-        // 救助イベントの攻撃者: escortTarget の survivor を狙う(全体AIは無改修)。割り当て先が死んでいたら
-        // 最寄りの生存NPCへ乗り換える(全滅していればプレイヤーへフォールバック)。
-        let tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE);
-        if (enemy.escortTarget && rescueSurvivors.length > 0) {
-          let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
-          if (!sv) {
-            const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
-            let best = Infinity;
-            for (const s of rescueSurvivors) {
-              const d2 = (s.x + s.width / 2 - ex) ** 2 + (s.y + s.height / 2 - ey) ** 2;
-              if (d2 < best) { best = d2; sv = s; }
-            }
-          }
-          if (sv) tgt = { x: sv.x + sv.width / 2, y: sv.y + sv.height / 2, isSummon: false };
-        }
+        // 救助イベントの攻撃者(escortTarget持ち)も、survivor ではなくプレイヤーを狙う(社長指示で変更)。
+        // = 通常AI(resolveEnemyTarget)に任せる。survivor への接触ダメージは updateRescue 側で別途継続。
+        const tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE);
         const dx = tgt.x - (enemy.x + enemy.width / 2);
         const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
