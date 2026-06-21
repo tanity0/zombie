@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.699 — 遠景バンドを下に拡張(全ステージ・地平森も連動)※戻す可能性あり
+
+- 遠景(far backdrop)の高さを拡張: `FAR_BACKDROP_HEIGHT_RATIO` 0.22→**0.30** / 上限 0.30→**0.44** / 最小
+  150→**185**。遠景エリアが下へ広がり、地面が下がって遠景が広く見える。
+- 地平の森(horizonForest)は `farH` 基準で配置されるため**自動で一緒に下がる**(追加配線なし)。
+- 戻す場合は ratio 0.22 / cap 0.30 / min 150 に戻すだけ(コメント記載)。全ステージ共通。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.698 — ステージ3の床/地平帯差し替え + 夜の足元プールを寒色化
 
 - ステージ3(昼/city)の床を**石畳/土**、地平帯(horizonForest)を**廃墟都市スカイライン**へ差し替え。
