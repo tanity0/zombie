@@ -494,6 +494,10 @@ export const skillExplosionMult = (player: Player): number => (hasSkill(player, 
 // 弁慶: バフ中(benkeiBuffUntil > gameTime)は crit率 +0.10。
 export const skillBenkeiCritBonus = (player: Player, gameTime: number): number =>
   hasSkill(player, 'benkei') && gameTime < player.benkeiBuffUntil ? 0.10 : 0;
+// ナイフマスター(社長指示の追加効果): 近接ダメージのクリティカル率 +20%(通常0%)。
+// その代わり弾薬ドロップ0%(ドロップ判定側で hasSkill を見て抑止)。既存のコンボ増加効果はそのまま。
+export const skillKnifeMasterMeleeCrit = (player: Player): number =>
+  hasSkill(player, 'knife-master') ? 0.20 : 0;
 // 近接コンボ倍率(ナイフマスター × コンボマスター)。3つの近接ダメージ地点とカウンター斬撃で共通使用。
 //  ・knife-master: 近接ヒットで knifeComboCount を貯め、+1%/2hit(上限+20%)。窓3秒。
 //  ・combo-master: フィニッシュコンボ(meleeFinishComboCount)生存中、+2%/combo(上限+50%)。
@@ -955,7 +959,8 @@ const grantMeleeKillRewards = (
       .map(w => w.ammoType)
       .filter((t): t is AmmoType => !!t);
     const dropType = gun?.ammoType ?? ownedAmmoTypes[0];
-    if (dropType && Math.random() < ammoChance) {
+    // ナイフマスターは弾薬ドロップ0%(何をしても。社長指示)。
+    if (dropType && !hasSkill(player, 'knife-master') && Math.random() < ammoChance) {
       get().addPickup({
         id: `pickup-ammo-melee-${enemy.id}`,
         x: ex - 8 + 14, y: ey - 8,
@@ -2341,7 +2346,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
+      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -2598,7 +2603,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ
       // クリティカル率アップ(player.critChance) + トラップ拘束ボーナス。
       const crit = Math.random() <
-        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
+        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
@@ -2764,7 +2769,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime));
+      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
       const newHealth = Math.max(0, enemy.health - dmg);

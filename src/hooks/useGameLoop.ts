@@ -2952,7 +2952,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().meleeAmmoDropPercent / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0) + (useGameStore.getState().player.equipBonus?.ammoDropBonus ?? 0)
               ));
               // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
-              if (!indoor && Math.random() < gunKillDropRate) {
+              // ナイフマスターは弾薬ドロップ0%(社長指示)。
+              if (!indoor && !hasSkill(player, 'knife-master') && Math.random() < gunKillDropRate) {
                 const equippedAmmo = getActiveGun(player)?.ammoType;
                 const owned = getGuns(player)
                   .map(w => w.ammoType)
@@ -3705,6 +3706,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         if (
           worldAmmoCount < MAX_WORLD_AMMO_DROPS &&
+          !hasSkill(useGameStore.getState().player, 'knife-master') && // ナイフマスターは弾薬ドロップ0%(社長指示)
           gameTime - lastAmmoDropRef.current > nextAmmoDropDelayRef.current
         ) {
           // Place it just beyond the viewport at a random bearing from the
