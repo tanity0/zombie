@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.728 — ステージ2の遠景差し替え(ラボ内部パノラマ)
+
+- ステージ2(lab)の遠景を新しいラボ内部パノラマへ。`stage2-lab-far.jpg`(不透明・JPG)。
+- 仕組み: `farBackdropOverrides['lab']` を applyFarBackdrop が優先使用(無ければ従来の manifest
+  lab-far-backdrop)。`setFarBackdropTexture` は注入時に currentFarKey をリセットして遅延注入を反映。
+  PixiStage の遅延バッチで `setFarBackdropTexture('lab', s2Far)`。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.727 — ステージ1/3崩れの修正(v726 近景森オーバーライドを撤回)
 
 - 症状: ステージ1・3が地面だけになり遠景/地平/近景・アクターが消える。ステージ2(lab)は無事。

@@ -84,16 +84,18 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // ステージ別/ラボの追加テクスチャは後から並列ロード→注入(黒画面を伸ばさない)。
       void (async () => {
         const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near] = await Promise.all([
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far] = await Promise.all([
           load('sprites/lab-floor/lab-floor-stage2.png'),
           load('backgrounds/stage3-distant-city-day.jpg'),
           load('backgrounds/stage3-ground-cobble.jpg'),
           load('backgrounds/stage3-horizon-city.png'),
           load('backgrounds/stage3-near-horizon-city.png'),
           load('backgrounds/stage1-near-forest.png'),
+          load('backgrounds/stage2-lab-far.jpg'),
         ]);
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
+        scene.setFarBackdropTexture('lab', s2Far);       // ステージ2(lab)の遠景
         scene.setFarBackdropTexture('city', s3Far);      // ステージ3の遠景
         scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)
         scene.setStage3Horizon(s3Horizon);               // ステージ3の地平帯(廃墟都市)

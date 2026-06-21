@@ -1480,6 +1480,7 @@ export class PixiScene {
   setFarBackdropTexture(key: string, t: Texture | null) {
     if (!t) return;
     this.farBackdropOverrides[key] = t;
+    this.currentFarKey = ''; // 注入後に applyFarBackdrop を再評価させる(遅延注入対応)
   }
   // ステージ3(昼/city)用の床・地平帯の差し替えテクスチャ(PixiStage が注入)。
   private stage3GroundTex: Texture | null = null;
@@ -1556,7 +1557,7 @@ export class PixiScene {
     // 初回の森遠景(distant-night-panorama)を復元用に退避。
     if (!this.farBackdropBaseTex) this.farBackdropBaseTex = this.L.farBackdrop.texture;
     let tex: Texture | null = null;
-    if (desired === 'lab') tex = getTexture('lab/lab-far-backdrop') ?? null;
+    if (desired === 'lab') tex = this.farBackdropOverrides['lab'] ?? getTexture('lab/lab-far-backdrop') ?? null;
     else if (desired === 'forest') tex = this.farBackdropBaseTex;
     else tex = this.farBackdropOverrides[desired] ?? this.farBackdropBaseTex;
     if (tex) {
