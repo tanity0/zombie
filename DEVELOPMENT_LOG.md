@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.842 — 店: 満タン時の購入不可を点検(回復は満タン表示を追加)
+
+- 社長「回復も。他にもあれば」。全ショップ項目を点検: 弾(v0.25.841)・救急セット(HP満タン)・ワクチン(購入済み)・
+  PHILL銃(所持済み)・スキルカード(陳列Lv上限)は**すべて購入不可ガード済み**。新たな漏れは無し。
+- 改善: 救急セットはHP満タン時に説明を「満タン」表示にして、弾の「MAX」と同様に不可が分かるように。
+- 変更: `components/ShopMenu.tsx`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.841 — 店: 弾がMAXなら購入不可
 
 - 弾薬がMAXのとき店で買えないように。store `buyShopItem` で各弾(handgun/shotgun/rifle/phill)が `AMMO_MAX` 以上なら
