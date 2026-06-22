@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.825 — 設置物スキルに遠近フェード(奥/手前で透明)を追加
+
+- 社長要望「小さくはなるが透明にならない／手前も透明にしたい」。設置物(盾/トラップ/デコイ/設置グレネード)に
+  `depthFadeAlpha` を乗算: プレイヤー面付近=不透明、奥(上=遠く)/手前(下=近く)へ離れるほど 0 へ。
+- t=プレイヤー面からの正規化距離(0=中心/1=画面端/>1=マージン)。ノブ: `?depthfade=0`(無効) /
+  `?dfadestart=`(減衰開始t, 既定0.65) / `?dfadeend=`(完全透明t, 既定1.05)。
+- 盾はスプライトalphaに乗算、trap/decoy/grenade は g.alpha に適用(drawProjectile 先頭で g.alpha=1 リセット)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。要実機で fade の効き調整。
+
 ## v0.25.824 — 設置物スキル(盾/トラップ/デコイ/設置グレネード)に地面遠近スケールを付与
 
 - 社長選択「設置物・盾など」。ワールドに置くスキルオブジェクトを地面遠近(depthScale)に乗せる(視覚のみ・判定不変)。

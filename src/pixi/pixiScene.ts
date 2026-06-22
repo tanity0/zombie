@@ -458,6 +458,11 @@ const ENEMY_DEPTH_MAX = tsNum('edepthmax', 1.85);
 const DEPTH_POS_MAP = tsBool('depthmap', true);
 const DEPTH_MAP_CURVE = Math.max(0.2, tsNum('dmapcurve', 1.0)); // 1=線形 / >1=プレイヤー付近ゆっくり・端で速い
 const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 500)); // 画面端の外側マージン(背の高い物の頭ぶん)px。社長確定値。
+// 設置物の遠近フェード: プレイヤー面付近=不透明、奥(上=遠く)/手前(下=近く)へ離れるほど透明に。
+// t=プレイヤー面からの正規化距離(0=中心 / 1=画面端 / >1=画面外マージン)。?depthfade=0 で無効。
+const DEPTH_FADE = tsBool('depthfade', true);
+const DEPTH_FADE_START = Math.max(0, tsNum('dfadestart', 0.65)); // この t から減衰開始
+const DEPTH_FADE_END = Math.max(0.01, tsNum('dfadeend', 1.05));  // この t で完全透明
 // 研究所の立体壁を擬似遠近(高さ方向のみ)に参加させる強さ。?labdepth= で調整(既定0.6=床オブジェクトより緩め)。
 // 既存 DEPTH_K に対する倍率。clamp はゆるめ(下記)。width は絶対にスケールしない(床/隣接/判定とズレるため)。
 const LAB_WALL_DEPTH_STRENGTH = Math.max(0, tsNum('labdepth', 0.6));
@@ -1457,6 +1462,19 @@ export class PixiScene {
     }
     // 暴走防止の絶対セーフティ(通常は効かない。カメラ先行/登場等の異常時のみ)。
     return s < 0.2 ? 0.2 : s > 3.5 ? 3.5 : s;
+  }
+
+  // 設置物の遠近フェード透明度。中心(プレイヤー面)=1.0、奥/手前へ離れるほど 0 へ。
+  private depthFadeAlpha(footWorldY: number): number {
+    if (!DEPTH_FADE) return 1;
+    const refScreenY = this.depthRefY - this.cameraY;
+    const footScreenY = footWorldY - this.cameraY;
+    const t = footScreenY <= refScreenY
+      ? (refScreenY - footScreenY) / Math.max(1, refScreenY)           // 奥(上)側
+      : (footScreenY - refScreenY) / Math.max(1, this.screenH - refScreenY); // 手前(下)側
+    if (t <= DEPTH_FADE_START) return 1;
+    if (t >= DEPTH_FADE_END) return 0;
+    return 1 - (t - DEPTH_FADE_START) / Math.max(0.001, DEPTH_FADE_END - DEPTH_FADE_START);
   }
 
   private groundScaleAt(
@@ -4588,9 +4606,9 @@ export class PixiScene {
     const shieldDepth = this.depthScale(footY); // 設置物として地面遠近に乗せる(視覚のみ・判定不変)
     v.sprite.scale.set(baseScale * sqx * shieldDepth, baseScale * sqy * shieldDepth);
 
-    // 寿命末で早めにフェードアウト。
+    // 寿命末で早めにフェードアウト。さらに遠近フェード(奥/手前で透明)を乗算。
     const remaining = p.duration - age;
-    v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600));
+    v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600)) * this.depthFadeAlpha(footY);
 
     // 耐久が減ると赤み(亀裂感)。tint のみ・常時glowなし。
     const hp = p.shieldHp ?? 1;
@@ -4608,6 +4626,7 @@ export class PixiScene {
     g.clear();
     g.rotation = 0;
     g.scale.set(1);
+    g.alpha = 1;
     let drawX = p.x;
     let drawY = p.y;
     if (
@@ -4775,8 +4794,11 @@ export class PixiScene {
         break;
       }
     }
-    // 設置物は地面遠近で一括スケール(範囲リングは上で半径補正済み=実寸維持)。
-    if (placedObject && depthD !== 1) g.scale.set(depthD);
+    // 設置物は地面遠近で一括スケール(範囲リングは上で半径補正済み=実寸維持)＋遠近フェード(奥/手前で透明)。
+    if (placedObject) {
+      if (depthD !== 1) g.scale.set(depthD);
+      g.alpha = this.depthFadeAlpha(drawY + p.height);
+    }
   }
 
   // ---- 屋内(研究施設)ステージの床/壁/扉/マーカー(仮実装=塗り矩形) ----------
