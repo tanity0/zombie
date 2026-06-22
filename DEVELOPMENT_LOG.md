@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.793 — 物/敵の遠近帯を画面外へ延長(端で拡縮が止まって見えるのを解消)
+
+- 社長指摘: 少し広がったが、画面端付近で拡縮が止まって見える(端のピクセルがまだ映り込んでいるのに飽和)。
+  原因は `groundScaleAt` の `t=clamp((screenY−farH)/groundH,0,1)` が**画面ちょうどの帯**で 0/1 飽和するため。
+- `groundScaleAt`(=物/敵スケール専用。床描画は別経路で不影響)に **`OBJECT_PERSP_PAD`(`?opad=`)** を追加。
+  遠近の帯を上下に pad px 延長し、**飽和点を画面外へ**出す。pad=0 で従来どおり。
+- 使い方: `?opad=300` 等(大きいほど画面端でも拡縮が止まらない)。`?ocurve=`/`?ogmin/ogmax`/`?depthmin/depthmax` と併用。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。実機で確定値を既定へ焼き込み予定。
+
 ## v0.25.792 — 物/敵の遠近カーブを地面から分離(地面を変えずに拡縮範囲を調整)
 
 - 社長指摘: `gcurve/gfar` を触ると**地面まで変わる**。物/敵の拡縮“範囲”だけ広げたい。

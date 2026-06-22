@@ -467,6 +467,9 @@ const OBJECT_GROUND_RELATIVE_MAX = tsNum('ogmax', 1.45);
 // 既定は床と同値=現状維持。?ocurve=(下げると拡縮が手前まで均等に効く=変わる範囲が広がる) / ?ofar= で調整。
 const OBJECT_PERSP_CURVE = tsNum('ocurve', GROUND_PERSPECTIVE_CURVE);
 const OBJECT_PERSP_FAR = tsNum('ofar', GROUND_TILE_SCALE_Y_FAR);
+// 物/敵の遠近の帯を画面外へ延長する量(px)。?opad= で調整。大きいほど画面端でも拡縮が止まらない
+// (飽和点が画面外へ出る)。0=従来(画面ちょうどで飽和)。床には影響しない。
+const OBJECT_PERSP_PAD = Math.max(0, tsNum('opad', 0));
 const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
@@ -1407,9 +1410,12 @@ export class PixiScene {
     curve: number = GROUND_PERSPECTIVE_CURVE,
   ): number {
     const farH = this.farBackdropHeight();
-    const groundH = Math.max(1, this.screenH - farH);
+    // 物/敵専用(この関数は物/敵スケールだけが使用=床描画は別経路)。OBJECT_PERSP_PAD で遠近の帯を画面外へ
+    // 延長し、画面端で t が 0/1 に飽和する(=拡縮が止まって見える)のを防ぐ。pad=0 で従来どおり。
+    const top = farH - OBJECT_PERSP_PAD;
+    const groundH = Math.max(1, (this.screenH + OBJECT_PERSP_PAD) - top);
     const screenY = footWorldY - this.cameraY;
-    const t = Math.max(0, Math.min(1, (screenY - farH) / groundH));
+    const t = Math.max(0, Math.min(1, (screenY - top) / groundH));
     const perspective = Math.pow(t, curve);
     return far + (near - far) * perspective;
   }
