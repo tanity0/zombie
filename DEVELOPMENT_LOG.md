@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.794 — 遠景森(horizonForest)の横伸びを修正(均一スケール化)
+
+- 横長/広い画面で遠景森が横に引き伸ばされていた。原因は `tileScale.set(w/texW, horizonH/texH)` の**非均一スケール**。
+- frontForest と同じ **y 基準の均一スケール** `tileScale.set(horizonH/texH)` に変更。横は自然比率のまま**タイルで繰り返し**て幅を埋める
+  (parallax で横スクロールする=元々シームレスにタイル可能な素材)。歪みが消える。
+- 遠景パノラマ(far backdrop)は元々均一 cover なので変更なし。横スクロール(parallax 0.09/森0.16)は意図どおり据え置き。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 次: 幅基準の均一ズーム(縦フレックス+Hmaxクランプ)。カメラ/マウス照準/遠近基準に跨る大物なので、フラグ付きで段階導入予定。
+
 ## v0.25.793 — 物/敵の遠近帯を画面外へ延長(端で拡縮が止まって見えるのを解消)
 
 - 社長指摘: 少し広がったが、画面端付近で拡縮が止まって見える(端のピクセルがまだ映り込んでいるのに飽和)。

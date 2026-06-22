@@ -1143,7 +1143,9 @@ export class PixiScene {
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.width = w;
     this.L.horizonForest.height = horizonH;
-    this.L.horizonForest.tileScale.set(w / this.L.horizonForest.texture.width, horizonH / this.L.horizonForest.texture.height);
+    // 横伸び防止: frontForest と同じく y 基準の均一スケール(x も同値)。横は自然比率のままタイルで繰り返して幅を埋める
+    // (parallax で横スクロールする=元々シームレスにタイルできる素材)。非均一(w/texW)だと横に引き伸ばされていた。
+    this.L.horizonForest.tileScale.set(horizonH / this.L.horizonForest.texture.height);
     this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
     this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
