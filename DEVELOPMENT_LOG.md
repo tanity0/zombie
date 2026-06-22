@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.843 — マシンピストル(handgun-t3)のCD 87→100
+
+- マシンピストルの cooldown を 87 → 100(ms)に。
+- 変更: `utils/weaponUtils.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.842 — 店: 満タン時の購入不可を点検(回復は満タン表示を追加)
 
 - 社長「回復も。他にもあれば」。全ショップ項目を点検: 弾(v0.25.841)・救急セット(HP満タン)・ワクチン(購入済み)・
