@@ -38,32 +38,33 @@ export const calculateResultScore = (
 ): ResultScore => {
   const netScrap = Math.max(0, stats.strapsCollected - stats.strapsSpent);
 
+  // すべて整数化(damageTaken/timeAlive は小数なので、丸めないと総スコアに小数が9桁出る=社長報告)。
   const clearBonus = won ? CLEAR_BONUS : 0;                       // won のみ
   const treasureScore = stats.treasuresCollected * TREASURE_SCORE_PER_VALUE;
   const damageScore = Math.floor(stats.damageDealt * 0.25);
   const finisherScore = stats.meleeFinishers * 800;
   const comboScore = stats.maxCombo * 300;
   const eliteBossScore = stats.eliteKills * 3000 + stats.bossKills * 8000;
-  const scrapScore = netScrap * 20;
-  const survivalScore = Math.max(0, 20000 - stats.damageTaken * 80); // 常に計上(死亡でも)
+  const scrapScore = Math.floor(netScrap) * 20;
+  const survivalScore = Math.max(0, Math.round(20000 - stats.damageTaken * 80)); // 常に計上(死亡でも)
   const speedBonus = (won && isLab)
-    ? Math.min(Math.max(0, LAB_PAR_TIME_SEC - stats.timeAlive) * SPEED_BONUS_PER_SEC, 20000)
+    ? Math.round(Math.min(Math.max(0, LAB_PAR_TIME_SEC - stats.timeAlive) * SPEED_BONUS_PER_SEC, 20000))
     : 0;
 
-  // 青天井(ハイスコア/表示)
-  const totalScore =
+  // 青天井(ハイスコア/表示)。全項目が整数なので整数になるが、念のため丸める(小数表示の再発防止)。
+  const totalScore = Math.round(
     clearBonus + treasureScore + damageScore + finisherScore +
-    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus;
+    comboScore + eliteBossScore + scrapScore + survivalScore + speedBonus);
 
   // 換金(各項目をMAXでクランプ。treasure/eliteBoss は cap 無し)
-  const goldScore =
+  const goldScore = Math.round(
     clearBonus + treasureScore +
     Math.min(damageScore, GOLD_CAP_DAMAGE) +
     Math.min(finisherScore, GOLD_CAP_FINISHER) +
     Math.min(comboScore, GOLD_CAP_COMBO) +
     eliteBossScore +
     Math.min(scrapScore, GOLD_CAP_SCRAP) +
-    survivalScore + speedBonus;
+    survivalScore + speedBonus);
 
   return {
     clearBonus, treasureScore, damageScore, finisherScore, comboScore,

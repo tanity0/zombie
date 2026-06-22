@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.773 — リザルトのスコア小数(9桁)を修正
+
+- 原因: `survivalScore=20000−被弾×80` と `speedBonus=(par−生存秒)×100` が小数の damageTaken/timeAlive を使い、
+  totalScore に小数9桁が出ていた。各成分を整数化(survival/speedをround、scrapをfloor)＋total/goldScoreもround。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.772 — 表示数字の丸めを方針A(ダメージ/HP=切り上げ)
 
 - ダメージ数値: `spawnDamageNumber` で `Math.round`→`Math.ceil`(最低1)。各表示サイトの `value:Math.round(dmg)`→`value:dmg`
