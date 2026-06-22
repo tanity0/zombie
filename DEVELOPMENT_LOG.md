@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.835 — ただのオブジェクト(壊せない)に影を追加(グロー無し)
+
+- 社長要望「木/ドラム/瓦礫/トラック等のただのオブジェクトは影は必要だがグローは要らない」。
+- 調査: 木は既に影あり/グロー無し。city props(トラック/瓦礫/ドラム)・ラボの壁/什器は影キャスター未登録だった(=影なし)。グローは元々これらに無い(松明/焚き火/UVバー等の光源系のみ意図的に発光)。
+- 対応: `syncShadows` のキャスター登録に `cityPropObjs`/`wallObjs`/`propObjs` を追加(木と同じソフト方向影)。
+  地面デカール(groundLayer 配置・平面)は除外。影幅は表示幅(sprite.width)から算出。グローは付けない。
+- 負荷スコア: 2/10(可視範囲のプロップ数ぶんソフト影プールが増えるが、木と同経路・ビューポート限定でバウンド)。
+- 変更: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.834 — camdown=0.08 基準に画面中心系を合わせ込み
 
 - 社長指示「できる限り0.08基準に合わせて」。画面中心前提だった箇所をプレイヤー画面位置(0.58)へ寄せる。
