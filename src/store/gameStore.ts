@@ -107,6 +107,15 @@ export const clampDropPct = (n: number): number =>
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
 export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
 const RETURN_CIRCLE_AVOID_DIST = 240;   // プレイヤーから最低この距離を空けて出現(避ける)
+// 帰還サークルに入った瞬間に撤去する設置物(置き攻撃の出入りハメ防止)。トラップ/手榴弾/タレット/デコイ。
+const RETURN_CLEAR_WEAPON_TYPES = new Set(['grenade', 'trap', 'turret', 'decoy']);
+// プレイヤーが帰還サークル内にいるか。内側では攻撃を停止する(置き攻撃の出入りハメ防止)。
+export const isInReturnCircle = (player: Player, rc: { x: number; y: number; radius: number } | null): boolean => {
+  if (!rc) return false;
+  const px = player.x + player.width / 2;
+  const py = player.y + player.height / 2;
+  return Math.hypot(rc.x - px, rc.y - py) <= rc.radius;
+};
 
 
 const createCastleEvent = (): CastleEvent => {
@@ -1925,6 +1934,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
       shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
     } = get();
+    // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
+    if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) {
       // スキル スラッシャー: カウンターCD中のタップで「近接成功の追撃」(0.3倍)を1回。
@@ -3082,6 +3093,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const { player, enemies, breakableProps, isPaused } = get();
     if (!isKatanaMode(player) || isPaused) return false;
+    if (isInReturnCircle(player, get().returnCircle)) return false; // 帰還サークル内は攻撃停止
     // 発動中(移動中)〜着地後の硬直中は新しい一閃を出せない = モーション
     // キャンセル不可 + 後隙。村雨でも共通(連発は硬直0.2sぶん間隔が空く)。
     if (now < player.katanaRecoveryUntil) return false;
@@ -3205,6 +3217,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const { player, gameTime, isPaused } = get();
     if (isPaused) return false;
+    if (isInReturnCircle(player, get().returnCircle)) return false; // 帰還サークル内は攻撃停止
     if (!player.subWeapons.includes('wire-anchor')) return false;
     if (subWeaponBlockedByKatana(player, 'wire-anchor')) return false;
     // 刺し待ち〜移動中は新しいフリックを受けない。CD 中も不可。
@@ -3472,6 +3485,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
+    if (isInReturnCircle(player, get().returnCircle)) return; // 帰還サークル内は攻撃停止
     // 吸い付き中の敵(movePlayer が算出した phillSnapEnemyId)を発砲時点で確認。
     const snapEnemy = player.phillSnapEnemyId != null
       ? get().enemies.find(e => e.id === player.phillSnapEnemyId)
@@ -4004,12 +4018,29 @@ export const useGameStore = create<GameState>((set, get) => ({
       const updatedEnemies = enemies.map(enemy => {
         // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+壁(研究所スキンは壁のみ)。
         const resolveMove = (nx: number, ny: number) => {
-          if (indoor) return resolveAabb({ x: nx, y: ny, width: enemy.width, height: enemy.height }, indoorWalls);
-          const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
-          const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
-          return labWallRects.length
-            ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, labWallRects)
-            : torchR;
+          let pos: { x: number; y: number };
+          if (indoor) {
+            pos = resolveAabb({ x: nx, y: ny, width: enemy.width, height: enemy.height }, indoorWalls);
+          } else {
+            const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
+            const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
+            pos = labWallRects.length
+              ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, labWallRects)
+              : torchR;
+          }
+          // 帰還サークルには敵を入れない: 中心から radius+敵サイズ分の外へ押し出す(セーフゾーン)。
+          const rc = state.returnCircle;
+          if (rc) {
+            const ecx = pos.x + enemy.width / 2, ecy = pos.y + enemy.height / 2;
+            const dx = ecx - rc.x, dy = ecy - rc.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = rc.radius + Math.max(enemy.width, enemy.height) * 0.4;
+            if (dist < minDist) {
+              const ang = dist > 0.001 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+              pos = { x: rc.x + Math.cos(ang) * minDist - enemy.width / 2, y: rc.y + Math.sin(ang) * minDist - enemy.height / 2 };
+            }
+          }
+          return pos;
         };
         // 攻撃モーションを「全う」する不可中断フェーズ: ジャンプ中(空中)とダッシュ突進中。
         // この間は通常の気絶/ノックバック/リフトを受け付けず、モーションを完了する(ダメージは別経路で受ける)。
@@ -5550,15 +5581,51 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = state.player;
       const px = p.x + p.width / 2;
       const py = p.y + p.height / 2;
+      const radius = RETURN_CIRCLE_RADIUS;
+
+      // 配置候補が障害物(木/壁/城/トーチ/プロップ)と重ならないか。中心まわりの正方形AABBで近似。
+      const obstaclesAround = (cx: number, cy: number): Rect[] => {
+        const pad = radius + 120;
+        if (state.indoorMode) return [...labBlockingWalls(state.labDoors.filter(d => d.open).map(d => d.id)), ...state.labProps.map(pr => pr.rect)];
+        if (state.stageTheme === 'lab') return [
+          ...labWallsInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(wallRect),
+          ...labPropsInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(propRect),
+        ];
+        const trunks = treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
+        const torches = state.breakableProps.filter(pr => pr.type === 'torch' && pr.health > 0).map(torchRect);
+        return [...trunks, ...torches, castleRect(state.castleEvent)];
+      };
+      const overlaps = (cx: number, cy: number): boolean => {
+        const bx = cx - radius, by = cy - radius, bw = radius * 2, bh = radius * 2;
+        return obstaclesAround(cx, cy).some(w =>
+          bx < w.x + w.width && bx + bw > w.x && by < w.y + w.height && by + bh > w.y);
+      };
+
+      // 基準位置(必要ならプレイヤーから離す)。
       let cx = originX, cy = originY;
-      const d = Math.hypot(cx - px, cy - py);
-      if (avoidPlayer && d < RETURN_CIRCLE_AVOID_DIST) {
-        const ang = d > 1 ? Math.atan2(cy - py, cx - px) : Math.random() * Math.PI * 2;
-        cx = px + Math.cos(ang) * RETURN_CIRCLE_AVOID_DIST;
-        cy = py + Math.sin(ang) * RETURN_CIRCLE_AVOID_DIST;
+      const d0 = Math.hypot(cx - px, cy - py);
+      const baseAng = d0 > 1 ? Math.atan2(cy - py, cx - px) : Math.random() * Math.PI * 2;
+      if (avoidPlayer && d0 < RETURN_CIRCLE_AVOID_DIST) {
+        cx = px + Math.cos(baseAng) * RETURN_CIRCLE_AVOID_DIST;
+        cy = py + Math.sin(baseAng) * RETURN_CIRCLE_AVOID_DIST;
       }
+      // 障害物に重なるなら、プレイヤーから一定距離以上を保ちつつ周囲を探索して空き地へ。
+      if (overlaps(cx, cy)) {
+        const minDist = avoidPlayer ? RETURN_CIRCLE_AVOID_DIST : radius + 40;
+        search:
+        for (let ring = 0; ring < 5; ring++) {
+          const dist = minDist + ring * (radius + 50);
+          for (let k = 0; k < 8; k++) {
+            const ang = baseAng + (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 4);
+            const tx = px + Math.cos(ang) * dist;
+            const ty = py + Math.sin(ang) * dist;
+            if (!overlaps(tx, ty)) { cx = tx; cy = ty; break search; }
+          }
+        }
+      }
+
       return {
-        returnCircle: { x: cx, y: cy, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 },
+        returnCircle: { x: cx, y: cy, radius, dwellMs: 0 },
         eventBannerText: '帰還サークル出現',
         eventBannerUntil: state.gameTime + 3500,
       };
@@ -5578,8 +5645,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dwellMs >= RETURN_CIRCLE_HOLD_MS) {
         return { gameWon: true, returnCircle: null, eventBannerText: '帰還完了', eventBannerUntil: state.gameTime + 2000 };
       }
-      if (dwellMs === rc.dwellMs) return {}; // 円外で 0 のまま=書き込み省略(無駄な set を避ける)
-      return { returnCircle: { ...rc, dwellMs } };
+      // 入った瞬間(外→内)に設置中のトラップ/手榴弾/タレット/デコイを撤去(出入りハメ防止)。
+      const justEntered = inside && rc.dwellMs === 0;
+      if (dwellMs === rc.dwellMs && !justEntered) return {}; // 円外で 0 のまま=書き込み省略
+      return {
+        returnCircle: { ...rc, dwellMs },
+        ...(justEntered ? { projectiles: state.projectiles.filter(pr => !RETURN_CLEAR_WEAPON_TYPES.has(pr.weaponType)) } : {})
+      };
     });
   },
 

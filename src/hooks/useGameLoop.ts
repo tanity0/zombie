@@ -29,7 +29,7 @@ import {
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle
 } from '../store/gameStore';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -1363,7 +1363,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 刀装備中は他のサブウェポンを発動させない(許可制、現状すべて停止)。
         const subWeaponPlayer = useGameStore.getState().player;
+        // 帰還サークル内では攻撃停止=設置/投擲系サブも発動しない(置き攻撃の出入りハメ防止)。
+        const inReturnCircle = isInReturnCircle(subWeaponPlayer, useGameStore.getState().returnCircle);
         if (
+          !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('heavy-grenade') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'heavy-grenade') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['heavy-grenade'] ?? 0)
@@ -1409,6 +1412,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         if (
+          !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('marksman-trap') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'marksman-trap') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['marksman-trap'] ?? 0)
@@ -1656,6 +1660,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Decoy: 10秒ごとに進行方向へ円盤を投げる。設置中は0.5秒ごとに射程内の
         // 最も近い敵弾を1発だけ迎撃する(高速弾の取りこぼしは許容)。
         if (
+          !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('decoy') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'decoy') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['decoy'] ?? 0)
@@ -1704,6 +1709,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 設置型シールド: 5秒ごとに進行方向の反対側へ遮蔽壁を建てる。敵の通行を
         // 止め、敵弾を消し、味方弾は通す。設置間隔/持続は全Lv共通、Lvで耐久だけ上がる。
         if (
+          !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('shield') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'shield') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['shield'] ?? 0)
@@ -1766,6 +1772,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 自動タレット: 10秒ごとにプレイヤー少し前方へ設置。設置地点に留まりオート射撃。
         // 追従しない=移動すると置き去り。設置時は必ず前方集中モードで開始する。
         if (
+          !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('turret') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'turret') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['turret'] ?? 0)
@@ -1815,6 +1822,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 発火ナイフ: クールダウンごとに最も近い敵1体へナイフを投擲(敵が居る時だけ)。
         if (
+          !inReturnCircle &&
           subWeaponPlayer.subWeapons.includes('fire-knife') &&
           !subWeaponBlockedByKatana(subWeaponPlayer, 'fire-knife') &&
           gameTime >= (subWeaponPlayer.subWeaponCooldowns['fire-knife'] ?? 0)

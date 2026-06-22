@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.785 — 帰還サークル: 障害物回避 / 敵侵入不可 / 内部は攻撃停止
+
+- **障害物回避**: `beginReturnPhase` が候補位置を障害物(木/壁/城/トーチ/プロップ)とAABDで判定し、
+  重なるならプレイヤーから一定距離を保ちつつ周囲8方向×5リングを探索して空き地へ。プレイヤー回避も従来どおり。
+- **敵が入ってこない(セーフゾーン)**: `updateEnemies` の `resolveMove` で、移動解決後にサークル中心から
+  `radius+敵サイズ*0.4` 外周へ押し出し。最初から内側にいた敵も次フレームで弾き出される。
+- **内部は攻撃停止**(出入りハメ防止): `isInReturnCircle` を新設。`triggerCounter`/`firePhillShot`/
+  `triggerKatanaDash`/`triggerWireAnchor` は内側で no-op。useGameLoop の設置/投擲サブ(手榴弾/トラップ/
+  デコイ/シールド/タレット/発火ナイフ)も `!inReturnCircle` でゲート。
+- **入った瞬間に設置物リセット**: トラップ/手榴弾/タレット/デコイ(`RETURN_CLEAR_WEAPON_TYPES`)を撤去
+  (ちまちま出入りして安全に攻撃する抜けを防止)。
+- 変更ファイル: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.784 — 即終了を廃止し「帰還サークル」へ(ボス撃破/終了アイテム共通)
 
 - **ジャイアント撃破で即勝利を廃止**(社長指示)。撃破は `finaleDefeated` を立てるだけ。`gameWon` は帰還完了時のみ。
