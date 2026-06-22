@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.813 — 遠景森1を10px下げ / 近景森の半透明をやめ / vignette中心を狭く
+
+1. **遠景森1を10px下へ**: `HORIZON_FOREST_Y_OFFSET_PX` -100 → -90(+Y=下)。
+2. **画面手前の近景森の半透明を廃止**: `FRONT_FOREST_ALPHA` 0.78 → 1.0(不透明)。
+3. **環境光の四隅減光(vignette)の明るい部分を狭く**: `getVignetteTexture` のラジアルグラデ
+   内半径 0.55 → 0.35(透明中心を縮め、減光を中心寄りから開始)。全ステージ共通の env vignette に効く。
+- 変更ファイル: `pixi/pixiScene.ts`, `pixi/lighting.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.812 — ステージ2の暗くする系を一旦すべて撤去(敵tint＋遠景ダーク幕)
 
 - 社長判断: 敵だけ暗くしても意味がない(主人公グローで照らされる絵を狙ったが現状の構成では難しい)。

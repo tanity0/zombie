@@ -68,7 +68,8 @@ export const getVignetteTexture = (): Texture => {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const r = size / 2;
-  const g = ctx.createRadialGradient(r, r, r * 0.55, r, r, r * 1.0);
+  // 明るい(透明)中心を狭める=減光を中心寄りから始める(内半径 0.55→0.35)。社長指示。
+  const g = ctx.createRadialGradient(r, r, r * 0.35, r, r, r * 1.0);
   g.addColorStop(0, 'rgba(0,0,0,0)');
   g.addColorStop(0.75, 'rgba(4,6,12,0.35)');
   g.addColorStop(1, 'rgba(2,3,8,0.92)');
