@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.826 — 設置物フェードを「画面端基準」に修正(消える位置がプレイヤーと動く問題)
+
+- 社長報告「設置物系だけ消える位置がおかしい」。原因: 825のフェードがプレイヤー面基準(中心からの正規化距離)で、
+  消失位置がプレイヤーと一緒に動き画面途中で消えていた。
+- 修正: `depthFadeAlpha` を画面端基準に。foot が上端/下端を越えてから `DEPTH_FADE_PX`(既定240px)かけて透明化。
+  消える位置が画面端で固定=安定。設置物は短いので foot 基準で破綻しない。
+- ノブ: `?depthfade=0`(無効) / `?dfadepx=`(端外フェード距離px) / `?dfadeinset=`(画面内からの開始量px,既定0)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.825 — 設置物スキルに遠近フェード(奥/手前で透明)を追加
 
 - 社長要望「小さくはなるが透明にならない／手前も透明にしたい」。設置物(盾/トラップ/デコイ/設置グレネード)に
