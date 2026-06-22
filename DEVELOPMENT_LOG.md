@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.837 — イベント「緑卵の包囲」を追加(画面外を緑卵で囲む・解除なし・離れると自然消滅)
+
+- 社長仕様: 緑卵が画面外を取り囲む。解除条件なし。通常通り離れると自然と消える。
+- 実装: イベント種別に `egg` を追加(horde/boss/rescue/egg の4択ランダム)。`spawnEggRing(cx,cy)` で
+  プレイヤー中心・半径 maxDim×0.72(画面外・retention pad内)のリングに `mine`(緑卵)を `EGG_RING_COUNT=22` 個配置。
+  activeEvent は張らない(閉じ込め/勝敗なし)。離れると syncBreakableProps のカメラ領域カリングで自然消滅(無限蓄積なし)。
+  `?arena=egg` で強制。バナー「変異卵の包囲」。
+- 変更: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.836 — 囲い系イベントを2分ごとに発火(1ゲーム1回→定期)
 
 - 社長指示「イベントを2分に1回に」。従来は2分後にランダム確率で1ゲーム1回のみ(`arenaFiredRef`)。

@@ -841,6 +841,7 @@ const TREASURE_DROP_CHANCE_BY_RANK = {
 } as const; // 一律2%/撃破(社長指示)。通常ランクは0(treasureDropChance)。
 const TREASURE_VARIANTS_BY_RARITY = [4, 2, 3, 1, 5, 6] as const;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
+const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リングに置く卵の数。
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
@@ -1372,6 +1373,7 @@ interface GameState {
 
   // Breakable props
   syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds) => void;
+  spawnEggRing: (cx: number, cy: number) => void; // イベント: 画面外を緑卵(mine)で取り囲む。解除なし=離れると自然消滅。
   damageBreakableProp: (id: string, amount: number) => BreakableProp | null;
   dropBreakablePropLoot: (prop: BreakableProp) => void;
   // 近接系武器の共通「小物破壊」: 始点(x0,y0)から向き(ux,uy)へ length までの
@@ -4415,6 +4417,33 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossSummonAt: Date.now(), // 魔法陣演出(錬金と同じ)の開始時刻
       },
     }));
+  },
+
+  // イベント: 画面外を緑卵(mine)で取り囲む。閉じ込め/解除条件なし=プレイヤーが離れると
+  // syncBreakableProps のカメラ領域カリングで自然に消える(無限蓄積しない)。
+  spawnEggRing: (cx, cy) => {
+    set(state => {
+      const b = state.gameBounds;
+      const maxDim = Math.max(b.width, b.height);
+      const baseR = maxDim * 0.72; // 画面外(可視外)・retention pad 内に収める半径
+      const N = EGG_RING_COUNT;
+      const stamp = Math.floor(state.gameTime);
+      const eggs: BreakableProp[] = [];
+      for (let i = 0; i < N; i++) {
+        const ang = (Math.PI * 2 * i) / N + (Math.random() - 0.5) * 0.16;
+        const r = baseR + (Math.random() - 0.5) * maxDim * 0.10;
+        const fx = cx + Math.cos(ang) * r;
+        const fy = cy + Math.sin(ang) * r;
+        const rect = mineRect({ footX: fx, footY: fy, scale: 1 });
+        eggs.push({
+          id: `egg-evt-${stamp}-${i}`,
+          x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+          footX: fx, footY: fy, scale: 1,
+          health: 1, maxHealth: 1, type: 'mine', lastHit: 0,
+        });
+      }
+      return { breakableProps: [...state.breakableProps, ...eggs] };
+    });
   },
 
   // 囲い系イベント開始: activeEvent をセットし、囲い周辺(半径×1.5)内の通常敵を一掃する。
