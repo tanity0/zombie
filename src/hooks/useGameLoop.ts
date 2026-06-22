@@ -24,8 +24,8 @@ import {
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
-  WIRE_PLANT_MS, WIRE_STICK_MS, WIRE_KNOCKBACK_SPEED, WIRE_LAND_KNOCKBACK_SPEED, WIRE_COOLDOWN_BY_LEVEL,
-  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS, MELEE_RADIUS,
+  WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT,
+  KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
@@ -3075,23 +3075,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         
         // ワイヤーアンカーの毎フレーム処理。
+        // フリックで刺す(triggerWireAnchor)→ 1秒後(wirePlantUntil)に startWireDash で高速移動開始 →
+        // 移動中は無敵+敵すり抜け(すり抜けた敵へ近接小ダメージ)→ 着地点爆撃は Lv3 のみ(ダメージ付き)。
         {
           const wp = useGameStore.getState().player;
           const nowW = Date.now();
           const pcx = wp.x + wp.width / 2;
           const pcy = wp.y + wp.height / 2;
-          // ワイヤーダッシュ中: 通過した敵に自動で近接攻撃(1ダッシュにつき敵1回)。
+          const meleeDmg = (wp.weapons.find(w => w.isMelee)?.damage ?? 6);
+          // 刺し待ち(1秒)が明けたら、その地点へ自動で高速移動を開始する。
+          if (wp.wireAnchored && nowW >= wp.wirePlantUntil) {
+            useGameStore.getState().startWireDash();
+          }
+          // ワイヤーダッシュ中: すり抜けた敵に近接小ダメージ(1ダッシュにつき敵1回)。
           if (wp.wireDashUntil > 0 && nowW < wp.wireDashUntil) {
             if (wirePassHitRef.current.dash !== wp.wireDashUntil) {
               wirePassHitRef.current = { dash: wp.wireDashUntil, ids: new Set() };
             }
             const seen = wirePassHitRef.current.ids;
-            const melee = wp.weapons.find(w => w.isMelee);
-            const dmg = melee?.damage ?? 6;
+            const dmg = meleeDmg * WIRE_PASS_DAMAGE_MULT; // 小ダメージ
             for (const e of useGameStore.getState().enemies) {
               if (seen.has(e.id)) continue;
               if (e.aiPhase === 'jump') continue; // 空中無敵は対象外
-              if (!checkCollision(wp, e)) continue; // プレイヤーが重なった=通過
+              if (!checkCollision(wp, e)) continue; // プレイヤーが重なった=すり抜け
               seen.add(e.id);
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               const killed = useGameStore.getState().damageEnemy(e.id, dmg);
@@ -3112,103 +3118,47 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
           }
-          // ワイヤーダッシュ着地: 到着フレームで1回だけ、周囲へ近接攻撃(2倍ノックバック)。
+          // ワイヤーダッシュ着地: 到着フレームで1回だけ。爆撃(範囲ダメージ)は Lv3 のみ。
           // wireDashUntil は常に増加するタイムスタンプなので、処理済みの値を覚えて重複発火を防ぐ。
           if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current !== wp.wireDashUntil) {
             wireLandedDashRef.current = wp.wireDashUntil;
-            const melee = wp.weapons.find(w => w.isMelee);
-            const dmg = melee?.damage ?? 6;
-            const hits = useGameStore.getState().enemies.filter(e => {
-              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-              return Math.hypot(ecx - pcx, ecy - pcy) <= MELEE_RADIUS + Math.max(e.width, e.height) / 2;
-            });
-            let landedAny = false;
-            hits.forEach(e => {
-              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-              const dx = ecx - pcx, dy = ecy - pcy;
-              const dist = Math.hypot(dx, dy) || 1;
-              const killed = useGameStore.getState().damageEnemy(e.id, dmg);
-              landedAny = true;
-              if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
-                useGameStore.setState({
-                  enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
-                    ...x,
-                    knockbackVx: (dx / dist) * WIRE_LAND_KNOCKBACK_SPEED,
-                    knockbackVy: (dy / dist) * WIRE_LAND_KNOCKBACK_SPEED,
-                    knockbackUntil: nowW + KNOCKBACK_DURATION,
-                    knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
-                  } : x),
-                });
-              }
-            });
-            spawnRing(pcx, pcy, 8, MELEE_RADIUS, 'rgba(147,197,253,0.9)', 4, 320);
-            spawnBurst(pcx, pcy, '#93c5fd', landedAny ? 18 : 10);
-            playSfx('melee');
-          }
-          if (wp.wireStuckEnemyId) {
-            // 敵に吸着中: 0.1秒で引き寄せ → 近接ダメージ → 大幅ノックバック。
-            const liveE = useGameStore.getState().enemies.find(e => e.id === wp.wireStuckEnemyId);
-            if (!liveE) {
-              // 敵が消滅 → アンカー解除。
-              useGameStore.setState({ player: { ...useGameStore.getState().player, wireStuckEnemyId: '', wireStuckUntil: 0, wireAnchored: false, wirePlantUntil: 0, wireAnchorX: 0, wireAnchorY: 0 } });
-            } else if (nowW < wp.wireStuckUntil) {
-              // 引き寄せ: 敵をプレイヤー近接間合いへ寄せる。ワイヤー先端は敵に追従。
-              const ecx = liveE.x + liveE.width / 2;
-              const ecy = liveE.y + liveE.height / 2;
-              const dx = pcx - ecx, dy = pcy - ecy;
-              const dist = Math.hypot(dx, dy) || 1;
-              const target = MELEE_RADIUS * 0.7;             // ここまで寄せる
-              const remain = Math.max(1, wp.wireStuckUntil - nowW);
-              const frac = Math.min(1, (baseDeltaTime * 1000) / remain);
-              const pull = Math.max(0, dist - target) * frac;
-              const nx = ecx + (dx / dist) * pull - liveE.width / 2;
-              const ny = ecy + (dy / dist) * pull - liveE.height / 2;
-              useGameStore.setState({
-                enemies: useGameStore.getState().enemies.map(e => e.id === liveE.id ? { ...e, x: nx, y: ny, vx: 0, vy: 0, dormant: false, knockbackUntil: 0 } : e),
-                player: { ...useGameStore.getState().player, wireAnchorX: ecx, wireAnchorY: ecy },
+            const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
+            if (lvl >= 3) {
+              // 着地点爆撃: 周囲へ範囲ダメージ + ノックバック + 爆発演出。
+              const dmg = meleeDmg * WIRE_BOMB_DAMAGE_MULT;
+              const hits = useGameStore.getState().enemies.filter(e => {
+                const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+                return Math.hypot(ecx - pcx, ecy - pcy) <= WIRE_BOMB_RADIUS + Math.max(e.width, e.height) / 2;
               });
+              hits.forEach(e => {
+                const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+                const dx = ecx - pcx, dy = ecy - pcy;
+                const dist = Math.hypot(dx, dy) || 1;
+                const killed = useGameStore.getState().damageEnemy(e.id, dmg);
+                spawnDamageNumber(ecx, e.y, dmg, true);
+                if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
+                  useGameStore.setState({
+                    enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
+                      ...x,
+                      knockbackVx: (dx / dist) * WIRE_LAND_KNOCKBACK_SPEED * 1.5,
+                      knockbackVy: (dy / dist) * WIRE_LAND_KNOCKBACK_SPEED * 1.5,
+                      knockbackUntil: nowW + KNOCKBACK_DURATION,
+                      knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
+                    } : x),
+                  });
+                }
+              });
+              spawnFlash('rgba(147,197,253,0.22)', 180);
+              spawnRing(pcx, pcy, 10, WIRE_BOMB_RADIUS, 'rgba(147,197,253,0.95)', 5, 360);
+              spawnBurst(pcx, pcy, '#93c5fd', 24);
+              spawnBurst(pcx, pcy, '#dbeafe', 14);
+              playSfx('bomb');
             } else {
-              // 解決: 近接ダメージ + 大幅ノックバック(プレイヤーから外向き)。
-              const ecx = liveE.x + liveE.width / 2;
-              const ecy = liveE.y + liveE.height / 2;
-              const dx = ecx - pcx, dy = ecy - pcy;
-              const dist = Math.hypot(dx, dy) || 1;
-              const melee = wp.weapons.find(w => w.isMelee);
-              const dmg = melee?.damage ?? 6;
-              const killed = useGameStore.getState().damageEnemy(liveE.id, dmg);
-              if (!killed) {
-                useGameStore.setState({
-                  enemies: useGameStore.getState().enemies.map(e => e.id === liveE.id ? {
-                    ...e,
-                    knockbackVx: (dx / dist) * WIRE_KNOCKBACK_SPEED,
-                    knockbackVy: (dy / dist) * WIRE_KNOCKBACK_SPEED,
-                    knockbackUntil: nowW + KNOCKBACK_DURATION,
-                    knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
-                  } : e),
-                });
-              }
-              spawnBurst(ecx, ecy, '#93c5fd', 16);
-              spawnRing(ecx, ecy, 6, 44, 'rgba(147,197,253,0.85)', 3, 300);
+              // Lv1/2: 着地は軽い演出のみ(範囲ダメージなし)。
+              spawnRing(pcx, pcy, 8, 36, 'rgba(147,197,253,0.8)', 3, 260);
+              spawnBurst(pcx, pcy, '#93c5fd', 8);
               playSfx('melee');
-              const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
-              useGameStore.getState().setSubWeaponCooldown('wire-anchor', useGameStore.getState().gameTime + WIRE_COOLDOWN_BY_LEVEL[lvl]);
-              useGameStore.setState({ player: { ...useGameStore.getState().player, wireStuckEnemyId: '', wireStuckUntil: 0, wireAnchored: false, wirePlantUntil: 0, wireAnchorX: 0, wireAnchorY: 0 } });
             }
-          } else if (wp.wireAnchored && nowW < wp.wirePlantUntil) {
-            // 打ち込み中(飛行中): 先端が敵に当たったら吸着(発火ナイフ風)。
-            const p = Math.max(0, Math.min(1, 1 - (wp.wirePlantUntil - nowW) / WIRE_PLANT_MS));
-            const tipX = pcx + (wp.wireAnchorX - pcx) * p;
-            const tipY = pcy + (wp.wireAnchorY - pcy) * p;
-            const hit = useGameStore.getState().enemies.find(e =>
-              tipX >= e.x - 6 && tipX <= e.x + e.width + 6 && tipY >= e.y - 6 && tipY <= e.y + e.height + 6
-            );
-            if (hit) {
-              // 吸着確定: 溜は即完了扱い(wirePlantUntil=now)にして引き寄せフェーズへ。
-              useGameStore.setState({ player: { ...useGameStore.getState().player, wireStuckEnemyId: hit.id, wireStuckUntil: nowW + WIRE_STICK_MS, wirePlantUntil: nowW } });
-            }
-          } else if (wp.wireAnchored && nowW >= wp.wireDashUntil && nowW > (wp.wirePlantUntil - WIRE_PLANT_MS) + 150 && wp.isMoving) {
-            // 地面アンカー(敵に当たらなかった): 移動したらリセット(従来通り)。
-            useGameStore.setState({ player: { ...useGameStore.getState().player, wireAnchored: false, wirePlantUntil: 0 } });
           }
         }
 

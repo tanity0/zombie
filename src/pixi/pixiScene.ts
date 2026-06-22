@@ -20,7 +20,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, WIRE_ANCHOR_RANGE, WIRE_PLANT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -5508,7 +5508,7 @@ export class PixiScene {
 
   // ---- player FX: counter ring + reload meter (world space) ----------------
 
-  private syncPlayerFx(player: Player, now: number, gameTime: number) {
+  private syncPlayerFx(player: Player, now: number, _gameTime: number) {
     const g = this.playerFx;
     g.clear();
     const rg = this.reticleGfx; // 照準サークル専用(環境光の影響を受けない層=uiLayer・screen座標)
@@ -5519,27 +5519,20 @@ export class PixiScene {
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
     const r = huntingMeleeRadius(player);
-    // ワイヤーアンカー: 装備中は前方(ショットガン射程)に青サークルを常時表示。打ち込み中/受付中/移動中は
-    // アンカー地点を表示。重いglow/大量パーティクルは使わない(軽い円・線のみ)。
+    // ワイヤーアンカー: サークル表示は廃止。フリックで刺さった地点(ax,ay)に先端スプライト+ワイヤー線を
+    // 表示するのみ(刺し待ち〜高速移動中)。重いglow/大量パーティクルは使わない(軽いスプライト・線のみ)。
     if (this.wireTip) this.wireTip.visible = false; // 既定は非表示(設置中のみ表示)
     if (player.subWeapons.includes('wire-anchor')) {
       const dashing = now < player.wireDashUntil;
       const anchorSet = (player.wireAnchored || dashing) && (player.wireAnchorX !== 0 || player.wireAnchorY !== 0);
-      const charging = player.wireAnchored && now < player.wirePlantUntil; // 溜中
       const ax = player.wireAnchorX, ay = player.wireAnchorY;
       if (anchorSet) {
-        // 投げた方向(プレイヤー→アンカー)。先端の「爪」はこの向きへ刺さる(素材の基準向き=左下)。
+        // 刺した方向(プレイヤー→アンカー)。先端の「爪」はこの向きへ刺さる(素材の基準向き=左下)。
         let tdx = ax - cx, tdy = ay - cy;
         const tdl = Math.hypot(tdx, tdy) || 1;
         tdx /= tdl; tdy /= tdl;
-        // 打ち込む挙動: 溜中(1秒)は先端がプレイヤー→アンカーへ飛んでいき、溜完了でアンカー地点に刺さる
-        // (=ドット絵が「打ち込まれる」のは1秒後)。溜完了/移動中は刺さった位置(ax,ay)に固定。
-        let tipX = ax, tipY = ay;
-        if (charging) {
-          const p = Math.max(0, Math.min(1, 1 - (player.wirePlantUntil - now) / WIRE_PLANT_MS));
-          tipX = cx + (ax - cx) * p;
-          tipY = cy + (ay - cy) * p;
-        }
+        // フリックで即座にアンカー地点へ刺さる。以後その位置(ax,ay)に固定表示。
+        const tipX = ax, tipY = ay;
         const tipTex = getTexture('wire-anchor-tip');
         const TIP = 34; // 先端の表示サイズ(px)
         if (tipTex) {
@@ -5551,25 +5544,18 @@ export class PixiScene {
           this.wireTip.texture = tipTex;
           this.wireTip.scale.set(containScale(TIP, TIP, tipTex.width, tipTex.height));
           this.wireTip.position.set(Math.round(tipX), Math.round(tipY));
-          // 素材の爪は左下(角度135°)向き。投擲方向へ回す。
+          // 素材の爪は左下(角度135°)向き。刺した方向へ回す。
           this.wireTip.rotation = Math.atan2(tdy, tdx) - Math.atan2(1, -1);
-          this.wireTip.alpha = charging ? 0.9 : 1; // 飛行中は少しだけ薄く、刺さると不透明
+          this.wireTip.alpha = 1;
           this.wireTip.visible = true;
         }
-        // 穴(eyelet)は爪と反対=プレイヤー側。ワイヤーはここに繋ぐ(about)。飛行中も先端基準で算出。
+        // 穴(eyelet)は爪と反対=プレイヤー側。ワイヤーはここに繋ぐ。
         const holeDist = TIP * 0.4;
         const hx = tipX - tdx * holeDist;
         const hy = tipY - tdy * holeDist;
-        // ワイヤー線(穴→プレイヤー)。単独の moveTo→lineTo→stroke(飛ぶにつれ伸びる)。
-        const lineAlpha = dashing ? 0.85 : charging ? 0.6 : 0.7;
+        // ワイヤー線(穴→プレイヤー)。
+        const lineAlpha = dashing ? 0.85 : 0.7;
         g.moveTo(hx, hy).lineTo(cx, cy).stroke({ width: 2.5, color: 0x93c5fd, alpha: lineAlpha });
-      } else if (!player.wireAnchored && !dashing && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
-        // 待機(アンカー未設置・CD明け): 慣性付き aim(向き×傾き強度)の先に青サークルプレビュー。
-        // store の打ち込み地点(=center+aim*RANGE)と一致。クールダウン中は非表示(撃てないことを明示)。
-        const px = cx + player.aimX * WIRE_ANCHOR_RANGE + rox;
-        const py = cy + player.aimY * WIRE_ANCHOR_RANGE + roy;
-        rg.circle(px, py, 7).stroke({ width: 2, color: 0x60a5fa, alpha: 0.7 });
-        rg.circle(px, py, 2).fill({ color: 0x93c5fd, alpha: 0.7 });
       }
     }
     // PHILL銃: アクティブ銃が phill-revolver のとき、狙いサークル(赤橙レティクル)を前方に表示。

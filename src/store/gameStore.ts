@@ -328,10 +328,9 @@ export const KATANA_FLICK_MIN_SPEED = 0.9; // px/ms
 export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カード価格。
 
 // ---- ワイヤーアンカー(移動系サブウェポン) ------------------------------------
-// 装備中、前方(ショットガン射程くらい)に青サークルを常時表示。指離しでアンカー打ち込み開始
-// (WIRE_PLANT_MS=0.1秒で発射)、完了後の追加タップでアンカー地点へ高速移動。着地時に周囲へ
-// 近接攻撃(2倍ノックバック)。高速移動中は敵接触ダメージ無効。CD は全Lv 1秒(クールダウン中はサークル非表示)。
-export const WIRE_ANCHOR_RANGE = 200;   // 青サークル距離(飛距離)。社長指示で 110→200。
+// 操作: フリックでフリック方向にワイヤーを刺し、WIRE_PLANT_DELAY_MS(1秒)後にその地点へ自動で
+// 高速移動。飛距離は固定(レベルで +20px ずつ伸びる)。高速移動中は無敵 + 敵すり抜け、すり抜けた
+// 敵には近接小ダメージ。着地点の爆撃はレベル3のみ(ダメージ付き)。サークル表示は廃止。
 // アナログスティックの傾き強度(swipeStrength: 0..1)で、移動速度と狙い距離を可変にする。
 // 強度0(デッドゾーン直上)でも完全停止にはせず、最低係数だけ残す(操作不能を避ける)。
 // キャラ移動: 弱い傾き=ゆっくり歩く(最低 STICK_WALK_MIN_FACTOR 倍)。
@@ -341,14 +340,15 @@ export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度
 // 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
 export const stickAimFactor = (strength: number) =>
   STICK_AIM_MIN_FACTOR + (1 - STICK_AIM_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
-export const WIRE_PLANT_MS = 100;       // 打ち込み(先端が飛んで刺さるまで)=0.1秒で発射。刺さると高速移動可。
-export const WIRE_DASH_MS = 200;        // 高速移動の所要時間
-export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 全Lv共通=1秒(発射が速い代わり)
-// 敵に刺さった時(発火ナイフ風吸着): 0.1秒で敵を引き寄せ→近接ダメージ→大幅ノックバック。
-export const WIRE_STICK_MS = 100;       // 引き寄せ時間(0.1秒)
-export const WIRE_KNOCKBACK_SPEED = 1100; // 大幅ノックバックの初速(px/s)
-// ワイヤーダッシュ着地時の近接攻撃: 従来値を維持(KNOCKBACK_SPEED 200×2 相当)。
-export const WIRE_LAND_KNOCKBACK_SPEED = 400;
+export const WIRE_DIST_BY_LEVEL = [0, 100, 120, 140] as const; // 刺す距離(Lv1=100px, +20/Lv で固定)
+export const WIRE_PLANT_DELAY_MS = 1000; // 刺してから高速移動が始まるまでの待ち(1秒)
+export const WIRE_DASH_MS = 150;         // 高速移動の所要時間(短い=高速)
+export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 移動完了後のCD(全Lv1秒)
+export const WIRE_PASS_DAMAGE_MULT = 0.5; // すり抜けた敵への近接小ダメージ倍率
+export const WIRE_LAND_KNOCKBACK_SPEED = 400; // すり抜け/着地ノックバックの初速(px/s)
+// Lv3 限定: 着地点の爆撃(範囲ダメージ)。
+export const WIRE_BOMB_RADIUS = 120;     // 爆撃の範囲
+export const WIRE_BOMB_DAMAGE_MULT = 2;  // 爆撃ダメージ倍率(近接基準)
 
 // 敵タイプ → 死因表示用の日本語ラベル。
 const ENEMY_DEATH_LABELS: Record<string, string> = {
@@ -1245,6 +1245,9 @@ interface GameState {
   // triggerKatanaDash starts the invulnerable dash and cuts along its path.
   performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean) => { hit: boolean; finish: boolean; killed: number };
   triggerKatanaDash: (dirX: number, dirY: number) => boolean;
+  // ワイヤーアンカー: フリックでフリック方向に刺す(true=発動)。1秒後に startWireDash で高速移動。
+  triggerWireAnchor: (dirX: number, dirY: number) => boolean;
+  startWireDash: () => void;
   // Whip (鞭) actions. performWhipStrike sweeps the given enemies with whip rules
   // (low damage, big knockback, crit, finisher, 20% ammo) and returns the hit
   // count for charge. performHurricane spawns the suction vortex at the tip;
@@ -1942,59 +1945,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
     }
 
-    // ワイヤーアンカー: 指離し(このスイング)で発動する移動系サブ。攻撃はしない。
-    //  1) 打ち込み完了後の受付窓内なら → アンカー地点へ高速移動(=追加タップ)。
-    //  2) それ以外で、打ち込み中でなく、クールダウンも明けていれば → アンカー打ち込み開始。
-    // ※近接スイング/カウンター窓自体は従来どおり継続(下のコードに任せる)。発動条件は重複しない。
-    if (
-      player.subWeapons.includes('wire-anchor') &&
-      !subWeaponBlockedByKatana(player, 'wire-anchor')
-    ) {
-      const dashing = now < player.wireDashUntil;
-      const charging = player.wireAnchored && now < player.wirePlantUntil; // 溜中(まだ移動できない)
-      // 敵に吸着中は自動コンボ(引き寄せ→近接→ノックバック)が走るので、タップ移動は無効。
-      const armed = player.wireAnchored && now >= player.wirePlantUntil && !player.wireStuckEnemyId;
-      const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['wire-anchor'] ?? 1));
-      if (dashing) {
-        // 移動中は何もしない。
-      } else if (armed) {
-        // 追加タップ → アンカー地点へ高速移動。CD はここで開始(=「使用後」)。アンカーは消費。
-        const dx = player.wireAnchorX - pcx;
-        const dy = player.wireAnchorY - pcy;
-        const dist = Math.max(0.001, Math.hypot(dx, dy));
-        set(s => ({
-          player: {
-            ...s.player,
-            wireDashUntil: now + WIRE_DASH_MS,
-            wireDashSpeed: dist / (WIRE_DASH_MS / 1000),
-            wireAnchored: false,
-            wirePlantUntil: 0,
-          }
-        }));
-        get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_COOLDOWN_BY_LEVEL[lvl]);
-        get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
-      } else if (!charging && gameTime >= (player.subWeaponCooldowns['wire-anchor'] ?? 0)) {
-        // 指離し → 青サークル地点へ「即座に」アンカー打ち込み(ワイヤー表示)。溜(WIRE_PLANT_MS)後に移動可。
-        // 進行方向ではなく狙いサークル(慣性付き aim=向き×傾き強度)へ。飛距離も aim の長さで可変。
-        // ダッシュ速度は飛距離から算出(上の armed 分岐)なので、短い狙いは自動で短く遅いダッシュになる。
-        const ax = pcx + player.aimX * WIRE_ANCHOR_RANGE;
-        const ay = pcy + player.aimY * WIRE_ANCHOR_RANGE;
-        set(s => ({
-          player: {
-            ...s.player,
-            wireAnchorX: ax,
-            wireAnchorY: ay,
-            wireAnchored: true,
-            wirePlantUntil: now + WIRE_PLANT_MS,
-          }
-        }));
-        get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 打ち込みの小ポップ
-        // 打ち込み経路上に敵がいる=アンカーが敵に当たる → 近接命中音だけ。いない=地面に打ち込み音。
-        const enemyRects = get().enemies.map(e => ({ x: e.x, y: e.y, width: e.width, height: e.height }));
-        if (segmentBlocked(pcx, pcy, ax, ay, enemyRects)) set({ anchorEnemyHitFxAt: now });
-        else set({ anchorPlantFxAt: now });
-      }
-    }
+    // ワイヤーアンカーはフリック発動に変更(triggerWireAnchor)。スイング(指離し)では発動しない。
 
     // 自動タレットを叩いてモード切替: メレー範囲内のタレットを前方集中⇔全方位でトグル。
     // 既存の近接接触(=スイング)を再利用。counterCooldown が連打を抑えるのでスイング毎に
@@ -3198,6 +3149,68 @@ export const useGameStore = create<GameState>((set, get) => ({
       }, KATANA_DASH_MS);
     }
     return true;
+  },
+
+  // ワイヤーアンカー: フリックでフリック方向(dir)に固定距離ワイヤーを刺す。1秒後(wirePlantUntil)に
+  // ループ側が startWireDash を呼んで高速移動を開始する。発動できたら true。
+  triggerWireAnchor: (dirX, dirY) => {
+    const now = Date.now();
+    const { player, gameTime, isPaused } = get();
+    if (isPaused) return false;
+    if (!player.subWeapons.includes('wire-anchor')) return false;
+    if (subWeaponBlockedByKatana(player, 'wire-anchor')) return false;
+    // 刺し待ち〜移動中は新しいフリックを受けない。CD 中も不可。
+    if (player.wireAnchored || now < player.wireDashUntil) return false;
+    if (gameTime < (player.subWeaponCooldowns['wire-anchor'] ?? 0)) return false;
+    const len = Math.hypot(dirX, dirY);
+    if (len < 0.001) return false;
+    const ux = dirX / len, uy = dirY / len;
+    const lvl = Math.max(1, Math.min(3, player.subWeaponLevels['wire-anchor'] ?? 1));
+    const dist = WIRE_DIST_BY_LEVEL[lvl];
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const ax = pcx + ux * dist;
+    const ay = pcy + uy * dist;
+    set(s => ({
+      player: {
+        ...s.player,
+        wireAnchorX: ax,
+        wireAnchorY: ay,
+        wireAnchored: true,
+        wirePlantUntil: now + WIRE_PLANT_DELAY_MS, // この時刻に自動で高速移動開始
+        wireDashUntil: 0,
+        wireStuckEnemyId: '',
+        wireStuckUntil: 0,
+      },
+      anchorPlantFxAt: now, // 打ち込み音SEのトリガ
+    }));
+    get().spawnRing(ax, ay, 6, 22, 'rgba(96,165,250,0.85)', 2, 220); // 刺さった地点の小ポップ
+    // CD は刺した直後から「待ち1秒 + 移動 + 規定CD」分かけておく(待ち中の連射防止)。
+    get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_PLANT_DELAY_MS + WIRE_DASH_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
+    return true;
+  },
+
+  // 刺してから1秒後に呼ばれ、アンカー地点へ高速移動を開始する。
+  startWireDash: () => {
+    const now = Date.now();
+    const { player } = get();
+    if (!player.wireAnchored) return;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const dist = Math.max(0.001, Math.hypot(player.wireAnchorX - pcx, player.wireAnchorY - pcy));
+    set(s => ({
+      player: {
+        ...s.player,
+        wireDashUntil: now + WIRE_DASH_MS,
+        wireDashSpeed: dist / (WIRE_DASH_MS / 1000),
+        wireAnchored: false,
+        wirePlantUntil: 0,
+        // 移動中は無敵(既存の被弾無敵を流用。INVULN_MS の自動解除が移動終了とほぼ一致するよう開始時刻をずらす)。
+        invulnerable: true,
+        invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_DASH_MS),
+      }
+    }));
+    get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
   },
 
   damagePlayer: (rawAmount, source) => {

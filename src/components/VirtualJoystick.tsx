@@ -41,6 +41,7 @@ const VirtualJoystick: React.FC = () => {
   const setLastDirection = useGameStore(state => state.setLastDirection);
   const triggerCounter = useGameStore(state => state.triggerCounter);
   const triggerKatanaDash = useGameStore(state => state.triggerKatanaDash);
+  const triggerWireAnchor = useGameStore(state => state.triggerWireAnchor);
   const rhythmInput = useGameStore(state => state.rhythmInput);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
@@ -95,6 +96,18 @@ const VirtualJoystick: React.FC = () => {
     }
   }, [detectFlick, triggerKatanaDash]);
 
+  // ワイヤーアンカー: 指を離した瞬間にフリックか判定して、フリック方向にワイヤーを刺す(即発火しない)。
+  // 装備していない/CD中等なら triggerWireAnchor が false を返すので無害。
+  const tryFireWireAnchor = useCallback(() => {
+    if (flickFiredRef.current) return;
+    const flick = detectFlick();
+    if (!flick) return;
+    if (triggerWireAnchor(flick.x, flick.y)) {
+      flickFiredRef.current = true;
+      // 打ち込み音SEは store の anchorPlantFxAt 経由(useGameLoop)で鳴るのでここでは鳴らさない。
+    }
+  }, [detectFlick, triggerWireAnchor]);
+
   const release = useCallback((fireCounter = true) => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
@@ -122,6 +135,8 @@ const VirtualJoystick: React.FC = () => {
         // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定して発火(即発火しない)。
         // 非刀装備なら triggerKatanaDash が false を返すので無害(=何も起きない)。
         tryFireKatanaDash();
+        // ワイヤーアンカーも同様にフリックで発動(フリック方向に刺す)。未装備なら無害。
+        tryFireWireAnchor();
         // カウンターは従来どおり「指を離した瞬間」に発火(刀装備中はナイフスイープなしで窓だけ開く)。
         const counter = triggerCounter();
         // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
@@ -142,7 +157,7 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash]);
+  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash, tryFireWireAnchor]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (pointerIdRef.current !== null) release(false);

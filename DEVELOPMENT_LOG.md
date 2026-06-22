@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.774 — ワイヤーアンカー仕様変更(フリック→1秒後高速移動)
+
+- **操作変更**: スイング(指離し)発動を廃止し、**フリック発動**に。`triggerWireAnchor(dir)` を追加し
+  `VirtualJoystick` の release で `tryFireWireAnchor()`(刀ダッシュと同じフリック判定)から発火。
+- **挙動**: フリック方向に固定距離でワイヤーを刺す → **1秒後(`WIRE_PLANT_DELAY_MS`)に自動で**その地点へ高速移動。
+  飛距離は `WIRE_DIST_BY_LEVEL=[_,100,120,140]`(Lv1=100px, +20/Lv 固定)。
+- **高速移動中**: `invulnerable`(被弾無敵=敵弾も無効)+ 敵すり抜け、すり抜けた敵へ近接小ダメージ
+  (`WIRE_PASS_DAMAGE_MULT=0.5`)。
+- **着地点爆撃は Lv3 のみ**: `WIRE_BOMB_RADIUS=120` 内に `近接×WIRE_BOMB_DAMAGE_MULT(2)` のダメージ+
+  ノックバック+爆発演出(flash/ring/burst/`bomb`音)。Lv1/2 は軽い着地演出のみ(ダメージなし)。
+- **敵吸着/引き寄せ機構は廃止**(`wireStuck*` 経路を削除)。**サークル表示も廃止**(pixiScene の青サークル
+  プレビューを削除、刺さった先端スプライト+ワイヤー線のみ残す)。
+- CD は刺した直後から `待ち1秒+移動+規定CD` 分を確保(待ち中の連射防止)。
+- 削除/置換した定数: `WIRE_ANCHOR_RANGE`/`WIRE_PLANT_MS`/`WIRE_STICK_MS`/`WIRE_KNOCKBACK_SPEED`。
+- 負荷: 1/10(描画は既存の先端スプライト+線のまま。爆撃は Lv3 のみ単発で、追加コストは bomb 演出1回分)。
+- 変更ファイル: `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/components/VirtualJoystick.tsx`,
+  `src/pixi/pixiScene.ts`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+- 申し送り: フリック発動なのでキーボード操作ではワイヤー不可(タッチ前提のモバイル仕様)。すり抜けダメージ値は
+  「小ダメージ()」が空欄だったため暫定 0.5倍。違えば調整。
+
 ## v0.25.773 — リザルトのスコア小数(9桁)を修正
 
 - 原因: `survivalScore=20000−被弾×80` と `speedBonus=(par−生存秒)×100` が小数の damageTaken/timeAlive を使い、
