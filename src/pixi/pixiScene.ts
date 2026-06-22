@@ -4682,7 +4682,9 @@ export class PixiScene {
     // ?labpersp の屋内床は焼き込み遠近プレート(updateLabFloorPlate)で描くので、
     // 屋外用の縦ストリップ groundBase は屋内では隠す。
     this.L.farBackdrop.visible = !indoor;
-    this.L.horizonForest.visible = !indoor;
+    // 遠景森1(森シルエット帯)は森系のみ。lab は遠景森2(nearHorizon='lab'=機材シルエット)があるので森帯は出さない
+    // (ラボ背景に森が乗る不整合を防ぐ)。
+    this.L.horizonForest.visible = !indoor && !this.isLabStage;
     this.L.groundBase.visible = !indoor;
     this.L.frontForest.visible = !indoor;
     this.L.backgroundLayer.visible = !indoor;

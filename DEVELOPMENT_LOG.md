@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.798 — ステージ2を「野外ラボ」で整理(屋内コメント掃除＋森地平帯を非表示)
+
+- campaign.ts のステージ2: 中途半端な「indoor 保留」コメント/コメントアウトを掃除し、**野外ラボ(theme:'lab')**として明記。
+- pixiScene: `horizonForest`(遠景森1=森シルエット帯)を **lab では非表示**に(`!indoor && !isLabStage`)。
+  ラボ背景に森帯が乗る不整合(横向きで「森が上に来る」と見えた件)を解消。lab は遠景森2(nearHorizon='lab'=機材シルエット)で代替。
+- indoorMode 基盤は将来用に残置(このステージでは不使用)。
+- 変更ファイル: `data/campaign.ts`, `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.797 — 縦持ちガード(タッチ端末を横向きにしたら全面オーバーレイ)
 
 - 本作は縦持ち前提。タッチ端末を横向きにしたら「画面を縦にしてください」を**全面表示(z-9999)**してプレイを止める。
