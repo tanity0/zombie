@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.797 — 縦持ちガード(タッチ端末を横向きにしたら全面オーバーレイ)
+
+- 本作は縦持ち前提。タッチ端末を横向きにしたら「画面を縦にしてください」を**全面表示(z-9999)**してプレイを止める。
+  横向きのレイアウト崩れ(遠景の位置等)を丸ごと無効化(社長指示)。
+- **PC(非タッチ)は対象外**=横ウィンドウ＋マウスで通常プレイ(`'ontouchstart' in window || maxTouchPoints>0` で判定)。
+- 表示中はゲームをポーズ、縦に戻したら復帰(メニュー等で元々ポーズ中なら据え置き=ガードが入れた分だけ解除)。
+- 新規 `components/OrientationGuard.tsx`、`App.tsx` 末尾にマウント。検証: `tsc --noEmit` パス。
+
 ## v0.25.796 — 地平帯の差し替え時(layoutHorizonForest)も均一スケール化
 
 - `layoutHorizonForest()`(テクスチャ差し替え時に呼ばれる)に非均一スケール `tileScale.set(screenW/texW, horizonH/texH)` が残存=

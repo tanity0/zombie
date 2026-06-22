@@ -4,6 +4,7 @@ import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
 import GameOverScreen from './components/GameOverScreen';
 import LoadingScreen from './components/LoadingScreen';
+import OrientationGuard from './components/OrientationGuard';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
@@ -154,6 +155,9 @@ function App() {
           onPlayAgain={() => startGame(useGameStore.getState().characterClass)}
         />
       )}
+
+      {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
+      <OrientationGuard />
     </div>
   );
 }
