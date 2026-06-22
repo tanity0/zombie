@@ -3349,6 +3349,18 @@ export class PixiScene {
       for (const tree of this.trees.values()) {
         addCaster(tree.sprite.x, tree.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(tree.footY) * 0.36, 0.72);
       }
+      // ただのオブジェクト(壊せない: トラック/瓦礫/ドラム=city props、ラボの壁/什器)も影を落とす(グローは無し)。
+      // 地面デカール(groundLayer 配置・平面)は除外。影幅は表示幅から算出。
+      for (const entry of this.cityPropObjs.values()) {
+        if (entry.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
+        addCaster(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
+      }
+      for (const entry of this.wallObjs.values()) {
+        addCaster(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.3), 0.55);
+      }
+      for (const entry of this.propObjs.values()) {
+        addCaster(entry.sprite.x, entry.footY, Math.max(6, entry.sprite.width * 0.32), 0.6);
+      }
       addCaster(castle.x, castle.y + CASTLE_FOOT_OFFSET_Y, 90 * this.depthScale(castle.y + CASTLE_FOOT_OFFSET_Y), castle.bossSpawned ? 1.15 : 0.82);
       addCaster(merchant.x, merchant.y, 82 * this.depthScale(merchant.y), 0.9);
       if (eventNpc.status !== 'completed') {
