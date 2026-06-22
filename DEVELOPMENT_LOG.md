@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.787 — 逆再生版mp3を生成・配置 / ゾーン判定を毎フレームへ戻す
+
+- **逆再生版BGMを実生成**(ffmpegをこの環境に導入し `-af areverse -b:a 128k` で作成):
+  `public/audio/stage1-reverse.mp3` / `stage3-reverse.mp3` / `stage4-reverse.mp3`(長さは原曲と一致を確認)。
+  これで深層域BGM切替(v0.25.786)が実音で機能する。
+- **ゾーン判定の間引きを撤回**(社長指示): `ZONE_CHECK_INTERVAL` を 3→**1**(毎フレーム)。距離比較数回のみで
+  間引いても負荷差・体感差が無かったため。構造は残し、重くなれば値を上げれば再間引き可能。
+- 変更ファイル: `public/audio/stage{1,3,4}-reverse.mp3`(新規), `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.786 — 深層域BGM=逆再生版へ切替(先読み＋play/pauseトグル)＋ゾーン判定を3frに1回へ
 
 - **ゾーン判定の間引き**(社長許可): エリア遷移バナー＋深層BGM判定を毎フレーム→`ZONE_CHECK_INTERVAL=3`

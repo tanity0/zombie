@@ -198,8 +198,9 @@ const areaZoneIndexFor = (distPx: number): number => {
   if (distPx >= 1500) return 1;
   return 0;
 };
-// ゾーン判定(エリアバナー/深層BGM)は毎フレームでなく N フレームに1回でOK(多少アバウト可・社長許可)。
-const ZONE_CHECK_INTERVAL = 3;
+// ゾーン判定(エリアバナー/深層BGM)の間引き間隔。距離比較数回だけで負荷は無視できるため毎フレーム(=1)。
+// (3に間引いても体感差・負荷差が無かったため社長指示で1へ戻し。重くなったらここを上げれば間引ける。)
+const ZONE_CHECK_INTERVAL = 1;
 // 深層域BGM(逆再生)切替の距離しきい値。深層域(エリア=7500px)に合わせる。準備ゾーンは手前、
 // 解除はヒステリシスで戻し過ぎ防止(enter=D / exit=D-200 / 準備開始=D-400 / 解放=D-600)。
 const DEEP_BGM_D = 7500;
