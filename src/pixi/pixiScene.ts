@@ -1631,11 +1631,12 @@ export class PixiScene {
   private applyNearHorizon(key: string) {
     const tex = key ? this.nearHorizonOverrides[key] : null;
     if (!tex) { this.L.nearHorizon.visible = false; this.currentNearHorizonKey = ''; return; }
-    if (this.currentNearHorizonKey !== key || this.L.nearHorizon.texture !== tex) {
-      this.L.nearHorizon.texture = tex;
-      this.layoutNearHorizon();
-      this.currentNearHorizonKey = key;
-    }
+    if (this.L.nearHorizon.texture !== tex) this.L.nearHorizon.texture = tex;
+    this.currentNearHorizonKey = key;
+    // 毎フレーム現在の画面/テクスチャ寸法でレイアウト(テクスチャ未準備なら内部で早期return)。
+    // ※以前は「キー変更時に1回だけ」だったため、テクスチャ非同期到着前に空振りすると 1×1 のまま
+    //   不可視になり、resize(回転)まで直らなかった(初期表示で遠景森2が出ない/一時停止で中途半端になる)バグ。
+    this.layoutNearHorizon();
     this.L.nearHorizon.visible = true;
     // lab の機材帯は暗い素材なので、夜の暗化(ENV_TINT)に飲まれて見えなくなる。
     // ステージ2の前帯と同様に暗化から除外し、本来色(白tint)で出して視認性を確保する。

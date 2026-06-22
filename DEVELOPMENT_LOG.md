@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.801 — 遠景森2(nearHorizon)が初期表示で出ないバグを修正
+
+- 症状(社長報告・ステージ2): 平常時は遠景森2(ラボの機材シルエット=アーム/パソコン)が**出ない**。横→縦の回転で**出る**。
+  一時停止/復帰で中途半端(境界に薄く見える)になる。
+- 原因: `applyNearHorizon` が **キー変更時に1回だけ** `layoutNearHorizon()` を呼ぶ設計で、ラボ遠景森2テクスチャの
+  **非同期到着前に空振り(tex.width<=1で早期return)**すると寸法が 1×1 のまま不可視。`currentNearHorizonKey` は立つので
+  再レイアウトされず、resize(回転)まで直らなかった。
+- 修正: `applyNearHorizon` を**毎フレーム `layoutNearHorizon()` 呼び出し**に変更(テクスチャ未準備なら内部で早期return=安全)。
+  これで初期ロード・回転・一時停止のいずれでも現在の画面寸法で正しく出る。単一TilingSpriteのレイアウトのみ=負荷無視可。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.800 — ステージ2の遠景森1を表示に戻す(消えていた)
 
 - v0.25.798 で lab の遠景森1(horizonForest)を非表示にしたら、ステージ2の遠景森が消えた(社長報告)。
