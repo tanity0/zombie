@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.803 — ラボ可視ゾーンの作り直し(景色の前面載せ替えを廃止)
+
+- 社長指摘「通常レイヤーの上に無理やりラボ用レイヤーを作って描いている」への根本対応。
+- 旧: 暗幕(可視ゾーン)が全画面を覆うため、景色4層を uiLayer(前面)へ**載せ替えて**暗くしないようにしていた
+  → 遠景/遠景森1がプレイヤー/ヘリより前に来る・初期表示で出ない・回転で崩れる、等の温床。
+- 新: **暗幕を「地平より下=プレイ領域」だけに限定**(top=遠景高さ+screenH×NEAR_HORIZON_BOTTOM_RATIO。?labveiltop=px で調整可)。
+  景色(遠景/地平帯/遠景森2)は**暗幕に覆われない=暗くならない**ので、**載せ替え不要=通常z(背面)のまま**。
+  `setLabSceneryAboveVeil(true)` 呼び出しを廃止(常に false=載せ替えない)。負荷は同等〜微減(暗幕面積減)。
+- 効果: プレイヤー/ヘリは常に景色の前。z載せ替え起因のラボ特例が消え、通常パイプラインに近づく(テンプレ統一の方向)。
+- 注記: 近景森(frontForest)は通常zのため暗幕で暗くなる(夜ラボの前景として許容想定)。見た目は実機確認を。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.802 — ステージ2: 遠景/遠景森1がプレイヤー・ヘリより前に被るのを修正
 
 - 症状: ステージ2(屋外ラボ)で **遠景(farBackdrop)・遠景森1(horizonForest)がプレイヤー/ヘリより前**に描画。

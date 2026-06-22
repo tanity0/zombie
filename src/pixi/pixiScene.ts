@@ -2883,8 +2883,15 @@ export class PixiScene {
       this.labDarkRect.position.set(0, 0);
       this.labRTScene.addChild(this.labDarkRect);
     }
+    // 暗幕(可視ゾーン)は「地平より下=プレイ領域」だけを覆う。遠景/地平帯/遠景森2(景色)は暗くせず通常z(背面)のまま
+    // =プレイヤー/ヘリの後ろ。これで景色レイヤーを前面へ載せ替えるハックが不要になる(被りバグの根治)。?labveiltop=px で調整可。
+    const veilTopOverride = tsNum('labveiltop', -1);
+    const veilTop = veilTopOverride >= 0
+      ? veilTopOverride
+      : this.farBackdropHeight() + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
+    this.labDarkRect.position.set(0, veilTop);
     this.labDarkRect.width = W;
-    this.labDarkRect.height = H;
+    this.labDarkRect.height = Math.max(1, H - veilTop);
     // 画面に重ねる暗幕スプライト(=labRT)。uiLayer 最下=ワールドの上・HUDの下。
     if (!this.labVeilSprite) {
       const sp = new Sprite(this.labRT);
@@ -2928,8 +2935,9 @@ export class PixiScene {
     this.labVeilSprite.visible = true;
     this.labVeilSprite.width = W;
     this.labVeilSprite.height = H;
-    // 背景4層(遠景/地平帯/手前帯/天井)を暗幕の上へ=暗くしない。
-    this.setLabSceneryAboveVeil(true);
+    // 景色レイヤーの前面載せ替えは廃止(暗幕を地平より下だけにしたので景色は元から暗くならない=通常z維持)。
+    // 過去に載せ替えた分があれば元へ戻す。
+    this.setLabSceneryAboveVeil(false);
   }
 
   // ドローンブーメランCD明け: プレイヤー頭上にブーメランマークが一瞬出て、ふわっと上へ消える。
