@@ -1191,6 +1191,9 @@ interface GameState {
   // 既定 1 = 最大(キーボードや未操作はフル速度・最大距離)。
   swipeStrength: number;
   touchActive: boolean;
+  // PC(マウス)照準。キャンバス左上基準のスクリーン座標(CSS px)。ワールド座標は camera を足して算出する
+  // (毎フレーム camera が動くので、スクリーン座標で保持し movePlayer 側でワールドへ変換する)。null=未使用(タッチ)。
+  mouseAim: { x: number; y: number } | null;
   gameBounds: GameBounds;
   gameStats: GameStats;
   characterClass: CharacterClass;
@@ -1232,6 +1235,7 @@ interface GameState {
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
   setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
+  setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
   damagePlayer: (amount: number, source?: string) => boolean;
@@ -1576,6 +1580,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   swipeDirection: null,
   swipeStrength: 1,
   touchActive: false,
+  mouseAim: null,
   gameBounds: { width: 800, height: 600 },
   gameStats: {
     timeAlive: 0,
@@ -1790,8 +1795,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ld = lastDirection ?? { x: 1, y: 0 };
       const ldl = Math.max(0.001, Math.hypot(ld.x, ld.y));
       const aimAlpha = inertiaAlpha(deltaTime, AIM_INERTIA_TAU);
-      const aimX = player.aimX + ((ld.x / ldl) * aimMag - player.aimX) * aimAlpha;
-      const aimY = player.aimY + ((ld.y / ldl) * aimMag - player.aimY) * aimAlpha;
+      // PC(マウス)照準: スクリーン座標 mouseAim をワールドへ(camera を足す)。タッチ時は null。
+      const mouseWorld = state.mouseAim
+        ? { x: state.camera.x + state.mouseAim.x, y: state.camera.y + state.mouseAim.y }
+        : null;
+      // aim ベクトル: マウス時は「プレイヤー→カーソル」の即時方向(慣性なし・360度)。
+      // タッチ/キーボード時は従来のスティック慣性 aim(向き×傾き強度)。
+      let aimX: number, aimY: number;
+      if (mouseWorld) {
+        const adx = mouseWorld.x - (newX + player.width / 2);
+        const ady = mouseWorld.y - (newY + player.height / 2);
+        const al = Math.hypot(adx, ady) || 1;
+        aimX = adx / al; aimY = ady / al;
+      } else {
+        aimX = player.aimX + ((ld.x / ldl) * aimMag - player.aimX) * aimAlpha;
+        aimY = player.aimY + ((ld.y / ldl) * aimMag - player.aimY) * aimAlpha;
+      }
 
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
@@ -1808,12 +1827,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (getActiveGun(player)?.key === 'phill-revolver') {
         const rcx = newX + player.width / 2;
         const rcy = newY + player.height / 2;
-        const hasAim = Math.hypot(aimX, aimY) > 0.001;
-        const dirx = hasAim ? aimX : (lastDirection?.x ?? 1);
-        const diry = hasAim ? aimY : (lastDirection?.y ?? 0);
-        const scale = hasAim ? PHILL_AIM_RANGE : PHILL_AIM_RANGE / Math.max(0.001, Math.hypot(dirx, diry));
-        const baseX = rcx + dirx * scale;
-        const baseY = rcy + diry * scale;
+        // マウス照準時はカーソル位置(ワールド)そのものをレティクル基準に=照準がマウス連動。
+        // タッチ/キーボード時は従来どおり aim 方向×射程の固定距離。
+        let baseX: number, baseY: number;
+        if (mouseWorld) {
+          baseX = mouseWorld.x;
+          baseY = mouseWorld.y;
+        } else {
+          const hasAim = Math.hypot(aimX, aimY) > 0.001;
+          const dirx = hasAim ? aimX : (lastDirection?.x ?? 1);
+          const diry = hasAim ? aimY : (lastDirection?.y ?? 0);
+          const scale = hasAim ? PHILL_AIM_RANGE : PHILL_AIM_RANGE / Math.max(0.001, Math.hypot(dirx, diry));
+          baseX = rcx + dirx * scale;
+          baseY = rcy + diry * scale;
+        }
         let bestD2 = PHILL_SNAP_RADIUS * PHILL_SNAP_RADIUS;
         let snapX = baseX, snapY = baseY;
         const stage3 = state.farBackdrop === 'city';
@@ -1859,6 +1886,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setTouchActive: (active) => {
     set({ touchActive: active });
+  },
+
+  // PC(マウス)照準: キャンバス左上基準のスクリーン座標を保持(null で解除)。
+  setMouseAim: (screen) => {
+    set({ mouseAim: screen });
   },
 
   setLastDirection: (direction) => {

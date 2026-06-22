@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { useGameStore, isGameTimeStopped } from '../store/gameStore';
+import { performTapAction, performFlickAction } from '../utils/inputActions';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
 // scheme so a laptop is fully playable.
@@ -113,19 +113,13 @@ export const useGameControls = () => {
         }
       }
 
-      // フリック(一閃ダッシュ / ワイヤーアンカー): 今の移動方向(斜め可)へ発動。
-      // 装備していない方は store 側が false を返すので無害。
+      // フリック(一閃ダッシュ / ワイヤーアンカー): 今の移動方向(斜め可)へ発動。キーボードの予備操作
+      // (PCの主操作はマウス右クリック)。装備していない方は store 側が false を返すので無害。
       if (isFlickKey(key)) {
         e.preventDefault();
         if (!e.repeat && !isGameTimeStopped()) {
           const v = currentMoveVec();
-          const gs = useGameStore.getState();
-          // ワイヤーアンカー(サブ)を優先判定 → 不発なら刀ダッシュ(排他装備なので両立しない)。
-          if (gs.triggerWireAnchor(v.x, v.y)) {
-            // 打ち込み音SEは store の anchorPlantFxAt 経由(useGameLoop)で鳴る。
-          } else if (gs.triggerKatanaDash(v.x, v.y)) {
-            playSfx('katana-dash');
-          }
+          performFlickAction(v.x, v.y);
         }
         useGameStore.setState({ inputState });
         return;
@@ -135,25 +129,7 @@ export const useGameControls = () => {
         e.preventDefault();
         // First press only — auto-repeat shouldn't keep refiring the counter.
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
-        if (!e.repeat && !isGameTimeStopped()) {
-          // PHILL銃(研究所): 立ち止まってSpaceで狙い方向へ1発。移動キー保持中は
-          // store 側の isMoving ガードで発砲しない。撃てたら発砲SE。
-          const gs = useGameStore.getState();
-          const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
-          if (gun?.key === 'phill-revolver') {
-            const before = gun.magazine ?? 0;
-            gs.firePhillShot();
-            const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
-            if (after < before) playSfx('handgun-fire');
-          }
-          const counter = useGameStore.getState().triggerCounter();
-          // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
-          const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
-          if (counter.swung && !isWhip) playSfx('melee');
-          if (counter.finish) playSfx('melee-finish');
-          else if (counter.hit && !isWhip) playSfx('slash-damage');
-          if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
-        }
+        if (!e.repeat && !isGameTimeStopped()) performTapAction();
       }
 
       useGameStore.setState({ inputState });

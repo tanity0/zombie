@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.776 — PCはマウス操作(照準マウス連動・左=タップ/右=フリック)
+
+- **PCの右手をマウスに**(社長指示)。スマホ4操作に対応した最終スキーム:
+  - 移動: WASD / 矢印(キーボード・左手)
+  - 照準: **マウスカーソル**(PHILL銃のレティクルが連動)
+  - **左クリック = タップ/離す**(カウンター・近接・PHILL発砲)
+  - **右クリック = フリック**(一閃ダッシュ・ワイヤーアンカー。カーソル方向=360度へ発動)
+- 新コンポーネント `MouseControls.tsx`(非タッチ時のみ表示、HUDより手前=z低でボタンを邪魔しない)。
+  `onMouseMove`→`setMouseAim`(キャンバス左上基準のスクリーン座標)、左/右クリックで tap/flick、`contextmenu` 抑止。
+- store: `mouseAim`(スクリーン座標)+`setMouseAim`。`movePlayer` で `camera` を足してワールド化し、
+  **aim を「プレイヤー→カーソル」の即時方向(慣性なし・360度)** に、**PHILLレティクル基準をカーソル位置そのもの**に上書き。
+  タッチ/キーボード時(mouseAim=null)は従来挙動。スクリーン座標で保持するのでカメラ移動でズレない(方向はズーム非依存で厳密)。
+- 共通化: `utils/inputActions.ts`(`performTapAction`/`performFlickAction`)を新設し、キーボード(useGameControls)と
+  マウス(MouseControls)で共用。キーボードの K/Shift フリック・Space/J タップは予備操作として継続。
+- 負荷: 1/10(入力ハンドラ + movePlayer内の軽い分岐のみ。マウス移動で per-frame の React 再描画は発生しない=
+  mouseAim は購読者なしで getState 参照)。
+- 変更ファイル: `Game.tsx`, `MouseControls.tsx`(新), `utils/inputActions.ts`(新), `useGameControls.ts`,
+  `store/gameStore.ts`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+
 ## v0.25.775 — PCフリック操作の最適化 + レスキュー距離 500-1000
 
 - **PC操作をスマホ4操作(移動/タップ/離す/フリック)に対応した最適化スキームへ**(`useGameControls.ts`):

@@ -15,6 +15,7 @@ import EventQuestMenu from './EventQuestMenu';
 import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
+import MouseControls from './MouseControls';
 import FullscreenButton from './FullscreenButton';
 import BenchmarkOverlay, { type BenchmarkResult } from './BenchmarkOverlay';
 import { useGameLoop } from '../hooks/useGameLoop';
@@ -168,6 +169,8 @@ const Game: React.FC<GameProps> = ({
       {/* Joystick zone covers the whole screen for one-handed play; place
           it BEFORE the HUD/buttons so those render on top and stay tappable. */}
       {isTouch && <VirtualJoystick />}
+      {/* PC(非タッチ): マウス照準 + 左クリック=タップ / 右クリック=フリック。HUDより手前(z低)に置く。 */}
+      {!isTouch && <MouseControls />}
 
       <GameHUD />
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
