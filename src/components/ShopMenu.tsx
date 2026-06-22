@@ -2,6 +2,7 @@ import React from 'react';
 import { shallow } from 'zustand/shallow';
 import {
   SHOP_AMMO_COST,
+  AMMO_MAX,
   SHOP_CLASS_SKILL_COST,
   SHOP_DOG_COST,
   SHOP_KATANA_COST,
@@ -57,10 +58,18 @@ const ShopMenu: React.FC = () => {
       straps: state.player.straps,
       weapons: state.player.weapons,
       subWeapons: state.player.subWeapons,
-      subWeaponLevels: state.player.subWeaponLevels
+      subWeaponLevels: state.player.subWeaponLevels,
+      ammoHandgun: state.player.ammoHandgun,
+      ammoShotgun: state.player.ammoShotgun,
+      ammoRifle: state.player.ammoRifle,
+      ammoPhill: state.player.ammoPhill
     }),
     shallow
   );
+  // 弾がMAXのタイプは購入不可(disabled)。
+  const ammoNow: Record<AmmoType, number> = {
+    handgun: player.ammoHandgun, shotgun: player.ammoShotgun, rifle: player.ammoRifle, phill: player.ammoPhill
+  };
   const ammoPickupAmounts = useGameStore(state => state.ammoPickupAmounts);
   const unlockedShopSkillCards = useGameStore(state => state.unlockedShopSkillCards);
   const vaccinePurchased = useGameStore(state => state.vaccinePurchased);
@@ -78,13 +87,17 @@ const ShopMenu: React.FC = () => {
     : labTheme ? ['handgun', 'shotgun', 'rifle', 'phill'] : ['handgun', 'shotgun', 'rifle'];
   // lab テーマでは PHILL 銃を無料配布(未所持時のみ)。社長指示: 武器商人が無料で販売。
   const hasPhillGun = player.weapons.some(w => !w.isMelee && w.category === 'phill');
-  const ammoEntries = ammoTypes.map(type => ({
-    key: ammoShopKey[type],
-    name: ammoLabel[type],
-    description: `+${ammoPickupAmounts[type]}発`,
-    cost: SHOP_AMMO_COST,
-    ammoType: type
-  }));
+  const ammoEntries = ammoTypes.map(type => {
+    const maxed = ammoNow[type] >= AMMO_MAX[type];
+    return {
+      key: ammoShopKey[type],
+      name: ammoLabel[type],
+      description: maxed ? 'MAX' : `+${ammoPickupAmounts[type]}発`,
+      cost: SHOP_AMMO_COST,
+      ammoType: type,
+      disabled: maxed
+    };
+  });
   const skillEntries: SkillShopEntry[] = (Object.entries(unlockedShopSkillCards) as [SubWeaponKey, number][])
     // キャラ固有サブウェポン(職スキル枠)はショップで扱わない(キャラ固有スキル化)。
     .filter(([skillKey, unlockedLevel]) => unlockedLevel > 0 && !CHARACTER_SUBWEAPON_KEYS.includes(skillKey))

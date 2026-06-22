@@ -3770,21 +3770,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
 
       if (key === 'ammo-handgun' || ammoType === 'handgun') {
+        if (state.player.ammoHandgun >= AMMO_MAX.handgun) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
           ammoHandgun: Math.min(AMMO_MAX.handgun, state.player.ammoHandgun + state.ammoPickupAmounts.handgun)
         });
       }
       if (key === 'ammo-shotgun' || ammoType === 'shotgun') {
+        if (state.player.ammoShotgun >= AMMO_MAX.shotgun) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
           ammoShotgun: Math.min(AMMO_MAX.shotgun, state.player.ammoShotgun + state.ammoPickupAmounts.shotgun)
         });
       }
       if (key === 'ammo-rifle' || ammoType === 'rifle') {
+        if (state.player.ammoRifle >= AMMO_MAX.rifle) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
           ammoRifle: Math.min(AMMO_MAX.rifle, state.player.ammoRifle + state.ammoPickupAmounts.rifle)
         });
       }
       if (key === 'ammo-phill' || ammoType === 'phill') { // 研究所: 商人はPHILL弾のみ販売
+        if (state.player.ammoPhill >= AMMO_MAX.phill) return {}; // MAXなら購入不可
         return spend(SHOP_AMMO_COST, {
           ammoPhill: Math.min(AMMO_MAX.phill, state.player.ammoPhill + state.ammoPickupAmounts.phill)
         });

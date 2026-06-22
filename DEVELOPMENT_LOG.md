@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.841 — 店: 弾がMAXなら購入不可
+
+- 弾薬がMAXのとき店で買えないように。store `buyShopItem` で各弾(handgun/shotgun/rifle/phill)が `AMMO_MAX` 以上なら
+  購入を弾く(strapも消費しない)。UI `ShopMenu` は該当弾エントリを `disabled`＋表示を「MAX」に。
+- 変更: `store/gameStore.ts`, `components/ShopMenu.tsx`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.840 — リーパー(死神)HPを4000固定
 
 - リーパーの health を 99999 → 4000(ENEMY_STATS)。reaper は hpMult=1 固定なので実HP=4000(=撃破可能に)。
