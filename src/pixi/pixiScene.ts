@@ -103,7 +103,7 @@ const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景森2の高さ(screenH比)。?nh= で現地調整可(でか過ぎたので下げられるように)。tsNum はこの行より後に定義のため inline で読む。
 const NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
-  return Number.isFinite(v) && v > 0 ? v : 0.42;
+  return Number.isFinite(v) && v > 0 ? v : 0.2; // 既定0.2(社長指定。旧0.42は縦持ちで大き過ぎた)
 })();
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
@@ -162,6 +162,13 @@ const tsBool = (key: string, def: boolean): boolean => {
   const v = new URLSearchParams(window.location.search).get(key);
   return v == null ? def : (v === '1' || v === 'true');
 };
+// 遠景森2(ラボ)の明るさ。暗幕を地平下だけにした(載せ替え廃止)後、白tint(全明)だと元素材より眩し過ぎたので下げる。
+// グレー乗算tint。?nhbright=0..1 で現地調整(既定0.55)。
+const LAB_NEAR_HORIZON_TINT = (() => {
+  const b = Math.max(0, Math.min(1, tsNum('nhbright', 0.55)));
+  const g = Math.round(255 * b);
+  return (g << 16) | (g << 8) | g;
+})();
 // 研究所の擬似3D(斜め遠近)試作フラグ。?labpersp=1 で床だけ遠近(A1)。既定OFF=現状維持(回帰なし)。
 // 描画のみ。当たり判定/移動/aim は不変(store の値そのまま)。
 const LAB_PERSP = tsBool('labpersp', false);
@@ -1644,7 +1651,8 @@ export class PixiScene {
     this.L.nearHorizon.visible = true;
     // lab の機材帯は暗い素材なので、夜の暗化(ENV_TINT)に飲まれて見えなくなる。
     // ステージ2の前帯と同様に暗化から除外し、本来色(白tint)で出して視認性を確保する。
-    this.L.nearHorizon.tint = key === 'lab' ? 0xffffff : this.envTintNow(); // 昼=本来色 / 夜=ENV_TINT
+    // lab は暗幕(地平下)で暗くされないので、白tint(全明)だと眩し過ぎ→グレー乗算で元素材寄りに落とす(?nhbright)。
+    this.L.nearHorizon.tint = key === 'lab' ? LAB_NEAR_HORIZON_TINT : this.envTintNow();
   }
   // 遠景手前森(nearHorizon)の寸法/位置を現在のテクスチャと画面から再計算。底を地面シーム少し下に置く。
   private layoutNearHorizon() {

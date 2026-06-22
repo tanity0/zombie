@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.805 — 遠景森2: 高さ0.2を既定化＋ラボの眩しさを下げる
+
+- (1) `NEAR_HORIZON_HEIGHT_RATIO` の既定を **0.2**(社長指定)に(`?nh=` 上書きは継続)。
+- (2) ラボ遠景森2が元素材より眩しい問題: 暗幕を地平下だけにした後、白tint(全明)だと明る過ぎ。
+  グレー乗算tint **`LAB_NEAR_HORIZON_TINT`(既定 nhbright=0.55)** に変更。`?nhbright=0..1` で現地調整可。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 要実機: `?nhbright=` の良い値(元素材に近い明るさ)を確認 → 既定へ。
+
 ## v0.25.804 — ステージ2の表示崩れ調整(遠景森2が巨大/暗幕ズレ)
 
 - 社長報告: (1)遠景森2がやたら大きい (2)暗視(暗幕)がズレてる。
