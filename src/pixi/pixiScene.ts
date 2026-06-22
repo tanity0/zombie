@@ -31,7 +31,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
@@ -97,7 +97,8 @@ const HORIZON_FOREST_HEIGHT_RATIO = 0.22;
 const HORIZON_FOREST_MIN_HEIGHT = 120;
 const HORIZON_FOREST_MAX_HEIGHT = 185;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
-const HORIZON_FOREST_Y_OFFSET_PX = -90;
+const HORIZON_FOREST_Y_OFFSET_PX = -100;
+const LAB_HORIZON_FOREST_EXTRA_DOWN = 10; // ステージ2だけ遠景森1をさらに10px下げる(社長指示)。他ステージは0。
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
 // 遠景森2の高さ(screenH比)。?nh= で現地調整可(でか過ぎたので下げられるように)。tsNum はこの行より後に定義のため inline で読む。
@@ -117,7 +118,8 @@ const FRONT_FOREST_HEIGHT_RATIO = 0.5;
 const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_SNOW_Y_OFFSET = 100; // ステージ4の近景(氷壁)を下げる(社長指示で30→100)
-const FRONT_FOREST_ALPHA = 1.0;
+const FRONT_FOREST_ALPHA = 0.78;
+const LAB_FRONT_FOREST_ALPHA = 1.0; // ステージ2だけ近景森を不透明に(社長指示)。他ステージは半透明のまま。
 const FRONT_FOREST_BLUR = 2.2;
 const FRONT_FOREST_FADE_IN_RATIO = 0.52;
 const FRONT_FOREST_FADE_TOP_ALPHA = 0.58;
@@ -716,6 +718,7 @@ export class PixiScene {
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
+  private vignetteNarrow: boolean | null = null; // 現在のvignetteが狭い版(lab用)か。差分時だけテクスチャ差し替え。
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
   private horizonForestFadeMask = new Sprite(Texture.WHITE);
@@ -1164,7 +1167,7 @@ export class PixiScene {
     // 横伸び防止: frontForest と同じく y 基準の均一スケール(x も同値)。横は自然比率のままタイルで繰り返して幅を埋める
     // (parallax で横スクロールする=元々シームレスにタイルできる素材)。非均一(w/texW)だと横に引き伸ばされていた。
     this.L.horizonForest.tileScale.set(horizonH / this.L.horizonForest.texture.height);
-    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0));
     this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
@@ -1175,7 +1178,7 @@ export class PixiScene {
     this.L.frontForest.width = w;
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
-    this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
+    this.L.frontForest.alpha = this.isLabStage ? LAB_FRONT_FOREST_ALPHA : FRONT_FOREST_ALPHA;
     this.updateFrontForestFadeMask(w, frontH);
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
     // Full-screen atmosphere overlays.
@@ -1631,7 +1634,7 @@ export class PixiScene {
       this.L.frontForest.alpha = 1;
       this.L.frontForest.mask = null;
     } else {
-      this.L.frontForest.alpha = FRONT_FOREST_ALPHA;
+      this.L.frontForest.alpha = this.isLabStage ? LAB_FRONT_FOREST_ALPHA : FRONT_FOREST_ALPHA;
       this.L.frontForest.mask = this.frontForestFadeMask;
     }
     this.currentFrontKey = desired;
@@ -1852,6 +1855,11 @@ export class PixiScene {
     this.daylight = s.farBackdrop === 'city';
     this.snowStage = s.farBackdrop === 'snow';
     this.isLabStage = s.stageTheme === 'lab';
+    // vignetteの明るい部分を狭めるのはステージ2だけ(他ステージは既定0.55の通常版)。差分時のみ差し替え。
+    if (this.vignetteNarrow !== this.isLabStage) {
+      this.vignetteNarrow = this.isLabStage;
+      this.vignette.texture = this.isLabStage ? getVignetteTextureNarrow() : getVignetteTexture();
+    }
     this.applyNearHorizon(s.nearHorizon); // 遠景森2(ステージ別)
     this.applyDaylight(this.daylight);
     // ヒットストップ中はアニメ時計(now)も停止させる。これで Date.now 基準で動くもの
@@ -1990,7 +1998,7 @@ export class PixiScene {
       0
     );
     const horizonH = this.horizonForestHeight();
-    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX);
+    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0));
     this.L.horizonForest.tilePosition.set(
       -s.camera.x * HORIZON_FOREST_PARALLAX_X,
       0

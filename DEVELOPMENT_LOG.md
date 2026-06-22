@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.815 — v0.25.813 の3点をステージ2(lab)限定に変更(他ステージは元に戻す)
+
+- 社長指示「813の対応はステージ2だけ。あとは戻して」。813の3変更を全ステージ共通から lab 限定へ。
+  1. **遠景森1の10px下げ**: `HORIZON_FOREST_Y_OFFSET_PX` を元の -100 に戻し、lab のときだけ
+     `LAB_HORIZON_FOREST_EXTRA_DOWN=10` を加算(layoutHorizonForest の2箇所)。
+  2. **近景森の不透明化**: `FRONT_FOREST_ALPHA` を元の 0.78 に戻し、lab のときだけ
+     `LAB_FRONT_FOREST_ALPHA=1.0`(layout と front差し替えの forest 経路)。フェードマスクは813同様そのまま。
+  3. **vignetteの明るい部分を狭く**: 共通テクスチャを元の内半径 0.55 に戻し、lab だけ 0.35 の狭い版
+     (`getVignetteTextureNarrow`)へ毎フレーム差分swap。`lighting.ts` の vignette をinner半径でキャッシュ化。
+- 変更ファイル: `pixi/pixiScene.ts`, `pixi/lighting.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.814 — ステージ2敵絵を差し替え / ステージ1の遠景森2素材を差し替え
 
 - **ステージ2(lab)敵スプライト差し替え**: 支給シート(透過済み)から5体をクロップして上書き。

@@ -6,7 +6,7 @@
 import { Texture } from 'pixi.js';
 
 let glowTex: Texture | null = null;
-let vignetteTex: Texture | null = null;
+const vignetteTexByInner = new Map<number, Texture>();
 let softShadowTex: Texture | null = null;
 let fogTex: Texture | null = null;
 let fogBankTex: Texture | null = null;
@@ -60,24 +60,29 @@ export const getVisibilityLightTexture = (): Texture => {
 // Vignette: transparent through the centre, darkening to near-black at the
 // corners. Stretched to the screen (so it reads as an ellipse, which is the
 // usual cinematic vignette shape).
-export const getVignetteTexture = (): Texture => {
-  if (vignetteTex) return vignetteTex;
+// `inner` = 明るい(透明)中心の半径割合。小さいほど明るい部分が狭い(減光が中心寄りから始まる)。
+//   既定 0.55(全ステージ共通)/ ステージ2は 0.35 の狭い版を使う(社長指示)。
+export const getVignetteTexture = (inner = 0.55): Texture => {
+  const cached = vignetteTexByInner.get(inner);
+  if (cached) return cached;
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const r = size / 2;
-  // 明るい(透明)中心を狭める=減光を中心寄りから始める(内半径 0.55→0.35)。社長指示。
-  const g = ctx.createRadialGradient(r, r, r * 0.35, r, r, r * 1.0);
+  const g = ctx.createRadialGradient(r, r, r * inner, r, r, r * 1.0);
   g.addColorStop(0, 'rgba(0,0,0,0)');
   g.addColorStop(0.75, 'rgba(4,6,12,0.35)');
   g.addColorStop(1, 'rgba(2,3,8,0.92)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
-  vignetteTex = Texture.from(canvas);
-  return vignetteTex;
+  const tex = Texture.from(canvas);
+  vignetteTexByInner.set(inner, tex);
+  return tex;
 };
+// ステージ2(lab)用の「明るい部分が狭い」vignette。
+export const getVignetteTextureNarrow = (): Texture => getVignetteTexture(0.35);
 
 // Wide billowy fog STRIP, baked once. Many soft white blobs spread across the
 // full width and clustered toward the vertical centre, tapering to transparent at
