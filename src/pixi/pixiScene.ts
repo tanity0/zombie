@@ -457,9 +457,12 @@ const NEAR_GROUND_BLUR_STRENGTHS = [0.8, 1.45, 2.05];
 // 遠景(奥)側の地面も被写界深度で少しぼかす。最上(最遠)ほど強く。中央は合焦=鮮明のまま。
 const FAR_GROUND_BLUR_STRIP_RATIO = 0.28;
 const FAR_GROUND_BLUR_STRENGTHS = [0.65, 0.35]; // [最遠, やや遠]。ピークを遠景森(0.65)と同程度に
-const OBJECT_GROUND_RELATIVE_WEIGHT = 0.42;
-const OBJECT_GROUND_RELATIVE_MIN = 0.68;
-const OBJECT_GROUND_RELATIVE_MAX = 1.45;
+// 物/敵の擬似遠近は「地面の相対遠近(groundBlend)」が支配的。これらが拡縮の“効く範囲”と飽和位置を決める
+// (DEPTH_MIN/MAX を変えても位置が動かないのはこのため)。WEIGHT=地面遠近への追従度、MIN/MAX=相対比のクランプ。
+// 範囲を広げたい場合: ogmin↓ / ogmax↑(飽和を遅らせる)、gcurve↓(手前まで均等に効く)、ogw↑(地面に強く追従)。
+const OBJECT_GROUND_RELATIVE_WEIGHT = tsNum('ogw', 0.42);
+const OBJECT_GROUND_RELATIVE_MIN = tsNum('ogmin', 0.68);
+const OBJECT_GROUND_RELATIVE_MAX = tsNum('ogmax', 1.45);
 const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;

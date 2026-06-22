@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.791 — 擬似遠近の“効く範囲”を決める地面遠近パラメータもURL化
+
+- 社長指摘: 「min/max に到達する範囲が狭い／min/max をいくら変えても到達位置が動かない」。
+  原因は物/敵のスケールが**地面の相対遠近 `groundBlend`(支配項)**で決まり、その飽和位置が
+  `OBJECT_GROUND_RELATIVE_MIN/MAX` と床カーブ(`gcurve`/`gfar`)で固定されるため。`DEPTH_MIN/MAX`(最終クランプ)を
+  変えても位置は動かない。
+- そこで**真のレバー**をURL上書き可能に(既定不変・描画のみ): `?ogw=`(地面遠近への追従度=WEIGHT)、
+  `?ogmin=` / `?ogmax=`(相対比クランプ)。床カーブ `?gcurve=` / `?gfar=` は既存。
+  範囲を広げる指針: **ogmin↓ / ogmax↑**(飽和を遅らせる)、**gcurve↓**(手前まで均等に効く)、**ogw↑**(地面に強く追従)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。次の引き継ぎ: 実機で確定値を既定へ焼き込み。
+
 ## v0.25.790 — 擬似遠近スケールをURLチューニング可能に(クランプ平坦帯の調整用)
 
 - 社長報告: 手前のドラム缶が一定範囲で同じ大きさのまま→プレイヤー近くで「やっと縮小開始」。原因は
