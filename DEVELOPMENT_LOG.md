@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.782 — 商人にサブウェポン換金を追加(1個=100s)
+
+- 商人メニューに**サブウェポン換金**セクションを追加(社長指示)。所持中のサブを 1個 **100s** で売却。
+- store: `sellSubWeapon(key)` + `SHOP_SUBWEAPON_SELL_VALUE=100`。所持時のみ subWeapons から外して
+  `subWeaponLevels[key]` を削除、`straps += 100`。売却時に `+100s` のコールアウト表示。
+- ShopMenu: `subWeapons` を購読し、**職固有スキル(CHARACTER_SUBWEAPON_KEYS)以外**の所持サブを換金ボタンで列挙
+  (緑文字 `+100s`、Lv表示付き)。所持サブが無ければセクション非表示。
+- 負荷: 0/10(メニュー内の操作のみ)。
+- 変更ファイル: `store/gameStore.ts`, `components/ShopMenu.tsx`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+
+## v0.25.781 — 死神(距離リスク)しきい値を8600開始へ(+5000シフト、刻み維持)
+
+## v0.25.780 — エリア区域の距離帯変更(軍備0-1500/研究-3000/デンジャー-5000/汚染-7500/深層7500-)
+
 ## v0.25.779 — エリア(区域)遷移バナー
 
 - 距離帯を跨いで新しい区域に入った時、**イベント発生と同じバナーUI**で区域名を表示(社長指示)。

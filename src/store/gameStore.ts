@@ -89,6 +89,7 @@ export const SHOP_DOG_COST = 100;
 export const SHOP_CLASS_SKILL_COST = 100;
 export const SHOP_MEDKIT_COST = 50;
 export const SHOP_VACCINE_COST = 500;
+export const SHOP_SUBWEAPON_SELL_VALUE = 100; // 商人: サブウェポン換金額(1個=100s)
 const HEAL_FRACTION = 0.3; // 救急セット: 最大HPの30%回復(社長指示・固定20から変更)
 const SHOP_INTERACT_RING_MS = 360;
 const STRONG_GLOW_RADIUS = 44;
@@ -1276,6 +1277,7 @@ interface GameState {
   updateHuntingCharge: (startedAt: number, charged: boolean) => void;
   buyShopItem: (key: ShopItemKey, ammoType?: AmmoType) => boolean;
   buySkillCardFromShop: (key: SubWeaponKey) => boolean;
+  sellSubWeapon: (key: SubWeaponKey) => boolean;
   openShop: () => void;
   closeShop: () => void;
   returnToBase: () => void;                              // 商人「帰還」=任意撤収(スコア計上・進行なし・装備持ち帰り)
@@ -3801,6 +3803,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnCallout(p.x + p.width / 2, p.y - 12, 'SKILL', '#bfdbfe');
     }
     return purchased;
+  },
+
+  // 商人: サブウェポンを換金(1個=SHOP_SUBWEAPON_SELL_VALUE)。所持していれば外して straps を加算。
+  // 職固有スキル(CHARACTER_SUBWEAPON_KEYS)は UI 側で換金対象外にしているのでここは渡された key を素直に売る。
+  sellSubWeapon: (key) => {
+    let sold = false;
+    set(state => {
+      if (!state.player.subWeapons.includes(key)) return {};
+      sold = true;
+      const subWeaponLevels = { ...state.player.subWeaponLevels };
+      delete subWeaponLevels[key];
+      return {
+        player: {
+          ...state.player,
+          subWeapons: state.player.subWeapons.filter(k => k !== key),
+          subWeaponLevels,
+          straps: state.player.straps + SHOP_SUBWEAPON_SELL_VALUE
+        }
+      };
+    });
+    if (sold) {
+      const p = get().player;
+      get().spawnCallout(p.x + p.width / 2, p.y - 12, `+${SHOP_SUBWEAPON_SELL_VALUE}s`, '#fde68a');
+    }
+    return sold;
   },
 
   openShop: () => {
