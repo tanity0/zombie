@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.783 — サブウェポン換金を単一ボタン化(装備中の選択サブを自動売却)
+
+- 換金を**列挙グリッド → 単一ボタン**に。装備中(選択した=ロードアウト)の非キャラ固有サブを自動で売却。
+  ロードアウトはサブ1枠なので通常1個。複数所持時は先頭から。キャラ固有は対象外(従来どおり)。
+- `ShopMenu`: `sellableSubs` 列挙をやめ `sellTarget = subWeapons.find(非キャラ固有)` の単一ボタンに。
+- store の `sellSubWeapon` は据え置き。
+- 変更ファイル: `components/ShopMenu.tsx`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.782 — 商人にサブウェポン換金を追加(1個=100s)
 
 - 商人メニューに**サブウェポン換金**セクションを追加(社長指示)。所持中のサブを 1個 **100s** で売却。

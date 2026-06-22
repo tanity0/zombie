@@ -127,8 +127,10 @@ const ShopMenu: React.FC = () => {
     }
   ];
 
-  // サブウェポン換金: 所持中のサブのうち職固有スキル以外を 1個=SHOP_SUBWEAPON_SELL_VALUE で売れる。
-  const sellableSubs = player.subWeapons.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k));
+  // サブウェポン換金: 装備中(選択した)サブを自動で売却。ロードアウトはサブ1枠なので通常は1個。
+  // 職固有スキル(CHARACTER_SUBWEAPON_KEYS)は売れない。複数所持時は先頭(=選択したロードアウト)から。
+  const sellTarget: SubWeaponKey | undefined =
+    player.subWeapons.find(k => !CHARACTER_SUBWEAPON_KEYS.includes(k));
 
   const handleSell = (key: SubWeaponKey) => {
     playSfx('ui-select');
@@ -190,26 +192,21 @@ const ShopMenu: React.FC = () => {
           })}
         </div>
 
-        {sellableSubs.length > 0 && (
+        {sellTarget && (
           <div className="px-4 pb-3">
             <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">サブウェポン換金</div>
-            <div className="grid grid-cols-2 gap-2">
-              {sellableSubs.map(key => (
-                <button
-                  key={`sell-${key}`}
-                  onClick={() => handleSell(key)}
-                  className="rounded-2xl border px-3 py-2 text-left transition bg-white/8 border-white/15 active:scale-[0.98]"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-bold text-white truncate">{subWeaponDisplayName(key)}</div>
-                      <div className="text-[10px] leading-tight text-white/50">Lv{player.subWeaponLevels[key] ?? 1} を手放す</div>
-                    </div>
-                    <div className="text-[12px] font-black text-emerald-300 tabular-nums whitespace-nowrap">+{SHOP_SUBWEAPON_SELL_VALUE}s</div>
-                  </div>
-                </button>
-              ))}
-            </div>
+            <button
+              onClick={() => handleSell(sellTarget)}
+              className="w-full rounded-2xl border px-3 py-2 text-left transition bg-white/8 border-white/15 active:scale-[0.98]"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold text-white truncate">{subWeaponDisplayName(sellTarget)} を換金</div>
+                  <div className="text-[10px] leading-tight text-white/50">装備中のサブウェポン（Lv{player.subWeaponLevels[sellTarget] ?? 1}）を手放す</div>
+                </div>
+                <div className="text-[12px] font-black text-emerald-300 tabular-nums whitespace-nowrap">+{SHOP_SUBWEAPON_SELL_VALUE}s</div>
+              </div>
+            </button>
           </div>
         )}
 
