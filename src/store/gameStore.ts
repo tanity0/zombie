@@ -631,7 +631,7 @@ export const CAMERA_LOOKAHEAD_MAX = camNum('camlook', 40);        // 進行方�
 export const CAMERA_CENTER_CLAMP_FRAC = camNum('camclamp', 0.07); // 強制中心復帰距離(画面幅比)。見失い防止。範囲0.05〜0.07
 // プレイヤーを画面中央より下へずらす量(画面高比)。上方向(進行先)の視界を広げる(社長要望: 上の敵が見えない対策)。
 // 屋内/ラボは0(中央維持)。スポーン側も同じ量だけ縦バンドを上へずらす(上端で湧きが画面内に出ないように)。
-export const CAMERA_DOWN_OFFSET_FRAC = Math.max(0, Math.min(0.32, camNum('camdown', 0.12)));
+export const CAMERA_DOWN_OFFSET_FRAC = Math.max(0, Math.min(0.32, camNum('camdown', 0.08)));
 export const CAMERA_DANGER_RADIUS = 150;                          // この距離内に敵が居たら「危険時」とみなす(px)
 export const CAMERA_SNAP_DIST = 600;                             // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
 // 手を離して待機している間だけ少しズーム(描画のみ)。正=寄る / 負=引く。操作再開で1.0へ戻る。

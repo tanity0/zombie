@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.833 — camdown 既定を 0.08 に確定
+
+- 社長確定: プレイヤー下げ量 `CAMERA_DOWN_OFFSET_FRAC` の既定を 0.12 → 0.08。
+- カメラ下げの影響リサーチ結果(下記)も記録。実害候補は tilt-shift のシャープ帯(0.46)に対しプレイヤーが0.58へ=やや甘く写る点のみ。
+- 変更: `store/gameStore.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.832 — プレイヤーを中央より下へ(上の視界を拡大)＋スポーン縦補正
 
 - 社長要望「上の方の敵が見えない」。屋外でプレイヤーを画面中央より下にずらし、上(進行先)の視界を広げる。
