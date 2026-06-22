@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.832 — プレイヤーを中央より下へ(上の視界を拡大)＋スポーン縦補正
+
+- 社長要望「上の方の敵が見えない」。屋外でプレイヤーを画面中央より下にずらし、上(進行先)の視界を広げる。
+- カメラ: `CAMERA_DOWN_OFFSET_FRAC`(?camdown= 既定0.12=画面高12%)を `baseCamY` に反映。中心復帰クランプも下げ量基準に補正。
+  屋内/ラボは0(中央維持)。
+- スポーン補正: `generateEnemy` に `viewOffsetY` を追加。縦バンドの中心を可視中心(player.y − 下げ量)に合わせ、
+  上端の外へ湧かせる(下げても上端スポーンが画面内に出ない)。屋外通常湧きで `gameBounds.height × CAMERA_DOWN_OFFSET_FRAC` を渡す。
+- 判定/プロップ生成は実プレイヤー基準のまま(描画/可視のみの変更)。`?camdown=0` で従来の中央配置。
+- 変更: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `utils/enemyUtils.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.831 — ステージ2(ラボ)は固定難易度に(エリア大改修の影響を遮断)
 
 - 社長判断「ステージ2は固定難易度」。大改修(エリア×色・時間スケール廃止)がラボにも波及していた件を遮断。

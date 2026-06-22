@@ -248,17 +248,19 @@ export const generateEnemy = (
   player: Player,
   gameBounds: GameBounds,
   forcedType?: EnemyType,
-  pressureDirection?: { x: number; y: number } | null
+  pressureDirection?: { x: number; y: number } | null,
+  viewOffsetY = 0 // カメラ下げ量(px)。可視範囲はプレイヤーより上に viewOffsetY ぶん広いので、縦バンドを上へずらす。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
   const type = forcedType ?? selectEnemyType(gameTime, playerArea);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
-  // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーはほぼ中央なので可視半幅=W/2・半高=H/2。
-  // 画面端の「外側」へ出すマージンは画面サイズに比例(カメラ先行 CAMERA_CENTER_CLAMP_FRAC=0.07 を吸収する余裕)。
+  // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、
+  // 可視縦バンドの中心は player.y より viewOffsetY 上(=vy0)。そこを基準に上下端の外へ湧かせる。
   const halfW = viewportWidth / 2;
   const halfH = viewportHeight / 2;
+  const vy0 = player.y - viewOffsetY; // 可視縦バンドの中心(world Y 近似)
   const margin = Math.max(viewportWidth, viewportHeight) * SPAWN_OFFSCREEN_MARGIN_FRAC;
 
   const dirMag = pressureDirection
@@ -278,19 +280,19 @@ export const generateEnemy = (
   switch (spawnSide) {
     case 0: // 上辺の外
       x = player.x - halfW + Math.random() * viewportWidth;
-      y = player.y - halfH - margin;
+      y = vy0 - halfH - margin;
       break;
     case 1: // 右辺の外
       x = player.x + halfW + margin;
-      y = player.y - halfH + Math.random() * viewportHeight;
+      y = vy0 - halfH + Math.random() * viewportHeight;
       break;
     case 2: // 下辺の外
       x = player.x - halfW + Math.random() * viewportWidth;
-      y = player.y + halfH + margin;
+      y = vy0 + halfH + margin;
       break;
     case 3: // 左辺の外
       x = player.x - halfW - margin;
-      y = player.y - halfH + Math.random() * viewportHeight;
+      y = vy0 - halfH + Math.random() * viewportHeight;
       break;
   }
   return buildEnemy(type, x, y, gameTime, false);

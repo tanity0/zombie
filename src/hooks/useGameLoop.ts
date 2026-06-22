@@ -23,7 +23,7 @@ import {
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
-  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST,
+  CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC,
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
@@ -1280,7 +1280,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const pcCamX = player.x + player.width / 2;
         const pcCamY = player.y + player.height / 2;
         const baseCamX = pcCamX - gameBounds.width / 2;  // プレイヤーをちょうど中央に置くカメラ(先読み無し)
-        const baseCamY = pcCamY - gameBounds.height / 2;
+        // プレイヤーを中央より下へ(屋内/ラボは中央維持=スポーン補正と一致)。上(進行先)の視界を広げる。
+        const camDownOff = (indoor || labTheme) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
+        const baseCamY = pcCamY - gameBounds.height / 2 - camDownOff;
         // 危険時(敵が近い): 追従をタイトにし先読みを切ってプレイヤーを中心寄りに(接近戦で安定)。
         const dangerR2 = CAMERA_DANGER_RADIUS * CAMERA_DANGER_RADIUS;
         const danger = enemies.some(e => {
@@ -1310,7 +1312,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 強制中心復帰: プレイヤーが画面中心から離れすぎたらクランプ(見失い防止)。
         const maxLag = gameBounds.width * CAMERA_CENTER_CLAMP_FRAC;
         const offX = (pcCamX - camX) - gameBounds.width / 2;
-        const offY = (pcCamY - camY) - gameBounds.height / 2;
+        const offY = (pcCamY - camY) - gameBounds.height / 2 - camDownOff; // 下げ量を基準に(=ずらした構図からのラグを測る)
         const offD = Math.hypot(offX, offY);
         if (offD > maxLag && maxLag > 0) { const s2 = 1 - maxLag / offD; camX += offX * s2; camY += offY * s2; }
         // 開始/復帰などで大きく離れていたら即スナップ。
@@ -3663,6 +3665,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // エリアごとの敵最大数(社長指定: 5/7/10/10/10)。屋外(非ラボ)の通常湧きに適用。ラボは従来の上限。
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
         const normalSpawnCap = labTheme ? MAX_ENEMIES : AREA_MAX_ENEMIES[playerAreaIdx];
+        // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
+        const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         if (
           !danceTest &&
           !indoor &&
@@ -3714,18 +3718,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               addEnemy(labEnemy);
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection);
+            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection);
+                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY);
                 tries++;
               }
               if (enemy.type === 'plant') {
-                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton', player.lastDirection);
+                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton', player.lastDirection, spawnViewOffsetY);
               }
             }
             if (enemy.type === 'plant') plantCount += 1;
