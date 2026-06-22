@@ -443,15 +443,19 @@ const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number 
 const DEPTH_SCALE_ENABLED = true;
 // 擬似遠近のスケール係数。すべて描画のみ(当たり判定/射程/速度/スコアには不干渉)。実機チューニング用に
 // URLで上書き可: ?depthk= / ?depthmin= / ?depthmax=(木・物・拾い物) / ?edepthk= / ?edepthmin= / ?edepthmax=(敵)。
-// MAX/MIN は「クランプ(頭打ち)」。MAX を上げる or K を下げると、手前で max に張り付く“平坦帯”が縮み、
-// 物が早くから連続的に拡縮する(社長報告: ドラム缶が手前でしばらく同じ大きさ→近くでやっと縮む、への対処)。
+// MIN/MAX は「安全用の絶対上下限」(暴走防止)であって、画面内での頭打ちには使わない(下記 depthScaleWith 参照)。
+// 画面内での頭打ちは「画面端の外側 DEPTH_EDGE_MARGIN で評価した値」を上下限にする=可視範囲では飽和(ズーム停止)しない。
 const DEPTH_K = tsNum('depthk', 0.0009);   // scale change per world-Y px from the player plane
-const DEPTH_MIN = tsNum('depthmin', 0.68);
-const DEPTH_MAX = tsNum('depthmax', 1.45);
+const DEPTH_MIN = tsNum('depthmin', 0.25); // 安全下限(画面外の暴走防止のみ)
+const DEPTH_MAX = tsNum('depthmax', 4.0);  // 安全上限(画面外の暴走防止のみ)
 // Enemies get a deliberately more extreme depth falloff than the rest.
 const ENEMY_DEPTH_K = tsNum('edepthk', 0.00145);
-const ENEMY_DEPTH_MIN = tsNum('edepthmin', 0.55);
-const ENEMY_DEPTH_MAX = tsNum('edepthmax', 1.85);
+const ENEMY_DEPTH_MIN = tsNum('edepthmin', 0.22);
+const ENEMY_DEPTH_MAX = tsNum('edepthmax', 4.5);
+// 「画面に映っているのに拡縮が止まる」対処: クランプ(頭打ち)を画面端ピッタリではなく、
+// 端から DEPTH_EDGE_MARGIN px 外側で評価する。背の高い木/大きいアイテムは足元が画面下に消えても
+// 頭がまだ見えるので、その分(高さ相当)だけ外側まで拡縮を続けさせる。?depthedge= で調整。
+const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 420));
 // 研究所の立体壁を擬似遠近(高さ方向のみ)に参加させる強さ。?labdepth= で調整(既定0.6=床オブジェクトより緩め)。
 // 既存 DEPTH_K に対する倍率。clamp はゆるめ(下記)。width は絶対にスケールしない(床/隣接/判定とズレるため)。
 const LAB_WALL_DEPTH_STRENGTH = Math.max(0, tsNum('labdepth', 0.6));
@@ -1419,14 +1423,27 @@ export class PixiScene {
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
-  private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
-    if (!DEPTH_SCALE_ENABLED) return 1;
+  // クランプ前の生の遠近スケール(footWorldY に対して単調増加)。
+  private depthRaw(footWorldY: number, k: number): number {
     const relative = 1 + (footWorldY - this.depthRefY) * k;
     // 物/敵専用の遠近カーブで地面相対比を取る(床の gcurve/gfar とは独立=地面の見た目は不変)。
     const groundRatio = this.groundRelativeScale(footWorldY, OBJECT_PERSP_FAR, GROUND_TILE_SCALE_Y_NEAR, OBJECT_PERSP_CURVE);
     const groundBlend = Math.exp(Math.log(groundRatio) * OBJECT_GROUND_RELATIVE_WEIGHT);
-    const f = relative * groundBlend;
-    return f < min ? min : f > max ? max : f;
+    return relative * groundBlend;
+  }
+
+  private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
+    if (!DEPTH_SCALE_ENABLED) return 1;
+    const f = this.depthRaw(footWorldY, k);
+    // 頭打ちは「画面端の外側 DEPTH_EDGE_MARGIN」で評価した値=可視範囲内の足元は必ずこの範囲の内側に入り、
+    // 飽和(ズーム停止)しない。足元が画面外でも頭が見える背の高い物は、マージン分だけ拡縮を続ける。
+    // min/max は暴走防止の絶対上下限としてのみ作用(通常はこの端値が内側に来るので効かない)。
+    const M = DEPTH_EDGE_MARGIN;
+    const edgeA = this.depthRaw(this.cameraY - M, k);                 // 画面上端の外(最遠/最小)
+    const edgeB = this.depthRaw(this.cameraY + this.screenH + M, k);  // 画面下端の外(最近/最大)
+    const lo = Math.max(min, Math.min(edgeA, edgeB));
+    const hi = Math.min(max, Math.max(edgeA, edgeB));
+    return f < lo ? lo : f > hi ? hi : f;
   }
 
   private groundScaleAt(

@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.819 — 遠近: 画面に映っているのに拡縮が止まる問題を修正(クランプを画面端基準に)
+
+- 社長報告「位置(足元)は画面外でも、背の高い木/大きいアイテムの頭がまだ見えてるのに拡縮処理が止まって見える」。
+- 原因: 深度スケールは足元worldYで決まり、MIN/MAXが**固定値**。足元が画面下に消えた時点で固定クランプに張り付き、
+  頭がまだ見えていても拡縮が飽和(停止)。MIN/MAXを変えても“張り付く足元位置”は動かない(値が変わるだけ)。
+- 修正: クランプを固定値ではなく**画面端の外側 `DEPTH_EDGE_MARGIN`(既定420px)で評価した値**にする
+  (`depthRaw` を分離し、上端外/下端外の生スケールを上下限に)。可視範囲の足元は必ずその範囲の内側=飽和しない。
+  足元が画面外でも、マージン(=背の高い物の高さ相当)分だけ拡縮を継続。`?depthedge=` で調整可。
+- `DEPTH_MIN/MAX`・`ENEMY_DEPTH_MIN/MAX` は「暴走防止の絶対上下限」に役割変更(広め: 0.25/4.0・0.22/4.5)。
+- ラボ立体壁は従来どおり意図的に緩いクランプ(0.8/1.35)を維持(対象外)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。要実機で `?depthedge=` 微調整。
+
 ## v0.25.818 — ステージ2の追加調整(遠景森1さらに下げ / 四隅暗がり拡大)
 
 - いずれもステージ2(lab)限定:
