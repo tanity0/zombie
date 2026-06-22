@@ -24,6 +24,7 @@
 import { Container, TilingSprite, Texture } from 'pixi.js';
 
 export interface SceneLayers {
+  stage: Container;        // ルート(全画面グレーディング等のフィルタ適用先)
   farBackdrop: TilingSprite;
   horizonForest: TilingSprite;
   nearHorizon: TilingSprite;
@@ -105,6 +106,7 @@ export const buildLayers = (
   stage.addChild(farBackdrop, worldGroup, frontForest, uiLayer);
 
   return {
+    stage,
     farBackdrop,
     horizonForest,
     nearHorizon,

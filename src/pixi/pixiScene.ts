@@ -13,7 +13,8 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
-import { BlurFilter, Container, Graphics, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
+import { BlurFilter, ColorMatrixFilter, Container, Graphics, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, TilingSprite, RenderTexture } from 'pixi.js';
+import type { ColorMatrix } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
@@ -44,6 +45,32 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
+
+// --- 深層域グレーディング(退色した暖色セピア) -----------------------------
+// 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
+// stage ルートに ColorMatrixFilter 1枚。enter/exit を約1秒でフェード(filter.alpha 補間)。HUDはDOMなので非対象。
+const DZ_PARAMS = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+const DEEP_ZONE_GRADE_ENABLED = DZ_PARAMS?.get('deepzonegrade') !== '0'; // ?deepzonegrade=0 で無効化
+const DEEP_ZONE_GRADE_SAT = (() => {
+  const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
+  return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.4;  // 目安 0.35〜0.45(色は分かるが褪せてる)
+})();
+const DEEP_ZONE_GRADE_D = 7500;       // 深層域境界(逆再生BGMの DEEP_BGM_D と一致)。原点からの距離。
+const DEEP_ZONE_GRADE_FADE_S = 1.0;   // enter/exit のフェード秒数
+// 退色(彩度ダウン)＋暖色セピア寄せの 5x4 カラーマトリクス。sat=退色後の彩度。
+const buildDeepGradeMatrix = (sat: number): ColorMatrix => {
+  const lr = 0.2126, lg = 0.7152, lb = 0.0722; // 輝度係数
+  const s = sat, is = 1 - sat;
+  const sr = is * lr, sg = is * lg, sb = is * lb;
+  const wR = 1.12, wG = 1.02, wB = 0.80;       // 暖色寄せ(R↑ B↓)
+  const oR = 0.05, oG = 0.02, oB = 0.0;        // ごく薄い暖色オフセット
+  return [
+    (sr + s) * wR, sg * wR, sb * wR, 0, oR,
+    sr * wG, (sg + s) * wG, sb * wG, 0, oG,
+    sr * wB, sg * wB, (sb + s) * wB, 0, oB,
+    0, 0, 0, 1, 0,
+  ];
+};
 
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
@@ -666,6 +693,11 @@ export class PixiScene {
   private frontForestFadeMask = new Sprite(Texture.WHITE);
   private frontForestFadeMaskTexture: Texture | null = null;
   private nearGroundBlurLayers: Container[] = [];
+  // 深層域グレーディング(退色セピア・描画のみ)。stageルートに ColorMatrixFilter を1枚、alpha でフェード。
+  private deepGradeFilter: ColorMatrixFilter | null = null;
+  private deepGradeAmount = 0;   // 0..1 現在のかかり具合(1秒フェード)
+  private deepGradeOn = false;   // ヒステリシス: 深層域内か(enter=D / exit=D-200)
+  private lastGradeNow = 0;      // フェード用 dt 計測
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
@@ -1972,6 +2004,12 @@ export class PixiScene {
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
+    // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
+    this.syncDeepZoneGrade(
+      !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
+      Math.hypot(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2),
+      now,
+    );
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
@@ -4235,6 +4273,40 @@ export class PixiScene {
         .arc(rc.x, rc.y, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
+  }
+
+  // 深層域グレーディング: 深層域(eligible かつ原点距離>=D)の間だけ stage ルートへ退色セピアの
+  // ColorMatrixFilter を掛け、enter/exit を約1秒でフェード(filter.alpha 補間)。描画のみ=store非干渉。
+  // amount≈0 のときはフィルタを外して全画面パスを発生させない(非深層域での追加コスト無し)。
+  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number) {
+    if (!DEEP_ZONE_GRADE_ENABLED) return;
+    const dt = this.lastGradeNow ? Math.min(0.1, (now - this.lastGradeNow) / 1000) : 0;
+    this.lastGradeNow = now;
+    // ヒステリシス(行ったり来たりでポップしない): enter=D / exit=D-200。
+    if (eligible) {
+      if (this.deepGradeOn) { if (originDist < DEEP_ZONE_GRADE_D - 200) this.deepGradeOn = false; }
+      else if (originDist >= DEEP_ZONE_GRADE_D) this.deepGradeOn = true;
+    } else {
+      this.deepGradeOn = false;
+    }
+    const target = this.deepGradeOn ? 1 : 0;
+    if (this.deepGradeAmount !== target) {
+      const step = dt / DEEP_ZONE_GRADE_FADE_S;
+      this.deepGradeAmount = target > this.deepGradeAmount
+        ? Math.min(target, this.deepGradeAmount + step)
+        : Math.max(target, this.deepGradeAmount - step);
+    }
+    if (this.deepGradeAmount <= 0.001) {
+      if (this.L.stage.filters && (this.L.stage.filters as Filter[]).length) this.L.stage.filters = [];
+      return;
+    }
+    if (!this.deepGradeFilter) {
+      this.deepGradeFilter = new ColorMatrixFilter();
+      this.deepGradeFilter.matrix = buildDeepGradeMatrix(DEEP_ZONE_GRADE_SAT);
+    }
+    const cur = this.L.stage.filters as Filter[] | null;
+    if (!cur || !cur.includes(this.deepGradeFilter)) this.L.stage.filters = [this.deepGradeFilter];
+    this.deepGradeFilter.alpha = this.deepGradeAmount; // 単位行列↔セピア行列の線形補間(描画のみ)
   }
 
   // 救助NPC(survivor)の描画。本体は受領素材スプライト(2コマ歩き・足元アンカーで y-sort)、

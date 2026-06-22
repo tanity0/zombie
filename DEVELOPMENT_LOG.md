@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.789 — 深層域グレーディング(退色した暖色セピア・描画のみ)
+
+- 深層域に入っている間だけ**ゲーム画面全体を退色した暖色セピア**に(異界感)。**描画のみ=当たり判定/速度/射程/スコア等に不干渉**。
+- 実装: PixiJS の **stage ルートに `ColorMatrixFilter` 1枚**。HUDはDOMなので非対象、React再レンダーにも無関係。
+  退色(彩度ダウン sat≈0.4)＋暖色寄せの行列。enter/exit を**約1秒で `filter.alpha` 線形補間**(行ったり来たりでポップしない)。
+- トリガ: 逆再生BGMと**同じ深層域境界**(`DEEP_ZONE_GRADE_D=7500`、原点距離、屋外非ラボ・非ダンス)。ヒステリシス enter=D / exit=D-200。
+  判定は描画tick内の hypot 1回(store非書込)。`amount≈0` ではフィルタを外し全画面パスを発生させない。
+- URL調整: `?dzsat=`(退色後の彩度・既定0.4)、`?deepzonegrade=0`(無効化)。
+- 負荷: 2/10(全画面 ColorMatrix 1パス・カーネル無し。フェード中も行列固定で alpha 補間のみ=追加コスト無し。非深層域は0)。
+- 変更ファイル: `pixi/pixiScene.ts`, `pixi/layers.ts`(SceneLayers に stage 追加), `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.788 — 深層域BGMが鳴らない対策(堅牢play＋iOS解錠)
 
 - 深層inで逆再生版が**鳴らない**不具合対策(社長報告)。原因候補=深層inの瞬間にデコード未完で
