@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.817 — 遠景森2の高さ(サイズ)をステージ2限定に戻す
+
+- 社長指示「ラボ調整中に全ステージへ波及した遠景森2サイズはステージ2だけにして、他は戻して(描画まわりだけ)」。
+- `NEAR_HORIZON_HEIGHT_RATIO` を原典の **0.42**(全ステージ既定)に戻し、ステージ2(lab)だけ
+  `LAB_NEAR_HORIZON_HEIGHT_RATIO`(?nh= 既定0.17)を使うよう layoutNearHorizon で分岐。
+- 据え置き(=stage2作業の波及ではない/別目的): 底位置 `NEAR_HORIZON_BOTTOM_RATIO`(parallax調整前から)・
+  パララックス `NEAR_HORIZON_PARALLAX_X=0.5`(一般調整 f77e60d)・横伸び防止の均一tileScale(伸び対策の修正 f33ff1e)。
+  ※もしパララックスや均一スケールもステージ2限定に戻したい場合は指示ください。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.816 — 敵スポーンを画面外に統一(画面サイズ比例)
 
 - 社長報告「画面内にいきなり敵が沸く時がある」。原因=スポーン位置が可視範囲の内側。

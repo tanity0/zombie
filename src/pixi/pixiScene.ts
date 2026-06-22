@@ -101,10 +101,13 @@ const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 10; // ステージ2だけ遠景森1をさらに10px下げる(社長指示)。他ステージは0。
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
-// 遠景森2の高さ(screenH比)。?nh= で現地調整可(でか過ぎたので下げられるように)。tsNum はこの行より後に定義のため inline で読む。
-const NEAR_HORIZON_HEIGHT_RATIO = (() => {
+// 遠景森2の高さ(screenH比)。全ステージ共通の既定=0.42(原典)。
+const NEAR_HORIZON_HEIGHT_RATIO = 0.42;
+// ステージ2(lab)だけ低め。?nh= で現地調整可(でか過ぎたので下げられるように。社長が0.17確定)。
+// tsNum はこの行より後に定義のため inline で読む。
+const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
-  return Number.isFinite(v) && v > 0 ? v : 0.17; // 既定0.17(社長指定)
+  return Number.isFinite(v) && v > 0 ? v : 0.17; // ステージ2既定0.17(社長指定)
 })();
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
@@ -1668,7 +1671,9 @@ export class PixiScene {
     const tex = this.L.nearHorizon.texture;
     if (!tex || tex.width <= 1 || tex.height <= 1) return;
     const farH = this.farBackdropHeight();
-    const height = this.screenH * NEAR_HORIZON_HEIGHT_RATIO;
+    // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)。他ステージは原典の0.42。
+    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
+    const height = this.screenH * heightRatio;
     const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
     this.L.nearHorizon.width = this.screenW;
     this.L.nearHorizon.height = height;
