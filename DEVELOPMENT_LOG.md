@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.838 — レスキュー/ジャイアント出現にカメラアテンション(時間停止で現地へ高速パン→ホールド→戻る)
+
+- 社長仕様: レスキュー/ジャイアント出現時、現地へカメラを高速移動してアテンション。2-3秒ホールド後、高速で戻る。その間 時間停止。
+- 実装: `attention` 状態 + `triggerAttention(x,y)`/`clearAttention()`。triggerで `hitstopUntil=now+ATTENTION_TOTAL_MS`
+  を立て、シム/アニメを全停止(時間停止)。ループ先頭(hitstop早期returnの前)でカメラだけ毎フレーム駆動:
+  in(360ms・高速パン)→hold(2400ms)→out(360ms・高速で戻る)。終了で `clearAttention`→通常進行。
+  時間原点は毎フレーム更新(L599)済みなので復帰時の巨大デルタは無し。
+- 発火: 城ボス(giantbat)出現(`triggerAttention(castle.x,castle.y)`)/ レスキュー発生(`triggerAttention(rx,ry)`)。
+  従来の `triggerTimeSlow` をアテンションへ置換。未使用化した `CASTLE_SPAWN_SLOW_MS` を撤去。
+- 負荷スコア: 1/10(イベント時のみのカメラlerp。停止中は描画のみ・追加の常時コストなし)。
+- 変更: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.837 — イベント「緑卵の包囲」を追加(画面外を緑卵で囲む・解除なし・離れると自然消滅)
 
 - 社長仕様: 緑卵が画面外を取り囲む。解除条件なし。通常通り離れると自然と消える。

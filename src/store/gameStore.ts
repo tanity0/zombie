@@ -634,6 +634,11 @@ export const CAMERA_CENTER_CLAMP_FRAC = camNum('camclamp', 0.07); // 強制中�
 export const CAMERA_DOWN_OFFSET_FRAC = Math.max(0, Math.min(0.32, camNum('camdown', 0.08)));
 export const CAMERA_DANGER_RADIUS = 150;                          // この距離内に敵が居たら「危険時」とみなす(px)
 export const CAMERA_SNAP_DIST = 600;                             // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
+// アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へ高速パン→ホールド→高速で戻る。その間 時間停止。
+export const ATTENTION_IN_MS = 360;   // 現地への高速パン(in)
+export const ATTENTION_HOLD_MS = 2400; // 現地ホールド(2-3秒のアテンション)
+export const ATTENTION_OUT_MS = 360;  // プレイヤーへ高速で戻る(out)
+export const ATTENTION_TOTAL_MS = ATTENTION_IN_MS + ATTENTION_HOLD_MS + ATTENTION_OUT_MS;
 // 手を離して待機している間だけ少しズーム(描画のみ)。正=寄る / 負=引く。操作再開で1.0へ戻る。
 export const CAMERA_IDLE_ZOOM_MAG = camNum('camidle', 0.05);      // 待機ズーム量(+5%)。?camidle で調整(負で引き)
 export const CAMERA_IDLE_ZOOM_TAU = camNum('camidletau', 0.3);    // 待機ズームの寄り/戻りの時定数(秒)
@@ -1249,6 +1254,9 @@ interface GameState {
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
+  // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へカメラパン→ホールド→戻る。
+  // 駆動は実時間(startReal)。fromCam=開始時のカメラ(=戻り先)。null=非実行。
+  attention: { x: number; y: number; startReal: number; fromCamX: number; fromCamY: number } | null;
   // Strong-event slow motion. Rendering/audio continue; simulation delta is
   // multiplied by timeSlowScale until this timestamp.
   timeSlowUntil: number;
@@ -1456,6 +1464,8 @@ interface GameState {
   updateGameStats: (stats: Partial<GameStats>) => void;
   resetGame: (characterClass: string) => void;
   setCameraPosition: (x: number, y: number) => void;
+  triggerAttention: (x: number, y: number) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)
+  clearAttention: () => void;
   triggerTimeSlow: (scale: number, durationMs: number) => void;
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
@@ -1654,6 +1664,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   lastWeaponGet: null,
   hitstopUntil: 0,
+  attention: null,
   timeSlowUntil: 0,
   timeSlowScale: 1,
   timeSlowStart: 0,
@@ -6343,6 +6354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         lastWeaponGet: null,
         hitstopUntil: 0,
+  attention: null,
         timeSlowUntil: 0,
         timeSlowScale: 1,
         timeSlowStart: 0,
@@ -6362,6 +6374,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Infinite world: the camera follows the player one-to-one with no clamp.
     set({ camera: { x, y } });
   },
+
+  // 現地へカメラアテンション(時間停止)。fromCam=開始時カメラ(戻り先)。hitstop で全体凍結し、カメラだけ loop が動かす。
+  triggerAttention: (x, y) => {
+    const cam = get().camera;
+    set({
+      attention: { x, y, startReal: Date.now(), fromCamX: cam.x, fromCamY: cam.y },
+      hitstopUntil: Date.now() + ATTENTION_TOTAL_MS,
+    });
+  },
+  clearAttention: () => set({ attention: null }),
 
   triggerShake: (durationMs, mag = SHAKE_MAG) => {
     // 描画のみ。重なった時は「強い方(振幅)」を優先(弱い揺れが強い揺れを潰さない)。長さは延長。

@@ -29,7 +29,8 @@ import {
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle,
+  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
 } from '../store/gameStore';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -241,7 +242,6 @@ const LAB_ENEMIES_PER_ZONE = 2;
 const LAB_SPAWN_INTERVAL_MULT = 1.6;
 const LAB_SPAWN_COUNT_MAX = 1;
 const PLAYER_DEATH_SLOW_MS = 820;
-const CASTLE_SPAWN_SLOW_MS = 900;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
 const GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS = 440;
@@ -601,6 +601,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // Hitstop: a melee finisher freezes the whole simulation for a beat. Keep
       // the time origin current so we don't get a giant delta when it lapses.
       const nowMs = Date.now();
+
+      // --- アテンション・シネマティック(レスキュー/ジャイアント出現) ---
+      // 現地へ高速パン→2-3秒ホールド→高速で戻る。その間は hitstop でシム/アニメ停止(時間停止)。
+      // ここ(hitstop早期returnの前)でカメラだけ毎フレーム動かす。終了で解除し通常進行へ。
+      {
+        const att = useGameStore.getState().attention;
+        if (att) {
+          const el = nowMs - att.startReal;
+          if (el >= ATTENTION_TOTAL_MS) {
+            useGameStore.getState().clearAttention();
+          } else {
+            const gb = useGameStore.getState().gameBounds;
+            const focusX = att.x - gb.width / 2;   // 注目点を画面中央に
+            const focusY = att.y - gb.height / 2;
+            const smooth = (t: number) => { const c = Math.max(0, Math.min(1, t)); return c * c * (3 - 2 * c); };
+            let cx: number, cy: number;
+            if (el < ATTENTION_IN_MS) {
+              const t = smooth(el / ATTENTION_IN_MS);
+              cx = att.fromCamX + (focusX - att.fromCamX) * t;
+              cy = att.fromCamY + (focusY - att.fromCamY) * t;
+            } else if (el < ATTENTION_IN_MS + ATTENTION_HOLD_MS) {
+              cx = focusX; cy = focusY;
+            } else {
+              const t = smooth((el - ATTENTION_IN_MS - ATTENTION_HOLD_MS) / ATTENTION_OUT_MS);
+              cx = focusX + (att.fromCamX - focusX) * t;
+              cy = focusY + (att.fromCamY - focusY) * t;
+            }
+            setCameraPosition(cx, cy);
+            frameRef.current = requestAnimationFrame(gameLoop);
+            return;
+          }
+        }
+      }
+
       if (nowMs < useGameStore.getState().hitstopUntil) {
         frameRef.current = requestAnimationFrame(gameLoop);
         return;
@@ -750,7 +784,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
           spawnRing(castle.x, castle.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
           useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
-          useGameStore.getState().triggerTimeSlow(0.36, CASTLE_SPAWN_SLOW_MS);
+          useGameStore.getState().triggerAttention(castle.x, castle.y); // 城へカメラアテンション(時間停止で出現を見せる)
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
         }
 
@@ -801,7 +835,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(rx, ry, RESCUE_RADIUS, RESCUE_RADIUS + 30, 'rgba(74,222,128,0.9)', 3, 760);
                 spawnFlash('rgba(8,47,73,0.20)', 320);
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
-                useGameStore.getState().triggerTimeSlow(0.4, 520);
+                useGameStore.getState().triggerAttention(rx, ry); // 現地へカメラアテンション(時間停止)
                 return; // この set コールバックでの以降のアリーナ配置はスキップ(rescue は store が配置済み)
               }
               const duration = kind === 'boss' ? ARENA_BOSS_DURATION_MS : ARENA_HORDE_DURATION_MS;
