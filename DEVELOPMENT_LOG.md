@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.827 — 設置物フェードを共通の地平線フェードに統一(他の者と同じ位置で消える)
+
+- 社長報告「他の者たちと同じく消えてほしい。設置物はかなり上に行かないと消えない」。
+  825/826の独自フェード(プレイヤー基準/画面端基準)は消失位置が他オブジェクトとズレていた。
+- 修正: 設置物(盾/トラップ/デコイ/設置グレネード)の透明化を、敵/木/プロップと同じ `horizonActorAlpha`
+  (地平線=遠景森1の足元worldYで消える)に統一。独自 `depthFadeAlpha` と `DEPTH_FADE*` 定数を削除。
+- これで設置物も他の者と同じ地平線位置で自然に消える。前面(手前)の特別フェードは廃止(=他と同じ挙動)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.826 — 設置物フェードを「画面端基準」に修正(消える位置がプレイヤーと動く問題)
 
 - 社長報告「設置物系だけ消える位置がおかしい」。原因: 825のフェードがプレイヤー面基準(中心からの正規化距離)で、
