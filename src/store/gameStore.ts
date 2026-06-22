@@ -3861,13 +3861,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       sold = true;
       const subWeaponLevels = { ...state.player.subWeaponLevels };
       delete subWeaponLevels[key];
+      // 換金=手放す。ショップの解禁(陳列)も外し、Lv1で買い戻せないようにする(社長報告対応)。
+      const unlockedShopSkillCards = { ...state.unlockedShopSkillCards };
+      delete unlockedShopSkillCards[key];
       return {
         player: {
           ...state.player,
           subWeapons: state.player.subWeapons.filter(k => k !== key),
           subWeaponLevels,
           straps: state.player.straps + SHOP_SUBWEAPON_SELL_VALUE
-        }
+        },
+        unlockedShopSkillCards
       };
     });
     if (sold) {

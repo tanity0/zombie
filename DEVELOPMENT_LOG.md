@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.830 — サブウェポン換金後にLv1で買い戻せるバグ修正
+
+- 社長報告「スキル換金するとレベル1が買い戻せちゃう」。原因: `sellSubWeapon` が所持(subWeapons/subWeaponLevels)
+  のみ削除し `unlockedShopSkillCards`(ショップ陳列の解禁)を残していたため、売却後も Lv1 で再購入可能だった。
+- 修正: 換金時にそのスキルの解禁も外す(`delete unlockedShopSkillCards[key]`)→ その回のショップから消える=買い戻し不可。
+- 変更: `store/gameStore.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.829 — 拠点候補地(仕様10): 8か所・10秒制圧で武器商人が移動
 
 - スタート地点(原点)中心・半径3200の円周に8か所(45度刻み)。サークル(半径130)内に10秒滞在で制圧。
