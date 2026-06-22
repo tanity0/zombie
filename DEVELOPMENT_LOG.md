@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.839 — ジャイアント攻撃力19 / 瀕死(HP≤20)で赤ビネット心拍演出
+
+- ジャイアント(giantbat)攻撃力 22 → 19。(死神=接触77は据え置き=社長確認: 50ではなく77)
+- 瀕死演出: HP≤20 で暗い赤のビネット(`lowHpVignette`)が心拍(ドクン…ドクン…=1周期2拍のガウシアン)で
+  alpha 0.20↔0.62 に脈動。HP≥21 で非表示に戻る。全画面オーバスキャン(隅まで覆う)・screen座標・uiLayer(vignetteの上)。
+- 負荷スコア: 1/10(単一の全画面スプライトの alpha 脈動のみ。常時コスト無し=瀕死時のみ表示)。
+- 変更: `utils/enemyUtils.ts`, `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.838 — レスキュー/ジャイアント出現にカメラアテンション(時間停止で現地へ高速パン→ホールド→戻る)
 
 - 社長仕様: レスキュー/ジャイアント出現時、現地へカメラを高速移動してアテンション。2-3秒ホールド後、高速で戻る。その間 時間停止。

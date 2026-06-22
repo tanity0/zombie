@@ -207,6 +207,10 @@ const ENV_TINT = (() => {
   return (g << 16) | (g << 8) | g;
 })();
 const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
+// 瀕死演出: HP がこの値以下で、暗い赤のビネットが心拍(ドクン…ドクン…)で脈動。21以上で解除。
+const LOW_HP_VIGNETTE_TINT = 0x8b0000; // 暗い赤
+const LOW_HP_THRESHOLD = 20;           // HP ≤ 20 でON / ≥ 21 でOFF
+const LOW_HP_HEARTBEAT_MS = 1100;      // 心拍1周期(2拍=ドクン…ドクン…)
 
 // --- 研究施設(屋内)の暗さ -------------------------------------------------------
 // ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
@@ -729,6 +733,7 @@ export class PixiScene {
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
+  private lowHpVignette = new Sprite(getVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動
   private vignetteNarrow: boolean | null = null; // 現在のvignetteが狭い版(lab用)か。差分時だけテクスチャ差し替え。
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
@@ -1121,12 +1126,18 @@ export class PixiScene {
 
     this.vignette.alpha = ENV_VIGNETTE_ALPHA;
 
+    // 瀕死ビネット(HP≤20): 暗い赤。中心アンカーでドクンと微スケール脈動。既定は非表示。
+    this.lowHpVignette.anchor.set(0.5);
+    this.lowHpVignette.tint = LOW_HP_VIGNETTE_TINT;
+    this.lowHpVignette.alpha = 0;
+    this.lowHpVignette.visible = false;
+
     // Screen-space overlays: cool multiply grade darkens/cools the whole scene
-    // (multiply preserves detail/outlines), then the vignette, then damage
+    // (multiply preserves detail/outlines), then the vignette, then 瀕死赤, then damage
     // flash + off-screen arrows on top of everything.
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, this.vignette,
+      this.gradeSprite, this.vignette, this.lowHpVignette,
       this.flashGfx, this.arrowGfx,
     );
 
@@ -2095,6 +2106,7 @@ export class PixiScene {
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
     this.syncBaseSites(s.baseSites, now);
+    this.syncLowHpVignette(s.player.health, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
       !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
@@ -4438,6 +4450,24 @@ export class PixiScene {
           .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
       }
     }
+  }
+
+  // 瀕死(HP≤20): 暗い赤のビネットが心拍(ドクン…ドクン…)で脈動。HP≥21で解除。screen座標・全画面オーバスキャン。
+  private syncLowHpVignette(health: number, now: number) {
+    const v = this.lowHpVignette;
+    if (health > LOW_HP_THRESHOLD) {
+      if (v.visible) { v.visible = false; v.alpha = 0; }
+      return;
+    }
+    v.visible = true;
+    // 心拍: 1周期に2拍のガウシアン(ドクン…ドクン…)。
+    const ph = (now % LOW_HP_HEARTBEAT_MS) / LOW_HP_HEARTBEAT_MS;
+    const bump = (c: number, w: number) => Math.exp(-((ph - c) ** 2) / w);
+    const beat = Math.min(1, bump(0.04, 0.0010) + bump(0.22, 0.0013));
+    v.position.set(this.screenW / 2, this.screenH / 2);
+    v.width = this.screenW * 1.06;  // 隅まで覆うオーバスキャン
+    v.height = this.screenH * 1.06;
+    v.alpha = 0.20 + 0.42 * beat;   // 0.20→0.62 で脈動(赤い縁がドクンと濃くなる)
   }
 
   // 深層域グレーディング: 深層域(eligible かつ原点距離>=D)の間だけ stage ルートへ退色セピアの

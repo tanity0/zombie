@@ -26,7 +26,7 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   ghost:     { width: 24, height: 24, speed: 90,  health: 14,   damage: 5,   experienceValue: 2 },
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
-  giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 22,  experienceValue: 30 },
+  giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 19,  experienceValue: 30 },
   reaper:    { width: 80, height: 80, speed: 130, health: 99999,damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
   // 社長指示: 耐久値(health)はデフォルトに戻す(2倍化を撤回)。damage は据え置き(2倍のまま)。
