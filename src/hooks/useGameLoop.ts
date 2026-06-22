@@ -61,7 +61,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
@@ -198,6 +198,12 @@ const areaZoneIndexFor = (distPx: number): number => {
   if (distPx >= 1500) return 1;
   return 0;
 };
+// ゾーン判定(エリアバナー/深層BGM)は毎フレームでなく N フレームに1回でOK(多少アバウト可・社長許可)。
+const ZONE_CHECK_INTERVAL = 3;
+// 深層域BGM(逆再生)切替の距離しきい値。深層域(エリア=7500px)に合わせる。準備ゾーンは手前、
+// 解除はヒステリシスで戻し過ぎ防止(enter=D / exit=D-200 / 準備開始=D-400 / 解放=D-600)。
+const DEEP_BGM_D = 7500;
+type DeepBgmPhase = 'shallow' | 'prep' | 'deep';
 const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒してから復活までの時間(社長指示)
 // テスト用URLパラメータ(実機/開発で強制発火)。?arenanow=1|horde|boss → 囲い系イベントを開始直後に発火
 // (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
@@ -328,6 +334,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   );
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
+  // ゾーン判定の間引き用カウンタ + 深層域BGM(逆再生)の現フェーズ。
+  const zoneTickRef = useRef<number>(0);
+  const deepBgmPhaseRef = useRef<DeepBgmPhase>('shallow');
 
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -720,6 +729,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           arenaFiredRef.current = false;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false };
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
+          deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -891,6 +901,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- ゾーン判定の間引き + 深層域BGM(逆再生)切替 ---
+        // 毎フレームではなく ZONE_CHECK_INTERVAL フレームに1回だけ判定(多少アバウト可)。負荷1/10。
+        // 準備ゾーン(D-400)で逆再生版を先読み(pause)→深層(D)で play、out(D-200)で pause、浅く戻る(D-600)で解放。
+        zoneTickRef.current++;
+        if (zoneTickRef.current % ZONE_CHECK_INTERVAL === 0) {
+          const eligible = !danceTest && !indoor && !labTheme; // 屋外非ラボのみ深層域BGM対象
+          const dist = eligible ? Math.hypot(player.x + player.width / 2, player.y + player.height / 2) : 0;
+          const phase = deepBgmPhaseRef.current;
+          if (!eligible) {
+            if (phase !== 'shallow') { exitDeepReverseBgm(); releaseDeepReverseBgm(); deepBgmPhaseRef.current = 'shallow'; }
+          } else if (phase === 'shallow') {
+            if (dist >= DEEP_BGM_D - 400) { prepareDeepReverseBgm(); deepBgmPhaseRef.current = 'prep'; }
+          } else if (phase === 'prep') {
+            if (dist >= DEEP_BGM_D) { enterDeepReverseBgm(); deepBgmPhaseRef.current = 'deep'; }
+            else if (dist < DEEP_BGM_D - 600) { releaseDeepReverseBgm(); deepBgmPhaseRef.current = 'shallow'; }
+          } else { // deep
+            if (dist < DEEP_BGM_D - 200) { exitDeepReverseBgm(); deepBgmPhaseRef.current = 'prep'; }
+          }
+        }
+
         // --- 死神(深奥リスク)システム v1 ---
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
@@ -902,13 +932,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const depth = REAPER_TEST ? REAPER_CONFIG.extremeDepthPx + 1 : Math.hypot(pcx, pcy);
 
           // --- エリア(区域)遷移バナー: 距離帯を跨いだら区域名を表示(イベント発生と同じUI) ---
-          const zoneIdx = areaZoneIndexFor(Math.hypot(pcx, pcy));
-          if (areaZoneRef.current === -1) {
-            areaZoneRef.current = zoneIdx; // 初回は黙って採用(開始地点では出さない)
-          } else if (zoneIdx !== areaZoneRef.current) {
-            areaZoneRef.current = zoneIdx;
-            useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
-            playSfx('event-start'); // 区域遷移音(イベント発生と共通。深い区域の専用SEは将来差し替え可)
+          // ゾーン判定は ZONE_CHECK_INTERVAL フレームに1回(間引き)。
+          if (zoneTickRef.current % ZONE_CHECK_INTERVAL === 0) {
+            const zoneIdx = areaZoneIndexFor(Math.hypot(pcx, pcy));
+            if (areaZoneRef.current === -1) {
+              areaZoneRef.current = zoneIdx; // 初回は黙って採用(開始地点では出さない)
+            } else if (zoneIdx !== areaZoneRef.current) {
+              areaZoneRef.current = zoneIdx;
+              useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
+              playSfx('event-start'); // 区域遷移音(イベント発生と共通。深い区域の専用SEは将来差し替え可)
+            }
           }
           const liveEnemies = useGameStore.getState().enemies;
           const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);

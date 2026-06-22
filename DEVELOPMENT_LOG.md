@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.786 — 深層域BGM=逆再生版へ切替(先読み＋play/pauseトグル)＋ゾーン判定を3frに1回へ
+
+- **ゾーン判定の間引き**(社長許可): エリア遷移バナー＋深層BGM判定を毎フレーム→`ZONE_CHECK_INTERVAL=3`
+  フレームに1回(多少アバウト可)。`zoneTickRef` で間引き。死神リスク蓄積など他の毎フレ処理は据え置き。
+- **深層域BGM=逆再生版へ切替**(先読み＋play/pauseトグル・クロスフェード無し):
+  - audioManager に逆再生版トラック(別 `HTMLAudioElement`)を追加。`REVERSE_BGM`(default/stage3/stage4。
+    命名 `stageN-reverse.mp3`。lab=屋内は深層域なしで対象外)。
+  - `prepareDeepReverseBgm`(準備ゾーンで生成&load=pause先読み)/`enterDeepReverseBgm`(通常BGMを
+    pause=位置保持＋逆再生版play)/`exitDeepReverseBgm`(逆再生版pause＋通常BGM resume)/
+    `releaseDeepReverseBgm`(stop＆解放)。`applyBgm`/`setAudioSuspended`/`setBgmScene` を deep 対応に。
+  - ポーズ/裏(電池対策v0.25.756)と連動: suspend で両トラック停止、復帰で深層中は逆再生版を再開。
+    ステージ変更/メニュー復帰で逆再生版を解放。
+  - 通常BGM・逆再生版ともに loop。
+- **判定(useGameLoop)**: 屋外非ラボのみ。原点からの距離 `Math.hypot`。`DEEP_BGM_D=7500`(エリア「深層域」境界に一致)。
+  ヒステリシス: enter=D / exit=D−200 / 準備開始=D−400 / 解放=D−600。`deepBgmPhaseRef`(shallow/prep/deep)。
+- 負荷: 1/10(距離比較＋play/pause/load のみ。判定は3frに1回)。
+- ※**逆再生版mp3は未配置**(`public/audio/stage1-reverse.mp3` 等)。素材配置後に自動で機能(未配置でも404→無音でクラッシュ無し)。
+- 変更ファイル: `audio/audioManager.ts`, `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.785 — 帰還サークル: 障害物回避 / 敵侵入不可 / 内部は攻撃停止
 
 - **障害物回避**: `beginReturnPhase` が候補位置を障害物(木/壁/城/トーチ/プロップ)とAABDで判定し、

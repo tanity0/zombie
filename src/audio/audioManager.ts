@@ -17,6 +17,14 @@ const GAME_BGM: Record<string, string> = {
   stage3: `${import.meta.env.BASE_URL}audio/stage3.mp3`, // 廃都(ステージ3)。stage.bgm='stage3' で選択
   stage4: `${import.meta.env.BASE_URL}audio/stage4.mp3`, // 封鎖地域/雪原(ステージ4)。stage.bgm='stage4'
 };
+// 深層域BGM(逆再生版)。屋外ステージごとに areverse 版を用意(命名 stageN-reverse.mp3)。
+// 深層域に入ると通常BGMを pause(位置保持)し、こちらを play で即時切替する(クロスフェード無し)。
+// lab(屋内・ステージ2)は深層域が無いので逆再生版なし。素材未配置でも 404→無音でクラッシュしない。
+const REVERSE_BGM: Record<string, string> = {
+  default: `${import.meta.env.BASE_URL}audio/stage1-reverse.mp3`,
+  stage3: `${import.meta.env.BASE_URL}audio/stage3-reverse.mp3`,
+  stage4: `${import.meta.env.BASE_URL}audio/stage4-reverse.mp3`,
+};
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
 const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
@@ -247,6 +255,11 @@ let muted = false;
 let bgmVolume = DEFAULT_BGM_VOLUME;
 let sfxVolume = DEFAULT_SFX_VOLUME;
 let sfxContext: AudioContext | null = null;
+// 深層域BGM(逆再生版)の状態。別 HTMLAudioElement を並走させ、深層in/outは play/pause で切替。
+let deepBgm: HTMLAudioElement | null = null;
+let deepBgmSrc = '';
+let deepActive = false;              // 深層in(逆再生版が再生対象)か
+let currentGameVariant = 'default';  // 現在のステージBGM variant(逆再生版の選択に使用)
 
 const sfxBuffers = new Map<SfxKey, AudioBuffer>();
 const sfxLoading = new Map<SfxKey, Promise<void>>();
@@ -443,16 +456,25 @@ const ensureBgmRouting = () => {
 };
 
 // Drive the single BGM element to the current battle/dance target.
+// 深層域(deepActive)では通常BGMを pause(位置保持)し、逆再生版を play する(即時切替)。
 const applyBgm = () => {
   ensureBgm();
   if (!bgm) return;
   if (bgmActive && !muted) {
     resumeSfxContext();
     ensureBgmRouting();
-    applyDanceAudio();
+    if (deepActive) {
+      ++bgmPlayToken;          // 通常BGMの遅延playをキャンセル
+      try { bgm.pause(); } catch { /* ignore */ } // 位置は保持(resume時に続きから)
+      if (deepBgm) { deepBgm.volume = bgmVolume; void deepBgm.play().catch(() => {}); }
+    } else {
+      try { deepBgm?.pause(); } catch { /* ignore */ }
+      applyDanceAudio();
+    }
   } else {
     ++bgmPlayToken;
     bgm.pause();
+    try { deepBgm?.pause(); } catch { /* ignore */ }
   }
 };
 
@@ -656,19 +678,80 @@ export const setBgmActive = async (nextActive: boolean) => {
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
 export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'default') => {
-  if (scene === 'off') { void setBgmActive(false); return; }
+  if (scene === 'off') { releaseDeepReverseBgm(); void setBgmActive(false); return; }
+  if (scene === 'game') {
+    if (variant !== currentGameVariant) { releaseDeepReverseBgm(); currentGameVariant = variant; }
+  } else {
+    releaseDeepReverseBgm(); // メニューへ戻る=ステージ離脱: 逆再生版を解放
+  }
   bgmBaseTrack = scene === 'menu'
     ? TITLE_TRACK
     : (GAME_BGM[variant] ?? GAME_BGM.default); // ステージ別BGM(未割当はdefault=stage1)
   void setBgmActive(true);
 };
 
+// --- 深層域BGM(逆再生版)切替 ----------------------------------------------
+// 準備ゾーンで先読み(pause)→深層inで play/pause トグル。クロスフェード無し・無音ほぼ無し。
+// 現在ステージに逆再生版が無ければ(lab等)すべて no-op。
+const reverseSrcForVariant = (): string | null => REVERSE_BGM[currentGameVariant] ?? null;
+
+// 準備ゾーン進入: 逆再生版を生成&ロードして pause(バッファ確保)。同 src なら何もしない。
+export const prepareDeepReverseBgm = () => {
+  if (typeof Audio === 'undefined') return;
+  const src = reverseSrcForVariant();
+  if (!src) return;
+  if (deepBgm && deepBgmSrc === src) return;
+  releaseDeepReverseBgm();
+  deepBgmSrc = src;
+  deepBgm = new Audio(src);
+  deepBgm.loop = true;          // 深層滞在が長い前提=ループ
+  deepBgm.preload = 'auto';
+  deepBgm.playsInline = true;
+  deepBgm.volume = bgmVolume;
+  try { deepBgm.load(); } catch { /* ignore */ } // pause のまま待機(明示playしない)
+};
+
+// 深層 in: 通常BGMを pause(位置保持) + 逆再生版 play(即時切替)。
+export const enterDeepReverseBgm = () => {
+  if (deepActive) return;
+  if (!deepBgm) prepareDeepReverseBgm();
+  if (!deepBgm) return; // 逆再生版が無いステージ
+  deepActive = true;
+  applyBgm();
+};
+
+// 深層 out(準備ゾーンへ): 逆再生版 pause + 通常BGM resume(続きから)。
+export const exitDeepReverseBgm = () => {
+  if (!deepActive) return;
+  deepActive = false;
+  applyBgm();
+};
+
+// 準備ゾーンより浅く戻る: 逆再生版を stop/解放(メモリ開放)。
+export const releaseDeepReverseBgm = () => {
+  const wasDeep = deepActive;
+  deepActive = false;
+  if (deepBgm) {
+    try { deepBgm.pause(); } catch { /* ignore */ }
+    try { deepBgm.removeAttribute('src'); deepBgm.load(); } catch { /* ignore */ }
+    deepBgm = null;
+  }
+  deepBgmSrc = '';
+  if (wasDeep) applyBgm(); // 深層中に解放されたら通常BGMへ戻す
+};
+
 // 電池対策: 裏(タブ/アプリ非表示)に回ったら BGM を一時停止し、復帰で再開(scene状態は保持)。
 // HTMLAudioElement は hidden でも鳴り続け電池を食うため明示停止。SFXのAudioContextは
 // ブラウザが hidden で自動 suspend するので復帰時に resume するだけ。
 export const setAudioSuspended = (suspended: boolean) => {
-  if (suspended) { try { bgm?.pause(); } catch { /* ignore */ } }
-  else { resumeSfxContext(); playBgmRobust(); } // bgmActive/muted を尊重して復帰
+  if (suspended) {
+    try { bgm?.pause(); } catch { /* ignore */ }
+    try { deepBgm?.pause(); } catch { /* ignore */ } // 深層域の逆再生版も止める(電池対策)
+  } else {
+    resumeSfxContext();
+    if (deepActive) applyBgm();   // 深層中は逆再生版を再開(通常BGMは pause のまま)
+    else playBgmRobust();         // bgmActive/muted を尊重して通常BGM復帰
+  }
 };
 
 // ダンスタイム中はリズムに乗りやすいよう近接ダメージ音(スラッシュ/メレー)を鳴らさない。
