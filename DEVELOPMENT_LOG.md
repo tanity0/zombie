@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.802 — ステージ2: 遠景/遠景森1がプレイヤー・ヘリより前に被るのを修正
+
+- 症状: ステージ2(屋外ラボ)で **遠景(farBackdrop)・遠景森1(horizonForest)がプレイヤー/ヘリより前**に描画。
+- 原因: lab の「可視可能ゾーン(暗幕＋明かりの穴)」で `setLabSceneryAboveVeil` が背景4層を **uiLayer(=ワールドより前)** へ
+  退避していたため。遠景/遠景森1まで前に来てプレイヤー/ヘリを覆っていた。
+- 修正: 暗幕の上へ退避する対象から **farBackdrop / horizonForest を除外**(前景の frontForest / 天井のみ前面)。
+  遠景・遠景森1はプレイヤーの背面に戻る(遠景森2と同じ背面)。
+- 注記: これは応急処置。lab描画が通常パイプラインの上に“無理やり別レイヤー”を作る構造(社長指摘)が根本原因で、
+  StageSkin テンプレ化(全ステージ共通パイプライン)へ寄せるのが本筋。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.801 — 遠景森2(nearHorizon)が初期表示で出ないバグを修正
 
 - 症状(社長報告・ステージ2): 平常時は遠景森2(ラボの機材シルエット=アーム/パソコン)が**出ない**。横→縦の回転で**出る**。

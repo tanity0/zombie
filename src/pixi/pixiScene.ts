@@ -2843,7 +2843,9 @@ export class PixiScene {
       if (this.labBrightScenery.parent !== ui) ui.addChildAt(this.labBrightScenery, veilIdx + 1);
       else ui.setChildIndex(this.labBrightScenery, Math.min(veilIdx + 1, ui.children.length - 1));
       const cont = this.labBrightScenery;
-      const items = [this.L.farBackdrop, this.L.horizonForest, this.L.frontForest, this.labCeiling].filter(Boolean) as Container[];
+      // 遠景(farBackdrop)・遠景森1(horizonForest)は暗幕の上へ退避しない=プレイヤー/ヘリの後ろのまま
+      // (前へ退避するとプレイヤー/ヘリより前に被さるバグになる)。前景の近景森1/天井のみ前面へ。
+      const items = [this.L.frontForest, this.labCeiling].filter(Boolean) as Container[];
       for (const obj of items) {
         if (obj.parent === cont) continue;
         if (obj.parent && !this.labSceneryOrig.some(o => o.obj === obj)) {
