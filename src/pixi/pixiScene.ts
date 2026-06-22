@@ -1649,7 +1649,8 @@ export class PixiScene {
     const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
     this.L.nearHorizon.width = this.screenW;
     this.L.nearHorizon.height = height;
-    this.L.nearHorizon.tileScale.set(this.screenW / tex.width, height / tex.height);
+    // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル繰り返し)。nearHorizon も parallax で横スクロールするので継ぎ目なし。
+    this.L.nearHorizon.tileScale.set(height / tex.height);
     this.L.nearHorizon.position.set(0, bottom - height);
   }
   setStage3Ground(t: Texture | null) {

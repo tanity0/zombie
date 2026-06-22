@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.795 — 遠景森2(nearHorizon)の横伸びも修正(均一スケール化)
+
+- v0.25.794 と同じ非均一スケールが nearHorizon(遠景森2=森シルエット/廃都)にも残っていた(`tileScale.set(screenW/texW, height/texH)`)。
+- y 基準の均一スケール `tileScale.set(height/texH)` に変更。横は自然比率でタイル繰り返し(parallax `NEAR_HORIZON_PARALLAX_X` で横スクロール=継ぎ目なし)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.794 — 遠景森(horizonForest)の横伸びを修正(均一スケール化)
 
 - 横長/広い画面で遠景森が横に引き伸ばされていた。原因は `tileScale.set(w/texW, horizonH/texH)` の**非均一スケール**。
