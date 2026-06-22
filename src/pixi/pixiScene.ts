@@ -45,6 +45,7 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H } from '../world/labWalls';
 import { RescueSurvivor, RESCUE_HOLD_NEED_MS, RESCUE_OUTRO_MS } from '../world/rescue';
+import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------
 // 深層域に入っている間だけ、ゲーム画面全体を退色セピアにする描画のみの演出(当たり判定等には不干渉)。
@@ -4682,9 +4683,10 @@ export class PixiScene {
     // ?labpersp の屋内床は焼き込み遠近プレート(updateLabFloorPlate)で描くので、
     // 屋外用の縦ストリップ groundBase は屋内では隠す。
     this.L.farBackdrop.visible = !indoor;
-    // 遠景森1(森シルエット帯)は森系のみ。lab は遠景森2(nearHorizon='lab'=機材シルエット)があるので森帯は出さない
-    // (ラボ背景に森が乗る不整合を防ぐ)。
-    this.L.horizonForest.visible = !indoor && !this.isLabStage;
+    // 遠景森1(森シルエット帯)の有無はステージスキン表(単一の真実)で決める。lab は false(森帯を出さない)。
+    // ※散在分岐(isLabStage 等)を表駆動へ移す第一歩。残りスロットも順次この表へ集約予定。
+    const skin = STAGE_SKINS[resolveStageSkinKey(s.stageTheme, s.farBackdrop)];
+    this.L.horizonForest.visible = !indoor && skin.horizon1Visible;
     this.L.groundBase.visible = !indoor;
     this.L.frontForest.visible = !indoor;
     this.L.backgroundLayer.visible = !indoor;

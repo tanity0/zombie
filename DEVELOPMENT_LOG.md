@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.799 — ステージ景色テンプレ(StageSkin表)の土台＋遠景森1を表駆動化(①)
+
+- 社長方針「全ステージ共通スロット＋ステージで±だけ」の土台。`data/stageSkins.ts` に **StageSkin 型＋STAGE_SKINS表**
+  (forest/lab/city/snow)を新設。各スロット(遠景/地面/遠景森1/遠景森2/近景森1/昼/上寄せ追加遠景)を**データで宣言**(現状再現)。
+  `resolveStageSkinKey(stageTheme, farBackdrop)` で出撃状態→スキン解決。
+- 第一歩として**遠景森1(horizonForest)の表示判定を表駆動**に(`skin.horizon1Visible`)。散在分岐(`isLabStage`等)を表へ移す移行の起点。
+  見た目は不変(lab=false / 他=true は現状と一致)。
+- 残りスロット(far/ground/front/horizon2 の city/snow/lab 差し替え)は既存 apply* 経路が担当中。表に宣言済みで、
+  **段階的に表参照へ移行予定**(実機確認しながら見た目を変えずに)。`topHang`(上寄せ追加遠景)は将来用スロットとして null 予約。
+- 変更ファイル: `data/stageSkins.ts`(新), `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.798 — ステージ2を「野外ラボ」で整理(屋内コメント掃除＋森地平帯を非表示)
 
 - campaign.ts のステージ2: 中途半端な「indoor 保留」コメント/コメントアウトを掃除し、**野外ラボ(theme:'lab')**として明記。
