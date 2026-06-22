@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.834 — camdown=0.08 基準に画面中心系を合わせ込み
+
+- 社長指示「できる限り0.08基準に合わせて」。画面中心前提だった箇所をプレイヤー画面位置(0.58)へ寄せる。
+- tilt-shift シャープ帯 `TILT_SHIFT_BAND` 0.46 → 0.54(下げ量0.08分。主人公をシャープに保つ)。
+- 画面外矢印・城マーカーのリング中心 `cyC` を `screenH/2 + screenH×CAMERA_DOWN_OFFSET_FRAC`(ラボは中央)に。
+- 据え置き(意図的): vignette明部は中央のまま(下げると上が暗くなり「上の敵を見る」目的に逆行するため)。
+  敵リサイクル距離(0.86×max(W,H))は 0.58 を上回り安全なので変更なし。
+- 変更: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.833 — camdown 既定を 0.08 に確定
 
 - 社長確定: プレイヤー下げ量 `CAMERA_DOWN_OFFSET_FRAC` の既定を 0.12 → 0.08。

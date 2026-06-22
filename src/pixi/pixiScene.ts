@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -193,7 +193,7 @@ const LAB_PERSP_CURVE = tsNum('labperspcurve', 2.8); // 収束カーブ(大=手�
 const TILT_SHIFT_ENABLED =typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ts') !== '0';
 const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the edges
 const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
-const TILT_SHIFT_BAND = tsNum('tsband', 0.46);     // sharp-band centre as a fraction of height
+const TILT_SHIFT_BAND = tsNum('tsband', 0.54);     // sharp-band centre as a fraction of height(camdown=0.08でプレイヤーが0.58へ下がるのに合わせ下げる)
 
 // --- フェーズ1: 環境(地面・森・遠景・木)だけを暗く沈める「ベースの闇」----------
 // 全体コントラストではなく、環境スプライトの tint を下げるだけ(GPU tint=追加パスなし=無料)。
@@ -5898,8 +5898,9 @@ export class PixiScene {
     // needs to be materially lower than the visible HUD edge.
     const marginTop = Math.min(Math.max(154, this.screenH * 0.17), this.screenH - 96);
     const marginBottom = 30;
+    // リング中心はプレイヤーの画面位置に合わせる(camdown でプレイヤーが中央より下=その分だけ下げる)。ラボは中央。
     const cxC = this.screenW / 2;
-    const cyC = this.screenH / 2;
+    const cyC = this.screenH / 2 + (this.isLabStage ? 0 : this.screenH * CAMERA_DOWN_OFFSET_FRAC);
     const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 220);
     for (const p of pickups) {
       if (!p.worldDrop) continue;
