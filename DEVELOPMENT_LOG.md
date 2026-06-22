@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.811 — ステージ2の敵も暗く(レイヤー追加なし・既存 sprite.tint)
+
+- 社長指示「敵も暗くしたいのだが、勝手にレイヤー加えないで」。`labDimGfx`(景色ダーク幕)は
+  敵(actorLayer)より奥に居るため敵には乗らない。よって**新レイヤーは足さず**、`drawEnemy` で
+  既存の `view.sprite.tint` に lab 用の暗 tint を入れて敵スプライト自体を沈める。
+- `LAB_ENEMY_TINT` は床(`LAB_ENV_TINT`)と同じ寒色相で、明るさだけ `?labenemy=`(0..1・既定0.55)で調整。
+  非 lab ステージでは毎フレーム `0xffffff` に戻す(プール再利用での染め残り防止)。
+- プレイヤー本体/グロー・月明りは別経路のため無影響(社長要件「プレイヤーのグローだけ通常」を維持)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 要実機: 床の暗さ(`?labdark=`)と敵の暗さ(`?labenemy=`)のバランス調整。敵が浮くなら labenemy を下げる。
+
 ## v0.25.810 — ステージ2を共通ライティングで「全体暗め＋プレイヤーグロー/月明り維持」
 
 - 社長方針: 暗幕(フラッシュライト)は廃止のまま、共通光系で調整。全体をかなり暗く＋プレイヤーのグローと月明りは通常維持。

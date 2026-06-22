@@ -208,6 +208,13 @@ const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
 // --- 研究施設(屋内)の暗さ -------------------------------------------------------
 // ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
 const LAB_ENV_TINT = 0x6b7686;       // 研究所の床/壁を暗くする(寒色の暗灰)。小さいほど暗い。ドット絵床が読めるよう従来より弱め。
+// ステージ2の敵スプライトも暗く沈める tint(レイヤー追加なし=既存の sprite.tint を使う)。
+// 床(labDimGfx)は敵より奥なので敵には乗らない。色相は床(LAB_ENV_TINT)に合わせ、明るさだけ labenemy で調整。
+const LAB_ENEMY_DARK = Math.max(0, Math.min(1, tsNum('labenemy', 0.55))); // 0=真っ暗 / 1=LAB_ENV_TINT そのまま
+const LAB_ENEMY_TINT = (() => {
+  const r = (LAB_ENV_TINT >> 16) & 0xff, g = (LAB_ENV_TINT >> 8) & 0xff, b = LAB_ENV_TINT & 0xff;
+  return (Math.round(r * LAB_ENEMY_DARK) << 16) | (Math.round(g * LAB_ENEMY_DARK) << 8) | Math.round(b * LAB_ENEMY_DARK);
+})();
 // 壁の外側=野外マージンの地面(より暗い)。プレイヤーが端でも中心を保てる余白(野外)。
 const LAB_OUTER_TINT = 0x161d16;     // 野外(夜の地面)。かなり暗い緑寄り。
 // 屋内の周辺減光(vignette)を屋外より広範囲に暗く(社長指示)。明るい部分を狭く=さらに強める。
@@ -4029,6 +4036,9 @@ export class PixiScene {
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     view.container.alpha = horizonAlpha;
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
+    // ステージ2は敵も環境として暗く沈める(床/壁と同様の寒色 tint)。レイヤーは足さず sprite.tint のみ。
+    // プレイヤー本体/グロー・月明りは別経路なので影響しない。
+    view.sprite.tint = this.isLabStage ? LAB_ENEMY_TINT : 0xffffff;
 
     if (tex) {
       view.sprite.texture = tex;
