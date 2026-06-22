@@ -1712,7 +1712,8 @@ export class PixiScene {
     const horizonH = this.horizonForestHeight();
     this.L.horizonForest.width = this.screenW;
     this.L.horizonForest.height = horizonH;
-    this.L.horizonForest.tileScale.set(this.screenW / tex.width, horizonH / tex.height);
+    // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル)。resize と同方式。
+    this.L.horizonForest.tileScale.set(horizonH / tex.height);
   }
   setLabGroundTexture(t: Texture | null) {
     this.labGroundTex = t;

@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.796 — 地平帯の差し替え時(layoutHorizonForest)も均一スケール化
+
+- `layoutHorizonForest()`(テクスチャ差し替え時に呼ばれる)に非均一スケール `tileScale.set(screenW/texW, horizonH/texH)` が残存=
+  差し替えステージ(snow等)で横伸びが復活していた(**縦持ちでも影響**)。y 基準の均一スケールへ統一。
+- これで遠景の横伸び経路(resize / layoutHorizonForest / nearHorizon)は全て均一化。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.795 — 遠景森2(nearHorizon)の横伸びも修正(均一スケール化)
 
 - v0.25.794 と同じ非均一スケールが nearHorizon(遠景森2=森シルエット/廃都)にも残っていた(`tileScale.set(screenW/texW, height/texH)`)。
