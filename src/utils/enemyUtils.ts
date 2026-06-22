@@ -143,6 +143,8 @@ const ENEMY_SPEED_MULT = 2 / 3;
 const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
 const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper']);
+// ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
+const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
 const COLOR_RATE_BY_AREA: [number, number, number][] = [
   [0,    0,    0   ], // 軍備配置
@@ -200,19 +202,20 @@ const buildEnemy = (
   isWave = false
 ): Enemy => {
   const stats = ENEMY_STATS[type];
-  // 強さ一定タイプ(ジャイアント/死神/特別敵)は距離・色でスケールしない。
+  // 強さ一定タイプ(ジャイアント/死神)＋ラボ専用敵は距離・色・時間でスケールしない(固定難易度・社長指定)。
   const constant = CONSTANT_STRENGTH_TYPES.has(type);
+  const fixed = constant || LAB_FIXED_TYPES.has(type);
   const area = areaIndexForPos(x, y);
   const distanceZone = area; // 互換フィールド(0-4)
   const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
-  // 色付き(強さ一定タイプには付かない)。色ごとの倍率を強さに乗せる。
-  const colorTier = constant ? undefined : rollColorTierForArea(area);
+  // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
+  const colorTier = fixed ? undefined : rollColorTierForArea(area);
   const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
-  // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。強さ一定タイプ = 1。
-  const diff = constant ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
-  // Reaper は終端個体で別管理。giant 等の強さ一定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
-  const hpMult = type === 'reaper' ? 1 : (constant ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
-  const dmgMult = type === 'reaper' ? 1 : (constant ? 1 : diff);
+  // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
+  const diff = fixed ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
+  // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
+  const hpMult = type === 'reaper' ? 1 : (fixed ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
+  const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diff);
 
   return {
     id: `enemy-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,

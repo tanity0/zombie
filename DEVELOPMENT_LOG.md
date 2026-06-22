@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.831 — ステージ2(ラボ)は固定難易度に(エリア大改修の影響を遮断)
+
+- 社長判断「ステージ2は固定難易度」。大改修(エリア×色・時間スケール廃止)がラボにも波及していた件を遮断。
+- `LAB_FIXED_TYPES`(lab-zombie-1/2/3)を追加し、`buildEnemy` で固定扱い(`fixed`):
+  エリア/色/時間の倍率を一切掛けず、lab-zombie 本来のステータス × 全体HP倍率(ENEMY_HP_MULT)のみ。色付き影も付かない。
+- 他の波及は元々ガード済み(拠点候補地=ラボ除外 / エリアバナー・死神・深層BGM=`!labTheme` / 出現種別=専用プール /
+  敵最大数・武器箱=ラボ専用経路)。
+- 変更: `utils/enemyUtils.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.830 — サブウェポン換金後にLv1で買い戻せるバグ修正
 
 - 社長報告「スキル換金するとレベル1が買い戻せちゃう」。原因: `sellSubWeapon` が所持(subWeapons/subWeaponLevels)
