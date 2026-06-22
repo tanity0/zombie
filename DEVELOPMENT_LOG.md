@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.808 — すり抜け監査: 敵にも城/ラボプロップの当たり判定を追加
+
+- 社長依頼「他オブジェクトもすり抜け大丈夫か確認」。プレイヤー(movePlayer)と敵(updateEnemies)の当たり判定を突き合わせ。
+- 敵だけ抜けていた箇所を発見&修正:
+  - **城(castle)**: プレイヤーは `resolveCastleCollision` で阻まれるが敵は素通り → 敵にも追加(屋外・非ラボ)。
+  - **ラボプロップ(パソコン/割れたカプセル等)**: プレイヤーは labProps も当たるが敵は壁のみ → `labPropRects` を敵にも適用。
+- これで木/トーチ(=breakable全般)/城/街・雪原プロップ/ラボ壁/ラボプロップ が**プレイヤー・敵で一致**。
+  非ソリッド(地雷=踏むまで/UVバー=光のみ)は従来どおり両者通過で正常。設置武器(盾/デコイ/タレット)は別経路で意図どおり。
+- 変更ファイル: `store/gameStore.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.807 — 雪原/街プロップ(トラック/バス等)を敵にも当たり判定
 
 - 社長報告: ステージ4のトラックを敵がすり抜ける(完全ではない)。

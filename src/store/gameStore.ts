@@ -4012,6 +4012,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const labWallRects = labTheme
         ? labWallsInRegion(pcx - state.gameBounds.width, pcy - state.gameBounds.height, pcx + state.gameBounds.width, pcy + state.gameBounds.height).map(wallRect)
         : [];
+      // 研究所スキンの遮蔽プロップ(パソコン/割れたカプセル等)。プレイヤーは当たり判定済み=敵にも適用(すり抜け防止)。
+      const labPropRects = labTheme
+        ? labPropsInRegion(pcx - state.gameBounds.width, pcy - state.gameBounds.height, pcx + state.gameBounds.width, pcy + state.gameBounds.height).map(propRect)
+        : [];
       // 視線/移動の遮蔽物: 屋内=lab壁 / 研究所スキン=壁オブジェクト / 森=なし。
       const losWalls = indoor ? indoorWalls : labWallRects;
 
@@ -4024,9 +4028,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           } else {
             const tr = labTheme ? { x: nx, y: ny } : resolveTreeCollision({ x: nx, y: ny, width: enemy.width, height: enemy.height });
             const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
-            const wallR = labWallRects.length
-              ? resolveAabb({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, labWallRects)
-              : torchR;
+            // 城(屋外・非ラボ)も敵にブロック(プレイヤーと同じ。従来は敵だけすり抜けていた)。
+            const castleR = labTheme ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
+            // ラボ壁＋ラボプロップ(研究所スキン)。labProps も敵に当たり判定(従来は壁のみ=プロップすり抜け)。
+            const labRects = labTheme ? [...labWallRects, ...labPropRects] : labWallRects;
+            const wallR = labRects.length
+              ? resolveAabb({ x: castleR.x, y: castleR.y, width: enemy.width, height: enemy.height }, labRects)
+              : castleR;
             // 街/雪原プロップ(バス/塔/トラック等)は敵にも当たり判定(プレイヤーと同じ)。森等カタログ無しは即return=no-op。
             pos = resolveCityPropCollision(state.farBackdrop, { x: wallR.x, y: wallR.y, width: enemy.width, height: enemy.height });
           }
