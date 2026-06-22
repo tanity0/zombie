@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.814 — ステージ2敵絵を差し替え / ステージ1の遠景森2素材を差し替え
+
+- **ステージ2(lab)敵スプライト差し替え**: 支給シート(透過済み)から5体をクロップして上書き。
+  上段=通常(Lv1 male/female)、下段=変異・紫結晶(Lv2 male/female)、左の巨体=Lv3。
+  ファイル: `public/sprites/lab-zombie/lab-zombie-lv{1m,1f,2m,2f,3}.png`(アスペクトは読込時 regAspect が自動追従)。
+- **ステージ1の遠景森2(nearHorizon='forest')差し替え**: 支給は白背景RGBAだったので白を抜いて透過化
+  (alpha=255-min(r,g,b)。暗い木=不透明 / 霧=半透明 / 白=透明)。`public/backgrounds/stage1-near-forest.png` 上書き。
+- 変更ファイル: 上記アセットのみ(コード変更なし)。検証: 透過合成プレビューで確認。
+
 ## v0.25.813 — 遠景森1を10px下げ / 近景森の半透明をやめ / vignette中心を狭く
 
 1. **遠景森1を10px下へ**: `HORIZON_FOREST_Y_OFFSET_PX` -100 → -90(+Y=下)。
