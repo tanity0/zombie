@@ -4585,7 +4585,8 @@ export class PixiScene {
     }
     v.container.position.set(footX, footY - drop);
     v.container.zIndex = footY;
-    v.sprite.scale.set(baseScale * sqx, baseScale * sqy);
+    const shieldDepth = this.depthScale(footY); // 設置物として地面遠近に乗せる(視覚のみ・判定不変)
+    v.sprite.scale.set(baseScale * sqx * shieldDepth, baseScale * sqy * shieldDepth);
 
     // 寿命末で早めにフェードアウト。
     const remaining = p.duration - age;
@@ -4623,6 +4624,11 @@ export class PixiScene {
     const cx = drawX + p.width / 2;
     const cy = drawY + p.height / 2;
     g.position.set(cx, cy);
+
+    // 「設置物」だけ地面遠近(depthScale)に乗せる(視覚のみ・判定不変)。弾や攻撃エフェクトは対象外。
+    // 範囲リング(trap/decoy の射程円)は半径を depthD で割って“見た目の実寸”を保つ(縮ませない)。
+    const placedObject = p.weaponType === 'grenade' || p.weaponType === 'trap' || p.weaponType === 'decoy';
+    const depthD = placedObject ? this.depthScale(drawY + p.height) : 1;
 
     if (p.reflected) {
       g.circle(0, 0, Math.max(p.width, p.height) * 0.7).fill({ color: 0xfcd34d });
@@ -4702,7 +4708,7 @@ export class PixiScene {
         const age = Math.max(0, Math.min(1, (Date.now() - p.createdAt) / Math.max(1, p.duration)));
         const pulse = 0.65 + Math.sin(age * Math.PI * 12) * 0.16;
         const radius = p.area ?? 34;
-        g.circle(0, 0, radius).stroke({ color: 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
+        g.circle(0, 0, radius / depthD).stroke({ color: 0x38bdf8, alpha: 0.42 * pulse, width: 1.5 });
         g.circle(0, 0, Math.max(4, p.width * 0.38)).fill({ color: 0x0f172a, alpha: 0.88 });
         g.circle(0, 0, Math.max(2, p.width * 0.18)).fill({ color: 0x7dd3fc, alpha: 0.76 });
         break;
@@ -4713,8 +4719,8 @@ export class PixiScene {
         const range = p.area ?? 0;
         if (range > 0) {
           const pulse = 0.85 + Math.sin(Date.now() / 320) * 0.15;
-          g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });          // 黒フチ
-          g.circle(0, 0, range).stroke({ color: 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 }); // シアン本線
+          g.circle(0, 0, range / depthD).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });          // 黒フチ
+          g.circle(0, 0, range / depthD).stroke({ color: 0x38bdf8, alpha: 0.55 * pulse, width: 1.5 }); // シアン本線
         }
         // 小さめの円盤型装置。中央のコアが軽く明滅(常時glowなし)。
         const blink = 0.6 + Math.sin(Date.now() / 140) * 0.4;
@@ -4769,6 +4775,8 @@ export class PixiScene {
         break;
       }
     }
+    // 設置物は地面遠近で一括スケール(範囲リングは上で半径補正済み=実寸維持)。
+    if (placedObject && depthD !== 1) g.scale.set(depthD);
   }
 
   // ---- 屋内(研究施設)ステージの床/壁/扉/マーカー(仮実装=塗り矩形) ----------

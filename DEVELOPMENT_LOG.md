@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.824 — 設置物スキル(盾/トラップ/デコイ/設置グレネード)に地面遠近スケールを付与
+
+- 社長選択「設置物・盾など」。ワールドに置くスキルオブジェクトを地面遠近(depthScale)に乗せる(視覚のみ・判定不変)。
+  - 盾(`drawShield`): 足元基準 `depthScale(footY)` をスプライトscaleに乗算。
+  - トラップ/デコイ/設置グレネード(`drawProjectile`): `placedObject` のとき `g.scale=depthD`。
+    射程リング(trap/decoy の円)は半径を `/depthD` 補正し“見た目の実寸”を維持(範囲を縮ませない=社長が範囲エフェクトは除外と選択)。
+- 弾(各種bullet)・斬撃/ハリケーン等の攻撃範囲エフェクトは対象外(従来どおり)。召喚は既に深度対応済み。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.823 — 遠近: 位置ベースマッピングを既定ON＋確定値を焼き込み
 
 - 社長確定: `?depthmap=1&depthmin=0.01&depthmax=1.7&depthedge=500&dmapcurve=1` がベスト。これを既定に。
