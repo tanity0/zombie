@@ -165,6 +165,8 @@ const tsBool = (key: string, def: boolean): boolean => {
 // ステージ2(ラボ)の暗闇=可視ゾーン(フラッシュライト)演出。社長指示で廃止(既定OFF)。?labveil=1 で参照用に復活可。
 // (いきなり暗転する/画面固定の暗幕が登場ヘリのズーム等でズレる、という課題のため通常照明へ)。
 const LAB_VISIBILITY_VEIL = tsBool('labveil', false);
+// ステージ2(ラボ)の景色を全体的に暗くする量(0=暗くしない / 1=真っ暗)。?labdark= で調整。プレイヤーグロー/月明りは別経路で残る。
+const LAB_SCENE_DARK = Math.max(0, Math.min(1, tsNum('labdark', 0.6)));
 // 遠景森2(ラボ)の明るさ。暗幕を地平下だけにした(載せ替え廃止)後、白tint(全明)だと元素材より眩し過ぎたので下げる。
 // グレー乗算tint。?nhbright=0..1 で現地調整(既定0.55)。
 const LAB_NEAR_HORIZON_TINT = (() => {
@@ -674,6 +676,9 @@ export class PixiScene {
   // リズム中の暗転: 地面/遠景だけを暗くする(worldGroup の filteredWorld 手前に置くので、
   // 背景木・影・アクター等のオブジェクトは暗くならない)。dim は共通のイージング濃さ。
   private rhythmDimGfx = new Graphics();
+  // ステージ2(ラボ)の景色ダーク幕。rhythmDimGfx と同じく filteredWorld 直前=プレイヤー/光より下に置き、
+  // 遠景〜地面だけを暗くする(プレイヤーグロー[加算]・月明りシャフト[uiLayer]は素通りで明るいまま)。
+  private labDimGfx = new Graphics();
   // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
   private rhythmBall = new Sprite();
   private rhythmBallTextured = false;
@@ -1055,6 +1060,9 @@ export class PixiScene {
     // 暗転は worldGroup の filteredWorld 直前に挿す(地面/遠景の上、オブジェクト/アクターの下)。
     this.rhythmDimGfx.visible = false;
     this.L.worldGroup.addChildAt(this.rhythmDimGfx, this.L.worldGroup.getChildIndex(this.L.filteredWorld));
+    // ラボ景色ダーク幕も filteredWorld 直前へ(地面/遠景の上・プレイヤー/光の下)。
+    this.labDimGfx.visible = false;
+    this.L.worldGroup.addChildAt(this.labDimGfx, this.L.worldGroup.getChildIndex(this.L.filteredWorld));
     // ミラーボール: 頭上に表示。rhythmOverlay(リング/矢印)より上に描く。
     this.rhythmBall.anchor.set(0.5, 0.5);
     this.rhythmBall.visible = false;
@@ -2041,6 +2049,7 @@ export class PixiScene {
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
+    this.syncLabSceneDim(s.stageTheme === 'lab' && !s.indoorMode);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
@@ -2895,6 +2904,17 @@ export class PixiScene {
     ctx.fillRect(0, 0, 4, h);
     this.veilFadeTex = Texture.from(c);
     return this.veilFadeTex;
+  }
+
+  // ステージ2(ラボ)の景色ダーク幕。遠景〜地面だけを暗くする(プレイヤーグロー[加算・上]・月明りシャフト[uiLayer]は明るいまま)。
+  // ズームで隅が空かないよう画面より大きめに塗る。負荷=単一Graphicsのrect1枚/フレーム。
+  private syncLabSceneDim(on: boolean) {
+    const d = this.labDimGfx;
+    if (!on || LAB_SCENE_DARK <= 0.004) { if (d.visible) { d.visible = false; d.clear(); } return; }
+    d.visible = true;
+    d.clear();
+    const m = Math.max(this.screenW, this.screenH);
+    d.rect(-m, -m, this.screenW + m * 2, this.screenH + m * 2).fill({ color: 0x05080f, alpha: LAB_SCENE_DARK });
   }
 
   private updateLabVisibility(show: boolean, sx: number, sy: number) {

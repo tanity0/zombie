@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.810 — ステージ2を共通ライティングで「全体暗め＋プレイヤーグロー/月明り維持」
+
+- 社長方針: 暗幕(フラッシュライト)は廃止のまま、共通光系で調整。全体をかなり暗く＋プレイヤーのグローと月明りは通常維持。
+- 実装: `labDimGfx`(景色ダーク幕)を `rhythmDimGfx` と同じ **filteredWorld 直前**(=遠景/地面の上・プレイヤー/光の下)へ。
+  → 遠景〜地面だけ暗くなり、**プレイヤーグロー(playerLight=加算・上層)・月明りシャフト(uiLayer)は素通りで明るいまま**。
+  grade/vignette(uiLayer最前=全部暗くする)では無くこの位置にするのがキモ。
+- 暗さは `?labdark=`(0..1・既定0.6)。色 0x05080f(暗い寒色)。ズームで隅が空かないよう画面より大きめに塗る(単一Graphics)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 要実機: `?labdark=` で好みの暗さに(例 0.7 でさらに暗く)。プレイヤーグローが弱ければ別途 playerLight 強化も可。
+
 ## v0.25.809 — ステージ2の暗闇(フラッシュライト)演出を廃止
 
 - 社長判断: いきなり暗転する＆画面固定の暗幕が登場ヘリのズーム/演出でズレる課題のため、暗闇演出を廃止。
