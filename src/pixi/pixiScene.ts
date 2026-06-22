@@ -165,8 +165,6 @@ const tsBool = (key: string, def: boolean): boolean => {
 // ステージ2(ラボ)の暗闇=可視ゾーン(フラッシュライト)演出。社長指示で廃止(既定OFF)。?labveil=1 で参照用に復活可。
 // (いきなり暗転する/画面固定の暗幕が登場ヘリのズーム等でズレる、という課題のため通常照明へ)。
 const LAB_VISIBILITY_VEIL = tsBool('labveil', false);
-// ステージ2(ラボ)の景色を全体的に暗くする量(0=暗くしない / 1=真っ暗)。?labdark= で調整。プレイヤーグロー/月明りは別経路で残る。
-const LAB_SCENE_DARK = Math.max(0, Math.min(1, tsNum('labdark', 0.6)));
 // 遠景森2(ラボ)の明るさ。暗幕を地平下だけにした(載せ替え廃止)後、白tint(全明)だと元素材より眩し過ぎたので下げる。
 // グレー乗算tint。?nhbright=0..1 で現地調整(既定0.55)。
 const LAB_NEAR_HORIZON_TINT = (() => {
@@ -208,13 +206,6 @@ const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
 // --- 研究施設(屋内)の暗さ -------------------------------------------------------
 // ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
 const LAB_ENV_TINT = 0x6b7686;       // 研究所の床/壁を暗くする(寒色の暗灰)。小さいほど暗い。ドット絵床が読めるよう従来より弱め。
-// ステージ2の敵スプライトも暗く沈める tint(レイヤー追加なし=既存の sprite.tint を使う)。
-// 床(labDimGfx)は敵より奥なので敵には乗らない。色相は床(LAB_ENV_TINT)に合わせ、明るさだけ labenemy で調整。
-const LAB_ENEMY_DARK = Math.max(0, Math.min(1, tsNum('labenemy', 0.55))); // 0=真っ暗 / 1=LAB_ENV_TINT そのまま
-const LAB_ENEMY_TINT = (() => {
-  const r = (LAB_ENV_TINT >> 16) & 0xff, g = (LAB_ENV_TINT >> 8) & 0xff, b = LAB_ENV_TINT & 0xff;
-  return (Math.round(r * LAB_ENEMY_DARK) << 16) | (Math.round(g * LAB_ENEMY_DARK) << 8) | Math.round(b * LAB_ENEMY_DARK);
-})();
 // 壁の外側=野外マージンの地面(より暗い)。プレイヤーが端でも中心を保てる余白(野外)。
 const LAB_OUTER_TINT = 0x161d16;     // 野外(夜の地面)。かなり暗い緑寄り。
 // 屋内の周辺減光(vignette)を屋外より広範囲に暗く(社長指示)。明るい部分を狭く=さらに強める。
@@ -684,8 +675,6 @@ export class PixiScene {
   // 背景木・影・アクター等のオブジェクトは暗くならない)。dim は共通のイージング濃さ。
   private rhythmDimGfx = new Graphics();
   // ステージ2(ラボ)の景色ダーク幕。rhythmDimGfx と同じく filteredWorld 直前=プレイヤー/光より下に置き、
-  // 遠景〜地面だけを暗くする(プレイヤーグロー[加算]・月明りシャフト[uiLayer]は素通りで明るいまま)。
-  private labDimGfx = new Graphics();
   // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
   private rhythmBall = new Sprite();
   private rhythmBallTextured = false;
@@ -1067,9 +1056,6 @@ export class PixiScene {
     // 暗転は worldGroup の filteredWorld 直前に挿す(地面/遠景の上、オブジェクト/アクターの下)。
     this.rhythmDimGfx.visible = false;
     this.L.worldGroup.addChildAt(this.rhythmDimGfx, this.L.worldGroup.getChildIndex(this.L.filteredWorld));
-    // ラボ景色ダーク幕も filteredWorld 直前へ(地面/遠景の上・プレイヤー/光の下)。
-    this.labDimGfx.visible = false;
-    this.L.worldGroup.addChildAt(this.labDimGfx, this.L.worldGroup.getChildIndex(this.L.filteredWorld));
     // ミラーボール: 頭上に表示。rhythmOverlay(リング/矢印)より上に描く。
     this.rhythmBall.anchor.set(0.5, 0.5);
     this.rhythmBall.visible = false;
@@ -2056,7 +2042,6 @@ export class PixiScene {
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
-    this.syncLabSceneDim(s.stageTheme === 'lab' && !s.indoorMode);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
@@ -2911,17 +2896,6 @@ export class PixiScene {
     ctx.fillRect(0, 0, 4, h);
     this.veilFadeTex = Texture.from(c);
     return this.veilFadeTex;
-  }
-
-  // ステージ2(ラボ)の景色ダーク幕。遠景〜地面だけを暗くする(プレイヤーグロー[加算・上]・月明りシャフト[uiLayer]は明るいまま)。
-  // ズームで隅が空かないよう画面より大きめに塗る。負荷=単一Graphicsのrect1枚/フレーム。
-  private syncLabSceneDim(on: boolean) {
-    const d = this.labDimGfx;
-    if (!on || LAB_SCENE_DARK <= 0.004) { if (d.visible) { d.visible = false; d.clear(); } return; }
-    d.visible = true;
-    d.clear();
-    const m = Math.max(this.screenW, this.screenH);
-    d.rect(-m, -m, this.screenW + m * 2, this.screenH + m * 2).fill({ color: 0x05080f, alpha: LAB_SCENE_DARK });
   }
 
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
@@ -4036,9 +4010,6 @@ export class PixiScene {
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     view.container.alpha = horizonAlpha;
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
-    // ステージ2は敵も環境として暗く沈める(床/壁と同様の寒色 tint)。レイヤーは足さず sprite.tint のみ。
-    // プレイヤー本体/グロー・月明りは別経路なので影響しない。
-    view.sprite.tint = this.isLabStage ? LAB_ENEMY_TINT : 0xffffff;
 
     if (tex) {
       view.sprite.texture = tex;

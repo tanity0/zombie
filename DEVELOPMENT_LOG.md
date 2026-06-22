@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.812 — ステージ2の暗くする系を一旦すべて撤去(敵tint＋遠景ダーク幕)
+
+- 社長判断: 敵だけ暗くしても意味がない(主人公グローで照らされる絵を狙ったが現状の構成では難しい)。
+  よって **v0.25.811 の敵 tint と v0.25.810 の遠景ダーク幕(labDimGfx)を両方とも一旦削除**。
+- 削除: `LAB_ENEMY_TINT`/`labenemy`、`labDimGfx`/`syncLabSceneDim`/`LAB_SCENE_DARK`/`labdark`、
+  および worldGroup への addChildAt と ticker からの呼び出し。
+- ステージ2は床/壁の `LAB_ENV_TINT`・月明りシャフト・プレイヤーグロー等の既存光系のみの状態に戻る。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 注: この件(ステージ2を暗くする/敵の照らし方)は社長の指示を待ってから進める。勝手に再実装しない。
+
 ## v0.25.811 — ステージ2の敵も暗く(レイヤー追加なし・既存 sprite.tint)
 
 - 社長指示「敵も暗くしたいのだが、勝手にレイヤー加えないで」。`labDimGfx`(景色ダーク幕)は
