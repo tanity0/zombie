@@ -463,6 +463,10 @@ const FAR_GROUND_BLUR_STRENGTHS = [0.65, 0.35]; // [最遠, やや遠]。ピー�
 const OBJECT_GROUND_RELATIVE_WEIGHT = tsNum('ogw', 0.42);
 const OBJECT_GROUND_RELATIVE_MIN = tsNum('ogmin', 0.68);
 const OBJECT_GROUND_RELATIVE_MAX = tsNum('ogmax', 1.45);
+// 物/敵の擬似遠近“専用”カーブ(床=gcurve/gfar とは独立)。これを変えても地面の見た目は変わらない。
+// 既定は床と同値=現状維持。?ocurve=(下げると拡縮が手前まで均等に効く=変わる範囲が広がる) / ?ofar= で調整。
+const OBJECT_PERSP_CURVE = tsNum('ocurve', GROUND_PERSPECTIVE_CURVE);
+const OBJECT_PERSP_FAR = tsNum('ofar', GROUND_TILE_SCALE_Y_FAR);
 const TREE_VISUAL_SCALE = 1.65;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
@@ -1389,7 +1393,8 @@ export class PixiScene {
   private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
     const relative = 1 + (footWorldY - this.depthRefY) * k;
-    const groundRatio = this.groundRelativeScale(footWorldY);
+    // 物/敵専用の遠近カーブで地面相対比を取る(床の gcurve/gfar とは独立=地面の見た目は不変)。
+    const groundRatio = this.groundRelativeScale(footWorldY, OBJECT_PERSP_FAR, GROUND_TILE_SCALE_Y_NEAR, OBJECT_PERSP_CURVE);
     const groundBlend = Math.exp(Math.log(groundRatio) * OBJECT_GROUND_RELATIVE_WEIGHT);
     const f = relative * groundBlend;
     return f < min ? min : f > max ? max : f;

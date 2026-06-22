@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.792 — 物/敵の遠近カーブを地面から分離(地面を変えずに拡縮範囲を調整)
+
+- 社長指摘: `gcurve/gfar` を触ると**地面まで変わる**。物/敵の拡縮“範囲”だけ広げたい。
+- `groundRelativeScale` を物/敵専用カーブで呼ぶよう変更。**`OBJECT_PERSP_CURVE`(`?ocurve=`)/`OBJECT_PERSP_FAR`(`?ofar=`)**
+  を新設(既定=床と同値で現状維持)。これらは**地面描画には一切影響しない**(床は従来どおり `gcurve/gfar`)。
+- 使い方: 地面はそのまま、物/敵の「サイズが変わる区間」を広げたい → **`?ocurve=1.4`**(必要なら `ogmin↓/ogmax↑`)。
+- ※物の遠近が床と乖離すると“床に乗ってる感”は薄れるトレードオフあり。実機で詰めて既定へ焼き込み。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.791 — 擬似遠近の“効く範囲”を決める地面遠近パラメータもURL化
 
 - 社長指摘: 「min/max に到達する範囲が狭い／min/max をいくら変えても到達位置が動かない」。
