@@ -103,7 +103,7 @@ const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景森2の高さ(screenH比)。?nh= で現地調整可(でか過ぎたので下げられるように)。tsNum はこの行より後に定義のため inline で読む。
 const NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
-  return Number.isFinite(v) && v > 0 ? v : 0.2; // 既定0.2(社長指定。旧0.42は縦持ちで大き過ぎた)
+  return Number.isFinite(v) && v > 0 ? v : 0.17; // 既定0.17(社長指定)
 })();
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
@@ -165,7 +165,7 @@ const tsBool = (key: string, def: boolean): boolean => {
 // 遠景森2(ラボ)の明るさ。暗幕を地平下だけにした(載せ替え廃止)後、白tint(全明)だと元素材より眩し過ぎたので下げる。
 // グレー乗算tint。?nhbright=0..1 で現地調整(既定0.55)。
 const LAB_NEAR_HORIZON_TINT = (() => {
-  const b = Math.max(0, Math.min(1, tsNum('nhbright', 0.55)));
+  const b = Math.max(0, Math.min(1, tsNum('nhbright', 0.4)));
   const g = Math.round(255 * b);
   return (g << 16) | (g << 8) | g;
 })();
@@ -785,6 +785,8 @@ export class PixiScene {
   private labRT: RenderTexture | null = null;     // 暗幕(穴あき)の描画先
   private labRTScene = new Container();            // 暗幕rect + 光ディスク(eraseで穴)を描く中身(オフスクリーン)
   private labDarkRect = new Sprite(Texture.WHITE); // 暗幕ベース
+  private labVeilFade = new Sprite();              // 暗幕上端のソフトフェード帯(揺れで境界線が出ないように)
+  private veilFadeTex: Texture | null = null;      // 縦グラデ(上=透明→下=不透明)テクスチャ(遅延生成)
   private labVeilSprite: Sprite | null = null;     // 画面に重ねる暗幕(=labRT)
   private labVisLights: Sprite[] = [];
   setRenderer(r: Renderer) { this.renderer = r; }
@@ -2874,6 +2876,24 @@ export class PixiScene {
     }
   }
 
+  // 暗幕上端フェード用の縦グラデ(上=透明→下=不透明・白)。乗算tintで暗色化して使う。1回だけ生成してキャッシュ。
+  private ensureVeilFadeTexture(): Texture {
+    if (this.veilFadeTex) return this.veilFadeTex;
+    if (typeof document === 'undefined') { this.veilFadeTex = Texture.WHITE; return this.veilFadeTex; }
+    const h = 64;
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) { this.veilFadeTex = Texture.WHITE; return this.veilFadeTex; }
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 4, h);
+    this.veilFadeTex = Texture.from(c);
+    return this.veilFadeTex;
+  }
+
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
     if (!show || !this.renderer) {
       if (this.labVeilSprite) this.labVeilSprite.visible = false;
@@ -2892,18 +2912,25 @@ export class PixiScene {
     if (this.labDarkRect.parent !== this.labRTScene) {
       this.labDarkRect.tint = LAB_VIS_DARK;
       this.labDarkRect.alpha = LAB_VIS_ALPHA;
-      this.labDarkRect.position.set(0, 0);
       this.labRTScene.addChild(this.labDarkRect);
     }
-    // 暗幕(可視ゾーン)は「地平より下=プレイ領域」だけを覆う。遠景/地平帯/遠景森2(景色)は暗くせず通常z(背面)のまま
-    // =プレイヤー/ヘリの後ろ。これで景色レイヤーを前面へ載せ替えるハックが不要になる(被りバグの根治)。?labveiltop=px で調整可。
+    if (this.labVeilFade.parent !== this.labRTScene) {
+      this.labVeilFade.texture = this.ensureVeilFadeTexture();
+      this.labVeilFade.tint = LAB_VIS_DARK;
+      this.labVeilFade.alpha = LAB_VIS_ALPHA;
+      this.labRTScene.addChild(this.labVeilFade); // dark rect と同じく erase ディスクより前(下)に置く
+    }
+    // 暗幕(可視ゾーン)は「地平より下=プレイ領域」だけを覆う。遠景/地平帯/遠景森2(景色)は暗くせず通常z(背面)のまま。?labveiltop=px。
     const veilTopOverride = tsNum('labveiltop', -1);
-    const veilTop = veilTopOverride >= 0
-      ? veilTopOverride
-      : this.farBackdropHeight(); // 地平(遠景の下端=地面の上端)に合わせる。明るい地面の帯が残らない
-    this.labDarkRect.position.set(0, veilTop);
+    const veilTop = veilTopOverride >= 0 ? veilTopOverride : this.farBackdropHeight();
+    // 上端はソフトなグラデ帯でフェードイン(ハードな境界線を地平に固定すると揺れでズレて見えるため=社長指摘)。
+    const fadeH = Math.max(8, Math.round(this.screenH * 0.08));
+    this.labVeilFade.position.set(0, veilTop);
+    this.labVeilFade.width = W;
+    this.labVeilFade.height = fadeH;
+    this.labDarkRect.position.set(0, veilTop + fadeH);
     this.labDarkRect.width = W;
-    this.labDarkRect.height = Math.max(1, H - veilTop);
+    this.labDarkRect.height = Math.max(1, H - (veilTop + fadeH));
     // 画面に重ねる暗幕スプライト(=labRT)。uiLayer 最下=ワールドの上・HUDの下。
     if (!this.labVeilSprite) {
       const sp = new Sprite(this.labRT);

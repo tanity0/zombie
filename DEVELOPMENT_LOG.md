@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.806 — 遠景森2 高さ0.17/明るさ0.4を確定＋暗幕上端をソフトフェード化
+
+- 高さ既定 0.2→**0.17**、ラボ遠景森2明るさ `nhbright` 既定 0.55→**0.4**(社長確定値)。
+- 暗幕境界の揺れズレ対策(社長指摘「びたで固定すると揺れでズレる/現実的でない」):
+  暗幕の上端をハードな線でなく**縦グラデのソフトフェード帯**(高さ=screenH×8%)でフェードイン。
+  境界線が出ないので、揺れ/スクロールで多少ズレても気づかない。`ensureVeilFadeTexture` で縦グラデtexを生成。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.805 — 遠景森2: 高さ0.2を既定化＋ラボの眩しさを下げる
 
 - (1) `NEAR_HORIZON_HEIGHT_RATIO` の既定を **0.2**(社長指定)に(`?nh=` 上書きは継続)。
