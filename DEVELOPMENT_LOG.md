@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.807 — 雪原/街プロップ(トラック/バス等)を敵にも当たり判定
+
+- 社長報告: ステージ4のトラックを敵がすり抜ける(完全ではない)。
+- 原因: `resolveCityPropCollision`(街/雪原プロップの当たり)が**プレイヤーのみ**で、敵(updateEnemies の resolveMove)に
+  入っていなかった→雪原/街の大型プロップ(トラック/バス/塔/テント)を敵がすり抜けていた。
+- 修正: 敵の resolveMove(屋外)に `resolveCityPropCollision(state.farBackdrop, ...)` を追加(プレイヤーと同じ)。
+  カタログ無しのステージ(森等)は no-op。ステージ3(街)の敵すり抜けも同時に解消。
+- 変更ファイル: `store/gameStore.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.806 — 遠景森2 高さ0.17/明るさ0.4を確定＋暗幕上端をソフトフェード化
 
 - 高さ既定 0.2→**0.17**、ラボ遠景森2明るさ `nhbright` 既定 0.55→**0.4**(社長確定値)。
