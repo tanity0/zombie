@@ -917,7 +917,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
 
-            // 時間による出現(社長指示): 7分経過後、20秒ごとに抽選。確率=10%+(7分以降の経過分×10%)で最大100%。
+            // 時間による出現(社長指示): 10分経過後、20秒ごとに抽選。確率=10%+(10分以降の経過分×10%)で最大100%。
             // 抽選ごとに気配演出(横切り)を出し、当選で risk を最大化=直後の完全出現へ。距離条件は不問。
             if (newGameTime >= REAPER_CONFIG.timeStartMs
                 && newGameTime - rs.lastTimeRollAt >= REAPER_CONFIG.timeRollIntervalMs) {
@@ -935,8 +935,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (Math.abs(hx) + Math.abs(hy) < 0.01 && player.lastDirection) { hx = player.lastDirection.x; hy = player.lastDirection.y; }
               if (Math.abs(hx) + Math.abs(hy) < 0.01) hy = -1; // idle→上(奥)
               const hlen = Math.hypot(hx, hy) || 1;
-              const sx = pcx + (hx / hlen) * REAPER_CONFIG.spawnDistFromPlayer;
-              const sy = pcy + (hy / hlen) * REAPER_CONFIG.spawnDistFromPlayer;
+              // 必ず画面外から出す(社長指示)。画面の最遠角(中心→角)+余白を下限と比較して大きい方を採用。
+              const gb = useGameStore.getState().gameBounds;
+              const offScreenDist = Math.hypot(gb.width / 2, gb.height / 2) + REAPER_CONFIG.spawnMarginPx;
+              const spawnDist = Math.max(REAPER_CONFIG.spawnDistFromPlayer, offScreenDist);
+              const sx = pcx + (hx / hlen) * spawnDist;
+              const sy = pcy + (hy / hlen) * spawnDist;
               const chaser = spawnEnemyAt('reaper', sx - 40, sy - 40, newGameTime);
               chaser.reaperChaser = true;
               chaser.health = REAPER_CONFIG.chaserHealth;

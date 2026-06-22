@@ -26,8 +26,11 @@ export const REAPER_CONFIG = {
   riskDecayPerSec: 18,        // 深奥外へ戻ると /秒 減少
   spawnRiskThreshold: 100,    // これで完全出現
   // 完全出現(追跡)
-  spawnDistFromPlayer: 780,   // 進行方向の画面外から出す距離(=即接触させない猶予+前方から迫る)
-  contactDamage: 9999,        // 接触ダメージ(ほぼ即死)
+  // 進行方向へ出すが、必ず画面外から出す(社長指示)。実距離は画面サイズから算出(下記 spawnMarginPx)。
+  // spawnDistFromPlayer は下限(小画面でも最低この距離は離す)。
+  spawnDistFromPlayer: 780,   // 進行方向の画面外から出す距離の下限
+  spawnMarginPx: 140,         // 画面の最遠角からさらに外へ出す余白(必ず画面外を保証)
+  contactDamage: 77,          // 接触ダメージ(社長指示=77)
   chaseSpeedMult: 0.9,        // 追跡速度 = プレイヤー現在移動速度 × 0.9(遅いが下記ワープで回り込む)
   warpIntervalMs: 4000,       // 回り込みワープの間隔
   warpDistPx: 520,            // ワープ後にプレイヤーから取る距離(上下左右いずれかへ・多少ランダム)
@@ -35,11 +38,11 @@ export const REAPER_CONFIG = {
   chaserHealth: 6000,         // 高いが有限(極まれば討伐可能)
   canBeKilled: true,
   // --- 時間による出現(社長指示) ---
-  // 距離(深奥)とは別系統。7分経過後、20秒ごとに抽選。確率=10%+(7分以降の経過分×10%)で最大100%。
+  // 距離(深奥)とは別系統。10分経過後、20秒ごとに抽選。確率=10%+(10分以降の経過分×10%)で最大100%。
   // 抽選ごとに「気配演出」(横切り)を出し、当選で完全出現(深奥と同じ追跡 reaper)。
-  timeStartMs: 7 * 60 * 1000,   // 7分から開始
+  timeStartMs: 10 * 60 * 1000,  // 10分から開始(社長指示で 7→10分)
   timeRollIntervalMs: 20000,    // 20秒に1回抽選
-  timeBaseChance: 0.10,         // 7分時点 10%
+  timeBaseChance: 0.10,         // 10分時点 10%
   timeChancePerMin: 0.10,       // 以降1分ごとに +10%
 } as const;
 

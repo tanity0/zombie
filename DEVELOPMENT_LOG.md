@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.777 — 死神(デス)調整: 時間開始10分 / 必ず画面外 / 接触77
+
+- **時間による死神の開始を 7分 → 10分**(`REAPER_CONFIG.timeStartMs`)。確率式は据え置き(10分10%、以降1分ごと+10%、最大100%)。
+- **完全出現は必ず画面外から**(社長指示): 進行方向へ出すのは従来どおりだが、距離を
+  `max(spawnDistFromPlayer, hypot(画面幅/2,画面高/2)+spawnMarginPx)` に。大画面でも画面内に湧かない。
+  距離(深奥)死神・時間死神の両方に適用。`spawnMarginPx=140` 追加。
+- **接触ダメージ 9999 → 77**(社長指示)。
+- コメント/TUTORIAL_NOTES の「7分」表記も10分へ更新。
+- 負荷: 0/10(定数 + 出現時1回の距離計算のみ)。
+- 変更ファイル: `config/reaper.ts`, `hooks/useGameLoop.ts`, `TUTORIAL_NOTES.md`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+
 ## v0.25.776 — PCはマウス操作(照準マウス連動・左=タップ/右=フリック)
 
 - **PCの右手をマウスに**(社長指示)。スマホ4操作に対応した最終スキーム:
