@@ -189,12 +189,13 @@ const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの�
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
 const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
 const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
-// 原点(スタート/商人)からの距離(px)→ 区域インデックス。500px刻み、2000px以降は深層域。
+// 原点(スタート/商人)からの距離(px)→ 区域インデックス。
+// 0〜1500軍備 / 1500〜3000研究 / 3000〜5000デンジャー / 5000〜7500汚染 / 7500〜深層域。
 const areaZoneIndexFor = (distPx: number): number => {
-  if (distPx >= 2000) return 4;
-  if (distPx >= 1500) return 3;
-  if (distPx >= 1000) return 2;
-  if (distPx >= 500) return 1;
+  if (distPx >= 7500) return 4;
+  if (distPx >= 5000) return 3;
+  if (distPx >= 3000) return 2;
+  if (distPx >= 1500) return 1;
   return 0;
 };
 const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒してから復活までの時間(社長指示)
