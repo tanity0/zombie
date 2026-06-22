@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.784 — 即終了を廃止し「帰還サークル」へ(ボス撃破/終了アイテム共通)
+
+- **ジャイアント撃破で即勝利を廃止**(社長指示)。撃破は `finaleDefeated` を立てるだけ。`gameWon` は帰還完了時のみ。
+- **城跡付近に帰還サークルが出現**(プレイヤーを避けて=近すぎる時はプレイヤーから離す方向へ押し出し)。
+  サークル内に**3秒とどまると帰還完了**(`gameWon=true`→従来の勝利フロー)。離れると進捗リセット。
+- **終了アイテム/ゴール(`triggerEventVictory`)も同仕様**に。屋内は壁に阻まれないようプレイヤー位置に直接出す(避けない)。
+- store: `finaleDefeated`/`returnCircle` 追加。`beginReturnPhase(x,y,avoidPlayer)` / `updateReturnPhase(dt)`。
+  ボス撃破の4経路(カウンター/銃弾×2/爆弾)+ `damageEnemy` の `gameWon||boss` を `finaleDefeated||boss` に置換。
+  `RETURN_CIRCLE_RADIUS=95` / `HOLD_MS=3000` / `AVOID_DIST=240`。
+- useGameLoop: 毎フレーム、`finaleDefeated && !returnCircle` で城跡にサークル生成(+`event-start` SE)、
+  サークル在席を `updateReturnPhase` で計測。屋内/屋外問わず動作。
+- 描画(pixiScene): `returnGfx`(加算)で緑の二重リング+外周に滞在進捗の円弧(`syncArena` と同方式・1図形)。負荷1/10。
+- 演出: 出現/完了に `eventBannerText`(帰還サークル出現 / 帰還完了)を流用。
+- 変更ファイル: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.783 — サブウェポン換金を単一ボタン化(装備中の選択サブを自動売却)
 
 - 換金を**列挙グリッド → 単一ボタン**に。装備中(選択した=ロードアウト)の非キャラ固有サブを自動で売却。

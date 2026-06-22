@@ -20,7 +20,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -630,6 +630,7 @@ export class PixiScene {
   private rhythmArrowsKey = '';
   private groundReflectionGfx = new Graphics();
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
+  private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
@@ -960,6 +961,7 @@ export class PixiScene {
     this.L.groundLayer.addChild(
       this.groundReflectionGfx,
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
+      this.returnGfx, // 帰還サークル(地面・world座標)
       this.pumpkinTelegraph,
       this.playerGroundPool,
       this.playerLight,
@@ -968,6 +970,7 @@ export class PixiScene {
       this.shadowContainer,
     );
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
+    this.returnGfx.blendMode = 'add'; // 帰還サークルも加算で発光
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
@@ -1968,6 +1971,7 @@ export class PixiScene {
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
+    this.syncReturnCircle(s.returnCircle, now);
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
@@ -4207,6 +4211,29 @@ export class PixiScene {
           .arc(ae.x, ae.y, rr, start, start + Math.PI * 2 * frac)
           .stroke({ width: 4, color: 0xbbf7d0, alpha: 0.95 });
       }
+    }
+  }
+
+  // 帰還サークル: フィナーレ撃破/終了アイテム後に出る帰還地点。地面の二重リング+滞在進捗の外周円弧。
+  // 単一 Graphics に円を数本引くだけ。負荷 1/10(描画のみ・帰還フェーズ中だけ毎フレーム1図形)。
+  private syncReturnCircle(rc: { x: number; y: number; radius: number; dwellMs: number } | null, now: number) {
+    const g = this.returnGfx;
+    g.clear();
+    if (!rc) return;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 240);
+    const a = 0.34 + 0.2 * pulse;
+    const color = 0x86efac; // 帰還=緑(安全・脱出)
+    g.circle(rc.x, rc.y, rc.radius - 4).fill({ color, alpha: 0.06 + 0.05 * pulse });
+    g.circle(rc.x, rc.y, rc.radius).stroke({ width: 6, color, alpha: a * 0.6 });
+    g.circle(rc.x, rc.y, rc.radius - 3).stroke({ width: 2, color, alpha: a });
+    // 滞在進捗を外周の円弧で表示(上端始点・時計回り)。arc 前に moveTo して地面を横切る線を防ぐ。
+    const frac = Math.max(0, Math.min(1, rc.dwellMs / RETURN_CIRCLE_HOLD_MS));
+    if (frac > 0) {
+      const start = -Math.PI / 2;
+      const rr = rc.radius + 5;
+      g.moveTo(rc.x + Math.cos(start) * rr, rc.y + Math.sin(start) * rr)
+        .arc(rc.x, rc.y, rr, start, start + Math.PI * 2 * frac)
+        .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
     }
   }
 

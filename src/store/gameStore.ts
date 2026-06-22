@@ -103,6 +103,12 @@ export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boole
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 
+// 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
+const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
+export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
+const RETURN_CIRCLE_AVOID_DIST = 240;   // プレイヤーから最低この距離を空けて出現(避ける)
+
+
 const createCastleEvent = (): CastleEvent => {
   const angle = Math.random() * Math.PI * 2;
   const dist = CASTLE_MIN_DISTANCE + Math.random() * (CASTLE_MAX_DISTANCE - CASTLE_MIN_DISTANCE);
@@ -1158,8 +1164,12 @@ interface GameState {
   shopReopenAt: number;
   eventQuestReopenAt: number;
   vaccinePurchased: boolean;
-  // Flipped true the moment the finale boss (giantbat) dies — the run is won.
+  // Flipped true only when the player completes the return circle (帰還完了) — the run is won.
   gameWon: boolean;
+  // フィナーレボス(giantbat)を倒した=終了条件を満たした(まだ勝利ではない)。useGameLoop が帰還サークルを出す。
+  finaleDefeated: boolean;
+  // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
+  returnCircle: { x: number; y: number; radius: number; dwellMs: number } | null;
   // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
   gameReturned: boolean;
   // Start-screen setting: melee-kill ammo drop rate (percent).
@@ -1381,7 +1391,9 @@ interface GameState {
   pendingNearHorizon: string;                           // 出撃ステージの遠景森2キー(resetGame で nearHorizon へ)
   setPendingNearHorizon: (key: string) => void;
   nearHorizon: string;                                  // この出撃の遠景森2キー(''=なし / 'forest' / 'city'。描画が参照)
-  triggerEventVictory: () => void;                      // ボス無しのイベント勝利(gameWon=true)
+  triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
+  beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
+  updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
@@ -1539,6 +1551,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   eventQuestReopenAt: 0,
   vaccinePurchased: false,
   gameWon: false,
+  finaleDefeated: false,
+  returnCircle: null,
   gameReturned: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
   ammoPickupAmounts: loadAmmoPickupAmounts(),
@@ -2401,7 +2415,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             )
           : state.gameStats.maxCombo
       },
-      gameWon: state.gameWon || bossKilled,
+      finaleDefeated: state.finaleDefeated || bossKilled,
       meleeFinishComboCount: comboFinishCount > 0
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
@@ -2662,7 +2676,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             )
           : state.gameStats.maxCombo
       },
-      gameWon: state.gameWon || bossKilled,
+      finaleDefeated: state.finaleDefeated || bossKilled,
       meleeFinishComboCount: comboFinishCount > 0
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
@@ -2794,7 +2808,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? Math.max(state.gameStats.maxCombo, state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
           : state.gameStats.maxCombo,
       },
-      gameWon: state.gameWon || bossKilled,
+      finaleDefeated: state.finaleDefeated || bossKilled,
       meleeFinishComboCount: comboFinishCount > 0
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
@@ -3941,9 +3955,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         return {
           enemies: updatedEnemies.filter(e => e.id !== id),
           gameStats: newStats,
-          // The giantbat is the run's finale boss — killing it wins the game.
-          // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。
-          gameWon: state.gameWon || (enemy.type === 'giantbat' && !enemy.fromEvent)
+          // The giantbat is the run's finale boss — defeating it triggers the return phase.
+          // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。即勝利せず帰還サークルへ。
+          finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent)
         };
       }
       
@@ -4864,11 +4878,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // VS rosary: kill every enemy currently on screen by zeroing their
         // HP. We don't grant experience for this — it's a panic button.
         const reachable = get().enemies.filter(e => e.type !== 'reaper');
-        // フィナーレボス(giantbat・非イベント)を爆弾で消したらクリアにする(他のキル経路と同じ勝利判定)。
+        // フィナーレボス(giantbat・非イベント)を爆弾で消したら終了条件成立(他のキル経路と同じく帰還フェーズへ)。
         const bombWon = reachable.some(e => e.type === 'giantbat' && !e.fromEvent);
         set(state => ({
           enemies: state.enemies.filter(e => e.type === 'reaper'),
-          gameWon: state.gameWon || bombWon,
+          finaleDefeated: state.finaleDefeated || bombWon,
           gameStats: {
             ...state.gameStats,
             enemiesKilled: state.gameStats.enemiesKilled + reachable.length,
@@ -5523,8 +5537,50 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   triggerEventVictory: () => {
-    // ボス無しのイベント勝利。giantbat 撃破と同様に gameWon=true(Game.tsx が監視→onVictory)。
-    set({ gameWon: true });
+    // 終了アイテム/ゴール。即勝利せず帰還サークルへ。屋内は壁に阻まれないようプレイヤー位置に直接出す(避けない)。
+    const p = get().player;
+    get().beginReturnPhase(p.x + p.width / 2, p.y + p.height / 2, false);
+  },
+
+  // 帰還サークルを出現させる。原点(城跡/アイテム位置)付近に置く。avoidPlayer 時はプレイヤーに近すぎると
+  // プレイヤーから離す方向へ押し出して「避けて」出現させる。既に出ている/勝利済みなら何もしない。
+  beginReturnPhase: (originX, originY, avoidPlayer = true) => {
+    set(state => {
+      if (state.returnCircle || state.gameWon) return {};
+      const p = state.player;
+      const px = p.x + p.width / 2;
+      const py = p.y + p.height / 2;
+      let cx = originX, cy = originY;
+      const d = Math.hypot(cx - px, cy - py);
+      if (avoidPlayer && d < RETURN_CIRCLE_AVOID_DIST) {
+        const ang = d > 1 ? Math.atan2(cy - py, cx - px) : Math.random() * Math.PI * 2;
+        cx = px + Math.cos(ang) * RETURN_CIRCLE_AVOID_DIST;
+        cy = py + Math.sin(ang) * RETURN_CIRCLE_AVOID_DIST;
+      }
+      return {
+        returnCircle: { x: cx, y: cy, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 },
+        eventBannerText: '帰還サークル出現',
+        eventBannerUntil: state.gameTime + 3500,
+      };
+    });
+  },
+
+  // 毎フレーム: 帰還サークル内の滞在時間を計測。離れるとリセット、RETURN_CIRCLE_HOLD_MS 連続で帰還完了=gameWon。
+  updateReturnPhase: (deltaTime) => {
+    set(state => {
+      const rc = state.returnCircle;
+      if (!rc || state.gameWon) return {};
+      const p = state.player;
+      const px = p.x + p.width / 2;
+      const py = p.y + p.height / 2;
+      const inside = Math.hypot(rc.x - px, rc.y - py) <= rc.radius;
+      const dwellMs = inside ? rc.dwellMs + deltaTime * 1000 : 0;
+      if (dwellMs >= RETURN_CIRCLE_HOLD_MS) {
+        return { gameWon: true, returnCircle: null, eventBannerText: '帰還完了', eventBannerUntil: state.gameTime + 2000 };
+      }
+      if (dwellMs === rc.dwellMs) return {}; // 円外で 0 のまま=書き込み省略(無駄な set を避ける)
+      return { returnCircle: { ...rc, dwellMs } };
+    });
   },
 
   openLabDoor: (id) => {
@@ -6070,6 +6126,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         eventQuestReopenAt: 0,
         vaccinePurchased: false,
         gameWon: false,
+        finaleDefeated: false,
+        returnCircle: null,
         gameReturned: false,
         meleeFinishComboCount: 0,
         meleeFinishComboUntil: 0,

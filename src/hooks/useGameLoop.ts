@@ -877,6 +877,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- 帰還フェーズ ---
+        // フィナーレボス(giantbat)撃破=finaleDefeated になったら、城跡付近に帰還サークルを出す(屋内/ラボの
+        // 終了アイテムは triggerEventVictory が直接サークルを出す)。サークル内に3秒とどまると帰還完了(gameWon)。
+        {
+          const grs = useGameStore.getState();
+          if (grs.finaleDefeated && !grs.returnCircle && !grs.gameWon) {
+            useGameStore.getState().beginReturnPhase(grs.castleEvent.x, grs.castleEvent.y);
+            playSfx('event-start');
+          }
+          if (useGameStore.getState().returnCircle && !useGameStore.getState().gameWon) {
+            useGameStore.getState().updateReturnPhase(deltaTime);
+          }
+        }
+
         // --- 死神(深奥リスク)システム v1 ---
         // 原点(スタート/商人付近)から遠いほど死神が画面を横切り、深奥に長居すると完全出現して追跡する。
         // 横切り=無害な演出(reaperCross をセット→pixiScene が描画)、追跡=本物の reaper 敵。
