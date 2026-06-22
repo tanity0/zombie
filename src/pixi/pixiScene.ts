@@ -100,7 +100,11 @@ const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
-const NEAR_HORIZON_HEIGHT_RATIO = 0.42;      // screenH 比の高さ
+// 遠景森2の高さ(screenH比)。?nh= で現地調整可(でか過ぎたので下げられるように)。tsNum はこの行より後に定義のため inline で読む。
+const NEAR_HORIZON_HEIGHT_RATIO = (() => {
+  const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : 0.42;
+})();
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
@@ -2888,7 +2892,7 @@ export class PixiScene {
     const veilTopOverride = tsNum('labveiltop', -1);
     const veilTop = veilTopOverride >= 0
       ? veilTopOverride
-      : this.farBackdropHeight() + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
+      : this.farBackdropHeight(); // 地平(遠景の下端=地面の上端)に合わせる。明るい地面の帯が残らない
     this.labDarkRect.position.set(0, veilTop);
     this.labDarkRect.width = W;
     this.labDarkRect.height = Math.max(1, H - veilTop);

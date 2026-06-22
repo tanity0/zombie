@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.804 — ステージ2の表示崩れ調整(遠景森2が巨大/暗幕ズレ)
+
+- 社長報告: (1)遠景森2がやたら大きい (2)暗視(暗幕)がズレてる。
+- (1) 遠景森2高さ `NEAR_HORIZON_HEIGHT_RATIO=0.42`(画面の42%≈357px)が縦持ちで巨大。再レイアウト修正で“正しく表示”された結果露出。
+  → **`?nh=`** で高さ比を現地調整可能に(既定0.42。例 `?nh=0.25`)。
+- (2) 暗幕上端を `farH + screenH×0.10`(地平より下)にしていたため地平〜暗幕間に明るい地面の帯が残りズレて見えた。
+  → 既定を **`farBackdropHeight()`(地平ちょうど)** に変更。`?labveiltop=px` で微調整可。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 要実機: `?nh=` の良い値(遠景森2サイズ) と暗幕上端の自然さを確認 → 既定へ焼き込み。
+
 ## v0.25.803 — ラボ可視ゾーンの作り直し(景色の前面載せ替えを廃止)
 
 - 社長指摘「通常レイヤーの上に無理やりラボ用レイヤーを作って描いている」への根本対応。
