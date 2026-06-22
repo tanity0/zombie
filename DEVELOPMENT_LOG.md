@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.778 — 色付き個体を「影の色」仕様へ刷新(装飾廃止)
+
+社長指示で「色付き敵」を再設計。距離倍率は維持しつつ、色は**確率付与+追加倍率+影の色**に。
+- **距離での強さ倍率は維持**(時間×距離)。距離による見た目変化はなし(A=見た目同じ)。
+- **色付き = 確率で付与**(距離が離れるほど確率↑)。色ごとに**追加の強さ倍率**:
+  - 青 ×1.2 / 紫 ×1.5 / 赤 ×2(`COLOR_TIER_MULT`)。HP・ダメージ・弾ダメージ(difficultyMultiplier)に乗る。
+- **色は足元の影の色**で表現(青0x3b82f6/紫0xa855f7/赤0xef4444)。本体スプライトは同じ。
+- **装飾(翼/角/リング)は廃止**(`drawEnemyRankOrnament`/`ENEMY_RANK_ORNAMENT` 削除)。
+- **適用はジャイアント未満の通常敵のみ**。`CONSTANT_STRENGTH_TYPES = {giantbat, reaper}` は強さ一定
+  (距離/時間/色でスケールしない。将来の特別敵もこのセットに追加して除外)。**giantbat は今回から強さ一定化**。
+- `difficultyRank`(距離ベース)はトレジャー抽選用に存続(描画だけ廃止)。
+- ※**確率テーブルと距離倍率は暫定**(正式値=社長支給B待ち)。`COLOR_TIER_TABLE`/`distanceZoneFor` に集約。
+- 後続予告(4): 距離による明確なエリア分け(敵種・最大数の変化)が来る前提で、判定を距離ゾーン関数に集約済み。
+- 負荷: 1/10(影のtint変更=既存プールsprite。装飾Graphics描画を削った分むしろ軽い)。
+- 変更ファイル: `types/game.ts`, `utils/enemyUtils.ts`, `pixi/pixiScene.ts`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+
 ## v0.25.777 — 死神(デス)調整: 時間開始10分 / 必ず画面外 / 接触77
 
 - **時間による死神の開始を 7分 → 10分**(`REAPER_CONFIG.timeStartMs`)。確率式は据え置き(10分10%、以降1分ごと+10%、最大100%)。

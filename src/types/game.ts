@@ -251,10 +251,13 @@ export interface Enemy {
   // プレイヤーが近接ダメージを与えた敵=以後プレイヤーを狙う(救助の survivor 狙いから切替。社長指示)。
   meleeAggro?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this
-  // at spawn time. Renderer uses rank for lightweight ornaments; gameplay uses multiplier.
+  // at spawn time. rank はトレジャー抽選に使用、multiplier は強さ(HP/ダメ)に乗る。
   distanceZone?: number;
   difficultyRank?: DifficultyRank;
   difficultyMultiplier?: number;
+  // 色付き(影の色)個体。距離が離れると確率で付与され、色ごとに難易度倍率が上がる(青<紫<赤)。
+  // 見た目の本体は同じで、足元の影だけが色づく(装飾は廃止)。ジャイアント/死神/特別敵には付かない。
+  colorTier?: EnemyColorTier;
   // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
   reaperChaser?: boolean;
   // 特殊AI(犬型=突進 / パンプキン=ジャンプ攻撃)の状態機械。すべて gameTime(ms)基準。
@@ -309,6 +312,9 @@ export interface Summon {
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';
+
+// 色付き個体の色(影の色)。青<紫<赤 の順に強い。距離が離れると確率で付与。
+export type EnemyColorTier = 'blue' | 'purple' | 'red';
 
 export type EnemyType =
   | 'bat'        // ubiquitous low-HP swarmer

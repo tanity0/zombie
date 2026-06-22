@@ -380,10 +380,11 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
 };
-const ENEMY_RANK_ORNAMENT: Record<string, { wing: number | null; horn: number | null; ring: number | null }> = {
-  strong: { wing: 0x101827, horn: null, ring: null },
-  elite: { wing: null, horn: 0xd8b4fe, ring: null },
-  danger: { wing: 0xdc2626, horn: 0xfef3c7, ring: 0xef4444 },
+// 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
+const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
+  blue: { tint: 0x3b82f6, alphaMult: 1.7 },
+  purple: { tint: 0xa855f7, alphaMult: 1.7 },
+  red: { tint: 0xef4444, alphaMult: 1.9 },
 };
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
@@ -3407,7 +3408,7 @@ export class PixiScene {
 
   // ソフト影スプライトを1体ぶん配置(光方向へ回転+伸縮)。drawDirectionalShadow の
   // 幾何(足元から direction へ length 伸ばす / 太さは断面)をスプライトで再現する。
-  private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>) {
+  private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>, tint = 0x000000, alphaMult = 1) {
     if (alpha <= 0) return;
     const lighting = this.lighting();
     // ステージ2(lab)だけ影を右向きに(社長指示)。長さ/濃さは preset 据え置き。
@@ -3425,14 +3426,14 @@ export class PixiScene {
     if (!sp) {
       sp = new Sprite(getSoftShadowTexture());
       sp.anchor.set(0.5, 0.5);
-      sp.tint = 0x000000;
       this.shadowContainer.addChild(sp);
       this.shadowPool.set(id, sp);
     }
+    sp.tint = tint; // 既定=黒。色付き個体は青/紫/赤に染める。
     sp.rotation = Math.atan2(uy, ux);
     sp.width = length + width;   // 全長 = 基部ブロブ + 伸び
     sp.height = width;           // 太さ
-    sp.alpha = alpha * lighting.shadowAlpha;
+    sp.alpha = Math.min(1, alpha * lighting.shadowAlpha * alphaMult);
     // 中心を足元から光方向へ length/2 ずらし、足元→先端に伸びるように。
     sp.position.set(footX + ux * (length * 0.5), footY - 1 + uy * (length * 0.5));
     sp.visible = true;
@@ -3527,7 +3528,9 @@ export class PixiScene {
       if (horizonAlpha <= 0) continue;
       const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
       const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
-      this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen);
+      // 色付き個体は影を色で染める(青<紫<赤)。本体の見た目は変えない。
+      const ct = e.colorTier ? ENEMY_COLOR_TIER_SHADOW[e.colorTier] : undefined;
+      this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, ct?.tint ?? 0x000000, ct?.alphaMult ?? 1);
     }
     // 召喚(味方ユニット)も敵と同じ方向影で揃える。
     for (const s of summons) {
@@ -3937,7 +3940,6 @@ export class PixiScene {
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
     }
-    this.drawEnemyRankOrnament(o, e, fb.footX, fb.footY);
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
     }
@@ -3975,64 +3977,6 @@ export class PixiScene {
     view.light.width = radius * 2;
     view.light.height = radius * 1.45;
     view.light.alpha = (boss ? 0.18 : 0.08) + hitT * 0.22;
-  }
-
-  private drawEnemyRankOrnament(g: Graphics, e: Enemy, footX: number, footY: number) {
-    const rank = e.difficultyRank && e.difficultyRank !== 'normal'
-      ? ENEMY_RANK_ORNAMENT[e.difficultyRank]
-      : undefined;
-    if (!rank) return;
-
-    const d = this.depthScaleEnemy(footY);
-    const bodyW = Math.max(14, e.width * d);
-    const bodyH = Math.max(18, e.height * d);
-    const topY = footY - bodyH;
-    const shoulderY = topY + bodyH * 0.5;
-    const headY = topY + bodyH * 0.15;
-    const px = Math.max(1, Math.round(2 * d));
-
-    if (rank.ring != null) {
-      g.ellipse(footX, footY - 1 * d, bodyW * 0.48, Math.max(2, bodyW * 0.13))
-        .stroke({ width: Math.max(1, px), color: rank.ring, alpha: 0.72 });
-    }
-
-    if (rank.wing != null) {
-      const wingW = Math.max(5, bodyW * 0.24);
-      const wingH = Math.max(4, bodyH * 0.18);
-      const leftRoot = footX - bodyW * 0.32;
-      const rightRoot = footX + bodyW * 0.32;
-      g.poly([
-        leftRoot, shoulderY,
-        leftRoot - wingW, shoulderY - wingH * 0.42,
-        leftRoot - wingW * 0.62, shoulderY + wingH,
-      ]).fill({ color: rank.wing, alpha: 0.95 });
-      g.poly([
-        rightRoot, shoulderY,
-        rightRoot + wingW, shoulderY - wingH * 0.42,
-        rightRoot + wingW * 0.62, shoulderY + wingH,
-      ]).fill({ color: rank.wing, alpha: 0.95 });
-      g.rect(leftRoot - wingW * 0.72, shoulderY + wingH * 0.12, Math.max(1, px), Math.max(2, wingH * 0.42))
-        .fill({ color: 0x020617, alpha: 0.55 });
-      g.rect(rightRoot + wingW * 0.72, shoulderY + wingH * 0.12, Math.max(1, px), Math.max(2, wingH * 0.42))
-        .fill({ color: 0x020617, alpha: 0.55 });
-    }
-
-    if (rank.horn != null) {
-      const hornW = Math.max(3, bodyW * 0.11);
-      const hornH = Math.max(5, bodyH * 0.14);
-      const hornY = headY + hornH * 0.35;
-      const hornOffset = Math.max(4, bodyW * 0.16);
-      g.poly([
-        footX - hornOffset, hornY,
-        footX - hornOffset - hornW, hornY - hornH,
-        footX - hornOffset + hornW * 0.35, hornY - hornH * 0.2,
-      ]).fill({ color: rank.horn, alpha: 0.95 });
-      g.poly([
-        footX + hornOffset, hornY,
-        footX + hornOffset + hornW, hornY - hornH,
-        footX + hornOffset - hornW * 0.35, hornY - hornH * 0.2,
-      ]).fill({ color: rank.horn, alpha: 0.95 });
-    }
   }
 
   private drawHealthBar(g: Graphics, e: Enemy) {

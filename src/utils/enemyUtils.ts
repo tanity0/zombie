@@ -1,4 +1,4 @@
-import { DifficultyRank, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
+import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
@@ -129,6 +129,29 @@ const ENEMY_HP_MULT = 5;
 // deliberate, survival-horror pace (matches the slower player).
 const ENEMY_SPEED_MULT = 2 / 3;
 
+// ---- 色付き(影の色)個体 ----------------------------------------------------
+// 距離が離れると確率で「色付き」になり、色ごとに強さ倍率が乗る(社長指示)。色=足元の影の色で示す
+// (本体の見た目は同じ・装飾は廃止)。ジャイアント/死神/特別敵には付かない(強さ一定)。
+// ※出現確率と距離倍率の正式値は後日支給(B)。下記の確率/距離テーブルは暫定。
+const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
+// 「強さ一定」タイプ(距離/時間/色でスケールしない)。将来の特別敵もここへ追加して除外する。
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper']);
+// 距離ゾーン → [色付き確率, 青重み, 紫重み, 赤重み](暫定)。遠いほど色付き率↑・強い色率↑。
+const COLOR_TIER_TABLE: Record<number, [number, number, number, number]> = {
+  1: [0, 1, 0, 0],
+  2: [0.25, 0.80, 0.18, 0.02],
+  3: [0.45, 0.55, 0.35, 0.10],
+  4: [0.65, 0.35, 0.40, 0.25],
+};
+const rollColorTier = (x: number, y: number): EnemyColorTier | undefined => {
+  const [chance, bw, pw, rw] = COLOR_TIER_TABLE[distanceZoneFor(x, y)] ?? COLOR_TIER_TABLE[1];
+  if (Math.random() >= chance) return undefined;
+  const r = Math.random() * (bw + pw + rw);
+  if (r < bw) return 'blue';
+  if (r < bw + pw) return 'purple';
+  return 'red';
+};
+
 // 錬金術の召喚ユニットが敵タイプの見た目/速度を流用するための取得関数。
 export const getEnemyBaseSpeed = (type: EnemyType): number => ENEMY_STATS[type].speed * ENEMY_SPEED_MULT;
 export const getEnemyBaseSize = (type: EnemyType): { width: number; height: number } =>
@@ -169,14 +192,20 @@ const buildEnemy = (
   isWave = false
 ): Enemy => {
   const stats = ENEMY_STATS[type];
+  // 強さ一定タイプ(ジャイアント/死神/特別敵)は距離・時間・色でスケールしない。
+  const constant = CONSTANT_STRENGTH_TYPES.has(type);
   const timeDiff = difficultyFor(gameTime);
   const distanceZone = distanceZoneFor(x, y);
   const distanceDiff = distanceMultiplierForZone(distanceZone);
-  const diff = timeDiff * distanceDiff;
-  const difficultyRank = difficultyRankForZone(distanceZone);
-  // Reaper is a fixed terminal entity — don't scale it.
-  const hpMult = type === 'reaper' ? 1 : diff * ENEMY_HP_MULT;
-  const dmgMult = type === 'reaper' ? 1 : Math.min(diff, 4);
+  const difficultyRank = difficultyRankForZone(distanceZone); // トレジャー抽選用(距離ベース・据え置き)
+  // 色付き(強さ一定タイプには付かない)。色ごとの倍率を強さに乗せる。
+  const colorTier = constant ? undefined : rollColorTier(x, y);
+  const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
+  // 強さ倍率: 通常敵 = 時間×距離×色 / 強さ一定タイプ = 1。
+  const diff = constant ? 1 : timeDiff * distanceDiff * colorMult;
+  // Reaper は終端個体で別管理。giant 等の強さ一定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
+  const hpMult = type === 'reaper' ? 1 : (constant ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
+  const dmgMult = type === 'reaper' ? 1 : (constant ? 1 : Math.min(timeDiff * distanceDiff, 4) * colorMult);
 
   return {
     id: `enemy-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -196,7 +225,8 @@ const buildEnemy = (
     isWave,
     distanceZone,
     difficultyRank,
-    difficultyMultiplier: diff
+    difficultyMultiplier: diff,
+    colorTier
   };
 };
 
