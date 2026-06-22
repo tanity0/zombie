@@ -180,8 +180,8 @@ const MAX_ENEMIES = 10;
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
-const ARENA_FIRE_AFTER_MS = 120000;    // 発火可能になる時刻(=ゲーム開始2分以降)
-const ARENA_FIRE_CHANCE_PER_SEC = 0.06; // 発火確率/秒(1ゲーム1回ガードあり。条件成立後ランダムで1回)
+const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
+const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基本は全滅で終了)
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -281,7 +281,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // Scripted-wave consumption set; survives across frames within one run
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
-  const arenaFiredRef = useRef(false); // 囲い系イベントの「1ゲーム1回」ガード(新ランでリセット)
+  const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
   const lastSeenGameTimeRef = useRef(0);
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
@@ -727,7 +727,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           lastAmmoDropRef.current = 0;
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
-          arenaFiredRef.current = false;
+          nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false };
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
@@ -761,12 +761,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!danceTest && !indoor && !labTheme) {
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
-            // 発火: activeEvent中でない・未発火・2分経過後。排他制御は activeEvent と arenaFiredRef で担保。
-            // ?arenanow 指定時は 2分待ち＋発火確率を無視して開始直後に1回だけ発火。
-            const arenaReady = FORCE_ARENA != null
-              || (newGameTime >= ARENA_FIRE_AFTER_MS && Math.random() < ARENA_FIRE_CHANCE_PER_SEC * deltaTime);
-            if (!arenaFiredRef.current && arenaReady) {
-              arenaFiredRef.current = true;
+            // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
+            // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
+            const arenaReady = FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current;
+            if (arenaReady) {
+              nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
               const kind: 'horde' | 'boss' | 'rescue' =

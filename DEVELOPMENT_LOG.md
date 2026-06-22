@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.836 — 囲い系イベントを2分ごとに発火(1ゲーム1回→定期)
+
+- 社長指示「イベントを2分に1回に」。従来は2分後にランダム確率で1ゲーム1回のみ(`arenaFiredRef`)。
+- 変更: `nextArenaAtRef`(次回発火gameTime)を導入し、初回=2分・以降=2分間隔(`ARENA_FIRE_INTERVAL_MS=120000`)で発火。
+  発火時に次回時刻を `+120000`。イベント中(activeEvent)は `!ae` ガードで待機し終了後に次回判定。
+  `?arenanow` は初回即時(nextArenaAtRef=0)→以降2分間隔。未使用化した `ARENA_FIRE_CHANCE_PER_SEC` を撤去。
+- 種別は従来どおり horde/boss/rescue のランダム。※「緑卵で囲む」イベントは未実装(現状3種のみ)。
+- 変更: `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.835 — ただのオブジェクト(壊せない)に影を追加(グロー無し)
 
 - 社長要望「木/ドラム/瓦礫/トラック等のただのオブジェクトは影は必要だがグローは要らない」。
