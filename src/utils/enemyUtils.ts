@@ -23,7 +23,7 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   skeleton:  { width: 26, height: 26, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
   zombie:    { width: 30, height: 30, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
   plant:     { width: 28, height: 28, speed: 8,   health: 25,   damage: 0,   experienceValue: 2 },
-  ghost:     { width: 24, height: 24, speed: 90,  health: 14,   damage: 5,   experienceValue: 1 },
+  ghost:     { width: 24, height: 24, speed: 90,  health: 14,   damage: 5,   experienceValue: 2 },
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
   giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 22,  experienceValue: 30 },
@@ -45,27 +45,36 @@ export const isBossType = (t: EnemyType): boolean =>
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
 interface EnemyWeight { type: EnemyType; weight: number; }
 
-const selectEnemyType = (gameTime: number): EnemyType => {
+// エリア補正テーブル(社長指定)。finalWeight = baseWeight × areaWeight[area]。0 のエリアは候補から除外。
+// 添字 = エリア(0 軍備 / 1 研究 / 2 デンジャー / 3 未確認 / 4 深層)。
+const AREA_WEIGHT: Partial<Record<EnemyType, number[]>> = {
+  bat:      [1.0, 0.7, 0,   0,   0  ],
+  skeleton: [1.0, 1.0, 0.8, 0,   0  ],
+  zombie:   [0.6, 1.0, 1.0, 1.0, 0.8],
+  plant:    [0,   1.0, 1.0, 1.0, 1.0],
+  ghost:    [0,   0,   0.8, 1.0, 1.1],
+  werewolf: [0,   0,   0.7, 1.1, 1.2],
+  pumpkin:  [0,   0,   0,   0.1, 0.3],
+};
+
+const selectEnemyType = (gameTime: number, area: number): EnemyType => {
   const t = gameTime;
-  const pool: EnemyWeight[] = [];
+  // 現行の時間ゲート付き baseWeight(序盤からの解禁感は維持)。
+  const base: EnemyWeight[] = [{ type: 'bat', weight: 100 }];
+  if (t >= 25000)  base.push({ type: 'skeleton', weight: 55 });   // 0:25
+  if (t >= 45000)  base.push({ type: 'plant',    weight: 14 });   // 0:45
+  if (t >= 75000)  base.push({ type: 'zombie',   weight: 45 });   // 1:15
+  if (t >= 150000) base.push({ type: 'ghost',    weight: 45 });   // 2:30
+  if (t >= 195000) base.push({ type: 'werewolf', weight: 45 });   // 3:15
+  if (t >= 195000) base.push({ type: 'pumpkin',  weight: 22 });   // 後半。エリア補正で未確認/深層のみ出る
+  if (t >= 150000) base[0].weight = 45;
+  if (t >= 240000) base[0].weight = 22; // 後半はコウモリを希少に
 
-  // Compressed ~5-minute arc (vs the old 30-min ramp). Types unlock fast so the
-  // whole bestiary is seen inside one short, escalating run.
-  // 0:00-0:25 — only bats
-  pool.push({ type: 'bat', weight: 100 });
-
-  if (t >= 25000)  pool.push({ type: 'skeleton', weight: 55 });   // 0:25
-  // Ranged plants enter early so the counter has targets from the start. A hard
-  // cap of 2 live plants is enforced in the spawner so they never get annoying.
-  if (t >= 45000)  pool.push({ type: 'plant',    weight: 14 });   // 0:45
-  if (t >= 75000)  pool.push({ type: 'zombie',   weight: 45 });   // 1:15
-  if (t >= 150000) pool.push({ type: 'ghost',    weight: 45 });   // 2:30
-  if (t >= 195000) pool.push({ type: 'werewolf', weight: 45 });   // 3:15
-
-  // Thin the bats out as the run heats up so heavier types dominate late.
-  if (t >= 150000) pool[0].weight = 45;
-  if (t >= 240000) pool[0].weight = 22; // 4:00 onward, bats are rare
-
+  // baseWeight × エリア補正。補正0は除外。
+  const pool = base
+    .map(e => ({ type: e.type, weight: e.weight * ((AREA_WEIGHT[e.type]?.[area]) ?? 0) }))
+    .filter(e => e.weight > 0);
+  if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
   let r = Math.random() * total;
   for (const entry of pool) {
@@ -93,35 +102,29 @@ export const selectLabEnemyType = (gameTime: number): EnemyType => {
   return pool[pool.length - 1].type;
 };
 
-// Compute a difficulty multiplier. Retuned for the compressed ~5-min run: it
-// climbs to ~2.5× by the finale instead of 5× over 30 min, so enemies get
-// meaningfully tougher across the sprint without becoming bullet sponges. HP
-// and damage scale with it; base speed does not.
-const difficultyFor = (gameTime: number) => Math.min(1 + gameTime / 150000, 2.5);
-
-const distanceFromStart = (x: number, y: number) => Math.hypot(x, y);
-
-const distanceZoneFor = (x: number, y: number): number => {
-  const d = distanceFromStart(x, y);
-  if (d < 900) return 1;
-  if (d < 1800) return 2;
-  if (d < 3000) return 3;
-  return 4;
+// ---- エリア(距離)モデル ------------------------------------------------------
+// 区域: 0 軍備配置(0-1500) / 1 研究対象(1500-3000) / 2 デンジャー(3000-5000) /
+//       3 未確認汚染(5000-7500) / 4 深層域(7500-)。距離 = スタート地点(原点)からの距離。
+export const AREA_COUNT = 5;
+export const areaIndexForPos = (x: number, y: number): number => {
+  const d = Math.hypot(x, y);
+  if (d >= 7500) return 4;
+  if (d >= 5000) return 3;
+  if (d >= 3000) return 2;
+  if (d >= 1500) return 1;
+  return 0;
 };
 
-const distanceMultiplierForZone = (zone: number): number => {
-  switch (zone) {
-    case 2: return 1.25;
-    case 3: return 1.6;
-    case 4: return 2.1;
-    default: return 1;
-  }
-};
+// エリア基礎難易度倍率(社長指定)。最終倍率 = エリア基礎 × 色付き倍率(時間スケールは廃止)。
+const AREA_BASE_DIFFICULTY = [1.0, 1.2, 1.45, 1.75, 2.1];
+// エリアごとの敵最大数(社長指定)。useGameLoop の通常湧き上限に使用。
+export const AREA_MAX_ENEMIES = [5, 7, 10, 10, 10];
 
-const difficultyRankForZone = (zone: number): DifficultyRank => {
-  switch (zone) {
-    case 2: return 'strong';
-    case 3: return 'elite';
+const difficultyRankForArea = (area: number): DifficultyRank => {
+  switch (area) {
+    case 1: return 'strong';
+    case 2: return 'elite';
+    case 3: return 'danger';
     case 4: return 'danger';
     default: return 'normal';
   }
@@ -135,26 +138,26 @@ const ENEMY_HP_MULT = 5;
 const ENEMY_SPEED_MULT = 2 / 3;
 
 // ---- 色付き(影の色)個体 ----------------------------------------------------
-// 距離が離れると確率で「色付き」になり、色ごとに強さ倍率が乗る(社長指示)。色=足元の影の色で示す
-// (本体の見た目は同じ・装飾は廃止)。ジャイアント/死神/特別敵には付かない(強さ一定)。
-// ※出現確率と距離倍率の正式値は後日支給(B)。下記の確率/距離テーブルは暫定。
+// 影の色で表現(本体の見た目は同じ・旧装飾=黒翼/紫角/赤翼/リング等は廃止)。色ごとに強さ倍率(社長指定)。
+// ジャイアント未満の一般敵のみ対象。ジャイアント/死神/特別敵には付かない(強さ一定)。
 const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
-// 「強さ一定」タイプ(距離/時間/色でスケールしない)。将来の特別敵もここへ追加して除外する。
+// 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
 const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper']);
-// 距離ゾーン → [色付き確率, 青重み, 紫重み, 赤重み](暫定)。遠いほど色付き率↑・強い色率↑。
-const COLOR_TIER_TABLE: Record<number, [number, number, number, number]> = {
-  1: [0, 1, 0, 0],
-  2: [0.25, 0.80, 0.18, 0.02],
-  3: [0.45, 0.55, 0.35, 0.10],
-  4: [0.65, 0.35, 0.40, 0.25],
-};
-const rollColorTier = (x: number, y: number): EnemyColorTier | undefined => {
-  const [chance, bw, pw, rw] = COLOR_TIER_TABLE[distanceZoneFor(x, y)] ?? COLOR_TIER_TABLE[1];
-  if (Math.random() >= chance) return undefined;
-  const r = Math.random() * (bw + pw + rw);
-  if (r < bw) return 'blue';
-  if (r < bw + pw) return 'purple';
-  return 'red';
+// エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
+const COLOR_RATE_BY_AREA: [number, number, number][] = [
+  [0,    0,    0   ], // 軍備配置
+  [0.03, 0,    0   ], // 研究対象
+  [0.05, 0.01, 0   ], // デンジャー
+  [0.07, 0.02, 0.01], // 未確認汚染
+  [0.12, 0.06, 0.02], // 深層域
+];
+const rollColorTierForArea = (area: number): EnemyColorTier | undefined => {
+  const [b, p, red] = COLOR_RATE_BY_AREA[area] ?? COLOR_RATE_BY_AREA[0];
+  const r = Math.random();
+  if (r < red) return 'red';
+  if (r < red + p) return 'purple';
+  if (r < red + p + b) return 'blue';
+  return undefined;
 };
 
 // 錬金術の召喚ユニットが敵タイプの見た目/速度を流用するための取得関数。
@@ -197,20 +200,19 @@ const buildEnemy = (
   isWave = false
 ): Enemy => {
   const stats = ENEMY_STATS[type];
-  // 強さ一定タイプ(ジャイアント/死神/特別敵)は距離・時間・色でスケールしない。
+  // 強さ一定タイプ(ジャイアント/死神/特別敵)は距離・色でスケールしない。
   const constant = CONSTANT_STRENGTH_TYPES.has(type);
-  const timeDiff = difficultyFor(gameTime);
-  const distanceZone = distanceZoneFor(x, y);
-  const distanceDiff = distanceMultiplierForZone(distanceZone);
-  const difficultyRank = difficultyRankForZone(distanceZone); // トレジャー抽選用(距離ベース・据え置き)
+  const area = areaIndexForPos(x, y);
+  const distanceZone = area; // 互換フィールド(0-4)
+  const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
   // 色付き(強さ一定タイプには付かない)。色ごとの倍率を強さに乗せる。
-  const colorTier = constant ? undefined : rollColorTier(x, y);
+  const colorTier = constant ? undefined : rollColorTierForArea(area);
   const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
-  // 強さ倍率: 通常敵 = 時間×距離×色 / 強さ一定タイプ = 1。
-  const diff = constant ? 1 : timeDiff * distanceDiff * colorMult;
+  // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。強さ一定タイプ = 1。
+  const diff = constant ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
   // Reaper は終端個体で別管理。giant 等の強さ一定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
   const hpMult = type === 'reaper' ? 1 : (constant ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
-  const dmgMult = type === 'reaper' ? 1 : (constant ? 1 : Math.min(timeDiff * distanceDiff, 4) * colorMult);
+  const dmgMult = type === 'reaper' ? 1 : (constant ? 1 : diff);
 
   return {
     id: `enemy-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -245,7 +247,9 @@ export const generateEnemy = (
   forcedType?: EnemyType,
   pressureDirection?: { x: number; y: number } | null
 ): Enemy => {
-  const type = forcedType ?? selectEnemyType(gameTime);
+  // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
+  const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
+  const type = forcedType ?? selectEnemyType(gameTime, playerArea);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーはほぼ中央なので可視半幅=W/2・半高=H/2。

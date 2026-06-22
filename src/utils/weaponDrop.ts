@@ -2,23 +2,21 @@ import { AmmoType } from '../types/game';
 import { GUN_KEYS_BY_CATEGORY, MELEE_KEYS } from './weaponUtils';
 
 // WWZ-style loot: enemies rarely drop a weapon outright, and mid-bosses always
-// drop a weapon crate that rolls one. Higher tiers become more likely as the
-// run goes on so early drops are mostly T1 and late drops skew T2/T3.
+// drop a weapon crate that rolls one. Tier率はエリア(距離)で決まる(社長指定): 奥ほど高Tier。
 
 const CATEGORIES: AmmoType[] = ['handgun', 'shotgun', 'rifle'];
 
-// Tier weights shift over time. Before 3 min it's almost all T1; by ~12 min
-// T2/T3 dominate.
-const tierWeights = (gameTime: number): [number, number, number] => {
-  const min = gameTime / 60000;
-  if (min < 3) return [80, 18, 2];
-  if (min < 7) return [50, 35, 15];
-  if (min < 12) return [30, 40, 30];
-  return [15, 40, 45];
-};
+// エリア別 武器箱Tier率(社長指定)。添字=エリア(0 軍備 / 1 研究 / 2 デンジャー / 3 未確認 / 4 深層)。
+const TIER_WEIGHTS_BY_AREA: [number, number, number][] = [
+  [85, 15, 0],   // 軍備配置
+  [55, 40, 5],   // 研究対象
+  [30, 55, 15],  // デンジャー
+  [10, 55, 35],  // 未確認汚染
+  [0,  35, 65],  // 深層域
+];
 
-const pickTier = (gameTime: number): number => {
-  const w = tierWeights(gameTime);
+const pickTier = (area: number): number => {
+  const w = TIER_WEIGHTS_BY_AREA[area] ?? TIER_WEIGHTS_BY_AREA[0];
   const total = w[0] + w[1] + w[2];
   let r = Math.random() * total;
   for (let i = 0; i < 3; i++) {
@@ -29,9 +27,9 @@ const pickTier = (gameTime: number): number => {
 };
 
 // Roll a random gun key (used for both world drops and crates). Melee weapons
-// are rarer so the player mostly upgrades their firearm.
-export const rollWeaponKey = (gameTime: number): string => {
-  const tier = pickTier(gameTime);
+// are rarer so the player mostly upgrades their firearm. `area` = 0..4。
+export const rollWeaponKey = (area: number): string => {
+  const tier = pickTier(area);
 
   // ~15% of rolls produce a melee weapon instead of a gun.
   if (Math.random() < 0.15) {
@@ -47,9 +45,9 @@ export const rollWeaponKey = (gameTime: number): string => {
 };
 
 // A crate always yields a gun (the melee path is reserved for rarer world
-// drops) so opening one feels like a firepower reward.
-export const openCrate = (gameTime: number): string => {
-  const tier = pickTier(gameTime);
+// drops) so opening one feels like a firepower reward. `area` = 0..4。
+export const openCrate = (area: number): string => {
+  const tier = pickTier(area);
   const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
   const keys = GUN_KEYS_BY_CATEGORY[category];
   const idx = Math.min(keys.length - 1, tier - 1);

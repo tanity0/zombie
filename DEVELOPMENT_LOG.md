@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.828 — 距離難易度/敵出現/色付き率/武器箱Tierをエリア駆動に刷新(仕様1-9)
+
+- 社長仕様。エリア区分(0-4)は既存 `areaZoneIndexFor`(1500/3000/5000/7500)と一致。
+- **難易度**: 時間スケール廃止。最終倍率 = エリア基礎(1.0/1.2/1.45/1.75/2.1) × 色付き倍率。HPは×ENEMY_HP_MULT据え置き。
+- **敵最大数**(屋外通常湧き): エリア別 5/7/10/10/10(`AREA_MAX_ENEMIES`)。ラボ/イベントは従来。
+- **色付き敵**: 影色のみ(旧装飾廃止)。倍率 青1.2/紫1.5/赤2.0。出現率はエリア別絶対値テーブル(`COLOR_RATE_BY_AREA`)。ジャイアント未満の一般敵のみ。
+- **敵出現**: `finalWeight = baseWeight(時間ゲート) × areaWeight[area][type]`、補正0は除外(`AREA_WEIGHT`)。pumpkin を後半プールに追加(未確認/深層のみ)。
+- **武器箱Tier**: 時間制 → エリア別T1/T2/T3率(`TIER_WEIGHTS_BY_AREA`)。`openCrate(area)`/`rollWeaponKey(area)` に変更、呼び出し側で座標→エリア算出。
+- **ghost XP**: 1 → 2。
+- 互換: `distanceZone`=area, `difficultyRank`=エリア由来(トレジャー抽選継続)。
+- 変更: `utils/enemyUtils.ts`, `utils/weaponDrop.ts`, `hooks/useGameLoop.ts`, `store/gameStore.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 残: 仕様10「拠点候補地(8か所/制圧で商人移動)」は次コミットで実装予定。
+
 ## v0.25.827 — 設置物フェードを共通の地平線フェードに統一(他の者と同じ位置で消える)
 
 - 社長報告「他の者たちと同じく消えてほしい。設置物はかなり上に行かないと消えない」。

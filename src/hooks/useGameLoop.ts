@@ -54,7 +54,8 @@ import {
   spawnEnemyAt,
   selectLabEnemyType,
   resolveEnemyTarget,
-  SPAWN_OFFSCREEN_MARGIN_FRAC
+  SPAWN_OFFSCREEN_MARGIN_FRAC,
+  AREA_MAX_ENEMIES
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -3062,7 +3063,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   y: enemy.y + enemy.height / 2 - 8 + 16,
                   type: 'weapon-drop',
                   value: 0,
-                  weaponKey: rollWeaponKey(gameTime),
+                  weaponKey: rollWeaponKey(areaZoneIndexFor(Math.hypot(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2))),
                   worldDrop: true
                 });
               }
@@ -3656,16 +3657,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const allEnemiesNow = useGameStore.getState().enemies;
         const enemyCountBeforeSpawn = allEnemiesNow.length;
         const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
+        // エリアごとの敵最大数(社長指定: 5/7/10/10/10)。屋外(非ラボ)の通常湧きに適用。ラボは従来の上限。
+        const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
+        const normalSpawnCap = labTheme ? MAX_ENEMIES : AREA_MAX_ENEMIES[playerAreaIdx];
         if (
           !danceTest &&
           !indoor &&
           !confining &&
-          fieldCount < MAX_ENEMIES &&
+          fieldCount < normalSpawnCap &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1)
         ) {
           const spawnCount = Math.min(
             labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(),
-            MAX_ENEMIES - fieldCount
+            normalSpawnCap - fieldCount
           );
           let plantCount = useGameStore.getState().enemies
             .filter(e => e.type === 'plant').length;

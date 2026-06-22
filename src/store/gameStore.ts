@@ -24,7 +24,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, resolveEnemyTarget, spawnEnemyAt } from '../utils/enemyUtils';
+import { isBossType, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
@@ -4979,8 +4979,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             variant: treasureVariantForValue(LAB_CRATE_TREASURE_VALUE)
           });
         } else {
-          // 屋外: 従来どおりカテゴリ&ティアで銃を抽選して装備。
-          get().grantWeapon(openCrate(get().gameTime));
+          // 屋外: エリア(距離)別Tier率で銃を抽選して装備(社長指定)。
+          {
+            const pc = get().player;
+            get().grantWeapon(openCrate(areaIndexForPos(pc.x + pc.width / 2, pc.y + pc.height / 2)));
+          }
         }
         strapDropValues(WEAPON_CRATE_STRAP_DROP_MIN + Math.floor(Math.random() * WEAPON_CRATE_STRAP_DROP_VARIANCE))
           .forEach((value, index) => {
