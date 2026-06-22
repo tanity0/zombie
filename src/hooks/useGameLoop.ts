@@ -198,8 +198,8 @@ const evNum = (key: string, def: number): number => {
   const v = evParam(key); const n = v != null ? Number(v) : NaN;
   return Number.isFinite(n) ? n : def;
 };
-const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 1000);
-const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 2000);
+const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 500);
+const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;

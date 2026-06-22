@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.775 — PCフリック操作の最適化 + レスキュー距離 500-1000
+
+- **PC操作をスマホ4操作(移動/タップ/離す/フリック)に対応した最適化スキームへ**(`useGameControls.ts`):
+  - 移動: WASD / 矢印(同時押しで斜めOK)
+  - タップ/離す(カウンター・近接・PHILL発砲): Space / J(従来どおり)
+  - **フリック(一閃ダッシュ・ワイヤーアンカー): K / Shift** … 押した瞬間に「今の移動方向(WASD合成=斜め可)」へ発動。
+  - **二連打式の一閃ダッシュを廃止**(斜めに行けない問題=社長指摘)。一閃もワイヤーも新フリックキーへ統一。
+    刀とワイヤーは排他装備なので `triggerWireAnchor`→不発なら`triggerKatanaDash` の順で1キー発火。
+  - 移動キー押下で `lastDirection` を更新(止まってからフリックしても最新の向きを使える)。
+  - 未使用になった `KATANA_DOUBLE_TAP_MS` import を削除。
+- **レスキュー出現距離を 1000-2000 → 500-1000 に変更**(`useGameLoop.ts` の `rescuemin/rescuemax` 既定値)。
+  `?rescuemin`/`?rescuemax` での実機上書きは従来どおり。
+- 負荷: 0/10(入力ハンドラと定数のみ)。
+- 変更ファイル: `src/hooks/useGameControls.ts`, `src/hooks/useGameLoop.ts`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+
 ## v0.25.774 — ワイヤーアンカー仕様変更(フリック→1秒後高速移動)
 
 - **操作変更**: スイング(指離し)発動を廃止し、**フリック発動**に。`triggerWireAnchor(dir)` を追加し
