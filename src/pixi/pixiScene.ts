@@ -452,6 +452,13 @@ const DEPTH_MAX = tsNum('depthmax', 1.45);
 const ENEMY_DEPTH_K = tsNum('edepthk', 0.00145);
 const ENEMY_DEPTH_MIN = tsNum('edepthmin', 0.55);
 const ENEMY_DEPTH_MAX = tsNum('edepthmax', 1.85);
+// --- 実験: 位置ベースの遠近マッピング(既定OFF=?depthmap=1 でON) -------------------------
+// 目的: 「足元が画面外でも頭が見える背の高い物の拡縮が止まる」対処。サイズ範囲(min/max)は据え置き、
+// その範囲を“足元の画面位置”に沿って割り当てる: プレイヤー面=等倍 / 画面上端(−margin)=min / 画面下端(+margin)=max。
+// 平坦になるのは画面外(±margin の外)だけ=可視範囲では止まらない。歪み(無制限スケール)も出ない。
+const DEPTH_POS_MAP = tsBool('depthmap', false);
+const DEPTH_MAP_CURVE = Math.max(0.2, tsNum('dmapcurve', 1.0)); // 1=線形 / >1=プレイヤー付近ゆっくり・端で速い
+const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 300)); // 画面端の外側マージン(背の高い物の頭ぶん)px
 // 研究所の立体壁を擬似遠近(高さ方向のみ)に参加させる強さ。?labdepth= で調整(既定0.6=床オブジェクトより緩め)。
 // 既存 DEPTH_K に対する倍率。clamp はゆるめ(下記)。width は絶対にスケールしない(床/隣接/判定とズレるため)。
 const LAB_WALL_DEPTH_STRENGTH = Math.max(0, tsNum('labdepth', 0.6));
@@ -1421,12 +1428,32 @@ export class PixiScene {
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
   private depthScaleWith(footWorldY: number, k: number, min: number, max: number): number {
     if (!DEPTH_SCALE_ENABLED) return 1;
+    if (DEPTH_POS_MAP) return this.depthScaleMapped(footWorldY, min, max);
     const relative = 1 + (footWorldY - this.depthRefY) * k;
     // 物/敵専用の遠近カーブで地面相対比を取る(床の gcurve/gfar とは独立=地面の見た目は不変)。
     const groundRatio = this.groundRelativeScale(footWorldY, OBJECT_PERSP_FAR, GROUND_TILE_SCALE_Y_NEAR, OBJECT_PERSP_CURVE);
     const groundBlend = Math.exp(Math.log(groundRatio) * OBJECT_GROUND_RELATIVE_WEIGHT);
     const f = relative * groundBlend;
     return f < min ? min : f > max ? max : f;
+  }
+
+  // 位置ベース(?depthmap=1): 足元の画面位置で min..max を割り当てる。プレイヤー面=等倍、
+  // 画面上端(−margin)で min、画面下端(+margin)で max。可視範囲では飽和しない=画面内で止まらない。
+  // min/max の大きさは従来どおり=歪まない。平坦になるのは画面外(±margin の外)だけ。
+  private depthScaleMapped(footWorldY: number, min: number, max: number): number {
+    const refScreenY = this.depthRefY - this.cameraY;       // プレイヤー足元の画面Y(≈中央)
+    const footScreenY = footWorldY - this.cameraY;
+    const M = DEPTH_EDGE_MARGIN;
+    if (footScreenY <= refScreenY) {
+      // 奥(上)側: refScreenY→1.0, 画面上端の外(−M)→min
+      const span = Math.max(1, refScreenY - (-M));
+      const t = Math.max(0, Math.min(1, (refScreenY - footScreenY) / span));
+      return 1 + (min - 1) * Math.pow(t, DEPTH_MAP_CURVE);
+    }
+    // 手前(下)側: refScreenY→1.0, 画面下端の外(+M)→max
+    const span = Math.max(1, (this.screenH + M) - refScreenY);
+    const t = Math.max(0, Math.min(1, (footScreenY - refScreenY) / span));
+    return 1 + (max - 1) * Math.pow(t, DEPTH_MAP_CURVE);
   }
 
   private groundScaleAt(

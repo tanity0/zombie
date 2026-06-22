@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.821 — 遠近: 位置ベースの新マッピングを「既定OFFのフラグ」で追加(A/B検証用)
+
+- 社長選択「フラグで新方式を試す」。既定は818のまま(歪み/悪化なし)。`?depthmap=1` でON。
+- 新方式 `depthScaleMapped`: サイズ範囲(min/max)は据え置きのまま、その範囲を“足元の画面位置”で割り当てる。
+  プレイヤー面=等倍 / 画面上端(−margin)=min / 画面下端(+margin)=max。可視範囲では飽和せず、
+  平坦になるのは画面外(±margin の外)だけ=「頭が見えてるのに止まる」を解消。無制限スケールにならない=歪まない。
+- ノブ: `?depthmap=1`(ON/OFF) / `?dmapcurve=`(1=線形, >1で端ほど速い) / `?depthedge=`(画面外マージンpx, 既定300)。
+- 既定OFFなので通常描画は818と完全同一。実機で ?depthmap=1 をトグルしてA/B比較→好みが固まればデフォルト化。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.820 — v0.25.819(遠近クランプ画面端化)を撤回(悪化のため元に戻す)
 
 - 社長報告「悪化してる・数値変えても変わらん」。原因: 819でクランプを画面端基準にした結果、
