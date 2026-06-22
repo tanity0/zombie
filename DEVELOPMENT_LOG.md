@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.829 — 拠点候補地(仕様10): 8か所・10秒制圧で武器商人が移動
+
+- スタート地点(原点)中心・半径3200の円周に8か所(45度刻み)。サークル(半径130)内に10秒滞在で制圧。
+  制圧すると武器商人がその地点へ移動し、元の商人地点が新たな候補地に戻る(候補数は常に8・何度でも可)。
+- store: `baseSites` 状態 + `updateBaseCaptures(deltaTime)`(毎フレーム・滞在計測/制圧)。`createBaseSites()` で初期化/新ラン再生成。
+  屋内/ラボは対象外。制圧時に琥珀リング/グロー/コールアウト＋「拠点制圧」バナー。
+- loop: `updateBaseCaptures(deltaTime)` を毎フレーム呼び出し。
+- 描画: `baseSitesGfx`(groundLayer・加算・world座標)。商人色(琥珀)のリング＋滞在進捗の外周アーク。
+  画面外サークルはカリング(可視分のみ描画)・ラボでは非表示。
+- 負荷スコア: 1/10(描画=可視分のみの数個の円Graphics・rendering / sim=毎フレーム8距離判定)。
+  セーフガード=ビューポートカリング＋ラボ除外＋静的8個固定。新規の重いper-frame効果は無し。
+- 変更: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.828 — 距離難易度/敵出現/色付き率/武器箱Tierをエリア駆動に刷新(仕様1-9)
 
 - 社長仕様。エリア区分(0-4)は既存 `areaZoneIndexFor`(1500/3000/5000/7500)と一致。

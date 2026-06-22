@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -700,6 +700,7 @@ export class PixiScene {
   private groundReflectionGfx = new Graphics();
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
+  private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
@@ -1039,6 +1040,7 @@ export class PixiScene {
       this.groundReflectionGfx,
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
       this.returnGfx, // 帰還サークル(地面・world座標)
+      this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
       this.pumpkinTelegraph,
       this.playerGroundPool,
       this.playerLight,
@@ -1048,6 +1050,7 @@ export class PixiScene {
     );
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
     this.returnGfx.blendMode = 'add'; // 帰還サークルも加算で発光
+    this.baseSitesGfx.blendMode = 'add'; // 拠点候補地サークルも加算で発光
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
@@ -2091,6 +2094,7 @@ export class PixiScene {
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
+    this.syncBaseSites(s.baseSites, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
       !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
@@ -4394,6 +4398,33 @@ export class PixiScene {
       g.moveTo(rc.x + Math.cos(start) * rr, rc.y + Math.sin(start) * rr)
         .arc(rc.x, rc.y, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
+    }
+  }
+
+  // 拠点候補地サークル(仕様10)。商人色(琥珀)のリング。プレイヤー滞在中は外周が満ちていく(10秒で制圧)。
+  private syncBaseSites(sites: { x: number; y: number; radius?: number; dwellMs: number }[] | undefined, now: number) {
+    const g = this.baseSitesGfx;
+    g.clear();
+    if (!sites || !sites.length || this.isLabStage) return; // ラボ(屋内/野外)では出さない
+    const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+    const color = 0xfbbf24; // 拠点=琥珀(商人色)
+    const R = 130; // BASE_CAPTURE_RADIUS と一致
+    for (const s of sites) {
+      const r = s.radius ?? R;
+      // 画面外のサークルは描かない(8個の静的円・毎フレーム再描画を可視分だけに抑える)。
+      if (this.distanceOutsideViewport(s.x, s.y, r + 8) > 0) continue;
+      const a = 0.22 + 0.14 * pulse;
+      g.circle(s.x, s.y, r - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
+      g.circle(s.x, s.y, r).stroke({ width: 5, color, alpha: a * 0.6 });
+      g.circle(s.x, s.y, r - 3).stroke({ width: 2, color, alpha: a });
+      const frac = Math.max(0, Math.min(1, s.dwellMs / BASE_CAPTURE_HOLD_MS));
+      if (frac > 0) {
+        const start = -Math.PI / 2;
+        const rr = r + 5;
+        g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
+          .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
+          .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
+      }
     }
   }
 

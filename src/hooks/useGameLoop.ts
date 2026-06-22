@@ -902,6 +902,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- 拠点候補地(仕様10): サークル内10秒滞在で制圧→武器商人が移動 ---
+        useGameStore.getState().updateBaseCaptures(deltaTime);
+
         // --- ゾーン判定の間引き + 深層域BGM(逆再生)切替 ---
         // 毎フレームではなく ZONE_CHECK_INTERVAL フレームに1回だけ判定(多少アバウト可)。負荷1/10。
         // 準備ゾーン(D-400)で逆再生版を先読み(pause)→深層(D)で play、out(D-200)で pause、浅く戻る(D-600)で解放。

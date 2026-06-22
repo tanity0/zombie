@@ -103,6 +103,21 @@ export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boole
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 
+// 拠点候補地(社長仕様10): スタート地点(原点)中心・半径3200の円周に8か所(45度刻み)。
+// サークル内に10秒滞在で制圧 → 武器商人がその地点へ移動。元の商人地点は候補地に戻る(何度でも可)。
+const BASE_SITE_RADIUS = 3200;          // 候補地を置く円の半径(デンジャーゾーン内)
+const BASE_SITE_COUNT = 8;              // 候補地の数
+const BASE_CAPTURE_RADIUS = 130;        // 制圧サークルの半径(滞在判定)
+export const BASE_CAPTURE_HOLD_MS = 10000; // 制圧に必要な滞在時間(描画の進捗にも使用)
+const createBaseSites = (): { id: string; x: number; y: number; dwellMs: number }[] => {
+  const sites = [];
+  for (let i = 0; i < BASE_SITE_COUNT; i++) {
+    const angle = (Math.PI * 2 * i) / BASE_SITE_COUNT;
+    sites.push({ id: `base-${i}`, x: Math.cos(angle) * BASE_SITE_RADIUS, y: Math.sin(angle) * BASE_SITE_RADIUS, dwellMs: 0 });
+  }
+  return sites;
+};
+
 // 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
 export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
@@ -1177,6 +1192,8 @@ interface GameState {
   gameWon: boolean;
   // フィナーレボス(giantbat)を倒した=終了条件を満たした(まだ勝利ではない)。useGameLoop が帰還サークルを出す。
   finaleDefeated: boolean;
+  // 拠点候補地(仕様10): 円周上の制圧候補。サークル内に10秒滞在で制圧→商人移動。元の商人地点は候補に戻る。
+  baseSites: { id: string; x: number; y: number; dwellMs: number }[];
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
   returnCircle: { x: number; y: number; radius: number; dwellMs: number } | null;
   // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
@@ -1403,6 +1420,7 @@ interface GameState {
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
+  updateBaseCaptures: (deltaTime: number) => void;      // 毎フレーム: 拠点候補地の滞在を計測し10秒で制圧(商人移動)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
@@ -1561,6 +1579,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   vaccinePurchased: false,
   gameWon: false,
   finaleDefeated: false,
+  baseSites: createBaseSites(),
   returnCircle: null,
   gameReturned: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
@@ -5668,6 +5687,47 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
+  updateBaseCaptures: (deltaTime) => {
+    const state = get();
+    const sites = state.baseSites;
+    // 拠点候補地は屋外の距離ベース本編のみ(ラボ/屋内は対象外)。
+    if (!sites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return;
+    const p = state.player;
+    const px = p.x + p.width / 2;
+    const py = p.y + p.height / 2;
+    let capturedIdx = -1;
+    let changed = false;
+    const next = sites.map((s, i) => {
+      const inside = Math.hypot(s.x - px, s.y - py) <= BASE_CAPTURE_RADIUS;
+      const dwellMs = inside ? s.dwellMs + deltaTime * 1000 : 0;
+      if (dwellMs !== s.dwellMs) changed = true;
+      if (inside && dwellMs >= BASE_CAPTURE_HOLD_MS && capturedIdx === -1) capturedIdx = i;
+      return { ...s, dwellMs };
+    });
+    if (capturedIdx === -1) {
+      if (changed) set({ baseSites: next });
+      return;
+    }
+    // 制圧成立: 商人を候補地へ移動。元の商人地点を新たな候補地として戻す(数は常に一定)。
+    const site = next[capturedIdx];
+    const old = state.weaponMerchant;
+    const remaining = next
+      .filter((_, i) => i !== capturedIdx)
+      .map(s => ({ ...s, dwellMs: 0 }));
+    remaining.push({ id: `base-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`, x: old.x, y: old.y, dwellMs: 0 });
+    set({
+      baseSites: remaining,
+      weaponMerchant: { ...old, x: site.x, y: site.y },
+      eventBannerText: '拠点制圧',
+      eventBannerUntil: state.gameTime + 2200,
+    });
+    // 制圧演出(軽量・単発)。
+    get().spawnRing(site.x, site.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
+    get().spawnGlow(site.x, site.y, 70, 'rgba(251,191,36,', 600);
+    get().spawnCallout(site.x, site.y - 40, '拠点制圧', '#fde68a');
+  },
+
   openLabDoor: (id) => {
     set(state => ({ labDoors: state.labDoors.map(d => d.id === id ? { ...d, open: true } : d) }));
   },
@@ -6212,6 +6272,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         vaccinePurchased: false,
         gameWon: false,
         finaleDefeated: false,
+        baseSites: createBaseSites(),
         returnCircle: null,
         gameReturned: false,
         meleeFinishComboCount: 0,
