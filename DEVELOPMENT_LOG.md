@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.840 — リーパー(死神)HPを4000固定
+
+- リーパーの health を 99999 → 4000(ENEMY_STATS)。reaper は hpMult=1 固定なので実HP=4000(=撃破可能に)。
+- 変更: `utils/enemyUtils.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.839 — ジャイアント攻撃力19 / 瀕死(HP≤20)で赤ビネット心拍演出
 
 - ジャイアント(giantbat)攻撃力 22 → 19。(死神=接触77は据え置き=社長確認: 50ではなく77)
