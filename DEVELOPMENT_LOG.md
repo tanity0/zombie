@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.790 — 擬似遠近スケールをURLチューニング可能に(クランプ平坦帯の調整用)
+
+- 社長報告: 手前のドラム缶が一定範囲で同じ大きさのまま→プレイヤー近くで「やっと縮小開始」。原因は
+  `DEPTH_MAX=1.45` クランプの**平坦帯**(プレイヤー足元面から約+500px以南は全部 max に張り付く)。
+- 実機チューニング用に擬似遠近係数を**URL上書き可**に(既定値は不変=見た目据え置き):
+  `?depthk= / ?depthmin= / ?depthmax=`(木・物・拾い物)、`?edepthk= / ?edepthmin= / ?edepthmax=`(敵)。
+  MAX↑ or K↓ で平坦帯が縮み、手前から連続的に拡縮する。すべて**描画のみ**(当たり判定/射程/速度/スコア不干渉)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 次の引き継ぎ: 実機で好みの値を確定したら定数の既定値に焼き込む。
+
 ## v0.25.789 — 深層域グレーディング(退色した暖色セピア・描画のみ)
 
 - 深層域に入っている間だけ**ゲーム画面全体を退色した暖色セピア**に(異界感)。**描画のみ=当たり判定/速度/射程/スコア等に不干渉**。
