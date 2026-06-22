@@ -162,6 +162,9 @@ const tsBool = (key: string, def: boolean): boolean => {
   const v = new URLSearchParams(window.location.search).get(key);
   return v == null ? def : (v === '1' || v === 'true');
 };
+// ステージ2(ラボ)の暗闇=可視ゾーン(フラッシュライト)演出。社長指示で廃止(既定OFF)。?labveil=1 で参照用に復活可。
+// (いきなり暗転する/画面固定の暗幕が登場ヘリのズーム等でズレる、という課題のため通常照明へ)。
+const LAB_VISIBILITY_VEIL = tsBool('labveil', false);
 // 遠景森2(ラボ)の明るさ。暗幕を地平下だけにした(載せ替え廃止)後、白tint(全明)だと元素材より眩し過ぎたので下げる。
 // グレー乗算tint。?nhbright=0..1 で現地調整(既定0.55)。
 const LAB_NEAR_HORIZON_TINT = (() => {
@@ -2019,7 +2022,7 @@ export class PixiScene {
     this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
     this.syncCityProps(); // ステージ3(廃都)の散布オブジェクト(その他ステージでは no-op)
     this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
-    this.updateLabVisibility(s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 可視可能ゾーン(暗闇+明かりの穴)
+    this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
       // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.809 — ステージ2の暗闇(フラッシュライト)演出を廃止
+
+- 社長判断: いきなり暗転する＆画面固定の暗幕が登場ヘリのズーム/演出でズレる課題のため、暗闇演出を廃止。
+- `LAB_VISIBILITY_VEIL`(既定 false)を追加し `updateLabVisibility` をOFFに。ステージ2は通常照明のラボスキン
+  (ENV_TINT＋通常ビネット)になり、暗幕/載せ替え/境界ズレの問題が一括で消える。`?labveil=1` で参照用に復活可。
+- 暗幕関連コード(labRT/labVeilSprite/setLabSceneryAboveVeil 等)は将来用に残置(呼ばれない=早期return)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.808 — すり抜け監査: 敵にも城/ラボプロップの当たり判定を追加
 
 - 社長依頼「他オブジェクトもすり抜け大丈夫か確認」。プレイヤー(movePlayer)と敵(updateEnemies)の当たり判定を突き合わせ。
