@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.820 — v0.25.819(遠近クランプ画面端化)を撤回(悪化のため元に戻す)
+
+- 社長報告「悪化してる・数値変えても変わらん」。原因: 819でクランプを画面端基準にした結果、
+  画面内オブジェクトが常に無制限の生スケールで描画され全体が歪んだ(=悪化)。さらに `?depthedge=` は
+  画面外の頭打ち位置しか動かさないため、画面内では「変えても変わらない」状態だった。
+- 対応: `depthScaleWith` と `DEPTH_MIN/MAX`・`ENEMY_DEPTH_MIN/MAX` を 818 以前(0.68/1.45・0.55/1.85・固定クランプ)へ戻す。
+  `depthRaw`/`DEPTH_EDGE_MARGIN` を削除。遠近の見た目は 818 と同一に復帰。
+- 「足元が画面外でも頭が見える背の高い物の拡縮停止」問題は未解決のまま再検討(次は実機の見え方を確認してから)。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.819 — 遠近: 画面に映っているのに拡縮が止まる問題を修正(クランプを画面端基準に)
 
 - 社長報告「位置(足元)は画面外でも、背の高い木/大きいアイテムの頭がまだ見えてるのに拡縮処理が止まって見える」。
