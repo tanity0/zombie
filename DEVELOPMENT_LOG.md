@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.772 — 表示数字の丸めを方針A(ダメージ/HP=切り上げ)
+
+- ダメージ数値: `spawnDamageNumber` で `Math.round`→`Math.ceil`(最低1)。各表示サイトの `value:Math.round(dmg)`→`value:dmg`
+  にして丸めを spawnDamageNumber に一元化(=ceil)。リザルトの与ダメ合計も floor→ceil。
+- HP表示は既に ceil(VitalsOrb)。**内部の実ダメージ/HP計算は丸めない**(表示の瞬間だけ)。
+- 通貨(gold=floor(score/2000))/時間/レベル/進捗は floor のまま(切り上げると不公平/早すぎ)。
+- 検証: `npx tsc --noEmit` パス。
+
 ## v0.25.771 — ステージ1セット差し替え(透過済み新ドット絵)
 
 - 透過済みPNGを連結成分抽出→atlas名にマッピングし `atlas-px2/<name>.png` に保存(白キー不要)。

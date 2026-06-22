@@ -1084,7 +1084,7 @@ const applySlasherTapStrike = (
     if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
     hit = true;
     const k = get().damageEnemy(e.id, followDmg);
-    get().spawnDamageNumber(ecx, e.y, Math.round(followDmg), false);
+    get().spawnDamageNumber(ecx, e.y, followDmg, false);
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
     if (k) { killed += 1; get().spawnBurst(ecx, ecy, '#bef264', 10); }
   }
@@ -2301,7 +2301,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bashHitEnemy = true; // 敵にヒット → 後でストップ
         slashAt.push({ x: ecx, y: ecy });
         const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
         survivors.push({
@@ -2325,7 +2325,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 5× melee damage and shakes off the stun (no finisher).
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
-          meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+          meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
@@ -2350,7 +2350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
-      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
+      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
@@ -2581,7 +2581,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // Same boss rule as the knife: 5× damage, stun shaken off, no execute.
           bossFinishHit = true;
           const dmg = baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
-          damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
             killed.push({ enemy, finisher: false });
@@ -2609,7 +2609,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
-      damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
         killed.push({ enemy, finisher: false });
@@ -2761,7 +2761,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
-          damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit: true });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
           else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
@@ -2773,7 +2773,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
-      damageNumbers.push({ x: ecx, y: enemy.y, value: Math.round(dmg), crit });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
@@ -6181,7 +6181,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       id: `fx-dmg-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x: x + (Math.random() - 0.5) * 18,
       y: y + (Math.random() - 0.5) * 8,
-      value: Math.max(1, Math.round(value)),
+      value: Math.max(1, Math.ceil(value)), // 表示ダメージは切り上げ(社長指示・最低1)。内部の実ダメージは丸めない
       color: crit ? '#fbbf24' : '#fef9c3',
       createdAt: now,
       duration: 720,

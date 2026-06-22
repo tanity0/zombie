@@ -134,7 +134,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const statsItems = [
     { label: '生存時間', value: formatTime(stats.timeAlive) },
     { label: '撃破', value: stats.enemiesKilled },
-    { label: '与ダメ', value: Math.floor(stats.damageDealt) },
+    { label: '与ダメ', value: Math.ceil(stats.damageDealt) },
     { label: 'Lv', value: stats.maxLevel },
     { label: '最大コンボ', value: stats.maxCombo },
     { label: 'トレジャー', value: stats.treasuresCollected },
