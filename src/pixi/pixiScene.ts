@@ -1437,23 +1437,27 @@ export class PixiScene {
     return f < min ? min : f > max ? max : f;
   }
 
-  // 位置ベース(?depthmap=1): 足元の画面位置で min..max を割り当てる。プレイヤー面=等倍、
-  // 画面上端(−margin)で min、画面下端(+margin)で max。可視範囲では飽和しない=画面内で止まらない。
-  // min/max の大きさは従来どおり=歪まない。平坦になるのは画面外(±margin の外)だけ。
+  // 位置ベース(?depthmap=1): 足元の画面位置で min..max を割り当てる。
+  //  プレイヤー面=等倍 / 画面上端=min / 画面下端=max(=画面内でレンジを使い切る=従来と同等のズーム量)。
+  //  端を越えても(背の高い物の頭が見える間)は min/max を越えて伸び続け、平坦になるのは
+  //  画面外 ±DEPTH_EDGE_MARGIN を超えた所だけ。歪み(無制限)は最終クランプで防止。
   private depthScaleMapped(footWorldY: number, min: number, max: number): number {
     const refScreenY = this.depthRefY - this.cameraY;       // プレイヤー足元の画面Y(≈中央)
-    const footScreenY = footWorldY - this.cameraY;
     const M = DEPTH_EDGE_MARGIN;
+    // 足元の画面Y。画面外±Mで頭打ち(=ここで初めて拡縮が止まる=可視範囲では止まらない)。
+    const footScreenY = Math.max(-M, Math.min(this.screenH + M, footWorldY - this.cameraY));
+    let s: number;
     if (footScreenY <= refScreenY) {
-      // 奥(上)側: refScreenY→1.0, 画面上端の外(−M)→min
-      const span = Math.max(1, refScreenY - (-M));
-      const t = Math.max(0, Math.min(1, (refScreenY - footScreenY) / span));
-      return 1 + (min - 1) * Math.pow(t, DEPTH_MAP_CURVE);
+      // 上側: ref→1.0, 画面上端(0)で t=1=min。さらに上(−M)では t>1 で min を下回り続ける。
+      const t = (refScreenY - footScreenY) / Math.max(1, refScreenY);
+      s = 1 + (min - 1) * Math.pow(t, DEPTH_MAP_CURVE);
+    } else {
+      // 下側: ref→1.0, 画面下端(screenH)で t=1=max。さらに下(+M)では t>1 で max を上回り続ける。
+      const t = (footScreenY - refScreenY) / Math.max(1, this.screenH - refScreenY);
+      s = 1 + (max - 1) * Math.pow(t, DEPTH_MAP_CURVE);
     }
-    // 手前(下)側: refScreenY→1.0, 画面下端の外(+M)→max
-    const span = Math.max(1, (this.screenH + M) - refScreenY);
-    const t = Math.max(0, Math.min(1, (footScreenY - refScreenY) / span));
-    return 1 + (max - 1) * Math.pow(t, DEPTH_MAP_CURVE);
+    // 暴走防止の絶対セーフティ(通常は効かない。カメラ先行/登場等の異常時のみ)。
+    return s < 0.2 ? 0.2 : s > 3.5 ? 3.5 : s;
   }
 
   private groundScaleAt(

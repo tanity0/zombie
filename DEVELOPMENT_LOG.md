@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.822 — 遠近(?depthmap=1): 画面内でレンジを使い切るよう修正(「全くズームしない」対処)
+
+- 821はmin/maxの到達点を画面外に置いたため、画面内では中央付近の狭いレンジしか使われずほぼ等倍=「全くズームしない」。
+- 修正: `depthScaleMapped` を「画面上端=min / 画面下端=max(=画面内でレンジ使い切り=従来同等のズーム量)」に。
+  端を越えた領域(背の高い物の頭が見える間)は min/max を越えて伸び続け、足元が画面外±`depthedge` を超えた所で初めて平坦。
+  足元の画面Yを±Mでクランプして実現。最終的に 0.2..3.5 の絶対セーフティのみ。
+- ノブ不変: `?depthmap=1` / `?dmapcurve=`(1=線形) / `?depthedge=`(px)。既定OFFは818と同一。
+- 変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.821 — 遠近: 位置ベースの新マッピングを「既定OFFのフラグ」で追加(A/B検証用)
 
 - 社長選択「フラグで新方式を試す」。既定は818のまま(歪み/悪化なし)。`?depthmap=1` でON。
