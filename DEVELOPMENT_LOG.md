@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.788 — 深層域BGMが鳴らない対策(堅牢play＋iOS解錠)
+
+- 深層inで逆再生版が**鳴らない**不具合対策(社長報告)。原因候補=深層inの瞬間にデコード未完で
+  `deepBgm.play()` が一度弾かれると、通常BGMは pause 済みのため**無音**になる(再試行が無かった)。
+- **`playDeepRobust`** を追加(通常BGMの `playBgmRobust` と同方式): `loadeddata/canplay/canplaythrough`
+  で play を再試行。`applyBgm` の deep 分岐で使用。これで先読みが間に合わなくても鳴り切る。
+- **iOS自動再生対策**: `unlockDanceAudio`(STARTタップ)の解錠URLに逆再生版3種を追加。新規Audio要素の
+  play() がジェスチャ無しで弾かれるのを回避。
+- 変更ファイル: `audio/audioManager.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- ※トリガ距離は D=7500(エリア「深層域」境界)。実機で「深層域」バナーが出る地点で逆再生版へ切替。
+
 ## v0.25.787 — 逆再生版mp3を生成・配置 / ゾーン判定を毎フレームへ戻す
 
 - **逆再生版BGMを実生成**(ffmpegをこの環境に導入し `-af areverse -b:a 128k` で作成):

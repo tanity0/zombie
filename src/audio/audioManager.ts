@@ -260,6 +260,7 @@ let deepBgm: HTMLAudioElement | null = null;
 let deepBgmSrc = '';
 let deepActive = false;              // 深層in(逆再生版が再生対象)か
 let currentGameVariant = 'default';  // 現在のステージBGM variant(逆再生版の選択に使用)
+let deepPlayToken = 0;               // 逆再生版の遅延play再試行トークン
 
 const sfxBuffers = new Map<SfxKey, AudioBuffer>();
 const sfxLoading = new Map<SfxKey, Promise<void>>();
@@ -455,6 +456,26 @@ const ensureBgmRouting = () => {
   }
 };
 
+// 逆再生版BGMを堅牢に再生(playBgmRobust と同方式)。準備ゾーンで先読みしていても、
+// 深層inの瞬間にまだデコード未完なら play() が即時に通らないことがあるため、ready 系イベントで再試行する。
+// 通常BGMは深層中 pause なので、ここが鳴らないと無音=必ず鳴らし切る。
+const playDeepRobust = () => {
+  if (!deepBgm || !deepActive || !bgmActive || muted) return;
+  const el = deepBgm;
+  const token = ++deepPlayToken;
+  const tryPlay = () => {
+    if (deepBgm !== el || token !== deepPlayToken || !deepActive || !bgmActive || muted) return;
+    el.volume = bgmVolume;
+    void el.play().catch(() => {});
+  };
+  tryPlay();
+  const events: Array<keyof HTMLMediaElementEventMap> = ['loadeddata', 'canplay', 'canplaythrough'];
+  const cleanup = () => { events.forEach(event => el.removeEventListener(event, onReady)); };
+  const onReady = () => { cleanup(); tryPlay(); };
+  events.forEach(event => el.addEventListener(event, onReady, { once: true }));
+  window.setTimeout(cleanup, 2500);
+};
+
 // Drive the single BGM element to the current battle/dance target.
 // 深層域(deepActive)では通常BGMを pause(位置保持)し、逆再生版を play する(即時切替)。
 const applyBgm = () => {
@@ -466,7 +487,7 @@ const applyBgm = () => {
     if (deepActive) {
       ++bgmPlayToken;          // 通常BGMの遅延playをキャンセル
       try { bgm.pause(); } catch { /* ignore */ } // 位置は保持(resume時に続きから)
-      if (deepBgm) { deepBgm.volume = bgmVolume; void deepBgm.play().catch(() => {}); }
+      playDeepRobust();        // 逆再生版を再生(未バッファでも ready イベントで再試行)
     } else {
       try { deepBgm?.pause(); } catch { /* ignore */ }
       applyDanceAudio();
@@ -624,7 +645,7 @@ export const unlockDanceAudio = () => {
   // Native app builds should remove this and use the app audio session/engine instead.
   // 一時要素は解錠専用で使い捨て。最後までミュートのままにする(pause直後に un-mute すると
   // pause が効き切る前の一瞬が鳴り、スタート時に複数曲が重なって聞こえる ← v0.25.282の代償)。
-  const urls = [GAME_BGM.default, DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3]].filter(Boolean);
+  const urls = [GAME_BGM.default, DANCE_LOOP_TRACKS[1], DANCE_LOOP_TRACKS[2], DANCE_LOOP_TRACKS[3], ...Object.values(REVERSE_BGM)].filter(Boolean);
   for (const url of urls) {
     if (typeof Audio === 'undefined') continue;
     const el = new Audio(url);
