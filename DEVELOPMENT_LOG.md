@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.800 — ステージ2の遠景森1を表示に戻す(消えていた)
+
+- v0.25.798 で lab の遠景森1(horizonForest)を非表示にしたら、ステージ2の遠景森が消えた(社長報告)。
+  横向きの「森が上に来る」問題は v0.25.797 の縦持ちガードで横自体を塞いだため、森帯を消す必要は無かった。
+- `STAGE_SKINS.lab.horizon1Visible` を true に戻す(遠景森1＋遠景森2とも表示=元の景色)。
+- 変更ファイル: `data/stageSkins.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.799 — ステージ景色テンプレ(StageSkin表)の土台＋遠景森1を表駆動化(①)
 
 - 社長方針「全ステージ共通スロット＋ステージで±だけ」の土台。`data/stageSkins.ts` に **StageSkin 型＋STAGE_SKINS表**

@@ -24,8 +24,9 @@ export interface StageSkin {
 export const STAGE_SKINS: Record<StageSkinKey, StageSkin> = {
   // ステージ1: 狂い咲きの森(夜の森)
   forest: { far: 'forest', ground: 'forest', horizon1Visible: true, horizon2: 'forest', front: 'forest', daylightNoon: false, topHang: null },
-  // ステージ2: 研究所跡(野外ラボ)。森帯は出さず、遠景森2=機材シルエット。
-  lab:    { far: 'lab', ground: 'lab', horizon1Visible: false, horizon2: 'lab', front: 'forest', daylightNoon: false, topHang: null },
+  // ステージ2: 研究所跡(野外ラボ)。遠景森1(帯)＋遠景森2(機材シルエット)とも表示。
+  // (横向きで「森が上に来る」件は縦持ちガードで横自体を塞いだため、ここで消す必要はない。)
+  lab:    { far: 'lab', ground: 'lab', horizon1Visible: true, horizon2: 'lab', front: 'forest', daylightNoon: false, topHang: null },
   // ステージ3: リモート研究施設(正午の廃都)。
   city:   { far: 'city', ground: 'city', horizon1Visible: true, horizon2: 'city', front: 'city', daylightNoon: true, topHang: null },
   // ステージ4: 封鎖地域(雪原の要塞)。遠景森2は無し、地平帯=氷壁。
