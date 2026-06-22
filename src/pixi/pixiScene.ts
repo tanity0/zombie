@@ -442,23 +442,22 @@ const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number 
 // objects grow/shrink relative to the hero.
 const DEPTH_SCALE_ENABLED = true;
 // 擬似遠近のスケール係数。すべて描画のみ(当たり判定/射程/速度/スコアには不干渉)。実機チューニング用に
-// URLで上書き可: ?depthk= / ?depthmin= / ?depthmax=(木・物・拾い物) / ?edepthk= / ?edepthmin= / ?edepthmax=(敵)。
-// MAX/MIN は「クランプ(頭打ち)」。MAX を上げる or K を下げると、手前で max に張り付く“平坦帯”が縮み、
-// 物が早くから連続的に拡縮する(社長報告: ドラム缶が手前でしばらく同じ大きさ→近くでやっと縮む、への対処)。
-const DEPTH_K = tsNum('depthk', 0.0009);   // scale change per world-Y px from the player plane
-const DEPTH_MIN = tsNum('depthmin', 0.68);
-const DEPTH_MAX = tsNum('depthmax', 1.45);
+// URLで上書き可: ?depthmin= / ?depthmax=(木・物・拾い物) / ?edepthk= / ?edepthmin= / ?edepthmax=(敵)。
+// 既定は位置ベースのマッピング(下記 DEPTH_POS_MAP=true)。?depthmap=0 で旧方式(DEPTH_K のクランプ式)へ。
+const DEPTH_K = tsNum('depthk', 0.0009);   // (旧方式用) scale change per world-Y px from the player plane
+const DEPTH_MIN = tsNum('depthmin', 0.01); // 画面上端(最遠)のスケール。社長確定値。
+const DEPTH_MAX = tsNum('depthmax', 1.7);  // 画面下端(最近)のスケール。社長確定値。
 // Enemies get a deliberately more extreme depth falloff than the rest.
 const ENEMY_DEPTH_K = tsNum('edepthk', 0.00145);
 const ENEMY_DEPTH_MIN = tsNum('edepthmin', 0.55);
 const ENEMY_DEPTH_MAX = tsNum('edepthmax', 1.85);
-// --- 実験: 位置ベースの遠近マッピング(既定OFF=?depthmap=1 でON) -------------------------
-// 目的: 「足元が画面外でも頭が見える背の高い物の拡縮が止まる」対処。サイズ範囲(min/max)は据え置き、
-// その範囲を“足元の画面位置”に沿って割り当てる: プレイヤー面=等倍 / 画面上端(−margin)=min / 画面下端(+margin)=max。
-// 平坦になるのは画面外(±margin の外)だけ=可視範囲では止まらない。歪み(無制限スケール)も出ない。
-const DEPTH_POS_MAP = tsBool('depthmap', false);
+// --- 位置ベースの遠近マッピング(既定ON=社長確定。?depthmap=0 で旧方式へ) ------------------
+// 「足元が画面外でも頭が見える背の高い物の拡縮が止まる」対処。サイズ範囲(min/max)を“足元の画面位置”に割り当てる:
+// プレイヤー面=等倍 / 画面上端=min / 画面下端=max(=画面内でレンジ使い切り)。端を越えても min/max を越えて伸び続け、
+// 平坦になるのは画面外 ±DEPTH_EDGE_MARGIN を超えた所だけ=可視範囲では止まらない。
+const DEPTH_POS_MAP = tsBool('depthmap', true);
 const DEPTH_MAP_CURVE = Math.max(0.2, tsNum('dmapcurve', 1.0)); // 1=線形 / >1=プレイヤー付近ゆっくり・端で速い
-const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 300)); // 画面端の外側マージン(背の高い物の頭ぶん)px
+const DEPTH_EDGE_MARGIN = Math.max(0, tsNum('depthedge', 500)); // 画面端の外側マージン(背の高い物の頭ぶん)px。社長確定値。
 // 研究所の立体壁を擬似遠近(高さ方向のみ)に参加させる強さ。?labdepth= で調整(既定0.6=床オブジェクトより緩め)。
 // 既存 DEPTH_K に対する倍率。clamp はゆるめ(下記)。width は絶対にスケールしない(床/隣接/判定とズレるため)。
 const LAB_WALL_DEPTH_STRENGTH = Math.max(0, tsNum('labdepth', 0.6));

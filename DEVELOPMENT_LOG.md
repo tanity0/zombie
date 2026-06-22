@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.823 — 遠近: 位置ベースマッピングを既定ON＋確定値を焼き込み
+
+- 社長確定: `?depthmap=1&depthmin=0.01&depthmax=1.7&depthedge=500&dmapcurve=1` がベスト。これを既定に。
+- 既定値変更: `DEPTH_POS_MAP=true`(既定ON) / `DEPTH_MIN=0.01` / `DEPTH_MAX=1.7` / `DEPTH_EDGE_MARGIN=500` / `DEPTH_MAP_CURVE=1.0`。
+- 旧方式は `?depthmap=0` で参照可(フォールバック)。敵の深度レンジは従来どおり `edepthmin/edepthmax`(0.55/1.85)を維持。
+- 全ステージ共通(描画のみ・判定不変)。変更ファイル: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.822 — 遠近(?depthmap=1): 画面内でレンジを使い切るよう修正(「全くズームしない」対処)
 
 - 821はmin/maxの到達点を画面外に置いたため、画面内では中央付近の狭いレンジしか使われずほぼ等倍=「全くズームしない」。
