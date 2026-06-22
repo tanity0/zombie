@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.779 — エリア(区域)遷移バナー
+
+- 距離帯を跨いで新しい区域に入った時、**イベント発生と同じバナーUI**で区域名を表示(社長指示)。
+- 距離(原点=スタート/商人から):
+  - 0〜500 軍備配置区域 / 500〜1000 研究対象区域 / 1000〜1500 デンジャーゾーン /
+    1500〜2000 未確認汚染エリア / 2000〜 深層域(`areaZoneIndexFor`)。
+- 発火: `useGameLoop` の探索ゲート(`!danceTest && !indoor && !labTheme`)内で毎フレーム区域判定。
+  **前回と区域が異なる時のみ**バナー(`eventBannerText`/`Until`、`AREA_BANNER_MS=2600`)+`event-start` SE。
+  初回(開始/リワインド直後)は黙って採用=開始地点では出さない。`areaZoneRef` は rewind 検出時に -1 へ。
+- 演出: 既存イベントバナーを流用。深い区域(デンジャー/汚染/深層)は GameHUD の色判定を拡張して**赤系**で表示
+  (危険感)。浅い区域(軍備/研究)は青系。表示2.6秒。
+- 負荷: 0/10(毎フレームの距離比較1回 + 遷移時のみ set/SE。再描画は既存バナーと同じ)。
+- 変更ファイル: `hooks/useGameLoop.ts`, `components/GameHUD.tsx`, `package.json`。
+- 検証: `tsc --noEmit` パス。
+- 備考: 区域の距離帯(500刻み)は色付き個体の `distanceZoneFor`(900/1800/3000)とは別系統。
+  後続のエリア分け正式仕様(敵種/最大数)が来たら、距離帯定義を一本化するか検討。
+
 ## v0.25.778 — 色付き個体を「影の色」仕様へ刷新(装飾廃止)
 
 社長指示で「色付き敵」を再設計。距離倍率は維持しつつ、色は**確率付与+追加倍率+影の色**に。

@@ -186,6 +186,17 @@ const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
 const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの表示時間(gameTime ms)
+// エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
+const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
+const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
+// 原点(スタート/商人)からの距離(px)→ 区域インデックス。500px刻み、2000px以降は深層域。
+const areaZoneIndexFor = (distPx: number): number => {
+  if (distPx >= 2000) return 4;
+  if (distPx >= 1500) return 3;
+  if (distPx >= 1000) return 2;
+  if (distPx >= 500) return 1;
+  return 0;
+};
 const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒してから復活までの時間(社長指示)
 // テスト用URLパラメータ(実機/開発で強制発火)。?arenanow=1|horde|boss → 囲い系イベントを開始直後に発火
 // (2分待ち＋発火確率を無視)。?castlenow=1 → 城フィナーレボス(giantbat)を開始直後に出現。森ステージ専用。
@@ -314,6 +325,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean }>(
     { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false }
   );
+  // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
+  const areaZoneRef = useRef<number>(-1);
 
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -705,6 +718,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cratesDroppedRef.current = 0;
           arenaFiredRef.current = false;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false };
+          areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -871,6 +885,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
           const depth = REAPER_TEST ? REAPER_CONFIG.extremeDepthPx + 1 : Math.hypot(pcx, pcy);
+
+          // --- エリア(区域)遷移バナー: 距離帯を跨いだら区域名を表示(イベント発生と同じUI) ---
+          const zoneIdx = areaZoneIndexFor(Math.hypot(pcx, pcy));
+          if (areaZoneRef.current === -1) {
+            areaZoneRef.current = zoneIdx; // 初回は黙って採用(開始地点では出さない)
+          } else if (zoneIdx !== areaZoneRef.current) {
+            areaZoneRef.current = zoneIdx;
+            useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
+            playSfx('event-start'); // 区域遷移音(イベント発生と共通。深い区域の専用SEは将来差し替え可)
+          }
           const liveEnemies = useGameStore.getState().enemies;
           const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);
           // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
