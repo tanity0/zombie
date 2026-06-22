@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.818 — ステージ2の追加調整(遠景森1さらに下げ / 四隅暗がり拡大)
+
+- いずれもステージ2(lab)限定:
+  1. 遠景森1をさらに10px下げ: `LAB_HORIZON_FOREST_EXTRA_DOWN` 10 → 20。
+  2. 四隅の暗がりを拡大: lab用vignetteの明るい中心をさらに絞る(`getVignetteTextureNarrow` inner 0.35 → 0.22)。
+- 変更ファイル: `pixi/pixiScene.ts`, `pixi/lighting.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.817 — 遠景森2の高さ(サイズ)をステージ2限定に戻す
 
 - 社長指示「ラボ調整中に全ステージへ波及した遠景森2サイズはステージ2だけにして、他は戻して(描画まわりだけ)」。

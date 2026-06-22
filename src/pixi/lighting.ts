@@ -81,8 +81,8 @@ export const getVignetteTexture = (inner = 0.55): Texture => {
   vignetteTexByInner.set(inner, tex);
   return tex;
 };
-// ステージ2(lab)用の「明るい部分が狭い」vignette。
-export const getVignetteTextureNarrow = (): Texture => getVignetteTexture(0.35);
+// ステージ2(lab)用の「明るい部分が狭い=暗い部分が広い」vignette。中心の明部をさらに絞る(社長指示)。
+export const getVignetteTextureNarrow = (): Texture => getVignetteTexture(0.22);
 
 // Wide billowy fog STRIP, baked once. Many soft white blobs spread across the
 // full width and clustered toward the vertical centre, tapering to transparent at
