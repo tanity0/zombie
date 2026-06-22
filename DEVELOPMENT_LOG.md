@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.816 — 敵スポーンを画面外に統一(画面サイズ比例)
+
+- 社長報告「画面内にいきなり敵が沸く時がある」。原因=スポーン位置が可視範囲の内側。
+  可視範囲はワールドと1:1(カメラ幅=gameBounds・プレイヤーほぼ中央)。
+- 修正(ヴァンサバ同様、画面外に湧いて歩いて入る):
+  - `generateEnemy`(全ステージ): 画面中心から¼+50px固定 → 各辺の「外側」(半幅/半高 + 画面端外マージン)へ。
+    直交方向は画面いっぱいに散らす。
+  - ラボのリング配置: `max(w,h)×0.62` 固定係数 → `可視半対角線 hypot(W,H)/2 + マージン + ランダム`(どの角度でも画面外)。
+  - マージンは画面サイズ比例 `SPAWN_OFFSCREEN_MARGIN_FRAC=0.10`(=画面最大辺の10%)。カメラ先行 0.07 を上回るので全画面サイズで画面外保証。
+  - 未使用化した `LAB_SPAWN_DIST_MULT` を削除。
+- 変更ファイル: `utils/enemyUtils.ts`, `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.815 — v0.25.813 の3点をステージ2(lab)限定に変更(他ステージは元に戻す)
 
 - 社長指示「813の対応はステージ2だけ。あとは戻して」。813の3変更を全ステージ共通から lab 限定へ。

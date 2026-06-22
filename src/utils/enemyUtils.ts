@@ -1,5 +1,10 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 
+// 敵の湧き位置を「画面端の外側」に出すためのマージン(画面サイズ比)。
+// 可視範囲はワールドと1:1。カメラ先行(CAMERA_CENTER_CLAMP_FRAC=0.07=画面幅7%)で
+// プレイヤーが中心からずれても確実に画面外へ出せるよう、それより大きい割合にする=完全に画面サイズ比例。
+export const SPAWN_OFFSCREEN_MARGIN_FRAC = 0.10;
+
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
 // zombie, mirroring how VS ramps. Spawn weights for each type live in the
@@ -241,9 +246,13 @@ export const generateEnemy = (
   pressureDirection?: { x: number; y: number } | null
 ): Enemy => {
   const type = forcedType ?? selectEnemyType(gameTime);
-  const buffer = 50;
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
+  // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーはほぼ中央なので可視半幅=W/2・半高=H/2。
+  // 画面端の「外側」へ出すマージンは画面サイズに比例(カメラ先行 CAMERA_CENTER_CLAMP_FRAC=0.07 を吸収する余裕)。
+  const halfW = viewportWidth / 2;
+  const halfH = viewportHeight / 2;
+  const margin = Math.max(viewportWidth, viewportHeight) * SPAWN_OFFSCREEN_MARGIN_FRAC;
 
   const dirMag = pressureDirection
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
@@ -258,22 +267,23 @@ export const generateEnemy = (
   }
   let x = 0;
   let y = 0;
+  // 各辺の「外側」(半幅/半高+margin)へ。直交方向は画面幅/高いっぱいに散らす(歩いて入ってくる)。
   switch (spawnSide) {
-    case 0:
-      x = player.x - viewportWidth / 4 - buffer + Math.random() * (viewportWidth / 2 + buffer * 2);
-      y = player.y - viewportHeight / 4 - buffer;
+    case 0: // 上辺の外
+      x = player.x - halfW + Math.random() * viewportWidth;
+      y = player.y - halfH - margin;
       break;
-    case 1:
-      x = player.x + viewportWidth / 4 + buffer;
-      y = player.y - viewportHeight / 4 - buffer + Math.random() * (viewportHeight / 2 + buffer * 2);
+    case 1: // 右辺の外
+      x = player.x + halfW + margin;
+      y = player.y - halfH + Math.random() * viewportHeight;
       break;
-    case 2:
-      x = player.x - viewportWidth / 4 - buffer + Math.random() * (viewportWidth / 2 + buffer * 2);
-      y = player.y + viewportHeight / 4 + buffer;
+    case 2: // 下辺の外
+      x = player.x - halfW + Math.random() * viewportWidth;
+      y = player.y + halfH + margin;
       break;
-    case 3:
-      x = player.x - viewportWidth / 4 - buffer;
-      y = player.y - viewportHeight / 4 - buffer + Math.random() * (viewportHeight / 2 + buffer * 2);
+    case 3: // 左辺の外
+      x = player.x - halfW - margin;
+      y = player.y - halfH + Math.random() * viewportHeight;
       break;
   }
   return buildEnemy(type, x, y, gameTime, false);

@@ -53,7 +53,8 @@ import {
   isBossType,
   spawnEnemyAt,
   selectLabEnemyType,
-  resolveEnemyTarget
+  resolveEnemyTarget,
+  SPAWN_OFFSCREEN_MARGIN_FRAC
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -238,8 +239,6 @@ const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
 const LAB_SPAWN_INTERVAL_MULT = 1.6;
 const LAB_SPAWN_COUNT_MAX = 1;
-// ラボ敵を画面外の遠くに湧かせる距離(プレイヤー中心からの半径。ビューポート最大辺×係数+ゆらぎ)。
-const LAB_SPAWN_DIST_MULT = 0.62;
 const PLAYER_DEATH_SLOW_MS = 820;
 const CASTLE_SPAWN_SLOW_MS = 900;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
@@ -3685,9 +3684,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
               const labEnemy = generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection);
-              // 画面外の遠くにリング配置(=急に画面内に湧いて見えないように)。
+              // 画面外の遠くにリング配置(=急に画面内に湧いて見えないように)。距離は画面サイズ比例:
+              // 可視半対角線(=どの角度でも画面端の外)+ 画面端外マージン + 少しランダム。
               const ang = Math.random() * Math.PI * 2;
-              const dist = Math.max(gameBounds.width, gameBounds.height) * LAB_SPAWN_DIST_MULT + Math.random() * 160;
+              const maxDim = Math.max(gameBounds.width, gameBounds.height);
+              const halfDiag = Math.hypot(gameBounds.width, gameBounds.height) / 2;
+              const dist = halfDiag + maxDim * SPAWN_OFFSCREEN_MARGIN_FRAC + Math.random() * (maxDim * 0.2);
               const pcx0 = player.x + player.width / 2, pcy0 = player.y + player.height / 2;
               labEnemy.x = pcx0 + Math.cos(ang) * dist - labEnemy.width / 2;
               labEnemy.y = pcy0 + Math.sin(ang) * dist - labEnemy.height / 2;
