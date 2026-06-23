@@ -4465,7 +4465,7 @@ export class PixiScene {
     v.position.set(this.screenW / 2, this.screenH / 2);
     v.width = this.screenW * 1.06;  // 隅まで覆うオーバスキャン
     v.height = this.screenH * 1.06;
-    v.alpha = 0.20 + 0.42 * beat;   // 0.20→0.62 で脈動(赤い縁がドクンと濃くなる)
+    v.alpha = 0.20 + 0.26 * beat;   // 0.20→0.46(明るい側を抑え、振れ幅も縮めてチカチカ軽減)
   }
 
   // 深層域グレーディング: 深層域(eligible かつ原点距離>=D)の間だけ stage ルートへ退色セピアの

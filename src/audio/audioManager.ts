@@ -505,6 +505,7 @@ const ensureSfxContext = () => {
   const AudioContextCtor = window.AudioContext ?? (window as WindowWithWebAudio).webkitAudioContext;
   if (!AudioContextCtor) return null;
   sfxContext = new AudioContextCtor();
+  attachAudioRouteRecovery(sfxContext);
   return sfxContext;
 };
 
@@ -512,6 +513,39 @@ const resumeSfxContext = () => {
   const context = ensureSfxContext();
   if (!context || context.state !== 'suspended') return;
   void context.resume().catch(() => {});
+};
+
+// Bluetooth 等の音声ルート変更で AudioContext が中断/suspend されると SFX も BGM も止まる。
+// 可視状態のときに中断を検知したら自動で復帰(resume + BGM再開)。hidden 時は省電力のため触らない。
+const recoverAudioRoute = () => {
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+  const context = sfxContext;
+  if (context && context.state !== 'running' && context.state !== 'closed') {
+    void context.resume().catch(() => {});
+  }
+  // BGM(HTMLAudio)はルート変更で止まることがあるので再開(bgmActive/muted/deep を尊重)。
+  try {
+    if (deepActive) applyBgm();
+    else playBgmRobust();
+  } catch { /* ignore */ }
+};
+
+let audioRouteRecoveryRegistered = false;
+const attachAudioRouteRecovery = (context: AudioContext) => {
+  // コンテキストの状態変化(中断→可視なら復帰)。
+  context.onstatechange = () => {
+    const st = context.state as string; // iOS は 'interrupted' を取り得る(型外)
+    if (st === 'suspended' || st === 'interrupted') recoverAudioRoute();
+  };
+  if (audioRouteRecoveryRegistered) return;
+  audioRouteRecoveryRegistered = true;
+  // デバイス着脱(Bluetooth 接続/切断 等)。ルート確定後に復帰。
+  try {
+    navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+      // ルート切替が落ち着くのを少し待ってから復帰。
+      setTimeout(recoverAudioRoute, 250);
+    });
+  } catch { /* ignore */ }
 };
 
 // 太いバスドラム(キック)を合成再生。サンプル不要(サイン波のピッチ落ち+速い減衰)。

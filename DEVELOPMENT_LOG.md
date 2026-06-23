@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.846 — Bluetooth等のルート変更で音が途切れる対策 + 瀕死赤の脈動を控えめに
+
+- 音声復帰: `AudioContext.onstatechange`(中断/suspend)と `navigator.mediaDevices.devicechange`(BT着脱)を監視し、
+  可視時に自動復帰(`recoverAudioRoute`=resume + BGM再開・deep/bgmActive尊重)。hidden時は省電力のため触らない。
+  負荷=イベント駆動のみ(1/10)。BT接続で AudioContext が中断→SFX/BGM停止→自動復帰しない、を解消。
+- 瀕死赤ビネット: 脈動 alpha を 0.20→0.62 から **0.20→0.46** に(明るい側を抑え振れ幅も縮小=チカチカ軽減)。
+- 変更: `audio/audioManager.ts`, `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.845 — 瀕死の赤ビネットが見えない不具合修正(赤色テクスチャを焼く)
 
 - 原因: 黒い vignette テクスチャを赤 tint していたが、元RGBがほぼ黒のため tint しても黒のまま=赤く見えなかった。
