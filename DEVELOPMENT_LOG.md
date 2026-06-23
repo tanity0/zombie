@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.870 — ホーミング弾 調整(社長指示5点)
+
+- ① **ターゲティング表示をPHILL風の頭上サークルに変更**: ロック済み敵の頭にリング+中心点+小十字。
+  **1ロック=白 / 2ロック=赤**。`syncLockIndicators`(▽マーカーから差し替え)。加算ブレンドなし。
+- ② **ターゲティングは指を付けている間だけ**: `touchActive` が true の時のみロック付与。指を離す/CD中/
+  帰還/未装備はロッククリア+次タッチで即1体目が付くようパルスタイマーをリセット。
+- ③ **0.5秒に1体ずつロック**: `HOMING_LOCK_INTERVAL_MS=500` のパルス方式。毎フレーム全ロックではなく、
+  優先順(未ロック敵→2ロック目)で1体だけ追加。パルス時に死亡した敵のロックは破棄(弾の無駄防止)。
+- ④ **離すと誘導ロケット発射(やや遅め)+命中時に手榴弾と同じ範囲爆発**: `HOMING_MISSILE_SPEED 280→200`、
+  旋回 `6.0→5.0`、寿命 `3000→3500`、サイズ `8→10`。発射弾に `explodeOnHit/explodeRadius=66(手榴弾と同じ)/
+  explodeDamageMult=1` を付与。直撃ダメージ14は据え置き(=手榴弾の1/3)、周囲はフォールオフ。
+- ⑤ **クールダウン 5秒**: `HOMING_COOLDOWN_MS 8000→5000`。
+- アーキ: ロック付与をパルス化したことで per-frame の敵スキャンが0.5秒に1回に減少(さらに軽量化)。
+- 変更: `store/gameStore.ts`(定数/発射弾に爆発付与), `hooks/useGameLoop.ts`(touchActive限定+パルスロック+
+  死亡ロック破棄), `pixi/pixiScene.ts`(頭上サークル描画)。検証: `tsc --noEmit` / `vite build` パス。
+- 負荷: 2/10。爆発は既存 explodeOnHit 経路を流用(グレネードと同じFX)。スローなし。
+
 ## v0.25.869 — 新サブウェポン「ホーミング弾」(Lv1-3)
 
 - 仕様: 移動中に射程内の敵を自動ロック、指を離した時にロック済み敵へ追尾弾を一斉発射。

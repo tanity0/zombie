@@ -3869,27 +3869,31 @@ export class PixiScene {
   }
 
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プール/y-sort を使い、流用タイプの
-  // ホーミング弾ロックインジケーター: ロック済み敵の頭上に小さなシアンの▽マーカーを描く。
-  // 2ロック(重複)の敵は二重マーカー。毎フレーム全クリア＆再描画(最大10個=軽量)。
+  // ホーミング弾ロックインジケーター: ロック済み敵の頭にPHILL風の照準サークルを描く。
+  // 1ロック=白 / 2ロック=赤。毎フレーム全クリア＆再描画(最大Lv3で10ロック=軽量)。
   private syncLockIndicators(enemies: Enemy[], locks: string[]) {
     const g = this.homingLockGfx;
     g.clear();
     if (locks.length === 0) return;
-    // 敵IDごとにロック数をカウント
+    // 敵IDごとにロック数をカウント(1=白 / 2=赤)。
     const lockCount = new Map<string, number>();
     for (const id of locks) lockCount.set(id, (lockCount.get(id) ?? 0) + 1);
     for (const [enemyId, count] of lockCount) {
       const enemy = enemies.find(e => e.id === enemyId);
       if (!enemy) continue;
       const cx = enemy.x + enemy.width / 2;
-      const topY = enemy.y - 4;
-      const s = 5; // マーカー半サイズ
-      // ▽(下向き三角)をシアンで描く。2ロックなら2つ並べる。
-      for (let k = 0; k < count; k++) {
-        const ox = (count === 2) ? (k === 0 ? -6 : 6) : 0;
-        g.poly([cx + ox - s, topY, cx + ox + s, topY, cx + ox, topY + s * 1.4])
-          .fill({ color: 0x38bdf8, alpha: 0.9 });
-      }
+      const headY = enemy.y + enemy.height * 0.28; // 頭のあたり
+      const rad = Math.max(enemy.width, enemy.height) * 0.5 + 4;
+      const ring = count >= 2 ? 0xef4444 : 0xffffff;  // 2ロック=赤 / 1ロック=白
+      const dot = count >= 2 ? 0xfecaca : 0xf1f5f9;
+      g.circle(cx, headY, rad).stroke({ width: 2, color: ring, alpha: 0.92 });
+      g.circle(cx, headY, 2.2).fill({ color: dot, alpha: 0.92 });
+      // 照準の十字(小)。
+      g.moveTo(cx - rad - 3, headY).lineTo(cx - rad + 2, headY)
+        .moveTo(cx + rad - 2, headY).lineTo(cx + rad + 3, headY)
+        .moveTo(cx, headY - rad - 3).lineTo(cx, headY - rad + 2)
+        .moveTo(cx, headY + rad - 2).lineTo(cx, headY + rad + 3)
+        .stroke({ width: 1.5, color: ring, alpha: 0.8 });
     }
   }
 

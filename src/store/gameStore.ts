@@ -127,12 +127,13 @@ const RETURN_CIRCLE_AVOID_DIST = 240;   // プレイヤーから最低この距�
 const RETURN_CLEAR_WEAPON_TYPES = new Set(['grenade', 'trap', 'turret', 'decoy']);
 // ホーミング弾: 指を離した瞬間にロック済み敵へ追尾弾を一斉発射するサブウェポン。
 // 発射はstore の fireHoming(VirtualJoystick 指離し)、ロック管理は useGameLoop が毎フレーム更新。
-const HOMING_MISSILE_SIZE = 8;
-const HOMING_MISSILE_SPEED = 280;          // px/s TODO(ホーミング): 仮値
-const HOMING_MISSILE_DURATION_MS = 3000;
-const HOMING_MISSILE_DAMAGE = Math.round(42 / 3); // 14 = 手榴弾(42)の1/3
-const HOMING_MISSILE_TURN_RATE = 6.0;      // rad/s TODO(ホーミング): 仮値
-const HOMING_COOLDOWN_MS = 8000;           // TODO(ホーミング): 仮値
+const HOMING_MISSILE_SIZE = 10;
+const HOMING_MISSILE_SPEED = 200;          // px/s やや遅め(誘導ロケット感)。TODO仮値
+const HOMING_MISSILE_DURATION_MS = 3500;
+const HOMING_MISSILE_DAMAGE = Math.round(42 / 3); // 14 = 手榴弾(42)の1/3(直撃ダメージ。据え置き)
+const HOMING_MISSILE_TURN_RATE = 5.0;      // rad/s TODO(ホーミング): 仮値
+const HOMING_EXPLOSION_RADIUS = 66;        // 命中時の爆発半径(手榴弾と同じ HEAVY_GRENADE_RADIUS)
+const HOMING_COOLDOWN_MS = 5000;           // 社長指示: 5秒
 // プレイヤーが帰還サークル内にいるか。内側では攻撃を停止する(置き攻撃の出入りハメ防止)。
 export const isInReturnCircle = (player: Player, rc: { x: number; y: number; radius: number } | null): boolean => {
   if (!rc) return false;
@@ -3786,6 +3787,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           hostile: false,
           reflected: false,
           targetEnemyId: enemyId,
+          // 命中時に手榴弾と同じ範囲爆発(直撃ダメージは据え置き14、周囲は ×1 フォールオフ)。
+          explodeOnHit: true,
+          explodeRadius: HOMING_EXPLOSION_RADIUS,
+          explodeDamageMult: 1,
         };
       })
       .filter((p): p is NonNullable<typeof p> => p !== null);
