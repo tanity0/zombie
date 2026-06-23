@@ -636,7 +636,7 @@ export const CAMERA_DANGER_RADIUS = 150;                          // この距�
 export const CAMERA_SNAP_DIST = 600;                             // これ以上離れたら即スナップ(開始/復帰/瞬間移動対策)
 // アテンション・シネマティック(レスキュー/ジャイアント出現): 現地へ高速パン→ホールド→高速で戻る。その間 時間停止。
 export const ATTENTION_IN_MS = 360;   // 現地への高速パン(in)
-export const ATTENTION_HOLD_MS = 2400; // 現地ホールド(2-3秒のアテンション)
+export const ATTENTION_HOLD_MS = 1900; // 現地ホールド(社長指示で0.5秒短縮: 2400→1900)
 export const ATTENTION_OUT_MS = 360;  // プレイヤーへ高速で戻る(out)
 export const ATTENTION_TOTAL_MS = ATTENTION_IN_MS + ATTENTION_HOLD_MS + ATTENTION_OUT_MS;
 // 手を離して待機している間だけ少しズーム(描画のみ)。正=寄る / 負=引く。操作再開で1.0へ戻る。

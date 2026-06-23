@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.848 — アテンションの時間停止を0.5秒短縮
+
+- `ATTENTION_HOLD_MS` 2400 → 1900(ホールドを-0.5s)。総時間停止が約3.12s→2.62sに。in/outは据え置き。
+- 変更: `store/gameStore.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.847 — ジャイアント出現バグ修正(旧フィナーレ重複除去/時間出現に統一)＋ボス予告廃止
 
 - バグ: giantbat が5分前(4:10)にプレイヤー近く(300px)へポップ。原因=`stageDirector` の旧フィナーレ wave
