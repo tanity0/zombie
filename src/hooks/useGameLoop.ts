@@ -2049,7 +2049,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // 分身(サブウェポン): カメラ移動で分身全体が画面外へ出たら消滅(攻撃なし)+CD開始。
+        // 分身(サブウェポン): 画面外で消滅(攻撃なし)、画面内なら1秒ごとの自動近接(5秒)を進める。
         {
           const clone = useGameStore.getState().shadowClone;
           if (clone) {
@@ -2060,6 +2060,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               clone.y + clone.height < camera.y ||
               clone.y > camera.y + gameBounds.height;
             if (fullyOff) useGameStore.getState().expireShadowClone();
+            else useGameStore.getState().tickShadowClone();
           }
         }
 

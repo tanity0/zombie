@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.878 — 分身 自律連続攻撃化 / 装備メニューのキャラ固有スキル非表示 / ロックオン演出
+
+- **分身の挙動変更**: 「次の近接で1回攻撃して消滅」→「その場で**1秒ごと×5秒(計5回)自動近接**」。
+  `ShadowCloneState` に `attacksDone`/`nextAttackAt` を追加。`tickShadowClone`(毎フレーム)が
+  攻撃間隔・寿命を進め、5回/5秒 or 画面外で `expireShadowClone`(CD3秒)。`triggerCounter` は
+  READY時の生成のみに簡略化(ACTIVE中の再スイングは無反応)。
+- **分身にプレイヤーのスキル効果を適用**: `shadowCloneStrike` に `applyMeleeFinishSkillSpread`(リーパー)
+  ・`counterMasterKnockback`・`registerMultiHit`(ヘビーガンナー)を追加(ダメージ/クリ系は既に共用)。
+- **トップ装備メニュー**: キャラ固有スキル(`CHARACTER_SUBWEAPON_KEYS`)を候補から除外(自動付与・選択不可)。
+  `MissionSelect` の renderLoadout で `SUB_WEAPON_KEYS.filter(...)`。
+- **ホーミングのロックオンサークル演出**: ロック付与(白→赤の変化含む)時に、サークルが**ズームアウト→イン**
+  しながら**フェードイン**(easeOutCubic・0.5秒)。`syncLockIndicators` に敵ID別アニメ開始時刻 `lockAnim`
+  を追加(描画のみ・毎フレームフィルタ不使用)。
+- 検証: `tsc --noEmit` / `npm run build` パス。
+
 ## v0.25.877 — 分身(サブウェポン)新規実装
 
 - **サブウェポン登録**: `SubWeaponKey` に `shadow-clone` 追加、`SUB_WEAPON_KEYS`・

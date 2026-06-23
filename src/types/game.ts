@@ -382,7 +382,7 @@ export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tac
 export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone';
 
 // 分身(サブウェポン)の生成インスタンス。生成位置に固定、外見はプレイヤーと同じ(白黒)。
-// 近接攻撃でその場攻撃して消滅、または完全に画面外へ出ると消滅(攻撃なし)。最大1体。
+// その場で一定時間(5秒間・1秒ごと)自動で近接攻撃を繰り返し、時間切れ or 完全に画面外で消滅。最大1体。
 export interface ShadowCloneState {
   x: number;       // 生成時のプレイヤー当たり判定 左上X(固定)
   y: number;       // 同上 Y(固定)
@@ -390,7 +390,9 @@ export interface ShadowCloneState {
   height: number;
   facingLeft: boolean;            // スプライト左右反転(生成時のプレイヤー向き)
   characterClass: CharacterClass; // 立ち絵テクスチャ選択(プレイヤーと同一)
-  spawnedAt: number;              // gameTime(ms)
+  spawnedAt: number;              // gameTime(ms)。寿命(5秒)の起点
+  attacksDone: number;            // これまでに行った自動近接攻撃の回数
+  nextAttackAt: number;           // 次の自動攻撃を行う gameTime(ms)
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。

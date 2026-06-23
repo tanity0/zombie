@@ -441,6 +441,9 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
   return knownClass ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
 const PLAYER_WALK_BOB_PX = 0.8;
+// ホーミングのロックオンサークル出現演出: 0.5秒でズームアウト(×開始倍率)→ターゲット半径へ収束＋フェードイン。
+const LOCK_ANIM_MS = 500;
+const LOCK_ANIM_START_SCALE = 2.4;
 const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
 const ENEMY_BREATH_SCALE_Y = 0.024;
@@ -771,6 +774,8 @@ export class PixiScene {
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
+  // ロックオンサークルの出現アニメ(敵ID→開始時刻+ロック数)。ズームアウト→イン+フェードインの起点。
+  private lockAnim = new Map<string, { startedAt: number; count: number }>();
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
@@ -2181,7 +2186,7 @@ export class PixiScene {
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
-    this.syncLockIndicators(s.enemies, s.homingLocks);
+    this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -3897,30 +3902,45 @@ export class PixiScene {
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プール/y-sort を使い、流用タイプの
   // ホーミング弾ロックインジケーター: ロック済み敵の頭にPHILL風の照準サークルを描く。
   // 1ロック=白 / 2ロック=赤。毎フレーム全クリア＆再描画(最大Lv3で10ロック=軽量)。
-  private syncLockIndicators(enemies: Enemy[], locks: string[]) {
+  private syncLockIndicators(enemies: Enemy[], locks: string[], now: number) {
     const g = this.homingLockGfx;
     g.clear();
-    if (locks.length === 0) return;
+    if (locks.length === 0) {
+      if (this.lockAnim.size > 0) this.lockAnim.clear();
+      return;
+    }
     // 敵IDごとにロック数をカウント(1=白 / 2=赤)。
     const lockCount = new Map<string, number>();
     for (const id of locks) lockCount.set(id, (lockCount.get(id) ?? 0) + 1);
+    const seen = new Set<string>();
     for (const [enemyId, count] of lockCount) {
       const enemy = enemies.find(e => e.id === enemyId);
       if (!enemy) continue;
+      seen.add(enemyId);
+      // ロック付与(またはロック数変化=白→赤)の瞬間からアニメ開始。ズームアウト→インしつつフェードインを 0.5秒。
+      let anim = this.lockAnim.get(enemyId);
+      if (!anim || anim.count !== count) { anim = { startedAt: now, count }; this.lockAnim.set(enemyId, anim); }
+      const t = Math.min(1, Math.max(0, (now - anim.startedAt) / LOCK_ANIM_MS));
+      const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
       const cx = enemy.x + enemy.width / 2;
       const headY = enemy.y + enemy.height * 0.28; // 頭のあたり
-      const rad = Math.max(enemy.width, enemy.height) * 0.5 + 4;
+      const targetRad = Math.max(enemy.width, enemy.height) * 0.5 + 4;
+      // 大きい半径(ズームアウト)→ targetRad(ズームイン)へ収束。
+      const rad = targetRad * (LOCK_ANIM_START_SCALE - (LOCK_ANIM_START_SCALE - 1) * ease);
+      const fade = ease; // 同時にフェードイン
       const ring = count >= 2 ? 0xef4444 : 0xffffff;  // 2ロック=赤 / 1ロック=白
       const dot = count >= 2 ? 0xfecaca : 0xf1f5f9;
-      g.circle(cx, headY, rad).stroke({ width: 2, color: ring, alpha: 0.92 });
-      g.circle(cx, headY, 2.2).fill({ color: dot, alpha: 0.92 });
-      // 照準の十字(小)。
+      g.circle(cx, headY, rad).stroke({ width: 2, color: ring, alpha: 0.92 * fade });
+      g.circle(cx, headY, 2.2).fill({ color: dot, alpha: 0.92 * fade });
+      // 照準の十字(小)。リングと一緒にスケール。
       g.moveTo(cx - rad - 3, headY).lineTo(cx - rad + 2, headY)
         .moveTo(cx + rad - 2, headY).lineTo(cx + rad + 3, headY)
         .moveTo(cx, headY - rad - 3).lineTo(cx, headY - rad + 2)
         .moveTo(cx, headY + rad - 2).lineTo(cx, headY + rad + 3)
-        .stroke({ width: 1.5, color: ring, alpha: 0.8 });
+        .stroke({ width: 1.5, color: ring, alpha: 0.8 * fade });
     }
+    // ロックが外れた敵のアニメ状態を破棄。
+    for (const id of [...this.lockAnim.keys()]) if (!seen.has(id)) this.lockAnim.delete(id);
   }
 
   // スプライトにシアンtintを乗せて描く。通常はHPバー、レア(死神)は渦っぽいシアンの円。

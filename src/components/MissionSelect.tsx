@@ -10,7 +10,7 @@ import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
-  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
+  STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
   GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, RARITY_LABEL, rollGachaSkill, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
@@ -391,7 +391,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
             <div className="grid grid-cols-2 gap-2">
-              {SUB_WEAPON_KEYS.map(k => {
+              {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。 */}
+              {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k)).map(k => {
                 const on = equippedSubs.includes(k);
                 return (
                   <button

@@ -272,8 +272,11 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
-// 分身(サブウェポン): 消滅(攻撃 or 画面外)から再生成可能になるまでのクールダウン。
+// 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後3秒のクールダウン。
 export const SHADOW_CLONE_COOLDOWN_MS = 3000;
+export const SHADOW_CLONE_ATTACK_INTERVAL_MS = 1000; // 攻撃間隔(1秒に1回)
+export const SHADOW_CLONE_DURATION_MS = 5000;        // 存在時間(5秒)
+export const SHADOW_CLONE_MAX_ATTACKS = 5;           // 攻撃回数の上限(1/s × 5s)
 // Melee reach for the finger-release counter swing.
 export const MELEE_RADIUS = 74;
 export const huntingMeleeRadius = (player: Player): number => {
@@ -1321,8 +1324,9 @@ interface GameState {
 
   // 分身(サブウェポン)。生成中=ACTIVE、null=READY/COOLDOWN。レンダラが直読みして白黒で描く。
   shadowClone: ShadowCloneState | null;
-  shadowCloneStrike: (clone: ShadowCloneState) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理と共用)
-  expireShadowClone: () => void;                         // 分身を消滅させCD(3s)開始(攻撃後/画面外)
+  shadowCloneStrike: (clone: ShadowCloneState) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理＋スキル効果を共用)
+  tickShadowClone: () => void;                           // 毎フレーム: 1秒ごとの自動攻撃と寿命(5秒)消滅を進める
+  expireShadowClone: () => void;                         // 分身を消滅させCD(3s)開始(寿命切れ/画面外)
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -2620,25 +2624,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
 
-    // 分身(サブウェポン)の状態遷移。ここに到達するのは通常ナイフのスイングのみ
-    // (刀/鞭モードは手前で return 済み)。
-    //   ACTIVE: 既に分身がいる → その場で同方向に近接攻撃して消滅(CD開始)。同入力では再生成しない。
-    //   READY : 分身がおらずCD明け → 攻撃時のプレイヤー位置に分身を1体生成(固定)。
-    if (get().player.subWeapons.includes('shadow-clone')) {
-      const clone = get().shadowClone;
-      if (clone) {
-        get().shadowCloneStrike(clone);
-        get().expireShadowClone(); // 攻撃後に消滅 → CD開始(同入力での再生成はCDで自然に抑止)
-      } else if (gameTime >= (get().player.subWeaponCooldowns['shadow-clone'] ?? 0)) {
-        const facingLeft = player.direction === 'left' || (player.lastDirection != null && player.lastDirection.x < 0);
-        set({
-          shadowClone: {
-            x: player.x, y: player.y, width: player.width, height: player.height,
-            facingLeft, characterClass: player.characterClass, spawnedAt: gameTime,
-          },
-        });
-        get().spawnRing(pcx, pcy, 6, 44, 'rgba(203,213,225,0.6)', 3, 240); // 生成の控えめな白リング
-      }
+    // 分身(サブウェポン): READY(分身なし＆CD明け)で近接攻撃すると、攻撃位置に分身を1体生成(固定)。
+    // 以後は分身が自律的に1秒ごと×5秒の近接攻撃を繰り返す(tickShadowClone)。ここに到達するのは通常
+    // ナイフのスイングのみ(刀/鞭モードは手前で return 済み)。生成中(ACTIVE)の再スイングは何もしない。
+    if (
+      get().player.subWeapons.includes('shadow-clone') &&
+      !get().shadowClone &&
+      gameTime >= (get().player.subWeaponCooldowns['shadow-clone'] ?? 0)
+    ) {
+      const facingLeft = player.direction === 'left' || (player.lastDirection != null && player.lastDirection.x < 0);
+      set({
+        shadowClone: {
+          x: player.x, y: player.y, width: player.width, height: player.height,
+          facingLeft, characterClass: player.characterClass,
+          spawnedAt: gameTime, attacksDone: 0, nextAttackAt: gameTime, // 生成直後の tick で1発目
+        },
+      });
+      get().spawnRing(pcx, pcy, 6, 44, 'rgba(203,213,225,0.6)', 3, 240); // 生成の控えめな白リング
     }
 
     return {
@@ -2735,6 +2737,31 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
     if (finisherHit || bossFinishHit) get().triggerFinishImpact();
+    // プレイヤーの装備スキル効果を分身の攻撃にも適用(リーパー波及/カウンターマスター/ヘビーガンナー)。
+    applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage);
+    get().registerMultiHit(slashAt.length); // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ
+    if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy);
+  },
+
+  // 毎フレーム: 分身の自動近接(1秒ごと×最大5回)を進め、寿命(5秒)到達 or 回数上限で消滅。
+  tickShadowClone: () => {
+    const clone = get().shadowClone;
+    if (!clone) return;
+    const { gameTime } = get();
+    if (clone.attacksDone >= SHADOW_CLONE_MAX_ATTACKS || gameTime >= clone.spawnedAt + SHADOW_CLONE_DURATION_MS) {
+      get().expireShadowClone();
+      return;
+    }
+    if (gameTime >= clone.nextAttackAt) {
+      get().shadowCloneStrike(clone);
+      set(state => state.shadowClone ? {
+        shadowClone: {
+          ...state.shadowClone,
+          attacksDone: state.shadowClone.attacksDone + 1,
+          nextAttackAt: state.shadowClone.nextAttackAt + SHADOW_CLONE_ATTACK_INTERVAL_MS,
+        },
+      } : {});
+    }
   },
 
   expireShadowClone: () => {
