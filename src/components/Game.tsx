@@ -16,7 +16,6 @@ import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
 import MouseControls from './MouseControls';
-import FullscreenButton from './FullscreenButton';
 import BenchmarkOverlay, { type BenchmarkResult } from './BenchmarkOverlay';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useGameControls } from '../hooks/useGameControls';
@@ -88,12 +87,24 @@ const Game: React.FC<GameProps> = ({
     };
     
     updateSize();
-    
+
+    // モバイルは回転直後の innerWidth/Height(=getBoundingClientRect)が確定前で古い値を返すことがある。
+    // 縦↔横の切替後にレイアウトが崩れる(床が画面を占拠する)ため、回転時は即時＋遅延で再計測して確実に追従。
+    const timers: number[] = [];
+    const updateSizeSoon = () => {
+      updateSize();
+      timers.push(window.setTimeout(updateSize, 250));
+      timers.push(window.setTimeout(updateSize, 600));
+    };
+
     window.addEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', updateSizeSoon);
     document.addEventListener('fullscreenchange', updateSize);
-    
+
     return () => {
+      timers.forEach(id => clearTimeout(id));
       window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', updateSizeSoon);
       document.removeEventListener('fullscreenchange', updateSize);
     };
   }, [setGameBounds]);
@@ -188,7 +199,6 @@ const Game: React.FC<GameProps> = ({
       {benchmarkMode && onBenchmarkComplete && (
         <BenchmarkOverlay fps={fps} onComplete={onBenchmarkComplete} />
       )}
-      <FullscreenButton target={containerRef} />
       {isTouch && <MobileControls />}
       
       {isPaused && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && (

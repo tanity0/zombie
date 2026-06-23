@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.849 — フルスクリーンボタン削除 / 回転後のレイアウト崩れを自動復帰
+
+- 機能していないフルスクリーンボタンを削除(iOS Safari は div の Fullscreen API 非対応で無反応)。`FullscreenButton.tsx` 削除＋Game.tsx から除去。
+- 縦↔横の回転後にレイアウトが崩れる(床が画面を占拠)→一時停止で直る、を自動化。原因=モバイルは回転直後の
+  寸法が確定前で古い値を返すこと。Game.tsx で `orientationchange` を購読し、即時＋遅延(250ms/600ms)で再計測→
+  PixiStage resize→背景レイアウト全再構築。これで縦に戻すと自動復帰(一時停止不要)。タイマーは unmount で解放。
+- 変更: `components/Game.tsx`, `components/FullscreenButton.tsx`(削除), `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.848 — アテンションの時間停止を0.5秒短縮
 
 - `ATTENTION_HOLD_MS` 2400 → 1900(ホールドを-0.5s)。総時間停止が約3.12s→2.62sに。in/outは据え置き。
