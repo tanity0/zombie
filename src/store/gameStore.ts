@@ -272,8 +272,9 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
-// 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後3秒のクールダウン。
-export const SHADOW_CLONE_COOLDOWN_MS = 3000;
+// 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後にクールダウン。
+// クールダウンはレベルで短縮(Lv1=3s / Lv2=2s / Lv3=1s)。index は subWeaponLevels(1..3)。
+export const SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL = [3000, 3000, 2000, 1000];
 export const SHADOW_CLONE_ATTACK_INTERVAL_MS = 1000; // 攻撃間隔(1秒に1回)
 export const SHADOW_CLONE_DURATION_MS = 5000;        // 存在時間(5秒)
 export const SHADOW_CLONE_MAX_ATTACKS = 5;           // 攻撃回数の上限(1/s × 5s)
@@ -2766,8 +2767,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   expireShadowClone: () => {
     if (!get().shadowClone) return;
+    const level = Math.max(1, Math.min(3, get().player.subWeaponLevels['shadow-clone'] ?? 1));
     set({ shadowClone: null });
-    get().setSubWeaponCooldown('shadow-clone', get().gameTime + SHADOW_CLONE_COOLDOWN_MS);
+    get().setSubWeaponCooldown('shadow-clone', get().gameTime + SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL[level]);
   },
 
   performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
