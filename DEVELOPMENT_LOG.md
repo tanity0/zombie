@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.847 — ジャイアント出現バグ修正(旧フィナーレ重複除去/時間出現に統一)＋ボス予告廃止
+
+- バグ: giantbat が5分前(4:10)にプレイヤー近く(300px)へポップ。原因=`stageDirector` の旧フィナーレ wave
+  `finale-giantbat`(4:10・プレイヤー周囲)が城ボス経路と重複。→ **stageDirector の finale-giantbat を除去**。
+- 城ボスを「5分(時間)」のみで**固定設置の城の位置に出現**へ統一(接近条件 `nearCastle`/`CASTLE_BOSS_APPROACH_DIST` を撤去)。
+  これでアテンション(triggerAttention)が5分の城ボス出現で確実に発火(=アテンションが起きない件も解消)。
+- ボス予告「まもなく最終ボスが現れる…」を廃止。常時の「最終ボス出現！」HUDバナーも撤去。
+  出現告知は eventBanner「危険変異体出現」(城spawn時の一過性)に一本化。`FINALE_BOSS_TIME_MS` は5:00へ(レガシー定数)。
+- 城マーカーは従来どおりボス出現後のみ表示。
+- 変更: `utils/stageDirector.ts`, `hooks/useGameLoop.ts`, `components/GameHUD.tsx`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.846 — Bluetooth等のルート変更で音が途切れる対策 + 瀕死赤の脈動を控えめに
 
 - 音声復帰: `AudioContext.onstatechange`(中断/suspend)と `navigator.mediaDevices.devicechange`(BT着脱)を監視し、

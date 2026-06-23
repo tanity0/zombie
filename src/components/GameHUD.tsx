@@ -5,7 +5,6 @@ import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
 import { getWeaponShortName, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
-import { FINALE_BOSS_TIME_MS } from '../utils/stageDirector';
 import VitalsOrb from './VitalsOrb';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
@@ -36,8 +35,6 @@ const KatanaIcon: React.FC<{ size?: number; variant?: KatanaVariant }> = ({ size
     </svg>
   );
 };
-
-const BOSS_WARN_LEAD = 12 * 1000;
 
 const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
@@ -72,14 +69,7 @@ const GameHUD: React.FC = () => {
   const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
-  const bossActive = useGameStore(state => state.enemies.some(e => e.type === 'giantbat'));
-
   const formattedTime = formatTime(gameTime / 1000);
-
-  const bossImminent =
-    !bossActive &&
-    gameTime >= FINALE_BOSS_TIME_MS - BOSS_WARN_LEAD &&
-    gameTime < FINALE_BOSS_TIME_MS;
 
   const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
@@ -200,19 +190,7 @@ const GameHUD: React.FC = () => {
         🔩 {player.straps}
       </div>
 
-      {/* Finale boss warning / arrival banner */}
-      {(bossImminent || bossActive) && (
-        <div
-          className={`absolute left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-[13px] font-bold ${
-            bossActive
-              ? 'bg-red-700/80 text-red-100 animate-pulse'
-              : 'bg-red-900/70 text-red-200 animate-pulse'
-          }`}
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 56px)' }}
-        >
-          {bossActive ? '最終ボス出現！' : 'まもなく最終ボスが現れる…'}
-        </div>
-      )}
+      {/* フィナーレボスの予告/常時バナーは廃止。出現時の告知は city/castle 側の eventBanner「危険変異体出現」に一本化。 */}
 
       {/* バイタル: HP球体 + 外周EXPリング(被弾点滅)。左上に配置(タイマーが中央へ移った分、上へ)。 */}
       <div

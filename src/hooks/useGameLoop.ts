@@ -231,8 +231,6 @@ const LAB_RETURN_HOME_MARGIN = 140;
 const PICKUP_HARD_CAP = 120;
 const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
-// (旧)時限出現は廃止。現在はフィナーレボスは城への接近(CASTLE_BOSS_APPROACH_DIST)で出現。
-const CASTLE_BOSS_APPROACH_DIST = 380;      // この距離まで城へ近づくとフィナーレボスが魔法陣で出現。
 const CASTLE_BOSS_MIN_TIME_MS = 5 * 60 * 1000; // ただし出現は5分経過後のみ(社長指示=接近＋時間の両方)。?castlenow=1 は無視。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
 const LAB_SPAWN_AGGRO_RANGE = 150;
@@ -770,14 +768,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
-        // 旧「5分で出現」→「城へ接近で出現」に変更。研究所/屋内/ダンスでは出さない。
-        const pcxCastle = player.x + player.width / 2, pcyCastle = player.y + player.height / 2;
-        const nearCastle = Math.hypot(pcxCastle - castle.x, pcyCastle - castle.y) < CASTLE_BOSS_APPROACH_DIST;
-        // 出現条件: 城へ接近 かつ 5分経過(社長指示=A)。?castlenow=1 は即時(時間ゲート無視)。
-        const castleBossReady = FORCE_CASTLE_BOSS || (nearCastle && newGameTime >= CASTLE_BOSS_MIN_TIME_MS);
+        // 城は最初から固定設置。出現条件は「5分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
+        // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
+        const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
-          useGameStore.setState({ eventBannerText: '危険変異者出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+          useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
           addEnemy(boss);
           spawnFlash('rgba(127,29,29,0.28)', 420);

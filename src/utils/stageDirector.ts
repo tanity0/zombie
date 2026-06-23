@@ -46,9 +46,8 @@ const mixedRing = (
     return spawnEnemyAt(type, x, y, gameTime);
   });
 
-// When the finale boss (giantbat) is released. The HUD flashes a warning just
-// before this, and the run is won the moment the boss dies.
-export const FINALE_BOSS_TIME_MS = 250 * 1000; // 4:10
+// 4:10基準の旧フィナーレ定数。現在の警告は廃止(出現時バナーのみ)だが、互換のため5分(城ボス時刻)に合わせて残置。
+export const FINALE_BOSS_TIME_MS = 300 * 1000; // 5:00(城ボス出現と同時刻)
 
 // Compressed ~5-minute set-piece script. Designed as a tension curve:
 // calm intro → first counter → mid-boss spike → build → 7-strong onslaught →
@@ -88,17 +87,8 @@ const WAVE_EVENTS: WaveEvent[] = [
     id: 'pumpkin-pair-210s',
     triggerAtMs: 210 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 2, 320, player, t)
-  },
-  {
-    // 4:10 — FINALE boss. Trash keeps trickling from the continuous spawner;
-    // killing the giantbat wins the run.
-    id: 'finale-giantbat',
-    triggerAtMs: FINALE_BOSS_TIME_MS,
-    spawner: (player, _b, t) => [
-      ...ringAroundPlayer('giantbat', 1, 300, player, t),
-      ...ringAroundPlayer('skeleton', 2, 240, player, t)
-    ]
   }
+  // フィナーレ(giantbat)は stageDirector では出さない。城(固定設置)から5分で出現する城ボス経路に一本化(useGameLoop)。
 ];
 
 // Caller-managed consumption set. Reset on game restart.
