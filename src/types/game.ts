@@ -260,6 +260,8 @@ export interface Enemy {
   colorTier?: EnemyColorTier;
   // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
   reaperChaser?: boolean;
+  // 回り込みワープの描画フェード(1=不透明 / 0=透明)。消える→テレポート→出る を 0.5s ずつで演出。
+  reaperWarpAlpha?: number;
   // 特殊AI(犬型=突進 / パンプキン=ジャンプ攻撃)の状態機械。すべて gameTime(ms)基準。
   //  werewolf: undefined→'windup'(減速)→'charge'(2倍速で aiTarget へ突進)→cooldown。
   //  pumpkin : undefined→'crouch'(縮みながら3秒溜め)→'jump'(1秒でaiTargetへ着地)→'recover'(1秒停止)。

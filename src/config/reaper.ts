@@ -33,6 +33,7 @@ export const REAPER_CONFIG = {
   contactDamage: 77,          // 接触ダメージ(社長指示=77)
   chaseSpeedMult: 0.9,        // 追跡速度 = プレイヤー現在移動速度 × 0.9(遅いが下記ワープで回り込む)
   warpIntervalMs: 4000,       // 回り込みワープの間隔
+  warpFadeMs: 500,            // ワープ時の消える/出る フェード時間(片側)。フェードアウト→テレポート→フェードイン。
   warpDistPx: 520,            // ワープ後にプレイヤーから取る距離(上下左右いずれかへ・多少ランダム)
   homeRadiusPx: 900,          // プレイヤーがスタート(原点)から この距離内へ戻ると死神は去る
   chaserHealth: 6000,         // 高いが有限(極まれば討伐可能)

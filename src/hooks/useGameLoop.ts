@@ -330,8 +330,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
-  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean }>(
-    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false }
+  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean }>(
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false }
   );
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
@@ -783,7 +783,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
-          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false };
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
         }
@@ -1010,7 +1010,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const liveEnemies = useGameStore.getState().enemies;
           const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);
           // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
-          if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; }
+          if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; rs.warpAnimStartAt = 0; }
 
           if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。
@@ -1019,25 +1019,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             else rs.risk -= REAPER_CONFIG.riskDecayPerSec * deltaTime;
             rs.risk = Math.max(0, Math.min(REAPER_CONFIG.riskMax, rs.risk));
 
-            // 横切り(気配演出)。無害(当たり判定なし)。横切る場所は進行方向で決まる:
-            //   上=上部奥を横断 / 下=下部手前を横断 / 右=右側を縦断 / 左=左側を縦断。被写界深度(tilt-shift)も乗る。
+            // 横切り(気配演出)。無害(当たり判定なし)。社長指示で「必ず水平に画面を通り過ぎる」へ復帰。
+            // (以前は進行方向で縦断もしていたが、縦断は遠近で“近づいてきて消える”ように見えるため廃止。)
+            // 奥(上部・小さく)か手前(下部・大きく)かと、左右どちらから来るかだけランダム。被写界深度(tilt-shift)も乗る。
             const doReaperCross = () => {
-              // 進行方向(速度→なければ最終向き)。
-              let mvx = player.vx ?? 0;
-              let mvy = player.vy ?? 0;
-              if (Math.abs(mvx) + Math.abs(mvy) < 0.01 && player.lastDirection) {
-                mvx = player.lastDirection.x; mvy = player.lastDirection.y;
-              }
-              let moveDir: 'up' | 'down' | 'left' | 'right';
-              if (Math.abs(mvx) < 0.01 && Math.abs(mvy) < 0.01) moveDir = 'up';
-              else if (Math.abs(mvx) >= Math.abs(mvy)) moveDir = mvx >= 0 ? 'right' : 'left';
-              else moveDir = mvy >= 0 ? 'down' : 'up';
-              const rnd = Math.random() < 0.5 ? 1 : -1;
-              const cross =
-                moveDir === 'up'   ? { axis: 'h' as const, band: 0.15, dir: rnd, scale: 0.5 }   // 上部奥・小さく
-                : moveDir === 'down' ? { axis: 'h' as const, band: 0.86, dir: rnd, scale: 1.1 } // 下部手前・大きく
-                : moveDir === 'right' ? { axis: 'v' as const, band: 0.84, dir: rnd, scale: 0.7 } // 右側を縦断
-                :                       { axis: 'v' as const, band: 0.16, dir: rnd, scale: 0.7 }; // 左側を縦断
+              const rnd = Math.random() < 0.5 ? 1 : -1;            // 左右どちらから通り過ぎるか
+              const near = Math.random() < 0.5;                    // 手前/奥
+              const cross = near
+                ? { axis: 'h' as const, band: 0.86, dir: rnd, scale: 1.1 }  // 下部手前・大きく
+                : { axis: 'h' as const, band: 0.15, dir: rnd, scale: 0.5 }; // 上部奥・小さく
               useGameStore.setState({
                 reaperCross: { startedAt: Date.now(), durationMs: REAPER_CONFIG.crossDurationMs, ...cross },
               });
@@ -1088,6 +1078,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               rs.chaserId = chaser.id;
               rs.chaserSpawnAt = newGameTime;
               rs.lastWarpAt = newGameTime;
+              rs.warpAnimStartAt = 0; rs.warpTeleported = false;
               rs.risk = REAPER_CONFIG.riskMax;
               spawnFlash('rgba(10,10,16,0.30)', 360);
               // SFX(完全出現の短い警告音)は専用アセット待ち。
@@ -1099,25 +1090,48 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== rs.chaserId) });
               rs.chaserId = null;
               rs.risk = 0;
+              rs.warpAnimStartAt = 0;
             } else {
               // 追跡: 0.9倍速(player.speed基準=成長反映・ダッシュ等は除外)。慣性は updateEnemies のチェイス inertia がかかる。
               const targetSpeed = getReaperChaseSpeed(player.speed);
               // 回り込みワープ: 一定間隔で、プレイヤーの上下左右いずれか(多少ランダム)へ warp して挟み込む。
-              const doWarp = newGameTime - rs.lastWarpAt >= REAPER_CONFIG.warpIntervalMs;
-              if (doWarp) rs.lastWarpAt = newGameTime;
-              let warpX = 0; let warpY = 0;
-              if (doWarp) {
+              // 社長指示: パッと消えてパッと出るのではなく、0.5s でフェードアウト→テレポート→0.5s でフェードイン。
+              const WARP_FADE = REAPER_CONFIG.warpFadeMs;
+              // 新規ワープ開始(アニメ中は再トリガーしない)。出現直後の最初の1回まではアニメをスキップ。
+              if (rs.warpAnimStartAt === 0 && newGameTime - rs.lastWarpAt >= REAPER_CONFIG.warpIntervalMs) {
+                rs.lastWarpAt = newGameTime;
+                rs.warpAnimStartAt = newGameTime;
+                rs.warpTeleported = false;
                 const card = [[0, -1], [0, 1], [-1, 0], [1, 0]][Math.floor(Math.random() * 4)];
                 const jit = (Math.random() - 0.5) * REAPER_CONFIG.warpDistPx * 0.5;
-                warpX = pcx + card[0] * REAPER_CONFIG.warpDistPx + (card[0] === 0 ? jit : 0);
-                warpY = pcy + card[1] * REAPER_CONFIG.warpDistPx + (card[1] === 0 ? jit : 0);
+                rs.warpToX = pcx + card[0] * REAPER_CONFIG.warpDistPx + (card[0] === 0 ? jit : 0);
+                rs.warpToY = pcy + card[1] * REAPER_CONFIG.warpDistPx + (card[1] === 0 ? jit : 0);
+              }
+              // ワープアニメ進行(フェードのみ・移動は止める)。
+              let warpAlpha = 1;
+              let teleportNow = false;
+              const warping = rs.warpAnimStartAt > 0;
+              if (warping) {
+                const el = newGameTime - rs.warpAnimStartAt;
+                if (el < WARP_FADE) {
+                  warpAlpha = Math.max(0, 1 - el / WARP_FADE);       // 消える(フェードアウト)
+                } else if (el < WARP_FADE * 2) {
+                  if (!rs.warpTeleported) { teleportNow = true; rs.warpTeleported = true; } // 不可視の瞬間に瞬間移動
+                  warpAlpha = Math.min(1, (el - WARP_FADE) / WARP_FADE); // 出る(フェードイン)
+                } else {
+                  warpAlpha = 1; rs.warpAnimStartAt = 0; rs.warpTeleported = false; // アニメ終了
+                }
               }
               useGameStore.setState({
                 enemies: useGameStore.getState().enemies.map(e =>
                   e.id === rs.chaserId
-                    ? doWarp
-                      ? { ...e, x: warpX - e.width / 2, y: warpY - e.height / 2, vx: 0, vy: 0, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage }
-                      : { ...e, speed: targetSpeed, damage: REAPER_CONFIG.contactDamage }
+                    ? {
+                        ...e,
+                        ...(teleportNow ? { x: rs.warpToX - e.width / 2, y: rs.warpToY - e.height / 2, vx: 0, vy: 0 } : {}),
+                        speed: warping ? 0 : targetSpeed, // ワープ中は静止(フェードで消えて別位置に出る)
+                        damage: REAPER_CONFIG.contactDamage,
+                        reaperWarpAlpha: warpAlpha,
+                      }
                     : e
                 ),
               });

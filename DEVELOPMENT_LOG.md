@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.855 — 死神の回り込みワープを0.5sフェードに＋予兆(横切り)を水平のみへ復帰
+
+- **ワープのフェード**(社長指示): 追跡死神の回り込みワープが「パッと消えてパッと出る」だったのを、
+  0.5sフェードアウト→不可視の瞬間にテレポート→0.5sフェードインへ。ワープ中(計1s)は静止(フェードのみ)。
+  実装: `reaperRef` に warp アニメ状態(`warpAnimStartAt/warpTo*/warpTeleported`)を追加、`Enemy.reaperWarpAlpha`
+  を毎フレ駆動し、pixiScene が `view.container.alpha`(本体＋HPバー＋ボスマーカー)と enemy light に乗算。
+  `warpFadeMs=500` を config に追加。出現/消滅/討伐時に warp 状態をリセット。
+- **予兆(横切り)の見え方を復帰**: 以前は進行方向で縦断もしていたが、縦断は遠近で“近づいてきて消える”ように
+  見えるとの指摘。`doReaperCross` を**必ず水平に通り過ぎる**(奥=上部小/手前=下部大・左右ランダム)へ戻した。
+- 変更: `config/reaper.ts`, `types/game.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`, `package.json`。
+  検証: `tsc --noEmit` パス。負荷: 1/10(既存スプライトの alpha 駆動のみ・新規描画なし)。
+
 ## v0.25.854 — 深層域BGMの二重再生バグ修正(applyDanceAudio を deepActive 対応に)
 
 - 社長報告: 深層域で音楽が止まる→音楽ボタンOFF→ONで復帰すると通常BGMが逆再生版に重なって流れる。

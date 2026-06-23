@@ -4080,7 +4080,9 @@ export class PixiScene {
     view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
-    view.container.alpha = horizonAlpha;
+    // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
+    const reaperWarpFade = e.reaperWarpAlpha ?? 1;
+    view.container.alpha = horizonAlpha * reaperWarpFade;
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
 
     if (tex) {
@@ -4111,7 +4113,7 @@ export class PixiScene {
     if (horizonAlpha <= 0) view.light.visible = false;
     else {
       this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
-      view.light.alpha *= horizonAlpha;
+      view.light.alpha *= horizonAlpha * reaperWarpFade;
     }
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
