@@ -32,6 +32,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
 } from '../store/gameStore';
+import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -276,6 +277,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const summonFxRef = useRef(0);     // 召喚SE
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
+  const introHoldSinceRef = useRef(0);     // レンダラ初フレーム待ちで登場演出を保持し始めた時刻(まっくら防止のフェイルセーフ用)
   // Scripted-wave consumption set; survives across frames within one run
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
@@ -703,6 +705,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 初フレームで終了時刻を確定。演出中はゲーム進行/入力/敵スポーンを止め、見た目だけ進める。
         let introUntil = loopState.introUntil;
         if (introUntil === -1) {
+          // まっくら対策: レンダラ(Pixi)が初フレームを表示するまで登場演出を t=0 で保持する。
+          // 冷間リロード時は WebGL init/テクスチャ読込で初フレームが遅れ、その間に演出時計が進むと
+          // ヘリ登場が黒画面で消化されてしまう。表示準備が整ってから時計を開始し、演出を頭から流す。
+          // フェイルセーフ: 万一 ready が来なくても最大 INTRO_RENDER_WAIT_MS で開始(無限保持を防ぐ)。
+          const INTRO_RENDER_WAIT_MS = 5000;
+          const rendererReady = !isPixiRenderer() || useGameStore.getState().rendererReady;
+          if (!rendererReady) {
+            if (introHoldSinceRef.current === 0) introHoldSinceRef.current = nowMs;
+            if (nowMs - introHoldSinceRef.current < INTRO_RENDER_WAIT_MS) {
+              // t=0 のカメラ位置(ヘリ飛来開始)に合わせて待機。進行/入力/スポーンは止めたまま。
+              const introOff0 = playerIntroOffset(0);
+              const camFollow0 = playerIntroCamFollow(0);
+              const holdCamX = (player.x + introOff0.x * camFollow0) - gameBounds.width / 2 + player.width / 2;
+              const holdCamY = (player.y + introOff0.y * CAMERA_INTRO_LIFT_FRAC) - gameBounds.height / 2 + player.height / 2;
+              setCameraPosition(holdCamX, holdCamY);
+              updateEffects(deltaTime);
+              frameRef.current = requestAnimationFrame(gameLoop);
+              return;
+            }
+          }
+          introHoldSinceRef.current = 0;
           useGameStore.getState().stampPlayerIntro();
           introUntil = useGameStore.getState().introUntil;
         }

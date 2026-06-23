@@ -1215,6 +1215,7 @@ interface GameState {
   startWithTestStraps: boolean;
   showStatsOverlay: boolean; // 撃破/DMG/SCRAP + FPS/負荷オーバーレイの表示(TOPで選択。既定OFF)
   introUntil: number; // キャラ登場演出の終了時刻(Date.now基準)。-1=未確定(初フレームで確定)、0=演出なし
+  rendererReady: boolean; // レンダラ(Pixi)が初フレームを表示済みか。冷間リロード時に登場演出が黒画面で進行=「まっくら」を防ぐため、初フレーム表示まで演出を t=0 で保持する。
   introDialogueActive: boolean;  // 登場セリフ表示中(時間停止)
   introDialogueStartedAt: number; // セリフ開始時刻(Date.now。オートタイプ基準)
   introDialogueShown: boolean;   // この登場で既にセリフを出したか(再トリガー防止)
@@ -1401,6 +1402,7 @@ interface GameState {
   setStartWithTestStraps: (enabled: boolean) => void;
   setShowStatsOverlay: (enabled: boolean) => void;
   stampPlayerIntro: () => void; // 登場演出の開始(初フレームで終了時刻を確定)
+  setRendererReady: (ready: boolean) => void; // レンダラ初フレーム表示の通知(PixiStage が初 render 後に true)
   startIntroDialogue: () => void; // 登場セリフ開始(時間停止)
   setIntroDialogueLines: (lines: IntroLine[]) => void; // 出撃ごとの会話を設定(選択ミッション/フリー)
   pendingLoadout: SubWeaponKey[];                       // 装備メニューで選んだサブ(出撃時に resetGame が所持へ反映・永続)
@@ -1621,6 +1623,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
+  rendererReady: false,
   introDialogueActive: false,
   introDialogueStartedAt: 0,
   introDialogueShown: false,
@@ -5595,6 +5598,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   stampPlayerIntro: () => {
     set({ introUntil: Date.now() + PLAYER_INTRO_MS, introDialogueActive: false, introDialogueShown: false });
+  },
+
+  setRendererReady: (ready) => {
+    if (useGameStore.getState().rendererReady === ready) return; // 同値書き込みで購読者を起こさない
+    set({ rendererReady: ready });
   },
 
   startIntroDialogue: () => {

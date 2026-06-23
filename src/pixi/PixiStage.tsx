@@ -96,6 +96,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         host.appendChild(app.canvas);
       }
 
+      // 初フレームを画面に出した合図。useGameLoop はこれを待ってから登場演出の時計を開始する
+      // (冷間リロードで WebGL init/テクスチャ読込中に演出が黒画面で進む=「まっくら」を防ぐ)。
+      try { useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
+
       // 1フレームの例外で描画が固まって真っ暗になるのを防ぐ(ログは初回だけ。再生は継続)。
       const tick = () => {
         try {
@@ -164,6 +168,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
 
     return () => {
       cancelled = true;
+      try { useGameStore.getState().setRendererReady(false); } catch { /* ignore */ } // 次マウント(再戦)も初フレームまで保持
       const a = appRef.current;
       const tick = tickerCallbackRef.current;
       try { pauseUnsubRef.current?.(); } catch { /* ignore */ }

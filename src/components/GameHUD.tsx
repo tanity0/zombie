@@ -218,7 +218,8 @@ const GameHUD: React.FC = () => {
             className="absolute flex flex-col items-end gap-1.5 pointer-events-none"
             style={{
               right: 'max(env(safe-area-inset-right), 12px)',
-              bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
+              top: '58%',
+              transform: 'translateY(-50%)'
             }}
           >
             {/* 装備スキル(サブウェポン)= 装備の詳細。コンパクトに縦並び。 */}
@@ -288,14 +289,14 @@ const GameHUD: React.FC = () => {
 
       {/* Stats(撃破/DMG/SCRAP)は StatsHud に分離(頻繁な再描画をHUD本体から切り離す)。 */}
 
-      {/* BGM toggle */}
+      {/* BGM toggle: 右下・一時停止(MobileControls の "II")のすぐ上に配置。 */}
       <button
         type="button"
         onPointerDown={toggleBgm}
         className="pointer-events-auto absolute w-9 h-9 rounded-full hud-translucent flex items-center justify-center text-white/70 active:text-white"
         style={{
-          right: 'max(env(safe-area-inset-right), 12px)',
-          top: 'calc(max(env(safe-area-inset-top), 8px) + 168px)'
+          right: 'max(env(safe-area-inset-right), 16px)',
+          bottom: 'calc(max(env(safe-area-inset-bottom), 24px) + 48px)'
         }}
         title={audioMuted ? 'Audio on' : 'Audio off'}
         aria-label={audioMuted ? 'Audio on' : 'Audio off'}

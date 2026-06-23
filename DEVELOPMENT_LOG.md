@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.851 — 右側UIの再配置(武器を中央下/音楽・一時停止を右下に積む)＋登場まっくら対策
+
+- **UI再配置**(社長指示): 武器アイコンが右下隅で押しづらい＆新パネルが一時停止ボタン("II")を覆っていた問題。
+  - 武器パネルを画面右の**中央下くらいの高さ**へ移動(`top:58% / translateY(-50%)`)=親指で押しやすい位置。装備スキルチップも一緒に上へ。
+  - 音楽(BGM)アイコンを右上から**右下・一時停止のすぐ上**へ移動(`bottom: calc(max(inset,24px)+48px)`)。
+  - 一時停止("II", `MobileControls`)は右下最下段のまま=武器パネルが退いて再び見えるように。下から「一時停止→音楽→(中央下に武器)」。
+- **登場演出のまっくら対策**(社長指摘=毎回ではなく、リロード後に頻発): 原因は冷間リロード時の WebGL init/テクスチャ
+  読込で Pixi 初フレームが遅れる間に登場演出の時計が進み、ヘリ登場が黒画面で消化されること。
+  - `rendererReady` を store に追加。`PixiStage` が初 `render`＋canvas 挿入後に true(unmount で false=再戦も保持)。
+  - `useGameLoop` は `introUntil===-1` の時、Pixi 使用時は `rendererReady` まで登場演出を **t=0 で保持**(カメラのみ
+    合わせ、進行/入力/スポーンは停止)。準備後に時計を開始=ヘリ登場を頭から表示。無限保持を防ぐ 5s フェイルセーフ付き。
+- 変更: `components/GameHUD.tsx`, `store/gameStore.ts`, `pixi/PixiStage.tsx`, `hooks/useGameLoop.ts`, `package.json`。検証: `tsc --noEmit` パス。
+- 負荷: 1/10(再配置=CSSのみ。まっくら対策=初回1フレームの真偽値書込のみ・毎フレームコスト増なし)。
+
 ## v0.25.850 — 装備UIを右側に集約(アイコンのみ・銃はタップ切替)
 
 - 下部にあった「武器切り替え」＋「装備の詳細」を画面右下に縦集約。武器名は出さずアイコンのみ。
