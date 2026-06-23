@@ -560,6 +560,21 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
+// ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
+// 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
+// drawEnemy で「重心が footX に乗る」ように水平オフセットを掛けて補正する(視覚のみ=hitbox不変)。
+const STAGE4_FOOT_FRAC_X: Record<string, number> = {
+  bat: 0.367,
+  ghost: 0.535,
+  giantbat: 0.471,
+  lich: 0.505,
+  plant: 0.501,
+  pumpkin: 0.503,
+  reaper: 0.596,
+  skeleton: 0.411,
+  werewolf: 0.441,
+  zombie: 0.428,
+};
 
 // ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
 // 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
@@ -4154,7 +4169,16 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      view.sprite.scale.set(sc * breath.x * aiSqX, sc * breath.y * flinchSqY * aiSqY);
+      const scaleX = sc * breath.x * aiSqX;
+      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
+      // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
+      // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
+      if (this.snowStage) {
+        const footFrac = STAGE4_FOOT_FRAC_X[e.type];
+        if (footFrac !== undefined) {
+          view.sprite.position.x = Math.round(fb.footX + liftShake - (footFrac - 0.5) * tex.width * scaleX);
+        }
+      }
       view.sprite.visible = true;
     } else {
       view.sprite.skew.x = 0;
