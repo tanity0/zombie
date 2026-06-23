@@ -3,7 +3,7 @@ import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { formatTime } from '../utils/renderUtils';
-import { getWeaponShortName, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
+import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
 import type { AmmoType } from '../types/game';
@@ -203,45 +203,53 @@ const GameHUD: React.FC = () => {
         <VitalsOrb />
       </div>
 
-      {/* 装備中スキル(サブウェポン)のチップ。武器パネルの上に並べる。 */}
-      {equippedSkills.length > 0 && (
-        <div
-          className="absolute flex flex-wrap gap-1 max-w-[62vw]"
-          style={{
-            left: 'max(env(safe-area-inset-left), 12px)',
-            bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 66px)'
-          }}
-        >
-          {equippedSkills.map(key => (
-            <div
-              key={key}
-              className="hud-translucent rounded-full px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
-            >
-              <span className="text-sky-200/90">{subWeaponDisplayName(key)}</span>
-              <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Equipped weapons + ammo. Guns are tappable to switch the active one. */}
+      {/* 右側にまとめた装備UI: 装備スキル(詳細) + 武器(アイコンのみ・銃はタップで切替)。下端から上へ縦並び。 */}
       {(() => {
         const guns = player.weapons.filter(w => !w.isMelee);
         const melee = player.weapons.find(w => w.isMelee);
         const activeGun = guns.find(w => w.id === player.activeWeaponId) ?? guns[0];
         const ammoFieldFor = (t: AmmoType) =>
           t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : player.ammoRifle;
+        const murasameEquipped = player.subWeapons.includes('murasame');
+        const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
+        const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
         return (
           <div
-            className="absolute"
+            className="absolute flex flex-col items-end gap-1.5 pointer-events-none"
             style={{
-              left: 'max(env(safe-area-inset-left), 12px)',
+              right: 'max(env(safe-area-inset-right), 12px)',
               bottom: 'calc(max(env(safe-area-inset-bottom), 12px) + 8px)'
             }}
           >
-            <div className="hud-translucent rounded-2xl px-2.5 py-2 flex items-center gap-2">
-              {/* Gun slots — one per owned category; tap to switch. Shows
-                  装填弾 / 母数(リザーブ) and a reload indicator. */}
+            {/* 装備スキル(サブウェポン)= 装備の詳細。コンパクトに縦並び。 */}
+            {equippedSkills.length > 0 && (
+              <div className="flex flex-col items-end gap-1">
+                {equippedSkills.map(key => (
+                  <div
+                    key={key}
+                    className="hud-translucent rounded-full px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
+                  >
+                    <span className="text-sky-200/90">{subWeaponDisplayName(key)}</span>
+                    <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 武器: アイコンのみ。銃=タップで切替(押せるボタン)/弾数のみ表示・名前なし。メレー=表示のみ。 */}
+            <div className="hud-translucent rounded-2xl p-1.5 flex flex-col items-end gap-1.5">
+              {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
+              {melee && (
+                <div
+                  className="w-11 h-11 rounded-xl bg-slate-400/15 flex items-center justify-center text-lg"
+                  title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
+                >
+                  {katanaEquipped
+                    ? <KatanaIcon size={28} variant={murasameEquipped ? 'murasame' : 'katana'} />
+                    : whipEquipped ? '➰' : '🔪'}
+                </div>
+              )}
+              {/* 銃スロット(所持カテゴリごと1つ)。タップで切替。弾数=装填/リザーブのみ(名前なし)。 */}
               {guns.map(gun => {
                 const ammoType = gun.ammoType;
                 const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
@@ -252,58 +260,27 @@ const GameHUD: React.FC = () => {
                   <button
                     key={gun.id}
                     onClick={() => setActiveWeapon(gun.id)}
-                    className={`pointer-events-auto flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors ${
-                      active ? 'bg-amber-500/25 ring-2 ring-amber-400/70' : 'bg-white/5 opacity-70'
+                    className={`pointer-events-auto relative w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden transition-colors ${
+                      active ? 'bg-amber-500/25 ring-2 ring-amber-400/70' : dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/15 opacity-80'
                     }`}
                     title={gun.name}
+                    aria-label={gun.name}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-base overflow-hidden ${
-                        dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/20'
+                    {hasWeaponIcon(gun.key)
+                      ? <img src={spritePath(weaponIconName(gun.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                      : <span className="text-lg">🔫</span>}
+                    {/* 弾数バッジ(右下・小さく)。装填/リザーブ。 */}
+                    <span
+                      className={`absolute bottom-0 right-0.5 text-[9px] font-bold tabular-nums leading-none ${
+                        dry ? 'text-red-400 animate-pulse' : 'text-white'
                       }`}
+                      style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
                     >
-                      {hasWeaponIcon(gun.key)
-                        ? <img src={spritePath(weaponIconName(gun.key!))} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-                        : '🔫'}
-                    </div>
-                    <div className="leading-tight text-left">
-                      <div className="text-[10px] text-white/60 truncate max-w-[84px]">{gun.name}</div>
-                      <div
-                        className={`text-[13px] font-bold tabular-nums ${
-                          dry ? 'text-red-400 animate-pulse' : 'text-white'
-                        }`}
-                      >
-                        {mag}
-                        <span className="text-[10px] text-white/40">/{reserve}</span>
-                      </div>
-                    </div>
+                      {mag}<span className="text-[7px] text-white/45">/{reserve}</span>
+                    </span>
                   </button>
                 );
               })}
-              {/* Melee slot (always available; not switchable). 刀装備中は
-                  ナイフの代わりに刀を表示する。 */}
-              {melee && (() => {
-                const murasameEquipped = player.subWeapons.includes('murasame');
-                const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
-                const katanaName = murasameEquipped ? '小烏丸' : '刀';
-                // 鞭を取得するとナイフ枠を鞭が占有(刀装備が優先)。ナイフ表示は消える。
-                const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
-                return (
-                  <div className="flex items-center gap-1.5 pl-2 border-l border-white/10">
-                    <div
-                      className="w-9 h-9 rounded-xl bg-slate-400/15 flex items-center justify-center text-base"
-                      title={katanaEquipped ? katanaName : whipEquipped ? '鞭' : melee.name}
-                    >
-                      {katanaEquipped
-                        ? <KatanaIcon size={26} variant={murasameEquipped ? 'murasame' : 'katana'} />
-                        : whipEquipped ? '➰' : '🔪'}
-                    </div>
-                    <div className="text-[10px] text-white/60">
-                      {katanaEquipped ? katanaName : whipEquipped ? '鞭' : getWeaponShortName(melee.type)}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
           </div>
         );

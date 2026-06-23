@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.850 — 装備UIを右側に集約(アイコンのみ・銃はタップ切替)
+
+- 下部にあった「武器切り替え」＋「装備の詳細」を画面右下に縦集約。武器名は出さずアイコンのみ。
+- 銃: カテゴリごとの所持武器を 44px のタップ可能なアイコンボタンに(`setActiveWeapon` で切替)。アクティブは
+  アンバーのリングで強調、弾切れは赤点滅＋減光。弾数(装填/リザーブ)のみ右下に小さくバッジ表示・名前なし。
+- メレー(ナイフ): 切替がないため表示のみ。刀/小烏丸装備時は `KatanaIcon`、鞭装備時は ➰、既定は 🔪。
+- 装備スキル(サブウェポン)チップ(名前＋Lv)は武器ボックスの上にコンパクトに縦並びで残置。
+- パネル全体は `pointer-events-none`、ボタンのみ `pointer-events-auto`(誤タップでの移動阻害を回避)。
+- 変更: `components/GameHUD.tsx`(未使用となった `getWeaponShortName` import も除去), `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.849 — フルスクリーンボタン削除 / 回転後のレイアウト崩れを自動復帰
 
 - 機能していないフルスクリーンボタンを削除(iOS Safari は div の Fullscreen API 非対応で無反応)。`FullscreenButton.tsx` 削除＋Game.tsx から除去。
