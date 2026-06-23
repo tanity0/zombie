@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.856 — 木/壁/建物/プロップ「裏に回ったら透ける」(軽量・アルファlerpのみ)
+
+- 社長相談「裏に回ったら透けさせるのは重い?」→ アルファを下げるだけなら軽い(1/10)ので実装。
+- 仕組み: 各障害物の既存同期ループ(`syncTrees`/`syncLabWalls`/`syncLabProps`/`syncCityProps`)で、
+  「プレイヤーを覆う」もの = footY がプレイヤーより手前(大)＋見た目矩形がプレイヤー足元矩形とAABBで重なる →
+  alpha を `OBSTACLE_SEE_THROUGH_ALPHA`(既定0.35)へ滑らかにlerp。外れたら通常(地平フェード)へ戻す。
+- 既存スプライトの `alpha` を書き換えるだけ=新規オブジェクト/Graphics/フィルタ/マスクなし。判定は可視分のみ。
+- 城/廃都の地面デカール(groundLayer・プレイヤーの下)は対象外。立ち物だけ透ける。
+- 調整ノブ: `?seethru=`(0=完全透明〜1=無効) / `?seethrutau=`(フェード時定数秒)。`applyObstacleAlpha` に集約。
+- 変更: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。負荷: 1/10(alpha代入＋数比較のみ・新規描画なし)。
+
 ## v0.25.855 — 死神の回り込みワープを0.5sフェードに＋予兆(横切り)を水平のみへ復帰
 
 - **ワープのフェード**(社長指示): 追跡死神の回り込みワープが「パッと消えてパッと出る」だったのを、

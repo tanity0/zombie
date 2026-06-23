@@ -183,6 +183,10 @@ const LAB_NEAR_HORIZON_TINT = (() => {
 const LAB_PERSP = tsBool('labpersp', false);
 // 研究所スキンの最前面オーバーレイ(天井から吊られたケーブル帯)。上寄せ・半透明。?ceil=0 で無効化可。
 const LAB_CEILING_ALPHA = tsNum('ceil', 0.55);
+// 木/壁/建物/プロップの「裏に回ったら透ける」: プレイヤーを覆う(手前=footY大で重なる)障害物だけ
+// alpha をこの値へ滑らかに落とす。1=無効(常に不透明)。?seethru= で生調整。?seethrutau= はフェード時定数(秒)。
+const OBSTACLE_SEE_THROUGH_ALPHA = tsNum('seethru', 0.35);
+const OBSTACLE_SEE_THROUGH_TAU = tsNum('seethrutau', 0.12);
 // 研究所スキン専用「可視可能ゾーン」: プレイヤー/UVバー周辺(=ハンドガン射程)だけ明るく、外は急に暗い。
 const LAB_VIS_RANGE = tsNum('vrange', 170);     // UVバー周辺の明るい半径(px。縁はなだらかに減衰。少し暗がりを広げ200→170)
 const LAB_VIS_RANGE_PLAYER = tsNum('vrangep', 135); // プレイヤー周辺は一回り狭く(160→135)
@@ -670,6 +674,9 @@ export class PixiScene {
   private pickupShadows: { id: string; x: number; y: number; w: number; alpha: number }[] = [];
   private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
   private introActive = false;  // 登場演出中(影スキップ判定用)
+  // 障害物の「裏に回ったら透ける」用: プレイヤーの足元矩形(world)とフェードlerp係数を毎フレ更新。
+  private seeThroughPlayer = { cx: 0, footY: 0, halfW: 0, top: 0 };
+  private seeThroughLerp = 1;
   private playerRidingHeli = false; // フェーズA中=プレイヤーをヘリ前面(danceUiLayer)へ移しているか
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
@@ -1312,6 +1319,25 @@ export class PixiScene {
     return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / HORIZON_ACTOR_FADE_PX));
   }
 
+  // 障害物(木/壁/建物/プロップ)の alpha をフレーム更新。プレイヤーを「覆う」(手前=footY大で、見た目矩形が
+  // プレイヤー足元矩形と重なる)ものだけ OBSTACLE_SEE_THROUGH_ALPHA へ滑らかに透かす。それ以外は通常(地平フェード)へ。
+  // 既存スプライトの alpha を lerp するだけ=新規描画/フィルタなし(負荷 1/10)。
+  private applyObstacleAlpha(sprite: Sprite, footWorldY: number) {
+    const base = this.horizonActorAlpha(footWorldY);
+    let target = base;
+    if (OBSTACLE_SEE_THROUGH_ALPHA < 1 && footWorldY > this.seeThroughPlayer.footY && sprite.visible && sprite.texture && sprite.texture.width > 1) {
+      const vw = Math.abs(sprite.scale.x) * sprite.texture.width;
+      const vh = Math.abs(sprite.scale.y) * sprite.texture.height;
+      const p = this.seeThroughPlayer;
+      // 障害物の見た目矩形(foot-anchor 0.5,1) vs プレイヤー足元矩形 の AABB 重なり。
+      if (sprite.x + vw / 2 > p.cx - p.halfW && sprite.x - vw / 2 < p.cx + p.halfW
+          && sprite.y > p.top && sprite.y - vh < p.footY) {
+        target = base * OBSTACLE_SEE_THROUGH_ALPHA;
+      }
+    }
+    sprite.alpha += (target - sprite.alpha) * this.seeThroughLerp;
+  }
+
   private horizonRevealZeroScreenY() {
     return this.L.horizonForest.y + this.L.horizonForest.height - HORIZON_REVEAL_OFFSET_PX;
   }
@@ -1928,7 +1954,10 @@ export class PixiScene {
     this.syncIntroHelicopter(s.player, now);
 
     // Focal plane for the pseudo-perspective scale = the player's feet.
-    this.depthRefY = playerFootBox(s.player).footY;
+    const pfb = playerFootBox(s.player);
+    this.depthRefY = pfb.footY;
+    // 「裏に回ったら透ける」判定用のプレイヤー足元矩形(world)。障害物の可視矩形とAABBで重なり判定する。
+    this.seeThroughPlayer = { cx: pfb.footX, footY: pfb.footY, halfW: pfb.boxW / 2, top: pfb.footY - pfb.boxH };
 
     // Camera offset + screen shake on the whole world (and the floor).
     let sx = 0;
@@ -1952,6 +1981,8 @@ export class PixiScene {
     //  ・パンチズーム: 近接フィニッシュで一瞬寄って戻る。両者を掛け合わせる。
     const zdt = this.lastZoomNow ? Math.min(0.1, (now - this.lastZoomNow) / 1000) : 0;
     this.lastZoomNow = now;
+    // 透け(裏回り)フェードのlerp係数(時定数=OBSTACLE_SEE_THROUGH_TAU)。木/壁/プロップの alpha 更新で使う。
+    this.seeThroughLerp = OBSTACLE_SEE_THROUGH_TAU > 0 ? 1 - Math.exp(-zdt / OBSTACLE_SEE_THROUGH_TAU) : 1;
     // 持続ズーム:
     //  ・登場(ヘリ)中: 高いヘリを収めるため引きから開始 → キャラの降下に同期して既定へ(playerIntroDescent)。
     //  ・移動中: 少し引く(CAMERA_MOVE_ZOOM_MAG=負)。
@@ -2760,7 +2791,7 @@ export class PixiScene {
       // Depth scale every frame: a tree's apparent size shifts as the player
       // (the focal plane) walks past it. Anchored at the foot, stays rooted.
       if (tex) entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
+      this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
     for (const [key, entry] of this.trees) {
       if (!seen.has(key)) {
@@ -2798,7 +2829,7 @@ export class PixiScene {
         this.wallObjs.set(w.id, entry);
       }
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
+      this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
     for (const [id, entry] of this.wallObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.wallObjs.delete(id); }
@@ -2834,7 +2865,7 @@ export class PixiScene {
         this.propObjs.set(p.id, entry);
       }
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
+      this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
     for (const [id, entry] of this.propObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.propObjs.delete(id); }
@@ -2879,7 +2910,9 @@ export class PixiScene {
       }
       entry.sprite.tint = tint;
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
+      // 立ち物は裏回りで透ける。地面デカール(groundLayer)はプレイヤーの下なので通常alphaのまま。
+      if (def.decal) entry.sprite.alpha = this.horizonActorAlpha(entry.footY);
+      else this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
     for (const [id, entry] of this.cityPropObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.cityPropObjs.delete(id); }
