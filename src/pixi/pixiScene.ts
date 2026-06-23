@@ -31,7 +31,7 @@ import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
+import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
@@ -207,8 +207,7 @@ const ENV_TINT = (() => {
   return (g << 16) | (g << 8) | g;
 })();
 const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
-// 瀕死演出: HP がこの値以下で、暗い赤のビネットが心拍(ドクン…ドクン…)で脈動。21以上で解除。
-const LOW_HP_VIGNETTE_TINT = 0x8b0000; // 暗い赤
+// 瀕死演出: HP がこの値以下で、暗い赤のビネット(赤色テクスチャ)が心拍(ドクン…ドクン…)で脈動。21以上で解除。
 const LOW_HP_THRESHOLD = 20;           // HP ≤ 20 でON / ≥ 21 でOFF
 const LOW_HP_HEARTBEAT_MS = 1100;      // 心拍1周期(2拍=ドクン…ドクン…)
 
@@ -733,7 +732,7 @@ export class PixiScene {
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
-  private lowHpVignette = new Sprite(getVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動
+  private lowHpVignette = new Sprite(getRedVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動(赤色テクスチャ)
   private vignetteNarrow: boolean | null = null; // 現在のvignetteが狭い版(lab用)か。差分時だけテクスチャ差し替え。
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
@@ -1126,9 +1125,8 @@ export class PixiScene {
 
     this.vignette.alpha = ENV_VIGNETTE_ALPHA;
 
-    // 瀕死ビネット(HP≤20): 暗い赤。中心アンカーでドクンと微スケール脈動。既定は非表示。
+    // 瀕死ビネット(HP≤20): 暗い赤(テクスチャ自体が赤)。中心アンカーで脈動。既定は非表示。
     this.lowHpVignette.anchor.set(0.5);
-    this.lowHpVignette.tint = LOW_HP_VIGNETTE_TINT;
     this.lowHpVignette.alpha = 0;
     this.lowHpVignette.visible = false;
 

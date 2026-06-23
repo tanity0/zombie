@@ -84,6 +84,26 @@ export const getVignetteTexture = (inner = 0.55): Texture => {
 // ステージ2(lab)用の「明るい部分が狭い=暗い部分が広い」vignette。中心の明部をさらに絞る(社長指示)。
 export const getVignetteTextureNarrow = (): Texture => getVignetteTexture(0.22);
 
+// 瀕死(HP≤20)用の「暗い赤」vignette。中心は透明、縁へ向けて暗い赤が濃くなる(RGBが赤なので tint 不要で赤く出る)。
+let redVignetteTex: Texture | null = null;
+export const getRedVignetteTexture = (): Texture => {
+  if (redVignetteTex) return redVignetteTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, r * 0.30, r, r, r * 1.0);
+  g.addColorStop(0, 'rgba(120,0,0,0)');
+  g.addColorStop(0.6, 'rgba(150,0,0,0.40)');
+  g.addColorStop(1, 'rgba(190,0,0,0.92)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  redVignetteTex = Texture.from(canvas);
+  return redVignetteTex;
+};
+
 // Wide billowy fog STRIP, baked once. Many soft white blobs spread across the
 // full width and clustered toward the vertical centre, tapering to transparent at
 // the top/bottom so the strip reads as one continuous "もくもく" cloud bank.

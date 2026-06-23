@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.845 — 瀕死の赤ビネットが見えない不具合修正(赤色テクスチャを焼く)
+
+- 原因: 黒い vignette テクスチャを赤 tint していたが、元RGBがほぼ黒のため tint しても黒のまま=赤く見えなかった。
+- 修正: `getRedVignetteTexture()`(中心透明→縁が暗い赤・RGBが赤)を新規に焼き、`lowHpVignette` で使用(tint不要)。
+  未使用化した `LOW_HP_VIGNETTE_TINT` を撤去。心拍脈動(alpha 0.20↔0.62)はそのまま。
+- 変更: `pixi/lighting.ts`, `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.844 — リザルト: スコア内訳タイトル変更 / ゴールド式削除 / SCORE位置調整
 
 - スコア内訳(右側)タイトル変更: 与ダメ→ダメージスコア / KILL!→KILLスコア / 最大コンボ→コンボスコア /
