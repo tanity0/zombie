@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.868 — デコイ Lv3 限定: 消滅時に爆発(範囲ダメージ+ノックバック)
+
+- 社長指示「レベル3にだけ、消える時に爆発効果」。範囲ダメージありで実装(社長選択)。
+- **発動**: Lv3 デコイが寿命切れ(自然消滅)した瞬間のみ爆発。投げ直しでの置き換え/帰還サークル撤去は
+  直接 `removeProjectile` のため寿命判定を通らず**爆発しない**(連投で爆発を撒く悪用防止)。
+- **効果**: 半径 `DECOY_LV3_EXPLOSION_RADIUS=96` 内の敵へ `DECOY_LV3_EXPLOSION_DAMAGE=40`(距離フォールオフ
+  0.55〜1.0)+ノックバック `DECOY_LV3_KNOCKBACK_MULT=2.4`。壁越し不可(`segmentBlocked`)。reaper/味方/プレイヤーは無傷。
+  giantbat/pumpkin はノックバック免除(既存爆発と同基準)。倒したら経験値ドロップ。
+- **演出**: `spawnRing`+`spawnBurst`+`spawnGlow`(水色系)+`bomb` SE。**スローモーションは出さない**
+  (サブ武器爆発のルール順守)。タレットの消滅爆発と同じ流儀・同コード経路。
+- 実装: Lv3 デコイは設置時に `damage=DECOY_LV3_EXPLOSION_DAMAGE` を載せ(`damage>0`=爆発フラグ。デコイは
+  敵と衝突しないので damage 流用は安全)、`updateProjectiles` の duration カリングより前で寿命を検知して爆発。
+- 変更: `hooks/useGameLoop.ts`, `package.json`, `DEVELOPMENT_LOG.md`。検証: `tsc --noEmit` / `vite build` パス。
+- **負荷: 2/10**(描画)。同時1個・寿命切れ単発イベントのみ。リング1枚(440ms per-frame Graphics)+
+  バースト16粒+プールglow+半径96px内の敵分のダメージ数字。常時発生でなく、毎フレームコストではない。
+
 ## v0.25.862 — ステージ4に木を追加(雪化粧の針葉樹・ステージ1と同仕様)
 
 - 社長提供の雪の木(透過済み)をスライスして `public/sprites/tree-snow.png` に配置。

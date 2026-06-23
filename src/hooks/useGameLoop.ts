@@ -125,6 +125,11 @@ const DECOY_THROW_MS = 240;                       // TODO(デコイ): 仮値。�
 const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
 const DECOY_FOOT_W = 48;   // デコイの当たり判定幅(敵のみ通行不可。プレイヤーは通す)
 const DECOY_FOOT_H = 20;   // デコイの当たり判定奥行
+// Lv3 限定: 寿命切れ(自然消滅)時の小爆発。範囲ダメージ+ノックバック+演出。投げ直し/
+// 帰還サークル撤去では爆発しない(連投悪用防止=直接 removeProjectile はこの寿命判定を通らない)。
+const DECOY_LV3_EXPLOSION_RADIUS = 96;  // TODO(デコイLv3): 仮値。迎撃射程200より控えめ
+const DECOY_LV3_EXPLOSION_DAMAGE = 40;  // TODO(デコイLv3): 仮値。タレット36より少し上
+const DECOY_LV3_KNOCKBACK_MULT = 2.4;   // TODO(デコイLv3): 仮値。手榴弾3.6より控えめ
 // 設置型シールド: 進行方向の反対側に建てる遮蔽壁。敵の通行を止め、敵弾を消す
 // (味方弾は貫通)。設置間隔/持続は全Lv共通、レベルで耐久だけ上がる。各値は独立に
 // 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
@@ -1804,7 +1809,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             width: size,
             height: size,
             speed: DECOY_THROW_DISTANCE / (DECOY_THROW_MS / 1000),
-            damage: 0,
+            // Lv3 のみ消滅時に爆発。damage>0 を「消滅時に爆発する量」として流用(デコイは敵と衝突しない)。
+            damage: level >= 3 ? DECOY_LV3_EXPLOSION_DAMAGE : 0,
             direction: { x: ux, y: uy },
             weaponType: 'decoy',
             weaponKey: 'sub-decoy',
@@ -2334,6 +2340,57 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   : p
               )
             }));
+          }
+        }
+
+        // デコイ Lv3: 寿命切れ(自然消滅)時に小爆発(範囲ダメージ)。updateProjectiles の
+        // duration カリングより前に処理して爆発を出す(タレットと同じ流儀)。damage>0=Lv3。
+        // スローモーションは出さない(サブ武器爆発のルール)。reaper・味方・プレイヤーは無傷。
+        {
+          const nowMs = Date.now();
+          for (const decoy of useGameStore.getState().projectiles.filter(
+            p => p.weaponType === 'decoy' && p.damage > 0 && nowMs - p.createdAt >= p.duration
+          )) {
+            removeProjectile(decoy.id);
+            decoyPulseRef.current.delete(decoy.id);
+            const dcx = decoy.x + decoy.width / 2;
+            const dcy = decoy.y + decoy.height / 2;
+            playSfx('bomb');
+            spawnRing(dcx, dcy, 8, DECOY_LV3_EXPLOSION_RADIUS, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            spawnBurst(dcx, dcy, '#38bdf8', 16);
+            useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            const dWalls = aoeWalls(dcx, dcy);
+            for (const enemy of useGameStore.getState().enemies) {
+              if (enemy.type === 'reaper') continue;
+              const ex = enemy.x + enemy.width / 2;
+              const ey = enemy.y + enemy.height / 2;
+              const dist = Math.hypot(ex - dcx, ey - dcy);
+              if (dist > DECOY_LV3_EXPLOSION_RADIUS) continue;
+              if (dWalls.length > 0 && segmentBlocked(dcx, dcy, ex, ey, dWalls)) continue; // 壁越し不可
+              const falloff = 1 - dist / DECOY_LV3_EXPLOSION_RADIUS;
+              const dmg = Math.max(1, Math.round(decoy.damage * (0.55 + falloff * 0.45)));
+              const killed = damageEnemy(enemy.id, dmg);
+              spawnDamageNumber(ex, enemy.y, dmg, false);
+              if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                const norm = Math.max(0.001, dist);
+                useGameStore.getState().knockbackEnemy(
+                  enemy.id,
+                  (ex - dcx) / norm,
+                  (ey - dcy) / norm,
+                  DECOY_LV3_KNOCKBACK_MULT * (0.55 + falloff * 0.45)
+                );
+              }
+              if (killed) {
+                playEnemyDeath();
+                addPickup({
+                  id: `pickup-xp-decoy-${enemy.id}-${nowMs}`,
+                  x: ex - 8,
+                  y: ey - 8,
+                  type: 'experience',
+                  value: enemy.experienceValue
+                });
+              }
+            }
           }
         }
 
