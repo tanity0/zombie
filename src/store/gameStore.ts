@@ -4303,8 +4303,25 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
         const speed = enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed;
-        const tvx = (dx / distance) * speed;
-        const tvy = (dy / distance) * speed;
+        let tvx = (dx / distance) * speed;
+        let tvy = (dy / distance) * speed;
+        // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、
+        // 遠いほど接線寄り(円を描く)・近いほど放射寄り(詰める)。旋回向きは個体ごとに固定。視覚演出なし=軽量。
+        if (enemy.type === 'lich') {
+          const rx = dx / distance, ry = dy / distance;       // プレイヤーへ向かう単位(放射)
+          let h = 0;
+          for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
+          const spin = (h & 1) ? 1 : -1;                       // 個体ごと左右いずれかへ周回
+          const tx = -ry * spin, ty = rx * spin;               // 接線(放射に直交)
+          const orbit = Math.min(1, distance / 300);           // 300px超で最大旋回
+          const radialW = 1 - 0.72 * orbit;                    // 近=1(詰め) / 遠=0.28
+          const tangW = 0.96 * orbit;                          // 遠いほど接線(旋回)
+          const bx = rx * radialW + tx * tangW;
+          const by = ry * radialW + ty * tangW;
+          const bl = Math.max(0.001, Math.hypot(bx, by));
+          tvx = (bx / bl) * speed;
+          tvy = (by / bl) * speed;
+        }
 
         const alpha = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;

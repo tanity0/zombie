@@ -175,6 +175,9 @@ export const ensureTextures = (): Promise<void> => {
       // ステージ3(廃都)専用の敵絵(アトラス敵を見た目で差し替え)。アトラス敵と同じピクセル調=nearest。
       ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
         .map((t) => ({ name: `stage3-enemies/${t}`, scaleMode: 'nearest' as const })),
+      // ステージ4(雪原)専用の敵絵(既存9種の差し替え＋新型 lich)。詳細イラスト調なので linear で滑らかに縮小。
+      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
+        .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
 
       ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
     ];
@@ -269,7 +272,13 @@ export const ensureTextures = (): Promise<void> => {
     for (const ty of ['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']) {
       regAspect(`default:${ty}`, ty);                 // アトラス(森系)の敵絵
       regAspect(`stage3:${ty}`, `stage3-enemies/${ty}`); // 廃都(ステージ3)の敵絵
+      regAspect(`stage4:${ty}`, `stage4-enemies/${ty}`); // 雪原(ステージ4)の敵絵
     }
+    // 新型 lich はステージ4専用。既定キー 'lich' にも同じ絵を割り当てて drawEnemy のフォールバックを成立させる。
+    const lichTex = textures.get('stage4-enemies/lich');
+    if (lichTex) { textures.set('lich', lichTex); }
+    regAspect('default:lich', 'stage4-enemies/lich');
+    regAspect('stage4:lich', 'stage4-enemies/lich');
     regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
     regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2-male');
     regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');

@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.861 — ステージ4の敵イラスト差し替え＋新型 lich(旋回詰め)
+
+- 社長提供シート(2行×5)をスライスして `public/sprites/stage4-enemies/` へ10枚配置。白背景はキーアウトして透過。
+- マッピング(左上から右へ): 1=bat / 2=werewolf / 3=skeleton / 4=ghost / 5=plant / 6=zombie / 7=reaper(死神) /
+  8=giantbat(ジャイアント) / 9=pumpkin / 10=**新型 lich**。
+- 差し替えは見た目のみ。`farBackdrop==='snow'`(ステージ4)のとき `drawEnemy` が `stage4-enemies/<type>` を使用
+  (廃都stage3と同じ仕組み)。当たり判定/サイズ/射程は不変(`enemyFootBox`+`containScale` で枠に収めるだけ)。
+- 新型 **lich**(EnemyType に追加): 速度=ゴースト(90)の1.2倍=108。プレイヤーの周囲を旋回しながら詰める
+  (放射[内向き]+接線[旋回]の合成・遠いほど旋回/近いほど詰め・旋回向きは個体ごと固定)。AIは `gameStore.updateEnemies`。
+- 出現はステージ4のみ。`generateEnemy(..., snowTheme)` → `selectEnemyType(..., allowLich)` でゲート。
+  重み付けはウェアウルフと同等(社長指示・base 45 / `AREA_WEIGHT lich=[0,0,0.7,1.1,1.2]`)。
+- 変更: `public/sprites/stage4-enemies/*`(新規10枚), `types/game.ts`, `utils/enemyUtils.ts`,
+  `hooks/useGameLoop.ts`, `store/gameStore.ts`, `pixi/pixiTextures.ts`, `pixi/pixiScene.ts`, `package.json`。
+- 検証: `tsc --noEmit` パス。負荷: 1/10(差し替えはテクスチャ選択のみ・lich AIは敵あたり数演算/フレーム。
+  敵スプライト描画は E60 PASS の軽い経路で、新規Text/Graphics/光なし)。
+
 ## v0.25.857 — ステージ1/3の木を1.5倍(見た目のみ)
 
 - 社長指示で木を1.5倍に。`TREE_VISUAL_SCALE` 1.65→2.475(=×1.5)。木はステージ1(森)とステージ3(廃都)に

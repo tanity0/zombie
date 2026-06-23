@@ -26,6 +26,8 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   ghost:     { width: 24, height: 24, speed: 90,  health: 14,   damage: 5,   experienceValue: 2 },
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
+  // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。
+  lich:      { width: 30, height: 30, speed: 108, health: 36,   damage: 12,  experienceValue: 4 },
   giantbat:  { width: 60, height: 60, speed: 70,  health: 200,  damage: 19,  experienceValue: 30 },
   reaper:    { width: 80, height: 80, speed: 130, health: 4000, damage: 999, experienceValue: 0 },
   // 研究所専用ゾンビ(通常敵データ参考)。Lv1=雑魚〜 / Lv2=変異(中) / Lv3=巨体(パンプキン相当)。動きは通常チェイス。
@@ -55,9 +57,10 @@ const AREA_WEIGHT: Partial<Record<EnemyType, number[]>> = {
   ghost:    [0,   0,   0.8, 1.0, 1.1],
   werewolf: [0,   0,   0.7, 1.1, 1.2],
   pumpkin:  [0,   0,   0,   0.1, 0.3],
+  lich:     [0,   0,   0.7, 1.1, 1.2], // 重み付けはウェアウルフと同等(社長指示)。ただし出現はステージ4のみ(下の allowLich でゲート)。
 };
 
-const selectEnemyType = (gameTime: number, area: number): EnemyType => {
+const selectEnemyType = (gameTime: number, area: number, allowLich = false): EnemyType => {
   const t = gameTime;
   // 現行の時間ゲート付き baseWeight(序盤からの解禁感は維持)。
   const base: EnemyWeight[] = [{ type: 'bat', weight: 100 }];
@@ -67,6 +70,8 @@ const selectEnemyType = (gameTime: number, area: number): EnemyType => {
   if (t >= 150000) base.push({ type: 'ghost',    weight: 45 });   // 2:30
   if (t >= 195000) base.push({ type: 'werewolf', weight: 45 });   // 3:15
   if (t >= 195000) base.push({ type: 'pumpkin',  weight: 22 });   // 後半。エリア補正で未確認/深層のみ出る
+  // 新型(lich)はステージ4(雪原)でのみ出現。重みはウェアウルフと同等(社長指示)。
+  if (allowLich && t >= 195000) base.push({ type: 'lich', weight: 45 });
   if (t >= 150000) base[0].weight = 45;
   if (t >= 240000) base[0].weight = 22; // 後半はコウモリを希少に
 
@@ -256,11 +261,12 @@ export const generateEnemy = (
   gameBounds: GameBounds,
   forcedType?: EnemyType,
   pressureDirection?: { x: number; y: number } | null,
-  viewOffsetY = 0 // カメラ下げ量(px)。可視範囲はプレイヤーより上に viewOffsetY ぶん広いので、縦バンドを上へずらす。
+  viewOffsetY = 0, // カメラ下げ量(px)。可視範囲はプレイヤーより上に viewOffsetY ぶん広いので、縦バンドを上へずらす。
+  snowStage = false // ステージ4(雪原)か。lich を湧きプールに含めるか否かのゲート。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(gameTime, playerArea);
+  const type = forcedType ?? selectEnemyType(gameTime, playerArea, snowStage);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、
@@ -391,6 +397,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'pumpkin':  return '#f97316';  // orange
     case 'giantbat': return '#11122c';  // very dark
     case 'reaper':   return '#0a0a0a';  // pitch black
+    case 'lich':     return '#7fb4e6';  // icy blue (ステージ4新型)
     default:         return '#dc2626';
   }
 };

@@ -675,6 +675,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
+        const snowTheme = loopState.farBackdrop === 'snow'; // ステージ4(雪原): 新型 lich を湧きプールに含める
         // 範囲攻撃(爆発)の壁ブロック用。爆心地周辺の壁を1回だけ取得 → 各敵へ視線判定。
         // 爆発は時々のイベント+敵数上限なので軽い。屋内=lab壁 / 屋外=近傍の木。
         const aoeWalls = (cx: number, cy: number): Rect[] => {
@@ -3795,14 +3796,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               addEnemy(labEnemy);
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY);
+            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY);
+                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme);
                 tries++;
               }
               if (enemy.type === 'plant') {
@@ -3983,7 +3984,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             player,
             gameBounds,
             recycleType,
-            player.lastDirection
+            player.lastDirection,
+            0,
+            snowTheme
           );
           recycledAnyEnemy = true;
 

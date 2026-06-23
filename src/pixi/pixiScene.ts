@@ -560,6 +560,12 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 
+// ステージ4(雪原)専用の敵絵。既存9種を見た目で1:1差し替え＋新型 lich(社長提供シート)。
+// 当たり判定/サイズは不変(enemyFootBox+containScale で枠に収めるだけ)。farBackdrop==='snow' のみ。
+const STAGE4_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']);
+const stage4EnemyTextureName = (type: string): string | null =>
+  STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
+
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
   'ammo-shotgun': '#ef4444',
@@ -4064,9 +4070,11 @@ export class PixiScene {
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
     const fb = enemyFootBox(e);
-    // ステージ3(daylight=farBackdrop'city')は敵絵を廃都セットに差し替え。次にlab、無ければ既定アトラス。
+    // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
+    // 差し替え。次にlab、無ければ既定アトラス。
     const tex = getTexture(
       (this.daylight ? stage3EnemyTextureName(e.type) : null)
+      ?? (this.snowStage ? stage4EnemyTextureName(e.type) : null)
       ?? labEnemyTextureName(e.type, e.id)
       ?? e.type
     );

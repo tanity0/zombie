@@ -328,6 +328,7 @@ export type EnemyType =
   | 'pumpkin'   // elite (wave events)
   | 'giantbat'  // mini-boss every ~10 minutes
   | 'reaper'    // terminal entity at 30:00
+  | 'lich'      // ステージ4の新型。ゴーストの1.2倍速でプレイヤーの周囲を旋回しながら詰める
   | 'lab-zombie-1' // 研究所Lv1(通常・男女)
   | 'lab-zombie-2' // 研究所Lv2(変異・男女)
   | 'lab-zombie-3'; // 研究所Lv3(巨体・パンプキン相当)
