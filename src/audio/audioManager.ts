@@ -93,6 +93,7 @@ export type SfxKey =
   | 'anchor-plant'
   | 'boomerang-throw'
   | 'homing-lock'
+  | 'homing-lock2'
   | 'summon';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
@@ -248,6 +249,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'summon': { src: `${import.meta.env.BASE_URL}audio/sfx/summon.mp3`, volume: 0.9, minIntervalMs: 60 },
   // ホーミング弾のロックオン1段階目の音(社長提供SE)。
   'homing-lock': { src: `${import.meta.env.BASE_URL}audio/sfx/homing-lock.mp3`, volume: 0.8, minIntervalMs: 50 },
+  // ホーミング弾のロックオン2段階目の音(社長提供SE)。
+  'homing-lock2': { src: `${import.meta.env.BASE_URL}audio/sfx/homing-lock2.mp3`, volume: 0.8, minIntervalMs: 50 },
 };
 
 let bgm: HTMLAudioElement | null = null;

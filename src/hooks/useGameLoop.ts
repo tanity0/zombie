@@ -2030,8 +2030,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const next = firstLock ?? inRange.find(o => count(o.id) === 1);
                 if (next) {
                   locks.push(next.id);
-                  // 1段階目(白)ロック確定時のみSEを鳴らす。
-                  if (firstLock) playSfx('homing-lock');
+                  // 1段階目(白)/2段階目(赤)でSEを鳴らし分ける。
+                  playSfx(firstLock ? 'homing-lock' : 'homing-lock2');
                 }
               }
               newLocks = locks;
