@@ -2026,8 +2026,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   .sort((a, b) => a.d2 - b.d2);
                 const count = (id: string) => locks.filter(l => l === id).length;
                 // 未ロック敵を最優先、次に1ロック済み敵(2ロック目)。
-                const next = inRange.find(o => count(o.id) === 0) ?? inRange.find(o => count(o.id) === 1);
-                if (next) locks.push(next.id);
+                const firstLock = inRange.find(o => count(o.id) === 0);
+                const next = firstLock ?? inRange.find(o => count(o.id) === 1);
+                if (next) {
+                  locks.push(next.id);
+                  // 1段階目(白)ロック確定時のみSEを鳴らす。
+                  if (firstLock) playSfx('homing-lock');
+                }
               }
               newLocks = locks;
             }

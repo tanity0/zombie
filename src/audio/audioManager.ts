@@ -92,6 +92,7 @@ export type SfxKey =
   | 'whip-swing'
   | 'anchor-plant'
   | 'boomerang-throw'
+  | 'homing-lock'
   | 'summon';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
@@ -245,6 +246,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'boomerang-throw': { src: `${import.meta.env.BASE_URL}audio/sfx/boomerang-throw.mp3`, volume: 0.82, minIntervalMs: 60 },
   // 錬金術で召喚した時の音(社長提供SE)。
   'summon': { src: `${import.meta.env.BASE_URL}audio/sfx/summon.mp3`, volume: 0.9, minIntervalMs: 60 },
+  // ホーミング弾のロックオン1段階目の音(社長提供SE)。
+  'homing-lock': { src: `${import.meta.env.BASE_URL}audio/sfx/homing-lock.mp3`, volume: 0.8, minIntervalMs: 50 },
 };
 
 let bgm: HTMLAudioElement | null = null;
