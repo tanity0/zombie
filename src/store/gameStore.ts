@@ -3,7 +3,7 @@ import { generateEquipmentChoices } from '../utils/upgradeUtils';
 import {
   Player, Enemy, Projectile, Pickup, BreakableProp, GameStats,
   InputState, UpgradeOption, GameBounds, CharacterClass,
-  VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank,
+  VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent
@@ -905,6 +905,11 @@ const treasureNameForVariant = (variant?: number): string => {
     default: return 'トレジャー';
   }
 };
+// 色付き個体は通常の経験値オーブを「+1個ずつ」多くドロップ(無色=1 / 青=2 / 紫=3 / 赤=4)。
+// 1個あたりの value はそのままなので、合計XPも個数分だけ増える(社長指定)。
+const XP_ORB_COUNT_BY_COLOR_TIER: Record<EnemyColorTier, number> = { blue: 2, purple: 3, red: 4 };
+const xpOrbCountForEnemy = (enemy: Enemy): number =>
+  enemy.colorTier ? XP_ORB_COUNT_BY_COLOR_TIER[enemy.colorTier] : 1;
 const pickupWithDropScatter = (pickup: Pickup): Pickup => {
   if (
     pickup.worldDrop ||
@@ -992,10 +997,7 @@ const grantMeleeKillRewards = (
     const xp = finisher
       ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
       : enemy.experienceValue;
-    get().addPickup({
-      id: `pickup-xp-melee-${enemy.id}`,
-      x: ex - 8, y: ey - 8, type: 'experience', value: xp
-    });
+    get().dropEnemyXp(enemy, ex, ey, 'pickup-xp-melee', xp);
     get().dropEnemyCurrency(enemy, ex, ey);
     // Ammo scavenge: base rate is the start-screen setting; a finisher
     // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
@@ -1082,7 +1084,7 @@ const applyMeleeFinishSkillSpread = (
       const killed = get().damageEnemy(e.id, e.health + 1); // 即死(フィニッシュ波及)
       if (killed) {
         get().spawnBurst(ecx, ecy, '#a855f7', 14);
-        get().addPickup({ id: `pickup-xp-reaper-${e.id}`, x: ecx - 8, y: ecy - 8, type: 'experience', value: e.experienceValue });
+        get().dropEnemyXp(e, ecx, ecy, 'pickup-xp-reaper');
       }
     }
   }
@@ -1395,6 +1397,8 @@ interface GameState {
   removePickup: (id: string) => void;
   collectPickup: (id: string) => void;
   dropEnemyCurrency: (enemy: Enemy, x: number, y: number) => void;
+  // 経験値オーブのドロップ(色付き個体は個数が増える)。value 省略時は enemy.experienceValue。
+  dropEnemyXp: (enemy: Enemy, x: number, y: number, idPrefix: string, value?: number) => void;
 
   // Breakable props
   syncBreakableProps: (camera: { x: number; y: number }, bounds: GameBounds) => void;
@@ -4997,6 +5001,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
+  dropEnemyXp: (enemy, x, y, idPrefix, value) => {
+    const v = value ?? enemy.experienceValue;
+    const n = xpOrbCountForEnemy(enemy);
+    for (let i = 0; i < n; i++) {
+      get().addPickup({ id: `${idPrefix}-${enemy.id}-${i}`, x: x - 8, y: y - 8, type: 'experience', value: v });
+    }
+  },
+
   dropEnemyCurrency: (enemy, x, y) => {
     const treasureChance = treasureDropChance(enemy.difficultyRank);
     if (treasureChance > 0 && Math.random() < treasureChance) {
@@ -5109,13 +5121,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ex = enemy.x + enemy.width / 2;
           const ey = enemy.y + enemy.height / 2;
           get().dropEnemyCurrency(enemy, ex, ey);
-          get().addPickup({
-            id: `pickup-bomb-${enemy.id}`,
-            x: ex - 8,
-            y: ey - 8,
-            type: 'experience',
-            value: enemy.experienceValue
-          });
+          get().dropEnemyXp(enemy, ex, ey, 'pickup-bomb');
         });
         break;
       }

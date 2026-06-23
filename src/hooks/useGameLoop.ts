@@ -371,6 +371,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const updateHuntingCharge = useGameStore(state => state.updateHuntingCharge);
   const collectPickup = useGameStore(state => state.collectPickup);
   const addPickup = useGameStore(state => state.addPickup);
+  const dropEnemyXp = useGameStore(state => state.dropEnemyXp);
   const syncBreakableProps = useGameStore(state => state.syncBreakableProps);
   const damageBreakableProp = useGameStore(state => state.damageBreakableProp);
   const dropBreakablePropLoot = useGameStore(state => state.dropBreakablePropLoot);
@@ -452,7 +453,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       const killed = damageEnemy(enemyId, dmg);
       if (killed) {
         playEnemyDeath();
-        addPickup({ id: `pickup-xp-shijin-${enemyId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, x: ex - 8, y: ey - 8, type: 'experience', value: e.experienceValue });
+        dropEnemyXp(e, ex, ey, `pickup-xp-shijin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
       } else {
         spawnDamageNumber(ex, e.y, Math.round(dmg), stunned);
       }
@@ -1664,7 +1665,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 if (killed) {
                   playEnemyDeath();
-                  addPickup({ id: `pickup-xp-dog-${enemy.id}`, x: ex - 8, y: ey - 8, type: 'experience', value: enemy.experienceValue });
+                  dropEnemyXp(enemy, ex, ey, 'pickup-xp-dog');
                 }
               }
             }
@@ -2304,13 +2305,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnDamageNumber(ex, enemy.y, dmg, false);
                 if (killed) {
                   playEnemyDeath();
-                  addPickup({
-                    id: `pickup-xp-turret-${enemy.id}-${nowMs}`,
-                    x: ex - 8,
-                    y: ey - 8,
-                    type: 'experience',
-                    value: enemy.experienceValue
-                  });
+                  dropEnemyXp(enemy, ex, ey, `pickup-xp-turret-${nowMs}`);
                 }
               }
               continue;
@@ -2444,13 +2439,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               if (killed) {
                 playEnemyDeath();
-                addPickup({
-                  id: `pickup-xp-decoy-${enemy.id}-${nowMs}`,
-                  x: ex - 8,
-                  y: ey - 8,
-                  type: 'experience',
-                  value: enemy.experienceValue
-                });
+                dropEnemyXp(enemy, ex, ey, `pickup-xp-decoy-${nowMs}`);
               }
             }
           }
@@ -2538,13 +2527,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (killed) {
               playEnemyDeath();
-              addPickup({
-                id: `pickup-xp-heavy-grenade-${enemy.id}`,
-                x: ex - 8,
-                y: ey - 8,
-                type: 'experience',
-                value: enemy.experienceValue
-              });
+              dropEnemyXp(enemy, ex, ey, 'pickup-xp-heavy-grenade');
             }
           }
           useGameStore.getState().registerMultiHit(hgHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
@@ -2590,7 +2573,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 if (killed) {
                   playEnemyDeath();
-                  addPickup({ id: `pickup-xp-fire-knife-${enemy.id}`, x: ex - 8, y: ey - 8, type: 'experience', value: enemy.experienceValue });
+                  dropEnemyXp(enemy, ex, ey, 'pickup-xp-fire-knife');
                 }
               }
               useGameStore.getState().registerMultiHit(fkHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
@@ -2613,7 +2596,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().stickFireKnife(knife.id, hit.id, hx - knife.width / 2, hy - knife.height / 2, FIRE_KNIFE_FUSE_MS);
               if (killed) {
                 playEnemyDeath();
-                addPickup({ id: `pickup-xp-fire-knife-hit-${hit.id}`, x: hx - 8, y: hy - 8, type: 'experience', value: hit.experienceValue });
+                dropEnemyXp(hit, hx, hy, 'pickup-xp-fire-knife-hit');
               }
             }
           }
@@ -2646,7 +2629,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(ex, ey, '#a5f3fc', 4);
                 if (killed) {
                   playEnemyDeath();
-                  addPickup({ id: `pickup-xp-boom-${e.id}-${Math.floor(Date.now())}`, x: ex - 8, y: ey - 8, type: 'experience', value: e.experienceValue });
+                  dropEnemyXp(e, ex, ey, `pickup-xp-boom-${Math.floor(Date.now())}`);
                 }
               }
             } else if (phase === 'stop') {
@@ -2666,7 +2649,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnDamageNumber(ex, e.y, dmg, false);
                   if (killed) {
                     playEnemyDeath();
-                    addPickup({ id: `pickup-xp-boom-${e.id}-${Math.floor(Date.now())}`, x: ex - 8, y: ey - 8, type: 'experience', value: e.experienceValue });
+                    dropEnemyXp(e, ex, ey, `pickup-xp-boom-${Math.floor(Date.now())}`);
                   }
                 }
               }
@@ -3033,13 +3016,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 playEnemyDeath();
                 spawnBurst(sx, sy, '#dc2626', 12);
                 useGameStore.getState().dropEnemyCurrency(splashEnemy, sx, sy);
-                addPickup({
-                  id: `pickup-xp-grenade-${splashEnemy.id}`,
-                  x: sx - 8,
-                  y: sy - 8,
-                  type: 'experience',
-                  value: splashEnemy.experienceValue
-                });
+                dropEnemyXp(splashEnemy, sx, sy, 'pickup-xp-grenade');
               }
             }
             useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
@@ -3079,7 +3056,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (splashKilled) {
                 playEnemyDeath();
                 useGameStore.getState().dropEnemyCurrency(splashEnemy, sx, sy);
-                addPickup({ id: `pickup-xp-skillblast-${splashEnemy.id}`, x: sx - 8, y: sy - 8, type: 'experience', value: splashEnemy.experienceValue });
+                dropEnemyXp(splashEnemy, sx, sy, 'pickup-xp-skillblast');
               }
             }
             useGameStore.getState().registerMultiHit(exHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
@@ -3233,13 +3210,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnRing(ex, ey, 4, enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
               useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
 
-              addPickup({
-                id: `pickup-xp-${enemy.id}`,
-                x: enemy.x + enemy.width / 2 - 8,
-                y: enemy.y + enemy.height / 2 - 8,
-                type: 'experience',
-                value: enemy.experienceValue
-              });
+              dropEnemyXp(enemy, ex, ey, 'pickup-xp');
               const isElite = enemy.type === 'pumpkin' || enemy.type === 'giantbat';
               if (isElite) {
                 // Mid-boss drop — a weapon crate. Picking it up opens it and
@@ -4318,6 +4289,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     reflectProjectile,
     collectPickup,
     addPickup,
+    dropEnemyXp,
     syncBreakableProps,
     damageBreakableProp,
     dropBreakablePropLoot,
