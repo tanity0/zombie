@@ -1020,9 +1020,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (areaZoneRef.current === -1) {
               areaZoneRef.current = zoneIdx; // 初回は黙って採用(開始地点では出さない)
             } else if (zoneIdx !== areaZoneRef.current) {
+              const prevZone = areaZoneRef.current;
               areaZoneRef.current = zoneIdx;
               useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
-              playSfx('event-start'); // 区域遷移音(イベント発生と共通。深い区域の専用SEは将来差し替え可)
+              // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
+              // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
+              if (zoneIdx > prevZone) playSfx('event-start');
             }
           }
           const liveEnemies = useGameStore.getState().enemies;
