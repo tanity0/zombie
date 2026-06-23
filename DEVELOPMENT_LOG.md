@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.862 — ステージ4に木を追加(雪化粧の針葉樹・ステージ1と同仕様)
+
+- 社長提供の雪の木(透過済み)をスライスして `public/sprites/tree-snow.png` に配置。
+- `syncTrees`: ステージ4(`farBackdrop==='snow'`)を `noTrees` から外し、木を出す。テクスチャは
+  city=`tree-city` / snow=`tree-snow` / それ以外=`tree` で出し分け。当たり判定は元々 labTheme 以外で
+  `resolveTreeCollision` が効いていた(=雪原でも木と衝突)ので、描画を有効化しただけで視覚と当たりが一致。
+- 木の配置/スケール/Y-sort/遠近フェード/接地影はステージ1と完全に共通(`world/trees.ts` の決定的散布をそのまま使用)。
+- 変更: `public/sprites/tree-snow.png`(新規), `pixi/pixiTextures.ts`, `pixi/pixiScene.ts`, `package.json`。
+- 検証: `tsc --noEmit` パス。負荷: 1/10(既存の木描画経路に1テクスチャ追加・新規システムなし)。
+
 ## v0.25.861 — ステージ4の敵イラスト差し替え＋新型 lich(旋回詰め)
 
 - 社長提供シート(2行×5)をスライスして `public/sprites/stage4-enemies/` へ10枚配置。白背景はキーアウトして透過。

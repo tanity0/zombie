@@ -2762,9 +2762,11 @@ export class PixiScene {
     const st = useGameStore.getState();
     const indoor = st.indoorMode;
     const labTheme = st.stageTheme === 'lab'; // 研究所スキンは木を出さない(社長指示)
-    const noTrees = labTheme || st.farBackdrop === 'snow'; // ステージ4(雪原)も木を出さない=専用オブジェクトに置換(社長指示)
-    // ステージ3(廃都)は葉付き木、それ以外(森)は枯れ木。farBackdrop で出し分け。
-    const tex = (st.farBackdrop === 'city' ? getTexture('tree-city') : null) ?? getTexture('tree');
+    const noTrees = labTheme; // 研究所スキンのみ木なし。ステージ4(雪原)はステージ1と同仕様で木を出す(社長指示)。
+    // ステージ3(廃都)は葉付き木、ステージ4(雪原)は雪化粧の木、それ以外(森)は枯れ木。farBackdrop で出し分け。
+    const tex = (st.farBackdrop === 'city' ? getTexture('tree-city') : null)
+      ?? (st.farBackdrop === 'snow' ? getTexture('tree-snow') : null)
+      ?? getTexture('tree');
     const margin = TREE_CELL;
     let trees = noTrees ? [] : treesInRegion(
       camera.x - margin, camera.y - margin,
