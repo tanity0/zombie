@@ -2,12 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark-toned distressed font (RE-style typewriter) for Latin text; Japanese
+/* Self-hosted game fonts (modern sci-fi gothic). Subsetted to Latin + digits +
+   punctuation (woff2 ~14KB each); Japanese falls back to the gothic stack.
+   Active face is chosen by ?font= (src/config/font.ts) which sets --game-font. */
+@font-face {
+  font-family: "Orbitron";
+  src: url("/zombie/fonts/orbitron.woff2") format("woff2");
+  font-weight: 400 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-medium.woff2") format("woff2");
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Rajdhani";
+  src: url("/zombie/fonts/rajdhani-bold.woff2") format("woff2");
+  font-weight: 600 700;
+  font-display: swap;
+}
+
+/* Latin text uses --game-font (set at startup from the ?font= knob); Japanese
    falls back to the gothic stack. Placed after base so it beats preflight. */
 @layer base {
   html, body {
-    font-family: "Special Elite", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
-      "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+    font-family: var(--game-font, "Rajdhani"), "Hiragino Sans",
+      "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
   }
 }
 

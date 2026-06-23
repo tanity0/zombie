@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.852 — フォント候補(Orbitron/Rajdhani)を self-host＋?font= で切替可能に
+
+- 社長相談「現代SF・スタイリッシュ・シンプル・ゴシック体」で候補2書体を実機比較できるよう導入。どちらも OFL。
+- **self-host(同梱)**: `public/fonts/` に woff2 を配置(Latin+数字+記号にサブセット済み=各14〜15KB)。
+  `orbitron.woff2`(可変 400-900) / `rajdhani-medium.woff2`(500) / `rajdhani-bold.woff2`(700)。
+- **URLノブ**: `?font=orbitron` / `?font=rajdhani`(localStorage 記憶・既定=rajdhani)。`src/config/font.ts` で一元管理し
+  `FONT_STACK` を公開。`main.tsx` が CSS変数 `--game-font` を設定＋`document.fonts.load` を起動。
+- **3面に適用**: DOM(index.css/index.html の body font-family=`var(--game-font)`)/ PixiJS テキスト(pixiScene の
+  ダメージ数字アトラス `BitmapFont.install` ＋イベント文字)/ canvas2d(renderUtils)。旧 "Special Elite" 参照を全廃。
+- **フォントready配線**: `App.ensurePreload` の Promise.all に `document.fonts.ready` を追加=Pixi がフォールバックで
+  アトラスを焼いて差し替わらない問題を防止(出撃前に確実にロード完了)。
+- **外部依存除去**: index.html の Google Fonts `<link>`/preconnect を削除(self-host化=アプリ化の地ならし、オフライン可)。
+- 日本語グリフはサブセットに無いので従来どおりシステムJPフォントへフォールバック(意図どおり)。
+- 変更: `public/fonts/*`(新規), `config/font.ts`(新規), `index.html`, `index.css`, `main.tsx`, `App.tsx`,
+  `pixi/pixiScene.ts`, `utils/renderUtils.ts`, `package.json`。検証: `tsc --noEmit` パス / `vite build` 成功(dist/fonts 出力確認)。
+- 負荷: 1/10(woff2 計~43KB の初回DLのみ。毎フレームコスト増なし。アトラスは従来どおり1回焼き)。
+
 ## v0.25.851 — 右側UIの再配置(武器を中央下/音楽・一時停止を右下に積む)＋登場まっくら対策
 
 - **UI再配置**(社長指示): 武器アイコンが右下隅で押しづらい＆新パネルが一時停止ボタン("II")を覆っていた問題。

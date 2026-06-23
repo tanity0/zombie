@@ -34,6 +34,9 @@ function App() {
         ensureTextures().catch(() => {}),
         preloadBackgrounds().catch(() => {}), // 背景パノラマ/床/地平帯=出撃時フラッシュ防止のため先読み
         preloadAllAudio(),
+        // ゲームフォント(?font=)の読込完了を待つ。Pixi のダメージ数字アトラス/テキストが
+        // フォールバックで焼かれて差し替わらないのを防ぐ(main.tsx で load を開始済み)。
+        (typeof document !== 'undefined' && document.fonts ? document.fonts.ready : Promise.resolve()),
       ]).then(async () => {
         const remaining = LOADING_MIN_MS - (performance.now() - started);
         if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));

@@ -3,6 +3,7 @@ import { getEnemyColor } from './enemyUtils';
 import { drawSprite, preloadSprites } from './spriteLoader';
 import { effectiveReloadMs } from './weaponUtils';
 import { MELEE_RADIUS, SHAKE_MS } from '../store/gameStore';
+import { FONT_STACK } from '../config/font';
 
 // Kick off image loads as soon as the renderer module is imported. The
 // names map 1:1 to PNG filenames under `public/sprites/`.
@@ -395,7 +396,7 @@ const drawDamageNumberEffect = (
   const bold = e.crit || scale > 1.2;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px "Special Elite", ui-rounded, system-ui, sans-serif`;
+  ctx.font = `${bold ? 'bold ' : ''}${Math.round(12 * scale)}px ${FONT_STACK}`;
   ctx.textAlign = 'center';
   const label = e.text ?? String(e.value);
   ctx.fillStyle = '#000';

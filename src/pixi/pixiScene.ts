@@ -33,6 +33,7 @@ import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
+import { FONT_STACK } from '../config/font';
 import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
@@ -5663,7 +5664,7 @@ export class PixiScene {
         name: PixiScene.DAMAGE_FONT,
         style: {
           // 白で焼き、色は tint で出し分ける(crit=金 / 通常=白 など)。黒フチも焼き込む。
-          fontFamily: '"Special Elite", ui-rounded, system-ui, sans-serif',
+          fontFamily: FONT_STACK,
           fontSize: PixiScene.DAMAGE_FONT_SIZE,
           fontWeight: 'bold',
           fill: 0xffffff,
@@ -5695,7 +5696,7 @@ export class PixiScene {
           // 明朝(serif)指定の時は和文セリフのスタック。それ以外は既存フォント。
           fontFamily: e.serif
             ? '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", serif'
-            : '"Special Elite", ui-rounded, system-ui, sans-serif',
+            : FONT_STACK,
           fontSize: Math.round(15 * scale),
           fontWeight: bold ? 'bold' : 'normal',
           fill: e.color,
