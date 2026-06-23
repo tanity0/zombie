@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.857 — ステージ1/3の木を1.5倍(見た目のみ)
+
+- 社長指示で木を1.5倍に。`TREE_VISUAL_SCALE` 1.65→2.475(=×1.5)。木はステージ1(森)とステージ3(廃都)に
+  のみ出現(ステージ2=ラボ/4=雪原は noTrees)するため、この変更は実質その2ステージだけに効く。
+- 見た目(スプライト＋接地影)のみ拡大。幹のヒットボックス(`world/trees.ts`)は不変=視覚と当たりは分離(CLAUDE.md規約)。
+- 変更: `pixi/pixiScene.ts`, `package.json`。検証: `tsc --noEmit` パス。負荷: 1/10(定数変更のみ)。
+
 ## v0.25.856 — 木/壁/建物/プロップ「裏に回ったら透ける」(軽量・アルファlerpのみ)
 
 - 社長相談「裏に回ったら透けさせるのは重い?」→ アルファを下げるだけなら軽い(1/10)ので実装。
