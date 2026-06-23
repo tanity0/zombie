@@ -189,6 +189,15 @@ const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   3: [0, (Math.PI * 2) / 3, -(Math.PI * 2) / 3]
 };
 const MAX_ENEMIES = 10;
+// 保証出現(社長指示): 一定時間経過時に、その種類が1体もいなければ画面外に1体だけ出す(エリア不問・各1回)。
+const PLANT_GUARANTEE_MS = 60000;      // プラント: 1分経過で保証出現
+const WEREWOLF_GUARANTEE_MS = 180000;  // 犬(werewolf): 3分経過で保証出現
+// ジャイアント(城ボス)出現後、近づくまで城で待機する索敵範囲(これより近づくと起動)。
+const GIANT_AGGRO_RANGE = 380;
+// イベント出現の敵(囲い系=プレイヤー狙い)も「近づくまで向かってこない」。プレイヤーの周囲に湧くので
+// この範囲なら出現直後にプレイヤーが居れば即起動する(救助の対NPC攻撃者・卵=静止プロップは対象外)。
+const EVENT_SPAWN_AGGRO_RANGE = 300;
+
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
@@ -274,6 +283,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const frameRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
+  // 保証出現(プラント1分/犬3分)の発火済みフラグ。新ランで false に戻す。
+  const plantGuaranteedRef = useRef(false);
+  const werewolfGuaranteedRef = useRef(false);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
@@ -801,6 +813,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
+          plantGuaranteedRef.current = false;    // 保証出現フラグも再アーム
+          werewolfGuaranteedRef.current = false;
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
         }
         lastSeenGameTimeRef.current = newGameTime;
@@ -814,6 +828,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
           const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
+          // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
+          boss.dormant = true;
+          boss.aggroRange = GIANT_AGGRO_RANGE;
+          boss.vx = 0;
+          boss.vy = 0;
           addEnemy(boss);
           spawnFlash('rgba(127,29,29,0.28)', 420);
           spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
@@ -891,6 +910,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const pos = placeInRing(0.4);
                   const e = spawnEnemyAt(t, pos.x - 16, pos.y - 16, newGameTime);
                   e.fromEvent = true;
+                  e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0; // 近づくまで向かってこない
                   addEnemy(e);
                 }
               } else {
@@ -899,11 +919,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const by = pcy + Math.sin(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
                 const boss = spawnEnemyAt('pumpkin', bx - 24, by - 24, newGameTime);
                 boss.fromEvent = true;
+                boss.dormant = true; boss.aggroRange = EVENT_SPAWN_AGGRO_RANGE; boss.vx = 0; boss.vy = 0;
                 addEnemy(boss);
                 for (let i = 0; i < ARENA_BOSS_ADDS; i++) {
                   const pos = placeInRing(0.5);
                   const e = spawnEnemyAt('zombie', pos.x - 16, pos.y - 16, newGameTime);
                   e.fromEvent = true;
+                  e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
                   addEnemy(e);
                 }
               }
@@ -3951,6 +3973,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
 
           lastEnemySpawnRef.current = timestamp;
+        }
+
+        // 保証出現(社長指示): プラントは1分・犬(werewolf)は3分を過ぎた時点で、その種類が1体もいなければ
+        // エリア不問で画面外に1体だけ出す。各ラン1回のみ(refフラグ)。森ステージ専用(ラボ/屋内/ダンス/囲い中は除外)。
+        if (!danceTest && !indoor && !labTheme && !confining) {
+          if (!plantGuaranteedRef.current && gameTime >= PLANT_GUARANTEE_MS) {
+            plantGuaranteedRef.current = true;
+            if (!useGameStore.getState().enemies.some(e => e.type === 'plant')) {
+              addEnemy(generateEnemy(gameTime, player, gameBounds, 'plant', player.lastDirection, spawnViewOffsetY, snowTheme));
+            }
+          }
+          if (!werewolfGuaranteedRef.current && gameTime >= WEREWOLF_GUARANTEE_MS) {
+            werewolfGuaranteedRef.current = true;
+            if (!useGameStore.getState().enemies.some(e => e.type === 'werewolf')) {
+              addEnemy(generateEnemy(gameTime, player, gameBounds, 'werewolf', player.lastDirection, spawnViewOffsetY, snowTheme));
+            }
+          }
         }
 
         // Air-dropped ammo supplies (#3). At an irregular cadence a resupply

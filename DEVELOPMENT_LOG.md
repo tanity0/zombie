@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.881 — ジャイアント/イベント敵の待機化・プラント/犬の保証出現・ゾンビAI刷新
+
+- **ジャイアント(城ボス)**: 出現直後は `dormant`+`aggroRange=380` で城に待機し、プレイヤーが
+  近づくまで向かってこない(`useGameLoop` 城ボス生成に付与)。
+- **イベント出現の敵(囲い系=プレイヤー狙い)**: 同様に `dormant`+`aggroRange=300`(`EVENT_SPAWN_AGGRO_RANGE`)。
+  プレイヤー周囲に湧くため出現時に近ければ即起動=アリーナ挙動は維持。救助の対NPC攻撃者・卵(静止プロップ)は対象外。
+- **保証出現**: プラントは1分、犬(werewolf)は3分を過ぎた時点でその種類が1体もいなければ画面外に1体だけ出す
+  (エリア不問・各ラン1回。`PLANT_GUARANTEE_MS`/`WEREWOLF_GUARANTEE_MS`、`plantGuaranteedRef`/`werewolfGuaranteedRef`、
+  新ランで再アーム)。森ステージ専用。
+- **ゾンビAI刷新**(`updateEnemies` にゾンビ専用分岐):
+  - 通常接近は **×1.2** 速度＋**フラフラ蛇行**(進行方向の直交成分を時間で揺らす・個体ごと位相)。
+  - プレイヤーの近接範囲(`MELEE_RADIUS`)に入ると **1秒停止→2秒間2倍速の突進** を、範囲内に居る限り繰り返す
+    (`aiPhase: 'zpause'/'zrush'`)。突進は範囲外へ出ても2秒完遂。定数: `ZOMBIE_SPEED_MULT/RUSH_SPEED_MULT/PAUSE_MS/RUSH_MS/WOBBLE`。
+- 検証: `tsc --noEmit` / `npm run build` パス。
+
 ## v0.25.878 — 分身 自律連続攻撃化 / 装備メニューのキャラ固有スキル非表示 / ロックオン演出
 
 - **分身の挙動変更**: 「次の近接で1回攻撃して消滅」→「その場で**1秒ごと×5秒(計5回)自動近接**」。

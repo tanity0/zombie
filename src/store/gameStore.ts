@@ -280,6 +280,13 @@ export const SHADOW_CLONE_DURATION_MS = 5000;        // 存在時間(5秒)
 export const SHADOW_CLONE_MAX_ATTACKS = 5;           // 攻撃回数の上限(1/s × 5s)
 // Melee reach for the finger-release counter swing.
 export const MELEE_RADIUS = 74;
+// ゾンビAI(社長指示): 通常時 ×1.2・フラフラ蛇行で接近。プレイヤーの近接範囲(MELEE_RADIUS)に入ると
+// 1秒停止→2秒間2倍速の突進、を範囲内に居る限り繰り返す。
+export const ZOMBIE_SPEED_MULT = 1.2;       // 通常接近の速度倍率
+export const ZOMBIE_RUSH_SPEED_MULT = 2;    // 突進中(zrush)はさらに2倍(=通常接近の2倍速)
+export const ZOMBIE_PAUSE_MS = 1000;        // 1秒停止
+export const ZOMBIE_RUSH_MS = 2000;         // 2秒間突進
+export const ZOMBIE_WOBBLE = 0.38;          // フラフラ(横揺れ)の強さ
 export const huntingMeleeRadius = (player: Player): number => {
   if (!player.huntingCharged) return MELEE_RADIUS;
   const level = Math.max(1, Math.min(3, player.subWeaponLevels['striker-hunting'] ?? 1));
@@ -4538,6 +4545,42 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dx = tgt.x - (enemy.x + enemy.width / 2);
         const dy = tgt.y - (enemy.y + enemy.height / 2);
         const distance = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
+
+        // ゾンビ専用AI: ×1.2 でフラフラ接近。プレイヤーの近接範囲に入ると 1秒停止→2秒間2倍速 を繰り返す。
+        if (enemy.type === 'zombie') {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const pdist = Math.hypot(pcx - ecx, pcy - ecy); // プレイヤー中心までの距離(近接範囲判定はプレイヤー基準)
+          const inMelee = pdist <= MELEE_RADIUS;
+          let phase = enemy.aiPhase;
+          let phaseUntil = enemy.aiPhaseUntil ?? 0;
+          const inCycle = phase === 'zpause' || phase === 'zrush';
+          if (inCycle && gameTime < phaseUntil) {
+            // 進行中の停止/突進はそのまま継続(突進2秒は範囲外へ出ても完遂する)。
+          } else if (inCycle) {
+            // フェーズ完了: まだ範囲内なら次フェーズへ、範囲外なら通常接近へ戻す。
+            if (inMelee) {
+              if (phase === 'zpause') { phase = 'zrush'; phaseUntil = gameTime + ZOMBIE_RUSH_MS; }
+              else { phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS; }
+            } else { phase = undefined; phaseUntil = 0; }
+          } else if (inMelee) {
+            phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;              // 範囲に入った瞬間=1秒停止
+          }
+          if (phase === 'zpause') {
+            return { ...enemy, vx: 0, vy: 0, aiPhase: phase, aiPhaseUntil: phaseUntil }; // 停止
+          }
+          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1);
+          // フラフラ: 進行方向に直交する成分を時間で揺らす(個体ごとに位相をずらす)。
+          let h = 0;
+          for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
+          const ux = dx / distance, uy = dy / distance;
+          const wob = Math.sin(gameTime / 200 + (h % 628) / 100) * ZOMBIE_WOBBLE;
+          let hx = ux + (-uy) * wob, hy = uy + ux * wob;
+          const hl = Math.max(0.001, Math.hypot(hx, hy));
+          const zvx = (hx / hl) * zSpeed, zvy = (hy / hl) * zSpeed;
+          const zmoved = resolveMove(enemy.x + zvx * deltaTime, enemy.y + zvy * deltaTime);
+          return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil };
+        }
+
         const speed = enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed;
         let tvx = (dx / distance) * speed;
         let tvy = (dy / distance) * speed;
