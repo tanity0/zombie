@@ -127,7 +127,7 @@ const DECOY_FOOT_W = 48;   // デコイの当たり判定幅(敵のみ通行不�
 const DECOY_FOOT_H = 20;   // デコイの当たり判定奥行
 // Lv3 限定: 寿命切れ(自然消滅)時の小爆発。
 // ホーミング弾: ロック射程とLv別最大ロック数。ダメージ/速度/CD/サイズは gameStore 側定数。
-const HOMING_RANGE = 260;                      // TODO(ホーミング): ハンドガン相当・仮値
+const HOMING_RANGE = 120;                      // ショットガンと同じ近接射程
 const HOMING_MAX_LOCKS_BY_LEVEL = [0, 3, 6, 10]; // Lv別最大ロック数
 const HOMING_LOCK_INTERVAL_MS = 500;           // ロック付与間隔(0.5秒に1体ずつ)範囲ダメージ+ノックバック+演出。投げ直し/
 // 帰還サークル撤去では爆発しない(連投悪用防止=直接 removeProjectile はこの寿命判定を通らない)。
@@ -3075,6 +3075,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
             useGameStore.getState().registerMultiHit(exHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+            // スキル: ボマー = ホーミング弾命中時にも子グレネード3発を散布。
+            if (hasSkill(skillPlayer, 'bomber') && projectile.weaponType === 'homing-missile' && !projectile.bomberSpawned) {
+              const nowB = Date.now();
+              useGameStore.setState(state => ({
+                projectiles: state.projectiles.map(p =>
+                  p.id === projectileId ? { ...p, bomberSpawned: true } : p
+                ),
+              }));
+              for (let k = 0; k < 3; k++) {
+                const ang = (Math.PI * 2 * k) / 3 + Math.random() * 0.5;
+                addProjectile({
+                  id: `proj-bomber-mini-${projectileId}-${nowB}-${k}`,
+                  x: blastX - 5, y: blastY - 5, width: 10, height: 10,
+                  speed: HEAVY_GRENADE_SPEED * 0.8,
+                  damage: HEAVY_GRENADE_DAMAGE / 3,
+                  direction: { x: Math.cos(ang), y: Math.sin(ang) },
+                  weaponType: 'grenade', weaponKey: 'sub-heavy-grenade',
+                  duration: 600, createdAt: nowB,
+                  passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                  bomberSpawned: true,
+                  explodeRadius: HEAVY_GRENADE_RADIUS * 0.6,
+                });
+              }
+              spawnBurst(blastX, blastY, '#fbbf24', 8);
+            }
           }
 
           // スキル: リコシェ = 通常銃弾命中時に20%で最寄りの別の敵へ ×0.5 の跳弾を1発。
