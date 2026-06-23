@@ -934,9 +934,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const timedOut = newGameTime >= ae.endsAt;
             if (cleared || timedOut) {
               if (cleared) {
-                // クリア告知(発生バナーと同じ機構)。horde=駆除達成 / boss=討伐成功。
+                // クリア告知(発生バナーと同じ機構)。horde=駆除成功 / boss=討伐成功。
                 useGameStore.setState({
-                  eventBannerText: ae.kind === 'boss' ? '討伐成功！' : '駆除達成！',
+                  eventBannerText: ae.kind === 'boss' ? '討伐成功！' : '駆除成功！',
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
                 });
                 playSfx('event-clear'); // 小イベント完了音(成功時のみ)
