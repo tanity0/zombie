@@ -745,6 +745,7 @@ export class PixiScene {
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
+  private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
   private localEventShadeGfx = new Graphics();
   private playerFx = new Graphics();   // counter ring + reload meter (world)
   // 照準サークル(PHILL/ワイヤーアンカーのプレビュー)専用。uiLayer(=研究所の暗幕 labVeil や
@@ -1090,6 +1091,7 @@ export class PixiScene {
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
+    this.L.effectLayer.addChild(this.homingLockGfx);
     this.marksmanMarkGfx.blendMode = 'add';
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
@@ -2154,6 +2156,7 @@ export class PixiScene {
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
+    this.syncLockIndicators(s.enemies, s.homingLocks);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -3866,6 +3869,30 @@ export class PixiScene {
   }
 
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プール/y-sort を使い、流用タイプの
+  // ホーミング弾ロックインジケーター: ロック済み敵の頭上に小さなシアンの▽マーカーを描く。
+  // 2ロック(重複)の敵は二重マーカー。毎フレーム全クリア＆再描画(最大10個=軽量)。
+  private syncLockIndicators(enemies: Enemy[], locks: string[]) {
+    const g = this.homingLockGfx;
+    g.clear();
+    if (locks.length === 0) return;
+    // 敵IDごとにロック数をカウント
+    const lockCount = new Map<string, number>();
+    for (const id of locks) lockCount.set(id, (lockCount.get(id) ?? 0) + 1);
+    for (const [enemyId, count] of lockCount) {
+      const enemy = enemies.find(e => e.id === enemyId);
+      if (!enemy) continue;
+      const cx = enemy.x + enemy.width / 2;
+      const topY = enemy.y - 4;
+      const s = 5; // マーカー半サイズ
+      // ▽(下向き三角)をシアンで描く。2ロックなら2つ並べる。
+      for (let k = 0; k < count; k++) {
+        const ox = (count === 2) ? (k === 0 ? -6 : 6) : 0;
+        g.poly([cx + ox - s, topY, cx + ox + s, topY, cx + ox, topY + s * 1.4])
+          .fill({ color: 0x38bdf8, alpha: 0.9 });
+      }
+    }
+  }
+
   // スプライトにシアンtintを乗せて描く。通常はHPバー、レア(死神)は渦っぽいシアンの円。
   private syncSummons(summons: Summon[], now: number) {
     const seen = new Set<string>();
@@ -4854,6 +4881,14 @@ export class PixiScene {
           g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
           g.circle(0, 0, range).stroke({ color: 0x22d3ee, alpha: 0.5 * pulse, width: 1.5 });
         }
+        break;
+      }
+      case 'homing-missile': {
+        // 小型シアン矢形弾。進行方向へ向いた矢印(三角形)+光点。
+        g.rotation = Math.atan2(p.direction.y, p.direction.x);
+        const r = Math.max(3, p.width / 2);
+        g.poly([-r * 1.8, -r * 0.55, r, 0, -r * 1.8, r * 0.55]).fill({ color: 0x38bdf8, alpha: 0.92 });
+        g.circle(0, 0, r * 0.55).fill({ color: 0xecfeff });
         break;
       }
       case 'trap': {

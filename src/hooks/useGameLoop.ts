@@ -125,7 +125,10 @@ const DECOY_THROW_MS = 240;                       // TODO(デコイ): 仮値。�
 const DECOY_RANGE_BY_LEVEL = [0, 120, 160, 200];
 const DECOY_FOOT_W = 48;   // デコイの当たり判定幅(敵のみ通行不可。プレイヤーは通す)
 const DECOY_FOOT_H = 20;   // デコイの当たり判定奥行
-// Lv3 限定: 寿命切れ(自然消滅)時の小爆発。範囲ダメージ+ノックバック+演出。投げ直し/
+// Lv3 限定: 寿命切れ(自然消滅)時の小爆発。
+// ホーミング弾: ロック射程とLv別最大ロック数。ダメージ/速度/CD/サイズは gameStore 側定数。
+const HOMING_RANGE = 260;                      // TODO(ホーミング): ハンドガン相当・仮値
+const HOMING_MAX_LOCKS_BY_LEVEL = [0, 3, 6, 10]; // Lv別最大ロック数範囲ダメージ+ノックバック+演出。投げ直し/
 // 帰還サークル撤去では爆発しない(連投悪用防止=直接 removeProjectile はこの寿命判定を通らない)。
 const DECOY_LV3_EXPLOSION_RADIUS = 96;  // TODO(デコイLv3): 仮値。迎撃射程200より控えめ
 const DECOY_LV3_EXPLOSION_DAMAGE = 40;  // TODO(デコイLv3): 仮値。タレット36より少し上
@@ -303,6 +306,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   // Katana auto-slash timer (gameTime-based so it pauses with the game).
   const lastKatanaSlashRef = useRef(0);
+  // ホーミング弾のロック状態(前フレームと比較して変化時のみ store を更新)。
+  const homingLocksRef = useRef<string[]>([]);
   // Decoy next-pulse time per decoy id (gameTime ms, so it pauses with the game).
   const decoyPulseRef = useRef<Map<string, number>>(new Map());
   // Shield contact debounce: next-allowed durability-hit time (gameTime ms) per
@@ -1983,6 +1988,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             playSfx('shot-damage');
             setSubWeaponCooldown('fire-knife', gameTime + FIRE_KNIFE_COOLDOWN_BY_LEVEL[level]);
+          }
+        }
+
+        // ホーミング弾: 毎フレーム、射程内の敵を優先順序でロック。発射は VirtualJoystick 指離し(fireHoming)。
+        // CD中/帰還サークル/未装備はロッククリア。変化時のみ store を更新(per-frame write を最小化)。
+        {
+          const homingEquipped =
+            subWeaponPlayer.subWeapons.includes('homing') &&
+            !subWeaponBlockedByKatana(subWeaponPlayer, 'homing') &&
+            !inReturnCircle;
+          const homingReady = homingEquipped && gameTime >= (subWeaponPlayer.subWeaponCooldowns['homing'] ?? 0);
+          let newLocks: string[];
+          if (homingReady) {
+            const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['homing'] ?? 1));
+            const maxLocks = HOMING_MAX_LOCKS_BY_LEVEL[level];
+            const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+            const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+            const range2 = HOMING_RANGE * HOMING_RANGE;
+            const inRange = useGameStore.getState().enemies
+              .filter(e => e.type !== 'reaper')
+              .map(e => ({ id: e.id, d2: (e.x + e.width / 2 - pcx) ** 2 + (e.y + e.height / 2 - pcy) ** 2 }))
+              .filter(o => o.d2 <= range2)
+              .sort((a, b) => a.d2 - b.d2);
+            const locks: string[] = [];
+            for (const o of inRange) { if (locks.length >= maxLocks) break; locks.push(o.id); }
+            for (const o of inRange) { if (locks.length >= maxLocks) break; if (locks.includes(o.id)) locks.push(o.id); }
+            newLocks = locks;
+          } else {
+            newLocks = [];
+          }
+          const prev = homingLocksRef.current;
+          if (newLocks.length !== prev.length || newLocks.some((id, i) => id !== prev[i])) {
+            homingLocksRef.current = newLocks;
+            useGameStore.getState().setHomingLocks(newLocks);
           }
         }
 

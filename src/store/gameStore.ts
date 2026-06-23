@@ -125,6 +125,14 @@ export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(�
 const RETURN_CIRCLE_AVOID_DIST = 240;   // プレイヤーから最低この距離を空けて出現(避ける)
 // 帰還サークルに入った瞬間に撤去する設置物(置き攻撃の出入りハメ防止)。トラップ/手榴弾/タレット/デコイ。
 const RETURN_CLEAR_WEAPON_TYPES = new Set(['grenade', 'trap', 'turret', 'decoy']);
+// ホーミング弾: 指を離した瞬間にロック済み敵へ追尾弾を一斉発射するサブウェポン。
+// 発射はstore の fireHoming(VirtualJoystick 指離し)、ロック管理は useGameLoop が毎フレーム更新。
+const HOMING_MISSILE_SIZE = 8;
+const HOMING_MISSILE_SPEED = 280;          // px/s TODO(ホーミング): 仮値
+const HOMING_MISSILE_DURATION_MS = 3000;
+const HOMING_MISSILE_DAMAGE = Math.round(42 / 3); // 14 = 手榴弾(42)の1/3
+const HOMING_MISSILE_TURN_RATE = 6.0;      // rad/s TODO(ホーミング): 仮値
+const HOMING_COOLDOWN_MS = 8000;           // TODO(ホーミング): 仮値
 // プレイヤーが帰還サークル内にいるか。内側では攻撃を停止する(置き攻撃の出入りハメ防止)。
 export const isInReturnCircle = (player: Player, rc: { x: number; y: number; radius: number } | null): boolean => {
   if (!rc) return false;
@@ -951,6 +959,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'katana': return '刀';
     case 'murasame': return '小烏丸'; // 表示名のみ小烏丸へ(内部キー murasame・性能/解放は据え置き)
     case 'decoy': return 'デコイ';
+    case 'homing': return 'ホーミング弾';
     case 'shield': return 'シールド';
     case 'whip': return '鞭';
     case 'alchemy': return '錬金術';
@@ -1282,6 +1291,11 @@ interface GameState {
   summons: Summon[];
   // 救助ホールドイベントの守る対象NPC(逃げ惑う3人)。alchemy summons とは別系統。
   rescueSurvivors: RescueSurvivor[];
+  // ホーミング弾のロック対象(敵ID配列。重複=2ロック)。毎フレーム useGameLoop が更新、発射でクリア。
+  // Reactコンポーネントはこれをsubscribeしない(毎フレーム変化するため)。レンダラが直読み。
+  homingLocks: string[];
+  setHomingLocks: (locks: string[]) => void;
+  fireHoming: () => void;
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -1578,6 +1592,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   anchorEnemyHitFxAt: 0,
   boomerangThrowFxAt: 0,
   summonFxAt: 0,
+  homingLocks: [],
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -3736,6 +3751,49 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  setHomingLocks: (locks) => set({ homingLocks: locks }),
+
+  fireHoming: () => {
+    const { player, homingLocks, enemies, gameTime } = get();
+    if (!player.subWeapons.includes('homing')) return;
+    if (gameTime < (player.subWeaponCooldowns['homing'] ?? 0)) return;
+    if (homingLocks.length === 0) return;
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const now = Date.now();
+    const newProjectiles = homingLocks
+      .map((enemyId, i) => {
+        const target = enemies.find(e => e.id === enemyId);
+        if (!target) return null;
+        const tx = target.x + target.width / 2;
+        const ty = target.y + target.height / 2;
+        const dist = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
+        return {
+          id: `proj-homing-${now}-${i}`,
+          x: pcx - HOMING_MISSILE_SIZE / 2,
+          y: pcy - HOMING_MISSILE_SIZE / 2,
+          width: HOMING_MISSILE_SIZE,
+          height: HOMING_MISSILE_SIZE,
+          speed: HOMING_MISSILE_SPEED,
+          damage: HOMING_MISSILE_DAMAGE,
+          direction: { x: (tx - pcx) / dist, y: (ty - pcy) / dist },
+          weaponType: 'homing-missile' as const,
+          weaponKey: 'sub-homing',
+          duration: HOMING_MISSILE_DURATION_MS,
+          createdAt: now,
+          passthrough: false,
+          hitEnemies: [] as string[],
+          hostile: false,
+          reflected: false,
+          targetEnemyId: enemyId,
+        };
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+    if (newProjectiles.length === 0) return;
+    set(state => ({ projectiles: [...state.projectiles, ...newProjectiles], homingLocks: [] }));
+    get().setSubWeaponCooldown('homing', gameTime + HOMING_COOLDOWN_MS);
+  },
+
   updateHuntingCharge: (startedAt, charged) => {
     set(state => {
       if (
@@ -4736,7 +4794,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const currentTime = Date.now();
 
     set(state => {
-      const { projectiles, player, gameBounds, breakableProps, castleEvent, camera } = state;
+      const { projectiles, player, gameBounds, breakableProps, castleEvent, camera, enemies } = state;
       const cullRadius = Math.max(gameBounds.width, gameBounds.height);
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
@@ -4851,6 +4909,24 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...p, x: p.x + (ddx / dd) * rsp * deltaTime, y: p.y + (ddy / dd) * rsp * deltaTime };
             }
             return p; // 'done'
+          }
+          // ホーミング弾: 毎フレームターゲットへ向けて旋回しながら飛ぶ。ターゲットが消えたら直進。
+          if (p.weaponType === 'homing-missile') {
+            const target = p.targetEnemyId ? enemies.find(e => e.id === p.targetEnemyId) : undefined;
+            let dir = p.direction;
+            if (target) {
+              const tx = target.x + target.width / 2;
+              const ty = target.y + target.height / 2;
+              const dx = tx - (p.x + p.width / 2);
+              const dy = ty - (p.y + p.height / 2);
+              const tAngle = Math.atan2(dy, dx);
+              const cAngle = Math.atan2(p.direction.y, p.direction.x);
+              let diff = ((tAngle - cAngle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+              const maxTurn = HOMING_MISSILE_TURN_RATE * deltaTime;
+              const newAngle = cAngle + Math.sign(diff) * Math.min(Math.abs(diff), maxTurn);
+              dir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };
+            }
+            return { ...p, direction: dir, x: p.x + dir.x * p.speed * deltaTime, y: p.y + dir.y * p.speed * deltaTime };
           }
           // Decoy: travels in the throw direction until it lands, then holds
           // position (a stationary placed device) for the rest of its life.

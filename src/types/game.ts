@@ -378,8 +378,8 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing';
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
 // レア度: normal/rare/super(超レア=死神/バーサーカー/スケーター)。
@@ -524,6 +524,8 @@ export interface Projectile {
   // の敵へ追従。`explodeAt`(Date.now ms)で範囲爆発。敵が死んでも最後の位置で爆発する。
   stuckToEnemyId?: string;
   isStuck?: boolean;
+  // ホーミング弾: 追尾対象の敵ID。対象が消えた場合は直進。
+  targetEnemyId?: string;
   explodeAt?: number;
   // ドローンブーメラン(weaponType 'drone-boomerang-projectile'): 行き('out')→停止('stop')→
   // 戻り('return')→消滅('done')。停止は回転+周囲パルス。戻りはプレイヤー現在地へ。

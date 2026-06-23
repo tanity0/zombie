@@ -132,6 +132,8 @@ const VirtualJoystick: React.FC = () => {
           const after = useGameStore.getState().player.weapons.find(w => w.id === gs.player.activeWeaponId)?.magazine ?? 0;
           if (after < before) playSfx('handgun-fire');
         }
+        // ホーミング弾: 指を離した時にロック済み敵へ一斉発射(装備/CDチェックはstore側=未装備は無害)。
+        gs.fireHoming();
         // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定して発火(即発火しない)。
         // 非刀装備なら triggerKatanaDash が false を返すので無害(=何も起きない)。
         tryFireKatanaDash();

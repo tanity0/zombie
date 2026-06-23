@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.869 — 新サブウェポン「ホーミング弾」(Lv1-3)
+
+- 仕様: 移動中に射程内の敵を自動ロック、指を離した時にロック済み敵へ追尾弾を一斉発射。
+- **ロック仕様**(仕様書完全準拠):
+  - 射程: `HOMING_RANGE=260`px(ハンドガン相当・TODO仮値)
+  - Lv別最大ロック数: Lv1=3 / Lv2=6 / Lv3=10
+  - 同一敵2ロックまで。優先順序: 未ロック優先 → 2ロック目(仕様書§1-4通り)
+- **弾仕様**: 1ロック=1発。ダメージ14(手榴弾42の1/3)。速度280px/s。旋回率6rad/s。寿命3s。
+  同一敵に2ロックがある場合、その敵へ2発飛ぶ(最大28ダメージ)。ロック対象消滅時は直進。
+- **クールダウン**: 8000ms(TODO: 未定・仮値)。CD中はロッククリア。
+- **発動**: VirtualJoystick `release()` で `fireHoming()` を呼ぶ(未装備/CD中は無害)。
+  刀排他あり。帰還サークル内ではロックなし/発射なし。
+- **描画**:
+  - 弾: シアン矢形(▷型)+光点(`drawProjectile` `'homing-missile'` case)
+  - ロックインジケーター: ロック済み敵の頭上に▽マーカー(2ロックなら2個並列)
+    `syncLockIndicators` メソッド / `homingLockGfx` Graphics(effectLayerに追加)
+- **アーキテクチャ**: ロック状態は毎フレーム `useGameLoop` が `homingLocksRef` で管理し、
+  変化時のみ store の `homingLocks: string[]` へ書く(per-frame churn 最小化)。
+  `fireHoming()` store アクションが `homingLocks` を読んで弾生成+クリア+CD設定。
+- **負荷: 2/10**(描画)。Lv3で最大10発の矢形ポリゴン、ロックインジケーター最大10個。
+  単発イベント(発射)のみ。常時コストはロック計算(n敵×filter/sort/push≒軽微)。
+  スローなし(サブ武器爆発ルール)。
+- 変更: `types/game.ts`(SubWeaponKey/WeaponType/'homing'/targetEnemyId), `data/campaign.ts`
+  (SUB_WEAPON_KEYS), `store/gameStore.ts`(定数/interface/初期値/weaponName/updateProjectiles/
+  setHomingLocks/fireHoming), `hooks/useGameLoop.ts`(定数/ref/ロック計算),
+  `components/VirtualJoystick.tsx`(fireHoming呼び出し), `pixi/pixiScene.ts`(弾描画/インジケーター)。
+- 検証: `tsc --noEmit` / `vite build` パス。手触りとCD値は社長の実機確認待ち。
+
 ## v0.25.868 — デコイ Lv3 限定: 消滅時に爆発(範囲ダメージ+ノックバック)
 
 - 社長指示「レベル3にだけ、消える時に爆発効果」。範囲ダメージありで実装(社長選択)。
