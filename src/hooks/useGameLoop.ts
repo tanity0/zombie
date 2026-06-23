@@ -57,7 +57,8 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   SPAWN_OFFSCREEN_MARGIN_FRAC,
-  AREA_MAX_ENEMIES
+  AREA_MAX_ENEMIES,
+  isValidForArea
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -3965,9 +3966,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             return enemy;
           }
-          if (distFromPlayer <= recycleDistance || waveProtected) return enemy;
-
+          // エリア外追跡バグ修正: 現在エリアで weight=0 の敵タイプは画面内でも回収して差し替える。
+          // ただし生成直後(5s猶予)・ウェーブ保護・ボス系は除外。
           const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
+          const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
+          const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent
+            && aliveMs > 5000
+            && !isValidForArea(enemy.type, playerAreaIdx);
+          if ((distFromPlayer <= recycleDistance && !areaInvalid) || waveProtected) return enemy;
           // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
           const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
           const replacement = generateEnemy(

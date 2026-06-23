@@ -120,6 +120,13 @@ const AREA_BASE_DIFFICULTY = [1.0, 1.2, 1.45, 1.75, 2.1];
 // エリアごとの敵最大数(社長指定)。useGameLoop の通常湧き上限に使用。
 export const AREA_MAX_ENEMIES = [5, 7, 10, 10, 10];
 
+// この敵タイプはこのエリアで出現可能か。AREA_WEIGHT が 0 のエリアでは無効(=距離リサイクル対象)。
+// 定義がないタイプ(ラボ系/reaper)は常に有効(エリア制限なし)。
+export const isValidForArea = (type: EnemyType, area: number): boolean => {
+  const w = AREA_WEIGHT[type]?.[area];
+  return w === undefined || w > 0;
+};
+
 const difficultyRankForArea = (area: number): DifficultyRank => {
   switch (area) {
     case 1: return 'strong';

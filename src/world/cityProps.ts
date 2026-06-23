@@ -20,8 +20,8 @@ export interface CityPropDef {
 // シートから抽出した素材(木 r0-c0/r0-c2 は tree システム側なので除外)。
 export const CITY_PROPS: CityPropDef[] = [
   { tex: 'props/prop2-r0-c1', displayH: 50,  collide: false, decal: false, colW: 0,   colH: 0,  weight: 5 },  // 低木
-  { tex: 'props/prop2-r0-c3', displayH: 132, collide: true,  decal: false, colW: 96,  colH: 26, weight: 2 },  // 廃墟(角)
-  { tex: 'props/prop2-r0-c4', displayH: 122, collide: true,  decal: false, colW: 120, colH: 26, weight: 2 },  // 廃墟(壁)
+  { tex: 'props/prop2-r0-c3', displayH: 198, collide: true,  decal: false, colW: 96,  colH: 26, weight: 2 },  // 廃墟(角) 132*1.5
+  { tex: 'props/prop2-r0-c4', displayH: 183, collide: true,  decal: false, colW: 120, colH: 26, weight: 2 },  // 廃墟(壁) 122*1.5
   { tex: 'props/prop2-r1-c0', displayH: 80,  collide: true,  decal: false, colW: 108, colH: 22, weight: 5 },  // 瓦礫(横長)
   { tex: 'props/prop2-r1-c1', displayH: 82,  collide: true,  decal: false, colW: 94,  colH: 22, weight: 5 },  // 瓦礫2
   { tex: 'props/prop2-r1-c2', displayH: 96,  collide: true,  decal: false, colW: 40,  colH: 20, weight: 4 },  // 石柱

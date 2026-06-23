@@ -255,9 +255,11 @@ export const ensureTextures = (): Promise<void> => {
     // ステージ3(廃都)用の木=ドット絵の葉付き木(syncTrees が farBackdrop で出し分け)。既定 'tree' は枯れ木(stage1)。
     const cityTree = await loadOne('tree-new2');
     if (cityTree) { cityTree.source.scaleMode = 'nearest'; textures.set('tree-city', cityTree); }
-    // 城(ステージ3のフィナーレ拠点)を廃教会の絵に差し替え(社長提供)。足元アンカー・高さ基準スケールは不変。
+    // 廃教会(社長提供)。ステージ3(廃都)のフィナーレ拠点でのみ使用するため 'castle-church' の別キーで登録。
+    // 以前は 'castle' を上書きしていたため全ステージ(ステージ1の城も)が教会になっていた→ syncCastle 側で
+    // farBackdrop により出し分ける(city=教会 / その他=castle.png)。
     const church = await loadOne('castle-church');
-    if (church) { church.source.scaleMode = 'nearest'; textures.set('castle', church); }
+    if (church) { church.source.scaleMode = 'nearest'; textures.set('castle-church', church); }
 
     // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。
     const regAspect = (key: string, texName: string) => {

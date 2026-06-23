@@ -129,7 +129,7 @@ const FRONT_FOREST_FADE_IN_RATIO = 0.52;
 const FRONT_FOREST_FADE_TOP_ALPHA = 0.58;
 const FRONT_FOREST_FADE_MID_ALPHA = 0.82;
 const CASTLE_FOOT_OFFSET_Y = 38;
-const CASTLE_TARGET_HEIGHT = 125;
+const CASTLE_TARGET_HEIGHT = 188; // 125 * 1.5(建物1.5倍指示)
 const MERCHANT_TARGET_HEIGHT = 100;
 const EVENT_NPC_TARGET_HEIGHT = 108;
 const EVENT_NPC_FADE_MS = 1100;
@@ -2560,7 +2560,9 @@ export class PixiScene {
   }
 
   private syncCastle(castle: CastleEvent, now: number) {
-    const tex = getTexture('castle');
+    // ステージ3(廃都=farBackdrop 'city')は廃教会、それ以外(ステージ1の城など)は通常の城。
+    const isCity = useGameStore.getState().farBackdrop === 'city';
+    const tex = (isCity ? getTexture('castle-church') : null) ?? getTexture('castle');
     if (!tex) {
       this.castleView.visible = false;
       this.castleShadow = null;
