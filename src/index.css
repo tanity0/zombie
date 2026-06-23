@@ -28,7 +28,7 @@
    falls back to the gothic stack. Placed after base so it beats preflight. */
 @layer base {
   html, body {
-    font-family: var(--game-font, "Rajdhani"), "Hiragino Sans",
+    font-family: var(--game-font, "Orbitron"), "Hiragino Sans",
       "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
   }
 }

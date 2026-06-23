@@ -8,7 +8,7 @@
 // Selection priority (highest first):
 //   1. URL query    ?font=orbitron | ?font=rajdhani
 //   2. localStorage  key 'zombie:font'
-//   3. default       'rajdhani'
+//   3. default       'orbitron'  (confirmed game font)
 //
 // Read once at module load so a session never flips fonts mid-run. Change via
 // the URL or localStorage, then reload. This drives BOTH the DOM HUD (via the
@@ -19,7 +19,7 @@ export type FontKind = 'orbitron' | 'rajdhani';
 const STORAGE_KEY = 'zombie:font';
 
 const read = (): FontKind => {
-  if (typeof window === 'undefined') return 'rajdhani';
+  if (typeof window === 'undefined') return 'orbitron';
   try {
     const q = new URLSearchParams(window.location.search).get('font');
     if (q === 'orbitron' || q === 'rajdhani') {
@@ -31,7 +31,7 @@ const read = (): FontKind => {
   } catch {
     // localStorage can throw in privacy modes — fall through to the default.
   }
-  return 'rajdhani';
+  return 'orbitron';
 };
 
 export const ACTIVE_FONT: FontKind = read();
