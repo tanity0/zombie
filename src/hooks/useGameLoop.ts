@@ -829,16 +829,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 : FORCE_ARENA === 'egg' ? 'egg'
                 : (['horde', 'boss', 'rescue', 'egg'] as const)[Math.floor(Math.random() * 4)];
               // イベント発生告知バナー(コンボ表示付近)。kind 別の文言。
-              useGameStore.setState({
-                eventBannerText: kind === 'rescue' ? '救難信号受信' : kind === 'boss' ? '危険変異者出現' : kind === 'egg' ? '変異卵の包囲' : '変異者大量発生',
-                eventBannerUntil: newGameTime + EVENT_BANNER_MS,
-              });
-              playSfx('event-start'); // 小イベント発生音(rescue/boss/horde/egg 共通)
+              // 緑卵(egg)の包囲は告知しない=「いつのまにか発生」(社長指示)。バナー/発生音もなし。
+              if (kind !== 'egg') {
+                useGameStore.setState({
+                  eventBannerText: kind === 'rescue' ? '救難信号受信' : kind === 'boss' ? '危険変異者出現' : '変異者大量発生',
+                  eventBannerUntil: newGameTime + EVENT_BANNER_MS,
+                });
+                playSfx('event-start'); // 小イベント発生音(rescue/boss/horde 共通)
+              }
               if (kind === 'egg') {
                 // 緑卵で画面外を取り囲む。閉じ込め/解除なし=離れると自然消滅(store のカリング任せ)。
+                // 告知なし(バナー/音なし)。フラッシュ/シェイクも出さず静かに発生させる。
                 useGameStore.getState().spawnEggRing(pcx, pcy);
-                spawnFlash('rgba(34,80,40,0.20)', 300);
-                useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                 return; // activeEvent は張らない(囲い/勝敗なし)
               }
               if (kind === 'rescue') {
