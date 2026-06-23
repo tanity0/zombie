@@ -2049,6 +2049,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // 分身(サブウェポン): カメラ移動で分身全体が画面外へ出たら消滅(攻撃なし)+CD開始。
+        {
+          const clone = useGameStore.getState().shadowClone;
+          if (clone) {
+            const { camera, gameBounds } = useGameStore.getState();
+            const fullyOff =
+              clone.x + clone.width < camera.x ||
+              clone.x > camera.x + gameBounds.width ||
+              clone.y + clone.height < camera.y ||
+              clone.y > camera.y + gameBounds.height;
+            if (fullyOff) useGameStore.getState().expireShadowClone();
+          }
+        }
+
         // デコイの迎撃パルス(設置中、0.5秒ごとに1発)。毎フレーム判定ではなく
         // パルス方式。距離は二乗比較。高速弾の取りこぼしは許容(swept判定なし)。
         {

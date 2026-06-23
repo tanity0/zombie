@@ -19,7 +19,7 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent,
+  ActiveEvent, ShadowCloneState,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
@@ -34,7 +34,7 @@ import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
-import { enemyFootBox, playerFootBox, summonFootBox } from './renderSpec';
+import { enemyFootBox, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
@@ -420,6 +420,26 @@ const playerWalkFrame = (p: Player, now: number, walking: boolean): number => {
   const index = Math.floor((now % PLAYER_WALK_CYCLE_MS) / (PLAYER_WALK_CYCLE_MS / sequence.length));
   return sequence[index] ?? 0;
 };
+// プレイヤーの立ち絵テクスチャ名(クラス/武将装備/フレーム別)。分身もこれを共有して同じ外見にする。
+// ※ necromancer→striker / rogue→scavenger の対応は既存仕様のまま(入れ替えない)。
+const playerTextureName = (p: Player, frame: number): string => {
+  const warlordFull = hasFullWarlordSet(p.equipment);
+  const warlordKatana = warlordFull && hasMurasame(p);
+  return warlordKatana ? `player-warlord-katana-walk-${frame}`
+    : warlordFull ? `player-warlord-gun-walk-${frame}`
+    : p.characterClass === 'mage' ? `player-magnum-walk-${frame}`
+    : p.characterClass === 'warrior' ? `player-shotgun-walk-${frame}`
+    : p.characterClass === 'necromancer' ? `player-striker-walk-${frame}`
+    : p.characterClass === 'rogue' ? `player-scavenger-walk-${frame}`
+    : 'player';
+};
+// 立ち絵のベース拡大率(クラス絵=幅基準 / 武将立ち絵=高さ基準 / 不明クラス=枠内接)。分身と共有。
+const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): number => {
+  if (hasFullWarlordSet(p.equipment)) return ((PLAYER_CLASS_MENU_SPRITE_WIDTH / 128) * 108) / tex.height;
+  const knownClass = p.characterClass === 'mage' || p.characterClass === 'warrior' ||
+    p.characterClass === 'rogue' || p.characterClass === 'necromancer';
+  return knownClass ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width : containScale(boxW, boxH, tex.width, tex.height);
+};
 const PLAYER_WALK_BOB_PX = 0.8;
 const ENEMY_BREATH_ENABLED = true;
 const ENEMY_BREATH_SCALE_X = 0.016;
@@ -664,6 +684,11 @@ export class PixiScene {
   private summonViews = new Map<string, ActorView>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
+  // 分身(サブウェポン): プレイヤーと同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト。
+  private shadowCloneSprite = new Sprite();
+  private shadowCloneAdded = false;
+  // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
+  private grayTexCache = new Map<string, Texture>();
   private castleView = new Container();
   private castleSprite = new Sprite();
   private castleGlow = new Sprite(getGlowTexture());
@@ -3845,6 +3870,7 @@ export class PixiScene {
       this.playerKatanaBackAttached = true;
     }
     this.drawPlayer(this.playerView, player, now);
+    this.syncShadowClone(player);
 
     // Enemies (mark-and-sweep pool)
     const seen = new Set<string>();
@@ -3957,28 +3983,11 @@ export class PixiScene {
   private drawPlayer(view: ActorView, p: Player, now: number) {
     const fb = playerFootBox(p);
     const walking = p.isMoving && p.direction !== 'idle';
-    const usesMagnumSprite = p.characterClass === 'mage';
-    const usesShotgunSprite = p.characterClass === 'warrior';
-    const usesStrikerSprite = p.characterClass === 'rogue';
-    const usesScavengerSprite = p.characterClass === 'necromancer';
     const frame = playerWalkFrame(p, now, walking);
     // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
     // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。
     const warlordFull = hasFullWarlordSet(p.equipment);
-    const warlordKatana = warlordFull && hasMurasame(p);
-    const textureName = warlordKatana
-      ? `player-warlord-katana-walk-${frame}`
-      : warlordFull
-      ? `player-warlord-gun-walk-${frame}`
-      : usesMagnumSprite
-      ? `player-magnum-walk-${frame}`
-      : usesShotgunSprite
-        ? `player-shotgun-walk-${frame}`
-      : usesScavengerSprite
-        ? `player-striker-walk-${frame}`
-      : usesStrikerSprite
-        ? `player-scavenger-walk-${frame}`
-        : 'player';
+    const textureName = playerTextureName(p, frame);
     const tex = getTexture(textureName) ?? getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
     const phase = walking ? (now / PLAYER_WALK_CYCLE_MS) * Math.PI * 2 : 0;
@@ -4041,12 +4050,7 @@ export class PixiScene {
     if (tex) {
       // 武将立ち絵は高さ基準で正規化(標準クラス絵=幅86px相当の128x108 と同じ画面上の高さに合わせる)。
       // 通常クラス絵は従来どおり幅基準。
-      const warlordTargetH = (PLAYER_CLASS_MENU_SPRITE_WIDTH / 128) * 108;
-      const baseScale = warlordFull
-        ? warlordTargetH / tex.height
-        : usesMagnumSprite || usesShotgunSprite || usesStrikerSprite || usesScavengerSprite
-        ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width
-        : containScale(fb.boxW, fb.boxH, tex.width, tex.height);
+      const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
       const sc = baseScale * this.depthScale(fb.footY) * introScale;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       view.sprite.scale.set((flip ? -sc : sc) * introSqX, sc * introSqY);
@@ -4085,6 +4089,58 @@ export class PixiScene {
       kb.visible = false;
     }
     view.overlay.clear();
+  }
+
+  // 立ち絵テクスチャを白黒化して1度だけベイクし、RenderTexture をキャッシュして返す。
+  // 以後は毎フレームのフィルタ処理ではなく、このキャッシュ済みテクスチャをそのまま貼る。
+  private grayscaleTexture(name: string): Texture | null {
+    const cached = this.grayTexCache.get(name);
+    if (cached) return cached;
+    const src = getTexture(name);
+    if (!src || !this.renderer) return null;
+    const tmp = new Sprite(src);
+    const wrap = new Container();
+    wrap.addChild(tmp);
+    const f = new ColorMatrixFilter();
+    f.desaturate(); // 彩度0=白黒
+    wrap.filters = [f]; // コンテナにかけると render で確実に適用される
+    const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
+    this.renderer.render({ container: wrap, target: rt, clear: true });
+    wrap.destroy({ children: true });
+    this.grayTexCache.set(name, rt);
+    return rt;
+  }
+
+  // 分身(サブウェポン)を描く。外見はプレイヤーと同一(待機=frame0)を白黒キャッシュで。
+  // 位置は生成時に固定(clone.x/y)。攻撃の見た目は store 側のスラッシュ/リングが担当する。
+  private syncShadowClone(player: Player) {
+    const clone: ShadowCloneState | null = useGameStore.getState().shadowClone;
+    const spr = this.shadowCloneSprite;
+    if (!clone) { spr.visible = false; return; }
+    if (!this.shadowCloneAdded) {
+      spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ)
+      this.L.actorLayer.addChild(spr);
+      this.shadowCloneAdded = true;
+    }
+    // 外見はプレイヤーと同じ立ち絵(クラス/武将装備)を共有。待機なので frame 0。
+    const name = playerTextureName(player, 0);
+    const gray = this.grayscaleTexture(name);
+    if (!gray) { spr.visible = false; return; }
+    spr.visible = true;
+    spr.texture = gray;
+    const boxW = clone.width * PLAYER_VISUAL_SCALE;
+    const boxH = clone.height * PLAYER_VISUAL_SCALE;
+    const footX = clone.x + clone.width / 2;
+    const footY = clone.y + clone.height;
+    const baseScale = playerBaseScale(player, gray, boxW, boxH);
+    const sc = baseScale * this.depthScale(footY);
+    spr.scale.set(clone.facingLeft ? -sc : sc, sc);
+    spr.position.set(
+      this.snapToScreenPixel(footX, this.L.world.position.x),
+      this.snapToScreenPixel(footY, this.L.world.position.y),
+    );
+    spr.zIndex = footY;     // 他アクターと足元Yでy-sort
+    spr.alpha = 0.8;        // 分身とわかるよう少し透過
   }
 
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ

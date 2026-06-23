@@ -379,7 +379,19 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tactical-knife' | 'anti-mutant-knife' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone';
+
+// 分身(サブウェポン)の生成インスタンス。生成位置に固定、外見はプレイヤーと同じ(白黒)。
+// 近接攻撃でその場攻撃して消滅、または完全に画面外へ出ると消滅(攻撃なし)。最大1体。
+export interface ShadowCloneState {
+  x: number;       // 生成時のプレイヤー当たり判定 左上X(固定)
+  y: number;       // 同上 Y(固定)
+  width: number;   // プレイヤーと同じ当たり判定サイズ(描画/画面外判定に使用)
+  height: number;
+  facingLeft: boolean;            // スプライト左右反転(生成時のプレイヤー向き)
+  characterClass: CharacterClass; // 立ち絵テクスチャ選択(プレイヤーと同一)
+  spawnedAt: number;              // gameTime(ms)
+}
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
 // レア度: normal/rare/super(超レア=死神/バーサーカー/スケーター)。

@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent
+  ActiveEvent, ShadowCloneState
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
@@ -272,6 +272,8 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
+// 分身(サブウェポン): 消滅(攻撃 or 画面外)から再生成可能になるまでのクールダウン。
+export const SHADOW_CLONE_COOLDOWN_MS = 3000;
 // Melee reach for the finger-release counter swing.
 export const MELEE_RADIUS = 74;
 export const huntingMeleeRadius = (player: Player): number => {
@@ -975,9 +977,26 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'drone-boomerang': return 'ドローンブーメラン';
     case 'wire-anchor': return 'ワイヤーアンカー';
     case 'sage-stone': return '賢者の石';
+    case 'shadow-clone': return '分身';
     default: return 'サブウェポン';
   }
 };
+// 近接の壁越し不可(視線)判定に使う壁矩形を、ある中心(cx,cy)+半径(range)の周辺から集める。
+// プレイヤーのスイングと分身の攻撃で共用する(屋内=lab壁/閉ドア、研究所スキン=区画壁+遮蔽物、屋外=近傍の木)。
+const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: number): Rect[] => {
+  const { indoorMode, labDoors, stageTheme } = get();
+  if (indoorMode) {
+    return [...labBlockingWalls(labDoors.filter(d => d.open).map(d => d.id)), ...get().labProps.map(p => p.rect)];
+  }
+  if (stageTheme === 'lab') {
+    return [
+      ...labWallsInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(wallRect),
+      ...labPropsInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(propRect),
+    ];
+  }
+  return treesInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(trunkRect);
+};
+
 // Shared per-kill rewards for melee-grade kills (the release counter swing and
 // the katana strikes). Mirrors what the counter has always granted: XP pickup,
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
@@ -1300,6 +1319,11 @@ interface GameState {
   setHomingLocks: (locks: string[]) => void;
   fireHoming: () => void;
 
+  // 分身(サブウェポン)。生成中=ACTIVE、null=READY/COOLDOWN。レンダラが直読みして白黒で描く。
+  shadowClone: ShadowCloneState | null;
+  shadowCloneStrike: (clone: ShadowCloneState) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理と共用)
+  expireShadowClone: () => void;                         // 分身を消滅させCD(3s)開始(攻撃後/画面外)
+
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
   setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
@@ -1598,6 +1622,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   boomerangThrowFxAt: 0,
   summonFxAt: 0,
   homingLocks: [],
+  shadowClone: null,
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -2017,16 +2042,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const meleeRange = huntingMeleeRadius(player);
-    // 近接の壁越し不可(視線判定)。屋内=lab壁(閉ドア含む) / 屋外=近傍の木。
-    const meleeWalls: Rect[] = indoorMode
-      ? [...labBlockingWalls(labDoors.filter(d => d.open).map(d => d.id)), ...get().labProps.map(p => p.rect)]
-      : get().stageTheme === 'lab'
-        // 研究所スキンは木なし=壁オブジェクト＋遮蔽物プロップ(区画生成)が視線を遮る。近傍区画を問い合わせ。
-        ? [
-            ...labWallsInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(wallRect),
-            ...labPropsInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(propRect),
-          ]
-        : treesInRegion(pcx - meleeRange - 40, pcy - meleeRange - 40, pcx + meleeRange + 40, pcy + meleeRange + 40).map(trunkRect);
+    // 近接の壁越し不可(視線判定)。屋内=lab壁(閉ドア含む) / 屋外=近傍の木。分身の攻撃と共用。
+    const meleeWalls: Rect[] = meleeWallsAround(get, pcx, pcy, meleeRange);
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
@@ -2603,12 +2620,127 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
 
+    // 分身(サブウェポン)の状態遷移。ここに到達するのは通常ナイフのスイングのみ
+    // (刀/鞭モードは手前で return 済み)。
+    //   ACTIVE: 既に分身がいる → その場で同方向に近接攻撃して消滅(CD開始)。同入力では再生成しない。
+    //   READY : 分身がおらずCD明け → 攻撃時のプレイヤー位置に分身を1体生成(固定)。
+    if (get().player.subWeapons.includes('shadow-clone')) {
+      const clone = get().shadowClone;
+      if (clone) {
+        get().shadowCloneStrike(clone);
+        get().expireShadowClone(); // 攻撃後に消滅 → CD開始(同入力での再生成はCDで自然に抑止)
+      } else if (gameTime >= (get().player.subWeaponCooldowns['shadow-clone'] ?? 0)) {
+        const facingLeft = player.direction === 'left' || (player.lastDirection != null && player.lastDirection.x < 0);
+        set({
+          shadowClone: {
+            x: player.x, y: player.y, width: player.width, height: player.height,
+            facingLeft, characterClass: player.characterClass, spawnedAt: gameTime,
+          },
+        });
+        get().spawnRing(pcx, pcy, 6, 44, 'rgba(203,213,225,0.6)', 3, 240); // 生成の控えめな白リング
+      }
+    }
+
     return {
       swung: true,
       hit: slashAt.length > 0 || propHit || trapShoves.length > 0 || hasShieldShove,
       finish: finisherHit || bossFinishHit,
       killed: killed.length
     };
+  },
+
+  // 分身がその場(clone位置)で同方向に近接攻撃。攻撃範囲/当たり判定/ダメージ/クリティカルは
+  // プレイヤーの近接スイングと同じ計算(専用倍率なし)。分身からの攻撃は再生成判定を持たない。
+  shadowCloneStrike: (clone) => {
+    const now = Date.now();
+    const { player, gameTime, enemies } = get();
+    const melee = player.weapons.find(w => w.isMelee);
+    const gun = getActiveGun(player);
+    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+    const meleeCritChance = melee?.critChance ?? 0;
+    const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
+    const meleeRange = huntingMeleeRadius(player);
+    const ccx = clone.x + clone.width / 2;
+    const ccy = clone.y + clone.height / 2;
+    const walls = meleeWallsAround(get, ccx, ccy, meleeRange);
+
+    const killed: { enemy: Enemy; finisher: boolean }[] = [];
+    const survivors: Enemy[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const slashAt: { x: number; y: number }[] = [];
+    let bossFinishHit = false;
+
+    for (const enemy of enemies) {
+      if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; }
+      const ecx = enemy.x + enemy.width / 2;
+      const ecy = enemy.y + enemy.height / 2;
+      const dx = ecx - ccx;
+      const dy = ecy - ccy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > meleeRange) { survivors.push(enemy); continue; }
+      if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
+      slashAt.push({ x: ecx, y: ecy });
+      const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
+      if (stunned) {
+        if (isBossType(enemy.type)) {
+          bossFinishHit = true;
+          const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          const nh = Math.max(0, enemy.health - dmg);
+          if (nh <= 0) killed.push({ enemy, finisher: false });
+          else survivors.push({ ...enemy, health: nh, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          continue;
+        }
+        killed.push({ enemy, finisher: true });
+        continue;
+      }
+      const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
+      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
+      const nh = Math.max(0, enemy.health - dmg);
+      if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
+      if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
+        const norm = Math.max(0.001, dist);
+        const falloff = 1 - dist / meleeRange;
+        const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+        survivors.push({
+          ...enemy, health: nh, lastHit: now,
+          knockbackVx: (dx / norm) * speed, knockbackVy: (dy / norm) * speed,
+          knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        });
+      } else {
+        survivors.push({ ...enemy, health: nh, lastHit: now, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100 });
+      }
+    }
+
+    const finisherHit = killed.some(k => k.finisher);
+    set(state => ({
+      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true } : e),
+      gameStats: {
+        ...state.gameStats,
+        enemiesKilled: state.gameStats.enemiesKilled + killed.length,
+        meleeFinishers: state.gameStats.meleeFinishers + killed.reduce((n, k) => n + (k.finisher ? 1 : 0), 0),
+        eliteKills: state.gameStats.eliteKills + killed.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
+        bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
+        damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((sum, n) => sum + n.value, 0),
+      },
+      hitstopUntil: finisherHit || bossFinishHit ? now + HITSTOP_MS : state.hitstopUntil,
+    }));
+
+    // 演出はプレイヤーの近接と同じ経路(スラッシュ/ダメージ数字/キル報酬)。分身位置にも一閃を出す。
+    for (const s of slashAt) get().spawnSlash(s.x, s.y);
+    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    grantMeleeKillRewards(get, killed, player, gun);
+    get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
+    get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
+    if (finisherHit || bossFinishHit) get().triggerFinishImpact();
+  },
+
+  expireShadowClone: () => {
+    if (!get().shadowClone) return;
+    set({ shadowClone: null });
+    get().setSubWeaponCooldown('shadow-clone', get().gameTime + SHADOW_CLONE_COOLDOWN_MS);
   },
 
   performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
@@ -6421,6 +6553,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: runEnemies,
         pickups: runPickups,
         projectiles: [],
+        homingLocks: [],
+        shadowClone: null,
         breakableProps: runBreakables,
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,

@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.877 — 分身(サブウェポン)新規実装
+
+- **サブウェポン登録**: `SubWeaponKey` に `shadow-clone` 追加、`SUB_WEAPON_KEYS`・
+  `subWeaponDisplayName('分身')`。排他グループには入れない(他サブと併用可)。
+- **状態遷移(READY/ACTIVE/COOLDOWN)** を `triggerCounter`(通常ナイフのスイング経路)に統合:
+  - READY: 近接攻撃時、攻撃位置に分身を1体生成し固定(`shadowClone`)。最大1体。
+  - ACTIVE: 次の近接でプレイヤーと同時に分身もその場攻撃→消滅。同入力では再生成しない。
+  - COOLDOWN: 消滅(攻撃 or 画面外)から3秒(`SHADOW_CLONE_COOLDOWN_MS`)。明けて次の近接で再生成。
+- **攻撃処理の共用**: `shadowCloneStrike` はプレイヤーの近接と同じ攻撃範囲(`huntingMeleeRadius`)・
+  当たり判定(円+壁越し不可 `meleeWallsAround` を共通化)・ダメージ/クリティカル式・ノックバック・
+  フィニッシュ・キル報酬(`grantMeleeKillRewards`)を使用。**専用ダメージ倍率なし**。分身は専用の
+  攻撃元として扱い、分身生成判定を再発動させない。
+- **消滅条件**: ①近接1回で消滅 ②カメラ移動で当たり判定全体が画面外(`camera`+`gameBounds`)→
+  `useGameLoop` で毎フレーム判定し `expireShadowClone`(画面外は攻撃なし)。
+- **見た目**: プレイヤーと同じ立ち絵(`playerTextureName`/`playerBaseScale` を drawPlayer と共通化)を
+  **白黒化**。白黒は毎フレームのフィルタではなく、`ColorMatrixFilter.desaturate()` で1度ベイクした
+  RenderTexture を `grayTexCache` にキャッシュして貼る(`grayscaleTexture`)。足元アンカーで y-sort、
+  α=0.8。攻撃の演出は store 側のスラッシュ/リングで表現。
+- 検証: `tsc --noEmit` / `npm run build` パス。
+
 ## v0.25.876 — ナイフTier5段階 + レベルアップ3枠目のナイフ強化
 
 - **ナイフ定義を5Tier化**(`weaponUtils.ts` CATALOG):
