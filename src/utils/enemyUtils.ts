@@ -60,24 +60,26 @@ const AREA_WEIGHT: Partial<Record<EnemyType, number[]>> = {
   lich:     [0,   0,   0.7, 1.1, 1.2], // 重み付けはウェアウルフと同等(社長指示)。ただし出現はステージ4のみ(下の allowLich でゲート)。
 };
 
-const selectEnemyType = (gameTime: number, area: number, allowLich = false): EnemyType => {
-  const t = gameTime;
-  // 現行の時間ゲート付き baseWeight(序盤からの解禁感は維持)。
-  const base: EnemyWeight[] = [{ type: 'bat', weight: 100 }];
-  if (t >= 25000)  base.push({ type: 'skeleton', weight: 55 });   // 0:25
-  if (t >= 45000)  base.push({ type: 'plant',    weight: 14 });   // 0:45
-  if (t >= 75000)  base.push({ type: 'zombie',   weight: 45 });   // 1:15
-  if (t >= 150000) base.push({ type: 'ghost',    weight: 45 });   // 2:30
-  if (t >= 195000) base.push({ type: 'werewolf', weight: 45 });   // 3:15
-  if (t >= 195000) base.push({ type: 'pumpkin',  weight: 22 });   // 後半。エリア補正で未確認/深層のみ出る
-  // 新型(lich)はステージ4(雪原)でのみ出現。重みはウェアウルフと同等(社長指示)。
-  if (allowLich && t >= 195000) base.push({ type: 'lich', weight: 45 });
-  if (t >= 150000) base[0].weight = 45;
-  if (t >= 240000) base[0].weight = 22; // 後半はコウモリを希少に
+// 型ごとの基礎重み(既存値を定数化)。仕様§6/§7: 型の解禁・比率は時間ではなくエリア補正だけで決める。
+// finalWeight = BASE_WEIGHT × AREA_WEIGHT[area]。0 のエリアは候補から除外。
+// giantbat / reaper / lab-zombie は通常プールに含めない(§10。別経路で出す)。
+const BASE_WEIGHT: Partial<Record<EnemyType, number>> = {
+  bat:      100,
+  skeleton: 55,
+  zombie:   45,
+  plant:    14,
+  ghost:    45,
+  werewolf: 45,
+  pumpkin:  22,
+  lich:     45, // ステージ4のみ(allowLich でゲート)。重みはウェアウルフと同等(社長指示)。
+};
 
-  // baseWeight × エリア補正。補正0は除外。
-  const pool = base
-    .map(e => ({ type: e.type, weight: e.weight * ((AREA_WEIGHT[e.type]?.[area]) ?? 0) }))
+// 型選択は「現在エリアの areaWeight」だけで決める(時間ゲートなし=仕様§6)。
+const selectEnemyType = (area: number, allowLich = false): EnemyType => {
+  // baseWeight × エリア補正。補正0(=そのエリアでは出現不可)は除外。
+  const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
+    .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
+    .map(([type, w]) => ({ type, weight: w * ((AREA_WEIGHT[type]?.[area]) ?? 0) }))
     .filter(e => e.weight > 0);
   if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
@@ -266,7 +268,7 @@ export const generateEnemy = (
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(gameTime, playerArea, snowStage);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、
