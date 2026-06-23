@@ -63,8 +63,11 @@ const TRUNK_W = 16; // at scale 1
 // hitbox bottom (see renderSpec.playerFootBox), an actor approaching from the
 // north stops with its feet right at the trunk base — no per-actor fudge.
 const TRUNK_H = 8;
+// 見た目を1.5倍にしたのに合わせ、足元判定も拡大(社長指示): 横×1.5 / 縦は上へ×1.2。
+const TRUNK_FOOT_W_MULT = 1.5;
+const TRUNK_FOOT_H_MULT = 1.2;
 export const trunkRect = (t: TreeInstance): Rect =>
-  footRect(t.footX, t.footY, TRUNK_W * t.scale, TRUNK_H * t.scale);
+  footRect(t.footX, t.footY, TRUNK_W * t.scale * TRUNK_FOOT_W_MULT, TRUNK_H * t.scale * TRUNK_FOOT_H_MULT);
 
 // Rectangle (AABB) collision only. Push `rect` out of any nearby tree trunk and
 // return the corrected top-left. One cell of padding covers every reachable

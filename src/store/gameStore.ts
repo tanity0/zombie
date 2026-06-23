@@ -73,8 +73,9 @@ const AMMO_PICKUP_KEY = 'zombie:ammoPickupAmounts';
 export const DEFAULT_MELEE_DROP_PCT = 30;
 const CASTLE_MIN_DISTANCE = 900;
 const CASTLE_MAX_DISTANCE = 1300;
-const CASTLE_COLLISION_W = 112;
-const CASTLE_COLLISION_H = 42;
+// 建物1.5倍に合わせ足元判定も拡大(社長指示): 横×1.5 / 縦は上へ×1.2。
+const CASTLE_COLLISION_W = 168; // 112 * 1.5
+const CASTLE_COLLISION_H = 50;  // 42 * 1.2 ≈ 50
 const CASTLE_FOOT_OFFSET_Y = 38;
 const MERCHANT_MIN_DISTANCE = 180;
 const MERCHANT_MAX_DISTANCE = 360;
