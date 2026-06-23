@@ -143,13 +143,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     ...(isBenchmarkRun ? [] : [{ label: '所持ゴールド', value: goldBalance }]),
   ];
   const scoreItems = [
-    { label: '与ダメ', value: damageScore },
-    { label: 'KILL!', value: finisherScore },
-    { label: '最大コンボ', value: comboScore },
+    { label: 'ダメージスコア', value: damageScore },
+    { label: 'KILLスコア', value: finisherScore },
+    { label: 'コンボスコア', value: comboScore },
     { label: 'トレジャー', value: treasureScore },
     ...(eliteBossScore > 0 ? [{ label: '強敵撃破', value: eliteBossScore }] : []),
-    { label: '残スクラップ', value: scrapScore },
-    ...(survivalScore > 0 ? [{ label: '被弾の少なさ', value: survivalScore }] : []),
+    { label: 'スクラップスコア', value: scrapScore },
+    ...(survivalScore > 0 ? [{ label: '被ダメージスコア', value: survivalScore }] : []),
     // 研究所クリア時のみ「残り時間」ボーナスを表示(早いほど高い)。
     ...(speedBonus > 0 ? [{ label: '残り時間', value: speedBonus }] : []),
     ...(clearBonus > 0 ? [{ label: 'クリアボーナス', value: clearBonus }] : [])
@@ -310,7 +310,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
+                <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
               </div>
               <div className="space-y-1 text-[11px] text-white/65 tabular-nums">
                 {scoreItems.map(item => (
@@ -319,9 +319,6 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     <span className="text-right text-white/80">{item.value}</span>
                   </div>
                 ))}
-              </div>
-              <div className="mt-2 text-[9px] leading-tight text-white/45">
-                ゴールド = SCORE / 2000
               </div>
             </div>
           </div>

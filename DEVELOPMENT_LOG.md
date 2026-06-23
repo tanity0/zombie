@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.844 — リザルト: スコア内訳タイトル変更 / ゴールド式削除 / SCORE位置調整
+
+- スコア内訳(右側)タイトル変更: 与ダメ→ダメージスコア / KILL!→KILLスコア / 最大コンボ→コンボスコア /
+  残スクラップ→スクラップスコア / 被弾の少なさ→被ダメージスコア(トレジャー・強敵撃破・クリアボーナスは据え置き)。
+- 「ゴールド = SCORE / 2000」の式表示を削除。
+- HIGH SCORE バッジと総スコアの被り対策: 総スコアに `mt-1.5` を付けて少し下へ。
+- 変更: `components/GameOverScreen.tsx`, `package.json`。検証: `tsc --noEmit` パス。
+
 ## v0.25.843 — マシンピストル(handgun-t3)のCD 87→100
 
 - マシンピストルの cooldown を 87 → 100(ms)に。
