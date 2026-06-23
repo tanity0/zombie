@@ -1317,10 +1317,11 @@ export class PixiScene {
   }
 
   private frontForestHeight() {
-    return Math.min(
+    const base = Math.min(
       FRONT_FOREST_MAX_HEIGHT,
       Math.max(FRONT_FOREST_MIN_HEIGHT, this.screenH * FRONT_FOREST_HEIGHT_RATIO)
     );
+    return this.snowStage ? base * (2 / 3) : base;
   }
 
   private horizonActorAlpha(footWorldY: number) {
