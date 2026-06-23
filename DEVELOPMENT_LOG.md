@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.854 — 深層域BGMの二重再生バグ修正(applyDanceAudio を deepActive 対応に)
+
+- 社長報告: 深層域で音楽が止まる→音楽ボタンOFF→ONで復帰すると通常BGMが逆再生版に重なって流れる。
+- 原因: `applyDanceAudio` が `deepActive` 非対応だった。`setAudioMuted`/`setBgmVolume` は `applyBgm()` の後に
+  `applyDanceAudio()` を呼ぶ設計で、深層中は `applyBgm` が逆再生版を再生するが、続く `applyDanceAudio` が
+  `setBgmTrack(bgmBaseTrack)` で通常BGMを再開 → 二重再生。
+- 修正: `applyDanceAudio` 冒頭に `deepActive` ガードを追加。深層中は通常BGMを pause したまま `playDeepRobust()` で
+  逆再生版だけを鳴らし切る。これでミュート切替/音量変更でも重ならず、復帰も逆再生版のみ。
+- 変更: `audio/audioManager.ts`, `package.json`。検証: `tsc --noEmit` パス。負荷: 1/10(分岐追加のみ)。
+
+## v0.25.853 — イベントバナー文言: 駆除達成→駆除成功
+
+- horde 殲滅クリアのバナーを「駆除達成！」→「駆除成功！」に変更(boss=討伐成功！は据え置き)。
+- 変更: `hooks/useGameLoop.ts`, `package.json`。
+
 ## v0.25.852 — フォント候補(Orbitron/Rajdhani)を self-host＋?font= で切替可能に
 
 - 社長相談「現代SF・スタイリッシュ・シンプル・ゴシック体」で候補2書体を実機比較できるよう導入。どちらも OFL。

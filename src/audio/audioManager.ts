@@ -385,6 +385,14 @@ const applyDanceAudio = () => {
     bgm?.pause();
     return;
   }
+  // 深層域(逆再生版が再生対象)では通常BGMを絶対に鳴らさない。ここを deepActive 非対応のままにすると、
+  // setAudioMuted/setBgmVolume 後の applyDanceAudio が通常BGMを再開し、逆再生版に重なって二重再生になる
+  // (社長報告: 深層で音が止まる→ミュート切替で復帰すると通常BGMが重なる)。通常BGMは止めたまま逆再生版を鳴らし切る。
+  if (deepActive) {
+    try { bgm?.pause(); } catch { /* ignore */ }
+    playDeepRobust();
+    return;
+  }
   if (danceActive) {
     cancelDanceStop();
     setBgmTrack(danceTrackForLevel(currentDanceLevel), currentDanceLevel);
