@@ -65,10 +65,13 @@ const CATALOG: Record<string, WeaponDef> = {
   'rifle-t3':         { key: 'rifle-t3',   name: 'グレネードランチャー', type: 'rifle', category: 'rifle', tier: 3, damage: 95, cooldown: 1400, projectileSpeed: 420, projectileSize: 14, count: 1, passthrough: true, magSize: 1, reloadMs: 2200 },
 
   // Melee (no ammo). Lower DPS than guns by design so bullets stay valuable.
-  // Each carries a fixed crit chance that rises with tier.
+  // Each carries a fixed crit chance that rises with tier. Tier はレベルアップ
+  // 3枠目から段階的に強化される(knife-t1 → … → anti-mutant-knife-t5)。
   'knife-t1':         { key: 'knife-t1',   name: 'ナイフ',         type: 'knife',   tier: 1, isMelee: true, damage: 8,  cooldown: 0, critChance: 0.05 },
   'hatchet-t2':       { key: 'hatchet-t2', name: 'ダガー',         type: 'hatchet', tier: 2, isMelee: true, damage: 14, cooldown: 0, critChance: 0.08 },
-  'machete-t3':       { key: 'machete-t3', name: 'ファイティングナイフ', type: 'machete', tier: 3, isMelee: true, damage: 20, cooldown: 0, critChance: 0.12 },
+  'machete-t3':       { key: 'machete-t3', name: 'ファイティングナイフ', type: 'machete', tier: 3, isMelee: true, damage: 22, cooldown: 0, critChance: 0.12 },
+  'tactical-knife-t4':    { key: 'tactical-knife-t4',    name: 'タクティカルナイフ', type: 'tactical-knife',    tier: 4, isMelee: true, damage: 34, cooldown: 0, critChance: 0.18 },
+  'anti-mutant-knife-t5': { key: 'anti-mutant-knife-t5', name: '対変異体ナイフ',     type: 'anti-mutant-knife', tier: 5, isMelee: true, damage: 50, cooldown: 0, critChance: 0.25 },
 
   // 研究所専用リボルバー「ＰＨＩＬＬ-銃」。狙って撃つ手動武器(自動射撃しない)。頭部命中で確定ヘッドショット、
   // 胴体は通常ダメージ＋2倍ノックバック。攻撃力2倍(社長指示)=ダメージ80。ステージ2敵HP2倍と釣り合う。射撃CD=1秒。
@@ -87,7 +90,12 @@ export const GUN_KEYS_BY_CATEGORY: Record<AmmoType, string[]> = {
   rifle:   ['rifle-t1', 'rifle-t2', 'rifle-t3'],
   phill:   ['phill-revolver'] // 屋内固定銃。ドロップ/商人の銃ラインには出ない(weaponDrop は handgun/shotgun/rifle のみ抽選)。
 };
-export const MELEE_KEYS = ['knife-t1', 'hatchet-t2', 'machete-t3'];
+// Tier 昇順。MELEE_KEYS[tier] が「1段階上」のキー(tier は 1 始まり=0-indexed の次要素)。
+export const MELEE_KEYS = ['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5'];
+export const MAX_KNIFE_TIER = MELEE_KEYS.length; // = 5
+// 現在のナイフTierから「1段階上」のキーを返す(Tier5以上は undefined)。
+export const nextKnifeKey = (currentTier: number): string | undefined =>
+  currentTier >= MAX_KNIFE_TIER ? undefined : MELEE_KEYS[currentTier];
 
 // Player-state field name that holds the pool for a given ammo type.
 export const AMMO_FIELD: Record<AmmoType, 'ammoHandgun' | 'ammoShotgun' | 'ammoRifle' | 'ammoPhill'> = {
@@ -366,6 +374,8 @@ export const getWeaponShortName = (type: WeaponType): string => {
     case 'knife':   return 'ナイフ';
     case 'hatchet': return 'ダガー';
     case 'machete': return 'ファイティングナイフ';
+    case 'tactical-knife': return 'タクティカルナイフ';
+    case 'anti-mutant-knife': return '対変異体ナイフ';
     case 'phill-bullet': return 'ＰＨＩＬＬ-銃';
     default:        return '武器';
   }

@@ -3,6 +3,32 @@ import {
   EQUIP_SLOTS, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, SPECIAL_EQUIP_CHANCE,
   equipmentById, equipmentDef, specialEquipmentForSlot, equipmentDescription
 } from '../data/equipment';
+import { nextKnifeKey, createWeapon } from './weaponUtils';
+
+// レベルアップ3枠目: 通常はスクラップ+50。ただし現在のナイフが Tier5 未満なら
+// 25% の確率で「1段階上のナイフ」候補に置き換える(社長指定)。
+const KNIFE_OFFER_RATE = 0.25;
+const SCRAP_REWARD = 50;
+const scrapOption = (): UpgradeOption =>
+  ({ id: 'lvl-scrap', name: `スクラップ +${SCRAP_REWARD}`, description: `スクラップを ${SCRAP_REWARD} 獲得`, type: 'scrap', level: SCRAP_REWARD });
+
+// 現在のナイフTier(メレー武器の tier)から、3枠目に出すナイフ候補を生成。出さない場合は null。
+const knifeUpgradeOption = (player: Player, random: () => number): UpgradeOption | null => {
+  const currentTier = player.weapons.find(w => w.isMelee)?.tier ?? 1;
+  const key = nextKnifeKey(currentTier);
+  if (!key) return null;                 // Tier5 所持中は常にスクラップ
+  if (random() >= KNIFE_OFFER_RATE) return null;
+  const w = createWeapon(key);           // 名前/攻撃力/クリ率を提示用に取得
+  const critPct = Math.round((w.critChance ?? 0) * 100);
+  return {
+    id: `lvl-knife-${key}`,
+    name: w.name,
+    description: `近接を「${w.name}」に強化(攻撃力 ${w.damage} / クリ ${critPct}%)`,
+    type: 'knife',
+    knifeKey: key,
+    level: w.tier ?? currentTier + 1,
+  };
+};
 
 // レベルアップ報酬 = 装備の3選択肢(確定版 仕様4章)。
 //   ①進化  : スロット抽選→次ランク提示(未装備/特殊スロットはランク1=特殊から通常へ戻せる)。
@@ -71,8 +97,8 @@ export const generateEquipmentChoices = (player: Player): UpgradeOption[] => {
   }
   if (compDef) options.push(equipOption(compDef, compDef.special ? 'sp' : 'fill'));
 
-  // 選択肢③: スクラップ +50(常設)。
-  options.push({ id: 'lvl-scrap', name: 'スクラップ +50', description: 'スクラップを 50 獲得', type: 'scrap', level: 50 });
+  // 選択肢③: 通常はスクラップ +50。ナイフが Tier5 未満なら 25% で次Tierナイフ候補に置換。
+  options.push(knifeUpgradeOption(player, Math.random) ?? scrapOption());
 
   // ①②両方カンスト → HP30%回復を1つ提示。
   if (!evoDef && !compDef) {

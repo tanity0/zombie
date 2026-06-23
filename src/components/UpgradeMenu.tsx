@@ -29,6 +29,7 @@ const UpgradeMenu: React.FC = () => {
             const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;
             const icon = upgrade.type === 'scrap' ? '🔩'
               : upgrade.type === 'heal' ? '❤️'
+              : upgrade.type === 'knife' ? '🔪'
               : upgrade.type === 'equipment' ? (isSpecial ? '🏯' : '🛡️')
               : upgrade.type === 'weapon' ? '⚔️' : '🔮';
             // 装備に専用アイコン素材があれば実画像、無ければ絵文字フォールバック。
@@ -57,6 +58,10 @@ const UpgradeMenu: React.FC = () => {
                     ) : upgrade.type === 'equipment' ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/30 text-blue-100 border border-blue-300/30 shrink-0">
                         R{upgrade.level}
+                      </span>
+                    ) : upgrade.type === 'knife' ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-100 border border-rose-300/30 shrink-0">
+                        T{upgrade.level}
                       </span>
                     ) : upgrade.type === 'weapon' && upgrade.level > 1 ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/30 text-blue-100 border border-blue-300/30 shrink-0">

@@ -3626,6 +3626,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         const gain = upgrade.level > 0 ? upgrade.level : 50;
         return { player: { ...player, straps: player.straps + gain }, showUpgradeMenu: false, isPaused: false };
       }
+      // ナイフ強化: 現在のメレー武器を次Tierのナイフへ置換(攻撃力/クリ率は新Tierの定義どおり)。
+      if (upgrade.type === 'knife' && upgrade.knifeKey) {
+        const newMelee = createWeapon(upgrade.knifeKey);
+        const weapons = player.weapons.some(w => w.isMelee)
+          ? player.weapons.map(w => (w.isMelee ? newMelee : w))
+          : [...player.weapons, newMelee];
+        return { player: { ...player, weapons }, showUpgradeMenu: false, isPaused: false };
+      }
       if (upgrade.type === 'heal') {
         const healed = Math.min(player.maxHealth, player.health + Math.round(player.maxHealth * 0.30));
         return { player: { ...player, health: healed }, showUpgradeMenu: false, isPaused: false };

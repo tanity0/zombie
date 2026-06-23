@@ -378,7 +378,7 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tactical-knife' | 'anti-mutant-knife' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile';
 export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing';
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
@@ -628,13 +628,15 @@ export interface UpgradeOption {
   name: string;
   description: string;
   // 'equipment'=装備取得(選択肢①進化/②補完・特殊)、'scrap'=スクラップ+50(選択肢③)、
-  // 'heal'=HP30%回復(①②カンスト時の代替)。'weapon'/'passive'/'subWeapon' は旧仕様の残置。
-  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal';
+  // 'heal'=HP30%回復(①②カンスト時の代替)、'knife'=ナイフを次Tierへ強化(選択肢③の25%置換)。
+  // 'weapon'/'passive'/'subWeapon' は旧仕様の残置。
+  type: 'weapon' | 'passive' | 'subWeapon' | 'equipment' | 'scrap' | 'heal' | 'knife';
   weaponType?: WeaponType;
   passiveType?: PassiveType;
   subWeaponKey?: SubWeaponKey;
   equipDefId?: string; // type==='equipment' のとき装備定義ID(data/equipment.ts)
-  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量
+  knifeKey?: string;   // type==='knife' のとき置換する次Tierナイフの CATALOG キー
+  level: number;       // 装備=ランク(特殊=0)、scrap=獲得量、knife=次Tier
 }
 
 export type PassiveType = 'maxHealth' | 'speed' | 'might' | 'area' | 'cooldown' | 'duration' | 'magSize' | 'reloadSpeed' | 'critChance' | 'stunDuration' | 'ammoDrop' | 'scrapGain';

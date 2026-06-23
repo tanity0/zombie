@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.876 — ナイフTier5段階 + レベルアップ3枠目のナイフ強化
+
+- **ナイフ定義を5Tier化**(`weaponUtils.ts` CATALOG):
+  - T1 `knife-t1` ナイフ dmg8/crit5% / T2 `hatchet-t2` ダガー dmg14/8% /
+    T3 `machete-t3` ファイティングナイフ dmg**22**(20→22)/12% /
+    T4 `tactical-knife-t4` タクティカルナイフ dmg34/18%(新規) /
+    T5 `anti-mutant-knife-t5` 対変異体ナイフ dmg50/25%(新規)。
+  - `MELEE_KEYS` を5キーに拡張。`MAX_KNIFE_TIER=5`、`nextKnifeKey(tier)` ヘルパー追加。
+  - `WeaponType` に `tactical-knife` / `anti-mutant-knife` 追加、`getWeaponShortName` 対応。
+- **レベルアップ3枠目**(`upgradeUtils.generateEquipmentChoices`):
+  - 通常はスクラップ+50。現ナイフが**Tier5未満なら25%**で「1段階上のナイフ」候補に置換。
+  - 候補は現Tierの1段階上のみ。選択で `selectUpgrade` がメレー武器を次Tierへ置換(`createWeapon`)。
+  - Tier5所持中は常にスクラップ+50。
+  - `UpgradeOption` に `type:'knife'` と `knifeKey` を追加。`UpgradeMenu` は🔪アイコン+Tバッジ表示。
+- 検証: `tsc --noEmit` / `npm run build` パス。
+
 ## v0.25.870 — ホーミング弾 調整(社長指示5点)
 
 - ① **ターゲティング表示をPHILL風の頭上サークルに変更**: ロック済み敵の頭にリング+中心点+小十字。
