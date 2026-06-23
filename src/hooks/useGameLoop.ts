@@ -3001,6 +3001,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             !grenadeExplodedThisFrame.has(projectileId)
           ) {
             grenadeExplodedThisFrame.add(projectileId);
+            playSfx('bomb'); // グレネードランチャー着弾爆発音(手榴弾と統一)。
             // スキル: エクスプローダー = 爆発の半径/ダメージ ×1.2。
             // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
             const exMult = skillExplosionMult(skillPlayer);
@@ -3049,6 +3050,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 周期/弾の爆発なのでスロー無し(CLAUDE.md)。
           if (projectile?.explodeOnHit && enemyForFx && !grenadeExplodedThisFrame.has(projectileId)) {
             grenadeExplodedThisFrame.add(projectileId);
+            // ホーミング弾の着弾爆発音(グレネードランチャー/手榴弾と統一)。
+            if (projectile.weaponType === 'homing-missile') playSfx('bomb');
             const exMult = skillExplosionMult(skillPlayer);
             // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
             const exRadius = (projectile.explodeRadius ?? HEAVY_GRENADE_RADIUS) * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime);
