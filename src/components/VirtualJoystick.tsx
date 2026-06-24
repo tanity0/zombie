@@ -277,10 +277,12 @@ const VirtualJoystick: React.FC = () => {
               top: origin.y - STICK_RADIUS,
               width: STICK_RADIUS * 2,
               height: STICK_RADIUS * 2,
-              background: 'rgba(255, 255, 255, 0.06)',
+              // 旧: backdrop-filter: blur(14px)。指追従で毎フレ背景キャンバスを再サンプル合成する
+              // のがモバイルWKWebViewで重い。背景をぼかさず自己完結の半透明グラデで擦りガラス感を再現。
+              background:
+                'radial-gradient(circle at 50% 45%, rgba(255,255,255,0.10), rgba(255,255,255,0.05) 60%, rgba(255,255,255,0.02))',
               border: '1px solid rgba(255, 255, 255, 0.18)',
-              backdropFilter: 'blur(14px)',
-              WebkitBackdropFilter: 'blur(14px)'
+              boxShadow: 'inset 0 1px 6px rgba(255,255,255,0.10)'
             }}
           />
           <div

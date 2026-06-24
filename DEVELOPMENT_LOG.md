@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.910 — プレイ中の backdrop-blur 合成コストを除去(ネイティブ化前提のperf下地)
+
+- ネイティブ化(Capacitor)検討の文脈で挙げた「具体コスト」のうち、**プレイ中ずっと走るblur合成**を除去。
+  WKWebViewの `backdrop-filter: blur` は背景キャンバスを毎フレ再サンプルして合成するためモバイルで重い。
+- `VirtualJoystick` のスティック土台: `blur(14px)` を撤去。指追従で毎フレ動く要素なので最悪ケース。
+  背景をぼかさない自己完結の半透明radialグラデ＋inner shadowで擦りガラス感を維持。
+- `.hud-translucent`(GameHUD/StatsHud/VitalsOrbのHUDチップ): `blur(8px)` を撤去し、
+  半透明塗りを 0.42→0.55 に濃くして視認性を担保。
+- メニュー用 `.glass-panel`(blur 18px)は**据え置き**(全画面・戦闘ホット中ではないため許容)。
+- ②毎フレHUDは調査の結果**既に規律遵守**(VitalsOrb=被弾/取得イベント駆動、GameHUD=秒粒度購読)で対処不要と確認。
+- 負荷: 常時合成パスを2つ削減=実機FPSにプラス方向。新規コストなし。検証: typecheck/lint/test/build 全green。
+
 ## v0.25.909 — 射撃練習場を画面内に収め画面全体タップで発射／他メニューの指スクロール復活
 
 - 射撃練習場の再設計: 縦長をやめ全要素を画面内に収める。射撃場の絵(contain)に的を中央で重ね、
