@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.924 — タイトルを「正方形ステージ」方式に(画像を切らず中央固定で表示)
+
+- ユーザー案を採用: 画面の短辺いっぱいの**正方形ステージ**を中央に置き、タイトル画像を
+  `object-contain` で切らずセンタリング配置(`width: min(100vw,100svh)` + aspect-square)。
+  端末の縦横比に依存せず画像も文字も絶対に切れない。背景CSS(cover/contain)から img ステージへ。
+- 現素材は landscape 1672×941 のため、これだと横帯になる。**正方形に構成した画像**を入れれば
+  添付の画角で収まる設計(差し替え待ち)。
+- 検証: typecheck/lint/build 全green。
+
 ## v0.25.923 — タイトル横見切れ修正をやり直し(DOMタイトル撤去・画像をcontainでフィット)
 
 - v0.25.922で重ねたDOMタイトルが焼き込みタイトルと二重になり余計だった→撤去。
