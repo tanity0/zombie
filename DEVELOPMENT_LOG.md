@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.887 — CLAUDE.md: 編集後は Read で実態確認してから「できた」と言う(doc)
+
+- 「File edits — verify before claiming done」を追記: Write/Edit後は必ず `Read` で読み直す。
+  戻り値が空/無言なら失敗とみなし `ls`/`cat` で実態確認。期待内容をディスク上で確認できるまで完了と言わない。
+- コード変更なし(ドキュメントのみ)。
+
 ## v0.25.886 — スキル改修: ナイフマスター強化 / スラッシャー タイミングリング3連
 
 - **① ナイフマスター(knife-master)**: 近接コンボ増加を **+2%/hit・上限+100%(×2.0、50hitでカンスト)** に

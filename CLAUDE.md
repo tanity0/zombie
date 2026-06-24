@@ -143,6 +143,14 @@ checks by cost — do NOT lump them together.
   money/credits is a scheduled *autonomous agent* run (model usage) — reserve it
   for big changes / low frequency if added later.
 
+## File edits — verify before claiming "done"
+- **After creating or editing any file, re-open it with `Read` BEFORE saying it's
+  done.** Don't trust that a Write/Edit succeeded just because the tool returned.
+- **If the read comes back empty / silent (no content), treat it as a FAILURE**,
+  not success — the file may be missing or unwritten. Confirm the real state with
+  `ls` (does it exist? size?) and `cat` (actual contents) before reporting.
+- Only claim a change is complete once you've seen the expected contents on disk.
+
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left
