@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.897 — スキル説明をLv別に(共通説明＋現Lvの具体値)
+
+- `SKILL_LEVEL_INFO`(共通説明 base ＋ Lv1/2/3 の具体値 lv[])と `skillDescForLevel(key, level)` を追加。
+  **共通説明は必ず残し**、現在のLvの値を「（Lv○：具体値）」で併記(いきなりLv2の数値だけ見せて意味不明になるのを防ぐ)。
+- 反映先: 装備画面の所持スキル説明(所持Lv)、強化訓練の結果カード(昇格後Lv/返金時は現Lv)。
+- Lv1固定(reaper/bomber)は共通説明のみ(Lv表記なし)。値は実装(各 skill* ヘルパ)と一致させて記載。
+- パフォーマンス負荷: **1/10**(文字列生成のみ・テーブル参照。毎フレーム呼ばない・新ループなし)。
+- 検証: typecheck / lint / test(49 passed+1 skipped・skillDescForLevel のテスト追加) / build すべて green。
+
 ## v0.25.896 — ガチャ仕様変更(レア度ソフト天井＋被り回数でLv上昇・10連・可視化)
 
 - **A. レア度抽選(ソフト天井)**: 基本 normal70/rare25/super5。super非排出のpullごとに normal−5/rare+4/super+1 を蓄積、

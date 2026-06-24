@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive } from './gameStore';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
-  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent } from '../data/campaign';
+  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel } from '../data/campaign';
 import type { Player, SkillKey } from '../types/game';
 
 // Minimal player carrying one leveled skill (for the simple multiplier skills).
@@ -132,6 +132,26 @@ describe('seeker proc chance (30/40/50%) + active window', () => {
     expect(isSeekerActive({ seekerUntil: 5000 } as unknown as Player, 4000)).toBe(true);
     expect(isSeekerActive({ seekerUntil: 5000 } as unknown as Player, 5000)).toBe(false);
     expect(isSeekerActive({ seekerUntil: 0 } as unknown as Player, 1000)).toBe(false);
+  });
+});
+
+describe('skillDescForLevel (keeps common text + level-specific value)', () => {
+  it('appends the current level value but never drops the common description', () => {
+    const lv1 = skillDescForLevel('attack-shooter', 1);
+    const lv3 = skillDescForLevel('attack-shooter', 3);
+    expect(lv1).toContain('銃ダメージが上昇'); // common kept
+    expect(lv1).toContain('Lv1');
+    expect(lv1).toContain('+10%');
+    expect(lv3).toContain('銃ダメージが上昇'); // common still present at Lv3
+    expect(lv3).toContain('+30%');
+  });
+  it('Lv1-fixed skills show only the common description (no level suffix)', () => {
+    expect(skillDescForLevel('reaper', 1)).not.toContain('Lv');
+    expect(skillDescForLevel('bomber', 1)).not.toContain('Lv');
+  });
+  it('clamps out-of-range / missing level to a valid bucket', () => {
+    expect(skillDescForLevel('runner', 0)).toContain('+10%'); // 0 → Lv1
+    expect(skillDescForLevel('runner', 9)).toContain('+20%'); // 9 → Lv3
   });
 });
 

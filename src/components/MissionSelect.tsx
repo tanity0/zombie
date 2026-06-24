@@ -11,7 +11,7 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
-  GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel,
+  GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
@@ -382,7 +382,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                         {on && <Check size={15} className="shrink-0" />}
                       </span>
                       <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>
-                      <span className="text-[10px] leading-snug text-white/50">{SKILLS[k].desc}</span>
+                      <span className="text-[10px] leading-snug text-white/50">{skillDescForLevel(k, ownedSkillLevels[k] ?? 1)}</span>
                     </button>
                   );
                 })}
@@ -764,6 +764,7 @@ const SkillGacha: React.FC = () => {
                   <span className="text-[13px] font-semibold text-white">{SKILLS[r.key].name} <span className="text-amber-200">Lv{r.newLevel}</span></span>
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
                 </div>
+                <p className="text-[10px] leading-snug text-white/55 mt-0.5">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
                 <p className={`text-[11px] mt-0.5 font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
                   {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
                     : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`

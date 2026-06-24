@@ -538,6 +538,49 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'seeker':       { name: 'シーカー',       desc: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる(CD10秒)', rarity: 'normal' },
   'scrap-builder':{ name: 'スクラップビルダー', desc: '出撃開始時の初期スクラップ+50(Lvで+100/+150)', rarity: 'normal' },
 };
+
+// レベル別の説明。共通説明(base)は必ず残し、現在のLvの具体値(lv[])を併記する
+// (いきなりLv2の数値だけ見せると意味が分からなくなるため)。lv が無いものはLv変化なし(Lv1固定)。
+const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, string, string] }>> = {
+  // 超レア
+  'reaper':       { base: '近接フィニッシュ時、攻撃範囲内の敵を全員フィニッシュ（ボスは即死せず5倍ダメージ）' },
+  'berserker':    { base: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', lv: ['増加量×1.0', '増加量×1.25', '増加量×1.5'] },
+  'skater':       { base: '移動速度3倍。ただし慣性が強く操作が難しくなる', lv: ['慣性 強', '慣性 中', '慣性 弱（最も扱いやすい）'] },
+  // レア
+  'crit-up':      { base: 'クリティカルダメージが上昇（ボスにも適用）', lv: ['×1.5', '×1.75', '×2.0'] },
+  'knight':       { base: '被ダメージ減少＋盾/召喚の最大HP増加', lv: ['被ダメ-20%／召喚HP+50%', '被ダメ-30%／召喚HP+75%', '被ダメ-40%／召喚HP+100%'] },
+  'exploder':     { base: '全ての爆発の範囲とダメージが増加', lv: ['+20%', '+35%', '+50%'] },
+  'sharpshooter': { base: '銃弾の貫通が増加', lv: ['+1', '+2', '+3'] },
+  'sniper':       { base: '銃ダメージが停止中の敵/遠距離ほど増加', lv: ['停止+最大50%／距離+最大50%', '+最大75%／+最大75%', '+最大100%／+最大100%'] },
+  'ricochet':     { base: '命中弾が一定確率で近くの別の敵へ跳ねる', lv: ['20%・跳弾×0.5', '30%・×0.6', '40%・×0.7'] },
+  'bomber':       { base: '手榴弾の爆発時にミニ手榴弾を3個撒く' },
+  'fire-shooter': { base: '発射が一定確率で爆発弾になる（裏CDあり）', lv: ['20%', '25%', '30%'] },
+  'bomb-counter': { base: 'カウンターの反射弾が爆発＋成立時に自分中心でも爆発', lv: ['ダメージ×1.0／範囲×1.0', '×1.25／×1.15', '×1.5／×1.3'] },
+  'punisher':     { base: 'ノックバック中の敵が他の敵に当たると巻き込む（近接ダメージ＋ノックバック）', lv: ['ダメージ50%／KB×2', '70%／×2.5', '90%／×3'] },
+  'combo-master': { base: '近接フィニッシュのコンボ窓延長＋コンボ中は全攻撃のダメージ増加', lv: ['+2%/combo(上限+50%)・窓+1.0s', '+3%/combo(上限+60%)・窓+1.5s', '+4%/combo(上限+70%)・窓+2.0s'] },
+  'knife-master': { base: '近接コンボでダメージ増加＋近接クリ率上昇。ただし弾薬ドロップ0%', lv: ['+2%/hit(上限+50%)・近接クリ+10%', '+2%/hit(上限+70%)・+15%', '+4%/hit(上限+100%)・+20%'] },
+  'benkei':       { base: '武器を切り替えるとクリティカル率が一時上昇', lv: ['+5%/10秒', '+10%/12秒', '+15%/15秒'] },
+  'reflex':       { base: '被弾時に反撃の爆発（CDあり）', lv: ['ダメージ60／半径92／CD1.0s', '80／104／0.8s', '100／116／0.6s'] },
+  // 通常
+  'gold-rush':    { base: 'ゴールド取得量が増加', lv: ['+20%', '+35%', '+50%'] },
+  'time-keeper':  { base: 'サブウェポンのクールダウン減少', lv: ['-10%', '-20%', '-30%'] },
+  'ghost-shooter':{ base: '一定確率で弾を消費しない', lv: ['10%', '20%', '30%'] },
+  'dog-run':      { base: '犬のクールダウン短縮（犬装備時）', lv: ['CD-50%', 'CD0', 'CD0＋射程制限解除'] },
+  'counter-master':{ base: 'カウンター窓延長＋成功時に周囲を強ノックバック', lv: ['窓+0.12s／KB×2', '+0.18s／×2.5', '+0.25s／×3'] },
+  'slasher':      { base: '近接命中後のタイミングリングをジャストタップで追撃（各2/3減衰・ノックバック）', lv: ['最大1連', '最大2連', '最大3連'] },
+  'attack-shooter':{ base: '銃ダメージが上昇', lv: ['+10%', '+20%', '+30%'] },
+  'runner':       { base: '移動速度が上昇', lv: ['+10%', '+15%', '+20%'] },
+  'seeker':       { base: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる（CD10秒）', lv: ['発動30%', '40%', '50%'] },
+  'scrap-builder':{ base: '出撃開始時の初期スクラップが増える', lv: ['+50', '+100', '+150'] },
+};
+// 現在Lvに即した説明。共通説明＋「Lv○：具体値」を併記。Lv変化なしは共通説明のみ。
+export const skillDescForLevel = (key: SkillKey, level: number): string => {
+  const info = SKILL_LEVEL_INFO[key];
+  if (!info) return SKILLS[key].desc; // フォールバック(未登録)
+  if (!info.lv) return info.base;     // Lv1固定など段階変化なし
+  const lv = Math.max(1, Math.min(info.lv.length, Math.floor(level || 1)));
+  return `${info.base}（Lv${lv}：${info.lv[lv - 1]}）`;
+};
 export const MAX_EQUIPPED_SKILLS = 2;
 // ガチャのレア度抽選: 基本 normal70 / rare25 / super5。super が出ない pull ごとに
 // normal −5 / rare +4 / super +1 を蓄積(ソフト天井)。normal が 0 になる14pullで打ち止め
