@@ -537,8 +537,7 @@ export const MAX_EQUIPPED_SKILLS = 2;
 // ガチャのレア度枠(%)。枠内は均等抽選。重複(所持済み)はゴールド返金。
 export const GACHA_RARITY_WEIGHTS: Record<SkillRarity, number> = { normal: 60, rare: 35, super: 5 };
 export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(k => SKILLS[k].rarity === r);
-// ガチャ1回の価格 / 重複時のレア度別返金額。
-// ※テスト用に一旦0円(無料)。本番は150想定。
+// ガチャ1回の価格 / 重複時のレア度別返金額。// ※テスト用に一旦0円(無料)。本番は150想定。
 export const GACHA_PULL_COST = 0;
 export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 50, rare: 150, super: 500 };
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
@@ -556,6 +555,23 @@ export const rollGachaSkill = (rng: () => number = Math.random): SkillKey => {
   }
   const pool = skillsByRarity(rarity);
   return pool[Math.floor(rng() * pool.length)] ?? pool[0];
+};
+
+// スキルの最大Lv。一部スキルはLv1固定(効果表でLv2/3が none のもの)。
+export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1 };
+export const skillMaxLevel = (key: SkillKey): number => SKILL_MAX_LEVEL[key] ?? 3;
+// ガチャのLv抽選: 高Lvほど稀。レア度が高いほどさらに高Lvが出にくい(社長指示)。
+const SKILL_LEVEL_WEIGHTS: Record<SkillRarity, number[]> = {
+  normal: [70, 22, 8],
+  rare:   [80, 16, 4],
+  super:  [90, 9, 1],
+};
+export const rollSkillLevel = (rarity: SkillRarity, maxLv: number, rng: () => number = Math.random): number => {
+  const w = SKILL_LEVEL_WEIGHTS[rarity].slice(0, Math.max(1, maxLv));
+  const total = w.reduce((a, b) => a + b, 0);
+  let r = rng() * total;
+  for (let i = 0; i < w.length; i++) { if (r < w[i]) return i + 1; r -= w[i]; }
+  return 1;
 };
 
 // --- 資料室(世界観 / 変異体図鑑)のドラフト -------------------------------

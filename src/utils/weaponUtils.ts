@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, hasSkill, skillBenkeiCritBonus, scavengerGunMult } from '../store/gameStore';
+import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
@@ -292,8 +292,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // スキル: ファイアシューター = 20%の射撃が爆発弾化(×0.3 ダメージ・半径66)。
   // 連続爆発を防ぐため player.fireShooterCdUntil(gameTime ms)で 3秒の裏クールダウン。
   const gtFire = useGameStore.getState().gameTime;
-  const fireShooterReady = hasSkill(player, 'fire-shooter') && gtFire >= player.fireShooterCdUntil;
-  const fireShooterShot = fireShooterReady && Math.random() < 0.2;
+  const fireShooterLv = skillLevel(player, 'fire-shooter');
+  const fireShooterReady = fireShooterLv && gtFire >= player.fireShooterCdUntil;
+  const fireShooterShot = fireShooterReady && Math.random() < [0, 0.2, 0.25, 0.3][fireShooterLv];
   if (fireShooterShot) {
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
   }
@@ -333,9 +334,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
       createdAt: now,
       passthrough: weapon.passthrough || false,
       hitEnemies: [],
-      // スキル: シャープシューター = 貫通+1(passthrough武器=貫通自由なので据置)。
-      pierce: !weapon.passthrough && hasSkill(player, 'sharpshooter')
-        ? (weapon.pierce ?? 0) + 1
+      // スキル: シャープシューター = 貫通 +1/+2/+3(Lv)。passthrough武器=貫通自由なので据置。
+      pierce: !weapon.passthrough && skillLevel(player, 'sharpshooter')
+        ? (weapon.pierce ?? 0) + skillLevel(player, 'sharpshooter')
         : weapon.pierce,
       hostile: false,
       reflected: false,
@@ -350,8 +351,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   // Drain the magazine and record the fire time. One trigger pull = one round
   // for EVERY family, including the shotgun (a shell fires the whole pellet
   // spread for a single round).
-  // スキル: ゴーストシューター = 20%で弾を消費しない。
-  const consume = hasSkill(player, 'ghost-shooter') && Math.random() < 0.2 ? 0 : 1;
+  // スキル: ゴーストシューター = 10%/20%/30%(Lv)で弾を消費しない。
+  const ghostLv = skillLevel(player, 'ghost-shooter');
+  const consume = ghostLv && Math.random() < [0, 0.10, 0.20, 0.30][ghostLv] ? 0 : 1;
   useGameStore.setState(state => ({
     player: {
       ...state.player,

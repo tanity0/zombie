@@ -28,7 +28,7 @@ import {
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
-  skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillComboMasterMult,
+  skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
 } from '../store/gameStore';
@@ -1756,14 +1756,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             if (nowMs >= activeFetch.finishAt) {
               dogFetchRef.current = null;
-              // スキル: ドッグラン = 犬のCDを0に。
-              const dogRun = hasSkill(useGameStore.getState().player, 'dog-run');
-              setSubWeaponCooldown('dog', gameTime + (dogRun ? 0 : DOG_PICKUP_COOLDOWN_BY_LEVEL[level]));
+              // スキル: ドッグラン = Lv1 CD半減 / Lv2-3 CD0。
+              const dogRunLv = skillLevel(useGameStore.getState().player, 'dog-run');
+              const dogCdMult = dogRunLv ? [1, 0.5, 0, 0][dogRunLv] : 1;
+              setSubWeaponCooldown('dog', gameTime + DOG_PICKUP_COOLDOWN_BY_LEVEL[level] * dogCdMult);
             }
           } else if (gameTime >= dogReadyAt) {
             const state = useGameStore.getState();
-            // スキル: ドッグラン = 射程制限を解除(実質無限)。
-            const targetRadius = hasSkill(state.player, 'dog-run') ? Infinity : DOG_FETCH_TARGET_RADIUS_BY_LEVEL[level];
+            // スキル: ドッグラン = Lv3 で射程制限を解除(実質無限)。
+            const targetRadius = skillLevel(state.player, 'dog-run') >= 3 ? Infinity : DOG_FETCH_TARGET_RADIUS_BY_LEVEL[level];
             const collectRadius = DOG_COLLECT_RADIUS_BY_LEVEL[level];
             const playerX = state.player.x + state.player.width / 2;
             const playerY = state.player.y + state.player.height / 2;
@@ -2920,11 +2921,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (now <= currentPlayer.counterWindowEnd) {
             reflectProjectile(proj.id);
             // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
-            if (hasSkill(currentPlayer, 'bomb-counter')) {
+            const bcLv = skillLevel(currentPlayer, 'bomb-counter');
+            if (bcLv) {
+              const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv];
+              const bcDmgMult = [0, 1, 1.25, 1.5][bcLv];
               useGameStore.setState(state => ({
                 projectiles: state.projectiles.map(p =>
                   p.id === proj.id
-                    ? { ...p, explodeOnHit: true, explodeRadius: GRENADE_BLAST_RADIUS, explodeDamageMult: GRENADE_BLAST_DAMAGE_MULT }
+                    ? { ...p, explodeOnHit: true, explodeRadius: GRENADE_BLAST_RADIUS * bcRadiusMult, explodeDamageMult: GRENADE_BLAST_DAMAGE_MULT * bcDmgMult }
                     : p
                 ),
               }));
@@ -3144,10 +3148,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // スキル: リコシェ = 通常銃弾命中時に20%で最寄りの別の敵へ ×0.5 の跳弾を1発。
           // 二次跳弾は禁止(ricochet フラグ)。グレネード/反射弾/爆発弾/既跳弾は対象外。1バウンドで有界。
+          const ricochetLv = skillLevel(skillPlayer, 'ricochet');
           if (
             projectile && enemyForFx && !projectile.ricochet && !projectile.reflected &&
             !projectile.explodeOnHit && projectile.weaponKey !== GRENADE_WEAPON_KEY &&
-            hasSkill(skillPlayer, 'ricochet') && Math.random() < 0.2
+            ricochetLv && Math.random() < [0, 0.2, 0.3, 0.4][ricochetLv]
           ) {
             const ox = enemyForFx.x + enemyForFx.width / 2;
             const oy = enemyForFx.y + enemyForFx.height / 2;
@@ -3166,7 +3171,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 id: `proj-ricochet-${projectileId}-${Date.now()}`,
                 x: ox - 4, y: oy - 4, width: 8, height: 8,
                 speed: Math.max(420, projectile.speed),
-                damage: projectile.damage * 0.5,
+                damage: projectile.damage * [0, 0.5, 0.6, 0.7][ricochetLv],
                 direction: { x: (tx - ox) / rd, y: (ty - oy) / rd },
                 weaponType: projectile.weaponType,
                 weaponKey: projectile.weaponKey,
@@ -4290,12 +4295,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             12
           );
           // スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発ダメージ。
-          if (hasSkill(currentPlayer, 'bomb-counter')) {
+          const bcLv2 = skillLevel(currentPlayer, 'bomb-counter');
+          if (bcLv2) {
+            const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv2];
+            const bcDmgMult = [0, 1, 1.25, 1.5][bcLv2];
             const bcx = currentPlayer.x + currentPlayer.width / 2;
             const bcy = currentPlayer.y + currentPlayer.height / 2;
             const exMult = skillExplosionMult(currentPlayer);
-            const radius = GRENADE_BLAST_RADIUS * exMult;
-            const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * (currentPlayer.equipBonus?.damageMult ?? 1);
+            const radius = GRENADE_BLAST_RADIUS * exMult * bcRadiusMult;
+            const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * bcDmgMult * (currentPlayer.equipBonus?.damageMult ?? 1);
             spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380);
             spawnBurst(bcx, bcy, '#f97316', 20);
             spawnBurst(bcx, bcy, '#7f1d1d', 8);

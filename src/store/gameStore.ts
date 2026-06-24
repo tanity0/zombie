@@ -38,6 +38,7 @@ import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torc
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { skillMaxLevel } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY } from '../pixi/renderSpec';
@@ -247,6 +248,14 @@ const saveStringArray = (key: string, arr: string[]): void => {
 };
 // 永続: ガチャで解禁したスキル所持 / 永続ゴールド残高(in-run の strap とは別系統)。
 const OWNED_SKILLS_KEY = 'zombie:ownedSkills';
+const OWNED_SKILL_LEVELS_KEY = 'zombie:ownedSkillLevels'; // 所持スキルのLv(ガチャで上がる・永続)
+const loadSkillLevels = (): Partial<Record<SkillKey, number>> => {
+  try { const r = localStorage.getItem(OWNED_SKILL_LEVELS_KEY); const o = r ? JSON.parse(r) : {}; return (o && typeof o === 'object') ? o : {}; }
+  catch { return {}; }
+};
+const saveSkillLevels = (m: Partial<Record<SkillKey, number>>): void => {
+  try { localStorage.setItem(OWNED_SKILL_LEVELS_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
 const GOLD_BALANCE_KEY = 'zombie:goldBalance';
 // 装備の持ち帰り: 商人帰還/クリア時に1つだけ次run へ引き継ぐ(死亡で破棄)。defId 1件のみ保存。
 const CARRIED_EQUIP_KEY = 'zombie:carriedEquip';
@@ -532,6 +541,9 @@ export const maybeUnlockSageStone = (
 
 // 装備スキル判定。effect 層はすべてこのヘルパで分岐(非装備時は完全に従来挙動)。
 export const hasSkill = (player: Player, key: SkillKey): boolean => player.skills.includes(key);
+// 装備スキルのレベル(1..3)。非装備=0。効果ヘルパは [_, Lv1, Lv2, Lv3] の配列を lv で引く。
+export const skillLevel = (player: Player, key: SkillKey): number =>
+  player.skills.includes(key) ? (player.skillLevels?.[key] ?? 1) : 0;
 
 // === キャラ固有スキル(特別枠) ============================================
 // 通常の装備スキル(player.skills)とは別枠で、選択キャラ(player.characterClass)により自動有効。
@@ -556,51 +568,82 @@ export const heavyGunnerExplosionMult = (player: Player, gameTime: number): numb
   player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
 
 // --- 装備スキルの数値補正ヘルパ(effect層・全て純粋関数) -------------------
-// ナイト: 被ダメ×0.8 / バーサーカー: 被ダメ×1.2。両立可(乗算)。
-export const skillIncomingDamageMult = (player: Player): number =>
-  (hasSkill(player, 'knight') ? 0.8 : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1);
-// バーサーカー: 全攻撃 ×(1 + 失ったHP割合)。上限なし(満タンで×1、瀕死で最大~×2)。
-export const skillOutgoingDamageMult = (player: Player): number =>
-  hasSkill(player, 'berserker') && player.maxHealth > 0
-    ? 1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth)
-    : 1;
-// クリティカルD上昇: crit倍率 +0.5(通常1.5→2.0 / boss 5→5.5)。
-export const skillCritMult = (player: Player, base: number): number =>
-  base + (hasSkill(player, 'crit-up') ? 0.5 : 0);
-// ナイト: 盾/召喚の最大HP ×1.5。
-export const skillSummonHpMult = (player: Player): number => (hasSkill(player, 'knight') ? 1.5 : 1);
-// タイムキーパー: サブCDのΔ ×0.7。
-export const skillCooldownMult = (player: Player): number => (hasSkill(player, 'time-keeper') ? 0.7 : 1);
-// エクスプローダー: 全爆発の半径/ダメージ ×1.2。賢者の石はハリケーン等に別途+20%。
-export const skillExplosionMult = (player: Player): number => (hasSkill(player, 'exploder') ? 1.2 : 1);
-// 弁慶: バフ中(benkeiBuffUntil > gameTime)は crit率 +0.10。
-export const skillBenkeiCritBonus = (player: Player, gameTime: number): number =>
-  hasSkill(player, 'benkei') && gameTime < player.benkeiBuffUntil ? 0.10 : 0;
-// ナイフマスター(社長指示の追加効果): 近接ダメージのクリティカル率 +20%(通常0%)。
-// その代わり弾薬ドロップ0%(ドロップ判定側で hasSkill を見て抑止)。既存のコンボ増加効果はそのまま。
-export const skillKnifeMasterMeleeCrit = (player: Player): number =>
-  hasSkill(player, 'knife-master') ? 0.20 : 0;
+// ナイト: 被ダメ×0.8/0.7/0.6(Lv) / バーサーカー: 被ダメ×1.2(固定)。両立可(乗算)。
+export const skillIncomingDamageMult = (player: Player): number => {
+  const kl = skillLevel(player, 'knight');
+  return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1);
+};
+// バーサーカー: 全攻撃 ×(1 + 失ったHP割合×係数[Lv1:1.0/Lv2:1.25/Lv3:1.5])。被ダメ×1.2は固定。
+export const skillOutgoingDamageMult = (player: Player): number => {
+  const bl = skillLevel(player, 'berserker');
+  if (!bl || player.maxHealth <= 0) return 1;
+  const k = [0, 1, 1.25, 1.5][bl];
+  return 1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k;
+};
+// クリティカルD上昇: crit倍率 +0.5/0.75/1.0(Lv)。
+export const skillCritMult = (player: Player, base: number): number => {
+  const cl = skillLevel(player, 'crit-up');
+  return base + (cl ? [0, 0.5, 0.75, 1.0][cl] : 0);
+};
+// ナイト: 盾/召喚の最大HP ×1.5/1.75/2.0(Lv)。
+export const skillSummonHpMult = (player: Player): number => {
+  const kl = skillLevel(player, 'knight');
+  return kl ? [1, 1.5, 1.75, 2.0][kl] : 1;
+};
+// タイムキーパー: サブCDのΔ ×0.9/0.8/0.7(Lv)。
+export const skillCooldownMult = (player: Player): number => {
+  const tl = skillLevel(player, 'time-keeper');
+  return tl ? [1, 0.9, 0.8, 0.7][tl] : 1;
+};
+// エクスプローダー: 全爆発の半径/ダメージ ×1.2/1.35/1.5(Lv)。賢者の石はハリケーン等に別途+20%。
+export const skillExplosionMult = (player: Player): number => {
+  const el = skillLevel(player, 'exploder');
+  return el ? [1, 1.2, 1.35, 1.5][el] : 1;
+};
+// 弁慶: バフ中 crit率 +5%/10%/15%(Lv)。バフ時間は付与側(武器切替)で +10/12/15s。
+export const skillBenkeiCritBonus = (player: Player, gameTime: number): number => {
+  const bl = skillLevel(player, 'benkei');
+  return bl && gameTime < player.benkeiBuffUntil ? [0, 0.05, 0.10, 0.15][bl] : 0;
+};
+// 弁慶: 武器切替バフの持続(ms)。Lv1:10s / Lv2:12s / Lv3:15s。
+export const skillBenkeiBuffMs = (player: Player): number => {
+  const bl = skillLevel(player, 'benkei');
+  return bl ? [0, 10000, 12000, 15000][bl] : 10000;
+};
+// ナイフマスター: 近接クリ率 +10%/15%/20%(Lv)。代わりに弾薬ドロップ0%(ドロップ側で抑止)。
+export const skillKnifeMasterMeleeCrit = (player: Player): number => {
+  const kl = skillLevel(player, 'knife-master');
+  return kl ? [0, 0.10, 0.15, 0.20][kl] : 0;
+};
 // 近接コンボ倍率(ナイフマスター × コンボマスター)。3つの近接ダメージ地点とカウンター斬撃で共通使用。
 //  ・knife-master: 近接ヒットで knifeComboCount を貯め、+2%/hit(上限+100%=×2.0、50hitでカンスト)。窓3秒。
 //  ・combo-master: フィニッシュコンボ(meleeFinishComboCount)生存中、+2%/combo(上限+50%)。
 // どちらも非装備なら ×1。窓の有効判定は呼び出し側の gameTime に依存。
 export const skillMeleeComboMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
   let mult = 1;
-  if (hasSkill(player, 'knife-master') && gameTime < player.knifeComboUntil) {
-    mult *= 1 + Math.min(1.0, player.knifeComboCount * 0.02); // +2%/hit、上限+100%(×2.0)
+  const kl = skillLevel(player, 'knife-master');
+  if (kl && gameTime < player.knifeComboUntil) {
+    const rate = [0, 0.02, 0.02, 0.04][kl]; // +2%/+2%/+4% per hit
+    const cap = [0, 0.50, 0.70, 1.0][kl];   // 上限 +50%/+70%/+100%
+    mult *= 1 + Math.min(cap, player.knifeComboCount * rate);
   }
   mult *= skillComboMasterMult(player, gameTime, finishComboCount, finishComboUntil);
   return mult;
 };
-// combo-master のダメージ倍率のみ(全攻撃=近接/銃に適用)。フィニッシュコンボ生存中 +2%/combo(上限+50%)。
+// combo-master のダメージ倍率のみ(全攻撃=近接/銃に適用)。フィニッシュコンボ生存中 +2%/3%/4%/combo(上限+50%/60%/70%)。
 // ※ knife-master は近接専用なので含めない。銃ヒット処理は本関数だけを使う。
-export const skillComboMasterMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number =>
-  hasSkill(player, 'combo-master') && finishComboUntil >= gameTime
-    ? 1 + Math.min(0.50, finishComboCount * 0.02)
-    : 1;
-// combo-master: フィニッシュコンボ窓を +1s 延長(装備時)。
-export const skillFinishComboWindowBonus = (player: Player): number =>
-  hasSkill(player, 'combo-master') ? 1000 : 0;
+export const skillComboMasterMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
+  const cl = skillLevel(player, 'combo-master');
+  if (!cl || finishComboUntil < gameTime) return 1;
+  const rate = [0, 0.02, 0.03, 0.04][cl];
+  const cap = [0, 0.50, 0.60, 0.70][cl];
+  return 1 + Math.min(cap, finishComboCount * rate);
+};
+// combo-master: フィニッシュコンボ窓を +1000/1500/2000ms 延長(Lv)。
+export const skillFinishComboWindowBonus = (player: Player): number => {
+  const cl = skillLevel(player, 'combo-master');
+  return cl ? [0, 1000, 1500, 2000][cl] : 0;
+};
 // 賢者の石: 鞭ハリケーンの半径/ダメージ +20%。
 export const sageStoneHurricaneMult = (player: Player): number => (hasSageStone(player) ? 1.2 : 1);
 // ナイフマスター: 近接ヒットでコンボを加算(窓3秒)。非ヒット/非装備時は据え置き。
@@ -623,15 +666,18 @@ export const sniperGunMult = (
   player: Player,
   enemy?: { x: number; y: number; width: number; height: number; vx?: number; vy?: number },
 ): number => {
-  if (!hasSkill(player, 'sniper') || !enemy) return 1;
+  const sl = skillLevel(player, 'sniper');
+  if (!sl || !enemy) return 1;
+  const stopMax = [0, 0.5, 0.75, 1.0][sl];  // 停止敵ボーナス上限(Lv)
+  const distMax = [0, 0.5, 0.75, 1.0][sl];  // 距離ボーナス上限(Lv)
   const stopped = Math.hypot(enemy.vx ?? 0, enemy.vy ?? 0) < 4; // 停止中(ほぼ静止)
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
   const ecx = enemy.x + enemy.width / 2;
   const ecy = enemy.y + enemy.height / 2;
   const dist = Math.hypot(ecx - pcx, ecy - pcy);
-  const distBonus = Math.min(0.5, (dist / (SNIPER_REF_DIST * 0.85)) * 0.5);
-  return 1 + (stopped ? 0.5 : 0) + distBonus;
+  const distBonus = Math.min(distMax, (dist / (SNIPER_REF_DIST * 0.85)) * distMax);
+  return 1 + (stopped ? stopMax : 0) + distBonus;
 };
 
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
@@ -1150,7 +1196,7 @@ const applyMeleeFinishSkillSpread = (
 
 // スキル: カウンターマスター = カウンター成立スイングで、プレイヤー近傍(~MELEE_RADIUS*1.5)の敵を
 // 2× KNOCKBACK_SPEED で弾く。近傍だけ走査(有界)。
-const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number) => {
+const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, kbScale = 2) => {
   const reach = MELEE_RADIUS * 1.5;
   const reach2 = reach * reach;
   for (const e of get().enemies) {
@@ -1162,10 +1208,15 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number) 
     const d2 = dx * dx + dy * dy;
     if (d2 > reach2) continue;
     const dist = Math.max(0.001, Math.sqrt(d2));
-    // KNOCKBACK_SPEED の 2倍相当。knockbackEnemy は BULLET_KNOCKBACK_SPEED 基準なので比率換算。
-    const mult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
+    // KNOCKBACK_SPEED の kbScale 倍相当。knockbackEnemy は BULLET_KNOCKBACK_SPEED 基準なので比率換算。
+    const mult = (KNOCKBACK_SPEED * kbScale) / BULLET_KNOCKBACK_SPEED;
     get().knockbackEnemy(e.id, dx / dist, dy / dist, mult, mult);
   }
+};
+// カウンターマスターのノックバック倍率(KNOCKBACK_SPEED 基準): Lv1 ×2 / Lv2 ×2.5 / Lv3 ×3。
+const counterMasterKbScale = (player: Player): number => {
+  const lv = skillLevel(player, 'counter-master');
+  return lv ? [0, 2, 2.5, 3][lv] : 2;
 };
 
 // スキル: スラッシャー = アクティブリロード型のタイミングリング追撃(最大3連)。
@@ -1183,9 +1234,12 @@ const applySlasherTimedStrike = (
 ): CounterTriggerResult => {
   const elapsed = gameTime - player.slasherRingStartAt;
   const step = player.slasherStrikeStep;
+  // 連数の上限はレベル依存: Lv1 1連 / Lv2 2連 / Lv3 3連。
+  const slLv = skillLevel(player, 'slasher');
+  const maxHits = slLv ? Math.min(SLASHER_MAX_HITS, slLv) : SLASHER_MAX_HITS;
   const just = elapsed >= SLASHER_RING_MS - SLASHER_JUST_MS && elapsed <= SLASHER_RING_MS + SLASHER_JUST_MS;
-  // 窓を外した / 既に3連使い切った → コンボ終了(追撃なし)。
-  if (!just || step >= SLASHER_MAX_HITS) {
+  // 窓を外した / 連数を使い切った → コンボ終了(追撃なし)。
+  if (!just || step >= maxHits) {
     get().setSlasherCombo(0, 0);
     return { swung: false, hit: false, finish: false, killed: 0 };
   }
@@ -1220,8 +1274,8 @@ const applySlasherTimedStrike = (
   }
   get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
   const nextStep = step + 1;
-  if (nextStep < SLASHER_MAX_HITS) get().setSlasherCombo(gameTime, nextStep); // 次のリングを再生成
-  else get().setSlasherCombo(0, 0);                                          // 3連完了
+  if (nextStep < maxHits) get().setSlasherCombo(gameTime, nextStep); // 次のリングを再生成
+  else get().setSlasherCombo(0, 0);                                  // 連数完了
   return { swung: true, hit, finish: false, killed };
 };
 
@@ -1518,7 +1572,9 @@ interface GameState {
   pendingSkills: SkillKey[];                            // 装備メニューで選んだスキル(最大2・永続)
   setPendingSkills: (keys: SkillKey[]) => void;
   ownedSkills: SkillKey[];                              // ガチャで解禁済みスキル(永続)。装備候補はここから。
+  ownedSkillLevels: Partial<Record<SkillKey, number>>;  // 所持スキルのLv(ガチャ重複で上昇・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
+  grantSkillLevel: (key: SkillKey, level: number) => boolean; // 解禁＋Lv上書き(既存より高ければ)。上がれば true
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
   addGold: (amount: number) => void;                    // ラン結果のゴールドを加算(永続)
   spendGold: (amount: number) => boolean;               // ガチャ消費。足りれば true
@@ -1643,6 +1699,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponLevels: {},
     subWeaponCooldowns: {},
     skills: [],
+    skillLevels: {},
     fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
@@ -1719,6 +1776,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingLoadout: loadStringArray(LOADOUT_SUBS_KEY) as SubWeaponKey[],
   pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).slice(0, 2),
   ownedSkills: loadStringArray(OWNED_SKILLS_KEY) as SkillKey[],
+  ownedSkillLevels: loadSkillLevels(),
   goldBalance: loadNumber(GOLD_BALANCE_KEY, 0),
   indoorMode: false,
   labDoors: [],
@@ -1868,7 +1926,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Inertia: ease the velocity toward the target. Player tau is 0 → fully
       // instant, responsive control. スキル: スケーター = 慣性1.2sで滑る(高リスク操作。
       // 社長指示で段階的に強化: 0.4→0.6→1.2)。
-      const inertiaTau = hasSkill(player, 'skater') ? 1.2 : PLAYER_INERTIA_TAU;
+      // スケーター: 速度×3は全Lv共通。Lvが上がるほど慣性(tau)を軽減し操作性を改善(Lv1:1.2/Lv2:0.8/Lv3:0.5)。
+      const skLv = skillLevel(player, 'skater');
+      const inertiaTau = skLv ? [PLAYER_INERTIA_TAU, 1.2, 0.8, 0.5][skLv] : PLAYER_INERTIA_TAU;
       const alpha = inertiaAlpha(deltaTime, inertiaTau);
       // 被弾ノックバック中は入力を無視して、減衰する弾き出し速度で滑る(ジャンプ攻撃被弾など)。
       const kbNow = Date.now();
@@ -2101,8 +2161,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
-    // スキル: カウンターマスター = カウンター窓 +0.5s(全アサイン地点で共通使用)。
-    const counterWindowMs = COUNTER_WINDOW + (hasSkill(player, 'counter-master') ? 500 : 0);
+    // スキル: カウンターマスター = カウンター窓延長(Lv1 +120ms / Lv2 +180ms / Lv3 +250ms)。
+    const cmLv = skillLevel(player, 'counter-master');
+    const counterWindowMs = COUNTER_WINDOW + (cmLv ? [0, 120, 180, 250][cmLv] : 0);
 
     // 近接スイングの揺れは「通常ヒット時のみ」(空振りは揺らさない/フィニッシュ・カウンターは
     // それぞれのインパクト演出に任せる)。判定が出揃う関数末尾で発火する(社長指示)。
@@ -2682,7 +2743,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage);
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
-      counterMasterKnockback(get, pcx, pcy);
+      counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
     }
     // スキル スラッシャーのリング開始はこの近接スイングの set()(player.slasherRingStartAt)で行う。
     // 追撃自体は「リングのジャスト窓でのタップ」で applySlasherTimedStrike が出す(自動ではない)。
@@ -2806,7 +2867,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // プレイヤーの装備スキル効果を分身の攻撃にも適用(リーパー波及/カウンターマスター/ヘビーガンナー)。
     applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage);
     get().registerMultiHit(slashAt.length); // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ
-    if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy);
+    if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy, counterMasterKbScale(player));
   },
 
   // 毎フレーム: 分身の自動近接(1秒ごと×最大5回)を進め、寿命(5秒)到達 or 回数上限で消滅。
@@ -3616,12 +3677,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (amount > 0) {
       const cur = get();
       const p = cur.player;
-      if (hasSkill(p, 'reflex') && cur.gameTime >= p.reflexCdUntil) {
+      const rfLv = skillLevel(p, 'reflex');
+      if (rfLv && cur.gameTime >= p.reflexCdUntil) {
         const pcx = p.x + p.width / 2;
         const pcy = p.y + p.height / 2;
         const exMult = skillExplosionMult(p);
-        const radius = REFLEX_BLAST_RADIUS * exMult;
-        const baseDmg = REFLEX_BLAST_DAMAGE * exMult;
+        const radius = [0, 92, 104, 116][rfLv] * exMult;
+        const baseDmg = [0, 60, 80, 100][rfLv] * exMult;
         get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, 56, 'rgba(56,189,248,', 360);
@@ -3643,7 +3705,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             get().knockbackEnemy(e.id, dx / nrm, dy / nrm, kbMult, kbMult);
           }
         }
-        set(state => ({ player: { ...state.player, reflexCdUntil: state.gameTime + 1000 } }));
+        set(state => ({ player: { ...state.player, reflexCdUntil: state.gameTime + [0, 1000, 800, 600][rfLv] } }));
       }
     }
 
@@ -4672,9 +4734,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // スキル: パニッシャー = ノックバック中の敵が他の敵に当たると巻き込む(同方向へ2倍ノックバック＋近接ダメージの半分)。
       // ただし「巻き込まれて」飛んだ敵(punisherHopped)は movers から除外=連鎖しない(1次まで・社長指示)。
       let finalEnemies = updatedEnemies;
-      if (hasSkill(player, 'punisher')) {
+      const punisherLv = skillLevel(player, 'punisher');
+      if (punisherLv) {
         const melee = player.weapons.find(w => w.isMelee);
-        punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * 0.5)); // 近接の半分
+        const punisherDmgMult = [0, 0.5, 0.7, 0.9][punisherLv];
+        const punisherKbMult = [0, 2, 2.5, 3][punisherLv];
+        punisherDmg = Math.max(1, Math.round((melee?.damage ?? 6) * strikerMeleeMult(player) * punisherDmgMult));
         const movers = updatedEnemies.filter(e =>
           e.knockbackUntil !== undefined && now < e.knockbackUntil && !e.punisherHopped &&
           Math.hypot(e.knockbackVx ?? 0, e.knockbackVy ?? 0) > 30);
@@ -4694,8 +4759,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             return {
               ...cleared,
               punisherHopped: true, // 連鎖防止の印
-              knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * 2,
-              knockbackVy: ((a.knockbackVy ?? 0) / d) * KNOCKBACK_SPEED * 2,
+              knockbackVx: ((a.knockbackVx ?? 0) / d) * KNOCKBACK_SPEED * punisherKbMult,
+              knockbackVy: ((a.knockbackVy ?? 0) / d) * KNOCKBACK_SPEED * punisherKbMult,
               knockbackUntil: now + KNOCKBACK_DURATION,
             };
           }
@@ -5317,7 +5382,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'strap':
         set(state => {
           // スキル: ゴールドラッシュ = 取得量 ×(1 + rand 0.10〜0.30)を取得毎にロール。
-          const goldRush = hasSkill(state.player, 'gold-rush') ? 1 + 0.10 + Math.random() * 0.20 : 1;
+          const grLv = skillLevel(state.player, 'gold-rush'); // ゴールド取得 +20%/35%/50%(Lv)
+          const goldRush = grLv ? [1, 1.2, 1.35, 1.5][grLv] : 1;
           return {
           player: {
             ...state.player,
@@ -5838,9 +5904,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const changed = id !== state.player.activeWeaponId;
       // スキル: 弁慶 = 武器切替で10s crit率+10%。終了後3sのCD中は再発動しない。
       const gt = state.gameTime;
+      const benkeiMs = skillBenkeiBuffMs(state.player); // 10/12/15s(Lv)
       const benkei =
         changed && hasSkill(state.player, 'benkei') && gt >= state.player.benkeiCdUntil
-          ? { benkeiBuffUntil: gt + 10000, benkeiCdUntil: gt + 10000 + 3000 }
+          ? { benkeiBuffUntil: gt + benkeiMs, benkeiCdUntil: gt + benkeiMs + 3000 }
           : {};
       return {
         player: {
@@ -6004,6 +6071,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     const next = [...owned, key];
     saveStringArray(OWNED_SKILLS_KEY, next);
     set({ ownedSkills: next });
+  },
+  // ガチャ: 解禁＋Lv反映。所持していなければ追加、Lv は max(既存, rolled) を最大Lvでクランプ。
+  // 既存Lv以上に上がった(=新規 or レベルアップ)場合のみ true(=返金しない)。
+  grantSkillLevel: (key, level) => {
+    const lv = Math.max(1, Math.min(skillMaxLevel(key), Math.floor(level)));
+    const owned = get().ownedSkills;
+    const levels = get().ownedSkillLevels;
+    const cur = owned.includes(key) ? (levels[key] ?? 1) : 0;
+    if (cur >= lv) return false; // 既存Lv以上は出なかった=重複扱い(返金)
+    const nextOwned = owned.includes(key) ? owned : [...owned, key];
+    const nextLevels = { ...levels, [key]: lv };
+    saveStringArray(OWNED_SKILLS_KEY, nextOwned);
+    saveSkillLevels(nextLevels);
+    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels });
+    return true;
   },
   addGold: (amount) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
@@ -6608,6 +6690,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const runSkills: SkillKey[] = state.danceTestMode
         ? []
         : Array.from(new Set<SkillKey>(state.pendingSkills)).slice(0, 2);
+      // 装備スキルのLvは所持Lv(ownedSkillLevels)を反映(未設定=1、最大Lvでクランプ)。
+      const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(
+        runSkills.map(k => [k, Math.max(1, Math.min(skillMaxLevel(k), state.ownedSkillLevels[k] ?? 1))])
+      );
       const runLevels: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
         ? { shijin: state.danceTestLevel }
         : Object.fromEntries(runSubs.map(k => [k, 1])) as Partial<Record<SubWeaponKey, number>>;
@@ -6736,6 +6822,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
           subWeapons: runSubs,
           skills: runSkills,
+          skillLevels: runSkillLevels,
           fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,

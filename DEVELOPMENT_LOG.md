@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.891 — スキルのレベル化(Lv1〜3／ガチャで直接排出)
+
+- 装備スキルに **Lv1〜3** を導入(`player.skillLevels` / `ownedSkillLevels` 永続)。シート1個目の効果値に準拠。
+- **ガチャがレベルを直接排出**: `rollSkillLevel(rarity, maxLv)` で 1〜3 を抽選。上位ほど低確率で、**レア度が高いほど高レベルがさらに出にくい**(weights normal `[70,22,8]` / rare `[80,16,4]` / super `[90,9,1]`)。
+  `reaper`・`bomber` は **Lv1固定**(`SKILL_MAX_LEVEL`)。既存Lv以下を引いた場合は更新されず**ゴールド返金**(`grantSkillLevel` が false)。
+- レベル別効果値を全スキルに反映(`skillLevel(player,key)` 参照):
+  - 攻防系: knight 被ダメ `0.8/0.7/0.6`、berserker `×1.25/1.5`(Lv2/3)、crit-up `+0.5/0.75/1.0`、exploder `×1.2/1.35/1.5`、time-keeper CD `0.9/0.8/0.7`、summon-hp `×1.5/1.75/2.0`。
+  - 弁慶 クリ `+0.05/0.10/0.15`＋バフ時間 `10/12/15s`、knife-master メレークリ `0.10/0.15/0.20`＋コンボ(+2%/+2%/+4%, 上限 +50/70/100%)、combo-master(rate +2/3/4%, 上限 +50/60/70%, 窓延長 +1000/1500/2000ms)。
+  - sniper 補正 `0.5/0.75/1.0`、skater 慣性 `1.2/0.8/0.5`、gold-rush `×1.2/1.35/1.5`、sharpshooter 貫通 `+Lv`、ghost-shooter 節約 `10/20/30%`、fire-shooter `20/25/30%`。
+  - reflex(CD `1000/800/600`・dmg `60/80/100`・半径 `92/104/116`)、punisher(dmg `50/70/90%`・KB `×2/2.5/3`)、ricochet(`20/30/40%`・dmg `×0.5/0.6/0.7`)、bomb-counter(dmg `×1/1.25/1.5`・範囲 `×1/1.15/1.3`)、counter-master(窓 `+120/180/250ms`・KB `×2/2.5/3`)、dog-run(Lv1 CD半減/Lv2 CD0/Lv3 CD0+射程無限)、slasher(連数 `1/2/3`)。
+- UI: ガチャ結果と装備画面のスキルに **Lv表示**。説明文にレベル排出ルールを追記。
+- パフォーマンス負荷: **1/10**(数値テーブル参照のみ。新規ループ/描画なし。simulation)。
+- 検証: typecheck / lint / test(33 passed+1 skipped・skills.test.ts にレベル別/ガチャ抽選テスト追加) / build すべて green。
+
 ## v0.25.890 — 制圧の軍人セリフを「時間停止+吹き出し」(ミッション開始形式)に流用
 
 - 軍人の確保/撤退セリフを `spawnCallout` から **introDialogue(ミッション開始と同じ時間停止+オートタイプ吹き出し)** に変更。

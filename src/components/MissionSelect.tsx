@@ -11,7 +11,7 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
-  GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, RARITY_LABEL, rollGachaSkill, type SkillRarity, type Stage
+  GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, RARITY_LABEL, rollGachaSkill, rollSkillLevel, skillMaxLevel, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore
@@ -87,6 +87,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const equippedSubs = useGameStore(state => state.pendingLoadout);
   const equippedSkills = useGameStore(state => state.pendingSkills);
   const ownedSkills = useGameStore(state => state.ownedSkills);
+  const ownedSkillLevels = useGameStore(state => state.ownedSkillLevels);
   const setPendingLoadout = useGameStore(state => state.setPendingLoadout);
   const setPendingSkills = useGameStore(state => state.setPendingSkills);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
@@ -376,7 +377,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       }`}
                     >
                       <span className="flex w-full items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold">{SKILLS[k].name}</span>
+                        <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">Lv{ownedSkillLevels[k] ?? 1}</span></span>
                         {on && <Check size={15} className="shrink-0" />}
                       </span>
                       <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>
@@ -686,11 +687,11 @@ const DevTools: React.FC<{
 
 // === スキルガチャ(武器開発トップに組み込み) ===========================
 // ゴールド残高で1回引く。当選=所持解禁、重複=レア度別ゴールド返金。
-type GachaResult = { key: SkillKey; rarity: SkillRarity; duplicate: boolean; refund: number };
+type GachaResult = { key: SkillKey; rarity: SkillRarity; level: number; duplicate: boolean; refund: number };
 const SkillGacha: React.FC = () => {
   const goldBalance = useGameStore(s => s.goldBalance);
   const ownedCount = useGameStore(s => s.ownedSkills.length);
-  const grantSkill = useGameStore(s => s.grantSkill);
+  const grantSkillLevel = useGameStore(s => s.grantSkillLevel);
   const spendGold = useGameStore(s => s.spendGold);
   const addGold = useGameStore(s => s.addGold);
   const [result, setResult] = useState<GachaResult | null>(null);
@@ -702,14 +703,16 @@ const SkillGacha: React.FC = () => {
     if (GACHA_PULL_COST > 0 && !spendGold(GACHA_PULL_COST)) { setNoGold(true); setResult(null); return; }
     const key = rollGachaSkill();
     const rarity = SKILLS[key].rarity;
-    const duplicate = useGameStore.getState().ownedSkills.includes(key);
-    if (duplicate) {
+    // レベルを直接抽選(上位ほど低確率・レア度でさらに低下)。一部スキルは Lv1 固定。
+    const level = rollSkillLevel(rarity, skillMaxLevel(key));
+    // 既存レベル以下なら更新されず false → 重複扱いでゴールド返金。
+    const upgraded = grantSkillLevel(key, level);
+    if (!upgraded) {
       const refund = GACHA_REFUND_BY_RARITY[rarity];
       addGold(refund);
-      setResult({ key, rarity, duplicate, refund });
+      setResult({ key, rarity, level, duplicate: true, refund });
     } else {
-      grantSkill(key);
-      setResult({ key, rarity, duplicate, refund: 0 });
+      setResult({ key, rarity, level, duplicate: false, refund: 0 });
     }
   };
 
@@ -720,7 +723,7 @@ const SkillGacha: React.FC = () => {
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
       <p className="text-[10px] leading-snug text-white/50 mb-2">
-        装備スキルをゴールドで解禁。{RARITY_LABEL.normal}60% / {RARITY_LABEL.rare}35% / {RARITY_LABEL.super}5%。重複はゴールド返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
+        装備スキルをゴールドで解禁。{RARITY_LABEL.normal}60% / {RARITY_LABEL.rare}35% / {RARITY_LABEL.super}5%。Lv1〜3が直接排出（上位ほど低確率・レア度でさらに低下／一部スキルはLv1のみ）。既存Lv以下は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
       </p>
       <button
         type="button"
@@ -738,12 +741,12 @@ const SkillGacha: React.FC = () => {
       {result && (
         <div className={`mt-2 rounded-xl border px-3 py-2 ${RARITY_BORDER[result.rarity]} bg-black/20`}>
           <div className="flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-white">{SKILLS[result.key].name}</span>
+            <span className="text-[13px] font-semibold text-white">{SKILLS[result.key].name} <span className="text-amber-200">Lv{result.level}</span></span>
             <span className={`text-[10px] font-semibold uppercase tracking-wider ${RARITY_TEXT[result.rarity]}`}>{RARITY_LABEL[result.rarity]}</span>
           </div>
           <p className="text-[10px] leading-snug text-white/55 mt-0.5">{SKILLS[result.key].desc}</p>
           <p className={`text-[11px] mt-1 font-semibold ${result.duplicate ? 'text-amber-200' : 'text-emerald-300'}`}>
-            {result.duplicate ? `重複 → ${result.refund} ゴールド返金` : '新規解禁！'}
+            {result.duplicate ? `Lv${result.level}以下のため → ${result.refund} ゴールド返金` : `Lv${result.level} 解禁！`}
           </p>
         </div>
       )}
