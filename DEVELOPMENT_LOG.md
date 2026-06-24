@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.916 — ガチャ破裂をレア度で段階演出(引きのドラマ／最大のwebっぽさ解消)
+
+- これまで破裂は当たりでもハズレでも同じ(白フラッシュ＋灰破片)＝一番webっぽい無味さだった。
+- 引いた中の**最高レア度**で破裂をエスカレート(`bestRarity`):
+  - normal: 従来どおり(白フラッシュ・灰破片12)。
+  - rare: 水色フラッシュ・水色破片16・広がる水色リング1・SE `homing-lock2` 追加。
+  - super: 金フラッシュ・金破片22(飛距離増)・金＋赤紫の二重リング・**背後に広がる金色グロー**・
+    **画面シェイク**・SE `heavy-impact`＋`event-clear`(クリアファンファーレ)を追加。
+- 実装: `BURST_FX` 設定表＋CSS(`gacha-burst-ring`/`gacha-burst-glow`/`gacha-burst-shake`)。
+- 負荷 **1/10**: すべて一発・自動停止(~800ms)、要素数上限(破片≤22＋リング≤2＋光1)、per-frame処理なし。
+- 検証: typecheck/lint/test/build 全green。
+- 残: 開発施設リスト等の全画面スクロール依存UIをページング/コンテナ化(順次)。
+
 ## v0.25.915 — ガチャ排出結果を「矢印めくり」に再設計(スクロール撤廃・ネイティブ感)
 
 - ユーザー指摘:「排出結果は専用画面で」「多くのゲームは矢印で見せる」「全画面スクロールはブラウザっぽい」。

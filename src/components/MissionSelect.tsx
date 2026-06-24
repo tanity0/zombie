@@ -698,6 +698,18 @@ const REVEAL_BY_RARITY: Record<SkillRarity, RevealCfg> = {
   super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 1850, ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
 };
 
+// 破裂演出のレア度段階: 引いた中の最高レア度で 色/フラッシュ/破片量/リング/光/揺れ をエスカレートする。
+// すべてCSS駆動の一発演出・要素数に上限あり(破片≤22+リング≤2+光1)・~800msで停止=負荷1/10。
+const RARITY_RANK: Record<SkillRarity, number> = { normal: 0, rare: 1, super: 2 };
+const bestRarity = (rs: GachaPullResult[]): SkillRarity =>
+  rs.reduce<SkillRarity>((m, r) => (RARITY_RANK[r.rarity] > RARITY_RANK[m] ? r.rarity : m), 'normal');
+type BurstCfg = { dim: string; flash: string; shard: string; shardCount: number; distBonus: number; shake: boolean; rings: string[]; glow: boolean };
+const BURST_FX: Record<SkillRarity, BurstCfg> = {
+  normal: { dim: 'bg-black/90', flash: 'bg-white',     shard: 'bg-slate-200/90', shardCount: 12, distBonus: 0,  shake: false, rings: [],                                          glow: false },
+  rare:   { dim: 'bg-black/90', flash: 'bg-sky-200',   shard: 'bg-sky-200/90',   shardCount: 16, distBonus: 14, shake: false, rings: ['border-sky-300/70'],                       glow: false },
+  super:  { dim: 'bg-black/92', flash: 'bg-amber-200', shard: 'bg-amber-200/95', shardCount: 22, distBonus: 30, shake: true,  rings: ['border-amber-300/80', 'border-fuchsia-300/55'], glow: true  },
+};
+
 const SkillGacha: React.FC = () => {
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
   const goldBalance = useGameStore(s => s.goldBalance);
@@ -725,6 +737,10 @@ const SkillGacha: React.FC = () => {
       got.push(r);
     }
     playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
+    // レア度で着弾音をエスカレート(rare=ロック音 / super=重着弾＋クリアファンファーレ)。
+    const best = bestRarity(got);
+    if (best === 'rare') playSfx('homing-lock2');
+    else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
     setIdx(0);
     setResults(got);     // リザルトは確定(暗転は破裂後に出す)
     setBursting(true);   // まず破裂演出
@@ -756,27 +772,37 @@ const SkillGacha: React.FC = () => {
   const superPct = gachaSuperPercent(pity);
   const pityLeft = gachaPityRemaining(pity);
 
-  // --- 撃つ→的が破裂する演出 ------------------------------------------
+  // --- 撃つ→的が破裂する演出(レア度でエスカレート) --------------------
   if (bursting) {
-    // 中心から飛び散る破片(12枚)。--tx/--ty で方向を渡す(CSS駆動)。
-    const shards = Array.from({ length: 12 }, (_, i) => {
-      const ang = (Math.PI * 2 * i) / 12;
-      const dist = 96 + (i % 3) * 26;
+    const best = bestRarity(results ?? []);
+    const fx = BURST_FX[best];
+    // 中心から飛び散る破片。--tx/--ty で方向を渡す(CSS駆動)。レア度で枚数・飛距離が増える。
+    const shards = Array.from({ length: fx.shardCount }, (_, i) => {
+      const ang = (Math.PI * 2 * i) / fx.shardCount;
+      const dist = 96 + (i % 3) * 26 + fx.distBonus;
       return { tx: Math.cos(ang) * dist, ty: Math.sin(ang) * dist, i };
     });
     // body 直下へポータル。施設リストの scroll/transform から切り離した真の専用フルスクリーン演出にする。
     return createPortal(
-      <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black/90">
-        <div className="relative flex items-center justify-center" style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
+      <div className={`gacha-dim fixed inset-0 z-50 flex items-center justify-center ${fx.dim}`}>
+        <div className={`relative flex items-center justify-center ${fx.shake ? 'gacha-burst-shake' : ''}`} style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
+          {/* super: 背後に広がる金色の光(レア度演出の主役) */}
+          {fx.glow && (
+            <span className="gacha-burst-glow absolute inset-[-30%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.55), rgba(251,191,36,0) 70%)' }} />
+          )}
+          {/* rare/super: 広がる色付きリング(複数で厚みを出す) */}
+          {fx.rings.map((ringCls, k) => (
+            <span key={k} className={`gacha-burst-ring absolute h-44 w-44 rounded-full border-2 ${ringCls}`} style={{ animationDelay: `${k * 90}ms` }} />
+          ))}
           <img src={targetSrc} alt="" className="gacha-target-burst absolute inset-0 h-full w-full object-contain" />
           {shards.map(s => (
             <span
               key={s.i}
-              className="gacha-shard absolute h-2.5 w-2.5 rounded-[2px] bg-slate-200/90"
+              className={`gacha-shard absolute h-2.5 w-2.5 rounded-[2px] ${fx.shard}`}
               style={{ ['--tx' as string]: `${s.tx}px`, ['--ty' as string]: `${s.ty}px` }}
             />
           ))}
-          <span className="gacha-flash absolute inset-0 rounded-full bg-white" style={{ filter: 'blur(8px)' }} />
+          <span className={`gacha-flash absolute inset-0 rounded-full ${fx.flash}`} style={{ filter: 'blur(8px)' }} />
         </div>
       </div>,
       document.body

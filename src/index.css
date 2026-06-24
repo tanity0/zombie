@@ -289,6 +289,27 @@
   100% { transform: translate(var(--tx), var(--ty)) scale(0.3) rotate(160deg); opacity: 0; }
 }
 .gacha-shard { animation: gacha-shard 0.7s ease-out forwards; }
+/* レア度エスカレート(rare/super): 広がるリング・金色の光・画面揺れ。すべて一発・自動停止=負荷1/10。 */
+@keyframes gacha-burst-ring {
+  0%   { transform: scale(0.2); opacity: 0; }
+  18%  { opacity: 0.9; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.gacha-burst-ring { animation: gacha-burst-ring 0.7s ease-out forwards; }
+@keyframes gacha-burst-glow {
+  0%   { opacity: 0; transform: scale(0.4); }
+  15%  { opacity: 0.9; }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+.gacha-burst-glow { animation: gacha-burst-glow 0.8s ease-out forwards; }
+@keyframes gacha-burst-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(3px, -3px); }
+  60% { transform: translate(-3px, -2px); }
+  80% { transform: translate(2px, 3px); }
+}
+.gacha-burst-shake { animation: gacha-burst-shake 0.5s ease-in-out; }
 
 /* 射撃練習場「撃つ」テキストの呼吸グロー(ボタン見た目にせずタップ可を示す。CSSのみ・常駐1要素=負荷1/10) */
 @keyframes gacha-shoot-text {
