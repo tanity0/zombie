@@ -706,7 +706,7 @@ const SkillGacha: React.FC = () => {
   const pullGacha = useGameStore(s => s.pullGacha);
   const [pendingCount, setPendingCount] = useState<1 | 10 | null>(null); // 選択した訓練回数(=射撃練習場へ遷移中)
   const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(射撃場表示)
-  const [skipped, setSkipped] = useState(false); // スキップ=演出無しで全て即表示
+  const [idx, setIdx] = useState(0); // 排出結果のページ(矢印めくり。スクロールは使わない)
   const [bursting, setBursting] = useState(false); // 撃つ→的が破裂する演出中(results確定済み・暗転前)
   const [noGold, setNoGold] = useState(false);
 
@@ -725,67 +725,33 @@ const SkillGacha: React.FC = () => {
       got.push(r);
     }
     playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
-    setSkipped(false);
+    setIdx(0);
     setResults(got);     // リザルトは確定(暗転は破裂後に出す)
     setBursting(true);   // まず破裂演出
     setTimeout(() => setBursting(false), BURST_MS);
   };
-  const closeReveal = () => { setResults(null); setSkipped(false); setBursting(false); setPendingCount(null); };
+  const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); };
 
-  // 実機は touch-action:none のフルスクリーン(ブラウザのスクロール不可)。リザルトは
-  // ネイティブスクロールを使わず、translateY の「カメラ」で見せる。10連だとカードが画面外に
-  // 伸びるので、各カードが出るタイミングでカメラがそのカードを中央へパンして追いかける。
-  // パン後は指ドラッグでも見返せる(touch-action:none で touch は自前ハンドラに来る=ジョイスティックと同じ)。
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const filmRef = useRef<HTMLDivElement | null>(null);
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [camY, setCamY] = useState(0);          // カメラのY(translateY)。0=先頭、負=下へ
-  const [dragging, setDragging] = useState(false); // ドラッグ中はtransition切ってカメラを指に追従
-  const drag = useRef<{ startY: number; startCam: number; active: boolean }>({ startY: 0, startCam: 0, active: false });
-
-  // 現在のフィルム/ビューポート実測から、カメラYを範囲[ minY, 0 ]に収める。
-  const clampCam = (y: number) => {
-    const vp = viewportRef.current, film = filmRef.current;
-    if (!vp || !film) return Math.min(0, y);
-    const minY = Math.min(0, vp.clientHeight - film.scrollHeight);
-    return Math.max(minY, Math.min(0, y));
-  };
-  // i番目のカードがビューポート中央に来るカメラY(範囲内にクランプ)。
-  const camForCard = (i: number) => {
-    const vp = viewportRef.current, card = cardRefs.current[i];
-    if (!vp || !card) return camY;
-    const center = card.offsetTop + card.offsetHeight / 2;
-    return clampCam(vp.clientHeight / 2 - center);
-  };
-
-  // 暗転演出中(results在り)・スキップ前・破裂後のみカメラが順に追いかける。
+  // 排出結果は「矢印めくり」で1枚ずつ見せる(スクロール無し=ネイティブ感)。破裂明けで先頭(0)から、
+  // レア度のテンポで自動的にめくり進む。以後は ◀▶ で前後に見返せる(手動操作で自動送りは停止)。
+  const revealTimers = useRef<number[]>([]);
+  const clearRevealTimers = () => { revealTimers.current.forEach(clearTimeout); revealTimers.current = []; };
   useEffect(() => {
-    if (!results || skipped || bursting) return;
-    setCamY(0); // 先頭から
+    if (!results || bursting) return;
+    setIdx(0);
+    clearRevealTimers();
     let acc = 0;
-    const timers = results.map((r, i) => {
-      const delay = acc;
-      acc += REVEAL_BY_RARITY[r.rarity].step;
-      return setTimeout(() => { if (!drag.current.active) setCamY(camForCard(i)); }, delay);
-    });
-    return () => { timers.forEach(clearTimeout); };
-    // camForCard はカメラ実測の都度参照(camY依存)。ここで依存に入れるとパンの度に
-    // タイマーが張り直され追従が壊れるため、リザルト開始時のみ実行する。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, skipped, bursting]);
-  // スキップ時は先頭へ戻し、あとは指ドラッグで見返す。
-  useEffect(() => { if (skipped) setCamY(0); }, [skipped]);
-
-  const onCamPointerDown = (e: React.PointerEvent) => {
-    drag.current = { startY: e.clientY, startCam: camY, active: true };
-    setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    for (let i = 1; i < results.length; i++) {
+      acc += REVEAL_BY_RARITY[results[i].rarity].step;
+      revealTimers.current.push(window.setTimeout(() => setIdx(i), acc));
+    }
+    return clearRevealTimers;
+  }, [results, bursting]);
+  // ◀▶ で前後にめくる(手動操作したら自動送りは止める)。
+  const pageBy = (d: number) => {
+    clearRevealTimers();
+    setIdx(i => Math.max(0, Math.min((results?.length ?? 1) - 1, i + d)));
   };
-  const onCamPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return;
-    setCamY(clampCam(drag.current.startCam + (e.clientY - drag.current.startY)));
-  };
-  const onCamPointerUp = () => { drag.current.active = false; setDragging(false); };
 
   const superPct = gachaSuperPercent(pity);
   const pityLeft = gachaPityRemaining(pity);
@@ -817,103 +783,97 @@ const SkillGacha: React.FC = () => {
     );
   }
 
-  // --- 暗転リザルト演出 ------------------------------------------------
+  // --- 排出結果(矢印めくり・スクロール無しの専用全画面) ----------------
+  // 多くのゲームと同様、1枚ずつ中央に大きく見せて ◀▶ でめくる(全画面スクロールを使わない)。
+  // 破裂明けにレア度テンポで自動送り→以後は矢印/タップで前後に見返せる。body直下へポータル。
   if (results) {
-    // 各カードの出現タイミング(累積)を算出。名前=step累積、レベル=名前+beat。
-    let acc = 0;
-    const timed = results.map(r => {
-      const cfg = REVEAL_BY_RARITY[r.rarity];
-      const nameDelay = acc;
-      acc += cfg.step;
-      return { r, cfg, nameDelay, levelDelay: nameDelay + cfg.beat };
-    });
-    // 排出結果は body 直下へポータル＝施設の scroll/transform から独立した専用画面にする。
+    const total = results.length;
+    const cur = Math.max(0, Math.min(idx, total - 1));
+    const r = results[cur];
+    const cfg = REVEAL_BY_RARITY[r.rarity];
+    const maxLv = skillMaxLevel(r.key);
+    const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
+    const lvlCls = r.newLevel >= 3 ? 'gacha-lvl-pop3' : 'gacha-lvl-pop';
+    const lvlColor = r.newLevel >= 3 ? 'text-amber-300' : r.newLevel === 2 ? 'text-sky-200' : 'text-white';
+    const atFirst = cur === 0;
+    const atLast = cur === total - 1;
     return createPortal(
       <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
-        <p className="px-4 pt-4 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
-        {results.length > 3 && <p className="pb-1 text-center text-[10px] text-white/35">↕ ドラッグで確認</p>}
-        {/* カメラ窓(ネイティブスクロール不使用・overflow隠し)。中の film を translateY でパン。 */}
+        <p className="px-4 pt-5 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
+
+        {/* 中央に1枚ずつ。◀▶でめくる(スクロール無し)。中央タップでも次へ。 */}
         <div
-          ref={viewportRef}
-          className="relative flex-1 overflow-hidden touch-none"
-          onPointerDown={onCamPointerDown}
-          onPointerMove={onCamPointerMove}
-          onPointerUp={onCamPointerUp}
-          onPointerCancel={onCamPointerUp}
+          className="relative flex flex-1 items-center justify-center px-3"
+          onClick={() => { if (!atLast) pageBy(1); }}
         >
-          <div
-            ref={filmRef}
-            className="absolute left-1/2 top-0 flex w-full max-w-md flex-col gap-2 px-4 py-4"
-            style={{ transform: `translateX(-50%) translateY(${camY}px)`, transition: dragging ? 'none' : 'transform 0.45s cubic-bezier(0.22,1,0.36,1)', willChange: 'transform' }}
-          >
-            {timed.map(({ r, cfg, nameDelay, levelDelay }, i) => {
-              const maxLv = skillMaxLevel(r.key);
-              const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
-              const lvlCls = r.newLevel >= 3 ? 'gacha-lvl-pop3' : 'gacha-lvl-pop';
-              const lvlColor = r.newLevel >= 3 ? 'text-amber-300' : r.newLevel === 2 ? 'text-sky-200' : 'text-white';
-              // skipped=演出無しで即表示(アニメクラス/遅延を外す→.gacha-card等のopacity:0が効かず通常表示)。
-              const cardCls = skipped ? '' : `gacha-card ${cfg.nameCls}`;
-              const lvlAnimCls = skipped ? '' : `gacha-lvl ${lvlCls}`;
-              return (
-                <div
-                  key={i}
-                  ref={el => { cardRefs.current[i] = el; }}
-                  className={`rounded-xl border bg-black/40 px-3 py-2 ${cfg.ring} ${cardCls}`}
-                  style={skipped ? undefined : { animationDelay: `${nameDelay}ms` }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[15px] font-bold text-white">
-                      {SKILLS[r.key].name}
-                      <span className={`${lvlAnimCls} ml-2 text-[17px] font-extrabold ${lvlColor}`} style={skipped ? undefined : { animationDelay: `${levelDelay}ms` }}>
-                        Lv{r.newLevel}
-                      </span>
-                      {r.firstAcquire && <span className="ml-2 align-middle rounded-md border border-emerald-300/60 bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">New</span>}
-                    </span>
-                    <span className="flex flex-col items-end">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[10px] leading-snug text-white/55">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
-                  <p className={`mt-0.5 text-[11px] font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
-                    {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
-                      : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`
-                      : `抽選Lv${r.rolledLevel}（現Lv${r.prevLevel}以下/上限）→ ${r.refund}G返金`}
-                  </p>
-                  <p className="mt-0.5 text-[10px] leading-snug text-white/45">
-                    被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="border-t border-white/10 bg-black/60 p-3">
-          {!skipped ? (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setSkipped(true)}
-                className="rounded-xl border border-white/15 bg-white/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-white/10"
-              >
-                スキップ
-              </button>
-              <button
-                type="button"
-                onClick={closeReveal}
-                className="rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
-              >
-                とじる
-              </button>
-            </div>
-          ) : (
+          {total > 1 && (
             <button
               type="button"
-              onClick={closeReveal}
-              className="w-full rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+              aria-label="前へ"
+              disabled={atFirst}
+              onClick={(e) => { e.stopPropagation(); pageBy(-1); }}
+              className={`absolute left-1 z-10 flex h-12 w-12 items-center justify-center rounded-full text-4xl font-bold leading-none ${atFirst ? 'text-white/15' : 'text-white/80 active:scale-90'}`}
             >
-              とじる
+              ‹
             </button>
           )}
+
+          <div
+            key={cur}
+            className={`gacha-card ${cfg.nameCls} w-full max-w-sm rounded-2xl border bg-black/40 px-5 py-6 ${cfg.ring}`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-[11px] font-bold uppercase tracking-[0.2em] ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
+              {r.firstAcquire && <span className="rounded-md border border-emerald-300/60 bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">New</span>}
+            </div>
+            <div className="mt-2 flex items-baseline gap-3">
+              <span className="text-[22px] font-extrabold text-white">{SKILLS[r.key].name}</span>
+              <span className={`gacha-lvl ${lvlCls} text-[26px] font-extrabold ${lvlColor}`} style={{ animationDelay: `${cfg.beat}ms` }}>
+                Lv{r.newLevel}
+              </span>
+            </div>
+            <p className="mt-2 text-[12px] leading-snug text-white/60">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
+            <p className={`mt-2 text-[13px] font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
+              {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
+                : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`
+                : `抽選Lv${r.rolledLevel}（現Lv${r.prevLevel}以下/上限）→ ${r.refund}G返金`}
+            </p>
+            <p className="mt-1 text-[11px] leading-snug text-white/45">
+              被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}
+            </p>
+          </div>
+
+          {total > 1 && (
+            <button
+              type="button"
+              aria-label="次へ"
+              disabled={atLast}
+              onClick={(e) => { e.stopPropagation(); pageBy(1); }}
+              className={`absolute right-1 z-10 flex h-12 w-12 items-center justify-center rounded-full text-4xl font-bold leading-none ${atLast ? 'text-white/15' : 'text-white/80 active:scale-90'}`}
+            >
+              ›
+            </button>
+          )}
+        </div>
+
+        {/* ページ位置インジケータ(ドット＋カウンタ)。スクロールバーの代わり。 */}
+        {total > 1 && (
+          <div className="flex items-center justify-center gap-1.5 pb-1">
+            {results.map((_rr, i) => (
+              <span key={i} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: i === cur ? 'rgba(244,114,182,0.95)' : 'rgba(255,255,255,0.22)' }} />
+            ))}
+          </div>
+        )}
+        {total > 1 && <p className="pb-1 text-center text-[10px] tracking-wider text-white/35">{cur + 1} / {total}</p>}
+
+        <div className="border-t border-white/10 bg-black/60 p-3">
+          <button
+            type="button"
+            onClick={closeReveal}
+            className="w-full rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+          >
+            とじる
+          </button>
         </div>
       </div>,
       document.body

@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.915 — ガチャ排出結果を「矢印めくり」に再設計(スクロール撤廃・ネイティブ感)
+
+- ユーザー指摘:「排出結果は専用画面で」「多くのゲームは矢印で見せる」「全画面スクロールはブラウザっぽい」。
+- 旧: translateYカメラ＋指ドラッグで全カードを縦に流す(スクロール的)→ **撤廃**。
+- 新: **1枚ずつ中央に大きく提示し ◀▶ でめくる**ページング。スクロール一切なし。
+  - 破裂明けにレア度テンポ(REVEAL_BY_RARITY.step)で**自動送り**→以後は矢印/中央タップで前後に見返せる
+    (手動操作で自動送りは停止)。
+  - 下部に**ドット＋「n / total」**のページ位置インジケータ(スクロールバーの代わり)。
+  - カード出現は `key={idx}` で都度リビール再生(既存 gacha-card / gacha-name-* / gacha-lvl-pop を流用)。
+  - 1連は矢印なし・単体表示。`createPortal(document.body)` の専用全画面は維持。
+- 削除: camera/drag 一式(camY/dragging/viewportRef/filmRef/cardRefs/clampCam/camForCard/onCamPointer*)と
+  `skipped` 状態。コード簡素化。
+- 検証: typecheck/lint/test/build 全green。
+- 次手候補: 選択した「レア度で段階演出」(破裂の色/光/SE をレア度で段階化)。開発施設リスト等の
+  全画面スクロール依存も順次ページング/コンテナ化していく。
+
 ## v0.25.914 — [重大バグ修正] ガチャ画面が下に張り付いて操作不能になる罠を解消＋専用画面化
 
 - **症状**: 開発施設リストをスクロール→撃つ等をタップ→撃つ/破裂/結果が画面下に張り付き、
