@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play, Sparkles
 } from 'lucide-react';
@@ -797,7 +798,8 @@ const SkillGacha: React.FC = () => {
       const dist = 96 + (i % 3) * 26;
       return { tx: Math.cos(ang) * dist, ty: Math.sin(ang) * dist, i };
     });
-    return (
+    // body 直下へポータル。施設リストの scroll/transform から切り離した真の専用フルスクリーン演出にする。
+    return createPortal(
       <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black/90">
         <div className="relative flex items-center justify-center" style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
           <img src={targetSrc} alt="" className="gacha-target-burst absolute inset-0 h-full w-full object-contain" />
@@ -810,7 +812,8 @@ const SkillGacha: React.FC = () => {
           ))}
           <span className="gacha-flash absolute inset-0 rounded-full bg-white" style={{ filter: 'blur(8px)' }} />
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
@@ -824,7 +827,8 @@ const SkillGacha: React.FC = () => {
       acc += cfg.step;
       return { r, cfg, nameDelay, levelDelay: nameDelay + cfg.beat };
     });
-    return (
+    // 排出結果は body 直下へポータル＝施設の scroll/transform から独立した専用画面にする。
+    return createPortal(
       <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
         <p className="px-4 pt-4 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
         {results.length > 3 && <p className="pb-1 text-center text-[10px] text-white/35">↕ ドラッグで確認</p>}
@@ -911,7 +915,8 @@ const SkillGacha: React.FC = () => {
             </button>
           )}
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
@@ -927,7 +932,8 @@ const SkillGacha: React.FC = () => {
   // 画面のどこを押しても発射(戻る除く)→破裂→暗転リザルト(上の分岐)へ。
   if (pendingCount !== null) {
     const cantPull = goldBalance < GACHA_PULL_COST * pendingCount;
-    return (
+    // 撃つ画面も body 直下へポータル(施設の scroll/transform から独立した専用フルスクリーン)。
+    return createPortal(
       <div
         className="gacha-dim fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black"
         role="button"
@@ -966,7 +972,8 @@ const SkillGacha: React.FC = () => {
           </span>
           {noGold && <p className="text-[11px] text-rose-300">ゴールドが足りません。</p>}
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 

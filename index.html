@@ -63,6 +63,17 @@
         -webkit-user-drag: none;
         -webkit-touch-callout: none;
       }
+      /* ネイティブ感: ブラウザのスクロールバーを隠す(スクロール自体は touch/drag で維持)。
+         可視のスクロールバーは"webっぽさ"の元なので全要素で非表示にする。 */
+      * {
+        scrollbar-width: none;          /* Firefox */
+        -ms-overflow-style: none;       /* 旧Edge/IE */
+      }
+      *::-webkit-scrollbar {            /* WebKit(iOS Safari/Chrome) */
+        width: 0;
+        height: 0;
+        display: none;
+      }
     </style>
   </head>
   <body>

@@ -258,11 +258,14 @@
 /* ネイティブ感: トップレベル画面(メニュー/ゲームオーバー等)の出現を軽くフェード＋微スケールで
    イーズインする。ハードカット(=web/プロトタイプ感)を消す。マウント時の見た目だけで、状態遷移や
    ゲームのライフサイクル・操作可否には一切触れない(純コスメ)。 */
+/* 注意: transform を使わないこと。transform/filter を持つ要素は子孫の position:fixed の
+   含有ブロックになり、スクロール中のフルスクリーンoverlay(ガチャ等)が viewport ではなく
+   この要素基準に化けて「下に張り付いて操作不能」バグになる(v0.25.912で発生)。フェードは opacity のみ。 */
 @keyframes screen-in {
-  from { opacity: 0; transform: scale(1.012); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-.screen-in { animation: screen-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.screen-in { animation: screen-in 220ms ease-out both; }
 @media (prefers-reduced-motion: reduce) {
   .screen-in { animation: none; }
 }

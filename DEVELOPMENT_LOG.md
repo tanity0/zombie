@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.914 — [重大バグ修正] ガチャ画面が下に張り付いて操作不能になる罠を解消＋専用画面化
+
+- **症状**: 開発施設リストをスクロール→撃つ等をタップ→撃つ/破裂/結果が画面下に張り付き、
+  背景が薄く見えるだけで操作不能になる。
+- **原因(v0.25.912の自爆)**: `.screen-in` が `transform: scale(1)` を `both` で残し、これを付けた
+  スクロール中の `Shell`(MissionSelectルート)が、子孫の `position:fixed`(ガチャoverlay)の含有ブロックに
+  化けていた。結果 `fixed inset-0` が viewport ではなくスクロール済みShell基準になり位置が崩れた。
+- **修正**:
+  1. `.screen-in` を **opacity のみ**に変更(transform撤去)。フェードは維持。再発防止コメントも追記。
+  2. ガチャの 撃つ/破裂/**排出結果** overlay を **`createPortal(..., document.body)`** で body直下へ。
+     施設の scroll/transform から独立した**真の専用フルスクリーン**にする(ユーザー要望「結果は専用画面で」)。
+  3. ブラウザの**スクロールバーを全要素で非表示**(`scrollbar-width:none` / `::-webkit-scrollbar`)。
+     スクロール機能は touch/drag で維持。"webっぽさ"の元を除去。
+- 検証: typecheck/lint/test/build 全green。
+- 次手(予告): 排出結果を**矢印めくり(ページング)・スクロール無し**に再設計(多くのゲーム式)。
+  全画面スクロール依存UIも順次ページング/コンテナ化していく方針。
+
 ## v0.25.913 — 本丸(描画メソッド改修): 強glowを毎フレGraphics→プールspriteへ
 
 - ネイティブ感の本丸=フレームペーシング改善。調査の結果、**最悪要素だったダメージ数字(FX-D)は既に
