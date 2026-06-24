@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.889 — 制圧: 各拠点の軍人に名前＋制圧/撤退セリフ
+
+- `BASE_SOLDIERS`(base-0..7 に対応)を追加。名前/セリフは**制圧時**と**撤退時(拠点喪失)**のコールアウトでのみ出る。
+  エドガー/ジョセフ/エリザベス/武蔵/オクラホマ/チェン/ローレン/フェイザー。
+- 拠点喪失は「死亡」ではなく「撤退」(実体はもともと描画のみ＝挙動変更なし、セリフ文言のみ)。
+- `soldierForSite('base-N')` で名簿引き。制圧/陥落コールアウトを `名前「セリフ」` に。
+- 検証: typecheck / lint / test / build すべて green。
+
 ## v0.25.888 — 制圧イベント実装 + ステージ1メインミッション化
 
 既存 baseSites(v0.25.829)を拡張し、確定指示 v2 の制圧イベントを実装。**suppressionActive 時のみ有効**(通常は拠点なし)。

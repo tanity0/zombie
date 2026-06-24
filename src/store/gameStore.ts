@@ -119,6 +119,22 @@ const SUPP_REGEN_PER_SEC = 14;          // プレイヤー在内/安全地帯の
 const SUPP_ATTACKER_RESPAWN_MS = 30000; // 攻撃者撃破後の再湧き(この間は被ダメ無し)
 const SUPP_SOLDIER_INTERVAL_MS = 900;   // 軍人の射撃間隔
 const SUPP_SOLDIER_DMG = 6;             // 軍人1射の攻撃者へのダメージ(2体ぶん毎回)
+// 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
+// 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
+const BASE_SOLDIERS: { name: string; capture: string; retreat: string }[] = [
+  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！' },
+  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！' },
+  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！' },
+  { name: '武蔵',       capture: '御意。',           retreat: '無念。' },
+  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！' },
+  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！' },
+  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！' },
+  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？' },
+];
+const soldierForSite = (id: string): { name: string; capture: string; retreat: string } | null => {
+  const i = parseInt(id.replace('base-', ''), 10);
+  return Number.isFinite(i) ? (BASE_SOLDIERS[i] ?? null) : null;
+};
 const createBaseSites = (): BaseSite[] => {
   const sites: BaseSite[] = [];
   for (let i = 0; i < BASE_SITE_COUNT; i++) {
@@ -6126,7 +6142,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const removeAttackerIds: string[] = [];
     const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
     const damageShots: { id: string; dmg: number }[] = [];
-    const fallen: { x: number; y: number }[] = [];
+    const fallen: { x: number; y: number; id: string }[] = [];
     let capturedThisFrame: { id: string; x: number; y: number } | null = null;
     let changed = false;
 
@@ -6184,7 +6200,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       if (hp <= 0) { // 陥落
         if (attackerId) removeAttackerIds.push(attackerId);
-        fallen.push({ x: s.x, y: s.y });
+        fallen.push({ x: s.x, y: s.y, id: s.id });
         changed = true;
         return { ...s, status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0 };
       }
@@ -6208,7 +6224,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const c = capturedThisFrame as { id: string; x: number; y: number };
       get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
       get().spawnGlow(c.x, c.y, 70, 'rgba(251,191,36,', 600);
-      get().spawnCallout(c.x, c.y - 40, '拠点確保', '#fde68a');
+      const sol = soldierForSite(c.id); // 制圧時の軍人セリフ(名前はここでのみ出る)
+      get().spawnCallout(c.x, c.y - 40, sol ? `${sol.name}「${sol.capture}」` : '拠点確保', '#fde68a');
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
     }
     for (const a of spawnList) {
@@ -6222,8 +6239,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     for (const f of fallen) {
       get().spawnRing(f.x, f.y, 14, BASE_CAPTURE_RADIUS, 'rgba(239,68,68,0.9)', 4, 560);
-      get().spawnCallout(f.x, f.y - 40, '拠点陥落', '#fca5a5');
-      get().triggerAttention(f.x, f.y); // カメラがそこへ→on-screen化で攻撃者/軍人が描かれる
+      const sol = soldierForSite(f.id); // 撤退時(拠点喪失)の軍人セリフ。死亡ではなく撤退。
+      get().spawnCallout(f.x, f.y - 40, sol ? `${sol.name}「${sol.retreat}」` : '拠点陥落', '#fca5a5');
+      get().triggerAttention(f.x, f.y); // カメラがそこへ→on-screen化
       set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
     }
     // 全拠点制圧 → 既存クリア経路(帰還サークル)へ。
