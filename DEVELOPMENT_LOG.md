@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.906 — 10連リザルトでカードを追いかけてスクロール
+
+- 10連で結果カードが画面下に伸びる問題に対応。各カードの出現タイミング(CSSの
+  animationDelay と同じ累積遅延)に合わせて `scrollIntoView({block:'center'})` で
+  スクロールを追従(=カメラが追いかける)。スキップ/破裂中は追従しない。
+- 負荷: setTimeout×件数(最大10)＋scrollInto>1回/カードのみ、毎フレーム購読なし=1/10。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.905 — ガチャを「スキル強化訓練」化＋射撃練習場(別画面)へ遷移
 
 - ガチャ名を「強化訓練」→「スキル強化訓練」に統一(入口/結果/開発施設ヘッダー)。

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play, Sparkles
 } from 'lucide-react';
@@ -731,6 +731,24 @@ const SkillGacha: React.FC = () => {
   };
   const closeReveal = () => { setResults(null); setSkipped(false); setBursting(false); };
 
+  // 10連だとカードが画面下に伸びる。各カードが出るタイミングに合わせてスクロールを追従させる
+  // (=カメラが追いかける)。CSSアニメの animationDelay と同じ累積遅延でscrollIntoView。
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  useEffect(() => {
+    // 暗転演出中(results在り)・スキップ前・破裂後のみ追従。
+    if (!results || skipped || bursting) return;
+    let acc = 0;
+    const timers = results.map((r, i) => {
+      const delay = acc;
+      acc += REVEAL_BY_RARITY[r.rarity].step;
+      return setTimeout(() => {
+        cardRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, delay);
+    });
+    return () => { timers.forEach(clearTimeout); };
+  }, [results, skipped, bursting]);
+
   const superPct = gachaSuperPercent(pity);
   const pityLeft = gachaPityRemaining(pity);
 
@@ -771,7 +789,7 @@ const SkillGacha: React.FC = () => {
     });
     return (
       <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
-        <div className="flex-1 overflow-y-auto px-4 py-5">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5">
           <p className="mb-3 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
           <div className="mx-auto flex max-w-md flex-col gap-2">
             {timed.map(({ r, cfg, nameDelay, levelDelay }, i) => {
@@ -785,6 +803,7 @@ const SkillGacha: React.FC = () => {
               return (
                 <div
                   key={i}
+                  ref={el => { cardRefs.current[i] = el; }}
                   className={`rounded-xl border bg-black/40 px-3 py-2 ${cfg.ring} ${cardCls}`}
                   style={skipped ? undefined : { animationDelay: `${nameDelay}ms` }}
                 >
