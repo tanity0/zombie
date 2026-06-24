@@ -6767,6 +6767,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const runSkillLevels: Partial<Record<SkillKey, number>> = Object.fromEntries(
         runSkills.map(k => [k, Math.max(1, Math.min(skillMaxLevel(k), state.ownedSkillLevels[k] ?? 1))])
       );
+      // スキル: スクラップビルダー = 出撃開始時の初期スクラップ +50/100/150(Lv)。
+      const scrapBuilderLv = runSkills.includes('scrap-builder') ? (runSkillLevels['scrap-builder'] ?? 1) : 0;
+      const scrapBuilderBonus = scrapBuilderLv ? [0, 50, 100, 150][scrapBuilderLv] : 0;
       const runLevels: Partial<Record<SubWeaponKey, number>> = state.danceTestMode
         ? { shijin: state.danceTestLevel }
         : Object.fromEntries(runSubs.map(k => [k, 1])) as Partial<Record<SubWeaponKey, number>>;
@@ -6920,7 +6923,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           wireDashSpeed: 0,
           wireStuckEnemyId: '',
           wireStuckUntil: 0,
-          straps: state.startWithTestStraps ? 1000 : 0,
+          straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
           vaccineRevives: 0,
           equipment: runLoadout,
           equipBonus: runEquipBonus

@@ -131,6 +131,17 @@ describe('headless simulation invariants', () => {
     }
   });
 
+  it('scrap-builder grants bonus initial scrap by level at deploy', () => {
+    // No skill → baseline 0 initial scrap.
+    useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, pendingSkills: [], startWithTestStraps: false });
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().player.straps).toBe(0);
+    // Equip scrap-builder Lv2 → +100 initial scrap.
+    useGameStore.setState({ ownedSkills: ['scrap-builder'], ownedSkillLevels: { 'scrap-builder': 2 }, pendingSkills: ['scrap-builder'], startWithTestStraps: false });
+    useGameStore.getState().resetGame('warrior');
+    expect(useGameStore.getState().player.straps).toBe(100);
+  });
+
   // Nightly fuzz (longer + multiple character classes/seeds). Skipped in normal
   // CI; the nightly cron sets SIM_FUZZ=1. See .github/workflows/nightly.yml.
   it.runIf(process.env.SIM_FUZZ)('fuzz: long randomized sim across classes', () => {

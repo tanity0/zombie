@@ -429,7 +429,7 @@ export type SkillKey =
   | 'knife-master' | 'benkei' | 'reflex'
   // 通常
   | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
-  | 'attack-shooter' | 'runner' | 'seeker';
+  | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。

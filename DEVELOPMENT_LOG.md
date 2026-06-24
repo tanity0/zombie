@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.895 — 追加スキル: スクラップビルダー(初期スクラップ+)
+
+- **スクラップビルダー(scrap-builder)**: normal レア・Lv1〜3。出撃開始時の初期スクラップ **+50/100/150**(Lv)。
+- `resetGame` で出撃スキル(runSkills/runSkillLevels)から Lv を引き、`straps` 初期値へ加算(1000スクラップ開始トグルとも加算)。
+- `SkillKey`/`SKILL_KEYS`/`SKILLS` に登録(強化訓練ガチャに自動で並ぶ)。状態フィールド/毎フレーム処理なし。
+- パフォーマンス負荷: **1/10**(出撃時に1回だけ初期値へ加算。ランタイムコスト無し)。
+- 検証: typecheck / lint / test(41 passed+1 skipped・sim.test.ts に Lv別初期スクラップの検証を追加) / build すべて green。
+
 ## v0.25.894 — 追加スキル3種(アタックシューター/ランナー/シーカー)
 
 - いずれも **normal** レア・Lv1〜3。`SkillKey`/`SKILL_KEYS`/`SKILLS` に追加(ガチャ=強化訓練に自動的に並ぶ)。
