@@ -3877,7 +3877,7 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerKatanaBack, 1);
       this.playerKatanaBackAttached = true;
     }
-    this.drawPlayer(this.playerView, player, now);
+    this.drawPlayer(this.playerView, player, gameTime, now);
     this.syncShadowClone(player);
 
     // Enemies (mark-and-sweep pool)
@@ -4030,7 +4030,7 @@ export class PixiScene {
     }
   }
 
-  private drawPlayer(view: ActorView, p: Player, now: number) {
+  private drawPlayer(view: ActorView, p: Player, gameTime: number, now: number) {
     const fb = playerFootBox(p);
     const walking = p.isMoving && p.direction !== 'idle';
     const frame = playerWalkFrame(p, now, walking);
@@ -4110,7 +4110,9 @@ export class PixiScene {
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX,
       this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY,
     );
-    view.sprite.alpha = p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1;
+    // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
+    const seekerActive = p.seekerUntil > gameTime;
+    view.sprite.alpha = seekerActive ? 0.4 : (p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1);
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();

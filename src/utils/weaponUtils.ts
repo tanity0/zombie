@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult } from '../store/gameStore';
+import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
@@ -301,8 +301,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
   // キャラ固有 スカベンジャー(necromancer): 弾薬取得後3秒は銃ダメージ ×1.1。発射時の素ダメージへ反映。
   const scavMult = scavengerGunMult(player, gtFire);
+  // スキル アタックシューター: 銃ダメージ +10/20/30%(Lv)。
   // 装備(腕・火力系)のダメージ倍率を素ダメージへ反映。中立=1。
-  const shotDamage = weapon.damage * scavMult * (player.equipBonus?.damageMult ?? 1);
+  const shotDamage = weapon.damage * scavMult * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {

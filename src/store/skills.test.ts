@@ -2,9 +2,14 @@
 // slasher follow-up decay). Pure functions/constants from the store — see
 // CLAUDE.md Testing policy (test the changed logic in the same commit).
 import { describe, it, expect } from 'vitest';
-import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS } from './gameStore';
+import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
+  skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive } from './gameStore';
 import { rollSkillLevel, skillMaxLevel } from '../data/campaign';
-import type { Player } from '../types/game';
+import type { Player, SkillKey } from '../types/game';
+
+// Minimal player carrying one leveled skill (for the simple multiplier skills).
+const withSkill = (key: SkillKey, level: number): Player =>
+  ({ skills: [key], skillLevels: { [key]: level } } as unknown as Player);
 
 // Minimal player shape for skillMeleeComboMult (reads skills + skillLevels + knifeCombo* only).
 const knifeMaster = (count: number, level = 1, until = 10_000): Player =>
@@ -65,6 +70,38 @@ describe('skill level gacha roll', () => {
     const lv = rollSkillLevel('super', 3, () => 0.5);
     expect(lv).toBeGreaterThanOrEqual(1);
     expect(lv).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('attack-shooter gun damage bonus (+10/20/30%)', () => {
+  it('scales by level and is ×1.0 without the skill', () => {
+    expect(skillAttackShooterGunMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
+    expect(skillAttackShooterGunMult(withSkill('attack-shooter', 1))).toBeCloseTo(1.10);
+    expect(skillAttackShooterGunMult(withSkill('attack-shooter', 2))).toBeCloseTo(1.20);
+    expect(skillAttackShooterGunMult(withSkill('attack-shooter', 3))).toBeCloseTo(1.30);
+  });
+});
+
+describe('runner move speed bonus (+10/15/20%)', () => {
+  it('scales by level and is ×1.0 without the skill', () => {
+    expect(skillRunnerSpeedMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
+    expect(skillRunnerSpeedMult(withSkill('runner', 1))).toBeCloseTo(1.10);
+    expect(skillRunnerSpeedMult(withSkill('runner', 2))).toBeCloseTo(1.15);
+    expect(skillRunnerSpeedMult(withSkill('runner', 3))).toBeCloseTo(1.20);
+  });
+});
+
+describe('seeker proc chance (30/40/50%) + active window', () => {
+  it('proc chance scales by level, 0 without the skill', () => {
+    expect(skillSeekerProcChance({ skills: [], skillLevels: {} } as unknown as Player)).toBe(0);
+    expect(skillSeekerProcChance(withSkill('seeker', 1))).toBeCloseTo(0.30);
+    expect(skillSeekerProcChance(withSkill('seeker', 2))).toBeCloseTo(0.40);
+    expect(skillSeekerProcChance(withSkill('seeker', 3))).toBeCloseTo(0.50);
+  });
+  it('isSeekerActive compares seekerUntil against gameTime', () => {
+    expect(isSeekerActive({ seekerUntil: 5000 } as unknown as Player, 4000)).toBe(true);
+    expect(isSeekerActive({ seekerUntil: 5000 } as unknown as Player, 5000)).toBe(false);
+    expect(isSeekerActive({ seekerUntil: 0 } as unknown as Player, 1000)).toBe(false);
   });
 });
 

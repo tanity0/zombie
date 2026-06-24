@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.894 — 追加スキル3種(アタックシューター/ランナー/シーカー)
+
+- いずれも **normal** レア・Lv1〜3。`SkillKey`/`SKILL_KEYS`/`SKILLS` に追加(ガチャ=強化訓練に自動的に並ぶ)。
+- **アタックシューター(attack-shooter)**: 銃ダメージ +10/20/30%。`skillAttackShooterGunMult` を `weaponUtils` の発射素ダメージへ乗算。
+- **ランナー(runner)**: 移動速度 +10/15/20%。`skillRunnerSpeedMult` を `movePlayer` の通常歩行/リロード移動の速度へ乗算(スケーター×3や装備倍率と乗算スタック)。
+- **シーカー(seeker)**: 被弾時、CD明け＆抽選成功(30/40/50%)で **3秒間 半透明＋通常敵から狙われない**。発動でCD10秒。
+  - 標的判定 `resolveEnemyTarget` に `playerHidden` を追加。発動中の通常敵はプレイヤーを標的にできず、召喚がいればそれを、いなければ `hidden=true`(=標的なし)。
+  - `updateEnemies`: hidden の通常敵は接近をやめ速度減衰で待機。`useGameLoop` の敵射撃も hidden 時は非発砲。
+  - **無効対象=ボス/死神/イベントボス級**(`isBossType`: pumpkin/giantbat/reaper/lab-zombie-3)は発動中も通常通りプレイヤーを狙う。
+  - 描画: 発動中はプレイヤースプライトを `alpha 0.4`(被弾無敵点滅より優先)。`Player.seekerUntil/seekerCdUntil` で状態保持。
+- パフォーマンス負荷: **1/10**(全て数値テーブル/フラグ参照。シーカーは被弾イベント時のみ抽選・毎フレームは真偽比較1回。新規描画/ループ無し。simulation/rendering)。
+- 検証: typecheck / lint / test(40 passed+1 skipped・skills.test.ts と enemyUtils.test.ts に新スキル/hidden標的のテスト追加) / build すべて green。
+
+## v0.25.893 — スキルガチャの表示名を「強化訓練」に変更
+
+- 武器開発トップの見出し/サブタイトル/空状態案内を「強化訓練」へ。内部のガチャ機構・key は据え置き(表示文言のみ)。
+
 ## v0.25.892 — 制圧: 軍人を端スタート＋攻撃者へ接近交戦／軍人は制圧順で登場
 
 - **軍人の出現位置**: 拠点中央(=武器商人と被る)ではなく、**サークルの端寄りにランダム配置**(`makeBaseSoldiers`: 半径0.55〜0.90R)。

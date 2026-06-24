@@ -97,6 +97,8 @@ export interface Player {
   knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
   benkeiCdUntil: number;       // 弁慶: 再発動CD(gameTime)
+  seekerUntil: number;         // シーカー: 半透明化＋通常敵から狙われない 効果終了(gameTime)
+  seekerCdUntil: number;       // シーカー: 再発動CD(gameTime)
   // キャラ固有スキル(characterClass で自動有効。装備スキル枠は消費しない)の状態フィールド。
   scavengerBuffUntil: number;   // スカベンジャー(necromancer): 弾薬取得で銃ダメ+10%(gameTime)
   marksmanMovingSince: number;  // マークスマン(mage): 連続移動の開始gameTime。0=停止中
@@ -426,7 +428,8 @@ export type SkillKey =
   | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'
   | 'knife-master' | 'benkei' | 'reflex'
   // 通常
-  | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher';
+  | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
+  | 'attack-shooter' | 'runner' | 'seeker';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。

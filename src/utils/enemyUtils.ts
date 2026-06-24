@@ -187,15 +187,18 @@ export const resolveEnemyTarget = (
   enemy: Enemy,
   player: Player,
   summons: Summon[],
-  aggroRange: number
-): { x: number; y: number; isSummon: boolean } => {
+  aggroRange: number,
+  // シーカー発動中などでプレイヤーを標的にできない場合 true。召喚がいればそれを狙い、
+  // いなければ hidden=true(=狙う相手なし。呼び出し側で待機/非発砲にする)。
+  playerHidden = false,
+): { x: number; y: number; isSummon: boolean; hidden: boolean } => {
   const ex = enemy.x + enemy.width / 2;
   const ey = enemy.y + enemy.height / 2;
   const px = player.x + player.width / 2;
   const py = player.y + player.height / 2;
   let bestX = px;
   let bestY = py;
-  let bestD2 = (px - ex) * (px - ex) + (py - ey) * (py - ey);
+  let bestD2 = playerHidden ? Infinity : (px - ex) * (px - ex) + (py - ey) * (py - ey);
   let isSummon = false;
   const aggro2 = aggroRange * aggroRange;
   for (const s of summons) {
@@ -205,7 +208,9 @@ export const resolveEnemyTarget = (
     const d2 = (sx - ex) * (sx - ex) + (sy - ey) * (sy - ey);
     if (d2 <= aggro2 && d2 < bestD2) { bestD2 = d2; bestX = sx; bestY = sy; isSummon = true; }
   }
-  return { x: bestX, y: bestY, isSummon };
+  // プレイヤーが隠れていて召喚も射程外 → 標的なし。
+  if (playerHidden && !isSummon) return { x: px, y: py, isSummon: false, hidden: true };
+  return { x: bestX, y: bestY, isSummon, hidden: false };
 };
 
 const buildEnemy = (

@@ -504,6 +504,7 @@ export const SKILL_KEYS: SkillKey[] = [
   'bomber', 'fire-shooter', 'bomb-counter', 'punisher', 'combo-master',
   'knife-master', 'benkei', 'reflex',
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
+  'attack-shooter', 'runner', 'seeker',
 ];
 export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: SkillRarity }> = {
   // 超レア
@@ -532,6 +533,9 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'dog-run':      { name: 'ドッグラン',     desc: '犬のクールダウン0・射程制限解除(犬装備時)', rarity: 'normal' },
   'counter-master':{ name: 'カウンターマスター', desc: 'カウンター窓延長＋成功時に周囲を強ノックバック', rarity: 'normal' },
   'slasher':      { name: 'スラッシャー',   desc: '近接命中後のタイミングリングをジャストタップで追撃(最大3連・各2/3減衰・ノックバック)', rarity: 'normal' },
+  'attack-shooter':{ name: 'アタックシューター', desc: '銃ダメージ+10%(Lvで+20%/+30%)', rarity: 'normal' },
+  'runner':       { name: 'ランナー',       desc: '移動速度+10%(Lvで+15%/+20%)', rarity: 'normal' },
+  'seeker':       { name: 'シーカー',       desc: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる(CD10秒)', rarity: 'normal' },
 };
 export const MAX_EQUIPPED_SKILLS = 2;
 // ガチャのレア度枠(%)。枠内は均等抽選。重複(所持済み)はゴールド返金。

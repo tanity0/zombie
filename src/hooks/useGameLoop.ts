@@ -29,7 +29,7 @@ import {
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle,
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
@@ -2894,7 +2894,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!profile) return;
           if (now - enemy.lastShot < profile.interval) return;
           // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
-          const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE);
+          // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
+          const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
+          const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden);
+          if (tgt.hidden) return; // 標的なし=非発砲
           const dx = tgt.x - (enemy.x + enemy.width / 2);
           const dy = tgt.y - (enemy.y + enemy.height / 2);
           if (Math.hypot(dx, dy) > profile.range) return;

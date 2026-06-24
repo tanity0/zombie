@@ -695,6 +695,26 @@ export const sniperGunMult = (
   return 1 + (stopped ? stopMax : 0) + distBonus;
 };
 
+// アタックシューター: 銃ダメージ +10/20/30%(Lv)。発射時の素ダメージへ乗算。
+export const skillAttackShooterGunMult = (player: Player): number => {
+  const lv = skillLevel(player, 'attack-shooter');
+  return lv ? 1 + [0, 0.10, 0.20, 0.30][lv] : 1;
+};
+// ランナー: 移動速度 +10/15/20%(Lv)。移動速度の倍率として使用。
+export const skillRunnerSpeedMult = (player: Player): number => {
+  const lv = skillLevel(player, 'runner');
+  return lv ? 1 + [0, 0.10, 0.15, 0.20][lv] : 1;
+};
+// シーカー: 被弾時、CD明け＆抽選成功で3秒間半透明＋通常敵から狙われなくなる。CD10秒。
+export const SEEKER_DURATION_MS = 3000;
+export const SEEKER_COOLDOWN_MS = 10000;
+export const skillSeekerProcChance = (player: Player): number => {
+  const lv = skillLevel(player, 'seeker');
+  return lv ? [0, 0.30, 0.40, 0.50][lv] : 0;
+};
+// シーカー発動中か(プレイヤーが半透明＝通常敵のターゲットから外れる)。
+export const isSeekerActive = (player: Player, gameTime: number): boolean => player.seekerUntil > gameTime;
+
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
@@ -1720,6 +1740,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
+    seekerUntil: 0, seekerCdUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
     katanaDashUntil: 0,
@@ -1900,8 +1921,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。
         // 社長指示で段階的に強化: 2→3=1.5倍)。マークスマン = 3秒連続移動で ×1.2(通常歩行/リロード移動に乗る)。
         // 装備(体・機動系)の移動速度倍率は通常歩行/リロード移動に乗る(特殊ロコモーションは対象外)。中立=1。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
-        : player.speed * (hasSkill(player, 'skater') ? 3 : 1) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
+        // スキル: ランナー = 通常歩行/リロード移動の移動速度 +10/15/20%(Lv)。
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
+        : player.speed * (hasSkill(player, 'skater') ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -3724,6 +3746,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         set(state => ({ player: { ...state.player, reflexCdUntil: state.gameTime + [0, 1000, 800, 600][rfLv] } }));
       }
+      // スキル: シーカー = 被弾時、CD明け＆抽選成功で3秒間 半透明＋通常敵から狙われない。発動でCD10秒。
+      const skLv = skillLevel(p, 'seeker');
+      if (skLv && cur.gameTime >= p.seekerCdUntil && Math.random() < skillSeekerProcChance(p)) {
+        const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+        get().spawnRing(pcx, pcy, 8, 60, 'rgba(148,163,184,0.7)', 3, 320);
+        set(state => ({ player: { ...state.player, seekerUntil: state.gameTime + SEEKER_DURATION_MS, seekerCdUntil: state.gameTime + SEEKER_COOLDOWN_MS } }));
+      }
     }
 
     // Return whether player is dead
@@ -4666,7 +4695,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 錬金術: aggro範囲内に通常召喚がいればそれを、いなければプレイヤーを狙う(中心同士)。
         // 救助イベントの攻撃者(escortTarget持ち)は survivor を狙う。ただし「プレイヤーが近接ダメージを
         // 与えた敵(meleeAggro)」はプレイヤーへターゲットを切り替える(社長指示)。死んでいたら最寄りNPCへ。
-        let tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE);
+        // シーカー: プレイヤー半透明中は通常敵(ボス/死神/イベントボス級を除く)から狙われない。
+        const playerHidden = isSeekerActive(player, gameTime) && !isBossType(enemy.type);
+        let tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE, playerHidden);
         if (enemy.escortTarget && !enemy.meleeAggro && rescueSurvivors.length > 0) {
           let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
           if (!sv) {
@@ -4677,7 +4708,11 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (d2 < best) { best = d2; sv = s; }
             }
           }
-          if (sv) tgt = { x: sv.x + sv.width / 2, y: sv.y + sv.height / 2, isSummon: false };
+          if (sv) tgt = { x: sv.x + sv.width / 2, y: sv.y + sv.height / 2, isSummon: false, hidden: false };
+        }
+        // シーカーで標的を見失った通常敵は接近をやめ、その場で待機する(速度を減衰。3秒間)。
+        if (tgt.hidden) {
+          return { ...enemy, vx: enemy.vx * 0.85, vy: enemy.vy * 0.85, aiPhase: undefined, aiPhaseUntil: 0 };
         }
         const dx = tgt.x - (enemy.x + enemy.width / 2);
         const dy = tgt.y - (enemy.y + enemy.height / 2);
@@ -6865,6 +6900,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
+          seekerUntil: 0, seekerCdUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
           huntingChargeStartedAt: 0,
