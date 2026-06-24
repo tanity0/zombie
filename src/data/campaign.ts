@@ -474,7 +474,7 @@ export const CHARACTER_SUBWEAPON_KEYS: SubWeaponKey[] = [
   'striker-quick-mag', // スカベンジャー
 ];
 
-// 装備選択(サブウェポン)で選べる候補。スキルショップ(武器開発)の陳列とも共通。
+// 装備選択(サブウェポン)で選べる候補。スキルショップ(開発施設)の陳列とも共通。
 export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
   'heavy-grenade',
   'marksman-trap',

@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.900 — メニュー名「武器開発」→「開発施設」
+
+- ホームのハブボタン/ヘッダー/案内文の `武器開発` を **開発施設** に変更(機能・導線は据え置き)。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.899 — ステージ1の偵察兵セリフの話者名を「エドガー」に
 
 - M1の `voices`/`dialogue` の話者 `偵察兵` を **エドガー** に変更(セリフ本文は据え置き)。

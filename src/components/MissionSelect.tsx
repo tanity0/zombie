@@ -27,7 +27,7 @@ interface MissionSelectProps {
 }
 
 // 画面(導線): ホーム → ステージ選択 → ミッション詳細 → キャラ選択 → 装備選択 → スタート。
-// ホームからはオプション / 武器開発 / 資料室 へも分岐する。UIデザインは後追い(ここは導線優先の仮UI)。
+// ホームからはオプション / 開発施設 / 資料室 へも分岐する。UIデザインは後追い(ここは導線優先の仮UI)。
 type Screen =
   | { name: 'home' }
   | { name: 'options' }
@@ -122,7 +122,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent />
         <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} />
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} />
-        <HubButton icon={<ShoppingBag size={18} />} label="武器開発" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} />
+        <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} />
         <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={() => setScreen({ name: 'archive' })} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
       </div>
@@ -357,7 +357,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
             {ownedSkills.length === 0 ? (
               <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[11px] leading-snug text-white/50">
-                解禁済みのスキルがありません。武器開発の強化訓練でゴールドを使って解禁してください。
+                解禁済みのスキルがありません。開発施設の強化訓練でゴールドを使って解禁してください。
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -435,7 +435,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   );
 
   // ====================================================================
-  // 武器開発(スキルショップ: サブウェポンの陳列レベル解放)
+  // 開発施設(スキルショップ: サブウェポンの陳列レベル解放)
   // ====================================================================
   const renderWeaponDev = () => <WeaponDev onBack={() => setScreen({ name: 'home' })} />;
 
@@ -686,7 +686,7 @@ const DevTools: React.FC<{
   );
 };
 
-// === 強化訓練(スキルガチャ。武器開発トップに組み込み) ===========================
+// === 強化訓練(スキルガチャ。開発施設トップに組み込み) ===========================
 // レア度=pity(直近superからのpull数)で重み変動。Lv=スキル別の被り回数で抽選。逐次処理。
 const SkillGacha: React.FC = () => {
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
@@ -782,7 +782,7 @@ const SkillGacha: React.FC = () => {
   );
 };
 
-// === 武器開発(スキルショップ) ==========================================
+// === 開発施設(スキルショップ) ==========================================
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const unlockedShopSkillCards = useGameStore(s => s.unlockedShopSkillCards);
   const setUnlockedShopSkillCard = useGameStore(s => s.setUnlockedShopSkillCard);
@@ -790,7 +790,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   return (
     <>
-      <Header title="武器開発" subtitle="強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
+      <Header title="開発施設" subtitle="強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
       <div className="p-3">
         <SkillGacha />
       </div>
