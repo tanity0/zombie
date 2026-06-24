@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.922 — タイトル「the ONE」の横見切れを修正(DOM可変タイトル化)
+
+- 症状: タイトル背景(landscape 1672×941)を `cover` で全面表示しているため、縦長端末
+  (特に standalone web-app=URLバー無しで更に縦長)で左右が約37%クロップされ、焼き込みの
+  「the ONE」が "t…E" と見切れていた。
+- 修正: キャラ絵は `cover` のまま全面維持しつつ、上部を暗くマスク(焼き込みタイトルを隠す)、
+  その上に **画面幅追従の DOM タイトル**「the ONE」(`text-[clamp(30px,13vw,66px)]` + glow)を重ねる。
+  → どの端末/向きでも絶対に見切れない。
+- 検証: typecheck/lint/build 全green、生成CSSに clamp 反映を確認。
+
 ## v0.25.921 — アプリ名を「the ONE」に変更
 
 - ホーム画面名 `apple-mobile-web-app-title` を「ゾンビサバイバル」→「the ONE」に。
