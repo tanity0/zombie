@@ -688,13 +688,23 @@ const DevTools: React.FC<{
 
 // === 強化訓練(スキルガチャ。開発施設トップに組み込み) ===========================
 // レア度=pity(直近superからのpull数)で重み変動。Lv=スキル別の被り回数で抽選。逐次処理。
+// 演出: 1枚絵+[撃つ]→暗転→上から順にレア度/レベルを表示。レア度で出方が変わり、レベルは
+// 名前の後にワンテンポ置いて飛び出す(Lv3が最も派手)。すべてCSS駆動(初期render後はReact非介入)。
+type RevealCfg = { nameCls: string; beat: number; step: number; ono: string; onoCls: string; ring: string };
+const REVEAL_BY_RARITY: Record<SkillRarity, RevealCfg> = {
+  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 620,  ono: 'ピンっ',     onoCls: 'text-white/70',   ring: 'border-white/15' },
+  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1050, ono: 'しゅぴんっ！', onoCls: 'text-sky-300',    ring: 'border-sky-400/50 shadow-[0_0_18px_rgba(56,189,248,0.45)]' },
+  super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 1850, ono: 'しゃきーん！', onoCls: 'text-amber-300',  ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
+};
+
 const SkillGacha: React.FC = () => {
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
   const goldBalance = useGameStore(s => s.goldBalance);
   const ownedCount = useGameStore(s => s.ownedSkills.length);
   const pity = useGameStore(s => s.gachaPitySinceSuper);
   const pullGacha = useGameStore(s => s.pullGacha);
-  const [results, setResults] = useState<GachaPullResult[] | null>(null);
+  const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(1枚絵表示)
+  const [skipped, setSkipped] = useState(false); // スキップ=演出無しで全て即表示
   const [noGold, setNoGold] = useState(false);
 
   // n回 逐次で引く(各 pullGacha が get/set で最新stateを参照=スナップショット一括禁止)。
@@ -706,78 +716,157 @@ const SkillGacha: React.FC = () => {
       if (!r) { if (got.length === 0) { setNoGold(true); setResults(null); return; } break; } // ゴールド切れで打ち切り
       got.push(r);
     }
-    setResults(got);
+    playSfx('ui-select');
+    setSkipped(false);
+    setResults(got); // 暗転演出へ
   };
+  const closeReveal = () => { setResults(null); setSkipped(false); };
 
   const superPct = gachaSuperPercent(pity);
   const pityLeft = gachaPityRemaining(pity);
 
+  // --- 暗転リザルト演出 ------------------------------------------------
+  if (results) {
+    // 各カードの出現タイミング(累積)を算出。名前=step累積、レベル=名前+beat。
+    let acc = 0;
+    const timed = results.map(r => {
+      const cfg = REVEAL_BY_RARITY[r.rarity];
+      const nameDelay = acc;
+      acc += cfg.step;
+      return { r, cfg, nameDelay, levelDelay: nameDelay + cfg.beat };
+    });
+    return (
+      <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
+        <div className="flex-1 overflow-y-auto px-4 py-5">
+          <p className="mb-3 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">強化訓練 結果</p>
+          <div className="mx-auto flex max-w-md flex-col gap-2">
+            {timed.map(({ r, cfg, nameDelay, levelDelay }, i) => {
+              const maxLv = skillMaxLevel(r.key);
+              const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
+              const lvlCls = r.newLevel >= 3 ? 'gacha-lvl-pop3' : 'gacha-lvl-pop';
+              const lvlColor = r.newLevel >= 3 ? 'text-amber-300' : r.newLevel === 2 ? 'text-sky-200' : 'text-white';
+              // skipped=演出無しで即表示(アニメクラス/遅延を外す→.gacha-card等のopacity:0が効かず通常表示)。
+              const cardCls = skipped ? '' : `gacha-card ${cfg.nameCls}`;
+              const lvlAnimCls = skipped ? '' : `gacha-lvl ${lvlCls}`;
+              return (
+                <div
+                  key={i}
+                  className={`rounded-xl border bg-black/40 px-3 py-2 ${cfg.ring} ${cardCls}`}
+                  style={skipped ? undefined : { animationDelay: `${nameDelay}ms` }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[15px] font-bold text-white">
+                      {SKILLS[r.key].name}
+                      <span className={`${lvlAnimCls} ml-2 text-[17px] font-extrabold ${lvlColor}`} style={skipped ? undefined : { animationDelay: `${levelDelay}ms` }}>
+                        Lv{r.newLevel}
+                      </span>
+                      {r.firstAcquire && <span className="ml-2 align-middle rounded-md border border-emerald-300/60 bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">New</span>}
+                    </span>
+                    <span className="flex flex-col items-end">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
+                      {!skipped && <span className={`text-[10px] font-bold ${cfg.onoCls}`}>{cfg.ono}</span>}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[10px] leading-snug text-white/55">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
+                  <p className={`mt-0.5 text-[11px] font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
+                    {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
+                      : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`
+                      : `抽選Lv${r.rolledLevel}（現Lv${r.prevLevel}以下/上限）→ ${r.refund}G返金`}
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-white/45">
+                    被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="border-t border-white/10 bg-black/60 p-3">
+          {!skipped ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSkipped(true)}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-white/10"
+              >
+                スキップ
+              </button>
+              <button
+                type="button"
+                onClick={closeReveal}
+                className="rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+              >
+                とじる
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={closeReveal}
+              className="w-full rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+            >
+              とじる
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // --- 1枚絵 + [撃つ] -------------------------------------------------
   return (
     <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
       <div className="flex items-center justify-between px-0.5 mb-2">
         <span className="text-[12px] font-semibold text-fuchsia-100">強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
+      {/* 1枚絵(素材は public/gacha/cover.png に後日差し込み。未設置時は下のプレースホルダが見える) */}
+      <div className="relative mb-2 overflow-hidden rounded-xl border border-fuchsia-300/25" style={{ aspectRatio: '16 / 10' }}>
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-fuchsia-900/40 via-black/30 to-black/60">
+          <span className="text-[13px] tracking-[0.35em] text-fuchsia-200/50">強化訓練</span>
+        </div>
+        <img
+          src={`${import.meta.env.BASE_URL}gacha/cover.png`}
+          alt=""
+          className="relative h-full w-full object-cover"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+        />
+      </div>
       <p className="text-[10px] leading-snug text-white/50 mb-1.5">
-        レア度 {RARITY_LABEL.normal}/{RARITY_LABEL.rare}/{RARITY_LABEL.super} は引くほど超レアが出やすく。被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
+        引くほど超レアが出やすく、被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
       </p>
       <div className="mb-2 flex items-center justify-between rounded-lg border border-fuchsia-300/20 bg-black/20 px-2 py-1 text-[10px]">
         <span className="text-fuchsia-100/80">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
         <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
       </div>
+      {/* [撃つ]: 1回 / 10連 */}
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => pullMany(1)}
           disabled={goldBalance < GACHA_PULL_COST}
-          className={`rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+          className={`rounded-xl px-3 py-3 text-[14px] font-semibold ${
             goldBalance < GACHA_PULL_COST
               ? 'border border-white/10 bg-white/[0.03] text-white/30'
               : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
-          {GACHA_PULL_COST > 0 ? `1回（${GACHA_PULL_COST}G）` : '1回引く'}
+          {GACHA_PULL_COST > 0 ? `撃つ（1回 ${GACHA_PULL_COST}G）` : '撃つ（1回）'}
         </button>
         <button
           type="button"
           onClick={() => pullMany(10)}
           disabled={goldBalance < GACHA_PULL_COST * 10}
-          className={`rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+          className={`rounded-xl px-3 py-3 text-[14px] font-semibold ${
             goldBalance < GACHA_PULL_COST * 10
               ? 'border border-white/10 bg-white/[0.03] text-white/30'
               : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
-          {GACHA_PULL_COST > 0 ? `10連（${GACHA_PULL_COST * 10}G）` : '10連を引く'}
+          {GACHA_PULL_COST > 0 ? `撃つ（10連 ${GACHA_PULL_COST * 10}G）` : '撃つ（10連）'}
         </button>
       </div>
       {noGold && <p className="mt-2 text-[11px] text-rose-300 text-center">ゴールドが足りません。</p>}
-      {results && (
-        <div className="mt-2 space-y-1.5">
-          {results.map((r, i) => {
-            const maxLv = skillMaxLevel(r.key);
-            // 次pullでの昇格確率(=この結果適用後の被り回数/現Lvから次段が出る%)。
-            const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
-            return (
-              <div key={i} className={`rounded-xl border px-3 py-2 ${RARITY_BORDER[r.rarity]} bg-black/20`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-white">{SKILLS[r.key].name} <span className="text-amber-200">Lv{r.newLevel}</span></span>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
-                </div>
-                <p className="text-[10px] leading-snug text-white/55 mt-0.5">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
-                <p className={`text-[11px] mt-0.5 font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
-                  {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
-                    : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`
-                    : `抽選Lv${r.rolledLevel}（現Lv${r.prevLevel}以下/上限）→ ${r.refund}G返金`}
-                </p>
-                <p className="text-[10px] leading-snug text-white/50 mt-0.5">
-                  被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };

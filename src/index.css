@@ -205,3 +205,53 @@
     opacity: 0.5;
   }
 }
+
+/* === 強化訓練ガチャ演出 ===========================================
+   レア度ごとにスキル名カードの出方を変える。レベルは名前の後にワンテンポ置いて飛び出す。
+   すべて CSS 駆動(初期render後はReact非介入)。出現タイミングは inline animation-delay。 */
+/* 通常: ピンっ。素早く出てすぐ収まる。 */
+@keyframes gacha-name-normal {
+  0%   { opacity: 0; transform: scale(0.92); }
+  60%  { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* レア: しゅぴんっ。少し青く光ってから収まる。 */
+@keyframes gacha-name-rare {
+  0%   { opacity: 0; transform: translateX(-10px) scale(0.9); filter: brightness(1.6); }
+  45%  { opacity: 1; transform: translateX(3px) scale(1.06); }
+  70%  { transform: translateX(0) scale(0.99); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+/* 超レア: しゃきーん。金色にまぶしく光り、ゆっくり目に決まる。 */
+@keyframes gacha-name-super {
+  0%   { opacity: 0; transform: scale(0.7); filter: brightness(2.4); }
+  35%  { opacity: 1; transform: scale(1.14); filter: brightness(1.9); }
+  62%  { transform: scale(0.97); filter: brightness(1.3); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+.gacha-card { opacity: 0; }
+.gacha-name-normal { animation: gacha-name-normal 0.22s ease-out forwards; }
+.gacha-name-rare   { animation: gacha-name-rare 0.5s cubic-bezier(0.2,0.9,0.25,1.2) forwards; }
+.gacha-name-super  { animation: gacha-name-super 0.95s cubic-bezier(0.18,0.85,0.2,1.25) forwards; }
+
+/* レベルの飛び出し。Lv3 が一番派手(大きく回り込みながら出る)。 */
+@keyframes gacha-lvl-pop {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.2); }
+  55%  { opacity: 1; transform: translateY(-4px) scale(1.3); }
+  78%  { transform: translateY(1px) scale(0.92); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes gacha-lvl-pop3 {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.1) rotate(-12deg); filter: brightness(2.2); }
+  45%  { opacity: 1; transform: translateY(-10px) scale(1.6) rotate(6deg); filter: brightness(1.7); }
+  68%  { transform: translateY(3px) scale(0.86) rotate(-2deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); filter: brightness(1); }
+}
+.gacha-lvl { opacity: 0; display: inline-block; }
+.gacha-lvl-pop  { animation: gacha-lvl-pop 0.34s cubic-bezier(0.2,0.9,0.25,1.4) forwards; }
+.gacha-lvl-pop3 { animation: gacha-lvl-pop3 0.6s cubic-bezier(0.18,0.85,0.2,1.5) forwards; }
+
+/* 暗転オーバーレイのフェードイン。 */
+@keyframes gacha-dim-in { from { opacity: 0; } to { opacity: 1; } }
+.gacha-dim { animation: gacha-dim-in 0.3s ease-out forwards; }
+

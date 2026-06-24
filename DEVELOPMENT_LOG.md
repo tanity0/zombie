@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.901 — 強化訓練ガチャ演出(1枚絵→撃つ→暗転リザルト)
+
+- **1枚絵+[撃つ]**: ガチャを開くと1枚絵(`public/gacha/cover.png` 後日差し込み・未設置時はプレースホルダ)を表示、画面下部に「撃つ（1回/10連）」。
+- **暗転リザルト**: 撃つと全画面暗転(`fixed inset-0`)→引き当てたスキルを**上から順に**レア度/レベル表示。
+  - 通常=ピンっ(素早く)/レア=青く光ってしゅぴんっ！/超レア=金色にまぶしくしゃきーん！(ゆっくり)。レア度ごとに枠の発光・出方・オノマトペ・テンポが変化。
+  - **レベルは名前の後にワンテンポ置いて飛び出す**。Lv3が最も派手(`gacha-lvl-pop3`=回り込み大)。
+  - 演出はすべてCSS駆動(`index.css` の `@keyframes gacha-*`＋inline `animation-delay`、初期render後はReact非介入)。
+- **スキップ**: 押すと演出無しで全件即表示(アニメクラス/遅延を外す)。
+- **初取得は名前の後ろに [New] バッジ**(`firstAcquire`)。
+- パフォーマンス負荷: **1/10**(メニュー専用・最大10枚のCSSアニメ。毎フレームReact購読なし=primitive購読のみ。in-game描画への影響なし)。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+- 次ハンドオフ: ガチャ1枚絵・(必要なら)レア度別SEの素材を後日受領 → `public/gacha/` 配置で自動反映。
+
 ## v0.25.900 — メニュー名「武器開発」→「開発施設」
 
 - ホームのハブボタン/ヘッダー/案内文の `武器開発` を **開発施設** に変更(機能・導線は据え置き)。
