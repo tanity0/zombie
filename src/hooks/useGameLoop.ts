@@ -823,7 +823,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
         // 城は最初から固定設置。出現条件は「5分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
-        const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
+        // 制圧イベント中(ステージ1メイン)は giantbat フィナーレを出さない(制圧が主目的)。
+        const castleBossReady = (FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS) && !useGameStore.getState().suppressionActive;
         if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -1003,7 +1004,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // --- 拠点候補地(仕様10): サークル内10秒滞在で制圧→武器商人が移動 ---
-        useGameStore.getState().updateBaseCaptures(deltaTime);
+        useGameStore.getState().updateSuppression(deltaTime);
 
         // --- ゾーン判定の間引き + 深層域BGM(逆再生)切替 ---
         // 毎フレームではなく ZONE_CHECK_INTERVAL フレームに1回だけ判定(多少アバウト可)。負荷1/10。

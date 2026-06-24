@@ -72,6 +72,7 @@ const runSim = (ticks: number, inputAt: (i: number) => InputState) => {
     store.movePlayer(inputAt(i), dt);
     store.updateEnemies(dt);
     store.updateProjectiles(dt);
+    store.updateSuppression(dt); // no-op unless suppressionActive
     if (i % 30 === 0) assertActorsFinite(`tick ${i}`);
   }
   assertActorsFinite(`tick ${ticks} (final)`);
@@ -92,6 +93,32 @@ describe('headless simulation invariants', () => {
     expect(s.enemies.length).toBeLessThan(500);     // no runaway growth (no spawner here)
     expect(s.player.health).toBeGreaterThan(0);     // store sim alone never kills the player
     expect(s.player.health).toBeLessThanOrEqual(s.player.maxHealth);
+  });
+
+  it('suppression event: a base captures after ~10s dwell and stays finite', () => {
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ suppressionActive: true });
+    const site0 = useGameStore.getState().baseSites[0];
+    // Park the player on the first base so its capture circle fills.
+    const place = () => useGameStore.setState(st => ({
+      player: { ...st.player, x: site0.x - st.player.width / 2, y: site0.y - st.player.height / 2 },
+    }));
+    place();
+    const dt = 1 / 60;
+    let t = useGameStore.getState().gameTime;
+    for (let i = 0; i < 700; i++) { // ~11.7s > 10s hold
+      t += dt * 1000;
+      place(); // keep the player pinned inside the circle
+      useGameStore.getState().setGameTime(t);
+      useGameStore.getState().updateSuppression(dt);
+      assertActorsFinite(`supp tick ${i}`);
+    }
+    const base = useGameStore.getState().baseSites.find(b => b.id === site0.id)!;
+    expect(base.status).toBe('captured');
+    expect(Number.isFinite(base.hp)).toBe(true);
+    expect(base.hp).toBeGreaterThan(0);
+    // first capture makes it the merchant's safe base
+    expect(useGameStore.getState().safeBaseId).toBe(site0.id);
   });
 
   // Nightly fuzz (longer + multiple character classes/seeds). Skipped in normal

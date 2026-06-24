@@ -259,6 +259,8 @@ export interface Enemy {
   // 色付き(影の色)個体。距離が離れると確率で付与され、色ごとに難易度倍率が上がる(青<紫<赤)。
   // 見た目の本体は同じで、足元の影だけが色づく(装飾は廃止)。ジャイアント/死神/特別敵には付かない。
   colorTier?: EnemyColorTier;
+  // 制圧イベント: この敵がどの拠点の攻撃者か(baseSites[].id)。未設定=通常敵。
+  baseId?: string;
   // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
   reaperChaser?: boolean;
   // 回り込みワープの描画フェード(1=不透明 / 0=透明)。消える→テレポート→出る を 0.5s ずつで演出。
@@ -395,6 +397,19 @@ export interface ShadowCloneState {
   spawnedAt: number;              // gameTime(ms)。寿命(5秒)の起点
   attacksDone: number;            // これまでに行った自動近接攻撃の回数
   nextAttackAt: number;           // 次の自動攻撃を行う gameTime(ms)
+}
+
+// 制圧イベントの拠点。8か所固定。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。
+export interface BaseSite {
+  id: string;
+  x: number;
+  y: number;
+  status: 'open' | 'captured';
+  hp: number;                  // 0..SUPP_HP_MAX(captured時のみ意味を持つ)
+  dwellMs: number;             // 制圧サークル内の滞在(open→captureの計測)
+  attackerId: string | null;   // 画面内の攻撃者(敵)id。null=不在
+  attackerRespawnAt: number;   // 次に攻撃者を湧かせる gameTime(撃破後30s)
+  soldierFireAt: number;       // 次に軍人が攻撃者へ射撃する gameTime
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。

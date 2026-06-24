@@ -50,6 +50,7 @@ export interface Stage {
   farBackdrop?: string;  // 遠景パノラマの差し替えキー(forestテーマの距離パノラマだけ変える)。'city'=夜の廃都。
   nearHorizon?: string;  // 遠景森2(手前に重ねる帯)のキー。'forest'=森シルエット / 'city'=廃墟都市。未指定=なし。
   bgm?: string;          // ステージBGMキー(audioManager の GAME_BGM)。未指定なら theme/既定で解決。
+  mainEvent?: 'suppression'; // メインミッションのゲームプレイ・イベント種別。'suppression'=8拠点制圧。
 }
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
@@ -64,6 +65,7 @@ export const STAGES: Stage[] = [
     area: '森林地帯 / 偵察部隊 救助',
     unlockBy: null,
     nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)
+    mainEvent: 'suppression', // メインミッション=8拠点制圧イベント
     subs: [],
     main: {
       code: 'M1',

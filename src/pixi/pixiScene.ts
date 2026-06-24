@@ -19,7 +19,7 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState,
+  ActiveEvent, ShadowCloneState, BaseSite,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
@@ -2196,7 +2196,7 @@ export class PixiScene {
     this.syncShields(s.projectiles, now);
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
-    this.syncBaseSites(s.baseSites, now);
+    this.syncBaseSites(s.baseSites, now, s.safeBaseId);
     this.syncLowHpVignette(s.player.health, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
@@ -4638,29 +4638,45 @@ export class PixiScene {
     }
   }
 
-  // 拠点候補地サークル(仕様10)。商人色(琥珀)のリング。プレイヤー滞在中は外周が満ちていく(10秒で制圧)。
-  private syncBaseSites(sites: { x: number; y: number; radius?: number; dwellMs: number }[] | undefined, now: number) {
+  // 制圧イベントの拠点。状態で色分け(未制圧=琥珀/制圧=緑/安全地帯=青)。制圧済みはHPバー＋軍人2体マーカー。
+  // 描画は画面内の拠点のみ(画面外はカリング=軽量)。攻撃者は通常敵として敵レンダラが描く。
+  private syncBaseSites(sites: BaseSite[] | undefined, now: number, safeBaseId: string | null) {
     const g = this.baseSitesGfx;
     g.clear();
     if (!sites || !sites.length || this.isLabStage) return; // ラボ(屋内/野外)では出さない
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
-    const color = 0xfbbf24; // 拠点=琥珀(商人色)
     const R = 130; // BASE_CAPTURE_RADIUS と一致
     for (const s of sites) {
-      const r = s.radius ?? R;
-      // 画面外のサークルは描かない(8個の静的円・毎フレーム再描画を可視分だけに抑える)。
-      if (this.distanceOutsideViewport(s.x, s.y, r + 8) > 0) continue;
+      if (this.distanceOutsideViewport(s.x, s.y, R + 60) > 0) continue; // 画面外はスキップ
+      const captured = s.status === 'captured';
+      const safe = s.id === safeBaseId;
+      const color = safe ? 0x60a5fa : captured ? 0x34d399 : 0xfbbf24; // 安全=青/制圧=緑/未制圧=琥珀
       const a = 0.22 + 0.14 * pulse;
-      g.circle(s.x, s.y, r - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
-      g.circle(s.x, s.y, r).stroke({ width: 5, color, alpha: a * 0.6 });
-      g.circle(s.x, s.y, r - 3).stroke({ width: 2, color, alpha: a });
-      const frac = Math.max(0, Math.min(1, s.dwellMs / BASE_CAPTURE_HOLD_MS));
-      if (frac > 0) {
-        const start = -Math.PI / 2;
-        const rr = r + 5;
-        g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
-          .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
-          .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
+      g.circle(s.x, s.y, R - 4).fill({ color, alpha: 0.04 + 0.04 * pulse });
+      g.circle(s.x, s.y, R).stroke({ width: 5, color, alpha: a * 0.6 });
+      g.circle(s.x, s.y, R - 3).stroke({ width: 2, color, alpha: a });
+      if (!captured) {
+        // 未制圧: 滞在(制圧)進捗アーク。
+        const frac = Math.max(0, Math.min(1, s.dwellMs / BASE_CAPTURE_HOLD_MS));
+        if (frac > 0) {
+          const start = -Math.PI / 2, rr = R + 5;
+          g.moveTo(s.x + Math.cos(start) * rr, s.y + Math.sin(start) * rr)
+            .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
+            .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
+        }
+      } else {
+        // 制圧済み: HPバー(拠点上部)＋ 軍人2体マーカー。
+        const hpFrac = Math.max(0, Math.min(1, s.hp / 100));
+        const bw = 88, bh = 7, bx = s.x - bw / 2, by = s.y - R - 22;
+        g.rect(bx, by, bw, bh).fill({ color: 0x0b1020, alpha: 0.6 });
+        const hpCol = hpFrac > 0.5 ? 0x34d399 : hpFrac > 0.25 ? 0xfbbf24 : 0xef4444;
+        g.rect(bx, by, bw * hpFrac, bh).fill({ color: hpCol, alpha: 0.95 });
+        g.rect(bx, by, bw, bh).stroke({ width: 1, color: 0xffffff, alpha: 0.4 });
+        for (const dx of [-36, 36]) { // 軍人2体(簡易マーカー)
+          const mx = s.x + dx, my = s.y + 6;
+          g.rect(mx - 3, my - 12, 6, 14).fill({ color, alpha: 0.95 });
+          g.circle(mx, my - 15, 3.5).fill({ color, alpha: 0.95 });
+        }
       }
     }
   }

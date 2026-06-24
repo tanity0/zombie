@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.888 — 制圧イベント実装 + ステージ1メインミッション化
+
+既存 baseSites(v0.25.829)を拡張し、確定指示 v2 の制圧イベントを実装。**suppressionActive 時のみ有効**(通常は拠点なし)。
+- **拠点(BaseSite)**: 8か所固定(半径3200・churn廃止)。`status:'open'|'captured'`・`hp`・攻撃者/軍人状態。
+  サークル内10秒滞在で制圧→`captured`(hp=100)。制圧で武器商人がそのサイトへ移動=`safeBaseId`(安全地帯)。
+- **画面内(プレイヤー接近)**: 攻撃者1体(skeleton/fromEvent)が拠点HPを削る。**プレイヤーも軍人も倒せる**。
+  撃破で**30秒は被ダメ無し**(再湧き待ち)。軍人2体が0.9sごとに攻撃者へ反撃(トレーサー演出)。
+  **プレイヤーが拠点内にいるとHP回復**。
+- **画面外**: 実体なし・**単純な時間ドレイン**(`SUPP_DRAIN_PER_SEC=5`・ゆるめ)。商人サイトは不死(回復)。
+- **陥落**(HP0): `open`化＋アテンションカメラ＋「拠点陥落」。**8拠点同時 captured で「全拠点制圧」→既存クリア経路**
+  (`triggerEventVictory`→帰還サークル→gameWon)。
+- **ステージ1メイン化**: `Stage.mainEvent:'suppression'` を stage-1 に付与。`App` が `setPendingSuppression`→
+  `resetGame` で `suppressionActive`。**ステージ1では giantbat フィナーレを出さない**(useGameLoop ゲート)。
+- ロジックは gameStore(`updateSuppression`・renderer-agnostic)、描画は `pixiScene.syncBaseSites`(状態色分け/HPバー/
+  軍人マーカー・画面内のみ)。攻撃者は通常敵レンダラ、軍人射撃は trail エフェクト。
+- テスト: `sim.test.ts` に制圧シナリオ(10秒滞在→capture・NaN無し・safeBaseId)を追加。runSim も updateSuppression を駆動。
+- 仮値(実機調整前提): HP100 / ドレイン5 / 攻撃者DPS9 / 回復14 / 攻撃者再湧き30s / 軍人0.9s・6dmg。
+- 検証: lint / typecheck / test(5ファイル29 passed+1 skipped) / build すべて green。
+
 ## v0.25.887 — CLAUDE.md: 編集後は Read で実態確認してから「できた」と言う(doc)
 
 - 「File edits — verify before claiming done」を追記: Write/Edit後は必ず `Read` で読み直す。

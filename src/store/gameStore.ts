@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState
+  ActiveEvent, ShadowCloneState, BaseSite
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
@@ -104,17 +104,29 @@ export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boole
 export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 
-// 拠点候補地(社長仕様10): スタート地点(原点)中心・半径3200の円周に8か所(45度刻み)。
-// サークル内に10秒滞在で制圧 → 武器商人がその地点へ移動。元の商人地点は候補地に戻る(何度でも可)。
-const BASE_SITE_RADIUS = 3200;          // 候補地を置く円の半径(デンジャーゾーン内)
-const BASE_SITE_COUNT = 8;              // 候補地の数
-const BASE_CAPTURE_RADIUS = 130;        // 制圧サークルの半径(滞在判定)
+// 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
+// 原点中心・半径3200の円周に8か所(45度刻み)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
+// captured拠点はHPを持ち、画面内では攻撃者(敵)が削り/軍人が反撃、画面外は時間で減る。HP0で陥落(open化)。
+// 8拠点が同時にcapturedで「全拠点制圧」→既存クリア経路(帰還サークル)へ。
+const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
+const BASE_SITE_COUNT = 8;              // 拠点の数
+const BASE_CAPTURE_RADIUS = 130;        // 制圧サークルの半径(滞在/在内判定)
 export const BASE_CAPTURE_HOLD_MS = 10000; // 制圧に必要な滞在時間(描画の進捗にも使用)
-const createBaseSites = (): { id: string; x: number; y: number; dwellMs: number }[] => {
-  const sites = [];
+export const SUPP_HP_MAX = 100;            // 拠点HP上限
+const SUPP_DRAIN_PER_SEC = 5;           // 画面外captured拠点のHPドレイン(ゆるめ・実機調整)
+const SUPP_ATTACKER_DPS = 9;            // 画面内: 攻撃者が生存中に拠点HPを削る量/秒
+const SUPP_REGEN_PER_SEC = 14;          // プレイヤー在内/安全地帯のHP回復/秒
+const SUPP_ATTACKER_RESPAWN_MS = 30000; // 攻撃者撃破後の再湧き(この間は被ダメ無し)
+const SUPP_SOLDIER_INTERVAL_MS = 900;   // 軍人の射撃間隔
+const SUPP_SOLDIER_DMG = 6;             // 軍人1射の攻撃者へのダメージ(2体ぶん毎回)
+const createBaseSites = (): BaseSite[] => {
+  const sites: BaseSite[] = [];
   for (let i = 0; i < BASE_SITE_COUNT; i++) {
     const angle = (Math.PI * 2 * i) / BASE_SITE_COUNT;
-    sites.push({ id: `base-${i}`, x: Math.cos(angle) * BASE_SITE_RADIUS, y: Math.sin(angle) * BASE_SITE_RADIUS, dwellMs: 0 });
+    sites.push({
+      id: `base-${i}`, x: Math.cos(angle) * BASE_SITE_RADIUS, y: Math.sin(angle) * BASE_SITE_RADIUS,
+      status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0,
+    });
   }
   return sites;
 };
@@ -1265,8 +1277,11 @@ interface GameState {
   gameWon: boolean;
   // フィナーレボス(giantbat)を倒した=終了条件を満たした(まだ勝利ではない)。useGameLoop が帰還サークルを出す。
   finaleDefeated: boolean;
-  // 拠点候補地(仕様10): 円周上の制圧候補。サークル内に10秒滞在で制圧→商人移動。元の商人地点は候補に戻る。
-  baseSites: { id: string; x: number; y: number; dwellMs: number }[];
+  // 制圧イベント: 8拠点。suppressionActive 時のみ有効(ステージ1メインミッション等)。
+  baseSites: BaseSite[];
+  suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
+  safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
+  pendingSuppression: boolean;   // 出撃が制圧イベント(ステージ1)か。resetGame で suppressionActive へ
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
   returnCircle: { x: number; y: number; radius: number; dwellMs: number } | null;
   // 商人「帰還」で任意撤収したフラグ(Game.tsx が監視→onReturn)。スコア計上・クリアボーナス/進行なし・装備は持ち帰り。
@@ -1505,6 +1520,7 @@ interface GameState {
   stageTheme: StageTheme;                               // この出撃の見た目テーマ('lab'=研究所スキン。描画/商人が参照)
   pendingFarBackdrop: string;                           // 出撃ステージの遠景差し替えキー(resetGame で farBackdrop へ)
   setPendingFarBackdrop: (key: string) => void;
+  setPendingSuppression: (on: boolean) => void;   // 出撃が制圧イベント(ステージ1メイン)か
   farBackdrop: string;                                  // この出撃の遠景差し替えキー(''=既定の森遠景 / 'city'=夜の廃都。描画が参照)
   pendingNearHorizon: string;                           // 出撃ステージの遠景森2キー(resetGame で nearHorizon へ)
   setPendingNearHorizon: (key: string) => void;
@@ -1512,7 +1528,7 @@ interface GameState {
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
-  updateBaseCaptures: (deltaTime: number) => void;      // 毎フレーム: 拠点候補地の滞在を計測し10秒で制圧(商人移動)
+  updateSuppression: (deltaTime: number) => void;      // 毎フレーム: 制圧イベント(滞在制圧/HP/攻撃者/軍人/陥落/クリア)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
@@ -1676,6 +1692,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameWon: false,
   finaleDefeated: false,
   baseSites: createBaseSites(),
+  suppressionActive: false,
+  safeBaseId: null,
+  pendingSuppression: false,
   returnCircle: null,
   gameReturned: false,
   meleeAmmoDropPercent: loadMeleeDropPct(),
@@ -5994,6 +6013,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingFarBackdrop: (key) => {
     set({ pendingFarBackdrop: key });
   },
+  setPendingSuppression: (on) => {
+    set({ pendingSuppression: on });
+  },
   setPendingNearHorizon: (key) => {
     set({ pendingNearHorizon: key });
   },
@@ -6087,44 +6109,129 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
-  updateBaseCaptures: (deltaTime) => {
+  updateSuppression: (deltaTime) => {
     const state = get();
-    const sites = state.baseSites;
-    // 拠点候補地は屋外の距離ベース本編のみ(ラボ/屋内は対象外)。
-    if (!sites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return;
+    // 制圧イベント中(ステージ1メイン等)のみ。屋内/ラボ/勝利後は無処理。
+    if (!state.suppressionActive || !state.baseSites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return;
+    const now = state.gameTime;
     const p = state.player;
     const px = p.x + p.width / 2;
     const py = p.y + p.height / 2;
-    let capturedIdx = -1;
+    const cam = state.camera, gb = state.gameBounds;
+    const M = 250; // 「画面に入りそう」マージン=この内側だけ実体(攻撃者/軍人)を動かす
+    const onScreen = (x: number, y: number) => x >= cam.x - M && x <= cam.x + gb.width + M && y >= cam.y - M && y <= cam.y + gb.height + M;
+    const aliveIds = new Set(state.enemies.map(e => e.id));
+
+    const spawnList: { x: number; y: number; id: string; baseId: string }[] = [];
+    const removeAttackerIds: string[] = [];
+    const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
+    const damageShots: { id: string; dmg: number }[] = [];
+    const fallen: { x: number; y: number }[] = [];
+    let capturedThisFrame: { id: string; x: number; y: number } | null = null;
     let changed = false;
-    const next = sites.map((s, i) => {
-      const inside = Math.hypot(s.x - px, s.y - py) <= BASE_CAPTURE_RADIUS;
-      const dwellMs = inside ? s.dwellMs + deltaTime * 1000 : 0;
-      if (dwellMs !== s.dwellMs) changed = true;
-      if (inside && dwellMs >= BASE_CAPTURE_HOLD_MS && capturedIdx === -1) capturedIdx = i;
-      return { ...s, dwellMs };
+
+    const next: BaseSite[] = state.baseSites.map(s => {
+      const inCircle = Math.hypot(s.x - px, s.y - py) <= BASE_CAPTURE_RADIUS;
+      if (s.status === 'open') {
+        const dwellMs = inCircle ? s.dwellMs + deltaTime * 1000 : 0;
+        if (inCircle && dwellMs >= BASE_CAPTURE_HOLD_MS && !capturedThisFrame) {
+          capturedThisFrame = { id: s.id, x: s.x, y: s.y };
+          changed = true;
+          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_RESPAWN_MS, soldierFireAt: 0 };
+        }
+        if (dwellMs !== s.dwellMs) changed = true;
+        return { ...s, dwellMs };
+      }
+      // captured
+      let { hp, attackerId, attackerRespawnAt, soldierFireAt } = s;
+      const safe = s.id === state.safeBaseId; // 商人サイト=安全地帯(不死・回復)
+      const vis = onScreen(s.x, s.y);
+      if (safe) {
+        if (attackerId) { removeAttackerIds.push(attackerId); attackerId = null; }
+        hp = Math.min(SUPP_HP_MAX, hp + SUPP_REGEN_PER_SEC * deltaTime);
+      } else if (vis) {
+        // 攻撃者ライフサイクル: 撃破(消滅)検出→30s後に再湧き。生存中は拠点HPを削る。
+        if (attackerId && !aliveIds.has(attackerId)) { attackerId = null; attackerRespawnAt = now + SUPP_ATTACKER_RESPAWN_MS; }
+        if (!attackerId && now >= attackerRespawnAt) {
+          const ang = ((Math.abs(s.x) * 13 + Math.abs(s.y) * 7) % 628) / 100;
+          spawnList.push({
+            x: s.x + Math.cos(ang) * (BASE_CAPTURE_RADIUS + 100),
+            y: s.y + Math.sin(ang) * (BASE_CAPTURE_RADIUS + 100),
+            id: `atk-${s.id}-${Math.floor(now)}`, baseId: s.id,
+          });
+          attackerId = `atk-${s.id}-${Math.floor(now)}`;
+        }
+        const hasLiveAttacker = !!attackerId && aliveIds.has(attackerId); // 今フレ生成分は次フレから削る
+        if (hasLiveAttacker) {
+          hp -= SUPP_ATTACKER_DPS * deltaTime; // 攻撃者が拠点を攻撃
+          if (now >= soldierFireAt) {           // 軍人2体が攻撃者へ反撃
+            soldierFireAt = now + SUPP_SOLDIER_INTERVAL_MS;
+            const atk = state.enemies.find(e => e.id === attackerId);
+            if (atk) {
+              damageShots.push({ id: attackerId!, dmg: SUPP_SOLDIER_DMG });
+              const tx = atk.x + atk.width / 2, ty = atk.y + atk.height / 2;
+              soldierShots.push({ fromX: s.x - 36, fromY: s.y, toX: tx, toY: ty });
+              soldierShots.push({ fromX: s.x + 36, fromY: s.y, toX: tx, toY: ty });
+            }
+          }
+        }
+        if (inCircle) hp += SUPP_REGEN_PER_SEC * deltaTime; // プレイヤーが拠点内で防衛=回復
+        hp = Math.max(0, Math.min(SUPP_HP_MAX, hp));
+      } else {
+        // 画面外: 実体なし・単純な時間ドレイン。
+        if (attackerId) { removeAttackerIds.push(attackerId); attackerId = null; }
+        hp = Math.max(0, hp - SUPP_DRAIN_PER_SEC * deltaTime);
+      }
+      if (hp <= 0) { // 陥落
+        if (attackerId) removeAttackerIds.push(attackerId);
+        fallen.push({ x: s.x, y: s.y });
+        changed = true;
+        return { ...s, status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0 };
+      }
+      if (hp !== s.hp || attackerId !== s.attackerId || soldierFireAt !== s.soldierFireAt) changed = true;
+      return { ...s, hp, attackerId, attackerRespawnAt, soldierFireAt };
     });
-    if (capturedIdx === -1) {
-      if (changed) set({ baseSites: next });
-      return;
+
+    if (changed || capturedThisFrame || removeAttackerIds.length) {
+      const removeSet = new Set(removeAttackerIds);
+      set(st => ({
+        baseSites: next,
+        enemies: removeSet.size ? st.enemies.filter(e => !removeSet.has(e.id)) : st.enemies,
+        ...(capturedThisFrame ? {
+          safeBaseId: capturedThisFrame.id,
+          weaponMerchant: { ...st.weaponMerchant, x: capturedThisFrame.x, y: capturedThisFrame.y },
+        } : {}),
+      }));
     }
-    // 制圧成立: 商人を候補地へ移動。元の商人地点を新たな候補地として戻す(数は常に一定)。
-    const site = next[capturedIdx];
-    const old = state.weaponMerchant;
-    const remaining = next
-      .filter((_, i) => i !== capturedIdx)
-      .map(s => ({ ...s, dwellMs: 0 }));
-    remaining.push({ id: `base-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`, x: old.x, y: old.y, dwellMs: 0 });
-    set({
-      baseSites: remaining,
-      weaponMerchant: { ...old, x: site.x, y: site.y },
-      eventBannerText: '拠点制圧',
-      eventBannerUntil: state.gameTime + 2200,
-    });
-    // 制圧演出(軽量・単発)。
-    get().spawnRing(site.x, site.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
-    get().spawnGlow(site.x, site.y, 70, 'rgba(251,191,36,', 600);
-    get().spawnCallout(site.x, site.y - 40, '拠点制圧', '#fde68a');
+
+    if (capturedThisFrame) {
+      const c = capturedThisFrame as { id: string; x: number; y: number };
+      get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
+      get().spawnGlow(c.x, c.y, 70, 'rgba(251,191,36,', 600);
+      get().spawnCallout(c.x, c.y - 40, '拠点確保', '#fde68a');
+      set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
+    }
+    for (const a of spawnList) {
+      const e = spawnEnemyAt('skeleton', a.x - 16, a.y - 16, now);
+      e.id = a.id; e.baseId = a.baseId; e.fromEvent = true; // fromEvent=距離カリング対象外(拠点付近に留める)
+      get().addEnemy(e);
+    }
+    for (const d of damageShots) get().damageEnemy(d.id, d.dmg);
+    for (const t of soldierShots) {
+      get().spawnEffect({ kind: 'trail', id: `supp-tracer-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`, fromX: t.fromX, fromY: t.fromY, toX: t.toX, toY: t.toY, color: 'rgba(253,224,71,0.9)', createdAt: Date.now(), duration: 120 });
+    }
+    for (const f of fallen) {
+      get().spawnRing(f.x, f.y, 14, BASE_CAPTURE_RADIUS, 'rgba(239,68,68,0.9)', 4, 560);
+      get().spawnCallout(f.x, f.y - 40, '拠点陥落', '#fca5a5');
+      get().triggerAttention(f.x, f.y); // カメラがそこへ→on-screen化で攻撃者/軍人が描かれる
+      set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
+    }
+    // 全拠点制圧 → 既存クリア経路(帰還サークル)へ。
+    if (next.every(s => s.status === 'captured')) {
+      set({ suppressionActive: false, eventBannerText: '全拠点制圧', eventBannerUntil: now + 3000 });
+      get().spawnFlash('rgba(251,191,36,0.3)', 400);
+      get().triggerEventVictory();
+    }
   },
 
   openLabDoor: (id) => {
@@ -6674,6 +6781,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameWon: false,
         finaleDefeated: false,
         baseSites: createBaseSites(),
+        suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
+        safeBaseId: null,
         returnCircle: null,
         gameReturned: false,
         meleeFinishComboCount: 0,
