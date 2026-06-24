@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.902 — ガチャ1枚絵差し込み＋撃つ→的破裂演出／ステージ3・4 BGM差し替え
+
+- **ガチャ1枚絵**: `public/gacha/cover.png`(射撃場)を表示。引き気味の絵を少し寄せて(scale1.18・中央ブース)中央の射撃ブースを見せる。
+- **撃つ→的が破裂**: `public/gacha/target.png`(吊られた的)を全画面中央に出し、撃つ押下で発砲(SE: shoot+bomb)→着弾フラッシュ＋的が拡大しながら砕け、破片12枚が飛散(CSS駆動)→約0.82秒後に暗転リザルトへ。
+- **ステージBGM差し替え**: `stage3.mp3` / `stage4.mp3` を新規受領曲に差し替え。深層域用の逆再生版 `stage3-reverse.mp3` / `stage4-reverse.mp3` も ffmpeg(`areverse`)で新曲から再生成(尺一致確認済み)。
+- パフォーマンス負荷: **1/10**(メニュー専用の一過性CSSアニメ＝的1枚＋破片12・one-shot。BGMは既存の差し替えのみで再生経路不変。in-game描画への影響なし)。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.901 — 強化訓練ガチャ演出(1枚絵→撃つ→暗転リザルト)
 
 - **1枚絵+[撃つ]**: ガチャを開くと1枚絵(`public/gacha/cover.png` 後日差し込み・未設置時はプレースホルダ)を表示、画面下部に「撃つ（1回/10連）」。

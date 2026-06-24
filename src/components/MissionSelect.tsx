@@ -705,9 +705,12 @@ const SkillGacha: React.FC = () => {
   const pullGacha = useGameStore(s => s.pullGacha);
   const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(1枚絵表示)
   const [skipped, setSkipped] = useState(false); // スキップ=演出無しで全て即表示
+  const [bursting, setBursting] = useState(false); // 撃つ→的が破裂する演出中(results確定済み・暗転前)
   const [noGold, setNoGold] = useState(false);
 
   // n回 逐次で引く(各 pullGacha が get/set で最新stateを参照=スナップショット一括禁止)。
+  // 撃つ→的破裂(BURST)→暗転リザルト の順に遷移する。
+  const BURST_MS = 820;
   const pullMany = (n: number) => {
     setNoGold(false);
     const got: GachaPullResult[] = [];
@@ -716,14 +719,41 @@ const SkillGacha: React.FC = () => {
       if (!r) { if (got.length === 0) { setNoGold(true); setResults(null); return; } break; } // ゴールド切れで打ち切り
       got.push(r);
     }
-    playSfx('ui-select');
+    playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
     setSkipped(false);
-    setResults(got); // 暗転演出へ
+    setResults(got);     // リザルトは確定(暗転は破裂後に出す)
+    setBursting(true);   // まず破裂演出
+    setTimeout(() => setBursting(false), BURST_MS);
   };
-  const closeReveal = () => { setResults(null); setSkipped(false); };
+  const closeReveal = () => { setResults(null); setSkipped(false); setBursting(false); };
 
   const superPct = gachaSuperPercent(pity);
   const pityLeft = gachaPityRemaining(pity);
+
+  // --- 撃つ→的が破裂する演出 ------------------------------------------
+  if (bursting) {
+    // 中心から飛び散る破片(12枚)。--tx/--ty で方向を渡す(CSS駆動)。
+    const shards = Array.from({ length: 12 }, (_, i) => {
+      const ang = (Math.PI * 2 * i) / 12;
+      const dist = 96 + (i % 3) * 26;
+      return { tx: Math.cos(ang) * dist, ty: Math.sin(ang) * dist, i };
+    });
+    return (
+      <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black/90">
+        <div className="relative flex items-center justify-center" style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
+          <img src={`${import.meta.env.BASE_URL}gacha/target.png`} alt="" className="gacha-target-burst absolute inset-0 h-full w-full object-contain" />
+          {shards.map(s => (
+            <span
+              key={s.i}
+              className="gacha-shard absolute h-2.5 w-2.5 rounded-[2px] bg-slate-200/90"
+              style={{ ['--tx' as string]: `${s.tx}px`, ['--ty' as string]: `${s.ty}px` }}
+            />
+          ))}
+          <span className="gacha-flash absolute inset-0 rounded-full bg-white" style={{ filter: 'blur(8px)' }} />
+        </div>
+      </div>
+    );
+  }
 
   // --- 暗転リザルト演出 ------------------------------------------------
   if (results) {
@@ -820,8 +850,8 @@ const SkillGacha: React.FC = () => {
         <span className="text-[12px] font-semibold text-fuchsia-100">強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
-      {/* 1枚絵(素材は public/gacha/cover.png に後日差し込み。未設置時は下のプレースホルダが見える) */}
-      <div className="relative mb-2 overflow-hidden rounded-xl border border-fuchsia-300/25" style={{ aspectRatio: '16 / 10' }}>
+      {/* 1枚絵(public/gacha/cover.png)。引き気味の絵を少し寄せて(zoom)中央の射撃ブースを見せる。 */}
+      <div className="relative mb-2 overflow-hidden rounded-xl border border-fuchsia-300/25" style={{ aspectRatio: '4 / 5' }}>
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-fuchsia-900/40 via-black/30 to-black/60">
           <span className="text-[13px] tracking-[0.35em] text-fuchsia-200/50">強化訓練</span>
         </div>
@@ -829,6 +859,7 @@ const SkillGacha: React.FC = () => {
           src={`${import.meta.env.BASE_URL}gacha/cover.png`}
           alt=""
           className="relative h-full w-full object-cover"
+          style={{ transform: 'scale(1.18)', objectPosition: 'center 38%' }}
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
         />
       </div>
