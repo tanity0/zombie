@@ -23,7 +23,7 @@ const UpgradeMenu: React.FC = () => {
           <h2 className="text-xl font-semibold tracking-tight text-white">レベルアップ</h2>
           <p className="text-xs text-white/60 mt-1">強化を選んでください</p>
         </div>
-        <div className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto min-h-0 overscroll-contain">
+        <div className="px-3 pb-4 flex flex-col gap-2 overflow-y-auto min-h-0 overscroll-contain touch-pan-y">
           {upgradeOptions.map(upgrade => {
             // 装備=特殊(level0)は金枠、通常はランク表示。scrap/heal は専用アイコン。
             const isSpecial = upgrade.type === 'equipment' && upgrade.level === 0;

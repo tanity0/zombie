@@ -76,7 +76,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
             className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0c0c14]/95 shadow-2xl"
             style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}
           >
-            <div className="overflow-y-auto px-5 pt-5 pb-3 text-white/85">
+            <div className="overflow-y-auto overscroll-contain touch-pan-y px-5 pt-5 pb-3 text-white/85">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold text-amber-200">⚠ ご利用にあたって</h2>
                 <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-mono tabular-nums text-white/70">v{__APP_VERSION__}</span>

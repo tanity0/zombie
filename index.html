@@ -21,7 +21,11 @@
       }
       html, body {
         overscroll-behavior: none;
-        touch-action: none;
+        /* none だと子のスクロール領域(メニュー等)が指で全くスクロールできない
+           (touch-action は祖先チェーンで交差判定されるため)。pan-x/pan-y にすると
+           子に付けた touch-action: pan-y が効く一方、pinch/ダブルタップ拡大は引き続き抑止。
+           ゲーム面(canvas/ジョイスティック/操作層)は各要素が個別に touch-action:none を指定済み。 */
+        touch-action: pan-x pan-y;
         position: fixed;
         overflow: hidden;
         width: 100%;

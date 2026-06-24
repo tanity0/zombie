@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.909 — 射撃練習場を画面内に収め画面全体タップで発射／他メニューの指スクロール復活
+
+- 射撃練習場の再設計: 縦長をやめ全要素を画面内に収める。射撃場の絵(contain)に的を中央で重ね、
+  的の下に「撃つ」を画像内テキストとして配置(ボタン見た目をやめ span＋呼吸グロー gacha-shoot-text)。
+  値段表示は前画面で確認済みのため削除。所持G/確率/天井ボックスも本画面からは除去。
+- 「撃つ」画面は**どこを押しても発射**(外側divのonClickでpull、内側はpointer-events-noneで貫通、
+  戻るのみ stopPropagation)。結果は従来どおり結果専用画面(暗転リザルト/カメラ)へ遷移。
+- 他メニューの指スクロール復活: 実機の `touch-action:none`(html,body)を `pan-x pan-y` に緩和
+  (pinch/ダブルタップ拡大は引き続き抑止、ゲーム面は各要素が個別に none 指定済み)＋
+  UpgradeMenu/MissionSelectルート/TitleScreen/GameOverScreen の各スクロール領域に touch-pan-y を付与。
+- 負荷: 追加の常駐は「撃つ」テキストの呼吸グロー1要素のみ(CSS)=1/10。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.908 — リザルトをネイティブスクロール廃止→translateYカメラ化／SE擬音の文字を削除
 
 - 実機は index.html で `html,body { touch-action:none; overflow:hidden; position:fixed }` の

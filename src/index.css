@@ -275,11 +275,11 @@
 }
 .gacha-shard { animation: gacha-shard 0.7s ease-out forwards; }
 
-/* 射撃練習場のスタート風[撃つ]ボタンの呼吸グロー(CSSのみ・常駐1要素=負荷1/10) */
-@keyframes gacha-start-pulse {
-  0%, 100% { box-shadow: 0 0 18px rgba(232,121,249,0.4); }
-  50%      { box-shadow: 0 0 30px rgba(232,121,249,0.75); }
+/* 射撃練習場「撃つ」テキストの呼吸グロー(ボタン見た目にせずタップ可を示す。CSSのみ・常駐1要素=負荷1/10) */
+@keyframes gacha-shoot-text {
+  0%, 100% { opacity: 0.9;  text-shadow: 0 0 10px rgba(232,121,249,0.5), 0 2px 10px rgba(0,0,0,0.95); }
+  50%      { opacity: 1;    text-shadow: 0 0 22px rgba(232,121,249,0.95), 0 2px 10px rgba(0,0,0,0.95); }
 }
-.gacha-start-pulse { animation: gacha-start-pulse 1.5s ease-in-out infinite; }
+.gacha-shoot-text { animation: gacha-shoot-text 1.4s ease-in-out infinite; }
 
 

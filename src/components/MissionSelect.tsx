@@ -40,7 +40,7 @@ type Screen =
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div
-    className="h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-y-auto overscroll-contain"
+    className="h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-y-auto overscroll-contain touch-pan-y"
     style={{
       backgroundImage: `linear-gradient(rgba(8,7,14,0.6), rgba(8,7,14,0.82)), url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
       backgroundSize: 'cover',
@@ -922,65 +922,49 @@ const SkillGacha: React.FC = () => {
   const costLabel = (c: number) => (c > 0 ? `${c.toLocaleString()}G` : '無料');
 
   // --- 射撃練習場(別画面) ----------------------------------------------
-  // 回数選択後にここへ遷移。射撃場の絵は画面内に収め(contain)、最初から的(target.png)が中央。
-  // その下に[撃つ]をスタートボタン風に置く。撃つ→破裂→暗転リザルト(上の分岐)へ。
+  // 回数選択後にここへ遷移。射撃場の絵を画面内に収め(contain)、的(target.png)を画像中央に重ね、
+  // その的の下に「撃つ」を画像内テキストとして置く(ボタン見た目にしない)。値段は前画面で確認済みのため非表示。
+  // 画面のどこを押しても発射(戻る除く)→破裂→暗転リザルト(上の分岐)へ。
   if (pendingCount !== null) {
-    const cost = GACHA_PULL_COST * pendingCount;
-    const cantPull = goldBalance < cost;
+    const cantPull = goldBalance < GACHA_PULL_COST * pendingCount;
     return (
-      <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black">
-        {/* 背景: 射撃場の絵。無理に縦いっぱいにせず画面内に収める(contain)。 */}
+      <div
+        className="gacha-dim fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-black"
+        role="button"
+        tabIndex={0}
+        onClick={() => { if (!cantPull) pullMany(pendingCount); }}
+      >
+        {/* 射撃場の絵を画面内に収める(contain)。縦長に伸ばさない。 */}
         <img
           src={coverSrc}
           alt=""
-          className="absolute inset-0 h-full w-full object-contain opacity-90"
+          className="absolute inset-0 h-full w-full object-contain"
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-black/85" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/70" />
 
-        {/* ヘッダー: 戻る / 所持ゴールド */}
-        <div className="relative flex items-center justify-between px-4 pt-4">
-          <button
-            type="button"
-            onClick={() => { setPendingCount(null); setNoGold(false); }}
-            className="rounded-lg border border-white/20 bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
-          >
-            ‹ 戻る
-          </button>
-          <span className="rounded-lg border border-amber-300/30 bg-black/40 px-3 py-1.5 text-[12px] font-semibold text-amber-200">所持ゴールド {goldBalance.toLocaleString()}</span>
-        </div>
-        <p className="relative mt-2 text-center text-[13px] font-bold tracking-[0.32em] text-fuchsia-100/90 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">射撃練習場 ・ {pendingCount}回訓練</p>
+        {/* 戻る(左上に小さく)。発射のタップとは区別する(stopPropagation)。 */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setPendingCount(null); setNoGold(false); }}
+          className="absolute left-4 top-4 z-10 rounded-lg border border-white/20 bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
+        >
+          ‹ 戻る
+        </button>
 
-        {/* 中央の的 */}
-        <div className="relative flex flex-1 items-center justify-center px-6">
+        {/* 的＋「撃つ」を画像中央に重ねる。クリックは下の画面全体へ通す(pointer-events-none)。 */}
+        <div className="pointer-events-none relative flex flex-col items-center justify-center gap-1 px-6">
           <img
             src={targetSrc}
             alt="的"
-            className="max-h-[52%] w-auto max-w-[78%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.7)]"
+            className="max-h-[46vh] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
           />
-        </div>
-
-        {/* 下部: スタート風の[撃つ] */}
-        <div className="relative px-5 pb-7">
-          <div className="mx-auto mb-2 flex max-w-md items-center justify-between rounded-lg border border-fuchsia-300/20 bg-black/40 px-2.5 py-1 text-[10px]">
-            <span className="text-fuchsia-100/85">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
-            <span className="text-white/60">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => pullMany(pendingCount)}
-            disabled={cantPull}
-            className={`mx-auto block w-full max-w-md rounded-2xl px-4 py-4 text-[20px] font-extrabold tracking-[0.25em] ${
-              cantPull
-                ? 'border border-white/10 bg-white/[0.03] text-white/30'
-                : 'border-2 border-fuchsia-300/70 bg-fuchsia-500/30 text-white shadow-[0_0_24px_rgba(232,121,249,0.5)] active:bg-fuchsia-500/45 gacha-start-pulse'
-            }`}
-          >
-            撃 つ
-          </button>
-          <p className="mt-1.5 text-center text-[11px] text-white/65">{pendingCount}回訓練 ／ {costLabel(cost)}</p>
-          {noGold && <p className="mt-1 text-center text-[11px] text-rose-300">ゴールドが足りません。</p>}
+          {/* 「撃つ」: ボタンではなく的の下の画像内テキスト(画面どこでもタップで発射)。 */}
+          <span className={`pl-[0.4em] text-[30px] font-extrabold tracking-[0.4em] drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)] ${cantPull ? 'text-white/30' : 'text-white gacha-shoot-text'}`}>
+            撃つ
+          </span>
+          {noGold && <p className="text-[11px] text-rose-300">ゴールドが足りません。</p>}
         </div>
       </div>
     );
