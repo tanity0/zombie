@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.907 — 回数を先に選ぶ方式＋射撃場の絵を画面内に収める
+
+- 射撃練習場の背景を object-cover(縦いっぱい強制)→ object-contain に変更し、絵を画面内に収めた。
+- 1回/10回を「先に」選ぶ方式に変更。開発施設トップは回数選択画面に:
+  画像の上に「スキル強化訓練」タイトル → 射撃練習場の横長バナー(16:7) → [1回訓練][10回訓練]
+  → ボタン下に金額(各回数のG)。回数を選ぶと射撃練習場へ遷移し、[撃 つ]で確定。
+- とじる/戻るで回数選択へ復帰。負荷=静止画＋イベント駆動のみ=1/10。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.906 — 10連リザルトでカードを追いかけてスクロール
 
 - 10連で結果カードが画面下に伸びる問題に対応。各カードの出現タイミング(CSSの
