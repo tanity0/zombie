@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.917 — 開発施設など全施設画面の「全画面スクロール」を排除(脱ブラウザ part1)
+
+- 指摘:「画面全体がスクロールする感じがブラウザっぽい」。原因は共通 `Shell` が `overflow-y-auto` で
+  **ページ(背景ごと)全体がスクロール**していたこと。
+- 修正: `Shell` を `overflow-hidden` にしてページは固定。はみ出す時は **枠(glass-panel)の中だけ**が
+  スクロールする(`max-h-full overflow-y-auto overscroll-contain`、スクロールバーは全要素で非表示済み)。
+  → 全施設画面(home/ステージ選択/開発施設/図鑑等)で背景は固定され、コンテナ内スクロールに統一。
+- 参考: スマグロ=ドラクエ スマッシュグロウ。当該UIの確実な記憶がないため"再現"はせず、本会話で固まった
+  原則(ブラウザのページ的スクロールをやめ、枠内/ページ送りでゲーム的に見せる)で実装。
+- 検証: typecheck/lint/test/build 全green。
+- 次手(part2): スクロールがある部分の"ページ的(ブラウザ)挙動"を全排除し、必要箇所は◀▶/スナップへ。
+  DQスマッシュグロウの具体画面の挙動を一言もらえれば寄せる。
+
 ## v0.25.916 — ガチャ破裂をレア度で段階演出(引きのドラマ／最大のwebっぽさ解消)
 
 - これまで破裂は当たりでもハズレでも同じ(白フラッシュ＋灰破片)＝一番webっぽい無味さだった。
