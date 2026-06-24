@@ -109,8 +109,8 @@ const IntroDialogue: React.FC = () => {
             const speaker = l.speaker === '__class__'
               ? (CHARACTER_CLASS_NAMES[characterClass] ?? 'プレイヤー')
               : l.speaker;
-            // 偵察兵=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
-            const isField = speaker === '偵察兵';
+            // エドガー(偵察兵)=切迫した別声(かすれた赤)。それ以外(通信兵など)=琥珀。
+            const isField = speaker === 'エドガー';
             const bodyCls = isField ? 'text-lg leading-relaxed text-rose-100' : 'text-lg leading-relaxed text-amber-100';
             const nameCls = isField ? 'mr-1.5 font-bold text-rose-300' : 'mr-1.5 font-bold text-amber-300';
             return (

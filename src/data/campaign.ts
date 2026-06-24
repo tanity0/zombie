@@ -82,8 +82,8 @@ export const STAGES: Stage[] = [
         '現在地から近い。座標を送る。救助を優先してくれ。',
       ],
       voices: [
-        { speaker: '偵察兵', text: '……聞こえるか！ くそ、弾がねぇ！' },
-        { speaker: '偵察兵', text: 'グレッグ……！ ちくしょう、助け……' },
+        { speaker: 'エドガー', text: '……聞こえるか！ くそ、弾がねぇ！' },
+        { speaker: 'エドガー', text: 'グレッグ……！ ちくしょう、助け……' },
       ],
       debrief: [
         '偵察部隊の生存者を救助。',
@@ -96,8 +96,8 @@ export const STAGES: Stage[] = [
         { speaker: '通信兵', text: '研究所から帰還中の偵察部隊が、変異体に包囲された' },
         { speaker: '通信兵', text: '現在地から近い。座標を送る。救助を優先してくれ' },
         { speaker: '__radio__', text: '', holdMs: 1500 },
-        { speaker: '偵察兵', text: '……聞こえるか! くそ、弾がねぇ!' },
-        { speaker: '偵察兵', text: 'グレッグ……! ちくしょう、助け……' },
+        { speaker: 'エドガー', text: '……聞こえるか! くそ、弾がねぇ!' },
+        { speaker: 'エドガー', text: 'グレッグ……! ちくしょう、助け……' },
       ],
     },
   },

@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.899 — ステージ1の偵察兵セリフの話者名を「エドガー」に
+
+- M1の `voices`/`dialogue` の話者 `偵察兵` を **エドガー** に変更(セリフ本文は据え置き)。
+- `IntroDialogue.tsx` の切迫した別声スタイル判定(かすれた赤)を `偵察兵` → `エドガー` に追従。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.898 — ガチャ換金額を固定(通常10G/レア30G/超レア50G)
 
 - `GACHA_REFUND_BY_RARITY` を 50/150/500 → **10/30/50** に変更(現Lv以下/上限/Lv1固定の重複時の返金)。
