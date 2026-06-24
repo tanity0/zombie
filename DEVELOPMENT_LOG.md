@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.896 — ガチャ仕様変更(レア度ソフト天井＋被り回数でLv上昇・10連・可視化)
+
+- **A. レア度抽選(ソフト天井)**: 基本 normal70/rare25/super5。super非排出のpullごとに normal−5/rare+4/super+1 を蓄積、
+  normalが0になる14pullで打ち止め(super19/rare81/normal0)。superでリセット。ハード天井(確定枠)なし。
+  状態 = `gachaPitySinceSuper`(直近superからのpull数・永続)。`rarityWeightsForPity`/`rollGachaSkill(pity)`。
+- **B. レベル抽選(被り回数表)**: スキルごとの被り回数(`gachaDupeCounts`・永続)＋レア度で [Lv1,Lv2,Lv3] 重みを決定(`levelWeightsFor`)。
+  通常 0:80/15/5・1–2:70/20/10・3–5:50/40/10・6+:20/40/40 ／ レア 0/1/2/3+ ／ 超レア 0/1/2+(確定表)。
+  `rollSkillLevel(rarity, dupeCount, maxLv)`。
+  - 被りカウンタは昇格有無に関わらず毎回+1(永続)。抽選Lv>現Lvのみ昇格(max)。現Lv以下/上限到達は返金(normal50/rare150/super500)。初取得(0回)は比較なしで付与。
+  - Lv上限固定(reaper/bomber=Lv1)は被りで回数を進めず常に返金。
+- **C. 連続抽選(10連)**: `pullGacha()` を逐次N回。各回が get/set で最新stateを参照(pity/被りを都度反映=スナップショット一括禁止)。
+- **D. 可視化**: 結果に「被り◯回 / 次の昇格確率%」、ガチャ上部に「現在の超レア確率% / 天井まであと△」。
+  `gachaSuperPercent`/`gachaPityRemaining`/`gachaPromotePercent`。UIはプリミティブ購読のみ(毎フレーム非購読・React規律)。
+- **E. 実装**: 永続層に `gachaDupeCounts`/`gachaPitySinceSuper` を追加(localStorage)。`pullGacha` が全工程(レア度→pity更新→Lv抽選→付与/返金→被り更新)を担う。
+- パフォーマンス負荷: **1/10**(重み表参照＋カウンタ加算のみ。新ループ/重処理なし)。
+- 検証: typecheck / lint / test(46 passed+1 skipped・ソフト天井/Lv表/昇格%/pullGacha逐次invariantのテスト追加) / build すべて green。
+
 ## v0.25.895 — 追加スキル: スクラップビルダー(初期スクラップ+)
 
 - **スクラップビルダー(scrap-builder)**: normal レア・Lv1〜3。出撃開始時の初期スクラップ **+50/100/150**(Lv)。

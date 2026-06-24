@@ -3,7 +3,7 @@ import {
   Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play, Sparkles
 } from 'lucide-react';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
-import { subWeaponDisplayName, useGameStore, getCarriedEquipId } from '../store/gameStore';
+import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import { rhythmIntervalForLevel } from '../config/shijin';
@@ -11,7 +11,8 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
-  GACHA_PULL_COST, GACHA_REFUND_BY_RARITY, RARITY_LABEL, rollGachaSkill, rollSkillLevel, skillMaxLevel, type SkillRarity, type Stage
+  GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel,
+  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore
@@ -686,35 +687,30 @@ const DevTools: React.FC<{
 };
 
 // === 強化訓練(スキルガチャ。武器開発トップに組み込み) ===========================
-// ゴールド残高で1回引く。当選=所持解禁、重複=レア度別ゴールド返金。
-type GachaResult = { key: SkillKey; rarity: SkillRarity; level: number; duplicate: boolean; refund: number };
+// レア度=pity(直近superからのpull数)で重み変動。Lv=スキル別の被り回数で抽選。逐次処理。
 const SkillGacha: React.FC = () => {
+  // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
   const goldBalance = useGameStore(s => s.goldBalance);
   const ownedCount = useGameStore(s => s.ownedSkills.length);
-  const grantSkillLevel = useGameStore(s => s.grantSkillLevel);
-  const spendGold = useGameStore(s => s.spendGold);
-  const addGold = useGameStore(s => s.addGold);
-  const [result, setResult] = useState<GachaResult | null>(null);
+  const pity = useGameStore(s => s.gachaPitySinceSuper);
+  const pullGacha = useGameStore(s => s.pullGacha);
+  const [results, setResults] = useState<GachaPullResult[] | null>(null);
   const [noGold, setNoGold] = useState(false);
 
-  const pull = () => {
+  // n回 逐次で引く(各 pullGacha が get/set で最新stateを参照=スナップショット一括禁止)。
+  const pullMany = (n: number) => {
     setNoGold(false);
-    // コスト0(無料)のときは課金スキップ。有料のときだけ残高を消費。
-    if (GACHA_PULL_COST > 0 && !spendGold(GACHA_PULL_COST)) { setNoGold(true); setResult(null); return; }
-    const key = rollGachaSkill();
-    const rarity = SKILLS[key].rarity;
-    // レベルを直接抽選(上位ほど低確率・レア度でさらに低下)。一部スキルは Lv1 固定。
-    const level = rollSkillLevel(rarity, skillMaxLevel(key));
-    // 既存レベル以下なら更新されず false → 重複扱いでゴールド返金。
-    const upgraded = grantSkillLevel(key, level);
-    if (!upgraded) {
-      const refund = GACHA_REFUND_BY_RARITY[rarity];
-      addGold(refund);
-      setResult({ key, rarity, level, duplicate: true, refund });
-    } else {
-      setResult({ key, rarity, level, duplicate: false, refund: 0 });
+    const got: GachaPullResult[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = pullGacha();
+      if (!r) { if (got.length === 0) { setNoGold(true); setResults(null); return; } break; } // ゴールド切れで打ち切り
+      got.push(r);
     }
+    setResults(got);
   };
+
+  const superPct = gachaSuperPercent(pity);
+  const pityLeft = gachaPityRemaining(pity);
 
   return (
     <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
@@ -722,32 +718,63 @@ const SkillGacha: React.FC = () => {
         <span className="text-[12px] font-semibold text-fuchsia-100">強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
-      <p className="text-[10px] leading-snug text-white/50 mb-2">
-        装備スキルをゴールドで解禁。{RARITY_LABEL.normal}60% / {RARITY_LABEL.rare}35% / {RARITY_LABEL.super}5%。Lv1〜3が直接排出（上位ほど低確率・レア度でさらに低下／一部スキルはLv1のみ）。既存Lv以下は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
+      <p className="text-[10px] leading-snug text-white/50 mb-1.5">
+        レア度 {RARITY_LABEL.normal}/{RARITY_LABEL.rare}/{RARITY_LABEL.super} は引くほど超レアが出やすく。被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
       </p>
-      <button
-        type="button"
-        onClick={pull}
-        disabled={goldBalance < GACHA_PULL_COST}
-        className={`w-full rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
-          goldBalance < GACHA_PULL_COST
-            ? 'border border-white/10 bg-white/[0.03] text-white/30'
-            : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
-        }`}
-      >
-        {GACHA_PULL_COST > 0 ? `1回引く（${GACHA_PULL_COST} ゴールド）` : '1回引く（無料）'}
-      </button>
+      <div className="mb-2 flex items-center justify-between rounded-lg border border-fuchsia-300/20 bg-black/20 px-2 py-1 text-[10px]">
+        <span className="text-fuchsia-100/80">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
+        <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => pullMany(1)}
+          disabled={goldBalance < GACHA_PULL_COST}
+          className={`rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+            goldBalance < GACHA_PULL_COST
+              ? 'border border-white/10 bg-white/[0.03] text-white/30'
+              : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
+          }`}
+        >
+          {GACHA_PULL_COST > 0 ? `1回（${GACHA_PULL_COST}G）` : '1回引く'}
+        </button>
+        <button
+          type="button"
+          onClick={() => pullMany(10)}
+          disabled={goldBalance < GACHA_PULL_COST * 10}
+          className={`rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+            goldBalance < GACHA_PULL_COST * 10
+              ? 'border border-white/10 bg-white/[0.03] text-white/30'
+              : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
+          }`}
+        >
+          {GACHA_PULL_COST > 0 ? `10連（${GACHA_PULL_COST * 10}G）` : '10連を引く'}
+        </button>
+      </div>
       {noGold && <p className="mt-2 text-[11px] text-rose-300 text-center">ゴールドが足りません。</p>}
-      {result && (
-        <div className={`mt-2 rounded-xl border px-3 py-2 ${RARITY_BORDER[result.rarity]} bg-black/20`}>
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-white">{SKILLS[result.key].name} <span className="text-amber-200">Lv{result.level}</span></span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wider ${RARITY_TEXT[result.rarity]}`}>{RARITY_LABEL[result.rarity]}</span>
-          </div>
-          <p className="text-[10px] leading-snug text-white/55 mt-0.5">{SKILLS[result.key].desc}</p>
-          <p className={`text-[11px] mt-1 font-semibold ${result.duplicate ? 'text-amber-200' : 'text-emerald-300'}`}>
-            {result.duplicate ? `Lv${result.level}以下のため → ${result.refund} ゴールド返金` : `Lv${result.level} 解禁！`}
-          </p>
+      {results && (
+        <div className="mt-2 space-y-1.5">
+          {results.map((r, i) => {
+            const maxLv = skillMaxLevel(r.key);
+            // 次pullでの昇格確率(=この結果適用後の被り回数/現Lvから次段が出る%)。
+            const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
+            return (
+              <div key={i} className={`rounded-xl border px-3 py-2 ${RARITY_BORDER[r.rarity]} bg-black/20`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-semibold text-white">{SKILLS[r.key].name} <span className="text-amber-200">Lv{r.newLevel}</span></span>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
+                </div>
+                <p className={`text-[11px] mt-0.5 font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
+                  {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
+                    : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`
+                    : `抽選Lv${r.rolledLevel}（現Lv${r.prevLevel}以下/上限）→ ${r.refund}G返金`}
+                </p>
+                <p className="text-[10px] leading-snug text-white/50 mt-0.5">
+                  被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

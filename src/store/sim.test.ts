@@ -142,6 +142,25 @@ describe('headless simulation invariants', () => {
     expect(useGameStore.getState().player.straps).toBe(100);
   });
 
+  it('pullGacha updates pity/dupe state sequentially and keeps invariants', () => {
+    useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, gachaDupeCounts: {}, gachaPitySinceSuper: 0, goldBalance: 0 });
+    for (let i = 0; i < 60; i++) {
+      const r = useGameStore.getState().pullGacha();
+      expect(r).not.toBeNull();
+      if (!r) break;
+      const s = useGameStore.getState();
+      // pity: super resets to 0, otherwise it grew from the previous pull.
+      if (r.rarity === 'super') expect(s.gachaPitySinceSuper).toBe(0);
+      else expect(s.gachaPitySinceSuper).toBeGreaterThan(0);
+      // owned + level invariants.
+      expect(s.ownedSkills).toContain(r.key);
+      if (r.promoted) expect(s.ownedSkillLevels[r.key]).toBe(r.newLevel);
+      // level never exceeds the skill cap; refund only when not promoted.
+      expect(r.newLevel).toBeLessThanOrEqual(3);
+      expect(r.refund > 0).toBe(!r.promoted);
+    }
+  });
+
   // Nightly fuzz (longer + multiple character classes/seeds). Skipped in normal
   // CI; the nightly cron sets SIM_FUZZ=1. See .github/workflows/nightly.yml.
   it.runIf(process.env.SIM_FUZZ)('fuzz: long randomized sim across classes', () => {

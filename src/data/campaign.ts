@@ -539,8 +539,16 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'scrap-builder':{ name: 'スクラップビルダー', desc: '出撃開始時の初期スクラップ+50(Lvで+100/+150)', rarity: 'normal' },
 };
 export const MAX_EQUIPPED_SKILLS = 2;
-// ガチャのレア度枠(%)。枠内は均等抽選。重複(所持済み)はゴールド返金。
-export const GACHA_RARITY_WEIGHTS: Record<SkillRarity, number> = { normal: 60, rare: 35, super: 5 };
+// ガチャのレア度抽選: 基本 normal70 / rare25 / super5。super が出ない pull ごとに
+// normal −5 / rare +4 / super +1 を蓄積(ソフト天井)。normal が 0 になる14pullで打ち止め
+// (super19 / rare81 / normal0)。super が出たら基本へリセット。ハード天井(確定枠)なし。
+export const GACHA_BASE_RARITY_WEIGHTS: Record<SkillRarity, number> = { normal: 70, rare: 25, super: 5 };
+export const GACHA_PITY_MAX = 14; // normal が 0 になる pull 数(= super 19% で打ち止め)
+// 「直近 super からの pull 数」pity からレア度重みを算出(純粋関数)。
+export const rarityWeightsForPity = (pity: number): Record<SkillRarity, number> => {
+  const c = Math.max(0, Math.min(GACHA_PITY_MAX, Math.floor(pity)));
+  return { normal: 70 - 5 * c, rare: 25 + 4 * c, super: 5 + c };
+};
 export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(k => SKILLS[k].rarity === r);
 // ガチャ1回の価格 / 重複時のレア度別返金額。// ※テスト用に一旦0円(無料)。本番は150想定。
 export const GACHA_PULL_COST = 0;
@@ -548,9 +556,9 @@ export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 50,
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
 
-// ゴールドガチャを1回引く。レア度枠→枠内均等で SkillKey を返す(純粋関数)。
-export const rollGachaSkill = (rng: () => number = Math.random): SkillKey => {
-  const weights = GACHA_RARITY_WEIGHTS;
+// pity からレア度を抽選し SkillKey を返す(枠内均等。純粋関数)。pity は呼び出し側が管理。
+export const rollGachaSkill = (pity = 0, rng: () => number = Math.random): SkillKey => {
+  const weights = rarityWeightsForPity(pity);
   const total = weights.normal + weights.rare + weights.super;
   let r = rng() * total;
   let rarity: SkillRarity = 'normal';
@@ -561,22 +569,49 @@ export const rollGachaSkill = (rng: () => number = Math.random): SkillKey => {
   const pool = skillsByRarity(rarity);
   return pool[Math.floor(rng() * pool.length)] ?? pool[0];
 };
+// 現在の super 確率(%)と天井までの残り pull(可視化用)。
+export const gachaSuperPercent = (pity: number): number => rarityWeightsForPity(pity).super;
+export const gachaPityRemaining = (pity: number): number => Math.max(0, GACHA_PITY_MAX - Math.max(0, Math.floor(pity)));
 
 // スキルの最大Lv。一部スキルはLv1固定(効果表でLv2/3が none のもの)。
 export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1 };
 export const skillMaxLevel = (key: SkillKey): number => SKILL_MAX_LEVEL[key] ?? 3;
-// ガチャのLv抽選: 高Lvほど稀。レア度が高いほどさらに高Lvが出にくい(社長指示)。
-const SKILL_LEVEL_WEIGHTS: Record<SkillRarity, number[]> = {
-  normal: [70, 22, 8],
-  rare:   [80, 16, 4],
-  super:  [90, 9, 1],
+// Lv抽選: スキルごとの「被り回数(dupeCount)」とレア度で [Lv1,Lv2,Lv3] の重みを決める。
+// 0回=初取得。被るほど高Lvが出やすくなる(社長確定表)。
+export const levelWeightsFor = (rarity: SkillRarity, dupeCount: number): number[] => {
+  const d = Math.max(0, Math.floor(dupeCount));
+  if (rarity === 'super') {
+    if (d === 0) return [70, 20, 10];
+    if (d === 1) return [20, 60, 20];
+    return [10, 30, 60];
+  }
+  if (rarity === 'rare') {
+    if (d === 0) return [80, 15, 5];
+    if (d === 1) return [70, 20, 10];
+    if (d === 2) return [50, 40, 10];
+    return [20, 40, 40];
+  }
+  // normal
+  if (d === 0) return [80, 15, 5];
+  if (d <= 2) return [70, 20, 10];
+  if (d <= 5) return [50, 40, 10];
+  return [20, 40, 40];
 };
-export const rollSkillLevel = (rarity: SkillRarity, maxLv: number, rng: () => number = Math.random): number => {
-  const w = SKILL_LEVEL_WEIGHTS[rarity].slice(0, Math.max(1, maxLv));
+export const rollSkillLevel = (rarity: SkillRarity, dupeCount: number, maxLv: number, rng: () => number = Math.random): number => {
+  const w = levelWeightsFor(rarity, dupeCount).slice(0, Math.max(1, maxLv));
   const total = w.reduce((a, b) => a + b, 0);
   let r = rng() * total;
   for (let i = 0; i < w.length; i++) { if (r < w[i]) return i + 1; r -= w[i]; }
   return 1;
+};
+// 可視化: 次pullで現Lvより上が出る確率(=昇格確率, %)。dupeCount/レア度/現Lv/maxLv から算出。
+export const gachaPromotePercent = (rarity: SkillRarity, curLv: number, dupeCount: number, maxLv: number): number => {
+  if (curLv >= maxLv) return 0;
+  const w = levelWeightsFor(rarity, dupeCount).slice(0, Math.max(1, maxLv));
+  const total = w.reduce((a, b) => a + b, 0) || 1;
+  // index i(0始まり)= Lv(i+1)。現Lv超え = index >= curLv。
+  const above = w.slice(curLv).reduce((a, b) => a + b, 0);
+  return Math.round((above / total) * 100);
 };
 
 // --- 資料室(世界観 / 変異体図鑑)のドラフト -------------------------------

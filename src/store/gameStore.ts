@@ -38,7 +38,8 @@ import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torc
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { skillMaxLevel } from '../data/campaign';
+import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST, GACHA_REFUND_BY_RARITY } from '../data/campaign';
+import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY } from '../pixi/renderSpec';
@@ -270,6 +271,16 @@ const loadSkillLevels = (): Partial<Record<SkillKey, number>> => {
 };
 const saveSkillLevels = (m: Partial<Record<SkillKey, number>>): void => {
   try { localStorage.setItem(OWNED_SKILL_LEVELS_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+// ガチャの永続状態: スキル別「被り回数(dupeCount)」と「直近superからのpull数(pity)」。
+const GACHA_DUPES_KEY = 'zombie:gachaDupeCounts';
+const GACHA_PITY_KEY = 'zombie:gachaPitySinceSuper';
+const loadDupeCounts = (): Partial<Record<SkillKey, number>> => {
+  try { const r = localStorage.getItem(GACHA_DUPES_KEY); const o = r ? JSON.parse(r) : {}; return (o && typeof o === 'object') ? o : {}; }
+  catch { return {}; }
+};
+const saveDupeCounts = (m: Partial<Record<SkillKey, number>>): void => {
+  try { localStorage.setItem(GACHA_DUPES_KEY, JSON.stringify(m)); } catch { /* ignore */ }
 };
 const GOLD_BALANCE_KEY = 'zombie:goldBalance';
 // 装備の持ち帰り: 商人帰還/クリア時に1つだけ次run へ引き継ぐ(死亡で破棄)。defId 1件のみ保存。
@@ -1337,6 +1348,19 @@ const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: numbe
   return { ...player, subWeapons, subWeaponLevels };
 };
 
+// 強化訓練(ガチャ)1回の結果。UI 表示と返金/昇格判定に必要な情報を一括で返す。
+export interface GachaPullResult {
+  key: SkillKey;
+  rarity: SkillRarity;
+  rolledLevel: number;   // 今回の抽選Lv
+  newLevel: number;      // 適用後の所持Lv
+  prevLevel: number;     // 抽選前の所持Lv(0=未所持)
+  dupeCount: number;     // 抽選に使った被り回数(=今回より前の被り回数)
+  firstAcquire: boolean; // 初取得(比較なしで付与)
+  promoted: boolean;     // Lvが上がった/初取得した
+  refund: number;        // 返金ゴールド(昇格しなかった時のみ>0)
+}
+
 interface GameState {
   player: Player;
   enemies: Enemy[];
@@ -1609,8 +1633,11 @@ interface GameState {
   setPendingSkills: (keys: SkillKey[]) => void;
   ownedSkills: SkillKey[];                              // ガチャで解禁済みスキル(永続)。装備候補はここから。
   ownedSkillLevels: Partial<Record<SkillKey, number>>;  // 所持スキルのLv(ガチャ重複で上昇・永続)
+  gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
+  gachaPitySinceSuper: number;                          // 直近superからのpull数(レア度ソフト天井・永続)
   grantSkill: (key: SkillKey) => void;                  // ガチャ当選で所持解禁(重複は無視)
   grantSkillLevel: (key: SkillKey, level: number) => boolean; // 解禁＋Lv上書き(既存より高ければ)。上がれば true
+  pullGacha: () => GachaPullResult | null;              // 強化訓練を1回引く(レア度pity→Lv抽選→付与/返金。逐次状態更新)
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
   addGold: (amount: number) => void;                    // ラン結果のゴールドを加算(永続)
   spendGold: (amount: number) => boolean;               // ガチャ消費。足りれば true
@@ -1815,6 +1842,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingSkills: (loadStringArray(LOADOUT_SKILLS_KEY) as SkillKey[]).slice(0, 2),
   ownedSkills: loadStringArray(OWNED_SKILLS_KEY) as SkillKey[],
   ownedSkillLevels: loadSkillLevels(),
+  gachaDupeCounts: loadDupeCounts(),
+  gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
   goldBalance: loadNumber(GOLD_BALANCE_KEY, 0),
   indoorMode: false,
   labDoors: [],
@@ -6138,6 +6167,58 @@ export const useGameStore = create<GameState>((set, get) => ({
     saveSkillLevels(nextLevels);
     set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels });
     return true;
+  },
+  // 強化訓練を1回引く(逐次)。レア度をpityから抽選→pity更新(super=リセット/他=+1)→
+  // スキル別の被り回数でLv抽選→初取得は付与・既存超えで昇格・それ以外は返金→被り回数を更新。
+  // 10連は本アクションを順番にN回呼ぶ(各回がget/setで最新stateを参照=スナップショット一括禁止)。
+  pullGacha: () => {
+    // コスト0(無料)のときは課金スキップ。有料なら残高を消費(不足で null)。
+    if (GACHA_PULL_COST > 0 && !get().spendGold(GACHA_PULL_COST)) return null;
+    const pity = get().gachaPitySinceSuper;
+    const key = rollGachaSkill(pity);
+    const rarity: SkillRarity = SKILLS[key].rarity;
+    const nextPity = rarity === 'super' ? 0 : pity + 1; // superでリセット・それ以外は+1(次回反映)
+    const maxLv = skillMaxLevel(key);
+    const owned = get().ownedSkills;
+    const levels = get().ownedSkillLevels;
+    const dupes = get().gachaDupeCounts;
+    const prevLevel = owned.includes(key) ? (levels[key] ?? 1) : 0;
+    const dupeCount = dupes[key] ?? 0;        // Lv抽選表の参照(今回より前の被り回数)
+    const firstAcquire = prevLevel === 0;
+
+    // Lv上限固定(reaper/bomber=Lv1)で既に所持 → 被りで回数を進めず常に返金。
+    if (maxLv === 1 && !firstAcquire) {
+      const refund = GACHA_REFUND_BY_RARITY[rarity];
+      saveNumber(GACHA_PITY_KEY, nextPity);
+      set({ gachaPitySinceSuper: nextPity });
+      get().addGold(refund);
+      return { key, rarity, rolledLevel: 1, newLevel: prevLevel, prevLevel, dupeCount, firstAcquire: false, promoted: false, refund };
+    }
+
+    const rolledLevel = rollSkillLevel(rarity, dupeCount, maxLv);
+    let newLevel = prevLevel;
+    let promoted = false;
+    let refund = 0;
+    if (firstAcquire) {
+      newLevel = Math.max(1, Math.min(maxLv, rolledLevel)); // 初取得=比較なしで付与
+      promoted = true;
+    } else if (rolledLevel > prevLevel && prevLevel < maxLv) {
+      newLevel = Math.min(maxLv, rolledLevel);              // 現Lv超え=昇格
+      promoted = true;
+    } else {
+      refund = GACHA_REFUND_BY_RARITY[rarity];              // 現Lv以下/上限到達=返金
+    }
+    const nextDupe = dupeCount + 1; // 被り回数は昇格有無に関わらず毎回+1(永続)
+    const nextOwned = owned.includes(key) ? owned : [...owned, key];
+    const nextLevels = promoted ? { ...levels, [key]: newLevel } : levels;
+    const nextDupes = { ...dupes, [key]: nextDupe };
+    saveStringArray(OWNED_SKILLS_KEY, nextOwned);
+    if (promoted) saveSkillLevels(nextLevels);
+    saveDupeCounts(nextDupes);
+    saveNumber(GACHA_PITY_KEY, nextPity);
+    set({ ownedSkills: nextOwned, ownedSkillLevels: nextLevels, gachaDupeCounts: nextDupes, gachaPitySinceSuper: nextPity });
+    if (refund > 0) get().addGold(refund);
+    return { key, rarity, rolledLevel, newLevel, prevLevel, dupeCount, firstAcquire, promoted, refund };
   },
   addGold: (amount) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
