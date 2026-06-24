@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.920 — ホーム画面アイコンを設定(apple-touch-icon / favicon)
+
+- これまで `apple-touch-icon` 未設定でホーム画面追加時に iOS がページのスクショをアイコン化していた。
+- ユーザー提供画像(214²正方形・Ø/THE ONE風)を `public/app-icon.jpg` として配置し、
+  `apple-touch-icon` と `favicon`(旧 `/vite.svg` を置換)に設定。**相対パス**指定で `/zombie/` 配下でも有効
+  (旧 `/vite.svg` は root絶対で実質404だった)。
+- 反映: iOSはアイコンをキャッシュするため、ホーム画面から削除→開き直して再追加で確実に更新。
+- 検証: lint/typecheck/test/build 全green、dist に app-icon.jpg 同梱を確認。
+- 残: ホーム画面名(`apple-mobile-web-app-title`)の変更=ユーザーの希望名待ち。
+
 ## v0.25.919 — ガチャ結果に「一覧で見る」を復活(10連で何が出たか振り返る)
 
 - 矢印めくり演出はそのまま、フッターに **[一覧で見る]⇄[演出にもどる]** トグルを追加(複数連=total>1のみ)。
