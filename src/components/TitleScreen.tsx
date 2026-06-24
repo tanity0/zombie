@@ -56,8 +56,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
       style={{
         cursor: phase === 'title' ? 'pointer' : 'default',
         backgroundImage: `url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
+        backgroundSize: 'contain',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
       }}
     >
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
@@ -104,21 +105,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </div>
       )}
 
-      {/* タイトル「the ONE」: 背景画像(landscape)は cover で左右が切れ、焼き込みの「the ONE」が
-          見切れる(特に standalone は縦長で悪化)。上部を暗くマスクし、画面幅に追従する DOM タイトルを
-          重ねる=どの端末でも絶対に見切れない。キャラ絵は cover のまま全面に残す。 */}
-      {phase === 'title' && (
-        <>
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-[20%] bg-gradient-to-b from-black/90 via-black/55 to-transparent" />
-          <div className="pointer-events-none absolute inset-x-0 flex justify-center" style={{ top: 'max(env(safe-area-inset-top), 14px)' }}>
-            <h1 className="whitespace-nowrap text-[clamp(30px,13vw,66px)] font-light leading-none tracking-[0.12em] text-white drop-shadow-[0_2px_18px_rgba(190,150,255,0.55)]">
-              <span className="opacity-90">the </span><span className="font-semibold">ONE</span>
-            </h1>
-          </div>
-        </>
-      )}
-
-      {/* STARTタップ待機 */}
+      {/* タイトル(the ONE): STARTタップ待機 */}
       {phase === 'title' && (
         <div
           className="absolute inset-x-0 flex flex-col items-center"
