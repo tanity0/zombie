@@ -520,7 +520,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'bomb-counter': { name: 'ボムカウンター', desc: 'カウンターの反射弾が爆発する', rarity: 'rare' },
   'punisher':     { name: 'パニッシャー',   desc: 'ノックバック中の敵が他の敵に当たると巻き込む(近接の半分ダメージ＋2倍ノックバック)', rarity: 'rare' },
   'combo-master': { name: 'コンボマスター', desc: '近接フィニッシュのコンボ窓延長＋コンボ中は全攻撃のダメージ増加', rarity: 'rare' },
-  'knife-master': { name: 'ナイフマスター', desc: '近接ダメージのコンボでダメージ増加。近接クリ率+20%。ただし弾薬ドロップ0%', rarity: 'rare' },
+  'knife-master': { name: 'ナイフマスター', desc: '近接ダメージのコンボでダメージ増加(+2%/hit, 最大+100%)。近接クリ率+20%。ただし弾薬ドロップ0%', rarity: 'rare' },
   'benkei':       { name: '弁慶',           desc: '武器を切り替えると10秒間クリティカル率+10%', rarity: 'rare' },
   'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'rare' },
   // 通常
@@ -529,7 +529,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'ghost-shooter':{ name: 'ゴーストシューター', desc: '20%の確率で弾を消費しない', rarity: 'normal' },
   'dog-run':      { name: 'ドッグラン',     desc: '犬のクールダウン0・射程制限解除(犬装備時)', rarity: 'normal' },
   'counter-master':{ name: 'カウンターマスター', desc: 'カウンター窓延長＋成功時に周囲を強ノックバック', rarity: 'normal' },
-  'slasher':      { name: 'スラッシャー',   desc: '近接命中後、CD中のタップで追撃(0.3倍)', rarity: 'normal' },
+  'slasher':      { name: 'スラッシャー',   desc: '近接命中後のタイミングリングをジャストタップで追撃(最大3連・各2/3減衰・ノックバック)', rarity: 'normal' },
 };
 export const MAX_EQUIPPED_SKILLS = 2;
 // ガチャのレア度枠(%)。枠内は均等抽選。重複(所持済み)はゴールド返金。

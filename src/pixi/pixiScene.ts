@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor } from '../utils/enemyUtils';
@@ -774,6 +774,7 @@ export class PixiScene {
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
+  private slasherRingGfx = new Graphics();  // スラッシャー: アクティブリロード型タイミングリング(描画のみ)
   // ロックオンサークルの出現アニメ(敵ID→開始時刻+ロック数)。ズームアウト→イン+フェードインの起点。
   private lockAnim = new Map<string, { startedAt: number; count: number }>();
   private localEventShadeGfx = new Graphics();
@@ -1122,6 +1123,7 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
     this.L.effectLayer.addChild(this.homingLockGfx);
+    this.L.effectLayer.addChild(this.slasherRingGfx);
     this.marksmanMarkGfx.blendMode = 'add';
     // 鞭ハリケーンは effectLayer(アクター上)に置き、竜巻が吸い込んだ敵を覆う。
     // 通常合成(光らせない=加算しない)。アンカーは竜巻の根元(地面の渦)= 吸引中心。
@@ -2187,6 +2189,7 @@ export class PixiScene {
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
+    this.syncSlasherRing(s.player, s.gameTime);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -3941,6 +3944,33 @@ export class PixiScene {
     }
     // ロックが外れた敵のアニメ状態を破棄。
     for (const id of [...this.lockAnim.keys()]) if (!seen.has(id)) this.lockAnim.delete(id);
+  }
+
+  // スラッシャー: タイミングリング(描画のみ・当たり判定に影響なし)。縮むリングがゴールに重なる瞬間=ジャスト。
+  // gameTime ベースで判定と同じ時計を使う(ストア側の追撃判定とズレない)。単一リングなので軽量。
+  private syncSlasherRing(player: Player, gameTime: number) {
+    const g = this.slasherRingGfx;
+    g.clear();
+    const start = player.slasherRingStartAt;
+    if (!start || start <= 0) return;
+    const elapsed = gameTime - start;
+    if (elapsed < 0 || elapsed > SLASHER_RING_MS + SLASHER_JUST_MS) return; // 寿命外は描かない
+    const cx = player.x + player.width / 2;
+    const cy = player.y + player.height / 2;
+    const base = huntingMeleeRadius(player);
+    const rGoal = base * 0.5;
+    const rStart = base * 1.6;
+    const t = Math.min(1, elapsed / SLASHER_RING_MS);
+    const ease = 1 - Math.pow(1 - t, 2);              // ズームイン(縮む)
+    const shrinkR = rStart + (rGoal - rStart) * ease;
+    const fade = Math.min(1, t * 1.4);                // フェードイン
+    const justNow = elapsed >= SLASHER_RING_MS - SLASHER_JUST_MS;
+    // ゴールサークル(薄く・固定)。
+    g.circle(cx, cy, rGoal).stroke({ width: 2, color: 0xbef264, alpha: 0.35 });
+    // 縮むサークル(フェードイン)。ジャスト窓では白く強調。
+    const col = justNow ? 0xffffff : 0xbef264;
+    g.circle(cx, cy, shrinkR).stroke({ width: justNow ? 3.5 : 2.5, color: col, alpha: (justNow ? 0.95 : 0.7) * fade });
+    if (justNow) g.circle(cx, cy, rGoal).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 }); // ジャスト合図
   }
 
   // スプライトにシアンtintを乗せて描く。通常はHPバー、レア(死神)は渦っぽいシアンの円。

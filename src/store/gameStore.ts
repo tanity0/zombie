@@ -553,13 +553,13 @@ export const skillBenkeiCritBonus = (player: Player, gameTime: number): number =
 export const skillKnifeMasterMeleeCrit = (player: Player): number =>
   hasSkill(player, 'knife-master') ? 0.20 : 0;
 // 近接コンボ倍率(ナイフマスター × コンボマスター)。3つの近接ダメージ地点とカウンター斬撃で共通使用。
-//  ・knife-master: 近接ヒットで knifeComboCount を貯め、+1%/2hit(上限+20%)。窓3秒。
+//  ・knife-master: 近接ヒットで knifeComboCount を貯め、+2%/hit(上限+100%=×2.0、50hitでカンスト)。窓3秒。
 //  ・combo-master: フィニッシュコンボ(meleeFinishComboCount)生存中、+2%/combo(上限+50%)。
 // どちらも非装備なら ×1。窓の有効判定は呼び出し側の gameTime に依存。
 export const skillMeleeComboMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
   let mult = 1;
   if (hasSkill(player, 'knife-master') && gameTime < player.knifeComboUntil) {
-    mult *= 1 + Math.min(0.20, Math.floor(player.knifeComboCount / 2) * 0.01);
+    mult *= 1 + Math.min(1.0, player.knifeComboCount * 0.02); // +2%/hit、上限+100%(×2.0)
   }
   mult *= skillComboMasterMult(player, gameTime, finishComboCount, finishComboUntil);
   return mult;
@@ -1140,23 +1140,35 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number) 
   }
 };
 
-// スキル: スラッシャー = 「近接攻撃が成功した後のタップ追撃」(0.3倍)。
-// 自動では出ない。専用クールダウンも持たず、近接(カウンター)のCDサイクルに自然に縛られる:
-//   カウンターが命中すると arm(slasherWindowUntil=CD明け時刻)→ CD中にタップすると1回だけ
-//   0.3倍スラッシュを出して消費する(1回の成功カウンターにつき追撃1回)。
-// プレイヤー近傍(meleeRange)の敵へ。FX/ダメージとも有界(敵1走査1パス)。
-const applySlasherTapStrike = (
+// スキル: スラッシャー = アクティブリロード型のタイミングリング追撃(最大3連)。
+// 近接が当たるとプレイヤーへ縮むリングが出て(描画は pixiScene)、ゴールに重なるジャスト窓(±100ms)で
+// タップすると追撃が出る。成功で次のリングを再生成、最大3連。窓を外す/未入力でコンボ終了。
+// ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444)。当たった敵のみ通常ノックバック。
+export const SLASHER_RING_MS = 500;   // リングが縮みきる(=ジャストの瞬間)までの時間
+export const SLASHER_JUST_MS = 100;   // ジャスト窓 ±100ms
+export const SLASHER_MAX_HITS = 3;    // 追撃の最大連数
+export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
+const applySlasherTimedStrike = (
   get: () => GameState,
   player: Player,
   gameTime: number,
 ): CounterTriggerResult => {
+  const elapsed = gameTime - player.slasherRingStartAt;
+  const step = player.slasherStrikeStep;
+  const just = elapsed >= SLASHER_RING_MS - SLASHER_JUST_MS && elapsed <= SLASHER_RING_MS + SLASHER_JUST_MS;
+  // 窓を外した / 既に3連使い切った → コンボ終了(追撃なし)。
+  if (!just || step >= SLASHER_MAX_HITS) {
+    get().setSlasherCombo(0, 0);
+    return { swung: false, hit: false, finish: false, killed: 0 };
+  }
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
   const meleeRange = huntingMeleeRadius(player);
   const melee = player.weapons.find(w => w.isMelee);
-  const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
+  const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
-  const followDmg = meleeDamage * 0.3 * skillOutgoingDamageMult(player) * comboMult;
+  const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * comboMult;
+  const kbMult = KNOCKBACK_SPEED / BULLET_KNOCKBACK_SPEED; // 通常近接相当のノックバック
   const r2 = meleeRange * meleeRange;
   let killed = 0;
   let hit = false;
@@ -1164,15 +1176,24 @@ const applySlasherTapStrike = (
     if (e.type === 'reaper') continue;
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
-    if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
+    const dx = ecx - pcx, dy = ecy - pcy;
+    if (dx * dx + dy * dy > r2) continue;
     hit = true;
-    const k = get().damageEnemy(e.id, followDmg);
-    get().spawnDamageNumber(ecx, e.y, followDmg, false);
-    get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.9)');
-    if (k) { killed += 1; get().spawnBurst(ecx, ecy, '#bef264', 10); }
+    const k = get().damageEnemy(e.id, dmg);
+    get().spawnDamageNumber(ecx, e.y, dmg, false);
+    get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
+    if (k) {
+      killed += 1;
+      get().spawnBurst(ecx, ecy, '#bef264', 10);
+    } else {
+      const d = Math.max(0.001, Math.hypot(dx, dy));
+      get().knockbackEnemy(e.id, dx / d, dy / d, kbMult); // 追撃が当たった敵のみノックバック
+    }
   }
-  if (!hit) get().spawnSlash(pcx, pcy, 'rgba(190,242,100,0.55)'); // 空振りでも軽く振る
-  get().setSlasherWindow(0); // 消費(1成功カウンターにつき追撃1回)
+  get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
+  const nextStep = step + 1;
+  if (nextStep < SLASHER_MAX_HITS) get().setSlasherCombo(gameTime, nextStep); // 次のリングを再生成
+  else get().setSlasherCombo(0, 0);                                          // 3連完了
   return { swung: true, hit, finish: false, killed };
 };
 
@@ -1398,7 +1419,7 @@ interface GameState {
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
   openCounterWindow: () => void;
-  setSlasherWindow: (until: number) => void;
+  setSlasherCombo: (startAt: number, step: number) => void;
   markCastleBossSpawned: () => void;
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
@@ -1590,7 +1611,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponLevels: {},
     subWeaponCooldowns: {},
     skills: [],
-    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
+    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
@@ -2032,13 +2053,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     } = get();
     // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
     if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
+    // スキル スラッシャー: タイミングリングが生きている間は、タップを追撃判定へ回す(CD有無に関わらず優先)。
+    // ジャストで追撃→次のリング、外す/3連終了でコンボ終了。寿命を過ぎたリングは無視して通常スイングへ。
+    if (
+      hasSkill(player, 'slasher') && player.slasherRingStartAt > 0 &&
+      gameTime <= player.slasherRingStartAt + SLASHER_RING_MS + SLASHER_JUST_MS
+    ) {
+      return applySlasherTimedStrike(get, player, gameTime);
+    }
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) {
-      // スキル スラッシャー: カウンターCD中のタップで「近接成功の追撃」(0.3倍)を1回。
-      // arm されている(=直前のカウンターが命中した)ときだけ。自動ではなくタップで発動。
-      if (hasSkill(player, 'slasher') && now < player.slasherWindowUntil) {
-        return applySlasherTapStrike(get, player, gameTime);
-      }
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
@@ -2530,11 +2554,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         huntingChargeStartedAt: 0,
         knifeComboCount: knifeCombo.count,
         knifeComboUntil: knifeCombo.until,
-        // スキル スラッシャー: この近接が命中(slashAt有)したら追撃をarm(CD明けまで)。
-        // CD中のタップで1回だけ消費。命中しなければ arm しない(=追撃なし)。
-        slasherWindowUntil: hasSkill(state.player, 'slasher') && slashAt.length > 0
-          ? now + counterWindowMs + COUNTER_COOLDOWN
-          : 0,
+        // スキル スラッシャー: この近接が命中(slashAt有)したらタイミングリングを開始(step=0)。
+        // 命中しなければ非アクティブ(リング無し)。以後の追撃はタップのジャスト判定で出す。
+        slasherRingStartAt: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? gameTime : 0,
+        slasherStrikeStep: 0,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {
@@ -2626,8 +2649,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy);
     }
-    // スキル スラッシャーの arm はこの近接スイングの set()(player.slasherWindowUntil)で行う。
-    // 追撃自体は「CD中のタップ」で applySlasherTapStrike が出す(自動ではない)。
+    // スキル スラッシャーのリング開始はこの近接スイングの set()(player.slasherRingStartAt)で行う。
+    // 追撃自体は「リングのジャスト窓でのタップ」で applySlasherTimedStrike が出す(自動ではない)。
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
     const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
@@ -4719,9 +4742,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  // スキル: スラッシャーの追撃受付窓(gameTime ms)を設定。
-  setSlasherWindow: (until) => {
-    set(state => ({ player: { ...state.player, slasherWindowUntil: until } }));
+  // スキル: スラッシャーのタイミングリング状態を設定(startAt=0 でコンボ終了)。
+  setSlasherCombo: (startAt, step) => {
+    set(state => ({ player: { ...state.player, slasherRingStartAt: startAt, slasherStrikeStep: step } }));
   },
 
   markCastleBossSpawned: () => {
@@ -6588,7 +6611,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
           subWeapons: runSubs,
           skills: runSkills,
-          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherWindowUntil: 0,
+          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,

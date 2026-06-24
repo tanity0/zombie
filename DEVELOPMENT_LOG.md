@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.886 — スキル改修: ナイフマスター強化 / スラッシャー タイミングリング3連
+
+- **① ナイフマスター(knife-master)**: 近接コンボ増加を **+2%/hit・上限+100%(×2.0、50hitでカンスト)** に
+  (旧 +1%/2hit・+20%)。近接専用は据え置き、コンボ窓3秒・近接クリ+20%・弾薬0%も不変。説明文更新。
+  `skillMeleeComboMult` の式変更のみ。
+- **② スラッシャー(slasher)**: 旧「命中arm→CD中タップ固定0.3倍×1」を撤廃し、**アクティブリロード型の
+  タイミングリング追撃(最大3連)**へ全面改修。
+  - 近接命中でリング開始(`slasherRingStartAt`)。`SLASHER_RING_MS=500ms` で縮みきり=ジャスト、窓±`SLASHER_JUST_MS=100ms`。
+  - ジャスト窓タップ→追撃＋次リング再生成、最大3連。外す/未入力(寿命超過)でコンボ終了。
+  - ダメージは各 ×2/3 減衰 `SLASHER_MULTS=[1, 0.667, 0.444]`。当たった敵のみ通常ノックバック(`knockbackEnemy`)。
+  - タップは `triggerCounter` 最上段でリング生存中なら追撃判定へ(CD有無に関わらず優先)。判定は gameTime ベース。
+  - 描画は `pixiScene.syncSlasherRing`(ゴール円＋縮む円のズームイン+フェードイン、ジャストで白強調)。単一リング=軽量・当たり判定不変。
+  - Player: `slasherWindowUntil`→`slasherRingStartAt`/`slasherStrikeStep`。`setSlasherWindow`→`setSlasherCombo`。
+- テスト追加: `src/store/skills.test.ts`(knife-master +2%/cap、SLASHER_MULTS の3連減衰)。
+- 検証: lint / typecheck / test(5ファイル28 passed+1 skipped) / build すべて green。
+
 ## v0.25.884 — Phase 2: ヘッドレス・シム煙テスト＋夜間ファズ cron
 
 - **ヘッドレス・シム不変条件テスト**(`src/store/sim.test.ts`): store(描画非依存)を直接駆動。
