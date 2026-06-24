@@ -1,0 +1,27 @@
+name: Nightly sim fuzz
+
+# 「重いやつは大型改修 or 定期」ポリシーの定期側(CLAUDE.md Testing policy)。
+# ヘッドレスでシミュレーションを長尺(全クラス×3600tick)回し、レアな NaN / クラッシュを炙り出す。
+# 注意: schedule はデフォルトブランチ(main)のワークフローのみ発火する(GitHub仕様)。
+#   main にこのファイルが入るまでは cron は動かないので、それまでは workflow_dispatch で手動実行する。
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 03:00 JST 毎日
+  workflow_dispatch:        # 任意ブランチから手動実行も可
+
+concurrency:
+  group: nightly-fuzz
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Headless simulation fuzz
+        run: npm run test:fuzz

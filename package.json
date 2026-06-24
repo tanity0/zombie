@@ -1,7 +1,7 @@
 {
   "name": "zombie",
   "private": true,
-  "version": "0.25.883",
+  "version": "0.25.884",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:fuzz": "SIM_FUZZ=1 vitest run src/store/sim.test.ts",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },

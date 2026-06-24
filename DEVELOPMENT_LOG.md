@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.884 — Phase 2: ヘッドレス・シム煙テスト＋夜間ファズ cron
+
+- **ヘッドレス・シム不変条件テスト**(`src/store/sim.test.ts`): store(描画非依存)を直接駆動。
+  resetGame→敵28体＋休眠ジャイアント＋弾(通常/ホーミング/敵弾)を配置→600tick(約10秒)回し、
+  毎フレーム NaN/Infinity・例外・敵数暴走・HP範囲を検査。store は audio を import せず、localStorage
+  読みは try/catch 済みなので **node 環境でそのまま動く**(jsdom不要)。
+- **夜間ファズ**(同ファイル内・`it.runIf(process.env.SIM_FUZZ)`): 全4クラス×3600tick。通常CIでは
+  skip、夜間のみ実行。`test:fuzz` スクリプト追加。
+- **`.github/workflows/nightly.yml`**: `cron '0 18 * * *'`(03:00 JST)＋`workflow_dispatch`。
+  `npm run test:fuzz` を回す。※ schedule はデフォルトブランチ(main)のワークフローのみ発火する仕様の
+  ため、main に入るまでは手動(workflow_dispatch)実行。
+- 検証: lint / typecheck / test(4ファイル23 passed+1 skipped) / build すべて green。fuzz 単体も green(約4秒)。
+
 ## v0.25.883 — CLAUDE.md にテスト運用ポリシーを明文化(doc)
 
 - 合意した運用方針を `CLAUDE.md` の「Testing policy」として追記:
