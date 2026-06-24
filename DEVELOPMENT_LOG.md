@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.905 — ガチャを「スキル強化訓練」化＋射撃練習場(別画面)へ遷移
+
+- ガチャ名を「強化訓練」→「スキル強化訓練」に統一(入口/結果/開発施設ヘッダー)。
+- 開発施設トップは入口カード(cover.png サムネ＋「射撃練習場へ ›」)に変更。タップで別画面へ遷移。
+- 別画面=射撃練習場: cover.png を背景に、最初から的(target.png)を中央表示。その下に
+  スタート風の大きな[撃 つ]ボタン(CSS呼吸グロー)＋小さな[10連で撃つ]。戻るで開発施設へ。
+- 撃つ→既存の的破裂→暗転リザルト演出はそのまま。とじるで射撃練習場へ戻る。
+- 負荷: 常駐アニメは [撃つ] ボタンの box-shadow 呼吸1要素のみ(CSS駆動)=1/10。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.904 — ステージ6に専用BGMを追加
 
 - `public/audio/stage6.mp3`(古い洋館)を受領曲で追加。`GAME_BGM`/`REVERSE_BGM` に `stage6` キー登録、`stage-6` に `bgm: 'stage6'` 設定(従来は default=stage1 へフォールバック)。

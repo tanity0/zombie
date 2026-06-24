@@ -703,10 +703,14 @@ const SkillGacha: React.FC = () => {
   const ownedCount = useGameStore(s => s.ownedSkills.length);
   const pity = useGameStore(s => s.gachaPitySinceSuper);
   const pullGacha = useGameStore(s => s.pullGacha);
-  const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(1枚絵表示)
+  const [open, setOpen] = useState(false); // 別画面(射撃練習場)に遷移中か
+  const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(射撃場表示)
   const [skipped, setSkipped] = useState(false); // スキップ=演出無しで全て即表示
   const [bursting, setBursting] = useState(false); // 撃つ→的が破裂する演出中(results確定済み・暗転前)
   const [noGold, setNoGold] = useState(false);
+
+  const coverSrc = `${import.meta.env.BASE_URL}gacha/cover.png`;
+  const targetSrc = `${import.meta.env.BASE_URL}gacha/target.png`;
 
   // n回 逐次で引く(各 pullGacha が get/set で最新stateを参照=スナップショット一括禁止)。
   // 撃つ→的破裂(BURST)→暗転リザルト の順に遷移する。
@@ -741,7 +745,7 @@ const SkillGacha: React.FC = () => {
     return (
       <div className="gacha-dim fixed inset-0 z-50 flex items-center justify-center bg-black/90">
         <div className="relative flex items-center justify-center" style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
-          <img src={`${import.meta.env.BASE_URL}gacha/target.png`} alt="" className="gacha-target-burst absolute inset-0 h-full w-full object-contain" />
+          <img src={targetSrc} alt="" className="gacha-target-burst absolute inset-0 h-full w-full object-contain" />
           {shards.map(s => (
             <span
               key={s.i}
@@ -768,7 +772,7 @@ const SkillGacha: React.FC = () => {
     return (
       <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
         <div className="flex-1 overflow-y-auto px-4 py-5">
-          <p className="mb-3 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">強化訓練 結果</p>
+          <p className="mb-3 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
           <div className="mx-auto flex max-w-md flex-col gap-2">
             {timed.map(({ r, cfg, nameDelay, levelDelay }, i) => {
               const maxLv = skillMaxLevel(r.key);
@@ -843,61 +847,117 @@ const SkillGacha: React.FC = () => {
     );
   }
 
-  // --- 1枚絵 + [撃つ] -------------------------------------------------
+  // --- 射撃練習場(別画面) ----------------------------------------------
+  // 「撃つ」ボタンで遷移。射撃場の1枚絵を背景に、最初から的(target.png)が中央。
+  // その下に[撃つ]をスタートボタン風に置く。撃つ→破裂→暗転リザルト(上の分岐)へ。
+  if (open) {
+    const cantPull1 = goldBalance < GACHA_PULL_COST;
+    const cantPull10 = goldBalance < GACHA_PULL_COST * 10;
+    return (
+      <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black">
+        {/* 背景: 射撃場の1枚絵 */}
+        <img
+          src={coverSrc}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ transform: 'scale(1.06)', objectPosition: 'center 42%' }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/25 to-black/85" />
+
+        {/* ヘッダー: 戻る / 所持ゴールド */}
+        <div className="relative flex items-center justify-between px-4 pt-4">
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setNoGold(false); }}
+            className="rounded-lg border border-white/20 bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
+          >
+            ‹ 戻る
+          </button>
+          <span className="rounded-lg border border-amber-300/30 bg-black/40 px-3 py-1.5 text-[12px] font-semibold text-amber-200">所持ゴールド {goldBalance.toLocaleString()}</span>
+        </div>
+        <p className="relative mt-2 text-center text-[13px] font-bold tracking-[0.32em] text-fuchsia-100/90 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">射撃練習場</p>
+
+        {/* 中央の的 */}
+        <div className="relative flex flex-1 items-center justify-center px-6">
+          <img
+            src={targetSrc}
+            alt="的"
+            className="max-h-[52%] w-auto max-w-[78%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.7)]"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+          />
+        </div>
+
+        {/* 下部: スタート風の[撃つ] */}
+        <div className="relative px-5 pb-7">
+          <div className="mx-auto mb-2 flex max-w-md items-center justify-between rounded-lg border border-fuchsia-300/20 bg-black/40 px-2.5 py-1 text-[10px]">
+            <span className="text-fuchsia-100/85">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
+            <span className="text-white/60">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => pullMany(1)}
+            disabled={cantPull1}
+            className={`mx-auto block w-full max-w-md rounded-2xl px-4 py-4 text-[20px] font-extrabold tracking-[0.25em] ${
+              cantPull1
+                ? 'border border-white/10 bg-white/[0.03] text-white/30'
+                : 'border-2 border-fuchsia-300/70 bg-fuchsia-500/30 text-white shadow-[0_0_24px_rgba(232,121,249,0.5)] active:bg-fuchsia-500/45 gacha-start-pulse'
+            }`}
+          >
+            撃 つ
+          </button>
+          <button
+            type="button"
+            onClick={() => pullMany(10)}
+            disabled={cantPull10}
+            className={`mx-auto mt-2 block w-full max-w-md rounded-xl px-3 py-2.5 text-[13px] font-semibold ${
+              cantPull10
+                ? 'border border-white/10 bg-white/[0.03] text-white/30'
+                : 'border border-fuchsia-300/40 bg-black/40 text-fuchsia-100 active:bg-fuchsia-400/20'
+            }`}
+          >
+            {GACHA_PULL_COST > 0 ? `10連で撃つ（${GACHA_PULL_COST * 10}G）` : '10連で撃つ'}
+          </button>
+          <p className="mt-1.5 text-center text-[10px] text-white/55">
+            {GACHA_PULL_COST > 0 ? `1回 ${GACHA_PULL_COST}G ／ ` : ''}解禁済み {ownedCount}/{SKILL_KEYS.length}
+          </p>
+          {noGold && <p className="mt-1 text-center text-[11px] text-rose-300">ゴールドが足りません。</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // --- 開発施設トップの入口カード(タップで射撃練習場へ遷移) -----------------
   return (
     <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
       <div className="flex items-center justify-between px-0.5 mb-2">
-        <span className="text-[12px] font-semibold text-fuchsia-100">強化訓練</span>
+        <span className="text-[12px] font-semibold text-fuchsia-100">スキル強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
-      {/* 1枚絵(public/gacha/cover.png)。引き気味の絵を少し寄せて(zoom)中央の射撃ブースを見せる。 */}
-      <div className="relative mb-2 overflow-hidden rounded-xl border border-fuchsia-300/25" style={{ aspectRatio: '4 / 5' }}>
+      {/* 1枚絵(public/gacha/cover.png)をタップ→射撃練習場(別画面)へ。 */}
+      <button
+        type="button"
+        onClick={() => { setOpen(true); setNoGold(false); }}
+        className="relative block w-full overflow-hidden rounded-xl border border-fuchsia-300/25 active:opacity-90"
+        style={{ aspectRatio: '4 / 5' }}
+      >
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-fuchsia-900/40 via-black/30 to-black/60">
-          <span className="text-[13px] tracking-[0.35em] text-fuchsia-200/50">強化訓練</span>
+          <span className="text-[13px] tracking-[0.35em] text-fuchsia-200/50">スキル強化訓練</span>
         </div>
         <img
-          src={`${import.meta.env.BASE_URL}gacha/cover.png`}
+          src={coverSrc}
           alt=""
           className="relative h-full w-full object-cover"
           style={{ transform: 'scale(1.18)', objectPosition: 'center 38%' }}
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
         />
-      </div>
-      <p className="text-[10px] leading-snug text-white/50 mb-1.5">
+        <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-gradient-to-t from-black/85 to-transparent px-3 pb-3 pt-8 text-[15px] font-bold text-fuchsia-50">
+          射撃練習場へ ›
+        </span>
+      </button>
+      <p className="mt-2 text-[10px] leading-snug text-white/50">
         引くほど超レアが出やすく、被るほど高Lvが出やすい。既存Lv以下/上限は返金。解禁済み {ownedCount}/{SKILL_KEYS.length}
       </p>
-      <div className="mb-2 flex items-center justify-between rounded-lg border border-fuchsia-300/20 bg-black/20 px-2 py-1 text-[10px]">
-        <span className="text-fuchsia-100/80">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
-        <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
-      </div>
-      {/* [撃つ]: 1回 / 10連 */}
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => pullMany(1)}
-          disabled={goldBalance < GACHA_PULL_COST}
-          className={`rounded-xl px-3 py-3 text-[14px] font-semibold ${
-            goldBalance < GACHA_PULL_COST
-              ? 'border border-white/10 bg-white/[0.03] text-white/30'
-              : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
-          }`}
-        >
-          {GACHA_PULL_COST > 0 ? `撃つ（1回 ${GACHA_PULL_COST}G）` : '撃つ（1回）'}
-        </button>
-        <button
-          type="button"
-          onClick={() => pullMany(10)}
-          disabled={goldBalance < GACHA_PULL_COST * 10}
-          className={`rounded-xl px-3 py-3 text-[14px] font-semibold ${
-            goldBalance < GACHA_PULL_COST * 10
-              ? 'border border-white/10 bg-white/[0.03] text-white/30'
-              : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
-          }`}
-        >
-          {GACHA_PULL_COST > 0 ? `撃つ（10連 ${GACHA_PULL_COST * 10}G）` : '撃つ（10連）'}
-        </button>
-      </div>
-      {noGold && <p className="mt-2 text-[11px] text-rose-300 text-center">ゴールドが足りません。</p>}
     </div>
   );
 };
@@ -910,7 +970,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   return (
     <>
-      <Header title="開発施設" subtitle="強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
+      <Header title="開発施設" subtitle="スキル強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
       <div className="p-3">
         <SkillGacha />
       </div>

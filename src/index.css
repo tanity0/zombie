@@ -275,4 +275,11 @@
 }
 .gacha-shard { animation: gacha-shard 0.7s ease-out forwards; }
 
+/* 射撃練習場のスタート風[撃つ]ボタンの呼吸グロー(CSSのみ・常駐1要素=負荷1/10) */
+@keyframes gacha-start-pulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(232,121,249,0.4); }
+  50%      { box-shadow: 0 0 30px rgba(232,121,249,0.75); }
+}
+.gacha-start-pulse { animation: gacha-start-pulse 1.5s ease-in-out infinite; }
+
 
