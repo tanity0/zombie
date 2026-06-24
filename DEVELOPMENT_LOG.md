@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.918 — iOSのピンチ/ダブルタップ拡大・虫眼鏡(選択ルーペ)を全面抑止(操作面の完全支配)
+
+- プレイ中のダブルタップでiPhoneの拡大/虫眼鏡が働く問題。`touch-action`/viewport だけでは
+  iOS(特にホーム画面起動WKWebView)が取りこぼすため、main.tsx でJSから明示的に握り潰す:
+  - `gesturestart/change/end`(iOS独自ピンチズーム)を preventDefault。
+  - `touchend` の直近2発(≤320ms)を preventDefault=ダブルタップ拡大/ルーペを抑止。
+    ゲーム入力は Pointer Events(joystick/カウンター)で別経路に来るため影響しない。
+- 既存の CSS(`user-select:none`/`-webkit-touch-callout:none`)＋ゲーム面の `touch-action:none` と併用。
+- 検証: typecheck/lint/test/build 全green。
+
 ## v0.25.917 — 開発施設など全施設画面の「全画面スクロール」を排除(脱ブラウザ part1)
 
 - 指摘:「画面全体がスクロールする感じがブラウザっぽい」。原因は共通 `Shell` が `overflow-y-auto` で
