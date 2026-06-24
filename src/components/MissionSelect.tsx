@@ -356,7 +356,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
             {ownedSkills.length === 0 ? (
               <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[11px] leading-snug text-white/50">
-                解禁済みのスキルがありません。武器開発のスキルガチャでゴールドを使って解禁してください。
+                解禁済みのスキルがありません。武器開発の強化訓練でゴールドを使って解禁してください。
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -685,7 +685,7 @@ const DevTools: React.FC<{
   );
 };
 
-// === スキルガチャ(武器開発トップに組み込み) ===========================
+// === 強化訓練(スキルガチャ。武器開発トップに組み込み) ===========================
 // ゴールド残高で1回引く。当選=所持解禁、重複=レア度別ゴールド返金。
 type GachaResult = { key: SkillKey; rarity: SkillRarity; level: number; duplicate: boolean; refund: number };
 const SkillGacha: React.FC = () => {
@@ -719,7 +719,7 @@ const SkillGacha: React.FC = () => {
   return (
     <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
       <div className="flex items-center justify-between px-0.5 mb-2">
-        <span className="text-[12px] font-semibold text-fuchsia-100">スキルガチャ</span>
+        <span className="text-[12px] font-semibold text-fuchsia-100">強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
       <p className="text-[10px] leading-snug text-white/50 mb-2">
@@ -762,7 +762,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const setStartWithTestStraps = useGameStore(s => s.setStartWithTestStraps);
   return (
     <>
-      <Header title="武器開発" subtitle="スキルガチャ / サブウェポン陳列レベル解放" onBack={onBack} />
+      <Header title="武器開発" subtitle="強化訓練 / サブウェポン陳列レベル解放" onBack={onBack} />
       <div className="p-3">
         <SkillGacha />
       </div>
