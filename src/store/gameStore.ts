@@ -6224,8 +6224,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const c = capturedThisFrame as { id: string; x: number; y: number };
       get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
       get().spawnGlow(c.x, c.y, 70, 'rgba(251,191,36,', 600);
-      const sol = soldierForSite(c.id); // 制圧時の軍人セリフ(名前はここでのみ出る)
-      get().spawnCallout(c.x, c.y - 40, sol ? `${sol.name}「${sol.capture}」` : '拠点確保', '#fde68a');
+      const sol = soldierForSite(c.id); // 制圧時の軍人セリフ(ミッション開始と同じ時間停止+吹き出し形式)
+      if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.capture }]); get().startIntroDialogue(); }
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
     }
     for (const a of spawnList) {
@@ -6239,9 +6239,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     for (const f of fallen) {
       get().spawnRing(f.x, f.y, 14, BASE_CAPTURE_RADIUS, 'rgba(239,68,68,0.9)', 4, 560);
+      get().triggerAttention(f.x, f.y); // カメラがそこへ→撤退の吹き出しはこのアテンションと同時に出す
       const sol = soldierForSite(f.id); // 撤退時(拠点喪失)の軍人セリフ。死亡ではなく撤退。
-      get().spawnCallout(f.x, f.y - 40, sol ? `${sol.name}「${sol.retreat}」` : '拠点陥落', '#fca5a5');
-      get().triggerAttention(f.x, f.y); // カメラがそこへ→on-screen化
+      if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.retreat }]); get().startIntroDialogue(); }
       set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
     }
     // 全拠点制圧 → 既存クリア経路(帰還サークル)へ。

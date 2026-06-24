@@ -798,6 +798,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().triggerShake(INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG);
         }
 
+        // ミッション開始以外でも introDialogue が立っている間は、開始時と同じく時間停止(simを進めない)。
+        // 制圧の軍人セリフ(確保/撤退)に流用。カメラ/アテンション(上で更新済み)は実時間で進むので、
+        // 撤退の吹き出しはアテンションのカメラ移動と同時に出る。総時間経過 or SKIP で自動終了。
+        if (useGameStore.getState().introDialogueActive) {
+          const ds = useGameStore.getState();
+          if (nowMs - ds.introDialogueStartedAt >= introDialogueTotalMs(ds.introDialogueLines)) {
+            useGameStore.getState().endIntroDialogue();
+          } else {
+            updateEffects(deltaTime);
+            frameRef.current = requestAnimationFrame(gameLoop);
+            return;
+          }
+        }
+
         // Update game time
         const newGameTime = gameTime + deltaTime * 1000;
         setGameTime(newGameTime);

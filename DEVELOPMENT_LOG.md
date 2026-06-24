@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.890 — 制圧の軍人セリフを「時間停止+吹き出し」(ミッション開始形式)に流用
+
+- 軍人の確保/撤退セリフを `spawnCallout` から **introDialogue(ミッション開始と同じ時間停止+オートタイプ吹き出し)** に変更。
+  `setIntroDialogueLines([{speaker:名前, text:セリフ}])`＋`startIntroDialogue()` で発火。
+- introDialogue の時間停止/自動終了は元々ミッション開始フェーズ専用だったため、`useGameLoop` の本編ループに
+  **introDialogueActive 中は sim を止めて総時間経過で endIntroDialogue する**ハンドラを追加(カメラ/アテンションは
+  上流で実時間更新済み→撤退の吹き出しはアテンションのカメラ移動と同時に出る)。
+- **撤退の吹き出しはアテンション時**: 陥落時に `triggerAttention`→同フレームでセリフ開始。
+- 検証: typecheck / lint / test(29 passed+1 skipped) / build すべて green。
+
 ## v0.25.889 — 制圧: 各拠点の軍人に名前＋制圧/撤退セリフ
 
 - `BASE_SOLDIERS`(base-0..7 に対応)を追加。名前/セリフは**制圧時**と**撤退時(拠点喪失)**のコールアウトでのみ出る。
