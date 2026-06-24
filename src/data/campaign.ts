@@ -255,6 +255,7 @@ export const STAGES: Stage[] = [
     name: '古い洋館',
     area: '廃屋 / 私設ラボ 確認',
     unlockBy: 'stage-5',
+    bgm: 'stage6',       // ステージ6専用BGM(public/audio/stage6.mp3)
     subs: [],
     main: {
       code: 'M6',

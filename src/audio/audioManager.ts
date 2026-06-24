@@ -17,6 +17,7 @@ const GAME_BGM: Record<string, string> = {
   stage3: `${import.meta.env.BASE_URL}audio/stage3.mp3`, // 廃都(ステージ3)。stage.bgm='stage3' で選択
   stage4: `${import.meta.env.BASE_URL}audio/stage4.mp3`, // 封鎖地域/雪原(ステージ4)。stage.bgm='stage4'
   stage5: `${import.meta.env.BASE_URL}audio/stage5.mp3`, // 軍本部(ステージ5)。stage.bgm='stage5'
+  stage6: `${import.meta.env.BASE_URL}audio/stage6.mp3`, // 古い洋館(ステージ6)。stage.bgm='stage6'
 };
 // 深層域BGM(逆再生版)。屋外ステージごとに areverse 版を用意(命名 stageN-reverse.mp3)。
 // 深層域に入ると通常BGMを pause(位置保持)し、こちらを play で即時切替する(クロスフェード無し)。
@@ -26,6 +27,7 @@ const REVERSE_BGM: Record<string, string> = {
   stage3: `${import.meta.env.BASE_URL}audio/stage3-reverse.mp3`,
   stage4: `${import.meta.env.BASE_URL}audio/stage4-reverse.mp3`,
   stage5: `${import.meta.env.BASE_URL}audio/stage5-reverse.mp3`,
+  stage6: `${import.meta.env.BASE_URL}audio/stage6-reverse.mp3`,
 };
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
 const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
