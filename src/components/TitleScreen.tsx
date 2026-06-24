@@ -55,14 +55,14 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
       style={{ cursor: phase === 'title' ? 'pointer' : 'default' }}
     >
-      {/* タイトル画像は「画面の短辺いっぱいの正方形ステージ」に切らずセンタリング配置(object-contain)。
-          端末の縦横比に依存せず画像も文字も絶対に切れない。正方形に構成した画像を入れれば狙いの画角になる。 */}
+      {/* 正方形レイヤー(窓)を中央に作り、その背景として横長画像を cover で敷く。正方形は縦長画面より
+          アスペクト比がマシなので、画像は左右の余白だけクロップされ「横長目一杯」にならず中央が収まる。 */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <img
           src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
           alt=""
           draggable={false}
-          className="aspect-square max-h-full max-w-full object-contain"
+          className="aspect-square max-h-full max-w-full object-cover"
           style={{ width: 'min(100vw, 100svh)' }}
         />
       </div>
