@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.921 — アプリ名を「the ONE」に変更
+
+- ホーム画面名 `apple-mobile-web-app-title` を「ゾンビサバイバル」→「the ONE」に。
+- ブラウザタブ `<title>` も「Zombie - サバイバルホラーアクション」→「the ONE」に統一。
+- 反映: iOSは名前もキャッシュするため、ホーム画面から削除→開き直して再追加で確実に更新。
+- 検証: build green(dist の title も the ONE を確認)。
+
 ## v0.25.920 — ホーム画面アイコンを設定(apple-touch-icon / favicon)
 
 - これまで `apple-touch-icon` 未設定でホーム画面追加時に iOS がページのスクショをアイコン化していた。
