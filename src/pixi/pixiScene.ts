@@ -4672,8 +4672,8 @@ export class PixiScene {
         const hpCol = hpFrac > 0.5 ? 0x34d399 : hpFrac > 0.25 ? 0xfbbf24 : 0xef4444;
         g.rect(bx, by, bw * hpFrac, bh).fill({ color: hpCol, alpha: 0.95 });
         g.rect(bx, by, bw, bh).stroke({ width: 1, color: 0xffffff, alpha: 0.4 });
-        for (const dx of [-36, 36]) { // 軍人2体(簡易マーカー)
-          const mx = s.x + dx, my = s.y + 6;
+        for (const sol of s.soldiers) { // 軍人マーカー(各自の現在位置=端からスタート/攻撃者へ接近)
+          const mx = sol.x, my = sol.y;
           g.rect(mx - 3, my - 12, 6, 14).fill({ color, alpha: 0.95 });
           g.circle(mx, my - 15, 3.5).fill({ color, alpha: 0.95 });
         }

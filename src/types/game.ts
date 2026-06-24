@@ -412,6 +412,8 @@ export interface BaseSite {
   attackerId: string | null;   // 画面内の攻撃者(敵)id。null=不在
   attackerRespawnAt: number;   // 次に攻撃者を湧かせる gameTime(撃破後30s)
   soldierFireAt: number;       // 次に軍人が攻撃者へ射撃する gameTime
+  soldierIndex: number;        // 制圧順で割り当てる軍人名簿index(-1=未割当)。どの拠点でも1人目=エドガー。
+  soldiers: { x: number; y: number; hx: number; hy: number }[]; // 軍人の現在位置 + 待機(home=サークル端寄り)位置
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。

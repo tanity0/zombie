@@ -120,6 +120,21 @@ const SUPP_REGEN_PER_SEC = 14;          // プレイヤー在内/安全地帯の
 const SUPP_ATTACKER_RESPAWN_MS = 30000; // 攻撃者撃破後の再湧き(この間は被ダメ無し)
 const SUPP_SOLDIER_INTERVAL_MS = 900;   // 軍人の射撃間隔
 const SUPP_SOLDIER_DMG = 6;             // 軍人1射の攻撃者へのダメージ(2体ぶん毎回)
+const SUPP_SOLDIER_COUNT = 2;           // 1拠点あたりの駐留軍人数(描画/反撃)
+const SUPP_SOLDIER_SPEED = 150;         // 軍人の移動速度(px/s)。攻撃者へ接近/待機位置へ復帰
+const SUPP_SOLDIER_ENGAGE_DIST = 26;    // 攻撃者へ寄る最終距離(かなり至近=商人に被らせない)
+// 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
+const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: number; hy: number }[] => {
+  const arr: { x: number; y: number; hx: number; hy: number }[] = [];
+  for (let i = 0; i < SUPP_SOLDIER_COUNT; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = BASE_CAPTURE_RADIUS * (0.55 + Math.random() * 0.35); // 0.55〜0.90R=端の方
+    const hx = cx + Math.cos(ang) * rad;
+    const hy = cy + Math.sin(ang) * rad;
+    arr.push({ x: hx, y: hy, hx, hy });
+  }
+  return arr;
+};
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
 const BASE_SOLDIERS: { name: string; capture: string; retreat: string }[] = [
@@ -132,10 +147,9 @@ const BASE_SOLDIERS: { name: string; capture: string; retreat: string }[] = [
   { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！' },
   { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？' },
 ];
-const soldierForSite = (id: string): { name: string; capture: string; retreat: string } | null => {
-  const i = parseInt(id.replace('base-', ''), 10);
-  return Number.isFinite(i) ? (BASE_SOLDIERS[i] ?? null) : null;
-};
+// 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
+const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
+  idx >= 0 ? BASE_SOLDIERS[idx % BASE_SOLDIERS.length] : null;
 const createBaseSites = (): BaseSite[] => {
   const sites: BaseSite[] = [];
   for (let i = 0; i < BASE_SITE_COUNT; i++) {
@@ -143,6 +157,7 @@ const createBaseSites = (): BaseSite[] => {
     sites.push({
       id: `base-${i}`, x: Math.cos(angle) * BASE_SITE_RADIUS, y: Math.sin(angle) * BASE_SITE_RADIUS,
       status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0,
+      soldierIndex: -1, soldiers: [],
     });
   }
   return sites;
@@ -1350,6 +1365,7 @@ interface GameState {
   // 制圧イベント: 8拠点。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
+  suppressionCaptureCount: number; // 制圧した回数(軍人の登場順=名簿index割当に使用)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
   pendingSuppression: boolean;   // 出撃が制圧イベント(ステージ1)か。resetGame で suppressionActive へ
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
@@ -1766,6 +1782,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   finaleDefeated: false,
   baseSites: createBaseSites(),
   suppressionActive: false,
+  suppressionCaptureCount: 0,
   safeBaseId: null,
   pendingSuppression: false,
   returnCircle: null,
@@ -6224,8 +6241,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const removeAttackerIds: string[] = [];
     const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
     const damageShots: { id: string; dmg: number }[] = [];
-    const fallen: { x: number; y: number; id: string }[] = [];
-    let capturedThisFrame: { id: string; x: number; y: number } | null = null;
+    const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
+    let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
+    let captureCount = state.suppressionCaptureCount; // 制圧順(軍人名簿index)を割り当てる連番
     let changed = false;
 
     const next: BaseSite[] = state.baseSites.map(s => {
@@ -6233,15 +6251,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (s.status === 'open') {
         const dwellMs = inCircle ? s.dwellMs + deltaTime * 1000 : 0;
         if (inCircle && dwellMs >= BASE_CAPTURE_HOLD_MS && !capturedThisFrame) {
-          capturedThisFrame = { id: s.id, x: s.x, y: s.y };
+          const capIdx = captureCount; captureCount += 1; // 登場順(どの拠点でも1人目=エドガー)
+          capturedThisFrame = { id: s.id, x: s.x, y: s.y, soldierIndex: capIdx };
           changed = true;
-          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_RESPAWN_MS, soldierFireAt: 0 };
+          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_RESPAWN_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: makeBaseSoldiers(s.x, s.y) };
         }
         if (dwellMs !== s.dwellMs) changed = true;
         return { ...s, dwellMs };
       }
       // captured
       let { hp, attackerId, attackerRespawnAt, soldierFireAt } = s;
+      let soldiers = s.soldiers;
+      let liveAttacker: Enemy | undefined; // 軍人の移動/射撃の標的
       const safe = s.id === state.safeBaseId; // 商人サイト=安全地帯(不死・回復)
       const vis = onScreen(s.x, s.y);
       if (safe) {
@@ -6262,14 +6283,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         const hasLiveAttacker = !!attackerId && aliveIds.has(attackerId); // 今フレ生成分は次フレから削る
         if (hasLiveAttacker) {
           hp -= SUPP_ATTACKER_DPS * deltaTime; // 攻撃者が拠点を攻撃
-          if (now >= soldierFireAt) {           // 軍人2体が攻撃者へ反撃
+          liveAttacker = state.enemies.find(e => e.id === attackerId); // 接近/射撃の標的
+          if (now >= soldierFireAt) {           // 駐留軍人が攻撃者へ反撃(各自の位置から)
             soldierFireAt = now + SUPP_SOLDIER_INTERVAL_MS;
-            const atk = state.enemies.find(e => e.id === attackerId);
-            if (atk) {
+            if (liveAttacker) {
               damageShots.push({ id: attackerId!, dmg: SUPP_SOLDIER_DMG });
-              const tx = atk.x + atk.width / 2, ty = atk.y + atk.height / 2;
-              soldierShots.push({ fromX: s.x - 36, fromY: s.y, toX: tx, toY: ty });
-              soldierShots.push({ fromX: s.x + 36, fromY: s.y, toX: tx, toY: ty });
+              const tx = liveAttacker.x + liveAttacker.width / 2, ty = liveAttacker.y + liveAttacker.height / 2;
+              for (const sol of soldiers) soldierShots.push({ fromX: sol.x, fromY: sol.y, toX: tx, toY: ty });
             }
           }
         }
@@ -6280,14 +6300,31 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (attackerId) { removeAttackerIds.push(attackerId); attackerId = null; }
         hp = Math.max(0, hp - SUPP_DRAIN_PER_SEC * deltaTime);
       }
+      // 軍人の移動(描画される=画面内のときのみ計算)。攻撃者がいれば至近まで接近、いなければ待機(端)位置へ復帰。
+      if (vis && soldiers.length) {
+        const step = SUPP_SOLDIER_SPEED * deltaTime;
+        let moved = false;
+        soldiers = soldiers.map(sol => {
+          const tx = liveAttacker ? liveAttacker.x + liveAttacker.width / 2 : sol.hx;
+          const ty = liveAttacker ? liveAttacker.y + liveAttacker.height / 2 : sol.hy;
+          const dx = tx - sol.x, dy = ty - sol.y;
+          const dist = Math.hypot(dx, dy);
+          const stopAt = liveAttacker ? SUPP_SOLDIER_ENGAGE_DIST : 1.5;
+          if (dist <= stopAt) return sol;
+          const mv = Math.min(step, dist - stopAt);
+          moved = true;
+          return { ...sol, x: sol.x + (dx / dist) * mv, y: sol.y + (dy / dist) * mv };
+        });
+        if (moved) changed = true;
+      }
       if (hp <= 0) { // 陥落
         if (attackerId) removeAttackerIds.push(attackerId);
-        fallen.push({ x: s.x, y: s.y, id: s.id });
+        fallen.push({ x: s.x, y: s.y, id: s.id, soldierIndex: s.soldierIndex });
         changed = true;
-        return { ...s, status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0 };
+        return { ...s, status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0, soldierIndex: -1, soldiers: [] };
       }
       if (hp !== s.hp || attackerId !== s.attackerId || soldierFireAt !== s.soldierFireAt) changed = true;
-      return { ...s, hp, attackerId, attackerRespawnAt, soldierFireAt };
+      return { ...s, hp, attackerId, attackerRespawnAt, soldierFireAt, soldiers };
     });
 
     if (changed || capturedThisFrame || removeAttackerIds.length) {
@@ -6297,16 +6334,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: removeSet.size ? st.enemies.filter(e => !removeSet.has(e.id)) : st.enemies,
         ...(capturedThisFrame ? {
           safeBaseId: capturedThisFrame.id,
+          suppressionCaptureCount: captureCount,
           weaponMerchant: { ...st.weaponMerchant, x: capturedThisFrame.x, y: capturedThisFrame.y },
         } : {}),
       }));
     }
 
     if (capturedThisFrame) {
-      const c = capturedThisFrame as { id: string; x: number; y: number };
+      const c = capturedThisFrame as { id: string; x: number; y: number; soldierIndex: number };
       get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
       get().spawnGlow(c.x, c.y, 70, 'rgba(251,191,36,', 600);
-      const sol = soldierForSite(c.id); // 制圧時の軍人セリフ(ミッション開始と同じ時間停止+吹き出し形式)
+      const sol = soldierByIndex(c.soldierIndex); // 制圧時の軍人セリフ(登場順=ミッション開始と同じ時間停止+吹き出し形式)
       if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.capture }]); get().startIntroDialogue(); }
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
     }
@@ -6322,7 +6360,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const f of fallen) {
       get().spawnRing(f.x, f.y, 14, BASE_CAPTURE_RADIUS, 'rgba(239,68,68,0.9)', 4, 560);
       get().triggerAttention(f.x, f.y); // カメラがそこへ→撤退の吹き出しはこのアテンションと同時に出す
-      const sol = soldierForSite(f.id); // 撤退時(拠点喪失)の軍人セリフ。死亡ではなく撤退。
+      const sol = soldierByIndex(f.soldierIndex); // 撤退時(拠点喪失)の軍人セリフ。死亡ではなく撤退。
       if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.retreat }]); get().startIntroDialogue(); }
       set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
     }
@@ -6887,6 +6925,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         finaleDefeated: false,
         baseSites: createBaseSites(),
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
+        suppressionCaptureCount: 0,
         safeBaseId: null,
         returnCircle: null,
         gameReturned: false,

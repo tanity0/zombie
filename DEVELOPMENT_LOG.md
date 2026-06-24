@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.892 — 制圧: 軍人を端スタート＋攻撃者へ接近交戦／軍人は制圧順で登場
+
+- **軍人の出現位置**: 拠点中央(=武器商人と被る)ではなく、**サークルの端寄りにランダム配置**(`makeBaseSoldiers`: 半径0.55〜0.90R)。
+  `BaseSite.soldiers[{x,y,hx,hy}]` に現在位置＋待機(home)位置を保持。
+- **接近交戦**: サークル周辺に攻撃者がいる間は軍人がその攻撃者へ**かなり至近(26px)まで移動して反撃**(各自の位置から射撃トレーサー)。
+  攻撃者がいなければ待機位置(端)へ復帰=商人に被らない。移動速度150px/s。
+- **軍人は拠点固定をやめ「制圧順」で登場**: `suppressionCaptureCount` を制圧ごとに加算し `soldierByIndex` で割り当て。
+  どの拠点を制圧しても**1人目=エドガー**。撤退セリフも各拠点が確保時に割り当てた登場順index(`soldierIndex`)で出す。陥落でindexは解除(再制圧で次の順番)。
+- 描画(`pixiScene.syncBaseSites`)は固定±36オフセットをやめ `s.soldiers` の各位置に軍人マーカーを描画。
+- パフォーマンス負荷: **1/10**(画面内の制圧済み拠点のみ・最大8拠点×2軍人の軽量ベクトル更新。描画方式・数は据え置き=既存と同じ簡易Graphics。simulation/rendering)。
+- 検証: typecheck / lint / test(33 passed+1 skipped・sim.test.ts に登場順index/端配置の検証を追加) / build すべて green。
+
 ## v0.25.891 — スキルのレベル化(Lv1〜3／ガチャで直接排出)
 
 - 装備スキルに **Lv1〜3** を導入(`player.skillLevels` / `ownedSkillLevels` 永続)。シート1個目の効果値に準拠。

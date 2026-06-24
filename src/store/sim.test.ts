@@ -119,6 +119,16 @@ describe('headless simulation invariants', () => {
     expect(base.hp).toBeGreaterThan(0);
     // first capture makes it the merchant's safe base
     expect(useGameStore.getState().safeBaseId).toBe(site0.id);
+    // soldiers are assigned by capture order (first capture = index 0 = エドガー) and
+    // spawn at edge-ish positions inside the circle (not the center where the merchant sits).
+    expect(base.soldierIndex).toBe(0);
+    expect(base.soldiers.length).toBeGreaterThan(0);
+    for (const sol of base.soldiers) {
+      const distFromCenter = Math.hypot(sol.x - site0.x, sol.y - site0.y);
+      expect(distFromCenter).toBeGreaterThan(10); // not stacked on the center
+      expect(distFromCenter).toBeLessThanOrEqual(130 + 1); // within the capture circle
+      expect(Number.isFinite(sol.x) && Number.isFinite(sol.y)).toBe(true);
+    }
   });
 
   // Nightly fuzz (longer + multiple character classes/seeds). Skipped in normal
