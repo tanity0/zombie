@@ -690,11 +690,11 @@ const DevTools: React.FC<{
 // レア度=pity(直近superからのpull数)で重み変動。Lv=スキル別の被り回数で抽選。逐次処理。
 // 演出: 1枚絵+[撃つ]→暗転→上から順にレア度/レベルを表示。レア度で出方が変わり、レベルは
 // 名前の後にワンテンポ置いて飛び出す(Lv3が最も派手)。すべてCSS駆動(初期render後はReact非介入)。
-type RevealCfg = { nameCls: string; beat: number; step: number; ono: string; onoCls: string; ring: string };
+type RevealCfg = { nameCls: string; beat: number; step: number; ring: string };
 const REVEAL_BY_RARITY: Record<SkillRarity, RevealCfg> = {
-  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 620,  ono: 'ピンっ',     onoCls: 'text-white/70',   ring: 'border-white/15' },
-  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1050, ono: 'しゅぴんっ！', onoCls: 'text-sky-300',    ring: 'border-sky-400/50 shadow-[0_0_18px_rgba(56,189,248,0.45)]' },
-  super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 1850, ono: 'しゃきーん！', onoCls: 'text-amber-300',  ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
+  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 620,  ring: 'border-white/15' },
+  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1050, ring: 'border-sky-400/50 shadow-[0_0_18px_rgba(56,189,248,0.45)]' },
+  super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 1850, ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
 };
 
 const SkillGacha: React.FC = () => {
@@ -731,23 +731,60 @@ const SkillGacha: React.FC = () => {
   };
   const closeReveal = () => { setResults(null); setSkipped(false); setBursting(false); setPendingCount(null); };
 
-  // 10連だとカードが画面下に伸びる。各カードが出るタイミングに合わせてスクロールを追従させる
-  // (=カメラが追いかける)。CSSアニメの animationDelay と同じ累積遅延でscrollIntoView。
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // 実機は touch-action:none のフルスクリーン(ブラウザのスクロール不可)。リザルトは
+  // ネイティブスクロールを使わず、translateY の「カメラ」で見せる。10連だとカードが画面外に
+  // 伸びるので、各カードが出るタイミングでカメラがそのカードを中央へパンして追いかける。
+  // パン後は指ドラッグでも見返せる(touch-action:none で touch は自前ハンドラに来る=ジョイスティックと同じ)。
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const filmRef = useRef<HTMLDivElement | null>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [camY, setCamY] = useState(0);          // カメラのY(translateY)。0=先頭、負=下へ
+  const [dragging, setDragging] = useState(false); // ドラッグ中はtransition切ってカメラを指に追従
+  const drag = useRef<{ startY: number; startCam: number; active: boolean }>({ startY: 0, startCam: 0, active: false });
+
+  // 現在のフィルム/ビューポート実測から、カメラYを範囲[ minY, 0 ]に収める。
+  const clampCam = (y: number) => {
+    const vp = viewportRef.current, film = filmRef.current;
+    if (!vp || !film) return Math.min(0, y);
+    const minY = Math.min(0, vp.clientHeight - film.scrollHeight);
+    return Math.max(minY, Math.min(0, y));
+  };
+  // i番目のカードがビューポート中央に来るカメラY(範囲内にクランプ)。
+  const camForCard = (i: number) => {
+    const vp = viewportRef.current, card = cardRefs.current[i];
+    if (!vp || !card) return camY;
+    const center = card.offsetTop + card.offsetHeight / 2;
+    return clampCam(vp.clientHeight / 2 - center);
+  };
+
+  // 暗転演出中(results在り)・スキップ前・破裂後のみカメラが順に追いかける。
   useEffect(() => {
-    // 暗転演出中(results在り)・スキップ前・破裂後のみ追従。
     if (!results || skipped || bursting) return;
+    setCamY(0); // 先頭から
     let acc = 0;
     const timers = results.map((r, i) => {
       const delay = acc;
       acc += REVEAL_BY_RARITY[r.rarity].step;
-      return setTimeout(() => {
-        cardRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, delay);
+      return setTimeout(() => { if (!drag.current.active) setCamY(camForCard(i)); }, delay);
     });
     return () => { timers.forEach(clearTimeout); };
+    // camForCard はカメラ実測の都度参照(camY依存)。ここで依存に入れるとパンの度に
+    // タイマーが張り直され追従が壊れるため、リザルト開始時のみ実行する。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, skipped, bursting]);
+  // スキップ時は先頭へ戻し、あとは指ドラッグで見返す。
+  useEffect(() => { if (skipped) setCamY(0); }, [skipped]);
+
+  const onCamPointerDown = (e: React.PointerEvent) => {
+    drag.current = { startY: e.clientY, startCam: camY, active: true };
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onCamPointerMove = (e: React.PointerEvent) => {
+    if (!drag.current.active) return;
+    setCamY(clampCam(drag.current.startCam + (e.clientY - drag.current.startY)));
+  };
+  const onCamPointerUp = () => { drag.current.active = false; setDragging(false); };
 
   const superPct = gachaSuperPercent(pity);
   const pityLeft = gachaPityRemaining(pity);
@@ -789,9 +826,22 @@ const SkillGacha: React.FC = () => {
     });
     return (
       <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5">
-          <p className="mb-3 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
-          <div className="mx-auto flex max-w-md flex-col gap-2">
+        <p className="px-4 pt-4 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
+        {results.length > 3 && <p className="pb-1 text-center text-[10px] text-white/35">↕ ドラッグで確認</p>}
+        {/* カメラ窓(ネイティブスクロール不使用・overflow隠し)。中の film を translateY でパン。 */}
+        <div
+          ref={viewportRef}
+          className="relative flex-1 overflow-hidden touch-none"
+          onPointerDown={onCamPointerDown}
+          onPointerMove={onCamPointerMove}
+          onPointerUp={onCamPointerUp}
+          onPointerCancel={onCamPointerUp}
+        >
+          <div
+            ref={filmRef}
+            className="absolute left-1/2 top-0 flex w-full max-w-md flex-col gap-2 px-4 py-4"
+            style={{ transform: `translateX(-50%) translateY(${camY}px)`, transition: dragging ? 'none' : 'transform 0.45s cubic-bezier(0.22,1,0.36,1)', willChange: 'transform' }}
+          >
             {timed.map(({ r, cfg, nameDelay, levelDelay }, i) => {
               const maxLv = skillMaxLevel(r.key);
               const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
@@ -817,7 +867,6 @@ const SkillGacha: React.FC = () => {
                     </span>
                     <span className="flex flex-col items-end">
                       <span className={`text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
-                      {!skipped && <span className={`text-[10px] font-bold ${cfg.onoCls}`}>{cfg.ono}</span>}
                     </span>
                   </div>
                   <p className="mt-0.5 text-[10px] leading-snug text-white/55">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>

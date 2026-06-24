@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.908 — リザルトをネイティブスクロール廃止→translateYカメラ化／SE擬音の文字を削除
+
+- 実機は index.html で `html,body { touch-action:none; overflow:hidden; position:fixed }` の
+  フルスクリーン固定。指でのネイティブスクロールは全く効かない(JSスクロールとホイールのみ)。
+  リザルトの overflow-y-auto + scrollIntoView は実機の指操作で見返せないため、
+  **translateYの「カメラ」方式**に変更:
+  - カメラ窓(overflow-hidden, touch-none)＋内側 film を translateY でパン。
+  - 各カード出現時にそのカードを中央へカメラがパン(=追いかける)。
+  - パン後は **ポインタ(指)ドラッグでカメラを上下**(touch-action:none で touch が自前
+    ハンドラに届く=ジョイスティックと同じ原理)。範囲は実測でクランプ。3枚超で「↕ドラッグ」ヒント。
+- ガチャ結果の擬音(「ピンっ」「しゅぴんっ！」「しゃきーん！」)はSE指定であり画面表示しない方針→
+  表示span削除＋RevealCfgの ono/onoCls フィールド自体も撤去。
+- 注: 同じ touch-action:none の制約は他メニュー(UpgradeMenu/GameOverScreen/TitleScreen/
+  MissionSelectルート等の overflow-y-auto)にも当たる。今回はガチャのみ対応。横展開は要相談。
+- 負荷: transformパン1要素＋イベント駆動のみ、毎フレーム購読なし=1/10。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.907 — 回数を先に選ぶ方式＋射撃場の絵を画面内に収める
 
 - 射撃練習場の背景を object-cover(縦いっぱい強制)→ object-contain に変更し、絵を画面内に収めた。
