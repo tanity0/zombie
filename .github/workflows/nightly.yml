@@ -2,12 +2,13 @@ name: Nightly sim fuzz
 
 # 「重いやつは大型改修 or 定期」ポリシーの定期側(CLAUDE.md Testing policy)。
 # ヘッドレスでシミュレーションを長尺(全クラス×3600tick)回し、レアな NaN / クラッシュを炙り出す。
-# 注意: schedule はデフォルトブランチ(main)のワークフローのみ発火する(GitHub仕様)。
-#   main にこのファイルが入るまでは cron は動かないので、それまでは workflow_dispatch で手動実行する。
+# デフォルトブランチ = claude/chat-context-continuity-saxlH(本番)なので cron は有効。
+# 毎晩 schedule がこのブランチの最新を checkout してファズを回す。手動実行も可(workflow_dispatch)。
+# コストは GitHub Actions 無料枠(public)のみ・AIクレジット不使用。緑なら無通知、失敗時は赤❌+メール。
 on:
   schedule:
     - cron: '0 18 * * *'   # 03:00 JST 毎日
-  workflow_dispatch:        # 任意ブランチから手動実行も可
+  workflow_dispatch:        # 手動実行も可
 
 concurrency:
   group: nightly-fuzz
