@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.883 — CLAUDE.md にテスト運用ポリシーを明文化(doc)
+
+- 合意した運用方針を `CLAUDE.md` の「Testing policy」として追記:
+  静的検査(tsc/lint/build)は安いので毎回フル＝影響範囲検出器、ユニットは開発中スコープ(vitest の
+  import グラフ任せ)・CIでフル、重いやつ(長尺ファズ/E2E/ビジュアル)は大型改修or定期のみ。テスト対象は
+  描画非依存層(store/utils/world)。CIはpublicで無料、実費は将来の自律エージェント定期実行のみ。
+- コード変更なし(ドキュメントのみ)。
+
 ## v0.25.882 — テスト基盤(Vitest)＋ GitHub Actions CI / lint クリーンアップ
 
 - **Phase 0 (lint)**: `npm run lint` の7エラーを解消(未使用変数 `objectCount`/`_gameTime`/

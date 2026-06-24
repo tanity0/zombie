@@ -114,6 +114,35 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   per-frame writer (e.g. resync) is unavoidable, keep its result a stable
   reference for fields others read, and gate the write when nothing changed.
 
+## Testing policy (test/debug cadence)
+Codified from the agreed approach: **test the changed code + its blast radius;
+run the full sweep cheaply/often, reserve heavy checks for big changes.** Split
+checks by cost — do NOT lump them together.
+- **Static checks (`tsc` / `lint` / `build`) — ALWAYS run full, every change.**
+  They are cheap (seconds) and are themselves the *blast-radius detector*:
+  `npm run typecheck` instantly flags every related break across the whole
+  codebase when a type/signature changes. Never scope these down. Run
+  `npm run lint && npm run typecheck && npm test && npm run build` before a push.
+- **Unit tests (Vitest) — scope to changed + related during dev; full in CI.**
+  Let the tools compute "related", don't guess: `npm run test:watch` (or
+  `npx vitest related <files>`) reruns only tests whose import graph touches the
+  changed files. The full suite (`npm test`) is tiny/fast today, so CI runs it
+  whole on every push as the safety net. When you change *logic* (store/utils/
+  world — the renderer-agnostic layer), add or update a test for that unit and
+  its direct dependents in the same commit.
+- **Heavy checks — only on large refactors or a schedule.** Long headless
+  simulation fuzz, E2E (Playwright), and visual regression are slow and/or
+  high-maintenance (especially WebGL/visual for this game). Don't run them per
+  change; reserve for big changes or a nightly cron.
+- **What to test:** the simulation is deliberately renderer-agnostic
+  (`src/store`, `src/utils`, `src/world`) — that layer is the high-ROI unit-test
+  target and runs headless. Do not unit-test PixiJS draw code.
+- **Cost:** CI on GitHub Actions is **free** (public repo, unlimited minutes);
+  `.github/workflows/ci.yml` runs lint→typecheck→test→build on push/PR,
+  independent of the Pages deploy (`pages.yml`). The only thing that costs real
+  money/credits is a scheduled *autonomous agent* run (model usage) — reserve it
+  for big changes / low frequency if added later.
+
 ## Versioning
 - **Bump `package.json` `version` on every push.** It is injected as
   `__APP_VERSION__` and shown top-right on the title screen and bottom-left
