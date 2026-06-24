@@ -40,7 +40,7 @@ type Screen =
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div
-    className="h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-y-auto overscroll-contain touch-pan-y"
+    className="screen-in h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-y-auto overscroll-contain touch-pan-y"
     style={{
       backgroundImage: `linear-gradient(rgba(8,7,14,0.6), rgba(8,7,14,0.82)), url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
       backgroundSize: 'cover',

@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.912 — ネイティブ感②: トップレベル画面遷移のフェードイン(ハードカット解消)
+
+- 演出ジュースのうち**画面遷移**だけが未実装だったので対応(ヒットストップ/シェイク/スローモー/ズームは
+  既に実装済み=`triggerHitImpact`/`triggerShake`/timeSlowScale。再追加せず。スローモー系は社長指示・
+  ガードレールがあるため非干渉)。
+- `App.tsx` のトップレベル画面(menu/game/gameOver)はハードカットで切り替わっていた(=web/プロト感)。
+  `.screen-in`(260ms フェード＋微スケール、既存メニューの出現アニメと同じ言語)を新設し、
+  `MissionSelect` と `GameOverScreen` のルートに付与。
+- マウント時の見た目だけで**状態遷移・ゲームのライフサイクル・操作可否には一切触れない純コスメ**。
+  `prefers-reduced-motion` でアニメOFFも尊重。
+- 負荷: CSSアニメ1回/画面=0/10。検証: typecheck/lint/test/build 全green。
+- 次手(本丸): 描画メソッド改修=フレームペーシング。最優先は **ダメージ数字(FX-D, Pixi Text)→
+  ビットマップ数字アトラス/プールsprite化**(ベンチ最悪要素)。規模が大きくPixi描画に触れるため、
+  着手前に方針合わせ予定。
+
 ## v0.25.911 — ネイティブ感①: ブラウザ挙動の完全排除(長押し保存シート/選択/ドラッグ/右クリック)
 
 - 「Capacitor＋ネイティブ感チェックリスト」プランの着手1手目(依存なしのweb側即効)。

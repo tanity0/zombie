@@ -176,7 +176,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
 
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center px-3"
+      className="screen-in min-h-screen w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
       <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-3xl">
