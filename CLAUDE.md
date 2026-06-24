@@ -57,13 +57,18 @@ work by what kind of effect-draw it adds and how many are alive at once.
   - **Bloom (AdvancedBloomFilter)** — turning it off barely moves FPS; treat its
     marginal cost as small. It is NOT the thing to cut first.
 - **Expensive (score high) — and WHY (the actual draw path):**
-  - **damage numbers / any text (`FX-D`) = WORST** (`drawDamageNumber`): each is
-    a Pixi `Text` → glyph rasterization to canvas + GPU texture upload on
-    create. `D20` ≈ avg 17 / min 10. Never spawn many Text per moment; use a
-    bitmap-font / pre-rendered digit atlas / pooled sprites.
-  - **strong glow (`FX-G`) = per-frame `Graphics`** (`drawEffectGfx` glow case):
-    `clear()` + ~7 circle fills/strokes re-tessellated EVERY frame. `G12` FAILs
-    (avg ~24). Fix = draw strong glows as the pooled glow *sprite* too.
+  - **arbitrary text via `Text` (`FX-D`'s old path) = WORST**: each is a Pixi
+    `Text` → glyph rasterization to canvas + GPU texture upload on create. `D20`
+    ≈ avg 17 / min 10. Never spawn many `Text` per moment; use a bitmap-font /
+    pre-rendered digit atlas / pooled sprites. **NOTE: numeric damage numbers are
+    ALREADY fixed** — `drawDamageNumberBitmap` uses a baked `BitmapFont`
+    (`dmg-num`, pooled `BitmapText`, color via tint). Only the rare *callout/
+    serif* text (e.g. 「斬」) still takes the `Text` fallback; keep those few.
+  - **strong glow (`FX-G`) — FIXED**: was per-frame `Graphics` (`clear()` + ~7
+    circle fills/strokes re-tessellated EVERY frame → `G12` avg ~24 FAIL). Now
+    drawn as **pooled additive sprites** (`drawStrongGlowSprite`: color halo +
+    white core from the shared `getGlowTexture`), same as small glow. The
+    `drawEffectGfx` glow case is retired (no glow reaches per-frame `Graphics`).
   - **ring / particle / slash (`FX-R/P/S`) = per-frame `Graphics`** (each its own
     object, cleared + several shapes/frame). CAUTION single, FAIL stacked.
   - **image marks (`IMG`, e.g. `zan`)** = one large (~130px) alpha sprite →
@@ -76,8 +81,12 @@ work by what kind of effect-draw it adds and how many are alive at once.
   - **everything-at-once** — `ALL A1 = E36 J70 G8 R8 P64 I6 T12` FAILs hard
     (avg ~15-17). Current **forbidden line** on-device.
 - **Current safe lines (update as the benchmark re-runs):**
-  `enemy E60 safe / projectile J130 safe / bloom≈free / FX-D worst /
-  glow G12 fail / FX composite F1 fail / image I4 fail / light T8 fail / all A1 fail`.
+  `enemy E60 safe / projectile J130 safe / bloom≈free /
+  FX-D(numeric) now bitmap-font(was worst) / strong glow now pooled sprite(was G12 fail) /
+  FX composite F1 fail / image I4 fail / light T8 fail / all A1 fail`.
+  (The damage-number-bitmap + strong-glow-sprite wins are implemented but the
+  numbers above predate them — re-run the on-device benchmark to confirm the new
+  `G12` / `F1` / `A1` lines.)
 - **Scoring rule of thumb:** the cost is **draw-method × simultaneous count**.
   Rank by: text/`Text` (worst) > per-frame `Graphics` (glow/ring/particle/slash)
   > large alpha sprites (images) > additive lights — all far above

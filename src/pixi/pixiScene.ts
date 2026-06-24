@@ -5653,8 +5653,11 @@ export class PixiScene {
         this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
         this.drawDogFetchSprite(e, now);
-      } else if (e.kind === 'glow' && e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) {
-        this.drawSmallGlowSprite(e, now);
+      } else if (e.kind === 'glow') {
+        // 小glow=プールsprite(従来)。強glowも以前は毎フレ Graphics(clear()+7図形の再テッセレーション=
+        // G12 FAIL)だったが、同じプールsprite方式(色haloと白coreの加算スプライト)に変更して激減させる。
+        if (e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) this.drawSmallGlowSprite(e, now);
+        else this.drawStrongGlowSprite(e, now);
       } else if (e.kind === 'whip') {
         this.drawWhipSprite(e, now);
       } else {
@@ -5673,7 +5676,7 @@ export class PixiScene {
     }
     for (const [id, obj] of this.effects) {
       if (!seen.has(id)) {
-        obj.destroy();
+        obj.destroy({ children: true }); // 強glowは子(halo/core)を持つ Container なので子も破棄(共有texは保持)
         this.effects.delete(id);
       }
     }
@@ -5713,30 +5716,8 @@ export class PixiScene {
         g.circle(e.x, e.y, radius).stroke({ width: Math.max(1, e.width * 0.4), color: 0xffffff, alpha: 0.5 * (1 - t) });
         break;
       }
-      case 'glow': {
-        // Additive soft disc with a brighter core (radial-gradient approximation).
-        g.blendMode = 'add';
-        g.alpha = 1 - t;
-        const isStrong = e.radius >= STRONG_GLOW_RADIUS;
-        const color = `${e.color}1)`;
-        if (isStrong) {
-          // Strong events get their broad ground contrast from
-          // syncLocalEventLighting. Keep this top-layer glow compact so it
-          // does not wash over the cast shadows and make them disappear.
-          g.circle(e.x - 2, e.y, e.radius * 0.74).fill({ color: 0xff3344, alpha: 0.035 });
-          g.circle(e.x + 2, e.y, e.radius * 0.74).fill({ color: 0x38d9ff, alpha: 0.03 });
-          g.circle(e.x, e.y, e.radius * 0.82).fill({ color, alpha: 0.1 });
-          g.circle(e.x, e.y, e.radius * 0.46).fill({ color, alpha: 0.24 });
-          g.circle(e.x, e.y, e.radius * 0.22).fill({ color: 0xffffff, alpha: 0.42 });
-          g.circle(e.x, e.y, e.radius * 0.5).stroke({ width: 2.5, color, alpha: 0.5 });
-          g.circle(e.x, e.y, e.radius * 0.28).stroke({ width: 1.25, color: 0xffffff, alpha: 0.44 });
-        } else {
-          g.circle(e.x, e.y, e.radius).fill({ color, alpha: 0.4 });
-          g.circle(e.x, e.y, e.radius * 0.55).fill({ color, alpha: 0.5 });
-          g.circle(e.x, e.y, e.radius).stroke({ width: 2, color });
-        }
-        break;
-      }
+      // 'glow' は drawSmallGlowSprite / drawStrongGlowSprite(プールsprite)で描画するため
+      // ここ(毎フレ Graphics)には到達しない。重い再テッセレーションを避けるため case は持たない。
       case 'slash': {
         // Additive streak: soft wide underlay + hot white core line.
         g.blendMode = 'add';
@@ -5804,6 +5785,41 @@ export class PixiScene {
     sprite.width = radius * 2;
     sprite.height = radius * 2;
     sprite.alpha = life * SMALL_GLOW_ALPHA_SCALE;
+  }
+
+  // 強glow(radius>=STRONG_GLOW_RADIUS)もプールspriteで描く。以前は drawEffectGfx で毎フレ
+  // clear()+約7図形を再テッセレーションしており G12 が FAIL していた。共有の放射グラデtex(getGlowTexture=
+  // 白芯→外周0)を2枚、色のhalo(広い柔らかい光球)＋白のcore(熱い芯)として加算合成し、従来の見た目を近似する。
+  // strong は従来どおり groundLayer(gameplayの下)に置く。注: Sprite/Graphics も Container 派生なので
+  // __strongGlow マーカーで自前の Container だけを再利用する。
+  private drawStrongGlowSprite(e: Extract<VisualEffect, { kind: 'glow' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let view = this.effects.get(e.id);
+    if (!(view instanceof Container) || !(view as { __strongGlow?: boolean }).__strongGlow) {
+      if (view) view.destroy({ children: true });
+      const c = new Container();
+      (c as { __strongGlow?: boolean }).__strongGlow = true;
+      const halo = new Sprite(getGlowTexture()); halo.anchor.set(0.5); halo.blendMode = 'add';
+      const core = new Sprite(getGlowTexture()); core.anchor.set(0.5); core.blendMode = 'add'; core.tint = 0xffffff;
+      c.addChild(halo, core);
+      view = c;
+      this.effects.set(e.id, c);
+    }
+    if (view.parent !== this.L.groundLayer) this.L.groundLayer.addChild(view);
+    const c = view as Container;
+    const [halo, core] = c.children as Sprite[];
+    const life = Math.max(0, 1 - t);
+    c.visible = true;
+    c.position.set(e.x, e.y);
+    // halo: 色付きの広い柔らかい光球(従来 main disc ~radius*0.82 相当)。
+    const haloD = e.radius * 1.7;
+    halo.tint = this.glowTint(e.color);
+    halo.width = halo.height = haloD;
+    halo.alpha = life * 0.5;
+    // core: 熱い白芯(従来 white core ~radius*0.22 を少し広めに)。
+    const coreD = e.radius * 0.62;
+    core.width = core.height = coreD;
+    core.alpha = life * 0.55;
   }
 
   // 鞭 lash を実スプライトで描画。手元(WHIP_SPRITE_ANCHOR)をプレイヤー位置に固定し、

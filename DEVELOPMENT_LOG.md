@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.913 — 本丸(描画メソッド改修): 強glowを毎フレGraphics→プールspriteへ
+
+- ネイティブ感の本丸=フレームペーシング改善。調査の結果、**最悪要素だったダメージ数字(FX-D)は既に
+  BitmapText化済み**(`drawDamageNumberBitmap`/`dmg-num` BitmapFont/tint)だった。CLAUDE.mdが陳腐化していたので更新。
+- 残っていた **強glow(FX-G, radius>=44)** は `drawEffectGfx` で毎フレ `clear()`＋約7図形を再テッセレーション
+  していた(ベンチ `G12` FAIL・`ALL A1` の構成要素)。これを **プールsprite方式**に変更:
+  - 新 `drawStrongGlowSprite`: 共有放射グラデtex(`getGlowTexture`)を色halo＋白coreの2枚加算で近似。
+    従来どおり groundLayer。小glow(`drawSmallGlowSprite`)と同じ軽量パス。
+  - `syncEffects` の glow 分岐を統合(小=小sprite/強=強sprite)。`drawEffectGfx` の glow case は到達不能化し撤去。
+  - クリーンアップを `destroy({children:true})` に(強glowは子halo/coreを持つContainerのため。共有texは保持)。
+- 視覚: 色付き光球＋熱い白芯の読みは維持。色収差フリンジ/リングストロークの微細は省略(CLAUDE.md既定のトレードオフ)。
+- 負荷: per-frame Graphics 再テッセレーション(重)→ tint済みスプライト2枚(軽)。`G12`/`F1`/`A1` の改善見込み。
+  ただし**数値は実機ベンチ再計測で要確認**(本環境ではベンチ実行不可)。
+- 検証: typecheck/lint/test/build 全green。Pixi描画はユニットテスト対象外(規約)。
+
 ## v0.25.912 — ネイティブ感②: トップレベル画面遷移のフェードイン(ハードカット解消)
 
 - 演出ジュースのうち**画面遷移**だけが未実装だったので対応(ヒットストップ/シェイク/スローモー/ズームは
