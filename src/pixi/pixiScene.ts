@@ -2219,7 +2219,7 @@ export class PixiScene {
       s.camera,
       now
     );
-    this.syncPlayerFx(s.player, now, s.gameTime);
+    this.syncPlayerFx(s.player, now);
     this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent);
     this.syncFlash(s.effects, now);
 
@@ -5952,7 +5952,7 @@ export class PixiScene {
 
   // ---- player FX: counter ring + reload meter (world space) ----------------
 
-  private syncPlayerFx(player: Player, now: number, _gameTime: number) {
+  private syncPlayerFx(player: Player, now: number) {
     const g = this.playerFx;
     g.clear();
     const rg = this.reticleGfx; // 照準サークル専用(環境光の影響を受けない層=uiLayer・screen座標)

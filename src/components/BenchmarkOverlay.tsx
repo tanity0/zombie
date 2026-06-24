@@ -153,10 +153,6 @@ interface BenchmarkOverlayProps {
   onComplete: (result: BenchmarkResult) => void;
 }
 
-const objectCount = (profile: BenchmarkProfile) =>
-  profile.glowCount + profile.ringCount + profile.particleCount +
-  profile.slashCount + profile.dmgCount + profile.imageCount +
-  profile.torchCount + profile.projectileCount;
 
 const stressLabel = (profile: BenchmarkProfile) =>
   `E${profile.enemyTarget} J${profile.projectileCount} G${profile.glowCount} R${profile.ringCount} P${profile.particleCount} I${profile.imageCount} T${profile.torchCount}`;

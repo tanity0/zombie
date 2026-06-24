@@ -2028,7 +2028,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const {
       player, gameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
-      shopReopenAt, eventQuestReopenAt, indoorMode, labDoors
+      shopReopenAt, eventQuestReopenAt
     } = get();
     // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
     if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -4574,7 +4574,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
           const ux = dx / distance, uy = dy / distance;
           const wob = Math.sin(gameTime / 200 + (h % 628) / 100) * ZOMBIE_WOBBLE;
-          let hx = ux + (-uy) * wob, hy = uy + ux * wob;
+          const hx = ux + (-uy) * wob, hy = uy + ux * wob;
           const hl = Math.max(0.001, Math.hypot(hx, hy));
           const zvx = (hx / hl) * zSpeed, zvy = (hy / hl) * zSpeed;
           const zmoved = resolveMove(enemy.x + zvx * deltaTime, enemy.y + zvy * deltaTime);
@@ -5142,7 +5142,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const dy = ty - (p.y + p.height / 2);
               const tAngle = Math.atan2(dy, dx);
               const cAngle = Math.atan2(p.direction.y, p.direction.x);
-              let diff = ((tAngle - cAngle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+              const diff = ((tAngle - cAngle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
               const maxTurn = HOMING_MISSILE_TURN_RATE * deltaTime;
               const newAngle = cAngle + Math.sign(diff) * Math.min(Math.abs(diff), maxTurn);
               dir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };

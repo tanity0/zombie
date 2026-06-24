@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.882 — テスト基盤(Vitest)＋ GitHub Actions CI / lint クリーンアップ
+
+- **Phase 0 (lint)**: `npm run lint` の7エラーを解消(未使用変数 `objectCount`/`_gameTime`/
+  `indoorMode`/`labDoors`、`prefer-const` の `hx`/`hy`/`diff`)。lint をCIゲート化可能に。
+- **Phase 1 (背骨)**:
+  - **Vitest 導入**(`vitest@^2`、`test`/`test:watch`/`typecheck` スクリプト)。
+  - **ユニットテスト 22件**(描画非依存の純ロジック):
+    `world/obstacles`(footRect/rectsOverlap/segment*/resolveAabb=当たり判定)、
+    `utils/weaponUtils`(ナイフ5Tier・nextKnifeKey・createWeapon・getWeaponShortName)、
+    `utils/enemyUtils`(areaIndexForPos・AREA_MAX_ENEMIES・isBossType)。
+  - **GitHub Actions CI**(`.github/workflows/ci.yml`): push / PR で `lint → typecheck → test → build`。
+    既存の Pages デプロイ(`pages.yml`)とは独立。ブランチごとに古い実行は自動キャンセル。
+- 検証: lint / `tsc --noEmit` / `vitest run`(22 passed) / `vite build` すべて green。
+- 次段(任意): Phase 2 = store をN tick回すヘッドレス煙テスト＋nightly cron の長尺ファズ。
+
 ## v0.25.881 — ジャイアント/イベント敵の待機化・プラント/犬の保証出現・ゾンビAI刷新
 
 - **ジャイアント(城ボス)**: 出現直後は `dormant`+`aggroRange=380` で城に待機し、プレイヤーが
