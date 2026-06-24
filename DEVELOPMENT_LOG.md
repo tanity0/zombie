@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.919 — ガチャ結果に「一覧で見る」を復活(10連で何が出たか振り返る)
+
+- 矢印めくり演出はそのまま、フッターに **[一覧で見る]⇄[演出にもどる]** トグルを追加(複数連=total>1のみ)。
+- 一覧(サマリー): 全結果をコンパクト行(スキル名/Lv/レア度/New/変化)で表示。枠内のみスクロール
+  (全画面スクロール/スクロールバー無し・overscroll-contain)=脱ブラウザ方針を維持。
+- `showList` 状態を追加(新しい結果・closeReveal で false にリセット=必ず演出から開始)。
+- 1連は従来どおり単体カード＋とじる。検証: typecheck/lint/test/build 全green。
+
 ## v0.25.918 — iOSのピンチ/ダブルタップ拡大・虫眼鏡(選択ルーペ)を全面抑止(操作面の完全支配)
 
 - プレイ中のダブルタップでiPhoneの拡大/虫眼鏡が働く問題。`touch-action`/viewport だけでは

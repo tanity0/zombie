@@ -721,6 +721,7 @@ const SkillGacha: React.FC = () => {
   const [pendingCount, setPendingCount] = useState<1 | 10 | null>(null); // 選択した訓練回数(=射撃練習場へ遷移中)
   const [results, setResults] = useState<GachaPullResult[] | null>(null); // null=暗転演出オフ(射撃場表示)
   const [idx, setIdx] = useState(0); // 排出結果のページ(矢印めくり。スクロールは使わない)
+  const [showList, setShowList] = useState(false); // 排出結果の一覧(サマリー)表示中か(10連で何が出たか振り返る用)
   const [bursting, setBursting] = useState(false); // 撃つ→的が破裂する演出中(results確定済み・暗転前)
   const [noGold, setNoGold] = useState(false);
 
@@ -748,7 +749,7 @@ const SkillGacha: React.FC = () => {
     setBursting(true);   // まず破裂演出
     setTimeout(() => setBursting(false), BURST_MS);
   };
-  const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); };
+  const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); setShowList(false); };
 
   // 排出結果は「矢印めくり」で1枚ずつ見せる(スクロール無し=ネイティブ感)。破裂明けで先頭(0)から、
   // レア度のテンポで自動的にめくり進む。以後は ◀▶ で前後に見返せる(手動操作で自動送りは停止)。
@@ -757,6 +758,7 @@ const SkillGacha: React.FC = () => {
   useEffect(() => {
     if (!results || bursting) return;
     setIdx(0);
+    setShowList(false); // 新しい結果は必ず演出(矢印めくり)から
     clearRevealTimers();
     let acc = 0;
     for (let i = 1; i < results.length; i++) {
@@ -827,8 +829,39 @@ const SkillGacha: React.FC = () => {
     const atLast = cur === total - 1;
     return createPortal(
       <div className="gacha-dim fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
-        <p className="px-4 pt-5 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">スキル強化訓練 結果</p>
+        <p className="px-4 pt-5 text-center text-[12px] uppercase tracking-[0.3em] text-fuchsia-200/70">
+          スキル強化訓練 結果{showList ? '（一覧）' : ''}
+        </p>
 
+        {showList ? (
+          // 一覧(サマリー): 10連で何が出たか振り返る。枠内のみスクロール(全画面/バー無し)。
+          <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-2">
+            <div className="mx-auto flex w-full max-w-md flex-col gap-1.5">
+              {results.map((rr, i) => {
+                const rc = REVEAL_BY_RARITY[rr.rarity];
+                const lc = rr.newLevel >= 3 ? 'text-amber-300' : rr.newLevel === 2 ? 'text-sky-200' : 'text-white';
+                return (
+                  <div key={i} className={`rounded-lg border bg-black/40 px-3 py-2 ${rc.ring}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[14px] font-bold text-white">
+                        {SKILLS[rr.key].name}
+                        <span className={`ml-2 text-[15px] font-extrabold ${lc}`}>Lv{rr.newLevel}</span>
+                        {rr.firstAcquire && <span className="ml-2 align-middle rounded border border-emerald-300/60 bg-emerald-400/20 px-1 text-[9px] font-bold text-emerald-200">New</span>}
+                      </span>
+                      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[rr.rarity]}`}>{RARITY_LABEL[rr.rarity]}</span>
+                    </div>
+                    <p className={`mt-0.5 text-[10px] font-semibold ${rr.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
+                      {rr.firstAcquire ? `新規解禁！ Lv${rr.newLevel}`
+                        : rr.promoted ? `Lv${rr.prevLevel} → Lv${rr.newLevel} 昇格！`
+                        : `現Lv${rr.prevLevel}以下/上限 → ${rr.refund}G返金`}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+        <>
         {/* 中央に1枚ずつ。◀▶でめくる(スクロール無し)。中央タップでも次へ。 */}
         <div
           className="relative flex flex-1 items-center justify-center px-3"
@@ -893,15 +926,36 @@ const SkillGacha: React.FC = () => {
           </div>
         )}
         {total > 1 && <p className="pb-1 text-center text-[10px] tracking-wider text-white/35">{cur + 1} / {total}</p>}
+        </>
+        )}
 
         <div className="border-t border-white/10 bg-black/60 p-3">
-          <button
-            type="button"
-            onClick={closeReveal}
-            className="w-full rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
-          >
-            とじる
-          </button>
+          {total > 1 ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => { clearRevealTimers(); setShowList(v => !v); }}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-white/10"
+              >
+                {showList ? '演出にもどる' : '一覧で見る'}
+              </button>
+              <button
+                type="button"
+                onClick={closeReveal}
+                className="rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+              >
+                とじる
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={closeReveal}
+              className="w-full rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+            >
+              とじる
+            </button>
+          )}
         </div>
       </div>,
       document.body
