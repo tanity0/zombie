@@ -50,6 +50,19 @@
       button {
         font-family: inherit;
       }
+      /* ネイティブ感: ブラウザ由来の挙動を全要素で抑止する。
+         - touch-callout: 長押しで出る「画像を保存/コピー」シート(imgで顕著)を消す=web感の最大のバレ。
+         - user-select: テキスト選択のハイライトを消す(ゲームに不要)。
+         - user-drag: 画像のゴーストドラッグを消す。 */
+      *, *::before, *::after {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      img {
+        -webkit-user-drag: none;
+        -webkit-touch-callout: none;
+      }
     </style>
   </head>
   <body>

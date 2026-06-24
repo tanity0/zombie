@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.911 — ネイティブ感①: ブラウザ挙動の完全排除(長押し保存シート/選択/ドラッグ/右クリック)
+
+- 「Capacitor＋ネイティブ感チェックリスト」プランの着手1手目(依存なしのweb側即効)。
+- **長押しの「画像を保存」シート抑止**(=web感の最大のバレ): 全要素＋imgに `-webkit-touch-callout: none`。
+- テキスト選択ハイライト/画像ゴーストドラッグも全要素で抑止(`user-select`/`-webkit-user-drag`)。
+- 保険でJSでも `contextmenu` を全面 preventDefault(Android WebView/デスクトップで CSS が漏れる分)。
+- 既存で済んでいた分: no-zoom viewport(viewport-fit=cover)/overscroll-behavior:none/position fixed/
+  tap-highlight透明 は据え置き。
+- 負荷: イベント1個＋静的CSSのみ=0/10。現web版もすぐ"アプリらしく"なる。検証: typecheck/lint/test/build 全green。
+- 次手: 演出ジュース(ヒットストップ/小シェイク/遷移イージング)→ 本丸の描画メソッド改修。
+  Capacitor依存(触覚/ネイティブ音/スプラッシュ/向き固定)は実機ビルド段で足場投入。
+
 ## v0.25.910 — プレイ中の backdrop-blur 合成コストを除去(ネイティブ化前提のperf下地)
 
 - ネイティブ化(Capacitor)検討の文脈で挙げた「具体コスト」のうち、**プレイ中ずっと走るblur合成**を除去。
