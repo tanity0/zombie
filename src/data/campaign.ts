@@ -595,7 +595,7 @@ export const rarityWeightsForPity = (pity: number): Record<SkillRarity, number> 
 export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(k => SKILLS[k].rarity === r);
 // ガチャ1回の価格 / 重複時のレア度別返金額。// ※テスト用に一旦0円(無料)。本番は150想定。
 export const GACHA_PULL_COST = 0;
-export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 50, rare: 150, super: 500 };
+export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10, rare: 30, super: 50 };
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
 

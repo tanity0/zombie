@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.898 — ガチャ換金額を固定(通常10G/レア30G/超レア50G)
+
+- `GACHA_REFUND_BY_RARITY` を 50/150/500 → **10/30/50** に変更(現Lv以下/上限/Lv1固定の重複時の返金)。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.897 — スキル説明をLv別に(共通説明＋現Lvの具体値)
 
 - `SKILL_LEVEL_INFO`(共通説明 base ＋ Lv1/2/3 の具体値 lv[])と `skillDescForLevel(key, level)` を追加。
