@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.903 — ステージ5に専用BGMを追加
+
+- `public/audio/stage5.mp3`(軍本部)を受領曲で追加。`GAME_BGM`/`REVERSE_BGM` に `stage5` キーを登録し、`stage-5` に `bgm: 'stage5'` を設定(従来は default=stage1 へフォールバックしていた)。
+- 深層域用の逆再生版 `stage5-reverse.mp3` を ffmpeg(`areverse`)で生成(尺一致 231.192s)。
+- 検証: typecheck / lint / test(49 passed+1 skipped) / build すべて green。
+
 ## v0.25.902 — ガチャ1枚絵差し込み＋撃つ→的破裂演出／ステージ3・4 BGM差し替え
 
 - **ガチャ1枚絵**: `public/gacha/cover.png`(射撃場)を表示。引き気味の絵を少し寄せて(scale1.18・中央ブース)中央の射撃ブースを見せる。

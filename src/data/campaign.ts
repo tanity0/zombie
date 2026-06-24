@@ -220,6 +220,7 @@ export const STAGES: Stage[] = [
     name: '軍本部',
     area: '防衛線 / 本部 防衛',
     unlockBy: 'stage-4',
+    bgm: 'stage5',       // ステージ5専用BGM(public/audio/stage5.mp3)
     subs: [],
     main: {
       code: 'M5',
