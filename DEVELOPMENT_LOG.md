@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.923 — タイトル横見切れ修正をやり直し(DOMタイトル撤去・画像をcontainでフィット)
+
+- v0.25.922で重ねたDOMタイトルが焼き込みタイトルと二重になり余計だった→撤去。
+- 背景を `cover`→`contain`(+no-repeat)に変更し、タイトル画像をそのまま画面内にフィット
+  (左右が切れない)。要素は足さない、画像を合わせるだけ。
+- (後始末) 直前コミットで誤って空の `DEVELOPMENT_LOG.md.tmp` を追跡してしまったため削除。
+- 検証: typecheck/lint/build 全green。
+
 ## v0.25.922 — タイトル「the ONE」の横見切れを修正(DOM可変タイトル化)
 
 - 症状: タイトル背景(landscape 1672×941)を `cover` で全面表示しているため、縦長端末
