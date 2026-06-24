@@ -62,8 +62,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
           src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
           alt=""
           draggable={false}
-          className="aspect-square max-h-full max-w-full object-cover"
-          style={{ width: 'min(100vw, 100svh)' }}
+          className="aspect-square object-cover"
+          style={{ width: 'min(112vw, 112svh)' }}
         />
       </div>
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
