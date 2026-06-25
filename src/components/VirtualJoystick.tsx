@@ -3,6 +3,7 @@ import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import {
   useGameStore,
   isGameTimeStopped,
+  isInputLocked,
   KATANA_FLICK_WINDOW_MS,
   KATANA_FLICK_MIN_DIST,
   KATANA_FLICK_MIN_SPEED
@@ -164,6 +165,8 @@ const VirtualJoystick: React.FC = () => {
   }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash, tryFireWireAnchor]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
+    if (isInputLocked()) return;
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
     setTouchActive(true);
@@ -180,6 +183,8 @@ const VirtualJoystick: React.FC = () => {
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (pointerIdRef.current !== e.pointerId) return;
+      // ドラッグ中に操作不可へ移行したら向き/移動の更新を止める(セリフ/ヘリ/死亡中に向きが変わらないように)。
+      if (isInputLocked()) { setSwipeDirection(null); return; }
       const o = originRef.current;
       if (!o) return;
 

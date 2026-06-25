@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { useGameStore, isGameTimeStopped } from '../store/gameStore';
+import { useGameStore, isInputLocked } from '../store/gameStore';
 import { performTapAction, performFlickAction } from '../utils/inputActions';
 
 // PC(マウス)操作レイヤー。スマホの4操作に対応:
@@ -13,14 +13,15 @@ const MouseControls: React.FC = () => {
 
   // カーソル位置(レイヤー左上=キャンバス左上 基準のスクリーン座標)を保存。ワールド変換は movePlayer 側で camera を足す。
   const updateAim = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isInputLocked()) return; // 操作不可中は照準(=向き)も更新しない
     const rect = e.currentTarget.getBoundingClientRect();
     setMouseAim({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   }, [setMouseAim]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isInputLocked()) return;
     updateAim(e);
     const gs = useGameStore.getState();
-    if (gs.isPaused || isGameTimeStopped()) return;
     if (e.button === 0) {
       // 左クリック = タップ/離す。
       performTapAction();

@@ -973,6 +973,14 @@ export const isGameTimeStopped = (): boolean => {
   return s.introDialogueActive || (s.introUntil > 0 && Date.now() < s.introUntil);
 };
 
+// 操作を一切受け付けない状態(社長指示): プレイヤーが動いてはいけない場面。
+// =ヘリ登場/登場セリフ等の時間停止中(isGameTimeStopped)、メニュー等の一時停止中(isPaused)、
+//   死亡後(health<=0)。移動・向き・攻撃すべてここで弾く(ジョイスティック/操作層の各ハンドラが参照)。
+export const isInputLocked = (): boolean => {
+  const s = useGameStore.getState();
+  return s.isPaused || s.player.health <= 0 || isGameTimeStopped();
+};
+
 const BREAKABLE_PROP_DROP_CHANCE = 0.42;
 const TORCH_STRAP_DROP_MIN = 5;
 const TORCH_STRAP_DROP_VARIANCE = 16;
