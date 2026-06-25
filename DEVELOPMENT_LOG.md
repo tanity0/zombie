@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.991 — 裏ボスのカウンターワープ距離を 50→320px に(近すぎ修正)
+
+- **`BOSS_COUNTER_WARP_DIST` 50→320**(社長指示「ワープ位置が近すぎる」)。中心間50pxだと巨体
+  (ミーミル幅165/ヨルムンガンド346px)でほぼ重なっていたため、プレイヤーの反対側へしっかり離す。
+- 演出(フラッシュ＋0.5秒フェードイン)・即死(ワーム)除外・連続ワープのデバウンスは変更なし。
+- 検証: lint / typecheck / test / build green。
+
 ## v0.25.990 — アーマー(体・防護系)の最大体力を一律 −30
 
 - **防護系(protection)5段階＋武将の鎧 の maxHealth を全て −30**(社長指示「全体から体力30ずつ下げて」)。
