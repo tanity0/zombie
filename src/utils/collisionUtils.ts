@@ -4,7 +4,7 @@ import { isHiddenBoss } from './enemyUtils';
 
 // 裏ボスの「向こうの攻撃(接触)当たり判定」だけは見た目より内側に小さくする(近接ビルド対策・社長指示)。
 // プレイヤー→ボスの攻撃判定は従来どおりフル(enemy.width/height=ピクセル全体)。これは逆方向(ボス→プレイヤー接触)用。
-const BOSS_CONTACT_INSET = 0.42; // 縦横をこの割合まで縮めた中央矩形を接触判定に使う
+const BOSS_CONTACT_INSET = 0.72; // 縦横をこの割合まで縮めた中央矩形を接触判定に使う(体に当たる大きさ。端は少し余白)
 const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } => {
   if (!isHiddenBoss(e.type)) return e;
   const w = e.width * BOSS_CONTACT_INSET, h = e.height * BOSS_CONTACT_INSET;

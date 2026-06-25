@@ -4318,15 +4318,11 @@ export class PixiScene {
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
-    // 裏ボスは画面からはみ出る巨体のため「頭(上端)基準」で描画する(社長指示・仕様11)。
-    // アンカーを上中央(0.5,0)にして当たり判定の上端(e.y)に頭を置く。他敵は従来の足元(0.5,1)。
-    const headAnchored = isHiddenBoss(e.type);
-    view.sprite.anchor.set(0.5, headAnchored ? 0 : 1);
-    if (headAnchored) {
-      view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(e.y));
-    } else {
-      view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
-    }
+    // 裏ボスは「実体(当たり判定)＝見た目」を一致させるため、足元アンカー＋遠近スケール無しで
+    // AABB ちょうどに描く(社長指示)。他敵は従来どおり足元アンカー＋遠近スケール。
+    const bossFixed = isHiddenBoss(e.type);
+    view.sprite.anchor.set(0.5, 1);
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
@@ -4340,7 +4336,7 @@ export class PixiScene {
       const stage3BossMul = (this.daylight && e.type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
       // ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので上方向に拡大。視覚のみ=hitbox不変。
       const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(e.type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * stage3BossMul * stage4VisMul;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * (bossFixed ? 1 : this.depthScaleEnemy(fb.footY)) * stage3BossMul * stage4VisMul;
       const breath = this.enemyBreath(e, now);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
@@ -4776,10 +4772,10 @@ export class PixiScene {
     const flicker = 1 - t * (0.5 + 0.5 * Math.sin(now / 45)); // 終盤ほど深く明滅
     sp.visible = true;
     sp.texture = tex;
-    sp.anchor.set(0.5, 0); // 頭(上端)基準=生体と同じ
+    sp.anchor.set(0.5, 1); // 足元(下端)基準=生体と同じ(遠近スケール無しなので生体と同サイズ=縮まない)
     const sc = containScale(corpse.w, corpse.h * 1.2, tex.width, tex.height);
     sp.scale.set(sc, sc);
-    sp.position.set(Math.round(corpse.x + corpse.w / 2), Math.round(corpse.y));
+    sp.position.set(Math.round(corpse.x + corpse.w / 2), Math.round(corpse.y + corpse.h));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
   }
