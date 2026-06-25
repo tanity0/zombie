@@ -441,6 +441,9 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
   return knownClass ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
 const PLAYER_WALK_BOB_PX = 0.8;
+// 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
+const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
+const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
 // ホーミングのロックオンサークル出現演出: 0.5秒でズームアウト(×開始倍率)→ターゲット半径へ収束＋フェードイン。
 const LOCK_ANIM_MS = 500;
 const LOCK_ANIM_START_SCALE = 2.4;
@@ -4045,6 +4048,15 @@ export class PixiScene {
     const phase = walking ? (now / PLAYER_WALK_CYCLE_MS) * Math.PI * 2 : 0;
     const step = Math.sin(phase);
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
+    // 徒歩の自然化(3コマの上に重ねる連続モーション・視覚のみ): 接地(lift=0)で縦に潰れて横に広がり、
+    // 遊脚の最高点(lift=1)で縦に伸びて横が締まる(スカッシュ&ストレッチ)＋足元支点の左右リーン(体重移動)。
+    let walkSqX = 1, walkSqY = 1, walkLean = 0;
+    if (walking) {
+      const lift = Math.abs(step); // 0=接地 / 1=遊脚中(最高点)
+      walkSqY = 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift);
+      walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
+      walkLean = step * PLAYER_WALK_LEAN_RAD;
+    }
 
     // 登場演出: store 共有の playerIntroOffset(t) で見た目オフセット + 着地スカッシュ。
     // カメラ(useGameLoop)が同じ式で飛行Xに追従するので、キャラは画面内を低く飛んで着地する。
@@ -4105,8 +4117,8 @@ export class PixiScene {
       const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
       const sc = baseScale * this.depthScale(fb.footY) * introScale;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      view.sprite.scale.set((flip ? -sc : sc) * introSqX, sc * introSqY);
-      view.sprite.rotation = 0;
+      view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX, sc * introSqY * walkSqY);
+      view.sprite.rotation = walkLean;
     }
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX,
