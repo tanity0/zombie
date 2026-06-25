@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.989 — 画面シェイク全体を約2倍に(一括倍率)
+
+- **揺れ強度を全体で約2倍**(社長指示「全体的にエフェクトとして揺らしている、揺れ具合を2倍くらいにして」)。
+  各 `*_SHAKE_MAG` を個別にいじらず、`SHAKE_GLOBAL_MULT = 2`(`gameStore.ts`)を新設し、描画側
+  (`pixiScene.ts` のシェイク振幅計算 `mag = shakeMag * SHAKE_GLOBAL_MULT * フェード`)で一括スケール。
+  call site(近接スイング/盾バッシュ/竜巻/死神召喚/着地/カウンター/四神技/裏ボスクラッシュ/被弾 等)
+  すべてが同じ倍率で効く。被弾時の `shakeMag` 直接セット(takeDamage)も消費が描画側のため同様にスケール。
+- **描画のみ・ゲーム性に影響なし**(ヒットボックス/射程/移動距離は不変)。負荷 1/10(既存の
+  `world.position.set` オフセットへ係数を1つ掛けるだけ。新規描画・per-frame 追加コストなし)。
+- 検証: lint / typecheck(0 errors) / test(65 passed) / build すべて green。
+- 変更: `src/store/gameStore.ts`(定数追加) / `src/pixi/pixiScene.ts`(import＋振幅乗算) / `package.json`。
+- 次への申し送り: 後で「2倍だと強すぎ/弱すぎ」なら `SHAKE_GLOBAL_MULT` の一値だけ調整すればよい。
+
 ## v0.25.983 — typecheck 実効化＋既存型エラー一掃(46→0) / 盾バッシュのシェイク / 実バグ2件修正
 
 - **`npm run typecheck` を実効化**: ルート tsconfig が `files:[]`＋references で実質ノーチェックだったのを

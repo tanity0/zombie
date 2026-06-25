@@ -754,6 +754,9 @@ const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
 export const SHAKE_MS = 280;
 export const SHAKE_MAG = 16;                 // 既定/通常時の揺れ幅(px)。社長指示で倍化(8→16)。
+// 全体の揺れ強度の一括倍率(描画のみ)。各 *_SHAKE_MAG を個別にいじらず、揺れの「効き」だけを
+// ここで一括スケールする(社長指示で全体を約2倍に)。消費は描画側(pixiScene)で振幅へ乗算。
+export const SHAKE_GLOBAL_MULT = 2;
 // 行動別の画面シェイク(視覚のみ・ゲーム性に影響なし)。mag=振幅px / ms=長さ。短く強い「パンチ」も出せる。
 // ウザくならない範囲で、近接スイング<シールドバッシュ<ハリケーン<死神召喚 の順で強める。
 export const MELEE_SWING_SHAKE_MS = 110;     // 近接スイング(控えめ)
