@@ -4537,15 +4537,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           return pos;
         };
-        // 攻撃モーションを「全う」する不可中断フェーズ: ジャンプ中(空中)とダッシュ突進中。
-        // この間は通常の気絶/ノックバック/リフトを受け付けず、モーションを完了する(ダメージは別経路で受ける)。
-        // 溜め(crouch)/ダッシュ溜め(windup)は committed ではない=気絶/ノックバックで中断できる(社長指示)。
-        // カウンター(パリィ)は aiPhase を解除してから弾くので、この committed ガードに引っかからず機能する。
+        // 攻撃モーションを「全う」するフェーズの扱い(社長指示・更新):
+        // ・どの敵も「攻撃モーションに入ったら(aiPhase あり=溜め/zpause/zrush/突進/ジャンプ等)やり切る」。
+        //   →通常ノックバックでは中断しない(範囲外に押し出されても完遂する)。= inAttackMotion ガード。
+        // ・例外として気絶(stun)/パリィは中断できる: stun は committed(空中ジャンプ/突進中)以外を解除、
+        //   パリィは aiPhase を先に解除してから弾くのでこのガードに掛からない。
+        // committed = 中断不可の実行中(空中ジャンプ・ダッシュ突進)。stun/lift もこの間は受け付けない。
         const committed = enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge';
+        const inAttackMotion = enemy.aiPhase !== undefined; // 溜め/予備動作も含む=ノックバックで中断しない
 
         // Knockback overrides chase AI: while it's active, slide outward
         // with linearly-decaying velocity instead of seeking the player.
-        if (!committed && enemy.knockbackUntil && now < enemy.knockbackUntil) {
+        // ただし攻撃モーション中(inAttackMotion)はノックバックで中断/スライドさせない(やり切る)。
+        if (!inAttackMotion && enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
           const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
           const kb = resolveMove(

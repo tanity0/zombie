@@ -175,4 +175,36 @@ describe('headless simulation invariants', () => {
       });
     }
   });
+
+  it('攻撃モーション中(zrush)はノックバックで中断されない／気絶では中断される', () => {
+    const store = useGameStore.getState();
+    const px = store.player.x, py = store.player.y;
+    const t0 = store.gameTime + 1000;
+    store.setGameTime(t0);
+
+    // プレイヤーの右220px(近接外)に、突進中(zrush)＋右向き(離れる向き)ノックバック付きのゾンビ。
+    const z = spawnEnemyAt('zombie', px + 220, py, t0);
+    z.aiPhase = 'zrush';
+    z.aiPhaseUntil = t0 + 5000;             // 突進継続中(gameTime基準)
+    z.knockbackVx = 1000; z.knockbackVy = 0; // 右=プレイヤーから離れる向き
+    z.knockbackUntil = Date.now() + 2000;    // ノックバック有効(実時間基準)
+    useGameStore.setState({ enemies: [z] });
+
+    const distBefore = Math.abs(useGameStore.getState().enemies[0].x - px);
+    let t = t0;
+    for (let i = 0; i < 5; i++) { t += 1000 / 60; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(1 / 60); }
+    const after = useGameStore.getState().enemies[0];
+    expect(after).toBeTruthy();
+    // ノックバック(右/離れる)で押し出されず、突進でプレイヤー側(左)へ寄る=距離が縮む。
+    expect(Math.abs(after.x - px)).toBeLessThan(distBefore);
+    expect(after.aiPhase).toBe('zrush');
+
+    // 気絶は例外: zrush中でも中断される(aiPhase解除)。
+    const z2 = spawnEnemyAt('zombie', px + 220, py, t);
+    z2.aiPhase = 'zrush'; z2.aiPhaseUntil = t + 5000;
+    z2.stunUntil = t + 2000; // gameTime基準で気絶中
+    useGameStore.setState({ enemies: [z2] });
+    t += 1000 / 60; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(1 / 60);
+    expect(useGameStore.getState().enemies[0].aiPhase).toBeUndefined();
+  });
 });

@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.934 — 敵: 攻撃モーションに入ったらやり切る(通常ノックバックで中断しない／気絶は例外)
+
+- 指摘: ゾンビ等が一度立ち止まって攻撃に入っても、ノックバックで範囲外に押し出されると中断していた。
+- 修正(gameStore updateEnemies): ノックバックのスライド適用ガードを `!committed`(空中ジャンプ/突進のみ)
+  →`!inAttackMotion`(aiPhase が何かしら有=溜め/zpause/zrush/突進/ジャンプ全て) に変更。
+  →攻撃モーション中はノックバックで中断/押し出されず**やり切る**。
+- 例外は据え置き: 気絶(stun)は committed 以外(=溜め/zpause/zrush等)を従来通り解除、パリィは aiPhase を
+  先に解除して機能。= 「気絶/盾/防ぐは別」の仕様どおり。
+- どの敵でも一般化(aiPhase ベース)。テスト追加(sim.test): zrush中はノックバックで離されず突進継続、
+  気絶では aiPhase 解除、を検証。検証: typecheck/lint/test(50 passed)/build 全green。
+
 ## v0.25.933 — ガチャ: 10連は連射バースト(バババ)／超レアは退場フェード／レベル遅延を仕様通り維持／Lv上限=MAX表記
 
 - 10連(複数連)の破裂: 的を枚数分並べ**高速連射(SHOT_STAGGER=55ms)で順に倒れる**(`gacha-target-fall`)。
