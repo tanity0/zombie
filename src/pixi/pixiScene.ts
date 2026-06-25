@@ -2237,9 +2237,15 @@ export class PixiScene {
     );
     this.syncPlayerFx(s.player, now);
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
+    // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
+    // (近接スポーンや追跡で巣からずれても本体を指す)。
+    const liveHiddenBoss = s.enemies.find(e => isHiddenBoss(e.type));
     const revealedPois = getRunPois(s.hiddenBoss)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
-      .filter(p => isPoiRevealed(p, s.baseSites));
+      .filter(p => isPoiRevealed(p, s.baseSites))
+      .map(p => (p.kind === 'boss' && liveHiddenBoss)
+        ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
+        : p);
     this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites);
     this.syncFlash(s.effects, now);
 

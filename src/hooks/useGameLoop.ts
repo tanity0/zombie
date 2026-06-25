@@ -245,6 +245,7 @@ const evNum = (key: string, def: number): number => {
 const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 500);
 const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
+const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 
@@ -1289,11 +1290,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             // 未出現で、固定の巣(指定エリア)へ近づいたら出現(この出撃で1回だけ)。アテンション中は重ねない。
             // 巣を持たないタイプ(将来用)は従来どおり深層域の深度到達でフォールバック出現。
+            // テスト: ?bossnow=1 のときは巣に関係なく「プレイヤーの近く・画面外(進行方向)」へ即出現。
             const lair = bossLairPos(hiddenBoss);
             const nearLair = lair ? Math.hypot(pcx - lair.x, pcy - lair.y) <= BOSS_SPAWN_NEAR : depth >= BOSS_SPAWN_DEPTH;
-            if (!bs.spawned && nearLair && !useGameStore.getState().attention) {
+            if (!bs.spawned && (FORCE_HIDDEN_BOSS || nearLair) && !useGameStore.getState().attention) {
               const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
-              const cx = lair ? lair.x : pcx, cy = lair ? lair.y : pcy;
+              let cx: number, cy: number;
+              if (FORCE_HIDDEN_BOSS) {
+                // 進行方向(なければ最後の向き/上)の画面外すぐ外へ。帰巣先もここにする。
+                let hx = player.vx ?? 0, hy = player.vy ?? 0;
+                if (Math.abs(hx) + Math.abs(hy) < 0.01 && player.lastDirection) { hx = player.lastDirection.x; hy = player.lastDirection.y; }
+                if (Math.abs(hx) + Math.abs(hy) < 0.01) hy = -1;
+                const hlen = Math.hypot(hx, hy) || 1;
+                const gb2 = useGameStore.getState().gameBounds;
+                // 画面外マーカー(方向矢印)が出るギリギリの距離=最寄り画面端のすぐ外。進行方向の軸で算出。
+                const half = Math.abs(hx) >= Math.abs(hy) ? gb2.width / 2 : gb2.height / 2;
+                const d = half + 50; // 端のちょい外(=矢印が出始める距離)
+                cx = pcx + (hx / hlen) * d; cy = pcy + (hy / hlen) * d;
+              } else {
+                cx = lair ? lair.x : pcx; cy = lair ? lair.y : pcy;
+              }
               e.x = cx - e.width / 2; e.y = cy - e.height / 2;
               e.bossState = 'chase';
               e.bossNextActionAt = newGameTime + 2000;
@@ -1314,7 +1330,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
             const M = BOSS_SCREEN_MARGIN;
             const onScreen = bcx >= cam.x - M && bcx <= cam.x + gb.width + M && bcy >= cam.y - M && bcy <= cam.y + gb.height + M;
-            const inDeep = depth >= BOSS_EXIT_DEPTH;
+            const inDeep = FORCE_HIDDEN_BOSS || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
             const speed = boss.speed;
             const fireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(boss, player, tx, ty));
 
