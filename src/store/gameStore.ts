@@ -120,6 +120,7 @@ const SUPP_DRAIN_PER_SEC = 5;           // 画面外captured拠点のHPドレイ
 const SUPP_ATTACKER_DPS = 9;            // 画面内: 攻撃者が生存中に拠点HPを削る量/秒
 const SUPP_REGEN_PER_SEC = 14;          // プレイヤー在内/安全地帯のHP回復/秒
 const SUPP_ATTACKER_RESPAWN_MS = 30000; // 攻撃者撃破後の再湧き(この間は被ダメ無し)
+const SUPP_ATTACKER_FIRST_MS = 4000;    // 制圧後、最初の攻撃者が来るまで(短め=軍人がすぐ動く。社長報告対応)
 const SUPP_SOLDIER_INTERVAL_MS = 900;   // 軍人の射撃間隔
 const SUPP_SOLDIER_DMG = 6;             // 軍人1射の攻撃者へのダメージ(2体ぶん毎回)
 const SUPP_SOLDIER_COUNT = 2;           // 1拠点あたりの駐留軍人数(描画/反撃)
@@ -6455,7 +6456,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           captureCount += 1; // 制圧回数(SE検出 suppressionCaptureCount 用)。名簿indexとは別。
           capturedThisFrame = { id: s.id, x: s.x, y: s.y, soldierIndex: capIdx };
           changed = true;
-          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_RESPAWN_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: makeBaseSoldiers(s.x, s.y) };
+          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_FIRST_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: makeBaseSoldiers(s.x, s.y) };
         }
         if (dwellMs !== s.dwellMs) changed = true;
         return { ...s, dwellMs };
@@ -6501,20 +6502,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (attackerId) { removeAttackerIds.push(attackerId); attackerId = null; }
         hp = Math.max(0, hp - SUPP_DRAIN_PER_SEC * deltaTime);
       }
-      // 軍人の移動(描画される=画面内のときのみ計算)。攻撃者がいれば至近まで接近、いなければ待機(端)位置へ復帰。
+      // 軍人の移動(描画される=画面内のときのみ計算)。攻撃者がいれば至近まで接近、いなければ
+      // サークル内を自由に巡回(目的地に着いたら次のランダム地点へ。社長指示=軍人がうろつく)。
       if (vis && soldiers.length) {
         const step = SUPP_SOLDIER_SPEED * deltaTime;
         let moved = false;
         soldiers = soldiers.map(sol => {
-          const tx = liveAttacker ? liveAttacker.x + liveAttacker.width / 2 : sol.hx;
-          const ty = liveAttacker ? liveAttacker.y + liveAttacker.height / 2 : sol.hy;
+          let hx = sol.hx, hy = sol.hy;
+          // 攻撃者不在時: 巡回先(hx/hy)に着いたらサークル内の新ランダム地点へ更新=自由に動き回る。
+          if (!liveAttacker && Math.hypot(hx - sol.x, hy - sol.y) <= 2) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = BASE_CAPTURE_RADIUS * (0.25 + Math.random() * 0.6); // 0.25〜0.85R内
+            hx = s.x + Math.cos(ang) * rad;
+            hy = s.y + Math.sin(ang) * rad;
+            moved = true;
+          }
+          const tx = liveAttacker ? liveAttacker.x + liveAttacker.width / 2 : hx;
+          const ty = liveAttacker ? liveAttacker.y + liveAttacker.height / 2 : hy;
           const dx = tx - sol.x, dy = ty - sol.y;
           const dist = Math.hypot(dx, dy);
           const stopAt = liveAttacker ? SUPP_SOLDIER_ENGAGE_DIST : 1.5;
-          if (dist <= stopAt) return sol;
+          if (dist <= stopAt) return { ...sol, hx, hy };
           const mv = Math.min(step, dist - stopAt);
           moved = true;
-          return { ...sol, x: sol.x + (dx / dist) * mv, y: sol.y + (dy / dist) * mv };
+          return { ...sol, hx, hy, x: sol.x + (dx / dist) * mv, y: sol.y + (dy / dist) * mv };
         });
         if (moved) changed = true;
       }
