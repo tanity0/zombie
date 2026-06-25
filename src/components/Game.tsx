@@ -6,6 +6,7 @@ import { isPixiRenderer } from '../config/renderer';
 import { getTexture } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
+import DebugOverlay from './DebugOverlay';
 import StatsHud from './StatsHud';
 import DanceTapMeter from './DanceTapMeter';
 import UpgradeMenu from './UpgradeMenu';
@@ -44,6 +45,8 @@ const Game: React.FC<GameProps> = ({
 
   const isPaused = useGameStore(state => state.isPaused);
   const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
+  // 凍結診断オンスクリーン表示(?debug=1)。
+  const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
   const showShopMenu = useGameStore(state => state.showShopMenu);
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
@@ -187,6 +190,7 @@ const Game: React.FC<GameProps> = ({
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
+      {debugOverlay && <DebugOverlay />}
       <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
       {benchmarkMode && (
         <div
