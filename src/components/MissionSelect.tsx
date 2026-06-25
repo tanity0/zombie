@@ -738,7 +738,7 @@ const SkillGacha: React.FC = () => {
   // n回 逐次で引く(各 pullGacha が get/set で最新stateを参照=スナップショット一括禁止)。
   // 撃つ→的破裂(BURST)→暗転リザルト の順に遷移する。
   const BURST_MS = 820;
-  const SHOT_STAGGER = 55; // 連射(バババ)の1発間隔ms
+  const SHOT_STAGGER = 100; // 連射の1発間隔ms(早すぎないテンポ)
   const pullMany = (n: number) => {
     setNoGold(false);
     const got: GachaPullResult[] = [];
