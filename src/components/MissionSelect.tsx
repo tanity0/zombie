@@ -785,7 +785,9 @@ const SkillGacha: React.FC = () => {
     clearRevealTimers();
     let acc = 0;
     for (let i = 1; i < results.length; i++) {
-      acc += REVEAL_BY_RARITY[results[i].rarity].step;
+      // 表示中のカード(i-1)の尺(step)で次へ送る。※従来は results[i](次のカード)の step を使っており、
+      // 「死神(super)でも次が低レアだと一瞬で送られる」不安定の原因だった。
+      acc += REVEAL_BY_RARITY[results[i - 1].rarity].step;
       // 直前(i-1)が超レアなら、切り替え前にフェードアウトしてから次のカードへ。
       if (results[i - 1].rarity === 'super') {
         revealTimers.current.push(window.setTimeout(() => setLeaving(true), Math.max(0, acc - LEAVE_MS)));
