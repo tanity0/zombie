@@ -6,6 +6,7 @@
 // 読んで Sprite を並べるだけ。当たり判定は store が cityPropRect / resolveCityPropCollision を使う。
 // 当たり判定は「大きい物だけ」(社長指示)。decal(血痕/草/小石)は素通り。
 import { Rect, footRect, resolveAabb } from './obstacles';
+import { isObstacleDestroyed } from './destructibles';
 
 export interface CityPropDef {
   tex: string;       // テクスチャ名(sprites/<tex>.png)
@@ -112,9 +113,12 @@ export const cityPropsInRegion = (
         const footX = cx * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 1.3 + k * 7.1 + 2.2, cy * 1.9 - k * 3.3 + 4.4));
         const footY = cy * CITY_ZONE + CITY_ZONE * (0.08 + 0.84 * hash2(cx * 2.7 - k * 5.5 + 9.9, cy * 1.1 + k * 2.2 - 6.6));
         if (Math.hypot(footX, footY) < CITY_SAFE_RADIUS) continue;
+        const id = `cp-${cx}-${cy}-${k}`;
+        // 裏ボスに破壊されたプロップは欠番(描画・当たり判定とも同時に消える)。
+        if (isObstacleDestroyed(id)) continue;
         const variant = pickVariant(defs, hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
         const scale = 0.85 + hash2(cx * 0.9 + k * 4.2, cy * 1.6 - k * 0.8) * 0.3; // 0.85〜1.15
-        out.push({ id: `cp-${cx}-${cy}-${k}`, footX, footY, scale, variant });
+        out.push({ id, footX, footY, scale, variant });
       }
     }
   }

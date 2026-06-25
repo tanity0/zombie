@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.966 — 裏ボスが触れた障害物(木/街・雪プロップ)を破壊=消す(負荷 1/10)
+
+- 「裏ボスと障害物がぶつかった時だけ障害物を消したい。重い？」への回答=**重くない(1/10)**ので実装。
+- 理由: 木/プロップは「世界座標の純粋関数」で都度生成しエンティティ保持しない。破壊は per-run の
+  `Set<string>`(破壊キー)で欠番にするだけ。描画も当たり判定も同じ生成関数(treesInRegion /
+  cityPropsInRegion)を通るので、**Setに入れた瞬間に描画と判定が同時に消える**。
+  - 追加コスト: 生成時に survivor セルだけ `Set.has` 1回(キーは元々生成する文字列)=無視できる。
+    破壊はむしろ**描画を減らす**(新規Graphics/Text/lightなし)。
+  - 走査はボスの帯AABB近傍(±48px)だけ=有界。ボス生存中のみ。
+- 実装: `src/world/destructibles.ts`(共有Set)/ trees.ts・cityProps.ts が欠番参照 / boss controller が
+  毎フレーム近傍の木・プロップと重なりを判定して mark / resetGame で clear(新ランで復活)。
+- 補足: ボスは元々 controller が座標直書き(resolveAabb無し)で**障害物すり抜け**なので、挙動は「すり抜け
+  つつ触れた物が消える」。負荷が許せないなら mark を呼ばないだけで純すり抜けに戻せる。
+- test 追加(欠番→復活)。lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.965 — 裏ボス: こちらの近接判定も帯(AABB)に合わせる / ミーミルの帯を一番下のピクセル寄りに
 
 - 「敵の当たり判定(こちらから)も揃えて」: プレイヤー→裏ボスの**近接(半径)判定**を、敵中心ではなく

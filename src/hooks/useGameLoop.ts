@@ -36,6 +36,8 @@ import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees';
+import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
+import { markObstacleDestroyed } from '../world/destructibles';
 import { rollWeaponKey } from '../utils/weaponDrop';
 import type { AmmoType, Pickup, Projectile, EnemyType } from '../types/game';
 import {
@@ -1403,6 +1405,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               } else if (st === 'dash') {
                 moveToward(BOSS_DASH_SPEED_MULT);
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+              }
+            }
+
+            // 裏ボスが障害物(木/街・雪プロップ)に触れたら破壊=消す(社長指示「ぶつかった時だけ消えるだけ」)。
+            // ボスの当たり判定(帯AABB)の近傍だけ走査=有界。手続き生成なので破壊キーSetに入れるだけで描画も判定も同時に消える。
+            // 軽量(描画はむしろ減る)。ボス生存中のみ実行。
+            if (!despawn) {
+              const bx = patch.x ?? boss.x, by = patch.y ?? boss.y;
+              const bAABB = { x: bx, y: by, width: boss.width, height: boss.height };
+              const PAD = 48;
+              for (const t of treesInRegion(bx - PAD, by - PAD, bx + boss.width + PAD, by + boss.height + PAD)) {
+                if (rectsOverlap(bAABB, trunkRect(t))) markObstacleDestroyed(t.key);
+              }
+              const farKey = useGameStore.getState().farBackdrop;
+              for (const p of cityPropsInRegion(farKey, bx - PAD, by - PAD, bx + boss.width + PAD, by + boss.height + PAD)) {
+                const r = cityPropRect(farKey, p);
+                if (r && rectsOverlap(bAABB, r)) markObstacleDestroyed(p.id);
               }
             }
 

@@ -33,6 +33,7 @@ import {
   ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
+import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
 import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer } from '../world/mines';
@@ -6872,6 +6873,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     const state = get();
+    clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass
       : 'warrior';
