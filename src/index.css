@@ -261,7 +261,7 @@
   30%  { opacity: 0.85; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.15); }
 }
-.gacha-shot-flash { animation: gacha-shot-flash 0.18s ease-out forwards; }
+.gacha-shot-flash { animation: gacha-shot-flash 0.18s ease-out both; }
 /* 連打中の的の細かい被弾シェイク(マシンガン感)。バースト中だけ回る。 */
 @keyframes gacha-hitshake {
   0%, 100% { transform: translate(0, 0); }
@@ -276,7 +276,7 @@
   15%  { opacity: 1; }
   100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3); }
 }
-.gacha-super-particle { animation: gacha-super-particle 0.85s ease-out forwards; mix-blend-mode: screen; }
+.gacha-super-particle { animation: gacha-super-particle 0.85s ease-out both; mix-blend-mode: screen; }
 
 /* 超レアカードの退場フェード(次のカードへ送る前に消える)。 */
 @keyframes gacha-card-out {
@@ -318,20 +318,20 @@
   14%  { opacity: 1; }
   100% { transform: translate(var(--tx), var(--ty)) scale(0.3) rotate(160deg); opacity: 0; }
 }
-.gacha-shard { animation: gacha-shard 0.7s ease-out forwards; }
+.gacha-shard { animation: gacha-shard 0.7s ease-out both; }
 /* レア度エスカレート(rare/super): 広がるリング・金色の光・画面揺れ。すべて一発・自動停止=負荷1/10。 */
 @keyframes gacha-burst-ring {
   0%   { transform: scale(0.2); opacity: 0; }
   18%  { opacity: 0.9; }
   100% { transform: scale(2.6); opacity: 0; }
 }
-.gacha-burst-ring { animation: gacha-burst-ring 0.7s ease-out forwards; }
+.gacha-burst-ring { animation: gacha-burst-ring 0.7s ease-out both; }
 @keyframes gacha-burst-glow {
   0%   { opacity: 0; transform: scale(0.4); }
   15%  { opacity: 0.9; }
   100% { opacity: 0; transform: scale(1.8); }
 }
-.gacha-burst-glow { animation: gacha-burst-glow 0.8s ease-out forwards; }
+.gacha-burst-glow { animation: gacha-burst-glow 0.8s ease-out both; }
 @keyframes gacha-burst-shake {
   0%, 100% { transform: translate(0, 0); }
   20% { transform: translate(-4px, 2px); }

@@ -739,6 +739,7 @@ const SkillGacha: React.FC = () => {
   // 撃つ→的破裂(BURST)→暗転リザルト の順に遷移する。
   const BURST_MS = 820;
   const SHOT_STAGGER = 200; // 連射の1発間隔ms
+  const SUPER_INTRO_MS = 650; // super時: 連打前に画面全体パーティクルを広げる導入の長さ
   const pullMany = (n: number) => {
     setNoGold(false);
     const got: GachaPullResult[] = [];
@@ -749,14 +750,17 @@ const SkillGacha: React.FC = () => {
     }
     const best = bestRarity(got);
     const m = got.length;
+    // super を含む複数連だけ、連打の前に「パーティクルがパー!と広がる」導入を置く(SEのファンファーレも先頭)。
+    const intro = m > 1 && best === 'super' ? SUPER_INTRO_MS : 0;
     if (m > 1) {
-      // 10連等: 的の数だけ高速連射(バババ)。最後にレア度で着弾音をエスカレート。
-      for (let i = 0; i < m; i++) window.setTimeout(() => playSfx('rifle-fire'), i * SHOT_STAGGER);
+      if (best === 'super') window.setTimeout(() => playSfx('event-clear'), 0); // 導入パーティクルの号砲
+      // 連打(通常の撃つ演出)。super は導入ぶん遅らせて開始。
+      for (let i = 0; i < m; i++) window.setTimeout(() => playSfx('rifle-fire'), intro + i * SHOT_STAGGER);
       window.setTimeout(() => {
         playSfx('bomb');
         if (best === 'rare') playSfx('homing-lock2');
-        else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
-      }, m * SHOT_STAGGER);
+        else if (best === 'super') playSfx('heavy-impact');
+      }, intro + m * SHOT_STAGGER);
     } else {
       playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
       if (best === 'rare') playSfx('homing-lock2');
@@ -766,8 +770,8 @@ const SkillGacha: React.FC = () => {
     setLeaving(false);
     setResults(got);     // リザルトは確定(暗転は破裂後に出す)
     setBursting(true);   // まず破裂演出
-    // 連射は的が順に倒れる分だけ長め(早めのテンポ)。単発は従来どおり。
-    const burstMs = m > 1 ? Math.max(BURST_MS, m * SHOT_STAGGER + 430) : BURST_MS;
+    // 連射は連打ぶん＋(superは導入ぶん)長め。単発は従来どおり。
+    const burstMs = m > 1 ? Math.max(BURST_MS, intro + m * SHOT_STAGGER + 430) : BURST_MS;
     setTimeout(() => setBursting(false), burstMs);
   };
   const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); setShowList(false); setLeaving(false); };
@@ -813,33 +817,36 @@ const SkillGacha: React.FC = () => {
     const best = bestRarity(results ?? []);
     const fx = BURST_FX[best];
     const shotCount = (results ?? []).length;
-    // 10連等(複数): 的「1枚」を食い気味に連打(各ショットの演出が途中でも次弾を撃ち込む)。
-    // super を含む時はパーティクルを散らす特別演出。
+    // 10連等(複数): 的「1枚」を食い気味に連打(通常の撃つ演出=フラッシュ＋破片。パーティクルは混ぜない)。
+    // super を含む時のみ「最初にパーティクルがパー!っと画面全体に広がってから」連打に入る(導入だけ特別)。
     if (shotCount > 1) {
       const isSuper = best === 'super';
+      const intro = isSuper ? SUPER_INTRO_MS : 0; // superは導入パーティクルぶん連打開始を後ろへ
       const SHARDS_PER = 4;
       return createPortal(
         <div className={`gacha-dim fixed inset-0 z-50 flex items-center justify-center ${fx.dim}`}>
+          {/* super導入: 画面全体に広がるパーティクル(最初に1回だけ。その後に通常の撃つ演出) */}
+          {isSuper && Array.from({ length: 30 }).map((_, p) => {
+            const ang = (Math.PI * 2 * p) / 30 + 0.2;
+            const dist = 300 + (p % 5) * 80; // 画面全体まで広がる大きめの距離
+            return <span key={`intro${p}`} className={`gacha-super-particle absolute left-1/2 top-1/2 h-2 w-2 rounded-full ${p % 3 === 0 ? 'bg-fuchsia-300' : 'bg-amber-200'}`} style={{ animationDelay: `${(p % 5) * 35}ms`, ['--tx' as string]: `${Math.cos(ang) * dist}px`, ['--ty' as string]: `${Math.sin(ang) * dist}px` }} />;
+          })}
           <div className={`relative flex items-center justify-center ${isSuper ? 'gacha-burst-shake' : 'gacha-hitshake'}`} style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
-            {/* super: 背後に広がる金色グロー */}
-            {isSuper && <span className="gacha-burst-glow absolute inset-[-30%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.5), rgba(251,191,36,0) 70%)' }} />}
+            {isSuper && <span className="gacha-burst-glow absolute inset-[-30%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.5), rgba(251,191,36,0) 70%)', animationDelay: `${intro}ms` }} />}
             <img src={targetSrc} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
-            {/* 連打: 各ショットで素早いフラッシュ＋破片を的中心に重ねる(SHOT_STAGGER間隔=食い気味に重なる) */}
-            {Array.from({ length: shotCount }).map((_, s) => (
-              <React.Fragment key={s}>
-                <span className={`gacha-shot-flash absolute inset-[18%] rounded-full ${fx.flash}`} style={{ animationDelay: `${s * SHOT_STAGGER}ms`, filter: 'blur(8px)' }} />
-                {Array.from({ length: SHARDS_PER }).map((_, k) => {
-                  const ang = (Math.PI * 2 * (k + s * 0.4)) / SHARDS_PER;
-                  const dist = 70 + (k % 3) * 22 + fx.distBonus;
-                  return <span key={k} className={`gacha-shard absolute left-1/2 top-1/2 h-2 w-2 rounded-[2px] ${fx.shard}`} style={{ animationDelay: `${s * SHOT_STAGGER}ms`, ['--tx' as string]: `${Math.cos(ang) * dist}px`, ['--ty' as string]: `${Math.sin(ang) * dist}px` }} />;
-                })}
-              </React.Fragment>
-            ))}
-            {/* super 特別演出: 金/赤紫のパーティクルを四方に散らす */}
-            {isSuper && Array.from({ length: 20 }).map((_, p) => {
-              const ang = (Math.PI * 2 * p) / 20 + 0.3;
-              const dist = 150 + (p % 4) * 46;
-              return <span key={`p${p}`} className={`gacha-super-particle absolute left-1/2 top-1/2 h-1.5 w-1.5 rounded-full ${p % 3 === 0 ? 'bg-fuchsia-300' : 'bg-amber-200'}`} style={{ animationDelay: `${(p % 6) * 70}ms`, ['--tx' as string]: `${Math.cos(ang) * dist}px`, ['--ty' as string]: `${Math.sin(ang) * dist}px` }} />;
+            {/* 連打: 各ショットで素早いフラッシュ＋破片を的中心に重ねる(superは導入後=intro遅延)。 */}
+            {Array.from({ length: shotCount }).map((_, s) => {
+              const delay = intro + s * SHOT_STAGGER;
+              return (
+                <React.Fragment key={s}>
+                  <span className={`gacha-shot-flash absolute inset-[18%] rounded-full ${fx.flash}`} style={{ animationDelay: `${delay}ms`, filter: 'blur(8px)' }} />
+                  {Array.from({ length: SHARDS_PER }).map((_, k) => {
+                    const ang = (Math.PI * 2 * (k + s * 0.4)) / SHARDS_PER;
+                    const dist = 70 + (k % 3) * 22 + fx.distBonus;
+                    return <span key={k} className={`gacha-shard absolute left-1/2 top-1/2 h-2 w-2 rounded-[2px] ${fx.shard}`} style={{ animationDelay: `${delay}ms`, ['--tx' as string]: `${Math.cos(ang) * dist}px`, ['--ty' as string]: `${Math.sin(ang) * dist}px` }} />;
+                  })}
+                </React.Fragment>
+              );
             })}
           </div>
         </div>,
