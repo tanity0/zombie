@@ -597,6 +597,9 @@ const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: nu
   skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(1151×1243)。帯=足元。
 };
 const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
+// 設置物(盾)/召喚が攻撃された時の被弾シェイク。減衰する短い横揺れ(描画のみ)。
+const HIT_SHAKE_MS = 220;
+const HIT_SHAKE_PX = 4;
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
 const BOSS_BEHIND_ALPHA = 0.5;
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
@@ -4036,14 +4039,19 @@ export class PixiScene {
     const fb = summonFootBox(s);
     const tex = getTexture(s.reusedType);
     view.light.visible = false;
-    view.sprite.position.set(Math.round(fb.footX), Math.round(fb.footY));
+    // 被弾シェイク(攻撃されている表現): 直近ヒットから短時間、減衰する横揺れ。lastHit は Date.now 基準。
+    const sinceHit = Date.now() - s.lastHit;
+    const hitT = sinceHit >= 0 && sinceHit < HIT_SHAKE_MS ? 1 - sinceHit / HIT_SHAKE_MS : 0;
+    const shakeX = hitT > 0 ? Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT : 0;
+    view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY));
     view.container.zIndex = fb.footY;
     view.container.alpha = 1;
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
       view.sprite.scale.set(sc, sc);
-      view.sprite.tint = ALCHEMY_SUMMON_TINT; // 味方識別のシアン
+      // 被弾直後は赤白フラッシュ、それ以外は味方識別のシアン。
+      view.sprite.tint = hitT > 0.35 ? 0xffd0d0 : ALCHEMY_SUMMON_TINT;
       view.sprite.visible = true;
     } else {
       view.sprite.visible = false;
@@ -5046,7 +5054,12 @@ export class PixiScene {
       sqx = 1 + squash;
       sqy = 1 - squash;
     }
-    v.container.position.set(footX, footY - drop);
+    // 被弾シェイク(攻撃されている=ダメージを受けている表現): 直近ヒットから短時間、減衰する横揺れ。
+    const sinceHit = Date.now() - (p.shieldHitAt ?? -99999);
+    let shakeX = 0;
+    const hitT = sinceHit < HIT_SHAKE_MS ? 1 - sinceHit / HIT_SHAKE_MS : 0;
+    if (hitT > 0) shakeX = Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT;
+    v.container.position.set(footX + shakeX, footY - drop);
     v.container.zIndex = footY;
     const shieldDepth = this.depthScale(footY); // 設置物として地面遠近に乗せる(視覚のみ・判定不変)
     v.sprite.scale.set(baseScale * sqx * shieldDepth, baseScale * sqy * shieldDepth);
@@ -5055,11 +5068,13 @@ export class PixiScene {
     const remaining = p.duration - age;
     v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY);
 
-    // 耐久が減ると赤み(亀裂感)。tint のみ・常時glowなし。
+    // 耐久が減ると赤み(亀裂感)。tint のみ・常時glowなし。被弾直後は赤白フラッシュを上書き。
     const hp = p.shieldHp ?? 1;
     const maxHp = p.shieldMaxHp ?? hp;
     const worn = maxHp > 0 ? 1 - Math.max(0, Math.min(1, hp / maxHp)) : 0;
-    if (worn > 0.01) {
+    if (hitT > 0.35) {
+      v.sprite.tint = 0xffd0d0; // 被弾フラッシュ(赤白)
+    } else if (worn > 0.01) {
       const c = Math.round(255 - 150 * (0.6 * worn));
       v.sprite.tint = (255 << 16) | (c << 8) | c;
     } else {

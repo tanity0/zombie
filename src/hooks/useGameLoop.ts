@@ -3054,11 +3054,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const toKnockback: { id: string; dx: number; dy: number }[] = [];
             const movedEnemies = sstate.enemies.map(enemy => {
               if (enemy.type === 'reaper') return enemy;
+              // 裏ボスは巨体で障害物も壊す格。盾に触れたら即破壊して plow through(押し戻し/デバウンス無し)。
+              const isBoss = isHiddenBoss(enemy.type);
               const ebox = { x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height };
               let touched = false;
               for (const s of shieldRects) {
                 if (rectsOverlap(ebox, s)) {
                   touched = true;
+                  if (isBoss) { dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 99999); continue; } // 接触で即破壊
                   const key = `${s.id}:${enemy.id}`;
                   const allowed = shieldHitRef.current.get(key) ?? 0;
                   if (gameTime >= allowed) {
@@ -3077,7 +3080,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
               }
-              if (!touched) return enemy;
+              if (!touched || isBoss) return enemy; // 裏ボスは盾に押し戻されない(すり抜けて壊す)
               const resolved = resolveAabb(ebox, wallRects);
               if (resolved.x === enemy.x && resolved.y === enemy.y) return enemy;
               anyMoved = true;
@@ -3118,9 +3121,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnBurst(scx, scy, '#94a3b8', 12);
                   spawnRing(scx, scy, 4, Math.max(s.width, s.height), 'rgba(148,163,184,0.7)', 2, 260);
                 } else {
+                  const hitAt = Date.now();
                   useGameStore.setState(state => ({
                     projectiles: state.projectiles.map(p =>
-                      p.id === s.id ? { ...p, shieldHp: nextHp } : p
+                      p.id === s.id ? { ...p, shieldHp: nextHp, shieldHitAt: hitAt } : p // 被弾時刻=描画のシェイク/フラッシュ用
                     )
                   }));
                   spawnBurst(scx, scy, '#cbd5e1', 3);
@@ -3908,7 +3912,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               perSummon.set(h.summonId, Math.max(perSummon.get(h.summonId) ?? 0, h.damage));
             }
             for (const [summonId, dmg] of perSummon) {
+              const before = useGameStore.getState().summons.find(su => su.id === summonId);
               useGameStore.getState().damageSummon(summonId, dmg);
+              // 実際にダメージが入った時(無敵中でない)だけ被弾バースト。シェイクは描画側が lastHit で出す。
+              const after = useGameStore.getState().summons.find(su => su.id === summonId);
+              if (before && after && after.health < before.health) {
+                spawnBurst(after.x + after.width / 2, after.y + after.height / 2, '#bae6fd', 3);
+              }
             }
           }
         }

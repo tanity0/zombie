@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.968 — 裏ボスが盾を即破壊 / 盾・召喚に被弾シェイク+ダメージFX
+
+- 「裏ボスが盾を壊せない」: 盾の接触判定で裏ボスだけ**接触で即破壊(plow through)**に。従来は全敵一律
+  「接触1回=1/400ms」で、盾Lv3=60HPは5秒寿命中に最大~12しか削れず実質壊せなかった。裏ボスは押し戻しも無し。
+- 「盾が攻撃されてる時に揺れて/ダメージFX」: `Projectile.shieldHitAt` を追加。被弾時刻を記録し、描画側
+  `drawShield` が減衰する横揺れ(HIT_SHAKE)+赤白フラッシュ。既存の破片バーストはそのまま。
+- 「召喚も」: `drawSummon` に同じ被弾シェイク+赤白フラッシュ(召喚は `lastHit` を持つので流用)。実際に
+  ダメージが入った時だけ被弾バースト(無敵中は出さない)。
+- 揺れ/フラッシュは描画のみ=判定不変。負荷 1/10(既存FX流用・per-actor の安い tint/position だけ)。
+- lint/typecheck/test(65 pass)/build OK。
+- 保留(要確認): 「裏ボスが召喚に吸い付かない」=ボスのターゲティングを召喚(デコイ)へ向けるかは
+  「常にプレイヤーを追う」仕様の変更なので社長に確認中。
+
 ## v0.25.967 — 裏ボスの障害物破壊に爆破エフェクト+SE+画面シェイク(使い回し・スロットルで軽量)
 
 - 「ちゃんとエフェクトで爆破/SEも/画面も少し揺れて。重い?」への回答=**スロットルすれば軽い(2-3/10)**ので実装。

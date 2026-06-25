@@ -559,6 +559,7 @@ export interface Projectile {
   // `shieldMaxHp` is kept for the damage-state visual only.
   shieldHp?: number;
   shieldMaxHp?: number;
+  shieldHitAt?: number; // 直近に耐久を削られた時刻(Date.now)。描画側の被弾シェイク/フラッシュ用(視覚のみ)。
   // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
   // then is force-destroyed once Date.now() reaches this timestamp (slide end).
   shieldBreakAt?: number;
