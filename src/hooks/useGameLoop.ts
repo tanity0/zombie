@@ -1394,7 +1394,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const frozen = (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
                 || (boss.stunUntil !== undefined && newGameTime < boss.stunUntil);
               if (frozen) {
-                patch.bossState = 'chase'; // 解除後はチェイスから再開
+                // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
+                // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+                patch.bossBurstLeft = 0;
               } else {
               const st = boss.bossState ?? 'chase';
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。

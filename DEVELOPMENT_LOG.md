@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.977 — 挙動監査の結果反映: 凍結解除直後の溜め攻撃暴発を防止
+
+- 監査(サブエージェント)で唯一の実挙動バグ: 裏ボスがトラップ/気絶で凍結中、溜め/連射タイマー
+  (`bossNextActionAt`/`bossBurstLeft`)が巻き戻らず、解除直後に溜め攻撃が即発火しうる/連射残数が漏れる。
+  → 凍結中は `bossState='chase'` に加え `bossNextActionAt = now + BOSS_ACTION_MIN_MS`、`bossBurstLeft = 0` を毎フレーム設定。
+- 監査の他項目はすべて「検証OK」または「安全だが将来的に脆い(現状バグ無し)」: 接触判定の統一、
+  HP個別指定の二重乗算なし、爆発のボス非致死、enemyMeleeDist/aimDist2 の全所、召喚誘導の空配列安全、
+  flee/cull/recycle のボス除外、障害物破壊スロットル、ヨルムンガルド反射即死のゲート、いずれも正常。
+- lint/test(65 pass)/build OK。
+
 ## v0.25.976 — 挙動の総点検: もう1件の未定義参照クラッシュ(spawnSlash)を修正
 
 - 全量 typecheck(`tsc -p tsconfig.app.json`)で「値の未定義参照(Cannot find name)」=実行時クラッシュ級を洗い出し。
