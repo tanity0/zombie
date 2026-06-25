@@ -229,20 +229,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               ))}
           </Section>
 
+          {/* 出撃導線は「出撃準備」のみ(フリー周回は廃止・社長指示)。上のメイン/サブミッション欄は
+              後日「出撃時の進捗表示」に置き換える予定(ボタンではない)。 */}
           <button
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
             className="w-full py-3 rounded-2xl text-base font-semibold text-white"
             style={{ background: 'linear-gradient(180deg, rgba(96,165,250,0.95), rgba(59,130,246,0.95))', boxShadow: '0 8px 24px rgba(59,130,246,0.35)' }}
           >
-            出撃準備（キャラ選択へ）
-          </button>
-
-          {/* このステージのフリー(周回)出撃: 会話なし・クリア進行に影響しない。同じ舞台を周回。 */}
-          <button
-            onClick={() => { playSfx('ui-select'); setFreeMode(true); setScreen({ name: 'characterSelect', stageId }); }}
-            className="w-full py-2.5 rounded-2xl text-[13px] font-semibold text-emerald-50 border border-emerald-300/40 bg-emerald-400/10 active:bg-emerald-400/20"
-          >
-            フリー（周回）で出撃 ・ 会話なし
+            出撃準備
           </button>
         </div>
       </>

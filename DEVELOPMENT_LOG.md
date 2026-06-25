@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.982 — 出撃導線を「出撃準備」のみに / tsconfig lib を ES2022 へ
+
+- ミッション詳細の出撃ボタンを **「出撃準備」のみ**に(フリー周回ボタン廃止・「（キャラ選択へ）」表記も削除・社長指示)。
+  上部のメイン/サブミッション欄は据え置き(後日「出撃時の進捗表示」=非ボタンに置換予定。コメントで明記)。
+  ※オープンワールド化(メイン/サブの区切り撤廃)の本対応は仕様書受領後。今回は導線UIのみ。
+- `tsconfig.app.json` の target/lib を ES2020→ES2022(`Array.prototype.at` 等の型エラー解消の前提)。
+- (別途進行中) typecheck 実効化＋既存型エラー一掃は次コミットで反映予定。
+
 ## v0.25.981 — 裏ボス: カウンター被弾でプレイヤー反対側へワープ(フラッシュ＋0.5秒フェードイン)
 
 - 裏ボスがカウンター弾(反射弾)を食らうと、プレイヤーの「反対側」 `BOSS_COUNTER_WARP_DIST=50`px(中心間)へ
