@@ -4141,6 +4141,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
           // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
           if (enemy.fromEvent) return enemy;
+          // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
+          // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
+          if (enemy.dormant) return enemy;
           const enemyCenterX = enemy.x + enemy.width / 2;
           const enemyCenterY = enemy.y + enemy.height / 2;
           const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
