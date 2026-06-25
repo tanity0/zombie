@@ -4389,14 +4389,14 @@ export class PixiScene {
     //  ・青 = こちらの攻撃が当たる範囲(体=AABB相当)
     //  ・橙(脈動) = 食らう接触範囲(向こうの攻撃判定=BOSS_CONTACT_INSET)。こちらが「気づかず食らう」対策の主役。
     if (isHiddenBoss(e.type)) {
-      const pulse = 0.5 + 0.5 * Math.sin(now / 300);
-      // 体(攻撃が当たる範囲)= 青の細枠 + ごく薄い塗り。
-      o.ellipse(cx, cy, e.width / 2, e.height / 2).fill({ color: 0x60a5fa, alpha: 0.05 });
-      o.ellipse(cx, cy, e.width / 2, e.height / 2).stroke({ width: 2, color: 0x9ad0ff, alpha: 0.45 });
-      // 接触(食らう)範囲 = 橙の塗り+太枠で目立たせる。脈動でさらに視認性UP。
+      const pulse = 0.5 + 0.5 * Math.sin(now / 280);
+      // 体(こちらの攻撃が当たる範囲=AABB相当)= 水色の太枠(見逃さないよう高コントラスト)。
+      o.ellipse(cx, cy, e.width / 2, e.height / 2).fill({ color: 0x38bdf8, alpha: 0.10 });
+      o.ellipse(cx, cy, e.width / 2, e.height / 2).stroke({ width: 4, color: 0x22d3ee, alpha: 0.9 });
+      // 接触(食らう範囲=向こうの攻撃判定)= 橙の太枠+塗り+脈動。ここに入ると被弾。
       const cw = (e.width / 2) * BOSS_CONTACT_INSET, ch = (e.height / 2) * BOSS_CONTACT_INSET;
-      o.ellipse(cx, cy, cw, ch).fill({ color: 0xf97316, alpha: 0.10 + 0.06 * pulse });
-      o.ellipse(cx, cy, cw, ch).stroke({ width: 3, color: 0xfb923c, alpha: 0.5 + 0.25 * pulse });
+      o.ellipse(cx, cy, cw, ch).fill({ color: 0xf97316, alpha: 0.18 + 0.10 * pulse });
+      o.ellipse(cx, cy, cw, ch).stroke({ width: 4, color: 0xfb923c, alpha: 0.85 + 0.15 * pulse });
     }
     this.drawHealthBar(o, e);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
