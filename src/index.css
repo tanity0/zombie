@@ -255,13 +255,28 @@
 @keyframes gacha-dim-in { from { opacity: 0; } to { opacity: 1; } }
 .gacha-dim { animation: gacha-dim-in 0.3s ease-out forwards; }
 
-/* 10連の連射: 各的が被弾→倒れて消える(animationDelayで順に=バババ)。遅延中は素の表示(直立)。 */
-@keyframes gacha-target-fall {
-  0%   { transform: translateY(0) rotate(0); opacity: 1; }
-  28%  { transform: translateY(-6px) rotate(-5deg); opacity: 1; }
-  100% { transform: translateY(42px) rotate(24deg); opacity: 0; }
+/* 10連: 的1枚を食い気味に連打。各ショットの素早いフラッシュ(短い=連打が重なって見える)。 */
+@keyframes gacha-shot-flash {
+  0%   { opacity: 0; transform: scale(0.7); }
+  30%  { opacity: 0.85; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.15); }
 }
-.gacha-target-fall { animation: gacha-target-fall 0.42s ease-in forwards; }
+.gacha-shot-flash { animation: gacha-shot-flash 0.18s ease-out forwards; }
+/* 連打中の的の細かい被弾シェイク(マシンガン感)。バースト中だけ回る。 */
+@keyframes gacha-hitshake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, -2px); }
+}
+.gacha-hitshake { animation: gacha-hitshake 0.09s linear infinite; }
+/* super 特別演出: パーティクルが中心から四方へ散る(--tx/--ty 方向)。加算で光る。 */
+@keyframes gacha-super-particle {
+  0%   { opacity: 0; transform: translate(0, 0) scale(1.2); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3); }
+}
+.gacha-super-particle { animation: gacha-super-particle 0.85s ease-out forwards; mix-blend-mode: screen; }
 
 /* 超レアカードの退場フェード(次のカードへ送る前に消える)。 */
 @keyframes gacha-card-out {

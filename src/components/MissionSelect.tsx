@@ -813,23 +813,35 @@ const SkillGacha: React.FC = () => {
     const best = bestRarity(results ?? []);
     const fx = BURST_FX[best];
     const shotCount = (results ?? []).length;
-    // 10連等(複数): 的の枚数だけ並べ、高速連射(バババ)で順に倒れていく。
+    // 10連等(複数): 的「1枚」を食い気味に連打(各ショットの演出が途中でも次弾を撃ち込む)。
+    // super を含む時はパーティクルを散らす特別演出。
     if (shotCount > 1) {
+      const isSuper = best === 'super';
+      const SHARDS_PER = 4;
       return createPortal(
         <div className={`gacha-dim fixed inset-0 z-50 flex items-center justify-center ${fx.dim}`}>
-          <div className="flex max-w-[94%] flex-wrap items-center justify-center gap-x-2 gap-y-1">
-            {Array.from({ length: shotCount }).map((_, i) => (
-              <img
-                key={i}
-                src={targetSrc}
-                alt=""
-                draggable={false}
-                className="gacha-target-fall w-[16%] max-w-[68px] object-contain"
-                style={{ animationDelay: `${i * SHOT_STAGGER}ms` }}
-              />
+          <div className={`relative flex items-center justify-center ${isSuper ? 'gacha-burst-shake' : 'gacha-hitshake'}`} style={{ width: '70%', maxWidth: 340, aspectRatio: '3 / 4' }}>
+            {/* super: 背後に広がる金色グロー */}
+            {isSuper && <span className="gacha-burst-glow absolute inset-[-30%] rounded-full" style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.5), rgba(251,191,36,0) 70%)' }} />}
+            <img src={targetSrc} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
+            {/* 連打: 各ショットで素早いフラッシュ＋破片を的中心に重ねる(SHOT_STAGGER間隔=食い気味に重なる) */}
+            {Array.from({ length: shotCount }).map((_, s) => (
+              <React.Fragment key={s}>
+                <span className={`gacha-shot-flash absolute inset-[18%] rounded-full ${fx.flash}`} style={{ animationDelay: `${s * SHOT_STAGGER}ms`, filter: 'blur(8px)' }} />
+                {Array.from({ length: SHARDS_PER }).map((_, k) => {
+                  const ang = (Math.PI * 2 * (k + s * 0.4)) / SHARDS_PER;
+                  const dist = 70 + (k % 3) * 22 + fx.distBonus;
+                  return <span key={k} className={`gacha-shard absolute left-1/2 top-1/2 h-2 w-2 rounded-[2px] ${fx.shard}`} style={{ animationDelay: `${s * SHOT_STAGGER}ms`, ['--tx' as string]: `${Math.cos(ang) * dist}px`, ['--ty' as string]: `${Math.sin(ang) * dist}px` }} />;
+                })}
+              </React.Fragment>
             ))}
+            {/* super 特別演出: 金/赤紫のパーティクルを四方に散らす */}
+            {isSuper && Array.from({ length: 20 }).map((_, p) => {
+              const ang = (Math.PI * 2 * p) / 20 + 0.3;
+              const dist = 150 + (p % 4) * 46;
+              return <span key={`p${p}`} className={`gacha-super-particle absolute left-1/2 top-1/2 h-1.5 w-1.5 rounded-full ${p % 3 === 0 ? 'bg-fuchsia-300' : 'bg-amber-200'}`} style={{ animationDelay: `${(p % 6) * 70}ms`, ['--tx' as string]: `${Math.cos(ang) * dist}px`, ['--ty' as string]: `${Math.sin(ang) * dist}px` }} />;
+            })}
           </div>
-          <span className={`gacha-flash pointer-events-none absolute inset-0 ${fx.flash}`} style={{ filter: 'blur(10px)' }} />
         </div>,
         document.body
       );
