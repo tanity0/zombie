@@ -48,6 +48,7 @@ type SfxConfig = {
   playbackRate?: number;
   startAt?: number;
   maxDurationMs?: number;
+  fadeOutMs?: number; // 再生終端(maxDurationMs か曲尾)に向けてこの時間でゲインを0へランプ(長尺SEのフェード)
   warm?: boolean;
 };
 
@@ -99,7 +100,11 @@ export type SfxKey =
   | 'homing-lock'
   | 'homing-lock2'
   | 'homing-fire'
-  | 'summon';
+  | 'summon'
+  | 'boss-appear'    // 城ボス/裏ボス出現時のアテンションSE
+  | 'heli-land'      // ヘリ着地SE
+  | 'boss-death'     // 裏ボス討伐(消滅)SE。長いので fadeOutMs でフェード
+  | 'base-capture';  // 拠点開放SE
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -127,6 +132,32 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // 戦闘中の小イベント(囲い/救助など)完了音(社長提供SE)。
   'event-clear': {
     src: `${import.meta.env.BASE_URL}audio/sfx/event-clear.mp3`,
+    volume: 0.85,
+    minIntervalMs: 200,
+  },
+  // 城ボス/裏ボス出現時のアテンションで鳴らす(社長提供SE)。
+  'boss-appear': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/boss-appear.mp3`,
+    volume: 0.9,
+    minIntervalMs: 400,
+  },
+  // ヘリ着地SE(社長提供)。登場演出の着地タイミングで1回。
+  'heli-land': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/heli-land.mp3`,
+    volume: 0.9,
+    minIntervalMs: 400,
+  },
+  // 裏ボス討伐(消滅)SE(社長提供)。やや長いので消滅モーション(約2.6s)に合わせてフェードアウト。
+  'boss-death': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/boss-death.mp3`,
+    volume: 0.9,
+    minIntervalMs: 400,
+    maxDurationMs: 2600,
+    fadeOutMs: 900,
+  },
+  // 拠点開放SE(社長提供)。拠点確保の瞬間に1回。
+  'base-capture': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/base-capture.mp3`,
     volume: 0.85,
     minIntervalMs: 200,
   },
@@ -866,6 +897,16 @@ export const playSfx = (key: SfxKey) => {
   const duration = config.maxDurationMs
     ? Math.min(config.maxDurationMs / 1000, Math.max(0.001, buffer.duration - offset))
     : undefined;
+
+  // 長尺SEのフェードアウト: 再生終端(duration か曲尾)へ向けて fadeOutMs でゲインを0へ。
+  if (config.fadeOutMs) {
+    const playLen = duration ?? Math.max(0.001, buffer.duration - offset);
+    const fade = Math.min(config.fadeOutMs / 1000, playLen);
+    const peak = (config.volume ?? 1) * sfxVolume;
+    const t0 = context.currentTime;
+    gain.gain.setValueAtTime(peak, t0 + Math.max(0, playLen - fade));
+    gain.gain.linearRampToValueAtTime(0, t0 + playLen);
+  }
 
   try {
     if (duration) {

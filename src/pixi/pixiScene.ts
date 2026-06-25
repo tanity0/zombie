@@ -768,10 +768,13 @@ export class PixiScene {
   private groundReflectionGfx = new Graphics();
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
+  private static enemyDrawErrLogged = false; // drawEnemy 例外ログは初回だけ(1体の描画失敗で全体が固まらないよう保護)
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
   private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
+  private baseSoldierSprites = new Map<string, Sprite>(); // 拠点駐留兵士の立ち絵(救助NPCと同じ shooter 素材・足元アンカー・y-sort)
+  private baseSoldierFace = new Map<string, { px: number; face: number }>(); // 兵士の向き(前フレx差分で決定)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
   private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
@@ -2237,7 +2240,7 @@ export class PixiScene {
     const revealedPois = getRunPois(s.hiddenBoss)
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
       .filter(p => isPoiRevealed(p, s.baseSites));
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois);
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -3903,7 +3906,9 @@ export class PixiScene {
         view = this.makeActor();
         this.enemies.set(e.id, view);
       }
-      this.drawEnemy(view, e, gameTime, now);
+      try { this.drawEnemy(view, e, gameTime, now); } catch (err) {
+        if (!PixiScene.enemyDrawErrLogged) { PixiScene.enemyDrawErrLogged = true; console.error('[pixiScene] drawEnemy error (suppressed):', err); }
+      }
     }
     for (const [id, view] of this.enemies) {
       if (!seen.has(id)) {
@@ -4712,12 +4717,43 @@ export class PixiScene {
         const hpCol = hpFrac > 0.5 ? 0x34d399 : hpFrac > 0.25 ? 0xfbbf24 : 0xef4444;
         g.rect(bx, by, bw * hpFrac, bh).fill({ color: hpCol, alpha: 0.95 });
         g.rect(bx, by, bw, bh).stroke({ width: 1, color: 0xffffff, alpha: 0.4 });
-        for (const sol of s.soldiers) { // 軍人マーカー(各自の現在位置=端からスタート/攻撃者へ接近)
-          const mx = sol.x, my = sol.y;
-          g.rect(mx - 3, my - 12, 6, 14).fill({ color, alpha: 0.95 });
-          g.circle(mx, my - 15, 3.5).fill({ color, alpha: 0.95 });
-        }
+        // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
       }
+    }
+    this.drawBaseSoldiers(sites, now);
+  }
+
+  // 拠点駐留兵士の立ち絵。救助NPCの shooter 素材を流用(足元アンカー・y-sort・向きEMA)。
+  // captured 拠点の soldiers を id ごとにプール/プルーンする。描画のみ(シミュレーション非干渉)。
+  private drawBaseSoldiers(sites: BaseSite[], now: number) {
+    const seen = new Set<string>();
+    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
+    for (const s of sites) {
+      if (s.status !== 'captured') continue;
+      s.soldiers.forEach((sol, i) => {
+        const id = `${s.id}-${i}`;
+        seen.add(id);
+        let sp = this.baseSoldierSprites.get(id);
+        if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.baseSoldierSprites.set(id, sp); }
+        let fc = this.baseSoldierFace.get(id);
+        if (!fc) { fc = { px: sol.x, face: 1 }; this.baseSoldierFace.set(id, fc); }
+        const dxm = sol.x - fc.px; fc.px = sol.x;
+        if (dxm > 0.6) fc.face = 1; else if (dxm < -0.6) fc.face = -1;
+        const moving = Math.abs(dxm) > 0.3;
+        const tex = getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0');
+        if (tex) {
+          sp.texture = tex;
+          const boxH = PixiScene.RESCUE_NPC_DISPLAY_H, boxW = boxH;
+          const sc = containScale(boxW, boxH, tex.width, tex.height) * this.depthScaleEnemy(sol.y);
+          sp.scale.set(sc * fc.face, sc);
+          sp.visible = true;
+        } else sp.visible = false;
+        sp.position.set(Math.round(sol.x), Math.round(sol.y));
+        sp.zIndex = sol.y;
+      });
+    }
+    for (const [id, sp] of this.baseSoldierSprites) {
+      if (!seen.has(id)) { sp.destroy(); this.baseSoldierSprites.delete(id); this.baseSoldierFace.delete(id); }
     }
   }
 
@@ -6245,10 +6281,12 @@ export class PixiScene {
     camera: { x: number; y: number },
     castleVisible: boolean,
     event: ActiveEvent | null,
-    pois: { x: number; y: number; kind: 'boss' | 'cave' }[] = []
+    pois: { x: number; y: number; kind: 'boss' | 'cave' }[] = [],
+    baseSites: { x: number; y: number; status: string }[] = []
   ) {
     const g = this.arrowGfx;
     g.clear();
+    const ARROW_NEAR_RADIUS = 500; // 「近く」の方向矢印を出す半径(弾/拠点。社長指示)
     const marginX = 26;
     // Keep upward arrows below the iOS status bar and the top HUD. The icon
     // itself plus the arrowhead extends ~20px above its anchor, so the clamp
@@ -6266,6 +6304,7 @@ export class PixiScene {
       const tx = p.x + 8 - camera.x;
       const ty = p.y + 8 - camera.y;
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
+      if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue; // 弾は近く(500px以内)のものだけ矢印表示(社長指示)
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
@@ -6452,6 +6491,32 @@ export class PixiScene {
         g.circle(ex, ey - 1, 5).fill({ color: 0x451a03, alpha: 0.96 });
         g.circle(ex, ey + 1, 3).fill({ color: 0x020617, alpha: 0.98 });
       }
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+    }
+
+    // 拠点(未制圧)の方向矢印: 近く(500px以内)で画面外のものだけ示す(社長指示=拠点の表示は半径500)。
+    for (const b of baseSites) {
+      if (b.status === 'captured') continue; // 制圧済みは出さない(未制圧だけ誘導)
+      const tx = b.x - camera.x, ty = b.y - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
+      if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+      const color = 0xfbbf24; // 拠点=琥珀(地面サークルと同色)
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
+      g.rect(ex - 5, ey - 4, 10, 9).stroke({ width: 1.5, color, alpha: 0.9 }); // 旗/拠点アイコン(簡易)
+      g.rect(ex - 5, ey - 4, 6, 4).fill({ color, alpha: 0.85 });
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];

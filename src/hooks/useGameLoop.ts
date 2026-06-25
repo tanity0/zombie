@@ -268,6 +268,7 @@ const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止�
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
+let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
 // 画面の半分+この余白を超えたら確実に画面外なので home へ復帰させる。
 const LAB_RETURN_HOME_MARGIN = 140;
@@ -387,6 +388,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean }>(
     { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false }
   );
+  // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
+  // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
+  const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // 拠点制圧カウントの直近値(増加検出で開放SEを鳴らす)。
+  const suppCaptureCountRef = useRef<number>(0);
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
   // ゾーン判定の間引き用カウンタ + 深層域BGM(逆再生)の現フェーズ。
@@ -825,6 +831,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(pcx, pcy + 10, '#cbd5e1', 16);
           spawnFlash('rgba(255,255,255,0.12)', 130);
           useGameStore.getState().triggerShake(INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG);
+          playSfx('heli-land'); // ヘリ着地SE(社長提供)
         }
 
         // ミッション開始以外でも introDialogue が立っている間は、開始時と同じく時間停止(simを進めない)。
@@ -856,6 +863,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false };
+          castleAttnRef.current = { at: 0, x: 0, y: 0 };
+          suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           plantGuaranteedRef.current = false;    // 保証出現フラグも再アーム
           werewolfGuaranteedRef.current = false;
@@ -883,8 +892,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
           spawnRing(castle.x, castle.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
           useGameStore.getState().spawnGlow(castle.x, castle.y, 150, 'rgba(239,68,68,', 900);
-          useGameStore.getState().triggerAttention(castle.x, castle.y); // 城へカメラアテンション(時間停止で出現を見せる)
           spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
+          // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
+          castleAttnRef.current = { at: newGameTime + 950, x: castle.x, y: castle.y };
+        }
+        // 城ボスの遅延アテンション発火(出現演出が落ち着いてからカメラを寄せる)。
+        if (castleAttnRef.current.at > 0 && newGameTime >= castleAttnRef.current.at && !useGameStore.getState().attention) {
+          const { x, y } = castleAttnRef.current;
+          castleAttnRef.current = { at: 0, x: 0, y: 0 };
+          useGameStore.getState().triggerAttention(x, y);
+          playSfx('boss-appear');
         }
 
         // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
@@ -1050,6 +1067,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- 拠点候補地(仕様10): サークル内10秒滞在で制圧→武器商人が移動 ---
         useGameStore.getState().updateSuppression(deltaTime);
+        // 拠点開放SE: 制圧カウントが増えた瞬間に1回(store は音声非依存なのでここで鳴らす)。
+        {
+          const cc = useGameStore.getState().suppressionCaptureCount;
+          if (cc > suppCaptureCountRef.current) playSfx('base-capture');
+          suppCaptureCountRef.current = cc;
+        }
 
         // --- ゾーン判定の間引き + 深層域BGM(逆再生)切替 ---
         // 毎フレームではなく ZONE_CHECK_INTERVAL フレームに1回だけ判定(多少アバウト可)。負荷1/10。
@@ -1235,6 +1258,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         //  討伐で「<名前>討伐!」+FF風フェードアウト。移動/攻撃はこのコントローラが座標を直接書き込む。
         const hiddenBoss = useGameStore.getState().hiddenBoss;
         if (hiddenBoss && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+         try { // 裏ボス制御の例外でゲームループ全体(=移動/攻撃)が固まらないよう保護(描画ループとは別系統)。
           const bs = bossRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -1253,7 +1277,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             useGameStore.getState().triggerShake(BOSS_FADE_MS, 5); // ゴゴゴゴ…と長く低い地鳴り
             spawnFlash('rgba(255,255,255,0.25)', 320);
-            playSfx('event-clear');
+            playSfx('boss-death'); // 裏ボス討伐(消滅)SE。長尺なのでフェードアウト付き(社長提供)
             bs.bossId = null;
           }
 
@@ -1278,6 +1302,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bs.spawned = true; bs.bossId = e.id; bs.retreating = false;
               bs.homeX = e.x; bs.homeY = e.y; bs.lastX = e.x; bs.lastY = e.y; bs.w = e.width; bs.h = e.height;
               useGameStore.getState().triggerAttention(cx, cy);
+              playSfx('boss-appear'); // 裏ボス出現アテンションSE(社長提供)
               useGameStore.setState({ eventBannerText: '危険!直ちに避難を', eventBannerUntil: newGameTime + 3000 });
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               spawnFlash('rgba(120,20,40,0.30)', 360);
@@ -1373,6 +1398,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (useGameStore.getState().bossChasing !== chasing) useGameStore.setState({ bossChasing: chasing });
             }
           }
+         } catch (err) {
+          if (!bossCtrlErrLogged) { bossCtrlErrLogged = true; console.error('[hiddenBoss] controller error (suppressed after first):', err); }
+         }
         }
 
         // Update player invulnerability
