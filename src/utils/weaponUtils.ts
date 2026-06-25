@@ -1,6 +1,20 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
+import { isHiddenBoss } from './enemyUtils';
+
+// プレイヤー中心→敵 の二乗距離。裏ボスは巨体で「当たり判定=足元の帯(AABB)」なので、中心ではなく
+// 帯の最近点で測る(中心基準だと帯の縁にいる時に銃の射程判定に入らない=社長報告「銃が中心にしか届かない」)。
+const aimDist2 = (pcx: number, pcy: number, e: Enemy): number => {
+  if (isHiddenBoss(e.type)) {
+    const nx = Math.max(e.x, Math.min(pcx, e.x + e.width));
+    const ny = Math.max(e.y, Math.min(pcy, e.y + e.height));
+    return (pcx - nx) * (pcx - nx) + (pcy - ny) * (pcy - ny);
+  }
+  const dx = e.x + e.width / 2 - pcx;
+  const dy = e.y + e.height / 2 - pcy;
+  return dx * dx + dy * dy;
+};
 
 // Global muzzle-velocity multiplier. Bullets leave the barrel faster so shots
 // feel snappier and reach their target sooner.
@@ -212,9 +226,7 @@ const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
   let bestStunned: Enemy | null = null;
   let bestStunnedD2 = Infinity;
   for (const e of enemies) {
-    const dx = e.x + e.width / 2 - pcx;
-    const dy = e.y + e.height / 2 - pcy;
-    const d2 = dx * dx + dy * dy;
+    const d2 = aimDist2(pcx, pcy, e);
     if (isStunned(e, gameTime)) {
       if (d2 < bestStunnedD2) { bestStunnedD2 = d2; bestStunned = e; }
     } else if (d2 < bestD2) {
@@ -229,9 +241,8 @@ const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
 const nearestEnemyDistance = (player: Player, enemies: Enemy[]): number => {
   const target = pickTarget(player, enemies);
   if (!target) return Infinity;
-  const dx = target.x + target.width / 2 - (player.x + player.width / 2);
-  const dy = target.y + target.height / 2 - (player.y + player.height / 2);
-  return Math.sqrt(dx * dx + dy * dy);
+  // 射程ゲートも帯(AABB)の最近点距離(裏ボス)。中心基準だと巨体の縁で射程外扱いになる。
+  return Math.sqrt(aimDist2(player.x + player.width / 2, player.y + player.height / 2, target));
 };
 
 // Aim helper: point at the chosen target, falling back to the last movement

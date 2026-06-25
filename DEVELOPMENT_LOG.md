@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.975 — 銃の射程/自動照準も裏ボスの帯(AABB)最近点基準に
+
+- 「裏ボスの銃の射程が中心らへんにしかない」: `weaponUtils` の `pickTarget` / `nearestEnemyDistance` が
+  敵中心距離で射程判定していた。巨体ボスの縁にいると中心が遠く射程外=自動射撃が出ない。
+- `aimDist2`(裏ボスは帯AABBの最近点・他は中心)を追加し、ターゲット選定と射程ゲートに使用。
+  これで帯のどこに近づいても銃が反応する(弾は元々 AABB 全体に当たる)。照準方向は中心のままで可
+  (帯は連続矩形なので中心へ撃っても近い縁で必中)。
+- lint/test(65 pass)/build OK。
+
 ## v0.25.974 — [重大バグ修正] 近接スイングが敵に当たらない(dx/dy 未定義で例外→ダメージ未適用)
 
 - 症状: 敵が近接範囲にいると通常近接が「かなりの確率で発動しない」。フィニッシュ/カウンターは効く。
