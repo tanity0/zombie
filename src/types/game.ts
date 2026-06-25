@@ -413,7 +413,7 @@ export interface ShadowCloneState {
   nextAttackAt: number;           // 次の自動攻撃を行う gameTime(ms)
 }
 
-// 制圧イベントの拠点。8か所固定。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。
+// 制圧イベントの拠点。4か所固定(東西南北)。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。
 export interface BaseSite {
   id: string;
   x: number;

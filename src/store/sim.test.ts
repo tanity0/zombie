@@ -123,9 +123,10 @@ describe('headless simulation invariants', () => {
     expect(base.hp).toBeGreaterThan(0);
     // first capture makes it the merchant's safe base
     expect(useGameStore.getState().safeBaseId).toBe(site0.id);
-    // soldiers are assigned by capture order (first capture = index 0 = エドガー) and
-    // spawn at edge-ish positions inside the circle (not the center where the merchant sits).
-    expect(base.soldierIndex).toBe(0);
+    // soldiers (キャラ) are assigned RANDOMLY (distinct) from the 8-name roster, so the index is
+    // some valid 0..7 (not necessarily 0). They spawn at edge-ish positions (not the center=merchant).
+    expect(base.soldierIndex).toBeGreaterThanOrEqual(0);
+    expect(base.soldierIndex).toBeLessThan(8);
     expect(base.soldiers.length).toBeGreaterThan(0);
     for (const sol of base.soldiers) {
       const distFromCenter = Math.hypot(sol.x - site0.x, sol.y - site0.y);

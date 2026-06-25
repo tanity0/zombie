@@ -2,7 +2,7 @@
 //
 // 仕様(社長指示):
 // - MAP上に洞窟などのオブジェ(POI)と裏ボスの巣がある。
-// - 8拠点(createBaseSites)はスタート地点(原点)から見て8方角(45°刻み)に並ぶ。各拠点は45°セクターを担当。
+// - 4拠点(createBaseSites)はスタート地点(原点)から見て4方角(東西南北=90°刻み)に並ぶ。各拠点は90°セクターを担当。
 // - ある拠点を「解放(captured)」すると、その方角(セクター)にあるPOI/裏ボスが矢印で表示される。
 //
 // この層は renderer-agnostic(PixiJS非依存): 座標/角度/解放判定の純粋関数だけを置く。
@@ -17,8 +17,8 @@ export interface Poi {
   kind: 'boss' | 'cave';
 }
 
-// 拠点の数=方角の数(createBaseSites の BASE_SITE_COUNT と一致)。
-export const POI_SECTORS = 8;
+// 拠点の数=方角の数(createBaseSites の BASE_SITE_COUNT と一致)。8→4(東西南北・社長指示)。
+export const POI_SECTORS = 4;
 const SECTOR_RAD = (Math.PI * 2) / POI_SECTORS;
 
 // 原点基準の角度(rad)→ 最も近い拠点(セクター)インデックス[0..7]。
@@ -36,9 +36,9 @@ export const poiSectorIndex = (poi: { x: number; y: number }): number =>
 // 距離は深層域(>=7500)の内側に置く(到達=深層域)。角度=その方角の拠点で解放される。
 // 調整はこの2値だけでよい(矢印・出現・帰巣すべてここを参照)。
 const BOSS_LAIR: Partial<Record<EnemyType, { angle: number; dist: number }>> = {
-  mimir: { angle: Math.PI, dist: 9000 },        // ステージ1=西(拠点4の方角)
-  jormungand: { angle: 0, dist: 9000 },         // ステージ3=東(拠点0の方角)
-  skadi: { angle: -Math.PI / 2, dist: 9000 },   // ステージ4=北(拠点6の方角)
+  mimir: { angle: Math.PI, dist: 9000 },        // ステージ1=西(base-2 の方角)
+  jormungand: { angle: 0, dist: 9000 },         // ステージ3=東(base-0 の方角)
+  skadi: { angle: -Math.PI / 2, dist: 9000 },   // ステージ4=北(base-3 の方角)
 };
 
 // 裏ボスの巣のワールド座標(未定義タイプは null)。

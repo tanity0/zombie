@@ -108,11 +108,11 @@ export const clampDropPct = (n: number): number =>
   Math.max(0, Math.min(100, Math.round(Number.isFinite(n) ? n : DEFAULT_MELEE_DROP_PCT)));
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
-// 原点中心・半径3200の円周に8か所(45度刻み)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
+// 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
 // captured拠点はHPを持ち、画面内では攻撃者(敵)が削り/軍人が反撃、画面外は時間で減る。HP0で陥落(open化)。
-// 8拠点が同時にcapturedで「全拠点制圧」→既存クリア経路(帰還サークル)へ。
+// 4拠点が同時にcapturedで「全拠点制圧」→既存クリア経路(帰還サークル)へ。
 const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
-const BASE_SITE_COUNT = 8;              // 拠点の数
+const BASE_SITE_COUNT = 4;              // 拠点の数(東西南北=90度刻み・社長指示で8→4)
 const BASE_CAPTURE_RADIUS = 130;        // 制圧サークルの半径(滞在/在内判定)
 export const BASE_CAPTURE_HOLD_MS = 10000; // 制圧に必要な滞在時間(描画の進捗にも使用)
 export const SUPP_HP_MAX = 100;            // 拠点HP上限
@@ -1433,10 +1433,10 @@ interface GameState {
   gameWon: boolean;
   // フィナーレボス(giantbat)を倒した=終了条件を満たした(まだ勝利ではない)。useGameLoop が帰還サークルを出す。
   finaleDefeated: boolean;
-  // 制圧イベント: 8拠点。suppressionActive 時のみ有効(ステージ1メインミッション等)。
+  // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
-  suppressionCaptureCount: number; // 制圧した回数(軍人の登場順=名簿index割当に使用)
+  suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
   pendingSuppression: boolean;   // 出撃が制圧イベント(ステージ1)か。resetGame で suppressionActive へ
   // 帰還サークル: フィナーレ撃破/終了アイテム後に出現。中心に dwellMs(ms)とどまると gameWon。null=非表示。
@@ -6434,7 +6434,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageShots: { id: string; dmg: number }[] = [];
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
     let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
-    let captureCount = state.suppressionCaptureCount; // 制圧順(軍人名簿index)を割り当てる連番
+    let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
 
     const next: BaseSite[] = state.baseSites.map(s => {
@@ -6442,7 +6442,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (s.status === 'open') {
         const dwellMs = inCircle ? s.dwellMs + deltaTime * 1000 : 0;
         if (inCircle && dwellMs >= BASE_CAPTURE_HOLD_MS && !capturedThisFrame) {
-          const capIdx = captureCount; captureCount += 1; // 登場順(どの拠点でも1人目=エドガー)
+          // 軍人(キャラ)は名簿8人から「被らないようにランダム」割り当て(社長指示)。現在capturedな他拠点の
+          // indexを除外して残りから無作為に選ぶ。captureCount は SE/制圧回数カウント用に別途インクリメント。
+          const usedIdx = new Set(state.baseSites.filter(b => b.status === 'captured' && b.soldierIndex >= 0).map(b => b.soldierIndex));
+          const freeIdx: number[] = [];
+          for (let k = 0; k < BASE_SOLDIERS.length; k++) if (!usedIdx.has(k)) freeIdx.push(k);
+          const capIdx = freeIdx.length ? freeIdx[Math.floor(Math.random() * freeIdx.length)] : 0;
+          captureCount += 1; // 制圧回数(SE検出 suppressionCaptureCount 用)。名簿indexとは別。
           capturedThisFrame = { id: s.id, x: s.x, y: s.y, soldierIndex: capIdx };
           changed = true;
           return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_RESPAWN_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: makeBaseSoldiers(s.x, s.y) };

@@ -34,6 +34,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - `tsconfig.app.json` の target/lib を ES2020→ES2022(`Array.prototype.at` 等の型エラー解消の前提)。
 - (別途進行中) typecheck 実効化＋既存型エラー一掃は次コミットで反映予定。
 
+## v0.25.984 — 拠点を8→4(東西南北)に / 駐留軍人をランダム配置(被りなし)
+
+- `BASE_SITE_COUNT` 8→4。`createBaseSites` は `i*2π/4`=90°刻み=**東西南北の4方向**に自動配置(角度: base-0東/1南/2西/3北)。
+- 全拠点制圧判定は `next.every(captured)` で**4拠点で成立**(個数非依存、改修不要)。
+- POI公開: `POI_SECTORS` 8→4(90°セクター)。裏ボスの巣のマッピング更新(mimir西=base-2 / jormungand東=base-0 / skadi北=base-3)。
+- 駐留軍人(各拠点のキャラ)を**名簿8人からランダム・被りなし割当**に変更(従来=制圧順の連番)。現在capturedな他拠点の
+  index を除外して残りから無作為に選択。`suppressionCaptureCount` は base-capture SE 検出用に従来どおり増加(名簿indexとは分離)。
+- 文言「8拠点/8か所/8方角」をコメント類で4へ更新(ユーザー表示文字列に「8拠点」は無し。バナーは「全拠点制圧」等で個数非依存)。
+- 制圧/陥落/safeBaseId/商人移動/HPドレイン・回復/攻撃者/反撃は個数非依存ロジックで不変=破壊なし(テスト更新して確認)。
+- テスト更新: `pois.test.ts`(4セクター: 0/π2→1/π→2/−π2→3、巣=東0・西2)、`sim.test.ts`(soldierIndex は 0..7 の任意=ランダム)。
+- lint/typecheck(実効・0件)/test(65 pass)/build OK。
+
 ## v0.25.981 — 裏ボス: カウンター被弾でプレイヤー反対側へワープ(フラッシュ＋0.5秒フェードイン)
 
 - 裏ボスがカウンター弾(反射弾)を食らうと、プレイヤーの「反対側」 `BOSS_COUNTER_WARP_DIST=50`px(中心間)へ
