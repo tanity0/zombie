@@ -347,7 +347,7 @@ export const MELEE_RADIUS = 74;
 // プレイヤー→敵の近接判定で使う距離。通常敵は中心点まで(従来の手触り/バランス維持)。裏ボスは巨体で
 // 中心が遠いので「当たり判定の帯(AABB)の最近点」までの距離=矩形に触れたら届く(社長指示「こちらからも揃えて」)。
 // これで巨体ボスも中心まで突っ込まず、表示している四角の縁で斬れる。描画側の判定枠と一致。
-const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
+export const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
   if (!isHiddenBoss(e.type)) {
     return Math.hypot((e.x + e.width / 2) - px, (e.y + e.height / 2) - py);
   }

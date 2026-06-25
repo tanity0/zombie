@@ -29,7 +29,7 @@ import {
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped,
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
@@ -1389,6 +1389,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 画面内 & 深層域 → 追跡 + 攻撃状態機械。
               bs.retreating = false;
               chasing = true;
+              // トラップ(root)/気絶(stun)中は移動も攻撃も止める=トラップ/スタンが効く(社長報告)。
+              // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
+              const frozen = (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
+                || (boss.stunUntil !== undefined && newGameTime < boss.stunUntil);
+              if (frozen) {
+                patch.bossState = 'chase'; // 解除後はチェイスから再開
+              } else {
               const st = boss.bossState ?? 'chase';
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
               const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
@@ -1431,6 +1438,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 moveToward(BOSS_DASH_SPEED_MULT);
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               }
+              } // end !frozen
             }
 
             // 裏ボスが障害物(木/街・雪プロップ)に触れたら破壊=消す(社長指示「ぶつかった時だけ消えるだけ」)。
@@ -1786,10 +1794,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let bestStunned: { id: string; d2: number } | null = null;
             for (const e of useGameStore.getState().enemies) {
               if (e.type === 'reaper') continue;
-              const dx = e.x + e.width / 2 - kcx;
-              const dy = e.y + e.height / 2 - kcy;
-              const d2 = dx * dx + dy * dy;
-              if (d2 > kRange * kRange) continue;
+              // 距離は enemyMeleeDist(裏ボスは帯AABBの最近点)。巨体ボスを中心基準にすると帯の端で
+              // 「近づいても発動しない」狭い当たりになる(社長報告)。最近点なら表示枠=攻撃判定が一致する。
+              const d = enemyMeleeDist(kcx, kcy, e);
+              if (d > kRange) continue;
+              const d2 = d * d;
               // 自動射撃と同じ優先順位: スタン中の敵は後回し(最後の手段)。
               const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
               if (stunned) {

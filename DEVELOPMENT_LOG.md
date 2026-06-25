@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.973 — 裏ボス: 刀オート斬の当たりを帯AABBに / トラップ・スタンが効くように
+
+- 調査(サブエージェント2本)で確定: 刀の**オート斬撃のターゲット選定が敵の中心距離**だった
+  (useGameLoop ~1789)。346px幅の巨体ボスでは「中心±74px」しか当たらず、表示枠(オレンジAABB)より
+  大幅に狭い=「近づいても発動しない」。→ `enemyMeleeDist`(裏ボスは帯AABBの最近点)に変更。表示枠=攻撃判定が一致。
+- **トラップ(root)/気絶(stun)が裏ボスに効かない**問題: ボスは `updateEnemies` を早期 return で素通りし、
+  コントローラが座標を直書きするため `rootUntil`/`stunUntil` を完全無視していた。→ コントローラのチェイス分岐で
+  `frozen`(root/stun中)を判定し、移動・攻撃を停止。トラップで止まり、気絶で固まる(近接フィニッシュも機能)。
+- `enemyMeleeDist` を export して useGameLoop から共有。
+- 通常近接スイング/影分身は元々 `enemyMeleeDist` 使用で正常。銃/カウンター弾は全AABB判定で正常。
+- 既知の残り(別途調整可): 刀ダッシュ/鞭のターゲット選定も中心基準だが width/2 で広めに含むため当たりは出る(狭くはない)。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.972 — 自動タレットの前方集中ダメージ 7→5
 
 - `TURRET_FWD_DAMAGE` 7→5(社長指示)。全方位9/グレネード弾44/消滅爆発36 は据え置き。
