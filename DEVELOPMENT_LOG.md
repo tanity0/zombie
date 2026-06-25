@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.967 — 裏ボスの障害物破壊に爆破エフェクト+SE+画面シェイク(使い回し・スロットルで軽量)
+
+- 「ちゃんとエフェクトで爆破/SEも/画面も少し揺れて。重い?」への回答=**スロットルすれば軽い(2-3/10)**ので実装。
+- 使い回し: グレネード同系の `spawnBurst`(破片)+`spawnRing`(衝撃)+`spawnGlow`(火光・プール済みスプライト)
+  + `playSfx('bomb')` + `triggerShake`(弱め=少し揺れる)。新規アセット無し。
+- **負荷の主因は「数×描画法」**。森を突っ切ると同時破壊が多発しうるので `BOSS_CRUSH_FX_MS=130ms` の
+  **スロットルで最大~7回/秒に間引く**=per-frame Graphics(リング/バースト)を積み上げない安全弁。
+  生成関数が破壊済みを欠番にするので「返ってきた=新規破壊」=判定も最小。
+- 破壊そのものは 1/10 のまま(v0.25.966)。FX付きでも throttle 込みで 2-3/10。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.966 — 裏ボスが触れた障害物(木/街・雪プロップ)を破壊=消す(負荷 1/10)
 
 - 「裏ボスと障害物がぶつかった時だけ障害物を消したい。重い？」への回答=**重くない(1/10)**ので実装。

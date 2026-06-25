@@ -271,6 +271,11 @@ const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止�
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
+// 裏ボスが障害物を踏み潰した時の爆破FX/SE/シェイク。森を突っ切ると同時破壊が多発しうるので「スロットル」で
+// 一定間隔に1回だけ発火=per-frame Graphics(リング/バースト)を積み上げない安全弁(負荷の主因は数×描画法)。
+const BOSS_CRUSH_FX_MS = 130;                        // 爆破FX/SE/シェイクの最短間隔(=最大~7回/秒)
+const BOSS_CRUSH_SHAKE_MS = 130;                     // 「少し揺れる」程度の短い画面シェイク
+const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚などより控えめ)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -389,8 +394,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   );
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0 }
   );
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
@@ -867,7 +872,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -1410,18 +1415,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             // 裏ボスが障害物(木/街・雪プロップ)に触れたら破壊=消す(社長指示「ぶつかった時だけ消えるだけ」)。
             // ボスの当たり判定(帯AABB)の近傍だけ走査=有界。手続き生成なので破壊キーSetに入れるだけで描画も判定も同時に消える。
-            // 軽量(描画はむしろ減る)。ボス生存中のみ実行。
+            // 生成関数は破壊済みキーを欠番にするので、ここに返る物は必ず「未破壊」=毎ヒットが新規破壊。
+            // 爆破FX/SE/シェイクは使い回し(グレネード同系)を「スロットル」で間引いて発火(森突っ切りでも積み上げない)。
             if (!despawn) {
               const bx = patch.x ?? boss.x, by = patch.y ?? boss.y;
               const bAABB = { x: bx, y: by, width: boss.width, height: boss.height };
               const PAD = 48;
+              let crushed = false, cxFx = 0, cyFx = 0;
               for (const t of treesInRegion(bx - PAD, by - PAD, bx + boss.width + PAD, by + boss.height + PAD)) {
-                if (rectsOverlap(bAABB, trunkRect(t))) markObstacleDestroyed(t.key);
+                if (rectsOverlap(bAABB, trunkRect(t))) { markObstacleDestroyed(t.key); crushed = true; cxFx = t.footX; cyFx = t.footY; }
               }
               const farKey = useGameStore.getState().farBackdrop;
               for (const p of cityPropsInRegion(farKey, bx - PAD, by - PAD, bx + boss.width + PAD, by + boss.height + PAD)) {
                 const r = cityPropRect(farKey, p);
-                if (r && rectsOverlap(bAABB, r)) markObstacleDestroyed(p.id);
+                if (r && rectsOverlap(bAABB, r)) { markObstacleDestroyed(p.id); crushed = true; cxFx = p.footX; cyFx = p.footY; }
+              }
+              if (crushed && newGameTime - bs.lastCrushFxAt >= BOSS_CRUSH_FX_MS) {
+                bs.lastCrushFxAt = newGameTime;
+                spawnBurst(cxFx, cyFx, '#fbbf24', 6);                                   // 木片/破片(使い回し)
+                spawnRing(cxFx, cyFx, 6, 40, 'rgba(251,146,60,0.86)', 3, 300);          // 衝撃リング(使い回し)
+                useGameStore.getState().spawnGlow(cxFx, cyFx, 44, 'rgba(251,146,60,', 340); // 火光(プール済みスプライト=軽い)
+                playSfx('bomb');                                                        // 爆破SE(使い回し)
+                useGameStore.getState().triggerShake(BOSS_CRUSH_SHAKE_MS, BOSS_CRUSH_SHAKE_MAG); // 少し揺れる
               }
             }
 
