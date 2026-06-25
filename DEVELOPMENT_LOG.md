@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.992 — 行動の二次モーション(近接/銃/リロード/カウンター)を追加
+
+- 好評だった**徒歩の自然化**(静止スプライトに scale/回転/位置オフセットを重ねる二次モーション)を、
+  行動にも応用(社長指示)。**すべて描画のみ・判定/射程/速度には一切不干渉**。
+  - **銃発射=反動**: 銃口と逆向き(後方)へ一瞬引け＋軽い縦縮み(`lastFired` から急減衰・130ms)。
+  - **近接スイング=踏み込み**: 狙い方向へ踏み込み(踏込→振抜→復帰のアーク)＋振り抜きの傾き＋横ストレッチ
+    (新規 `meleeSwingAt` 起点・230ms)。
+  - **カウンター成立=決めポーズ**: 一瞬ふくらむ膨らみ＋傾き(既存 `lastCounterSuccessTime` 流用・280ms、速い減衰)。
+  - **リロード中=手元作業の揺れ**: 小刻みな上下＋左右リーン(`reloadingWeaponId`/`reloadEndsAt` 中)。
+  - 刀の背負いスプライト(kb)も本体と同じオフセット/傾きに追従。
+- **新規状態は `player.meleeSwingAt`(Date.now・描画専用)1つだけ**。triggerCounter のスイング確定 set で更新。
+  銃/カウンター/リロードは既存フィールドを読むのみ(新規 set なし)。型/初期化/resetGame に追加。
+- **負荷 1/10**: drawPlayer 内で1アクター分の sin/hypot を数回足すだけ。新規描画・per-frame Graphics・
+  確保なし。エンベロープ窓外では計算ゼロ。
+- 検証: lint / typecheck(0 errors) / test(65 passed) / build green。
+- 変更: `src/types/game.ts` / `src/store/gameStore.ts` / `src/pixi/pixiScene.ts` / `package.json`。
+- 次への申し送り: 効き具合は `PLAYER_*_(MS|PX|LEAN|STRETCH|POP)` 定数で個別調整可。スラッシャー追撃や
+  刀ダッシュは別経路(meleeSwingAt 未更新)=必要なら後追いで配線。
+
 ## v0.25.991 — 裏ボスのカウンターワープ距離を 50→320px に(近すぎ修正)
 
 - **`BOSS_COUNTER_WARP_DIST` 50→320**(社長指示「ワープ位置が近すぎる」)。中心間50pxだと巨体

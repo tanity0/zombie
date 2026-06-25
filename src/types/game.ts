@@ -68,6 +68,9 @@ export interface Player {
   // movement multiplier in the store. 0 / '' when not reloading.
   reloadEndsAt: number;
   reloadingWeaponId: string;
+  // 近接スイング演出用タイムスタンプ(Date.now)。描画のみ=スイングの二次モーション(踏み込み/振り抜き)の起点。
+  // 0=未スイング。判定・射程には不干渉(renderer が読むだけ)。
+  meleeSwingAt: number;
   // Level-up modifiers applied to ALL owned guns: magBonus adds to every gun's
   // magazine capacity; reloadMult scales reload time (<1 = faster).
   magBonus: number;

@@ -1791,6 +1791,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     quickMagCritUntil: 0,
     reloadEndsAt: 0,
     reloadingWeaponId: '',
+    meleeSwingAt: 0,
     magBonus: 0,
     reloadMult: 1,
     stunDurationMult: 1,
@@ -2759,6 +2760,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
       player: {
         ...state.player,
+        meleeSwingAt: now, // 近接スイング演出の起点(描画のみ)。この set はスイング確定時のみ走る。
         counterWindowEnd: now + counterWindowMs,
         counterCooldownEnd: now + counterWindowMs + COUNTER_COOLDOWN,
         huntingCharged: false,
@@ -7079,6 +7081,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           quickMagCritUntil: 0,
           reloadEndsAt: 0,
           reloadingWeaponId: '',
+          meleeSwingAt: 0,
           magBonus: 0,
           reloadMult: 1,
           stunDurationMult: 1,

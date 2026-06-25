@@ -27,7 +27,7 @@ import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOA
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
-import { effectiveReloadMs, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
+import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
@@ -441,6 +441,20 @@ const PLAYER_WALK_BOB_PX = 0.8;
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
+// 行動の二次モーション(歩きと同じく静止スプライトに重ねる連続変形・視覚のみ・判定不変)。
+// すべて scale倍率/回転加算/足元基準の画面pxオフセット。当たり判定・射程・速度には一切不干渉。
+const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エンベロープ長)
+const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
+const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
+const PLAYER_MELEE_SWING_MS = 230;    // 近接スイングの踏み込み→振り抜き→復帰の長さ
+const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
+const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
+const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
+const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
+const PLAYER_COUNTER_POP = 0.13;      // 決めポーズの一瞬の膨らみ(縦横)
+const PLAYER_COUNTER_LEAN_RAD = 0.10; // 決めポーズの傾き
+const PLAYER_RELOAD_BOB_PX = 1.3;     // リロード中の小刻みな上下(手元作業の揺れ)
+const PLAYER_RELOAD_LEAN_RAD = 0.022; // リロード中の小刻みな左右リーン
 // ホーミングのロックオンサークル出現演出: 0.5秒でズームアウト(×開始倍率)→ターゲット半径へ収束＋フェードイン。
 const LOCK_ANIM_MS = 500;
 const LOCK_ANIM_START_SCALE = 2.4;
@@ -4090,6 +4104,53 @@ export class PixiScene {
       walkLean = step * PLAYER_WALK_LEAN_RAD;
     }
 
+    // 行動の二次モーション(歩きと同じく静止スプライトに重ねる・視覚のみ・判定不変)。
+    // 銃発射=反動 / 近接=踏み込み振り抜き / カウンター=決めポーズ / リロード=手元作業の揺れ。
+    let actSqX = 1, actSqY = 1, actLean = 0, actOffX = 0, actOffY = 0;
+    const dsc = this.depthScale(fb.footY); // pxオフセットは遠近スケールに合わせる(bob と同じ)
+    const face = (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0)) ? -1 : 1;
+    // 狙い方向の単位ベクトル(レティクル優先・無ければ直近向き)。踏み込み/反動の方向に使う。
+    let aimx = 0, aimy = 0;
+    const am = Math.hypot(p.aimX, p.aimY);
+    if (am > 0.001) { aimx = p.aimX / am; aimy = p.aimY / am; }
+    else if (p.lastDirection) { const lm = Math.hypot(p.lastDirection.x, p.lastDirection.y) || 1; aimx = p.lastDirection.x / lm; aimy = p.lastDirection.y / lm; }
+    // 銃発砲の反動: 銃口と逆向き(後方)へ一瞬引け、軽く縦に縮む(急減衰)。
+    const gun = getActiveGun(p);
+    if (gun) {
+      const sinceFire = now - (gun.lastFired || 0);
+      if (sinceFire >= 0 && sinceFire < PLAYER_FIRE_RECOIL_MS) {
+        const e = 1 - sinceFire / PLAYER_FIRE_RECOIL_MS;
+        actOffX -= aimx * PLAYER_FIRE_RECOIL_PX * e * dsc;
+        actOffY -= aimy * PLAYER_FIRE_RECOIL_PX * e * dsc;
+        actSqY *= 1 - PLAYER_FIRE_RECOIL_SQUASH * e;
+      }
+    }
+    // 近接スイング: 狙い方向へ踏み込み(踏込→振抜→復帰のアーク)＋振り抜きの傾き＋横ストレッチ。
+    const sinceSwing = now - (p.meleeSwingAt || 0);
+    if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
+      const t = sinceSwing / PLAYER_MELEE_SWING_MS;
+      const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
+      const whip = 1 - t;                // 開始が一番強い→復帰
+      actOffX += aimx * PLAYER_MELEE_LUNGE_PX * arc * dsc;
+      actOffY += aimy * PLAYER_MELEE_LUNGE_PX * arc * dsc;
+      actLean += face * PLAYER_MELEE_LEAN_RAD * whip;
+      actSqX *= 1 + PLAYER_MELEE_STRETCH * arc;
+      actSqY *= 1 - PLAYER_MELEE_STRETCH * 0.6 * arc;
+    }
+    // カウンター成立の決めポーズ: 一瞬ふくらむ膨らみ＋傾き(速い減衰)。
+    const sinceCounter = now - (p.lastCounterSuccessTime || 0);
+    if (p.lastCounterSuccessTime > 0 && sinceCounter >= 0 && sinceCounter < PLAYER_COUNTER_MS) {
+      const pop = (1 - sinceCounter / PLAYER_COUNTER_MS) ** 2; // 速い減衰
+      actSqX *= 1 + PLAYER_COUNTER_POP * pop;
+      actSqY *= 1 + PLAYER_COUNTER_POP * pop;
+      actLean += face * PLAYER_COUNTER_LEAN_RAD * pop;
+    }
+    // リロード中: 手元作業の小刻みな上下＋左右リーン(リロード中だけ・進行と独立)。
+    if (p.reloadingWeaponId && now < p.reloadEndsAt) {
+      actOffY += Math.sin(now / 70) * PLAYER_RELOAD_BOB_PX * dsc;
+      actLean += Math.sin(now / 110) * PLAYER_RELOAD_LEAN_RAD;
+    }
+
     // 登場演出: store 共有の playerIntroOffset(t) で見た目オフセット + 着地スカッシュ。
     // カメラ(useGameLoop)が同じ式で飛行Xに追従するので、キャラは画面内を低く飛んで着地する。
     let introOffX = 0;
@@ -4149,12 +4210,12 @@ export class PixiScene {
       const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
       const sc = baseScale * this.depthScale(fb.footY) * introScale;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-      view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX, sc * introSqY * walkSqY);
-      view.sprite.rotation = walkLean;
+      view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
+      view.sprite.rotation = walkLean + actLean;
     }
     view.sprite.position.set(
-      this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX,
-      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY,
+      this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
+      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY,
     );
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
@@ -4181,10 +4242,10 @@ export class PixiScene {
       kb.texture = katanaTex;
       kb.visible = true;
       kb.scale.set((flip ? -1 : 1) * sc, sc);
-      kb.rotation = KATANA_BACK_IMG_ROT;
+      kb.rotation = KATANA_BACK_IMG_ROT + actLean; // 行動の二次モーションに本体と同じく追従
       kb.position.set(
-        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX,
-        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY - h * 0.55,
+        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
+        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - h * 0.55,
       );
       kb.alpha = view.sprite.alpha;
     } else {
