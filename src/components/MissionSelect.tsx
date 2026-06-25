@@ -695,9 +695,12 @@ const DevTools: React.FC<{
 // 名前の後にワンテンポ置いて飛び出す(Lv3が最も派手)。すべてCSS駆動(初期render後はReact非介入)。
 type RevealCfg = { nameCls: string; beat: number; step: number; ring: string };
 const REVEAL_BY_RARITY: Record<SkillRarity, RevealCfg> = {
-  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 620,  ring: 'border-white/15' },
-  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1050, ring: 'border-sky-400/50 shadow-[0_0_18px_rgba(56,189,248,0.45)]' },
-  super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 1850, ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
+  // step = カードの表示時間。レベルは beat 遅延後にポップ(pop=0.34s / pop3=0.6s)するので、
+  // step は「beat + ポップ尺 + 見え切る保持 + (superは退場フェード320ms)」を必ず上回るよう長めに取る。
+  // レア度が高いほど長く見せる(社長指示)。手動タップ/矢印で早送り可。
+  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 950,  ring: 'border-white/15' },
+  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1400, ring: 'border-sky-400/50 shadow-[0_0_18px_rgba(56,189,248,0.45)]' },
+  super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 2500, ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
 };
 
 // 破裂演出のレア度段階: 引いた中の最高レア度で 色/フラッシュ/破片量/リング/光/揺れ をエスカレートする。
