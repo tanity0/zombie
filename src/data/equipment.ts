@@ -48,11 +48,11 @@ type LineTable = { name: string; stats: EquipStat[] }[]; // index0=段階1 ... i
 const NORMAL_TABLES: Record<EquipLine, LineTable> = {
   // 体: 防護系(最大体力 / KILL猶予)
   protection: [
-    { name: '防弾ベスト', stats: [s('maxHealth', 80)] },
-    { name: '強化防弾ベスト', stats: [s('maxHealth', 120)] },
-    { name: '軍用防弾ベスト', stats: [s('maxHealth', 160), s('killGrace', 0.10)] },
-    { name: 'サバイバルアーマー', stats: [s('maxHealth', 200), s('killGrace', 0.15)] },
-    { name: '対変異体アーマー', stats: [s('maxHealth', 240), s('killGrace', 0.20)] }
+    { name: '防弾ベスト', stats: [s('maxHealth', 50)] },
+    { name: '強化防弾ベスト', stats: [s('maxHealth', 90)] },
+    { name: '軍用防弾ベスト', stats: [s('maxHealth', 130), s('killGrace', 0.10)] },
+    { name: 'サバイバルアーマー', stats: [s('maxHealth', 170), s('killGrace', 0.15)] },
+    { name: '対変異体アーマー', stats: [s('maxHealth', 210), s('killGrace', 0.20)] }
   ],
   // 体: 機動系(移動速度 / KILL猶予)
   mobility: [
@@ -100,7 +100,7 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
 
 // 特殊装備(部位ごと1種。3ステ・レア度非依存・5%出現。名称は仕様書「特殊装備」シート準拠=武将セット)。
 const SPECIAL_DEFS: Record<EquipSlot, { name: string; stats: EquipStat[] }> = {
-  body: { name: '武将の鎧', stats: [s('maxHealth', 150), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
+  body: { name: '武将の鎧', stats: [s('maxHealth', 120), s('killGrace', 0.10), s('moveSpeed', 0.25)] },
   arms: { name: '武将の小手', stats: [s('damage', 0.50), s('fireRate', 0.06), s('reload', 0.25)] },
   accessory: { name: '武将の兜', stats: [s('critChance', 0.08), s('scrap', 0.25), s('ammoDrop', 0.22)] }
 };

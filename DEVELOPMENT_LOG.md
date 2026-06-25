@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.990 — アーマー(体・防護系)の最大体力を一律 −30
+
+- **防護系(protection)5段階＋武将の鎧 の maxHealth を全て −30**(社長指示「全体から体力30ずつ下げて」)。
+  - 防弾ベスト 80→50 / 強化防弾ベスト 120→90 / 軍用防弾ベスト 160→130 /
+    サバイバルアーマー 200→170 / 対変異体アーマー 240→210。
+  - 武将の鎧(特殊・体)150→120。
+  - KILL猶予/移動速度など他ステは据え置き。maxHealth を持つ装備はこの6点のみ(機動系等は対象外)。
+- 表示(`最大体力 +N`)は値参照なので自動追従。テストは装備HP値を参照しておらず変更不要。
+- 検証: lint / typecheck(0 errors) / test(65 passed) / build すべて green。
+
 ## v0.25.989 — 画面シェイク全体を約2倍に(一括倍率)
 
 - **揺れ強度を全体で約2倍**(社長指示「全体的にエフェクトとして揺らしている、揺れ具合を2倍くらいにして」)。
