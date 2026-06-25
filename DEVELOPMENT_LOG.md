@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.950 — 裏ボス(深層域の隠しボス: ミーミル/ヨルムンガルド)を新規実装
+
+- 新要素(社長指示): 各ステージの深層域に出現する裏ボス。1体目=ヨルムンガルド(巨蛇/ステージ3)、
+  ステージ1=ミーミル(巨大な眼)。2体は **完全に同一仕様**(見た目/名前だけステージで変わる)。
+- ステージ判定: campaign `Stage.hiddenBoss`('mimir'=stage-1 / 'jormungand'=stage-3)→ pending → store `hiddenBoss`。
+- 仕様の対応:
+  1) 近づくまで出ない=深層域の指定深度(原点から `BOSS_SPAWN_DEPTH`≈7800)到達で1回だけ出現+アテンション「危険!直ちに避難を」。
+  2) 画面外は巣(出現座標=`homeX/Y`)へ戻る。 3) 画面外/帰巣中は毎秒40回復。
+  4) 大きさ=ジャイアントの3倍(hitbox 240×180 / 190×190)。 5) こちらの攻撃判定=ピクセル全体(=hitbox全体)。
+  6) ボスの接触判定は内側に縮小(`BOSS_CONTACT_INSET`=0.42、近接ビルド対策)。 7) 追跡中(`bossChasing`)は他敵が一斉に逃走。
+  8) 追跡中はイベント抑制。 9) 深層域を出ると帰巣→退場(再入で再出現)。 10) 攻撃力=ジャイアントの2倍(接触38)。
+  11) 巨体は頭基準描画(anchor 0.5,0)。 12) 耐久=ジャイアントの3倍(3000)。 13) 速度=ジャイアントと同じ(70)。
+  14) 攻撃=追跡 / 1秒溜め→0.5s間隔3連発 / 2秒溜め→全方位16発 / まれに3秒静止→2倍速で3秒ダッシュ。
+  15) 討伐で「ヨルムンガルド(ミーミル)討伐!」バナー。 16) 討伐時はFF風フェードアウト(`bossCorpse`を別スプライトで明滅退場)。
+- アーキ: 移動/攻撃/帰巣/再生は useGameLoop の専用コントローラ(死神と同方式)が座標を直接書き込む。
+  updateEnemies は裏ボスを早期 return で除外。死亡は「敵配列から消えた」検出で `bossCorpse` を立て、描画側がフェード。
+- 負荷スコア **2/10**(単体スプライト1枚+弾。弾は projectile=安全クラス。全方位16発も J130 safe の範囲。
+  per-frame Graphics/Text なし。フェードも単一スプライト)。
+- 変更: types/game.ts(EnemyType+Enemy.bossState 他)/ enemyUtils.ts(stats/isHiddenBoss/CONSTANT/color/fireProfile)/
+  gameStore.ts(state+reset+flee+cull保護+death label+scoreBoss)/ collisionUtils.ts(接触hitbox縮小)/
+  useGameLoop.ts(コントローラ+イベント抑制+recycle除外+fire除外)/ pixiScene.ts(頭基準描画+corpseフェード)/
+  pixiTextures.ts(mimir/jormungand登録)/ campaign.ts(hiddenBoss)/ App.tsx(pending受け渡し)/
+  public/sprites/{jormungand,mimir}.png。
+- 検証: lint/typecheck/test(56)/build 通過。enemyUtils.test に裏ボスのHP3倍・攻撃2倍・等速・サイズ3倍の不変条件テストを追加。
+- 報酬は後日。`?bossdepth=` で出現深度を調整可。
+
 ## v0.25.936 — [原因特定] タイトルのズーム数値が効かなかった真因=Tailwind preflight の img{max-width:100%}
 
 - 症状: タイトル画像の width を 120vw→150vw に変えても見た目が全く変わらない(埒が開かない)。

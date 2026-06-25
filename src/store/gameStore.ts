@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite
+  ActiveEvent, ShadowCloneState, BaseSite, EnemyType
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
@@ -24,7 +24,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
@@ -481,6 +481,8 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'lab-zombie-1': '研究施設の変異体(Lv1)',
   'lab-zombie-2': '研究施設の変異体(Lv2)',
   'lab-zombie-3': '研究施設の変異体(Lv3)',
+  mimir: 'ミーミル',
+  jormungand: 'ヨルムンガルド',
 };
 export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
 
@@ -854,7 +856,7 @@ const inertiaAlpha = (deltaTime: number, tau: number): number =>
 
 // スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。
 const isScoreElite = (t: string): boolean => t === 'pumpkin';
-const isScoreBoss = (t: string): boolean => t === 'giantbat';
+const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand';
 const countScoreEliteBoss = (enemies: { type: string }[]): { elite: number; boss: number } => ({
   elite: enemies.reduce((n, e) => n + (isScoreElite(e.type) ? 1 : 0), 0),
   boss: enemies.reduce((n, e) => n + (isScoreBoss(e.type) ? 1 : 0), 0),
@@ -1670,6 +1672,12 @@ interface GameState {
   pendingNearHorizon: string;                           // 出撃ステージの遠景森2キー(resetGame で nearHorizon へ)
   setPendingNearHorizon: (key: string) => void;
   nearHorizon: string;                                  // この出撃の遠景森2キー(''=なし / 'forest' / 'city'。描画が参照)
+  // 裏ボス(ステージ別の深層域ボス)。pending → resetGame で hiddenBoss へ。
+  pendingHiddenBoss: EnemyType | null;                  // 出撃ステージの裏ボス種別(無ければ null)
+  setPendingHiddenBoss: (t: EnemyType | null) => void;
+  hiddenBoss: EnemyType | null;                         // この出撃の裏ボス種別(useGameLoop の専用コントローラが参照)
+  bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
+  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
@@ -1869,6 +1877,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   farBackdrop: '',
   pendingNearHorizon: '',
   nearHorizon: '',
+  pendingHiddenBoss: null,
+  hiddenBoss: null,
+  bossChasing: false,
+  bossCorpse: null,
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
@@ -4515,6 +4527,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const losWalls = indoor ? indoorWalls : labWallRects;
 
       const updatedEnemies = enemies.map(enemy => {
+        // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
+        // useGameLoop の専用コントローラが座標を直接書き込む(死神と同じ方式)。
+        if (isHiddenBoss(enemy.type)) return enemy;
         // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+壁(研究所スキンは壁のみ)。
         const resolveMove = (nx: number, ny: number) => {
           let pos: { x: number; y: number };
@@ -4607,6 +4622,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           const seen = inRange && !(losWalls.length > 0 && segmentBlocked(pcx, pcy, ecx2, ecy2, losWalls)); // 壁越しは見つからない
           if (!seen) return { ...enemy, vx: 0, vy: 0 };
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
+        }
+
+        // 裏ボスが追いかけてきている間は、通常の敵もボスも全員プレイヤーから一斉に逃走する(社長指示)。
+        // 攻撃AI(溜め/突進/ジャンプ等)は中断し、プレイヤーと反対方向へ通常速度で離れる。裏ボス自身は上で除外済み。
+        if (state.bossChasing) {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const fx = ecx - pcx, fy = ecy - pcy;
+          const fl = Math.hypot(fx, fy) || 1;
+          const fvx = (fx / fl) * enemy.speed, fvy = (fy / fl) * enemy.speed;
+          const fmoved = resolveMove(enemy.x + fvx * deltaTime, enemy.y + fvy * deltaTime);
+          return { ...enemy, vx: fvx, vy: fvy, x: fmoved.x, y: fmoved.y, aiPhase: undefined, aiPhaseUntil: 0 };
         }
 
         // ダッシュ(突進)AI: 溜め中に「赤ライン」で移動先(直線距離)を予告→確定した狙い点へ3倍速で直進(曲がらない)。
@@ -4986,7 +5012,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const clearR2 = (event.radius * 1.5) ** 2;
       const kept = state.enemies.filter(e => {
-        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.fixed) return true;
+        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed) return true;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2; // 範囲外だけ残す
@@ -5026,7 +5052,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const clearR2 = (event.radius * 1.5) ** 2;
       const kept = state.enemies.filter(e => {
-        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.fixed) return true;
+        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed) return true;
         const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2;
       });
@@ -6264,6 +6290,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPendingNearHorizon: (key) => {
     set({ pendingNearHorizon: key });
   },
+  setPendingHiddenBoss: (t) => {
+    set({ pendingHiddenBoss: t });
+  },
 
   triggerEventVictory: () => {
     // 終了アイテム/ゴール。即勝利せず帰還サークルへ。屋内は壁に阻まれないようプレイヤー位置に直接出す(避けない)。
@@ -6887,6 +6916,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const farBackdrop = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingFarBackdrop : '';
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
+      // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
+      const hiddenBoss = (!state.danceTestMode && !indoor && stageTheme === 'forest') ? state.pendingHiddenBoss : null;
       const spawnTL = indoor
         ? { x: LAB_PLAYER_SPAWN.x - PLAYER_HITBOX / 2, y: LAB_PLAYER_SPAWN.y - PLAYER_HITBOX / 2 }
         : { x: 0, y: 0 };
@@ -6950,6 +6981,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         stageTheme,
         farBackdrop,
         nearHorizon,
+        hiddenBoss,
+        bossChasing: false,
+        bossCorpse: null,
         labDoors: runDoors,
         labButtons: runButtons,
         labProps: runProps,

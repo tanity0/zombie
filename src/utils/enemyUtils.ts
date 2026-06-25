@@ -35,13 +35,25 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 研究所(ステージ2)の敵は耐久値を全員2倍(社長指示)。lab-zombie はこのステージ専用。
   'lab-zombie-1': { width: 28, height: 28, speed: 52, health: 80,  damage: 20, experienceValue: 4 },
   'lab-zombie-2': { width: 34, height: 34, speed: 105, health: 180, damage: 28, experienceValue: 8 }, // 速度を犬(werewolf)と同じ105へ(社長指示=研究所の犬が遅い対策)
-  'lab-zombie-3': { width: 46, height: 46, speed: 48, health: 320, damage: 36, experienceValue: 20 }
+  'lab-zombie-3': { width: 46, height: 46, speed: 48, health: 320, damage: 36, experienceValue: 20 },
+  // 裏ボス(ステージ1=ミーミル / ステージ3=ヨルムンガルド)。仕様は共通(社長指示):
+  //  ・大きさ=通常ジャイアント(giantbat 60)の約3倍 ・速度=ジャイアントと同じ(70)
+  //  ・耐久=ジャイアントの3倍 ・攻撃力(接触)=ジャイアントの2倍。
+  // 耐久/攻撃は CONSTANT_STRENGTH_TYPES 経由で giantbat と同じ固定スケール(hpMult=ENEMY_HP_MULT, dmgMult=1)に乗る。
+  //  → health 600×5=3000(giant 200×5=1000 の3倍) / damage 38(giant 19 の2倍)。
+  // mimir は正方形(眼)・jormungand は横長(巨蛇)なので当たり判定の縦横比だけ素材に寄せる(描画は頭基準)。
+  mimir:      { width: 190, height: 190, speed: 70, health: 600, damage: 38, experienceValue: 0 },
+  jormungand: { width: 240, height: 180, speed: 70, health: 600, damage: 38, experienceValue: 0 }
 };
+
+// 裏ボス共通判定(2体は完全に同一仕様。stage で見た目/名前だけ変わる)。
+export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand';
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
 export const isBossType = (t: EnemyType): boolean =>
-  t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3';
+  t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
+  t === 'mimir' || t === 'jormungand';
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
@@ -156,7 +168,7 @@ const ENEMY_SPEED_MULT = 2 / 3;
 // ジャイアント未満の一般敵のみ対象。ジャイアント/死神/特別敵には付かない(強さ一定)。
 const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper']);
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -350,6 +362,11 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
   if (enemy.type === 'giantbat') {
     return { interval: 3000, range: 620, speed: 300, damage: 10, size: 14 };
   }
+  // 裏ボス: 弾の性能(damage/speed/size)はここで定義するが、発射タイミングは
+  // useGameLoop の専用コントローラ(3連発/全方位16発)が直接制御する(interval/range は使わない)。
+  if (enemy.type === 'mimir' || enemy.type === 'jormungand') {
+    return { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 };
+  }
   return null;
 };
 
@@ -405,6 +422,8 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'giantbat': return '#11122c';  // very dark
     case 'reaper':   return '#0a0a0a';  // pitch black
     case 'lich':     return '#7fb4e6';  // icy blue (ステージ4新型)
+    case 'mimir':    return '#7a3b5e';  // 眼の血色がかった紫(裏ボス)
+    case 'jormungand': return '#13204a'; // 深い蛇の藍(裏ボス)
     default:         return '#dc2626';
   }
 };

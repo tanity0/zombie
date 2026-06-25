@@ -294,6 +294,13 @@ export interface Enemy {
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;
+  // 裏ボス(mimir/jormungand)専用の状態機械(useGameLoop の専用コントローラが駆動)。
+  // 通常の updateEnemies の追跡AIからは除外され、ここで動き/攻撃/帰巣を管理する。
+  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'dash-windup' | 'dash' | 'return';
+  bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
+  bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
+  bossBurstLeft?: number;    // 3連発の残弾
+  bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
 }
 
 export type SummonKind = 'normal' | 'rare';
@@ -339,7 +346,9 @@ export type EnemyType =
   | 'lich'      // ステージ4の新型。ゴーストの1.2倍速でプレイヤーの周囲を旋回しながら詰める
   | 'lab-zombie-1' // 研究所Lv1(通常・男女)
   | 'lab-zombie-2' // 研究所Lv2(変異・男女)
-  | 'lab-zombie-3'; // 研究所Lv3(巨体・パンプキン相当)
+  | 'lab-zombie-3' // 研究所Lv3(巨体・パンプキン相当)
+  | 'mimir'      // 裏ボス(ステージ1): 巨大な眼+ゾンビの群体「ミーミル」
+  | 'jormungand'; // 裏ボス(ステージ3): 巨蛇「ヨルムンガルド」。仕様は mimir と共通
 
 // Weapon types
 export interface Weapon {

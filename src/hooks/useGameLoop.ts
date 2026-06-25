@@ -53,6 +53,7 @@ import {
   getEnemySpawnCount,
   getEnemySpawnInterval,
   isBossType,
+  isHiddenBoss,
   spawnEnemyAt,
   selectLabEnemyType,
   resolveEnemyTarget,
@@ -245,6 +246,26 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const WAVE_GRACE_MS = 10000;
 const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
+
+// --- 裏ボス(深層域の隠しボス: mimir/jormungand)コントローラ定数 ---
+// 深層域(原点から 7500 以上=area 4)の「指定エリア」に近づくと1回だけ出現する。
+const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で出現(area 4 の少し内側)
+const BOSS_EXIT_DEPTH = 7300;                        // この深度を下回ると深層域を出た=帰巣して退場(ヒステリシス)
+const BOSS_REGEN_PER_SEC = 40;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示)
+const BOSS_DASH_SPEED_MULT = 2;                      // ダッシュ時は2倍速で追跡
+const BOSS_SCREEN_MARGIN = 120;                      // 画面内判定のマージン(これより内なら on-screen 扱い)
+// 攻撃状態機械のタイミング(gameTime ms)。
+const BOSS_ACTION_MIN_MS = 2600;                     // 次の特殊行動までの最短(追跡しながら待つ)
+const BOSS_ACTION_MAX_MS = 4600;                     // 同・最長
+const BOSS_AIM_BURST_MS = 1000;                      // 立ち止まり1秒後に3連発(社長指示)
+const BOSS_BURST_SHOTS = 3;
+const BOSS_BURST_GAP_MS = 500;                       // 0.5秒間隔(社長指示)
+const BOSS_AIM_RADIAL_MS = 2000;                     // 立ち止まり2秒後に全方位16発(社長指示)
+const BOSS_RADIAL_COUNT = 16;
+const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
+const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
+const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
+const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
 // 画面の半分+この余白を超えたら確実に画面外なので home へ復帰させる。
 const LAB_RETURN_HOME_MARGIN = 140;
@@ -358,6 +379,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
   const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean }>(
     { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false }
+  );
+  // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
+  // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false }
   );
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
@@ -827,6 +853,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false };
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           plantGuaranteedRef.current = false;    // 保証出現フラグも再アーム
           werewolfGuaranteedRef.current = false;
@@ -864,7 +891,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 研究所/屋内/ダンスでは出さない(通常の森ステージ専用)。
         if (!danceTest && !indoor && !labTheme) {
           const ae = useGameStore.getState().activeEvent;
-          if (!ae) {
+          // 裏ボスが追いかけてきている間はイベントを発生させない(社長指示)。
+          if (!ae && !useGameStore.getState().bossChasing) {
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
             // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
             const arenaReady = FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current;
@@ -1194,6 +1222,156 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     : e
                 ),
               });
+            }
+          }
+        }
+
+        // --- 裏ボス(深層域の隠しボス: ステージ1=ミーミル / ステージ3=ヨルムンガルド) ---
+        // 仕様(社長指示): 深層域の指定エリアに近づくと1回だけ出現→「危険!直ちに避難を」。
+        //  追跡/攻撃(3連発・全方位16発・たまにダッシュ)。画面外は巣へ戻りつつ毎秒40回復。
+        //  深層域を出ると帰巣して退場。追いかけてくる間は他敵が一斉に逃げ、イベントも発生しない。
+        //  討伐で「<名前>討伐!」+FF風フェードアウト。移動/攻撃はこのコントローラが座標を直接書き込む。
+        const hiddenBoss = useGameStore.getState().hiddenBoss;
+        if (hiddenBoss && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+          const bs = bossRef.current;
+          const pcx = player.x + player.width / 2;
+          const pcy = player.y + player.height / 2;
+          const depth = Math.hypot(pcx, pcy);
+          const live = useGameStore.getState().enemies;
+          const boss = bs.bossId ? live.find(e => e.id === bs.bossId) : undefined;
+
+          // 討伐検出: 出現中の裏ボスが敵配列から消えた(=プレイヤーが倒した)。自前の帰巣退場は retreating で除外。
+          if (bs.bossId && !boss && !bs.retreating) {
+            useGameStore.setState({
+              bossChasing: false,
+              bossCorpse: { type: hiddenBoss, x: bs.lastX, y: bs.lastY, w: bs.w, h: bs.h, diedAt: Date.now() },
+              eventBannerText: `${enemyDeathLabel(hiddenBoss)}討伐!`,
+              eventBannerUntil: newGameTime + 3600,
+            });
+            useGameStore.getState().triggerShake(BOSS_FADE_MS, 5); // ゴゴゴゴ…と長く低い地鳴り
+            spawnFlash('rgba(255,255,255,0.25)', 320);
+            playSfx('event-clear');
+            bs.bossId = null;
+          }
+
+          if (!bs.bossId) {
+            // 討伐後のフェード期間が終わったら corpse を片付ける。
+            const corpse = useGameStore.getState().bossCorpse;
+            if (corpse && Date.now() - corpse.diedAt >= BOSS_FADE_MS) useGameStore.setState({ bossCorpse: null });
+            if (useGameStore.getState().bossChasing) useGameStore.setState({ bossChasing: false });
+
+            // 未出現で深層域の指定深度に到達 → 出現(この出撃で1回だけ)。アテンション中は重ねない。
+            if (!bs.spawned && depth >= BOSS_SPAWN_DEPTH && !useGameStore.getState().attention) {
+              let hx = player.vx ?? 0, hy = player.vy ?? 0;
+              if (Math.abs(hx) + Math.abs(hy) < 0.01 && player.lastDirection) { hx = player.lastDirection.x; hy = player.lastDirection.y; }
+              if (Math.abs(hx) + Math.abs(hy) < 0.01) hy = -1;
+              const hlen = Math.hypot(hx, hy) || 1;
+              const gb = useGameStore.getState().gameBounds;
+              const spawnDist = Math.hypot(gb.width / 2, gb.height / 2) + 90; // 進行方向の画面外に置く
+              const sx = pcx + (hx / hlen) * spawnDist;
+              const sy = pcy + (hy / hlen) * spawnDist;
+              const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
+              e.x = sx - e.width / 2; e.y = sy - e.height / 2;
+              e.bossState = 'chase';
+              e.bossNextActionAt = newGameTime + 2000;
+              e.homeX = e.x; e.homeY = e.y;
+              addEnemy(e);
+              bs.spawned = true; bs.bossId = e.id; bs.retreating = false;
+              bs.homeX = e.x; bs.homeY = e.y; bs.lastX = e.x; bs.lastY = e.y; bs.w = e.width; bs.h = e.height;
+              useGameStore.getState().triggerAttention(sx, sy);
+              useGameStore.setState({ eventBannerText: '危険!直ちに避難を', eventBannerUntil: newGameTime + 3000 });
+              useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+              spawnFlash('rgba(120,20,40,0.30)', 360);
+            }
+          } else if (boss) {
+            bs.lastX = boss.x; bs.lastY = boss.y; bs.w = boss.width; bs.h = boss.height;
+            const cam = useGameStore.getState().camera;
+            const gb = useGameStore.getState().gameBounds;
+            const bcx = boss.x + boss.width / 2, bcy = boss.y + boss.height / 2;
+            const M = BOSS_SCREEN_MARGIN;
+            const onScreen = bcx >= cam.x - M && bcx <= cam.x + gb.width + M && bcy >= cam.y - M && bcy <= cam.y + gb.height + M;
+            const inDeep = depth >= BOSS_EXIT_DEPTH;
+            const speed = boss.speed;
+            const fireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(boss, player, tx, ty));
+
+            const patch: Partial<typeof boss> = {};
+            let chasing = false;
+            let despawn = false;
+
+            if (!inDeep) {
+              // 深層域を出た → 巣へ帰り、着いたら退場(討伐扱いにしない)。帰巣中も回復する。
+              bs.retreating = true;
+              const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
+              const dl = Math.hypot(dhx, dhy);
+              if (dl < 10) { despawn = true; }
+              else {
+                const mv = Math.min(speed * deltaTime, dl);
+                patch.x = boss.x + (dhx / dl) * mv; patch.y = boss.y + (dhy / dl) * mv;
+                patch.health = Math.min(boss.maxHealth, boss.health + BOSS_REGEN_PER_SEC * deltaTime);
+                patch.bossState = 'return';
+              }
+            } else if (!onScreen) {
+              // 画面外: 巣(下の定位置)へ戻りつつ毎秒40回復。追跡状態ではない。
+              bs.retreating = false;
+              const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
+              const dl = Math.hypot(dhx, dhy);
+              if (dl > 1) { const mv = Math.min(speed * deltaTime, dl); patch.x = boss.x + (dhx / dl) * mv; patch.y = boss.y + (dhy / dl) * mv; }
+              patch.health = Math.min(boss.maxHealth, boss.health + BOSS_REGEN_PER_SEC * deltaTime);
+              patch.bossState = 'return';
+            } else {
+              // 画面内 & 深層域 → 追跡 + 攻撃状態機械。
+              bs.retreating = false;
+              chasing = true;
+              const st = boss.bossState ?? 'chase';
+              const moveToward = (mult: number) => {
+                const dpx = pcx - bcx, dpy = pcy - bcy;
+                const dl = Math.hypot(dpx, dpy) || 1;
+                const mv = speed * mult * deltaTime;
+                patch.x = boss.x + (dpx / dl) * mv; patch.y = boss.y + (dpy / dl) * mv;
+              };
+              const nextActionDelay = () => newGameTime + BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
+              if (st === 'chase') {
+                moveToward(1);
+                if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
+                  const r = Math.random();
+                  if (r < BOSS_DASH_CHANCE) { patch.bossState = 'dash-windup'; patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS; }
+                  else if (r < BOSS_DASH_CHANCE + (1 - BOSS_DASH_CHANCE) / 2) { patch.bossState = 'aim-burst'; patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS; }
+                  else { patch.bossState = 'aim-radial'; patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS; }
+                }
+              } else if (st === 'aim-burst') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'burst'; patch.bossBurstLeft = BOSS_BURST_SHOTS; patch.bossBurstNextAt = newGameTime; }
+              } else if (st === 'burst') {
+                const left = boss.bossBurstLeft ?? 0;
+                if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
+                  fireBullet(pcx, pcy);
+                  patch.bossBurstLeft = left - 1;
+                  patch.bossBurstNextAt = newGameTime + BOSS_BURST_GAP_MS;
+                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'aim-radial') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
+                    const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT;
+                    fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
+                  }
+                  patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
+                }
+              } else if (st === 'dash-windup') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS; }
+              } else if (st === 'dash') {
+                moveToward(BOSS_DASH_SPEED_MULT);
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+              }
+            }
+
+            if (despawn) {
+              useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== boss.id), bossChasing: false });
+              bs.bossId = null; bs.spawned = false; bs.retreating = false;
+            } else {
+              if (Object.keys(patch).length) {
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === boss.id ? { ...e, ...patch } : e) }));
+              }
+              if (useGameStore.getState().bossChasing !== chasing) useGameStore.setState({ bossChasing: chasing });
             }
           }
         }
@@ -2887,6 +3065,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const firedIds: string[] = [];
         const liveSummonsForFire = useGameStore.getState().summons;
         liveEnemies.forEach(enemy => {
+          // 裏ボスの発砲(3連発/全方位16発)は専用コントローラが直接撃つので汎用ループからは除外。
+          if (isHiddenBoss(enemy.type)) return;
           // Stunned enemies are frozen — they can't spit projectiles either.
           if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
           // 特殊行動中(ジャンプ/ダッシュの溜め・動作中)は発砲しない(giantbat の弾/ジャンプ/ダッシュを排他に)。
@@ -4139,6 +4319,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const recycleDistance = Math.max(gameBounds.width, gameBounds.height) * ENEMY_RECYCLE_DISTANCE_MULT;
         let recycledAnyEnemy = false;
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
+          // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。
+          if (isHiddenBoss(enemy.type)) return enemy;
           // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
           if (enemy.fromEvent) return enemy;
           // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない

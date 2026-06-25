@@ -1,5 +1,15 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
 import { enemyFootBox } from '../pixi/renderSpec';
+import { isHiddenBoss } from './enemyUtils';
+
+// 裏ボスの「向こうの攻撃(接触)当たり判定」だけは見た目より内側に小さくする(近接ビルド対策・社長指示)。
+// プレイヤー→ボスの攻撃判定は従来どおりフル(enemy.width/height=ピクセル全体)。これは逆方向(ボス→プレイヤー接触)用。
+const BOSS_CONTACT_INSET = 0.42; // 縦横をこの割合まで縮めた中央矩形を接触判定に使う
+const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } => {
+  if (!isHiddenBoss(e.type)) return e;
+  const w = e.width * BOSS_CONTACT_INSET, h = e.height * BOSS_CONTACT_INSET;
+  return { x: e.x + (e.width - w) / 2, y: e.y + (e.height - h) / 2, width: w, height: h };
+};
 
 // PHILL銃の頭部リージョン(見た目の上部)= 描画ボックス上端から boxH×この割合。
 const HEAD_FRACTION = 0.33;
@@ -151,7 +161,7 @@ export const checkPlayerEnemyCollisions = (
   enemies: Enemy[]
 ): Enemy[] => {
   const hit = playerHitbox(player);
-  return enemies.filter(enemy => checkCollision(hit, enemy));
+  return enemies.filter(enemy => checkCollision(hit, enemyContactBox(enemy)));
 };
 
 // 敵 ↔ 召喚ユニット(通常個体のみ)の接触。各重なりにつき敵の damage を返す。

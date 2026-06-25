@@ -24,7 +24,7 @@ import type {
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
-import { getEnemyColor } from '../utils/enemyUtils';
+import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -768,6 +768,7 @@ export class PixiScene {
   private arenaGfx = new Graphics(); // 囲い系イベントの柵リング(半透明の光る円ストローク・world座標)
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
+  private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
@@ -1121,6 +1122,8 @@ export class PixiScene {
       this.castleSummonCircle,
       this.shadowContainer,
     );
+    this.bossCorpseSprite.visible = false;
+    this.L.actorLayer.addChild(this.bossCorpseSprite); // 裏ボス討伐フェード(アクター層・y-sort)
     this.arenaGfx.blendMode = 'add'; // 半透明の光る柵(加算で発光感)
     this.returnGfx.blendMode = 'add'; // 帰還サークルも加算で発光
     this.baseSitesGfx.blendMode = 'add'; // 拠点候補地サークルも加算で発光
@@ -2202,6 +2205,7 @@ export class PixiScene {
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    this.syncBossCorpse(s.bossCorpse, now);
     this.syncLowHpVignette(s.player.health, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
@@ -4298,7 +4302,15 @@ export class PixiScene {
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
+    // 裏ボスは画面からはみ出る巨体のため「頭(上端)基準」で描画する(社長指示・仕様11)。
+    // アンカーを上中央(0.5,0)にして当たり判定の上端(e.y)に頭を置く。他敵は従来の足元(0.5,1)。
+    const headAnchored = isHiddenBoss(e.type);
+    view.sprite.anchor.set(0.5, headAnchored ? 0 : 1);
+    if (headAnchored) {
+      view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(e.y));
+    } else {
+      view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
+    }
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
@@ -4702,6 +4714,27 @@ export class PixiScene {
         }
       }
     }
+  }
+
+  // 裏ボス討伐演出: store.bossCorpse がある間だけ、死亡位置に頭基準で本体絵を描き、
+  // ドット絵時代のFFボス風に「ゆっくり消えつつ終盤ほど速く明滅(ゴゴゴ…)」でフェードアウトする。
+  // 描画のみ(シミュレーション非干渉)。生体は既に enemies から除かれているので別スプライトで出す。
+  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number } | null, now: number) {
+    const sp = this.bossCorpseSprite;
+    if (!corpse) { if (sp.visible) sp.visible = false; return; }
+    const tex = getTexture(corpse.type);
+    if (!tex) { sp.visible = false; return; }
+    const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
+    const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt) / FADE_MS));
+    const flicker = 1 - t * (0.5 + 0.5 * Math.sin(now / 45)); // 終盤ほど深く明滅
+    sp.visible = true;
+    sp.texture = tex;
+    sp.anchor.set(0.5, 0); // 頭(上端)基準=生体と同じ
+    const sc = containScale(corpse.w, corpse.h * 1.2, tex.width, tex.height);
+    sp.scale.set(sc, sc);
+    sp.position.set(Math.round(corpse.x + corpse.w / 2), Math.round(corpse.y));
+    sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
+    sp.alpha = Math.max(0, (1 - t) * flicker);
   }
 
   // 瀕死(HP≤20): 暗い赤のビネットが心拍(ドクン…ドクン…)で脈動。HP≥21で解除。screen座標・全画面オーバスキャン。

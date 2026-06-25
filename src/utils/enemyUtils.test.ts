@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile } from './enemyUtils';
 import type { Enemy, Player, Summon } from '../types/game';
 
 const mkEnemy = (x: number, y: number): Enemy =>
@@ -55,5 +55,40 @@ describe('isBossType', () => {
     expect(isBossType('reaper')).toBe(true);
     expect(isBossType('zombie')).toBe(false);
     expect(isBossType('plant')).toBe(false);
+  });
+  it('counts the hidden bosses as bosses', () => {
+    expect(isBossType('mimir')).toBe(true);
+    expect(isBossType('jormungand')).toBe(true);
+  });
+});
+
+describe('hidden boss (mimir/jormungand) spec', () => {
+  it('isHiddenBoss flags only the two hidden bosses', () => {
+    expect(isHiddenBoss('mimir')).toBe(true);
+    expect(isHiddenBoss('jormungand')).toBe(true);
+    expect(isHiddenBoss('giantbat')).toBe(false);
+    expect(isHiddenBoss('reaper')).toBe(false);
+  });
+  it('is 3x giant HP, 2x giant contact damage, same speed (社長指示)', () => {
+    // 固定難易度タイプ同士は同じスケール(giantbat と同じ hpMult/dmgMult)なので生値で比較できる。
+    const giant = spawnEnemyAt('giantbat', 0, 0, 0);
+    const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
+    const mimir = spawnEnemyAt('mimir', 0, 0, 0);
+    expect(jorm.maxHealth).toBe(giant.maxHealth * 3);
+    expect(mimir.maxHealth).toBe(giant.maxHealth * 3);
+    expect(jorm.damage).toBe(giant.damage * 2);
+    expect(mimir.damage).toBe(giant.damage * 2);
+    expect(jorm.speed).toBe(giant.speed);
+    expect(mimir.speed).toBe(giant.speed);
+  });
+  it('is about 3x the giant footprint', () => {
+    const giant = spawnEnemyAt('giantbat', 0, 0, 0);
+    const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
+    expect(jorm.width).toBeGreaterThanOrEqual(giant.width * 3); // 240 >= 180
+    expect(jorm.height).toBeGreaterThanOrEqual(giant.height * 2.5);
+  });
+  it('exposes a fire profile (bullets driven by the controller)', () => {
+    expect(getEnemyFireProfile(spawnEnemyAt('jormungand', 0, 0, 0))).not.toBeNull();
+    expect(getEnemyFireProfile(spawnEnemyAt('mimir', 0, 0, 0))).not.toBeNull();
   });
 });

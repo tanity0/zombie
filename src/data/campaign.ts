@@ -8,7 +8,7 @@
 // - 各ステージには複数のサブミッションがぶら下がる予定(今はメインのみ並べる。後で差し替え)。
 // - ゲームプレイは当面ステージ1の内容を流用(後で各ステージ用に差し替える)。
 
-import type { CharacterClass, SubWeaponKey, SkillKey, IntroLine } from '../types/game';
+import type { CharacterClass, SubWeaponKey, SkillKey, IntroLine, EnemyType } from '../types/game';
 
 // --- ステージ / ミッションの型 -------------------------------------------
 export interface StageVoiceLine {
@@ -51,6 +51,7 @@ export interface Stage {
   nearHorizon?: string;  // 遠景森2(手前に重ねる帯)のキー。'forest'=森シルエット / 'city'=廃墟都市。未指定=なし。
   bgm?: string;          // ステージBGMキー(audioManager の GAME_BGM)。未指定なら theme/既定で解決。
   mainEvent?: 'suppression'; // メインミッションのゲームプレイ・イベント種別。'suppression'=8拠点制圧。
+  hiddenBoss?: EnemyType; // このステージの深層域に出現する裏ボス('mimir'=ステージ1 / 'jormungand'=ステージ3)。未指定=なし。
 }
 
 // 社長提供の本編シナリオ(the ONE)をそのまま反映。地名(name/area)は文脈からの仮置き。
@@ -66,6 +67,7 @@ export const STAGES: Stage[] = [
     unlockBy: null,
     nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)
     mainEvent: 'suppression', // メインミッション=8拠点制圧イベント
+    hiddenBoss: 'mimir', // 深層域の裏ボス=ミーミル(巨大な眼)
     subs: [],
     main: {
       code: 'M1',
@@ -146,6 +148,7 @@ export const STAGES: Stage[] = [
     unlockBy: 'stage-2',
     farBackdrop: 'city', // 遠景を昼の廃都パノラマ(正午ステージ)へ差し替え(森の地形・地平はそのまま)。
     nearHorizon: 'city', // 遠景森2(手前の廃墟都市帯)
+    hiddenBoss: 'jormungand', // 深層域の裏ボス=ヨルムンガルド(巨蛇)
     bgm: 'stage3',       // ステージ3専用BGM(public/audio/stage3.mp3)
     subs: [],
     main: {
