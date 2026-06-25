@@ -2878,8 +2878,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (Date.now() < (knife.explodeAt ?? 0)) continue;
               const bx = knife.x + knife.width / 2;
               const by = knife.y + knife.height / 2;
+              // 発火ナイフの爆発は「爆発扱い」: エクスプローダー(半径/ダメージ ×1.2/1.35/1.5)を乗せる(社長指示)。
+              const fkExMult = skillExplosionMult(useGameStore.getState().player);
               // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
-              const blastR = (knife.area ?? FIRE_KNIFE_RADIUS_BY_LEVEL[1]) * heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
+              const blastR = (knife.area ?? FIRE_KNIFE_RADIUS_BY_LEVEL[1]) * fkExMult * heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
               let fkHitCount = 0;
               removeProjectile(knife.id);
               playSfx('bomb');
@@ -2896,7 +2898,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (dist > blastR) continue;
                 if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / blastR;
-                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
+                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死
                 fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);

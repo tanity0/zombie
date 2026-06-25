@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.971 — 発火ナイフの爆発を「爆発扱い」に(エクスプローダーが乗る)
+
+- 発火ナイフの範囲爆発に `skillExplosionMult`(エクスプローダー ×1.2/1.35/1.5)を半径＆ダメージに適用(社長指示)。
+  手榴弾/ランチャー等と同じ「爆発」スキルの対象に統一。ヘビーガンナーの範囲×1.1は元から適用済み。
+- 命中(刺さり)単体ダメージ24はそのまま(爆発ではないので非対象)。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.970 — 裏ボスHPを個別指定(ミーミル6666/ヨルムンガルド7500/スカジ10000)
 
 - 裏ボスは `ENEMY_HP_MULT` を掛けず `health` を直接 maxHealth にする(reaper と同じ raw 扱い)。
