@@ -34,6 +34,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - `tsconfig.app.json` の target/lib を ES2020→ES2022(`Array.prototype.at` 等の型エラー解消の前提)。
 - (別途進行中) typecheck 実効化＋既存型エラー一掃は次コミットで反映予定。
 
+## v0.25.985 — 裏ボスが画面外で「勝手に死ぬ」修正 / ダッシュ攻撃は衝突で即キャンセル
+
+- **裏ボスが自由行動中に勝手に討伐扱いになる**バグ修正: 敵数キャップのカリング `isProtected` に裏ボスが
+  含まれておらず、画面外で帰巣中(プレイヤーから最遠)の裏ボスがキャップ超過時にカリング→コントローラの
+  討伐検出(`bossId && !boss && !retreating`)が「倒した」と誤認していた。→ `isHiddenBoss` を `isProtected` に追加。
+- **ダッシュ攻撃(charge)が障害物に引っかかって動かなくなる**問題: `resolveMove` で押し戻されても突進状態が
+  最大2.8s続き棒立ち→終了時に判定。→ **何かにぶつかったら(押し戻し検出 or 盾)即キャンセル**(その場停止→CD)。
+- ジャンプ攻撃は元から空中=障害物すり抜け(raw座標)+盾のみキャンセル(現行維持)=社長指示どおりのため変更なし。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.984 — 拠点を8→4(東西南北)に / 駐留軍人をランダム配置(被りなし)
 
 - `BASE_SITE_COUNT` 8→4。`createBaseSites` は `i*2π/4`=90°刻み=**東西南北の4方向**に自動配置(角度: base-0東/1南/2西/3北)。

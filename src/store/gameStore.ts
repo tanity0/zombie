@@ -4679,11 +4679,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・直進(目標固定なので曲がらない)
             const cvx = (cdx / cdist) * cs, cvy = (cdy / cdist) * cs;
-            const moved = resolveMove(enemy.x + cvx * deltaTime, enemy.y + cvy * deltaTime);
-            // 盾にぶつかったら突進をキャンセル(その場で停止・クールダウンへ)。
-            if (shieldRects.length > 0 &&
-                shieldRects.some(s => rectsOverlap({ x: moved.x, y: moved.y, width: enemy.width, height: enemy.height }, s))) {
-              shieldBlocks.push({ x: moved.x + enemy.width / 2, y: moved.y + enemy.height / 2, kind: 'dash' });
+            const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
+            const moved = resolveMove(rawX, rawY);
+            // ダッシュ(突進)は「何かにぶつかったら」即キャンセル(社長指示)。盾だけでなく木/プロップ/壁等で
+            // resolveMove に押し戻された=衝突。引っかかって 2.8s 突っ立つ問題を解消(その場停止→クールダウン)。
+            const hitShield = shieldRects.length > 0 &&
+              shieldRects.some(s => rectsOverlap({ x: moved.x, y: moved.y, width: enemy.width, height: enemy.height }, s));
+            const blocked = Math.abs(moved.x - rawX) > 0.5 || Math.abs(moved.y - rawY) > 0.5;
+            if (hitShield || blocked) {
+              if (hitShield) shieldBlocks.push({ x: moved.x + enemy.width / 2, y: moved.y + enemy.height / 2, kind: 'dash' });
               return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type) };
             }
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };

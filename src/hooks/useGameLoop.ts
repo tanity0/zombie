@@ -4639,6 +4639,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
             e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
             e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+            isHiddenBoss(e.type) || // 裏ボスは専用コントローラ管理(帰巣/回復)。カリングすると討伐誤検出で「勝手に死ぬ」
             (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
           const cullable = [...currentEnemiesForCap]
             .filter(e => !isProtected(e))
