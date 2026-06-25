@@ -55,15 +55,18 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
       style={{ cursor: phase === 'title' ? 'pointer' : 'default' }}
     >
-      {/* 正方形レイヤー(窓)を中央に作り、その背景として横長画像を cover で敷く。正方形は縦長画面より
-          アスペクト比がマシなので、画像は左右の余白だけクロップされ「横長目一杯」にならず中央が収まる。 */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      {/* 正方形レイヤー(窓)に横長画像を object-cover で敷く。窓幅で寄り(ズーム)、下寄せ＋下マージンで
+          キャラの足が START のすぐ上に来るよう高さを合わせる。数値(width / paddingBottom)で微調整可。 */}
+      <div
+        className="pointer-events-none absolute inset-0 flex items-end justify-center"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 22%)' }}
+      >
         <img
           src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
           alt=""
           draggable={false}
           className="aspect-square object-cover"
-          style={{ width: 'min(150vw, 150svh)' }}
+          style={{ width: 'min(116vw, 116svh)' }}
         />
       </div>
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
