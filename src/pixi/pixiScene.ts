@@ -4477,6 +4477,8 @@ export class PixiScene {
 
   private drawDecoy(v: { container: Container; gfx: Graphics; sprite: Sprite }, p: Projectile) {
     v.container.position.set(p.x + p.width / 2, p.y + p.height / 2);
+    // 設置物の共通: 上方(奥=画面上)へ流れたら地平線フェードで消す(盾/タレットと統一)。
+    v.container.alpha = this.horizonActorAlpha(p.y + p.height);
     // 射程サークル(area=射程半径)。黒フチ+シアン本線の単一ストローク(軽量)。
     const g = v.gfx;
     g.clear();
@@ -4532,9 +4534,10 @@ export class PixiScene {
     const age = Date.now() - p.createdAt;
     // 設置ポップ(最初の180ms)で小さく出現→等倍。
     const pop = age < 180 ? 0.6 + 0.4 * (age / 180) : 1;
-    // 寿命末の600msでフェードアウト。
+    // 寿命末の600msでフェードアウト。さらに他の設置物(盾)と同じ地平線フェードを乗算し、
+    // 上方(奥=画面上)へ流れていったら消えるようにする(社長指示・盾と挙動を統一)。
     const remaining = p.duration - age;
-    const alpha = Math.max(0, Math.min(1, remaining / 600));
+    const alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY);
     v.container.position.set(footX, footY);
     v.container.zIndex = footY;
     v.container.alpha = alpha;
