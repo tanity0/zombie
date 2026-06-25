@@ -57,15 +57,16 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     >
       {/* 正方形レイヤー(窓)に横長画像を object-cover で敷く。窓幅で寄り(ズーム)、下寄せ＋下マージンで
           キャラの足が START のすぐ上に来るよう高さを合わせる。数値(width / paddingBottom)で微調整可。 */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <img
-          src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
-          alt=""
-          draggable={false}
-          className="aspect-square object-cover"
-          style={{ width: 'min(150vw, 150svh)' }}
-        />
-      </div>
+      {/* 絶対配置で中央固定(flex子にしない)。flex子だと flex-shrink で width が container幅(100vw)に
+          clamp され、150vw 等を指定しても効かない(=埒が開かない原因だった)。overflow-hidden(root)で
+          はみ出しはクリップ。width が寄り(ズーム)、aspect-square＋object-cover で左右だけクロップ。 */}
+      <img
+        src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
+        alt=""
+        draggable={false}
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
+        style={{ width: 'min(150vw, 150svh)' }}
+      />
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
       {/* バージョン表示: スタート画面(タイトル)の右上 */}

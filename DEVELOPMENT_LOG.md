@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.936 — [原因特定] タイトルのズーム数値が効かなかった真因=Tailwind preflight の img{max-width:100%}
+
+- 症状: タイトル画像の width を 120vw→150vw に変えても見た目が全く変わらない(埒が開かない)。
+- 真因: **Tailwind preflight が全 img に `max-width:100%` を当てている**ため、`width:150vw` 指定が
+  コンテナ幅(≈100vw)に clamp されていた。加えて flex子だったため flex-shrink でも縮んでいた。
+- 修正: 画像を**絶対配置で中央固定**(flex子をやめる)＋**`max-w-none`**(preflightのmax-width解除)。
+  これで width(vw)がそのまま寄り(ズーム)に効く。root の overflow-hidden ではみ出しをクリップ。
+- 現状 150vw。確認後に数値で寄りを最終調整(クリップ限界は約170vw=the ONEが端に達する)。
+- 検証: typecheck/lint/build 全green。
+
 ## v0.25.934 — 敵: 攻撃モーションに入ったらやり切る(通常ノックバックで中断しない／気絶は例外)
 
 - 指摘: ゾンビ等が一度立ち止まって攻撃に入っても、ノックバックで範囲外に押し出されると中断していた。
