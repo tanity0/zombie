@@ -294,6 +294,8 @@ const BOSS_CRUSH_FX_MS = 130;                        // 爆破FX/SE/シェイク
 const BOSS_CRUSH_SHAKE_MS = 130;                     // 「少し揺れる」程度の短い画面シェイク
 const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚などより控えめ)
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
+const BOSS_COUNTER_WARP_DIST = 50;                   // カウンター被弾時、プレイヤーの反対側へワープする距離(中心間px・社長指示)
+const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -414,8 +416,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   );
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0 }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0 }
   );
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
@@ -892,7 +894,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -1391,9 +1393,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 画面内 & 深層域 → 追跡 + 攻撃状態機械。
               bs.retreating = false;
               chasing = true;
-              // トラップ(root)/気絶(stun)中は移動も攻撃も止める=トラップ/スタンが効く(社長報告)。
+              // カウンターワープ中: 0.5秒かけてフェードイン(reaperWarpAlpha)。移動/攻撃は止める(materializing)。
+              const warping = Date.now() < bs.warpUntil;
+              if (warping) {
+                patch.reaperWarpAlpha = Math.max(0, Math.min(1, 1 - (bs.warpUntil - Date.now()) / BOSS_WARP_FADE_MS));
+              } else if ((boss.reaperWarpAlpha ?? 1) < 1) {
+                patch.reaperWarpAlpha = 1; // フェード完了→完全表示へ戻す
+              }
+              // トラップ(root)/気絶(stun)/ワープ中は移動も攻撃も止める=トラップ/スタンが効く(社長報告)。
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
-              const frozen = (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
+              const frozen = warping
+                || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
                 || (boss.stunUntil !== undefined && newGameTime < boss.stunUntil);
               if (frozen) {
                 // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
@@ -3353,6 +3363,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
+
+          // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。
+          // ワープ先でフラッシュ＋0.5秒フェードイン(reaperWarpAlpha を boss controller が駆動)。即死(ワーム)時は除外。
+          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && !enemyKilled
+              && Date.now() >= bossRef.current.warpUntil) {
+            const wpl = useGameStore.getState().player;
+            const wpcx = wpl.x + wpl.width / 2, wpcy = wpl.y + wpl.height / 2;
+            const bcx0 = enemyForFx.x + enemyForFx.width / 2, bcy0 = enemyForFx.y + enemyForFx.height / 2;
+            let ux = bcx0 - wpcx, uy = bcy0 - wpcy;
+            const um = Math.hypot(ux, uy) || 1;
+            ux /= um; uy /= um; // プレイヤー→ボス現在地の向き
+            // 反対側 = プレイヤーから -向き へ DIST。新しい中心→左上に変換。
+            const ncx = wpcx - ux * BOSS_COUNTER_WARP_DIST, ncy = wpcy - uy * BOSS_COUNTER_WARP_DIST;
+            const nx = ncx - enemyForFx.width / 2, ny = ncy - enemyForFx.height / 2;
+            bossRef.current.warpUntil = Date.now() + BOSS_WARP_FADE_MS;
+            bossRef.current.lastX = nx; bossRef.current.lastY = ny;
+            useGameStore.setState(st => ({
+              enemies: st.enemies.map(en => en.id === enemyForFx.id
+                ? { ...en, x: nx, y: ny, reaperWarpAlpha: 0, knockbackUntil: 0 } : en),
+            }));
+            // ワープ先のフラッシュ演出。
+            spawnFlash('rgba(199,210,254,0.18)', 160);
+            useGameStore.getState().spawnGlow(ncx, ncy, 64, 'rgba(165,180,252,', 360);
+            spawnRing(ncx, ncy, 8, 70, 'rgba(199,210,254,0.95)', 4, 320);
+            spawnBurst(ncx, ncy, '#c7d2fe', 14);
+            playSfx('counter');
+          }
 
           if (enemyForFx) {
             const hitX = enemyForFx.x + enemyForFx.width / 2;

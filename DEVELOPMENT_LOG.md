@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.981 — 裏ボス: カウンター被弾でプレイヤー反対側へワープ(フラッシュ＋0.5秒フェードイン)
+
+- 裏ボスがカウンター弾(反射弾)を食らうと、プレイヤーの「反対側」 `BOSS_COUNTER_WARP_DIST=50`px(中心間)へ
+  ワープ(社長指示)。即死対象のワーム(ヨルムンガルド)は除外(死ぬので)。
+- ワープ先で `spawnFlash`＋`spawnGlow`＋`spawnRing`＋`spawnBurst` のフラッシュ演出、`reaperWarpAlpha` を
+  0→1 に `BOSS_WARP_FADE_MS=500`ms かけてフェードイン(boss controller が駆動)。フェード中は移動/攻撃停止。
+- 多重発火防止: ワープ中(warpUntil)は再ワープしない。`bossRef.warpUntil` で管理。
+- 負荷 1/10(イベント単発、既存FX流用)。lint/test(65 pass)/build OK。
+
 ## v0.25.980 — 敵のジャンプ/ダッシュ攻撃でも障害物破壊(裏ボスと同仕様)
 
 - 敵が `aiPhase==='jump'`(ジャンプ攻撃)/ `'charge'`(ダッシュ攻撃)中、重なった木/街・雪プロップを破壊
