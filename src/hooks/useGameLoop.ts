@@ -416,7 +416,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     useGameStore.getState().triggerTimeSlow(0.32, PLAYER_DEATH_SLOW_MS);
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
-    window.setTimeout(onGameOver, 650);
+    // 立ち絵の1秒フェードを見せてからゲームオーバー画面へ(現状の死亡演出はそのまま)。
+    window.setTimeout(onGameOver, 1100);
   }, [onGameOver, spawnBurst, spawnFlash, spawnRing]);
 
   const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {

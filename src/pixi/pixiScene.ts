@@ -553,6 +553,7 @@ const TORCH_FAR_FADE_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
 const SMALL_GLOW_RADIUS_SCALE = 0.88;
 const SMALL_GLOW_ALPHA_SCALE = 0.74;
+const PLAYER_DEATH_FADE_MS = 1000; // 死亡時に立ち絵をフェードアウトする長さ(社長指示=1秒)
 const GROUND_REFLECTION_ENABLED = true;
 const GROUND_REFLECTION_ALPHA = 0.28;
 const GEM_BODY_GLOW_ALPHA = 0.38;
@@ -786,6 +787,7 @@ export class PixiScene {
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
+  private playerDeathAt = 0;           // 死亡で立ち絵フェード開始した時刻(now基準。health>0でリセット)
 
   // Atmosphere (screen space). gradeSprite multiplies the world cool; the warm
   // playerLight is added on top so the hero stays bright; vignette darkens edges.
@@ -4112,7 +4114,11 @@ export class PixiScene {
     );
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
-    view.sprite.alpha = seekerActive ? 0.4 : (p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1);
+    // 死亡時: 立ち絵を1秒でフェードアウト(現状の死亡演出はそのまま)。health>0 で基準時刻をリセット。
+    if (p.health <= 0) { if (this.playerDeathAt === 0) this.playerDeathAt = now; }
+    else this.playerDeathAt = 0;
+    const deathFade = this.playerDeathAt > 0 ? Math.max(0, 1 - (now - this.playerDeathAt) / PLAYER_DEATH_FADE_MS) : 1;
+    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();
