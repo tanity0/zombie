@@ -469,7 +469,7 @@ export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度
 // 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
 export const stickAimFactor = (strength: number) =>
   STICK_AIM_MIN_FACTOR + (1 - STICK_AIM_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
-export const WIRE_DIST_BY_LEVEL = [0, 100, 120, 140] as const; // 刺す距離(Lv1=100px, +20/Lv で固定)
+export const WIRE_DIST_BY_LEVEL = [0, 140, 180, 220] as const; // 刺す距離(Lv1=140px, +40/Lv・社長指示)
 export const WIRE_PLANT_DELAY_MS = 1000; // 刺してから高速移動が始まるまでの待ち(1秒)
 export const WIRE_DASH_MS = 150;         // 高速移動の所要時間(短い=高速)
 export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 移動完了後のCD(全Lv1秒)
@@ -478,6 +478,8 @@ export const WIRE_LAND_KNOCKBACK_SPEED = 400; // すり抜け/着地ノックバ
 // Lv3 限定: 着地点の爆撃(範囲ダメージ)。
 export const WIRE_BOMB_RADIUS = 120;     // 爆撃の範囲
 export const WIRE_BOMB_DAMAGE_MULT = 2;  // 爆撃ダメージ倍率(近接基準)
+// Lv3 限定: ダッシュ中の「すり抜け攻撃」が爆発化(社長指示)。通過した敵を中心に小範囲AoE。
+export const WIRE_PASS_BOMB_RADIUS = 90; // すり抜け爆発の範囲(着地爆撃より小さめ)
 
 // 敵タイプ → 死因表示用の日本語ラベル。
 const ENEMY_DEATH_LABELS: Record<string, string> = {

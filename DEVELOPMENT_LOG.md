@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.978 — ワイヤーアンカー仕様変更: 距離140+40/Lv / Lv3 はすり抜けが爆発化
+
+- `WIRE_DIST_BY_LEVEL` を `[_,100,120,140]`→`[_,140,180,220]`(Lv1=140px、+40/Lv・社長指示)。
+- Lv3: ダッシュ中の「すり抜け攻撃」を**爆発化**。通過した敵を中心に小範囲AoE
+  (`WIRE_PASS_BOMB_RADIUS=90`、ダメージ=近接×`WIRE_BOMB_DAMAGE_MULT(2)`、ボス系は非致死)。
+  Lv1/2 は従来どおり近接小ダメージ(×0.5)。着地点爆撃(Lv3・半径120)はそのまま併存。
+- 負荷: 3/10。すり抜け爆発は1ダッシュにつき敵1体1回(`seen`セットで重複防止)・ダッシュは短時間(150ms)で
+  発生数は有界。FXはリング1+バースト1+bomb SE/爆発と控えめ。安全弁=seen重複防止＋短いダッシュ窓。
+- lint/test(65 pass)/build OK。
+
 ## v0.25.977 — 挙動監査の結果反映: 凍結解除直後の溜め攻撃暴発を防止
 
 - 監査(サブエージェント)で唯一の実挙動バグ: 裏ボスがトラップ/気絶で凍結中、溜め/連射タイマー

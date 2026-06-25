@@ -24,7 +24,7 @@ import {
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC,
-  WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT,
+  WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
@@ -3737,19 +3737,52 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (wp.wireAnchored && nowW >= wp.wirePlantUntil) {
             useGameStore.getState().startWireDash();
           }
-          // ワイヤーダッシュ中: すり抜けた敵に近接小ダメージ(1ダッシュにつき敵1回)。
+          // ワイヤーダッシュ中: すり抜けた敵に攻撃(1ダッシュにつき敵1回)。
+          // Lv1/2 = 近接小ダメージ。Lv3 = すり抜け攻撃が「爆発」化(通過した敵を中心に小範囲AoE・社長指示)。
           if (wp.wireDashUntil > 0 && nowW < wp.wireDashUntil) {
             if (wirePassHitRef.current.dash !== wp.wireDashUntil) {
               wirePassHitRef.current = { dash: wp.wireDashUntil, ids: new Set() };
             }
             const seen = wirePassHitRef.current.ids;
-            const dmg = meleeDmg * WIRE_PASS_DAMAGE_MULT; // 小ダメージ
+            const wireLvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
+            const passExplode = wireLvl >= 3;
+            const dmg = passExplode ? meleeDmg * WIRE_BOMB_DAMAGE_MULT : meleeDmg * WIRE_PASS_DAMAGE_MULT;
             for (const e of useGameStore.getState().enemies) {
               if (seen.has(e.id)) continue;
               if (e.aiPhase === 'jump') continue; // 空中無敵は対象外
               if (!checkCollision(wp, e)) continue; // プレイヤーが重なった=すり抜け
               seen.add(e.id);
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              if (passExplode) {
+                // すり抜け爆発: 通過した敵を中心に小範囲AoE。ボス系は非致死(爆発)。
+                const aoe = useGameStore.getState().enemies.filter(o => {
+                  if (o.aiPhase === 'jump') return false;
+                  const ox = o.x + o.width / 2, oy = o.y + o.height / 2;
+                  return Math.hypot(ox - ecx, oy - ecy) <= WIRE_PASS_BOMB_RADIUS + Math.max(o.width, o.height) / 2;
+                });
+                aoe.forEach(o => {
+                  const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
+                  const killed = useGameStore.getState().damageEnemy(o.id, dmg, true); // 爆発=ボス非致死
+                  spawnDamageNumber(oxc, o.y, dmg, true);
+                  if (!killed && nowW >= (o.knockbackImmuneUntil ?? 0)) {
+                    const kdx = oxc - ecx, kdy = oyc - ecy;
+                    const kdd = Math.hypot(kdx, kdy) || 1;
+                    useGameStore.setState({
+                      enemies: useGameStore.getState().enemies.map(x => x.id === o.id ? {
+                        ...x,
+                        knockbackVx: (kdx / kdd) * WIRE_LAND_KNOCKBACK_SPEED,
+                        knockbackVy: (kdy / kdd) * WIRE_LAND_KNOCKBACK_SPEED,
+                        knockbackUntil: nowW + KNOCKBACK_DURATION,
+                        knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
+                      } : x),
+                    });
+                  }
+                });
+                spawnRing(ecx, ecy, 8, WIRE_PASS_BOMB_RADIUS, 'rgba(147,197,253,0.9)', 4, 280);
+                spawnBurst(ecx, ecy, '#93c5fd', 12);
+                playSfx('bomb');
+                continue;
+              }
               const killed = useGameStore.getState().damageEnemy(e.id, dmg);
               spawnDamageNumber(ecx, e.y, dmg, false);
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
