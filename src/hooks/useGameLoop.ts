@@ -29,7 +29,7 @@ import {
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive,
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
@@ -270,6 +270,7 @@ const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒�
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
+let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
 // 画面の半分+この余白を超えたら確実に画面外なので home へ復帰させる。
 const LAB_RETURN_HOME_MARGIN = 140;
@@ -643,6 +644,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
 
     const gameLoop = (timestamp: number) => {
+     try { // 診断+耐障害: ループ本体の例外でrAFが途切れて全停止(=移動/敵/弾が止まる)のを防ぎ、例外内容を記録。
       // The game can sit idle (tab in background, game-over screen, paused
       // mid-render, etc.) for arbitrary amounts of time. We must NOT pass
       // huge deltas into the simulation — they cause physics teleports
@@ -1293,7 +1295,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // テスト: ?bossnow=1 のときは巣に関係なく「プレイヤーの近く・画面外(進行方向)」へ即出現。
             const lair = bossLairPos(hiddenBoss);
             const nearLair = lair ? Math.hypot(pcx - lair.x, pcy - lair.y) <= BOSS_SPAWN_NEAR : depth >= BOSS_SPAWN_DEPTH;
-            if (!bs.spawned && (FORCE_HIDDEN_BOSS || nearLair) && !useGameStore.getState().attention) {
+            if (!bs.spawned && (FORCE_HIDDEN_BOSS || nearLair) && !useGameStore.getState().attention && !isGameTimeStopped()) {
               const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
               let cx: number, cy: number;
               if (FORCE_HIDDEN_BOSS) {
@@ -4571,8 +4573,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
       // Request next frame
       frameRef.current = requestAnimationFrame(gameLoop);
+     } catch (err) {
+      // 例外でも次フレームを必ず予約=フリーズさせない。内容は ?debug=1 オーバーレイに出す(初回ログも)。
+      const e = err as Error;
+      const where = String(e?.stack ?? '').split('\n')[1]?.trim()?.slice(0, 90) ?? '';
+      const msg = `${e?.name ?? 'Error'}: ${e?.message ?? err} @ ${where}`;
+      if (!loopErrLogged) { loopErrLogged = true; console.error('[gameLoop] body error (loop kept alive):', err); }
+      try { useGameStore.setState({ debugLoopError: msg }); } catch { /* ignore */ }
+      frameRef.current = requestAnimationFrame(gameLoop);
+     }
     };
-    
+
     // Start game loop
     frameRef.current = requestAnimationFrame(gameLoop);
     

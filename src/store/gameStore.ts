@@ -1680,6 +1680,7 @@ interface GameState {
   bossChasing: boolean;                                 // 裏ボスが「追いかけてきている」状態(=他敵が逃げる/イベント抑制。コントローラが毎フレ更新)
   bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number } | null; // 討伐後のフェードアウト演出(描画のみが参照)
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)
+  debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
@@ -1884,6 +1885,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   bossChasing: false,
   bossCorpse: null,
   hiddenBossDefeated: false,
+  debugLoopError: '',
   startWithTestStraps: false,
   showStatsOverlay: false,
   introUntil: 0,
