@@ -57,16 +57,13 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     >
       {/* 正方形レイヤー(窓)に横長画像を object-cover で敷く。窓幅で寄り(ズーム)、下寄せ＋下マージンで
           キャラの足が START のすぐ上に来るよう高さを合わせる。数値(width / paddingBottom)で微調整可。 */}
-      <div
-        className="pointer-events-none absolute inset-0 flex items-end justify-center"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 14%)' }}
-      >
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <img
           src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
           alt=""
           draggable={false}
           className="aspect-square object-cover"
-          style={{ width: 'min(150vw, 150svh)' }}
+          style={{ width: 'min(120vw, 120svh)' }}
         />
       </div>
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
