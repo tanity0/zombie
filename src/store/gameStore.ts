@@ -2610,6 +2610,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
+      // ノックバック方向用の中心差分(距離は enemyMeleeDist を使うが、向きは中心→敵で算出)。
+      const dx = ecx - pcx;
+      const dy = ecy - pcy;
       // 距離は裏ボスのみ帯(AABB)の最近点基準、他は中心基準(enemyMeleeDist)。slash演出/壁判定は中心を使う。
       const dist = enemyMeleeDist(pcx, pcy, enemy);
       // バッシュ対象 = 押し出される壁の掃過範囲に重なる敵(メレー範囲外でも当たる)。
@@ -2909,6 +2912,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; }
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
+      // ノックバック方向用の中心差分(分身中心→敵)。
+      const dx = ecx - ccx;
+      const dy = ecy - ccy;
       // 裏ボスのみ帯(AABB)の最近点基準で距離を測る(中心まで寄らず縁で当たる)。
       const dist = enemyMeleeDist(ccx, ccy, enemy);
       if (dist > meleeRange) { survivors.push(enemy); continue; }

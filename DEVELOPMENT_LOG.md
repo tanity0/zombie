@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.974 — [重大バグ修正] 近接スイングが敵に当たらない(dx/dy 未定義で例外→ダメージ未適用)
+
+- 症状: 敵が近接範囲にいると通常近接が「かなりの確率で発動しない」。フィニッシュ/カウンターは効く。
+  自動タレットが範囲内だと斬撃(タレットのモード切替スラッシュ)は出るのに敵に当たらない。
+- 真因: `enemyMeleeDist` 導入時(こちらの当たり=帯に合わせる対応)に、近接スイングのループから
+  `const dx = ecx - pcx; const dy = ecy - pcy;` を**消してしまった**が、ノックバック計算
+  (gameStore.ts 2693/2695 と分身 2945/2947)で `dx/dy` を**使い続けていた**。実行時に
+  `dx` 参照で **ReferenceError → triggerCounter が例外**。例外は敵ダメージ適用(最終 set)より前で
+  発生するため、その敵にはダメージが入らない。一方:
+  - フィニッシュ(スタン敵)/撃破/ノックバック無敵中の敵は `dx/dy` 行の手前で `continue` するので無傷で通る=「効く」。
+  - カウンター(反射)はゲームループ側の別経路=無関係に動作。
+  - タレットのモード切替スラッシュはループより前で spawn 済み=「斬撃は出るが敵に当たらない」の正体。
+- 修正: 両ループに `dx/dy`(中心→敵の差分=ノックバック方向用)を復活。距離は従来どおり `enemyMeleeDist`。
+- 補足: `npm run typecheck`(`tsc --noEmit`)はルート tsconfig が `files:[]`＋references のみで**実質ノーチェック**
+  だったため未定義 dx を取りこぼした(ESLint も TS版は no-undef 無効)。本件は別途 typecheck を実効化すると
+  既存型エラーが多数表面化するため、今回は触れず修正のみ(要フォロー)。
+- lint/test(65 pass)/build OK。
+
 ## v0.25.973 — 裏ボス: 刀オート斬の当たりを帯AABBに / トラップ・スタンが効くように
 
 - 調査(サブエージェント2本)で確定: 刀の**オート斬撃のターゲット選定が敵の中心距離**だった
