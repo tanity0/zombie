@@ -3748,7 +3748,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               const killed = useGameStore.getState().damageEnemy(e.id, dmg);
               spawnDamageNumber(ecx, e.y, dmg, false);
-              spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
+              useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
               if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
                 const dx = ecx - pcx, dy = ecy - pcy;
                 const dd = Math.hypot(dx, dy) || 1;

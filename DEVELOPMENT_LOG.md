@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.976 — 挙動の総点検: もう1件の未定義参照クラッシュ(spawnSlash)を修正
+
+- 全量 typecheck(`tsc -p tsconfig.app.json`)で「値の未定義参照(Cannot find name)」=実行時クラッシュ級を洗い出し。
+  該当は dx/dy(v0.25.974 修正済)と **`useGameLoop.ts:3751` の素の `spawnSlash`** のみ。後者を
+  `useGameStore.getState().spawnSlash(...)` に修正(ワイヤーダッシュで敵をすり抜けた瞬間に ReferenceError で
+  例外→そのダッシュのダメージ処理が止まる、を解消)。これで未定義参照クラッシュ級はゼロ。
+- 残りの型エラーはすべて既存の型ノイズ(ブラウザAPI型/`.at()`のlib target/未使用変数/union の anchor 等)で
+  実行時には動作する。`Weapon`(gameStore:1165)は型注釈=消去されるので無害。
+- 注記: ルート typecheck が実質ノーチェックの件は別途要対応(本コミットでは挙動修正のみ)。
+- lint/test(65 pass)/build OK。挙動ロジックの追加監査(スタン/トラップ凍結・盾表・破壊FX・召喚誘導等)を並行実施中。
+
 ## v0.25.975 — 銃の射程/自動照準も裏ボスの帯(AABB)最近点基準に
 
 - 「裏ボスの銃の射程が中心らへんにしかない」: `weaponUtils` の `pickTarget` / `nearestEnemyDistance` が
