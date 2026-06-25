@@ -1,15 +1,10 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
 import { enemyFootBox } from '../pixi/renderSpec';
-import { isHiddenBoss } from './enemyUtils';
 
-// 裏ボスの「向こうの攻撃(接触)当たり判定」だけは見た目より内側に小さくする(近接ビルド対策・社長指示)。
-// プレイヤー→ボスの攻撃判定は従来どおりフル(enemy.width/height=ピクセル全体)。これは逆方向(ボス→プレイヤー接触)用。
-export const BOSS_CONTACT_INSET = 0.72; // 縦横をこの割合まで縮めた中央矩形を接触判定に使う(体に当たる大きさ。端は少し余白)。描画(当たり判定サークル)とも共有。
-const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } => {
-  if (!isHiddenBoss(e.type)) return e;
-  const w = e.width * BOSS_CONTACT_INSET, h = e.height * BOSS_CONTACT_INSET;
-  return { x: e.x + (e.width - w) / 2, y: e.y + (e.height - h) / 2, width: w, height: h };
-};
+// 裏ボスの当たり判定は「足元の帯(AABB=enemy.width×height)」に統一(社長指示「この四角を当たり判定に」)。
+// 巨大な絵とは分離し、こちらの攻撃・向こうの接触の両方ともこの帯=AABBで判定する。よって接触ボックスは
+// もはや特別扱い不要(全敵 AABB そのもの)。enemyContactBox は将来の差し戻し用に名前だけ残す薄いラッパ。
+const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } => e;
 
 // PHILL銃の頭部リージョン(見た目の上部)= 描画ボックス上端から boxH×この割合。
 const HEAD_FRACTION = 0.33;

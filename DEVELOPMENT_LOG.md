@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.964 — 裏ボス: 当たり判定=足元の帯(AABB)に統一 / 絵は分離して巨体描画 / 影=帯基準 / 裏回り込みで半透明
+
+- 社長指示「ざっくりこの辺を四角く当たり判定にして」(各ボス画像の下部=赤枠の接地帯)に対応。
+- **当たり判定=足元の帯(AABB=enemy.width×height)に統一**(mimir 165×92 / jormungand 346×60 / skadi 304×68)。
+  こちらの攻撃も向こうの接触も同じこの帯で判定(`enemyContactBox` は全敵 AABB そのものに簡素化、
+  `BOSS_CONTACT_INSET` 廃止)。これで「中心まで寄らないと当たらない/見えないのに食らう」を解消。
+- **見た目(巨体)は帯と分離して描画**: `pixiScene` に `BOSS_SPRITE_FIT`(絵内での帯の位置/大きさ割合)を追加。
+  `scale=(帯幅/fit.w)/texW` で絵の実寸を決め、帯の上にアンカー(0.5,0.5)で正しく乗せる。遠近スケール非適用。
+- **討伐フェード(`syncBossCorpse`)も同じ分離描画**に統一 → 倒した瞬間に縮まない(以前 containScale で帯サイズに縮小していた)。
+- **影は帯=当たり判定の幅基準**(巨大スプライト幅ではなく `e.width`)。社長確認依頼に対応。
+- **プレイヤーが帯より奥(裏)に回り込んだら本体絵を半透明(α=0.5)**=巨体に自機が隠れない(社長指示)。
+- 判定表示は2サークル→**帯=四角の脈動枠1つ**に変更(うっすら橙)。
+- テスト更新: 「footprint は平たい帯(高さ<幅)・giant より広い接地幅」を担保(旧「高さも3倍」は廃止)。
+- lint/typecheck/test(62 pass)/build OK。
+
 ## v0.25.958 — [根本修正] 裏ボス追跡中の凍結=イベント処理で null.kind を踏んでいた
 
 - 症状: 裏ボス出現(アテンション)後、移動/敵湧き/サブウェポン/弾更新が全停止(振り向き・近接・BGM・一時停止は生きる)。

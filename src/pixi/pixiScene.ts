@@ -28,7 +28,7 @@ import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
-import { pickupDisplayPosition, BOSS_CONTACT_INSET } from '../utils/collisionUtils';
+import { pickupDisplayPosition } from '../utils/collisionUtils';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
@@ -587,6 +587,18 @@ const stage3EnemyTextureName = (type: string): string | null =>
   STAGE3_ENEMY_TYPES.has(type) ? `stage3-enemies/${type}` : null;
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
+
+// 裏ボスは「当たり判定=足元の帯(AABB=enemy.width×height)」と「絵(巨体)」を分離して描く(社長指示)。
+// fit = 絵の中での帯の位置・大きさ(0..1 の割合): w/h=帯が絵に占める幅/高さ, cx/cy=帯中心の絵内座標(左上原点)。
+// これで scale=(帯幅/fit.w)/texW から絵の実寸が決まり、帯=AABBの上に絵が正しく乗る。素材の額装が変わったら再計測。
+const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: number }> = {
+  mimir:      { w: 0.55, h: 0.24, cx: 0.48, cy: 0.76 }, // 眼(縦長 849×1080)。帯=下部の接地影あたり。
+  jormungand: { w: 0.91, h: 0.21, cx: 0.50, cy: 0.72 }, // 巨蛇(横長 1280×960)。帯=とぐろの下端。
+  skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(1151×1243)。帯=足元。
+};
+const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
+// プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
+const BOSS_BEHIND_ALPHA = 0.5;
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
 // ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
 // 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
@@ -3838,8 +3850,11 @@ export class PixiScene {
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
+      // 裏ボスは絵が巨大で当たり判定(帯)と分離しているので、影も帯=当たり判定の幅を基準にする(社長指示)。
       const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
-      const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
+      const shadowW = isHiddenBoss(e.type)
+        ? e.width
+        : actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
       // 色付き個体は影を色で染める(青<紫<赤)。本体の見た目は変えない。
       const ct = e.colorTier ? ENEMY_COLOR_TIER_SHADOW[e.colorTier] : undefined;
       this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, ct?.tint ?? 0x000000, ct?.alphaMult ?? 1);
@@ -4318,16 +4333,49 @@ export class PixiScene {
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
-    // 裏ボスは「実体(当たり判定)＝見た目」を一致させるため、足元アンカー＋遠近スケール無しで
-    // AABB ちょうどに描く(社長指示)。他敵は従来どおり足元アンカー＋遠近スケール。
+    // 裏ボスは「当たり判定=足元の帯(AABB)」と「絵(巨体)」を分離して描く(社長指示)。
+    // 他敵は従来どおり足元アンカー＋遠近スケール。
     const bossFixed = isHiddenBoss(e.type);
-    view.sprite.anchor.set(0.5, 1);
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
     view.container.zIndex = fb.footY;
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
     const reaperWarpFade = e.reaperWarpAlpha ?? 1;
     view.container.alpha = horizonAlpha * reaperWarpFade;
+
+    if (bossFixed && tex) {
+      // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
+      const fit = BOSS_SPRITE_FIT[e.type] ?? BOSS_FIT_DEFAULT;
+      view.sprite.texture = tex;
+      view.sprite.anchor.set(0.5, 0.5);
+      const scale = (e.width / fit.w) / tex.width; // 帯幅→絵の実寸(縦横同率=歪まない)
+      const spriteW = scale * tex.width, spriteH = scale * tex.height;
+      const stripCx = e.x + e.width / 2, stripCy = e.y + e.height / 2;
+      // 絵の中心(アンカー)= 帯の中心から、帯が絵内のどこにあるか(fit.cx/cy)ぶん逆にずらす。
+      const spx = stripCx + (0.5 - fit.cx) * spriteW;
+      const spy = stripCy + (0.5 - fit.cy) * spriteH;
+      const breath = this.enemyBreath(e, now);
+      const sinceHit = now - e.lastHit;
+      let flinchSqY = 1;
+      if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
+        const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS;
+        const dir = e.knockbackVx > 0.01 ? 1 : e.knockbackVx < -0.01 ? -1 : 1;
+        view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob;
+        flinchSqY = 1 - 0.1 * wob;
+      } else {
+        view.sprite.skew.x = 0;
+      }
+      view.sprite.position.set(Math.round(spx + liftShake), Math.round(spy - liftHop));
+      view.sprite.scale.set(scale * breath.x, scale * breath.y * flinchSqY);
+      // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
+      const ply = useGameStore.getState().player;
+      const behind = (ply.y + ply.height) < fb.footY
+        && (ply.x + ply.width) > (spx - spriteW / 2)
+        && ply.x < (spx + spriteW / 2);
+      view.sprite.alpha = behind ? BOSS_BEHIND_ALPHA : 1;
+      view.sprite.visible = true;
+    } else {
+    view.sprite.anchor.set(0.5, 1);
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
     view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
 
     if (tex) {
@@ -4336,7 +4384,7 @@ export class PixiScene {
       const stage3BossMul = (this.daylight && e.type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
       // ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので上方向に拡大。視覚のみ=hitbox不変。
       const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(e.type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * (bossFixed ? 1 : this.depthScaleEnemy(fb.footY)) * stage3BossMul * stage4VisMul;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * stage3BossMul * stage4VisMul;
       const breath = this.enemyBreath(e, now);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
@@ -4365,6 +4413,7 @@ export class PixiScene {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
+    }
 
     if (horizonAlpha <= 0) view.light.visible = false;
     else {
@@ -4385,18 +4434,12 @@ export class PixiScene {
     // Above-sprite layer: health bar, boss marker, hit flash.
     const o = view.overlay;
     o.clear();
-    // 裏ボスは巨体で当たり判定が分かりにくいので、2つの判定を常時表示(社長指示):
-    //  ・青 = こちらの攻撃が当たる範囲(体=AABB相当)
-    //  ・橙(脈動) = 食らう接触範囲(向こうの攻撃判定=BOSS_CONTACT_INSET)。こちらが「気づかず食らう」対策の主役。
+    // 裏ボスの当たり判定=足元の帯(AABB)に統一(こちらの攻撃・向こうの接触とも同じ)。巨体で分かりにくい
+    // ので、その帯=四角を常時うっすら表示(社長指示「この四角を当たり判定に」)。脈動する橙の矩形。
     if (isHiddenBoss(e.type)) {
       const pulse = 0.5 + 0.5 * Math.sin(now / 280);
-      // 体(こちらの攻撃が当たる範囲=AABB相当)= 水色の太枠(見逃さないよう高コントラスト)。
-      o.ellipse(cx, cy, e.width / 2, e.height / 2).fill({ color: 0x38bdf8, alpha: 0.10 });
-      o.ellipse(cx, cy, e.width / 2, e.height / 2).stroke({ width: 4, color: 0x22d3ee, alpha: 0.9 });
-      // 接触(食らう範囲=向こうの攻撃判定)= 橙の太枠+塗り+脈動。ここに入ると被弾。
-      const cw = (e.width / 2) * BOSS_CONTACT_INSET, ch = (e.height / 2) * BOSS_CONTACT_INSET;
-      o.ellipse(cx, cy, cw, ch).fill({ color: 0xf97316, alpha: 0.18 + 0.10 * pulse });
-      o.ellipse(cx, cy, cw, ch).stroke({ width: 4, color: 0xfb923c, alpha: 0.85 + 0.15 * pulse });
+      o.rect(e.x, e.y, e.width, e.height).fill({ color: 0xf97316, alpha: 0.16 + 0.08 * pulse });
+      o.rect(e.x, e.y, e.width, e.height).stroke({ width: 3, color: 0xfb923c, alpha: 0.8 + 0.15 * pulse });
     }
     this.drawHealthBar(o, e);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
@@ -4785,10 +4828,14 @@ export class PixiScene {
     const flicker = 1 - t * (0.5 + 0.5 * Math.sin(now / 45)); // 終盤ほど深く明滅
     sp.visible = true;
     sp.texture = tex;
-    sp.anchor.set(0.5, 1); // 足元(下端)基準=生体と同じ(遠近スケール無しなので生体と同サイズ=縮まない)
-    const sc = containScale(corpse.w, corpse.h * 1.2, tex.width, tex.height);
-    sp.scale.set(sc, sc);
-    sp.position.set(Math.round(corpse.x + corpse.w / 2), Math.round(corpse.y + corpse.h));
+    // 生体と同じ「分離描画」で配置(帯=corpse.w×h の上に絵を伸ばす)。これで討伐時に縮まない(社長指摘)。
+    const fit = BOSS_SPRITE_FIT[corpse.type] ?? BOSS_FIT_DEFAULT;
+    sp.anchor.set(0.5, 0.5);
+    const scale = (corpse.w / fit.w) / tex.width;
+    const spriteW = scale * tex.width, spriteH = scale * tex.height;
+    const stripCx = corpse.x + corpse.w / 2, stripCy = corpse.y + corpse.h / 2;
+    sp.scale.set(scale, scale);
+    sp.position.set(Math.round(stripCx + (0.5 - fit.cx) * spriteW), Math.round(stripCy + (0.5 - fit.cy) * spriteH));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
   }

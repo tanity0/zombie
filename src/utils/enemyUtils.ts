@@ -41,12 +41,12 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //  ・耐久=ジャイアントの3倍 ・攻撃力(接触)=ジャイアントの2倍。
   // 耐久/攻撃は CONSTANT_STRENGTH_TYPES 経由で giantbat と同じ固定スケール(hpMult=ENEMY_HP_MULT, dmgMult=1)に乗る。
   //  → health 600×5=3000(giant 200×5=1000 の3倍) / damage 38(giant 19 の2倍)。
-  // mimir は正方形(眼)・jormungand は横長(巨蛇)なので当たり判定の縦横比だけ素材に寄せる(描画は頭基準)。
-  // 裏ボスは描画で遠近スケールを掛けない(pixiScene)=この width/height が「見た目＝当たり判定＝影＝死体」共通サイズ。
-  // 素材のアスペクトに合わせる(mimir 縦/jormungand 横長/skadi やや縦)。巨体感はこの値で調整する。
-  mimir:      { width: 300, height: 380, speed: 70, health: 600, damage: 38, experienceValue: 0 },
-  jormungand: { width: 360, height: 270, speed: 70, health: 600, damage: 38, experienceValue: 0 },
-  skadi:      { width: 320, height: 350, speed: 70, health: 600, damage: 38, experienceValue: 0 }
+  // 裏ボスの width/height は「当たり判定の帯(足元の四角・社長指定)」。絵はこれより大きくフル表示する
+  // (pixiScene の BOSS_SPRITE_FIT で帯=絵の下部に合わせて配置)。見た目=絵 / 判定=この帯、で分離。
+  // 帯サイズは素材アスペクト×指定フレームから算出(BOSS_SPRITE_FIT と整合させること)。
+  mimir:      { width: 165, height: 92,  speed: 70, health: 600, damage: 38, experienceValue: 0 },
+  jormungand: { width: 346, height: 60,  speed: 70, health: 600, damage: 38, experienceValue: 0 },
+  skadi:      { width: 304, height: 68,  speed: 70, health: 600, damage: 38, experienceValue: 0 }
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。

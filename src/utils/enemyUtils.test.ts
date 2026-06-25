@@ -81,11 +81,18 @@ describe('hidden boss (mimir/jormungand) spec', () => {
     expect(jorm.speed).toBe(giant.speed);
     expect(mimir.speed).toBe(giant.speed);
   });
-  it('is about 3x the giant footprint', () => {
+  it('hitbox = a wide footprint strip (3x body is visual-only, decoupled in pixi)', () => {
+    // 社長指示で「当たり判定=足元の四角(帯)」に変更。巨体(約3倍)の見た目は pixi の BOSS_SPRITE_FIT で
+    // 描画のみ拡大し、AABB(width/height)はこの帯=接地footprint。よって幅は広いが高さは低い(平たい矩形)。
     const giant = spawnEnemyAt('giantbat', 0, 0, 0);
     const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
-    expect(jorm.width).toBeGreaterThanOrEqual(giant.width * 3); // 240 >= 180
-    expect(jorm.height).toBeGreaterThanOrEqual(giant.height * 2.5);
+    const mimir = spawnEnemyAt('mimir', 0, 0, 0);
+    // footprint は通常ボス(giant)より広い接地幅を持つ。
+    expect(jorm.width).toBeGreaterThanOrEqual(giant.width * 3); // 346 >= 180
+    expect(mimir.width).toBeGreaterThanOrEqual(giant.width * 2); // 165 >= 120
+    // 帯は平たい(高さ<幅)=足元の四角であることを担保。
+    expect(jorm.height).toBeLessThan(jorm.width);
+    expect(mimir.height).toBeLessThan(mimir.width);
   });
   it('exposes a fire profile (bullets driven by the controller)', () => {
     expect(getEnemyFireProfile(spawnEnemyAt('jormungand', 0, 0, 0))).not.toBeNull();
