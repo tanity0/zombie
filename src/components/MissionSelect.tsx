@@ -712,6 +712,9 @@ const BURST_FX: Record<SkillRarity, BurstCfg> = {
   super:  { dim: 'bg-black/92', flash: 'bg-amber-200', shard: 'bg-amber-200/95', shardCount: 22, distBonus: 30, shake: true,  rings: ['border-amber-300/80', 'border-fuchsia-300/55'], glow: true  },
 };
 
+// レベル表記: 上限(maxLv)に達していたら「Lv3」等ではなく「MAX」と表示する(死神など maxLv1 は常にMAX)。
+const lvText = (key: SkillKey, level: number): string => (level >= skillMaxLevel(key) ? 'MAX' : `Lv${level}`);
+
 const SkillGacha: React.FC = () => {
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
   const goldBalance = useGameStore(s => s.goldBalance);
@@ -723,6 +726,7 @@ const SkillGacha: React.FC = () => {
   const [idx, setIdx] = useState(0); // 排出結果のページ(矢印めくり。スクロールは使わない)
   const [showList, setShowList] = useState(false); // 排出結果の一覧(サマリー)表示中か(10連で何が出たか振り返る用)
   const [bursting, setBursting] = useState(false); // 撃つ→的が破裂する演出中(results確定済み・暗転前)
+  const [leaving, setLeaving] = useState(false);   // 超レアカードが次へ送る前にフェードアウト中か
   const [noGold, setNoGold] = useState(false);
 
   const coverSrc = `${import.meta.env.BASE_URL}gacha/cover.png`;
@@ -731,6 +735,7 @@ const SkillGacha: React.FC = () => {
   // n回 逐次で引く(各 pullGacha が get/set で最新stateを参照=スナップショット一括禁止)。
   // 撃つ→的破裂(BURST)→暗転リザルト の順に遷移する。
   const BURST_MS = 820;
+  const SHOT_STAGGER = 55; // 連射(バババ)の1発間隔ms
   const pullMany = (n: number) => {
     setNoGold(false);
     const got: GachaPullResult[] = [];
@@ -739,37 +744,59 @@ const SkillGacha: React.FC = () => {
       if (!r) { if (got.length === 0) { setNoGold(true); setResults(null); return; } break; } // ゴールド切れで打ち切り
       got.push(r);
     }
-    playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
-    // レア度で着弾音をエスカレート(rare=ロック音 / super=重着弾＋クリアファンファーレ)。
     const best = bestRarity(got);
-    if (best === 'rare') playSfx('homing-lock2');
-    else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
+    const m = got.length;
+    if (m > 1) {
+      // 10連等: 的の数だけ高速連射(バババ)。最後にレア度で着弾音をエスカレート。
+      for (let i = 0; i < m; i++) window.setTimeout(() => playSfx('rifle-fire'), i * SHOT_STAGGER);
+      window.setTimeout(() => {
+        playSfx('bomb');
+        if (best === 'rare') playSfx('homing-lock2');
+        else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
+      }, m * SHOT_STAGGER);
+    } else {
+      playSfx('shoot'); playSfx('bomb'); // 発砲＋着弾(破裂)
+      if (best === 'rare') playSfx('homing-lock2');
+      else if (best === 'super') { playSfx('heavy-impact'); playSfx('event-clear'); }
+    }
     setIdx(0);
+    setLeaving(false);
     setResults(got);     // リザルトは確定(暗転は破裂後に出す)
     setBursting(true);   // まず破裂演出
-    setTimeout(() => setBursting(false), BURST_MS);
+    // 連射は的が順に倒れる分だけ長め(早めのテンポ)。単発は従来どおり。
+    const burstMs = m > 1 ? Math.max(BURST_MS, m * SHOT_STAGGER + 430) : BURST_MS;
+    setTimeout(() => setBursting(false), burstMs);
   };
-  const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); setShowList(false); };
+  const closeReveal = () => { setResults(null); setBursting(false); setPendingCount(null); setIdx(0); setShowList(false); setLeaving(false); };
 
   // 排出結果は「矢印めくり」で1枚ずつ見せる(スクロール無し=ネイティブ感)。破裂明けで先頭(0)から、
   // レア度のテンポで自動的にめくり進む。以後は ◀▶ で前後に見返せる(手動操作で自動送りは停止)。
   const revealTimers = useRef<number[]>([]);
   const clearRevealTimers = () => { revealTimers.current.forEach(clearTimeout); revealTimers.current = []; };
+  const LEAVE_MS = 320; // 超レアの退場フェード時間
   useEffect(() => {
     if (!results || bursting) return;
     setIdx(0);
     setShowList(false); // 新しい結果は必ず演出(矢印めくり)から
+    setLeaving(false);
     clearRevealTimers();
     let acc = 0;
     for (let i = 1; i < results.length; i++) {
       acc += REVEAL_BY_RARITY[results[i].rarity].step;
-      revealTimers.current.push(window.setTimeout(() => setIdx(i), acc));
+      // 直前(i-1)が超レアなら、切り替え前にフェードアウトしてから次のカードへ。
+      if (results[i - 1].rarity === 'super') {
+        revealTimers.current.push(window.setTimeout(() => setLeaving(true), Math.max(0, acc - LEAVE_MS)));
+        revealTimers.current.push(window.setTimeout(() => { setIdx(i); setLeaving(false); }, acc));
+      } else {
+        revealTimers.current.push(window.setTimeout(() => setIdx(i), acc));
+      }
     }
     return clearRevealTimers;
   }, [results, bursting]);
   // ◀▶ で前後にめくる(手動操作したら自動送りは止める)。
   const pageBy = (d: number) => {
     clearRevealTimers();
+    setLeaving(false);
     setIdx(i => Math.max(0, Math.min((results?.length ?? 1) - 1, i + d)));
   };
 
@@ -780,7 +807,29 @@ const SkillGacha: React.FC = () => {
   if (bursting) {
     const best = bestRarity(results ?? []);
     const fx = BURST_FX[best];
-    // 中心から飛び散る破片。--tx/--ty で方向を渡す(CSS駆動)。レア度で枚数・飛距離が増える。
+    const shotCount = (results ?? []).length;
+    // 10連等(複数): 的の枚数だけ並べ、高速連射(バババ)で順に倒れていく。
+    if (shotCount > 1) {
+      return createPortal(
+        <div className={`gacha-dim fixed inset-0 z-50 flex items-center justify-center ${fx.dim}`}>
+          <div className="flex max-w-[94%] flex-wrap items-center justify-center gap-x-2 gap-y-1">
+            {Array.from({ length: shotCount }).map((_, i) => (
+              <img
+                key={i}
+                src={targetSrc}
+                alt=""
+                draggable={false}
+                className="gacha-target-fall w-[16%] max-w-[68px] object-contain"
+                style={{ animationDelay: `${i * SHOT_STAGGER}ms` }}
+              />
+            ))}
+          </div>
+          <span className={`gacha-flash pointer-events-none absolute inset-0 ${fx.flash}`} style={{ filter: 'blur(10px)' }} />
+        </div>,
+        document.body
+      );
+    }
+    // 単発: 中心から飛び散る破片。--tx/--ty で方向を渡す(CSS駆動)。レア度で枚数・飛距離が増える。
     const shards = Array.from({ length: fx.shardCount }, (_, i) => {
       const ang = (Math.PI * 2 * i) / fx.shardCount;
       const dist = 96 + (i % 3) * 26 + fx.distBonus;
@@ -823,8 +872,9 @@ const SkillGacha: React.FC = () => {
     const cfg = REVEAL_BY_RARITY[r.rarity];
     const maxLv = skillMaxLevel(r.key);
     const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
-    const lvlCls = r.newLevel >= 3 ? 'gacha-lvl-pop3' : 'gacha-lvl-pop';
-    const lvlColor = r.newLevel >= 3 ? 'text-amber-300' : r.newLevel === 2 ? 'text-sky-200' : 'text-white';
+    const atMax = r.newLevel >= maxLv;
+    const lvlCls = atMax ? 'gacha-lvl-pop3' : 'gacha-lvl-pop';
+    const lvlColor = atMax ? 'text-amber-300' : r.newLevel === 2 ? 'text-sky-200' : 'text-white';
     const atFirst = cur === 0;
     const atLast = cur === total - 1;
     return createPortal(
@@ -839,13 +889,14 @@ const SkillGacha: React.FC = () => {
             <div className="mx-auto flex w-full max-w-md flex-col gap-1.5">
               {results.map((rr, i) => {
                 const rc = REVEAL_BY_RARITY[rr.rarity];
-                const lc = rr.newLevel >= 3 ? 'text-amber-300' : rr.newLevel === 2 ? 'text-sky-200' : 'text-white';
+                const rMax = rr.newLevel >= skillMaxLevel(rr.key);
+                const lc = rMax ? 'text-amber-300' : rr.newLevel === 2 ? 'text-sky-200' : 'text-white';
                 return (
                   <div key={i} className={`rounded-lg border bg-black/40 px-3 py-2 ${rc.ring}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[14px] font-bold text-white">
                         {SKILLS[rr.key].name}
-                        <span className={`ml-2 text-[15px] font-extrabold ${lc}`}>Lv{rr.newLevel}</span>
+                        <span className={`ml-2 text-[15px] font-extrabold ${lc}`}>{lvText(rr.key, rr.newLevel)}</span>
                         {rr.firstAcquire && <span className="ml-2 align-middle rounded border border-emerald-300/60 bg-emerald-400/20 px-1 text-[9px] font-bold text-emerald-200">New</span>}
                       </span>
                       <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[rr.rarity]}`}>{RARITY_LABEL[rr.rarity]}</span>
@@ -881,7 +932,7 @@ const SkillGacha: React.FC = () => {
 
           <div
             key={cur}
-            className={`gacha-card ${cfg.nameCls} w-full max-w-sm rounded-2xl border bg-black/40 px-5 py-6 ${cfg.ring}`}
+            className={`${leaving ? 'gacha-card-out' : `gacha-card ${cfg.nameCls}`} w-full max-w-sm rounded-2xl border bg-black/40 px-5 py-6 ${cfg.ring}`}
           >
             <div className="flex items-center justify-between">
               <span className={`text-[11px] font-bold uppercase tracking-[0.2em] ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
@@ -889,15 +940,15 @@ const SkillGacha: React.FC = () => {
             </div>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-[22px] font-extrabold text-white">{SKILLS[r.key].name}</span>
-              <span className={`gacha-lvl ${lvlCls} text-[26px] font-extrabold ${lvlColor}`}>
-                Lv{r.newLevel}
+              <span className={`gacha-lvl ${lvlCls} text-[26px] font-extrabold ${lvlColor}`} style={{ animationDelay: `${cfg.beat}ms` }}>
+                {lvText(r.key, r.newLevel)}
               </span>
             </div>
             <p className="mt-2 text-[12px] leading-snug text-white/60">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
             <p className={`mt-2 text-[13px] font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
-              {r.firstAcquire ? `新規解禁！ Lv${r.newLevel}`
-                : r.promoted ? `Lv${r.prevLevel} → Lv${r.newLevel} 昇格！`
-                : `抽選Lv${r.rolledLevel}（現Lv${r.prevLevel}以下/上限）→ ${r.refund}G返金`}
+              {r.firstAcquire ? `新規解禁！ ${lvText(r.key, r.newLevel)}`
+                : r.promoted ? `${lvText(r.key, r.prevLevel)} → ${lvText(r.key, r.newLevel)} 昇格！`
+                : `抽選Lv${r.rolledLevel}（現${lvText(r.key, r.prevLevel)}以下/上限）→ ${r.refund}G返金`}
             </p>
             <p className="mt-1 text-[11px] leading-snug text-white/45">
               被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}

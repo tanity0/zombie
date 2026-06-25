@@ -255,6 +255,21 @@
 @keyframes gacha-dim-in { from { opacity: 0; } to { opacity: 1; } }
 .gacha-dim { animation: gacha-dim-in 0.3s ease-out forwards; }
 
+/* 10連の連射: 各的が被弾→倒れて消える(animationDelayで順に=バババ)。遅延中は素の表示(直立)。 */
+@keyframes gacha-target-fall {
+  0%   { transform: translateY(0) rotate(0); opacity: 1; }
+  28%  { transform: translateY(-6px) rotate(-5deg); opacity: 1; }
+  100% { transform: translateY(42px) rotate(24deg); opacity: 0; }
+}
+.gacha-target-fall { animation: gacha-target-fall 0.42s ease-in forwards; }
+
+/* 超レアカードの退場フェード(次のカードへ送る前に消える)。 */
+@keyframes gacha-card-out {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96); }
+}
+.gacha-card-out { animation: gacha-card-out 0.32s ease-in forwards; }
+
 /* ネイティブ感: トップレベル画面(メニュー/ゲームオーバー等)の出現を軽くフェード＋微スケールで
    イーズインする。ハードカット(=web/プロトタイプ感)を消す。マウント時の見た目だけで、状態遷移や
    ゲームのライフサイクル・操作可否には一切触れない(純コスメ)。 */

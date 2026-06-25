@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.933 — ガチャ: 10連は連射バースト(バババ)／超レアは退場フェード／レベル遅延を仕様通り維持／Lv上限=MAX表記
+
+- 10連(複数連)の破裂: 的を枚数分並べ**高速連射(SHOT_STAGGER=55ms)で順に倒れる**(`gacha-target-fall`)。
+  SEも `rifle-fire` を55ms間隔で枚数分=バババ(minInterval28ms<55=非スロットル)。burstMs を連射長に延長。
+- 超レアカードは次へ送る前に**フェードアウト**してから切替(`gacha-card-out`/LEAVE_MS=320ms、自動送り時のみ)。
+- **[訂正]** v0.25.931 で勝手に撤去したレベルの遅延表示(`animationDelay=cfg.beat`)を**元の仕様に戻した**。
+  super/rare は通常より長く見せる(step維持)＝意図どおり。※仕様変更は必ず事前確認する(運用ルール化)。
+- **Lv表記**: 上限到達は「Lv3」等ではなく**「MAX」**(`lvText` ヘルパ)。死神など maxLv1 は最初からMAX。
+  カード/一覧/昇格行に適用。最派手ポップ(pop3)＆金色も「Lv3固定」→「maxLv到達」基準に。
+- タイトル(別件): 中央寄せ＋120vw(v0.25.932)。
+- 検証: typecheck/lint/test/build 全green。負荷1/10(CSS一発・的≤10小スプライト)。
+
+## v0.25.932 — タイトル: 中央寄せ＋120vwでIMG_6044の画角に(下寄せ黒帯ミスを解消)
+
 ## v0.25.931 — [バグ修正] ガチャ結果でレベルが時々表示されない(レア度ほど顕著)を解消
 
 - 原因: ページ式結果カードのLv span が `.gacha-lvl{opacity:0}` ＋ ポップ演出 `forwards`(遅延中は最初の状態=透明)
