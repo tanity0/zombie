@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.979 — ワイヤー着地に強制ノックバック(無敵無視)を全Lvで
+
+- 着地ノックバックが `knockbackImmuneUntil` でゲートされ、直前のすり抜けで無敵が立つため着地で弾かなくなっていた。
+  → 着地は**無敵無視で必ず弾く**(強制ノックバック・社長指示)。全Lvに付与(Lv1/2は範囲ダメージ無し・弾きのみ)。
+  Lv3 は弾き速度 ×1.5＋範囲ダメージ。リングを弾き範囲(WIRE_BOMB_RADIUS)に合わせて表示。
+- lint/test(65 pass)/build OK。
+
 ## v0.25.978 — ワイヤーアンカー仕様変更: 距離140+40/Lv / Lv3 はすり抜けが爆発化
 
 - `WIRE_DIST_BY_LEVEL` を `[_,100,120,140]`→`[_,140,180,220]`(Lv1=140px、+40/Lv・社長指示)。

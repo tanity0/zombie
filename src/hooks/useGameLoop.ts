@@ -3806,40 +3806,45 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current !== wp.wireDashUntil) {
             wireLandedDashRef.current = wp.wireDashUntil;
             const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
-            if (lvl >= 3) {
-              // 着地点爆撃: 周囲へ範囲ダメージ + ノックバック + 爆発演出。
-              const dmg = meleeDmg * WIRE_BOMB_DAMAGE_MULT;
-              const hits = useGameStore.getState().enemies.filter(e => {
-                const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-                return Math.hypot(ecx - pcx, ecy - pcy) <= WIRE_BOMB_RADIUS + Math.max(e.width, e.height) / 2;
-              });
-              hits.forEach(e => {
-                const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-                const dx = ecx - pcx, dy = ecy - pcy;
-                const dist = Math.hypot(dx, dy) || 1;
-                const killed = useGameStore.getState().damageEnemy(e.id, dmg, true); // 爆発(ワイヤー爆弾)=ボス系には非致死
-                spawnDamageNumber(ecx, e.y, dmg, true);
-                if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
-                  useGameStore.setState({
-                    enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
-                      ...x,
-                      knockbackVx: (dx / dist) * WIRE_LAND_KNOCKBACK_SPEED * 1.5,
-                      knockbackVy: (dy / dist) * WIRE_LAND_KNOCKBACK_SPEED * 1.5,
-                      knockbackUntil: nowW + KNOCKBACK_DURATION,
-                      knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
-                    } : x),
-                  });
-                }
-              });
+            const explode = lvl >= 3;
+            const dmg = meleeDmg * WIRE_BOMB_DAMAGE_MULT;
+            // 着地は全Lvで周囲の敵を「強制ノックバック」(無敵無視で必ず弾く・社長指示)。
+            // 直前のすり抜けで knockbackImmuneUntil が立つため、ゲートすると着地で弾かなくなっていた。
+            // Lv3 はさらに範囲ダメージ(ボス系は非致死)。
+            const kbSpeed = WIRE_LAND_KNOCKBACK_SPEED * (explode ? 1.5 : 1);
+            const hits = useGameStore.getState().enemies.filter(e => {
+              if (e.aiPhase === 'jump') return false; // 空中無敵は対象外
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              return Math.hypot(ecx - pcx, ecy - pcy) <= WIRE_BOMB_RADIUS + Math.max(e.width, e.height) / 2;
+            });
+            hits.forEach(e => {
+              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              const dx = ecx - pcx, dy = ecy - pcy;
+              const dist = Math.hypot(dx, dy) || 1;
+              const killed = explode ? useGameStore.getState().damageEnemy(e.id, dmg, true) : false;
+              if (explode) spawnDamageNumber(ecx, e.y, dmg, true);
+              if (!killed) {
+                useGameStore.setState({
+                  enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
+                    ...x,
+                    knockbackVx: (dx / dist) * kbSpeed,
+                    knockbackVy: (dy / dist) * kbSpeed,
+                    knockbackUntil: nowW + KNOCKBACK_DURATION,
+                    knockbackImmuneUntil: nowW + KNOCKBACK_IMMUNE_MS,
+                  } : x),
+                });
+              }
+            });
+            if (explode) {
               spawnFlash('rgba(147,197,253,0.22)', 180);
               spawnRing(pcx, pcy, 10, WIRE_BOMB_RADIUS, 'rgba(147,197,253,0.95)', 5, 360);
               spawnBurst(pcx, pcy, '#93c5fd', 24);
               spawnBurst(pcx, pcy, '#dbeafe', 14);
               playSfx('bomb');
             } else {
-              // Lv1/2: 着地は軽い演出のみ(範囲ダメージなし)。
-              spawnRing(pcx, pcy, 8, 36, 'rgba(147,197,253,0.8)', 3, 260);
-              spawnBurst(pcx, pcy, '#93c5fd', 8);
+              // Lv1/2: 範囲ダメージは無いが、着地の強制ノックバックは効く。リングは弾き範囲に合わせる。
+              spawnRing(pcx, pcy, 10, WIRE_BOMB_RADIUS, 'rgba(147,197,253,0.7)', 3, 280);
+              spawnBurst(pcx, pcy, '#93c5fd', 10);
               playSfx('melee');
             }
           }
