@@ -343,6 +343,17 @@ export const SHADOW_CLONE_DURATION_MS = 5000;        // 存在時間(5秒)
 export const SHADOW_CLONE_MAX_ATTACKS = 5;           // 攻撃回数の上限(1/s × 5s)
 // Melee reach for the finger-release counter swing.
 export const MELEE_RADIUS = 74;
+// プレイヤー→敵の近接判定で使う距離。通常敵は中心点まで(従来の手触り/バランス維持)。裏ボスは巨体で
+// 中心が遠いので「当たり判定の帯(AABB)の最近点」までの距離=矩形に触れたら届く(社長指示「こちらからも揃えて」)。
+// これで巨体ボスも中心まで突っ込まず、表示している四角の縁で斬れる。描画側の判定枠と一致。
+const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
+  if (!isHiddenBoss(e.type)) {
+    return Math.hypot((e.x + e.width / 2) - px, (e.y + e.height / 2) - py);
+  }
+  const nx = Math.max(e.x, Math.min(px, e.x + e.width));
+  const ny = Math.max(e.y, Math.min(py, e.y + e.height));
+  return Math.hypot(px - nx, py - ny);
+};
 // ゾンビAI(社長指示): 通常時 ×1.2・フラフラ蛇行で接近。プレイヤーの近接範囲(MELEE_RADIUS)に入ると
 // 1秒停止→2秒間2倍速の突進、を範囲内に居る限り繰り返す。
 export const ZOMBIE_SPEED_MULT = 1.2;       // 通常接近の速度倍率
@@ -2598,9 +2609,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
-      const dx = ecx - pcx;
-      const dy = ecy - pcy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // 距離は裏ボスのみ帯(AABB)の最近点基準、他は中心基準(enemyMeleeDist)。slash演出/壁判定は中心を使う。
+      const dist = enemyMeleeDist(pcx, pcy, enemy);
       // バッシュ対象 = 押し出される壁の掃過範囲に重なる敵(メレー範囲外でも当たる)。
       const bashShove = hasShieldShove
         ? shieldShoves.find(s => rectsOverlap({ x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height }, s.swept))
@@ -2898,9 +2908,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (enemy.type === 'reaper' && !enemy.reaperChaser) { survivors.push(enemy); continue; }
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
-      const dx = ecx - ccx;
-      const dy = ecy - ccy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // 裏ボスのみ帯(AABB)の最近点基準で距離を測る(中心まで寄らず縁で当たる)。
+      const dist = enemyMeleeDist(ccx, ccy, enemy);
       if (dist > meleeRange) { survivors.push(enemy); continue; }
       if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
       slashAt.push({ x: ecx, y: ecy });

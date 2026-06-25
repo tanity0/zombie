@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.965 — 裏ボス: こちらの近接判定も帯(AABB)に合わせる / ミーミルの帯を一番下のピクセル寄りに
+
+- 「敵の当たり判定(こちらから)も揃えて」: プレイヤー→裏ボスの**近接(半径)判定**を、敵中心ではなく
+  **当たり判定の帯(AABB)の最近点**までの距離で測る `enemyMeleeDist` を追加(通常敵は従来どおり中心基準で
+  バランス維持)。巨体ボスも中心まで突っ込まず、表示中の四角の縁で斬れる=表示枠と一致。
+  - 適用: 主近接スイング(2か所の半径ゲート)。飛び道具は元々 `checkCollision(弾, enemy=帯)` で帯一致済み。
+    刀ダッシュ/鞭の line 判定も `e.width/2` で帯幅を考慮済み。
+- 「ミーミルはもう少し一番下のピクセルのところに揃えて」: `BOSS_SPRITE_FIT.mimir.cy` 0.76→0.84
+  (帯の下端が絵の ~0.96 へ)。討伐フェードも同じ fit を使うので一致。
+- lint/typecheck/test(62 pass)/build OK。
+
 ## v0.25.964 — 裏ボス: 当たり判定=足元の帯(AABB)に統一 / 絵は分離して巨体描画 / 影=帯基準 / 裏回り込みで半透明
 
 - 社長指示「ざっくりこの辺を四角く当たり判定にして」(各ボス画像の下部=赤枠の接地帯)に対応。
