@@ -27,11 +27,11 @@ const DebugOverlay: React.FC = () => {
   const p = s.player;
   // 移動を止めうるプレイヤー状態(各 *Until は Date.now 基準。残り>0 なら移動入力を無視する)。
   const blk = [
-    nowMs < p.wireDashUntil ? 'wireDash' : '',
+    now < p.wireDashUntil ? 'wireDash' : '',
     p.wireStuckEnemyId ? 'wireStuck' : '',
-    nowMs < p.katanaDashUntil ? 'katDash' : '',
-    nowMs < p.katanaRecoveryUntil ? 'katRecov' : '',
-    nowMs < p.shijinSlideUntil ? 'slide' : '',
+    now < p.katanaDashUntil ? 'katDash' : '',
+    now < p.katanaRecoveryUntil ? 'katRecov' : '',
+    now < p.shijinSlideUntil ? 'slide' : '',
   ].filter(Boolean).join(',') || '-';
   const lines = [
     `t ${(s.gameTime / 1000).toFixed(1)}s sw${s.swipeDirection ? 'Y' : '·'}`,
