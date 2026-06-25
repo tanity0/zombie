@@ -4385,6 +4385,11 @@ export class PixiScene {
     // Above-sprite layer: health bar, boss marker, hit flash.
     const o = view.overlay;
     o.clear();
+    // 裏ボスは巨体で当たり判定が分かりにくいので、当たり判定(AABB相当)をうっすら楕円で常時表示(社長指示)。
+    if (isHiddenBoss(e.type)) {
+      o.ellipse(cx, cy, e.width / 2, e.height / 2).fill({ color: 0xffffff, alpha: 0.06 });
+      o.ellipse(cx, cy, e.width / 2, e.height / 2).stroke({ width: 2, color: 0x9ad0ff, alpha: 0.30 });
+    }
     this.drawHealthBar(o, e);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
