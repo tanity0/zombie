@@ -955,13 +955,15 @@ export const CHARACTER_CLASS_NAMES: Record<CharacterClass, string> = {
 // ストアの introDialogueLines(ゲーム開始時に選択ミッションから設定。フリーミッションは空=会話なし)。
 export const INTRO_DIALOGUE_CHAR_MS = 55;        // 1文字の表示間隔(オートタイプ速度)
 export const INTRO_DIALOGUE_LINE_HOLD_MS = 950;  // 各行を打ち終えた後の保持(+0.2s 延長)
+export const INTRO_DIALOGUE_READ_MS = 26;        // 文字数に応じた追加の読む間(社長指示=次へ行く長さを少し長く・文字数で変動)
 export const INTRO_DIALOGUE_END_HOLD_MS = 550;   // 最終行後の保持(この後ゲーム開始)
+// 1行の所要時間(オートタイプ+保持)。holdMs 指定行(無線の「間」等)はそれをそのまま使う。
+// 表示側(IntroDialogue)と終了判定(useGameLoop)で必ず同じ値を使うため共通化する。
+export const introLineMs = (l: IntroLine): number =>
+  l.holdMs ?? (l.text.length * (INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_READ_MS) + INTRO_DIALOGUE_LINE_HOLD_MS);
 // 会話全体の所要時間(useGameLoop が終了判定に使用)。行配列から算出。空なら 0。
 export const introDialogueTotalMs = (lines: IntroLine[]): number =>
-  lines.length === 0 ? 0 : lines.reduce(
-    (sum, l) => sum + (l.holdMs ?? (l.text.length * INTRO_DIALOGUE_CHAR_MS + INTRO_DIALOGUE_LINE_HOLD_MS)),
-    0
-  ) + INTRO_DIALOGUE_END_HOLD_MS;
+  lines.length === 0 ? 0 : lines.reduce((sum, l) => sum + introLineMs(l), 0) + INTRO_DIALOGUE_END_HOLD_MS;
 // セリフを出す登場進行 t。ヘリが低ホバーまで降りてきた頃(フェーズA内 a≈0.82。降下0.5〜飛び降り0.85の終盤)。
 export const INTRO_DIALOGUE_TRIGGER_T = PLAYER_INTRO_HELI_FRAC * 0.82;
 
