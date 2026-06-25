@@ -6356,8 +6356,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 拠点候補地(仕様10): サークル内滞在を計測。10秒で制圧→武器商人がその地点へ移動し、元の商人地点は候補に戻る。
   updateSuppression: (deltaTime) => {
     const state = get();
-    // 制圧イベント中(ステージ1メイン等)のみ。屋内/ラボ/勝利後は無処理。
-    if (!state.suppressionActive || !state.baseSites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return;
+    // 拠点は屋外(非ラボ・非屋内)なら常に機能する。屋内/ラボ/勝利後は無処理。
+    // イベント(suppressionActive)かどうかは「全拠点制圧」した時のゴール有無だけが違う(下部参照)。
+    if (!state.baseSites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return;
     const now = state.gameTime;
     const p = state.player;
     const px = p.x + p.width / 2;
@@ -6494,11 +6495,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.retreat }]); get().startIntroDialogue(); }
       set({ eventBannerText: '拠点陥落', eventBannerUntil: now + 2200 });
     }
-    // 全拠点制圧 → 既存クリア経路(帰還サークル)へ。
-    if (next.every(s => s.status === 'captured')) {
-      set({ suppressionActive: false, eventBannerText: '全拠点制圧', eventBannerUntil: now + 3000 });
+    // 全拠点制圧 → 達成。未制圧→全制圧に変わった瞬間だけ発火(毎フレ再発火しない/陥落で再武装)。
+    // イベント時(suppressionActive)のみ既存クリア経路(帰還サークル=ゴール)へ。イベント外は達成のみ(ゴール無し)。
+    const wasAllCaptured = state.baseSites.length > 0 && state.baseSites.every(s => s.status === 'captured');
+    const nowAllCaptured = next.every(s => s.status === 'captured');
+    if (nowAllCaptured && !wasAllCaptured) {
+      set({ eventBannerText: '全拠点制圧', eventBannerUntil: now + 3000 });
       get().spawnFlash('rgba(251,191,36,0.3)', 400);
-      get().triggerEventVictory();
+      if (state.suppressionActive) {
+        set({ suppressionActive: false });
+        get().triggerEventVictory(); // イベント: ゴール(帰還サークル)を出す
+      }
     }
   },
 
