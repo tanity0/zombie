@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.970 — 裏ボスHPを個別指定(ミーミル6666/ヨルムンガルド7500/スカジ10000)
+
+- 裏ボスは `ENEMY_HP_MULT` を掛けず `health` を直接 maxHealth にする(reaper と同じ raw 扱い)。
+  `buildEnemy` の hpMult を `(reaper || isHiddenBoss) ? 1 : ...` に。ダメージ38/速度70 は据え置き。
+- テスト更新(旧「giantの3倍HP」→個別HP 6666/7500/10000 を担保)。
+- 自動タレットの攻撃力は据え置き(質問のみ)。参考値: 前方集中=7 / 全方位=9 / 10%でグレネード弾直撃=44 /
+  消滅時の小爆発=36(いずれも固定値・プレイヤー強化に非連動)。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.969 — 盾ダメージ表(敵種×状態)/ 裏ボスは召喚の近い方を狙う / カウンター10倍・ワーム即死
 
 - **盾ダメージ表**(社長指定): 接触は SHIELD_HIT_INTERVAL_MS(400ms)ごとに1回、敵種×状態で増減。

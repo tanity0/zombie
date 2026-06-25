@@ -69,13 +69,16 @@ describe('hidden boss (mimir/jormungand) spec', () => {
     expect(isHiddenBoss('giantbat')).toBe(false);
     expect(isHiddenBoss('reaper')).toBe(false);
   });
-  it('is 3x giant HP, 2x giant contact damage, same speed (社長指示)', () => {
-    // 固定難易度タイプ同士は同じスケール(giantbat と同じ hpMult/dmgMult)なので生値で比較できる。
+  it('has individually-tuned HP (社長指示), 2x giant contact damage, same speed', () => {
+    // 裏ボスは hpMult を掛けず health を直接 maxHealth に(個別指定)。
     const giant = spawnEnemyAt('giantbat', 0, 0, 0);
-    const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
     const mimir = spawnEnemyAt('mimir', 0, 0, 0);
-    expect(jorm.maxHealth).toBe(giant.maxHealth * 3);
-    expect(mimir.maxHealth).toBe(giant.maxHealth * 3);
+    const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
+    const skadi = spawnEnemyAt('skadi', 0, 0, 0);
+    expect(mimir.maxHealth).toBe(6666);
+    expect(jorm.maxHealth).toBe(7500);
+    expect(skadi.maxHealth).toBe(10000);
+    // ダメージ/速度は据え置き(giant の2倍ダメージ・同速)。
     expect(jorm.damage).toBe(giant.damage * 2);
     expect(mimir.damage).toBe(giant.damage * 2);
     expect(jorm.speed).toBe(giant.speed);

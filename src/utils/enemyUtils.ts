@@ -44,9 +44,10 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 裏ボスの width/height は「当たり判定の帯(足元の四角・社長指定)」。絵はこれより大きくフル表示する
   // (pixiScene の BOSS_SPRITE_FIT で帯=絵の下部に合わせて配置)。見た目=絵 / 判定=この帯、で分離。
   // 帯サイズは素材アスペクト×指定フレームから算出(BOSS_SPRITE_FIT と整合させること)。
-  mimir:      { width: 165, height: 92,  speed: 70, health: 600, damage: 38, experienceValue: 0 },
-  jormungand: { width: 346, height: 60,  speed: 70, health: 600, damage: 38, experienceValue: 0 },
-  skadi:      { width: 304, height: 68,  speed: 70, health: 600, damage: 38, experienceValue: 0 }
+  // 裏ボスは hpMult を掛けず health をそのまま maxHealth にする(buildEnemy 参照)。個別指定(社長指示)。
+  mimir:      { width: 165, height: 92,  speed: 70, health: 6666,  damage: 38, experienceValue: 0 },
+  jormungand: { width: 346, height: 60,  speed: 70, health: 7500,  damage: 38, experienceValue: 0 },
+  skadi:      { width: 304, height: 68,  speed: 70, health: 10000, damage: 38, experienceValue: 0 }
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。
@@ -248,7 +249,8 @@ const buildEnemy = (
   // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
   const diff = fixed ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
-  const hpMult = type === 'reaper' ? 1 : (fixed ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
+  // reaper と裏ボスは health をそのまま使う(裏ボスは個別HPを直接指定=ENEMY_HP_MULT を掛けない)。
+  const hpMult = (type === 'reaper' || isHiddenBoss(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
   const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diff);
 
   return {
