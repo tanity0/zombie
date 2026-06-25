@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.951 — 拠点解放で「その方角のPOI/裏ボス」を画面端の方向矢印で示す
+
+- 新機能(社長指示): 8拠点はスタート地点(原点)から見て8方角(45°刻み)に並ぶ。ある拠点を解放(captured)すると、
+  その方角(セクター)にある **洞窟(将来)/裏ボスの巣** が **画面端の方向矢印** で示される。距離表示は出さない=矢印のみ。
+- 追加: `src/world/pois.ts`(renderer-agnostic)。POI型 / 8セクター割当(`sectorIndexForAngle`)/ 裏ボスの固定巣
+  `BOSS_LAIR`(mimir=西・jormungand=東、原点距離9000)/ `getRunPois` / `isPoiRevealed`(担当拠点がcapturedか)。
+- 裏ボスを **固定巣** へ変更(オプション1): 動的(進行方向の画面外)→ 固定座標。巣へ近づく(≤1500)と出現、帰巣先=巣。
+  これで方角矢印の対象になり「拠点を取ると裏ボスの居場所が分かる」が成立。出現演出(アテンション)は不変。
+- 描画: 既存の画面端マーカー機構 `syncArrows` に POI を追加(boss=赤ドクロ / cave=琥珀の洞窟口)。画面内のPOIは出さない。
+  裏ボスは討伐後(`hiddenBossDefeated`)は矢印を打ち切り。**負荷 1/10**(既存の1枚Graphics再描画にPOI数ぶん足すだけ。Text無し)。
+- 洞窟は **データ駆動の置き場所だけ用意**(`STAGE_CAVES` 空配列)。座標が決まれば1行足すだけで矢印対象になる(中身=別途)。
+- 変更: world/pois.ts(新規)/ useGameLoop.ts(固定巣spawn・home)/ gameStore.ts(hiddenBossDefeated)/ pixiScene.ts(syncArrowsにPOI)。
+- 検証: lint/typecheck/test(60)/build 通過。pois.test.ts でセクター割当・巣方角・解放判定を網羅。
+- 確認したい点: 巣の方角(mimir=西 / jormungand=東)はデフォルト。変えたい方角があれば `BOSS_LAIR` を調整します。
+
 ## v0.25.950 — 裏ボス(深層域の隠しボス: ミーミル/ヨルムンガルド)を新規実装
 
 - 新要素(社長指示): 各ステージの深層域に出現する裏ボス。1体目=ヨルムンガルド(巨蛇/ステージ3)、

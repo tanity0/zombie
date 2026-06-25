@@ -63,6 +63,7 @@ import {
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
+import { bossLairPos } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
@@ -249,7 +250,8 @@ const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 
 // --- 裏ボス(深層域の隠しボス: mimir/jormungand)コントローラ定数 ---
 // 深層域(原点から 7500 以上=area 4)の「指定エリア」に近づくと1回だけ出現する。
-const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で出現(area 4 の少し内側)
+const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で出現(area 4 の少し内側。巣が無いタイプ用の保険)
+const BOSS_SPAWN_NEAR = 1500;                        // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現)
 const BOSS_EXIT_DEPTH = 7300;                        // この深度を下回ると深層域を出た=帰巣して退場(ヒステリシス)
 const BOSS_REGEN_PER_SEC = 40;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示)
 const BOSS_DASH_SPEED_MULT = 2;                      // ダッシュ時は2倍速で追跡
@@ -1244,6 +1246,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (bs.bossId && !boss && !bs.retreating) {
             useGameStore.setState({
               bossChasing: false,
+              hiddenBossDefeated: true,
               bossCorpse: { type: hiddenBoss, x: bs.lastX, y: bs.lastY, w: bs.w, h: bs.h, diedAt: Date.now() },
               eventBannerText: `${enemyDeathLabel(hiddenBoss)}討伐!`,
               eventBannerUntil: newGameTime + 3600,
@@ -1260,25 +1263,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (corpse && Date.now() - corpse.diedAt >= BOSS_FADE_MS) useGameStore.setState({ bossCorpse: null });
             if (useGameStore.getState().bossChasing) useGameStore.setState({ bossChasing: false });
 
-            // 未出現で深層域の指定深度に到達 → 出現(この出撃で1回だけ)。アテンション中は重ねない。
-            if (!bs.spawned && depth >= BOSS_SPAWN_DEPTH && !useGameStore.getState().attention) {
-              let hx = player.vx ?? 0, hy = player.vy ?? 0;
-              if (Math.abs(hx) + Math.abs(hy) < 0.01 && player.lastDirection) { hx = player.lastDirection.x; hy = player.lastDirection.y; }
-              if (Math.abs(hx) + Math.abs(hy) < 0.01) hy = -1;
-              const hlen = Math.hypot(hx, hy) || 1;
-              const gb = useGameStore.getState().gameBounds;
-              const spawnDist = Math.hypot(gb.width / 2, gb.height / 2) + 90; // 進行方向の画面外に置く
-              const sx = pcx + (hx / hlen) * spawnDist;
-              const sy = pcy + (hy / hlen) * spawnDist;
+            // 未出現で、固定の巣(指定エリア)へ近づいたら出現(この出撃で1回だけ)。アテンション中は重ねない。
+            // 巣を持たないタイプ(将来用)は従来どおり深層域の深度到達でフォールバック出現。
+            const lair = bossLairPos(hiddenBoss);
+            const nearLair = lair ? Math.hypot(pcx - lair.x, pcy - lair.y) <= BOSS_SPAWN_NEAR : depth >= BOSS_SPAWN_DEPTH;
+            if (!bs.spawned && nearLair && !useGameStore.getState().attention) {
               const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
-              e.x = sx - e.width / 2; e.y = sy - e.height / 2;
+              const cx = lair ? lair.x : pcx, cy = lair ? lair.y : pcy;
+              e.x = cx - e.width / 2; e.y = cy - e.height / 2;
               e.bossState = 'chase';
               e.bossNextActionAt = newGameTime + 2000;
-              e.homeX = e.x; e.homeY = e.y;
+              e.homeX = e.x; e.homeY = e.y; // 巣=帰巣先(画面外/深層域離脱で戻る位置)
               addEnemy(e);
               bs.spawned = true; bs.bossId = e.id; bs.retreating = false;
               bs.homeX = e.x; bs.homeY = e.y; bs.lastX = e.x; bs.lastY = e.y; bs.w = e.width; bs.h = e.height;
-              useGameStore.getState().triggerAttention(sx, sy);
+              useGameStore.getState().triggerAttention(cx, cy);
               useGameStore.setState({ eventBannerText: '危険!直ちに避難を', eventBannerUntil: newGameTime + 3000 });
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               spawnFlash('rgba(120,20,40,0.30)', 360);

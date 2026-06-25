@@ -25,6 +25,7 @@ import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
+import { getRunPois, isPoiRevealed } from '../world/pois';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -2232,7 +2233,11 @@ export class PixiScene {
       now
     );
     this.syncPlayerFx(s.player, now);
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent);
+    // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
+    const revealedPois = getRunPois(s.hiddenBoss)
+      .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
+      .filter(p => isPoiRevealed(p, s.baseSites));
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -6239,7 +6244,8 @@ export class PixiScene {
     merchant: WeaponMerchant,
     camera: { x: number; y: number },
     castleVisible: boolean,
-    event: ActiveEvent | null
+    event: ActiveEvent | null,
+    pois: { x: number; y: number; kind: 'boss' | 'cave' }[] = []
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -6408,6 +6414,44 @@ export class PixiScene {
       g.rect(ex - 3, ey + 1, 6, 1.5).fill({ color: 0x0e7490, alpha: 0.9 });
       g.rect(ex - 3, ey + 4, 4, 1.5).fill({ color: 0x0e7490, alpha: 0.9 });
 
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+    }
+
+    // 探索の道標(POI): 拠点を解放した方角の洞窟/裏ボスを画面端の方向矢印で示す(社長指示)。
+    // 距離は出さない=矢印のみ。画面内に入っているPOIは出さない。boss=赤 / cave=琥珀。
+    for (const poi of pois) {
+      const tx = poi.x - camera.x;
+      const ty = poi.y - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist;
+      const ey = cyC + dy * tdist;
+      const boss = poi.kind === 'boss';
+      const color = boss ? 0xef4444 : 0xf59e0b; // 裏ボス=赤 / 洞窟=琥珀
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
+      if (boss) {
+        // ドクロ風: 白い頭+目。
+        g.circle(ex, ey - 1, 4.5).fill({ color: 0xe2e8f0, alpha: 0.96 });
+        g.rect(ex - 3, ey + 2, 6, 3).fill({ color: 0xe2e8f0, alpha: 0.96 });
+        g.circle(ex - 1.8, ey - 1, 1.2).fill({ color: 0x020617, alpha: 0.98 });
+        g.circle(ex + 1.8, ey - 1, 1.2).fill({ color: 0x020617, alpha: 0.98 });
+      } else {
+        // 洞窟アーチ(半円の口)。
+        g.rect(ex - 5, ey - 1, 10, 6).fill({ color: 0x451a03, alpha: 0.96 });
+        g.circle(ex, ey - 1, 5).fill({ color: 0x451a03, alpha: 0.96 });
+        g.circle(ex, ey + 1, 3).fill({ color: 0x020617, alpha: 0.98 });
+      }
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
