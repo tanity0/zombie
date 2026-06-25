@@ -913,11 +913,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 研究所/屋内/ダンスでは出さない(通常の森ステージ専用)。
         if (!danceTest && !indoor && !labTheme) {
           const ae = useGameStore.getState().activeEvent;
-          // 裏ボスが追いかけてきている間はイベントを発生させない(社長指示)。
-          if (!ae && !useGameStore.getState().bossChasing) {
+          if (!ae) {
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
             // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
-            const arenaReady = FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current;
+            // 裏ボスが追いかけてきている間はイベントを発生させない(社長指示)。
+            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing;
             if (arenaReady) {
               nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
               const pcx = player.x + player.width / 2;

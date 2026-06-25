@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.958 — [根本修正] 裏ボス追跡中の凍結=イベント処理で null.kind を踏んでいた
+
+- 症状: 裏ボス出現(アテンション)後、移動/敵湧き/サブウェポン/弾更新が全停止(振り向き・近接・BGM・一時停止は生きる)。
+- 真因: v0.25.951 でイベント抑制を入れた際、囲い系イベントの `if(!ae)/else if(ae.kind==='rescue')/else`
+  連鎖の**先頭条件を `if(!ae)` → `if(!ae && !bossChasing)`** に変えてしまった。
+  → `ae`(activeEvent)が null かつ bossChasing=true(裏ボス追跡中)のとき先頭ifがfalseになり、
+  `else if (ae.kind...)` で **null.kind を評価 → 毎フレーム TypeError**。
+  ループ全体catch(v0.25.956)がこれを拾って後続(movePlayer/サブウェポン/updateEnemies等)を毎フレーム
+  丸ごとスキップ→フリーズ。bossChasing を立てるのは裏ボスだけ=「裏ボス時のみ」と一致。
+- 修正: bossChasing 判定を `if(!ae)` の**内側(発火条件 arenaReady)**へ移動。else分岐では ae が必ず非null。
+- 診断補助として入れた ?debug=1 オーバーレイ / ループ全体 try/catch(debugLoopError=ERR表示) / ?bossnow=1 は
+  そのまま残す(耐障害+今後の診断用)。今回の ERR 表示「TypeError: ... 'ae.kind'」で一発特定できた。
+
+## v0.25.957 — デバッグ表示の致命バグ修正(未定義 nowMs → now で ?debug=1 が真っ暗)
+
 ## v0.25.953 — 爆弾でボス系は死なない＋ステージ4裏ボス「スカジ」追加
 
 - 爆弾/爆発でボス系(isBossType)は **死なない**(社長指示):
