@@ -131,6 +131,38 @@ describe('headless simulation invariants', () => {
     }
   });
 
+  it('explosions (nonLethalBoss) cannot kill boss-types but still chip them; normal hits do kill', () => {
+    useGameStore.getState().resetGame('warrior');
+    // ボス系: 爆発(nonLethalBoss)では HP1 で踏みとどまり死なない。
+    const boss = spawnEnemyAt('jormungand', 0, 0, 0);
+    useGameStore.setState({ enemies: [{ ...boss, health: 30, maxHealth: boss.maxHealth }] });
+    const id = useGameStore.getState().enemies[0].id;
+    const killedByBlast = useGameStore.getState().damageEnemy(id, 9999, true);
+    expect(killedByBlast).toBe(false);
+    expect(useGameStore.getState().enemies.find(e => e.id === id)?.health).toBe(1);
+    // 通常攻撃(致死可)なら同じボスを倒せる。
+    const killedNormal = useGameStore.getState().damageEnemy(id, 9999);
+    expect(killedNormal).toBe(true);
+    expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeUndefined();
+    // 雑魚は爆発でも普通に死ぬ(nonLethalBoss はボス系だけ対象)。
+    const zomb = spawnEnemyAt('zombie', 0, 0, 0);
+    useGameStore.setState({ enemies: [{ ...zomb, health: 10 }] });
+    const zid = useGameStore.getState().enemies[0].id;
+    expect(useGameStore.getState().damageEnemy(zid, 9999, true)).toBe(true);
+  });
+
+  it('the bomb pickup wipes non-bosses but leaves boss-types alive', () => {
+    useGameStore.getState().resetGame('warrior');
+    const z = spawnEnemyAt('zombie', 100, 0, 0);
+    const g = spawnEnemyAt('giantbat', 200, 0, 0);
+    const j = spawnEnemyAt('jormungand', 300, 0, 0);
+    useGameStore.setState({ enemies: [z, g, j] });
+    useGameStore.getState().addPickup({ id: 'bomb-1', type: 'bomb', x: 0, y: 0, value: 0 } as never);
+    useGameStore.getState().collectPickup('bomb-1');
+    const left = useGameStore.getState().enemies.map(e => e.type).sort();
+    expect(left).toEqual(['giantbat', 'jormungand']); // ボス系は生存・雑魚は消滅
+  });
+
   it('scrap-builder grants bonus initial scrap by level at deploy', () => {
     // No skill → baseline 0 initial scrap.
     useGameStore.setState({ ownedSkills: [], ownedSkillLevels: {}, pendingSkills: [], startWithTestStraps: false });

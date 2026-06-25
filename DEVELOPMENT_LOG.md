@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.953 — 爆弾でボス系は死なない＋ステージ4裏ボス「スカジ」追加
+
+- 爆弾/爆発でボス系(isBossType)は **死なない**(社長指示):
+  - 爆弾ピックアップ(画面全消し)はボス系を対象外=生存(フィナーレ条件にもしない)。
+  - `damageEnemy(id, amount, nonLethalBoss)` を追加。爆発系(手榴弾/グレネードランチャー/発火ナイフ/
+    タレット爆発/デコイ爆発/ボム/ワイヤー爆弾/周期爆発)は nonLethalBoss=true で、ボス系は HP1 で踏みとどまる
+    (チップダメージは入るがトドメは刺さらない)。通常の銃/近接は従来どおり致死。
+- ステージ4の裏ボス **スカジ**(氷の死王)を追加。他の裏ボスと同一仕様(3倍/2倍/同速・固定巣・矢印連動)。
+  巣=北(原点距離9000)。素材は透過PNGなのでそのまま読込。campaign stage-4 に hiddenBoss:'skadi'。
+- テスト追加(sim.test): 爆発の非致死(ボスは死なず雑魚は死ぬ)＋爆弾ピックアップでボス系生存。
+
 ## v0.25.951 — 拠点解放で「その方角のPOI/裏ボス」を画面端の方向矢印で示す
 
 - 新機能(社長指示): 8拠点はスタート地点(原点)から見て8方角(45°刻み)に並ぶ。ある拠点を解放(captured)すると、

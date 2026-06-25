@@ -2563,7 +2563,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (tWalls.length > 0 && segmentBlocked(tcx, tcy, ex, ey, tWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / TURRET_EXPLOSION_RADIUS;
                 const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
-                const killed = damageEnemy(enemy.id, dmg);
+                const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
                 spawnDamageNumber(ex, enemy.y, dmg, false);
                 if (killed) {
                   playEnemyDeath();
@@ -2688,7 +2688,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (dWalls.length > 0 && segmentBlocked(dcx, dcy, ex, ey, dWalls)) continue; // 壁越し不可
               const falloff = 1 - dist / DECOY_LV3_EXPLOSION_RADIUS;
               const dmg = Math.max(1, Math.round(decoy.damage * (0.55 + falloff * 0.45)));
-              const killed = damageEnemy(enemy.id, dmg);
+              const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
               spawnDamageNumber(ex, enemy.y, dmg, false);
               if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
                 const norm = Math.max(0.001, dist);
@@ -2770,7 +2770,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
             const falloff = 1 - dist / blastR;
             const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * (0.55 + falloff * 0.45)));
-            const killed = damageEnemy(enemy.id, splashDamage);
+            const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死(社長指示)
             hgHitCount += 1;
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
             spawnBurst(ex, ey, '#b91c1c', 4);
@@ -2825,7 +2825,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / blastR;
                 const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
-                const killed = damageEnemy(enemy.id, splashDamage);
+                const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死
                 fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
                 spawnBurst(ex, ey, '#b91c1c', 4);
@@ -2886,7 +2886,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (!checkCollision(boom, e)) continue;
                 boom.hitEnemies.push(e.id); // store配列を直接更新(既存の貫通弾と同じ手法)
                 const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-                const killed = damageEnemy(e.id, boom.damage);
+                const killed = damageEnemy(e.id, boom.damage, true); // 爆発=ボス系には非致死
                 spawnDamageNumber(ex, e.y, boom.damage, false);
                 spawnBurst(ex, ey, '#a5f3fc', 4);
                 if (killed) {
@@ -2907,7 +2907,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
-                  const killed = damageEnemy(e.id, dmg);
+                  const killed = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
                   spawnDamageNumber(ex, e.y, dmg, false);
                   if (killed) {
                     playEnemyDeath();
@@ -3278,7 +3278,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (glWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, glWalls)) continue; // 壁越し不可
               const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
-              const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
+              const splashKilled = damageEnemy(splashEnemy.id, splashDamage, true); // 爆発=ボス系には非致死
               glHitCount += 1;
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit);
               spawnBurst(sx, sy, '#b91c1c', hitCrit ? 7 : 4);
@@ -3320,7 +3320,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (exWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, exWalls)) continue;
               const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
-              const splashKilled = damageEnemy(splashEnemy.id, splashDamage);
+              const splashKilled = damageEnemy(splashEnemy.id, splashDamage, true); // 爆発=ボス系には非致死
               exHitCount += 1;
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, false);
               if (splashKilled) {
@@ -3691,7 +3691,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
                 const dx = ecx - pcx, dy = ecy - pcy;
                 const dist = Math.hypot(dx, dy) || 1;
-                const killed = useGameStore.getState().damageEnemy(e.id, dmg);
+                const killed = useGameStore.getState().damageEnemy(e.id, dmg, true); // 爆発(ワイヤー爆弾)=ボス系には非致死
                 spawnDamageNumber(ecx, e.y, dmg, true);
                 if (!killed && nowW >= (e.knockbackImmuneUntil ?? 0)) {
                   useGameStore.setState({
@@ -4532,7 +4532,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (dist > radius) continue;
               const falloff = 1 - dist / radius;
               const dmg = Math.max(1, Math.round(base * (0.55 + falloff * 0.45)));
-              damageEnemy(e.id, dmg);
+              damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
               spawnDamageNumber(ecx, e.y, dmg, false);
             }
           }

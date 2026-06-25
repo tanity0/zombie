@@ -36,8 +36,9 @@ export const poiSectorIndex = (poi: { x: number; y: number }): number =>
 // 距離は深層域(>=7500)の内側に置く(到達=深層域)。角度=その方角の拠点で解放される。
 // 調整はこの2値だけでよい(矢印・出現・帰巣すべてここを参照)。
 const BOSS_LAIR: Partial<Record<EnemyType, { angle: number; dist: number }>> = {
-  mimir: { angle: Math.PI, dist: 9000 },      // ステージ1=西(拠点4の方角)
-  jormungand: { angle: 0, dist: 9000 },       // ステージ3=東(拠点0の方角)
+  mimir: { angle: Math.PI, dist: 9000 },        // ステージ1=西(拠点4の方角)
+  jormungand: { angle: 0, dist: 9000 },         // ステージ3=東(拠点0の方角)
+  skadi: { angle: -Math.PI / 2, dist: 9000 },   // ステージ4=北(拠点6の方角)
 };
 
 // 裏ボスの巣のワールド座標(未定義タイプは null)。

@@ -483,6 +483,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'lab-zombie-3': '研究施設の変異体(Lv3)',
   mimir: 'ミーミル',
   jormungand: 'ヨルムンガルド',
+  skadi: 'スカジ',
 };
 export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
 
@@ -856,7 +857,7 @@ const inertiaAlpha = (deltaTime: number, tau: number): number =>
 
 // スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。
 const isScoreElite = (t: string): boolean => t === 'pumpkin';
-const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand';
+const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand' || t === 'skadi';
 const countScoreEliteBoss = (enemies: { type: string }[]): { elite: number; boss: number } => ({
   elite: enemies.reduce((n, e) => n + (isScoreElite(e.type) ? 1 : 0), 0),
   boss: enemies.reduce((n, e) => n + (isScoreBoss(e.type) ? 1 : 0), 0),
@@ -1570,7 +1571,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number) => boolean;
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない
   updateEnemies: (deltaTime: number) => void;
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
@@ -4444,20 +4445,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount) => {
+  damageEnemy: (id, amount, nonLethalBoss = false) => {
     let killed = false;
-    
+
     set(state => {
       const { enemies, gameStats } = state;
       const enemy = enemies.find(e => e.id === id);
-      
+
       if (!enemy) return { enemies };
 
       // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は無敵。被弾もヒット表示もしない。
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
 
-      const newHealth = Math.max(0, enemy.health - amount);
+      let newHealth = Math.max(0, enemy.health - amount);
+      // 爆弾/爆発ではボス系にトドメを刺さない(社長指示)。ダメージは入るが HP1 で踏みとどまる。
+      if (nonLethalBoss && newHealth === 0 && isBossType(enemy.type)) newHealth = 1;
       const updatedEnemies = enemies.map(e => 
         e.id === id ? { ...e, health: newHealth, lastHit: Date.now() } : e
       );
@@ -5561,12 +5564,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'bomb': {
         // VS rosary: kill every enemy currently on screen by zeroing their
         // HP. We don't grant experience for this — it's a panic button.
-        const reachable = get().enemies.filter(e => e.type !== 'reaper');
-        // フィナーレボス(giantbat・非イベント)を爆弾で消したら終了条件成立(他のキル経路と同じく帰還フェーズへ)。
-        const bombWon = reachable.some(e => e.type === 'giantbat' && !e.fromEvent);
+        // ボス系(reaper/giantbat/pumpkin/lab-zombie-3/裏ボス)は爆弾では死なない(社長指示)=対象外で生存。
+        const reachable = get().enemies.filter(e => !isBossType(e.type));
         set(state => ({
-          enemies: state.enemies.filter(e => e.type === 'reaper'),
-          finaleDefeated: state.finaleDefeated || bombWon,
+          enemies: state.enemies.filter(e => isBossType(e.type)),
+          finaleDefeated: state.finaleDefeated, // 爆弾ではフィナーレボスを倒せない=終了条件にしない
           gameStats: {
             ...state.gameStats,
             enemiesKilled: state.gameStats.enemiesKilled + reachable.length,

@@ -43,11 +43,12 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //  → health 600×5=3000(giant 200×5=1000 の3倍) / damage 38(giant 19 の2倍)。
   // mimir は正方形(眼)・jormungand は横長(巨蛇)なので当たり判定の縦横比だけ素材に寄せる(描画は頭基準)。
   mimir:      { width: 190, height: 190, speed: 70, health: 600, damage: 38, experienceValue: 0 },
-  jormungand: { width: 240, height: 180, speed: 70, health: 600, damage: 38, experienceValue: 0 }
+  jormungand: { width: 240, height: 180, speed: 70, health: 600, damage: 38, experienceValue: 0 },
+  skadi:      { width: 200, height: 215, speed: 70, health: 600, damage: 38, experienceValue: 0 } // 縦長(立ち姿)
 };
 
-// 裏ボス共通判定(2体は完全に同一仕様。stage で見た目/名前だけ変わる)。
-export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand';
+// 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。
+export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi';
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
@@ -168,7 +169,7 @@ const ENEMY_SPEED_MULT = 2 / 3;
 // ジャイアント未満の一般敵のみ対象。ジャイアント/死神/特別敵には付かない(強さ一定)。
 const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand']);
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -364,7 +365,7 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
   }
   // 裏ボス: 弾の性能(damage/speed/size)はここで定義するが、発射タイミングは
   // useGameLoop の専用コントローラ(3連発/全方位16発)が直接制御する(interval/range は使わない)。
-  if (enemy.type === 'mimir' || enemy.type === 'jormungand') {
+  if (enemy.type === 'mimir' || enemy.type === 'jormungand' || enemy.type === 'skadi') {
     return { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 };
   }
   return null;
@@ -424,6 +425,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'lich':     return '#7fb4e6';  // icy blue (ステージ4新型)
     case 'mimir':    return '#7a3b5e';  // 眼の血色がかった紫(裏ボス)
     case 'jormungand': return '#13204a'; // 深い蛇の藍(裏ボス)
+    case 'skadi':    return '#bfe6ff';  // 氷の蒼白(裏ボス)
     default:         return '#dc2626';
   }
 };

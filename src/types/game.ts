@@ -348,7 +348,8 @@ export type EnemyType =
   | 'lab-zombie-2' // 研究所Lv2(変異・男女)
   | 'lab-zombie-3' // 研究所Lv3(巨体・パンプキン相当)
   | 'mimir'      // 裏ボス(ステージ1): 巨大な眼+ゾンビの群体「ミーミル」
-  | 'jormungand'; // 裏ボス(ステージ3): 巨蛇「ヨルムンガルド」。仕様は mimir と共通
+  | 'jormungand' // 裏ボス(ステージ3): 巨蛇「ヨルムンガルド」。仕様は mimir と共通
+  | 'skadi';     // 裏ボス(ステージ4): 氷の死王「スカジ」。仕様は他の裏ボスと共通
 
 // Weapon types
 export interface Weapon {

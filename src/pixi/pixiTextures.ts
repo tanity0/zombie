@@ -185,6 +185,7 @@ export const ensureTextures = (): Promise<void> => {
       // 名前=EnemyType と一致させ、drawEnemy の getTexture(e.type) で解決する。
       { name: 'mimir', scaleMode: 'linear' as const },
       { name: 'jormungand', scaleMode: 'linear' as const },
+      { name: 'skadi', scaleMode: 'linear' as const },
     ];
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
