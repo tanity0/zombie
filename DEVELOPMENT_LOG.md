@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.931 — [バグ修正] ガチャ結果でレベルが時々表示されない(レア度ほど顕著)を解消
+
+- 原因: ページ式結果カードのLv span が `.gacha-lvl{opacity:0}` ＋ ポップ演出 `forwards`(遅延中は最初の状態=透明)
+  で `animationDelay = cfg.beat`(super1150/rare620/normal300ms)。レア度が高いほどLvが長く透明になり、
+  矢印で素早くめくる/その瞬間に見ると「レベル無し」に見えた(一覧側は遅延なしで常に表示=差異の理由)。
+- 修正: Lvの `animationDelay`(beat)を撤去。カード表示と同時にポップ＝どのレア度でも即レベル表示。
+- 検証: typecheck/lint/test/build 全green。
+- (注: v0.25.925〜930 はタイトル画像の画角調整=スクエア窓のcover化・サイズ/位置の微調整。ログ簡略。)
+
 ## v0.25.924 — タイトルを「正方形ステージ」方式に(画像を切らず中央固定で表示)
 
 - ユーザー案を採用: 画面の短辺いっぱいの**正方形ステージ**を中央に置き、タイトル画像を

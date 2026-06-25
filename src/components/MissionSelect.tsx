@@ -889,7 +889,7 @@ const SkillGacha: React.FC = () => {
             </div>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-[22px] font-extrabold text-white">{SKILLS[r.key].name}</span>
-              <span className={`gacha-lvl ${lvlCls} text-[26px] font-extrabold ${lvlColor}`} style={{ animationDelay: `${cfg.beat}ms` }}>
+              <span className={`gacha-lvl ${lvlCls} text-[26px] font-extrabold ${lvlColor}`}>
                 Lv{r.newLevel}
               </span>
             </div>
