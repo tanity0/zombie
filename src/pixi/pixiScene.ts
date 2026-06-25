@@ -3846,7 +3846,10 @@ export class PixiScene {
         : actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
       // 色付き個体は影を色で染める(青<紫<赤)。本体の見た目は変えない。
       const ct = e.colorTier ? ENEMY_COLOR_TIER_SHADOW[e.colorTier] : undefined;
-      this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, ct?.tint ?? 0x000000, ct?.alphaMult ?? 1);
+      // 裏ボスの影は「濃い暗赤」(社長指示)。tint=暗い赤・alphaMult を上げて濃く。
+      const shadowTint = isHiddenBoss(e.type) ? 0x5a0000 : (ct?.tint ?? 0x000000);
+      const shadowAlphaMult = isHiddenBoss(e.type) ? 1.7 : (ct?.alphaMult ?? 1);
+      this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, shadowTint, shadowAlphaMult);
     }
     // 召喚(味方ユニット)も敵と同じ方向影で揃える。
     for (const s of summons) {
@@ -4411,6 +4414,13 @@ export class PixiScene {
     this.drawHealthBar(o, e);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);
+    }
+    // 拠点/レスキューの「専用敵」(fromEvent)は通常湧きと区別(社長指示・軽量マーク): 頭上に橙の下向き三角(脈動)。
+    if (e.fromEvent) {
+      const my = e.y - 10;
+      const pulse = 0.6 + 0.4 * Math.sin(now / 200);
+      o.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).fill({ color: 0xf59e0b, alpha: 0.92 * pulse });
+      o.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).stroke({ width: 1.5, color: 0x7c2d12, alpha: 0.9 });
     }
     if (now - e.lastHit < 90) {
       o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });

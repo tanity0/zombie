@@ -124,7 +124,7 @@ const SUPP_ATTACKER_FIRST_MS = 4000;    // 制圧後、最初の攻撃者が来�
 const SUPP_SOLDIER_INTERVAL_MS = 900;   // 軍人の射撃間隔
 const SUPP_SOLDIER_DMG = 6;             // 軍人1射の攻撃者へのダメージ(2体ぶん毎回)
 const SUPP_SOLDIER_COUNT = 2;           // 1拠点あたりの駐留軍人数(描画/反撃)
-const SUPP_SOLDIER_SPEED = 150;         // 軍人の移動速度(px/s)。攻撃者へ接近/待機位置へ復帰
+const SUPP_SOLDIER_SPEED = RESCUE_SURVIVOR_SPEED; // 軍人の移動速度=レスキュー通常速(社長指示で 150→40 相当)
 const SUPP_SOLDIER_ENGAGE_DIST = 26;    // 攻撃者へ寄る最終距離(かなり至近=商人に被らせない)
 // 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
 const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: number; hy: number }[] => {
@@ -6465,13 +6465,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       let { hp, attackerId, attackerRespawnAt, soldierFireAt } = s;
       let soldiers = s.soldiers;
       let liveAttacker: Enemy | undefined; // 軍人の移動/射撃の標的
-      const safe = s.id === state.safeBaseId; // 商人サイト=安全地帯(不死・回復)
+      const safe = s.id === state.safeBaseId; // 商人サイト=安全地帯(HPは減らない)。ただし敵は出る(社長指示)。
       const vis = onScreen(s.x, s.y);
-      if (safe) {
-        if (attackerId) { removeAttackerIds.push(attackerId); attackerId = null; }
-        hp = Math.min(SUPP_HP_MAX, hp + SUPP_REGEN_PER_SEC * deltaTime);
-      } else if (vis) {
-        // 攻撃者ライフサイクル: 撃破(消滅)検出→30s後に再湧き。生存中は拠点HPを削る。
+      if (vis) {
+        // 攻撃者ライフサイクルは画面内の captured 拠点で共通(safe含む)。safe拠点は敵が来るがHPは減らない。
         if (attackerId && !aliveIds.has(attackerId)) { attackerId = null; attackerRespawnAt = now + SUPP_ATTACKER_RESPAWN_MS; }
         if (!attackerId && now >= attackerRespawnAt) {
           const ang = ((Math.abs(s.x) * 13 + Math.abs(s.y) * 7) % 628) / 100;
@@ -6484,7 +6481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         const hasLiveAttacker = !!attackerId && aliveIds.has(attackerId); // 今フレ生成分は次フレから削る
         if (hasLiveAttacker) {
-          hp -= SUPP_ATTACKER_DPS * deltaTime; // 攻撃者が拠点を攻撃
+          if (!safe) hp -= SUPP_ATTACKER_DPS * deltaTime; // 商人拠点(safe)はHPを減らさない(社長指示)。それ以外は削られる
           liveAttacker = state.enemies.find(e => e.id === attackerId); // 接近/射撃の標的
           if (now >= soldierFireAt) {           // 駐留軍人が攻撃者へ反撃(各自の位置から)
             soldierFireAt = now + SUPP_SOLDIER_INTERVAL_MS;
@@ -6495,12 +6492,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
           }
         }
-        if (inCircle) hp += SUPP_REGEN_PER_SEC * deltaTime; // プレイヤーが拠点内で防衛=回復
+        if (safe) hp = Math.min(SUPP_HP_MAX, hp + SUPP_REGEN_PER_SEC * deltaTime);       // safe=常時回復(=実質不死)
+        else if (inCircle) hp += SUPP_REGEN_PER_SEC * deltaTime;                          // プレイヤーが拠点内で防衛=回復
         hp = Math.max(0, Math.min(SUPP_HP_MAX, hp));
       } else {
-        // 画面外: 実体なし・単純な時間ドレイン。
+        // 画面外: 実体なし。safeは満タン維持、それ以外は単純な時間ドレイン。
         if (attackerId) { removeAttackerIds.push(attackerId); attackerId = null; }
-        hp = Math.max(0, hp - SUPP_DRAIN_PER_SEC * deltaTime);
+        hp = safe ? Math.min(SUPP_HP_MAX, hp + SUPP_REGEN_PER_SEC * deltaTime) : Math.max(0, hp - SUPP_DRAIN_PER_SEC * deltaTime);
       }
       // 軍人の移動(描画される=画面内のときのみ計算)。攻撃者がいれば至近まで接近、いなければ
       // サークル内を自由に巡回(目的地に着いたら次のランダム地点へ。社長指示=軍人がうろつく)。

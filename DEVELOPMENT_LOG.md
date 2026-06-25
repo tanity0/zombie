@@ -34,6 +34,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - `tsconfig.app.json` の target/lib を ES2020→ES2022(`Array.prototype.at` 等の型エラー解消の前提)。
 - (別途進行中) typecheck 実効化＋既存型エラー一掃は次コミットで反映予定。
 
+## v0.25.987 — 軍人速度=レスキュー通常速 / 専用敵にマーク / 商人拠点も敵あり(HP不変) / 裏ボス影を暗赤に
+
+- **軍人の移動速度**を `SUPP_SOLDIER_SPEED = RESCUE_SURVIVOR_SPEED`(150→40)に。速すぎる挙動を解消(レスキュー通常速と同じ)。
+- **専用敵(fromEvent=拠点攻撃者/レスキュー攻撃者)を通常湧きと区別**(社長指示・軽量): 頭上に橙の下向き三角マーク(脈動)を `drawEnemy` で表示。拠点・レスキュー共通。
+- **商人拠点(safe)にも攻撃者が出る**ように(社長指示)。ただし **safe拠点はHPを減らさない**(攻撃者が居ても被ダメ無し・常時回復で実質不死)。これで商人拠点の軍人も交戦する。
+- **裏ボスの影を「濃い暗赤」に**(社長指示): tint=0x5a0000・alphaMult=1.7。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.986 — 拠点の駐留軍人がサークル内を自由に巡回 / 最初の攻撃者を早める
 
 - 報告「軍人が配備されても動かない」の確認結果と対応:
