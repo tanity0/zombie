@@ -34,6 +34,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - `tsconfig.app.json` の target/lib を ES2020→ES2022(`Array.prototype.at` 等の型エラー解消の前提)。
 - (別途進行中) typecheck 実効化＋既存型エラー一掃は次コミットで反映予定。
 
+## v0.25.988 — 拠点Lv/EXPの永続保存構造を追加(Step 2: 構造のみ)
+
+- 拠点の**長期成長(Lv/EXP)**を `src/data/progress.ts` に追加(localStorageのみ・ゲームロジック非依存)。
+  出撃中の一時状態(open/captured・HP・滞在・攻撃者・軍人・safeBaseId)とは**完全に別**の永続データ。
+  - キー = `${stageId}::${baseId}`(**ステージ×拠点ごとに個別**。ステージ1の東=ステージ2の東とは別)。
+  - **未登録の拠点は Lv1/EXP0**(`getBaseGrowth` のデフォルト)。
+  - API: `loadBaseGrowth` / `saveBaseGrowth` / `getBaseGrowth` / `setBaseGrowth`(書込口) / `getBaseGrowthForStage`(表示用)。
+  - 死亡/帰還/クリア/resetGame/再起動をまたいで残る(store の reset 対象に入れていない=localStorage 永続)。
+  - `resetProgress`(開発リセット)でのみ消える。
+- **デバッグ表示**: `?debug=1` の DebugOverlay 最下部に `base[stageId] 0:L1/0 1:L1/0 …` を表示。
+  検証用フック(devコンソール): `__bumpBaseExp('base-0',50)` / `__setBaseLevel('base-0',3)` で書込→リロード/ステージ切替で
+  永続・ステージ別分離を確認可能(EXP加算実装=Step3 までの確認用)。
+- **未実装(次Step)**: 敵撃破EXP加算 / Lvアップ / LvによるHP・兵士補正 / Lv最大で奪われない、は未着手。
+- 既存の制圧/陥落/全拠点制圧/POI公開は不変(baseSites/updateSuppression/pois は未変更)。lint/typecheck/test(65)/build OK。
+
 ## v0.25.987 — 軍人速度=レスキュー通常速 / 専用敵にマーク / 商人拠点も敵あり(HP不変) / 裏ボス影を暗赤に
 
 - **軍人の移動速度**を `SUPP_SOLDIER_SPEED = RESCUE_SURVIVOR_SPEED`(150→40)に。速すぎる挙動を解消(レスキュー通常速と同じ)。

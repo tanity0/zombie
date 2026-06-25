@@ -110,10 +110,65 @@ export const submitStageHighScore = (stageId: string, score: number): boolean =>
   return true;
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// 拠点の長期成長(Lv/EXP)。出撃中の一時状態(open/captured・HP・滞在・攻撃者・軍人・safeBaseId)とは
+// 完全に別の「永続進捗」。死亡 / 帰還 / クリア / resetGame / アプリ再起動をまたいで残る(localStorageのみ)。
+//   ・キー = `${stageId}::${baseId}` でステージ×拠点ごとに個別保持(ステージ1の東=ステージ2の東とは別)。
+//   ・未登録の拠点は Lv1 / EXP0 とみなす。
+// ※ Step2 は「保存構造の追加」まで。EXP加算/Lvアップ/補正は次Step(ここでは書き込み口=setBaseGrowth のみ用意)。
+export interface BaseGrowth { level: number; exp: number; }
+const BASE_GROWTH_KEY = 'zombie.progress.baseGrowth';
+const baseGrowthKey = (stageId: string, baseId: string): string => `${stageId}::${baseId}`;
+type BaseGrowthMap = Record<string, BaseGrowth>;
+
+export const loadBaseGrowth = (): BaseGrowthMap => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(BASE_GROWTH_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === 'object' ? obj as BaseGrowthMap : {};
+  } catch {
+    return {};
+  }
+};
+
+export const saveBaseGrowth = (m: BaseGrowthMap): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(BASE_GROWTH_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
+// 未登録は Lv1/EXP0。読み出し専用(出撃中状態には触れない)。
+export const getBaseGrowth = (stageId: string, baseId: string, m: BaseGrowthMap = loadBaseGrowth()): BaseGrowth => {
+  const v = m[baseGrowthKey(stageId, baseId)];
+  if (v && Number.isFinite(v.level) && Number.isFinite(v.exp)) {
+    return { level: Math.max(1, Math.floor(v.level)), exp: Math.max(0, Math.floor(v.exp)) };
+  }
+  return { level: 1, exp: 0 };
+};
+
+// 書き込み(永続)。次Step の EXP加算/Lvアップから使う。Step2 では未配線(構造のみ)+デバッグ確認用。
+export const setBaseGrowth = (stageId: string, baseId: string, growth: BaseGrowth): void => {
+  if (!stageId || !baseId) return;
+  const m = loadBaseGrowth();
+  m[baseGrowthKey(stageId, baseId)] = { level: Math.max(1, Math.floor(growth.level)), exp: Math.max(0, Math.floor(growth.exp)) };
+  saveBaseGrowth(m);
+};
+
+// デバッグ/UI表示用: 現ステージの全拠点(base-0..baseCount-1)の Lv/EXP(未登録=Lv1/EXP0)。
+export const getBaseGrowthForStage = (stageId: string, baseCount = 4): { baseId: string; level: number; exp: number }[] => {
+  const m = loadBaseGrowth();
+  return Array.from({ length: baseCount }, (_, i) => {
+    const baseId = `base-${i}`;
+    const g = getBaseGrowth(stageId, baseId, m);
+    return { baseId, level: g.level, exp: g.exp };
+  });
+};
+
 // 開発用: 全ステージ解放 / 進行リセット。
 export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
 export const resetProgress = (): void => {
   writeSet(new Set());
   setSelectedStageId('');
   writeScores({});
+  saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)
 };
