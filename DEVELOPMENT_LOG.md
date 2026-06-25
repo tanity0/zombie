@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.980 — 敵のジャンプ/ダッシュ攻撃でも障害物破壊(裏ボスと同仕様)
+
+- 敵が `aiPhase==='jump'`(ジャンプ攻撃)/ `'charge'`(ダッシュ攻撃)中、重なった木/街・雪プロップを破壊
+  (`markObstacleDestroyed`)。裏ボスの破壊と同じ手続き生成キーSet方式=描画/判定とも同時消滅で軽い。
+- FX(バースト+リング+グロー+bomb SE)は `enemyCrushFxRef` で `BOSS_CRUSH_FX_MS(130ms)` スロットル。
+  破壊自体は毎フレーム(安い)、FXのみ間引き=森突っ切りでも積み上げない。
+- 対象外: 屋内(indoor)・labテーマ(木なし)。通常歩行の敵は破壊しない(突進/着地モーション時のみ)。
+- 負荷: 2/10。ジャンプ/ダッシュ中の敵のみ近傍クエリ(有界)。FXスロットルが安全弁。
+- lint/test(65 pass)/build OK。
+
 ## v0.25.979 — ワイヤー着地に強制ノックバック(無敵無視)を全Lvで
 
 - 着地ノックバックが `knockbackImmuneUntil` でゲートされ、直前のすり抜けで無敵が立つため着地で弾かなくなっていた。

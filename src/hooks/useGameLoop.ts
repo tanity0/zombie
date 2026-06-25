@@ -390,6 +390,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const wirePassHitRef = useRef<{ dash: number; ids: Set<string> }>({ dash: 0, ids: new Set() });
   // 前方集中(連射)タレットの索敵スキャン角(rad)。射程に敵がいない間ゆっくり回転する。
   const turretAimRef = useRef<Map<string, number>>(new Map());
+  // 敵のジャンプ/ダッシュ攻撃でのオブジェクト破壊FXのスロットル時刻(gameTime)。破壊自体は毎回・FXのみ間引き。
+  const enemyCrushFxRef = useRef<number>(0);
   // 四神舞(リズム): 停止が続いた gameTime の起点(0=未停止)。RHYTHM_ENTER_IDLE_MS でモード開始。
   const rhythmIdleStartRef = useRef<number>(0);
   // 四神舞: 動き出した gameTime の起点(0=停止中)。RHYTHM_EXIT_MOVE_MS 動き続けた時だけ終了
@@ -2454,6 +2456,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // Update enemies
         updateEnemies(deltaTime);
+
+        // 敵のジャンプ攻撃(aiPhase 'jump')/ダッシュ攻撃(aiPhase 'charge')でも障害物を破壊(裏ボスと同仕様)。
+        // 手続き生成なので破壊キーSetに入れるだけ=描画/判定とも同時に消える(軽い)。FXはスロットルで間引く。
+        // labテーマは木なし・屋内は対象外。プレイヤー破壊は元々無いので敵の突進/着地時のみ。
+        if (!indoor && !labTheme) {
+          const crushFar = useGameStore.getState().farBackdrop;
+          let crushedX = 0, crushedY = 0, crushedAny = false;
+          for (const e of useGameStore.getState().enemies) {
+            if (e.aiPhase !== 'jump' && e.aiPhase !== 'charge') continue;
+            const PAD = 24;
+            const eAABB = { x: e.x, y: e.y, width: e.width, height: e.height };
+            for (const t of treesInRegion(e.x - PAD, e.y - PAD, e.x + e.width + PAD, e.y + e.height + PAD)) {
+              if (rectsOverlap(eAABB, trunkRect(t))) { markObstacleDestroyed(t.key); crushedAny = true; crushedX = t.footX; crushedY = t.footY; }
+            }
+            for (const p of cityPropsInRegion(crushFar, e.x - PAD, e.y - PAD, e.x + e.width + PAD, e.y + e.height + PAD)) {
+              const r = cityPropRect(crushFar, p);
+              if (r && rectsOverlap(eAABB, r)) { markObstacleDestroyed(p.id); crushedAny = true; crushedX = p.footX; crushedY = p.footY; }
+            }
+          }
+          if (crushedAny && newGameTime - enemyCrushFxRef.current >= BOSS_CRUSH_FX_MS) {
+            enemyCrushFxRef.current = newGameTime;
+            spawnBurst(crushedX, crushedY, '#fbbf24', 6);
+            spawnRing(crushedX, crushedY, 6, 40, 'rgba(251,146,60,0.86)', 3, 300);
+            useGameStore.getState().spawnGlow(crushedX, crushedY, 44, 'rgba(251,146,60,', 340);
+            playSfx('bomb');
+          }
+        }
 
         // パンプキン(/lab-zombie-3)のジャンプ着地爆発(範囲狭め)。store が記録した着地点を消化し、
         // 爆発FXを出しつつ半径内ならプレイヤーへダメージ(無敵中は無効)。死亡時は通常の死亡演出へ。
