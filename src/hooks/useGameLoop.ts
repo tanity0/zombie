@@ -143,7 +143,24 @@ const DECOY_LV3_KNOCKBACK_MULT = 2.4;   // TODO(デコイLv3): 仮値。手榴�
 // 調整できるよう分離(座標=PLACE_DISTANCE / 形=LENGTH,THICKNESS / 耐久=HP_BY_LEVEL)。
 const SHIELD_COOLDOWN_MS = 6000;             // 設置間隔(全Lv共通)
 const SHIELD_DURATION_MS = 5000;             // 持続(全Lv共通)。duration 自動カリングで消滅
-const SHIELD_HP_BY_LEVEL = [0, 10, 30, 60];  // 耐久(Lv1/2/3)。敵接触1回・敵弾1発=各1消費
+const SHIELD_HP_BY_LEVEL = [0, 10, 30, 60];  // 耐久(Lv1/2/3)。被ダメージは敵種×状態で変動(shieldContactDamage)
+// 盾への被ダメージ表(社長指定)。接触は SHIELD_HIT_INTERVAL_MS ごとに1回・状態(突進/ジャンプ)で増える。
+// 犬(werewolf/lab-zombie-2): 通常5/ダッシュ(charge)10。パンプキン: 通常10/ジャンプ30。
+// 城ボス(giantbat)・死神(reaper)・裏ボス: 通常10/ダッシュ(charge)30/ジャンプ30、弾1発=10。その他雑魚=通常1。
+const shieldContactDamage = (enemy: { type: EnemyType; aiPhase?: string; bossState?: string }): number => {
+  const t = enemy.type;
+  if (t === 'werewolf' || t === 'lab-zombie-2') return enemy.aiPhase === 'charge' ? 10 : 5;
+  if (t === 'pumpkin') return enemy.aiPhase === 'jump' ? 30 : 10;
+  if (t === 'giantbat' || t === 'reaper' || isHiddenBoss(t)) {
+    if (isHiddenBoss(t)) return enemy.bossState === 'dash' ? 30 : 10; // 裏ボスは bossState で突進判定
+    if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return 30;
+    return 10;
+  }
+  return 1; // その他の雑魚は微量
+};
+// 敵弾が盾に当たった時の被ダメージ。城ボス/死神/裏ボスの弾は10、その他は1。
+const shieldBulletDamage = (ownerType?: EnemyType): number =>
+  (ownerType === 'giantbat' || ownerType === 'reaper' || (ownerType !== undefined && isHiddenBoss(ownerType))) ? 10 : 1;
 const SHIELD_PLACE_DISTANCE = 34;            // プレイヤー中心から設置足元までの距離
 // 当たり判定は木と同じく「下部のみ」の小さなフットプリント(敵もプレイヤーも貫通不可)。
 // スプライトはこの足元から上へ伸びる。絵に合わせた範囲。実機で微調整(TODO)。
@@ -276,6 +293,7 @@ const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェ�
 const BOSS_CRUSH_FX_MS = 130;                        // 爆破FX/SE/シェイクの最短間隔(=最大~7回/秒)
 const BOSS_CRUSH_SHAKE_MS = 130;                     // 「少し揺れる」程度の短い画面シェイク
 const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚などより控えめ)
+const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -1372,8 +1390,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bs.retreating = false;
               chasing = true;
               const st = boss.bossState ?? 'chase';
+              // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
+              const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
               const moveToward = (mult: number) => {
-                const dpx = pcx - bcx, dpy = pcy - bcy;
+                const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dl = Math.hypot(dpx, dpy) || 1;
                 const mv = speed * mult * deltaTime;
                 patch.x = boss.x + (dpx / dl) * mv; patch.y = boss.y + (dpy / dl) * mv;
@@ -3053,23 +3073,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let anyMoved = false;
             const toKnockback: { id: string; dx: number; dy: number }[] = [];
             const movedEnemies = sstate.enemies.map(enemy => {
-              if (enemy.type === 'reaper') return enemy;
-              // 裏ボスは巨体で障害物も壊す格。盾に触れたら即破壊して plow through(押し戻し/デバウンス無し)。
-              const isBoss = isHiddenBoss(enemy.type);
+              // 死神/裏ボスは物理ブロックされず「すり抜け」るが、接触ダメージ(表)は盾に与える。
+              const passesThrough = enemy.type === 'reaper' || isHiddenBoss(enemy.type);
               const ebox = { x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height };
               let touched = false;
               for (const s of shieldRects) {
                 if (rectsOverlap(ebox, s)) {
                   touched = true;
-                  if (isBoss) { dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 99999); continue; } // 接触で即破壊
                   const key = `${s.id}:${enemy.id}`;
                   const allowed = shieldHitRef.current.get(key) ?? 0;
                   if (gameTime >= allowed) {
-                    dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 1);
+                    dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + shieldContactDamage(enemy));
                     shieldHitRef.current.set(key, gameTime + SHIELD_HIT_INTERVAL_MS);
                     // ノックバック方向 = シールド中心→敵中心(来た方へ弾き返す)。
-                    // 重い敵/ボス(giantbat/pumpkin)は既存仕様に合わせて弾かない。
-                    if (enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                    // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/reaper/裏ボス)は弾かない。
+                    if (!passesThrough && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
                       const ecx = enemy.x + enemy.width / 2;
                       const ecy = enemy.y + enemy.height / 2;
                       const scx = s.x + s.width / 2;
@@ -3080,7 +3098,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
               }
-              if (!touched || isBoss) return enemy; // 裏ボスは盾に押し戻されない(すり抜けて壊す)
+              if (!touched || passesThrough) return enemy; // すり抜け勢は押し戻さない
               const resolved = resolveAabb(ebox, wallRects);
               if (resolved.x === enemy.x && resolved.y === enemy.y) return enemy;
               anyMoved = true;
@@ -3098,7 +3116,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               for (const s of shieldRects) {
                 if (rectsOverlap(bbox, s)) {
                   removeProjectile(b.id);
-                  dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + 1);
+                  dmgByShield.set(s.id, (dmgByShield.get(s.id) ?? 0) + shieldBulletDamage(b.ownerType));
                   spawnBurst(b.x + b.width / 2, b.y + b.height / 2, '#cbd5e1', 4);
                   break;
                 }
@@ -3284,7 +3302,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : 1;
           // スキル: コンボマスターは「全攻撃」増加(ユーザー指定)。銃にもフィニッシュコンボ倍率を適用。
           const comboMasterMult = skillComboMasterMult(skillPlayer, gameTime, collisionState.meleeFinishComboCount, collisionState.meleeFinishComboUntil);
-          const dmg = damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
+          // ワーム(ヨルムンガルド)だけ「カウンター弾(反射弾)を食らうと一撃死」(社長指示)。他敵は通常の反射ダメージ。
+          const wormCounterKill = !!projectile?.reflected && enemyForFx?.type === 'jormungand';
+          const dmg = wormCounterKill
+            ? (enemyForFx?.maxHealth ?? 1) + 1
+            : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
 

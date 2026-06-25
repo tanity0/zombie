@@ -520,6 +520,7 @@ export interface Projectile {
   direction: { x: number; y: number };
   weaponType: WeaponType;
   weaponKey?: string;
+  ownerType?: EnemyType; // 敵弾の発射元タイプ(盾への被ダメージ算定などに使用)。
   duration: number;
   createdAt: number;
   passthrough: boolean;

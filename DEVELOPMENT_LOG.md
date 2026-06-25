@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.969 — 盾ダメージ表(敵種×状態)/ 裏ボスは召喚の近い方を狙う / カウンター10倍・ワーム即死
+
+- **盾ダメージ表**(社長指定): 接触は SHIELD_HIT_INTERVAL_MS(400ms)ごとに1回、敵種×状態で増減。
+  - 犬(werewolf/lab-zombie-2): 通常5 / ダッシュ(charge)10
+  - パンプキン: 通常10 / ジャンプ30
+  - 城ボス(giantbat)・死神(reaper)・裏ボス: 通常10 / ダッシュ(charge)30 / ジャンプ30 / 弾1発=10
+  - その他雑魚: 通常1。`shieldContactDamage` / `shieldBulletDamage`(弾は `Projectile.ownerType` で判定)。
+  - 前版の「裏ボス=接触即破壊」は撤回し、この表に統一。死神/裏ボスは盾を**すり抜ける**が接触ダメージは与える。
+- **裏ボスが召喚(デコイ等)の近い方を狙う**(社長選択「近い方を狙う」): 追跡先を `resolveEnemyTarget`
+  (プレイヤー/召喚の最近傍, `BOSS_SUMMON_AGGRO=2000`)に。攻撃(バースト/全方位)は従来どおり。
+- **カウンター威力 60×→10×**(`REFLECT_DAMAGE_MULTIPLIER`)。
+- **ワーム(ヨルムンガルド)だけカウンター弾(反射弾)被弾で一撃死**(他敵は通常の反射ダメージ)。
+- lint/typecheck/test(65 pass)/build OK。
+- 保留: なし(召喚吸い付きは「近い方を狙う」で確定・実装済み)。
+
 ## v0.25.968 — 裏ボスが盾を即破壊 / 盾・召喚に被弾シェイク+ダメージFX
 
 - 「裏ボスが盾を壊せない」: 盾の接触判定で裏ボスだけ**接触で即破壊(plow through)**に。従来は全敵一律

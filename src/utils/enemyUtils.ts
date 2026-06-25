@@ -403,6 +403,7 @@ export const createEnemyProjectile = (
     damage: Math.round(profile.damage * (enemy.difficultyMultiplier ?? 1)),
     direction: dir,
     weaponType: 'enemy_bolt',
+    ownerType: enemy.type,
     duration: ENEMY_PROJECTILE_DURATION,
     createdAt: Date.now(),
     passthrough: false,

@@ -410,7 +410,7 @@ const SHIELD_BASH_KNOCKBACK_SPEED = 960; // 従来値を維持(KNOCKBACK_SPEED 2
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
-export const REFLECT_DAMAGE_MULTIPLIER = 60.0; // countered/reflected bullets hit 60× harder
+export const REFLECT_DAMAGE_MULTIPLIER = 10.0; // countered/reflected bullets hit 10× harder(社長指示で60→10)
 export const REFLECT_SPEED_MULTIPLIER = 1.8;
 // スキル: 反射神経の反撃爆発。ランチャー相当の半径・ダメージ(useGameLoop GRENADE_* に準拠の仮値)。
 export const REFLEX_BLAST_RADIUS = 92;  // = GRENADE_BLAST_RADIUS
