@@ -56,7 +56,7 @@ export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'j
 // finisher; crits hit much harder instead).
 export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
-  t === 'mimir' || t === 'jormungand';
+  t === 'mimir' || t === 'jormungand' || t === 'skadi';
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
