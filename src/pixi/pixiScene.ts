@@ -29,7 +29,6 @@ import { getRunPois, isPoiRevealed } from '../world/pois';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
-import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
@@ -399,9 +398,6 @@ const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
-// 背負い刀の傾き(ラジアン)。HUDアイコンと同じ角度で斜めに見せる。
-const KATANA_BACK_ROT_DEG = 32;
-const KATANA_BACK_ROT = (KATANA_BACK_ROT_DEG * Math.PI) / 180;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
 const KATANA_BACK_SCALE = 0.72;
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
@@ -772,7 +768,6 @@ export class PixiScene {
   // ステージ2(ラボ)の景色ダーク幕。rhythmDimGfx と同じく filteredWorld 直前=プレイヤー/光より下に置き、
   // ミラーボール本体(実テクスチャのスプライト)。0.5秒ごとに左右反転して回転に見せる。
   private rhythmBall = new Sprite();
-  private rhythmBallTextured = false;
   // 四神名(コマンドの右に出すテキスト)。テキスト変化時のみ更新。
   private rhythmGodText = new Text({ text: '', style: { fontFamily: 'serif', fontSize: 13, fontWeight: 'bold', fill: 0xfca5a5, stroke: { color: 0x0b1020, width: 3 } } });
   private rhythmGodLast = '';
@@ -948,7 +943,6 @@ export class PixiScene {
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
-  private horizonFadeZeroScreenY = 0;
 
   constructor(layers: SceneLayers) {
     this.L = layers;
@@ -991,9 +985,9 @@ export class PixiScene {
     this.L.filteredWorld.mask = this.worldFadeMask;
     this.L.worldGroup.addChild(this.worldFadeMask);
     this.L.horizonForest.mask = this.horizonForestFadeMask;
-    this.L.horizonForest.parent.addChild(this.horizonForestFadeMask);
+    this.L.horizonForest.parent!.addChild(this.horizonForestFadeMask);
     this.L.frontForest.mask = this.frontForestFadeMask;
-    this.L.frontForest.parent.addChild(this.frontForestFadeMask);
+    this.L.frontForest.parent!.addChild(this.frontForestFadeMask);
 
     const nearGroundStripCount = Math.max(1, Math.ceil(this.L.groundStrips.length * NEAR_GROUND_BLUR_STRIP_RATIO));
     const nearGroundStart = Math.max(0, this.L.groundStrips.length - nearGroundStripCount);
@@ -1461,7 +1455,6 @@ export class PixiScene {
   private updateWorldFadeMask(w: number, h: number) {
     const zeroY = this.horizonRevealZeroScreenY();
     const fullY = zeroY + HORIZON_REVEAL_FADE_PX;
-    this.horizonFadeZeroScreenY = zeroY;
 
     const canvas = document.createElement('canvas');
     canvas.width = 4;
@@ -1760,13 +1753,11 @@ export class PixiScene {
   // 近景森(frontForest)のステージ3差し替え=屋根帯。lab は applyOutdoorGroundTheme 管理なので触らない。
   // 重要: マスクは作り直さない(テクスチャ+tileScaleのみ)。前回 updateFrontForestFadeMask の
   // destroy(true) を同期中に呼んで描画破綻したため(v726不具合)。
-  private stage3FrontTex: Texture | null = null;
   private frontOverrides: Record<string, Texture> = {}; // farBackdropキー別の近景差し替え(city=屋根帯/snow=氷壁 等)
   private frontBaseTex: Texture | null = null;
   private currentFrontKey = '';
   setStage3Front(t: Texture | null) {
     if (!t) return;
-    this.stage3FrontTex = t;
     this.frontOverrides['city'] = t; // ステージ3=廃都の近景(屋根帯)
     this.currentFrontKey = ''; // 注入後に再適用
   }
@@ -1801,18 +1792,15 @@ export class PixiScene {
   }
   // 遠景森2(nearHorizon)のステージ別テクスチャ。キー='forest'(森シルエット)/'city'(廃墟都市)等。
   private nearHorizonOverrides: Record<string, Texture | null> = {};
-  private currentNearHorizonKey = '';
   setNearHorizonTexture(key: string, t: Texture | null) {
     if (!t) return;
     this.nearHorizonOverrides[key] = t;
-    this.currentNearHorizonKey = ''; // 注入後に再適用させる
   }
   // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
   private applyNearHorizon(key: string) {
     const tex = key ? this.nearHorizonOverrides[key] : null;
-    if (!tex) { this.L.nearHorizon.visible = false; this.currentNearHorizonKey = ''; return; }
+    if (!tex) { this.L.nearHorizon.visible = false; return; }
     if (this.L.nearHorizon.texture !== tex) this.L.nearHorizon.texture = tex;
-    this.currentNearHorizonKey = key;
     // 毎フレーム現在の画面/テクスチャ寸法でレイアウト(テクスチャ未準備なら内部で早期return)。
     // ※以前は「キー変更時に1回だけ」だったため、テクスチャ非同期到着前に空振りすると 1×1 のまま
     //   不可視になり、resize(回転)まで直らなかった(初期表示で遠景森2が出ない/一時停止で中途半端になる)バグ。
@@ -2175,7 +2163,6 @@ export class PixiScene {
     if (this.L.nearHorizon.visible) {
       this.L.nearHorizon.tilePosition.set(-s.camera.x * NEAR_HORIZON_PARALLAX_X, 0);
     }
-    this.horizonFadeZeroScreenY = this.horizonRevealZeroScreenY();
     this.horizonForestFootWorldY = s.camera.y + this.horizonActorHideScreenY();
     // ?labpersp の研究所では床専用の強い遠近カーブを使う(屋外は従来定数)。
     const labPerspNow = s.indoorMode && LAB_PERSP;
@@ -2322,7 +2309,7 @@ export class PixiScene {
     // width が極小になり、スプライトが巨大化して画面全体を覆うバグになるのを防ぐ。
     if (!ball.texture || ball.texture.width < 32) {
       const tex = getTexture('mirror-ball');
-      if (tex && tex.width >= 32) { ball.texture = tex; this.rhythmBallTextured = true; }
+      if (tex && tex.width >= 32) { ball.texture = tex; }
     }
     const texOk = !!ball.texture && ball.texture.width >= 32;
     const flipSign = Math.floor(gameTime / rhythm.interval) % 2 === 0 ? 1 : -1;
@@ -3031,7 +3018,7 @@ export class PixiScene {
     if (!this.labCeiling) {
       const sp = new Sprite(tex);
       sp.anchor.set(0, 0); // 左上基準=上寄せ
-      const parent = this.L.frontForest.parent;
+      const parent = this.L.frontForest.parent!;
       parent.addChildAt(sp, parent.getChildIndex(this.L.frontForest) + 1); // frontForest の手前・uiLayer の下
       this.labCeiling = sp;
     }
@@ -3335,10 +3322,9 @@ export class PixiScene {
       const pulse = 0.78 + 0.22 * Math.sin(now / 260 + p.x * 0.018);
       let color: number | null = null;
       let strength = 0;
-      if (p.type === 'experience') {
-        color = p.value >= 5 ? 0xffb4b4 : p.value >= 2 ? 0x7ee7b0 : 0x8fb8ff;
-        strength = p.value >= 5 ? 1.1 : p.value >= 2 ? 0.9 : 0.75;
-      } else if (p.type === 'magnet') {
+      // Note: 'experience' pickups are skipped via the `continue` above, so
+      // they never reach this glow-color switch.
+      if (p.type === 'magnet') {
         color = 0x60a5fa;
         strength = 0.8;
       } else if (p.type === 'bomb') {
@@ -4259,33 +4245,6 @@ export class PixiScene {
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ
   // を増やさず、`katanaShape` の共有ドット配置を軽量Graphicsで描く(HUDアイコン
   // と同じデザイン)。赤い鞘・少し反り・縦やや斜め。村雨は刀身シルバー。
-  private drawPlayerKatanaOnBack(g: Graphics, footX: number, footY: number, boxH: number, flip: boolean, variant: KatanaVariant) {
-    const d = this.depthScale(footY);
-    const h = boxH * d;
-    // 形・幅・角度・位置(中心)は据え置き。KATANA_BACK_SCALE で全体を中心
-    // まわりに縮小するだけ(中心 = 体の胸あたりで固定)。
-    const size = h * 1.5 * KATANA_BACK_SCALE;
-    const w = size * 0.6;
-    const dir = flip ? -1 : 1;
-    const pivotX = footX;             // 中心X(体の中央)
-    const pivotY = footY - h * 0.59;  // 中心Y(胸あたり)— 縮小しても動かない
-    const originX = pivotX - w / 2;
-    const originY = pivotY - size / 2;
-    const ang = dir * KATANA_BACK_ROT;
-    const cosA = Math.cos(ang);
-    const sinA = Math.sin(ang);
-    for (const r of buildKatanaShape(dir, variant)) {
-      const rw = r.w * w;
-      const rh = r.h * size;
-      const ccx = originX + r.x * w + rw / 2;
-      const ccy = originY + r.y * size + rh / 2;
-      const ox = ccx - pivotX;
-      const oy = ccy - pivotY;
-      const nx = pivotX + ox * cosA - oy * sinA;
-      const ny = pivotY + ox * sinA + oy * cosA;
-      g.rect(nx - rw / 2, ny - rh / 2, rw, rh).fill({ color: r.color, alpha: r.alpha });
-    }
-  }
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
     const fb = enemyFootBox(e);
@@ -4366,7 +4325,7 @@ export class PixiScene {
       let flinchSqY = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS;
-        const dir = e.knockbackVx > 0.01 ? 1 : e.knockbackVx < -0.01 ? -1 : 1;
+        const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
         view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob;
         flinchSqY = 1 - 0.1 * wob;
       } else {
@@ -4400,7 +4359,7 @@ export class PixiScene {
       let flinchSqY = 1;
       if (sinceHit >= 0 && sinceHit < ENEMY_HIT_FLINCH_MS) {
         const wob = 1 - sinceHit / ENEMY_HIT_FLINCH_MS; // 1→0 減衰
-        const dir = e.knockbackVx > 0.01 ? 1 : e.knockbackVx < -0.01 ? -1 : 1;
+        const dir = (e.knockbackVx ?? 0) > 0.01 ? 1 : (e.knockbackVx ?? 0) < -0.01 ? -1 : 1;
         view.sprite.skew.x = -dir * ENEMY_HIT_FLINCH_SKEW * wob; // 頭が後ろへ反る
         flinchSqY = 1 - 0.1 * wob;
       } else {
@@ -5391,7 +5350,7 @@ export class PixiScene {
           }
         };
         // 立体ブロック(actorLayer・足元アンカー)。前面＋上端キャップ＋不透明下地。
-        const addBlock = (x: number, y: number, w: number, h: number, footY: number, decorative: boolean) => {
+        const addBlock = (x: number, _y: number, w: number, h: number, footY: number, decorative: boolean) => {
           const cont = new Container();
           const bg = new Graphics();
           bg.rect(0, 0, w, h + RISE).fill({ color: LAB_WALL_FILL });
@@ -5834,7 +5793,9 @@ export class PixiScene {
         this.drawWhipSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
-        const targetLayer = e.kind === 'trail' || (e.kind === 'glow' && e.radius >= STRONG_GLOW_RADIUS)
+        // 'glow' is handled above as a pooled sprite and never reaches this
+        // Graphics path, so only 'trail' targets the ground layer here.
+        const targetLayer = e.kind === 'trail'
           ? this.L.groundLayer
           : this.L.effectLayer;
         if (!(g instanceof Graphics)) {
@@ -5944,7 +5905,7 @@ export class PixiScene {
     if (!(sprite instanceof Sprite)) {
       if (sprite) sprite.destroy();
       sprite = new Sprite(getGlowTexture());
-      sprite.anchor.set(0.5);
+      (sprite as Sprite).anchor.set(0.5);
       sprite.blendMode = 'add';
       this.L.effectLayer.addChild(sprite);
       this.effects.set(e.id, sprite);
@@ -6002,13 +5963,14 @@ export class PixiScene {
     if (!(sprite instanceof Sprite)) {
       if (sprite) sprite.destroy();
       sprite = new Sprite();
-      sprite.anchor.set(WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_ANCHOR_Y);
+      (sprite as Sprite).anchor.set(WHIP_SPRITE_ANCHOR_X, WHIP_SPRITE_ANCHOR_Y);
       this.L.effectLayer.addChild(sprite);
       this.effects.set(e.id, sprite);
     }
+    const sp = sprite as Sprite;
     const tex = getTexture('whip');
-    if (!tex) { sprite.visible = false; return; }
-    if (sprite.texture !== tex) sprite.texture = tex;
+    if (!tex) { sp.visible = false; return; }
+    if (sp.texture !== tex) sp.texture = tex;
     const dx = e.toX - e.fromX;
     const dy = e.toY - e.fromY;
     const reach = Math.hypot(dx, dy) || 1;
@@ -6151,7 +6113,7 @@ export class PixiScene {
     if (!(bt instanceof BitmapText)) {
       if (bt) bt.destroy();
       bt = new BitmapText({ text: String(e.value), style: { fontFamily: PixiScene.DAMAGE_FONT, fontSize: PixiScene.DAMAGE_FONT_SIZE } });
-      bt.anchor.set(0.5, 0.5);
+      (bt as BitmapText).anchor.set(0.5, 0.5);
       this.L.effectLayer.addChild(bt);
       this.effects.set(e.id, bt);
     }
@@ -6172,18 +6134,19 @@ export class PixiScene {
     if (!(sp instanceof Sprite)) {
       if (sp) sp.destroy();
       sp = new Sprite();
-      sp.anchor.set(0.5, 0.5);
+      (sp as Sprite).anchor.set(0.5, 0.5);
       this.L.effectLayer.addChild(sp);
       this.effects.set(e.id, sp);
     }
+    const spr = sp as Sprite;
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     const targetH = 130 * (e.scale ?? 1);            // 表示高さ(world px)
     const pop = 1 + Math.max(0, 1 - t * 4) * 0.18;   // 出だしを少し大きく
-    sp.visible = true;
-    sp.texture = tex;
-    sp.scale.set((targetH / tex.height) * pop);
-    sp.position.set(e.x, e.y);
-    sp.alpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3); // 後半でフェード
+    spr.visible = true;
+    spr.texture = tex;
+    spr.scale.set((targetH / tex.height) * pop);
+    spr.position.set(e.x, e.y);
+    spr.alpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3); // 後半でフェード
   }
 
   // ---- player FX: counter ring + reload meter (world space) ----------------
@@ -6634,7 +6597,9 @@ export class PixiScene {
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();
-    this.shadowGfx.destroy();
+    // 影は shadowContainer + プール済みスプライトで管理(旧 shadowGfx は存在しない孤児参照だった)。
+    // 以前はここで存在しない shadowGfx.destroy() を呼んで例外→以降の解放(playerFx等)が握り潰されていた。
+    this.shadowContainer.destroy({ children: true });
     this.playerFx.destroy();
     this.reticleGfx.destroy();
     this.flashGfx.destroy();

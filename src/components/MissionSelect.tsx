@@ -9,7 +9,7 @@ import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from
 import { spritePath } from '../utils/spriteLoader';
 import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
-import type { AmmoType, CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
+import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
   GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel,
@@ -581,7 +581,8 @@ const DevTools: React.FC<{
   const [danceLevel, setDanceLevel] = useState(1);
   const [danceIntervalInput, setDanceIntervalInput] = useState(String(Math.round(rhythmIntervalForLevel(1))));
   const [dropInput, setDropInput] = useState(String(meleeAmmoDropPercent));
-  const [ammoInputs, setAmmoInputs] = useState<Record<AmmoType, string>>({
+  // 自動回収量を調整できるのは handgun/shotgun/rifle のみ(phill は手動射撃で対象外)。
+  const [ammoInputs, setAmmoInputs] = useState<Record<'handgun' | 'shotgun' | 'rifle', string>>({
     handgun: String(ammoPickupAmounts.handgun), shotgun: String(ammoPickupAmounts.shotgun), rifle: String(ammoPickupAmounts.rifle),
   });
 
@@ -596,7 +597,7 @@ const DevTools: React.FC<{
     useGameStore.getState().setPendingLoadout([]);
     onStartGame(selectedClass);
   };
-  const ammoFields: { type: AmmoType; label: string }[] = [
+  const ammoFields: { type: 'handgun' | 'shotgun' | 'rifle'; label: string }[] = [
     { type: 'handgun', label: 'ハンドガン' }, { type: 'shotgun', label: 'ショットガン' }, { type: 'rifle', label: 'ライフル' },
   ];
 

@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EnemyType
+  ActiveEvent, ShadowCloneState, BaseSite, EnemyType, Weapon
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
@@ -2792,6 +2792,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 shoveStartAt: now, shoveDuration: TRAP_MELEE_SHOVE_SLIDE_MS,
                 x: sh.x, y: sh.y,
                 shieldHp: nextHp,
+                shieldHitAt: now, // バッシュでも被弾シェイク/フラッシュを出す(描画側 drawShield 用・監査対応)
                 ...(nextHp <= 0 ? { shieldBreakAt: now + TRAP_MELEE_SHOVE_SLIDE_MS } : {}),
               };
             }
@@ -4551,7 +4552,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 視線/移動の遮蔽物: 屋内=lab壁 / 研究所スキン=壁オブジェクト / 森=なし。
       const losWalls = indoor ? indoorWalls : labWallRects;
 
-      const updatedEnemies = enemies.map(enemy => {
+      const updatedEnemies = enemies.map((enemy): Enemy => {
         // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
         // useGameLoop の専用コントローラが座標を直接書き込む(死神と同じ方式)。
         if (isHiddenBoss(enemy.type)) return enemy;
@@ -4806,7 +4807,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         // シーカーで標的を見失った通常敵は接近をやめ、その場で待機する(速度を減衰。3秒間)。
         if (tgt.hidden) {
-          return { ...enemy, vx: enemy.vx * 0.85, vy: enemy.vy * 0.85, aiPhase: undefined, aiPhaseUntil: 0 };
+          return { ...enemy, vx: (enemy.vx ?? 0) * 0.85, vy: (enemy.vy ?? 0) * 0.85, aiPhase: undefined, aiPhaseUntil: 0 };
         }
         const dx = tgt.x - (enemy.x + enemy.width / 2);
         const dy = tgt.y - (enemy.y + enemy.height / 2);
@@ -5370,23 +5371,23 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 壁に当たったらその場で戻り動作へ切替(貫通しない)。
               const bwalls = indoor ? indoorWalls : grenadeWallsFor(p);
               if (bwalls.some(w => rectsOverlap({ x: nx, y: ny, width: p.width, height: p.height }, w))) {
-                return { ...p, boomPhase: 'return', hitEnemies: [] };
+                return { ...p, boomPhase: 'return' as const, hitEnemies: [] };
               }
               // 画面外に出たらすぐ戻り動作へ切替(停止せず帰還)。可視範囲=カメラ+画面サイズ。
               const offScreen = ncx < camera.x || ncx > camera.x + gameBounds.width || ncy < camera.y || ncy > camera.y + gameBounds.height;
               const traveled = Math.hypot(ncx - (p.boomOriginX ?? ncx), ncy - (p.boomOriginY ?? ncy));
               if (offScreen) {
-                return { ...p, x: nx, y: ny, boomPhase: 'return', hitEnemies: [] };
+                return { ...p, x: nx, y: ny, boomPhase: 'return' as const, hitEnemies: [] };
               }
               if (traveled >= (p.boomMaxDist ?? 99999)) {
                 // 到達 → 停止フェーズ。貫通リストをリセット(戻りで再ヒットできるよう)。
-                return { ...p, x: nx, y: ny, boomPhase: 'stop', boomStopUntil: currentTime + (p.boomStopMs ?? 2000), hitEnemies: [] };
+                return { ...p, x: nx, y: ny, boomPhase: 'stop' as const, boomStopUntil: currentTime + (p.boomStopMs ?? 2000), hitEnemies: [] };
               }
               return { ...p, x: nx, y: ny };
             }
             if (phase === 'stop') {
               if (currentTime >= (p.boomStopUntil ?? 0)) {
-                return { ...p, boomPhase: 'return', hitEnemies: [] };
+                return { ...p, boomPhase: 'return' as const, hitEnemies: [] };
               }
               return p; // 停止中は動かない(回転は描画側)
             }
@@ -5394,7 +5395,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
               const ddx = playerCX - cx, ddy = playerCY - cy;
               const dd = Math.hypot(ddx, ddy);
-              if (dd <= 18) return { ...p, boomPhase: 'done' }; // 到達 → 消滅(useGameLoop が除去)
+              if (dd <= 18) return { ...p, boomPhase: 'done' as const }; // 到達 → 消滅(useGameLoop が除去)
               const rsp = DRONE_BOOM_RETURN_SPEED; // 戻りは従来速度
               return { ...p, x: p.x + (ddx / dd) * rsp * deltaTime, y: p.y + (ddy / dd) * rsp * deltaTime };
             }
@@ -5979,7 +5980,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const isActiveCategory = current && current.id === player.activeWeaponId;
 
       if (current && (weapon.tier ?? 1) <= (current.tier ?? 1)) {
-        const ammoType = weapon.ammoType;
+        // Past the melee early-return: this is always a gun, whose `ammoType`
+        // mirrors its category (see createWeapon) and is therefore defined.
+        const ammoType = weapon.ammoType as AmmoType;
         const ammoField = AMMO_FIELD[ammoType];
         const amount = get().ammoPickupAmounts[ammoType] * 2;
         duplicateAmmo = { amount };
@@ -6033,9 +6036,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
 
-    if (duplicateAmmo) {
+    // `duplicateAmmo` is assigned inside the set() callback above; TS's flow
+    // analysis can't see that closure write, so it narrows the outer binding
+    // back to `null`. Read through the declared type to recover `.amount`.
+    const dup = duplicateAmmo as { amount: number } | null;
+    if (dup) {
       const p = get().player;
-      get().spawnAmmoNumber(p.x + p.width / 2, p.y - 6, duplicateAmmo.amount);
+      get().spawnAmmoNumber(p.x + p.width / 2, p.y - 6, dup.amount);
     }
   },
 
@@ -7074,6 +7081,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           katanaDashDirX: 0,
           katanaDashDirY: 0,
           katanaDashCooldownEnd: 0,
+          katanaRecoveryUntil: 0,
           shijinSlideUntil: 0,
           shijinSlideDirX: 0,
           shijinSlideDirY: 0,

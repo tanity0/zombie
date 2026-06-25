@@ -13,7 +13,7 @@ import type { Enemy, Player, Summon } from '../types/game';
 // upward, so collision and melee ranges remain unchanged.
 export const PLAYER_VISUAL_SCALE = 2.3;
 
-const ENEMY_VISUAL_SCALE: Record<Enemy['type'], number> = {
+const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   bat: 2.35,
   skeleton: 2.15,
   zombie: 2.1,

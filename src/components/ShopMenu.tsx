@@ -182,7 +182,7 @@ const ShopMenu: React.FC = () => {
             const canBuy = !entry.disabled && player.straps >= entry.cost;
             return (
               <button
-                key={`${entry.key}-${entry.ammoType ?? ''}`}
+                key={`${entry.key}-${('ammoType' in entry ? entry.ammoType : undefined) ?? ''}`}
                 onClick={() => handleBuy(entry)}
                 disabled={!canBuy}
                 className={`rounded-2xl border px-3 py-2 text-left transition ${

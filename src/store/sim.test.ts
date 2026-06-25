@@ -6,6 +6,10 @@
 // see CLAUDE.md Testing policy.
 import { describe, it, expect } from 'vitest';
 import { useGameStore } from './gameStore';
+
+// Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
+// pulling in @types/node (the value is read only under the nightly cron).
+declare const process: { env?: Record<string, string | undefined> } | undefined;
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import type { InputState, Projectile, EnemyType } from '../types/game';
 
@@ -195,7 +199,7 @@ describe('headless simulation invariants', () => {
 
   // Nightly fuzz (longer + multiple character classes/seeds). Skipped in normal
   // CI; the nightly cron sets SIM_FUZZ=1. See .github/workflows/nightly.yml.
-  it.runIf(process.env.SIM_FUZZ)('fuzz: long randomized sim across classes', () => {
+  it.runIf(typeof process !== 'undefined' && process?.env?.SIM_FUZZ)('fuzz: long randomized sim across classes', () => {
     const classes = ['warrior', 'mage', 'rogue', 'necromancer'];
     for (const cls of classes) {
       useGameStore.getState().resetGame(cls);

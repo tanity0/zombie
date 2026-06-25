@@ -360,7 +360,7 @@ const ensureBgm = () => {
   bgm = new Audio(bgmSrc);
   bgm.loop = true;
   bgm.preload = 'auto';
-  bgm.playsInline = true;
+  (bgm as HTMLVideoElement).playsInline = true;
   bgm.volume = 1; // real level is set by the WebAudio gain (iOS-safe)
 };
 
@@ -715,7 +715,7 @@ export const preloadAllAudio = (): Promise<void> => {
     if (!url || typeof Audio === 'undefined') return Promise.resolve();
     const el = new Audio(url);
     el.preload = 'auto';
-    el.playsInline = true;
+    (el as HTMLVideoElement).playsInline = true;
     return waitAudioReady(el);
   });
   const sfxWaits = Array.from(sfxLoading.values()).map(p => p.catch(() => {}));
@@ -736,7 +736,7 @@ export const unlockDanceAudio = () => {
     if (typeof Audio === 'undefined') continue;
     const el = new Audio(url);
     el.preload = 'auto';
-    el.playsInline = true;
+    (el as HTMLVideoElement).playsInline = true;
     el.muted = true;
     el.volume = 0;
     void el.play()
@@ -813,7 +813,7 @@ export const prepareDeepReverseBgm = () => {
   deepBgm = new Audio(src);
   deepBgm.loop = true;          // 深層滞在が長い前提=ループ
   deepBgm.preload = 'auto';
-  deepBgm.playsInline = true;
+  (deepBgm as HTMLVideoElement).playsInline = true;
   deepBgm.volume = bgmVolume;
   try { deepBgm.load(); } catch { /* ignore */ } // pause のまま待機(明示playしない)
 };

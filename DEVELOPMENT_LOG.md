@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.983 — typecheck 実効化＋既存型エラー一掃(46→0) / 盾バッシュのシェイク / 実バグ2件修正
+
+- **`npm run typecheck` を実効化**: ルート tsconfig が `files:[]`＋references で実質ノーチェックだったのを
+  `tsc -p tsconfig.app.json --noEmit` に変更。これで src 全体を型検査(dx/dy・spawnSlash 級の取りこぼしを今後CIで阻止)。
+- **既存型エラー 46→0**(挙動不変の型修正のみ。詳細は各ファイル):
+  - 未使用宣言の削除(App の React import、pixiScene の死にフィールド/未使用メソッド等)
+  - `playsInline`(audio)・Sprite/BitmapText の union narrowing(pixi)・`Partial<Record>`(renderSpec の視覚スケール)
+  - `boomPhase` リテラルに `as const`、`enemy.vx/vy ?? 0`、`Weapon` import、`process` ガード(sim.test) 等
+- **実バグ2件(型検査で表面化)を修正**:
+  1. `pixiScene.destroy()` が存在しない `shadowGfx.destroy()` を呼んで例外→PixiStage の try/catch で握られ
+     **以降の解放(playerFx/reticle/flash/arrow/farBackdrop/blur)が握り潰されていた**(teardown リーク)。
+     → `shadowContainer.destroy({children:true})` に修正(正しい解放)。
+  2. `startGame` の player に必須 `katanaRecoveryUntil` 欠落(実行時 undefined)→ `0` 初期化。
+- **#5**: 盾バッシュ時も `shieldHitAt` を立てて被弾シェイク/フラッシュを出す(監査対応)。
+- typecheck/lint/test(65 pass)/build すべて green。
+
 ## v0.25.982 — 出撃導線を「出撃準備」のみに / tsconfig lib を ES2022 へ
 
 - ミッション詳細の出撃ボタンを **「出撃準備」のみ**に(フリー周回ボタン廃止・「（キャラ選択へ）」表記も削除・社長指示)。
