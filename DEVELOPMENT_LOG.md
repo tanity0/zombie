@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.972 — 自動タレットの前方集中ダメージ 7→5
+
+- `TURRET_FWD_DAMAGE` 7→5(社長指示)。全方位9/グレネード弾44/消滅爆発36 は据え置き。
+- lint/typecheck/test(65 pass)/build OK。
+
 ## v0.25.971 — 発火ナイフの爆発を「爆発扱い」に(エクスプローダーが乗る)
 
 - 発火ナイフの範囲爆発に `skillExplosionMult`(エクスプローダー ×1.2/1.35/1.5)を半径＆ダメージに適用(社長指示)。

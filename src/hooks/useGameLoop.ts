@@ -179,7 +179,7 @@ const TURRET_FOOT_W = 30;                               // 当たり判定幅(�
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
 const TURRET_FWD_FIRE_MS = 130;                         // 前方集中の発射間隔(handgun-t3 cooldown 相当)
-const TURRET_FWD_DAMAGE = 7;                            // 前方集中の弾ダメージ(handgun-t3 相当)
+const TURRET_FWD_DAMAGE = 5;                            // 前方集中の弾ダメージ(社長指示で7→5)
 const TURRET_FWD_BULLET_SPEED = 560 * 1.5;             // handgun-t3 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
 const TURRET_FWD_RANGE = 420;                           // 前方集中の射程(長射程)。TODO: 実機調整
 const TURRET_FWD_LINE_HALF_W = 60;                      // 前方制圧の射線帯の半幅(この帯内の敵がいる時だけ撃つ)
