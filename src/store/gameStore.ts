@@ -43,7 +43,7 @@ import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST,
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
-import { enemyFootBox, enemyHeadY } from '../pixi/renderSpec';
+import { enemyFootBox, enemyHeadY, enemyVisualRect } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
@@ -375,11 +375,13 @@ export const MELEE_RADIUS = 74;
 // 中心が遠いので「当たり判定の帯(AABB)の最近点」までの距離=矩形に触れたら届く(社長指示「こちらからも揃えて」)。
 // これで巨体ボスも中心まで突っ込まず、表示している四角の縁で斬れる。描画側の判定枠と一致。
 export const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
-  if (!isHiddenBoss(e.type)) {
-    return Math.hypot((e.x + e.width / 2) - px, (e.y + e.height / 2) - py);
-  }
-  const nx = Math.max(e.x, Math.min(px, e.x + e.width));
-  const ny = Math.max(e.y, Math.min(py, e.y + e.height));
+  // 「見た目=当たり判定」: 見える胴体ボックスの最近点までの距離(裏ボスは足元の帯AABB)。中心基準をやめ、
+  // 見えている範囲の縁で当たるように(近接が「見えてるのに届かない」を解消)。
+  const r = isHiddenBoss(e.type)
+    ? { x: e.x, y: e.y, width: e.width, height: e.height }
+    : enemyVisualRect(e);
+  const nx = Math.max(r.x, Math.min(px, r.x + r.width));
+  const ny = Math.max(r.y, Math.min(py, r.y + r.height));
   return Math.hypot(px - nx, py - ny);
 };
 // ゾンビAI(社長指示): 通常時 ×1.2・フラフラ蛇行で接近。プレイヤーの近接範囲(MELEE_RADIUS)に入ると

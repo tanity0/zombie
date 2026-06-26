@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1015 — 「見た目=当たり判定」: 敵の当たり判定を見える胴体ボックスに統一
+
+- 社長指示「見てわかること=正義。当たり判定は見た目に準ずる(裏ボスは既に対応済み)」。通常敵の当たり判定を
+  **見える胴体ボックス(`enemyVisualRect`=描画スプライトの箱)** に合わせる。見た目/位置/移動/影は不変、当たり判定だけ拡大。
+  - `enemyVisualRect(e)`(renderSpec)= 足元アンカーで描いた箱(footX中心・footY底・boxW×boxH)。
+  - `collisionUtils.enemyContactBox` を「裏ボス=帯 / それ以外=enemyVisualRect」に。弾-敵/接触/召喚接触をこれ経由に。
+  - `enemyMeleeDist` を中心基準→**見える箱の最近点**距離に(全敵)。近接が「見えてるのに届かない」を根本解消。
+  - 裏ボスは従来どおり足元の帯(AABB)で判定(既に「見た目=判定」)。
+- これで弾・近接・接触すべて「見えている胴体=当たる/当たられる」に一致。影は方向性・スプライト相応のまま(プレイヤーと同様)。
+- 負荷 1/10(衝突判定の矩形を差し替えるだけ)。検証: lint / typecheck / test(65 passed) / build green。
+- 申し送り: 当たり判定が見た目どおり=従来より大きいので、難易度がやや上がりうる。きつければ `ENEMY_VISUAL_SCALE` か
+  胴体率の係数で微調整可能(現状は描画箱100%)。
+
 ## v0.25.1014 — ステージ2の敵出現修正／護衛の索敵1.5倍・実弾化／NPCサイズ戻し
 
 - **ステージ2で敵が一切出ない**を修正: `LAB_SPAWN_AGGRO_RANGE` 150→700。ラボ湧き敵は画面外リング(~580-740px)に

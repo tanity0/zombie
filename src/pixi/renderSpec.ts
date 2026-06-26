@@ -56,6 +56,14 @@ export const enemyFootBox = (e: Enemy): FootBox => {
   };
 };
 
+// 見える胴体の当たり判定(AABB)=「見た目=当たり判定」の原則(社長指示)。足元アンカーで描いたスプライトの
+// 描画ボックスそのもの(footX中心・footYが底)。当たり判定(弾/接触/近接)をこれに合わせると「見えてる=当たる」。
+// 裏ボスは別(帯=enemy.width×height のまま)なので呼び出し側で除外する。
+export const enemyVisualRect = (e: Enemy): { x: number; y: number; width: number; height: number } => {
+  const fb = enemyFootBox(e);
+  return { x: fb.footX - fb.boxW / 2, y: fb.footY - fb.boxH, width: fb.boxW, height: fb.boxH };
+};
+
 // 敵スプライト素材の縦横比(texH/texW)を type×バリアント(default/stage3)別に登録する小さなレジストリ。
 // 描画は containScale で枠(boxW×boxH)に内接させるため、横長素材は実描画が枠より低くなる=頭の位置が
 // 素材ごとに変わる。PHILLサークルの「頭スナップ」を実描画に合わせるためのデータ橋渡し(描画→ロジック)。

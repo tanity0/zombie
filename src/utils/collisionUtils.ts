@@ -1,10 +1,11 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
-import { enemyFootBox } from '../pixi/renderSpec';
+import { enemyFootBox, enemyVisualRect } from '../pixi/renderSpec';
 
-// 裏ボスの当たり判定は「足元の帯(AABB=enemy.width×height)」に統一(社長指示「この四角を当たり判定に」)。
-// 巨大な絵とは分離し、こちらの攻撃・向こうの接触の両方ともこの帯=AABBで判定する。よって接触ボックスは
-// もはや特別扱い不要(全敵 AABB そのもの)。enemyContactBox は将来の差し戻し用に名前だけ残す薄いラッパ。
-const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } => e;
+// 「見た目=当たり判定」(社長指示)。通常敵は見える胴体ボックス(enemyVisualRect=描画スプライトの箱)で判定し、
+// 「見えてる=当たる/当たられる」を実現。裏ボスだけは従来どおり足元の帯(AABB=enemy.width×height)で判定する。
+const isHiddenBossType = (t: Enemy['type']): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi';
+const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } =>
+  isHiddenBossType(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyVisualRect(e);
 
 // PHILL銃の頭部リージョン(見た目の上部)= 描画ボックス上端から boxH×この割合。
 const HEAD_FRACTION = 0.33;
@@ -113,7 +114,7 @@ export const checkProjectileEnemyCollisions = (
         const top = fb.footY - fb.boxH;
         const headRect = { x: fb.footX - fb.boxW / 2, y: top, width: fb.boxW, height: fb.boxH * HEAD_FRACTION };
         const hitHead = checkCollision(projectile, headRect);
-        const hitBody = checkCollision(projectile, enemy);
+        const hitBody = checkCollision(projectile, enemyContactBox(enemy));
         if (hitHead || hitBody) {
           collisions.push({ projectileId: projectile.id, enemyId: enemy.id, damage: projectile.damage, headshot: hitHead });
           if (projectile.passthrough) projectile.hitEnemies.push(enemy.id);
@@ -121,7 +122,7 @@ export const checkProjectileEnemyCollisions = (
         return;
       }
 
-      if (checkCollision(projectile, enemy)) {
+      if (checkCollision(projectile, enemyContactBox(enemy))) {
         collisions.push({
           projectileId: projectile.id,
           enemyId: enemy.id,
@@ -170,7 +171,7 @@ export const checkEnemySummonCollisions = (
   for (const enemy of enemies) {
     for (const s of summons) {
       if (s.kind !== 'normal') continue;
-      if (checkCollision(enemy, s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });
+      if (checkCollision(enemyContactBox(enemy), s)) out.push({ enemyId: enemy.id, summonId: s.id, damage: enemy.damage });
     }
   }
   return out;
