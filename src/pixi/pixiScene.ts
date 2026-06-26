@@ -4902,7 +4902,7 @@ export class PixiScene {
         const tex = getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0');
         if (tex) {
           sp.texture = tex;
-          const sc = this.humanNpcScale(tex.width, sol.y); // プレイヤーと同寸
+          const sc = this.humanNpcScale(tex.width, tex.height, sol.y); // プレイヤーと同寸
           sp.scale.set(sc * fc.face, sc);
           sp.visible = true;
         } else sp.visible = false;
@@ -4928,7 +4928,7 @@ export class PixiScene {
 
       if (tex) {
         sp.texture = tex;
-        const sc = this.humanNpcScale(tex.width, esc.y); // プレイヤーと同寸
+        const sc = this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
         sp.scale.set(sc * (esc.face < 0 ? -1 : 1), sc);
         sp.visible = true;
       } else sp.visible = false;
@@ -5019,12 +5019,12 @@ export class PixiScene {
 
   // 救助NPC(survivor)の描画。本体は受領素材スプライト(2コマ歩き・足元アンカーで y-sort)、
   // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
-  private static readonly RESCUE_NPC_DISPLAY_H = 80; // 表示の基準高さ(px)。プレイヤー基準に合わせて拡大(社長指示・54→80)
+  private static readonly RESCUE_NPC_DISPLAY_H = 54; // 表示の基準高さ(px)。プレイヤーと違和感ない人型サイズ(80は大きすぎた→54へ戻す)
   private static readonly RESCUE_WALK_FRAME_MS = 170;
-  // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じスケールで描く(社長指示)。
-  // プレイヤー既知クラスと同じ「固定表示幅 PLAYER_CLASS_MENU_SPRITE_WIDTH / tex幅」＋プレイヤーと同じ遠近曲線(depthScale)。
-  private humanNpcScale(texW: number, footY: number): number {
-    return (PLAYER_CLASS_MENU_SPRITE_WIDTH / Math.max(1, texW)) * this.depthScale(footY);
+  // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じくらいの見た目サイズで描く(社長指示)。
+  // 表示基準高さ RESCUE_NPC_DISPLAY_H の枠へ contain-fit ＋ プレイヤーと同じ遠近曲線(depthScale)。
+  private humanNpcScale(texW: number, texH: number, footY: number): number {
+    return containScale(PixiScene.RESCUE_NPC_DISPLAY_H, PixiScene.RESCUE_NPC_DISPLAY_H, texW, texH) * this.depthScale(footY);
   }
 
   private drawRescueSurvivors(survivors: RescueSurvivor[], now: number) {
@@ -5041,7 +5041,7 @@ export class PixiScene {
       const footY = s.y + s.height;
       if (tex) {
         sp.texture = tex;
-        const sc = this.humanNpcScale(tex.width, footY); // プレイヤーと同寸(同じスケール規定)
+        const sc = this.humanNpcScale(tex.width, tex.height, footY); // プレイヤーと同寸(同じスケール規定)
         // 左右の向き: vx を平滑化(EMA)＋デッドゾーンで決め、パタパタ反転を防ぐ(素材は右向き想定)。
         let fs = this.rescueFace.get(s.id);
         if (!fs) { fs = { vx: s.vx, face: 1 }; this.rescueFace.set(s.id, fs); }

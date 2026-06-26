@@ -133,7 +133,7 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 const ESCORT_SPEED = RESCUE_SURVIVOR_SPEED; // 前進速度=レスキューと同じ通常速(社長指示)。画面内のときだけ前進。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
-const ESCORT_DETECT_MULT = 1.5;         // 検知/射撃範囲 = プレイヤー近接半径 × この倍率
+const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
 // 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
 const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: number; hy: number }[] => {
   const arr: { x: number; y: number; hx: number; hy: number }[] = [];
@@ -6513,6 +6513,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const removeAttackerIds: string[] = [];
     const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
     const damageShots: { id: string; dmg: number }[] = [];
+    const escortShots: { x: number; y: number; dx: number; dy: number }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
     let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
@@ -6536,13 +6537,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       let { x, y, fireAt, dwellMs, face } = esc;
       if (nearest) {
-        // 停止して射撃(進まない)。射撃間隔でスロットル。
+        // 停止して射撃(進まない)。射撃間隔でスロットル。弾はプレイヤーと同じ見た目の実弾(handgun projectile)。
         if (now >= fireAt) {
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
-          damageShots.push({ id: nearest.id, dmg: ESCORT_DMG });
-          soldierShots.push({ fromX: x, fromY: y, toX: tx, toY: ty });
-          face = tx < x ? -1 : 1;
+          let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+          escortShots.push({ x, y, dx, dy });
+          face = dx < 0 ? -1 : 1;
         }
       } else {
         // 担当拠点へ前進。
@@ -6687,6 +6688,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().addEnemy(e);
     }
     for (const d of damageShots) get().damageEnemy(d.id, d.dmg);
+    // 護衛NPCの発砲: プレイヤーと同じ見た目の実弾(handgun projectile・friendly)。命中は通常の弾-敵判定で処理。
+    for (const sh of escortShots) {
+      get().addProjectile({
+        id: `proj-escort-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`,
+        x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9, // 胸の高さから発射(足元アンカーなので少し上)
+        speed: 680, damage: ESCORT_DMG,
+        direction: { x: sh.dx, y: sh.dy },
+        weaponType: 'handgun', weaponKey: 'escort',
+        duration: 1200, createdAt: Date.now(),
+        passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+      });
+    }
     for (const t of soldierShots) {
       get().spawnEffect({ kind: 'trail', id: `supp-tracer-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`, fromX: t.fromX, fromY: t.fromY, toX: t.toX, toY: t.toY, color: 'rgba(253,224,71,0.9)', createdAt: Date.now(), duration: 120 });
     }

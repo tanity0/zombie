@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1014 — ステージ2の敵出現修正／護衛の索敵1.5倍・実弾化／NPCサイズ戻し
+
+- **ステージ2で敵が一切出ない**を修正: `LAB_SPAWN_AGGRO_RANGE` 150→700。ラボ湧き敵は画面外リング(~580-740px)に
+  休眠配置されるのに索敵150では永久に起きず、休眠敵が上限まで溜まって新規湧きも止まっていた。リングを覆う距離へ拡大=
+  画面外から起床して寄ってくる(=通常ステージ同様に敵が出る)。**直近コミットの不具合ではなく既存設計値の不整合**(2026-06-18から150)。
+- **護衛NPCの索敵範囲 ×1.5**: `ESCORT_DETECT_MULT` 1.5→2.25(=プレイヤー近接半径×2.25)。
+- **護衛NPCの弾をプレイヤーと同じ見た目に**: 旧=黄色トレーサー(hitscan)→ **handgun projectile(friendly・実弾)** を発射。
+  命中は通常の弾-敵判定で処理(`escortShots`→`addProjectile`)。
+- **人型NPCのサイズをプレイヤー基準に戻す**: 直前の 86px幅/80px箱は大きすぎた(実機画像で確認)→ `RESCUE_NPC_DISPLAY_H` 54、
+  `humanNpcScale = contain-fit(54) × depthScale`(プレイヤーと同じ遠近曲線)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+- 次タスク(別コミット): **「見た目=正義」原則** に基づく敵の当たり判定=見た目化(視覚に当たり判定を合わせる。影は従来の方向性・立ち絵相応サイズのまま。裏ボスは実装済みの帯方式)。
+
 ## v0.25.1013 — 敵拡大(ACTOR_VISUAL_BUMP)を撤回＋NPCをプレイヤー同寸スケールに
 
 - **敵拡大(v0.25.1012 の `ACTOR_VISUAL_BUMP`)を撤回**。理由(調査で判明):

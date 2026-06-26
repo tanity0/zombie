@@ -319,7 +319,9 @@ const XP_PICKUP_KEEP_COUNT = 82;
 const STRAP_PICKUP_KEEP_COUNT = 60;
 const CASTLE_BOSS_MIN_TIME_MS = 5 * 60 * 1000; // ただし出現は5分経過後のみ(社長指示=接近＋時間の両方)。?castlenow=1 は無視。
 // 研究所スキンの湧き敵の索敵範囲(px)。この距離内 かつ 壁越しでない(視界)ときに休眠から起床。
-const LAB_SPAWN_AGGRO_RANGE = 150;
+// ラボ湧き敵の起床索敵範囲。150 では湧きリング(画面外~580-740px)より遥かに小さく、休眠敵が永久に起きず
+// 「敵が一切出ない」状態だった(社長報告)。湧きリングを覆う距離へ拡大=画面外から起床して寄ってくる。
+const LAB_SPAWN_AGGRO_RANGE = 700;
 // 1画面区画あたりのラボ敵の上限(密度制御)。
 const LAB_ENEMIES_PER_ZONE = 2;
 // ラボの湧き間隔倍率(大きいほど間隔が空く=湧きすぎ防止)と、1回の湧き上限。
