@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1046 — ナイフ斬撃: 白い三日月を体に被せて目立たせ・スピード感↑
+
+- 白い斬撃(三日月)を追加。Graphics で**一度だけ**構築(軌跡本体 alpha0.55 + 先端の明るい縁 alpha0.95)、
+  本体スプライトの前面・ナイフの背面に重ねる=**体に被る**白い軌跡。狙い方向を二等分線に、sweep に少し追従させて
+  「振った軌跡」に。出だしに強く光って寿命の約55%で急速に消える=スピード感。明るい白なので filteredWorld の
+  bloom 閾値を超えて自然に発光して目立つ。
+- スピード感: `PLAYER_MELEE_SWING_MS` 230→200、振り抜きイースを3乗(前半に一気)、振り幅を拡大。
+- 負荷: **1/10**(斬撃は Graphics 1個・形状は初回のみ構築・以後は rotation/scale/alpha のみ・1スイング〜110ms可視・
+  加算ライト追加なし)。CLAUDE.md の「per-frame Graphics は単発OK」より更に軽い(毎フレーム再構築しない)。
+- 判定不変(見た目のみ)。検証: lint/typecheck/test(75)/build green。
+
 ## v0.25.1045 — ステージ1の花をもう少し大きく
 
 - `FLOWER_DISPLAY_H` 42→58(社長指示)。個体ゆらぎ(0.62〜0.92)はそのまま。判定なしのまま。

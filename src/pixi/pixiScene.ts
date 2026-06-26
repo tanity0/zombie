@@ -408,6 +408,7 @@ const KNIFE_ANCHOR_X = 0.215;
 const KNIFE_ANCHOR_Y = 0.77;
 const KNIFE_NATIVE_ANGLE = -39.9 * Math.PI / 180;
 const KNIFE_LEN_FRAC = 0.78;          // 表示サイズ(画像最大辺 → 箱高×この割合)
+const KNIFE_ARC_SPAN = 2.25;          // 白い斬撃(三日月)の角度幅(rad・約129°)
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -454,7 +455,7 @@ const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するス
 const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エンベロープ長)
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
-const PLAYER_MELEE_SWING_MS = 230;    // 近接スイングの踏み込み→振り抜き→復帰の長さ
+const PLAYER_MELEE_SWING_MS = 200;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でスピード感↑: 230→200)
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
@@ -851,6 +852,7 @@ export class PixiScene {
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private playerKnife = new Sprite();                      // 近接スイング中だけ振るナイフ(実画像 knife-item)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
+  private playerKnifeArc = new Graphics();                 // スイングの白い斬撃(三日月)。形状は一度だけ構築・以後は変形のみ
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private lowHpVignette = new Sprite(getRedVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動(赤色テクスチャ)
@@ -4046,10 +4048,24 @@ export class PixiScene {
     if (!this.playerKnifeSetup) {
       const ktex = getTexture('knife-item');
       if (ktex) {
+        // 白い斬撃(三日月)を一度だけ構築。中心(原点)を支点に、二等分線=ローカル +x 方向へ開く帯。
+        // 本体スプライトの前面・ナイフの背面に置く=「体に被る」白い軌跡。
+        const arc = this.playerKnifeArc;
+        const SPAN = KNIFE_ARC_SPAN, RI = 13, RO = 52, N = 18;
+        const band = (rOut: number, rIn: number): number[] => {
+          const pts: number[] = [];
+          for (let i = 0; i <= N; i++) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rOut, Math.sin(a) * rOut); }
+          for (let i = N; i >= 0; i--) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rIn, Math.sin(a) * rIn); }
+          return pts;
+        };
+        arc.poly(band(RO, RI)).fill({ color: 0xffffff, alpha: 0.55 });        // 軌跡本体
+        arc.poly(band(RO, RO - 9)).fill({ color: 0xffffff, alpha: 0.95 });    // 先端の明るい縁(bloomで光る)
+        arc.visible = false;
+        this.playerView.container.addChild(arc);                 // 本体の前面
         this.playerKnife.texture = ktex;
         this.playerKnife.anchor.set(KNIFE_ANCHOR_X, KNIFE_ANCHOR_Y);
         this.playerKnife.visible = false;
-        this.playerView.container.addChild(this.playerKnife); // 本体の前面
+        this.playerView.container.addChild(this.playerKnife);    // 斬撃の更に前面(刃が一番上)
         this.playerKnifeSetup = true;
       }
     }
@@ -4390,34 +4406,44 @@ export class PixiScene {
     // 近接スイング中だけナイフ(実画像)を振る(描画のみ・判定不変)。グリップ支点で切先が狙い方向を向き、
     // 振りかぶり→振り抜きを easeOut で弧を描く。slasher追撃も markMeleeSwingFx で meleeSwingAt が立つので同様に出る。
     const knife = this.playerKnife;
+    const knifeArc = this.playerKnifeArc;
     if (this.playerKnifeSetup) {
       if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
         const kt = sinceSwing / PLAYER_MELEE_SWING_MS;
-        const kEase = 1 - Math.pow(1 - kt, 2);          // 振り抜きの加速感
+        const kEase = 1 - Math.pow(1 - kt, 3);          // 振り抜きの加速感(3乗で前半に一気=スピード感)
         // 狙い方向(無ければ向き)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }
         const aimAng = Math.atan2(kay, kax);
-        const sweep = 0.95 - 1.75 * kEase;               // 振りかぶり(+) → 振り抜き(−)
+        const sweep = 1.05 - 1.95 * kEase;               // 振りかぶり(+) → 振り抜き(−)。振り幅を拡大
         const facingLeft = kax < 0;
-        // 左向きは刃を上下反転して刃線を自然に保つ。反転すると素材ローカル角の符号も反転する。
+        const chestY = fb.footY - fb.boxH * 0.5 * dsc;
+        const baseX = this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX;
+        const baseY = this.snapToScreenPixel(chestY - bob, this.L.world.position.y) + introOffY + actOffY;
+        // 白い斬撃(三日月): 体に被せて狙い方向へ。出だしに強く光って素早く消える=スピード感。
+        // 向きは aim を二等分線にしつつ sweep に少し追従させて「振った軌跡」に見せる。
+        const arcEase = 1 - Math.pow(1 - kt, 2);
+        knifeArc.rotation = aimAng + sweep * 0.35 * (facingLeft ? -1 : 1);
+        knifeArc.position.set(baseX, baseY);
+        const arcSc = (fb.boxH / 64) * dsc * (0.92 + 0.5 * arcEase); // 振り抜きで少し伸びる
+        knifeArc.scale.set(arcSc, facingLeft ? -arcSc : arcSc);
+        // 前半でピーク→急速フェード(寿命の約55%で消える)。
+        knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.06, (0.55 - kt) / 0.22))) * view.sprite.alpha;
+        knifeArc.visible = knifeArc.alpha > 0.01;
+        // ナイフ本体。左向きは上下反転で刃線を自然に保つ(反転すると素材ローカル角の符号も反転)。
         const nativeAng = facingLeft ? -KNIFE_NATIVE_ANGLE : KNIFE_NATIVE_ANGLE;
         knife.rotation = aimAng + sweep - nativeAng;
-        // グリップ位置: 胸あたり + 狙い方向へ手を伸ばす(振り抜きピークで前へ出る)+ 二次モーションofs。
         const reach = (4 + 10 * Math.sin(kt * Math.PI)) * dsc;
-        const chestY = fb.footY - fb.boxH * 0.5 * dsc;
-        knife.position.set(
-          this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX + kax * reach,
-          this.snapToScreenPixel(chestY - bob, this.L.world.position.y) + introOffY + actOffY + kay * reach,
-        );
+        knife.position.set(baseX + kax * reach, baseY + kay * reach);
         const tex = knife.texture;
         const sc = (fb.boxH * KNIFE_LEN_FRAC) / Math.max(tex.width, tex.height) * dsc;
         knife.scale.set(sc, facingLeft ? -sc : sc);
         // 出だしと終わりを素早くフェードして「シュッ」と見せる。本体の透明度にも追従。
-        knife.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.12, (1 - kt) / 0.3))) * view.sprite.alpha;
+        knife.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.1, (1 - kt) / 0.28))) * view.sprite.alpha;
         knife.visible = true;
       } else {
         knife.visible = false;
+        knifeArc.visible = false;
       }
     }
     view.overlay.clear();
