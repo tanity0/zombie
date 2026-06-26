@@ -3386,14 +3386,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : 1;
           // スキル: コンボマスターは「全攻撃」増加(ユーザー指定)。銃にもフィニッシュコンボ倍率を適用。
           const comboMasterMult = skillComboMasterMult(skillPlayer, gameTime, collisionState.meleeFinishComboCount, collisionState.meleeFinishComboUntil);
-          // ワーム(ヨルムンガルド)だけ「カウンター弾(反射弾)を食らうと一撃死」(社長指示)。他敵は通常の反射ダメージ。
-          const wormCounterKill = !!projectile?.reflected && enemyForFx?.type === 'jormungand';
-          const dmg = wormCounterKill
+          // カウンター弾(反射弾)で一撃死するのはプラントだけ(社長指示。旧=ワーム→プラントへ変更)。他敵は通常の反射ダメージ。
+          const plantCounterKill = !!projectile?.reflected && enemyForFx?.type === 'plant';
+          const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
-          // カウンター(反射弾)で一撃死していいのはワームだけ。城ボス/死神/裏ボス(mimir・skadi)等の他ボス系は、
-          // 反射弾の弾幕(10倍×貫通で合算)でも即死しないよう HP1 で踏みとどまる(nonLethalBoss)。銃/近接の直撃では普通に死ぬ。
-          const counterNonLethalBoss = !!projectile?.reflected && !wormCounterKill && !!enemyForFx && isBossType(enemyForFx.type);
+          // ボス系(城ボス/死神/裏ボス=mimir・jormungand・skadi)は反射弾では一撃死しない=HP1で踏みとどまる(nonLethalBoss)。
+          // 銃/近接の直撃では普通に死ぬ。プラントは非ボスなのでこの分岐に掛からず上の一撃死が適用される。
+          const counterNonLethalBoss = !!projectile?.reflected && !!enemyForFx && isBossType(enemyForFx.type);
           const enemyKilled = damageEnemy(enemyId, dmg, counterNonLethalBoss);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
 

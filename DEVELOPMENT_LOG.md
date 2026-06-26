@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1001 — カウンター弾の一撃死対象を ワーム→プラント に変更
+
+- 社長修正: 「カウンター弾(反射弾)で一撃死」の対象を **jormungand(ワーム)→ plant(プラント)** へ。
+  - `plantCounterKill`(反射弾がプラントに命中)で `maxHealth+1` の即死。
+  - ワーム(jormungand)はボス系なので、他のボス同様 `nonLethalBoss`(HP1止まり)=カウンターでは死なない。
+  - プラントは非ボスなので nonLethalBoss 分岐に掛からず一撃死が適用される。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1000 — 裏ボス: 気絶中も攻撃を中断しない(歩行のみ半速)
 
 - 社長指示: 気絶(クリティカル)中も**攻撃は中断しない**。stun 専用の「攻撃停止」分岐を撤去し、通常の状態機械
