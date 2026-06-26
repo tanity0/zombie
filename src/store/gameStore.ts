@@ -1544,7 +1544,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string) => boolean;
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number) => boolean; // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -3746,7 +3746,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
   },
 
-  damagePlayer: (rawAmount, source) => {
+  damagePlayer: (rawAmount, source, fromX, fromY) => {
     const { player } = get();
 
     if (player.invulnerable) return false;
@@ -3778,6 +3778,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       return false;
     }
     
+    // 被弾ノックバック(社長指示): 被弾源(fromX/Y)が指定され実ダメージなら、そこから離れる方向へ弾く。
+    const kbNow = Date.now();
+    let kbVx = 0, kbVy = 0, kbApply = false;
+    if (amount > 0 && fromX !== undefined && fromY !== undefined) {
+      const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+      let dx = pcx - fromX, dy = pcy - fromY;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.001) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
+      kbVx = dx * PLAYER_KNOCKBACK_SPEED; kbVy = dy * PLAYER_KNOCKBACK_SPEED; kbApply = true;
+    }
+
     set(state => {
       const newHealth = Math.max(0, state.player.health - amount);
       return {
@@ -3793,7 +3804,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...state.player,
           health: newHealth,
           invulnerable: amount > 0,
-          invulnerableTime: Date.now()
+          invulnerableTime: Date.now(),
+          knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
+          knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
+          knockbackUntil: kbApply ? kbNow + PLAYER_KNOCKBACK_MS : state.player.knockbackUntil,
         }
       };
     });

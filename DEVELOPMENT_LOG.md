@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1009 — プレイヤー被弾時にノックバック
+
+- 社長指示: 被弾時にプレイヤーをノックバック。`damagePlayer(amount, source, fromX?, fromY?)` に被弾源座標を追加し、
+  実ダメージ時に源から離れる方向へ `PLAYER_KNOCKBACK_SPEED`(既存)で弾く(`movePlayer` の既存ノックバック処理を流用)。
+  - 配線した被弾源: 敵接触(敵中心)/敵弾(弾位置)/地雷(爆心)/ミーミルのレーザー(ビーム最近接点=帯から押し出す)。
+  - パンプキン着地爆発は既に独自ノックバックがあるため二重化せず据え置き。
+- i-frame(700ms)で多段ヒットは間引かれるため、連続スライドにはならない。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1008 — ミーミルのレーザー: 追尾は発射中に＋発射中は画面シェイク
 
 - 社長指示で2点変更:

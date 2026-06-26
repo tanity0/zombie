@@ -1502,7 +1502,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー');
+                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー', cxp, cyp);
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -3369,7 +3369,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }));
           } else {
             const wasVulnerable = !useGameStore.getState().player.invulnerable;
-            const playerDied = damagePlayer(proj.damage, '敵の飛び道具');
+            const playerDied = damagePlayer(proj.damage, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
             if (wasVulnerable) {
               playSfx('player-damage');
               spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -3860,7 +3860,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const fxY = mineHit.footY - mineHit.height * 0.5;
           spawnEggFluidSplash(fxX, fxY, 1.28);
           if (broken && !currentPlayerForMine.invulnerable) {
-            const playerDied = damagePlayer(MINE_DAMAGE, '地雷');
+            const playerDied = damagePlayer(MINE_DAMAGE, '地雷', fxX, fxY);
             playSfx('bomb');
             spawnFlash('rgba(239,68,68,0.18)', 180);
             if (playerDied) {
@@ -4038,7 +4038,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             return;
           }
           const damageWasApplied = !collPlayer.invulnerable;
-          const playerDied = damagePlayer(enemy.damage, enemyDeathLabel(enemy.type));
+          const playerDied = damagePlayer(enemy.damage, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
           if (damageWasApplied) {
             playSfx('player-damage');
             spawnFlash('rgba(239,68,68,0.22)', 200);
