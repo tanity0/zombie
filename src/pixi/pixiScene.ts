@@ -4428,7 +4428,7 @@ export class PixiScene {
         // 中心を狙い方向(腕/銃が伸びる側)へ少し寄せ、立ち絵の腕/銃を斬撃で覆って「振ってる」風に。
         const arcFwd = fb.boxH * 0.12 * dsc;
         knifeArc.position.set(baseX + kax * arcFwd, baseY + kay * arcFwd);
-        const arcSc = (fb.boxH / 104) * dsc * (0.95 + 0.5 * arcEase); // 振り抜きで少し伸びる(全体に大きめ)
+        const arcSc = (fb.boxH / 156) * dsc * (0.95 + 0.5 * arcEase); // 振り抜きで少し伸びる(全体に大きめ)
         // 狙い軸方向(ローカル+x)へ引き伸ばして横長に。Y反転で左向きの刃線に合わせる。
         knifeArc.scale.set(arcSc * KNIFE_ARC_XSTRETCH, facingLeft ? -arcSc : arcSc);
         // 前半でピーク→急速フェード(寿命の約55%で消える)。
