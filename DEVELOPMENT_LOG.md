@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1000 — 裏ボス: 気絶中も攻撃を中断しない(歩行のみ半速)
+
+- 社長指示: 気絶(クリティカル)中も**攻撃は中断しない**。stun 専用の「攻撃停止」分岐を撤去し、通常の状態機械
+  (chase/burst/radial/dash)をそのまま回す。**歩行(chase)だけ `BOSS_STUN_SPEED_MULT=0.5` で半速**(`walkMult`)。
+- ダッシュ等の攻撃は通常速度のまま継続。トラップ(root)/ワープは従来どおり完全停止。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.999 — 反射した敵弾は貫通しない(1体で消える)
 
 - 社長指示: カウンターで反射した敵弾を **passthrough: false** に(以前は貫通=列の敵を plow through)。

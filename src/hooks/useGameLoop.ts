@@ -1405,11 +1405,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               } else if ((boss.reaperWarpAlpha ?? 1) < 1) {
                 patch.reaperWarpAlpha = 1; // フェード完了→完全表示へ戻す
               }
-              // トラップ(root)/ワープ中は移動も攻撃も止める=トラップが効く。気絶(stun)は止めず半速歩行(社長指示)。
+              // トラップ(root)/ワープ中は移動も攻撃も止める=トラップが効く。
+              // 気絶(stun)は止めない: 攻撃も中断せず通常の状態機械を回し、歩行(チェイス)だけ半速にする(社長指示)。
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
               const frozen = warping
                 || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil);
               const stunned = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
+              const walkMult = stunned ? BOSS_STUN_SPEED_MULT : 1; // 気絶中は歩行のみ半速(攻撃は通常)
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
               const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
               // 慣性付き移動: 目標方向の desired 速度へ現在速度を BOSS_TURN_RESPONSE で寄せて位置を更新
@@ -1431,17 +1433,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.bossState = 'chase';
                 patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
                 patch.bossBurstLeft = 0;
-              } else if (stunned) {
-                // 気絶: 止まらず歩き続けるが速度は半分・攻撃はしない(社長指示)。解除直後の暴発も防ぐ。
-                moveToward(BOSS_STUN_SPEED_MULT);
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-                patch.bossBurstLeft = 0;
               } else {
               const st = boss.bossState ?? 'chase';
               const nextActionDelay = () => newGameTime + BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
               if (st === 'chase') {
-                moveToward(1);
+                moveToward(walkMult); // 気絶中は半速、通常は等速
                 if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                   const r = Math.random();
                   if (r < BOSS_DASH_CHANCE) { patch.bossState = 'dash-windup'; patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS; }
