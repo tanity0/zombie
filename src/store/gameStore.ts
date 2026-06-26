@@ -130,7 +130,7 @@ const SUPP_SOLDIER_ENGAGE_DIST = 26;    // 攻撃者へ寄る最終距離(かな
 // 戻したくなったら true に戻すだけ(コードは残置)。
 const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 // 護衛軍人NPC(EscortSoldier): スタート時4人配置→担当拠点へ前進→近くの敵に射撃→10秒占拠で解放。
-const ESCORT_SPEED = 95;                // 前進速度(px/s)。画面内のときだけ前進。
+const ESCORT_SPEED = RESCUE_SURVIVOR_SPEED; // 前進速度=レスキューと同じ通常速(社長指示)。画面内のときだけ前進。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
 const ESCORT_DETECT_MULT = 1.5;         // 検知/射撃範囲 = プレイヤー近接半径 × この倍率

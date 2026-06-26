@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1011 — 護衛NPCの前進速度をレスキュー通常速に
+
+- 社長指示: `ESCORT_SPEED` 95 → `RESCUE_SURVIVOR_SPEED`(=40・レスキューと同じ通常速)に。常にこの速度で前進。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1010 — 護衛軍人NPC(4人・前進&射撃&占拠) コア実装
 
 - 社長指示の新システム(コアのみ・#5被弾後退と exc敵ターゲットは次段)。
