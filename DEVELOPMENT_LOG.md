@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1034 — 救助NPC・拠点駐留兵にも足影を追加
+
+- 社長指示「重さOKなら入れて」。負荷 1/10(プール済みソフト影スプライト・毎フレーム生成/Graphics無し、対象は救助最大3体＋
+  拠点兵=現状0体)。`syncShadows` に `rescueSurvivors`/`baseSites` を渡し、escort と同じ足影を追加。
+  - 救助NPC: 足元=x+w/2,y+h。退場(savedAt)フェードにも追従(ha×outroA)。
+  - 拠点兵: captured拠点の soldiers(現状 flag off で空だが整合のため対応)。
+- 影幅=スプライト実幅×0.55(他アクター同基準)・地平線フェード。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1033 — 護衛軍人NPCに足影が無かったので追加
 
 - 社長報告「軍人はそもそも影がない」。`syncShadows` は player/敵/召喚/設置物/商人/イベントNPC/城/pickup のみ影を付けており、

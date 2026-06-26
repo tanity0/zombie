@@ -2231,7 +2231,7 @@ export class PixiScene {
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.gameTime);
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
@@ -3872,7 +3872,9 @@ export class PixiScene {
     enemies: Enemy[],
     summons: Summon[],
     projectiles: Projectile[],
-    escorts: EscortSoldier[] = []
+    escorts: EscortSoldier[] = [],
+    rescueSurvivors: RescueSurvivor[] = [],
+    baseSites: BaseSite[] = []
   ) {
     const seen = new Set<string>();
     // 登場演出中はプレイヤーが空中なので足影は出さない(着地後に出る)。
@@ -3944,6 +3946,29 @@ export class PixiScene {
       const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
       const baseW = escW > 0 ? escW : 30 * this.depthScale(esc.y);
       this.placeShadowSprite('esc:' + esc.id, esc.x, esc.y - 2, baseW * 0.55, ha, seen);
+    }
+    // 救助NPC(rescueSurvivors)。足元=x+w/2, y+h(anchor 0.5,1)。退場(savedAt)フェードにも追従。
+    for (const s of rescueSurvivors) {
+      const fy = s.y + s.height;
+      const ha = this.horizonActorAlpha(fy);
+      if (ha <= 0) continue;
+      const sp = this.rescueSurvivorSprites.get(s.id);
+      const sw = sp && sp.visible !== false ? Math.abs(sp.width) : 0;
+      const baseW = sw > 0 ? sw : 30 * this.depthScale(fy);
+      const outroA = s.savedAt ? Math.max(0, 1 - (Date.now() - s.savedAt) / RESCUE_OUTRO_MS) : 1;
+      this.placeShadowSprite('rescue:' + s.id, s.x + s.width / 2, fy - 2, baseW * 0.55, ha * outroA, seen);
+    }
+    // 拠点駐留兵(base soldiers・captured拠点のみ。現状 SUPP_BASE_ATTACKS_ENABLED=false で実体なしだが整合のため対応)。
+    for (const bsite of baseSites) {
+      for (let i = 0; i < bsite.soldiers.length; i++) {
+        const sol = bsite.soldiers[i];
+        const ha = this.horizonActorAlpha(sol.y);
+        if (ha <= 0) continue;
+        const sp = this.baseSoldierSprites.get(`${bsite.id}-${i}`);
+        const sw = sp && sp.visible !== false ? Math.abs(sp.width) : 0;
+        const baseW = sw > 0 ? sw : 30 * this.depthScale(sol.y);
+        this.placeShadowSprite(`bsol:${bsite.id}-${i}`, sol.x, sol.y - 2, baseW * 0.55, ha, seen);
+      }
     }
     // 拾い物(syncPickups が毎フレーム配列を作り直す)。
     for (const ps of this.pickupShadows) {
