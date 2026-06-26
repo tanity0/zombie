@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1017 — 敵すべて(ボス含む)を1.5倍に(描画＋当たり判定)
+
+- 社長指示の段階調整・第二弾。全敵を現状の1.5倍(見た目＋当たり判定を同率):
+  - 通常敵/通常ボス(giantbat/reaper/pumpkin 等): `ENEMY_SIZE_MULT = 1.5` を新設し `enemyFootBox` の scale に乗算。
+    見た目も当たり判定(`enemyVisualRect`)も両方この箱から算出されるので一括で1.5倍。次回以降の段階調整もこの1値で可。
+  - 裏ボス(mimir/jormungand/skadi): 帯(`ENEMY_STATS` w/h)を×1.5(mimir 165×92→248×138 / jorm 346×60→519×90 /
+    skadi 304×68→456×102)。絵は `BOSS_SPRITE_FIT` で帯基準に追従、影(flatSize)も同率。HP/速度/ダメージは不変。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1016 — NPC(全種)を1.2倍に(描画＋当たり判定)
 
 - 社長指示の段階調整・第一弾。全NPCを現状の1.2倍に(描画と当たり判定を同率):

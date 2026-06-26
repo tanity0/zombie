@@ -46,8 +46,12 @@ export const playerFootBox = (p: Player): FootBox => {
   return { footX: cx, footY: p.y + p.height, boxW, boxH };
 };
 
+// 通常敵(非・裏ボス)の見た目=当たり判定サイズの一括倍率(段階調整用・社長指示)。見た目と当たり判定(enemyVisualRect)
+// は両方ともこの enemyFootBox から算出されるので、ここを変えるだけで両方が同率で拡縮する。裏ボスは別経路(ENEMY_STATS の帯)。
+export const ENEMY_SIZE_MULT = 1.5;
+
 export const enemyFootBox = (e: Enemy): FootBox => {
-  const scale = ENEMY_VISUAL_SCALE[e.type] ?? 2;
+  const scale = (ENEMY_VISUAL_SCALE[e.type] ?? 2) * ENEMY_SIZE_MULT;
   return {
     footX: e.x + e.width / 2,
     footY: e.y + e.height,
