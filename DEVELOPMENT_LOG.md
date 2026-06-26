@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.999 — 反射した敵弾は貫通しない(1体で消える)
+
+- 社長指示: カウンターで反射した敵弾を **passthrough: false** に(以前は貫通=列の敵を plow through)。
+  最初に当たった1体で消える。カウンター威力の積み上がり(貫通連続ヒット)を抑止。
+- ワーム即死(type判定)・10倍ダメージ・速度1.8倍・非ワームボスの nonLethalBoss はそのまま。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.998 — 裏ボスが拠点を通過したら一撃陥落(通常の撤退レール)
 
 - 社長指示: 裏ボスの当たり判定(帯AABB)が拠点サークル(`BASE_CAPTURE_RADIUS`)に重なったら、その captured 拠点を

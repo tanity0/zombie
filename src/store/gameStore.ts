@@ -5295,10 +5295,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           damage: p.damage * multiplier,
           hostile: false,
           reflected: true,
-          // Reflected bolts pierce — they plow through whatever line of
-          // enemies happens to be between the player and the original
-          // firer instead of stopping at the first body.
-          passthrough: true,
+          // 反射した敵弾は貫通しない=最初に当たった1体で消える(社長指示)。以前は貫通(plow through)していた。
+          passthrough: false,
           hitEnemies: [],
           createdAt: Date.now()
         };
