@@ -4052,15 +4052,15 @@ export class PixiScene {
         // 白い斬撃(三日月)を一度だけ構築。中心(原点)を支点に、二等分線=ローカル +x 方向へ開く帯。
         // 本体スプライトの前面・ナイフの背面に置く=「体に被る」白い軌跡。
         const arc = this.playerKnifeArc;
-        const SPAN = KNIFE_ARC_SPAN, RI = 12, RO = 80, N = 20;
+        const SPAN = KNIFE_ARC_SPAN, RI = 4, RO = 80, N = 20;
         const band = (rOut: number, rIn: number): number[] => {
           const pts: number[] = [];
           for (let i = 0; i <= N; i++) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rOut, Math.sin(a) * rOut); }
           for (let i = N; i >= 0; i--) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rIn, Math.sin(a) * rIn); }
           return pts;
         };
-        arc.poly(band(RO, RI)).fill({ color: 0xffffff, alpha: 0.5 });         // 軌跡本体
-        arc.poly(band(RO, RO - 14)).fill({ color: 0xffffff, alpha: 0.95 });   // 先端の明るい縁(bloomで光る)
+        arc.poly(band(RO, RI)).fill({ color: 0xffffff, alpha: 0.82 });        // 軌跡本体(立ち絵の腕/銃を隠す=振ってる風)
+        arc.poly(band(RO, RO - 14)).fill({ color: 0xffffff, alpha: 0.97 });   // 先端の明るい縁(bloomで光る)
         arc.visible = false;
         this.playerView.container.addChild(arc);                 // 本体の前面
         this.playerKnife.texture = ktex;
@@ -4425,7 +4425,9 @@ export class PixiScene {
         // 向きは aim を二等分線にしつつ sweep に少し追従させて「振った軌跡」に見せる。
         const arcEase = 1 - Math.pow(1 - kt, 2);
         knifeArc.rotation = aimAng + sweep * 0.35 * (facingLeft ? -1 : 1);
-        knifeArc.position.set(baseX, baseY);
+        // 中心を狙い方向(腕/銃が伸びる側)へ少し寄せ、立ち絵の腕/銃を斬撃で覆って「振ってる」風に。
+        const arcFwd = fb.boxH * 0.12 * dsc;
+        knifeArc.position.set(baseX + kax * arcFwd, baseY + kay * arcFwd);
         const arcSc = (fb.boxH / 52) * dsc * (0.95 + 0.5 * arcEase); // 振り抜きで少し伸びる(全体に大きめ)
         // 狙い軸方向(ローカル+x)へ引き伸ばして横長に。Y反転で左向きの刃線に合わせる。
         knifeArc.scale.set(arcSc * KNIFE_ARC_XSTRETCH, facingLeft ? -arcSc : arcSc);

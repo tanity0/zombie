@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1048 — 斬撃で立ち絵の腕/銃を覆う(振ってる風)/ 花さらに拡大
+
+- 意図(社長): 立ち絵は銃・腕が常時見えるので、斬撃でそこを覆えば「振ってる」風になる。対応:
+  斬撃の内半径 RI 12→4(体の近くまで覆う)・本体不透明度 0.5→0.82(腕/銃が透けない)・中心を狙い方向
+  (腕/銃が伸びる側)へ `boxH*0.12` 前進。スイング中だけ腕/銃を白い軌跡が隠す。
+- 花: `FLOWER_DISPLAY_H` 58→74(さらに大きく)。
+- 負荷据え置き(斬撃 Graphics1個・花スプライトのみ)。判定不変。検証: lint/typecheck/test(75)/build green。
+
 ## v0.25.1047 — ナイフ斬撃をさらに大きく横長に・体に被せる
 
 - 三日月を拡大: RO 52→80・SPAN 2.25→2.6(約149°)・全体スケール基準 /64→/52。狙い軸方向(ローカル+x)へ
