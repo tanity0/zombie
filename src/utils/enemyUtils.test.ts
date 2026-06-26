@@ -69,7 +69,7 @@ describe('hidden boss (mimir/jormungand) spec', () => {
     expect(isHiddenBoss('giantbat')).toBe(false);
     expect(isHiddenBoss('reaper')).toBe(false);
   });
-  it('has individually-tuned HP (社長指示), 2x giant contact damage, same speed', () => {
+  it('has individually-tuned HP (社長指示), 2x giant contact damage, faster-than-giant walk speed', () => {
     // 裏ボスは hpMult を掛けず health を直接 maxHealth に(個別指定)。
     const giant = spawnEnemyAt('giantbat', 0, 0, 0);
     const mimir = spawnEnemyAt('mimir', 0, 0, 0);
@@ -78,11 +78,12 @@ describe('hidden boss (mimir/jormungand) spec', () => {
     expect(mimir.maxHealth).toBe(6666);
     expect(jorm.maxHealth).toBe(7500);
     expect(skadi.maxHealth).toBe(10000);
-    // ダメージ/速度は据え置き(giant の2倍ダメージ・同速)。
+    // ダメージは giant の2倍据え置き。歩行速度は社長指示で少し上げた(70→90 base)=giant より速い。3裏ボスは同速。
     expect(jorm.damage).toBe(giant.damage * 2);
     expect(mimir.damage).toBe(giant.damage * 2);
-    expect(jorm.speed).toBe(giant.speed);
-    expect(mimir.speed).toBe(giant.speed);
+    expect(jorm.speed).toBeGreaterThan(giant.speed);
+    expect(mimir.speed).toBe(jorm.speed);
+    expect(skadi.speed).toBe(jorm.speed);
   });
   it('hitbox = a wide footprint strip (3x body is visual-only, decoupled in pixi)', () => {
     // 社長指示で「当たり判定=足元の四角(帯)」に変更。巨体(約3倍)の見た目は pixi の BOSS_SPRITE_FIT で

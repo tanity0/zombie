@@ -831,6 +831,8 @@ const HANDGUN_RANGE_REF = 176;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
+// ダッシュ攻撃全般(通常より速い突進)の弱いホーミング量/frame。基本は直進、少しだけプレイヤーへ寄せる(社長指示)。
+export const DASH_ATTACK_HOMING = 0.05;
 export const WEREWOLF_CHARGE_MAX_MS = 2800; // 突進の最大時間(到達できなくても打ち切り)。距離2倍化に合わせ延長。
 export const WEREWOLF_COOLDOWN_MS = 1200;  // 突進後、次の溜めまでの猶予(基本CD)
 // 突進後、上記の基本CDに加えてランダムな追加クールダウン(3〜10秒)を持たせる。
@@ -4685,8 +4687,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
               return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type) };
             }
-            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・直進(目標固定なので曲がらない)
-            const cvx = (cdx / cdist) * cs, cvy = (cdy / cdist) * cs;
+            // 基本は固定ターゲットへ直進。毎フレームほんの少しだけ現在のプレイヤー位置へ寄せる(弱いホーミング・社長指示)。
+            const hpx = pcx - ecx, hpy = pcy - ecy;
+            const hl = Math.hypot(hpx, hpy) || 1;
+            let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
+            let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
+            const cdl = Math.hypot(cdirx, cdiry) || 1;
+            cdirx /= cdl; cdiry /= cdl;
+            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・ほぼ直進+弱ホーミング
+            const cvx = cdirx * cs, cvy = cdiry * cs;
             const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
             const moved = resolveMove(rawX, rawY);
             // ダッシュ(突進)は「何かにぶつかったら」即キャンセル(社長指示)。盾だけでなく木/プロップ/壁等で

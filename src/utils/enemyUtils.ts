@@ -45,9 +45,9 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // (pixiScene の BOSS_SPRITE_FIT で帯=絵の下部に合わせて配置)。見た目=絵 / 判定=この帯、で分離。
   // 帯サイズは素材アスペクト×指定フレームから算出(BOSS_SPRITE_FIT と整合させること)。
   // 裏ボスは hpMult を掛けず health をそのまま maxHealth にする(buildEnemy 参照)。個別指定(社長指示)。
-  mimir:      { width: 165, height: 92,  speed: 70, health: 6666,  damage: 38, experienceValue: 0 },
-  jormungand: { width: 346, height: 60,  speed: 70, health: 7500,  damage: 38, experienceValue: 0 },
-  skadi:      { width: 304, height: 68,  speed: 70, health: 10000, damage: 38, experienceValue: 0 }
+  mimir:      { width: 165, height: 92,  speed: 90, health: 6666,  damage: 38, experienceValue: 0 },
+  jormungand: { width: 346, height: 60,  speed: 90, health: 7500,  damage: 38, experienceValue: 0 },
+  skadi:      { width: 304, height: 68,  speed: 90, health: 10000, damage: 38, experienceValue: 0 }
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。

@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.997 — 裏ボス: 気絶でも半速歩行/歩行速度UP/慣性/ダッシュ直進化＋カウンター即死はワーム限定に修正
+
+- **気絶(クリティカル)でも止まらず動き続ける**: `frozen` から stun を外し、気絶中は `moveToward(BOSS_STUN_SPEED_MULT=0.5)`
+  で半速歩行(攻撃はしない・解除直後の暴発も防止)。トラップ(root)/ワープは従来どおり完全停止。
+- **歩行速度UP**: 裏ボス base speed 70→90(mimir/jormungand/skadi)。最高速のみ上昇、下記の慣性で動きは滑らかに。
+- **慣性(`BOSS_TURN_RESPONSE=3.2`)**: 移動を速度ベース化(`bossRef.vx/vy`)。目標速度へ係数で寄せる=急な方向転換が
+  ぬるっと効く。最高速は不変。帰巣/画面外/凍結時は velocity リセット。
+- **ダッシュ攻撃の直進化(社長指示「ダッシュ攻撃全般」)**: 基本は真っ直ぐ直進＋弱いホーミングのみ。
+  - 裏ボス突進: 開始時に方向ロック(`dashDirX/Y`)、毎フレーム `BOSS_DASH_HOMING=0.05` だけプレイヤーへ寄せる。
+  - 雑魚ダッシュ(犬/城ボス突進=`aiPhase==='charge'`): 固定ターゲット直進に `DASH_ATTACK_HOMING=0.05` の弱ホーミングを追加。
+- **カウンター即死はワーム(jormungand)限定に修正(社長報告)**: 反射弾は10倍×貫通のため、弾幕を一度に反射すると
+  合算で城ボス/死神/裏ボス(mimir・skadi)も一撃死していた。反射弾がボス系(ワーム以外)に当たった時は
+  `nonLethalBoss=true`(HP1で踏みとどまる)に。銃/近接の直撃では従来どおり死ぬ。既存の「爆発でボスは死なない」と同じ扱い。
+- テスト: 裏ボス速度の assertion を「giant と同速」→「giant より速い・3裏ボス同速」に更新。
+- 検証: lint / typecheck(0) / test(65 passed) / build green。
+
 ## v0.25.996 — 裏ボスの当たり判定インジケータをボス絵の下に＆薄く
 
 - 当たり判定の帯(四角)表示を、これまでの**スプライトより前面(overlay)→ 背面(reticle層)**へ移動=

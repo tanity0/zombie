@@ -296,6 +296,9 @@ const BOSS_CRUSH_SHAKE_MAG = 3;                      // 弱め(死神召喚な�
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
 const BOSS_COUNTER_WARP_DIST = 320;                  // カウンター被弾時、プレイヤーの反対側へワープする距離(中心間px・社長指示。50は近すぎ→320へ)
 const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5秒フェードインの長さ
+const BOSS_STUN_SPEED_MULT = 0.5;                    // 気絶中は止まらず歩き続けるが速度は半分(社長指示)
+const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
+const BOSS_DASH_HOMING = 0.05;                       // ダッシュ中の弱いホーミング量/frame(基本は直進・少しだけプレイヤーへ寄せる)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -416,8 +419,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   );
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0 }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 }
   );
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
@@ -894,7 +897,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -1371,6 +1374,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             if (!inDeep) {
               // 深層域を出た → 巣へ帰り、着いたら退場(討伐扱いにしない)。帰巣中も回復する。
+              bs.vx = 0; bs.vy = 0; // 帰巣中は慣性リセット(復帰時にチェイスがぬるっと暴れないように)
               bs.retreating = true;
               const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
               const dl = Math.hypot(dhx, dhy);
@@ -1383,6 +1387,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             } else if (!onScreen) {
               // 画面外: 巣(下の定位置)へ戻りつつ毎秒40回復。追跡状態ではない。
+              bs.vx = 0; bs.vy = 0;
               bs.retreating = false;
               const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
               const dl = Math.hypot(dhx, dhy);
@@ -1400,27 +1405,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               } else if ((boss.reaperWarpAlpha ?? 1) < 1) {
                 patch.reaperWarpAlpha = 1; // フェード完了→完全表示へ戻す
               }
-              // トラップ(root)/気絶(stun)/ワープ中は移動も攻撃も止める=トラップ/スタンが効く(社長報告)。
+              // トラップ(root)/ワープ中は移動も攻撃も止める=トラップが効く。気絶(stun)は止めず半速歩行(社長指示)。
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
               const frozen = warping
-                || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
-                || (boss.stunUntil !== undefined && newGameTime < boss.stunUntil);
+                || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil);
+              const stunned = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
+              // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
+              const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
+              // 慣性付き移動: 目標方向の desired 速度へ現在速度を BOSS_TURN_RESPONSE で寄せて位置を更新
+              // (急な方向転換がぬるっと効く=慣性)。最高速は speed*mult のまま不変。
+              const moveToward = (mult: number) => {
+                const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
+                const dl = Math.hypot(dpx, dpy) || 1;
+                const desVx = (dpx / dl) * speed * mult;
+                const desVy = (dpy / dl) * speed * mult;
+                const k = Math.min(1, BOSS_TURN_RESPONSE * deltaTime);
+                bs.vx += (desVx - bs.vx) * k;
+                bs.vy += (desVy - bs.vy) * k;
+                patch.x = boss.x + bs.vx * deltaTime; patch.y = boss.y + bs.vy * deltaTime;
+              };
               if (frozen) {
                 // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
-                // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。
+                // 進行中の連射残数もクリア(凍結をまたいで状態が漏れないように)。慣性もリセット。
+                bs.vx = 0; bs.vy = 0;
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+                patch.bossBurstLeft = 0;
+              } else if (stunned) {
+                // 気絶: 止まらず歩き続けるが速度は半分・攻撃はしない(社長指示)。解除直後の暴発も防ぐ。
+                moveToward(BOSS_STUN_SPEED_MULT);
                 patch.bossState = 'chase';
                 patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
                 patch.bossBurstLeft = 0;
               } else {
               const st = boss.bossState ?? 'chase';
-              // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
-              const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
-              const moveToward = (mult: number) => {
-                const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
-                const dl = Math.hypot(dpx, dpy) || 1;
-                const mv = speed * mult * deltaTime;
-                patch.x = boss.x + (dpx / dl) * mv; patch.y = boss.y + (dpy / dl) * mv;
-              };
               const nextActionDelay = () => newGameTime + BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
               if (st === 'chase') {
                 moveToward(1);
@@ -1449,9 +1467,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
                 }
               } else if (st === 'dash-windup') {
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS; }
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS;
+                  // 突進開始時に方向をロック(その時のターゲットへ)。以後は基本直進+弱いホーミング。
+                  const ddx = chaseTgt.x - bcx, ddy = chaseTgt.y - bcy;
+                  const ddl = Math.hypot(ddx, ddy) || 1;
+                  bs.dashDirX = ddx / ddl; bs.dashDirY = ddy / ddl;
+                }
               } else if (st === 'dash') {
-                moveToward(BOSS_DASH_SPEED_MULT);
+                // ダッシュ攻撃: 基本は真っ直ぐ直進。毎フレームほんの少しだけプレイヤー方向へ寄せる(弱いホーミング)。
+                const tdx = chaseTgt.x - bcx, tdy = chaseTgt.y - bcy;
+                const tl = Math.hypot(tdx, tdy) || 1;
+                const dx = bs.dashDirX + (tdx / tl) * BOSS_DASH_HOMING;
+                const dy = bs.dashDirY + (tdy / tl) * BOSS_DASH_HOMING;
+                const dnl = Math.hypot(dx, dy) || 1;
+                bs.dashDirX = dx / dnl; bs.dashDirY = dy / dnl; // 向きを少しずつ更新(累積で緩く曲がる)
+                const mv = speed * BOSS_DASH_SPEED_MULT * deltaTime;
+                patch.x = boss.x + bs.dashDirX * mv; patch.y = boss.y + bs.dashDirY * mv;
+                bs.vx = bs.dashDirX * speed * BOSS_DASH_SPEED_MULT; // 突進後のチェイスへ慣性を引き継ぐ
+                bs.vy = bs.dashDirY * speed * BOSS_DASH_SPEED_MULT;
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               }
               } // end !frozen
@@ -3361,7 +3395,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const dmg = wormCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
-          const enemyKilled = damageEnemy(enemyId, dmg);
+          // カウンター(反射弾)で一撃死していいのはワームだけ。城ボス/死神/裏ボス(mimir・skadi)等の他ボス系は、
+          // 反射弾の弾幕(10倍×貫通で合算)でも即死しないよう HP1 で踏みとどまる(nonLethalBoss)。銃/近接の直撃では普通に死ぬ。
+          const counterNonLethalBoss = !!projectile?.reflected && !wormCounterKill && !!enemyForFx && isBossType(enemyForFx.type);
+          const enemyKilled = damageEnemy(enemyId, dmg, counterNonLethalBoss);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
 
           // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。
