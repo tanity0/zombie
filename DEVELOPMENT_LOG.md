@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1042 — 近接攻撃でナイフを振る演出を追加
+
+- 既存の近接スイングは踏み込みポーズ＋緑の斬撃弧のみで、刃そのものは描いていなかった(デフォルト近接武器は
+  「ナイフ」knife-t1)。社長指示でスイング中に実際にナイフを振る見た目を追加。
+- 実装(pixiScene・描画のみ・判定不変): `playerKnife` を Graphics で**一度だけ**構築(刃/稜線/鍔/柄)、本体
+  スプライト前面へ重ねる。毎フレームは clear せず変形のみ=軽量。`meleeSwingAt` のスイング窓(PLAYER_MELEE_SWING_MS
+  =230ms)中だけ表示し、グリップ支点で刃が狙い方向を向き、振りかぶり→振り抜きを easeOut で弧を描く。slasher追撃も
+  `markMeleeSwingFx` で meleeSwingAt が立つので同様にナイフが出る。
+- 負荷: **1/10**。Graphics 1個・形状は初回のみ構築・以後は rotation/position/alpha の更新だけ・スイング窓
+  (約230ms)中のみ可視。新規テクスチャ転送なし・毎フレーム再テッセレーションなし(pooled sprite 相当)。
+- 見た目は暫定(全Tier共通の汎用ナイフ形状)。専用素材やTier別の刃にしたい場合は別途。
+- 検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1041 — スラッシャー追撃の[Just!]表示 / 最初のリング遅延修正 / カウンター点滅停止
 
 社長の3件をまとめて対応(いずれも視覚/演出のみ・判定不変)。
