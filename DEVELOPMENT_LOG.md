@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1041 — スラッシャー追撃の[Just!]表示 / 最初のリング遅延修正 / カウンター点滅停止
+
+社長の3件をまとめて対応(いずれも視覚/演出のみ・判定不変)。
+
+1. **追撃の[Just!]表示**: `applySlasherTimedStrike`(gameStore)のジャスト成立時、ダンスと同じ
+   `spawnCallout(..., 'JUST!', ...)` を頭上に一瞬出す。成功が一目で分かる。
+   負荷: 1〜2/10(連続3回まで・イベント時のみ・ダンスで既出の同方式。文字なので Text フォールバックだが
+   発生頻度が低く上限ありで許容)。
+2. **最初の追撃リングが遅い修正**: 真因はヒットストップ。初撃がフィニッシュ撃破すると `HITSTOP_MS=100` の
+   全停止が走り、その間 `gameTime` が凍結。スラッシャーのリングも判定も `gameTime` で動くため、最初のリング
+   だけ 100ms 凍結→出現で「遅れて来る」感覚に(追撃リングはヒットストップしないので即出る)。修正: スラッシャーの
+   タイミングリングを始動するスイング(slasher所持＋命中)はフィニッシュでもヒットストップを省略。これで最初の
+   リングも追撃リングと同じく即始動する。トレードオフ: スラッシャー始動スイングのキル時 100ms ストップ感は無く
+   なる(リングを最優先フィードバックにするため)。
+3. **カウンター時の点滅停止**: カウンター成立は `invulnerable:true` を立て、drawPlayer がそれで点滅(被弾と
+   紛らわしい)。カウンターは `invulnerableTime` と `lastCounterSuccessTime` を同時刻に立てるので、両者一致=
+   カウンター由来の無敵と判定して点滅を抑止。被弾i-frame は `invulnerableTime` のみ更新→不一致で従来どおり点滅。
+
+検証: lint / typecheck / test(70) / build green。爆弾は引き続き OFF(BOMB_PICKUPS_ENABLED=false)。
+
 ## v0.25.1040 — パンプキン消失バグ修正: ノックバック中はリサイクルしない
 
 - 真因(社長再現で特定): ジャンプ攻撃のカウンター(パリィ・useGameLoop 2670-2704)が敵を約180px弾き飛ばす。

@@ -1401,6 +1401,8 @@ const applySlasherTimedStrike = (
     }
   }
   get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
+  // 追撃のジャスト成立フィードバック(ダンスの「JUST!」と同じコールアウト)。頭上に一瞬。
+  get().spawnCallout(pcx, player.y - 24, 'JUST!', '#bef264', { scale: 1.2 });
   const nextStep = step + 1;
   if (nextStep < maxHits) get().setSlasherCombo(gameTime, nextStep); // 次のリングを再生成
   else get().setSlasherCombo(0, 0);                                  // 連数完了
@@ -2811,7 +2813,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       meleeFinishComboUntil: comboFinishCount > 0
         ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
-      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
+      // フィニッシュで全停止ヒットストップ。ただしこのスイングがスラッシャーのタイミングリングを
+      // 開始する場合は止めない: ヒットストップは gameTime を凍結し、リングと判定が同じ gameTime で
+      // 動くため、最初のリングだけ 100ms 凍結→出現で「遅れて来る」感覚になる(追撃リングは止まらない)。
+      // リングを最優先のフィードバックにするため、スラッシャー始動スイングはヒットストップを省く。
+      hitstopUntil: finisherHit && !(hasSkill(state.player, 'slasher') && slashAt.length > 0)
+        ? now + HITSTOP_MS
+        : state.hitstopUntil,
       player: {
         ...state.player,
         meleeSwingAt: now, // 近接スイング演出の起点(描画のみ)。この set はスイング確定時のみ走る。

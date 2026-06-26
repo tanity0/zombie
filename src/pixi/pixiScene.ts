@@ -4297,7 +4297,11 @@ export class PixiScene {
     if (p.health <= 0) { if (this.playerDeathAt === 0) this.playerDeathAt = now; }
     else this.playerDeathAt = 0;
     const deathFade = this.playerDeathAt > 0 ? Math.max(0, 1 - (now - this.playerDeathAt) / PLAYER_DEATH_FADE_MS) : 1;
-    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade;
+    // カウンター成立の無敵は点滅させない(被弾と紛らわしいため・社長指示)。カウンターは invulnerableTime と
+    // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
+    // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
+    const counterInvuln = p.invulnerable && p.lastCounterSuccessTime === p.invulnerableTime;
+    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();
