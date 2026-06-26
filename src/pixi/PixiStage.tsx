@@ -5,6 +5,7 @@ import { ensureTextures } from './pixiTextures';
 import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
+import { computeViewport } from '../utils/viewport';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
 // 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
@@ -78,7 +79,11 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       const layers = buildLayers(app.stage, groundTexture, farTexture, horizonForestTexture, frontForestTexture);
       const scene = new PixiScene(layers);
       scene.setRenderer(app.renderer); // 可視可能ゾーンの暗幕(RenderTexture合成)に使用
-      scene.resize(width, height);
+      // 固定設計ビュー: レンダラは端末px(width×height)のまま、シーンは論理寸法で描き、stage を scale 倍して端末へフィット。
+      // これで全端末ほぼ同じ視野(FOV)になり、黒帯も出ない。詳細は utils/viewport.ts。
+      const vp = computeViewport(width, height);
+      app.stage.scale.set(vp.scale);
+      scene.resize(vp.logicalW, vp.logicalH);
 
       sceneRef.current = scene;
 
@@ -194,7 +199,10 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
     const scene = sceneRef.current;
     if (!app || !scene) return;
     app.renderer.resize(width, height);
-    scene.resize(width, height);
+    // 固定設計ビュー: 端末サイズが変わっても論理ビューは固定FOVに保つ(scale だけ追従)。
+    const vp = computeViewport(width, height);
+    app.stage.scale.set(vp.scale);
+    scene.resize(vp.logicalW, vp.logicalH);
   }, [width, height]);
 
   // Suppress page scroll/zoom gestures over the canvas (mirrors GameCanvas).

@@ -20,6 +20,7 @@ import MouseControls from './MouseControls';
 import BenchmarkOverlay, { type BenchmarkResult } from './BenchmarkOverlay';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { useGameControls } from '../hooks/useGameControls';
+import { computeViewport } from '../utils/viewport';
 
 interface GameProps {
   onGameOver: () => void;
@@ -77,16 +78,13 @@ const Game: React.FC<GameProps> = ({
   // Update window size and game bounds on resize or fullscreen change
   useEffect(() => {
     const updateSize = () => {
-      if (containerRef.current) {
-        const { width, height } = containerRef.current.getBoundingClientRect();
-        setWindowSize({ width, height });
-        setGameBounds({ width, height });
-      } else {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        setWindowSize({ width, height });
-        setGameBounds({ width, height });
-      }
+      const r = containerRef.current?.getBoundingClientRect();
+      const width = r ? r.width : window.innerWidth;
+      const height = r ? r.height : window.innerHeight;
+      setWindowSize({ width, height });                 // 端末px(レンダラ/PixiStage 用)
+      // 画面外判定(スポーン/カリング/画面端マーカー)は固定ビューの論理寸法で統一=機種で挙動が変わらない。
+      const vp = computeViewport(width, height);
+      setGameBounds({ width: vp.logicalW, height: vp.logicalH });
     };
     
     updateSize();

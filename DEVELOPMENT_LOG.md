@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1019 — 固定設計ビュー(固定FOV＋スケール)導入。全端末で「ほぼ同じ戦場」に
+
+- スマホ専用リリース前提(PC切り捨て)。端末で見える戦場の広さがバラつく(大画面ほど有利)問題を解消。
+  SerialGames記事の思想(16:9コアをcontain＋片軸固定・他軸伸ばし・黒帯なし)＋アクション固有のFOV公平性
+  (伸ばし軸を上限クランプ)で実装。「見た目=判定」のサイズ詰めの“基準枠”を先に確定する位置づけ。
+- 新規 `src/utils/viewport.ts`(純粋計算・レンダラ非依存・描画/シム/入力で共有):
+  - `computeViewport(realW, realH) → { scale, logicalW, logicalH }`。
+  - コア `VIEW_CORE_W=960 / VIEW_CORE_H=540`(必ず全部見える16:9)。伸ばし上限 `VIEW_MAX_W=1200 / VIEW_MAX_H=720`。
+  - `scale = max(sContain, sCap)`: 通常域は sContain(コア contain＝黒帯なしで余軸が伸びる)、極端アスペクトのみ
+    sCap で伸ばし軸を頭打ち(その分コア反対軸が僅かに減るが黒帯は出さない)。単体テスト5件追加。
+- 配線(4ファイル):
+  - `PixiStage.tsx`: レンダラは端末px のまま。`app.stage.scale=vp.scale` で論理→端末へフィット、`scene.resize(logicalW,logicalH)`
+    でシーンの screenW/H を論理化(init＋resize 両方)。全レイヤー(遠景/世界/近景/UI)が stage 配下なので一括スケール。
+  - `Game.tsx`: `setGameBounds` を論理寸法に(画面外判定=スポーン/カリング/画面端マーカーを固定ビュー基準へ統一)。
+    `windowSize`(端末px)は従来どおり PixiStage に渡す。
+  - `MouseControls.tsx`: 入力(PC/dev)を `/scale` で論理座標へ戻す(`mouseAim`・右クリックワールド変換)。タッチは元々 mouseAim=null。
+- 整合確認: カメラ追従/ルック・カリング・スポーン緩衝・画面端500px矢印は全て `gameBounds`(=論理)基準で一貫。
+  ブラー等のpxエフェクトは論理空間で効く=端末間で見た目一定(キレは端末解像度のままラスタ=低解像度化しない)。
+  `filteredWorld.filterArea` は resize の論理寸法で正しい。stageのグレードは色変換でscale非依存。
+- 既定値はすべて実機で微調整可。負荷: 1/10(変換1枚＋resize時のscale書き換えのみ)。
+- 次の確認: 横長スマホ/16:9/タブレット4:3/ノッチ端末で、戦場の広さ・HUDセーフエリア・ピクセルのキレを実機チェック。
+- 検証: lint / typecheck / test(70 passed) / build green。
+
 ## v0.25.1018 — 通常敵の当たり判定を裏ボスと同じ「帯」方式に統一(+確認用オーバーレイ)
 
 - 社長指示の段階調整・第三弾(当たり判定編)。通常敵の当たり判定を裏ボスと同じ【帯(おび)】方式へ:
