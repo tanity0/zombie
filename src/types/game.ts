@@ -431,6 +431,19 @@ export interface BaseSite {
   soldiers: { x: number; y: number; hx: number; hy: number }[]; // 軍人の現在位置 + 待機(home=サークル端寄り)位置
 }
 
+// 護衛軍人NPC(社長指示): スタート時にプレイヤーと同時に4人配置。HPなし。担当拠点(東西南北)へ前進し、
+// 近くに敵が居れば停止して射撃、拠点サークルに10秒留まると解放(制圧)。プレイヤーの画面外では前進停止(座標のみ保持)。
+export interface EscortSoldier {
+  id: string;
+  baseId: string;      // 担当拠点(base-0..3)
+  x: number;
+  y: number;
+  face: number;        // 向き(描画用。1=右/-1=左)
+  soldierIndex: number; // 名簿index(コールアウト/見た目)
+  fireAt: number;      // 次の射撃 gameTime
+  dwellMs: number;     // 担当拠点サークル内の滞在(10sで解放)
+}
+
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
 // レア度: normal/rare/super(超レア=死神/バーサーカー/スケーター)。
 export type SkillKey =

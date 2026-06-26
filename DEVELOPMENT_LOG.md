@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1010 — 護衛軍人NPC(4人・前進&射撃&占拠) コア実装
+
+- 社長指示の新システム(コアのみ・#5被弾後退と exc敵ターゲットは次段)。
+  - **出撃時に護衛NPC4人配置**(`makeEscorts`・出撃地点近傍)。各々が東西南北の拠点を担当し**前進**。
+  - **近くに敵が居れば停止して射撃**(検知/射程=プレイヤー近接半径×`ESCORT_DETECT_MULT=1.5`・`ESCORT_FIRE_INTERVAL_MS=600`/`ESCORT_DMG=8`、最寄り敵に tracer)。敵が居る間は前進しない。
+  - **担当拠点サークルに10秒留まると解放(制圧)**(`BASE_CAPTURE_HOLD_MS`)。プレイヤー滞在制圧は廃止。
+  - **プレイヤーの画面外では前進停止・座標のみ保持**(`onScreen` 判定)。
+  - **HPなし**(被弾しても何も起きない=今回のコア)。
+  - 旧「拠点が襲われる(攻撃者湧き/HP/軍人反撃/HP0陥落)」は **`SUPP_BASE_ATTACKS_ENABLED=false` で無効化**(コード残置・flagで復活可)。裏ボス通過の一撃陥落だけ維持。
+  - 描画: `drawEscorts`(rescue/shooter 素材流用・足元アンカー・y-sort・2コマ歩行・遠近スケール)。
+  - 負荷 1〜2/10(4体+スロットル射撃+tracer。新規重描画なし)。
+- 状態: `escorts: EscortSoldier[]`(型 game.ts)。resetGame で屋外のみ生成。merchant/safeBaseId/全制圧クリアは従来流用。
+- テスト: 制圧テストを「護衛NPCの10秒占拠」に更新。garrison 廃止に合わせ soldiers 期待を空に。
+- 次段(未実装): #5 被弾で少し後退 / exc 敵もNPCを狙う(近い方)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1009 — プレイヤー被弾時にノックバック
 
 - 社長指示: 被弾時にプレイヤーをノックバック。`damagePlayer(amount, source, fromX?, fromY?)` に被弾源座標を追加し、

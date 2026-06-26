@@ -19,7 +19,7 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
@@ -807,6 +807,7 @@ export class PixiScene {
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
   private baseSoldierSprites = new Map<string, Sprite>(); // 拠点駐留兵士の立ち絵(救助NPCと同じ shooter 素材・足元アンカー・y-sort)
   private baseSoldierFace = new Map<string, { px: number; face: number }>(); // 兵士の向き(前フレx差分で決定)
+  private escortSprites = new Map<string, Sprite>(); // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用。
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
   private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
@@ -2234,6 +2235,7 @@ export class PixiScene {
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.syncBossCorpse(s.bossCorpse, now);
     this.syncLowHpVignette(s.player.health, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
@@ -4911,6 +4913,32 @@ export class PixiScene {
     }
     for (const [id, sp] of this.baseSoldierSprites) {
       if (!seen.has(id)) { sp.destroy(); this.baseSoldierSprites.delete(id); this.baseSoldierFace.delete(id); }
+    }
+  }
+
+  // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用、足元アンカー・y-sort・歩行2コマ。
+  // 向きは store の esc.face を使う(描画のみ・シミュレーション非干渉)。
+  private drawEscorts(escorts: EscortSoldier[], now: number) {
+    const seen = new Set<string>();
+    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
+    for (const esc of escorts) {
+      seen.add(esc.id);
+      let sp = this.escortSprites.get(esc.id);
+      if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
+      const tex = getTexture(`rescue/shooter-${walkFrame}`) ?? getTexture('rescue/shooter-0'); // 行進=常時2コマ歩行
+
+      if (tex) {
+        sp.texture = tex;
+        const boxH = PixiScene.RESCUE_NPC_DISPLAY_H, boxW = boxH;
+        const sc = containScale(boxW, boxH, tex.width, tex.height) * this.depthScaleEnemy(esc.y);
+        sp.scale.set(sc * (esc.face < 0 ? -1 : 1), sc);
+        sp.visible = true;
+      } else sp.visible = false;
+      sp.position.set(Math.round(esc.x), Math.round(esc.y));
+      sp.zIndex = esc.y;
+    }
+    for (const [id, sp] of this.escortSprites) {
+      if (!seen.has(id)) { sp.destroy(); this.escortSprites.delete(id); }
     }
   }
 

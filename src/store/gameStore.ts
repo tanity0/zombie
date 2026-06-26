@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EnemyType, Weapon
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
@@ -126,6 +126,14 @@ const SUPP_SOLDIER_DMG = 6;             // 軍人1射の攻撃者へのダメー
 const SUPP_SOLDIER_COUNT = 2;           // 1拠点あたりの駐留軍人数(描画/反撃)
 const SUPP_SOLDIER_SPEED = RESCUE_SURVIVOR_SPEED; // 軍人の移動速度=レスキュー通常速(社長指示で 150→40 相当)
 const SUPP_SOLDIER_ENGAGE_DIST = 26;    // 攻撃者へ寄る最終距離(かなり至近=商人に被らせない)
+// 旧「拠点が襲われる(攻撃者湧き/HPドレイン/陥落)」システムは一旦撤廃(社長指示)。flag=false で無効化。
+// 戻したくなったら true に戻すだけ(コードは残置)。
+const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
+// 護衛軍人NPC(EscortSoldier): スタート時4人配置→担当拠点へ前進→近くの敵に射撃→10秒占拠で解放。
+const ESCORT_SPEED = 95;                // 前進速度(px/s)。画面内のときだけ前進。
+const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
+const ESCORT_DMG = 8;                   // 1射のダメージ
+const ESCORT_DETECT_MULT = 1.5;         // 検知/射撃範囲 = プレイヤー近接半径 × この倍率
 // 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
 const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: number; hy: number }[] => {
   const arr: { x: number; y: number; hx: number; hy: number }[] = [];
@@ -135,6 +143,24 @@ const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: n
     const hx = cx + Math.cos(ang) * rad;
     const hy = cy + Math.sin(ang) * rad;
     arr.push({ x: hx, y: hy, hx, hy });
+  }
+  return arr;
+};
+// 護衛軍人NPCを4人生成(各拠点 base-0..3 担当)。プレイヤー出撃地点の近傍に少し散らして配置。
+const makeEscorts = (px: number, py: number): EscortSoldier[] => {
+  const arr: EscortSoldier[] = [];
+  for (let i = 0; i < BASE_SITE_COUNT; i++) {
+    const ang = (Math.PI * 2 * i) / BASE_SITE_COUNT;
+    arr.push({
+      id: `escort-${i}`,
+      baseId: `base-${i}`,
+      x: px + Math.cos(ang) * 36, // 出撃地点の周りに少し散らす(重ならないよう担当方向へ)
+      y: py + Math.sin(ang) * 36,
+      face: Math.cos(ang) < 0 ? -1 : 1,
+      soldierIndex: i,
+      fireAt: 0,
+      dwellMs: 0,
+    });
   }
   return arr;
 };
@@ -1444,6 +1470,7 @@ interface GameState {
   finaleDefeated: boolean;
   // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
+  escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
   suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
   safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
@@ -1875,6 +1902,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameWon: false,
   finaleDefeated: false,
   baseSites: createBaseSites(),
+  escorts: [],
   suppressionActive: false,
   suppressionCaptureCount: 0,
   safeBaseId: null,
@@ -6490,30 +6518,74 @@ export const useGameStore = create<GameState>((set, get) => ({
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
 
+    // ── 護衛軍人NPC(社長指示): 担当拠点へ前進→近くの敵に射撃(進まない)→サークル内10秒で解放。
+    //    プレイヤーの画面外では前進停止・座標のみ保持。HPなし(被弾しても何も起きない=今回のコア)。
+    const detect2 = (huntingMeleeRadius(p) * ESCORT_DETECT_MULT) ** 2;
+    const escortCaptures = new Map<string, number>(); // baseId -> soldierIndex(このフレーム占拠完了)
+    let escortsChanged = false;
+    const nextEscorts: EscortSoldier[] = state.escorts.map(esc => {
+      const base = state.baseSites.find(b => b.id === esc.baseId);
+      if (!base || !onScreen(esc.x, esc.y)) return esc; // 画面外/拠点なし=前進停止(座標保持)
+      // 最寄り敵(プレイヤーと同じく全敵を見る)。空中(ジャンプ中)の敵は無敵なので狙わない。
+      let nearest: Enemy | undefined; let nd2 = detect2;
+      for (const e of state.enemies) {
+        if (e.aiPhase === 'jump') continue;
+        const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+        const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
+        if (d2 < nd2) { nd2 = d2; nearest = e; }
+      }
+      let { x, y, fireAt, dwellMs, face } = esc;
+      if (nearest) {
+        // 停止して射撃(進まない)。射撃間隔でスロットル。
+        if (now >= fireAt) {
+          fireAt = now + ESCORT_FIRE_INTERVAL_MS;
+          const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
+          damageShots.push({ id: nearest.id, dmg: ESCORT_DMG });
+          soldierShots.push({ fromX: x, fromY: y, toX: tx, toY: ty });
+          face = tx < x ? -1 : 1;
+        }
+      } else {
+        // 担当拠点へ前進。
+        const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
+        if (d > 2) { const mv = Math.min(ESCORT_SPEED * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+        const inC = Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS;
+        dwellMs = inC ? dwellMs + deltaTime * 1000 : 0;
+        if (inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
+          escortCaptures.set(base.id, esc.soldierIndex);
+        }
+      }
+      if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face) escortsChanged = true;
+      return { ...esc, x, y, fireAt, dwellMs, face };
+    });
+
     const next: BaseSite[] = state.baseSites.map(s => {
       const inCircle = Math.hypot(s.x - px, s.y - py) <= BASE_CAPTURE_RADIUS;
       if (s.status === 'open') {
-        const dwellMs = inCircle ? s.dwellMs + deltaTime * 1000 : 0;
-        if (inCircle && dwellMs >= BASE_CAPTURE_HOLD_MS && !capturedThisFrame) {
-          // 軍人(キャラ)は名簿8人から「被らないようにランダム」割り当て(社長指示)。現在capturedな他拠点の
-          // indexを除外して残りから無作為に選ぶ。captureCount は SE/制圧回数カウント用に別途インクリメント。
-          const usedIdx = new Set(state.baseSites.filter(b => b.status === 'captured' && b.soldierIndex >= 0).map(b => b.soldierIndex));
-          const freeIdx: number[] = [];
-          for (let k = 0; k < BASE_SOLDIERS.length; k++) if (!usedIdx.has(k)) freeIdx.push(k);
-          const capIdx = freeIdx.length ? freeIdx[Math.floor(Math.random() * freeIdx.length)] : 0;
-          captureCount += 1; // 制圧回数(SE検出 suppressionCaptureCount 用)。名簿indexとは別。
+        // 解放(制圧)は護衛NPCのサークル内10秒滞在で発生(プレイヤー滞在制圧は廃止・社長指示)。
+        if (escortCaptures.has(s.id) && !capturedThisFrame) {
+          const capIdx = escortCaptures.get(s.id)!;
+          captureCount += 1;
           capturedThisFrame = { id: s.id, x: s.x, y: s.y, soldierIndex: capIdx };
           changed = true;
-          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_FIRST_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: makeBaseSoldiers(s.x, s.y) };
+          // 護衛が解放。garrison(駐留軍人)は旧システム(flag on)時のみ生成。flag off=護衛が防衛するので空。
+          return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_FIRST_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: SUPP_BASE_ATTACKS_ENABLED ? makeBaseSoldiers(s.x, s.y) : [] };
         }
-        if (dwellMs !== s.dwellMs) changed = true;
-        return { ...s, dwellMs };
+        return s;
       }
-      // captured
+      // captured。旧「拠点が襲われる(攻撃者湧き/HP/軍人射撃/HP0陥落)」は SUPP_BASE_ATTACKS_ENABLED=false で
+      // 丸ごとスキップ(社長指示・コードは残置)。裏ボス通過の一撃陥落だけは維持。
+      const safe = s.id === state.safeBaseId;
+      if (!SUPP_BASE_ATTACKS_ENABLED) {
+        if (!safe && bossHitsBase(s.x, s.y)) {
+          fallen.push({ x: s.x, y: s.y, id: s.id, soldierIndex: s.soldierIndex });
+          changed = true;
+          return { ...s, status: 'open', hp: 0, dwellMs: 0, attackerId: null, attackerRespawnAt: 0, soldierFireAt: 0, soldierIndex: -1, soldiers: [] };
+        }
+        return s;
+      }
       let { hp, attackerId, attackerRespawnAt, soldierFireAt } = s;
       let soldiers = s.soldiers;
       let liveAttacker: Enemy | undefined; // 軍人の移動/射撃の標的
-      const safe = s.id === state.safeBaseId; // 商人サイト=安全地帯(HPは減らない)。ただし敵は出る(社長指示)。
       const vis = onScreen(s.x, s.y);
       if (vis) {
         // 攻撃者ライフサイクルは画面内の captured 拠点で共通(safe含む)。safe拠点は敵が来るがHPは減らない。
@@ -6587,10 +6659,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { ...s, hp, attackerId, attackerRespawnAt, soldierFireAt, soldiers };
     });
 
-    if (changed || capturedThisFrame || removeAttackerIds.length) {
+    if (changed || capturedThisFrame || removeAttackerIds.length || escortsChanged) {
       const removeSet = new Set(removeAttackerIds);
       set(st => ({
         baseSites: next,
+        ...(escortsChanged ? { escorts: nextEscorts } : {}),
         enemies: removeSet.size ? st.enemies.filter(e => !removeSet.has(e.id)) : st.enemies,
         ...(capturedThisFrame ? {
           safeBaseId: capturedThisFrame.id,
@@ -7203,6 +7276,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameWon: false,
         finaleDefeated: false,
         baseSites: createBaseSites(),
+        // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
+        escorts: (!indoor && stageTheme !== 'lab') ? makeEscorts(spawnTL.x, spawnTL.y) : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,
         safeBaseId: null,

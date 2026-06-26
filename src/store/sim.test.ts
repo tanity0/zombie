@@ -99,20 +99,22 @@ describe('headless simulation invariants', () => {
     expect(s.player.health).toBeLessThanOrEqual(s.player.maxHealth);
   });
 
-  it('suppression event: a base captures after ~10s dwell and stays finite', () => {
+  it('suppression event: an escort NPC captures its base after ~10s dwell and stays finite', () => {
     useGameStore.getState().resetGame('warrior');
     useGameStore.setState({ suppressionActive: true });
     const site0 = useGameStore.getState().baseSites[0];
-    // Park the player on the first base so its capture circle fills.
-    const place = () => useGameStore.setState(st => ({
-      player: { ...st.player, x: site0.x - st.player.width / 2, y: site0.y - st.player.height / 2 },
+    // 護衛NPCが配置されている前提(屋外)。base-0 担当の護衛を拠点中心に留め、カメラを近づけて on-screen にする。
+    expect(useGameStore.getState().escorts.length).toBeGreaterThan(0);
+    const pin = () => useGameStore.setState(st => ({
+      camera: { x: site0.x - 100, y: site0.y - 100 }, // 護衛を画面内にして前進/占拠を動かす
+      escorts: st.escorts.map(e => e.baseId === site0.id ? { ...e, x: site0.x, y: site0.y } : e),
     }));
-    place();
+    pin();
     const dt = 1 / 60;
     let t = useGameStore.getState().gameTime;
     for (let i = 0; i < 700; i++) { // ~11.7s > 10s hold
       t += dt * 1000;
-      place(); // keep the player pinned inside the circle
+      pin(); // keep the escort pinned inside its base circle
       useGameStore.getState().setGameTime(t);
       useGameStore.getState().updateSuppression(dt);
       assertActorsFinite(`supp tick ${i}`);
@@ -123,17 +125,15 @@ describe('headless simulation invariants', () => {
     expect(base.hp).toBeGreaterThan(0);
     // first capture makes it the merchant's safe base
     expect(useGameStore.getState().safeBaseId).toBe(site0.id);
-    // soldiers (キャラ) are assigned RANDOMLY (distinct) from the 8-name roster, so the index is
-    // some valid 0..7 (not necessarily 0). They spawn at edge-ish positions (not the center=merchant).
+    // escort soldierIndex は拠点固定(base-0=0..)。0..7 の有効値。
     expect(base.soldierIndex).toBeGreaterThanOrEqual(0);
     expect(base.soldierIndex).toBeLessThan(8);
-    expect(base.soldiers.length).toBeGreaterThan(0);
-    for (const sol of base.soldiers) {
-      const distFromCenter = Math.hypot(sol.x - site0.x, sol.y - site0.y);
-      expect(distFromCenter).toBeGreaterThan(10); // not stacked on the center
-      expect(distFromCenter).toBeLessThanOrEqual(130 + 1); // within the capture circle
-      expect(Number.isFinite(sol.x) && Number.isFinite(sol.y)).toBe(true);
-    }
+    // 新システム: 駐留 garrison は廃止(flag off)。防衛は護衛NPCが担う=base.soldiers は空。
+    expect(base.soldiers.length).toBe(0);
+    // 担当護衛は座標を保ち、拠点中心付近に居る(占拠完了地点)。
+    const escort = useGameStore.getState().escorts.find(e => e.baseId === site0.id)!;
+    expect(Number.isFinite(escort.x) && Number.isFinite(escort.y)).toBe(true);
+    expect(Math.hypot(escort.x - site0.x, escort.y - site0.y)).toBeLessThanOrEqual(130 + 1);
   });
 
   it('explosions (nonLethalBoss) cannot kill boss-types but still chip them; normal hits do kill', () => {
