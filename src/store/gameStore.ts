@@ -43,7 +43,7 @@ import { skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, GACHA_PULL_COST,
 import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
-import { enemyFootBox, enemyHeadY } from '../pixi/renderSpec';
+import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
@@ -375,9 +375,11 @@ export const MELEE_RADIUS = 74;
 // 中心が遠いので「当たり判定の帯(AABB)の最近点」までの距離=矩形に触れたら届く(社長指示「こちらからも揃えて」)。
 // これで巨体ボスも中心まで突っ込まず、表示している四角の縁で斬れる。描画側の判定枠と一致。
 export const enemyMeleeDist = (px: number, py: number, e: Enemy): number => {
-  // 当たり判定=裏ボスと同じ「帯」方式(社長指示)。全敵とも足元の生の帯(e.width×e.height のAABB)の
-  // 最近点までの距離で判定する。絵は別経路(enemyFootBox)で帯から大きく伸びる=見た目≠判定。
-  const r = { x: e.x, y: e.y, width: e.width, height: e.height };
+  // 当たり判定=「帯」方式(社長指示)。通常敵は足元の帯(幅=影と同規格=実描画幅×0.55 / 高さ=e.height)、
+  // 裏ボスは生の帯。その最近点までの距離で判定する。絵は別経路(enemyFootBox)で帯から大きく伸びる=見た目≠判定。
+  const r = isHiddenBoss(e.type)
+    ? { x: e.x, y: e.y, width: e.width, height: e.height }
+    : enemyHitStrip(e);
   const nx = Math.max(r.x, Math.min(px, r.x + r.width));
   const ny = Math.max(r.y, Math.min(py, r.y + r.height));
   return Math.hypot(px - nx, py - ny);

@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1021 — 当たり判定「帯」の幅を影と同規格に(実描画幅×0.55)
+
+- 社長指示「帯は影と同じ規格の幅で」。通常敵(非・裏ボス)の当たり判定帯の【幅】を、Pixi接地影と同じ規格
+  =実描画スプライト幅×0.55 に変更(高さは従来の生 e.height、足元アンカー)。帯=影=見えてる足元の幅 が揃う。
+- `renderSpec.ts`: `ENEMY_SHADOW_WIDTH_FRAC=0.55` と `enemyHitStrip(e)` を新設。実描画幅は contain フィット幅
+  `min(boxW, boxH/アスペクト)`(影の使うスプライト実寸と一致、アスペクト未登録時は boxW フォールバック)。深度スケールは
+  掛けない=当たり判定不変の原則を維持。
+- 当たり判定とオーバーレイを単一定義に集約: `collisionUtils.enemyContactBox` と `gameStore.enemyMeleeDist`、
+  確認用オーバーレイ(pixiScene)が全て `enemyHitStrip` を使用(裏ボスのみ従来の生の帯=ENEMY_STATS)。
+- 確認用オーバーレイ(橙の帯)は **まだ ON**(`SHOW_HITBOX_STRIP=true`)。新しい幅を実機確認後に false で消す。
+- 負荷: 1/10。検証: lint / typecheck / test(70 passed) / build green。
+
 ## v0.25.1020 — 固定ビューの向き修正(本作は縦持ち専用 → 9:16 コアへ)
 
 - v0.25.1019 を誤って 16:9【横】基準で実装していた。本作は `OrientationGuard` で横持ちを全面ブロックする

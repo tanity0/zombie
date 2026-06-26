@@ -34,7 +34,7 @@ import { getTexture } from './pixiTextures';
 import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
-import { enemyFootBox, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
+import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
 import {
   RHYTHM_DIM_ALPHA, RHYTHM_DIM_EASE, RHYTHM_TAP_GLOW_MS, RHYTHM_TAP_GLOW_ALPHA,
   RHYTHM_STAGE_COLORS, RHYTHM_FINISH_RAINBOW_MS, RHYTHM_BALL_DIAM, RHYTHM_RAINBOW_PALETTE,
@@ -4505,14 +4505,15 @@ export class PixiScene {
     }
     const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
     if (stunned) this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now);
-    // 当たり判定=全敵とも足元の「帯」(AABB=e.width×e.height・裏ボスと同仕様)。確認しやすいよう帯=四角を
-    // うっすら色付きで表示する。絵の「下」=この reticle 層(スプライトより背面)へ。
-    // ★確認用オーバーレイ(社長: 後で確定したら消す)。SHOW_HITBOX_STRIP=false で通常敵ぶんは一括OFF。
-    // 裏ボスは元々この帯を常時表示(巨体で分かりにくいため・社長指示)なので OFF でも残す。
+    // 当たり判定=足元の「帯」(通常敵=幅は影と同規格=実描画幅×0.55 / 高さ=e.height、裏ボス=生の帯)。確認しやすい
+    // よう帯=四角をうっすら色付きで表示。絵の「下」=この reticle 層(スプライトより背面)へ。当たり判定と必ず一致させる
+    // ため collision と同じ enemyHitStrip を使う。★確認用オーバーレイ(社長: 後で確定したら消す)。
+    // SHOW_HITBOX_STRIP=false で通常敵ぶんは一括OFF。裏ボスは元々この帯を常時表示(社長指示)なので OFF でも残す。
     if (SHOW_HITBOX_STRIP || isHiddenBoss(e.type)) {
       const pulse = 0.5 + 0.5 * Math.sin(now / 280);
-      r.rect(e.x, e.y, e.width, e.height).fill({ color: 0xf97316, alpha: 0.07 + 0.04 * pulse });
-      r.rect(e.x, e.y, e.width, e.height).stroke({ width: 2, color: 0xfb923c, alpha: 0.3 + 0.1 * pulse });
+      const hb = isHiddenBoss(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyHitStrip(e);
+      r.rect(hb.x, hb.y, hb.width, hb.height).fill({ color: 0xf97316, alpha: 0.07 + 0.04 * pulse });
+      r.rect(hb.x, hb.y, hb.width, hb.height).stroke({ width: 2, color: 0xfb923c, alpha: 0.3 + 0.1 * pulse });
     }
 
     // Above-sprite layer: health bar, boss marker, hit flash.
