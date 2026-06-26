@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1028 — NPC(護衛)が空に浮くバグ修正 + プレイ帯上端の共有定義
+
+- 社長報告「NPCが空に浮いていく」。原因: base-3(北)が真上 (0,-3200) にあり、担当護衛が地平線より上の「空」へ歩く。
+  停止判定(onScreen)が生の画面矩形(camera.y起点)基準なので、地平線(≈ビュー高さ32%下)より上=空 で止まって浮いていた。
+- `viewport.ts` に `PLAY_BAND_TOP_FRAC=0.32` と `playBandTopY(cameraY, viewH)` を新設(レンダラ非依存の共有定義=
+  「画面外/プレイ帯」を固定ビュー基準で明確化する土台。レンダラの地平線≈遠景高さ由来に合わせた近似値・実機微調整可)。
+- `updateSuppression`: 護衛のYを `playTopY` でクランプ(`y = Math.max(y, playTopY)`)。これより上=空へは行かない。
+  拠点が帯の下(画面内=プレイヤーが北へ進んだ時)に来た時だけ護衛は拠点へ到達=従来の占拠は維持。
+- 通常敵スポーンは既に矩形ベース(4辺の外)・ラボは真上トップダウンで空が無いため、敵側の「空湧き」実害は無し
+  (top辺spawnは地平フェードでフェードイン)。横の矩形マージン統一/recycleの半径→矩形化は必要なら次段。
+- 検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1027 — 拠点: 護衛が射撃中だと滞在カウントが進まないバグ修正
 
 - 社長報告「軍人が拠点に入ってもカウント始まらない」。原因: dwell(滞在)加算と占拠判定が「近くに敵がいない時(else枝)」
