@@ -17,8 +17,9 @@ export interface ForestFlower {
 
 // 花の種類数(public/sprites/props/flower-0..11.png)。
 export const FLOWER_VARIANTS = 12;
-// 描画の基準高さ(world px・scale 1)。少し小さめ(社長指示)。個体scaleでさらに 0.62〜0.92 倍。
-export const FLOWER_DISPLAY_H = 42;
+// 描画の基準高さ(world px・scale 1)。個体scaleでさらに 0.62〜0.92 倍。
+// (社長指示で 42→58 へ拡大: もう少し大きく)
+export const FLOWER_DISPLAY_H = 58;
 // 散布する区画サイズ。木(220)より広め=まばらに点在。
 export const FLOWER_ZONE = 340;
 // スタート地点(原点)付近は空ける安全半径。

@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1045 — ステージ1の花をもう少し大きく
+
+- `FLOWER_DISPLAY_H` 42→58(社長指示)。個体ゆらぎ(0.62〜0.92)はそのまま。判定なしのまま。
+- 検証: lint/typecheck/test(75)/build green。
+
 ## v0.25.1044 — ステージ1に光る花の装飾(壁判定なし)を散布
 
 - 社長支給の花シート(4×3=12種)を境界フラッドフィルで黒背景除去・トリムし `public/sprites/props/flower-0..11.png`
