@@ -4647,6 +4647,19 @@ export const useGameStore = create<GameState>((set, get) => ({
               pos = { x: rc.x + Math.cos(ang) * minDist - enemy.width / 2, y: rc.y + Math.sin(ang) * minDist - enemy.height / 2 };
             }
           }
+          // 囲い系イベント中: イベント敵(fromEvent)を囲い円の中に閉じ込める(社長報告のバグ修正)。
+          // パンプキン等は射程外へ距離を取るため円の外=地平線の上(透明化ゾーン)へ出て見えなくなり、
+          // fromEvent が 0 にならず「誰もいないのに終わらない(時間切れ待ち)」状態になっていた。プレイヤー同様アリーナに閉じ込める。
+          const ae = state.activeEvent;
+          if (ae && enemy.fromEvent) {
+            const ecx2 = pos.x + enemy.width / 2, ecy2 = pos.y + enemy.height / 2;
+            const dx2 = ecx2 - ae.x, dy2 = ecy2 - ae.y;
+            const d2 = Math.hypot(dx2, dy2);
+            const maxDist = ae.radius - Math.max(enemy.width, enemy.height) * 0.4; // 縁の内側に収める
+            if (d2 > maxDist && d2 > 0.001) {
+              pos = { x: ae.x + (dx2 / d2) * maxDist - enemy.width / 2, y: ae.y + (dy2 / d2) * maxDist - enemy.height / 2 };
+            }
+          }
           return pos;
         };
         // 攻撃モーションを「全う」するフェーズの扱い(社長指示・更新):

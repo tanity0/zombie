@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1035 — 囲い系イベント: 敵がアリーナ円外へ出て「終わらない」バグ修正
+
+- 社長報告「ボス版アリーナで攻撃中にパンプキンがパッと消え、誰もいないのに終わらない(時間切れ待ち)」。原因:
+  パンプキンは溜めのため `PUMPKIN_TRIGGER_RANGE=246px` 離れて縮むが、アリーナ円半径は 210。246>210 で円の外=地平線の上
+  (透明化ゾーン)へ出て溜めるため、見えない&到達不能になり `fromEvent` が0にならずクリア不可→時間切れ待ちだった。
+- 修正: `resolveMove` 末尾に、活性イベント中は `fromEvent` 敵を囲い円内(半径-サイズ×0.4)へクランプする処理を追加
+  (プレイヤー同様アリーナに閉じ込め=常に可視・撃破可能に)。returnCircle 押し出しの隣。
+- 影響範囲: イベント敵(fromEvent)のみ。通常(イベント外)のパンプキン等の挙動は不変。
+- 検証: lint / typecheck / test(70) / build green。強制発火は `?arenanow=boss|horde|rescue|1`。
+
 ## v0.25.1034 — 救助NPC・拠点駐留兵にも足影を追加
 
 - 社長指示「重さOKなら入れて」。負荷 1/10(プール済みソフト影スプライト・毎フレーム生成/Graphics無し、対象は救助最大3体＋
