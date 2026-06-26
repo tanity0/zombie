@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1047 — ナイフ斬撃をさらに大きく横長に・体に被せる
+
+- 三日月を拡大: RO 52→80・SPAN 2.25→2.6(約149°)・全体スケール基準 /64→/52。狙い軸方向(ローカル+x)へ
+  `KNIFE_ARC_XSTRETCH=1.6` 倍で引き伸ばし=横長。中心は胸=体に大きく被る。先端の明るい縁も14px厚に。
+- 負荷据え置き **1/10**(Graphics 1個・初回のみ構築・変形のみ)。判定不変。
+- 検証: lint/typecheck/test(75)/build green。
+
 ## v0.25.1046 — ナイフ斬撃: 白い三日月を体に被せて目立たせ・スピード感↑
 
 - 白い斬撃(三日月)を追加。Graphics で**一度だけ**構築(軌跡本体 alpha0.55 + 先端の明るい縁 alpha0.95)、

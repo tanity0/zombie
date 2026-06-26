@@ -408,7 +408,8 @@ const KNIFE_ANCHOR_X = 0.215;
 const KNIFE_ANCHOR_Y = 0.77;
 const KNIFE_NATIVE_ANGLE = -39.9 * Math.PI / 180;
 const KNIFE_LEN_FRAC = 0.78;          // 表示サイズ(画像最大辺 → 箱高×この割合)
-const KNIFE_ARC_SPAN = 2.25;          // 白い斬撃(三日月)の角度幅(rad・約129°)
+const KNIFE_ARC_SPAN = 2.6;           // 白い斬撃(三日月)の角度幅(rad・約149°)
+const KNIFE_ARC_XSTRETCH = 1.6;       // 斬撃を狙い軸方向へ引き伸ばす(横長に)倍率
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -4051,15 +4052,15 @@ export class PixiScene {
         // 白い斬撃(三日月)を一度だけ構築。中心(原点)を支点に、二等分線=ローカル +x 方向へ開く帯。
         // 本体スプライトの前面・ナイフの背面に置く=「体に被る」白い軌跡。
         const arc = this.playerKnifeArc;
-        const SPAN = KNIFE_ARC_SPAN, RI = 13, RO = 52, N = 18;
+        const SPAN = KNIFE_ARC_SPAN, RI = 12, RO = 80, N = 20;
         const band = (rOut: number, rIn: number): number[] => {
           const pts: number[] = [];
           for (let i = 0; i <= N; i++) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rOut, Math.sin(a) * rOut); }
           for (let i = N; i >= 0; i--) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rIn, Math.sin(a) * rIn); }
           return pts;
         };
-        arc.poly(band(RO, RI)).fill({ color: 0xffffff, alpha: 0.55 });        // 軌跡本体
-        arc.poly(band(RO, RO - 9)).fill({ color: 0xffffff, alpha: 0.95 });    // 先端の明るい縁(bloomで光る)
+        arc.poly(band(RO, RI)).fill({ color: 0xffffff, alpha: 0.5 });         // 軌跡本体
+        arc.poly(band(RO, RO - 14)).fill({ color: 0xffffff, alpha: 0.95 });   // 先端の明るい縁(bloomで光る)
         arc.visible = false;
         this.playerView.container.addChild(arc);                 // 本体の前面
         this.playerKnife.texture = ktex;
@@ -4425,8 +4426,9 @@ export class PixiScene {
         const arcEase = 1 - Math.pow(1 - kt, 2);
         knifeArc.rotation = aimAng + sweep * 0.35 * (facingLeft ? -1 : 1);
         knifeArc.position.set(baseX, baseY);
-        const arcSc = (fb.boxH / 64) * dsc * (0.92 + 0.5 * arcEase); // 振り抜きで少し伸びる
-        knifeArc.scale.set(arcSc, facingLeft ? -arcSc : arcSc);
+        const arcSc = (fb.boxH / 52) * dsc * (0.95 + 0.5 * arcEase); // 振り抜きで少し伸びる(全体に大きめ)
+        // 狙い軸方向(ローカル+x)へ引き伸ばして横長に。Y反転で左向きの刃線に合わせる。
+        knifeArc.scale.set(arcSc * KNIFE_ARC_XSTRETCH, facingLeft ? -arcSc : arcSc);
         // 前半でピーク→急速フェード(寿命の約55%で消える)。
         knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.06, (0.55 - kt) / 0.22))) * view.sprite.alpha;
         knifeArc.visible = knifeArc.alpha > 0.01;
