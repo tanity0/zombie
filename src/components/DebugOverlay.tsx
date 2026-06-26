@@ -3,6 +3,27 @@ import { useGameStore, isInputLocked, isGameTimeStopped } from '../store/gameSto
 import { isHiddenBoss } from '../utils/enemyUtils';
 import { getSelectedStageId, getBaseGrowthForStage, getBaseGrowth, setBaseGrowth } from '../data/progress';
 
+// 囲い系イベント(arena)が「終わらない」原因調査用。activeEvent 中だけ、fromEvent 敵の
+// 数・中心からの距離・状態(dorm/aiPhase)・HP・画面内外を1体ずつ出す。fe0 なのに EV が残る=cleared未発火、
+// OFF=画面外へ逃げた、d>radius=円外、dorm=未起動の取りこぼし、等が一目で分かる。
+const arenaDebugLines = (s: ReturnType<typeof useGameStore.getState>): string[] => {
+  const ae = s.activeEvent;
+  if (!ae) return [];
+  const fe = s.enemies.filter(e => e.fromEvent);
+  const cam = s.camera, gb = s.gameBounds;
+  const el = Math.round((s.gameTime - ae.startedAt) / 1000);
+  const dur = Math.round((ae.endsAt - ae.startedAt) / 1000);
+  const out: string[] = [`EV ${ae.kind} r${ae.radius} fe${fe.length} ${el}/${dur}s`];
+  fe.slice(0, 6).forEach(e => {
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const d = Math.round(Math.hypot(ecx - ae.x, ecy - ae.y));
+    const onScr = ecx >= cam.x && ecx <= cam.x + gb.width && ecy >= cam.y && ecy <= cam.y + gb.height;
+    const st = e.dormant ? 'dorm' : (e.aiPhase ?? 'chase');
+    out.push(` ${e.type} d${d} ${st} hp${Math.round(e.health)} ${onScr ? 'on' : 'OFF'}`);
+  });
+  return out;
+};
+
 // 凍結診断用オンスクリーン表示(?debug=1)。ゲームループとは独立に自前 raf で毎フレーム更新するので、
 // シムが固まっても(ループ早期return等)この表示だけは動き続け、何が張り付いているか分かる。
 const DebugOverlay: React.FC = () => {
@@ -61,8 +82,12 @@ const DebugOverlay: React.FC = () => {
     `gts${Y(isGameTimeStopped())} lock${Y(isInputLocked())}`,
     `blk ${blk}`,
     `chase${Y(s.bossChasing)} boss${Y(!!boss)}`,
+    // 実体数: 何が消えているか追う(敵/イベント敵/護衛/救助)。フレーム毎に増減を見る。
+    `cnt E${s.enemies.length} fe${s.enemies.filter(e => e.fromEvent).length} esc${s.escorts.length} rsc${s.rescueSurvivors.length}`,
     ...(boss ? [`bx ${Math.round(boss.x)},${Math.round(boss.y)} ${boss.bossState ?? '-'} bhp ${Math.round(boss.health)}`] : []),
     ...(s.debugLoopError ? [`ERR ${s.debugLoopError}`] : []),
+    // 囲い系イベント診断: 何故終わらないか(fromEvent敵の数/距離/状態/HP/画面内外)を毎フレーム表示。
+    ...arenaDebugLines(s),
     // 拠点の永続Lv/EXP(出撃中のHP/captured等とは別。stage×base ごと・未登録=Lv1/EXP0)。
     `base[${stageId || '?'}] ${baseGrowth.map(b => `${b.baseId.replace('base-', '')}:L${b.level}/${b.exp}`).join(' ')}`,
   ];

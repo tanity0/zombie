@@ -1079,6 +1079,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('event-clear'); // 小イベント完了音
             }
           } else {
+            // 安全策: イベント敵(fromEvent)が何らかの理由(ノックバック/ジャンプ/逃走等で resolveMove のクランプを
+            // 素通り)で囲い円の外=地平線の上(透明化ゾーン)へ出ると、見えない&到達不能になり fromEvent が0にならず
+            // 「誰もいないのに終わらない」状態になる。毎フレーム、円外に出たイベント敵を円内へ引き戻す(出たときだけ set)。
+            {
+              const evNow = useGameStore.getState().enemies;
+              const outside = evNow.some(e => {
+                if (!e.fromEvent) return false;
+                const md = ae.radius - Math.max(e.width, e.height) * 0.4;
+                const dx = (e.x + e.width / 2) - ae.x, dy = (e.y + e.height / 2) - ae.y;
+                return dx * dx + dy * dy > md * md;
+              });
+              if (outside) {
+                useGameStore.setState(st => ({
+                  enemies: st.enemies.map(e => {
+                    if (!e.fromEvent) return e;
+                    const dx = (e.x + e.width / 2) - ae.x, dy = (e.y + e.height / 2) - ae.y;
+                    const d = Math.hypot(dx, dy);
+                    const md = ae.radius - Math.max(e.width, e.height) * 0.4;
+                    if (d > md && d > 0.001) return { ...e, x: ae.x + (dx / d) * md - e.width / 2, y: ae.y + (dy / d) * md - e.height / 2 };
+                    return e;
+                  }),
+                }));
+              }
+            }
             // 終了判定: 全滅(イベント敵0・開始直後グレース後) or 制限時間切れ。
             const eventEnemies = useGameStore.getState().enemies.filter(e => e.fromEvent).length;
             const cleared = newGameTime - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0;
@@ -1340,7 +1364,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // テスト: ?bossnow=1 のときは巣に関係なく「プレイヤーの近く・画面外(進行方向)」へ即出現。
             const lair = bossLairPos(hiddenBoss);
             const nearLair = lair ? Math.hypot(pcx - lair.x, pcy - lair.y) <= BOSS_SPAWN_NEAR : depth >= BOSS_SPAWN_DEPTH;
-            if (!bs.spawned && (FORCE_HIDDEN_BOSS || nearLair) && !useGameStore.getState().attention && !isGameTimeStopped()) {
+            if (!bs.spawned && (FORCE_HIDDEN_BOSS || nearLair) && !useGameStore.getState().attention && !isGameTimeStopped()
+                && !useGameStore.getState().activeEvent) { // 囲い系イベント中は裏ボスを出さない(重なると逃走で詰み=終わらない・社長報告)
               const e = spawnEnemyAt(hiddenBoss, 0, 0, newGameTime);
               let cx: number, cy: number;
               if (FORCE_HIDDEN_BOSS) {

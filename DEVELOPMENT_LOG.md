@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1036 — 囲い系イベント「終わらない」: 調査用デバッグ追加 + 裏ボス排他 + 円外クランプ安全策
+
+- 社長方針「憶測でなく調査してから直す」。`?debug=1` のオーバーレイに診断を追加:
+  - 実体数 `cnt E<敵> fe<イベント敵> esc<護衛> rsc<救助>`(何が消えてるか数で追う)。
+  - 活性イベント中 `EV <kind> r<半径> fe<残り> <経過/制限>s` ＋ fromEvent 敵を1体ずつ
+    `<type> d<中心距離> <dorm/aiPhase> hp<HP> on/OFF`(cleared未発火/画面外/円外/未起動/HP残りを切り分け)。
+- 併せて(仮の手当て・調査で否定されたら戻す): 裏ボス出現条件に `&& !activeEvent`(囲い系イベント中は出さない)、
+  resolveMove+完了判定直前で fromEvent 敵を円内へクランプ。
+- 検証: lint / typecheck / test(70) / build green。再現: `?debug=1&arenanow=boss`(or `?castlenow=1`)。
+
 ## v0.25.1035 — 囲い系イベント: 敵がアリーナ円外へ出て「終わらない」バグ修正
 
 - 社長報告「ボス版アリーナで攻撃中にパンプキンがパッと消え、誰もいないのに終わらない(時間切れ待ち)」。原因:
