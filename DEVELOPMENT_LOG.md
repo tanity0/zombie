@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1004 — B案: アテンション中は擬似遠近の焦点面を注視点へ寄せる
+
+- 社長指示で B案を試行。`depthRefY`(擬似遠近の等倍基準=通常はプレイヤー足元)を、**アテンション中だけ
+  注視点(`s.attention.y`=寄った対象)へ寄せる**。カメラが裏ボス等に寄った時、対象が等倍基準になり
+  「プレイヤーからの奥行きで小さく描かれる」現象を解消。
+- ポップ防止に real-time 平滑化(`DEPTH_REF_TAU=0.16s`・進入/離脱とも滑らか)。アテンション無し時はプレイヤー足元へ戻る。
+- 描画のみ=当たり判定/射程/速度は不変。負荷 1/10(焦点面の値を1つ lerp するだけ)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+- 申し送り: 効きが強い/弱い・移動中の微ラグが気になる等あれば `DEPTH_REF_TAU` で調整、または「アテンション時のみ
+  分岐」へ切替可能。
+
 ## v0.25.1003 — 裏ボスの絵にも擬似遠近スケールを適用
 
 - 社長指示: 裏ボスの巨体スプライトにも他敵と同じ前後スケール(`depthScaleEnemy(footY)`)を掛ける=画面の
