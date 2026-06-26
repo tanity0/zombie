@@ -289,7 +289,8 @@ const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒�
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 // ミーミル専用: 射撃方向に赤いラインを2秒溜め→その方向へ太いレーザーを発射(社長指示)。
 const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽選でレーザーを選ぶ確率(ミーミルのみ)
-const MIMIR_LASER_WINDUP_MS = 2000;                  // 赤ライン予告の溜め時間(2秒)
+const MIMIR_LASER_WINDUP_MS = 3000;                  // 赤ライン予告の溜め時間(3秒・社長指示)。この間ゆっくり追尾。
+const MIMIR_LASER_AIM_TRACK = 1.5;                   // 溜め中の照準追尾レート(小さいほど遅い=避けやすい)
 const MIMIR_LASER_FIRE_MS = 420;                     // レーザー本体の表示/判定時間
 const MIMIR_LASER_RANGE = 2600;                      // レーザーの長さ(px)
 const MIMIR_LASER_HALF_WIDTH = 34;                   // レーザーの半太さ(当たり判定/描画。太め)
@@ -306,6 +307,7 @@ const BOSS_WARP_FADE_MS = 500;                       // ワープ先での 0.5�
 const BOSS_STUN_SPEED_MULT = 0.5;                    // 気絶中は止まらず歩き続けるが速度は半分(社長指示)
 const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
 const BOSS_DASH_HOMING = 0.05;                       // ダッシュ中の弱いホーミング量/frame(基本は直進・少しだけプレイヤーへ寄せる)
+const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっくり後退り(ターゲットから離れる)する速度倍率(社長指示)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -1478,7 +1480,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
                 }
               } else if (st === 'laser-windup') {
-                // ミーミル: 2秒溜め(静止)。赤ライン予告は描画側が bossState で出す。方向は溜め開始時にロック済み。
+                // ミーミル: 3秒溜め(静止)。赤ライン予告は描画側が bossState で出す。
+                // 溜め中はゆっくりプレイヤーへ照準を向ける(注視点 aiTarget を現在のプレイヤーへ低速 lerp=避けられる)。
+                {
+                  const k = Math.min(1, MIMIR_LASER_AIM_TRACK * deltaTime);
+                  patch.aiTargetX = (boss.aiTargetX ?? pcx) + (pcx - (boss.aiTargetX ?? pcx)) * k;
+                  patch.aiTargetY = (boss.aiTargetY ?? pcy) + (pcy - (boss.aiTargetY ?? pcy)) * k;
+                }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'laser-fire';
                   patch.bossStateUntil = newGameTime + MIMIR_LASER_FIRE_MS;
@@ -1502,6 +1510,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 発射中(ビーム本体)は静止。表示/判定窓を過ぎたら chase へ。ダメージは発射時に1回適用済み。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               } else if (st === 'dash-windup') {
+                // 溜め中はゆっくり後退り(ターゲットから離れる)してから突進(社長指示)。
+                {
+                  const bdx = bcx - chaseTgt.x, bdy = bcy - chaseTgt.y;
+                  const bl = Math.hypot(bdx, bdy) || 1;
+                  const back = speed * BOSS_DASH_BACKSTEP_MULT * deltaTime;
+                  patch.x = boss.x + (bdx / bl) * back; patch.y = boss.y + (bdy / bl) * back;
+                }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS;
                   // 突進開始時に方向をロック(その時のターゲットへ)。以後は基本直進+弱いホーミング。

@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1005 — ミーミルのレーザーは3秒かけて低速追尾＋ダッシュ溜め中に後退り
+
+- **ミーミルのレーザー**(社長指示): 溜めを 2秒→**3秒**に。溜め中は注視点(`aiTargetX/Y`)を現在のプレイヤーへ
+  **低速 lerp**(`MIMIR_LASER_AIM_TRACK=1.5`)= ゆっくり狙いを向けてくる(=動けば避けられる)。3秒後に着弾方向で発射。
+  pixiScene の溜め進行も 3秒に同期。
+- **全敵のダッシュ攻撃: 溜め中に後退り**(社長指示):
+  - 通常敵(犬/城ボス等 `aiPhase==='windup'`): 静止→**プレイヤーから離れる方向へ低速後退り**(`DASH_WINDUP_BACKSTEP_MULT=0.35`)。
+    `resolveMove` で壁/木はすり抜けず止める。溜め後ロック方向へ突進。
+  - 裏ボス突進(`dash-windup`): ターゲットから離れる方向へ低速後退り(`BOSS_DASH_BACKSTEP_MULT=0.4`)してから突進。
+- 描画/判定の基本は不変(後退りは移動のみ・突進距離は溜め開始時ロックのまま)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1004 — B案: アテンション中は擬似遠近の焦点面を注視点へ寄せる
 
 - 社長指示で B案を試行。`depthRefY`(擬似遠近の等倍基準=通常はプレイヤー足元)を、**アテンション中だけ

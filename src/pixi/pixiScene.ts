@@ -478,7 +478,7 @@ const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
 // ミーミルのレーザー描画(視覚・useGameLoop のゲームプレイ値と揃える)。
 const MIMIR_LASER_VIS_RANGE = 2600;     // 描画上のビーム長(px)
 const MIMIR_LASER_VIS_HALFWIDTH = 34;   // 描画上のビーム半太さ(当たり判定と同じ)
-const MIMIR_LASER_WINDUP_MS = 2000;     // 溜め時間(進行度の算出用)
+const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・useGameLoop と一致)
 const MIMIR_LASER_FIRE_MS = 420;        // 発射本体の表示時間(フェード用)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
