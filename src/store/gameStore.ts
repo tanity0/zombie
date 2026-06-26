@@ -6452,6 +6452,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const M = 250; // 「画面に入りそう」マージン=この内側だけ実体(攻撃者/軍人)を動かす
     const onScreen = (x: number, y: number) => x >= cam.x - M && x <= cam.x + gb.width + M && y >= cam.y - M && y <= cam.y + gb.height + M;
     const aliveIds = new Set(state.enemies.map(e => e.id));
+    // 裏ボスが拠点を「通過」(当たり判定=帯AABBが拠点サークルに重なる)したら一撃陥落させる(社長指示)。
+    // 円(拠点)対AABB(ボス)の最近接点距離で判定。商人拠点(safe)は対象外(安全地帯を維持)。
+    const boss = state.enemies.find(e => isHiddenBoss(e.type));
+    const bossHitsBase = (bx: number, by: number): boolean => {
+      if (!boss) return false;
+      const nx = Math.max(boss.x, Math.min(bx, boss.x + boss.width));
+      const ny = Math.max(boss.y, Math.min(by, boss.y + boss.height));
+      return Math.hypot(bx - nx, by - ny) <= BASE_CAPTURE_RADIUS;
+    };
 
     const spawnList: { x: number; y: number; id: string; baseId: string }[] = [];
     const removeAttackerIds: string[] = [];
@@ -6547,6 +6556,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
         if (moved) changed = true;
       }
+      // 裏ボスが通過したら一撃で陥落(safe=商人拠点は除外)。以降は通常の陥落=撤退レールへ。
+      if (!safe && bossHitsBase(s.x, s.y)) hp = 0;
       if (hp <= 0) { // 陥落
         if (attackerId) removeAttackerIds.push(attackerId);
         fallen.push({ x: s.x, y: s.y, id: s.id, soldierIndex: s.soldierIndex });

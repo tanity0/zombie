@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.998 — 裏ボスが拠点を通過したら一撃陥落(通常の撤退レール)
+
+- 社長指示: 裏ボスの当たり判定(帯AABB)が拠点サークル(`BASE_CAPTURE_RADIUS`)に重なったら、その captured 拠点を
+  **一撃で陥落**させる。円対AABBの最近接点距離で判定(`bossHitsBase`)。
+- 既存の `hp<=0` 陥落パスにそのまま乗せる=赤リング＋カメラアテンション＋軍人「撤退」セリフ＋「拠点陥落」バナー
+  ＋status→open(=通常の撤退レール)。新たな演出は足さない。
+- 商人拠点(safe)は対象外(安全地帯を維持)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.997 — 裏ボス: 気絶でも半速歩行/歩行速度UP/慣性/ダッシュ直進化＋カウンター即死はワーム限定に修正
 
 - **気絶(クリティカル)でも止まらず動き続ける**: `frozen` から stun を外し、気絶中は `moveToward(BOSS_STUN_SPEED_MULT=0.5)`
