@@ -1320,6 +1320,7 @@ const applySlasherTimedStrike = (
     get().setSlasherCombo(0, 0);
     return { swung: false, hit: false, finish: false, killed: 0 };
   }
+  get().markMeleeSwingFx(); // 追撃も近接スイングの二次モーション(踏み込み)を出す(描画のみ)
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
   const meleeRange = huntingMeleeRadius(player);
@@ -1596,6 +1597,7 @@ interface GameState {
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
   openCounterWindow: () => void;
   setSlasherCombo: (startAt: number, step: number) => void;
+  markMeleeSwingFx: () => void; // 近接スイング演出の起点を更新(描画のみ)。追撃など別経路から呼ぶ。
   markCastleBossSpawned: () => void;
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
@@ -5002,6 +5004,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // スキル: スラッシャーのタイミングリング状態を設定(startAt=0 でコンボ終了)。
   setSlasherCombo: (startAt, step) => {
     set(state => ({ player: { ...state.player, slasherRingStartAt: startAt, slasherStrikeStep: step } }));
+  },
+
+  markMeleeSwingFx: () => {
+    set(state => ({ player: { ...state.player, meleeSwingAt: Date.now() } }));
   },
 
   markCastleBossSpawned: () => {

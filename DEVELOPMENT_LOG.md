@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.993 — スラッシャー追撃にも近接スイングの二次モーション
+
+- スラッシャーのタイミング追撃(`applySlasherTimedStrike`)でも、本撃と同じ踏み込みモーションを出す(社長指示「追撃も」)。
+- 追撃は triggerCounter の本撃 set を通らない別経路のため、新アクション `markMeleeSwingFx()`
+  (`player.meleeSwingAt = Date.now()`・描画のみ)を追加し、追撃確定時(`just` 成立・連数内)に呼ぶ。
+  ミス/コンボ終了時は呼ばない(空振りでスイング演出を出さない)。
+- 検証: lint / typecheck(0 errors) / test(65 passed) / build green。
+
 ## v0.25.992 — 行動の二次モーション(近接/銃/リロード/カウンター)を追加
 
 - 好評だった**徒歩の自然化**(静止スプライトに scale/回転/位置オフセットを重ねる二次モーション)を、
