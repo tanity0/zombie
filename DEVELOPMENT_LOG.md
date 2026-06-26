@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1026 — マークスマンの速度バフ発動を3秒→2秒
+
+- 社長指示。`MARKSMAN_MOVE_BUFF_MS=2000` 新設。`marksmanSpeedMult`(実バフ)と頭上マークFXの発動閾値(updateState)を
+  3000→2000 に統一。連続移動2秒で ×1.2、停止で即解除は据え置き。検証: lint/typecheck/test(70)/build green。
+
+## v0.25.1025 — スラッシャー: 入力幅±50ms / 追撃が溜め射程を維持
+
+- `SLASHER_JUST_MS` 100→50(ジャスト窓 ±100→±50ms=入力幅を0.1秒短縮)。
+- Player に `slasherReach` 追加。リング開始(初撃命中)時に「その時の近接射程(huntingMeleeRadius=溜め延長込み)」を記録し、
+  追撃はそれを使用。ストライカーの溜めで伸びた射程が初撃で huntingCharged 消費されても、追撃は伸びたまま。
+  非溜め/他クラスは基礎射程を記録=従来どおり。検証: lint/typecheck/test(70)/build green。
+
 ## v0.25.1024 — 当たり判定の確認用オーバーレイをOFF(社長確認OK)
 
 - 帯方式の確認が済んだので `SHOW_HITBOX_STRIP=false`。通常敵の橙の帯デバッグ表示を消灯(裏ボスの帯は別途常時表示で残す)。

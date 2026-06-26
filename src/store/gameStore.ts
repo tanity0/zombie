@@ -631,10 +631,11 @@ export const strikerMeleeMult = (player: Player): number => {
 // スカベンジャー: 弾薬取得後3秒、銃ダメージ ×1.1。
 export const scavengerGunMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'necromancer' && gameTime < player.scavengerBuffUntil ? 1.1 : 1;
-// マークスマン: 3秒以上連続移動すると移動速度 ×1.2(停止で即解除。社長指示で射程UP→移動速度UPに変更)。
+// マークスマン: 2秒以上連続移動すると移動速度 ×1.2(停止で即解除。社長指示で発動 3秒→2秒)。
+export const MARKSMAN_MOVE_BUFF_MS = 2000;
 export const marksmanSpeedMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'mage' && player.isMoving && player.marksmanMovingSince > 0 &&
-  gameTime - player.marksmanMovingSince >= 3000 ? 1.2 : 1;
+  gameTime - player.marksmanMovingSince >= MARKSMAN_MOVE_BUFF_MS ? 1.2 : 1;
 // ヘビーガンナー: 同一攻撃で2体以上に当てた後3秒、すべての爆発範囲 ×1.1。
 export const heavyGunnerExplosionMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
@@ -2203,9 +2204,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
-      // 射程上昇(移動3s+)が発動した瞬間=この streak で初めて 3秒を超えたフレームで頭上マークを出す。
+      // 速度上昇(移動2s+)が発動した瞬間=この streak で初めて 2秒を超えたフレームで頭上マークを出す。
       const marksmanRangeActive = player.characterClass === 'mage' && isMoving &&
-        marksmanMovingSince > 0 && state.gameTime - marksmanMovingSince >= 3000;
+        marksmanMovingSince > 0 && state.gameTime - marksmanMovingSince >= MARKSMAN_MOVE_BUFF_MS;
       const marksmanProc = marksmanRangeActive && state.marksmanRangeFxShownFor !== marksmanMovingSince;
 
       // PHILL銃: 狙いサークルの「吸い付き」。基準=プレイヤー中心+aim×190。近い敵の頭(SNAP半径内)が
