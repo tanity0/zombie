@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.996 — 裏ボスの当たり判定インジケータをボス絵の下に＆薄く
+
+- 当たり判定の帯(四角)表示を、これまでの**スプライトより前面(overlay)→ 背面(reticle層)**へ移動=
+  ボスの絵の下に敷く(社長指示)。
+- 濃度も下げる: fill `0.16+0.08*pulse → 0.07+0.04*pulse` / stroke 幅3・α`0.8+0.15` → 幅2・α`0.3+0.1`。
+- ヘルスバー/ボスマーカー等は従来どおり overlay(前面)。判定・サイズは不変(描画のみ)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.995 — 裏ボスの影を当たり判定より大きく＆より赤く
 
 - 社長指示で v0.25.994 から調整: 影を当たり判定より一回り大きく見せ(`BOSS_SHADOW_SCALE = 1.35`)、
