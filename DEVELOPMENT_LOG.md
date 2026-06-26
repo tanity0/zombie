@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1043 — 近接ナイフを支給ドット素材に差し替え(振りモーション)
+
+- 社長支給のナイフ画像を `public/sprites/knife-item.png` として取り込み(Pillowで2本並びから左の1本を
+  切り出し・トリム)。`pixiTextures` に `knife-item`(nearest)を登録。
+- v0.25.1042 の暫定Graphicsナイフを実画像スプライトへ置換。素材解析でグリップ(柄)支点=正規化(0.215,0.770)、
+  グリップ→切先のローカル角 -39.9° を定数化し、スイング窓中だけ「切先が狙い方向を向く」よう回転。振りかぶり→
+  振り抜きの弧(easeOut sweep)＋振り抜きピークで前へ出る。左向きは上下反転で刃線を自然に保持。
+- 負荷: **1/10**(スプライト1枚・スイング窓〜230ms中のみ可視・変形のみ)。
+- 検証: lint / typecheck / test(70) / build green。
+- 注: 既存の斬撃エフェクト(緑弧)はそのまま。2枚目参考の白い斬撃トレイルにしたい場合は別途。
+
 ## v0.25.1042 — 近接攻撃でナイフを振る演出を追加
 
 - 既存の近接スイングは踏み込みポーズ＋緑の斬撃弧のみで、刃そのものは描いていなかった(デフォルト近接武器は

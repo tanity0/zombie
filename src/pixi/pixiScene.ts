@@ -400,6 +400,12 @@ const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
 const KATANA_BACK_SCALE = 0.72;
+// 近接ナイフ(knife-item)。素材解析値: グリップ(柄)= 正規化(0.215,0.770)を支点、
+// グリップ→切先のローカル角度 = -39.9°(画面y下向き)。表示長はプレイヤー箱高に対する割合。
+const KNIFE_ANCHOR_X = 0.215;
+const KNIFE_ANCHOR_Y = 0.77;
+const KNIFE_NATIVE_ANGLE = -39.9 * Math.PI / 180;
+const KNIFE_LEN_FRAC = 0.78;          // 表示サイズ(画像最大辺 → 箱高×この割合)
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -840,8 +846,8 @@ export class PixiScene {
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
-  private playerKnife = new Graphics();                    // 近接スイング中だけ振るナイフ(形状は一度だけ構築・以後は変形のみ)
-  private playerKnifeBuilt = false;                        // ナイフ形状を構築済みか(毎フレーム clear しない=軽量)
+  private playerKnife = new Sprite();                      // 近接スイング中だけ振るナイフ(実画像 knife-item)
+  private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private lowHpVignette = new Sprite(getRedVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動(赤色テクスチャ)
@@ -3997,21 +4003,16 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerKatanaBack, 1);
       this.playerKatanaBackAttached = true;
     }
-    // 近接スイング中に振るナイフ。形状は一度だけ構築し(以後 clear しない=毎フレームの再テッセレーション無し)、
-    // 本体スプライトの前面(コンテナ最前)へ重ねる。グリップ(原点)を支点に刃が上(-y)を向く。
-    if (!this.playerKnifeBuilt) {
-      const g = this.playerKnife;
-      // 刃(スチール・先端は上)。
-      g.moveTo(-2.2, 0).lineTo(2.2, 0).lineTo(1.4, -15).lineTo(0, -22).lineTo(-1.4, -15).closePath().fill({ color: 0xd7dde6 });
-      // 刃の稜線ハイライト。
-      g.moveTo(0, -22).lineTo(1.2, -15).lineTo(0.5, -3).lineTo(0, -3).closePath().fill({ color: 0xf4f7fb, alpha: 0.9 });
-      // 鍔(ガード)。
-      g.roundRect(-4, -1.6, 8, 2.6, 1).fill({ color: 0x9aa1ab });
-      // 柄(グリップ)。
-      g.roundRect(-1.8, 0.6, 3.6, 7, 1.4).fill({ color: 0x4a3a2f });
-      g.visible = false;
-      this.playerView.container.addChild(g); // 本体の前面
-      this.playerKnifeBuilt = true;
+    // 近接スイング中に振るナイフ(実画像)。グリップを支点に本体スプライトの前面へ重ねる。
+    if (!this.playerKnifeSetup) {
+      const ktex = getTexture('knife-item');
+      if (ktex) {
+        this.playerKnife.texture = ktex;
+        this.playerKnife.anchor.set(KNIFE_ANCHOR_X, KNIFE_ANCHOR_Y);
+        this.playerKnife.visible = false;
+        this.playerView.container.addChild(this.playerKnife); // 本体の前面
+        this.playerKnifeSetup = true;
+      }
     }
     this.drawPlayer(this.playerView, player, gameTime, now);
     this.syncShadowClone(player);
@@ -4347,27 +4348,32 @@ export class PixiScene {
     } else {
       kb.visible = false;
     }
-    // 近接スイング中だけナイフを振る(描画のみ・判定不変)。グリップ支点で刃が狙い方向を向き、
+    // 近接スイング中だけナイフ(実画像)を振る(描画のみ・判定不変)。グリップ支点で切先が狙い方向を向き、
     // 振りかぶり→振り抜きを easeOut で弧を描く。slasher追撃も markMeleeSwingFx で meleeSwingAt が立つので同様に出る。
     const knife = this.playerKnife;
-    if (this.playerKnifeBuilt) {
+    if (this.playerKnifeSetup) {
       if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
         const kt = sinceSwing / PLAYER_MELEE_SWING_MS;
         const kEase = 1 - Math.pow(1 - kt, 2);          // 振り抜きの加速感
-        // 狙い方向(無ければ向き)。刃ローカルは上(-y)向きなので rotation = 角度 + π/2。
+        // 狙い方向(無ければ向き)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }
         const aimAng = Math.atan2(kay, kax);
         const sweep = 0.95 - 1.75 * kEase;               // 振りかぶり(+) → 振り抜き(−)
-        knife.rotation = aimAng + Math.PI / 2 + sweep;
+        const facingLeft = kax < 0;
+        // 左向きは刃を上下反転して刃線を自然に保つ。反転すると素材ローカル角の符号も反転する。
+        const nativeAng = facingLeft ? -KNIFE_NATIVE_ANGLE : KNIFE_NATIVE_ANGLE;
+        knife.rotation = aimAng + sweep - nativeAng;
         // グリップ位置: 胸あたり + 狙い方向へ手を伸ばす(振り抜きピークで前へ出る)+ 二次モーションofs。
-        const reach = (5 + 9 * Math.sin(kt * Math.PI)) * dsc;
+        const reach = (4 + 10 * Math.sin(kt * Math.PI)) * dsc;
         const chestY = fb.footY - fb.boxH * 0.5 * dsc;
         knife.position.set(
           this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX + kax * reach,
           this.snapToScreenPixel(chestY - bob, this.L.world.position.y) + introOffY + actOffY + kay * reach,
         );
-        knife.scale.set(dsc);
+        const tex = knife.texture;
+        const sc = (fb.boxH * KNIFE_LEN_FRAC) / Math.max(tex.width, tex.height) * dsc;
+        knife.scale.set(sc, facingLeft ? -sc : sc);
         // 出だしと終わりを素早くフェードして「シュッ」と見せる。本体の透明度にも追従。
         knife.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.12, (1 - kt) / 0.3))) * view.sprite.alpha;
         knife.visible = true;

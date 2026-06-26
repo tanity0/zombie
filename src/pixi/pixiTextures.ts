@@ -80,6 +80,7 @@ export const ensureTextures = (): Promise<void> => {
     const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
       { name: 'player', scaleMode: 'nearest' },
       { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
+      { name: 'knife-item', scaleMode: 'nearest' },  // 近接スイング中に振るナイフ実画像
       // 銃スプライト(ワールドのドロップ/ピックアップ表示 + HUDの武器アイコン)。武器keyで引く。
       { name: 'weapons/handgun-t1', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t2', scaleMode: 'nearest' },
