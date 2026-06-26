@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1037 — 消失ロガー(死亡/リセット跨ぎ・間欠バグ捕捉用)
+
+- 社長報告「死ぬとリセットで数字が撮れない」。消失バグが間欠的なので、消えた瞬間を後から確認できるロガーに。
+- `DebugOverlay`: fromEvent敵/護衛/救助のIDを毎フレーム差分監視し、消えた個体を**モジュール変数 `REM_LOG`**(死亡/
+  再マウントを跨いで残る)へ記録。各行 `t k:type ALIVE!|dead d<距離> on|OFF evY|N`。**ALIVE!=生きたまま消えた=バグ**。
+- コンソール `window.__remLog()` で全件、`__clearRemLog()` で消去。画面にも直近6件を常時表示。
+- 通常敵の撃破はノイズとして除外(fromEvent/NPCのみ記録)。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1036 — 囲い系イベント「終わらない」: 調査用デバッグ追加 + 裏ボス排他 + 円外クランプ安全策
 
 - 社長方針「憶測でなく調査してから直す」。`?debug=1` のオーバーレイに診断を追加:

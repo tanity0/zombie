@@ -26,13 +26,40 @@ const arenaDebugLines = (s: ReturnType<typeof useGameStore.getState>): string[] 
 
 // 凍結診断用オンスクリーン表示(?debug=1)。ゲームループとは独立に自前 raf で毎フレーム更新するので、
 // シムが固まっても(ループ早期return等)この表示だけは動き続け、何が張り付いているか分かる。
+interface RemSnap { k: 'E' | 'esc' | 'rsc'; type: string; cx: number; cy: number; hp: number; fe: boolean; }
+
+// 消失ログはモジュール変数で保持=コンポーネント再マウント/プレイヤー死亡/リセットを跨いで残る。
+// コンソールから window.__remLog() で全件確認、__clearRemLog() で消去。
+const REM_LOG: string[] = [];
+
 const DebugOverlay: React.FC = () => {
   const [, setTick] = useState(0);
   const raf = useRef<number | undefined>(undefined);
+  const prevEnts = useRef<Map<string, RemSnap>>(new Map());
   useEffect(() => {
     let running = true;
     const loop = () => {
       if (!running) return;
+      // 消失ロガー: fromEvent敵/護衛/救助のIDを毎フレーム差分監視し、消えた個体を理由つきで記録。
+      // (間欠バグ対策: 消えた瞬間を後から確認できる。生きたまま消えた=ALIVE!=バグ)。
+      try {
+        const st = useGameStore.getState();
+        const cur = new Map<string, RemSnap>();
+        for (const e of st.enemies) cur.set(e.id, { k: 'E', type: e.type, cx: e.x + e.width / 2, cy: e.y + e.height, hp: e.health, fe: !!e.fromEvent });
+        for (const e of st.escorts) cur.set('esc:' + e.id, { k: 'esc', type: 'esc', cx: e.x, cy: e.y, hp: 1, fe: false });
+        for (const e of st.rescueSurvivors) cur.set('rsc:' + e.id, { k: 'rsc', type: e.subtype, cx: e.x + e.width / 2, cy: e.y + e.height, hp: e.health, fe: false });
+        const ae = st.activeEvent;
+        const cam = st.camera, gb = st.gameBounds;
+        for (const [id, p] of prevEnts.current) {
+          if (cur.has(id)) continue;
+          if (p.k === 'E' && !p.fe) continue; // 通常敵の撃破は無視(ノイズ)。fromEvent/NPCだけ記録。
+          const d = ae ? Math.round(Math.hypot(p.cx - ae.x, p.cy - ae.y)) : -1;
+          const onScr = p.cx >= cam.x && p.cx <= cam.x + gb.width && p.cy >= cam.y && p.cy <= cam.y + gb.height;
+          REM_LOG.unshift(`${(st.gameTime / 1000).toFixed(1)} ${p.k}:${p.type} ${p.hp > 0 ? 'ALIVE!' : 'dead'} d${d} ${onScr ? 'on' : 'OFF'} ev${ae ? 'Y' : 'N'}`);
+          if (REM_LOG.length > 40) REM_LOG.length = 40;
+        }
+        prevEnts.current = cur;
+      } catch { /* ignore */ }
       setTick(t => (t + 1) % 1_000_000);
       raf.current = requestAnimationFrame(loop);
     };
@@ -51,9 +78,12 @@ const DebugOverlay: React.FC = () => {
       setBaseGrowth(sid, baseId, { level: lv, exp: g.exp });
       return getBaseGrowth(sid, baseId);
     };
+    // 消失ログをコンソールから確認/消去(死亡/リセットを跨いで残る)。
+    w.__remLog = () => REM_LOG.slice();
+    w.__clearRemLog = () => { REM_LOG.length = 0; };
     return () => {
       running = false; if (raf.current) cancelAnimationFrame(raf.current);
-      delete w.__bumpBaseExp; delete w.__setBaseLevel;
+      delete w.__bumpBaseExp; delete w.__setBaseLevel; delete w.__remLog; delete w.__clearRemLog;
     };
   }, []);
 
@@ -88,6 +118,8 @@ const DebugOverlay: React.FC = () => {
     ...(s.debugLoopError ? [`ERR ${s.debugLoopError}`] : []),
     // 囲い系イベント診断: 何故終わらないか(fromEvent敵の数/距離/状態/HP/画面内外)を毎フレーム表示。
     ...arenaDebugLines(s),
+    // 消失ログ(死亡/リセット跨ぎで残る・直近6件)。ALIVE!=生きたまま消えた=バグ。__remLog() で全件。
+    ...(REM_LOG.length ? ['-- vanish log --', ...REM_LOG.slice(0, 6)] : []),
     // 拠点の永続Lv/EXP(出撃中のHP/captured等とは別。stage×base ごと・未登録=Lv1/EXP0)。
     `base[${stageId || '?'}] ${baseGrowth.map(b => `${b.baseId.replace('base-', '')}:L${b.level}/${b.exp}`).join(' ')}`,
   ];
