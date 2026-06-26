@@ -2231,7 +2231,7 @@ export class PixiScene {
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.gameTime);
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
@@ -3871,7 +3871,8 @@ export class PixiScene {
     player: Player,
     enemies: Enemy[],
     summons: Summon[],
-    projectiles: Projectile[]
+    projectiles: Projectile[],
+    escorts: EscortSoldier[] = []
   ) {
     const seen = new Set<string>();
     // 登場演出中はプレイヤーが空中なので足影は出さない(着地後に出る)。
@@ -3933,6 +3934,16 @@ export class PixiScene {
     if (this.castleShadow) {
       const c = this.castleShadow;
       this.placeShadowSprite('castle', c.x, c.y, c.w, c.alpha, seen);
+    }
+    // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。スプライトは anchor(0.5,1) で esc.x/esc.y が足元。
+    // 影幅=スプライト実幅×0.55(他アクターと同基準)。地平線で透明化(空に浮かない描画と整合)。
+    for (const esc of escorts) {
+      const ha = this.horizonActorAlpha(esc.y);
+      if (ha <= 0) continue;
+      const escSp = this.escortSprites.get(esc.id);
+      const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
+      const baseW = escW > 0 ? escW : 30 * this.depthScale(esc.y);
+      this.placeShadowSprite('esc:' + esc.id, esc.x, esc.y - 2, baseW * 0.55, ha, seen);
     }
     // 拾い物(syncPickups が毎フレーム配列を作り直す)。
     for (const ps of this.pickupShadows) {

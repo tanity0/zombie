@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1033 — 護衛軍人NPCに足影が無かったので追加
+
+- 社長報告「軍人はそもそも影がない」。`syncShadows` は player/敵/召喚/設置物/商人/イベントNPC/城/pickup のみ影を付けており、
+  護衛(escort)が抜けていた。`syncShadows` に `escorts` を渡し、他アクターと同じ足影を追加(影幅=スプライト実幅×0.55、
+  地平線フェード適用、anchor(0.5,1)なので esc.x/esc.y が足元)。
+- 影係数は現状の 0.55 のまま(社長検討中の ×1 化は保留)。検証: lint / typecheck / test(70) / build green。
+- 備考: 救助NPC(rescueSurvivors)・拠点駐留兵(base soldiers/flag offで現状実体なし)も同様に影が無い。必要なら追加可。
+
 ## v0.25.1032 — 裏ボスが画面外→復帰で固まるバグ修正(既存バグ)
 
 - 社長報告「裏ボスが一度画面外に出て停止→戻ると動かない」。原因(今回の画面外調整とは無関係の既存バグ):
