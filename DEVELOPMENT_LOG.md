@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.995 — 裏ボスの影を当たり判定より大きく＆より赤く
+
+- 社長指示で v0.25.994 から調整: 影を当たり判定より一回り大きく見せ(`BOSS_SHADOW_SCALE = 1.35`)、
+  色を `0x5a0000`(暗赤)→`0x9a0000`(より赤い)へ。alphaMult も 1.7→1.9。
+- 帯中心のフラット楕円(方向の伸びなし)である点は v0.25.994 のまま。倍率/色は定数で調整可。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.994 — 裏ボスの影を当たり判定と同じ大きさに
 
 - 従来は裏ボスも他の敵と同じ「方向に伸びるソフト楕円」(幅=帯幅・光方向に尾を引く)だったため、

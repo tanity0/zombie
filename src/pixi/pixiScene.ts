@@ -472,6 +472,9 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
 };
+// 裏ボスの影: 当たり判定より一回り大きく見せる倍率＋鮮やかめの赤(社長指示)。
+const BOSS_SHADOW_SCALE = 1.35;  // 当たり判定(w×h)に対する影の拡大率
+const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   blue: { tint: 0x3b82f6, alphaMult: 1.7 },
@@ -3876,11 +3879,12 @@ export class PixiScene {
       // 色付き個体は影を色で染める(青<紫<赤)。本体の見た目は変えない。
       const ct = e.colorTier ? ENEMY_COLOR_TIER_SHADOW[e.colorTier] : undefined;
       if (isHiddenBoss(e.type)) {
-        // 裏ボスは絵が巨大で当たり判定(帯)と分離。影は当たり判定とちょうど同じ大きさ=
-        // 帯の中心に w×h のフラット楕円(方向の伸びなし)で置く(社長指示)。色は濃い暗赤。
+        // 裏ボスは絵が巨大で当たり判定(帯)と分離。帯の中心にフラット楕円(方向の伸びなし)で置く。
+        // 当たり判定より一回り大きく見せ(×BOSS_SHADOW_SCALE)、色は鮮やかめの赤(社長指示)。
         this.placeShadowSprite(
           e.id, e.x + e.width / 2, e.y + e.height / 2, e.width, horizonAlpha, seen,
-          0x5a0000, 1.7, { w: e.width, h: e.height },
+          BOSS_SHADOW_TINT, 1.9,
+          { w: e.width * BOSS_SHADOW_SCALE, h: e.height * BOSS_SHADOW_SCALE },
         );
       } else {
         const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
