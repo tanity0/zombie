@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1020 — 固定ビューの向き修正(本作は縦持ち専用 → 9:16 コアへ)
+
+- v0.25.1019 を誤って 16:9【横】基準で実装していた。本作は `OrientationGuard` で横持ちを全面ブロックする
+  【縦持ち専用】(PCのみ横だが切り捨て方針)。縦持ち端末では極端にズーム/狭くなって破綻していた。9:16 縦へ修正。
+- `viewport.ts` 定数を縦持ちに入れ替え: `VIEW_CORE_W=405 / VIEW_CORE_H=720`(9:16・CORE_W は中位スマホのCSS幅
+  ~390-430に近く旧来の1:1の見え方をほぼ維持=scale≈1)。伸ばし上限 `VIEW_MAX_W=540`(タブレット3:4の横) /
+  `VIEW_MAX_H=960`(縦長スマホ~9:21の縦)。
+- 記事ルールを縦持ちに適用: 縦長スマホ=横固定で縦へ伸び / タブレット3:4=縦固定で横へ伸び。極端アスペクトのみ
+  MAX で頭打ち(黒帯なし)。テストを縦持ちケース(9:16 / 9:19.5 / 3:4 / 9:22)へ更新。
+- 算法・配線(PixiStage/Game/MouseControls)は v0.25.1019 のまま(向き非依存)。デプロイは main＋
+  claude/chat-context-continuity-saxlH の両方=ミラーpush で即反映。
+- 検証: lint / typecheck / test / build green。
+
 ## v0.25.1019 — 固定設計ビュー(固定FOV＋スケール)導入。全端末で「ほぼ同じ戦場」に
 
 - スマホ専用リリース前提(PC切り捨て)。端末で見える戦場の広さがバラつく(大画面ほど有利)問題を解消。
