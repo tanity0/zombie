@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1040 — パンプキン消失バグ修正: ノックバック中はリサイクルしない
+
+- 真因(社長再現で特定): ジャンプ攻撃のカウンター(パリィ・useGameLoop 2670-2704)が敵を約180px弾き飛ばす。
+  通常パンプキンは吹き飛びでリサイクル境界を越え→その瞬間に別の湧き位置へテレポート湧き直し=「消えて違う場所に
+  リスポーン」。fromEvent側は画面外/円外へ飛んで迷子=「終わらない」。
+- 修正(吹き飛ばしは維持・社長希望): リサイクル判定で `knockbackUntil` 有効中の敵は除外(return)。吹き飛んだ敵は
+  そのまま飛んで着地し、瞬間移動しない。着地後(ノックバック終了後)に遠ければ通常どおりリサイクル。
+- ボスを弱体化しない(吹き飛ばしの爽快感そのまま)。検証: lint / typecheck / test(70) / build green。
+- 注: 爆弾(BOMB_PICKUPS_ENABLED)は検証クリーンのため当面OFFのまま。確認後に true へ戻す。調査用の消失ログ/cause
+  タグは残置(?debug=1)。
+
 ## v0.25.1039 — 消失ログ: 残る全削除経路にcauseタグ(UNK撲滅で真因特定)
 
 - v0.25.1038 で UNK が多数出た(=未タグ経路で消えている)。残りの敵削除箇所を全てタグ:

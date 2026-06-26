@@ -4669,6 +4669,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
           // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
           if (enemy.dormant) return enemy;
+          // ノックバック中(カウンター等で吹き飛び中)はリサイクルしない。吹き飛んだ敵がリサイクル境界を越えた瞬間に
+          // 別の湧き位置へテレポート湧き直し=「消えて違うところにリスポーン」していた(社長報告)。吹き飛ばし演出は
+          // そのまま飛んで着地させ、瞬間移動だけ防ぐ。着地後(ノックバック終了後)に遠ければ通常どおりリサイクルされる。
+          if (enemy.knockbackUntil !== undefined && enemy.knockbackUntil > Date.now()) return enemy;
           const enemyCenterX = enemy.x + enemy.width / 2;
           const enemyCenterY = enemy.y + enemy.height / 2;
           // 矩形(プレイヤー中心)で「画面外送り」判定。半径ではなく辺基準で一律。
