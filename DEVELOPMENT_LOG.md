@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.994 — 裏ボスの影を当たり判定と同じ大きさに
+
+- 従来は裏ボスも他の敵と同じ「方向に伸びるソフト楕円」(幅=帯幅・光方向に尾を引く)だったため、
+  当たり判定(帯=`e.width × e.height`)より大きく/長く見えていた。
+- `placeShadowSprite` に `flatSize?` モードを追加。裏ボスは**帯の中心に `e.width × e.height` ちょうどの
+  フラット楕円**(方向の伸びなし・回転0)で置く=影=当たり判定サイズ(社長指示)。濃い暗赤・濃度はそのまま。
+- 他の敵/プレイヤー/召喚/設置物の影は従来どおり(分岐は裏ボスのみ)。
+- 検証: lint / typecheck(0 errors) / test(65 passed) / build green。
+
 ## v0.25.993 — スラッシャー追撃にも近接スイングの二次モーション
 
 - スラッシャーのタイミング追撃(`applySlasherTimedStrike`)でも、本撃と同じ踏み込みモーションを出す(社長指示「追撃も」)。

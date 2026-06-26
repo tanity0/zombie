@@ -3735,9 +3735,29 @@ export class PixiScene {
 
   // ソフト影スプライトを1体ぶん配置(光方向へ回転+伸縮)。drawDirectionalShadow の
   // 幾何(足元から direction へ length 伸ばす / 太さは断面)をスプライトで再現する。
-  private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>, tint = 0x000000, alphaMult = 1) {
+  private placeShadowSprite(id: string, footX: number, footY: number, w: number, alpha: number, seen: Set<string>, tint = 0x000000, alphaMult = 1, flatSize?: { w: number; h: number }) {
     if (alpha <= 0) return;
     const lighting = this.lighting();
+    // flatSize 指定時(裏ボス): 当たり判定と同じ大きさのフラットな楕円影。方向の伸びを付けず、
+    // (footX, footY) を中心に w×h ちょうどへスケール(=影=当たり判定サイズ)。
+    if (flatSize) {
+      seen.add(id);
+      let fsp = this.shadowPool.get(id);
+      if (!fsp) {
+        fsp = new Sprite(getSoftShadowTexture());
+        fsp.anchor.set(0.5, 0.5);
+        this.shadowContainer.addChild(fsp);
+        this.shadowPool.set(id, fsp);
+      }
+      fsp.tint = tint;
+      fsp.rotation = 0;
+      fsp.width = Math.max(3, flatSize.w);
+      fsp.height = Math.max(3, flatSize.h);
+      fsp.alpha = Math.min(1, alpha * lighting.shadowAlpha * alphaMult);
+      fsp.position.set(footX, footY);
+      fsp.visible = true;
+      return;
+    }
     // ステージ2(lab)だけ影を右向きに(社長指示)。長さ/濃さは preset 据え置き。
     const dir = this.isLabStage ? LAB_SHADOW_DIRECTION : lighting.direction;
     const mag = Math.hypot(dir.x, dir.y) || 1;
@@ -3853,17 +3873,20 @@ export class PixiScene {
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
       if (horizonAlpha <= 0) continue;
-      // 裏ボスは絵が巨大で当たり判定(帯)と分離しているので、影も帯=当たり判定の幅を基準にする(社長指示)。
-      const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
-      const shadowW = isHiddenBoss(e.type)
-        ? e.width
-        : actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
       // 色付き個体は影を色で染める(青<紫<赤)。本体の見た目は変えない。
       const ct = e.colorTier ? ENEMY_COLOR_TIER_SHADOW[e.colorTier] : undefined;
-      // 裏ボスの影は「濃い暗赤」(社長指示)。tint=暗い赤・alphaMult を上げて濃く。
-      const shadowTint = isHiddenBoss(e.type) ? 0x5a0000 : (ct?.tint ?? 0x000000);
-      const shadowAlphaMult = isHiddenBoss(e.type) ? 1.7 : (ct?.alphaMult ?? 1);
-      this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, shadowTint, shadowAlphaMult);
+      if (isHiddenBoss(e.type)) {
+        // 裏ボスは絵が巨大で当たり判定(帯)と分離。影は当たり判定とちょうど同じ大きさ=
+        // 帯の中心に w×h のフラット楕円(方向の伸びなし)で置く(社長指示)。色は濃い暗赤。
+        this.placeShadowSprite(
+          e.id, e.x + e.width / 2, e.y + e.height / 2, e.width, horizonAlpha, seen,
+          0x5a0000, 1.7, { w: e.width, h: e.height },
+        );
+      } else {
+        const fallbackW = fb.boxW * 0.55 * this.depthScaleEnemy(footY);
+        const shadowW = actorShadowWidthFromSprite(this.enemies.get(e.id), fallbackW);
+        this.placeShadowSprite(e.id, e.x + e.width / 2, footY - 2, shadowW, horizonAlpha, seen, ct?.tint ?? 0x000000, ct?.alphaMult ?? 1);
+      }
     }
     // 召喚(味方ユニット)も敵と同じ方向影で揃える。
     for (const s of summons) {
