@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1038 — 調査: 爆弾を一時OFF + 消失ログに削除理由(cause)タグ
+
+- 社長指示。(1) 爆弾(ボム)ピックアップを一時的に出さない `BOMB_PICKUPS_ENABLED=false`(後で true に戻す)。
+  ボムは画面内のボス以外を一括即死=「複数同時に消える」要因なので、消失バグの切り分けのため除外。
+- (2) 消失ログの `ALIVE!/dead` は撃破直前HPを見るため単発キルも ALIVE! になり判別不能だった。
+  → 実際の削除箇所で理由をタグ付け: `ENEMY_REMOVE_CAUSE`(id→cause)を `damageEnemy`(kill) / bomb / endArenaEvent
+  でセット。DebugOverlay は各消失に `kill/bomb/endEv/UNK` を表示。**UNK=どこでもタグされず消えた=本物のバグ**。
+  NPC(esc/rsc)は `npcRm`。ログ行: `t k:type <cause> hp<HP> d<距離> on|OFF evY|N`。
+- 検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1037 — 消失ロガー(死亡/リセット跨ぎ・間欠バグ捕捉用)
 
 - 社長報告「死ぬとリセットで数字が撮れない」。消失バグが間欠的なので、消えた瞬間を後から確認できるロガーに。

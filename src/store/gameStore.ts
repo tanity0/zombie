@@ -397,6 +397,21 @@ export const huntingMeleeRadius = (player: Player): number => {
   return MELEE_RADIUS + HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[level];
 };
 
+// 調査用: 一時的に爆弾(ボム)ピックアップを出さない(社長指示・後で true に戻す)。爆弾は画面内のボス以外を
+// 一括即死させるので「敵が複数同時に消える」要因になり、消失バグの切り分けの邪魔になる。
+const BOMB_PICKUPS_ENABLED = false;
+
+// 調査用: 敵が enemies 配列から消えた「理由」を id 別に記録(削除箇所でタグ付け)。DebugOverlay の消失ログが
+// これを読んで kill/bomb/endEv/UNK を表示する。UNK(原因不明) が出たらそれが本物のバグ。
+export const ENEMY_REMOVE_CAUSE = new Map<string, string>();
+const tagRemove = (id: string, cause: string): void => {
+  ENEMY_REMOVE_CAUSE.set(id, cause);
+  if (ENEMY_REMOVE_CAUSE.size > 200) { // 上限(古いものから間引く)
+    const k = ENEMY_REMOVE_CAUSE.keys().next().value;
+    if (k !== undefined) ENEMY_REMOVE_CAUSE.delete(k);
+  }
+};
+
 // Counter-on-release tuning. The counter window opens the moment the player
 // lifts their finger (or presses Space on PC) and stays open briefly. Any
 // hostile projectile that hits the player during the window is reflected.
@@ -4550,6 +4565,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Check if enemy was killed
       if (newHealth === 0) {
         killed = true;
+        tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
         
         // Update game stats
         const newStats = {
@@ -5144,11 +5160,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 囲い系イベント終了: 拘束を解除し、残存イベント敵(時間切れ時の取りこぼし)を撤去して通常へ戻す。
   // 救助イベントの守る対象NPC(rescueSurvivors)も後片付け(撤収)。
   endArenaEvent: () => {
-    set(state => ({
-      activeEvent: null,
-      enemies: state.enemies.filter(e => !e.fromEvent),
-      rescueSurvivors: [],
-    }));
+    set(state => {
+      state.enemies.forEach(e => { if (e.fromEvent) tagRemove(e.id, 'endEv'); }); // 消失ログ用: イベント終了の取りこぼし撤去
+      return {
+        activeEvent: null,
+        enemies: state.enemies.filter(e => !e.fromEvent),
+        rescueSurvivors: [],
+      };
+    });
   },
 
   // 救助ホールドイベント開始: 円中央付近に survivor3人を配置し、各人に攻撃者を割り当てて湧かせる。
@@ -5679,6 +5698,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // HP. We don't grant experience for this — it's a panic button.
         // ボス系(reaper/giantbat/pumpkin/lab-zombie-3/裏ボス)は爆弾では死なない(社長指示)=対象外で生存。
         const reachable = get().enemies.filter(e => !isBossType(e.type));
+        reachable.forEach(e => tagRemove(e.id, 'bomb')); // 消失ログ用: ボムで一括除去
         set(state => ({
           enemies: state.enemies.filter(e => isBossType(e.type)),
           finaleDefeated: state.finaleDefeated, // 爆弾ではフィナーレボスを倒せない=終了条件にしない
@@ -5993,7 +6013,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
-    if (roll < 0.9 && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)
+    if (BOMB_PICKUPS_ENABLED && roll < 0.9 && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)。調査中は全体OFF。
       get().addPickup({
         id: `pickup-torch-bomb-${prop.id}`,
         x, y,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useGameStore, isInputLocked, isGameTimeStopped } from '../store/gameStore';
+import { useGameStore, isInputLocked, isGameTimeStopped, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
 import { isHiddenBoss } from '../utils/enemyUtils';
 import { getSelectedStageId, getBaseGrowthForStage, getBaseGrowth, setBaseGrowth } from '../data/progress';
 
@@ -55,7 +55,10 @@ const DebugOverlay: React.FC = () => {
           if (p.k === 'E' && !p.fe) continue; // 通常敵の撃破は無視(ノイズ)。fromEvent/NPCだけ記録。
           const d = ae ? Math.round(Math.hypot(p.cx - ae.x, p.cy - ae.y)) : -1;
           const onScr = p.cx >= cam.x && p.cx <= cam.x + gb.width && p.cy >= cam.y && p.cy <= cam.y + gb.height;
-          REM_LOG.unshift(`${(st.gameTime / 1000).toFixed(1)} ${p.k}:${p.type} ${p.hp > 0 ? 'ALIVE!' : 'dead'} d${d} ${onScr ? 'on' : 'OFF'} ev${ae ? 'Y' : 'N'}`);
+          // cause: E(敵)はタグ未付与=UNK が本物のバグ。NPC(esc/rsc)は専用削除なので npcRm 表記。
+          const cause = p.k === 'E' ? (ENEMY_REMOVE_CAUSE.get(id) ?? 'UNK') : 'npcRm';
+          ENEMY_REMOVE_CAUSE.delete(id);
+          REM_LOG.unshift(`${(st.gameTime / 1000).toFixed(1)} ${p.k}:${p.type} ${cause} hp${Math.round(p.hp)} d${d} ${onScr ? 'on' : 'OFF'} ev${ae ? 'Y' : 'N'}`);
           if (REM_LOG.length > 40) REM_LOG.length = 40;
         }
         prevEnts.current = cur;
