@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1013 — 敵拡大(ACTOR_VISUAL_BUMP)を撤回＋NPCをプレイヤー同寸スケールに
+
+- **敵拡大(v0.25.1012 の `ACTOR_VISUAL_BUMP`)を撤回**。理由(調査で判明):
+  - 当たり判定は不変のまま見た目だけ1.46倍にしたため、**近接(刀含む)が「届かなく見える」**=スプライトは重なって
+    見えるのに小さいhitbox中心は射程外、という知覚バグになっていた(=「刀が近接できない」の正体)。
+  - `enemyFootBox` は描画専用ではなく**PHILLの頭部判定/スナップにも使われており**、bumpがその当たり判定領域まで
+    1.46倍にしていた(意図せぬgameplay変更)。
+  - → `enemyFootBox` を元に戻し、敵サイズ・PHILL判定を従来へ。
+- **人型NPC(レスキュー/護衛/駐留兵)はプレイヤーと同じスケール規定に統一**(社長指示「NPCをプレイヤーと同じ大きさに」):
+  `humanNpcScale = PLAYER_CLASS_MENU_SPRITE_WIDTH / tex幅 × depthScale`(プレイヤー既知クラスと同じ固定表示幅＋同じ遠近曲線)。
+  従来の `containScale(54/80box)×depthScaleEnemy` をやめ、プレイヤーと同寸・同じ前後スケールに。
+- 検証: lint / typecheck / test(65 passed) / build green。
+- 別途調査中: 「ステージ2で敵が出ない」(別エージェントで原因特定中)。
+
 ## v0.25.1012 — 敵/NPCの規定スケールをプレイヤー基準に拡大
 
 - 社長指示「NPCも敵も規定値スケールがプレイヤーと合ってない→プレイヤーに合わせて拡大」。
