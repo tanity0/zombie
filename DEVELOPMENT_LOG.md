@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1032 — 裏ボスが画面外→復帰で固まるバグ修正(既存バグ)
+
+- 社長報告「裏ボスが一度画面外に出て停止→戻ると動かない」。原因(今回の画面外調整とは無関係の既存バグ):
+  ボスは画面外/帰巣中に `bossState='return'` になるが、チェイス状態機械に `'return'` のケースも default も無い
+  (chase/aim-burst/burst/aim-radial/laser-*/dash-* のみ)。復帰時に `st='return'` のままだと どの分岐にも入らず=
+  moveToward未実行=移動も状態遷移もせず永久停止していた。
+- 修正: チェイス分岐(画面内&深層)入り口で `bossState==='return'` を `'chase'` に正規化(bossState/bossNextActionAt も更新)。
+  これで画面外→復帰で必ずチェイス再開。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1031 — 画面外しきい値を詰める(リサイクル/護衛停止が遠すぎ)
 
 - 社長報告「リサイクルがすぐされない / 軍人が画面外でしばらく止まらない、まだ遠い」。両方とも閾値が遠すぎたので縮小:

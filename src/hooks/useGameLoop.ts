@@ -1447,7 +1447,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
                 patch.bossBurstLeft = 0;
               } else {
-              const st = boss.bossState ?? 'chase';
+              // 画面外/帰巣中は bossState='return' になる。チェイス状態機械に 'return' のケースが無いため、
+              // 復帰時に 'return' のままだと どの分岐にも入らず=移動も状態遷移もせず永久に固まる(社長報告のバグ)。
+              // チェイス復帰時は 'chase' として扱い、bossState も chase へ戻して必ず再開させる。
+              if (boss.bossState === 'return') { patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS; }
+              const st = (boss.bossState == null || boss.bossState === 'return') ? 'chase' : boss.bossState;
               const nextActionDelay = () => newGameTime + BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
               if (st === 'chase') {
                 moveToward(walkMult); // 気絶中は半速、通常は等速
