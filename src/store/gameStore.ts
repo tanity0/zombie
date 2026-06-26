@@ -1333,7 +1333,7 @@ const counterMasterKbScale = (player: Player): number => {
 // タップすると追撃が出る。成功で次のリングを再生成、最大3連。窓を外す/未入力でコンボ終了。
 // ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444)。当たった敵のみ通常ノックバック。
 export const SLASHER_RING_MS = 500;   // リングが縮みきる(=ジャストの瞬間)までの時間
-export const SLASHER_JUST_MS = 100;   // ジャスト窓 ±100ms
+export const SLASHER_JUST_MS = 50;    // ジャスト窓 ±50ms(社長指示で入力幅を0.1秒短縮=幅200→100ms)
 export const SLASHER_MAX_HITS = 3;    // 追撃の最大連数
 export const SLASHER_MULTS = [1, 2 / 3, (2 / 3) * (2 / 3)]; // 各追撃のダメージ倍率
 const applySlasherTimedStrike = (
@@ -1355,7 +1355,9 @@ const applySlasherTimedStrike = (
   get().markMeleeSwingFx(); // 追撃も近接スイングの二次モーション(踏み込み)を出す(描画のみ)
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
-  const meleeRange = huntingMeleeRadius(player);
+  // 追撃の射程は初撃時に記録した slasherReach を使う(ストライカーの溜めで伸びた射程が初撃で消費されても、
+  // 追撃は伸びたまま=社長指示)。未記録(0)なら従来どおり現在の射程にフォールバック。
+  const meleeRange = player.slasherReach > 0 ? player.slasherReach : huntingMeleeRadius(player);
   const melee = player.weapons.find(w => w.isMelee);
   const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
@@ -1838,7 +1840,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     subWeaponCooldowns: {},
     skills: [],
     skillLevels: {},
-    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0,
+    fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0, slasherReach: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
     knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,
@@ -2807,6 +2809,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 命中しなければ非アクティブ(リング無し)。以後の追撃はタップのジャスト判定で出す。
         slasherRingStartAt: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? gameTime : 0,
         slasherStrikeStep: 0,
+        // 追撃用に「初撃時点の射程」を記録(state.player は更新前=huntingCharged がまだ true なので溜め延長を含む)。
+        slasherReach: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? huntingMeleeRadius(state.player) : 0,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {
@@ -7226,7 +7230,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           subWeapons: runSubs,
           skills: runSkills,
           skillLevels: runSkillLevels,
-          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0,
+          fireShooterCdUntil: 0, reflexCdUntil: 0, slasherRingStartAt: 0, slasherStrikeStep: 0, slasherReach: 0,
     scavengerBuffUntil: 0, marksmanMovingSince: 0, heavyGunnerExpBuffUntil: 0,
     phillReticleDX: 0, phillReticleDY: 0, phillSnapEnemyId: null,
           knifeComboCount: 0, knifeComboUntil: 0, benkeiBuffUntil: 0, benkeiCdUntil: 0,

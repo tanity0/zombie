@@ -96,6 +96,7 @@ export interface Player {
   reflexCdUntil: number;       // 反射神経: 反撃CD(gameTime)
   slasherRingStartAt: number;  // スラッシャー: タイミングリング開始 gameTime(0=非アクティブ)
   slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..3)
+  slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
   knifeComboCount: number;     // ナイフマスター: 近接ダメージコンボ数
   knifeComboUntil: number;     // ナイフマスター: コンボ持続(gameTime)
   benkeiBuffUntil: number;     // 弁慶: crit率バフ終了(gameTime)
