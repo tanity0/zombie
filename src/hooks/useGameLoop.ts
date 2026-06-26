@@ -59,7 +59,7 @@ import {
   spawnEnemyAt,
   selectLabEnemyType,
   resolveEnemyTarget,
-  SPAWN_OFFSCREEN_MARGIN_FRAC,
+  OFFSCREEN_RECYCLE_MARGIN,
   AREA_MAX_ENEMIES,
   isValidForArea
 } from '../utils/enemyUtils';
@@ -266,7 +266,6 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
 const WAVE_GRACE_MS = 10000;
-const ENEMY_RECYCLE_DISTANCE_MULT = 0.86;
 
 // --- 裏ボス(深層域の隠しボス: mimir/jormungand)コントローラ定数 ---
 // 深層域(原点から 7500 以上=area 4)の「指定エリア」に近づくと1回だけ出現する。
@@ -4451,15 +4450,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
               const labEnemy = generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection);
-              // 画面外の遠くにリング配置(=急に画面内に湧いて見えないように)。距離は画面サイズ比例:
-              // 可視半対角線(=どの角度でも画面端の外)+ 画面端外マージン + 少しランダム。
-              const ang = Math.random() * Math.PI * 2;
-              const maxDim = Math.max(gameBounds.width, gameBounds.height);
-              const halfDiag = Math.hypot(gameBounds.width, gameBounds.height) / 2;
-              const dist = halfDiag + maxDim * SPAWN_OFFSCREEN_MARGIN_FRAC + Math.random() * (maxDim * 0.2);
-              const pcx0 = player.x + player.width / 2, pcy0 = player.y + player.height / 2;
-              labEnemy.x = pcx0 + Math.cos(ang) * dist - labEnemy.width / 2;
-              labEnemy.y = pcy0 + Math.sin(ang) * dist - labEnemy.height / 2;
+              // 配置は generateEnemy の「固定ビュー矩形の外側 OFFSCREEN_SPAWN_MARGIN」スポーンをそのまま使う
+              // (通常敵と統一・社長指示B)。旧: 半径(halfDiag+…)リング配置は廃止。
               const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
               // スタート地点(原点)付近には湧かせない。
               if (Math.hypot(ecx, ecy) < LAB_START_SAFE_RADIUS) continue;
@@ -4632,7 +4624,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // their HP/type/state; regular enemies are refreshed into the current
         // spawn pool while reusing the same renderer id.
         const currentEnemiesForRecycle = useGameStore.getState().enemies;
-        const recycleDistance = Math.max(gameBounds.width, gameBounds.height) * ENEMY_RECYCLE_DISTANCE_MULT;
+        // リサイクル境界=固定ビュー矩形(プレイヤー中心)を OFFSCREEN_RECYCLE_MARGIN だけ広げた矩形。
+        // これより外の敵は画面外送り(湧き直し)。半径(円)ではなく矩形=どの辺も「画面端から○px外」で一律(社長指示B)。
+        const recycleHalfW = gameBounds.width / 2 + OFFSCREEN_RECYCLE_MARGIN;
+        const recycleHalfH = gameBounds.height / 2 + OFFSCREEN_RECYCLE_MARGIN;
         let recycledAnyEnemy = false;
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
           // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。
@@ -4644,7 +4639,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (enemy.dormant) return enemy;
           const enemyCenterX = enemy.x + enemy.width / 2;
           const enemyCenterY = enemy.y + enemy.height / 2;
-          const distFromPlayer = Math.hypot(enemyCenterX - playerCenterX, enemyCenterY - playerCenterY);
+          // 矩形(プレイヤー中心)で「画面外送り」判定。半径ではなく辺基準で一律。
+          const offRect = Math.abs(enemyCenterX - playerCenterX) > recycleHalfW
+            || Math.abs(enemyCenterY - playerCenterY) > recycleHalfH;
           const waveProtected = enemy.isWave && gameTime - (enemy.spawnedAt ?? 0) < WAVE_GRACE_MS;
           // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。ただし「画面外に出たら最初の
           // 定位置へ戻して再休眠」する(社長指示)。プレイヤーは常に画面中心なので、画面の半分+
@@ -4676,7 +4673,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent
             && aliveMs > 5000
             && !isValidForArea(enemy.type, playerAreaIdx);
-          if ((distFromPlayer <= recycleDistance && !areaInvalid) || waveProtected) return enemy;
+          if ((!offRect && !areaInvalid) || waveProtected) return enemy;
           // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
           const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
           const replacement = generateEnemy(

@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1030 — 「画面外」を固定ビュー矩形＋2マージンに一本化(社長指示B・具体値)
+
+- 固定ビューにしたので「画面外」を矩形1基準へ統一。半径(円)ベースをやめ「画面端から○px外」で全辺一律に。
+- `enemyUtils`: `SPAWN_OFFSCREEN_MARGIN_FRAC(0.10)` を廃止し、固定px の `OFFSCREEN_SPAWN_MARGIN=140` /
+  `OFFSCREEN_RECYCLE_MARGIN=420` を新設(SPAWN<RECYCLE=ヒステリシスで湧き⇄消えの往復防止)。`generateEnemy` の
+  マージンを 140px に。
+- ラボスポーン: 半径(halfDiag+…)リング配置を廃止し、冒頭で呼ぶ `generateEnemy` の矩形外スポーンをそのまま使用
+  (通常敵と完全統一)。
+- リサイクル: `max(W,H)×0.86` の半径判定を廃止し、プレイヤー中心の矩形(ビュー半幅/半高 + RECYCLE_MARGIN)外で
+  画面外送り。`ENEMY_RECYCLE_DISTANCE_MULT` 撤去。
+- 据え置き(別概念): 死神の横切りスポーン / マーカーの500px / 護衛・ボスの実体シミュ判定250px。
+- 値は実機で微調整可。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1029 — NPCの空浮き対策を「位置クランプ」→「地平線フェード」に修正
 
 - v0.25.1028 の位置クランプ(地平線で停止)は行き過ぎで「軍人が地平線より上に行けない」状態に(社長報告)。撤回。

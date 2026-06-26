@@ -1,9 +1,9 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 
-// 敵の湧き位置を「画面端の外側」に出すためのマージン(画面サイズ比)。
-// 可視範囲はワールドと1:1。カメラ先行(CAMERA_CENTER_CLAMP_FRAC=0.07=画面幅7%)で
-// プレイヤーが中心からずれても確実に画面外へ出せるよう、それより大きい割合にする=完全に画面サイズ比例。
-export const SPAWN_OFFSCREEN_MARGIN_FRAC = 0.10;
+// 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
+// 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
+export const OFFSCREEN_SPAWN_MARGIN = 140;    // ビュー矩形の外側この距離で湧く(全辺一律)
+export const OFFSCREEN_RECYCLE_MARGIN = 420;  // ビュー矩形の外側この距離を超えたら画面外送り(湧き直し)
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
@@ -299,7 +299,7 @@ export const generateEnemy = (
   const halfW = viewportWidth / 2;
   const halfH = viewportHeight / 2;
   const vy0 = player.y - viewOffsetY; // 可視縦バンドの中心(world Y 近似)
-  const margin = Math.max(viewportWidth, viewportHeight) * SPAWN_OFFSCREEN_MARGIN_FRAC;
+  const margin = OFFSCREEN_SPAWN_MARGIN; // 固定ビュー矩形の外側この距離(全辺一律・社長指示B)
 
   const dirMag = pressureDirection
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
