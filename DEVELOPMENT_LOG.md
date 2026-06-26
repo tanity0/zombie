@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1007 — 裏ボスの裏回り透けを滑らかフェード化＋2倍速
+
+- 社長指示「裏ボスが手前に行くにつれて透明になっていく処理を2倍速く」。従来 `view.sprite.alpha = behind ? 0.5 : 1`
+  の**即時スナップ**を、滑らかなフェードに変更(`bossBehindAlpha` を毎フレーム lerp)。速度は**障害物の透けの2倍**
+  (`fastLerp = 1-(1-seeThroughLerp)^2`=実効tau半分≈0.06s)。
+- 描画のみ。当たり判定/位置は不変。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1006 — B案(アテンション焦点面シフト)を撤回=元に戻す
 
 - 社長指示で v0.25.1004 の B案を revert。`depthRefY` は常にプレイヤー足元(従来挙動)へ戻した。

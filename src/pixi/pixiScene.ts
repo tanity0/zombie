@@ -963,6 +963,7 @@ export class PixiScene {
   private lastZoomNow = 0;     // 待機ズームのフレーム間 dt 計算用
   private hitstopFreezeNow = 0; // ヒットストップ中に固定するアニメ時計(0=非固定)
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
+  private bossBehindAlpha = 1; // 裏ボスの「裏回り透け」alpha を滑らかに追従させる実値(スナップ回避)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
 
@@ -4436,7 +4437,11 @@ export class PixiScene {
       const behind = (ply.y + ply.height) < fb.footY
         && (ply.x + ply.width) > (spx - spriteW / 2)
         && ply.x < (spx + spriteW / 2);
-      view.sprite.alpha = behind ? BOSS_BEHIND_ALPHA : 1;
+      // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
+      const behindTarget = behind ? BOSS_BEHIND_ALPHA : 1;
+      const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
+      this.bossBehindAlpha += (behindTarget - this.bossBehindAlpha) * fastLerp;
+      view.sprite.alpha = this.bossBehindAlpha;
       view.sprite.visible = true;
     } else {
     view.sprite.anchor.set(0.5, 1);
