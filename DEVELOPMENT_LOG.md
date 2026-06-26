@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1031 — 画面外しきい値を詰める(リサイクル/護衛停止が遠すぎ)
+
+- 社長報告「リサイクルがすぐされない / 軍人が画面外でしばらく止まらない、まだ遠い」。両方とも閾値が遠すぎたので縮小:
+  - `OFFSCREEN_RECYCLE_MARGIN` 420→240(画面端から240px外で湧き直し=約半分。spawn140との間隔100でヒステリシス維持)。
+  - `updateSuppression` の `M`(護衛/攻撃者の実体シミュ範囲) 250→100(画面外100pxで護衛が停止=遠くへ行かない)。
+- 値は実機で微調整可。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1030 — 「画面外」を固定ビュー矩形＋2マージンに一本化(社長指示B・具体値)
 
 - 固定ビューにしたので「画面外」を矩形1基準へ統一。半径(円)ベースをやめ「画面端から○px外」で全辺一律に。

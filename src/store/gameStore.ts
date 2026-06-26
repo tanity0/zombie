@@ -6503,7 +6503,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const px = p.x + p.width / 2;
     const py = p.y + p.height / 2;
     const cam = state.camera, gb = state.gameBounds;
-    const M = 250; // 「画面に入りそう」マージン=この内側だけ実体(攻撃者/軍人)を動かす
+    const M = 100; // 画面外この距離まで=この内側だけ実体(攻撃者/護衛)を動かす。社長指示で 250→100=画面外ですぐ停止
     const onScreen = (x: number, y: number) => x >= cam.x - M && x <= cam.x + gb.width + M && y >= cam.y - M && y <= cam.y + gb.height + M;
     const aliveIds = new Set(state.enemies.map(e => e.id));
     // 裏ボスが拠点を「通過」(当たり判定=帯AABBが拠点サークルに重なる)したら一撃陥落させる(社長指示)。

@@ -3,7 +3,7 @@ import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, P
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
 export const OFFSCREEN_SPAWN_MARGIN = 140;    // ビュー矩形の外側この距離で湧く(全辺一律)
-export const OFFSCREEN_RECYCLE_MARGIN = 420;  // ビュー矩形の外側この距離を超えたら画面外送り(湧き直し)
+export const OFFSCREEN_RECYCLE_MARGIN = 240;  // ビュー矩形の外側この距離を超えたら画面外送り(湧き直し)。社長指示で 420→240=すぐ回収
 
 // Mad-Forest port: a stat sheet per enemy type. Difficulty multiplier scales
 // the base values over time so a 25-minute zombie has more HP than a 1-minute
