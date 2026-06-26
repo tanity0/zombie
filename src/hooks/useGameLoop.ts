@@ -287,6 +287,13 @@ const BOSS_RADIAL_COUNT = 16;
 const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
+// ミーミル専用: 射撃方向に赤いラインを2秒溜め→その方向へ太いレーザーを発射(社長指示)。
+const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽選でレーザーを選ぶ確率(ミーミルのみ)
+const MIMIR_LASER_WINDUP_MS = 2000;                  // 赤ライン予告の溜め時間(2秒)
+const MIMIR_LASER_FIRE_MS = 420;                     // レーザー本体の表示/判定時間
+const MIMIR_LASER_RANGE = 2600;                      // レーザーの長さ(px)
+const MIMIR_LASER_HALF_WIDTH = 34;                   // レーザーの半太さ(当たり判定/描画。太め)
+const MIMIR_LASER_DAMAGE = 42;                       // レーザー被弾ダメージ(直撃)
 const BOSS_FADE_MS = 2600;                           // 討伐時のFF風フェードアウト時間(描画側で使用)
 // 裏ボスが障害物を踏み潰した時の爆破FX/SE/シェイク。森を突っ切ると同時破壊が多発しうるので「スロットル」で
 // 一定間隔に1回だけ発火=per-frame Graphics(リング/バースト)を積み上げない安全弁(負荷の主因は数×描画法)。
@@ -1439,10 +1446,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (st === 'chase') {
                 moveToward(walkMult); // 気絶中は半速、通常は等速
                 if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
-                  const r = Math.random();
-                  if (r < BOSS_DASH_CHANCE) { patch.bossState = 'dash-windup'; patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS; }
-                  else if (r < BOSS_DASH_CHANCE + (1 - BOSS_DASH_CHANCE) / 2) { patch.bossState = 'aim-burst'; patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS; }
-                  else { patch.bossState = 'aim-radial'; patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS; }
+                  // ミーミル専用: まずレーザー抽選。当たれば射撃方向(=今のプレイヤー位置)をロックして2秒溜め開始。
+                  if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE) {
+                    patch.bossState = 'laser-windup';
+                    patch.bossStateUntil = newGameTime + MIMIR_LASER_WINDUP_MS;
+                    patch.aiFromX = bcx; patch.aiFromY = bcy;       // ビーム原点(ロック)
+                    patch.aiTargetX = pcx; patch.aiTargetY = pcy;   // 射撃方向(ロック=溜め開始時のプレイヤー)
+                  } else {
+                    const r = Math.random();
+                    if (r < BOSS_DASH_CHANCE) { patch.bossState = 'dash-windup'; patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS; }
+                    else if (r < BOSS_DASH_CHANCE + (1 - BOSS_DASH_CHANCE) / 2) { patch.bossState = 'aim-burst'; patch.bossStateUntil = newGameTime + BOSS_AIM_BURST_MS; }
+                    else { patch.bossState = 'aim-radial'; patch.bossStateUntil = newGameTime + BOSS_AIM_RADIAL_MS; }
+                  }
                 }
               } else if (st === 'aim-burst') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'burst'; patch.bossBurstLeft = BOSS_BURST_SHOTS; patch.bossBurstNextAt = newGameTime; }
@@ -1462,6 +1477,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                   patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
                 }
+              } else if (st === 'laser-windup') {
+                // ミーミル: 2秒溜め(静止)。赤ライン予告は描画側が bossState で出す。方向は溜め開始時にロック済み。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'laser-fire';
+                  patch.bossStateUntil = newGameTime + MIMIR_LASER_FIRE_MS;
+                  // 発射: ロック方向へ太いレーザー。プレイヤーがビーム帯(線分±半太さ)に居れば1回ダメージ。
+                  const ox = bcx, oy = bcy;
+                  let ux = (boss.aiTargetX ?? pcx) - (boss.aiFromX ?? bcx);
+                  let uy = (boss.aiTargetY ?? pcy) - (boss.aiFromY ?? bcy);
+                  const ul = Math.hypot(ux, uy) || 1;
+                  ux /= ul; uy /= ul;
+                  const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+                  const t = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - ox) * ux + (ppy - oy) * uy));
+                  const cxp = ox + ux * t, cyp = oy + uy * t;
+                  const pr = Math.max(player.width, player.height) / 2;
+                  if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
+                    const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー');
+                    if (died) triggerPlayerDeath(ppx, ppy);
+                  }
+                  playSfx('heavy-impact'); // レーザー発射音(使い回し)
+                }
+              } else if (st === 'laser-fire') {
+                // 発射中(ビーム本体)は静止。表示/判定窓を過ぎたら chase へ。ダメージは発射時に1回適用済み。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               } else if (st === 'dash-windup') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'dash'; patch.bossStateUntil = newGameTime + BOSS_DASH_MS;
@@ -3386,15 +3425,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : 1;
           // スキル: コンボマスターは「全攻撃」増加(ユーザー指定)。銃にもフィニッシュコンボ倍率を適用。
           const comboMasterMult = skillComboMasterMult(skillPlayer, gameTime, collisionState.meleeFinishComboCount, collisionState.meleeFinishComboUntil);
-          // カウンター弾(反射弾)で一撃死するのはプラントだけ(社長指示。旧=ワーム→プラントへ変更)。他敵は通常の反射ダメージ。
+          // カウンター弾(反射弾)で一撃死するのはプラントだけ(社長指示)。それ以外は通常の反射ダメージで、
+          // ボス含め普通に死にうる(社長指示で「プラント以外は死なない」protectionは廃止)。
           const plantCounterKill = !!projectile?.reflected && enemyForFx?.type === 'plant';
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
-          // ボス系(城ボス/死神/裏ボス=mimir・jormungand・skadi)は反射弾では一撃死しない=HP1で踏みとどまる(nonLethalBoss)。
-          // 銃/近接の直撃では普通に死ぬ。プラントは非ボスなのでこの分岐に掛からず上の一撃死が適用される。
-          const counterNonLethalBoss = !!projectile?.reflected && !!enemyForFx && isBossType(enemyForFx.type);
-          const enemyKilled = damageEnemy(enemyId, dmg, counterNonLethalBoss);
+          const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
 
           // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。

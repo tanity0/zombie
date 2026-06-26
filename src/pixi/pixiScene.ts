@@ -475,6 +475,11 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
 // 裏ボスの影: 当たり判定より一回り大きく見せる倍率＋鮮やかめの赤(社長指示)。
 const BOSS_SHADOW_SCALE = 1.35;  // 当たり判定(w×h)に対する影の拡大率
 const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
+// ミーミルのレーザー描画(視覚・useGameLoop のゲームプレイ値と揃える)。
+const MIMIR_LASER_VIS_RANGE = 2600;     // 描画上のビーム長(px)
+const MIMIR_LASER_VIS_HALFWIDTH = 34;   // 描画上のビーム半太さ(当たり判定と同じ)
+const MIMIR_LASER_WINDUP_MS = 2000;     // 溜め時間(進行度の算出用)
+const MIMIR_LASER_FIRE_MS = 420;        // 発射本体の表示時間(フェード用)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   blue: { tint: 0x3b82f6, alphaMult: 1.7 },
@@ -4499,6 +4504,26 @@ export class PixiScene {
     // Above-sprite layer: health bar, boss marker, hit flash.
     const o = view.overlay;
     o.clear();
+    // ミーミルのレーザー: 溜め中=赤い予告ライン(進行で太く明るく)、発射中=太いレーザー本体(フェード)。
+    if (e.type === 'mimir' && (e.bossState === 'laser-windup' || e.bossState === 'laser-fire')) {
+      const ax = (e.aiTargetX ?? cx) - (e.aiFromX ?? cx);
+      const ay = (e.aiTargetY ?? cy) - (e.aiFromY ?? cy);
+      const al = Math.hypot(ax, ay) || 1;
+      const ux = ax / al, uy = ay / al;
+      const ex2 = cx + ux * MIMIR_LASER_VIS_RANGE, ey2 = cy + uy * MIMIR_LASER_VIS_RANGE;
+      if (e.bossState === 'laser-windup') {
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_WINDUP_MS));
+        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+      } else {
+        const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_FIRE_MS));
+        const w = MIMIR_LASER_VIS_HALFWIDTH * 2;
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * (0.75 + 0.25 * life), color: 0xff2020, alpha: 0.45 * life, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * life, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.95 * life, cap: 'round' });
+      }
+    }
     this.drawHealthBar(o, e);
     if (e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper') {
       this.drawBossMarker(o, cx, e.y - 6, e.type === 'reaper' ? 0xef4444 : 0xfde68a, now);

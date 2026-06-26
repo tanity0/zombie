@@ -299,7 +299,7 @@ export interface Enemy {
   homeY?: number;
   // 裏ボス(mimir/jormungand)専用の状態機械(useGameLoop の専用コントローラが駆動)。
   // 通常の updateEnemies の追跡AIからは除外され、ここで動き/攻撃/帰巣を管理する。
-  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'dash-windup' | 'dash' | 'return';
+  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾

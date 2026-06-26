@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1002 — ミーミルのレーザー攻撃追加＋カウンター非致死protection廃止
+
+- **ミーミル専用レーザー**(社長指示): chase からの行動抽選で `MIMIR_LASER_CHANCE`(0.34)。
+  射撃方向(=溜め開始時のプレイヤー位置)をロック→**赤い予告ライン2秒**(`laser-windup`)→
+  その方向へ**太いレーザー**(`laser-fire`/420ms)。発射時にビーム線分±`MIMIR_LASER_HALF_WIDTH`(34px)内の
+  プレイヤーへ1回 `MIMIR_LASER_DAMAGE`(42)。発射SE=`heavy-impact`(使い回し)。
+  - bossState に `laser-windup`/`laser-fire` 追加。方向は `aiFromX/Y`(原点)・`aiTargetX/Y`(狙点)にロック。
+  - 描画: pixiScene が bossState を見て予告ライン(進行で太く)/ビーム本体(フェード)を overlay に描画(world座標)。
+    負荷 2/10(1体・短時間・数本の line stroke のみ・per-frameだが単一)。
+- **カウンター非致死protection廃止**(社長指示「プラント以外のカウンターで死なないは無し」): 反射弾は
+  ボス含め通常ダメージで普通に死にうる。`nonLethalBoss` フラグ付与をやめ `damageEnemy(id, dmg)` に。
+  一撃死特例はプラント(`plantCounterKill`)のみ維持。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1001 — カウンター弾の一撃死対象を ワーム→プラント に変更
 
 - 社長修正: 「カウンター弾(反射弾)で一撃死」の対象を **jormungand(ワーム)→ plant(プラント)** へ。
