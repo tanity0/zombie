@@ -676,6 +676,13 @@ export interface ActiveEvent {
   holdMs?: number;       // rescue: プレイヤーが円内に居た累計時間(ms)。RESCUE_HOLD_NEED_MS で成功。
 }
 
+// 紅き夜: 全敵ステータス2倍・経験値2倍・画面赤染め。警告10秒→本番20秒。拠点/商人で逃げられる。
+export interface RedNight {
+  phase: 'warning' | 'active';
+  activeAt: number;  // gameTime(ms) — 'warning' → 'active' に切り替わる時刻
+  endAt: number;     // gameTime(ms) — 'active' フェーズが終わる時刻
+}
+
 export type PickupType =
   | 'experience' | 'health' | 'magnet' | 'bomb' | 'chest'
   | 'strap' | 'treasure'

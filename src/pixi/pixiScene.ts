@@ -76,6 +76,14 @@ const buildDeepGradeMatrix = (sat: number): ColorMatrix => {
   ];
 };
 
+// 紅き夜の画面染色マトリクス。R大幅増・G/B減で血の赤に染める。
+const buildRedNightMatrix = (): ColorMatrix => [
+  1.45, 0.20, 0.10, 0, 0.06,
+  0.00, 0.55, 0.00, 0, 0.00,
+  0.00, 0.00, 0.35, 0, 0.00,
+  0, 0, 0, 1, 0,
+];
+
 // --- moonlit atmosphere tuning (tweak freely on-device) -------------------
 const GRADE_TINT = 0x7e93c9;   // cool blue multiply over the whole world
 // 昼ステージ(正午=farBackdrop 'city')の環境補正: 夜の暗転・寒色グレード・濃霧・周辺減光を弱め、
@@ -867,9 +875,10 @@ export class PixiScene {
   private nearGroundBlurLayers: Container[] = [];
   // 深層域グレーディング(退色セピア・描画のみ)。stageルートに ColorMatrixFilter を1枚、alpha でフェード。
   private deepGradeFilter: ColorMatrixFilter | null = null;
-  private deepGradeAmount = 0;   // 0..1 現在のかかり具合(1秒フェード)
-  private deepGradeOn = false;   // ヒステリシス: 深層域内か(enter=D / exit=D-200)
-  private lastGradeNow = 0;      // フェード用 dt 計測
+  private deepGradeAmount = 0;       // 0..1 現在のかかり具合(1秒フェード)
+  private deepGradeOn = false;       // ヒステリシス: 深層域内か(enter=D / exit=D-200)
+  private deepGradeIsRedNight = false; // 紅き夜中は血赤マトリクス / 通常は深層域セピア
+  private lastGradeNow = 0;          // フェード用 dt 計測
 
   private tiltShift: TiltShiftFilter | null = null;
   private bloom: AdvancedBloomFilter | null = null;
@@ -2261,6 +2270,7 @@ export class PixiScene {
       !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
       Math.hypot(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2),
       now,
+      s.redNight?.phase === 'active',
     );
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
@@ -5154,18 +5164,30 @@ export class PixiScene {
 
   // 深層域グレーディング: 深層域(eligible かつ原点距離>=D)の間だけ stage ルートへ退色セピアの
   // ColorMatrixFilter を掛け、enter/exit を約1秒でフェード(filter.alpha 補間)。描画のみ=store非干渉。
+  // 紅き夜(redNightActive)中は血赤マトリクスに切り替え、距離によらず全画面に掛ける。
   // amount≈0 のときはフィルタを外して全画面パスを発生させない(非深層域での追加コスト無し)。
-  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number) {
+  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number, redNightActive: boolean) {
     if (!DEEP_ZONE_GRADE_ENABLED) return;
     const dt = this.lastGradeNow ? Math.min(0.1, (now - this.lastGradeNow) / 1000) : 0;
     this.lastGradeNow = now;
-    // ヒステリシス(行ったり来たりでポップしない): enter=D / exit=D-200。
-    if (eligible) {
-      if (this.deepGradeOn) { if (originDist < DEEP_ZONE_GRADE_D - 200) this.deepGradeOn = false; }
-      else if (originDist >= DEEP_ZONE_GRADE_D) this.deepGradeOn = true;
+
+    // マトリクス切り替え: モードが変わったらフィルタを更新。
+    const prevRedNight = this.deepGradeIsRedNight;
+    this.deepGradeIsRedNight = redNightActive;
+
+    if (redNightActive) {
+      // 紅き夜: 距離によらず強制 ON。
+      this.deepGradeOn = true;
     } else {
-      this.deepGradeOn = false;
+      // 通常の深層域ヒステリシス(行ったり来たりでポップしない): enter=D / exit=D-200。
+      if (eligible) {
+        if (this.deepGradeOn) { if (originDist < DEEP_ZONE_GRADE_D - 200) this.deepGradeOn = false; }
+        else if (originDist >= DEEP_ZONE_GRADE_D) this.deepGradeOn = true;
+      } else {
+        this.deepGradeOn = false;
+      }
     }
+
     const target = this.deepGradeOn ? 1 : 0;
     if (this.deepGradeAmount !== target) {
       const step = dt / DEEP_ZONE_GRADE_FADE_S;
@@ -5179,11 +5201,18 @@ export class PixiScene {
     }
     if (!this.deepGradeFilter) {
       this.deepGradeFilter = new ColorMatrixFilter();
-      this.deepGradeFilter.matrix = buildDeepGradeMatrix(DEEP_ZONE_GRADE_SAT);
+      this.deepGradeFilter.matrix = redNightActive
+        ? buildRedNightMatrix()
+        : buildDeepGradeMatrix(DEEP_ZONE_GRADE_SAT);
+    } else if (prevRedNight !== redNightActive) {
+      // モード切り替え時にマトリクスを更新。
+      this.deepGradeFilter.matrix = redNightActive
+        ? buildRedNightMatrix()
+        : buildDeepGradeMatrix(DEEP_ZONE_GRADE_SAT);
     }
     const cur = this.L.stage.filters as Filter[] | null;
     if (!cur || !cur.includes(this.deepGradeFilter)) this.L.stage.filters = [this.deepGradeFilter];
-    this.deepGradeFilter.alpha = this.deepGradeAmount; // 単位行列↔セピア行列の線形補間(描画のみ)
+    this.deepGradeFilter.alpha = this.deepGradeAmount; // 単位行列↔カラーマトリクスの線形補間(描画のみ)
   }
 
   // 救助NPC(survivor)の描画。本体は受領素材スプライト(2コマ歩き・足元アンカーで y-sort)、

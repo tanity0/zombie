@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
 import {
@@ -113,7 +113,7 @@ export const clampDropPct = (n: number): number =>
 // 4拠点が同時にcapturedで「全拠点制圧」→既存クリア経路(帰還サークル)へ。
 const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
 const BASE_SITE_COUNT = 4;              // 拠点の数(東西南北=90度刻み・社長指示で8→4)
-const BASE_CAPTURE_RADIUS = 130;        // 制圧サークルの半径(滞在/在内判定)
+export const BASE_CAPTURE_RADIUS = 130; // 制圧サークルの半径(滞在/在内判定)
 export const BASE_CAPTURE_HOLD_MS = 10000; // 制圧に必要な滞在時間(描画の進捗にも使用)
 export const SUPP_HP_MAX = 100;            // 拠点HP上限
 const SUPP_DRAIN_PER_SEC = 5;           // 画面外captured拠点のHPドレイン(ゆるめ・実機調整)
@@ -1476,6 +1476,8 @@ interface GameState {
   castleEvent: CastleEvent;
   // 囲い系イベント(小イベント=アリーナ/ミニボス)。非nullの間だけプレイヤーを円内に拘束。
   activeEvent: ActiveEvent | null;
+  // 紅き夜: 非null中は全敵ステータス2倍・経験値2倍・画面赤染め。
+  redNight: RedNight | null;
   weaponMerchant: WeaponMerchant;
   eventQuestNpc: EventQuestNpc;
   gameTime: number;
@@ -1655,6 +1657,11 @@ interface GameState {
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
   endArenaEvent: () => void;
+  // 紅き夜: 警告開始(10秒後に本番)/ 本番移行/ 終了/ 拠点・商人で逃げる。
+  beginRedNightWarning: (gameTime: number) => void;
+  activateRedNight: () => void;
+  endRedNight: () => void;
+  skipRedNight: () => void;
   // 救助ホールドイベント: 開始(survivor3人を配置＋activeEvent rescue をセット)/ 毎フレーム更新(NPCカイト・
   // ホールドゲージ・攻撃者補充・勝敗/報酬)/ 敵接触ダメージ。
   beginRescueEvent: (event: ActiveEvent) => void;
@@ -1911,6 +1918,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   mineAmbushAnchor: null,
   castleEvent: createCastleEvent(),
   activeEvent: null,
+  redNight: null,
   weaponMerchant: createWeaponMerchant(),
   eventQuestNpc: createEventQuestNpc(),
   gameTime: 0,
@@ -2418,6 +2426,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameTime >= shopReopenAt &&
       mdx * mdx + mdy * mdy <= weaponMerchant.radius * weaponMerchant.radius
     ) {
+      // 紅き夜中は商人への話しかけで逃げる(やり過ごした)。ショップは開かない。
+      if (get().redNight?.phase === 'active') {
+        get().skipRedNight();
+        set(state => ({
+          eventBannerText: 'やり過ごした',
+          eventBannerUntil: state.gameTime + 3500,
+          hitstopUntil: Date.now() + 450,
+        }));
+        get().spawnFlash('rgba(0,0,0,0.68)', 500);
+        return { swung: true, hit: true, finish: false, killed: 0 };
+      }
       set({
         showShopMenu: true,
         isPaused: true,
@@ -4563,7 +4582,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
 
-      let newHealth = Math.max(0, enemy.health - amount);
+      // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
+      const eff = state.redNight?.phase === 'active' ? Math.max(1, Math.floor(amount / 2)) : amount;
+      let newHealth = Math.max(0, enemy.health - eff);
       // 爆弾/爆発ではボス系にトドメを刺さない(社長指示)。ダメージは入るが HP1 で踏みとどまる。
       if (nonLethalBoss && newHealth === 0 && isBossType(enemy.type)) newHealth = 1;
       const updatedEnemies = enemies.map(e => 
@@ -4579,7 +4600,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const newStats = {
           ...gameStats,
           enemiesKilled: gameStats.enemiesKilled + 1,
-          damageDealt: gameStats.damageDealt + amount,
+          damageDealt: gameStats.damageDealt + eff,
           eliteKills: gameStats.eliteKills + (isScoreElite(enemy.type) ? 1 : 0), // 銃/弾でのpumpkin撃破も計上
           bossKills: gameStats.bossKills + (isScoreBoss(enemy.type) ? 1 : 0)     // 同 giantbat
         };
@@ -4592,12 +4613,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent)
         };
       }
-      
-      return { 
+
+      return {
         enemies: updatedEnemies,
         gameStats: {
           ...gameStats,
-          damageDealt: gameStats.damageDealt + amount
+          damageDealt: gameStats.damageDealt + eff
         }
       };
     });
@@ -4618,6 +4639,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pcx = player.x + player.width / 2;
       const pcy = player.y + player.height / 2;
       const indoor = state.indoorMode;
+      // 紅き夜中は全敵スピード2倍。
+      const rnSpeedMult = state.redNight?.phase === 'active' ? 2 : 1;
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
       const indoorWalls = indoor ? [...labBlockingWalls(openDoorIds), ...state.labProps.map(p => p.rect)] : [];
       const labTheme = state.stageTheme === 'lab'; // 研究所スキンは木を出さない=木の当たり判定もスキップ。
@@ -4754,7 +4777,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const fx = ecx - pcx, fy = ecy - pcy;
           const fl = Math.hypot(fx, fy) || 1;
-          const fvx = (fx / fl) * enemy.speed, fvy = (fy / fl) * enemy.speed;
+          const fvx = (fx / fl) * enemy.speed * rnSpeedMult, fvy = (fy / fl) * enemy.speed * rnSpeedMult;
           const fmoved = resolveMove(enemy.x + fvx * deltaTime, enemy.y + fvy * deltaTime);
           return { ...enemy, vx: fvx, vy: fvy, x: fmoved.x, y: fmoved.y, aiPhase: undefined, aiPhaseUntil: 0 };
         }
@@ -4949,7 +4972,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (phase === 'zpause') {
             return { ...enemy, vx: 0, vy: 0, aiPhase: phase, aiPhaseUntil: phaseUntil }; // 停止
           }
-          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1);
+          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1) * rnSpeedMult;
           // フラフラ: 進行方向に直交する成分を時間で揺らす(個体ごとに位相をずらす)。
           let h = 0;
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
@@ -4962,7 +4985,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil };
         }
 
-        const speed = enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed;
+        const speed = (enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed) * rnSpeedMult;
         let tvx = (dx / distance) * speed;
         let tvy = (dy / distance) * speed;
         // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、
@@ -5178,6 +5201,27 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescueSurvivors: [],
       };
     });
+  },
+
+  // 紅き夜: 警告 → 本番(10秒後) → 終了(20秒間)。
+  beginRedNightWarning: (gameTime) => {
+    const activeAt = gameTime + 10000;
+    set({
+      redNight: { phase: 'warning', activeAt, endAt: activeAt + 20000 },
+      eventBannerText: '紅き夜が来る！',
+      eventBannerUntil: gameTime + 3500,
+    });
+  },
+  activateRedNight: () => {
+    set(state => ({
+      redNight: state.redNight ? { ...state.redNight, phase: 'active' } : null,
+    }));
+  },
+  endRedNight: () => {
+    set({ redNight: null });
+  },
+  skipRedNight: () => {
+    set({ redNight: null });
   },
 
   // 救助ホールドイベント開始: 円中央付近に survivor3人を配置し、各人に攻撃者を割り当てて湧かせる。
@@ -5607,7 +5651,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   dropEnemyXp: (enemy, x, y, idPrefix, value) => {
     const v = value ?? enemy.experienceValue;
-    const n = xpOrbCountForEnemy(enemy);
+    const base = xpOrbCountForEnemy(enemy);
+    // 紅き夜中は経験値ドロップ数2倍。
+    const n = base * (get().redNight?.phase === 'active' ? 2 : 1);
     for (let i = 0; i < n; i++) {
       get().addPickup({ id: `${idPrefix}-${enemy.id}-${i}`, x: x - 8, y: y - 8, type: 'experience', value: v });
     }
@@ -7325,6 +7371,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
         activeEvent: null,
+        redNight: null,
         eventBannerText: '',
         eventBannerUntil: 0,
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。

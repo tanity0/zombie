@@ -31,7 +31,7 @@ import {
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
-  ENEMY_REMOVE_CAUSE
+  ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -225,6 +225,7 @@ const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通�
 const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
+const RED_NIGHT_FIRE_MS = 180000;      // 紅き夜の発火時刻(=ゲーム開始3分・一度のみ)
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基本は全滅で終了)
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -374,6 +375,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
+  const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ(ゲーム開始3分)。発火済みフラグ。
   const lastSeenGameTimeRef = useRef(0);
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
@@ -910,6 +912,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
+          redNightFiredRef.current = false;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
@@ -1120,6 +1123,58 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().endArenaEvent(); // 拘束解除＋取りこぼし撤去
               spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
               spawnFlash('rgba(255,255,255,0.10)', 200);
+            }
+          }
+        }
+
+        // --- 紅き夜 ---
+        // ゲーム開始3分後に1回だけ発動。警告10秒→本番20秒→暗転終了。
+        // 本番中: 全敵ステータス×2・経験値×2・画面赤染め。
+        // 拠点近接 or 商人に話しかけると「やり過ごした」で即脱出(商人側は performAttack 内で処理)。
+        if (!danceTest && !indoor && !labTheme) {
+          const rnGs = useGameStore.getState();
+          const rn = rnGs.redNight;
+
+          if (!rn && !redNightFiredRef.current && newGameTime >= RED_NIGHT_FIRE_MS && !rnGs.bossChasing) {
+            // 発火: 3分後に一度だけ
+            redNightFiredRef.current = true;
+            rnGs.beginRedNightWarning(newGameTime);
+            spawnFlash('rgba(120,0,0,0.18)', 380);
+            playSfx('event-start');
+          } else if (rn) {
+            if (rn.phase === 'warning' && newGameTime >= rn.activeAt) {
+              // 警告 → 本番移行
+              rnGs.activateRedNight();
+              spawnFlash('rgba(180,0,0,0.40)', 600);
+              useGameStore.setState({
+                eventBannerText: '紅き夜！',
+                eventBannerUntil: newGameTime + EVENT_BANNER_MS,
+              });
+            } else if (rn.phase === 'active') {
+              // 拠点近接で逃げる
+              const pcx = player.x + player.width / 2;
+              const pcy = player.y + player.height / 2;
+              const nearBase = rnGs.baseSites.some(
+                b => Math.hypot(b.x - pcx, b.y - pcy) <= BASE_CAPTURE_RADIUS
+              );
+              if (nearBase) {
+                rnGs.skipRedNight();
+                useGameStore.setState({
+                  eventBannerText: 'やり過ごした',
+                  eventBannerUntil: newGameTime + EVENT_BANNER_MS,
+                  hitstopUntil: Date.now() + 450,
+                });
+                spawnFlash('rgba(0,0,0,0.68)', 500);
+              } else if (newGameTime >= rn.endAt) {
+                // 20秒経過 → 終了
+                rnGs.endRedNight();
+                useGameStore.setState({
+                  eventBannerText: '紅き夜が明けた',
+                  eventBannerUntil: newGameTime + EVENT_BANNER_MS,
+                  hitstopUntil: Date.now() + 450,
+                });
+                spawnFlash('rgba(0,0,0,0.68)', 500);
+              }
             }
           }
         }
@@ -3404,7 +3459,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }));
           } else {
             const wasVulnerable = !useGameStore.getState().player.invulnerable;
-            const playerDied = damagePlayer(proj.damage, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
+            const rnMult = loopState.redNight?.phase === 'active' ? 2 : 1;
+            const playerDied = damagePlayer(proj.damage * rnMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
             if (wasVulnerable) {
               playSfx('player-damage');
               spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -4073,7 +4129,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             return;
           }
           const damageWasApplied = !collPlayer.invulnerable;
-          const playerDied = damagePlayer(enemy.damage, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+          const rnMelee = loopState.redNight?.phase === 'active' ? 2 : 1;
+          const playerDied = damagePlayer(enemy.damage * rnMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
           if (damageWasApplied) {
             playSfx('player-damage');
             spawnFlash('rgba(239,68,68,0.22)', 200);
