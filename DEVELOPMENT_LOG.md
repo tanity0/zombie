@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1024 — 当たり判定の確認用オーバーレイをOFF(社長確認OK)
+
+- 帯方式の確認が済んだので `SHOW_HITBOX_STRIP=false`。通常敵の橙の帯デバッグ表示を消灯(裏ボスの帯は別途常時表示で残す)。
+- ロジック(enemyHitStrip)・索敵420・帯50%はそのまま。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1023 — ステージ2索敵を420へ / 帯の縦幅を50%へ
 
 - ステージ2索敵: `LAB_SPAWN_AGGRO_RANGE` 700→**420**(社長指示)。700は湧きリング(~570-745px)に対し約7割が

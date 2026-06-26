@@ -606,8 +606,8 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 
-// ★確認用: 全敵の当たり判定「帯」(AABB=e.width×e.height)をうっすら色付きで描く。社長確認後に false で消す。
-const SHOW_HITBOX_STRIP = true;
+// ★確認用: 全敵の当たり判定「帯」をうっすら色付きで描くデバッグ表示。社長確認OK=通常時OFF(裏ボスの帯は別途常時表示)。
+const SHOW_HITBOX_STRIP = false;
 
 // 裏ボスは「当たり判定=足元の帯(AABB=enemy.width×height)」と「絵(巨体)」を分離して描く(社長指示)。
 // fit = 絵の中での帯の位置・大きさ(0..1 の割合): w/h=帯が絵に占める幅/高さ, cx/cy=帯中心の絵内座標(左上原点)。
