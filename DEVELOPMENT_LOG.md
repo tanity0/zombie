@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1029 — NPCの空浮き対策を「位置クランプ」→「地平線フェード」に修正
+
+- v0.25.1028 の位置クランプ(地平線で停止)は行き過ぎで「軍人が地平線より上に行けない」状態に(社長報告)。撤回。
+- 正解は他のアクターと同じ「地平線で透明になる」だけ。`drawEscorts`/`drawBaseSoldiers`/`drawRescueSurvivors` に
+  `horizonActorAlpha(y)` を適用(alpha=フェード、alpha<=0で非表示)。北へ進む護衛は遠ざかって透明になる=浮かない、
+  かつ移動制限も無し。
+- v0.25.1028 のクランプと `viewport.PLAY_BAND_TOP_FRAC/playBandTopY` は撤去(未使用デッドコード化のため)。
+- 検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1028 — NPC(護衛)が空に浮くバグ修正 + プレイ帯上端の共有定義
 
 - 社長報告「NPCが空に浮いていく」。原因: base-3(北)が真上 (0,-3200) にあり、担当護衛が地平線より上の「空」へ歩く。

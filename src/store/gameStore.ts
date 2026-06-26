@@ -44,7 +44,6 @@ import type { SkillRarity } from '../data/campaign';
 import { EQUIPMENT, equipmentById, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
-import { playBandTopY } from '../utils/viewport';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
@@ -6504,8 +6503,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const px = p.x + p.width / 2;
     const py = p.y + p.height / 2;
     const cam = state.camera, gb = state.gameBounds;
-    // プレイ帯の上端(地平線の目安)。NPCはこれより上(=空)へ行かせない(空に浮くバグ修正)。
-    const playTopY = playBandTopY(cam.y, gb.height);
     const M = 250; // 「画面に入りそう」マージン=この内側だけ実体(攻撃者/軍人)を動かす
     const onScreen = (x: number, y: number) => x >= cam.x - M && x <= cam.x + gb.width + M && y >= cam.y - M && y <= cam.y + gb.height + M;
     const aliveIds = new Set(state.enemies.map(e => e.id));
@@ -6560,9 +6557,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
         if (d > 2) { const mv = Math.min(ESCORT_SPEED * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
       }
-      // 空に浮くバグ修正: プレイ帯上端(地平線)より上へは行かせない。北(y=-3200)担当が真上の空へ歩くのを防ぐ
-      // (拠点が画面内=帯の下に来た時=プレイヤーが北へ進んだ時だけ、護衛は拠点へ到達できる)。
-      y = Math.max(y, playTopY);
+      // (空に浮く件は位置を止めず、描画側で地平線フェード=透明化で対応。drawEscorts 参照)。
       // 滞在カウント/占拠は射撃・前進どちらの枝でも毎フレーム評価する(社長報告のバグ修正)。
       // 仕様「拠点内に10秒留まったら解放」: 敵を撃ちながらでも円内に留まっていればカウントを進める。
       // 円の外(まだ到達前/押し出された)では0にリセット。

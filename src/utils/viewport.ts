@@ -20,13 +20,6 @@ export const VIEW_CORE_H = 720;
 export const VIEW_MAX_W = 540;
 export const VIEW_MAX_H = 960;
 
-// プレイ帯の上端(=地平線の目安)。固定ビュー高さに対する割合。これより上は「空」(遠景/地平フェードで
-// アクターが消える領域)なので、敵やNPCをそこへ歩かせない/置かない基準にする。レンダラの地平線(遠景高さ由来=
-// ビュー高さの約0.3強)に合わせた近似の共有定数(レンダラ非依存)。実機で微調整可。屋外(地平線あり)専用。
-export const PLAY_BAND_TOP_FRAC = 0.32;
-// カメラYとビュー高さから、プレイ帯上端のワールドYを返す。これより上=空。
-export const playBandTopY = (cameraY: number, viewH: number): number => cameraY + viewH * PLAY_BAND_TOP_FRAC;
-
 export interface Viewport {
   scale: number;     // ワールドpx → デバイスpx(= app.stage.scale 兼 入力の割り算係数)
   logicalW: number;  // シーン/シムが使う論理画面幅(ワールドpx)

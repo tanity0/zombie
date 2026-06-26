@@ -4910,7 +4910,8 @@ export class PixiScene {
           sp.texture = tex;
           const sc = this.humanNpcScale(tex.width, tex.height, sol.y); // プレイヤーと同寸
           sp.scale.set(sc * fc.face, sc);
-          sp.visible = true;
+          sp.alpha = this.horizonActorAlpha(sol.y); // 地平線で透明化(空に浮かない)
+          sp.visible = sp.alpha > 0;
         } else sp.visible = false;
         sp.position.set(Math.round(sol.x), Math.round(sol.y));
         sp.zIndex = sol.y;
@@ -4936,7 +4937,8 @@ export class PixiScene {
         sp.texture = tex;
         const sc = this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
         sp.scale.set(sc * (esc.face < 0 ? -1 : 1), sc);
-        sp.visible = true;
+        sp.alpha = this.horizonActorAlpha(esc.y); // 他のアクターと同じく地平線で透明化(空に浮かない)
+        sp.visible = sp.alpha > 0;
       } else sp.visible = false;
       sp.position.set(Math.round(esc.x), Math.round(esc.y));
       sp.zIndex = esc.y;
@@ -5056,8 +5058,9 @@ export class PixiScene {
         sp.scale.set(sc * fs.face, sc);
         sp.visible = true;
       }
-      // 救助成功の退場: 走りながらフェードアウト。
-      sp.alpha = s.savedAt ? Math.max(0, 1 - (now - s.savedAt) / RESCUE_OUTRO_MS) : 1;
+      // 救助成功の退場: 走りながらフェードアウト。さらに地平線フェード(空に浮かない=他アクターと同じ)。
+      const outroA = s.savedAt ? Math.max(0, 1 - (now - s.savedAt) / RESCUE_OUTRO_MS) : 1;
+      sp.alpha = outroA * this.horizonActorAlpha(s.y);
       sp.position.set(Math.round(footX), Math.round(footY));
       sp.zIndex = footY;
     }
