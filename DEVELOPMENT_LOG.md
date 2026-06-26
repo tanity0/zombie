@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1016 — NPC(全種)を1.2倍に(描画＋当たり判定)
+
+- 社長指示の段階調整・第一弾。全NPCを現状の1.2倍に(描画と当たり判定を同率):
+  - 描画: `RESCUE_NPC_DISPLAY_H` 54→65(レスキュー/護衛/駐留兵 共通)。
+  - 当たり判定/基準: `RESCUE_SURVIVOR_SIZE` 22→26(レスキューNPCの当たり/描画基準)。護衛はHPなし=当たり判定なしのため描画のみ。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1015 — 「見た目=当たり判定」: 敵の当たり判定を見える胴体ボックスに統一
 
 - 社長指示「見てわかること=正義。当たり判定は見た目に準ずる(裏ボスは既に対応済み)」。通常敵の当たり判定を

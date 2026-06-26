@@ -5019,7 +5019,7 @@ export class PixiScene {
 
   // 救助NPC(survivor)の描画。本体は受領素材スプライト(2コマ歩き・足元アンカーで y-sort)、
   // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
-  private static readonly RESCUE_NPC_DISPLAY_H = 54; // 表示の基準高さ(px)。プレイヤーと違和感ない人型サイズ(80は大きすぎた→54へ戻す)
+  private static readonly RESCUE_NPC_DISPLAY_H = 65; // 表示の基準高さ(px)。社長指示で 54→65(×1.2)。当たり判定(RESCUE_SURVIVOR_SIZE)も同率で拡大。
   private static readonly RESCUE_WALK_FRAME_MS = 170;
   // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じくらいの見た目サイズで描く(社長指示)。
   // 表示基準高さ RESCUE_NPC_DISPLAY_H の枠へ contain-fit ＋ プレイヤーと同じ遠近曲線(depthScale)。
