@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1012 — 敵/NPCの規定スケールをプレイヤー基準に拡大
+
+- 社長指示「NPCも敵も規定値スケールがプレイヤーと合ってない→プレイヤーに合わせて拡大」。
+  - プレイヤーは固定 86px 幅(当たり判定28pxの約3.07倍)で描画。敵は当たり判定×倍率(~2.1)で小さめだった。
+  - `ACTOR_VISUAL_BUMP = 1.46` を新設し `enemyFootBox` の見た目box(boxW/boxH)へ乗算=人型敵がプレイヤーと同寸に。
+    型別の相対サイズ(bat大/reaper小 等)は保持。**裏ボスは別経路(BOSS_SPRITE_FIT)なので対象外**。
+  - 人型NPC: `RESCUE_NPC_DISPLAY_H` 54→80(レスキュー/護衛をプレイヤー基準に)。
+  - **描画のみ=当たり判定/射程/速度/スコアは不変**。
+- 負荷 3/10: 敵スプライトが約1.46倍=フィルレートが増えるが、敵描画は元々軽い経路。数で上限あり。気になれば
+  `ACTOR_VISUAL_BUMP` を下げて調整可。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1011 — 護衛NPCの前進速度をレスキュー通常速に
 
 - 社長指示: `ESCORT_SPEED` 95 → `RESCUE_SURVIVOR_SPEED`(=40・レスキューと同じ通常速)に。常にこの速度で前進。

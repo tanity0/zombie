@@ -13,6 +13,12 @@ import type { Enemy, Player, Summon } from '../types/game';
 // upward, so collision and melee ranges remain unchanged.
 export const PLAYER_VISUAL_SCALE = 2.3;
 
+// 敵/NPCの「規定値スケール」をプレイヤー基準に合わせる一括倍率(社長指示)。
+// プレイヤーは固定 86px 幅(当たり判定28pxの約3.07倍)で描画されるのに対し、敵は当たり判定×倍率(~2.1)で
+// 小さめだった。人型敵(zombie/skeleton 等の~2.1)がプレイヤーと同寸になるよう、敵の見た目 boxを ×ACTOR_VISUAL_BUMP。
+// 描画のみ(当たり判定/射程/速度には不干渉)。型別の相対サイズ(bat大・reaper小 等)はそのまま保たれる。
+export const ACTOR_VISUAL_BUMP = 1.46;
+
 const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   bat: 2.35,
   skeleton: 2.15,
@@ -47,7 +53,9 @@ export const playerFootBox = (p: Player): FootBox => {
 };
 
 export const enemyFootBox = (e: Enemy): FootBox => {
-  const scale = ENEMY_VISUAL_SCALE[e.type] ?? 2;
+  // 規定スケールをプレイヤー基準へ(×ACTOR_VISUAL_BUMP)。裏ボスは絵を別経路(BOSS_SPRITE_FIT)で描くので対象外。
+  const hiddenBoss = e.type === 'mimir' || e.type === 'jormungand' || e.type === 'skadi';
+  const scale = (ENEMY_VISUAL_SCALE[e.type] ?? 2) * (hiddenBoss ? 1 : ACTOR_VISUAL_BUMP);
   return {
     footX: e.x + e.width / 2,
     footY: e.y + e.height,

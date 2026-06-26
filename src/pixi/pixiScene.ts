@@ -5021,7 +5021,7 @@ export class PixiScene {
 
   // 救助NPC(survivor)の描画。本体は受領素材スプライト(2コマ歩き・足元アンカーで y-sort)、
   // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
-  private static readonly RESCUE_NPC_DISPLAY_H = 54; // 表示の基準高さ(px)
+  private static readonly RESCUE_NPC_DISPLAY_H = 80; // 表示の基準高さ(px)。プレイヤー基準に合わせて拡大(社長指示・54→80)
   private static readonly RESCUE_WALK_FRAME_MS = 170;
   private drawRescueSurvivors(survivors: RescueSurvivor[], now: number) {
     const seen = new Set<string>();
