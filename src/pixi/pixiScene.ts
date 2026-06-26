@@ -4410,7 +4410,9 @@ export class PixiScene {
       const fit = BOSS_SPRITE_FIT[e.type] ?? BOSS_FIT_DEFAULT;
       view.sprite.texture = tex;
       view.sprite.anchor.set(0.5, 0.5);
-      const scale = (e.width / fit.w) / tex.width; // 帯幅→絵の実寸(縦横同率=歪まない)
+      // 帯幅→絵の実寸(縦横同率=歪まない)。さらに他敵と同じ擬似遠近スケールを掛ける(画面の前後で大小・視覚のみ)。
+      // 当たり判定の帯(e.width×e.height)は不変=絵だけが前で大きく/奥で小さくなる(社長指示)。
+      const scale = ((e.width / fit.w) / tex.width) * this.depthScaleEnemy(fb.footY);
       const spriteW = scale * tex.width, spriteH = scale * tex.height;
       const stripCx = e.x + e.width / 2, stripCy = e.y + e.height / 2;
       // 絵の中心(アンカー)= 帯の中心から、帯が絵内のどこにあるか(fit.cx/cy)ぶん逆にずらす。

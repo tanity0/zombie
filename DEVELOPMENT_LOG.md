@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1003 — 裏ボスの絵にも擬似遠近スケールを適用
+
+- 社長指示: 裏ボスの巨体スプライトにも他敵と同じ前後スケール(`depthScaleEnemy(footY)`)を掛ける=画面の
+  手前で大きく/奥で小さく。**当たり判定の帯(e.width×e.height)は不変**=絵だけが拡縮(視覚のみ)。
+  足元(帯)アンカーは維持されるので位置ズレなし。
+- プレイヤーの攻撃モーション(v0.25.992/993)は正式採用(社長確認)=変更なし、定数で微調整可のまま。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1002 — ミーミルのレーザー攻撃追加＋カウンター非致死protection廃止
 
 - **ミーミル専用レーザー**(社長指示): chase からの行動抽選で `MIMIR_LASER_CHANCE`(0.34)。
