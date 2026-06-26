@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1039 — 消失ログ: 残る全削除経路にcauseタグ(UNK撲滅で真因特定)
+
+- v0.25.1038 で UNK が多数出た(=未タグ経路で消えている)。残りの敵削除箇所を全てタグ:
+  - gameStore: resetGame=`reset` / beginArenaEvent一掃=`sweep` / 救助成功=`rescueWin`。
+  - useGameLoop: 上限カリング=`cap` / 救助チェイサー=`chaser` / 裏ボス退場=`bossGone`。
+  - 既存: kill / bomb / endEv。
+- これで既知の削除は全てタグ済み。次回テストで残る `UNK` = 完全に未知の経路=真のバグ箇所、と確定できる。
+  各 cause の出方(reset/sweep等)で「死亡リセット由来か実プレイ中か」も切り分く。
+- 検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1038 — 調査: 爆弾を一時OFF + 消失ログに削除理由(cause)タグ
 
 - 社長指示。(1) 爆弾(ボム)ピックアップを一時的に出さない `BOMB_PICKUPS_ENABLED=false`(後で true に戻す)。

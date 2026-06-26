@@ -5153,6 +5153,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2; // 範囲外だけ残す
       });
+      const keptIds = new Set(kept.map(e => e.id));
+      state.enemies.forEach(e => { if (!keptIds.has(e.id)) tagRemove(e.id, 'sweep'); }); // 消失ログ用: イベント開始の周辺一掃
       return { activeEvent: event, enemies: kept };
     });
   },
@@ -5300,6 +5302,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       // 成功アウトロへ突入: 攻撃者退場、survivor はハート→フェードしつつ円の外へ走って退場(savedAt+外向き速度)。
       // クリア告知(発生バナーと同じ機構)=「〇人救助成功！」。
+      get().enemies.forEach(e => { if (e.fromEvent) tagRemove(e.id, 'rescueWin'); }); // 消失ログ用: 救助成功で攻撃者退場
       set(state => ({
         enemies: state.enemies.filter(e => !e.fromEvent),
         rescueSurvivors: state.rescueSurvivors.map(s => {
@@ -7087,6 +7090,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     const state = get();
+    state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass

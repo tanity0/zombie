@@ -30,7 +30,8 @@ import {
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
-  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS
+  ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
+  ENEMY_REMOVE_CAUSE
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -1271,6 +1272,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // プレイヤーがスタート(原点)付近 homeRadiusPx 内へ戻れば死神は去る=逃げ切り。リスクは0へクールダウン。
             // ただし「時間による死神」(timeSpawned)は時間制限のデスなので原点に戻っても去らない(逃げ場なし)。
             if (!rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
+              if (rs.chaserId) ENEMY_REMOVE_CAUSE.set(rs.chaserId, 'chaser'); // 消失ログ用: 救助チェイサー除去
               useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== rs.chaserId) });
               rs.chaserId = null;
               rs.risk = 0;
@@ -1598,6 +1600,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
 
             if (despawn) {
+              ENEMY_REMOVE_CAUSE.set(boss.id, 'bossGone'); // 消失ログ用: 裏ボス退場(帰巣完了/深層離脱)
               useGameStore.setState({ enemies: useGameStore.getState().enemies.filter(e => e.id !== boss.id), bossChasing: false });
               bs.bossId = null; bs.spawned = false; bs.retreating = false;
             } else {
@@ -4767,6 +4770,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               .map(enemy => enemy.id)
           );
           if (toRemoveIds.size > 0) {
+            toRemoveIds.forEach(id => ENEMY_REMOVE_CAUSE.set(id, 'cap')); // 消失ログ用: 上限カリング(fromEventは保護のはず)
             useGameStore.setState({
               enemies: currentEnemiesForCap.filter(enemy => !toRemoveIds.has(enemy.id))
             });
