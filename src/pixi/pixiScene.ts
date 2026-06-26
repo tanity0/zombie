@@ -494,8 +494,6 @@ const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number 
 // scale offset from the player's foot plane, so the player stays ~1.0 and
 // objects grow/shrink relative to the hero.
 const DEPTH_SCALE_ENABLED = true;
-// B案: 擬似遠近の焦点面(depthRefY)をアテンション注視点へ寄せる際の平滑化時定数(秒)。小さいほど機敏。
-const DEPTH_REF_TAU = 0.16;
 // 擬似遠近のスケール係数。すべて描画のみ(当たり判定/射程/速度/スコアには不干渉)。実機チューニング用に
 // URLで上書き可: ?depthmin= / ?depthmax=(木・物・拾い物) / ?edepthk= / ?edepthmin= / ?edepthmax=(敵)。
 // 既定は位置ベースのマッピング(下記 DEPTH_POS_MAP=true)。?depthmap=0 で旧方式(DEPTH_K のクランプ式)へ。
@@ -965,8 +963,6 @@ export class PixiScene {
   private lastZoomNow = 0;     // 待機ズームのフレーム間 dt 計算用
   private hitstopFreezeNow = 0; // ヒットストップ中に固定するアニメ時計(0=非固定)
   private depthRefY = 0; // player foot world-Y this frame (the focal plane)
-  private depthRefSmoothed = NaN; // B案: アテンション中は焦点面を注視点へ寄せる(滑らかに追従する実値)
-  private lastDepthRefNow = 0;    // depthRef 平滑化の real-time デルタ用
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
 
@@ -2053,19 +2049,9 @@ export class PixiScene {
     this.introActive = s.introUntil === -1 || (s.introUntil > 0 && now < s.introUntil);
     this.syncIntroHelicopter(s.player, now);
 
-    // Focal plane for the pseudo-perspective scale = the player's feet。
-    // B案(社長指示): アテンション中だけ焦点面を注視点(寄った対象=裏ボス等)のYへ寄せる。
-    // これでカメラが寄った対象が等倍基準になり、「プレイヤーからの奥行きで小さくなる」のを解消。
-    // ポップ防止に real-time で平滑化(進入/離脱とも滑らか)。アテンション無し時はプレイヤー足元へ戻る。
+    // Focal plane for the pseudo-perspective scale = the player's feet.
     const pfb = playerFootBox(s.player);
-    const focalTargetY = s.attention ? s.attention.y : pfb.footY;
-    const refDt = this.lastDepthRefNow ? Math.min(0.1, (now - this.lastDepthRefNow) / 1000) : 0;
-    this.lastDepthRefNow = now;
-    const refLerp = 1 - Math.exp(-refDt / DEPTH_REF_TAU);
-    this.depthRefSmoothed = Number.isNaN(this.depthRefSmoothed)
-      ? focalTargetY
-      : this.depthRefSmoothed + (focalTargetY - this.depthRefSmoothed) * refLerp;
-    this.depthRefY = this.depthRefSmoothed;
+    this.depthRefY = pfb.footY;
     // 「裏に回ったら透ける」判定用のプレイヤー足元矩形(world)。障害物の可視矩形とAABBで重なり判定する。
     this.seeThroughPlayer = { cx: pfb.footX, footY: pfb.footY, halfW: pfb.boxW / 2, top: pfb.footY - pfb.boxH };
 

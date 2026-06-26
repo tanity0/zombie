@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1006 — B案(アテンション焦点面シフト)を撤回=元に戻す
+
+- 社長指示で v0.25.1004 の B案を revert。`depthRefY` は常にプレイヤー足元(従来挙動)へ戻した。
+  `DEPTH_REF_TAU` 定数・`depthRefSmoothed`/`lastDepthRefNow` フィールドも削除。
+- v0.25.1003 の「裏ボスの絵に擬似遠近スケール適用」は維持(B案とは別件)。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1005 — ミーミルのレーザーは3秒かけて低速追尾＋ダッシュ溜め中に後退り
 
 - **ミーミルのレーザー**(社長指示): 溜めを 2秒→**3秒**に。溜め中は注視点(`aiTargetX/Y`)を現在のプレイヤーへ
