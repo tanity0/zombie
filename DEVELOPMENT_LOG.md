@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1008 — ミーミルのレーザー: 追尾は発射中に＋発射中は画面シェイク
+
+- 社長指示で2点変更:
+  - **追尾は発射中**: 溜め(3秒)は方向ロック(予告のみ)に戻し、**発射中(`MIMIR_LASER_FIRE_MS` 420→1500ms)に
+    ビームがゆっくりプレイヤーを追尾**(`aiTarget` を低速 lerp)。ビーム帯に居れば継続ダメージ(`damagePlayer` が
+    700ms i-frame で間引く)。
+  - **発射中は画面シェイク**: 発射開始時に `triggerShake(1500ms, MIMIR_LASER_SHAKE_MAG=5)`(全体倍率2x込み)。
+  - 描画: ビーム本体は発射中ほぼ全開→最後の25%で消える + 微ちらつき。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1007 — 裏ボスの裏回り透けを滑らかフェード化＋2倍速
 
 - 社長指示「裏ボスが手前に行くにつれて透明になっていく処理を2倍速く」。従来 `view.sprite.alpha = behind ? 0.5 : 1`

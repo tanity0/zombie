@@ -479,7 +479,7 @@ const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
 const MIMIR_LASER_VIS_RANGE = 2600;     // 描画上のビーム長(px)
 const MIMIR_LASER_VIS_HALFWIDTH = 34;   // 描画上のビーム半太さ(当たり判定と同じ)
 const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・useGameLoop と一致)
-const MIMIR_LASER_FIRE_MS = 420;        // 発射本体の表示時間(フェード用)
+const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェード用・useGameLoop と一致)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   blue: { tint: 0x3b82f6, alphaMult: 1.7 },
@@ -4525,10 +4525,12 @@ export class PixiScene {
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
       } else {
         const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / MIMIR_LASER_FIRE_MS));
-        const w = MIMIR_LASER_VIS_HALFWIDTH * 2;
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * (0.75 + 0.25 * life), color: 0xff2020, alpha: 0.45 * life, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * life, cap: 'round' });
-        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.95 * life, cap: 'round' });
+        const fade = Math.min(1, life / 0.25); // 発射中はほぼ全開、最後の25%で消える
+        const flick = 0.9 + 0.1 * Math.sin(now / 40); // エネルギーのちらつき
+        const w = MIMIR_LASER_VIS_HALFWIDTH * 2 * flick;
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
+        o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
       }
     }
     this.drawHealthBar(o, e);

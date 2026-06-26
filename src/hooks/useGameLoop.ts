@@ -289,9 +289,10 @@ const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒�
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
 // ミーミル専用: 射撃方向に赤いラインを2秒溜め→その方向へ太いレーザーを発射(社長指示)。
 const MIMIR_LASER_CHANCE = 0.34;                     // chase からの行動抽選でレーザーを選ぶ確率(ミーミルのみ)
-const MIMIR_LASER_WINDUP_MS = 3000;                  // 赤ライン予告の溜め時間(3秒・社長指示)。この間ゆっくり追尾。
-const MIMIR_LASER_AIM_TRACK = 1.5;                   // 溜め中の照準追尾レート(小さいほど遅い=避けやすい)
-const MIMIR_LASER_FIRE_MS = 420;                     // レーザー本体の表示/判定時間
+const MIMIR_LASER_WINDUP_MS = 3000;                  // 赤ライン予告の溜め時間(3秒・社長指示)。溜め中は方向ロック。
+const MIMIR_LASER_AIM_TRACK = 1.5;                   // 発射中の照準追尾レート(小さいほど遅い=避けやすい・社長指示で追尾は発射中に)
+const MIMIR_LASER_FIRE_MS = 1500;                    // レーザー本体の表示/判定時間(この間ゆっくり追尾しながら揺れる)
+const MIMIR_LASER_SHAKE_MAG = 5;                     // 発射中の画面シェイク振幅(社長指示)
 const MIMIR_LASER_RANGE = 2600;                      // レーザーの長さ(px)
 const MIMIR_LASER_HALF_WIDTH = 34;                   // レーザーの半太さ(当たり判定/描画。太め)
 const MIMIR_LASER_DAMAGE = 42;                       // レーザー被弾ダメージ(直撃)
@@ -1480,34 +1481,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
                 }
               } else if (st === 'laser-windup') {
-                // ミーミル: 3秒溜め(静止)。赤ライン予告は描画側が bossState で出す。
-                // 溜め中はゆっくりプレイヤーへ照準を向ける(注視点 aiTarget を現在のプレイヤーへ低速 lerp=避けられる)。
-                {
-                  const k = Math.min(1, MIMIR_LASER_AIM_TRACK * deltaTime);
-                  patch.aiTargetX = (boss.aiTargetX ?? pcx) + (pcx - (boss.aiTargetX ?? pcx)) * k;
-                  patch.aiTargetY = (boss.aiTargetY ?? pcy) + (pcy - (boss.aiTargetY ?? pcy)) * k;
-                }
+                // ミーミル: 3秒溜め(静止)。方向はロック(追尾しない)。赤ライン予告は描画側が bossState で出す。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'laser-fire';
                   patch.bossStateUntil = newGameTime + MIMIR_LASER_FIRE_MS;
-                  // 発射: ロック方向へ太いレーザー。プレイヤーがビーム帯(線分±半太さ)に居れば1回ダメージ。
-                  const ox = bcx, oy = bcy;
-                  let ux = (boss.aiTargetX ?? pcx) - (boss.aiFromX ?? bcx);
-                  let uy = (boss.aiTargetY ?? pcy) - (boss.aiFromY ?? bcy);
-                  const ul = Math.hypot(ux, uy) || 1;
-                  ux /= ul; uy /= ul;
-                  const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
-                  const t = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - ox) * ux + (ppy - oy) * uy));
-                  const cxp = ox + ux * t, cyp = oy + uy * t;
-                  const pr = Math.max(player.width, player.height) / 2;
-                  if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                    const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー');
-                    if (died) triggerPlayerDeath(ppx, ppy);
-                  }
                   playSfx('heavy-impact'); // レーザー発射音(使い回し)
+                  useGameStore.getState().triggerShake(MIMIR_LASER_FIRE_MS, MIMIR_LASER_SHAKE_MAG); // 発射中ずっと揺れる
                 }
               } else if (st === 'laser-fire') {
-                // 発射中(ビーム本体)は静止。表示/判定窓を過ぎたら chase へ。ダメージは発射時に1回適用済み。
+                // 発射中: ビームがゆっくりプレイヤーを追尾(注視点 aiTarget を現在のプレイヤーへ低速 lerp=避けられる)。
+                // ビーム帯(線分±半太さ)に居れば継続ダメージ(damagePlayer が i-frame で間引く)。
+                const k = Math.min(1, MIMIR_LASER_AIM_TRACK * deltaTime);
+                const nax = (boss.aiTargetX ?? pcx) + (pcx - (boss.aiTargetX ?? pcx)) * k;
+                const nay = (boss.aiTargetY ?? pcy) + (pcy - (boss.aiTargetY ?? pcy)) * k;
+                patch.aiTargetX = nax; patch.aiTargetY = nay;
+                let ux = nax - bcx, uy = nay - bcy;
+                const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+                const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+                const tproj = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
+                const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
+                const pr = Math.max(player.width, player.height) / 2;
+                if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
+                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー');
+                  if (died) triggerPlayerDeath(ppx, ppy);
+                }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               } else if (st === 'dash-windup') {
                 // 溜め中はゆっくり後退り(ターゲットから離れる)してから突進(社長指示)。
