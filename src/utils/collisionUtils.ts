@@ -1,11 +1,10 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
-import { enemyFootBox, enemyVisualRect } from '../pixi/renderSpec';
+import { enemyFootBox } from '../pixi/renderSpec';
 
-// 「見た目=当たり判定」(社長指示)。通常敵は見える胴体ボックス(enemyVisualRect=描画スプライトの箱)で判定し、
-// 「見えてる=当たる/当たられる」を実現。裏ボスだけは従来どおり足元の帯(AABB=enemy.width×height)で判定する。
-const isHiddenBossType = (t: Enemy['type']): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi';
+// 当たり判定=裏ボスと同じ「帯」方式(社長指示)。全敵とも足元の生の帯(AABB=enemy.width×height)で判定する。
+// 絵は別経路(enemyFootBox)で帯より大きくフル表示=見た目≠判定(裏ボスと統一)。
 const enemyContactBox = (e: Enemy): { x: number; y: number; width: number; height: number } =>
-  isHiddenBossType(e.type) ? { x: e.x, y: e.y, width: e.width, height: e.height } : enemyVisualRect(e);
+  ({ x: e.x, y: e.y, width: e.width, height: e.height });
 
 // PHILL銃の頭部リージョン(見た目の上部)= 描画ボックス上端から boxH×この割合。
 const HEAD_FRACTION = 0.33;

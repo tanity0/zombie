@@ -606,6 +606,9 @@ const stage3EnemyTextureName = (type: string): string | null =>
 // ステージ3のボス(giantbat)は新絵が少し小さいので見た目だけ 1.2倍(社長指示)。当たり判定/射程は不変。
 const STAGE3_BOSS_VISUAL_SCALE = 1.2;
 
+// ★確認用: 全敵の当たり判定「帯」(AABB=e.width×e.height)をうっすら色付きで描く。社長確認後に false で消す。
+const SHOW_HITBOX_STRIP = true;
+
 // 裏ボスは「当たり判定=足元の帯(AABB=enemy.width×height)」と「絵(巨体)」を分離して描く(社長指示)。
 // fit = 絵の中での帯の位置・大きさ(0..1 の割合): w/h=帯が絵に占める幅/高さ, cx/cy=帯中心の絵内座標(左上原点)。
 // これで scale=(帯幅/fit.w)/texW から絵の実寸が決まり、帯=AABBの上に絵が正しく乗る。素材の額装が変わったら再計測。
@@ -4502,9 +4505,11 @@ export class PixiScene {
     }
     const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
     if (stunned) this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now);
-    // 裏ボスの当たり判定=足元の帯(AABB)。巨体で分かりにくいので帯=四角をうっすら表示(社長指示)。
-    // ボスの絵の「下」に敷く=この reticle 層(=スプライトより背面)へ描画し、さらに薄く(社長指示)。
-    if (isHiddenBoss(e.type)) {
+    // 当たり判定=全敵とも足元の「帯」(AABB=e.width×e.height・裏ボスと同仕様)。確認しやすいよう帯=四角を
+    // うっすら色付きで表示する。絵の「下」=この reticle 層(スプライトより背面)へ。
+    // ★確認用オーバーレイ(社長: 後で確定したら消す)。SHOW_HITBOX_STRIP=false で通常敵ぶんは一括OFF。
+    // 裏ボスは元々この帯を常時表示(巨体で分かりにくいため・社長指示)なので OFF でも残す。
+    if (SHOW_HITBOX_STRIP || isHiddenBoss(e.type)) {
       const pulse = 0.5 + 0.5 * Math.sin(now / 280);
       r.rect(e.x, e.y, e.width, e.height).fill({ color: 0xf97316, alpha: 0.07 + 0.04 * pulse });
       r.rect(e.x, e.y, e.width, e.height).stroke({ width: 2, color: 0xfb923c, alpha: 0.3 + 0.1 * pulse });

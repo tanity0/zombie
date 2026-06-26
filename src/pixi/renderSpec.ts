@@ -46,8 +46,9 @@ export const playerFootBox = (p: Player): FootBox => {
   return { footX: cx, footY: p.y + p.height, boxW, boxH };
 };
 
-// 通常敵(非・裏ボス)の見た目=当たり判定サイズの一括倍率(段階調整用・社長指示)。見た目と当たり判定(enemyVisualRect)
-// は両方ともこの enemyFootBox から算出されるので、ここを変えるだけで両方が同率で拡縮する。裏ボスは別経路(ENEMY_STATS の帯)。
+// 通常敵(非・裏ボス)の【見た目だけ】の一括倍率(段階調整用・社長指示)。当たり判定は裏ボスと同じ「帯」方式
+// (=ゲーム上の生の矩形 e.width×e.height)に統一したので、この倍率は描画(enemyFootBox)にしか掛からない。
+// 帯はこの描画ボックスの下部中央バンドに一致する(footY=足元に底辺・上へ伸びる)=裏ボスの足元帯と同構造。
 export const ENEMY_SIZE_MULT = 1.5;
 
 export const enemyFootBox = (e: Enemy): FootBox => {
@@ -60,9 +61,9 @@ export const enemyFootBox = (e: Enemy): FootBox => {
   };
 };
 
-// 見える胴体の当たり判定(AABB)=「見た目=当たり判定」の原則(社長指示)。足元アンカーで描いたスプライトの
-// 描画ボックスそのもの(footX中心・footYが底)。当たり判定(弾/接触/近接)をこれに合わせると「見えてる=当たる」。
-// 裏ボスは別(帯=enemy.width×height のまま)なので呼び出し側で除外する。
+// 【現在未使用】足元アンカーで描いた描画ボックスそのもの(footX中心・footYが底)のAABB。かつて「見た目=当たり判定」
+// 実験で当たり判定に使っていたが、社長指示で当たり判定を裏ボスと同じ「帯」方式(生の矩形)へ戻したため今は呼ばれない。
+// 「見た目=判定」へ再度切り替える場合の参照用に残す。
 export const enemyVisualRect = (e: Enemy): { x: number; y: number; width: number; height: number } => {
   const fb = enemyFootBox(e);
   return { x: fb.footX - fb.boxW / 2, y: fb.footY - fb.boxH, width: fb.boxW, height: fb.boxH };

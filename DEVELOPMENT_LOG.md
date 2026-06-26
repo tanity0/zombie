@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1018 — 通常敵の当たり判定を裏ボスと同じ「帯」方式に統一(+確認用オーバーレイ)
+
+- 社長指示の段階調整・第三弾(当たり判定編)。通常敵の当たり判定を裏ボスと同じ【帯(おび)】方式へ:
+  - 当たり判定 = 全敵とも足元の生の矩形 `e.width × e.height` の AABB(裏ボスと完全同仕様)。絵は別経路
+    (`enemyFootBox`)で帯から大きく伸びる=見た目≠判定。この帯は描画ボックスの下部中央バンドにちょうど一致。
+  - `collisionUtils.enemyContactBox` と `gameStore.enemyMeleeDist` を `enemyVisualRect`(見た目ボックス)から
+    生の帯へ変更。`isHiddenBoss`/`isHiddenBossType` の分岐は不要になり削除(全敵が同じ帯経路)。
+  - `ENEMY_SIZE_MULT`(=1.5)は当たり判定に掛からなくなり【見た目専用】に。`enemyVisualRect` は現在未使用(参照用に残置)。
+  - PHILL の頭部リージョン(`enemyFootBox` 由来の見た目上部)は据え置き=裏ボスと同じ「頭=見た目上部/胴=帯」構成。
+- 確認用オーバーレイ: 全敵の帯(AABB)を裏ボスと同じくうっすら橙で表示(`SHOW_HITBOX_STRIP=true`, pixiScene)。
+  社長確認後に `false` で通常敵ぶんは一括OFF。裏ボスの帯は元々常時表示なので OFF でも残す。
+  - 負荷: 1〜2/10。reticle 層(既に毎フレーム描画)へ矩形 fill+stroke を敵数ぶん追加。矩形はGraphics最軽量
+    プリミティブ(円/グローのような毎フレーム再テッセレートなし)。確認後に消す前提なので恒常コストにはならない。
+- 検証: lint / typecheck / test(65 passed) / build green。
+
 ## v0.25.1017 — 敵すべて(ボス含む)を1.5倍に(描画＋当たり判定)
 
 - 社長指示の段階調整・第二弾。全敵を現状の1.5倍(見た目＋当たり判定を同率):
