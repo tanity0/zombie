@@ -89,9 +89,9 @@ export const enemyHeadY = (e: Enemy, stage3: boolean): number => {
 // 当たり判定の「帯」幅の規格。Pixiの接地影(actorShadowWidthFromSprite)と同じ「実描画スプライト幅×0.55」。
 // 社長指示:「帯は影と同じ規格の幅で」。これで帯=影=見えてる足元の幅、が揃う。
 export const ENEMY_SHADOW_WIDTH_FRAC = 0.55;
-// 帯の高さ=実描画スプライト高さ×この割合(足元を底に固定して上へ伸ばす)。社長指示「縦幅を上方向に広げて(薄すぎ)」。
+// 帯の高さ=実描画スプライト高さ×この割合(足元を底に固定して上へ伸ばす)。社長指示で 50%(=見た目の下半分が当たり判定)。
 // 実機で微調整可。1.0=見た目の全身が当たり判定。
-export const ENEMY_STRIP_HEIGHT_FRAC = 0.6;
+export const ENEMY_STRIP_HEIGHT_FRAC = 0.5;
 
 // 通常敵(非・裏ボス)の当たり判定「帯」(AABB)。幅=影と同規格(実描画幅×0.55)、高さ=実描画高さ×ENEMY_STRIP_HEIGHT_FRAC、
 // 足元アンカー(footX中心・footYが底)で上方向へ伸ばす。実描画寸法は contain フィット(min(boxW,boxH/アスペクト) /

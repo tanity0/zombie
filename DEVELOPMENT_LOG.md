@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1023 — ステージ2索敵を420へ / 帯の縦幅を50%へ
+
+- ステージ2索敵: `LAB_SPAWN_AGGRO_RANGE` 700→**420**(社長指示)。700は湧きリング(~570-745px)に対し約7割が
+  即起床=「すぐ見つかる」状態だった。420(≒画面半対角線弱)で湧き時点は起きず、近づいて画面端に差しかかった敵から
+  起床=「忍び寄れる」挙動。リサイクル(~753)より十分小さく敵切れにもしない。固定ビュー/gameBounds は無関係と確認。
+- 当たり判定帯の縦幅: `ENEMY_STRIP_HEIGHT_FRAC` 0.6→**0.5**(社長指示=見た目の下半分が当たり判定)。幅は影規格(×0.55)据置。
+- 確認用オーバーレイは引き続き ON。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1022 — 帯の縦幅を上方向に拡大(薄すぎ対策)
 
 - 社長指示「裏ボス以外の当たり判定の縦幅を上方向に広げて(薄すぎ)」。`enemyHitStrip` の高さを 生 e.height から
