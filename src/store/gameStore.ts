@@ -6553,14 +6553,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           face = dx < 0 ? -1 : 1;
         }
       } else {
-        // 担当拠点へ前進。
+        // 担当拠点へ前進(近くに敵がいる間は↑で射撃して進まない)。
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
         if (d > 2) { const mv = Math.min(ESCORT_SPEED * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
-        const inC = Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS;
-        dwellMs = inC ? dwellMs + deltaTime * 1000 : 0;
-        if (inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
-          escortCaptures.set(base.id, esc.soldierIndex);
-        }
+      }
+      // 滞在カウント/占拠は射撃・前進どちらの枝でも毎フレーム評価する(社長報告のバグ修正)。
+      // 仕様「拠点内に10秒留まったら解放」: 敵を撃ちながらでも円内に留まっていればカウントを進める。
+      // 円の外(まだ到達前/押し出された)では0にリセット。
+      const inC = Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS;
+      dwellMs = inC ? dwellMs + deltaTime * 1000 : 0;
+      if (inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
+        escortCaptures.set(base.id, esc.soldierIndex);
       }
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face) escortsChanged = true;
       return { ...esc, x, y, fireAt, dwellMs, face };

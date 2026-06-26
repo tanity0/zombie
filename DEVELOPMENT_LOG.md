@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1027 — 拠点: 護衛が射撃中だと滞在カウントが進まないバグ修正
+
+- 社長報告「軍人が拠点に入ってもカウント始まらない」。原因: dwell(滞在)加算と占拠判定が「近くに敵がいない時(else枝)」
+  の中だけにあり、検知範囲に敵がいると射撃モードになって円内に居てもカウントが進まなかった(敵は常に居るので事実上停止)。
+- 修正: inC/dwell/占拠判定を if(射撃)/else(前進)の外へ出し、毎フレーム評価。射撃しながらでも円内に留まっていれば
+  10秒カウントが進む(円外では0リセット)。仕様「拠点内に10秒留まったら解放」に一致。検証: lint/typecheck/test(70)/build green。
+
 ## v0.25.1026 — マークスマンの速度バフ発動を3秒→2秒
 
 - 社長指示。`MARKSMAN_MOVE_BUFF_MS=2000` 新設。`marksmanSpeedMult`(実バフ)と頭上マークFXの発動閾値(updateState)を
