@@ -81,6 +81,19 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'player', scaleMode: 'nearest' },
       { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
       { name: 'knife-item', scaleMode: 'nearest' },  // 近接スイング中に振るナイフ実画像
+      // ステージ1(森)の装飾: 光る花クラスター12種(壁判定なしの飾り)。
+      { name: 'props/flower-0', scaleMode: 'nearest' },
+      { name: 'props/flower-1', scaleMode: 'nearest' },
+      { name: 'props/flower-2', scaleMode: 'nearest' },
+      { name: 'props/flower-3', scaleMode: 'nearest' },
+      { name: 'props/flower-4', scaleMode: 'nearest' },
+      { name: 'props/flower-5', scaleMode: 'nearest' },
+      { name: 'props/flower-6', scaleMode: 'nearest' },
+      { name: 'props/flower-7', scaleMode: 'nearest' },
+      { name: 'props/flower-8', scaleMode: 'nearest' },
+      { name: 'props/flower-9', scaleMode: 'nearest' },
+      { name: 'props/flower-10', scaleMode: 'nearest' },
+      { name: 'props/flower-11', scaleMode: 'nearest' },
       // 銃スプライト(ワールドのドロップ/ピックアップ表示 + HUDの武器アイコン)。武器keyで引く。
       { name: 'weapons/handgun-t1', scaleMode: 'nearest' },
       { name: 'weapons/handgun-t2', scaleMode: 'nearest' },

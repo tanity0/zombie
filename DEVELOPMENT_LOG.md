@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1044 — ステージ1に光る花の装飾(壁判定なし)を散布
+
+- 社長支給の花シート(4×3=12種)を境界フラッドフィルで黒背景除去・トリムし `public/sprites/props/flower-0..11.png`
+  として取り込み(Pillow)。`pixiTextures` に12枚登録。
+- `src/world/forestDecor.ts`(renderer-agnostic・PixiJS非依存): 木と同じく区画ごとの決定的散布。**ステージ1限定**
+  (`FLOWER_STAGES`=stage-1。farBackdropは森7ステージ共通の''なので、stageIdでスコープ)。少し小さめ
+  (`FLOWER_DISPLAY_H=42`×個体0.62〜0.92)。**当たり判定なし**(純粋な飾り=store/collision一切触らない)。
+- 描画 `syncForestFlowers`(pixiScene): actorLayer に足元YでY-sort(立ち物)。地平線フェード。屋内/他ステージはno-op。
+- 「少し光ってる風」: actorLayer は filteredWorld 内=既存の AdvancedBloom(閾値0.45)対象。明るい花弁が自動で
+  bloomして淡く光る=**追加コストほぼゼロ**(bloomはCLAUDE.md上ほぼfree)。発光スプライトは足していない。
+- 負荷: **1/10**(画面内の数株ぶんのスプライトのみ・毎フレーム変形だけ・追加の加算ライトなし)。もっと強い色付き
+  ハローが欲しい場合は、上限付きの小さな加算グロー(〜3/10)を別途追加可能。
+- テスト追加 `forestDecor.test.ts`(スコープ/決定性/安全半径/variant範囲)。検証: lint/typecheck/test(75)/build green。
+
 ## v0.25.1043 — 近接ナイフを支給ドット素材に差し替え(振りモーション)
 
 - 社長支給のナイフ画像を `public/sprites/knife-item.png` として取り込み(Pillowで2本並びから左の1本を
