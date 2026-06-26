@@ -89,17 +89,22 @@ export const enemyHeadY = (e: Enemy, stage3: boolean): number => {
 // 当たり判定の「帯」幅の規格。Pixiの接地影(actorShadowWidthFromSprite)と同じ「実描画スプライト幅×0.55」。
 // 社長指示:「帯は影と同じ規格の幅で」。これで帯=影=見えてる足元の幅、が揃う。
 export const ENEMY_SHADOW_WIDTH_FRAC = 0.55;
+// 帯の高さ=実描画スプライト高さ×この割合(足元を底に固定して上へ伸ばす)。社長指示「縦幅を上方向に広げて(薄すぎ)」。
+// 実機で微調整可。1.0=見た目の全身が当たり判定。
+export const ENEMY_STRIP_HEIGHT_FRAC = 0.6;
 
-// 通常敵(非・裏ボス)の当たり判定「帯」(AABB)。幅=影と同規格(実描画幅×0.55)、高さ=生の e.height、
-// 足元アンカー(footX中心・footYが底)。実描画幅は contain フィット幅 min(boxW, boxH/アスペクト)で、影が使う
-// スプライト実寸と一致させる(アスペクト未登録時は boxW にフォールバック)。深度スケールは掛けない(当たり判定不変)。
-// 裏ボスは別経路(生の帯=ENEMY_STATS)なので呼び出し側で除外する。
+// 通常敵(非・裏ボス)の当たり判定「帯」(AABB)。幅=影と同規格(実描画幅×0.55)、高さ=実描画高さ×ENEMY_STRIP_HEIGHT_FRAC、
+// 足元アンカー(footX中心・footYが底)で上方向へ伸ばす。実描画寸法は contain フィット(min(boxW,boxH/アスペクト) /
+// min(boxH,boxW×アスペクト))で影/絵の実寸と一致(アスペクト未登録時は box にフォールバック)。深度スケールは掛けない
+// (当たり判定不変)。裏ボスは別経路(生の帯=ENEMY_STATS)なので呼び出し側で除外する。
 export const enemyHitStrip = (e: Enemy): { x: number; y: number; width: number; height: number } => {
   const fb = enemyFootBox(e);
   const aspect = enemyArtAspect.get('default:' + e.type); // texH/texW
   const drawnW = aspect && aspect > 0 ? Math.min(fb.boxW, fb.boxH / aspect) : fb.boxW;
+  const drawnH = aspect && aspect > 0 ? Math.min(fb.boxH, fb.boxW * aspect) : fb.boxH;
   const w = drawnW * ENEMY_SHADOW_WIDTH_FRAC;
-  return { x: fb.footX - w / 2, y: e.y, width: w, height: e.height };
+  const h = drawnH * ENEMY_STRIP_HEIGHT_FRAC;
+  return { x: fb.footX - w / 2, y: fb.footY - h, width: w, height: h };
 };
 
 // 召喚ユニットは流用元の敵タイプと同じ視覚スケールで描く(敵と大きさを揃える)。

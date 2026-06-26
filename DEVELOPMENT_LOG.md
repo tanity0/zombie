@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1022 — 帯の縦幅を上方向に拡大(薄すぎ対策)
+
+- 社長指示「裏ボス以外の当たり判定の縦幅を上方向に広げて(薄すぎ)」。`enemyHitStrip` の高さを 生 e.height から
+  「実描画スプライト高さ×ENEMY_STRIP_HEIGHT_FRAC(=0.6)」へ変更。足元(footY)を底に固定して上へ伸ばす。
+- `ENEMY_STRIP_HEIGHT_FRAC=0.6` を新設(実機微調整可。1.0=見た目全身が当たり判定)。幅は影規格(×0.55)のまま。
+- 確認用オーバーレイは引き続き ON。負荷 1/10。検証: lint / typecheck / test(70) / build green。
+
 ## v0.25.1021 — 当たり判定「帯」の幅を影と同規格に(実描画幅×0.55)
 
 - 社長指示「帯は影と同じ規格の幅で」。通常敵(非・裏ボス)の当たり判定帯の【幅】を、Pixi接地影と同じ規格
