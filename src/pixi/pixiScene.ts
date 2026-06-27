@@ -4619,12 +4619,18 @@ export class PixiScene {
       view.sprite.position.set(Math.round(spx + liftShake), Math.round(spy - liftHop));
       view.sprite.scale.set(scale * breath.x, scale * breath.y * flinchSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
+      // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;
-      const behind = (ply.y + ply.height) < fb.footY
-        && (ply.x + ply.width) > (spx - spriteW / 2)
-        && ply.x < (spx + spriteW / 2);
+      const behindDist = fb.footY - (ply.y + ply.height);   // 正 = プレイヤーが帯より奥
+      const inHoriz = (ply.x + ply.width) > (spx - spriteW / 2) && ply.x < (spx + spriteW / 2);
+      let behindTarget: number;
+      if (!inHoriz || behindDist <= 0) {
+        behindTarget = 1;
+      } else {
+        const t = Math.min(1, behindDist / 140);          // 140px で最大透明度に達する
+        behindTarget = 1 - t * t * (1 - BOSS_BEHIND_ALPHA); // 二乗カーブ: 前半ゆっくり→後半急激
+      }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
-      const behindTarget = behind ? BOSS_BEHIND_ALPHA : 1;
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
       this.bossBehindAlpha += (behindTarget - this.bossBehindAlpha) * fastLerp;
       view.sprite.alpha = this.bossBehindAlpha;
