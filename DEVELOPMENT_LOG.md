@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1067 — 円形斬撃を派手化＋「ズッ→シャ!」の太→細二段階(社長指示・視覚のみ)
+
+- 社長「参考画像みたいにもっと派手に」「太いのから細く、ズッ シャ!って感じの二段階」。
+- 派手化: ストロークを3層(太い外周グロー0x1e6dff / 本体0x4aa8ff / 白芯0xffffff)に増やし、
+  先端 comet head も 青グロー→水色→白コアの3重円で強く光らせる。bloom と合わせて発光感を強調。
+- 二段階の質感を変更: 前半=太く重く溜めて入る「ズッ」(ease-in `x²`)、後半=細く鋭く一気に
+  snap して円を閉じる「シャ!」(ease-out `1-(1-x)³`)。時間配分 `SLASH_SPLIT=0.6`(前半長め)。
+  太さ倍率 `thick` を前半1.0→後半0.4まで絞り、ストローク幅と先端円径に乗算=太→細。
+- 判定/射程/タイミングは不変(視覚のみ)。変更ファイル: `src/pixi/pixiScene.ts`、`package.json`。
+- 検証: lint / tsc / test(75 pass) / build 全green。
+- 負荷: 3/10。per-frame Graphics が 2層→3層 + 先端3円に増加(最大 ~88seg×3stroke)。
+  単発・340ms・上限88segで頭打ちなので許容。重ければ外周グロー層を間引き可。
+- 次の引き継ぎ: 実機で「ズッ(太)→シャ!(細・速)」の溜め/snap のキレ、派手さの度合いを確認。
+  調整: 太さ=各stroke係数と`thick`の0.6、段配分=`SLASH_SPLIT`、速さ=`SLASH_LIFE_MS`、色=各color。
+
 ## v0.25.1066 — 円形斬撃を「二段階で流れる」スイープに(社長指示・参考絵・視覚のみ)
 
 - 社長「クレストは二段階あって流れるように見える」(参考絵2枚=青い斬撃が片側から入り→
