@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1084 — NPCセリフ 第2弾「敵に囲まれた時」(社長 開発指示書・High)
+
+- 社長指示: NPC周辺の敵圧が高い時に発話。NPCが苦戦している事を感情的に伝え、援護判断を促す。
+- 検知: `updateSuppression` の護衛ループで、各護衛NPCの周囲 `SURROUND_RADIUS(200px)` 内の敵数を数え、
+  `SURROUND_COUNT(4)` 以上で「囲まれ」。画面内の護衛のみ(既存の onScreen ゲート)。
+- 発話: 管理表準拠の `surrounded` セリフ(BASE_SOLDIERSに追加)を、新しいCD付き発話 `tryNpcLine` で投入。
+  - `tryNpcLine(name, category, text, categoryCdMs)`: 同一NPC `NPC_SAME_NPC_CD_MS(10s)`、同一カテゴリ
+    `categoryCdMs`(囲まれ=`SURROUND_CAT_CD_MS(40s)`)、キュー詰まり(>=2)を満たした時だけ投入。CD/last発話は
+    `npcSpokeAt`/`npcCatAt` で管理(reset でクリア)。複数NPCが同時に囲まれてもカテゴリCDで1件に絞る。
+  - 時間停止なしHUD(第1弾の `NpcDialogue` 表示機構をそのまま使用)。
+- 変更: `store/gameStore.ts`(BASE_SOLDIERS surrounded / 定数 / state npcSpokeAt・npcCatAt / tryNpcLine /
+  updateSuppression検知 / reset), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 1/10(既存の敵ループに距離カウント1個追加のみ)。
+- 次の引き継ぎ: 実機で囲まれ発話の出方・頻度を確認。閾値=SURROUND_RADIUS/COUNT、再発話=SURROUND_CAT_CD_MS。
+  以後のシーンも tryNpcLine + 各発火箇所で同様に追加できる(管理表のカテゴリCDを渡す)。
+
 ## v0.25.1083 — 出撃セリフ1人化＋セリフ枠調整＋制圧後NPCの縁巡回(社長指示)
 
 - 社長指示3点:

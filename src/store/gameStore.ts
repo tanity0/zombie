@@ -167,20 +167,25 @@ const makeEscorts = (px: number, py: number): EscortSoldier[] => {
 };
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
-// sortie=出撃時セリフ(セリフ管理表準拠)。capture/retreat は既存のコールアウト。
-const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string }[] = [
-  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。' },
-  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！' },
-  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。' },
-  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。' },
-  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！' },
-  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。' },
-  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。' },
-  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。' },
+// sortie=出撃時 / surrounded=敵に囲まれた時(セリフ管理表準拠)。capture/retreat は既存のコールアウト。
+const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string }[] = [
+  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。', surrounded: '囲まれた。突破口を作る。' },
+  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！', surrounded: '囲まれた！笑えない数だ！' },
+  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。', surrounded: '包囲されています。負傷リスクが高い。' },
+  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。', surrounded: '囲まれた。' },
+  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！', surrounded: '囲まれたか。上等だ！' },
+  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。', surrounded: '包囲傾向。脱出路を確保してください。' },
+  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。', surrounded: '囲まれた。最悪、でも想定内。' },
+  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。', surrounded: '囲まれたな。興味深いが危険だ。' },
 ];
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
 const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間
 const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
+const NPC_SAME_NPC_CD_MS = 10000; // 同一NPCの連続発話を抑制(管理表 8〜12秒)
+// 「敵に囲まれた時」検知/抑制(社長指示・管理表 High=危機/カテゴリCD必須)。
+const SURROUND_RADIUS = 200;      // この距離内の敵数で「囲まれ」を判定
+const SURROUND_COUNT = 4;         // 周囲この数以上で囲まれと判定
+const SURROUND_CAT_CD_MS = 40000; // 囲まれカテゴリの再発話CD(管理表 30〜60秒)
 // 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
 const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
   idx >= 0 ? BASE_SOLDIERS[idx % BASE_SOLDIERS.length] : null;
@@ -1485,6 +1490,8 @@ interface GameState {
   npcDialogue: { name: string; text: string; until: number } | null;
   npcDialogueQueue: { name: string; text: string }[];
   npcDialogueNextAt: number;
+  npcSpokeAt: Record<string, number>;   // NPC名→最後に喋ったgameTime(同一NPCのCD用)
+  npcCatAt: Record<string, number>;      // カテゴリ→最後に出したgameTime(同一カテゴリのCD用)
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
@@ -1681,6 +1688,8 @@ interface GameState {
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
   enqueueNpcDialogue: (lines: { name: string; text: string }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
+  // 状況反応セリフをCD(同一NPC/同一カテゴリ)を守って投入。通れば true。
+  tryNpcLine: (name: string, category: string, text: string, categoryCdMs: number) => boolean;
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
@@ -1941,6 +1950,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   npcDialogue: null,
   npcDialogueQueue: [],
   npcDialogueNextAt: 0,
+  npcSpokeAt: {},
+  npcCatAt: {},
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
@@ -4695,6 +4706,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (changed) set({ npcDialogue: cur, npcDialogueQueue: queue, npcDialogueNextAt: nextAt });
   },
+  tryNpcLine: (name, category, text, categoryCdMs) => {
+    const s = get();
+    const gt = s.gameTime;
+    if (gt - (s.npcSpokeAt[name] ?? -1e9) < NPC_SAME_NPC_CD_MS) return false;       // 同一NPCのCD
+    if (gt - (s.npcCatAt[category] ?? -1e9) < categoryCdMs) return false;            // 同一カテゴリのCD
+    if (s.npcDialogueQueue.length >= 2) return false;                                // 詰まり防止(画面1〜2個)
+    set({
+      npcDialogueQueue: [...s.npcDialogueQueue, { name, text }],
+      npcSpokeAt: { ...s.npcSpokeAt, [name]: gt },
+      npcCatAt: { ...s.npcCatAt, [category]: gt },
+    });
+    return true;
+  },
 
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
@@ -6713,6 +6737,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageShots: { id: string; dmg: number }[] = [];
     const escortShots: { x: number; y: number; dx: number; dy: number }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
+    const npcSurroundEvents: { name: string; text: string }[] = []; // 「敵に囲まれた」発話候補(CDはset後にtryNpcLineで適用)
     let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
@@ -6726,12 +6751,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       const base = state.baseSites.find(b => b.id === esc.baseId);
       if (!base || !onScreen(esc.x, esc.y)) return esc; // 画面外/拠点なし=前進停止(座標保持)
       // 最寄り敵(プレイヤーと同じく全敵を見る)。空中(ジャンプ中)の敵は無敵なので狙わない。
+      // 併せて SURROUND_RADIUS 内の敵数を数え、囲まれ判定(セリフ用)に使う。
       let nearest: Enemy | undefined; let nd2 = detect2;
+      let surround = 0; const sr2 = SURROUND_RADIUS * SURROUND_RADIUS;
       for (const e of state.enemies) {
         if (e.aiPhase === 'jump') continue;
         const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
         const d2 = (ex - esc.x) * (ex - esc.x) + (ey - esc.y) * (ey - esc.y);
         if (d2 < nd2) { nd2 = d2; nearest = e; }
+        if (d2 < sr2) surround++;
+      }
+      if (surround >= SURROUND_COUNT) {
+        const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+        npcSurroundEvents.push({ name: sol.name, text: sol.surrounded });
       }
       let { x, y, fireAt, dwellMs, face } = esc;
       if (nearest) {
@@ -6899,6 +6931,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = soldierByIndex(c.soldierIndex); // 制圧時の軍人セリフ(登場順=ミッション開始と同じ時間停止+吹き出し形式)
       if (sol) { get().setIntroDialogueLines([{ speaker: sol.name, text: sol.capture }]); get().startIntroDialogue(); }
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
+    }
+    // 「敵に囲まれた時」セリフ(時間停止なしHUD)。同一NPC/同一カテゴリのCDを守って1件だけ通す。
+    for (const ev of npcSurroundEvents) {
+      if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS)) break;
     }
     for (const a of spawnList) {
       const e = spawnEnemyAt('skeleton', a.x - 16, a.y - 16, now);
@@ -7517,6 +7553,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、4拠点NPC(soldierIndex 0..3)から1人だけランダムで予約(社長指示)。
         npcDialogue: null,
         npcDialogueNextAt: 0,
+        npcSpokeAt: {},
+        npcCatAt: {},
         npcDialogueQueue: (!indoor && stageTheme !== 'lab')
           ? [BASE_SOLDIERS[Math.floor(Math.random() * 4)]].map(s => ({ name: s.name, text: s.sortie }))
           : [],
