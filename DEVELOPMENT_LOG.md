@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1093 — NPCセリフ「作戦準備が進んだ時(12)」「プレイヤー無双時(10)」(社長指示)
+
+- 12 作戦準備が進んだ時(確定: イベント系クリアで、その地域に対応するNPCが反応): 救助成功(イベントクリア)時に
+  `npcOpPrepReact(ae.x, ae.y)` を呼び、クリア地点に最も近い拠点の担当NPCが `opPrep` を発話(CD30s)。
+  ※他のイベントクリア(異常鎮圧等)も同関数を呼べば拡張可。基地解放は6が担当。
+- 10 プレイヤー無双時(社長指示: 1出撃1-2回でなく、三國無双風に頻繁=出撃キャップ無し・CDのみ):
+  useGameLoop の弾撃破で「プレイヤー弾(weaponKeyがescort以外)」の撃破時刻を直近 `PRAISE_WINDOW_MS(4s)` で数え、
+  `PRAISE_KILL_COUNT(6)` 以上＝無双 → `npcPraiseReact()`。プレイヤー近傍 `PRAISE_WITNESS_DIST(700px)` の護衛が
+  `praise` を発話。カテゴリCD `PRAISE_CAT_CD_MS(12s)` のみで頻度管理(暴れ続ける間は繰り返し)。
+- `opPrep`/`praise` セリフを BASE_SOLDIERS に追加。
+- 変更: `store/gameStore.ts`(opPrep/praise/定数/npcOpPrepReact・npcPraiseReact/救助成功フック),
+  `hooks/useGameLoop.ts`(撃破カウント＋無双判定), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- これで管理表の主要シーン(6/8/9/10/11/12＋既出1〜5)を一通り実装。今後はセリフDB(量産用シート)の追加を反映していく。
+
 ## v0.25.1092 — NPCセリフ「自分で敵を倒した時(9・A案)」(社長指示)
 
 - 社長指示: 9はA案(護衛弾の撃破帰属)で。護衛弾には `weaponKey:'escort'` タグがあるので軽量。

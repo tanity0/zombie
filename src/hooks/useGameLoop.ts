@@ -31,7 +31,7 @@ import {
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
-  ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS
+  ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -375,6 +375,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const plantGuaranteedRef = useRef(false);
   const werewolfGuaranteedRef = useRef(false);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
+  const playerKillTimesRef = useRef<number[]>([]); // プレイヤーの撃破時刻(無双判定の直近ウィンドウ)
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
@@ -3631,6 +3632,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。
           if (enemyKilled && projectile?.weaponKey === 'escort' && enemyForFx) {
             useGameStore.getState().npcKillReact(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2);
+          } else if (enemyKilled && projectile && projectile.weaponKey !== 'escort') {
+            // NPCセリフ10: プレイヤー弾の撃破を直近ウィンドウで数え、短時間に多数=無双で近くの護衛が称賛(CDのみ・頻繁)。
+            const t = Date.now();
+            const arr = playerKillTimesRef.current;
+            arr.push(t);
+            while (arr.length && t - arr[0] > PRAISE_WINDOW_MS) arr.shift();
+            if (arr.length >= PRAISE_KILL_COUNT) {
+              useGameStore.getState().npcPraiseReact();
+              arr.length = 0; // 発火したら区切る(CDで頻度管理)
+            }
           }
 
           // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。
