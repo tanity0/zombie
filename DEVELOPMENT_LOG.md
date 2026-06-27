@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1074 — CI失敗(TS6133)修正: 未使用 playerKnifeArc を削除 + 検証手順是正
+
+- 症状(社長報告): 16:12頃からCI失敗メールが大量。原因はCIの `npm run typecheck`
+  (`tsc -p tsconfig.app.json` = `noUnusedLocals` 厳格)で `playerKnifeArc` 未使用エラー
+  `TS6133 at pixiScene.ts:871`。v0.25.1069 の2枚差し替え移行で未使用化した旧フィールドの消し残し。
+- 私(Claude)の検証ミス: ゆるい `npx tsc --noEmit`(ルート tsconfig)で確認していたため見落とし。
+  以後は **CIと同一の `npm run typecheck`** で確認する(CLAUDE.md準拠)。
+- 修正: 未使用フィールド `private playerKnifeArc` を削除(参照は宣言のみ・他になし)。
+- 変更: `src/pixi/pixiScene.ts`, `package.json`。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全green(75 pass)。
+  ※今回からCIと同一のtypecheckコマンドで確認。
+- 次の引き継ぎ: 06:53Z以降ずっと同じ理由でCI赤だったので、本pushでCIが緑に戻れば失敗メールも止まる。
+
 ## v0.25.1073 — スラッシャー追撃リングが近接フィニッシュ後に遅くなるバグ修正(社長承認A案)
 
 - 症状(社長報告): 追撃のサークルの1回目が遅い。特に近接フィニッシュの後だと必ず遅い。

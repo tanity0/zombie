@@ -868,7 +868,6 @@ export class PixiScene {
   private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1)
   private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(ダガー+青スラッシュ knife-swing-2)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
-  private playerKnifeArc = new Graphics();                 // (旧)白い斬撃。現在は未使用(2枚差し替えに移行)
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private lowHpVignette = new Sprite(getRedVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動(赤色テクスチャ)
