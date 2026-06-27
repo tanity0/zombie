@@ -1468,7 +1468,8 @@ export class PixiScene {
   // プレイヤー足元矩形と重なる)ものだけ OBSTACLE_SEE_THROUGH_ALPHA へ滑らかに透かす。それ以外は通常(地平フェード)へ。
   // 既存スプライトの alpha を lerp するだけ=新規描画/フィルタなし(負荷 1/10)。
   private applyObstacleAlpha(sprite: Sprite, footWorldY: number) {
-    const base = this.horizonActorAlpha(footWorldY);
+    // 手前(画面下端)でも消える: 地平線フェード × 手前フェード(敵と同じ near-plane フェード)。
+    const base = this.horizonActorAlpha(footWorldY) * this.foregroundActorAlpha(footWorldY);
     let target = base;
     if (OBSTACLE_SEE_THROUGH_ALPHA < 1 && footWorldY > this.seeThroughPlayer.footY && sprite.visible && sprite.texture && sprite.texture.width > 1) {
       const vw = Math.abs(sprite.scale.x) * sprite.texture.width;
@@ -3105,7 +3106,7 @@ export class PixiScene {
       }
       entry.sprite.tint = tint;
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
-      entry.sprite.alpha = this.horizonActorAlpha(entry.footY); // 地平線で自然にフェード
+      entry.sprite.alpha = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY); // 地平線+手前でフェード
     }
     for (const [id, entry] of this.flowerObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.flowerObjs.delete(id); }

@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1064 — 手前フェードをオブジェクト(木/壁/プロップ/花)にも適用(社長指示)
+
+- 1063で敵に入れた near-plane 手前フェード `foregroundActorAlpha`(画面下端の帯でだけ1→0)を、
+  オブジェクトにも展開:
+  - **障害物共通ヘルパー `applyObstacleAlpha`** の base に `× foregroundActorAlpha` を追加。これ1か所で
+    **木・壁・建物・プロップ**が一括対応(裏回り透け・地平線フェードはそのまま)。
+  - **ステージ1の装飾花** も `× foregroundActorAlpha`。
+- 地面デカール(groundLayer=プレイヤーの下の地面装飾)は据え置き(地面が手前で消えると不自然なため)。
+- 距離は敵と共通の `ENEMY_FOREGROUND_FADE_PX=110`(画面下端の帯幅)。判定不変(見た目のみ)。
+- 検証: lint / typecheck / test(75 passed) / build green。
+
 ## v0.25.1063 — 裏ボス透過#2(0.5→0)+非ボス敵の手前フェード(社長承認)
 
 - 社長承認のうえ実装(#1=裏に回って0.5は不変):
