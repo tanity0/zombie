@@ -6,6 +6,7 @@ import { formatTime } from '../utils/renderUtils';
 import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
+import { NpcDialogue } from './NpcDialogue';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
@@ -171,6 +172,9 @@ const GameHUD: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* NPCリアルタイムセリフ(コンボ/アテンションの下・優先度はその次)。 */}
+      <NpcDialogue />
 
       {/* Timer(中央) */}
       <div

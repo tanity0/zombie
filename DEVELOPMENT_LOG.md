@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1082 — NPCリアルタイムセリフ機能(第1弾: 出撃時シーン)(社長 開発指示書)
+
+- 社長の開発指示書: NPCを「一緒に戦う味方」に見せる、時間停止なしの短いセリフ。アテンション/コンボと同じ
+  左上ゾーンに、優先度「コンボ > アテンション > NPCセリフ」で軽量表示。まず**出撃時**シーンから。
+- セリフデータ: Googleスプレッドシート(セリフ管理表)準拠。既存の `BASE_SOLDIERS` ロスターに `sortie` を追加
+  (エドガー/ジョセフ/エリザベス/武蔵 ＝ 東/南/西/北。既存の `makeEscorts` が escort-i→soldierIndex i で
+  方角↔NPCを割当済みなので一致)。残り4人(予備)分の sortie も入れてある。
+- 表示機構(新規・汎用): store に `npcDialogue`(表示中)/`npcDialogueQueue`/`npcDialogueNextAt` を追加。
+  `enqueueNpcDialogue(lines)` でキュー投入、`updateNpcDialogue(gameTime)` を useGameLoop が毎フレーム呼んで
+  1行ずつ表示(NPC_DIALOGUE_MS=2800 / 行間 GAP=500)。変化時のみ set(毎フレーム再描画しない)。
+  HUDは新 `NpcDialogue.tsx`(狭いセレクタ購読、コンボ/バナー有無で下へずらして重なり回避)。
+- 出撃トリガ: `resetGame` で屋外(護衛NPCが居る出撃)のみ、4拠点NPC(soldierIndex 0..3)の sortie を順に予約。
+  1出撃1回・時間停止なし(イントロ後に gameTime が進み始めて順次表示)。
+- 変更: `store/gameStore.ts`(state/actions/BASE_SOLDIERS/reset), `hooks/useGameLoop.ts`(更新呼び出し),
+  `components/NpcDialogue.tsx`(新規), `components/GameHUD.tsx`(マウント), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。
+- 負荷: 1/10(HUDのDOM1個・gated set で再描画最小)。
+- 次の引き継ぎ(残りシーン): 表示機構(enqueueNpcDialogue+優先度/CD)は汎用化済み。次は管理表の High から
+  「拠点が見えてきた/拠点解放(Critical・バナー併用)/敵に囲まれた/救助者保護」等を、各イベント発火箇所で
+  enqueueNpcDialogue を呼ぶ形で追加可能。同一NPC/同一カテゴリのCD・優先度抑制ルールは管理表の表示制御に従って拡張する。
+  実機で出撃時4セリフの出方/長さ/位置(コンボ・アテンションとの重なり)を確認。
+
 ## v0.25.1081 — スカジ(裏ボス)に氷攻撃2種を追加(社長指示・素材導入)
 
 - 社長指示: スカジに以下を**追加**(既存のburst/radial/dashは据え置き)。

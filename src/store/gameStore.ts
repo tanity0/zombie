@@ -166,16 +166,20 @@ const makeEscorts = (px: number, py: number): EscortSoldier[] => {
 };
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
-const BASE_SOLDIERS: { name: string; capture: string; retreat: string }[] = [
-  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！' },
-  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！' },
-  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！' },
-  { name: '武蔵',       capture: '御意。',           retreat: '無念。' },
-  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！' },
-  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！' },
-  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！' },
-  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？' },
+// sortie=出撃時セリフ(セリフ管理表準拠)。capture/retreat は既存のコールアウト。
+const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string }[] = [
+  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。' },
+  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！' },
+  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。' },
+  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。' },
+  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！' },
+  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。' },
+  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。' },
+  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。' },
 ];
+// NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
+const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間
+const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
 // 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
 const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
   idx >= 0 ? BASE_SOLDIERS[idx % BASE_SOLDIERS.length] : null;
@@ -1476,6 +1480,10 @@ interface GameState {
   // イベント発生告知バナー(コンボ表示の近く)。gameTime(ms)基準。HUDが gameTime<eventBannerUntil の間表示。
   eventBannerText: string;
   eventBannerUntil: number;
+  // NPCリアルタイムセリフ(時間停止なし・HUDの軽量表示)。current=表示中、queue=順番待ち、nextAt=次を出せる最短gameTime。
+  npcDialogue: { name: string; text: string; until: number } | null;
+  npcDialogueQueue: { name: string; text: string }[];
+  npcDialogueNextAt: number;
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
@@ -1669,6 +1677,9 @@ interface GameState {
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
   spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string) => void;
+  // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
+  enqueueNpcDialogue: (lines: { name: string; text: string }[]) => void;
+  updateNpcDialogue: (gameTime: number) => void;
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
@@ -1926,6 +1937,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   rescueShooterFxAt: 0,
   eventBannerText: '',
   eventBannerUntil: 0,
+  npcDialogue: null,
+  npcDialogueQueue: [],
+  npcDialogueNextAt: 0,
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
@@ -4659,6 +4673,27 @@ export const useGameStore = create<GameState>((set, get) => ({
   spawnSkadiBlade: (x, y, angle, launchAt, enemyId) => set(s => ({
     skadiIceBlades: [...s.skadiIceBlades, { id: `sbld${skadiHazardSeq++}`, x, y, angle, launchAt, launched: false, vx: 0, vy: 0, expireAt: 0, enemyId }],
   })),
+
+  enqueueNpcDialogue: (lines) => {
+    if (!lines.length) return;
+    set(s => ({ npcDialogueQueue: [...s.npcDialogueQueue, ...lines] }));
+  },
+  // 表示中が寿命切れなら消し、空いていてキューがあれば次を出す(時間停止なし)。変化があった時だけ set。
+  updateNpcDialogue: (gameTime) => {
+    const s = get();
+    let cur = s.npcDialogue;
+    let queue = s.npcDialogueQueue;
+    let nextAt = s.npcDialogueNextAt;
+    let changed = false;
+    if (cur && gameTime >= cur.until) { cur = null; nextAt = gameTime + NPC_DIALOGUE_GAP_MS; changed = true; }
+    if (!cur && queue.length > 0 && gameTime >= nextAt) {
+      const head = queue[0];
+      cur = { name: head.name, text: head.text, until: gameTime + NPC_DIALOGUE_MS };
+      queue = queue.slice(1);
+      changed = true;
+    }
+    if (changed) set({ npcDialogue: cur, npcDialogueQueue: queue, npcDialogueNextAt: nextAt });
+  },
 
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
@@ -7465,6 +7500,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         baseSites: createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         escorts: (!indoor && stageTheme !== 'lab') ? makeEscorts(spawnTL.x, spawnTL.y) : [],
+        // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、4拠点NPC(soldierIndex 0..3)の出撃セリフを順に予約。
+        npcDialogue: null,
+        npcDialogueNextAt: 0,
+        npcDialogueQueue: (!indoor && stageTheme !== 'lab')
+          ? [0, 1, 2, 3].map(i => ({ name: BASE_SOLDIERS[i].name, text: BASE_SOLDIERS[i].sortie }))
+          : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,
         safeBaseId: null,
