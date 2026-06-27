@@ -125,6 +125,9 @@ const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに scre
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
 const HORIZON_ACTOR_HIDE_OFFSET_PX = 0;
 const HORIZON_ACTOR_FADE_PX = 120;
+// 非ボス敵の「手前(画面最下端=カメラ近接)で消える」near-plane フェード幅(px)。
+// 画面の一番下のこの帯の中だけで 1→0(近くでは消えない=社長指示「距離は下げて」)。
+const ENEMY_FOREGROUND_FADE_PX = 110;
 const HORIZON_REVEAL_OFFSET_PX = 200;
 const HORIZON_REVEAL_FADE_PX = 90;
 const FRONT_FOREST_PARALLAX_X = 0.68;
@@ -641,6 +644,9 @@ const HIT_SHAKE_MS = 220;
 const HIT_SHAKE_PX = 4;
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
 const BOSS_BEHIND_ALPHA = 0.5;
+// #2(社長指示): 裏に回って 0.5 まで薄くなった後、さらに奥(=手前へ遠ざかる)へ離れたら、
+// この距離(behindDist=70→FAR)で 0.5→0(完全透明)へ続ける。#1(0.5まで)の数値・カーブは不変。
+const BOSS_BEHIND_FAR_PX = 220;
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
 // ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
 // 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
@@ -1447,6 +1453,15 @@ export class PixiScene {
 
   private horizonActorAlpha(footWorldY: number) {
     return Math.max(0, Math.min(1, (footWorldY - this.horizonForestFootWorldY) / HORIZON_ACTOR_FADE_PX));
+  }
+
+  // 手前(画面の最下端=カメラ近接)で消える near-plane フェード(地平線フェードの対)。非ボス敵用。
+  // 画面下端から ENEMY_FOREGROUND_FADE_PX の帯の中だけで 1→0。近く(中央付近)では消えない。
+  private foregroundActorAlpha(footWorldY: number) {
+    const screenY = footWorldY - this.cameraY;
+    const start = this.screenH - ENEMY_FOREGROUND_FADE_PX;
+    if (screenY <= start) return 1;
+    return Math.max(0, 1 - (screenY - start) / ENEMY_FOREGROUND_FADE_PX);
   }
 
   // 障害物(木/壁/建物/プロップ)の alpha をフレーム更新。プレイヤーを「覆う」(手前=footY大で、見た目矩形が
@@ -4590,7 +4605,10 @@ export class PixiScene {
     const horizonAlpha = this.horizonActorAlpha(fb.footY);
     // 死神の回り込みワープ: 消える(0)→テレポート→出る(1) のフェード(useGameLoop が reaperWarpAlpha を駆動)。
     const reaperWarpFade = e.reaperWarpAlpha ?? 1;
-    view.container.alpha = horizonAlpha * reaperWarpFade;
+    // 非ボス敵は「手前(画面最下端)で消える」near-plane フェードを掛ける。裏ボスは自前の裏回りフェード
+    // (bossBehindAlpha)で別管理なので掛けない。
+    const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(fb.footY);
+    view.container.alpha = horizonAlpha * reaperWarpFade * foreFade;
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -4627,8 +4645,15 @@ export class PixiScene {
       if (!inHoriz || behindDist <= 0) {
         behindTarget = 1;
       } else {
-        const t = Math.min(1, behindDist / 70);           // 70px で最大透明度に達する
-        behindTarget = 1 - t * t * (1 - BOSS_BEHIND_ALPHA); // 二乗カーブ: 前半ゆっくり→後半急激
+        // #1(変更なし): 0→70px で 1.0→0.5(二乗カーブ。裏に回ると薄く残る)。
+        const t = Math.min(1, behindDist / 70);
+        let a = 1 - t * t * (1 - BOSS_BEHIND_ALPHA);
+        // #2(追加): さらに奥(70px超=手前へ遠ざかる)へ離れたら 0.5→0(完全透明)へ続ける。
+        if (behindDist > 70) {
+          const t2 = Math.min(1, (behindDist - 70) / (BOSS_BEHIND_FAR_PX - 70));
+          a = BOSS_BEHIND_ALPHA * (1 - t2);
+        }
+        behindTarget = a;
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;

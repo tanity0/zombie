@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1063 — 裏ボス透過#2(0.5→0)+非ボス敵の手前フェード(社長承認)
+
+- 社長承認のうえ実装(#1=裏に回って0.5は不変):
+  - **裏ボス#2**: 裏回り距離 behindDist が 70px(=0.5)を超えてさらに離れたら、`BOSS_BEHIND_FAR_PX=220` まで
+    で **0.5→0(完全透明)** へ続ける。70pxまで(#1の二乗カーブ→0.5)は完全に据え置き。
+  - **非ボス敵の手前フェード**: 画面最下端 `ENEMY_FOREGROUND_FADE_PX=110` の帯の中だけで 1→0 する
+    near-plane フェード `foregroundActorAlpha`(地平線フェードの対)。中央付近(近く)では消えない=社長指示
+    「裏ボス以外は距離を下げて(同じだと近くで消える)」。`view.container.alpha` に乗算(非ボスのみ)。
+- 裏ボスは自前の裏回りフェードで別管理なので near-plane フェードは掛けない(bossFixed分岐)。
+- 判定不変(見た目のみ)。値は定数(BOSS_BEHIND_FAR_PX / ENEMY_FOREGROUND_FADE_PX)で調整容易。
+- 検証: lint / typecheck / test(75 passed) / build green。
+
 ## v0.25.1062 — 0.25.1061 を取り消し(裏ボス透過の仕様を元に戻す)+仕様変更ルールを明文化
 
 - 反省: 0.25.1061 で裏ボスの裏回り透過の**仕様を勝手に変更してしまった**(floor 0.5→0=完全透明・
