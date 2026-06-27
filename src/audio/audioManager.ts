@@ -93,6 +93,8 @@ export type SfxKey =
   | 'hurricane'
   | 'dance-kick'
   | 'heavy-impact'
+  | 'skadi-ice'
+  | 'heli-intro'
   | 'whip-hit'
   | 'whip-swing'
   | 'anchor-plant'
@@ -273,6 +275,10 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。音が小さめなのでゲインで増幅(0.9→1.8)。
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },
+  // スカジ氷塊破裂/氷刃命中のSE(社長提供)。
+  'skadi-ice': { src: `${import.meta.env.BASE_URL}audio/sfx/skadi-ice.mp3`, volume: 1.0, minIntervalMs: 60 },
+  // ヘリコプター登場シーンのSE(社長提供・登場開始時に1回)。
+  'heli-intro': { src: `${import.meta.env.BASE_URL}audio/sfx/heli-intro.mp3`, volume: 1.0, minIntervalMs: 200 },
   // 鞭が敵に当たった時(社長提供SE)。
   'whip-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/whip-hit.mp3`, volume: 0.85, minIntervalMs: 60 },
   // 鞭を振る音(社長提供SE)。

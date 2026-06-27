@@ -5242,8 +5242,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
 
       // --- スカジ氷ハザード(判定はここ・描画はpixiScene) ---
+      // スカジ討伐(消滅)後は設置済みマーカー/飛行中の刃を消す(死んだボスの攻撃で被弾しない・社長指示)。
+      const skadiAlive = state.enemies.some(e => e.type === 'skadi');
       // 氷塊マーカー: テレグラフ2秒経過(gameTime>=fireAt)で起爆=爆発処理へ ice:true で積む。
-      const skadiIceMarkers = state.skadiIceMarkers.filter(m => {
+      const skadiIceMarkers = !skadiAlive ? [] : state.skadiIceMarkers.filter(m => {
         if (gameTime >= m.fireAt) {
           pumpkinBlasts.push({ x: m.x, y: m.y, radius: SKADI_ICE_RADIUS, damage: SKADI_ICE_DAMAGE, enemyId: m.enemyId, ice: true });
           return false;
@@ -5257,7 +5259,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pr = Math.max(player.width, player.height) / 2;
       const counterOpen = now <= player.counterWindowEnd;
       const meleeR = huntingMeleeRadius(player);
-      const skadiIceBlades = state.skadiIceBlades
+      const skadiIceBlades = !skadiAlive ? [] : state.skadiIceBlades
         .map(b => {
           if (!b.launched) {
             if (gameTime >= b.launchAt) {

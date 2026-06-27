@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1095 — デバッグ反映: スカジ撃破後の氷ハザード消去＋氷爆発SE＋ヘリ登場SE(社長指示・素材)
+
+- デバッグ洗い出しの結果、実バグは無し。低優先の気づき2件を社長判断で対応:
+  - ①スカジ撃破(消滅)後に氷ハザードが残る → `updateEnemies` で `skadiAlive = enemies.some(type==='skadi')` を
+    判定し、非生存ならマーカー/刃を `[]` に消去(死んだボスの攻撃で被弾しない)。
+  - ②氷塊破裂/氷刃命中のSEを heavy-impact 流用 → 社長提供mp3を `public/audio/sfx/skadi-ice.mp3` に追加し
+    `SfxKey 'skadi-ice'` を登録。ブラスト消化で ice は `skadi-ice`、非iceは従来の `heavy-impact` を再生。
+- 追加(社長提供素材): ヘリコプター登場SE → `public/audio/sfx/heli-intro.mp3` / `SfxKey 'heli-intro'`。
+  登場開始(`stampPlayerIntro`)で1回再生(着地SE `heli-land` は従来どおり別途)。
+- 変更: `src/store/gameStore.ts`(氷ハザード消去), `src/hooks/useGameLoop.ts`(SE分岐/ヘリ登場SE),
+  `src/audio/audioManager.ts`(SfxKey+登録), `public/audio/sfx/{skadi-ice,heli-intro}.mp3`, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 次の引き継ぎ: 実機でスカジ撃破時に残弾/マーカーが消えるか、氷SE・ヘリ登場SEの音量を確認(volume調整可)。
+
 ## v0.25.1094 — セリフDB_量産用(dlg_000001〜000073)を取り込み(バリアント＋ランダム)＋救助者保護シーン
 
 - 社長: スプレッドシート「セリフDB_量産用」更新を取り込み。各NPC×シーンに複数バリアント(キャラ設定リライト済み)。

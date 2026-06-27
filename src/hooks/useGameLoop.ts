@@ -860,6 +860,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           introHoldSinceRef.current = 0;
           useGameStore.getState().stampPlayerIntro();
           introUntil = useGameStore.getState().introUntil;
+          playSfx('heli-intro'); // ヘリコプター登場SE(社長提供・登場開始時に1回)
         }
         if (introUntil > 0 && nowMs < introUntil) {
           introWasActiveRef.current = true;
@@ -2755,7 +2756,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         {
           const blasts = useGameStore.getState().pumpkinBlasts;
           if (blasts.length > 0) {
-            playSfx('heavy-impact'); // ジャンプ攻撃の着地音
+            // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
+            if (blasts.some(b => !b.ice)) playSfx('heavy-impact');
+            if (blasts.some(b => b.ice)) playSfx('skadi-ice');
             const bp = useGameStore.getState().player;
             const bpcx = bp.x + bp.width / 2;
             const bpcy = bp.y + bp.height / 2;
