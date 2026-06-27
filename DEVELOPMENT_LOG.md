@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1068 — 斬撃を参考(image2)の「2本の青い流線」化＋キレUP＋左右2種固定(社長指示・視覚のみ)
+
+- 社長: 参考2枚(青いダガー本体 / 2本の青い流線の斬撃)「この二つにして」。前段で「キレ・勢いがない」。
+  さらに「右と左だけにして、上に撃っても下に撃っても右か左のアニメを使って」。
+- **斬撃形状**: 1本リボン→**同心2本ストリーク**(外/内)に変更。先端で収束・尾で開く(splay)。
+  各リボン=青グロー(0x2a78ff)+白熱コア(0xffffff)。先端は青→水色→白の三重円。image2の双線に寄せた。
+- **キレ・勢い**: 全体寿命 `SLASH_LIFE_MS` 340→**220**(速い)。出だしの重い溜め(ease-in)を撤廃し
+  前半ズッ=鋭い ease-out、後半シャ!=**ease-out-back**で snap＆軽くオーバーシュート(行き過ぎて戻る)。
+  `headSharp` で後半ほど輝きを先端へ集中=鋭い先頭エッジ。`SLASH_SPLIT` 0.6→0.4。
+- **左右2種固定**: 斬撃の向きを水平にスナップ。`horiz = lastDirection.x`(なければ `player.direction`)で
+  右(head=0)/左(head=π)のみ。上/下入力でも直近の左右の版を使う(縦専用アニメは無し)。
+- 判定/射程/タイミングは不変(視覚のみ)。変更ファイル: `src/pixi/pixiScene.ts`、`package.json`。
+- 検証: lint / tsc / test(75 pass) / build 全green。
+- 負荷: 3/10。2本×(glow+core)=最大 ~72seg×4stroke＋先端3円。単発220ms・seg上限72で頭打ち。
+  重ければ内側リボンのglow層を間引き可。
+- **未対応(Codex依頼)**: 参考画像1の「青いダガー本体」はバイナリ画像差し替えが必要。
+  Claude(クラウド)はバイナリPNGを書けない。**`public/sprites/knife-item.png` をこの青ダガーに
+  置き換えれば即反映**(テクスチャ名 'knife-item' のまま・コード変更不要)。別名にする場合は
+  `getTexture('knife-item')`(pixiScene.ts:4082)の名前を教えてくれれば配線する。
+- 次の引き継ぎ: 実機で双線の見た目・キレ・左右の向き、青ダガー差し替え後の本体を確認。
+  調整: 速さ=`SLASH_LIFE_MS`、段配分=`SLASH_SPLIT`、太さ=stroke係数と`thick`、双線の開き=`splay`。
+
 ## v0.25.1067 — 円形斬撃を派手化＋「ズッ→シャ!」の太→細二段階(社長指示・視覚のみ)
 
 - 社長「参考画像みたいにもっと派手に」「太いのから細く、ズッ シャ!って感じの二段階」。

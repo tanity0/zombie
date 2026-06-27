@@ -425,7 +425,8 @@ const KNIFE_ARC_XSTRETCH = 1.6;       // 斬撃を狙い軸方向へ引き伸ば
 // 三日月(playerKnifeArc)は引っ込める。実機で戻したい時は true に。
 const KNIFE_FLAT_ARC_ENABLED = false;
 // 円形斬撃(2段スイープ)の全体寿命ms。COUNTER_WINDOW(400ms)内に収める。
-const SLASH_LIFE_MS = 340;
+// 短いほど鋭く速い(キレ・勢い)。
+const SLASH_LIFE_MS = 220;
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -6634,56 +6635,68 @@ export class PixiScene {
       // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in
       // and fades fast (no rotation). The crescent faces the player's last
       // heading; it's thick in the belly and tapers to thin tips.
+      // 斬撃アニメは左右2種だけ。上/下に撃っても、水平成分(なければ直近の左右向き
+      // player.direction)で右(0)か左(π)のアニメを選ぶ。
       const dir = player.lastDirection;
-      const head = dir ? Math.atan2(dir.y, dir.x) : -Math.PI / 2;
+      const horiz = dir && Math.abs(dir.x) > 1e-3 ? dir.x : (player.direction === 'left' ? -1 : 1);
+      const head = horiz >= 0 ? 0 : Math.PI;
       const openAt = player.counterWindowEnd - COUNTER_WINDOW;
       const life = (now - openAt) / SLASH_LIFE_MS; // 0..1 全体寿命
       if (life < 1) {
         // 二段階で流れる円形斬撃。comet head が攻撃範囲の円周を1周し、通った弧が
         // 青く光って残る。前半=半周まで一気→減速、後半=残り半周を流して円を閉じる。
         // 各段とも「速く入って終わりで止まる」ease なので境目で一瞬溜め、2段に見える。
-        const fade = life < 0.78 ? 1 : Math.max(0, 1 - (life - 0.78) / 0.22);
+        const fade = life < 0.72 ? 1 : Math.max(0, 1 - (life - 0.72) / 0.28);
         const startA = head - Math.PI;                      // 振り向きの反対側から入る
-        // ズッ(前半=太く重く溜めて入る) → シャ!(後半=細く鋭く一気に走って円を閉じる)。
-        const SLASH_SPLIT = 0.6;                             // 時間配分(前半ズッ / 後半シャ)
-        let prog, thick;                                     // prog:0..1→1周 / thick:太さ倍率
+        // ズッ(前半=太く鋭く突く) → シャ!(後半=細く一気に snap して円を閉じる)。
+        // 出だしは重く溜めず、両段とも ease-out で「速く入って止まる」=キレ・勢い重視。
+        const SLASH_SPLIT = 0.4;                             // 時間配分(前半ズッ短め / 後半シャ)
+        let prog, thick, headSharp;                          // prog:0..1→1周 / thick:太さ / headSharp:先端集中
         if (life < SLASH_SPLIT) {
           const x = life / SLASH_SPLIT;
-          prog = 0.5 * x * x;                                // ズッ: 重く溜めて半周(加速=重い出だし)
+          prog = 0.5 * (1 - Math.pow(1 - x, 2.6));           // ズッ: 鋭く出て半周(ease-out)
           thick = 1;                                         // 太い
+          headSharp = 1.6;
         } else {
           const x = (life - SLASH_SPLIT) / (1 - SLASH_SPLIT);
-          prog = 0.5 + 0.5 * (1 - Math.pow(1 - x, 3));       // シャ!: 一気に snap して円を閉じる
-          thick = 1 - 0.6 * x;                               // 太→細(鋭い残光)
+          // シャ!: ease-out-back で snap＋軽くオーバーシュート(円を一瞬行き過ぎて戻る=キレ)。
+          const c1 = 1.8, c3 = c1 + 1;
+          const e = 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+          prog = 0.5 + 0.5 * e;
+          thick = 1 - 0.62 * Math.min(1, x);                 // 太→細(鋭い残光)
+          headSharp = 1.6 + 2.2 * Math.min(1, x);            // 先端へ輝きを集中(鋭い先頭エッジ)
         }
         const arcLen = prog * Math.PI * 2;                  // start から頭まで描く弧長
-        const segs = Math.max(6, Math.round(prog * 88));
-        for (let i = 0; i < segs; i++) {
-          const u0 = i / segs, u1 = (i + 1) / segs;         // 0=尾(start), 1=頭
-          const a1 = startA + arcLen * u0;
-          const a2 = startA + arcLen * u1;
-          const trail = Math.pow(u1, 1.5);                  // 頭ほど明るく太い
-          const rr1 = r + Math.sin(a1 * 3) * 1.2;
-          const rr2 = r + Math.sin(a2 * 3) * 1.2;
-          const x1 = cx + Math.cos(a1) * rr1, y1 = cy + Math.sin(a1) * rr1;
-          const x2 = cx + Math.cos(a2) * rr2, y2 = cy + Math.sin(a2) * rr2;
-          // 1) 太い外周グロー(青)= bloom 感を出す広い帯。
-          g.moveTo(x1, y1).lineTo(x2, y2)
-            .stroke({ width: (8 + 30 * trail) * thick, color: 0x1e6dff, alpha: (0.05 + 0.10 * trail) * fade, cap: 'round' });
-          // 2) 本体(明るい青)。
-          g.moveTo(x1, y1).lineTo(x2, y2)
-            .stroke({ width: (3 + 16 * trail) * thick, color: 0x4aa8ff, alpha: (0.18 + 0.26 * trail) * fade, cap: 'round' });
-          // 3) 白い芯(エッジの鋭さ)。
-          g.moveTo(x1, y1).lineTo(x2, y2)
-            .stroke({ width: (1 + 4.5 * trail) * thick, color: 0xffffff, alpha: (0.30 + 0.60 * trail) * fade, cap: 'round' });
+        const segs = Math.max(6, Math.round(prog * 72));
+        // 参考(image2)の「2本の青い流線」。同心の2リボン(外/内)が先端で収束・尾で開く。
+        // 各リボン: 青グロー(bloom) + 白熱コア。
+        for (const sign of [1, -1]) {
+          for (let i = 0; i < segs; i++) {
+            const u0 = i / segs, u1 = (i + 1) / segs;       // 0=尾(start), 1=頭
+            const trail = Math.pow(u1, headSharp);          // 頭ほど明るく太い(後半ほど先端集中=鋭い)
+            const splay = (1.4 + 7 * (1 - u1)) * thick;     // 尾ほど2本が開く(先端は収束)
+            const a1 = startA + arcLen * u0;
+            const a2 = startA + arcLen * u1;
+            const rA = r + sign * splay;
+            const rr1 = rA + Math.sin(a1 * 3) * 0.8;
+            const rr2 = rA + Math.sin(a2 * 3) * 0.8;
+            const x1 = cx + Math.cos(a1) * rr1, y1 = cy + Math.sin(a1) * rr1;
+            const x2 = cx + Math.cos(a2) * rr2, y2 = cy + Math.sin(a2) * rr2;
+            // 青グロー(bloom 帯)。
+            g.moveTo(x1, y1).lineTo(x2, y2)
+              .stroke({ width: (5 + 17 * trail) * thick, color: 0x2a78ff, alpha: (0.08 + 0.16 * trail) * fade, cap: 'round' });
+            // 白熱コア(鋭いエッジ)。
+            g.moveTo(x1, y1).lineTo(x2, y2)
+              .stroke({ width: (1 + 3.4 * trail) * thick, color: 0xffffff, alpha: (0.34 + 0.62 * trail) * fade, cap: 'round' });
+          }
         }
-        // 先端(comet head): 大きな青グロー → 白コアの二重で派手に光らせる(後半は細く鋭く)。
+        // 先端(2本が収束する白熱点): 青グロー → 水色 → 白コアの三重で強く光らせる。
         const headA = startA + arcLen;
-        const hr = r + Math.sin(headA * 3) * 1.2;
+        const hr = r + Math.sin(headA * 3) * 0.8;
         const hx = cx + Math.cos(headA) * hr, hy = cy + Math.sin(headA) * hr;
-        g.circle(hx, hy, (16 * thick) * fade + 2).fill({ color: 0x2e86ff, alpha: 0.22 * fade });
-        g.circle(hx, hy, (8 * thick) * fade + 1.2).fill({ color: 0x9fd2ff, alpha: 0.45 * fade });
-        g.circle(hx, hy, (4 * thick) * fade + 0.8).fill({ color: 0xffffff, alpha: 0.95 * fade });
+        g.circle(hx, hy, (15 * thick) * fade + 2).fill({ color: 0x2e86ff, alpha: 0.25 * fade });
+        g.circle(hx, hy, (7 * thick) * fade + 1.2).fill({ color: 0xbfe0ff, alpha: 0.5 * fade });
+        g.circle(hx, hy, (3.5 * thick) * fade + 0.9).fill({ color: 0xffffff, alpha: 0.97 * fade });
       }
     } else if (player.huntingCharged) {
       const pulse = 0.72 + 0.28 * Math.sin(now / 260);
