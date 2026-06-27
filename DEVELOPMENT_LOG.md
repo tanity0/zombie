@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1088 — NPCセリフ 第5弾「拠点が見えてきた時」＋スカジ氷刃の設置間隔0.4秒(社長指示)
+
+- 社長指示1: 「拠点が見えてきた時」=NPCの進軍率が一定以上(≒80%)で発話。あと少し感を出す。
+  - 実装: 未制圧の担当拠点中心へ `NEAR_BASE_DIST(600px)` 内に近づいたら `baseNear` 発話(管理表準拠)。
+    例 エドガー「見えた。あれが東部拠点だ。」武蔵「見えた。北部拠点だ。」エリザベス「西部拠点を視認。あと少しです。」。
+    `updateSuppression` 護衛ループ(on-screen)で判定→`tryNpcLine(..,'baseNear',..,BASE_NEAR_CAT_CD_MS=25s)`。
+- 社長指示2: スカジの氷の刃の設置間隔を 0.2→**0.4秒**(`SKADI_BLADE_GAP_MS` 200→400)。
+- 変更: `store/gameStore.ts`(baseNear/定数/判定/発火), `hooks/useGameLoop.ts`(氷刃間隔), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 次の引き継ぎ: 実機で「拠点見えた」の出方(近づいた時)・氷刃の設置テンポを確認。
+  調整: NEAR_BASE_DIST / BASE_NEAR_CAT_CD_MS / SKADI_BLADE_GAP_MS。
+
 ## v0.25.1087 — NPCセリフ 第4弾「後退する時」(放置×ランダム代理)＋スカジ氷刃を近くに(社長指示)
 
 - 社長指示1: 「後退する時」=NPCが敵圧に押されて後退。後退システム未実装のため代理として
