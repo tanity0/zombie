@@ -134,6 +134,7 @@ const ESCORT_SPEED = RESCUE_SURVIVOR_SPEED; // 前進速度=レスキューと�
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
+const ESCORT_PATROL_R = 0.8;            // 制圧後に巡回する円の半径(BASE_CAPTURE_RADIUS×この割合=縁寄り。社長指示)
 // 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
 const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: number; hy: number }[] => {
   const arr: { x: number; y: number; hx: number; hy: number }[] = [];
@@ -6742,8 +6743,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           escortShots.push({ x, y, dx, dy });
           face = dx < 0 ? -1 : 1;
         }
+      } else if (base.status === 'captured') {
+        // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
+        // 敵が居る間は上の射撃枝で停止するので、巡回は「敵が居ない時」だけ。
+        const cx0 = x - base.x, cy0 = y - base.y;
+        let ang = Math.atan2(cy0, cx0);
+        if (!Number.isFinite(ang)) ang = 0;
+        const patrolR = BASE_CAPTURE_RADIUS * ESCORT_PATROL_R;
+        const curR = Math.hypot(cx0, cy0);
+        const newR = curR + Math.sign(patrolR - curR) * Math.min(Math.abs(patrolR - curR), ESCORT_SPEED * deltaTime);
+        ang += (ESCORT_SPEED / Math.max(1, patrolR)) * deltaTime; // 時計回りに周回
+        const nx = base.x + Math.cos(ang) * newR, ny = base.y + Math.sin(ang) * newR;
+        face = (nx - x) < 0 ? -1 : 1;
+        x = nx; y = ny;
       } else {
-        // 担当拠点へ前進(近くに敵がいる間は↑で射撃して進まない)。
+        // 制圧前: 担当拠点へ前進(近くに敵がいる間は↑で射撃して進まない)。
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
         if (d > 2) { const mv = Math.min(ESCORT_SPEED * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
       }
@@ -7500,11 +7514,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         baseSites: createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         escorts: (!indoor && stageTheme !== 'lab') ? makeEscorts(spawnTL.x, spawnTL.y) : [],
-        // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、4拠点NPC(soldierIndex 0..3)の出撃セリフを順に予約。
+        // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、4拠点NPC(soldierIndex 0..3)から1人だけランダムで予約(社長指示)。
         npcDialogue: null,
         npcDialogueNextAt: 0,
         npcDialogueQueue: (!indoor && stageTheme !== 'lab')
-          ? [0, 1, 2, 3].map(i => ({ name: BASE_SOLDIERS[i].name, text: BASE_SOLDIERS[i].sortie }))
+          ? [BASE_SOLDIERS[Math.floor(Math.random() * 4)]].map(s => ({ name: s.name, text: s.sortie }))
           : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,

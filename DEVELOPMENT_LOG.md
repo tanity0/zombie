@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1083 — 出撃セリフ1人化＋セリフ枠調整＋制圧後NPCの縁巡回(社長指示)
+
+- 社長指示3点:
+  1. 出撃時セリフは誰か1人だけ → `resetGame` の予約を4人順番から**4拠点NPCのランダム1人**に変更。
+  2. アテンションゾーンのセリフ枠を狭く＋改行 → `NpcDialogue.tsx` の maxWidth を min(74vw,380)→**min(52vw,230)**、
+     `whiteSpace:normal`/`wordBreak`/`leading-snug` で折り返し前提に。
+  3. 拠点制圧後のNPCは円の縁を巡回。敵がいたら停止射撃(後者は既存) →
+     護衛AIの「敵なし」枝を分岐: 制圧前=従来どおり拠点中心へ前進、**制圧後(base.status==='captured')=円の縁を巡回**
+     (`ESCORT_PATROL_R=0.8`×`BASE_CAPTURE_RADIUS`、半径を寄せつつ角度を進めて滑らかに時計回り周回)。
+     敵検知時は従来の停止射撃枝が優先されるので「敵がいたら立ち止まって射撃」は自動で成立。
+- 変更: `store/gameStore.ts`(reset�予約/護衛AI/ESCORT_PATROL_R), `components/NpcDialogue.tsx`, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 変化なし(計算式の分岐のみ)。
+- 次の引き継ぎ: 実機で出撃セリフ(1人)・枠の折り返し・制圧後の巡回(縁・速さ・敵時停止射撃)を確認。
+  巡回半径=ESCORT_PATROL_R、速さ=ESCORT_SPEED。回り向きは角度加算の符号で反転可。
+
 ## v0.25.1082 — NPCリアルタイムセリフ機能(第1弾: 出撃時シーン)(社長 開発指示書)
 
 - 社長の開発指示書: NPCを「一緒に戦う味方」に見せる、時間停止なしの短いセリフ。アテンション/コンボと同じ

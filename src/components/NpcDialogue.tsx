@@ -16,12 +16,12 @@ export const NpcDialogue = () => {
         top: `calc(max(env(safe-area-inset-top), 8px) + ${topPx}px)`,
         left: 'max(env(safe-area-inset-left), 18px)',
         transition: 'top 0.25s ease',
-        maxWidth: 'min(74vw, 380px)',
+        maxWidth: 'min(52vw, 230px)',
       }}
     >
       <div
-        className="glass-pill px-3 py-1 text-[13px]"
-        style={{ border: '1px solid rgba(251,191,36,0.45)', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
+        className="glass-pill px-3 py-1 text-[13px] leading-snug"
+        style={{ border: '1px solid rgba(251,191,36,0.45)', textShadow: '0 1px 0 rgba(0,0,0,0.9)', whiteSpace: 'normal', wordBreak: 'break-word' }}
       >
         <span className="font-bold text-amber-300/95 mr-1.5">{npc.name}</span>
         <span className="text-white/90">{npc.text}</span>
