@@ -5182,7 +5182,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         return true;
       });
       // 氷刃: launchAt で発射(向き固定の速度を付与)→以後は等速直進。プレイヤー命中で爆発処理へ積む。寿命で消滅。
+      // カウンター対象(社長指示): カウンター窓中は近接半径内の氷刃を弾ける。速い氷刃を接触の一瞬で合わせるのは
+      // 難しいので、窓中は能動的に半径内で弾く=パリィ用ブラストをプレイヤー中心(半径=meleeR)に積み、既存の
+      // パリィ経路(無効化+Counter!+スカジへ反撃ダメージ)を再利用する。
       const pr = Math.max(player.width, player.height) / 2;
+      const counterOpen = now <= player.counterWindowEnd;
+      const meleeR = huntingMeleeRadius(player);
       const skadiIceBlades = state.skadiIceBlades
         .map(b => {
           if (!b.launched) {
@@ -5196,7 +5201,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         .filter(b => {
           if (!b.launched) return true;
           if (gameTime >= b.expireAt) return false;
-          if (Math.hypot(pcx - b.x, pcy - b.y) <= SKADI_BLADE_HIT + pr) {
+          const d = Math.hypot(pcx - b.x, pcy - b.y);
+          if (counterOpen && d <= meleeR) {
+            // カウンター成立: プレイヤー中心(半径meleeR)のブラストでパリィ→消化側でカウンター扱いになる。
+            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true });
+            return false;
+          }
+          if (d <= SKADI_BLADE_HIT + pr) {
             pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true });
             return false;
           }

@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1089 — スカジ氷刃をカウンター対象に(社長指示)
+
+- 社長指示: 氷刃もカウンター対象に。氷刃は速く、接触の一瞬でカウンター窓を合わせるのが難しかった。
+- 実装(`updateEnemies` の氷刃判定): カウンター窓中(now<=player.counterWindowEnd)は、近接半径
+  `huntingMeleeRadius` 内の氷刃を**能動的に弾く**。プレイヤー中心(半径=meleeR)のブラストを `pumpkinBlasts`(ice)
+  に積み、既存のパリィ消化(無効化＋Counter!＋スカジへクリ反撃ダメージ＋i-frame)を再利用。窓が無ければ従来どおり
+  接触で被弾。これで弾と同様に「カウンターで弾き返す」対象になる。
+- 変更: `store/gameStore.ts`(氷刃判定にカウンター窓×近接半径分岐), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 補足: 既に接触時のパリィ自体は機能していたが速さで合わせにくかったため、窓中は半径内で弾けるようにして
+  実用的にカウンター可能化。調整: 弾ける範囲=近接半径(レベル/ハンティングで変動)。
+
 ## v0.25.1088 — NPCセリフ 第5弾「拠点が見えてきた時」＋スカジ氷刃の設置間隔0.4秒(社長指示)
 
 - 社長指示1: 「拠点が見えてきた時」=NPCの進軍率が一定以上(≒80%)で発話。あと少し感を出す。
