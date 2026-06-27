@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1078 — オブジェクト(木/壁/プロップ)に常時足影を追加(A案・近い順7個・社長承認)
+
+- 社長承認: 木やオブジェクトにも普段から太陽/月の方向足影を付ける(A案)。負荷キャップ=近い順7個。
+- 実装(`syncShadows` 末尾): 木(`trees`)/壁(`wallObjs`)/プロップ(`propObjs`)/city props(`cityPropObjs`)を
+  集め、**プレイヤー足元に近い順 OBJECT_SHADOW_MAX(=7) 個**だけアクターと同じソフト方向影
+  (`placeShadowSprite`=プール済みスプライト)で描画。地面デカール(groundLayer)と地平線際は除外。
+  順位下ほど `rankFade=(N-i)/N` で薄く(最遠 i=6 で ~0.14)→ 7位↔8位の入れ替わりポップを防止。
+  影幅は木は控えめ(×0.28)、壁/プロップは表示幅から算出。
+- 既存の影プール+mark-sweep を再利用(生成/破棄コストなし)。判定/挙動不変・視覚のみ。
+- 変更: `src/pixi/pixiScene.ts`, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。
+- 負荷: 1/10(影スプライト最大+7。プール済み=安い描画。fill-rateも7枚なら無視できる)。
+  個数/濃さ/木影サイズは `OBJECT_SHADOW_MAX` と木影係数(0.28)で調整可。
+- 次の引き継ぎ: 実機で常時影の見え方・歩行時のポップ有無を確認。増減は OBJECT_SHADOW_MAX のみ。
+
 ## v0.25.1077 — ローカル光源の投影影を2倍に(社長指示・視覚のみ)
 
 - 社長「この影(ローカル光源の投影影)の大きさを2倍にして」。

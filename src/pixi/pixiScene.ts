@@ -606,6 +606,9 @@ const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 // 投影影の大きさ倍率(長さ・幅・接地楕円をまとめて拡縮)。社長指示で2倍。視覚のみ・挙動不変。
 const LOCAL_EVENT_SHADOW_SIZE_MULT = 2;
+// 木/壁/プロップへの常時足影(太陽/月の方向影)。負荷キャップ=プレイヤーに近い順この個数まで。
+// 順位下ほど薄くして境界の入れ替わりポップを防ぐ(社長指示・視覚のみ)。
+const OBJECT_SHADOW_MAX = 7;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
 
@@ -4051,6 +4054,32 @@ export class PixiScene {
     // 拾い物(syncPickups が毎フレーム配列を作り直す)。
     for (const ps of this.pickupShadows) {
       this.placeShadowSprite(ps.id, ps.x, ps.y, ps.w, ps.alpha, seen);
+    }
+    // オブジェクト(木/壁/プロップ/city props)の常時足影。負荷キャップで「プレイヤーに近い順
+    // OBJECT_SHADOW_MAX 個」だけに出す。順位が下のものほど rankFade で薄くし、境界(N位↔N+1位)の
+    // 入れ替わりで影がパッと消えるポップを防ぐ。アクターと同じソフト方向影をプール経由で出す。
+    {
+      const pfb = playerFootBox(player);
+      const cands: { id: string; x: number; y: number; w: number; d: number }[] = [];
+      const addObj = (id: string, sx: number, fy: number, w: number) => {
+        if (this.horizonActorAlpha(fy) <= 0) return; // 地平線際は出さない(空に浮かない描画と整合)
+        const dx = sx - pfb.footX, dy = fy - pfb.footY;
+        cands.push({ id, x: sx, y: fy, w, d: dx * dx + dy * dy });
+      };
+      for (const [key, t] of this.trees) addObj('osh:tree:' + key, t.sprite.x, t.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(t.footY) * 0.28);
+      for (const [id, e] of this.wallObjs) addObj('osh:wall:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.34));
+      for (const [id, e] of this.propObjs) addObj('osh:prop:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
+      for (const [id, e] of this.cityPropObjs) {
+        if (e.sprite.parent === this.L.groundLayer) continue; // 地面デカールは影なし
+        addObj('osh:city:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
+      }
+      cands.sort((a, b) => a.d - b.d);
+      const n = Math.min(OBJECT_SHADOW_MAX, cands.length);
+      for (let i = 0; i < n; i++) {
+        const c = cands[i];
+        const rankFade = (OBJECT_SHADOW_MAX - i) / OBJECT_SHADOW_MAX; // 近い=濃い → 遠い=薄い
+        this.placeShadowSprite(c.id, c.x, c.y - 2, c.w, this.horizonActorAlpha(c.y) * rankFade, seen);
+      }
     }
     // mark-and-sweep: 消えたアクター/設置物の影スプライトを破棄。
     for (const [id, sp] of this.shadowPool) {
