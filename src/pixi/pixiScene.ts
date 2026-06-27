@@ -4431,18 +4431,20 @@ export class PixiScene {
         const chestY = fb.footY - fb.boxH * 0.5 * dsc;
         const baseX = this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX;
         const baseY = this.snapToScreenPixel(chestY - bob, this.L.world.position.y) + introOffY + actOffY;
-        // 白い斬撃(三日月): 体に被せて狙い方向へ。出だしに強く光って素早く消える=スピード感。
-        // 向きは aim を二等分線にしつつ sweep に少し追従させて「振った軌跡」に見せる。
+        // 白い斬撃(三日月): 体の背後(-0.15H)から前方(+0.30H)へ位置が流れる。
+        // 参考絵: 体の後ろ辺りから始まり、体の前を払って振り抜く軌跡。
         const arcEase = 1 - Math.pow(1 - kt, 2);
-        knifeArc.rotation = aimAng + sweep * 0.35 * (facingLeft ? -1 : 1);
-        // 中心を狙い方向(腕/銃が伸びる側)へ少し寄せ、立ち絵の腕/銃を斬撃で覆って「振ってる」風に。
-        const arcFwd = fb.boxH * 0.12 * dsc;
-        knifeArc.position.set(baseX + kax * arcFwd, baseY + kay * arcFwd);
-        const arcSc = (fb.boxH / 156) * dsc * (0.95 + 0.5 * arcEase); // 振り抜きで少し伸びる(全体に大きめ)
-        // 狙い軸方向(ローカル+x)へ引き伸ばして横長に。Y反転で左向きの刃線に合わせる。
-        knifeArc.scale.set(arcSc * KNIFE_ARC_XSTRETCH, facingLeft ? -arcSc : arcSc);
-        // 前半でピーク→急速フェード(寿命の約55%で消える)。
-        knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.06, (0.55 - kt) / 0.22))) * view.sprite.alpha;
+        // 位置: aim方向に沿って背後から前方へスライド。
+        const posOffset = (-0.15 + 0.45 * kEase) * fb.boxH * dsc;
+        knifeArc.position.set(baseX + kax * posOffset, baseY + kay * posOffset);
+        // 回転: 振り始め=aim+90°(横から来る弧)→振り抜き=aim(正面向け)。左向き時は角度を反転。
+        const rotOff = (Math.PI * 0.5) * (1 - kEase) * (facingLeft ? -1 : 1);
+        knifeArc.rotation = aimAng + rotOff;
+        const arcSc = (fb.boxH / 156) * dsc * (0.95 + 0.5 * arcEase);
+        // スケール: aim軸に垂直方向へ引き延ばし(払いの幅感を強調)。左向きはY反転。
+        knifeArc.scale.set(arcSc, facingLeft ? -arcSc * KNIFE_ARC_XSTRETCH : arcSc * KNIFE_ARC_XSTRETCH);
+        // Alpha: 振り始めはやや遅れてフェードイン → 振り抜き後もゆっくり消える(軌跡感)。
+        knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.10, (0.75 - kt) / 0.28))) * view.sprite.alpha;
         knifeArc.visible = knifeArc.alpha > 0.01;
         // ナイフ本体。左向きは上下反転で刃線を自然に保つ(反転すると素材ローカル角の符号も反転)。
         const nativeAng = facingLeft ? -KNIFE_NATIVE_ANGLE : KNIFE_NATIVE_ANGLE;
