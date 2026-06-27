@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1096 — 裏ボス画面内は「時間死神」抽選を停止(距離死神は維持)(社長指示)
+
+- 社長指示: 裏ボス出現中(画面内)は時間死神の抽選無し。ただし距離死神は出る。
+- 実装(`useGameLoop` 死神v1ブロック): `hiddenBossOnScreen`(裏ボスがプレイヤー中心±半画面+BOSS_SCREEN_MARGIN内)を
+  判定し、時間抽選ブロック(timeStartMs後の周期抽選＋気配横切り)を `!hiddenBossOnScreen` でゲート。
+  距離(深奥リスク/警告横切り/完全出現)側は一切変更なし=距離死神は従来どおり出る。
+- 変更: `src/hooks/useGameLoop.ts`, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 次の引き継ぎ: 実機で裏ボス戦中に時間死神が抽選されない(横切り含む)・離脱後に再開する・距離死神は出ることを確認。
+
 ## v0.25.1095 — デバッグ反映: スカジ撃破後の氷ハザード消去＋氷爆発SE＋ヘリ登場SE(社長指示・素材)
 
 - デバッグ洗い出しの結果、実バグは無し。低優先の気づき2件を社長判断で対応:

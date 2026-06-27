@@ -1272,6 +1272,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           const liveEnemies = useGameStore.getState().enemies;
           const chaserAlive = rs.chaserId != null && liveEnemies.some(e => e.id === rs.chaserId);
+          // 裏ボスが画面内に居る間は「時間死神」の抽選を止める(距離死神は不変・社長指示)。
+          // 画面内 ≒ プレイヤー中心(カメラ追従)±半画面+マージン。
+          const reaperGB = useGameStore.getState().gameBounds;
+          const hiddenBossOnScreen = liveEnemies.some(e => isHiddenBoss(e.type)
+            && Math.abs((e.x + e.width / 2) - pcx) <= reaperGB.width / 2 + BOSS_SCREEN_MARGIN
+            && Math.abs((e.y + e.height / 2) - pcy) <= reaperGB.height / 2 + BOSS_SCREEN_MARGIN);
           // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
           if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; rs.warpAnimStartAt = 0; }
 
@@ -1308,7 +1314,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
             // 時間による出現(社長指示): 10分経過後、20秒ごとに抽選。確率=10%+(10分以降の経過分×10%)で最大100%。
             // 抽選ごとに気配演出(横切り)を出し、当選で risk を最大化=直後の完全出現へ。距離条件は不問。
-            if (newGameTime >= REAPER_CONFIG.timeStartMs
+            if (!hiddenBossOnScreen
+                && newGameTime >= REAPER_CONFIG.timeStartMs
                 && newGameTime - rs.lastTimeRollAt >= REAPER_CONFIG.timeRollIntervalMs) {
               rs.lastTimeRollAt = newGameTime;
               const minsPast = Math.floor((newGameTime - REAPER_CONFIG.timeStartMs) / 60000);
