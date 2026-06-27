@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1069 — 近接スイングを「2枚画像差し替え」方式に全面移行(社長指示・素材導入・視覚のみ)
+
+- 社長: 自前描画ではなく**渡した2枚の画像を切り替えて振って見せる**。「かってに回転させないで」。
+  位置参考絵(キャラ付き)を受領。右向き: 1枚目=ダガーをキャラ左下に構え→2枚目=ダガー左上+
+  青い二重スラッシュがキャラ右へ大きく弧。左攻撃は**水平ミラーのみ**(回転しない)。上/下入力でも
+  水平成分(なければ直近向き)で右か左の版を使う。
+- **素材導入**: 社長提供PNG/JPEGの紫背景を flood-fill で透過・切り抜き(回転なし)し、
+  `public/sprites/knife-swing-1.png`(青ダガー) / `knife-swing-2.png`(青ダガー+青スラッシュ)として追加。
+  `pixiTextures.ts` の standalone に nearest で登録。
+- **スイング描画刷新** (`pixiScene.ts` drawPlayer内): 旧=狙い方向にナイフを回転させる手続き描画＋
+  自前の白三日月/円形斬撃。新=2スプライト(`playerKnife`=frame1 / `playerKnifeSlash`=frame2)を
+  `kt`(スイング進行 0..1)で差し替え。`KNIFE_SWING_SWITCH=0.30` で切替、回転なし、左向きは scale.x 反転。
+  位置/サイズは `KNIFE_F1/F2`(キャラ箱高基準オフセット)で調整可。
+- 自前の円形斬撃テレグラフ(`syncPlayerFx`)は `SLASH_PROC_ENABLED=false` で無効化(復帰可)。
+  不要になった旧定数(KNIFE_ANCHOR/NATIVE_ANGLE/LEN_FRAC/ARC_SPAN/XSTRETCH/FLAT_ARC_ENABLED)を撤去。
+- 判定/射程/タイミングは不変(視覚のみ)。変更: `src/pixi/pixiScene.ts`, `src/pixi/pixiTextures.ts`,
+  `public/sprites/knife-swing-1.png`, `knife-swing-2.png`, `package.json`。
+- 検証: lint / tsc / test(75 pass) / build 全green。
+- 負荷: 1/10。手続き描画(per-frame Graphics)を撤去しスプライト2枚に置換=むしろ軽量化。
+- **次の引き継ぎ(実機で位置調整)**: 画像の出る位置/大きさ/切替/フェードは全て定数で調整可:
+  切替=`KNIFE_SWING_SWITCH`、1枚目=`KNIFE_F1`(scale/ox/oy)、2枚目=`KNIFE_F2`。
+  ox+で右・oy+で下(右向き基準)。実機で見て微調整して欲しい(社長の位置絵に寄せた初期値)。
+
 ## v0.25.1068 — 斬撃を参考(image2)の「2本の青い流線」化＋キレUP＋左右2種固定(社長指示・視覚のみ)
 
 - 社長: 参考2枚(青いダガー本体 / 2本の青い流線の斬撃)「この二つにして」。前段で「キレ・勢いがない」。

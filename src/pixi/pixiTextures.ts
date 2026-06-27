@@ -80,7 +80,9 @@ export const ensureTextures = (): Promise<void> => {
     const standalone: { name: string; scaleMode?: 'nearest' | 'linear' }[] = [
       { name: 'player', scaleMode: 'nearest' },
       { name: 'katana-item', scaleMode: 'nearest' }, // 背負い刀(刀/小烏丸 装備中にプレイヤー背面へ表示)
-      { name: 'knife-item', scaleMode: 'nearest' },  // 近接スイング中に振るナイフ実画像
+      { name: 'knife-item', scaleMode: 'nearest' },  // (旧)近接ナイフ実画像。互換のため残置
+      { name: 'knife-swing-1', scaleMode: 'nearest' }, // 近接スイング1枚目(青ダガー)
+      { name: 'knife-swing-2', scaleMode: 'nearest' }, // 近接スイング2枚目(青ダガー+青スラッシュ)
       // ステージ1(森)の装飾: 光る花クラスター12種(壁判定なしの飾り)。
       { name: 'props/flower-0', scaleMode: 'nearest' },
       { name: 'props/flower-1', scaleMode: 'nearest' },

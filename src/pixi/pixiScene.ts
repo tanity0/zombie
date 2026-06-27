@@ -413,20 +413,20 @@ const PLAYER_WALK_CYCLE_MS = 460;
 const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
 const KATANA_BACK_SCALE = 0.72;
-// 近接ナイフ(knife-item)。素材解析値: グリップ(柄)= 正規化(0.215,0.770)を支点、
-// グリップ→切先のローカル角度 = -39.9°(画面y下向き)。表示長はプレイヤー箱高に対する割合。
-const KNIFE_ANCHOR_X = 0.215;
-const KNIFE_ANCHOR_Y = 0.77;
-const KNIFE_NATIVE_ANGLE = -39.9 * Math.PI / 180;
-const KNIFE_LEN_FRAC = 0.78;          // 表示サイズ(画像最大辺 → 箱高×この割合)
-const KNIFE_ARC_SPAN = 2.6;           // 白い斬撃(三日月)の角度幅(rad・約149°)
-const KNIFE_ARC_XSTRETCH = 1.6;       // 斬撃を狙い軸方向へ引き伸ばす(横長に)倍率
-// 斬撃表現を「攻撃範囲の円に沿った青い円形斬撃」に一本化したため、平面の白い
-// 三日月(playerKnifeArc)は引っ込める。実機で戻したい時は true に。
-const KNIFE_FLAT_ARC_ENABLED = false;
+// (旧)近接ナイフのアンカー/角度/三日月定数は、2枚差し替えスイングへの移行で不要になり撤去。
 // 円形斬撃(2段スイープ)の全体寿命ms。COUNTER_WINDOW(400ms)内に収める。
 // 短いほど鋭く速い(キレ・勢い)。
 const SLASH_LIFE_MS = 220;
+// 近接スイングを2枚の画像差し替えで見せる方式へ移行したため、自前描画の円形斬撃
+// テレグラフ(syncPlayerFx)は既定で無効。実機で戻したい時は true に。
+const SLASH_PROC_ENABLED = false;
+// 2枚差し替えスイング(回転なし・左右ミラーのみ。参考: 社長提供の位置絵)。
+// frame1=ダガーをキャラ左下に構え、frame2=ダガー左上+青スラッシュが右へ弧。kt で切替。
+// オフセット単位 = キャラ箱高×奥行スケール(unit)。右向き時の値(左向きは ox を反転+画像xミラー)。
+// scale = スプライト幅 / unit。実機で微調整可。
+const KNIFE_SWING_SWITCH = 0.30;                        // frame1→frame2 切替(kt 0..1)
+const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.20 };  // 1枚目: キャラ左下のダガー
+const KNIFE_F2 = { scale: 1.60, ox: 0.22, oy: -0.04 };  // 2枚目: 被せ+スラッシュ右へ
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -871,9 +871,10 @@ export class PixiScene {
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
-  private playerKnife = new Sprite();                      // 近接スイング中だけ振るナイフ(実画像 knife-item)
+  private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1)
+  private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(ダガー+青スラッシュ knife-swing-2)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
-  private playerKnifeArc = new Graphics();                 // スイングの白い斬撃(三日月)。形状は一度だけ構築・以後は変形のみ
+  private playerKnifeArc = new Graphics();                 // (旧)白い斬撃。現在は未使用(2枚差し替えに移行)
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private lowHpVignette = new Sprite(getRedVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動(赤色テクスチャ)
@@ -4077,28 +4078,20 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerKatanaBack, 1);
       this.playerKatanaBackAttached = true;
     }
-    // 近接スイング中に振るナイフ(実画像)。グリップを支点に本体スプライトの前面へ重ねる。
+    // 近接スイングは2枚の画像(frame1=ダガー / frame2=ダガー+青スラッシュ)を差し替えて見せる。
+    // 本体スプライトの前面に重ね、回転はせず左向きは水平ミラーのみ。
     if (!this.playerKnifeSetup) {
-      const ktex = getTexture('knife-item');
-      if (ktex) {
-        // 白い斬撃(三日月)を一度だけ構築。中心(原点)を支点に、二等分線=ローカル +x 方向へ開く帯。
-        // 本体スプライトの前面・ナイフの背面に置く=「体に被る」白い軌跡。
-        const arc = this.playerKnifeArc;
-        const SPAN = KNIFE_ARC_SPAN, RI = 4, RO = 80, N = 20;
-        const band = (rOut: number, rIn: number): number[] => {
-          const pts: number[] = [];
-          for (let i = 0; i <= N; i++) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rOut, Math.sin(a) * rOut); }
-          for (let i = N; i >= 0; i--) { const a = -SPAN / 2 + SPAN * i / N; pts.push(Math.cos(a) * rIn, Math.sin(a) * rIn); }
-          return pts;
-        };
-        arc.poly(band(RO, RI)).fill({ color: 0xffffff, alpha: 0.82 });        // 軌跡本体(立ち絵の腕/銃を隠す=振ってる風)
-        arc.poly(band(RO, RO - 14)).fill({ color: 0xffffff, alpha: 0.97 });   // 先端の明るい縁(bloomで光る)
-        arc.visible = false;
-        this.playerView.container.addChild(arc);                 // 本体の前面
-        this.playerKnife.texture = ktex;
-        this.playerKnife.anchor.set(KNIFE_ANCHOR_X, KNIFE_ANCHOR_Y);
+      const f1 = getTexture('knife-swing-1');
+      const f2 = getTexture('knife-swing-2');
+      if (f1 && f2) {
+        this.playerKnife.texture = f1;
+        this.playerKnife.anchor.set(0.5, 0.5);
         this.playerKnife.visible = false;
-        this.playerView.container.addChild(this.playerKnife);    // 斬撃の更に前面(刃が一番上)
+        this.playerView.container.addChild(this.playerKnife);          // 本体の前面
+        this.playerKnifeSlash.texture = f2;
+        this.playerKnifeSlash.anchor.set(0.5, 0.5);
+        this.playerKnifeSlash.visible = false;
+        this.playerView.container.addChild(this.playerKnifeSlash);     // ダガー(1枚目)の更に前面
         this.playerKnifeSetup = true;
       }
     }
@@ -4436,61 +4429,50 @@ export class PixiScene {
     } else {
       kb.visible = false;
     }
-    // 近接スイング中だけナイフ(実画像)を振る(描画のみ・判定不変)。グリップ支点で切先が狙い方向を向き、
-    // 振りかぶり→振り抜きを easeOut で弧を描く。slasher追撃も markMeleeSwingFx で meleeSwingAt が立つので同様に出る。
+    // 近接スイングを2枚の画像差し替えで見せる(描画のみ・判定不変)。回転はせず、左向きは
+    // 水平ミラー。frame1=ダガーをキャラ左下→frame2=ダガー左上+青スラッシュが右へ弧。
     const knife = this.playerKnife;
-    const knifeArc = this.playerKnifeArc;
+    const slash = this.playerKnifeSlash;
     if (this.playerKnifeSetup) {
       if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
         const kt = sinceSwing / PLAYER_MELEE_SWING_MS;
-        const kEase = 1 - Math.pow(1 - kt, 3);          // 振り抜きの加速感(3乗で前半に一気=スピード感)
-        // 狙い方向(無ければ向き)。
+        // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }
-        const aimAng = Math.atan2(kay, kax);
-        const sweep = 1.05 - 1.95 * kEase;               // 振りかぶり(+) → 振り抜き(−)。振り幅を拡大
         const facingLeft = kax < 0;
+        const mir = facingLeft ? -1 : 1;
         const chestY = fb.footY - fb.boxH * 0.5 * dsc;
         const baseX = this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX;
         const baseY = this.snapToScreenPixel(chestY - bob, this.L.world.position.y) + introOffY + actOffY;
-        // 白い斬撃(三日月): 参考絵に合わせた大きなC字弧。
-        // aim方向に前進しながら「aim軸の時計回り垂直方向」にsin波で膨らみ、C字軌跡を描く。
-        const arcEase = 1 - Math.pow(1 - kt, 2);
-        const perpX = -kay, perpY = kax;                                             // aim時計回り垂直
-        const perpBulge = Math.sin(kt * Math.PI) * 0.32 * fb.boxH * dsc;            // 中間でピーク
-        const fwdOffset  = (-0.18 + 0.52 * kEase) * fb.boxH * dsc;                 // 背後→前方
-        knifeArc.position.set(
-          baseX + kax * fwdOffset + perpX * perpBulge,
-          baseY + kay * fwdOffset + perpY * perpBulge,
-        );
-        // 回転: 振り始め=垂直方向(腕の横振り感) → 振り抜き=aim方向(前向き)。
-        const rotOff = (Math.PI * 0.58) * (1 - kEase) * (facingLeft ? -1 : 1);
-        knifeArc.rotation = aimAng + rotOff;
-        // スケール: 全体を少し大きく・aim垂直方向へXSTRETCH倍に引き伸ばして払い幅を強調。
-        const arcSc = (fb.boxH / 156) * dsc * (1.05 + 0.55 * arcEase);
-        knifeArc.scale.set(arcSc, facingLeft ? -arcSc * KNIFE_ARC_XSTRETCH : arcSc * KNIFE_ARC_XSTRETCH);
-        // Alpha: 速めにフェードイン → 振り抜き後もゆっくり軌跡として残す。
-        knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.08, (0.88 - kt) / 0.30))) * view.sprite.alpha;
-        // 円形斬撃に一本化したので平面三日月は既定で非表示(フラグで復帰可)。
-        knifeArc.visible = KNIFE_FLAT_ARC_ENABLED && knifeArc.alpha > 0.01;
-        // ナイフ本体: 弧の先端に追従して小さな垂直成分を加える。
-        const nativeAng = facingLeft ? -KNIFE_NATIVE_ANGLE : KNIFE_NATIVE_ANGLE;
-        knife.rotation = aimAng + sweep - nativeAng;
-        const knifeReach = (4 + 12 * Math.sin(kt * Math.PI)) * dsc;
-        const knifePerp  = Math.sin(kt * Math.PI) * 10 * dsc;
-        knife.position.set(
-          baseX + kax * knifeReach + perpX * knifePerp,
-          baseY + kay * knifeReach + perpY * knifePerp,
-        );
-        const tex = knife.texture;
-        const sc = (fb.boxH * KNIFE_LEN_FRAC) / Math.max(tex.width, tex.height) * dsc;
-        knife.scale.set(sc, facingLeft ? -sc : sc);
-        // 出だしと終わりを素早くフェードして「シュッ」と見せる。本体の透明度にも追従。
-        knife.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.1, (1 - kt) / 0.28))) * view.sprite.alpha;
-        knife.visible = true;
+        const unit = fb.boxH * dsc;
+        const place = (
+          spr: Sprite,
+          cfg: { scale: number; ox: number; oy: number },
+          vis: boolean,
+          alpha: number,
+        ) => {
+          if (!vis || !spr.texture || spr.texture.width === 0) { spr.visible = false; return; }
+          const sc = (unit * cfg.scale) / spr.texture.width;
+          spr.scale.set(mir * sc, sc);                                 // 左向き=水平ミラー(回転なし)
+          spr.position.set(baseX + mir * cfg.ox * unit, baseY + cfg.oy * unit);
+          spr.alpha = alpha * view.sprite.alpha;
+          spr.visible = spr.alpha > 0.01;
+        };
+        if (kt < KNIFE_SWING_SWITCH) {
+          // 1枚目(振りかぶり): さっと出す。
+          const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
+          place(knife, KNIFE_F1, true, a1);
+          place(slash, KNIFE_F2, false, 0);
+        } else {
+          // 2枚目(振り抜き+スラッシュ): snap で出して終わりにフェード。
+          const t = (kt - KNIFE_SWING_SWITCH) / (1 - KNIFE_SWING_SWITCH); // 0..1
+          const a2 = Math.min(1, Math.min(t / 0.12, (1 - t) / 0.30));
+          place(knife, KNIFE_F1, false, 0);
+          place(slash, KNIFE_F2, true, a2);
+        }
       } else {
         knife.visible = false;
-        knifeArc.visible = false;
+        slash.visible = false;
       }
     }
     view.overlay.clear();
@@ -6631,7 +6613,7 @@ export class PixiScene {
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
     const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
-    if (now <= player.counterWindowEnd && counterFxVisible) {
+    if (SLASH_PROC_ENABLED && now <= player.counterWindowEnd && counterFxVisible) {
       // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in
       // and fades fast (no rotation). The crescent faces the player's last
       // heading; it's thick in the belly and tapers to thin tips.
