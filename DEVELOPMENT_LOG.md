@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1061 — 裏ボスの裏回り透過を「早めに・完全透明」に
+
+- 社長指示: 透過自体はしていたが、巨体なので早めに完全透明にしたい。対応(`pixiScene.ts` 裏ボス描画):
+  - `BOSS_BEHIND_ALPHA` 0.5 → **0.0(完全透明)**。
+  - 到達距離 70px → **`BOSS_BEHIND_DIST_PX=40`**(短め=早め)。
+  - カーブを二乗(ease-in/前半ゆっくり)→ **ease-out `1-(1-t)^2`**(回り込み始めから一気に透ける)。
+- 影は別描画(placeShadowSprite=horizonAlpha)なので透明化中もボス位置は影で分かる(完全に見失わない)。
+- 判定不変(見た目のみ)。値はすべて定数で調整容易。
+- 検証: lint / typecheck / test(75 passed) / build green。
+
 ## v0.25.1048 — 斬撃で立ち絵の腕/銃を覆う(振ってる風)/ 花さらに拡大
 
 - 意図(社長): 立ち絵は銃・腕が常時見えるので、斬撃でそこを覆えば「振ってる」風になる。対応:

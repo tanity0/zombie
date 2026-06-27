@@ -639,8 +639,10 @@ const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // 設置物(盾)/召喚が攻撃された時の被弾シェイク。減衰する短い横揺れ(描画のみ)。
 const HIT_SHAKE_MS = 220;
 const HIT_SHAKE_PX = 4;
-// プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
-const BOSS_BEHIND_ALPHA = 0.5;
+// プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう透かす(社長指示)。
+// 巨体なので「早めに・完全に」透明化(社長指示): 最大透明度=0(完全透明)、到達距離も短め(BOSS_BEHIND_DIST_PX)。
+const BOSS_BEHIND_ALPHA = 0.0;
+const BOSS_BEHIND_DIST_PX = 40; // この距離だけ裏に回り込むと完全透明(早め)
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
 // ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
 // 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
@@ -4627,8 +4629,9 @@ export class PixiScene {
       if (!inHoriz || behindDist <= 0) {
         behindTarget = 1;
       } else {
-        const t = Math.min(1, behindDist / 70);           // 70px で最大透明度に達する
-        behindTarget = 1 - t * t * (1 - BOSS_BEHIND_ALPHA); // 二乗カーブ: 前半ゆっくり→後半急激
+        const t = Math.min(1, behindDist / BOSS_BEHIND_DIST_PX);
+        const fade = 1 - (1 - t) * (1 - t);               // ease-out: 回り込み始めから一気に透ける(早め)
+        behindTarget = 1 - fade * (1 - BOSS_BEHIND_ALPHA);
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;
