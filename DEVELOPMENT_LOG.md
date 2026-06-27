@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1079 — ヨルムンガルド(裏ボス)のみ攻撃パターン変更(社長指示)
+
+- 社長指示: 裏ボス「ヨルムンガルド」のみ、バースト=3発×5回(0.5秒間隔)、全方位=16発×8回(0.3秒間隔)に変更。
+  ダッシュ系は残す。mimir/skadi は従来どおり(共通定数のまま)。
+- 確認済み(AskUserQuestion): 攻撃構成=2種を別々(立ち止まるたびにランダムで選ぶ。1セット連続ではない)。
+  「3連弾」=1回3発(プレイヤー狙いの軽い3-way扇)×5回=計15発。
+- 実装(`useGameLoop` 裏ボス状態機械, `boss.type==='jormungand'` のみ分岐):
+  - `aim-burst→burst`: ヨルムは `bossBurstLeft=JORM_BURST_VOLLEYS(5)`。`burst` で毎回プレイヤー方向へ
+    3-way扇(`JORM_BURST_FAN_SPREAD=0.18rad`)、間隔 `JORM_BURST_GAP_MS=500`。他ボスは従来の単発×3。
+  - `aim-radial`: ヨルムは新 `radial` 状態へ(他は従来どおり1回16発)。`radial` で16発全方位を
+    `JORM_RADIAL_GAP_MS=300` おきに `JORM_RADIAL_VOLLEYS=8` 回。`bossBurstLeft`/`bossBurstNextAt` を流用。
+  - `bossState` union に `'radial'` 追加(`types/game.ts`)。
+- 変更: `src/hooks/useGameLoop.ts`, `src/types/game.ts`, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。
+- 負荷: 2/10。弾は安い描画(projectile J130 safe)。全方位16×8=最大128発が2.4秒で出るが拡散して消えるので
+  ピークは上限内。重く感じたら `JORM_RADIAL_VOLLEYS`/`BOSS_RADIAL_COUNT` で調整可。
+- 次の引き継ぎ: 実機でヨルムの新パターン(15発バースト/8連全方位)とダッシュ温存を確認。
+  数値は JORM_* 定数で調整。mimir/skadiに影響していないことも確認。
+
 ## v0.25.1078 — オブジェクト(木/壁/プロップ)に常時足影を追加(A案・近い順7個・社長承認)
 
 - 社長承認: 木やオブジェクトにも普段から太陽/月の方向足影を付ける(A案)。負荷キャップ=近い順7個。

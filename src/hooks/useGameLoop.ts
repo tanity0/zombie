@@ -285,6 +285,12 @@ const BOSS_BURST_SHOTS = 3;
 const BOSS_BURST_GAP_MS = 500;                       // 0.5秒間隔(社長指示)
 const BOSS_AIM_RADIAL_MS = 2000;                     // 立ち止まり2秒後に全方位16発(社長指示)
 const BOSS_RADIAL_COUNT = 16;
+// ヨルムンガルド専用の攻撃調整(社長指示)。他の裏ボス(mimir/skadi)は従来どおり。ダッシュは共通で維持。
+const JORM_BURST_VOLLEYS = 5;        // 3発バーストを5回(0.5秒間隔)=計15発
+const JORM_BURST_FAN_SPREAD = 0.18;  // 1回=プレイヤー狙いの3-way扇の左右開き(rad・約10°)
+const JORM_BURST_GAP_MS = 500;       // バースト間隔0.5秒
+const JORM_RADIAL_VOLLEYS = 8;       // 全方位16発を8回
+const JORM_RADIAL_GAP_MS = 300;      // 全方位間隔0.3秒
 const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
@@ -1555,22 +1561,55 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                 }
               } else if (st === 'aim-burst') {
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'burst'; patch.bossBurstLeft = BOSS_BURST_SHOTS; patch.bossBurstNextAt = newGameTime; }
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'burst';
+                  // ヨルムンガルド: 3発×5回。他の裏ボス: 従来の単発×3。
+                  patch.bossBurstLeft = boss.type === 'jormungand' ? JORM_BURST_VOLLEYS : BOSS_BURST_SHOTS;
+                  patch.bossBurstNextAt = newGameTime;
+                }
               } else if (st === 'burst') {
                 const left = boss.bossBurstLeft ?? 0;
                 if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
-                  fireBullet(pcx, pcy);
+                  if (boss.type === 'jormungand') {
+                    // 1回=プレイヤー狙いの軽い3-way扇(計3発)。毎回の狙いは現在のプレイヤーへ。
+                    const ang = Math.atan2(pcy - bcy, pcx - bcx);
+                    for (let k = -1; k <= 1; k++) {
+                      const a = ang + k * JORM_BURST_FAN_SPREAD;
+                      fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
+                    }
+                  } else {
+                    fireBullet(pcx, pcy);
+                  }
                   patch.bossBurstLeft = left - 1;
-                  patch.bossBurstNextAt = newGameTime + BOSS_BURST_GAP_MS;
+                  patch.bossBurstNextAt = newGameTime + (boss.type === 'jormungand' ? JORM_BURST_GAP_MS : BOSS_BURST_GAP_MS);
                   if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                 }
               } else if (st === 'aim-radial') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  if (boss.type === 'jormungand') {
+                    // ヨルムンガルド: 全方位16発を0.3秒おきに8回。繰り返しは 'radial' 状態で回す。
+                    patch.bossState = 'radial';
+                    patch.bossBurstLeft = JORM_RADIAL_VOLLEYS;
+                    patch.bossBurstNextAt = newGameTime;
+                  } else {
+                    for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
+                      const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT;
+                      fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
+                    }
+                    patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
+                  }
+                }
+              } else if (st === 'radial') {
+                // ヨルムンガルド専用: 16発の全方位を JORM_RADIAL_GAP_MS おきに JORM_RADIAL_VOLLEYS 回。
+                const left = boss.bossBurstLeft ?? 0;
+                if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
                   for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
                     const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT;
                     fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                   }
-                  patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay();
+                  patch.bossBurstLeft = left - 1;
+                  patch.bossBurstNextAt = newGameTime + JORM_RADIAL_GAP_MS;
+                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                 }
               } else if (st === 'laser-windup') {
                 // ミーミル: 3秒溜め(静止)。方向はロック(追尾しない)。赤ライン予告は描画側が bossState で出す。
