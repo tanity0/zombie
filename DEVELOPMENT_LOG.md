@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1076 — ナイフアイコンを透過済み素材で切り出し直し(社長指示・PNG差し替えのみ)
+
+- 社長「きり出せてないよ。こっち使って割り振り直して」。前回(1075)はチェッカー背景焼き込みの
+  RGB画像をキー透過したが品質不足だった。新素材は**背景alpha=0の透過済みRGBA**。
+- 修正: alphaを捨てずに既存のalphaのままグリッド(2×3)で切り出し→同じ名前マッチで5本を上書き。
+  配線(WEAPON_ICON_KEYS / pixiTextures登録 / HUD表示)は1075で済みのためPNG差し替えのみ。
+- 割当は1075と同一: knife-t1=基本/hatchet-t2=ダガー/machete-t3=セレーション戦闘/
+  tactical-knife-t4=黒戦術/anti-mutant-knife-t5=紫宝玉。予備=湾曲ククリ(未使用)。
+- 変更: `public/sprites/weapons/{knife-t1,hatchet-t2,machete-t3,tactical-knife-t4,anti-mutant-knife-t5}.png`,
+  `package.json`。
+- 検証: lint / typecheck / build 全green。負荷 0/10(アイコン差し替えのみ)。
+- 次の引き継ぎ: 実機でアイコンが綺麗に出るか確認。
+
 ## v0.25.1075 — ナイフ系武器アイコンを導入(銃と同じ方式・名前に近い見た目を割当)
 
 - 社長指示: 渡したナイフ素材6本を、名前に近い見た目で割当。攻撃モーション用ではなく銃と同じ
