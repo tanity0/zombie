@@ -247,7 +247,10 @@ const GameHUD: React.FC = () => {
                 >
                   {katanaEquipped
                     ? <KatanaIcon size={28} variant={murasameEquipped ? 'murasame' : 'katana'} />
-                    : whipEquipped ? '➰' : '🔪'}
+                    : whipEquipped ? '➰'
+                    : hasWeaponIcon(melee.key)
+                      ? <img src={spritePath(weaponIconName(melee.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                      : '🔪'}
                 </div>
               )}
               {/* 銃スロット(所持カテゴリごと1つ)。タップで切替。弾数=装填/リザーブのみ(名前なし)。 */}

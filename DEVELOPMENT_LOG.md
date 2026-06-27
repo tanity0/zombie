@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1075 — ナイフ系武器アイコンを導入(銃と同じ方式・名前に近い見た目を割当)
+
+- 社長指示: 渡したナイフ素材6本を、名前に近い見た目で割当。攻撃モーション用ではなく銃と同じ
+  ピックアップ/HUDアイコン。
+- 素材化: 1枚絵(2×3・チェッカー背景焼き込み)を flood-fill でキー透過し6本に切り出し→
+  名前マッチで5本を `public/sprites/weapons/<key>.png` に保存(回転なし)。割当:
+  - `knife-t1`(ナイフ)=シンプルな基本ナイフ / `hatchet-t2`(ダガー)=両刃ダガー /
+    `machete-t3`(ファイティングナイフ)=セレーション戦闘ナイフ /
+    `tactical-knife-t4`(タクティカルナイフ)=黒い戦術ブレード /
+    `anti-mutant-knife-t5`(対変異体ナイフ)=紫宝玉付き特殊ブレード。
+  - 予備: 湾曲ククリ(#2)は未使用。
+- 配線(銃と同経路): `WEAPON_ICON_KEYS` に5keyを追加(`weaponUtils.ts`)、`pixiTextures.ts` の
+  standalone に `weapons/<key>` を nearest 登録。HUDの近接スロットは従来 🔪 絵文字だったので、
+  `hasWeaponIcon(melee.key)` 時はアイコン画像を表示(刀/鞭は従来アイコン維持)。武器GET ポップアップは
+  既存 `hasWeaponIcon` 経路で自動表示。
+- 変更: `public/sprites/weapons/{knife-t1,hatchet-t2,machete-t3,tactical-knife-t4,anti-mutant-knife-t5}.png`,
+  `src/utils/weaponUtils.ts`, `src/pixi/pixiTextures.ts`, `src/components/GameHUD.tsx`, `package.json`。
+- 検証: `npm run lint && npm run typecheck && npm test(75 pass) && npm run build` 全green(今回からCI同一typecheck)。
+- 負荷: 1/10(静的アイコン5枚追加のみ)。
+- 次の引き継ぎ: 実機でHUD近接スロット/武器GET時に各ナイフのアイコンが出るか、割当の見た目が
+  名前に合うか確認。変えたい割当があれば差し替え可(ファイル名=key)。
+
 ## v0.25.1074 — CI失敗(TS6133)修正: 未使用 playerKnifeArc を削除 + 検証手順是正
 
 - 症状(社長報告): 16:12頃からCI失敗メールが大量。原因はCIの `npm run typecheck`

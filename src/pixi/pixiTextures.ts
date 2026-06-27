@@ -107,6 +107,12 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/shotgun-t2', scaleMode: 'nearest' },
       { name: 'weapons/shotgun-t3', scaleMode: 'nearest' },
       { name: 'weapons/phill-revolver', scaleMode: 'nearest' },
+      // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
+      { name: 'weapons/knife-t1', scaleMode: 'nearest' },
+      { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },
+      { name: 'weapons/machete-t3', scaleMode: 'nearest' },
+      { name: 'weapons/tactical-knife-t4', scaleMode: 'nearest' },
+      { name: 'weapons/anti-mutant-knife-t5', scaleMode: 'nearest' },
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)

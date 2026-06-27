@@ -194,6 +194,9 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   'rifle-t1', 'rifle-t2', 'rifle-t3',
   'shotgun-t1', 'shotgun-t2', 'shotgun-t3',
   'phill-revolver',
+  // 近接(ナイフ系)アイコン。名前に近い見た目を割当(社長指示)。攻撃モーション用ではなく
+  // 銃と同じピックアップ/HUDアイコン。
+  'knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5',
 ]);
 export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
 export const weaponIconName = (key: string): string => `weapons/${key}`;
