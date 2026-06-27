@@ -2832,13 +2832,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       meleeFinishComboUntil: comboFinishCount > 0
         ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
-      // フィニッシュで全停止ヒットストップ。ただしこのスイングがスラッシャーのタイミングリングを
-      // 開始する場合は止めない: ヒットストップは gameTime を凍結し、リングと判定が同じ gameTime で
-      // 動くため、最初のリングだけ 100ms 凍結→出現で「遅れて来る」感覚になる(追撃リングは止まらない)。
-      // リングを最優先のフィードバックにするため、スラッシャー始動スイングはヒットストップを省く。
-      hitstopUntil: finisherHit && !(hasSkill(state.player, 'slasher') && slashAt.length > 0)
-        ? now + HITSTOP_MS
-        : state.hitstopUntil,
+      // フィニッシュで全停止ヒットストップ。スラッシャーリング始動時は新規追加を省くだけでなく、
+      // 他の攻撃(ドローン/刀/鞭フィニッシュ等)が残した既存ヒットストップも解除する。
+      // 既存ヒットストップが生きていると gameTime が凍結されたままリングが始動し、
+      // ① 1発目サークルが動かない ② Hitstop 中タップで elapsed=0→JUST 窓外→コンボ消滅 の2バグを招く。
+      hitstopUntil: hasSkill(state.player, 'slasher') && slashAt.length > 0
+        ? 0  // スラッシャーリング始動: 既存ヒットストップも即解除してリングをすぐ動かす
+        : finisherHit
+          ? now + HITSTOP_MS
+          : state.hitstopUntil,
       player: {
         ...state.player,
         meleeSwingAt: now, // 近接スイング演出の起点(描画のみ)。この set はスイング確定時のみ走る。
