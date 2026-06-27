@@ -6672,6 +6672,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 護衛が解放。garrison(駐留軍人)は旧システム(flag on)時のみ生成。flag off=護衛が防衛するので空。
           return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_FIRST_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: SUPP_BASE_ATTACKS_ENABLED ? makeBaseSoldiers(s.x, s.y) : [] };
         }
+        // 護衛の滞在進捗をレンダラー用に反映(s.dwellMs が常に0だと白弧が動かない)。
+        const escortDwell = nextEscorts.find(e => e.baseId === s.id)?.dwellMs ?? 0;
+        if (escortDwell !== s.dwellMs) { changed = true; return { ...s, dwellMs: escortDwell }; }
         return s;
       }
       // captured。旧「拠点が襲われる(攻撃者湧き/HP/軍人射撃/HP0陥落)」は SUPP_BASE_ATTACKS_ENABLED=false で

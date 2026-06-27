@@ -5047,16 +5047,8 @@ export class PixiScene {
             .arc(s.x, s.y, rr, start, start + Math.PI * 2 * frac)
             .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
         }
-      } else {
-        // 制圧済み: HPバー(拠点上部)＋ 軍人2体マーカー。
-        const hpFrac = Math.max(0, Math.min(1, s.hp / 100));
-        const bw = 88, bh = 7, bx = s.x - bw / 2, by = s.y - R - 22;
-        g.rect(bx, by, bw, bh).fill({ color: 0x0b1020, alpha: 0.6 });
-        const hpCol = hpFrac > 0.5 ? 0x34d399 : hpFrac > 0.25 ? 0xfbbf24 : 0xef4444;
-        g.rect(bx, by, bw * hpFrac, bh).fill({ color: hpCol, alpha: 0.95 });
-        g.rect(bx, by, bw, bh).stroke({ width: 1, color: 0xffffff, alpha: 0.4 });
-        // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
       }
+      // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
     }
     this.drawBaseSoldiers(sites, now);
   }
