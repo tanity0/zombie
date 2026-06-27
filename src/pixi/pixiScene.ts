@@ -4431,26 +4431,34 @@ export class PixiScene {
         const chestY = fb.footY - fb.boxH * 0.5 * dsc;
         const baseX = this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX;
         const baseY = this.snapToScreenPixel(chestY - bob, this.L.world.position.y) + introOffY + actOffY;
-        // 白い斬撃(三日月): 体の背後(-0.15H)から前方(+0.30H)へ位置が流れる。
-        // 参考絵: 体の後ろ辺りから始まり、体の前を払って振り抜く軌跡。
+        // 白い斬撃(三日月): 参考絵に合わせた大きなC字弧。
+        // aim方向に前進しながら「aim軸の時計回り垂直方向」にsin波で膨らみ、C字軌跡を描く。
         const arcEase = 1 - Math.pow(1 - kt, 2);
-        // 位置: aim方向に沿って背後から前方へスライド。
-        const posOffset = (-0.15 + 0.45 * kEase) * fb.boxH * dsc;
-        knifeArc.position.set(baseX + kax * posOffset, baseY + kay * posOffset);
-        // 回転: 振り始め=aim+90°(横から来る弧)→振り抜き=aim(正面向け)。左向き時は角度を反転。
-        const rotOff = (Math.PI * 0.5) * (1 - kEase) * (facingLeft ? -1 : 1);
+        const perpX = -kay, perpY = kax;                                             // aim時計回り垂直
+        const perpBulge = Math.sin(kt * Math.PI) * 0.32 * fb.boxH * dsc;            // 中間でピーク
+        const fwdOffset  = (-0.18 + 0.52 * kEase) * fb.boxH * dsc;                 // 背後→前方
+        knifeArc.position.set(
+          baseX + kax * fwdOffset + perpX * perpBulge,
+          baseY + kay * fwdOffset + perpY * perpBulge,
+        );
+        // 回転: 振り始め=垂直方向(腕の横振り感) → 振り抜き=aim方向(前向き)。
+        const rotOff = (Math.PI * 0.58) * (1 - kEase) * (facingLeft ? -1 : 1);
         knifeArc.rotation = aimAng + rotOff;
-        const arcSc = (fb.boxH / 156) * dsc * (0.95 + 0.5 * arcEase);
-        // スケール: aim軸に垂直方向へ引き延ばし(払いの幅感を強調)。左向きはY反転。
+        // スケール: 全体を少し大きく・aim垂直方向へXSTRETCH倍に引き伸ばして払い幅を強調。
+        const arcSc = (fb.boxH / 156) * dsc * (1.05 + 0.55 * arcEase);
         knifeArc.scale.set(arcSc, facingLeft ? -arcSc * KNIFE_ARC_XSTRETCH : arcSc * KNIFE_ARC_XSTRETCH);
-        // Alpha: 振り始めはやや遅れてフェードイン → 振り抜き後もゆっくり消える(軌跡感)。
-        knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.10, (0.75 - kt) / 0.28))) * view.sprite.alpha;
+        // Alpha: 速めにフェードイン → 振り抜き後もゆっくり軌跡として残す。
+        knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.08, (0.88 - kt) / 0.30))) * view.sprite.alpha;
         knifeArc.visible = knifeArc.alpha > 0.01;
-        // ナイフ本体。左向きは上下反転で刃線を自然に保つ(反転すると素材ローカル角の符号も反転)。
+        // ナイフ本体: 弧の先端に追従して小さな垂直成分を加える。
         const nativeAng = facingLeft ? -KNIFE_NATIVE_ANGLE : KNIFE_NATIVE_ANGLE;
         knife.rotation = aimAng + sweep - nativeAng;
-        const reach = (4 + 10 * Math.sin(kt * Math.PI)) * dsc;
-        knife.position.set(baseX + kax * reach, baseY + kay * reach);
+        const knifeReach = (4 + 12 * Math.sin(kt * Math.PI)) * dsc;
+        const knifePerp  = Math.sin(kt * Math.PI) * 10 * dsc;
+        knife.position.set(
+          baseX + kax * knifeReach + perpX * knifePerp,
+          baseY + kay * knifeReach + perpY * knifePerp,
+        );
         const tex = knife.texture;
         const sc = (fb.boxH * KNIFE_LEN_FRAC) / Math.max(tex.width, tex.height) * dsc;
         knife.scale.set(sc, facingLeft ? -sc : sc);
