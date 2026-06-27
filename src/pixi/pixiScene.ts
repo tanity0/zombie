@@ -4627,7 +4627,7 @@ export class PixiScene {
       if (!inHoriz || behindDist <= 0) {
         behindTarget = 1;
       } else {
-        const t = Math.min(1, behindDist / 140);          // 140px で最大透明度に達する
+        const t = Math.min(1, behindDist / 70);           // 70px で最大透明度に達する
         behindTarget = 1 - t * t * (1 - BOSS_BEHIND_ALPHA); // 二乗カーブ: 前半ゆっくり→後半急激
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
