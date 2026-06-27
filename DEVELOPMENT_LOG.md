@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1091 — NPCセリフ「遠方で放置(11・隣NPCのみ)」(社長 確定条件)
+
+- 社長 確定条件: 11は「誰も進軍を手伝っていない時、プレイヤーの現在エリア→開放済みなら(時計回りで)隣→…の
+  最初の未開放エリアのNPCが1人だけ反応」。12は置換ではない(置換は6のみ=確認済)。
+- 実装(`updateSuppression` post-set・グローバル判定): 護衛が誰もプレイヤー近傍(`HELPING_DIST=600px`)に居ない
+  =手伝っていない、かつ未開放拠点があり、低確率(毎秒2%)の時: プレイヤー角度から現在エリアindexを求め、
+  時計回りに最初の `status==='open'` 拠点を探し、その担当NPC(soldierIndex=拠点index)が `neglectFar` を1人だけ発話。
+  カテゴリCD45s。`neglectFar` セリフを BASE_SOLDIERS に追加(エドガー「東部隊、押されている。可能なら援護を。」等)。
+- 変更: `store/gameStore.ts`(neglectFar / 定数 / 11判定), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 残り: 9 NPC撃破(撃破帰属が要)・10 無双(短時間多数撃破)。次で実装。12は対象外(置換は6のみ)。
+- 次の引き継ぎ: 実機で11(放置時に1人だけ・現在エリア起点)・8並走・6解放を確認。
+  調整: HELPING_DIST / NEGLECT_FAR_CHANCE_PER_SEC / NEGLECT_FAR_CAT_CD_MS。
+
 ## v0.25.1090 — NPCセリフ「拠点解放時(6・置換)」「並走時(8)」(社長 開発指示書)
 
 - 社長指示: 6=拠点到達・解放時(既存の制圧コールアウトを置き換え), 8=並走時(頻度かなり低め)。

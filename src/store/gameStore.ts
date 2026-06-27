@@ -170,16 +170,17 @@ const makeEscorts = (px: number, py: number): EscortSoldier[] => {
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
 // sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時 / pushback=後退する時 /
-// baseNear=拠点が見えてきた時 / companion=並走時 / baseCaptured=拠点解放時(管理表準拠)。capture/retreat は既存。
-const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string; rescued: string; pushback: string; baseNear: string; companion: string; baseCaptured: string }[] = [
-  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。', surrounded: '囲まれた。突破口を作る。', rescued: '助かった。今ので前線を戻せる。', pushback: '東部隊、押されている。可能なら援護を。', baseNear: '見えた。あれが東部拠点だ。', companion: 'この距離なら押せる。足を止めるな。', baseCaptured: '東部拠点、確保。ここから押し返す。' },
-  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！', surrounded: '囲まれた！笑えない数だ！', rescued: '助かった！今のは正直キツかった！', pushback: 'まずい、押されてる！一歩下がる！', baseNear: '見えた見えた！南部拠点だ！', companion: 'いいねえ、足並み合ってる！', baseCaptured: '南部拠点、いただきだ！' },
-  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。', surrounded: '包囲されています。負傷リスクが高い。', rescued: '助かりました。こちらの損耗を抑えられます。', pushback: '押されています。態勢を立て直します。', baseNear: '西部拠点を視認。あと少しです。', companion: 'この距離なら支援できます。', baseCaptured: '西部拠点を確保。救助者を受け入れられます。' },
-  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。', surrounded: '囲まれた。', rescued: '助かった。前へ出る。', pushback: '下がる。', baseNear: '見えた。北部拠点だ。', companion: '進む。', baseCaptured: '北部拠点、確保。' },
-  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！', surrounded: '囲まれたか。上等だ！', rescued: '助かったぜ！借りは返す！', pushback: 'くそ、押し返される！', baseNear: '拠点が見えた。もうひと押しだ！', companion: 'いい並びだ。悪くない。', baseCaptured: '確保完了！ここは俺たちの場所だ！' },
-  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。', surrounded: '包囲傾向。脱出路を確保してください。', rescued: '支援確認。進軍を再開します。', pushback: '圧力上昇。後退します。', baseNear: '目標拠点を確認。', companion: '距離良好。支援可能です。', baseCaptured: '拠点解放を確認。周辺警戒を継続します。' },
-  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。', surrounded: '囲まれた。最悪、でも想定内。', rescued: '助かった。文句はあとで言う。', pushback: '下がる。無理して壊れるよりマシ。', baseNear: '拠点が見えた。やっと使える場所だ。', companion: '悪くないペース。今のところはね。', baseCaptured: '確保。ここなら補給線を組める。' },
-  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。', surrounded: '囲まれたな。興味深いが危険だ。', rescued: '介入を確認。生存率が上がった。', pushback: '後退する。標本になる気はない。', baseNear: '拠点を視認。ここを固定点にする。', companion: '近接距離を維持しろ。観測しやすい。', baseCaptured: '拠点確保。観測拠点として使える。' },
+// baseNear=拠点が見えてきた時 / companion=並走時 / baseCaptured=拠点解放時 / neglectFar=遠方で放置(隣NPCのみ)。
+// (管理表準拠)。capture/retreat は既存のコールアウト。
+const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string; rescued: string; pushback: string; baseNear: string; companion: string; baseCaptured: string; neglectFar: string }[] = [
+  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。', surrounded: '囲まれた。突破口を作る。', rescued: '助かった。今ので前線を戻せる。', pushback: '東部隊、押されている。可能なら援護を。', baseNear: '見えた。あれが東部拠点だ。', companion: 'この距離なら押せる。足を止めるな。', baseCaptured: '東部拠点、確保。ここから押し返す。', neglectFar: '東部隊、押されている。可能なら援護を。' },
+  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！', surrounded: '囲まれた！笑えない数だ！', rescued: '助かった！今のは正直キツかった！', pushback: 'まずい、押されてる！一歩下がる！', baseNear: '見えた見えた！南部拠点だ！', companion: 'いいねえ、足並み合ってる！', baseCaptured: '南部拠点、いただきだ！', neglectFar: '南、ちょい劣勢！助けに来てもいいんだぜ！' },
+  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。', surrounded: '包囲されています。負傷リスクが高い。', rescued: '助かりました。こちらの損耗を抑えられます。', pushback: '押されています。態勢を立て直します。', baseNear: '西部拠点を視認。あと少しです。', companion: 'この距離なら支援できます。', baseCaptured: '西部拠点を確保。救助者を受け入れられます。', neglectFar: '西部隊、足止めされています。援護を要請。' },
+  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。', surrounded: '囲まれた。', rescued: '助かった。前へ出る。', pushback: '下がる。', baseNear: '見えた。北部拠点だ。', companion: '進む。', baseCaptured: '北部拠点、確保。', neglectFar: '北、押されている。' },
+  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！', surrounded: '囲まれたか。上等だ！', rescued: '助かったぜ！借りは返す！', pushback: 'くそ、押し返される！', baseNear: '拠点が見えた。もうひと押しだ！', companion: 'いい並びだ。悪くない。', baseCaptured: '確保完了！ここは俺たちの場所だ！', neglectFar: 'こっちは詰まってる。暴れに来い！' },
+  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。', surrounded: '包囲傾向。脱出路を確保してください。', rescued: '支援確認。進軍を再開します。', pushback: '圧力上昇。後退します。', baseNear: '目標拠点を確認。', companion: '距離良好。支援可能です。', baseCaptured: '拠点解放を確認。周辺警戒を継続します。', neglectFar: 'こちらは停滞中。援護があれば進めます。' },
+  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。', surrounded: '囲まれた。最悪、でも想定内。', rescued: '助かった。文句はあとで言う。', pushback: '下がる。無理して壊れるよりマシ。', baseNear: '拠点が見えた。やっと使える場所だ。', companion: '悪くないペース。今のところはね。', baseCaptured: '確保。ここなら補給線を組める。', neglectFar: 'こっちは停滞中。手が空いたら来て。' },
+  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。', surrounded: '囲まれたな。興味深いが危険だ。', rescued: '介入を確認。生存率が上がった。', pushback: '後退する。標本になる気はない。', baseNear: '拠点を視認。ここを固定点にする。', companion: '近接距離を維持しろ。観測しやすい。', baseCaptured: '拠点確保。観測拠点として使える。', neglectFar: 'こちらは停滞している。汚染圧が高い。' },
 ];
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
 const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間
@@ -205,6 +206,11 @@ const COMPANION_CHANCE_PER_SEC = 0.03; // 並走成立後に漏らす毎秒確�
 const COMPANION_CAT_CD_MS = 60000;    // 並走カテゴリの再発話CD(管理表 60秒以上)
 // 「拠点解放時」(Critical): 制圧と同時に1回。バナー/SEと併用。
 const BASE_CAPTURED_CAT_CD_MS = 8000; // 拠点解放カテゴリの再発話CD(拠点は順次なので短め)
+// 「遠方で放置(隣NPCのみ)」(社長確定条件): 誰も進軍を手伝っていない(プレイヤーが全護衛から遠い)時、
+// プレイヤーの現在エリア起点で時計回りに最初の未開放エリアのNPCが1人だけ低頻度で反応。
+const HELPING_DIST = 600;             // プレイヤーがこの距離内に護衛が居れば「手伝っている」とみなす
+const NEGLECT_FAR_CHANCE_PER_SEC = 0.02; // 放置時に漏らす毎秒確率(低め)
+const NEGLECT_FAR_CAT_CD_MS = 45000;  // 放置カテゴリの再発話CD
 // 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
 const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
   idx >= 0 ? BASE_SOLDIERS[idx % BASE_SOLDIERS.length] : null;
@@ -7015,6 +7021,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「並走時」セリフ(頻度低め・Low)。同上CD。
     for (const ev of npcCompanionEvents) {
       if (get().tryNpcLine(ev.name, 'companion', ev.text, COMPANION_CAT_CD_MS)) break;
+    }
+    // 「遠方で放置(隣NPCのみ)」セリフ(社長確定条件)。誰も進軍を手伝っていない(全護衛から遠い)時、
+    // プレイヤーの現在エリア起点で時計回りに最初の未開放エリアのNPCが1人だけ低頻度で反応。
+    {
+      const gs = get();
+      const gp = gs.player; const gpx = gp.x + gp.width / 2, gpy = gp.y + gp.height / 2;
+      const helping = gs.escorts.some(e => Math.hypot(e.x - gpx, e.y - gpy) <= HELPING_DIST);
+      const anyOpen = gs.baseSites.some(b => b.status === 'open');
+      if (gs.escorts.length > 0 && !helping && anyOpen && Math.random() < NEGLECT_FAR_CHANCE_PER_SEC * deltaTime) {
+        const startIdx = ((Math.round(Math.atan2(gpy, gpx) / (Math.PI / 2)) % BASE_SITE_COUNT) + BASE_SITE_COUNT) % BASE_SITE_COUNT;
+        let pickIdx = -1;
+        for (let k = 0; k < BASE_SITE_COUNT; k++) {
+          const idx = (startIdx + k) % BASE_SITE_COUNT;
+          if (gs.baseSites.find(b => b.id === `base-${idx}`)?.status === 'open') { pickIdx = idx; break; }
+        }
+        if (pickIdx >= 0) {
+          const sol = BASE_SOLDIERS[pickIdx % BASE_SOLDIERS.length];
+          get().tryNpcLine(sol.name, 'neglectFar', sol.neglectFar, NEGLECT_FAR_CAT_CD_MS);
+        }
+      }
     }
     for (const a of spawnList) {
       const e = spawnEnemyAt('skeleton', a.x - 16, a.y - 16, now);
