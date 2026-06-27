@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1086 — NPCセリフ 第3弾「囲まれから助けてもらった時」(社長 開発指示書・High)
+
+- 社長指示: NPC周辺の敵をプレイヤーが複数倒し、NPCが進軍再開できる状態になった時に発話。援護が効いた実感を出す。
+- 検知: 護衛に `wasSurrounded`(EscortSoldierに追加)を持たせ、囲まれ(>=SURROUND_COUNT)→解放(周囲<=RESCUED_FREE(1))
+  の**遷移**で `rescued` セリフを発火。囲まれ中は数体減って解放されるのは実質プレイヤーの援護(護衛の自力撃破は遅い)
+  なので「助けてもらった」として扱う。同時に surrounded の重複pushを「入った瞬間のみ」に整理。
+- 発話: 管理表準拠 `rescued` を BASE_SOLDIERS に追加。`tryNpcLine` で同一NPC10s/同一カテゴリ `RESCUED_CAT_CD_MS(30s)`。
+- 変更: `types/game.ts`(EscortSoldier.wasSurrounded), `store/gameStore.ts`(BASE_SOLDIERS rescued / 定数 /
+  makeEscorts / updateSuppression検知 / set後発火), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10(既存ループ内のフラグ遷移のみ)。
+- 注意/次の引き継ぎ: 「プレイヤーが倒した」の厳密な帰属はしていない(囲まれ→解放の遷移で判定)。護衛の自力撃破や
+  敵が散っただけでも稀に出うる。実機で「助かった」が援護時に出るか・誤発火が無いか確認。気になれば
+  プレイヤーkill帰属(NPC周辺での撃破カウント)を足す。閾値=RESCUED_FREE、再発話=RESCUED_CAT_CD_MS。
+
 ## v0.25.1085 — 囲まれ判定を3体以上に(社長指示)
 
 - 社長指示: 囲まれ判定を「3体以上」に。`SURROUND_COUNT` 4→3。早く発話する。
