@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1065 — 近接斬撃を「青い円形斬撃」に一本化(社長指示・視覚のみ)
+
+- 社長指示「ナイフの振り＝参考絵の青く光る斬撃」「円の斬撃は今の攻撃範囲を表すやつと差し替え」
+  「平面寄りではなく円形に表す(攻撃範囲と同等)」を実装。視覚のみ・判定/射程/タイミングは不変。
+- 攻撃範囲テレグラフ(`syncPlayerFx` のスイング表示)の配色をオレンジ→青系に変更:
+  リング光彩 `0xff9f1c→0x3aa0ff` / リング芯 `0xfff3c4→0xd8f0ff` /
+  三日月光彩 `0xff7a18→0x4aa8ff` / 三日月芯 `0xfff7cc→0xeaf8ff`(先端ドットは白のまま)。
+  形状(フルリング+方向三日月+先端)はそのまま=攻撃範囲の円に沿った青い円形斬撃として読める。
+- 平面の白い三日月(`playerKnifeArc`)は円形に一本化するため既定で非表示。
+  復帰用フラグ `KNIFE_FLAT_ARC_ENABLED = false`(`pixiScene.ts` 上部、KNIFE_ARC_SPAN 付近)。
+  true で従来の平面三日月に戻せる。ナイフ実画像のスイング・常時の青いリーチ円はそのまま。
+- 変更ファイル: `src/pixi/pixiScene.ts`、`package.json`(version)。
+- 検証: `npm run lint && npx tsc --noEmit && npm test && npm run build` 全green(75 tests pass)。
+- 負荷: 1/10。既存テレグラフの色定数を差し替え＋三日月の描画を1分岐スキップしただけ。
+  per-frame Graphics の本数は減りこそすれ増えない。
+- 次の引き継ぎ: 実機で青の濃さ/明度を確認。色味調整は上記4定数のみで完結。
+
 ## v0.25.1064 — 手前フェードをオブジェクト(木/壁/プロップ/花)にも適用(社長指示)
 
 - 1063で敵に入れた near-plane 手前フェード `foregroundActorAlpha`(画面下端の帯でだけ1→0)を、

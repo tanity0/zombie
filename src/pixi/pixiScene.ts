@@ -421,6 +421,9 @@ const KNIFE_NATIVE_ANGLE = -39.9 * Math.PI / 180;
 const KNIFE_LEN_FRAC = 0.78;          // 表示サイズ(画像最大辺 → 箱高×この割合)
 const KNIFE_ARC_SPAN = 2.6;           // 白い斬撃(三日月)の角度幅(rad・約149°)
 const KNIFE_ARC_XSTRETCH = 1.6;       // 斬撃を狙い軸方向へ引き伸ばす(横長に)倍率
+// 斬撃表現を「攻撃範囲の円に沿った青い円形斬撃」に一本化したため、平面の白い
+// 三日月(playerKnifeArc)は引っ込める。実機で戻したい時は true に。
+const KNIFE_FLAT_ARC_ENABLED = false;
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -4465,7 +4468,8 @@ export class PixiScene {
         knifeArc.scale.set(arcSc, facingLeft ? -arcSc * KNIFE_ARC_XSTRETCH : arcSc * KNIFE_ARC_XSTRETCH);
         // Alpha: 速めにフェードイン → 振り抜き後もゆっくり軌跡として残す。
         knifeArc.alpha = Math.max(0, Math.min(1, Math.min(kt / 0.08, (0.88 - kt) / 0.30))) * view.sprite.alpha;
-        knifeArc.visible = knifeArc.alpha > 0.01;
+        // 円形斬撃に一本化したので平面三日月は既定で非表示(フラグで復帰可)。
+        knifeArc.visible = KNIFE_FLAT_ARC_ENABLED && knifeArc.alpha > 0.01;
         // ナイフ本体: 弧の先端に追従して小さな垂直成分を加える。
         const nativeAng = facingLeft ? -KNIFE_NATIVE_ANGLE : KNIFE_NATIVE_ANGLE;
         knife.rotation = aimAng + sweep - nativeAng;
@@ -6645,10 +6649,10 @@ export class PixiScene {
           const rr = r + Math.sin(i * 1.7) * 0.9;
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2.4 + glow * 8.5, color: 0xff9f1c, alpha: 0.12 * fade * glow, cap: 'round' });
+            .stroke({ width: 2.4 + glow * 8.5, color: 0x3aa0ff, alpha: 0.12 * fade * glow, cap: 'round' });
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.75 + glow * 0.65, color: 0xfff3c4, alpha: 0.55 * fade, cap: 'round' });
+            .stroke({ width: 0.75 + glow * 0.65, color: 0xd8f0ff, alpha: 0.55 * fade, cap: 'round' });
         }
 
         const span = Math.PI * 1.08;
@@ -6662,10 +6666,10 @@ export class PixiScene {
           const rr = r + 1.5 + taper * 2;
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2 + 12 * taper, color: 0xff7a18, alpha: 0.16 * taper * fade, cap: 'round' });
+            .stroke({ width: 2 + 12 * taper, color: 0x4aa8ff, alpha: 0.16 * taper * fade, cap: 'round' });
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.8 + 2.3 * taper, color: 0xfff7cc, alpha: 0.92 * taper * fade, cap: 'round' });
+            .stroke({ width: 0.8 + 2.3 * taper, color: 0xeaf8ff, alpha: 0.92 * taper * fade, cap: 'round' });
         }
         g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
           .fill({ color: 0xffffff, alpha: 0.9 * fade });
