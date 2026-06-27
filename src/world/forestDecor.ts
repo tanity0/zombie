@@ -45,6 +45,8 @@ export const forestFlowersInRegion = (
       // 1区画あたり 1〜3 株。
       const n = 1 + Math.floor(hash2(cx * 3.7 + 1.1, cy * 2.3 - 0.6) * 3);
       for (let k = 0; k < n; k++) {
+        // 2/3 密度: 1/3 をスキップ。
+        if (hash2(cx * 8.1 + k * 3.3 + 0.5, cy * 6.7 - k * 2.9 + 1.3) < 1 / 3) continue;
         const footX = cx * FLOWER_ZONE + FLOWER_ZONE * (0.1 + 0.8 * hash2(cx * 1.7 + k * 6.3 + 3.1, cy * 2.1 - k * 4.2 + 5.5));
         const footY = cy * FLOWER_ZONE + FLOWER_ZONE * (0.1 + 0.8 * hash2(cx * 2.9 - k * 4.7 + 8.2, cy * 1.3 + k * 3.1 - 7.7));
         if (Math.hypot(footX, footY) < FLOWER_SAFE_RADIUS) continue;
