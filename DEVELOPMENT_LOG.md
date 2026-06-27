@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1081 — スカジ(裏ボス)に氷攻撃2種を追加(社長指示・素材導入)
+
+- 社長指示: スカジに以下を**追加**(既存のburst/radial/dashは据え置き)。
+  1. 氷塊バースト: プレイヤー足元に**赤いサークルが2秒フェードイン**→**氷塊破裂(=爆発攻撃を青版で流用)**を
+     **1秒おきに5個**。各マーカーは設置位置に固定(動けば避けられる)。
+  2. 氷の刃: プレイヤー周辺ランダム位置に**設置時のプレイヤー方向を向いて**0.2秒おきに7個設置→
+     各刃は**設置1秒後にその向きへ高速発射**して飛ぶ。命中でダメージ。
+- アーキテクチャ(既存流用):
+  - 氷塊の起爆・氷刃の命中は**どちらも既存の爆発処理(`pumpkinBlasts`)へ `ice:true` で積み**、useGameLoop の
+    既存ブラスト消化が**青FX**でダメージ/ノックバック/カウンター対応まで処理(社長「青いバージョンの爆発処理を使い回し」)。
+  - ハザードのシミュ(マーカー起爆・刃の発射/移動/命中/寿命)は **store の `updateEnemies` 内**(描画非依存)。
+    コントローラ(useGameLoop)は設置のみ(`spawnSkadiIce`/`spawnSkadiBlade`)。
+  - 抽選: chase で `SKADI_ATTACK_CHANCE(0.5)` で氷攻撃(氷塊/刃を半々)、残りは従来のdash/burst/radial。
+- 素材: `public/sprites/skadi-ice-block.png`(氷塊)/`skadi-ice-blade.png`(氷の刃。刃先方向 実測-62.8°→
+  発射方向へ回転)。pixiTextures に nearest 登録。描画 `syncSkadiHazards`(プール+mark-sweep)。
+- 主要定数(調整可): 爆発半径90/ダメージ38、刃 速度700/ダメージ20/命中18/寿命2.5s、設置リング150〜260、
+  個数5・7、間隔1s・0.2s、テレグラフ2s、発射遅延1s。
+- 型: `bossState` に `'skadi-ice'|'skadi-blade'` 追加。`pumpkinBlasts` に `ice?:boolean`。
+  state に `skadiIceMarkers`/`skadiIceBlades`(初期化/リセット済み)。
+- 変更: `types/game.ts`, `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`,
+  `pixi/pixiTextures.ts`, 新規素材2点, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。
+- 負荷: 3/10(マーカー最大5+刃最大7のプール済みスプライト+赤テレグラフGfx、爆発はpumpkinと同方式。弾数少。)
+- 次の引き継ぎ: 実機でスカジの2攻撃(赤テレグラフ→青爆発、刃の設置→発射)・氷塊/刃の見た目サイズ・
+  当たり感を確認。数値は SKADI_* 定数で調整。氷塊サイズは syncSkadiHazards の R*2.0、刃長は 80。
+
 ## v0.25.1080 — ヨルムンガルド: 全方位を時計回り螺旋に(社長指示)
 
 - 社長指示: バースト=「真ん中の弾を基準にプレイヤー狙い」(=現状の3-way扇の中心がプレイヤー=変更不要)、

@@ -113,6 +113,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/machete-t3', scaleMode: 'nearest' },
       { name: 'weapons/tactical-knife-t4', scaleMode: 'nearest' },
       { name: 'weapons/anti-mutant-knife-t5', scaleMode: 'nearest' },
+      // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
+      { name: 'skadi-ice-block', scaleMode: 'nearest' },
+      { name: 'skadi-ice-blade', scaleMode: 'nearest' },
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)

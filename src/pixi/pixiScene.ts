@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
@@ -606,6 +606,8 @@ const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 // 投影影の大きさ倍率(長さ・幅・接地楕円をまとめて拡縮)。社長指示で2倍。視覚のみ・挙動不変。
 const LOCAL_EVENT_SHADOW_SIZE_MULT = 2;
+// スカジの氷刃テクスチャの刃先方向(実測: hilt→tip ≈ -62.8°)。発射方向 angle に合わせ rotation=angle-この値。
+const SKADI_BLADE_NATIVE_ANGLE = -62.8 * Math.PI / 180;
 // 木/壁/プロップへの常時足影(太陽/月の方向影)。負荷キャップ=プレイヤーに近い順この個数まで。
 // 順位下ほど薄くして境界の入れ替わりポップを防ぐ(社長指示・視覚のみ)。
 const OBJECT_SHADOW_MAX = 7;
@@ -846,6 +848,10 @@ export class PixiScene {
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
   private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
+  private skadiHazardGfx = new Graphics();   // スカジ氷塊の赤いテレグラフ円(2秒フェードイン)
+  private skadiHazardContainer = new Container(); // スカジ氷塊/氷刃のスプライトプール親
+  private skadiBlockPool = new Map<string, Sprite>(); // 氷塊スプライト(マーカーid→sprite)
+  private skadiBladePool = new Map<string, Sprite>(); // 氷刃スプライト(ブレードid→sprite)
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private marksmanMarkGfx = new Graphics();  // マークスマン射程上昇 発動時の頭上ターゲットマーク(一瞬)
   private homingLockGfx = new Graphics();   // ホーミング弾ロックインジケーター(ロック済み敵の頭上マーカー)
@@ -1204,6 +1210,8 @@ export class PixiScene {
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     this.L.effectLayer.addChild(this.marksmanMarkGfx);
+    this.L.effectLayer.addChild(this.skadiHazardGfx);      // 氷塊の赤テレグラフ円(地面寄り)
+    this.L.effectLayer.addChild(this.skadiHazardContainer); // 氷塊/氷刃スプライト
     this.L.effectLayer.addChild(this.homingLockGfx);
     this.L.effectLayer.addChild(this.slasherRingGfx);
     this.marksmanMarkGfx.blendMode = 'add';
@@ -2276,6 +2284,7 @@ export class PixiScene {
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.realGameTime);
+    this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -4215,6 +4224,55 @@ export class PixiScene {
     const col = justNow ? 0xffffff : 0xbef264;
     g.circle(cx, cy, shrinkR).stroke({ width: justNow ? 3.5 : 2.5, color: col, alpha: (justNow ? 0.95 : 0.7) * fade });
     if (justNow) g.circle(cx, cy, rGoal).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9 }); // ジャスト合図
+  }
+
+  // スカジの氷ハザード描画(判定はstore)。氷塊マーカー=赤いテレグラフ円の2秒フェードイン+氷塊スプライトせり上がり。
+  // 氷刃=設置中は薄く方向表示→発射後はくっきり、常に向きへ回転。effectLayer=world座標。
+  private syncSkadiHazards(
+    markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
+    blades: { id: string; x: number; y: number; angle: number; launched: boolean }[],
+    gameTime: number,
+  ) {
+    const g = this.skadiHazardGfx;
+    g.clear();
+    const seen = new Set<string>();
+    const pulse = 0.5 + 0.5 * Math.sin(gameTime / 110);
+    for (const m of markers) {
+      const total = Math.max(1, m.fireAt - m.bornAt);
+      const t = Math.max(0, Math.min(1, (gameTime - m.bornAt) / total)); // 0→1 フェードイン
+      const R = SKADI_ICE_RADIUS;
+      // 赤いテレグラフ円(2秒でフェードイン)。
+      g.ellipse(m.x, m.y, R, R * 0.55).fill({ color: 0xff2a2a, alpha: 0.05 + 0.18 * t + 0.06 * pulse });
+      g.ellipse(m.x, m.y, R, R * 0.55).stroke({ width: 2, color: 0xff3b3b, alpha: 0.2 + 0.45 * t + 0.12 * pulse });
+      // 氷塊スプライト(下からせり上がり)。
+      const tex = getTexture('skadi-ice-block');
+      if (tex) {
+        seen.add(m.id);
+        let sp = this.skadiBlockPool.get(m.id);
+        if (!sp) { sp = new Sprite(tex); sp.anchor.set(0.5, 0.92); this.skadiHazardContainer.addChild(sp); this.skadiBlockPool.set(m.id, sp); }
+        const sc = (R * 2.0 / Math.max(1, tex.height)) * (0.55 + 0.45 * t); // せり上がりで拡大
+        sp.scale.set(sc);
+        sp.position.set(m.x, m.y + 4);
+        sp.alpha = 0.5 + 0.5 * t;
+        sp.visible = true;
+      }
+    }
+    const btex = getTexture('skadi-ice-blade');
+    if (btex) {
+      const bsc = 80 / Math.max(btex.width, btex.height);
+      for (const b of blades) {
+        seen.add(b.id);
+        let sp = this.skadiBladePool.get(b.id);
+        if (!sp) { sp = new Sprite(btex); sp.anchor.set(0.5, 0.5); this.skadiHazardContainer.addChild(sp); this.skadiBladePool.set(b.id, sp); }
+        sp.scale.set(bsc);
+        sp.rotation = b.angle - SKADI_BLADE_NATIVE_ANGLE; // 刃先を発射方向へ
+        sp.position.set(b.x, b.y);
+        sp.alpha = b.launched ? 1 : (0.4 + 0.2 * pulse); // 設置中は薄い予告→発射後くっきり
+        sp.visible = true;
+      }
+    }
+    for (const [id, sp] of this.skadiBlockPool) { if (!seen.has(id)) { sp.destroy(); this.skadiBlockPool.delete(id); } }
+    for (const [id, sp] of this.skadiBladePool) { if (!seen.has(id)) { sp.destroy(); this.skadiBladePool.delete(id); } }
   }
 
   // スプライトにシアンtintを乗せて描く。通常はHPバー、レア(死神)は渦っぽいシアンの円。

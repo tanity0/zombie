@@ -905,6 +905,15 @@ export const SHIELD_BLOCK_SHAKE_MS = 140;
 export const SHIELD_BLOCK_SHAKE_MAG = 5;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
 export const PUMPKIN_EXPLOSION_RADIUS = 54; // 爆撃範囲を少し狭く(66→54。社長指示)
+// 裏ボス スカジ専用の氷ハザード(社長指示)。判定はupdateEnemiesで、見た目はpixiScene。
+// 氷塊の起爆・氷刃の命中はどちらも既存の爆発処理(pumpkinBlasts)へ ice:true で積み、青FXで消化する。
+export const SKADI_ICE_RADIUS = 90;    // 氷塊破裂のAoE半径(2秒テレグラフなので少し大きめ)
+export const SKADI_ICE_DAMAGE = 38;    // スカジ本体の damage と同じ(=爆発攻撃と一緒)
+export const SKADI_BLADE_SPEED = 700;  // 氷刃の発射速度(px/s・通常弾320より速い)
+export const SKADI_BLADE_DAMAGE = 20;  // 氷刃の命中ダメージ(ボス弾相当)
+export const SKADI_BLADE_HIT = 18;     // 氷刃の命中半径(px)
+export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを過ぎると消滅
+let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
 // 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
 export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒
@@ -1452,7 +1461,10 @@ interface GameState {
   player: Player;
   enemies: Enemy[];
   // パンプキン着地爆発の発生イベント(その frame の着地点)。useGameLoop が消化(被弾判定+FX)して空に戻す。
-  pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[];
+  pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean }[];
+  // 裏ボス スカジの氷ハザード。markers=足元の氷塊テレグラフ(赤サークル2秒→起爆)、blades=設置後に発射される氷刃。
+  skadiIceMarkers: { id: string; x: number; y: number; bornAt: number; fireAt: number; enemyId: string }[];
+  skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string }[];
   // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
   shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
@@ -1654,6 +1666,9 @@ interface GameState {
   removeEnemy: (id: string) => void;
   damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない
   updateEnemies: (deltaTime: number) => void;
+  // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
+  spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
+  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string) => void;
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
@@ -1903,6 +1918,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   enemies: [],
   pumpkinBlasts: [],
   shieldBlocks: [],
+  skadiIceMarkers: [],
+  skadiIceBlades: [],
   boomerangReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
@@ -4636,9 +4653,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     return killed;
   },
   
+  spawnSkadiIce: (x, y, bornAt, fireAt, enemyId) => set(s => ({
+    skadiIceMarkers: [...s.skadiIceMarkers, { id: `sice${skadiHazardSeq++}`, x, y, bornAt, fireAt, enemyId }],
+  })),
+  spawnSkadiBlade: (x, y, angle, launchAt, enemyId) => set(s => ({
+    skadiIceBlades: [...s.skadiIceBlades, { id: `sbld${skadiHazardSeq++}`, x, y, angle, launchAt, launched: false, vx: 0, vy: 0, expireAt: 0, enemyId }],
+  })),
+
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
-    const pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string }[] = []; // 着地爆発イベント
+    const pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean }[] = []; // 着地爆発イベント(ice=スカジ氷=青FX)
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
@@ -5077,7 +5101,38 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       }
 
-      return { enemies: finalEnemies, pumpkinBlasts, shieldBlocks };
+      // --- スカジ氷ハザード(判定はここ・描画はpixiScene) ---
+      // 氷塊マーカー: テレグラフ2秒経過(gameTime>=fireAt)で起爆=爆発処理へ ice:true で積む。
+      const skadiIceMarkers = state.skadiIceMarkers.filter(m => {
+        if (gameTime >= m.fireAt) {
+          pumpkinBlasts.push({ x: m.x, y: m.y, radius: SKADI_ICE_RADIUS, damage: SKADI_ICE_DAMAGE, enemyId: m.enemyId, ice: true });
+          return false;
+        }
+        return true;
+      });
+      // 氷刃: launchAt で発射(向き固定の速度を付与)→以後は等速直進。プレイヤー命中で爆発処理へ積む。寿命で消滅。
+      const pr = Math.max(player.width, player.height) / 2;
+      const skadiIceBlades = state.skadiIceBlades
+        .map(b => {
+          if (!b.launched) {
+            if (gameTime >= b.launchAt) {
+              return { ...b, launched: true, vx: Math.cos(b.angle) * SKADI_BLADE_SPEED, vy: Math.sin(b.angle) * SKADI_BLADE_SPEED, expireAt: gameTime + SKADI_BLADE_LIFE_MS };
+            }
+            return b;
+          }
+          return { ...b, x: b.x + b.vx * deltaTime, y: b.y + b.vy * deltaTime };
+        })
+        .filter(b => {
+          if (!b.launched) return true;
+          if (gameTime >= b.expireAt) return false;
+          if (Math.hypot(pcx - b.x, pcy - b.y) <= SKADI_BLADE_HIT + pr) {
+            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: true });
+            return false;
+          }
+          return true;
+        });
+
+      return { enemies: finalEnemies, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
@@ -7378,6 +7433,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: runEnemies,
         pickups: runPickups,
         projectiles: [],
+        skadiIceMarkers: [],
+        skadiIceBlades: [],
         homingLocks: [],
         shadowClone: null,
         breakableProps: runBreakables,

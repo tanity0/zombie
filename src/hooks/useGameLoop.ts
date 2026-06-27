@@ -292,6 +292,16 @@ const JORM_BURST_GAP_MS = 500;       // バースト間隔0.5秒
 const JORM_RADIAL_VOLLEYS = 8;       // 全方位16発を8回
 const JORM_RADIAL_GAP_MS = 300;      // 全方位間隔0.3秒
 const JORM_RADIAL_SPIN = Math.PI / 16; // 各回ごとに時計回りへずらす角度(rad・約11°)=螺旋射撃(社長指示)
+// スカジ専用の追加攻撃(社長指示。既存のburst/radial/dashは据え置きで、ここに「追加」して抽選)。
+const SKADI_ATTACK_CHANCE = 0.5;     // chase からの行動抽選で氷攻撃を選ぶ確率(残りは従来のdash/burst/radial)
+const SKADI_ICE_COUNT = 5;           // 氷塊バーストの個数
+const SKADI_ICE_GAP_MS = 1000;       // 1秒おきに設置
+const SKADI_ICE_TELEGRAPH_MS = 2000; // 赤サークル2秒フェードイン→起爆
+const SKADI_BLADE_COUNT = 7;         // 氷の刃の個数
+const SKADI_BLADE_GAP_MS = 200;      // 0.2秒おきに設置
+const SKADI_BLADE_DELAY_MS = 1000;   // 設置1秒後に発射
+const SKADI_BLADE_RING_MIN = 150;    // プレイヤー周辺の設置リング内半径
+const SKADI_BLADE_RING_MAX = 260;    // 同・外半径
 const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
@@ -1554,6 +1564,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     patch.bossStateUntil = newGameTime + MIMIR_LASER_WINDUP_MS;
                     patch.aiFromX = bcx; patch.aiFromY = bcy;       // ビーム原点(ロック)
                     patch.aiTargetX = pcx; patch.aiTargetY = pcy;   // 射撃方向(ロック=溜め開始時のプレイヤー)
+                  } else if (boss.type === 'skadi' && Math.random() < SKADI_ATTACK_CHANCE) {
+                    // スカジ専用の氷攻撃を「追加」抽選(氷塊バースト or 氷の刃)。
+                    if (Math.random() < 0.5) { patch.bossState = 'skadi-ice'; patch.bossBurstLeft = SKADI_ICE_COUNT; patch.bossBurstNextAt = newGameTime; }
+                    else { patch.bossState = 'skadi-blade'; patch.bossBurstLeft = SKADI_BLADE_COUNT; patch.bossBurstNextAt = newGameTime; }
                   } else {
                     const r = Math.random();
                     if (r < BOSS_DASH_CHANCE) { patch.bossState = 'dash-windup'; patch.bossStateUntil = newGameTime + BOSS_DASH_WINDUP_MS; }
@@ -1612,6 +1626,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                   patch.bossBurstLeft = left - 1;
                   patch.bossBurstNextAt = newGameTime + JORM_RADIAL_GAP_MS;
+                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'skadi-ice') {
+                // スカジ: プレイヤー足元へ氷塊マーカーを SKADI_ICE_GAP_MS おきに SKADI_ICE_COUNT 個設置。
+                // 各マーカーは設置位置に固定で2秒テレグラフ後に起爆(動けば避けられる)。
+                const left = boss.bossBurstLeft ?? 0;
+                if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
+                  useGameStore.getState().spawnSkadiIce(pcx, pcy, newGameTime, newGameTime + SKADI_ICE_TELEGRAPH_MS, boss.id);
+                  patch.bossBurstLeft = left - 1;
+                  patch.bossBurstNextAt = newGameTime + SKADI_ICE_GAP_MS;
+                  if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+                }
+              } else if (st === 'skadi-blade') {
+                // スカジ: プレイヤー周辺ランダム位置に、設置時のプレイヤー方向を向いた氷刃を
+                // SKADI_BLADE_GAP_MS おきに SKADI_BLADE_COUNT 個設置。各刃は設置1秒後にその向きへ高速発射。
+                const left = boss.bossBurstLeft ?? 0;
+                if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
+                  const a0 = Math.random() * Math.PI * 2;
+                  const dist = SKADI_BLADE_RING_MIN + Math.random() * (SKADI_BLADE_RING_MAX - SKADI_BLADE_RING_MIN);
+                  const sx = pcx + Math.cos(a0) * dist, sy = pcy + Math.sin(a0) * dist;
+                  const aim = Math.atan2(pcy - sy, pcx - sx); // 設置時のプレイヤー方向(以後固定)
+                  useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, boss.id);
+                  patch.bossBurstLeft = left - 1;
+                  patch.bossBurstNextAt = newGameTime + SKADI_BLADE_GAP_MS;
                   if (left - 1 <= 0) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                 }
               } else if (st === 'laser-windup') {
@@ -2722,9 +2760,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const counterActive = Date.now() <= bp.counterWindowEnd;
             const parriedEnemyIds: { id: string; bx: number; by: number }[] = [];
             for (const b of blasts) {
-              spawnFlash('rgba(255,150,60,0.16)', 200);
-              spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
-              spawnBurst(b.x, b.y, '#fb923c', 16);
+              if (b.ice) {
+                // スカジ氷=青版の爆発エフェクト(社長指示。爆発処理自体は流用)。
+                spawnFlash('rgba(140,200,255,0.16)', 200);
+                spawnRing(b.x, b.y, 6, b.radius, 'rgba(150,210,255,0.9)', 4, 300);
+                spawnBurst(b.x, b.y, '#bfe6ff', 16);
+                useGameStore.getState().spawnGlow(b.x, b.y, b.radius, 'rgba(150,210,255,', 280);
+              } else {
+                spawnFlash('rgba(255,150,60,0.16)', 200);
+                spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
+                spawnBurst(b.x, b.y, '#fb923c', 16);
+              }
               const pr = Math.max(bp.width, bp.height) / 2;
               if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr) {
                 if (counterActive) {
