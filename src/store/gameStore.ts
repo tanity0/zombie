@@ -25,6 +25,7 @@ import {
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
+import { pickNpcLine } from '../data/npcLines';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
@@ -4756,8 +4757,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (!best) return;
     const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
-    get().tryNpcLine(sol.name, 'npcKill', sol.npcKill, NPC_KILL_CAT_CD_MS);
+    get().tryNpcLine(sol.name, 'npcKill', pickNpcLine(best.soldierIndex, 'npcKill', sol.npcKill), NPC_KILL_CAT_CD_MS);
   },
+  // イベント系クリア地点(x,y)に対応する地域NPC(最寄り拠点担当)が反応。救助成功は「救助者保護(rescueReturned)」を出す。
   npcOpPrepReact: (x, y) => {
     const s = get();
     if (s.escorts.length === 0) return; // 護衛NPCが居る出撃のみ
@@ -4769,7 +4771,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (bestIdx < 0) return;
     const sol = BASE_SOLDIERS[bestIdx % BASE_SOLDIERS.length];
-    get().tryNpcLine(sol.name, 'opPrep', sol.opPrep, OP_PREP_CAT_CD_MS);
+    const line = pickNpcLine(bestIdx, 'rescueReturned', '');
+    if (line) get().tryNpcLine(sol.name, 'rescueReturned', line, OP_PREP_CAT_CD_MS);
   },
   npcPraiseReact: () => {
     const s = get();
@@ -4781,7 +4784,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (!best) return;
     const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
-    get().tryNpcLine(sol.name, 'praise', sol.praise, PRAISE_CAT_CD_MS);
+    get().tryNpcLine(sol.name, 'praise', pickNpcLine(best.soldierIndex, 'praise', sol.praise), PRAISE_CAT_CD_MS);
   },
   tryNpcLine: (name, category, text, categoryCdMs) => {
     const s = get();
@@ -5578,7 +5581,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         eventBannerText: `${saved}人救助成功！`,
         eventBannerUntil: state.gameTime + 3500,
       }));
-      get().npcOpPrepReact(ae.x, ae.y); // 作戦準備が進んだ(イベント系クリア=救助成功)→地域NPCが反応
+      get().npcOpPrepReact(ae.x, ae.y); // イベント系クリア(救助成功)→地域NPCが「救助者保護(rescueReturned)」で反応
       get().spawnRing(ae.x, ae.y, ae.radius * 0.2, ae.radius, 'rgba(74,222,128,0.9)', 6, 700);
       return;
     }
@@ -6847,7 +6850,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // たまにランダムで「押されている」旨を漏らす(画面外でも判定=放置の通知)。CDで更に間引く。
       if (base.status === 'open' && Math.hypot(esc.x - px, esc.y - py) > NEGLECT_DIST && Math.random() < RETREAT_CHANCE_PER_SEC * deltaTime) {
         const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
-        npcRetreatEvents.push({ name: sol.name, text: sol.pushback });
+        npcRetreatEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
       if (!onScreen(esc.x, esc.y)) return esc; // 画面外=前進停止(座標保持)
       // 最寄り敵(プレイヤーと同じく全敵を見る)。空中(ジャンプ中)の敵は無敵なので狙わない。
@@ -6865,23 +6868,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
       let wasSurrounded = esc.wasSurrounded ?? false;
       if (surround >= SURROUND_COUNT) {
-        if (!wasSurrounded) npcSurroundEvents.push({ name: sol.name, text: sol.surrounded });
+        if (!wasSurrounded) npcSurroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
         wasSurrounded = true;
       } else if (wasSurrounded && surround <= RESCUED_FREE) {
         // 周囲の敵が減って進軍再開できる状態=助けられた。
-        npcRescuedEvents.push({ name: sol.name, text: sol.rescued });
+        npcRescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
         wasSurrounded = false;
       }
       // 拠点が見えてきた時: 未制圧の担当拠点中心へ近づいた(あと少し)。
       if (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST) {
-        npcBaseNearEvents.push({ name: sol.name, text: sol.baseNear });
+        npcBaseNearEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
       }
       // 並走時: プレイヤーと近距離の連続時間を計測し、一定時間越えたら低確率で漏らす(頻度かなり低め)。
       let companionMs = esc.companionMs ?? 0;
       if (Math.hypot(esc.x - px, esc.y - py) <= COMPANION_DIST) {
         companionMs += deltaTime * 1000;
         if (companionMs >= COMPANION_HOLD_MS && Math.random() < COMPANION_CHANCE_PER_SEC * deltaTime) {
-          npcCompanionEvents.push({ name: sol.name, text: sol.companion });
+          npcCompanionEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'companion', sol.companion) });
           companionMs = 0; // 一度漏らしたら再蓄積
         }
       } else {
@@ -7052,7 +7055,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnGlow(c.x, c.y, 70, 'rgba(251,191,36,', 600);
       // 拠点解放時セリフ(Critical): 時間停止なしのHUDセリフに置換(管理表 baseCaptured)。バナー/SEは併用。
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
-      get().tryNpcLine(sol.name, 'baseCaptured', sol.baseCaptured, BASE_CAPTURED_CAT_CD_MS);
+      get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
     }
     // 「敵に囲まれた時」セリフ(時間停止なしHUD)。同一NPC/同一カテゴリのCDを守って1件だけ通す。
@@ -7091,7 +7094,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         if (pickIdx >= 0) {
           const sol = BASE_SOLDIERS[pickIdx % BASE_SOLDIERS.length];
-          get().tryNpcLine(sol.name, 'neglectFar', sol.neglectFar, NEGLECT_FAR_CAT_CD_MS);
+          get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(pickIdx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
         }
       }
     }
@@ -7715,7 +7718,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         npcSpokeAt: {},
         npcCatAt: {},
         npcDialogueQueue: (!indoor && stageTheme !== 'lab')
-          ? [BASE_SOLDIERS[Math.floor(Math.random() * 4)]].map(s => ({ name: s.name, text: s.sortie }))
+          ? (() => { const i = Math.floor(Math.random() * 4); return [{ name: BASE_SOLDIERS[i].name, text: pickNpcLine(i, 'sortie', BASE_SOLDIERS[i].sortie) }]; })()
           : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,

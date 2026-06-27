@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1094 — セリフDB_量産用(dlg_000001〜000073)を取り込み(バリアント＋ランダム)＋救助者保護シーン
+
+- 社長: スプレッドシート「セリフDB_量産用」更新を取り込み。各NPC×シーンに複数バリアント(キャラ設定リライト済み)。
+- 実装: `src/data/npcLines.ts` を新設し全73行を `NPC_SCENE_VARIANTS` に収録。`pickNpcLine(idx,cat,fallback)` で
+  (idx,cat)のバリアントからランダム選択(あれば優先=新キャラ設定反映 / 無ければ既存1文へフォールバック)。
+  各発火点(出撃/囲まれ/助けられ/後退/拠点接近/拠点解放/並走/放置/NPC撃破/無双)の text を pickNpcLine に置換。
+- 新シーン rescueReturned(救助者を拠点へ保護した時): 救助成功フックを opPrep→rescueReturned に変更(dlg_058〜065の
+  専用台詞。地域NPCが反応)。opPrep の台詞はデータ保持のまま(将来の他イベントクリア用)。
+- **取り込み済み(チェック)**: dlg_000001〜000073(全行・status=ready)を反映。シーン別: 出撃8/囲まれ8/助けられ9/
+  後退8/拠点接近9/拠点解放10/無双9/並走1/放置1/救助者保護9。
+  ※GoogleシートのMCPはセル更新APIが無く、こちらから `implemented` 列に直接チェックを入れられません。上記の
+  取り込み一覧を「実装済み」マーク代わりに記録(社長側でシートにチェック頂くか、列指定があれば別手段を検討)。
+- 変更: `src/data/npcLines.ts`(新規), `src/store/gameStore.ts`(import/各発火点をpickNpcLine化/救助フック), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10(静的データ＋ランダム1回)。
+- 次の引き継ぎ: 実機で各シーンのセリフがバリアント違いで出るか・キャラ設定が合っているか確認。今後の追加も
+  npcLines.ts に足すだけ。
+
 ## v0.25.1093 — NPCセリフ「作戦準備が進んだ時(12)」「プレイヤー無双時(10)」(社長指示)
 
 - 12 作戦準備が進んだ時(確定: イベント系クリアで、その地域に対応するNPCが反応): 救助成功(イベントクリア)時に
