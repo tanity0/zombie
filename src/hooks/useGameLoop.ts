@@ -300,8 +300,8 @@ const SKADI_ICE_TELEGRAPH_MS = 2000; // 赤サークル2秒フェードイン→
 const SKADI_BLADE_COUNT = 7;         // 氷の刃の個数
 const SKADI_BLADE_GAP_MS = 200;      // 0.2秒おきに設置
 const SKADI_BLADE_DELAY_MS = 1000;   // 設置1秒後に発射
-const SKADI_BLADE_RING_MIN = 150;    // プレイヤー周辺の設置リング内半径
-const SKADI_BLADE_RING_MAX = 260;    // 同・外半径
+const SKADI_BLADE_RING_MIN = 100;    // プレイヤー周辺の設置リング内半径(社長指示でもう少し近く)
+const SKADI_BLADE_RING_MAX = 180;    // 同・外半径
 const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率

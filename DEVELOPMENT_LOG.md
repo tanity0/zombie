@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1087 — NPCセリフ 第4弾「後退する時」(放置×ランダム代理)＋スカジ氷刃を近くに(社長指示)
+
+- 社長指示1: 「後退する時」=NPCが敵圧に押されて後退。後退システム未実装のため代理として
+  「プレイヤーが遠く放置(>NEGLECT_DIST=900px)している未制圧担当NPCが、たまにランダム(毎秒
+  RETREAT_CHANCE_PER_SEC=0.012、CD 45s)で押されている旨を漏らす」を実装。画面外の護衛でも判定(=放置の通知)。
+  - 管理表準拠 `pushback` を BASE_SOLDIERS に追加(例 エドガー「東部隊、押されている。可能なら援護を。」武蔵「下がる。」)。
+  - `updateSuppression` の護衛ループ先頭(画面外早期returnの前)で放置×ランダム判定→`tryNpcLine(..,'pushback',..)`。
+- 社長指示2: スカジの氷の刃をもう少しプレイヤーの近くに。`SKADI_BLADE_RING_MIN/MAX` 150/260→**100/180**。
+- 変更: `store/gameStore.ts`(pushback/定数/判定/発火), `hooks/useGameLoop.ts`(氷刃リング), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 次の引き継ぎ: 実機で後退セリフの頻度(たまーに)・氷刃の距離感を確認。
+  調整: 放置距離 NEGLECT_DIST、頻度 RETREAT_CHANCE_PER_SEC、再発話 RETREAT_CAT_CD_MS / 氷刃 SKADI_BLADE_RING_MIN/MAX。
+
 ## v0.25.1086 — NPCセリフ 第3弾「囲まれから助けてもらった時」(社長 開発指示書・High)
 
 - 社長指示: NPC周辺の敵をプレイヤーが複数倒し、NPCが進軍再開できる状態になった時に発話。援護が効いた実感を出す。

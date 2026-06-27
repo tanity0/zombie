@@ -168,16 +168,17 @@ const makeEscorts = (px: number, py: number): EscortSoldier[] => {
 };
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
-// sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時(管理表準拠)。capture/retreat は既存。
-const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string; rescued: string }[] = [
-  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。', surrounded: '囲まれた。突破口を作る。', rescued: '助かった。今ので前線を戻せる。' },
-  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！', surrounded: '囲まれた！笑えない数だ！', rescued: '助かった！今のは正直キツかった！' },
-  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。', surrounded: '包囲されています。負傷リスクが高い。', rescued: '助かりました。こちらの損耗を抑えられます。' },
-  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。', surrounded: '囲まれた。', rescued: '助かった。前へ出る。' },
-  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！', surrounded: '囲まれたか。上等だ！', rescued: '助かったぜ！借りは返す！' },
-  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。', surrounded: '包囲傾向。脱出路を確保してください。', rescued: '支援確認。進軍を再開します。' },
-  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。', surrounded: '囲まれた。最悪、でも想定内。', rescued: '助かった。文句はあとで言う。' },
-  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。', surrounded: '囲まれたな。興味深いが危険だ。', rescued: '介入を確認。生存率が上がった。' },
+// sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時 / pushback=後退する時(管理表準拠)。
+// capture/retreat は既存のコールアウト(制圧時/拠点陥落時)。
+const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string; rescued: string; pushback: string }[] = [
+  { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。', surrounded: '囲まれた。突破口を作る。', rescued: '助かった。今ので前線を戻せる。', pushback: '東部隊、押されている。可能なら援護を。' },
+  { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！', surrounded: '囲まれた！笑えない数だ！', rescued: '助かった！今のは正直キツかった！', pushback: 'まずい、押されてる！一歩下がる！' },
+  { name: 'エリザベス', capture: 'わかったわ！',     retreat: '覚えてなさい！', sortie: '西部ルートへ向かいます。救助者がいれば優先を。', surrounded: '包囲されています。負傷リスクが高い。', rescued: '助かりました。こちらの損耗を抑えられます。', pushback: '押されています。態勢を立て直します。' },
+  { name: '武蔵',       capture: '御意。',           retreat: '無念。',       sortie: '北へ出る。', surrounded: '囲まれた。', rescued: '助かった。前へ出る。', pushback: '下がる。' },
+  { name: 'オクラホマ', capture: 'オーライ！',       retreat: 'クソー！',     sortie: 'よし、行くぞ！道は力で開ける！', surrounded: '囲まれたか。上等だ！', rescued: '助かったぜ！借りは返す！', pushback: 'くそ、押し返される！' },
+  { name: 'チェン',     capture: '守り切る！',       retreat: 'あきらめない！', sortie: '進軍開始。周囲を確認します。', surrounded: '包囲傾向。脱出路を確保してください。', rescued: '支援確認。進軍を再開します。', pushback: '圧力上昇。後退します。' },
+  { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。', surrounded: '囲まれた。最悪、でも想定内。', rescued: '助かった。文句はあとで言う。', pushback: '下がる。無理して壊れるよりマシ。' },
+  { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。', surrounded: '囲まれたな。興味深いが危険だ。', rescued: '介入を確認。生存率が上がった。', pushback: '後退する。標本になる気はない。' },
 ];
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
 const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間
@@ -189,6 +190,10 @@ const SURROUND_COUNT = 3;         // 周囲この数以上で囲まれと判定(
 const SURROUND_CAT_CD_MS = 40000; // 囲まれカテゴリの再発話CD(管理表 30〜60秒)
 const RESCUED_FREE = 1;           // 囲まれ後、周囲の敵がこの数以下に減ったら「解放=助けられた」
 const RESCUED_CAT_CD_MS = 30000;  // 助けられたカテゴリの再発話CD
+// 「後退する時」(後退システム未実装の代理): プレイヤーが遠く放置している未制圧担当NPCが、たまにランダムで漏らす。
+const NEGLECT_DIST = 900;             // プレイヤーからこの距離以上=放置とみなす(px)
+const RETREAT_CHANCE_PER_SEC = 0.012; // 放置中に後退セリフを漏らす毎秒確率(たまーに)。CDで更に間引く
+const RETREAT_CAT_CD_MS = 45000;      // 後退カテゴリの再発話CD
 // 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
 const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
   idx >= 0 ? BASE_SOLDIERS[idx % BASE_SOLDIERS.length] : null;
@@ -6742,6 +6747,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
     const npcSurroundEvents: { name: string; text: string }[] = []; // 「敵に囲まれた」発話候補(CDはset後にtryNpcLineで適用)
     const npcRescuedEvents: { name: string; text: string }[] = [];   // 「囲まれから助けられた」発話候補
+    const npcRetreatEvents: { name: string; text: string }[] = [];    // 「後退する時」(放置×ランダム)発話候補
     let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
@@ -6753,7 +6759,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     let escortsChanged = false;
     const nextEscorts: EscortSoldier[] = state.escorts.map(esc => {
       const base = state.baseSites.find(b => b.id === esc.baseId);
-      if (!base || !onScreen(esc.x, esc.y)) return esc; // 画面外/拠点なし=前進停止(座標保持)
+      if (!base) return esc;
+      // 後退(放置)セリフ: 後退システム未実装の代理。プレイヤーが遠く放置していて未制圧の担当NPCが、
+      // たまにランダムで「押されている」旨を漏らす(画面外でも判定=放置の通知)。CDで更に間引く。
+      if (base.status === 'open' && Math.hypot(esc.x - px, esc.y - py) > NEGLECT_DIST && Math.random() < RETREAT_CHANCE_PER_SEC * deltaTime) {
+        const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+        npcRetreatEvents.push({ name: sol.name, text: sol.pushback });
+      }
+      if (!onScreen(esc.x, esc.y)) return esc; // 画面外=前進停止(座標保持)
       // 最寄り敵(プレイヤーと同じく全敵を見る)。空中(ジャンプ中)の敵は無敵なので狙わない。
       // 併せて SURROUND_RADIUS 内の敵数を数え、囲まれ判定(セリフ用)に使う。
       let nearest: Enemy | undefined; let nd2 = detect2;
@@ -6950,6 +6963,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 「囲まれから助けてもらった時」セリフ。援護実感を出す(High)。同上CD。
     for (const ev of npcRescuedEvents) {
       if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS)) break;
+    }
+    // 「後退する時」セリフ(放置×ランダム)。同上CD。
+    for (const ev of npcRetreatEvents) {
+      if (get().tryNpcLine(ev.name, 'pushback', ev.text, RETREAT_CAT_CD_MS)) break;
     }
     for (const a of spawnList) {
       const e = spawnEnemyAt('skeleton', a.x - 16, a.y - 16, now);
