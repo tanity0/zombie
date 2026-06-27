@@ -604,6 +604,8 @@ const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
+// 投影影の大きさ倍率(長さ・幅・接地楕円をまとめて拡縮)。社長指示で2倍。視覚のみ・挙動不変。
+const LOCAL_EVENT_SHADOW_SIZE_MULT = 2;
 
 const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest', 'weapon-crate', 'treasure', 'lab-clear-item']);
 
@@ -3619,9 +3621,9 @@ export class PixiScene {
           const nx = groundDx / groundDist;
           const ny = groundDy / groundDist;
           const actorDepth = this.depthScale(actor.y);
-          const len = (118 + e.radius * 1.9) * falloff * actorDepth * Math.min(1.55, actor.strength);
-          const shadowRadiusX = Math.max(4, actor.w * 0.55);
-          const shadowRadiusY = Math.max(1.5, actor.w * 0.18);
+          const len = (118 + e.radius * 1.9) * falloff * actorDepth * Math.min(1.55, actor.strength) * LOCAL_EVENT_SHADOW_SIZE_MULT;
+          const shadowRadiusX = Math.max(4, actor.w * 0.55) * LOCAL_EVENT_SHADOW_SIZE_MULT;
+          const shadowRadiusY = Math.max(1.5, actor.w * 0.18) * LOCAL_EVENT_SHADOW_SIZE_MULT;
           const alpha = LOCAL_EVENT_SHADOW_ALPHA * life * falloff * actor.horizonAlpha * horizonAlpha * actor.strength;
           const startX = actorX + nx * Math.min(3, shadowRadiusX * 0.12);
           const startY = actorY + ny * Math.min(2, shadowRadiusY * 0.35) - 1;

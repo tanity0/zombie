@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1077 — ローカル光源の投影影を2倍に(社長指示・視覚のみ)
+
+- 社長「この影(ローカル光源の投影影)の大きさを2倍にして」。
+- `LOCAL_EVENT_SHADOW_SIZE_MULT = 2` を新設し、`syncLocalEventLighting` の `len`(長さ)・
+  `shadowRadiusX/Y`(接地楕円→ストリーク幅も連動)へ乗算=影全体を等倍で2倍に。
+- 向き/濃さ/フェード/reach/本数上限など他の法則は不変。判定/挙動には影響しない純描画。
+- 変更: `src/pixi/pixiScene.ts`, `package.json`。
+- 検証: lint / typecheck / build 全green。
+- 負荷: 1/10(同じ描画本数のまま寸法だけ拡大。塗り面積=fill-rateが増えるが、影は強グロー発生時の
+  一時イベントで本数も22上限なので軽微)。倍率を戻す/微調整は `LOCAL_EVENT_SHADOW_SIZE_MULT` のみ。
+- 次の引き継ぎ: 実機で2倍の見え方を確認。大きすぎ/小さすぎなら倍率を調整。
+
 ## v0.25.1076 — ナイフアイコンを透過済み素材で切り出し直し(社長指示・PNG差し替えのみ)
 
 - 社長「きり出せてないよ。こっち使って割り振り直して」。前回(1075)はチェッカー背景焼き込みの
