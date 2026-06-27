@@ -2,6 +2,17 @@
 
 Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 
+## 仕様変更のルール (最重要 / MUST)
+- **ゲームの仕様・挙動・バランス・演出の意図を、勝手に変更してはいけない。**
+  値の意味やカーブ・閾値・floor 等を「良かれと思って」変えるのも禁止。
+- 直したい/改善案がある時は **実装せず、まず日本語で「提案」だけ**する。採否は
+  社長(ユーザー)が決める。承認を得てから実装する。
+- 「Aを直して」と言われたら **A だけ** を直す。周辺の仕様(他の定数・カーブ・別挙動)は
+  指示が無い限り触らない。
+- 既存の値には意図がある(例: `BOSS_BEHIND_ALPHA=0.5` は「裏に回り込んでも薄く見える」
+  ための floor=意図的)。意味を確認せず変えない。
+- 例外: 明確なバグ修正で挙動の意図を変えないもの、または明示指示があるもの。
+
 ## Renderer
 - **PixiJS is the default and the only actively-developed renderer.** The legacy
   Canvas2D renderer is still reachable via `?renderer=canvas` as a fallback/
