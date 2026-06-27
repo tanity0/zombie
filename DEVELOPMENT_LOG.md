@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1090 — NPCセリフ「拠点解放時(6・置換)」「並走時(8)」(社長 開発指示書)
+
+- 社長指示: 6=拠点到達・解放時(既存の制圧コールアウトを置き換え), 8=並走時(頻度かなり低め)。
+- 6 拠点解放時(Critical・置換): 制圧時の演出を、従来の時間停止イントロ吹き出し(`まかせろ！`等)から
+  **時間停止なしHUDセリフ**(管理表 baseCaptured: エドガー「東部拠点、確保。ここから押し返す。」武蔵「北部拠点、確保。」)
+  へ置換。バナー(拠点確保)/SEは併用維持。`updateSuppression` の capturedThisFrame で `tryNpcLine(..'baseCaptured'..)`。
+- 8 並走時(Low・低頻度): 護衛に `companionMs`(EscortSoldierに追加)を持たせ、プレイヤーが `COMPANION_DIST(240px)`
+  内に連続 `COMPANION_HOLD_MS(5s)` 並走したら、低確率(毎秒3%)で `companion` 発話。カテゴリCD60s。離れたらリセット。
+- 変更: `types/game.ts`(companionMs), `store/gameStore.ts`(BASE_SOLDIERS companion/baseCaptured / 定数 /
+  makeEscorts / 並走検知 / 解放時置換), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 残り(社長クリア済み): 9 NPC撃破(撃破帰属が要)・10 無双(短時間多数撃破)・11 放置/隣NPC(条件確定: 誰も
+  進軍を手伝っていない時、プレイヤーの現在エリア→開放済みなら隣→…の最初の未開放エリアのNPCが1人だけ反応)。
+  12は置換ではない(置換は6のみ)。次でこれらを実装。
+
 ## v0.25.1089 — スカジ氷刃をカウンター対象に(社長指示)
 
 - 社長指示: 氷刃もカウンター対象に。氷刃は速く、接触の一瞬でカウンター窓を合わせるのが難しかった。

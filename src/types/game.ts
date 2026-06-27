@@ -444,6 +444,7 @@ export interface EscortSoldier {
   fireAt: number;      // 次の射撃 gameTime
   dwellMs: number;     // 担当拠点サークル内の滞在(10sで解放)
   wasSurrounded?: boolean; // 直近で「囲まれ」状態だったか(助けてもらった時セリフの遷移検知用)
+  companionMs?: number;    // プレイヤーと近距離で並走している連続時間(並走時セリフ用)
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
