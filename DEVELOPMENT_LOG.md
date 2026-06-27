@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1085 — 囲まれ判定を3体以上に(社長指示)
+
+- 社長指示: 囲まれ判定を「3体以上」に。`SURROUND_COUNT` 4→3。早く発話する。
+- 「反応が遅い?」の調査: 表示自体のラグは~1フレームでほぼ無し。遅く感じた主因は閾値(200px内4体)が
+  密集を要したため。3体に下げて早期発火。唯一、出撃時セリフ(~2.8s)表示中の最初の数秒だけ順番待ちになる。
+- 変更: `store/gameStore.ts`(SURROUND_COUNT), `package.json`。検証: lint/typecheck/build 全green。
+- さらに早く/頻繁にしたい場合の調整: 判定半径 `SURROUND_RADIUS`、行間 `NPC_DIALOGUE_GAP_MS`、
+  表示時間 `NPC_DIALOGUE_MS`、再発話 `SURROUND_CAT_CD_MS`。
+
 ## v0.25.1084 — NPCセリフ 第2弾「敵に囲まれた時」(社長 開発指示書・High)
 
 - 社長指示: NPC周辺の敵圧が高い時に発話。NPCが苦戦している事を感情的に伝え、援護判断を促す。

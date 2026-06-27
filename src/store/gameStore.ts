@@ -184,7 +184,7 @@ const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めす
 const NPC_SAME_NPC_CD_MS = 10000; // 同一NPCの連続発話を抑制(管理表 8〜12秒)
 // 「敵に囲まれた時」検知/抑制(社長指示・管理表 High=危機/カテゴリCD必須)。
 const SURROUND_RADIUS = 200;      // この距離内の敵数で「囲まれ」を判定
-const SURROUND_COUNT = 4;         // 周囲この数以上で囲まれと判定
+const SURROUND_COUNT = 3;         // 周囲この数以上で囲まれと判定(社長指示で4→3)
 const SURROUND_CAT_CD_MS = 40000; // 囲まれカテゴリの再発話CD(管理表 30〜60秒)
 // 軍人は拠点固定ではなく「制圧順」で割り当てる(どの拠点でも1人目=エドガー)。
 const soldierByIndex = (idx: number): { name: string; capture: string; retreat: string } | null =>
