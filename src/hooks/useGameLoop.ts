@@ -291,6 +291,7 @@ const JORM_BURST_FAN_SPREAD = 0.18;  // 1回=プレイヤー狙いの3-way扇の
 const JORM_BURST_GAP_MS = 500;       // バースト間隔0.5秒
 const JORM_RADIAL_VOLLEYS = 8;       // 全方位16発を8回
 const JORM_RADIAL_GAP_MS = 300;      // 全方位間隔0.3秒
+const JORM_RADIAL_SPIN = Math.PI / 16; // 各回ごとに時計回りへずらす角度(rad・約11°)=螺旋射撃(社長指示)
 const BOSS_DASH_WINDUP_MS = 3000;                    // たまに3秒立ち止まり(社長指示)
 const BOSS_DASH_MS = 3000;                           // その後2倍速で3秒追跡(社長指示)
 const BOSS_DASH_CHANCE = 0.1;                        // 「たまーーーに」=低確率
@@ -1601,10 +1602,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               } else if (st === 'radial') {
                 // ヨルムンガルド専用: 16発の全方位を JORM_RADIAL_GAP_MS おきに JORM_RADIAL_VOLLEYS 回。
+                // 各回ごとに時計回りへ JORM_RADIAL_SPIN だけずらして螺旋状に撃つ(社長指示)。
                 const left = boss.bossBurstLeft ?? 0;
                 if (left > 0 && newGameTime >= (boss.bossBurstNextAt ?? 0)) {
+                  const vi = JORM_RADIAL_VOLLEYS - left; // 0始まりの回数インデックス
                   for (let i = 0; i < BOSS_RADIAL_COUNT; i++) {
-                    const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT;
+                    const a = (Math.PI * 2 * i) / BOSS_RADIAL_COUNT + vi * JORM_RADIAL_SPIN; // 時計回り(画面y下)へ加算
                     fireBullet(bcx + Math.cos(a) * 100, bcy + Math.sin(a) * 100);
                   }
                   patch.bossBurstLeft = left - 1;

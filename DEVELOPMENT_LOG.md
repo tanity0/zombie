@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1080 — ヨルムンガルド: 全方位を時計回り螺旋に(社長指示)
+
+- 社長指示: バースト=「真ん中の弾を基準にプレイヤー狙い」(=現状の3-way扇の中心がプレイヤー=変更不要)、
+  全方位=「少しずつ時計回りにずらして射撃」。
+- 実装: `radial` 状態で各回(8回)ごとに角度へ `vi * JORM_RADIAL_SPIN` を加算(画面y下なので加算=時計回り)。
+  `JORM_RADIAL_SPIN = π/16`(約11°/回)。8回で約90°回る螺旋状の弾幕に。バーストは無変更。
+- 変更: `src/hooks/useGameLoop.ts`, `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 変化なし(弾数同じ・角度に加算のみ)。
+- 次の引き継ぎ: 実機で螺旋の回り方/速さを確認。回転量は `JORM_RADIAL_SPIN` で調整(大きいほど速く回る)。
+
 ## v0.25.1079 — ヨルムンガルド(裏ボス)のみ攻撃パターン変更(社長指示)
 
 - 社長指示: 裏ボス「ヨルムンガルド」のみ、バースト=3発×5回(0.5秒間隔)、全方位=16発×8回(0.3秒間隔)に変更。
