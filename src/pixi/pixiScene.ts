@@ -414,19 +414,13 @@ const PLAYER_CLASS_MENU_SPRITE_WIDTH = 86;
 // 背負い刀の大きさ倍率(中心固定で縮小)。
 const KATANA_BACK_SCALE = 0.72;
 // (旧)近接ナイフのアンカー/角度/三日月定数は、2枚差し替えスイングへの移行で不要になり撤去。
-// 円形斬撃(2段スイープ)の全体寿命ms。COUNTER_WINDOW(400ms)内に収める。
-// 短いほど鋭く速い(キレ・勢い)。
-const SLASH_LIFE_MS = 220;
-// 近接スイングを2枚の画像差し替えで見せる方式へ移行したため、自前描画の円形斬撃
-// テレグラフ(syncPlayerFx)は既定で無効。実機で戻したい時は true に。
-const SLASH_PROC_ENABLED = false;
 // 2枚差し替えスイング(回転なし・左右ミラーのみ。参考: 社長提供の位置絵)。
 // frame1=ダガーをキャラ左下に構え、frame2=ダガー左上+青スラッシュが右へ弧。kt で切替。
 // オフセット単位 = キャラ箱高×奥行スケール(unit)。右向き時の値(左向きは ox を反転+画像xミラー)。
 // scale = スプライト幅 / unit。実機で微調整可。
 const KNIFE_SWING_SWITCH = 0.30;                        // frame1→frame2 切替(kt 0..1)
-const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.20 };  // 1枚目: キャラ左下のダガー
-const KNIFE_F2 = { scale: 1.60, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた)
+const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.12 };  // 1枚目: キャラ左下のダガー(少し上げた)
+const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた・少し大きく)
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -6613,72 +6607,51 @@ export class PixiScene {
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
     const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
-    if (SLASH_PROC_ENABLED && now <= player.counterWindowEnd && counterFxVisible) {
-      // A thin reach ring (telegraph) + a STATIC crescent blade that snaps in
-      // and fades fast (no rotation). The crescent faces the player's last
-      // heading; it's thick in the belly and tapers to thin tips.
-      // 斬撃アニメは左右2種だけ。上/下に撃っても、水平成分(なければ直近の左右向き
-      // player.direction)で右(0)か左(π)のアニメを選ぶ。
+    if (now <= player.counterWindowEnd && counterFxVisible) {
+      // 元の黄色い攻撃範囲テレグラフ(社長指示で復活)。細いリーチリング + さっと出て
+      // 速く消える静止クレセント。クレセントは狙い方向を向き、腹が太く先端が細い。
+      // ※近接スイングの見た目は別途2枚画像差し替えで描画(本ブロックは攻撃範囲の表示)。
       const dir = player.lastDirection;
-      const horiz = dir && Math.abs(dir.x) > 1e-3 ? dir.x : (player.direction === 'left' ? -1 : 1);
-      const head = horiz >= 0 ? 0 : Math.PI;
+      const head = dir ? Math.atan2(dir.y, dir.x) : -Math.PI / 2;
       const openAt = player.counterWindowEnd - COUNTER_WINDOW;
-      const life = (now - openAt) / SLASH_LIFE_MS; // 0..1 全体寿命
-      if (life < 1) {
-        // 二段階で流れる円形斬撃。comet head が攻撃範囲の円周を1周し、通った弧が
-        // 青く光って残る。前半=半周まで一気→減速、後半=残り半周を流して円を閉じる。
-        // 各段とも「速く入って終わりで止まる」ease なので境目で一瞬溜め、2段に見える。
-        const fade = life < 0.72 ? 1 : Math.max(0, 1 - (life - 0.72) / 0.28);
-        const startA = head - Math.PI;                      // 振り向きの反対側から入る
-        // ズッ(前半=太く鋭く突く) → シャ!(後半=細く一気に snap して円を閉じる)。
-        // 出だしは重く溜めず、両段とも ease-out で「速く入って止まる」=キレ・勢い重視。
-        const SLASH_SPLIT = 0.4;                             // 時間配分(前半ズッ短め / 後半シャ)
-        let prog, thick, headSharp;                          // prog:0..1→1周 / thick:太さ / headSharp:先端集中
-        if (life < SLASH_SPLIT) {
-          const x = life / SLASH_SPLIT;
-          prog = 0.5 * (1 - Math.pow(1 - x, 2.6));           // ズッ: 鋭く出て半周(ease-out)
-          thick = 1;                                         // 太い
-          headSharp = 1.6;
-        } else {
-          const x = (life - SLASH_SPLIT) / (1 - SLASH_SPLIT);
-          // シャ!: ease-out-back で snap＋軽くオーバーシュート(円を一瞬行き過ぎて戻る=キレ)。
-          const c1 = 1.8, c3 = c1 + 1;
-          const e = 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
-          prog = 0.5 + 0.5 * e;
-          thick = 1 - 0.62 * Math.min(1, x);                 // 太→細(鋭い残光)
-          headSharp = 1.6 + 2.2 * Math.min(1, x);            // 先端へ輝きを集中(鋭い先頭エッジ)
+      const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
+      if (ft < 1) {
+        const fade = Math.max(0, 1 - ft);
+        const fullSegs = 64;
+        for (let i = 0; i < fullSegs; i++) {
+          const a1 = -Math.PI + (i / fullSegs) * Math.PI * 2;
+          const a2 = -Math.PI + ((i + 1) / fullSegs) * Math.PI * 2;
+          const mid = (a1 + a2) / 2;
+          const forward = Math.max(0, Math.cos(mid - head));
+          const rear = Math.max(0, Math.cos(mid - head - Math.PI));
+          const glow = 0.25 + forward * 0.75 + rear * 0.12;
+          const rr = r + Math.sin(i * 1.7) * 0.9;
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 2.4 + glow * 8.5, color: 0xff9f1c, alpha: 0.12 * fade * glow, cap: 'round' });
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 0.75 + glow * 0.65, color: 0xfff3c4, alpha: 0.55 * fade, cap: 'round' });
         }
-        const arcLen = prog * Math.PI * 2;                  // start から頭まで描く弧長
-        const segs = Math.max(6, Math.round(prog * 72));
-        // 参考(image2)の「2本の青い流線」。同心の2リボン(外/内)が先端で収束・尾で開く。
-        // 各リボン: 青グロー(bloom) + 白熱コア。
-        for (const sign of [1, -1]) {
-          for (let i = 0; i < segs; i++) {
-            const u0 = i / segs, u1 = (i + 1) / segs;       // 0=尾(start), 1=頭
-            const trail = Math.pow(u1, headSharp);          // 頭ほど明るく太い(後半ほど先端集中=鋭い)
-            const splay = (1.4 + 7 * (1 - u1)) * thick;     // 尾ほど2本が開く(先端は収束)
-            const a1 = startA + arcLen * u0;
-            const a2 = startA + arcLen * u1;
-            const rA = r + sign * splay;
-            const rr1 = rA + Math.sin(a1 * 3) * 0.8;
-            const rr2 = rA + Math.sin(a2 * 3) * 0.8;
-            const x1 = cx + Math.cos(a1) * rr1, y1 = cy + Math.sin(a1) * rr1;
-            const x2 = cx + Math.cos(a2) * rr2, y2 = cy + Math.sin(a2) * rr2;
-            // 青グロー(bloom 帯)。
-            g.moveTo(x1, y1).lineTo(x2, y2)
-              .stroke({ width: (5 + 17 * trail) * thick, color: 0x2a78ff, alpha: (0.08 + 0.16 * trail) * fade, cap: 'round' });
-            // 白熱コア(鋭いエッジ)。
-            g.moveTo(x1, y1).lineTo(x2, y2)
-              .stroke({ width: (1 + 3.4 * trail) * thick, color: 0xffffff, alpha: (0.34 + 0.62 * trail) * fade, cap: 'round' });
-          }
+
+        const span = Math.PI * 1.08;
+        const a0 = head - span / 2;
+        const crescentSegs = 24;
+        for (let i = 0; i < crescentSegs; i++) {
+          const f = i / crescentSegs;
+          const taper = Math.sin(f * Math.PI); // 0 at the tips, 1 at the belly
+          const a1 = a0 + f * span;
+          const a2 = a0 + ((i + 1) / crescentSegs) * span;
+          const rr = r + 1.5 + taper * 2;
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 2 + 12 * taper, color: 0xff7a18, alpha: 0.16 * taper * fade, cap: 'round' });
+          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
+            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
+            .stroke({ width: 0.8 + 2.3 * taper, color: 0xfff7cc, alpha: 0.92 * taper * fade, cap: 'round' });
         }
-        // 先端(2本が収束する白熱点): 青グロー → 水色 → 白コアの三重で強く光らせる。
-        const headA = startA + arcLen;
-        const hr = r + Math.sin(headA * 3) * 0.8;
-        const hx = cx + Math.cos(headA) * hr, hy = cy + Math.sin(headA) * hr;
-        g.circle(hx, hy, (15 * thick) * fade + 2).fill({ color: 0x2e86ff, alpha: 0.25 * fade });
-        g.circle(hx, hy, (7 * thick) * fade + 1.2).fill({ color: 0xbfe0ff, alpha: 0.5 * fade });
-        g.circle(hx, hy, (3.5 * thick) * fade + 0.9).fill({ color: 0xffffff, alpha: 0.97 * fade });
+        g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
+          .fill({ color: 0xffffff, alpha: 0.9 * fade });
       }
     } else if (player.huntingCharged) {
       const pulse = 0.72 + 0.28 * Math.sin(now / 260);

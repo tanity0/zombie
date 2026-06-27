@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1071 — 元の黄色い攻撃範囲サークルを復活＋スイング1枚目を少し上に(社長指示・視覚のみ)
+
+- 社長「もともとの攻撃範囲に準ずる黄色いサークルエフェクトは戻して」→ 自前描画の青い円形斬撃
+  (無効化していた)を撤去し、**元の黄色いテレグラフ**(細いリーチリング 0xff9f1c/0xfff3c4 +
+  狙い方向クレセント 0xff7a18/0xfff7cc + 先端白ドット)を `syncPlayerFx` に復活・常時有効化。
+  この黄色サークルは「攻撃範囲表示」、近接スイングの見た目は別途2枚画像差し替えで描画(併存)。
+- 社長「1コマ目もう少しだけ上に」→ `KNIFE_F1.oy` 0.20→0.12(2枚目は前回 -0.04→-0.12 済み)。
+- 社長「二枚目少しだけ大きく」→ `KNIFE_F2.scale` 1.60→1.80。
+- 不要になった `SLASH_LIFE_MS` / `SLASH_PROC_ENABLED` 定数を撤去。
+- 判定/射程/タイミング不変(視覚のみ)。変更: `src/pixi/pixiScene.ts`, `package.json`。
+- 検証: lint / tsc / build 全green(テストはpixi描画のみ変更のため前回75 passのまま)。
+- 負荷: 黄色テレグラフは元の per-frame Graphics(リング64seg+クレセント24seg)に戻る=単発CAUTION。
+  従来通りの負荷で増加なし。
+- 次の引き継ぎ: 実機で黄色サークル復活＋スイング位置(F1/F2)を確認。位置は KNIFE_F1/F2 で調整可。
+
 ## v0.25.1069 — 近接スイングを「2枚画像差し替え」方式に全面移行(社長指示・素材導入・視覚のみ)
 
 - 社長: 自前描画ではなく**渡した2枚の画像を切り替えて振って見せる**。「かってに回転させないで」。
