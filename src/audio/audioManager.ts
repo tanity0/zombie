@@ -277,8 +277,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },
   // スカジ氷塊破裂/氷刃命中のSE(社長提供)。
   'skadi-ice': { src: `${import.meta.env.BASE_URL}audio/sfx/skadi-ice.mp3`, volume: 1.0, minIntervalMs: 60 },
-  // ヘリコプター登場シーンのSE(社長提供・登場開始時に1回)。
-  'heli-intro': { src: `${import.meta.env.BASE_URL}audio/sfx/heli-intro.mp3`, volume: 1.0, minIntervalMs: 200 },
+  // ヘリコプター登場シーンのSE(社長提供・登場開始時に1回)。飛び去り(末尾)でフェードアウト(社長指示)。
+  'heli-intro': { src: `${import.meta.env.BASE_URL}audio/sfx/heli-intro.mp3`, volume: 1.0, minIntervalMs: 200, fadeOutMs: 1000 },
   // 鞭が敵に当たった時(社長提供SE)。
   'whip-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/whip-hit.mp3`, volume: 0.85, minIntervalMs: 60 },
   // 鞭を振る音(社長提供SE)。

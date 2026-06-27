@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1097 — 画面下端1pxの環境光カバー漏れ修正＋ヘリSEを飛び去りでフェードアウト(社長指示)
+
+- 社長報告: 画面下端に1pxほど環境光が届かず色味が違うライン。原因はサブピクセル/解像度丸めで全画面
+  オーバーレイ(grade/vignette)が下端を覆い切れていない典型。
+  → `resize` で grade/vignette を **2px大きく(-1,-1起点)** にして全端へにじませ、隙間を解消(multiply/エッジ暗化
+  なので画面外へのはみ出しは無害)。
+- 社長指示: ヘリSEを飛び去ったらフェードアウト → `playSfx` の `fadeOutMs` を heli-intro に付与(末尾1秒で
+  ゲインを0へ=飛び去りでスッと消える)。
+- 変更: `src/pixi/pixiScene.ts`(オーバーレイ寸法), `src/audio/audioManager.ts`(heli-intro fadeOutMs), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 次の引き継ぎ: 実機で下端ラインが消えたか・ヘリSEのフェードが飛び去りに合うか確認。
+  ※ヘリSEは現状クリップ末尾でフェード。飛び去りの正確なフレームに合わせたい場合は再生インスタンス制御が要る(別対応)。
+
 ## v0.25.1096 — 裏ボス画面内は「時間死神」抽選を停止(距離死神は維持)(社長指示)
 
 - 社長指示: 裏ボス出現中(画面内)は時間死神の抽選無し。ただし距離死神は出る。

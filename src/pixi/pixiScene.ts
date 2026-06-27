@@ -1359,11 +1359,14 @@ export class PixiScene {
     this.L.frontForest.alpha = this.isLabStage ? LAB_FRONT_FOREST_ALPHA : FRONT_FOREST_ALPHA;
     this.updateFrontForestFadeMask(w, frontH);
     this.frontForestFadeMask.position.copyFrom(this.L.frontForest.position);
-    // Full-screen atmosphere overlays.
-    this.gradeSprite.width = w;
-    this.gradeSprite.height = h;
-    this.vignette.width = w;
-    this.vignette.height = h;
+    // Full-screen atmosphere overlays. サブピクセル/解像度丸めで下端などに1pxの未カバー行が
+    // 出る(=環境光が届かず色味が違うライン)のを防ぐため、2pxだけ大きく(-1,-1起点で)にじませる。
+    this.gradeSprite.position.set(-1, -1);
+    this.gradeSprite.width = w + 2;
+    this.gradeSprite.height = h + 2;
+    this.vignette.position.set(-1, -1);
+    this.vignette.width = w + 2;
+    this.vignette.height = h + 2;
     // スモッグ各層: テクスチャ1枚分が帯にちょうど収まる tileScale(横1枚/縦1枚)。位置/流れは sync。
     for (const f of this.fogLayers) {
       f.sp.width = w * f.widthFrac;
