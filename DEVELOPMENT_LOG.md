@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1092 — NPCセリフ「自分で敵を倒した時(9・A案)」(社長指示)
+
+- 社長指示: 9はA案(護衛弾の撃破帰属)で。護衛弾には `weaponKey:'escort'` タグがあるので軽量。
+- 実装: useGameLoop の弾撃破判定(`enemyKilled = damageEnemy(...)`)直後に、`projectile.weaponKey==='escort'` かつ
+  撃破成立なら `npcKillReact(撃破地点x,y)` を呼ぶ。store側は撃破地点に最も近い護衛(<= NPC_KILL_MAX_DIST=1000px)へ
+  `tryNpcLine(..'npcKill'..,NPC_KILL_CAT_CD_MS=25s)`。同一NPC10s/カテゴリ25sのCDで低頻度。`npcKill` セリフを
+  BASE_SOLDIERSに追加(エドガー「一体排除。進軍を再開する。」武蔵「斬った。進む。」等)。
+- 護衛弾の仕様メモ: 検知範囲(huntingMeleeRadius×2.25)内の敵に600ms間隔で射撃、handgun見た目・weaponKey'escort'・
+  hostile:false・speed680・damage8・寿命1200ms。護衛本体はHPなし。
+- 変更: `store/gameStore.ts`(npcKill / 定数 / npcKillReactアクション), `hooks/useGameLoop.ts`(撃破フック), `package.json`。
+- 検証: lint / typecheck / test(75 pass) / build 全green。負荷: 0/10。
+- 残り: 10 無双(短時間に多数撃破でNPCが称賛)。社長指示で「1出撃1-2回ではなく、三國無双参考でもっと頻繁に」
+  =出撃キャップ廃止・CDのみで頻度管理。次で実装。
+
 ## v0.25.1091 — NPCセリフ「遠方で放置(11・隣NPCのみ)」(社長 確定条件)
 
 - 社長 確定条件: 11は「誰も進軍を手伝っていない時、プレイヤーの現在エリア→開放済みなら(時計回りで)隣→…の

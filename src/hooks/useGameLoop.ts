@@ -3628,6 +3628,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
+          // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。
+          if (enemyKilled && projectile?.weaponKey === 'escort' && enemyForFx) {
+            useGameStore.getState().npcKillReact(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2);
+          }
 
           // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。
           // ワープ先でフラッシュ＋0.5秒フェードイン(reaperWarpAlpha を boss controller が駆動)。即死(ワーム)時は除外。
