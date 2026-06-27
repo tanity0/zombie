@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1073 — スラッシャー追撃リングが近接フィニッシュ後に遅くなるバグ修正(社長承認A案)
+
+- 症状(社長報告): 追撃のサークルの1回目が遅い。特に近接フィニッシュの後だと必ず遅い。
+- 根本原因: 近接フィニッシュ → slow-mo(`triggerTimeSlow(0.2, 1400ms)`)で `gameTime` 自体が
+  最大1/5速に。追撃リングは `gameTime` 基準(`SLASHER_RING_MS=500ms`)なので slow-mo中は実時間で
+  最大5倍遅く描画/判定されていた。フィニッシュ後は必ず slow-mo が走るため必ず遅い。
+- 修正(A案): slow-mo非依存・ポーズ追従の新時計 `realGameTime` を追加し、**追撃リングのみ**
+  これで刻む。slow-mo演出(カメラ/敵)はそのまま、追撃の操作感だけ通常速度に戻る。
+  - `realGameTime`: `gameTime` と同じくポーズ/イントロ中は止まるが、`baseDeltaTime`(timeScale未乗算)
+    で進む実効時計。`useGameLoop` で `setGameTime(newGameTime, newRealGameTime)` として毎フレーム更新。
+  - `slasherRingStartAt` を realGameTime で記録、ジャスト窓判定(`triggerCounter`/`applySlasherTimedStrike`)
+    と描画(`syncSlasherRing`)も realGameTime に統一。次リング再生成も realGameTime。
+  - コンボ倍率/窓など他は従来どおり gameTime 基準(ポーズ整合)。
+- 変更: `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `src/pixi/pixiScene.ts`,
+  `src/types/game.ts`, `package.json`。
+- 検証: lint / tsc / test(75 pass) / build 全green。
+- 負荷: 0/10(時計の加算1つとパラメータ受け渡しのみ。描画/シミュ増なし)。
+- 次の引き継ぎ: 実機でフィニッシュ直後の追撃リングが等速で縮むか、ポーズ(レベルアップ)中に
+  止まるか、ジャスト窓が合うかを確認。
+
 ## v0.25.1072 — 攻撃範囲テレグラフを青に色替え(社長指示・視覚のみ・形状不変)
 
 - 社長「黄色のサークル青くしてみて」。前version で戻した黄色テレグラフの色だけ青へ変更(お試し)。

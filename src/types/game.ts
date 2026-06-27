@@ -94,7 +94,7 @@ export interface Player {
   // 装備スキルの状態フィールド(状態を持つスキルのみ。全て number・既定0。resetGame で初期化)。
   fireShooterCdUntil: number;  // ファイアシューター: 爆発弾化の裏CD(gameTime)
   reflexCdUntil: number;       // 反射神経: 反撃CD(gameTime)
-  slasherRingStartAt: number;  // スラッシャー: タイミングリング開始 gameTime(0=非アクティブ)
+  slasherRingStartAt: number;  // スラッシャー: タイミングリング開始 realGameTime(slow-mo非依存。0=非アクティブ)
   slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..3)
   slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
   knifeComboCount: number;     // ナイフマスター: 近接ダメージコンボ数

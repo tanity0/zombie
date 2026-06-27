@@ -1356,8 +1356,11 @@ const applySlasherTimedStrike = (
   get: () => GameState,
   player: Player,
   gameTime: number,
+  realGameTime: number,
 ): CounterTriggerResult => {
-  const elapsed = gameTime - player.slasherRingStartAt;
+  // リングのジャスト判定は slow-mo 非依存の realGameTime で測る(A案)。コンボ倍率や窓は
+  // 従来どおり gameTime 基準(ポーズ整合)。
+  const elapsed = realGameTime - player.slasherRingStartAt;
   const step = player.slasherStrikeStep;
   // 連数の上限はレベル依存: Lv1 1連 / Lv2 2連 / Lv3 3連。
   const slLv = skillLevel(player, 'slasher');
@@ -1404,7 +1407,7 @@ const applySlasherTimedStrike = (
   // 追撃のジャスト成立フィードバック(ダンスの「JUST!」と同じコールアウト)。頭上に一瞬。
   get().spawnCallout(pcx, player.y - 24, 'JUST!', '#bef264', { scale: 1.2 });
   const nextStep = step + 1;
-  if (nextStep < maxHits) get().setSlasherCombo(gameTime, nextStep); // 次のリングを再生成
+  if (nextStep < maxHits) get().setSlasherCombo(realGameTime, nextStep); // 次のリングを再生成(realGameTime基準)
   else get().setSlasherCombo(0, 0);                                  // 連数完了
   return { swung: true, hit, finish: false, killed };
 };
@@ -1481,6 +1484,10 @@ interface GameState {
   weaponMerchant: WeaponMerchant;
   eventQuestNpc: EventQuestNpc;
   gameTime: number;
+  // gameTime と同じくポーズ中は止まるが、slow-mo(timeScale)の影響を受けない「実効」時計。
+  // 近接フィニッシュの slow-mo で gameTime が遅くなってもスラッシャー追撃リングを通常速度で
+  // 刻むために使う(社長承認のA案)。
+  realGameTime: number;
   isPaused: boolean;
   showUpgradeMenu: boolean;
   showShopMenu: boolean;
@@ -1709,7 +1716,7 @@ interface GameState {
   ) => boolean;
   
   // Game state actions
-  setGameTime: (time: number) => void;
+  setGameTime: (time: number, realTime?: number) => void;
   setPaused: (paused: boolean) => void;
   setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
@@ -1922,6 +1929,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   weaponMerchant: createWeaponMerchant(),
   eventQuestNpc: createEventQuestNpc(),
   gameTime: 0,
+  realGameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
   showShopMenu: false,
@@ -2320,7 +2328,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   triggerCounter: () => {
     const now = Date.now();
     const {
-      player, gameTime, enemies, projectiles, weaponMerchant,
+      player, gameTime, realGameTime, enemies, projectiles, weaponMerchant,
       eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
       shopReopenAt, eventQuestReopenAt
     } = get();
@@ -2330,9 +2338,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ジャストで追撃→次のリング、外す/3連終了でコンボ終了。寿命を過ぎたリングは無視して通常スイングへ。
     if (
       hasSkill(player, 'slasher') && player.slasherRingStartAt > 0 &&
-      gameTime <= player.slasherRingStartAt + SLASHER_RING_MS + SLASHER_JUST_MS
+      realGameTime <= player.slasherRingStartAt + SLASHER_RING_MS + SLASHER_JUST_MS
     ) {
-      return applySlasherTimedStrike(get, player, gameTime);
+      return applySlasherTimedStrike(get, player, gameTime, realGameTime);
     }
     // Respect cooldown — no swing, no knockback, no window.
     if (now < player.counterCooldownEnd) {
@@ -2852,7 +2860,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knifeComboUntil: knifeCombo.until,
         // スキル スラッシャー: この近接が命中(slashAt有)したらタイミングリングを開始(step=0)。
         // 命中しなければ非アクティブ(リング無し)。以後の追撃はタップのジャスト判定で出す。
-        slasherRingStartAt: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? gameTime : 0,
+        slasherRingStartAt: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? state.realGameTime : 0,
         slasherStrikeStep: 0,
         // 追撃用に「初撃時点の射程」を記録(state.player は更新前=huntingCharged がまだ true なので溜め延長を含む)。
         slasherReach: hasSkill(state.player, 'slasher') && slashAt.length > 0 ? huntingMeleeRadius(state.player) : 0,
@@ -6317,8 +6325,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   // Game state actions
-  setGameTime: (time) => {
-    set({ gameTime: time });
+  setGameTime: (time, realTime) => {
+    set(realTime === undefined ? { gameTime: time } : { gameTime: time, realGameTime: realTime });
   },
   
   setPaused: (paused) => {
@@ -7387,6 +7395,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           : createWeaponMerchant(),
         eventQuestNpc: createEventQuestNpc(),
         gameTime: 0,
+        realGameTime: 0,
         isPaused: false,
         showUpgradeMenu: false,
         showShopMenu: false,

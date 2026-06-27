@@ -899,9 +899,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // Update game time
+        // Update game time. realGameTime はポーズ中は止まるが slow-mo(timeScale)の影響を
+        // 受けない「実効」時計(baseDeltaTime で進める)。スラッシャー追撃リングを slow-mo 中でも
+        // 通常速度で刻むため(社長承認のA案)。
         const newGameTime = gameTime + deltaTime * 1000;
-        setGameTime(newGameTime);
+        const newRealGameTime = loopState.realGameTime + baseDeltaTime * 1000;
+        setGameTime(newGameTime, newRealGameTime);
         updateGameStats({ timeAlive: gameTime / 1000 });
 
         // Detect a fresh run (gameTime rewound to ~0) and reset scripted

@@ -2271,7 +2271,7 @@ export class PixiScene {
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
-    this.syncSlasherRing(s.player, s.gameTime);
+    this.syncSlasherRing(s.player, s.realGameTime);
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -4162,12 +4162,12 @@ export class PixiScene {
 
   // スラッシャー: タイミングリング(描画のみ・当たり判定に影響なし)。縮むリングがゴールに重なる瞬間=ジャスト。
   // gameTime ベースで判定と同じ時計を使う(ストア側の追撃判定とズレない)。単一リングなので軽量。
-  private syncSlasherRing(player: Player, gameTime: number) {
+  private syncSlasherRing(player: Player, realGameTime: number) {
     const g = this.slasherRingGfx;
     g.clear();
     const start = player.slasherRingStartAt;
     if (!start || start <= 0) return;
-    const elapsed = gameTime - start;
+    const elapsed = realGameTime - start;
     if (elapsed < 0 || elapsed > SLASHER_RING_MS + SLASHER_JUST_MS) return; // 寿命外は描かない
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
