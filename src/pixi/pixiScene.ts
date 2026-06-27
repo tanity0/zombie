@@ -426,7 +426,7 @@ const SLASH_PROC_ENABLED = false;
 // scale = スプライト幅 / unit。実機で微調整可。
 const KNIFE_SWING_SWITCH = 0.30;                        // frame1→frame2 切替(kt 0..1)
 const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.20 };  // 1枚目: キャラ左下のダガー
-const KNIFE_F2 = { scale: 1.60, ox: 0.22, oy: -0.04 };  // 2枚目: 被せ+スラッシュ右へ
+const KNIFE_F2 = { scale: 1.60, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた)
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
