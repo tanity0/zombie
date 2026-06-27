@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1066 — 円形斬撃を「二段階で流れる」スイープに(社長指示・参考絵・視覚のみ)
+
+- 社長「クレストは二段階あって流れるように見える」(参考絵2枚=青い斬撃が片側から入り→
+  円周を回り込んで円を閉じる)。静止リング+三日月をやめ、comet head が攻撃範囲の円周を
+  1周し通った弧が青く光って残る**2段スイープ**に変更。視覚のみ・判定/射程/タイミング不変。
+- 動き: `startA = head - π`(振り向き反対側から入る)。段1=半周まで一気→減速、
+  段2=残り半周を流して円を閉じる。各段とも「速く入って終わりで止まる」ease のため
+  境目で一瞬溜まり、二段に見える。頭ほど太く明るく、尾は淡い軌跡として残る(`trail`)。
+- 寿命 `SLASH_LIFE_MS = 340`(COUNTER_WINDOW 400ms 内)。終盤0.78〜でフェードアウト。
+- 変更ファイル: `src/pixi/pixiScene.ts`(`syncPlayerFx` のスイングテレグラフ + 定数)、`package.json`。
+- 検証: lint / tsc / test(75 pass) / build 全green。
+- 負荷: 2/10。per-frame Graphics は最大 ~80seg×2stroke で従来(64+24seg)と同等。
+  本数は弧の伸長に比例し増減、上限80で頭打ち。
+- 次の引き継ぎ: 実機で「二段の溜め」のタイミング・流れ・青の明度を確認。
+  速さは `SLASH_LIFE_MS`、段の配分は life<0.5 の分岐、色は 0x3aa0ff/0xeaf8ff で調整。
+
 ## v0.25.1065 — 近接斬撃を「青い円形斬撃」に一本化(社長指示・視覚のみ)
 
 - 社長指示「ナイフの振り＝参考絵の青く光る斬撃」「円の斬撃は今の攻撃範囲を表すやつと差し替え」

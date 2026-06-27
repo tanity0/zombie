@@ -424,6 +424,8 @@ const KNIFE_ARC_XSTRETCH = 1.6;       // 斬撃を狙い軸方向へ引き伸ば
 // 斬撃表現を「攻撃範囲の円に沿った青い円形斬撃」に一本化したため、平面の白い
 // 三日月(playerKnifeArc)は引っ込める。実機で戻したい時は true に。
 const KNIFE_FLAT_ARC_ENABLED = false;
+// 円形斬撃(2段スイープ)の全体寿命ms。COUNTER_WINDOW(400ms)内に収める。
+const SLASH_LIFE_MS = 340;
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -6635,43 +6637,39 @@ export class PixiScene {
       const dir = player.lastDirection;
       const head = dir ? Math.atan2(dir.y, dir.x) : -Math.PI / 2;
       const openAt = player.counterWindowEnd - COUNTER_WINDOW;
-      const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
-      if (ft < 1) {
-        const fade = Math.max(0, 1 - ft);
-        const fullSegs = 64;
-        for (let i = 0; i < fullSegs; i++) {
-          const a1 = -Math.PI + (i / fullSegs) * Math.PI * 2;
-          const a2 = -Math.PI + ((i + 1) / fullSegs) * Math.PI * 2;
-          const mid = (a1 + a2) / 2;
-          const forward = Math.max(0, Math.cos(mid - head));
-          const rear = Math.max(0, Math.cos(mid - head - Math.PI));
-          const glow = 0.25 + forward * 0.75 + rear * 0.12;
-          const rr = r + Math.sin(i * 1.7) * 0.9;
-          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
-            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2.4 + glow * 8.5, color: 0x3aa0ff, alpha: 0.12 * fade * glow, cap: 'round' });
-          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
-            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.75 + glow * 0.65, color: 0xd8f0ff, alpha: 0.55 * fade, cap: 'round' });
+      const life = (now - openAt) / SLASH_LIFE_MS; // 0..1 全体寿命
+      if (life < 1) {
+        // 二段階で流れる円形斬撃。comet head が攻撃範囲の円周を1周し、通った弧が
+        // 青く光って残る。前半=半周まで一気→減速、後半=残り半周を流して円を閉じる。
+        // 各段とも「速く入って終わりで止まる」ease なので境目で一瞬溜め、2段に見える。
+        const fade = life < 0.78 ? 1 : Math.max(0, 1 - (life - 0.78) / 0.22);
+        const startA = head - Math.PI;                      // 振り向きの反対側から入る
+        let prog;                                            // 0..1 → 円周1周へ写像
+        if (life < 0.5) {
+          prog = 0.5 * (1 - Math.pow(1 - life / 0.5, 2));            // 段1: 0→0.5(半周)
+        } else {
+          prog = 0.5 + 0.5 * (1 - Math.pow(1 - (life - 0.5) / 0.5, 2)); // 段2: 0.5→1
         }
-
-        const span = Math.PI * 1.08;
-        const a0 = head - span / 2;
-        const crescentSegs = 24;
-        for (let i = 0; i < crescentSegs; i++) {
-          const f = i / crescentSegs;
-          const taper = Math.sin(f * Math.PI); // 0 at the tips, 1 at the belly
-          const a1 = a0 + f * span;
-          const a2 = a0 + ((i + 1) / crescentSegs) * span;
-          const rr = r + 1.5 + taper * 2;
-          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
-            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2 + 12 * taper, color: 0x4aa8ff, alpha: 0.16 * taper * fade, cap: 'round' });
-          g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
-            .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.8 + 2.3 * taper, color: 0xeaf8ff, alpha: 0.92 * taper * fade, cap: 'round' });
+        const arcLen = prog * Math.PI * 2;                  // start から頭まで描く弧長
+        const segs = Math.max(6, Math.round(prog * 80));
+        for (let i = 0; i < segs; i++) {
+          const u0 = i / segs, u1 = (i + 1) / segs;         // 0=尾(start), 1=頭
+          const a1 = startA + arcLen * u0;
+          const a2 = startA + arcLen * u1;
+          const trail = Math.pow(u1, 1.5);                  // 頭ほど明るく太い
+          const rr1 = r + Math.sin(a1 * 3) * 1.2;
+          const rr2 = r + Math.sin(a2 * 3) * 1.2;
+          g.moveTo(cx + Math.cos(a1) * rr1, cy + Math.sin(a1) * rr1)
+            .lineTo(cx + Math.cos(a2) * rr2, cy + Math.sin(a2) * rr2)
+            .stroke({ width: 2 + 11 * trail, color: 0x3aa0ff, alpha: (0.08 + 0.12 * trail) * fade, cap: 'round' });
+          g.moveTo(cx + Math.cos(a1) * rr1, cy + Math.sin(a1) * rr1)
+            .lineTo(cx + Math.cos(a2) * rr2, cy + Math.sin(a2) * rr2)
+            .stroke({ width: 0.8 + 2.8 * trail, color: 0xeaf8ff, alpha: (0.28 + 0.57 * trail) * fade, cap: 'round' });
         }
-        g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
+        // 先端(comet head)の輝き。
+        const headA = startA + arcLen;
+        const hr = r + Math.sin(headA * 3) * 1.2;
+        g.circle(cx + Math.cos(headA) * hr, cy + Math.sin(headA) * hr, 3 * fade + 0.6)
           .fill({ color: 0xffffff, alpha: 0.9 * fade });
       }
     } else if (player.huntingCharged) {
