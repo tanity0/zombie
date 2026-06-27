@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1072 — 攻撃範囲テレグラフを青に色替え(社長指示・視覚のみ・形状不変)
+
+- 社長「黄色のサークル青くしてみて」。前version で戻した黄色テレグラフの色だけ青へ変更(お試し)。
+  リング光彩 0xff9f1c→0x3aa0ff / リング芯 0xfff3c4→0xd8f0ff /
+  クレセント光彩 0xff7a18→0x2a78ff / クレセント芯 0xfff7cc→0xeaf8ff(先端ドットは白のまま)。
+- 形状/動き/判定/射程/タイミングは不変。変更: `src/pixi/pixiScene.ts`, `package.json`。
+- 検証: lint / tsc / build 全green。負荷増なし(色定数の差し替えのみ)。
+- 次の引き継ぎ: 黄色に戻すなら上記4色を 0xff9f1c/0xfff3c4/0xff7a18/0xfff7cc へ。
+
 ## v0.25.1071 — 元の黄色い攻撃範囲サークルを復活＋スイング1枚目を少し上に(社長指示・視覚のみ)
 
 - 社長「もともとの攻撃範囲に準ずる黄色いサークルエフェクトは戻して」→ 自前描画の青い円形斬撃

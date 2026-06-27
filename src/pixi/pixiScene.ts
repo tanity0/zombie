@@ -6628,10 +6628,10 @@ export class PixiScene {
           const rr = r + Math.sin(i * 1.7) * 0.9;
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2.4 + glow * 8.5, color: 0xff9f1c, alpha: 0.12 * fade * glow, cap: 'round' });
+            .stroke({ width: 2.4 + glow * 8.5, color: 0x3aa0ff, alpha: 0.12 * fade * glow, cap: 'round' });
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.75 + glow * 0.65, color: 0xfff3c4, alpha: 0.55 * fade, cap: 'round' });
+            .stroke({ width: 0.75 + glow * 0.65, color: 0xd8f0ff, alpha: 0.55 * fade, cap: 'round' });
         }
 
         const span = Math.PI * 1.08;
@@ -6645,10 +6645,10 @@ export class PixiScene {
           const rr = r + 1.5 + taper * 2;
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 2 + 12 * taper, color: 0xff7a18, alpha: 0.16 * taper * fade, cap: 'round' });
+            .stroke({ width: 2 + 12 * taper, color: 0x2a78ff, alpha: 0.16 * taper * fade, cap: 'round' });
           g.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr)
             .lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr)
-            .stroke({ width: 0.8 + 2.3 * taper, color: 0xfff7cc, alpha: 0.92 * taper * fade, cap: 'round' });
+            .stroke({ width: 0.8 + 2.3 * taper, color: 0xeaf8ff, alpha: 0.92 * taper * fade, cap: 'round' });
         }
         g.circle(cx + Math.cos(head) * r, cy + Math.sin(head) * r, 2.4 * fade + 0.4)
           .fill({ color: 0xffffff, alpha: 0.9 * fade });
