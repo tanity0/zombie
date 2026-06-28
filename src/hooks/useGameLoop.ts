@@ -4650,6 +4650,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
 
+          let spawnedThisTick = false; // 実際に1体でも配置できたか(ラボの棄却で空振りした時はCDを消費しない)
           for (let i = 0; i < spawnCount; i++) {
             // 研究所スキンは湧きをラボ用ゾンビ(Lv1/2/3)に固定。画面外ランダム配置は generateEnemy を流用。
             // 索敵仕様: 湧いた時点は休眠(dormant)。プレイヤーが aggroRange 内 かつ 壁越しでない(視界)時に起床。
@@ -4670,6 +4671,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               labEnemy.vx = 0;
               labEnemy.vy = 0;
               addEnemy(labEnemy);
+              spawnedThisTick = true;
               continue;
             }
             let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme);
@@ -4688,9 +4690,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             if (enemy.type === 'plant') plantCount += 1;
             addEnemy(enemy);
+            spawnedThisTick = true;
           }
 
-          lastEnemySpawnRef.current = timestamp;
+          // 実際に配置できた時だけクールダウンを消費。ラボで候補が安全圏/区画上限に棄却されて1体も
+          // 置けなかった場合はCDを消費せず次フレームで再挑戦(=空振りでインターバルを丸ごと無駄にしない)。
+          // 屋外は必ず1体置くので従来どおり毎回リセット=挙動不変。
+          if (spawnedThisTick) lastEnemySpawnRef.current = timestamp;
         }
 
         // 保証出現(社長指示): プラントは1分・犬(werewolf)は3分を過ぎた時点で、その種類が1体もいなければ
@@ -4842,7 +4848,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (enemy.fromEvent) return enemy;
           // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
           // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
-          if (enemy.dormant) return enemy;
+          // ただしラボ(研究所スキン)の通常湧き休眠個体は対象にする: 届かない休眠個体がその場に残り続けて
+          // 上限(MAX_ENEMIES)を食い潰し、湧きが完全停止する不具合を防ぐ。遠ざかった休眠個体は「休眠のまま」
+          // 画面近くへ湧き直す(=近づけば起きる)。caps・休眠仕様は不変。城ボス/裏ボスは labTheme では出ない。
+          if (enemy.dormant && !labTheme) return enemy;
           // ノックバック中(カウンター等で吹き飛び中)はリサイクルしない。吹き飛んだ敵がリサイクル境界を越えた瞬間に
           // 別の湧き位置へテレポート湧き直し=「消えて違うところにリスポーン」していた(社長報告)。吹き飛ばし演出は
           // そのまま飛んで着地させ、瞬間移動だけ防ぐ。着地後(ノックバック終了後)に遠ければ通常どおりリサイクルされる。

@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1099 — ステージ2(ラボ)敵沸き「全然湧かない」修正(社長承認)
+
+- 社長報告: ステージ2の敵沸きがおかしい(全然湧かない/少なすぎ)。スタートから離れても止まる。
+- 主因(特定): ラボの敵は全部 `dormant`(休眠)で画面外に湧くが、`useGameLoop` の距離リサイクルは
+  **休眠個体を除外**(4845行・本来は城ボスの定位置待機用)。ラボでは aggroRange(420) より遠く/壁越しで
+  起きない休眠個体がその場に残り続け、やがて `fieldCount < MAX_ENEMIES(10)` を満たさなくなり**湧きが完全停止**。
+  → 休眠リサイクル除外を `!labTheme` 条件付きに変更。ラボの通常休眠個体は遠ざかったら**休眠のまま**画面近くへ
+    湧き直す(近づけば起きる)。城ボス/裏ボスは labTheme では出ないので影響なし。caps・休眠仕様は不変。
+- 副因(初動): ラボは1インターバル1体ロールで、候補が安全圏(原点700px)/区画上限(2)で棄却されても
+  `lastEnemySpawnRef` を必ずリセットしていた=空振りでインターバルを丸ごと浪費。
+  → 実際に1体でも配置できた時だけCDを消費するよう変更(`spawnedThisTick`)。屋外は常に1体置くので挙動不変。
+- 負荷 1/10(シム側・条件分岐＋空振り時の再ロールのみ。上限あり)。
+- 検証: lint/typecheck/test(75 pass)/build OK。
+
 ## v0.25.1098 — バックグラウンド一括停止(再利用前提)＋ヘリSEフェードアウトの実効化(社長指示)
 
 - 社長指示「では後で再利用する前提で実装して」: タブ/アプリが裏に回ったら **BGM(タイトル曲含む)と
