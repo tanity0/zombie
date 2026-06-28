@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1113 — 近接斬撃アニメの末尾フェードアウトを延長(社長指示)
+
+- 社長指示「近接攻撃の斬撃アニメーション、最後フェードアウト」。ナイフ振り2枚目(青スラッシュ)の末尾フェードは
+  既に入っていたが ~42ms と短く一瞬で消えてカットに見えていた。
+  → `pixiScene.ts` のフェード係数を 0.30→0.50(後半50%でフェード=~70ms)に延長。snap表示→末尾でスッと消える。
+- 描画アルファ計算のみ(当たり判定・スイング尺200msは不変)。負荷 1/10。検証: lint/typecheck/build OK。
+
 ## v0.25.1112 — ステージ1の花オブジェを少し小さく(社長指示)
 
 - 社長指示「ステージ1の花のオブジェの大きさを少し小さく」。`forestDecor.ts` の `FLOWER_DISPLAY_H` を

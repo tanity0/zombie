@@ -4550,8 +4550,9 @@ export class PixiScene {
           place(slash, KNIFE_F2, false, 0);
         } else {
           // 2枚目(振り抜き+スラッシュ): snap で出して終わりにフェード。
+          // 末尾フェードを後半50%に延長(社長指示=最後フェードアウト)。0.30→0.50。
           const t = (kt - KNIFE_SWING_SWITCH) / (1 - KNIFE_SWING_SWITCH); // 0..1
-          const a2 = Math.min(1, Math.min(t / 0.12, (1 - t) / 0.30));
+          const a2 = Math.min(1, Math.min(t / 0.12, (1 - t) / 0.50));
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, true, a2);
         }
