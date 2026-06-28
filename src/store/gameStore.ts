@@ -1353,7 +1353,7 @@ const applyMeleeFinishSkillSpread = (
   if (!hasSkill(player, 'reaper') || !finisherOccurred) return;
   const r2 = range * range;
   for (const e of get().enemies) {
-    if (e.type === 'reaper') continue; // 深奥チェイサー等の特殊敵は対象外
+    if (e.type === 'reaper' && !e.reaperChaser) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
@@ -4836,8 +4836,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const labPropRects = labTheme
         ? labPropsInRegion(pcx - state.gameBounds.width, pcy - state.gameBounds.height, pcx + state.gameBounds.width, pcy + state.gameBounds.height).map(propRect)
         : [];
-      // 視線/移動の遮蔽物: 屋内=lab壁 / 研究所スキン=壁オブジェクト / 森=なし。
-      const losWalls = indoor ? indoorWalls : labWallRects;
+      // 視線/移動の遮蔽物: 屋内=lab壁 / 研究所スキン=壁オブジェクト＋遮蔽プロップ / 森=なし。
+      // 研究所スキンはプロップ(パソコン/カプセル等)も視線を遮る=休眠敵がプロップ越しに起床しないよう壁と同様に含める
+      // (移動/近接の視線判定は既に両方を含めている。視線だけ壁のみだった取りこぼしを統一)。
+      const losWalls = indoor ? indoorWalls : (labTheme ? [...labWallRects, ...labPropRects] : labWallRects);
 
       const updatedEnemies = enemies.map((enemy): Enemy => {
         // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
@@ -5210,7 +5212,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const bKbActive = b.knockbackUntil !== undefined && now < b.knockbackUntil;
           // ノックバックが切れたら hop 印を解除(次に直接ノックバックされたら再び巻き込み元になれる)。
           const cleared = (b.punisherHopped && !bKbActive) ? { ...b, punisherHopped: false } : b;
-          if (cleared.type === 'reaper' || bKbActive) return cleared; // KB中(被弾側/連鎖元)は新規付与しない
+          if ((cleared.type === 'reaper' && !cleared.reaperChaser) || bKbActive) return cleared; // 不倒の通常リーパーは除外。深奥チェイサーは巻き込み対象(ボス級)。KB中(被弾側/連鎖元)は新規付与しない
           for (const a of movers) {
             if (a.id === cleared.id) continue;
             if (!rectsOverlap(
@@ -7603,6 +7605,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         hasCardKey: false,
         goalReachedAt: 0,
         lastDamageSource: '',
+        // SE発火トリガ(Date.now時刻)を0へ戻す。これを残すと、リトライ直後の最初のフレームで
+        // useGameLoop 側の ref(再マウントで0)より大きい旧値が「発火した」と誤検出され、前ランの
+        // 武器/スキル音(盾バッシュ/鞭/アンカー/召喚等)が一瞬鳴ってしまう不具合の修正。
+        rescueShooterFxAt: 0,
+        bashHitFxAt: 0,
+        whipHitFxAt: 0,
+        whipSwingFxAt: 0,
+        anchorPlantFxAt: 0,
+        anchorEnemyHitFxAt: 0,
+        boomerangThrowFxAt: 0,
+        summonFxAt: 0,
         player: {
           x: spawnTL.x,
           y: spawnTL.y,

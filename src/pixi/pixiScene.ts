@@ -4846,7 +4846,7 @@ export class PixiScene {
 
   private enemyBreath(e: Enemy, now: number) {
     if (!ENEMY_BREATH_ENABLED) return { x: 1, y: 1 };
-    const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
+    const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || isHiddenBoss(e.type);
     const amp = heavy ? 0.65 : 1;
     const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
     const inhale = Math.sin(phase);
@@ -4864,7 +4864,7 @@ export class PixiScene {
       return;
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
-    const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper';
+    const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || isHiddenBoss(e.type);
     if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
       view.light.visible = false;
       return;

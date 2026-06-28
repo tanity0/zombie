@@ -319,6 +319,11 @@ const sfxBuffers = new Map<SfxKey, AudioBuffer>();
 const sfxLoading = new Map<SfxKey, Promise<void>>();
 const sfxLastPlayedAt = new Map<SfxKey, number>();
 
+// SFXの最小間隔(minIntervalMs)スロットルの記録をクリアする。ラン開始時に呼ぶ。
+// これを残すと、performance.now() が page セッション通して単調増加のため、前ランの終わり際に鳴った
+// 長め minInterval の音(ボス/死神出現音など)が、次ランの開始直後の同イベントで誤ってブロックされる。
+export const clearSfxThrottle = (): void => { sfxLastPlayedAt.clear(); };
+
 const isTouchLikeDevice = () => {
   if (typeof window === 'undefined') return false;
   return (
@@ -466,6 +471,7 @@ export const setDanceMode = (active: boolean, level = 2) => {
     if (danceActive && level === currentDanceLevel) return;
     const levelChanged = danceActive && level !== currentDanceLevel;
     danceActive = true;
+    cancelDanceStop(); // 直前の終了で仕込まれた遅延停止タイマーを破棄(深層進入等で applyDanceAudio に到達せず生き残り、再開直後に戦闘曲へ戻る不具合の防止)
     currentDanceLevel = level;
     if (levelChanged) setBgmTrack(danceTrackForLevel(currentDanceLevel), currentDanceLevel);
   } else {

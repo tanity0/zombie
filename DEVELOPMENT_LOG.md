@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1101 — バグスイープ検出の「明確なバグ」14件を一括修正(社長承認・要確認4件は保留)
+
+マルチエージェント監査(13サブシステム/検証通過18件)のうち、意図を変えない明確なバグのみ修正。
+- #2 リーパー波及が深奥チェイサーを除外 → `gameStore.ts:1356` を `&& !e.reaperChaser` に(他4箇所と統一)。
+- #9 パニッシャー巻き込みが同除外 → `gameStore.ts:5213` を `(type==='reaper' && !reaperChaser) || bKbActive` に。
+- #3 ラボ視線判定にプロップ漏れ → `gameStore.ts` losWalls にラボプロップを追加(移動/近接は既に両方含む)。
+- #1 SEスロットルがラン間持ち越し → `audioManager` に `clearSfxThrottle()` 追加、App.tsx のラン開始で呼ぶ。
+- #18 SE発火トリガ(Fx-at)がラン間持ち越し → `resetGame` の返却で8フィールドを0へ(リトライ直後の誤発音防止)。
+- #4 lab-zombie-3 がcap保護外 → カリング保護リストに追加(パンプキン相当ボス)。
+- #8 ダンス終了遅延タイマーが深層進入で生き残る → `setDanceMode(true)` で `cancelDanceStop()`。
+- #11/#12/#17 リワインド時の状態リセット漏れ → rewindブロックで dogFetchRef/各pulse Map/zoneTickRef を初期化。
+- #13 リサイクル敵がカメラ下げオフセット無視 → 通常湧きと同じ `spawnViewOffsetY` を使用。
+- #14 カリング距離が左上座標 → 中心座標に統一。
+- #15/#16 隠しボスが呼吸amp/ライトカリングで通常敵扱い → `isHiddenBoss` を判定に追加(描画のみ)。
+
+**保留(要判断・未修正)**: #5 npcKillバリアント(セリフ文の新規作成=コンテンツ判断) / #6 セリフ同時発火キュー上限2
+(意図的上限の可能性) / #7 ダンス音声の二重applyDanceAudio(現状症状なしの脆いクリーンアップ) / #10 カウンター
+マスターKBを死神に効かせる(難易度に関わる挙動変更の可能性)。
+
+負荷 1/10。検証: lint/typecheck/test(75)/build OK。※音声(#1/#8/#18)とラボ視線(#3)は実機確認推奨。
+
 ## v0.25.1100 — 死神チェイサーが「すぐどこか行く」修正＋死神出現にカメラアテンション(社長指示)
 
 - 社長報告: 死神が出現してもすぐどこかへ行ってしまう。

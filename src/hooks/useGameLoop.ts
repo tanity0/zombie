@@ -944,6 +944,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           plantGuaranteedRef.current = false;    // 保証出現フラグも再アーム
           werewolfGuaranteedRef.current = false;
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
+          // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
+          dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
+          decoyPulseRef.current.clear();         // デコイ/シールド/タレット/ブーメランのパルス記録
+          shieldHitRef.current.clear();
+          turretFireRef.current.clear();
+          turretAimRef.current.clear();
+          boomPulseRef.current.clear();
+          zoneTickRef.current = 0;               // 区域判定の間引きカウンタも再アーム
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -4908,7 +4916,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gameBounds,
             recycleType,
             player.lastDirection,
-            0,
+            spawnViewOffsetY, // 通常湧きと同じカメラ下げオフセットを使う(従来は固定0でリサイクル敵が約48-77px下にズレて画面内に出やすかった)
             snowTheme
           );
           recycledAnyEnemy = true;
@@ -4948,13 +4956,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
             e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
             e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
+            e.type === 'lab-zombie-3' || // 研究所Lv3はパンプキン相当のボス(着地爆発)。ランダム湧き個体がcap超過で消されないよう保護
             isHiddenBoss(e.type) || // 裏ボスは専用コントローラ管理(帰巣/回復)。カリングすると討伐誤検出で「勝手に死ぬ」
             (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
           const cullable = [...currentEnemiesForCap]
             .filter(e => !isProtected(e))
             .sort((a, b) => {
-              const distA = Math.hypot(a.x - player.x, a.y - player.y);
-              const distB = Math.hypot(b.x - player.x, b.y - player.y);
+              // 中心座標で距離比較(リサイクル/カメラ判定と座標系を統一。従来は左上座標で僅かにズレていた)。
+              const pcx2 = player.x + player.width / 2, pcy2 = player.y + player.height / 2;
+              const distA = Math.hypot(a.x + a.width / 2 - pcx2, a.y + a.height / 2 - pcy2);
+              const distB = Math.hypot(b.x + b.width / 2 - pcx2, b.y + b.height / 2 - pcy2);
               return distB - distA;
             });
 

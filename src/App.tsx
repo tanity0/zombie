@@ -8,7 +8,7 @@ import OrientationGuard from './components/OrientationGuard';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmScene, preloadAllAudio, unlockDanceAudio, setAudioSuspended } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { getSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
 import { getStage } from './data/campaign';
@@ -106,6 +106,7 @@ function App() {
     useGameStore.getState().setPendingSuppression(stageForRun?.mainEvent === 'suppression');
     useGameStore.getState().setPendingHiddenBoss(stageForRun?.hiddenBoss ?? null);
     resetGame(validClass);
+    clearSfxThrottle(); // ラン開始でSEスロットル記録をリセット(前ランの終わり際の音が次ラン頭でブロックされるのを防ぐ)
     // 出撃ごとの会話は選択ミッションから設定。フリー(周回)/未選択/ベンチは空=会話なし。
     const free = getSelectedFreeMode();
     const selectedStage = (benchmark || free) ? undefined : stageForRun;
