@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1105 — プラントが倒れたら在弾(敵弾)も消す(社長指示)
+
+- 社長指示「プラントも死んだら弾消えるように」。プラント(定着型・遠距離)が撃った敵弾を、発射元が
+  倒れた時点で消す。
+  - `Projectile` に `ownerId`(発射元の個体ID)を追加。`createEnemyProjectile` で `enemy.id` を載せる。
+  - `updateProjectiles` で、生存プラントのID集合を作り、`enemy_bolt` かつ `ownerType==='plant'` かつ
+    hostile(=未反射)の弾は、発射元プラントが消滅していたらカリング。全撃破経路(銃/近接/爆発/フィニッシュ)に
+    共通で効く(死亡検出ではなく毎フレームの生存判定なので最大1フレーム遅延=体感なし)。
+  - 反射済み(カウンターでプレイヤー側になった弾)は対象外。ボス等の敵弾は据え置き(plant限定)。
+- 負荷 1/10(プラントIDの小Set生成＋弾ごと1条件。シム側・有界)。検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1104 — セリフDB追加分の同期(neglectFar 24件 / sortie 8件)
 
 - 社長「セリフ補充した」。シート量産DBの新規 ready 行を `npcLines.ts` へ同期。

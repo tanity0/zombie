@@ -5711,10 +5711,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         return walls.some(w => rectsOverlap(rect, w));
       };
 
+      // プラントが死んだら、そのプラントが撃った在弾(敵弾)を消す(社長指示)。発射元の個体IDで判定。
+      // 反射済み(=カウンターでプレイヤー側になった弾)は対象外。生存プラントのIDだけ集めて参照する。
+      const livePlantIds = new Set(enemies.filter(e => e.type === 'plant').map(e => e.id));
+
       const updatedProjectiles = projectiles
         .filter(p => {
           if (currentTime - p.createdAt > p.duration && p.weaponType !== 'grenade') return false;
           if (currentTime - p.createdAt > p.duration + 500) return false;
+          if (p.weaponType === 'enemy_bolt' && p.ownerType === 'plant' && p.hostile && !p.reflected
+              && !livePlantIds.has(p.ownerId ?? '')) return false; // 発射元プラントが消滅=在弾も消す
           // Garlic / bibles follow the player and shouldn't be culled by
           // their static spawn position; check distance from player.
           const px = p.x + p.width / 2;

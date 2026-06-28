@@ -540,6 +540,7 @@ export interface Projectile {
   weaponType: WeaponType;
   weaponKey?: string;
   ownerType?: EnemyType; // 敵弾の発射元タイプ(盾への被ダメージ算定などに使用)。
+  ownerId?: string;      // 敵弾の発射元の個体ID(発射元が倒れたら在弾を消す等に使用)。
   duration: number;
   createdAt: number;
   passthrough: boolean;

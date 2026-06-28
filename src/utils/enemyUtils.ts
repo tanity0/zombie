@@ -407,6 +407,7 @@ export const createEnemyProjectile = (
     direction: dir,
     weaponType: 'enemy_bolt',
     ownerType: enemy.type,
+    ownerId: enemy.id,
     duration: ENEMY_PROJECTILE_DURATION,
     createdAt: Date.now(),
     passthrough: false,
