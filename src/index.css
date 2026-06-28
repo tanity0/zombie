@@ -320,6 +320,16 @@
   .info-rise { animation: none; }
 }
 
+/* メニューの各選択肢: 左からスッとフェードイン(index で少しずつ遅延=上から順にカスケード) */
+@keyframes menu-item-in {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.menu-item-in { animation: menu-item-in 260ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .menu-item-in { animation: none; }
+}
+
 /* === 撃つ→的が破裂する演出 ======================================== */
 /* 的(target.png): 着弾の反動→拡大しながら砕け散る。 */
 @keyframes gacha-target-burst {

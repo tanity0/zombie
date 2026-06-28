@@ -160,11 +160,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     <>
       <Header title="ミッション選択" subtitle="the ONE" />
       <div className="p-3 space-y-2">
-        <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent />
-        <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} />
-        <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} />
-        <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} />
-        <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={() => setScreen({ name: 'archive' })} />
+        <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent delay={0} />
+        <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
+        <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={100} />
+        <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={150} />
+        <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={() => setScreen({ name: 'archive' })} delay={200} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
       </div>
     </>
@@ -180,19 +180,19 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <>
         <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-2">
-          {mains.map(stage => <StageRow key={stage.id} stage={stage} />)}
+          {mains.map((stage, i) => <StageRow key={stage.id} stage={stage} index={i} />)}
           {exs.some(s => isStageUnlocked(s, cleared)) && (
             <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">クリア後 / 隠しステージ</div>
           )}
-          {exs.map(stage => isStageUnlocked(stage, cleared)
-            ? <StageRow key={stage.id} stage={stage} />
+          {exs.map((stage, i) => isStageUnlocked(stage, cleared)
+            ? <StageRow key={stage.id} stage={stage} index={mains.length + i} />
             : <LockedExHint key={stage.id} />)}
         </div>
       </>
     );
   };
 
-  const StageRow: React.FC<{ stage: Stage }> = ({ stage }) => {
+  const StageRow: React.FC<{ stage: Stage; index?: number }> = ({ stage, index = 0 }) => {
     const unlocked = isStageUnlocked(stage, cleared);
     const done = cleared.has(stage.id);
     const hiScore = getStageHighScore(stage.id);
@@ -201,8 +201,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         type="button"
         disabled={!unlocked}
         onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
+        // 各選択肢を左からスッとカスケード表示。ロック行(opacity-60)はフェード終端の opacity:1 と競合するので付けない。
+        style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
         className={`w-full flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors ${
-          unlocked ? 'border-white/12 bg-white/5 active:bg-white/10' : 'border-white/8 bg-black/25 opacity-60'
+          unlocked ? 'menu-item-in border-white/12 bg-white/5 active:bg-white/10' : 'border-white/8 bg-black/25 opacity-60'
         }`}
       >
         <span className={`shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-[12px] font-bold ${
@@ -540,10 +542,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 };
 
 // === 共通の小物 =========================================================
-const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; onClick: () => void; accent?: boolean }> = ({ icon, label, desc, onClick, accent }) => (
+const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; onClick: () => void; accent?: boolean; delay?: number }> = ({ icon, label, desc, onClick, accent, delay = 0 }) => (
   <button
     onClick={() => { playSfx('ui-select'); onClick?.(); }}
-    className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left active:bg-white/10 ${
+    style={{ animationDelay: `${delay}ms` }}
+    className={`menu-item-in w-full flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left active:bg-white/10 ${
       accent ? 'border-blue-400/40 bg-blue-400/10' : 'border-white/10 bg-white/5'
     }`}
   >

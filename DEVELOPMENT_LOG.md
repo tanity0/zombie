@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1114 — メニューの各選択肢を左からカスケード・フェードイン(社長指示)
+
+- 社長指示「ミッション選択やステージ選択などのメニュー、選択肢を左から右に一瞬フェードインして表示」。
+  `index.css` に `@keyframes menu-item-in`(opacity0→1 / translateX(-14px)→0、260ms ease-out)を追加。
+  - ホーム(ミッション選択)の各 HubButton に `delay`(0/50/100/150/200ms)で上から順にカスケード。
+  - ステージ選択の各 StageRow に `menu-item-in`＋index×50ms。※ロック行(opacity-60)はフェード終端の
+    opacity:1 と競合するため付けない(解放済み行のみアニメ)。
+- CSSアニメのみ。負荷 1/10。検証: lint/typecheck/build OK。
+- ※他メニュー(装備/開発施設/資料室の各リスト)にも広げられる。要望あれば追加。
+
 ## v0.25.1113 — 近接斬撃アニメの末尾フェードアウトを延長(社長指示)
 
 - 社長指示「近接攻撃の斬撃アニメーション、最後フェードアウト」。ナイフ振り2枚目(青スラッシュ)の末尾フェードは
