@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1111 — キャラ選択: 立ち絵はロード後にアニメ＋テキストもフェードイン(社長指示)
+
+- 社長報告「初回は画像読込で下からフワッと出てこない/2回目から出る」。原因=`portrait-rise` がマウント直後に
+  再生され、未キャッシュ初回はロード前にアニメが終わっていた。
+  → 立ち絵を `CharPortrait` コンポーネント化。ロード前は `opacity-0`、`onLoad`(＋キャッシュ取りこぼし用に
+    `img.complete`)で完了を検知してから `portrait-rise` を付与=初回も必ず下からスッと表示。
+- 社長指示「テキストもフェードイン」。左下の情報パネルに `info-rise`(opacity0→1 / translateY10px→0、460ms)を
+  付与し `key={selectedClass}` で切替ごとに再生。
+- CSSアニメ＋ロード判定のみ。負荷 1/10。検証: lint/typecheck/build OK。
+
 ## v0.25.1110 — キャラ立ち絵2枚を差し替え(sniper / handgun)(社長提供)
 
 - 社長提供の新素材で差し替え: `portrait-sniper.png`(金髪スナイパー・新版)と `portrait-handgun.png`

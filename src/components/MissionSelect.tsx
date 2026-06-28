@@ -102,6 +102,25 @@ const InfoLine: React.FC<{ label: string; value: string; sub?: string }> = ({ la
   </div>
 );
 
+// キャラ選択の立ち絵。画像のロード完了後に「下からスッと」アニメを再生する(=未キャッシュの初回でも
+// ロード前にアニメが終わって出てこない問題を防ぐ)。ロード前は非表示、完了で portrait-rise を付与。
+// キャッシュ済みで onLoad を取りこぼす場合に備え img.complete も拾う。key=クラスで切替ごとに再マウント。
+const CharPortrait: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
+  const [loaded, setLoaded] = useState(false);
+  const ref = useRef<HTMLImageElement>(null);
+  useEffect(() => { if (ref.current?.complete) setLoaded(true); }, [src]);
+  return (
+    <img
+      ref={ref}
+      src={src}
+      alt={alt}
+      draggable={false}
+      onLoad={() => setLoaded(true)}
+      className={`pointer-events-none absolute inset-0 h-full w-full object-cover object-top ${loaded ? 'portrait-rise' : 'opacity-0'}`}
+    />
+  );
+};
+
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
@@ -273,14 +292,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const c = CHARACTER_CLASSES.find(x => x.id === selectedClass) ?? CHARACTER_CLASSES[0];
     return (
       <div className="screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none">
-        {/* 全画面=選択中キャラの立ち絵。クラスを変えると差し替わる(key で再マウント)。 */}
-        <img
-          key={selectedClass}
-          src={portraitSrcFor(selectedClass)}
-          alt={c.name}
-          draggable={false}
-          className="portrait-rise pointer-events-none absolute inset-0 h-full w-full object-cover object-top"
-        />
+        {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
+        <CharPortrait key={selectedClass} src={portraitSrcFor(selectedClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[56%] bg-gradient-to-t from-black/95 via-black/72 to-transparent" />
@@ -305,8 +318,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           }}
         >
           <div className="flex items-end justify-between gap-3">
-            {/* 情報パネル(左下=今ある情報を集約) */}
-            <div className="min-w-0 max-w-[64%]">
+            {/* 情報パネル(左下=今ある情報を集約)。キャラ切替=key 再マウントで都度フェードイン。 */}
+            <div key={selectedClass} className="info-rise min-w-0 max-w-[64%]">
               <div className="text-[22px] font-bold leading-tight text-white" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.95)' }}>{c.name}</div>
               <div className="mt-2 space-y-1.5">
                 <InfoLine label="初期装備" value={c.gear} />
