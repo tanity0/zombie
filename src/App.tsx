@@ -8,7 +8,7 @@ import OrientationGuard from './components/OrientationGuard';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmScene, preloadAllAudio, unlockDanceAudio } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio, setAudioSuspended } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { getSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
 import { getStage } from './data/campaign';
@@ -47,6 +47,29 @@ function App() {
 
   useEffect(() => {
     void ensurePreload(); // タイトル表示と並行して素材DLを先行開始(体感待ち時間を短縮)
+  }, []);
+
+  // バックグラウンド化(タブ/アプリが裏に回る)でBGM(タイトル曲含む)とゲーム進行を一括で止め、
+  // 復帰で再開する。再開時の時間ジャンプは useGameLoop 側の deltaTime クランプで吸収される。
+  // ★この applyBackground は「後で再利用する前提」の単一窓口。将来ネイティブアプリ化したときの
+  //   OSのpause/resumeブリッジ(AppState等)も、この同じ関数を呼べば挙動を完全に共有できる。
+  useEffect(() => {
+    const applyBackground = (bg: boolean) => {
+      useGameStore.getState().setBackgrounded(bg); // ゲームシム(useGameLoop)を凍結/解凍
+      setAudioSuspended(bg);                       // BGMを一時停止/再開(タイトル曲も対象)
+    };
+    const onVisibility = () => applyBackground(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    // pagehide/pageshow も拾う(iOS Safariで visibilitychange が来ないケースの保険)。
+    const onPageHide = () => applyBackground(true);
+    const onPageShow = () => applyBackground(false);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
   }, []);
 
   useEffect(() => {

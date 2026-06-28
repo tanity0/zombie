@@ -791,7 +791,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // Skip updates if game is paused. Read fresh from the store (not the
       // captured closure) so a level-up / pause takes effect immediately even
       // before React re-runs this effect with the new value.
-      if (!useGameStore.getState().isPaused) {
+      if (!useGameStore.getState().isPaused && !useGameStore.getState().backgrounded) {
         const loopState = useGameStore.getState();
         const {
           gameTime,

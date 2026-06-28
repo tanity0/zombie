@@ -1528,6 +1528,9 @@ interface GameState {
   npcDialogueNextAt: number;
   npcSpokeAt: Record<string, number>;   // NPC名→最後に喋ったgameTime(同一NPCのCD用)
   npcCatAt: Record<string, number>;      // カテゴリ→最後に出したgameTime(同一カテゴリのCD用)
+  // タブ/アプリが裏(バックグラウンド)か。裏ではゲーム進行(useGameLoop)を止める。BGMは別途停止。
+  // 将来ネイティブアプリ化した時もネイティブのpause/resumeから setBackgrounded を呼べば再利用できる。
+  backgrounded: boolean;
   bashHitFxAt: number;        // 盾バッシュが敵に当たった時刻(Date.now)。SE再生のトリガ
   whipHitFxAt: number;        // 鞭が敵に当たった時刻(Date.now)。SE再生のトリガ
   whipSwingFxAt: number;      // 鞭を振った時刻(Date.now)。振る音SEのトリガ
@@ -1795,6 +1798,7 @@ interface GameState {
   
   // Game state actions
   setGameTime: (time: number, realTime?: number) => void;
+  setBackgrounded: (v: boolean) => void; // タブ/アプリが裏かを設定(進行停止用)。visibility/ネイティブpauseから呼ぶ。
   setPaused: (paused: boolean) => void;
   setMeleeAmmoDropPercent: (pct: number) => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
@@ -1994,6 +1998,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   npcDialogueNextAt: 0,
   npcSpokeAt: {},
   npcCatAt: {},
+  backgrounded: false,
   bashHitFxAt: 0,
   whipHitFxAt: 0,
   whipSwingFxAt: 0,
@@ -6537,6 +6542,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setGameTime: (time, realTime) => {
     set(realTime === undefined ? { gameTime: time } : { gameTime: time, realGameTime: realTime });
   },
+  setBackgrounded: (v) => { if (get().backgrounded !== v) set({ backgrounded: v }); },
   
   setPaused: (paused) => {
     set({ isPaused: paused });

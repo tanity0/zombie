@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1098 — バックグラウンド一括停止(再利用前提)＋ヘリSEフェードアウトの実効化(社長指示)
+
+- 社長指示「では後で再利用する前提で実装して」: タブ/アプリが裏に回ったら **BGM(タイトル曲含む)と
+  ゲーム進行(シム)を一括停止** し、復帰で再開。
+  - `gameStore` に `backgrounded` 状態＋ `setBackgrounded` を追加。`useGameLoop` のシム更新ゲートを
+    `!isPaused && !backgrounded` に変更(裏では一切シムが進まない)。`deltaTime` は既存クランプ(0.05)で
+    復帰時の時間ジャンプを吸収。
+  - `App.tsx` に**単一窓口** `applyBackground(bg)`(= `setBackgrounded(bg)` + `setAudioSuspended(bg)`)を新設し、
+    `visibilitychange`/`pagehide`/`pageshow` から呼ぶ。★将来ネイティブアプリ化した時のOSのpause/resume
+    ブリッジも**この同じ関数を呼べば挙動を完全に共有**できる(=再利用前提)。
+  - PixiStage 側の描画ticker停止＋音声停止は既存のまま(冪等なので二重呼びでも無害)。
+- 社長報告「ヘリSEがフェードアウトしない」: 原クリップが長尺(数十秒)で `maxDurationMs` 未設定だったため、
+  `fadeOutMs` がクリップ末尾(数十秒後)に掛かり登場シーン(約3秒)中には鳴り終わっていた。
+  → heli-intro に `maxDurationMs: 4000` を付与し、その末尾を `fadeOutMs: 1500` でフェード(飛び去りに同期)。
+    ※尺/フェード長は調整可。
+
 ## v0.25.1097 — 画面下端1pxの環境光カバー漏れ修正＋ヘリSEを飛び去りでフェードアウト(社長指示)
 
 - 社長報告: 画面下端に1pxほど環境光が届かず色味が違うライン。原因はサブピクセル/解像度丸めで全画面
