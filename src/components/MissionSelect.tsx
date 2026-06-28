@@ -279,7 +279,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           src={portraitSrcFor(selectedClass)}
           alt={c.name}
           draggable={false}
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover object-top"
+          className="portrait-rise pointer-events-none absolute inset-0 h-full w-full object-cover object-top"
         />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />

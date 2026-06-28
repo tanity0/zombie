@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1109 — キャラ立ち絵を「下からスッと」アニメ(社長指示)
+
+- 社長指示「キャラ表示の時、絵を下からスッとアニメーション」。`index.css` に `@keyframes portrait-rise`
+  (opacity 0→1 / translateY(8%)→0、460ms cubic-bezier(0.16,1,0.3,1))を追加し、キャラ選択の立ち絵 img に
+  `portrait-rise` クラスを付与。`key={selectedClass}` で選択切替=再マウントのたびに再生。reduced-motion 対応。
+- CSSアニメのみ。負荷 1/10。検証: lint/typecheck/build OK。
+
 ## v0.25.1108 — キャラクター選択画面を一新(全画面立ち絵・参考レイアウト)(社長指示)
 
 - 社長指示「参考(配置のみ)を元にキャラ選択画面を一新。下部=キャラ選択 / 全画面=セレクト中のキャラ絵 /

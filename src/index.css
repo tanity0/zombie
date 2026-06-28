@@ -300,6 +300,16 @@
   .screen-in { animation: none; }
 }
 
+/* === キャラ選択: 立ち絵が下からスッと上がる(選択切替で key 再マウント=都度再生) === */
+@keyframes portrait-rise {
+  from { opacity: 0; transform: translateY(8%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.portrait-rise { animation: portrait-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .portrait-rise { animation: none; }
+}
+
 /* === 撃つ→的が破裂する演出 ======================================== */
 /* 的(target.png): 着弾の反動→拡大しながら砕け散る。 */
 @keyframes gacha-target-burst {
