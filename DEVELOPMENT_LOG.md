@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1107 — タイトル画像差し替え＋キャラ立ち絵をstage(社長提供)
+
+- タイトル画像 `public/backgrounds/title-the-one.png` を新素材へ差し替え(1672×941・同寸ドロップイン)。
+  `TitleScreen` の img src に `?v=__APP_VERSION__` を付与=端末キャッシュで旧タイトルが残らないように。
+- キャラ選択用の立ち絵4枚を `public/sprites/portraits/`(portrait-shotgun/sniper/handgun/knife)へ未配線で保管。
+  ※直後の選択画面刷新で使用予定。
+
 ## v0.25.1106 — ステージ1冒頭会話を削除(社長指示)
 
 - 社長指示「ステージ1の冒頭の会話削除」。`campaign.ts` の stage-1 メイン(M1)の `dialogue`(時間停止・

@@ -61,7 +61,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
           clamp され、150vw 等を指定しても効かない(=埒が開かない原因だった)。overflow-hidden(root)で
           はみ出しはクリップ。width が寄り(ズーム)、aspect-square＋object-cover で左右だけクロップ。 */}
       <img
-        src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png`}
+        src={`${import.meta.env.BASE_URL}backgrounds/title-the-one.png?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`}
         alt=""
         draggable={false}
         className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
