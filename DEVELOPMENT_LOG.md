@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1108 — キャラクター選択画面を一新(全画面立ち絵・参考レイアウト)(社長指示)
+
+- 社長指示「参考(配置のみ)を元にキャラ選択画面を一新。下部=キャラ選択 / 全画面=セレクト中のキャラ絵 /
+  左下に既存情報を集約」。
+- `MissionSelect` の `renderCharacterSelect` を全画面化(Shell中央パネルを介さず単独描画)。
+  - 背景=選択中クラスの立ち絵(`public/sprites/portraits/`、`object-cover object-top`、key切替)。
+  - 左下=情報集約(役職名・初期装備・専用スキル＋説明・固有スキル・持ち越し装備)。右下=スタート。
+  - 最下段=4クラスのドット絵チップ(タップで立ち絵＋情報が切替)。戻るは左上。
+  - クラス→立ち絵の対応 `CLASS_PORTRAIT`(武器イメージで割当: warrior=shotgun / mage=sniper /
+    rogue=knife / necromancer=handgun)。差し替えは1行で可能。
+- 旧2カラムカード型は廃止。`equipmentDescription` の未使用importを除去。
+- 負荷 1/10(立ち絵は選択中の1枚のみ表示。描画はDOM img)。検証: lint/typecheck/test(75)/build OK。
+- ※立ち絵⇄クラスの割当が意図と違えば `CLASS_PORTRAIT` を直すだけ。実機でレイアウト確認推奨。
+
 ## v0.25.1107 — タイトル画像差し替え＋キャラ立ち絵をstage(社長提供)
 
 - タイトル画像 `public/backgrounds/title-the-one.png` を新素材へ差し替え(1672×941・同寸ドロップイン)。

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
-import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon } from '../data/equipment';
+import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
@@ -82,6 +82,25 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
 const RARITY_BORDER: Record<SkillRarity, string> = {
   normal: 'border-white/10', rare: 'border-sky-400/40', super: 'border-amber-300/55',
 };
+
+// キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
+const CLASS_PORTRAIT: Record<CharacterClass, string> = {
+  warrior: 'portrait-shotgun',     // ヘビーガンナー(ショットガン)=タイトルの少女
+  mage: 'portrait-sniper',         // マークスマン(マグナム/狙撃)=スコープ付き長銃の金髪
+  rogue: 'portrait-knife',         // ストライカー(ファイティングナイフ)=短剣の赤髪
+  necromancer: 'portrait-handgun', // スカベンジャー(ハンドガン)=拳銃の黒髪
+};
+const portraitSrcFor = (id: CharacterClass): string =>
+  `${import.meta.env.BASE_URL}sprites/portraits/${CLASS_PORTRAIT[id]}.png?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
+
+// キャラ選択 左下の情報行(ラベル＋値＋補足)。立ち絵の上に出すので影を強めに。
+const InfoLine: React.FC<{ label: string; value: string; sub?: string }> = ({ label, value, sub }) => (
+  <div>
+    <span className="text-[9px] uppercase tracking-wider text-white/55">{label}</span>
+    <div className="text-[12.5px] font-semibold leading-snug text-white" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.95)' }}>{value}</div>
+    {sub && <div className="text-[10px] leading-snug text-white/70" style={{ textShadow: '0 1px 5px rgba(0,0,0,0.9)' }}>{sub}</div>}
+  </div>
+);
 
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
@@ -246,84 +265,104 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   // キャラクター選択
   // ====================================================================
+  // 参考レイアウト(社長提供): 全画面=選択中キャラの立ち絵 / 左下=情報集約 / 最下段=キャラ選択。
   const renderCharacterSelect = (stageId: string) => {
     // 前ランからの持ち越し装備(localStorage)。ラン開始時に該当スロットへ自動装備される。
     const carriedDef = equipmentById(getCarriedEquipId());
     const carriedIcon = carriedDef && hasEquipIcon(carriedDef.id) ? spritePath(equipIconName(carriedDef.id)) : null;
+    const c = CHARACTER_CLASSES.find(x => x.id === selectedClass) ?? CHARACTER_CLASSES[0];
     return (
-    <>
-      <Header title="キャラクター選択" subtitle="性能差なし。初期装備と専用スキルで選ぶ" onBack={() => setScreen({ name: 'missionDetail', stageId })} />
-      <div className="p-3">
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {CHARACTER_CLASSES.map(c => (
-            <div
-              key={c.id}
-              onClick={() => { playSfx('ui-select'); setSelectedClass(c.id); }}
-              className={`relative flex flex-col min-h-[154px] overflow-hidden rounded-2xl cursor-pointer border ${
-                selectedClass === c.id ? 'bg-blue-500/15 border-blue-400/60' : 'bg-white/5 border-white/10 active:bg-white/10'
-              }`}
-            >
-              <div className="pointer-events-none absolute -left-7 -bottom-8 w-32 h-32 rounded-full blur-2xl opacity-40" style={{ backgroundColor: c.accent }} />
-              <h3 className="relative px-3 pt-2.5 pb-1 text-base font-semibold text-white leading-tight">{c.name}</h3>
-              <div className="relative flex min-h-[122px] flex-1">
-                <div className="relative w-[86px] flex-shrink-0 flex items-end justify-center pt-3 pb-2">
-                  <div className={`absolute bottom-2 h-6 w-16 rounded-full blur-md ${selectedClass === c.id ? 'opacity-80' : 'opacity-35'}`} style={{ backgroundColor: c.accent }} />
-                  <img
-                    src={c.sprite}
-                    alt={c.name}
-                    className="relative z-10 max-h-[122px] max-w-[86px] object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.55)]"
-                    style={{
-                      imageRendering: 'pixelated',
-                      transform: `translateY(${c.portraitNudgeY}px) ${selectedClass === c.id ? 'scale(1.06)' : 'scale(1)'}`,
-                      transformOrigin: '50% 100%', transition: 'transform 140ms ease-out',
-                    }}
-                  />
-                </div>
-                <div className="relative flex-1 min-w-0 px-2.5 py-3 space-y-2 text-left">
-                  <div>
-                    <div className="text-[9px] uppercase tracking-wider text-white/40">初期装備</div>
-                    <div className="text-[11px] leading-snug text-gray-200">{c.gear}</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] uppercase tracking-wider text-white/40">専用スキル</div>
-                    <div className="text-[12px] font-semibold leading-tight text-amber-200/90">{subWeaponDisplayName(c.skillKey)}</div>
-                    <div className="text-[10px] leading-snug text-gray-300">{c.skillDesc}</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] uppercase tracking-wider text-white/40">固有スキル（自動）</div>
-                    <div className="text-[12px] font-semibold leading-tight text-emerald-200/90">{c.name}</div>
-                    <div className="text-[10px] leading-snug text-gray-300">{c.charSkillDesc}</div>
-                  </div>
-                </div>
-              </div>
-              {selectedClass === c.id && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-300/80 shadow-[0_0_14px_rgba(147,197,253,0.9)]" />}
-            </div>
-          ))}
-        </div>
+      <div className="screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none">
+        {/* 全画面=選択中キャラの立ち絵。クラスを変えると差し替わる(key で再マウント)。 */}
+        <img
+          key={selectedClass}
+          src={portraitSrcFor(selectedClass)}
+          alt={c.name}
+          draggable={false}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover object-top"
+        />
+        {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[56%] bg-gradient-to-t from-black/95 via-black/72 to-transparent" />
+
+        {/* 戻る(左上) */}
         <button
-          onClick={() => startMission(stageId, selectedClass)}
-          className="w-full py-3.5 rounded-2xl text-lg font-bold text-white flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.95), rgba(16,185,129,0.95))', boxShadow: '0 8px 24px rgba(16,185,129,0.35)' }}
+          onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId }); }}
+          className="absolute z-20 h-9 px-2.5 rounded-xl bg-black/45 border border-white/15 text-white/85 flex items-center gap-1 active:bg-black/65"
+          style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
+          aria-label="戻る"
         >
-          <Play size={20} /> スタート
+          <ChevronLeft size={16} /><span className="text-[12px]">戻る</span>
         </button>
-        {carriedDef && (
-          <div className="mt-3 rounded-2xl bg-amber-400/10 border border-amber-300/30 px-3 py-2 flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-base">
-              {carriedIcon
-                ? <img src={carriedIcon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
-                : (carriedDef.special ? '🏯' : '🛡️')}
+
+        {/* 下部UI: 左=情報集約 + 右=スタート、最下段=キャラ選択チップ */}
+        <div
+          className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3"
+          style={{
+            paddingLeft: 'max(env(safe-area-inset-left), 16px)',
+            paddingRight: 'max(env(safe-area-inset-right), 16px)',
+            paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 14px), 18px)',
+          }}
+        >
+          <div className="flex items-end justify-between gap-3">
+            {/* 情報パネル(左下=今ある情報を集約) */}
+            <div className="min-w-0 max-w-[64%]">
+              <div className="text-[22px] font-bold leading-tight text-white" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.95)' }}>{c.name}</div>
+              <div className="mt-2 space-y-1.5">
+                <InfoLine label="初期装備" value={c.gear} />
+                <InfoLine label="専用スキル" value={subWeaponDisplayName(c.skillKey)} sub={c.skillDesc} />
+                <InfoLine label="固有スキル（自動）" value={c.charSkillDesc} />
+              </div>
+              {carriedDef && (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-amber-400/15 border border-amber-300/30 px-2 py-1">
+                  <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-[12px]">
+                    {carriedIcon
+                      ? <img src={carriedIcon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+                      : (carriedDef.special ? '🏯' : '🛡️')}
+                  </div>
+                  <span className="text-[10px] text-amber-100/90 truncate max-w-[150px]">持ち越し: {carriedDef.name}</span>
+                </div>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[9px] uppercase tracking-wider text-amber-200/70">持ち越し装備</div>
-              <div className="text-[13px] font-semibold text-white truncate">{carriedDef.name}</div>
-              <div className="text-[10px] text-white/60 leading-snug truncate">{equipmentDescription(carriedDef)}</div>
-            </div>
+            {/* スタート(右下) */}
+            <button
+              onClick={() => startMission(stageId, selectedClass)}
+              className="shrink-0 px-5 py-3 rounded-2xl text-base font-bold text-white flex items-center gap-2"
+              style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.95), rgba(16,185,129,0.95))', boxShadow: '0 8px 24px rgba(16,185,129,0.4)' }}
+            >
+              <Play size={18} /> スタート
+            </button>
           </div>
-        )}
-        <p className="pt-2 text-center text-[11px] text-white/40">装備の変更はホームの「装備」から</p>
+
+          {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
+          <div className="flex items-end gap-2 overflow-x-auto pb-0.5">
+            {CHARACTER_CLASSES.map(cc => {
+              const on = cc.id === selectedClass;
+              return (
+                <button
+                  key={cc.id}
+                  onClick={() => { playSfx('ui-select'); setSelectedClass(cc.id); }}
+                  className={`relative shrink-0 flex flex-col items-center justify-end rounded-xl border pt-2 pb-1 px-2 transition-colors ${
+                    on ? 'border-blue-300/80 bg-blue-400/20' : 'border-white/15 bg-black/45 active:bg-black/60'
+                  }`}
+                  style={{ width: 74, height: 80 }}
+                  aria-pressed={on}
+                >
+                  <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: cc.accent, opacity: on ? 0.85 : 0.3 }} />
+                  <img
+                    src={cc.sprite}
+                    alt={cc.name}
+                    draggable={false}
+                    className="relative max-h-[50px] object-contain"
+                    style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) ${on ? 'scale(1.08)' : 'scale(1)'}`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
+                  />
+                  <span className={`relative mt-0.5 text-[8px] leading-none ${on ? 'text-blue-100' : 'text-white/55'}`}>{cc.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
-    </>
     );
   };
 
@@ -472,12 +511,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   );
 
   // --- ルーティング ----------------------------------------------------
+  // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
+  if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId);
   return (
     <Shell>
       {screen.name === 'home' && renderHome()}
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId)}
-      {screen.name === 'characterSelect' && renderCharacterSelect(screen.stageId)}
       {screen.name === 'loadout' && renderLoadout()}
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}
