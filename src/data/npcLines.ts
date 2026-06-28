@@ -2,7 +2,7 @@
 // 1要素=1バリアント。同一(idx, cat)に複数足してランダムに出す。バリアントがある(idx,cat)は
 // こちらを優先採用(=キャラ設定リライト反映)。無ければ呼び出し側の既存1文(BASE_SOLDIERS)へフォールバック。
 // idx=soldierIndex: edgar0 / joseph1 / elizabeth2 / musashi3 / oklahoma4 / chen5 / lauren6 / phaser7
-// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned
+// cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
   // base_captured (拠点解放時)
   { idx: 0, cat: 'baseCaptured', text: 'よし、東部拠点は俺たちのもんだ！よく押し切った！' },        // dlg_000001
@@ -74,6 +74,30 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 7, cat: 'praise', text: 'チッ……派手に燃やすじゃねえか。嫌いじゃねえ。' },                 // dlg_000073
   // parallel_run (並走時)
   { idx: 6, cat: 'companion', text: 'いい感じ！そのまま一緒に行こ、無理はしないでね！' },           // dlg_000008
+  { idx: 0, cat: 'companion', text: 'いい足だ。その調子なら、前線まで一気に押せるぞ！' },           // dlg_000074
+  { idx: 0, cat: 'companion', text: '横は俺が見る。お前は迷わず前を向け！' },                       // dlg_000075
+  { idx: 0, cat: 'companion', text: 'よし、呼吸は合ってる。このまま道を作るぞ！' },                 // dlg_000076
+  { idx: 1, cat: 'companion', text: 'いいねえ、こういう並走感！なんか勝てる気しかしねえ！' },       // dlg_000077
+  { idx: 1, cat: 'companion', text: '俺たち、けっこう息合ってきたんじゃないか？' },                 // dlg_000078
+  { idx: 1, cat: 'companion', text: 'おいおい速いな！置いてくなよ、主役さん！' },                   // dlg_000079
+  { idx: 2, cat: 'companion', text: '無理なさらないで。ですが、その歩調は頼もしいですわ。' },       // dlg_000080
+  { idx: 2, cat: 'companion', text: 'そばにいれば、応急処置くらいはできます。安心なさい。' },       // dlg_000081
+  { idx: 2, cat: 'companion', text: 'あなたとなら、この道も少しだけ安全に見えますわね。' },         // dlg_000082
+  { idx: 3, cat: 'companion', text: '歩を乱すな。よい間合いだ。' },                                 // dlg_000083
+  { idx: 3, cat: 'companion', text: 'そなたの背、預かろう。' },                                     // dlg_000084
+  { idx: 3, cat: 'companion', text: '進め。曲者あらば、斬る。' },                                   // dlg_000085
+  { idx: 4, cat: 'companion', text: '堅忍不抜です！このまま一歩ずつ進みましょう！' },               // dlg_000086
+  { idx: 4, cat: 'companion', text: '勇往邁進です！共に進めば、道は開けます！' },                   // dlg_000087
+  { idx: 4, cat: 'companion', text: '一意専心の歩みです。実に頼もしいです！' },                     // dlg_000088
+  { idx: 5, cat: 'companion', text: 'いい位置取りだ。君は僕の読みを自然に補ってくるね。' },         // dlg_000089
+  { idx: 5, cat: 'companion', text: 'この歩調なら、次の接敵も優位に運べる。' },                     // dlg_000090
+  { idx: 5, cat: 'companion', text: '面白いな。君と並ぶと、作戦の幅が広がるよ。' },                 // dlg_000091
+  { idx: 6, cat: 'companion', text: 'よしよし、いい感じ！このまま一緒に行こ！' },                   // dlg_000092
+  { idx: 6, cat: 'companion', text: '近くにいると安心するね。ちゃんとついてくよ！' },               // dlg_000093
+  { idx: 6, cat: 'companion', text: 'なんか今、流れいいよ！このまま押しちゃお！' },                 // dlg_000094
+  { idx: 7, cat: 'companion', text: '離れるなよ。……別に心配してるわけじゃねえ。' },                // dlg_000095
+  { idx: 7, cat: 'companion', text: '悪くねえ動きだ。そのまま合わせろ。' },                         // dlg_000096
+  { idx: 7, cat: 'companion', text: 'チッ……調子いいじゃねえか。なら、俺も付き合ってやる。' },      // dlg_000097
   // left_alone (遠くで放置時)
   { idx: 7, cat: 'neglectFar', text: 'チッ……こっちは詰まってる。助けに来いとは言ってねえぞ。' },    // dlg_000009
   // rescue_returned (救助者を拠点へ保護した時) ※新シーン
@@ -86,6 +110,31 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 5, cat: 'rescueReturned', text: '救助成功だ。君の判断で、拠点の価値が一段上がったね。' },   // dlg_000063
   { idx: 6, cat: 'rescueReturned', text: 'よかった、生きてた！連れてきてくれて本当にありがと！' },   // dlg_000064
   { idx: 7, cat: 'rescueReturned', text: 'チッ……よく生きて戻したな。こいつは俺たちで見る。' },      // dlg_000065
+  // npc_enemy_kill (NPCが敵を自分で倒した時) ※新シーン
+  { idx: 0, cat: 'npcKill', text: '一体片づけた！このまま前線を押し上げるぞ！' },                   // dlg_000098
+  { idx: 0, cat: 'npcKill', text: 'こっちは任せろ！お前は自分の道を切り開け！' },                   // dlg_000099
+  { idx: 0, cat: 'npcKill', text: 'よし、道が空いた！今なら進める！' },                             // dlg_000100
+  { idx: 1, cat: 'npcKill', text: 'はい一丁上がり！俺だってやる時はやるんだぜ！' },                 // dlg_000101
+  { idx: 1, cat: 'npcKill', text: '見たか今の！いや、見てなくても褒めていいぞ！' },                 // dlg_000102
+  { idx: 1, cat: 'npcKill', text: 'こっちは片づいた！次もこの調子でいこうぜ！' },                   // dlg_000103
+  { idx: 2, cat: 'npcKill', text: '排除しましたわ。これで少しは安全になります。' },                 // dlg_000104
+  { idx: 2, cat: 'npcKill', text: '近づきすぎですわね。無作法な敵は下がっていただきます。' },       // dlg_000105
+  { idx: 2, cat: 'npcKill', text: 'ひとまず片づけました。負傷者を出すわけにはいきませんもの。' },   // dlg_000106
+  { idx: 3, cat: 'npcKill', text: '斬った。進むぞ。' },                                             // dlg_000107
+  { idx: 3, cat: 'npcKill', text: '曲者、討ち取った。' },                                           // dlg_000108
+  { idx: 3, cat: 'npcKill', text: '一太刀にて仕留めた。道は開いた。' },                             // dlg_000109
+  { idx: 4, cat: 'npcKill', text: '電光石火です！敵を一体、撃破しました！' },                       // dlg_000110
+  { idx: 4, cat: 'npcKill', text: '勇猛果敢に参ります！この道は通します！' },                       // dlg_000111
+  { idx: 4, cat: 'npcKill', text: '百戦錬磨とはいきませんが、今の一撃は決まりました！' },           // dlg_000112
+  { idx: 5, cat: 'npcKill', text: '予測通りだ。あの位置なら、僕が取れる。' },                       // dlg_000113
+  { idx: 5, cat: 'npcKill', text: '一体排除。ふふ、読みが噛み合ってきたね。' },                     // dlg_000114
+  { idx: 5, cat: 'npcKill', text: 'これで局面は少し軽くなる。次の手に移ろう。' },                   // dlg_000115
+  { idx: 6, cat: 'npcKill', text: 'やった、倒せた！このまま進めるよ！' },                           // dlg_000116
+  { idx: 6, cat: 'npcKill', text: 'こっちは大丈夫！ちゃんと道、作れてる！' },                       // dlg_000117
+  { idx: 6, cat: 'npcKill', text: 'よし、一体片づいた！ちょっと自信ついてきたかも！' },             // dlg_000118
+  { idx: 7, cat: 'npcKill', text: 'チッ……邪魔だ。消えろ。' },                                      // dlg_000119
+  { idx: 7, cat: 'npcKill', text: '一体潰した。こっちはまだ動ける。' },                             // dlg_000120
+  { idx: 7, cat: 'npcKill', text: '俺の前に出たのが悪い。次だ。' },                                 // dlg_000121
 ];
 
 // (idx, cat) のバリアントからランダムに1つ返す。無ければ fallback(既存1文)。

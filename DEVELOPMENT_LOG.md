@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1103 — #5 npcKillバリアント補充＋並走(companion)バリアント拡充(シート同期)
+
+- 社長指示「1で(npcKill用バリアント追加)、シートみて補充して」。Driveシート「NPCセリフ管理表」の
+  量産DBから新規 ready 行を `npcLines.ts` の `NPC_SCENE_VARIANTS` へ同期。
+  - **npcKill(npc_enemy_kill)** 新カテゴリ: dlg098–121 = 8人×3案=24件。これで `npcKillReact` の
+    `pickNpcLine(idx,'npcKill',…)` がフォールバック固定1行ではなくキャラ別バリアントからランダム選択に。
+  - **companion(parallel_run)** 拡充: dlg074–097 = 8人×3案=24件を追加(既存 dlg008 と合わせ各NPCに候補)。
+- データ追加のみ(`pickNpcLine` 既存ロジックそのまま)。負荷 1/10。検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1102 — 保留分の判断対応: #6 セリフキュー / #10 カウンターKB死神(社長指示)
 
 - #10: カウンターマスターのカウンター成立ノックバックに深奥チェイサーを含める(`gameStore.ts:1383` を
