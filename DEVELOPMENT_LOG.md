@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1110 — キャラ立ち絵2枚を差し替え(sniper / handgun)(社長提供)
+
+- 社長提供の新素材で差し替え: `portrait-sniper.png`(金髪スナイパー・新版)と `portrait-handgun.png`
+  (黒髪ハンドガン・新版)。後者はJPEG提供のため PIL で PNG へ再エンコード(拡張子=内容を一致)。
+- ファイル名据え置き=コード変更なし。立ち絵srcは `?v=__APP_VERSION__` 付きなのでバージョン更新で
+  端末キャッシュも更新。アセット差し替えのみ。
+
 ## v0.25.1109 — キャラ立ち絵を「下からスッと」アニメ(社長指示)
 
 - 社長指示「キャラ表示の時、絵を下からスッとアニメーション」。`index.css` に `@keyframes portrait-rise`
