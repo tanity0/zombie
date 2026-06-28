@@ -24,6 +24,14 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 5, cat: 'sortie', text: 'ふっ、布石は済んだ。あとは君が派手に決めるだけだ。' },            // dlg_000015
   { idx: 6, cat: 'sortie', text: 'よし、今日も戻れる場所を増やそう！絶対いけるよ！' },              // dlg_000016
   { idx: 7, cat: 'sortie', text: '足引っ張るなよ。……死なれたら後味悪いだろうが。' },               // dlg_000017
+  { idx: 0, cat: 'sortie', text: 'よし、出るぞ！今日も前線を押し上げる！' },                         // dlg_000146
+  { idx: 0, cat: 'sortie', text: '俺が道を開く。お前は迷わずついて来い！' },                         // dlg_000147
+  { idx: 0, cat: 'sortie', text: '生きて戻るぞ。ついでに、敵の陣地も少し削る！' },                   // dlg_000148
+  { idx: 1, cat: 'sortie', text: 'さあ開幕だ！今日の主役は誰かな、俺かな、お前かな？' },             // dlg_000149
+  { idx: 1, cat: 'sortie', text: '景気よく行こうぜ！暗い顔してたら敵が調子に乗る！' },               // dlg_000150
+  { idx: 1, cat: 'sortie', text: 'よーし、出番だ！派手すぎず、でも地味すぎずな！' },                 // dlg_000151
+  { idx: 2, cat: 'sortie', text: '出撃しますわ。無茶は許しません、必ず戻ります。' },                 // dlg_000152
+  { idx: 2, cat: 'sortie', text: '負傷者を増やすためではなく、救うために進みますわ。' },             // dlg_000153
   // surrounded (敵に囲まれた時)
   { idx: 0, cat: 'surrounded', text: '囲まれたか。焦るな、俺が前をこじ開ける！' },                  // dlg_000018
   { idx: 1, cat: 'surrounded', text: 'おいおい、歓迎されすぎだろ！出口作るぞ！' },                  // dlg_000019
@@ -100,6 +108,30 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
   { idx: 7, cat: 'companion', text: 'チッ……調子いいじゃねえか。なら、俺も付き合ってやる。' },      // dlg_000097
   // left_alone (遠くで放置時)
   { idx: 7, cat: 'neglectFar', text: 'チッ……こっちは詰まってる。助けに来いとは言ってねえぞ。' },    // dlg_000009
+  { idx: 0, cat: 'neglectFar', text: 'こっちはまだ持つ！だが、そろそろ援護が欲しいところだ！' },     // dlg_000122
+  { idx: 0, cat: 'neglectFar', text: 'お前の手が空いたら、こっちにも顔出せ！前線を押し返す！' },     // dlg_000123
+  { idx: 0, cat: 'neglectFar', text: 'まだ崩れちゃいねえ！来てくれりゃ、一気に巻き返せる！' },       // dlg_000124
+  { idx: 1, cat: 'neglectFar', text: 'こっち、ちょっと寂しくなってきたぞー！援護待ってるぜ！' },     // dlg_000125
+  { idx: 1, cat: 'neglectFar', text: 'おーい、俺の勇姿を見に来るなら今だぞ！' },                     // dlg_000126
+  { idx: 1, cat: 'neglectFar', text: 'まだ耐えてる！けど、そろそろ主役の登場が欲しいな！' },         // dlg_000127
+  { idx: 2, cat: 'neglectFar', text: 'こちらは持ちこたえています。ただ、長くは保ちませんわ。' },     // dlg_000128
+  { idx: 2, cat: 'neglectFar', text: '余裕があれば、こちらへ。負傷者を出す前に整えたいですわ。' },   // dlg_000129
+  { idx: 2, cat: 'neglectFar', text: '前線が少し重くなっています。無理のない範囲で援護を。' },       // dlg_000130
+  { idx: 3, cat: 'neglectFar', text: 'こちら、敵勢多し。助太刀を請う。' },                           // dlg_000131
+  { idx: 3, cat: 'neglectFar', text: 'まだ退かぬ。されど、援軍あらば心強い。' },                     // dlg_000132
+  { idx: 3, cat: 'neglectFar', text: '曲者ども、数を増した。頃合いを見て来られよ。' },               // dlg_000133
+  { idx: 4, cat: 'neglectFar', text: '孤軍奮闘中です！援護があれば、必ず押し返せます！' },           // dlg_000134
+  { idx: 4, cat: 'neglectFar', text: '敵勢増加、油断大敵です！こちらも支えます！' },                 // dlg_000135
+  { idx: 4, cat: 'neglectFar', text: '不撓不屈で耐えています！合流できれば、一気呵成です！' },       // dlg_000136
+  { idx: 5, cat: 'neglectFar', text: 'こちらの圧が上がっている。君が来れば、形勢は変えられる。' },   // dlg_000137
+  { idx: 5, cat: 'neglectFar', text: 'ふむ、少し読みより重いね。君の一手が欲しいところだ。' },       // dlg_000138
+  { idx: 5, cat: 'neglectFar', text: '前線が停滞している。君が入れば、綺麗に崩せるはずだ。' },       // dlg_000139
+  { idx: 6, cat: 'neglectFar', text: 'こっち、ちょっと大変かも！来られそうならお願い！' },           // dlg_000140
+  { idx: 6, cat: 'neglectFar', text: 'まだ大丈夫！でも、来てくれたらすっごく助かる！' },             // dlg_000141
+  { idx: 6, cat: 'neglectFar', text: 'うーん、少し止まってる！一緒ならたぶん押せるよ！' },           // dlg_000142
+  { idx: 7, cat: 'neglectFar', text: 'チッ……こっちは詰まってる。来られるなら来い。' },              // dlg_000143
+  { idx: 7, cat: 'neglectFar', text: 'まだ潰れてねえ。だが、そろそろ手を貸せ。' },                   // dlg_000144
+  { idx: 7, cat: 'neglectFar', text: '敵が増えてきた。……無理して来いとは言ってねえぞ。' },          // dlg_000145
   // rescue_returned (救助者を拠点へ保護した時) ※新シーン
   { idx: 0, cat: 'rescueReturned', text: 'よく連れてきた！こいつは俺たちで守る、安心しろ！' },       // dlg_000058
   { idx: 1, cat: 'rescueReturned', text: 'おお、生存者だ！よく戻したな、今日いちばんの手柄かもな！' }, // dlg_000059

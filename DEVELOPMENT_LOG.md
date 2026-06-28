@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1104 — セリフDB追加分の同期(neglectFar 24件 / sortie 8件)
+
+- 社長「セリフ補充した」。シート量産DBの新規 ready 行を `npcLines.ts` へ同期。
+  - **neglectFar(left_alone/遠くで放置時)** dlg122–145 = 8人×3案=24件。従来はフェイザー1件のみ→全員に拡充。
+  - **sortie(sortie_start/出撃時)** dlg146–153 = エドガー3/ジョセフ3/エリザベス2=8件を補充。
+- データ追加のみ。検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1103 — #5 npcKillバリアント補充＋並走(companion)バリアント拡充(シート同期)
 
 - 社長指示「1で(npcKill用バリアント追加)、シートみて補充して」。Driveシート「NPCセリフ管理表」の
