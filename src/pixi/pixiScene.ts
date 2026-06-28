@@ -76,11 +76,12 @@ const buildDeepGradeMatrix = (sat: number): ColorMatrix => {
   ];
 };
 
-// 紅き夜の画面染色マトリクス。R大幅増・G/B減で血の赤に染める。
+// 紅き夜の画面染色マトリクス。R増・G/B減で血の赤に染める。
+// 社長指示で赤みを少し軽減し彩度を残す: R 1.45→1.30、G 0.55→0.70、B 0.35→0.52、赤の流し込み/加算も微減。
 const buildRedNightMatrix = (): ColorMatrix => [
-  1.45, 0.20, 0.10, 0, 0.06,
-  0.00, 0.55, 0.00, 0, 0.00,
-  0.00, 0.00, 0.35, 0, 0.00,
+  1.30, 0.16, 0.08, 0, 0.04,
+  0.00, 0.70, 0.00, 0, 0.00,
+  0.00, 0.00, 0.52, 0, 0.00,
   0, 0, 0, 1, 0,
 ];
 
@@ -763,6 +764,10 @@ export class PixiScene {
   // 分身(サブウェポン): プレイヤーと同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト。
   private shadowCloneSprite = new Sprite();
   private shadowCloneAdded = false;
+  // 分身の斬撃モーション(本体と同じナイフ振り2枚)。actorLayer に置き zIndex で本体と前後ソート。
+  private cloneKnife = new Sprite();
+  private cloneKnifeSlash = new Sprite();
+  private cloneKnifeSetup = false;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
   private castleView = new Container();
@@ -4589,7 +4594,7 @@ export class PixiScene {
   private syncShadowClone(player: Player) {
     const clone: ShadowCloneState | null = useGameStore.getState().shadowClone;
     const spr = this.shadowCloneSprite;
-    if (!clone) { spr.visible = false; return; }
+    if (!clone) { spr.visible = false; this.cloneKnife.visible = false; this.cloneKnifeSlash.visible = false; return; }
     if (!this.shadowCloneAdded) {
       spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ)
       this.L.actorLayer.addChild(spr);
@@ -4614,6 +4619,52 @@ export class PixiScene {
     );
     spr.zIndex = footY;     // 他アクターと足元Yでy-sort
     spr.alpha = 0.8;        // 分身とわかるよう少し透過
+
+    // 斬撃モーション(本体と同じナイフ振り)を分身にも付与(社長指示)。clone.swingAt 起点で2枚差し替え。
+    if (!this.cloneKnifeSetup) {
+      const f1 = getTexture('knife-swing-1');
+      const f2 = getTexture('knife-swing-2');
+      if (f1 && f2) {
+        this.cloneKnife.texture = f1; this.cloneKnife.anchor.set(0.5, 0.5); this.cloneKnife.visible = false;
+        this.L.actorLayer.addChild(this.cloneKnife);
+        this.cloneKnifeSlash.texture = f2; this.cloneKnifeSlash.anchor.set(0.5, 0.5); this.cloneKnifeSlash.visible = false;
+        this.L.actorLayer.addChild(this.cloneKnifeSlash);
+        this.cloneKnifeSetup = true;
+      }
+    }
+    const knife = this.cloneKnife, slash = this.cloneKnifeSlash;
+    const cSince = Date.now() - (clone.swingAt ?? 0);
+    if (this.cloneKnifeSetup && clone.swingAt && cSince >= 0 && cSince < PLAYER_MELEE_SWING_MS) {
+      const kt = cSince / PLAYER_MELEE_SWING_MS;
+      const mir = clone.facingLeft ? -1 : 1;
+      const cDsc = this.depthScale(footY);
+      const unit = boxH * cDsc;                                   // boxH=clone.height*PLAYER_VISUAL_SCALE(本体と同基準)
+      const baseX = this.snapToScreenPixel(footX, this.L.world.position.x);
+      const baseY = this.snapToScreenPixel(footY - boxH * 0.5 * cDsc, this.L.world.position.y); // 胸あたり
+      const zc = footY + 0.5;                                     // 本体のすぐ前面
+      const place = (s: Sprite, cfg: { scale: number; ox: number; oy: number }, vis: boolean, alpha: number) => {
+        if (!vis || !s.texture || s.texture.width === 0) { s.visible = false; return; }
+        const scl = (unit * cfg.scale) / s.texture.width;
+        s.scale.set(mir * scl, scl);                              // 左向き=水平ミラー(回転なし)
+        s.position.set(baseX + mir * cfg.ox * unit, baseY + cfg.oy * unit);
+        s.zIndex = zc;
+        s.alpha = alpha * spr.alpha;                              // 分身の透過(0.8)に合わせる
+        s.visible = s.alpha > 0.01;
+      };
+      if (kt < KNIFE_SWING_SWITCH) {
+        const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
+        place(knife, KNIFE_F1, true, a1);
+        place(slash, KNIFE_F2, false, 0);
+      } else {
+        const t = (kt - KNIFE_SWING_SWITCH) / (1 - KNIFE_SWING_SWITCH); // 0..1
+        const a2 = Math.min(1, Math.min(t / 0.12, (1 - t) / 0.50));     // 本体と同じく末尾フェード
+        place(knife, KNIFE_F1, false, 0);
+        place(slash, KNIFE_F2, true, a2);
+      }
+    } else {
+      knife.visible = false;
+      slash.visible = false;
+    }
   }
 
   // 刀サブウェポン: キャラ中央付近・背面に背負った刀のドット絵。専用テクスチャ

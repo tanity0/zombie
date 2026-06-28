@@ -3189,6 +3189,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...state.shadowClone,
           attacksDone: state.shadowClone.attacksDone + 1,
           nextAttackAt: state.shadowClone.nextAttackAt + SHADOW_CLONE_ATTACK_INTERVAL_MS,
+          swingAt: Date.now(), // 斬撃モーション(本体と同じナイフ振り)の起点(描画のみ)
         },
       } : {});
     }

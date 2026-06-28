@@ -415,6 +415,7 @@ export interface ShadowCloneState {
   spawnedAt: number;              // gameTime(ms)。寿命(5秒)の起点
   attacksDone: number;            // これまでに行った自動近接攻撃の回数
   nextAttackAt: number;           // 次の自動攻撃を行う gameTime(ms)
+  swingAt?: number;               // 直近の近接スイング演出の起点(Date.now)。本体と同じ斬撃モーション描画に使う。
 }
 
 // 制圧イベントの拠点。4か所固定(東西南北)。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。

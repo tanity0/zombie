@@ -1166,8 +1166,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rnGs = useGameStore.getState();
           const rn = rnGs.redNight;
 
-          if (!rn && !redNightFiredRef.current && newGameTime >= RED_NIGHT_FIRE_MS && !rnGs.bossChasing) {
-            // 発火: 3分後に一度だけ
+          // 紅き夜は「デンジャーゾーン(区域index2=原点から3000px)以降」に居る時だけ発現(社長指示)。
+          // 3分経過していても、それより内側の安全エリアでは発火しない=深入りした時に初めて発火。
+          const rnDepth = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
+          if (!rn && !redNightFiredRef.current && newGameTime >= RED_NIGHT_FIRE_MS && !rnGs.bossChasing
+              && areaZoneIndexFor(rnDepth) >= 2) {
+            // 発火: 3分後 かつ デンジャーゾーン以降で一度だけ
             redNightFiredRef.current = true;
             rnGs.beginRedNightWarning(newGameTime);
             spawnFlash('rgba(120,0,0,0.18)', 380);

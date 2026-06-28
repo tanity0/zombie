@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1116 — 紅き夜の発現条件＆色味調整＋分身に斬撃モーション(社長指示)
+
+- 紅き夜「デンジャーゾーン以降でのみ発現」: 発火条件に `areaZoneIndexFor(プレイヤー距離) >= 2`(原点3000px=
+  デンジャーゾーン)を追加。3分経過していても内側の安全エリアでは発火せず、深入りした時に初発火。
+- 紅き夜の赤みを少し軽減・彩度を残す: `buildRedNightMatrix` を R1.45→1.30 / G0.55→0.70 / B0.35→0.52 /
+  赤の流し込み・加算も微減。血赤感は維持しつつ他の色が少し残る。
+- 分身(shadow-clone)に斬撃モーション付与: `ShadowCloneState.swingAt` を追加し攻撃時に `Date.now()` を記録。
+  `pixiScene.syncShadowClone` で本体と同じナイフ振り2枚(`cloneKnife`/`cloneKnifeSlash`、actorLayerにzソート)を
+  分身の胸位置・向きで描画(末尾フェード込み・分身の透過0.8に合わせる)。サイズ基準は本体と同一(boxH=height×2.3)。
+- 描画/条件のみ(当たり判定・ダメージ不変)。負荷 1/10。検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1115 — カスケード・フェードインを他メニューへ拡大(社長指示)
 
 - 社長指示「他のメニューにも広げて」。`index.css` にコンテナ用 `.menu-stagger`(直下の子を nth-child で
