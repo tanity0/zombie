@@ -250,7 +250,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return (
       <>
         <Header title={`${m.code}：${m.title}`} subtitle={`${stage.name} / ${stage.area}`} onBack={() => setScreen({ name: 'stageSelect' })} />
-        <div className="p-3 space-y-3">
+        <div className="menu-stagger p-3 space-y-3">
           {/* 説明欄: 未クリアは「あらすじ」、クリア後は「クリア後の記録(debrief)」を表示。 */}
           <Section label={done ? 'クリア後' : 'あらすじ'}>
             {(done ? m.debrief : m.synopsis).map((line, i) => (
@@ -411,7 +411,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 解禁済みのスキルがありません。開発施設の強化訓練でゴールドを使って解禁してください。
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="menu-stagger grid grid-cols-2 gap-2">
                 {/* SKILL_KEYS 順に、所持済みのみ表示(レア度色付き)。 */}
                 {SKILL_KEYS.filter(k => ownedSkills.includes(k)).map(k => {
                   const on = equippedSkills.includes(k);
@@ -443,7 +443,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* サブウェポン */}
           <div>
             <div className="px-1 mb-1.5 text-[11px] uppercase tracking-widest text-emerald-200/70">サブウェポン（1つ）</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="menu-stagger grid grid-cols-2 gap-2">
               {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。 */}
               {SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k)).map(k => {
                 const on = equippedSubs.includes(k);
@@ -477,7 +477,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const renderOptions = () => (
     <>
       <Header title="オプション" onBack={() => setScreen({ name: 'home' })} />
-      <div className="p-3 space-y-3">
+      <div className="menu-stagger p-3 space-y-3">
         <AudioSettings />
         <GraphicsSettings />
         {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartGame={onStartGame} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
@@ -496,7 +496,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const renderArchive = () => (
     <>
       <Header title="資料室" subtitle="ストーリー記録・変異体図鑑" onBack={() => setScreen({ name: 'home' })} />
-      <div className="p-3 space-y-3">
+      <div className="menu-stagger p-3 space-y-3">
         <Section label="世界観">
           {WORLD_INTRO.map((line, i) => <p key={i} className="text-[12px] leading-relaxed text-white/80">{line}</p>)}
         </Section>
@@ -1220,7 +1220,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       <div className="p-3">
         <SkillGacha />
       </div>
-      <div className="px-3 pb-3 grid grid-cols-1 gap-2">
+      <div className="menu-stagger px-3 pb-3 grid grid-cols-1 gap-2">
         <button type="button" onClick={() => setStartWithTestStraps(!startWithTestStraps)}
           className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${startWithTestStraps ? 'border-amber-300/35 bg-amber-300/15 text-amber-50' : 'border-white/10 bg-white/5 text-white active:bg-white/10'}`}>
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>

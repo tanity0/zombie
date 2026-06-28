@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1115 — カスケード・フェードインを他メニューへ拡大(社長指示)
+
+- 社長指示「他のメニューにも広げて」。`index.css` にコンテナ用 `.menu-stagger`(直下の子を nth-child で
+  最大14段=45ms刻みカスケード、15個目以降はまとめて620ms)を追加し、各画面のリストコンテナに付与:
+  - ミッション詳細(あらすじ/サブミッション/出撃準備)、装備(スキルgrid・サブウェポンgrid)、
+    オプション(サウンド/グラフィック/開発ツール)、資料室(世界観/任務記録/図鑑)、開発施設(解放ボタン群)。
+- 既存のホーム/ステージ選択は前版の per-item 方式のまま(挙動同一)。CSSアニメのみ=負荷 1/10。
+- 検証: lint/typecheck/build OK。
+
 ## v0.25.1114 — メニューの各選択肢を左からカスケード・フェードイン(社長指示)
 
 - 社長指示「ミッション選択やステージ選択などのメニュー、選択肢を左から右に一瞬フェードインして表示」。
