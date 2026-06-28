@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1117 — メニューの戻る/タイトルを上部固定(社長指示)
+
+- 社長指示「メニューの戻るボタンとメニュータイトル、常に表示(スクロールに連動しない)」。`Header` を
+  スクロール領域(Shell の overflow-y-auto)の先頭で `sticky top-0 z-20` に。背景(rgba(16,16,24,0.92))＋
+  backdrop-blur＋上端角丸を付け、スクロールしてくる内容を隠す。`relative` は sticky が位置基準になるため除去。
+- 全メニュー画面(ホーム/ステージ選択/ミッション詳細/装備/オプション/資料室/開発施設)に共通適用。
+  キャラ選択は元から全画面で戻る固定なので対象外。CSSクラスのみ。検証: lint/typecheck/build OK。
+
 ## v0.25.1116 — 紅き夜の発現条件＆色味調整＋分身に斬撃モーション(社長指示)
 
 - 紅き夜「デンジャーゾーン以降でのみ発現」: 発火条件に `areaZoneIndexFor(プレイヤー距離) >= 2`(原点3000px=

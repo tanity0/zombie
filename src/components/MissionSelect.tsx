@@ -59,8 +59,10 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
+// 戻る/タイトルは常時表示=スクロール領域の先頭で sticky 固定(社長指示)。背景＋blur で
+// スクロールしてくる内容を隠す。sticky 自身が absolute 子(戻るボタン)の位置基準になるので relative 不要。
 const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }> = ({ title, subtitle, onBack }) => (
-  <div className="relative px-5 pt-5 pb-3 text-center border-b border-white/10">
+  <div className="sticky top-0 z-20 px-5 pt-5 pb-3 text-center border-b border-white/10 rounded-t-3xl bg-[rgba(16,16,24,0.92)] backdrop-blur-md">
     {onBack && (
       <button
         onClick={onBack}
