@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1112 — ステージ1の花オブジェを少し小さく(社長指示)
+
+- 社長指示「ステージ1の花のオブジェの大きさを少し小さく」。`forestDecor.ts` の `FLOWER_DISPLAY_H` を
+  148→128(約13%減)。個体scale(0.62〜0.92倍)・密度・配置・当たり判定(無し)は不変=見た目のサイズだけ。
+- 微調整は数値1つ。検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1111 — キャラ選択: 立ち絵はロード後にアニメ＋テキストもフェードイン(社長指示)
 
 - 社長報告「初回は画像読込で下からフワッと出てこない/2回目から出る」。原因=`portrait-rise` がマウント直後に
