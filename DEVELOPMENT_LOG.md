@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1102 — 保留分の判断対応: #6 セリフキュー / #10 カウンターKB死神(社長指示)
+
+- #10: カウンターマスターのカウンター成立ノックバックに深奥チェイサーを含める(`gameStore.ts:1383` を
+  `&& !e.reaperChaser` へ)。死神は即死ではなくボス級扱い=#2のリーパー波及も `isBossType` 分岐で×5ダメージ
+  (即死しない)であることを確認済み。#2/#9/#10 で死神の近接系統一が完了。
+- #6: NPCセリフ同時発火の取りこぼし対策。キュー上限 2→3(表示1+キュー3=最大4)。拠点解放+包囲+救助が
+  同フレームで重なっても順次再生されるように。各カテゴリ/同一NPCのCDで連発抑止は据え置き。
+- #7(調査のみ・変更なし): `setAudioMuted/setBgmVolume/setBgmActive` の applyDanceAudio 二重呼びは
+  **Safariの先行アンロック対策ではない**(アンロックは別関数 `unlockDanceAudio()` が担当=スタート時に
+  ミュートの捨て要素を先行 play)。二重呼びは applyBgm 内(L560)が既に applyDanceAudio を呼ぶための冗長で、
+  ガードにより無害。症状なし＋音声系は脆いため**据え置き**(任意のクリーンアップ扱い)。
+- #5(未着手・要コンテンツ判断): npcKill のバリアントDB未定義の詳細をチャットで説明。セリフ文の新規作成が
+  必要なため、ドラフト提案待ち。
+- 検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1101 — バグスイープ検出の「明確なバグ」14件を一括修正(社長承認・要確認4件は保留)
 
 マルチエージェント監査(13サブシステム/検証通過18件)のうち、意図を変えない明確なバグのみ修正。

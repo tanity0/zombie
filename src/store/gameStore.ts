@@ -1380,7 +1380,7 @@ const counterMasterKnockback = (get: () => GameState, pcx: number, pcy: number, 
   const reach = MELEE_RADIUS * 1.5;
   const reach2 = reach * reach;
   for (const e of get().enemies) {
-    if (e.type === 'reaper') continue;
+    if (e.type === 'reaper' && !e.reaperChaser) continue; // 不倒の通常リーパーは対象外。深奥チェイサーはノックバック対象(ボス級・他の近接系と統一)
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     const dx = ecx - pcx;
@@ -4796,7 +4796,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const gt = s.gameTime;
     if (gt - (s.npcSpokeAt[name] ?? -1e9) < NPC_SAME_NPC_CD_MS) return false;       // 同一NPCのCD
     if (gt - (s.npcCatAt[category] ?? -1e9) < categoryCdMs) return false;            // 同一カテゴリのCD
-    if (s.npcDialogueQueue.length >= 2) return false;                                // 詰まり防止(画面1〜2個)
+    if (s.npcDialogueQueue.length >= 3) return false;                                // 詰まり防止。表示1+キュー最大3=同フレームに複数イベント(拠点解放+包囲+救助等)が重なっても取りこぼさず順次再生。各カテゴリ/同一NPCのCDで連発は別途抑止
     set({
       npcDialogueQueue: [...s.npcDialogueQueue, { name, text }],
       npcSpokeAt: { ...s.npcSpokeAt, [name]: gt },
