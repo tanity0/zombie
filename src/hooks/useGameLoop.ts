@@ -1351,7 +1351,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               rs.warpAnimStartAt = 0; rs.warpTeleported = false;
               rs.risk = REAPER_CONFIG.riskMax;
               spawnFlash('rgba(10,10,16,0.30)', 360);
-              // SFX(完全出現の短い警告音)は専用アセット待ち。
+              // 死神「完全出現」もカメラアテンション(社長指示)。裏ボス/城ボス出現と同じく、時間停止で現地へ
+              // 寄って戻るシネマティック。出現位置(画面外)へパンして死神を見せる。
+              useGameStore.getState().triggerAttention(sx, sy);
+              playSfx('boss-appear'); // 出現アテンションSE(裏ボスと同系)
             }
           } else {
             // プレイヤーがスタート(原点)付近 homeRadiusPx 内へ戻れば死神は去る=逃げ切り。リスクは0へクールダウン。
@@ -4844,6 +4847,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
           // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。
           if (isHiddenBoss(enemy.type)) return enemy;
+          // 死神チェイサーも専用コントローラ(回り込みワープ)が座標を管理する=汎用の距離リサイクルで二重管理しない。
+          // チェイサーはリサイクル余白(240px)の外側に湧くため、放置すると毎フレーム別の画面外へ飛ばされ続け、
+          // 「死神がすぐどこかへ行ってしまう」原因になっていた(ワープ先回りはこの下の専用コントローラが担当)。
+          if (enemy.type === 'reaper' && enemy.reaperChaser) return enemy;
           // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
           if (enemy.fromEvent) return enemy;
           // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
