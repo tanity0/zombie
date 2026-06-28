@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1106 — ステージ1冒頭会話を削除(社長指示)
+
+- 社長指示「ステージ1の冒頭の会話削除」。`campaign.ts` の stage-1 メイン(M1)の `dialogue`(時間停止・
+  オートタイプの通信兵/エドガーの掛け合い)を空配列に。出撃直後の登場会話が出なくなる。
+  briefing/synopsis/voices(ミッション選択側の文章)は据え置き。
+- データのみ。検証: lint/typecheck/test(75)/build OK。
+
 ## v0.25.1105 — プラントが倒れたら在弾(敵弾)も消す(社長指示)
 
 - 社長指示「プラントも死んだら弾消えるように」。プラント(定着型・遠距離)が撃った敵弾を、発射元が
