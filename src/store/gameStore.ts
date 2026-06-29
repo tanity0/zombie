@@ -935,6 +935,9 @@ export const ENEMY_ATTACK_SPEED_MULT = 1.2;
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
 export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン予告→直線突進。社長指示で2→3)
+// ハンター変異体のジャンプ/ダッシュ攻撃だけ速度2倍(社長指示)。ダッシュ突進速度に乗算、
+// ジャンプ滞空時間を 1/この値 に短縮(=同距離を倍速で跳ぶ)。他の犬/パンプキン/バットには非適用。
+export const HUNTER_JUMP_DASH_SPEED_MULT = 2;
 // ダッシュ攻撃全般(通常より速い突進)の弱いホーミング量/frame。基本は直進、少しだけプレイヤーへ寄せる(社長指示)。
 export const DASH_ATTACK_HOMING = 0.05;
 // ダッシュ溜め中、ゆっくり後退り(プレイヤーから離れる)してから突進(社長指示)。通常速度に対する倍率。
@@ -5199,7 +5202,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
             const cdl = Math.hypot(cdirx, cdiry) || 1;
             cdirx /= cdl; cdiry /= cdl;
-            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT; // 3倍速・ほぼ直進+弱ホーミング
+            const cs = enemy.speed * WEREWOLF_CHARGE_SPEED_MULT * (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1); // 3倍速(ハンターは更に×2)・ほぼ直進+弱ホーミング
             const cvx = cdirx * cs, cvy = cdiry * cs;
             const rawX = enemy.x + cvx * deltaTime, rawY = enemy.y + cvy * deltaTime;
             const moved = resolveMove(rawX, rawY);
@@ -5249,14 +5252,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                 ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
                 aiFromX: enemy.x, aiFromY: enemy.y,
                 aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2,
-                aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS),
+                aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS / (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1)),
               };
             }
             return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(縮みは描画側)
           }
           if (enemy.aiPhase === 'jump') {
             // ジャンプ滞空時間も攻撃倍速で短縮(着地=t>=1。set側 aiPhaseUntil と同じ scaled 値で揃える)。
-            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT)));
+            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT / (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1))));
             const fx = enemy.aiFromX ?? enemy.x, fy = enemy.aiFromY ?? enemy.y;
             const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
             const nx = fx + (tx - fx) * t;

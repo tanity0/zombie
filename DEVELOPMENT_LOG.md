@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1147 — ハンターのジャンプ/ダッシュ攻撃を速度2倍(社長指示)
+
+- ハンター限定で `HUNTER_JUMP_DASH_SPEED_MULT = 2` を新設。
+  - ダッシュ突進速度 `WEREWOLF_CHARGE_SPEED_MULT(×3)` に更に×2(ハンターのみ)。
+  - ジャンプ滞空時間を 1/2 に短縮=同距離を倍速で跳ぶ(set/t除数の両方)。
+- 描画側ジャンプ弧(hop)の除数もストアと同じ実効滞空時間(×1.2＋ハンター×2)に揃え、着地と同期(giantbat/pumpkin の既存微ズレも解消)。
+- 他の犬/パンプキン/バットには非適用。検証: typecheck / lint / test / build OK。
+- 変更: `src/store/gameStore.ts`・`src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1146 — 進軍NPCも爆発などの局所光で影が伸びるように(社長指示)
 
 - `syncLocalEventLighting` のキャスターに **escort(進軍NPC)を追加**。これで敵/プレイヤーと同じく
