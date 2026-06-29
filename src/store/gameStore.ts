@@ -596,6 +596,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   mimir: 'ミーミル',
   jormungand: 'ヨルムンガルド',
   skadi: 'スカジ',
+  hunter: '変異体(狩猟型)',
 };
 export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
 
@@ -991,7 +992,7 @@ const inertiaAlpha = (deltaTime: number, tau: number): number =>
 
 // スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。
 const isScoreElite = (t: string): boolean => t === 'pumpkin';
-const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand' || t === 'skadi';
+const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'hunter';
 const countScoreEliteBoss = (enemies: { type: string }[]): { elite: number; boss: number } => ({
   elite: enemies.reduce((n, e) => n + (isScoreElite(e.type) ? 1 : 0), 0),
   boss: enemies.reduce((n, e) => n + (isScoreBoss(e.type) ? 1 : 0), 0),
@@ -5057,6 +5058,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 裏ボス(mimir/jormungand)は updateEnemies の追跡AIから除外。移動/攻撃/帰巣/再生は
         // useGameLoop の専用コントローラが座標を直接書き込む(死神と同じ方式)。
         if (isHiddenBoss(enemy.type)) return enemy;
+        // ハンター変異体・撤退中は通常追跡AIから除外。専用イベントコントローラ(useGameLoop)が
+        // プレイヤーから離れる方向へ移動させ画面外で消す。索敵中(dormant)は下の dormant ブロックで静止。
+        if (enemy.type === 'hunter' && enemy.hunterFleeing) return enemy;
         // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+壁(研究所スキンは壁のみ)。
         const resolveMove = (nx: number, ny: number) => {
           let pos: { x: number; y: number };
@@ -5178,7 +5182,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ダッシュ(突進)AI: 溜め中に「赤ライン」で移動先(直線距離)を予告→確定した狙い点へ3倍速で直進(曲がらない)。
         // 犬型(werewolf)・研究所Lv2(lab-zombie-2)・ジャイアントバット共通。狙い点は溜め開始時に確定(=赤ラインの終点)。
         // 発動トリガーは werewolf/lab-zombie-2 は射程ベース、giantbat は専用スケジューラ(下)が起動する。
-        const isDashType = enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2' || enemy.type === 'giantbat';
+        const isDashType = enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2' || enemy.type === 'giantbat' || enemy.type === 'hunter';
         if (isDashType) {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
@@ -5225,7 +5229,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const moved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
             return { ...enemy, x: moved.x, y: moved.y, vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT };
           }
-          if (enemy.type !== 'giantbat' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
             // 突進距離 = プレイヤーまでの距離 + 80px(プレイヤーの少し先で止まる。社長指示)。
             const reach = dist + DASH_OVERSHOOT_PX;
@@ -5237,7 +5241,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // パンプキン(pumpkin)ジャンプ攻撃AI: 少し外で縮み溜め(3秒)→1秒でその時のプレイヤー位置へ着地→1秒停止。
         // 研究所Lv3(lab-zombie-3)もパンプキンと同じ挙動。ジャイアントバットも同じジャンプ着地攻撃を流用(社長指示)。
         // トリガーは pumpkin/lab-zombie-3 は射程ベース、giantbat は専用スケジューラ(下)が起動する。
-        if (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3' || enemy.type === 'giantbat') {
+        if (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3' || enemy.type === 'giantbat' || enemy.type === 'hunter') {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
@@ -5282,7 +5286,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
           }
-          if (enemy.type !== 'giantbat' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
+          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
@@ -5290,7 +5294,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // ジャイアントバットの行動スケジューラ: 待機中(aiPhase無し)に、ジャンプ(約5秒CD)/ダッシュ(約7秒CD)を
         // それぞれのCDが明けたらランダムに発動。弾(約3秒CD)は fire profile 側が別系統で処理。
-        if (enemy.type === 'giantbat' && !enemy.aiPhase) {
+        if ((enemy.type === 'giantbat' || enemy.type === 'hunter') && !enemy.aiPhase) {
           // 出現直後は少し待ってから行動(即突進しない)。初回だけ初期CDをセット。
           if (enemy.gbDashReadyAt === undefined) {
             return { ...enemy, vx: 0, vy: 0, gbDashReadyAt: atkUntil(2000), gbJumpReadyAt: atkUntil(3500) };

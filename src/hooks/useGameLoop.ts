@@ -72,7 +72,7 @@ import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { fireWeapon, getActiveGun, getGuns } from '../utils/weaponUtils';
+import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
@@ -244,6 +244,30 @@ const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
 const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの表示時間(gameTime ms)
+
+// --- ハンター変異体イベント(社長指示) ---------------------------------------
+// 3分以降・優勢時に、プレイヤー近場の画面外へ「索敵状態」で出現。検知範囲に入ると
+// 「見られている」警告→5秒残ると発見→拠点(制圧済み)へ逃げ込むまで追跡。20s/40sで増援(最大3体)。
+// 1ステージ最大2回・再出現CD90〜120s・ボス/リーパー/演出中は出現禁止(追跡中なら逃げる)。
+const HUNTER_START_MS = 180000;            // 出現開始(3分)
+const HUNTER_MAX_PER_RUN = 2;              // 1ステージ(=1出撃)最大2回
+const HUNTER_RESPAWN_CD_MIN_MS = 90000;    // 再出現CD最短(90秒)
+const HUNTER_RESPAWN_CD_SPAN_MS = 30000;   // +0〜30秒(=90〜120秒)
+const HUNTER_DETECT_RANGE = 720;           // 索敵範囲(広め)
+const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
+const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(消滅)
+const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
+const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
+const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
+const HUNTER_BASE_SAFE_RADIUS = 150;       // 制圧拠点へこの距離まで近づくと追跡相手が撤退
+const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
+const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
+// 優勢判定(6項目中 HUNTER_FAV_SCORE_NEEDED 以上で成立)
+const HUNTER_FAV_NODAMAGE_MS = 20000;      // 直近20秒ノーダメージ
+const HUNTER_FAV_KILLS_20S = 12;           // 直近20秒の撃破数が多い
+const HUNTER_FAV_STREAK_6S = 3;            // 近接/KILL成功が連続(直近6秒で3体)
+const HUNTER_FAV_ONSCREEN_MAX = 6;         // 画面内通常敵が少ない
+const HUNTER_FAV_SCORE_NEEDED = 4;         // 6項目中4つ以上
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
 const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
 const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
@@ -406,6 +430,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
+  // ハンター変異体イベントの状態機械(専用コントローラ)。phase が idle 以外の間=他イベント抑止。
+  const hunterRef = useRef({
+    phase: 'idle' as 'idle' | 'search' | 'chase' | 'retreat',
+    eventsThisRun: 0,            // この出撃で発生した回数(最大 HUNTER_MAX_PER_RUN)
+    nextEligibleAt: HUNTER_START_MS, // 次に出せる gameTime(再出現CD)
+    spawnAt: 0,                  // 索敵開始(出現)時刻
+    detectStartAt: 0,            // プレイヤーが検知範囲に入った時刻(0=範囲外)
+    chaseStartAt: 0,             // 追跡開始時刻(増援タイマー基準)
+    reinforced: 0,               // 投入済み増援数(0..2)
+    primaryId: '',               // 索敵個体(初号)のid
+  });
+  const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
+  const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
+  const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
   const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ判定。判定済みフラグ。
   const redNightFireAtRef = useRef(rollRedNightFireAt()); // この出撃の発火判定時刻(5〜9分でランダム)。
   const lastSeenGameTimeRef = useRef(0);
@@ -955,6 +993,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFiredRef.current = false;
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
+          // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '' };
+          hunterKillsRef.current = [];
+          hunterPrevHpRef.current = -1;
+          hunterLastDmgAtRef.current = -1e9;
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
@@ -1017,7 +1060,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
             // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
             // 裏ボスが追いかけてきている間はイベントを発生させない(社長指示)。
-            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing;
+            // ハンター追跡中(phase≠idle)は他イベントを発生させない(社長指示:同時1イベントまで)。
+            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && hunterRef.current.phase === 'idle';
             if (arenaReady) {
               nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
               const pcx = player.x + player.width / 2;
@@ -1252,6 +1296,147 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           if (useGameStore.getState().returnCircle && !useGameStore.getState().gameWon) {
             useGameStore.getState().updateReturnPhase(deltaTime);
+          }
+        }
+
+        // --- ハンター変異体イベント(専用コントローラ・社長指示) ---------------------
+        // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
+        if (!danceTest && !indoor) {
+          const H = hunterRef.current;
+          const hs = useGameStore.getState();
+          const hpx = hs.player.x + hs.player.width / 2;
+          const hpy = hs.player.y + hs.player.height / 2;
+
+          // 優勢判定の履歴更新: 被弾検出(HP低下)と撃破数の時系列。
+          if (hunterPrevHpRef.current < 0) hunterPrevHpRef.current = hs.player.health;
+          if (hs.player.health < hunterPrevHpRef.current) hunterLastDmgAtRef.current = newGameTime;
+          hunterPrevHpRef.current = hs.player.health;
+          const kills = hunterKillsRef.current;
+          const totalKills = hs.gameStats.enemiesKilled;
+          if (kills.length === 0 || kills[kills.length - 1].total !== totalKills) kills.push({ t: newGameTime, total: totalKills });
+          while (kills.length > 1 && kills[0].t < newGameTime - 21000) kills.shift(); // 21秒より古い標本は捨てる
+          const killsSince = (ms: number): number => {
+            const since = newGameTime - ms;
+            let base = totalKills;
+            for (const k of kills) { if (k.t <= since) base = k.total; else break; }
+            return totalKills - base;
+          };
+
+          // 「ボス/リーパー/演出中」= 出現禁止＆追跡中なら撤退。activeEvent は出現禁止のみ(追跡中は元々他イベント出ない)。
+          const giantOrReaper = hs.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
+          const cinematic = hs.bossChasing || !!hs.attention || hs.redNight?.phase === 'active' || giantOrReaper;
+          const spawnBlocked = cinematic || !!hs.activeEvent;
+
+          // 画面外スポーン地点(プレイヤー近場の画面端〜外)。
+          const offscreenSpawn = (): { x: number; y: number } => {
+            const ang = Math.random() * Math.PI * 2;
+            const r = Math.hypot(gameBounds.width, gameBounds.height) / 2 + 90;
+            return { x: hpx + Math.cos(ang) * r, y: hpy + Math.sin(ang) * r };
+          };
+          const spawnHunter = (search: boolean): string => {
+            const p = offscreenSpawn();
+            const h = spawnEnemyAt('hunter', p.x - 28, p.y - 32, newGameTime);
+            h.fixed = true;              // 屋外リサイクル/カリング対象外=コントローラが寿命を完全管理
+            h.vx = 0; h.vy = 0;
+            if (search) { h.dormant = true; h.aggroRange = 0; } // 索敵=静止・自動起床しない(発見で起こす)
+            addEnemy(h);
+            return h.id;
+          };
+          const endHunterEvent = () => {
+            H.phase = 'idle';
+            H.nextEligibleAt = newGameTime + HUNTER_RESPAWN_CD_MIN_MS + Math.random() * HUNTER_RESPAWN_CD_SPAN_MS;
+            H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0; H.primaryId = '';
+          };
+          const clearAllHunters = () => useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') }));
+
+          if (H.phase === 'idle') {
+            if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
+              // 優勢判定(6項目中4つ以上)。
+              const cam = hs.camera;
+              const onscreen = hs.enemies.reduce((n, e) => {
+                if (isBossType(e.type) || e.type === 'hunter') return n;
+                const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                return (ex >= cam.x && ex <= cam.x + gameBounds.width && ey >= cam.y && ey <= cam.y + gameBounds.height) ? n + 1 : n;
+              }, 0);
+              const captured = hs.baseSites.filter(b => b.status === 'captured').length;
+              const gun = getActiveGun(hs.player);
+              const ammoOk = !!(gun && gun.ammoType && ((gun.magazine ?? 0) + ammoPoolFor(hs.player, gun.ammoType)) >= effectiveMagSize(gun, hs.player));
+              const score =
+                (newGameTime - hunterLastDmgAtRef.current >= HUNTER_FAV_NODAMAGE_MS ? 1 : 0) +
+                (killsSince(20000) >= HUNTER_FAV_KILLS_20S ? 1 : 0) +
+                (onscreen <= HUNTER_FAV_ONSCREEN_MAX ? 1 : 0) +
+                (captured >= 1 ? 1 : 0) +
+                (ammoOk ? 1 : 0) +
+                (killsSince(6000) >= HUNTER_FAV_STREAK_6S ? 1 : 0);
+              if (score >= HUNTER_FAV_SCORE_NEEDED) {
+                H.primaryId = spawnHunter(true);
+                H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0;
+                H.eventsThisRun += 1;
+              }
+            }
+          } else if (H.phase === 'search') {
+            const prim = hs.enemies.find(e => e.id === H.primaryId);
+            if (!prim || cinematic || newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
+              clearAllHunters(); endHunterEvent(); // 撃破/演出割り込み/索敵タイムアウト=立ち去る
+            } else {
+              const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
+              if (d <= HUNTER_DETECT_RANGE) {
+                if (H.detectStartAt === 0) {
+                  H.detectStartAt = newGameTime;
+                  useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                } else if (newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
+                  // 発見: 追跡開始。索敵個体を起こす。
+                  useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, dormant: false, aggroRange: undefined } : e) }));
+                  H.phase = 'chase'; H.chaseStartAt = newGameTime;
+                  useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                  useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+                  spawnFlash('rgba(180,40,40,0.18)', 220);
+                }
+              } else if (H.detectStartAt !== 0) {
+                H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
+                useGameStore.setState({ eventBannerText: '気配が消えた…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              }
+            }
+          } else if (H.phase === 'chase') {
+            const huntersAlive = hs.enemies.filter(e => e.type === 'hunter');
+            if (huntersAlive.length === 0) {
+              endHunterEvent(); // 全滅=イベント終了
+            } else {
+              const total = huntersAlive.length;
+              const elapsed = newGameTime - H.chaseStartAt;
+              if (H.reinforced < 1 && elapsed >= HUNTER_REINFORCE_1_MS && total < HUNTER_MAX_ALIVE) {
+                spawnHunter(false); H.reinforced = 1;
+                useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              } else if (H.reinforced < 2 && elapsed >= HUNTER_REINFORCE_2_MS && total < HUNTER_MAX_ALIVE) {
+                spawnHunter(false); H.reinforced = 2;
+                useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              }
+              // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった。
+              const nearBase = hs.baseSites.some(b => b.status === 'captured' && Math.hypot(hpx - b.x, hpy - b.y) <= HUNTER_BASE_SAFE_RADIUS);
+              if (nearBase || cinematic) {
+                useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
+                H.phase = 'retreat';
+                useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              }
+            }
+          } else if (H.phase === 'retreat') {
+            const present = hs.enemies.filter(e => e.type === 'hunter');
+            if (present.length === 0) {
+              endHunterEvent();
+            } else {
+              // 撤退中はコントローラが移動(updateEnemies は hunterFleeing を除外)。離れたら消滅。
+              useGameStore.setState(s => ({
+                enemies: s.enemies.flatMap(e => {
+                  if (e.type !== 'hunter') return [e];
+                  const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                  const ang = Math.atan2(ey - hpy, ex - hpx);
+                  if (Math.hypot(ex - hpx, ey - hpy) >= HUNTER_DESPAWN_DIST) return []; // 十分離れた=消滅
+                  const nx = e.x + Math.cos(ang) * HUNTER_FLEE_SPEED * deltaTime;
+                  const ny = e.y + Math.sin(ang) * HUNTER_FLEE_SPEED * deltaTime;
+                  return [{ ...e, x: nx, y: ny, vx: Math.cos(ang) * HUNTER_FLEE_SPEED, vy: Math.sin(ang) * HUNTER_FLEE_SPEED }];
+                }),
+              }));
+            }
           }
         }
 

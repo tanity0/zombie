@@ -48,7 +48,12 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 帯(=当たり判定/見た目の基準)を ×1.5(社長指示「敵すべて1.5倍・ボスも」)。絵は BOSS_SPRITE_FIT で帯基準に追従。
   mimir:      { width: 248, height: 138, speed: 90, health: 6666,  damage: 38, experienceValue: 0 },
   jormungand: { width: 519, height: 90,  speed: 90, health: 7500,  damage: 38, experienceValue: 0 },
-  skadi:      { width: 456, height: 102, speed: 90, health: 10000, damage: 38, experienceValue: 0 }
+  skadi:      { width: 456, height: 102, speed: 90, health: 10000, damage: 38, experienceValue: 0 },
+  // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
+  // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
+  //  実効「耐久2000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
+  //  base health=400(=2000/5)、base damage=40(非fixed: damage×areaDiff)。深いエリアほど上昇。
+  hunter:     { width: 56, height: 64, speed: 82, health: 400, damage: 40, experienceValue: 120 }
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。
@@ -58,7 +63,7 @@ export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'j
 // finisher; crits hit much harder instead).
 export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
-  t === 'mimir' || t === 'jormungand' || t === 'skadi';
+  t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'hunter';
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
@@ -433,6 +438,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'mimir':    return '#7a3b5e';  // 眼の血色がかった紫(裏ボス)
     case 'jormungand': return '#13204a'; // 深い蛇の藍(裏ボス)
     case 'skadi':    return '#bfe6ff';  // 氷の蒼白(裏ボス)
+    case 'hunter':   return '#d9cfc4';  // 蒼白い肉色(ハンター変異体)
     default:         return '#dc2626';
   }
 };

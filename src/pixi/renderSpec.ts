@@ -23,6 +23,7 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   pumpkin: 1.75,
   giantbat: 1.55,
   reaper: 1.45,
+  hunter: 1.9, // ハンター変異体(ミニボス級の存在感)
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre
@@ -121,6 +122,6 @@ export const summonFootBox = (s: Summon): FootBox => {
 // Ground-shadow width per enemy (heavy bosses get a wider, darker pool). Mirror
 // of the Canvas2D `drawGroundShadow` calls.
 export const enemyShadow = (e: Enemy): { width: number; alpha: number } => {
-  const heavy = e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin';
+  const heavy = e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || e.type === 'hunter';
   return { width: e.width * (heavy ? 1.15 : 1), alpha: heavy ? 0.56 : 0.46 };
 };

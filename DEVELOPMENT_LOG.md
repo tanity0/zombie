@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1131 — ハンター変異体(徘徊ストーカー型イベント敵)を新規実装(社長指示)
+
+新エネミー種別 `hunter` ＋専用イベントコントローラ。社長スペックを実装(未指定値は妥当な既定値=後で調整可)。
+- **絵**: 頂いた1枚絵を背景紫クロマキー＆トリミングして `public/sprites/hunter.png`(729×759・全ステージ共通)。
+- **登録**: EnemyType/ENEMY_STATS/getEnemyColor/enemyDeathLabel/isBossType/isScoreBoss/renderSpec(scale1.9・heavy)/
+  pixiTextures(standalone+aspect)/pixiScene(jump演出・heavy/boss光) に `hunter` を追加。
+- **強さ**: base health=400・damage=40(非fixed=通常式に乗る) → 実効「耐久2000・攻撃40」スタート、エリア(距離)で上昇
+  (area×1.0〜2.1＋色)。`isBossType`=近接フィニッシュ即死しない。
+- **攻撃**: ジャンプ＋ダッシュ(giantbatスケジューラを再利用)。
+- **イベント制御(useGameLoop の hunterRef 状態機械)**:
+  - 出現: 3分以降＋優勢判定成立＋ボス/リーパー/演出/他イベント中でない時、プレイヤー近場の画面外へ「索敵」で出現(静止)。
+  - 優勢判定: 6項目(無被弾20s/直近20s撃破≥12/画面内通常敵≤6/拠点≥1/弾薬余裕/直近6s撃破≥3連続)中 **4つ以上**で成立。
+  - 索敵→発見: 検知範囲720px に入ると「見られている」警告→5秒残ると発見(起床して追跡)。範囲外へ出ればセーフ。
+  - 追跡→撤退: 制圧拠点へ150px以内に逃げ込む / ボス・リーパー・演出開始 で撤退(画面外へ離脱し消滅)。
+  - 増援: 追跡20s/40sで2体目/3体目(最大3体)。
+  - 制限: 同時1イベント(追跡中は他イベント抑止)・1出撃最大2回・再出現CD90〜120s。
+- **負荷 2/10**(simulation＋少しrendering): 敵描画は軽い(≤3体)、ジャンプ/ダッシュ予告はgiantbatと同方式(≤3)、
+  コントローラはO(敵数)/frameで無視できる、撤退中のみ短時間の毎フレーム書込。イベントゲートで常時コスト無し。
+- 主な調整ノブ(useGameLoop冒頭の HUNTER_* 定数): 検知範囲/発見秒数/増援間隔/撤退半径/優勢しきい値/CD など。
+- 検証: lint / typecheck / test(75 pass) / build すべてOK。
+- 変更: `types/game.ts`・`utils/enemyUtils.ts`・`store/gameStore.ts`・`hooks/useGameLoop.ts`・`pixi/{renderSpec,pixiTextures,pixiScene}.ts`・`public/sprites/hunter.png`・`package.json`。
+
 ## v0.25.1129 — スケーター急停止バッシュ＋バッシュのノックバック距離2倍(社長指示)
 
 - **#1 スケーター急停止バッシュ**: skater 装備で**1秒以上走行**後、進行方向と逆へスティックを

@@ -3370,7 +3370,7 @@ export class PixiScene {
     const pulse = 0.5 + 0.5 * Math.sin(now / 110);
     for (const e of enemies) {
       // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット)。
-      if (e.aiPhase === 'jump' && (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat')) {
+      if (e.aiPhase === 'jump' && (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter')) {
         const tx = (e.aiTargetX ?? e.x) + e.width / 2;
         const ty = (e.aiTargetY ?? e.y) + e.height / 2;
         const R = PUMPKIN_EXPLOSION_RADIUS;
@@ -4695,7 +4695,7 @@ export class PixiScene {
 
     // パンプキン特殊AI演出(描画のみ): 縮み(しゃがみ)/ジャンプのアーク/着地スカッシュ。Lv3・ジャイアントバットも同様。
     let aiSqX = 1, aiSqY = 1, aiHop = 0;
-    if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat') {
+    if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter') {
       if (e.aiPhase === 'crouch') {
         const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / PUMPKIN_CROUCH_MS));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
@@ -4907,7 +4907,7 @@ export class PixiScene {
 
   private enemyBreath(e: Enemy, now: number) {
     if (!ENEMY_BREATH_ENABLED) return { x: 1, y: 1 };
-    const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || isHiddenBoss(e.type);
+    const heavy = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
     const amp = heavy ? 0.65 : 1;
     const phase = now / ENEMY_BREATH_MS * Math.PI * 2 + stablePhase(e.id);
     const inhale = Math.sin(phase);
@@ -4925,7 +4925,7 @@ export class PixiScene {
       return;
     }
     const hitT = Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_LIGHT_MS);
-    const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || isHiddenBoss(e.type);
+    const boss = e.type === 'pumpkin' || e.type === 'giantbat' || e.type === 'reaper' || e.type === 'hunter' || isHiddenBoss(e.type);
     if (this.enemyCount >= ENEMY_LIGHT_CULL_COUNT && !boss && hitT <= 0) {
       view.light.visible = false;
       return;

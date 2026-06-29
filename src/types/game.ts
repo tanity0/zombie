@@ -301,6 +301,9 @@ export interface Enemy {
   // ジャイアントバットの行動パターン別クールダウン(gameTime ms)。弾(fire profile)とは別系統。
   gbJumpReadyAt?: number;
   gbDashReadyAt?: number;
+  // ハンター変異体: 撤退中フラグ。true の間は updateEnemies の通常追跡から除外し、専用イベント
+  // コントローラ(useGameLoop)がプレイヤーから離れる方向へ移動させ、画面外で消滅させる。
+  hunterFleeing?: boolean;
   // パニッシャーで「巻き込まれて」ノックバックした敵の印。これ以上は連鎖させない(1次まで)。
   punisherHopped?: boolean;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
@@ -361,7 +364,8 @@ export type EnemyType =
   | 'lab-zombie-3' // 研究所Lv3(巨体・パンプキン相当)
   | 'mimir'      // 裏ボス(ステージ1): 巨大な眼+ゾンビの群体「ミーミル」
   | 'jormungand' // 裏ボス(ステージ3): 巨蛇「ヨルムンガルド」。仕様は mimir と共通
-  | 'skadi';     // 裏ボス(ステージ4): 氷の死王「スカジ」。仕様は他の裏ボスと共通
+  | 'skadi'      // 裏ボス(ステージ4): 氷の死王「スカジ」。仕様は他の裏ボスと共通
+  | 'hunter';    // ハンター変異体: 3分以降・優勢時に出現。索敵→発見→拠点まで追跡→撤退する徘徊ストーカー(専用イベント制御)
 
 // Weapon types
 export interface Weapon {
