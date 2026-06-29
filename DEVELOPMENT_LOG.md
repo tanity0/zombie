@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1140 — 進軍NPC立ち絵: ムハンマド(index4)を追加し全8名そろう(社長提供)
+
+- 提供素材を分割/トリミングして `public/sprites/npc/muhammad-{0,1}.png`。`pixiTextures` に登録。
+- `ESCORT_SPRITE_BASE[4] = 'npc/muhammad'`。これで進軍NPC0〜7全員がユニーク立ち絵に(fallback無し)。
+- 検証: typecheck / lint / build OK。
+- 変更: `src/pixi/pixiScene.ts`・`src/pixi/pixiTextures.ts`・`public/sprites/npc/muhammad-*`・`package.json`。
+
 ## v0.25.1139 — 進軍NPC立ち絵を追加(エリザベス/武蔵/チェン/ローレン/フェイザー)(社長提供)
 
 - 提供5枚(2コマ歩行・透過済み)を分割/トリミングして `public/sprites/npc/{elizabeth,musashi,chen,lauren,phaser}-{0,1}.png`。
