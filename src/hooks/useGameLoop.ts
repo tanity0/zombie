@@ -13,6 +13,7 @@ import {
   KATANA_SLASH_INTERVAL_MS,
   huntingMeleeRadius,
   PLAYER_INTRO_MS,
+  PLAYER_INTRO_HELI_FRAC,
   playerIntroOffset,
   playerIntroCamFollow,
   CAMERA_INTRO_LIFT_FRAC,
@@ -425,6 +426,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const summonFxRef = useRef(0);     // 召喚SE
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
+  const heliLandedRef = useRef(false);     // ヘリ着陸SE/砂煙を1回だけ出す(t が着陸点 hf を跨いだ瞬間)
   const introHoldSinceRef = useRef(0);     // レンダラ初フレーム待ちで登場演出を保持し始めた時刻(まっくら防止のフェイルセーフ用)
   // Scripted-wave consumption set; survives across frames within one run
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
@@ -937,6 +939,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // カメラがステージを横断して飛行キャラXに追従(<1でキャラが少し左から入る)。
           // 縦はヘリ高度へ寄せる(introOff.y は上=負。被写体を上方に置く)→ 降下に同期して着地面へ戻る。
           const introT = Math.max(0, Math.min(1, 1 - (useGameStore.getState().introUntil - nowMs) / PLAYER_INTRO_MS));
+          // ヘリ着陸の瞬間(t が着陸点 hf を跨いだ)に着地SE＋砂煙リング＋軽い振動を1回。
+          if (!heliLandedRef.current && introT >= PLAYER_INTRO_HELI_FRAC) {
+            heliLandedRef.current = true;
+            const pcx = player.x + player.width / 2;
+            const pcy = player.y + player.height / 2;
+            spawnRing(pcx, pcy + 6, 10, 92, 'rgba(210,200,180,0.6)', 4, 360);  // 砂煙(着地)
+            spawnRing(pcx, pcy + 6, 4, 54, 'rgba(255,255,255,0.4)', 3, 300);
+            spawnBurst(pcx, pcy + 10, '#cbb89a', 14);
+            useGameStore.getState().triggerShake(INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG);
+            playSfx('heli-land'); // ヘリ着地SE(社長提供・着陸の瞬間)
+          }
           const introOff = playerIntroOffset(introT);
           const camFollow = playerIntroCamFollow(introT);
           const targetCameraX = (player.x + introOff.x * camFollow) - gameBounds.width / 2 + player.width / 2;
@@ -947,16 +960,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           return;
         }
         if (introWasActiveRef.current) {
-          // 着地! 衝撃演出(リング/バースト/フラッシュ/軽いシェイク)。
+          // 登場演出の終了。飛び降り着地は廃止したので終了時の衝撃演出は出さない(着地SE/砂煙は着陸の瞬間に出済み)。
           introWasActiveRef.current = false;
-          const pcx = player.x + player.width / 2;
-          const pcy = player.y + player.height / 2;
-          spawnRing(pcx, pcy + 6, 8, 78, 'rgba(255,255,255,0.7)', 4, 300);
-          spawnRing(pcx, pcy + 6, 4, 46, 'rgba(186,230,253,0.85)', 3, 380);
-          spawnBurst(pcx, pcy + 10, '#cbd5e1', 16);
-          spawnFlash('rgba(255,255,255,0.12)', 130);
-          useGameStore.getState().triggerShake(INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG);
-          playSfx('heli-land'); // ヘリ着地SE(社長提供)
         }
 
         // ミッション開始以外でも introDialogue が立っている間は、開始時と同じく時間停止(simを進めない)。
@@ -998,6 +1003,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
+          heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };

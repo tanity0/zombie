@@ -332,28 +332,22 @@ const PLAYER_SHADOW_SCALE = 0.9;
 // 登場演出のオフセットは store の playerIntroOffset(t) を共有(カメラと同期)。
 // 登場演出のヘリコプター(キャラを降ろして上へ逃げる)。画像 'helicopter' 登録時のみ表示。
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
-const HELI_ABOVE = 210;      // 序盤、キャラ上方への随伴オフセット(px。=飛来高度)
-const HELI_DROP_ABOVE = 70;  // 飛び降り直前の低ホバー高度(px。ここまで一緒に降りてから飛び降りる)
-const HELI_DESCEND_FROM = 0.5; // フェーズAのこの割合から低ホバーへ降下開始
-const HELI_RISE = 820;       // 後半、上へ逃げる距離(px)
-const HELI_DRIFT_X = 240;    // 逃げる際の横ドリフト(px)
-// フェーズA(飛来)中、キャラをヘリの「ドア」に重ねて乗せる。フェーズA中はキャラのコンテナを
-// ヘリと同じ danceUiLayer の前面へ移し、ヘリ画像に重なって(かぶって)見えるようにする。
-// 終端でリフト解除=飛び降り、同時にヘリは上昇していく。
-const HELI_RIDE_DOOR_FRAC = 0.16;    // ドアの縦位置(ヘリ中心からの下方=H比。足をこの辺りに置く。大きいほど下)
-const HELI_RIDE_DOOR_X = 4;          // ドアの横位置(ヘリ中心からのオフセット px*scale。+で進行方向寄り)
-const HELI_RIDE_RELEASE_FROM = 0.85; // フェーズAのこの割合から飛び降り開始
-const HELI_DEPART_DELAY_MS = 300;    // 飛び降りてからヘリがその場でホバーして待つ時間(0.3秒)→上昇離脱
-// ヘリの随伴高度(キャラ上方への距離)。飛来終盤に HELI_ABOVE→HELI_DROP_ABOVE へ降下し、
-// 低ホバー完了(=飛び降り開始 HELI_RIDE_RELEASE_FROM)してからキャラが飛び降りる。
+const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)
+const HELI_LAND_ABOVE = 56;  // 着陸時のヘリ中心高度(px)。=機体下端がほぼ地面=着地。社長指示の「着陸」。
+const HELI_DESCEND_FROM = 0.45; // フェーズAのこの割合から着陸降下を開始
+const HELI_RISE = 820;       // 離陸で上へ抜ける距離(px)
+const HELI_DRIFT_X = 240;    // 離陸時の横ドリフト(px)
+const HELI_SIT_MS = 280;     // 着陸後、その場でホバー(着地)してから離陸するまでの間(ms)
+// ヘリの随伴高度(キャラ上方への距離)。飛来終盤に HELI_ABOVE→HELI_LAND_ABOVE へ降下して着地する。
 // キャラはヘリ中心にピン留めなので、ヘリと一緒に下がってから飛び降りる。
 const heliAboveAt = (t: number): number => {
   const hf = PLAYER_INTRO_HELI_FRAC;
   const a = hf > 0 ? Math.min(1, t / hf) : 1;
   if (a <= HELI_DESCEND_FROM) return HELI_ABOVE;
-  const k = Math.min(1, (a - HELI_DESCEND_FROM) / Math.max(0.001, HELI_RIDE_RELEASE_FROM - HELI_DESCEND_FROM));
+  // 着陸降下: HELI_DESCEND_FROM 〜 フェーズA終端(a=1) で HELI_ABOVE→HELI_LAND_ABOVE まで降りて着地。
+  const k = Math.min(1, (a - HELI_DESCEND_FROM) / Math.max(0.001, 1 - HELI_DESCEND_FROM));
   const s = k * k * (3 - 2 * k);
-  return HELI_ABOVE + (HELI_DROP_ABOVE - HELI_ABOVE) * s;
+  return HELI_ABOVE + (HELI_LAND_ABOVE - HELI_ABOVE) * s;
 };
 // 敵の被弾しなり(頭が後ろにぐにゃっ): 撃たれた直後だけ skew + 軽い縦縮みで反らせる。
 const ENEMY_HIT_FLINCH_MS = 230;    // 少しだけゆっくり(0.13s→0.23s)
@@ -810,6 +804,7 @@ export class PixiScene {
   private seeThroughLerp = 1;
   private playerRidingHeli = false; // フェーズA中=プレイヤーをヘリ前面(danceUiLayer)へ移しているか
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
+  private introNpcs: Sprite[] = [];  // 登場演出: ヘリ離陸と同時にフェードインする随伴NPC4人(rescue/shooter 流用)
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
@@ -2114,6 +2109,7 @@ export class PixiScene {
     this.introUntil = s.introUntil;
     this.introActive = s.introUntil === -1 || (s.introUntil > 0 && now < s.introUntil);
     this.syncIntroHelicopter(s.player, now);
+    this.syncIntroNpcs(s.player, now);
 
     // Focal plane for the pseudo-perspective scale = the player's feet.
     const pfb = playerFootBox(s.player);
@@ -3926,17 +3922,15 @@ export class PixiScene {
       : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
     if (this.helicopter.texture !== tex) this.helicopter.texture = tex;
     const baseSc = tex.height > 0 ? HELI_DISPLAY_H / tex.height : 1;
-    // 飛び降り時点(jumpOffT)。飛び降り後はヘリを「その場でホバー固定」する(プレイヤーの着地ダッシュ
-    // 軌道=off を参照し続けると一緒に飛んで行ってしまうため)。基準位置はこの t で凍結。
+    // フェーズA終端(landT=hf)でヘリが着地。着地後は着地位置で凍結(baseT=hf)し、HELI_SIT_MS だけ
+    // その場ホバー → 残り時間で離陸(上昇+横ドリフト+フェード)。プレイヤーは乗せない(飛び降り廃止)。
     const hf = PLAYER_INTRO_HELI_FRAC;
-    const jumpOffT = hf * HELI_RIDE_RELEASE_FROM;
-    const baseT = Math.min(t, jumpOffT);            // 飛び降り後はホバー位置で固定
-    const base = this.introHeliBase(player, baseT); // ヘリ中心(world)+縮尺
-    // 飛び降りから HELI_DEPART_DELAY_MS 待ってから離脱(上昇+横ドリフト+フェード)。
-    const releaseStart = jumpOffT + HELI_DEPART_DELAY_MS / PLAYER_INTRO_MS;
-    const depart = t <= releaseStart ? 0 : Math.min(1, (t - releaseStart) / (1 - releaseStart));
+    const baseT = Math.min(t, hf);                  // 着地後は着地位置で固定
+    const base = this.introHeliBase(player, baseT); // ヘリ中心(world)+縮尺(着地で1)
+    const takeoffStart = hf + HELI_SIT_MS / PLAYER_INTRO_MS;
+    const depart = t <= takeoffStart ? 0 : Math.min(1, (t - takeoffStart) / (1 - takeoffStart));
     const dEase = depart * depart;
-    // 離脱中は少し拡大して画面外へ抜ける感じ。
+    // 離陸中は少し拡大して画面外へ抜ける感じ。
     const sc = baseSc * (base.scale + 0.35 * dEase);
     // 画像は左向きなので X 反転して右向きに(進行=右へ飛来)。
     this.helicopter.scale.set(-sc, sc);
@@ -3944,9 +3938,51 @@ export class PixiScene {
       base.cx + HELI_DRIFT_X * dEase,
       base.cy - HELI_RISE * dEase,
     );
-    this.helicopter.rotation = 0.12 * dEase; // 逃げる時に少し機体を傾ける
-    this.helicopter.alpha = 1 - dEase;       // 上へ逃げながらフェード(終盤で消える)
+    this.helicopter.rotation = 0.12 * dEase; // 離陸時に少し機体を傾ける
+    this.helicopter.alpha = 1 - dEase;       // 上へ抜けながらフェード(終盤で消える)
     this.helicopter.visible = this.helicopter.alpha > 0.02;
+  }
+
+  // 登場演出の随伴NPC4人。ヘリが飛び立つタイミング(takeoffStart)からプレイヤーと一緒にフェードイン。
+  // rescue/shooter 素材を流用。着地地点(プレイヤー足元)の左右に整列。world座標の danceUiLayer に置く。
+  private syncIntroNpcs(player: Player, now: number) {
+    const tex = getTexture('rescue/shooter-0') ?? getTexture('rescue/shooter-1');
+    const t = this.introUntil === -1
+      ? 0
+      : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
+    let fade = 0;
+    if (this.introActive && tex) {
+      const hf = PLAYER_INTRO_HELI_FRAC;
+      const takeoffStart = hf + HELI_SIT_MS / PLAYER_INTRO_MS;
+      const f = t <= takeoffStart ? 0 : Math.min(1, (t - takeoffStart) / Math.max(0.001, (1 - takeoffStart) * 0.8));
+      fade = f * f * (3 - 2 * f);
+    }
+    // 遅延生成(テクスチャ受領後)。ヘリより後に追加し、直後にヘリを前面へ戻す(着地中はヘリが手前)。
+    if (this.introNpcs.length === 0 && tex) {
+      for (let i = 0; i < 4; i++) {
+        const sp = new Sprite();
+        sp.anchor.set(0.5, 1);
+        sp.visible = false;
+        this.L.danceUiLayer.addChild(sp);
+        this.introNpcs.push(sp);
+      }
+      this.L.danceUiLayer.addChild(this.helicopter); // ヘリを最前面に保つ
+    }
+    const offs = [[-78, 6], [-42, -2], [42, -2], [78, 6]]; // 足元の左右へ整列(外側ほど手前)
+    const fcx = player.x + player.width / 2;
+    const foot = player.y + player.height;
+    for (let i = 0; i < this.introNpcs.length; i++) {
+      const sp = this.introNpcs[i];
+      if (!tex || fade <= 0.01) { sp.visible = false; continue; }
+      if (sp.texture !== tex) sp.texture = tex;
+      const [ox, oy] = offs[i];
+      const sc = this.humanNpcScale(tex.width, tex.height, foot + oy);
+      sp.scale.set(sc * (ox < 0 ? 1 : -1), sc); // 外側を向く
+      sp.position.set(Math.round(fcx + ox), Math.round(foot + oy));
+      sp.alpha = fade;
+      sp.visible = true;
+      sp.zIndex = foot + oy;
+    }
   }
 
   // 設置物の影幅(= スプライト実描画幅 × 0.55。アクターと同じ基準に揃える)。
@@ -4416,47 +4452,26 @@ export class PixiScene {
       actLean += Math.sin(now / 110) * PLAYER_RELOAD_LEAN_RAD;
     }
 
-    // 登場演出: store 共有の playerIntroOffset(t) で見た目オフセット + 着地スカッシュ。
-    // カメラ(useGameLoop)が同じ式で飛行Xに追従するので、キャラは画面内を低く飛んで着地する。
-    let introOffX = 0;
-    let introOffY = 0;
-    let introSqX = 1;
-    let introSqY = 1;
-    let introScale = 1; // フェーズA(ヘリ飛来)で小さく見せて遠さを表現
-    let riding = false; // フェーズA中=ヘリのドアに重なって乗っている
-    const hfPlayer = PLAYER_INTRO_HELI_FRAC;
-    const jumpOffT = hfPlayer * HELI_RIDE_RELEASE_FROM; // 飛び降り開始の t
-    const computeIntro = (t: number) => {
-      const off = playerIntroOffset(t);
-      introScale = playerIntroScale(t);
-      if (t < jumpOffT) {
-        // 乗車中: 足元をヘリのドアへ直接ピン留め(ヘリ中心から一定オフセット)。
-        const base = this.introHeliBase(p, t);
-        introOffX = base.cx + HELI_RIDE_DOOR_X * base.scale - fb.footX;
-        introOffY = base.cy + HELI_DISPLAY_H * HELI_RIDE_DOOR_FRAC * base.scale - fb.footY;
-        riding = true;
-      } else {
-        // 飛び降り後: 横はダッシュ(off.x)、縦はドア高さ→着地(0)へ単調に加速落下。
-        // フェーズBのアーチ(下→上)を通さないので「一瞬下に下がる」谷が出ない。
-        const jb = this.introHeliBase(p, jumpOffT);
-        const jumpStartOffY = jb.cy + HELI_DISPLAY_H * HELI_RIDE_DOOR_FRAC * jb.scale - fb.footY;
-        const fall = Math.min(1, (t - jumpOffT) / (1 - jumpOffT)); // 0→1
-        const e = fall * fall; // 加速して落下
-        introOffX = off.x;                    // 横は従来のダッシュ(中央へ寄る)
-        introOffY = jumpStartOffY * (1 - e);  // ドア高さ→0(着地)へ単調降下
-        riding = t < hfPlayer;                // フェーズA内(jumpOffT〜hf)はまだ前面レイヤー
-        if (fall > 0.85) {
-          const sQ = Math.sin(((fall - 0.85) / 0.15) * Math.PI); // 着地でぐにゃっ
-          introSqX = 1 + 0.3 * sQ;
-          introSqY = 1 - 0.22 * sQ;
-        }
-      }
+    // 登場演出(社長指示で刷新): 飛び降りは廃止。プレイヤーは着地地点に居たまま、ヘリが
+    // 飛び立つタイミング(takeoffStart)からフェードインで現れる。乗車・ジャンプ弧・着地スカッシュは無し。
+    const introOffX = 0;
+    const introOffY = 0;
+    const introSqX = 1;
+    const introSqY = 1;
+    const introScale = 1;
+    const riding = false; // 乗車演出は廃止(常に actorLayer)
+    let introFade = 1;    // 1=通常 / 登場中はヘリ離陸開始までは0、その後フェードイン
+    const computeIntroFade = (t: number) => {
+      const hf = PLAYER_INTRO_HELI_FRAC;
+      const takeoffStart = hf + HELI_SIT_MS / PLAYER_INTRO_MS;
+      const f = t <= takeoffStart ? 0 : Math.min(1, (t - takeoffStart) / Math.max(0.001, (1 - takeoffStart) * 0.8));
+      introFade = f * f * (3 - 2 * f); // smoothstep
     };
     if (this.introUntil === -1) {
-      computeIntro(0);
+      computeIntroFade(0);
     } else if (this.introUntil > 0) {
       const t = Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-      if (t < 1) computeIntro(t);
+      if (t < 1) computeIntroFade(t);
     }
 
     // アンカー大技: 敵へダッシュしつつ「引き上げ→斬り下ろし」の弧を見た目だけ描く(負=上)。
@@ -4500,7 +4515,7 @@ export class PixiScene {
     // lastCounterSuccessTime を同時刻に立てるので、両者一致=カウンター由来の無敵と判定して点滅を抑止。
     // 被弾i-frame は invulnerableTime のみ更新されるので一致せず、従来どおり点滅する。
     const counterInvuln = p.invulnerable && p.lastCounterSuccessTime === p.invulnerableTime;
-    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade;
+    view.sprite.alpha = (seekerActive ? 0.4 : (p.invulnerable && !counterInvuln ? 0.5 + 0.5 * Math.sin(now / 50) : 1)) * deathFade * introFade;
     view.container.zIndex = fb.footY;
     view.light.visible = false;
     view.reticle.clear();

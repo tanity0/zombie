@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1133 — ヘリ登場演出リワーク: 飛び降り廃止→着陸→離陸時に隊員フェードイン(社長指示)
+
+- 飛び降り演出を廃止。**ヘリが飛来→地面に着陸→ホバー→飛び立つ**。離陸のタイミングで
+  **プレイヤー＋NPC4人がフェードイン**でスタート。
+- store: `playerIntroOffset` のフェーズBを `{0,0}`(着地地点にカメラ固定・ジャンプ弧撤去)。
+  フェーズB尺を 460→1200ms(着陸→離陸→フェードを読ませる)。
+- pixiScene: `heliAboveAt` を着陸高度 `HELI_LAND_ABOVE` まで降下。`syncIntroHelicopter` を
+  着陸→`HELI_SIT_MS`ホバー→離陸(上昇+ドリフト+フェード)に。プレイヤーは乗せず offset0・
+  alpha=フェードイン。随伴NPC4人(`rescue/shooter`流用)を着地地点の左右に整列しフェードイン。
+  乗車/ドア/飛び降りの定数・分岐を撤去。
+- useGameLoop: ヘリ着地SE(`heli-land`)＋砂煙リング＋軽い振動を「着陸の瞬間(t=hf)」に1回へ移動
+  (`heliLandedRef`)。飛び降り着地時の衝撃演出は撤去。
+- 検証: lint / typecheck / test(75 pass) / build すべてOK(実機での見た目は要確認)。
+- 変更: `store/gameStore.ts`・`hooks/useGameLoop.ts`・`pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1132 — ハンター検知警告SE(視界に入った時)を追加(社長提供)
 
 - 社長提供の警告音を `public/audio/sfx/hunter-alert.mp3` に配置。

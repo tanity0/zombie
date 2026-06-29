@@ -1009,8 +1009,10 @@ export const INVULN_MS = 700;
 //  フェーズA(ヘリ飛来): 超遠く・高くから小さく飛来し、降下しながら拡大して着地ダッシュの開始点へ。
 //  フェーズB(ジャンプ着地): 従来のロックマン的ダッシュ着地(左から低く猛スピード→中央着地)。
 // この間はゲーム進行/入力/敵スポーンを止め、カメラが追従/横断し、見た目は飛行する。
-export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来)長(少しゆっくり目)
-export const PLAYER_INTRO_LAND_MS = 460;     // フェーズB(ヘリから飛び降り→着地)長。v0.25.450: 567→460(少し速く)
+export const PLAYER_INTRO_HELI_MS = 2600;    // フェーズA(ヘリ飛来→着陸)長(少しゆっくり目)
+// フェーズB(着陸→ホバー→離陸＋プレイヤー/NPCフェードイン)長。社長指示で飛び降り演出を廃止し、
+// 「ヘリが着陸→飛び立つタイミングで隊員がフェードイン」に変更したため、離陸とフェードを読ませる尺へ延長。
+export const PLAYER_INTRO_LAND_MS = 1200;
 export const PLAYER_INTRO_MS = PLAYER_INTRO_HELI_MS + PLAYER_INTRO_LAND_MS; // 全体(=3700)
 export const PLAYER_INTRO_HELI_FRAC = PLAYER_INTRO_HELI_MS / PLAYER_INTRO_MS; // A/全体の境目 t
 export const PLAYER_INTRO_FLY_X = 0;        // (フェーズB)人間の飛び降り横移動。0=その場から真下に飛び降りる(社長指示)。
@@ -1040,14 +1042,9 @@ export const playerIntroOffset = (t: number): { x: number; y: number } => {
     const endY = -PLAYER_INTRO_LOW_Y;
     return { x: startX + (endX - startX) * sX, y: startY + (endY - startY) * sY };
   }
-  // フェーズB: 従来のジャンプ着地(b:0→1)。フェーズA終端と連続。
-  const b = (tc - hf) / (1 - hf);
-  const easeX = 1 - (1 - b) * (1 - b); // 横: easeOut(猛スピードで来て収束)
-  const easeY = b * b;                  // 縦: easeIn(着地で落ちる)
-  return {
-    x: -PLAYER_INTRO_FLY_X * (1 - easeX),
-    y: -PLAYER_INTRO_LOW_Y * (1 - easeY) - PLAYER_INTRO_ARC_H * Math.sin(b * Math.PI),
-  };
+  // フェーズB(着陸→離陸): カメラは着地地点(オフセット0)に固定。ヘリの離陸とプレイヤー/NPCの
+  // フェードインは pixiScene 側で描く(被写体=着地地点なのでここは 0 を返す)。飛び降り弧は廃止。
+  return { x: 0, y: 0 };
 };
 // 登場の見た目縮尺: フェーズA序盤は小さく(遠い)→フェーズA終端で1。フェーズBは常に1。
 export const playerIntroScale = (t: number): number => {
