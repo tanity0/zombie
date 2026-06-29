@@ -81,8 +81,6 @@ const CASTLE_MAX_DISTANCE = 1300;
 const CASTLE_COLLISION_W = 168; // 112 * 1.5
 const CASTLE_COLLISION_H = 50;  // 42 * 1.2 ≈ 50
 const CASTLE_FOOT_OFFSET_Y = 38;
-const MERCHANT_MIN_DISTANCE = 180;
-const MERCHANT_MAX_DISTANCE = 360;
 const MERCHANT_INTERACT_RADIUS = 58;
 const MERCHANT_REOPEN_DELAY_MS = 1500;
 const EVENT_NPC_MIN_DISTANCE = 460;
@@ -115,6 +113,7 @@ export const clampDropPct = (n: number): number =>
 const BASE_SITE_RADIUS = 3200;          // 拠点を置く円の半径(デンジャーゾーン内)
 const BASE_SITE_COUNT = 4;              // 拠点の数(東西南北=90度刻み・社長指示で8→4)
 export const BASE_CAPTURE_RADIUS = 130; // 制圧サークルの半径(滞在/在内判定)
+export const ARMORY_RADIUS = 50;        // 制圧拠点中央の「武器庫」サークル半径(小さめ。指を離すと遠隔で武器商人)
 export const BASE_CAPTURE_HOLD_MS = 10000; // 制圧に必要な滞在時間(描画の進捗にも使用)
 export const SUPP_HP_MAX = 100;            // 拠点HP上限
 const SUPP_DRAIN_PER_SEC = 5;           // 画面外captured拠点のHPドレイン(ゆるめ・実機調整)
@@ -276,15 +275,13 @@ const castleRect = (castle: CastleEvent): Rect =>
   footRect(castle.x, castleFootY(castle), CASTLE_COLLISION_W, CASTLE_COLLISION_H);
 const resolveCastleCollision = (rect: Rect, castle: CastleEvent): { x: number; y: number } =>
   resolveAabb(rect, [castleRect(castle)]);
-const createWeaponMerchant = (): WeaponMerchant => {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = MERCHANT_MIN_DISTANCE + Math.random() * (MERCHANT_MAX_DISTANCE - MERCHANT_MIN_DISTANCE);
-  return {
-    x: Math.cos(angle) * dist,
-    y: Math.sin(angle) * dist,
-    radius: MERCHANT_INTERACT_RADIUS,
-  };
-};
+// 武器商人はスタート地点(原点)に常駐(社長指示)。各拠点中央の「武器庫」から遠隔利用もできる。
+// 開始直後に誤発動しないよう、スポーン(原点)から少し上にずらして設置。
+const createWeaponMerchant = (): WeaponMerchant => ({
+  x: 0,
+  y: -130,
+  radius: MERCHANT_INTERACT_RADIUS,
+});
 const createEventQuestNpc = (): EventQuestNpc => {
   const angle = Math.random() * Math.PI * 2;
   const dist = EVENT_NPC_MIN_DISTANCE + Math.random() * (EVENT_NPC_MAX_DISTANCE - EVENT_NPC_MIN_DISTANCE);
@@ -2556,6 +2553,32 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnGlow(weaponMerchant.x, weaponMerchant.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
       get().spawnCallout(weaponMerchant.x, weaponMerchant.y - 70, 'SHOP', '#fde68a');
       return { swung: true, hit: true, finish: false, killed: 0 };
+    }
+
+    // 武器庫(制圧拠点中央の小サークル)で指を離す = 遠隔で武器商人を利用(社長指示)。矢印は出さない。
+    // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
+    if (!showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active') {
+      for (const b of get().baseSites) {
+        if (b.status !== 'captured') continue;
+        const adx = b.x - pcx, ady = b.y - pcy;
+        if (adx * adx + ady * ady > ARMORY_RADIUS * ARMORY_RADIUS) continue;
+        set({
+          showShopMenu: true,
+          isPaused: true,
+          touchActive: false,
+          swipeDirection: null,
+          swipeStrength: 1,
+          player: {
+            ...player,
+            counterWindowEnd: now + COUNTER_WINDOW,
+            counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+          },
+        });
+        get().spawnRing(b.x, b.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
+        get().spawnGlow(b.x, b.y - 28, 62, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
+        get().spawnCallout(b.x, b.y - 70, 'SHOP', '#fde68a');
+        return { swung: true, hit: true, finish: false, killed: 0 };
+      }
     }
 
     const qdx = eventQuestNpc.x - pcx;
@@ -7113,7 +7136,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(capturedThisFrame ? {
           safeBaseId: capturedThisFrame.id,
           suppressionCaptureCount: captureCount,
-          weaponMerchant: { ...st.weaponMerchant, x: capturedThisFrame.x, y: capturedThisFrame.y },
+          // 武器商人はスタート常駐に変更したので拠点へは移動しない。制圧拠点中央の「武器庫」から遠隔利用する。
         } : {}),
       }));
     }

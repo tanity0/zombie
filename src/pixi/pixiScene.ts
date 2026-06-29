@@ -5223,6 +5223,13 @@ export class PixiScene {
             .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
         }
       }
+      if (captured) {
+        // 武器庫(中央の小サークル)= 指を離すと遠隔で武器商人を利用(社長指示)。琥珀=ショップ色・小さめ。
+        const AR = 50; // ARMORY_RADIUS と一致
+        g.circle(s.x, s.y, AR).stroke({ width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
+        g.circle(s.x, s.y, AR - 3).fill({ color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
+        g.circle(s.x, s.y, 6).fill({ color: 0xfde68a, alpha: 0.5 + 0.3 * pulse }); // 中央の発光=武器庫
+      }
       // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
     }
     this.drawBaseSoldiers(sites, now);

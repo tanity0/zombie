@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1126 — 拠点NPC#2: 武器商人スタート常駐＋拠点中央の武器庫で遠隔利用(社長指示)
+
+- 武器商人を**スタート地点(原点 0,-130)に常駐**へ変更(従来=ランダム配置＋制圧拠点へ移動 を廃止)。
+  `createWeaponMerchant` を固定位置に、制圧時の `weaponMerchant` 移動 set を削除。未使用化した
+  `MERCHANT_MIN/MAX_DISTANCE` を除去。
+- **武器庫**: 制圧済み拠点の中央に小サークル(`ARMORY_RADIUS=50`)。そこで指を離すと**遠隔で武器商人**を
+  開く(`performAttack` に武器庫判定を追加。紅き夜中は開かない)。矢印は出さない。
+- 描画: `syncBaseSites` で制圧拠点に小さい琥珀の武器庫マーカー(リング＋中央発光)。
+- 検証: lint/typecheck/test(75)/build OK。残り: ヘリ演出作り直し。
+
 ## v0.25.1125 — 拠点NPC#3: 担当エリア進入で担当NPCが「遠い時用」セリフ(社長指示)
 
 - 拠点NPC機能#3(#1と連動)。プレイヤーが担当エリア(セクター)に入ったら、その担当NPCが neglectFar
