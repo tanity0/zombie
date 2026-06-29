@@ -25,7 +25,7 @@ import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
-import { getRunPois, isPoiRevealed } from '../world/pois';
+import { getRunPois, isPoiRevealed, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
@@ -2340,7 +2340,7 @@ export class PixiScene {
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
         ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites);
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 });
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -6852,7 +6852,9 @@ export class PixiScene {
     castleVisible: boolean,
     event: ActiveEvent | null,
     pois: { x: number; y: number; kind: 'boss' | 'cave' }[] = [],
-    baseSites: { x: number; y: number; status: string }[] = []
+    baseSites: { x: number; y: number; status: string }[] = [],
+    escorts: EscortSoldier[] = [],
+    playerCenter?: { x: number; y: number }
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -6965,6 +6967,37 @@ export class PixiScene {
         const ca = Math.cos(angle), sa = Math.sin(angle);
         const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
         g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+      }
+    }
+
+    // 担当NPC(護衛軍人)の方角矢印: プレイヤーが居る担当エリア(セクター)の担当NPC のみ表示(社長指示)。
+    // 担当外のNPCは出さない。画面外のときだけ矢印(画面内マーカーは無し)。制圧後も(NPCが拠点に居る間)表示。
+    if (playerCenter && escorts.length) {
+      const sector = poiSectorIndex(playerCenter);
+      const npc = escorts.find(e => e.soldierIndex === sector);
+      if (npc) {
+        const nx = npc.x - camera.x, ny = npc.y - camera.y;
+        if (nx < 0 || nx > this.screenW || ny < 0 || ny > this.screenH) {
+          const angle = Math.atan2(ny - cyC, nx - cxC);
+          const dx = Math.cos(angle), dy = Math.sin(angle);
+          let tdist = Infinity;
+          if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+          else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+          if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+          else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+          if (isFinite(tdist)) {
+            const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+            const color = 0x4ade80; // 味方NPC=緑
+            g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 });
+            g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.92 });
+            g.circle(ex, ey - 3, 2.4).fill({ color, alpha: 0.75 + 0.2 * pulse }); // 頭
+            g.rect(ex - 4, ey + 1, 8, 4).fill({ color, alpha: 0.6 + 0.25 * pulse }); // 肩
+            const hx = ex + dx * 15, hy = ey + dy * 15;
+            const ca = Math.cos(angle), sa = Math.sin(angle);
+            const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+            g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+          }
+        }
       }
     }
 

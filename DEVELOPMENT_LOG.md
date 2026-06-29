@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1124 — 拠点NPC#1: 担当エリアの担当NPCへ方角矢印(社長指示)
+
+- 拠点NPC機能#1。プレイヤーが居る担当エリア(セクター=`poiSectorIndex`)の**担当NPC(護衛軍人)1人だけ**へ
+  画面端の方角矢印(緑・兵士マーク)を表示。担当外NPCは出さない。**画面内のときは矢印なし**(頭上マーカー無し)。
+  NPCが拠点に居る間(=制圧後も)表示。`syncArrows` に `escorts`＋`playerCenter` を渡し、現セクターの escort が
+  画面外の時だけ描画。
+- 描画のみ(矢印Graphics)＝負荷 1/10。検証: lint/typecheck/build OK。
+- 残り(同シリーズ・順次): #2 武器庫(スタート常駐商人＋拠点中央の小サークルで遠隔利用) / #3 エリア進入で
+  neglectFarセリフ / ヘリ演出作り直し。
+
 ## v0.25.1123 — 紅き夜=5〜9分ランダム＋抽選30% / レスキューは1出撃最大1回(社長指示)
 
 - 紅き夜の発火判定時刻を「5分以上でランダム」に: 固定3分 → 出撃ごとに `RED_NIGHT_FIRE_MIN_MS=5分` +
