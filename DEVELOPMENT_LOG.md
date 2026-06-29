@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1132 — ハンター検知警告SE(視界に入った時)を追加(社長提供)
+
+- 社長提供の警告音を `public/audio/sfx/hunter-alert.mp3` に配置。
+- `audioManager.ts`: SfxKey `'hunter-alert'`(volume1.0/minInterval400ms)を登録。
+- `useGameLoop` ハンター索敵: プレイヤーが検知範囲に入った瞬間(detectStartAt確定時)に
+  `playSfx('hunter-alert')` を1回再生(=「見られている…」警告と同時)。
+- 検証: lint / typecheck / test(75 pass) / build すべてOK。
+- 変更: `src/audio/audioManager.ts`・`src/hooks/useGameLoop.ts`・`public/audio/sfx/hunter-alert.mp3`・`package.json`。
+
 ## v0.25.1131 — ハンター変異体(徘徊ストーカー型イベント敵)を新規実装(社長指示)
 
 新エネミー種別 `hunter` ＋専用イベントコントローラ。社長スペックを実装(未指定値は妥当な既定値=後で調整可)。

@@ -1383,6 +1383,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (d <= HUNTER_DETECT_RANGE) {
                 if (H.detectStartAt === 0) {
                   H.detectStartAt = newGameTime;
+                  playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)
                   useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 } else if (newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
                   // 発見: 追跡開始。索敵個体を起こす。
