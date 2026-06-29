@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1139 — 進軍NPC立ち絵を追加(エリザベス/武蔵/チェン/ローレン/フェイザー)(社長提供)
+
+- 提供5枚(2コマ歩行・透過済み)を分割/トリミングして `public/sprites/npc/{elizabeth,musashi,chen,lauren,phaser}-{0,1}.png`。
+- `ESCORT_SPRITE_BASE` を全indexへ拡張: 0=エドガー/1=ジョセフ/2=エリザベス/3=武蔵/4=ムハンマド(**素材未提供=fallback**)/
+  5=チェン/6=ローレン/7=フェイザー。`pixiTextures` に10枚登録。
+- 識別: ピンク髪=エリザベス / 黒髪まとめ=武蔵 / 青髪メガネ=チェン / 茶髪ツインテ=ローレン / 額に十字傷=フェイザー。
+- 検証: typecheck / lint / build OK。
+- 変更: `src/pixi/pixiScene.ts`・`src/pixi/pixiTextures.ts`・`public/sprites/npc/*`・`package.json`。
+
 ## v0.25.1138 — 変異者大量発生を段階スポーン化(社長指示)
 
 - 一斉18体をやめ、**1秒に3体ずつ計18体**を per-frame で配置(約6秒)。N体目で種類を出し分け:

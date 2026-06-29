@@ -332,8 +332,11 @@ const PLAYER_SHADOW_SCALE = 0.9;
 // 登場演出のオフセットは store の playerIntroOffset(t) を共有(カメラと同期)。
 // 登場演出のヘリコプター(キャラを降ろして上へ逃げる)。画像 'helicopter' 登録時のみ表示。
 // 進軍用NPC(護衛軍人)の soldierIndex → ユニーク立ち絵のベース名(`${base}-${frame}`)。
-// 0=エドガー(東) / 1=ジョセフ(南)。未提供のindexは undefined=従来の rescue/shooter にフォールバック。
-const ESCORT_SPRITE_BASE: (string | undefined)[] = ['npc/edgar', 'npc/joseph'];
+// 0=エドガー / 1=ジョセフ / 2=エリザベス / 3=武蔵 / 4=ムハンマド(素材未提供) / 5=チェン /
+// 6=ローレン / 7=フェイザー。未提供のindexは undefined=従来の rescue/shooter にフォールバック。
+const ESCORT_SPRITE_BASE: (string | undefined)[] = [
+  'npc/edgar', 'npc/joseph', 'npc/elizabeth', 'npc/musashi', undefined, 'npc/chen', 'npc/lauren', 'npc/phaser',
+];
 
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
 const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)
