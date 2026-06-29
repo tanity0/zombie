@@ -226,7 +226,8 @@ const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通�
 const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
-const RED_NIGHT_FIRE_MS = 180000;      // 紅き夜の発火時刻(=ゲーム開始3分・一度のみ)
+const RED_NIGHT_FIRE_MS = 180000;      // 紅き夜の発火判定時刻(=ゲーム開始3分・出撃で一度だけ判定)
+const RED_NIGHT_RUN_CHANCE = 0.5;      // 出撃ごとの発生確率(社長指示で頻度を下げる=必ず→抽選)。1=必ず / 0=出ない
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基本は全滅で終了)
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -1172,11 +1173,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rnDepth = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
           if (!rn && !redNightFiredRef.current && newGameTime >= RED_NIGHT_FIRE_MS && !rnGs.bossChasing
               && areaZoneIndexFor(rnDepth) >= 2) {
-            // 発火: 3分後 かつ デンジャーゾーン以降で一度だけ
+            // 3分後 かつ デンジャーゾーン以降で、出撃に一度だけ抽選。当たれば発火、外れたらこの出撃は紅き夜なし
+            // (社長指示で頻度を下げる=必ず→確率)。redNightFiredRef は当落どちらでも立てて以降は判定しない。
             redNightFiredRef.current = true;
-            rnGs.beginRedNightWarning(newGameTime);
-            spawnFlash('rgba(120,0,0,0.18)', 380);
-            playSfx('event-start');
+            if (Math.random() < RED_NIGHT_RUN_CHANCE) {
+              rnGs.beginRedNightWarning(newGameTime);
+              spawnFlash('rgba(120,0,0,0.18)', 380);
+              playSfx('event-start');
+            }
           } else if (rn) {
             if (rn.phase === 'warning' && newGameTime >= rn.activeAt) {
               // 警告 → 本番移行

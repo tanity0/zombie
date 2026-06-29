@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1121 — 紅き夜の頻度を下げる(必ず→確率抽選)(社長指示)
+
+- 社長指示「紅き(月=)夜の頻度を下げて」。従来は1出撃に必ず1回(3分＆デンジャーゾーンで発火)だったのを、
+  その判定時に **出撃ごとの確率抽選**へ。`RED_NIGHT_RUN_CHANCE=0.5`(=半分の出撃で発生)。
+  当落どちらでも `redNightFiredRef` を立てるので、外れた出撃はその回は紅き夜なし(再抽選しない)。
+- 発火時刻(3分)・デンジャーゾーン条件・本番効果は不変。確率1つで調整可。検証: lint/typecheck/build OK。
+
 ## v0.25.1120 — アンカーワイヤー: 敵に刺さると引き上げ→垂直斬り下ろし→着地ノックバック(社長承認)
 
 - 社長指示「アンカーが敵に刺さると即・敵頭上へ引き上げ→垂直にぶった切る→着地で周囲ノックバック」。全推奨で実装。
