@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1119 — キャラ選択に「光の粒」パーティクル(社長指示)
+
+- 社長指示「キャラ選択画面に背景にある光と同じ光のパーティクル」。立ち絵の発光と同系(主に金色＋一部薄紫)の
+  光の粒が足元から立ち上ってフェードする演出を追加。
+  - `index.css` に `@keyframes char-particle-rise`(下から上へ translate＋opacityフェード)を追加。
+  - `CharSelectParticles`(span×20、index由来の決定的シードでサイズ/位置/速度/色/遅延を分散)を `z-[5]` の
+    pointer-events-none 層でキャラ選択に配置。キャラ切替で再レンダーしても値不変=アニメ途切れなし。
+- CSS駆動・GPU合成(transform/opacityのみ・20要素上限)＝負荷 1/10。reduced-motionでOFF。
+- 検証: lint/typecheck/build OK。粒数/色/速度は `CHAR_PARTICLE_COUNT` と rnd 係数で調整可。
+
 ## v0.25.1118 — キャラ選択のスタートボタンを画像化(社長提供・透過PNG)
 
 - 社長提供の緑「START」透過PNG(RGBA・アルファ有=`88c90fd2`、もう一方`0cb597cd`はチェッカー柄焼き込みのRGB)を

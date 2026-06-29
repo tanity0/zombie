@@ -350,6 +350,23 @@
   .menu-stagger > * { animation: none; }
 }
 
+/* キャラ選択: 立ち絵の発光と同系の「光の粒」が下から立ち上ってフェード(CSS駆動・GPU合成) */
+@keyframes char-particle-rise {
+  0%   { opacity: 0; transform: translate3d(0, 0, 0) scale(0.5); }
+  12%  { opacity: var(--p-op, 0.7); }
+  80%  { opacity: var(--p-op, 0.7); }
+  100% { opacity: 0; transform: translate3d(var(--p-dx, 0), var(--p-rise, -160px), 0) scale(1); }
+}
+.char-particle {
+  position: absolute;
+  border-radius: 9999px;
+  animation: char-particle-rise var(--p-dur, 7s) ease-in-out var(--p-delay, 0s) infinite;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .char-particle { animation: none; opacity: 0; }
+}
+
 /* === 撃つ→的が破裂する演出 ======================================== */
 /* 的(target.png): 着弾の反動→拡大しながら砕け散る。 */
 @keyframes gacha-target-burst {

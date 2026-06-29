@@ -123,6 +123,50 @@ const CharPortrait: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
   );
 };
 
+// キャラ選択の「光の粒」: 立ち絵の発光と同系(主に金色＋一部薄紫)が足元から立ち上ってフェード。
+// CSS駆動・GPU合成で軽量(spanの transform/opacity のみ動かす)。index 由来の決定的シードなので
+// キャラ切替で再レンダーしても値が変わらず=アニメが途切れない。
+const CHAR_PARTICLE_COUNT = 20;
+const CharSelectParticles: React.FC = () => {
+  const rnd = (i: number, s: number) => { const x = Math.sin(i * 12.9898 + s * 78.233) * 43758.5453; return x - Math.floor(x); };
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[5] overflow-hidden">
+      {Array.from({ length: CHAR_PARTICLE_COUNT }).map((_, i) => {
+        const left = 5 + rnd(i, 1) * 90;          // %
+        const size = 2 + rnd(i, 2) * 4;           // px
+        const dur = 5 + rnd(i, 3) * 6;            // s
+        const delay = -rnd(i, 4) * dur;           // 負=最初からバラけて再生
+        const rise = -(130 + rnd(i, 5) * 230);    // px 上へ
+        const dx = (rnd(i, 6) - 0.5) * 60;        // px 横ドリフト
+        const op = 0.35 + rnd(i, 7) * 0.5;
+        const gold = rnd(i, 8) > 0.25;            // 大半は金、一部は薄紫
+        const startBottom = 4 + rnd(i, 9) * 46;   // %（下〜中央から）
+        const core = gold ? 'rgba(255,214,140,1)' : 'rgba(214,170,255,1)';
+        const halo = gold ? 'rgba(255,200,110,0.55)' : 'rgba(190,140,255,0.5)';
+        return (
+          <span
+            key={i}
+            className="char-particle"
+            style={{
+              left: `${left}%`,
+              bottom: `${startBottom}%`,
+              width: size,
+              height: size,
+              background: `radial-gradient(circle, ${core} 0%, rgba(0,0,0,0) 70%)`,
+              boxShadow: `0 0 ${size * 2.6}px ${size * 0.8}px ${halo}`,
+              ['--p-rise' as string]: `${rise}px`,
+              ['--p-dx' as string]: `${dx}px`,
+              ['--p-dur' as string]: `${dur}s`,
+              ['--p-delay' as string]: `${delay}s`,
+              ['--p-op' as string]: op,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark }) => {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
@@ -301,6 +345,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[56%] bg-gradient-to-t from-black/95 via-black/72 to-transparent" />
+
+        {/* 立ち絵の発光と同系の光の粒(足元から立ち上る) */}
+        <CharSelectParticles />
 
         {/* 戻る(左上) */}
         <button
