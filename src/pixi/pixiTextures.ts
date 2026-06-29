@@ -194,6 +194,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-zombie/lab-zombie-lv2-male', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv2-female', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
+      // 進軍用NPC(護衛軍人)のユニーク立ち絵(2コマ歩行・透過済み)。soldierIndex で出し分け。
+      { name: 'npc/edgar-0', scaleMode: 'nearest' },
+      { name: 'npc/edgar-1', scaleMode: 'nearest' },
+      { name: 'npc/joseph-0', scaleMode: 'nearest' },
+      { name: 'npc/joseph-1', scaleMode: 'nearest' },
 
       // ステージ別(廃都/雪原)の散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
       ...Object.values(STAGE_PROPS).flat().map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1137 — 進軍NPCのユニーク立ち絵(エドガー/ジョセフ)を反映(社長提供)
+
+- 提供素材(2コマ歩行・透過済み)を分割・トリミングして `public/sprites/npc/{edgar,joseph}-{0,1}.png`。
+- `pixiTextures` に登録。`drawEscorts` で `ESCORT_SPRITE_BASE[soldierIndex]`(0=エドガー/1=ジョセフ)で出し分け。
+  未提供のNPCは従来の `rescue/shooter` にフォールバック。表示は `humanNpcScale`(高さ基準=プレイヤー同寸)。
+- 検証: typecheck / lint / build OK。
+- 変更: `src/pixi/pixiScene.ts`・`src/pixi/pixiTextures.ts`・`public/sprites/npc/*`・`package.json`。
+
 ## v0.25.1136 — ヘリ演出修正: 演出用NPCを撤去し、既存の上下左右の兵士をフェードイン(社長指示)
 
 - 横一列の演出用NPC4人(introNpcs)を撤去。代わりに**開始時から地面に居る護衛軍人(escorts=上下左右の4人)**を

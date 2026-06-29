@@ -331,6 +331,10 @@ const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
 const PLAYER_SHADOW_SCALE = 0.9;
 // 登場演出のオフセットは store の playerIntroOffset(t) を共有(カメラと同期)。
 // 登場演出のヘリコプター(キャラを降ろして上へ逃げる)。画像 'helicopter' 登録時のみ表示。
+// 進軍用NPC(護衛軍人)の soldierIndex → ユニーク立ち絵のベース名(`${base}-${frame}`)。
+// 0=エドガー(東) / 1=ジョセフ(南)。未提供のindexは undefined=従来の rescue/shooter にフォールバック。
+const ESCORT_SPRITE_BASE: (string | undefined)[] = ['npc/edgar', 'npc/joseph'];
+
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
 const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)
 const HELI_LAND_ABOVE = 56;  // 着陸時のヘリ中心高度(px)。=機体下端がほぼ地面=着地。社長指示の「着陸」。
@@ -5252,7 +5256,9 @@ export class PixiScene {
       seen.add(esc.id);
       let sp = this.escortSprites.get(esc.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
-      const tex = getTexture(`rescue/shooter-${walkFrame}`) ?? getTexture('rescue/shooter-0'); // 行進=常時2コマ歩行
+      // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
+      const base = ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter';
+      const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0'); // 行進=常時2コマ歩行
 
       if (tex) {
         sp.texture = tex;
