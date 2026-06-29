@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1143 — 武器庫の中央に武器箱ビジュアルを設置(社長指示)
+
+- 制圧拠点の武器庫(遠隔武器商人=指離しで利用)の中央に、**武器箱の見た目**を追加。
+  木箱＋金属帯(縦2・横1)＋琥珀の弾薬色アクセント(脈動)＋接地影を `baseSitesGfx` に手続き描画
+  (foot=拠点中心)。従来の中央発光円を置換。利用半径リング(AR=50)はそのまま。
+- 負荷: 1/10(描画)。制圧拠点かつ画面内の時だけ少数の矩形を描くのみ。
+- 検証: typecheck / lint / build OK。変更: `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1142 — ローディング改善①③＋変異者大量発生を1秒1体に(社長指示)
 
 - **①素材バージョン分離**: 素材URLのキャッシュバストを `__APP_VERSION__`(毎push更新)から専用の

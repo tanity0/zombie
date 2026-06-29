@@ -5209,7 +5209,16 @@ export class PixiScene {
         const AR = 50; // ARMORY_RADIUS と一致
         g.circle(s.x, s.y, AR).stroke({ width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
         g.circle(s.x, s.y, AR - 3).fill({ color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
-        g.circle(s.x, s.y, 6).fill({ color: 0xfde68a, alpha: 0.5 + 0.3 * pulse }); // 中央の発光=武器庫
+        // 中央に武器箱のビジュアル(社長指示)。木箱＋金属帯＋琥珀の弾薬アクセント。foot(底)= s.y。
+        const bw = 30, bh = 22, bx = s.x - bw / 2, by = s.y - bh;
+        g.ellipse(s.x, s.y + 2, bw * 0.55, 5).fill({ color: 0x000000, alpha: 0.28 });            // 接地影
+        g.rect(bx, by, bw, bh).fill({ color: 0x5b4326, alpha: 0.97 });                            // 木箱本体
+        g.rect(bx, by, bw, 5).fill({ color: 0x7a5a33, alpha: 0.97 });                             // 上面ハイライト
+        g.rect(bx + 5, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                         // 金属帯(縦)
+        g.rect(bx + bw - 8, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                    // 金属帯(縦)
+        g.rect(bx, by + bh / 2 - 1.5, bw, 3).fill({ color: 0x3f3a33, alpha: 0.9 });               // 金属帯(横)
+        g.rect(bx + bw / 2 - 4, by + bh / 2 - 3, 8, 6).fill({ color: 0xfbbf24, alpha: 0.55 + 0.35 * pulse }); // 弾薬色アクセント(脈動)
+        g.rect(bx, by, bw, bh).stroke({ width: 1.5, color: 0x2a2018, alpha: 0.9 });               // 縁
       }
       // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
     }
