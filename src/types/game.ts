@@ -136,6 +136,11 @@ export interface Player {
   shijinSlideUntil: number;
   shijinSlideDirX: number;
   shijinSlideDirY: number;
+  // スケーター: 1秒以上走行後に進行方向と逆へスティックを倒すと、進行方向へ短距離衝撃波
+  // (バッシュ効果)を出して急停止する。skaterStopUntil が未来の間は入力を無視して残速度を
+  // 素早く減衰させる(ほんの少し慣性のある急停止)。skaterBashCdUntil=次に出せる gameTime。
+  skaterStopUntil: number;
+  skaterBashCdUntil: number;
   // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
   // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
   // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。

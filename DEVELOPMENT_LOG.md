@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1129 — スケーター急停止バッシュ＋バッシュのノックバック距離2倍(社長指示)
+
+- **#1 スケーター急停止バッシュ**: skater 装備で**1秒以上走行**後、進行方向と逆へスティックを
+  倒すと**急停止(ほんの少し慣性)**＋**進行方向へ短距離衝撃波**を発生。効果はバッシュ同等
+  (近接ダメージ×`SHIELD_BASH_DAMAGE_MULT`＋進行方向への強ノックバック)。
+  - 実装: 新アクション `triggerSkaterBash()`(条件を全て自己判定: skater/CD/1秒走行/逆スティック/
+    特殊ロコモーション除外)。`useGameLoop` が `movePlayer` 直後に毎フレーム呼ぶ(自己ゲートで安価)。
+    前方扇(±60°)×射程`SKATER_BASH_RANGE`=120px の敵にダメージ＋ノックバック、撃破報酬は
+    `grantMeleeKillRewards`。急停止は `movePlayer` に `skaterStopUntil` 分岐(入力無視＋tau50msで
+    残速度を素早く減衰)。連射防止 `SKATER_BASH_CD_MS`=600ms。
+  - 新フィールド: `player.skaterStopUntil` / `skaterBashCdUntil`(両init/reset初期化)。
+  - 新定数: `SKATER_BASH_RUN_MS/RANGE/ARC_DOT/REVERSE_DOT/STOP_MS/CD_MS/RESIDUAL`。
+- **#2 バッシュのノックバック距離2倍**: `SHIELD_BASH_KNOCKBACK_SPEED` 960→1920(距離∝速度)。
+  シールドバッシュとスケーター衝撃波の両方に反映(同定数)。
+- 演出: 前方リング＋命中スラッシュ＋バースト＋ヒットストップ＋命中SE(バッシュ同等)。
+  - 負荷: **2/10**(描画)。イベント発火のみ(1ジェスチャー＝CD600ms)、リング1＋小バースト＋
+    少数スラッシュのみ。プールspawn流用で常時コスト無し。安全。
+- 検証: lint / typecheck / test(75 pass) / build すべてOK。
+- 変更ファイル: `src/store/gameStore.ts`、`src/hooks/useGameLoop.ts`、`src/types/game.ts`、`package.json`。
+
 ## v0.25.1128 — 敵の攻撃系(発砲＋特殊攻撃の溜め/CD)を1.2倍速(すぐ戻せる単一定数)(社長指示)
 
 - **対象**: 遠隔の発砲間隔、および特殊攻撃(犬の突進・パンプキン/バットのジャンプ)の

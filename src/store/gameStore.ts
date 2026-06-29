@@ -493,7 +493,16 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 const SHIELD_BASH_DAMAGE_MULT = 3;
 const SHIELD_BASH_SHOVE_DISTANCE = 50;        // バッシュの飛び出し距離(少し短め)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
-const SHIELD_BASH_KNOCKBACK_SPEED = 960; // 従来値を維持(KNOCKBACK_SPEED 200×4.8 相当。基準2/3化の影響を受けない)
+const SHIELD_BASH_KNOCKBACK_SPEED = 1920; // バッシュのノックバック距離を2倍(社長指示。従来960→1920)。距離∝速度。
+// スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを倒すと
+// 進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を出して急停止。
+const SKATER_BASH_RUN_MS = 1000;       // 発動に必要な連続走行時間(1秒)
+const SKATER_BASH_RANGE = 120;          // 衝撃波の射程(短距離・前方)
+const SKATER_BASH_ARC_DOT = 0.5;        // 前方扇(heading との dot がこの値以上=±60°)
+const SKATER_BASH_REVERSE_DOT = -0.5;   // 入力が進行方向と逆(dot がこの値以下=120°以上反対)
+const SKATER_BASH_STOP_MS = 150;        // 急停止の入力ロック窓(この間に残速度を素早く減衰)
+const SKATER_BASH_CD_MS = 600;          // 連射防止クールダウン(gameTime)
+const SKATER_BASH_RESIDUAL = 0.18;      // 急停止直後に残す速度割合(ほんの少し慣性)
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
@@ -1669,6 +1678,8 @@ interface GameState {
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
+  // スケーター: 1秒以上走行後に進行方向と逆へスティックで急停止＋前方短距離バッシュ衝撃波。
+  triggerSkaterBash: () => void;
   setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
@@ -1974,6 +1985,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     shijinSlideUntil: 0,
     shijinSlideDirX: 0,
     shijinSlideDirY: 0,
+    skaterStopUntil: 0,
+    skaterBashCdUntil: 0,
     wireAnchorX: 0,
     wireAnchorY: 0,
     wireAnchored: false,
@@ -2216,11 +2229,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 被弾ノックバック中は入力を無視して、減衰する弾き出し速度で滑る(ジャンプ攻撃被弾など)。
       const kbNow = Date.now();
       const kbActive = player.knockbackUntil !== undefined && kbNow < player.knockbackUntil;
+      // スケーター急停止中: 入力を無視して残速度を素早く減衰(tau=50ms)=ほんの少し慣性のある急停止。
+      const skaterStopping = !kbActive && kbNow < player.skaterStopUntil;
       let vx: number, vy: number;
       if (kbActive) {
         const decay = Math.max(0, (player.knockbackUntil! - kbNow) / PLAYER_KNOCKBACK_MS); // 1→0
         vx = (player.knockbackVx ?? 0) * decay;
         vy = (player.knockbackVy ?? 0) * decay;
+      } else if (skaterStopping) {
+        const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
+        vx = player.vx * d;
+        vy = player.vy * d;
       } else {
         vx = player.vx + (tx * moveSpeed * speedScale - player.vx) * alpha;
         vy = player.vy + (ty * moveSpeed * speedScale - player.vy) * alpha;
@@ -2397,7 +2416,116 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
   },
-  
+
+  // スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを
+  // 倒すと、進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を
+  // 出して急停止する。条件は全てここで自己判定。useGameLoop が movePlayer 直後に毎フレーム呼ぶ。
+  triggerSkaterBash: () => {
+    const st = get();
+    const { player, gameTime, swipeDirection, swipeStrength, inputState } = st;
+    if (!hasSkill(player, 'skater')) return;
+    const nowMs = Date.now();
+    // 特殊ロコモーション中(一閃ダッシュ/ワイヤー/四神スライド/着地後隙/急停止中)は発動しない。
+    if (nowMs < player.katanaDashUntil || nowMs < player.wireDashUntil || nowMs < player.shijinSlideUntil ||
+        nowMs < player.katanaRecoveryUntil || nowMs < player.skaterStopUntil) return;
+    if (gameTime < player.skaterBashCdUntil) return;            // 連射防止CD
+    if (!player.isMoving) return;                                // 走行中のみ
+    if (player.marksmanMovingSince <= 0 || gameTime - player.marksmanMovingSince < SKATER_BASH_RUN_MS) return; // 1秒以上走行
+    // 進行方向(走っていた方角)。
+    const hd = player.lastDirection ?? { x: 0, y: 0 };
+    const hl = Math.hypot(hd.x, hd.y);
+    if (hl < 0.01) return;
+    const hx = hd.x / hl, hy = hd.y / hl;
+    // 入力方向(スティック or キー)。
+    let ix = 0, iy = 0;
+    if (swipeDirection) {
+      if (swipeStrength < 0.4) return; // 弱い傾きは誤爆防止
+      ix = swipeDirection.x; iy = swipeDirection.y;
+    } else {
+      if (inputState.up) iy -= 1;
+      if (inputState.down) iy += 1;
+      if (inputState.left) ix -= 1;
+      if (inputState.right) ix += 1;
+    }
+    const il = Math.hypot(ix, iy);
+    if (il < 0.01) return;
+    ix /= il; iy /= il;
+    if (hx * ix + hy * iy > SKATER_BASH_REVERSE_DOT) return;    // 進行方向と逆(120°以上)でなければ不発
+
+    // --- 発動: 前方扇 SKATER_BASH_RANGE 内の敵にバッシュ効果 ---
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    const melee = player.weapons.find(w => w.isMelee);
+    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+    const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
+    const now = Date.now();
+    const r2 = SKATER_BASH_RANGE * SKATER_BASH_RANGE;
+    const killedList: { enemy: Enemy; finisher: boolean }[] = [];
+    const hitAt: { x: number; y: number }[] = [];
+    const runSpeed = Math.hypot(player.vx, player.vy);
+
+    set(state => {
+      const out: Enemy[] = [];
+      for (const enemy of state.enemies) {
+        if (enemy.aiPhase === 'jump') { out.push(enemy); continue; } // 空中は無敵(既存仕様)
+        if (enemy.type === 'reaper' && !enemy.reaperChaser) { out.push(enemy); continue; } // 死神本体は対象外
+        const ecx = enemy.x + enemy.width / 2;
+        const ecy = enemy.y + enemy.height / 2;
+        const dxr = ecx - pcx, dyr = ecy - pcy;
+        const d2 = dxr * dxr + dyr * dyr;
+        if (d2 > r2) { out.push(enemy); continue; }
+        const dl = Math.sqrt(d2) || 1;
+        if ((dxr / dl) * hx + (dyr / dl) * hy < SKATER_BASH_ARC_DOT) { out.push(enemy); continue; } // 前方扇の外
+        hitAt.push({ x: ecx, y: enemy.y });
+        const newHealth = Math.max(0, enemy.health - dmg);
+        if (newHealth <= 0) { killedList.push({ enemy, finisher: false }); continue; } // 死亡=out から除外
+        out.push({
+          ...enemy,
+          health: newHealth,
+          lastHit: now,
+          meleeAggro: true,
+          knockbackVx: hx * SHIELD_BASH_KNOCKBACK_SPEED, // 進行方向へノックバック(バッシュ同等・距離2倍)
+          knockbackVy: hy * SHIELD_BASH_KNOCKBACK_SPEED,
+          knockbackUntil: now + KNOCKBACK_DURATION,
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        });
+      }
+      const bossKilled = killedList.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
+      return {
+        enemies: out,
+        gameStats: {
+          ...state.gameStats,
+          enemiesKilled: state.gameStats.enemiesKilled + killedList.length,
+          eliteKills: state.gameStats.eliteKills + killedList.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
+          bossKills: state.gameStats.bossKills + killedList.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
+          damageDealt: state.gameStats.damageDealt + dmg * hitAt.length,
+        },
+        finaleDefeated: state.finaleDefeated || bossKilled,
+        player: {
+          ...state.player,
+          // 急停止: 進行方向への残速度を少しだけ残し(ほんの少し慣性)、入力ロック窓へ。
+          vx: hx * runSpeed * SKATER_BASH_RESIDUAL,
+          vy: hy * runSpeed * SKATER_BASH_RESIDUAL,
+          skaterStopUntil: now + SKATER_BASH_STOP_MS,
+          skaterBashCdUntil: gameTime + SKATER_BASH_CD_MS,
+        },
+      };
+    });
+
+    // 撃破報酬(XP/通貨/弾薬)はバッシュと同じく grantMeleeKillRewards で。
+    if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
+
+    // 演出: 前方の衝撃波リング＋命中スラッシュ＋バースト＋ヒットストップ＋命中SE(バッシュ同等)。
+    const fcx = pcx + hx * 26, fcy = pcy + hy * 26; // プレイヤーの少し前方を中心に
+    get().spawnRing(fcx, fcy, 8, SKATER_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 240);
+    get().spawnBurst(fcx, fcy, '#bef264', 12);
+    for (const h of hitAt) get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)');
+    if (hitAt.length > 0) {
+      get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0);
+      set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)。useGameLoop が検出して再生。
+    }
+  },
+
   setSwipeDirection: (direction, strength) => {
     // 強度は省略時は据え置き(離した瞬間は方向 null だけ更新し、直前の強度を保持)。
     // → 1回の set() に畳み込み、毎フレームの set() 追加を避ける(CLAUDE.md)。
@@ -7770,6 +7898,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           shijinSlideUntil: 0,
           shijinSlideDirX: 0,
           shijinSlideDirY: 0,
+          skaterStopUntil: 0,
+          skaterBashCdUntil: 0,
           wireAnchorX: 0,
           wireAnchorY: 0,
           wireAnchored: false,

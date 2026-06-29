@@ -1840,6 +1840,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Move player based on input or swipe direction
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
         movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
+        // スケーター: 1秒以上走行後、進行方向と逆へスティック → 急停止＋前方バッシュ衝撃波(自己ゲート)。
+        useGameStore.getState().triggerSkaterBash();
 
         const huntingInputActive =
           useGameStore.getState().touchActive ||
