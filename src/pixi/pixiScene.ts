@@ -6989,7 +6989,9 @@ export class PixiScene {
     // 担当外のNPCは出さない。画面外のときだけ矢印(画面内マーカーは無し)。制圧後も(NPCが拠点に居る間)表示。
     if (playerCenter && escorts.length) {
       const sector = poiSectorIndex(playerCenter);
-      const npc = escorts.find(e => e.soldierIndex === sector);
+      // 担当=その sector の拠点(base-${sector})に配属された護衛。名簿(soldierIndex)はランダムなので
+      // 位置(baseId)で実体を引く(soldierIndex は素性=見た目/セリフ用で sector とは別)。
+      const npc = escorts.find(e => e.baseId === `base-${sector}`);
       if (npc) {
         const nx = npc.x - camera.x, ny = npc.y - camera.y;
         if (nx < 0 || nx > this.screenW || ny < 0 || ny > this.screenH) {

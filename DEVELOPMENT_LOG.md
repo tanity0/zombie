@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1148 — フェイザー: 攻撃力2倍・出現率を低く(レア)(社長指示)
+
+- 護衛NPCの名簿(soldierIndex=素性)と位置(baseId=sector)を運用上分離(データ的には元から分離済み)。
+  矢印/`npcAreaEnterReact` の「sector→兵士」引きを soldierIndex 直引きから **baseId 基準**へ修正。
+- `makeEscorts`: 既定ロスター 0..3 はそのまま、**`PHASER_APPEAR_CHANCE`(=0.2)で1枠だけフェイザー(7)に差し替え**。
+- フェイザーの射撃ダメージは **`ESCORT_DMG`×`PHASER_DMG_MULT`(=2)**(escortShots に soldierIndex を付与し弾化時に判定)。
+- 調整ノブ: `PHASER_APPEAR_CHANCE`(出現率) / `PHASER_DMG_MULT`(倍率)。
+- 検証: typecheck / lint / test(75 pass) / build OK。
+- 変更: `src/store/gameStore.ts`・`src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1147 — ハンターのジャンプ/ダッシュ攻撃を速度2倍(社長指示)
 
 - ハンター限定で `HUNTER_JUMP_DASH_SPEED_MULT = 2` を新設。

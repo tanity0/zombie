@@ -133,6 +133,10 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 const ESCORT_SPEED = RESCUE_SURVIVOR_SPEED; // 前進速度=レスキューと同じ通常速(社長指示)。画面内のときだけ前進。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
+// フェイザー(名簿index7)は特別: 射撃ダメージが他NPCの2倍。ただしレアなので出現率が低い(社長指示)。
+const PHASER_INDEX = 7;
+const PHASER_DMG_MULT = 2;             // フェイザーの1射ダメージ倍率
+const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
 const ESCORT_PATROL_R = 0.8;            // 制圧後に巡回する円の半径(BASE_CAPTURE_RADIUS×この割合=縁寄り。社長指示)
 // 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
@@ -150,6 +154,12 @@ const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: n
 // 護衛軍人NPCを4人生成(各拠点 base-0..3 担当)。プレイヤー出撃地点の近傍に少し散らして配置。
 const makeEscorts = (px: number, py: number): EscortSoldier[] => {
   const arr: EscortSoldier[] = [];
+  // 名簿(素性)= 既定は 0..BASE_SITE_COUNT-1(Edgar/Joseph/Elizabeth/Musashi)。
+  // レアでフェイザー(7)が1枠だけ入る(社長指示)。位置は baseId(base-i)で固定、名簿だけ差し替わる。
+  const roster = Array.from({ length: BASE_SITE_COUNT }, (_, k) => k);
+  if (Math.random() < PHASER_APPEAR_CHANCE) {
+    roster[Math.floor(Math.random() * BASE_SITE_COUNT)] = PHASER_INDEX;
+  }
   for (let i = 0; i < BASE_SITE_COUNT; i++) {
     const ang = (Math.PI * 2 * i) / BASE_SITE_COUNT;
     arr.push({
@@ -158,7 +168,7 @@ const makeEscorts = (px: number, py: number): EscortSoldier[] => {
       x: px + Math.cos(ang) * 36, // 出撃地点の周りに少し散らす(重ならないよう担当方向へ)
       y: py + Math.sin(ang) * 36,
       face: Math.cos(ang) < 0 ? -1 : 1,
-      soldierIndex: i,
+      soldierIndex: roster[i], // 名簿(素性)。位置(sector)は baseId 基準で別管理。
       fireAt: 0,
       dwellMs: 0,
       wasSurrounded: false,
@@ -4997,7 +5007,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   npcAreaEnterReact: (sectorIdx) => {
     const s = get();
     if (s.escorts.length === 0) return; // 護衛NPCが居る出撃のみ
-    const idx = ((sectorIdx % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+    // その sector(担当拠点 base-${sectorIdx})に居る護衛の「素性(soldierIndex)」でセリフを選ぶ。
+    // 名簿はランダム(フェイザーがレアで入る)なので sectorIdx 直引きではなく baseId で実体を引く。
+    const esc = s.escorts.find(e => e.baseId === `base-${sectorIdx}`);
+    if (!esc) return;
+    const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
     const sol = BASE_SOLDIERS[idx];
     get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
   },
@@ -7060,7 +7074,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const removeAttackerIds: string[] = [];
     const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
     const damageShots: { id: string; dmg: number }[] = [];
-    const escortShots: { x: number; y: number; dx: number; dy: number }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)
+    const escortShots: { x: number; y: number; dx: number; dy: number; soldierIndex: number }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)。soldierIndex=フェイザー2倍判定用
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
     const npcSurroundEvents: { name: string; text: string }[] = []; // 「敵に囲まれた」発話候補(CDはset後にtryNpcLineで適用)
     const npcRescuedEvents: { name: string; text: string }[] = [];   // 「囲まれから助けられた」発話候補
@@ -7130,7 +7144,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
           let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-          escortShots.push({ x, y, dx, dy });
+          escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
           face = dx < 0 ? -1 : 1;
         }
       } else if (base.status === 'captured') {
@@ -7342,7 +7356,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().addProjectile({
         id: `proj-escort-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`,
         x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9, // 胸の高さから発射(足元アンカーなので少し上)
-        speed: 680, damage: ESCORT_DMG,
+        speed: 680, damage: ESCORT_DMG * (sh.soldierIndex === PHASER_INDEX ? PHASER_DMG_MULT : 1), // フェイザーは2倍
         direction: { x: sh.dx, y: sh.dy },
         weaponType: 'handgun', weaponKey: 'escort',
         duration: 1200, createdAt: Date.now(),
