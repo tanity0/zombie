@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1144 — 進軍NPCのセリフに上半身(バスト)立ち絵を表示(社長指示)
+
+- `NpcDialogue` HUD に話者の立ち絵バストを追加。名前→立ち絵(`NPC_PORTRAIT_BASE`)で対応付け、
+  立ち絵を高さ96pxへ拡大→枠(56×52)で**上部だけ切り出し=頭〜胴(上半身)**。吹き出しの左に配置。
+- 立ち絵が無い名前はフォールバックで従来どおりテキストのみ。pixel-art は `imageRendering: pixelated`。
+- 検証: typecheck / lint / build OK。変更: `src/components/NpcDialogue.tsx`・`package.json`。
+
 ## v0.25.1143 — 武器庫の中央に武器箱ビジュアルを設置(社長指示)
 
 - 制圧拠点の武器庫(遠隔武器商人=指離しで利用)の中央に、**武器箱の見た目**を追加。
