@@ -88,6 +88,11 @@ import {
 } from '../config/shijin';
 import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 
+// ゲームプレイ中の「プレイヤーの移動」と「敵の移動」だけを倍速にする係数。
+// movePlayer / updateEnemies に渡す deltaTime にのみ掛ける(弾・召喚・軍人・進行・演出・
+// スポーンは等速のまま)。すぐ戻せるよう単一定数で管理: 1.0 = 従来等速 / 1.2 = 現在。
+const MOVE_SPEED_MULT = 1.2;
+
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
@@ -1832,7 +1837,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // Move player based on input or swipe direction
-        movePlayer(inputState, deltaTime);
+        // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
+        movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
 
         const huntingInputActive =
           useGameStore.getState().touchActive ||
@@ -2787,7 +2793,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // Update enemies
-        updateEnemies(deltaTime);
+        // 敵の移動のみ MOVE_SPEED_MULT 倍速(攻撃タイマー等はtimestamp基準で影響なし)。
+        updateEnemies(deltaTime * MOVE_SPEED_MULT);
 
         // 敵のジャンプ攻撃(aiPhase 'jump')/ダッシュ攻撃(aiPhase 'charge')でも障害物を破壊(裏ボスと同仕様)。
         // 手続き生成なので破壊キーSetに入れるだけ=描画/判定とも同時に消える(軽い)。FXはスロットルで間引く。

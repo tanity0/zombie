@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1127 — プレイヤー/敵の移動を1.2倍速(すぐ戻せる単一定数)(社長指示)
+
+- **ゲームプレイ中のプレイヤーの移動と敵の移動だけを1.2倍**に。演出・進行(gameTime)・
+  スポーン・弾・召喚・軍人(escort)は等速のまま。
+- 実装: `useGameLoop.ts` に `const MOVE_SPEED_MULT = 1.2;` を新設し、`movePlayer(...)` と
+  `updateEnemies(...)` に渡す deltaTime にのみ掛ける。両関数内の deltaTime は位置積分(移動)が
+  主で、攻撃/クールダウンは Date.now()/gameTime の timestamp 基準のため影響しない。
+- **すぐ戻せる**: `MOVE_SPEED_MULT` を `1.0` にすれば従来等速へ即復帰。
+- 検証: lint / typecheck / test(75 pass) / build すべてOK。
+- 変更ファイル: `src/hooks/useGameLoop.ts`、`package.json`。
+
 ## v0.25.1126 — 拠点NPC#2: 武器商人スタート常駐＋拠点中央の武器庫で遠隔利用(社長指示)
 
 - 武器商人を**スタート地点(原点 0,-130)に常駐**へ変更(従来=ランダム配置＋制圧拠点へ移動 を廃止)。
