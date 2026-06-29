@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1142 — ローディング改善①③＋変異者大量発生を1秒1体に(社長指示)
+
+- **①素材バージョン分離**: 素材URLのキャッシュバストを `__APP_VERSION__`(毎push更新)から専用の
+  `ASSET_VERSION`(`src/config/assetVersion.ts`・素材変更時のみ手動更新)へ。コードだけの変更では
+  スプライト/タイトル・ダンスBGMを**再DLしなくなる**(`spriteLoader.ts`/`audioManager.ts`)。
+  ※public/ の既存素材の中身を差し替えた時は `ASSET_VERSION` を上げること。
+- **③出撃時の黒画面対策**: Pixiレンダラ初期化(WebGL init＋テクスチャGPUアップロード)が終わるまで
+  キャンバス未挿入で黒くなる区間に、**ローディング画面を全面オーバーレイ**(`App.tsx`:
+  `playing && pixi && !rendererReady`)。初フレーム表示で自動的に外れる。
+  ※「ロード一回で以降は即時(完全な事前ロード)」は**レンダラ常駐化リファクタ(②③の本丸)**が必要=別途提案中。
+- **変異者大量発生**: 段階スポーンを1秒3体→**1秒1体**に(計18体・6/12/18体目の種類指定は維持)。
+- 検証: typecheck / lint / test(75 pass) / build OK。
+- 変更: `src/config/assetVersion.ts`(新規)・`src/utils/spriteLoader.ts`・`src/audio/audioManager.ts`・
+  `src/App.tsx`・`src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1141 — ハンター耐久を6000スタートへ＋近接フィニッシュ即死無しを明記(社長指示)
 
 - `ENEMY_STATS.hunter.health` を 400→**1200**(=実効6000 / ×ENEMY_HP_MULT5)。エリア(距離)で更に上昇。

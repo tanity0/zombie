@@ -12,6 +12,7 @@ import { setBgmScene, preloadAllAudio, unlockDanceAudio, setAudioSuspended, clea
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { getSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
 import { getStage } from './data/campaign';
+import { isPixiRenderer } from './config/renderer';
 
 const LOADING_MIN_MS = 650;
 
@@ -23,6 +24,9 @@ function App() {
   const pendingBenchmarkRef = useRef(false);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
+  // Pixi レンダラの初フレームが出るまで true にならない(PixiStage が setRendererReady)。
+  // 出撃時のレンダラ初期化/テクスチャGPUアップロード中は、黒画面ではなくローディング画面を被せる。
+  const rendererReady = useGameStore(state => state.rendererReady);
 
   // 本物の素材ロード(テクスチャ+音声/BGM/SFX)を起動直後にバックグラウンドで開始。
   // ただし「ゾンビサバイバル」ローディング画面は出さず、タイトルを先に見せる。
@@ -183,6 +187,13 @@ function App() {
           onReturnToMenu={returnToMenu}
           onPlayAgain={() => startGame(useGameStore.getState().characterClass)}
         />
+      )}
+
+      {/* 出撃直後、Pixiレンダラ初期化(WebGL init＋テクスチャGPUアップロード)が終わるまでは
+          キャンバスが未挿入で黒くなる。その間はローディング画面を被せて「まっくら」を防ぐ(社長指示)。
+          fixed で全面に重ねる(レンダラ準備完了=初フレーム表示で自動的に外れる)。 */}
+      {gameState === 'playing' && isPixiRenderer() && !rendererReady && (
+        <div className="fixed inset-0 z-40"><LoadingScreen startup /></div>
       )}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}

@@ -1,6 +1,8 @@
 // Central audio controls. BGM uses HTMLAudioElement so mobile browsers keep
 // their normal media route; short SFX use Web Audio to avoid frame hitches.
 
+import { ASSET_VERSION } from '../config/assetVersion';
+
 const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
 const BGM_VOLUME_KEY = 'zombie:bgmVolume';
@@ -30,14 +32,14 @@ const REVERSE_BGM: Record<string, string> = {
   stage6: `${import.meta.env.BASE_URL}audio/stage6-reverse.mp3`,
 };
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
-const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`;
+const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(ASSET_VERSION)}`;
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
 // v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。
 // フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い。
 const DANCE_LOOP_TRACKS: Record<number, string> = {
-  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
-  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
-  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`,
+  1: `${import.meta.env.BASE_URL}audio/dance-100.mp3?v=${encodeURIComponent(ASSET_VERSION)}`,
+  2: `${import.meta.env.BASE_URL}audio/dance-120.mp3?v=${encodeURIComponent(ASSET_VERSION)}`,
+  3: `${import.meta.env.BASE_URL}audio/dance-140.mp3?v=${encodeURIComponent(ASSET_VERSION)}`,
 };
 let currentDanceLevel = 2; // 現在ダンスループに使っているレベル
 

@@ -12,14 +12,14 @@
 // per-file loader at `public/sprites/<name>.png`.
 
 import { ATLAS_RECTS } from './spriteAtlas';
+import { ASSET_VERSION } from '../config/assetVersion';
 
 const cache = new Map<string, HTMLImageElement | null>();
 
 const base = import.meta.env.BASE_URL; // resolves to '/vs/' in production
-const spriteAssetVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
-
+// 素材専用バージョンでキャッシュバスト(アプリ版ではない=コードだけの変更では再DLさせない)。
 export const spritePath = (name: string): string =>
-  `${base}sprites/${name}.png?v=${encodeURIComponent(spriteAssetVersion)}`;
+  `${base}sprites/${name}.png?v=${encodeURIComponent(ASSET_VERSION)}`;
 
 const ATLAS_NAME = 'atlas';
 
