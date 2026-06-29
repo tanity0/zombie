@@ -5286,6 +5286,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           );
           spawnBurst(cx, cy, '#ffffff', 12);
           useGameStore.getState().spawnCallout(cx, currentPlayer.y - 14, 'LEVEL UP!', '#fde68a');
+          playSfx('level-up'); // レベルアップSE(社長提供・レベルが上がった瞬間)
           prevLevelRef.current = currentPlayer.level;
         } else if (currentPlayer.level < prevLevelRef.current) {
           prevLevelRef.current = currentPlayer.level; // reset after game over

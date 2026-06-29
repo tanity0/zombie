@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1134 — レベルアップSEを追加(社長提供)
+
+- 提供音を `public/audio/sfx/level-up.mp3` に配置。`audioManager` に SfxKey `'level-up'`
+  (型は既存・音源/配線が未実装だった)を登録(volume1.0/minInterval200ms)。
+- `useGameLoop` のレベルアップ検出(金色リング演出)と同じ箇所で `playSfx('level-up')` を1回再生。
+- 検証: typecheck / lint / build OK。
+- 変更: `src/audio/audioManager.ts`・`src/hooks/useGameLoop.ts`・`public/audio/sfx/level-up.mp3`・`package.json`。
+
 ## v0.25.1133 — ヘリ登場演出リワーク: 飛び降り廃止→着陸→離陸時に隊員フェードイン(社長指示)
 
 - 飛び降り演出を廃止。**ヘリが飛来→地面に着陸→ホバー→飛び立つ**。離陸のタイミングで

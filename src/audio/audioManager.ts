@@ -170,6 +170,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     volume: 1.0,
     minIntervalMs: 400,
   },
+  // レベルアップSE(社長提供)。レベルが上がった瞬間に1回。
+  'level-up': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/level-up.mp3`,
+    volume: 1.0,
+    minIntervalMs: 200,
+  },
   pickup: {
     src: `${import.meta.env.BASE_URL}audio/sfx/pickup.wav`,
     volume: 0.74,
