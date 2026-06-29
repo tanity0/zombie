@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1146 — 進軍NPCも爆発などの局所光で影が伸びるように(社長指示)
+
+- `syncLocalEventLighting` のキャスターに **escort(進軍NPC)を追加**。これで敵/プレイヤーと同じく
+  爆発・強グロー・松明などの局所光で影が光源と反対方向へ伸びる。影幅=立ち絵実幅×0.55(他アクター同基準)。
+- 負荷: 1/10。局所光の影は「強グロー/爆発が画面内にある時だけ」計算するイベント限定処理で、追加は最大4人分のみ。常時コスト無し。
+- 検証: typecheck / lint / build OK。変更: `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1145 — プレイヤー足影を進軍NPCと同程度に縮小(社長指示)
 
 - `PLAYER_SHADOW_SCALE` 0.9→**0.7**。プレイヤー立ち絵はNPCより幅広で影が大きく見えるため、進軍NPCの

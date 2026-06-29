@@ -2330,7 +2330,8 @@ export class PixiScene {
       s.weaponMerchant,
       s.eventQuestNpc,
       s.camera,
-      now
+      now,
+      s.escorts
     );
     this.syncPlayerFx(s.player, now);
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
@@ -3529,7 +3530,8 @@ export class PixiScene {
     merchant: WeaponMerchant,
     eventNpc: EventQuestNpc,
     camera: { x: number; y: number },
-    now: number
+    now: number,
+    escorts: EscortSoldier[] = []
   ) {
     const g = this.localEventShadeGfx;
     g.clear();
@@ -3601,6 +3603,14 @@ export class PixiScene {
           ? 1.28
           : 1;
         addCaster(box.footX, box.footY, box.boxW * 0.55 * this.depthScaleEnemy(box.footY), bossWeight);
+      }
+      // 進軍NPC(escort)も敵/プレイヤーと同じく爆発などの局所光で影が伸びるようにする(社長指示)。
+      // 影幅=立ち絵実幅×0.55(他アクター同基準)。足元=esc.x/esc.y(anchor 0.5,1)。
+      for (const esc of escorts) {
+        const escSp = this.escortSprites.get(esc.id);
+        const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
+        const baseW = escW > 0 ? escW : 30 * this.depthScale(esc.y);
+        addCaster(esc.x, esc.y, baseW * 0.55, 1);
       }
       for (const prop of props) {
         const propWeight = prop.type === 'torch' ? 0.82 : 0.62;
