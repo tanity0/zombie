@@ -226,8 +226,11 @@ const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通�
 const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
-const RED_NIGHT_FIRE_MS = 180000;      // 紅き夜の発火判定時刻(=ゲーム開始3分・出撃で一度だけ判定)
-const RED_NIGHT_RUN_CHANCE = 0.5;      // 出撃ごとの発生確率(社長指示で頻度を下げる=必ず→抽選)。1=必ず / 0=出ない
+// 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
+const RED_NIGHT_FIRE_MIN_MS = 300000;    // 最短(5分)
+const RED_NIGHT_FIRE_SPREAD_MS = 240000; // 上振れ幅(+0〜4分)=実質5〜9分
+const rollRedNightFireAt = (): number => RED_NIGHT_FIRE_MIN_MS + Math.random() * RED_NIGHT_FIRE_SPREAD_MS;
+const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長指示で 0.5→0.3)。1=必ず / 0=出ない
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基本は全滅で終了)
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -382,6 +385,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
   const rescueRespawnRef = useRef(0); // 救助イベント: 次の攻撃者復活の予定 gameTime(0=空き無し/未予約)
+  const rescueFiredRef = useRef(false); // 救助イベントは1出撃で最大1回(社長指示)。発生済みなら以降の抽選から除外。
   const whipHitFxRef = useRef(0);    // 鞭命中SE
   const whipSwingFxRef = useRef(0);  // 鞭振りSE
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
@@ -395,7 +399,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
-  const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ(ゲーム開始3分)。発火済みフラグ。
+  const redNightFiredRef = useRef(false); // 紅き夜は1ラン1回のみ判定。判定済みフラグ。
+  const redNightFireAtRef = useRef(rollRedNightFireAt()); // この出撃の発火判定時刻(5〜9分でランダム)。
   const lastSeenGameTimeRef = useRef(0);
   // Air-dropped supply timer. Tracks the gameTime of the last map ammo drop
   // and the (randomized) wait until the next one, so resupply crates appear at
@@ -940,6 +945,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
           redNightFiredRef.current = false;
+          redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
+          rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
@@ -1011,7 +1018,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 : FORCE_ARENA === 'boss' ? 'boss'
                 : FORCE_ARENA === 'rescue' ? 'rescue'
                 : FORCE_ARENA === 'egg' ? 'egg'
-                : (['horde', 'boss', 'rescue', 'egg'] as const)[Math.floor(Math.random() * 4)];
+                // レスキューは1出撃で最大1回(社長指示)=発生済みなら抽選候補から除外。
+                : rescueFiredRef.current
+                  ? (['horde', 'boss', 'egg'] as const)[Math.floor(Math.random() * 3)]
+                  : (['horde', 'boss', 'rescue', 'egg'] as const)[Math.floor(Math.random() * 4)];
               // イベント発生告知バナー(コンボ表示付近)。kind 別の文言。
               // 緑卵(egg)の包囲は告知しない=「いつのまにか発生」(社長指示)。バナー/発生音もなし。
               if (kind !== 'egg') {
@@ -1036,6 +1046,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ry = pcy + Math.sin(rang) * rdist;
                 const event = { kind, x: rx, y: ry, radius: RESCUE_RADIUS, startedAt: newGameTime, endsAt: newGameTime + 120000 };
                 useGameStore.getState().beginRescueEvent(event);
+                rescueFiredRef.current = true; // 1出撃で最大1回=以降の抽選から除外
                 rescueRespawnRef.current = 0; // 初期3体は beginRescueEvent が配置。復活予約はリセット
                 spawnRing(rx, ry, RESCUE_RADIUS * 0.2, RESCUE_RADIUS, 'rgba(74,222,128,0.9)', 6, 700);
                 spawnRing(rx, ry, RESCUE_RADIUS, RESCUE_RADIUS + 30, 'rgba(74,222,128,0.9)', 3, 760);
@@ -1173,7 +1184,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 紅き夜は「デンジャーゾーン(区域index2=原点から3000px)以降」に居る時だけ発現(社長指示)。
           // 3分経過していても、それより内側の安全エリアでは発火しない=深入りした時に初めて発火。
           const rnDepth = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
-          if (!rn && !redNightFiredRef.current && newGameTime >= RED_NIGHT_FIRE_MS && !rnGs.bossChasing
+          if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
               && areaZoneIndexFor(rnDepth) >= 2) {
             // 3分後 かつ デンジャーゾーン以降で、出撃に一度だけ抽選。当たれば発火、外れたらこの出撃は紅き夜なし
             // (社長指示で頻度を下げる=必ず→確率)。redNightFiredRef は当落どちらでも立てて以降は判定しない。

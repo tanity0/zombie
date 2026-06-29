@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1123 — 紅き夜=5〜9分ランダム＋抽選30% / レスキューは1出撃最大1回(社長指示)
+
+- 紅き夜の発火判定時刻を「5分以上でランダム」に: 固定3分 → 出撃ごとに `RED_NIGHT_FIRE_MIN_MS=5分` +
+  `RED_NIGHT_FIRE_SPREAD_MS=0〜4分` = **5〜9分でランダム**(`redNightFireAtRef`、新ランで再抽選)。抽選確率も
+  `RED_NIGHT_RUN_CHANCE` 0.5→**0.3**。
+- レスキューイベントを**1出撃で最大1回**に(`rescueFiredRef`)。発生済みなら以降のアリーナ抽選候補から rescue を除外、
+  新ランで戻す。アリーナ自体は従来通り2分間隔・4種等確率(rescue除外時は3種)。
+- 検証: lint/typecheck/build OK。
+
 ## v0.25.1122 — 死神の回り込みワープ条件を変更(近づいたら消えない)(社長承認)
 
 - 社長報告「時間死神が近づくと消える」。原因=回り込みワープが4秒ごとに必ず `warpDistPx=520px` へ瞬間移動し、
