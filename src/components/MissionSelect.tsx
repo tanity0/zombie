@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Play, Sparkles
+  Settings, ShoppingBag, BookOpen, Swords, Volume2, VolumeX, ChevronLeft, Lock, Check, Sparkles
 } from 'lucide-react';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
@@ -341,13 +341,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </div>
               )}
             </div>
-            {/* スタート(右下) */}
+            {/* スタート(右下)=社長提供の透過PNGボタン(緑のSTART)。 */}
             <button
               onClick={() => startMission(stageId, selectedClass)}
-              className="shrink-0 px-5 py-3 rounded-2xl text-base font-bold text-white flex items-center gap-2"
-              style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.95), rgba(16,185,129,0.95))', boxShadow: '0 8px 24px rgba(16,185,129,0.4)' }}
+              className="shrink-0 active:scale-95 transition-transform"
+              aria-label="スタート"
             >
-              <Play size={18} /> スタート
+              <img
+                src={`${import.meta.env.BASE_URL}sprites/ui/start-button.png?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`}
+                alt="スタート"
+                draggable={false}
+                className="h-[48px] w-auto drop-shadow-[0_4px_14px_rgba(16,185,129,0.4)]"
+              />
             </button>
           </div>
 

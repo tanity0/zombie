@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1118 — キャラ選択のスタートボタンを画像化(社長提供・透過PNG)
+
+- 社長提供の緑「START」透過PNG(RGBA・アルファ有=`88c90fd2`、もう一方`0cb597cd`はチェッカー柄焼き込みのRGB)を
+  `public/sprites/ui/start-button.png` として保存。
+- キャラ選択画面のスタートボタンを、緑グラデの矩形ボタンから**この画像ボタン**へ差し替え(h-48px・押下で軽く縮小)。
+  `?v=__APP_VERSION__` 付きでキャッシュ更新。未使用になった `Play` import を除去。
+- アセット＋UIのみ。検証: lint/typecheck/build OK。
+
 ## v0.25.1117 — メニューの戻る/タイトルを上部固定(社長指示)
 
 - 社長指示「メニューの戻るボタンとメニュータイトル、常に表示(スクロールに連動しない)」。`Header` を
