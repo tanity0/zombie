@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1128 — 敵の攻撃系(発砲＋特殊攻撃の溜め/CD)を1.2倍速(すぐ戻せる単一定数)(社長指示)
+
+- **対象**: 遠隔の発砲間隔、および特殊攻撃(犬の突進・パンプキン/バットのジャンプ)の
+  溜め・クールダウン・動作(滞空時間含む)を1.2倍速。
+- **対象外(据え置き)**: 近接の通常接触(タッチ)ダメージ間隔、ゾンビの停止/突進リズム。
+  ※社長指示「近接攻撃間隔はかえない」。AskUserで「発砲＋特殊攻撃の溜め/CD」を選択。
+- 実装: `gameStore.ts` に `ENEMY_ATTACK_SPEED_MULT = 1.2` を新設。`updateEnemies` 内に
+  `atkUntil(ms) = gameTime + ms / MULT` を定義し、windup/charge/crouch/jump/recover/CD/
+  giantbatスケジューラの全タイマー(`gameTime + DUR`)を `atkUntil(DUR)` 化。ジャンプ滞空 `t` の
+  除数も `PUMPKIN_JUMP_MS / MULT` に揃えて着地位置を保持。`useGameLoop.ts` の発砲ゲートを
+  `profile.interval / MULT` に短縮。
+- **すぐ戻せる**: `ENEMY_ATTACK_SPEED_MULT` を `1.0` で従来等速へ即復帰。
+- 検証: lint / typecheck / test(75 pass) / build すべてOK。
+- 変更ファイル: `src/store/gameStore.ts`、`src/hooks/useGameLoop.ts`、`package.json`。
+
 ## v0.25.1127 — プレイヤー/敵の移動を1.2倍速(すぐ戻せる単一定数)(社長指示)
 
 - **ゲームプレイ中のプレイヤーの移動と敵の移動だけを1.2倍**に。演出・進行(gameTime)・

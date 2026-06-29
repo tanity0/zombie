@@ -32,7 +32,8 @@ import {
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
-  ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT
+  ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
+  ENEMY_ATTACK_SPEED_MULT
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -3567,7 +3568,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (enemy.aiPhase) return;
           const profile = getEnemyFireProfile(enemy);
           if (!profile) return;
-          if (now - enemy.lastShot < profile.interval) return;
+          // 発砲間隔も攻撃倍速で短縮(1/MULT)=より速く撃つ。1.0で従来等速。
+          if (now - enemy.lastShot < profile.interval / ENEMY_ATTACK_SPEED_MULT) return;
           // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
           // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
           const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);

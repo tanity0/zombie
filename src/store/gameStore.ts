@@ -916,6 +916,11 @@ export const AIM_INERTIA_TAU = 0.28; // 照準サークルの追従(大きいほ
 
 // 特殊AI(犬型=突進 / パンプキン=ジャンプ)の調整値。射程基準=ハンドガン射程176px(RANGE_BY_CATEGORY.handgun)。
 const HANDGUN_RANGE_REF = 176;
+// 敵の「攻撃系」を倍速にする係数(社長指示)。対象=遠隔の発砲間隔＋特殊攻撃(犬の突進/
+// パンプキン・バットのジャンプ)の溜め・クールダウン・動作。近接の通常接触ダメージ間隔と
+// ゾンビの停止/突進リズムは対象外(据え置き)。すぐ戻せる単一定数: 1.0=従来 / 1.2=現在。
+export const ENEMY_ATTACK_SPEED_MULT = 1.2;
+
 // 犬型(werewolf): ハンドガン射程より少し外で減速→2倍速で突進。
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
 export const WEREWOLF_WINDUP_MS = 600;    // 減速(溜め)の長さ
@@ -4891,6 +4896,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       const now = Date.now();
+      // 特殊攻撃(突進/ジャンプ)の溜め・CD・動作を ENEMY_ATTACK_SPEED_MULT 倍速にする。
+      // gameTime からの残り時間を 1/MULT に短縮(=攻撃が速く出る)。1.0で従来等速に戻る。
+      const atkUntil = (ms: number) => gameTime + ms / ENEMY_ATTACK_SPEED_MULT;
       const pcx = player.x + player.width / 2;
       const pcy = player.y + player.height / 2;
       const indoor = state.indoorMode;
@@ -5053,7 +5061,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const cdx = tx - ecx, cdy = ty - ecy;
             const cdist = Math.hypot(cdx, cdy);
             if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type) };
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: atkUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
             }
             // 基本は固定ターゲットへ直進。毎フレームほんの少しだけ現在のプレイヤー位置へ寄せる(弱いホーミング・社長指示)。
             const hpx = pcx - ecx, hpy = pcy - ecy;
@@ -5073,14 +5081,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             const blocked = Math.abs(moved.x - rawX) > 0.5 || Math.abs(moved.y - rawY) > 0.5;
             if (hitShield || blocked) {
               if (hitShield) shieldBlocks.push({ x: moved.x + enemy.width / 2, y: moved.y + enemy.height / 2, kind: 'dash' });
-              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type) };
+              return { ...enemy, x: moved.x, y: moved.y, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: atkUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
             }
             return { ...enemy, vx: cvx, vy: cvy, x: moved.x, y: moved.y };
           }
           if (enemy.aiPhase === 'windup') {
             // 溜め中は赤ライン予告(描画側)。狙い点は溜め開始時に確定済み。
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, aiPhase: 'charge', aiPhaseUntil: gameTime + WEREWOLF_CHARGE_MAX_MS, vx: 0, vy: 0 };
+              return { ...enemy, aiPhase: 'charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS), vx: 0, vy: 0 };
             }
             // ゆっくり後退り(プレイヤーから離れる方向)してからダッシュ(社長指示)。壁/木はすり抜けず resolveMove で止める。
             const bdx = ecx - pcx, bdy = ecy - pcy;
@@ -5093,7 +5101,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
             // 突進距離 = プレイヤーまでの距離 + 80px(プレイヤーの少し先で止まる。社長指示)。
             const reach = dist + DASH_OVERSHOOT_PX;
-            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx + ((pcx - ecx) / dist) * reach, aiTargetY: ecy + ((pcy - ecy) / dist) * reach, vx: 0, vy: 0 };
+            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx + ((pcx - ecx) / dist) * reach, aiTargetY: ecy + ((pcy - ecy) / dist) * reach, vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
@@ -5112,13 +5120,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                 ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
                 aiFromX: enemy.x, aiFromY: enemy.y,
                 aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2,
-                aiStartedAt: gameTime, aiPhaseUntil: gameTime + PUMPKIN_JUMP_MS,
+                aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS),
               };
             }
             return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(縮みは描画側)
           }
           if (enemy.aiPhase === 'jump') {
-            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / PUMPKIN_JUMP_MS));
+            // ジャンプ滞空時間も攻撃倍速で短縮(着地=t>=1。set側 aiPhaseUntil と同じ scaled 値で揃える)。
+            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT)));
             const fx = enemy.aiFromX ?? enemy.x, fy = enemy.aiFromY ?? enemy.y;
             const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
             const nx = fx + (tx - fx) * t;
@@ -5129,24 +5138,24 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (shieldRects.length > 0 &&
                 shieldRects.some(s => rectsOverlap({ x: nx, y: ny, width: enemy.width, height: enemy.height }, s))) {
               shieldBlocks.push({ x: nx + enemy.width / 2, y: ny + enemy.height / 2, kind: 'jump' });
-              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiStartedAt: gameTime, aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
+              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_RECOVER_MS) };
             }
             if (t >= 1) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
               // 着地爆発(範囲狭め)。被弾判定/FX は useGameLoop が pumpkinBlasts を消化して行う。
               pumpkinBlasts.push({ x: tx + enemy.width / 2, y: ty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
-              return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: gameTime + PUMPKIN_RECOVER_MS };
+              return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: atkUntil(PUMPKIN_RECOVER_MS) };
             }
             return { ...enemy, x: nx, y: ny, vx: 0, vy: 0 }; // 空中は障害物を飛び越える(衝突無視)
           }
           if (enemy.aiPhase === 'recover') {
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: gameTime + PUMPKIN_COOLDOWN_MS };
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: atkUntil(PUMPKIN_COOLDOWN_MS) };
             }
             return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
           }
           if (enemy.type !== 'giantbat' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)) {
-            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0 };
+            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
@@ -5156,7 +5165,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'giantbat' && !enemy.aiPhase) {
           // 出現直後は少し待ってから行動(即突進しない)。初回だけ初期CDをセット。
           if (enemy.gbDashReadyAt === undefined) {
-            return { ...enemy, vx: 0, vy: 0, gbDashReadyAt: gameTime + 2000, gbJumpReadyAt: gameTime + 3500 };
+            return { ...enemy, vx: 0, vy: 0, gbDashReadyAt: atkUntil(2000), gbJumpReadyAt: atkUntil(3500) };
           }
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
@@ -5169,9 +5178,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (pick === 'dash') {
               // 突進距離を2倍に(giantbat も同様にオーバーシュート)。
               // ダッシュ頻度を抑える(社長指示): 通常CD(±20%)にランダム追加CD(3〜10秒)を上乗せ=犬と同様。
-              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: gameTime + WEREWOLF_WINDUP_MS, aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: gameTime + jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS)) };
+              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: atkUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS))) };
             }
-            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: gameTime + PUMPKIN_CROUCH_MS, vx: 0, vy: 0, gbJumpReadyAt: gameTime + jitter(GIANTBAT_JUMP_CD_MS) };
+            return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0, gbJumpReadyAt: atkUntil(jitter(GIANTBAT_JUMP_CD_MS)) };
           }
           // CD中はフォールスルーして通常チェイス。
         }
