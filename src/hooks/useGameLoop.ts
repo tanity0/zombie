@@ -453,6 +453,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean }>(
     { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false }
   );
+  // 死神チェイサーが直近に見せた liftUntil(=近接フィニッシュ/boss-stun×5 被弾の印)。増えたら「食らった」と判定しワープ。
+  const reaperLiftRef = useRef(0);
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number }>(
@@ -1366,6 +1368,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               rs.chaserSpawnAt = newGameTime;
               rs.lastWarpAt = newGameTime;
               rs.warpAnimStartAt = 0; rs.warpTeleported = false;
+              reaperLiftRef.current = 0; // 新チェイサーの近接フィニッシュ検出を初期化
               rs.risk = REAPER_CONFIG.riskMax;
               spawnFlash('rgba(10,10,16,0.30)', 360);
               // 死神「完全出現」もカメラアテンション(社長指示)。裏ボス/城ボス出現と同じく、時間停止で現地へ
@@ -1388,8 +1391,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 回り込みワープ: 一定間隔で、プレイヤーの上下左右いずれか(多少ランダム)へ warp して挟み込む。
               // 社長指示: パッと消えてパッと出るのではなく、0.5s でフェードアウト→テレポート→0.5s でフェードイン。
               const WARP_FADE = REAPER_CONFIG.warpFadeMs;
-              // 新規ワープ開始(アニメ中は再トリガーしない)。出現直後の最初の1回まではアニメをスキップ。
-              if (rs.warpAnimStartAt === 0 && newGameTime - rs.lastWarpAt >= REAPER_CONFIG.warpIntervalMs) {
+              // 死神の現在位置とプレイヤーまでの距離。近接フィニッシュ被弾は liftUntil の増加で検出。
+              const chaserNow = useGameStore.getState().enemies.find(e => e.id === rs.chaserId);
+              const rcx = chaserNow ? chaserNow.x + chaserNow.width / 2 : pcx;
+              const rcy = chaserNow ? chaserNow.y + chaserNow.height / 2 : pcy;
+              const distToPlayer = Math.hypot(rcx - pcx, rcy - pcy);
+              const liftNow = chaserNow?.liftUntil ?? 0;
+              const finisherHit = liftNow > reaperLiftRef.current; // 近接フィニッシュ(boss-stun×5)を食らった
+              reaperLiftRef.current = Math.max(reaperLiftRef.current, liftNow);
+              // ワープ発火条件(社長指示):
+              //  (A) 一定間隔 かつ プレイヤーより warpDistPx 遠い時のみ=近接時はワープせず居座る(=近づいて消えない)。
+              //  (B) 近接フィニッシュを食らった時=距離不問で即・回り込み離脱。
+              const intervalWarp = newGameTime - rs.lastWarpAt >= REAPER_CONFIG.warpIntervalMs
+                && distToPlayer > REAPER_CONFIG.warpDistPx;
+              if (rs.warpAnimStartAt === 0 && (intervalWarp || finisherHit)) {
                 rs.lastWarpAt = newGameTime;
                 rs.warpAnimStartAt = newGameTime;
                 rs.warpTeleported = false;

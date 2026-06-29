@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1122 — 死神の回り込みワープ条件を変更(近づいたら消えない)(社長承認)
+
+- 社長報告「時間死神が近づくと消える」。原因=回り込みワープが4秒ごとに必ず `warpDistPx=520px` へ瞬間移動し、
+  近づいた時に外へ離脱=「消える」ように見えていた(消滅処理ではなくワープ)。
+- 修正(社長指示の条件): ワープ発火を以下に限定。
+  - (A) 一定間隔 **かつ プレイヤーより `warpDistPx` 遠い時のみ** → 近接時はワープせず居座る(=近づいて消えない)。
+  - (B) **近接フィニッシュを食らった時**(boss-stun×5 = `liftUntil` 増加で検出)は距離不問で即ワープ離脱。
+  - `reaperLiftRef` で chaser の liftUntil 増加を監視、新チェイサー出現時に初期化。
+- 描画/移動の他要素は不変。※近接時に居座る分やや圧が増す。値は `warpDistPx`/`warpIntervalMs` で調整可。
+- 検証: lint/typecheck/build OK。
+
 ## v0.25.1121 — 紅き夜の頻度を下げる(必ず→確率抽選)(社長指示)
 
 - 社長指示「紅き(月=)夜の頻度を下げて」。従来は1出撃に必ず1回(3分＆デンジャーゾーンで発火)だったのを、
