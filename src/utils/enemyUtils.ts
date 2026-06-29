@@ -51,9 +51,10 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   skadi:      { width: 456, height: 102, speed: 90, health: 10000, damage: 38, experienceValue: 0 },
   // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
   // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
-  //  実効「耐久2000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
-  //  base health=400(=2000/5)、base damage=40(非fixed: damage×areaDiff)。深いエリアほど上昇。
-  hunter:     { width: 56, height: 64, speed: 82, health: 400, damage: 40, experienceValue: 120 }
+  //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
+  //  base health=1200(=6000/5)、base damage=40(非fixed: damage×areaDiff)。深いエリアほど上昇。
+  //  近接フィニッシュは即死しない(isBossType=true=ボス級のクリットダメージ扱い)。
+  hunter:     { width: 56, height: 64, speed: 82, health: 1200, damage: 40, experienceValue: 120 }
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。

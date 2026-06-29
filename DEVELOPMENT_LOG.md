@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1141 — ハンター耐久を6000スタートへ＋近接フィニッシュ即死無しを明記(社長指示)
+
+- `ENEMY_STATS.hunter.health` を 400→**1200**(=実効6000 / ×ENEMY_HP_MULT5)。エリア(距離)で更に上昇。
+- 近接フィニッシュ即死無しは `isBossType('hunter')=true` で**既に全経路で成立**(確認のみ・コード変更なし):
+  通常スタン処刑/リーパー波及 とも ボスは即死せず ×BOSS_MELEE_STUN_MULT(5) ダメージ＋スタン解除。
+- 検証: typecheck / lint / test(75 pass) / build OK。
+- 変更: `src/utils/enemyUtils.ts`・`package.json`。
+
 ## v0.25.1140 — 進軍NPC立ち絵: ムハンマド(index4)を追加し全8名そろう(社長提供)
 
 - 提供素材を分割/トリミングして `public/sprites/npc/muhammad-{0,1}.png`。`pixiTextures` に登録。
