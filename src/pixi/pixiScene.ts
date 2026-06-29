@@ -328,7 +328,9 @@ const SUNLIGHT_SHADOW_DIRECTION = { x: 0.7, y: -0.28 };
 const LAB_SHADOW_DIRECTION = { x: 1, y: 0.2 };
 const STAGE_LIGHT_SHAFT_PULSE_MS = 5200;
 const STAGE_LIGHT_SHAFT_PULSE_AMOUNT = 0.08;
-const PLAYER_SHADOW_SCALE = 0.9;
+// プレイヤー足影のスケール。プレイヤー立ち絵は進軍NPCより幅広で影が大きく見えるため、
+// 進軍NPCの影(=スプライト幅×0.55・追加スケール無し)と同程度に縮小(社長指示)。実機で微調整可。
+const PLAYER_SHADOW_SCALE = 0.7;
 // 登場演出のオフセットは store の playerIntroOffset(t) を共有(カメラと同期)。
 // 登場演出のヘリコプター(キャラを降ろして上へ逃げる)。画像 'helicopter' 登録時のみ表示。
 // 進軍用NPC(護衛軍人)の soldierIndex → ユニーク立ち絵のベース名(`${base}-${frame}`)。

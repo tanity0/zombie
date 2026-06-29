@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1145 — プレイヤー足影を進軍NPCと同程度に縮小(社長指示)
+
+- `PLAYER_SHADOW_SCALE` 0.9→**0.7**。プレイヤー立ち絵はNPCより幅広で影が大きく見えるため、進軍NPCの
+  影(=スプライト幅×0.55・追加スケール無し)と同程度へ。実機で微調整可(まだ大きい/小さいなら数値調整)。
+- 検証: typecheck / build OK。変更: `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1144 — 進軍NPCのセリフに上半身(バスト)立ち絵を表示(社長指示)
 
 - `NpcDialogue` HUD に話者の立ち絵バストを追加。名前→立ち絵(`NPC_PORTRAIT_BASE`)で対応付け、
