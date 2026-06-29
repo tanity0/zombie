@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_DASH_SPEED_MULT } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_DASH_SPEED_MULT, HUNTER_VISION_RANGE } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
@@ -846,6 +846,7 @@ export class PixiScene {
   private returnGfx = new Graphics(); // 帰還サークル(地面・world座標。滞在で外周が満ちる)
   private static enemyDrawErrLogged = false; // drawEnemy 例外ログは初回だけ(1体の描画失敗で全体が固まらないよう保護)
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
+  private hunterVisionGfx = new Graphics(); // ハンターの視界(索敵)範囲=薄い紫サークル(地面・world座標)
   private bossCorpseSprite = new Sprite(); // 裏ボス討伐時のフェードアウト演出(頭基準・world座標。store.bossCorpse を参照)
   private rescueGfx = new Graphics(); // 救助NPCのHPバー/コールアウト(actorLayer 最前=常に見える)
   private rescueSurvivorSprites = new Map<string, Sprite>(); // 救助NPC本体スプライト(2コマ歩き・足元アンカー・y-sort)
@@ -1204,6 +1205,7 @@ export class PixiScene {
       this.arenaGfx, // 囲い系イベントの柵リング(地面・アクターの下・world座標)
       this.returnGfx, // 帰還サークル(地面・world座標)
       this.baseSitesGfx, // 拠点候補地サークル(地面・world座標)
+      this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
       this.playerGroundPool,
       this.playerLight,
@@ -2304,6 +2306,7 @@ export class PixiScene {
     this.syncArena(s.activeEvent, now);
     this.syncReturnCircle(s.returnCircle, now);
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.syncBossCorpse(s.bossCorpse, now);
     this.syncLowHpVignette(s.player.health, now);
@@ -5237,6 +5240,23 @@ export class PixiScene {
       // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
     }
     this.drawBaseSoldiers(sites, now);
+  }
+
+  // ハンターの視界(索敵)範囲を薄い紫サークルで表示(社長指示)。撤退中は出さない。
+  // ジャンプ範囲もこの円内に限定(store 側でゲート)=見た目と挙動が一致する。
+  private syncHunterVision(enemies: Enemy[], now: number) {
+    const g = this.hunterVisionGfx;
+    g.clear();
+    if (this.isLabStage) return;
+    const R = HUNTER_VISION_RANGE;
+    const pulse = 0.6 + 0.4 * Math.sin(now / 620);
+    for (const e of enemies) {
+      if (e.type !== 'hunter' || e.hunterFleeing) continue;
+      const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+      if (this.distanceOutsideViewport(cx, cy, R + 40) > 0) continue; // 円が完全に画面外なら描かない
+      g.circle(cx, cy, R).fill({ color: 0x7c3aed, alpha: 0.05 });                          // 薄い紫の塗り
+      g.circle(cx, cy, R).stroke({ width: 3, color: 0xa78bfa, alpha: 0.12 + 0.08 * pulse }); // 境界(脈動)
+    }
   }
 
   // 拠点駐留兵士の立ち絵。救助NPCの shooter 素材を流用(足元アンカー・y-sort・向きEMA)。

@@ -34,7 +34,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  ENEMY_ATTACK_SPEED_MULT
+  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -254,7 +254,7 @@ const HUNTER_START_MS = 180000;            // 出現開始(3分)
 const HUNTER_MAX_PER_RUN = 2;              // 1ステージ(=1出撃)最大2回
 const HUNTER_RESPAWN_CD_MIN_MS = 90000;    // 再出現CD最短(90秒)
 const HUNTER_RESPAWN_CD_SPAN_MS = 30000;   // +0〜30秒(=90〜120秒)
-const HUNTER_DETECT_RANGE = 720;           // 索敵範囲(広め)
+const HUNTER_DETECT_RANGE = HUNTER_VISION_RANGE; // 索敵範囲(=視界範囲。描画/ジャンプ範囲と共有)
 const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
 const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(消滅)
 const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目

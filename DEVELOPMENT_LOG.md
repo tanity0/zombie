@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1150 — ハンター視界範囲を薄紫で表示＋ジャンプは視界範囲内のみ(社長指示)
+
+- 視界(索敵)範囲を単一定数 `HUNTER_VISION_RANGE`(=720) に共有化(useGameLoop発見判定/store/描画)。
+- 描画: `hunterVisionGfx` で非撤退ハンターの周囲に薄い紫サークル(塗りα0.05＋境界α脈動)を地面層に。
+- ジャンプ: giantbatスケジューラのジャンプ距離ゲートを**ハンターのみ `HUNTER_VISION_RANGE` 内に限定**(他=従来700)。
+- 負荷 1/10(地面サークル数枚・非撤退ハンターのみ・画面外カリング)。
+- 検証: typecheck / lint / build OK。変更: `gameStore.ts`・`useGameLoop.ts`・`pixiScene.ts`・`package.json`。
+
 ## v0.25.1149 — 出撃時ロードの「ゾンビサバイバル」表示を撤去(控えめ表示)(社長指示)
 
 - `LoadingScreen` に `compact` を追加。出撃時のレンダラ初期化オーバーレイ(タイトル直後の本ロード以外)は

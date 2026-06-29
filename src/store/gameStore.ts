@@ -940,6 +940,9 @@ const HANDGUN_RANGE_REF = 176;
 // パンプキン・バットのジャンプ)の溜め・クールダウン・動作。近接の通常接触ダメージ間隔と
 // ゾンビの停止/突進リズムは対象外(据え置き)。すぐ戻せる単一定数: 1.0=従来 / 1.2=現在。
 export const ENEMY_ATTACK_SPEED_MULT = 1.2;
+// ハンター変異体の視界(索敵)範囲(px)。useGameLoop の発見判定・updateEnemies のジャンプ範囲・
+// pixiScene の薄紫サークル表示で共有する単一の値(社長指示)。
+export const HUNTER_VISION_RANGE = 720;
 
 // 犬型(werewolf): ハンドガン射程より少し外で減速→2倍速で突進。
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
@@ -5317,7 +5320,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
           const opts: ('dash' | 'jump')[] = [];
           if (gameTime >= (enemy.gbDashReadyAt ?? 0) && dist > 80 && dist < 1000) opts.push('dash');
-          if (gameTime >= (enemy.gbJumpReadyAt ?? 0) && dist > 40 && dist < 700) opts.push('jump');
+          // ジャンプはハンターのみ「視界範囲内(HUNTER_VISION_RANGE)」に限定(社長指示)。他(giantbat)は従来700。
+          const jumpRange = enemy.type === 'hunter' ? HUNTER_VISION_RANGE : 700;
+          if (gameTime >= (enemy.gbJumpReadyAt ?? 0) && dist > 40 && dist < jumpRange) opts.push('jump');
           if (opts.length > 0) {
             const pick = opts[Math.floor(Math.random() * opts.length)];
             const jitter = (ms: number) => ms * (0.8 + Math.random() * 0.4);
