@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1125 — 拠点NPC#3: 担当エリア進入で担当NPCが「遠い時用」セリフ(社長指示)
+
+- 拠点NPC機能#3(#1と連動)。プレイヤーが担当エリア(セクター)に入ったら、その担当NPCが neglectFar
+  (遠い時用)コメントを発言。`npcAreaEnterReact(sectorIdx)` を新設(該当NPCで `pickNpcLine('neglectFar')`)。
+  useGameLoop でプレイヤーのセクター(`poiSectorIndex`)を監視し、原点ハブ(`AREA_SECTOR_ENTER_DIST=1200`以内)は
+  除外、十分外へ出てセクターが変わった時に発火。再びハブへ戻ると再アーム。連発は tryNpcLine のCDで抑止。
+- 検証: lint/typecheck/build OK。
+- 残り(順次): #2 武器庫(スタート常駐商人＋拠点中央の小サークルで遠隔利用) / ヘリ演出作り直し。
+
 ## v0.25.1124 — 拠点NPC#1: 担当エリアの担当NPCへ方角矢印(社長指示)
 
 - 拠点NPC機能#1。プレイヤーが居る担当エリア(セクター=`poiSectorIndex`)の**担当NPC(護衛軍人)1人だけ**へ

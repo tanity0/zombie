@@ -1737,6 +1737,7 @@ interface GameState {
   npcOpPrepReact: (x: number, y: number) => void;
   // プレイヤー無双時: プレイヤー近傍(witness距離内)の護衛が「称賛」セリフを出す。
   npcPraiseReact: () => void;
+  npcAreaEnterReact: (sectorIdx: number) => void; // 担当エリア進入時にその担当NPCが「遠い時用」セリフ。
   stunEnemy: (id: string, until: number) => void;
   rootEnemy: (id: string, until: number) => void;
   knockbackEnemy: (id: string, dirX: number, dirY: number, multiplier?: number, maxStrength?: number) => void;
@@ -4834,6 +4835,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!best) return;
     const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
     get().tryNpcLine(sol.name, 'praise', pickNpcLine(best.soldierIndex, 'praise', sol.praise), PRAISE_CAT_CD_MS);
+  },
+  // 担当エリア(セクター)に入った時=その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1と連動)。
+  npcAreaEnterReact: (sectorIdx) => {
+    const s = get();
+    if (s.escorts.length === 0) return; // 護衛NPCが居る出撃のみ
+    const idx = ((sectorIdx % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+    const sol = BASE_SOLDIERS[idx];
+    get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
   },
   tryNpcLine: (name, category, text, categoryCdMs) => {
     const s = get();

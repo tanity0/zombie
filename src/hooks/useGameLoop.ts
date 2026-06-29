@@ -67,7 +67,7 @@ import {
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
-import { bossLairPos } from '../world/pois';
+import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
@@ -224,6 +224,7 @@ const EVENT_SPAWN_AGGRO_RANGE = 300;
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 210;        // 囲い半径(閉じ込め円)
+const AREA_SECTOR_ENTER_DIST = 1200;   // 担当エリア進入セリフ(neglectFar)を出す最小距離(原点ハブ付近は除外)
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
 // 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
@@ -472,6 +473,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const suppCaptureCountRef = useRef<number>(0);
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
+  const areaSectorRef = useRef<number>(-1); // 担当エリア(セクター)進入セリフ用。現在のセクター(ハブ付近では-1)。
   // ゾーン判定の間引き用カウンタ + 深層域BGM(逆再生)の現フェーズ。
   const zoneTickRef = useRef<number>(0);
   const deepBgmPhaseRef = useRef<DeepBgmPhase>('shallow');
@@ -952,6 +954,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
+          areaSectorRef.current = -1; // 担当エリア進入セリフも再アーム
           plantGuaranteedRef.current = false;    // 保証出現フラグも再アーム
           werewolfGuaranteedRef.current = false;
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
@@ -1298,6 +1301,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
               // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
               if (zoneIdx > prevZone) playSfx('event-start');
+            }
+            // 担当エリア(セクター)進入で、その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1連動)。
+            // ハブ付近(原点近く)は除外。十分外へ出てセクターが変わった時に発火。CD は tryNpcLine が担保。
+            const sec = poiSectorIndex({ x: pcx, y: pcy });
+            if (Math.hypot(pcx, pcy) <= AREA_SECTOR_ENTER_DIST) {
+              areaSectorRef.current = -1; // ハブに居る間はリセット=再び外へ出れば必ず発火
+            } else if (sec !== areaSectorRef.current) {
+              areaSectorRef.current = sec;
+              useGameStore.getState().npcAreaEnterReact(sec);
             }
           }
           const liveEnemies = useGameStore.getState().enemies;
