@@ -133,9 +133,10 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 const ESCORT_SPEED = RESCUE_SURVIVOR_SPEED; // 前進速度=レスキューと同じ通常速(社長指示)。画面内のときだけ前進。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
-// フェイザー(名簿index7)は特別: 射撃ダメージが他NPCの2倍。ただしレアなので出現率が低い(社長指示)。
+// フェイザー(名簿index7)は特別: 2丁拳銃で1射につき2発撃つ=合計ダメージ2倍(1発は通常と同じ)。
+// ただしレアなので出現率が低い(社長指示)。
 const PHASER_INDEX = 7;
-const PHASER_DMG_MULT = 2;             // フェイザーの1射ダメージ倍率
+const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
 const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
 const ESCORT_PATROL_R = 0.8;            // 制圧後に巡回する円の半径(BASE_CAPTURE_RADIUS×この割合=縁寄り。社長指示)
@@ -7149,7 +7150,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
           let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-          escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
+          if (esc.soldierIndex === PHASER_INDEX) {
+            // 2丁拳銃: 進行方向に直交する向きへ±オフセットして2発(各通常ダメージ=合計2倍)。
+            const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
+            escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex });
+            escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex });
+          } else {
+            escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
+          }
           face = dx < 0 ? -1 : 1;
         }
       } else if (base.status === 'captured') {
@@ -7361,7 +7369,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().addProjectile({
         id: `proj-escort-${Math.floor(now)}-${Math.random().toString(36).slice(2, 6)}`,
         x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9, // 胸の高さから発射(足元アンカーなので少し上)
-        speed: 680, damage: ESCORT_DMG * (sh.soldierIndex === PHASER_INDEX ? PHASER_DMG_MULT : 1), // フェイザーは2倍
+        speed: 680, damage: ESCORT_DMG, // フェイザーは2発撃つ(2丁拳銃)ことで合計2倍。1発は通常と同じ。
         direction: { x: sh.dx, y: sh.dy },
         weaponType: 'handgun', weaponKey: 'escort',
         duration: 1200, createdAt: Date.now(),

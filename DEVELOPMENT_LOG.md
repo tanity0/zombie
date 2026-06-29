@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1151 — フェイザー2丁拳銃化＋ハンター出現(発見)アテンション(社長指示)
+
+- **フェイザー2丁拳銃**: 1射ダメージ2倍をやめ、**1射につき2発撃つ**(進行方向に直交へ±`PHASER_GUN_OFFSET`px
+  ずらし)。各弾は通常ダメージ=合計2倍。`PHASER_DMG_MULT` を撤去し `damage: ESCORT_DMG` に戻す。
+- **ハンター出現アテンション**: 発見(追跡開始)時にカメラがハンターへ高速パン→ホールド→戻る
+  (`triggerAttention`)。自分のアテンションで即撤退しないよう、撤退トリガ用 `retreatCinematic` を
+  attention 除外で分離(出現禁止/索敵abort用の `cinematic` は従来どおり attention 含む)。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `gameStore.ts`・`useGameLoop.ts`・`package.json`。
+
 ## v0.25.1150 — ハンター視界範囲を薄紫で表示＋ジャンプは視界範囲内のみ(社長指示)
 
 - 視界(索敵)範囲を単一定数 `HUNTER_VISION_RANGE`(=720) に共有化(useGameLoop発見判定/store/描画)。

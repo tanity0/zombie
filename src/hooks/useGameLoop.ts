@@ -1348,6 +1348,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「ボス/リーパー/演出中」= 出現禁止＆追跡中なら撤退。activeEvent は出現禁止のみ(追跡中は元々他イベント出ない)。
           const giantOrReaper = hs.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
           const cinematic = hs.bossChasing || !!hs.attention || hs.redNight?.phase === 'active' || giantOrReaper;
+          // 撤退トリガ用は attention を除外(ハンター発見時に自分で出すアテンションで即撤退しないように)。
+          const retreatCinematic = hs.bossChasing || hs.redNight?.phase === 'active' || giantOrReaper;
           const spawnBlocked = cinematic || !!hs.activeEvent;
 
           // 画面外スポーン地点(プレイヤー近場の画面端〜外)。
@@ -1418,6 +1420,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                   useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                   spawnFlash('rgba(180,40,40,0.18)', 220);
+                  // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。
+                  useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2);
                 }
               } else if (H.detectStartAt !== 0) {
                 H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
@@ -1441,7 +1445,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった。
               const nearBase = hs.baseSites.some(b => b.status === 'captured' && Math.hypot(hpx - b.x, hpy - b.y) <= HUNTER_BASE_SAFE_RADIUS);
-              if (nearBase || cinematic) {
+              if (nearBase || retreatCinematic) {
                 useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
                 H.phase = 'retreat';
                 useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
