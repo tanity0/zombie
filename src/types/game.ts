@@ -304,6 +304,8 @@ export interface Enemy {
   // ハンター変異体: 撤退中フラグ。true の間は updateEnemies の通常追跡から除外し、専用イベント
   // コントローラ(useGameLoop)がプレイヤーから離れる方向へ移動させ、画面外で消滅させる。
   hunterFleeing?: boolean;
+  // ハンター変異体: 検知済み(プレイヤーを視界に捉えた=被監視 or 追跡中)。true の間だけ方角矢印を出す。
+  hunterAlerted?: boolean;
   // パニッシャーで「巻き込まれて」ノックバックした敵の印。これ以上は連鎖させない(1次まで)。
   punisherHopped?: boolean;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。

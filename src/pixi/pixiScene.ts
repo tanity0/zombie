@@ -2336,7 +2336,8 @@ export class PixiScene {
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
         ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 });
+    const alertedHunters = s.enemies.filter(e => e.type === 'hunter' && e.hunterAlerted && !e.hunterFleeing).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -6876,7 +6877,8 @@ export class PixiScene {
     pois: { x: number; y: number; kind: 'boss' | 'cave' }[] = [],
     baseSites: { x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
-    playerCenter?: { x: number; y: number }
+    playerCenter?: { x: number; y: number },
+    hunters: { x: number; y: number }[] = []
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -7021,6 +7023,37 @@ export class PixiScene {
           }
         }
       }
+    }
+
+    // ハンター変異体の方角矢印(社長指示): 視界に入った(=検知された)ハンターを赤い矢印で示す。
+    // 画面外のときだけ画面端に表示(画面内=直接見えるので不要)。撤退中は出さない(呼び出し側でフィルタ済み)。
+    for (const ht of hunters) {
+      const tx = ht.x - camera.x;
+      const ty = ht.y - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist;
+      const ey = cyC + dy * tdist;
+      const color = 0xef4444; // 脅威=赤
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.7 + 0.25 * pulse });
+      // 牙のあるシルエット(白頭+赤い目+下向きの牙)。
+      g.circle(ex, ey - 1, 4.2).fill({ color: 0xe2e8f0, alpha: 0.96 });
+      g.circle(ex - 1.7, ey - 1.4, 1.1).fill({ color, alpha: 0.95 });
+      g.circle(ex + 1.7, ey - 1.4, 1.1).fill({ color, alpha: 0.95 });
+      g.poly([ex - 2, ey + 1, ex - 1, ey + 5, ex, ey + 1]).fill({ color: 0xe2e8f0, alpha: 0.96 }); // 牙
+      g.poly([ex + 2, ey + 1, ex + 1, ey + 5, ex, ey + 1]).fill({ color: 0xe2e8f0, alpha: 0.96 });
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
 
     // イベント(囲い/救助)の場所マーカー。画面外のとき必ず位置を示す(社長指示=各イベントは常にマップ表示)。

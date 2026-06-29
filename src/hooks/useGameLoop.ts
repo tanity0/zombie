@@ -1345,6 +1345,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             h.fixed = true;              // 屋外リサイクル/カリング対象外=コントローラが寿命を完全管理
             h.vx = 0; h.vy = 0;
             if (search) { h.dormant = true; h.aggroRange = 0; } // 索敵=静止・自動起床しない(発見で起こす)
+            else h.hunterAlerted = true; // 増援は発見済み=最初から矢印表示
             addEnemy(h);
             return h.id;
           };
@@ -1390,6 +1391,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (H.detectStartAt === 0) {
                   H.detectStartAt = newGameTime;
                   playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)
+                  // 検知=矢印を出す(被監視中の索敵個体に方角マーカー)。
+                  useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === H.primaryId ? { ...e, hunterAlerted: true } : e) }));
                   useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 } else if (newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
                   // 発見: 追跡開始。索敵個体を起こす。
@@ -1401,6 +1404,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               } else if (H.detectStartAt !== 0) {
                 H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
+                useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === H.primaryId ? { ...e, hunterAlerted: false } : e) })); // 矢印も消す
                 useGameStore.setState({ eventBannerText: '気配が消えた…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
             }
