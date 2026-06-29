@@ -1185,11 +1185,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('event-clear'); // 小イベント完了音
             }
           } else {
-            // 変異者大量発生(horde)の段階スポーン: 1秒に3体ずつ計18体。N体目(1始まり)で種類を出し分け
-            // (6=パンプキン / 12=ウルフ / 18=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
+            // 変異者大量発生(horde)の段階スポーン: 1秒に1体ずつ計18体(社長指示で3→1)。N体目(1始まり)で
+            // 種類を出し分け(6=パンプキン / 12=ウルフ / 18=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
             if (ae.kind === 'horde' && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT && newGameTime >= hordeSpawnRef.current.nextAt) {
               const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
-              for (let k = 0; k < 3 && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT; k++) {
+              for (let k = 0; k < 1 && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT; k++) {
                 const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..18)
                 const type: EnemyType = n === 6 ? 'pumpkin' : (n === 12 || n === 18) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
                 const ang = Math.random() * Math.PI * 2;
