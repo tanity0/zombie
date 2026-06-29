@@ -3,13 +3,31 @@ import React from 'react';
 interface LoadingScreenProps {
   benchmarkMode?: boolean;
   startup?: boolean; // 起動時の全素材ダウンロード用
+  // 出撃時のレンダラ初期化など「タイトル直後の本ロード以外」の短い待ちで使う控えめ表示。
+  // 大きな「ゾンビサバイバル」タイトルは出さず、スピナー＋小さな文言のみ(社長指示)。
+  compact?: boolean;
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, startup = false }) => {
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, startup = false, compact = false }) => {
   const title = 'ゾンビサバイバル';
   const subtitle = startup
     ? '素材をダウンロード中…'
     : benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中';
+
+  // 控えめ表示: 暗幕＋スピナー＋小さな「準備中…」だけ。ゲームタイトルは出さない。
+  if (compact) {
+    return (
+      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#06070d]/92 text-white">
+        <div className="flex flex-col items-center">
+          <div className="h-12 w-12 rounded-full border border-cyan-200/20 bg-white/5 shadow-[0_0_24px_rgba(34,211,238,0.14)]">
+            <div className="loading-sigil h-full w-full rounded-full" />
+          </div>
+          <div className="mt-3 text-[10px] uppercase tracking-[0.34em] text-cyan-100/45">Loading</div>
+          <div className="mt-1 text-[11px] text-white/45">準備中…</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

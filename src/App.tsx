@@ -193,7 +193,7 @@ function App() {
           キャンバスが未挿入で黒くなる。その間はローディング画面を被せて「まっくら」を防ぐ(社長指示)。
           fixed で全面に重ねる(レンダラ準備完了=初フレーム表示で自動的に外れる)。 */}
       {gameState === 'playing' && isPixiRenderer() && !rendererReady && (
-        <div className="fixed inset-0 z-40"><LoadingScreen startup /></div>
+        <div className="fixed inset-0 z-40"><LoadingScreen compact /></div>
       )}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}

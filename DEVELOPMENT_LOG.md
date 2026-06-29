@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1149 — 出撃時ロードの「ゾンビサバイバル」表示を撤去(控えめ表示)(社長指示)
+
+- `LoadingScreen` に `compact` を追加。出撃時のレンダラ初期化オーバーレイ(タイトル直後の本ロード以外)は
+  **大タイトル「ゾンビサバイバル」/タイトル背景/「素材をDL中」文言を出さず**、暗幕＋スピナー＋小さな「準備中…」のみ。
+- `App.tsx` の出撃オーバーレイを `<LoadingScreen compact />` に。タイトル直後の起動ロードは従来どおり(`startup`)。
+- 検証: typecheck / lint / build OK。変更: `src/components/LoadingScreen.tsx`・`src/App.tsx`・`package.json`。
+
 ## v0.25.1148 — フェイザー: 攻撃力2倍・出現率を低く(レア)(社長指示)
 
 - 護衛NPCの名簿(soldierIndex=素性)と位置(baseId=sector)を運用上分離(データ的には元から分離済み)。
