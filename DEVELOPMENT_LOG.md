@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1136 — ヘリ演出修正: 演出用NPCを撤去し、既存の上下左右の兵士をフェードイン(社長指示)
+
+- 横一列の演出用NPC4人(introNpcs)を撤去。代わりに**開始時から地面に居る護衛軍人(escorts=上下左右の4人)**を
+  ヘリ離陸タイミングでフェードイン。`makeEscorts` が px,py 周囲に4人配置している既存NPCがそれ。
+- `currentIntroFade(now)` を共通ヘルパ化し、プレイヤー本体と `drawEscorts` の両方へ適用(同期)。
+- 検証: typecheck / lint / test(75 pass) / build OK。
+- 変更: `src/pixi/pixiScene.ts`・`package.json`。
+
+## v0.25.1135 — ハンターの方角矢印: 検知(視界に入った)時に赤い脅威矢印(社長指示)
+
+- 検知/追跡中(`hunterAlerted`)かつ非撤退のハンターに、画面外のとき画面端へ赤い脅威矢印(牙シルエット)。
+- `Enemy.hunterAlerted` を追加。被監視になった瞬間ON/範囲外へ逃げ切るとOFF/増援はON。`syncArrows` に hunters 引数。
+- 検証: typecheck / lint / test / build OK。変更: `types/game.ts`・`pixi/pixiScene.ts`・`hooks/useGameLoop.ts`。
+
 ## v0.25.1134 — レベルアップSEを追加(社長提供)
 
 - 提供音を `public/audio/sfx/level-up.mp3` に配置。`audioManager` に SfxKey `'level-up'`

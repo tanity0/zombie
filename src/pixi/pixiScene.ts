@@ -804,7 +804,6 @@ export class PixiScene {
   private seeThroughLerp = 1;
   private playerRidingHeli = false; // フェーズA中=プレイヤーをヘリ前面(danceUiLayer)へ移しているか
   private helicopter = new Sprite(); // 登場演出のヘリ(画像 'helicopter' 登録時のみ表示)
-  private introNpcs: Sprite[] = [];  // 登場演出: ヘリ離陸と同時にフェードインする随伴NPC4人(rescue/shooter 流用)
   // 錬金術の魔法陣: 足元に常設する地面スプライト。チャネル中だけ alpha=溜め進捗で
   // 連続フェード(透明→完成で不透明)。手続き的リングは廃止しこれに置き換え。
   private alchemyCircle = new Sprite();
@@ -2109,7 +2108,6 @@ export class PixiScene {
     this.introUntil = s.introUntil;
     this.introActive = s.introUntil === -1 || (s.introUntil > 0 && now < s.introUntil);
     this.syncIntroHelicopter(s.player, now);
-    this.syncIntroNpcs(s.player, now);
 
     // Focal plane for the pseudo-perspective scale = the player's feet.
     const pfb = playerFootBox(s.player);
@@ -3944,46 +3942,17 @@ export class PixiScene {
     this.helicopter.visible = this.helicopter.alpha > 0.02;
   }
 
-  // 登場演出の随伴NPC4人。ヘリが飛び立つタイミング(takeoffStart)からプレイヤーと一緒にフェードイン。
-  // rescue/shooter 素材を流用。着地地点(プレイヤー足元)の左右に整列。world座標の danceUiLayer に置く。
-  private syncIntroNpcs(player: Player, now: number) {
-    const tex = getTexture('rescue/shooter-0') ?? getTexture('rescue/shooter-1');
+  // 登場演出のフェードイン量(0→1)。ヘリが飛び立つ(takeoffStart)までは0、その後フェードイン。
+  // 登場中でなければ常に1。プレイヤー本体＋開始時から地面に居る護衛軍人(escorts=上下左右の4人)を
+  // 同じタイミングで出すために共有する(社長指示:演出用の別NPCは出さず、既存の兵士をフェードインさせる)。
+  private currentIntroFade(now: number): number {
+    if (!this.introActive) return 1;
     const t = this.introUntil === -1
       ? 0
       : Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-    let fade = 0;
-    if (this.introActive && tex) {
-      const hf = PLAYER_INTRO_HELI_FRAC;
-      const takeoffStart = hf + HELI_SIT_MS / PLAYER_INTRO_MS;
-      const f = t <= takeoffStart ? 0 : Math.min(1, (t - takeoffStart) / Math.max(0.001, (1 - takeoffStart) * 0.8));
-      fade = f * f * (3 - 2 * f);
-    }
-    // 遅延生成(テクスチャ受領後)。ヘリより後に追加し、直後にヘリを前面へ戻す(着地中はヘリが手前)。
-    if (this.introNpcs.length === 0 && tex) {
-      for (let i = 0; i < 4; i++) {
-        const sp = new Sprite();
-        sp.anchor.set(0.5, 1);
-        sp.visible = false;
-        this.L.danceUiLayer.addChild(sp);
-        this.introNpcs.push(sp);
-      }
-      this.L.danceUiLayer.addChild(this.helicopter); // ヘリを最前面に保つ
-    }
-    const offs = [[-78, 6], [-42, -2], [42, -2], [78, 6]]; // 足元の左右へ整列(外側ほど手前)
-    const fcx = player.x + player.width / 2;
-    const foot = player.y + player.height;
-    for (let i = 0; i < this.introNpcs.length; i++) {
-      const sp = this.introNpcs[i];
-      if (!tex || fade <= 0.01) { sp.visible = false; continue; }
-      if (sp.texture !== tex) sp.texture = tex;
-      const [ox, oy] = offs[i];
-      const sc = this.humanNpcScale(tex.width, tex.height, foot + oy);
-      sp.scale.set(sc * (ox < 0 ? 1 : -1), sc); // 外側を向く
-      sp.position.set(Math.round(fcx + ox), Math.round(foot + oy));
-      sp.alpha = fade;
-      sp.visible = true;
-      sp.zIndex = foot + oy;
-    }
+    const takeoffStart = PLAYER_INTRO_HELI_FRAC + HELI_SIT_MS / PLAYER_INTRO_MS;
+    const f = t <= takeoffStart ? 0 : Math.min(1, (t - takeoffStart) / Math.max(0.001, (1 - takeoffStart) * 0.8));
+    return f * f * (3 - 2 * f); // smoothstep
   }
 
   // 設置物の影幅(= スプライト実描画幅 × 0.55。アクターと同じ基準に揃える)。
@@ -4461,19 +4430,8 @@ export class PixiScene {
     const introSqY = 1;
     const introScale = 1;
     const riding = false; // 乗車演出は廃止(常に actorLayer)
-    let introFade = 1;    // 1=通常 / 登場中はヘリ離陸開始までは0、その後フェードイン
-    const computeIntroFade = (t: number) => {
-      const hf = PLAYER_INTRO_HELI_FRAC;
-      const takeoffStart = hf + HELI_SIT_MS / PLAYER_INTRO_MS;
-      const f = t <= takeoffStart ? 0 : Math.min(1, (t - takeoffStart) / Math.max(0.001, (1 - takeoffStart) * 0.8));
-      introFade = f * f * (3 - 2 * f); // smoothstep
-    };
-    if (this.introUntil === -1) {
-      computeIntroFade(0);
-    } else if (this.introUntil > 0) {
-      const t = Math.max(0, Math.min(1, 1 - (this.introUntil - now) / PLAYER_INTRO_MS));
-      if (t < 1) computeIntroFade(t);
-    }
+    // 登場フェードイン量(ヘリ離陸開始まで0→その後1)。escorts と共有(currentIntroFade)。
+    const introFade = this.currentIntroFade(now);
 
     // アンカー大技: 敵へダッシュしつつ「引き上げ→斬り下ろし」の弧を見た目だけ描く(負=上)。
     // 実座標(当たり/移動)は store のダッシュが担当。ここは body の Y を弧で持ち上げるだけ。
@@ -5300,7 +5258,8 @@ export class PixiScene {
         sp.texture = tex;
         const sc = this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
         sp.scale.set(sc * (esc.face < 0 ? -1 : 1), sc);
-        sp.alpha = this.horizonActorAlpha(esc.y); // 他のアクターと同じく地平線で透明化(空に浮かない)
+        // 登場演出中はヘリ離陸タイミングでフェードイン(プレイヤーと同期)。上下左右の4人がこれに該当。
+        sp.alpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now);
         sp.visible = sp.alpha > 0;
       } else sp.visible = false;
       sp.position.set(Math.round(esc.x), Math.round(esc.y));
