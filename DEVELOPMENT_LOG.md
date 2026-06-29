@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1138 — 変異者大量発生を段階スポーン化(社長指示)
+
+- 一斉18体をやめ、**1秒に3体ずつ計18体**を per-frame で配置(約6秒)。N体目で種類を出し分け:
+  **6体目=パンプキン / 12体目=ウルフ / 18体目=ウルフ**、それ以外=zombie/skeleton/bat ランダム。
+- `hordeSpawnRef`(spawned/nextAt)で進捗管理。終了判定は段階スポーン完了(18体出し切り)後に全滅でクリア
+  (出し切る前の誤終了を防止)。新ランでリセット。
+- 検証: typecheck / lint / test(75 pass) / build OK。
+- 変更: `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1137 — 進軍NPCのユニーク立ち絵(エドガー/ジョセフ)を反映(社長提供)
 
 - 提供素材(2コマ歩行・透過済み)を分割・トリミングして `public/sprites/npc/{edgar,joseph}-{0,1}.png`。

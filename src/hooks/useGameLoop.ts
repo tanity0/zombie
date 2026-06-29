@@ -432,6 +432,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
+  // 変異者大量発生(horde): 段階スポーン進捗。1秒に3体ずつ計18体(6体目=パンプキン/12体目/18体目=ウルフ)。
+  const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0 });
   // ハンター変異体イベントの状態機械(専用コントローラ)。phase が idle 以外の間=他イベント抑止。
   const hunterRef = useRef({
     phase: 'idle' as 'idle' | 'search' | 'chase' | 'retreat',
@@ -995,6 +997,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
+          hordeSpawnRef.current = { spawned: 0, nextAt: 0 };
           redNightFiredRef.current = false;
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
@@ -1124,15 +1127,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 return { x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist };
               };
               if (kind === 'horde') {
-                const types: EnemyType[] = ['zombie', 'skeleton', 'bat'];
-                for (let i = 0; i < ARENA_HORDE_COUNT; i++) {
-                  const t = types[Math.floor(Math.random() * types.length)];
-                  const pos = placeInRing(0.4);
-                  const e = spawnEnemyAt(t, pos.x - 16, pos.y - 16, newGameTime);
-                  e.fromEvent = true;
-                  e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0; // 近づくまで向かってこない
-                  addEnemy(e);
-                }
+                // 段階スポーン(社長指示): 一斉ではなく「1秒に3体ずつ」計18体を per-frame で配置。
+                // 配置/種類(6体目=パンプキン/12体目/18体目=ウルフ)は下の horde 更新ブロックが処理する。
+                hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime };
               } else {
                 // ミニボス: パンプキン+雑魚(社長指示。giantbat は使わない)。プレイヤーから少し離した円内へ。
                 const bx = pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
@@ -1188,6 +1185,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('event-clear'); // 小イベント完了音
             }
           } else {
+            // 変異者大量発生(horde)の段階スポーン: 1秒に3体ずつ計18体。N体目(1始まり)で種類を出し分け
+            // (6=パンプキン / 12=ウルフ / 18=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
+            if (ae.kind === 'horde' && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT && newGameTime >= hordeSpawnRef.current.nextAt) {
+              const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
+              for (let k = 0; k < 3 && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT; k++) {
+                const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..18)
+                const type: EnemyType = n === 6 ? 'pumpkin' : (n === 12 || n === 18) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
+                const ang = Math.random() * Math.PI * 2;
+                const dist = ARENA_EVENT_RADIUS * (0.4 + Math.random() * (0.92 - 0.4));
+                const e = spawnEnemyAt(type, ae.x + Math.cos(ang) * dist, ae.y + Math.sin(ang) * dist, newGameTime);
+                e.x -= e.width / 2; e.y -= e.height / 2; // 配置点を中心に
+                e.fromEvent = true;
+                e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0; // 近づくまで向かってこない
+                addEnemy(e);
+                hordeSpawnRef.current.spawned = n;
+              }
+              hordeSpawnRef.current.nextAt = newGameTime + 1000; // 次の3体は1秒後
+            }
             // 安全策: イベント敵(fromEvent)が何らかの理由(ノックバック/ジャンプ/逃走等で resolveMove のクランプを
             // 素通り)で囲い円の外=地平線の上(透明化ゾーン)へ出ると、見えない&到達不能になり fromEvent が0にならず
             // 「誰もいないのに終わらない」状態になる。毎フレーム、円外に出たイベント敵を円内へ引き戻す(出たときだけ set)。
@@ -1214,7 +1229,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             // 終了判定: 全滅(イベント敵0・開始直後グレース後) or 制限時間切れ。
             const eventEnemies = useGameStore.getState().enemies.filter(e => e.fromEvent).length;
-            const cleared = newGameTime - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0;
+            // horde は全18体を出し切る前に「全滅」で誤終了しないようガード(段階スポーン中は終わらせない)。
+            const hordeSpawnDone = ae.kind !== 'horde' || hordeSpawnRef.current.spawned >= ARENA_HORDE_COUNT;
+            const cleared = newGameTime - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0 && hordeSpawnDone;
             const timedOut = newGameTime >= ae.endsAt;
             if (cleared || timedOut) {
               if (cleared) {
