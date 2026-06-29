@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1120 — アンカーワイヤー: 敵に刺さると引き上げ→垂直斬り下ろし→着地ノックバック(社長承認)
+
+- 社長指示「アンカーが敵に刺さると即・敵頭上へ引き上げ→垂直にぶった切る→着地で周囲ノックバック」。全推奨で実装。
+- 分岐: フリック方向の直線・射程内に敵が居れば「大技」、居なければ従来の地点プラント(据え置き)。
+  - `triggerWireAnchor`(gameStore): フリック線上の最初の敵を検出。居れば待ち無しで即発動=敵中心へ
+    `WIRE_SLAM_MS=350ms` のダッシュ(=引き上げ)、`wireSlamEnemyId`/`wireSlamStart` を記録、空中無敵。
+  - 着地(useGameLoop): `wireSlamEnemyId` の敵を「ぶった切る」= 通常敵は即死フィニッシュ／ボスは非致死×5。
+    縦スラッシュ演出＋既存の着地強制ノックバック(全Lv)＋Lv3範囲ダメージは従来通り流用。
+    すり抜け小ダメージは斬り対象を除外して着地フィニッシュに残す。
+  - 描画(pixiScene): `wireSlamStart..wireDashUntil` で `sin` 弧の見た目ジャンプ(`WIRE_SLAM_JUMP_H=92`、負=上)を
+    body Y に加算。実座標/当たりは store のダッシュが担当(視覚と判定の分離)。
+- 型: `Player.wireSlamEnemyId/wireSlamStart` 追加。負荷 1/10(イベント単発・既存ダッシュ流用)。
+- 検証: lint/typecheck/test(75)/build OK。値(0.35s/高さ92/×5)は定数で調整可。
+
 ## v0.25.1119 — キャラ選択に「光の粒」パーティクル(社長指示)
 
 - 社長指示「キャラ選択画面に背景にある光と同じ光のパーティクル」。立ち絵の発光と同系(主に金色＋一部薄紫)の

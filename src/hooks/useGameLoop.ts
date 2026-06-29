@@ -25,6 +25,7 @@ import {
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC,
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
+  BOSS_MELEE_STUN_MULT,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
   PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
@@ -4120,6 +4121,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dmg = passExplode ? meleeDmg * WIRE_BOMB_DAMAGE_MULT : meleeDmg * WIRE_PASS_DAMAGE_MULT;
             for (const e of useGameStore.getState().enemies) {
               if (seen.has(e.id)) continue;
+              if (e.id === wp.wireSlamEnemyId) continue; // 大技の斬り下ろし対象は着地フィニッシュに残す(すり抜け小ダメージで先に倒さない)
               if (e.aiPhase === 'jump') continue; // 空中無敵は対象外
               if (!checkCollision(wp, e)) continue; // プレイヤーが重なった=すり抜け
               seen.add(e.id);
@@ -4176,6 +4178,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // wireDashUntil は常に増加するタイムスタンプなので、処理済みの値を覚えて重複発火を防ぐ。
           if (wp.wireDashUntil > 0 && nowW >= wp.wireDashUntil && wireLandedDashRef.current !== wp.wireDashUntil) {
             wireLandedDashRef.current = wp.wireDashUntil;
+            // 大技(敵に刺さって引き上げた)の着地: 斬り下ろし対象を「ぶった切る」。通常敵=即死フィニッシュ、
+            // ボスは即死せず近接フィニッシュ相当(×5)ダメージ。垂直スラッシュ演出付き。続けて下の着地ノックバックも走る。
+            if (wp.wireSlamEnemyId) {
+              const tgt = useGameStore.getState().enemies.find(e => e.id === wp.wireSlamEnemyId);
+              if (tgt && tgt.health > 0) {
+                const tcx = tgt.x + tgt.width / 2, tcy = tgt.y + tgt.height / 2;
+                if (isBossType(tgt.type)) {
+                  const bdmg = Math.max(1, Math.round(meleeDmg * BOSS_MELEE_STUN_MULT));
+                  useGameStore.getState().damageEnemy(tgt.id, bdmg, true); // ボス非致死
+                  spawnDamageNumber(tcx, tgt.y, bdmg, true);
+                } else {
+                  useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1); // 即死フィニッシュ
+                }
+                useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
+                useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');
+                spawnBurst(tcx, tcy, '#bae6fd', 14);
+                playSfx('slash-damage');
+              }
+              useGameStore.setState({ player: { ...useGameStore.getState().player, wireSlamEnemyId: '', wireSlamStart: 0 } });
+            }
             const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
             const explode = lvl >= 3;
             const dmg = meleeDmg * WIRE_BOMB_DAMAGE_MULT;

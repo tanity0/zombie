@@ -469,6 +469,7 @@ const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エ�
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
 const PLAYER_MELEE_SWING_MS = 200;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でスピード感↑: 230→200)
+const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャンプ高さ(px・負方向=上)。引き上げ→斬り下ろしの弧。
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
@@ -4458,6 +4459,14 @@ export class PixiScene {
       if (t < 1) computeIntro(t);
     }
 
+    // アンカー大技: 敵へダッシュしつつ「引き上げ→斬り下ろし」の弧を見た目だけ描く(負=上)。
+    // 実座標(当たり/移動)は store のダッシュが担当。ここは body の Y を弧で持ち上げるだけ。
+    let slamOffY = 0;
+    if (p.wireSlamEnemyId && p.wireSlamStart > 0 && p.wireDashUntil > p.wireSlamStart) {
+      const st = Math.max(0, Math.min(1, (now - p.wireSlamStart) / (p.wireDashUntil - p.wireSlamStart)));
+      slamOffY = -WIRE_SLAM_JUMP_H * Math.sin(Math.PI * st) * this.depthScale(fb.footY);
+    }
+
     // フェーズA(乗車中)はプレイヤーをヘリと同じ danceUiLayer の前面へ移し、ヘリのドアに重ねて見せる
     // (danceUiLayer は world と同一トランスフォームなので座標はそのまま)。降りたら actorLayer へ戻す。
     if (riding && !this.playerRidingHeli) {
@@ -4479,7 +4488,7 @@ export class PixiScene {
     }
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY,
+      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY + slamOffY,
     );
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;

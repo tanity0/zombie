@@ -150,6 +150,9 @@ export interface Player {
   // アンカーが敵に刺さった(吸着)場合: その敵ID と、引き寄せ→近接→ノックバックを解決する時刻。
   wireStuckEnemyId: string;
   wireStuckUntil: number;
+  // アンカーが敵に刺さった時の大技(引き上げ→垂直斬り下ろし→着地ノックバック)。
+  wireSlamEnemyId: string; // 斬り下ろす対象の敵ID('' = 大技なし)。着地でフィニッシュ。
+  wireSlamStart: number;   // 引き上げ開始時刻(Date.now)。描画のジャンプ弧の起点。終点は wireDashUntil。
   // In-run currency. Spent during the current play only.
   straps: number;
   // One-shot revive stock from the in-run vaccine shop item.

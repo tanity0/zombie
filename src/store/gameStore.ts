@@ -562,6 +562,8 @@ export const stickAimFactor = (strength: number) =>
 export const WIRE_DIST_BY_LEVEL = [0, 140, 180, 220] as const; // 刺す距離(Lv1=140px, +40/Lv・社長指示)
 export const WIRE_PLANT_DELAY_MS = 1000; // 刺してから高速移動が始まるまでの待ち(1秒)
 export const WIRE_DASH_MS = 150;         // 高速移動の所要時間(短い=高速)
+// アンカーが敵に刺さった時の大技: 引き上げ(~0.2s)＋斬り下ろし(~0.15s)=計0.35s。待ち無しで即発動。
+export const WIRE_SLAM_MS = 350;         // 引き上げ→斬り下ろし→着地 までの所要時間
 export const WIRE_COOLDOWN_BY_LEVEL = [0, 1000, 1000, 1000] as const; // 移動完了後のCD(全Lv1秒)
 export const WIRE_PASS_DAMAGE_MULT = 0.5; // すり抜けた敵への近接小ダメージ倍率
 export const WIRE_LAND_KNOCKBACK_SPEED = 400; // すり抜け/着地ノックバックの初速(px/s)
@@ -1977,6 +1979,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     wireDashSpeed: 0,
     wireStuckEnemyId: '',
     wireStuckUntil: 0,
+    wireSlamEnemyId: '',
+    wireSlamStart: 0,
     straps: 0,
     vaccineRevives: 0,
     equipment: emptyEquipLoadout(),
@@ -3880,6 +3884,45 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dist = WIRE_DIST_BY_LEVEL[lvl];
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
+
+    // フリック方向の直線上・射程内にいる最初の敵を探す = ワイヤーが刺さる敵。
+    // 居れば「大技」(即・引き上げ→垂直斬り下ろし→着地ノックバック)。居なければ従来の地点プラント。
+    let target: Enemy | null = null;
+    {
+      let bestProj = Infinity;
+      for (const e of get().enemies) {
+        if (e.aiPhase === 'jump') continue;           // 空中無敵は刺さらない
+        const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+        const rx = ecx - pcx, ry = ecy - pcy;
+        const proj = rx * ux + ry * uy;               // フリック方向の前方距離
+        if (proj < 0 || proj > dist) continue;
+        const perp = Math.abs(rx * -uy + ry * ux);    // 直線からの横ずれ
+        if (perp > Math.max(e.width, e.height) / 2 + 18) continue;
+        if (proj < bestProj) { bestProj = proj; target = e; }
+      }
+    }
+    if (target) {
+      const tcx = target.x + target.width / 2, tcy = target.y + target.height / 2;
+      const ddist = Math.max(0.001, Math.hypot(tcx - pcx, tcy - pcy));
+      set(s => ({
+        player: {
+          ...s.player,
+          wireAnchorX: tcx, wireAnchorY: tcy,        // 敵の真上(=敵中心)へ引き上げる
+          wireAnchored: false, wirePlantUntil: 0,
+          wireDashUntil: now + WIRE_SLAM_MS,         // 待ち無しで即発動
+          wireDashSpeed: ddist / (WIRE_SLAM_MS / 1000),
+          wireStuckEnemyId: '', wireStuckUntil: 0,
+          wireSlamEnemyId: target!.id, wireSlamStart: now,
+          invulnerable: true,                        // 空中は無敵(既存被弾無敵を流用)
+          invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_SLAM_MS),
+        },
+        anchorEnemyHitFxAt: now,                     // 命中SEのトリガ
+      }));
+      get().spawnRing(tcx, tcy, 6, 26, 'rgba(186,230,253,0.9)', 2, 200);
+      get().setSubWeaponCooldown('wire-anchor', gameTime + WIRE_SLAM_MS + WIRE_COOLDOWN_BY_LEVEL[lvl]);
+      return true;
+    }
+
     const ax = pcx + ux * dist;
     const ay = pcy + uy * dist;
     set(s => ({
@@ -7694,6 +7737,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           wireDashSpeed: 0,
           wireStuckEnemyId: '',
           wireStuckUntil: 0,
+          wireSlamEnemyId: '',
+          wireSlamStart: 0,
           straps: (state.startWithTestStraps ? 1000 : 0) + scrapBuilderBonus,
           vaccineRevives: 0,
           equipment: runLoadout,
