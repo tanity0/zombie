@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1199 — FF7Rボタン: 選択時の明るさをノーマル基準にベイク(社長指示)
+
+- 以前は「選択/ホバー時だけ」紫発色していたのを、`base = hi + dark` で**常時ベイク**=ノーマルが既に選択時の明るさ。
+  押下/選択時はごく僅か(白6%)だけ追加で明るく。変更: `src/components/ff7r.tsx`・`package.json`。
+
 ## v0.25.1198 — 斬撃HITの中央バーストを小さく(社長指示)
 
 - `drawSlashSprite` の burst スケールを `length*0.85`→`length*0.5`(streak線はそのまま)。変更: `src/pixi/pixiScene.ts`・`package.json`。
