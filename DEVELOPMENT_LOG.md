@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1186 — 銃弾ヒット音(shot-damage)をさらに音量UP(社長指示)
+
+- `shot-damage` volume 1.0→1.35。変更: `src/audio/audioManager.ts`・`package.json`。
+- (検討中) NPC銃声=handgun-fire流用＋距離減衰(遠いほど小・画面外無音)は別途proposalを提示。実装は社長承認後。
+
 ## v0.25.1185 — カウンター/リロード/KILLの音量UP＋出撃ローディングを完全暗転に(社長指示)
 
 - **音量UP**: counter 0.88→1.2 / reload 0.86→1.05 / melee-finish(KILL) 0.92→1.15(WebAudio gainは>1で増幅)。
