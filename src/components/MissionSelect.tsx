@@ -322,6 +322,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
             className="w-full"
             emphasis
+            fade="both"
             paddingY="0.8rem"
           >
             ▶ 出撃準備
@@ -393,9 +394,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
             <Ff7rButton
               onClick={() => startMission(stageId, selectedClass)}
-              className="shrink-0 active:scale-95 transition-transform"
+              className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="スタート"
               emphasis
+              fade="both"
               paddingY="0.8rem"
             >
               ▶ START

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1192 — FF7Rボタンの斜め(skew)を廃止し「両サイド/右フェード」ボタンに(社長指示)
+
+- `Ff7rButton` を四角いままに変更(skew撤去)。`fade='both'|'right'` で両サイド or 右だけフェード半透明＋紫の細線、
+  ホバー/選択でフェード方向に沿って紫が少し発色。START/出撃準備は `fade='both'`(中央寄せ・対称)。
+- タイトルの「同意して始める」ボタンも skew を廃し両サイドフェードに統一。
+- 検証: typecheck/lint(0)/build OK。変更: `src/components/ff7r.tsx`・`src/components/MissionSelect.tsx`・
+  `src/components/TitleScreen.tsx`・`package.json`。
+
 ## v0.25.1191 — FF7R風をMissionSelectのボタン/行へ展開＋緑STARTボタン画像を破棄(社長指示)
 
 - 共通パーツ化: `components/ff7r.tsx`(=`Ff7rButton` skew＋紫スライド帯) / `config/ff7r.ts`(右フェード/両サイドフェード/

@@ -108,7 +108,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
               </ul>
             </div>
             <div className="px-4 pb-4 pt-2">
-              {/* FF7R風: 片側ナナメ(skew)＋選択で紫の帯が左から差し込む。文字は白、線が紫。 */}
+              {/* FF7R風: 四角いまま両サイドへフェード＋紫の上下細線。ホバー/選択で少し発色(斜めは使わない)。 */}
               <button
                 onClick={(e) => { e.stopPropagation(); agree(); }}
                 className="group relative block w-full overflow-hidden"
@@ -116,14 +116,17 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
               >
                 <span
                   className="relative block py-3"
-                  style={{ transform: 'skewX(-12deg)', background: 'linear-gradient(95deg, rgba(168,85,247,0.16), rgba(168,85,247,0.02))', border: '1px solid rgba(168,85,247,0.55)' }}
+                  style={{
+                    background: 'linear-gradient(90deg, rgba(22,13,36,0.10) 0%, rgba(22,13,36,0.82) 32%, rgba(22,13,36,0.82) 68%, rgba(22,13,36,0.10) 100%)',
+                    borderTop: '1px solid rgba(168,85,247,0.7)',
+                    borderBottom: '1px solid rgba(168,85,247,0.7)',
+                  }}
                 >
-                  {/* 左から差し込む紫の選択帯 */}
                   <span
-                    className="absolute inset-0 -translate-x-full transition-transform duration-200 ease-out group-hover:translate-x-0 group-active:translate-x-0"
-                    style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.55), rgba(168,85,247,0.12))' }}
+                    className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100"
+                    style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(168,85,247,0.22) 35%, rgba(168,85,247,0.22) 65%, transparent 100%)' }}
                   />
-                  <span className="relative z-10 block text-[14px] font-bold tracking-[0.24em] text-white" style={{ transform: 'skewX(12deg)' }}>
+                  <span className="relative z-10 block text-center text-[14px] font-bold tracking-[0.24em] text-white">
                     同意して始める
                   </span>
                 </span>
