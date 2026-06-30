@@ -83,7 +83,7 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
   normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
 };
 const RARITY_BORDER: Record<SkillRarity, string> = {
-  normal: 'border-white/10', rare: 'border-sky-400/40', super: 'border-amber-300/55',
+  normal: 'border-white/10', rare: 'border-purple-400/40', super: 'border-amber-300/55',
 };
 
 // キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
@@ -257,7 +257,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <span className={`shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-[12px] font-bold ${
           stage.kind === 'ex' ? 'bg-fuchsia-400/15 text-fuchsia-100'
             : stage.kind === 'free' ? 'bg-emerald-400/15 text-emerald-100'
-            : 'bg-blue-400/15 text-blue-100'
+            : 'bg-purple-400/15 text-purple-100'
         }`}>
           {stage.main.code}
         </span>
@@ -413,7 +413,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   key={cc.id}
                   onClick={() => { playSfx('ui-select'); setSelectedClass(cc.id); }}
                   className={`relative shrink-0 flex flex-col items-center justify-end rounded-xl border pt-2 pb-1 px-2 transition-colors ${
-                    on ? 'border-blue-300/80 bg-blue-400/20' : 'border-white/15 bg-black/45 active:bg-black/60'
+                    on ? 'border-purple-300/80 bg-purple-400/20' : 'border-white/15 bg-black/45 active:bg-black/60'
                   }`}
                   style={{ width: 74, height: 80 }}
                   aria-pressed={on}
@@ -426,7 +426,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                     className="relative max-h-[50px] object-contain"
                     style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) ${on ? 'scale(1.08)' : 'scale(1)'}`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
                   />
-                  <span className={`relative mt-0.5 text-[8px] leading-none ${on ? 'text-blue-100' : 'text-white/55'}`}>{cc.name}</span>
+                  <span className={`relative mt-0.5 text-[8px] leading-none ${on ? 'text-purple-100' : 'text-white/55'}`}>{cc.name}</span>
                 </button>
               );
             })}
@@ -634,7 +634,7 @@ const AudioSettings: React.FC = () => {
     <Section label="サウンド">
       <label className="block">
         <div className="mb-1 flex items-center justify-between text-[12px] text-white/70"><span>BGM</span><span className="tabular-nums">{Math.round(bgmVol * 100)}%</span></div>
-        <input type="range" min={0} max={100} value={Math.round(bgmVol * 100)} onChange={e => { const v = Number(e.target.value) / 100; setBgmVol(v); setBgmVolume(v); }} className="w-full accent-blue-400" />
+        <input type="range" min={0} max={100} value={Math.round(bgmVol * 100)} onChange={e => { const v = Number(e.target.value) / 100; setBgmVol(v); setBgmVolume(v); }} className="w-full accent-purple-400" />
       </label>
       <label className="block">
         <div className="mb-1 flex items-center justify-between text-[12px] text-white/70"><span>SE</span><span className="tabular-nums">{Math.round(sfxVol * 100)}%</span></div>
@@ -761,7 +761,7 @@ const DevTools: React.FC<{
 
       {/* BENCH */}
       <button type="button" onClick={() => { setSelectedStageId(''); setSelectedFreeMode(false); useGameStore.getState().setPendingLoadout([]); onStartBenchmark(selectedClass); }}
-        className="w-full py-2.5 rounded-2xl text-sm font-semibold border border-cyan-200/30 bg-cyan-300/10 text-cyan-100 active:bg-cyan-300/15">
+        className="w-full py-2.5 rounded-2xl text-sm font-semibold border border-purple-200/30 bg-purple-300/10 text-purple-100 active:bg-purple-300/15">
         BENCH（ベンチマーク開始）
       </button>
 
@@ -773,7 +773,7 @@ const DevTools: React.FC<{
             <input type="number" inputMode="numeric" min={0} max={100} value={dropInput}
               onChange={e => { setDropInput(e.target.value); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setMeleeAmmoDropPercent(n); }}
               onBlur={() => setDropInput(String(useGameStore.getState().meleeAmmoDropPercent))}
-              className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60" />
+              className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
             <span className="text-white/60 text-sm">%</span>
           </div>
         </div>
@@ -784,7 +784,7 @@ const DevTools: React.FC<{
               <input type="number" inputMode="numeric" min={0} max={999} value={ammoInputs[f.type]}
                 onChange={e => { setAmmoInputs(prev => ({ ...prev, [f.type]: e.target.value })); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setAmmoPickupAmount(f.type, n); }}
                 onBlur={() => setAmmoInputs(prev => ({ ...prev, [f.type]: String(useGameStore.getState().ammoPickupAmounts[f.type]) }))}
-                className="w-full text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400/60" />
+                className="w-full text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
             </label>
           ))}
         </div>
@@ -809,7 +809,7 @@ const REVEAL_BY_RARITY: Record<SkillRarity, RevealCfg> = {
   // step は「beat + ポップ尺 + 見え切る保持 + (superは退場フェード320ms)」を必ず上回るよう長めに取る。
   // レア度が高いほど長く見せる(社長指示)。手動タップ/矢印で早送り可。
   normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 950,  ring: 'border-white/15' },
-  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1400, ring: 'border-sky-400/50 shadow-[0_0_18px_rgba(56,189,248,0.45)]' },
+  rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1400, ring: 'border-purple-400/50 shadow-[0_0_18px_rgba(168,85,247,0.45)]' },
   super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 2500, ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
 };
 
@@ -821,7 +821,7 @@ const bestRarity = (rs: GachaPullResult[]): SkillRarity =>
 type BurstCfg = { dim: string; flash: string; shard: string; shardCount: number; distBonus: number; shake: boolean; rings: string[]; glow: boolean };
 const BURST_FX: Record<SkillRarity, BurstCfg> = {
   normal: { dim: 'bg-black/90', flash: 'bg-white',     shard: 'bg-slate-200/90', shardCount: 12, distBonus: 0,  shake: false, rings: [],                                          glow: false },
-  rare:   { dim: 'bg-black/90', flash: 'bg-sky-200',   shard: 'bg-sky-200/90',   shardCount: 16, distBonus: 14, shake: false, rings: ['border-sky-300/70'],                       glow: false },
+  rare:   { dim: 'bg-black/90', flash: 'bg-purple-200',   shard: 'bg-purple-200/90',   shardCount: 16, distBonus: 14, shake: false, rings: ['border-sky-300/70'],                       glow: false },
   super:  { dim: 'bg-black/92', flash: 'bg-amber-200', shard: 'bg-amber-200/95', shardCount: 22, distBonus: 30, shake: true,  rings: ['border-amber-300/80', 'border-fuchsia-300/55'], glow: true  },
 };
 
@@ -1008,7 +1008,7 @@ const SkillGacha: React.FC = () => {
     const nextPromote = gachaPromotePercent(r.rarity, r.newLevel, r.dupeCount + 1, maxLv);
     const atMax = r.newLevel >= maxLv;
     const lvlCls = atMax ? 'gacha-lvl-pop3' : 'gacha-lvl-pop';
-    const lvlColor = atMax ? 'text-amber-300' : r.newLevel === 2 ? 'text-sky-200' : 'text-white';
+    const lvlColor = atMax ? 'text-amber-300' : r.newLevel === 2 ? 'text-purple-200' : 'text-white';
     const atFirst = cur === 0;
     const atLast = cur === total - 1;
     return createPortal(
@@ -1024,7 +1024,7 @@ const SkillGacha: React.FC = () => {
               {results.map((rr, i) => {
                 const rc = REVEAL_BY_RARITY[rr.rarity];
                 const rMax = rr.newLevel >= skillMaxLevel(rr.key);
-                const lc = rMax ? 'text-amber-300' : rr.newLevel === 2 ? 'text-sky-200' : 'text-white';
+                const lc = rMax ? 'text-amber-300' : rr.newLevel === 2 ? 'text-purple-200' : 'text-white';
                 return (
                   <div key={i} className={`rounded-lg border bg-black/40 px-3 py-2 ${rc.ring}`}>
                     <div className="flex items-center justify-between gap-2">

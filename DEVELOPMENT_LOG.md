@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1200 — 非ゲームUIをFF7R紫テーマに一新(アクセント色を青系→紫・社長指示)
+
+- ゲーム内以外の画面(Title/MissionSelect/GameOver/Loading/Shop)のクロームアクセントを青系→紫へ統一:
+  - MissionSelect: blue/sky(rare除く)/cyan のTailwind色＋インラインの cyan rgba を purple/rgba(168,85,247) へ。
+    レア度の意味色(rare=sky-300 / super=amber)は据え置き。
+  - GameOverScreen: blue-500→purple-600 等。LoadingScreen: cyan系＋インライン青グローを紫へ。
+  - パネル面は既に共通 `.glass-panel`(FF7R紫)で統一済み。ShopMenu は青系なし。
+- 検証: typecheck/lint(0)/build OK。変更: `src/components/MissionSelect.tsx`・`GameOverScreen.tsx`・`LoadingScreen.tsx`・`package.json`。
+- 残: GameOver/Shop等のボタンを Ff7rButton 化、キャラ選択チップやガチャ演出の細部詰めは順次。
+
 ## v0.25.1199 — FF7Rボタン: 選択時の明るさをノーマル基準にベイク(社長指示)
 
 - 以前は「選択/ホバー時だけ」紫発色していたのを、`base = hi + dark` で**常時ベイク**=ノーマルが既に選択時の明るさ。

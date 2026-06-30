@@ -229,7 +229,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               <div className="mt-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
                 <div className="grid grid-cols-[44px_1fr] gap-2">
                   <span className="text-white/40">device</span>
-                  <span className="truncate text-sky-100/80">{benchmarkResult.diagnostics.verdict}</span>
+                  <span className="truncate text-purple-100/80">{benchmarkResult.diagnostics.verdict}</span>
                 </div>
                 <div className="mt-0.5 grid grid-cols-2 gap-2 text-white/55">
                   <span className="truncate">
@@ -353,7 +353,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                           <span className="text-[13px] font-semibold text-white/85 truncate line-through decoration-rose-300/60">{def.name}</span>
                           {isSp
                             ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/25 text-amber-100 border border-amber-300/30 shrink-0">特殊</span>
-                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-blue-500/25 text-blue-100 border border-blue-300/25 shrink-0">R{def.tier}</span>}
+                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-purple-600/25 text-purple-100 border border-purple-300/25 shrink-0">R{def.tier}</span>}
                         </div>
                         <div className="text-[10px] text-white/55 leading-snug truncate">{equipmentDescription(def)}</div>
                       </div>
@@ -393,7 +393,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                           <span className="text-[13px] font-semibold text-white truncate">{def.name}</span>
                           {isSp
                             ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/30 text-amber-100 border border-amber-300/40 shrink-0">特殊</span>
-                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-blue-500/30 text-blue-100 border border-blue-300/30 shrink-0">R{def.tier}</span>}
+                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-purple-600/30 text-purple-100 border border-purple-300/30 shrink-0">R{def.tier}</span>}
                         </div>
                         <div className="text-[10px] text-white/65 leading-snug truncate">{equipmentDescription(def)}</div>
                       </div>
