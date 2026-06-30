@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1190 — FF7R風タイトルを忠実版に作り直し(右フェード半透明＋斜めスライド・社長指摘)
+
+- 前版は「汎用ネオンHUD」寄りだった指摘を受け、FF7Rの肝を踏襲して作り直し:
+  - パネルは**左=不透明→右へフェードして半透明**の横グラデ(FF7R最大の特徴)、左端に紫アクセントバー＋上下極細ヘアライン。
+  - グロー/四隅ブラケット/スキャンライン/菱形は撤去=**クリーン**に。文字は白、紫は線/選択帯のアクセントのみ。
+  - 同意ボタンは**片側ナナメ(skew)＋選択で紫の帯が左から差し込む**FF7R定番挙動に。STARTは上下の極細紫ライン＋控えめグロー。
+- 検証: typecheck/lint/build OK。変更: `src/components/TitleScreen.tsx`・`package.json`。
+- 次(社長指示): 他の選択肢/ボタンも同テイストに、両サイドフェードのパターンも用意。MissionSelectの緑STARTボタン画像は破棄しFF7R紫ボタンへ。
+
 ## v0.25.1189 — FF7R風UIテーマ(紫)をタイトル画面に試作(社長指示・option1)
 
 - ゲーム開始前UIをFF7リメイク風に。**まずタイトル画面だけ試作**(承認後に他画面へ展開する方針)。カラーは社長指定で**紫**
