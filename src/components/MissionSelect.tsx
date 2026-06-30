@@ -635,11 +635,11 @@ const AudioSettings: React.FC = () => {
       </label>
       <label className="block">
         <div className="mb-1 flex items-center justify-between text-[12px] text-white/70"><span>SE</span><span className="tabular-nums">{Math.round(sfxVol * 100)}%</span></div>
-        <input type="range" min={0} max={100} value={Math.round(sfxVol * 100)} onChange={e => { const v = Number(e.target.value) / 100; setSfxVol(v); setSfxVolume(v); }} className="w-full accent-emerald-400" />
+        <input type="range" min={0} max={100} value={Math.round(sfxVol * 100)} onChange={e => { const v = Number(e.target.value) / 100; setSfxVol(v); setSfxVolume(v); }} className="w-full accent-purple-400" />
       </label>
       <button
         onClick={() => { const next = !audioMuted; setAudioMutedState(next); setAudioMuted(next); }}
-        className={`w-full py-2.5 rounded-none text-sm font-semibold border flex items-center justify-center gap-2 ${audioMuted ? 'bg-purple-400/5 border-purple-400/10 text-white/70' : 'bg-emerald-400/10 border-emerald-300/35 text-emerald-100'}`}
+        className={`ff7r-fade-right w-full py-2.5 rounded-none text-sm font-semibold flex items-center justify-center gap-2 text-white transition-[filter] active:brightness-110 ${audioMuted ? 'is-off' : 'is-on'}`}
       >
         {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}{audioMuted ? '音なし' : '音あり'}
       </button>
@@ -657,7 +657,7 @@ const GraphicsSettings: React.FC = () => {
     <Section label="グラフィック">
       <button
         onClick={() => { const next = !bloom; setBloom(next); setBloomEnabled(next); playSfx('ui-select'); }}
-        className={`w-full py-2.5 rounded-none text-sm font-semibold border flex items-center justify-center gap-2 ${bloom ? 'bg-amber-400/10 border-amber-300/35 text-amber-100' : 'bg-purple-400/5 border-purple-400/10 text-white/70'}`}
+        className={`ff7r-fade-right w-full py-2.5 rounded-none text-sm font-semibold flex items-center justify-center gap-2 text-white transition-[filter] active:brightness-110 ${bloom ? 'is-on' : 'is-off'}`}
       >
         <Sparkles size={17} />ブルーム(発光){bloom ? 'あり' : 'なし'}
       </button>
@@ -1278,7 +1278,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
       <div className="menu-stagger px-3 pb-3 grid grid-cols-1 gap-2">
         <button type="button" onClick={() => setStartWithTestStraps(!startWithTestStraps)}
-          className={`flex items-center justify-between gap-3 rounded-none border px-3 py-2 text-left ${startWithTestStraps ? 'border-amber-300/35 bg-amber-300/15 text-amber-50' : 'border-purple-400/10 bg-purple-400/5 text-white active:bg-purple-400/10'}`}>
+          className={`ff7r-fade-right flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${startWithTestStraps ? 'is-on' : ''}`}>
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>
           <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
         </button>
@@ -1287,7 +1287,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const maxed = level >= 3;
           return (
             <button key={skillKey} type="button" disabled={maxed} onClick={() => setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1))}
-              className={`flex items-center justify-between gap-3 rounded-none border px-3 py-2 text-left ${maxed ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100' : 'border-purple-400/10 bg-purple-400/5 text-white active:bg-purple-400/10'}`}>
+              className={`ff7r-fade-right flex items-center justify-between gap-3 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''}`}>
               <span><span className="block text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">商人陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
               <span className="text-[10px] text-white/45">{maxed ? 'MAX' : '解放'}</span>
             </button>

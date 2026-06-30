@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1204 — オプション/開発施設のボタンも右フェード(FF7R)に統一(社長指示)
+
+- オプション: サウンドのミュート切替・グラフィックのブルーム切替を `ff7r-fade-right`(ON=`is-on`/OFF=`is-off`)へ。
+  SEスライダーの accent も emerald→purple。
+- 開発施設(WeaponDev): 「1000スクラップ開始」トグル・サブウェポン解放ボタンを `ff7r-fade-right`(ON/MAX=`is-on`)へ。
+  emerald/amber/fuchsia の旧配色を撤去。
+- 検証: typecheck/lint(0)/build OK。変更: `src/components/MissionSelect.tsx`・`package.json`。
+
 ## v0.25.1203 — 装備/ステージ/キャラ選択ボタンを右フェード化＋透明度UP＋「the ONE」削除(社長指示)
 
 - **右フェードボタン**: CSSユーティリティ `.ff7r-fade-right`(＋`.is-on`/`.is-off`)を新設。背景も枠線(`border-image`=横グラデ)も
