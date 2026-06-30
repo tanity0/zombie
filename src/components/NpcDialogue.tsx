@@ -62,6 +62,7 @@ export const NpcDialogue = () => {
               transform: 'translateX(-50%)',
               height: 96,
               width: 'auto',
+              maxWidth: 'none', // Tailwind preflight の img{max-width:100%} が width を枠(56px)へ詰めて縦伸びするのを回避
               imageRendering: 'pixelated',
             }}
           />

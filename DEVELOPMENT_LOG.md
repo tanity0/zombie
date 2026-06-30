@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1158 — 会話NPCバスト立ち絵の縦伸び修正＋被弾フラッシュ強化(社長指示)
+
+- **会話NPCバストの縦伸び修正**: Tailwind preflight の `img{max-width:100%}` が、`height:96/width:auto` の
+  バスト立ち絵の自動幅(~75px)を枠(56px)へ詰めてしまい、高さは96pxのまま=縦伸び(56×96)になっていた。
+  img に `maxWidth:'none'` を付与してアスペクト比を回復(`NpcDialogue.tsx`)。負荷 0/10(CSSのみ)。
+- **被弾フラッシュ強化**: `ENEMY_HIT_FLASH_STRENGTH` 0.95→1.0(全面白)、`ENEMY_HIT_FLASH_MS` 120→170ms。
+  加算オーバーレイのまま=フィルタ無しなので負荷据え置き(1/10)。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/components/NpcDialogue.tsx`・`src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1157 — 被弾した敵の背中側に「ドバッと火」破裂演出(軽量・指向性粒子＋小グロー)
 
 - **背中側の火破裂**: 銃弾ヒット時、弾の進行方向(=出口=背中側)へ火炎色の指向性粒子を噴く新アクション

@@ -411,8 +411,8 @@ const ENEMY_LIGHT_ENABLED = true;
 const ENEMY_LIGHT_CULL_COUNT = 7;
 const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
-const ENEMY_HIT_FLASH_MS = 120;        // 被弾フラッシュ(絵を加算で光らせる)の長さ
-const ENEMY_HIT_FLASH_STRENGTH = 0.95; // 加算オーバーレイの最大alpha(=光る強さ)
+const ENEMY_HIT_FLASH_MS = 170;        // 被弾フラッシュ(絵を加算で光らせる)の長さ(社長指示で強化: 120→170)
+const ENEMY_HIT_FLASH_STRENGTH = 1.0;  // 加算オーバーレイの最大alpha(=光る強さ。社長指示で強化: 0.95→1.0=全面白)
 const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
