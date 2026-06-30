@@ -118,6 +118,7 @@ const hitFireLen = (weaponType: string | undefined, shotgunPelletHits: number): 
 const FIRE_JET_DEDUP_MS = 180;
 
 const GRENADE_WEAPON_KEY = 'rifle-t3';
+const SMG_WEAPON_KEY = 'handgun-t3'; // マシンピストル(=サブマシンガン)。発射音を通常ハンドガンと分けるのに使用。
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
 // スキル: ボムカウンター = カウンター成立の瞬間にもプレイヤー中心で爆発(反射弾の爆発に加えて)。
@@ -2354,7 +2355,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (activeGun && !katanaActive && activeGun.category !== 'phill') {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
-            if (activeGun.category === 'handgun') playSfx('handgun-fire');
+            // handgun系のうちマシンピストル(=サブマシンガン, handgun-t3)だけ専用音、それ以外(ハンドガン/二丁)はhandgun-fire。
+            if (activeGun.category === 'handgun') playSfx(activeGun.key === SMG_WEAPON_KEY ? 'smg-fire' : 'handgun-fire');
             if (activeGun.category === 'shotgun') playSfx('shotgun-fire');
             // rifle系のうちグレネードランチャー(rifle-t3)だけ専用の発射音、それ以外(マグナム/スナイパー)はrifle-fire。
             if (activeGun.category === 'rifle') playSfx(activeGun.key === GRENADE_WEAPON_KEY ? 'grenade-launcher-fire' : 'rifle-fire');

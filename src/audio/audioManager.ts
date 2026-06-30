@@ -78,6 +78,7 @@ export type SfxKey =
   | 'headshot'
   | 'slash-damage'
   | 'handgun-fire'
+  | 'smg-fire'
   | 'shotgun-fire'
   | 'rifle-fire'
   | 'grenade-launcher-fire'
@@ -210,6 +211,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/handgun-fire.wav`, // 社長提供の新ハンドガン発砲音(WAV=Web Audioでデコード)
     volume: 0.52,
     minIntervalMs: 24,
+  },
+  'smg-fire': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/smg-fire.wav`, // 社長提供。サブマシンガン(マシンピストル=handgun-t3)の発射音
+    volume: 0.46,
+    minIntervalMs: 20, // 連射(CD100ms)に追従できるよう短め
   },
   'shotgun-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.wav`, // 社長提供の新ショットガン発砲音(WAV=Web Audioでデコード)

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1170 — サブマシンガン(マシンピストル=handgun-t3)専用発射音を追加
+
+- 新SFXキー `smg-fire`(`public/audio/sfx/smg-fire.wav`)を追加。handgun系のうち `activeGun.key === SMG_WEAPON_KEY`
+  (handgun-t3=マシンピストル)だけ専用音、それ以外(ハンドガン/二丁ハンドガン)は従来 `handgun-fire`。
+  volume 0.46 / minIntervalMs 20(連射CD100msに追従)。タレット/救助NPCの handgun-fire は対象外(従来通り)。
+- 検証: typecheck / lint / test(75 pass) / build(dist コピー確認)OK。変更: `src/audio/audioManager.ts`・
+  `src/hooks/useGameLoop.ts`(SMG_WEAPON_KEY＋分岐)・`public/audio/sfx/smg-fire.wav`(新規)・`package.json`。
+
 ## v0.25.1169 — マグナム系SE差し替え＋グレネードランチャー専用発射音を追加
 
 - **マグナム系(rifle-fire)**: 社長提供の mp3 で `public/audio/sfx/rifle-fire.mp3` を同名差し替え(マグナム/スナイパー
