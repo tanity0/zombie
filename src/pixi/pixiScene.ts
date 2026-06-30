@@ -31,7 +31,7 @@ import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
+import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -585,6 +585,9 @@ const TREE_VISUAL_SCALE = 1.65 * 1.5;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
+// 緑卵(mine)のプールスプライト表示サイズ(旧 per-frame Graphics の卵とほぼ同寸)。
+const EGG_VISUAL_W = 18;
+const EGG_VISUAL_H = 24;
 // ステージ4の焚き火(松明の置き換え)。横長の焚き火台なので幅広・低め。炎は台の中央(低い位置)。
 const CAMPFIRE_VISUAL_W = 60;
 const CAMPFIRE_VISUAL_H = 34;
@@ -3712,53 +3715,30 @@ export class PixiScene {
 
   private drawBreakableProp(view: PropView, prop: BreakableProp, now: number) {
     if (prop.type === 'mine') {
+      // 緑卵=ベイクしたプールスプライト1枚で描画(旧:per-frame Graphics の clear()+約12楕円塗りを撤去)。
+      // 「息づく」脈動はスケールの微振動だけで再現(per-frame Graphics は使わない)。
+      const tex = getEggTexture();
       const d = this.depthScale(prop.footY);
       const horizonAlpha = this.horizonActorAlpha(prop.footY);
-      const pulse = 0.72 + 0.28 * Math.sin(now / 320 + prop.footX * 0.04);
-      const w = 16 * prop.scale * d;
-      const h = 13 * prop.scale * d;
+      const pulse = 0.97 + 0.03 * Math.sin(now / 320 + prop.footX * 0.04);
 
       view.container.zIndex = prop.footY;
       view.container.alpha = horizonAlpha;
-      view.sprite.visible = false;
       view.light.visible = false;
       view.reflection.visible = false;
-
-      const g = view.flame;
-      g.clear();
-      const x = Math.round(prop.footX);
-      const y = Math.round(prop.footY - h * 0.62);
-      if (horizonAlpha > 0) {
-        const sx = x + w * 0.42;
-        const sy = y + h * 0.34;
-        const sw = w * 0.48;
-        const sh = h * 0.55;
-        g.ellipse(x, prop.footY - h * 0.03, w * 0.82, h * 0.28)
-          .fill({ color: 0x07100a, alpha: 0.38 });
-        g.ellipse(sx, sy + sh * 0.43, sw * 0.42, sh * 0.18)
-          .fill({ color: 0x07100a, alpha: 0.3 });
-        g.ellipse(sx, sy + sh * 0.14, sw * 0.35, sh * 0.48)
-          .fill({ color: 0x0b2113, alpha: 0.9 });
-        g.ellipse(sx - sw * 0.05, sy + sh * 0.06, sw * 0.26, sh * 0.36)
-          .fill({ color: 0x24351f, alpha: 0.78 });
-        g.ellipse(sx + sw * 0.08, sy - sh * 0.02, sw * 0.13, sh * 0.18)
-          .fill({ color: 0x8a9164, alpha: 0.1 + 0.06 * pulse });
-        g.ellipse(x, y + h * 0.24, w * 0.44, h * 0.62)
-          .fill({ color: 0x0b2113, alpha: 0.92 });
-        g.ellipse(x - w * 0.04, y + h * 0.14, w * 0.34, h * 0.48)
-          .fill({ color: 0x24351f, alpha: 0.86 });
-        g.ellipse(x + w * 0.08, y + h * 0.08, w * 0.22, h * 0.34)
-          .fill({ color: 0x52633a, alpha: 0.13 + 0.08 * pulse });
-        g.ellipse(x - w * 0.13, y - h * 0.1, w * 0.12, h * 0.16)
-          .fill({ color: 0x8a9164, alpha: 0.14 + 0.08 * pulse });
-        g.circle(x + w * 0.22, y + h * 0.2, Math.max(1.1, 1.4 * d * prop.scale))
-          .fill({ color: 0x11170d, alpha: 0.46 });
+      view.flame.clear();
+      view.sprite.visible = !!tex && horizonAlpha > 0;
+      if (tex) {
+        view.sprite.texture = tex;
+        view.sprite.position.set(Math.round(prop.footX), Math.round(prop.footY));
+        view.sprite.scale.set(containScale(EGG_VISUAL_W * prop.scale, EGG_VISUAL_H * prop.scale, tex.width, tex.height) * d * pulse);
       }
 
       const o = view.overlay;
       o.clear();
       if (now - prop.lastHit < 90) {
-        o.circle(x, y, Math.max(13, w * 0.62)).fill({ color: 0xffffff, alpha: 0.28 });
+        o.circle(Math.round(prop.footX), Math.round(prop.footY - EGG_VISUAL_H * 0.5 * d), Math.max(13, EGG_VISUAL_W * 0.7 * d))
+          .fill({ color: 0xffffff, alpha: 0.28 });
       }
       return;
     }

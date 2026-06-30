@@ -31,6 +31,48 @@ export const getGlowTexture = (): Texture => {
   return glowTex;
 };
 
+// Green insect egg (mine): baked ONCE into a canvas and drawn as a pooled
+// normal-blend sprite, replacing the old per-frame `Graphics` egg (clear() +
+// ~12 ellipse fills every frame). Upright mossy-green egg with an upper-left
+// highlight and a faint contact shadow baked at the base, so a single sprite
+// (anchor 0.5,1 at footX/footY) draws the whole thing. Tint/scale can vary it.
+let eggTex: Texture | null = null;
+export const getEggTexture = (): Texture => {
+  if (eggTex) return eggTex;
+  const w = 64, h = 84;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const cx = w / 2;
+  // contact shadow on the ground (baked at the very bottom).
+  ctx.beginPath();
+  ctx.ellipse(cx, h - 6, 20, 6, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(7,16,10,0.38)';
+  ctx.fill();
+  // egg body: upright oval, dark mossy green with an upper-left highlight.
+  const bodyCx = cx, bodyCy = 40, rx = 18, ry = 27;
+  const grad = ctx.createRadialGradient(bodyCx - 6, bodyCy - 12, 2, bodyCx, bodyCy, 32);
+  grad.addColorStop(0, 'rgba(120,135,90,1)');   // highlight ~#788d5a
+  grad.addColorStop(0.4, 'rgba(60,80,45,1)');    // mid ~#3c502d
+  grad.addColorStop(1, 'rgba(11,33,19,1)');      // shadow ~#0b2113
+  ctx.beginPath();
+  ctx.ellipse(bodyCx, bodyCy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  // subtle dark rim so the egg reads against bright ground.
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(8,18,11,0.5)';
+  ctx.stroke();
+  // bright speck highlight (upper-left).
+  ctx.beginPath();
+  ctx.ellipse(bodyCx - 7, bodyCy - 14, 4, 6, -0.3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(160,170,120,0.5)';
+  ctx.fill();
+  eggTex = Texture.from(canvas);
+  return eggTex;
+};
+
 // Visibility light: a near-solid white disc that drops off abruptly near the rim.
 // Used as a "hole" in the stage-2 darkness overlay (player + UV bars). The flat
 // core keeps the lit zone at full visibility, then it darkens sharply past ~radius
