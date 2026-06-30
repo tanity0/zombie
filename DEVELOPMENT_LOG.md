@@ -10,6 +10,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1165 — 被弾ファイアを気持ち小さく(HIT_FIRE_LEN 60→50)
+
+- 炎の長さを 60→50px に微縮小(社長指示「気持ち小さく」)。負荷変化なし。変更: `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1164 — 背中火の「単発でも2本/別方向に出る」を時間窓で間引き(前回のフレーム単位では不足)
 
 - **追加で判明**: ショットガンのペレットや跳弾は、近距離だと同一フレーム、**遠距離だと数フレームに分かれて**

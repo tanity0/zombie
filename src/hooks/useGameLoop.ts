@@ -96,8 +96,8 @@ import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 const MOVE_SPEED_MULT = 1.2;
 
 // 被弾時の「背中側にドバッと火」破裂演出: 2コマ立ち絵(spawnFireJet)＋根元の小グロー1個。
-// 炎の長さは敵の大きさに関係なく一定(社長指示)。プールsprite1枚なので安い。
-const HIT_FIRE_LEN = 60;
+// 炎の長さは敵の大きさに関係なく一定(社長指示)。プールsprite1枚なので安い。気持ち小さく(60→50)。
+const HIT_FIRE_LEN = 50;
 // 同じ敵に対して背中火を出してから、この時間は新しい火を出さない(=多弾/連射の重複を1本に間引く)。
 // ショットガンのペレットや跳弾が別方向から当たっても、最初の1本だけ残す→「2本/別方向に出る」を防ぐ。
 const FIRE_JET_DEDUP_MS = 180;
