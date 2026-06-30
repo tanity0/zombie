@@ -227,7 +227,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   'shotgun-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.wav`, // 社長提供の新ショットガン発砲音(WAV=Web Audioでデコード)
-    volume: 0.90, // ハンドガン以外をもう少し上げる(0.78→0.90)
+    volume: 1.1, // さらに上げる(社長指示。0.90→1.1)
     minIntervalMs: 32,
   },
   'rifle-fire': {

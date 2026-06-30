@@ -10,6 +10,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1220 — ショットガン発砲SEの音量を上げる(0.90→1.1・社長指示)
+
+- `shotgun-fire` volume 0.90→1.1。変更: `src/audio/audioManager.ts`・`package.json`。
+
 ## v0.25.1219 — 護衛弾の被弾音も距離減衰＋KILL背景を濃いワインレッドに(社長指示)
 
 - **被弾音の距離減衰**: 護衛NPC弾(weaponKey='escort')が敵に当たった時の `shot-damage`/`headshot` も、発砲音と同じ
