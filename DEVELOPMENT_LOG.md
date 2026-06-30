@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1174 — 銃弾が敵に当たった時のSE(shot-damage)を社長提供音に差し替え
+
+- 銃弾ヒット音 `shot-damage`(`useGameLoop`の projectile×enemy 命中で `playSfx('shot-damage')`)の音源を
+  社長提供 mp3 で同名差し替え。ヘッドショット(`headshot`)は別音のまま。配線・音量据え置き。dist コピー確認。
+- 変更: `public/audio/sfx/shot-damage.mp3`(差替)・`package.json`。
+
 ## v0.25.1173 — 敵HIT時の斬撃エフェクトを長く大きく(社長指示)
 
 - 共有の斬撃VFX(`spawnSlash`)を拡大: 長さ `26+8`→`44+12`、表示時間 `200`→`260ms`。描画(`drawEffectGfx` slash)の
