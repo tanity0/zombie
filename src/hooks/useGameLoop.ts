@@ -3902,6 +3902,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         const projectilesRemovedThisFrame = new Set<string>();
         const grenadeExplodedThisFrame = new Set<string>();
+        // 背中の火破裂は「敵1体につき1フレーム1本」に間引く。ショットガン等の複数弾(=見た目は単発)が
+        // 同一フレームに同じ敵へ複数命中すると、弾ごとに角度違いの火が出て「2本生える」ため(社長報告)。
+        const fireJetEnemiesThisFrame = new Set<string>();
         
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage, headshot }) => {
           const enemyForFx = collisionEnemies.find(e => e.id === enemyId);
@@ -3932,7 +3935,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
           // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(2コマ立ち絵=プールsprite1枚で安い)。
-          if (enemyForFx && projectile) {
+          // 敵1体につき1フレーム1本に間引く(複数弾の同時命中で角度違いの火が複数出る「2本生える」を防止)。
+          if (enemyForFx && projectile && !fireJetEnemiesThisFrame.has(enemyId)) {
+            fireJetEnemiesThisFrame.add(enemyId);
             const ecx = enemyForFx.x + enemyForFx.width / 2, ecy = enemyForFx.y + enemyForFx.height / 2;
             let dx = projectile.direction.x, dy = projectile.direction.y;
             const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;

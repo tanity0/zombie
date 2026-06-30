@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1163 — 背中の火が「2本生える」不具合を修正(敵1体1フレーム1本に間引き)
+
+- **不具合**: 火破裂を命中弾ごとに spawn していたため、ショットガン等の複数弾(見た目は単発)が同一フレームに
+  同じ敵へ複数命中すると、弾ごとに角度違いの火が出て「2本生える」状態だった(連射でも一瞬重なって見える)。
+- **修正**: `fireJetEnemiesThisFrame`(Set)で敵1体につき1フレーム1本に間引き。火の角度は spawn 時に
+  `e.angle` で固定済み=単発の中でコマ0→コマ1で角度は変わらない(社長の懸念点は元々問題なし)。挙動・バランス非変更。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1162 — 背中の火破裂サイズを敵サイズ非依存=一定に(社長指示)
 
 - 旧: `len = max(34, 敵幅×1.5)`(敵が大きいほど火も大きかった)。新: `HIT_FIRE_LEN = 60` 固定。
