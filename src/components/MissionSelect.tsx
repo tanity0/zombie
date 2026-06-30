@@ -409,10 +409,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <button
                   key={cc.id}
                   onClick={() => { playSfx('ui-select'); setSelectedClass(cc.id); }}
-                  className={`ff7r-fade-right relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] ${
-                    on ? 'is-on' : 'active:brightness-110'
+                  className={`relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] ${
+                    on ? '' : 'active:brightness-110'
                   }`}
-                  style={{ width: 74, height: 80 }}
+                  style={{
+                    width: 74, height: 80,
+                    // 枠は上下のみ(社長指示で左右の枠は削除)。背景は右フェードのまま。
+                    background: on
+                      ? 'linear-gradient(95deg, rgba(168,85,247,0.26) 0%, rgba(168,85,247,0.09) 55%, transparent 100%)'
+                      : 'linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.18) 55%, transparent 100%)',
+                    borderTop: `1px solid rgba(168,85,247,${on ? 0.85 : 0.4})`,
+                    borderBottom: `1px solid rgba(168,85,247,${on ? 0.85 : 0.4})`,
+                  }}
                   aria-pressed={on}
                 >
                   <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: cc.accent, opacity: on ? 0.85 : 0.3 }} />

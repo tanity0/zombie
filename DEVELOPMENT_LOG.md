@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1212 — キャラ選択チップの枠を上下のみに(左右の枠を削除・社長指示)
+
+- キャラ選択のドット立ち絵チップから `ff7r-fade-right`(左線＋border-image)を外し、**上下のborderのみ**に。背景は右フェード維持。
+  選択中=紫濃いめ/通常=控えめ。変更: `src/components/MissionSelect.tsx`・`package.json`。
+
 ## v0.25.1211 — NPCセリフを枠廃止＋上半身絵と同一の右フェード背景に(社長指示)
 
 - 旧: バスト枠(56×52 ボーダー/角丸/背景)＋セリフ(glass-pill＋amberボーダー)の2背景。→ **1つの右フェード背景**(glass-pill,
