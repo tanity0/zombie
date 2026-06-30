@@ -5354,9 +5354,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             const pick = opts[Math.floor(Math.random() * opts.length)];
             const jitter = (ms: number) => ms * (0.8 + Math.random() * 0.4);
             if (pick === 'dash') {
-              // 突進距離を2倍に(giantbat も同様にオーバーシュート)。
               // ダッシュ頻度を抑える(社長指示): 通常CD(±20%)にランダム追加CD(3〜10秒)を上乗せ=犬と同様。
-              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: atkUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS))) };
+              const dashCd = atkUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS)));
+              if (enemy.type === 'hunter') {
+                // ハンターは視界の外まで飛ばない(社長指示): 着地はプレイヤーの少し先まで(オーバーシュート小)に制限。
+                const hd = dist || 1;
+                const reach = dist + DASH_OVERSHOOT_PX;
+                return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx + ((pcx - ecx) / hd) * reach, aiTargetY: ecy + ((pcy - ecy) / hd) * reach, vx: 0, vy: 0, gbDashReadyAt: dashCd };
+              }
+              // giantbat は従来どおり突進距離2倍(オーバーシュート)。
+              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: dashCd };
             }
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0, gbJumpReadyAt: atkUntil(jitter(GIANTBAT_JUMP_CD_MS)) };
           }

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1213 — ハンターの突進が視界外まで飛ぶのを修正(社長指示)
+
+- 原因: giantbat/hunter 共通のダッシュ目標が `2*player - enemy`(プレイヤーの先=距離2倍のオーバーシュート)で、
+  ハンターが視界外まで飛んでいた。
+- 修正: **ハンターのみ**着地を「プレイヤーの少し先(`dist + DASH_OVERSHOOT_PX`)」に制限=視界外まで飛ばない。
+  giantbat は従来どおり2倍オーバーシュート。ジャンプ範囲(HUNTER_VISION_RANGE限定)は既存のまま。
+- 検証: typecheck/lint(0)/test(76)/build OK。変更: `src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1212 — キャラ選択チップの枠を上下のみに(左右の枠を削除・社長指示)
 
 - キャラ選択のドット立ち絵チップから `ff7r-fade-right`(左線＋border-image)を外し、**上下のborderのみ**に。背景は右フェード維持。
