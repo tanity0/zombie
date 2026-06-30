@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1201 — 敵が斬られた時のSE(slash-damage)を社長提供音に差し替え
+
+- `slash-damage.mp3` を同名差し替え(近接/ナイフ命中で再生)。volume(0.86)据え置き。SFXキャッシュバスト済みなので
+  バージョン更新で確実に反映。dist コピー確認。変更: `public/audio/sfx/slash-damage.mp3`・`package.json`。
+
 ## v0.25.1200 — 非ゲームUIをFF7R紫テーマに一新(アクセント色を青系→紫・社長指示)
 
 - ゲーム内以外の画面(Title/MissionSelect/GameOver/Loading/Shop)のクロームアクセントを青系→紫へ統一:
