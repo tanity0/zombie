@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1162 — 背中の火破裂サイズを敵サイズ非依存=一定に(社長指示)
+
+- 旧: `len = max(34, 敵幅×1.5)`(敵が大きいほど火も大きかった)。新: `HIT_FIRE_LEN = 60` 固定。
+  どの敵でも同じ大きさの火が出る。負荷変化なし。変更: `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1161 — 背中の火破裂を社長提供の2コマ立ち絵に差し替え(粒子→sprite)
 
 - 社長提供のドット絵2コマ(`fx/hitfire-0`=大きい爆発 / `fx/hitfire-1`=細い噴射。左→右の順)を、
