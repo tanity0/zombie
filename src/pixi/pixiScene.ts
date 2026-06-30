@@ -6691,7 +6691,7 @@ export class PixiScene {
     const btex = getTexture(`fx/slash-burst-${bidx}`);
     if (btex && bref) {
       if (burst.texture !== btex) burst.texture = btex;
-      burst.scale.set((e.length * 0.85) / Math.max(1, bref.width));
+      burst.scale.set((e.length * 0.5) / Math.max(1, bref.width)); // 中央バーストを小さく(社長指示。0.85→0.5)
       burst.position.set(e.x, e.y);
       burst.alpha = 1 - Math.max(0, (t - 0.5) / 0.5);
       burst.visible = burst.alpha > 0.01;

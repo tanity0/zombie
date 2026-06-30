@@ -10,6 +10,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1198 — 斬撃HITの中央バーストを小さく(社長指示)
+
+- `drawSlashSprite` の burst スケールを `length*0.85`→`length*0.5`(streak線はそのまま)。変更: `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1197 — FF7Rボタン: 端は透明のまま中央の暗さを下げる(社長指示)
 
 - 端のフェードアウト(0.04)は維持し、中央の不透明度を 0.93→0.58 に(right も 0.58→0.04)=中央が暗すぎを解消。
