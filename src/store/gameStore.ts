@@ -1890,7 +1890,7 @@ interface GameState {
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: サークル内滞在を計測し3秒で gameWon
-  updateSuppression: (deltaTime: number) => void;      // 毎フレーム: 制圧イベント(滞在制圧/HP/攻撃者/軍人/陥落/クリア)
+  updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
   openLabDoor: (id: string) => void;                    // 指定ドアを解錠(open=true)
   setHasCardKey: (v: boolean) => void;
   pressLabButton: (id: string) => void;                 // ボタン押下→対応ドア解錠
@@ -7071,7 +7071,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     // 拠点は屋外(非ラボ・非屋内)なら常に機能する。屋内/ラボ/勝利後は無処理。
     // イベント(suppressionActive)かどうかは「全拠点制圧」した時のゴール有無だけが違う(下部参照)。
-    if (!state.baseSites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return;
+    if (!state.baseSites.length || state.indoorMode || state.stageTheme === 'lab' || state.gameWon) return [];
     const now = state.gameTime;
     const p = state.player;
     const px = p.x + p.width / 2;
@@ -7417,6 +7417,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().triggerEventVictory(); // イベント: ゴール(帰還サークル)を出す
       }
     }
+    // このフレームに護衛NPCが発砲した位置(発射元)を返す。useGameLoop が NPC↔プレイヤー距離で減衰再生する。
+    return escortShots.map(s => ({ x: s.x, y: s.y }));
   },
 
   openLabDoor: (id) => {

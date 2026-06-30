@@ -78,6 +78,7 @@ export type SfxKey =
   | 'headshot'
   | 'slash-damage'
   | 'handgun-fire'
+  | 'npc-gunfire'
   | 'smg-fire'
   | 'shotgun-fire'
   | 'rifle-fire'
@@ -216,6 +217,13 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/smg-fire.wav`, // 社長提供。サブマシンガン(マシンピストル=handgun-t3)の発射音
     volume: 0.70, // ハンドガン以外をもう少し上げる(0.58→0.70)
     minIntervalMs: 20, // 連射(CD100ms)に追従できるよう短め
+  },
+  // 進軍NPC(護衛)の発砲音=ハンドガン音の流用。基準音量は控えめ(プレイヤーより一段低い)。再生時に
+  // 「NPC↔プレイヤー距離」で減衰させ、画面外は鳴らさない(呼び出し側で gainMult を渡す)。
+  'npc-gunfire': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/handgun-fire.wav`,
+    volume: 0.5,
+    minIntervalMs: 50, // 多数同時発砲のうるささ対策(プレイヤーのhandgun-fireとは別スロット)
   },
   'shotgun-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.wav`, // 社長提供の新ショットガン発砲音(WAV=Web Audioでデコード)
@@ -911,8 +919,10 @@ export const setAudioSuspended = (suspended: boolean) => {
 // ダンスタイム中はリズムに乗りやすいよう近接ダメージ音(スラッシュ/メレー)を鳴らさない。
 const DANCE_MUTED_SFX = new Set<SfxKey>(['slash-damage', 'melee']);
 
-export const playSfx = (key: SfxKey) => {
+// gainMult: 距離減衰など、その1回の再生だけ音量を倍率調整したい時に渡す(既定1)。0以下なら鳴らさない。
+export const playSfx = (key: SfxKey, gainMult = 1) => {
   if (muted) return;
+  if (gainMult <= 0) return;
   if (danceActive && DANCE_MUTED_SFX.has(key)) return;
   const config = SFX_SOURCES[key];
   if (!config) return;
@@ -936,7 +946,7 @@ export const playSfx = (key: SfxKey) => {
   const gain = context.createGain();
   source.buffer = buffer;
   source.playbackRate.value = config.playbackRate ?? 1;
-  gain.gain.value = (config.volume ?? 1) * sfxVolume;
+  gain.gain.value = (config.volume ?? 1) * sfxVolume * gainMult;
   source.connect(gain);
   gain.connect(context.destination);
 
@@ -949,7 +959,7 @@ export const playSfx = (key: SfxKey) => {
   if (config.fadeOutMs) {
     const playLen = duration ?? Math.max(0.001, buffer.duration - offset);
     const fade = Math.min(config.fadeOutMs / 1000, playLen);
-    const peak = (config.volume ?? 1) * sfxVolume;
+    const peak = (config.volume ?? 1) * sfxVolume * gainMult;
     const t0 = context.currentTime;
     gain.gain.setValueAtTime(peak, t0 + Math.max(0, playLen - fade));
     gain.gain.linearRampToValueAtTime(0, t0 + playLen);

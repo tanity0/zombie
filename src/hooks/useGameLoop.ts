@@ -1499,7 +1499,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // --- 拠点候補地(仕様10): サークル内10秒滞在で制圧→武器商人が移動 ---
-        useGameStore.getState().updateSuppression(deltaTime);
+        const escortFires = useGameStore.getState().updateSuppression(deltaTime);
+        // 護衛NPCの発砲音=ハンドガン音流用。NPC↔プレイヤー距離で減衰、画面外は鳴らさない(社長指示)。
+        // プレイヤー自身の攻撃音は距離無関係で等倍(=この処理はNPC発砲だけが対象)。
+        if (escortFires.length > 0) {
+          const sp = useGameStore.getState().player;
+          const spx = sp.x + sp.width / 2, spy = sp.y + sp.height / 2;
+          const scam = useGameStore.getState().camera, sgb = useGameStore.getState().gameBounds;
+          const maxDist = 0.5 * Math.hypot(sgb.width, sgb.height); // 画面の中心→隅 ≒ この距離で最小音量
+          let bestGain = 0; // 同フレーム複数発砲は最寄り(最大音量)の1発ぶんだけ鳴らす(throttleとも整合)
+          for (const f of escortFires) {
+            const onScreen = f.x >= scam.x && f.x <= scam.x + sgb.width && f.y >= scam.y && f.y <= scam.y + sgb.height;
+            if (!onScreen) continue; // 画面外は無音
+            const d = Math.hypot(f.x - spx, f.y - spy);
+            const g = Math.max(0.2, 1 - Math.min(1, d / maxDist) * 0.8); // 近=1.0 〜 画面端≈0.2
+            if (g > bestGain) bestGain = g;
+          }
+          if (bestGain > 0) playSfx('npc-gunfire', bestGain);
+        }
         // 拠点開放SE: 制圧カウントが増えた瞬間に1回(store は音声非依存なのでここで鳴らす)。
         {
           const cc = useGameStore.getState().suppressionCaptureCount;

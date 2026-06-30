@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1188 — 護衛NPCの発砲音(ハンドガン流用)＋NPC↔プレイヤー距離で減衰(社長承認・おすすめ実装)
+
+- `playSfx(key, gainMult=1)` に音量倍率引数を追加(0以下は無音)。**プレイヤーの攻撃音は既定1.0=距離無関係で等倍**のまま。
+- 新キー `npc-gunfire`=`handgun-fire.wav` 流用(基準volume 0.5・minIntervalMs 50。プレイヤーのhandgun-fireとは別スロット)。
+- `updateSuppression` がこのフレームの護衛NPC発砲位置を返すよう変更。`useGameLoop` が **発砲NPC↔プレイヤー距離**で
+  減衰(近=1.0〜画面端≈0.2)、**画面外(ビューポート外)は無音**で再生。同フレーム複数発砲は最寄り1発ぶんだけ(throttle整合)。
+- 検証: typecheck/lint/test(75)/build OK。変更: `src/audio/audioManager.ts`・`src/store/gameStore.ts`・
+  `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1187 — SFXキャッシュバスト(同名差し替えが反映されない不具合)＋shot-damage更にUP
 
 - **不具合**: SFXのURLにバージョンクエリが無く、同名mp3を差し替えても端末が**古い音をキャッシュ**から鳴らしていた
