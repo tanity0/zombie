@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1185 — カウンター/リロード/KILLの音量UP＋出撃ローディングを完全暗転に(社長指示)
+
+- **音量UP**: counter 0.88→1.2 / reload 0.86→1.05 / melee-finish(KILL) 0.92→1.15(WebAudio gainは>1で増幅)。
+- **出撃ローディングを完全暗転**: キャラ選択後のレンダラ初期化中オーバーレイを、スピナー等UIを出す `LoadingScreen compact`
+  から**不透明な黒一色** `fixed inset-0 z-[100] bg-black` に変更(後で一枚絵を差し込む余地)。z-[100]=HUD(40)/バッジ(50)
+  より上・OrientationGuard(9999)より下。レンダラ準備完了で自動的に外れる(従来どおり)。
+- 検証: typecheck/lint/build OK。変更: `src/audio/audioManager.ts`・`src/App.tsx`・`package.json`。
+
 ## v0.25.1184 — KILL SE(melee-finish=kill.mp3)を社長提供音に差し替え
 
 - `kill.mp3` を社長提供音に同名差し替え(近接フィニッシュ/ボスへのフィニッシュダメージで再生)。volume は既存の

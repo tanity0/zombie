@@ -197,12 +197,12 @@ function App() {
         />
       )}
 
-      {/* 出撃直後、Pixiレンダラ初期化(WebGL init＋テクスチャGPUアップロード)が終わるまでは
-          キャンバスが未挿入で黒くなる。その間はローディング画面を被せて「まっくら」を防ぐ(社長指示)。
-          fixed で全面に重ねる(レンダラ準備完了=初フレーム表示で自動的に外れる)。 */}
+      {/* 出撃直後、Pixiレンダラ初期化(WebGL init＋テクスチャGPUアップロード)が終わるまでの繋ぎ。
+          社長指示で「完全に暗転」=スピナー等のUIを一切出さず、全面を不透明な黒で覆う(後で一枚絵を差し込む余地)。
+          z-[100] でHUD(z-40)や各種バッジ(z-50)より上、OrientationGuard(z-[9999])より下。
+          レンダラ準備完了(初フレーム表示)で自動的に外れる。 */}
       {gameState === 'playing' && isPixiRenderer() && !rendererReady && !loadOverlayTimedOut && (
-        // 出撃時のレンダラ初期化中のローディングは「同意して始める」後(TitleScreen)のスピナーと同じ見た目に(社長指示)。
-        <div className="fixed inset-0 z-40"><LoadingScreen compact /></div>
+        <div className="fixed inset-0 z-[100] bg-black" />
       )}
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}

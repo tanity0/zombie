@@ -248,18 +248,18 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   reload: {
     src: `${import.meta.env.BASE_URL}audio/sfx/reload.mp3`,
-    volume: 0.86,
+    volume: 1.05, // 大きく(社長指示。0.86→1.05)
   },
   // Counter (bullet parry) success — deliberately a touch louder than the rest.
   counter: {
     src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
-    volume: 0.88,
+    volume: 1.2, // 大きく(社長指示。0.88→1.2)
     minIntervalMs: 120,
   },
   // Melee finisher on a normal enemy, and finisher damage dealt to a boss.
   'melee-finish': {
     src: `${import.meta.env.BASE_URL}audio/sfx/kill.mp3`,
-    volume: 0.92,
+    volume: 1.15, // 大きく(社長指示。0.92→1.15)
     minIntervalMs: 90,
   },
   'player-damage': {
