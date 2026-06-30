@@ -616,6 +616,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   jormungand: 'ヨルムンガルド',
   skadi: 'スカジ',
   hunter: '変異体(狩猟型)',
+  screamer: '変異体(叫喚型)',
 };
 export const enemyDeathLabel = (type: string): string => ENEMY_DEATH_LABELS[type] ?? '変異体';
 
@@ -1167,6 +1168,13 @@ const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リ�
 const EGGCARRIER_LAY_INTERVAL_MS = 1000; // 1秒ごとに1個設置。
 const EGGCARRIER_MAX_EGGS = 20;          // 抱卵型が撒いた卵の同時上限(超過は古い順に消す)。画面外は別途カリング。
 const EGGCARRIER_ORBIT_RADIUS = 220;     // プレイヤーから保つ周回半径(px)。
+// 変異体(叫喚型・screamer): 距離を保ちつつ、溜め→叫喚で画面内の通常敵を一時強化する。
+const SCREAMER_FIRST_MS = 3000;       // 出現してから初回叫喚(=溜め開始)までの待ち。
+const SCREAMER_INTERVAL_MS = 10000;   // 以降の叫喚間隔(発動から次の溜め開始まで)。
+export const SCREAMER_WINDUP_MS = 2000; // 叫喚の溜め(予兆)時間。これを倒し切れば阻止=バフ無し。
+const SCREAMER_BUFF_MS = 7000;        // 強化の持続(発動から)。
+export const SCREAMER_BUFF_MULT = 1.2; // 通常敵の移動速度・与ダメージ倍率。
+const SCREAMER_KEEP_RADIUS = 260;     // プレイヤーから保つ距離(px)。直進せず一定距離を保つ。
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
@@ -1591,6 +1599,8 @@ interface GameState {
   activeEvent: ActiveEvent | null;
   // 紅き夜: 非null中は全敵ステータス2倍・経験値2倍・画面赤染め。
   redNight: RedNight | null;
+  // 叫喚型(screamer)の強化が有効な gameTime(ms)。これを過ぎるまで通常敵の移動速度・与ダメージ×1.2。
+  screamerBuffUntil: number;
   weaponMerchant: WeaponMerchant;
   eventQuestNpc: EventQuestNpc;
   gameTime: number;
@@ -2070,6 +2080,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   castleEvent: createCastleEvent(),
   activeEvent: null,
   redNight: null,
+  screamerBuffUntil: 0,
   weaponMerchant: createWeaponMerchant(),
   eventQuestNpc: createEventQuestNpc(),
   gameTime: 0,
@@ -5082,6 +5093,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
+    const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
+    const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
@@ -5094,6 +5107,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const indoor = state.indoorMode;
       // 紅き夜中は全敵スピード2倍。
       const rnSpeedMult = state.redNight?.phase === 'active' ? 2 : 1;
+      // 叫喚型(screamer)の強化窓が有効か。通常敵(ボス/screamer以外)の移動速度を×SCREAMER_BUFF_MULT する。
+      const screamActive = gameTime < state.screamerBuffUntil;
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
       const indoorWalls = indoor ? [...labBlockingWalls(openDoorIds), ...state.labProps.map(p => p.rect)] : [];
       const labTheme = state.stageTheme === 'lab'; // 研究所スキンは木を出さない=木の当たり判定もスキップ。
@@ -5122,6 +5137,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ハンター変異体・撤退中は通常追跡AIから除外。専用イベントコントローラ(useGameLoop)が
         // プレイヤーから離れる方向へ移動させ画面外で消す。索敵中(dormant)は下の dormant ブロックで静止。
         if (enemy.type === 'hunter' && enemy.hunterFleeing) return enemy;
+        // 叫喚型の強化対象判定: 通常敵(ボス/screamer以外)だけ移動速度を×SCREAMER_BUFF_MULT。
+        const screamSpeedMult = (screamActive && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
         // 衝突解決して移動先を返す(各AIで共用)。屋内は labMap の壁、屋外は木/松明+壁(研究所スキンは壁のみ)。
         const resolveMove = (nx: number, ny: number) => {
           let pos: { x: number; y: number };
@@ -5235,7 +5252,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const fx = ecx - pcx, fy = ecy - pcy;
           const fl = Math.hypot(fx, fy) || 1;
-          const fvx = (fx / fl) * enemy.speed * rnSpeedMult, fvy = (fy / fl) * enemy.speed * rnSpeedMult;
+          const fvx = (fx / fl) * enemy.speed * rnSpeedMult * screamSpeedMult, fvy = (fy / fl) * enemy.speed * rnSpeedMult * screamSpeedMult;
           const fmoved = resolveMove(enemy.x + fvx * deltaTime, enemy.y + fvy * deltaTime);
           return { ...enemy, vx: fvx, vy: fvy, x: fmoved.x, y: fmoved.y, aiPhase: undefined, aiPhaseUntil: 0 };
         }
@@ -5441,7 +5458,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (phase === 'zpause') {
             return { ...enemy, vx: 0, vy: 0, aiPhase: phase, aiPhaseUntil: phaseUntil }; // 停止
           }
-          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1) * rnSpeedMult;
+          const zSpeed = enemy.speed * ZOMBIE_SPEED_MULT * (phase === 'zrush' ? ZOMBIE_RUSH_SPEED_MULT : 1) * rnSpeedMult * screamSpeedMult;
           // フラフラ: 進行方向に直交する成分を時間で揺らす(個体ごとに位相をずらす)。
           let h = 0;
           for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
@@ -5454,7 +5471,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: zvx, vy: zvy, x: zmoved.x, y: zmoved.y, aiPhase: phase, aiPhaseUntil: phaseUntil };
         }
 
-        const speed = (enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed) * rnSpeedMult;
+        const speed = (enemy.type === 'plant' ? enemy.speed * 0.25 : enemy.speed) * rnSpeedMult * screamSpeedMult;
         let tvx = (dx / distance) * speed;
         let tvy = (dy / distance) * speed;
         // 新型(lich): プレイヤーの周囲を旋回しながら徐々に詰める。放射(内向き)+接線(旋回)を合成し、
@@ -5507,6 +5524,41 @@ export const useGameStore = create<GameState>((set, get) => ({
             nextLay = gameTime + EGGCARRIER_LAY_INTERVAL_MS;
           }
           return { ...enemy, vx: gvx, vy: gvy, x: gmoved.x, y: gmoved.y, eggLayAt: nextLay, aiPhase: undefined, aiPhaseUntil: 0 };
+        }
+
+        // 変異体(叫喚型・screamer): プレイヤーに直進せず一定距離を保って移動。出現3秒後に初回、以降10秒間隔で
+        // 「溜め(2秒・予兆)→叫喚発動」。発動で画面内の通常敵を一時強化(set 後に screamerBuffUntil をセット)。
+        // 溜め完了前に倒せば発動しない=阻止。
+        if (enemy.type === 'screamer') {
+          const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+          const nextScream = enemy.screamNextAt ?? (gameTime + SCREAMER_FIRST_MS);
+          if (enemy.aiPhase === 'scream') {
+            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              // 溜め完了 → 発動。FX/SE/揺れは set 後に screamerActivatedAt から出す。次回の溜め開始を予約。
+              screamerActivatedAt.push({ x: ecx, y: ecy });
+              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: 0, screamNextAt: gameTime + SCREAMER_INTERVAL_MS };
+            }
+            return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(予兆演出は描画/FX側)
+          }
+          if (gameTime >= nextScream) {
+            screamerWindupAt.push({ x: ecx, y: ecy }); // set 後に予兆FX(2秒かけて広がるリング)
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'scream', aiPhaseUntil: gameTime + SCREAMER_WINDUP_MS, screamNextAt: nextScream };
+          }
+          // 通常時: 距離 SCREAMER_KEEP_RADIUS を保ちつつ弱く横ドリフト(直進しすぎない)。
+          const rx = dx / distance, ry = dy / distance;
+          let h = 0;
+          for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
+          const spin = (h & 1) ? 1 : -1;
+          const tx = -ry * spin, ty = rx * spin;
+          const radialW = Math.max(-1, Math.min(1, (distance - SCREAMER_KEEP_RADIUS) / SCREAMER_KEEP_RADIUS));
+          const bx = rx * radialW + tx * 0.5, by = ry * radialW + ty * 0.5;
+          const bl = Math.max(0.001, Math.hypot(bx, by));
+          const stvx = (bx / bl) * speed, stvy = (by / bl) * speed;
+          const sa = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
+          const svx = (enemy.vx ?? stvx) + (stvx - (enemy.vx ?? stvx)) * sa;
+          const svy = (enemy.vy ?? stvy) + (stvy - (enemy.vy ?? stvy)) * sa;
+          const smoved = resolveMove(enemy.x + svx * deltaTime, enemy.y + svy * deltaTime);
+          return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y, screamNextAt: nextScream };
         }
 
         const alpha = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
@@ -5623,9 +5675,28 @@ export const useGameStore = create<GameState>((set, get) => ({
         const capped = carriers.length > EGGCARRIER_MAX_EGGS ? carriers.slice(carriers.length - EGGCARRIER_MAX_EGGS) : carriers;
         nextBreakables = [...others, ...capped];
       }
-      return { enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades };
+      return {
+        enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades,
+        // 叫喚発動: 画面内の通常敵を SCREAMER_BUFF_MS の間 強化する窓を張る。
+        ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),
+      };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
+    // 叫喚型の予兆(溜め開始): 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
+    if (screamerWindupAt.length > 0) {
+      const { x, y } = screamerWindupAt[0];
+      get().spawnRing(x, y, 8, 130, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
+      get().spawnGlow(x, y, 70, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
+    }
+    // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋小さな画面揺れ。
+    if (screamerActivatedAt.length > 0) {
+      const { x, y } = screamerActivatedAt[0];
+      get().spawnRing(x, y, 10, 240, 'rgba(190,242,100,0.72)', 4, 480);
+      get().spawnRing(x, y, 6, 150, 'rgba(255,255,255,0.85)', 3, 340);
+      get().spawnGlow(x, y, 130, 'rgba(163,230,53,', 520);
+      get().spawnCallout(x, y - 30, '叫喚!', '#bef264', { scale: 1.1 });
+      get().triggerShake(220, 5);
+    }
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
     if (punisherHits.length > 0 && punisherDmg > 0) {
       for (const id of punisherHits) {
@@ -8069,6 +8140,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         mineAmbushAnchor: null,
         activeEvent: null,
         redNight: null,
+        screamerBuffUntil: 0,
         eventBannerText: '',
         eventBannerUntil: 0,
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。

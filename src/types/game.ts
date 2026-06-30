@@ -285,7 +285,7 @@ export interface Enemy {
   //  werewolf: undefined→'windup'(減速)→'charge'(2倍速で aiTarget へ突進)→cooldown。
   //  pumpkin : undefined→'crouch'(縮みながら3秒溜め)→'jump'(1秒でaiTargetへ着地)→'recover'(1秒停止)。
   //  zombie  : 近接範囲に入ると 'zpause'(1秒停止)→'zrush'(2秒間2倍速)→範囲内なら 'zpause' を繰り返す。
-  aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush';
+  aiPhase?: 'windup' | 'charge' | 'crouch' | 'jump' | 'recover' | 'zpause' | 'zrush' | 'scream';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)
@@ -310,6 +310,8 @@ export interface Enemy {
   punisherHopped?: boolean;
   // 抱卵型(旧ghost): 次に緑卵を設置できる gameTime(ms)。1秒ごとに1個撒く。
   eggLayAt?: number;
+  // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。
+  screamNextAt?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;
@@ -369,7 +371,8 @@ export type EnemyType =
   | 'mimir'      // 裏ボス(ステージ1): 巨大な眼+ゾンビの群体「ミーミル」
   | 'jormungand' // 裏ボス(ステージ3): 巨蛇「ヨルムンガルド」。仕様は mimir と共通
   | 'skadi'      // 裏ボス(ステージ4): 氷の死王「スカジ」。仕様は他の裏ボスと共通
-  | 'hunter';    // ハンター変異体: 3分以降・優勢時に出現。索敵→発見→拠点まで追跡→撤退する徘徊ストーカー(専用イベント制御)
+  | 'hunter'     // ハンター変異体: 3分以降・優勢時に出現。索敵→発見→拠点まで追跡→撤退する徘徊ストーカー(専用イベント制御)
+  | 'screamer';  // 変異体(叫喚型): 5分以降・同時1体。距離を保ち、溜め→叫喚で画面内の通常敵を一時強化(優先処理対象)
 
 // Weapon types
 export interface Weapon {

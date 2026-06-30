@@ -499,6 +499,7 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   pumpkin: 0xff9f3f,
   giantbat: 0xb9c4ff,
   reaper: 0xff4f5e,
+  screamer: 0x9fe870, // 変異体(叫喚型・毒々しい緑の発光)
 };
 // 裏ボスの影: 当たり判定より一回り大きく見せる倍率＋鮮やかめの赤(社長指示)。
 const BOSS_SHADOW_SCALE = 1.35;  // 当たり判定(w×h)に対する影の拡大率

@@ -24,6 +24,7 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   giantbat: 1.55,
   reaper: 1.45,
   hunter: 1.9, // ハンター変異体(ミニボス級の存在感)
+  screamer: 1.95, // 変異体(叫喚型・やや大きめの存在感)
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre

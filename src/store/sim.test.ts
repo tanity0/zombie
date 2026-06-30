@@ -120,6 +120,41 @@ describe('headless simulation invariants', () => {
     expect(eggs.every(e => e.type === 'mine')).toBe(true); // reuse the existing green-egg(mine) hazard
   });
 
+  it('screamer winds up after ~3s then opens a ~7s buff window', () => {
+    useGameStore.getState().resetGame('warrior');
+    const { x, y } = useGameStore.getState().player;
+    useGameStore.setState({
+      enemies: [spawnEnemyAt('screamer', x + 260, y, useGameStore.getState().gameTime)],
+      screamerBuffUntil: 0,
+    });
+    const dt = 1 / 60;
+    let t = useGameStore.getState().gameTime;
+    const step = (frames: number) => { for (let i = 0; i < frames; i++) { t += dt * 1000; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(dt); } };
+    step(150); // ~2.5s: before first scream(3s) → no buff yet
+    expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(t);
+    step(200); // ~5.8s: past first scream(3s)+windup(2s) → buff window opened
+    const buf = useGameStore.getState().screamerBuffUntil;
+    expect(buf).toBeGreaterThan(t);                 // active
+    expect(buf).toBeLessThanOrEqual(t + 7000 + 50); // ~7s window from activation
+  });
+
+  it('killing the screamer before activation prevents the buff (阻止)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const { x, y } = useGameStore.getState().player;
+    useGameStore.setState({
+      enemies: [spawnEnemyAt('screamer', x + 260, y, useGameStore.getState().gameTime)],
+      screamerBuffUntil: 0,
+    });
+    const dt = 1 / 60;
+    let t = useGameStore.getState().gameTime;
+    const step = (frames: number) => { for (let i = 0; i < frames; i++) { t += dt * 1000; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(dt); } };
+    step(220); // ~3.7s: now in the 2s windup (溜め中)
+    expect(useGameStore.getState().enemies[0]?.aiPhase).toBe('scream');
+    useGameStore.setState({ enemies: [] }); // 倒した=溜め完了前に除去
+    step(120); // past where activation would have been
+    expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(t); // never activated
+  });
+
   it('suppression event: an escort NPC captures its base after ~10s dwell and stays finite', () => {
     useGameStore.getState().resetGame('warrior');
     useGameStore.setState({ suppressionActive: true });

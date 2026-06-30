@@ -34,7 +34,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE
+  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -284,11 +284,11 @@ const EVENT_BANNER_MS = 3500;          // イベント発生告知バナーの�
 // --- ハンター変異体イベント(社長指示) ---------------------------------------
 // 3分以降・優勢時に、プレイヤー近場の画面外へ「索敵状態」で出現。検知範囲に入ると
 // 「見られている」警告→5秒残ると発見→拠点(制圧済み)へ逃げ込むまで追跡。20s/40sで増援(最大3体)。
-// 1ステージ最大2回・再出現CD90〜120s・ボス/リーパー/演出中は出現禁止(追跡中なら逃げる)。
+// 出現回数は無制限(CD長めで何度でも・社長指示)・再出現CD150〜240s・ボス/リーパー/演出中は出現禁止(追跡中なら逃げる)。
 const HUNTER_START_MS = 180000;            // 出現開始(3分)
-const HUNTER_MAX_PER_RUN = 2;              // 1ステージ(=1出撃)最大2回
-const HUNTER_RESPAWN_CD_MIN_MS = 90000;    // 再出現CD最短(90秒)
-const HUNTER_RESPAWN_CD_SPAN_MS = 30000;   // +0〜30秒(=90〜120秒)
+const HUNTER_MAX_PER_RUN = Infinity;       // 1出撃あたりの上限なし(CD長めで何度でも)
+const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。長め)
+const HUNTER_RESPAWN_CD_SPAN_MS = 90000;   // +0〜90秒(=150〜240秒)
 const HUNTER_DETECT_RANGE = HUNTER_VISION_RANGE; // 索敵範囲(=視界範囲。描画/ジャンプ範囲と共有)
 const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
 const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(消滅)
@@ -305,6 +305,9 @@ const HUNTER_FAV_KILLS_20S = 12;           // 直近20秒の撃破数が多い
 const HUNTER_FAV_STREAK_6S = 3;            // 近接/KILL成功が連続(直近6秒で3体)
 const HUNTER_FAV_ONSCREEN_MAX = 6;         // 画面内通常敵が少ない
 const HUNTER_FAV_SCORE_NEEDED = 4;         // 6項目中4つ以上
+// 変異体(叫喚型・screamer)ディレクター: 5分以降・同時1体・CDで何度でも(社長指示)。
+const SCREAMER_START_MS = 300000;          // 出現開始(5分)
+const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出現CD(60秒)
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
 const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
 const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
@@ -482,6 +485,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     reinforced: 0,               // 投入済み増援数(0..2)
     primaryId: '',               // 索敵個体(初号)のid
   });
+  // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
+  const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
@@ -1043,6 +1048,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
+          screamerRef.current.nextEligibleAt = SCREAMER_START_MS; // 叫喚型ディレクターも新ランでリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
@@ -1507,6 +1513,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }),
               }));
             }
+          }
+        }
+
+        // --- 変異体(叫喚型・screamer)ディレクター: 5分以降・同時1体・CDで何度でも(社長指示) ----------
+        // 画面外に1体だけ出す。AIが距離を保ちつつ溜め→叫喚で画面内の通常敵を一時強化。溜め完了前に倒せば阻止。
+        if (!danceTest && !indoor) {
+          const sS = useGameStore.getState();
+          const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
+          const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
+            || sS.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
+          const sBlocked = sCinematic || !!sS.activeEvent;
+          if (aliveScreamer) {
+            // 生存中はCDを先送り=撃破/退場の後、CD経過してから次の1体。
+            screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
+          } else if (newGameTime >= SCREAMER_START_MS && newGameTime >= screamerRef.current.nextEligibleAt && !sBlocked) {
+            const spx = sS.player.x + sS.player.width / 2, spy = sS.player.y + sS.player.height / 2;
+            const ang = Math.random() * Math.PI * 2;
+            const r = Math.hypot(gameBounds.width, gameBounds.height) / 2 + 60;
+            const sc = spawnEnemyAt('screamer', spx + Math.cos(ang) * r - 18, spy + Math.sin(ang) * r - 18, newGameTime);
+            sc.fixed = true; // 単体管理=画面外カリング対象外(キープ距離で動く)
+            addEnemy(sc);
+            useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
           }
         }
 
@@ -3902,7 +3931,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           } else {
             const wasVulnerable = !useGameStore.getState().player.invulnerable;
             const rnMult = loopState.redNight?.phase === 'active' ? 2 : 1;
-            const playerDied = damagePlayer(proj.damage * rnMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
+            // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の飛び道具ダメージも×SCREAMER_BUFF_MULT。
+            const scMult = (loopState.screamerBuffUntil > loopState.gameTime && proj.ownerType && proj.ownerType !== 'screamer' && !isBossType(proj.ownerType)) ? SCREAMER_BUFF_MULT : 1;
+            const playerDied = damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
             if (wasVulnerable) {
               playSfx('player-damage');
               spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -4650,7 +4681,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           const damageWasApplied = !collPlayer.invulnerable;
           const rnMelee = loopState.redNight?.phase === 'active' ? 2 : 1;
-          const playerDied = damagePlayer(enemy.damage * rnMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+          // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
+          const scMelee = (loopState.screamerBuffUntil > loopState.gameTime && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
+          const playerDied = damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
           if (damageWasApplied) {
             playSfx('player-damage');
             spawnFlash('rgba(239,68,68,0.22)', 200);

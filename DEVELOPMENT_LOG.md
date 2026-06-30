@@ -18257,3 +18257,14 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 対応: リポジトリ直下に `GAME_SPEC.md`(日本語・全16節)を新規作成。概要/技術・コアループ・クラス・武器・サブ/スキル/ガチャ・装備・敵/ボス・ハンター・護衛NPC・イベント/ステージ・経済/弾薬・オーディオ・VFX・FF7R風UI・性能予算・URL開発ノブを横断的に索引化。バランス値の一次情報は各ソース、本書は全体像という位置づけ。
 - 注記: コードや挙動の変更は無し(ドキュメントのみ)。`v0.25.1222` 時点のスナップショット。
 - 検証: ドキュメントのみ(コード非変更)。変更: GAME_SPEC.md(新規), package.json, DEVELOPMENT_LOG.md
+
+## v0.25.1226 — 新敵「変異体(叫喚型)/screamer」追加 ＋ ハンターをCD長めで何度でもに変更
+- 依頼(社長): 叫喚型=周囲の通常敵を一時強化する優先処理敵。5分以降・同時1体・CDで何度でも。距離を保ち、出現3秒後→以降10秒間隔で2秒の溜め→叫喚。発動で画面内の通常敵の移動速度・与ダメージを7秒×1.2(グローバル窓・紅き夜方式)。溜め完了前に倒せば阻止。あわせてハンターも「CD長めで何度でも」に。
+- 実装:
+  - 型: EnemyType に 'screamer'、Enemy.screamNextAt、aiPhase に 'scream'。
+  - ステータス(私案承認): 速度55/HP60/接触6/EXP3/サイズ36。出現開始5分・溜め2秒(社長指定)。通常プール非参加(ディレクター専用)。
+  - store: 距離キープAI＋叫喚スケジュール＋発動FX(溜め2秒の予兆リング/発光→発動リング/コールアウト「叫喚!」/小揺れ)。screamerBuffUntil 窓で通常敵(ボス/screamer以外)の移動速度を×1.2。
+  - useGameLoop: 与ダメージ側(飛び道具 rnMult / 接触 rnMelee)に screamer×1.2 を併乗。出現ディレクター(同時1体・5分以降・消滅後CD60秒)。ハンターは MAX_PER_RUN=∞ / 再出現CD150〜240秒。
+  - 描画: public/sprites/screamer.png を色キー透過で登録(turret方式)。renderSpec/ENEMY_LIGHT_TINT に screamer。
+  - テスト: 叫喚の溜め→7秒窓 / 阻止(溜め中に倒すと不発) を追加(sim.test)。
+- 検証: typecheck / lint / test(80 pass) / build 通過。変更: types/game.ts, utils/enemyUtils.ts, store/gameStore.ts, hooks/useGameLoop.ts, pixi/{pixiTextures,pixiScene,renderSpec}.ts, store/sim.test.ts, public/sprites/screamer.png, GAME_SPEC.md, package.json

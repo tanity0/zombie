@@ -309,8 +309,8 @@ export const ensureTextures = (): Promise<void> => {
       }),
     ]);
 
-    // 自動タレット(紫背景未透過)を色キーで透過して登録。
-    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni')]);
+    // 自動タレット(紫背景未透過)を色キーで透過して登録。叫喚型(screamer)も紫背景なので同様に色キー透過。
+    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('screamer')]);
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
     // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。
@@ -348,6 +348,7 @@ export const ensureTextures = (): Promise<void> => {
     regAspect('default:lich', 'stage4-enemies/lich');
     regAspect('stage4:lich', 'stage4-enemies/lich');
     regAspect('default:hunter', 'hunter'); // ハンター変異体(全ステージ共通の1枚絵)
+    regAspect('default:screamer', 'screamer'); // 変異体(叫喚型・全ステージ共通の1枚絵)
     regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
     regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2-male');
     regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');
