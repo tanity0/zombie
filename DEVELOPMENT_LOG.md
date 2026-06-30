@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1195 — FF7R UIをシンプル化(無駄な装飾/枠線を削減・社長指示)
+
+- 「できるだけシンプルに、無駄に装飾・枠線を足さない」方針で削減:
+  - `Ff7rButton`: 上下の二重ラインを撤去。残すのは「フェード面＋ホバー/選択の発色」＋(右フェードのみ)左1pxライン1本だけ。
+  - `glass-panel`: 上端の目立つ紫ラインを撤去、極薄の紫枠1本のみ。`ff7rPanelRight/Both`: 上下ヘアライン撤去(右は左1pxのみ)。
+  - MissionSelect: Section の左枠＋ラベル下線を撤去(面のフェードのみ)、戻るボタンの枠/塗りを撤去(文字＋矢印のみ)、
+    HubButtonのアイコン枠を撤去。
+- 検証: typecheck/lint(0)/build OK。変更: `src/components/ff7r.tsx`・`src/config/ff7r.ts`・`src/index.css`・
+  `src/components/MissionSelect.tsx`・`package.json`。
+
 ## v0.25.1194 — FF7R: 太線を細く＋共通glass-panelを紫メニュー面に一括統一＋NPC距離減衰を強める(社長指示)
 
 - **線を細く**: 左アクセントバー類を一段細く(ff7rPanelRight/TitleパネルborderLeft 2→1px、HubButton 3/2→2/1、

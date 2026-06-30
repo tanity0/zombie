@@ -6,20 +6,13 @@ import type { CSSProperties } from 'react';
 
 export const FF7R_ACCENT = 'rgba(168,85,247,'; // 末尾にalphaを付けて使う
 
-// パネル背景(右へフェード)。左に細い紫アクセントライン＋上下の極細ヘアライン。
+// パネル背景(右へフェード)。シンプルに、左端の細い紫ライン1本だけ(上下枠は足さない)。
 export const ff7rPanelRight: CSSProperties = {
   background: 'linear-gradient(95deg, rgba(9,8,14,0.95) 0%, rgba(9,8,14,0.86) 50%, rgba(9,8,14,0.42) 100%)',
-  borderLeft: '1px solid rgba(168,85,247,0.8)',
-  borderTop: '1px solid rgba(168,85,247,0.14)',
-  borderBottom: '1px solid rgba(168,85,247,0.14)',
+  borderLeft: '1px solid rgba(168,85,247,0.75)',
 };
 
-// パネル背景(両サイドへフェード=中央が一番濃い)。中央上下に細い紫ライン。
+// パネル背景(両サイドへフェード=中央が一番濃い)。枠線は足さない。
 export const ff7rPanelBoth: CSSProperties = {
-  background: 'linear-gradient(90deg, rgba(9,8,14,0.30) 0%, rgba(9,8,14,0.92) 35%, rgba(9,8,14,0.92) 65%, rgba(9,8,14,0.30) 100%)',
-  borderTop: '1px solid rgba(168,85,247,0.22)',
-  borderBottom: '1px solid rgba(168,85,247,0.22)',
+  background: 'linear-gradient(90deg, rgba(9,8,14,0.20) 0%, rgba(9,8,14,0.92) 35%, rgba(9,8,14,0.92) 65%, rgba(9,8,14,0.20) 100%)',
 };
-
-// 見出し用: 小さめ＋細い紫下線。
-export const ff7rHeading: CSSProperties = { borderBottom: '1px solid rgba(168,85,247,0.6)' };

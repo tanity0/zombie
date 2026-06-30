@@ -67,8 +67,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
     {onBack && (
       <button
         onClick={onBack}
-        className="absolute top-3 left-3 h-9 px-2.5 text-purple-100/85 flex items-center gap-1 active:brightness-125"
-        style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.16), rgba(168,85,247,0.02))', borderLeft: '1px solid rgba(168,85,247,0.7)' }}
+        className="absolute top-3 left-3 h-9 px-2 text-purple-100/80 flex items-center gap-1 active:text-white"
         aria-label="戻る"
       >
         <ChevronLeft size={16} /><span className="text-[12px] tracking-wide">戻る</span>
@@ -609,8 +608,8 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
     }}
     className="menu-item-in group relative w-full flex items-center gap-3 overflow-hidden px-4 py-3.5 text-left"
   >
-    <span className="absolute inset-0 -translate-x-full transition-transform duration-200 ease-out group-hover:translate-x-0 group-active:translate-x-0" style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.35), rgba(168,85,247,0.04))' }} />
-    <span className="relative z-10 shrink-0 w-10 h-10 flex items-center justify-center text-purple-100" style={{ border: '1px solid rgba(168,85,247,0.4)', background: 'rgba(168,85,247,0.12)' }}>{icon}</span>
+    <span className="absolute inset-0 -translate-x-full transition-transform duration-200 ease-out group-hover:translate-x-0 group-active:translate-x-0" style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.3), rgba(168,85,247,0.03))' }} />
+    <span className="relative z-10 shrink-0 w-10 h-10 flex items-center justify-center text-purple-200/90">{icon}</span>
     <span className="relative z-10 flex-1">
       <span className="block text-[15px] font-semibold tracking-wide text-white">{label}</span>
       <span className="block text-[11px] text-white/50">{desc}</span>
@@ -620,8 +619,8 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
 );
 
 const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="p-3" style={{ background: 'linear-gradient(95deg, rgba(11,9,16,0.6), rgba(11,9,16,0.2))', borderLeft: '1px solid rgba(168,85,247,0.4)' }}>
-    <div className="mb-2 inline-block pb-0.5 text-[11px] uppercase tracking-widest text-purple-200/60" style={{ borderBottom: '1px solid rgba(168,85,247,0.4)' }}>{label}</div>
+  <div className="p-3" style={{ background: 'linear-gradient(95deg, rgba(11,9,16,0.55), rgba(11,9,16,0.15))' }}>
+    <div className="mb-2 text-[11px] uppercase tracking-widest text-purple-200/55">{label}</div>
     <div className="space-y-1.5">{children}</div>
   </div>
 );
