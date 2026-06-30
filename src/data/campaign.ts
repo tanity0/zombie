@@ -598,6 +598,8 @@ export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10,
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
 
+// ガチャ(強化訓練)からは出さないスキル。死神(reaper)は「死神を倒すと習得」専用(社長指示)。
+export const GACHA_EXCLUDED_SKILLS: SkillKey[] = ['reaper'];
 // pity からレア度を抽選し SkillKey を返す(枠内均等。純粋関数)。pity は呼び出し側が管理。
 export const rollGachaSkill = (pity = 0, rng: () => number = Math.random): SkillKey => {
   const weights = rarityWeightsForPity(pity);
@@ -608,8 +610,10 @@ export const rollGachaSkill = (pity = 0, rng: () => number = Math.random): Skill
     if (r < weights[tier]) { rarity = tier; break; }
     r -= weights[tier];
   }
-  const pool = skillsByRarity(rarity);
-  return pool[Math.floor(rng() * pool.length)] ?? pool[0];
+  // 死神等はガチャ対象外。除外でその枠が空になったらレアへフォールバック。
+  const pool = skillsByRarity(rarity).filter(k => !GACHA_EXCLUDED_SKILLS.includes(k));
+  const safe = pool.length ? pool : skillsByRarity('rare').filter(k => !GACHA_EXCLUDED_SKILLS.includes(k));
+  return safe[Math.floor(rng() * safe.length)] ?? safe[0];
 };
 // 現在の super 確率(%)と天井までの残り pull(可視化用)。
 export const gachaSuperPercent = (pity: number): number => rarityWeightsForPity(pity).super;

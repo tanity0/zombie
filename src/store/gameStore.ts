@@ -4896,6 +4896,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   damageEnemy: (id, amount, nonLethalBoss = false) => {
     let killed = false;
+    let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -4919,6 +4920,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Check if enemy was killed
       if (newHealth === 0) {
         killed = true;
+        if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
         
         // Update game stats
@@ -4948,9 +4950,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
 
+    // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
+    if (reaperDefeated) {
+      const already = get().ownedSkills.includes('reaper');
+      get().grantSkill('reaper');
+      if (!already) {
+        const p = reaperDefeated as { x: number; y: number };
+        get().spawnCallout(p.x, p.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
+      }
+    }
+
     return killed;
   },
-  
+
   spawnSkadiIce: (x, y, bornAt, fireAt, enemyId) => set(s => ({
     skadiIceMarkers: [...s.skadiIceMarkers, { id: `sice${skadiHazardSeq++}`, x, y, bornAt, fireAt, enemyId }],
   })),

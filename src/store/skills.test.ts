@@ -5,7 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive } from './gameStore';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
-  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel } from '../data/campaign';
+  gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
+  rollGachaSkill, GACHA_EXCLUDED_SKILLS } from '../data/campaign';
 import type { Player, SkillKey } from '../types/game';
 
 // Minimal player carrying one leveled skill (for the simple multiplier skills).
@@ -161,5 +162,18 @@ describe('slasher follow-up multipliers', () => {
     expect(SLASHER_MULTS[0]).toBeCloseTo(1.0);
     expect(SLASHER_MULTS[1]).toBeCloseTo(0.6667, 3);
     expect(SLASHER_MULTS[2]).toBeCloseTo(0.4444, 3);
+  });
+});
+
+describe('gacha excludes the reaper skill (死神は撃破でのみ習得)', () => {
+  it('never rolls an excluded skill across pity levels', () => {
+    expect(GACHA_EXCLUDED_SKILLS).toContain('reaper');
+    let seq = 0;
+    const rng = () => { seq = (seq * 9301 + 49297) % 233280; return seq / 233280; };
+    for (let pity = 0; pity <= 60; pity++) {
+      for (let i = 0; i < 200; i++) {
+        expect(GACHA_EXCLUDED_SKILLS).not.toContain(rollGachaSkill(pity, rng));
+      }
+    }
   });
 });

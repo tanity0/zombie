@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1206 — 死神スキルは「死神を倒すと習得」に変更(ガチャ非排出・社長指示)
+
+- ガチャ(強化訓練)から `reaper` を除外: `GACHA_EXCLUDED_SKILLS=['reaper']` を追加し `rollGachaSkill` でフィルタ
+  (枠が空ならレアへフォールバック)。
+- 習得経路: `damageEnemy` で type==='reaper' を撃破した瞬間に `grantSkill('reaper')`(永続)。未所持なら
+  撃破地点に「スキル「死神」習得！」コールアウト。
+- 検証: typecheck/lint(0)/test(77、ガチャ除外テスト追加)/build OK。変更: `src/data/campaign.ts`・
+  `src/store/gameStore.ts`・`src/store/skills.test.ts`・`package.json`。
+
 ## v0.25.1205 — ゲーム内UIもFF7R紫トンマナに統一(社長指示)
 
 - **共通pill**: `.glass-pill`(プレイ中HUD)を白枠→紫枠＋紫寄りの暗色へ(視認性のため不透明度0.5は保持)。
