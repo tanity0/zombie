@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1153 — レア敵の影色を濃く(見分けやすく)(社長指示・②採用)
+
+- `ENEMY_COLOR_TIER_SHADOW` の `alphaMult` を 1.7/1.7/1.9 → **2.1/2.1/2.3**(青/紫/赤)。色相は据え置き、
+  影に色が乗りやすくして識別性UP。負荷不変(同じ描画・濃さのみ)。
+- 検証: typecheck / build OK。変更: `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1152 — バグ調査の修正(A全件＋B6/B7/B8＋C一致)(社長承認)
 
 A(明確なバグ):

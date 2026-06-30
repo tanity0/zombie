@@ -508,9 +508,10 @@ const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・
 const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェード用・useGameLoop と一致)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
-  blue: { tint: 0x3b82f6, alphaMult: 1.7 },
-  purple: { tint: 0xa855f7, alphaMult: 1.7 },
-  red: { tint: 0xef4444, alphaMult: 1.9 },
+  // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
+  blue: { tint: 0x3b82f6, alphaMult: 2.1 },
+  purple: { tint: 0xa855f7, alphaMult: 2.1 },
+  red: { tint: 0xef4444, alphaMult: 2.3 },
 };
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
