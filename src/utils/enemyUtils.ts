@@ -23,7 +23,8 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   skeleton:  { width: 26, height: 26, speed: 60,  health: 18,   damage: 8,   experienceValue: 1 },
   zombie:    { width: 30, height: 30, speed: 42,  health: 40,   damage: 10,  experienceValue: 2 },
   plant:     { width: 28, height: 28, speed: 8,   health: 25,   damage: 0,   experienceValue: 2 },
-  ghost:     { width: 24, height: 24, speed: 90,  health: 14,   damage: 5,   experienceValue: 2 },
+  // 変異体(抱卵型・旧ghost): 直進せずプレイヤーの周囲を周回し、1秒ごとに緑卵(mine)を撒く(AIは store)。internal idは'ghost'のまま。
+  ghost:     { width: 24, height: 24, speed: 48,  health: 26,   damage: 6,   experienceValue: 3 },
   werewolf:  { width: 30, height: 30, speed: 105, health: 32,   damage: 12,  experienceValue: 3 },
   pumpkin:   { width: 40, height: 40, speed: 55,  health: 150,  damage: 16,  experienceValue: 8 },
   // 新型(lich・ステージ4): 速度はゴースト(90)の1.2倍=108。旋回しながら詰めてくる(AIは store)。

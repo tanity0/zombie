@@ -99,6 +99,27 @@ describe('headless simulation invariants', () => {
     expect(s.player.health).toBeLessThanOrEqual(s.player.maxHealth);
   });
 
+  it('eggcarrier (ghost) lays green-egg mines ~1/sec while orbiting', () => {
+    useGameStore.getState().resetGame('warrior');
+    const { x, y } = useGameStore.getState().player;
+    // One eggcarrier near the player; clear any reset-time props so we count only its eggs.
+    useGameStore.setState({
+      breakableProps: [],
+      enemies: [spawnEnemyAt('ghost', x + 200, y, useGameStore.getState().gameTime)],
+    });
+    const dt = 1 / 60;
+    let t = useGameStore.getState().gameTime;
+    for (let i = 0; i < 200; i++) { // ~3.3s
+      t += dt * 1000;
+      useGameStore.getState().setGameTime(t);
+      useGameStore.getState().updateEnemies(dt);
+    }
+    const eggs = useGameStore.getState().breakableProps.filter(p => p.id.startsWith('egg-gc-'));
+    expect(eggs.length).toBeGreaterThanOrEqual(2);   // ~3 eggs in 3.3s at 1/sec
+    expect(eggs.length).toBeLessThanOrEqual(4);       // not every frame
+    expect(eggs.every(e => e.type === 'mine')).toBe(true); // reuse the existing green-egg(mine) hazard
+  });
+
   it('suppression event: an escort NPC captures its base after ~10s dwell and stays finite', () => {
     useGameStore.getState().resetGame('warrior');
     useGameStore.setState({ suppressionActive: true });

@@ -602,7 +602,7 @@ export const WIRE_PASS_BOMB_RADIUS = 90; // すり抜け爆発の範囲(着地�
 const ENEMY_DEATH_LABELS: Record<string, string> = {
   zombie: '変異体(徘徊型)',
   skeleton: '変異体(痩躯型)',
-  ghost: '幽鬼',
+  ghost: '変異体(抱卵型)',
   bat: '吸血コウモリ',
   werewolf: '変異体(獣化型)',
   plant: '変異体(定着型)',
@@ -1163,6 +1163,10 @@ const TREASURE_DROP_CHANCE_BY_RANK = {
 const TREASURE_VARIANTS_BY_RARITY = [4, 2, 3, 1, 5, 6] as const;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リングに置く卵の数。
+// 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)を撒く。
+const EGGCARRIER_LAY_INTERVAL_MS = 1000; // 1秒ごとに1個設置。
+const EGGCARRIER_MAX_EGGS = 20;          // 抱卵型が撒いた卵の同時上限(超過は古い順に消す)。画面外は別途カリング。
+const EGGCARRIER_ORBIT_RADIUS = 220;     // プレイヤーから保つ周回半径(px)。
 const MINE_AMBUSH_TIME_MS = 150000;
 const MELEE_FINISH_COMBO_WINDOW_MS = 7000;
 const GRENADE_BOUNCE_DAMPING = 0.86;
@@ -5077,6 +5081,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
+    const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
@@ -5470,6 +5475,40 @@ export const useGameStore = create<GameState>((set, get) => ({
           tvy = (by / bl) * speed;
         }
 
+        // 変異体(抱卵型・旧ghost): プレイヤーへ直進せず、一定半径を保って周回しながら1秒ごとに緑卵(mine)を撒く。
+        // 接線(周回)主体＋距離Rへの放射補正(遠い→内向き / 近い→外向き)。旋回向きは個体ごとに固定。
+        if (enemy.type === 'ghost') {
+          const rx = dx / distance, ry = dy / distance;            // プレイヤー方向(放射)
+          let h = 0;
+          for (let i = 0; i < enemy.id.length; i++) h = (h * 31 + enemy.id.charCodeAt(i)) | 0;
+          const spin = (h & 1) ? 1 : -1;                            // 個体ごと左右いずれかへ周回
+          const tx = -ry * spin, ty = rx * spin;                    // 接線(放射に直交)
+          const radialW = Math.max(-1, Math.min(1, (distance - EGGCARRIER_ORBIT_RADIUS) / EGGCARRIER_ORBIT_RADIUS)); // 遠+/近-
+          const bx = tx + rx * radialW;
+          const by = ty + ry * radialW;
+          const bl = Math.max(0.001, Math.hypot(bx, by));
+          const gtvx = (bx / bl) * speed, gtvy = (by / bl) * speed;
+          const ga = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
+          const gvx = (enemy.vx ?? gtvx) + (gtvx - (enemy.vx ?? gtvx)) * ga;
+          const gvy = (enemy.vy ?? gtvy) + (gtvy - (enemy.vy ?? gtvy)) * ga;
+          const gmoved = resolveMove(enemy.x + gvx * deltaTime, enemy.y + gvy * deltaTime);
+          // 産卵: 1秒ごとに足元へ緑卵を1個。初回は spawn から1秒後。
+          let nextLay = enemy.eggLayAt ?? (gameTime + EGGCARRIER_LAY_INTERVAL_MS);
+          if (gameTime >= nextLay) {
+            const fx = gmoved.x + enemy.width / 2;
+            const fy = gmoved.y + enemy.height;
+            const rect = mineRect({ footX: fx, footY: fy, scale: 1 });
+            layingEggs.push({
+              id: `egg-gc-${enemy.id}-${Math.floor(gameTime)}`,
+              x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+              footX: fx, footY: fy, scale: 1,
+              health: 1, maxHealth: 1, type: 'mine', lastHit: 0,
+            });
+            nextLay = gameTime + EGGCARRIER_LAY_INTERVAL_MS;
+          }
+          return { ...enemy, vx: gvx, vy: gvy, x: gmoved.x, y: gmoved.y, eggLayAt: nextLay, aiPhase: undefined, aiPhaseUntil: 0 };
+        }
+
         const alpha = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
@@ -5575,7 +5614,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           return true;
         });
 
-      return { enemies: finalEnemies, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades };
+      // 抱卵型(旧ghost)が撒いた緑卵を breakableProps へ追加。同時上限 EGGCARRIER_MAX_EGGS(超過は古い順に破棄)。
+      // 画面外の卵は syncBreakableProps のカメラ領域カリングで別途自然消滅する。
+      let nextBreakables = breakableProps;
+      if (layingEggs.length > 0) {
+        const carriers = [...breakableProps.filter(p => p.id.startsWith('egg-gc-')), ...layingEggs];
+        const others = breakableProps.filter(p => !p.id.startsWith('egg-gc-'));
+        const capped = carriers.length > EGGCARRIER_MAX_EGGS ? carriers.slice(carriers.length - EGGCARRIER_MAX_EGGS) : carriers;
+        nextBreakables = [...others, ...capped];
+      }
+      return { enemies: finalEnemies, breakableProps: nextBreakables, pumpkinBlasts, shieldBlocks, skadiIceMarkers, skadiIceBlades };
     });
     if (pumpkinLanded) get().triggerShake(PUMPKIN_LAND_SHAKE_MS, PUMPKIN_LAND_SHAKE_MAG);
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。

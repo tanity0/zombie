@@ -308,6 +308,8 @@ export interface Enemy {
   hunterAlerted?: boolean;
   // パニッシャーで「巻き込まれて」ノックバックした敵の印。これ以上は連鎖させない(1次まで)。
   punisherHopped?: boolean;
+  // 抱卵型(旧ghost): 次に緑卵を設置できる gameTime(ms)。1秒ごとに1個撒く。
+  eggLayAt?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;
@@ -355,7 +357,7 @@ export type EnemyType =
   | 'skeleton'   // standard melee chaser
   | 'zombie'     // slow tank
   | 'plant'     // near-stationary ranged seed-spitter
-  | 'ghost'     // fast translucent melee
+  | 'ghost'     // 変異体(抱卵型): プレイヤーの周囲を周回し1秒ごとに緑卵(mine)を設置する。internal idは'ghost'据え置き
   | 'werewolf'  // mid-game fast bruiser
   | 'pumpkin'   // elite (wave events)
   | 'giantbat'  // mini-boss every ~10 minutes

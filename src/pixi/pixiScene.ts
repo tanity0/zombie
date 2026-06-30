@@ -4015,7 +4015,6 @@ export class PixiScene {
       this.placeShadowSprite('__player__', pf.footX, pf.footY - 2, playerShadowW, 1, seen);
     }
     for (const e of enemies) {
-      if (e.type === 'ghost') continue;
       const fb = enemyFootBox(e);
       const footY = e.y + e.height;
       const horizonAlpha = this.horizonActorAlpha(footY);
@@ -4822,7 +4821,7 @@ export class PixiScene {
     } else {
     view.sprite.anchor.set(0.5, 1);
     view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
-    view.sprite.alpha = e.type === 'ghost' ? 0.65 : 1;
+    view.sprite.alpha = 1; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
     if (tex) {
       view.sprite.texture = tex;
