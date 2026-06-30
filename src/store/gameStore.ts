@@ -48,6 +48,7 @@ import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect } from '../world/labWalls';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
+import { GAME_SPEED } from '../config/gameSpeed';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -947,7 +948,7 @@ const HANDGUN_RANGE_REF = 176;
 // 敵の「攻撃系」を倍速にする係数(社長指示)。対象=遠隔の発砲間隔＋特殊攻撃(犬の突進/
 // パンプキン・バットのジャンプ)の溜め・クールダウン・動作。近接の通常接触ダメージ間隔と
 // ゾンビの停止/突進リズムは対象外(据え置き)。すぐ戻せる単一定数: 1.0=従来 / 1.2=現在。
-export const ENEMY_ATTACK_SPEED_MULT = 1.2;
+export const ENEMY_ATTACK_SPEED_MULT = GAME_SPEED; // ゲームスピード(?speed=で調整)。既定1.2。敵の発砲＋特殊攻撃の溜め/CDテンポ。
 // ハンター変異体の視界(索敵)範囲(px)。useGameLoop の発見判定・updateEnemies のジャンプ範囲・
 // pixiScene の薄紫サークル表示で共有する単一の値(社長指示)。
 export const HUNTER_VISION_RANGE = 720;

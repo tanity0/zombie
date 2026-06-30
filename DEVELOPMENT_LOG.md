@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1221 — ゲームスピードをURL(?speed=)で調整可能に(社長指示)
+
+- 新規 `src/config/gameSpeed.ts`: `?speed=N` で読み込み時に1回だけ `GAME_SPEED` を決定(既定1.2・0.2〜5にクランプ・
+  localStorage `zombie:speed` に保存=次回URL無しでも維持)。
+- `MOVE_SPEED_MULT`(useGameLoop)と `ENEMY_ATTACK_SPEED_MULT`(gameStore)を `GAME_SPEED` から取るように。
+  →URL1つでプレイヤー/敵の移動＋敵攻撃の溜め/CDテンポをまとめて倍率調整。`?speed=` 無し=現状(1.2)で不変。
+- 検証: typecheck/lint(0)/test(76)/build OK。変更: 新規 `src/config/gameSpeed.ts`・`src/hooks/useGameLoop.ts`・
+  `src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1220 — ショットガン発砲SEの音量を上げる(0.90→1.1・社長指示)
 
 - `shotgun-fire` volume 0.90→1.1。変更: `src/audio/audioManager.ts`・`package.json`。

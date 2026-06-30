@@ -37,6 +37,7 @@ import {
   ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
+import { GAME_SPEED } from '../config/gameSpeed';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -93,7 +94,7 @@ import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 // ゲームプレイ中の「プレイヤーの移動」と「敵の移動」だけを倍速にする係数。
 // movePlayer / updateEnemies に渡す deltaTime にのみ掛ける(弾・召喚・軍人・進行・演出・
 // スポーンは等速のまま)。すぐ戻せるよう単一定数で管理: 1.0 = 従来等速 / 1.2 = 現在。
-const MOVE_SPEED_MULT = 1.2;
+const MOVE_SPEED_MULT = GAME_SPEED; // ゲームスピード(?speed=で調整)。既定1.2。プレイヤー/敵の移動テンポ。
 
 // 被弾時の「背中側にドバッと火」破裂演出: 2コマ立ち絵(spawnFireJet)＋根元の小グロー1個。
 // 背中火の長さ(px)は敵サイズ非依存で、撃った銃の系統で変える(社長指示)。
