@@ -6792,6 +6792,8 @@ export class PixiScene {
       this.ensureDamageFont();
       if (this.damageFontReady) { this.drawDamageNumberBitmap(e, t, scale, bold); return; }
     }
+    // 色背景付きコールアウト(Counter=青/KILL=赤など): 縁取り無し＋両サイドフェードの色帯を背面に。
+    if (e.bg !== undefined) { this.drawCalloutWithBg(e, t, scale); return; }
     let txt = this.effects.get(e.id) as Text | undefined;
     if (!txt || !(txt instanceof Text)) {
       txt = new Text({
@@ -6819,6 +6821,53 @@ export class PixiScene {
     txt.position.set(e.x, e.y - t * 12);
     txt.scale.set(pop);
     txt.alpha = Math.max(0, 1 - t);
+  }
+
+  // 両サイドへフェードする水平グラデのテクスチャ(白)。tint で色を付けて使い回す。1度だけ生成。
+  private static hFadeTex: Texture | null = null;
+  private static getHFadeTexture(): Texture {
+    if (PixiScene.hFadeTex) return PixiScene.hFadeTex;
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 8;
+    const ctx = cv.getContext('2d')!;
+    const g = ctx.createLinearGradient(0, 0, 128, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.5, 'rgba(255,255,255,1)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 8);
+    PixiScene.hFadeTex = Texture.from(cv);
+    return PixiScene.hFadeTex;
+  }
+
+  // 色背景付きコールアウト: 縁取り無しの文字＋両サイドフェードの色帯(tint)を背面に。Container プール。
+  private drawCalloutWithBg(e: Extract<VisualEffect, { kind: 'damageNumber' }>, t: number, scale: number) {
+    let view = this.effects.get(e.id);
+    if (!(view instanceof Container) || view.children.length < 2 || !(view.children[1] instanceof Text)) {
+      if (view) view.destroy({ children: true });
+      const c = new Container();
+      const bg = new Sprite(PixiScene.getHFadeTexture()); bg.anchor.set(0.5, 0.5);
+      const txt = new Text({
+        text: e.text ?? '',
+        resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
+        style: { fontFamily: FONT_STACK, fontSize: Math.round(15 * scale), fontWeight: 'bold', fill: e.color },
+      });
+      txt.anchor.set(0.5, 0.5);
+      c.addChild(bg, txt);
+      this.L.effectLayer.addChild(c);
+      this.effects.set(e.id, c);
+      view = c;
+    }
+    const c = view as Container;
+    const bg = c.children[0] as Sprite;
+    const txt = c.children[1] as Text;
+    bg.tint = e.bg ?? 0xffffff;
+    bg.width = txt.width + 34 * scale;   // 文字より広めに帯を伸ばして両端フェード
+    bg.height = txt.height + 10 * scale;
+    bg.alpha = Math.max(0, 1 - t) * 0.8; // 透明感を残す
+    const pop = 1 + Math.max(0, 1 - t * 5) * 0.2;
+    c.position.set(e.x, e.y - t * 12);
+    c.scale.set(pop);
+    txt.alpha = Math.max(0, 1 - t);
+    c.visible = true;
   }
 
   // 数値ダメージの BitmapText 描画(プール再利用・色は tint)。Text のラスタライズコストを回避。

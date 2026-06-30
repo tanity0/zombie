@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1209 — Counter!/KILL コールアウトを枠廃止＋両サイドフェードの色背景に(社長指示)
+
+- コールアウト効果に `bg?`(tint色)を追加。`bg` 指定時は **縁取り無しの文字＋両サイドフェードの色帯**(白の水平フェード
+  テクスチャを tint で着色、`drawCalloutWithBg`/`getHFadeTexture`)を背面に描画。Counter=青(0x2563eb)＋文字を明色、
+  KILL=赤(0xdc2626)＋文字を明色。透明感を残す(帯 alpha 0.8)。
+- 検証: typecheck/lint(0)/build OK。変更: `src/types/game.ts`・`src/store/gameStore.ts`・`src/hooks/useGameLoop.ts`・
+  `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1208 — プレイ中HUDの文字背景を枠廃止・フェードに統一＋武器枠を細く(社長指示)
 
 - **文字背景の枠廃止＋右フェード**: `.glass-pill` を「枠/丸み無し＋右フェード黒」に再定義。武器入手通知(旧glass-panel+ring)・

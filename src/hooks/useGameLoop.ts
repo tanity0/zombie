@@ -3147,7 +3147,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
               spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
               spawnBurst(bpcx, bpcy, '#38bdf8', 14);
-              useGameStore.getState().spawnCallout(bpcx, bpcy - 12, 'Counter!', '#38bdf8');
+              useGameStore.getState().spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
               useGameStore.setState(st => ({
                 // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
                 // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
@@ -3926,7 +3926,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
           spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
-          useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
+          useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
         }
 
         // Check for collisions between projectiles and enemies. Read fresh
@@ -4663,7 +4663,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
           spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
           spawnBurst(ppx, ppy, '#38bdf8', 14);
-          useGameStore.getState().spawnCallout(ppx, ppy - 12, 'Counter!', '#38bdf8');
+          useGameStore.getState().spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
           useGameStore.setState(st => ({
             // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
             player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },

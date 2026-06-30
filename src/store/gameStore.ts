@@ -1361,7 +1361,7 @@ const grantMeleeKillRewards = (
       // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
       // 軌道中央へ「斬」を出すので、ここでは出さない。
       if (!suppressKillCallout) {
-        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#fb7185');
+        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', { bg: 0xdc2626 });
       }
     } else {
       get().spawnBurst(ex, ey, '#dc2626', 16);
@@ -1938,7 +1938,7 @@ interface GameState {
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
-  spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean }) => void;
+  spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number }) => void;
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
@@ -8319,6 +8319,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       color,
       scale: opts?.scale ?? 1.9,
       serif: opts?.serif,
+      bg: opts?.bg,
       createdAt: now,
       duration: opts?.serif ? 1000 : 850
     };

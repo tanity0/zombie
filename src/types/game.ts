@@ -796,6 +796,8 @@ export type VisualEffect =
       scale?: number;
       // Optional serif/mincho font (e.g. the katana "斬" callout).
       serif?: boolean;
+      // Optional callout background tint (両サイドフェードの色背景。Counter=青/KILL=赤等)。指定時は縁取りを外す。
+      bg?: number;
     }
   | {
       // 一枚絵のマーク表示(例: 刀フィニッシュの習字「斬」)。pop-in→保持→フェード。
