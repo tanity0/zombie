@@ -414,12 +414,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   }`}
                   style={{
                     width: 74, height: 80,
-                    // 枠は上下のみ(社長指示で左右の枠は削除)。背景は右フェードのまま。
+                    // 枠は上下のみ＋右へフェード(社長指示: 左右の枠は無し、線も右で透明に)。背景も右フェード。
                     background: on
                       ? 'linear-gradient(95deg, rgba(168,85,247,0.26) 0%, rgba(168,85,247,0.09) 55%, transparent 100%)'
                       : 'linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.18) 55%, transparent 100%)',
-                    borderTop: `1px solid rgba(168,85,247,${on ? 0.85 : 0.4})`,
-                    borderBottom: `1px solid rgba(168,85,247,${on ? 0.85 : 0.4})`,
+                    borderTop: '1px solid transparent',
+                    borderBottom: '1px solid transparent',
+                    borderImage: `linear-gradient(90deg, rgba(168,85,247,${on ? 0.9 : 0.45}) 0%, rgba(168,85,247,${on ? 0.5 : 0.25}) 45%, transparent 100%) 1`,
                   }}
                   aria-pressed={on}
                 >

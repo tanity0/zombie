@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1215 — 枠は実線で残さず全てフェードに徹底(キャラ選択チップ/glass-panel)＋HP数字の縁取り廃止(社長指示)
+
+- **キャラ選択チップ**: 上下の枠を実線→`border-image`の横グラデで**右へフェード**(左右枠は無しのまま)。
+- **glass-panel**: 実線の紫枠を撤去(`border:none`)=メニュー面は深い黒＋blurのみ(「枠だけ残さない」徹底)。
+- **HP数字**: テキストの縁取り(stroke)を撤去。紫オーブ上の白文字なので可読性は維持。
+- 検証: typecheck/lint(0)/build OK。変更: `src/index.css`・`src/components/MissionSelect.tsx`・`src/components/VitalsOrb.tsx`・`package.json`。
+
 ## v0.25.1214 — ハンターは視界範囲外では突進(ダッシュ)もしない(社長指示・1213の取り違え修正)
 
 - 社長の意図は「視界範囲を出ているのに飛んでくる」=範囲外でも攻撃する点。1213のオーバーシュート制限は的外れだったので**撤回**

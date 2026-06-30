@@ -119,7 +119,7 @@ const VitalsOrb: React.FC = () => {
             fontWeight="800"
             fontSize={ORB_R * 0.78}
             fill="#ffffff"
-            style={{ fontVariantNumeric: 'tabular-nums', paintOrder: 'stroke', stroke: 'rgba(2,6,23,0.85)', strokeWidth: 3 }}
+            style={{ fontVariantNumeric: 'tabular-nums' }}
           >
             {Math.max(0, Math.ceil(health))}
           </text>

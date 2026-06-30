@@ -45,13 +45,13 @@
   .right-safe {
     right: env(safe-area-inset-right);
   }
-  /* FF7リメイク風メニュー面(社長指示・紫)。深い黒のみ＋極薄の紫枠1本だけ(装飾は足さない)。
-     glass-pill(プレイ中HUD)は据え置き=ゲーム中の視認性は変えない。 */
+  /* FF7リメイク風メニュー面(社長指示・紫)。社長指示「枠だけ残さない」=実線の枠は廃止。
+     深い黒の面＋blur のみで面を表現(枠なし)。 */
   .glass-panel {
     background-color: rgba(11, 9, 16, 0.52);
     backdrop-filter: saturate(150%) blur(14px);
     -webkit-backdrop-filter: saturate(150%) blur(14px);
-    border: 1px solid rgba(168, 85, 247, 0.12);
+    border: none;
   }
   /* プレイ中HUDの文字背景。社長指示で「枠を廃止し右フェードアウト」に統一。
      枠(border)/丸み無し。左=やや濃い→右=透明 のグラデのみ。 */
