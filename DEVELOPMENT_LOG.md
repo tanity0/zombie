@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1157 — 被弾した敵の背中側に「ドバッと火」破裂演出(軽量・指向性粒子＋小グロー)
+
+- **背中側の火破裂**: 銃弾ヒット時、弾の進行方向(=出口=背中側)へ火炎色の指向性粒子を噴く新アクション
+  `spawnSpray(x, y, dirX, dirY, count, colors)` を追加(store)。射出位置は敵中心から背中側へオフセット
+  (`width*0.42` / `height*0.18`)。`useGameLoop` の被弾処理(`playSfx('shot-damage')` 直後)から
+  `HIT_SPRAY_COUNT`(6)・`HIT_FIRE_COLORS`(黄/橙/濃橙/赤)で呼び、加えて小さな橙グロー(`spawnGlow` 22px/170ms,
+  プール済み=安い)を1個重ねる。
+- **負荷**: 粒子は1ヒット6個・短命(200-380ms)・既存 effects 上限400で自然に頭打ち。粒子=per-frame Graphics(FX-P)
+  だが「単発少数」なので CAUTION 域に入らない設計。負荷 **2/10**(被弾の瞬間だけ少数粒子＋プールグロー1。
+  常時湧きでも上限キャップで保護)。重い表現(大アルファ画像/per-frameの輪リング/Text)は採用せず。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/store/gameStore.ts`(spawnSpray)・
+  `src/hooks/useGameLoop.ts`(定数＋呼び出し)・`package.json`。
+
 ## v0.25.1156 — 被弾フラッシュを「絵」を光らせる方式に＋弾は松明をすり抜け(社長指示)
 
 - **被弾フラッシュ**: 旧・白丸(overlay の circle)を廃止し、本体スプライトと同形を**白で加算オーバーレイ**して

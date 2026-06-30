@@ -95,6 +95,11 @@ import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 // スポーンは等速のまま)。すぐ戻せるよう単一定数で管理: 1.0 = 従来等速 / 1.2 = 現在。
 const MOVE_SPEED_MULT = 1.2;
 
+// 被弾時の「背中側にドバッと火」破裂演出: 少数の指向性粒子(spawnSpray)＋小グロー1個。
+// 軽量化のため粒子は6個・短命(200-380ms)、色は火炎4色からランダム。
+const HIT_SPRAY_COUNT = 6;
+const HIT_FIRE_COLORS = ['#fde047', '#fb923c', '#f97316', '#ef4444'];
+
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
 const GRENADE_BLAST_DAMAGE_MULT = 0.62;
@@ -3927,6 +3932,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
+          // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(軽量: 少数粒子＋小グロー)。
+          if (enemyForFx && projectile) {
+            const ecx = enemyForFx.x + enemyForFx.width / 2, ecy = enemyForFx.y + enemyForFx.height / 2;
+            let dx = projectile.direction.x, dy = projectile.direction.y;
+            const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+            const ox = ecx + dx * (enemyForFx.width * 0.42), oy = ecy + dy * (enemyForFx.height * 0.18);
+            useGameStore.getState().spawnSpray(ox, oy, dx, dy, HIT_SPRAY_COUNT, HIT_FIRE_COLORS);
+            useGameStore.getState().spawnGlow(ox, oy, 22, 'rgba(251,146,60,', 170); // 小さな橙の破裂グロー(プール済み=安い)
+          }
           // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。
           if (enemyKilled && projectile?.weaponKey === 'escort' && enemyForFx) {
             useGameStore.getState().npcKillReact(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2);

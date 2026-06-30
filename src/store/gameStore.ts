@@ -1927,6 +1927,8 @@ interface GameState {
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
+  // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
+  spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean }) => void;
@@ -8155,6 +8157,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // 指定方向へ円錐状に噴く粒子(被弾の背中側破裂など)。安価(粒子=既存プール、少数・短命)。
+  spawnSpray: (x, y, dirX, dirY, count, colors) => {
+    const now = Date.now();
+    const base = Math.atan2(dirY, dirX);
+    const SPREAD = 1.05; // 円錐の広がり(rad・±約30°)
+    const fresh: VisualEffect[] = [];
+    for (let i = 0; i < count; i++) {
+      const ang = base + (Math.random() - 0.5) * SPREAD;
+      const speed = 120 + Math.random() * 180; // 背中側へ勢いよく
+      const color = colors[(Math.random() * colors.length) | 0] ?? '#fb923c';
+      fresh.push({
+        kind: 'particle',
+        id: `fx-spray-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        x, y,
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed,
+        color,
+        size: 1.6 + Math.random() * 2.2,
+        createdAt: now,
+        duration: 200 + Math.random() * 180, // 短命=積み重ねを抑える
+        drag: 6,
+      });
+    }
+    set(state => {
+      const next = [...state.effects, ...fresh];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
   spawnBurst: (x, y, color, count = 6) => {
     const now = Date.now();
     const fresh: VisualEffect[] = [];
