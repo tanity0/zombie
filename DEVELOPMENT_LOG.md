@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1178 — 銃声SE(発砲音)を全種少し上げる(社長指示)
+
+- handgun-fire 0.52→0.64 / smg-fire 0.46→0.58 / shotgun-fire 0.66→0.78 / rifle-fire 0.62→0.74 /
+  grenade-launcher-fire 0.66→0.78。命中音(shot-damage)等はそのまま。変更: `src/audio/audioManager.ts`・`package.json`。
+
 ## v0.25.1177 — 斬撃エフェクトをピクセル5コマに差し替え(社長提供・流れる斬撃＋中央バースト)
 
 - 社長提供のピクセル素材を10コマに分割: `fx/slash-streak-0..4`(斬撃線・段々大きく) / `fx/slash-burst-0..4`
