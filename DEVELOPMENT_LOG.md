@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1160 — 被弾フラッシュを「真っ白シルエット」に(暗い敵もハッキリ白く光る・社長指示)
+
+- **問題**: 加算オーバーレイは「元テクスチャの色」しか足せないため、暗い敵の暗部はほとんど光らず白く見えなかった。
+- **修正**: 元テクスチャの RGB を一律白・α保持でベイクした「真っ白シルエット」テクスチャ(`whiteSilhouette`、
+  `whiteTexCache` にキャッシュ)を加算で重ねる方式へ。これで暗い敵でも不透明部が全面くっきり白く光る。
+  ベイクは元Textureごとに1回だけ(実行時はフィルタ不要=キャッシュ貼り)。AoEで多数同時被弾でもフィルタが
+  毎フレーム走らない=安い。負荷 1〜2/10(ベイク1回＋通常の加算スプライト描画。`grayscaleTexture` と同方式)。
+- 検証: typecheck / lint / build OK。変更: `src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1159 — 出撃する護衛NPCの顔ぶれをランダム化(社長指摘: ランダムになってなかった)
 
 - **不具合**: `makeEscorts` の名簿が `[0,1,2,3]` 固定で、毎出撃で常に同じ4人(エドガー/ジョセフ/

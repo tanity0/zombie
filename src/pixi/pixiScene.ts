@@ -778,6 +778,9 @@ export class PixiScene {
   private cloneKnifeSetup = false;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
+  // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
+  // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
+  private whiteTexCache = new Map<Texture, Texture>();
   private castleView = new Container();
   private castleSprite = new Sprite();
   private castleGlow = new Sprite(getGlowTexture());
@@ -4614,6 +4617,26 @@ export class PixiScene {
     return rt;
   }
 
+  // 元テクスチャの「真っ白シルエット」(RGB→白・α保持)を1度だけベイクしてキャッシュ。被弾フラッシュで
+  // これを加算オーバーレイすると、暗い敵でも全面が白く光る。実行時はフィルタ不要(キャッシュ済みを貼るだけ)=安い。
+  private whiteSilhouette(src: Texture | null): Texture | null {
+    if (!src || src.width <= 1 || !this.renderer) return null;
+    const cached = this.whiteTexCache.get(src);
+    if (cached) return cached;
+    const tmp = new Sprite(src);
+    const wrap = new Container();
+    wrap.addChild(tmp);
+    const f = new ColorMatrixFilter();
+    // RGB を一律 1(白)に、α は元のまま(行4=0,0,0,1,0)。→ 不透明部だけが真っ白なシルエット。
+    f.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
+    wrap.filters = [f];
+    const rt = RenderTexture.create({ width: Math.max(1, src.width), height: Math.max(1, src.height) });
+    this.renderer.render({ container: wrap, target: rt, clear: true });
+    wrap.destroy({ children: true });
+    this.whiteTexCache.set(src, rt);
+    return rt;
+  }
+
   // 分身(サブウェポン)を描く。外見はプレイヤーと同一(待機=frame0)を白黒キャッシュで。
   // 位置は生成時に固定(clone.x/y)。攻撃の見た目は store 側のスラッシュ/リングが担当する。
   private syncShadowClone(player: Player) {
@@ -4863,7 +4886,8 @@ export class PixiScene {
       const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
         ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
       if (flashT > 0.01) {
-        hf.texture = view.sprite.texture;
+        // 真っ白シルエットを加算で重ねる(暗い敵でも全面が白く光る)。未ベイク時は元テクスチャにフォールバック。
+        hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
         hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
         hf.position.set(view.sprite.position.x, view.sprite.position.y);
         hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
