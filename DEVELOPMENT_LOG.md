@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1197 — FF7Rボタン: 端は透明のまま中央の暗さを下げる(社長指示)
+
+- 端のフェードアウト(0.04)は維持し、中央の不透明度を 0.93→0.58 に(right も 0.58→0.04)=中央が暗すぎを解消。
+  変更: `src/components/ff7r.tsx`・`package.json`。
+
 ## v0.25.1196 — FF7Rボタン背景が見づらい→不透明度を底上げ(社長指示)
 
 - 簡素化でフェード端が透けすぎてボタンが見えづらかったので、フェードは残しつつ不透明度UP(both端0.06→0.5/中央0.93、

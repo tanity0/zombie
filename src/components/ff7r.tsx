@@ -20,10 +20,10 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
   children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right',
 }) => {
   // シンプルに: フェードした面＋(右のみ)左端1pxの細い紫ライン1本だけ。ホバー/選択で少し発色。枠線は足さない。
-  // 端が透けすぎてボタンが見えづらかったので、フェードは残しつつ不透明度を底上げ(端でも0.45以上)。
+  // 端は透明(フェードアウト)のまま、中央が暗すぎたので中央の不透明度を下げて軽く(社長指示)。
   const base = fade === 'both'
-    ? 'linear-gradient(90deg, rgba(24,15,38,0.5) 0%, rgba(24,15,38,0.93) 30%, rgba(24,15,38,0.93) 70%, rgba(24,15,38,0.5) 100%)'
-    : 'linear-gradient(95deg, rgba(24,15,38,0.93) 0%, rgba(24,15,38,0.72) 60%, rgba(24,15,38,0.45) 100%)';
+    ? 'linear-gradient(90deg, rgba(24,15,38,0.04) 0%, rgba(24,15,38,0.58) 32%, rgba(24,15,38,0.58) 68%, rgba(24,15,38,0.04) 100%)'
+    : 'linear-gradient(95deg, rgba(24,15,38,0.58) 0%, rgba(24,15,38,0.34) 60%, rgba(24,15,38,0.04) 100%)';
   const hi = fade === 'both'
     ? 'linear-gradient(90deg, transparent 0%, rgba(168,85,247,0.20) 35%, rgba(168,85,247,0.20) 65%, transparent 100%)'
     : 'linear-gradient(95deg, rgba(168,85,247,0.26) 0%, transparent 70%)';
