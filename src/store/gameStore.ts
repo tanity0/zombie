@@ -960,6 +960,9 @@ export const WEREWOLF_CHARGE_SPEED_MULT = 3;   // 通常の3倍速(赤ライン�
 // ハンター変異体のジャンプ/ダッシュ攻撃だけ速度2倍(社長指示)。ダッシュ突進速度に乗算、
 // ジャンプ滞空時間を 1/この値 に短縮(=同距離を倍速で跳ぶ)。他の犬/パンプキン/バットには非適用。
 export const HUNTER_JUMP_DASH_SPEED_MULT = 2;
+// ジャンプ速度のみ 2/3 に(社長指示)。ダッシュ突進は HUNTER_JUMP_DASH_SPEED_MULT のまま据え置き。
+// 実効倍率 2 → 4/3(=2×2/3)。滞空時間を 1/この値 に短縮するので、跳ぶ速さがそのぶん遅くなる。
+export const HUNTER_JUMP_SPEED_MULT = (HUNTER_JUMP_DASH_SPEED_MULT * 2) / 3;
 // ダッシュ攻撃全般(通常より速い突進)の弱いホーミング量/frame。基本は直進、少しだけプレイヤーへ寄せる(社長指示)。
 export const DASH_ATTACK_HOMING = 0.05;
 // ダッシュ溜め中、ゆっくり後退り(プレイヤーから離れる)してから突進(社長指示)。通常速度に対する倍率。
@@ -5313,14 +5316,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                 ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
                 aiFromX: enemy.x, aiFromY: enemy.y,
                 aiTargetX: jtx - enemy.width / 2, aiTargetY: jty - enemy.height / 2,
-                aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS / (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1)),
+                aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS / (enemy.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1)),
               };
             }
             return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(縮みは描画側)
           }
           if (enemy.aiPhase === 'jump') {
             // ジャンプ滞空時間も攻撃倍速で短縮(着地=t>=1。set側 aiPhaseUntil と同じ scaled 値で揃える)。
-            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT / (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1))));
+            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT / (enemy.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1))));
             const fx = enemy.aiFromX ?? enemy.x, fy = enemy.aiFromY ?? enemy.y;
             const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
             const nx = fx + (tx - fx) * t;
