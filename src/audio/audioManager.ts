@@ -80,6 +80,7 @@ export type SfxKey =
   | 'handgun-fire'
   | 'shotgun-fire'
   | 'rifle-fire'
+  | 'grenade-launcher-fire'
   | 'level-up'
   | 'boss-warning'
   | 'melee-finish'
@@ -219,6 +220,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/rifle-fire.mp3`,
     volume: 0.62,
     minIntervalMs: 28,
+  },
+  'grenade-launcher-fire': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/grenade-launcher-fire.mp3`, // 社長提供。グレネードランチャー(rifle-t3)の発射音
+    volume: 0.66,
+    minIntervalMs: 60,
   },
   melee: {
     src: `${import.meta.env.BASE_URL}audio/sfx/slash.mp3`,

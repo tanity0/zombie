@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1169 — マグナム系SE差し替え＋グレネードランチャー専用発射音を追加
+
+- **マグナム系(rifle-fire)**: 社長提供の mp3 で `public/audio/sfx/rifle-fire.mp3` を同名差し替え(マグナム/スナイパー
+  共通の rifle カテゴリ発射音)。配線・音量据え置き。
+- **グレネードランチャー専用音**: 新SFXキー `grenade-launcher-fire`(`public/audio/sfx/grenade-launcher-fire.mp3`)を追加。
+  発射ディスパッチで rifle カテゴリのうち `activeGun.key === GRENADE_WEAPON_KEY`(rifle-t3)だけ専用音、それ以外
+  (マグナム/スナイパー)は従来 `rifle-fire`。volume 0.66 / minIntervalMs 60。
+  ※タレット(サブ武器)が撃つランチャー弾(`useGameLoop:3344`)は対象外=従来 `rifle-fire` のまま(社長指定は本体のGLのみ)。
+- 検証: typecheck / lint / test(75 pass) / build(dist コピー確認)OK。変更: `src/audio/audioManager.ts`・
+  `src/hooks/useGameLoop.ts`・`public/audio/sfx/rifle-fire.mp3`(差替)・`grenade-launcher-fire.mp3`(新規)・`package.json`。
+
 ## v0.25.1168 — ショットガン発砲SEを社長提供の新音源に差し替え
 
 - `shotgun-fire` の音源を社長提供の WAV(`public/audio/sfx/shotgun-fire.wav`)へ差し替え。旧 `shotgun-fire.mp3` は削除。

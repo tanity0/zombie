@@ -2356,7 +2356,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (newProjectiles.length > 0) {
             if (activeGun.category === 'handgun') playSfx('handgun-fire');
             if (activeGun.category === 'shotgun') playSfx('shotgun-fire');
-            if (activeGun.category === 'rifle') playSfx('rifle-fire');
+            // rifle系のうちグレネードランチャー(rifle-t3)だけ専用の発射音、それ以外(マグナム/スナイパー)はrifle-fire。
+            if (activeGun.category === 'rifle') playSfx(activeGun.key === GRENADE_WEAPON_KEY ? 'grenade-launcher-fire' : 'rifle-fire');
             // Muzzle flash at the gun, pointed along the shot.
             const md = newProjectiles[0].direction;
             const mpx = postReloadPlayer.x + postReloadPlayer.width / 2 + md.x * 18;
