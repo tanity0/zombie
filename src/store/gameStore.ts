@@ -484,6 +484,7 @@ export const PHILL_SNAP_RADIUS = 46;
 // 即ポーズするため velocity だと失効する → 位置を即時に動かす(menu を跨いでも効く)。
 export const LEVELUP_KNOCKBACK_RADIUS = 240;   // 押しのける範囲(プレイヤー中心)
 export const LEVELUP_KNOCKBACK_DISTANCE = 64;  // 押しのける距離(96→64=今の2/3。社長指示)
+export const LEVELUP_INTRO_MS = 850;           // レベルアップ演出(スロー)の長さ。経過後に選択肢メニューを出す(社長指示)
 // Each successful reflect refreshes the window by this much so a chained
 // barrage can be turned back in full. No hard cap — the cooldown still
 // kicks in once the chain finally lapses.
@@ -1591,6 +1592,7 @@ interface GameState {
   realGameTime: number;
   isPaused: boolean;
   showUpgradeMenu: boolean;
+  levelUpIntroUntil: number; // >0 の間は「LEVEL UP 演出(スロー)」中。この実時刻を過ぎたら選択肢メニューを出す。
   showShopMenu: boolean;
   showEventQuestMenu: boolean;
   shopReopenAt: number;
@@ -2066,6 +2068,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   realGameTime: 0,
   isPaused: false,
   showUpgradeMenu: false,
+  levelUpIntroUntil: 0,
   showShopMenu: false,
   showEventQuestMenu: false,
   shopReopenAt: 0,
@@ -4339,18 +4342,23 @@ export const useGameStore = create<GameState>((set, get) => ({
           experience: Math.max(0, player.experience - player.experienceToNextLevel)
         },
         enemies: shovedEnemies,
-        showUpgradeMenu: true,
+        // 選択肢メニューは即出さず、まず「LEVEL UP 演出(スロー)」を見せる。intro 経過後に useGameLoop が出す。
         upgradeOptions,
-        isPaused: true,
+        levelUpIntroUntil: Date.now() + LEVELUP_INTRO_MS,
         gameStats: {
           ...state.gameStats,
           maxLevel: newMaxLevel
         }
       };
     });
-    // 押しのけの視覚フィードバック(リング)。
+    // 演出: 時間スロー＋押しのけリング＋キャラを派手に光らせる(社長指示)。メニューは intro 後に開く。
+    get().triggerTimeSlow(0.25, LEVELUP_INTRO_MS);
     const lp = get().player;
-    get().spawnRing(lp.x + lp.width / 2, lp.y + lp.height / 2, 14, LEVELUP_KNOCKBACK_RADIUS, 'rgba(250,204,21,0.7)', 3, 260);
+    const cx = lp.x + lp.width / 2, cy = lp.y + lp.height / 2;
+    get().spawnRing(cx, cy, 14, LEVELUP_KNOCKBACK_RADIUS, 'rgba(250,204,21,0.7)', 3, 260);
+    // キャラを派手に: 大きく明るいグロー(芯=白＋金ハロー)を重ねがけ。
+    get().spawnGlow(cx, cy, 150, 'rgba(253,224,71,', LEVELUP_INTRO_MS + 200);
+    get().spawnGlow(cx, cy, 88, 'rgba(255,255,255,', LEVELUP_INTRO_MS);
   },
   
   // Weapon actions

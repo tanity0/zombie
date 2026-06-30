@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1218 — レベルアップ: 先に「LEVEL UP」演出(スロー＋キャラ発光)→その後に選択肢(社長指示)
+
+- `levelUp()` は選択肢メニューを即出さず、`levelUpIntroUntil = now + LEVELUP_INTRO_MS(850)` をセット＋`triggerTimeSlow(0.25)`で
+  時間スロー＋キャラを派手に発光(大グロー150＋白芯88)＋既存のLEVEL UPリング/コールアウト/SE。
+- `useGameLoop` が intro 経過を検知して `showUpgradeMenu=true / isPaused=true` に(=演出の後に選択肢が出る)。
+- 検証: typecheck/lint(0)/test(76)/build OK。変更: `src/store/gameStore.ts`・`src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1217 — 実線枠を全面撤去(menu系一括)＋ポーズ/レベルアップが武器UIに被る不具合を修正
 
 - **z-index**: GameHUD(z-40)がポーズ/レベルアップ(z-30)より上で武器UIが透けていた。PauseMenu/UpgradeMenu を z-50

@@ -5362,6 +5362,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Tick visual effects (particles drift, damage numbers float, etc.)
         updateEffects(deltaTime);
 
+        // LEVEL UP 演出(スロー)が終わったら選択肢メニューを開く(社長指示: 先に演出→その後に選択)。
+        {
+          const introUntil = useGameStore.getState().levelUpIntroUntil;
+          if (introUntil > 0 && Date.now() >= introUntil) {
+            useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 });
+          }
+        }
+
         // Detect level-up edge: golden ring around the player.
         const currentPlayer = useGameStore.getState().player;
         if (currentPlayer.level > prevLevelRef.current) {
