@@ -194,7 +194,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   'shot-damage': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shot-damage.mp3`,
-    volume: 0.78,
+    volume: 1.0, // 社長指示で上げる(0.78→1.0)
     minIntervalMs: 36,
   },
   headshot: {
