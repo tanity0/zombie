@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1155 — 城(と将来のダンジョン系)も裏回りで透ける＋出撃ロードをTitleと同じスピナーに(社長指示)
+
+- **城の裏回り透過**: `applyObstacleAlpha` の透過判定を共通ヘルパ `seeThroughMult(centerX, footY, vw, vh)` に
+  切り出し、`syncCastle` の `castleView.alpha` にも適用。プレイヤーが城の裏に回り込むと
+  `OBSTACLE_SEE_THROUGH_ALPHA`(0.35)へ滑らかに透ける(木/壁/プロップと同規格)。将来のダンジョン系オブジェも
+  この障害物パスに乗せれば自動で透ける。負荷不変(alpha lerpのみ)。
+- **出撃時ローディングの見た目**: `LoadingScreen compact` を「同意して始める後(TitleScreen)のスピナー」と
+  同一マークアップ(小さな回転＋LOADING…)に。App の出撃オーバーレイを `compact` に戻す(ゾンビサバイバル表示を撤去)。
+- 検証: typecheck / lint / build OK。変更: `src/pixi/pixiScene.ts`・`src/components/LoadingScreen.tsx`・`src/App.tsx`・`package.json`。
+
 ## v0.25.1154 — 出撃時ローディングを起動時と同じ見た目に(社長指示)
 
 - 出撃時のレンダラ初期化オーバーレイを `compact`(控えめ)→ 起動時と同じ `<LoadingScreen startup />` に戻す。

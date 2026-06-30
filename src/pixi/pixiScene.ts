@@ -1498,18 +1498,24 @@ export class PixiScene {
   private applyObstacleAlpha(sprite: Sprite, footWorldY: number) {
     // 手前(画面下端)でも消える: 地平線フェード × 手前フェード(敵と同じ near-plane フェード)。
     const base = this.horizonActorAlpha(footWorldY) * this.foregroundActorAlpha(footWorldY);
-    let target = base;
-    if (OBSTACLE_SEE_THROUGH_ALPHA < 1 && footWorldY > this.seeThroughPlayer.footY && sprite.visible && sprite.texture && sprite.texture.width > 1) {
-      const vw = Math.abs(sprite.scale.x) * sprite.texture.width;
-      const vh = Math.abs(sprite.scale.y) * sprite.texture.height;
-      const p = this.seeThroughPlayer;
-      // 障害物の見た目矩形(foot-anchor 0.5,1) vs プレイヤー足元矩形 の AABB 重なり。
-      if (sprite.x + vw / 2 > p.cx - p.halfW && sprite.x - vw / 2 < p.cx + p.halfW
-          && sprite.y > p.top && sprite.y - vh < p.footY) {
-        target = base * OBSTACLE_SEE_THROUGH_ALPHA;
-      }
+    const mult = (sprite.visible && sprite.texture && sprite.texture.width > 1)
+      ? this.seeThroughMult(sprite.x, footWorldY, Math.abs(sprite.scale.x) * sprite.texture.width, Math.abs(sprite.scale.y) * sprite.texture.height)
+      : 1;
+    sprite.alpha += (base * mult - sprite.alpha) * this.seeThroughLerp;
+  }
+
+  // 「裏に回ったら透ける」倍率。プレイヤーを覆う(手前=footWorldYが大きく、見た目矩形が足元矩形と重なる)
+  // 障害物は OBSTACLE_SEE_THROUGH_ALPHA、それ以外は 1。城/将来のダンジョン系オブジェも共有(社長指示)。
+  // centerX/footWorldY=見た目の中心X・足元Y(world)、vw/vh=見た目の幅・高さ。
+  private seeThroughMult(centerX: number, footWorldY: number, vw: number, vh: number): number {
+    if (OBSTACLE_SEE_THROUGH_ALPHA >= 1 || footWorldY <= this.seeThroughPlayer.footY) return 1;
+    const p = this.seeThroughPlayer;
+    // 障害物の見た目矩形(foot-anchor 0.5,1) vs プレイヤー足元矩形 の AABB 重なり。
+    if (centerX + vw / 2 > p.cx - p.halfW && centerX - vw / 2 < p.cx + p.halfW
+        && footWorldY > p.top && footWorldY - vh < p.footY) {
+      return OBSTACLE_SEE_THROUGH_ALPHA;
     }
-    sprite.alpha += (target - sprite.alpha) * this.seeThroughLerp;
+    return 1;
   }
 
   private horizonRevealZeroScreenY() {
@@ -2779,7 +2785,10 @@ export class PixiScene {
 
     this.castleView.visible = true;
     this.castleView.position.set(Math.round(castle.x), Math.round(castle.y + CASTLE_FOOT_OFFSET_Y * d));
-    this.castleView.alpha = Math.min(0.96, horizonAlpha * 0.9);
+    // プレイヤーが城の裏に回り込んだら透かす(木/壁/プロップと同じ規格)。将来のダンジョン系オブジェも同様に。
+    const stMult = this.seeThroughMult(castle.x, footY, tex.width * sc, targetH);
+    const targetAlpha = Math.min(0.96, horizonAlpha * 0.9) * stMult;
+    this.castleView.alpha += (targetAlpha - this.castleView.alpha) * this.seeThroughLerp;
     this.castleView.zIndex = footY;
 
     this.castleSprite.texture = tex;

@@ -14,17 +14,13 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
     ? '素材をダウンロード中…'
     : benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中';
 
-  // 控えめ表示: 暗幕＋スピナー＋小さな「準備中…」だけ。ゲームタイトルは出さない。
+  // 控えめ表示: 「同意して始める」後(TitleScreen の START後)ローディングと同じ見た目(社長指示)。
+  // 小さな回転スピナー＋「LOADING…」だけ。ゲームタイトル(ゾンビサバイバル)は出さない。
   if (compact) {
     return (
-      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#06070d]/92 text-white">
-        <div className="flex flex-col items-center">
-          <div className="h-12 w-12 rounded-full border border-cyan-200/20 bg-white/5 shadow-[0_0_24px_rgba(34,211,238,0.14)]">
-            <div className="loading-sigil h-full w-full rounded-full" />
-          </div>
-          <div className="mt-3 text-[10px] uppercase tracking-[0.34em] text-cyan-100/45">Loading</div>
-          <div className="mt-1 text-[11px] text-white/45">準備中…</div>
-        </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-end bg-black/45 pb-[18%] text-white">
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white/75" />
+        <span className="mt-4 text-[11px] tracking-[0.34em] text-white/55">LOADING…</span>
       </div>
     );
   }
