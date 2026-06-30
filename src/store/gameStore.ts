@@ -8353,6 +8353,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1) => {
     const now = Date.now();
+    // 斬撃の向き=プレイヤーの向き(右=左下→右上 / 左=反転)。レンダラの facingLeft 判定と同じ規則。
+    const p = get().player;
+    const facingLeft = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+    const face = facingLeft ? -1 : 1;
     set(state => {
       const next = [...state.effects, {
         kind: 'slash' as const,
@@ -8363,7 +8367,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         length: (72 + Math.random() * 16) * lengthScale, // 斬撃をもっと大きく(社長指示。旧 44+12)
         color,
         createdAt: now,
-        duration: 260 // 少し長く残す(旧 200)
+        duration: 260, // 少し長く残す(旧 200)
+        face,
       }];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };

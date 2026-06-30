@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1182 — 斬撃の流れを「左下→右上」に反転＋向きで左右反転(社長指示)
+
+- `drawSlashSprite` の流れを反転: 前半は左下の端を固定して 0→4 グロー(左下→右上に伸びる)、後半は右上の端へ収束。
+- 向き対応: slash 効果に `face`(1=右/-1=左)を追加。`spawnSlash` でプレイヤーの向き(renderer と同じ facingLeft 規則)
+  から決定し、左向きは `scale.x<0` で水平反転(右下→左上)。burst(中央)は対称なので不変。
+- 変更: `src/types/game.ts`・`src/store/gameStore.ts`・`src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1181 — ハンドガン以外の銃声をもう少し上げる(社長指示)
 
 - smg-fire 0.58→0.70 / shotgun-fire 0.78→0.90 / rifle-fire 0.74→0.86 / grenade-launcher-fire 0.78→0.90。

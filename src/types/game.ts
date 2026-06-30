@@ -890,4 +890,5 @@ export type VisualEffect =
       color: string;
       createdAt: number;
       duration: number;
+      face?: number;          // 斬撃の向き(1=右向き=左下→右上 / -1=左向き=反転)。未指定=1。
     };

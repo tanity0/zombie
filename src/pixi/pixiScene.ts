@@ -6667,21 +6667,23 @@ export class PixiScene {
     if (!ref) { c.visible = false; return; }
     c.visible = true;
     // streak: 最大コマ基準で e.length にスケール。小コマは自然に小さく描かれる(=段々大きく)。
+    // 向き: 右(face=1)は「左下→右上」に流れる。左(face=-1)は水平反転(scale.x<0)で「右下→左上」。
+    const sign = (e.face ?? 1) < 0 ? -1 : 1;
     const sc = e.length / Math.max(1, ref.width);
     const halfW = (ref.width * sc) / 2, halfH = (ref.height * sc) / 2;
     let idx: number;
     if (t < 0.5) {
-      idx = Math.min(4, Math.floor((t / 0.5) * 5));      // 0→4 グロー
-      streak.anchor.set(1, 0);                            // 右上の端(top-right tip)を固定
-      streak.position.set(e.x + halfW, e.y - halfH);
-    } else {
-      idx = Math.max(0, 4 - Math.floor(((t - 0.5) / 0.5) * 5)); // 4→0 シュリンク
+      idx = Math.min(4, Math.floor((t / 0.5) * 5));      // 0→4 グロー(下の端から伸びる)
       streak.anchor.set(0, 1);                            // 左下の端(bottom-left tip)を固定
-      streak.position.set(e.x - halfW, e.y + halfH);
+      streak.position.set(e.x - halfW * sign, e.y + halfH);
+    } else {
+      idx = Math.max(0, 4 - Math.floor(((t - 0.5) / 0.5) * 5)); // 4→0 シュリンク(上の端へ収束)
+      streak.anchor.set(1, 0);                            // 右上の端(top-right tip)を固定
+      streak.position.set(e.x + halfW * sign, e.y - halfH);
     }
     const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
     if (streak.texture !== stex) streak.texture = stex;
-    streak.scale.set(sc);
+    streak.scale.set(sc * sign, sc);                     // face=-1 で水平反転
     streak.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);   // 終盤フェード
     // burst: 斬撃中央で 0→4 にポップ→フェード。
     const bref = getTexture('fx/slash-burst-4');
