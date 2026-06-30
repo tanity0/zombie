@@ -1,18 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
-import { hasEquipIcon, equipIconName } from '../data/equipment';
+import { hasEquipIcon, equipIconName, equipmentById } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
+import type { UpgradeOption } from '../types/game';
+
+// 装備アイコン1個(画像が無ければ絵文字フォールバック=特殊は🏯/通常は🛡️)。確認ダイアログ用。
+const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
+  const def = equipmentById(defId);
+  const img = hasEquipIcon(defId) ? spritePath(equipIconName(defId)) : null;
+  return (
+    <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl overflow-hidden bg-white/10 border border-white/15">
+      {img
+        ? <img src={img} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+        : (def?.special ? '🏯' : '🛡️')}
+    </div>
+  );
+};
 
 const UpgradeMenu: React.FC = () => {
   const upgradeOptions = useGameStore(state => state.upgradeOptions);
   const selectUpgrade = useGameStore(state => state.selectUpgrade);
-  // 選択肢タップ時の選択音(社長提供SE)。
-  const handleSelect = (upgrade: Parameters<typeof selectUpgrade>[0]) => {
+  // 既装備の部位に「違うカテゴリー(系統)」の装備を選んだ時だけ確認する(現装備アイコン→新装備アイコン)。
+  const [confirm, setConfirm] = useState<{ upgrade: UpgradeOption; oldId: string; newId: string } | null>(null);
+
+  const commit = (upgrade: UpgradeOption) => {
     playSfx('ui-select');
+    setConfirm(null);
     selectUpgrade(upgrade);
   };
-  
+  // 選択肢タップ: 装備で「同部位・別系統」を上書きする時は確認を挟む。それ以外は即決定。
+  const handleSelect = (upgrade: UpgradeOption) => {
+    if (upgrade.type === 'equipment' && upgrade.equipDefId) {
+      const newDef = equipmentById(upgrade.equipDefId);
+      const currentId = newDef ? useGameStore.getState().player.equipment[newDef.slot] : null;
+      const currentDef = equipmentById(currentId);
+      if (newDef && currentDef && currentId && currentDef.line !== newDef.line) {
+        playSfx('ui-select');
+        setConfirm({ upgrade, oldId: currentId, newId: upgrade.equipDefId });
+        return;
+      }
+    }
+    commit(upgrade);
+  };
+
   return (
     <div
       className="fixed inset-0 z-30 flex items-center justify-center px-6 upgrade-menu-backdrop"
@@ -76,6 +107,42 @@ const UpgradeMenu: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* 既装備の部位を別系統で上書きする時だけ: 現装備→新装備 のアイコンを見せて YES/NO で確認(テキストなし)。 */}
+      {confirm && (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center px-6"
+          style={{ background: 'rgba(8, 8, 14, 0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={() => { playSfx('ui-select'); setConfirm(null); }}
+        >
+          <div
+            className="glass-panel rounded-3xl px-6 py-6 flex flex-col items-center gap-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <EquipIcon defId={confirm.oldId} />
+              <span className="text-2xl text-white/80">→</span>
+              <EquipIcon defId={confirm.newId} />
+            </div>
+            <div className="flex items-center gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => { playSfx('ui-select'); setConfirm(null); }}
+                className="flex-1 py-2.5 rounded-2xl bg-white/10 border border-white/15 text-white/90 font-bold tracking-wide active:bg-white/20"
+              >
+                NO
+              </button>
+              <button
+                type="button"
+                onClick={() => commit(confirm.upgrade)}
+                className="flex-1 py-2.5 rounded-2xl bg-amber-400/25 border border-amber-300/45 text-amber-100 font-bold tracking-wide active:bg-amber-400/40"
+              >
+                YES
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

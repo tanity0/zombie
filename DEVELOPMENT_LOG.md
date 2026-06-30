@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1171 — レベルアップ装備選択: 同部位・別系統の上書きに確認(現装備→新装備アイコン/YES・NO)
+
+- レベルアップの装備選択で、すでに装備している部位へ「違うカテゴリー(系統)」の装備を選んだ時だけ、
+  確認ダイアログを挟む。表示は **現装備アイコン → 新装備アイコン** のみ(テキストなし)、ボタンは **NO / YES**。
+  - 判定: `equipmentById(newDefId).slot` の現装備を `player.equipment[slot]` から引き、`currentDef.line !== newDef.line`
+    の時だけ確認(同系統の段階上げや空きスロットは従来どおり即決定)。loadout はクリック時に `getState()` で読む
+    (毎フレーム購読を増やさない)。
+  - YES=`selectUpgrade` で確定 / NO=キャンセルして選択に戻る。アイコンは専用画像、無ければ絵文字(特殊🏯/通常🛡️)。
+- 負荷 0/10(モーダルUIのみ、追加の常時購読なし)。検証: typecheck/lint/test(75)/build OK。
+  変更: `src/components/UpgradeMenu.tsx`・`package.json`。
+
 ## v0.25.1170 — サブマシンガン(マシンピストル=handgun-t3)専用発射音を追加
 
 - 新SFXキー `smg-fire`(`public/audio/sfx/smg-fire.wav`)を追加。handgun系のうち `activeGun.key === SMG_WEAPON_KEY`
