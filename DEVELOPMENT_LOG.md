@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1154 — 出撃時ローディングを起動時と同じ見た目に(社長指示)
+
+- 出撃時のレンダラ初期化オーバーレイを `compact`(控えめ)→ 起動時と同じ `<LoadingScreen startup />` に戻す。
+  「最初からあるローディングと同じ見た目」へ。フェイルセーフ(6秒タイムアウト/PixiStage catch)は維持。
+- 変更: `src/App.tsx`・`package.json`。検証: typecheck / build OK。(LoadingScreen の compact 分岐は未使用だが温存)
+
 ## v0.25.1153 — レア敵の影色を濃く(見分けやすく)(社長指示・②採用)
 
 - `ENEMY_COLOR_TIER_SHADOW` の `alphaMult` を 1.7/1.7/1.9 → **2.1/2.1/2.3**(青/紫/赤)。色相は据え置き、
