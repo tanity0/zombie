@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1179 — キャラ選択画面のSTARTボタン画像を社長提供の緑STARTに差し替え
+
+- `public/sprites/ui/start-button.png` を社長提供画像に差し替え。元はJPEG(白背景)なので、縁からのflood-fillで
+  白背景だけ透過(内側の白文字グローは保持)→トリミング→160px高に縮小(566×160・148KB)。
+  `MissionSelect` の参照(`?v=__APP_VERSION__` キャッシュバスト付き)・表示サイズ(h-48)は据え置き=コード変更なし。
+- 検証: build(dist コピー確認)OK。変更: `public/sprites/ui/start-button.png`(差替)・`package.json`。
+
 ## v0.25.1178 — 銃声SE(発砲音)を全種少し上げる(社長指示)
 
 - handgun-fire 0.52→0.64 / smg-fire 0.46→0.58 / shotgun-fire 0.66→0.78 / rifle-fire 0.62→0.74 /
