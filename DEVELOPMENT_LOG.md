@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1187 — SFXキャッシュバスト(同名差し替えが反映されない不具合)＋shot-damage更にUP
+
+- **不具合**: SFXのURLにバージョンクエリが無く、同名mp3を差し替えても端末が**古い音をキャッシュ**から鳴らしていた
+  (KILL音が変わらない/差し替えた被弾音が反映されない、等)。BGMは ASSET_VERSION 付きだったがSFXは未対応だった。
+- **修正**: `loadSfxBuffer` の fetch URL に `?v=__APP_VERSION__`(`withVersion`)を付与。毎pushでバージョンが上がるので
+  差し替えのたびに新しい音が確実に読まれる。→ 差し替え済みの kill/counter/rifle/shot-damage 等が反映される。
+- **shot-damage**: 「全然小さい」とのことで 1.35→1.7(キャッシュバストで正しいファイルも読まれる)。
+- 検証: typecheck/lint/build OK。変更: `src/audio/audioManager.ts`・`package.json`。
+
 ## v0.25.1186 — 銃弾ヒット音(shot-damage)をさらに音量UP(社長指示)
 
 - `shot-damage` volume 1.0→1.35。変更: `src/audio/audioManager.ts`・`package.json`。

@@ -194,7 +194,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   'shot-damage': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shot-damage.mp3`,
-    volume: 1.35, // 社長指示でさらに上げる(1.0→1.35。WebAudio gainは>1で増幅)
+    volume: 1.7, // 社長指示でさらに上げる(全然小さい→1.35→1.7。WebAudio gainは>1で増幅)
     minIntervalMs: 36,
   },
   headshot: {
@@ -703,12 +703,17 @@ export const playRadioStatic = () => {
   src.stop(t + dur);
 };
 
+// SFXのURLにバージョン付きクエリを足してキャッシュバスト(同名mp3/wav差し替えでも端末が古い音を掴まないように)。
+// __APP_VERSION__ は毎push必ず上がるので、差し替えのたびに確実に新しい音が読まれる。
+const SFX_BUST = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+const withVersion = (src: string) => src + (src.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(SFX_BUST);
+
 const loadSfxBuffer = (key: SfxKey) => {
   const context = ensureSfxContext();
   const config = SFX_SOURCES[key];
   if (!context || !config || sfxBuffers.has(key) || sfxLoading.has(key)) return;
 
-  const loading = fetch(config.src)
+  const loading = fetch(withVersion(config.src))
     .then(response => response.arrayBuffer())
     .then(data => context.decodeAudioData(data))
     .then(buffer => {
