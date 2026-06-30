@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1172 — フォントを Orbitron 固定に(英語/数字がOrbitronにならない不具合の修正)
+
+- **原因**: `src/config/font.ts` が `?font=` / localStorage で Orbitron/Rajdhani を切替できる設計だったため、
+  端末に Rajdhani の選択が保存されていると英語/数字が Orbitron にならなかった。
+- **修正(社長指示「Orbitronのみで固定」)**: 切替ロジックを撤去し `FONT_FAMILY='Orbitron'` / `FONT_STACK` を
+  常に Orbitron 先頭に固定。これは DOM HUD(`--game-font`)・Pixi Text・ダメージ数字の baked BitmapFont
+  (`FONT_STACK` から焼く)すべてに効く。index.css の Rajdhani `@font-face` と未使用の rajdhani woff2 を削除。
+- 検証: typecheck/lint/test(75)/build(dist に orbitron.woff2 のみ)OK。変更: `src/config/font.ts`・`src/index.css`・
+  `public/fonts/rajdhani-*.woff2`(削除)・`package.json`。
+
 ## v0.25.1171 — レベルアップ装備選択: 同部位・別系統の上書きに確認(現装備→新装備アイコン/YES・NO)
 
 - レベルアップの装備選択で、すでに装備している部位へ「違うカテゴリー(系統)」の装備を選んだ時だけ、
