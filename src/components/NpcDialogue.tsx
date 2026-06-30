@@ -28,52 +28,43 @@ export const NpcDialogue = () => {
   const portraitBase = NPC_PORTRAIT_BASE[npc.name];
   return (
     <div
-      className="absolute text-left flex items-end gap-2"
+      className="absolute text-left"
       style={{
         top: `calc(max(env(safe-area-inset-top), 8px) + ${topPx}px)`,
         left: 'max(env(safe-area-inset-left), 18px)',
         transition: 'top 0.25s ease',
-        maxWidth: 'min(64vw, 286px)',
+        maxWidth: 'min(66vw, 300px)',
       }}
     >
-      {portraitBase && (
-        // 上半身(バスト): 立ち絵を高さ96pxへ拡大して横中央寄せ、枠(56×52)で上部だけ切り出す=頭〜胴。
-        <div
-          style={{
-            position: 'relative',
-            width: 56,
-            height: 52,
-            flex: '0 0 auto',
-            overflow: 'hidden',
-            borderRadius: 10,
-            border: '1px solid rgba(251,191,36,0.5)',
-            background: 'linear-gradient(180deg, rgba(20,24,36,0.6), rgba(8,10,18,0.6))',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
-          }}
-        >
-          <img
-            src={spritePath(`npc/${portraitBase}-0`)}
-            alt={npc.name}
-            draggable={false}
-            style={{
-              position: 'absolute',
-              top: 2,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              height: 96,
-              width: 'auto',
-              maxWidth: 'none', // Tailwind preflight の img{max-width:100%} が width を枠(56px)へ詰めて縦伸びするのを回避
-              imageRendering: 'pixelated',
-            }}
-          />
-        </div>
-      )}
+      {/* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */}
       <div
-        className="glass-pill px-3 py-1 text-[13px] leading-snug"
-        style={{ border: '1px solid rgba(251,191,36,0.45)', textShadow: '0 1px 0 rgba(0,0,0,0.9)', whiteSpace: 'normal', wordBreak: 'break-word' }}
+        className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug"
+        style={{ paddingRight: 44, overflow: 'visible', textShadow: '0 1px 0 rgba(0,0,0,0.9)' }}
       >
-        <span className="font-bold text-amber-300/95 mr-1.5">{npc.name}</span>
-        <span className="text-white/90">{npc.text}</span>
+        {portraitBase && (
+          // バストは背景の高さ(=文字)に対して背が高く、下端を背景下端に合わせて上へはみ出させる。
+          <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+            <img
+              src={spritePath(`npc/${portraitBase}-0`)}
+              alt={npc.name}
+              draggable={false}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                bottom: 0,
+                transform: 'translateX(-50%)',
+                height: 64,
+                width: 'auto',
+                maxWidth: 'none',
+                imageRendering: 'pixelated',
+              }}
+            />
+          </div>
+        )}
+        <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+          <span className="font-bold text-amber-300/95 mr-1.5">{npc.name}</span>
+          <span className="text-white/90">{npc.text}</span>
+        </div>
       </div>
     </div>
   );

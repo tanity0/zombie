@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1211 — NPCセリフを枠廃止＋上半身絵と同一の右フェード背景に(社長指示)
+
+- 旧: バスト枠(56×52 ボーダー/角丸/背景)＋セリフ(glass-pill＋amberボーダー)の2背景。→ **1つの右フェード背景**(glass-pill,
+  枠なし)に統合。バストとセリフが繋がった同一背景に。
+- 高さは文字に合わせ、上半身絵は背景より背を高くして**下端を背景下端に合わせ上へはみ出す**(overflow:visible)。
+  セリフのamberインライン枠を撤去。
+- 検証: typecheck/lint(0)/build OK。変更: `src/components/NpcDialogue.tsx`・`package.json`。
+
 ## v0.25.1210 — HPオーブを紫グラデに＋EXPリングを細く右ほど薄く(社長指示)
 
 - **HP色**: 赤→紫。縦グラデで上=明るい紫→下=濃い紫(hpHi/hpLo)。危険HPで全体を一段暗く(紫のまま)。EXP頭のドットも紫に。
