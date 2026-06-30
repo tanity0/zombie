@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1214 — ハンターは視界範囲外では突進(ダッシュ)もしない(社長指示・1213の取り違え修正)
+
+- 社長の意図は「視界範囲を出ているのに飛んでくる」=範囲外でも攻撃する点。1213のオーバーシュート制限は的外れだったので**撤回**
+  (ダッシュ距離は従来の2倍オーバーシュートに戻す)。
+- 真因: ダッシュのトリガ条件が `dist < 1000` で、ハンターの視界範囲(720)を超えて発動していた。→ **ハンターのダッシュも
+  `dist < HUNTER_VISION_RANGE` に限定**(ジャンプは既に視界範囲限定)。giantbat は従来1000のまま。
+- 検証: typecheck/lint(0)/test(76)/build OK。変更: `src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1213 — ハンターの突進が視界外まで飛ぶのを修正(社長指示)
 
 - 原因: giantbat/hunter 共通のダッシュ目標が `2*player - enemy`(プレイヤーの先=距離2倍のオーバーシュート)で、
