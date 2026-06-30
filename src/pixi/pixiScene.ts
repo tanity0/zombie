@@ -6421,6 +6421,8 @@ export class PixiScene {
         this.drawWhipSprite(e, now);
       } else if (e.kind === 'firejet') {
         this.drawFireJetSprite(e, now);
+      } else if (e.kind === 'slash') {
+        this.drawSlashSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
         // 'glow' is handled above as a pooled sprite and never reaches this
@@ -6640,6 +6642,58 @@ export class PixiScene {
     sp.rotation = e.angle;
     sp.alpha = t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4); // 終盤フェード
     sp.visible = true;
+  }
+
+  // 斬撃エフェクト(ピクセル・社長提供5コマ)。Container に streak(斬撃線)＋burst(中央の当たりバースト)の
+  // プールsprite2枚。streak は「右上寄せでグロー(0→4)→折り返して左下寄せでシュリンク(4→0)」で流れるよう動かす。
+  // burst は斬撃中央で 0→4 にポップしてフェード。per-frame Graphics ではなくテクスチャ差し替えのみ=安い。
+  private drawSlashSprite(e: Extract<VisualEffect, { kind: 'slash' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let view = this.effects.get(e.id);
+    if (!(view instanceof Container) || (view as Container).children.length < 2) {
+      if (view) view.destroy({ children: true });
+      const c = new Container();
+      const streak = new Sprite(); streak.blendMode = 'add';
+      const burst = new Sprite(); burst.anchor.set(0.5, 0.5); burst.blendMode = 'add';
+      c.addChild(streak, burst);
+      this.L.effectLayer.addChild(c);
+      this.effects.set(e.id, c);
+      view = c;
+    }
+    const c = view as Container;
+    const streak = c.children[0] as Sprite;
+    const burst = c.children[1] as Sprite;
+    const ref = getTexture('fx/slash-streak-4');
+    if (!ref) { c.visible = false; return; }
+    c.visible = true;
+    // streak: 最大コマ基準で e.length にスケール。小コマは自然に小さく描かれる(=段々大きく)。
+    const sc = e.length / Math.max(1, ref.width);
+    const halfW = (ref.width * sc) / 2, halfH = (ref.height * sc) / 2;
+    let idx: number;
+    if (t < 0.5) {
+      idx = Math.min(4, Math.floor((t / 0.5) * 5));      // 0→4 グロー
+      streak.anchor.set(1, 0);                            // 右上の端(top-right tip)を固定
+      streak.position.set(e.x + halfW, e.y - halfH);
+    } else {
+      idx = Math.max(0, 4 - Math.floor(((t - 0.5) / 0.5) * 5)); // 4→0 シュリンク
+      streak.anchor.set(0, 1);                            // 左下の端(bottom-left tip)を固定
+      streak.position.set(e.x - halfW, e.y + halfH);
+    }
+    const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
+    if (streak.texture !== stex) streak.texture = stex;
+    streak.scale.set(sc);
+    streak.alpha = 1 - Math.max(0, (t - 0.75) / 0.25);   // 終盤フェード
+    // burst: 斬撃中央で 0→4 にポップ→フェード。
+    const bref = getTexture('fx/slash-burst-4');
+    const bidx = Math.min(4, Math.floor(t * 6));
+    const btex = getTexture(`fx/slash-burst-${bidx}`);
+    if (btex && bref) {
+      if (burst.texture !== btex) burst.texture = btex;
+      burst.scale.set((e.length * 0.85) / Math.max(1, bref.width));
+      burst.position.set(e.x, e.y);
+      burst.alpha = 1 - Math.max(0, (t - 0.5) / 0.5);
+      burst.visible = burst.alpha > 0.01;
+    } else burst.visible = false;
   }
 
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {

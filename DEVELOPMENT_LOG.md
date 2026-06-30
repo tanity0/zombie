@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1177 — 斬撃エフェクトをピクセル5コマに差し替え(社長提供・流れる斬撃＋中央バースト)
+
+- 社長提供のピクセル素材を10コマに分割: `fx/slash-streak-0..4`(斬撃線・段々大きく) / `fx/slash-burst-0..4`
+  (中央の当たりバースト)。0.5縮小して同梱、nearest 登録。
+- `slash` エフェクトの描画を per-frame Graphics から **プールsprite2枚の Container**(`drawSlashSprite`)へ変更:
+  - streak: 前半 t<0.5 は「右上の端を固定して 0→4 グロー(右に流れる)」、後半は「左下の端を固定して 4→0
+    シュリンク(左に流れる)」=社長指定の流れ。最大コマ基準で `e.length` にスケール、終盤フェード。加算。
+  - burst: 斬撃中央(e.x,e.y)で 0→4 にポップ→フェード。加算。
+  - 旧 Graphics の slash 描画は経由しなくなった(routing で drawSlashSprite へ)。
+- 負荷: テクスチャ差し替えのみ=従来の per-frame Graphics(slash)より**軽い**(再テッセレーション無し)。~2/10。
+- 検証: typecheck/lint/build(dist に10枚)OK。変更: `src/pixi/pixiScene.ts`・`src/pixi/pixiTextures.ts`・
+  新規 `public/sprites/fx/slash-{burst,streak}-0..4.png`・`package.json`。
+
 ## v0.25.1176 — 銃弾ヒット音(shot-damage)を別音源に再差し替え(社長指示「やはりこちら」)
 
 - `shot-damage.mp3` を新しい社長提供音に同名差し替え。音量(1.0)・配線は据え置き。dist コピー確認。
