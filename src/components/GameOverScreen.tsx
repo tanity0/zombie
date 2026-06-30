@@ -278,7 +278,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               <button
                 type="button"
                 onClick={handleCopyBenchmark}
-                className="mt-2 w-full rounded-none border border-purple-400/10 bg-purple-400/10 px-3 py-2 text-[11px] font-semibold text-white/85"
+                className="mt-2 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[11px] font-semibold text-white/85"
               >
                 {benchmarkCopyState === 'copied'
                   ? 'コピーしました'
@@ -289,7 +289,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           )}
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="rounded-none bg-purple-400/5 border border-purple-400/10 px-3 py-2">
+            <div className="rounded-none bg-purple-400/5 px-3 py-2">
               <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                 {statsItems.map(item => (
@@ -300,12 +300,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 ))}
               </div>
             </div>
-            <div className="rounded-none bg-black/25 border border-purple-400/10 px-3 py-2">
+            <div className="rounded-none bg-black/25 px-3 py-2">
               <div className="mb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase tracking-widest text-white/45">SCORE</span>
                   {isHighScore && (
-                    <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 border border-amber-300/50 animate-pulse">
+                    <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 animate-pulse">
                       HIGH SCORE
                     </span>
                   )}
@@ -323,7 +323,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           </div>
           {!isBenchmark && !won && !withdraw && hadEquipment && (
-            <div className="mb-3 rounded-none bg-rose-400/5 border border-rose-300/25 px-3 py-2.5">
+            <div className="mb-3 rounded-none bg-rose-400/5 px-3 py-2.5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-semibold text-rose-200">失った装備</span>
                 {equipmentGold > 0 && (
@@ -341,7 +341,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   return (
                     <div
                       key={slot}
-                      className="text-left p-2 rounded-none border border-purple-400/10 bg-purple-400/5 flex items-center gap-2.5 opacity-80"
+                      className="text-left p-2 rounded-none bg-purple-400/5 flex items-center gap-2.5 opacity-80"
                     >
                       <div className="w-8 h-8 rounded-none bg-purple-400/10 flex items-center justify-center overflow-hidden shrink-0 text-base grayscale">
                         {iconImg
@@ -352,8 +352,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                         <div className="flex items-center gap-1.5">
                           <span className="text-[13px] font-semibold text-white/85 truncate line-through decoration-rose-300/60">{def.name}</span>
                           {isSp
-                            ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/25 text-amber-100 border border-amber-300/30 shrink-0">特殊</span>
-                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-purple-600/25 text-purple-100 border border-purple-300/25 shrink-0">R{def.tier}</span>}
+                            ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/25 text-amber-100 shrink-0">特殊</span>
+                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-purple-600/25 text-purple-100 shrink-0">R{def.tier}</span>}
                         </div>
                         <div className="text-[10px] text-white/55 leading-snug truncate">{equipmentDescription(def)}</div>
                       </div>
@@ -365,7 +365,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           )}
           {(won || withdraw) && hadEquipment && (
-            <div className="mb-3 rounded-none bg-amber-400/5 border border-amber-300/30 px-3 py-2.5">
+            <div className="mb-3 rounded-none bg-amber-400/5 px-3 py-2.5">
               <div className="text-[11px] font-semibold text-amber-200 mb-2">持ち帰る装備を1つ選択（他は破棄）</div>
               <div className="flex flex-col gap-1.5">
                 {(['body', 'arms', 'accessory'] as EquipSlot[]).map(slot => {
@@ -392,8 +392,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                         <div className="flex items-center gap-1.5">
                           <span className="text-[13px] font-semibold text-white truncate">{def.name}</span>
                           {isSp
-                            ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/30 text-amber-100 border border-amber-300/40 shrink-0">特殊</span>
-                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-purple-600/30 text-purple-100 border border-purple-300/30 shrink-0">R{def.tier}</span>}
+                            ? <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-400/30 text-amber-100 shrink-0">特殊</span>
+                            : <span className="text-[9px] px-1 py-0.5 rounded-full bg-purple-600/30 text-purple-100 shrink-0">R{def.tier}</span>}
                         </div>
                         <div className="text-[10px] text-white/65 leading-snug truncate">{equipmentDescription(def)}</div>
                       </div>
@@ -438,7 +438,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </button>
             <button
               onClick={onReturnToMenu}
-              className="w-full py-3 rounded-none text-sm font-semibold text-white/90 bg-purple-400/10 border border-purple-400/10"
+              className="w-full py-3 rounded-none text-sm font-semibold text-white/90 bg-purple-400/10"
             >
               メニューに戻る
             </button>

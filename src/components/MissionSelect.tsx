@@ -277,7 +277,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   };
 
   const LockedExHint: React.FC = () => (
-    <div className="w-full flex items-center gap-3 rounded-none border border-purple-400/8 bg-black/25 px-3 py-3 opacity-60">
+    <div className="w-full flex items-center gap-3 rounded-none bg-black/25 px-3 py-3 opacity-60">
       <span className="shrink-0 w-11 h-11 rounded-none bg-purple-400/5 flex items-center justify-center"><Lock size={16} className="text-white/40" /></span>
       <span className="text-[12px] text-white/45">？？？（未解放）</span>
     </div>
@@ -306,7 +306,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {stage.subs.length === 0
               ? <p className="text-[12px] text-white/45">{stage.kind === 'free' ? 'なし（周回ミッション）' : '準備中（後日追加）'}</p>
               : stage.subs.map(s => (
-                <div key={s.id} className="rounded-none border border-purple-400/10 bg-purple-400/5 px-3 py-2">
+                <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
                   <div className="text-[13px] font-semibold text-white">{s.title}</div>
                   <div className="text-[11px] text-white/55">{s.desc}</div>
                 </div>
@@ -352,7 +352,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* 戻る(左上) */}
         <button
           onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId }); }}
-          className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 border border-purple-400/15 text-white/85 flex items-center gap-1 active:bg-black/65"
+          className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 text-white/85 flex items-center gap-1 active:bg-black/65"
           style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
           aria-label="戻る"
         >
@@ -378,7 +378,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <InfoLine label="固有スキル（自動）" value={c.charSkillDesc} />
               </div>
               {carriedDef && (
-                <div className="mt-2 inline-flex items-center gap-2 rounded-none bg-amber-400/15 border border-amber-300/30 px-2 py-1">
+                <div className="mt-2 inline-flex items-center gap-2 rounded-none bg-amber-400/15 px-2 py-1">
                   <div className="w-6 h-6 rounded bg-purple-400/10 flex items-center justify-center overflow-hidden shrink-0 text-[12px]">
                     {carriedIcon
                       ? <img src={carriedIcon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
@@ -468,7 +468,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <span className="text-[11px] text-white/45">{equippedSkills.length}/{MAX_EQUIPPED_SKILLS}</span>
             </div>
             {ownedSkills.length === 0 ? (
-              <p className="rounded-none border border-purple-400/10 bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
+              <p className="rounded-none bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
                 解禁済みのスキルがありません。開発施設の強化訓練でゴールドを使って解禁してください。
               </p>
             ) : (
@@ -565,7 +565,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {STAGES.filter(s => s.kind === 'main').map(s => {
             const done = cleared.has(s.id);
             return (
-              <div key={s.id} className="rounded-none border border-purple-400/10 bg-purple-400/5 px-3 py-2">
+              <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
                 <div className="text-[12px] font-semibold text-white">{s.main.code}：{s.main.title}</div>
                 <div className="text-[12px] leading-relaxed text-white/70 mt-1">
                   {done ? s.main.debrief.join(' ') : <span className="text-white/40">未クリア（クリアで記録が開示される）</span>}
@@ -723,7 +723,7 @@ const DevTools: React.FC<{
   ];
 
   return (
-    <div className="rounded-none border border-amber-300/25 bg-amber-300/[0.06] p-3 space-y-3">
+    <div className="rounded-none bg-amber-300/[0.06] p-3 space-y-3">
       <div className="text-[11px] uppercase tracking-widest text-amber-200/70">テスト開発用（?dev=0 で非表示）</div>
 
       {/* FPS/撃破数表示 on/off */}
@@ -738,7 +738,7 @@ const DevTools: React.FC<{
       </button>
 
       {/* ダンスモード(練習) */}
-      <div className="rounded-none border border-fuchsia-400/30 bg-fuchsia-500/5 p-2.5 space-y-2">
+      <div className="rounded-none bg-fuchsia-500/5 p-2.5 space-y-2">
         <span className="block text-[11px] text-fuchsia-200/80">🕺 ダンスモード（練習）</span>
         <div className="flex items-center gap-2">
           {[1, 2, 3].map(lv => (
@@ -750,7 +750,7 @@ const DevTools: React.FC<{
         <label className="flex items-center gap-2 text-[12px] text-white/75">
           <span className="shrink-0">サークル間隔</span>
           <input type="number" inputMode="numeric" value={danceIntervalInput} onChange={e => setDanceIntervalInput(e.target.value)}
-            className="w-20 rounded-none border border-purple-400/15 bg-black/30 px-2 py-1 text-right font-mono tabular-nums text-white/90 outline-none focus:border-fuchsia-300/60" />
+            className="w-20 rounded-none bg-black/30 px-2 py-1 text-right font-mono tabular-nums text-white/90 outline-none focus:border-fuchsia-300/60" />
           <span className="shrink-0 text-white/45">ms/拍</span>
         </label>
         <button type="button" onClick={() => setDanceTestAutoTap(!danceTestAutoTap)} aria-pressed={danceTestAutoTap}
@@ -761,25 +761,25 @@ const DevTools: React.FC<{
           className={`w-full flex items-center justify-between gap-2 rounded-none border px-3 py-1.5 text-left text-[12px] ${danceForceJust ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/75 active:bg-purple-400/10'}`}>
           <span>強制JUST判定(タップ常に成功)</span><span className="shrink-0 font-semibold">{danceForceJust ? 'ON' : 'OFF'}</span>
         </button>
-        <button type="button" onClick={startDancePractice} className="w-full py-2 rounded-none text-sm font-bold text-white border border-fuchsia-300/60"
+        <button type="button" onClick={startDancePractice} className="w-full py-2 rounded-none text-sm font-bold text-white"
           style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.45), rgba(168,85,247,0.45))' }}>決定（開始）</button>
       </div>
 
       {/* BENCH */}
       <button type="button" onClick={() => { setSelectedStageId(''); setSelectedFreeMode(false); useGameStore.getState().setPendingLoadout([]); onStartBenchmark(selectedClass); }}
-        className="w-full py-2.5 rounded-none text-sm font-semibold border border-purple-200/30 bg-purple-300/10 text-purple-100 active:bg-purple-300/15">
+        className="w-full py-2.5 rounded-none text-sm font-semibold bg-purple-300/10 text-purple-100 active:bg-purple-300/15">
         BENCH（ベンチマーク開始）
       </button>
 
       {/* デバッグ入力: 弾ドロップ率 / 弾薬箱取得量 */}
-      <div className="rounded-none border border-purple-400/10 bg-black/15 p-2.5 space-y-2">
+      <div className="rounded-none bg-black/15 p-2.5 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="text-left"><div className="text-[13px] font-medium text-white">弾ドロップ率</div><div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5</div></div>
           <div className="flex items-center gap-1">
             <input type="number" inputMode="numeric" min={0} max={100} value={dropInput}
               onChange={e => { setDropInput(e.target.value); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setMeleeAmmoDropPercent(n); }}
               onBlur={() => setDropInput(String(useGameStore.getState().meleeAmmoDropPercent))}
-              className="w-16 text-right bg-purple-400/10 border border-purple-400/15 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
+              className="w-16 text-right bg-purple-400/10 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
             <span className="text-white/60 text-sm">%</span>
           </div>
         </div>
@@ -790,7 +790,7 @@ const DevTools: React.FC<{
               <input type="number" inputMode="numeric" min={0} max={999} value={ammoInputs[f.type]}
                 onChange={e => { setAmmoInputs(prev => ({ ...prev, [f.type]: e.target.value })); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setAmmoPickupAmount(f.type, n); }}
                 onBlur={() => setAmmoInputs(prev => ({ ...prev, [f.type]: String(useGameStore.getState().ammoPickupAmounts[f.type]) }))}
-                className="w-full text-right bg-purple-400/10 border border-purple-400/15 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
+                className="w-full text-right bg-purple-400/10 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
             </label>
           ))}
         </div>
@@ -798,8 +798,8 @@ const DevTools: React.FC<{
 
       {/* ステージ進行(導線テスト用) */}
       <div className="flex gap-2">
-        <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold border border-purple-400/15 bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ解放</button>
-        <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold border border-purple-400/15 bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
+        <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ解放</button>
+        <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
       </div>
     </div>
   );
@@ -1037,7 +1037,7 @@ const SkillGacha: React.FC = () => {
                       <span className="truncate text-[14px] font-bold text-white">
                         {SKILLS[rr.key].name}
                         <span className={`ml-2 text-[15px] font-extrabold ${lc}`}>{lvText(rr.key, rr.newLevel)}</span>
-                        {rr.firstAcquire && <span className="ml-2 align-middle rounded border border-emerald-300/60 bg-emerald-400/20 px-1 text-[9px] font-bold text-emerald-200">New</span>}
+                        {rr.firstAcquire && <span className="ml-2 align-middle rounded bg-emerald-400/20 px-1 text-[9px] font-bold text-emerald-200">New</span>}
                       </span>
                       <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[rr.rarity]}`}>{RARITY_LABEL[rr.rarity]}</span>
                     </div>
@@ -1076,7 +1076,7 @@ const SkillGacha: React.FC = () => {
           >
             <div className="flex items-center justify-between">
               <span className={`text-[11px] font-bold uppercase tracking-[0.2em] ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
-              {r.firstAcquire && <span className="rounded-md border border-emerald-300/60 bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">New</span>}
+              {r.firstAcquire && <span className="rounded-md bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">New</span>}
             </div>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-[22px] font-extrabold text-white">{SKILLS[r.key].name}</span>
@@ -1126,14 +1126,14 @@ const SkillGacha: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { clearRevealTimers(); setShowList(v => !v); }}
-                className="rounded-none border border-purple-400/15 bg-purple-400/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-purple-400/10"
+                className="rounded-none bg-purple-400/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-purple-400/10"
               >
                 {showList ? '演出にもどる' : '一覧で見る'}
               </button>
               <button
                 type="button"
                 onClick={closeReveal}
-                className="rounded-none border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+                className="rounded-none bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
               >
                 とじる
               </button>
@@ -1142,7 +1142,7 @@ const SkillGacha: React.FC = () => {
             <button
               type="button"
               onClick={closeReveal}
-              className="w-full rounded-none border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+              className="w-full rounded-none bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
             >
               とじる
             </button>
@@ -1186,7 +1186,7 @@ const SkillGacha: React.FC = () => {
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setPendingCount(null); setNoGold(false); }}
-          className="absolute left-4 top-4 z-10 rounded-none border border-purple-400/20 bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
+          className="absolute left-4 top-4 z-10 rounded-none bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
         >
           ‹ 戻る
         </button>
@@ -1213,14 +1213,14 @@ const SkillGacha: React.FC = () => {
   // --- 回数選択(開発施設トップ) ---------------------------------------
   // 横長バナーのみ表示。画像の上にタイトル、下に[1回訓練][10回訓練]、その下に金額。
   return (
-    <div className="rounded-none border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
+    <div className="rounded-none bg-fuchsia-300/[0.06] p-3 mb-3">
       {/* 画像の上にタイトル */}
       <div className="flex items-center justify-between px-0.5 mb-2">
         <span className="text-[13px] font-bold text-fuchsia-100">スキル強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
       {/* 射撃練習場の横長バナー */}
-      <div className="relative mb-3 overflow-hidden rounded-none border border-fuchsia-300/25" style={{ aspectRatio: '16 / 7' }}>
+      <div className="relative mb-3 overflow-hidden rounded-none" style={{ aspectRatio: '16 / 7' }}>
         <img
           src={coverSrc}
           alt=""
@@ -1238,8 +1238,8 @@ const SkillGacha: React.FC = () => {
           disabled={cant1}
           className={`rounded-none px-3 py-3 text-[15px] font-bold ${
             cant1
-              ? 'border border-purple-400/10 bg-purple-400/[0.03] text-white/30'
-              : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
+              ? ' bg-purple-400/[0.03] text-white/30'
+              : ' bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
           1回訓練
@@ -1250,8 +1250,8 @@ const SkillGacha: React.FC = () => {
           disabled={cant10}
           className={`rounded-none px-3 py-3 text-[15px] font-bold ${
             cant10
-              ? 'border border-purple-400/10 bg-purple-400/[0.03] text-white/30'
-              : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
+              ? ' bg-purple-400/[0.03] text-white/30'
+              : ' bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
           10回訓練
@@ -1262,7 +1262,7 @@ const SkillGacha: React.FC = () => {
         <span className={cant1 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost1)}</span>
         <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
       </div>
-      <div className="mt-2 flex items-center justify-between rounded-none border border-fuchsia-300/20 bg-black/20 px-2 py-1 text-[10px]">
+      <div className="mt-2 flex items-center justify-between rounded-none bg-black/20 px-2 py-1 text-[10px]">
         <span className="text-fuchsia-100/80">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
         <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
       </div>

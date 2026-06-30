@@ -165,13 +165,13 @@ const ShopMenu: React.FC = () => {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center px-3 pointer-events-auto">
       <div className="absolute inset-0 bg-black/55" />
-      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden border border-purple-400/10">
+      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden">
         <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>
             <h2 className="text-xl font-bold text-white">武器商人</h2>
           </div>
-          <div className="rounded-none bg-amber-300/12 border border-amber-200/20 px-3 py-1 text-right">
+          <div className="rounded-none bg-amber-300/12 px-3 py-1 text-right">
             <div className="text-[9px] tracking-widest text-amber-100/60">SCRAP</div>
             <div className="text-lg font-black text-amber-100 tabular-nums">{player.straps}s</div>
           </div>
@@ -226,14 +226,14 @@ const ShopMenu: React.FC = () => {
         <div className="px-4 pb-4 space-y-2">
           <button
             onClick={() => { playSfx('ui-select'); returnToBase(); }}
-            className="w-full rounded-none border border-amber-300/40 bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
+            className="w-full rounded-none bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
           >
             帰還する
             <span className="block text-[10px] font-normal text-amber-100/70">装備を1つ持ち帰り撤収（スコア計上・進行/クリアボーナスなし）</span>
           </button>
           <button
             onClick={closeShop}
-            className="w-full rounded-none bg-purple-400/10 border border-purple-400/10 py-3 text-sm font-bold text-white/90"
+            className="w-full rounded-none bg-purple-400/10 py-3 text-sm font-bold text-white/90"
           >
             閉じる
           </button>

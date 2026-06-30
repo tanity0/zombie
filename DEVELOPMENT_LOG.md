@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1217 — 実線枠を全面撤去(menu系一括)＋ポーズ/レベルアップが武器UIに被る不具合を修正
+
+- **z-index**: GameHUD(z-40)がポーズ/レベルアップ(z-30)より上で武器UIが透けていた。PauseMenu/UpgradeMenu を z-50
+  (確認ダイアログ z-[60])に上げて HUD の上に。
+- **枠の撤去**: MissionSelect/GameOver/Upgrade/Shop/EventQuest/Pause から実線の箱枠 `border border-COLOR/N` を一括除去。
+  UpgradeMenuの選択肢の `border`＋色枠も撤去(面の塗りで表現)。
+- 検証: typecheck/lint(0)/build OK。変更: 上記コンポーネント・`package.json`。
+- 残(次段): DevTools(dev限定)/ガチャのレア度枠など単独 `border` 残り、キャラ選択の戻る/持ち越し等の細部。
+
 ## v0.25.1216 — ハンターのジャンプ着地を視界サークル内にクランプ(社長指示・本来の意図)
 
 - 正しい意図: 溜め(crouch)中にプレイヤーが視界サークル外へ出ると、ジャンプがプレイヤーを追って**円の外まで着地**していた。

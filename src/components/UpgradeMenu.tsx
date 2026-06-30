@@ -10,7 +10,7 @@ const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
   const def = equipmentById(defId);
   const img = hasEquipIcon(defId) ? spritePath(equipIconName(defId)) : null;
   return (
-    <div className="w-16 h-16 rounded-none flex items-center justify-center text-3xl overflow-hidden bg-purple-400/10 border border-purple-400/15">
+    <div className="w-16 h-16 rounded-none flex items-center justify-center text-3xl overflow-hidden bg-purple-400/10">
       {img
         ? <img src={img} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
         : (def?.special ? '🏯' : '🛡️')}
@@ -46,7 +46,7 @@ const UpgradeMenu: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center px-6 upgrade-menu-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center px-6 upgrade-menu-backdrop"
       style={{ background: 'rgba(11, 11, 18, 0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
     >
       <div className="glass-panel rounded-none w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[88dvh]">
@@ -72,7 +72,7 @@ const UpgradeMenu: React.FC = () => {
                 key={upgrade.id}
                 type="button"
                 onClick={() => handleSelect(upgrade)}
-                className={`text-left p-3 rounded-none active:bg-purple-400/10 border transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10 border-amber-300/40' : 'bg-purple-400/5 border-purple-400/10'}`}
+                className={`text-left p-3 rounded-none active:bg-purple-400/10 transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10' : 'bg-purple-400/5'}`}
               >
                 <div className={`w-9 h-9 rounded-none flex items-center justify-center text-base overflow-hidden ${isSpecial ? 'bg-amber-400/20' : 'bg-purple-400/10'}`}>
                   {iconImg
@@ -83,19 +83,19 @@ const UpgradeMenu: React.FC = () => {
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-[15px] font-semibold text-white truncate">{upgrade.name}</h3>
                     {isSpecial ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/30 text-amber-100 border border-amber-300/40 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/30 text-amber-100 shrink-0">
                         特殊
                       </span>
                     ) : upgrade.type === 'equipment' ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 border border-purple-300/30 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 shrink-0">
                         R{upgrade.level}
                       </span>
                     ) : upgrade.type === 'knife' ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-100 border border-rose-300/30 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-100 shrink-0">
                         T{upgrade.level}
                       </span>
                     ) : upgrade.type === 'weapon' && upgrade.level > 1 ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 border border-purple-300/30 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 shrink-0">
                         Lv{upgrade.level}
                       </span>
                     ) : null}
@@ -111,7 +111,7 @@ const UpgradeMenu: React.FC = () => {
       {/* 既装備の部位を別系統で上書きする時だけ: 現装備→新装備 のアイコンを見せて YES/NO で確認(テキストなし)。 */}
       {confirm && (
         <div
-          className="absolute inset-0 z-40 flex items-center justify-center px-6"
+          className="absolute inset-0 z-[60] flex items-center justify-center px-6"
           style={{ background: 'rgba(8, 8, 14, 0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
           onClick={() => { playSfx('ui-select'); setConfirm(null); }}
         >
@@ -128,14 +128,14 @@ const UpgradeMenu: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { playSfx('ui-select'); setConfirm(null); }}
-                className="flex-1 py-2.5 rounded-none bg-purple-400/10 border border-purple-400/15 text-white/90 font-bold tracking-wide active:bg-purple-400/20"
+                className="flex-1 py-2.5 rounded-none bg-purple-400/10 text-white/90 font-bold tracking-wide active:bg-purple-400/20"
               >
                 NO
               </button>
               <button
                 type="button"
                 onClick={() => commit(confirm.upgrade)}
-                className="flex-1 py-2.5 rounded-none bg-amber-400/25 border border-amber-300/45 text-amber-100 font-bold tracking-wide active:bg-amber-400/40"
+                className="flex-1 py-2.5 rounded-none bg-amber-400/25 text-amber-100 font-bold tracking-wide active:bg-amber-400/40"
               >
                 YES
               </button>

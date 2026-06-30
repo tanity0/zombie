@@ -27,7 +27,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center px-6"
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
       style={{ background: 'rgba(11, 11, 18, 0.6)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
       onTouchStart={preventTouchEvent}
       onTouchMove={preventTouchEvent}

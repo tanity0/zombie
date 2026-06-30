@@ -16,7 +16,7 @@ const EventQuestMenu: React.FC = () => {
   return (
     <div className="absolute inset-0 z-50 flex items-end justify-center px-3 pb-24 pointer-events-auto">
       <div className="absolute inset-0 bg-black/35" />
-      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden border border-purple-200/15">
+      <div className="relative glass-panel rounded-none w-full max-w-lg overflow-hidden">
         <div className="px-4 pt-4 pb-2">
           <div className="text-[10px] uppercase tracking-[0.24em] text-purple-200/65">RANDOM EVENT</div>
           <h2 className="text-lg font-bold text-white">謎の二人組</h2>
@@ -34,13 +34,13 @@ const EventQuestMenu: React.FC = () => {
         <div className="grid grid-cols-2 gap-2 px-4 pb-4">
           <button
             onClick={() => { playSfx('ui-select'); acceptEventQuest(); }}
-            className="rounded-none bg-sky-300/18 border border-purple-200/20 py-3 text-sm font-bold text-sky-50 active:scale-[0.98]"
+            className="rounded-none bg-sky-300/18 py-3 text-sm font-bold text-sky-50 active:scale-[0.98]"
           >
             受ける
           </button>
           <button
             onClick={() => { playSfx('ui-select'); declineEventQuest(); }}
-            className="rounded-none bg-purple-400/8 border border-purple-400/10 py-3 text-sm font-bold text-white/80 active:scale-[0.98]"
+            className="rounded-none bg-purple-400/8 py-3 text-sm font-bold text-white/80 active:scale-[0.98]"
           >
             受けない
           </button>
