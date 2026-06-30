@@ -240,7 +240,7 @@ const RED_NIGHT_FIRE_SPREAD_MS = 240000; // 上振れ幅(+0〜4分)=実質5〜9�
 const rollRedNightFireAt = (): number => RED_NIGHT_FIRE_MIN_MS + Math.random() * RED_NIGHT_FIRE_SPREAD_MS;
 const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長指示で 0.5→0.3)。1=必ず / 0=出ない
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
-const ARENA_HORDE_DURATION_MS = 30000; // ゾンビ版の制限時間保険(基本は全滅で終了)
+const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
 const ARENA_BOSS_DURATION_MS = 60000;  // ボス版の制限時間保険(基本は撃破で終了)
 const ARENA_END_GRACE_MS = 600;        // 開始直後にイベント敵0で誤終了しないためのグレース
@@ -259,6 +259,7 @@ const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
 const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(消滅)
 const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
 const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
+const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
 const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
 const HUNTER_BASE_SAFE_RADIUS = 150;       // 制圧拠点へこの距離まで近づくと追跡相手が撤退
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
@@ -1443,9 +1444,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnHunter(false); H.reinforced = 2;
                 useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
-              // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった。
+              // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
               const nearBase = hs.baseSites.some(b => b.status === 'captured' && Math.hypot(hpx - b.x, hpy - b.y) <= HUNTER_BASE_SAFE_RADIUS);
-              if (nearBase || retreatCinematic) {
+              const chasedOut = elapsed >= HUNTER_CHASE_MAX_MS; // kiteで永久追跡＆他イベント停止を防ぐ
+              if (nearBase || retreatCinematic || chasedOut) {
                 useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
                 H.phase = 'retreat';
                 useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });

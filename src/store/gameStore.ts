@@ -4991,8 +4991,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (d < bd && idx >= 0) { bd = d; bestIdx = idx; }
     }
     if (bestIdx < 0) return;
-    const sol = BASE_SOLDIERS[bestIdx % BASE_SOLDIERS.length];
-    const line = pickNpcLine(bestIdx, 'rescueReturned', '');
+    // 最寄り拠点(sector=bestIdx)に配属された護衛の「素性(soldierIndex)」でセリフを選ぶ。
+    // 名簿はランダム(フェイザーがレアで入る)なので sector 直引きではなく baseId で実体を引く。
+    const esc = s.escorts.find(e => e.baseId === `base-${bestIdx}`);
+    if (!esc) return;
+    const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+    const sol = BASE_SOLDIERS[idx];
+    const line = pickNpcLine(idx, 'rescueReturned', '');
     if (line) get().tryNpcLine(sol.name, 'rescueReturned', line, OP_PREP_CAT_CD_MS);
   },
   npcPraiseReact: () => {
@@ -7353,8 +7358,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (gs.baseSites.find(b => b.id === `base-${idx}`)?.status === 'open') { pickIdx = idx; break; }
         }
         if (pickIdx >= 0) {
-          const sol = BASE_SOLDIERS[pickIdx % BASE_SOLDIERS.length];
-          get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(pickIdx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
+          // その sector(base-${pickIdx})に配属された護衛の素性(soldierIndex)でセリフを選ぶ(ランダム名簿対応)。
+          const esc = gs.escorts.find(e => e.baseId === `base-${pickIdx}`);
+          if (esc) {
+            const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+            const sol = BASE_SOLDIERS[idx];
+            get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
+          }
         }
       }
     }
@@ -7839,6 +7849,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 壁/UVバーは区画ごとに手続き生成(labWallsInRegion/labUvBarsInRegion)するので reset では持たない。
       // World is infinite; player starts at the origin and the camera
       // follows. No need to pre-center within bounds.
+      // 護衛NPCの名簿は1度だけ作り、出撃セリフ(sortie)も同じロスターから選ぶ(フェイザー等のランダム名簿に追従)。
+      const escortRoster = (!indoor && stageTheme !== 'lab') ? makeEscorts(spawnTL.x, spawnTL.y) : [];
+      const sortieEsc = escortRoster.length ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
+      const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
       return {
         unlockedShopSkillCards: runShopUnlocks,
         indoorMode: indoor,
@@ -7986,14 +8000,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         finaleDefeated: false,
         baseSites: createBaseSites(),
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
-        escorts: (!indoor && stageTheme !== 'lab') ? makeEscorts(spawnTL.x, spawnTL.y) : [],
-        // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、4拠点NPC(soldierIndex 0..3)から1人だけランダムで予約(社長指示)。
+        escorts: escortRoster,
+        // 出撃時セリフ: 屋外(護衛NPCが居る出撃)のみ、実ロスターの1人をランダムで予約(フェイザー等の差し替えにも追従)。
         npcDialogue: null,
         npcDialogueNextAt: 0,
         npcSpokeAt: {},
         npcCatAt: {},
-        npcDialogueQueue: (!indoor && stageTheme !== 'lab')
-          ? (() => { const i = Math.floor(Math.random() * 4); return [{ name: BASE_SOLDIERS[i].name, text: pickNpcLine(i, 'sortie', BASE_SOLDIERS[i].sortie) }]; })()
+        npcDialogueQueue: sortieEsc && sortieSol
+          ? [{ name: sortieSol.name, text: pickNpcLine(((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length, 'sortie', sortieSol.sortie) }]
           : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,

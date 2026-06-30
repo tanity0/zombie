@@ -2299,7 +2299,7 @@ export class PixiScene {
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
     this.syncShields(s.projectiles, now);
@@ -3387,7 +3387,7 @@ export class PixiScene {
         continue;
       }
       // ダッシュ突進予告(犬/lab-zombie-2/ジャイアントバット): 溜め中(windup)に移動先まで赤ラインで距離表示。
-      if (e.aiPhase === 'windup' && (e.type === 'werewolf' || e.type === 'lab-zombie-2' || e.type === 'giantbat')
+      if (e.aiPhase === 'windup' && (e.type === 'werewolf' || e.type === 'lab-zombie-2' || e.type === 'giantbat' || e.type === 'hunter')
           && e.aiTargetX !== undefined && e.aiTargetY !== undefined) {
         const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
         const tx = e.aiTargetX, ty = e.aiTargetY; // dash の狙い点は中心座標
@@ -4001,7 +4001,8 @@ export class PixiScene {
     projectiles: Projectile[],
     escorts: EscortSoldier[] = [],
     rescueSurvivors: RescueSurvivor[] = [],
-    baseSites: BaseSite[] = []
+    baseSites: BaseSite[] = [],
+    now = 0
   ) {
     const seen = new Set<string>();
     // 登場演出中はプレイヤーが空中なので足影は出さない(着地後に出る)。
@@ -4066,8 +4067,10 @@ export class PixiScene {
     }
     // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。スプライトは anchor(0.5,1) で esc.x/esc.y が足元。
     // 影幅=スプライト実幅×0.55(他アクターと同基準)。地平線で透明化(空に浮かない描画と整合)。
+    // 登場演出中は兵士本体と同じフェードを影にも掛ける(ヘリ飛来中に影だけ先に出るのを防ぐ)。
+    const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
-      const ha = this.horizonActorAlpha(esc.y);
+      const ha = this.horizonActorAlpha(esc.y) * escIntroFade;
       if (ha <= 0) continue;
       const escSp = this.escortSprites.get(esc.id);
       const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
@@ -4693,7 +4696,7 @@ export class PixiScene {
     let aiSqX = 1, aiSqY = 1, aiHop = 0;
     if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter') {
       if (e.aiPhase === 'crouch') {
-        const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / PUMPKIN_CROUCH_MS));
+        const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT)));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
       } else if (e.aiPhase === 'jump') {
         // 滞空時間はストアと同じ実効値(攻撃倍速＋ハンターは更に×2)に合わせて着地と同期させる。

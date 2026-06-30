@@ -27,6 +27,14 @@ function App() {
   // Pixi レンダラの初フレームが出るまで true にならない(PixiStage が setRendererReady)。
   // 出撃時のレンダラ初期化/テクスチャGPUアップロード中は、黒画面ではなくローディング画面を被せる。
   const rendererReady = useGameStore(state => state.rendererReady);
+  // フェイルセーフ: 何らかの理由で rendererReady が立たなくてもローディングが永久に残らないよう、
+  // 出撃中に一定時間で強制的にオーバーレイを外す保険(PixiStage 側の catch と二重の安全網)。
+  const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
+  useEffect(() => {
+    if (gameState !== 'playing' || rendererReady) { setLoadOverlayTimedOut(false); return; }
+    const id = window.setTimeout(() => setLoadOverlayTimedOut(true), 6000);
+    return () => window.clearTimeout(id);
+  }, [gameState, rendererReady]);
 
   // 本物の素材ロード(テクスチャ+音声/BGM/SFX)を起動直後にバックグラウンドで開始。
   // ただし「ゾンビサバイバル」ローディング画面は出さず、タイトルを先に見せる。
@@ -192,7 +200,7 @@ function App() {
       {/* 出撃直後、Pixiレンダラ初期化(WebGL init＋テクスチャGPUアップロード)が終わるまでは
           キャンバスが未挿入で黒くなる。その間はローディング画面を被せて「まっくら」を防ぐ(社長指示)。
           fixed で全面に重ねる(レンダラ準備完了=初フレーム表示で自動的に外れる)。 */}
-      {gameState === 'playing' && isPixiRenderer() && !rendererReady && (
+      {gameState === 'playing' && isPixiRenderer() && !rendererReady && !loadOverlayTimedOut && (
         <div className="fixed inset-0 z-40"><LoadingScreen compact /></div>
       )}
 

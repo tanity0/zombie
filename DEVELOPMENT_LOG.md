@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1152 — バグ調査の修正(A全件＋B6/B7/B8＋C一致)(社長承認)
+
+A(明確なバグ):
+- **A1 ローディング永久残り対策**: PixiStage 初期化 catch で `setRendererReady(true)`(フェイルセーフ)＋
+  App に出撃中6秒の強制解除タイムアウト(`loadOverlayTimedOut`)。二重の安全網でソフトロック防止。
+- **A2 `npcOpPrepReact`**: sector直引き→`baseId`で実体の護衛を引き、その素性でセリフ(ランダム名簿/フェイザー対応)。
+- **A3 インライン`neglectFar`**: 同上の baseId 基準へ修正。
+- **A4 ハンターのダッシュ赤ライン予告**: pixiScene の dash windup 予告条件に `hunter` を追加。
+- **A5 ヘリ飛来中の“影だけ先出し”**: escort影に `currentIntroFade` を適用(兵士本体と同期)。`syncShadows` に now 追加。
+B(仕様):
+- **B6 ハンター追跡の上限**: `HUNTER_CHASE_MAX_MS=60s` 超で諦め撤退(kiteで永久追跡＆他イベント停止を防止)。
+- **B7 大量発生の制限時間**: 30→**40秒**(段階スポーン約18秒化に対応)。
+- **B8 出撃セリフ**: 既定0-3固定→**実ロスターから選択**(フェイザー差し替えにも追従)。
+C(軽微):
+- しゃがみスカッシュの除数をストア(`/ENEMY_ATTACK_SPEED_MULT`)に一致(見た目の小ポップ解消)。
+- 検証: typecheck / lint / test(75 pass) / build OK。
+- 変更: `gameStore.ts`・`useGameLoop.ts`・`pixiScene.ts`・`PixiStage.tsx`・`App.tsx`・`package.json`。
+
 ## v0.25.1151 — フェイザー2丁拳銃化＋ハンター出現(発見)アテンション(社長指示)
 
 - **フェイザー2丁拳銃**: 1射ダメージ2倍をやめ、**1射につき2発撃つ**(進行方向に直交へ±`PHASER_GUN_OFFSET`px

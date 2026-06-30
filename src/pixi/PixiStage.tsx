@@ -169,7 +169,12 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setGroundOverride('snow', s4Ground);       // 地面: 雪原(ステージ4)
         scene.setHorizonOverride('snow', s4Horizon);     // 地平帯(遠景森1): 氷壁帯(ステージ4・下フェード)
       })();
-    })().catch((e) => { console.error('[PixiStage] init error:', e); });
+    })().catch((e) => {
+      console.error('[PixiStage] init error:', e);
+      // フェイルセーフ: 初期化が例外で止まっても、ロードオーバーレイが永久に残らないよう ready にする
+      // (背景/テクスチャ読込失敗・WebGL初期化失敗等)。描画は不完全でもソフトロックは防ぐ。
+      try { if (!cancelled) useGameStore.getState().setRendererReady(true); } catch { /* ignore */ }
+    });
 
     return () => {
       cancelled = true;
