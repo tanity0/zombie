@@ -45,11 +45,14 @@
   .right-safe {
     right: env(safe-area-inset-right);
   }
+  /* FF7リメイク風メニュー面(社長指示・紫)。深い黒＋上端の細い紫ヘアライン＋極薄の紫枠。
+     glass-pill(プレイ中HUD)は据え置き=ゲーム中の視認性は変えない。 */
   .glass-panel {
-    background-color: rgba(20, 20, 28, 0.55);
-    backdrop-filter: saturate(160%) blur(18px);
-    -webkit-backdrop-filter: saturate(160%) blur(18px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: rgba(11, 9, 16, 0.82);
+    backdrop-filter: saturate(150%) blur(16px);
+    -webkit-backdrop-filter: saturate(150%) blur(16px);
+    border: 1px solid rgba(168, 85, 247, 0.14);
+    border-top: 1px solid rgba(168, 85, 247, 0.55);
   }
   .glass-pill {
     background-color: rgba(20, 20, 28, 0.55);

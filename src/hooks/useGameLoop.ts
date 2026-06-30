@@ -1512,7 +1512,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const onScreen = f.x >= scam.x && f.x <= scam.x + sgb.width && f.y >= scam.y && f.y <= scam.y + sgb.height;
             if (!onScreen) continue; // 画面外は無音
             const d = Math.hypot(f.x - spx, f.y - spy);
-            const g = Math.max(0.2, 1 - Math.min(1, d / maxDist) * 0.8); // 近=1.0 〜 画面端≈0.2
+            const tt = Math.min(1, d / maxDist);
+            const g = Math.max(0.08, Math.pow(1 - tt, 1.9)); // 距離差を強めに(遠いほどもっと下げる): 近=1.0 / 画面中ほど≈0.27 / 端≈0.08
             if (g > bestGain) bestGain = g;
           }
           if (bestGain > 0) playSfx('npc-gunfire', bestGain);

@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1194 — FF7R: 太線を細く＋共通glass-panelを紫メニュー面に一括統一＋NPC距離減衰を強める(社長指示)
+
+- **線を細く**: 左アクセントバー類を一段細く(ff7rPanelRight/TitleパネルborderLeft 2→1px、HubButton 3/2→2/1、
+  Ff7rButton右フェードの縦バー 2→1px)。
+- **全UI一括統一**: 共通CSS `.glass-panel` をFF7R紫メニュー面(深い黒0.82＋上端の紫ヘアライン＋極薄紫枠)へ。
+  → UpgradeMenu/ShopMenu/MissionSelectモーダル/Pause/GameOver/EventQuest が一斉に同テイストに。`.glass-pill`(プレイ中HUD)は
+  視認性のため据え置き。MissionSelectの Header/戻る/Section も紫の細線テイストへ。
+- **NPC距離減衰を強める**: 護衛銃声の距離ゲインを線形(端0.2)から `pow(1-t,1.9)`(中ほど≈0.27/端≈0.08)に=遠いほどもっと小さく。
+- 検証: typecheck/lint(0)/test(75)/build OK。変更: `src/config/ff7r.ts`・`src/components/ff7r.tsx`・`TitleScreen.tsx`・
+  `MissionSelect.tsx`・`src/index.css`・`src/hooks/useGameLoop.ts`・`package.json`。
+- 残: ShopMenu/UpgradeMenu内部の青系アクセント→紫、キャラ選択チップ等の細部は順次。
+
 ## v0.25.1193 — カウンター/KILL更に音量UP＋FF7Rボタンの枠線もフェード(社長指示)
 
 - 音量: counter 1.2→1.5 / melee-finish(KILL) 1.15→1.45。

@@ -63,18 +63,19 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // 戻る/タイトルは常時表示=スクロール領域の先頭で sticky 固定(社長指示)。背景＋blur で
 // スクロールしてくる内容を隠す。sticky 自身が absolute 子(戻るボタン)の位置基準になるので relative 不要。
 const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }> = ({ title, subtitle, onBack }) => (
-  <div className="sticky top-0 z-20 px-5 pt-5 pb-3 text-center border-b border-white/10 rounded-t-3xl bg-[rgba(16,16,24,0.92)] backdrop-blur-md">
+  <div className="sticky top-0 z-20 px-5 pt-5 pb-3 text-center bg-[rgba(11,9,16,0.94)] backdrop-blur-md" style={{ borderBottom: '1px solid rgba(168,85,247,0.45)' }}>
     {onBack && (
       <button
         onClick={onBack}
-        className="absolute top-3 left-3 h-9 px-2.5 rounded-xl bg-white/5 border border-white/10 text-white/80 flex items-center gap-1 active:bg-white/10"
+        className="absolute top-3 left-3 h-9 px-2.5 text-purple-100/85 flex items-center gap-1 active:brightness-125"
+        style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.16), rgba(168,85,247,0.02))', borderLeft: '1px solid rgba(168,85,247,0.7)' }}
         aria-label="戻る"
       >
-        <ChevronLeft size={16} /><span className="text-[12px]">戻る</span>
+        <ChevronLeft size={16} /><span className="text-[12px] tracking-wide">戻る</span>
       </button>
     )}
-    <h1 className="text-2xl font-semibold tracking-tight text-white">{title}</h1>
-    {subtitle && <p className="text-[12px] text-white/55 mt-1">{subtitle}</p>}
+    <h1 className="text-2xl font-semibold tracking-[0.08em] text-white">{title}</h1>
+    {subtitle && <p className="text-[12px] text-purple-200/55 mt-1 tracking-wide">{subtitle}</p>}
   </div>
 );
 
@@ -604,7 +605,7 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
     style={{
       animationDelay: `${delay}ms`,
       background: 'linear-gradient(95deg, rgba(9,8,14,0.9) 0%, rgba(9,8,14,0.7) 55%, rgba(9,8,14,0.18) 100%)',
-      borderLeft: `${accent ? 3 : 2}px solid rgba(168,85,247,${accent ? 0.95 : 0.55})`,
+      borderLeft: `${accent ? 2 : 1}px solid rgba(168,85,247,${accent ? 0.9 : 0.55})`,
     }}
     className="menu-item-in group relative w-full flex items-center gap-3 overflow-hidden px-4 py-3.5 text-left"
   >
@@ -619,8 +620,8 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
 );
 
 const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-    <div className="text-[11px] uppercase tracking-widest text-white/45 mb-2">{label}</div>
+  <div className="p-3" style={{ background: 'linear-gradient(95deg, rgba(11,9,16,0.6), rgba(11,9,16,0.2))', borderLeft: '1px solid rgba(168,85,247,0.4)' }}>
+    <div className="mb-2 inline-block pb-0.5 text-[11px] uppercase tracking-widest text-purple-200/60" style={{ borderBottom: '1px solid rgba(168,85,247,0.4)' }}>{label}</div>
     <div className="space-y-1.5">{children}</div>
   </div>
 );

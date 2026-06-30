@@ -42,8 +42,8 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
         {/* 上下の枠線(フェードする細線) */}
         <span className="absolute left-0 right-0 top-0 h-px" style={{ background: lineGrad }} />
         <span className="absolute left-0 right-0 bottom-0 h-px" style={{ background: lineGrad }} />
-        {/* 右フェードのときだけ左端に紫の縦アクセントバー */}
-        {fade === 'right' && <span className="absolute left-0 top-0 bottom-0 w-[2px]" style={{ background: line }} />}
+        {/* 右フェードのときだけ左端に紫の縦アクセントライン(細め) */}
+        {fade === 'right' && <span className="absolute left-0 top-0 bottom-0 w-px" style={{ background: line }} />}
         <span className="relative z-10 block px-4 text-center text-[14px] font-bold tracking-[0.22em] text-white">
           {children}
         </span>
