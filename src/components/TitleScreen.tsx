@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { playSfx } from '../audio/audioManager';
+import { Ff7rButton } from './ff7r';
 
 interface TitleScreenProps {
   onStart: () => void;                 // 同意時: BGM解禁(再生開始)
@@ -108,29 +109,17 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
               </ul>
             </div>
             <div className="px-4 pb-4 pt-2">
-              {/* FF7R風: 四角いまま両サイドへフェード＋紫の上下細線。ホバー/選択で少し発色(斜めは使わない)。 */}
-              <button
+              {/* FF7R風: 四角いまま両サイドへフェード＋上下の枠線もフェード(共通 Ff7rButton)。 */}
+              <Ff7rButton
                 onClick={(e) => { e.stopPropagation(); agree(); }}
-                className="group relative block w-full overflow-hidden"
-                aria-label="同意して始める"
+                className="w-full"
+                ariaLabel="同意して始める"
+                emphasis
+                fade="both"
+                paddingY="0.75rem"
               >
-                <span
-                  className="relative block py-3"
-                  style={{
-                    background: 'linear-gradient(90deg, rgba(22,13,36,0.10) 0%, rgba(22,13,36,0.82) 32%, rgba(22,13,36,0.82) 68%, rgba(22,13,36,0.10) 100%)',
-                    borderTop: '1px solid rgba(168,85,247,0.7)',
-                    borderBottom: '1px solid rgba(168,85,247,0.7)',
-                  }}
-                >
-                  <span
-                    className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100"
-                    style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(168,85,247,0.22) 35%, rgba(168,85,247,0.22) 65%, transparent 100%)' }}
-                  />
-                  <span className="relative z-10 block text-center text-[14px] font-bold tracking-[0.24em] text-white">
-                    同意して始める
-                  </span>
-                </span>
-              </button>
+                同意して始める
+              </Ff7rButton>
             </div>
           </div>
         </div>

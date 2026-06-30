@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1193 — カウンター/KILL更に音量UP＋FF7Rボタンの枠線もフェード(社長指示)
+
+- 音量: counter 1.2→1.5 / melee-finish(KILL) 1.15→1.45。
+- 枠線フェード: `Ff7rButton` の上下枠を CSS border(両端ベタ)から**グラデーションの細線**に変更=背景と一緒に
+  上下ラインもフェード(both=両端→透明 / right=右へ→透明、右フェードは左端に紫縦バー)。
+  タイトルの「同意して始める」ボタンも共通 `Ff7rButton`(fade='both')へ統一。
+- 検証: typecheck/lint(0)/test(75)/build OK。変更: `src/audio/audioManager.ts`・`src/components/ff7r.tsx`・
+  `src/components/TitleScreen.tsx`・`package.json`。
+
 ## v0.25.1192 — FF7Rボタンの斜め(skew)を廃止し「両サイド/右フェード」ボタンに(社長指示)
 
 - `Ff7rButton` を四角いままに変更(skew撤去)。`fade='both'|'right'` で両サイド or 右だけフェード半透明＋紫の細線、
