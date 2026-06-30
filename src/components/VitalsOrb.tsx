@@ -84,8 +84,8 @@ const VitalsOrb: React.FC = () => {
           </g>
           {/* ガラスの艶 */}
           <ellipse cx={CX} cy={CY - ORB_R * 0.42} rx={ORB_R * 0.6} ry={ORB_R * 0.32} fill="rgba(255,255,255,0.12)" />
-          {/* オーブ縁 */}
-          <circle cx={CX} cy={CY} r={ORB_R} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth={1.5} />
+          {/* オーブ縁(トンマナ統一で紫寄り) */}
+          <circle cx={CX} cy={CY} r={ORB_R} fill="none" stroke="rgba(192,132,252,0.4)" strokeWidth={1.5} />
 
           {/* EXP リング: トラック + 進捗(白) */}
           <g transform={`rotate(-90 ${CX} ${CY})`}>
@@ -140,7 +140,7 @@ const VitalsOrb: React.FC = () => {
       {/* レベル(オーブ下の小バッジ): 半透明の背景・1行固定(折り返さない) */}
       <div
         className="absolute left-1/2 -translate-x-1/2 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none whitespace-nowrap"
-        style={{ bottom: -8, backgroundColor: 'rgba(10,10,16,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}
+        style={{ bottom: -8, backgroundColor: 'rgba(13,10,20,0.6)', border: '1px solid rgba(168,85,247,0.4)' }}
       >
         Lv {level}
       </div>

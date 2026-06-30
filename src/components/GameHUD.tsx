@@ -242,11 +242,11 @@ const GameHUD: React.FC = () => {
             )}
 
             {/* 武器: アイコンのみ。銃=タップで切替(押せるボタン)/弾数のみ表示・名前なし。メレー=表示のみ。 */}
-            <div className="hud-translucent rounded-2xl p-1.5 flex flex-col items-end gap-1.5">
+            <div className="hud-translucent rounded-none p-1.5 flex flex-col items-end gap-1.5">
               {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
               {melee && (
                 <div
-                  className="w-11 h-11 rounded-xl bg-slate-400/15 flex items-center justify-center text-lg"
+                  className="w-11 h-11 rounded-none bg-purple-400/12 flex items-center justify-center text-lg"
                   title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
                 >
                   {katanaEquipped
@@ -268,8 +268,8 @@ const GameHUD: React.FC = () => {
                   <button
                     key={gun.id}
                     onClick={() => setActiveWeapon(gun.id)}
-                    className={`pointer-events-auto relative w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden transition-colors ${
-                      active ? 'bg-amber-500/25 ring-2 ring-amber-400/70' : dry ? 'bg-white/5 opacity-50' : 'bg-amber-500/15 opacity-80'
+                    className={`pointer-events-auto relative w-11 h-11 rounded-none flex items-center justify-center overflow-hidden transition-colors ${
+                      active ? 'bg-purple-500/30 ring-2 ring-purple-400/80' : dry ? 'bg-purple-400/5 opacity-50' : 'bg-purple-500/15 opacity-80'
                     }`}
                     title={gun.name}
                     aria-label={gun.name}

@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1207 — プレイ中HUDの未統一箇所をFF7R紫に(社長スクショ指摘)
+
+- **ポーズメニュー**: 青のインライングラデ「続ける」を撤去し、両ボタンを共通 `Ff7rButton`(両サイドフェード)へ。
+- **武器スロット(HUD右)**: amber → 紫。コンテナ/各枠を `rounded-2xl/xl`→`rounded-none`、選択枠を `ring-purple-400/80`、
+  地枠を `bg-purple-500/15`、メレー枠を `bg-purple-400/12`。
+- **体力オーブ(VitalsOrb)**: 体力の赤フィルは据え置き(意味色)。縁とLvバッジの白枠を紫トーンに。
+- 検証: typecheck/lint(0)/build OK。変更: `PauseMenu.tsx`・`GameHUD.tsx`・`VitalsOrb.tsx`・`package.json`。
+- 注: 体力オーブの「赤」を紫にするかは要判断(赤=体力の直感を優先して今回は据え置き)。
+
 ## v0.25.1206 — 死神スキルは「死神を倒すと習得」に変更(ガチャ非排出・社長指示)
 
 - ガチャ(強化訓練)から `reaper` を除外: `GACHA_EXCLUDED_SKILLS=['reaper']` を追加し `rollGachaSkill` でフィルタ
