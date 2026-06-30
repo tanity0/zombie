@@ -206,7 +206,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     minIntervalMs: 80,
   },
   'handgun-fire': {
-    src: `${import.meta.env.BASE_URL}audio/sfx/handgun-fire.mp3`,
+    src: `${import.meta.env.BASE_URL}audio/sfx/handgun-fire.wav`, // 社長提供の新ハンドガン発砲音(WAV=Web Audioでデコード)
     volume: 0.52,
     minIntervalMs: 24,
   },

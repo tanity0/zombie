@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1167 — ハンドガン発砲SEを社長提供の新音源に差し替え
+
+- `handgun-fire` の音源を社長提供の WAV(`public/audio/sfx/handgun-fire.wav`)へ差し替え。旧 `handgun-fire.mp3` は削除。
+  audioManager の src を `.wav` に更新(WAV は Web Audio の decodeAudioData で問題なくデコード)。音量/最小間隔は据え置き
+  (volume 0.52 / minIntervalMs 24)。配線(handgun カテゴリ発砲で再生)は既存のまま。負荷変化なし。
+- 検証: typecheck / lint / test(75 pass) / build(dist へ wav コピー確認)OK。変更: `src/audio/audioManager.ts`・
+  `public/audio/sfx/handgun-fire.{wav 追加, mp3 削除}`・`package.json`。
+
 ## v0.25.1166 — 背中火の大きさを銃系統で可変に(社長指示)
 
 - マグナム系(rifle=マグナム/スナイパー/ランチャー)= 50(現状)。ハンドガン系 = 42(気持ち小さい)。
