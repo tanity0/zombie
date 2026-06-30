@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1184 — KILL SE(melee-finish=kill.mp3)を社長提供音に差し替え
+
+- `kill.mp3` を社長提供音に同名差し替え(近接フィニッシュ/ボスへのフィニッシュダメージで再生)。volume は既存の
+  0.92 据え置き(=従来のバランスに合わせる)。dist コピー確認。変更: `public/audio/sfx/kill.mp3`(差替)・`package.json`。
+
 ## v0.25.1183 — カウンター/KILLの光サークル拡大＋コールアウト文字をくっきりOrbitron＋カウンターSE差替
 
 - **光サークル拡大(社長指示)**: カウンター(cyan)glow 78→95・ring 12/110→14/135(3箇所共通)。KILL(金)glow 46→58。
