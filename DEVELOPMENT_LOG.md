@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1216 — ハンターのジャンプ着地を視界サークル内にクランプ(社長指示・本来の意図)
+
+- 正しい意図: 溜め(crouch)中にプレイヤーが視界サークル外へ出ると、ジャンプがプレイヤーを追って**円の外まで着地**していた。
+- 修正: ジャンプ開始時、着地点がハンターから `HUNTER_VISION_RANGE` を超える場合は**円の縁にクランプ**(方向は維持、距離だけ縁まで)。
+- 併せて 1214 の**ダッシュ範囲制限を撤回**(`dist<1000` に戻す。社長の対象はジャンプだったため)。
+- 検証: typecheck/lint(0)/test(76)/build OK。変更: `src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1215 — 枠は実線で残さず全てフェードに徹底(キャラ選択チップ/glass-panel)＋HP数字の縁取り廃止(社長指示)
 
 - **キャラ選択チップ**: 上下の枠を実線→`border-image`の横グラデで**右へフェード**(左右枠は無しのまま)。

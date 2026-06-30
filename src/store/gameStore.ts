@@ -5292,10 +5292,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (enemy.aiPhase === 'crouch') {
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
               // 溜め終了 → ジャンプ開始(この瞬間のプレイヤー位置へ。アークは描画側)。
+              // ハンターは「視界サークルの外には飛ばない」(社長指示): 溜め中にプレイヤーが視界範囲外へ出ても、
+              // 着地は視界サークルの縁までにクランプ(プレイヤーを追って円の外まで飛ばない)。
+              let jtx = pcx, jty = pcy;
+              if (enemy.type === 'hunter' && dist > HUNTER_VISION_RANGE) {
+                const k = HUNTER_VISION_RANGE / (dist || 1);
+                jtx = ecx + (pcx - ecx) * k;
+                jty = ecy + (pcy - ecy) * k;
+              }
               return {
                 ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
                 aiFromX: enemy.x, aiFromY: enemy.y,
-                aiTargetX: pcx - enemy.width / 2, aiTargetY: pcy - enemy.height / 2,
+                aiTargetX: jtx - enemy.width / 2, aiTargetY: jty - enemy.height / 2,
                 aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS / (enemy.type === 'hunter' ? HUNTER_JUMP_DASH_SPEED_MULT : 1)),
               };
             }
@@ -5346,9 +5354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(pcx - ecx, pcy - ecy);
           const opts: ('dash' | 'jump')[] = [];
-          // ダッシュもハンターは視界範囲内(HUNTER_VISION_RANGE)に限定(社長指示。視界外で飛んでこない)。他(giantbat)は従来1000。
-          const dashRange = enemy.type === 'hunter' ? HUNTER_VISION_RANGE : 1000;
-          if (gameTime >= (enemy.gbDashReadyAt ?? 0) && dist > 80 && dist < dashRange) opts.push('dash');
+          if (gameTime >= (enemy.gbDashReadyAt ?? 0) && dist > 80 && dist < 1000) opts.push('dash');
           // ジャンプはハンターのみ「視界範囲内(HUNTER_VISION_RANGE)」に限定(社長指示)。他(giantbat)は従来700。
           const jumpRange = enemy.type === 'hunter' ? HUNTER_VISION_RANGE : 700;
           if (gameTime >= (enemy.gbJumpReadyAt ?? 0) && dist > 40 && dist < jumpRange) opts.push('jump');
