@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1180 — 斬撃エフェクトをもっと大きく(社長指示)
+
+- `spawnSlash` の length を `44+12`→`72+16`(社長指示)。ピクセル斬撃(streak/burst)は length 基準スケールなので
+  全体が大きくなる。`lengthScale` 据え置き。変更: `src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1179 — キャラ選択画面のSTARTボタン画像を社長提供の緑STARTに差し替え
 
 - `public/sprites/ui/start-button.png` を社長提供画像に差し替え。元はJPEG(白背景)なので、縁からのflood-fillで

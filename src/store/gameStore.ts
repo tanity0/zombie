@@ -8360,7 +8360,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: x + (Math.random() - 0.5) * 8,
         y: y + (Math.random() - 0.5) * 8,
         angle: -0.9 + Math.random() * 0.5, // roughly diagonal, slight variance
-        length: (44 + Math.random() * 12) * lengthScale, // 斬撃を長く(社長指示。旧 26+8)
+        length: (72 + Math.random() * 16) * lengthScale, // 斬撃をもっと大きく(社長指示。旧 44+12)
         color,
         createdAt: now,
         duration: 260 // 少し長く残す(旧 200)
