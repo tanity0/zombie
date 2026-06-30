@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1219 — 護衛弾の被弾音も距離減衰＋KILL背景を濃いワインレッドに(社長指示)
+
+- **被弾音の距離減衰**: 護衛NPC弾(weaponKey='escort')が敵に当たった時の `shot-damage`/`headshot` も、発砲音と同じ
+  距離減衰(`npcSfxDistGain` 共通化、着弾位置↔プレイヤー、画面外=無音)を適用。プレイヤー自身の弾は等倍のまま。
+  → 遠いNPCの攻撃は「発砲音も被弾音も」同時に小さくなる(被弾音だけ目立つ問題を解消)。
+- **KILL背景色**: `0xdc2626`(明赤)→ `0x7a1322`(濃いワインレッド)。
+- 検証: typecheck/lint(0)/test(76)/build OK。変更: `src/hooks/useGameLoop.ts`・`src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1218 — レベルアップ: 先に「LEVEL UP」演出(スロー＋キャラ発光)→その後に選択肢(社長指示)
 
 - `levelUp()` は選択肢メニューを即出さず、`levelUpIntroUntil = now + LEVELUP_INTRO_MS(850)` をセット＋`triggerTimeSlow(0.25)`で

@@ -113,6 +113,17 @@ const hitFireLen = (weaponType: string | undefined, shotgunPelletHits: number): 
   }
   return HIT_FIRE_LEN_MAGNUM; // rifle(マグナム系)/PHILL/その他は現状サイズ
 };
+// 護衛NPC関連SEの距離減衰ゲイン(発砲音＝NPC位置 / その弾の被弾音＝着弾位置 で共通)。画面外=0(無音)。
+// 近=1.0 / 画面中ほど≈0.27 / 端≈0.08(遠いほど強く減衰)。プレイヤー自身の攻撃音には使わない。
+const npcSfxDistGain = (
+  hx: number, hy: number, ppx: number, ppy: number,
+  cam: { x: number; y: number }, gb: { width: number; height: number },
+): number => {
+  if (hx < cam.x || hx > cam.x + gb.width || hy < cam.y || hy > cam.y + gb.height) return 0;
+  const maxDist = 0.5 * Math.hypot(gb.width, gb.height);
+  const tt = Math.min(1, Math.hypot(hx - ppx, hy - ppy) / maxDist);
+  return Math.max(0.08, Math.pow(1 - tt, 1.9));
+};
 // 同じ敵に対して背中火を出してから、この時間は新しい火を出さない(=多弾/連射の重複を1本に間引く)。
 // ショットガンのペレットや跳弾が別方向から当たっても、最初の1本だけ残す→「2本/別方向に出る」を防ぐ。
 const FIRE_JET_DEDUP_MS = 180;
@@ -1506,14 +1517,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const sp = useGameStore.getState().player;
           const spx = sp.x + sp.width / 2, spy = sp.y + sp.height / 2;
           const scam = useGameStore.getState().camera, sgb = useGameStore.getState().gameBounds;
-          const maxDist = 0.5 * Math.hypot(sgb.width, sgb.height); // 画面の中心→隅 ≒ この距離で最小音量
           let bestGain = 0; // 同フレーム複数発砲は最寄り(最大音量)の1発ぶんだけ鳴らす(throttleとも整合)
           for (const f of escortFires) {
-            const onScreen = f.x >= scam.x && f.x <= scam.x + sgb.width && f.y >= scam.y && f.y <= scam.y + sgb.height;
-            if (!onScreen) continue; // 画面外は無音
-            const d = Math.hypot(f.x - spx, f.y - spy);
-            const tt = Math.min(1, d / maxDist);
-            const g = Math.max(0.08, Math.pow(1 - tt, 1.9)); // 距離差を強めに(遠いほどもっと下げる): 近=1.0 / 画面中ほど≈0.27 / 端≈0.08
+            const g = npcSfxDistGain(f.x, f.y, spx, spy, scam, sgb);
             if (g > bestGain) bestGain = g;
           }
           if (bestGain > 0) playSfx('npc-gunfire', bestGain);
@@ -3988,7 +3994,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           const enemyKilled = damageEnemy(enemyId, dmg);
-          playSfx(hitCrit ? 'headshot' : 'shot-damage');
+          // 護衛NPCの弾の被弾音も、発砲音と同じ距離減衰をかける(遠いNPCの攻撃は被弾音も小さく/画面外は無音)。
+          // プレイヤー自身の弾は等倍(gain=1)。
+          let hitSfxGain = 1;
+          if (projectile?.weaponKey === 'escort' && enemyForFx) {
+            const hpl = collisionState.player;
+            const hcam = useGameStore.getState().camera, hgb = useGameStore.getState().gameBounds;
+            hitSfxGain = npcSfxDistGain(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);
+          }
+          playSfx(hitCrit ? 'headshot' : 'shot-damage', hitSfxGain);
           // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(2コマ立ち絵=プールsprite1枚で安い)。
           // 「敵1体につき直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の多弾(=見た目は単発)は近距離だと同一
           // フレーム、遠距離だと数フレームに分かれて命中するため、フレーム単位の間引きだけでは「2本生える」を防げない。

@@ -1362,7 +1362,7 @@ const grantMeleeKillRewards = (
       // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
       // 軌道中央へ「斬」を出すので、ここでは出さない。
       if (!suppressKillCallout) {
-        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', { bg: 0xdc2626 });
+        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', { bg: 0x7a1322 }); // 濃いワインレッド(社長指示)
       }
     } else {
       get().spawnBurst(ex, ey, '#dc2626', 16);
