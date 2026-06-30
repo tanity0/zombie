@@ -18251,3 +18251,9 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 盾ジッタ: 盾でジャンプを弾いた後の落下描画が p>=1 で enemyBlockFall/enemyJumpHop を delete→まだ recover 中だと次フレームで再生成されホップが 0.6*JUMP_HEIGHT に戻って再落下…を recover 中ずっと繰り返していた(上下ループ)。delete を廃止し、後片付けは recover を抜けた時のみに。p>=1 で aiHop=0 のまま静止。
 - ジャンプカウンターのノックバック不発: カウンターの近接スイングがパンプキンをクリ気絶→気絶ハンドラが aiPhase を undefined にリセット→接触カウンターの recover/charge/crouch 判定を抜けてパリィ未発火=その場で痺れるだけだった。修正: 接触処理で「気絶中でもカウンター窓中なら dashParried(パリィ=ノックバック+クリ反撃)」にして確実に弾く。
 - 検証: tsc --noEmit 通過。変更: src/pixi/pixiScene.ts, src/hooks/useGameLoop.ts, package.json
+
+## v0.25.1222 — ゲーム仕様書 GAME_SPEC.md を追加
+- 依頼(社長): 「今の最新のゲーム仕様書をgithubに上げておいて」。
+- 対応: リポジトリ直下に `GAME_SPEC.md`(日本語・全16節)を新規作成。概要/技術・コアループ・クラス・武器・サブ/スキル/ガチャ・装備・敵/ボス・ハンター・護衛NPC・イベント/ステージ・経済/弾薬・オーディオ・VFX・FF7R風UI・性能予算・URL開発ノブを横断的に索引化。バランス値の一次情報は各ソース、本書は全体像という位置づけ。
+- 注記: コードや挙動の変更は無し(ドキュメントのみ)。`v0.25.1222` 時点のスナップショット。
+- 検証: ドキュメントのみ(コード非変更)。変更: GAME_SPEC.md(新規), package.json, DEVELOPMENT_LOG.md
