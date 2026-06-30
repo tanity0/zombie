@@ -23,8 +23,8 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
   // 端は透明(フェードアウト)・中央は軽め。紫の発色(=以前は選択時だけだった明るさ)を「常時=ノーマル基準」に
   // ベイクする(社長指示)。押下時はさらにほんの少しだけ明るくする程度。
   const dark = fade === 'both'
-    ? 'linear-gradient(90deg, rgba(24,15,38,0.04) 0%, rgba(24,15,38,0.58) 32%, rgba(24,15,38,0.58) 68%, rgba(24,15,38,0.04) 100%)'
-    : 'linear-gradient(95deg, rgba(24,15,38,0.58) 0%, rgba(24,15,38,0.34) 60%, rgba(24,15,38,0.04) 100%)';
+    ? 'linear-gradient(90deg, transparent 0%, rgba(24,15,38,0.42) 32%, rgba(24,15,38,0.42) 68%, transparent 100%)'
+    : 'linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.22) 60%, transparent 100%)';
   const hi = fade === 'both'
     ? 'linear-gradient(90deg, transparent 0%, rgba(168,85,247,0.20) 35%, rgba(168,85,247,0.20) 65%, transparent 100%)'
     : 'linear-gradient(95deg, rgba(168,85,247,0.26) 0%, transparent 70%)';

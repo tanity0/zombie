@@ -82,9 +82,6 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
 const RARITY_TEXT: Record<SkillRarity, string> = {
   normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
 };
-const RARITY_BORDER: Record<SkillRarity, string> = {
-  normal: 'border-purple-400/10', rare: 'border-purple-400/40', super: 'border-amber-300/55',
-};
 
 // キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
 const CLASS_PORTRAIT: Record<CharacterClass, string> = {
@@ -205,7 +202,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderHome = () => (
     <>
-      <Header title="ミッション選択" subtitle="the ONE" />
+      <Header title="ミッション選択" />
       <div className="p-3 space-y-2">
         <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent delay={0} />
         <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
@@ -250,8 +247,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
         // 各選択肢を左からスッとカスケード表示。ロック行(opacity-60)はフェード終端の opacity:1 と競合するので付けない。
         style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
-        className={`w-full flex items-center gap-3 rounded-none border px-3 py-3 text-left transition-colors ${
-          unlocked ? 'menu-item-in border-purple-400/12 bg-purple-400/5 active:bg-purple-400/10' : 'border-purple-400/8 bg-black/25 opacity-60'
+        className={`ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left transition-[filter] ${
+          unlocked ? 'menu-item-in active:brightness-110' : 'is-off'
         }`}
       >
         <span className={`shrink-0 w-11 h-11 rounded-none flex items-center justify-center text-[12px] font-bold ${
@@ -412,8 +409,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <button
                   key={cc.id}
                   onClick={() => { playSfx('ui-select'); setSelectedClass(cc.id); }}
-                  className={`relative shrink-0 flex flex-col items-center justify-end rounded-none border pt-2 pb-1 px-2 transition-colors ${
-                    on ? 'border-purple-300/80 bg-purple-400/20' : 'border-purple-400/15 bg-black/45 active:bg-black/60'
+                  className={`ff7r-fade-right relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] ${
+                    on ? 'is-on' : 'active:brightness-110'
                   }`}
                   style={{ width: 74, height: 80 }}
                   aria-pressed={on}
@@ -477,10 +474,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       key={k}
                       onClick={() => toggleSkill(k)}
                       disabled={full}
-                      className={`flex flex-col items-start gap-0.5 rounded-none border px-3 py-2.5 text-left ${
-                        on ? 'border-fuchsia-300/55 bg-fuchsia-300/15 text-fuchsia-50'
-                          : full ? 'border-purple-400/5 bg-purple-400/[0.03] text-white/30'
-                          : `${RARITY_BORDER[rarity]} bg-purple-400/5 text-white/85 active:bg-purple-400/10`
+                      className={`ff7r-fade-right flex flex-col items-start gap-0.5 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                        on ? 'is-on text-white'
+                          : full ? 'is-off text-white/40'
+                          : 'text-white/85 active:brightness-110'
                       }`}
                     >
                       <span className="flex w-full items-center justify-between gap-2">
@@ -506,8 +503,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   <button
                     key={k}
                     onClick={() => toggleSub(k)}
-                    className={`flex items-center justify-between gap-2 rounded-none border px-3 py-2.5 text-left ${
-                      on ? 'border-emerald-300/45 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/85 active:bg-purple-400/10'
+                    className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
+                      on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
                     }`}
                   >
                     <span className="text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>

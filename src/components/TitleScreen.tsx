@@ -17,10 +17,8 @@ interface TitleScreenProps {
 
 // 右へフェードする半透明パネル(FF7R定番)。左に紫の細いアクセントバー＋上下の極細ヘアライン。
 const PANEL_STYLE: React.CSSProperties = {
-  background: 'linear-gradient(95deg, rgba(9,8,14,0.95) 0%, rgba(9,8,14,0.86) 50%, rgba(9,8,14,0.42) 100%)',
-  borderLeft: '1px solid rgba(168,85,247,0.8)',
-  borderTop: '1px solid rgba(168,85,247,0.14)',
-  borderBottom: '1px solid rgba(168,85,247,0.14)',
+  background: 'linear-gradient(95deg, rgba(9,8,14,0.6) 0%, rgba(9,8,14,0.48) 50%, rgba(9,8,14,0.16) 100%)',
+  borderLeft: '1px solid rgba(168,85,247,0.75)',
 };
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {

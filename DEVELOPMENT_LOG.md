@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1203 — 装備/ステージ/キャラ選択ボタンを右フェード化＋透明度UP＋「the ONE」削除(社長指示)
+
+- **右フェードボタン**: CSSユーティリティ `.ff7r-fade-right`(＋`.is-on`/`.is-off`)を新設。背景も枠線(`border-image`=横グラデ)も
+  右で透明にフェード。適用: StageRow(ステージ選択)/スキル・サブウェポンボタン(装備)/キャラ選択チップ(ドット立ち絵枠)。
+  選択=`is-on`(紫強め)/不可=`is-off`。`RARITY_BORDER` は不要化で削除(レア度はラベル色で表現)。
+- **透明度UP**: 「濃すぎて透明が分からない」指摘で全体を薄く: glass-panel 0.82→0.52、Ff7rButton/ff7r-fade-right/タイトル
+  パネルの不透明度も下げ、端は完全透明(transparent)へ。
+- **「the ONE」削除**: ミッション選択ヘッダの謎サブタイトル `subtitle="the ONE"` を撤去。
+- 検証: typecheck/lint(0)/build OK。変更: `src/index.css`・`MissionSelect.tsx`・`ff7r.tsx`・`TitleScreen.tsx`・`package.json`。
+
 ## v0.25.1202 — ゲーム外UIの旧枠/カード/角丸を全廃しFF7R基調に統一(社長指示・徹底)
 
 - 前回は色だけで構造(白枠・白カード・角丸)が旧デザインのまま残っていた指摘を受け、非ゲーム画面を一括変換:

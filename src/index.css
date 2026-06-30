@@ -48,9 +48,9 @@
   /* FF7リメイク風メニュー面(社長指示・紫)。深い黒のみ＋極薄の紫枠1本だけ(装飾は足さない)。
      glass-pill(プレイ中HUD)は据え置き=ゲーム中の視認性は変えない。 */
   .glass-panel {
-    background-color: rgba(11, 9, 16, 0.82);
-    backdrop-filter: saturate(150%) blur(16px);
-    -webkit-backdrop-filter: saturate(150%) blur(16px);
+    background-color: rgba(11, 9, 16, 0.52);
+    backdrop-filter: saturate(150%) blur(14px);
+    -webkit-backdrop-filter: saturate(150%) blur(14px);
     border: 1px solid rgba(168, 85, 247, 0.12);
   }
   .glass-pill {
@@ -59,6 +59,22 @@
     -webkit-backdrop-filter: saturate(160%) blur(18px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 9999px;
+  }
+  /* FF7R風: 右へフェードアウトするボタン/カード。背景も枠線(border-image=横グラデ)も右で透明に。
+     上下=横グラデが右で透明 / 左=紫 / 右=透明。rounded-none 前提(border-imageは角丸無効)。 */
+  .ff7r-fade-right {
+    background: linear-gradient(95deg, rgba(24,15,38,0.42) 0%, rgba(24,15,38,0.18) 55%, transparent 100%);
+    border: 1px solid transparent;
+    border-image: linear-gradient(90deg, rgba(168,85,247,0.6) 0%, rgba(168,85,247,0.45) 35%, transparent 100%) 1;
+  }
+  .ff7r-fade-right.is-on {
+    background: linear-gradient(95deg, rgba(168,85,247,0.26) 0%, rgba(168,85,247,0.09) 55%, transparent 100%);
+    border-image: linear-gradient(90deg, rgba(192,132,252,0.95) 0%, rgba(168,85,247,0.55) 40%, transparent 100%) 1;
+  }
+  .ff7r-fade-right.is-off {
+    background: linear-gradient(95deg, rgba(24,15,38,0.28) 0%, rgba(24,15,38,0.1) 55%, transparent 100%);
+    border-image: linear-gradient(90deg, rgba(168,85,247,0.22) 0%, transparent 70%) 1;
+    opacity: 0.55;
   }
   .upgrade-menu-backdrop {
     animation: upgrade-backdrop-in 220ms ease-out both;
