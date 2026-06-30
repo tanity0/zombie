@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1189 — FF7R風UIテーマ(紫)をタイトル画面に試作(社長指示・option1)
+
+- ゲーム開始前UIをFF7リメイク風に。**まずタイトル画面だけ試作**(承認後に他画面へ展開する方針)。カラーは社長指定で**紫**
+  (violet ~ rgba(168,85,247))。背景アート/ロジックは不変=装飾のみ。
+- 適用: 角ばった黒パネル＋紫の細エッジ＋外側グロー＋**四隅L字ブラケット**(`Corners`)＋上端の紫アクセントバー、
+  見出しは菱形マーカー＋字間広め、同意ボタンを紫の発光ボタン(▶＋左エッジ発光)に、STARTは左右ブラケット線＋紫グロー、
+  スピナー/バージョンバッジ/タップ文言も紫トーン。質感に紫ビネット＋微スキャンライン。
+- 検証: typecheck/lint/build OK。変更: `src/components/TitleScreen.tsx`・`package.json`。
+- 次: 社長OKなら MissionSelect / Shop / Upgrade / Loading へ同テーマ(共通化)を展開。
+
 ## v0.25.1188 — 護衛NPCの発砲音(ハンドガン流用)＋NPC↔プレイヤー距離で減衰(社長承認・おすすめ実装)
 
 - `playSfx(key, gainMult=1)` に音量倍率引数を追加(0以下は無音)。**プレイヤーの攻撃音は既定1.0=距離無関係で等倍**のまま。
