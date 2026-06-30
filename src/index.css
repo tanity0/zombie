@@ -53,13 +53,18 @@
     -webkit-backdrop-filter: saturate(150%) blur(14px);
     border: 1px solid rgba(168, 85, 247, 0.12);
   }
-  /* プレイ中HUDのピル。トンマナ統一でFF7R紫寄りに(視認性のため不透明度は保つ)。 */
+  /* プレイ中HUDの文字背景。社長指示で「枠を廃止し右フェードアウト」に統一。
+     枠(border)/丸み無し。左=やや濃い→右=透明 のグラデのみ。 */
   .glass-pill {
-    background-color: rgba(13, 10, 20, 0.5);
-    backdrop-filter: saturate(150%) blur(16px);
-    -webkit-backdrop-filter: saturate(150%) blur(16px);
-    border: 1px solid rgba(168, 85, 247, 0.18);
-    border-radius: 9999px;
+    background: linear-gradient(95deg, rgba(13,10,20,0.62) 0%, rgba(13,10,20,0.34) 55%, transparent 100%);
+    border: none;
+    border-radius: 0;
+  }
+  /* 中央寄せのHUD文字(プレイ時間など)用: 両サイドへフェードアウトする黒背景(透明感あり)・枠なし。 */
+  .glass-pill-both {
+    background: linear-gradient(90deg, transparent 0%, rgba(8,6,14,0.55) 36%, rgba(8,6,14,0.55) 64%, transparent 100%);
+    border: none;
+    border-radius: 0;
   }
   /* FF7R風: 右へフェードアウトするボタン/カード。背景も枠線(border-image=横グラデ)も右で透明に。
      上下=横グラデが右で透明 / 左=紫 / 右=透明。rounded-none 前提(border-imageは角丸無効)。 */

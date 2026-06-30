@@ -92,11 +92,7 @@ const GameHUD: React.FC = () => {
           className="absolute left-1/2 -translate-x-1/2"
           style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)' }}
         >
-          <div
-            className={`glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 shadow-lg animate-pulse ${
-              isTreasureGet ? 'ring-amber-300/70' : isDataGet ? 'ring-emerald-300/70' : 'ring-purple-400/70'
-            }`}
-          >
+          <div className="glass-pill px-4 py-2 flex items-center gap-2 animate-pulse">
             {!isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
               ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
               : <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
@@ -176,16 +172,16 @@ const GameHUD: React.FC = () => {
       {/* NPCリアルタイムセリフ(コンボ/アテンションの下・優先度はその次)。 */}
       <NpcDialogue />
 
-      {/* Timer(中央) */}
+      {/* Timer(中央)=両サイドフェードの黒背景(枠なし) */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums"
+        className="absolute left-1/2 -translate-x-1/2 glass-pill-both px-5 py-1 text-[13px] font-semibold tabular-nums"
         style={{ top: 'max(env(safe-area-inset-top), 8px)' }}
       >
         {formattedTime}
       </div>
-      {/* スクラップ(右) */}
+      {/* スクラップ(右)=右フェード(枠なし) */}
       <div
-        className="absolute hud-translucent rounded-full px-3 py-1 text-[13px] font-semibold tabular-nums"
+        className="absolute glass-pill px-3 py-1 text-[13px] font-semibold tabular-nums"
         style={{
           top: 'max(env(safe-area-inset-top), 8px)',
           right: 'max(env(safe-area-inset-right), 12px)'
@@ -232,7 +228,7 @@ const GameHUD: React.FC = () => {
                 {equippedSkills.map(key => (
                   <div
                     key={key}
-                    className="hud-translucent rounded-full px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
+                    className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
                   >
                     <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
                     <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
@@ -269,7 +265,7 @@ const GameHUD: React.FC = () => {
                     key={gun.id}
                     onClick={() => setActiveWeapon(gun.id)}
                     className={`pointer-events-auto relative w-11 h-11 rounded-none flex items-center justify-center overflow-hidden transition-colors ${
-                      active ? 'bg-purple-500/30 ring-2 ring-purple-400/80' : dry ? 'bg-purple-400/5 opacity-50' : 'bg-purple-500/15 opacity-80'
+                      active ? 'bg-purple-500/25 ring-1 ring-purple-400/80' : dry ? 'bg-purple-400/5 opacity-50' : 'bg-purple-500/12 opacity-80'
                     }`}
                     title={gun.name}
                     aria-label={gun.name}

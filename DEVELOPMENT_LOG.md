@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1208 — プレイ中HUDの文字背景を枠廃止・フェードに統一＋武器枠を細く(社長指示)
+
+- **文字背景の枠廃止＋右フェード**: `.glass-pill` を「枠/丸み無し＋右フェード黒」に再定義。武器入手通知(旧glass-panel+ring)・
+  サブウェポンLvピル・スクラップ(右上)を glass-pill 化。
+- **プレイ時間=両サイドフェード**: 中央寄せ用 `.glass-pill-both`(両端→透明の黒・透明感あり・枠なし)を追加しTimerに適用。
+- **武器UI枠を細く**: 選択中スロットの `ring-2`→`ring-1`、地色も少し薄く。
+- 検証: typecheck/lint(0)/build OK。変更: `src/index.css`・`src/components/GameHUD.tsx`・`package.json`。
+
 ## v0.25.1207 — プレイ中HUDの未統一箇所をFF7R紫に(社長スクショ指摘)
 
 - **ポーズメニュー**: 青のインライングラデ「続ける」を撤去し、両ボタンを共通 `Ff7rButton`(両サイドフェード)へ。
