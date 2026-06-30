@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1202 — ゲーム外UIの旧枠/カード/角丸を全廃しFF7R基調に統一(社長指示・徹底)
+
+- 前回は色だけで構造(白枠・白カード・角丸)が旧デザインのまま残っていた指摘を受け、非ゲーム画面を一括変換:
+  - `border-white/*`→`border-purple-400/*`(透明度は維持)、`bg-white/*`→`bg-purple-400/*`、
+    `rounded-(3xl|2xl|xl|lg)`→`rounded-none`(角ばり)。対象: MissionSelect(装備/資料/キャラ選択チップ含む)/ShopMenu/
+    GameOverScreen/LoadingScreen。`rounded-full`(丸アイコン/ドット)とレア度の amber 枠は据え置き。
+- 検証: typecheck/lint(0)/build OK。変更: 上記4コンポーネント・`package.json`。
+
 ## v0.25.1201 — 敵が斬られた時のSE(slash-damage)を社長提供音に差し替え
 
 - `slash-damage.mp3` を同名差し替え(近接/ナイフ命中で再生)。volume(0.86)据え置き。SFXキャッシュバスト済みなので

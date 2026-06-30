@@ -179,7 +179,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       className="screen-in min-h-screen w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
-      <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-3xl">
+      <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : withdraw ? '帰還' : 'ゲームオーバー'}
@@ -197,7 +197,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
         </div>
         <div className="px-4 pb-4">
           {benchmarkResult && (
-            <div className={`mb-3 rounded-2xl border px-3 py-2 ${
+            <div className={`mb-3 rounded-none border px-3 py-2 ${
               benchmarkResult.grade === 'PASS'
                 ? 'bg-emerald-950/50 border-emerald-300/35'
                 : benchmarkResult.grade === 'CAUTION'
@@ -216,7 +216,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   <span>enemy/fx</span><span className="text-white">{benchmarkResult.maxEnemies}/{benchmarkResult.maxFx}</span>
                 </div>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+              <div className="mt-2 grid grid-cols-2 gap-2 rounded-none bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
                 <div className="min-w-0">
                   <span className="block text-white/40">safe</span>
                   <span className="block truncate text-emerald-100/80">{safeBenchmarkStage?.safeStress ?? 'not found'}</span>
@@ -226,7 +226,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   <span className="block truncate text-rose-100/80">{stoppedBenchmarkStage ? `${stoppedBenchmarkStage.label} ${stoppedBenchmarkStage.grade}` : 'max passed'}</span>
                 </div>
               </div>
-              <div className="mt-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+              <div className="mt-2 rounded-none bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
                 <div className="grid grid-cols-[44px_1fr] gap-2">
                   <span className="text-white/40">device</span>
                   <span className="truncate text-purple-100/80">{benchmarkResult.diagnostics.verdict}</span>
@@ -241,7 +241,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </span>
                 </div>
               </div>
-              <div className="mt-2 rounded-xl bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
+              <div className="mt-2 rounded-none bg-black/20 px-2 py-2 text-[10px] text-white/65 tabular-nums">
                 <div className="grid grid-cols-[44px_1fr] gap-2">
                   <span className="text-white/40">weak</span>
                   <span className="truncate text-rose-100/80">{benchmarkResult.bottleneck}</span>
@@ -252,7 +252,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   ))}
                 </div>
               </div>
-              <div className="mt-2 space-y-1 rounded-xl bg-black/20 px-2 py-2">
+              <div className="mt-2 space-y-1 rounded-none bg-black/20 px-2 py-2">
                 {benchmarkResult.stages.map(stage => (
                   <div key={stage.id} className="grid grid-cols-[44px_1fr_42px] items-start gap-2 text-[10px] text-white/65 tabular-nums">
                     <span className="text-white/80">{stage.id}</span>
@@ -278,7 +278,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               <button
                 type="button"
                 onClick={handleCopyBenchmark}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-[11px] font-semibold text-white/85"
+                className="mt-2 w-full rounded-none border border-purple-400/10 bg-purple-400/10 px-3 py-2 text-[11px] font-semibold text-white/85"
               >
                 {benchmarkCopyState === 'copied'
                   ? 'コピーしました'
@@ -289,7 +289,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           )}
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2">
+            <div className="rounded-none bg-purple-400/5 border border-purple-400/10 px-3 py-2">
               <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                 {statsItems.map(item => (
@@ -300,7 +300,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl bg-black/25 border border-white/10 px-3 py-2">
+            <div className="rounded-none bg-black/25 border border-purple-400/10 px-3 py-2">
               <div className="mb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase tracking-widest text-white/45">SCORE</span>
@@ -323,7 +323,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           </div>
           {!isBenchmark && !won && !withdraw && hadEquipment && (
-            <div className="mb-3 rounded-2xl bg-rose-400/5 border border-rose-300/25 px-3 py-2.5">
+            <div className="mb-3 rounded-none bg-rose-400/5 border border-rose-300/25 px-3 py-2.5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-semibold text-rose-200">失った装備</span>
                 {equipmentGold > 0 && (
@@ -341,9 +341,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   return (
                     <div
                       key={slot}
-                      className="text-left p-2 rounded-xl border border-white/10 bg-white/5 flex items-center gap-2.5 opacity-80"
+                      className="text-left p-2 rounded-none border border-purple-400/10 bg-purple-400/5 flex items-center gap-2.5 opacity-80"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-base grayscale">
+                      <div className="w-8 h-8 rounded-none bg-purple-400/10 flex items-center justify-center overflow-hidden shrink-0 text-base grayscale">
                         {iconImg
                           ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                           : (isSp ? '🏯' : '🛡️')}
@@ -365,7 +365,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           )}
           {(won || withdraw) && hadEquipment && (
-            <div className="mb-3 rounded-2xl bg-amber-400/5 border border-amber-300/30 px-3 py-2.5">
+            <div className="mb-3 rounded-none bg-amber-400/5 border border-amber-300/30 px-3 py-2.5">
               <div className="text-[11px] font-semibold text-amber-200 mb-2">持ち帰る装備を1つ選択（他は破棄）</div>
               <div className="flex flex-col gap-1.5">
                 {(['body', 'arms', 'accessory'] as EquipSlot[]).map(slot => {
@@ -381,9 +381,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                       key={slot}
                       type="button"
                       onClick={() => pickCarry(defId)}
-                      className={`text-left p-2 rounded-xl border flex items-center gap-2.5 transition-colors ${sel ? 'bg-amber-400/25 border-amber-300/70' : isSp ? 'bg-amber-400/10 border-amber-300/40 active:bg-amber-400/20' : 'bg-white/5 border-white/10 active:bg-white/10'}`}
+                      className={`text-left p-2 rounded-none border flex items-center gap-2.5 transition-colors ${sel ? 'bg-amber-400/25 border-amber-300/70' : isSp ? 'bg-amber-400/10 border-amber-300/40 active:bg-amber-400/20' : 'bg-purple-400/5 border-purple-400/10 active:bg-purple-400/10'}`}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-base">
+                      <div className="w-8 h-8 rounded-none bg-purple-400/10 flex items-center justify-center overflow-hidden shrink-0 text-base">
                         {iconImg
                           ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                           : (isSp ? '🏯' : '🛡️')}
@@ -404,7 +404,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => pickCarry(null)}
-                  className={`text-left p-2 rounded-xl border text-[12px] ${carriedPick === '__none__' ? 'bg-white/15 border-white/40 text-white' : 'bg-white/5 border-white/10 text-white/60 active:bg-white/10'}`}
+                  className={`text-left p-2 rounded-none border text-[12px] ${carriedPick === '__none__' ? 'bg-purple-400/15 border-purple-400/40 text-white' : 'bg-purple-400/5 border-purple-400/10 text-white/60 active:bg-purple-400/10'}`}
                 >
                   持ち帰らない
                 </button>
@@ -421,7 +421,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onPlayAgain}
-              className="w-full py-3 rounded-2xl text-sm font-semibold text-white"
+              className="w-full py-3 rounded-none text-sm font-semibold text-white"
               style={
                 won
                   ? {
@@ -438,7 +438,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </button>
             <button
               onClick={onReturnToMenu}
-              className="w-full py-3 rounded-2xl text-sm font-semibold text-white/90 bg-white/10 border border-white/10"
+              className="w-full py-3 rounded-none text-sm font-semibold text-white/90 bg-purple-400/10 border border-purple-400/10"
             >
               メニューに戻る
             </button>

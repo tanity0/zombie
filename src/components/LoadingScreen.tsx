@@ -19,7 +19,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
   if (compact) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-end bg-black/45 pb-[18%] text-white">
-        <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-white/75" />
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-purple-400/20 border-t-white/75" />
         <span className="mt-4 text-[11px] tracking-[0.34em] text-white/55">LOADING…</span>
       </div>
     );
@@ -37,7 +37,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(168,85,247,0.12),transparent_34%),radial-gradient(circle_at_50%_80%,rgba(16,185,129,0.09),transparent_42%)]" />
       <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-slate-900/80 to-transparent" />
       <div className="relative z-10 w-full max-w-sm text-center">
-        <div className="mx-auto mb-5 h-16 w-16 rounded-full border border-purple-200/20 bg-white/5 shadow-[0_0_30px_rgba(168,85,247,0.16)]">
+        <div className="mx-auto mb-5 h-16 w-16 rounded-full border border-purple-200/20 bg-purple-400/5 shadow-[0_0_30px_rgba(168,85,247,0.16)]">
           <div className="loading-sigil h-full w-full rounded-full" />
         </div>
         <div className="text-[10px] uppercase tracking-[0.34em] text-purple-100/50">
@@ -47,7 +47,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
         <p className="mt-2 text-[12px] leading-relaxed text-white/50">
           {subtitle}
         </p>
-        <div className="mx-auto mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
+        <div className="mx-auto mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-purple-400/10">
           <div className="loading-bar h-full rounded-full bg-gradient-to-r from-purple-300 via-emerald-200 to-amber-200" />
         </div>
       </div>

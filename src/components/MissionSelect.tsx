@@ -56,7 +56,7 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   >
     {/* ページ全体(背景ごと)はスクロールさせない=ブラウザっぽさの元を排除。はみ出す時は
         枠(panel)の中だけがスクロールする(スクロールバーは全要素で非表示済み・overscroll-contain)。 */}
-    <div className="max-w-3xl w-full max-h-full glass-panel rounded-3xl overflow-y-auto overscroll-contain">{children}</div>
+    <div className="max-w-3xl w-full max-h-full glass-panel rounded-none overflow-y-auto overscroll-contain">{children}</div>
   </div>
 );
 
@@ -83,7 +83,7 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
   normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
 };
 const RARITY_BORDER: Record<SkillRarity, string> = {
-  normal: 'border-white/10', rare: 'border-purple-400/40', super: 'border-amber-300/55',
+  normal: 'border-purple-400/10', rare: 'border-purple-400/40', super: 'border-amber-300/55',
 };
 
 // キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
@@ -250,11 +250,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
         // 各選択肢を左からスッとカスケード表示。ロック行(opacity-60)はフェード終端の opacity:1 と競合するので付けない。
         style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
-        className={`w-full flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors ${
-          unlocked ? 'menu-item-in border-white/12 bg-white/5 active:bg-white/10' : 'border-white/8 bg-black/25 opacity-60'
+        className={`w-full flex items-center gap-3 rounded-none border px-3 py-3 text-left transition-colors ${
+          unlocked ? 'menu-item-in border-purple-400/12 bg-purple-400/5 active:bg-purple-400/10' : 'border-purple-400/8 bg-black/25 opacity-60'
         }`}
       >
-        <span className={`shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-[12px] font-bold ${
+        <span className={`shrink-0 w-11 h-11 rounded-none flex items-center justify-center text-[12px] font-bold ${
           stage.kind === 'ex' ? 'bg-fuchsia-400/15 text-fuchsia-100'
             : stage.kind === 'free' ? 'bg-emerald-400/15 text-emerald-100'
             : 'bg-purple-400/15 text-purple-100'
@@ -280,8 +280,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   };
 
   const LockedExHint: React.FC = () => (
-    <div className="w-full flex items-center gap-3 rounded-2xl border border-white/8 bg-black/25 px-3 py-3 opacity-60">
-      <span className="shrink-0 w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center"><Lock size={16} className="text-white/40" /></span>
+    <div className="w-full flex items-center gap-3 rounded-none border border-purple-400/8 bg-black/25 px-3 py-3 opacity-60">
+      <span className="shrink-0 w-11 h-11 rounded-none bg-purple-400/5 flex items-center justify-center"><Lock size={16} className="text-white/40" /></span>
       <span className="text-[12px] text-white/45">？？？（未解放）</span>
     </div>
   );
@@ -309,7 +309,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {stage.subs.length === 0
               ? <p className="text-[12px] text-white/45">{stage.kind === 'free' ? 'なし（周回ミッション）' : '準備中（後日追加）'}</p>
               : stage.subs.map(s => (
-                <div key={s.id} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <div key={s.id} className="rounded-none border border-purple-400/10 bg-purple-400/5 px-3 py-2">
                   <div className="text-[13px] font-semibold text-white">{s.title}</div>
                   <div className="text-[11px] text-white/55">{s.desc}</div>
                 </div>
@@ -355,7 +355,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* 戻る(左上) */}
         <button
           onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId }); }}
-          className="absolute z-20 h-9 px-2.5 rounded-xl bg-black/45 border border-white/15 text-white/85 flex items-center gap-1 active:bg-black/65"
+          className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 border border-purple-400/15 text-white/85 flex items-center gap-1 active:bg-black/65"
           style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
           aria-label="戻る"
         >
@@ -381,8 +381,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <InfoLine label="固有スキル（自動）" value={c.charSkillDesc} />
               </div>
               {carriedDef && (
-                <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-amber-400/15 border border-amber-300/30 px-2 py-1">
-                  <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center overflow-hidden shrink-0 text-[12px]">
+                <div className="mt-2 inline-flex items-center gap-2 rounded-none bg-amber-400/15 border border-amber-300/30 px-2 py-1">
+                  <div className="w-6 h-6 rounded bg-purple-400/10 flex items-center justify-center overflow-hidden shrink-0 text-[12px]">
                     {carriedIcon
                       ? <img src={carriedIcon} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                       : (carriedDef.special ? '🏯' : '🛡️')}
@@ -412,8 +412,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <button
                   key={cc.id}
                   onClick={() => { playSfx('ui-select'); setSelectedClass(cc.id); }}
-                  className={`relative shrink-0 flex flex-col items-center justify-end rounded-xl border pt-2 pb-1 px-2 transition-colors ${
-                    on ? 'border-purple-300/80 bg-purple-400/20' : 'border-white/15 bg-black/45 active:bg-black/60'
+                  className={`relative shrink-0 flex flex-col items-center justify-end rounded-none border pt-2 pb-1 px-2 transition-colors ${
+                    on ? 'border-purple-300/80 bg-purple-400/20' : 'border-purple-400/15 bg-black/45 active:bg-black/60'
                   }`}
                   style={{ width: 74, height: 80 }}
                   aria-pressed={on}
@@ -462,7 +462,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <span className="text-[11px] text-white/45">{equippedSkills.length}/{MAX_EQUIPPED_SKILLS}</span>
             </div>
             {ownedSkills.length === 0 ? (
-              <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-[11px] leading-snug text-white/50">
+              <p className="rounded-none border border-purple-400/10 bg-purple-400/5 px-3 py-3 text-[11px] leading-snug text-white/50">
                 解禁済みのスキルがありません。開発施設の強化訓練でゴールドを使って解禁してください。
               </p>
             ) : (
@@ -477,10 +477,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       key={k}
                       onClick={() => toggleSkill(k)}
                       disabled={full}
-                      className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left ${
+                      className={`flex flex-col items-start gap-0.5 rounded-none border px-3 py-2.5 text-left ${
                         on ? 'border-fuchsia-300/55 bg-fuchsia-300/15 text-fuchsia-50'
-                          : full ? 'border-white/5 bg-white/[0.03] text-white/30'
-                          : `${RARITY_BORDER[rarity]} bg-white/5 text-white/85 active:bg-white/10`
+                          : full ? 'border-purple-400/5 bg-purple-400/[0.03] text-white/30'
+                          : `${RARITY_BORDER[rarity]} bg-purple-400/5 text-white/85 active:bg-purple-400/10`
                       }`}
                     >
                       <span className="flex w-full items-center justify-between gap-2">
@@ -506,8 +506,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   <button
                     key={k}
                     onClick={() => toggleSub(k)}
-                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left ${
-                      on ? 'border-emerald-300/45 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/85 active:bg-white/10'
+                    className={`flex items-center justify-between gap-2 rounded-none border px-3 py-2.5 text-left ${
+                      on ? 'border-emerald-300/45 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/85 active:bg-purple-400/10'
                     }`}
                   >
                     <span className="text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
@@ -559,7 +559,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {STAGES.filter(s => s.kind === 'main').map(s => {
             const done = cleared.has(s.id);
             return (
-              <div key={s.id} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+              <div key={s.id} className="rounded-none border border-purple-400/10 bg-purple-400/5 px-3 py-2">
                 <div className="text-[12px] font-semibold text-white">{s.main.code}：{s.main.title}</div>
                 <div className="text-[12px] leading-relaxed text-white/70 mt-1">
                   {done ? s.main.debrief.join(' ') : <span className="text-white/40">未クリア（クリアで記録が開示される）</span>}
@@ -642,7 +642,7 @@ const AudioSettings: React.FC = () => {
       </label>
       <button
         onClick={() => { const next = !audioMuted; setAudioMutedState(next); setAudioMuted(next); }}
-        className={`w-full py-2.5 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 ${audioMuted ? 'bg-white/5 border-white/10 text-white/70' : 'bg-emerald-400/10 border-emerald-300/35 text-emerald-100'}`}
+        className={`w-full py-2.5 rounded-none text-sm font-semibold border flex items-center justify-center gap-2 ${audioMuted ? 'bg-purple-400/5 border-purple-400/10 text-white/70' : 'bg-emerald-400/10 border-emerald-300/35 text-emerald-100'}`}
       >
         {audioMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}{audioMuted ? '音なし' : '音あり'}
       </button>
@@ -660,7 +660,7 @@ const GraphicsSettings: React.FC = () => {
     <Section label="グラフィック">
       <button
         onClick={() => { const next = !bloom; setBloom(next); setBloomEnabled(next); playSfx('ui-select'); }}
-        className={`w-full py-2.5 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 ${bloom ? 'bg-amber-400/10 border-amber-300/35 text-amber-100' : 'bg-white/5 border-white/10 text-white/70'}`}
+        className={`w-full py-2.5 rounded-none text-sm font-semibold border flex items-center justify-center gap-2 ${bloom ? 'bg-amber-400/10 border-amber-300/35 text-amber-100' : 'bg-purple-400/5 border-purple-400/10 text-white/70'}`}
       >
         <Sparkles size={17} />ブルーム(発光){bloom ? 'あり' : 'なし'}
       </button>
@@ -717,14 +717,14 @@ const DevTools: React.FC<{
   ];
 
   return (
-    <div className="rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-3 space-y-3">
+    <div className="rounded-none border border-amber-300/25 bg-amber-300/[0.06] p-3 space-y-3">
       <div className="text-[11px] uppercase tracking-widest text-amber-200/70">テスト開発用（?dev=0 で非表示）</div>
 
       {/* FPS/撃破数表示 on/off */}
       <button
         type="button"
         onClick={() => setShowStatsOverlay(!showStatsOverlay)}
-        className={`w-full flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-left ${showStatsOverlay ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/80 active:bg-white/10'}`}
+        className={`w-full flex items-center justify-between gap-3 rounded-none border px-3 py-2.5 text-left ${showStatsOverlay ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/80 active:bg-purple-400/10'}`}
         aria-pressed={showStatsOverlay}
       >
         <span><span className="block text-[13px] font-semibold">撃破数/FPS表示</span><span className="block text-[11px] text-white/50">{showStatsOverlay ? '表示ありで開始' : '通常は無し'}</span></span>
@@ -732,48 +732,48 @@ const DevTools: React.FC<{
       </button>
 
       {/* ダンスモード(練習) */}
-      <div className="rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/5 p-2.5 space-y-2">
+      <div className="rounded-none border border-fuchsia-400/30 bg-fuchsia-500/5 p-2.5 space-y-2">
         <span className="block text-[11px] text-fuchsia-200/80">🕺 ダンスモード（練習）</span>
         <div className="flex items-center gap-2">
           {[1, 2, 3].map(lv => (
             <button key={lv} onClick={() => selectDanceLevel(lv)} aria-pressed={danceLevel === lv}
-              className={`flex-1 py-2 rounded-xl text-sm font-semibold border ${danceLevel === lv ? 'text-white border-fuchsia-300/80 ring-1 ring-fuchsia-300/60' : 'text-fuchsia-100 border-fuchsia-400/40'}`}
+              className={`flex-1 py-2 rounded-none text-sm font-semibold border ${danceLevel === lv ? 'text-white border-fuchsia-300/80 ring-1 ring-fuchsia-300/60' : 'text-fuchsia-100 border-fuchsia-400/40'}`}
               style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.22), rgba(168,85,247,0.22))' }}>Lv{lv}</button>
           ))}
         </div>
         <label className="flex items-center gap-2 text-[12px] text-white/75">
           <span className="shrink-0">サークル間隔</span>
           <input type="number" inputMode="numeric" value={danceIntervalInput} onChange={e => setDanceIntervalInput(e.target.value)}
-            className="w-20 rounded-lg border border-white/15 bg-black/30 px-2 py-1 text-right font-mono tabular-nums text-white/90 outline-none focus:border-fuchsia-300/60" />
+            className="w-20 rounded-none border border-purple-400/15 bg-black/30 px-2 py-1 text-right font-mono tabular-nums text-white/90 outline-none focus:border-fuchsia-300/60" />
           <span className="shrink-0 text-white/45">ms/拍</span>
         </label>
         <button type="button" onClick={() => setDanceTestAutoTap(!danceTestAutoTap)} aria-pressed={danceTestAutoTap}
-          className={`w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-left text-[12px] ${danceTestAutoTap ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/75 active:bg-white/10'}`}>
+          className={`w-full flex items-center justify-between gap-2 rounded-none border px-3 py-1.5 text-left text-[12px] ${danceTestAutoTap ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/75 active:bg-purple-400/10'}`}>
           <span>自動タップ(JUSTでドラム)</span><span className="shrink-0 font-semibold">{danceTestAutoTap ? 'ON' : 'OFF'}</span>
         </button>
         <button type="button" onClick={() => setDanceForceJust(!danceForceJust)} aria-pressed={danceForceJust}
-          className={`w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 text-left text-[12px] ${danceForceJust ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-white/10 bg-white/5 text-white/75 active:bg-white/10'}`}>
+          className={`w-full flex items-center justify-between gap-2 rounded-none border px-3 py-1.5 text-left text-[12px] ${danceForceJust ? 'border-emerald-300/35 bg-emerald-300/15 text-emerald-50' : 'border-purple-400/10 bg-purple-400/5 text-white/75 active:bg-purple-400/10'}`}>
           <span>強制JUST判定(タップ常に成功)</span><span className="shrink-0 font-semibold">{danceForceJust ? 'ON' : 'OFF'}</span>
         </button>
-        <button type="button" onClick={startDancePractice} className="w-full py-2 rounded-xl text-sm font-bold text-white border border-fuchsia-300/60"
+        <button type="button" onClick={startDancePractice} className="w-full py-2 rounded-none text-sm font-bold text-white border border-fuchsia-300/60"
           style={{ background: 'linear-gradient(180deg, rgba(217,70,239,0.45), rgba(168,85,247,0.45))' }}>決定（開始）</button>
       </div>
 
       {/* BENCH */}
       <button type="button" onClick={() => { setSelectedStageId(''); setSelectedFreeMode(false); useGameStore.getState().setPendingLoadout([]); onStartBenchmark(selectedClass); }}
-        className="w-full py-2.5 rounded-2xl text-sm font-semibold border border-purple-200/30 bg-purple-300/10 text-purple-100 active:bg-purple-300/15">
+        className="w-full py-2.5 rounded-none text-sm font-semibold border border-purple-200/30 bg-purple-300/10 text-purple-100 active:bg-purple-300/15">
         BENCH（ベンチマーク開始）
       </button>
 
       {/* デバッグ入力: 弾ドロップ率 / 弾薬箱取得量 */}
-      <div className="rounded-2xl border border-white/10 bg-black/15 p-2.5 space-y-2">
+      <div className="rounded-none border border-purple-400/10 bg-black/15 p-2.5 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="text-left"><div className="text-[13px] font-medium text-white">弾ドロップ率</div><div className="text-[11px] text-white/50">撃破時。近接フィニッシュは×1.5</div></div>
           <div className="flex items-center gap-1">
             <input type="number" inputMode="numeric" min={0} max={100} value={dropInput}
               onChange={e => { setDropInput(e.target.value); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setMeleeAmmoDropPercent(n); }}
               onBlur={() => setDropInput(String(useGameStore.getState().meleeAmmoDropPercent))}
-              className="w-16 text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
+              className="w-16 text-right bg-purple-400/10 border border-purple-400/15 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
             <span className="text-white/60 text-sm">%</span>
           </div>
         </div>
@@ -784,7 +784,7 @@ const DevTools: React.FC<{
               <input type="number" inputMode="numeric" min={0} max={999} value={ammoInputs[f.type]}
                 onChange={e => { setAmmoInputs(prev => ({ ...prev, [f.type]: e.target.value })); const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) setAmmoPickupAmount(f.type, n); }}
                 onBlur={() => setAmmoInputs(prev => ({ ...prev, [f.type]: String(useGameStore.getState().ammoPickupAmounts[f.type]) }))}
-                className="w-full text-right bg-white/10 border border-white/15 rounded-lg px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
+                className="w-full text-right bg-purple-400/10 border border-purple-400/15 rounded-none px-2 py-1 text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-purple-400/60" />
             </label>
           ))}
         </div>
@@ -792,8 +792,8 @@ const DevTools: React.FC<{
 
       {/* ステージ進行(導線テスト用) */}
       <div className="flex gap-2">
-        <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-xl text-[12px] font-semibold border border-white/15 bg-white/5 text-white/80 active:bg-white/10">全ステージ解放</button>
-        <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-xl text-[12px] font-semibold border border-white/15 bg-white/5 text-white/80 active:bg-white/10">進行リセット</button>
+        <button type="button" onClick={() => { unlockAllStages(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold border border-purple-400/15 bg-purple-400/5 text-white/80 active:bg-purple-400/10">全ステージ解放</button>
+        <button type="button" onClick={() => { resetProgress(); onRefreshCleared(); }} className="flex-1 py-2 rounded-none text-[12px] font-semibold border border-purple-400/15 bg-purple-400/5 text-white/80 active:bg-purple-400/10">進行リセット</button>
       </div>
     </div>
   );
@@ -808,7 +808,7 @@ const REVEAL_BY_RARITY: Record<SkillRarity, RevealCfg> = {
   // step = カードの表示時間。レベルは beat 遅延後にポップ(pop=0.34s / pop3=0.6s)するので、
   // step は「beat + ポップ尺 + 見え切る保持 + (superは退場フェード320ms)」を必ず上回るよう長めに取る。
   // レア度が高いほど長く見せる(社長指示)。手動タップ/矢印で早送り可。
-  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 950,  ring: 'border-white/15' },
+  normal: { nameCls: 'gacha-name-normal', beat: 300,  step: 950,  ring: 'border-purple-400/15' },
   rare:   { nameCls: 'gacha-name-rare',   beat: 620,  step: 1400, ring: 'border-purple-400/50 shadow-[0_0_18px_rgba(168,85,247,0.45)]' },
   super:  { nameCls: 'gacha-name-super',  beat: 1150, step: 2500, ring: 'border-amber-300/70 shadow-[0_0_30px_rgba(251,191,36,0.7)]' },
 };
@@ -1026,7 +1026,7 @@ const SkillGacha: React.FC = () => {
                 const rMax = rr.newLevel >= skillMaxLevel(rr.key);
                 const lc = rMax ? 'text-amber-300' : rr.newLevel === 2 ? 'text-purple-200' : 'text-white';
                 return (
-                  <div key={i} className={`rounded-lg border bg-black/40 px-3 py-2 ${rc.ring}`}>
+                  <div key={i} className={`rounded-none border bg-black/40 px-3 py-2 ${rc.ring}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[14px] font-bold text-white">
                         {SKILLS[rr.key].name}
@@ -1066,7 +1066,7 @@ const SkillGacha: React.FC = () => {
 
           <div
             key={cur}
-            className={`${leaving ? 'gacha-card-out' : `gacha-card ${cfg.nameCls}`} w-full max-w-sm rounded-2xl border bg-black/40 px-5 py-6 ${cfg.ring}`}
+            className={`${leaving ? 'gacha-card-out' : `gacha-card ${cfg.nameCls}`} w-full max-w-sm rounded-none border bg-black/40 px-5 py-6 ${cfg.ring}`}
           >
             <div className="flex items-center justify-between">
               <span className={`text-[11px] font-bold uppercase tracking-[0.2em] ${RARITY_TEXT[r.rarity]}`}>{RARITY_LABEL[r.rarity]}</span>
@@ -1114,20 +1114,20 @@ const SkillGacha: React.FC = () => {
         </>
         )}
 
-        <div className="border-t border-white/10 bg-black/60 p-3">
+        <div className="border-t border-purple-400/10 bg-black/60 p-3">
           {total > 1 ? (
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => { clearRevealTimers(); setShowList(v => !v); }}
-                className="rounded-xl border border-white/15 bg-white/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-white/10"
+                className="rounded-none border border-purple-400/15 bg-purple-400/5 px-3 py-3 text-[14px] font-semibold text-white/80 active:bg-purple-400/10"
               >
                 {showList ? '演出にもどる' : '一覧で見る'}
               </button>
               <button
                 type="button"
                 onClick={closeReveal}
-                className="rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+                className="rounded-none border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
               >
                 とじる
               </button>
@@ -1136,7 +1136,7 @@ const SkillGacha: React.FC = () => {
             <button
               type="button"
               onClick={closeReveal}
-              className="w-full rounded-xl border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
+              className="w-full rounded-none border border-fuchsia-300/50 bg-fuchsia-400/20 px-3 py-3 text-[14px] font-semibold text-fuchsia-50 active:bg-fuchsia-400/30"
             >
               とじる
             </button>
@@ -1180,7 +1180,7 @@ const SkillGacha: React.FC = () => {
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setPendingCount(null); setNoGold(false); }}
-          className="absolute left-4 top-4 z-10 rounded-lg border border-white/20 bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
+          className="absolute left-4 top-4 z-10 rounded-none border border-purple-400/20 bg-black/40 px-3 py-1.5 text-[13px] font-semibold text-white/85 active:bg-black/60"
         >
           ‹ 戻る
         </button>
@@ -1207,14 +1207,14 @@ const SkillGacha: React.FC = () => {
   // --- 回数選択(開発施設トップ) ---------------------------------------
   // 横長バナーのみ表示。画像の上にタイトル、下に[1回訓練][10回訓練]、その下に金額。
   return (
-    <div className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
+    <div className="rounded-none border border-fuchsia-300/30 bg-fuchsia-300/[0.06] p-3 mb-3">
       {/* 画像の上にタイトル */}
       <div className="flex items-center justify-between px-0.5 mb-2">
         <span className="text-[13px] font-bold text-fuchsia-100">スキル強化訓練</span>
         <span className="text-[12px] text-amber-200 font-semibold">所持ゴールド {goldBalance.toLocaleString()}</span>
       </div>
       {/* 射撃練習場の横長バナー */}
-      <div className="relative mb-3 overflow-hidden rounded-xl border border-fuchsia-300/25" style={{ aspectRatio: '16 / 7' }}>
+      <div className="relative mb-3 overflow-hidden rounded-none border border-fuchsia-300/25" style={{ aspectRatio: '16 / 7' }}>
         <img
           src={coverSrc}
           alt=""
@@ -1230,9 +1230,9 @@ const SkillGacha: React.FC = () => {
           type="button"
           onClick={() => { setPendingCount(1); setNoGold(false); }}
           disabled={cant1}
-          className={`rounded-xl px-3 py-3 text-[15px] font-bold ${
+          className={`rounded-none px-3 py-3 text-[15px] font-bold ${
             cant1
-              ? 'border border-white/10 bg-white/[0.03] text-white/30'
+              ? 'border border-purple-400/10 bg-purple-400/[0.03] text-white/30'
               : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
@@ -1242,9 +1242,9 @@ const SkillGacha: React.FC = () => {
           type="button"
           onClick={() => { setPendingCount(10); setNoGold(false); }}
           disabled={cant10}
-          className={`rounded-xl px-3 py-3 text-[15px] font-bold ${
+          className={`rounded-none px-3 py-3 text-[15px] font-bold ${
             cant10
-              ? 'border border-white/10 bg-white/[0.03] text-white/30'
+              ? 'border border-purple-400/10 bg-purple-400/[0.03] text-white/30'
               : 'border border-fuchsia-300/50 bg-fuchsia-400/20 text-fuchsia-50 active:bg-fuchsia-400/30'
           }`}
         >
@@ -1256,7 +1256,7 @@ const SkillGacha: React.FC = () => {
         <span className={cant1 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost1)}</span>
         <span className={cant10 ? 'text-rose-300' : 'text-amber-200'}>{costLabel(cost10)}</span>
       </div>
-      <div className="mt-2 flex items-center justify-between rounded-lg border border-fuchsia-300/20 bg-black/20 px-2 py-1 text-[10px]">
+      <div className="mt-2 flex items-center justify-between rounded-none border border-fuchsia-300/20 bg-black/20 px-2 py-1 text-[10px]">
         <span className="text-fuchsia-100/80">現在の{RARITY_LABEL.super}確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
         <span className="text-white/55">{pityLeft > 0 ? `天井まであと ${pityLeft}` : `天井(${RARITY_LABEL.super}最大)`}</span>
       </div>
@@ -1281,7 +1281,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
       <div className="menu-stagger px-3 pb-3 grid grid-cols-1 gap-2">
         <button type="button" onClick={() => setStartWithTestStraps(!startWithTestStraps)}
-          className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${startWithTestStraps ? 'border-amber-300/35 bg-amber-300/15 text-amber-50' : 'border-white/10 bg-white/5 text-white active:bg-white/10'}`}>
+          className={`flex items-center justify-between gap-3 rounded-none border px-3 py-2 text-left ${startWithTestStraps ? 'border-amber-300/35 bg-amber-300/15 text-amber-50' : 'border-purple-400/10 bg-purple-400/5 text-white active:bg-purple-400/10'}`}>
           <span><span className="block text-[13px] font-semibold">1000スクラップ開始</span><span className="block text-[11px] text-white/50">{startWithTestStraps ? '次の開始時に1000s所持' : 'テスト用。無料'}</span></span>
           <span className="text-[10px] text-white/45">{startWithTestStraps ? 'ON' : 'OFF'}</span>
         </button>
@@ -1290,7 +1290,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const maxed = level >= 3;
           return (
             <button key={skillKey} type="button" disabled={maxed} onClick={() => setUnlockedShopSkillCard(skillKey, Math.min(3, level + 1))}
-              className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left ${maxed ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/5 text-white active:bg-white/10'}`}>
+              className={`flex items-center justify-between gap-3 rounded-none border px-3 py-2 text-left ${maxed ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100' : 'border-purple-400/10 bg-purple-400/5 text-white active:bg-purple-400/10'}`}>
               <span><span className="block text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">商人陳列 Lv{level} → Lv{Math.min(3, level + 1)}</span></span>
               <span className="text-[10px] text-white/45">{maxed ? 'MAX' : '解放'}</span>
             </button>
