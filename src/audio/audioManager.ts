@@ -211,7 +211,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     minIntervalMs: 24,
   },
   'shotgun-fire': {
-    src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.mp3`,
+    src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.wav`, // 社長提供の新ショットガン発砲音(WAV=Web Audioでデコード)
     volume: 0.66,
     minIntervalMs: 32,
   },

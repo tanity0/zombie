@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1168 — ショットガン発砲SEを社長提供の新音源に差し替え
+
+- `shotgun-fire` の音源を社長提供の WAV(`public/audio/sfx/shotgun-fire.wav`)へ差し替え。旧 `shotgun-fire.mp3` は削除。
+  src を `.wav` に更新。音量/最小間隔は据え置き(volume 0.66 / minIntervalMs 32)。配線(shotgun 発砲)は既存のまま。負荷変化なし。
+- 検証: typecheck / lint / build(dist へ wav コピー確認)OK。変更: `src/audio/audioManager.ts`・
+  `public/audio/sfx/shotgun-fire.{wav 追加, mp3 削除}`・`package.json`。
+
 ## v0.25.1167 — ハンドガン発砲SEを社長提供の新音源に差し替え
 
 - `handgun-fire` の音源を社長提供の WAV(`public/audio/sfx/handgun-fire.wav`)へ差し替え。旧 `handgun-fire.mp3` は削除。
