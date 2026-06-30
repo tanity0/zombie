@@ -46,49 +46,49 @@ const mixedRing = (
     return spawnEnemyAt(type, x, y, gameTime);
   });
 
-// 4:10基準の旧フィナーレ定数。現在の警告は廃止(出現時バナーのみ)だが、互換のため5分(城ボス時刻)に合わせて残置。
-export const FINALE_BOSS_TIME_MS = 300 * 1000; // 5:00(城ボス出現と同時刻)
+// フィナーレ(城ボス)時刻。社長指示で 5→7 分に後ろ倒し(難易度カーブも後ろへ)。
+export const FINALE_BOSS_TIME_MS = 420 * 1000; // 7:00(城ボス出現と同時刻)
 
-// Compressed ~5-minute set-piece script. Designed as a tension curve:
-// calm intro → first counter → mid-boss spike → build → 7-strong onslaught →
-// second spike → short lull → finale boss. Weapon crates are dropped on a
-// separate timed schedule (see useGameLoop) plus from every mid-boss kill.
+// ~7分アークのセットピース台本(社長指示で5分→7分へ再配置・×1.4ストレッチ)。緊張カーブは維持:
+// 静かな導入 → 初カウンター → 中ボススパイク → 立て直し → 7体オンスロート(ピーク) → 第二スパイク →
+// 最終育成 → 7:00 城ボス。武器箱は別スケジュール(useGameLoop)＋各中ボス撃破でドロップ。
+// (フェーズ状態機械/動的難易度は別ステップで載せる。本変更は既存イベントの時刻再配置のみ。)
 const WAVE_EVENTS: WaveEvent[] = [
   {
-    // 0:25 — a lone ranged plant so the player meets the counter early.
-    id: 'plant-intro-25s',
-    triggerAtMs: 25 * 1000,
+    // 0:35 — a lone ranged plant so the player meets the counter early.
+    id: 'plant-intro-35s',
+    triggerAtMs: 35 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('plant', 1, 260, player, t)
   },
   {
-    // 1:15 — first mid-boss spike; drops a weapon crate on death.
-    id: 'pumpkin-solo-75s',
-    triggerAtMs: 75 * 1000,
+    // 1:45 — first mid-boss spike; drops a weapon crate on death.
+    id: 'pumpkin-solo-105s',
+    triggerAtMs: 105 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 1, 300, player, t)
   },
   {
-    // 2:00 — refresh the ranged presence after the first plant is likely dead,
+    // 2:50 — refresh the ranged presence after the first plant is likely dead,
     // so counters stay part of the kit. The spawner caps live plants at 2.
-    id: 'plant-refresh-120s',
-    triggerAtMs: 120 * 1000,
+    id: 'plant-refresh-170s',
+    triggerAtMs: 170 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('plant', 1, 280, player, t)
   },
   {
-    // 2:45 — PEAK: a 7-strong melee onslaught crashes in from all sides.
-    id: 'onslaught-165s',
-    triggerAtMs: 165 * 1000,
+    // 3:55 — PEAK: a 7-strong melee onslaught crashes in from all sides.
+    id: 'onslaught-235s',
+    triggerAtMs: 235 * 1000,
     spawner: (player, _b, t) => mixedRing(
       ['zombie', 'skeleton', 'zombie', 'werewolf', 'skeleton', 'zombie', 'skeleton'],
       360, player, t
     )
   },
   {
-    // 3:30 — second mid-boss spike (pair) to gear up before the finale.
-    id: 'pumpkin-pair-210s',
-    triggerAtMs: 210 * 1000,
+    // 4:55 — second mid-boss spike (pair) to gear up before the finale.
+    id: 'pumpkin-pair-295s',
+    triggerAtMs: 295 * 1000,
     spawner: (player, _b, t) => ringAroundPlayer('pumpkin', 2, 320, player, t)
   }
-  // フィナーレ(giantbat)は stageDirector では出さない。城(固定設置)から5分で出現する城ボス経路に一本化(useGameLoop)。
+  // フィナーレ(giantbat)は stageDirector では出さない。城(固定設置)から7分で出現する城ボス経路に一本化(useGameLoop)。
 ];
 
 // Caller-managed consumption set. Reset on game restart.
