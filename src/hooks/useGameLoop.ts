@@ -4317,7 +4317,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         for (const projectile of propProjectiles) {
           if (projectilesRemovedThisFrame.has(projectile.id)) continue;
           if (projectile.hostile || projectile.createdAt > now) continue;
-          const hitProp = liveProps.find(prop => checkCollision(projectile, prop));
+          // 松明(torch)は弾がすり抜ける(社長指示)=衝突/破壊対象から除外。他の小物(機雷/UVバー/卵等)は従来どおり。
+          const hitProp = liveProps.find(prop => prop.type !== 'torch' && checkCollision(projectile, prop));
           if (!hitProp) continue;
 
           const broken = damageBreakableProp(hitProp.id, projectile.damage);

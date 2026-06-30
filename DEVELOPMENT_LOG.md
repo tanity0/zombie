@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1156 — 被弾フラッシュを「絵」を光らせる方式に＋弾は松明をすり抜け(社長指示)
+
+- **被弾フラッシュ**: 旧・白丸(overlay の circle)を廃止し、本体スプライトと同形を**白で加算オーバーレイ**して
+  絵(ピクセル)を一瞬光らせる(`ActorView.hitFlash`)。裏ボス等の大きい絵を丸光で隠さない。color付きの裏ボスも光る。
+  ノブ: `ENEMY_HIT_FLASH_MS`(120)/`ENEMY_HIT_FLASH_STRENGTH`(0.95)。負荷1/10(被弾時のみ1スプライト追加・フィルタ無し)。
+- **弾は松明をすり抜け**: 弾×プロップ衝突から `torch` を除外(破壊/弾消滅しない)。機雷/UVバー/卵/箱等は従来どおり。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/pixi/pixiScene.ts`・`src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1155 — 城(と将来のダンジョン系)も裏回りで透ける＋出撃ロードをTitleと同じスピナーに(社長指示)
 
 - **城の裏回り透過**: `applyObstacleAlpha` の透過判定を共通ヘルパ `seeThroughMult(centerX, footY, vw, vh)` に

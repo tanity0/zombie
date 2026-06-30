@@ -411,6 +411,8 @@ const ENEMY_LIGHT_ENABLED = true;
 const ENEMY_LIGHT_CULL_COUNT = 7;
 const ENEMY_LIGHT_RADIUS = 34;
 const ENEMY_HIT_LIGHT_MS = 180;
+const ENEMY_HIT_FLASH_MS = 120;        // 被弾フラッシュ(絵を加算で光らせる)の長さ
+const ENEMY_HIT_FLASH_STRENGTH = 0.95; // 加算オーバーレイの最大alpha(=光る強さ)
 const BOSS_FINISH_LIFT_MS = 420;
 const BOSS_FINISH_LIFT_PX = 18;
 const PLAYER_WALK_CYCLE_MS = 460;
@@ -716,6 +718,7 @@ interface ActorView {
   light: Sprite;
   reticle: Graphics; // below the sprite (stun reticle / tint)
   sprite: Sprite;
+  hitFlash: Sprite;  // 被弾時、本体スプライトと同形を白で加算オーバーレイして「絵」を一瞬光らせる(丸光は廃止)
   overlay: Graphics; // above the sprite (health bar, hit flash, boss marker)
 }
 
@@ -1614,10 +1617,14 @@ export class PixiScene {
     const reticle = new Graphics();
     const sprite = new Sprite();
     sprite.anchor.set(0.5, 1); // foot-centre
+    const hitFlash = new Sprite();
+    hitFlash.tint = 0xffffff;     // 白で加算=被弾時に絵を光らせる
+    hitFlash.blendMode = 'add';
+    hitFlash.visible = false;
     const overlay = new Graphics();
-    container.addChild(reticle, sprite, overlay);
+    container.addChild(reticle, sprite, hitFlash, overlay);
     this.L.actorLayer.addChild(container);
-    return { container, light, reticle, sprite, overlay };
+    return { container, light, reticle, sprite, hitFlash, overlay };
   }
 
   private makeProp(): PropView {
@@ -4849,6 +4856,26 @@ export class PixiScene {
     }
     }
 
+    // 被弾フラッシュ: 本体スプライトと同じ形/変形を白で加算オーバーレイし、絵(ピクセル)を一瞬光らせる。
+    // 旧・白丸(overlay の circle)は廃止=裏ボス等の大きい絵を隠さない(社長指示)。
+    {
+      const hf = view.hitFlash;
+      const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
+        ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) : 0;
+      if (flashT > 0.01) {
+        hf.texture = view.sprite.texture;
+        hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+        hf.position.set(view.sprite.position.x, view.sprite.position.y);
+        hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+        hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
+        hf.rotation = view.sprite.rotation;
+        hf.alpha = flashT * ENEMY_HIT_FLASH_STRENGTH;
+        hf.visible = true;
+      } else if (hf.visible) {
+        hf.visible = false;
+      }
+    }
+
     if (horizonAlpha <= 0) view.light.visible = false;
     else {
       this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
@@ -4911,9 +4938,7 @@ export class PixiScene {
       o.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).fill({ color: 0xf59e0b, alpha: 0.92 * pulse });
       o.poly([cx - 6, my - 8, cx + 6, my - 8, cx, my]).stroke({ width: 1.5, color: 0x7c2d12, alpha: 0.9 });
     }
-    if (now - e.lastHit < 90) {
-      o.circle(cx, cy, Math.max(e.width, e.height) / 2).fill({ color: 0xffffff, alpha: 0.45 });
-    }
+    // 被弾フラッシュは hitFlash スプライト(絵を加算で光らせる)へ移行。丸い白フィルは廃止(裏ボスを隠さない・社長指示)。
   }
 
   private enemyBreath(e: Enemy, now: number) {
