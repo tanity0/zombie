@@ -8,7 +8,8 @@ import { spritePath } from '../utils/spriteLoader';
 //
 // 再描画規律: player 丸ごとではなく必要な数値だけを個別購読(HP/EXP は被弾・取得イベントでのみ変化)。
 const SIZE = 76;          // 全体の一辺(px)
-const STROKE = 5;         // EXPリングの太さ
+const STROKE = 5;         // レイアウト用(オーブ径の基準。形は維持)
+const RING_STROKE = 3.5;  // EXPリングの「描画」太さ(社長指示で少し細く)
 const RING_R = (SIZE - STROKE) / 2 - 1;       // EXPリング半径
 const RING_C = 2 * Math.PI * RING_R;          // 円周
 const ORB_R = RING_R - STROKE - 2;            // 内側オーブ半径
@@ -42,9 +43,9 @@ const VitalsOrb: React.FC = () => {
 
   // 液面(下から hpFrac ぶん満ちる)。clip 内の矩形の上端 y。
   const fillTopY = CY + ORB_R - 2 * ORB_R * hpFrac;
-  // HP低下で色を赤→暗赤へ(全体に赤寄り。危険ほど暗い赤)。
-  const hpHi = hpFrac > 0.5 ? '#ef4444' : hpFrac > 0.25 ? '#dc2626' : '#b91c1c';
-  const hpLo = hpFrac > 0.25 ? '#7f1d1d' : '#641414';
+  // HPは紫(社長指示)。上=明るい紫→下=濃い紫の縦グラデ。危険ほど全体を一段暗く。
+  const hpHi = hpFrac > 0.5 ? '#b070f5' : hpFrac > 0.25 ? '#9333ea' : '#7e22ce';
+  const hpLo = hpFrac > 0.25 ? '#3b0764' : '#2a043f';
 
   // EXP リングの描画(上=12時から時計回り)。
   const dash = `${RING_C * expFrac} ${RING_C}`;
@@ -62,6 +63,12 @@ const VitalsOrb: React.FC = () => {
             <linearGradient id="hpFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={hpHi} />
               <stop offset="100%" stopColor={hpLo} />
+            </linearGradient>
+            {/* EXP進捗の色: 左=濃い→右=薄い(社長指示)。リングは描画群が rotate(-90) されるので
+                gradientTransform で打ち消して画面の左右方向に合わせる。 */}
+            <linearGradient id="expGrad" x1="0" y1="0" x2="1" y2="0" gradientTransform="rotate(90 0.5 0.5)">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.95)" />
+              <stop offset="100%" stopColor="rgba(255,255,255,0.28)" />
             </linearGradient>
           </defs>
 
@@ -87,19 +94,19 @@ const VitalsOrb: React.FC = () => {
           {/* オーブ縁(トンマナ統一で紫寄り) */}
           <circle cx={CX} cy={CY} r={ORB_R} fill="none" stroke="rgba(192,132,252,0.4)" strokeWidth={1.5} />
 
-          {/* EXP リング: トラック + 進捗(白) */}
+          {/* EXP リング: トラック + 進捗(細め・右ほど薄い) */}
           <g transform={`rotate(-90 ${CX} ${CY})`}>
-            <circle cx={CX} cy={CY} r={RING_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={STROKE} />
+            <circle cx={CX} cy={CY} r={RING_R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={RING_STROKE} />
             <circle
               cx={CX}
               cy={CY}
               r={RING_R}
               fill="none"
-              stroke="#ffffff"
-              strokeWidth={STROKE}
+              stroke="url(#expGrad)"
+              strokeWidth={RING_STROKE}
               strokeLinecap="round"
               strokeDasharray={dash}
-              style={{ transition: 'stroke-dasharray 280ms ease-out', filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.6))' }}
+              style={{ transition: 'stroke-dasharray 280ms ease-out', filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.5))' }}
             />
           </g>
 
@@ -130,7 +137,7 @@ const VitalsOrb: React.FC = () => {
               width: ORB_R * 2,
               height: ORB_R * 2,
               borderRadius: '9999px',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,120,120,0.5) 60%, transparent 72%)',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(192,132,252,0.5) 60%, transparent 72%)',
               pointerEvents: 'none',
             }}
           />

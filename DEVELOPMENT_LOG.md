@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1210 — HPオーブを紫グラデに＋EXPリングを細く右ほど薄く(社長指示)
+
+- **HP色**: 赤→紫。縦グラデで上=明るい紫→下=濃い紫(hpHi/hpLo)。危険HPで全体を一段暗く(紫のまま)。EXP頭のドットも紫に。
+- **EXPリング**: 描画太さを別定数 `RING_STROKE=3.5`(オーブ形は維持)で細く。進捗ストロークを `url(#expGrad)` の
+  横グラデ(左=濃→右=薄、回転群を gradientTransform で打消し画面左右に合わせる)に。トラックも少し薄く。
+- 検証: typecheck/lint(0)/build OK。変更: `src/components/VitalsOrb.tsx`・`package.json`。
+
 ## v0.25.1209 — Counter!/KILL コールアウトを枠廃止＋両サイドフェードの色背景に(社長指示)
 
 - コールアウト効果に `bg?`(tint色)を追加。`bg` 指定時は **縁取り無しの文字＋両サイドフェードの色帯**(白の水平フェード
