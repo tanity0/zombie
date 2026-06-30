@@ -6490,9 +6490,9 @@ export class PixiScene {
         const dx = Math.cos(e.angle) * half * grow;
         const dy = Math.sin(e.angle) * half * grow;
         g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 8 * (1 - t) + 2, color: e.color, alpha: 0.4, cap: 'round' });
+          .stroke({ width: 12 * (1 - t) + 3, color: e.color, alpha: 0.4, cap: 'round' }); // 斬撃を太く(社長指示。旧 8/+2)
         g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 3 * (1 - t) + 1, color: 0xffffff, alpha: 0.85, cap: 'round' });
+          .stroke({ width: 5 * (1 - t) + 1.5, color: 0xffffff, alpha: 0.85, cap: 'round' }); // 芯も太く(旧 3/+1)
         break;
       }
       case 'trail': {

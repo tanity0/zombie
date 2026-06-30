@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1173 — 敵HIT時の斬撃エフェクトを長く大きく(社長指示)
+
+- 共有の斬撃VFX(`spawnSlash`)を拡大: 長さ `26+8`→`44+12`、表示時間 `200`→`260ms`。描画(`drawEffectGfx` slash)の
+  ストローク幅も太く: アンダーレイ `8/+2`→`12/+3`、芯 `3/+1`→`5/+1.5`。`lengthScale` 倍率の効きは据え置き。
+- 対象は spawnSlash 全般(近接/四神/ワイヤー等の斬撃すべて)。負荷 ~3/10: slash=per-frame Graphics で、
+  size↑(fill-rate)＋duration↑(同時生存数+30%)。単発主体なので許容、effects 上限400で頭打ち。
+- 検証: typecheck/lint/test(75)/build OK。変更: `src/store/gameStore.ts`・`src/pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1172 — フォントを Orbitron 固定に(英語/数字がOrbitronにならない不具合の修正)
 
 - **原因**: `src/config/font.ts` が `?font=` / localStorage で Orbitron/Rajdhani を切替できる設計だったため、
