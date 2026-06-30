@@ -10,7 +10,7 @@ const EquipIcon: React.FC<{ defId: string }> = ({ defId }) => {
   const def = equipmentById(defId);
   const img = hasEquipIcon(defId) ? spritePath(equipIconName(defId)) : null;
   return (
-    <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl overflow-hidden bg-white/10 border border-white/15">
+    <div className="w-16 h-16 rounded-none flex items-center justify-center text-3xl overflow-hidden bg-purple-400/10 border border-purple-400/15">
       {img
         ? <img src={img} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
         : (def?.special ? '🏯' : '🛡️')}
@@ -49,7 +49,7 @@ const UpgradeMenu: React.FC = () => {
       className="fixed inset-0 z-30 flex items-center justify-center px-6 upgrade-menu-backdrop"
       style={{ background: 'rgba(11, 11, 18, 0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
     >
-      <div className="glass-panel rounded-3xl w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[88dvh]">
+      <div className="glass-panel rounded-none w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[88dvh]">
         <div className="px-5 pt-5 pb-3 text-center shrink-0">
           <h2 className="text-xl font-semibold tracking-tight text-white">レベルアップ</h2>
           <p className="text-xs text-white/60 mt-1">強化を選んでください</p>
@@ -72,9 +72,9 @@ const UpgradeMenu: React.FC = () => {
                 key={upgrade.id}
                 type="button"
                 onClick={() => handleSelect(upgrade)}
-                className={`text-left p-3 rounded-2xl active:bg-white/10 border transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10 border-amber-300/40' : 'bg-white/5 border-white/10'}`}
+                className={`text-left p-3 rounded-none active:bg-purple-400/10 border transition-colors flex items-start gap-3 upgrade-menu-option ${isSpecial ? 'bg-amber-400/10 border-amber-300/40' : 'bg-purple-400/5 border-purple-400/10'}`}
               >
-                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-base overflow-hidden ${isSpecial ? 'bg-amber-400/20' : 'bg-white/10'}`}>
+                <div className={`w-9 h-9 rounded-none flex items-center justify-center text-base overflow-hidden ${isSpecial ? 'bg-amber-400/20' : 'bg-purple-400/10'}`}>
                   {iconImg
                     ? <img src={iconImg} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                     : icon}
@@ -87,7 +87,7 @@ const UpgradeMenu: React.FC = () => {
                         特殊
                       </span>
                     ) : upgrade.type === 'equipment' ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/30 text-blue-100 border border-blue-300/30 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 border border-purple-300/30 shrink-0">
                         R{upgrade.level}
                       </span>
                     ) : upgrade.type === 'knife' ? (
@@ -95,7 +95,7 @@ const UpgradeMenu: React.FC = () => {
                         T{upgrade.level}
                       </span>
                     ) : upgrade.type === 'weapon' && upgrade.level > 1 ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/30 text-blue-100 border border-blue-300/30 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-600/30 text-purple-100 border border-purple-300/30 shrink-0">
                         Lv{upgrade.level}
                       </span>
                     ) : null}
@@ -116,7 +116,7 @@ const UpgradeMenu: React.FC = () => {
           onClick={() => { playSfx('ui-select'); setConfirm(null); }}
         >
           <div
-            className="glass-panel rounded-3xl px-6 py-6 flex flex-col items-center gap-5"
+            className="glass-panel rounded-none px-6 py-6 flex flex-col items-center gap-5"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
@@ -128,14 +128,14 @@ const UpgradeMenu: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { playSfx('ui-select'); setConfirm(null); }}
-                className="flex-1 py-2.5 rounded-2xl bg-white/10 border border-white/15 text-white/90 font-bold tracking-wide active:bg-white/20"
+                className="flex-1 py-2.5 rounded-none bg-purple-400/10 border border-purple-400/15 text-white/90 font-bold tracking-wide active:bg-purple-400/20"
               >
                 NO
               </button>
               <button
                 type="button"
                 onClick={() => commit(confirm.upgrade)}
-                className="flex-1 py-2.5 rounded-2xl bg-amber-400/25 border border-amber-300/45 text-amber-100 font-bold tracking-wide active:bg-amber-400/40"
+                className="flex-1 py-2.5 rounded-none bg-amber-400/25 border border-amber-300/45 text-amber-100 font-bold tracking-wide active:bg-amber-400/40"
               >
                 YES
               </button>

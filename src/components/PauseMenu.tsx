@@ -32,14 +32,14 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
-      <div className="glass-panel rounded-3xl w-full max-w-sm overflow-hidden">
+      <div className="glass-panel rounded-none w-full max-w-sm overflow-hidden">
         <div className="px-5 pt-5 pb-3 text-center">
           <h2 className="text-xl font-semibold tracking-tight text-white">一時停止</h2>
         </div>
         <div className="px-5 pb-5 flex flex-col gap-2">
           <button
             onClick={() => { playSfx('ui-select'); onResume(); }}
-            className="w-full py-3 rounded-2xl text-base font-semibold text-white"
+            className="w-full py-3 rounded-none text-base font-semibold text-white"
             style={{
               background: 'linear-gradient(180deg, rgba(96, 165, 250, 0.95), rgba(59, 130, 246, 0.95))',
               boxShadow: '0 8px 24px rgba(59, 130, 246, 0.35)'
@@ -49,7 +49,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           </button>
           <button
             onClick={() => { playSfx('ui-select'); onQuit(); }}
-            className="w-full py-3 rounded-2xl text-base font-semibold text-white/90 bg-white/10 border border-white/10"
+            className="w-full py-3 rounded-none text-base font-semibold text-white/90 bg-purple-400/10 border border-purple-400/10"
           >
             メニューに戻る
           </button>

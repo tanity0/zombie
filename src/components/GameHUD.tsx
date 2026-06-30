@@ -94,7 +94,7 @@ const GameHUD: React.FC = () => {
         >
           <div
             className={`glass-panel rounded-2xl px-4 py-2 flex items-center gap-2 ring-2 shadow-lg animate-pulse ${
-              isTreasureGet ? 'ring-amber-300/70' : isDataGet ? 'ring-emerald-300/70' : 'ring-sky-400/70'
+              isTreasureGet ? 'ring-amber-300/70' : isDataGet ? 'ring-emerald-300/70' : 'ring-purple-400/70'
             }`}
           >
             {!isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
@@ -103,7 +103,7 @@ const GameHUD: React.FC = () => {
             <div className="leading-tight">
               <div
                 className={`text-[10px] font-bold tracking-wide ${
-                  isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-sky-200/80'
+                  isTreasureGet ? 'text-amber-100/85' : isDataGet ? 'text-emerald-100/85' : 'text-purple-200/80'
                 }`}
               >
                 {isTreasureGet ? 'トレジャーを入手！' : isDataGet ? 'データを確保！' : '新しい銃器を入手！'}
@@ -234,7 +234,7 @@ const GameHUD: React.FC = () => {
                     key={key}
                     className="hud-translucent rounded-full px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1"
                   >
-                    <span className="text-sky-200/90">{subWeaponDisplayName(key)}</span>
+                    <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
                     <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
                   </div>
                 ))}

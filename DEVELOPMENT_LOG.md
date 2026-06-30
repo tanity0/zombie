@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1205 — ゲーム内UIもFF7R紫トンマナに統一(社長指示)
+
+- **共通pill**: `.glass-pill`(プレイ中HUD)を白枠→紫枠＋紫寄りの暗色へ(視認性のため不透明度0.5は保持)。
+- **色統一**: GameHUD/EventQuestMenu/UpgradeMenu の blue/sky/cyan アクセントを紫へ。
+- **構造統一**: オーバーレイ系メニュー(PauseMenu/EventQuestMenu/UpgradeMenu)の白枠・白カード・角丸を
+  紫の薄枠・角ばりへ(`bg/border-white/*`→`purple`、`rounded-*`→`rounded-none`)。ライブHUDのpill(`rounded-full`)と
+  ジョイスティック/操作系は形状据え置き。
+- 検証: typecheck/lint(0)/test(75)/build OK。変更: `src/index.css`・`GameHUD.tsx`・`EventQuestMenu.tsx`・
+  `UpgradeMenu.tsx`・`PauseMenu.tsx`・`package.json`。
+
 ## v0.25.1204 — オプション/開発施設のボタンも右フェード(FF7R)に統一(社長指示)
 
 - オプション: サウンドのミュート切替・グラフィックのブルーム切替を `ff7r-fade-right`(ON=`is-on`/OFF=`is-off`)へ。

@@ -53,11 +53,12 @@
     -webkit-backdrop-filter: saturate(150%) blur(14px);
     border: 1px solid rgba(168, 85, 247, 0.12);
   }
+  /* プレイ中HUDのピル。トンマナ統一でFF7R紫寄りに(視認性のため不透明度は保つ)。 */
   .glass-pill {
-    background-color: rgba(20, 20, 28, 0.55);
-    backdrop-filter: saturate(160%) blur(18px);
-    -webkit-backdrop-filter: saturate(160%) blur(18px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: rgba(13, 10, 20, 0.5);
+    backdrop-filter: saturate(150%) blur(16px);
+    -webkit-backdrop-filter: saturate(150%) blur(16px);
+    border: 1px solid rgba(168, 85, 247, 0.18);
     border-radius: 9999px;
   }
   /* FF7R風: 右へフェードアウトするボタン/カード。背景も枠線(border-image=横グラデ)も右で透明に。
