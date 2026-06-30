@@ -155,9 +155,15 @@ const makeBaseSoldiers = (cx: number, cy: number): { x: number; y: number; hx: n
 // 護衛軍人NPCを4人生成(各拠点 base-0..3 担当)。プレイヤー出撃地点の近傍に少し散らして配置。
 const makeEscorts = (px: number, py: number): EscortSoldier[] => {
   const arr: EscortSoldier[] = [];
-  // 名簿(素性)= 既定は 0..BASE_SITE_COUNT-1(Edgar/Joseph/Elizabeth/Musashi)。
-  // レアでフェイザー(7)が1枠だけ入る(社長指示)。位置は baseId(base-i)で固定、名簿だけ差し替わる。
-  const roster = Array.from({ length: BASE_SITE_COUNT }, (_, k) => k);
+  // 名簿(素性)= フェイザー(7)を除く全軍人プールから、出撃ごとに BASE_SITE_COUNT 人をランダム抽選
+  // (Fisher-Yates)。これで顔ぶれが毎回変わる(以前は 0..3 固定で常に同じ4人だった)。
+  // レアでフェイザー(7)が1枠だけ差し込まれる(社長指示・PHASER_APPEAR_CHANCE は据え置き)。位置は baseId(base-i)で固定。
+  const pool = Array.from({ length: BASE_SOLDIERS.length }, (_, k) => k).filter(k => k !== PHASER_INDEX);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const roster = pool.slice(0, BASE_SITE_COUNT);
   if (Math.random() < PHASER_APPEAR_CHANCE) {
     roster[Math.floor(Math.random() * BASE_SITE_COUNT)] = PHASER_INDEX;
   }

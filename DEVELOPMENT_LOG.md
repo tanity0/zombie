@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1159 — 出撃する護衛NPCの顔ぶれをランダム化(社長指摘: ランダムになってなかった)
+
+- **不具合**: `makeEscorts` の名簿が `[0,1,2,3]` 固定で、毎出撃で常に同じ4人(エドガー/ジョセフ/
+  エリザベス/武蔵)だった。ムハンマド(4)/チェン(5)/ローレン(6)は一度も出ず、変化するのはフェイザー(7)の
+  20%差し込みだけ=「フェイザーだけたまに出る」状態だった。
+- **修正**: フェイザー(7)を除く全軍人プール(0..6)から Fisher-Yates で BASE_SITE_COUNT(4)人を抽選=
+  出撃ごとに顔ぶれが変わる。フェイザーは従来どおりレア枠(PHASER_APPEAR_CHANCE=0.2)で1枠だけ差し込み(据え置き)。
+  位置(baseId)は固定のまま、名簿(素性)だけランダム化。負荷 0/10(出撃時1回の抽選のみ)。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/store/gameStore.ts`・`package.json`。
+
 ## v0.25.1158 — 会話NPCバスト立ち絵の縦伸び修正＋被弾フラッシュ強化(社長指示)
 
 - **会話NPCバストの縦伸び修正**: Tailwind preflight の `img{max-width:100%}` が、`height:96/width:auto` の
