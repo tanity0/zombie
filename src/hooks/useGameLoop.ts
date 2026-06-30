@@ -96,8 +96,23 @@ import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 const MOVE_SPEED_MULT = 1.2;
 
 // 被弾時の「背中側にドバッと火」破裂演出: 2コマ立ち絵(spawnFireJet)＋根元の小グロー1個。
-// 炎の長さは敵の大きさに関係なく一定(社長指示)。プールsprite1枚なので安い。気持ち小さく(60→50)。
-const HIT_FIRE_LEN = 50;
+// 背中火の長さ(px)は敵サイズ非依存で、撃った銃の系統で変える(社長指示)。
+//  マグナム系(rifle=マグナム/スナイパー/ランチャー)= 現状サイズ。ハンドガン系 = 気持ち小さい。
+//  ショットガン系 = 同一フレームに同じ敵へ当たったペレット数で 1発→ハンドガン / 2発→マグナム / 3発以上→少し大きく。
+//  上記以外(PHILL/護衛/サブ武器など未指定)はマグナム系=現状サイズを既定とする。
+const HIT_FIRE_LEN_MAGNUM = 50;       // マグナム系列(=現状)
+const HIT_FIRE_LEN_HANDGUN = 42;      // ハンドガン系列(気持ち小さい)
+const HIT_FIRE_LEN_SHOTGUN_BIG = 58;  // ショットガン3発以上(少し大きく)
+// 撃った系統+ショットガンのペレット数から背中火の長さを決める。
+const hitFireLen = (weaponType: string | undefined, shotgunPelletHits: number): number => {
+  if (weaponType === 'handgun') return HIT_FIRE_LEN_HANDGUN;
+  if (weaponType === 'shotgun') {
+    return shotgunPelletHits >= 3 ? HIT_FIRE_LEN_SHOTGUN_BIG
+      : shotgunPelletHits === 2 ? HIT_FIRE_LEN_MAGNUM
+      : HIT_FIRE_LEN_HANDGUN;
+  }
+  return HIT_FIRE_LEN_MAGNUM; // rifle(マグナム系)/PHILL/その他は現状サイズ
+};
 // 同じ敵に対して背中火を出してから、この時間は新しい火を出さない(=多弾/連射の重複を1本に間引く)。
 // ショットガンのペレットや跳弾が別方向から当たっても、最初の1本だけ残す→「2本/別方向に出る」を防ぐ。
 const FIRE_JET_DEDUP_MS = 180;
@@ -3904,6 +3919,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         for (const { enemyId } of projectileEnemyCollisions) {
           projectileHitCountsByEnemy.set(enemyId, (projectileHitCountsByEnemy.get(enemyId) ?? 0) + 1);
         }
+        // ショットガンのペレットが同一フレームに同じ敵へ何発当たったか(背中火のサイズ分岐に使用)。
+        const shotgunPelletHitsByEnemy = new Map<string, number>();
+        for (const { projectileId, enemyId } of projectileEnemyCollisions) {
+          const p = collisionProjectiles.find(pp => pp.id === projectileId);
+          if (p?.weaponType === 'shotgun') {
+            shotgunPelletHitsByEnemy.set(enemyId, (shotgunPelletHitsByEnemy.get(enemyId) ?? 0) + 1);
+          }
+        }
         const projectilesRemovedThisFrame = new Set<string>();
         const grenadeExplodedThisFrame = new Set<string>();
         // 背中の火破裂は「敵1体につき1フレーム1本」+「直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の
@@ -3957,7 +3980,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             const ox = ecx + dx * (enemyForFx.width * 0.42), oy = ecy + dy * (enemyForFx.height * 0.18);
             const ang = Math.atan2(dy, dx);
-            useGameStore.getState().spawnFireJet(ox, oy, ang, HIT_FIRE_LEN); // 炎の長さは敵サイズ非依存=一定(社長指示)
+            const fireLen = hitFireLen(projectile.weaponType, shotgunPelletHitsByEnemy.get(enemyId) ?? 1); // 銃系統で大きさ可変(社長指示)
+            useGameStore.getState().spawnFireJet(ox, oy, ang, fireLen);
             useGameStore.getState().spawnGlow(ox, oy, 20, 'rgba(251,146,60,', 150); // 根元の小グロー(プール済み=安い)
           }
           // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。

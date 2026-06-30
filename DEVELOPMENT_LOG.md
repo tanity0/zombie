@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1166 — 背中火の大きさを銃系統で可変に(社長指示)
+
+- マグナム系(rifle=マグナム/スナイパー/ランチャー)= 50(現状)。ハンドガン系 = 42(気持ち小さい)。
+  ショットガン系 = 同一フレームに同じ敵へ当たったペレット数で 1発→42(ハンドガン相当) / 2発→50(マグナム相当) /
+  3発以上→58(少し大きく)。PHILL/護衛/サブ武器など未指定はマグナム=50を既定。
+- 実装: `hitFireLen(weaponType, pelletHits)` で長さを決定。ショットガンのペレット数は当該フレームの命中数を
+  `shotgunPelletHitsByEnemy` で集計(近距離=全弾同フレーム命中で正しく2/3+判定。遠距離で散ると少数=小さめ)。
+  負荷変化なし。変更: `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1165 — 被弾ファイアを気持ち小さく(HIT_FIRE_LEN 60→50)
 
 - 炎の長さを 60→50px に微縮小(社長指示「気持ち小さく」)。負荷変化なし。変更: `src/hooks/useGameLoop.ts`・`package.json`。
