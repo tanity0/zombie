@@ -98,6 +98,9 @@ const MOVE_SPEED_MULT = 1.2;
 // 被弾時の「背中側にドバッと火」破裂演出: 2コマ立ち絵(spawnFireJet)＋根元の小グロー1個。
 // 炎の長さは敵の大きさに関係なく一定(社長指示)。プールsprite1枚なので安い。
 const HIT_FIRE_LEN = 60;
+// 同じ敵に対して背中火を出してから、この時間は新しい火を出さない(=多弾/連射の重複を1本に間引く)。
+// ショットガンのペレットや跳弾が別方向から当たっても、最初の1本だけ残す→「2本/別方向に出る」を防ぐ。
+const FIRE_JET_DEDUP_MS = 180;
 
 const GRENADE_WEAPON_KEY = 'rifle-t3';
 const GRENADE_BLAST_RADIUS = 92;
@@ -418,6 +421,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const werewolfGuaranteedRef = useRef(false);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const playerKillTimesRef = useRef<number[]>([]); // プレイヤーの撃破時刻(無双判定の直近ウィンドウ)
+  const fireJetEnemyAtRef = useRef<Map<string, number>>(new Map()); // 敵ID→直近の背中火spawn時刻(ショットガン等の多弾を1本に間引く)
   const benkeiReadyRef = useRef(true); // 弁慶: 再発動CD明け検出(false→true で「閃き」フラッシュ)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
@@ -3902,9 +3906,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         const projectilesRemovedThisFrame = new Set<string>();
         const grenadeExplodedThisFrame = new Set<string>();
-        // 背中の火破裂は「敵1体につき1フレーム1本」に間引く。ショットガン等の複数弾(=見た目は単発)が
-        // 同一フレームに同じ敵へ複数命中すると、弾ごとに角度違いの火が出て「2本生える」ため(社長報告)。
+        // 背中の火破裂は「敵1体につき1フレーム1本」+「直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の
+        // 複数弾(=見た目は単発)は近距離だと同一フレーム、遠距離だと数フレームに分かれて命中するので両方で抑える。
         const fireJetEnemiesThisFrame = new Set<string>();
+        const fireNowMs = Date.now();
+        // 古い敵IDの掃除(過剰肥大化防止): 窓を十分過ぎたエントリは破棄。
+        if (fireJetEnemyAtRef.current.size > 256) {
+          for (const [k, t] of fireJetEnemyAtRef.current) {
+            if (fireNowMs - t > FIRE_JET_DEDUP_MS * 4) fireJetEnemyAtRef.current.delete(k);
+          }
+        }
         
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage, headshot }) => {
           const enemyForFx = collisionEnemies.find(e => e.id === enemyId);
@@ -3935,9 +3946,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const enemyKilled = damageEnemy(enemyId, dmg);
           playSfx(hitCrit ? 'headshot' : 'shot-damage');
           // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(2コマ立ち絵=プールsprite1枚で安い)。
-          // 敵1体につき1フレーム1本に間引く(複数弾の同時命中で角度違いの火が複数出る「2本生える」を防止)。
-          if (enemyForFx && projectile && !fireJetEnemiesThisFrame.has(enemyId)) {
+          // 「敵1体につき直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の多弾(=見た目は単発)は近距離だと同一
+          // フレーム、遠距離だと数フレームに分かれて命中するため、フレーム単位の間引きだけでは「2本生える」を防げない。
+          const lastJetAt = fireJetEnemyAtRef.current.get(enemyId) ?? -Infinity;
+          if (enemyForFx && projectile && !fireJetEnemiesThisFrame.has(enemyId) && fireNowMs - lastJetAt >= FIRE_JET_DEDUP_MS) {
             fireJetEnemiesThisFrame.add(enemyId);
+            fireJetEnemyAtRef.current.set(enemyId, fireNowMs);
             const ecx = enemyForFx.x + enemyForFx.width / 2, ecy = enemyForFx.y + enemyForFx.height / 2;
             let dx = projectile.direction.x, dy = projectile.direction.y;
             const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;

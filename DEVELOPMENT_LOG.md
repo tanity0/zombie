@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1164 — 背中火の「単発でも2本/別方向に出る」を時間窓で間引き(前回のフレーム単位では不足)
+
+- **追加で判明**: ショットガンのペレットや跳弾は、近距離だと同一フレーム、**遠距離だと数フレームに分かれて**
+  同じ敵へ当たる。前回のフレーム単位の間引きでは後者を取りこぼし、角度違いの火が「別方向に2本」出ていた。
+- **修正**: `fireJetEnemyAtRef`(敵ID→直近spawn時刻)で「同じ敵には直近 `FIRE_JET_DEDUP_MS`(180ms)は1本だけ」。
+  最初に当たった弾(=狙った方向)の火だけ残り、後続のペレット/跳弾/別方向命中は抑制される。Mapは256超で
+  古いエントリを掃除(肥大化防止)。挙動・バランス非変更(見た目の重複抑制のみ)。負荷 ~0/10。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/hooks/useGameLoop.ts`・`package.json`。
+
 ## v0.25.1163 — 背中の火が「2本生える」不具合を修正(敵1体1フレーム1本に間引き)
 
 - **不具合**: 火破裂を命中弾ごとに spawn していたため、ショットガン等の複数弾(見た目は単発)が同一フレームに
