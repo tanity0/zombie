@@ -118,6 +118,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'skadi-ice-blade', scaleMode: 'nearest' },
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
+      // 銃弾ヒット時に被弾敵の背中側へ生やす火の破裂(2コマ。0=大きい爆発→1=細い噴射)。ピクセルアート=nearest。
+      { name: 'fx/hitfire-0', scaleMode: 'nearest' },
+      { name: 'fx/hitfire-1', scaleMode: 'nearest' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
       { name: 'castle', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま

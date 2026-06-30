@@ -870,6 +870,17 @@ export type VisualEffect =
       duration: number;
     }
   | {
+      // 銃弾ヒット時、被弾敵の背中側(=弾の出口方向)へ生やす火の破裂(2コマ flipbook の立ち絵)。
+      // angle=噴射方向(rad・+x基準。素材は右向き)。len=表示する炎の長さ(px)。anchorは元の左中央(根元)。
+      kind: 'firejet';
+      id: string;
+      x: number; y: number;
+      angle: number;
+      len: number;
+      createdAt: number;
+      duration: number;
+    }
+  | {
       // A short slash streak drawn on an enemy struck in melee.
       kind: 'slash';
       id: string;

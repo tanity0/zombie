@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1161 — 背中の火破裂を社長提供の2コマ立ち絵に差し替え(粒子→sprite)
+
+- 社長提供のドット絵2コマ(`fx/hitfire-0`=大きい爆発 / `fx/hitfire-1`=細い噴射。左→右の順)を、
+  銃弾ヒット時に被弾敵の背中側へ生やす。新エフェクト種別 `firejet`(x,y,angle,len)を追加し、レンダラは
+  `drawFireJetSprite` でプールsprite1枚を描画(根元=左中央 anchor、弾方向へ回転、加算で発光、t<0.5で
+  コマ0→以降コマ1、終盤フェード)。useGameLoop は旧 `spawnSpray`(粒子)を `spawnFireJet` に置換。
+- 素材は表示サイズ(~45-75px)に対し過大(622/572px)だったので 0.5 に縮小して同梱(VRAM/読込を削減)。
+  両コマとも frame0 幅基準でスケール=コマ1は自然に短く見える(歪ませない)。
+- **負荷 2/10**: 被弾の瞬間にプールsprite1枚＋小グロー1。per-frame Graphics でも Text でもなく、
+  弾・敵スプライトと同じ「軽い」描画クラス。effects 上限400でキャップ。火サイズは小さく fill-rate も軽い。
+- 検証: typecheck / lint / test(75 pass) / build OK。変更: `src/types/game.ts`・`src/store/gameStore.ts`・
+  `src/hooks/useGameLoop.ts`・`src/pixi/pixiScene.ts`・`src/pixi/pixiTextures.ts`・新規 `public/sprites/fx/hitfire-{0,1}.png`・`package.json`。
+
 ## v0.25.1160 — 被弾フラッシュを「真っ白シルエット」に(暗い敵もハッキリ白く光る・社長指示)
 
 - **問題**: 加算オーバーレイは「元テクスチャの色」しか足せないため、暗い敵の暗部はほとんど光らず白く見えなかった。

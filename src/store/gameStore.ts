@@ -1935,6 +1935,7 @@ interface GameState {
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
+  spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean }) => void;
@@ -8188,6 +8189,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     set(state => {
       const next = [...state.effects, ...fresh];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+  spawnFireJet: (x, y, angle, len) => {
+    const now = Date.now();
+    const fx: VisualEffect = {
+      kind: 'firejet',
+      id: `fx-firejet-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y, angle, len, createdAt: now, duration: 240, // 2コマを短く(burst→噴射→フェード)
+    };
+    set(state => {
+      const next = [...state.effects, fx];
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });

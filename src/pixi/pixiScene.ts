@@ -1781,6 +1781,8 @@ export class PixiScene {
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.radius);
       case 'slash':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.length);
+      case 'firejet':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.len);
       case 'trail':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
@@ -6417,6 +6419,8 @@ export class PixiScene {
         else this.drawStrongGlowSprite(e, now);
       } else if (e.kind === 'whip') {
         this.drawWhipSprite(e, now);
+      } else if (e.kind === 'firejet') {
+        this.drawFireJetSprite(e, now);
       } else {
         let g = this.effects.get(e.id);
         // 'glow' is handled above as a pooled sprite and never reaches this
@@ -6608,6 +6612,34 @@ export class PixiScene {
     // 視認性: 前半は不透明を保ち、後半でフェード(速く消えて見えづらいのを緩和)。
     sprite.alpha = t < 0.45 ? 1 : Math.max(0, 1 - (t - 0.45) / 0.55);
     sprite.visible = true;
+  }
+
+  // 銃弾ヒット時、被弾敵の背中側へ生やす火の破裂(2コマ立ち絵)。素材は右向き=+x基準で、根元(左中央)を
+  // 出口点に合わせて angle へ回転。0=大きい爆発(前半)→1=細い噴射(後半)。加算で発光、終盤フェード。
+  // プールsprite 1枚=安い(per-frame Graphics でも Text でもない)。
+  private drawFireJetSprite(e: Extract<VisualEffect, { kind: 'firejet' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite)) {
+      if (sprite) sprite.destroy();
+      sprite = new Sprite();
+      (sprite as Sprite).anchor.set(0, 0.5); // 根元(左中央)を出口点へ
+      (sprite as Sprite).blendMode = 'add';  // 火=加算で発光
+      this.L.effectLayer.addChild(sprite);
+      this.effects.set(e.id, sprite);
+    }
+    const sp = sprite as Sprite;
+    const tex0 = getTexture('fx/hitfire-0');
+    const tex1 = getTexture('fx/hitfire-1') ?? tex0;
+    const tex = t < 0.5 ? tex0 : tex1; // 左→右(大きい爆発→細い噴射)
+    if (!tex || !tex0) { sp.visible = false; return; }
+    if (sp.texture !== tex) sp.texture = tex;
+    // 両コマとも frame0 の幅を基準にスケール=コマ1(細い)は自然に短く見える(歪ませない)。
+    sp.scale.set(e.len / Math.max(1, tex0.width));
+    sp.position.set(e.x, e.y);
+    sp.rotation = e.angle;
+    sp.alpha = t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4); // 終盤フェード
+    sp.visible = true;
   }
 
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
