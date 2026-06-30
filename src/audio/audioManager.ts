@@ -214,22 +214,22 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   'smg-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/smg-fire.wav`, // 社長提供。サブマシンガン(マシンピストル=handgun-t3)の発射音
-    volume: 0.58, // 銃声を少し上げる(0.46→0.58)
+    volume: 0.70, // ハンドガン以外をもう少し上げる(0.58→0.70)
     minIntervalMs: 20, // 連射(CD100ms)に追従できるよう短め
   },
   'shotgun-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/shotgun-fire.wav`, // 社長提供の新ショットガン発砲音(WAV=Web Audioでデコード)
-    volume: 0.78, // 銃声を少し上げる(0.66→0.78)
+    volume: 0.90, // ハンドガン以外をもう少し上げる(0.78→0.90)
     minIntervalMs: 32,
   },
   'rifle-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/rifle-fire.mp3`,
-    volume: 0.74, // 銃声を少し上げる(0.62→0.74)
+    volume: 0.86, // ハンドガン以外をもう少し上げる(0.74→0.86)
     minIntervalMs: 28,
   },
   'grenade-launcher-fire': {
     src: `${import.meta.env.BASE_URL}audio/sfx/grenade-launcher-fire.mp3`, // 社長提供。グレネードランチャー(rifle-t3)の発射音
-    volume: 0.78, // 銃声を少し上げる(0.66→0.78)
+    volume: 0.90, // ハンドガン以外をもう少し上げる(0.78→0.90)
     minIntervalMs: 60,
   },
   melee: {
