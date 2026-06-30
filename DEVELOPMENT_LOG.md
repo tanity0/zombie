@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1191 — FF7R風をMissionSelectのボタン/行へ展開＋緑STARTボタン画像を破棄(社長指示)
+
+- 共通パーツ化: `components/ff7r.tsx`(=`Ff7rButton` skew＋紫スライド帯) / `config/ff7r.ts`(右フェード/両サイドフェード/
+  見出しのスタイル定数)。両サイドフェードのパターンも用意。
+- MissionSelect 適用: **緑のSTART透過PNG(`start-button.png`)を破棄**しFF7R紫ボタン「▶ START」に置換、「▶ 出撃準備」も
+  Ff7rButton 化、ハブメニュー行(`HubButton`)を「左に紫アクセントバー＋右フェード＋選択で紫帯スライド」へ(青→紫)。
+- 検証: typecheck/lint(0)/test(75)/build OK。変更: `src/components/MissionSelect.tsx`・新規 `src/components/ff7r.tsx`・
+  `src/config/ff7r.ts`・削除 `public/sprites/ui/start-button.png`・`package.json`。
+- 残: Header/戻る/Section/キャラ選択チップ/各パネルの本格FF7R化は順次。
+
 ## v0.25.1190 — FF7R風タイトルを忠実版に作り直し(右フェード半透明＋斜めスライド・社長指摘)
 
 - 前版は「汎用ネオンHUD」寄りだった指摘を受け、FF7Rの肝を踏襲して作り直し:

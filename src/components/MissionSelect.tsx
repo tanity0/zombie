@@ -9,6 +9,7 @@ import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import { rhythmIntervalForLevel } from '../config/shijin';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
+import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
@@ -317,13 +318,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {/* 出撃導線は「出撃準備」のみ(フリー周回は廃止・社長指示)。上のメイン/サブミッション欄は
               後日「出撃時の進捗表示」に置き換える予定(ボタンではない)。 */}
-          <button
+          <Ff7rButton
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
-            className="w-full py-3 rounded-2xl text-base font-semibold text-white"
-            style={{ background: 'linear-gradient(180deg, rgba(96,165,250,0.95), rgba(59,130,246,0.95))', boxShadow: '0 8px 24px rgba(59,130,246,0.35)' }}
+            className="w-full"
+            emphasis
+            paddingY="0.8rem"
           >
-            出撃準備
-          </button>
+            ▶ 出撃準備
+          </Ff7rButton>
         </div>
       </>
     );
@@ -388,19 +390,16 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 </div>
               )}
             </div>
-            {/* スタート(右下)=社長提供の透過PNGボタン(緑のSTART)。 */}
-            <button
+            {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
+            <Ff7rButton
               onClick={() => startMission(stageId, selectedClass)}
               className="shrink-0 active:scale-95 transition-transform"
-              aria-label="スタート"
+              ariaLabel="スタート"
+              emphasis
+              paddingY="0.8rem"
             >
-              <img
-                src={`${import.meta.env.BASE_URL}sprites/ui/start-button.png?v=${encodeURIComponent(typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev')}`}
-                alt="スタート"
-                draggable={false}
-                className="h-[48px] w-auto drop-shadow-[0_4px_14px_rgba(16,185,129,0.4)]"
-              />
-            </button>
+              ▶ START
+            </Ff7rButton>
           </div>
 
           {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
@@ -596,20 +595,24 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 };
 
 // === 共通の小物 =========================================================
+// FF7R風メニュー行: 左に紫アクセントバー＋右へフェードする半透明、選択(active/hover)で紫帯が左から差し込む。
 const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; onClick: () => void; accent?: boolean; delay?: number }> = ({ icon, label, desc, onClick, accent, delay = 0 }) => (
   <button
     onClick={() => { playSfx('ui-select'); onClick?.(); }}
-    style={{ animationDelay: `${delay}ms` }}
-    className={`menu-item-in w-full flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left active:bg-white/10 ${
-      accent ? 'border-blue-400/40 bg-blue-400/10' : 'border-white/10 bg-white/5'
-    }`}
+    style={{
+      animationDelay: `${delay}ms`,
+      background: 'linear-gradient(95deg, rgba(9,8,14,0.9) 0%, rgba(9,8,14,0.7) 55%, rgba(9,8,14,0.18) 100%)',
+      borderLeft: `${accent ? 3 : 2}px solid rgba(168,85,247,${accent ? 0.95 : 0.55})`,
+    }}
+    className="menu-item-in group relative w-full flex items-center gap-3 overflow-hidden px-4 py-3.5 text-left"
   >
-    <span className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${accent ? 'bg-blue-400/20 text-blue-100' : 'bg-white/8 text-white/80'}`}>{icon}</span>
-    <span className="flex-1">
-      <span className="block text-[15px] font-semibold text-white">{label}</span>
+    <span className="absolute inset-0 -translate-x-full transition-transform duration-200 ease-out group-hover:translate-x-0 group-active:translate-x-0" style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.35), rgba(168,85,247,0.04))' }} />
+    <span className="relative z-10 shrink-0 w-10 h-10 flex items-center justify-center text-purple-100" style={{ border: '1px solid rgba(168,85,247,0.4)', background: 'rgba(168,85,247,0.12)' }}>{icon}</span>
+    <span className="relative z-10 flex-1">
+      <span className="block text-[15px] font-semibold tracking-wide text-white">{label}</span>
       <span className="block text-[11px] text-white/50">{desc}</span>
     </span>
-    <ChevronLeft size={16} className="rotate-180 text-white/35" />
+    <ChevronLeft size={16} className="relative z-10 rotate-180 text-purple-300/45" />
   </button>
 );
 
