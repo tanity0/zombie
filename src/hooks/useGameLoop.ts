@@ -3125,9 +3125,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
               addMeleeFinishCombo(1);
               playSfx('counter');
-              useGameStore.getState().spawnGlow(bpcx, bpcy, 78, 'rgba(56,189,248,', 360);
+              useGameStore.getState().spawnGlow(bpcx, bpcy, 95, 'rgba(56,189,248,', 360);
               useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-              spawnRing(bpcx, bpcy, 12, 110, 'rgba(56,189,248,0.9)', 3, 360);
+              spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
               spawnBurst(bpcx, bpcy, '#38bdf8', 14);
               useGameStore.getState().spawnCallout(bpcx, bpcy - 12, 'Counter!', '#38bdf8');
               useGameStore.setState(st => ({
@@ -3903,10 +3903,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           playSfx('counter');
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
-          useGameStore.getState().spawnGlow(pcx, pcy, 78, 'rgba(56,189,248,', COUNTER_REFLECT_SLOW_MS);
+          useGameStore.getState().spawnGlow(pcx, pcy, 95, 'rgba(56,189,248,', COUNTER_REFLECT_SLOW_MS);
           // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
           useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-          spawnRing(pcx, pcy, 12, 110, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
+          spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#38bdf8');
         }
@@ -4641,9 +4641,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
           addMeleeFinishCombo(1);
           playSfx('counter');
-          useGameStore.getState().spawnGlow(ppx, ppy, 78, 'rgba(56,189,248,', 360);
+          useGameStore.getState().spawnGlow(ppx, ppy, 95, 'rgba(56,189,248,', 360);
           useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-          spawnRing(ppx, ppy, 12, 110, 'rgba(56,189,248,0.9)', 3, 360);
+          spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
           spawnBurst(ppx, ppy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(ppx, ppy - 12, 'Counter!', '#38bdf8');
           useGameStore.setState(st => ({

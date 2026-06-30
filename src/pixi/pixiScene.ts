@@ -6796,8 +6796,10 @@ export class PixiScene {
     if (!txt || !(txt instanceof Text)) {
       txt = new Text({
         text: e.text ?? String(e.value),
+        // 高DPIでも「pixっぽいボケ」を出さないよう解像度を上げて焼く(KILL/Counter等のOrbitronをくっきりHに)。
+        resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
         style: {
-          // 明朝(serif)指定の時は和文セリフのスタック。それ以外は既存フォント。
+          // 明朝(serif)指定の時は和文セリフのスタック。それ以外は Orbitron(FONT_STACK)。
           fontFamily: e.serif
             ? '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", serif'
             : FONT_STACK,

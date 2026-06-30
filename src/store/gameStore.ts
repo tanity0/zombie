@@ -1357,7 +1357,7 @@ const grantMeleeKillRewards = (
       get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
       get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
       get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
-      get().spawnGlow(ex, ey, 46, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS);
+      get().spawnGlow(ex, ey, 58, 'rgba(253,224,71,', MELEE_FINISH_SLOW_MS); // KILLの光サークルを少し大きく(社長指示。46→58)
       // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
       // 軌道中央へ「斬」を出すので、ここでは出さない。
       if (!suppressKillCallout) {

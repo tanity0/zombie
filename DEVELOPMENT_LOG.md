@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1183 — カウンター/KILLの光サークル拡大＋コールアウト文字をくっきりOrbitron＋カウンターSE差替
+
+- **光サークル拡大(社長指示)**: カウンター(cyan)glow 78→95・ring 12/110→14/135(3箇所共通)。KILL(金)glow 46→58。
+- **KILL/Counter等の文字**: コールアウトの Pixi `Text` は既に FONT_STACK=Orbitron。高DPIで「pixっぽいボケ」を出さないよう
+  `resolution`(devicePixelRatio基準・2〜3)を明示してくっきり焼くように。和文セリフ(斬/神名)は従来どおり。
+- **カウンターSE差替**: `counter.mp3` を社長提供音に同名差し替え。音量(0.88)は据え置き(=元と同じ)。dist コピー確認。
+- 検証: typecheck/lint/test(75)/build OK。変更: `src/hooks/useGameLoop.ts`・`src/store/gameStore.ts`・
+  `src/pixi/pixiScene.ts`・`public/audio/sfx/counter.mp3`(差替)・`package.json`。
+
 ## v0.25.1182 — 斬撃の流れを「左下→右上」に反転＋向きで左右反転(社長指示)
 
 - `drawSlashSprite` の流れを反転: 前半は左下の端を固定して 0→4 グロー(左下→右上に伸びる)、後半は右上の端へ収束。
