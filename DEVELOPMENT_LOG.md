@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1176 — 銃弾ヒット音(shot-damage)を別音源に再差し替え(社長指示「やはりこちら」)
+
+- `shot-damage.mp3` を新しい社長提供音に同名差し替え。音量(1.0)・配線は据え置き。dist コピー確認。
+  変更: `public/audio/sfx/shot-damage.mp3`(差替)・`package.json`。
+
 ## v0.25.1175 — 銃弾ヒット音(shot-damage)の音量を上げる(0.78→1.0)
 
 - `shot-damage` の volume を 0.78→1.0(社長指示)。変更: `src/audio/audioManager.ts`・`package.json`。
