@@ -1,6 +1,6 @@
 # AIディレクター 引き継ぎ記録 (L4D2型・難易度の“緩急”管理)
 
-最終更新: v0.25.1270 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
+最終更新: v0.25.1272 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
 基準点(“面白い”状態への復帰点): **commit `b1eae30` (v0.25.1263)**。崩れたら `git checkout b1eae30`。
 （ローカルタグ `diff-baseline-1263` は作成済みだが、このgitプロキシがタグpushを拒否するため remote には無い。commit hash で管理。）
 
@@ -27,7 +27,9 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
   - `stepDirector(prev, inputs, dtSec)` → `DirectorState`。Date.now/Math.random不使用（resume安全）。
   - Intensity: 被弾スパイク＋低HP＋**近接敵数**＋**危険敵の存在(dangerBias)**。上げ速い/下げ遅い。
   - Performance: HP余裕＋無被弾継続(20s)＋撃破EMA。ゆっくり両方向。**②(累積PP)とは別ソース**。
-  - dangerBias: 今は**ハンターのみ**（追跡=1 / 索敵=0.6 / 撤退=0.3 / 未出現=0）。
+  - dangerBias（複数該当時は**最大値**を採用・合算しない）: ハンター（追跡=1 / 索敵=0.6 / 撤退=0.3）／
+  werewolf突進予告=0.6・実行=1／pumpkinジャンプ予告(crouch)=0.6・滞空(jump)=1／screamer発動準備(scream)=0.7／
+  plant射線内(自身の発砲レンジ内)=0.5／ghost(抱卵型)の毒卵密度(半径180px内・3個で最大)。
   - `summarizeRun(samples)` → リザルト用の難易度スコア(0..100)＋平均Perf/PEAK回数など。
 - **配線** `src/hooks/useGameLoop.ts`（`?director=1` の時だけ・フレーム末）
   - 近接敵数(半径 `DIRECTOR_NEAR_RADIUS=240`)/被弾/撃破/ハンター状態を集めて `stepDirector` → バスへ。
@@ -60,7 +62,8 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
    - RELAX適用の強さ: `RELAX_ESC_MULT/RELAX_INTERVAL_MULT/RELAX_CAP_MULT`(今は0/1.35/0.85)。
 2. **効きすぎ/効かなさすぎの判断後、既定ON化を検討**（今はURLフラグ必須。体感が良ければ既定挙動に昇格するか検討）。
 3. **ステップC: Performance高でBuildUp強化**（余裕がある時だけ次の山を強める。werewolf/ghost/screamer比率↑等）。
-4. **危険敵の存在(dangerBias)を拡張**: werewolf突進予告 / plant射線 / ghost毒卵密度 / screamer準備。今はハンターのみ。
+4. ~~危険敵の存在(dangerBias)を拡張~~ → **完了(v0.25.1272)**。werewolf/pumpkin/plant/screamer/ghost毒卵密度を追加済み。
+   さらに拡張したい場合の候補: hunterのジャンプ予告(社長からの指摘で追加したpumpkinと同系統)、reaperの接近等。
 5. **補給管理（L4D2の本領）**: Performance低＋RELAXで回復/弾ピックアップのdrop率↑、PEAK手前/Performance高で爆弾少し。
    （②③④と同じ「上に薄く乗せる」方式・フラグ化）。
 6. **台本(①)との合わせ**: 区間ごとにBuildUp/Relaxの比重を変える（レベル上げ区間=Relax長め / 難関=PEAKあり 等）。

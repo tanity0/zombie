@@ -354,6 +354,8 @@ const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接�
 // (適用だけ試したい/両方見ながら試したい、のどちらも出来るように)。
 const DIRECTOR_APPLY_RELAX = evParam('directorApply') === 'relax';
 const DIRECTOR_ACTIVE = DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX; // 信号計算そのものを回すか(可視化 or 適用のどちらか)
+const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵の“密度”を見る、プレイヤー中心の半径
+const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
 // 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
 const evNum = (key: string, def: number): number => {
@@ -5724,9 +5726,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const ex = e.x + e.width / 2 - dpx, ey = e.y + e.height / 2 - dpy;
             if (ex * ex + ey * ey <= nearR2) nearN++;
           }
-          // 危険敵の存在(まずハンターのみ): 追跡中=最大 / 索敵中=中 / 撤退中=小 / 未出現=0。被弾せずとも緊張を底上げ。
+          // 危険敵の存在(0..1・複数あれば最大値を採用=合算しない): 被弾していなくても「危ないものが近くにある/
+          // 起きようとしている」だけで緊張を底上げする。ハンター(索敵/追跡)に加え、werewolf突進予告/実行・
+          // pumpkinジャンプ予告/滞空・screamer発動準備・plant射線内・ghost(抱卵型)の毒卵密度、を見る。
           const hPhase = hunterRef.current.phase;
-          const dangerBias = hPhase === 'chase' ? 1 : hPhase === 'search' ? 0.6 : hPhase === 'retreat' ? 0.3 : 0;
+          let dangerBias = hPhase === 'chase' ? 1 : hPhase === 'search' ? 0.6 : hPhase === 'retreat' ? 0.3 : 0;
+          for (const e of ds.enemies) {
+            if (e.type === 'werewolf') {
+              if (e.aiPhase === 'charge') dangerBias = Math.max(dangerBias, 1);
+              else if (e.aiPhase === 'windup') dangerBias = Math.max(dangerBias, 0.6);
+            } else if (e.type === 'pumpkin') {
+              if (e.aiPhase === 'jump') dangerBias = Math.max(dangerBias, 1);
+              else if (e.aiPhase === 'crouch') dangerBias = Math.max(dangerBias, 0.6);
+            } else if (e.type === 'screamer') {
+              if (e.aiPhase === 'scream') dangerBias = Math.max(dangerBias, 0.7);
+            } else if (e.type === 'plant') {
+              const profile = getEnemyFireProfile(e);
+              if (profile) {
+                const ex = e.x + e.width / 2 - dpx, ey = e.y + e.height / 2 - dpy;
+                if (ex * ex + ey * ey <= profile.range * profile.range) dangerBias = Math.max(dangerBias, 0.5);
+              }
+            }
+          }
+          let eggNear = 0;
+          const eggR2 = DIRECTOR_EGG_DANGER_RADIUS * DIRECTOR_EGG_DANGER_RADIUS;
+          for (const p of ds.breakableProps) {
+            if (p.type !== 'mine') continue;
+            const ex = p.footX - dpx, ey = p.footY - dpy;
+            if (ex * ex + ey * ey <= eggR2) eggNear++;
+          }
+          if (eggNear > 0) dangerBias = Math.max(dangerBias, Math.min(1, eggNear / DIRECTOR_EGG_DANGER_FULL));
           directorRef.current.state = stepDirector(directorRef.current.state, {
             hpFrac: dp.health / maxHp,
             damageTakenFrac: dmgTaken,

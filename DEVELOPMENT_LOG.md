@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1272 — AIディレクター: dangerBias をハンター以外にも拡張(社長指示①)
+- 引き継ぎ記録の「次の作業④」を実施。dangerBias(危険敵の存在)の入力源を、ハンターの索敵/追跡のみから
+  以下へ拡張(複数該当時は**最大値を採用**=合算しない。合算すると弱い要因の重なりで過大になるため)。
+  - **werewolf突進予告/実行**: `aiPhase==='windup'`(予告)=0.6 / `'charge'`(実行中)=1.0
+  - **pumpkinジャンプ予告/滞空**(社長追加指示): `aiPhase==='crouch'`(溜め)=0.6 / `'jump'`(滞空・着地即爆発)=1.0
+  - **screamer発動準備**: `aiPhase==='scream'`=0.7
+  - **plant射線内**: 自身の発砲レンジ(`getEnemyFireProfile`)内にプレイヤーがいる=0.5
+  - **ghost(抱卵型)の毒卵密度**: プレイヤー中心 `DIRECTOR_EGG_DANGER_RADIUS=180px` 内の `mine` 数を
+    `DIRECTOR_EGG_DANGER_FULL=3`(1バーストぶん)で正規化。
+- `hooks/useGameLoop.ts`(定数追加＋dangerBias算出ループ)、`utils/aiDirector.ts`(コメント更新のみ)。
+- 依然「読むだけ」(Intensityへの寄与のみ)。負荷 1/10(既存の敵/プロップ走査に判定を足すだけ)。
+- 検証: typecheck / lint(0, full) / test(114 pass) / build 通過。`AI_DIRECTOR_HANDOFF.md` は次回更新予定。
+
 ## v0.25.1271 — 大量発生(horde)イベント: 湧き位置がプレイヤーの現在地と重なるバグ修正(社長報告)
 - 症状: 敵急増(囲い)イベント中、湧いた敵とプレイヤーが重なって理不尽に被弾することがあった。
 - 原因: horde(変異者大量発生)の段階スポーン(1秒に1体・計18体)は、湧き位置を「イベント中心(=開始時の

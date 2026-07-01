@@ -18,8 +18,9 @@ export interface DirectorInputs {
   damageTakenFrac: number; // このステップで受けたダメージ / 最大HP (>0 でスパイク)
   nearEnemies: number;     // 近接圏内(接触危険レンジ)にいる敵数 ← 画面内総数ではなく“近い敵”
   killDelta: number;       // このステップの撃破数
-  // 危険敵の存在(0..1)。被弾していなくても“いる”だけで緊張する脅威の合成値。今はハンター出現/追跡のみ。
-  // 後段で werewolf突進予告 / plant射線 / ghost毒卵密度 / screamer準備 も足す予定(=このbiasの最大値)。
+  // 危険敵の存在(0..1)。被弾していなくても“いる”だけで緊張する脅威の合成値(useGameLoop側で複数ソースの
+  // 最大値を算出して渡す=合算はしない)。ハンター出現/追跡・werewolf突進予告/実行・pumpkinジャンプ予告/滞空・
+  // screamer発動準備・plant射線内・ghost(抱卵型)の毒卵密度。
   dangerBias: number;
 }
 
