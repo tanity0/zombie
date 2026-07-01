@@ -1898,8 +1898,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // トラップ(root)/ワープ中は移動も攻撃も止める=トラップが効く。
               // 気絶(stun)は止めない: 攻撃も中断せず通常の状態機械を回し、歩行(チェイス)だけ半速にする(社長指示)。
               // ボスは updateEnemies を早期returnで素通りするため、ここで明示的に判定する。
+              // 裏ボスの完全気絶(紫・5クリ)中は攻撃も移動も完全停止(通常の気絶=歩行半速のみ とは別・社長指示)。
+              const bossFullStun = boss.bossFullStunUntil !== undefined && newGameTime < boss.bossFullStunUntil;
               const frozen = warping
-                || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil);
+                || (boss.rootUntil !== undefined && newGameTime < boss.rootUntil)
+                || bossFullStun;
               const stunned = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
               const walkMult = stunned ? BOSS_STUN_SPEED_MULT : 1; // 気絶中は歩行のみ半速(攻撃は通常)
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
@@ -4029,7 +4032,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
-          const enemyKilled = damageEnemy(enemyId, dmg);
+          const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit);
           // 護衛NPCの弾の被弾音も、発砲音と同じ距離減衰をかける(遠いNPCの攻撃は被弾音も小さく/画面外は無音)。
           // プレイヤー自身の弾は等倍(gain=1)。
           let hitSfxGain = 1;

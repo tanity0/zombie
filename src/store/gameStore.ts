@@ -424,6 +424,25 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
+// 裏ボス(mimir/jormungand/skadi)専用: クリティカルを規定回数当てると「完全気絶(紫)」に移行。
+// 通常敵の気絶相当で、この間は攻撃を受けても起きず(stun 維持)、5× 近接をタイマー切れまで“し放題”。
+export const BOSS_FULLSTUN_CRITS = 5;    // 完全気絶に必要なクリ回数(社長指示)
+export const BOSS_FULLSTUN_MS = 5000;    // 完全気絶の持続(= STUN_DURATION_MS 相当)
+// クリが裏ボスに入ったときのカウント更新。規定回数で完全気絶を発動。返り値=マージするEnemy差分＋発動フラグ。
+export const bumpBossCrit = (
+  enemy: Enemy,
+  gameTime: number
+): { patch: Partial<Enemy>; triggered: boolean } | null => {
+  if (!isHiddenBoss(enemy.type)) return null;
+  // すでに完全気絶中はカウントしない(気絶を延長/短縮しない)。
+  if (enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil) return null;
+  const c = (enemy.bossCritCount ?? 0) + 1;
+  if (c >= BOSS_FULLSTUN_CRITS) {
+    const until = gameTime + BOSS_FULLSTUN_MS;
+    return { patch: { bossCritCount: 0, bossFullStunUntil: until, stunUntil: until }, triggered: true };
+  }
+  return { patch: { bossCritCount: c }, triggered: false };
+};
 // 分身(サブウェポン): その場で 1秒ごとに5秒間(=計5回)近接攻撃を繰り返し、消滅後にクールダウン。
 // クールダウンはレベルで短縮(Lv1=3s / Lv2=2s / Lv3=1s)。index は subWeaponLevels(1..3)。
 export const SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL = [3000, 3000, 2000, 1000];
@@ -1777,7 +1796,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない
+  damageEnemy: (id: string, amount: number, nonLethalBoss?: boolean, crit?: boolean) => boolean; // nonLethalBoss=爆発系: ボス系にトドメを刺さない / crit=裏ボスの完全気絶カウント用
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -3038,7 +3057,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (stunned) {
         if (isBossType(enemy.type)) {
           // Bosses can't be instakilled. A melee hit on a stunned boss deals
-          // 5× melee damage and shakes off the stun (no finisher).
+          // 5× melee damage. 通常の気絶は1発で解除するが、裏ボスの「完全気絶(紫)」中は
+          // 解除せずタイマー切れまで5×近接を“し放題”(社長指示)。
+          const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -3049,7 +3070,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             survivors.push({
               ...enemy,
               health: newHealth,
-              stunUntil: undefined,
+              stunUntil: bossFull ? enemy.stunUntil : undefined,
               lastHit: now,
               liftUntil: now + 420,
             });
@@ -3447,7 +3468,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // スタンは消さない(一閃で仕留める余地を残す)。
       if (stunned && allowFinisher) {
         if (isBossType(enemy.type)) {
-          // Same boss rule as the knife: 5× damage, stun shaken off, no execute.
+          // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
+          // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
+          const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
           bossFinishHit = true;
           const dmg = baseDamage * damageMult * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -3458,7 +3481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             survivors.push({
               ...enemy,
               health: newHealth,
-              stunUntil: undefined,
+              stunUntil: bossFull ? enemy.stunUntil : undefined,
               lastHit: now,
               liftUntil: now + 420,
             });
@@ -4923,9 +4946,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, nonLethalBoss = false) => {
+  damageEnemy: (id, amount, nonLethalBoss = false, crit = false) => {
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
+    let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -4942,8 +4966,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       let newHealth = Math.max(0, enemy.health - eff);
       // 爆弾/爆発ではボス系にトドメを刺さない(社長指示)。ダメージは入るが HP1 で踏みとどまる。
       if (nonLethalBoss && newHealth === 0 && isBossType(enemy.type)) newHealth = 1;
-      const updatedEnemies = enemies.map(e => 
-        e.id === id ? { ...e, health: newHealth, lastHit: Date.now() } : e
+      // 裏ボス: クリを規定回数当てると完全気絶(紫)。倒しきれなかったクリのみカウント。
+      const critBump = (crit && newHealth > 0) ? bumpBossCrit(enemy, state.gameTime) : null;
+      if (critBump?.triggered) bossFullStunAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+      const updatedEnemies = enemies.map(e =>
+        e.id === id ? { ...e, health: newHealth, lastHit: Date.now(), ...(critBump?.patch ?? {}) } : e
       );
       
       // Check if enemy was killed
@@ -4978,6 +5005,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+
+    // 裏ボスが完全気絶(紫)に移行: 紫の衝撃リング＋発光＋コールアウトで知らせる。
+    if (bossFullStunAt) {
+      const p = bossFullStunAt as { x: number; y: number };
+      get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
+      get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
+      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
+    }
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
     if (reaperDefeated) {

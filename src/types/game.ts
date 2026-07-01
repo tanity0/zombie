@@ -312,6 +312,10 @@ export interface Enemy {
   eggLayAt?: number;
   // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。
   screamNextAt?: number;
+  // 裏ボス専用: 被弾したクリティカルの累積回数。規定回数で「完全気絶(紫)」に移行しリセット。
+  bossCritCount?: number;
+  // 裏ボス専用: 完全気絶(通常敵の気絶相当)の終了 gameTime(ms)。この間は攻撃でも起きず近接フィニッシュし放題。
+  bossFullStunUntil?: number;
   // 屋内ステージの固定敵が「画面外に出たら戻る」最初の定位置(スポーン座標)。
   homeX?: number;
   homeY?: number;

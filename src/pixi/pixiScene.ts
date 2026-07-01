@@ -4903,7 +4903,11 @@ export class PixiScene {
       r.ellipse(cx, cy, e.width / 2.4, e.height / 2.4).fill({ color: col });
     }
     const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
-    if (stunned) this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now);
+    if (stunned) {
+      // 裏ボスの完全気絶(5クリ)中は黄→紫のサークル(社長指示)。それ以外は従来の黄。
+      const fullStun = e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil;
+      this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now, fullStun ? 0xa855f7 : 0xfacc15);
+    }
     // 当たり判定=足元の「帯」(通常敵=幅は影と同規格=実描画幅×0.55 / 高さ=e.height、裏ボス=生の帯)。確認しやすい
     // よう帯=四角をうっすら色付きで表示。絵の「下」=この reticle 層(スプライトより背面)へ。当たり判定と必ず一致させる
     // ため collision と同じ enemyHitStrip を使う。★確認用オーバーレイ(社長: 後で確定したら消す)。
@@ -4999,10 +5003,10 @@ export class PixiScene {
     g.rect(x, y, w * pct, h).fill({ color: pct < 0.3 ? STATUS_RED : STATUS_GREEN });
   }
 
-  private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number) {
+  private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number, color = 0xfacc15) {
     const rad = size * 0.85 + 6;
     const spin = (now * 0.004) % (Math.PI * 2);
-    g.circle(cx, cy, rad).fill({ color: 0xfacc15, alpha: 0.16 });
+    g.circle(cx, cy, rad).fill({ color, alpha: 0.16 });
     for (let i = 0; i < 4; i++) {
       const a0 = spin + i * (Math.PI / 2) + 0.25;
       const a1 = spin + i * (Math.PI / 2) + (Math.PI / 2) - 0.25;
@@ -5010,7 +5014,7 @@ export class PixiScene {
       // previous pen position to the arc start (stray yellow line artifact).
       g.moveTo(cx + Math.cos(a0) * rad, cy + Math.sin(a0) * rad)
         .arc(cx, cy, rad, a0, a1)
-        .stroke({ width: 2, color: 0xfacc15 });
+        .stroke({ width: 2, color });
     }
   }
 

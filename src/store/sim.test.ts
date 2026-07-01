@@ -5,7 +5,7 @@
 // and keeps counts/health sane. The "auto-debug" net for the logic layer —
 // see CLAUDE.md Testing policy.
 import { describe, it, expect } from 'vitest';
-import { useGameStore } from './gameStore';
+import { useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS } from './gameStore';
 
 // Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
 // pulling in @types/node (the value is read only under the nightly cron).
@@ -153,6 +153,27 @@ describe('headless simulation invariants', () => {
     useGameStore.setState({ enemies: [] }); // 倒した=溜め完了前に除去
     step(120); // past where activation would have been
     expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(t); // never activated
+  });
+
+  it('hidden boss enters full stun (purple) after N crits, then ignores further counting', () => {
+    const t = 10_000;
+    let e = spawnEnemyAt('mimir', 0, 0, 0);
+    for (let i = 0; i < BOSS_FULLSTUN_CRITS - 1; i++) {
+      const r = bumpBossCrit(e, t);
+      expect(r).not.toBeNull();
+      expect(r!.triggered).toBe(false);
+      e = { ...e, ...r!.patch };
+    }
+    const last = bumpBossCrit(e, t);
+    expect(last!.triggered).toBe(true);
+    expect(last!.patch.bossFullStunUntil).toBe(t + BOSS_FULLSTUN_MS);
+    expect(last!.patch.stunUntil).toBe(t + BOSS_FULLSTUN_MS);
+    expect(last!.patch.bossCritCount).toBe(0); // counter resets after triggering
+    e = { ...e, ...last!.patch };
+    // while fully stunned, further crits don't re-count / extend
+    expect(bumpBossCrit(e, t + 100)).toBeNull();
+    // non-hidden-boss enemies are never affected
+    expect(bumpBossCrit(spawnEnemyAt('zombie', 0, 0, 0), t)).toBeNull();
   });
 
   it('suppression event: an escort NPC captures its base after ~10s dwell and stays finite', () => {
