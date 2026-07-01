@@ -57,8 +57,9 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //  近接フィニッシュは即死しない(isBossType=true=ボス級のクリットダメージ扱い)。
   hunter:     { width: 56, height: 64, speed: 82, health: 1200, damage: 40, experienceValue: 120 },
   // 変異体(叫喚型・イベント専用=通常プールに入れない。useGameLoop のディレクターが同時1体だけ出す)。
-  // 役割は周囲の通常敵の一時強化。直接火力は弱め(接触6)、中程度HP=叫ぶ前に倒して阻止する優先処理対象。
-  screamer:   { width: 36, height: 36, speed: 55, health: 60, damage: 6, experienceValue: 3 }
+  // 役割は周囲の通常敵の一時強化。直接火力は弱め(接触6)、HPも低め(社長指示で60→20)=叫ぶ前に
+  // 素早く倒して阻止できる優先処理対象。
+  screamer:   { width: 36, height: 36, speed: 55, health: 20, damage: 6, experienceValue: 3 }
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。

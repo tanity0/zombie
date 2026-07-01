@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1273 — screamer(叫喚型)の基礎HPを下げる 60→20(社長指示)
+- 社長確認: エリア/色倍率×ENEMY_HP_MULT(5)込みの実効HPは白60=300〜赤630〜赤エリア4=1260と、直接火力ゼロで
+  距離を保ちつつ支援バフのみを行う役割にしては zombie(基礎40)・werewolf(基礎32)より硬く、体感「固い」と一致。
+  →社長指示で基礎HP 60→20(実効: 白エリア0=100〜赤エリア4=420)。「叫ぶ前に素早く倒して阻止できる優先処理
+  対象」という役割どおりの軽さへ。直接火力(接触6)・移動/AI・出現条件・エリア/色スケールの仕組み自体は不変。
+  `utils/enemyUtils.ts`(コメントも実態に合わせて更新)。
+- 検証: typecheck / lint(0, full) / test(114 pass) / build 通過。
+
 ## v0.25.1272 — AIディレクター: dangerBias をハンター以外にも拡張(社長指示①)
 - 引き継ぎ記録の「次の作業④」を実施。dangerBias(危険敵の存在)の入力源を、ハンターの索敵/追跡のみから
   以下へ拡張(複数該当時は**最大値を採用**=合算しない。合算すると弱い要因の重なりで過大になるため)。
