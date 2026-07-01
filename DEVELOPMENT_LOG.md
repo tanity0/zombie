@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1277 — クラッシュ診断: 前回セッション末尾の状態をタイトルに表示(社長報告への対応)
+- 症状: スマホで数分プレイ後に画面が真っ白になりタイトルへ戻る(既知・再発)現象の調査。
+- 切り分け: 発生環境=スマホブラウザ、タイミング=数分プレイ後。特定操作直後ではなく時間経過で起きる
+  ことから、JS例外(`?debug=1`のDebugOverlayで拾える)より**モバイルブラウザのメモリ逼迫によるタブ強制
+  リロード**の可能性が高いと判断(OS/ブラウザ側の強制終了はJS側で検知できずcatchできない)。
+- 既存コードの確認: リサイズ時に作り直すマスク用キャンバス/テクスチャ(`updateWorldFadeMask`等)は旧
+  テクスチャを`destroy()`してから差し替えており漏れなし。AIディレクターのサンプル記録も上限3000件の
+  固定リングバッファで無制限増加はしない。
+- 対応(社長合意): 実機プロファイルができないため、**次回発生時に手がかりが残る仕組み**を追加。
+  - 新規 `utils/crashDiagnostics.ts`: `recordHeartbeat`/`getLastHeartbeat`/`readHeapMB`(Chrome系のみ
+    `performance.memory` からヒープ概算MB取得・Safariはnull)。localStorageへ上書き記録(読み書きのみ)。
+  - `hooks/useGameLoop.ts`: 常時・3秒毎に「敵/弾/エフェクト/拾い物/設置物の数、ゲーム内経過秒、
+    ページ読み込みからの経過秒、ヒープMB」を記録(ゲーム挙動には一切影響しない)。
+  - `components/TitleScreen.tsx`: タイトル画面右上(バージョン表示の下)に前回セッション末尾の状態を
+    小さく表示(例: `前回終了: 敵12 弾30 FX8 拾3 設置2 / 3:42 heap180MB`)。スマホでdevtoolsが無くても
+    次回のクラッシュ調査に使える数値がその場で読める。
+- 負荷 1/10(3秒に1回のlocalStorage書き込みのみ)。検証: typecheck / lint(0, full) / test(117 pass) / build 通過。
+
 ## v0.25.1276 — AIディレクター ステップC: Performance高でBuildUpを強める(社長指示C)
 - 引き継ぎ記録の「ステップC」を実施。ルール厳守: Performanceは「BuildUpを強める」だけに使い、Intensity/
   被弾側とは絶対に混ぜない。BよりレバーをNarrow(escalationのみ)にして慎重に効かせる。

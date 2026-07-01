@@ -1,6 +1,18 @@
 import React, { useState, useRef } from 'react';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
+import { getLastHeartbeat } from '../utils/crashDiagnostics';
+
+// 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
+// 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
+const formatHeartbeat = (): string | null => {
+  const h = getLastHeartbeat();
+  if (!h) return null;
+  const mm = Math.floor(h.gameTimeSec / 60);
+  const ss = String(h.gameTimeSec % 60).padStart(2, '0');
+  const heap = h.heapMB != null ? ` heap${h.heapMB}MB` : '';
+  return `前回終了: 敵${h.enemies} 弾${h.projectiles} FX${h.effects} 拾${h.pickups} 設置${h.breakableProps} / ${mm}:${ss}${heap}`;
+};
 
 interface TitleScreenProps {
   onStart: () => void;                 // 同意時: BGM解禁(再生開始)
@@ -57,6 +69,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
     if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
   };
 
+  const heartbeatLine = phase === 'title' ? formatHeartbeat() : null;
+
   return (
     <div
       onClick={phase === 'title' ? tapStart : undefined}
@@ -80,6 +94,13 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
       {phase === 'title' && (
         <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] font-mono tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
           v{__APP_VERSION__}
+        </span>
+      )}
+
+      {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
+      {heartbeatLine && (
+        <span className="absolute top-9 right-3 max-w-[92vw] px-2 py-0.5 text-[9px] font-mono tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
+          {heartbeatLine}
         </span>
       )}
 

@@ -77,6 +77,7 @@ import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
+import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
@@ -551,6 +552,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // AIディレクター(ステップA=読むだけ)の状態＋差分計算用の直近値。?director=1 のときだけ更新。
   // nextSampleMs: リザルトのタイムライン用に 0.5s 刻みで時系列サンプルを記録する次回時刻(gameTime ms)。
   const directorRef = useRef({ state: createDirectorState(), prevHp: 0, prevKills: 0, nextSampleMs: 0 });
+  // クラッシュ診断(社長報告: スマホ数分プレイ後に真っ白→タイトル)。低頻度で状態をlocalStorageへ記録。
+  const heartbeatRef = useRef({ nextAt: 0, pageLoadAt: Date.now() });
   // ドローンブーメラン停止中の周囲パルス: boomerang id -> 次パルスの gameTime(ms)。
   const boomPulseRef = useRef<Map<string, number>>(new Map());
   // ワイヤーダッシュ着地の近接攻撃を1ダッシュにつき1回だけ発火させるためのマーカー
@@ -940,6 +943,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
         const snowTheme = loopState.farBackdrop === 'snow'; // ステージ4(雪原): 新型 lich を湧きプールに含める
+
+        // クラッシュ診断(常時・低頻度=3秒毎): 「数分プレイ後に真っ白→タイトルに戻る」現象の手がかり用。
+        // 例外を投げないOS/ブラウザ側のタブ強制終了はJSで検知できないため、直前の状態を localStorage へ
+        // 上書き記録しておき、次回起動時にタイトル画面で確認できるようにする(読み書きのみ・ゲーム挙動不変)。
+        if (timestamp >= heartbeatRef.current.nextAt) {
+          heartbeatRef.current.nextAt = timestamp + 3000;
+          recordHeartbeat({
+            elapsedSec: Math.round((Date.now() - heartbeatRef.current.pageLoadAt) / 1000),
+            gameTimeSec: Math.round(gameTime / 1000),
+            enemies: enemies.length,
+            projectiles: loopState.projectiles.length,
+            effects: loopState.effects.length,
+            pickups: pickups.length,
+            breakableProps: loopState.breakableProps.length,
+            heapMB: readHeapMB(),
+          });
+        }
         // 範囲攻撃(爆発)の壁ブロック用。爆心地周辺の壁を1回だけ取得 → 各敵へ視線判定。
         // 爆発は時々のイベント+敵数上限なので軽い。屋内=lab壁 / 屋外=近傍の木。
         const aoeWalls = (cx: number, cy: number): Rect[] => {
