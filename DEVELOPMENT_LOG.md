@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1264 — 囲い/救助サークルを少し拡大(社長指示)
+- 依頼: 大量発生イベントのサークルと救助のサークルを少し広げる。
+- `ARENA_EVENT_RADIUS` 210→240(閉じ込め系 horde/boss/egg 共通)、`RESCUE_RADIUS` 150→175。
+- 背景: 大量発生は近傍敵が18体前後→文脈ズームが最大近くまで引く(nearEnemies はイベント敵も数える)ため、
+  閉じ込め円が画面上で小さく見える→円を広げて相殺。ズームを引かない選択肢も可(未実施)。
+- 検証: typecheck / test(101) / build 通過。`hooks/useGameLoop.ts`・`world/rescue.ts`。
+- ※基準点タグ `diff-baseline-1263` はローカル作成済みだが、この git プロキシがタグ push を拒否(disconnect)。
+  基準点は **commit `b1eae30`(v0.25.1263)** として記録。復帰は `git checkout b1eae30`。
+
 ## v0.25.1263 — 緑卵を軽く発光 / タレット連射間隔を元に戻す / 難易度基準点タグ(社長指示)
 - **緑卵を控えめに発光**: `drawProp` の mine 分岐で、プール済みの加算グロースプライト(`view.light`)を1枚だけ有効化
   (per-frame Graphics 無し=軽い)。緑(0x4ade80)・半径≒卵の2.2倍・α0.22・ゆっくり明滅。地面レイヤーなので足元に

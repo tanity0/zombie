@@ -4,7 +4,7 @@
 import type { Circle } from './arena';
 
 // ---- 決め打ち定数(実機調整前提) ----
-export const RESCUE_RADIUS = 150;            // サークル半径
+export const RESCUE_RADIUS = 175;            // サークル半径(社長指示で少し拡大: 150→175)
 export const RESCUE_HOLD_NEED_MS = 25000;    // 累計ホールド成功時間
 export const RESCUE_FLEE_TRIGGER = 120;      // この距離内に敵が入ったら逃走
 export const RESCUE_SURVIVOR_SPEED = 40;     // 逃走速度(通常敵 ~60 の約2/3)
