@@ -224,7 +224,7 @@ const TURRET_DURATION_BY_LEVEL = [0, 15000, 15000, 15000]; // 持続を3倍(5s�
 const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
-const TURRET_FWD_FIRE_MS = 110;                         // 前方集中(連射)の発射間隔(社長指示で気持ち短く: 130→110)
+const TURRET_FWD_FIRE_MS = 130;                         // 前方集中の発射間隔(handgun-t3 cooldown 相当)
 const TURRET_FWD_DAMAGE = 5;                            // 前方集中の弾ダメージ(社長指示で7→5)
 const TURRET_FWD_BULLET_SPEED = 560 * 1.5;             // handgun-t3 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
 const TURRET_FWD_RANGE = 420;                           // 前方集中の射程(長射程)。TODO: 実機調整

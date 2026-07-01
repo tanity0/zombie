@@ -3788,7 +3788,14 @@ export class PixiScene {
 
       view.container.zIndex = prop.footY;
       view.container.alpha = horizonAlpha;
-      view.light.visible = false;
+      // 緑卵を控えめに光らせる(社長指示): プール済みの加算グロースプライト1枚だけ(per-frame Graphics 無し=軽い)。
+      // 半径は卵より一回り・α低め・ゆっくり明滅。地面レイヤーなので卵の足元に淡い緑の光だまりが乗る。
+      const eggGlowPulse = 0.8 + 0.2 * Math.sin(now / 360 + prop.footX * 0.05);
+      view.light.visible = horizonAlpha > 0;
+      view.light.position.set(Math.round(prop.footX), Math.round(prop.footY - EGG_VISUAL_H * 0.35 * d));
+      view.light.tint = 0x4ade80; // 毒の緑
+      view.light.width = view.light.height = EGG_VISUAL_W * 2.2 * prop.scale * d;
+      view.light.alpha = 0.22 * horizonAlpha * eggGlowPulse;
       view.reflection.visible = false;
       view.flame.clear();
       view.sprite.visible = !!tex && horizonAlpha > 0;

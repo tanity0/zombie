@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1263 — 緑卵を軽く発光 / タレット連射間隔を元に戻す / 難易度基準点タグ(社長指示)
+- **緑卵を控えめに発光**: `drawProp` の mine 分岐で、プール済みの加算グロースプライト(`view.light`)を1枚だけ有効化
+  (per-frame Graphics 無し=軽い)。緑(0x4ade80)・半径≒卵の2.2倍・α0.22・ゆっくり明滅。地面レイヤーなので足元に
+  淡い緑の光だまり。負荷 2/10(最も安いグロー法=プール加算スプライト・小半径/低α。多数湧いても fill-rate のみ)。
+- **タレット連射間隔を元に戻す**: `TURRET_FWD_FIRE_MS` 110→130(社長指示で撤回)。発砲音の距離減衰(v1262)は維持。
+- **難易度の基準点タグ**: `diff-baseline-1263`(commit=このコミット)を作成・push。難易度実験で崩れたら
+  `git checkout diff-baseline-1263` で“面白い”状態へ即復帰できる。
+- 検証: typecheck / lint(0) / test(101) / build 通過。`pixi/pixiScene.ts`・`hooks/useGameLoop.ts`。
+
 ## v0.25.1262 — 自動タレット: 発砲音を距離減衰 / 連射間隔を気持ち短く(社長指示)
 - **発砲音の距離減衰**: タレットの発砲音(`handgun-fire`/`rifle-fire`)に、護衛NPCと同じ `npcSfxDistGain`
   (タレット位置↔プレイヤー、画面外=無音)を適用。遠い/画面外のタレットの銃声が小さくなる。プレイヤー自身の
