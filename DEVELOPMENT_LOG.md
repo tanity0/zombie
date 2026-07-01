@@ -18290,3 +18290,14 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 性能: 計算は毎フレーム軽量(数値のみ)。色付き敵増は描画方式不変=負荷 1/10。
 - 対象外/次: 関所ライブ補正(終了HP帯へ閉ループ)は未実装。文脈カメラズームは③後の別タスク。裏ボス「5クリで気絶」も別途キュー。
 - 検証: typecheck / lint / test(90 pass) / build 通過。変更: utils/difficultyScaler.ts(新)+test(新), utils/enemyUtils.ts, hooks/useGameLoop.ts, package.json
+
+## v0.25.1236 — 文脈カメラズーム(敵数/大型で少し引く・視覚専用)
+- 依頼(社長): 敵が多い/大型がいると少しだけ引く。引きは一回り。7体まで固定→8体以上で線形→20体で最大。大型(reaper/城ボス/裏ボス/hunter)は即最大。引いた分は湧きマージンを広げる。
+- 実装:
+  - `src/utils/cameraZoom.ts`(新規・純関数・テスト可): `contextZoomTarget(count, hasLarge)`(1.0→CONTEXT_ZOOM_MIN=0.9)、`isLargeForZoom`(大型4種のみ・pumpkin/screamerは非対象)。
+  - `pixiScene`: 毎ティッカーで target を算出し `contextZoom` をイージング追従(引きは長い時定数/戻りは待機時定数)、`zoom = idleZoom × contextZoom × punch` に合成(視覚専用・worldGroup.scale)。
+  - `useGameLoop`: 同じ target から `1/target` を出し、屋外の湧き位置(generateEnemy に渡す bounds)を広げる=引いても画面外に湧く。リサイクル湧きも同様。屋内/ラボは対象外(=1)。
+  - テスト: `cameraZoom.test.ts`(floorまで1.0/線形/天井で0.9/大型で即0.9/大型セット一致)。
+- 視覚専用: 当たり判定/射程/移動には不影響(CLAUDE.md 視覚⇔判定分離)。数値(0.9/7/20)は私案・実機調整前提。
+- 性能: scale変更はタダ、hasLarge判定は早期break、引きは最大11%広いだけ=描画は敵/弾中心で安価(E60安全)。負荷 1/10。
+- 検証: typecheck / lint / test(95 pass) / build 通過。変更: utils/cameraZoom.ts(新)+test(新), pixi/pixiScene.ts, hooks/useGameLoop.ts, package.json

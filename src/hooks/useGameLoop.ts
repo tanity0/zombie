@@ -75,6 +75,7 @@ import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt } from '../utils/difficultyDirector';
 import { spawnEscalation } from '../utils/difficultyScaler';
+import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
@@ -5089,6 +5090,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : 0;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
+        // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
+        // カメラと同じ target を読む(視覚専用のズーム値ではなく target=純関数)。屋内/ラボは対象外。
+        const czInvZoom = (labTheme || indoor) ? 1 : 1 / contextZoomTarget(allEnemiesNow.length, allEnemiesNow.some(e => isLargeForZoom(e.type)));
+        const spawnBounds = czInvZoom > 1.0001
+          ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom }
+          : gameBounds;
         if (
           !danceTest &&
           !indoor &&
@@ -5117,7 +5124,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 索敵仕様: 湧いた時点は休眠(dormant)。プレイヤーが aggroRange 内 かつ 壁越しでない(視界)時に起床。
             // (起床判定は updateEnemies の dormant ブロック: 距離 + segmentBlocked(wallRects))。
             if (labTheme) {
-              const labEnemy = generateEnemy(gameTime, player, gameBounds, selectLabEnemyType(gameTime), player.lastDirection);
+              const labEnemy = generateEnemy(gameTime, player, spawnBounds, selectLabEnemyType(gameTime), player.lastDirection);
               // 配置は generateEnemy の「固定ビュー矩形の外側 OFFSCREEN_SPAWN_MARGIN」スポーンをそのまま使う
               // (通常敵と統一・社長指示B)。旧: 半径(halfDiag+…)リング配置は廃止。
               const ecx = labEnemy.x + labEnemy.width / 2, ecy = labEnemy.y + labEnemy.height / 2;
@@ -5135,18 +5142,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
                 tries++;
               }
               if (enemy.type === 'plant') {
-                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               }
             }
             if (enemy.type === 'plant') plantCount += 1;
@@ -5166,13 +5173,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!plantGuaranteedRef.current && gameTime >= PLANT_GUARANTEE_MS) {
             plantGuaranteedRef.current = true;
             if (!useGameStore.getState().enemies.some(e => e.type === 'plant')) {
-              addEnemy(generateEnemy(gameTime, player, gameBounds, 'plant', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
+              addEnemy(generateEnemy(gameTime, player, spawnBounds, 'plant', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
             }
           }
           if (!werewolfGuaranteedRef.current && gameTime >= WEREWOLF_GUARANTEE_MS) {
             werewolfGuaranteedRef.current = true;
             if (!useGameStore.getState().enemies.some(e => e.type === 'werewolf')) {
-              addEnemy(generateEnemy(gameTime, player, gameBounds, 'werewolf', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
+              addEnemy(generateEnemy(gameTime, player, spawnBounds, 'werewolf', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
             }
           }
         }
@@ -5363,7 +5370,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const replacement = generateEnemy(
             gameTime,
             player,
-            gameBounds,
+            spawnBounds, // 文脈ズームで引いている分だけ湧き位置も外へ(通常湧きと同じ)
             recycleType,
             player.lastDirection,
             spawnViewOffsetY, // 通常湧きと同じカメラ下げオフセットを使う(従来は固定0でリサイクル敵が約48-77px下にズレて画面内に出やすかった)

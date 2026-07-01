@@ -23,6 +23,7 @@ import type {
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
+import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed, poiSectorIndex } from '../world/pois';
@@ -1014,6 +1015,7 @@ export class PixiScene {
   private screenH = 1;
   private cameraY = 0;
   private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
+  private contextZoom = 1;     // 文脈ズーム(敵数/大型で少し引く・視覚専用)。目標へイージング追従。
   private labGfx: Graphics | null = null; // 屋内ステージのマーカー(ボタン/ゴール)(world座標・遅延生成)
   private labFloor: TilingSprite | null = null; // 屋内ステージの床タイル(world座標・遅延生成)
   private labVoid: TilingSprite | null = null;  // 背景の天井/void プレート(外周マージンに敷く・低速パララックス)
@@ -2203,7 +2205,14 @@ export class PixiScene {
     }
     const zoomLeft = s.zoomUntil ? s.zoomUntil - now : 0;
     const punch = (zoomLeft > 0 && s.zoomMag > 0) ? 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS) : 1;
-    const zoom = this.idleZoom * punch;
+    // 文脈ズーム: 敵数が多い/大型がいるほど少し引く(視覚専用)。イージング追従＋不感帯でパカパカ防止。
+    // 引き(target<現在)は長い時定数でじわっと、戻りは待機と同じ時定数。
+    let hasLargeForZoom = false;
+    for (const e of s.enemies) { if (isLargeForZoom(e.type)) { hasLargeForZoom = true; break; } }
+    const czTarget = contextZoomTarget(s.enemies.length, hasLargeForZoom);
+    const czTau = czTarget < this.contextZoom - 0.0001 ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
+    this.contextZoom += (czTarget - this.contextZoom) * (1 - Math.exp(-zdt / Math.max(0.001, czTau)));
+    const zoom = this.idleZoom * this.contextZoom * punch;
     if (Math.abs(zoom - 1) > 0.0005) {
       this.L.worldGroup.scale.set(zoom);
       this.L.worldGroup.position.set((this.screenW / 2) * (1 - zoom), (this.screenH / 2) * (1 - zoom));
