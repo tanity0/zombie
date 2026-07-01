@@ -910,6 +910,8 @@ export class PixiScene {
   private playerGroundPool = new Sprite(getGlowTexture()); // A: 足元の地面に敷く光だまり(加算)
   private playerKatanaBack = new Sprite();                 // 背負い刀(刀/小烏丸 装備中・プレイヤー背面)
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
+  private playerSkateboard = new Sprite();                 // スケボー乗車中に足元へ敷く板(プレイヤー背面=足の下)
+  private playerSkateboardAttached = false;                // playerView.container へ親子付け済みか
   private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1)
   private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(ダガー+青スラッシュ knife-swing-2)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
@@ -4190,6 +4192,13 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerKatanaBack, 1);
       this.playerKatanaBackAttached = true;
     }
+    // スケボー乗車中の板を本体スプライトの背面(=足の下)へ一度だけ親子付け。reticle(0) と sprite の間へ挿入。
+    if (!this.playerSkateboardAttached) {
+      this.playerSkateboard.anchor.set(0.5, 0.5);
+      this.playerSkateboard.visible = false;
+      this.playerView.container.addChildAt(this.playerSkateboard, 1);
+      this.playerSkateboardAttached = true;
+    }
     // 近接スイングは2枚の画像(frame1=ダガー / frame2=ダガー+青スラッシュ)を差し替えて見せる。
     // 本体スプライトの前面に重ね、回転はせず左向きは水平ミラーのみ。
     if (!this.playerKnifeSetup) {
@@ -4565,6 +4574,27 @@ export class PixiScene {
       kb.alpha = view.sprite.alpha;
     } else {
       kb.visible = false;
+    }
+    // スケボー乗車中: 足元に板を敷いて「乗っている」見た目にする(描画のみ・判定不変)。板テクスチャは
+    // 投擲弾と同じ色キー透過済み。向きで左右反転し、体幅にやや余る幅へ。未読込時は非表示(本体だけ)。
+    const sb = this.playerSkateboard;
+    const sbTex = getTexture('skateboard');
+    if (p.skaterRiding && sbTex && sbTex.width > 0) {
+      const d = this.depthScale(fb.footY);
+      const targetW = fb.boxW * 1.15 * d;
+      const sc = targetW / sbTex.width;
+      const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+      sb.texture = sbTex;
+      sb.visible = true;
+      sb.scale.set((flip ? -1 : 1) * sc, sc);
+      sb.rotation = 0; // 板は地面に水平(体の傾きには追従させない)
+      sb.position.set(
+        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
+        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - sbTex.height * sc * 0.28,
+      );
+      sb.alpha = view.sprite.alpha;
+    } else {
+      sb.visible = false;
     }
     // 近接スイングを2枚の画像差し替えで見せる(描画のみ・判定不変)。回転はせず、左向きは
     // 水平ミラー。frame1=ダガーをキャラ左下→frame2=ダガー左上+青スラッシュが右へ弧。

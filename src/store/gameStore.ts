@@ -3088,21 +3088,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
       })
       .map(p => {
-        // バッシュ方向: 盾の外向き半球(180°)内なら「攻撃(facing)方向」に自由に振れる(社長指示)。
-        // 例: 盾が上にあっても、右を向いて攻撃すれば右へ飛ばす。裏半球(盾の後ろ)へは飛ばさず法線へクランプ。
-        // 盾の外向き法線 = プレイヤー中心→盾中心。中心がほぼ重なる時のみ設置法線へフォールバック。
-        const scx = p.x + p.width / 2;
-        const scy = p.y + p.height / 2;
-        const sm = Math.hypot(scx - pcx, scy - pcy);
-        const nx = sm > 0.01 ? (scx - pcx) / sm : p.direction.x;
-        const ny = sm > 0.01 ? (scy - pcy) / sm : p.direction.y;
+        // バッシュ方向: 盾の外向き半球(前方180°)内なら「攻撃(facing)方向」へそのまま飛ばす(社長指示)。
+        // 例: 盾が右にあっても、上を向いて攻撃すれば上へ飛ばす。裏半球(盾の後ろ)へは飛ばさず法線へクランプ。
+        // 半球判定に使う法線は「設置時に確定した盾の外向き法線 = p.direction」を使う(安定)。
+        // ※以前は「プレイヤー中心→盾中心」の実時間ベクトルで判定していたが、盾に密着していると僅かな
+        //   位置ズレで真横(90°)付近の符号が反転し、上向きバッシュが法線(右)へ落ちて“右に飛ぶ”不具合になっていた。
+        //   位置は「前方180°に入るか」の判定にだけ関与させ、通れば向きは facing をそのまま採用する。
+        const nm = Math.hypot(p.direction.x, p.direction.y) || 1;
+        const nx = p.direction.x / nm, ny = p.direction.y / nm;
         let dux = nx, duy = ny;
         const ld = player.lastDirection;
         if (ld) {
           const fm = Math.hypot(ld.x, ld.y);
           if (fm > 0.01) {
             const fx = ld.x / fm, fy = ld.y / fm;
-            if (fx * nx + fy * ny >= 0) { dux = fx; duy = fy; } // 前方180°=facing採用 / 裏側は法線のまま
+            if (fx * nx + fy * ny >= 0) { dux = fx; duy = fy; } // 前方180°(外向き半球)内=facing採用 / 裏側は法線へクランプ
           }
         }
         const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
@@ -7461,7 +7461,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       let { x, y, fireAt, dwellMs, face } = esc;
       if (nearest) {
         // 停止して射撃(進まない)。射撃間隔でスロットル。弾はプレイヤーと同じ見た目の実弾(handgun projectile)。
-        if (now >= fireAt) {
+        // 裏ボス存命中は護衛NPCの発砲を中止(社長指示)。画面外へ逃げると裏ボスが回復するため、NPCの継続射撃で
+        // “削り殺し”できてしまうのを防ぐ(裏ボスはプレイヤー自身の攻撃で倒す)。
+        if (now >= fireAt && !boss) {
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
           let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;

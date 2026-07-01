@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1252 — 盾バッシュ向き修正 / 裏ボス中はNPC発砲中止 / スケボー乗車の見た目 / 叫喚差し替え(社長指示)
+- **盾バッシュの向き修正(バグ)**: バッシュは「プレイヤーが向いている方向」へ飛ばす。プレイヤー位置は
+  「盾の外向き半球(前方180°)に入るか」の判定にだけ使う。これまで半球判定に「プレイヤー中心→盾中心」の
+  実時間ベクトルを使っていたため、盾に密着していると真横(90°)付近で符号反転し、盾が右・上向きバッシュ
+  なのに右へ飛ぶ不具合になっていた。判定を設置時に確定する盾の外向き法線(`p.direction`)基準へ変更し、
+  前方180°内なら facing をそのまま採用(裏側のみ法線へクランプ)。`store/gameStore.ts`。
+- **裏ボス存命中は護衛NPCの発砲を中止(社長指示)**: 画面外へ逃げると裏ボスは毎秒回復するのに、出会った
+  護衛NPCが継続射撃で削り殺せてしまう問題。裏ボスが1体でも居る間は `updateSuppression` の護衛発砲を停止
+  (裏ボスはプレイヤー自身の攻撃で倒す)。救助NPC(shooter)は `fromEvent` の攻撃者しか撃たない=裏ボスに
+  当たらないため変更不要。`store/gameStore.ts`。
+- **スケボー乗車の見た目(社長指示)**: `skaterRiding` 中はプレイヤーの足元に板スプライト(投擲弾と同じ色キー
+  透過テクスチャ)を敷いて「乗っている」表現。向きで左右反転・体幅にやや余る幅・本体の背面(足の下)。
+  `pixi/pixiScene.ts`。
+- **叫喚(screamer)スプライト差し替え(社長提供)**: `public/sprites/screamer.png` を新規絵へ置換(紫背景=
+  従来どおり `loadKeyed('screamer')` の色キー透過に適合)。
+- 負荷: いずれも 1/10(向き計算の変更/発砲ゲート/乗車中1枚の追加スプライト/テクスチャ差し替えのみ)。
+- 検証: typecheck / lint(0) / test(101) / build 通過。変更: `store/gameStore.ts`・`pixi/pixiScene.ts`・
+  `public/sprites/screamer.png`・`package.json`。
+
 ## v0.25.1251 — スケボー(スケーター)を「乗車→投擲バッシュ」に再設計(社長指示)
 
 - 仕様(社長確認済み): skater スキル装備時のみ。**ダブルタップ(2発目ホールド)で乗車** → 乗車中だけ
