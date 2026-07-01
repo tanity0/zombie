@@ -597,9 +597,10 @@ const TREE_VISUAL_SCALE = 1.65 * 1.5;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
-// 緑卵(mine)のプールスプライト表示サイズ(旧 per-frame Graphics の卵とほぼ同寸)。
-const EGG_VISUAL_W = 18;
-const EGG_VISUAL_H = 24;
+// 緑卵(mine)のプールスプライト表示サイズ(社長指示で気持ち大きく: 18/24→22/29。当たり判定(mineRect)は
+// world/mines.ts 側で別管理=見た目だけの変更、判定は不変)。
+const EGG_VISUAL_W = 22;
+const EGG_VISUAL_H = 29;
 // ステージ4の焚き火(松明の置き換え)。横長の焚き火台なので幅広・低め。炎は台の中央(低い位置)。
 const CAMPFIRE_VISUAL_W = 60;
 const CAMPFIRE_VISUAL_H = 34;

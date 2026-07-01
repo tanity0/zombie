@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1274 — 緑卵(mine)の見た目を気持ち大きく(社長指示)
+- `EGG_VISUAL_W/H` 18/24→22/29。表示専用のプールスプライトサイズで、当たり判定(`world/mines.ts` の
+  `mineRect`)は別管理=見た目だけの変更(判定不変)。`pixi/pixiScene.ts`。
+- 検証: typecheck / lint(0) / test(114 pass) / build 通過。
+
 ## v0.25.1273 — screamer(叫喚型)の基礎HPを下げる 60→20(社長指示)
 - 社長確認: エリア/色倍率×ENEMY_HP_MULT(5)込みの実効HPは白60=300〜赤630〜赤エリア4=1260と、直接火力ゼロで
   距離を保ちつつ支援バフのみを行う役割にしては zombie(基礎40)・werewolf(基礎32)より硬く、体感「固い」と一致。
