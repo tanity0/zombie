@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1275 — screamer発動時の演出を強化(社長指示: 叫んだっぽいエフェクト＋画面揺れ)
+- 既存(リング2段＋発光＋コールアウト＋揺れ220ms/mag5)に対し「叫んだ」感を強化:
+  - 一段外側のリングを追加(音波が遅れて届くイメージ・`rgba(163,230,53,0.5)` 半径20→330・620ms)。
+  - 画面全体がわずかに緑へ明滅する `spawnFlash('rgba(163,230,53,0.22)', 260)` を追加。
+  - 画面揺れを他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)並みへ: 220ms/mag5 → 260ms/mag10。
+- SE(screamer-cry)・バフ効果・発動条件は不変。`store/gameStore.ts`。
+- 負荷 1/10(一撃・低頻度イベントへのリング/フラッシュ追加のみ。常時/多重発生ではない)。
+- 検証: typecheck / lint(0) / test(114 pass) / build 通過。
+
 ## v0.25.1274 — 緑卵(mine)の見た目を気持ち大きく(社長指示)
 - `EGG_VISUAL_W/H` 18/24→22/29。表示専用のプールスプライトサイズで、当たり判定(`world/mines.ts` の
   `mineRect`)は別管理=見た目だけの変更(判定不変)。`pixi/pixiScene.ts`。

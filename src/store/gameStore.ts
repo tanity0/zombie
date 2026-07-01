@@ -5841,14 +5841,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(x, y, 8, 130, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
       get().spawnGlow(x, y, 70, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
     }
-    // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋小さな画面揺れ。
+    // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
+    // 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュを追加し、
+    // 揺れも他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さへ上げる(旧: 220ms/mag5)。
     if (screamerActivatedAt.length > 0) {
       const { x, y } = screamerActivatedAt[0];
       get().spawnRing(x, y, 10, 240, 'rgba(190,242,100,0.72)', 4, 480);
       get().spawnRing(x, y, 6, 150, 'rgba(255,255,255,0.85)', 3, 340);
+      get().spawnRing(x, y, 20, 330, 'rgba(163,230,53,0.5)', 3, 620); // 一段外側=音波が遅れて届くイメージ
       get().spawnGlow(x, y, 130, 'rgba(163,230,53,', 520);
       get().spawnCallout(x, y - 30, '叫喚!', '#bef264', { scale: 1.1 });
-      get().triggerShake(220, 5);
+      get().spawnFlash('rgba(163,230,53,0.22)', 260); // 叫びが画面全体に響くイメージの淡い緑フラッシュ
+      get().triggerShake(260, 10);
     }
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
     if (punisherHits.length > 0 && punisherDmg > 0) {
