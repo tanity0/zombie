@@ -73,7 +73,7 @@ import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { enemyCountCap, phaseAt } from '../utils/difficultyDirector';
+import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
@@ -337,6 +337,7 @@ const evParam = (key: string): string | null =>
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
+const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
 // 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
 const evNum = (key: string, def: number): number => {
@@ -5118,6 +5119,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
         const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0)));
+        // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
+        // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
+        const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;
+        const sceneFeatured = scene ? scene.featured : [];
+        const sceneIntervalMult = scene ? scene.intervalMult : 1;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
@@ -5131,7 +5137,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !indoor &&
           !confining &&
           fieldCount < normalSpawnCap &&
-          timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1)
+          timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1) * sceneIntervalMult
         ) {
           const spawnCount = Math.min(
             labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(),
@@ -5172,14 +5178,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured);
                 tries++;
               }
               if (enemy.type === 'plant') {

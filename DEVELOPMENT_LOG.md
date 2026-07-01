@@ -18311,3 +18311,13 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 位置づけ: 順調でも過剰育成でも、関所は終了HP帯へ寄るよう新規湧きの強さ/種類を微調整=“どちらにしろ頑張る”。既存敵は強化しない(新規湧き経由=緩やか)。スコア/EXP/レベルは不変。
 - 性能: 毎フレーム軽量な数値計算のみ(新規描画なし)。負荷 1/10。
 - 検証: typecheck / lint / test(99 pass) / build 通過。変更: utils/difficultyScaler.ts(+test), hooks/useGameLoop.ts, package.json
+
+## v0.25.1244 — 沸きシーン(SpawnScene)最小プロトタイプ(緩急の部品化)
+- 依頼(社長): 沸きスピード/敵構成にもパターン(優しい/関所/無双)を用意して緩急の部品にしたい。
+- 実装(最小プロトタイプ):
+  - `difficultyDirector`: `SpawnScene{featured, intervalMult}` を追加し、各フェーズにシーンを割当(導入=雑魚まばら / 関所=パンプキン+犬・カオス・雑魚大量+飛び道具 / 余裕=パンプキン練習・犬練習 / 無双=弱雑魚高速 / boss=素)。`sceneAt(t)` を公開。
+  - 2レバー: **沸きスピード**=`getEnemySpawnInterval × scene.intervalMult`(<1速い/>1遅い)。**敵構成**=`selectEnemyType`/`generateEnemy` に featured を追加し、強調型に重み×2.5(乗算バイアス=エリアで出現不可の型は0のまま)。
+  - `?scenes=0` で無効(素の分布・等速)。屋内/ラボは対象外。既存の数(②)・強さ/種類(③)・関所補正(④)の上に乗る。
+  - テスト: 全フェーズにscene / sceneAt=phaseAt.scene / gate<relief(速い) / mowdownは高速&弱雑魚。
+- 位置づけ: 数値/シーン割当は私案。実機で緩急を見て「並べ方(台本/プール抽選)」「無双の頻度」「featuredの効き」を詰める前提。既存 WAVE_EVENTS(固定スパイク)は併存。
+- 検証: typecheck / lint / test(102 pass) / build 通過。変更: utils/difficultyDirector.ts(+test), utils/enemyUtils.ts, hooks/useGameLoop.ts, package.json

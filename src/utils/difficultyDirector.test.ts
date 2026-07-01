@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enemyCountCap, phaseAt, PHASES, ENEMY_COUNT_CEIL } from './difficultyDirector';
+import { enemyCountCap, phaseAt, sceneAt, PHASES, ENEMY_COUNT_CEIL } from './difficultyDirector';
 
 describe('difficultyDirector — count axis (step 2)', () => {
   it('keeps the cap within [6, ceil] and reaches the ceiling at gates', () => {
@@ -34,5 +34,29 @@ describe('difficultyDirector — count axis (step 2)', () => {
     expect(phaseAt(0).kind).toBe('buildup');
     expect(phaseAt(420_000).kind).toBe('boss');
     expect(phaseAt(600_000).kind).toBe('boss');
+  });
+});
+
+describe('difficultyDirector — spawn scenes (composition/speed levers)', () => {
+  it('every phase has a scene and sceneAt matches phaseAt', () => {
+    for (const p of PHASES) {
+      expect(p.scene).toBeTruthy();
+      expect(p.scene.intervalMult).toBeGreaterThan(0);
+    }
+    for (const t of [0, 110_000, 250_000, 300_000, 420_000]) {
+      expect(sceneAt(t)).toBe(phaseAt(t).scene);
+    }
+  });
+
+  it('gate scenes spawn faster (lower intervalMult) than the sparse relief scene', () => {
+    const gate = PHASES.find(p => p.kind === 'gate')!;
+    const sparse = PHASES.find(p => p.scene.id === 'relief-sparse')!;
+    expect(gate.scene.intervalMult).toBeLessThan(sparse.scene.intervalMult);
+  });
+
+  it('the mowdown scene is fast and features weak trash', () => {
+    const mow = PHASES.find(p => p.scene.id === 'mowdown')!;
+    expect(mow.scene.intervalMult).toBeLessThan(1);
+    expect(mow.scene.featured).toContain('bat');
   });
 });
