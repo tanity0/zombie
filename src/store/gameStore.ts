@@ -529,9 +529,9 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 // 押し出し(トラップと同じ shove 機構でシームレス)、掃過した敵全部に近接×
 // SHIELD_BASH_DAMAGE_MULT と押し出し方向への強ノックバックを与える(壁は破壊せず残す)。
 const SHIELD_BASH_DAMAGE_MULT = 3;
-const SHIELD_BASH_SHOVE_DISTANCE = 50;        // バッシュの飛び出し距離(少し短め)
+const SHIELD_BASH_SHOVE_DISTANCE = 100;       // バッシュの飛び出し距離(社長指示で倍: 50→100)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
-const SHIELD_BASH_KNOCKBACK_SPEED = 2400; // バッシュのノックバック距離(社長指示で少し延長: 1920→2400)。距離∝速度。
+const SHIELD_BASH_KNOCKBACK_SPEED = 4800; // バッシュのノックバック距離(社長指示で倍: 2400→4800)。距離∝速度。
 // スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを倒すと
 // 進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を出して急停止。
 const SKATER_BASH_RUN_MS = 1000;       // 発動に必要な連続走行時間(1秒)
@@ -3087,7 +3087,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const ny = Math.max(p.y, Math.min(pcy, p.y + p.height));
         return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
       })
-      .map(p => {
+      .flatMap(p => {
         // バッシュ方向 = プレイヤーの向き(lastDirection=指を離した瞬間のスティック方向)へそのまま飛ばす(社長指示A)。
         // 盾の位置/法線ではクランプしない。以前は「盾の外向き法線の前方180°」でクランプしていたが、盾は
         // 「移動方向の逆」へ自動設置される=法線はプレイヤーの背後向き。facing は移動方向(前方)なので facing は
@@ -3102,6 +3102,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           const nm = Math.hypot(p.direction.x, p.direction.y) || 1;
           dux = p.direction.x / nm; duy = p.direction.y / nm;
         }
+        const scx = p.x + p.width / 2, scy = p.y + p.height / 2;
+        // 「バッシュで自分とぶつかると動かない」(社長指示): バッシュ方向が盾をプレイヤー側へ押し込む向き
+        // (盾→プレイヤー と同じ側=内積>0)なら、盾を自分に押し付ける形になるのでバッシュを発動しない。
+        if (dux * (pcx - scx) + duy * (pcy - scy) > 0) return [];
         const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
         const ey = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;
         // 始点〜終点の壁を覆う掃過AABB(敵の被弾判定用)。
@@ -3111,7 +3115,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           width: Math.abs(ex - p.x) + p.width,
           height: Math.abs(ey - p.y) + p.height,
         };
-        return { id: p.id, fromX: p.x, fromY: p.y, x: ex, y: ey, dux, duy, swept, cx: p.x + p.width / 2, cy: p.y + p.height / 2 };
+        return [{ id: p.id, fromX: p.x, fromY: p.y, x: ex, y: ey, dux, duy, swept, cx: scx, cy: scy }];
       });
     const hasShieldShove = shieldShoves.length > 0;
     let bashHitEnemy = false; // バッシュが敵に当たったか(ストップ用)

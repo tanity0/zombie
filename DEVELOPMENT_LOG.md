@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1257 — 盾バッシュ: 自分にぶつかる向きは不発 / ノックバック・押し出し倍化(社長指示)
+- **自分とぶつかると動かない**: バッシュ方向が盾を「プレイヤー側へ押し込む向き」(盾→プレイヤーとの内積>0)なら、
+  盾を自分に押し付ける形になるのでバッシュを発動しない(shieldShoves から除外=壁も動かず敵ノックバックも無し)。
+  クランプではなく「不発」なので、発動する時は必ず向いてる方向へ飛ぶ。`store/gameStore.ts`。
+- **ノックバック・押し出しを倍**: `SHIELD_BASH_KNOCKBACK_SPEED` 2400→4800、`SHIELD_BASH_SHOVE_DISTANCE` 50→100。
+- 負荷 1/10。検証: typecheck / lint(0) / test(101) / build 通過。
+
 ## v0.25.1256 — 盾バッシュ: 位置ベースのクランプを撤廃し「向いてる方向へ」直す(社長指示A)
 - 症状: バッシュがプレイヤーの向きではなく「プレイヤーと盾の位置関係(法線)なり」に飛ぶ。
 - 原因: 前方180°クランプがほぼ毎回発動。盾は「移動方向の逆」へ自動設置=外向き法線はプレイヤーの背後向き。
