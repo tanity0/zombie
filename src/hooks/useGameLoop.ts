@@ -5432,31 +5432,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (currentPlayer.level > prevLevelRef.current) {
           const cx = currentPlayer.x + currentPlayer.width / 2;
           const cy = currentPlayer.y + currentPlayer.height / 2;
-          spawnFlash('rgba(253,224,71,0.28)', 320);
+          // より派手に(社長指示): 画面フラッシュを強め＋白い閃光リング追加＋発光を大きく。
+          spawnFlash('rgba(253,224,71,0.42)', 420);
           spawnRing(
             cx,
             cy,
-            8, 126, 'rgba(253,224,71,0.95)', 6, 680
+            8, 150, 'rgba(253,224,71,0.98)', 7, 720
           );
           spawnRing(
             cx,
             cy,
-            2, 54, 'rgba(255,255,255,0.95)', 4, 360
+            2, 70, 'rgba(255,255,255,1)', 5, 420
           );
           spawnRing(
             cx,
             cy,
-            36, 170, 'rgba(251,191,36,0.62)', 3, 820
+            30, 210, 'rgba(251,191,36,0.66)', 4, 900
           );
-          useGameStore.getState().spawnGlow(cx, cy, 82, 'rgba(253,224,71,', 520);
+          spawnRing(
+            cx,
+            cy,
+            60, 260, 'rgba(255,255,255,0.5)', 3, 700
+          ); // 追加の外周閃光
+          useGameStore.getState().spawnGlow(cx, cy, 130, 'rgba(253,224,71,', 620);
           spawnBurst(
             cx,
             cy,
             '#fde68a',
-            44
+            56
           );
-          spawnBurst(cx, cy, '#ffffff', 12);
-          useGameStore.getState().spawnCallout(cx, currentPlayer.y - 14, 'LEVEL UP!', '#fde68a');
+          spawnBurst(cx, cy, '#ffffff', 18);
+          // 枠(黒フチ)廃止＝Counter/KILL と同じ両サイドフェードの色帯へ。黄色地・大きめ(社長指示)。
+          useGameStore.getState().spawnCallout(cx, currentPlayer.y - 14, 'LEVEL UP!', '#fffbe6', { bg: 0xf59e0b, scale: 1.3 });
           playSfx('level-up'); // レベルアップSE(社長提供・レベルが上がった瞬間)
           prevLevelRef.current = currentPlayer.level;
         } else if (currentPlayer.level < prevLevelRef.current) {

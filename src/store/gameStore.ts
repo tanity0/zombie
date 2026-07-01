@@ -952,7 +952,7 @@ const HANDGUN_RANGE_REF = 176;
 export const ENEMY_ATTACK_SPEED_MULT = GAME_SPEED; // ゲームスピード(?speed=で調整)。既定1.2。敵の発砲＋特殊攻撃の溜め/CDテンポ。
 // ハンター変異体の視界(索敵)範囲(px)。useGameLoop の発見判定・updateEnemies のジャンプ範囲・
 // pixiScene の薄紫サークル表示で共有する単一の値(社長指示)。
-export const HUNTER_VISION_RANGE = 720;
+export const HUNTER_VISION_RANGE = 500;
 // ハンターのジャンプ攻撃を発動する距離の上限(社長指示で 720→500)。視界サークル/着地クランプ(=VISION_RANGE)とは別。
 export const HUNTER_JUMP_RANGE = 500;
 

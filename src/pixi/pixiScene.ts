@@ -7050,8 +7050,8 @@ export class PixiScene {
         const fb = playerFootBox(player);
         const d = this.depthScale(fb.footY);
         const top = fb.footY - fb.boxH * d - 10;
-        g.rect(x - 1, top - 1, w + 2, h + 2).fill({ color: 0x000000, alpha: 0.6 });
-        g.rect(x, top, w, h).fill({ color: 0xffffff, alpha: 0.18 });
+        // 枠(外側の黒縁)＋白トラックを廃止。背景は半透明の黒のみ＋黄色の進捗塗り(社長指示・敵HPバーと同規格)。
+        g.rect(x, top, w, h).fill({ color: 0x000000, alpha: 0.5 });
         g.rect(x, top, w * progress, h).fill({ color: 0xfbbf24 });
       }
     }
