@@ -1120,9 +1120,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!ae) {
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
             // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
-            // 裏ボスが追いかけてきている間はイベントを発生させない(社長指示)。
+            // 裏ボスが存命の間はイベントを発生させない(社長指示)。bossChasing(追跡中)だけだと出現直後/帰巣/
+            // 画面外など非追跡の隙間で発火してしまう(社長報告バグ)ので「裏ボスが1体でも居る」で判定する。
             // ハンター追跡中(phase≠idle)は他イベントを発生させない(社長指示:同時1イベントまで)。
-            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && hunterRef.current.phase === 'idle';
+            const hiddenBossAlive = useGameStore.getState().enemies.some(e => isHiddenBoss(e.type));
+            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle';
             if (arenaReady) {
               nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
               const pcx = player.x + player.width / 2;
@@ -1313,6 +1315,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 3分経過していても、それより内側の安全エリアでは発火しない=深入りした時に初めて発火。
           const rnDepth = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
           if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
+              && !rnGs.enemies.some(e => isHiddenBoss(e.type)) // 裏ボス存命中は紅き夜を発火させない(イベント抑止と同基準)
               && areaZoneIndexFor(rnDepth) >= 2) {
             // 3分後 かつ デンジャーゾーン以降で、出撃に一度だけ抽選。当たれば発火、外れたらこの出撃は紅き夜なし
             // (社長指示で頻度を下げる=必ず→確率)。redNightFiredRef は当落どちらでも立てて以降は判定しない。

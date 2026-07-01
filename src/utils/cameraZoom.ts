@@ -7,7 +7,7 @@
 //  ・敵数 7体までは固定(引かない)、8体以上で線形に引き、20体で最大。
 //  ・大型(reaper/城ボス/裏ボス/hunter)が1体でもいれば数に関係なく即・最大引き。
 
-export const CONTEXT_ZOOM_MIN = 0.9;        // 最大の引き(=一回り)
+export const CONTEXT_ZOOM_MIN = 0.8;        // 最大の引き(社長指示で引き幅2倍: 1.0→0.9 の 0.1 → 0.2)
 export const CONTEXT_ZOOM_COUNT_FLOOR = 7;  // この体数までは引かない
 export const CONTEXT_ZOOM_COUNT_CEIL = 20;  // この体数で最大引き
 
