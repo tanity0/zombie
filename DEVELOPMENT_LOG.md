@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1282 — screamer(叫喚型): 初回発動を計7秒に / 撃破時にバフ即失効(社長指示)
+- 社長質問「バフちゃんと切れてる？」への確認: `screamActive = gameTime < screamerBuffUntil` は移動速度
+  (gameStore)・被弾ダメージ倍率(useGameLoop、飛び道具/接触の両方)の3箇所すべてで正しく時間ゲートされて
+  おり、上書きも毎回`screamerBuffUntil`を再セットするだけ(加算/スタックなし)。バグは見つからず。
+- **初回発動タイミング変更**: 出現から実際の発動(バフ開始)まで計5秒(溜め開始3s+溜め2s)だったのを、
+  社長指示で**計7秒**(溜め開始5s+溜め2s=7s)に変更。溜め時間(`SCREAMER_WINDUP_MS`=2s)自体は不変。
+  `store/gameStore.ts`(`SCREAMER_FIRST_MS` 3000→5000)。
+- **撃破時にバフ即失効**(社長指示・新規): 従来はscreamerを倒しても、既に開始していたバフは残り時間
+  そのまま(`SCREAMER_BUFF_MS`=7秒)継続していた。screamerを倒した瞬間に`screamerBuffUntil`を現在時刻へ
+  切り下げて即座に終了するように変更。近接キル全経路が通る共通関数`grantMeleeKillRewards`と、銃/接触/爆発
+  ダメージの共通経路`damageEnemy`の2箇所に追加(=全キル手段を網羅)。`store/gameStore.ts`。
+- `store/sim.test.ts`: 既存2件のタイミング前提(5秒発動)を新仕様(7秒発動)に更新、新規1件(撃破で即失効)追加。
+  計121 pass。
+- 検証: typecheck / lint(0, full) / test(121 pass) / build 通過。
+
 ## v0.25.1281 — AIディレクター: RELAXが危険再上昇に反応できないバグ修正(実プレイデータで発覚)
 - 実プレイ(4:32・RELAX 4回156s=57%だがIntensityはその間も何度も1.00へ再上昇)を見て発覚。RELAXには
   「Intensity低下→BUILD_UPへ戻る」経路しか無く、最低滞在(8s)を過ぎても危険が再上昇した時にPEAKへ

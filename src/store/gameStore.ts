@@ -1200,7 +1200,9 @@ const EGGCARRIER_SCATTER_RADIUS = 110;    // 自分の周辺のこの半径内�
 const EGGCARRIER_MAX_EGGS = 20;          // 抱卵型が撒いた卵の同時上限(超過は古い順に消す)。画面外は別途カリング。
 const EGGCARRIER_ORBIT_RADIUS = 220;     // プレイヤーから保つ周回半径(px)。
 // 変異体(叫喚型・screamer): 距離を保ちつつ、溜め→叫喚で画面内の通常敵を一時強化する。
-const SCREAMER_FIRST_MS = 3000;       // 出現してから初回叫喚(=溜め開始)までの待ち。
+// 出現してから初回叫喚(発動=バフ開始)までの合計を7秒にする(社長指示)。溜め(SCREAMER_WINDUP_MS=2秒)を
+// 差し引いた、溜め開始までの待ちが SCREAMER_FIRST_MS(5秒 + 溜め2秒 = 計7秒で発動)。
+const SCREAMER_FIRST_MS = 5000;       // 出現してから初回の溜め開始までの待ち。
 const SCREAMER_INTERVAL_MS = 10000;   // 以降の叫喚間隔(発動から次の溜め開始まで)。
 export const SCREAMER_WINDUP_MS = 2000; // 叫喚の溜め(予兆)時間。これを倒し切れば阻止=バフ無し。
 const SCREAMER_BUFF_MS = 7000;        // 強化の持続(発動から)。
@@ -1357,6 +1359,11 @@ const grantMeleeKillRewards = (
   suppressKillCallout = false,
   ammoChanceOverride?: number
 ) => {
+  // 叫喚型(screamer)を近接で倒したら強化バフを即座に打ち切る(社長指示)。全ての近接キル経路が
+  // このヘルパーを通るので、ここ1箇所で拾える(gun/接触/爆発側は damageEnemy 内で同様に処理)。
+  if (killed.some(k => k.enemy.type === 'screamer') && get().screamerBuffUntil > get().gameTime) {
+    useGameStore.setState({ screamerBuffUntil: get().gameTime });
+  }
   for (const { enemy, finisher } of killed) {
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
@@ -5099,7 +5106,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           gameStats: newStats,
           // The giantbat is the run's finale boss — defeating it triggers the return phase.
           // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。即勝利せず帰還サークルへ。
-          finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent)
+          finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent),
+          // 叫喚型(screamer)を倒したら強化バフを即座に打ち切る(社長指示)。残り時間を待たず即失効。
+          ...(enemy.type === 'screamer' && state.screamerBuffUntil > state.gameTime ? { screamerBuffUntil: state.gameTime } : {}),
         };
       }
 

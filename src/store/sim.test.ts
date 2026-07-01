@@ -122,7 +122,7 @@ describe('headless simulation invariants', () => {
     expect(eggs.length).toBeGreaterThan(3);
   });
 
-  it('screamer winds up after ~3s then opens a ~7s buff window', () => {
+  it('screamer winds up after ~5s then opens a ~7s buff window (社長指示: 出現から発動まで計7秒)', () => {
     useGameStore.getState().resetGame('warrior');
     const { x, y } = useGameStore.getState().player;
     useGameStore.setState({
@@ -132,9 +132,9 @@ describe('headless simulation invariants', () => {
     const dt = 1 / 60;
     let t = useGameStore.getState().gameTime;
     const step = (frames: number) => { for (let i = 0; i < frames; i++) { t += dt * 1000; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(dt); } };
-    step(150); // ~2.5s: before first scream(3s) → no buff yet
+    step(270); // ~4.5s: before windup starts(5s) → no buff yet
     expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(t);
-    step(200); // ~5.8s: past first scream(3s)+windup(2s) → buff window opened
+    step(200); // ~7.8s: past windup start(5s)+windup(2s)=7s activation → buff window opened
     const buf = useGameStore.getState().screamerBuffUntil;
     expect(buf).toBeGreaterThan(t);                 // active
     expect(buf).toBeLessThanOrEqual(t + 7000 + 50); // ~7s window from activation
@@ -150,11 +150,21 @@ describe('headless simulation invariants', () => {
     const dt = 1 / 60;
     let t = useGameStore.getState().gameTime;
     const step = (frames: number) => { for (let i = 0; i < frames; i++) { t += dt * 1000; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(dt); } };
-    step(220); // ~3.7s: now in the 2s windup (溜め中)
+    step(360); // ~6.0s: now in the 2s windup (溜め中。windupは5s開始→7sで発動)
     expect(useGameStore.getState().enemies[0]?.aiPhase).toBe('scream');
     useGameStore.setState({ enemies: [] }); // 倒した=溜め完了前に除去
     step(120); // past where activation would have been
     expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(t); // never activated
+  });
+
+  it('killing the screamer while its buff is active cuts the buff immediately(社長指示: 撃破時に即失効)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const { x, y } = useGameStore.getState().player;
+    const screamer = spawnEnemyAt('screamer', x + 260, y, useGameStore.getState().gameTime);
+    useGameStore.setState({ enemies: [screamer], screamerBuffUntil: useGameStore.getState().gameTime + 7000 });
+    expect(useGameStore.getState().screamerBuffUntil).toBeGreaterThan(useGameStore.getState().gameTime);
+    useGameStore.getState().damageEnemy(screamer.id, 9999);
+    expect(useGameStore.getState().screamerBuffUntil).toBeLessThanOrEqual(useGameStore.getState().gameTime);
   });
 
   it('hidden boss enters full stun (purple) after N crits, then ignores further counting', () => {
