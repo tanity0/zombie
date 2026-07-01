@@ -355,7 +355,7 @@ const WAVE_GRACE_MS = 10000;
 const BOSS_SPAWN_DEPTH = evNum('bossdepth', 7800);   // この深度に到達で出現(area 4 の少し内側。巣が無いタイプ用の保険)
 const BOSS_SPAWN_NEAR = 1500;                        // 巣(固定)へこの距離まで近づくと出現(=指定エリアに近づくと出現)
 const BOSS_EXIT_DEPTH = 7300;                        // この深度を下回ると深層域を出た=帰巣して退場(ヒステリシス)
-const BOSS_REGEN_PER_SEC = 40;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示)
+const BOSS_REGEN_PER_SEC = 10;                       // 画面外/帰巣中は毎秒この耐久値が回復(社長指示: 40→10)
 const BOSS_DASH_SPEED_MULT = 2;                      // ダッシュ時は2倍速で追跡
 const BOSS_SCREEN_MARGIN = 120;                      // 画面内判定のマージン(これより内なら on-screen 扱い)
 // 攻撃状態機械のタイミング(gameTime ms)。
