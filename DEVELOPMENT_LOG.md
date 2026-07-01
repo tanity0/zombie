@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1269 — AIディレクター引き継ぎ記録を新設(ローカルへの引き継ぎ用)
+- `AI_DIRECTOR_HANDOFF.md` を新設。合意した設計方針(Intensity/Performance分離・3状態・有効化順)、実装済み(ステップA=読むだけ)、
+  ファイルマップ、`?director=1`、チューニング定数の場所、次の作業(数値詰め→RELAX接続→BuildUp→補給管理)、実行/検証、
+  厳守ルール(ブランチロック/フラグ化/読むだけ)を1枚に集約。基準点=commit b1eae30。
+- ドキュメントのみ。コード変更なし。
+
 ## v0.25.1268 — AIディレクター: リザルトにタイムライン＋難易度スコア(社長指示)
 - 「数字を見ながらプレイは無理」→ プレイ中は普通に遊び、**死亡/クリア後に振り返る**方式に。
 - 記録: `aiDirectorDebug.ts` にリングバッファ追加(0.5s刻み・約25分ぶん)。`useGameLoop` が `?director=1` の時だけ
