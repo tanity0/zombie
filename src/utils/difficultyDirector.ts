@@ -72,7 +72,9 @@ export const PHASES: Phase[] = [
   { kind: 'gate',    index: 7, startMs: 690 * S,  endMs: 760 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 延長関所⑦ カオス(長め)
   { kind: 'buildup', index: 8, startMs: 760 * S,  endMs: 790 * S, countCap: 14, scene: SCENE_MOWDOWN },        // 無双(束の間)
   { kind: 'gate',    index: 8, startMs: 790 * S,  endMs: 840 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 延長関所⑧ クライマックス
-  { kind: 'boss',    index: 2, startMs: 840 * S,  endMs: Infinity, countCap: 14, scene: SCENE_BOSS },          // 14:00 以降(終局)
+  // 14:00 以降: 特定の最終ボスは無い(城ボスが唯一のボス)。カオス継続で高強度を維持。プレイヤーによっては
+  // 裏ボス攻略タイム(裏ボスは深度で別途出現)。ハンターは従来どおり=余裕プレイへの緊張感トリガー(優勢判定・別管理)。
+  { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 20, scene: SCENE_GATE_CHAOS },   // 14:00+ 終局(カオス継続)
 ];
 
 // 指定時刻のフェーズ。範囲外(7分超)は最後の boss フェーズを返す。

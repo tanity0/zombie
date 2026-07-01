@@ -30,11 +30,13 @@ describe('difficultyDirector — count axis (step 2)', () => {
     expect(Math.max(...buildupCaps)).toBeLessThanOrEqual(Math.min(...gateCaps));
   });
 
-  it('14-min arc: buildup at start, white boss at 7:00, intensified gates in 7-14, terminal boss at 14:00', () => {
+  it('14-min arc: buildup at start, city boss at 7:00, intensified gates in 7-14, chaos endgame (no terminal boss)', () => {
     expect(phaseAt(0).kind).toBe('buildup');
-    expect(phaseAt(420_000).kind).toBe('boss');   // 7:00 白ボス(中間ライン)
+    expect(phaseAt(420_000).kind).toBe('boss');   // 7:00 城ボス(中間ライン)
     expect(phaseAt(600_000).kind).toBe('gate');   // 10:00 は延長の関所(急多め)
-    expect(phaseAt(900_000).kind).toBe('boss');   // 14:00 以降=終局
+    expect(phaseAt(900_000).kind).toBe('gate');   // 14:00 以降=特定ボス無しのカオス継続
+    // 城ボス(7:00)が唯一のボス phase(14:00に終局ボスは無い)
+    expect(PHASES.filter(p => p.kind === 'boss').length).toBe(1);
     // 7-14分は 0-7分より関所(gate)が密=“急”多め
     const gates0to7 = PHASES.filter(p => p.kind === 'gate' && p.endMs <= 420_000).length;
     const gates7to14 = PHASES.filter(p => p.kind === 'gate' && p.startMs >= 420_000).length;
