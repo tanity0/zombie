@@ -2435,7 +2435,9 @@ export class PixiScene {
         ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);
     const alertedHunters = s.enemies.filter(e => e.type === 'hunter' && e.hunterAlerted && !e.hunterFleeing).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters);
+    // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで常に方角を示す(優先処理対象)。
+    const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -7245,7 +7247,8 @@ export class PixiScene {
     baseSites: { x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
-    hunters: { x: number; y: number }[] = []
+    hunters: { x: number; y: number }[] = [],
+    screamers: { x: number; y: number }[] = []
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -7419,6 +7422,43 @@ export class PixiScene {
       g.circle(ex + 1.7, ey - 1.4, 1.1).fill({ color, alpha: 0.95 });
       g.poly([ex - 2, ey + 1, ex - 1, ey + 5, ex, ey + 1]).fill({ color: 0xe2e8f0, alpha: 0.96 }); // 牙
       g.poly([ex + 2, ey + 1, ex + 1, ey + 5, ex, ey + 1]).fill({ color: 0xe2e8f0, alpha: 0.96 });
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+    }
+
+    // 変異体(叫喚型・screamer)の方角矢印(社長指示): 画面外に居る間は常に位置を示す(優先処理対象=
+    // 叫ぶ前に見つけて倒してほしいため、ハンターと違い「検知」条件なしで常時表示)。
+    for (const sc of screamers) {
+      const tx = sc.x - camera.x;
+      const ty = sc.y - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist;
+      const ey = cyC + dy * tdist;
+      const color = 0xbef264; // screamer演出と同じ毒々しい黄緑(叫喚コールアウト/FXと同系色)
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.7 + 0.25 * pulse });
+      // 叫んでいる顔(丸頭+開いた口)+左右の音波弧。牙(ハンター)と見分けが付くシルエットに。
+      g.circle(ex, ey - 1, 4.2).fill({ color: 0xe2e8f0, alpha: 0.96 });
+      g.ellipse(ex, ey + 1.2, 2.1, 2.7).fill({ color: 0x1e293b, alpha: 0.95 }); // 開いた口
+      // moveTo してから arc(前のペン位置からの連結線=変な線を防ぐ。他のarc使用箇所と同じ作法)。
+      const a0L = -Math.PI * 0.35, a1L = Math.PI * 0.35;
+      g.moveTo(ex - 6 + Math.cos(a0L) * 3.2, ey - 1 + Math.sin(a0L) * 3.2)
+        .arc(ex - 6, ey - 1, 3.2, a0L, a1L)
+        .stroke({ width: 1.1, color, alpha: 0.6 + 0.3 * pulse });
+      const a0R = Math.PI * 0.65, a1R = Math.PI * 1.35;
+      g.moveTo(ex + 6 + Math.cos(a0R) * 3.2, ey - 1 + Math.sin(a0R) * 3.2)
+        .arc(ex + 6, ey - 1, 3.2, a0R, a1R)
+        .stroke({ width: 1.1, color, alpha: 0.6 + 0.3 * pulse });
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];

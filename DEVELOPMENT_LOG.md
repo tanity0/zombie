@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1278 — screamer(叫喚型)の居場所を方角矢印で表示(社長指示)
+- 既存のハンター方角矢印(`syncArrows`)と同じ「画面外なら画面端に矢印」方式を screamer にも追加。
+  ハンターと違い検知(alerted)条件は無し=常時1体(ディレクター管理)の位置を画面外の間は常に示す
+  (「叫ぶ前に見つけて倒してほしい優先処理対象」という役割どおり)。
+- アイコンはハンター(牙)と見分けが付くよう「叫んでいる顔(丸頭+開いた口)+左右の音波弧」、色は
+  screamerの発動演出と同系の黄緑(`0xbef264`)。`arc()`使用箇所は他所と同じく`moveTo`してから呼ぶ
+  (直前のペン位置からの連結線=変な線が出る既知の落とし穴を回避)。
+  `pixi/pixiScene.ts`(`syncArrows`に`screamers`引数追加、呼び出し側で`s.enemies`から抽出)。
+- 負荷 1/10(既存の矢印描画と同じベクター図形・同時最大1体)。
+- 検証: typecheck / lint(0, full) / test(117 pass) / build 通過。
+
 ## v0.25.1277 — クラッシュ診断: 前回セッション末尾の状態をタイトルに表示(社長報告への対応)
 - 症状: スマホで数分プレイ後に画面が真っ白になりタイトルへ戻る(既知・再発)現象の調査。
 - 切り分け: 発生環境=スマホブラウザ、タイミング=数分プレイ後。特定操作直後ではなく時間経過で起きる
