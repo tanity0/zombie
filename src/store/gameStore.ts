@@ -529,7 +529,7 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 // 押し出し(トラップと同じ shove 機構でシームレス)、掃過した敵全部に近接×
 // SHIELD_BASH_DAMAGE_MULT と押し出し方向への強ノックバックを与える(壁は破壊せず残す)。
 const SHIELD_BASH_DAMAGE_MULT = 3;
-const SHIELD_BASH_SHOVE_DISTANCE = 100;       // バッシュの飛び出し距離(社長指示で倍: 50→100)
+const SHIELD_BASH_SHOVE_DISTANCE = 80;        // バッシュの飛び出し距離(社長指示: 100→80 で気持ち短く。ノックバックは据え置き)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
 const SHIELD_BASH_KNOCKBACK_SPEED = 4800; // バッシュのノックバック距離(社長指示で倍: 2400→4800)。距離∝速度。
 // スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを倒すと
