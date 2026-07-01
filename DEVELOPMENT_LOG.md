@@ -18268,3 +18268,13 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
   - 描画: public/sprites/screamer.png を色キー透過で登録(turret方式)。renderSpec/ENEMY_LIGHT_TINT に screamer。
   - テスト: 叫喚の溜め→7秒窓 / 阻止(溜め中に倒すと不発) を追加(sim.test)。
 - 検証: typecheck / lint / test(80 pass) / build 通過。変更: types/game.ts, utils/enemyUtils.ts, store/gameStore.ts, hooks/useGameLoop.ts, pixi/{pixiTextures,pixiScene,renderSpec}.ts, store/sim.test.ts, public/sprites/screamer.png, GAME_SPEC.md, package.json
+
+## v0.25.1229 — 難易度ディレクター ステップ②(フェーズ状態機械＋「数」軸の動的上限)
+- 依頼(社長): 緩急設計。余裕⇄関所を反復→ボス。敵数の上限は平均≈10・max20(使い切るかは難易度次第)。
+- 実装:
+  - `src/utils/difficultyDirector.ts`(新規・レンダラ非依存): 7分アークのフェーズ表(buildup/gate/boss)＋`enemyCountCap(t)`(フロア≈10〜天井20にクランプ)。gate(関所)で密度スパイク、buildup(余裕)で低め。台本セットピース(pumpkin/onslaught/pair)に関所窓を概ね重ねた。
+  - `useGameLoop`: 屋外の「カリング上限(enemyCap)」と「湧き上限(normalSpawnCap)」の両方をディレクター駆動に統一(片方だけだと即カリング/枠余り)。屋内/ラボは従来固定。囲い/救助の特別枠は維持。`AREA_MAX_ENEMIES` 依存を撤去(数はディレクターが基準)。
+  - テスト: `difficultyDirector.test.ts`(上限域/天井到達/平均帯/gate>buildup/boss遷移)。
+- 対象外(据え置き): 戦力連動(PP/M)・強さ/種類軸・関所ライブ補正=後続ステップ。裏ボス・ハンターは特別枠。スコア/経験値→レベル速度システムは不変。
+- 性能: 画面内最大10→gate時のみ最大20。ベンチの安全域(E60 PASS)から見て敵数増は安価=**負荷 1/10**(simulation/rendering・天井20は60安全線の1/3・関所中のみ短時間)。
+- 検証: typecheck / lint / test(84 pass) / build 通過。変更: utils/difficultyDirector.ts(新), utils/difficultyDirector.test.ts(新), hooks/useGameLoop.ts, package.json

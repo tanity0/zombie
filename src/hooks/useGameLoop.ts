@@ -65,7 +65,6 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   OFFSCREEN_RECYCLE_MARGIN,
-  AREA_MAX_ENEMIES,
   isValidForArea
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
@@ -74,6 +73,7 @@ import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
+import { enemyCountCap } from '../utils/difficultyDirector';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
@@ -5052,16 +5052,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 囲い系(閉じ込め)イベント中だけ通常スポーナ/演出波を止める。閉じ込めない救助(rescue)は通常通り湧かせる(社長指示)。
         const ae = useGameStore.getState().activeEvent;
         const confining = !!ae && ae.kind !== 'rescue';
-        const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? MAX_ENEMIES + RESCUE_ATTACKERS : MAX_ENEMIES);
+        // ステップ②(難易度ディレクター): 屋外の「敵数の上限」をフェーズ駆動(フロア≈10〜天井20)にする。
+        // カリング上限(enemyCap)と湧き上限(normalSpawnCap)の両方を同じ値で動かす(片方だけだと即カリングされる/枠が余る)。
+        // 屋内/ラボは従来どおり固定上限。囲い/救助イベントの特別枠は維持。
+        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : enemyCountCap(gameTime);
+        const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
 
         // Continuous spawner — drip enemies onto the field from off-screen.
         // rescue 中はイベント攻撃者(fromEvent)を除いた通常敵の数で上限判定し、通常通りの密度を維持。
         const allEnemiesNow = useGameStore.getState().enemies;
         const enemyCountBeforeSpawn = allEnemiesNow.length;
         const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
-        // エリアごとの敵最大数(社長指定: 5/7/10/10/10)。屋外(非ラボ)の通常湧きに適用。ラボは従来の上限。
+        // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
-        const normalSpawnCap = labTheme ? MAX_ENEMIES : AREA_MAX_ENEMIES[playerAreaIdx];
+        // 湧き上限はカリング上限(enemyCap=dirCountCap)と揃える(枠まで湧かせて超過ぶんはカリング)。屋外はディレクター駆動(フロア≈10〜天井20)。
+        const normalSpawnCap = labTheme ? MAX_ENEMIES : dirCountCap;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         if (
