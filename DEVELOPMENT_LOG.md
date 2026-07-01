@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1276 — AIディレクター ステップC: Performance高でBuildUpを強める(社長指示C)
+- 引き継ぎ記録の「ステップC」を実施。ルール厳守: Performanceは「BuildUpを強める」だけに使い、Intensity/
+  被弾側とは絶対に混ぜない。BよりレバーをNarrow(escalationのみ)にして慎重に効かせる。
+- `aiDirector.ts`: 純関数 `buildupSpawnAdjust(macro, performance)` を追加。**BUILD_UP中だけ**、
+  spawnEsc(0..1)への上乗せ量 `escBoost = performance × BUILDUP_ESC_BOOST_MAX(0.25)` を返す。PEAK/RELAX中は
+  常に0。湧き間隔/湧き上限には触れない(Bは3レバー=安全側に強く、Cは1レバー=慎重にの非対称)。
+  ★スコア/経験値/レベル速度には一切触れない(社長指示で触ってはいけないシステム)。テスト3件追加(計117 pass)。
+- `useGameLoop.ts`: `?directorApply=` を `relax` / `buildup` / `all` の3値に拡張
+  (`DIRECTOR_APPLY_RELAX`/`DIRECTOR_APPLY_BUILDUP`、両方いけるので `all` で同時に試せる)。
+  `spawnEsc` の算出に `buildupAdj.escBoost` を加算するだけ(既存の③④の上に薄く乗る)。屋内/ラボは対象外。
+  既定(フラグ無し)は基準点(b1eae30)と完全に同じ挙動。
+- `DirectorOverlay.tsx`: 見出しが有効なフラグに応じて `(RELAX applied)`/`(BUILDUP applied)`/
+  `(RELAX+BUILDUP applied)` と表示。
+- 負荷 1/10(既存の加算箇所に係数を足すだけ)。検証: typecheck / lint(0, full) / test(117 pass) / build 通過。
+- `AI_DIRECTOR_HANDOFF.md` を更新予定(ステップC完了・残りは数値詰め/既定ON化判断/補給管理/台本との合わせ)。
+
 ## v0.25.1275 — screamer発動時の演出を強化(社長指示: 叫んだっぽいエフェクト＋画面揺れ)
 - 既存(リング2段＋発光＋コールアウト＋揺れ220ms/mag5)に対し「叫んだ」感を強化:
   - 一段外側のリングを追加(音波が遅れて届くイメージ・`rgba(163,230,53,0.5)` 半径20→330・620ms)。

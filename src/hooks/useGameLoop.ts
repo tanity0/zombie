@@ -75,7 +75,7 @@ import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
-import { stepDirector, createDirectorState, relaxSpawnAdjust } from '../utils/aiDirector';
+import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
@@ -350,10 +350,14 @@ const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/
 const DIRECTOR_ENABLED = evParam('director') === '1';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
+// ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
+// 少しだけ上乗せする(buildupSpawnAdjust。レバーはescalationのみ=Bより慎重)。?directorApply=all で両方。
 // 既定(フラグ無し)は基準点(commit b1eae30)と完全に同じ挙動。可視化(?director=1)とは独立に指定できる
 // (適用だけ試したい/両方見ながら試したい、のどちらも出来るように)。
-const DIRECTOR_APPLY_RELAX = evParam('directorApply') === 'relax';
-const DIRECTOR_ACTIVE = DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX; // 信号計算そのものを回すか(可視化 or 適用のどちらか)
+const DIRECTOR_APPLY_PARAM = evParam('directorApply');
+const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM === 'relax' || DIRECTOR_APPLY_PARAM === 'all';
+const DIRECTOR_APPLY_BUILDUP = DIRECTOR_APPLY_PARAM === 'buildup' || DIRECTOR_APPLY_PARAM === 'all';
+const DIRECTOR_ACTIVE = DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX || DIRECTOR_APPLY_BUILDUP; // 信号計算そのものを回すか
 const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵の“密度”を見る、プレイヤー中心の半径
 const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
@@ -5198,8 +5202,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/湧き間隔を伸ばす/湧き上限を
         // 下げる」を薄く掛ける。既存の敵を強制的に間引くカリング上限(enemyCap)には触れない=急に画面から
         // 消える演出を避ける。フラグ無し(既定)は基準点(b1eae30)と完全に同じ挙動。屋内/ラボは対象外。
-        const directorApplyActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
-        const relaxAdj = directorApplyActive ? relaxSpawnAdjust(directorRef.current.state.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
+        const directorApplyRelaxActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
+        const relaxAdj = directorApplyRelaxActive ? relaxSpawnAdjust(directorRef.current.state.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
+        // AIディレクター ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが
+        // 高いほど escalation を少し上乗せする。レバーはescalationのみ(湧き間隔/上限には触れない・Bより
+        // 慎重)。Performanceは「BuildUpを強める」だけに使う=Intensity/被弾側とは絶対に混ぜない。
+        const directorApplyBuildupActive = DIRECTOR_APPLY_BUILDUP && !labTheme && !indoor;
+        const buildupAdj = directorApplyBuildupActive
+          ? buildupSpawnAdjust(directorRef.current.state.macro, directorRef.current.state.performance)
+          : { escBoost: 0 };
         // 湧き上限はカリング上限(enemyCap=dirCountCap)と揃える(枠まで湧かせて超過ぶんはカリング)。屋外はディレクター駆動(フロア≈10〜天井20)。
         const normalSpawnCap = labTheme ? MAX_ENEMIES : Math.max(6, Math.round(dirCountCap * relaxAdj.capMult));
         // 難易度③(戦力連動): 過剰育成(戦力マージン>1)なら escalation で強さ(色)/種類(重い型)を底上げ。
@@ -5231,7 +5242,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gateRef.current.live += (0 - gateRef.current.live) * smooth;
           }
         }
-        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0))) * relaxAdj.escMult;
+        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0) + buildupAdj.escBoost)) * relaxAdj.escMult;
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;

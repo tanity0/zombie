@@ -36,8 +36,11 @@ const DirectorOverlay: React.FC = () => {
   }, []);
 
   const d = getDirectorDebug();
-  // ステップB(?directorApply=relax)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
-  const applyRelax = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('directorApply') === 'relax';
+  // ステップB/C(?directorApply=relax|buildup|all)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
+  const applyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('directorApply') : null;
+  const applyRelax = applyParam === 'relax' || applyParam === 'all';
+  const applyBuildup = applyParam === 'buildup' || applyParam === 'all';
+  const applyLabel = [applyRelax && 'RELAX', applyBuildup && 'BUILDUP'].filter(Boolean).join('+');
   return (
     <div
       className="fixed px-2 py-1.5 rounded-lg text-[10px] leading-tight shadow-lg ring-1 ring-white/15 bg-black/75"
@@ -49,7 +52,7 @@ const DirectorOverlay: React.FC = () => {
       }}
     >
       <div className="mb-1 font-bold text-white/80">
-        AI Director <span className="text-white/40">{applyRelax ? '(RELAX applied)' : '(read-only)'}</span>
+        AI Director <span className="text-white/40">{applyLabel ? `(${applyLabel} applied)` : '(read-only)'}</span>
       </div>
       {d ? (
         <div className="flex flex-col gap-1">

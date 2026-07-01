@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
+import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, buildupSpawnAdjust, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
 
 const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 0 };
 
@@ -120,5 +120,25 @@ describe('aiDirector: relaxSpawnAdjust(ステップB)', () => {
     expect(adj.escMult).toBe(0);
     expect(adj.intervalMult).toBeGreaterThan(1);
     expect(adj.capMult).toBeLessThan(1);
+  });
+});
+
+describe('aiDirector: buildupSpawnAdjust(ステップC)', () => {
+  it('BUILD_UP以外はPerformanceが高くても0(危険側だけの安全弁)', () => {
+    expect(buildupSpawnAdjust('peak', 1).escBoost).toBe(0);
+    expect(buildupSpawnAdjust('relax', 1).escBoost).toBe(0);
+  });
+
+  it('BUILD_UP中はPerformanceに比例して上乗せされ、上限を超えない', () => {
+    expect(buildupSpawnAdjust('buildup', 0).escBoost).toBe(0);
+    const half = buildupSpawnAdjust('buildup', 0.5).escBoost;
+    const full = buildupSpawnAdjust('buildup', 1).escBoost;
+    expect(half).toBeGreaterThan(0);
+    expect(full).toBeGreaterThan(half);
+    expect(full).toBeLessThanOrEqual(0.25);
+  });
+
+  it('Performanceが1を超えてもクランプされる(壊れた入力を渡さない前提の防御)', () => {
+    expect(buildupSpawnAdjust('buildup', 1.5).escBoost).toBe(buildupSpawnAdjust('buildup', 1).escBoost);
   });
 });

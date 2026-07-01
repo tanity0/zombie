@@ -1,15 +1,17 @@
 # AIディレクター 引き継ぎ記録 (L4D2型・難易度の“緩急”管理)
 
-最終更新: v0.25.1272 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
+最終更新: v0.25.1276 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
 基準点(“面白い”状態への復帰点): **commit `b1eae30` (v0.25.1263)**。崩れたら `git checkout b1eae30`。
 （ローカルタグ `diff-baseline-1263` は作成済みだが、このgitプロキシがタグpushを拒否するため remote には無い。commit hash で管理。）
 
 ## 0. 一言まとめ
 L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動の波”を薄く乗せる**方針。
-現状は **ステップA（信号を算出して可視化するだけ／読むだけ）＋ ステップB（RELAXだけ湧きに接続・最初の実接続）** まで完了。
+現状は **ステップA（読むだけ）＋ ステップB（RELAXだけ湧きに接続）＋ ステップC（Performance高でBuildUp強化）** まで完了。
 - `?director=1`：左上にライブ表示、死亡/クリアのリザルトに緊張曲線＋難易度スコア(読むだけ・挙動不変)。
-- `?directorApply=relax`：**RELAX中だけ**危険敵を足さない/湧き間隔を伸ばす/湧き上限を下げる(実際にゲームへ効く最初の一歩)。
-  フラグ無し(既定)は基準点と完全に同じ挙動。両方同時に付けると、効いてる様子を見ながら確認できる。
+- `?directorApply=relax`：**RELAX中だけ**危険敵を足さない/湧き間隔を伸ばす/湧き上限を下げる。
+- `?directorApply=buildup`：**BUILD_UP中だけ**Performanceが高いほどescalationを少し上乗せする(レバーは1本だけ・慎重)。
+- `?directorApply=all`：両方同時に有効化。
+  フラグ無し(既定)は基準点と完全に同じ挙動。
 
 ## 1. 合意した設計方針（社長＋Codex＋Claude）★ここを外さない
 - **Intensity（いま苦しいか）と Performance（いま余裕があるか）を絶対に混ぜない。**
@@ -52,16 +54,29 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
   - **意図的に触れていないもの**: `enemyCap`(強制カリング上限)。RELAXで既存の敵を間引くと「急に画面から消える」
     体験になる(過去に社長からバグ報告があったパターン)ため、湧き側だけを絞って自然に減らす設計。
   - 前フレームの `directorRef.current.state.macro` を読む(=1フレーム遅延)。RELAXは最低8秒滞在するので無視できる誤差。
-- **可視化** `DirectorOverlay.tsx` の見出しが `?directorApply=relax` の時 `(RELAX applied)` に変わる(適用中の目印)。
+- **可視化** `DirectorOverlay.tsx` の見出しが有効なフラグに応じて `(RELAX applied)`/`(BUILDUP applied)`/
+  `(RELAX+BUILDUP applied)` に変わる(適用中の目印)。
+
+## 2.6 実装済み（ステップC・Performance高でBuildUp強化）
+- **調整の算出（純関数）** `src/utils/aiDirector.ts` の `buildupSpawnAdjust(macro, performance)`。
+  **BUILD_UP中だけ** `escBoost = performance × BUILDUP_ESC_BOOST_MAX(0.25)` を返す。PEAK/RELAX中は常に0。
+- **Bとの非対称(意図的)**: Bは3レバー(escalation/湧き間隔/湧き上限)で安全側に強く効かせる“ブレーキ”。
+  Cは**escalationの1レバーだけ**で慎重に効かせる“アクセルの微調整”。湧き間隔/湧き上限には触れない。
+- **配線** `src/hooks/useGameLoop.ts`
+  - `?directorApply=` を `relax`/`buildup`/`all` の3値に対応(`DIRECTOR_APPLY_RELAX`/`DIRECTOR_APPLY_BUILDUP`)。
+  - `spawnEsc` の算出式に `buildupAdj.escBoost` を加算するだけ(③④の上に薄く乗る)。屋内/ラボは対象外。
+- **★スコア/経験値/レベル速度には一切触れていない**(社長指示で触ってはいけないシステム。Codex原案の
+  「報酬も少し上げる」は採用しなかった)。
 
 ## 3. まだやっていない（＝次の作業）
-1. **数値詰め（実機）**: `?director=1&directorApply=relax` で実際にRELAXが効いているか(湧きが緩む/リザルトの
-   曲線でRELAX帯の後に沸きが減るか)を体感で確認し、定数調整。調整対象:
+1. **数値詰め（実機）**: `?director=1&directorApply=all` で実際にRELAX/BUILDUPが効いているか(湧きが緩む/強まる、
+   リザルトの曲線と体感が合うか)を確認し、定数調整。調整対象:
    - Intensity/Performance算出: `aiDirector.ts` 上部 `NEAR_ENEMY_FULL / INT_*_W / INT_TAU_UP/DOWN / INT_DMG_SPIKE /
      PEAK_ENTER/EXIT/HOLD / RELAX_UNTIL/MIN`、`useGameLoop` の `DIRECTOR_NEAR_RADIUS`。
    - RELAX適用の強さ: `RELAX_ESC_MULT/RELAX_INTERVAL_MULT/RELAX_CAP_MULT`(今は0/1.35/0.85)。
+   - BUILDUP適用の強さ: `BUILDUP_ESC_BOOST_MAX`(今は0.25)。
 2. **効きすぎ/効かなさすぎの判断後、既定ON化を検討**（今はURLフラグ必須。体感が良ければ既定挙動に昇格するか検討）。
-3. **ステップC: Performance高でBuildUp強化**（余裕がある時だけ次の山を強める。werewolf/ghost/screamer比率↑等）。
+3. ~~ステップC~~ → **完了(v0.25.1276)**。
 4. ~~危険敵の存在(dangerBias)を拡張~~ → **完了(v0.25.1272)**。werewolf/pumpkin/plant/screamer/ghost毒卵密度を追加済み。
    さらに拡張したい場合の候補: hunterのジャンプ予告(社長からの指摘で追加したpumpkinと同系統)、reaperの接近等。
 5. **補給管理（L4D2の本領）**: Performance低＋RELAXで回復/弾ピックアップのdrop率↑、PEAK手前/Performance高で爆弾少し。
@@ -69,9 +84,9 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
 6. **台本(①)との合わせ**: 区間ごとにBuildUp/Relaxの比重を変える（レベル上げ区間=Relax長め / 難関=PEAKあり 等）。
 
 ## 4. 実行/検証
-- 実機: `https://tanity0.github.io/zombie/?director=1&directorApply=relax`（版が表示に一致するか確認）。
-  左上表示(見出しに `(RELAX applied)`)＋リザルト欄。`directorApply` を外せば読むだけに戻る。
-- ローカル: `npm run dev` → `/zombie/?director=1&directorApply=relax`。
+- 実機: `https://tanity0.github.io/zombie/?director=1&directorApply=all`（版が表示に一致するか確認）。
+  左上表示(見出しに適用中フラグ)＋リザルト欄。`directorApply` を外せば読むだけに戻る。
+- ローカル: `npm run dev` → `/zombie/?director=1&directorApply=all`。
 - 静的検査（毎回）: `npm run lint && npm run typecheck && npm test && npm run build`。
 - ディレクターだけ: `npx vitest run src/utils/aiDirector.test.ts`。
 

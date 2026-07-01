@@ -183,3 +183,16 @@ export const relaxSpawnAdjust = (macro: DirectorMacro): RelaxSpawnAdjust =>
   macro === 'relax'
     ? { escMult: RELAX_ESC_MULT, intervalMult: RELAX_INTERVAL_MULT, capMult: RELAX_CAP_MULT }
     : { escMult: 1, intervalMult: 1, capMult: 1 };
+
+// ---- ステップC: Performance高でBuildUpを強める(社長合意・Bより慎重に=レバーを1本だけにする) ----
+// ルール厳守: Performance は「BuildUpを強める」だけに使う(Intensity/被弾側とは絶対に混ぜない)。
+// 効かせる先は escalation(③④=強さ/種類の上乗せ)の**上乗せ量のみ**。湧き間隔/湧き上限には触れない
+// (RELAXは複数レバーで安全側に強く効かせる“ブレーキ”、こちらは単一レバーで慎重に効かせる“アクセルの微調整”)。
+// ★スコア/経験値/レベル速度には一切触れない(社長指示: 触ってはいけないシステム)。
+export interface BuildupSpawnAdjust {
+  escBoost: number; // spawnEsc(0..1)に加算する上乗せ量。BUILD_UP以外は0。
+}
+export const BUILDUP_ESC_BOOST_MAX = 0.25; // Performance=1(満タン)の時に加算する最大量(私案・控えめ)
+
+export const buildupSpawnAdjust = (macro: DirectorMacro, performance: number): BuildupSpawnAdjust =>
+  macro === 'buildup' ? { escBoost: clamp01(performance) * BUILDUP_ESC_BOOST_MAX } : { escBoost: 0 };
