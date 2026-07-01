@@ -5358,6 +5358,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 別の湧き位置へテレポート湧き直し=「消えて違うところにリスポーン」していた(社長報告)。吹き飛ばし演出は
           // そのまま飛んで着地させ、瞬間移動だけ防ぐ。着地後(ノックバック終了後)に遠ければ通常どおりリサイクルされる。
           if (enemy.knockbackUntil !== undefined && enemy.knockbackUntil > Date.now()) return enemy;
+          // ジャンプ/ダッシュ攻撃の実行中(jump=滞空移動 / charge=突進)はリサイクルしない。着地/突進先が
+          // (溜め開始時のプレイヤー位置=移動で古くなり)リサイクル境界を越えると、実行中にテレポート湧き直し
+          // =「急に画面から消える」原因になっていた(社長報告: パンプキンのジャンプ/カウンター時)。攻撃を完遂させ、
+          // 終わって(aiPhase解除)から遠ければ通常どおりリサイクルする。
+          if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'charge') return enemy;
           const enemyCenterX = enemy.x + enemy.width / 2;
           const enemyCenterY = enemy.y + enemy.height / 2;
           // 矩形(プレイヤー中心)で「画面外送り」判定。半径ではなく辺基準で一律。
