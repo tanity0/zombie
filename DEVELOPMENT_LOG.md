@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1262 — 自動タレット: 発砲音を距離減衰 / 連射間隔を気持ち短く(社長指示)
+- **発砲音の距離減衰**: タレットの発砲音(`handgun-fire`/`rifle-fire`)に、護衛NPCと同じ `npcSfxDistGain`
+  (タレット位置↔プレイヤー、画面外=無音)を適用。遠い/画面外のタレットの銃声が小さくなる。プレイヤー自身の
+  攻撃音は不変。`hooks/useGameLoop.ts`。
+- **連射モードの連射間隔を気持ち短く**: 前方集中(連射)の `TURRET_FWD_FIRE_MS` 130→110(全方位 OMNI は据え置き)。
+- 負荷 1/10(発砲時に距離ゲイン計算1回)。検証: typecheck / lint(0) / test(101) / build 通過。
+
 ## v0.25.1261 — 囲い系イベント中は外の通常敵を裏ボスと同じ逃走モードに(社長指示)
 - 依頼: 「囲いに囲まれるイベント」中、外の敵を裏ボスと同じ逃走モードにできる?
 - 実装: `updateEnemies` の逃走分岐条件に、囲い系イベント(プレイヤーを円に閉じ込める=`activeEvent.kind !== 'rescue'`)

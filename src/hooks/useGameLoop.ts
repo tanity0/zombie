@@ -224,7 +224,7 @@ const TURRET_DURATION_BY_LEVEL = [0, 15000, 15000, 15000]; // 持続を3倍(5s�
 const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
-const TURRET_FWD_FIRE_MS = 130;                         // 前方集中の発射間隔(handgun-t3 cooldown 相当)
+const TURRET_FWD_FIRE_MS = 110;                         // 前方集中(連射)の発射間隔(社長指示で気持ち短く: 130→110)
 const TURRET_FWD_DAMAGE = 5;                            // 前方集中の弾ダメージ(社長指示で7→5)
 const TURRET_FWD_BULLET_SPEED = 560 * 1.5;             // handgun-t3 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
 const TURRET_FWD_RANGE = 420;                           // 前方集中の射程(長射程)。TODO: 実機調整
@@ -3353,6 +3353,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const nowMs = Date.now();
           // 前方集中タレットの索敵スキャンで更新した向きを、描画(砲身の向き)へ反映するための一括書き込み。
           const turretAimWrites: { id: string; x: number; y: number }[] = [];
+          // タレット発砲音の距離減衰用(社長指示): 護衛NPCと同じ npcSfxDistGain(タレット位置↔プレイヤー、画面外=無音)。
+          const tGainState = useGameStore.getState();
+          const tgPx = tGainState.player.x + tGainState.player.width / 2;
+          const tgPy = tGainState.player.y + tGainState.player.height / 2;
+          const tgCam = tGainState.camera;
+          const tgGb = tGainState.gameBounds;
           for (const turret of useGameStore.getState().projectiles.filter(p => p.weaponType === 'turret')) {
             const tcx = turret.x + turret.width / 2;
             const tcy = turret.y + turret.height / 2;
@@ -3444,7 +3450,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 duration: 1400, createdAt: nowMs,
                 passthrough: true, hitEnemies: [], hostile: false, reflected: false,
               });
-              playSfx('rifle-fire');
+              { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('rifle-fire', g); }
             } else {
               const dmg = mode === 'omni' ? TURRET_OMNI_DAMAGE : TURRET_FWD_DAMAGE;
               const spd = mode === 'omni' ? TURRET_OMNI_BULLET_SPEED : TURRET_FWD_BULLET_SPEED;
@@ -3457,7 +3463,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 duration: 1400, createdAt: nowMs,
                 passthrough: false, hitEnemies: [], hostile: false, reflected: false,
               });
-              playSfx('handgun-fire');
+              { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('handgun-fire', g); }
             }
             turretFireRef.current.set(turret.id, gameTime + interval);
           }
