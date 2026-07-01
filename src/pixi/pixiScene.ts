@@ -1584,26 +1584,39 @@ export class PixiScene {
     const zeroY = this.horizonRevealZeroScreenY();
     const fullY = zeroY + HORIZON_REVEAL_FADE_PX;
 
+    // 文脈ズームで引くと可視域(画面に映る world 範囲)が画面より広がる。マスクは worldGroup の子で
+    // 一緒に縮むため、画面ちょうど(w×h)のままだと引き時に左右/下の world が固定枠で切り取られてしまう
+    // (社長報告「バツっと切れる」)。そこで最大引き(CONTEXT_ZOOM_MIN)でも覆えるよう、中央から
+    // ZOOM_OVERSCAN 倍に広げて敷く。地平フェードの位置(zeroY/fullY=画面Y)は据え置き=見た目不変。
+    const maskW = w * ZOOM_OVERSCAN;
+    const maskH = h * ZOOM_OVERSCAN;
+    const maskX = -(maskW - w) / 2;
+    const maskY = -(maskH - h) / 2;
+
     const canvas = document.createElement('canvas');
     canvas.width = 4;
-    canvas.height = Math.max(1, Math.ceil(h));
+    canvas.height = Math.max(1, Math.ceil(maskH));
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const grad = ctx.createLinearGradient(0, zeroY, 0, fullY);
+    // gradient は local Y の zeroY..fullY に置く。マスク上端が maskY(画面より上)から始まるので、
+    // canvas 内では (zeroY - maskY)..(fullY - maskY) の位置へオフセットする(zoom=1 で従来と一致)。
+    const gz = zeroY - maskY;
+    const gf = fullY - maskY;
+    const grad = ctx.createLinearGradient(0, gz, 0, gf);
     grad.addColorStop(0, 'rgba(255,255,255,0)');
     grad.addColorStop(1, 'rgba(255,255,255,1)');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // gz より上=透明=地平の上は隠れる(従来どおり)
     ctx.fillStyle = grad;
-    ctx.fillRect(0, zeroY, canvas.width, Math.max(1, fullY - zeroY));
+    ctx.fillRect(0, gz, canvas.width, Math.max(1, gf - gz));
     ctx.fillStyle = 'rgba(255,255,255,1)';
-    ctx.fillRect(0, fullY, canvas.width, canvas.height - fullY);
+    ctx.fillRect(0, gf, canvas.width, canvas.height - gf);
 
     const texture = Texture.from(canvas);
     this.worldFadeMask.texture = texture;
-    this.worldFadeMask.position.set(0, 0);
-    this.worldFadeMask.width = w;
-    this.worldFadeMask.height = h;
+    this.worldFadeMask.position.set(maskX, maskY);
+    this.worldFadeMask.width = maskW;
+    this.worldFadeMask.height = maskH;
     this.worldFadeMaskTexture?.destroy(true);
     this.worldFadeMaskTexture = texture;
   }

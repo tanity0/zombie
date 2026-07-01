@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1259 — ズーム引き時に world が「固定枠」で切れる件を修正(worldFadeMask を overscan)
+- 症状: ズームで引くと敵/オブジェが画面端の外側で表示されず「バツっと」切れる(社長報告)。
+- 原因: gameplay世界(`filteredWorld`=敵/オブジェ含む)に掛かる地平フェード用マスク `worldFadeMask` が
+  画面ちょうど(w×h)・`worldGroup`の子(ズームで一緒に縮む)。引くと可視域が w×h を超えるのに、マスクは
+  w×h のままなので、はみ出した左右/下が固定枠で切り取られていた。
+- 修正: `updateWorldFadeMask` でマスクを中央から `ZOOM_OVERSCAN(=1/CONTEXT_ZOOM_MIN=1.25)` 倍に拡張して敷く。
+  地平フェード(zeroY/fullY=画面Y)は canvas 内オフセットで同位置に保持=zoom=1 の見た目は不変。最大引き
+  (CONTEXT_ZOOM_MIN)でも全画面を覆うので、引いた分だけ world が広がって見える(切れない)。`pixi/pixiScene.ts`。
+- 負荷 1/10(マスクは resize 時のみ再生成・描画は不変)。検証: typecheck / lint(0) / build 通過。
+- (v0.25.1258 = 盾バッシュ飛距離 100→80。ログ追記漏れのため併記)
+
 ## v0.25.1257 — 盾バッシュ: 自分にぶつかる向きは不発 / ノックバック・押し出し倍化(社長指示)
 - **自分とぶつかると動かない**: バッシュ方向が盾を「プレイヤー側へ押し込む向き」(盾→プレイヤーとの内積>0)なら、
   盾を自分に押し付ける形になるのでバッシュを発動しない(shieldShoves から除外=壁も動かず敵ノックバックも無し)。
