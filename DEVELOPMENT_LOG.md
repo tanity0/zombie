@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1271 — 大量発生(horde)イベント: 湧き位置がプレイヤーの現在地と重なるバグ修正(社長報告)
+- 症状: 敵急増(囲い)イベント中、湧いた敵とプレイヤーが重なって理不尽に被弾することがあった。
+- 原因: horde(変異者大量発生)の段階スポーン(1秒に1体・計18体)は、湧き位置を「イベント中心(=開始時の
+  プレイヤー位置で固定した ae.x/y)」からの距離だけで決めていた。~18秒かけてプレイヤーが囲い円内を移動すると、
+  現在地の近くへ偶然湧いてしまうことがあった(距離判定がプレイヤーの“いま”の位置を見ていなかった)。
+- 修正: 各体の配置時に、現在のプレイヤー位置(`player.x/y`、フレーム毎に最新)からの最低距離
+  `HORDE_SPAWN_PLAYER_CLEARANCE=140px` を確保。角度を最大8回振り直し、それでも近ければプレイヤーから
+  離す方向へ最低距離ぶん押し出す(囲い円の外へは出さない=`ARENA_EVENT_RADIUS*0.92`でクランプ)。
+  イベント半径/敵数/種類割当/演出は不変。`hooks/useGameLoop.ts`。
+- 負荷 1/10(湧き時の追加計算のみ・最大8回のやり直しループ)。検証: typecheck / lint(0) / test(114 pass) / build 通過。
+
 ## v0.25.1270 — AIディレクター ステップB(RELAXだけ湧きに接続・最初の実接続)
 - 引き継ぎ記録どおり「可視化(A)→数値詰めは実プレイが要る→まず仕様が固まっているBを先に」で実装。
   `?directorApply=relax` の時だけ有効。既定(フラグ無し)は基準点(commit b1eae30)と完全に同じ挙動。

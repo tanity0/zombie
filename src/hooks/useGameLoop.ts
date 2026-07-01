@@ -270,6 +270,11 @@ const EVENT_SPAWN_AGGRO_RANGE = 300;
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 240;        // 囲い半径(閉じ込め円)。社長指示で少し拡大: 210→240(horde/boss/egg 共通)
+// 大量発生(horde)の段階スポーン(1秒に1体・計18体)は、湧き位置をイベント中心(=開始時のプレイヤー位置で固定)
+// からの距離だけで決めていたため、~18秒かけてプレイヤーが円内を動くと、現在地の近くへ偶然湧いて
+// 「湧きと重なって理不尽に被弾する」ことがあった(社長報告)。現在のプレイヤー位置からの最低距離を確保する。
+const HORDE_SPAWN_PLAYER_CLEARANCE = 140; // この距離未満には湧かせない
+const HORDE_SPAWN_CLEAR_ATTEMPTS = 8;     // 角度を振り直して確保を試みる回数(それでもダメなら押し出す)
 const AREA_SECTOR_ENTER_DIST = 1200;   // 担当エリア進入セリフ(neglectFar)を出す最小距離(原点ハブ付近は除外)
 const ARENA_FIRE_AFTER_MS = 120000;    // 初回発火時刻(=ゲーム開始2分)
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示)
@@ -1260,12 +1265,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 種類を出し分け(6=パンプキン / 12=ウルフ / 18=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
             if (ae.kind === 'horde' && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT && newGameTime >= hordeSpawnRef.current.nextAt) {
               const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
+              // プレイヤーの現在地(イベント開始時の固定中心=ae.x/yではなく「いま」の位置)からの最低距離を確保する。
+              const lpx = player.x + player.width / 2, lpy = player.y + player.height / 2;
               for (let k = 0; k < 1 && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT; k++) {
                 const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..18)
                 const type: EnemyType = n === 6 ? 'pumpkin' : (n === 12 || n === 18) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
-                const ang = Math.random() * Math.PI * 2;
-                const dist = ARENA_EVENT_RADIUS * (0.4 + Math.random() * (0.92 - 0.4));
-                const e = spawnEnemyAt(type, ae.x + Math.cos(ang) * dist, ae.y + Math.sin(ang) * dist, newGameTime);
+                const clear2 = HORDE_SPAWN_PLAYER_CLEARANCE * HORDE_SPAWN_PLAYER_CLEARANCE;
+                let sx = 0, sy = 0;
+                for (let attempt = 0; attempt < HORDE_SPAWN_CLEAR_ATTEMPTS; attempt++) {
+                  const ang = Math.random() * Math.PI * 2;
+                  const dist = ARENA_EVENT_RADIUS * (0.4 + Math.random() * (0.92 - 0.4));
+                  sx = ae.x + Math.cos(ang) * dist; sy = ae.y + Math.sin(ang) * dist;
+                  if ((sx - lpx) ** 2 + (sy - lpy) ** 2 >= clear2) break;
+                }
+                // 振り直しでも近すぎたら、プレイヤーから離す方向へ最低距離ぶん押し出す(円の外へは出さない)。
+                if ((sx - lpx) ** 2 + (sy - lpy) ** 2 < clear2) {
+                  const dx = sx - lpx, dy = sy - lpy;
+                  const dl = Math.hypot(dx, dy) || 1;
+                  sx = lpx + (dx / dl) * HORDE_SPAWN_PLAYER_CLEARANCE;
+                  sy = lpy + (dy / dl) * HORDE_SPAWN_PLAYER_CLEARANCE;
+                  const cdx = sx - ae.x, cdy = sy - ae.y, cd = Math.hypot(cdx, cdy) || 1;
+                  const maxR = ARENA_EVENT_RADIUS * 0.92;
+                  if (cd > maxR) { sx = ae.x + (cdx / cd) * maxR; sy = ae.y + (cdy / cd) * maxR; }
+                }
+                const e = spawnEnemyAt(type, sx, sy, newGameTime);
                 e.x -= e.width / 2; e.y -= e.height / 2; // 配置点を中心に
                 e.fromEvent = true;
                 e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0; // 近づくまで向かってこない
