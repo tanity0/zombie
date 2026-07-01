@@ -554,8 +554,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
-  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean }>(
-    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false }
+  const reaperRef = useRef<{ risk: number; lastPassAt: number; passCount: number; chaserId: string | null; chaserSpawnAt: number; lastWarpAt: number; lastTimeRollAt: number; timeSpawned: boolean; warpAnimStartAt: number; warpToX: number; warpToY: number; warpTeleported: boolean; defeatCount: number }>(
+    { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 }
   );
   // 死神チェイサーが直近に見せた liftUntil(=近接フィニッシュ/boss-stun×5 被弾の印)。増えたら「食らった」と判定しワープ。
   const reaperLiftRef = useRef(0);
@@ -1060,7 +1060,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           screamerBuffFxRef.current = 0; // 叫喚SE検出refも新ランでリセット(前ランのbuffUntilで誤ってスキップしない)
           gateRef.current = { key: '', startHpFrac: 1, live: 0 }; // 難易度④の関所ライブ補正も新ランでリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
-          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
+          reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
@@ -1637,7 +1637,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             && Math.abs((e.x + e.width / 2) - pcx) <= reaperGB.width / 2 + BOSS_SCREEN_MARGIN
             && Math.abs((e.y + e.height / 2) - pcy) <= reaperGB.height / 2 + BOSS_SCREEN_MARGIN);
           // 討伐/消滅 → クールダウン(リスク0へ。深奥に居続ければまた溜まる)。
-          if (rs.chaserId != null && !chaserAlive) { rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; rs.warpAnimStartAt = 0; }
+          // 撃破escalation(社長指示): チェイサーを倒すたびに次の死神が1体ずつ増える(2体→3体…)=終わりに近づける。
+          // 逃げ切り(homeRadius帰還)は下の else 分岐が先に chaserId を null にするため、ここは「撃破」のみが該当。
+          if (rs.chaserId != null && !chaserAlive) { rs.defeatCount += 1; rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; rs.warpAnimStartAt = 0; }
 
           if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。
@@ -1702,6 +1704,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               chaser.damage = REAPER_CONFIG.contactDamage;
               chaser.speed = getReaperChaseSpeed(player.speed); // 0.9倍速(ワープで回り込む)
               addEnemy(chaser);
+              // 撃破escalation(社長指示): これまでの撃破回数ぶん、追加の死神を同時に出す(2体→3体…)。
+              // 追加分は reaperChaser=false のまま=updateEnemies の通常チェイスで「歩いて追う」(ワープはchaser1体のみ)。
+              // HP/接触ダメはchaserと同じ弱体値=倒せる。画面外リングに散らす。
+              for (let ri = 0; ri < rs.defeatCount; ri++) {
+                const ea = ((ri + 1) / (rs.defeatCount + 1)) * Math.PI * 2;
+                const ex = pcx + Math.cos(ea) * spawnDist, ey = pcy + Math.sin(ea) * spawnDist;
+                const extra = spawnEnemyAt('reaper', ex - 40, ey - 40, newGameTime);
+                extra.health = REAPER_CONFIG.chaserHealth; extra.maxHealth = REAPER_CONFIG.chaserHealth;
+                extra.damage = REAPER_CONFIG.contactDamage;
+                extra.speed = getReaperChaseSpeed(player.speed);
+                addEnemy(extra);
+              }
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG); // 死神召喚=強めの画面シェイク
               rs.chaserId = chaser.id;
               rs.chaserSpawnAt = newGameTime;
@@ -1767,12 +1781,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   warpAlpha = 1; rs.warpAnimStartAt = 0; rs.warpTeleported = false; // アニメ終了
                 }
               }
+              // 追跡移動: ワープ以外の通常フレームは、プレイヤーへ向かって歩いて詰める(近づく)。
+              // 死神チェイサーは updateEnemies を素通りする(専用管理)ため、ここで明示的に座標を進めないと
+              // 「ワープするだけで近づいてこない」状態になっていた(社長報告)。壁はすり抜け(reaper=passthrough)。
+              let chaseX: number | null = null, chaseY: number | null = null;
+              if (!warping && !teleportNow && chaserNow) {
+                const cdx = pcx - rcx, cdy = pcy - rcy;
+                const cl = Math.hypot(cdx, cdy) || 1;
+                const step = targetSpeed * deltaTime * MOVE_SPEED_MULT; // 他の敵と同じテンポ(1.2倍)
+                chaseX = chaserNow.x + (cdx / cl) * step;
+                chaseY = chaserNow.y + (cdy / cl) * step;
+              }
               useGameStore.setState({
                 enemies: useGameStore.getState().enemies.map(e =>
                   e.id === rs.chaserId
                     ? {
                         ...e,
-                        ...(teleportNow ? { x: rs.warpToX - e.width / 2, y: rs.warpToY - e.height / 2, vx: 0, vy: 0 } : {}),
+                        ...(teleportNow
+                          ? { x: rs.warpToX - e.width / 2, y: rs.warpToY - e.height / 2, vx: 0, vy: 0 }
+                          : chaseX !== null ? { x: chaseX, y: chaseY as number } : {}),
                         speed: warping ? 0 : targetSpeed, // ワープ中は静止(フェードで消えて別位置に出る)
                         damage: REAPER_CONFIG.contactDamage,
                         reaperWarpAlpha: warpAlpha,
