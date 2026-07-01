@@ -18278,3 +18278,15 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 対象外(据え置き): 戦力連動(PP/M)・強さ/種類軸・関所ライブ補正=後続ステップ。裏ボス・ハンターは特別枠。スコア/経験値→レベル速度システムは不変。
 - 性能: 画面内最大10→gate時のみ最大20。ベンチの安全域(E60 PASS)から見て敵数増は安価=**負荷 1/10**(simulation/rendering・天井20は60安全線の1/3・関所中のみ短時間)。
 - 検証: typecheck / lint / test(84 pass) / build 通過。変更: utils/difficultyDirector.ts(新), utils/difficultyDirector.test.ts(新), hooks/useGameLoop.ts, package.json
+
+## v0.25.1233 — 難易度ディレクター ステップ③(戦力連動 PP/M ＋ 強さ/種類 escalation)
+- 依頼(社長): ハイブリッド=フロア固定、その上は過剰育成(戦力マージン>1)なら指数で「強さ(レア度)・種類」を上げてギリギリへ引き戻す。順調/未育成は据え置き。常時ギリギリは関所、余裕も難易度差。スコア/EXP/レベル速度は不変。裏ボス・ハンターは対象外。
+- 実装:
+  - `src/utils/difficultyScaler.ts`(新規・純関数・テスト可): PP(level+武器tier+HP+装備数+スキル数)/ 順調カーブ expectedPower(t)/ margin M / escalation01(M,関所か)。M≤1.1(デッドバンド)は esc=0。関所=全開/余裕=半分。
+  - `enemyUtils`: 強さ軸=`rollColorTierForArea(area, esc)` で色付き出現率を乗算底上げ(上限0.85)、種類軸=`selectEnemyType(area, allowLich, esc)` で重い型(werewolf/pumpkin/lich)に重み加算。`buildEnemy`/`generateEnemy` に esc を伝播。**esc=0 で現状と完全一致**(安全)。
+  - `useGameLoop`: 毎フレーム spawnEsc を算出(屋内/ラボ除外・関所判定は difficultyDirector.phaseAt)して通常/保証/リサイクル湧きへ伝播。`?dda=0` で無効化。
+  - テスト: `difficultyScaler.test.ts`(floorで0/過剰で>0/関所>余裕/単調/順調≈1)。
+- 安全性: escalation=0 のとき湧き挙動は不変(順調/未育成は無変化=過剰育成のときだけ上振れ)。色/種類は乗算バイアスのみ=固定難易度タイプ(giant/reaper/裏ボス/lab)には無効。
+- 性能: 計算は毎フレーム軽量(数値のみ)。色付き敵増は描画方式不変=負荷 1/10。
+- 対象外/次: 関所ライブ補正(終了HP帯へ閉ループ)は未実装。文脈カメラズームは③後の別タスク。裏ボス「5クリで気絶」も別途キュー。
+- 検証: typecheck / lint / test(90 pass) / build 通過。変更: utils/difficultyScaler.ts(新)+test(新), utils/enemyUtils.ts, hooks/useGameLoop.ts, package.json

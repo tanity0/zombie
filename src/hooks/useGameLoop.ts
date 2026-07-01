@@ -73,7 +73,8 @@ import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { enemyCountCap } from '../utils/difficultyDirector';
+import { enemyCountCap, phaseAt } from '../utils/difficultyDirector';
+import { spawnEscalation } from '../utils/difficultyScaler';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
@@ -333,6 +334,7 @@ const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒し
 const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
+const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
 // 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
 const evNum = (key: string, def: number): number => {
@@ -5071,6 +5073,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
         // 湧き上限はカリング上限(enemyCap=dirCountCap)と揃える(枠まで湧かせて超過ぶんはカリング)。屋外はディレクター駆動(フロア≈10〜天井20)。
         const normalSpawnCap = labTheme ? MAX_ENEMIES : dirCountCap;
+        // 難易度③(戦力連動): 過剰育成(戦力マージン>1)なら escalation で強さ(色)/種類(重い型)を底上げ。
+        // esc=0 は現状据え置き=順調/未育成は無変化。関所(gate)で強め・余裕(buildup)は弱め。?dda=0 で無効。屋内/ラボは対象外。
+        const spawnEsc = (DDA_ENABLED && !labTheme && !indoor)
+          ? spawnEscalation({
+              level: player.level,
+              weaponTierSum: player.weapons.reduce((s, w) => s + (w.tier ?? 1), 0),
+              maxHealth: player.maxHealth,
+              equippedCount: [player.equipment.body, player.equipment.arms, player.equipment.accessory].filter(Boolean).length,
+              skillCount: player.skills.length,
+            }, gameTime, phaseAt(gameTime).kind === 'gate')
+          : 0;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         if (
@@ -5119,18 +5132,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme);
+            let enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme);
+                enemy = generateEnemy(gameTime, player, gameBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
                 tries++;
               }
               if (enemy.type === 'plant') {
-                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton', player.lastDirection, spawnViewOffsetY);
+                enemy = generateEnemy(gameTime, player, gameBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               }
             }
             if (enemy.type === 'plant') plantCount += 1;
@@ -5150,13 +5163,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!plantGuaranteedRef.current && gameTime >= PLANT_GUARANTEE_MS) {
             plantGuaranteedRef.current = true;
             if (!useGameStore.getState().enemies.some(e => e.type === 'plant')) {
-              addEnemy(generateEnemy(gameTime, player, gameBounds, 'plant', player.lastDirection, spawnViewOffsetY, snowTheme));
+              addEnemy(generateEnemy(gameTime, player, gameBounds, 'plant', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
             }
           }
           if (!werewolfGuaranteedRef.current && gameTime >= WEREWOLF_GUARANTEE_MS) {
             werewolfGuaranteedRef.current = true;
             if (!useGameStore.getState().enemies.some(e => e.type === 'werewolf')) {
-              addEnemy(generateEnemy(gameTime, player, gameBounds, 'werewolf', player.lastDirection, spawnViewOffsetY, snowTheme));
+              addEnemy(generateEnemy(gameTime, player, gameBounds, 'werewolf', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
             }
           }
         }
@@ -5351,7 +5364,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             recycleType,
             player.lastDirection,
             spawnViewOffsetY, // 通常湧きと同じカメラ下げオフセットを使う(従来は固定0でリサイクル敵が約48-77px下にズレて画面内に出やすかった)
-            snowTheme
+            snowTheme,
+            spawnEsc // 難易度③: リサイクル敵も同じ escalation で強さ/種類を整合
           );
           recycledAnyEnemy = true;
 

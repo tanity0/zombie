@@ -101,12 +101,17 @@ const BASE_WEIGHT: Partial<Record<EnemyType, number>> = {
   lich:     45, // ステージ4のみ(allowLich でゲート)。重みはウェアウルフと同等(社長指示)。
 };
 
-// 型選択は「現在エリアの areaWeight」だけで決める(時間ゲートなし=仕様§6)。
-const selectEnemyType = (area: number, allowLich = false): EnemyType => {
-  // baseWeight × エリア補正。補正0(=そのエリアでは出現不可)は除外。
+// 難易度③(種類軸): escalation で「重い型」の重みを乗算で底上げ(過剰育成なら手強い種類が増える)。
+// esc=0 なら 1 倍で現状と完全一致(安全)。
+const DDA_TOUGH_TYPES = new Set<EnemyType>(['werewolf', 'pumpkin', 'lich']);
+const DDA_VARIETY_ESC_K = 1.8; // esc=1 で重い型の重み ×2.8(私案)
+// 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算。
+const selectEnemyType = (area: number, allowLich = false, esc = 0): EnemyType => {
+  const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
+  // baseWeight × エリア補正 ×(重い型なら toughBoost)。補正0(=そのエリアでは出現不可)は除外。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
     .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
-    .map(([type, w]) => ({ type, weight: w * ((AREA_WEIGHT[type]?.[area]) ?? 0) }))
+    .map(([type, w]) => ({ type, weight: w * ((AREA_WEIGHT[type]?.[area]) ?? 0) * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) }))
     .filter(e => e.weight > 0);
   if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
@@ -194,8 +199,16 @@ const COLOR_RATE_BY_AREA: [number, number, number][] = [
   [0.07, 0.02, 0.01], // 未確認汚染
   [0.12, 0.06, 0.02], // 深層域
 ];
-const rollColorTierForArea = (area: number): EnemyColorTier | undefined => {
-  const [b, p, red] = COLOR_RATE_BY_AREA[area] ?? COLOR_RATE_BY_AREA[0];
+// 難易度③(強さ軸): escalation(0..1)で色付き(=強い)個体の出現率を乗算で底上げ。
+// esc=0 なら boost=1 で現状と完全一致(安全)。エリア基礎が0(軍備配置)なら 0×boost=0 のまま。
+const DDA_COLOR_ESC_K = 2.5;   // esc=1 で色出現率 ×3.5(私案)
+const DDA_COLOR_SUM_CAP = 0.85; // 色付き合計確率の上限(無色を必ず一定残す)
+const rollColorTierForArea = (area: number, esc = 0): EnemyColorTier | undefined => {
+  const base = COLOR_RATE_BY_AREA[area] ?? COLOR_RATE_BY_AREA[0];
+  const boost = 1 + Math.max(0, esc) * DDA_COLOR_ESC_K;
+  let b = base[0] * boost, p = base[1] * boost, red = base[2] * boost;
+  const sum = b + p + red;
+  if (sum > DDA_COLOR_SUM_CAP) { const s = DDA_COLOR_SUM_CAP / sum; b *= s; p *= s; red *= s; }
   const r = Math.random();
   if (r < red) return 'red';
   if (r < red + p) return 'purple';
@@ -245,7 +258,8 @@ const buildEnemy = (
   x: number,
   y: number,
   gameTime: number,
-  isWave = false
+  isWave = false,
+  esc = 0 // 難易度③: 強さ(色ティア)escalation。0=現状据え置き。
 ): Enemy => {
   const stats = ENEMY_STATS[type];
   // 強さ一定タイプ(ジャイアント/死神)＋ラボ専用敵は距離・色・時間でスケールしない(固定難易度・社長指定)。
@@ -255,7 +269,7 @@ const buildEnemy = (
   const distanceZone = area; // 互換フィールド(0-4)
   const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
-  const colorTier = fixed ? undefined : rollColorTierForArea(area);
+  const colorTier = fixed ? undefined : rollColorTierForArea(area, esc);
   const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
   const diff = fixed ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
@@ -297,11 +311,12 @@ export const generateEnemy = (
   forcedType?: EnemyType,
   pressureDirection?: { x: number; y: number } | null,
   viewOffsetY = 0, // カメラ下げ量(px)。可視範囲はプレイヤーより上に viewOffsetY ぶん広いので、縦バンドを上へずらす。
-  snowStage = false // ステージ4(雪原)か。lich を湧きプールに含めるか否かのゲート。
+  snowStage = false, // ステージ4(雪原)か。lich を湧きプールに含めるか否かのゲート。
+  esc = 0 // 難易度③: escalation(0..1)。0=現状据え置き。種類/強さのバイアスに使う。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(playerArea, snowStage);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、
@@ -343,7 +358,7 @@ export const generateEnemy = (
       y = vy0 - halfH + Math.random() * viewportHeight;
       break;
   }
-  return buildEnemy(type, x, y, gameTime, false);
+  return buildEnemy(type, x, y, gameTime, false, esc);
 };
 
 // Spawn an enemy at a specific world position (used for Reaper, scripted
