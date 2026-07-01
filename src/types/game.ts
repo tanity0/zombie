@@ -141,6 +141,10 @@ export interface Player {
   // 素早く減衰させる(ほんの少し慣性のある急停止)。skaterBashCdUntil=次に出せる gameTime。
   skaterStopUntil: number;
   skaterBashCdUntil: number;
+  // スケーター新仕様(社長指示): ダブルタップで「乗車」。乗車中だけ移動3倍＋強慣性。指離しで降車し、
+  // 1秒以上乗っていれば進行方向へスケボーを投擲(当たると前方バッシュ=衝撃波+強制ノックバック)。1秒未満は消えるだけ。
+  skaterRiding: boolean;     // 乗車中か(=3倍/強慣性を適用)。
+  skaterRideStartAt: number; // 乗車開始 gameTime(ms)。降車時に1秒以上か判定。
   // ワイヤーアンカー(移動系サブ)。装備中は前方に青サークルを常時表示。指離しで「即座に」アンカーを
   // 打ち込み(ワイヤーが表示される)、溜(wirePlantUntil まで)の後に追加タップでアンカー地点へ高速移動。
   // アンカーは一度打ち込むと、プレイヤーが一定距離(WIRE_CLEAR_DIST)離れるか、移動に使うまでそこに留まる。
@@ -425,7 +429,7 @@ export type AmmoType = WeaponCategory;
 // Projectile/weapon kinds. Guns use their category as the projectile type;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
-export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tactical-knife' | 'anti-mutant-knife' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile';
+export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tactical-knife' | 'anti-mutant-knife' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile' | 'skateboard';
 export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone';
 
 // 分身(サブウェポン)の生成インスタンス。生成位置に固定、外見はプレイヤーと同じ(白黒)。

@@ -2184,8 +2184,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Move player based on input or swipe direction
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
         movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
-        // スケーター: 1秒以上走行後、進行方向と逆へスティック → 急停止＋前方バッシュ衝撃波(自己ゲート)。
-        useGameStore.getState().triggerSkaterBash();
+        // スケーター新仕様: 旧「逆フリックで急停止バッシュ」は廃止。バッシュはダブルタップ乗車→指離しで
+        // 投擲したスケボーがヒットした時に発動する(下の skateboard 衝突処理)。
 
         const huntingInputActive =
           useGameStore.getState().touchActive ||
@@ -4012,6 +4012,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
           spawnBurst(pcx, pcy, '#38bdf8', 14);
           useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
+        }
+
+        // スケボー(投擲)の当たり: 通常弾ダメージではなく前方バッシュを出す専用処理。最初に当たった敵で発動し、
+        // その板は消える。通常のダメージ衝突(下)に混ざらないよう、当たった板をここで先に取り除く。
+        {
+          const boards = useGameStore.getState().projectiles.filter(p => p.weaponType === 'skateboard');
+          if (boards.length > 0) {
+            const bEnemies = useGameStore.getState().enemies;
+            const hitBoardIds = new Set<string>();
+            for (const b of boards) {
+              const hit = bEnemies.some(e => e.aiPhase !== 'jump' && checkCollision(b, e));
+              if (hit) {
+                hitBoardIds.add(b.id);
+                useGameStore.getState().skaterBoardHit(b.x + b.width / 2, b.y + b.height / 2, b.direction.x, b.direction.y);
+              }
+            }
+            if (hitBoardIds.size > 0) {
+              useGameStore.setState(s => ({ projectiles: s.projectiles.filter(p => !hitBoardIds.has(p.id)) }));
+            }
+          }
         }
 
         // Check for collisions between projectiles and enemies. Read fresh

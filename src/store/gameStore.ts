@@ -541,6 +541,12 @@ const SKATER_BASH_REVERSE_DOT = -0.5;   // 入力が進行方向と逆(dot が�
 const SKATER_BASH_STOP_MS = 150;        // 急停止の入力ロック窓(この間に残速度を素早く減衰)
 const SKATER_BASH_CD_MS = 600;          // 連射防止クールダウン(gameTime)
 const SKATER_BASH_RESIDUAL = 0.18;      // 急停止直後に残す速度割合(ほんの少し慣性)
+// スケボー新仕様(社長指示): ダブルタップ乗車→指離しで投擲。1秒以上乗車で発動、未満は消えるだけ。
+const SKATER_RIDE_MIN_MS = 1000;        // 投擲発動に必要な最低乗車時間(1秒)
+const SKATEBOARD_SPEED = 900;           // 投擲したスケボーの飛翔速度(px/s・私案)
+const SKATEBOARD_DURATION_MS = 700;     // 飛翔寿命(≒飛距離。私案)
+const SKATEBOARD_SIZE = 40;             // スケボー弾の当たり/表示サイズ
+const SKATEBOARD_BASH_RANGE = 140;      // ヒット時バッシュの範囲(半径・前方寄り)
 // After being shoved by a melee counter, an enemy is immune to further melee
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
@@ -1746,6 +1752,11 @@ interface GameState {
   movePlayer: (input: InputState, deltaTime: number) => void;
   // スケーター: 1秒以上走行後に進行方向と逆へスティックで急停止＋前方短距離バッシュ衝撃波。
   triggerSkaterBash: () => void;
+  // スケボー(新仕様): ダブルタップで乗車 / 指離しで降車(+1秒以上乗車なら進行方向へ投擲)。
+  mountSkater: () => void;
+  dismountSkater: () => void;
+  // 投擲したスケボーが敵に当たった時の前方バッシュ(useGameLoop が衝突検出して呼ぶ)。
+  skaterBoardHit: (x: number, y: number, dirX: number, dirY: number) => void;
   setSwipeDirection: (direction: { x: number; y: number } | null, strength?: number) => void;
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
@@ -2056,6 +2067,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     shijinSlideDirY: 0,
     skaterStopUntil: 0,
     skaterBashCdUntil: 0,
+    skaterRiding: false,
+    skaterRideStartAt: 0,
     wireAnchorX: 0,
     wireAnchorY: 0,
     wireAnchored: false,
@@ -2250,8 +2263,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 社長指示で段階的に強化: 2→3=1.5倍)。マークスマン = 3秒連続移動で ×1.2(通常歩行/リロード移動に乗る)。
         // 装備(体・機動系)の移動速度倍率は通常歩行/リロード移動に乗る(特殊ロコモーションは対象外)。中立=1。
         // スキル: ランナー = 通常歩行/リロード移動の移動速度 +10/15/20%(Lv)。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
-        : player.speed * (hasSkill(player, 'skater') ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
+        : player.speed * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -2295,7 +2308,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 社長指示で段階的に強化: 0.4→0.6→1.2)。
       // スケーター: 速度×3は全Lv共通。Lvが上がるほど慣性(tau)を軽減し操作性を改善(Lv1:1.2/Lv2:0.8/Lv3:0.5)。
       const skLv = skillLevel(player, 'skater');
-      const inertiaTau = skLv ? [PLAYER_INERTIA_TAU, 1.2, 0.8, 0.5][skLv] : PLAYER_INERTIA_TAU;
+      // 強慣性は乗車中のみ(非乗車=通常の即応操作)。
+      const inertiaTau = (skLv && player.skaterRiding) ? [PLAYER_INERTIA_TAU, 1.2, 0.8, 0.5][skLv] : PLAYER_INERTIA_TAU;
       const alpha = inertiaAlpha(deltaTime, inertiaTau);
       // 被弾ノックバック中は入力を無視して、減衰する弾き出し速度で滑る(ジャンプ攻撃被弾など)。
       const kbNow = Date.now();
@@ -2595,6 +2609,83 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0);
       set({ bashHitFxAt: Date.now() }); // 命中SE(heavy-impact)。useGameLoop が検出して再生。
     }
+  },
+
+  // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
+  mountSkater: () => {
+    const { player, gameTime } = get();
+    if (!hasSkill(player, 'skater') || player.skaterRiding) return;
+    set({ player: { ...get().player, skaterRiding: true, skaterRideStartAt: gameTime } });
+  },
+  // 指離しで降車。1秒以上乗車していれば進行方向へスケボーを投擲(当たると前方バッシュ)。未満は消えるだけ。
+  dismountSkater: () => {
+    const state = get();
+    const player = state.player;
+    if (!player.skaterRiding) return;
+    const rode = state.gameTime - player.skaterRideStartAt;
+    set({ player: { ...get().player, skaterRiding: false } });
+    if (rode < SKATER_RIDE_MIN_MS) return; // 1秒未満=投擲なし(乗車解除のみ)
+    const p = get().player;
+    let dx = p.lastDirection?.x ?? 1, dy = p.lastDirection?.y ?? 0;
+    const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    const now = Date.now();
+    get().addProjectile({
+      id: `proj-skateboard-${now}`,
+      x: pcx - SKATEBOARD_SIZE / 2, y: pcy - SKATEBOARD_SIZE / 2,
+      width: SKATEBOARD_SIZE, height: SKATEBOARD_SIZE, speed: SKATEBOARD_SPEED,
+      damage: 0, direction: { x: dx, y: dy },
+      weaponType: 'skateboard', weaponKey: 'skater',
+      duration: SKATEBOARD_DURATION_MS, createdAt: now,
+      passthrough: false, hitEnemies: [], hostile: false, reflected: false, crit: false,
+    });
+    get().spawnBurst(pcx, pcy, '#facc15', 10);
+  },
+  // 投擲スケボーが敵に当たった時: 命中点まわりへ前方バッシュ(近接×SHIELD_BASH_DAMAGE_MULT＋強制ノックバック)。
+  skaterBoardHit: (x, y, dirX, dirY) => {
+    const player = get().player;
+    const melee = player.weapons.find(w => w.isMelee);
+    const meleeDamage = (melee?.damage ?? 6) * strikerMeleeMult(player) * (player.equipBonus?.damageMult ?? 1);
+    const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
+    const now = Date.now();
+    const r2 = SKATEBOARD_BASH_RANGE * SKATEBOARD_BASH_RANGE;
+    const killedList: { enemy: Enemy; finisher: boolean }[] = [];
+    const hitAt: { x: number; y: number }[] = [];
+    set(s => {
+      const out: Enemy[] = [];
+      for (const enemy of s.enemies) {
+        if (enemy.aiPhase === 'jump') { out.push(enemy); continue; }
+        if (enemy.type === 'reaper' && !enemy.reaperChaser) { out.push(enemy); continue; }
+        const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+        const d2 = (ecx - x) * (ecx - x) + (ecy - y) * (ecy - y);
+        if (d2 > r2) { out.push(enemy); continue; }
+        hitAt.push({ x: ecx, y: enemy.y });
+        const nh = Math.max(0, enemy.health - dmg);
+        if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
+        out.push({
+          ...enemy, health: nh, lastHit: now, meleeAggro: true,
+          knockbackVx: dirX * SHIELD_BASH_KNOCKBACK_SPEED, knockbackVy: dirY * SHIELD_BASH_KNOCKBACK_SPEED,
+          knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+        });
+      }
+      const bossKilled = killedList.some(k => k.enemy.type === 'giantbat' && !k.enemy.fromEvent);
+      return {
+        enemies: out,
+        gameStats: {
+          ...s.gameStats,
+          enemiesKilled: s.gameStats.enemiesKilled + killedList.length,
+          eliteKills: s.gameStats.eliteKills + killedList.reduce((n, k) => n + (isScoreElite(k.enemy.type) ? 1 : 0), 0),
+          bossKills: s.gameStats.bossKills + killedList.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
+          damageDealt: s.gameStats.damageDealt + dmg * hitAt.length,
+        },
+        finaleDefeated: s.finaleDefeated || bossKilled,
+      };
+    });
+    if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
+    get().spawnRing(x, y, 8, SKATEBOARD_BASH_RANGE, 'rgba(190,242,100,0.62)', 4, 260);
+    get().spawnBurst(x, y, '#bef264', 14);
+    for (const h of hitAt) get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)');
+    if (hitAt.length > 0) { get().triggerHitImpact(HITSTOP_MS, SHIELD_BASH_SHAKE_MS, SHIELD_BASH_SHAKE_MAG, 0); set({ bashHitFxAt: Date.now() }); }
   },
 
   setSwipeDirection: (direction, strength) => {
@@ -8166,6 +8257,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           shijinSlideDirY: 0,
           skaterStopUntil: 0,
           skaterBashCdUntil: 0,
+          skaterRiding: false,
+          skaterRideStartAt: 0,
           wireAnchorX: 0,
           wireAnchorY: 0,
           wireAnchored: false,

@@ -21,6 +21,10 @@ import {
 const STICK_RADIUS = 56; // px — visible base radius
 const NUB_RADIUS = 28;
 const DEAD_ZONE = 0.18; // ignore tiny movements
+// スケボー(新仕様)ダブルタップ判定: 直前が「短く小移動のタップ」で、離しからこの時間内に再タップ=ダブルタップ=乗車。
+const SKATER_DOUBLETAP_MS = 300;   // 1タップ目の離し→2タップ目の押下 までの許容間隔
+const SKATER_TAP_MAX_MS = 220;     // 「タップ」とみなす最大接触時間
+const SKATER_TAP_MAX_DRAG = 24;    // 「タップ」とみなす最大ドラッグ量(px)
 
 const VirtualJoystick: React.FC = () => {
   const zoneRef = useRef<HTMLDivElement>(null);
@@ -44,6 +48,12 @@ const VirtualJoystick: React.FC = () => {
   const triggerKatanaDash = useGameStore(state => state.triggerKatanaDash);
   const triggerWireAnchor = useGameStore(state => state.triggerWireAnchor);
   const rhythmInput = useGameStore(state => state.rhythmInput);
+  const mountSkater = useGameStore(state => state.mountSkater);
+  const dismountSkater = useGameStore(state => state.dismountSkater);
+  // スケボー(新仕様): ダブルタップで乗車。直前タップの離し時刻/それがタップ(短く小移動)だったか、最大ドラッグ量。
+  const lastUpAtRef = useRef(0);
+  const lastWasTapRef = useRef(false);
+  const maxDragRef = useRef(0);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
   // ドラッグは低速・小移動なのでしきい値に届かず、一閃は暴発しない。
@@ -152,6 +162,17 @@ const VirtualJoystick: React.FC = () => {
         if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
       }
     }
+    // スケボー(新仕様): この接触が「タップ」(短く小移動)だったかを記録し、次回押下のダブルタップ判定に使う。
+    // また、乗車中に指を離したら降車(=1秒以上乗っていれば進行方向へスケボーを投げてバッシュ)。dismountSkater は
+    // 未装備/非乗車なら無害。カウンター(上の triggerCounter)は従来どおり出るので、両立する。
+    if (pointerId !== null) {
+      const now = performance.now();
+      lastWasTapRef.current =
+        now - pointerDownTimeRef.current < SKATER_TAP_MAX_MS &&
+        maxDragRef.current < SKATER_TAP_MAX_DRAG;
+      lastUpAtRef.current = now;
+      dismountSkater();
+    }
     flickSamplesRef.current = [];
     if (pointerId !== null && zoneRef.current?.hasPointerCapture(pointerId)) {
       zoneRef.current.releasePointerCapture(pointerId);
@@ -162,7 +183,7 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash, tryFireWireAnchor]);
+  }, [setSwipeDirection, setTouchActive, triggerCounter, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, dismountSkater]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
@@ -170,15 +191,20 @@ const VirtualJoystick: React.FC = () => {
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
     setTouchActive(true);
-    pointerDownTimeRef.current = performance.now();
+    const nowT = performance.now();
+    // スケボー: 直前が短い小移動タップで、離しから SKATER_DOUBLETAP_MS 以内の再タップ=ダブルタップ=乗車。
+    // (2発目はそのままホールド=移動。skater 未装備なら store 側で無害。) release で降車(+条件で投擲)。
+    if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS) mountSkater();
+    pointerDownTimeRef.current = nowT;
+    maxDragRef.current = 0;
     flickFiredRef.current = false;
     const o = { x: e.clientX, y: e.clientY };
     originRef.current = o;
-    flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+    flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: nowT }];
     setOrigin(o);
     setDelta({ x: 0, y: 0 });
     zoneRef.current?.setPointerCapture(e.pointerId);
-  }, [release, setTouchActive]);
+  }, [release, setTouchActive, mountSkater]);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -203,6 +229,7 @@ const VirtualJoystick: React.FC = () => {
       const rawX = e.clientX - o.x;
       const rawY = e.clientY - o.y;
       const dist = Math.hypot(rawX, rawY);
+      if (dist > maxDragRef.current) maxDragRef.current = dist; // ダブルタップ判定用: この接触の最大ドラッグ量
       const max = STICK_RADIUS;
       const clamped = Math.min(dist, max);
       const nx = dist > 0 ? rawX / dist : 0;

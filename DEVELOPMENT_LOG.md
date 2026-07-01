@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1251 — スケボー(スケーター)を「乗車→投擲バッシュ」に再設計(社長指示)
+
+- 仕様(社長確認済み): skater スキル装備時のみ。**ダブルタップ(2発目ホールド)で乗車** → 乗車中だけ
+  移動3倍速＋強慣性(非乗車は通常)。**指を離すと降車**し、カウンターは従来どおり発火。**1秒以上乗車**していれば
+  進行方向へスケボーを投擲し、**敵に当たると前方バッシュ**(衝撃波＋強制ノックバック=爆破ではない)。1秒未満は
+  板が消えるだけ。旧「逆フリック急停止バッシュ」は廃止(投擲バッシュへ置換)。
+- 実装:
+  - `types/game.ts`: Player に `skaterRiding`/`skaterRideStartAt`、`WeaponType` に `'skateboard'`。
+  - `gameStore.ts`: 乗車中のみ 3倍速＋強慣性(reloading/通常の両分岐＋`inertiaTau`)。`mountSkater`/`dismountSkater`/
+    `skaterBoardHit` を追加。降車時に条件を満たせば `weaponType:'skateboard'` の投擲弾を生成(damage 0・進行方向)。
+    命中バッシュは近接ダメージ×`SHIELD_BASH_DAMAGE_MULT`＋`SHIELD_BASH_KNOCKBACK_SPEED` の強制ノックバック。
+    定数 `SKATER_RIDE_MIN_MS`/`SKATEBOARD_SPEED`/`_DURATION_MS`/`_SIZE`/`_BASH_RANGE`。
+  - `VirtualJoystick.tsx`: 短く小移動の「タップ」を記録し、離し→再押下が `SKATER_DOUBLETAP_MS` 以内=乗車。
+    指離しで `dismountSkater()`。
+  - `useGameLoop.ts`: 旧 `triggerSkaterBash` 呼び出しを廃止。投擲スケボーの専用衝突→`skaterBoardHit`。
+  - `pixiTextures.ts`: `skateboard`(白背景)を色キー透過で登録。`pixiScene.ts`: `syncSkateboards`/`drawSkateboard`
+    で進行方向へ回転＋滑走スピンのスプライト描画(未読込時は手描きフォールバック)。
+- 負荷: 1/10。投擲弾は同時1枚・700ms、描画はプールした単一スプライト+短命リング/バーストのみ(既存バッシュと同等)。
+  常時エフェクト/per-pixel なし。
+- 検証: typecheck / lint(0) / test(101) / build OK。変更: `types/game.ts`・`store/gameStore.ts`・
+  `hooks/useGameLoop.ts`・`components/VirtualJoystick.tsx`・`pixi/pixiTextures.ts`・`pixi/pixiScene.ts`・`package.json`。
+
 ## v0.25.1221 — ゲームスピードをURL(?speed=)で調整可能に(社長指示)
 
 - 新規 `src/config/gameSpeed.ts`: `?speed=N` で読み込み時に1回だけ `GAME_SPEED` を決定(既定1.2・0.2〜5にクランプ・

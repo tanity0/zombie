@@ -816,6 +816,8 @@ export class PixiScene {
   private decoyViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 自動タレット: 砲台ボディ(Graphics)。前方集中/全方位でモード別の見た目。
   private turretViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
+  // 投擲スケボー: 進行方向へ回転しながら地面を滑る板スプライト(色キー透過済み)。
+  private skateboardViews = new Map<string, { container: Container; sprite: Sprite; gfx: Graphics }>();
   private effects = new Map<string, EffectView>();
 
   // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
@@ -2377,6 +2379,7 @@ export class PixiScene {
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
+    this.syncSkateboards(s.projectiles, now);
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -5063,6 +5066,7 @@ export class PixiScene {
       if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
       if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
       if (p.weaponType === 'turret') continue; // タレットは syncTurrets で別管理(actorLayer/y-sort)
+      if (p.weaponType === 'skateboard') continue; // 投擲スケボーは syncSkateboards で別管理(スプライト)
       seen.add(p.id);
       let g = this.projectiles.get(p.id);
       if (!g) {
@@ -5221,6 +5225,71 @@ export class PixiScene {
         g.moveTo(Math.cos(a) * 6, cy + Math.sin(a) * 6).lineTo(Math.cos(a) * 12, cy + Math.sin(a) * 12).stroke({ color: accent, width: 2.5, cap: 'round' });
       }
     }
+  }
+
+  // 投擲スケボー(スケーター新仕様): 乗車1秒以上で指を離すと進行方向へ飛ぶ板。
+  // 進行方向へ向けつつ滑走のスピン(回転)を加えて地面を滑る見た目。テクスチャ未読込時は
+  // 手描きの板でフォールバック。当たり判定/挙動はストア側=ここは描画のみ。
+  private syncSkateboards(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.weaponType !== 'skateboard') continue;
+      if (p.createdAt > now) continue;
+      seen.add(p.id);
+      let v = this.skateboardViews.get(p.id);
+      if (!v) {
+        const container = new Container();
+        const sprite = new Sprite();
+        sprite.anchor.set(0.5);
+        sprite.visible = false;
+        const gfx = new Graphics();
+        container.addChild(sprite, gfx);
+        this.L.frontObjectLayer.addChild(container);
+        v = { container, sprite, gfx };
+        this.skateboardViews.set(p.id, v);
+      }
+      this.drawSkateboard(v, p);
+    }
+    for (const [id, v] of this.skateboardViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.skateboardViews.delete(id);
+      }
+    }
+  }
+
+  private drawSkateboard(v: { container: Container; sprite: Sprite; gfx: Graphics }, p: Projectile) {
+    const cx = p.x + p.width / 2;
+    const cy = p.y + p.height / 2;
+    const age = Date.now() - p.createdAt;
+    const remaining = p.duration - age;
+    const alpha = Math.max(0, Math.min(1, remaining / 200)); // 末尾で素早くフェード
+    // 進行方向へ向け、さらに滑走のスピンを重ねる(投げ板が回りながら滑る)。
+    const heading = Math.atan2(p.direction.y, p.direction.x);
+    const spin = (age / 90) % (Math.PI * 2);
+    v.container.position.set(cx, cy);
+    v.container.zIndex = cy;
+    v.container.alpha = alpha;
+    const tex = getTexture('skateboard');
+    const g = v.gfx;
+    g.clear();
+    if (tex && tex.height > 0) {
+      v.sprite.visible = true;
+      v.sprite.texture = tex;
+      const targetW = Math.max(28, p.width * 1.4);
+      const sc = targetW / tex.width;
+      v.sprite.scale.set(sc);
+      v.sprite.rotation = heading + spin;
+      return;
+    }
+    // フォールバック: テクスチャ未読込時は手描きの板(黒デッキ+黄ホイール)。
+    v.sprite.visible = false;
+    const hw = Math.max(14, p.width * 0.7);
+    const hh = Math.max(5, p.height * 0.28);
+    g.rotation = heading + spin;
+    g.roundRect(-hw, -hh, hw * 2, hh * 2, hh).fill({ color: 0x111827 });
+    g.circle(-hw * 0.6, hh, 2.4).fill({ color: 0xfacc15 });
+    g.circle(hw * 0.6, hh, 2.4).fill({ color: 0xfacc15 });
   }
 
   // 設置型シールドは向き別スプライトを足元アンカーで描画。actorLayer に置いて
