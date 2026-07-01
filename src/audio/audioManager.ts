@@ -179,7 +179,7 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // 変異体(叫喚型)の叫喚(発動)SE(社長提供)。溜め完了で1回。
   'screamer-cry': {
     src: `${import.meta.env.BASE_URL}audio/sfx/screamer-cry.wav`,
-    volume: 1.0,
+    volume: 1.3, // 叫喚の音量を上げる(社長指示: 1.0→1.3)
     minIntervalMs: 400,
   },
   // レベルアップSE(社長提供)。レベルが上がった瞬間に1回。
