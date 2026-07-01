@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1253 — 護衛NPC発砲の撤回 / 裏ボス中の湧き復活 / ズーム引き時のカリング拡張 / ショットガン音量(社長指示)
+- **護衛NPCの「裏ボス中は撃たない」を撤回(社長指示)**: NPCは裏ボスを撃ってよい。発砲は既存の
+  `onScreen(esc.x,esc.y)` ガードにより「その護衛が画面内=プレイヤー付近」のときだけ=プレイヤーが離れて
+  NPCが画面外になれば自動で撃たない。前回入れた `&& !boss` を除去。`store/gameStore.ts`。
+- **裏ボス出現中の通常湧きを復活(社長指摘: 敵が沸かず寂しい)**: 通常湧きの停止条件を `!hiddenBossAlive`
+  (存命中ずっと停止)から `!bossChasingNow`(裏ボスが画面内で追跡中だけ停止)へ変更。画面外/帰巣中(非追跡)は
+  通常どおり湧く。追跡中は他敵の一斉逃走演出と整合して湧きも止める。保証湧き(プラント/犬・各ラン1回)は据え置き。
+  `hooks/useGameLoop.ts`。
+- **ズーム引き時、要素がスケール外に出ると消える件を修正(社長報告)**: エフェクト/リング/松明/影のカリング境界が
+  固定の screenW/screenH 基準で、文脈ズームで引いた分の可視域拡大を考慮していなかった。`zoomViewportOverscan()`
+  を追加し、`contextZoom<1`(引き)のとき中心から可視域を広げてカリング(`isPointNearViewport`/
+  `distanceOutsideViewport`)。引き時だけ拡張=zoom-in時は据え置き。安全側(消えなくなるだけ・負荷1/10)。
+  `pixi/pixiScene.ts`。
+- **ショットガン発砲音の音量アップ(社長指示)**: `shotgun-fire` volume 1.1→1.3。`audio/audioManager.ts`。
+- 検証: typecheck / lint(0) / test(101) / build 通過。
+- 申し送り(未解決): スケボー乗車の板が出ない件は、2枚目のスクショではスケーター未装備に見える(表示スキルが
+  ハンティング/シールド)。装備有無/3倍速の有無を社長へ確認中(乗車判定=skater装備時のみ・ダブルタップ2回目長押し)。
+
 ## v0.25.1252 — 盾バッシュ向き修正 / 裏ボス中はNPC発砲中止 / スケボー乗車の見た目 / 叫喚差し替え(社長指示)
 - **盾バッシュの向き修正(バグ)**: バッシュは「プレイヤーが向いている方向」へ飛ばす。プレイヤー位置は
   「盾の外向き半球(前方180°)に入るか」の判定にだけ使う。これまで半球判定に「プレイヤー中心→盾中心」の

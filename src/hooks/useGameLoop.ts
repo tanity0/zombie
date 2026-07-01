@@ -5134,6 +5134,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
         // 裏ボス存命中は通常湧き(プラント含む)を止める=ボス戦に集中(イベント抑止と同基準・社長報告)。
         const hiddenBossAlive = allEnemiesNow.some(e => isHiddenBoss(e.type));
+        // ただし通常湧きは「裏ボスが画面内で追跡してきている間(bossChasing)」だけ止める(社長指摘: 出現中ずっと
+        // 敵が沸かないのは寂しい)。画面外/帰巣中(=非追跡)は通常どおり湧かせる。追跡中は他敵が一斉逃走する演出と
+        // 整合させ、湧きも止める。
+        const bossChasingNow = useGameStore.getState().bossChasing;
         // 文脈ズーム用: プレイヤー近く(画面内相当の半径)にいる敵だけ数える。遠くの大型/多数では引かない(社長指示)。
         const zpcx = player.x + player.width / 2, zpcy = player.y + player.height / 2;
         const zoomNearR2 = Math.pow(Math.max(gameBounds.width, gameBounds.height) * 0.6, 2);
@@ -5192,7 +5196,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !danceTest &&
           !indoor &&
           !confining &&
-          !hiddenBossAlive && // 裏ボス存命中は通常湧きを止める(プラント含む)
+          !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
           fieldCount < normalSpawnCap &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1) * sceneIntervalMult
         ) {

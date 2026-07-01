@@ -7461,9 +7461,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       let { x, y, fireAt, dwellMs, face } = esc;
       if (nearest) {
         // 停止して射撃(進まない)。射撃間隔でスロットル。弾はプレイヤーと同じ見た目の実弾(handgun projectile)。
-        // 裏ボス存命中は護衛NPCの発砲を中止(社長指示)。画面外へ逃げると裏ボスが回復するため、NPCの継続射撃で
-        // “削り殺し”できてしまうのを防ぐ(裏ボスはプレイヤー自身の攻撃で倒す)。
-        if (now >= fireAt && !boss) {
+        // 護衛NPCは裏ボスを撃ってもよい(社長指示)。ただし発砲はこの護衛が画面内のとき(=上の onScreen ガードを
+        // 通過したとき)だけ=プレイヤーが離れてNPCが画面外になれば自動で撃たない。→ プレイヤー不在での“削り殺し”は起きない。
+        if (now >= fireAt) {
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = nearest.x + nearest.width / 2, ty = nearest.y + nearest.height / 2;
           let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;

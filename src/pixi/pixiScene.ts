@@ -1765,23 +1765,34 @@ export class PixiScene {
     return this.depthScaleWith(footWorldY, ENEMY_DEPTH_K, ENEMY_DEPTH_MIN, ENEMY_DEPTH_MAX);
   }
 
+  // 文脈ズームで引いた分だけ可視域(画面に映る world 範囲)が広がる。カリング境界もその分だけ
+  // 中心から広げないと、引き時に画面端へ現れるはずのエフェクト/リング/松明などが消えてしまう(社長報告)。
+  // contextZoom<1(引き)のときだけ拡張。zoom-in(idle/move/punch)は可視域を狭めるので拡張しない(=1.0据え置き)。
+  private zoomViewportOverscan(): { exW: number; exH: number; ox: number; oy: number } {
+    const zin = 1 / Math.min(1, this.contextZoom || 1); // >=1(引き)
+    const exW = this.screenW * zin, exH = this.screenH * zin;
+    return { exW, exH, ox: (exW - this.screenW) / 2, oy: (exH - this.screenH) / 2 };
+  }
+
   private isPointNearViewport(
     x: number,
     y: number,
     camera: { x: number; y: number },
     margin = EFFECT_VIEWPORT_MARGIN
   ) {
-    return x >= camera.x - margin &&
-      x <= camera.x + this.screenW + margin &&
-      y >= camera.y - margin &&
-      y <= camera.y + this.screenH + margin;
+    const { ox, oy } = this.zoomViewportOverscan();
+    return x >= camera.x - ox - margin &&
+      x <= camera.x + this.screenW + ox + margin &&
+      y >= camera.y - oy - margin &&
+      y <= camera.y + this.screenH + oy + margin;
   }
 
   private distanceOutsideViewport(x: number, y: number, margin = 0) {
-    const left = -this.L.world.position.x - margin;
-    const top = -this.L.world.position.y - margin;
-    const right = left + this.screenW + margin * 2;
-    const bottom = top + this.screenH + margin * 2;
+    const { ox, oy } = this.zoomViewportOverscan();
+    const left = -this.L.world.position.x - ox - margin;
+    const top = -this.L.world.position.y - oy - margin;
+    const right = left + this.screenW + ox * 2 + margin * 2;
+    const bottom = top + this.screenH + oy * 2 + margin * 2;
     const dx = x < left ? left - x : x > right ? x - right : 0;
     const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
     return Math.hypot(dx, dy);
