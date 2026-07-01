@@ -501,6 +501,13 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
   reaper: 0xff4f5e,
   screamer: 0x9fe870, // 変異体(叫喚型・毒々しい緑の発光)
 };
+// バー/メーターの色トンマナ統一(社長指示)。デザイン理論=同一トーン(Tailwind -400 帯で彩度/明度を揃えた
+// 一族)で 緑(健全)/黄(注意・リロード)/赤(危険)/青(味方) を統一。背景は共通の半透明黒。単一の出所に集約。
+const BAR_BG_ALPHA = 0.5;       // 数値連動バー共通の半透明黒背景
+const STATUS_GREEN = 0x34d399;  // emerald-400: HP高(健全)
+const STATUS_RED = 0xf87171;    // red-400: HP低/危険
+const STATUS_YELLOW = 0xfbbf24; // amber-400: リロード/注意
+const STATUS_ALLY = 0x38bdf8;   // sky-400: 味方(救助対象)
 // 裏ボスの影: 当たり判定より一回り大きく見せる倍率＋鮮やかめの赤(社長指示)。
 const BOSS_SHADOW_SCALE = 1.35;  // 当たり判定(w×h)に対する影の拡大率
 const BOSS_SHADOW_TINT = 0x9a0000; // 暗赤(0x5a0000)→より赤く
@@ -4374,8 +4381,8 @@ export class PixiScene {
       const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
       const bx = s.x;
       const by = s.y - 6;
-      o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: 0.55 });
-      o.rect(bx, by, s.width * frac, 3).fill({ color: 0x38bdf8 });
+      o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
+      o.rect(bx, by, s.width * frac, 3).fill({ color: STATUS_ALLY });
     }
   }
 
@@ -4987,9 +4994,9 @@ export class PixiScene {
     const h = 3;
     const x = e.x;
     const y = e.y - h - 2;
-    g.rect(x, y, w, h).fill({ color: 0x000000, alpha: 0.5 });
+    g.rect(x, y, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
     const pct = e.health / e.maxHealth;
-    g.rect(x, y, w * pct, h).fill({ color: pct < 0.3 ? 0xef4444 : 0x10b981 });
+    g.rect(x, y, w * pct, h).fill({ color: pct < 0.3 ? STATUS_RED : STATUS_GREEN });
   }
 
   private drawStunReticle(g: Graphics, cx: number, cy: number, size: number, now: number) {
@@ -5513,8 +5520,8 @@ export class PixiScene {
       const bw = PixiScene.RESCUE_NPC_DISPLAY_H * 0.5;
       const bx = cx - bw / 2;
       const by = s.y + s.height - PixiScene.RESCUE_NPC_DISPLAY_H * this.depthScaleEnemy(s.y + s.height) - 8;
-      g.rect(bx, by, bw, 3).fill({ color: 0x000000, alpha: 0.55 });
-      g.rect(bx, by, bw * frac, 3).fill({ color: 0x4ade80 });
+      g.rect(bx, by, bw, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
+      g.rect(bx, by, bw * frac, 3).fill({ color: STATUS_GREEN });
       if (s.helpUntil && now < s.helpUntil) {
         g.circle(cx + bw * 0.6, by - 6, 5).fill({ color: 0xfca5a5, alpha: 0.92 });
         g.circle(cx + bw * 0.6, by - 6, 5).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.92 });
@@ -7050,9 +7057,9 @@ export class PixiScene {
         const fb = playerFootBox(player);
         const d = this.depthScale(fb.footY);
         const top = fb.footY - fb.boxH * d - 10;
-        // 枠(外側の黒縁)＋白トラックを廃止。背景は半透明の黒のみ＋黄色の進捗塗り(社長指示・敵HPバーと同規格)。
-        g.rect(x, top, w, h).fill({ color: 0x000000, alpha: 0.5 });
-        g.rect(x, top, w * progress, h).fill({ color: 0xfbbf24 });
+        // 枠(外側の黒縁)＋白トラックを廃止。背景は半透明の黒のみ＋黄色の進捗塗り(社長指示・敵HPバーと同規格・共通トーン)。
+        g.rect(x, top, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
+        g.rect(x, top, w * progress, h).fill({ color: STATUS_YELLOW });
       }
     }
   }
