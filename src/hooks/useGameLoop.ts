@@ -75,6 +75,8 @@ import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
+import { stepDirector, createDirectorState } from '../utils/aiDirector';
+import { setDirectorDebug } from '../utils/aiDirectorDebug';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
@@ -338,6 +340,10 @@ const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ラ�
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
+// AIディレクター(L4D2型)ステップA: ?director=1 の時だけ Intensity/Performance/DirectorState を算出して
+// デバッグ表示に流す。★算出するだけ=ゲーム挙動には一切影響させない(読むだけ)。
+const DIRECTOR_ENABLED = evParam('director') === '1';
+const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
 // 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
 const evNum = (key: string, def: number): number => {
@@ -526,6 +532,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const shieldHitRef = useRef<Map<string, number>>(new Map());
   // 自動タレットの発射スロットル: タレットid -> 次に撃てる gameTime(ms)。
   const turretFireRef = useRef<Map<string, number>>(new Map());
+  // AIディレクター(ステップA=読むだけ)の状態＋差分計算用の直近値。?director=1 のときだけ更新。
+  const directorRef = useRef({ state: createDirectorState(), prevHp: 0, prevKills: 0 });
   // ドローンブーメラン停止中の周囲パルス: boomerang id -> 次パルスの gameTime(ms)。
   const boomPulseRef = useRef<Map<string, number>>(new Map());
   // ワイヤーダッシュ着地の近接攻撃を1ダッシュにつき1回だけ発火させるためのマーカー
@@ -1077,6 +1085,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           turretAimRef.current.clear();
           boomPulseRef.current.clear();
           zoneTickRef.current = 0;               // 区域判定の間引きカウンタも再アーム
+          directorRef.current = { state: createDirectorState(), prevHp: 0, prevKills: 0 }; // AIディレクターも新ランで初期化
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -5657,6 +5666,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           prevHealthRef.current = currentPlayer.health;
         } else {
           prevHealthRef.current = currentPlayer.health;
+        }
+
+        // --- AIディレクター(ステップA): Intensity/Performance/DirectorState を算出してデバッグバスへ流すだけ。
+        // ★ゲーム挙動(湧き/敵/プレイヤー)には一切書き込まない=読むだけ。?director=1 の時のみ動く(通常は完全に無コスト)。
+        if (DIRECTOR_ENABLED) {
+          const ds = useGameStore.getState();
+          const dp = ds.player;
+          const maxHp = Math.max(1, dp.maxHealth);
+          const dmgTaken = Math.max(0, directorRef.current.prevHp - dp.health) / maxHp;
+          directorRef.current.prevHp = dp.health;
+          const killsNow = ds.gameStats.enemiesKilled;
+          const killDelta = Math.max(0, killsNow - directorRef.current.prevKills);
+          directorRef.current.prevKills = killsNow;
+          // 近接圏(接触危険レンジ)内の敵数=“近い敵”。画面内総数ではなく近接を見る(トップダウンでは近接が効く)。
+          const dpx = dp.x + dp.width / 2, dpy = dp.y + dp.height / 2;
+          const nearR2 = DIRECTOR_NEAR_RADIUS * DIRECTOR_NEAR_RADIUS;
+          let nearN = 0;
+          for (const e of ds.enemies) {
+            const ex = e.x + e.width / 2 - dpx, ey = e.y + e.height / 2 - dpy;
+            if (ex * ex + ey * ey <= nearR2) nearN++;
+          }
+          directorRef.current.state = stepDirector(directorRef.current.state, {
+            hpFrac: dp.health / maxHp,
+            damageTakenFrac: dmgTaken,
+            nearEnemies: nearN,
+            killDelta,
+          }, deltaTime);
+          setDirectorDebug(directorRef.current.state);
         }
       }
 

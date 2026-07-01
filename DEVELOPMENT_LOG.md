@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1266 — AIディレクター ステップA(Intensity/Performance/DirectorState を“読むだけ”可視化)(社長指示)
+- 方針(社長＋Codex合意): L4D2型。**Intensity=いま苦しいか / Performance=いま余裕があるか を絶対に混ぜない**。
+  Intensityは「Relaxへ寄せる」だけ、Performanceは「BuildUpを強める」だけに使う(被弾で難易度を上げない)。
+  DirectorStateは **BUILD_UP / PEAK / RELAX** の3状態、PEAK後は必ずRELAX。
+- **ステップA=算出＋可視化のみ。ゲーム挙動(湧き/敵/プレイヤー)には一切影響させない(読むだけ)。**
+- 追加: `utils/aiDirector.ts`(純関数 stepDirector＋定数・私案)/`aiDirector.test.ts`(7ケース)/
+  `utils/aiDirectorDebug.ts`(受け渡しバス・ストア非経由)/`components/DirectorOverlay.tsx`(?director=1 で左上バー・自前raf)/
+  `useGameLoop`(?director=1 時のみフレーム末に近接敵数/被弾/撃破を集めて stepDirector→バス)。
+- Intensity=被弾スパイク＋低HP＋近接敵(上げ速い/下げ遅い)、Performance=HP余裕＋無被弾継続＋撃破EMA(ゆっくり・②と別ソース)。
+- 負荷 1/10(?director=1 時のみ近接距離ループ1回＋数値計算。オフ時は無コスト)。次段: 数値が体感と合えば RELAXだけ有効化。
+- 検証: typecheck / lint(0) / test(108) / build 通過。基準点=commit b1eae30(v0.25.1263)。
+
 ## v0.25.1264 — 囲い/救助サークルを少し拡大(社長指示)
 - 依頼: 大量発生イベントのサークルと救助のサークルを少し広げる。
 - `ARENA_EVENT_RADIUS` 210→240(閉じ込め系 horde/boss/egg 共通)、`RESCUE_RADIUS` 150→175。

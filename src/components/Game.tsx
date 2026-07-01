@@ -7,6 +7,7 @@ import { getTexture } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
 import DebugOverlay from './DebugOverlay';
+import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
 import DanceTapMeter from './DanceTapMeter';
 import UpgradeMenu from './UpgradeMenu';
@@ -48,6 +49,8 @@ const Game: React.FC<GameProps> = ({
   const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
   // 凍結診断オンスクリーン表示(?debug=1)。
   const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
+  // AIディレクター(ステップA)可視化(?director=1)。読むだけ=ゲーム挙動には影響しない。
+  const directorOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('director') === '1';
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
   const showShopMenu = useGameStore(state => state.showShopMenu);
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
@@ -189,6 +192,7 @@ const Game: React.FC<GameProps> = ({
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
       {debugOverlay && <DebugOverlay />}
+      {directorOverlay && <DirectorOverlay />}
       <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
       {benchmarkMode && (
         <div
