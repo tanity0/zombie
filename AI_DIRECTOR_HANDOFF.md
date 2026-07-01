@@ -1,17 +1,19 @@
 # AIディレクター 引き継ぎ記録 (L4D2型・難易度の“緩急”管理)
 
-最終更新: v0.25.1276 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
+最終更新: v0.25.1284 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
 基準点(“面白い”状態への復帰点): **commit `b1eae30` (v0.25.1263)**。崩れたら `git checkout b1eae30`。
 （ローカルタグ `diff-baseline-1263` は作成済みだが、このgitプロキシがタグpushを拒否するため remote には無い。commit hash で管理。）
 
 ## 0. 一言まとめ
 L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動の波”を薄く乗せる**方針。
-現状は **ステップA（読むだけ）＋ ステップB（RELAXだけ湧きに接続）＋ ステップC（Performance高でBuildUp強化）** まで完了。
+現状は **ステップA（読むだけ）＋ ステップB（RELAXだけ湧きに接続）＋ ステップC（Performance高でBuildUp強化）**
+＋ **難易度⑤ DirectorRank（前フェーズ評価で次フェーズだけ強化＋HARVESTのEXP倍率、既定ON）** まで完了。
 - `?director=1`：左上にライブ表示、死亡/クリアのリザルトに緊張曲線＋難易度スコア(読むだけ・挙動不変)。
 - `?directorApply=relax`：**RELAX中だけ**危険敵を足さない/湧き間隔を伸ばす/湧き上限を下げる。
 - `?directorApply=buildup`：**BUILD_UP中だけ**Performanceが高いほどescalationを少し上乗せする(レバーは1本だけ・慎重)。
 - `?directorApply=all`：両方同時に有効化。
   フラグ無し(既定)は基準点と完全に同じ挙動。
+- `?rank=0`：DirectorRank(難易度⑤・詳細は2.7)を無効化。フラグ無し(既定)は**有効**(A/B/Cとは違い常時ON)。
 
 ## 1. 合意した設計方針（社長＋Codex＋Claude）★ここを外さない
 - **Intensity（いま苦しいか）と Performance（いま余裕があるか）を絶対に混ぜない。**
@@ -67,6 +69,37 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
   - `spawnEsc` の算出式に `buildupAdj.escBoost` を加算するだけ(③④の上に薄く乗る)。屋内/ラボは対象外。
 - **★スコア/経験値/レベル速度には一切触れていない**(社長指示で触ってはいけないシステム。Codex原案の
   「報酬も少し上げる」は採用しなかった)。
+
+## 2.7 実装済み（難易度⑤・DirectorRank=台本＋前フェーズ評価。社長合意・v0.25.1284で一気に実装）
+- **背景**: Codex提案「BUILD_UP/PEAK/RELAXだけでは“休んだあとまた試験”になりやすく、
+  “熟せてる感”を作るHARVESTが要る」を受け、社長と方式を協議。結論は**台本(①)が骨格・
+  前フェーズの成績が次フェーズの強さを決める・リアルタイムはブレーキ専用**（RE4のランク方式に近い）。
+  この③つ目の軸(前フェーズ評価)は**②③④/AIディレクター(A/B/C)とは別の新レバー**として追加した。
+- **調整の算出（純関数）** `src/utils/directorRank.ts`
+  - `evaluatePhasePerformance(input)`: 直前フェーズの被弾レート/HP残量/撃破レート/レベル取得レートから
+    0(きつい)〜1(絶好調)のスコアを算出。現在のAIディレクターIntensity(まだ既定OFFの実験段階)には**依存しない**、
+    独立指標。
+  - `rankFromPerformance(score)`: スコアを `DirectorRank`(0/1/2)へ。**0が下限＝台本通り**（社長指示「下限は
+    緩めない」＝苦戦しても台本より弱くしない。Rankは上振れのみの片方向ノブ）。
+  - `rankAdjustFor(rank)`: rankごとの上乗せ量(`escBoost`/`countCapBonus`/`rewardMult`)。rank=0は完全に
+    無補正(基準点と一致)。
+- **配線** `src/hooks/useGameLoop.ts`（`?rank=0` で無効化。既定ON=③④と同じ「基本は常時有効」扱い。
+  社長指示「今回は一気に」＝AIディレクターA/B/Cのような段階的フラグは付けていない）
+  - フェーズ(`phaseAt`のkind+index)が切り替わった瞬間だけ、直前フェーズぶんの
+    `gameStats.damageTaken`/`enemiesKilled`/`player.level`の差分とフェーズ終了時HPから評価し、rankを更新。
+    1フェーズ目は比較対象が無いのでrank=0のまま。**今このフレームには反映しない**(常に次フェーズだけに効く
+    ＝Performanceが高くても“今”は盛らない、という社長方針そのもの)。
+  - `spawnEsc`に`rankAdj.escBoost`を加算(③④/BuildUp Cと同じ合流点)。`dirCountCap`(=enemyCap/normalSpawnCapの
+    元)に`rankAdj.countCapBonus`を加算(ENEMY_COUNT_CEIL=20で頭打ち)。
+  - HARVEST相当(`buildup`フェーズ=関所と関所の間の緩む区間)中だけ、`rankAdj.rewardMult`を
+    `src/utils/directorRankState.ts`(aiDirectorDebug.tsと同じ、Zustandを介さない軽量シングルトン)経由で
+    `gameStore.ts`の`dropEnemyXp`に渡し、EXPドロップ値へ掛ける。関所/ボス中は倍率をかけない
+    (Codexの「難関中は物資でなく倍率、回収はHARVEST側」という切り分けを維持)。
+  - v1のスコープ縮小(社長へ明示): 「featured敵の重み」は既存の`spawnEsc`(戦力連動escalation)経路を再利用
+    (専用の重み倍率は増設していない)。通貨/宝箱ドロップ率・スコア倍率には触れていない(EXPのみ)。
+    Intensityの持続時間は評価指標に含めていない(AIディレクター本体が既定OFFのため独立させた)。
+- **テスト** `src/utils/directorRank.test.ts`(8ケース): スコアの上下限/rank境界/rank=0が厳密に無補正である
+  ことを検証。
 
 ## 3. まだやっていない（＝次の作業）
 1. **数値詰め（実機）**: `?director=1&directorApply=all` で実際にRELAX/BUILDUPが効いているか(湧きが緩む/強まる、

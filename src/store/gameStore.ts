@@ -25,6 +25,7 @@ import {
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
+import { getDirectorRewardMult } from '../utils/directorRankState';
 import { pickNpcLine } from '../data/npcLines';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
@@ -6460,7 +6461,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropEnemyXp: (enemy, x, y, idPrefix, value) => {
-    const v = value ?? enemy.experienceValue;
+    // 難易度⑤(DirectorRank): HARVEST相当のフェーズ中だけ有効な倍率(通常は1)。useGameLoopが毎フレーム更新。
+    const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult());
     const base = xpOrbCountForEnemy(enemy);
     // 紅き夜中は経験値ドロップ数2倍。
     const n = base * (get().redNight?.phase === 'active' ? 2 : 1);

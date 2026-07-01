@@ -73,10 +73,12 @@ import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
+import { enemyCountCap, phaseAt, sceneAt, ENEMY_COUNT_CEIL } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
+import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
+import { setDirectorRankRewardMult } from '../utils/directorRankState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
@@ -346,6 +348,10 @@ const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ラ�
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
+// 難易度⑤(DirectorRank=台本+前フェーズ評価、社長合意): フェーズが切り替わるたびに直前フェーズの
+// 成績を評価し、次フェーズだけ少し強め+報酬多めにする(下限は台本=rank0、苦戦しても弱めない)。
+// リアルタイムの即時反映はしない(今すぐは盛らない・次の山にだけ反映)。?rank=0 で無効化。
+const RANK_ENABLED = evParam('rank') !== '0';
 // AIディレクター(L4D2型)ステップA: ?director=1 の時だけ Intensity/Performance/DirectorState を算出して
 // デバッグ表示に流す。★算出するだけ=ゲーム挙動には一切影響させない(読むだけ)。
 const DIRECTOR_ENABLED = evParam('director') === '1';
@@ -518,6 +524,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
   // 難易度④(関所ライブ補正): 現在の関所キー / 関所突入時のHP割合 / 平滑化した escalation 補正。
   const gateRef = useRef({ key: '', startHpFrac: 1, live: 0 });
+  // 難易度⑤(DirectorRank): 現在のフェーズキーと、そのフェーズ開始時点のスナップショット。
+  // フェーズが切り替わった瞬間に直前フェーズぶんの差分から成績を評価し、rank を更新する。
+  const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 });
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
@@ -5196,7 +5205,37 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ステップ②(難易度ディレクター): 屋外の「敵数の上限」をフェーズ駆動(フロア≈10〜天井20)にする。
         // カリング上限(enemyCap)と湧き上限(normalSpawnCap)の両方を同じ値で動かす(片方だけだと即カリングされる/枠が余る)。
         // 屋内/ラボは従来どおり固定上限。囲い/救助イベントの特別枠は維持。
-        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : enemyCountCap(gameTime);
+        const curPhase = phaseAt(gameTime);
+        // 難易度⑤(DirectorRank・社長合意): フェーズが切り替わった瞬間に、直前フェーズぶんの成績
+        // (gameStats.damageTaken/enemiesKilled/player.level の差分とフェーズ終了時HP)から rank を
+        // 更新する。1フェーズ目は比較対象が無いので rank=0(台本通り)のまま。今このフレームには
+        // 反映しない=常に「次のフェーズだけ」に効かせる。
+        const rankPhaseKey = `${curPhase.kind}${curPhase.index}`;
+        const rankOutdoor = RANK_ENABLED && !labTheme && !indoor;
+        if (rankOutdoor && rankRef.current.phaseKey !== rankPhaseKey) {
+          if (rankRef.current.phaseKey !== '') {
+            const rgs = useGameStore.getState();
+            const perf = evaluatePhasePerformance({
+              durationMs: Math.max(1, gameTime - rankRef.current.phaseStartMs),
+              damageTaken: Math.max(0, rgs.gameStats.damageTaken - rankRef.current.startDamageTaken),
+              hpFracEnd: rgs.player.maxHealth > 0 ? rgs.player.health / rgs.player.maxHealth : 0,
+              kills: Math.max(0, rgs.gameStats.enemiesKilled - rankRef.current.startKills),
+              levelGained: Math.max(0, rgs.player.level - rankRef.current.startLevel),
+            });
+            rankRef.current.rank = rankFromPerformance(perf);
+          }
+          const rgs2 = useGameStore.getState();
+          rankRef.current.phaseKey = rankPhaseKey;
+          rankRef.current.phaseStartMs = gameTime;
+          rankRef.current.startDamageTaken = rgs2.gameStats.damageTaken;
+          rankRef.current.startKills = rgs2.gameStats.enemiesKilled;
+          rankRef.current.startLevel = rgs2.player.level;
+        }
+        const rankAdj = rankOutdoor ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1 };
+        // HARVEST相当(buildupフェーズ=関所間の緩む区間)でだけ、rank に応じたEXP倍率を効かせる
+        // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
+        setDirectorRankRewardMult(curPhase.kind === 'buildup' ? rankAdj.rewardMult : 1);
+        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
 
         // Continuous spawner — drip enemies onto the field from off-screen.
@@ -5236,7 +5275,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const normalSpawnCap = labTheme ? MAX_ENEMIES : Math.max(6, Math.round(dirCountCap * relaxAdj.capMult));
         // 難易度③(戦力連動): 過剰育成(戦力マージン>1)なら escalation で強さ(色)/種類(重い型)を底上げ。
         // esc=0 は現状据え置き=順調/未育成は無変化。関所(gate)で強め・余裕(buildup)は弱め。?dda=0 で無効。屋内/ラボは対象外。
-        const curPhase = phaseAt(gameTime);
         const ddaActive = DDA_ENABLED && !labTheme && !indoor;
         const buildEsc = ddaActive
           ? spawnEscalation({
@@ -5264,7 +5302,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gateRef.current.live += (0 - gateRef.current.live) * smooth;
           }
         }
-        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0) + buildupAdj.escBoost)) * relaxAdj.escMult;
+        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0) + buildupAdj.escBoost + rankAdj.escBoost)) * relaxAdj.escMult;
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;

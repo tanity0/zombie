@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1284 — 難易度⑤: DirectorRank(台本+前フェーズ評価)+HARVEST相当のEXP倍率(社長合意・一気に実装)
+- 発端: 社長が中継したCodexの設計提案「BUILD_UP/PEAK/RELAXの3状態だけでは“休んだあとまた試験”に
+  なりやすく、“熟せてる感”を作るHARVESTという第4の時間が要る」を受けて方式を協議。合意は
+  「15分台本(①)は骨格として固定・前フェーズの成績が次フェーズの強さを決める・リアルタイムは
+  苦戦時のブレーキ専用(今すぐは盛らない)」という、L4D2よりRE4のランク方式に近い形。
+  社長の追加指示: **①下限は緩めない(苦戦しても台本より弱くしない)／②既存のBUILD_UP即時escalation
+  (ステップC)はそのまま残す(廃止しない)／③段階分けせず今回一気に実装**。
+- **新規**: `src/utils/directorRank.ts`(純関数)。`evaluatePhasePerformance`が直前フェーズの被弾レート/
+  HP残量/撃破レート/レベル取得レートから0〜1のスコアを算出→`rankFromPerformance`でRank0/1/2へ
+  (0=台本通りが下限)→`rankAdjustFor`でescalation上乗せ/湧き上限加算/EXP倍率に変換。現在のAIディレクター
+  Intensity(まだ既定OFFの実験段階)には依存しない独立指標にした。
+- **配線**: `useGameLoop.ts`にフェーズ切替検知(`phaseAt`のkind+index変化)を追加、切替の瞬間だけ直前
+  フェーズの`gameStats.damageTaken`/`enemiesKilled`/`player.level`差分からrankを更新(今のフレームには
+  反映しない=常に次フェーズだけに効く)。`spawnEsc`(③④/BuildUpと同じ合流点)へ加算、`dirCountCap`
+  (湧き上限の元)へ加算(天井20で頭打ち)。HARVEST相当のbuildupフェーズ中だけ、EXP倍率を
+  `src/utils/directorRankState.ts`(aiDirectorDebug.tsと同型の軽量シングルトン、Zustand経由にせず
+  React再描画/per-frame set()を増やさない)経由で`gameStore.ts`の`dropEnemyXp`へ渡す。関所/ボス中は
+  倍率をかけない(難関中は物資でなく倍率、回収はHARVEST側というCodex案の切り分けを維持)。
+  `?rank=0`で無効化可(既定は有効・DDA③④と同じ「常時ON」の位置づけ)。
+- **v1のスコープ**(社長へ明示、次回以降の拡張候補): featured敵の重み増しは専用レバーを増設せず既存の
+  escalation経路を再利用。通貨/宝箱ドロップ率・スコア倍率は今回対象外(EXPのみ)。評価指標にAIディレクター
+  のIntensity持続時間は含めていない(本体が既定OFFのため独立させた)。
+- `src/utils/directorRank.test.ts`新規8件、`AI_DIRECTOR_HANDOFF.md`に設計/実装内容を追記。
+- 負荷スコア: **1/10**。フェーズ切替時(15分で最大18回程度)だけ純関数を1回呼ぶのみで、毎フレームの
+  追加コストは文字列比較+スカラー加算のみ。新規Graphics/Text/glowや新規Reactストア購読は無し。
+- 検証: typecheck / lint(0, full) / test(129 pass, 1 skip) / build 通過。
+
 ## v0.25.1283 — 今日のデバッグ/エラー検索: 直さない理由がないバグ2件+重複コード1件を修正
 - 社長指示「今日のデバッグ、エラー検索」で54コミット分を8観点(行単位差分/挙動除去/横断/再利用/簡潔化/
   効率/俯瞰/CLAUDE.md準拠)で並列レビューし、独立検証まで実施。続く「直さない理由がないものはまず直して」
