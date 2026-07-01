@@ -4204,10 +4204,10 @@ export class PixiScene {
       this.playerKatanaBackAttached = true;
     }
     // スケボー乗車中の板を本体スプライトの背面(=足の下)へ一度だけ親子付け。reticle(0) と sprite の間へ挿入。
-    // アンカーY=0.38 は「板の上端(ノーズ先端)」の位置(正方形テクスチャ内で板絵は縦中央やや上、実測 上端≒38%)。
-    // これを足元(footY)へ合わせると、キャラ足元ピクセル=板の上端 が揃う(社長指示)。
+    // アンカーY=0.43 は「デッキ中央の黒線」の位置(正方形テクスチャ内の実測)。ノーズ/テールは反って上へ跳ねる
+    // ので上端(≒0.38)ではなく、この中央の黒線を足元(footY)へ合わせる=足がデッキ中央に乗る(社長指示)。
     if (!this.playerSkateboardAttached) {
-      this.playerSkateboard.anchor.set(0.5, 0.38);
+      this.playerSkateboard.anchor.set(0.5, 0.43);
       this.playerSkateboard.visible = false;
       this.playerView.container.addChildAt(this.playerSkateboard, 1);
       this.playerSkateboardAttached = true;
@@ -4440,7 +4440,9 @@ export class PixiScene {
 
   private drawPlayer(view: ActorView, p: Player, gameTime: number, now: number) {
     const fb = playerFootBox(p);
-    const walking = p.isMoving && p.direction !== 'idle';
+    // スケボー乗車中は歩きアニメを止める(社長指示): 待機フレームで板に立つ。歩行の上下バウンド(bob)/
+    // スカッシュ/踏み込みリーンも walking=false で自動的に止まる。
+    const walking = p.isMoving && p.direction !== 'idle' && !p.skaterRiding;
     const frame = playerWalkFrame(p, now, walking);
     // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
     // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。
@@ -4589,20 +4591,20 @@ export class PixiScene {
       kb.visible = false;
     }
     // スケボー乗車中: 足元に板を敷いて「乗っている」見た目にする(描画のみ・判定不変)。板テクスチャは
-    // 投擲弾と同じ色キー透過済み。向きで左右反転。体幅の約2倍へ拡大し、アンカー(0.5,0.38=板の上端)を
-    // 足元(footY)へ合わせる=キャラ足元ピクセル=板の上端 が揃い、板は足元から手前(下)へ伸びて見える。
+    // 投擲弾と同じ色キー透過済み。向きで左右反転。体幅の約1.7倍(社長指示で一回り小さく)へ拡大し、
+    // アンカー(0.5,0.43=デッキ中央の黒線)を足元(footY)へ合わせる=足がデッキ中央に乗る見た目。
     const sb = this.playerSkateboard;
     const sbTex = getTexture('skateboard');
     if (p.skaterRiding && sbTex && sbTex.width > 0) {
       const d = this.depthScale(fb.footY);
-      const targetW = fb.boxW * 2.0 * d;
+      const targetW = fb.boxW * 1.7 * d;
       const sc = targetW / sbTex.width;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       sb.texture = sbTex;
       sb.visible = true;
       sb.scale.set((flip ? -1 : 1) * sc, sc);
       sb.rotation = 0; // 板は地面に水平(体の傾きには追従させない)
-      // 板の上端(アンカーY=0.38)を足元(footY)に合わせる=余分な縦オフセットは無し(bob には追従)。
+      // デッキ中央の黒線(アンカーY=0.43)を足元(footY)に合わせる=余分な縦オフセットは無し(bob には追従)。
       sb.position.set(
         this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
         this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY,

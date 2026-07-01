@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1255 — スケボー乗車の微調整: デッキ中央線に足元/一回り小さく/歩きアニメ停止(社長指示)
+- 反り(ノーズ/テールの跳ね上がり)を考慮し、整列基準を板の上端(0.38)から **デッキ中央の黒線(アンカーY=0.43・
+  実測)** へ変更=足がデッキ中央に乗る(足元を約3px下げるのと同義)。
+- 板サイズを一回り小さく: 体幅 2.0倍 → **1.7倍**。
+- **乗車中は歩きアニメを停止**: `drawPlayer` の walking 判定に `&& !p.skaterRiding` を追加。待機フレームで板に立ち、
+  歩行の上下バウンド/スカッシュ/踏み込みリーンも止まる。
+- `pixi/pixiScene.ts`。負荷 1/10。検証: typecheck / lint(0) / test(101) / build 通過。
+
 ## v0.25.1254 — スケボー乗車の板を「足元ピクセル=板の上端」で整列(社長指示)
 - 症状: 乗車自体は発動し板も出るが、板が小さく上寄りで本体スプライトの裏にほぼ隠れて「乗ってる感」が出ない。
 - 修正: 板スプライトを体幅の約2倍へ拡大し、縦アンカーを **0.38(=板の上端/ノーズ先端。正方形テクスチャ内の実測)** に設定。
