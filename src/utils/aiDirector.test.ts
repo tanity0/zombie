@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDirectorState, stepDirector, summarizeRun, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
+import { createDirectorState, stepDirector, summarizeRun, relaxSpawnAdjust, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
 
 const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 0 };
 
@@ -106,5 +106,19 @@ describe('aiDirector: summarizeRun(リザルト用)', () => {
       { t: 2.0, intensity: 0.8, performance: 0.4, macro: 'peak' }, // 別の山
     ];
     expect(summarizeRun(samples).peakCount).toBe(2);
+  });
+});
+
+describe('aiDirector: relaxSpawnAdjust(ステップB)', () => {
+  it('RELAX以外は無補正(1倍)', () => {
+    expect(relaxSpawnAdjust('buildup')).toEqual({ escMult: 1, intervalMult: 1, capMult: 1 });
+    expect(relaxSpawnAdjust('peak')).toEqual({ escMult: 1, intervalMult: 1, capMult: 1 });
+  });
+
+  it('RELAX中は escalationゼロ・湧き間隔を伸ばす・湧き上限を下げる', () => {
+    const adj = relaxSpawnAdjust('relax');
+    expect(adj.escMult).toBe(0);
+    expect(adj.intervalMult).toBeGreaterThan(1);
+    expect(adj.capMult).toBeLessThan(1);
   });
 });

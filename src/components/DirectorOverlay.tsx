@@ -36,6 +36,8 @@ const DirectorOverlay: React.FC = () => {
   }, []);
 
   const d = getDirectorDebug();
+  // ステップB(?directorApply=relax)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
+  const applyRelax = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('directorApply') === 'relax';
   return (
     <div
       className="fixed px-2 py-1.5 rounded-lg text-[10px] leading-tight shadow-lg ring-1 ring-white/15 bg-black/75"
@@ -46,7 +48,9 @@ const DirectorOverlay: React.FC = () => {
         textShadow: '0 1px 2px rgba(0,0,0,0.95)',
       }}
     >
-      <div className="mb-1 font-bold text-white/80">AI Director <span className="text-white/40">(read-only)</span></div>
+      <div className="mb-1 font-bold text-white/80">
+        AI Director <span className="text-white/40">{applyRelax ? '(RELAX applied)' : '(read-only)'}</span>
+      </div>
       {d ? (
         <div className="flex flex-col gap-1">
           <Bar label="Intns" v={d.intensity} color="#fb923c" />

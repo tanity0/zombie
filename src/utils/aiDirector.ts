@@ -163,3 +163,22 @@ export const summarizeRun = (samples: RunSampleLite[]): RunSummary => {
   const score = Math.round(100 * clamp01(0.55 * avgIntensity + 0.25 * peakFrac + 0.20 * maxI));
   return { score, avgIntensity, maxIntensity: maxI, peakCount, peakSeconds, avgPerformance, durationSec, sampleCount: n };
 };
+
+// ---- ステップB: RELAX中だけ湧きを緩める(社長合意の最初の実接続・事故最小) ----
+// Intensity は「Relaxへ寄せる」だけに使う、のルールをここで具体化する: macro==='relax' の間だけ、
+// 新規湧きの「escalation(強さ/種類の上乗せ)」「湧き間隔」「湧き上限」に効かせる。
+// ★既存の敵を強制的に間引く(カリング上限)ことはしない=画面から急に消えて見える演出は避ける
+//   (呼び出し側は「湧き上限/湧き間隔/escalation」にだけ掛ける。カリング上限は不変)。
+export interface RelaxSpawnAdjust {
+  escMult: number;      // 難易度③④(強さ/種類の上乗せ)に掛ける倍率。RELAX中は0=上乗せなし。
+  intervalMult: number; // 湧き間隔(getEnemySpawnInterval等)に掛ける倍率。RELAX中は>1=遅く。
+  capMult: number;      // 湧き上限(normalSpawnCap)に掛ける倍率。RELAX中は<1=少なく。
+}
+export const RELAX_ESC_MULT = 0;          // RELAX中は escalation を完全に止める(危険敵を足さない)
+export const RELAX_INTERVAL_MULT = 1.35;  // 湧き間隔を35%伸ばす(気持ち緩める・私案)
+export const RELAX_CAP_MULT = 0.85;       // 湧き上限を15%下げる(私案)
+
+export const relaxSpawnAdjust = (macro: DirectorMacro): RelaxSpawnAdjust =>
+  macro === 'relax'
+    ? { escMult: RELAX_ESC_MULT, intervalMult: RELAX_INTERVAL_MULT, capMult: RELAX_CAP_MULT }
+    : { escMult: 1, intervalMult: 1, capMult: 1 };

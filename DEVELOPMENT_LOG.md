@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1270 — AIディレクター ステップB(RELAXだけ湧きに接続・最初の実接続)
+- 引き継ぎ記録どおり「可視化(A)→数値詰めは実プレイが要る→まず仕様が固まっているBを先に」で実装。
+  `?directorApply=relax` の時だけ有効。既定(フラグ無し)は基準点(commit b1eae30)と完全に同じ挙動。
+- `aiDirector.ts`: 純関数 `relaxSpawnAdjust(macro)` を追加。RELAX中だけ
+  `{ escMult:0(escalation止める=危険敵を足さない), intervalMult:1.35(湧き間隔35%増=遅く), capMult:0.85(湧き上限15%減) }`、
+  それ以外の状態は全部1倍(無補正)。定数化(`RELAX_ESC_MULT/RELAX_INTERVAL_MULT/RELAX_CAP_MULT`)、テスト2件追加(計114 pass)。
+- `useGameLoop.ts`: `DIRECTOR_APPLY_RELAX` フラグ追加。信号算出のゲートを `DIRECTOR_ENABLED`→`DIRECTOR_ACTIVE`
+  (`DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX`)へ拡張=可視化無しでも適用だけ動かせる。適用は
+  `normalSpawnCap`(湧き上限)・`spawnEsc`(③④の強さ/種類上乗せ)・`sceneIntervalMult`(湧き間隔)の3箇所に掛け算。
+  **カリング上限(enemyCap)には触れない**=既存の敵を強制的に間引かない(急に画面から消える演出を避ける)。
+  屋内/ラボは対象外。前フレームのDirectorState(macro)を読む=1フレーム遅延だけ(RELAXは最低8秒滞在なので無視できる)。
+- `DirectorOverlay.tsx`: `?directorApply=relax` の時、見出しに `(RELAX applied)` と表示して適用中かひと目で分かるように。
+- 負荷 1/10(既存の乗算箇所に係数を掛けるだけ)。
+- 検証: typecheck / lint(0) / test(114 pass) / build 通過。`AI_DIRECTOR_HANDOFF.md` の「次の作業②」に対応。
+
 ## v0.25.1269 — AIディレクター引き継ぎ記録を新設(ローカルへの引き継ぎ用)
 - `AI_DIRECTOR_HANDOFF.md` を新設。合意した設計方針(Intensity/Performance分離・3状態・有効化順)、実装済み(ステップA=読むだけ)、
   ファイルマップ、`?director=1`、チューニング定数の場所、次の作業(数値詰め→RELAX接続→BuildUp→補給管理)、実行/検証、

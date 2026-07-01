@@ -75,7 +75,7 @@ import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
-import { stepDirector, createDirectorState } from '../utils/aiDirector';
+import { stepDirector, createDirectorState, relaxSpawnAdjust } from '../utils/aiDirector';
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
@@ -344,6 +344,11 @@ const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/
 // デバッグ表示に流す。★算出するだけ=ゲーム挙動には一切影響させない(読むだけ)。
 const DIRECTOR_ENABLED = evParam('director') === '1';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
+// ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
+// 既定(フラグ無し)は基準点(commit b1eae30)と完全に同じ挙動。可視化(?director=1)とは独立に指定できる
+// (適用だけ試したい/両方見ながら試したい、のどちらも出来るように)。
+const DIRECTOR_APPLY_RELAX = evParam('directorApply') === 'relax';
+const DIRECTOR_ACTIVE = DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX; // 信号計算そのものを回すか(可視化 or 適用のどちらか)
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
 // 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
 const evNum = (key: string, def: number): number => {
@@ -5164,8 +5169,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         });
         // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
+        // AIディレクター ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、直前フレームで
+        // 算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/湧き間隔を伸ばす/湧き上限を
+        // 下げる」を薄く掛ける。既存の敵を強制的に間引くカリング上限(enemyCap)には触れない=急に画面から
+        // 消える演出を避ける。フラグ無し(既定)は基準点(b1eae30)と完全に同じ挙動。屋内/ラボは対象外。
+        const directorApplyActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
+        const relaxAdj = directorApplyActive ? relaxSpawnAdjust(directorRef.current.state.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
         // 湧き上限はカリング上限(enemyCap=dirCountCap)と揃える(枠まで湧かせて超過ぶんはカリング)。屋外はディレクター駆動(フロア≈10〜天井20)。
-        const normalSpawnCap = labTheme ? MAX_ENEMIES : dirCountCap;
+        const normalSpawnCap = labTheme ? MAX_ENEMIES : Math.max(6, Math.round(dirCountCap * relaxAdj.capMult));
         // 難易度③(戦力連動): 過剰育成(戦力マージン>1)なら escalation で強さ(色)/種類(重い型)を底上げ。
         // esc=0 は現状据え置き=順調/未育成は無変化。関所(gate)で強め・余裕(buildup)は弱め。?dda=0 で無効。屋内/ラボは対象外。
         const curPhase = phaseAt(gameTime);
@@ -5195,12 +5206,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gateRef.current.live += (0 - gateRef.current.live) * smooth;
           }
         }
-        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0)));
+        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0))) * relaxAdj.escMult;
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;
         const sceneFeatured = scene ? scene.featured : [];
-        const sceneIntervalMult = scene ? scene.intervalMult : 1;
+        const sceneIntervalMult = (scene ? scene.intervalMult : 1) * relaxAdj.intervalMult;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
@@ -5670,9 +5681,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           prevHealthRef.current = currentPlayer.health;
         }
 
-        // --- AIディレクター(ステップA): Intensity/Performance/DirectorState を算出してデバッグバスへ流すだけ。
-        // ★ゲーム挙動(湧き/敵/プレイヤー)には一切書き込まない=読むだけ。?director=1 の時のみ動く(通常は完全に無コスト)。
-        if (DIRECTOR_ENABLED) {
+        // --- AIディレクター(ステップA): Intensity/Performance/DirectorState を算出。
+        // ★信号算出そのものはゲーム挙動を一切変えない(読むだけ)。実際の湧きへの適用はステップB(下記コメント参照)で、
+        // ?directorApply=relax の時だけ・別箇所(通常湧きのescalation/間隔/上限)に薄く乗る。通常は完全に無コスト。
+        if (DIRECTOR_ACTIVE) {
           const ds = useGameStore.getState();
           const dp = ds.player;
           const maxHp = Math.max(1, dp.maxHealth);

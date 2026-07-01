@@ -1,13 +1,15 @@
 # AIディレクター 引き継ぎ記録 (L4D2型・難易度の“緩急”管理)
 
-最終更新: v0.25.1268 / branch `claude/chat-context-continuity-saxlH` / HEAD `8dc862f`
+最終更新: v0.25.1270 / branch `claude/chat-context-continuity-saxlH` / HEAD (このコミット)
 基準点(“面白い”状態への復帰点): **commit `b1eae30` (v0.25.1263)**。崩れたら `git checkout b1eae30`。
 （ローカルタグ `diff-baseline-1263` は作成済みだが、このgitプロキシがタグpushを拒否するため remote には無い。commit hash で管理。）
 
 ## 0. 一言まとめ
 L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動の波”を薄く乗せる**方針。
-現状は **ステップA（信号を算出して可視化するだけ／ゲーム挙動には一切未接続＝読むだけ）** まで完了。
-`?director=1` を付けてプレイ→左上にライブ表示、死亡/クリアのリザルトに緊張曲線＋難易度スコア。
+現状は **ステップA（信号を算出して可視化するだけ／読むだけ）＋ ステップB（RELAXだけ湧きに接続・最初の実接続）** まで完了。
+- `?director=1`：左上にライブ表示、死亡/クリアのリザルトに緊張曲線＋難易度スコア(読むだけ・挙動不変)。
+- `?directorApply=relax`：**RELAX中だけ**危険敵を足さない/湧き間隔を伸ばす/湧き上限を下げる(実際にゲームへ効く最初の一歩)。
+  フラグ無し(既定)は基準点と完全に同じ挙動。両方同時に付けると、効いてる様子を見ながら確認できる。
 
 ## 1. 合意した設計方針（社長＋Codex＋Claude）★ここを外さない
 - **Intensity（いま苦しいか）と Performance（いま余裕があるか）を絶対に混ぜない。**
@@ -34,23 +36,39 @@ L4D2の AI Director を手本に、**時間台本(①)の上に“状態駆動�
 - **受け渡し/記録バス** `src/utils/aiDirectorDebug.ts`（`setDirectorDebug/getDirectorDebug` ＋ サンプルのリングバッファ）。
 - **リザルト** `src/components/DirectorResult.tsx` を `GameOverScreen.tsx` に `?director=1` 時のみ差し込み。
   緊張曲線(Intensity面＋Performance線＋マクロ帯)＋難易度スコアをSVGで静的表示。
-- **テスト** `src/utils/aiDirector.test.ts`（11ケース）: 分離ルール/3状態遷移/PEAK後RELAX/スコア集計 等。
+- **テスト** `src/utils/aiDirector.test.ts`（16ケース）: 分離ルール/3状態遷移/PEAK後RELAX/スコア集計/relaxSpawnAdjust 等。
+
+## 2.5 実装済み（ステップB・RELAXだけ実接続）
+- **調整の算出（純関数）** `src/utils/aiDirector.ts` の `relaxSpawnAdjust(macro)`。RELAX中だけ
+  `{ escMult:0, intervalMult:1.35, capMult:0.85 }`、それ以外は全部1倍(無補正)。定数は
+  `RELAX_ESC_MULT/RELAX_INTERVAL_MULT/RELAX_CAP_MULT`(全部私案・チューニング可)。
+- **配線** `src/hooks/useGameLoop.ts`
+  - `DIRECTOR_APPLY_RELAX = evParam('directorApply') === 'relax'`。信号算出のゲートを
+    `DIRECTOR_ACTIVE = DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX` に拡張(可視化無しでも適用だけ動かせる)。
+  - 適用先3箇所(通常湧きの計算部・屋内外/ラボ判定の直後): `normalSpawnCap`(湧き上限)・`spawnEsc`(③④の強さ/種類
+    上乗せ)・`sceneIntervalMult`(湧き間隔)に `relaxAdj` を掛けるだけ。
+  - **意図的に触れていないもの**: `enemyCap`(強制カリング上限)。RELAXで既存の敵を間引くと「急に画面から消える」
+    体験になる(過去に社長からバグ報告があったパターン)ため、湧き側だけを絞って自然に減らす設計。
+  - 前フレームの `directorRef.current.state.macro` を読む(=1フレーム遅延)。RELAXは最低8秒滞在するので無視できる誤差。
+- **可視化** `DirectorOverlay.tsx` の見出しが `?directorApply=relax` の時 `(RELAX applied)` に変わる(適用中の目印)。
 
 ## 3. まだやっていない（＝次の作業）
-1. **数値詰め（実機）**: `?director=1` で緊張曲線を見て、「山が実際にしんどい場面と合うか」を確認して定数調整。
-   調整対象は全部 `aiDirector.ts` 上部の定数（私案）: `NEAR_ENEMY_FULL / INT_*_W / INT_TAU_UP/DOWN / INT_DMG_SPIKE /
-   PEAK_ENTER/EXIT/HOLD / RELAX_UNTIL/MIN`、`useGameLoop` の `DIRECTOR_NEAR_RADIUS`。
-2. **ステップB: RELAXだけ湧きに接続**（最初の実接続・事故最小）。Intensity高/RELAX中は「危険敵を足さない・湧き間隔を
-   少し伸ばす・countCap少し下げる」。新フラグ（例 `?directorApply=relax`）で包み、既定は基準点挙動。
+1. **数値詰め（実機）**: `?director=1&directorApply=relax` で実際にRELAXが効いているか(湧きが緩む/リザルトの
+   曲線でRELAX帯の後に沸きが減るか)を体感で確認し、定数調整。調整対象:
+   - Intensity/Performance算出: `aiDirector.ts` 上部 `NEAR_ENEMY_FULL / INT_*_W / INT_TAU_UP/DOWN / INT_DMG_SPIKE /
+     PEAK_ENTER/EXIT/HOLD / RELAX_UNTIL/MIN`、`useGameLoop` の `DIRECTOR_NEAR_RADIUS`。
+   - RELAX適用の強さ: `RELAX_ESC_MULT/RELAX_INTERVAL_MULT/RELAX_CAP_MULT`(今は0/1.35/0.85)。
+2. **効きすぎ/効かなさすぎの判断後、既定ON化を検討**（今はURLフラグ必須。体感が良ければ既定挙動に昇格するか検討）。
 3. **ステップC: Performance高でBuildUp強化**（余裕がある時だけ次の山を強める。werewolf/ghost/screamer比率↑等）。
 4. **危険敵の存在(dangerBias)を拡張**: werewolf突進予告 / plant射線 / ghost毒卵密度 / screamer準備。今はハンターのみ。
 5. **補給管理（L4D2の本領）**: Performance低＋RELAXで回復/弾ピックアップのdrop率↑、PEAK手前/Performance高で爆弾少し。
-   （②③④と同じ「上に薄く乗せる」方式・フラグ化・ステップB以降）。
+   （②③④と同じ「上に薄く乗せる」方式・フラグ化）。
 6. **台本(①)との合わせ**: 区間ごとにBuildUp/Relaxの比重を変える（レベル上げ区間=Relax長め / 難関=PEAKあり 等）。
 
 ## 4. 実行/検証
-- 実機: `https://tanity0.github.io/zombie/?director=1`（版が表示に一致するか確認）。左上表示＋リザルト欄。
-- ローカル: `npm run dev` → `/zombie/?director=1`。
+- 実機: `https://tanity0.github.io/zombie/?director=1&directorApply=relax`（版が表示に一致するか確認）。
+  左上表示(見出しに `(RELAX applied)`)＋リザルト欄。`directorApply` を外せば読むだけに戻る。
+- ローカル: `npm run dev` → `/zombie/?director=1&directorApply=relax`。
 - 静的検査（毎回）: `npm run lint && npm run typecheck && npm test && npm run build`。
 - ディレクターだけ: `npx vitest run src/utils/aiDirector.test.ts`。
 
