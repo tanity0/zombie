@@ -18301,3 +18301,13 @@ zombie_equipment_spec_v2.xlsx の「装備一覧」「特殊装備」シート�
 - 視覚専用: 当たり判定/射程/移動には不影響(CLAUDE.md 視覚⇔判定分離)。数値(0.9/7/20)は私案・実機調整前提。
 - 性能: scale変更はタダ、hasLarge判定は早期break、引きは最大11%広いだけ=描画は敵/弾中心で安価(E60安全)。負荷 1/10。
 - 検証: typecheck / lint / test(95 pass) / build 通過。変更: utils/cameraZoom.ts(新)+test(新), pixi/pixiScene.ts, hooks/useGameLoop.ts, package.json
+
+## v0.25.1237 — 難易度ステップ④(関所ライブ補正=閉ループで“ギリギリ”へ)
+- 依頼(社長): 常時ギリギリは関所だけ。関所でそれぞれ「ギリギリ勝てるか」を内部計算で作る。
+- 実装:
+  - `difficultyScaler.gateLiveCorrection(actualHpFrac, startHpFrac, progress)`(純関数・テスト可): 関所突入時HP→目標終了HP帯(GATE_TARGET_END_HP=0.28)へ直線で降ろした「今の目標HP」との偏差から、楽勝側は足す(gain1.2・上限+0.6)/苦しい側は緩める(gain0.6・下限-0.4=関所は必ず脅威)。ゴム紐感対策で足す側を厚めに。
+  - `useGameLoop`: gateRef(関所キー/突入HP/平滑live)。関所中のみ HP推移から desired 補正を算出し時定数1.0sで平滑化、`spawnEsc = clamp(buildEsc + live, 0,1)` として③のescalation(強さ/種類)へ加算。余裕/関所外は live を0へ戻す(補正なし)。新ランでリセット。?dda=0 で無効。屋内/ラボ対象外。
+  - テスト: 楽勝で>0/苦しいで<0かつ下限/追従で~0/足す側>緩め側。
+- 位置づけ: 順調でも過剰育成でも、関所は終了HP帯へ寄るよう新規湧きの強さ/種類を微調整=“どちらにしろ頑張る”。既存敵は強化しない(新規湧き経由=緩やか)。スコア/EXP/レベルは不変。
+- 性能: 毎フレーム軽量な数値計算のみ(新規描画なし)。負荷 1/10。
+- 検証: typecheck / lint / test(99 pass) / build 通過。変更: utils/difficultyScaler.ts(+test), hooks/useGameLoop.ts, package.json

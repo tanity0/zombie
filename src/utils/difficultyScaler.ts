@@ -56,3 +56,22 @@ export const escalation01 = (margin: number, atGate: boolean): number => {
 // 入口をまとめた便利関数。useGameLoop はこれ1つを呼んで escalation を得る。
 export const spawnEscalation = (i: DdaPowerInputs, gameTimeMs: number, atGate: boolean): number =>
   escalation01(powerMargin(i, gameTimeMs), atGate);
+
+// ── ステップ④: 関所ライブ補正 ─────────────────────────────────────────────
+// 「常時ギリギリは関所だけ」。関所中のみ、プレイヤーのHP推移を目標カーブ(開始HP→終了HP帯)へ
+// 閉ループで寄せる escalation の追加デルタを返す。楽勝(HP高すぎ)なら足す=主、苦しい(低すぎ)なら
+// 緩める=弱め＋下限あり(=関所は必ず脅威で、緩めても floor までは残す=死のスパイラル防止)。
+// 余裕(buildup)では呼ばない(補正なし)。純関数=テスト可能。
+export const GATE_TARGET_END_HP = 0.28; // 関所終了時の目標HP割合(~20-35%の中央・私案)
+const GATE_PRESS_GAIN = 1.2;  // 楽勝側(HPが目標より高い)の感度=足す
+const GATE_EASE_GAIN = 0.6;   // 苦しい側(低い)の感度=緩める(弱め=ゴム紐感対策)
+const GATE_PRESS_MAX = 0.6;   // 足せる escalation の上限
+const GATE_EASE_MIN = -0.4;   // 緩められる下限(これ以上は緩めない)
+export const gateLiveCorrection = (actualHpFrac: number, startHpFrac: number, progress: number): number => {
+  const p = Math.max(0, Math.min(1, progress));
+  // 開始HPから目標終了HPへ直線で降ろした「今の目標HP」。
+  const targetFrac = startHpFrac + (GATE_TARGET_END_HP - startHpFrac) * p;
+  const dev = actualHpFrac - targetFrac; // >0=目標より余裕(HP多い) / <0=苦しい(少ない)
+  const raw = dev > 0 ? dev * GATE_PRESS_GAIN : dev * GATE_EASE_GAIN;
+  return Math.max(GATE_EASE_MIN, Math.min(GATE_PRESS_MAX, raw));
+};

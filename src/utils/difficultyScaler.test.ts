@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expectedPower, powerMargin, escalation01, spawnEscalation } from './difficultyScaler';
+import { expectedPower, powerMargin, escalation01, spawnEscalation, gateLiveCorrection, GATE_TARGET_END_HP } from './difficultyScaler';
 
 describe('difficultyScaler — power margin & escalation (step 3)', () => {
   it('escalation is 0 for on-track / under-built players (floor preserved)', () => {
@@ -40,5 +40,28 @@ describe('difficultyScaler — power margin & escalation (step 3)', () => {
     const esc = spawnEscalation({ level: 25, weaponTierSum: 6, maxHealth: 200, equippedCount: 3, skillCount: 2 }, 180_000, true);
     expect(esc).toBeGreaterThan(0.3);
     expect(esc).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('gateLiveCorrection (step 4)', () => {
+  it('adds pressure (>0) when HP is above the target curve (cruising)', () => {
+    expect(gateLiveCorrection(0.9, 0.9, 0.5)).toBeGreaterThan(0);
+  });
+
+  it('eases (<0) when HP is below the target curve (struggling), with a floor', () => {
+    const c = gateLiveCorrection(0.1, 0.9, 0.5);
+    expect(c).toBeLessThan(0);
+    expect(c).toBeGreaterThanOrEqual(-0.4); // 緩めの下限
+  });
+
+  it('is ~0 when HP tracks the target curve', () => {
+    const target = 0.9 + (GATE_TARGET_END_HP - 0.9) * 0.5;
+    expect(gateLiveCorrection(target, 0.9, 0.5)).toBeCloseTo(0, 6);
+  });
+
+  it('pressure side has more range than the ease side (anti-rubber-band bias)', () => {
+    const press = gateLiveCorrection(1, 0, 0); // capped press
+    const ease = gateLiveCorrection(0, 1, 0);  // capped ease
+    expect(press).toBeGreaterThan(Math.abs(ease)); // 0.6 > 0.4
   });
 });

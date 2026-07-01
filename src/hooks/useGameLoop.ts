@@ -74,7 +74,7 @@ import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt } from '../utils/difficultyDirector';
-import { spawnEscalation } from '../utils/difficultyScaler';
+import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
@@ -336,6 +336,7 @@ const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
+const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
 // 実機で位置を見ながら調整するため定数化(?rescuemin / ?rescuemax で上書き可)。
 const evNum = (key: string, def: number): number => {
@@ -491,6 +492,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   });
   // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
+  // 難易度④(関所ライブ補正): 現在の関所キー / 関所突入時のHP割合 / 平滑化した escalation 補正。
+  const gateRef = useRef({ key: '', startHpFrac: 1, live: 0 });
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
@@ -1054,6 +1057,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           hunterLastDmgAtRef.current = -1e9;
           screamerRef.current.nextEligibleAt = SCREAMER_START_MS; // 叫喚型ディレクターも新ランでリセット
           screamerBuffFxRef.current = 0; // 叫喚SE検出refも新ランでリセット(前ランのbuffUntilで誤ってスキップしない)
+          gateRef.current = { key: '', startHpFrac: 1, live: 0 }; // 難易度④の関所ライブ補正も新ランでリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
@@ -5079,15 +5083,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const normalSpawnCap = labTheme ? MAX_ENEMIES : dirCountCap;
         // 難易度③(戦力連動): 過剰育成(戦力マージン>1)なら escalation で強さ(色)/種類(重い型)を底上げ。
         // esc=0 は現状据え置き=順調/未育成は無変化。関所(gate)で強め・余裕(buildup)は弱め。?dda=0 で無効。屋内/ラボは対象外。
-        const spawnEsc = (DDA_ENABLED && !labTheme && !indoor)
+        const curPhase = phaseAt(gameTime);
+        const ddaActive = DDA_ENABLED && !labTheme && !indoor;
+        const buildEsc = ddaActive
           ? spawnEscalation({
               level: player.level,
               weaponTierSum: player.weapons.reduce((s, w) => s + (w.tier ?? 1), 0),
               maxHealth: player.maxHealth,
               equippedCount: [player.equipment.body, player.equipment.arms, player.equipment.accessory].filter(Boolean).length,
               skillCount: player.skills.length,
-            }, gameTime, phaseAt(gameTime).kind === 'gate')
+            }, gameTime, curPhase.kind === 'gate')
           : 0;
+        // 難易度④(関所ライブ補正): 関所中だけ、プレイヤーのHP推移を目標帯へ寄せる escalation 補正を平滑化して加える。
+        // 楽勝なら足す(主)/苦しいなら緩める(弱め・下限あり)。余裕(buildup)/関所外は補正を0へ戻す(補正なし)。
+        {
+          const smooth = 1 - Math.exp(-deltaTime / GATE_LIVE_TAU);
+          if (ddaActive && curPhase.kind === 'gate') {
+            const hpFrac = player.maxHealth > 0 ? player.health / player.maxHealth : 0;
+            const key = `gate${curPhase.index}`;
+            if (gateRef.current.key !== key) { gateRef.current.key = key; gateRef.current.startHpFrac = hpFrac; gateRef.current.live = 0; }
+            const prog = (gameTime - curPhase.startMs) / Math.max(1, curPhase.endMs - curPhase.startMs);
+            const desired = gateLiveCorrection(hpFrac, gateRef.current.startHpFrac, prog);
+            gateRef.current.live += (desired - gateRef.current.live) * smooth;
+          } else {
+            gateRef.current.key = '';
+            gateRef.current.live += (0 - gateRef.current.live) * smooth;
+          }
+        }
+        const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0)));
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
