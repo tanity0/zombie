@@ -125,3 +125,41 @@ export const stepDirector = (prev: DirectorState, input: DirectorInputs, dtSec: 
 
   return { intensity, performance, macro, macroMs, peakHeldMs, sinceDamageMs, killRateEma, nearEnemies: input.nearEnemies, dangerBias: danger };
 };
+
+// ---- ラン全体の要約(リザルトの難易度スコア/タイムライン用・純関数) ----
+export interface RunSampleLite { t: number; intensity: number; performance: number; macro: DirectorMacro; }
+export interface RunSummary {
+  score: number;          // 難易度スコア(0..100)=“どれだけしんどい体験だったか”
+  avgIntensity: number;
+  maxIntensity: number;
+  peakCount: number;      // PEAK に入った回数(山の数)
+  peakSeconds: number;    // PEAK 滞在の合計秒
+  avgPerformance: number; // 平均の余裕(=上手さの目安)
+  durationSec: number;
+  sampleCount: number;
+}
+
+export const summarizeRun = (samples: RunSampleLite[]): RunSummary => {
+  const empty: RunSummary = { score: 0, avgIntensity: 0, maxIntensity: 0, peakCount: 0, peakSeconds: 0, avgPerformance: 0, durationSec: 0, sampleCount: 0 };
+  if (samples.length === 0) return empty;
+  let sumI = 0, maxI = 0, sumP = 0, peakSeconds = 0, peakCount = 0, inPeak = false;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    sumI += s.intensity; sumP += s.performance;
+    if (s.intensity > maxI) maxI = s.intensity;
+    if (s.macro === 'peak') {
+      if (!inPeak) { peakCount++; inPeak = true; }
+      if (i > 0) peakSeconds += Math.max(0, s.t - samples[i - 1].t);
+    } else {
+      inPeak = false;
+    }
+  }
+  const n = samples.length;
+  const avgIntensity = sumI / n;
+  const avgPerformance = sumP / n;
+  const durationSec = Math.max(0, samples[n - 1].t - samples[0].t);
+  const peakFrac = durationSec > 0 ? clamp01(peakSeconds / durationSec) : 0;
+  // 体験のしんどさ = 平均の緊張 + PEAKに居た割合 + 最大の緊張、の合成(私案・チューニング可)。
+  const score = Math.round(100 * clamp01(0.55 * avgIntensity + 0.25 * peakFrac + 0.20 * maxI));
+  return { score, avgIntensity, maxIntensity: maxI, peakCount, peakSeconds, avgPerformance, durationSec, sampleCount: n };
+};

@@ -9,6 +9,10 @@ import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 import { getSelectedStageId, submitStageHighScore } from '../data/progress';
+import DirectorResult from './DirectorResult';
+
+// AIディレクター振り返り(?director=1 の時だけリザルトに緊張曲線＋難易度スコアを出す)。
+const directorEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('director') === '1';
 
 interface GameOverScreenProps {
   stats: GameStats;
@@ -322,6 +326,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           </div>
+          {directorEnabled && !isBenchmark && <DirectorResult />}
           {!isBenchmark && !won && !withdraw && hadEquipment && (
             <div className="mb-3 rounded-none bg-rose-400/5 px-3 py-2.5">
               <div className="flex items-center justify-between mb-2">

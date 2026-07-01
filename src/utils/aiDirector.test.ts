@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDirectorState, stepDirector, type DirectorInputs, type DirectorState } from './aiDirector';
+import { createDirectorState, stepDirector, summarizeRun, type DirectorInputs, type DirectorState, type RunSampleLite } from './aiDirector';
 
 const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 0 };
 
@@ -78,5 +78,33 @@ describe('aiDirector: DirectorState(BUILD_UP/PEAK/RELAX)', () => {
       if (prevMacro === 'peak' && s.macro !== 'peak') { expect(s.macro).toBe('relax'); sawRelaxAfterPeak = true; break; }
     }
     expect(sawRelaxAfterPeak).toBe(true);
+  });
+});
+
+describe('aiDirector: summarizeRun(リザルト用)', () => {
+  it('空なら全部0', () => {
+    const s = summarizeRun([]);
+    expect(s.score).toBe(0);
+    expect(s.sampleCount).toBe(0);
+  });
+
+  it('緊張が高い/PEAKが多いランほどスコアが高い', () => {
+    const calm: RunSampleLite[] = Array.from({ length: 20 }, (_, i) => ({ t: i * 0.5, intensity: 0.1, performance: 0.8, macro: 'relax' }));
+    const hard: RunSampleLite[] = Array.from({ length: 20 }, (_, i) => ({ t: i * 0.5, intensity: 0.8, performance: 0.3, macro: i % 4 === 0 ? 'peak' : 'buildup' }));
+    const cs = summarizeRun(calm), hs = summarizeRun(hard);
+    expect(hs.score).toBeGreaterThan(cs.score);
+    expect(hs.peakCount).toBeGreaterThan(0);
+    expect(hs.avgIntensity).toBeGreaterThan(cs.avgIntensity);
+  });
+
+  it('PEAKの連続は1回として数える(山の数)', () => {
+    const samples: RunSampleLite[] = [
+      { t: 0, intensity: 0.2, performance: 0.5, macro: 'buildup' },
+      { t: 0.5, intensity: 0.8, performance: 0.4, macro: 'peak' },
+      { t: 1.0, intensity: 0.8, performance: 0.4, macro: 'peak' }, // 連続=同じ山
+      { t: 1.5, intensity: 0.3, performance: 0.5, macro: 'relax' },
+      { t: 2.0, intensity: 0.8, performance: 0.4, macro: 'peak' }, // 別の山
+    ];
+    expect(summarizeRun(samples).peakCount).toBe(2);
   });
 });

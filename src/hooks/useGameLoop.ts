@@ -76,7 +76,7 @@ import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { stepDirector, createDirectorState } from '../utils/aiDirector';
-import { setDirectorDebug } from '../utils/aiDirectorDebug';
+import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
@@ -533,7 +533,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 自動タレットの発射スロットル: タレットid -> 次に撃てる gameTime(ms)。
   const turretFireRef = useRef<Map<string, number>>(new Map());
   // AIディレクター(ステップA=読むだけ)の状態＋差分計算用の直近値。?director=1 のときだけ更新。
-  const directorRef = useRef({ state: createDirectorState(), prevHp: 0, prevKills: 0 });
+  // nextSampleMs: リザルトのタイムライン用に 0.5s 刻みで時系列サンプルを記録する次回時刻(gameTime ms)。
+  const directorRef = useRef({ state: createDirectorState(), prevHp: 0, prevKills: 0, nextSampleMs: 0 });
   // ドローンブーメラン停止中の周囲パルス: boomerang id -> 次パルスの gameTime(ms)。
   const boomPulseRef = useRef<Map<string, number>>(new Map());
   // ワイヤーダッシュ着地の近接攻撃を1ダッシュにつき1回だけ発火させるためのマーカー
@@ -1085,7 +1086,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           turretAimRef.current.clear();
           boomPulseRef.current.clear();
           zoneTickRef.current = 0;               // 区域判定の間引きカウンタも再アーム
-          directorRef.current = { state: createDirectorState(), prevHp: 0, prevKills: 0 }; // AIディレクターも新ランで初期化
+          directorRef.current = { state: createDirectorState(), prevHp: 0, prevKills: 0, nextSampleMs: 0 }; // AIディレクターも新ランで初期化
+          resetDirectorSamples(); // リザルトのタイムライン記録も新ランでクリア
         }
         lastSeenGameTimeRef.current = newGameTime;
 
@@ -5697,7 +5699,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             killDelta,
             dangerBias,
           }, deltaTime);
-          setDirectorDebug(directorRef.current.state);
+          const st = directorRef.current.state;
+          setDirectorDebug(st);
+          // リザルトのタイムライン用に 0.5s 刻みでサンプル記録(gameTime基準)。
+          if (ds.gameTime >= directorRef.current.nextSampleMs) {
+            directorRef.current.nextSampleMs = ds.gameTime + 500;
+            recordDirectorSample({ t: ds.gameTime / 1000, intensity: st.intensity, performance: st.performance, macro: st.macro });
+          }
         }
       }
 

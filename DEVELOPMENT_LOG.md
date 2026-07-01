@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1268 — AIディレクター: リザルトにタイムライン＋難易度スコア(社長指示)
+- 「数字を見ながらプレイは無理」→ プレイ中は普通に遊び、**死亡/クリア後に振り返る**方式に。
+- 記録: `aiDirectorDebug.ts` にリングバッファ追加(0.5s刻み・約25分ぶん)。`useGameLoop` が `?director=1` の時だけ
+  Intensity/Performance/macro を記録。新ランでクリア。
+- 集計(純関数): `aiDirector.summarizeRun(samples)` = 難易度スコア(0..100=平均Intensity+PEAK滞在割合+最大Intensity)＋
+  平均Perf・PEAK回数/秒。テスト3件追加(空/しんどいランほど高い/PEAK連続は1山)。
+- 表示: `components/DirectorResult.tsx` = リザルトに **緊張曲線(Intensity面＋Performance線＋マクロ帯)＋難易度スコア**を
+  SVGで(静的・軽量)。`GameOverScreen` に `?director=1` かつ非ベンチ時だけ差し込み。
+- 依然「読むだけ」=ゲーム挙動に影響なし。負荷 1/10(記録=配列push・表示=静的SVG)。
+- 検証: typecheck / lint(0) / test(112) / build 通過。
+
 ## v0.25.1267 — AIディレクター: 危険敵の存在(まずハンター)を Intensity へ(社長指示)
 - Codex案の入力③「危険敵の存在」を dangerBias(0..1) として追加。まず**ハンターのみ**: 追跡中=1 / 索敵中=0.6 /
   撤退中=0.3 / 未出現=0。被弾も近接もなくても Intensity を底上げ(`INT_DANGER_W=0.5`)=ハンター出現中の緊張を反映。
