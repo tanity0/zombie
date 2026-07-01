@@ -138,22 +138,38 @@ export interface RunSummary {
   avgPerformance: number; // 平均の余裕(=上手さの目安)
   durationSec: number;
   sampleCount: number;
+  // 「RELAXが少ない/短い」を体感でなく数字で見られるように、BUILD_UP/RELAX も同じ形で内訳を出す。
+  buildupSeconds: number;
+  relaxSeconds: number;
+  relaxCount: number;     // RELAX に入った回数(=谷の数。理想はPEAKの数とだいたい一致)
 }
 
 export const summarizeRun = (samples: RunSampleLite[]): RunSummary => {
-  const empty: RunSummary = { score: 0, avgIntensity: 0, maxIntensity: 0, peakCount: 0, peakSeconds: 0, avgPerformance: 0, durationSec: 0, sampleCount: 0 };
+  const empty: RunSummary = {
+    score: 0, avgIntensity: 0, maxIntensity: 0, peakCount: 0, peakSeconds: 0, avgPerformance: 0,
+    durationSec: 0, sampleCount: 0, buildupSeconds: 0, relaxSeconds: 0, relaxCount: 0,
+  };
   if (samples.length === 0) return empty;
-  let sumI = 0, maxI = 0, sumP = 0, peakSeconds = 0, peakCount = 0, inPeak = false;
+  let sumI = 0, maxI = 0, sumP = 0;
+  let peakSeconds = 0, peakCount = 0;
+  let buildupSeconds = 0;
+  let relaxSeconds = 0, relaxCount = 0;
+  let prevMacro: DirectorMacro | null = null;
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     sumI += s.intensity; sumP += s.performance;
     if (s.intensity > maxI) maxI = s.intensity;
+    const dt = i > 0 ? Math.max(0, s.t - samples[i - 1].t) : 0;
     if (s.macro === 'peak') {
-      if (!inPeak) { peakCount++; inPeak = true; }
-      if (i > 0) peakSeconds += Math.max(0, s.t - samples[i - 1].t);
+      if (prevMacro !== 'peak') peakCount++;
+      peakSeconds += dt;
+    } else if (s.macro === 'relax') {
+      if (prevMacro !== 'relax') relaxCount++;
+      relaxSeconds += dt;
     } else {
-      inPeak = false;
+      buildupSeconds += dt;
     }
+    prevMacro = s.macro;
   }
   const n = samples.length;
   const avgIntensity = sumI / n;
@@ -162,7 +178,10 @@ export const summarizeRun = (samples: RunSampleLite[]): RunSummary => {
   const peakFrac = durationSec > 0 ? clamp01(peakSeconds / durationSec) : 0;
   // 体験のしんどさ = 平均の緊張 + PEAKに居た割合 + 最大の緊張、の合成(私案・チューニング可)。
   const score = Math.round(100 * clamp01(0.55 * avgIntensity + 0.25 * peakFrac + 0.20 * maxI));
-  return { score, avgIntensity, maxIntensity: maxI, peakCount, peakSeconds, avgPerformance, durationSec, sampleCount: n };
+  return {
+    score, avgIntensity, maxIntensity: maxI, peakCount, peakSeconds, avgPerformance, durationSec, sampleCount: n,
+    buildupSeconds, relaxSeconds, relaxCount,
+  };
 };
 
 // ---- ステップB: RELAX中だけ湧きを緩める(社長合意の最初の実接続・事故最小) ----

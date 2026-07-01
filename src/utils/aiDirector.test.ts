@@ -107,6 +107,24 @@ describe('aiDirector: summarizeRun(リザルト用)', () => {
     ];
     expect(summarizeRun(samples).peakCount).toBe(2);
   });
+
+  it('BUILD_UP/RELAX の滞在時間・回数も内訳として出す(「RELAXが少ない」を数字で見るため)', () => {
+    const samples: RunSampleLite[] = [
+      { t: 0, intensity: 0.2, performance: 0.5, macro: 'buildup' },
+      { t: 1, intensity: 0.2, performance: 0.5, macro: 'buildup' },
+      { t: 2, intensity: 0.8, performance: 0.4, macro: 'peak' },
+      { t: 3, intensity: 0.3, performance: 0.5, macro: 'relax' },
+      { t: 4, intensity: 0.2, performance: 0.5, macro: 'relax' }, // 連続=同じ谷
+      { t: 5, intensity: 0.2, performance: 0.6, macro: 'buildup' },
+      { t: 6, intensity: 0.2, performance: 0.6, macro: 'relax' }, // 別の谷
+    ];
+    const s = summarizeRun(samples);
+    // 区間[t(i-1),t(i))は「到着側(t(i))のmacro」に帰属する(既存のPEAK集計と同じ規約)。
+    expect(s.relaxCount).toBe(2);
+    expect(s.relaxSeconds).toBeCloseTo(3, 5); // (3-2)+(4-3)+(6-5)
+    expect(s.buildupSeconds).toBeCloseTo(2, 5); // (1-0)+(5-4)
+    expect(s.peakSeconds).toBeCloseTo(1, 5); // (2-1)
+  });
 });
 
 describe('aiDirector: relaxSpawnAdjust(ステップB)', () => {

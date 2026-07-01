@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1279 — AIディレクター: リザルトにBUILD_UP/RELAXの滞在時間・回数を内訳表示(社長フィードバック対応)
+- 社長フィードバック「RELAXが少ない感じするかも？」→ 体感だけでは判断が難しい(社長も「まだわからん」)ため、
+  次回以降は数字で確認できるようにする。今までは PEAK の回数/秒しか出ていなかった。
+- `aiDirector.ts`: `summarizeRun` に `buildupSeconds`/`relaxSeconds`/`relaxCount` を追加。PEAKの回数集計と
+  同じ「区間は到着側サンプルのmacroに帰属」規約で BUILD_UP/RELAX も同様に集計。テスト1件追加(計118 pass)。
+- `DirectorResult.tsx`: リザルトに `BUILD Xs(Y%) / PEAK N回 Xs(Y%) / RELAX N回 Xs(Y%)` の内訳行を追加。
+- 直前の実プレイ記録(12:50・Intensity平均0.76・PEAK4回15s)を踏まえた作業側の仮説: 平均Intensityが高い
+  (PEAK_ENTER=0.7に近い)ため、RELAXへ入っても「本当に安全(Intensity≤RELAX_UNTIL=0.25)」までなかなか
+  下がらず、かつRELAX自身の抑制効果(escalation停止等)で近接敵が減ってIntensityが急落しやすいため、一度
+  入ると短時間で抜けている可能性がある。次回プレイでこの内訳(特にRELAXの%と回数)を見て検証する。
+- 負荷 1/10(既存の集計処理に加算するだけ・表示は静的)。検証: typecheck / lint(0, full) / test(118 pass) / build 通過。
+
 ## v0.25.1278 — screamer(叫喚型)の居場所を方角矢印で表示(社長指示)
 - 既存のハンター方角矢印(`syncArrows`)と同じ「画面外なら画面端に矢印」方式を screamer にも追加。
   ハンターと違い検知(alerted)条件は無し=常時1体(ディレクター管理)の位置を画面外の間は常に示す

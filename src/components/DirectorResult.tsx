@@ -35,6 +35,8 @@ const DirectorResult: React.FC = () => {
     return { bands, intensityPts, perfPts, areaPath };
   }, [samples]);
 
+  const pct = (sec: number): number => (summary.durationSec > 0 ? Math.round((100 * sec) / summary.durationSec) : 0);
+
   return (
     <div className="mb-3 rounded-none bg-black/25 px-3 py-2">
       <div className="flex items-center justify-between mb-1.5">
@@ -66,7 +68,12 @@ const DirectorResult: React.FC = () => {
       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
         <span><span className="text-orange-300/80">Intns</span> 平均{summary.avgIntensity.toFixed(2)} 最大{summary.maxIntensity.toFixed(2)}</span>
         <span><span className="text-violet-300/80">Perf</span> 平均{summary.avgPerformance.toFixed(2)}</span>
-        <span><span className="text-rose-300/80">PEAK</span> {summary.peakCount}回 {summary.peakSeconds.toFixed(0)}s</span>
+      </div>
+      {/* BUILD_UP/PEAK/RELAX の内訳(社長指示: 「RELAXが少ない」を体感でなく数字で見られるように)。 */}
+      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/60 tabular-nums">
+        <span><span className="text-sky-300/80">BUILD</span> {summary.buildupSeconds.toFixed(0)}s ({pct(summary.buildupSeconds)}%)</span>
+        <span><span className="text-rose-300/80">PEAK</span> {summary.peakCount}回 {summary.peakSeconds.toFixed(0)}s ({pct(summary.peakSeconds)}%)</span>
+        <span><span className="text-emerald-300/80">RELAX</span> {summary.relaxCount}回 {summary.relaxSeconds.toFixed(0)}s ({pct(summary.relaxSeconds)}%)</span>
       </div>
     </div>
   );
