@@ -23,7 +23,10 @@ import type {
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE } from '../store/gameStore';
 import { hasFullWarlordSet } from '../data/equipment';
-import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
+import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
+// 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
+// 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
+const ZOOM_OVERSCAN = 1 / CONTEXT_ZOOM_MIN;
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed, poiSectorIndex } from '../world/pois';
@@ -1371,12 +1374,14 @@ export class PixiScene {
     this.L.farBackdrop.tileScale.set(farScale);
     this.L.farBackdrop.alpha = 1;
     const horizonH = this.horizonForestHeight();
-    this.L.horizonForest.width = w;
+    // 横オーバースキャン: 引いた時に地平森の左右が切れて黒帯にならないよう画面より広く敷いて中央寄せ(worldGroup内=スケール対象)。
+    const horizonMarginX = (w * ZOOM_OVERSCAN - w) / 2;
+    this.L.horizonForest.width = w * ZOOM_OVERSCAN;
     this.L.horizonForest.height = horizonH;
     // 横伸び防止: frontForest と同じく y 基準の均一スケール(x も同値)。横は自然比率のままタイルで繰り返して幅を埋める
     // (parallax で横スクロールする=元々シームレスにタイルできる素材)。非均一(w/texW)だと横に引き伸ばされていた。
     this.L.horizonForest.tileScale.set(horizonH / this.L.horizonForest.texture.height);
-    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0));
+    this.L.horizonForest.position.set(-horizonMarginX, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0));
     this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
@@ -1945,11 +1950,13 @@ export class PixiScene {
     const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
     const height = this.screenH * heightRatio;
     const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
-    this.L.nearHorizon.width = this.screenW;
+    // 横オーバースキャン: 引いた時に左右が切れないよう画面より広く中央寄せ(worldGroup内=スケール対象)。
+    const nhMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
+    this.L.nearHorizon.width = this.screenW * ZOOM_OVERSCAN;
     this.L.nearHorizon.height = height;
     // 横伸び防止: y 基準の均一スケール(横は自然比率でタイル繰り返し)。nearHorizon も parallax で横スクロールするので継ぎ目なし。
     this.L.nearHorizon.tileScale.set(height / tex.height);
-    this.L.nearHorizon.position.set(0, bottom - height);
+    this.L.nearHorizon.position.set(-nhMarginX, bottom - height);
   }
   setStage3Ground(t: Texture | null) {
     if (!t) return;
@@ -2102,7 +2109,10 @@ export class PixiScene {
     const strips = this.L.groundStrips;
     const stripH = groundH / strips.length;
     let sourceY = cameraY * GROUND_SCROLL_Y_FEEL + farH;
-    this.L.groundBase.position.set(shakeX, farH + shakeY);
+    // 横オーバースキャン: 引いた時に左右の黒帯が出ないよう、地面帯を画面より広く敷いて中央寄せ(視覚のみ)。
+    const overW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (overW - this.screenW) / 2;
+    this.L.groundBase.position.set(shakeX - marginX, farH + shakeY);
 
     for (let i = 0; i < strips.length; i++) {
       const strip = strips[i];
@@ -2112,7 +2122,7 @@ export class PixiScene {
       const scaleY = farScale + (nearScale - farScale) * perspective;
 
       strip.position.set(0, y);
-      strip.width = this.screenW;
+      strip.width = overW;
       strip.height = Math.ceil(stripH) + 2;
       strip.tileScale.set(GROUND_TILE_SCALE_X, scaleY);
       strip.tilePosition.set(-cameraX * GROUND_TILE_SCALE_X * GROUND_SCROLL_X_FEEL, -sourceY * scaleY);
