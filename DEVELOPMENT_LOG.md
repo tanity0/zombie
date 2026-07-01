@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1280 — 城ボス: 制圧中でも7分経過で出現(社長指示) / ghost強制回収バグ修正(社長報告)
+- **城ボス(giantbat)の仕様変更**: 従来は「7分経過」かつ「制圧イベント終了(4拠点制圧完了)」の両方が必要
+  だった。社長指示で `!suppressionActive` 条件を撤回=**制圧中でも7分経過だけで出現**するように変更。
+  `?castlenow=1`(即時テスト用)は従来どおり時間だけスキップ。`hooks/useGameLoop.ts`。
+- **ghost(抱卵型)が「割と消える」バグ修正**: 原因はエリア別出現重みテーブル(`AREA_WEIGHT.ghost = [0,0,0.8,1.0,1.1]`
+  =エリア0/1では出現重み0)と、汎用の距離リサイクル内「現在エリアで出現不可の型は画面内でも5秒後に強制回収」
+  ガードの噛み合わせ。ghostはプレイヤーを中心に周回し続ける追従型のため、エリア2+で出会った個体をプレイヤーが
+  エリア0/1(拠点付近=ステージ1のメイン活動域)へ連れ帰ると、画面内で追従中にもかかわらず消えていた。
+  `preserveEnemyState`(reaper/ボス系と同じ「エリア不一致では回収しない」扱い)に `enemy.type === 'ghost'` を追加。
+  新規湧きの出現エリア制限(AREA_WEIGHT自体)は不変=エリア0/1で新たに湧くことはない。
+  副次効果: 稀に画面外まで離れて距離リサイクルされる場合も、ghostは(reaper/ボス同様)別種に化けず同一個体の
+  ままプレイヤー付近へ再配置されるようになった(従来は無関係な別種へ差し替わっていた)。`hooks/useGameLoop.ts`。
+- 検証: typecheck / lint(0, full) / test(118 pass) / build 通過。
+
 ## v0.25.1279 — AIディレクター: リザルトにBUILD_UP/RELAXの滞在時間・回数を内訳表示(社長フィードバック対応)
 - 社長フィードバック「RELAXが少ない感じするかも？」→ 体感だけでは判断が難しい(社長も「まだわからん」)ため、
   次回以降は数字で確認できるようにする。今までは PEAK の回数/秒しか出ていなかった。

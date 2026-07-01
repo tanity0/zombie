@@ -1129,10 +1129,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
-        // 城は最初から固定設置。出現条件は「5分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
+        // 城は最初から固定設置。出現条件は「7分経過(時間)」のみ=その時刻に城の位置へ giantbat がポップ。
         // (社長指示: 接近不要。城マーカーはボス出現後に表示。?castlenow=1 は即時。)
-        // 制圧イベント中(ステージ1メイン)は giantbat フィナーレを出さない(制圧が主目的)。
-        const castleBossReady = (FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS) && !useGameStore.getState().suppressionActive;
+        // 以前は制圧イベント中(ステージ1メイン)は出さない仕様だったが、社長指示で撤回=制圧中でも
+        // 時間が来たら出現するように変更(拠点制圧の完了を待たない)。
+        const castleBossReady = FORCE_CASTLE_BOSS || newGameTime >= CASTLE_BOSS_MIN_TIME_MS;
         if (!danceTest && !indoor && !labTheme && !castle.bossSpawned && castleBossReady) {
           markCastleBossSpawned();
           useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -5544,8 +5545,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             return enemy;
           }
           // エリア外追跡バグ修正: 現在エリアで weight=0 の敵タイプは画面内でも回収して差し替える。
-          // ただし生成直後(5s猶予)・ウェーブ保護・ボス系は除外。
-          const preserveEnemyState = enemy.type === 'reaper' || isBossType(enemy.type);
+          // ただし生成直後(5s猶予)・ウェーブ保護・ボス系は除外。ghost(抱卵型)も除外(社長報告「割と消える」):
+          // ghostはプレイヤーを中心に周回し続ける追従型なので、エリア2+で出会った個体をプレイヤーが
+          // エリア0/1(拠点付近=ステージ1のメイン活動域。ghostは出現重み0)へ連れ帰ると、追従中(=画面内)
+          // にもかかわらず5秒後に強制回収されていた。新規湧きの出現エリア制限(AREA_WEIGHT)自体は不変。
+          const preserveEnemyState = enemy.type === 'reaper' || enemy.type === 'ghost' || isBossType(enemy.type);
           const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
           const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent
             && aliveMs > 5000
