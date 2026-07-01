@@ -3088,22 +3088,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
       })
       .map(p => {
-        // バッシュ方向: 盾の外向き半球(前方180°)内なら「攻撃(facing)方向」へそのまま飛ばす(社長指示)。
-        // 例: 盾が右にあっても、上を向いて攻撃すれば上へ飛ばす。裏半球(盾の後ろ)へは飛ばさず法線へクランプ。
-        // 半球判定に使う法線は「設置時に確定した盾の外向き法線 = p.direction」を使う(安定)。
-        // ※以前は「プレイヤー中心→盾中心」の実時間ベクトルで判定していたが、盾に密着していると僅かな
-        //   位置ズレで真横(90°)付近の符号が反転し、上向きバッシュが法線(右)へ落ちて“右に飛ぶ”不具合になっていた。
-        //   位置は「前方180°に入るか」の判定にだけ関与させ、通れば向きは facing をそのまま採用する。
-        const nm = Math.hypot(p.direction.x, p.direction.y) || 1;
-        const nx = p.direction.x / nm, ny = p.direction.y / nm;
-        let dux = nx, duy = ny;
+        // バッシュ方向 = プレイヤーの向き(lastDirection=指を離した瞬間のスティック方向)へそのまま飛ばす(社長指示A)。
+        // 盾の位置/法線ではクランプしない。以前は「盾の外向き法線の前方180°」でクランプしていたが、盾は
+        // 「移動方向の逆」へ自動設置される=法線はプレイヤーの背後向き。facing は移動方向(前方)なので facing は
+        // ほぼ常に法線の裏側になり、毎回クランプされて“位置なりの向き(法線)”に飛ぶ不具合だった(社長報告)。
+        // lastDirection が無い/ゼロのとき(=一度も動いていない)だけ、盾の外向き法線へフォールバック。
+        let dux: number, duy: number;
         const ld = player.lastDirection;
-        if (ld) {
-          const fm = Math.hypot(ld.x, ld.y);
-          if (fm > 0.01) {
-            const fx = ld.x / fm, fy = ld.y / fm;
-            if (fx * nx + fy * ny >= 0) { dux = fx; duy = fy; } // 前方180°(外向き半球)内=facing採用 / 裏側は法線へクランプ
-          }
+        const fm = ld ? Math.hypot(ld.x, ld.y) : 0;
+        if (ld && fm > 0.01) {
+          dux = ld.x / fm; duy = ld.y / fm;
+        } else {
+          const nm = Math.hypot(p.direction.x, p.direction.y) || 1;
+          dux = p.direction.x / nm; duy = p.direction.y / nm;
         }
         const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
         const ey = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;

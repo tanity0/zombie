@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1256 — 盾バッシュ: 位置ベースのクランプを撤廃し「向いてる方向へ」直す(社長指示A)
+- 症状: バッシュがプレイヤーの向きではなく「プレイヤーと盾の位置関係(法線)なり」に飛ぶ。
+- 原因: 前方180°クランプがほぼ毎回発動。盾は「移動方向の逆」へ自動設置=外向き法線はプレイヤーの背後向き。
+  facing(lastDirection)は移動方向=前方なので facing はほぼ常に法線の裏側になり、毎フレーム法線へクランプされていた。
+- 修正: クランプを撤廃し、**バッシュ方向 = lastDirection(指を離した瞬間のスティック方向)をそのまま採用**。
+  lastDirection が無い/ゼロのとき(一度も動いていない)だけ盾の外向き法線へフォールバック。`store/gameStore.ts`。
+  → 例: 上を向いて離せば上へ、右なら右へ。盾の位置に引きずられない。
+- 負荷 1/10(ベクトル計算のみ)。検証: typecheck / lint(0) / test(101) / build 通過。
+
 ## v0.25.1255 — スケボー乗車の微調整: デッキ中央線に足元/一回り小さく/歩きアニメ停止(社長指示)
 - 反り(ノーズ/テールの跳ね上がり)を考慮し、整列基準を板の上端(0.38)から **デッキ中央の黒線(アンカーY=0.43・
   実測)** へ変更=足がデッキ中央に乗る(足元を約3px下げるのと同義)。
