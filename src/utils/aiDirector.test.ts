@@ -79,6 +79,27 @@ describe('aiDirector: DirectorState(BUILD_UP/PEAK/RELAX)', () => {
     }
     expect(sawRelaxAfterPeak).toBe(true);
   });
+
+  it('RELAXは最低滞在(8s)未満は危険が戻ってもPEAKへ戻らない(回復の余白を保証)', () => {
+    const hi: DirectorInputs = { hpFrac: 0.2, damageTakenFrac: 0, nearEnemies: 10, killDelta: 0, dangerBias: 0 };
+    let s = run(createDirectorState(), hi, 3);
+    for (let i = 0; i < 60 * 6 && s.macro !== 'relax'; i++) s = stepDirector(s, hi, 1 / 60);
+    expect(s.macro).toBe('relax'); // ここでmacroMs≈0
+    s = run(s, hi, 6); // 最低滞在(8s)未満のうちに危険入力を与える
+    expect(s.macro).toBe('relax'); // まだ戻らない
+  });
+
+  it('RELAXは最低滞在(8s)を過ぎたらIntensity再上昇でPEAKへ戻れる(社長報告の実データで判明したバグ修正)', () => {
+    // 修正前は「RELAXから抜ける経路がIntensity低下による BUILD_UP 復帰しか無い」ため、危険が戻っても
+    // RELAXという名札のまま長時間居座っていた(実プレイでRELAX 57%・その間もIntensityが何度も1.0まで
+    // 再上昇していたのに反応しない、というデータで発覚)。
+    const hi: DirectorInputs = { hpFrac: 0.2, damageTakenFrac: 0, nearEnemies: 10, killDelta: 0, dangerBias: 0 };
+    let s = run(createDirectorState(), hi, 3);
+    for (let i = 0; i < 60 * 6 && s.macro !== 'relax'; i++) s = stepDirector(s, hi, 1 / 60);
+    expect(s.macro).toBe('relax');
+    s = run(s, hi, 10); // 最低滞在(8s)を超えて危険入力を与え続ける
+    expect(s.macro).toBe('peak');
+  });
 });
 
 describe('aiDirector: summarizeRun(リザルト用)', () => {

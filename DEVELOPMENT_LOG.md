@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1281 — AIディレクター: RELAXが危険再上昇に反応できないバグ修正(実プレイデータで発覚)
+- 実プレイ(4:32・RELAX 4回156s=57%だがIntensityはその間も何度も1.00へ再上昇)を見て発覚。RELAXには
+  「Intensity低下→BUILD_UPへ戻る」経路しか無く、最低滞在(8s)を過ぎても危険が再上昇した時にPEAKへ
+  引き返す経路が無かった。そのため実際には危険な瞬間でも「RELAXという名札のまま」長時間居座ることが
+  あった(挙動の意図=谷=安全な期間、に反する構造的な抜け)。
+- 修正: `stepDirector`(RELAX分岐)に、最低滞在(`RELAX_MIN_MS`)を過ぎてIntensityが`PEAK_ENTER`まで
+  再上昇したら`PEAK`へ戻る経路を追加。最低滞在中(保証された回復の余白)は従来どおり反応しない。
+  `utils/aiDirector.ts`。テスト2件追加(最低滞在未満は戻らない/最低滞在超で戻る。計120 pass)。
+- 検証: typecheck / lint(0, full) / test(120 pass) / build 通過。
+
 ## v0.25.1280 — 城ボス: 制圧中でも7分経過で出現(社長指示) / ghost強制回収バグ修正(社長報告)
 - **城ボス(giantbat)の仕様変更**: 従来は「7分経過」かつ「制圧イベント終了(4拠点制圧完了)」の両方が必要
   だった。社長指示で `!suppressionActive` 条件を撤回=**制圧中でも7分経過だけで出現**するように変更。

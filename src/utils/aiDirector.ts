@@ -122,6 +122,11 @@ export const stepDirector = (prev: DirectorState, input: DirectorInputs, dtSec: 
     peakHeldMs = 0;
     // 回復の余白を必ず確保(最低滞在)＋緊張が十分下がってから BUILD_UP へ戻す。
     if (macroMs >= RELAX_MIN_MS && intensity <= RELAX_UNTIL) enter('buildup');
+    // バグ修正(社長報告「RELAXが少ない感じ」の実データで判明): RELAXには元々“抜ける”経路しか無く、
+    // 最低滞在を過ぎてもIntensityがPEAK_ENTERまで再上昇したら戻る経路が無かった。そのため実際には
+    // 危険な瞬間でも「RELAXという名札のまま」長時間居座ることがあった(挙動の意図=谷=安全な期間、に反する)。
+    // 最低滞在(=保証された回復の余白)を尊重しつつ、それを過ぎたら再度の危険にはPEAKへ反応できるようにする。
+    else if (macroMs >= RELAX_MIN_MS && intensity >= PEAK_ENTER) enter('peak');
   }
 
   return { intensity, performance, macro, macroMs, peakHeldMs, sinceDamageMs, killRateEma, nearEnemies: input.nearEnemies, dangerBias: danger };
