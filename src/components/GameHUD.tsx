@@ -263,7 +263,10 @@ const GameHUD: React.FC = () => {
                 return (
                   <button
                     key={gun.id}
-                    onClick={() => setActiveWeapon(gun.id)}
+                    // タッチでの反応を良くする: onClick(touchend待ち＋クリック遅延＋微ドラッグで無効化)ではなく
+                    // onPointerDown で押した瞬間に切替。touchAction:manipulation でタップ遅延も除去(社長指示)。
+                    onPointerDown={(e) => { e.preventDefault(); setActiveWeapon(gun.id); }}
+                    style={{ touchAction: 'manipulation' }}
                     className={`pointer-events-auto relative w-11 h-11 rounded-none flex items-center justify-center overflow-hidden transition-colors ${
                       active ? 'bg-purple-500/25 ring-1 ring-purple-400/80' : dry ? 'bg-purple-400/5 opacity-50' : 'bg-purple-500/12 opacity-80'
                     }`}

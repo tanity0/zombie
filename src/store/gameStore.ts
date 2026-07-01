@@ -60,7 +60,7 @@ const initialRhythm = (): RhythmState => ({
 // RE-style ammo economy. Guns fire from a per-gun magazine and reload from
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
-export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 18, rifle: 36, phill: 48 };
+export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, rifle: 36, phill: 48 };
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
