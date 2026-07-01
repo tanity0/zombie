@@ -4204,8 +4204,10 @@ export class PixiScene {
       this.playerKatanaBackAttached = true;
     }
     // スケボー乗車中の板を本体スプライトの背面(=足の下)へ一度だけ親子付け。reticle(0) と sprite の間へ挿入。
+    // アンカーY=0.38 は「板の上端(ノーズ先端)」の位置(正方形テクスチャ内で板絵は縦中央やや上、実測 上端≒38%)。
+    // これを足元(footY)へ合わせると、キャラ足元ピクセル=板の上端 が揃う(社長指示)。
     if (!this.playerSkateboardAttached) {
-      this.playerSkateboard.anchor.set(0.5, 0.5);
+      this.playerSkateboard.anchor.set(0.5, 0.38);
       this.playerSkateboard.visible = false;
       this.playerView.container.addChildAt(this.playerSkateboard, 1);
       this.playerSkateboardAttached = true;
@@ -4587,21 +4589,23 @@ export class PixiScene {
       kb.visible = false;
     }
     // スケボー乗車中: 足元に板を敷いて「乗っている」見た目にする(描画のみ・判定不変)。板テクスチャは
-    // 投擲弾と同じ色キー透過済み。向きで左右反転し、体幅にやや余る幅へ。未読込時は非表示(本体だけ)。
+    // 投擲弾と同じ色キー透過済み。向きで左右反転。体幅の約2倍へ拡大し、アンカー(0.5,0.38=板の上端)を
+    // 足元(footY)へ合わせる=キャラ足元ピクセル=板の上端 が揃い、板は足元から手前(下)へ伸びて見える。
     const sb = this.playerSkateboard;
     const sbTex = getTexture('skateboard');
     if (p.skaterRiding && sbTex && sbTex.width > 0) {
       const d = this.depthScale(fb.footY);
-      const targetW = fb.boxW * 1.15 * d;
+      const targetW = fb.boxW * 2.0 * d;
       const sc = targetW / sbTex.width;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       sb.texture = sbTex;
       sb.visible = true;
       sb.scale.set((flip ? -1 : 1) * sc, sc);
       sb.rotation = 0; // 板は地面に水平(体の傾きには追従させない)
+      // 板の上端(アンカーY=0.38)を足元(footY)に合わせる=余分な縦オフセットは無し(bob には追従)。
       sb.position.set(
         this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - sbTex.height * sc * 0.28,
+        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY,
       );
       sb.alpha = view.sprite.alpha;
     } else {
