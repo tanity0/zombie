@@ -30,10 +30,15 @@ describe('difficultyDirector — count axis (step 2)', () => {
     expect(Math.max(...buildupCaps)).toBeLessThanOrEqual(Math.min(...gateCaps));
   });
 
-  it('is in a boss phase after 7:00 and a buildup at the start', () => {
+  it('14-min arc: buildup at start, white boss at 7:00, intensified gates in 7-14, terminal boss at 14:00', () => {
     expect(phaseAt(0).kind).toBe('buildup');
-    expect(phaseAt(420_000).kind).toBe('boss');
-    expect(phaseAt(600_000).kind).toBe('boss');
+    expect(phaseAt(420_000).kind).toBe('boss');   // 7:00 白ボス(中間ライン)
+    expect(phaseAt(600_000).kind).toBe('gate');   // 10:00 は延長の関所(急多め)
+    expect(phaseAt(900_000).kind).toBe('boss');   // 14:00 以降=終局
+    // 7-14分は 0-7分より関所(gate)が密=“急”多め
+    const gates0to7 = PHASES.filter(p => p.kind === 'gate' && p.endMs <= 420_000).length;
+    const gates7to14 = PHASES.filter(p => p.kind === 'gate' && p.startMs >= 420_000).length;
+    expect(gates7to14).toBeGreaterThanOrEqual(gates0to7);
   });
 });
 
