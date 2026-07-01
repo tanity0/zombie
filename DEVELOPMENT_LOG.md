@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1261 — 囲い系イベント中は外の通常敵を裏ボスと同じ逃走モードに(社長指示)
+- 依頼: 「囲いに囲まれるイベント」中、外の敵を裏ボスと同じ逃走モードにできる?
+- 実装: `updateEnemies` の逃走分岐条件に、囲い系イベント(プレイヤーを円に閉じ込める=`activeEvent.kind !== 'rescue'`)
+  かつイベント敵でない(`!fromEvent`)敵を追加。→ `if (state.bossChasing || (arenaConfiningFlee && !enemy.fromEvent))`。
+  外の通常敵は攻撃AI中断＋プレイヤーと反対方向へ通常速度で離れ、距離リサイクルで自然に画面外へ。イベント敵(fromEvent)は
+  従来どおり戦う。rescue(救助=閉じ込めない)は対象外。`store/gameStore.ts`。
+- 負荷 1/10(条件1つ追加・数値変更なし)。検証: typecheck / lint(0) / test(101) / build 通過。
+
 ## v0.25.1259 — ズーム引き時に world が「固定枠」で切れる件を修正(worldFadeMask を overscan)
 - 症状: ズームで引くと敵/オブジェが画面端の外側で表示されず「バツっと」切れる(社長報告)。
 - 原因: gameplay世界(`filteredWorld`=敵/オブジェ含む)に掛かる地平フェード用マスク `worldFadeMask` が
