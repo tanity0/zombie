@@ -1696,7 +1696,7 @@ interface GameState {
   };
   // Most recent weapon the player acquired (drop/crate). The HUD shows a
   // 5-second "got a weapon" popup off this. null until the first pickup.
-  lastWeaponGet: { name: string; at: number; color?: string; kind?: 'weapon' | 'treasure' | 'data'; weaponKey?: string } | null;
+  lastWeaponGet: { name: string; at: number; color?: string; kind?: 'weapon' | 'treasure' | 'data'; weaponKey?: string; treasureVariant?: number } | null;
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
@@ -6390,7 +6390,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             name: treasureNameForVariant(pickup.variant),
             at: Date.now(),
             color: '#facc15',
-            kind: 'treasure'
+            kind: 'treasure',
+            treasureVariant: pickup.variant // 取得バナーで実物のトレジャー画像(treasure-N)を表示する(社長指示)
           },
           gameStats: {
             ...state.gameStats,

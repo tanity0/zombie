@@ -93,7 +93,10 @@ const GameHUD: React.FC = () => {
           style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)' }}
         >
           <div className="glass-pill px-4 py-2 flex items-center gap-2 animate-pulse">
-            {!isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
+            {isTreasureGet && lastWeaponGet!.treasureVariant
+              // トレジャーは拾った実物の画像(treasure-N)を表示(社長指示)。variant が無ければ💎にフォールバック。
+              ? <img src={spritePath(`treasure-${lastWeaponGet!.treasureVariant}`)} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+              : !isTreasureGet && !isDataGet && hasWeaponIcon(lastWeaponGet!.weaponKey)
               ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
               : <span className="text-xl">{isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}
             <div className="leading-tight">
