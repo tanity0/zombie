@@ -464,6 +464,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const anchorEnemyHitFxRef = useRef(0); // アンカーが敵に当たった時のSE(近接命中音)
   const boomThrowFxRef = useRef(0);  // ブーメラン投擲SE
   const summonFxRef = useRef(0);     // 召喚SE
+  const screamerBuffFxRef = useRef(0); // 叫喚型の発動(強化窓オープン)検出=叫喚SE
   const fpsCounterRef = useRef({ frames: 0, lastCheck: 0 });
   const introWasActiveRef = useRef(false); // キャラ登場演出中フラグ(着地検出用)
   const heliLandedRef = useRef(false);     // ヘリ着陸SE/砂煙を1回だけ出す(t が着陸点 hf を跨いだ瞬間)
@@ -1049,6 +1050,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
           screamerRef.current.nextEligibleAt = SCREAMER_START_MS; // 叫喚型ディレクターも新ランでリセット
+          screamerBuffFxRef.current = 0; // 叫喚SE検出refも新ランでリセット(前ランのbuffUntilで誤ってスキップしない)
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
@@ -5047,6 +5049,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.anchorEnemyHitFxAt > anchorEnemyHitFxRef.current) { anchorEnemyHitFxRef.current = gs.anchorEnemyHitFxAt; playSfx('slash-damage'); } // アンカーが敵に当たった=近接命中音
           if (gs.boomerangThrowFxAt > boomThrowFxRef.current) { boomThrowFxRef.current = gs.boomerangThrowFxAt; playSfx('boomerang-throw'); }
           if (gs.summonFxAt > summonFxRef.current) { summonFxRef.current = gs.summonFxAt; playSfx('summon'); }
+          // 叫喚型: 強化窓が開いた瞬間(screamerBuffUntil が増加)=溜め完了で叫喚SE。
+          if (gs.screamerBuffUntil > screamerBuffFxRef.current) { screamerBuffFxRef.current = gs.screamerBuffUntil; playSfx('screamer-cry'); }
         }
 
         // 囲い系(閉じ込め)イベント中だけ通常スポーナ/演出波を止める。閉じ込めない救助(rescue)は通常通り湧かせる(社長指示)。

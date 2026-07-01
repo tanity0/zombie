@@ -112,7 +112,8 @@ export type SfxKey =
   | 'heli-land'      // ヘリ着地SE
   | 'boss-death'     // 裏ボス討伐(消滅)SE。長いので fadeOutMs でフェード
   | 'base-capture'   // 拠点開放SE
-  | 'hunter-alert';  // ハンター変異体の検知(視界に入った=見られている)警告SE
+  | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
+  | 'screamer-cry';  // 変異体(叫喚型)の叫喚(発動)SE
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -172,6 +173,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // ハンター変異体の検知警告SE(社長提供)。索敵個体の視界に入った瞬間に1回。
   'hunter-alert': {
     src: `${import.meta.env.BASE_URL}audio/sfx/hunter-alert.mp3`,
+    volume: 1.0,
+    minIntervalMs: 400,
+  },
+  // 変異体(叫喚型)の叫喚(発動)SE(社長提供)。溜め完了で1回。
+  'screamer-cry': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/screamer-cry.wav`,
     volume: 1.0,
     minIntervalMs: 400,
   },
