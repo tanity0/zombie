@@ -1346,6 +1346,17 @@ const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: n
   return treesInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(trunkRect);
 };
 
+// 叫喚型(screamer)を倒したら強化バフを即座に打ち切る(社長指示、残り時間を待たず即失効)。
+// gun/接触/爆発(damageEnemy)と近接キル全般(grantMeleeKillRewards)の両経路から同じ判定を使う。
+const screamerBuffCutOnKillPatch = (
+  killedTypes: string[],
+  screamerBuffUntil: number,
+  gameTime: number
+): { screamerBuffUntil: number } | Record<string, never> =>
+  killedTypes.includes('screamer') && screamerBuffUntil > gameTime
+    ? { screamerBuffUntil: gameTime }
+    : {};
+
 // Shared per-kill rewards for melee-grade kills (the release counter swing and
 // the katana strikes). Mirrors what the counter has always granted: XP pickup,
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
@@ -1361,9 +1372,8 @@ const grantMeleeKillRewards = (
 ) => {
   // 叫喚型(screamer)を近接で倒したら強化バフを即座に打ち切る(社長指示)。全ての近接キル経路が
   // このヘルパーを通るので、ここ1箇所で拾える(gun/接触/爆発側は damageEnemy 内で同様に処理)。
-  if (killed.some(k => k.enemy.type === 'screamer') && get().screamerBuffUntil > get().gameTime) {
-    useGameStore.setState({ screamerBuffUntil: get().gameTime });
-  }
+  const screamerCutPatch = screamerBuffCutOnKillPatch(killed.map(k => k.enemy.type), get().screamerBuffUntil, get().gameTime);
+  if ('screamerBuffUntil' in screamerCutPatch) useGameStore.setState(screamerCutPatch);
   for (const { enemy, finisher } of killed) {
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
@@ -5108,7 +5118,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。即勝利せず帰還サークルへ。
           finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent),
           // 叫喚型(screamer)を倒したら強化バフを即座に打ち切る(社長指示)。残り時間を待たず即失効。
-          ...(enemy.type === 'screamer' && state.screamerBuffUntil > state.gameTime ? { screamerBuffUntil: state.gameTime } : {}),
+          ...screamerBuffCutOnKillPatch([enemy.type], state.screamerBuffUntil, state.gameTime),
         };
       }
 

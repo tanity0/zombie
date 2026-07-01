@@ -166,11 +166,15 @@ const VirtualJoystick: React.FC = () => {
     // また、乗車中に指を離したら降車(=1秒以上乗っていれば進行方向へスケボーを投げてバッシュ)。dismountSkater は
     // 未装備/非乗車なら無害。カウンター(上の triggerCounter)は従来どおり出るので、両立する。
     if (pointerId !== null) {
-      const now = performance.now();
-      lastWasTapRef.current =
-        now - pointerDownTimeRef.current < SKATER_TAP_MAX_MS &&
-        maxDragRef.current < SKATER_TAP_MAX_DRAG;
-      lastUpAtRef.current = now;
+      // タップ記録(ダブルタップ判定用)は「本物の指離し」の時だけ更新する。強制/中断リリース(fireCounter=false)
+      // で更新すると、多点タッチで先発ポインタが強制解放された際に偽のタップが記録されダブルタップが誤爆する。
+      if (fireCounter) {
+        const now = performance.now();
+        lastWasTapRef.current =
+          now - pointerDownTimeRef.current < SKATER_TAP_MAX_MS &&
+          maxDragRef.current < SKATER_TAP_MAX_DRAG;
+        lastUpAtRef.current = now;
+      }
       dismountSkater();
     }
     flickSamplesRef.current = [];

@@ -5255,7 +5255,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const hpFrac = player.maxHealth > 0 ? player.health / player.maxHealth : 0;
             const key = `gate${curPhase.index}`;
             if (gateRef.current.key !== key) { gateRef.current.key = key; gateRef.current.startHpFrac = hpFrac; gateRef.current.live = 0; }
-            const prog = (gameTime - curPhase.startMs) / Math.max(1, curPhase.endMs - curPhase.startMs);
+            const phaseDur = curPhase.endMs - curPhase.startMs;
+            const prog = Number.isFinite(phaseDur) ? (gameTime - curPhase.startMs) / Math.max(1, phaseDur) : 1;
             const desired = gateLiveCorrection(hpFrac, gateRef.current.startHpFrac, prog);
             gateRef.current.live += (desired - gateRef.current.live) * smooth;
           } else {

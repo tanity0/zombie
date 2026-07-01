@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1283 — 今日のデバッグ/エラー検索: 直さない理由がないバグ2件+重複コード1件を修正
+- 社長指示「今日のデバッグ、エラー検索」で54コミット分を8観点(行単位差分/挙動除去/横断/再利用/簡潔化/
+  効率/俯瞰/CLAUDE.md準拠)で並列レビューし、独立検証まで実施。続く「直さない理由がないものはまず直して」
+  指示に沿って、確定バグ2件+重複コードの掃除1件を実装(挙動を変えない範囲の修正のみ、意図の再解釈なし)。
+- **バグ①: 関所ライブ補正(難易度④)が最終フェーズで永久に効かない**: `difficultyDirector.ts`の最終フェーズ
+  (14分以降、endMs=Infinity＝終盤の持続高強度フェーズ)で`useGameLoop.ts`の`prog`計算が
+  `(gameTime-startMs)/Math.max(1, Infinity)`=常に0になり、`gateLiveCorrection`のHP追従補正が終盤ずっと
+  無効化されていた。`endMs`が有限でない区間は`prog=1`(=最初から「目標帯に到達済み」扱い、フェーズが元々
+  意図する「持続高強度」に合わせる)として除算そのものを回避。新しい調整値は追加していない。`useGameLoop.ts`。
+- **バグ②: VirtualJoystickの多点タッチでダブルタップ判定が誤爆しうる**: `release()`内のタップ記録
+  (`lastWasTapRef`/`lastUpAtRef`)が、本物の指離し(`fireCounter=true`)だけでなく強制/中断リリース
+  (2本目の指が触れた時の先発ポインタの強制解放など、`fireCounter=false`)でも更新されていた。2本指を
+  素早く触れると偽の「タップ」が記録され、次のタップでスケボーが意図せず装着される恐れがあった。
+  タップ記録だけを`fireCounter`でガード(`dismountSkater()`は従来どおり離したら常に呼ぶ、変更なし)。
+  `VirtualJoystick.tsx`。
+- **重複コードの整理**: screamer撃破時のバフ即失効判定(v0.25.1282で追加)が`grantMeleeKillRewards`と
+  `damageEnemy`の2箇所に同じロジックでコピーされていた。共通関数`screamerBuffCutOnKillPatch`へ抽出し、
+  両経路から呼ぶ形に統一(挙動は完全に同一、コードのみ整理)。`store/gameStore.ts`。
+- 保留(社長回答待ち): ③近接/刀のクリティカルが裏ボスの完全気絶カウントに乗らない件(意図不明、確認要)、
+  ④RELAXの「0.25〜0.7持続」デッドゾーン残課題(設計判断要)。どちらも今回は未着手。
+- 検証: typecheck / lint(0, full) / test(121 pass, 1 skip) / build 通過。挙動変更は上記3件のみ。
+
 ## v0.25.1282 — screamer(叫喚型): 初回発動を計7秒に / 撃破時にバフ即失効(社長指示)
 - 社長質問「バフちゃんと切れてる？」への確認: `screamActive = gameTime < screamerBuffUntil` は移動速度
   (gameStore)・被弾ダメージ倍率(useGameLoop、飛び道具/接触の両方)の3箇所すべてで正しく時間ゲートされて
