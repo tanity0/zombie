@@ -1185,8 +1185,12 @@ const TREASURE_DROP_CHANCE_BY_RANK = {
 const TREASURE_VARIANTS_BY_RARITY = [4, 2, 3, 1, 5, 6] as const;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リングに置く卵の数。
-// 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)を撒く。
-const EGGCARRIER_LAY_INTERVAL_MS = 1000; // 1秒ごとに1個設置。
+// 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)をバラ撒く。
+// 3秒CDののち、周辺のランダム位置へ0.5秒おきに1個ずつ、最大3個ばらまく(社長指示)。
+const EGGCARRIER_BURST_INTERVAL_MS = 500; // バースト中の1個ごとの間隔(0.5秒)。
+const EGGCARRIER_BURST_COUNT = 3;         // 1バーストで撒く個数。
+const EGGCARRIER_BURST_CD_MS = 3000;      // バースト完了後の再開CD(3秒)。
+const EGGCARRIER_SCATTER_RADIUS = 110;    // 自分の周辺のこの半径内のランダム位置へ撒く。
 const EGGCARRIER_MAX_EGGS = 20;          // 抱卵型が撒いた卵の同時上限(超過は古い順に消す)。画面外は別途カリング。
 const EGGCARRIER_ORBIT_RADIUS = 220;     // プレイヤーから保つ周回半径(px)。
 // 変異体(叫喚型・screamer): 距離を保ちつつ、溜め→叫喚で画面内の通常敵を一時強化する。
@@ -5547,21 +5551,27 @@ export const useGameStore = create<GameState>((set, get) => ({
           const gvx = (enemy.vx ?? gtvx) + (gtvx - (enemy.vx ?? gtvx)) * ga;
           const gvy = (enemy.vy ?? gtvy) + (gtvy - (enemy.vy ?? gtvy)) * ga;
           const gmoved = resolveMove(enemy.x + gvx * deltaTime, enemy.y + gvy * deltaTime);
-          // 産卵: 1秒ごとに足元へ緑卵を1個。初回は spawn から1秒後。
-          let nextLay = enemy.eggLayAt ?? (gameTime + EGGCARRIER_LAY_INTERVAL_MS);
+          // 産卵(バースト): 3秒CDののち、周辺の半径 EGGCARRIER_SCATTER_RADIUS 内のランダム位置へ
+          // 0.5秒おきに1個ずつ、最大 EGGCARRIER_BURST_COUNT 個ばらまく。初回は spawn からすぐ開始。
+          let nextLay = enemy.eggLayAt ?? (gameTime + EGGCARRIER_BURST_INTERVAL_MS);
+          let burst = enemy.eggBurstCount ?? 0;
           if (gameTime >= nextLay) {
-            const fx = gmoved.x + enemy.width / 2;
-            const fy = gmoved.y + enemy.height;
+            const ecx2 = gmoved.x + enemy.width / 2, ecy2 = gmoved.y + enemy.height / 2;
+            const aa = Math.random() * Math.PI * 2;
+            const rr = Math.random() * EGGCARRIER_SCATTER_RADIUS;
+            const fx = ecx2 + Math.cos(aa) * rr, fy = ecy2 + Math.sin(aa) * rr;
             const rect = mineRect({ footX: fx, footY: fy, scale: 1 });
             layingEggs.push({
-              id: `egg-gc-${enemy.id}-${Math.floor(gameTime)}`,
+              id: `egg-gc-${enemy.id}-${Math.floor(gameTime)}-${burst}`,
               x: rect.x, y: rect.y, width: rect.width, height: rect.height,
               footX: fx, footY: fy, scale: 1,
               health: 1, maxHealth: 1, type: 'mine', lastHit: 0,
             });
-            nextLay = gameTime + EGGCARRIER_LAY_INTERVAL_MS;
+            burst += 1;
+            if (burst >= EGGCARRIER_BURST_COUNT) { burst = 0; nextLay = gameTime + EGGCARRIER_BURST_CD_MS; } // バースト完了→3秒CD
+            else { nextLay = gameTime + EGGCARRIER_BURST_INTERVAL_MS; }                                     // 次の卵は0.5秒後
           }
-          return { ...enemy, vx: gvx, vy: gvy, x: gmoved.x, y: gmoved.y, eggLayAt: nextLay, aiPhase: undefined, aiPhaseUntil: 0 };
+          return { ...enemy, vx: gvx, vy: gvy, x: gmoved.x, y: gmoved.y, eggLayAt: nextLay, eggBurstCount: burst, aiPhase: undefined, aiPhaseUntil: 0 };
         }
 
         // 変異体(叫喚型・screamer): プレイヤーに直進せず一定距離を保って移動。出現3秒後に初回、以降10秒間隔で

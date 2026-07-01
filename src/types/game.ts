@@ -308,8 +308,10 @@ export interface Enemy {
   hunterAlerted?: boolean;
   // パニッシャーで「巻き込まれて」ノックバックした敵の印。これ以上は連鎖させない(1次まで)。
   punisherHopped?: boolean;
-  // 抱卵型(旧ghost): 次に緑卵を設置できる gameTime(ms)。1秒ごとに1個撒く。
+  // 抱卵型(旧ghost): 次に緑卵を撒く gameTime(ms)。バースト中は0.5秒間隔、完了後は3秒CD。
   eggLayAt?: number;
+  // 抱卵型: 現在のバーストで撒いた個数(0..EGGCARRIER_BURST_COUNT)。3個で0へ戻し3秒CD。
+  eggBurstCount?: number;
   // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。
   screamNextAt?: number;
   // 裏ボス専用: 被弾したクリティカルの累積回数。規定回数で「完全気絶(紫)」に移行しリセット。

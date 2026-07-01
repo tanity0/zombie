@@ -99,7 +99,7 @@ describe('headless simulation invariants', () => {
     expect(s.player.health).toBeLessThanOrEqual(s.player.maxHealth);
   });
 
-  it('eggcarrier (ghost) lays green-egg mines ~1/sec while orbiting', () => {
+  it('eggcarrier (ghost) scatters a 3-egg burst then holds for the CD', () => {
     useGameStore.getState().resetGame('warrior');
     const { x, y } = useGameStore.getState().player;
     // One eggcarrier near the player; clear any reset-time props so we count only its eggs.
@@ -109,15 +109,17 @@ describe('headless simulation invariants', () => {
     });
     const dt = 1 / 60;
     let t = useGameStore.getState().gameTime;
-    for (let i = 0; i < 200; i++) { // ~3.3s
-      t += dt * 1000;
-      useGameStore.getState().setGameTime(t);
-      useGameStore.getState().updateEnemies(dt);
-    }
-    const eggs = useGameStore.getState().breakableProps.filter(p => p.id.startsWith('egg-gc-'));
-    expect(eggs.length).toBeGreaterThanOrEqual(2);   // ~3 eggs in 3.3s at 1/sec
-    expect(eggs.length).toBeLessThanOrEqual(4);       // not every frame
-    expect(eggs.every(e => e.type === 'mine')).toBe(true); // reuse the existing green-egg(mine) hazard
+    const step = (frames: number) => { for (let i = 0; i < frames; i++) { t += dt * 1000; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(dt); } };
+    step(140); // ~2.3s: the first burst (0.5/1.0/1.5s) is done, CD not yet elapsed
+    let eggs = useGameStore.getState().breakableProps.filter(p => p.id.startsWith('egg-gc-'));
+    expect(eggs.length).toBe(3);                       // exactly one burst of 3
+    expect(eggs.every(e => e.type === 'mine')).toBe(true);
+    // scattered around the ghost (not all stacked at one point)
+    const uniqueX = new Set(eggs.map(e => Math.round(e.footX)));
+    expect(uniqueX.size).toBeGreaterThan(1);
+    step(140); // ~4.6s: past the 3s CD → a second burst has started
+    eggs = useGameStore.getState().breakableProps.filter(p => p.id.startsWith('egg-gc-'));
+    expect(eggs.length).toBeGreaterThan(3);
   });
 
   it('screamer winds up after ~3s then opens a ~7s buff window', () => {
