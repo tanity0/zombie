@@ -5112,6 +5112,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const allEnemiesNow = useGameStore.getState().enemies;
         const enemyCountBeforeSpawn = allEnemiesNow.length;
         const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
+        // 裏ボス存命中は通常湧き(プラント含む)を止める=ボス戦に集中(イベント抑止と同基準・社長報告)。
+        const hiddenBossAlive = allEnemiesNow.some(e => isHiddenBoss(e.type));
+        // 文脈ズーム用: プレイヤー近く(画面内相当の半径)にいる敵だけ数える。遠くの大型/多数では引かない(社長指示)。
+        const zpcx = player.x + player.width / 2, zpcy = player.y + player.height / 2;
+        const zoomNearR2 = Math.pow(Math.max(gameBounds.width, gameBounds.height) * 0.6, 2);
+        const nearEnemies = allEnemiesNow.filter(e => {
+          const dx = e.x + e.width / 2 - zpcx, dy = e.y + e.height / 2 - zpcy;
+          return dx * dx + dy * dy <= zoomNearR2;
+        });
         // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
         // 湧き上限はカリング上限(enemyCap=dirCountCap)と揃える(枠まで湧かせて超過ぶんはカリング)。屋外はディレクター駆動(フロア≈10〜天井20)。
@@ -5155,7 +5164,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // カメラと同じ target を読む(視覚専用のズーム値ではなく target=純関数)。屋内/ラボは対象外。
-        const czInvZoom = (labTheme || indoor) ? 1 : 1 / contextZoomTarget(allEnemiesNow.length, allEnemiesNow.some(e => isLargeForZoom(e.type)));
+        const czInvZoom = (labTheme || indoor) ? 1 : 1 / contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type)));
         const spawnBounds = czInvZoom > 1.0001
           ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom }
           : gameBounds;
@@ -5163,6 +5172,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           !danceTest &&
           !indoor &&
           !confining &&
+          !hiddenBossAlive && // 裏ボス存命中は通常湧きを止める(プラント含む)
           fieldCount < normalSpawnCap &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1) * sceneIntervalMult
         ) {
@@ -5232,7 +5242,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 保証出現(社長指示): プラントは1分・犬(werewolf)は3分を過ぎた時点で、その種類が1体もいなければ
         // エリア不問で画面外に1体だけ出す。各ラン1回のみ(refフラグ)。森ステージ専用(ラボ/屋内/ダンス/囲い中は除外)。
-        if (!danceTest && !indoor && !labTheme && !confining) {
+        if (!danceTest && !indoor && !labTheme && !confining && !hiddenBossAlive) {
           if (!plantGuaranteedRef.current && gameTime >= PLANT_GUARANTEE_MS) {
             plantGuaranteedRef.current = true;
             if (!useGameStore.getState().enemies.some(e => e.type === 'plant')) {

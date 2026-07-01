@@ -2217,9 +2217,17 @@ export class PixiScene {
     const punch = (zoomLeft > 0 && s.zoomMag > 0) ? 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS) : 1;
     // 文脈ズーム: 敵数が多い/大型がいるほど少し引く(視覚専用)。イージング追従＋不感帯でパカパカ防止。
     // 引き(target<現在)は長い時定数でじわっと、戻りは待機と同じ時定数。
-    let hasLargeForZoom = false;
-    for (const e of s.enemies) { if (isLargeForZoom(e.type)) { hasLargeForZoom = true; break; } }
-    const czTarget = contextZoomTarget(s.enemies.length, hasLargeForZoom);
+    // プレイヤー近く(画面内相当の半径)にいる敵だけ数える。遠くの大型/多数では引かない(社長指示)。
+    const zNearR2 = Math.pow(Math.max(this.screenW, this.screenH) * 0.6, 2);
+    const zpx = s.player.x + s.player.width / 2, zpy = s.player.y + s.player.height / 2;
+    let hasLargeForZoom = false, nearCount = 0;
+    for (const e of s.enemies) {
+      const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
+      if (dx * dx + dy * dy > zNearR2) continue; // 遠い敵は無視
+      nearCount++;
+      if (isLargeForZoom(e.type)) hasLargeForZoom = true;
+    }
+    const czTarget = contextZoomTarget(nearCount, hasLargeForZoom);
     const czTau = czTarget < this.contextZoom - 0.0001 ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
     this.contextZoom += (czTarget - this.contextZoom) * (1 - Math.exp(-zdt / Math.max(0.001, czTau)));
     const zoom = this.idleZoom * this.contextZoom * punch;
