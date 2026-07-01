@@ -1864,6 +1864,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const onScreen = bcx >= cam.x - M && bcx <= cam.x + gb.width + M && bcy >= cam.y - M && bcy <= cam.y + gb.height + M;
             const inDeep = FORCE_HIDDEN_BOSS || depth >= BOSS_EXIT_DEPTH; // テスト時は深層域判定を無視(浅い場所でも帰巣しない)
             const speed = boss.speed;
+            // 裏ボスは updateEnemies を素通りするため、移動テンポ(ゲームスピード1.2倍)がここには自動で乗らない。
+            // 通常敵と揃えるため、移動の位置更新/慣性は bossMoveDt(= deltaTime × MOVE_SPEED_MULT)を使う(社長指示)。
+            // 回復(BOSS_REGEN)やタイマー等は素の deltaTime のまま(テンポの対象外)。
+            const bossMoveDt = deltaTime * MOVE_SPEED_MULT;
             const fireBullet = (tx: number, ty: number) => addProjectile(createEnemyProjectile(boss, player, tx, ty));
 
             const patch: Partial<typeof boss> = {};
@@ -1878,7 +1882,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dl = Math.hypot(dhx, dhy);
               if (dl < 10) { despawn = true; }
               else {
-                const mv = Math.min(speed * deltaTime, dl);
+                const mv = Math.min(speed * bossMoveDt, dl);
                 patch.x = boss.x + (dhx / dl) * mv; patch.y = boss.y + (dhy / dl) * mv;
                 patch.health = Math.min(boss.maxHealth, boss.health + BOSS_REGEN_PER_SEC * deltaTime);
                 patch.bossState = 'return';
@@ -1889,7 +1893,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               bs.retreating = false;
               const dhx = bs.homeX - boss.x, dhy = bs.homeY - boss.y;
               const dl = Math.hypot(dhx, dhy);
-              if (dl > 1) { const mv = Math.min(speed * deltaTime, dl); patch.x = boss.x + (dhx / dl) * mv; patch.y = boss.y + (dhy / dl) * mv; }
+              if (dl > 1) { const mv = Math.min(speed * bossMoveDt, dl); patch.x = boss.x + (dhx / dl) * mv; patch.y = boss.y + (dhy / dl) * mv; }
               patch.health = Math.min(boss.maxHealth, boss.health + BOSS_REGEN_PER_SEC * deltaTime);
               patch.bossState = 'return';
             } else {
@@ -1922,10 +1926,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dl = Math.hypot(dpx, dpy) || 1;
                 const desVx = (dpx / dl) * speed * mult;
                 const desVy = (dpy / dl) * speed * mult;
-                const k = Math.min(1, BOSS_TURN_RESPONSE * deltaTime);
+                const k = Math.min(1, BOSS_TURN_RESPONSE * bossMoveDt);
                 bs.vx += (desVx - bs.vx) * k;
                 bs.vy += (desVy - bs.vy) * k;
-                patch.x = boss.x + bs.vx * deltaTime; patch.y = boss.y + bs.vy * deltaTime;
+                patch.x = boss.x + bs.vx * bossMoveDt; patch.y = boss.y + bs.vy * bossMoveDt;
               };
               if (frozen) {
                 // 解除後はチェイスから再開。溜め/連射タイマーを巻き戻して「解除直後に溜め攻撃が暴発」を防ぎ、
@@ -2069,7 +2073,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 {
                   const bdx = bcx - chaseTgt.x, bdy = bcy - chaseTgt.y;
                   const bl = Math.hypot(bdx, bdy) || 1;
-                  const back = speed * BOSS_DASH_BACKSTEP_MULT * deltaTime;
+                  const back = speed * BOSS_DASH_BACKSTEP_MULT * bossMoveDt;
                   patch.x = boss.x + (bdx / bl) * back; patch.y = boss.y + (bdy / bl) * back;
                 }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
@@ -2087,7 +2091,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dy = bs.dashDirY + (tdy / tl) * BOSS_DASH_HOMING;
                 const dnl = Math.hypot(dx, dy) || 1;
                 bs.dashDirX = dx / dnl; bs.dashDirY = dy / dnl; // 向きを少しずつ更新(累積で緩く曲がる)
-                const mv = speed * BOSS_DASH_SPEED_MULT * deltaTime;
+                const mv = speed * BOSS_DASH_SPEED_MULT * bossMoveDt;
                 patch.x = boss.x + bs.dashDirX * mv; patch.y = boss.y + bs.dashDirY * mv;
                 bs.vx = bs.dashDirX * speed * BOSS_DASH_SPEED_MULT; // 突進後のチェイスへ慣性を引き継ぐ
                 bs.vy = bs.dashDirY * speed * BOSS_DASH_SPEED_MULT;
