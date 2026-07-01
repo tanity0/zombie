@@ -531,7 +531,7 @@ const TRAP_MELEE_SHOVE_SLIDE_MS = 220;
 const SHIELD_BASH_DAMAGE_MULT = 3;
 const SHIELD_BASH_SHOVE_DISTANCE = 50;        // バッシュの飛び出し距離(少し短め)
 const SHIELD_BASH_DURABILITY_COST = 5;        // バッシュ1回で減る耐久(0以下で破壊)
-const SHIELD_BASH_KNOCKBACK_SPEED = 1920; // バッシュのノックバック距離を2倍(社長指示。従来960→1920)。距離∝速度。
+const SHIELD_BASH_KNOCKBACK_SPEED = 2400; // バッシュのノックバック距離(社長指示で少し延長: 1920→2400)。距離∝速度。
 // スケーター急停止バッシュ(社長指示): skater で1秒以上走行後、進行方向と逆へスティックを倒すと
 // 進行方向へ短距離衝撃波(バッシュ=近接×SHIELD_BASH_DAMAGE_MULT＋ノックバック)を出して急停止。
 const SKATER_BASH_RUN_MS = 1000;       // 発動に必要な連続走行時間(1秒)
@@ -2997,13 +2997,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         return Math.hypot(pcx - nx, pcy - ny) <= meleeRange;
       })
       .map(p => {
-        // バッシュ方向は「どちらの面から叩いたか」で決める: プレイヤー中心→盾中心の向き
-        // (=叩いた側の反対=叩かれた面へ押し出す)。中心がほぼ重なる場合のみ設置法線へフォールバック。
+        // バッシュ方向: 盾の外向き半球(180°)内なら「攻撃(facing)方向」に自由に振れる(社長指示)。
+        // 例: 盾が上にあっても、右を向いて攻撃すれば右へ飛ばす。裏半球(盾の後ろ)へは飛ばさず法線へクランプ。
+        // 盾の外向き法線 = プレイヤー中心→盾中心。中心がほぼ重なる時のみ設置法線へフォールバック。
         const scx = p.x + p.width / 2;
         const scy = p.y + p.height / 2;
         const sm = Math.hypot(scx - pcx, scy - pcy);
-        const dux = sm > 0.01 ? (scx - pcx) / sm : p.direction.x;
-        const duy = sm > 0.01 ? (scy - pcy) / sm : p.direction.y;
+        const nx = sm > 0.01 ? (scx - pcx) / sm : p.direction.x;
+        const ny = sm > 0.01 ? (scy - pcy) / sm : p.direction.y;
+        let dux = nx, duy = ny;
+        const ld = player.lastDirection;
+        if (ld) {
+          const fm = Math.hypot(ld.x, ld.y);
+          if (fm > 0.01) {
+            const fx = ld.x / fm, fy = ld.y / fm;
+            if (fx * nx + fy * ny >= 0) { dux = fx; duy = fy; } // 前方180°=facing採用 / 裏側は法線のまま
+          }
+        }
         const ex = p.x + dux * SHIELD_BASH_SHOVE_DISTANCE;
         const ey = p.y + duy * SHIELD_BASH_SHOVE_DISTANCE;
         // 始点〜終点の壁を覆う掃過AABB(敵の被弾判定用)。
