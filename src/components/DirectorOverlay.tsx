@@ -57,7 +57,7 @@ const DirectorOverlay: React.FC = () => {
             <span className="text-white/40">{(d.macroMs / 1000).toFixed(1)}s</span>
           </div>
           <div className="text-white/40 tabular-nums">
-            near — · dmgSince {(d.sinceDamageMs / 1000).toFixed(0)}s · kill/s {d.killRateEma.toFixed(2)}
+            near {d.nearEnemies} · danger {d.dangerBias.toFixed(1)} · dmgSince {(d.sinceDamageMs / 1000).toFixed(0)}s · kill/s {d.killRateEma.toFixed(2)}
           </div>
         </div>
       ) : (

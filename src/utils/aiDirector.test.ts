@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createDirectorState, stepDirector, type DirectorInputs, type DirectorState } from './aiDirector';
 
-const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0 };
+const CALM: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 0 };
 
 // 固定入力で n 秒ぶん(dt刻み)回す。
 const run = (s: DirectorState, input: DirectorInputs, seconds: number, dt = 1 / 60): DirectorState => {
@@ -17,13 +17,20 @@ describe('aiDirector: Intensity', () => {
   });
 
   it('近接敵が多い/低HPだと上がる', () => {
-    const s = run(createDirectorState(), { hpFrac: 0.3, damageTakenFrac: 0, nearEnemies: 8, killDelta: 0 }, 3);
+    const s = run(createDirectorState(), { hpFrac: 0.3, damageTakenFrac: 0, nearEnemies: 8, killDelta: 0, dangerBias: 0 }, 3);
     expect(s.intensity).toBeGreaterThan(0.5);
+  });
+
+  it('危険敵の存在(ハンター追跡)は無傷・近接ゼロでも Intensity を底上げする', () => {
+    const hunter: DirectorInputs = { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 0, killDelta: 0, dangerBias: 1 };
+    const s = run(createDirectorState(), hunter, 3);
+    expect(s.intensity).toBeGreaterThan(0.35); // 被弾も近接もないのに緊張が乗る
+    expect(s.dangerBias).toBe(1);              // 表示用エコー
   });
 
   it('被弾スパイクで即上がり、その後は安全にすると遅く減衰する', () => {
     let s = createDirectorState();
-    s = stepDirector(s, { hpFrac: 0.7, damageTakenFrac: 0.15, nearEnemies: 2, killDelta: 0 }, 1 / 60);
+    s = stepDirector(s, { hpFrac: 0.7, damageTakenFrac: 0.15, nearEnemies: 2, killDelta: 0, dangerBias: 0 }, 1 / 60);
     const spiked = s.intensity;
     expect(spiked).toBeGreaterThan(0.25); // スパイク
     const after1s = run(s, CALM, 1).intensity;
@@ -34,13 +41,13 @@ describe('aiDirector: Intensity', () => {
 
 describe('aiDirector: Performance(Intensityと独立)', () => {
   it('無傷・撃破・高HPが続くと高い', () => {
-    const s = run(createDirectorState(), { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 1, killDelta: 1 }, 25);
+    const s = run(createDirectorState(), { hpFrac: 1, damageTakenFrac: 0, nearEnemies: 1, killDelta: 1, dangerBias: 0 }, 25);
     expect(s.performance).toBeGreaterThan(0.7);
   });
 
   it('被弾はIntensityを上げるがPerformanceは上げない(混ぜない)', () => {
     const base = run(createDirectorState(), CALM, 20); // まず余裕を作る
-    const hurt = run(base, { hpFrac: 0.4, damageTakenFrac: 0.1, nearEnemies: 5, killDelta: 0 }, 3);
+    const hurt = run(base, { hpFrac: 0.4, damageTakenFrac: 0.1, nearEnemies: 5, killDelta: 0, dangerBias: 0 }, 3);
     expect(hurt.intensity).toBeGreaterThan(base.intensity); // 苦しさは上がる
     expect(hurt.performance).toBeLessThan(base.performance); // 余裕は下がる(=上がらない)
   });
@@ -49,7 +56,7 @@ describe('aiDirector: Performance(Intensityと独立)', () => {
 describe('aiDirector: DirectorState(BUILD_UP/PEAK/RELAX)', () => {
   it('Intensityが上がると BUILD_UP→PEAK→RELAX と遷移し、RELAXでは緩む', () => {
     // 高圧入力で PEAK まで上げる。
-    const hi: DirectorInputs = { hpFrac: 0.2, damageTakenFrac: 0, nearEnemies: 10, killDelta: 0 };
+    const hi: DirectorInputs = { hpFrac: 0.2, damageTakenFrac: 0, nearEnemies: 10, killDelta: 0, dangerBias: 0 };
     let s = run(createDirectorState(), hi, 3);
     expect(s.macro === 'peak' || s.macro === 'relax').toBe(true);
     // PEAK は必ず RELAX へ落ちる(高圧を維持しても PEAK_HOLD で抜ける)。
@@ -61,7 +68,7 @@ describe('aiDirector: DirectorState(BUILD_UP/PEAK/RELAX)', () => {
   });
 
   it('PEAK の直後は必ず RELAX', () => {
-    const hi: DirectorInputs = { hpFrac: 0.2, damageTakenFrac: 0, nearEnemies: 10, killDelta: 0 };
+    const hi: DirectorInputs = { hpFrac: 0.2, damageTakenFrac: 0, nearEnemies: 10, killDelta: 0, dangerBias: 0 };
     let s = run(createDirectorState(), hi, 2.5);
     // peak に到達してから、時間経過で必ず relax へ。
     let sawRelaxAfterPeak = false;

@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1267 — AIディレクター: 危険敵の存在(まずハンター)を Intensity へ(社長指示)
+- Codex案の入力③「危険敵の存在」を dangerBias(0..1) として追加。まず**ハンターのみ**: 追跡中=1 / 索敵中=0.6 /
+  撤退中=0.3 / 未出現=0。被弾も近接もなくても Intensity を底上げ(`INT_DANGER_W=0.5`)=ハンター出現中の緊張を反映。
+- `aiDirector.ts`(dangerBias入力＋intTargetへ加算、near/dangerを表示用にエコー)、`aiDirector.test.ts`(+1: 無傷でも
+  ハンター追跡で上がる)、`useGameLoop`(hunterRef.phase→dangerBias)、`DirectorOverlay`(near/danger表示)。
+- 依然「読むだけ」=ゲーム挙動に影響なし。次段でwerewolf突進予告/plant射線/ghost毒卵密度/screamer準備も dangerBias へ。
+- 検証: typecheck / lint(0) / test(109) / build 通過。
+
 ## v0.25.1266 — AIディレクター ステップA(Intensity/Performance/DirectorState を“読むだけ”可視化)(社長指示)
 - 方針(社長＋Codex合意): L4D2型。**Intensity=いま苦しいか / Performance=いま余裕があるか を絶対に混ぜない**。
   Intensityは「Relaxへ寄せる」だけ、Performanceは「BuildUpを強める」だけに使う(被弾で難易度を上げない)。

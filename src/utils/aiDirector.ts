@@ -18,6 +18,9 @@ export interface DirectorInputs {
   damageTakenFrac: number; // このステップで受けたダメージ / 最大HP (>0 でスパイク)
   nearEnemies: number;     // 近接圏内(接触危険レンジ)にいる敵数 ← 画面内総数ではなく“近い敵”
   killDelta: number;       // このステップの撃破数
+  // 危険敵の存在(0..1)。被弾していなくても“いる”だけで緊張する脅威の合成値。今はハンター出現/追跡のみ。
+  // 後段で werewolf突進予告 / plant射線 / ghost毒卵密度 / screamer準備 も足す予定(=このbiasの最大値)。
+  dangerBias: number;
 }
 
 export interface DirectorState {
@@ -29,6 +32,9 @@ export interface DirectorState {
   // 内部積算(信号算出用の状態)。表示にも使える。
   sinceDamageMs: number;  // 最後に被弾してからの経過(ms)
   killRateEma: number;    // 撃破レート(体/秒)の指数移動平均
+  // デバッグ可視化用に直近入力をエコー(なぜ Intensity が高いか=near/danger を画面で見る)。
+  nearEnemies: number;
+  dangerBias: number;
 }
 
 // ---- チューニング定数(すべて私案。デバッグ表示を見ながら詰める) ----
@@ -36,6 +42,7 @@ export interface DirectorState {
 const NEAR_ENEMY_FULL = 8;     // この数の近接敵で swarm 成分が最大(1.0)
 const INT_HP_W = 0.7;          // HP危険(=1-hp)の重み
 const INT_SWARM_W = 0.6;       // 近接敵の重み
+const INT_DANGER_W = 0.5;      // 危険敵の存在(ハンター等)の重み。追跡中(bias=1)で目標を+0.5=無傷でも山寄りに
 const INT_HP_EXP = 1.3;        // 低HPほど非線形に効かせる
 const INT_TAU_UP = 0.35;       // 上げの時定数(秒)=速い
 const INT_TAU_DOWN = 4.0;      // 下げの時定数(秒)=遅い(山を維持→必ず緩める設計)
@@ -65,6 +72,8 @@ export const createDirectorState = (): DirectorState => ({
   peakHeldMs: 0,
   sinceDamageMs: CALM_FULL_MS, // 開始時は「しばらく無被弾」扱い
   killRateEma: 0,
+  nearEnemies: 0,
+  dangerBias: 0,
 });
 
 // 1ステップ進める純関数。prev を変更せず新しい state を返す。
@@ -75,7 +84,8 @@ export const stepDirector = (prev: DirectorState, input: DirectorInputs, dtSec: 
   // ---- Intensity ----
   const hpDanger = Math.pow(clamp01(1 - input.hpFrac), INT_HP_EXP);
   const swarm = clamp01(input.nearEnemies / NEAR_ENEMY_FULL);
-  const intTarget = clamp01(INT_HP_W * hpDanger + INT_SWARM_W * swarm);
+  const danger = clamp01(input.dangerBias);
+  const intTarget = clamp01(INT_HP_W * hpDanger + INT_SWARM_W * swarm + INT_DANGER_W * danger);
   const intTau = intTarget > prev.intensity ? INT_TAU_UP : INT_TAU_DOWN;
   let intensity = prev.intensity + (intTarget - prev.intensity) * (1 - Math.exp(-dt / intTau));
   if (input.damageTakenFrac > 0) {
@@ -113,5 +123,5 @@ export const stepDirector = (prev: DirectorState, input: DirectorInputs, dtSec: 
     if (macroMs >= RELAX_MIN_MS && intensity <= RELAX_UNTIL) enter('buildup');
   }
 
-  return { intensity, performance, macro, macroMs, peakHeldMs, sinceDamageMs, killRateEma };
+  return { intensity, performance, macro, macroMs, peakHeldMs, sinceDamageMs, killRateEma, nearEnemies: input.nearEnemies, dangerBias: danger };
 };

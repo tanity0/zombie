@@ -5687,11 +5687,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const ex = e.x + e.width / 2 - dpx, ey = e.y + e.height / 2 - dpy;
             if (ex * ex + ey * ey <= nearR2) nearN++;
           }
+          // 危険敵の存在(まずハンターのみ): 追跡中=最大 / 索敵中=中 / 撤退中=小 / 未出現=0。被弾せずとも緊張を底上げ。
+          const hPhase = hunterRef.current.phase;
+          const dangerBias = hPhase === 'chase' ? 1 : hPhase === 'search' ? 0.6 : hPhase === 'retreat' ? 0.3 : 0;
           directorRef.current.state = stepDirector(directorRef.current.state, {
             hpFrac: dp.health / maxHp,
             damageTakenFrac: dmgTaken,
             nearEnemies: nearN,
             killDelta,
+            dangerBias,
           }, deltaTime);
           setDirectorDebug(directorRef.current.state);
         }
