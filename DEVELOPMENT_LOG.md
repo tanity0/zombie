@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1304 — ★未決事項①決定: バッチ3=連続圧力方式(gatePressure)採用・設計書を全面書き換え(設計チャットFable・設計のみ)
+- 設計チャット(Fable)で社長と協議し、★未決事項①を決定。決定3点:
+  1. **バッチ3の方式=連続圧力方式(gatePressure)を採用**(離散段0〜7+最低滞在12秒は不採用)。
+  2. **下げは時定数+被弾インパルス**(下げτ=2秒に加え、被弾スパイクで即−0.15のステップ減)。
+  3. **関所ごとのpressureは毎回リセット**(0+Rankボーナスから登り直し。持ち越し式に変えられる
+     startPressureノブは実装に残す)。
+- `PACING_REDESIGN.md`のバッチ3を連続圧力方式で全面書き換え(実装可能な粒度・数値は実機調整前提):
+  perf=0.6×無被弾+0.4×撃破ペース / 上げτ8s・下げτ2s / intervalMult=1.0−0.45×pressure /
+  cap+2はpressure≥0.55 / 解禁しきい値0.35弾・0.50一種目(配役投入)・0.65二種目(配役投入)・
+  0.80叫び+レア・0.95ゴースト(ヒステリシス±0.05)/ maxRung→天井変換表(3→0.49…7→1.00)/
+  ゾーン上限も同表 / 開始値=0+Rank1で+0.1・Rank2で+0.2 / 新規純関数`src/utils/gatePressure.ts`+
+  テスト / gate中の④gateLiveCorrection停止 / `?ladder=0`で従来復帰 / オーバーレイ`P0.62/0.79`表示。
+- 関連箇所も同期: 3層ループ図(アドリブ=gatePressure)/ バッチ5(maxRungは変換表で天井化の注記)/
+  バッチ6(climbWait→上げτ=10s−4s×stageAggroに置き換え)/ バッチ7(叫び=pressure≥0.80と統合)/
+  実装順・★未決事項(現在なし)。
+- バッチ2が先に完了していたため(v0.25.1303・Sonnet前倒し)、バッチ3のスタイル配役は
+  「ランダム仮置き」ではなく**`styleFromKillCounts`を最初から直結**に設計を更新。
+  バッチ7前倒し案は不要になった(3がアンブロック=順番どおり3→…→7)。
+- **実装チャットへ: 次の一手はバッチ3最小版**(仕様は§バッチ3に確定済み。プール撤退・到着演出は
+  完成版で)。
+- 検証: doc+version変更のみ(コード不変)。
+- 負荷スコア(参考・実装時): 1/10(毎フレームのスカラー演算のみ・新規描画なし)。
+
 ## v0.25.1303 — PACING_REDESIGN.md バッチ2実装: 種別キル計測+スタイル推定+最深到達エリアtelemetry
 - バッチ3(ラダー)が★未決事項①(連続圧力方式の採否・Fableチャット決定待ち)でブロック中のため、
   未決事項の無いバッチ2(計測)を前倒しで実装。
