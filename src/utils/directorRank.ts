@@ -51,12 +51,13 @@ export interface RankAdjust {
   escBoost: number;      // spawnEsc(戦力連動escalation)への上乗せ。rank=0は0=台本通り。
   countCapBonus: number; // 通常湧き上限への加算(頭数)。
   rewardMult: number;    // HARVEST(buildupフェーズ)でのEXP倍率。
+  rareBoost: number;     // DISTRIBUTION_REDESIGN.md③: 山場(シーンrareMult≥1)でのみレア出現率を(1+rareBoost)倍。緩では使わない。
 }
 
 const RANK_ADJUST: Record<DirectorRank, RankAdjust> = {
-  0: { escBoost: 0,    countCapBonus: 0, rewardMult: 1.00 },
-  1: { escBoost: 0.12, countCapBonus: 1, rewardMult: 1.08 },
-  2: { escBoost: 0.22, countCapBonus: 2, rewardMult: 1.15 },
+  0: { escBoost: 0,    countCapBonus: 0, rewardMult: 1.00, rareBoost: 0    },
+  1: { escBoost: 0.12, countCapBonus: 1, rewardMult: 1.08, rareBoost: 0.15 },
+  2: { escBoost: 0.22, countCapBonus: 2, rewardMult: 1.15, rareBoost: 0.30 },
 };
 
 export const rankAdjustFor = (rank: DirectorRank): RankAdjust => RANK_ADJUST[rank];

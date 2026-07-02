@@ -66,4 +66,19 @@ describe('difficultyDirector — spawn scenes (composition/speed levers)', () =>
     expect(mow.scene.intervalMult).toBeLessThan(1);
     expect(mow.scene.featured).toContain('bat');
   });
+
+  it('rareMult (DISTRIBUTION_REDESIGN.md③): relief=0, mowdown=0.5, gates≥1.2', () => {
+    const reliefIds = ['relief-sparse', 'relief-pumpkin', 'relief-wolf'];
+    for (const id of reliefIds) {
+      const p = PHASES.find(x => x.scene.id === id)!;
+      expect(p.scene.rareMult).toBe(0);
+    }
+    const mow = PHASES.find(p => p.scene.id === 'mowdown')!;
+    expect(mow.scene.rareMult).toBe(0.5);
+    const gates = PHASES.filter(p => p.kind === 'gate');
+    expect(gates.length).toBeGreaterThan(0);
+    for (const g of gates) {
+      expect(g.scene.rareMult ?? 1).toBeGreaterThanOrEqual(1.2);
+    }
+  });
 });

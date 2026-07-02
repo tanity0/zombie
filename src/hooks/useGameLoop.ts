@@ -5286,7 +5286,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 紅き月(社長合意): 発生中はAIディレクター上の追加の盛りを止める(イベント自体がPEAK=二重に盛らない)。
         // DirectorRank(⑤)の上乗せを一時停止。③④は紅き月より前からの基準挙動なので触れない。
         const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
-        const rankAdj = (rankOutdoor && !redNightActiveNow) ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1 };
+        const rankAdj = (rankOutdoor && !redNightActiveNow) ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1, rareBoost: 0 };
         // HARVEST相当(buildupフェーズ=関所間の緩む区間)でだけ、rank に応じたEXP倍率を効かせる
         // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
         const rankHarvestActive = curPhase.kind === 'buildup';
@@ -5388,6 +5388,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
         const sceneIntervalMult = (scene ? scene.intervalMult : 1) * relaxAdj.intervalMult;
+        // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
+        // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
+        const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
+        const sceneRareMult = sceneRareBase >= 1 ? sceneRareBase * (1 + rankAdj.rareBoost) : sceneRareBase;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
@@ -5446,18 +5450,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
                 tries++;
               }
               if (enemy.type === 'plant') {
-                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
               }
             }
             // 犬(werewolf)も同時2体まで(社長報告: 3体以上+ジャンプ+弾はカオス)。plantと同じ再抽選方式。
@@ -5465,12 +5469,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (enemy.type === 'werewolf' && wolfCount >= 2) {
               let tries = 0;
               while (enemy.type === 'werewolf' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
                 tries++;
               }
               if (enemy.type === 'werewolf' || (enemy.type === 'plant' && plantCount >= 2)) {
                 // 再抽選し切れなかった / 再抽選が上限超えのplantを引いた → skeletonへ(plantの上限を素通りさせない)
-                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
               }
             }
             if (enemy.type === 'plant') plantCount += 1;

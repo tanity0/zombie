@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1296 — 分布図再構築③: レアのシーン/Rank連動(基礎=距離、演出=AI)DISTRIBUTION_REDESIGN.md③実装
+- `DISTRIBUTION_REDESIGN.md`の変更③を実装(①②に続き最終段)。これで設計書3項目すべて完了。
+- **仕様**: `SpawnScene`に`rareMult?`を追加。緩(relief-sparse/pumpkin/wolf)=**0**(休憩を汚さない)、
+  無双(mowdown)=**0.5**(群れに時々1体)、関所(gate-pumpwolf/mass-ranged)=**1.2**、
+  gate-chaos=**1.35**(クライマックスの顔)、boss=1.0(素のまま)。
+- `directorRank.ts`の`RankAdjust`に`rareBoost`を追加(rank0=0/rank1=0.15/rank2=0.3)。
+  **rareMultが1以上のシーン(=山場)でのみ**`(1+rareBoost)`を乗算——緩・無双はRankが高くても
+  レア演出を変えない(rank0が完全無補正である既存テストの精神を維持)。
+- `enemyUtils.ts`: `rollColorTierForArea(area, esc, rareMult=1)`が基礎率(COLOR_RATE_BY_AREA=距離の
+  ままの土台)にrareMultを乗じてからescブーストとクランプを適用。`buildEnemy`/`generateEnemy`に
+  `rareMult`パラメータを追加して貫通(forcedType指定の特殊スポーン=保証出現/ラボ/ボス等は対象外の
+  ままrareMult=1既定)。`useGameLoop.ts`のスポーナで`sceneRareMult`を算出し3箇所のgenerateEnemy
+  呼び出しへ渡す。
+- `enemyUtils.test.ts`: rareMult=0で色付きが一切出ないこと、rareMult=1.35(関所)では従来どおり
+  出ること。`difficultyDirector.test.ts`: 各シーンのrareMult値(緩=0/無双=0.5/関所≥1.2)を検証。
+  `directorRank.test.ts`: rank0のrareBoost=0、rank1/2で正の値・単調増加を追加検証。
+- 検証: typecheck / lint(0, full) / test(147 pass, 1 skip) / build 通過。
+
 ## v0.25.1295 — 分布図再構築②: シーンfeaturedがエリア制限を突破可能に(無双シーンの骨抜き解消)DISTRIBUTION_REDESIGN.md①実装
 - `DISTRIBUTION_REDESIGN.md`の変更①を実装。
 - **問題**: `AREA_WEIGHT`でbatはエリア2以降・skeletonはエリア3以降が重み0。featuredは乗算バイアス

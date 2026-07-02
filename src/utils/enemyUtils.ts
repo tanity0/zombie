@@ -222,9 +222,11 @@ const COLOR_RATE_BY_AREA: [number, number, number][] = [
 // esc=0 なら boost=1 で現状と完全一致(安全)。エリア基礎が0(軍備配置)なら 0×boost=0 のまま。
 const DDA_COLOR_ESC_K = 2.5;   // esc=1 で色出現率 ×3.5(私案)
 const DDA_COLOR_SUM_CAP = 0.85; // 色付き合計確率の上限(無色を必ず一定残す)
-const rollColorTierForArea = (area: number, esc = 0): EnemyColorTier | undefined => {
+// DISTRIBUTION_REDESIGN.md③: rareMult はシーン(緩=0/無双=0.5/関所≥1.2)×Rank増幅の演出レバー。
+// レアの基礎率(COLOR_RATE_BY_AREA)は距離のまま=土台。rareMult=1で従来と完全一致。
+const rollColorTierForArea = (area: number, esc = 0, rareMult = 1): EnemyColorTier | undefined => {
   const base = COLOR_RATE_BY_AREA[area] ?? COLOR_RATE_BY_AREA[0];
-  const boost = 1 + Math.max(0, esc) * DDA_COLOR_ESC_K;
+  const boost = (1 + Math.max(0, esc) * DDA_COLOR_ESC_K) * Math.max(0, rareMult);
   let b = base[0] * boost, p = base[1] * boost, red = base[2] * boost;
   const sum = b + p + red;
   if (sum > DDA_COLOR_SUM_CAP) { const s = DDA_COLOR_SUM_CAP / sum; b *= s; p *= s; red *= s; }
@@ -278,7 +280,8 @@ const buildEnemy = (
   y: number,
   gameTime: number,
   isWave = false,
-  esc = 0 // 難易度③: 強さ(色ティア)escalation。0=現状据え置き。
+  esc = 0, // 難易度③: 強さ(色ティア)escalation。0=現状据え置き。
+  rareMult = 1 // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
 ): Enemy => {
   const stats = ENEMY_STATS[type];
   // 強さ一定タイプ(ジャイアント/死神)＋ラボ専用敵は距離・色・時間でスケールしない(固定難易度・社長指定)。
@@ -288,7 +291,7 @@ const buildEnemy = (
   const distanceZone = area; // 互換フィールド(0-4)
   const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
-  const colorTier = fixed ? undefined : rollColorTierForArea(area, esc);
+  const colorTier = fixed ? undefined : rollColorTierForArea(area, esc, rareMult);
   const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
   const diff = fixed ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
@@ -337,7 +340,8 @@ export const generateEnemy = (
   snowStage = false, // ステージ4(雪原)か。lich を湧きプールに含めるか否かのゲート。
   esc = 0, // 難易度③: escalation(0..1)。0=現状据え置き。種類/強さのバイアスに使う。
   featured: EnemyType[] = [], // シーン(SpawnScene)の強調型。selectEnemyType の重みに乗算バイアス。
-  suppressed: EnemyType[] = [] // シーン(SpawnScene)の抑え型。重み減(緩の時のゾンビ抑え・社長指示)。
+  suppressed: EnemyType[] = [], // シーン(SpawnScene)の抑え型。重み減(緩の時のゾンビ抑え・社長指示)。
+  rareMult = 1 // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
@@ -383,7 +387,7 @@ export const generateEnemy = (
       y = vy0 - halfH + Math.random() * viewportHeight;
       break;
   }
-  return buildEnemy(type, x, y, gameTime, false, esc);
+  return buildEnemy(type, x, y, gameTime, false, esc, rareMult);
 };
 
 // Spawn an enemy at a specific world position (used for Reaper, scripted

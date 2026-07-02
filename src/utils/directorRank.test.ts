@@ -57,7 +57,7 @@ describe('directorRank', () => {
 
   describe('rankAdjustFor', () => {
     it('rank 0 is a strict no-op (matches the unranked baseline exactly)', () => {
-      expect(rankAdjustFor(0)).toEqual({ escBoost: 0, countCapBonus: 0, rewardMult: 1 });
+      expect(rankAdjustFor(0)).toEqual({ escBoost: 0, countCapBonus: 0, rewardMult: 1, rareBoost: 0 });
     });
 
     it('higher ranks only ever push upward, never below baseline', () => {
@@ -66,9 +66,11 @@ describe('directorRank', () => {
       expect(r1.escBoost).toBeGreaterThan(0);
       expect(r1.countCapBonus).toBeGreaterThan(0);
       expect(r1.rewardMult).toBeGreaterThan(1);
+      expect(r1.rareBoost).toBeGreaterThan(0);
       expect(r2.escBoost).toBeGreaterThan(r1.escBoost);
       expect(r2.countCapBonus).toBeGreaterThanOrEqual(r1.countCapBonus);
       expect(r2.rewardMult).toBeGreaterThan(r1.rewardMult);
+      expect(r2.rareBoost).toBeGreaterThan(r1.rareBoost);
     });
   });
 });

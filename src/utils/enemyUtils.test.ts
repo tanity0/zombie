@@ -90,6 +90,27 @@ describe('scene featured floor (DISTRIBUTION_REDESIGN.md①)', () => {
   });
 });
 
+describe('rareMult (DISTRIBUTION_REDESIGN.md③: scene/rank-driven rare-tier演出)', () => {
+  // area 4 (deep) has the highest base rare rate (blue 0.12) so rareMult=0 is easy to prove absolute.
+  const deepPlayer = mkPlayer(8000, 0);
+
+  it('rareMult=0 (relief scenes) never rolls a colored (rare) enemy', () => {
+    for (let i = 0; i < 300; i++) {
+      const e = generateEnemy(0, deepPlayer, BOUNDS, undefined, null, 0, false, 0, [], [], 0);
+      expect(e.colorTier).toBeUndefined();
+    }
+  });
+
+  it('rareMult>1 (gate scenes) can still roll rare tiers (baseline unbroken)', () => {
+    let sawColor = false;
+    for (let i = 0; i < 400; i++) {
+      const e = generateEnemy(0, deepPlayer, BOUNDS, undefined, null, 0, false, 0, [], [], 1.35);
+      if (e.colorTier) sawColor = true;
+    }
+    expect(sawColor).toBe(true);
+  });
+});
+
 describe('resolveEnemyTarget (seeker hidden behavior)', () => {
   it('targets the player normally when not hidden', () => {
     const t = resolveEnemyTarget(mkEnemy(0, 0), mkPlayer(100, 0), [], 400);
