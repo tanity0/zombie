@@ -82,6 +82,13 @@ import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '..
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
 import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
+import {
+  createGatePressureState, stepGatePressure, startPressureForRank,
+  intervalMultForPressure, capBonusForPressure, rareBoostActiveForPressure,
+  allowedProblemChildren, specialCastOrder, ceilingForMaxRung, ceilingForZone,
+  type ProblemChild
+} from '../utils/gatePressure';
+import { setGatePressureDebug } from '../utils/gatePressureState';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle
@@ -366,6 +373,9 @@ const HEARTBEAT_HP_FRAC = 0.25;
 // PACING_REDESIGN.md 憲法第1条: 画面内は基本10体。退屈シグナル(Perf高×Intensity低の持続)が
 // 出た時だけ、天井20までの上振れを解禁する。?upswing=0 で無効化(社長合意: きつければすぐ戻せるように)。
 const UPSWING_ENABLED = evParam('upswing') !== '0';
+// PACING_REDESIGN.mdバッチ3(最小版): 関所中の連続圧力(gatePressure)。フラグ名は旧離散案の
+// `ladder`のまま(切り分け用)。?ladder=0で無効化=難易度④(gateLiveCorrection)含む従来挙動に復帰。
+const LADDER_ENABLED = evParam('ladder') !== '0';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
@@ -543,6 +553,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const pinchRef = useRef(createPinchState());
   // 憲法第1条(退屈シグナル→上振れ枠): 退屈持続時間の累積。
   const upswingRef = useRef(createBoredomState());
+  // バッチ3(最小版): 関所中の連続圧力状態。keyが変わったら(=新しい関所に入ったら)登り直す。
+  const gatePressureRef = useRef<{ key: string; state: ReturnType<typeof createGatePressureState>; ceiling?: number; castFirstNow?: boolean; castSecondNow?: boolean }>({ key: '', state: createGatePressureState() });
+  // バッチ3: 被弾インパルス検知専用(AIディレクター本体のprevHpとは別管理)。
+  const pressureHitRef = useRef<{ prevHp: number; hitTimes: number[] }>({ prevHp: -1, hitTimes: [] });
+  // バッチ3: 配役順(スタイルで決まる[1体目,2体目])。ラン内で最初に0.50を跨いだ時点で1度だけ決め、以後固定。
+  const pressureCastRef = useRef<{ order: [ProblemChild, ProblemChild] | null }>({ order: null });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof getKillTotals> | null }>({ phaseKey: '', startTotals: null });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
@@ -1160,6 +1176,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetPityDrop();
           // 憲法第1条(退屈→上振れ)も新ランでリセット。
           upswingRef.current = createBoredomState();
+          // バッチ3(最小版)の連続圧力も新ランでリセット。
+          gatePressureRef.current = { key: '', state: createGatePressureState() };
+          pressureHitRef.current = { prevHp: -1, hitTimes: [] };
+          pressureCastRef.current = { order: null };
+          setGatePressureDebug(null);
           // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
           resetKillTelemetry();
           resetPhaseKillDebug();
@@ -5332,6 +5353,48 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
         }
         const upswingBonus = upswingOutdoor ? boredomBonus(upswingRef.current.boredMs) : 0;
+        // PACING_REDESIGN.mdバッチ3(最小版): 山(関所)の連続圧力 gatePressure。方式確定(v0.25.1304・
+        // Fableチャット決定): 緩(buildup/mowdown含む)フェーズは対象外(現行シーンのまま)、
+        // 関所(gate)中だけ毎フレーム連続スカラーpressureを動かす。`?ladder=0`で無効化(難易度④の
+        // 従来挙動に完全復帰)。テンポ/数への反映(sceneIntervalMult/dirCountCap)は後段(spawnBounds
+        // 定義後)で行い、ここではpressureのステップと配役トリガーの検出だけを行う。
+        const pressureOutdoor = LADDER_ENABLED && !labTheme && !indoor && curPhase.kind === 'gate';
+        if (pressureOutdoor) {
+          if (gatePressureRef.current.key !== rankPhaseKey) {
+            gatePressureRef.current.key = rankPhaseKey;
+            gatePressureRef.current.state = createGatePressureState(startPressureForRank(rankRef.current.rank));
+          }
+          // 被弾インパルス検知(2秒以内2被弾、または1発でHP15%減)。AIディレクター本体のprevHpとは
+          // 別管理(責務を混ぜない・専用の軽量ref)。
+          const hp = player.health, maxHp = Math.max(1, player.maxHealth);
+          if (pressureHitRef.current.prevHp < 0) pressureHitRef.current.prevHp = hp;
+          const dropFrac = Math.max(0, pressureHitRef.current.prevHp - hp) / maxHp;
+          if (dropFrac > 0) pressureHitRef.current.hitTimes.push(gameTime);
+          pressureHitRef.current.hitTimes = pressureHitRef.current.hitTimes.filter(t => gameTime - t <= 2000);
+          const hitImpulse = dropFrac >= 0.15 || pressureHitRef.current.hitTimes.length >= 2;
+          pressureHitRef.current.prevHp = hp;
+
+          const zoneCeiling = ceilingForZone(areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2)));
+          const rungCeiling = ceilingForMaxRung(curPhase.maxRung ?? 7);
+          const ceiling = Math.min(zoneCeiling, rungCeiling);
+
+          const step = stepGatePressure(gatePressureRef.current.state, {
+            msSinceLastHit: directorRef.current.state.sinceDamageMs,
+            killRateEma: directorRef.current.state.killRateEma,
+            hitImpulse,
+            intensity: directorRef.current.state.intensity,
+            ceiling,
+            dtMs: deltaTime * 1000,
+          });
+          gatePressureRef.current.state = step.state;
+          gatePressureRef.current.ceiling = ceiling;
+          gatePressureRef.current.castFirstNow = step.castFirstNow;
+          gatePressureRef.current.castSecondNow = step.castSecondNow;
+        } else {
+          gatePressureRef.current.castFirstNow = false;
+          gatePressureRef.current.castSecondNow = false;
+        }
+        const pressureCapBonus = pressureOutdoor ? capBonusForPressure(gatePressureRef.current.state.pressure) : 0;
         // デバッグ表示用(社長指示: 今のrankを見えるようにしておく)。DirectorOverlay(?director=1)が読む。
         setDirectorRankDebug({
           rank: rankRef.current.rank,
@@ -5343,7 +5406,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           enabled: rankOutdoor,
           upswingBonus,
         });
-        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus);
+        setGatePressureDebug(pressureOutdoor ? {
+          pressure: gatePressureRef.current.state.pressure,
+          ceiling: gatePressureRef.current.ceiling ?? 1,
+          allowed: allowedProblemChildren(gatePressureRef.current.state.pressure, pressureCastRef.current.order ?? ['pumpkin', 'werewolf']),
+        } : null);
+        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
         // 難易度⑥(ピンチ救済): 「低HP×敵が上限近くまで溜まっている」の持続を測り、松明ドロップの
         // 調整値をシングルトンへ publish(gameStore.dropBreakablePropLoot が読む)。ピンチでない時は
@@ -5412,9 +5480,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : 0;
         // 難易度④(関所ライブ補正): 関所中だけ、プレイヤーのHP推移を目標帯へ寄せる escalation 補正を平滑化して加える。
         // 楽勝なら足す(主)/苦しいなら緩める(弱め・下限あり)。余裕(buildup)/関所外は補正を0へ戻す(補正なし)。
+        // PACING_REDESIGN.mdバッチ3: gatePressureが有効な関所中は④を停止する(二重ブレーキ/二重アクセル防止。
+        // pressureが「どれだけ強めるか」の唯一の判定役になる)。
         {
           const smooth = 1 - Math.exp(-deltaTime / GATE_LIVE_TAU);
-          if (ddaActive && curPhase.kind === 'gate') {
+          if (ddaActive && curPhase.kind === 'gate' && !pressureOutdoor) {
             const hpFrac = player.maxHealth > 0 ? player.health / player.maxHealth : 0;
             const key = `gate${curPhase.index}`;
             if (gateRef.current.key !== key) { gateRef.current.key = key; gateRef.current.startHpFrac = hpFrac; gateRef.current.live = 0; }
@@ -5440,11 +5510,26 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 回避不能級。2体目がいる間は雑魚湧きテンポを一段緩める(問題児と数を同時に盛らない)。
         const PUMPKIN_PAIR_SPAWN_EASE = 1.3;
         const pumpkinPairActive = allEnemiesNow.filter(e => e.type === 'pumpkin').length >= 2;
-        const sceneIntervalMult = (scene ? scene.intervalMult : 1) * relaxAdj.intervalMult * (pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
+        // バッチ3(最小版・第一レバー): 関所中はテンポをgatePressureが連続的に駆動する
+        // (1.0→0.55の連続、段差なし)。シーン固定のintervalMultは関所以外(緩)でのみ使う。
+        const baseIntervalMult = pressureOutdoor
+          ? intervalMultForPressure(gatePressureRef.current.state.pressure)
+          : (scene ? scene.intervalMult : 1);
+        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * (pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
-        const sceneRareMult = sceneRareBase >= 1 ? sceneRareBase * (1 + rankAdj.rareBoost) : sceneRareBase;
+        // バッチ3: pressure≥0.80でさらにレア演出を底上げ(rareMult×1.35相当)。
+        const pressureRareBoost = pressureOutdoor && rareBoostActiveForPressure(gatePressureRef.current.state.pressure) ? 1.35 : 1;
+        const sceneRareMult = (sceneRareBase >= 1 ? sceneRareBase * (1 + rankAdj.rareBoost) : sceneRareBase) * pressureRareBoost;
+        // バッチ3: 関所中は「今許可されている問題児」以外を完全ブロック(重み0)。既存のシーン
+        // featured/suppressedはそのまま(scene.featuredが持つ意図=何を強調したいかは尊重しつつ、
+        // pressureがまだ許可していない型は上書きでブロックする)。緩フェーズ(pressure対象外)は
+        // ブロック無し=従来どおり。
+        const ALL_PROBLEM_CHILDREN: ProblemChild[] = ['plant', 'werewolf', 'pumpkin', 'screamer', 'ghost'];
+        const sceneBlocked: EnemyType[] = pressureOutdoor
+          ? ALL_PROBLEM_CHILDREN.filter(t => !allowedProblemChildren(gatePressureRef.current.state.pressure, pressureCastRef.current.order ?? ['pumpkin', 'werewolf']).includes(t))
+          : [];
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
@@ -5453,6 +5538,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const spawnBounds = czInvZoom > 1.0001
           ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom }
           : gameBounds;
+        // バッチ3(最小版・配役): pressureが0.50/0.65を新規に上向きに跨いだ瞬間、forcedTypeで
+        // 1体だけ即座に投入する(L4DのTank/特殊感染者のような「ディレクターが意図した瞬間に落とす」演出)。
+        // spawn CD(sceneIntervalMult)とは独立=通常湧きの間隔を消費しない。同時数キャップ2は
+        // ここで自前チェックする(通常湧きのoverCapとは別経路のため)。1体目のスタイルはラン内で
+        // 最初に0.50を跨いだ時点で決め、以後ラン内固定。
+        if (!danceTest && !indoor && !confining && (gatePressureRef.current.castFirstNow || gatePressureRef.current.castSecondNow)) {
+          if (!pressureCastRef.current.order) {
+            pressureCastRef.current.order = specialCastOrder(getCurrentStyle(), Math.random());
+          }
+          const order = pressureCastRef.current.order;
+          const castType: ProblemChild | null = gatePressureRef.current.castFirstNow ? order[0] : gatePressureRef.current.castSecondNow ? order[1] : null;
+          if (castType === 'pumpkin' || castType === 'werewolf') {
+            const aliveOfType = useGameStore.getState().enemies.filter(e => e.type === castType).length;
+            if (aliveOfType < 2) {
+              const castEnemy = generateEnemy(gameTime, player, spawnBounds, castType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              addEnemy(castEnemy);
+            }
+          }
+        }
         if (
           !danceTest &&
           !indoor &&
@@ -5512,13 +5616,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked);
             // 憲法第2条: 問題児(plant/werewolf/pumpkin/ghost)は同時数キャップを超えて湧かせない。
             // 台本セットピース/保証出現(forcedType指定)はここを通らない=脚本の見せ場はそのまま。
             if (overCap(enemy.type)) {
               let tries = 0;
               while (overCap(enemy.type) && tries < 8) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked);
                 tries++;
               }
               if (overCap(enemy.type)) {

@@ -102,4 +102,26 @@ describe('difficultyDirector — spawn scenes (composition/speed levers)', () =>
     const sparse = PHASES.find(p => p.scene.id === 'relief-sparse')!;
     expect(sparse.scene.featuredFloor ?? false).toBe(false);
   });
+
+  it('maxRung (PACING_REDESIGN.mdバッチ3): every gate phase has a rung in [3,7], non-decreasing across the run (ラン全体の階段)', () => {
+    const gates = PHASES.filter(p => p.kind === 'gate');
+    let last = 0;
+    for (const g of gates) {
+      expect(g.maxRung).toBeDefined();
+      expect(g.maxRung!).toBeGreaterThanOrEqual(3);
+      expect(g.maxRung!).toBeLessThanOrEqual(7);
+      expect(g.maxRung!).toBeGreaterThanOrEqual(last);
+      last = g.maxRung!;
+    }
+    // The very first gate is deliberately mild (数の関所-only territory); the last gate (endless
+    // endgame) is deliberately at the ceiling.
+    expect(gates[0].maxRung).toBe(3);
+    expect(gates[gates.length - 1].maxRung).toBe(7);
+  });
+
+  it('buildup/boss phases carry no maxRung (pressure system is gate-only)', () => {
+    for (const p of PHASES.filter(x => x.kind !== 'gate')) {
+      expect(p.maxRung).toBeUndefined();
+    }
+  });
 });

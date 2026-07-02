@@ -118,15 +118,19 @@ const SCENE_SUPPRESSED_MULT = 0.4; // シーンで suppressed 指定した型の
 // の裏口になり、序盤ゾーンの関所でも出現してしまう事故が起きた。床は floorAllowed=true の呼び出し
 // (講習/mowdownシーン)でのみ効かせ、関所シーンは false でエリア規約に完全準拠させる。
 const FEATURED_MIN_AREA_WEIGHT = 0.5;
+// PACING_REDESIGN.mdバッチ3(最小版): 関所中のgatePressureが「今許可されている問題児」以外を
+// 完全ブロック(重み0)するための引数。suppressed(×0.4の部分抑制)とは別物=許可外は0でなければ
+// ならない(「suppressed扱い(重み0)」という設計書の指示どおり)。関所以外(緩シーン)では常に空配列。
 // 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算、featured でシーンの強調型に重み加算。
 // featured/suppressed は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
 // ただし featured は floorAllowed=true の時だけ FEATURED_MIN_AREA_WEIGHT の床を持つ(上記)。
-const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = [], floorAllowed = false): EnemyType => {
+const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = [], floorAllowed = false, blocked: EnemyType[] = []): EnemyType => {
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
-  // baseWeight × エリア補正(featuredはfloorAllowed時のみ床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)。
+  // baseWeight × エリア補正(featuredはfloorAllowed時のみ床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)、blockedは強制0。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
     .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
     .map(([type, w]) => {
+      if (blocked.includes(type)) return { type, weight: 0 };
       const areaW = (AREA_WEIGHT[type]?.[area]) ?? 0;
       const effAreaW = (floorAllowed && featured.includes(type)) ? Math.max(areaW, FEATURED_MIN_AREA_WEIGHT) : areaW;
       return { type, weight: w * effAreaW * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) };
@@ -347,11 +351,12 @@ export const generateEnemy = (
   featured: EnemyType[] = [], // シーン(SpawnScene)の強調型。selectEnemyType の重みに乗算バイアス。
   suppressed: EnemyType[] = [], // シーン(SpawnScene)の抑え型。重み減(緩の時のゾンビ抑え・社長指示)。
   rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
-  floorAllowed = false // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床を許すシーンか(講習/mowdownのみtrue)。
+  floorAllowed = false, // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床を許すシーンか(講習/mowdownのみtrue)。
+  blocked: EnemyType[] = [] // PACING_REDESIGN.mdバッチ3: gatePressureで未解禁の問題児を完全ブロック(重み0)。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed, blocked);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、

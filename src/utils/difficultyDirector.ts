@@ -36,6 +36,11 @@ export interface Phase {
   endMs: number;    // boss は Infinity
   countCap: number; // このフェーズの屋外通常湧き上限(敵数)
   scene: SpawnScene; // このフェーズの湧きシーン(構成/速度)
+  // PACING_REDESIGN.mdバッチ3: このgateフェーズで許される最大段(旧・離散段の名残)。
+  // gatePressureのceilingForMaxRungで連続天井へ変換される。gate以外は未指定(pressure対象外)。
+  // 序盤の関所=3 / 中盤=4〜5 / 終盤・7分以降の延長関所=6〜7(ラン全体の階段=①ラン全体の階段、
+  // これとゾーン上限の小さい方が実効天井になる)。
+  maxRung?: number;
 }
 
 // シーン・ライブラリ(私案・社長の分類に対応。数値は実機調整前提)。
@@ -68,27 +73,27 @@ const S = 1000;
 export const PHASES: Phase[] = [
   // ── 0-7分: 基本ループ ──
   { kind: 'buildup', index: 1, startMs: 0,        endMs: 95 * S,  countCap: 8,  scene: SCENE_RELIEF_SPARSE },  // 導入(優しめ・雑魚まばら)
-  { kind: 'gate',    index: 1, startMs: 95 * S,   endMs: 135 * S, countCap: 10, scene: SCENE_GATE_PUMPWOLF },  // 関所①(育ち確認) パンプキン+犬
+  { kind: 'gate',    index: 1, startMs: 95 * S,   endMs: 135 * S, countCap: 10, scene: SCENE_GATE_PUMPWOLF, maxRung: 3 },  // 関所①(育ち確認) パンプキン+犬
   { kind: 'buildup', index: 2, startMs: 135 * S,  endMs: 225 * S, countCap: 9,  scene: SCENE_RELIEF_PUMPKIN }, // 余裕: パンプキン練習
-  { kind: 'gate',    index: 2, startMs: 225 * S,  endMs: 270 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 関所②PEAK カオス
+  { kind: 'gate',    index: 2, startMs: 225 * S,  endMs: 270 * S, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 4 },     // 関所②PEAK カオス
   { kind: 'buildup', index: 3, startMs: 270 * S,  endMs: 290 * S, countCap: 10, scene: SCENE_MOWDOWN },        // 無双(短い谷・弱雑魚高速)
-  { kind: 'gate',    index: 3, startMs: 290 * S,  endMs: 330 * S, countCap: 10, scene: SCENE_GATE_MASS_RANGED }, // 関所③ 雑魚大量+飛び道具
+  { kind: 'gate',    index: 3, startMs: 290 * S,  endMs: 330 * S, countCap: 10, scene: SCENE_GATE_MASS_RANGED, maxRung: 4 }, // 関所③ 雑魚大量+飛び道具
   { kind: 'buildup', index: 4, startMs: 330 * S,  endMs: 400 * S, countCap: 9,  scene: SCENE_RELIEF_WOLF },    // 余裕: 犬練習(最終育成)
-  { kind: 'gate',    index: 4, startMs: 400 * S,  endMs: 420 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 直前関所 カオス
+  { kind: 'gate',    index: 4, startMs: 400 * S,  endMs: 420 * S, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 5 },     // 直前関所 カオス
   // ── 7:00 白ボス(中間ライン) ──
   { kind: 'boss',    index: 1, startMs: 420 * S,  endMs: 450 * S, countCap: 10, scene: SCENE_BOSS },           // 城ボス戦(離脱=クリア可)
   // ── 7-14分: 延長(急多め・しんどい)。余裕を短く・関所を厚く。 ──
   { kind: 'buildup', index: 5, startMs: 450 * S,  endMs: 510 * S, countCap: 9,  scene: SCENE_RELIEF_WOLF },    // 短い立て直し
-  { kind: 'gate',    index: 5, startMs: 510 * S,  endMs: 560 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 延長関所⑤ カオス
+  { kind: 'gate',    index: 5, startMs: 510 * S,  endMs: 560 * S, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 5 },     // 延長関所⑤ カオス
   { kind: 'buildup', index: 6, startMs: 560 * S,  endMs: 600 * S, countCap: 10, scene: SCENE_MOWDOWN },        // 無双(短い谷)
-  { kind: 'gate',    index: 6, startMs: 600 * S,  endMs: 660 * S, countCap: 10, scene: SCENE_GATE_MASS_RANGED }, // 延長関所⑥ 雑魚大量+飛び道具
+  { kind: 'gate',    index: 6, startMs: 600 * S,  endMs: 660 * S, countCap: 10, scene: SCENE_GATE_MASS_RANGED, maxRung: 6 }, // 延長関所⑥ 雑魚大量+飛び道具
   { kind: 'buildup', index: 7, startMs: 660 * S,  endMs: 690 * S, countCap: 9,  scene: SCENE_RELIEF_PUMPKIN }, // 短い余裕
-  { kind: 'gate',    index: 7, startMs: 690 * S,  endMs: 760 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 延長関所⑦ カオス(長め)
+  { kind: 'gate',    index: 7, startMs: 690 * S,  endMs: 760 * S, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 6 },     // 延長関所⑦ カオス(長め)
   { kind: 'buildup', index: 8, startMs: 760 * S,  endMs: 790 * S, countCap: 10, scene: SCENE_MOWDOWN },        // 無双(束の間)
-  { kind: 'gate',    index: 8, startMs: 790 * S,  endMs: 840 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 延長関所⑧ クライマックス
+  { kind: 'gate',    index: 8, startMs: 790 * S,  endMs: 840 * S, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 7 },     // 延長関所⑧ クライマックス
   // 14:00 以降: 特定の最終ボスは無い(城ボスが唯一のボス)。カオス継続で高強度を維持。プレイヤーによっては
   // 裏ボス攻略タイム(裏ボスは深度で別途出現)。ハンターは従来どおり=余裕プレイへの緊張感トリガー(優勢判定・別管理)。
-  { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 10, scene: SCENE_GATE_CHAOS },   // 14:00+ 終局(カオス継続)
+  { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 7 },   // 14:00+ 終局(カオス継続)
 ];
 
 // 指定時刻のフェーズ。範囲外(7分超)は最後の boss フェーズを返す。

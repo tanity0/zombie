@@ -3,7 +3,10 @@ import { getDirectorDebug } from '../utils/aiDirectorDebug';
 import { getDirectorRankDebug } from '../utils/directorRankState';
 import { getPityLevel } from '../utils/pityState';
 import { getPhaseKillDebug, getCurrentStyle } from '../utils/killTelemetryState';
+import { getGatePressureDebug } from '../utils/gatePressureState';
 import type { DirectorMacro } from '../utils/aiDirector';
+
+const PROBLEM_CHILD_INITIAL: Record<string, string> = { plant: 'P', werewolf: 'W', pumpkin: 'K', screamer: 'S', ghost: 'G' };
 
 // AIディレクター(ステップA)のオンスクリーン可視化(?director=1)。ゲームループとは独立に自前 raf で読むだけ。
 // ストア購読なし=HUD本体の再描画に影響しない。まだゲーム挙動には一切影響していない“読むだけ”の表示。
@@ -41,6 +44,7 @@ const DirectorOverlay: React.FC = () => {
   const d = getDirectorDebug();
   const rankDebug = getDirectorRankDebug();
   const phaseKillDebug = getPhaseKillDebug();
+  const pressureDebug = getGatePressureDebug();
   // ステップB/C(?directorApply=relax|buildup|all)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
   const applyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('directorApply') : null;
   const applyRelax = applyParam === 'relax' || applyParam === 'all';
@@ -99,6 +103,13 @@ const DirectorOverlay: React.FC = () => {
           </>
         )}
       </div>
+      {/* バッチ3(最小版): 関所中の連続圧力(gatePressure)。緩フェーズ/?ladder=0中はnullで非表示。 */}
+      {pressureDebug && (
+        <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
+          P{pressureDebug.pressure.toFixed(2)}/{pressureDebug.ceiling.toFixed(2)}
+          {' '}· allow[{pressureDebug.allowed.map(t => PROBLEM_CHILD_INITIAL[t] ?? t).join('')}]
+        </div>
+      )}
     </div>
   );
 };

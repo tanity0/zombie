@@ -10,6 +10,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1305 — PACING_REDESIGN.md バッチ3最小版実装: 山(関所)の連続圧力化 gatePressure
+- 設計チャット(Fable)がv0.25.1304で確定した方式(連続スカラー・離散段不採用)どおりに実装。
+  緩急の本体(社長報告「まだ急」「階段になっていない」への直接回答)。
+- **新規** `src/utils/gatePressure.ts`(純関数一式): `stepGatePressure`が「そつなくこなせているか」
+  (0.6×無被弾スコア+0.4×撃破ペーススコア)へ指数平滑で追従(上げτ=8秒/下げτ=2秒)。被弾インパルス
+  (2秒以内2被弾 or 1発でHP15%減)は時定数を経由せず即−0.15。Intensity≥0.75で上げ停止。
+  レバー変換: `intervalMultForPressure`(雑魚テンポ、1.0→0.55連続)/`capBonusForPressure`
+  (pressure≥0.55で+2、憲法第1条どおり数はここだけ)/`rareBoostActiveForPressure`(0.80で判定)/
+  `allowedProblemChildren`(0.35弾→0.50/0.65配役2種→0.80叫び→0.95ゴースト、累積許可)/
+  `specialCastOrder`(スタイルで1種目2種目の順を決定)/`ceilingForMaxRung`・`ceilingForZone`
+  (旧離散段/ゾーン上限を連続天井へ変換)。`src/utils/gatePressureState.ts`(デバッグ表示用シングルトン)。
+- `difficultyDirector.ts`: `Phase.maxRung?`を追加、全9関所に非減少で割当(①=3→…→⑨=7)。
+  buildup/bossは対象外。
+- `useGameLoop.ts`: `curPhase.kind==='gate'`中だけ`gatePressureRef`を毎フレームstep(緩フェーズは
+  対象外=現行シーンのまま)。被弾インパルス検知は専用軽量ref(`pressureHitRef`、AIディレクター
+  本体のprevHpとは別管理)。反映先: `sceneIntervalMult`(関所中はpressure由来に置換)/
+  `dirCountCap`(+pressureCapBonus)/`sceneRareMult`(×1.35 boost)/`sceneBlocked`(未解禁の問題児を
+  全generateEnemy呼び出しで重み0に強制=新設の`blocked`パラメータ、`enemyUtils.ts`の
+  `selectEnemyType`/`generateEnemy`に追加)。配役投入(0.50/0.65を新規に上向きに跨いだ瞬間)は
+  `spawnBounds`確定後にforcedTypeで即時1体、通常湧きCDとは独立、同時数キャップ2は自前チェック。
+  スタイルはラン内で最初の配役時に`getCurrentStyle()`(バッチ2)で決め、以後固定。
+  関所ライブ補正(難易度④)は`pressureOutdoor`中だけ停止(二重ブレーキ/二重アクセル防止)。
+  `?ladder=0`で全体無効化=④含む従来挙動へ完全復帰。
+- デバッグ: `DirectorOverlay.tsx`(?director=1)に`P{pressure}/{ceiling} · allow[頭文字]`を追加。
+- テスト: `gatePressure.test.ts`新規18件(単調上昇/上げ下げτ差/被弾インパルス/しきい値ヒステリシス
+  2件/天井クランプ/Intensity停止/Rank開始値/レバー変換/配役順/許可集合累積/maxRung・ゾーン変換)、
+  `difficultyDirector.test.ts`にmaxRung検証2件を追加。
+- **バッチ3完成版へ持ち越し**: パンプキン/犬の通常湧きプールからの撤退(Tank化)。3最小版のスコープは
+  「関所中のテンポ/構成をpressureで駆動」までで、プールはまだ現状のまま(1.5で序盤ゾーンへの
+  漏れは既に止まっている)。
+- 負荷スコア: **1/10**。毎フレームはスカラー演算+配列2要素の走査のみ。配役投入も既存の
+  forcedTypeスポーン経路を再利用、新規描画なし。
+- 検証: typecheck / lint(0, full) / test(189 pass, 1 skip) / build 通過。
+- 設計書更新: `PACING_REDESIGN.md`バッチ3に実装結果を追記。★未決事項なし。次はバッチ3完成版、
+  または実機確認を経てバッチ4/5/6/7へ。
+
 ## v0.25.1304 — ★未決事項①決定: バッチ3=連続圧力方式(gatePressure)採用・設計書を全面書き換え(設計チャットFable・設計のみ)
 - 設計チャット(Fable)で社長と協議し、★未決事項①を決定。決定3点:
   1. **バッチ3の方式=連続圧力方式(gatePressure)を採用**(離散段0〜7+最低滞在12秒は不採用)。
