@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1339 — ダンスの曲同期を廃止しB方式「ビートがリングに合わせに来る」を社長決定(設計チャットFable・設計のみ)
+- 社長相談「音とサークルのリズムが何度直しても合わない。難しければお蔵入りも」→設計チャットの診断:
+  現アーキテクチャ(HTMLAudioのcurrentTime→壁時計アンカー+公称BPM外挿)では**構造的に恒久解決不能**
+  (①currentTimeは粗く出力位置でない ②壁時計と音声時計のドリフト ③MP3エンコーダ遅延)。
+  過去の対策(曲リタイムv0.25.416/自動アンカーv0.25.406/定期リシンク)はテンポずれのみ解消で、
+  アンカー誤差と時計ドリフトは残る。WebAudioバッファ再生(A案)はv0.25.274で実施済み→
+  Safariの壁(自動再生制限)と性能疑義でv0.25.279撤去、の経緯も確認。
+- **社長決定=B方式**: 曲に合わせるのをやめ、**ビート音(dance-kick)をリングのスケジュールから
+  SFX用WebAudioで予約再生**(判定・リング・ビートが同一クロック=原理的にズレない)。背景曲は
+  現行280レシピのHTMLAudioを無変更(雰囲気担当・同期を約束しない)。**Safari済み経路のみ使用**=
+  壁に再突入しない。JUSTタップ音はkickのピッチ上げ再生で差別化。`?beat=0`で従来復帰。
+- 仕様の全文は`HANDOFF_DANCE_AUDIO.md`末尾【v0.25.1339 社長決定】節。PACING_REDESIGN.mdの
+  実装キューに並行タスクとして追加(バッチ5と独立・どちらからでも着手可)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1338 — 近接/刀のクリティカルも裏ボスの完全気絶カウントに乗せる(GAME_AUDIT #17・社長承認・設計チャットFable)
 - **統一ルール(社長承認)**: プレイヤーが直接出したクリティカル(銃/素手ナイフ/刀/カウンター)は
   すべて裏ボスの完全気絶メーター(`bumpBossCrit`・5回で紫5秒)に乗る。サブウェポンの自動攻撃
