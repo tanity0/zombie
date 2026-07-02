@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1341 — タイトル更新情報(changelog.ts)の抜け埋め(社長指示: 毎回更新の徹底)
+- 「更新情報は毎回更新」の指示を受け、直近で更新情報エントリが漏れていたv0.25.1338(近接/刀クリの
+  完全気絶カウント統一+GAME_AUDIT一括修正10件・設計チャットFable)ぶんをプレイヤー向け文言で
+  追記(v0.25.1336は監査シート新設のみ・v0.25.1339は設計決定のみでコード変更なしのため対象外)。
+  以後、実装チャット側は自分の各pushで必ずchangelog.tsへ追記する。
+- 検証: lint / typecheck / test(269 pass, 1 skip) / build 全通過(データ変更のみ)。
+
 ## v0.25.1340 — PACING_REDESIGN.mdバッチ5実装: 山(関所)の台本選択(実装チャットSonnet)
 - `src/utils/gateProgram.ts`(純関数)を新設。関所フェーズへ切り替わった瞬間に、5つの台本
   (数の関所maxRung3/射線の関所4/判断の関所5/三択の関所6/不意打ちの関所7)から、
