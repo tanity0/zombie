@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1312 — PACING_REDESIGN.mdバッチ2.5実装: 診断計測(関所帯・イベント帯・gatePressure線・エリア移動)
+- 社長指示「バッチ2.5を実装して、完了したらバッチ7へ」を受けて実装(仕様=前エントリv0.25.1311で
+  Fableチャットが新設した§バッチ2.5)。**挙動は一切変えない(記録と表示のみ)**。
+- `src/utils/aiDirectorDebug.ts`: `DirectorSample`に`phaseKind`(buildup/gate/boss)/`pressure`
+  (gate中の値・緩フェーズはnull)/`areaIdx`(0-4)/`events`(ビットフラグ)を追加。
+  `DIRECTOR_EVENT_BIT`(arena/hunter/redNight/screamer/reaper/castleBoss)をエクスポート。
+- `src/hooks/useGameLoop.ts`: 既存の0.5s間隔サンプリング箇所(`recordDirectorSample`呼び出し)で、
+  同フレーム内で既に計算済みの`curPhase.kind`/`pressureOutdoor?gatePressureRef...:null`/
+  `playerAreaIdx`をそのまま渡し、`ds.activeEvent`/`ds.redNight?.phase`/`ds.castleEvent?.bossSpawned`/
+  `ds.enemies`のtype走査(hunter/screamer/reaper)からeventsビットを組み立てて記録。新規の毎フレーム
+  計算は追加していない(0.5s間隔の中だけ)。
+- `src/components/DirectorResult.tsx`: リザルトのAI DIRECTORグラフに、上端の関所帯(gate=黄/boss=赤)
+  ・イベント発火帯(6色+凡例1行)・gatePressureの第3の線(黄緑・関所区間だけ途切れる)・エリア移動の
+  縦破線+ゾーン番号、を追加。すべてstatic SVG(リザルト画面表示時のみ・プレイ中コストゼロ)。
+- 負荷スコア: **1/10**(申告通り。追加計算は0.5s間隔のスカラー比較+敵配列1回走査のみ。プレイ中の
+  Pixi描画・Reactツリーには一切触れていない)。
+- テスト: `src/utils/aiDirectorDebug.test.ts`新設(5ケース、`killTelemetryState.test.ts`の
+  singletonテストパターンに追従)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過。
+- 次: 社長指示どおりバッチ7(イベントプロデューサー)へ続けて着手。
+
 ## v0.25.1311 — 実機確認①の原因分析+バッチ2.5(診断計測)新設+バッチ7前倒し決定(設計チャットFable・設計のみ)
 - バッチ3最小版後の実機ラン(社長スクショ: 生存3:56・Lv5・死因パンプキン落下・最深到達=研究対象区域
   =エリア1、Intensityが1:35から死亡まで1.0張り付き)を設計チャットでコード照合により原因分析。

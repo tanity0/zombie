@@ -77,7 +77,7 @@ import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { enemyCountCap, phaseAt, sceneAt, ENEMY_COUNT_CEIL } from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
-import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
+import { setDirectorDebug, recordDirectorSample, resetDirectorSamples, DIRECTOR_EVENT_BIT } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
 import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
@@ -6097,7 +6097,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // リザルトのタイムライン用に 0.5s 刻みでサンプル記録(gameTime基準)。
           if (ds.gameTime >= directorRef.current.nextSampleMs) {
             directorRef.current.nextSampleMs = ds.gameTime + 500;
-            recordDirectorSample({ t: ds.gameTime / 1000, intensity: st.intensity, performance: st.performance, macro: st.macro });
+            // バッチ2.5(診断計測): 実機確認①のような「固定タイマー起因の詰まり」を、リザルト画面
+            // だけで再現・診断できるように、関所種別/gatePressure/エリア/発火中イベントを併記する。
+            // ここも記録のみ(既存のenemies走査は0.5s間隔なので追加負荷は無視できる=1/10)。
+            let events = 0;
+            if (ds.activeEvent) events |= DIRECTOR_EVENT_BIT.arena;
+            if (ds.redNight?.phase === 'active') events |= DIRECTOR_EVENT_BIT.redNight;
+            if (ds.castleEvent?.bossSpawned) events |= DIRECTOR_EVENT_BIT.castleBoss;
+            for (const e of ds.enemies) {
+              if (e.type === 'hunter') events |= DIRECTOR_EVENT_BIT.hunter;
+              else if (e.type === 'screamer') events |= DIRECTOR_EVENT_BIT.screamer;
+              else if (e.type === 'reaper') events |= DIRECTOR_EVENT_BIT.reaper;
+            }
+            recordDirectorSample({
+              t: ds.gameTime / 1000,
+              intensity: st.intensity,
+              performance: st.performance,
+              macro: st.macro,
+              phaseKind: curPhase.kind,
+              pressure: pressureOutdoor ? gatePressureRef.current.state.pressure : null,
+              areaIdx: playerAreaIdx,
+              events,
+            });
           }
         }
       }

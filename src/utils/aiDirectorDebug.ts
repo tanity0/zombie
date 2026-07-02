@@ -12,7 +12,29 @@ export const setDirectorDebug = (s: DirectorState | null) => { latest = s; };
 export const getDirectorDebug = (): DirectorState | null => latest;
 
 // ---- 時系列サンプル(リザルトのタイムライン/スコア用) ----
-export interface DirectorSample { t: number; intensity: number; performance: number; macro: DirectorMacro; }
+// バッチ2.5(診断計測・v0.25.1312): 実機確認①の原因分析(固定タイマー起因のイベント/ハンターが
+// gatePressureと無関係に体感を支配していた)を、リザルト画面だけで追えるように4フィールド追加。
+// 挙動は一切変えない(記録と表示のみ)。
+export type DirectorPhaseKind = 'buildup' | 'gate' | 'boss';
+// 発火中イベントのビットフラグ。複数同時は基本無い想定だが、記録側は素直にORするだけ。
+export const DIRECTOR_EVENT_BIT = {
+  arena: 1,      // 囲い系(horde/boss/rescue、activeEvent非null)
+  hunter: 2,      // ハンター(索敵〜追跡〜撤退)
+  redNight: 4,    // 紅き月(phase==='active')
+  screamer: 8,    // 叫喚型(生存中)
+  reaper: 16,     // リーパー(終盤エンティティ、生存中)
+  castleBoss: 32, // 城ボス(bossSpawned後)
+} as const;
+export interface DirectorSample {
+  t: number;
+  intensity: number;
+  performance: number;
+  macro: DirectorMacro;
+  phaseKind: DirectorPhaseKind;
+  pressure: number | null; // gate中のgatePressure値。緩フェーズ中はnull。
+  areaIdx: number;         // プレイヤーの現在エリア(0-4)
+  events: number;          // DIRECTOR_EVENT_BIT のOR
+}
 const SAMPLE_CAP = 3000; // 0.5s刻みで約25分ぶん。超えたら古いものから捨てる。
 let samples: DirectorSample[] = [];
 

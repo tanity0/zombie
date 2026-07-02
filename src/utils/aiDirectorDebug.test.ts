@@ -1,0 +1,49 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  recordDirectorSample, getDirectorSamples, resetDirectorSamples, DIRECTOR_EVENT_BIT,
+} from './aiDirectorDebug';
+
+describe('aiDirectorDebug samples (PACING_REDESIGN.mdバッチ2.5 診断計測)', () => {
+  beforeEach(() => {
+    resetDirectorSamples();
+  });
+
+  it('starts empty', () => {
+    expect(getDirectorSamples()).toEqual([]);
+  });
+
+  it('records phaseKind/pressure/areaIdx/events alongside the existing fields', () => {
+    recordDirectorSample({
+      t: 1, intensity: 0.5, performance: 0.4, macro: 'buildup',
+      phaseKind: 'gate', pressure: 0.62, areaIdx: 2,
+      events: DIRECTOR_EVENT_BIT.hunter | DIRECTOR_EVENT_BIT.redNight,
+    });
+    const [s] = getDirectorSamples();
+    expect(s.phaseKind).toBe('gate');
+    expect(s.pressure).toBe(0.62);
+    expect(s.areaIdx).toBe(2);
+    expect(s.events & DIRECTOR_EVENT_BIT.hunter).toBeTruthy();
+    expect(s.events & DIRECTOR_EVENT_BIT.redNight).toBeTruthy();
+    expect(s.events & DIRECTOR_EVENT_BIT.arena).toBeFalsy();
+  });
+
+  it('pressure is null outside gate phases (緩フェーズは対象外)', () => {
+    recordDirectorSample({ t: 1, intensity: 0.2, performance: 0.5, macro: 'relax', phaseKind: 'buildup', pressure: null, areaIdx: 0, events: 0 });
+    expect(getDirectorSamples()[0].pressure).toBeNull();
+  });
+
+  it('caps the ring buffer at 3000 and drops the oldest', () => {
+    for (let i = 0; i < 3002; i++) {
+      recordDirectorSample({ t: i, intensity: 0, performance: 0, macro: 'buildup', phaseKind: 'buildup', pressure: null, areaIdx: 0, events: 0 });
+    }
+    const samples = getDirectorSamples();
+    expect(samples.length).toBe(3000);
+    expect(samples[0].t).toBe(2);
+  });
+
+  it('resetDirectorSamples clears the buffer (new-run reset)', () => {
+    recordDirectorSample({ t: 1, intensity: 0, performance: 0, macro: 'buildup', phaseKind: 'buildup', pressure: null, areaIdx: 0, events: 0 });
+    resetDirectorSamples();
+    expect(getDirectorSamples()).toEqual([]);
+  });
+});
