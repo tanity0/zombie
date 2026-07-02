@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1325 — 被写界深度がズーム中にずれる件の修正: filterAreaをworldGroup逆変換で毎フレーム追従(設計チャットFable・バグ修正)
+- 社長報告「被写界深度もおかしい。前に直したはず。どのステージでも起きる」+実機スクショ2枚
+  (スカジ戦/ヨルムンガンド戦=どちらも大型ボス=文脈ズーム常時最大引き0.8の場面)。
+- **調査**: 過去の修正(v0.25.1252の「DoFフィルタ画面固定」= `filterArea=(0,0,w,h)`+シャープ帯
+  `tiltShift.start/end`の画面px指定)はコードに健在=巻き戻りではない。真因は**Pixi v8の仕様**:
+  `Container.filterArea`は**ローカル座標として解釈され`worldTransform`で画面へ写像される**
+  (`FilterSystem._calculateFilterArea`で`bounds.applyMatrix(container.worldTransform)`を確認)。
+  ズームで`worldGroup.scale=0.8`になると、静的な(0,0,w,h)のフィルタ枠は**画面中央の80%矩形に縮み**、
+  シャープ帯も画面高の(1−zoom)/2=最大10%下へずれる(プレイヤーが帯から外れてボケる・
+  TiltShiftのuStart/uEndはフレーム内px基準のため)。ズーム=大型ボス/多敵時なので全ステージで発生。
+  各ステージのボス(トール/スカジ/ヨルムンガンド)を作り込んでいる今、常時露見するようになった。
+- **修正**: `pixiScene.ts`に`syncWorldFilterArea()`を新設。ズーム適用直後に毎フレーム、
+  画面矩形をworldGroupの現在値(scale/position)で**逆変換してローカル座標のfilterAreaに張り直す**
+  =フィルタ枠は常に画面ぴったり・シャープ帯(画面px)は無変更で正しくなる。zoom=1でも同式で
+  従来の(0,0,w,h)に一致(見た目不変)。ブルームの適用範囲もズーム中に画面全体へ戻る(同じ枠を共有)。
+- 負荷スコア: 1/10(毎フレームのスカラー演算4つ・新規オブジェクトなし)。
+- 検証: lint / typecheck / test(240 pass, 1 skip) / build 全通過。
+
 ## v0.25.1324 — ズーム引き時に敵が画面端で消える件の修正: 敵リサイクル境界をズーム対応(設計チャットFable・バグ修正)
 - 社長報告「ズームを引くとカメラが切れてる(敵やオブジェクトが切れる)。結構前に直したやつでは?
   Sonnet側で巻き戻り?」→ 調査の結果、**巻き戻りではない**: 過去の修正2件(v0.25.1253=レンダラの

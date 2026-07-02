@@ -1438,6 +1438,24 @@ export class PixiScene {
     }
   }
 
+  // filterArea を「画面矩形を worldGroup の逆変換でローカルへ写した矩形」に更新する。
+  // Pixi v8 は filterArea をローカル座標として worldTransform で変換するため、ズーム
+  // (worldGroup.scale/position)中も枠が画面ぴったりを保つにはこの追従が必要(毎フレーム・スカラー演算のみ)。
+  private syncWorldFilterArea() {
+    if (!this.tiltShift && !this.bloom) return;
+    // 実際に worldGroup へ適用済みの値を読む(zoom≈1で未適用の時は scale=1/pos=0 が入っている)。
+    const z = this.L.worldGroup.scale.x || 1;
+    const tx = this.L.worldGroup.position.x;
+    const ty = this.L.worldGroup.position.y;
+    const fa = this.L.filteredWorld.filterArea as Rectangle | undefined;
+    const rect = fa ?? new Rectangle();
+    rect.x = -tx / z;
+    rect.y = -ty / z;
+    rect.width = this.screenW / z;
+    rect.height = this.screenH / z;
+    if (!fa) this.L.filteredWorld.filterArea = rect;
+  }
+
   private shaftPeriod = 0; // 環境光シャフトのタイル反復幅(横パララックスの折り返し単位)
 
   private updateStageLightShafts(w: number, h: number) {
@@ -2280,6 +2298,13 @@ export class PixiScene {
       this.L.worldGroup.position.set(0, 0);
       this.zoomApplied = false;
     }
+    // 被写界深度(tilt-shift)/ブルームの filterArea 追従: Pixi v8 の filterArea はコンテナの
+    // ローカル座標で解釈され worldTransform で画面へ写像される。resize時の静的(0,0,w,h)のままだと
+    // ズーム中はフィルタ枠が画面中央へ縮み、シャープ帯も画面高の(1-zoom)/2ぶん下へずれる
+    // (社長報告: ボス戦=常時最大引きで被写界深度がおかしい・全ステージ)。毎フレーム、画面矩形を
+    // worldGroupの現在値で逆変換してローカルに張り直す=フィルタ枠は常に画面ぴったり・
+    // tiltShift.start/end(画面px)はそのままで正しくなる。zoom=1でも同式で(0,0,w,h)に一致。
+    this.syncWorldFilterArea();
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
