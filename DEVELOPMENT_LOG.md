@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1316 — ステージ5(軍本部)の遠景森2(手前帯)を社長提供の戦場残骸素材に差し替え
+- 社長提供の「ステージ5の遠景森2」素材(旗/大砲/木箱の戦場残骸、透明背景のカットアウト・
+  1280×349・RGBA)を`public/backgrounds/stage5-near-horizon.png`として保存。
+- 前回(v0.25.1314)の「遠景森1」(=`horizonForest`、`farBackdrop`キーで差し替え)とは**別の
+  レイヤー**であることを確認: 「遠景森2」は`nearHorizon`(コード内呼称・`setNearHorizonTexture`)で、
+  `s.farBackdrop`ではなく`s.nearHorizon`(campaign.tsの`nearHorizon`フィールド)をキーに管理される
+  別ストア別マップの仕組み(ステージ1=forest/ステージ2=lab/ステージ3=cityが既存例)。社長の
+  「1じゃないから間違えないで」指示どおり、`horizonOverrides`ではなく`nearHorizonOverrides`側へ
+  正しく配線。
+- `campaign.ts`のstage-5に`nearHorizon: 'stage5'`を追加(今までnearHorizon未設定=このレイヤー
+  非表示だった)。`PixiStage.tsx`のアセット読込に追加し、
+  `scene.setNearHorizonTexture('stage5', s5Near)`で注入。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過。ロジック変更なし
+  (アセット注入のみ)のためテスト新規追加なし。
+
 ## v0.25.1315 — 応急処置: セットピース台本を既定OFF+退屈上振れにラン開始90秒グレース(実機確認②対応・設計チャットFableが直接実装)
 - 社長報告「最初から弾飛んでくるしゾンビ沸きまくるしでストレスしかない」の原因を特定
   (詳細=PACING_REDESIGN.md「実機確認②」)。1308→1313のdiff全行確認により**直近バッチ(2.5/7)は
