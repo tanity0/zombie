@@ -768,6 +768,7 @@ export interface GameStats {
   meleeFinishers: number;  // 近接フィニッシュ(KILL!)回数(finisherScore用)
   eliteKills: number;      // エリート(pumpkin)撃破数
   bossKills: number;       // ボス(giantbat)撃破数
+  maxAreaReached: number;  // PACING_REDESIGN.mdバッチ2(計測): ラン中に到達した最深エリアindex(0-4)。リザルト表示用。
 }
 
 // Input state — keyboard fallback only. Touch is handled directly by the

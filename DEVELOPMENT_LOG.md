@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1303 — PACING_REDESIGN.md バッチ2実装: 種別キル計測+スタイル推定+最深到達エリアtelemetry
+- バッチ3(ラダー)が★未決事項①(連続圧力方式の採否・Fableチャット決定待ち)でブロック中のため、
+  未決事項の無いバッチ2(計測)を前倒しで実装。
+- **種別キル計測**: `src/utils/killTelemetry.ts`(純関数: `bucketForKill`でpumpkin/werewolf/plant/
+  ghost/screamer+チャフの6バケツに分類、`styleFromKillCounts`でスタイル推定)+
+  `src/utils/killTelemetryState.ts`(directorRankState.tsと同型の軽量シングルトン。累計カウンタと
+  直前フェーズのデバッグスナップショットを保持)。
+- `gameStore.ts`: キル計上箇所2系統(`damageEnemy`のkill分岐=ガン/接触/爆発、
+  `grantMeleeKillRewards`のループ=近接全経路)それぞれに`recordKill(type, method)`を追加。
+- `useGameLoop.ts`: 既存の`rankPhaseKey`(フェーズ境界検知)を再利用し、フェーズが切り替わった
+  瞬間に直前フェーズの種別キル差分をデバッグ用にスナップショット(`killPhaseRef`)。挙動には
+  一切影響しない(記録のみ、`?rank=0`とは独立)。
+- **最深到達エリア**: `playerAreaIdx`の単調増加を検知した時だけ`gameStats.maxAreaReached`へ反映
+  (1ランで最大4回のset()のみ)。`GameStats`に`maxAreaReached: number`を追加(初期化2箇所を更新)。
+  `GameOverScreen.tsx`に「最深到達」表示行を追加。`AREA_ZONE_NAMES`を`enemyUtils.ts`へ集約し
+  `useGameLoop.ts`の重複定義を解消(表記を一本化)。
+- デバッグ表示: `DirectorOverlay.tsx`(?director=1)にスタイル推定+直前フェーズの種別キル内訳を
+  1行追加。
+- 実装上の1点の解釈差(PACING_REDESIGN.mdに明記): 設計書の「累積比率(EMA)」という記述に対し、
+  減衰時定数の指定が無かったため単純な累積比率を採用(純関数なので後から差し替え可能)。
+  DirectorResult.tsxへの表示は見送り(GameOverScreenで表示要件を満たすと判断)。
+- テスト: `killTelemetry.test.ts`(6件)、`killTelemetryState.test.ts`(5件)新規。
+- 検証: typecheck / lint(0, full) / test(169 pass, 1 skip) / build 通過。
+- 設計書更新: `PACING_REDESIGN.md`バッチ2に実装結果を追記。★未決事項②を更新し、バッチ7
+  (イベントプロデューサー)がバッチ2依存のみ・未決事項なしのため①決定待ちの間に前倒し可能な
+  ことを明記。次の一手はバッチ7、またはバッチ3の①決定待ち。
+
 ## v0.25.1302 — PACING_REDESIGN.md バッチ1.5実装: featured床のオプトイン化+保証出現の撤廃
 - 実装チャット(Sonnet)がPACING_REDESIGN.mdバッチ1.5を実装。未決事項なし(設計チャットへの
   確認不要な項目)だったため、2チャット体制移行後の最初の実装として着手。

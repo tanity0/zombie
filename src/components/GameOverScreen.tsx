@@ -9,6 +9,7 @@ import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 import { getSelectedStageId, submitStageHighScore } from '../data/progress';
+import { AREA_ZONE_NAMES } from '../utils/enemyUtils';
 import DirectorResult from './DirectorResult';
 
 // AIディレクター振り返り(?director=1 の時だけリザルトに緊張曲線＋難易度スコアを出す)。
@@ -142,6 +143,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: 'Lv', value: stats.maxLevel },
     { label: '最大コンボ', value: stats.maxCombo },
     { label: 'トレジャー', value: stats.treasuresCollected },
+    // PACING_REDESIGN.mdバッチ2(計測): ラン中の最深到達エリア。挙動には影響しない表示のみ。
+    { label: '最深到達', value: AREA_ZONE_NAMES[stats.maxAreaReached] ?? AREA_ZONE_NAMES[0] },
     { label: 'スクラップ残', value: remainingStraps },
     { label: 'ゴールド', value: goldEarned },
     ...(isBenchmarkRun ? [] : [{ label: '所持ゴールド', value: goldBalance }]),

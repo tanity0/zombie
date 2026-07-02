@@ -164,6 +164,8 @@ export const selectLabEnemyType = (gameTime: number): EnemyType => {
 // 区域: 0 軍備配置(0-1500) / 1 研究対象(1500-3000) / 2 デンジャー(3000-5000) /
 //       3 未確認汚染(5000-7500) / 4 深層域(7500-)。距離 = スタート地点(原点)からの距離。
 export const AREA_COUNT = 5;
+// エリア名(進入バナー・PACING_REDESIGN.mdバッチ2の最深到達telemetry表示で共有)。
+export const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
 export const areaIndexForPos = (x: number, y: number): number => {
   const d = Math.hypot(x, y);
   if (d >= 7500) return 4;

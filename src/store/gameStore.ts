@@ -26,6 +26,7 @@ import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, am
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import { getDirectorRewardMult } from '../utils/directorRankState';
+import { recordKill } from '../utils/killTelemetryState';
 import { getPityDropTuning } from '../utils/pityState';
 import { pickNpcLine } from '../data/npcLines';
 import {
@@ -1378,6 +1379,8 @@ const grantMeleeKillRewards = (
   const screamerCutPatch = screamerBuffCutOnKillPatch(killed.map(k => k.enemy.type), get().screamerBuffUntil, get().gameTime);
   if ('screamerBuffUntil' in screamerCutPatch) useGameStore.setState(screamerCutPatch);
   for (const { enemy, finisher } of killed) {
+    // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
+    recordKill(enemy.type, 'melee');
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
     const xp = finisher
@@ -2228,7 +2231,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     damageTaken: 0,
     meleeFinishers: 0,
     eliteKills: 0,
-    bossKills: 0
+    bossKills: 0,
+    maxAreaReached: 0
   },
   characterClass: 'warrior',
   effects: [],
@@ -5104,6 +5108,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed = true;
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
+        // PACING_REDESIGN.mdバッチ2(計測): ガン/接触/爆発キルを種別+スタイル集計へ記録(挙動には影響しない)。
+        recordKill(enemy.type, 'gun');
         
         // Update game stats
         const newStats = {
@@ -8388,7 +8394,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           damageTaken: 0,
           meleeFinishers: 0,
           eliteKills: 0,
-          bossKills: 0
+          bossKills: 0,
+          maxAreaReached: 0
         },
         characterClass: validClass,
         effects: [],

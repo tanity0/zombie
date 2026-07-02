@@ -65,7 +65,8 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   OFFSCREEN_RECYCLE_MARGIN,
-  isValidForArea
+  isValidForArea,
+  AREA_ZONE_NAMES
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -82,6 +83,10 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
+import {
+  getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle
+} from '../utils/killTelemetryState';
+import type { KillBucket } from '../utils/killTelemetry';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
@@ -323,7 +328,7 @@ const SCREAMER_START_MS = 300000;          // 出現開始(5分)
 const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出現CD(60秒)
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
 const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
-const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
+// AREA_ZONE_NAMES は enemyUtils.ts からの共有(PACING_REDESIGN.mdバッチ2の最深到達telemetryと表記を統一)。
 // 原点(スタート/商人)からの距離(px)→ 区域インデックス。
 // 0〜1500軍備 / 1500〜3000研究 / 3000〜5000デンジャー / 5000〜7500汚染 / 7500〜深層域。
 const areaZoneIndexFor = (distPx: number): number => {
@@ -538,6 +543,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const pinchRef = useRef(createPinchState());
   // 憲法第1条(退屈シグナル→上振れ枠): 退屈持続時間の累積。
   const upswingRef = useRef(createBoredomState());
+  // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
+  const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof getKillTotals> | null }>({ phaseKey: '', startTotals: null });
+  // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
+  const maxAreaRef = useRef(0);
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
   const gateCalloutRef = useRef('');
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
@@ -1151,6 +1160,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetPityDrop();
           // 憲法第1条(退屈→上振れ)も新ランでリセット。
           upswingRef.current = createBoredomState();
+          // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
+          resetKillTelemetry();
+          resetPhaseKillDebug();
+          killPhaseRef.current = { phaseKey: '', startTotals: null };
+          maxAreaRef.current = 0;
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
@@ -5270,6 +5284,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           rankRef.current.startKills = rgs2.gameStats.enemiesKilled;
           rankRef.current.startLevel = rgs2.player.level;
         }
+        // バッチ2(計測): フェーズが切り替わった瞬間に、直前フェーズ中の種別キル内訳を差分で取り、
+        // デバッグ表示用に記録する(rankRefと同じフェーズ境界トリガー。挙動には一切影響しない=記録のみ)。
+        // ?rank=0 とは独立(RANK_ENABLEDを跨がない)。
+        if (!labTheme && !indoor && killPhaseRef.current.phaseKey !== rankPhaseKey) {
+          const prevTotals = killPhaseRef.current.startTotals;
+          if (prevTotals) {
+            const nowTotals = getKillTotals();
+            const killsByBucket = {} as Record<KillBucket, number>;
+            (Object.keys(nowTotals.byBucket) as KillBucket[]).forEach(b => {
+              killsByBucket[b] = Math.max(0, nowTotals.byBucket[b] - prevTotals.byBucket[b]);
+            });
+            setPhaseKillDebug({ phaseKey: killPhaseRef.current.phaseKey, killsByBucket, style: getCurrentStyle() });
+          }
+          killPhaseRef.current = { phaseKey: rankPhaseKey, startTotals: getKillTotals() };
+        }
         // 関所(襲撃)告知(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
         // 生きて抜けた瞬間「襲撃を凌いだ」。表示は頭上の浮きテキストではなく、既存の左上イベント
         // バナー(eventBannerText=「危険変異体出現」等と同じUI)に統一(社長指示)。屋外のみ。
@@ -5348,6 +5377,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         });
         // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
+        // 最深到達エリア(バッチ2計測)。屋外のみ、単調増加でstoreへ反映(リザルト表示用)。
+        // 変化した時だけ set() する(1ランで最大4回・React再描画コストは無視できる)。
+        if (!labTheme && !indoor && playerAreaIdx > maxAreaRef.current) {
+          maxAreaRef.current = playerAreaIdx;
+          useGameStore.setState(state => ({ gameStats: { ...state.gameStats, maxAreaReached: playerAreaIdx } }));
+        }
         // AIディレクター ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、直前フレームで
         // 算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/湧き間隔を伸ばす/湧き上限を
         // 下げる」を薄く掛ける。既存の敵を強制的に間引くカリング上限(enemyCap)には触れない=急に画面から

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getDirectorDebug } from '../utils/aiDirectorDebug';
 import { getDirectorRankDebug } from '../utils/directorRankState';
 import { getPityLevel } from '../utils/pityState';
+import { getPhaseKillDebug, getCurrentStyle } from '../utils/killTelemetryState';
 import type { DirectorMacro } from '../utils/aiDirector';
 
 // AIディレクター(ステップA)のオンスクリーン可視化(?director=1)。ゲームループとは独立に自前 raf で読むだけ。
@@ -39,6 +40,7 @@ const DirectorOverlay: React.FC = () => {
 
   const d = getDirectorDebug();
   const rankDebug = getDirectorRankDebug();
+  const phaseKillDebug = getPhaseKillDebug();
   // ステップB/C(?directorApply=relax|buildup|all)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
   const applyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('directorApply') : null;
   const applyRelax = applyParam === 'relax' || applyParam === 'all';
@@ -85,6 +87,18 @@ const DirectorOverlay: React.FC = () => {
           </div>
         </div>
       )}
+      {/* バッチ2(計測): スタイル推定+直前フェーズの種別キル内訳(記録と表示のみ・挙動には影響しない)。 */}
+      <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
+        style {getCurrentStyle()}
+        {phaseKillDebug && (
+          <>
+            {' '}· prev[{phaseKillDebug.phaseKey}] pk{phaseKillDebug.killsByBucket.pumpkin}
+            wf{phaseKillDebug.killsByBucket.werewolf} pl{phaseKillDebug.killsByBucket.plant}
+            gh{phaseKillDebug.killsByBucket.ghost} sc{phaseKillDebug.killsByBucket.screamer}
+            ch{phaseKillDebug.killsByBucket.chaff}
+          </>
+        )}
+      </div>
     </div>
   );
 };
