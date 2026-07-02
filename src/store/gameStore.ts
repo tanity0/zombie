@@ -3065,6 +3065,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bossFinishHit = false; // finisher-grade damage landed on a stunned boss
     const survivors: Enemy[] = [];
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
     const slashAt: { x: number; y: number }[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
@@ -3225,6 +3226,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed.push({ enemy, finisher: false });
         continue;
       }
+      // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
+      // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
+      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      if (bossBump?.triggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // Knockback, unless this enemy was shoved recently (debounce to avoid
       // locking it in an infinite stagger). Damage still landed above.
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
@@ -3238,7 +3243,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: (dx / norm) * speed,
           knockbackVy: (dy / norm) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION,
-          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+          ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
         });
       } else {
         // Knockback is on cooldown for this enemy (recently shoved): don't shove
@@ -3252,6 +3258,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
+          ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
         });
       }
     }
@@ -3386,6 +3393,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
     for (const c of meleeDamageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    }
+    // GAME_AUDIT #17: 近接クリで完全気絶が発動したら銃経路と同じ紫FX+STUN!コールアウト。
+    for (const p of bossFullStunHits) {
+      get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
+      get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
+      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
 
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
@@ -3583,6 +3597,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
+    const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
 
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
@@ -3644,6 +3659,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // フィニッシュで処刑できる(刀=銃の代替としての一貫挙動)。
       const critStun = crit; // reaper は対象外(上で除外済み)
       if (critStun) critStunAt.push({ x: ecx, y: ecy });
+      // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
+      const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
+      if (bossBump?.triggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
       const newStunUntil = critStun ? gameTime + STUN_DURATION_MS : enemy.stunUntil;
       const dx = ecx - pcx;
       const dy = ecy - pcy;
@@ -3659,7 +3677,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: (dx / dist) * speed,
           knockbackVy: (dy / dist) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION,
-          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS
+          knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
+          ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
         });
       } else {
         survivors.push({
@@ -3670,6 +3689,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
+          ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
         });
       }
     }
@@ -3724,6 +3744,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック)。
     for (const c of critStunAt) {
       get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+    }
+    // GAME_AUDIT #17: 刀クリで完全気絶が発動したら銃経路と同じ紫FX+STUN!コールアウト。
+    for (const p of katanaBossFullStunHits) {
+      get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
+      get().spawnRing(p.x, p.y, 6, 130, 'rgba(216,180,254,0.9)', 3, 360);
+      get().spawnGlow(p.x, p.y, 130, 'rgba(168,85,247,', 620);
+      get().spawnCallout(p.x, p.y - 24, 'STUN!', '#d8b4fe', { bg: 0x6b21a8 });
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
