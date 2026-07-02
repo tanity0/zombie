@@ -481,7 +481,7 @@ export const huntingMeleeRadius = (player: Player): number => {
 
 // 調査用: 一時的に爆弾(ボム)ピックアップを出さない(社長指示・後で true に戻す)。爆弾は画面内のボス以外を
 // 一括即死させるので「敵が複数同時に消える」要因になり、消失バグの切り分けの邪魔になる。
-const BOMB_PICKUPS_ENABLED = false;
+const BOMB_PICKUPS_ENABLED = true; // 社長指示(調査中OFF→ONに復帰)。ピンチ救済(pity)の爆弾バイアスもこれで有効化。
 
 // 調査用: 敵が enemies 配列から消えた「理由」を id 別に記録(削除箇所でタグ付け)。DebugOverlay の消失ログが
 // これを読んで kill/bomb/endEv/UNK を表示する。UNK(原因不明) が出たらそれが本物のバグ。
@@ -6889,7 +6889,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
-    if (BOMB_PICKUPS_ENABLED && roll < pity.bombT && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)。調査中は全体OFF。
+    if (BOMB_PICKUPS_ENABLED && roll < pity.bombT && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)。
       get().addPickup({
         id: `pickup-torch-bomb-${prop.id}`,
         x, y,

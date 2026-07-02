@@ -5493,13 +5493,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const playerCenterX = player.x + player.width / 2;
         const playerCenterY = player.y + player.height / 2;
 
-        // Scripted supply crates — three guaranteed weapon crates spread across
-        // the run (on top of the crate every mid-boss drops). Placed near the
-        // player so they're easy to grab while the action stays hot.
-        const CRATE_DROP_TIMES = [50000, 140000, 180000];
+        // 武器箱の補給(社長指示: 時間沸きを廃止し、出すタイミングをAI側で制御)。
+        // 本数と「解禁時刻」は従来の3本/同時刻のまま(総量は変えない)。解禁後、実際に落とすのは
+        //   (a) 穏やかな窓(台本のbuildup=関所間の緩む区間) … 補給は緩の時間に取らせる(Codex方針)
+        //   (b) ピンチ救済(pity)が立ち上がっている      … 苦戦中の人には今すぐ武器を届ける
+        //   (c) 解禁からCRATE_FORCE_AFTER_MSが経過        … 取りっぱぐれ防止の強制投下
+        // のいずれか最初の瞬間。現行の台本では3本とも解禁がbuildup中なので既定の体感はほぼ従来どおり、
+        // 解禁が関所に重なった時とピンチ時だけ挙動が変わる。
+        const CRATE_UNLOCK_TIMES = [50000, 140000, 180000];
+        const CRATE_FORCE_AFTER_MS = 60000;
         if (
-          cratesDroppedRef.current < CRATE_DROP_TIMES.length &&
-          gameTime >= CRATE_DROP_TIMES[cratesDroppedRef.current]
+          cratesDroppedRef.current < CRATE_UNLOCK_TIMES.length &&
+          gameTime >= CRATE_UNLOCK_TIMES[cratesDroppedRef.current] &&
+          (curPhase.kind === 'buildup' ||
+            (PITY_ENABLED && pityLevel(pinchRef.current.pinchMs) > 0) ||
+            gameTime >= CRATE_UNLOCK_TIMES[cratesDroppedRef.current] + CRATE_FORCE_AFTER_MS)
         ) {
           const angle = Math.random() * Math.PI * 2;
           const cx = player.x + player.width / 2 + Math.cos(angle) * 200;
