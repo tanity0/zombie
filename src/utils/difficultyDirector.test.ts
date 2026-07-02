@@ -103,6 +103,26 @@ describe('difficultyDirector — spawn scenes (composition/speed levers)', () =>
     expect(sparse.scene.featuredFloor ?? false).toBe(false);
   });
 
+  it('mix (PACING_REDESIGN.mdバッチ3.5-A): every scene except gate-chaos carries a chaff mix; ratios match the spec table', () => {
+    const byId: Record<string, { bat: number; skeleton: number; zombie: number }> = {
+      'relief-sparse': { bat: 70, skeleton: 25, zombie: 5 },
+      'relief-pumpkin': { bat: 55, skeleton: 40, zombie: 5 },
+      'relief-wolf': { bat: 55, skeleton: 40, zombie: 5 },
+      mowdown: { bat: 60, skeleton: 35, zombie: 5 },
+      'gate-pumpwolf': { bat: 30, skeleton: 45, zombie: 25 },
+      'gate-mass-ranged': { bat: 25, skeleton: 35, zombie: 40 },
+      boss: { bat: 30, skeleton: 40, zombie: 30 },
+    };
+    for (const [id, mix] of Object.entries(byId)) {
+      const p = PHASES.find(x => x.scene.id === id)!;
+      expect(p.scene.mix).toEqual(mix);
+    }
+    // gate-chaos is intentionally left without a mix (not covered by the spec's table) — falls
+    // back to the pre-batch-3.5 area-weighted draw.
+    const chaos = PHASES.find(p => p.scene.id === 'gate-chaos')!;
+    expect(chaos.scene.mix).toBeUndefined();
+  });
+
   it('maxRung (PACING_REDESIGN.mdバッチ3): every gate phase has a rung in [3,7], non-decreasing across the run (ラン全体の階段)', () => {
     const gates = PHASES.filter(p => p.kind === 'gate');
     let last = 0;

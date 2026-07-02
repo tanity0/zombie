@@ -93,6 +93,8 @@ import {
   type ProblemChild
 } from '../utils/gatePressure';
 import { setGatePressureDebug } from '../utils/gatePressureState';
+import { pickChaffMix } from '../utils/chaffMix';
+import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle
@@ -383,6 +385,11 @@ const LADDER_ENABLED = evParam('ladder') !== '0';
 // PACING_REDESIGN.mdバッチ7: イベントプロデューサー(囲い/紅き月/ハンター/叫びの発火ゲート)。
 // ?events=0 で従来のランダム発火(本バッチ以前の挙動)に完全復帰(切り分け用)。
 const EVENTS_ENABLED = evParam('events') !== '0';
+// PACING_REDESIGN.mdバッチ3.5-A: チャフ配合(bat/skeleton/zombieの役割配合)。?mix=0で従来の
+// エリア重み任せに完全復帰。
+const MIX_ENABLED = evParam('mix') !== '0';
+// PACING_REDESIGN.mdバッチ3.5-B: 盤面在庫(boardDebt)。?debt=0で全無効(従来挙動)。
+const DEBT_ENABLED = evParam('debt') !== '0';
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
@@ -609,6 +616,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 行えないため、他の1フレーム遅延パターン(directorRef/upswingRefと同じ)に倣い前フレームの
   // 値を読む=イベント各ブロックは「直前フレームの猶予」を見る。
   const pityEventBlockUntilRef = useRef(0);
+  // バッチ3.5-B(盤面在庫): イベント発火ゲート(囲い/紅き月/ハンター/叫び)は敵配列走査後の
+  // boardDebtNowより前(フレーム冒頭側)で判定するため、pityEventBlockUntilRefと同じ1フレーム
+  // 遅延パターンで前フレームの値を読む。
+  const boardDebtRef = useRef(0);
   // 憲法第1条(退屈シグナル→上振れ枠): 退屈持続時間の累積。
   const upswingRef = useRef(createBoredomState());
   // バッチ3(最小版): 関所中の連続圧力状態。keyが変わったら(=新しい関所に入ったら)登り直す。
@@ -616,7 +627,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // バッチ3: 被弾インパルス検知専用(AIディレクター本体のprevHpとは別管理)。
   const pressureHitRef = useRef<{ prevHp: number; hitTimes: number[] }>({ prevHp: -1, hitTimes: [] });
   // バッチ3: 配役順(スタイルで決まる[1体目,2体目])。ラン内で最初に0.50を跨いだ時点で1度だけ決め、以後固定。
-  const pressureCastRef = useRef<{ order: [ProblemChild, ProblemChild] | null }>({ order: null });
+  // pendingCast: バッチ3.5-B(盤面在庫)。castFirstNow/castSecondNowは0.50/0.65跨ぎの一瞬だけ立つ
+  // パルスなので、そのフレームで(Tank存命中/debt過多により)投入できなければここに保留し、
+  // 条件が晴れるまで毎フレーム再チェックする(タイマー消費なし・パルスを取りこぼさない)。
+  const pressureCastRef = useRef<{ order: [ProblemChild, ProblemChild] | null; pendingCast: ProblemChild | null }>({ order: null, pendingCast: null });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof getKillTotals> | null }>({ phaseKey: '', startTotals: null });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
@@ -1235,12 +1249,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pinchRef.current = createPinchState();
           resetPityDrop();
           pityEventBlockUntilRef.current = 0; // バッチ7の発火猶予も新ランでリセット
+          boardDebtRef.current = 0; // バッチ3.5-Bの盤面在庫も新ランでリセット
           // 憲法第1条(退屈→上振れ)も新ランでリセット。
           upswingRef.current = createBoredomState();
           // バッチ3(最小版)の連続圧力も新ランでリセット。
           gatePressureRef.current = { key: '', state: createGatePressureState() };
           pressureHitRef.current = { prevHp: -1, hitTimes: [] };
-          pressureCastRef.current = { order: null };
+          pressureCastRef.current = { order: null, pendingCast: null };
           setGatePressureDebug(null);
           // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
           resetKillTelemetry();
@@ -1320,6 +1335,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
             const arenaProducerOk = !EVENTS_ENABLED || eventGateOk({
               bigEventActive: redNightActiveNow, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
+              boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
             });
             const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk;
             if (arenaReady) {
@@ -1535,7 +1551,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle';
           const rnProducerOk = !EVENTS_ENABLED || (
             redNightPhaseGateOk(phaseAt(newGameTime).kind) &&
-            eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current })
+            eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
           if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
               && !rnGs.enemies.some(e => isHiddenBoss(e.type)) // 裏ボス存命中は紅き夜を発火させない(イベント抑止と同基準)
@@ -1678,6 +1694,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 緊張の切り札として出す。ピンチ猶予も追加。CDは変更なし。?events=0で旧判定に復帰。
               const hunterProducerOk = !EVENTS_ENABLED || eventGateOk({
                 bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
+                boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
               });
               const ready = EVENTS_ENABLED
                 ? (hunterBoredomReady(boredomBonus(upswingRef.current.boredMs)) && hunterProducerOk)
@@ -1773,7 +1790,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 先行導入=フェーズ種別だけで判定)+ピンチ猶予。?events=0で従来(いつでも発火)に復帰。
           const screamerProducerOk = !EVENTS_ENABLED || (
             screamerPhaseGateOk(phaseAt(newGameTime).kind) &&
-            eventGateOk({ bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current })
+            eventGateOk({ bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
           if (aliveScreamer) {
             // 生存中はCDを先送り=撃破/退場の後、CD経過してから次の1体。
@@ -5747,6 +5764,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
         }
         const upswingBonus = upswingOutdoor ? boredomBonus(upswingRef.current.boredMs) : 0;
+        // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 「今盤面に何がいるのか」を先に一度だけ計算し、
+        // 以降の4箇所(関所の登り/配役投入/湧きテンポ/イベント発火ゲート)で使い回す(?debt=0で0固定
+        // =従来挙動)。屋内/ラボは対象外(屋外の通常敵のみ集計)。
+        const boardDebtNow = (DEBT_ENABLED && !labTheme && !indoor) ? debtFor(useGameStore.getState().enemies) : 0;
+        boardDebtRef.current = boardDebtNow; // イベント発火ゲート側は次フレームでこの値を読む(1フレーム遅延)
         // PACING_REDESIGN.mdバッチ3(最小版): 山(関所)の連続圧力 gatePressure。方式確定(v0.25.1304・
         // Fableチャット決定): 緩(buildup/mowdown含む)フェーズは対象外(現行シーンのまま)、
         // 関所(gate)中だけ毎フレーム連続スカラーpressureを動かす。`?ladder=0`で無効化(難易度④の
@@ -5779,6 +5801,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             intensity: directorRef.current.state.intensity,
             ceiling,
             dtMs: deltaTime * 1000,
+            boardDebt: boardDebtNow,
           });
           gatePressureRef.current.state = step.state;
           gatePressureRef.current.ceiling = ceiling;
@@ -5912,7 +5935,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const baseIntervalMult = pressureOutdoor
           ? intervalMultForPressure(gatePressureRef.current.state.pressure)
           : (scene ? scene.intervalMult : 1);
-        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * (pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
+        // バッチ3.5-B(盤面在庫): PUMPKIN_PAIR_SPAWN_EASEの一般化。固いのが盤面に溜まるほど注ぐ量が
+        // 細る(debtTempoEaseMult: interval×(1+0.05×max(0,debt-8))、上限×1.6)。
+        const debtEaseMult = DEBT_ENABLED ? debtTempoEaseMult(boardDebtNow) : 1;
+        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * (pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1) * debtEaseMult;
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
@@ -5927,6 +5953,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const sceneBlocked: EnemyType[] = pressureOutdoor
           ? ALL_PROBLEM_CHILDREN.filter(t => !allowedProblemChildren(gatePressureRef.current.state.pressure, pressureCastRef.current.order ?? ['pumpkin', 'werewolf']).includes(t))
           : [];
+        // バッチ3.5-A(チャフ配合): シーンにmixが有る時だけ、関所中はgatePressureで連続シフトした
+        // 配合を使う(緩フェーズ・関所外はシーンmixをそのまま)。mix未指定シーン(gate-chaos等)は
+        // undefinedのまま=selectEnemyTypeは従来の重み計算を素通りする。
+        const sceneMix = (MIX_ENABLED && scene?.mix)
+          ? pickChaffMix(scene.mix, pressureOutdoor ? gatePressureRef.current.state.pressure : null)
+          : undefined;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
@@ -5937,20 +5969,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : gameBounds;
         // バッチ3(最小版・配役): pressureが0.50/0.65を新規に上向きに跨いだ瞬間、forcedTypeで
         // 1体だけ即座に投入する(L4DのTank/特殊感染者のような「ディレクターが意図した瞬間に落とす」演出)。
-        // spawn CD(sceneIntervalMult)とは独立=通常湧きの間隔を消費しない。同時数キャップ2は
-        // ここで自前チェックする(通常湧きのoverCapとは別経路のため)。1体目のスタイルはラン内で
+        // spawn CD(sceneIntervalMult)とは独立=通常湧きの間隔を消費しない。1体目のスタイルはラン内で
         // 最初に0.50を跨いだ時点で決め、以後ラン内固定。
-        if (!danceTest && !indoor && !confining && (gatePressureRef.current.castFirstNow || gatePressureRef.current.castSecondNow)) {
-          if (!pressureCastRef.current.order) {
-            pressureCastRef.current.order = specialCastOrder(getCurrentStyle(), Math.random());
+        // バッチ3.5-B(盤面在庫): ①L4DのTank存命中ルール=同型が1体でも生存中は次を投入しない
+        // (旧cap=2から変更・社長承認)②debtが高い間は投入を延期。パルス(castFirstNow/SecondNow)は
+        // 一瞬しか立たないため、その場で投入できなければpendingCastへ保留し、条件が晴れるまで
+        // 毎フレーム再チェックする(タイマー消費なし=「掃けたら発火」)。
+        if (!danceTest && !indoor && !confining) {
+          if (gatePressureRef.current.castFirstNow || gatePressureRef.current.castSecondNow) {
+            if (!pressureCastRef.current.order) {
+              pressureCastRef.current.order = specialCastOrder(getCurrentStyle(), Math.random());
+            }
+            const order = pressureCastRef.current.order;
+            const castType: ProblemChild = gatePressureRef.current.castFirstNow ? order[0] : order[1];
+            pressureCastRef.current.pendingCast = castType;
           }
-          const order = pressureCastRef.current.order;
-          const castType: ProblemChild | null = gatePressureRef.current.castFirstNow ? order[0] : gatePressureRef.current.castSecondNow ? order[1] : null;
-          if (castType === 'pumpkin' || castType === 'werewolf') {
-            const aliveOfType = useGameStore.getState().enemies.filter(e => e.type === castType).length;
-            if (aliveOfType < 2) {
-              const castEnemy = generateEnemy(gameTime, player, spawnBounds, castType, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+          const pending = pressureCastRef.current.pendingCast;
+          if (pending) {
+            const aliveOfType = useGameStore.getState().enemies.filter(e => e.type === pending).length;
+            // ?debt=0 は完全復帰(旧cap=2・延期なし)。既定はTank存命中ルール(生存0体のみ)+debt延期。
+            const aliveOk = DEBT_ENABLED ? aliveOfType === 0 : aliveOfType < 2;
+            const debtOk = !DEBT_ENABLED || boardDebtNow <= CAST_DEBT_MAX;
+            if (aliveOk && debtOk) {
+              const castEnemy = generateEnemy(gameTime, player, spawnBounds, pending, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(castEnemy);
+              pressureCastRef.current.pendingCast = null;
             }
           }
         }
@@ -6013,13 +6056,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked, sceneMix);
             // 憲法第2条: 問題児(plant/werewolf/pumpkin/ghost)は同時数キャップを超えて湧かせない。
             // 台本セットピース/保証出現(forcedType指定)はここを通らない=脚本の見せ場はそのまま。
             if (overCap(enemy.type)) {
               let tries = 0;
               while (overCap(enemy.type) && tries < 8) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked, sceneMix);
                 tries++;
               }
               if (overCap(enemy.type)) {
@@ -6518,6 +6561,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               pressure: pressureOutdoor ? gatePressureRef.current.state.pressure : null,
               areaIdx: playerAreaIdx,
               events,
+              debt: boardDebtNow,
             });
           }
         }

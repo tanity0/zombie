@@ -10,6 +10,7 @@
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(src/utils)。
 
 import type { EnemyType } from '../types/game';
+import type { ChaffMix } from './chaffMix';
 
 export type PhaseKind = 'buildup' | 'gate' | 'boss';
 
@@ -27,6 +28,9 @@ export interface SpawnScene {
   // true にするのは講習(relief-pumpkin/relief-wolf。序盤の1種練習は安全)と mowdown(深部のチャフ供給)
   // のみ。関所シーン(gate-*)は全て false=「チャフのための床」が問題児の裏口になる事故を防ぐ。
   featuredFloor?: boolean;
+  // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略時は従来どおり
+  // エリア重み任せ(selectEnemyTypeでmixが無いシーンは完全に既存挙動と一致)。
+  mix?: ChaffMix;
 }
 
 export interface Phase {
@@ -47,14 +51,17 @@ export interface Phase {
 // 緩(relief/mowdown)系は zombie を抑える(社長指示: ゾンビは固いので緩の時に多数出すと休憩にならない)。
 // rareMult(DISTRIBUTION_REDESIGN.md③): 緩=0(休憩を汚さない)/無双=0.5(群れに時々1体)/
 // 関所=1.2〜1.35(山場の顔・chaosが最大)/ボス=1.0(素のまま)。基礎率(距離)とRank増幅の上に乗る演出レバー。
-const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], intervalMult: 1.3, suppressed: ['zombie'], rareMult: 0 };                      // 優しい: 雑魚まばら
-const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true }; // 優しい: パンプキン練習(講習=床あり)
-const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true }; // 優しい: 犬(ダッシュ)練習(講習=床あり)
-const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6, suppressed: ['zombie'], rareMult: 0.5, featuredFloor: true }; // 無双: 弱雑魚を高速大量(深部のチャフ供給=床あり)
-const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['pumpkin', 'werewolf'], intervalMult: 0.8, rareMult: 1.2 }; // 関所: パンプキン+犬(床なし=エリア規約に従う)
-const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2 };          // 関所: 雑魚大量+飛び道具(床なし)
-const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス(床なし)
-const SCENE_BOSS: SpawnScene           = { id: 'boss',           featured: [], intervalMult: 1.0, rareMult: 1.0 };                     // 城ボス中は素の分布
+// バッチ3.5-A: チャフ配合の叩き台(社長定義の役割=bat爽快/skeleton刻み/zombie壁。すべて実機調整前提)。
+// gate-chaos(全部盛り)は仕様の配合表に無いため mix 省略=従来のエリア重み任せのまま(未指定シーンは
+// 完全に既存挙動と一致・社長への質問候補として残す)。
+const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], intervalMult: 1.3, suppressed: ['zombie'], rareMult: 0, mix: { bat: 70, skeleton: 25, zombie: 5 } };                      // 優しい: 雑魚まばら
+const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true, mix: { bat: 55, skeleton: 40, zombie: 5 } }; // 優しい: パンプキン練習(講習=床あり)
+const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true, mix: { bat: 55, skeleton: 40, zombie: 5 } }; // 優しい: 犬(ダッシュ)練習(講習=床あり)
+const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6, suppressed: ['zombie'], rareMult: 0.5, featuredFloor: true, mix: { bat: 60, skeleton: 35, zombie: 5 } }; // 無双: 弱雑魚を高速大量(深部のチャフ供給=床あり)
+const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['pumpkin', 'werewolf'], intervalMult: 0.8, rareMult: 1.2, mix: { bat: 30, skeleton: 45, zombie: 25 } }; // 関所(数系): パンプキン+犬(床なし=エリア規約に従う)
+const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2, mix: { bat: 25, skeleton: 35, zombie: 40 } };          // 関所(射線系): 雑魚大量+飛び道具(壁+弾のコンボ・床なし)
+const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス(床なし・mix未指定=従来どおり)
+const SCENE_BOSS: SpawnScene           = { id: 'boss',           featured: [], intervalMult: 1.0, rareMult: 1.0, mix: { bat: 30, skeleton: 40, zombie: 30 } };                     // 城ボス中
 
 // PACING_REDESIGN.md 憲法第1条: 画面内は基本10体。台本の countCap は全フェーズ 8〜10 に統一
 // (旧: gate/bossが14〜20まで無条件で盛っていた=「最初からMAXプラン」だった)。11〜20の帯は

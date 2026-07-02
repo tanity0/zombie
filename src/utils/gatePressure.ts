@@ -7,6 +7,7 @@
 // レンダラ非依存の純関数=ヘッドレスでユニットテスト可能(src/utils)。
 
 import type { PlayStyle } from './killTelemetry';
+import { RISE_DEBT_MAX } from './boardDebt';
 
 export interface GatePressureState {
   pressure: number;
@@ -41,6 +42,8 @@ export interface GatePressureInputs {
   intensity: number;      // AIディレクターのIntensity(0..1)
   ceiling: number;        // 実効天井(maxRung→天井変換 × ゾーン天井 の小さい方)
   dtMs: number;
+  // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 省略時は0=従来と完全一致(risingBlockedへ影響なし)。
+  boardDebt?: number;
 }
 
 export interface GatePressureStepResult {
@@ -59,7 +62,9 @@ export const stepGatePressure = (prev: GatePressureState, inputs: GatePressureIn
   let pressure = prev.pressure;
   if (inputs.hitImpulse) pressure = Math.max(0, pressure - HIT_IMPULSE_DROP);
 
-  const risingBlocked = inputs.intensity >= INTENSITY_HOLD && perf > pressure;
+  // バッチ3.5-B(盤面在庫): 「今盤面に何がいるのか」を見ずに登り続けないよう、debtが高い間は
+  // (Intensity条件とは独立に)登りだけをブロックする(憲法第5条「ピンチに撃たない」の盤面版)。
+  const risingBlocked = (inputs.intensity >= INTENSITY_HOLD && perf > pressure) || (inputs.boardDebt ?? 0) > RISE_DEBT_MAX;
   if (!risingBlocked) {
     const dtS = Math.max(0, inputs.dtMs) / 1000;
     const tauS = perf >= pressure ? UP_TAU_S : DOWN_TAU_S;

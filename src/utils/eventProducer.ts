@@ -11,15 +11,18 @@
 //   紅き月の既存パターンを全大イベントへ拡張。本ファイルは判定のみで副作用は持たない)。
 import type { DirectorPhaseKind } from './aiDirectorDebug';
 import { BORED_BONUS_MAX } from './boredomDirector';
+import { EVENT_DEBT_MAX } from './boardDebt';
 
 export const PITY_EVENT_BLOCK_TAIL_MS = 10000; // ピンチ解除後、イベント発火を禁止し続ける猶予
 
-// 大イベント共通ゲート: 他の大イベントが進行中でない・ピンチ猶予を過ぎている。
+// 大イベント共通ゲート: 他の大イベントが進行中でない・ピンチ猶予を過ぎている・
+// バッチ3.5-B(盤面在庫): 盤面が捌け切れていない(boardDebt過多)間は発火しない(省略時=0=従来と完全一致)。
 export const eventGateOk = (input: {
   bigEventActive: boolean;
   gameTime: number;
   pityBlockUntilMs: number;
-}): boolean => !input.bigEventActive && input.gameTime >= input.pityBlockUntilMs;
+  boardDebt?: number;
+}): boolean => !input.bigEventActive && input.gameTime >= input.pityBlockUntilMs && (input.boardDebt ?? 0) <= EVENT_DEBT_MAX;
 
 // 紅き月: 緩フェーズ(buildup/boss)中にしか開始しない(山=関所に重ねない)。関所中に窓が開いても
 // ロールは消費せず、次の緩フェーズまで毎フレーム再判定するだけで自然に遅延する。

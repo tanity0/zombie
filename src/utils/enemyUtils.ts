@@ -1,4 +1,5 @@
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
+import { normalizeChaffMix, type ChaffMix } from './chaffMix';
 
 // 固定ビュー矩形からの「画面外」バンド(px・社長指示Bで具体値決め直し)。全辺一律で「画面端から○px外」を意味する。
 // 固定ビューにしたので画面サイズ比ではなく固定px。SPAWN<RECYCLE のヒステリシスで湧いた敵が即リサイクルされない。実機で微調整可。
@@ -127,7 +128,8 @@ const FEATURED_MIN_AREA_WEIGHT = 0.5;
 // 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算、featured でシーンの強調型に重み加算。
 // featured/suppressed は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
 // ただし featured は floorAllowed=true の時だけ FEATURED_MIN_AREA_WEIGHT の床を持つ(上記)。
-const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = [], floorAllowed = false, blocked: EnemyType[] = []): EnemyType => {
+const CHAFF_TYPES: EnemyType[] = ['bat', 'skeleton', 'zombie'];
+const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = [], floorAllowed = false, blocked: EnemyType[] = [], mix?: ChaffMix): EnemyType => {
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
   // baseWeight × エリア補正(featuredはfloorAllowed時のみ床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)、blockedは強制0。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
@@ -139,6 +141,20 @@ const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: Ene
       return { type, weight: w * effAreaW * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) };
     })
     .filter(e => e.weight > 0);
+  // PACING_REDESIGN.mdバッチ3.5-A(チャフ配合): mix指定時は、チャフ3種(bat/skeleton/zombie)の
+  // 合計重み(=エリア規約どおりの総量。出現可否/総量は変えない)は保ったまま、内訳だけを役割比率で
+  // 置き換える。mix未指定のシーンはこのブロックを素通りし、既存挙動と完全に一致する。
+  if (mix) {
+    const chaffTotal = pool.filter(e => CHAFF_TYPES.includes(e.type)).reduce((s, e) => s + e.weight, 0);
+    if (chaffTotal > 0) {
+      const norm = normalizeChaffMix(mix);
+      for (const entry of pool) {
+        if (entry.type === 'bat') entry.weight = chaffTotal * norm.bat;
+        else if (entry.type === 'skeleton') entry.weight = chaffTotal * norm.skeleton;
+        else if (entry.type === 'zombie') entry.weight = chaffTotal * norm.zombie;
+      }
+    }
+  }
   if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
   let r = Math.random() * total;
@@ -355,11 +371,12 @@ export const generateEnemy = (
   suppressed: EnemyType[] = [], // シーン(SpawnScene)の抑え型。重み減(緩の時のゾンビ抑え・社長指示)。
   rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
   floorAllowed = false, // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床を許すシーンか(講習/mowdownのみtrue)。
-  blocked: EnemyType[] = [] // PACING_REDESIGN.mdバッチ3: gatePressureで未解禁の問題児を完全ブロック(重み0)。
+  blocked: EnemyType[] = [], // PACING_REDESIGN.mdバッチ3: gatePressureで未解禁の問題児を完全ブロック(重み0)。
+  mix?: ChaffMix // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed, blocked);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed, blocked, mix);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、

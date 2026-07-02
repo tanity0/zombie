@@ -19,6 +19,15 @@ describe('eventProducer (PACING_REDESIGN.mdバッチ7 憲法第5条)', () => {
     it('PITY_EVENT_BLOCK_TAIL_MS is 10s (社長指示: 解除後10秒)', () => {
       expect(PITY_EVENT_BLOCK_TAIL_MS).toBe(10000);
     });
+    it('バッチ3.5-B: blocks while boardDebt exceeds EVENT_DEBT_MAX(12)', () => {
+      expect(eventGateOk({ bigEventActive: false, gameTime: 100000, pityBlockUntilMs: 0, boardDebt: 13 })).toBe(false);
+    });
+    it('バッチ3.5-B: allows firing at or below EVENT_DEBT_MAX(12)', () => {
+      expect(eventGateOk({ bigEventActive: false, gameTime: 100000, pityBlockUntilMs: 0, boardDebt: 12 })).toBe(true);
+    });
+    it('バッチ3.5-B: boardDebt omitted behaves exactly like debt=0 (no regression)', () => {
+      expect(eventGateOk({ bigEventActive: false, gameTime: 100000, pityBlockUntilMs: 0 })).toBe(true);
+    });
   });
 
   describe('redNightPhaseGateOk', () => {

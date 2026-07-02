@@ -203,3 +203,40 @@ describe('hidden boss (mimir/jormungand/skadi/thor) spec', () => {
     expect(getEnemyFireProfile(spawnEnemyAt('thor', 0, 0, 0))).not.toBeNull();
   });
 });
+
+describe('generateEnemy chaff mix (PACING_REDESIGN.mdバッチ3.5-A)', () => {
+  const player = mkPlayer(0, 0); // area 0(bat/skeleton/zombieは全エリアで重み>0)
+  const draw = (mix?: { bat: number; skeleton: number; zombie: number }) =>
+    generateEnemy(0, player, BOUNDS, undefined, null, 0, false, 0, [], [], 1, false, [], mix).type;
+
+  it('with no mix, draws only from the normal area-weighted pool (bat/skeleton/zombie at area 0)', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 300; i++) seen.add(draw());
+    for (const t of seen) expect(['bat', 'skeleton', 'zombie']).toContain(t);
+  });
+
+  it('a heavily zombie-weighted mix skews the draw toward zombie far above its natural area-weight share', () => {
+    const counts = { bat: 0, skeleton: 0, zombie: 0 } as Record<string, number>;
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      const t = draw({ bat: 5, skeleton: 5, zombie: 90 });
+      if (t in counts) counts[t]++;
+    }
+    // 素の分布(area0: bat100*1.0, skeleton55*1.0, zombie45*0.6=27)ではzombieは最小勢力のはずが、
+    // mix指定でzombie90%が支配的になる。
+    expect(counts.zombie).toBeGreaterThan(counts.bat);
+    expect(counts.zombie).toBeGreaterThan(counts.skeleton);
+    expect(counts.zombie / N).toBeGreaterThan(0.7);
+  });
+
+  it('a bat-heavy mix roughly matches the requested ratio over many draws', () => {
+    const counts = { bat: 0, skeleton: 0, zombie: 0 } as Record<string, number>;
+    const N = 3000;
+    for (let i = 0; i < N; i++) {
+      const t = draw({ bat: 70, skeleton: 25, zombie: 5 });
+      if (t in counts) counts[t]++;
+    }
+    expect(counts.bat / N).toBeGreaterThan(0.55); // 統計的なブレを見込んだ緩い下限(狙いは0.70)
+    expect(counts.zombie / N).toBeLessThan(0.15);
+  });
+});

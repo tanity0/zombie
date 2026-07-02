@@ -19,6 +19,10 @@ const EVENT_META: { bit: number; label: string; color: string }[] = [
   { bit: DIRECTOR_EVENT_BIT.castleBoss, label: '城ボス', color: '#22d3ee' },
 ];
 
+// バッチ3.5-B(盤面在庫): debtは0-1に収まらないスカラーなので、表示用にこの値で正規化する
+// (目安=10体前後の在庫。CAST_DEBT_MAX=10/RISE_DEBT_MAX=10/EVENT_DEBT_MAX=12のしきい値帯が
+// ちょうど画面の中〜上寄りに来る値)。実際のしきい値超えはイベント帯/関所帯の挙動で読める。
+const DEBT_DISPLAY_MAX = 20;
 const W = 440, PAD = 2;
 const BAND_H = 6;           // 関所帯・イベント帯、それぞれの高さ
 const BAND_GAP = 1;
@@ -88,7 +92,9 @@ const DirectorResult: React.FC = () => {
       }
     }
     if (seg.length > 1) pressureSegs.push(seg.join(' '));
-    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs };
+    // バッチ3.5-B: 盤面在庫(debt)線。DEBT_DISPLAY_MAXで正規化してintensity等と同じ0-1軸に重ねる。
+    const debtPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.debt / DEBT_DISPLAY_MAX)).toFixed(1)}`).join(' ');
+    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs, debtPts };
   }, [samples]);
 
   const pct = (sec: number): number => (summary.durationSec > 0 ? Math.round((100 * sec) / summary.durationSec) : 0);
@@ -128,6 +134,8 @@ const DirectorResult: React.FC = () => {
           {chart.pressureSegs.map((pts, i) => (
             <polyline key={i} points={pts} fill="none" stroke="#a3e635" strokeWidth={1.2} strokeOpacity={0.9} />
           ))}
+          {/* バッチ3.5-B: 盤面在庫(debt)線(第4の線・他の線/イベント色と被らないスレート色) */}
+          <polyline points={chart.debtPts} fill="none" stroke="#94a3b8" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 2" />
           {/* バッチ2.5: エリア移動(縦線+ゾーン番号) */}
           {chart.areaLines.map((a, i) => (
             <g key={i}>
@@ -150,6 +158,10 @@ const DirectorResult: React.FC = () => {
           <span className="inline-flex items-center gap-0.5">
             <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#a3e635' }} />
             gatePressure
+          </span>
+          <span className="inline-flex items-center gap-0.5">
+            <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#94a3b8' }} />
+            盤面在庫
           </span>
         </div>
       )}

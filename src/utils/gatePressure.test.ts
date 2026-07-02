@@ -74,6 +74,24 @@ describe('stepGatePressure', () => {
     const r = stepGatePressure(start, { ...GOOD, intensity: 0.9, dtMs: 5000 });
     expect(r.state.pressure).toBeLessThanOrEqual(0.3);
   });
+
+  it('バッチ3.5-B: stops rising while boardDebt exceeds RISE_DEBT_MAX, even with low Intensity', () => {
+    const start = createGatePressureState(0.3);
+    const r = stepGatePressure(start, { ...GOOD, boardDebt: 11 });
+    expect(r.state.pressure).toBeLessThanOrEqual(0.3);
+  });
+
+  it('バッチ3.5-B: boardDebt omitted (undefined) behaves exactly like debt=0 (no regression)', () => {
+    const withZero = stepGatePressure(createGatePressureState(0.3), { ...GOOD, boardDebt: 0 });
+    const omitted = stepGatePressure(createGatePressureState(0.3), GOOD);
+    expect(omitted.state.pressure).toBeCloseTo(withZero.state.pressure, 10);
+  });
+
+  it('バッチ3.5-B: rises normally when boardDebt is at or below RISE_DEBT_MAX', () => {
+    const start = createGatePressureState(0);
+    const r = stepGatePressure(start, { ...GOOD, boardDebt: 10 });
+    expect(r.state.pressure).toBeGreaterThan(0);
+  });
 });
 
 describe('startPressureForRank', () => {

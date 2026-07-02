@@ -10,6 +10,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1320 — PACING_REDESIGN.mdバッチ3.5実装: チャフ配合(3.5-A)+盤面在庫(3.5-B)
+- 仕様(§バッチ3.5、v0.25.1318にFableチャットが記載・社長承認済み)どおりに実装。
+- **3.5-A チャフ配合**: 新規純関数`src/utils/chaffMix.ts`(`pickChaffMix`=関所内はgatePressureで
+  「爽快寄り変形」→「シーン本来のmix」へ連続シフト)。`SpawnScene.mix?`を追加し表の6シーンに
+  叩き台の比率を設定。`enemyUtils.ts`の`selectEnemyType`は「チャフ3種の合計重み(エリア規約どおり)
+  は保ったまま内訳だけをmix比率で置き換える」方式に変更(問題児の重み/出現可否は無変更)。
+  `?mix=0`で従来のエリア重み任せに完全復帰。
+  - 解釈が必要だった点(透明化): 「爽快寄り変形」の具体式が仕様に無かったため
+    bat×1.6/zombie×0.4→正規化という妥当な値を採用。配合表に無い`gate-chaos`はmix未指定のまま
+    (従来どおりエリア重み任せに自動フォールバック)。
+- **3.5-B 盤面在庫**: 新規純関数`src/utils/boardDebt.ts`(`debtFor`=Σ型の重さ×残りHP比、
+  `debtTempoEaseMult`)。`useGameLoop.ts`のフレーム冒頭(gatePressure計算前)で`boardDebtNow`を
+  1回計算し、4箇所で使用: ①`gatePressure.ts`の`risingBlocked`にdebt>10を追加 ②配役投入に
+  L4DのTank存命中ルール(同型が1体でも生存中は次を投入しない・旧cap=2から変更)+debt>10延期
+  (パルス取りこぼし防止に`pendingCast`保留機構を追加) ③湧きテンポに`debtTempoEaseMult`
+  (interval×(1+0.05×max(0,debt-8))、上限×1.6) ④`eventProducer.ts`の`eventGateOk`にdebt>12
+  条件を追加(囲い/紅き月/ハンター/叫びを延期)。イベントゲート(4箇所)はフレーム冒頭より前で
+  判定するため`pityEventBlockUntilRef`と同じ1フレーム遅延パターン(`boardDebtRef`)で読む。
+  `?debt=0`でTank存命中ルール込み完全に旧挙動へ復帰。
+  診断: `DirectorSample.debt`追加、`DirectorResult.tsx`に第4の線(スレート色・DEBT_DISPLAY_MAX=20
+  で正規化)。
+- テスト: `chaffMix.test.ts`(9)/`boardDebt.test.ts`(11)新規。`enemyUtils.test.ts`に統計的偏り
+  テスト3件、`difficultyDirector.test.ts`にシーン別mix値アサート、`gatePressure.test.ts`/
+  `eventProducer.test.ts`/`aiDirectorDebug.test.ts`にdebt関連(既存挙動の非破壊確認込み)を追加。
+- 負荷スコア: **1/10**(chaffMix=抽選時の重み計算のみ/boardDebt=フレーム1回の敵配列走査のみ・
+  20体上限なので無視できる)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過。実機未確認
+  (4箇所の相互作用・しきい値の体感は実プレイ推奨)。
+
 ## v0.25.1318 — バッチ3.5(チャフ配合+盤面在庫)を新設・社長承認(設計チャットFable・設計のみ)
 - 社長との会議で決定し、`PACING_REDESIGN.md`に§バッチ3.5として実装可能な粒度で記載。
   **実装チャットの次の一手はバッチ3.5**。
