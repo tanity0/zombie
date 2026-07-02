@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
+import { CHANGELOG } from '../data/changelog';
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
 // 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
@@ -104,7 +105,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </span>
       )}
 
-      {/* ご利用にあたって(同意画面・最初に表示) */}
+      {/* 更新情報(起動画面・最初に表示。社長指示: 毎回のアップデート内容をここに出す) */}
       {phase === 'notice' && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
           <div className="relative flex max-h-full w-full max-w-md flex-col overflow-hidden" style={PANEL_STYLE}>
@@ -112,32 +113,32 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
               <div className="flex items-center justify-between">
                 {/* 見出し: 小さめ＋細い紫下線(FF7R風) */}
                 <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
-                  ご利用にあたって
+                  更新情報
                 </h2>
                 <span className="px-2 py-0.5 text-[10px] font-mono tabular-nums text-purple-200/70">v{__APP_VERSION__}</span>
               </div>
-              <p className="mt-4 text-[13px] leading-relaxed text-white/70">
-                本作は戦闘を含むアクションゲーム(フィクション)です。
-              </p>
-              <ul className="mt-3 space-y-2.5 text-[12.5px] leading-relaxed text-white/75">
-                <li>・光/点滅/画面揺れの演出があります。光過敏性発作の経験がある方は注意し、明るい部屋で離れて・休憩しながら遊んでください。異常を感じたら中止し医師へ。</li>
-                <li>・突然の大きな音が出ます。音量にご注意ください(設定で変更可)。</li>
-                <li>・死/戦闘の描写を含みます(過度なグロ表現はありません)。</li>
-                <li>・個人情報は収集しません。設定はブラウザ内にのみ保存。課金なし。</li>
-                <li>・開発中のため不具合が生じる場合があります。自己責任でお楽しみください。</li>
-              </ul>
+              {CHANGELOG.map(entry => (
+                <div key={entry.version} className="mt-4">
+                  <p className="text-[11px] font-mono tabular-nums text-purple-200/60">v{entry.version}</p>
+                  <ul className="mt-1.5 space-y-2 text-[12.5px] leading-relaxed text-white/75">
+                    {entry.items.map((item, i) => (
+                      <li key={i}>・{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
             <div className="px-4 pb-4 pt-2">
               {/* FF7R風: 四角いまま両サイドへフェード＋上下の枠線もフェード(共通 Ff7rButton)。 */}
               <Ff7rButton
                 onClick={(e) => { e.stopPropagation(); agree(); }}
                 className="w-full"
-                ariaLabel="同意して始める"
+                ariaLabel="はじめる"
                 emphasis
                 fade="both"
                 paddingY="0.75rem"
               >
-                同意して始める
+                はじめる
               </Ff7rButton>
             </div>
           </div>
