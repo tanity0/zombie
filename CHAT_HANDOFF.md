@@ -1,48 +1,62 @@
-# チャット引き継ぎ (handoff) — 2026-06-19 時点 / v0.25.590
+# チャット引き継ぎ (handoff) — 2026-07-02 時点 / v0.25.1301
 
-次のチャットはこのファイルと CLAUDE.md / DEVELOPMENT_LOG.md を最初に読むこと。
+このファイルは「開発チャット(実装するチャット)」と「会話するチャット(社長との相談)」が
+別セッションに分かれている前提の**受け渡しファイル**。会話用チャット側は、実装の詳細や
+結果をここ(と DEVELOPMENT_LOG.md)を読んで把握する。次のチャット/エージェントは
+このファイルと CLAUDE.md / DEVELOPMENT_LOG.md を最初に読むこと。
+
+## 運用ルール(今回追加)
+- **開発チャット(このリポジトリで作業するセッション)は、返信・結果・コンテキストを
+  チャット本文だけでなく、この `CHAT_HANDOFF.md` にも書き残す。** 別チャット(会話側)は
+  過去のやり取りを直接読めないため、ここに書いてあることだけが引き継がれる情報。
+- 実装ごとに **DEVELOPMENT_LOG.md** へ詳細(依頼内容・実装・性能スコア・検証結果)を追記する
+  のは従来通り。`CHAT_HANDOFF.md` は「今どのブランチ/バージョンで何をしていて、次に何を
+  すべきか」の**要約・現在地**を常に最新に保つ場所。
+- 何かキリのいい区切り(タスク完了・push後など)で、このファイルの「現在の状態」「このセッ
+  ションでやったこと」を上書き更新する。
 
 ## ブランチ / 配信フロー(重要)
-- **作業ブランチ**: `claude/cool-edison-7b8jrl` … コードはここで開発・コミット・push。
-- **配信(ライブ)ブランチ**: `claude/chat-context-continuity-saxlH` … GitHub Pages がここからデプロイ。
-  - 反映手順: cool-edison に push した後、**`git push origin HEAD:refs/heads/claude/chat-context-continuity-saxlH`**（基本fast-forward）でライブへミラー。
-  - 公開URL: **https://tanity0.github.io/zombie/**（数分後反映・強制リロードで確認）。
-  - Pages workflow(pages.yml)は許可ブランチ限定。chat-context は許可済み。cool-edison から直接デプロイは環境制約でNG。
-- 並行して**別チャット**が同ブランチを進めることがある（例: PNG再圧縮を別セッションが実施）。push前に `git fetch` → 必要ならFF/リベース。**バージョン衝突したら自分の分を繰り上げる**。
+- **作業ブランチ(現在)**: `claude/dev-chat-migration-cskyry` … 「開発チャットをこちらに
+  うつす」指示で開始したセッションのブランチ。コードはここで開発・コミット・push。
+- **配信(ライブ)ブランチ**: `claude/chat-context-continuity-saxlH` … GitHub Pages
+  (`.github/workflows/pages.yml`)はこのブランチと `main` のみが対象。
+  - 公開URL: **https://tanity0.github.io/zombie/**(反映は数分後・強制リロードで確認)。
+  - ライブへ出す場合は作業ブランチ→ `claude/chat-context-continuity-saxlH` へマージ/ミラー
+    する必要がある(社長の明示指示があるまで自動でやらない)。
+- CLAUDE.md 内に古い「ブランチロック」記述(saxlH 固定)があるが、これは以前のチャット
+  引き継ぎ時点のもの。**現行タスクの指示ブランチ(harness/システムが提示するブランチ)を
+  優先**し、実際に何を正とするか迷ったら社長に確認する。
 
-## 必須ルール(CLAUDE.md)
-- **毎push で package.json `version` を bump**。返信のたびに現バージョンを明記（画面右上/左下に表示）。
-- 変更ごとに **DEVELOPMENT_LOG.md** へ追記。
-- 実行コストのある変更は **load score(1/10〜10/10)** を述べる。モバイル優先。
-- **描画(PixiJS)と game logic を分離**: Pixiは store を読むだけ・書かない。当たり判定/壁は `src/world/`（Pixi import禁止）。`useGameLoop` が唯一のシム書き込み。
-- **React 再レンダー規律**: 毎フレーム変わる object/array 全体を購読しない。必要フィールド/派生プリミティブのみ。
-- 障害物規約: 当たり矩形の下辺=足元、スプライトは足元から上へ(anchor 0.5,1)。`footRect`/`resolveAabb`、矩形AABBのみ。
+## 必須ルール(CLAUDE.md 要約)
+- 仕様・挙動・バランス・演出の意図を勝手に変更しない。改善案は先に日本語で提案のみ。
+- 「Aを直して」と言われたら A だけ直す(周辺の定数/挙動は触らない)。
+- 毎push で `package.json` `version` を bump。返信のたびに現バージョンを明記。
+- 変更ごとに DEVELOPMENT_LOG.md へ追記。実行コストのある変更は load score(1/10〜10/10)。
+- 描画(PixiJS)と game logic を分離: Pixi は store を読むだけ・書かない。当たり判定/壁は
+  `src/world/`(Pixi import禁止)。`useGameLoop` が唯一のシム書き込み。
+- React 再レンダー規律: 毎フレーム変わる object/array 全体を購読しない。
+- 障害物規約: 当たり矩形の下辺=足元、スプライトは足元から上へ(anchor 0.5,1)。
 - サブ武器/グレネード等は明示指定がない限りスローモーションを出さない。
+- ファイル編集後は Read で読み直してから完了報告する。
 
-## 型チェックの穴(注意)
-- `npx tsc --noEmit` が**未import識別子(TS2304)を検出しないことがある**（過去 `skillSummonHpMult` 未importでランタイムReferenceErrorがすり抜けた）。
-  ビルドは esbuild で型チェックしない。**新規 import 漏れは目視確認**すること。`npx tsc --noEmit; echo exit:$?` で exit を必ず見る（`| head` でマスクしない）。
-
-## このセッションでやったこと(主要)
-- 死神スキル(reaper): フィニッシュ時、近接スイング範囲内を全員フィニッシュ/ボスは×5。
-- スラッシャー: 「近接命中後、CD中タップで0.3x追撃」(自動でない・専用CD無し)。
-- シールド致命バグ修正(`skillSummonHpMult` 未import→毎フレ例外でループ後半停止)。
-- シールドバッシュ: 叩いた面方向へ押し出し。
-- 投げ(発火)ナイフ 爆発範囲アップ。スケーター 速度3倍/慣性1.2s。
-- ガチャ無料(`GACHA_PULL_COST=0`、暫定)。
-- 囲い系イベント(`activeEvent`): 円コリジョン閉じ込め(`src/world/arena.ts`)、horde/giantbatミニボス、cap10→20、通常スポーナ停止、終了=全滅/時間。giantbatの勝利判定は `fromEvent` 除外。
-- ステージ2: 城マーカー抑制＋クリアアイテム位置マーカー。
-- **キャラ固有スキル**(`player.characterClass`で自動・装備枠非消費): ストライカー=弾切れ近接×1.5 / スカベンジャー=弾薬取得で3s銃+10% / マークスマン=移動3s+で射程+10% / ヘビーガンナー=同一攻撃2体以上で3s爆発範囲+10%(`registerMultiHit`)。ショップからキャラ固有サブ武器を除外(`CHARACTER_SUBWEAPON_KEYS`)。
-- **PHILLガン**: 狙いサークルが敵頭に吸い付き(`phillReticleDX/DY/phillSnapEnemyId`、`movePlayer`で算出)、スナップ中の発砲=即ヘッドショット(通常弾出さない)/非スナップ=通常射撃。照準サークルは環境光の影響外へ(uiLayer・暗幕より上・screen座標)。設置型サークルは据え置き。
-- **容量削減**: 画像=別チャット再圧縮＋段階Aリサイズ(単体スプライト長辺480px=表示×4・コード非改変、8枚 4.68→0.60MB)。音声=不要loop素材削除(10.3MB)＋非リズムBGMを144k再エンコード(41.9→28.3MB)。**dist 89→62MB**。
+## このセッションでやったこと
+- 「開発チャットはこちらにうつす、会話は別チャットになるので結果/コンテキストは受け渡し
+  可能なファイルに書いて返すように」という指示を受け、`CHAT_HANDOFF.md` を現状に更新し、
+  今後この方式(結果をファイルに書いて返す)を運用ルールとして明文化した。
+- 直近の実装内容は DEVELOPMENT_LOG.md 末尾(v0.25.1244前後〜v0.25.1300)を参照:
+  難易度ディレクター③④、SpawnScene、文脈カメラズーム、心音/AIディレクター信号、
+  分布図再構築①②③、PACING_REDESIGN.md(緩急再設計の設計書)とその実装バッチ1/1.5/7、
+  二重階段の明文化など。
 
 ## 現在の状態
-- 最新版: **v0.25.590**。dist≈62MB(音声40.5/PNG22/JS1.2)。
-- 一時ツール: `sharp` / `ffmpeg-static` を **--no-save** で導入済み(package.json/lock 非改変、node_modulesは揮発)。次チャットで画像/音声を触るなら再導入が要る場合あり。
-- アセット原寸/元データは **git履歴**で復元可能（cool-edison: a1a7208 が再圧縮直後）。`references/` `art_src/` に原寸あり。
+- 最新版: **v0.25.1301**(このセッションでの更新分)。
+- 直前のコード変更(社長からの機能追加指示)はまだ無し。このセッションはハンドオフ体制の
+  整備のみ。
+- 未コミットの変更: `package.json`(version bump)、`CHAT_HANDOFF.md`(このファイル)。
 
-## 未対応・任意(やるなら注意点)
-- 段階B 床タイル(`lab-floor*`、最大の容量塊): TilingSprite の `GROUND_TILE_SCALE` がソース寸法前提→縮小は**敷き詰めスケール調整＋実機でバンディング/ズレ確認**が必須。
-- 段階B 背景/壁: 全画面ボケ注意。**タイトル画像は触らない(社長指示)**。
-- 音声さらに: dance-100/120/140.mp3 は**位相キャリブレーション(useGameLoop 981-990の一回スナップ＋ダウンビート補正)**前提なので**触らない**。SFX wav(計261KB)はクリアさ優先で据え置き。
-- ガチャ無料は暫定。本番は `GACHA_PULL_COST=150` に戻す。
+## 次にやること(引き継ぎ)
+- 会話用チャット側から具体的な実装依頼が来たら、このブランチ
+  (`claude/dev-chat-migration-cskyry`)で作業し、完了ごとに DEVELOPMENT_LOG.md に詳細を
+  追記、`CHAT_HANDOFF.md` の「現在の状態」を更新してから push する。
+- ライブ反映が必要な指示が出たら、`claude/chat-context-continuity-saxlH` への反映方法
+  (マージ or ミラーpush)を社長に確認してから実施する。
