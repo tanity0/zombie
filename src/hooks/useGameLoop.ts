@@ -947,6 +947,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const hpFrac = gs.player.maxHealth > 0 ? gs.player.health / gs.player.maxHealth : 0;
         const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused && !isGameTimeStopped();
         setHeartbeatLoop(critical);
+        // PEAK重ねSE+BGMダッキング: トリガーは台本の関所(gate)フェーズ or 紅き月(社長指示で
+        // 「多数の変異体を検知」バナーと同じ源=台本に統一。反応型macroのPEAKでは鳴らさない。
+        // 反応型と台本は別物なので、macro基準だとRELAX表示中に鳴る、が起きる)。屋外のみ。
+        const outdoorGate = gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate';
+        setPeakLayer(!gs.isPaused && gs.player.health > 0 && (outdoorGate || gs.redNight?.phase === 'active'));
       }
 
       // Update FPS counter
@@ -5263,16 +5268,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           rankRef.current.startKills = rgs2.gameStats.enemiesKilled;
           rankRef.current.startLevel = rgs2.player.level;
         }
-        // 関所(襲撃)コールアウト(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
-        // 生きて抜けた瞬間「襲撃を凌いだ」。屋外のみ。最終フェーズ(gate9)は終わりが無いので生還側は出ない。
+        // 関所(襲撃)告知(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
+        // 生きて抜けた瞬間「襲撃を凌いだ」。表示は頭上の浮きテキストではなく、既存の左上イベント
+        // バナー(eventBannerText=「危険変異体出現」等と同じUI)に統一(社長指示)。屋外のみ。
+        // 最終フェーズ(gate9)は終わりが無いので生還側は出ない。
         if (!labTheme && !indoor && gateCalloutRef.current !== rankPhaseKey) {
           const prevKey = gateCalloutRef.current;
           gateCalloutRef.current = rankPhaseKey;
-          const ccx = player.x + player.width / 2, ccy = player.y;
           if (curPhase.kind === 'gate') {
-            useGameStore.getState().spawnCallout(ccx, ccy - 26, '多数の変異体を検知', '#fecaca', { bg: 0xb91c1c });
+            useGameStore.setState({ eventBannerText: '多数の変異体を検知', eventBannerUntil: gameTime + 3500 });
           } else if (prevKey.startsWith('gate')) {
-            useGameStore.getState().spawnCallout(ccx, ccy - 26, '襲撃を凌いだ', '#bbf7d0', { bg: 0x15803d });
+            useGameStore.setState({ eventBannerText: '襲撃を凌いだ', eventBannerUntil: gameTime + 3500 });
             playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
           }
         }
@@ -5928,8 +5934,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             directorRef.current.nextSampleMs = ds.gameTime + 500;
             recordDirectorSample({ t: ds.gameTime / 1000, intensity: st.intensity, performance: st.performance, macro: st.macro });
           }
-          // PEAK重ねSE(社長提供): macroがPEAK、または紅き月中(遷移待ちを挟まず即座に重ねる)。
-          setPeakLayer(!ds.isPaused && (st.macro === 'peak' || ds.redNight?.phase === 'active'));
         }
       }
 

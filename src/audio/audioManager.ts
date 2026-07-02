@@ -366,6 +366,9 @@ let bgmRouted = false;               // is controllable on iOS (element.volume i
 let bgmActive = false;
 let muted = false;
 let bgmVolume = DEFAULT_BGM_VOLUME;
+// PEAK重ねレイヤー中だけ通常BGMを少し落とすダッキング倍率(社長指示)。1=等倍。
+// BGM音量を適用する全経路で bgmVolume × bgmDuck を使う(ユーザー設定のスライダー値は汚さない)。
+let bgmDuck = 1;
 let sfxVolume = DEFAULT_SFX_VOLUME;
 let sfxContext: AudioContext | null = null;
 // 深層域BGM(逆再生版)の状態。別 HTMLAudioElement を並走させ、深層in/outは play/pause で切替。
@@ -466,8 +469,8 @@ const playBgmRobust = () => {
   const token = ++bgmPlayToken;
   const tryPlay = () => {
     if (!bgm || token !== bgmPlayToken || !bgmActive || muted) return;
-    if (bgmGain) bgmGain.gain.value = bgmVolume;
-    else bgm.volume = bgmVolume;
+    if (bgmGain) bgmGain.gain.value = bgmVolume * bgmDuck;
+    else bgm.volume = bgmVolume * bgmDuck;
     void bgm.play().catch(() => {});
   };
   tryPlay();
@@ -577,7 +580,7 @@ const ensureBgmRouting = () => {
   try {
     const source = ctx.createMediaElementSource(bgm);
     bgmGain = ctx.createGain();
-    bgmGain.gain.value = bgmVolume;
+    bgmGain.gain.value = bgmVolume * bgmDuck;
     source.connect(bgmGain);
     bgmGain.connect(ctx.destination);
     bgmRouted = true;
@@ -596,7 +599,7 @@ const playDeepRobust = () => {
   const token = ++deepPlayToken;
   const tryPlay = () => {
     if (deepBgm !== el || token !== deepPlayToken || !deepActive || !bgmActive || muted) return;
-    el.volume = bgmVolume;
+    el.volume = bgmVolume * bgmDuck;
     void el.play().catch(() => {});
   };
   tryPlay();
@@ -898,7 +901,7 @@ export const prepareDeepReverseBgm = () => {
   deepBgm.loop = true;          // 深層滞在が長い前提=ループ
   deepBgm.preload = 'auto';
   (deepBgm as HTMLVideoElement).playsInline = true;
-  deepBgm.volume = bgmVolume;
+  deepBgm.volume = bgmVolume * bgmDuck;
   try { deepBgm.load(); } catch { /* ignore */ } // pause のまま待機(明示playしない)
 };
 
@@ -932,6 +935,7 @@ export const releaseDeepReverseBgm = () => {
 };
 
 const PEAK_LAYER_VOLUME = 0.55; // 私案・実機調整前提
+const PEAK_BGM_DUCK = 0.65;     // PEAK中は通常BGMを少し落とす(社長指示)。レイヤーのフェードと同時にランプ。
 const PEAK_LAYER_FADE_MS = 700;
 
 const ensurePeakLayer = (): HTMLAudioElement | null => {
@@ -946,37 +950,51 @@ const ensurePeakLayer = (): HTMLAudioElement | null => {
   return el;
 };
 
-const fadePeakLayer = (target: number) => {
+// 現在の bgmDuck を通常/深層BGMへ即時適用(フェード中に毎ステップ呼ぶ)。
+const applyDuckedBgmVolume = () => {
+  const v = bgmVolume * bgmDuck;
+  if (bgmGain) bgmGain.gain.value = v;
+  else if (bgm) bgm.volume = v;
+  if (deepBgm) deepBgm.volume = v;
+};
+
+const fadePeakLayer = (target: number, duckTarget: number) => {
   const el = peakLayerEl;
   if (!el) return;
   if (peakLayerFadeTimer != null) { clearInterval(peakLayerFadeTimer); peakLayerFadeTimer = null; }
   const steps = 14;
   const start = el.volume;
+  const startDuck = bgmDuck;
   let i = 0;
   peakLayerFadeTimer = window.setInterval(() => {
     i++;
-    el.volume = Math.max(0, Math.min(1, start + (target - start) * (i / steps)));
+    const t = i / steps;
+    el.volume = Math.max(0, Math.min(1, start + (target - start) * t));
+    bgmDuck = startDuck + (duckTarget - startDuck) * t;
+    applyDuckedBgmVolume();
     if (i >= steps) {
       el.volume = target;
+      bgmDuck = duckTarget;
+      applyDuckedBgmVolume();
       if (peakLayerFadeTimer != null) { clearInterval(peakLayerFadeTimer); peakLayerFadeTimer = null; }
       if (target <= 0) { try { el.pause(); } catch { /* ignore */ } }
     }
   }, PEAK_LAYER_FADE_MS / steps);
 };
 
-// active: PEAK(AIディレクター macro==='peak' または紅き月中)か。呼び出し側(useGameLoop)が判定を持つ。
-// 通常BGMを止めずに重ねる(社長要望: PEAK突入/終了を体で感じさせる)。
+// active: 襲撃(台本の関所フェーズ)中か紅き月中か。呼び出し側(useGameLoop)が判定を持つ。
+// 通常BGMを止めずに重ね、同時にBGMを少しダッキング(社長要望: PEAK突入/終了を体で感じさせる)。
 export const setPeakLayer = (active: boolean) => {
   const shouldPlay = active && !muted && bgmActive;
   if (shouldPlay !== peakLayerActive) {
     peakLayerActive = shouldPlay;
     const el = ensurePeakLayer();
-    if (!el) return;
+    if (!el) { bgmDuck = 1; applyDuckedBgmVolume(); return; }
     if (shouldPlay) {
       void el.play().catch(() => { /* ignore: unlocks on next user gesture like other tracks */ });
-      fadePeakLayer(PEAK_LAYER_VOLUME * bgmVolume);
+      fadePeakLayer(PEAK_LAYER_VOLUME * bgmVolume, PEAK_BGM_DUCK);
     } else {
-      fadePeakLayer(0);
+      fadePeakLayer(0, 1);
     }
   } else if (shouldPlay && peakLayerEl && peakLayerFadeTimer == null) {
     peakLayerEl.volume = PEAK_LAYER_VOLUME * bgmVolume; // 稼働中の音量スライダー変更に追従
@@ -1147,71 +1165,54 @@ export const setHurricaneRumble = (active: boolean) => {
   else stopHurricaneNode();
 };
 
-// --- Heartbeat bed: 瀕死(低HP)中だけ回す心音ループ(社長提供・約1.4s)。ハリケーン鳴動と同じ
-// クロスフェード方式(継ぎ目を重ねてシームレスに)。既存のハリケーン実装は動作確認済みのため触らず、
-// 同じパターンを複製(疎結合・片方の変更がもう片方に波及しない)。useGameLoop から毎フレーム
-// bool で駆動、idempotent なので遷移時だけ実処理が走る(コスト無視できる)。
-type HeartbeatVoice = { source: AudioBufferSourceNode; gain: GainNode; endsAt: number };
+// --- Heartbeat bed: 瀕死(低HP)中だけ回す心音ループ(社長提供・約1.4s)。
+// v0.25.1290: クロスフェード重ね方式(ハリケーン流)だと、リズム素材の拍が重なって
+// 「ブブブブ」と連打に化ける(社長報告)ため、ネイティブループ1本(source.loop=true)+
+// gainのフェードイン/アウトに変更。心音は拍の隙間があるので継ぎ目は自然に馴染む。
+// useGameLoop から毎フレーム bool で駆動、idempotent なので遷移時だけ実処理が走る。
 let heartbeatActive = false;
-let heartbeatVoices: HeartbeatVoice[] = [];
-let heartbeatTimer: number | null = null;
-let heartbeatNextStartAt = 0;
+let heartbeatSource: AudioBufferSourceNode | null = null;
+let heartbeatGain: GainNode | null = null;
+let heartbeatStartTimer: number | null = null;
 const HEARTBEAT_VOLUME = 0.55; // 私案・実機調整前提(まだ緊張を煽りすぎない控えめな音量から開始)
-const HEARTBEAT_CROSSFADE = 0.15;
-const HEARTBEAT_SCHED_AHEAD = 1.0;
+const HEARTBEAT_FADE_S = 0.25;
 
-const scheduleHeartbeatVoice = (context: AudioContext, startAt: number): number | null => {
+const startHeartbeatSource = () => {
+  heartbeatStartTimer = null;
+  if (!heartbeatActive || heartbeatSource) return;
+  const context = ensureSfxContext();
+  if (!context) { heartbeatStartTimer = window.setTimeout(startHeartbeatSource, 150); return; }
+  resumeSfxContext();
   const buffer = sfxBuffers.get('heartbeat');
-  if (!buffer) { loadSfxBuffer('heartbeat'); return null; }
-  const dur = buffer.duration;
-  const xf = Math.min(HEARTBEAT_CROSSFADE, dur / 2);
-  const vol = HEARTBEAT_VOLUME * sfxVolume;
+  if (!buffer) { loadSfxBuffer('heartbeat'); heartbeatStartTimer = window.setTimeout(startHeartbeatSource, 120); return; }
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = buffer;
+  source.loop = true; // 1本だけをネイティブループ(重ね無し=拍が二重にならない)
   source.connect(gain);
   gain.connect(context.destination);
-  gain.gain.setValueAtTime(0, startAt);
-  gain.gain.linearRampToValueAtTime(vol, startAt + xf);
-  gain.gain.setValueAtTime(vol, startAt + dur - xf);
-  gain.gain.linearRampToValueAtTime(0, startAt + dur);
-  try { source.start(startAt); source.stop(startAt + dur + 0.05); } catch { /* ignore */ }
-  heartbeatVoices.push({ source, gain, endsAt: startAt + dur });
-  return dur - xf;
-};
-
-const pumpHeartbeat = () => {
-  heartbeatTimer = null;
-  if (!heartbeatActive) return;
-  const context = ensureSfxContext();
-  if (!context) { heartbeatTimer = window.setTimeout(pumpHeartbeat, 120); return; }
-  resumeSfxContext();
   const now = context.currentTime;
-  heartbeatVoices = heartbeatVoices.filter(v => v.endsAt > now - 0.1);
-  if (heartbeatNextStartAt < now) heartbeatNextStartAt = now;
-  let guard = 0;
-  while (heartbeatNextStartAt < now + HEARTBEAT_SCHED_AHEAD && guard++ < 8) {
-    const advance = scheduleHeartbeatVoice(context, heartbeatNextStartAt);
-    if (advance == null) { heartbeatTimer = window.setTimeout(pumpHeartbeat, 100); return; }
-    heartbeatNextStartAt += advance;
-  }
-  heartbeatTimer = window.setTimeout(pumpHeartbeat, 200);
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(HEARTBEAT_VOLUME * sfxVolume, now + HEARTBEAT_FADE_S);
+  try { source.start(now); } catch { /* ignore */ }
+  heartbeatSource = source;
+  heartbeatGain = gain;
 };
 
 const stopHeartbeatNode = () => {
+  if (heartbeatStartTimer != null) { clearTimeout(heartbeatStartTimer); heartbeatStartTimer = null; }
   const context = sfxContext;
-  const voices = heartbeatVoices;
-  heartbeatVoices = [];
-  heartbeatNextStartAt = 0;
-  if (heartbeatTimer != null) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
-  if (context) {
+  const source = heartbeatSource;
+  const gain = heartbeatGain;
+  heartbeatSource = null;
+  heartbeatGain = null;
+  if (!source) return;
+  if (context && gain) {
     const now = context.currentTime;
-    for (const v of voices) {
-      try { v.gain.gain.cancelScheduledValues(now); v.gain.gain.setTargetAtTime(0, now, 0.12); } catch { /* ignore */ }
-      try { v.source.stop(now + 0.45); } catch { /* ignore */ }
-    }
+    try { gain.gain.cancelScheduledValues(now); gain.gain.setTargetAtTime(0, now, 0.12); } catch { /* ignore */ }
+    try { source.stop(now + 0.45); } catch { /* ignore */ }
   } else {
-    for (const v of voices) { try { v.source.stop(); } catch { /* ignore */ } }
+    try { source.stop(); } catch { /* ignore */ }
   }
 };
 
@@ -1220,7 +1221,7 @@ export const setHeartbeatLoop = (active: boolean) => {
   const shouldPlay = active && !muted;
   if (shouldPlay === heartbeatActive) return; // idempotent: cheap per-frame no-op
   heartbeatActive = shouldPlay;
-  if (shouldPlay) { heartbeatNextStartAt = 0; pumpHeartbeat(); }
+  if (shouldPlay) startHeartbeatSource();
   else stopHeartbeatNode();
 };
 

@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1290 — 心音の連打化修正 / PEAK重ねSEを台本トリガーに統一+BGMダッキング / 告知を左上バナーへ(社長報告3件)
+- **心音「ブブブブ」修正**: クロスフェード重ね方式(ハリケーン流)はリズム素材だと拍が重なって連打に
+  化ける。ネイティブループ1本(`source.loop=true`)+gainフェードイン/アウト(0.25s)へ書き換え。
+  重ねが無くなったので拍が二重にならない。`audioManager.ts`。
+- **PEAK重ねSEのトリガーを台本(関所)に統一**: 従来は反応型AIディレクターの`macro==='peak'`で発火して
+  いたが、反応型と台本は別システムのため「左上の表示はRELAXなのに鳴っている」「検知の文字もRELAXで
+  出る」という不整合が起きていた(社長報告)。重ねSE・BGMダッキング・「多数の変異体を検知」/
+  「襲撃を凌いだ」告知の3つを全て**台本の関所(gate)フェーズ+紅き月**という同一トリガーに統一。
+  反応型macroは表示/リザルト用テレメトリのまま(音は反応型では鳴らさない)。
+- **PEAK中のBGMダッキング**(社長指示): 重ねSEのフェードと同時に通常/深層BGMの音量を×0.65へランプ
+  (`bgmDuck`倍率。ユーザーのBGM音量スライダー設定値は汚さない・全音量適用経路で bgmVolume×bgmDuck)。
+- **告知の表示を左上イベントバナーへ**(社長指示): 「多数の変異体を検知」/「襲撃を凌いだ」を頭上の
+  浮きテキスト(spawnCallout)から、既存の`eventBannerText`(「危険変異体出現」等と同じ左上UI)へ変更。
+  GameHUDのバナー色分け正規表現に「検知」(赤)/「凌いだ」(緑)を追加。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
+
 ## v0.25.1289 — 瀕死心音ループ+PEAK重ねSE(社長提供素材)。AIディレクター信号算出を既定ONに拡張
 - **瀕死心音ループ**(社長提供・約1.4s): `audioManager.ts`にハリケーン鳴動と同じクロスフェード方式
   (`setHeartbeatLoop`)で追加。VitalsOrbが一番濃い色に変わる帯(HP25%以下)で発動、死亡/ポーズ/
