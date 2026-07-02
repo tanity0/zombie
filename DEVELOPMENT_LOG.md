@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1309 — v0.25.1308を取り消し: 緑卵の同時上限は20・バースト量は3に戻す(社長指示: 別物と誤認)
+- 社長「あれ、ちがう。上限は20に戻し、バーストは3個に戻して。バーストはそれではない」。
+  v0.25.1308で変更した「抱卵型(ghost)の緑卵バースト」は、社長が指していた「ばらまきイベント」とは
+  別物だった(誤認識)。`EGGCARRIER_MAX_EGGS`(30→20)・`EGGCARRIER_BURST_COUNT`(30→3)を
+  v0.25.1307時点の値へ完全に戻し、`sim.test.ts`のテストも旧アサートへ戻した(コミット5d770deと
+  該当2ファイルのdiffが空であることを確認済み)。
+- 「ばらまきイベント」が指す実際の対象は次の指示待ち。
+- 検証: typecheck / lint(0, full) / test(189 pass, 1 skip) / build 通過。
+
 ## v0.25.1308 — 緑卵(抱卵型のmine)の同時上限20→30+バーストの量を最大化(社長指示)
 - 社長「緑の卵の画面内MAX値があった方がいい気がしてきた(負荷的に)」→調査したところ**上限は既に
   存在していた**(`EGGCARRIER_MAX_EGGS=20`、ghost feature実装時から)。直前の返信で「現状無い」と
