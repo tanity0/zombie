@@ -205,7 +205,7 @@ checks by cost — do NOT lump them together.
     実装チャットへ渡す。コードは書かない。
 - **チャット間でお互いの会話は見えない。** 決定・未決・実装結果・実機フィードバックの要点は
   必ずファイル(PACING_REDESIGN.md / DEVELOPMENT_LOG.md / AI_DIRECTOR_HANDOFF.md /
-  DISTRIBUTION_REDESIGN.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
+  DISTRIBUTION_REDESIGN.md / CORE_LOOP.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
 - 現在の進行プロジェクト: **PACING_REDESIGN.md(緩急の心電図化)**。どちらのチャットも
   作業開始時にまず PACING_REDESIGN.md(冒頭の「運用」と「★未決事項」)と DEVELOPMENT_LOG.md の
   先頭数エントリを読むこと。
