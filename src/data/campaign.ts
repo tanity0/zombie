@@ -220,6 +220,7 @@ export const STAGES: Stage[] = [
     bgm: 'stage5',        // ステージ5専用BGM(public/audio/stage5.mp3)
     farBackdrop: 'stage5', // 遠景を紅き月の城塞パノラマへ差し替え(社長提供素材)。地形/前景は森のまま(未提供)。
     nearHorizon: 'stage5', // 遠景森2(手前に重ねる帯)= 戦場の残骸(旗/大砲/木箱、社長提供素材)
+    hiddenBoss: 'thor', // 深層域の裏ボス=トール(鬼刀の武人・社長提供素材)
     subs: [],
     main: {
       code: 'M5',

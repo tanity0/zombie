@@ -12,7 +12,7 @@ export const CONTEXT_ZOOM_COUNT_FLOOR = 7;  // この体数までは引かない
 export const CONTEXT_ZOOM_COUNT_CEIL = 20;  // この体数で最大引き
 
 // 大型敵(即・最大引き対象)。パンプキン/screamer は含めない(社長指示)。
-const LARGE_ZOOM_TYPES = new Set<string>(['reaper', 'giantbat', 'mimir', 'jormungand', 'skadi', 'hunter']);
+const LARGE_ZOOM_TYPES = new Set<string>(['reaper', 'giantbat', 'mimir', 'jormungand', 'skadi', 'thor', 'hunter']);
 export const isLargeForZoom = (type: string): boolean => LARGE_ZOOM_TYPES.has(type);
 
 // 目標ズーム(1.0=等倍 → CONTEXT_ZOOM_MIN=最大引き)。数と大型の「大きい方の引き」を採用。

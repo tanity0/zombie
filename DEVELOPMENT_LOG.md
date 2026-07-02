@@ -10,6 +10,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1317 — ステージ5(軍本部)の裏ボス「トール」を新規追加(社長提供素材)
+- 社長提供の「ステージ5の裏ボス」素材(鬼刀の武人・片腕が骨/棘の異形、ドット絵・透明背景・1132×1147)を
+  `public/sprites/thor.png`として保存。
+- 確認の結果、ステージ5には**裏ボスが未設定**だった(ミーミル=1/ヨルムンガルド=3/スカジ=4は
+  それぞれ専用)ため、「差し替え」ではなく**新規追加**と確認した上で実装(社長回答: 新規追加/
+  表示名「トール」)。既存3体は`isHiddenBoss`のコメントどおり「完全に同一仕様、stageで見た目/
+  名前だけ変わる」設計のため、4体目もその型に厳密に乗せた(独自の特殊攻撃は追加しない=通常の
+  3連発+ダッシュのみ。ミーミルのレーザー/ヨルムンガルドの全方位16発/スカジの氷ハザードは
+  各専用コードが`boss.type==='mimir'`等で分岐しているため、'thor'は自動的にそれらを素通りして
+  共通の基本攻撃だけになる=追加コード不要)。
+- 変更ファイル: `types/game.ts`(EnemyType追加)/ `data/campaign.ts`(stage-5に
+  `hiddenBoss:'thor'`)/ `utils/enemyUtils.ts`(ENEMY_STATSにthor追加・`isHiddenBoss`/
+  `isBossType`/`CONSTANT_STRENGTH_TYPES`/`getEnemyFireProfile`/`getEnemyColor`へ算入)/
+  `utils/collisionUtils.ts`・`utils/cameraZoom.ts`(重複定義のisHiddenBossType/LARGE_ZOOM_TYPESへ算入)/
+  `store/gameStore.ts`(`ENEMY_DEATH_LABELS`に「トール」・`isScoreBoss`へ算入)/ `world/pois.ts`
+  (巣の方角=南、残っていた最後のセクター。西=mimir/東=jormungand/北=skadiで南だけ空いていた)/
+  `pixi/pixiTextures.ts`(スプライト登録。他3体は`linear`だがトールはドット絵タッチなので`hunter`と
+  同じ`nearest`)/ `pixi/pixiScene.ts`(`BOSS_SPRITE_FIT`に帯の位置=画像を実測して算出)。
+- **数値は透明化して記録**: HP=11000(mimir 6666→jormungand 7500→skadi 10000の上昇傾向を延長した
+  暫定値)。damage=38・speed=90は他3体と完全一致(仕様共通)。当たり判定の帯=width280×height140
+  (mimirの248×138に近いサイズ感で採用)。いずれも実機調整前提、社長要望があれば即調整可能。
+- テスト: `enemyUtils.test.ts`(hidden boss系3テストにthorのアサートを追加)/ `pois.test.ts`
+  (thorの巣が南=セクター1になることを追加)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (typecheckが全EnemyType switch文の網羅漏れも検出=他に見落としが無いことを確認)。
+
 ## v0.25.1316 — ステージ5(軍本部)の遠景森2(手前帯)を社長提供の戦場残骸素材に差し替え
 - 社長提供の「ステージ5の遠景森2」素材(旗/大砲/木箱の戦場残骸、透明背景のカットアウト・
   1280×349・RGBA)を`public/backgrounds/stage5-near-horizon.png`として保存。

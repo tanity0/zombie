@@ -148,13 +148,16 @@ describe('isBossType', () => {
   it('counts the hidden bosses as bosses', () => {
     expect(isBossType('mimir')).toBe(true);
     expect(isBossType('jormungand')).toBe(true);
+    expect(isBossType('thor')).toBe(true);
   });
 });
 
-describe('hidden boss (mimir/jormungand) spec', () => {
-  it('isHiddenBoss flags only the two hidden bosses', () => {
+describe('hidden boss (mimir/jormungand/skadi/thor) spec', () => {
+  it('isHiddenBoss flags only the four hidden bosses', () => {
     expect(isHiddenBoss('mimir')).toBe(true);
     expect(isHiddenBoss('jormungand')).toBe(true);
+    expect(isHiddenBoss('skadi')).toBe(true);
+    expect(isHiddenBoss('thor')).toBe(true);
     expect(isHiddenBoss('giantbat')).toBe(false);
     expect(isHiddenBoss('reaper')).toBe(false);
   });
@@ -164,15 +167,19 @@ describe('hidden boss (mimir/jormungand) spec', () => {
     const mimir = spawnEnemyAt('mimir', 0, 0, 0);
     const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
     const skadi = spawnEnemyAt('skadi', 0, 0, 0);
+    const thor = spawnEnemyAt('thor', 0, 0, 0);
     expect(mimir.maxHealth).toBe(6666);
     expect(jorm.maxHealth).toBe(7500);
     expect(skadi.maxHealth).toBe(10000);
-    // ダメージは giant の2倍据え置き。歩行速度は社長指示で少し上げた(70→90 base)=giant より速い。3裏ボスは同速。
+    expect(thor.maxHealth).toBe(11000);
+    // ダメージは giant の2倍据え置き。歩行速度は社長指示で少し上げた(70→90 base)=giant より速い。4裏ボスは同速。
     expect(jorm.damage).toBe(giant.damage * 2);
     expect(mimir.damage).toBe(giant.damage * 2);
+    expect(thor.damage).toBe(giant.damage * 2);
     expect(jorm.speed).toBeGreaterThan(giant.speed);
     expect(mimir.speed).toBe(jorm.speed);
     expect(skadi.speed).toBe(jorm.speed);
+    expect(thor.speed).toBe(jorm.speed);
   });
   it('hitbox = a wide footprint strip (3x body is visual-only, decoupled in pixi)', () => {
     // 社長指示で「当たり判定=足元の四角(帯)」に変更。巨体(約3倍)の見た目は pixi の BOSS_SPRITE_FIT で
@@ -180,15 +187,19 @@ describe('hidden boss (mimir/jormungand) spec', () => {
     const giant = spawnEnemyAt('giantbat', 0, 0, 0);
     const jorm = spawnEnemyAt('jormungand', 0, 0, 0);
     const mimir = spawnEnemyAt('mimir', 0, 0, 0);
+    const thor = spawnEnemyAt('thor', 0, 0, 0);
     // footprint は通常ボス(giant)より広い接地幅を持つ。
     expect(jorm.width).toBeGreaterThanOrEqual(giant.width * 3); // 346 >= 180
     expect(mimir.width).toBeGreaterThanOrEqual(giant.width * 2); // 165 >= 120
+    expect(thor.width).toBeGreaterThanOrEqual(giant.width * 2); // 280 >= 120
     // 帯は平たい(高さ<幅)=足元の四角であることを担保。
     expect(jorm.height).toBeLessThan(jorm.width);
     expect(mimir.height).toBeLessThan(mimir.width);
+    expect(thor.height).toBeLessThan(thor.width);
   });
   it('exposes a fire profile (bullets driven by the controller)', () => {
     expect(getEnemyFireProfile(spawnEnemyAt('jormungand', 0, 0, 0))).not.toBeNull();
     expect(getEnemyFireProfile(spawnEnemyAt('mimir', 0, 0, 0))).not.toBeNull();
+    expect(getEnemyFireProfile(spawnEnemyAt('thor', 0, 0, 0))).not.toBeNull();
   });
 });

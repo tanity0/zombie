@@ -50,6 +50,9 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   mimir:      { width: 248, height: 138, speed: 90, health: 6666,  damage: 38, experienceValue: 0 },
   jormungand: { width: 519, height: 90,  speed: 90, health: 7500,  damage: 38, experienceValue: 0 },
   skadi:      { width: 456, height: 102, speed: 90, health: 10000, damage: 38, experienceValue: 0 },
+  // 裏ボス(ステージ5=トール)。仕様は他の裏ボスと完全共通(speed/damageは据え置き)。耐久は既存3体の
+  // 上昇傾向(6666→7500→10000)を継続する暫定値=実機調整前提(社長要望あれば調整可)。
+  thor:       { width: 280, height: 140, speed: 90, health: 11000, damage: 38, experienceValue: 0 },
   // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
   // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
   //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
@@ -63,13 +66,13 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
 };
 
 // 裏ボス共通判定(完全に同一仕様。stage で見た目/名前だけ変わる)。
-export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi';
+export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor';
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
 export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
-  t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'hunter';
+  t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'hunter';
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
@@ -216,7 +219,7 @@ const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5
 // 青1.1/紫1.2/赤1.3(+10%刻み)。描画は判定箱にフィットするので絵も自動で大きくなる。
 const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = { blue: 1.1, purple: 1.2, red: 1.3 };
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi']);
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -435,7 +438,7 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
   }
   // 裏ボス: 弾の性能(damage/speed/size)はここで定義するが、発射タイミングは
   // useGameLoop の専用コントローラ(3連発/全方位16発)が直接制御する(interval/range は使わない)。
-  if (enemy.type === 'mimir' || enemy.type === 'jormungand' || enemy.type === 'skadi') {
+  if (enemy.type === 'mimir' || enemy.type === 'jormungand' || enemy.type === 'skadi' || enemy.type === 'thor') {
     return { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 };
   }
   return null;
@@ -498,6 +501,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'mimir':    return '#7a3b5e';  // 眼の血色がかった紫(裏ボス)
     case 'jormungand': return '#13204a'; // 深い蛇の藍(裏ボス)
     case 'skadi':    return '#bfe6ff';  // 氷の蒼白(裏ボス)
+    case 'thor':     return '#8b1a1a';  // 血の赤褐色(裏ボス・トール)
     case 'hunter':   return '#d9cfc4';  // 蒼白い肉色(ハンター変異体)
     case 'screamer': return '#8fae4f';  // くすんだ毒々しい緑(叫喚型)
     default:         return '#dc2626';

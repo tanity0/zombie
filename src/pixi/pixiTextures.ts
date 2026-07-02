@@ -242,6 +242,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'mimir', scaleMode: 'linear' as const },
       { name: 'jormungand', scaleMode: 'linear' as const },
       { name: 'skadi', scaleMode: 'linear' as const },
+      // トール(ステージ5)はドット絵タッチの素材なので、他の裏ボス(linear)と違い nearest で
+      // ピクセルの輪郭を保つ(hunterと同じ扱い)。
+      { name: 'thor', scaleMode: 'nearest' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

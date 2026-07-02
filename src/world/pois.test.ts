@@ -31,11 +31,13 @@ describe('POI sector mapping', () => {
 });
 
 describe('boss lair + reveal', () => {
-  it('jormungand lair is east (sector 0), mimir is west (sector 2)', () => {
+  it('jormungand lair is east (sector 0), mimir is west (sector 2), thor is south (sector 1)', () => {
     const j = bossLairPos('jormungand')!;
     const m = bossLairPos('mimir')!;
+    const t = bossLairPos('thor')!;
     expect(poiSectorIndex(j)).toBe(0);
     expect(poiSectorIndex(m)).toBe(2);
+    expect(poiSectorIndex(t)).toBe(1);
   });
   it('a POI is revealed only when its sector base is captured', () => {
     const pois = getRunPois('jormungand');

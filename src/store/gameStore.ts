@@ -643,6 +643,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   mimir: 'ミーミル',
   jormungand: 'ヨルムンガルド',
   skadi: 'スカジ',
+  thor: 'トール',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
@@ -1051,7 +1052,7 @@ const inertiaAlpha = (deltaTime: number, tau: number): number =>
 
 // スコア集計用のエリート/ボス判定(gameplayの isBossType とは別。社長指示=elite:pumpkin / boss:giantbat のみ)。
 const isScoreElite = (t: string): boolean => t === 'pumpkin';
-const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'hunter';
+const isScoreBoss = (t: string): boolean => t === 'giantbat' || t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'hunter';
 const countScoreEliteBoss = (enemies: { type: string }[]): { elite: number; boss: number } => ({
   elite: enemies.reduce((n, e) => n + (isScoreElite(e.type) ? 1 : 0), 0),
   boss: enemies.reduce((n, e) => n + (isScoreBoss(e.type) ? 1 : 0), 0),

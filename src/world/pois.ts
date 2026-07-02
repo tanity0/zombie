@@ -39,6 +39,7 @@ const BOSS_LAIR: Partial<Record<EnemyType, { angle: number; dist: number }>> = {
   mimir: { angle: Math.PI, dist: 9000 },        // ステージ1=西(base-2 の方角)
   jormungand: { angle: 0, dist: 9000 },         // ステージ3=東(base-0 の方角)
   skadi: { angle: -Math.PI / 2, dist: 9000 },   // ステージ4=北(base-3 の方角)
+  thor: { angle: Math.PI / 2, dist: 9000 },     // ステージ5=南(base-1 の方角。残る最後の方角)
 };
 
 // 裏ボスの巣のワールド座標(未定義タイプは null)。
