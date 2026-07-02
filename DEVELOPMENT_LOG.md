@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1318 — バッチ3.5(チャフ配合+盤面在庫)を新設・社長承認(設計チャットFable・設計のみ)
+- 社長との会議で決定し、`PACING_REDESIGN.md`に§バッチ3.5として実装可能な粒度で記載。
+  **実装チャットの次の一手はバッチ3.5**。
+- **3.5-A チャフ配合**: チャフ3種の役割を社長が定義(bat=爽快/skeleton=刻み/zombie=壁・
+  クリ前提の固さで経験値稼ぎに不向き)。`SpawnScene.mix?`(比率)を新設し、mix指定シーンでは
+  チャフ抽選を役割配合で直接引く(成り行きのエリア重み任せをやめる)。RELAX=bat70/skel25/zom5
+  (バット中心でないとスピード感を失う)、射線関所=壁+弾コンボでzom40、等(叩き台・実機調整前提)。
+  緩のゾンビは「群れに1体」枠(完全0にはしない・社長指示)。関所内はpressureで配合を連続シフト
+  (テンポに続く第二の連続レバー)。ゾンビの進行方向バイアス(道塞ぎ)はv2で保留。
+  `src/utils/chaffMix.ts`新設+`?mix=0`で従来復帰。
+- **3.5-B 盤面在庫(boardDebt)**: 「捌き切れていないのに次のフェーズ/イベントが来る=火に油」への
+  対処(社長指摘)。`debtFor(enemies)=Σ型の重さ×残りHP比`(bat0.5〜パンプキン6・ボス除外)を新設し、
+  ①イベント発火ゲート(debt>12で延期)②配役投入(直前の配役存命中は次を出さない+debt>10延期)
+  ③湧きテンポ(debt超過で連続イーズ・上限×1.6)④関所の登り(debt>10でrisingBlocked)の4箇所で
+  「投入を絞る方向のみ」に使う。台本PHASESの時刻=骨格は不変。`DirectorSample`にdebt線を追加、
+  `?debt=0`で全無効。
+- 検証: doc+version変更のみ(コード不変)。
+- 負荷スコア(参考・実装時): 1/10(抽選時の重み計算+スポーン判定時の敵配列走査のみ)。
+
 ## v0.25.1317 — ステージ5(軍本部)の裏ボス「トール」を新規追加(社長提供素材)
 - 社長提供の「ステージ5の裏ボス」素材(鬼刀の武人・片腕が骨/棘の異形、ドット絵・透明背景・1132×1147)を
   `public/sprites/thor.png`として保存。
