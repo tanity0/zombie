@@ -111,14 +111,23 @@ const DDA_TOUGH_TYPES = new Set<EnemyType>(['werewolf', 'pumpkin', 'lich']);
 const DDA_VARIETY_ESC_K = 1.8; // esc=1 で重い型の重み ×2.8(私案)
 const SCENE_FEATURED_BOOST = 2.5; // シーンで featured 指定した型の重み倍率(乗算バイアス・私案)
 const SCENE_SUPPRESSED_MULT = 0.4; // シーンで suppressed 指定した型の重み倍率(社長指示: 緩の時のゾンビ抑え・私案)
+// DISTRIBUTION_REDESIGN.md①: featured指定された型は、そのシーン中だけエリア制限(重み0)を無視
+// できる床(0.5)を持つ。無双(mowdown)シーンのbat/skeleton等、エリアで本来出現不可の型をシーンの
+// 演出として出すための特例。featuredでない型は従来どおり(エリア重み0なら候補外)。
+const FEATURED_MIN_AREA_WEIGHT = 0.5;
 // 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算、featured でシーンの強調型に重み加算。
 // featured/suppressed は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
+// ただし featured は FEATURED_MIN_AREA_WEIGHT の床を持つ(上記)。
 const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = []): EnemyType => {
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
-  // baseWeight × エリア補正 ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)。補正0(=そのエリアでは出現不可)は除外。
+  // baseWeight × エリア補正(featuredは床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
     .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
-    .map(([type, w]) => ({ type, weight: w * ((AREA_WEIGHT[type]?.[area]) ?? 0) * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) }))
+    .map(([type, w]) => {
+      const areaW = (AREA_WEIGHT[type]?.[area]) ?? 0;
+      const effAreaW = featured.includes(type) ? Math.max(areaW, FEATURED_MIN_AREA_WEIGHT) : areaW;
+      return { type, weight: w * effAreaW * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) };
+    })
     .filter(e => e.weight > 0);
   if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
@@ -308,7 +317,10 @@ const buildEnemy = (
     distanceZone,
     difficultyRank,
     difficultyMultiplier: diff,
-    colorTier
+    colorTier,
+    // DISTRIBUTION_REDESIGN.md①: このエリアでは本来出現しない型(featured床/保証出現などで選ばれた)
+    // なら、距離リサイクルの「エリア不適合→強制回収」を免除するフラグを立てる。
+    ...(isValidForArea(type, area) ? {} : { sceneSpawn: true })
   };
 };
 

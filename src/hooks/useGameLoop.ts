@@ -5695,7 +5695,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // にもかかわらず5秒後に強制回収されていた。新規湧きの出現エリア制限(AREA_WEIGHT)自体は不変。
           const preserveEnemyState = enemy.type === 'reaper' || enemy.type === 'ghost' || isBossType(enemy.type);
           const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
-          const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent
+          // DISTRIBUTION_REDESIGN.md①: sceneSpawn(台本のfeatured床/保証出現などでエリア不問に選ばれた)
+          // も強制回収の対象外(画面外に離れた時の通常回収 OFFSCREEN_RECYCLE_MARGIN は従来どおり効く)。
+          const areaInvalid = !preserveEnemyState && !enemy.isWave && !enemy.fromEvent && !enemy.sceneSpawn
             && aliveMs > 5000
             && !isValidForArea(enemy.type, playerAreaIdx);
           if ((!offRect && !areaInvalid) || waveProtected) return enemy;

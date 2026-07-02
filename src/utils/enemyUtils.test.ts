@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile } from './enemyUtils';
-import type { Enemy, Player, Summon } from '../types/game';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy } from './enemyUtils';
+import type { Enemy, Player, Summon, GameBounds } from '../types/game';
 
 const mkEnemy = (x: number, y: number): Enemy =>
   ({ x, y, width: 32, height: 32 } as unknown as Enemy);
@@ -8,6 +8,7 @@ const mkPlayer = (x: number, y: number): Player =>
   ({ x, y, width: 32, height: 32 } as unknown as Player);
 const mkSummon = (x: number, y: number): Summon =>
   ({ x, y, width: 24, height: 24, kind: 'normal' } as unknown as Summon);
+const BOUNDS: GameBounds = { width: 800, height: 600 };
 
 describe('areaIndexForPos', () => {
   it('returns area by radial distance from the origin', () => {
@@ -49,6 +50,43 @@ describe('AREA_WEIGHT v2 (分布図再構築・DISTRIBUTION_REDESIGN.md②)', ()
     expect(isValidForArea('pumpkin', 0)).toBe(false);
     expect(isValidForArea('pumpkin', 1)).toBe(false);
     expect(isValidForArea('pumpkin', 2)).toBe(false);
+  });
+});
+
+describe('scene featured floor (DISTRIBUTION_REDESIGN.md①)', () => {
+  // area 0 (origin): pumpkin/werewolf are normally weight-0 (isValidForArea === false).
+  const area0Player = mkPlayer(0, 0);
+
+  it('without featured, an area-gated type is never picked', () => {
+    for (let i = 0; i < 200; i++) {
+      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, []);
+      expect(e.type).not.toBe('pumpkin');
+      expect(e.type).not.toBe('werewolf');
+    }
+  });
+
+  it('with featured, an area-gated type can be picked (floor bypasses the area gate)', () => {
+    const types = new Set<string>();
+    for (let i = 0; i < 300; i++) {
+      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin']);
+      types.add(e.type);
+    }
+    expect(types.has('pumpkin')).toBe(true);
+  });
+
+  it('flags sceneSpawn on area-invalid picks so distance-recycle can exempt them, but not on normal picks', () => {
+    let sawFlaggedPumpkin = false;
+    for (let i = 0; i < 300; i++) {
+      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin']);
+      if (e.type === 'pumpkin') {
+        expect(e.sceneSpawn).toBe(true);
+        sawFlaggedPumpkin = true;
+      } else {
+        // bat/skeleton/zombie are all naturally valid in area 0 — must NOT be flagged.
+        expect(e.sceneSpawn).toBeUndefined();
+      }
+    }
+    expect(sawFlaggedPumpkin).toBe(true);
   });
 });
 

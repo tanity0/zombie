@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1295 — 分布図再構築②: シーンfeaturedがエリア制限を突破可能に(無双シーンの骨抜き解消)DISTRIBUTION_REDESIGN.md①実装
+- `DISTRIBUTION_REDESIGN.md`の変更①を実装。
+- **問題**: `AREA_WEIGHT`でbatはエリア2以降・skeletonはエリア3以降が重み0。featuredは乗算バイアス
+  (×2.5)のため 0×2.5=0 のままで、中盤以降(プレイヤーはほぼエリア2+)の無双シーン(SCENE_MOWDOWN:
+  bat/skeleton主役)が「弱雑魚を高速大量」を出せていなかった。relief-pumpkin等も同様。
+- **修正**: `enemyUtils.ts`の`selectEnemyType`に`FEATURED_MIN_AREA_WEIGHT=0.5`の床を追加。
+  featured指定された型だけ、エリア重みが0でも床0.5で候補に残る(featuredでない型は従来どおり)。
+- **距離リサイクルとの整合**(ghost消失バグの再発防止): エリア外の型をそのまま湧かせると既存の
+  「エリア不適合→5秒で強制回収」に即消される。`Enemy`型に`sceneSpawn?: boolean`を追加し、
+  `buildEnemy`で選ばれた型が`isValidForArea(type, spawnArea)===false`の時だけ立てる(通常スポーン
+  は従来どおり無フラグ=挙動不変)。`useGameLoop.ts`のエリア不適合強制回収の条件に`!enemy.sceneSpawn`
+  を追加(reaper/ghost/boss/isWave/fromEventの既存除外と同列)。画面外に離れた通常回収
+  (OFFSCREEN_RECYCLE_MARGIN)は従来どおり効くので、シーンが終われば自然に掃ける。
+  副次効果: 既存の「保証出現(プラント1分/犬3分・エリア不問)」も同じ仕組みで正しく免除されるようになった
+  (従来は保証出現がエリア0/1で出た場合、5秒で消えうる潜在バグがあった)。
+- `enemyUtils.test.ts`: featured無しではエリア不適合型が選ばれないこと、featured有りでは選ばれ得る
+  こと、選ばれた時だけ`sceneSpawn`が立ち他は立たないことを新規3件で検証(各300試行)。
+- 検証: typecheck / lint(0, full) / test(144 pass, 1 skip) / build 通過。
+
 ## v0.25.1294 — 分布図再構築①: AREA_WEIGHT v2(全エリアにチャフを残す)DISTRIBUTION_REDESIGN.md②実装
 - `DISTRIBUTION_REDESIGN.md`の変更②を実装(設計書の推奨順どおり最初に着手)。
 - `enemyUtils.ts`の`AREA_WEIGHT`を差し替え: bat/skeletonが深部(エリア3/4)でも重み0にならず

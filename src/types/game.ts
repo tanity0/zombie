@@ -279,6 +279,11 @@ export interface Enemy {
   // 色付き(影の色)個体。距離が離れると確率で付与され、色ごとに難易度倍率が上がる(青<紫<赤)。
   // 見た目の本体は同じで、足元の影だけが色づく(装飾は廃止)。ジャイアント/死神/特別敵には付かない。
   colorTier?: EnemyColorTier;
+  // DISTRIBUTION_REDESIGN.md①: 台本シーンのfeatured床(FEATURED_MIN_AREA_WEIGHT)で、本来その
+  // エリアでは出現しない型が選ばれた時に立つ。距離リサイクルの「エリア不適合→強制回収」を免除する
+  // (免除しないとシーンで出した直後に5秒で消される=ghost消失バグと同型の再発)。画面外に離れた時の
+  // 通常回収(OFFSCREEN_RECYCLE_MARGIN)は従来どおり効く=シーンが終われば自然に掃ける。
+  sceneSpawn?: boolean;
   // 制圧イベント: この敵がどの拠点の攻撃者か(baseSites[].id)。未設定=通常敵。
   baseId?: string;
   // 死神(深奥リスク)システム: 完全出現してプレイヤーを追う死神。速度は毎フレ player.speed×1.2 に追従。
