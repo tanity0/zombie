@@ -520,6 +520,15 @@ const MIMIR_LASER_VIS_RANGE = 2600;     // 描画上のビーム長(px)
 const MIMIR_LASER_VIS_HALFWIDTH = 34;   // 描画上のビーム半太さ(当たり判定と同じ)
 const MIMIR_LASER_WINDUP_MS = 3000;     // 溜め時間(進行度の算出用・useGameLoop と一致)
 const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェード用・useGameLoop と一致)
+// トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
+const THOR_ISSEN_WINDUP_MS = 3000;      // 一閃の溜め時間(進行度の算出用)
+const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの所要時間(フェード用)
+const THOR_ISSEN_VIS_HALFWIDTH = 60;    // 一閃の描画半太さ(当たり判定と同じ・通常の2倍・社長指示)
+const THOR_ISSEN_VIS_RANGE = 620;       // 一閃のライン長さ(useGameLoop THOR_ISSEN_RANGE と一致)
+const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
+const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
+const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
+const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
@@ -1051,6 +1060,9 @@ export class PixiScene {
   private bossBehindAlpha = 1; // 裏ボスの「裏回り透け」alpha を滑らかに追従させる実値(スナップ回避)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
+  // トール(ステージ5裏ボス)の一閃・溜め中ライン描画用: このフレームのプレイヤー座標をキャッシュ
+  // (drawEnemy は enemy 単位で呼ばれ player を受け取らないため)。syncActors 冒頭で更新。
+  private curPlayerForThor: { x: number; y: number; width: number; height: number } | null = null;
 
   constructor(layers: SceneLayers) {
     this.L = layers;
@@ -4220,6 +4232,7 @@ export class PixiScene {
 
   private syncActors(player: Player, enemies: Enemy[], gameTime: number, now: number) {
     this.enemyCount = enemies.length;
+    this.curPlayerForThor = player;
 
     // Player
     if (!this.playerView) this.playerView = this.makeActor();
@@ -5047,6 +5060,65 @@ export class PixiScene {
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
+      }
+    }
+    // トール(ステージ5裏ボス)の独自攻撃(社長指示): 一閃/払いの赤ライン予告+実行、ジャンプ攻撃の着地予告。
+    if (e.type === 'thor') {
+      if (e.bossState === 'issen-windup') {
+        // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向はまだロックされていない=生存プレイヤーへ追従。
+        const blink = 0.5 + 0.5 * Math.sin(now / 260);
+        view.sprite.tint = ((255 << 16) | (Math.round(255 * (1 - blink)) << 8) | Math.round(255 * (1 - blink)));
+        const pl = this.curPlayerForThor;
+        if (pl) {
+          const ppx = pl.x + pl.width / 2, ppy = pl.y + pl.height / 2;
+          let ux = ppx - cx, uy = ppy - cy;
+          const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+          const ex2 = cx + ux * THOR_ISSEN_VIS_RANGE, ey2 = cy + uy * THOR_ISSEN_VIS_RANGE;
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
+          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: (2 + 7 * prog) * 2, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: (1 + 2 * prog) * 2, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        }
+      } else if (e.bossState === 'issen-dash') {
+        view.sprite.tint = 0xffffff;
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
+        const fade = Math.min(1, life / 0.25 + 0.3); // 一閃は短寿命なので序盤から視認できる濃さを確保
+        const flick = 0.9 + 0.1 * Math.sin(now / 40);
+        const w = THOR_ISSEN_VIS_HALFWIDTH * 2 * flick;
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
+      } else if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (e.bossState === 'harai-windup') {
+          view.sprite.tint = 0xffffff;
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_WINDUP_MS));
+          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        } else {
+          const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
+          const fade = Math.min(1, life / 0.3 + 0.3);
+          const w = THOR_HARAI_VIS_HALFWIDTH * 2;
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
+        }
+      } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
+        // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。
+        view.sprite.tint = 0xffffff;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (e.bossState === 'jump-attack') {
+          const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+          const R = THOR_JUMP_RADIUS;
+          o.ellipse(tx, ty, R, R * 0.55).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
+          o.ellipse(tx, ty, R, R * 0.55).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+        }
+      } else {
+        view.sprite.tint = 0xffffff;
       }
     }
     this.drawHealthBar(o, e);

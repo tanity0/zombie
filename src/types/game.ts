@@ -332,11 +332,20 @@ export interface Enemy {
   homeY?: number;
   // 裏ボス(mimir/jormungand)専用の状態機械(useGameLoop の専用コントローラが駆動)。
   // 通常の updateEnemies の追跡AIからは除外され、ここで動き/攻撃/帰巣を管理する。
-  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire';
+  // トール(ステージ5)専用の追加ステート(社長指示・独自攻撃。弾もダッシュも使わない):
+  //  issen-windup/issen-dash = 一閃(3秒溜め→赤ライン上のみ判定の高速移動) /
+  //  tsuki-windup/tsuki = 突き(1秒停止→ダッシュ射程・幅の刺突) /
+  //  harai-windup/harai = 払い(旋回中のみ・逆回転1秒+並行な赤ライン→横払い) /
+  //  jump-windup/jump-attack/jump-recover = ジャンプ攻撃(遠距離から連続被弾で間合いを詰める) /
+  //  counter-leap = カウンター成立時、近接距離ギリギリ外へ高速後退。
+  bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
+    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
+  // トール専用: 旋回方向(1=時計回り/既定 -1=逆回転)。払いの予告中だけ一時的に反転する。
+  bossCircleDir?: number;
 }
 
 export type SummonKind = 'normal' | 'rare';

@@ -118,7 +118,9 @@ export type SfxKey =
   | 'base-capture'   // 拠点開放SE
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
-  | 'gate-clear';    // 強襲(関所)を生きて凌いだ時の突破ジングル
+  | 'gate-clear'     // 強襲(関所)を生きて凌いだ時の突破ジングル
+  | 'thor-sweep'     // 裏ボス トールの払い(横払い)SE(社長提供)
+  | 'thor-thrust';   // 裏ボス トールの突きSE(社長提供)
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -337,6 +339,9 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },
   // スカジ氷塊破裂/氷刃命中のSE(社長提供)。
   'skadi-ice': { src: `${import.meta.env.BASE_URL}audio/sfx/skadi-ice.mp3`, volume: 1.0, minIntervalMs: 60 },
+  // トール(ステージ5裏ボス)の払い/突きSE(社長提供)。攻撃実行タイミングで1回。
+  'thor-sweep': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-sweep.mp3`, volume: 1.0, minIntervalMs: 60 },
+  'thor-thrust': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-thrust.mp3`, volume: 1.0, minIntervalMs: 60 },
   // ヘリコプター登場シーンのSE(社長提供・登場開始時に1回)。飛び去り(末尾)でフェードアウト(社長指示)。
   // ★元クリップは長尺(数十秒)。maxDurationMs 無しだと fadeOutMs はクリップ末尾(数十秒後)に掛かり
   //   登場シーン(約3秒)中には聞こえない=「フェードアウトしない」。登場尺に合わせて上限を切り、

@@ -34,7 +34,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT
+  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, MELEE_RADIUS
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -475,6 +475,46 @@ const BOSS_STUN_SPEED_MULT = 0.5;                    // 気絶中は止まらず
 const BOSS_TURN_RESPONSE = 3.2;                      // 移動の慣性。目標速度へ寄せる係数(小さいほど慣性大=ぬるっと曲がる)
 const BOSS_DASH_HOMING = 0.05;                       // ダッシュ中の弱いホーミング量/frame(基本は直進・少しだけプレイヤーへ寄せる)
 const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっくり後退り(ターゲットから離れる)する速度倍率(社長指示)
+// --- 裏ボス トール(ステージ5)専用の独自攻撃(社長指示 v0.25.1318〜) --------------------------
+// 前提(社長指示): 弾は撃たない・ダッシュもしない(既存burst/radial/dash抽選から除外し、専用の
+// 状態機械のみを回す)。すべての攻撃がカウンター可能(各attackの実行中にcounterWindowEndを判定)。
+// 数値は「同じ射程/幅=ダッシュ」等の指示から妥当な値を採用(既存の裏ボスdashに可視ラインが無かった
+// ため、werewolf系の突進テレグラフ(6px下地+2px芯)を「ダッシュのライン」の基準として2倍/等倍を適用)。
+// 実機調整前提でDEVELOPMENT_LOG.mdに透明化して記録。
+const THOR_ORBIT_MARGIN_PX = 40;             // 近接距離(MELEE_RADIUS)より少し外側で旋回開始(「絶妙に入らない」の余白)
+const THOR_ORBIT_DIST = MELEE_RADIUS + THOR_ORBIT_MARGIN_PX; // 旋回時の目標距離(中心間)
+const THOR_ORBIT_APPROACH_SLACK = 60;        // この分だけ余裕を見て「接近」⇄「旋回」を切り替える(ハンチング防止)
+const THOR_ORBIT_SPEED_MULT = 2 / 3;         // 旋回速度=通常の2/3(社長指示)
+const THOR_ORBIT_RADIUS_CORRECT = 4;         // 旋回半径をTHOR_ORBIT_DISTへ寄せる補正の速さ(大きいほど素早く戻る)
+const THOR_ACTION_MIN_MS = 2200;             // 攻撃選択インターバル(最短・満タンHP)
+const THOR_ACTION_MAX_MS = 4200;             // 攻撃選択インターバル(最長・満タンHP)
+const THOR_LOWHP_FRAC = 0.4;                 // このHP割合以下で頻度アップ開始(社長指示)
+const THOR_LOWHP_INTERVAL_MULT = 0.55;       // 低HP時のインターバル倍率(短縮=高頻度化)
+
+const THOR_ISSEN_WINDUP_MS = 3000;           // 一閃: 3秒溜め・赤く点滅して静止(社長指示)
+const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所要時間
+const THOR_ISSEN_RANGE = 620;                // ラインの長さ=終着点までの距離(BOSS_DASH_SPEED_MULT×3秒相当を採用)
+const THOR_ISSEN_HALF_WIDTH = 60;            // 当たり判定=赤ライン半幅(通常突きの2倍・社長指示)
+
+const THOR_TSUKI_WINDUP_MS = 1000;           // 突き: 1秒停止(社長指示)
+const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込み)の所要時間
+const THOR_TSUKI_RANGE = THOR_ISSEN_RANGE;   // ダッシュと同じ射程(社長指示=一閃と同じ「ダッシュ射程」を採用)
+const THOR_TSUKI_HALF_WIDTH = THOR_ISSEN_HALF_WIDTH / 2; // ダッシュと同じ幅(一閃の半分=通常幅)
+
+const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 逆回転+並行ライン表示1秒(社長指示)
+const THOR_HARAI_RANGE = THOR_ISSEN_RANGE;   // ダッシュと同じ距離分のライン(社長指示)
+const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH;
+const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
+
+const THOR_JUMP_TRIGGER_HITS = 3;            // 遠距離から連続で被弾すると間合いを詰める(社長指示を具体化)
+const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
+const THOR_JUMP_TRIGGER_RANGE = THOR_ORBIT_DIST * 1.8; // この距離より遠くからの被弾だけを「遠距離チクチク」として数える
+const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
+const THOR_JUMP_MS = 620;                    // 滞空時間(ハンターの速いジャンプ感を踏襲)
+const THOR_JUMP_RADIUS = 70;                 // 着地爆風半径(pumpkinの54よりやや広め=ボス級)
+const THOR_JUMP_RECOVER_MS = 900;            // 着地後の硬直
+
+const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // 屋内の固定敵が「画面外」と見なされて最初の定位置へ戻るまでの余白(プレイヤー=画面中心基準)。
@@ -654,8 +694,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const reaperLiftRef = useRef(0);
   // 裏ボス(mimir/jormungand)コントローラの状態。spawned=この出撃で出現済みか(1回だけ)、
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 }
+  // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
+  // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[] }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [] }
   );
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
@@ -1208,7 +1250,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [] };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -2098,6 +2140,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let chasing = false;
             let despawn = false;
 
+            // トール専用: 弾を持たないため、遠距離(THOR_JUMP_TRIGGER_RANGEより外)から連続で被弾したら
+            // ジャンプ攻撃で間合いを詰める(社長指示)。他の裏ボスでは無害(参照されない)。
+            if (boss.type === 'thor') {
+              const prevHp = bs.thorPrevHealth;
+              if (prevHp >= 0 && boss.health < prevHp && Math.hypot(bcx - pcx, bcy - pcy) > THOR_JUMP_TRIGGER_RANGE) {
+                bs.thorRangedHits.push(newGameTime);
+              }
+              bs.thorRangedHits = bs.thorRangedHits.filter(t => newGameTime - t <= THOR_JUMP_TRIGGER_WINDOW_MS);
+              bs.thorPrevHealth = boss.health;
+            }
+
             if (!inDeep) {
               // 深層域を出た → 巣へ帰り、着いたら退場(討伐扱いにしない)。帰巣中も回復する。
               bs.vx = 0; bs.vy = 0; // 帰巣中は慣性リセット(復帰時にチェイスがぬるっと暴れないように)
@@ -2169,9 +2222,113 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (boss.bossState === 'return') { patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS; }
               const st = (boss.bossState == null || boss.bossState === 'return') ? 'chase' : boss.bossState;
               const nextActionDelay = () => newGameTime + BOSS_ACTION_MIN_MS + Math.random() * (BOSS_ACTION_MAX_MS - BOSS_ACTION_MIN_MS);
+              // --- トール(ステージ5)専用ヘルパー(社長指示・独自攻撃) ------------------------------
+              // 旋回運動: 現在の相対位置から角度/半径を毎フレーム自己補正しながら回す(専用の角度状態を持たない)。
+              // Y-down画面座標では atan2 の角度が増える向き=視覚的に時計回り(社長指示「時計回り」の既定 dir=1)。
+              const thorOrbitMove = () => {
+                const dir = boss.bossCircleDir ?? 1;
+                const relX = bcx - chaseTgt.x, relY = bcy - chaseTgt.y;
+                const curDist = Math.hypot(relX, relY) || 1;
+                const curAngle = Math.atan2(relY, relX);
+                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * walkMult) / THOR_ORBIT_DIST;
+                const newAngle = curAngle + dir * angularSpeed * bossMoveDt;
+                const correctedDist = curDist + (THOR_ORBIT_DIST - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
+                const ncx = chaseTgt.x + Math.cos(newAngle) * correctedDist;
+                const ncy = chaseTgt.y + Math.sin(newAngle) * correctedDist;
+                patch.x = ncx - boss.width / 2; patch.y = ncy - boss.height / 2;
+                bs.vx = 0; bs.vy = 0; // 旋回は専用運動=通常チェイスの慣性を持ち越さない(他状態の慣性リセットと同じ扱い)
+              };
+              // 通常移動: 近接距離+余白より遠ければ接近、そうでなければ旋回に切り替える(社長指示)。
+              const thorMove = () => {
+                const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
+                const dist = Math.hypot(dpx, dpy) || 1;
+                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(walkMult);
+                else thorOrbitMove();
+              };
+              // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
+              const thorNextActionDelay = () => {
+                const hpFrac = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
+                const mult = hpFrac <= THOR_LOWHP_FRAC ? THOR_LOWHP_INTERVAL_MULT : 1;
+                return newGameTime + (THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS)) * mult;
+              };
+              // カウンター成立時の共通処理(社長指示: すべての攻撃がカウンター可能)。通常カウンターと同じ
+              // 演出(Counter!/ヒットインパクト/クリ反撃)を行い、近接距離ギリギリ外まで高速後退させる。
+              const thorCounterHit = (hitX: number, hitY: number) => {
+                const cp = useGameStore.getState().player;
+                const pnow = Date.now();
+                addMeleeFinishCombo(1);
+                playSfx('counter');
+                useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+                useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+                spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+                spawnBurst(hitX, hitY, '#38bdf8', 14);
+                useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
+                useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+                const counterBase = getActiveGun(cp)?.damage ?? 12;
+                const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
+                const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+                damageEnemy(boss.id, dmg);
+                spawnDamageNumber(bcx, boss.y, dmg, true);
+                playSfx('headshot');
+                const lx = bcx - pcx, ly = bcy - pcy;
+                const ll = Math.hypot(lx, ly) || 1;
+                patch.bossState = 'counter-leap';
+                patch.bossStateUntil = newGameTime + THOR_COUNTER_LEAP_MS;
+                patch.aiFromX = bcx; patch.aiFromY = bcy;
+                patch.aiTargetX = pcx + (lx / ll) * THOR_ORBIT_DIST;
+                patch.aiTargetY = pcy + (ly / ll) * THOR_ORBIT_DIST;
+                patch.bossBurstLeft = 0;
+              };
+              // 近接距離(社長指示「通常の近接攻撃距離」=MELEE_RADIUS)での接触+カウンター窓中かの判定に使う
+              // 生の帯AABB(裏ボスの当たり判定と同基準・collisionUtils.tsのisHiddenBossTypeと同じ考え方)。
+              const thorBodyOverlapNow = () => {
+                const cp = useGameStore.getState().player;
+                return {
+                  overlap: rectsOverlap({ x: boss.x, y: boss.y, width: boss.width, height: boss.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
+                  counterActive: Date.now() <= cp.counterWindowEnd,
+                };
+              };
               if (st === 'chase') {
-                moveToward(walkMult); // 気絶中は半速、通常は等速
-                if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
+                if (boss.type === 'thor') {
+                  thorMove();
+                } else {
+                  moveToward(walkMult); // 気絶中は半速、通常は等速
+                }
+                if (boss.type === 'thor' && bs.thorRangedHits.length >= THOR_JUMP_TRIGGER_HITS) {
+                  // 遠距離からの連続被弾への対抗: 通常の間隔を待たず即ジャンプ攻撃で間合いを詰める(社長指示)。
+                  bs.thorRangedHits = [];
+                  patch.bossState = 'jump-windup';
+                  patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS;
+                } else if (boss.type === 'thor') {
+                  if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
+                    // トール専用: 弾もダッシュも使わない独自3種(一閃/突き/払い)からランダムに選ぶ(社長指示)。
+                    // 払いは旋回中(=近接距離+余白の範囲に居る)時だけ候補に入れる。
+                    const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
+                    const isOrbiting = Math.hypot(dpx, dpy) <= THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK;
+                    const pool: Array<'issen' | 'tsuki' | 'harai'> = ['issen', 'tsuki'];
+                    if (isOrbiting) pool.push('harai');
+                    const pick = pool[Math.floor(Math.random() * pool.length)];
+                    if (pick === 'issen') {
+                      patch.bossState = 'issen-windup';
+                      patch.bossStateUntil = newGameTime + THOR_ISSEN_WINDUP_MS;
+                    } else if (pick === 'tsuki') {
+                      patch.bossState = 'tsuki-windup';
+                      patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
+                    } else {
+                      // 払い: 逆回転を開始しつつ、プレイヤー中心・現在の接線と並行な赤ラインをロック(社長指示)。
+                      patch.bossState = 'harai-windup';
+                      patch.bossStateUntil = newGameTime + THOR_HARAI_WINDUP_MS;
+                      patch.bossCircleDir = -(boss.bossCircleDir ?? 1);
+                      const rx = bcx - pcx, ry = bcy - pcy;
+                      const rl = Math.hypot(rx, ry) || 1;
+                      const tx0 = -ry / rl, ty0 = rx / rl; // 接線(90度回転)の単位ベクトル
+                      patch.aiFromX = pcx - tx0 * (THOR_HARAI_RANGE / 2);
+                      patch.aiFromY = pcy - ty0 * (THOR_HARAI_RANGE / 2);
+                      patch.aiTargetX = pcx + tx0 * (THOR_HARAI_RANGE / 2);
+                      patch.aiTargetY = pcy + ty0 * (THOR_HARAI_RANGE / 2);
+                    }
+                  }
+                } else if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                   // ミーミル専用: まずレーザー抽選。当たれば射撃方向(=今のプレイヤー位置)をロックして2秒溜め開始。
                   if (boss.type === 'mimir' && Math.random() < MIMIR_LASER_CHANCE) {
                     patch.bossState = 'laser-windup';
@@ -2320,6 +2477,170 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 bs.vx = bs.dashDirX * speed * BOSS_DASH_SPEED_MULT; // 突進後のチェイスへ慣性を引き継ぐ
                 bs.vy = bs.dashDirY * speed * BOSS_DASH_SPEED_MULT;
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
+              } else if (st === 'issen-windup') {
+                // 一閃: 3秒溜め・静止(赤い明滅は描画側=pixiSceneがbossStateを見て演出・社長指示)。
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'issen-dash';
+                  patch.bossStateUntil = newGameTime + THOR_ISSEN_DASH_MS;
+                  const ddx = pcx - bcx, ddy = pcy - bcy;
+                  const ddl = Math.hypot(ddx, ddy) || 1;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + (ddx / ddl) * THOR_ISSEN_RANGE;
+                  patch.aiTargetY = bcy + (ddy / ddl) * THOR_ISSEN_RANGE;
+                }
+              } else if (st === 'issen-dash') {
+                // 一閃(高速移動): 終着点まで直進。当たり判定=もとの帯ではなく、この赤いライン上のみ(社長指示)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_ISSEN_DASH_MS));
+                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                let lux = tx - fx, luy = ty - fy;
+                const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
+                const lineLen = Math.hypot(tx - fx, ty - fy);
+                const tproj = Math.max(0, Math.min(lineLen, (pcx - fx) * lux + (pcy - fy) * luy));
+                const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
+                const pr = Math.max(player.width, player.height) / 2;
+                let countered = false;
+                if (Math.hypot(pcx - cxp, pcy - cyp) <= THOR_ISSEN_HALF_WIDTH + pr) {
+                  const cp = useGameStore.getState().player;
+                  if (Date.now() <= cp.counterWindowEnd) {
+                    thorCounterHit(cxp, cyp);
+                    countered = true;
+                  } else {
+                    const died = damagePlayer(boss.damage, 'トールの一閃', cxp, cyp);
+                    useGameStore.getState().spawnImageMark(cxp, cyp, 'zan', { scale: 1.0, duration: 1000 }); // 社長指示: 食らうと「斬」
+                    if (died) triggerPlayerDeath(pcx, pcy);
+                  }
+                }
+                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+              } else if (st === 'tsuki-windup') {
+                // 突き: 1秒停止(社長指示)。線の予告は無し=素早い踏み込みそのものが合図。
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'tsuki';
+                  patch.bossStateUntil = newGameTime + THOR_TSUKI_MS;
+                  const ddx = pcx - bcx, ddy = pcy - bcy;
+                  const ddl = Math.hypot(ddx, ddy) || 1;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + (ddx / ddl) * THOR_TSUKI_RANGE;
+                  patch.aiTargetY = bcy + (ddy / ddl) * THOR_TSUKI_RANGE;
+                  playSfx('thor-thrust');
+                }
+              } else if (st === 'tsuki') {
+                // 突き(実行): ダッシュと同じ射程・幅(半分の幅)で素早く踏み込む(社長指示)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_TSUKI_MS));
+                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                let lux = tx - fx, luy = ty - fy;
+                const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
+                const lineLen = Math.hypot(tx - fx, ty - fy);
+                const tproj = Math.max(0, Math.min(lineLen, (pcx - fx) * lux + (pcy - fy) * luy));
+                const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
+                const pr = Math.max(player.width, player.height) / 2;
+                let countered = false;
+                if (Math.hypot(pcx - cxp, pcy - cyp) <= THOR_TSUKI_HALF_WIDTH + pr) {
+                  const cp = useGameStore.getState().player;
+                  if (Date.now() <= cp.counterWindowEnd) {
+                    thorCounterHit(cxp, cyp);
+                    countered = true;
+                  } else {
+                    const died = damagePlayer(boss.damage, 'トールの突き', cxp, cyp);
+                    if (died) triggerPlayerDeath(pcx, pcy);
+                  }
+                }
+                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
+              } else if (st === 'harai-windup') {
+                // 払い: 逆回転を1秒続けながら(社長指示)、ロック済みの並行ラインを予告表示(描画側)。
+                thorOrbitMove();
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'harai';
+                  patch.bossStateUntil = newGameTime + THOR_HARAI_ACTIVE_MS;
+                  playSfx('thor-sweep');
+                }
+              } else if (st === 'harai') {
+                // 払い(実行): ロック済みの並行ライン上のみ判定(社長指示)。本体は移動しない(線=間合いの表現)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                let lux = tx - fx, luy = ty - fy;
+                const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
+                const lineLen = Math.hypot(tx - fx, ty - fy);
+                const tproj = Math.max(0, Math.min(lineLen, (pcx - fx) * lux + (pcy - fy) * luy));
+                const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
+                const pr = Math.max(player.width, player.height) / 2;
+                let countered = false;
+                if (Math.hypot(pcx - cxp, pcy - cyp) <= THOR_HARAI_HALF_WIDTH + pr) {
+                  const cp = useGameStore.getState().player;
+                  if (Date.now() <= cp.counterWindowEnd) {
+                    thorCounterHit(cxp, cyp);
+                    countered = true;
+                  } else {
+                    const died = damagePlayer(boss.damage, 'トールの払い', cxp, cyp);
+                    if (died) triggerPlayerDeath(pcx, pcy);
+                  }
+                }
+                if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = thorNextActionDelay();
+                  patch.bossCircleDir = 1; // 払い後は既定の時計回りへ復帰(社長指示)
+                }
+              } else if (st === 'jump-windup') {
+                // ジャンプ攻撃の溜め(短め)。静止・カウンター可能(社長指示)。
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'jump-attack';
+                  patch.bossStateUntil = newGameTime + THOR_JUMP_MS;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 着地点=溜め終了時のプレイヤー位置(ロック)
+                }
+              } else if (st === 'jump-attack') {
+                // ジャンプ攻撃(実行): ハンターの速いジャンプ感でロック済みの着地点まで移動(社長指示)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_JUMP_MS));
+                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  // 着地: 既存のpumpkinBlasts(着地爆発)パイプラインへ積む=カウンター/被弾処理を丸ごと再利用。
+                  useGameStore.setState(state => ({
+                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: THOR_JUMP_RADIUS, damage: boss.damage, enemyId: boss.id }],
+                  }));
+                  patch.bossState = 'jump-recover';
+                  patch.bossStateUntil = newGameTime + THOR_JUMP_RECOVER_MS;
+                }
+              } else if (st === 'jump-recover') {
+                // 着地後の硬直。静止・カウンター可能。
+                const { overlap, counterActive } = thorBodyOverlapNow();
+                if (overlap && counterActive) {
+                  thorCounterHit(bcx, bcy);
+                } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = thorNextActionDelay();
+                }
+              } else if (st === 'counter-leap') {
+                // カウンター成立後、近接距離ギリギリ外までロック済みの後退先へ高速移動(社長指示)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_COUNTER_LEAP_MS));
+                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                bs.vx = 0; bs.vy = 0;
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = thorNextActionDelay();
+                }
               }
               } // end !frozen
             }
@@ -3490,6 +3811,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);
               }
               playSfx('headshot');
+              // トール(ステージ5裏ボス)のジャンプ攻撃着地がパリィされた場合、他の攻撃と同じ
+              // カウンター後退(近接距離ギリギリ外まで高速後退)へ移行させる(社長指示)。
+              for (const hit of parriedEnemyIds) {
+                const te = useGameStore.getState().enemies.find(en => en.id === hit.id);
+                if (!te || te.type !== 'thor') continue;
+                const tcx = te.x + te.width / 2, tcy = te.y + te.height / 2;
+                const lx = tcx - bpcx, ly = tcy - bpcy;
+                const ll = Math.hypot(lx, ly) || 1;
+                useGameStore.setState(st => ({
+                  enemies: st.enemies.map(en => en.id === hit.id ? {
+                    ...en,
+                    bossState: 'counter-leap',
+                    bossStateUntil: Date.now() + THOR_COUNTER_LEAP_MS,
+                    aiFromX: tcx, aiFromY: tcy,
+                    aiTargetX: bpcx + (lx / ll) * THOR_ORBIT_DIST,
+                    aiTargetY: bpcy + (ly / ll) * THOR_ORBIT_DIST,
+                  } : en),
+                }));
+              }
             }
             useGameStore.setState({ pumpkinBlasts: [] });
           }
@@ -4929,6 +5269,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         playerEnemyCollisions.forEach(enemy => {
           if (wireDashingNow) return;
+          // トール(ステージ5裏ボス)専用の攻撃実行中(chase/return以外のbossState)は、通常の接触ダメージを
+          // 適用しない=各攻撃(一閃/突き/払い/ジャンプ攻撃)自身の当たり判定/カウンター処理に委ねる
+          // (社長指示: 一閃・突きは「もとの当たり判定ではなくライン上のみ」)。
+          if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return') return;
           // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
           // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
           if (enemy.aiPhase === 'jump') {
