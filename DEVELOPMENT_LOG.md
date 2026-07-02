@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1293 — 分布図再構築(ハイブリッド)の設計書を作成(社長承認・実装は次段でSonnet担当)
+- 社長との協議結果: 距離ベース分布の全廃はせず**「距離=土台(強さ倍率・レア基礎率・構成基礎)/
+  台本+AI=その上の演出」**のハイブリッドで再構築することで合意。設計のみ実施(コード変更なし)。
+- **`DISTRIBUTION_REDESIGN.md` 新規作成**(実装者向けハンドオフ)。内容:
+  ①シーンfeaturedのエリア制限突破(床0.5+`sceneSpawn`フラグで強制回収免除=ghostバグ再発防止)、
+  ②AREA_WEIGHT v2(全エリアにチャフ=bat/skeletonを少量残し、深部zombie比率減。恐怖は倍率と
+  重い型の比率で出す)、③レアのシーン/Rank連動(緩=0/無双=0.5/関所=1.2〜1.35×(1+rankBoost)。
+  基礎率と距離ゲートは不変)。テスト項目・実装順・実機確認ポイントまで記載。
+- 変えない項目(AREA_BASE_DIFFICULTY/COLOR_TIER_MULT/キャップ類/PHASES)も明文化。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過(ドキュメントのみだが規定通り実施)。
+
 ## v0.25.1292 — 心音の閾値を25%へ戻す(社長指示)
 - 直前(v0.25.1291)で20%へ変更したばかりだったが、社長判断で25%に戻す。`HEARTBEAT_HP_FRAC=0.25`。
 - 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
