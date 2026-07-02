@@ -15,8 +15,22 @@ export const CONTEXT_ZOOM_COUNT_CEIL = 20;  // この体数で最大引き
 const LARGE_ZOOM_TYPES = new Set<string>(['reaper', 'giantbat', 'mimir', 'jormungand', 'skadi', 'thor', 'hunter']);
 export const isLargeForZoom = (type: string): boolean => LARGE_ZOOM_TYPES.has(type);
 
+// デバッグ: ?zoomlock=1 で常時最大引き(CONTEXT_ZOOM_MIN)に固定、?zoomlock=0.9 等の数値でその倍率に固定。
+// ズーム引き対応漏れ(v0.25.1324/1325で修正した潜伏バグの類)を意図的に炙り出すための開発用フラグ。
+// 描画(pixiScene)と湧き/回収(useGameLoop)の両方が contextZoomTarget を読むため、ここで固定すれば
+// 全系統が一貫する。通常プレイ(パラメータ無し)は完全に従来どおり(社長承認 v0.25.1331)。
+const ZOOM_LOCK: number | null = (() => {
+  if (typeof window === 'undefined') return null; // ヘッドレス(テスト)では常に無効
+  const v = new URLSearchParams(window.location.search).get('zoomlock');
+  if (v == null) return null;
+  if (v === '1') return CONTEXT_ZOOM_MIN;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0.3 && n <= 1 ? n : CONTEXT_ZOOM_MIN;
+})();
+
 // 目標ズーム(1.0=等倍 → CONTEXT_ZOOM_MIN=最大引き)。数と大型の「大きい方の引き」を採用。
 export const contextZoomTarget = (enemyCount: number, hasLarge: boolean): number => {
+  if (ZOOM_LOCK != null) return ZOOM_LOCK;
   if (hasLarge) return CONTEXT_ZOOM_MIN;
   if (enemyCount <= CONTEXT_ZOOM_COUNT_FLOOR) return 1;
   const t = Math.min(1, (enemyCount - CONTEXT_ZOOM_COUNT_FLOOR) / (CONTEXT_ZOOM_COUNT_CEIL - CONTEXT_ZOOM_COUNT_FLOOR));

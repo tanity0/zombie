@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1331 — ?zoomlockデバッグフラグ+CLAUDE.mdにズーム引き考慮ルールを追加(社長承認・設計チャットFable)
+- ズーム引きサーガ(v0.25.1324/1325で完結)の再発防止2点。社長承認済み。
+- **`?zoomlock=1`**: 文脈ズームを常時最大引き(CONTEXT_ZOOM_MIN=0.8)に固定する開発用フラグ。
+  `?zoomlock=0.9`等の数値でその倍率に固定も可(0.95と0.8の見え方比較などに)。実装は
+  `cameraZoom.ts`の`contextZoomTarget`内=描画(pixiScene)と湧き/回収(useGameLoop)の両方が
+  同じ固定値を読むので全系統が一貫。パラメータ無し/ヘッドレス(テスト)では完全に従来どおり。
+  用途: 新しい描画レイヤーや境界判定を足した時にこのフラグで1周プレイし、ズーム対応漏れ
+  (今回の「レイヤーごとに漏れて潜伏する」型のバグ)をその場で炙り出す。
+- **CLAUDE.md**: 「Visual vs. hitbox」節に**ズーム引き考慮(必須)**の項を追加(新レイヤー/マスク/
+  フィルタ/画面境界判定は最大引きでも破綻しないこと+?zoomlockで実機確認、の恒久ルール)。
+- 負荷スコア: 0/10(URLパラメータ判定1回のみ・通常プレイは分岐1つ)。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。
 ## v0.25.1330 — 一閃の溜めゾーンを矩形塗りに/トールの旋回距離維持を2/3速度予算内へ(社長指示)
 - 「一閃の幅の表現がレーザーの使いまわしになってるけど、普通に赤のゾーンにして」に対応。
   `issen-windup`の予告を、ミーミルのレーザーと同型だった二重ストローク線(グロー外側+明るい芯)から、

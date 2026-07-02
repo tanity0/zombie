@@ -43,6 +43,10 @@ Unless a task says otherwise, follow the convention in `src/world/obstacles.ts`:
   Visual-only effects (depth/perspective scale, lighting, tilt-shift) must never
   change gameplay: hitboxes, attack ranges, the counter radius (`MELEE_RADIUS`),
   movement distances, etc. stay as the store defines them.
+- **ズーム引き考慮(必須)**: 新しい描画レイヤー・マスク・フィルタ・画面境界の判定(カリング/
+  回収/湧き)を追加する時は、文脈ズーム最大引き(`CONTEXT_ZOOM_MIN`、可視域=画面の
+  1/CONTEXT_ZOOM_MIN倍)でも破綻しないこと。`?zoomlock=1`で常時最大引きに固定して実機確認する
+  (ズーム対応はレイヤーごとに漏れて潜伏する — v0.25.1324/1325の教訓)。
 
 ## Performance review for costly changes
 - For any implementation that may add runtime cost, always state a load score
