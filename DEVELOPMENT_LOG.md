@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1330 — 一閃の溜めゾーンを矩形塗りに/トールの旋回距離維持を2/3速度予算内へ(社長指示)
+- 「一閃の幅の表現がレーザーの使いまわしになってるけど、普通に赤のゾーンにして」に対応。
+  `issen-windup`の予告を、ミーミルのレーザーと同型だった二重ストローク線(グロー外側+明るい芯)から、
+  ジャンプ攻撃の着地ゾーンと同じ意匠(矩形の`fill`+`stroke`)へ変更。矩形は判定ライン(fx,fy→tx,ty)を
+  半幅(THOR_ISSEN_VIS_HALFWIDTH)ぶん左右に膨らませた4点ポリゴンで、太さ=当たり判定幅と一致は維持。
+  溜め進行(prog)で不透明度が上がる点は従来どおり。issen-dash(実行)の斬撃ピクセル表示は変更なし。
+- 「プレイヤーと距離を取ってる速度が等倍になってて、近づけない。ちゃんと2/3の移動のなかで距離を
+  取ろうとするだけにして」に対応。`thorOrbitMove`の半径補正(`THOR_ORBIT_DIST`との誤差を詰める動き)
+  が、旋回(接線方向)の`THOR_ORBIT_SPEED_MULT`(2/3)の速度予算とは独立した指数補正
+  (`Math.min(1, THOR_ORBIT_RADIUS_CORRECT*dt)`)で、実質等倍速で「距離を取る」ため追いつけない
+  バグだった。半径方向(離れる/近づく)と接線方向(旋回)を1つの速度ベクトルとして合成し、
+  合計の大きさを`speed*THOR_ORBIT_SPEED_MULT*walkMult`で必ずクランプするよう変更
+  (半径誤差が大きいほど半径方向へ速度を多く割き、残りを`sqrt(max^2-radial^2)`で接線方向に回す)。
+  距離を詰めたいプレイヤーが2/3速度のトールより速ければ、今度はちゃんと近づける。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。実機未確認。
+- 負荷スコア: 1/10(描画方式の差し替え+移動の速度クランプのみ・毎フレームのスカラー演算)。
+
 ## v0.25.1329 — v0.25.1328の解釈修正: 溜め(放つ前)は赤いダメージゾーンに戻す(社長指示)
 - 「攻撃を放ったときの描画として使ってという意味。放つ前のダメージゾーンは今まで通り赤いゾーンに
   戻して」に対応。v0.25.1328で一閃/払いの**溜め(windup)**まで斬撃ピクセルに差し替えてしまっていた

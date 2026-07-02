@@ -5108,18 +5108,27 @@ export class PixiScene {
       if (e.bossState === 'issen-windup') {
         // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向は選択時に既にロック済み=
         // 溜め中はプレイヤーを追わない(社長修正指示。aiFromX/Y→aiTargetX/Yは固定値)。
-        // 放つ前=従来どおり赤いダメージゾーンのライン予告(社長指示で復元)。
+        // 放つ前=普通の赤いダメージゾーン(社長指示: レーザーの二重線ではなく矩形の塗り)。
         const blink = 0.5 + 0.5 * Math.sin(now / 260);
         view.sprite.tint = ((255 << 16) | (Math.round(255 * (1 - blink)) << 8) | Math.round(255 * (1 - blink)));
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
-        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-        // 予告ラインの太さを実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる。
-        // 溜めの経過は太さではなく不透明度(緊迫感)で表現する。
-        const w = THOR_ISSEN_VIS_HALFWIDTH * 2;
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff3030, alpha: (0.12 + 0.18 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.35, color: 0xffe0e0, alpha: 0.25 + 0.35 * prog, cap: 'round' });
+        const pulse = 0.5 + 0.5 * Math.sin(now / 110);
+        // ゾーンの太さ=実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる。矩形(fx,fy)→(tx,ty)を
+        // 半幅ぶん左右に膨らませて塗る(ジャンプ攻撃の着地ゾーンと同じ意匠=fill+stroke)。
+        const ddx = tx - fx, ddy = ty - fy;
+        const ddl = Math.hypot(ddx, ddy) || 1;
+        const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
+        const hw = THOR_ISSEN_VIS_HALFWIDTH;
+        const pts = [
+          fx + nx * hw, fy + ny * hw,
+          tx + nx * hw, ty + ny * hw,
+          tx - nx * hw, ty - ny * hw,
+          fx - nx * hw, fy - ny * hw,
+        ];
+        o.poly(pts).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) + 0.08 * pulse });
+        o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
       } else if (e.bossState === 'issen-dash') {
         // 一閃(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
         view.sprite.tint = 0xffffff;

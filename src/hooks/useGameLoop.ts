@@ -502,7 +502,8 @@ const THOR_ORBIT_MARGIN_PX = 40;             // ハンドガン射程より少�
 const THOR_ORBIT_DIST = RANGE_BY_CATEGORY.handgun + THOR_ORBIT_MARGIN_PX; // 旋回時の目標距離(中心間)
 const THOR_ORBIT_APPROACH_SLACK = 60;        // この分だけ余裕を見て「接近」⇄「旋回」を切り替える(ハンチング防止)
 const THOR_ORBIT_SPEED_MULT = 2 / 3;         // 旋回速度=通常の2/3(社長指示)
-const THOR_ORBIT_RADIUS_CORRECT = 4;         // 旋回半径をTHOR_ORBIT_DISTへ寄せる補正の速さ(大きいほど素早く戻る)
+const THOR_ORBIT_RADIUS_CORRECT = 4;         // 半径のズレ(px)→補正速度(px/s)への比例ゲイン。ただし
+                                              // 総移動速度はTHOR_ORBIT_SPEED_MULTの予算内にクランプされる
 const THOR_ACTION_MIN_MS = 2200;             // 攻撃選択インターバル(最短・満タンHP)
 const THOR_ACTION_MAX_MS = 4200;             // 攻撃選択インターバル(最長・満タンHP)
 const THOR_LOWHP_FRAC = 0.4;                 // このHP割合以下で頻度アップ開始(社長指示)
@@ -2268,13 +2269,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dir = boss.bossCircleDir ?? 1;
                 const relX = bcx - chaseTgt.x, relY = bcy - chaseTgt.y;
                 const curDist = Math.hypot(relX, relY) || 1;
-                const curAngle = Math.atan2(relY, relX);
-                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * walkMult) / THOR_ORBIT_DIST;
-                const newAngle = curAngle + dir * angularSpeed * bossMoveDt;
-                const correctedDist = curDist + (THOR_ORBIT_DIST - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
-                const ncx = chaseTgt.x + Math.cos(newAngle) * correctedDist;
-                const ncy = chaseTgt.y + Math.sin(newAngle) * correctedDist;
-                patch.x = ncx - boss.width / 2; patch.y = ncy - boss.height / 2;
+                const radialUx = relX / curDist, radialUy = relY / curDist; // 中心から外向きの単位ベクトル
+                const tangentUx = -radialUy * dir, tangentUy = radialUx * dir; // 接線方向(dirで向き反転)
+                // 社長指示: 距離を取ろうとする分(半径方向の補正)も、旋回そのもの(接線方向)と同じ
+                // 2/3速度予算の中でしか動けないようにする(旧: 半径補正だけ等倍相当で追いつけなかった)。
+                const maxSpeed = speed * THOR_ORBIT_SPEED_MULT * walkMult;
+                const distErr = THOR_ORBIT_DIST - curDist; // 正=近すぎる(離れたい)/負=遠すぎる(近づきたい)
+                const radialSpeed = Math.max(-maxSpeed, Math.min(maxSpeed, distErr * THOR_ORBIT_RADIUS_CORRECT));
+                const tangentSpeed = Math.sqrt(Math.max(0, maxSpeed * maxSpeed - radialSpeed * radialSpeed));
+                const vx = radialUx * radialSpeed + tangentUx * tangentSpeed;
+                const vy = radialUy * radialSpeed + tangentUy * tangentSpeed;
+                patch.x = boss.x + vx * bossMoveDt; patch.y = boss.y + vy * bossMoveDt;
                 bs.vx = 0; bs.vy = 0; // 旋回は専用運動=通常チェイスの慣性を持ち越さない(他状態の慣性リセットと同じ扱い)
               };
               // 通常移動: 近接距離+余白より遠ければ接近、そうでなければ旋回に切り替える(社長指示)。
