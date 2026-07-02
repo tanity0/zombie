@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1300 — PACING_REDESIGN.md: 二重階段(1プレイ内の階段)の明文化(社長との認識合わせ・設計のみ)
+- 社長確認「ステージごとではなく、そもそも1プレイ内にも階段を作りたい」→ 認識一致を確認し、
+  バッチ3に**二重階段の構造**を明文化: ①ラン全体の階段=台本のmaxRung列(関所①3→②4→…終盤6-7。
+  ランの中で新しい問題が1つずつ解禁)②関所内の階段=ラダーの登り降り。バッチ6のステージ指数は
+  このmaxRung列全体を上下スライドさせる係数(三層関係)。
+- 調整ノブ追記: 毎関所「段0から登り直し」が冗長なら「開始段=前関所の到達段-2」の持ち越し式へ
+  変更可能な形で実装しておく。
+- 検証: doc変更のみ(コード不変)。
+
 ## v0.25.1299 — PACING_REDESIGN.md にバッチ1.5(featured床オプトイン化)とバッチ7(イベントプロデューサー)を追記(設計のみ)
 - **バッチ1.5(修正設計)**: v0.25.1298実プレイで社長報告「序盤からパンプキン+犬犬+弾」。原因は
   featured床(0.5)が関所シーンの問題児にも効いてしまう設計ミス(チャフのための床が問題児の裏口に)。
