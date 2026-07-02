@@ -1198,10 +1198,10 @@ const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リ�
 // 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)をバラ撒く。
 // 3秒CDののち、周辺のランダム位置へ0.5秒おきに1個ずつ、最大3個ばらまく(社長指示)。
 const EGGCARRIER_BURST_INTERVAL_MS = 500; // バースト中の1個ごとの間隔(0.5秒)。
-const EGGCARRIER_BURST_COUNT = 3;         // 1バーストで撒く個数。
+const EGGCARRIER_BURST_COUNT = 30;        // 1バーストで撒く個数(社長指示: ばらまきイベントの量を最大に=同時上限と揃える)。
 const EGGCARRIER_BURST_CD_MS = 3000;      // バースト完了後の再開CD(3秒)。
 const EGGCARRIER_SCATTER_RADIUS = 110;    // 自分の周辺のこの半径内のランダム位置へ撒く。
-const EGGCARRIER_MAX_EGGS = 20;          // 抱卵型が撒いた卵の同時上限(超過は古い順に消す)。画面外は別途カリング。
+const EGGCARRIER_MAX_EGGS = 30;          // 抱卵型が撒いた卵の同時上限(超過は古い順に消す・社長指示で20→30)。画面外は別途カリング。
 const EGGCARRIER_ORBIT_RADIUS = 220;     // プレイヤーから保つ周回半径(px)。
 // 変異体(叫喚型・screamer): 距離を保ちつつ、溜め→叫喚で画面内の通常敵を一時強化する。
 // 出現してから初回叫喚(発動=バフ開始)までの合計を7秒にする(社長指示)。溜め(SCREAMER_WINDUP_MS=2秒)を

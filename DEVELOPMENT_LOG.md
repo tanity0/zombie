@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1308 — 緑卵(抱卵型のmine)の同時上限20→30+バーストの量を最大化(社長指示)
+- 社長「緑の卵の画面内MAX値があった方がいい気がしてきた(負荷的に)」→調査したところ**上限は既に
+  存在していた**(`EGGCARRIER_MAX_EGGS=20`、ghost feature実装時から)。直前の返信で「現状無い」と
+  誤って報告していたので訂正。社長の追加指示「30個にしよう」「ばらまきイベントの量を最大にしよう」を
+  受けて2値を変更:
+  - `EGGCARRIER_MAX_EGGS`: 20 → **30**(同時上限。超過は古い順に破棄・画面外は別途カリング、仕組みは不変)。
+  - `EGGCARRIER_BURST_COUNT`(1バーストで撒く卵の個数): 3 → **30**(同時上限と同数=最大化)。
+    間隔(0.5秒おき)・バースト間CD(3秒)は変更していない=1バーストが最大15秒かけて上限まで
+    ばらまき切る形になる。
+- `sim.test.ts`の既存テスト(「3個バーストしてCD待ち」を検証)がburst量変更で破綻したため、
+  「約0.5秒間隔で撒かれる」「同時上限30を長時間シミュレーションでも超えない」を検証する内容に
+  更新(挙動変更に追従、意図は「上限を守る」という新しい不変条件へ)。
+- 検証: typecheck / lint(0, full) / test(189 pass, 1 skip) / build 通過。
+
 ## v0.25.1307 — 木オブジェクトの影の縮小バグ修正 + PEAK中のBGMダッキングをさらに強める(社長報告2件)
 - **木の影が小さいバグ**(社長報告・スクショで実機確認): `pixiScene.ts`の常時足影(木/壁/プロップ共通の
   `addObj`)で、壁(係数0.34)・プロップ(係数0.36)は「実際の描画幅(containScale/depthScale込みの
