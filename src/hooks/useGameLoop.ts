@@ -7,6 +7,7 @@ import {
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
   MINE_DAMAGE,
+  PLAYER_BASE_SPEED,
   isKatanaMode,
   subWeaponBlockedByKatana,
   katanaRange,
@@ -501,9 +502,24 @@ const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっ
 const THOR_ORBIT_MARGIN_PX = 40;             // ハンドガン射程より少し外側で旋回する余白
 const THOR_ORBIT_DIST = RANGE_BY_CATEGORY.handgun + THOR_ORBIT_MARGIN_PX; // 旋回時の目標距離(中心間)
 const THOR_ORBIT_APPROACH_SLACK = 60;        // この分だけ余裕を見て「接近」⇄「旋回」を切り替える(ハンチング防止)
-const THOR_ORBIT_SPEED_MULT = 2 / 3;         // 旋回速度=通常の2/3(社長指示)
-const THOR_ORBIT_RADIUS_CORRECT = 4;         // 半径のズレ(px)→補正速度(px/s)への比例ゲイン。ただし
-                                              // 総移動速度はTHOR_ORBIT_SPEED_MULTの予算内にクランプされる
+const THOR_ORBIT_SPEED_MULT = 2 / 3;         // 旋回速度=通常の2/3(社長指示。旋回距離ちょうど〜やや遠い時のみ)
+const THOR_ORBIT_RADIUS_CORRECT = 4;         // 旋回距離よりやや遠い時、半径をTHOR_ORBIT_DISTへ寄せる
+                                              // イージング係数(大きいほど素早く戻る)
+// 社長指示(v0.25.1331〜): 接近/後退は自身のスピードではなく「プレイヤーの1/2速度」を基準にする
+// (2/3のoriginal boss.speedとは別枠。厳密な現在の可変速度ではなくPLAYER_BASE_SPEEDを基準とする=
+// enemyUtils.tsのトール速度導出と同じ簡略化)。
+const THOR_APPROACH_SPEED = PLAYER_BASE_SPEED * 0.5; // 旋回間合いに入るまでの接近速度
+const THOR_RETREAT_SPEED = PLAYER_BASE_SPEED * 0.5;  // 旋回距離より近づかれた時に後ずさる速度
+const THOR_BACKSTEP_MIN_INTERVAL_MS = 3000;  // バックステップの最短間隔(「たまに」の頻度・叩き台)
+const THOR_BACKSTEP_MAX_INTERVAL_MS = 6000;
+const THOR_BACKSTEP_DIST = 90;               // バックステップで離れる距離(px)
+const THOR_BACKSTEP_MS = 180;                // バックステップそのものの所要時間
+// 社長指示: 旋回中(ちょうど良い距離を保っている間)にも、たまに接線方向へ少しだけ弾む「ステップ」を混ぜる
+// (常に滑らかな等速円運動だけにしない=動きに緩急を付ける)。バックステップと同型・別枠のタイマー/短距離移動。
+const THOR_ORBIT_STEP_MIN_INTERVAL_MS = 2500;
+const THOR_ORBIT_STEP_MAX_INTERVAL_MS = 5000;
+const THOR_ORBIT_STEP_DIST = 70;             // ステップで進む距離(px)
+const THOR_ORBIT_STEP_MS = 160;              // ステップそのものの所要時間
 const THOR_ACTION_MIN_MS = 2200;             // 攻撃選択インターバル(最短・満タンHP)
 const THOR_ACTION_MAX_MS = 4200;             // 攻撃選択インターバル(最長・満タンHP)
 const THOR_LOWHP_FRAC = 0.4;                 // このHP割合以下で頻度アップ開始(社長指示)
@@ -730,8 +746,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
   // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[] }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [] }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0 }
   );
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
@@ -1288,7 +1304,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [] };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -2237,12 +2253,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
               const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
               // 慣性付き移動: 目標方向の desired 速度へ現在速度を BOSS_TURN_RESPONSE で寄せて位置を更新
-              // (急な方向転換がぬるっと効く=慣性)。最高速は speed*mult のまま不変。
-              const moveToward = (mult: number) => {
+              // (急な方向転換がぬるっと効く=慣性)。最高速は spd*mult のまま不変。
+              // spd省略時は自身のspeed(mimir/jormungand/skadi/通常敵の既定)。トールの接近だけ
+              // 社長指示でTHOR_APPROACH_SPEED(プレイヤーの1/2速度)を明示的に渡す。
+              const moveToward = (mult: number, spd: number = speed) => {
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dl = Math.hypot(dpx, dpy) || 1;
-                const desVx = (dpx / dl) * speed * mult;
-                const desVy = (dpy / dl) * speed * mult;
+                const desVx = (dpx / dl) * spd * mult;
+                const desVy = (dpy / dl) * spd * mult;
                 const k = Math.min(1, BOSS_TURN_RESPONSE * bossMoveDt);
                 bs.vx += (desVx - bs.vx) * k;
                 bs.vy += (desVy - bs.vy) * k;
@@ -2269,24 +2287,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dir = boss.bossCircleDir ?? 1;
                 const relX = bcx - chaseTgt.x, relY = bcy - chaseTgt.y;
                 const curDist = Math.hypot(relX, relY) || 1;
-                const radialUx = relX / curDist, radialUy = relY / curDist; // 中心から外向きの単位ベクトル
-                const tangentUx = -radialUy * dir, tangentUy = radialUx * dir; // 接線方向(dirで向き反転)
-                // 社長指示: 距離を取ろうとする分(半径方向の補正)も、旋回そのもの(接線方向)と同じ
-                // 2/3速度予算の中でしか動けないようにする(旧: 半径補正だけ等倍相当で追いつけなかった)。
-                const maxSpeed = speed * THOR_ORBIT_SPEED_MULT * walkMult;
-                const distErr = THOR_ORBIT_DIST - curDist; // 正=近すぎる(離れたい)/負=遠すぎる(近づきたい)
-                const radialSpeed = Math.max(-maxSpeed, Math.min(maxSpeed, distErr * THOR_ORBIT_RADIUS_CORRECT));
-                const tangentSpeed = Math.sqrt(Math.max(0, maxSpeed * maxSpeed - radialSpeed * radialSpeed));
-                const vx = radialUx * radialSpeed + tangentUx * tangentSpeed;
-                const vy = radialUy * radialSpeed + tangentUy * tangentSpeed;
-                patch.x = boss.x + vx * bossMoveDt; patch.y = boss.y + vy * bossMoveDt;
+                if (curDist < THOR_ORBIT_DIST) {
+                  // 社長指示②: 旋回距離より近づかれたら、旋回せずプレイヤーの1/2速度で真っ直ぐ後ずさる。
+                  const ux = relX / curDist, uy = relY / curDist; // 相手から離れる向き
+                  patch.x = boss.x + ux * THOR_RETREAT_SPEED * walkMult * bossMoveDt;
+                  patch.y = boss.y + uy * THOR_RETREAT_SPEED * walkMult * bossMoveDt;
+                  bs.vx = 0; bs.vy = 0;
+                  return;
+                }
+                const curAngle = Math.atan2(relY, relX);
+                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * walkMult) / THOR_ORBIT_DIST;
+                const newAngle = curAngle + dir * angularSpeed * bossMoveDt;
+                const correctedDist = curDist + (THOR_ORBIT_DIST - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
+                const ncx = chaseTgt.x + Math.cos(newAngle) * correctedDist;
+                const ncy = chaseTgt.y + Math.sin(newAngle) * correctedDist;
+                patch.x = ncx - boss.width / 2; patch.y = ncy - boss.height / 2;
                 bs.vx = 0; bs.vy = 0; // 旋回は専用運動=通常チェイスの慣性を持ち越さない(他状態の慣性リセットと同じ扱い)
               };
-              // 通常移動: 近接距離+余白より遠ければ接近、そうでなければ旋回に切り替える(社長指示)。
+              // 通常移動: 近接距離+余白より遠ければ接近、そうでなければ旋回/後退に切り替える(社長指示)。
               const thorMove = () => {
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dist = Math.hypot(dpx, dpy) || 1;
-                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(walkMult);
+                // 社長指示①: 旋回間合いに入るまでの接近速度はプレイヤーの1/2(自身のspeedではなくTHOR_APPROACH_SPEED)。
+                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(walkMult, THOR_APPROACH_SPEED);
                 else thorOrbitMove();
               };
               // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
@@ -2311,7 +2334,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
                 const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
-                damageEnemy(boss.id, dmg);
+                // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
+                // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
+                damageEnemy(boss.id, dmg, false, true);
                 spawnDamageNumber(bcx, boss.y, dmg, true);
                 playSfx('headshot');
                 const lx = bcx - pcx, ly = bcy - pcy;
@@ -2338,11 +2363,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } else {
                   moveToward(walkMult); // 気絶中は半速、通常は等速
                 }
+                const thorDistToTgt = boss.type === 'thor' ? Math.hypot(chaseTgt.x - bcx, chaseTgt.y - bcy) : 0;
                 if (boss.type === 'thor' && bs.thorRangedHits.length >= THOR_JUMP_TRIGGER_HITS) {
                   // 遠距離からの連続被弾への対抗: 通常の間隔を待たず即ジャンプ攻撃で間合いを詰める(社長指示)。
                   bs.thorRangedHits = [];
                   patch.bossState = 'jump-windup';
                   patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS;
+                } else if (
+                  boss.type === 'thor' &&
+                  thorDistToTgt < THOR_ORBIT_DIST &&
+                  newGameTime >= (bs.thorNextBackstepAt ?? 0)
+                ) {
+                  // 社長指示②: 「たまにバックステップで少し距離を取る」。近づかれている間、間隔を空けて発火。
+                  bs.thorNextBackstepAt = newGameTime + THOR_BACKSTEP_MIN_INTERVAL_MS + Math.random() * (THOR_BACKSTEP_MAX_INTERVAL_MS - THOR_BACKSTEP_MIN_INTERVAL_MS);
+                  const rx = bcx - chaseTgt.x, ry = bcy - chaseTgt.y;
+                  const rl = Math.hypot(rx, ry) || 1;
+                  patch.bossState = 'backstep';
+                  patch.bossStateUntil = newGameTime + THOR_BACKSTEP_MS;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + (rx / rl) * THOR_BACKSTEP_DIST;
+                  patch.aiTargetY = bcy + (ry / rl) * THOR_BACKSTEP_DIST;
+                  bs.vx = 0; bs.vy = 0;
+                } else if (
+                  boss.type === 'thor' &&
+                  thorDistToTgt >= THOR_ORBIT_DIST &&
+                  thorDistToTgt <= THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK &&
+                  newGameTime >= (bs.thorNextOrbitStepAt ?? 0)
+                ) {
+                  // 社長指示: 旋回中(適正距離)にたまに接線方向へ少しだけ弾む「ステップ」を混ぜる(緩急)。
+                  bs.thorNextOrbitStepAt = newGameTime + THOR_ORBIT_STEP_MIN_INTERVAL_MS + Math.random() * (THOR_ORBIT_STEP_MAX_INTERVAL_MS - THOR_ORBIT_STEP_MIN_INTERVAL_MS);
+                  const dir = boss.bossCircleDir ?? 1;
+                  const rux = (bcx - chaseTgt.x) / (thorDistToTgt || 1), ruy = (bcy - chaseTgt.y) / (thorDistToTgt || 1);
+                  const tux = -ruy * dir, tuy = rux * dir; // 接線方向(thorOrbitMoveと同じ向き規則)
+                  patch.bossState = 'orbit-step';
+                  patch.bossStateUntil = newGameTime + THOR_ORBIT_STEP_MS;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + tux * THOR_ORBIT_STEP_DIST;
+                  patch.aiTargetY = bcy + tuy * THOR_ORBIT_STEP_DIST;
+                  bs.vx = 0; bs.vy = 0;
                 } else if (boss.type === 'thor') {
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                     // トール専用: 弾もダッシュも使わない独自3種(一閃/突き/払い)からランダムに選ぶ(社長指示)。
@@ -2684,6 +2742,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'chase';
                   patch.bossNextActionAt = thorNextActionDelay();
+                }
+              } else if (st === 'backstep') {
+                // バックステップ: ロック済みの後方target地点へ短時間で移動(社長指示②「たまにバックステップで少し距離」)。
+                // 攻撃サイクルとは独立の movement flourish なので bossNextActionAt はリセットしない
+                // (既にスケジュール済みの次攻撃タイミングをそのまま維持=移動演出で攻撃頻度が変わらない)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_BACKSTEP_MS));
+                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                bs.vx = 0; bs.vy = 0;
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'chase';
+                }
+              } else if (st === 'orbit-step') {
+                // 旋回中のステップ: ロック済みの接線方向target地点へ短時間で移動(社長指示「たまに再度ステップで少し移動」)。
+                const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
+                const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
+                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_ORBIT_STEP_MS));
+                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
+                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
+                bs.vx = 0; bs.vy = 0;
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'chase';
                 }
               }
               } // end !frozen

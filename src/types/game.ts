@@ -338,8 +338,10 @@ export interface Enemy {
   //  harai-windup/harai = 払い(旋回中のみ・逆回転1秒+並行な赤ライン→横払い) /
   //  jump-windup/jump-attack/jump-recover = ジャンプ攻撃(遠距離から連続被弾で間合いを詰める) /
   //  counter-leap = カウンター成立時、近接距離ギリギリ外へ高速後退。
+  //  backstep = 旋回距離より近づかれた時、たまに発火する短時間の後方ステップ(社長指示)。
+  //  orbit-step = 旋回中(適正距離)にたまに混ぜる、接線方向への短時間ステップ(社長指示)。
   bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
-    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap';
+    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾

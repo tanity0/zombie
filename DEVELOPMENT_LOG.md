@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1333 — トールの接近/後退速度をプレイヤーの1/2に+バックステップ/旋回ステップ+カウンター必ずクリ(社長指示)
+- 「通常は旋回の間合いに入るまでは近づいてくるのはプレイヤーの1/2のスピード」「逆にプレイヤーが旋回
+  ゾーンから近づいてきたときに逃げる速度も1/2で後ずさっていき、たまにバックステップで少し距離を取る」
+  に対応。`THOR_APPROACH_SPEED`/`THOR_RETREAT_SPEED`(= `PLAYER_BASE_SPEED*0.5`)を新設し、
+  自身のspeed(2/3旋回とは別枠)ではなくプレイヤーの1/2速度を基準にするよう変更。
+  - `thorMove`: 旋回間合いに入るまでの接近(`moveToward`)に`THOR_APPROACH_SPEED`を明示的に渡す
+    (`moveToward`は第2引数で速度を上書き可能に変更・省略時は従来どおり自身のspeed=他の裏ボスは無影響)。
+  - `thorOrbitMove`: 旋回距離より近い時は旋回せず`THOR_RETREAT_SPEED`で真っ直ぐ後退(v0.25.1330で
+    導入した「半径補正を旋回2/3速度予算に混ぜる」実装は撤回・分離)。旋回距離以上の時は従来の
+    角速度+イージング半径補正(pre-1330の形)に戻す。
+  - バックステップ: 近づかれている間、`THOR_BACKSTEP_MIN/MAX_INTERVAL_MS`(3-6秒)間隔でたまに発火。
+    新規`bossState:'backstep'`(90px・180ms・counter-leapと同型のロック済みtarget地点への lerp)。
+- 「旋回中に、たまに再度ステップ(旋回)で少しだけ移動するのも混ぜて」に対応。旋回の適正距離帯にいる間、
+  `THOR_ORBIT_STEP_MIN/MAX_INTERVAL_MS`(2.5-5秒)間隔で接線方向へ短距離(70px・160ms)弾む
+  新規`bossState:'orbit-step'`を追加(常に滑らかな等速円運動だけにしない・緩急)。
+- どちらの新状態も、攻撃サイクル(`bossNextActionAt`)とは独立の movement flourish として扱い、
+  完了時にリセットしない(移動演出で攻撃頻度が変わらないようにする)。
+- 「トール、カウンターを食らわせると必ずクリティカルになるようにして」に対応。`thorCounterHit`の
+  `damageEnemy(boss.id, dmg)`に`crit=true`を渡すよう変更(他の裏ボス共通のパリィ演出は非crit踏襲の
+  まま・トールのみ)。裏ボス完全気絶(`bumpBossCrit`・5クリで5秒フルスタン)のカウントにも乗るようになる
+  (ダメージ自体は元々`BOSS_CRIT_DAMAGE_MULT`適用済みで不変=表示/スタッガー計上の解禁のみ)。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。実機未確認。
+- 負荷スコア: 1/10(既存のstate machine分岐追加+スカラー速度計算のみ)。
+
 ## v0.25.1332 — CORE_LOOP.md新設: コアループ棚卸し(現状台帳)(設計チャットFable・設計のみ)
 - 社長指示「今後のゲーム開発でコアループを意識したい→まず棚卸し」を受け、進行・報酬・メタの
   全システムをコード監査し、`CORE_LOOP.md`として台帳化(①秒=手触り/②分=1ラン内/③ラン=メタの
