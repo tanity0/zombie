@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   createBoredomState, stepBoredom, boredomBonus,
-  BORED_START_MS, BORED_STEP_MS, BORED_BONUS_MAX, BORED_RESET_INTENSITY,
+  BORED_START_MS, BORED_STEP_MS, BORED_BONUS_MAX, BORED_RESET_INTENSITY, BORED_RUN_GRACE_MS,
 } from './boredomDirector';
 
 const BORED = { performance: 0.9, intensity: 0.2, dtMs: 1000 };
@@ -12,6 +12,25 @@ describe('boredomDirector', () => {
     it('accumulates while bored (high performance, low intensity)', () => {
       let s = createBoredomState();
       s = stepBoredom(s, BORED);
+      expect(s.boredMs).toBe(1000);
+    });
+
+    it('does not accumulate during the run-start grace (gameTimeMs < BORED_RUN_GRACE_MS)', () => {
+      let s = createBoredomState();
+      s = stepBoredom(s, { ...BORED, gameTimeMs: 0 });
+      s = stepBoredom(s, { ...BORED, gameTimeMs: BORED_RUN_GRACE_MS - 1 });
+      expect(s.boredMs).toBe(0);
+    });
+
+    it('resets any accumulation while still inside the grace window', () => {
+      let s = { boredMs: 30000 }; // 仮に溜まっていてもグレース中は0に戻す
+      s = stepBoredom(s, { ...BORED, gameTimeMs: 1000 });
+      expect(s.boredMs).toBe(0);
+    });
+
+    it('accumulates normally once past the grace window', () => {
+      let s = createBoredomState();
+      s = stepBoredom(s, { ...BORED, gameTimeMs: BORED_RUN_GRACE_MS });
       expect(s.boredMs).toBe(1000);
     });
 

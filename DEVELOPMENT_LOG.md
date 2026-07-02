@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1315 — 応急処置: セットピース台本を既定OFF+退屈上振れにラン開始90秒グレース(実機確認②対応・設計チャットFableが直接実装)
+- 社長報告「最初から弾飛んでくるしゾンビ沸きまくるしでストレスしかない」の原因を特定
+  (詳細=PACING_REDESIGN.md「実機確認②」)。1308→1313のdiff全行確認により**直近バッチ(2.5/7)は
+  無罪**。真因は①セットピース固定台本(stageDirector.ts WAVE_EVENTS: 0:35弾plant周囲260px直湧き・
+  1:45パンプキン・2:50plant・3:55七体オンスロート・4:55パンプキン2。エリア規約/gatePressureブロック/
+  数上限を全て素通り)②退屈上振れの開始直後誤認(Perf初期値が高く開始5秒で退屈判定→開始90秒で
+  8→18体)。
+- **応急処置(社長指示で即時実装)**:
+  - `useGameLoop.ts`: `SETPIECE_ENABLED`(既定OFF・`?setpiece=1`で従来台本に復帰)を新設し
+    `consumeDueWaves`ブロックをゲート。城ボス(7分・別経路)は不変。
+  - `boredomDirector.ts`: `BORED_RUN_GRACE_MS=90000`を新設、`stepBoredom`の入力に`gameTimeMs?`を
+    追加(グレース中は蓄積0・省略時は従来挙動=既存テスト互換)。`useGameLoop.ts`の呼び出しに
+    gameTimeを渡す。
+  - テスト: `boredomDirector.test.ts`にグレース3件追加。
+- セットピースの見せ場(カウンター講習/中ボススパイク/オンスロート)はバッチ4/5の演目・台本
+  メニューとして再設計する(★未決事項の次回会議アジェンダに追加)。
+- 検証: lint / typecheck / test / build 全通過。
+- 負荷スコア: 1/10(フラグ判定とスカラー比較のみ・削る方向の変更)。
+
 ## v0.25.1314 — ステージ5(軍本部)の地平帯(遠景森1)を社長提供の城塞壁素材に差し替え
 - 社長提供の「ステージ5の遠景森1」素材(荒廃した城塞の正面壁・門・瓦礫、透明背景のカットアウト)を
   `public/backgrounds/stage5-horizon.png`として保存(1280×496・RGBA・792KB、既存のstage4-horizon.png

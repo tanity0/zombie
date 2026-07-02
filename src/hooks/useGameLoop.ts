@@ -383,6 +383,12 @@ const LADDER_ENABLED = evParam('ladder') !== '0';
 // PACING_REDESIGN.mdバッチ7: イベントプロデューサー(囲い/紅き月/ハンター/叫びの発火ゲート)。
 // ?events=0 で従来のランダム発火(本バッチ以前の挙動)に完全復帰(切り分け用)。
 const EVENTS_ENABLED = evParam('events') !== '0';
+// 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
+// 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
+// gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
+// 主因だったため既定OFF。見せ場としての再設計はバッチ4/5の演目・台本メニューで行う。
+// ?setpiece=1 で従来台本に復帰(切り分け用)。城ボス(7分)は別経路なので影響なし。
+const SETPIECE_ENABLED = evParam('setpiece') === '1';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
@@ -5393,6 +5399,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             performance: directorRef.current.state.performance,
             intensity: directorRef.current.state.intensity,
             dtMs: deltaTime * 1000,
+            gameTimeMs: gameTime, // 実機フィードバック②: 開始90秒は退屈蓄積しない(BORED_RUN_GRACE_MS)
           });
         }
         const upswingBonus = upswingOutdoor ? boredomBonus(upswingRef.current.boredMs) : 0;
@@ -5804,7 +5811,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // consumeDueWaves fires each event exactly once.
         // 研究所スキンは森系の演出波(plant/pumpkin/zombie/skeleton/werewolf)を出さない=
         // 湧きはラボ用ゾンビのみ。クリアボス(giantbat)は別経路(城ボス)で維持。
-        if (!danceTest && !indoor && !labTheme && !confining) {
+        if (SETPIECE_ENABLED && !danceTest && !indoor && !labTheme && !confining) {
           const waveEnemies = consumeDueWaves(
             gameTime,
             consumedWavesRef.current,
