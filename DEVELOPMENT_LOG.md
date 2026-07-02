@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1314 — ステージ5(軍本部)の地平帯(遠景森1)を社長提供の城塞壁素材に差し替え
+- 社長提供の「ステージ5の遠景森1」素材(荒廃した城塞の正面壁・門・瓦礫、透明背景のカットアウト)を
+  `public/backgrounds/stage5-horizon.png`として保存(1280×496・RGBA・792KB、既存のstage4-horizon.png
+  等と同じ透明PNG形式のまま。JPEG化するとアルファが失われるため変換せず)。
+- コード内コメント(`pixiScene.ts`)で「地平帯=遠景森1=horizonForest」と呼称されていることを確認し、
+  ラベル通りの差し替え先と判断。`PixiStage.tsx`のアセット読込Promise.allに追加し、
+  `scene.setHorizonOverride('stage5', s5Horizon)`で注入(ステージ4=snowで氷壁帯を差し替えている
+  既存パターンをそのまま踏襲)。`farBackdrop==='stage5'`はv0.25.1310で既に`campaign.ts`に設定済みの
+  ため、`applyHorizonOverride(s.farBackdrop)`が自動でこのキーを拾う=他の分岐追加は不要だった。
+- v0.25.1310の遠景パノラマ(farBackdrop)に続き、地平帯も社長提供素材に差し替え完了。地面
+  (groundOverride)/近景森(frontOverride)はまだ未提供のためforest既定のまま(段階的差し替え継続中)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過。ロジック変更なし
+  (アセット注入のみ)のためテスト新規追加なし。
+
 ## v0.25.1313 — PACING_REDESIGN.mdバッチ7実装: イベントプロデューサー(囲い/紅き月/ハンター/叫びの発火ゲート)
 - 社長指示「バッチ2.5を実装して、完了したらバッチ7へ」の後半。実機確認①(v0.25.1311)で
   「後半の張り付き」の主犯と特定された、台本外の固定タイマー発火(囲い2:00固定+以後2分毎/
