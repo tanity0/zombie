@@ -190,6 +190,9 @@ const ENEMY_SPEED_MULT = 2 / 3;
 // 影の色で表現(本体の見た目は同じ・旧装飾=黒翼/紫角/赤翼/リング等は廃止)。色ごとに強さ倍率(社長指定)。
 // ジャイアント未満の一般敵のみ対象。ジャイアント/死神/特別敵には付かない(強さ一定)。
 const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
+// レア度で体格も大きく(社長指示: 影の色だけでは見分けづらい→当たり判定ごと拡大)。
+// 青1.1/紫1.2/赤1.3(+10%刻み)。描画は判定箱にフィットするので絵も自動で大きくなる。
+const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = { blue: 1.1, purple: 1.2, red: 1.3 };
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
 const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
@@ -280,13 +283,14 @@ const buildEnemy = (
   // reaper と裏ボスは health をそのまま使う(裏ボスは個別HPを直接指定=ENEMY_HP_MULT を掛けない)。
   const hpMult = (type === 'reaper' || isHiddenBoss(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
   const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diff);
+  const sizeMult = colorTier ? COLOR_TIER_SIZE_MULT[colorTier] : 1;
 
   return {
     id: `enemy-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     x,
     y,
-    width: stats.width,
-    height: stats.height,
+    width: Math.round(stats.width * sizeMult),
+    height: Math.round(stats.height * sizeMult),
     speed: stats.speed * ENEMY_SPEED_MULT,
     health: stats.health * hpMult,
     maxHealth: stats.health * hpMult,

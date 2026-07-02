@@ -83,7 +83,7 @@ import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
+import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
@@ -534,6 +534,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 });
   // 難易度⑥(ピンチ救済): ピンチ持続時間の累積。
   const pinchRef = useRef(createPinchState());
+  // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
+  const gateCalloutRef = useRef('');
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
@@ -1126,6 +1128,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
           resetPityDrop();
+          gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
@@ -2534,7 +2537,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         autoSwitchIfDry();
         const postReloadPlayer = useGameStore.getState().player;
         if (!reloadBeforeAutoSwitch && postReloadPlayer.reloadingWeaponId) {
-          playSfx('reload');
+          // リロードSEは武器のリロード時間ぶんだけ鳴らし、完了と同時に止める(社長指示。音源は長尺約7.6s)。
+          const reloadingGun = getGuns(postReloadPlayer).find(w => w.id === postReloadPlayer.reloadingWeaponId);
+          playSfx('reload', 1, reloadingGun ? effectiveReloadMs(reloadingGun, postReloadPlayer) : 1500);
         }
         // 刀装備中は銃の自動射撃を完全に止める(弾薬/リロード処理は通常どおり
         // 進むので、刀を外す実装が将来入っても副作用が残らない)。
@@ -5088,7 +5093,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 42, 'rgba(191,219,254,', 340);
                   break;
                 case 'quick-magazine':
-                  playSfx('reload');
+                  playSfx('reload', 1, 800); // 即時リロードの流用: 長尺音源になったため800msで切る
                   spawnBurst(pk.x + 8, pk.y + 8, '#cbd5e1', 10);
                   spawnRing(pk.x + 8, pk.y + 8, 3, 22, 'rgba(203,213,225,0.76)', 2, 260);
                   useGameStore.getState().spawnGlow(pk.x + 8, pk.y + 8, 28, 'rgba(203,213,225,', 240);
@@ -5169,7 +5174,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hasBoom = player.subWeapons.includes('drone-boomerang');
           const ready = hasBoom && gameTime >= (player.subWeaponCooldowns['drone-boomerang'] ?? 0);
           if (ready && !boomReadyRef.current) {
-            playSfx('reload'); // 「カチッ」相当(音源のある reload を流用。ui-select は音源未定義で無音だった)
+            playSfx('reload', 1, 300); // 「カチッ」相当(reload流用)。長尺音源になったため300msで切る
             useGameStore.setState({ boomerangReadyFxAt: Date.now() });
           }
           boomReadyRef.current = ready;
@@ -5244,7 +5249,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           rankRef.current.startKills = rgs2.gameStats.enemiesKilled;
           rankRef.current.startLevel = rgs2.player.level;
         }
-        const rankAdj = rankOutdoor ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1 };
+        // 関所(襲撃)コールアウト(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
+        // 生きて抜けた瞬間「襲撃を凌いだ」。屋外のみ。最終フェーズ(gate9)は終わりが無いので生還側は出ない。
+        if (!labTheme && !indoor && gateCalloutRef.current !== rankPhaseKey) {
+          const prevKey = gateCalloutRef.current;
+          gateCalloutRef.current = rankPhaseKey;
+          const ccx = player.x + player.width / 2, ccy = player.y;
+          if (curPhase.kind === 'gate') {
+            useGameStore.getState().spawnCallout(ccx, ccy - 26, '多数の変異体を検知', '#fecaca', { bg: 0xb91c1c });
+          } else if (prevKey.startsWith('gate')) {
+            useGameStore.getState().spawnCallout(ccx, ccy - 26, '襲撃を凌いだ', '#bbf7d0', { bg: 0x15803d });
+            playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
+          }
+        }
+        // 紅き月(社長合意): 発生中はAIディレクター上の追加の盛りを止める(イベント自体がPEAK=二重に盛らない)。
+        // DirectorRank(⑤)の上乗せを一時停止。③④は紅き月より前からの基準挙動なので触れない。
+        const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
+        const rankAdj = (rankOutdoor && !redNightActiveNow) ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1 };
         // HARVEST相当(buildupフェーズ=関所間の緩む区間)でだけ、rank に応じたEXP倍率を効かせる
         // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
         const rankHarvestActive = curPhase.kind === 'buildup';
@@ -5875,6 +5896,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (ex * ex + ey * ey <= eggR2) eggNear++;
           }
           if (eggNear > 0) dangerBias = Math.max(dangerBias, Math.min(1, eggNear / DIRECTOR_EGG_DANGER_FULL));
+          // 紅き月(社長合意): イベント中は danger 最大=状態機械が自然にPEAKへ入る(=RELAX/BUILDUPの
+          // 適用が消えて二重の盛り/緩めをしない)。明けたら「PEAK後は必ずRELAX」の既存不変条件で
+          // 保証されたRELAX(引きの時間)が来る。
+          if (ds.redNight?.phase === 'active') dangerBias = 1;
           directorRef.current.state = stepDirector(directorRef.current.state, {
             hpFrac: dp.health / maxHp,
             damageTakenFrac: dmgTaken,

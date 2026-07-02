@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1288 — レア個体は当たり判定ごと拡大 / 強襲コールアウト+突破SE / 紅き月×ディレクター連携 / リロードSE差し替え(全て社長指示)
+- **レア個体のサイズ差を「当たり判定ごと」に変更**(社長指示: 視覚だけでなく判定も)。v0.25.1287の
+  視覚のみ拡大(pixiScene)を撤回し、`enemyUtils.buildEnemy`で`width/height`自体を青1.1/紫1.2/赤1.3倍に
+  (`COLOR_TIER_SIZE_MULT`)。描画は判定箱にフィットするので絵も自動で大きくなる(二重拡大しないよう
+  pixiScene側の倍率は削除)。当たりやすくなる/接触面が広がるのは仕様(社長承認)。
+- **強襲(関所)コールアウト**(社長指定文言): 関所フェーズ突入で「多数の変異体を検知」(赤)、生きて抜けたら
+  「襲撃を凌いだ」(緑)+**強襲突破ジングル**(社長提供SE・約1.9s→`public/audio/sfx/gate-clear.mp3`、
+  新SfxKey `gate-clear`)。屋外のみ・最終フェーズ(gate9)は終わりが無いので生還側は出ない。
+  ※文言は既存のゲーム内用語に合わせ「変異体」表記(社長メッセージの「変異者」は変異体と解釈)。
+- **紅き月×AIディレクター連携**(社長合意「その通りに」): 紅き月中は`dangerBias=1`を注入=状態機械が
+  自然にPEAKへ入る(RELAX/BUILDUP適用が消えて二重の盛り/緩めをしない)。明けたら既存の「PEAK後は必ず
+  RELAX」不変条件で保証された引きの時間が来る。DirectorRank(⑤)の上乗せも紅き月中は一時停止。
+  ③④は紅き月以前からの基準挙動なので触れない。
+- **リロードSE差し替え**(社長提供・約7.6sの長尺音源→`reload.mp3`上書き、キャッシュバストは
+  `__APP_VERSION__`で自動): `playSfx`に`durationMsOverride`(その1回だけ再生長を上書き)を追加し、
+  リロード開始時に**武器の実リロード時間(effectiveReloadMs)ぶんだけ鳴らして完了と同時に止める**
+  (`fadeOutMs:120`でブツ切り防止)。流用箇所は短くキャップ: 快速マガジン800ms/ブーメランCD明けカチッ300ms。
+- 負荷スコア: **1/10**。全てイベント時のみの処理(コールアウト2種/ジングル1回/SE長の演算)。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
+
 ## v0.25.1287 — 爆弾ピックON復帰 / 武器箱の時間沸き廃止→AI制御 / レア個体をサイズで見分け(全て社長指示)
 - **爆弾ピックアップON復帰**: `BOMB_PICKUPS_ENABLED` false→true(社長指示)。松明ドロップの爆弾枠(通常15%、
   ピンチ救済最大時25%)が実際に出るようになった。屋内(研究所)は従来どおり出さない。`store/gameStore.ts`。

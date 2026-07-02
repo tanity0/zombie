@@ -113,7 +113,8 @@ export type SfxKey =
   | 'boss-death'     // 裏ボス討伐(消滅)SE。長いので fadeOutMs でフェード
   | 'base-capture'   // 拠点開放SE
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
-  | 'screamer-cry';  // 変異体(叫喚型)の叫喚(発動)SE
+  | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
+  | 'gate-clear';    // 強襲(関所)を生きて凌いだ時の突破ジングル
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -175,6 +176,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/hunter-alert.mp3`,
     volume: 1.0,
     minIntervalMs: 400,
+  },
+  // 強襲(関所)突破ジングル(社長提供・約1.9s)。「襲撃を凌いだ」コールアウトと同時に1回。
+  'gate-clear': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/gate-clear.mp3`,
+    volume: 0.9,
+    minIntervalMs: 1000,
   },
   // 変異体(叫喚型)の叫喚(発動)SE(社長提供)。溜め完了で1回。
   'screamer-cry': {
@@ -261,9 +268,13 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     volume: 1.0,
     minIntervalMs: 60,
   },
+  // 社長提供の長尺リロード音(約7.6秒)に差し替え。実際の再生長は呼び出し側が武器のリロード時間を
+  // playSfx の durationMsOverride で渡し「リロード完了と同時に止める」。fadeOutMs で末尾を丸めて
+  // ブツ切りを防ぐ。流用箇所(快速マガジン/カチッ音)も呼び出し側で短くキャップ。
   reload: {
     src: `${import.meta.env.BASE_URL}audio/sfx/reload.mp3`,
     volume: 1.05, // 大きく(社長指示。0.86→1.05)
+    fadeOutMs: 120,
   },
   // Counter (bullet parry) success — deliberately a touch louder than the rest.
   counter: {
@@ -927,7 +938,9 @@ export const setAudioSuspended = (suspended: boolean) => {
 const DANCE_MUTED_SFX = new Set<SfxKey>(['slash-damage', 'melee']);
 
 // gainMult: 距離減衰など、その1回の再生だけ音量を倍率調整したい時に渡す(既定1)。0以下なら鳴らさない。
-export const playSfx = (key: SfxKey, gainMult = 1) => {
+// durationMsOverride: その1回の再生だけ再生長を上書き(例: リロードSEを武器のリロード時間で止める)。
+// 指定時は config.maxDurationMs より優先。fadeOutMs が設定されていれば終端が丸まる(ブツ切り防止)。
+export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number) => {
   if (muted) return;
   if (gainMult <= 0) return;
   if (danceActive && DANCE_MUTED_SFX.has(key)) return;
@@ -958,8 +971,9 @@ export const playSfx = (key: SfxKey, gainMult = 1) => {
   gain.connect(context.destination);
 
   const offset = Math.min(config.startAt ?? 0, Math.max(0, buffer.duration - 0.001));
-  const duration = config.maxDurationMs
-    ? Math.min(config.maxDurationMs / 1000, Math.max(0.001, buffer.duration - offset))
+  const capMs = durationMsOverride ?? config.maxDurationMs;
+  const duration = capMs
+    ? Math.min(capMs / 1000, Math.max(0.001, buffer.duration - offset))
     : undefined;
 
   // 長尺SEのフェードアウト: 再生終端(duration か曲尾)へ向けて fadeOutMs でゲインを0へ。

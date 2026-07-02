@@ -679,10 +679,8 @@ const BOSS_BEHIND_ALPHA = 0.5;
 // この距離(behindDist=70→FAR)で 0.5→0(完全透明)へ続ける。#1(0.5まで)の数値・カーブは不変。
 const BOSS_BEHIND_FAR_PX = 220;
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
-// 色付き(レア)個体はレア度が上がるほど絵を大きく描く(社長指示: 影の色だけでは見分けづらい)。
-// 通常100% / 青110% / 紫120% / 赤130%(+10%刻み)。視覚のみ=hitbox/攻撃範囲/移動は不変(CLAUDE.md)。
-// 影の色染めは従来どおり併用(サイズ+色の2重シグナル)。
-const COLOR_TIER_VISUAL_SCALE: Record<string, number> = { blue: 1.1, purple: 1.2, red: 1.3 };
+// 色付き(レア)個体のサイズ差は enemyUtils の COLOR_TIER_SIZE_MULT で「当たり判定ごと」拡大する
+// (社長指示)。描画は判定箱(fb)にフィットするため、ここでの追加倍率は不要(掛けると二重拡大になる)。
 // ステージ4の敵絵は接地点(足元)が画像の水平中心からずれている個体がある(切り出し由来)。
 // 足元の接地帯(下端12%)のα重心を測った水平位置(テクスチャ幅に対する比率)。0.5=中央。
 // drawEnemy で「重心が footX に乗る」ように水平オフセットを掛けて補正する(視覚のみ=hitbox不変)。
@@ -4941,9 +4939,7 @@ export class PixiScene {
       const stage3BossMul = (this.daylight && e.type === 'giantbat') ? STAGE3_BOSS_VISUAL_SCALE : 1;
       // ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので上方向に拡大。視覚のみ=hitbox不変。
       const stage4VisMul = (this.snowStage && STAGE4_ENEMY_TYPES.has(e.type)) ? STAGE4_ENEMY_VISUAL_SCALE : 1;
-      // 色付き(レア)個体はレア度でサイズを上げる(青1.1/紫1.2/赤1.3)。視覚のみ=hitbox不変。
-      const tierVisMul = e.colorTier ? (COLOR_TIER_VISUAL_SCALE[e.colorTier] ?? 1) : 1;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * stage3BossMul * stage4VisMul * tierVisMul;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * stage3BossMul * stage4VisMul;
       const breath = this.enemyBreath(e, now);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
