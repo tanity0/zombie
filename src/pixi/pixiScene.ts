@@ -528,6 +528,8 @@ const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
+const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
+const THOR_TSUKI_VIS_HALFWIDTH = 30;    // 突きの描画半太さ(当たり判定と同じ)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
@@ -832,6 +834,9 @@ export class PixiScene {
   // 投擲スケボー: 進行方向へ回転しながら地面を滑る板スプライト(色キー透過済み)。
   private skateboardViews = new Map<string, { container: Container; sprite: Sprite; gfx: Graphics }>();
   private effects = new Map<string, EffectView>();
+  // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
+  // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
+  private thorSlashFx = new Map<string, Container>();
 
   // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
   // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
@@ -4323,6 +4328,8 @@ export class PixiScene {
         this.enemies.delete(id);
         this.enemyJumpHop.delete(id);
         this.enemyBlockFall.delete(id);
+        const slashFx = this.thorSlashFx.get(id);
+        if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
       }
     }
   }
@@ -5092,8 +5099,12 @@ export class PixiScene {
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
       }
     }
-    // トール(ステージ5裏ボス)の独自攻撃(社長指示): 一閃/払いの赤ライン予告+実行、ジャンプ攻撃の着地予告。
+    // トール(ステージ5裏ボス)の独自攻撃(社長指示): 一閃/突き/払いをプレイヤーの斬撃と同じピクセル
+    // 演出(drawThorSlash=fx/slash-streak-*, fx/slash-burst-*)で、当たり判定ラインに合わせてモーション
+    // させる。ジャンプ攻撃の着地予告のみ従来どおりpumpkin系と同じ意匠の赤い楕円。
     if (e.type === 'thor') {
+      const slashFx = this.thorSlashFx.get(e.id);
+      if (slashFx) slashFx.visible = false; // 既定で非表示。該当ステートのみ下で表示する
       if (e.bossState === 'issen-windup') {
         // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向は選択時に既にロック済み=
         // 溜め中はプレイヤーを追わない(社長修正指示。aiFromX/Y→aiTargetX/Yは固定値)。
@@ -5102,40 +5113,32 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
-        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-        // 社長修正指示: 予告ラインの太さを実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる
-        // (旧: 溜め進行で細い線が太くなる演出だったため、見た目より判定が広く見えていた)。
-        // 溜めの経過は太さではなく不透明度(緊迫感)で表現する。
-        const w = THOR_ISSEN_VIS_HALFWIDTH * 2;
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff3030, alpha: (0.12 + 0.18 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.35, color: 0xffe0e0, alpha: 0.25 + 0.35 * prog, cap: 'round' });
+        // 溜め=0→0.5(streakが伸びる予告)/実行(issen-dash)=0.5→1(縮んでフェード)の連続モーション。
+        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, 0.5 * prog, false);
       } else if (e.bossState === 'issen-dash') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
-        const fade = Math.min(1, life / 0.25 + 0.3); // 一閃は短寿命なので序盤から視認できる濃さを確保
-        const flick = 0.9 + 0.1 * Math.sin(now / 40);
-        const w = THOR_ISSEN_VIS_HALFWIDTH * 2 * flick;
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
+        const dashProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
+        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, 0.5 + 0.5 * dashProg, true);
+      } else if (e.bossState === 'tsuki') {
+        // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
+        // 実行の瞬間だけ表示。180msの実行時間そのものを1本の伸縮モーション(0→1)として使う。
+        view.sprite.tint = 0xffffff;
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const tsukiProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_MS));
+        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, tsukiProg, true);
       } else if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
+        view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (e.bossState === 'harai-windup') {
-          view.sprite.tint = 0xffffff;
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_WINDUP_MS));
-          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 0.5 * prog, false);
         } else {
-          const life = Math.max(0, Math.min(1, ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          const fade = Math.min(1, life / 0.3 + 0.3);
-          const w = THOR_HARAI_VIS_HALFWIDTH * 2;
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff2020, alpha: 0.45 * fade, cap: 'round' });
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.5, color: 0xff6060, alpha: 0.85 * fade, cap: 'round' });
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
+          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 0.5 + 0.5 * activeProg, true);
         }
       } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
         // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。
@@ -6962,6 +6965,54 @@ export class PixiScene {
     } else burst.visible = false;
   }
 
+  // トール(一閃/突き/払い)専用: drawSlashSprite と同じピクセル素材(fx/slash-streak-*, fx/slash-burst-*)を、
+  // プレイヤーの斬撃のような固定斜め向きではなく、実際の当たり判定ライン(fx,fy→tx,ty・半幅halfWidth)に
+  // 合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを斬撃ピクセルで当たり判定どおりにモーション)。
+  // t: 0(このステートの開始)→1(終了)の進行度。0-0.5でstreakが伸びる(溜め=予告)、0.5-1で縮む(実行=フェード)。
+  // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
+  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean) {
+    let c = this.thorSlashFx.get(id);
+    if (!c) {
+      const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
+      const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
+      c = new Container();
+      c.addChild(streak, burstSp);
+      this.L.effectLayer.addChild(c);
+      this.thorSlashFx.set(id, c);
+    }
+    const streak = c.children[0] as Sprite;
+    const burstSp = c.children[1] as Sprite;
+    const ref = getTexture('fx/slash-streak-4');
+    if (!ref) { c.visible = false; return; }
+    c.visible = true;
+    const length = Math.hypot(tx - fx, ty - fy);
+    const angle = Math.atan2(ty - fy, tx - fx);
+    const sc = length / Math.max(1, ref.width);
+    const vsc = (halfWidth * 2) / Math.max(1, ref.height);
+    const tt = Math.max(0, Math.min(1, t));
+    const idx = tt < 0.5 ? Math.min(4, Math.floor((tt / 0.5) * 5)) : Math.max(0, 4 - Math.floor(((tt - 0.5) / 0.5) * 5));
+    const stex = getTexture(`fx/slash-streak-${idx}`) ?? ref;
+    if (streak.texture !== stex) streak.texture = stex;
+    streak.position.set((fx + tx) / 2, (fy + ty) / 2);
+    streak.rotation = angle;
+    streak.scale.set(sc, vsc);
+    streak.alpha = tt < 0.5 ? (0.35 + 0.5 * (tt / 0.5)) : (1 - Math.max(0, (tt - 0.85) / 0.15));
+    if (burst) {
+      const bref = getTexture('fx/slash-burst-4');
+      const bidx = Math.max(0, Math.min(4, Math.floor(tt * 6)));
+      const btex = getTexture(`fx/slash-burst-${bidx}`);
+      if (btex && bref) {
+        if (burstSp.texture !== btex) burstSp.texture = btex;
+        burstSp.scale.set((halfWidth * 2.2) / Math.max(1, bref.width));
+        burstSp.position.set(tx, ty);
+        burstSp.alpha = 1 - Math.max(0, (tt - 0.5) / 0.5);
+        burstSp.visible = burstSp.alpha > 0.01;
+      } else burstSp.visible = false;
+    } else {
+      burstSp.visible = false;
+    }
+  }
+
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     const outRatio = (e.pickupAt - e.createdAt) / e.duration;
@@ -7731,6 +7782,7 @@ export class PixiScene {
     for (const e of this.pickups.values()) e.container.destroy({ children: true });
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();
+    for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
     // 影は shadowContainer + プール済みスプライトで管理(旧 shadowGfx は存在しない孤児参照だった)。
     // 以前はここで存在しない shadowGfx.destroy() を呼んで例外→以降の解放(playerFx等)が握り潰されていた。
     this.shadowContainer.destroy({ children: true });

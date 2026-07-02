@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1328 — トールの一閃/突き/払いをプレイヤー斬撃と同じピクセルエフェクトに(社長指示)
+- 「トールの突き攻撃時、プレイヤーの斬撃と同じピクセルのエフェクトを使って、当たり判定の大きさに
+  合わせて表示して。一閃/横払いも同じく当たり判定に合わせてモーションさせて」に対応。
+- `pixiScene.ts`に新設 `drawThorSlash(id,fx,fy,tx,ty,halfWidth,t,burst)`: プレイヤーの斬撃
+  (`drawSlashSprite`)と同じピクセル素材(`fx/slash-streak-0..4`/`fx/slash-burst-0..4`)を、
+  固定の斜め向きではなく実際の当たり判定ライン(fx,fy→tx,ty)に合わせて回転・伸縮させて描く
+  (streakの長さ=`Math.hypot`で判定の射程そのもの、太さ=`halfWidth*2`で判定幅そのもの=見た目と
+  判定が完全一致)。t=0→0.5でstreakが伸びる(溜め=予告)、0.5→1で縮んでフェード(実行)。burst=true
+  の間だけ命中点にバーストがポップ(実行中のみ・溜め中は出さない)。
+- 一閃(issen-windup/issen-dash)・払い(harai-windup/harai)は、従来の`Graphics`赤ライン描画を
+  `drawThorSlash`呼び出しに置き換え(判定幅・射程は変更なし=見た目だけの差し替え)。
+- 突き(tsuki)は元々「溜め中は方向未確定=予告ラインなし」の仕様(社長指示)のため、実行状態
+  (`tsuki`)のみ新規に表示を追加。180msの実行時間をそのまま1本の伸縮モーション(0→1)として使う。
+- 表示用プールは `thorSlashFx: Map<string, Container>`(enemy.id keyed)で管理。他ステートへ遷移
+  したフレームでは毎回`visible=false`にリセットしてから該当ステートだけ表示、敵除去時/シーン破棄時
+  に`destroy`する(スプライトの使い回し=毎フレームnewしない・軽量)。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。PixiJS描画コードのみ=
+  ユニットテスト対象外(既存方針どおり)。実機未確認(回転の向き/太さの見え方は実プレイ推奨)。
+- 負荷スコア: 1/10(pooled sprite 2枚・per-frame Graphicsから減った分むしろ軽量化。トール1体のみ
+  なので同時発生数の上限は元々1)。
+
 ## v0.25.1327 — ステージ5近景森を下げる(社長指示・調整)
 - 「ステージ5の近景森、半分くらい下げて」に対応。ステージ4の氷壁と同じパターン
   (`snowStage`+`FRONT_SNOW_Y_OFFSET`固定100px)を踏襲し、`stage5Stage`
