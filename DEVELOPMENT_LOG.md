@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1301 — チャット移行の引き継ぎメモ(コード変更なし・ブランチ運用の確認のみ)
+- 経緯: 社長が「開発チャットをこちらに移す」と宣言し、旧チャット(`claude/chat-context-continuity-saxlH`
+  で作業していたチャット)とは別に、このセッションを開始。ただしこのセッションはシステム/ハーネス
+  側から `claude/dev-chat-migration-avbxv5` を割り当てられており、CLAUDE.md の「Branch lock」節が
+  指す `saxlH` とは別ブランチだった。
+- 確認した事実: `avbxv5` は `saxlH` より2コミット進んでいる(v0.25.1298→v0.25.1300、
+  `DEVELOPMENT_LOG.md`追記 + `PACING_REDESIGN.md`二重階段明文化を含む)。つまり実際の最新作業は
+  `avbxv5` 側にあり、`saxlH` はそれより古い状態。
+- 社長判断: **このセッション(avbxv5チャット)はここで一旦中断し、`saxlH` 用の別チャットで作業を
+  再開する。** ブランチそのものを跨いで統合(マージ/リベース)する指示は今回は出ていない
+  ——次に `saxlH` チャットを開いた側が、必要なら `avbxv5` の最新2コミット
+  (`b1dddbc`→`8e5e2a4`、本コミット含め3コミット)を取り込むかどうかを社長と確認すること。
+- 引き継ぎ事項(saxlHチャット側のClaudeへ):
+  1. `saxlH` は現状 v0.25.1298 相当で止まっている。`avbxv5` には
+     PACING_REDESIGN.md の二重階段明文化(v0.25.1299/1300)とこの引き継ぎメモ(v0.25.1301)が
+     追加で乗っている。取り込むかは社長に確認してから(`git log --oneline saxlH..
+     origin/claude/dev-chat-migration-avbxv5` で差分コミットを確認可能)。
+  2. CLAUDE.md の「Branch lock」節はまだ `saxlH` を指しているため、`saxlH`
+     チャットで作業を続けること自体はCLAUDE.mdの記述と矛盾しない。今回のavbxv5セッション側では
+     Branch lock節は更新していない(社長からその指示はなかった)。
+  3. 今回のセッションでの結論は「ブランチ名を変えずに(＝各チャットは自分に割り当てられた
+     ブランチのまま)進める」で一致。片方のチャットからもう片方のブランチへpushする運用はしない。
+- 検証: コード変更なし(ドキュメント+バージョンのみ)。lint/typecheck/test/buildは対象差分なしのため
+  今回はスキップ(コード不変)。
+
 ## v0.25.1300 — PACING_REDESIGN.md: 二重階段(1プレイ内の階段)の明文化(社長との認識合わせ・設計のみ)
 - 社長確認「ステージごとではなく、そもそも1プレイ内にも階段を作りたい」→ 認識一致を確認し、
   バッチ3に**二重階段の構造**を明文化: ①ラン全体の階段=台本のmaxRung列(関所①3→②4→…終盤6-7。
