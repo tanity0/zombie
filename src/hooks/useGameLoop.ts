@@ -83,6 +83,10 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import {
+  eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady,
+  PITY_EVENT_BLOCK_TAIL_MS,
+} from '../utils/eventProducer';
+import {
   createGatePressureState, stepGatePressure, startPressureForRank,
   intervalMultForPressure, capBonusForPressure, rareBoostActiveForPressure,
   allowedProblemChildren, specialCastOrder, ceilingForMaxRung, ceilingForZone,
@@ -376,6 +380,9 @@ const UPSWING_ENABLED = evParam('upswing') !== '0';
 // PACING_REDESIGN.mdバッチ3(最小版): 関所中の連続圧力(gatePressure)。フラグ名は旧離散案の
 // `ladder`のまま(切り分け用)。?ladder=0で無効化=難易度④(gateLiveCorrection)含む従来挙動に復帰。
 const LADDER_ENABLED = evParam('ladder') !== '0';
+// PACING_REDESIGN.mdバッチ7: イベントプロデューサー(囲い/紅き月/ハンター/叫びの発火ゲート)。
+// ?events=0 で従来のランダム発火(本バッチ以前の挙動)に完全復帰(切り分け用)。
+const EVENTS_ENABLED = evParam('events') !== '0';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
@@ -551,6 +558,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 });
   // 難易度⑥(ピンチ救済): ピンチ持続時間の累積。
   const pinchRef = useRef(createPinchState());
+  // バッチ7(イベントプロデューサー・憲法第5条): ピンチ救済が発動していた間+解除後10秒は
+  // 大イベントの発火を禁止する猶予のgameTime。ピンチ判定(pity計算)は湧き上限確定後にしか
+  // 行えないため、他の1フレーム遅延パターン(directorRef/upswingRefと同じ)に倣い前フレームの
+  // 値を読む=イベント各ブロックは「直前フレームの猶予」を見る。
+  const pityEventBlockUntilRef = useRef(0);
   // 憲法第1条(退屈シグナル→上振れ枠): 退屈持続時間の累積。
   const upswingRef = useRef(createBoredomState());
   // バッチ3(最小版): 関所中の連続圧力状態。keyが変わったら(=新しい関所に入ったら)登り直す。
@@ -1174,6 +1186,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
           resetPityDrop();
+          pityEventBlockUntilRef.current = 0; // バッチ7の発火猶予も新ランでリセット
           // 憲法第1条(退屈→上振れ)も新ランでリセット。
           upswingRef.current = createBoredomState();
           // バッチ3(最小版)の連続圧力も新ランでリセット。
@@ -1254,7 +1267,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 画面外など非追跡の隙間で発火してしまう(社長報告バグ)ので「裏ボスが1体でも居る」で判定する。
             // ハンター追跡中(phase≠idle)は他イベントを発生させない(社長指示:同時1イベントまで)。
             const hiddenBossAlive = useGameStore.getState().enemies.some(e => isHiddenBoss(e.type));
-            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle';
+            // バッチ7(憲法第5条): 紅き月と重ねない+ピンチ救済発動中/解除後10秒は発火しない。
+            // ?events=0で本ゲートを無効化(囲いは従来どおり2分ごとのランダム発火に戻る)。
+            const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
+            const arenaProducerOk = !EVENTS_ENABLED || eventGateOk({
+              bigEventActive: redNightActiveNow, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
+            });
+            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk;
             if (arenaReady) {
               nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
               const pcx = player.x + player.width / 2;
@@ -1462,9 +1481,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 紅き夜は「デンジャーゾーン(区域index2=原点から3000px)以降」に居る時だけ発現(社長指示)。
           // 3分経過していても、それより内側の安全エリアでは発火しない=深入りした時に初めて発火。
           const rnDepth = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
+          // バッチ7(憲法第5条): 囲い/ハンターと重ねない+ピンチ猶予、かつ緩フェーズ中にしか開始しない
+          // (山=関所中に窓が開いても抽選を消費せず次の緩まで毎フレーム再判定=自然に遅延)。
+          // ?events=0で本ゲートを無効化(従来どおり時間+デンジャーゾーンだけで判定)。
+          const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle';
+          const rnProducerOk = !EVENTS_ENABLED || (
+            redNightPhaseGateOk(phaseAt(newGameTime).kind) &&
+            eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current })
+          );
           if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
               && !rnGs.enemies.some(e => isHiddenBoss(e.type)) // 裏ボス存命中は紅き夜を発火させない(イベント抑止と同基準)
-              && areaZoneIndexFor(rnDepth) >= 2) {
+              && areaZoneIndexFor(rnDepth) >= 2 && rnProducerOk) {
             // 3分後 かつ デンジャーゾーン以降で、出撃に一度だけ抽選。当たれば発火、外れたらこの出撃は紅き夜なし
             // (社長指示で頻度を下げる=必ず→確率)。redNightFiredRef は当落どちらでも立てて以降は判定しない。
             redNightFiredRef.current = true;
@@ -1580,7 +1607,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           if (H.phase === 'idle') {
             if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
-              // 優勢判定(6項目中4つ以上)。
+              // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
+              // 従来復帰用にロジック自体は残す。
               const cam = hs.camera;
               const onscreen = hs.enemies.reduce((n, e) => {
                 if (isBossType(e.type) || e.type === 'hunter') return n;
@@ -1597,7 +1625,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 (captured >= 1 ? 1 : 0) +
                 (ammoOk ? 1 : 0) +
                 (killsSince(6000) >= HUNTER_FAV_STREAK_6S ? 1 : 0);
-              if (score >= HUNTER_FAV_SCORE_NEEDED) {
+              // バッチ7: 独自の6項目優勢判定を廃止し、退屈シグナル(バッチ1の上振れ枠)に統合。
+              // 上振れ枠(+数、天井BORED_BONUS_MAX)を使い切ってもなお余裕(退屈)な相手にだけ、質の
+              // 緊張の切り札として出す。ピンチ猶予も追加。CDは変更なし。?events=0で旧判定に復帰。
+              const hunterProducerOk = !EVENTS_ENABLED || eventGateOk({
+                bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
+              });
+              const ready = EVENTS_ENABLED
+                ? (hunterBoredomReady(boredomBonus(upswingRef.current.boredMs)) && hunterProducerOk)
+                : score >= HUNTER_FAV_SCORE_NEEDED;
+              if (ready) {
                 H.primaryId = spawnHunter(true);
                 H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0;
                 H.eventsThisRun += 1;
@@ -1684,10 +1721,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
             || sS.enemies.some(e => e.type === 'giantbat' || e.type === 'reaper');
           const sBlocked = sCinematic || !!sS.activeEvent;
+          // バッチ7: 叫び(screamer)は関所中のみ発火(バッチ3のpressure≥0.80解禁と統合するまでの
+          // 先行導入=フェーズ種別だけで判定)+ピンチ猶予。?events=0で従来(いつでも発火)に復帰。
+          const screamerProducerOk = !EVENTS_ENABLED || (
+            screamerPhaseGateOk(phaseAt(newGameTime).kind) &&
+            eventGateOk({ bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current })
+          );
           if (aliveScreamer) {
             // 生存中はCDを先送り=撃破/退場の後、CD経過してから次の1体。
             screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
-          } else if (newGameTime >= SCREAMER_START_MS && newGameTime >= screamerRef.current.nextEligibleAt && !sBlocked) {
+          } else if (newGameTime >= SCREAMER_START_MS && newGameTime >= screamerRef.current.nextEligibleAt && !sBlocked && screamerProducerOk) {
             const spx = sS.player.x + sS.player.width / 2, spy = sS.player.y + sS.player.height / 2;
             const ang = Math.random() * Math.PI * 2;
             const r = Math.hypot(gameBounds.width, gameBounds.height) / 2 + 60;
@@ -5425,6 +5468,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
           const lvl = pityLevel(pinchRef.current.pinchMs);
           setPityDrop(pityDropTuning(lvl), lvl);
+          // バッチ7(憲法第5条): ピンチ救済発動中は猶予を更新し続ける→非発動になった瞬間から
+          // PITY_EVENT_BLOCK_TAIL_MS(10秒)だけそのまま残る(=解除後10秒はイベント発火禁止)。
+          if (lvl > 0) pityEventBlockUntilRef.current = gameTime + PITY_EVENT_BLOCK_TAIL_MS;
         }
 
         // Continuous spawner — drip enemies onto the field from off-screen.
@@ -6081,10 +6127,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (ex * ex + ey * ey <= eggR2) eggNear++;
           }
           if (eggNear > 0) dangerBias = Math.max(dangerBias, Math.min(1, eggNear / DIRECTOR_EGG_DANGER_FULL));
-          // 紅き月(社長合意): イベント中は danger 最大=状態機械が自然にPEAKへ入る(=RELAX/BUILDUPの
-          // 適用が消えて二重の盛り/緩めをしない)。明けたら「PEAK後は必ずRELAX」の既存不変条件で
-          // 保証されたRELAX(引きの時間)が来る。
+          // 紅き月(社長合意)/バッチ7憲法第5条(全大イベントへ拡張): イベント中は danger 最大=
+          // 状態機械が自然にPEAKへ入る(=RELAX/BUILDUPの適用が消えて二重の盛り/緩めをしない)。
+          // 明けたら「PEAK後は必ずRELAX」の既存不変条件で保証されたRELAX(引きの時間)が来る。
+          // ハンターの索敵/追跡/撤退はすでに専用カーブ(上のhPhase分岐)を持つためここでは上書きしない。
           if (ds.redNight?.phase === 'active') dangerBias = 1;
+          if (ds.activeEvent && ds.activeEvent.kind !== 'rescue') dangerBias = 1; // 囲い(ホード/ミニボス)
+          if (ds.bossChasing) dangerBias = 1; // 裏ボス追跡中
           directorRef.current.state = stepDirector(directorRef.current.state, {
             hpFrac: dp.health / maxHp,
             damageTakenFrac: dmgTaken,
