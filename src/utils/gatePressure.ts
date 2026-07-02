@@ -123,4 +123,7 @@ export const ceilingForMaxRung = (maxRung: number): number => MAX_RUNG_CEILING[m
 
 // ゾーン上限(憲法第4条)。エリア0-1(初心者)はテンポと数のみに事実上制限される。
 const ZONE_CEILING: number[] = [0.34, 0.34, 0.79, 0.94, 1.00]; // area 0..4
+// GAME_AUDIT #8 検証結果: エリア3の天井0.94 < ghost解禁0.95は仕様どおり(旧離散段の
+// ゾーン上限「エリア3=段6(叫びまで)/エリア4=段7(ゴースト)」の変換値。ghostの関所解禁は
+// 深層域(エリア4)限定が意図。緩フェーズの自然プール(AREA_WEIGHTエリア2+)からは従来どおり出る)。
 export const ceilingForZone = (area: number): number => ZONE_CEILING[Math.max(0, Math.min(4, area))] ?? 1.00;

@@ -14,6 +14,11 @@ describe('selectReliefProgram (PACING_REDESIGN.mdバッチ4)', () => {
     expect(p.id).toBe('relax');
   });
 
+  it('intro buildup always gets relax, even when a lesson would otherwise be picked (GAME_AUDIT #6)', () => {
+    const p = selectReliefProgram({ ...base, intro: true, score: 0.7, lessonExperience: { werewolf: 0, pumpkin: 0 } });
+    expect(p.id).toBe('relax');
+  });
+
   it('picks lesson-wolf in the early window when werewolf experience is low', () => {
     const p = selectReliefProgram({ ...base, gameTimeMs: 60000, score: 0.7, lessonExperience: { werewolf: 0, pumpkin: 5 } });
     expect(p.id).toBe('lesson-wolf');

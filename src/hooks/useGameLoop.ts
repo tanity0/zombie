@@ -255,7 +255,7 @@ const TURRET_DURATION_BY_LEVEL = [0, 15000, 15000, 15000]; // 持続を3倍(5s�
 const TURRET_FOOT_W = 30;                               // 当たり判定幅(叩く判定/設置足元)
 const TURRET_FOOT_H = 18;                               // 当たり判定奥行(下辺=足元)
 const TURRET_PLACE_FORWARD = 24;                        // プレイヤー中心から進行方向へ置く距離
-const TURRET_FWD_FIRE_MS = 130;                         // 前方集中の発射間隔(handgun-t3 cooldown 相当)
+const TURRET_FWD_FIRE_MS = 130;                         // 前方集中の発射間隔(handgun-t3のcooldown=100msよりやや遅め。値は意図した実値・GAME_AUDIT #13で注釈修正)
 const TURRET_FWD_DAMAGE = 5;                            // 前方集中の弾ダメージ(社長指示で7→5)
 const TURRET_FWD_BULLET_SPEED = 560 * 1.5;             // handgun-t3 projectileSpeed × PROJECTILE_SPEED_MULT(1.5)
 const TURRET_FWD_RANGE = 420;                           // 前方集中の射程(長射程)。TODO: 実機調整
@@ -5885,6 +5885,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               score: rankRef.current.lastPerf,
               lessonExperience: { werewolf: totals.byBucket.werewolf, pumpkin: totals.byBucket.pumpkin },
               struggleType,
+              intro: curPhase.index === 1, // GAME_AUDIT #6: 導入buildupは必ず純休憩(講習にしない)
             });
             reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false };
           }
@@ -5971,6 +5972,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         } else {
           gatePressureRef.current.castFirstNow = false;
           gatePressureRef.current.castSecondNow = false;
+          // GAME_AUDIT #5: 緩フェーズ中もprevHp/被弾履歴を追従させる。凍結したままだと緩中の被弾が
+          // 次の関所の初フレームで偽の被弾インパルス(-0.15)として発火していた。
+          pressureHitRef.current.prevHp = player.health;
+          pressureHitRef.current.hitTimes = pressureHitRef.current.hitTimes.filter(t => gameTime - t <= 2000);
         }
         const pressureCapBonus = pressureOutdoor ? capBonusForPressure(gatePressureRef.current.state.pressure) : 0;
         // デバッグ表示用(社長指示: 今のrankを見えるようにしておく)。DirectorOverlay(?director=1)が読む。
@@ -6111,8 +6116,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : (scene ? scene.intervalMult : 1);
         // バッチ3.5-B(盤面在庫): PUMPKIN_PAIR_SPAWN_EASEの一般化。固いのが盤面に溜まるほど注ぐ量が
         // 細る(debtTempoEaseMult: interval×(1+0.05×max(0,debt-8))、上限×1.6)。
+        // GAME_AUDIT #4: 一般化=置き換えなので乗算で二重掛けせずmaxで合成する(パンプキン2体は
+        // debt≈12→×1.2と1.3が重なって×1.56になっていた)。?debt=0時は従来のペア緩和のみが残る。
         const debtEaseMult = DEBT_ENABLED ? debtTempoEaseMult(boardDebtNow) : 1;
-        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * (pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1) * debtEaseMult;
+        const hardBoardEase = Math.max(debtEaseMult, pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
+        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * hardBoardEase;
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
@@ -6158,7 +6166,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (旧cap=2から変更・社長承認)②debtが高い間は投入を延期。パルス(castFirstNow/SecondNow)は
         // 一瞬しか立たないため、その場で投入できなければpendingCastへ保留し、条件が晴れるまで
         // 毎フレーム再チェックする(タイマー消費なし=「掃けたら発火」)。
-        if (!danceTest && !indoor && !confining) {
+        // GAME_AUDIT #2: 保留中の配役は関所(gate)の中でしか投入しない。関所を出たら破棄する
+        // (延期されたパンプキン等が次の緩/ボス中に湧くのは憲法第5条「緩を荒らさない」違反)。
+        // 次の関所はpressure登り直し=0.50/0.65跨ぎから配役もやり直し、が正。
+        if (!pressureOutdoor && pressureCastRef.current.pendingCast) {
+          pressureCastRef.current.pendingCast = null;
+        }
+        if (pressureOutdoor && !danceTest && !indoor && !confining) {
           if (gatePressureRef.current.castFirstNow || gatePressureRef.current.castSecondNow) {
             if (!pressureCastRef.current.order) {
               pressureCastRef.current.order = specialCastOrder(getCurrentStyle(), Math.random());

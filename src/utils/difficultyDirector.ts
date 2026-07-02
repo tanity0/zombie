@@ -58,7 +58,11 @@ const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], i
 const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true, mix: { bat: 55, skeleton: 40, zombie: 5 } }; // 優しい: パンプキン練習(講習=床あり)
 const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true, mix: { bat: 55, skeleton: 40, zombie: 5 } }; // 優しい: 犬(ダッシュ)練習(講習=床あり)
 const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6, suppressed: ['zombie'], rareMult: 0.5, featuredFloor: true, mix: { bat: 60, skeleton: 35, zombie: 5 } }; // 無双: 弱雑魚を高速大量(深部のチャフ供給=床あり)
-const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['pumpkin', 'werewolf'], intervalMult: 0.8, rareMult: 1.2, mix: { bat: 30, skeleton: 45, zombie: 25 } }; // 関所(数系): パンプキン+犬(床なし=エリア規約に従う)
+// GAME_AUDIT #3: 旧featured ['pumpkin','werewolf'] は自己矛盾で一度も出ていなかった
+// (関所①はmaxRung3=pressure天井0.49 < 配役解禁0.50。問題児は再設計後、シーンfeaturedではなく
+// gatePressureの許可/配役が出す)。段3の実体=「テンポ+数+弾まで」に合わせfeaturedをplantへ変更
+// (エリア2以深でpressure≥0.35解禁後の出現を加速するだけ。エリア0-1はゾーン天井0.34で従来どおり出ない)。
+const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['plant'], intervalMult: 0.8, rareMult: 1.2, mix: { bat: 30, skeleton: 45, zombie: 25 } }; // 関所①(数系): テンポ+数+弾まで(床なし=エリア規約に従う)
 const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2, mix: { bat: 25, skeleton: 35, zombie: 40 } };          // 関所(射線系): 雑魚大量+飛び道具(壁+弾のコンボ・床なし)
 const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス(床なし・mix未指定=従来どおり)
 const SCENE_BOSS: SpawnScene           = { id: 'boss',           featured: [], intervalMult: 1.0, rareMult: 1.0, mix: { bat: 30, skeleton: 40, zombie: 30 } };                     // 城ボス中

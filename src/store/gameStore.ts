@@ -1507,7 +1507,7 @@ const counterMasterKbScale = (player: Player): number => {
 };
 
 // スキル: スラッシャー = アクティブリロード型のタイミングリング追撃(最大3連)。
-// 近接が当たるとプレイヤーへ縮むリングが出て(描画は pixiScene)、ゴールに重なるジャスト窓(±100ms)で
+// 近接が当たるとプレイヤーへ縮むリングが出て(描画は pixiScene)、ゴールに重なるジャスト窓(±50ms=SLASHER_JUST_MS)で
 // タップすると追撃が出る。成功で次のリングを再生成、最大3連。窓を外す/未入力でコンボ終了。
 // ダメージは追撃ごとに ×2/3 減衰(1.0 / 0.667 / 0.444)。当たった敵のみ通常ノックバック。
 export const SLASHER_RING_MS = 500;   // リングが縮みきる(=ジャストの瞬間)までの時間
@@ -4576,6 +4576,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
     if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / (player.equipBonus?.fireRateMult ?? 1)) return;
+    // GAME_AUDIT #10: 通常射撃(weaponUtils)と同じダメージ倍率を適用する。従来は連射装備だけ
+    // 効いてダメージ装備・スキル・スカベンジャーが素通りだった(速くなるが強くならない非対称)。
+    const phillDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     if (snapEnemy) {
@@ -4590,7 +4593,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: hx - size / 2,
         y: hy - size / 2,
         width: size, height: size, speed: 0,
-        damage: weapon.damage,
+        damage: phillDamage,
         direction: { x: 0, y: -1 },
         weaponType: 'phill-bullet',
         weaponKey: weapon.key,
@@ -4611,7 +4614,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: pcx - size / 2,
         y: pcy - size / 2,
         width: size, height: size, speed,
-        damage: weapon.damage,
+        damage: phillDamage,
         direction: { x: dirx / dl, y: diry / dl },
         weaponType: 'phill-bullet',
         weaponKey: weapon.key,
@@ -7820,7 +7823,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         : gain;
       return {
         meleeFinishComboCount: nextCombo,
-        meleeFinishComboUntil: state.gameTime + Math.round(MELEE_FINISH_COMBO_WINDOW_MS * (state.player.equipBonus?.killGraceMult ?? 1)),
+        // インライン実装3箇所(damageEnemy系)と同じ式に統一: combo-masterの窓延長ボーナスを含める
+        // (GAME_AUDIT #1: 本ヘルパーだけ延長が抜けており、カウンター/反射経由のコンボが短い窓になっていた)
+        meleeFinishComboUntil: state.gameTime + Math.round((MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(state.player)) * (state.player.equipBonus?.killGraceMult ?? 1)),
         gameStats: {
           ...state.gameStats,
           maxCombo: Math.max(state.gameStats.maxCombo, nextCombo)

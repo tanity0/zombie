@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1337 — GAME_AUDIT シート2の一括修正: 社長裁定「青線以外は直す」の10件(設計チャットFable)
+- 社長がExcelシート2を裁定(スクショの青線=現状維持: **#7死神10分タイマー / #9紅き夜×2 /
+  #12ワイヤーコメント**)。それ以外の10件を修正:
+  - **#1** `addMeleeFinishCombo`にcombo-masterの窓延長を追加(インライン3箇所と式を統一)。
+  - **#2** 配役pendingCastは関所(gate)中のみ投入・関所を出たら破棄(緩/ボスへの漏れ=憲法5条違反を遮断)。
+  - **#3** 関所①シーンのfeaturedを['pumpkin','werewolf']→['plant']へ(段3=テンポ+数+弾の実体に一致。
+    旧指定は天井0.49<解禁0.50で一度も出ていなかった)。
+  - **#4** パンプキンペア緩和×盤面在庫緩和を乗算→**max合成**(二重掛け解消・?debt=0時はペア緩和が残る)。
+  - **#5** 緩フェーズ中もpressureHitRefのprevHp/被弾履歴を追従(次関所初フレームの偽インパルス解消)。
+  - **#6** 導入(buildup①)は演目選択せず**必ず純休憩**(仮スコア0.7による初手犬講習を廃止)。
+    `selectReliefProgram`に`intro`入力を追加+テスト1件。
+  - **#8** ghost解禁0.95>エリア3天井0.94は**仕様どおり**(旧段設計: エリア3=段6まで)とコード上に明記。
+  - **#10** PHILLリボルバーに通常射撃と同じダメージ倍率(スカベンジャー/アタックシューター/装備damageMult)を適用。
+  - **#11/#13** コメント齟齬修正(スラッシャー窓±50ms/タレット130msは意図値)。
+- GAME_AUDIT.xlsxシート2に「対応(v0.25.1337)」列を追記。
+- 検証: lint / typecheck / test(258 pass, 1 skip・新規1件) / build 全通過。
+- コアループ宣言: ①(コンボ/PHILL=手触りの正直さ)と②(配役漏れ/導入静穏/緩和二重掛け=心電図の正確さ)の修理。
+
 ## v0.25.1336 — GAME_AUDIT.xlsx新設: 全システム監査(抜け漏れ53件+バグ/仕様疑義13件)(設計チャットFable・監査のみ)
 - 社長指示タスク①「システム全体の抜け漏れ・流れた未実装の洗い出し(Excel)」②「全体デバッグ+
   仕様妥当性の洗い出し」を実施。成果物=`GAME_AUDIT.xlsx`(リポジトリ直下・3シート)。

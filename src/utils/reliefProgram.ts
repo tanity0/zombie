@@ -60,9 +60,13 @@ export interface ReliefProgramInput {
   score: number; // 0-1、直前gateの成績(directorRankのevaluatePhasePerformanceと同じ尺度)
   lessonExperience: { werewolf: number; pumpkin: number }; // 通算キル数(経験の代理指標)
   struggleType: EnemyType | null; // 直前gateで主役だったのに苦戦(キルが少ない)した型。無ければnull
+  intro?: boolean; // 導入(まだ関所を1つも経ていない最初のbuildup)。GAME_AUDIT #6
 }
 
 export const selectReliefProgram = (input: ReliefProgramInput): ReliefProgram => {
+  // GAME_AUDIT #6: 導入(buildup①)は成績が未計測(仮値0.7)のまま講習が選ばれ、
+  // 「静かな立ち上がり」が初手から犬講習に置き換わっていた。導入は必ず純休憩。
+  if (input.intro) return RELAX_PROGRAM;
   const late = input.gameTimeMs >= RELIEF_LATE_GAME_MS;
   if (late) {
     // 終盤の緩はだれさせない: 講習・純休憩を選ばず、既定=HARVEST無双。例外は成績最悪のみ。
