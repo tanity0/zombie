@@ -5099,31 +5099,38 @@ export class PixiScene {
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
       }
     }
-    // トール(ステージ5裏ボス)の独自攻撃(社長指示): 一閃/突き/払いをプレイヤーの斬撃と同じピクセル
-    // 演出(drawThorSlash=fx/slash-streak-*, fx/slash-burst-*)で、当たり判定ラインに合わせてモーション
-    // させる。ジャンプ攻撃の着地予告のみ従来どおりpumpkin系と同じ意匠の赤い楕円。
+    // トール(ステージ5裏ボス)の独自攻撃(社長指示): 溜め(放つ前)は従来どおり赤いダメージゾーンの
+    // ライン予告のまま、実際に攻撃を放った瞬間(実行状態)だけプレイヤーの斬撃と同じピクセル演出
+    // (drawThorSlash=fx/slash-streak-*, fx/slash-burst-*)を当たり判定ラインに合わせて表示する。
     if (e.type === 'thor') {
       const slashFx = this.thorSlashFx.get(e.id);
-      if (slashFx) slashFx.visible = false; // 既定で非表示。該当ステートのみ下で表示する
+      if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
       if (e.bossState === 'issen-windup') {
         // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向は選択時に既にロック済み=
         // 溜め中はプレイヤーを追わない(社長修正指示。aiFromX/Y→aiTargetX/Yは固定値)。
+        // 放つ前=従来どおり赤いダメージゾーンのライン予告(社長指示で復元)。
         const blink = 0.5 + 0.5 * Math.sin(now / 260);
         view.sprite.tint = ((255 << 16) | (Math.round(255 * (1 - blink)) << 8) | Math.round(255 * (1 - blink)));
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
-        // 溜め=0→0.5(streakが伸びる予告)/実行(issen-dash)=0.5→1(縮んでフェード)の連続モーション。
-        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, 0.5 * prog, false);
+        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+        // 予告ラインの太さを実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる。
+        // 溜めの経過は太さではなく不透明度(緊迫感)で表現する。
+        const w = THOR_ISSEN_VIS_HALFWIDTH * 2;
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff3030, alpha: (0.12 + 0.18 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.35, color: 0xffe0e0, alpha: 0.25 + 0.35 * prog, cap: 'round' });
       } else if (e.bossState === 'issen-dash') {
+        // 一閃(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const dashProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
-        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, 0.5 + 0.5 * dashProg, true);
+        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, dashProg, true);
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
-        // 実行の瞬間だけ表示。180msの実行時間そのものを1本の伸縮モーション(0→1)として使う。
+        // 実行の瞬間だけプレイヤーの斬撃と同じピクセル演出を表示。180msをそのまま1本の
+        // 伸縮モーション(0→1)として使う。
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
@@ -5134,11 +5141,15 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (e.bossState === 'harai-windup') {
+          // 放つ前=従来どおり赤いダメージゾーンのライン予告(社長指示で復元)。
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_WINDUP_MS));
-          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 0.5 * prog, false);
+          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
         } else {
+          // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, 0.5 + 0.5 * activeProg, true);
+          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true);
         }
       } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
         // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。

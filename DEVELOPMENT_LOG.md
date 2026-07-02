@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1329 — v0.25.1328の解釈修正: 溜め(放つ前)は赤いダメージゾーンに戻す(社長指示)
+- 「攻撃を放ったときの描画として使ってという意味。放つ前のダメージゾーンは今まで通り赤いゾーンに
+  戻して」に対応。v0.25.1328で一閃/払いの**溜め(windup)**まで斬撃ピクセルに差し替えてしまっていた
+  のを、社長の意図(**実行=放った瞬間だけ**斬撃ピクセルを使う)どおりに修正。
+- `issen-windup`/`harai-windup`: `drawThorSlash`呼び出しを削除し、元の赤い`Graphics`ライン予告
+  (`o.moveTo().stroke()`・当たり判定幅と同じ太さ、溜め進行で不透明度が上がる)へ復元。
+- `issen-dash`/`harai`(実行)/`tsuki`(実行)は`drawThorSlash`のまま(変更なし)。ただし`t`を
+  「溜め0→0.5+実行0.5→1」の連続モーションから「実行フェーズ単体で0→1」に変更(溜めが
+  drawThorSlashを使わなくなったため、実行だけで独立した伸縮モーションになるよう調整)。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。実機未確認。
+- 負荷スコア: 1/10(描画方式の差し替えのみ・変更なし)。
+
 ## v0.25.1328 — トールの一閃/突き/払いをプレイヤー斬撃と同じピクセルエフェクトに(社長指示)
 - 「トールの突き攻撃時、プレイヤーの斬撃と同じピクセルのエフェクトを使って、当たり判定の大きさに
   合わせて表示して。一閃/横払いも同じく当たり判定に合わせてモーションさせて」に対応。
