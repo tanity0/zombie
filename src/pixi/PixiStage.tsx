@@ -139,7 +139,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
       const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
       void (async () => {
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front] = await Promise.all([
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far] = await Promise.all([
           load('sprites/lab-floor/lab-floor-stage2.png'),
           load('backgrounds/stage3-distant-city-day.jpg'),
           load('backgrounds/stage3-ground-cobble2.jpg'),
@@ -153,12 +153,14 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
           load('backgrounds/stage4-ground.jpg'),
           load('backgrounds/stage4-horizon.png'),
           load('backgrounds/stage3-front-rooftops.png'),
+          load('backgrounds/stage5-far.jpg'),
         ]);
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
         scene.setFarBackdropTexture('lab', s2Far);       // ステージ2(lab)の遠景
         scene.setFarBackdropTexture('city', s3Far);      // ステージ3の遠景
         scene.setFarBackdropTexture('snow', s4Far);      // ステージ4の遠景(雪原の要塞)
+        scene.setFarBackdropTexture('stage5', s5Far);    // ステージ5の遠景(紅き月の城塞・社長提供)
         scene.setStage3Ground(s3Ground);                 // ステージ3の床(石畳)
         scene.setStage3Horizon(s3Horizon);               // ステージ3の地平帯(廃墟都市)
         scene.setNearHorizonTexture('city', s3Near);     // 遠景森2: 廃墟都市(ステージ3)

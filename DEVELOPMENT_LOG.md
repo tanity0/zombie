@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1310 — ステージ5(軍本部)の遠景パノラマを社長提供素材で差し替え
+- 社長提供のステージ5背景素材(紅き月+城塞が変異体の大軍に包囲される絵)を追加。
+  `public/backgrounds/stage5-far.jpg`として保存(PNG 1536×1024/2.9MBをJPEG品質88で404KBへ変換、
+  既存のstage3/stage4遠景ファイルと同等サイズ)。
+- `data/campaign.ts`のstage-5に`farBackdrop: 'stage5'`を追加(ステージ3='city'/ステージ4='snow'と同じ
+  仕組みの新規キー)。`PixiStage.tsx`で読み込み、`scene.setFarBackdropTexture('stage5', s5Far)`で注入。
+- 既存の「遠景パノラマだけ差し替え、地形/地平帯/前景はforest既定のまま」というアーキテクチャに
+  そのまま乗せた(地面/地平帯/前景のオーバーライドは今回未提供のためforest既定にフォールバック=
+  設計どおりの段階的劣化)。`StageTheme`型やtint分岐等の他コードは'city'/'snow'を個別チェックする
+  形で、新キー'stage5'は既存のdefault(森)経路にそのまま乗るため追加の分岐は不要だった。
+- 検証: typecheck / lint(0, full) / test(189 pass, 1 skip) / build 通過(dist/backgrounds/stage5-far.jpg
+  出力を確認)。
+- 次: 地面(ground)・地平帯(horizon)・前景(front)の素材が追加提供されれば、
+  `setGroundOverride('stage5', ...)`/`setHorizonOverride('stage5', ...)`/`setFrontOverride('stage5', ...)`
+  で同じ仕組みに差し込める。
+
 ## v0.25.1309 — v0.25.1308を取り消し: 緑卵の同時上限は20・バースト量は3に戻す(社長指示: 別物と誤認)
 - 社長「あれ、ちがう。上限は20に戻し、バーストは3個に戻して。バーストはそれではない」。
   v0.25.1308で変更した「抱卵型(ghost)の緑卵バースト」は、社長が指していた「ばらまきイベント」とは
