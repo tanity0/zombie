@@ -357,8 +357,8 @@ const RANK_ENABLED = evParam('rank') !== '0';
 // 難易度⑥(ピンチ救済、社長指示): 低HP×敵溜まりすぎが続いた人にだけ、松明ドロップを回復/爆弾寄りへ
 // バイアス(場所は松明のみ=台本)。?pity=0 で無効化。
 const PITY_ENABLED = evParam('pity') !== '0';
-// 瀕死心音ループの発動しきい値(社長提供SE)。VitalsOrbが一番濃い色に変わる帯(hpFrac<=0.25)に合わせた。
-const HEARTBEAT_HP_FRAC = 0.25;
+// 瀕死心音ループの発動しきい値(社長指定: HP20%以下)。
+const HEARTBEAT_HP_FRAC = 0.20;
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
@@ -940,12 +940,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         setHurricaneRumble(!gs.isPaused && (!!gs.hurricane || reaperSuctionActive));
       }
 
-      // 瀕死(低HP)中だけ心音ループ(社長提供SE)。VitalsOrbが一番濃い色に変わる帯(HP25%以下)に
-      // 揃えた閾値。生きている間だけ・ポーズ/死亡/ゲーム時間停止中は鳴らさない。
+      // 瀕死(低HP)中だけ心音ループ(社長提供SE)。生きている間だけ・ポーズ/死亡中は鳴らさない。
+      // 注意: isGameTimeStopped()(カウンター等の一瞬のヒットストップ)は条件に入れない。低HP戦闘中は
+      // ヒットストップが頻発し、入れると毎回ループが再始動して「ブブブブ」と連打に化ける(社長報告)。
       {
         const gs = useGameStore.getState();
         const hpFrac = gs.player.maxHealth > 0 ? gs.player.health / gs.player.maxHealth : 0;
-        const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused && !isGameTimeStopped();
+        const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused;
         setHeartbeatLoop(critical);
         // PEAK重ねSE+BGMダッキング: トリガーは台本の関所(gate)フェーズ or 紅き月(社長指示で
         // 「多数の変異体を検知」バナーと同じ源=台本に統一。反応型macroのPEAKでは鳴らさない。
@@ -5385,6 +5386,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;
         const sceneFeatured = scene ? scene.featured : [];
+        const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
         const sceneIntervalMult = (scene ? scene.intervalMult : 1) * relaxAdj.intervalMult;
         // カメラ下げ分だけ縦スポーンバンドを上へずらす(屋外のみ)。上端に湧きが画面内で見えないように。
         const spawnViewOffsetY = (labTheme || indoor) ? 0 : gameBounds.height * CAMERA_DOWN_OFFSET_FRAC;
@@ -5408,6 +5410,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           );
           let plantCount = useGameStore.getState().enemies
             .filter(e => e.type === 'plant').length;
+          // 犬(werewolf)の同時数もハードキャップ(社長報告: 3体以上はもう対処できない。plantと同じ方式)。
+          let wolfCount = useGameStore.getState().enemies
+            .filter(e => e.type === 'werewolf').length;
           // 研究所スキン: 区画(LAB_ZONE)ごとの現在の敵数を集計(1区画 LAB_ENEMIES_PER_ZONE 体まで)。
           const labZoneCounts = new Map<string, number>();
           if (labTheme) {
@@ -5441,21 +5446,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed);
             // Hard cap of 2 live ranged plants — re-roll a plant pick into
             // something else once the field already has two, so ranged pressure
             // never piles up past "annoying".
             if (enemy.type === 'plant' && plantCount >= 2) {
               let tries = 0;
               while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed);
                 tries++;
               }
               if (enemy.type === 'plant') {
                 enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               }
             }
+            // 犬(werewolf)も同時2体まで(社長報告: 3体以上+ジャンプ+弾はカオス)。plantと同じ再抽選方式。
+            // 台本セットピース/保証出現(forcedType指定)はここを通らない=脚本の見せ場はそのまま。
+            if (enemy.type === 'werewolf' && wolfCount >= 2) {
+              let tries = 0;
+              while (enemy.type === 'werewolf' && tries < 6) {
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed);
+                tries++;
+              }
+              if (enemy.type === 'werewolf' || (enemy.type === 'plant' && plantCount >= 2)) {
+                // 再抽選し切れなかった / 再抽選が上限超えのplantを引いた → skeletonへ(plantの上限を素通りさせない)
+                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              }
+            }
             if (enemy.type === 'plant') plantCount += 1;
+            if (enemy.type === 'werewolf') wolfCount += 1;
             addEnemy(enemy);
             spawnedThisTick = true;
           }

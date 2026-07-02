@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1291 — 心音: 20%閾値+連打の真因(ヒットストップ再始動)修正 / 緩シーンのゾンビ抑え / 犬の同時2体キャップ(全て社長指示)
+- **心音の閾値変更**: HP25%以下→**20%以下**(社長指定)。
+- **「ブブブブ」の真因修正**: v0.25.1290のネイティブループ化後も連打が残った原因は、発動条件に
+  `isGameTimeStopped()`(カウンター等の一瞬のヒットストップ)が入っていたこと。低HP戦闘中はヒット
+  ストップが頻発し、そのたびにループが停止→再始動(フェードイン)を繰り返して連打に聞こえていた。
+  条件からヒットストップを外し(ポーズ/死亡では従来どおり停止)、さらに音声側の`setHeartbeatLoop`に
+  **OFF側300msの猶予**を追加(1フレームのチラつきでは同じソースを継続、新ソースを作らない)。
+- **緩シーンのゾンビ抑え**(社長指示: ゾンビは固いので緩の時に多数出さない): `SpawnScene`に
+  `suppressed`(重み×0.4)を追加し、relief-sparse/relief-pumpkin/relief-wolf/mowdownの4シーンに
+  `suppressed:['zombie']`を設定。関所(gate)系シーンは変更なし=ゾンビは山場では従来どおり。
+- **犬(werewolf)の同時2体キャップ**(社長報告: 3体以上+ジャンプ+弾はカオスすぎ): 通常湧きの抽選で
+  場に2体いる時はplantと同じ再抽選方式(6回→skeletonフォールバック)で3体目を出さない。再抽選が
+  上限超えのplantを引いた場合もskeletonへ(相互のキャップを素通りさせない)。台本セットピース/保証
+  出現(forcedType)は対象外=脚本の見せ場はそのまま。`enemyUtils.ts`/`difficultyDirector.ts`/`useGameLoop.ts`。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
+
 ## v0.25.1290 — 心音の連打化修正 / PEAK重ねSEを台本トリガーに統一+BGMダッキング / 告知を左上バナーへ(社長報告3件)
 - **心音「ブブブブ」修正**: クロスフェード重ね方式(ハリケーン流)はリズム素材だと拍が重なって連打に
   化ける。ネイティブループ1本(`source.loop=true`)+gainフェードイン/アウト(0.25s)へ書き換え。

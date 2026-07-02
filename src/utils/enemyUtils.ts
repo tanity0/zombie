@@ -107,14 +107,15 @@ const BASE_WEIGHT: Partial<Record<EnemyType, number>> = {
 const DDA_TOUGH_TYPES = new Set<EnemyType>(['werewolf', 'pumpkin', 'lich']);
 const DDA_VARIETY_ESC_K = 1.8; // esc=1 で重い型の重み ×2.8(私案)
 const SCENE_FEATURED_BOOST = 2.5; // シーンで featured 指定した型の重み倍率(乗算バイアス・私案)
+const SCENE_SUPPRESSED_MULT = 0.4; // シーンで suppressed 指定した型の重み倍率(社長指示: 緩の時のゾンビ抑え・私案)
 // 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算、featured でシーンの強調型に重み加算。
-// featured は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
-const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = []): EnemyType => {
+// featured/suppressed は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
+const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = []): EnemyType => {
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
-  // baseWeight × エリア補正 ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)。補正0(=そのエリアでは出現不可)は除外。
+  // baseWeight × エリア補正 ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)。補正0(=そのエリアでは出現不可)は除外。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
     .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
-    .map(([type, w]) => ({ type, weight: w * ((AREA_WEIGHT[type]?.[area]) ?? 0) * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) }))
+    .map(([type, w]) => ({ type, weight: w * ((AREA_WEIGHT[type]?.[area]) ?? 0) * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) }))
     .filter(e => e.weight > 0);
   if (pool.length === 0) return 'zombie'; // 安全網(zombie は全エリアで出現可)
   const total = pool.reduce((s, p) => s + p.weight, 0);
@@ -320,11 +321,12 @@ export const generateEnemy = (
   viewOffsetY = 0, // カメラ下げ量(px)。可視範囲はプレイヤーより上に viewOffsetY ぶん広いので、縦バンドを上へずらす。
   snowStage = false, // ステージ4(雪原)か。lich を湧きプールに含めるか否かのゲート。
   esc = 0, // 難易度③: escalation(0..1)。0=現状据え置き。種類/強さのバイアスに使う。
-  featured: EnemyType[] = [] // シーン(SpawnScene)の強調型。selectEnemyType の重みに乗算バイアス。
+  featured: EnemyType[] = [], // シーン(SpawnScene)の強調型。selectEnemyType の重みに乗算バイアス。
+  suppressed: EnemyType[] = [] // シーン(SpawnScene)の抑え型。重み減(緩の時のゾンビ抑え・社長指示)。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、

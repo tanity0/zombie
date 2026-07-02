@@ -1217,12 +1217,24 @@ const stopHeartbeatNode = () => {
 };
 
 // active: 瀕死(低HP)状態か。呼び出し側(useGameLoop)が閾値判定を持つ(音声側は判定を持たない)。
+// OFFは300msの猶予付き(ポーズ/回復瞬間の1フレームのチラつきでループを殺して再始動→連打化しない)。
+// 猶予中にONへ戻れば同じソースをそのまま継続(新ソースを作らない)。
+let heartbeatStopTimer: number | null = null;
 export const setHeartbeatLoop = (active: boolean) => {
   const shouldPlay = active && !muted;
-  if (shouldPlay === heartbeatActive) return; // idempotent: cheap per-frame no-op
-  heartbeatActive = shouldPlay;
-  if (shouldPlay) startHeartbeatSource();
-  else stopHeartbeatNode();
+  if (shouldPlay) {
+    if (heartbeatStopTimer != null) { clearTimeout(heartbeatStopTimer); heartbeatStopTimer = null; }
+    if (heartbeatActive) return; // idempotent: cheap per-frame no-op
+    heartbeatActive = true;
+    startHeartbeatSource();
+  } else {
+    if (!heartbeatActive || heartbeatStopTimer != null) return;
+    heartbeatStopTimer = window.setTimeout(() => {
+      heartbeatStopTimer = null;
+      heartbeatActive = false;
+      stopHeartbeatNode();
+    }, 300);
+  }
 };
 
 // Random zombie death grunt on a kill. A shared throttle stops mass deaths

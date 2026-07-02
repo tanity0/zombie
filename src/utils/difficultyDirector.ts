@@ -20,6 +20,7 @@ export interface SpawnScene {
   id: string;
   featured: EnemyType[]; // 強調する敵型(重み増し)。[]=素の分布。
   intervalMult: number;  // 湧き間隔の倍率。<1=速い(無双/カオス) / >1=遅い(優しい)。
+  suppressed?: EnemyType[]; // 抑える敵型(重み減・×SCENE_SUPPRESSED_MULT)。社長指示: ゾンビは固いので緩の時に多数出さない。
 }
 
 export interface Phase {
@@ -32,10 +33,11 @@ export interface Phase {
 }
 
 // シーン・ライブラリ(私案・社長の分類に対応。数値は実機調整前提)。
-const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], intervalMult: 1.3 };                      // 優しい: 雑魚まばら
-const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1 };            // 優しい: パンプキン練習
-const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1 };           // 優しい: 犬(ダッシュ)練習
-const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6 };    // 無双: 弱雑魚を高速大量
+// 緩(relief/mowdown)系は zombie を抑える(社長指示: ゾンビは固いので緩の時に多数出すと休憩にならない)。
+const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], intervalMult: 1.3, suppressed: ['zombie'] };                      // 優しい: 雑魚まばら
+const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'] };            // 優しい: パンプキン練習
+const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'] };           // 優しい: 犬(ダッシュ)練習
+const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6, suppressed: ['zombie'] };    // 無双: 弱雑魚を高速大量
 const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['pumpkin', 'werewolf'], intervalMult: 0.8 }; // 関所: パンプキン+犬
 const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6 };          // 関所: 雑魚大量+飛び道具
 const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55 }; // 関所: 全部盛りカオス
