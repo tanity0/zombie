@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1298 — PACING_REDESIGN.md バッチ1(憲法)実装: 基本10体+退屈シグナル上振れ+問題児キャップ拡張
+- `PACING_REDESIGN.md`のバッチ1(憲法)を実装。3つのサブ項目すべて完了。
+- **1-A 退屈シグナル→上振れ枠**: 叩き台だった`boredomDirector.ts`(純関数)を配線。
+  `upswingRef`が毎フレーム前フレームの`directorRef.current.state`(Perf/Intensity)でstepし、
+  `boredomBonus()`を`dirCountCap`へ加算(`Math.min(ENEMY_COUNT_CEIL, ...)`でクランプ済み・天井20は
+  不変)。Perf≥0.8×Intensity≤0.4の持続が25秒でキャップ+2、以後10秒毎に+2、最大+10。
+  Intensity≥0.6で即ゼロ(心電図の下り)。`?upswing=0`で無効化。デバッグ表示に`up+N`を追加
+  (`DirectorRankDebug.upswingBonus`)。`boredomDirector.test.ts`新規8件。
+- **1-B 台本countCapの書き直し**: `difficultyDirector.ts`の`PHASES`全18フェーズのcountCapを
+  8〜10へ統一(旧: gate/bossが14〜20まで無条件で到達=「最初からMAXプラン」だった)。11〜20の帯は
+  1-Aの上振れ専用バッファへ完全移管。関所の圧は数ではなくテンポ(intervalMult)と構成で出す
+  (憲法第3条)。`difficultyDirector.test.ts`: 「gateで天井20到達」「gateはbuildupより数が多い」
+  系の旧アサートを設計書どおり書き直し(全フェーズcountCap≤10/平均8.5〜10/gate intervalMult≤0.8)。
+- **1-C パンプキン2/ghost1キャップ+2パンプキン時の雑魚テンポ緩和**: `useGameLoop.ts`スポーナの
+  plant/werewolf個別再抽選ブロック2つを統合`overCap(type)`判定に置換(plant2/werewolf2/pumpkin2/
+  **ghost1**を1箇所で判定・相互すり抜け防止・最大8回再抽選→ダメならskeleton強制)。場に
+  パンプキンが2体いる間は`sceneIntervalMult`に×1.3(`PUMPKIN_PAIR_SPAWN_EASE`)をかけて湧きテンポを
+  緩める(社長注記: パンプキン2体は回避不能級になりうるため、問題児と数を同時に盛らない安全策)。
+  台本セットピース/保証出現(forcedType)は対象外=脚本の見せ場はそのまま。
+- 負荷スコア: **1/10**。毎フレームはスカラー比較+加算のみ、既存の敵配列走査(plant/werewolfカウント)
+  にpumpkin/ghostのフィルタを2本追加しただけ(配列走査自体は元々あった)。新規描画/エフェクトなし。
+- 検証: typecheck / lint(0, full) / test(156 pass, 1 skip) / build 通過。
+- 次: バッチ2(計測: 種別キル/スタイル比率/最深到達エリア)へ。
+
 ## v0.25.1297 — 緩急再設計(心電図化)の設計書 PACING_REDESIGN.md を作成(実装はSonnet担当・バッチ1〜6)
 - 社長との協議(緩急がジェットコースター的すぎる→心電図のように「試して、上がりすぎたら落とす」)の
   合意内容を実装可能な粒度で文書化。3層ループ(台本→演目選択→アドリブ)+憲法4条(基本10体/問題児

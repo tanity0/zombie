@@ -1,33 +1,39 @@
 import { describe, it, expect } from 'vitest';
-import { enemyCountCap, phaseAt, sceneAt, PHASES, ENEMY_COUNT_CEIL } from './difficultyDirector';
+import { enemyCountCap, phaseAt, sceneAt, PHASES, ENEMY_COUNT_CEIL, ENEMY_COUNT_FLOOR } from './difficultyDirector';
 
-describe('difficultyDirector — count axis (step 2)', () => {
-  it('keeps the cap within [6, ceil] and reaches the ceiling at gates', () => {
+describe('difficultyDirector — count axis (PACING_REDESIGN.md 憲法第1条: 基本10体)', () => {
+  it('every phase\'s scripted countCap stays at or below the basic cap (10) — the 11-20 band is upswing-only, not scripted', () => {
+    for (const p of PHASES) {
+      expect(p.countCap).toBeLessThanOrEqual(ENEMY_COUNT_FLOOR);
+    }
     let maxSeen = 0;
-    for (let t = 0; t <= 420_000; t += 500) {
+    for (let t = 0; t <= 900_000; t += 500) maxSeen = Math.max(maxSeen, enemyCountCap(t));
+    expect(maxSeen).toBeLessThanOrEqual(ENEMY_COUNT_FLOOR);
+  });
+
+  it('keeps the cap within [6, ceil] at all times (ceiling is never exceeded even though it is no longer reached by script)', () => {
+    for (let t = 0; t <= 900_000; t += 1000) {
       const c = enemyCountCap(t);
       expect(c).toBeGreaterThanOrEqual(6);
       expect(c).toBeLessThanOrEqual(ENEMY_COUNT_CEIL);
-      maxSeen = Math.max(maxSeen, c);
     }
-    expect(maxSeen).toBe(ENEMY_COUNT_CEIL); // gates break the cap up to the ceiling(20)
   });
 
-  it('typical cap sits around ~10 across the arc (avg in a sane band)', () => {
+  it('typical cap sits close to 10 across the arc (avg in a tight band — no more MAX-from-the-start spike)', () => {
     let sum = 0, n = 0;
     for (let t = 0; t < 420_000; t += 1000) { sum += enemyCountCap(t); n++; }
     const avg = sum / n;
-    expect(avg).toBeGreaterThanOrEqual(9);
-    expect(avg).toBeLessThanOrEqual(13);
+    expect(avg).toBeGreaterThanOrEqual(8.5);
+    expect(avg).toBeLessThanOrEqual(10);
   });
 
-  it('gate phases are denser than the buildups next to them', () => {
-    // gate② PEAK (~4:00) vs the buildup just before it (~3:20)
-    expect(enemyCountCap(240_000)).toBeGreaterThan(enemyCountCap(200_000));
-    // buildup(余裕) always ≤ any gate's cap
-    const gateCaps = PHASES.filter(p => p.kind === 'gate').map(p => p.countCap);
-    const buildupCaps = PHASES.filter(p => p.kind === 'buildup').map(p => p.countCap);
-    expect(Math.max(...buildupCaps)).toBeLessThanOrEqual(Math.min(...gateCaps));
+  it('gate pressure now comes from tempo (intervalMult), not count — every gate scene spawns at or faster than 0.8x', () => {
+    // Counts no longer separate gate from buildup (both cap ~10); the "急" now lives entirely in
+    // tempo/composition. mowdown (a buildup-kind swarm scene) is intentionally as fast as gates —
+    // that's its whole point — so this only asserts gates themselves stay brisk, not "faster than
+    // every buildup".
+    const gateIntervals = PHASES.filter(p => p.kind === 'gate').map(p => p.scene.intervalMult);
+    for (const iv of gateIntervals) expect(iv).toBeLessThanOrEqual(0.8);
   });
 
   it('14-min arc: buildup at start, city boss at 7:00, intensified gates in 7-14, chaos endgame (no terminal boss)', () => {

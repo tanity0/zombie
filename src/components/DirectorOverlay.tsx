@@ -81,7 +81,7 @@ const DirectorOverlay: React.FC = () => {
             <span className="text-white/40">{rankDebug.harvestActive ? 'HARVEST' : rankDebug.phaseKey}</span>
           </div>
           <div className="text-white/40 tabular-nums">
-            esc+{rankDebug.escBoost.toFixed(2)} · cap+{rankDebug.countCapBonus} · xp×{rankDebug.rewardMult.toFixed(2)} · pity {getPityLevel().toFixed(2)}
+            esc+{rankDebug.escBoost.toFixed(2)} · cap+{rankDebug.countCapBonus} · xp×{rankDebug.rewardMult.toFixed(2)} · pity {getPityLevel().toFixed(2)} · up+{rankDebug.upswingBonus}
           </div>
         </div>
       )}

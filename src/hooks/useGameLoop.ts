@@ -80,6 +80,7 @@ import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '..
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
 import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
+import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
@@ -359,6 +360,9 @@ const RANK_ENABLED = evParam('rank') !== '0';
 const PITY_ENABLED = evParam('pity') !== '0';
 // 瀕死心音ループの発動しきい値(社長指定: HP25%以下)。
 const HEARTBEAT_HP_FRAC = 0.25;
+// PACING_REDESIGN.md 憲法第1条: 画面内は基本10体。退屈シグナル(Perf高×Intensity低の持続)が
+// 出た時だけ、天井20までの上振れを解禁する。?upswing=0 で無効化(社長合意: きつければすぐ戻せるように)。
+const UPSWING_ENABLED = evParam('upswing') !== '0';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
@@ -537,6 +541,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 });
   // 難易度⑥(ピンチ救済): ピンチ持続時間の累積。
   const pinchRef = useRef(createPinchState());
+  // 憲法第1条(退屈シグナル→上振れ枠): 退屈持続時間の累積。
+  const upswingRef = useRef(createBoredomState());
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
   const gateCalloutRef = useRef('');
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
@@ -1148,6 +1154,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
           resetPityDrop();
+          // 憲法第1条(退屈→上振れ)も新ランでリセット。
+          upswingRef.current = createBoredomState();
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
@@ -5291,6 +5299,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
         const rankHarvestActive = curPhase.kind === 'buildup';
         setDirectorRankRewardMult(rankHarvestActive ? rankAdj.rewardMult : 1);
+        // 憲法第1条(退屈シグナル→上振れ枠): Perf高×Intensity低の持続だけを見る独立ノブ(Rankとは別)。
+        // 前フレームの directorRef.current.state を読む(relaxAdj/buildupAdjと同じ1フレーム遅延パターン)。
+        const upswingOutdoor = UPSWING_ENABLED && !labTheme && !indoor;
+        if (upswingOutdoor) {
+          upswingRef.current = stepBoredom(upswingRef.current, {
+            performance: directorRef.current.state.performance,
+            intensity: directorRef.current.state.intensity,
+            dtMs: deltaTime * 1000,
+          });
+        }
+        const upswingBonus = upswingOutdoor ? boredomBonus(upswingRef.current.boredMs) : 0;
         // デバッグ表示用(社長指示: 今のrankを見えるようにしておく)。DirectorOverlay(?director=1)が読む。
         setDirectorRankDebug({
           rank: rankRef.current.rank,
@@ -5300,8 +5319,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           rewardMult: rankAdj.rewardMult,
           harvestActive: rankHarvestActive && rankOutdoor,
           enabled: rankOutdoor,
+          upswingBonus,
         });
-        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus);
+        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
         // 難易度⑥(ピンチ救済): 「低HP×敵が上限近くまで溜まっている」の持続を測り、松明ドロップの
         // 調整値をシングルトンへ publish(gameStore.dropBreakablePropLoot が読む)。ピンチでない時は
@@ -5387,7 +5407,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
-        const sceneIntervalMult = (scene ? scene.intervalMult : 1) * relaxAdj.intervalMult;
+        // 憲法第2条注記(PACING_REDESIGN.md): パンプキン2体は出すタイミング+周囲の雑魚数によっては
+        // 回避不能級。2体目がいる間は雑魚湧きテンポを一段緩める(問題児と数を同時に盛らない)。
+        const PUMPKIN_PAIR_SPAWN_EASE = 1.3;
+        const pumpkinPairActive = allEnemiesNow.filter(e => e.type === 'pumpkin').length >= 2;
+        const sceneIntervalMult = (scene ? scene.intervalMult : 1) * relaxAdj.intervalMult * (pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
@@ -5412,11 +5436,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             labTheme ? LAB_SPAWN_COUNT_MAX : getEnemySpawnCount(),
             normalSpawnCap - fieldCount
           );
+          // 憲法第2条(PACING_REDESIGN.md): 問題児の同時数キャップ。犬2/弾2(既存済み)+パンプキン2/毒(ghost)1(新規)。
           let plantCount = useGameStore.getState().enemies
             .filter(e => e.type === 'plant').length;
-          // 犬(werewolf)の同時数もハードキャップ(社長報告: 3体以上はもう対処できない。plantと同じ方式)。
           let wolfCount = useGameStore.getState().enemies
             .filter(e => e.type === 'werewolf').length;
+          let pumpkinCount = useGameStore.getState().enemies
+            .filter(e => e.type === 'pumpkin').length;
+          let ghostCount = useGameStore.getState().enemies
+            .filter(e => e.type === 'ghost').length;
+          const overCap = (t: EnemyType): boolean =>
+            (t === 'plant' && plantCount >= 2) ||
+            (t === 'werewolf' && wolfCount >= 2) ||
+            (t === 'pumpkin' && pumpkinCount >= 2) ||
+            (t === 'ghost' && ghostCount >= 1);
           // 研究所スキン: 区画(LAB_ZONE)ごとの現在の敵数を集計(1区画 LAB_ENEMIES_PER_ZONE 体まで)。
           const labZoneCounts = new Map<string, number>();
           if (labTheme) {
@@ -5451,34 +5484,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               continue;
             }
             let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
-            // Hard cap of 2 live ranged plants — re-roll a plant pick into
-            // something else once the field already has two, so ranged pressure
-            // never piles up past "annoying".
-            if (enemy.type === 'plant' && plantCount >= 2) {
-              let tries = 0;
-              while (enemy.type === 'plant' && tries < 6) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
-                tries++;
-              }
-              if (enemy.type === 'plant') {
-                enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
-              }
-            }
-            // 犬(werewolf)も同時2体まで(社長報告: 3体以上+ジャンプ+弾はカオス)。plantと同じ再抽選方式。
+            // 憲法第2条: 問題児(plant/werewolf/pumpkin/ghost)は同時数キャップを超えて湧かせない。
             // 台本セットピース/保証出現(forcedType指定)はここを通らない=脚本の見せ場はそのまま。
-            if (enemy.type === 'werewolf' && wolfCount >= 2) {
+            if (overCap(enemy.type)) {
               let tries = 0;
-              while (enemy.type === 'werewolf' && tries < 6) {
+              while (overCap(enemy.type) && tries < 8) {
                 enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
                 tries++;
               }
-              if (enemy.type === 'werewolf' || (enemy.type === 'plant' && plantCount >= 2)) {
-                // 再抽選し切れなかった / 再抽選が上限超えのplantを引いた → skeletonへ(plantの上限を素通りさせない)
+              if (overCap(enemy.type)) {
+                // 再抽選し切れなかった → skeletonへ強制(全キャップを素通りさせない安全網)。
                 enemy = generateEnemy(gameTime, player, spawnBounds, 'skeleton', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, [], [], sceneRareMult);
               }
             }
             if (enemy.type === 'plant') plantCount += 1;
             if (enemy.type === 'werewolf') wolfCount += 1;
+            if (enemy.type === 'pumpkin') pumpkinCount += 1;
+            if (enemy.type === 'ghost') ghostCount += 1;
             addEnemy(enemy);
             spawnedThisTick = true;
           }

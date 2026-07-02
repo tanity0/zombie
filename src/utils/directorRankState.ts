@@ -19,8 +19,9 @@ export interface DirectorRankDebug {
   escBoost: number;
   countCapBonus: number;
   rewardMult: number;
-  harvestActive: boolean; // 現在HARVEST相当(buildupフェーズ)でEXP倍率が効いているか
-  enabled: boolean;       // ?rank=0 で無効化されていないか(屋内/ラボ中も false)
+  harvestActive: boolean;  // 現在HARVEST相当(buildupフェーズ)でEXP倍率が効いているか
+  enabled: boolean;        // ?rank=0 で無効化されていないか(屋内/ラボ中も false)
+  upswingBonus: number;    // PACING_REDESIGN.md憲法第1条: 退屈シグナルによる上振れ枠(通常湧き上限への加算)
 }
 
 let debugState: DirectorRankDebug | null = null;

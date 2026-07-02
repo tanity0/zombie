@@ -46,8 +46,12 @@ const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: [
 const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス
 const SCENE_BOSS: SpawnScene           = { id: 'boss',           featured: [], intervalMult: 1.0, rareMult: 1.0 };                     // 城ボス中は素の分布
 
-export const ENEMY_COUNT_FLOOR = 10; // 平均の目安(社長指示: 平均10)
-export const ENEMY_COUNT_CEIL = 20;  // 天井(社長指示: max20・難易度が高い時だけ到達)
+// PACING_REDESIGN.md 憲法第1条: 画面内は基本10体。台本の countCap は全フェーズ 8〜10 に統一
+// (旧: gate/bossが14〜20まで無条件で盛っていた=「最初からMAXプラン」だった)。11〜20の帯は
+// boredomDirector(退屈シグナル)による上振れ専用バッファへ移した。関所の圧は「数」ではなく
+// テンポ(intervalMult)と構成(featured/ラダー)で出す(憲法第3条)。
+export const ENEMY_COUNT_FLOOR = 10; // 基本上限(憲法第1条)。台本のcountCapは概ねこの近辺。
+export const ENEMY_COUNT_CEIL = 20;  // 天井。退屈シグナルの上振れ専用(社長指示: max20)。
 
 const S = 1000;
 
@@ -55,31 +59,31 @@ const S = 1000;
 // 台本セットピース(stageDirector: pumpkin1:45 / onslaught3:55 / pumpkin pair4:55)に
 // 関所窓を概ね重ねてある。城ボスは 7:00(=420s)。
 // 14分コース(社長指示): 0-7分=基本の緩急1ターン(白ボス=中間ライン・任意離脱)。7-14分=“急”多めの
-// しんどい延長(エンドコンテンツ)。7-14は関所を増やし・余裕を短く・上限/速度を上げて強度を底上げする(approach A)。
+// しんどい延長(エンドコンテンツ)。7-14は関所を増やし・余裕を短く・速度を上げて強度を底上げする(approach A)。
 export const PHASES: Phase[] = [
   // ── 0-7分: 基本ループ ──
   { kind: 'buildup', index: 1, startMs: 0,        endMs: 95 * S,  countCap: 8,  scene: SCENE_RELIEF_SPARSE },  // 導入(優しめ・雑魚まばら)
-  { kind: 'gate',    index: 1, startMs: 95 * S,   endMs: 135 * S, countCap: 14, scene: SCENE_GATE_PUMPWOLF },  // 関所①(育ち確認) パンプキン+犬
-  { kind: 'buildup', index: 2, startMs: 135 * S,  endMs: 225 * S, countCap: 10, scene: SCENE_RELIEF_PUMPKIN }, // 余裕: パンプキン練習
-  { kind: 'gate',    index: 2, startMs: 225 * S,  endMs: 270 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 関所②PEAK カオス
-  { kind: 'buildup', index: 3, startMs: 270 * S,  endMs: 290 * S, countCap: 11, scene: SCENE_MOWDOWN },        // 無双(短い谷・弱雑魚高速)
-  { kind: 'gate',    index: 3, startMs: 290 * S,  endMs: 330 * S, countCap: 18, scene: SCENE_GATE_MASS_RANGED }, // 関所③ 雑魚大量+飛び道具
-  { kind: 'buildup', index: 4, startMs: 330 * S,  endMs: 400 * S, countCap: 11, scene: SCENE_RELIEF_WOLF },    // 余裕: 犬練習(最終育成)
-  { kind: 'gate',    index: 4, startMs: 400 * S,  endMs: 420 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 直前関所 カオス
+  { kind: 'gate',    index: 1, startMs: 95 * S,   endMs: 135 * S, countCap: 10, scene: SCENE_GATE_PUMPWOLF },  // 関所①(育ち確認) パンプキン+犬
+  { kind: 'buildup', index: 2, startMs: 135 * S,  endMs: 225 * S, countCap: 9,  scene: SCENE_RELIEF_PUMPKIN }, // 余裕: パンプキン練習
+  { kind: 'gate',    index: 2, startMs: 225 * S,  endMs: 270 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 関所②PEAK カオス
+  { kind: 'buildup', index: 3, startMs: 270 * S,  endMs: 290 * S, countCap: 10, scene: SCENE_MOWDOWN },        // 無双(短い谷・弱雑魚高速)
+  { kind: 'gate',    index: 3, startMs: 290 * S,  endMs: 330 * S, countCap: 10, scene: SCENE_GATE_MASS_RANGED }, // 関所③ 雑魚大量+飛び道具
+  { kind: 'buildup', index: 4, startMs: 330 * S,  endMs: 400 * S, countCap: 9,  scene: SCENE_RELIEF_WOLF },    // 余裕: 犬練習(最終育成)
+  { kind: 'gate',    index: 4, startMs: 400 * S,  endMs: 420 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 直前関所 カオス
   // ── 7:00 白ボス(中間ライン) ──
-  { kind: 'boss',    index: 1, startMs: 420 * S,  endMs: 450 * S, countCap: 12, scene: SCENE_BOSS },           // 城ボス戦(離脱=クリア可)
+  { kind: 'boss',    index: 1, startMs: 420 * S,  endMs: 450 * S, countCap: 10, scene: SCENE_BOSS },           // 城ボス戦(離脱=クリア可)
   // ── 7-14分: 延長(急多め・しんどい)。余裕を短く・関所を厚く。 ──
-  { kind: 'buildup', index: 5, startMs: 450 * S,  endMs: 510 * S, countCap: 12, scene: SCENE_RELIEF_WOLF },    // 短い立て直し
-  { kind: 'gate',    index: 5, startMs: 510 * S,  endMs: 560 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 延長関所⑤ カオス
-  { kind: 'buildup', index: 6, startMs: 560 * S,  endMs: 600 * S, countCap: 13, scene: SCENE_MOWDOWN },        // 無双(短い谷)
-  { kind: 'gate',    index: 6, startMs: 600 * S,  endMs: 660 * S, countCap: 20, scene: SCENE_GATE_MASS_RANGED }, // 延長関所⑥ 雑魚大量+飛び道具
-  { kind: 'buildup', index: 7, startMs: 660 * S,  endMs: 690 * S, countCap: 13, scene: SCENE_RELIEF_PUMPKIN }, // 短い余裕
-  { kind: 'gate',    index: 7, startMs: 690 * S,  endMs: 760 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 延長関所⑦ カオス(長め)
-  { kind: 'buildup', index: 8, startMs: 760 * S,  endMs: 790 * S, countCap: 14, scene: SCENE_MOWDOWN },        // 無双(束の間)
-  { kind: 'gate',    index: 8, startMs: 790 * S,  endMs: 840 * S, countCap: 20, scene: SCENE_GATE_CHAOS },     // 延長関所⑧ クライマックス
+  { kind: 'buildup', index: 5, startMs: 450 * S,  endMs: 510 * S, countCap: 9,  scene: SCENE_RELIEF_WOLF },    // 短い立て直し
+  { kind: 'gate',    index: 5, startMs: 510 * S,  endMs: 560 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 延長関所⑤ カオス
+  { kind: 'buildup', index: 6, startMs: 560 * S,  endMs: 600 * S, countCap: 10, scene: SCENE_MOWDOWN },        // 無双(短い谷)
+  { kind: 'gate',    index: 6, startMs: 600 * S,  endMs: 660 * S, countCap: 10, scene: SCENE_GATE_MASS_RANGED }, // 延長関所⑥ 雑魚大量+飛び道具
+  { kind: 'buildup', index: 7, startMs: 660 * S,  endMs: 690 * S, countCap: 9,  scene: SCENE_RELIEF_PUMPKIN }, // 短い余裕
+  { kind: 'gate',    index: 7, startMs: 690 * S,  endMs: 760 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 延長関所⑦ カオス(長め)
+  { kind: 'buildup', index: 8, startMs: 760 * S,  endMs: 790 * S, countCap: 10, scene: SCENE_MOWDOWN },        // 無双(束の間)
+  { kind: 'gate',    index: 8, startMs: 790 * S,  endMs: 840 * S, countCap: 10, scene: SCENE_GATE_CHAOS },     // 延長関所⑧ クライマックス
   // 14:00 以降: 特定の最終ボスは無い(城ボスが唯一のボス)。カオス継続で高強度を維持。プレイヤーによっては
   // 裏ボス攻略タイム(裏ボスは深度で別途出現)。ハンターは従来どおり=余裕プレイへの緊張感トリガー(優勢判定・別管理)。
-  { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 20, scene: SCENE_GATE_CHAOS },   // 14:00+ 終局(カオス継続)
+  { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 10, scene: SCENE_GATE_CHAOS },   // 14:00+ 終局(カオス継続)
 ];
 
 // 指定時刻のフェーズ。範囲外(7分超)は最後の boss フェーズを返す。
