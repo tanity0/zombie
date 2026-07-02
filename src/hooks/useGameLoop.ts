@@ -79,6 +79,8 @@ import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
+import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
+import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
@@ -352,6 +354,9 @@ const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/
 // 成績を評価し、次フェーズだけ少し強め+報酬多めにする(下限は台本=rank0、苦戦しても弱めない)。
 // リアルタイムの即時反映はしない(今すぐは盛らない・次の山にだけ反映)。?rank=0 で無効化。
 const RANK_ENABLED = evParam('rank') !== '0';
+// 難易度⑥(ピンチ救済、社長指示): 低HP×敵溜まりすぎが続いた人にだけ、松明ドロップを回復/爆弾寄りへ
+// バイアス(場所は松明のみ=台本)。?pity=0 で無効化。
+const PITY_ENABLED = evParam('pity') !== '0';
 // AIディレクター(L4D2型)ステップA: ?director=1 の時だけ Intensity/Performance/DirectorState を算出して
 // デバッグ表示に流す。★算出するだけ=ゲーム挙動には一切影響させない(読むだけ)。
 const DIRECTOR_ENABLED = evParam('director') === '1';
@@ -527,6 +532,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 難易度⑤(DirectorRank): 現在のフェーズキーと、そのフェーズ開始時点のスナップショット。
   // フェーズが切り替わった瞬間に直前フェーズぶんの差分から成績を評価し、rank を更新する。
   const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 });
+  // 難易度⑥(ピンチ救済): ピンチ持続時間の累積。
+  const pinchRef = useRef(createPinchState());
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
   const hunterPrevHpRef = useRef(-1);   // 前フレームHP(被弾検出)
   const hunterLastDmgAtRef = useRef(-1e9); // 最後に被弾した gameTime
@@ -1113,6 +1120,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           screamerRef.current.nextEligibleAt = SCREAMER_START_MS; // 叫喚型ディレクターも新ランでリセット
           screamerBuffFxRef.current = 0; // 叫喚SE検出refも新ランでリセット(前ランのbuffUntilで誤ってスキップしない)
           gateRef.current = { key: '', startHpFrac: 1, live: 0 }; // 難易度④の関所ライブ補正も新ランでリセット
+          // 難易度⑤(DirectorRank)も新ランでリセット(前ランのスナップショットで初回フェーズを誤評価しない)。
+          rankRef.current = { rank: 0, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 };
+          setDirectorRankRewardMult(1);
+          // 難易度⑥(ピンチ救済)も新ランでリセット。
+          pinchRef.current = createPinchState();
+          resetPityDrop();
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0 };
@@ -5248,6 +5261,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         });
         const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
+        // 難易度⑥(ピンチ救済): 「低HP×敵が上限近くまで溜まっている」の持続を測り、松明ドロップの
+        // 調整値をシングルトンへ publish(gameStore.dropBreakablePropLoot が読む)。ピンチでない時は
+        // 既定値=従来と完全一致。敵の強さ/湧きには触れない(救済は補給側だけ)。
+        if (PITY_ENABLED) {
+          pinchRef.current = stepPinch(pinchRef.current, {
+            hpFrac: player.maxHealth > 0 ? player.health / player.maxHealth : 0,
+            enemyCount: useGameStore.getState().enemies.length,
+            enemyCap: dirCountCap,
+            dtMs: deltaTime * 1000,
+          });
+          const lvl = pityLevel(pinchRef.current.pinchMs);
+          setPityDrop(pityDropTuning(lvl), lvl);
+        }
 
         // Continuous spawner — drip enemies onto the field from off-screen.
         // rescue 中はイベント攻撃者(fromEvent)を除いた通常敵の数で上限判定し、通常通りの密度を維持。

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getDirectorDebug } from '../utils/aiDirectorDebug';
 import { getDirectorRankDebug } from '../utils/directorRankState';
+import { getPityLevel } from '../utils/pityState';
 import type { DirectorMacro } from '../utils/aiDirector';
 
 // AIディレクター(ステップA)のオンスクリーン可視化(?director=1)。ゲームループとは独立に自前 raf で読むだけ。
@@ -80,7 +81,7 @@ const DirectorOverlay: React.FC = () => {
             <span className="text-white/40">{rankDebug.harvestActive ? 'HARVEST' : rankDebug.phaseKey}</span>
           </div>
           <div className="text-white/40 tabular-nums">
-            esc+{rankDebug.escBoost.toFixed(2)} · cap+{rankDebug.countCapBonus} · xp×{rankDebug.rewardMult.toFixed(2)}
+            esc+{rankDebug.escBoost.toFixed(2)} · cap+{rankDebug.countCapBonus} · xp×{rankDebug.rewardMult.toFixed(2)} · pity {getPityLevel().toFixed(2)}
           </div>
         </div>
       )}

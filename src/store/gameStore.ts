@@ -26,6 +26,7 @@ import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, am
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import { getDirectorRewardMult } from '../utils/directorRankState';
+import { getPityDropTuning } from '../utils/pityState';
 import { pickNpcLine } from '../data/npcLines';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
@@ -1175,7 +1176,8 @@ export const isInputLocked = (): boolean => {
   return s.isPaused || s.player.health <= 0 || isGameTimeStopped();
 };
 
-const BREAKABLE_PROP_DROP_CHANCE = 0.42;
+// 松明ドロップ率/内訳のしきい値は pityDirector.ts の BASE_DROP_TUNING(0.42/0.5/0.75/0.9)へ移動
+// (ピンチ救済が無い時はその既定値=従来と完全一致)。
 const TORCH_STRAP_DROP_MIN = 5;
 const TORCH_STRAP_DROP_VARIANCE = 16;
 const WEAPON_CRATE_STRAP_DROP_MIN = 30;
@@ -6850,13 +6852,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     });
 
-    if (Math.random() >= BREAKABLE_PROP_DROP_CHANCE) return;
+    // 難易度⑥(ピンチ救済): ピンチが続いている時だけ、ドロップ率と内訳(回復/爆弾寄り)を
+    // pityDirector のしきい値へずらす。pity=0 の時は従来定数と完全一致(挙動不変)。
+    // 出る場所は従来どおり松明のみ(場所は台本=固定・中身だけ調整、社長指示)。
+    const pity = getPityDropTuning();
+    if (Math.random() >= pity.dropChance) return;
     const x = prop.footX - 8;
     const y = prop.footY - 16;
     const roll = Math.random();
     const player = get().player;
 
-    if (roll < 0.5) {
+    if (roll < pity.ammoT) {
       const equippedAmmo = getActiveGun(player)?.ammoType;
       const owned = getGuns(player)
         .map(w => w.ammoType)
@@ -6873,7 +6879,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    if (roll < 0.75) {
+    if (roll < pity.healthT) {
       get().addPickup({
         id: `pickup-torch-health-${prop.id}`,
         x, y,
@@ -6883,7 +6889,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
-    if (BOMB_PICKUPS_ENABLED && roll < 0.9 && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)。調査中は全体OFF。
+    if (BOMB_PICKUPS_ENABLED && roll < pity.bombT && !get().indoorMode) { // 研究所(屋内)は爆弾を出さない(社長指示)。調査中は全体OFF。
       get().addPickup({
         id: `pickup-torch-bomb-${prop.id}`,
         x, y,

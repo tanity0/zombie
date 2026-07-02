@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1286 — 難易度⑥: ピンチ救済(pity)=松明ドロップの動的バイアス(社長指示④の実装)+rankRefリセット漏れ修正
+- 社長指示「あまりにもピンチが続いて敵が増えすぎてしまってる人に爆弾出現率を上げる。ただし出る場所は
+  台本を書く(今は松明からしか出ない、とか)」を実装。RE4の動的補給(足りない物を出す)方式。
+- **新規** `src/utils/pityDirector.ts`(純関数): ピンチ=「HP35%以下 かつ 敵数が湧き上限の75%以上」の持続。
+  6秒未満では一切効かない(一瞬の被弾では発動しない=緊張は演出の一部)、20秒で救済最大、ピンチを抜けたら
+  3倍速で減衰。救済は松明ドロップの【中身バイアスだけ】: ドロップ率0.42→最大0.70、内訳を
+  弾薬50%/回復25%/爆弾15%/磁石10% → 最大時 弾薬30%/回復40%/爆弾25%/磁石5%へ線形補間。
+  **場所は従来どおり松明のみ(場所は台本=固定・中身だけ動く)。敵の強さ/湧きには一切触れない。**
+- 注意: 爆弾ピックアップは現在`BOMB_PICKUPS_ENABLED=false`(社長指示で調査中OFF)。ONに戻せば自動で
+  pityの爆弾バイアスが効く(OFFの間は爆弾枠はマグネットへ流れる=既存フォールバックのまま)。
+- **配線**: `useGameLoop.ts`が毎フレームピンチを測定し`src/utils/pityState.ts`(軽量シングルトン)へ
+  publish、`gameStore.dropBreakablePropLoot`が読む。従来の固定定数(0.42/0.5/0.75/0.9)は
+  `BASE_DROP_TUNING`へ移動(pity=0で完全一致=挙動不変)。`?pity=0`で無効化。`?director=1`の
+  デバッグ表示に`pity 0.00`を追記。新ランでリセット。
+- **バグ修正(リセット漏れ)**: v0.25.1284の`rankRef`(DirectorRank)を新ランのリセットブロックに入れて
+  いなかった。前ランのスナップショットが残ると新ラン開始直後に誤ってrank>0で始まる可能性があった。
+  `rankRef`リセット+`setDirectorRankRewardMult(1)`を追加。
+- `src/utils/pityDirector.test.ts`新規9件(蓄積/両条件必須/高速減衰/上限下限/レベル閾値/
+  pity=0が旧定数と完全一致/しきい値の順序保証)。
+- 負荷スコア: **1/10**。毎フレームはスカラー数個の比較+加算のみ。ドロップ計算は松明破壊時のみ。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
+
 ## v0.25.1285 — DirectorRank(難易度⑤)の現在値をデバッグ表示に追加(社長指示)
 - 社長「いまランク幾つかの科をデバッグでは見えるようにしといて」に対応。既存の`?director=1`デバッグ
   オーバーレイ(`DirectorOverlay.tsx`)に、AIディレクター本体(Intensity/Performance/State)とは別枠で
