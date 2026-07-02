@@ -84,7 +84,7 @@ import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
@@ -357,9 +357,8 @@ const RANK_ENABLED = evParam('rank') !== '0';
 // 難易度⑥(ピンチ救済、社長指示): 低HP×敵溜まりすぎが続いた人にだけ、松明ドロップを回復/爆弾寄りへ
 // バイアス(場所は松明のみ=台本)。?pity=0 で無効化。
 const PITY_ENABLED = evParam('pity') !== '0';
-// AIディレクター(L4D2型)ステップA: ?director=1 の時だけ Intensity/Performance/DirectorState を算出して
-// デバッグ表示に流す。★算出するだけ=ゲーム挙動には一切影響させない(読むだけ)。
-const DIRECTOR_ENABLED = evParam('director') === '1';
+// 瀕死心音ループの発動しきい値(社長提供SE)。VitalsOrbが一番濃い色に変わる帯(hpFrac<=0.25)に合わせた。
+const HEARTBEAT_HP_FRAC = 0.25;
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
@@ -369,7 +368,11 @@ const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接�
 const DIRECTOR_APPLY_PARAM = evParam('directorApply');
 const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM === 'relax' || DIRECTOR_APPLY_PARAM === 'all';
 const DIRECTOR_APPLY_BUILDUP = DIRECTOR_APPLY_PARAM === 'buildup' || DIRECTOR_APPLY_PARAM === 'all';
-const DIRECTOR_ACTIVE = DIRECTOR_ENABLED || DIRECTOR_APPLY_RELAX || DIRECTOR_APPLY_BUILDUP; // 信号計算そのものを回すか
+// 信号算出(Intensity/Performance/macro state)は既定で常時ON(社長要望のPEAK重ねSE/紅き月連携が実プレイで
+// 動くために必要。読むだけで軽い=近接敵数と危険敵の走査のみ、新規描画なし)。他の難易度③④⑤⑥と同じ
+// 「既定ON・?director=0で無効化」に統一(旧来は明示フラグ必須だった)。デバッグ表示の可否は
+// DIRECTOR_ENABLED(='1'時のみ)が別途ゲートするので、ここをONにしても左上UIは出ない。
+const DIRECTOR_ACTIVE = (evParam('director') !== '0') || DIRECTOR_APPLY_RELAX || DIRECTOR_APPLY_BUILDUP;
 const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵の“密度”を見る、プレイヤー中心の半径
 const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
 // 救助イベントの発火位置(プレイヤーからの距離)。スタート地点直下に出さず、少し離して端マーカーで誘導。
@@ -665,6 +668,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
     setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
+    setHeartbeatLoop(false); // 心音ループも死亡で止める
+    setPeakLayer(false); // PEAK重ねSEも死亡で止める
     playSfx('player-damage');
     spawnFlash('rgba(127, 29, 29, 0.48)', 520);
     spawnRing(x, y, 8, 118, 'rgba(220,38,38,0.9)', 7, 620);
@@ -933,6 +938,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const gs = useGameStore.getState();
         const reaperSuctionActive = gs.summons.some(s => s.kind === 'rare');
         setHurricaneRumble(!gs.isPaused && (!!gs.hurricane || reaperSuctionActive));
+      }
+
+      // 瀕死(低HP)中だけ心音ループ(社長提供SE)。VitalsOrbが一番濃い色に変わる帯(HP25%以下)に
+      // 揃えた閾値。生きている間だけ・ポーズ/死亡/ゲーム時間停止中は鳴らさない。
+      {
+        const gs = useGameStore.getState();
+        const hpFrac = gs.player.maxHealth > 0 ? gs.player.health / gs.player.maxHealth : 0;
+        const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused && !isGameTimeStopped();
+        setHeartbeatLoop(critical);
       }
 
       // Update FPS counter
@@ -5914,6 +5928,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             directorRef.current.nextSampleMs = ds.gameTime + 500;
             recordDirectorSample({ t: ds.gameTime / 1000, intensity: st.intensity, performance: st.performance, macro: st.macro });
           }
+          // PEAK重ねSE(社長提供): macroがPEAK、または紅き月中(遷移待ちを挟まず即座に重ねる)。
+          setPeakLayer(!ds.isPaused && (st.macro === 'peak' || ds.redNight?.phase === 'active'));
         }
       }
 
@@ -5937,6 +5953,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     return () => {
       cancelAnimationFrame(frameRef.current);
       setHurricaneRumble(false); // アンマウント時に鳴動を確実に停止
+      setHeartbeatLoop(false); // 心音ループも確実に停止
+      setPeakLayer(false); // PEAK重ねSEも確実に停止
       setDanceMode(false);       // ダンスタイム解除(メインBGMの音量を確実に戻す)
       danceModeRef.current = false;
     };

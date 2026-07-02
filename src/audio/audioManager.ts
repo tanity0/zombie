@@ -33,6 +33,9 @@ const REVERSE_BGM: Record<string, string> = {
 };
 // タイトル画面のBGM(メニュー中だけ流す)。配置先: public/audio/title.mp3(無い間は無音=クラッシュなし)。
 const TITLE_TRACK = `${import.meta.env.BASE_URL}audio/title.mp3?v=${encodeURIComponent(ASSET_VERSION)}`;
+// PEAK(AIディレクター/紅き月)中だけ通常BGMに重ねる打楽器レイヤー(社長提供)。差し替え/追加のみで
+// 通常BGMは止めない(社長要望の「PEAK突入の輪郭を体で感じさせる」演出)。
+const PEAK_LAYER_TRACK = `${import.meta.env.BASE_URL}audio/peak-layer.mp3?v=${encodeURIComponent(ASSET_VERSION)}`;
 // ダンスタイム(四神舞)中だけ流す曲。四神舞レベルでBPMが変わる(Lv1=100/Lv2=120/Lv3=140)。
 // v0.25.284: 8小節ループの継ぎ目が要素 loop=true でぶつ切りになるため、軽量(128k/48k)のフル尺曲に戻す。
 // フル尺なら継ぎ目(末尾→先頭)は3〜4分に1回でダンス中はほぼ当たらない。要素再生なので軽い。
@@ -96,6 +99,7 @@ export type SfxKey =
   | 'zombie-3'
   | 'zombie-4'
   | 'hurricane'
+  | 'heartbeat' // 瀕死(低HP)中の心音ループ素材(setHeartbeatLoopが再生。playSfx直呼びはしない)
   | 'dance-kick'
   | 'heavy-impact'
   | 'skadi-ice'
@@ -324,6 +328,9 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'zombie-4': { src: `${import.meta.env.BASE_URL}audio/sfx/zombie-4.mp3`, volume: 0.7, minIntervalMs: 50 },
   // 鞭ハリケーンの「ゴゴゴゴ」鳴動。発動中だけループ再生(setHurricaneRumble)。
   hurricane: { src: `${import.meta.env.BASE_URL}audio/sfx/hurricane.wav`, volume: 0.7 },
+  // 心音ループ素材(社長提供)。実際の音量/再生は setHeartbeatLoop 側の HEARTBEAT_VOLUME が持つ
+  // (hurricaneと同じ流儀。ここの volume は読み込み専用の器)。
+  heartbeat: { src: `${import.meta.env.BASE_URL}audio/sfx/heartbeat.mp3`, volume: 1 },
   // ダンスフロアのジャスト成功(タップ/フリック両方)で鳴らすキックドラム。
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。音が小さめなのでゲインで増幅(0.9→1.8)。
@@ -367,6 +374,10 @@ let deepBgmSrc = '';
 let deepActive = false;              // 深層in(逆再生版が再生対象)か
 let currentGameVariant = 'default';  // 現在のステージBGM variant(逆再生版の選択に使用)
 let deepPlayToken = 0;               // 逆再生版の遅延play再試行トークン
+// PEAK重ねレイヤー(打楽器)。通常BGMは pause せず、別要素を並走させて音量だけフェードイン/アウトする。
+let peakLayerEl: HTMLAudioElement | null = null;
+let peakLayerActive = false;
+let peakLayerFadeTimer: number | null = null;
 
 const sfxBuffers = new Map<SfxKey, AudioBuffer>();
 const sfxLoading = new Map<SfxKey, Promise<void>>();
@@ -920,6 +931,58 @@ export const releaseDeepReverseBgm = () => {
   if (wasDeep) applyBgm(); // 深層中に解放されたら通常BGMへ戻す
 };
 
+const PEAK_LAYER_VOLUME = 0.55; // 私案・実機調整前提
+const PEAK_LAYER_FADE_MS = 700;
+
+const ensurePeakLayer = (): HTMLAudioElement | null => {
+  if (peakLayerEl) return peakLayerEl;
+  if (typeof Audio === 'undefined') return null;
+  const el = new Audio(PEAK_LAYER_TRACK);
+  el.loop = true;
+  el.preload = 'auto';
+  (el as HTMLVideoElement).playsInline = true;
+  el.volume = 0;
+  peakLayerEl = el;
+  return el;
+};
+
+const fadePeakLayer = (target: number) => {
+  const el = peakLayerEl;
+  if (!el) return;
+  if (peakLayerFadeTimer != null) { clearInterval(peakLayerFadeTimer); peakLayerFadeTimer = null; }
+  const steps = 14;
+  const start = el.volume;
+  let i = 0;
+  peakLayerFadeTimer = window.setInterval(() => {
+    i++;
+    el.volume = Math.max(0, Math.min(1, start + (target - start) * (i / steps)));
+    if (i >= steps) {
+      el.volume = target;
+      if (peakLayerFadeTimer != null) { clearInterval(peakLayerFadeTimer); peakLayerFadeTimer = null; }
+      if (target <= 0) { try { el.pause(); } catch { /* ignore */ } }
+    }
+  }, PEAK_LAYER_FADE_MS / steps);
+};
+
+// active: PEAK(AIディレクター macro==='peak' または紅き月中)か。呼び出し側(useGameLoop)が判定を持つ。
+// 通常BGMを止めずに重ねる(社長要望: PEAK突入/終了を体で感じさせる)。
+export const setPeakLayer = (active: boolean) => {
+  const shouldPlay = active && !muted && bgmActive;
+  if (shouldPlay !== peakLayerActive) {
+    peakLayerActive = shouldPlay;
+    const el = ensurePeakLayer();
+    if (!el) return;
+    if (shouldPlay) {
+      void el.play().catch(() => { /* ignore: unlocks on next user gesture like other tracks */ });
+      fadePeakLayer(PEAK_LAYER_VOLUME * bgmVolume);
+    } else {
+      fadePeakLayer(0);
+    }
+  } else if (shouldPlay && peakLayerEl && peakLayerFadeTimer == null) {
+    peakLayerEl.volume = PEAK_LAYER_VOLUME * bgmVolume; // 稼働中の音量スライダー変更に追従
+  }
+};
+
 // 電池対策: 裏(タブ/アプリ非表示)に回ったら BGM を一時停止し、復帰で再開(scene状態は保持)。
 // HTMLAudioElement は hidden でも鳴り続け電池を食うため明示停止。SFXのAudioContextは
 // ブラウザが hidden で自動 suspend するので復帰時に resume するだけ。
@@ -927,10 +990,12 @@ export const setAudioSuspended = (suspended: boolean) => {
   if (suspended) {
     try { bgm?.pause(); } catch { /* ignore */ }
     try { deepBgm?.pause(); } catch { /* ignore */ } // 深層域の逆再生版も止める(電池対策)
+    try { peakLayerEl?.pause(); } catch { /* ignore */ }
   } else {
     resumeSfxContext();
     if (deepActive) applyBgm();   // 深層中は逆再生版を再開(通常BGMは pause のまま)
     else playBgmRobust();         // bgmActive/muted を尊重して通常BGM復帰
+    if (peakLayerActive) { try { void peakLayerEl?.play().catch(() => {}); } catch { /* ignore */ } }
   }
 };
 
@@ -1080,6 +1145,83 @@ export const setHurricaneRumble = (active: boolean) => {
   hurricaneActive = shouldPlay;
   if (shouldPlay) { hurricaneNextStartAt = 0; pumpHurricane(); }
   else stopHurricaneNode();
+};
+
+// --- Heartbeat bed: 瀕死(低HP)中だけ回す心音ループ(社長提供・約1.4s)。ハリケーン鳴動と同じ
+// クロスフェード方式(継ぎ目を重ねてシームレスに)。既存のハリケーン実装は動作確認済みのため触らず、
+// 同じパターンを複製(疎結合・片方の変更がもう片方に波及しない)。useGameLoop から毎フレーム
+// bool で駆動、idempotent なので遷移時だけ実処理が走る(コスト無視できる)。
+type HeartbeatVoice = { source: AudioBufferSourceNode; gain: GainNode; endsAt: number };
+let heartbeatActive = false;
+let heartbeatVoices: HeartbeatVoice[] = [];
+let heartbeatTimer: number | null = null;
+let heartbeatNextStartAt = 0;
+const HEARTBEAT_VOLUME = 0.55; // 私案・実機調整前提(まだ緊張を煽りすぎない控えめな音量から開始)
+const HEARTBEAT_CROSSFADE = 0.15;
+const HEARTBEAT_SCHED_AHEAD = 1.0;
+
+const scheduleHeartbeatVoice = (context: AudioContext, startAt: number): number | null => {
+  const buffer = sfxBuffers.get('heartbeat');
+  if (!buffer) { loadSfxBuffer('heartbeat'); return null; }
+  const dur = buffer.duration;
+  const xf = Math.min(HEARTBEAT_CROSSFADE, dur / 2);
+  const vol = HEARTBEAT_VOLUME * sfxVolume;
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  source.connect(gain);
+  gain.connect(context.destination);
+  gain.gain.setValueAtTime(0, startAt);
+  gain.gain.linearRampToValueAtTime(vol, startAt + xf);
+  gain.gain.setValueAtTime(vol, startAt + dur - xf);
+  gain.gain.linearRampToValueAtTime(0, startAt + dur);
+  try { source.start(startAt); source.stop(startAt + dur + 0.05); } catch { /* ignore */ }
+  heartbeatVoices.push({ source, gain, endsAt: startAt + dur });
+  return dur - xf;
+};
+
+const pumpHeartbeat = () => {
+  heartbeatTimer = null;
+  if (!heartbeatActive) return;
+  const context = ensureSfxContext();
+  if (!context) { heartbeatTimer = window.setTimeout(pumpHeartbeat, 120); return; }
+  resumeSfxContext();
+  const now = context.currentTime;
+  heartbeatVoices = heartbeatVoices.filter(v => v.endsAt > now - 0.1);
+  if (heartbeatNextStartAt < now) heartbeatNextStartAt = now;
+  let guard = 0;
+  while (heartbeatNextStartAt < now + HEARTBEAT_SCHED_AHEAD && guard++ < 8) {
+    const advance = scheduleHeartbeatVoice(context, heartbeatNextStartAt);
+    if (advance == null) { heartbeatTimer = window.setTimeout(pumpHeartbeat, 100); return; }
+    heartbeatNextStartAt += advance;
+  }
+  heartbeatTimer = window.setTimeout(pumpHeartbeat, 200);
+};
+
+const stopHeartbeatNode = () => {
+  const context = sfxContext;
+  const voices = heartbeatVoices;
+  heartbeatVoices = [];
+  heartbeatNextStartAt = 0;
+  if (heartbeatTimer != null) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
+  if (context) {
+    const now = context.currentTime;
+    for (const v of voices) {
+      try { v.gain.gain.cancelScheduledValues(now); v.gain.gain.setTargetAtTime(0, now, 0.12); } catch { /* ignore */ }
+      try { v.source.stop(now + 0.45); } catch { /* ignore */ }
+    }
+  } else {
+    for (const v of voices) { try { v.source.stop(); } catch { /* ignore */ } }
+  }
+};
+
+// active: 瀕死(低HP)状態か。呼び出し側(useGameLoop)が閾値判定を持つ(音声側は判定を持たない)。
+export const setHeartbeatLoop = (active: boolean) => {
+  const shouldPlay = active && !muted;
+  if (shouldPlay === heartbeatActive) return; // idempotent: cheap per-frame no-op
+  heartbeatActive = shouldPlay;
+  if (shouldPlay) { heartbeatNextStartAt = 0; pumpHeartbeat(); }
+  else stopHeartbeatNode();
 };
 
 // Random zombie death grunt on a kill. A shared throttle stops mass deaths

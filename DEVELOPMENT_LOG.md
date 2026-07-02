@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1289 — 瀕死心音ループ+PEAK重ねSE(社長提供素材)。AIディレクター信号算出を既定ONに拡張
+- **瀕死心音ループ**(社長提供・約1.4s): `audioManager.ts`にハリケーン鳴動と同じクロスフェード方式
+  (`setHeartbeatLoop`)で追加。VitalsOrbが一番濃い色に変わる帯(HP25%以下)で発動、死亡/ポーズ/
+  ゲーム時間停止/アンマウントで確実停止。既存のハリケーン実装は動作確認済みのため触らず、同じパターンを
+  複製(疎結合)。
+- **PEAK重ねSE**(社長提供・約61s打楽器レイヤー): 通常BGMは止めずに別`<audio>`要素を並走させ、
+  PEAK突入/終了で音量をフェードイン/アウト(`setPeakLayer`、700msフェード)。ポーズ/ミュート/BGM音量
+  スライダーにも追従。`public/audio/peak-layer.mp3`。
+- **AIディレクターの信号算出(Intensity/Performance/macro state)を既定ONへ拡張**: 従来は
+  `?director=1`/`?directorApply=`明示時のみ計算していたが、PEAK重ねSEと紅き月連携(v0.25.1288)が実際に
+  機能するには常時計算が必要なため、③④⑤⑥と同じ「既定ON・`?director=0`でopt-out」に統一。
+  **信号算出(読むだけ・近接敵走査のみ)が既定ONになるだけで、実際に湧きへ適用する
+  `?directorApply=relax/buildup`は従来どおり別ゲートで明示フラグ必須のまま(挙動は変えていない)**。
+  デバッグ表示(左上UI)の可否も`?director=1`のまま変更なし(Game.tsx側の独立判定)。未使用になった
+  `DIRECTOR_ENABLED`定数を削除。
+- 負荷スコア: **2/10**。信号算出は敵配列を2回走査するだけ(enemy E60 safeの実測に対し軽い)。心音/PEAK
+  レイヤーはevent-boundedなクロスフェード/フェードで、常時は無音・無処理。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
+
 ## v0.25.1288 — レア個体は当たり判定ごと拡大 / 強襲コールアウト+突破SE / 紅き月×ディレクター連携 / リロードSE差し替え(全て社長指示)
 - **レア個体のサイズ差を「当たり判定ごと」に変更**(社長指示: 視覚だけでなく判定も)。v0.25.1287の
   視覚のみ拡大(pixiScene)を撤回し、`enemyUtils.buildEnemy`で`width/height`自体を青1.1/紫1.2/赤1.3倍に
