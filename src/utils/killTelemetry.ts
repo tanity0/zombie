@@ -29,3 +29,12 @@ export const styleFromKillCounts = (gunKills: number, meleeKills: number): PlayS
   if (meleeRate < MELEE_RATE_RANGED_STYLE) return '遠距離';
   return 'バランス';
 };
+
+// バッチ3.5-Bの追補(社長報告「やっと倒したらすぐ沸いた」対応): 同型の問題児をキルしてから
+// この時間内は、通常湧き抽選(featured床含む)+gatePressure配役の両方で再投入を禁止する。
+// ボス系・screamer(専用ディレクター持ち)は対象外(呼び出し側でフィルタする)。
+export const PROBLEM_REFRACTORY_MS = 15000;
+
+// lastKillAtでの記録有無から、今この型が再投入禁止(リフラクトリ中)かどうかを判定する純関数。
+export const isInRefractory = (lastKillAtMs: number | undefined, nowMs: number): boolean =>
+  lastKillAtMs !== undefined && nowMs - lastKillAtMs < PROBLEM_REFRACTORY_MS;

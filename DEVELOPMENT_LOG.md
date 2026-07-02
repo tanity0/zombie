@@ -28,6 +28,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - 負荷スコア: 1/10(毎フレームのスカラー演算4つ・新規オブジェクトなし)。
 - 検証: lint / typecheck / test(240 pass, 1 skip) / build 全通過。
 
+## v0.25.1326 — PACING_REDESIGN.mdバッチ4実装: 緩の演目選択(RELAX/講習/回収/HARVEST)+問題児リフラクトリ(実装チャットSonnet)
+- **演目選択**: `src/utils/reliefProgram.ts`(純関数)を新設。buildup(緩)フェーズへ切り替わった
+  瞬間に、直前の山(gate)のDirectorRank連続スコア(`rankRef.current.lastPerf`)・序盤(〜4分)の
+  講習経験(累計キル数)・直前関所での苦戦型(featured型のうちキル数がSTRUGGLE_KILL_MAX(2)未満で
+  最少のもの)から演目を1つ選び、そのフェーズ中は`sceneAt(gameTime)`の代わりにこの演目を
+  湧きシーンとして使う(`useGameLoop.ts`の`scene`計算を分岐)。
+  - RELAX(純休憩): score<0.4(7:00以降はscore<0.25のみ)
+  - 講習(werewolf/pumpkin単体): 序盤(〜4分)かつ経験少(累計3体未満)。**同時1体・1フェーズ合計1体**
+    (`reliefProgramRef.current.lessonSpawned`フラグで管理。主役を1体出したらプログラムの複製
+    (`effectiveProgram`)でfeatured/featuredFloorを空に戻し、以後は通常bat中心チャフへ切替)。
+  - 回収: 苦戦型があれば、その型を弱め少数(interval1.0・rareMult0.3)で投入。
+  - HARVEST(雑魚無双・既定): bat中心濁流(interval0.6・rareMult0.5)。**7:00以降は例外
+    (score<0.25の純休憩)を除き常にこれ**。旧「パンプキン2体狩猟」案は廃止。
+  - XP倍率(`rankAdj.rewardMult`)は演目の`xpBoost`フラグで判定するよう`rankHarvestActive`を変更
+    (HARVEST/回収のみtrue・講習/純休憩はtrueにならない)。
+- **問題児リフラクトリ(3.5-Bの追補)**: `killTelemetryState.ts`の`recordKill`に型ごとの最終キル
+  時刻(`lastKillAt`)を追加記録(`getLastKillAt`で読む)、`killTelemetry.ts`に
+  `PROBLEM_REFRACTORY_MS=15000`+`isInRefractory`を追加。同型の問題児(plant/werewolf/pumpkin/
+  ghost。screamer/ボスは対象外)をキルしてから15秒間は、通常湧き抽選(`sceneBlocked`へ追加)と
+  gatePressure配役(`pressureCastRef`の投入ゲートへ`refractoryOk`条件を追加)の両方で再投入しない。
+- `?program=0`で講習の1体制限・演目選択・XP倍率条件・リフラクトリを全て含めて旧固定シーン挙動へ
+  戻せる(バッチ4と同時実装のリフラクトリも同じフラグで一括オフになる仕様として実装)。
+- デバッグ: `src/utils/reliefProgramState.ts`(新設・gatePressureState.tsと同型のシングルトン)
+  経由で選定中の演目IDと講習投入済みフラグを`?director=1`オーバーレイに追記表示。
+- テスト: `reliefProgram.test.ts`(9件・選出条件の分岐/7:00以降の固定/講習の窓)、
+  `killTelemetry.test.ts`/`killTelemetryState.test.ts`にリフラクトリ判定を追加。
+  lint/typecheck/test(257 pass, 1 skip)/build 全通過。
+- 負荷スコア: 1/10(フェーズ境界で1回の演目選択+毎フレームの型判定のみ・描画コストなし)。
+- 実機未確認(演目の切り替わり・講習1体制限・回収の弱め感の体感は実プレイ推奨)。
+
 ## v0.25.1324 — ズーム引き時に敵が画面端で消える件の修正: 敵リサイクル境界をズーム対応(設計チャットFable・バグ修正)
 - 社長報告「ズームを引くとカメラが切れてる(敵やオブジェクトが切れる)。結構前に直したやつでは?
   Sonnet側で巻き戻り?」→ 調査の結果、**巻き戻りではない**: 過去の修正2件(v0.25.1253=レンダラの

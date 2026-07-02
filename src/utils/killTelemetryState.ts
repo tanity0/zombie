@@ -23,18 +23,26 @@ const createTotals = (): KillTotals => ({
 
 let totals = createTotals();
 
+// バッチ3.5-Bの追補(問題児リフラクトリ): 型ごとの最終キル時刻(gameTime ms)。
+// 問題児(pumpkin/werewolf/plant/ghost)のみ記録すれば足りるが、汎用にEnemyType全体で持つ。
+let lastKillAt: Partial<Record<EnemyType, number>> = {};
+
 // method: 'gun' はガン/接触/爆発(damageEnemyのkill分岐)、'melee' は近接全経路
 // (grantMeleeKillRewards=シールドバッシュ/カウンター/刀/鞭/アンカー等)。
-export const recordKill = (type: EnemyType, method: 'gun' | 'melee'): void => {
+// gameTimeMs省略時はリフラクトリ判定を使わない呼び出し向け(既存呼び出しの後方互換)。
+export const recordKill = (type: EnemyType, method: 'gun' | 'melee', gameTimeMs?: number): void => {
   totals.byBucket[bucketForKill(type)] += 1;
   if (method === 'gun') totals.gunKills += 1;
   else totals.meleeKills += 1;
+  if (gameTimeMs !== undefined) lastKillAt[type] = gameTimeMs;
 };
 
 export const getKillTotals = (): Readonly<KillTotals> => totals;
+export const getLastKillAt = (type: EnemyType): number | undefined => lastKillAt[type];
 
 export const resetKillTelemetry = (): void => {
   totals = createTotals();
+  lastKillAt = {};
 };
 
 // 直前に完了したフェーズの種別キル内訳+その時点のスタイル(デバッグ表示用)。

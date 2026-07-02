@@ -1381,7 +1381,8 @@ const grantMeleeKillRewards = (
   if ('screamerBuffUntil' in screamerCutPatch) useGameStore.setState(screamerCutPatch);
   for (const { enemy, finisher } of killed) {
     // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
-    recordKill(enemy.type, 'melee');
+    // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
+    recordKill(enemy.type, 'melee', get().gameTime);
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
     const xp = finisher
@@ -5110,7 +5111,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
         // PACING_REDESIGN.mdバッチ2(計測): ガン/接触/爆発キルを種別+スタイル集計へ記録(挙動には影響しない)。
-        recordKill(enemy.type, 'gun');
+        // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
+        recordKill(enemy.type, 'gun', state.gameTime);
         
         // Update game stats
         const newStats = {

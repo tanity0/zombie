@@ -97,9 +97,13 @@ import { pickChaffMix } from '../utils/chaffMix';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import {
-  getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle
+  getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle, getLastKillAt,
+  getPhaseKillDebug
 } from '../utils/killTelemetryState';
 import type { KillBucket } from '../utils/killTelemetry';
+import { isInRefractory } from '../utils/killTelemetry';
+import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
+import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -390,6 +394,10 @@ const EVENTS_ENABLED = evParam('events') !== '0';
 const MIX_ENABLED = evParam('mix') !== '0';
 // PACING_REDESIGN.mdバッチ3.5-B: 盤面在庫(boardDebt)。?debt=0で全無効(従来挙動)。
 const DEBT_ENABLED = evParam('debt') !== '0';
+// PACING_REDESIGN.mdバッチ4: 緩の演目選択(RELAX/講習/回収/HARVEST)。?program=0で従来の
+// 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
+const PROGRAM_ENABLED = evParam('program') !== '0';
+const STRUGGLE_KILL_MAX = 2; // 直前関所でのfeatured型キル数がこれ未満なら「苦戦気味」=回収の対象
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
@@ -612,7 +620,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gateRef = useRef({ key: '', startHpFrac: 1, live: 0 });
   // 難易度⑤(DirectorRank): 現在のフェーズキーと、そのフェーズ開始時点のスナップショット。
   // フェーズが切り替わった瞬間に直前フェーズぶんの差分から成績を評価し、rank を更新する。
-  const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 });
+  // lastPerf: バッチ4(緩の演目選択)が使う連続0-1スコア(rankの離散化前の値)。初期値0.7は
+  // 「最初の山はまだ実績が無い」を中立〜やや良い側で扱う(いきなり純休憩に落とさないため)。
+  const rankRef = useRef({ rank: 0 as 0 | 1 | 2, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1, lastPerf: 0.7 });
   // 難易度⑥(ピンチ救済): ピンチ持続時間の累積。
   const pinchRef = useRef(createPinchState());
   // バッチ7(イベントプロデューサー・憲法第5条): ピンチ救済が発動していた間+解除後10秒は
@@ -637,6 +647,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const pressureCastRef = useRef<{ order: [ProblemChild, ProblemChild] | null; pendingCast: ProblemChild | null }>({ order: null, pendingCast: null });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof getKillTotals> | null }>({ phaseKey: '', startTotals: null });
+  // バッチ4: 直近に入った関所(gate)フェーズのfeatured型(「前の山の主役」=回収の判定材料)。
+  const lastGateFeaturedRef = useRef<EnemyType[]>([]);
+  // バッチ4: 現在の緩(buildup)フェーズで選ばれている演目+講習主役の投入済みフラグ
+  // (「1フェーズ合計1体・キル後は再投入しない」の状態管理)。
+  const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean }>({ phaseKey: '', program: null, lessonSpawned: false });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
@@ -1247,7 +1262,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           screamerBuffFxRef.current = 0; // 叫喚SE検出refも新ランでリセット(前ランのbuffUntilで誤ってスキップしない)
           gateRef.current = { key: '', startHpFrac: 1, live: 0 }; // 難易度④の関所ライブ補正も新ランでリセット
           // 難易度⑤(DirectorRank)も新ランでリセット(前ランのスナップショットで初回フェーズを誤評価しない)。
-          rankRef.current = { rank: 0, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1 };
+          rankRef.current = { rank: 0, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1, lastPerf: 0.7 };
+          lastGateFeaturedRef.current = []; // バッチ4も新ランでリセット
+          reliefProgramRef.current = { phaseKey: '', program: null, lessonSpawned: false };
+          setReliefProgramDebug(null);
           setDirectorRankRewardMult(1);
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
@@ -5711,6 +5729,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               levelGained: Math.max(0, rgs.player.level - rankRef.current.startLevel),
             });
             rankRef.current.rank = rankFromPerformance(perf);
+            rankRef.current.lastPerf = perf; // バッチ4: 演目選択が使う連続スコア
           }
           const rgs2 = useGameStore.getState();
           rankRef.current.phaseKey = rankPhaseKey;
@@ -5734,6 +5753,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           killPhaseRef.current = { phaseKey: rankPhaseKey, startTotals: getKillTotals() };
         }
+        // バッチ4: 山→緩の演目選択。フェーズが切り替わった瞬間だけ判定する(rankPhaseKeyと同じ境界)。
+        if (PROGRAM_ENABLED && !labTheme && !indoor) {
+          if (curPhase.kind === 'gate') {
+            lastGateFeaturedRef.current = curPhase.scene.featured;
+          }
+          if (curPhase.kind === 'buildup' && reliefProgramRef.current.phaseKey !== rankPhaseKey) {
+            const debug = getPhaseKillDebug();
+            let struggleType: EnemyType | null = null;
+            if (debug && debug.phaseKey.startsWith('gate')) {
+              let worst: EnemyType | null = null, worstKills = Infinity;
+              for (const t of lastGateFeaturedRef.current) {
+                const bucket = t as KillBucket;
+                const kills = debug.killsByBucket[bucket] ?? 0;
+                if (kills < STRUGGLE_KILL_MAX && kills < worstKills) { worst = t; worstKills = kills; }
+              }
+              struggleType = worst;
+            }
+            const totals = getKillTotals();
+            const program = selectReliefProgram({
+              gameTimeMs: gameTime,
+              score: rankRef.current.lastPerf,
+              lessonExperience: { werewolf: totals.byBucket.werewolf, pumpkin: totals.byBucket.pumpkin },
+              struggleType,
+            });
+            reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false };
+          }
+        }
         // 関所(襲撃)告知(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
         // 生きて抜けた瞬間「襲撃を凌いだ」。表示は頭上の浮きテキストではなく、既存の左上イベント
         // バナー(eventBannerText=「危険変異体出現」等と同じUI)に統一(社長指示)。屋外のみ。
@@ -5754,7 +5800,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const rankAdj = (rankOutdoor && !redNightActiveNow) ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1, rareBoost: 0 };
         // HARVEST相当(buildupフェーズ=関所間の緩む区間)でだけ、rank に応じたEXP倍率を効かせる
         // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
-        const rankHarvestActive = curPhase.kind === 'buildup';
+        // バッチ4: 演目にxpBoostが立っている(HARVEST/回収)場合だけに絞る。講習/純休憩はブースト無し。
+        const rankHarvestActive = curPhase.kind === 'buildup' &&
+          (!PROGRAM_ENABLED || (reliefProgramRef.current.program?.xpBoost ?? true));
         setDirectorRankRewardMult(rankHarvestActive ? rankAdj.rewardMult : 1);
         // 憲法第1条(退屈シグナル→上振れ枠): Perf高×Intensity低の持続だけを見る独立ノブ(Rankとは別)。
         // 前フレームの directorRef.current.state を読む(relaxAdj/buildupAdjと同じ1フレーム遅延パターン)。
@@ -5831,6 +5879,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pressure: gatePressureRef.current.state.pressure,
           ceiling: gatePressureRef.current.ceiling ?? 1,
           allowed: allowedProblemChildren(gatePressureRef.current.state.pressure, pressureCastRef.current.order ?? ['pumpkin', 'werewolf']),
+        } : null);
+        setReliefProgramDebug((PROGRAM_ENABLED && reliefProgramRef.current.program) ? {
+          id: reliefProgramRef.current.program.id,
+          lessonSpawned: reliefProgramRef.current.lessonSpawned,
         } : null);
         const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
@@ -5922,9 +5974,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
         const spawnEsc = Math.max(0, Math.min(1, buildEsc + (ddaActive ? gateRef.current.live : 0) + buildupAdj.escBoost + rankAdj.escBoost)) * relaxAdj.escMult;
+        // バッチ4: buildup(緩)フェーズでは、台本固定のsceneAtではなく選定済みの演目(reliefProgramRef)を
+        // 使う。講習は「1フェーズ合計1体・キル後は再投入しない」ので、主役を1体出した後は featured を
+        // 空にして通常分布へ戻す(programオブジェクト自体はxpBoost/lessonPrimary判定に使うので複製で対応)。
+        let effectiveProgram = reliefProgramRef.current.program;
+        if (effectiveProgram && effectiveProgram.lessonPrimary && reliefProgramRef.current.lessonSpawned) {
+          effectiveProgram = { ...effectiveProgram, featured: [], featuredFloor: false };
+        }
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
-        const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;
+        const scene = (SCENES_ENABLED && !labTheme && !indoor)
+          ? (PROGRAM_ENABLED && curPhase.kind === 'buildup' && effectiveProgram ? effectiveProgram : sceneAt(gameTime))
+          : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
         // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床は講習/mowdownシーンのみ許可(関所シーンは
@@ -5957,6 +6018,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const sceneBlocked: EnemyType[] = pressureOutdoor
           ? ALL_PROBLEM_CHILDREN.filter(t => !allowedProblemChildren(gatePressureRef.current.state.pressure, pressureCastRef.current.order ?? ['pumpkin', 'werewolf']).includes(t))
           : [];
+        // バッチ3.5-Bの追補(問題児リフラクトリ): 同型の問題児をキルしてから15秒は、通常湧き抽選でも
+        // 再投入を禁止する(gatePressure配役側は下のpendingCast投入でも同じisInRefractoryを見る)。
+        // screamer(専用ディレクター持ち)・ボス系は対象外(REFRACTORY_TYPESに含めない)。
+        if (PROGRAM_ENABLED) {
+          const REFRACTORY_TYPES: ProblemChild[] = ['plant', 'werewolf', 'pumpkin', 'ghost'];
+          for (const t of REFRACTORY_TYPES) {
+            if (!sceneBlocked.includes(t) && isInRefractory(getLastKillAt(t), gameTime)) sceneBlocked.push(t);
+          }
+        }
         // バッチ3.5-A(チャフ配合): シーンにmixが有る時だけ、関所中はgatePressureで連続シフトした
         // 配合を使う(緩フェーズ・関所外はシーンmixをそのまま)。mix未指定シーン(gate-chaos等)は
         // undefinedのまま=selectEnemyTypeは従来の重み計算を素通りする。
@@ -5994,7 +6064,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ?debt=0 は完全復帰(旧cap=2・延期なし)。既定はTank存命中ルール(生存0体のみ)+debt延期。
             const aliveOk = DEBT_ENABLED ? aliveOfType === 0 : aliveOfType < 2;
             const debtOk = !DEBT_ENABLED || boardDebtNow <= CAST_DEBT_MAX;
-            if (aliveOk && debtOk) {
+            // 問題児リフラクトリ: 同型を倒した直後15秒はgatePressure配役でも再投入しない(社長報告対応)。
+            const refractoryOk = !PROGRAM_ENABLED || !isInRefractory(getLastKillAt(pending), gameTime);
+            if (aliveOk && debtOk && refractoryOk) {
               const castEnemy = generateEnemy(gameTime, player, spawnBounds, pending, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(castEnemy);
               pressureCastRef.current.pendingCast = null;
@@ -6078,6 +6150,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (enemy.type === 'werewolf') wolfCount += 1;
             if (enemy.type === 'pumpkin') pumpkinCount += 1;
             if (enemy.type === 'ghost') ghostCount += 1;
+            // バッチ4(講習): 演目の主役(lessonPrimary)を1体出したら投入済みフラグを立てる
+            // (1フェーズ合計1体・キル後は再投入しない=effectiveProgramが以後featuredを空にする)。
+            if (PROGRAM_ENABLED && reliefProgramRef.current.program?.lessonPrimary === enemy.type) {
+              reliefProgramRef.current.lessonSpawned = true;
+            }
             addEnemy(enemy);
             spawnedThisTick = true;
           }
