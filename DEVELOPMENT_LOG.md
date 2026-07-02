@@ -10,6 +10,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1292 — 心音の閾値を25%へ戻す(社長指示)
+- 直前(v0.25.1291)で20%へ変更したばかりだったが、社長判断で25%に戻す。`HEARTBEAT_HP_FRAC=0.25`。
+- 検証: typecheck / lint(0, full) / test(138 pass, 1 skip) / build 通過。
+
 ## v0.25.1291 — 心音: 20%閾値+連打の真因(ヒットストップ再始動)修正 / 緩シーンのゾンビ抑え / 犬の同時2体キャップ(全て社長指示)
 - **心音の閾値変更**: HP25%以下→**20%以下**(社長指定)。
 - **「ブブブブ」の真因修正**: v0.25.1290のネイティブループ化後も連打が残った原因は、発動条件に

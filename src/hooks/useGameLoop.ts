@@ -357,8 +357,8 @@ const RANK_ENABLED = evParam('rank') !== '0';
 // 難易度⑥(ピンチ救済、社長指示): 低HP×敵溜まりすぎが続いた人にだけ、松明ドロップを回復/爆弾寄りへ
 // バイアス(場所は松明のみ=台本)。?pity=0 で無効化。
 const PITY_ENABLED = evParam('pity') !== '0';
-// 瀕死心音ループの発動しきい値(社長指定: HP20%以下)。
-const HEARTBEAT_HP_FRAC = 0.20;
+// 瀕死心音ループの発動しきい値(社長指定: HP25%以下)。
+const HEARTBEAT_HP_FRAC = 0.25;
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
 // ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
 // ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
