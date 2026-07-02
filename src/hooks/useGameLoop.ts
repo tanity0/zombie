@@ -101,7 +101,7 @@ import {
 } from '../utils/killTelemetryState';
 import type { KillBucket } from '../utils/killTelemetry';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
-import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
+import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
@@ -6220,8 +6220,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const currentEnemiesForRecycle = useGameStore.getState().enemies;
         // リサイクル境界=固定ビュー矩形(プレイヤー中心)を OFFSCREEN_RECYCLE_MARGIN だけ広げた矩形。
         // これより外の敵は画面外送り(湧き直し)。半径(円)ではなく矩形=どの辺も「画面端から○px外」で一律(社長指示B)。
-        const recycleHalfW = gameBounds.width / 2 + OFFSCREEN_RECYCLE_MARGIN;
-        const recycleHalfH = gameBounds.height / 2 + OFFSCREEN_RECYCLE_MARGIN;
+        // 文脈ズーム引き(contextZoom<1)中は可視域が gameBounds を超えるため、固定矩形のままだと
+        // 画面内に見えている敵を回収してしまう(社長報告: ズーム引きで敵が端で消える。トールが
+        // 大型=常時最大引き対象になって露見)。レンダラ側カリング(v0.25.1253 zoomViewportOverscan)
+        // と同思想で、最大引き(CONTEXT_ZOOM_MIN)でも覆える倍率だけ常に外へ広げる(安全側=消えなくなるだけ)。
+        const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / CONTEXT_ZOOM_MIN;
+        const recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+        const recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
         let recycledAnyEnemy = false;
         const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
           // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。

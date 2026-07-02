@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1324 — ズーム引き時に敵が画面端で消える件の修正: 敵リサイクル境界をズーム対応(設計チャットFable・バグ修正)
+- 社長報告「ズームを引くとカメラが切れてる(敵やオブジェクトが切れる)。結構前に直したやつでは?
+  Sonnet側で巻き戻り?」→ 調査の結果、**巻き戻りではない**: 過去の修正2件(v0.25.1253=レンダラの
+  zoomViewportOverscanカリング拡張 / v0.25.1259=worldFadeMaskのoverscan)はコードに健在。
+- **真因**: シミュレーション側の敵リサイクル境界(`useGameLoop.ts`・画面外の敵を湧き直す矩形)だけが
+  ズーム非対応のまま(`gameBounds/2 + OFFSCREEN_RECYCLE_MARGIN(240)`固定)。最大引き
+  (CONTEXT_ZOOM_MIN=0.8)では可視域が gameBounds の1.25倍に広がるため、**画面内に見えている敵が
+  境界を越えて回収=端で消える**。湧き位置側(spawnBounds)はczInvZoomで補正済みなのに回収側だけ漏れ。
+- **なぜ今露見**: v0.25.1317でトールが「大型=即・最大引き」対象に追加され、ステージ5のトール戦
+  テスト中は常時最大引きになるため。
+- **修正**: リサイクル矩形を `×(1/CONTEXT_ZOOM_MIN)`(=1.25倍)常時オーバースキャン
+  (labTheme/indoorは等倍のまま)。v0.25.1253のレンダラ側修正と同思想の安全側(消えなくなるだけ)。
+- 検証: lint / typecheck / test(240 pass, 1 skip) / build 全通過。
+- 負荷スコア: 1/10(定数乗算のみ)。
+
 ## v0.25.1322 — 実機確認③(診断グラフ初読解)→バッチ4(緩の演目+問題児リフラクトリ)を具体化・社長承認(設計チャットFable・設計のみ)
 - 実機確認③(v0.25.1320-21ビルド・生存11:32・死因=死神10分トリガー): RELAX 54%(前回39%)と
   心電図の谷は大幅回復(社長「だいぶマシになってきた」)。バッチ2.5の診断帯(関所/囲い/城ボス/
