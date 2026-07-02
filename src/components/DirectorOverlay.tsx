@@ -5,6 +5,7 @@ import { getPityLevel } from '../utils/pityState';
 import { getPhaseKillDebug, getCurrentStyle } from '../utils/killTelemetryState';
 import { getGatePressureDebug } from '../utils/gatePressureState';
 import { getReliefProgramDebug } from '../utils/reliefProgramState';
+import { getGateProgramDebug } from '../utils/gateProgramState';
 import type { DirectorMacro } from '../utils/aiDirector';
 
 const PROBLEM_CHILD_INITIAL: Record<string, string> = { plant: 'P', werewolf: 'W', pumpkin: 'K', screamer: 'S', ghost: 'G' };
@@ -47,6 +48,7 @@ const DirectorOverlay: React.FC = () => {
   const phaseKillDebug = getPhaseKillDebug();
   const pressureDebug = getGatePressureDebug();
   const programDebug = getReliefProgramDebug();
+  const gateProgramDebug = getGateProgramDebug();
   // ステップB/C(?directorApply=relax|buildup|all)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
   const applyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('directorApply') : null;
   const applyRelax = applyParam === 'relax' || applyParam === 'all';
@@ -116,6 +118,12 @@ const DirectorOverlay: React.FC = () => {
       {programDebug && (
         <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
           program {programDebug.id}{programDebug.lessonSpawned ? ' (spawned)' : ''}
+        </div>
+      )}
+      {/* バッチ5: 選定済みの台本(山フェーズの中身)+その台本自身のmaxRung(pressure天井の元)。 */}
+      {gateProgramDebug && (
+        <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
+          gate {gateProgramDebug.id} maxRung{gateProgramDebug.maxRung}
         </div>
       )}
     </div>

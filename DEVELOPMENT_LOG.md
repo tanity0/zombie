@@ -10,6 +10,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1340 — PACING_REDESIGN.mdバッチ5実装: 山(関所)の台本選択(実装チャットSonnet)
+- `src/utils/gateProgram.ts`(純関数)を新設。関所フェーズへ切り替わった瞬間に、5つの台本
+  (数の関所maxRung3/射線の関所4/判断の関所5/三択の関所6/不意打ちの関所7)から、
+  「台本自身のmaxRung ≤ PHASESのそのgateスロットのmaxRung」を満たす適格なものの中で、
+  直近に見せた台本(`gateProgramRef.lastId`)を除外しつつ、DirectorRankに応じて難度側へ寄せて
+  (rank2=適格中最難/rank0=適格中最優/rank1=タイブレーク乱数)1つ選ぶ。そのgateフェーズ中は
+  `useGameLoop.ts`の`scene`計算(`sceneAt(gameTime)`の代わり)とpressue天井の元になる
+  `curPhase.maxRung`(台本自身のmaxRungへ差し替え=`ceilingForMaxRung`にはこちらを渡す)の
+  両方をこの選定済み台本で置き換える。
+  - **数の関所**: チャフ濁流(CD極短=intervalMult0.5・featuredなし)。
+  - **射線の関所**: plant中心(既存`SCENE_GATE_MASS_RANGED`と同値を再利用)。
+  - **判断の関所**: 犬orパンプキン1種+弾。主役の選び方は既存`specialCastOrder`と同じスタイル
+    対応(近接→犬優先/遠距離→パンプキン優先/バランスはタイブレーク乱数)を`gateJudgmentProgram`
+    として再利用実装。
+  - **三択の関所**: 犬+パンプキン+弾(既存`SCENE_GATE_CHAOS`と同値=全部盛り)。
+  - **不意打ちの関所**: 三択+叫び/ゴーストをfeaturedに追加(実際の解禁はgatePressureの
+    `allowedProblemChildren`が既存どおり別途ゲートするので二重ゲートの心配なし)。
+- バッチ4の「回収(直前関所で苦戦した型)」判定が読む`lastGateFeaturedRef`を、選定済み台本の
+  featured(実際に表示されたもの)を優先して読むよう修正(バッチ5導入前は台本固定のPHASES
+  sceneのfeaturedを読んでいたため、バッチ5適用後はズレる可能性があった)。
+- `?gateprogram=0`で台本選択(このバッチの範囲)を丸ごと無効化し、従来のPHASES固定シーン/
+  maxRungへ戻せる。デバッグ: `src/utils/gateProgramState.ts`(シングルトン)経由で選定中の
+  台本IDとmaxRungを`?director=1`オーバーレイに追記表示。
+- テスト: `gateProgram.test.ts`(11件・適格性フィルタ/rank別優先/直近回避/判断の関所のスタイル
+  対応)。lint/typecheck/test(269 pass, 1 skip)/build 全通過。
+- 負荷スコア: 1/10(フェーズ境界で1回の選択のみ・既存のscene消費コードをそのまま再利用)。
+- 実機未確認(台本ごとの手触り・rank優先の体感は実プレイ推奨)。
+
 ## v0.25.1339 — ダンスの曲同期を廃止しB方式「ビートがリングに合わせに来る」を社長決定(設計チャットFable・設計のみ)
 - 社長相談「音とサークルのリズムが何度直しても合わない。難しければお蔵入りも」→設計チャットの診断:
   現アーキテクチャ(HTMLAudioのcurrentTime→壁時計アンカー+公称BPM外挿)では**構造的に恒久解決不能**

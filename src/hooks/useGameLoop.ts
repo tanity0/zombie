@@ -105,6 +105,8 @@ import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
 import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
+import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
+import { setGateProgramDebug } from '../utils/gateProgramState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -399,6 +401,9 @@ const DEBT_ENABLED = evParam('debt') !== '0';
 // 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
 const PROGRAM_ENABLED = evParam('program') !== '0';
 const STRUGGLE_KILL_MAX = 2; // 直前関所でのfeatured型キル数がこれ未満なら「苦戦気味」=回収の対象
+// PACING_REDESIGN.mdバッチ5: 山(関所)の台本選択。?gateprogram=0で従来の固定シーン
+// (PHASESのscene/maxRung)に戻す。
+const GATE_PROGRAM_ENABLED = evParam('gateprogram') !== '0';
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
@@ -675,6 +680,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // バッチ4: 現在の緩(buildup)フェーズで選ばれている演目+講習主役の投入済みフラグ
   // (「1フェーズ合計1体・キル後は再投入しない」の状態管理)。
   const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean }>({ phaseKey: '', program: null, lessonSpawned: false });
+  // バッチ5: 現在の山(gate)フェーズで選ばれている台本+直近に見せた台本id(連続回避用)。
+  const gateProgramRef = useRef<{ phaseKey: string; program: GateProgram | null; lastId: GateProgramId | null }>({ phaseKey: '', program: null, lastId: null });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
@@ -1289,6 +1296,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           lastGateFeaturedRef.current = []; // バッチ4も新ランでリセット
           reliefProgramRef.current = { phaseKey: '', program: null, lessonSpawned: false };
           setReliefProgramDebug(null);
+          gateProgramRef.current = { phaseKey: '', program: null, lastId: null }; // バッチ5も新ランでリセット
+          setGateProgramDebug(null);
           setDirectorRankRewardMult(1);
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
@@ -5862,10 +5871,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           killPhaseRef.current = { phaseKey: rankPhaseKey, startTotals: getKillTotals() };
         }
+        // バッチ5: 山(緩明け)の台本選択。関所フェーズに入った瞬間だけ判定する(rankPhaseKeyと同じ境界)。
+        // バッチ4の直下(lastGateFeaturedRefが実際に見せた台本のfeaturedを読めるように)より前、かつ
+        // pressureOutdoorブロック(この少し下)がrungCeilingの計算に使うため、それより前に確定させる。
+        if (GATE_PROGRAM_ENABLED && !labTheme && !indoor && curPhase.kind === 'gate' && gateProgramRef.current.phaseKey !== rankPhaseKey) {
+          const program = selectGateProgram({
+            phaseMaxRung: curPhase.maxRung ?? 7,
+            rank: rankRef.current.rank,
+            style: getCurrentStyle(),
+            lastProgramId: gateProgramRef.current.lastId,
+            tieBreakRandom: Math.random(),
+          });
+          gateProgramRef.current = { phaseKey: rankPhaseKey, program, lastId: program.id };
+        }
         // バッチ4: 山→緩の演目選択。フェーズが切り替わった瞬間だけ判定する(rankPhaseKeyと同じ境界)。
         if (PROGRAM_ENABLED && !labTheme && !indoor) {
           if (curPhase.kind === 'gate') {
-            lastGateFeaturedRef.current = curPhase.scene.featured;
+            // バッチ5が有効なら実際に表示中の台本のfeaturedを、無効/未選択ならPHASES固定シーンのfeaturedを使う。
+            lastGateFeaturedRef.current = (GATE_PROGRAM_ENABLED && gateProgramRef.current.program) ? gateProgramRef.current.program.featured : curPhase.scene.featured;
           }
           if (curPhase.kind === 'buildup' && reliefProgramRef.current.phaseKey !== rankPhaseKey) {
             const debug = getPhaseKillDebug();
@@ -5953,7 +5976,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pressureHitRef.current.prevHp = hp;
 
           const zoneCeiling = ceilingForZone(areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2)));
-          const rungCeiling = ceilingForMaxRung(curPhase.maxRung ?? 7);
+          // バッチ5: 台本選択が有効な間は、選ばれた台本自身のmaxRung(PHASESの値ではなく台本の値付け)を
+          // pressure天井の元にする。台本未選択(初回フレームや?gateprogram=0)はPHASESのmaxRungへ従来どおり。
+          const effectiveMaxRung = (GATE_PROGRAM_ENABLED && gateProgramRef.current.program) ? gateProgramRef.current.program.maxRung : (curPhase.maxRung ?? 7);
+          const rungCeiling = ceilingForMaxRung(effectiveMaxRung);
           const ceiling = Math.min(zoneCeiling, rungCeiling);
 
           const step = stepGatePressure(gatePressureRef.current.state, {
@@ -5997,6 +6023,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         setReliefProgramDebug((PROGRAM_ENABLED && reliefProgramRef.current.program) ? {
           id: reliefProgramRef.current.program.id,
           lessonSpawned: reliefProgramRef.current.lessonSpawned,
+        } : null);
+        setGateProgramDebug((GATE_PROGRAM_ENABLED && gateProgramRef.current.program) ? {
+          id: gateProgramRef.current.program.id,
+          maxRung: gateProgramRef.current.program.maxRung,
         } : null);
         const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
@@ -6095,10 +6125,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (effectiveProgram && effectiveProgram.lessonPrimary && reliefProgramRef.current.lessonSpawned) {
           effectiveProgram = { ...effectiveProgram, featured: [], featuredFloor: false };
         }
+        // バッチ5: gate(山)フェーズでは、台本固定のsceneAtではなく選定済みの台本(gateProgramRef)を使う。
+        const effectiveGateProgram = (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program : null;
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor)
-          ? (PROGRAM_ENABLED && curPhase.kind === 'buildup' && effectiveProgram ? effectiveProgram : sceneAt(gameTime))
+          ? (PROGRAM_ENABLED && curPhase.kind === 'buildup' && effectiveProgram ? effectiveProgram
+            : effectiveGateProgram ?? sceneAt(gameTime))
           : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
