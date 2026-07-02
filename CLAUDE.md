@@ -192,6 +192,20 @@ checks by cost — do NOT lump them together.
   `git checkout claude/chat-context-continuity-saxlH`. Never push elsewhere
   without the user explicitly naming a new branch in the live chat.
 
+## エージェント分業(2チャット体制・社長指示 v0.25.1301〜)
+- このリポジトリは2つのチャットで運用する:
+  - **実装チャット(Sonnet)**: 設計書(PACING_REDESIGN.md 等)のバッチを実装し、結果を
+    DEVELOPMENT_LOG.md と設計書のステータス更新でファイルに残す。**設計判断はしない**
+    (未決事項に当たったら設計書に質問を書いて止め、社長に報告する)。
+  - **設計チャット(Fable)**: 社長との話し合い専用。決定事項は設計書ファイルを直接更新して
+    実装チャットへ渡す。コードは書かない。
+- **チャット間でお互いの会話は見えない。** 決定・未決・実装結果・実機フィードバックの要点は
+  必ずファイル(PACING_REDESIGN.md / DEVELOPMENT_LOG.md / AI_DIRECTOR_HANDOFF.md /
+  DISTRIBUTION_REDESIGN.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
+- 現在の進行プロジェクト: **PACING_REDESIGN.md(緩急の心電図化)**。どちらのチャットも
+  作業開始時にまず PACING_REDESIGN.md(冒頭の「運用」と「★未決事項」)と DEVELOPMENT_LOG.md の
+  先頭数エントリを読むこと。
+
 ## Development environment / handoff
 - Local repository path: `/Users/tanity/zombie`
 - Active branch: `claude/chat-context-continuity-saxlH`
