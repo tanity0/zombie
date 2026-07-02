@@ -520,6 +520,12 @@ const THOR_ORBIT_STEP_MIN_INTERVAL_MS = 2500;
 const THOR_ORBIT_STEP_MAX_INTERVAL_MS = 5000;
 const THOR_ORBIT_STEP_DIST = 70;             // ステップで進む距離(px)
 const THOR_ORBIT_STEP_MS = 160;              // ステップそのものの所要時間
+// 社長指示:「たまに2秒さらに1/2の速度で歩く」。chase中の移動速度(接近/後退/旋回いずれも)へ
+// 一律で追加の減速を掛ける一時ウィンドウ(状態遷移ではない=speed multiplierのみの単純な効果)。
+const THOR_SLOWWALK_MS = 2000;               // 減速が続く時間
+const THOR_SLOWWALK_MULT = 0.5;              // 更なる減速倍率(「さらに1/2」)
+const THOR_SLOWWALK_MIN_INTERVAL_MS = 5000;  // 「たまに」の頻度(叩き台)
+const THOR_SLOWWALK_MAX_INTERVAL_MS = 9000;
 const THOR_ACTION_MIN_MS = 2200;             // 攻撃選択インターバル(最短・満タンHP)
 const THOR_ACTION_MAX_MS = 4200;             // 攻撃選択インターバル(最長・満タンHP)
 const THOR_LOWHP_FRAC = 0.4;                 // このHP割合以下で頻度アップ開始(社長指示)
@@ -746,8 +752,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
   // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number }>(
-    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0 }
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number }>(
+    { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 }
   );
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
@@ -1304,7 +1310,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
-          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0 };
+          bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -2283,20 +2289,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // --- トール(ステージ5)専用ヘルパー(社長指示・独自攻撃) ------------------------------
               // 旋回運動: 現在の相対位置から角度/半径を毎フレーム自己補正しながら回す(専用の角度状態を持たない)。
               // Y-down画面座標では atan2 の角度が増える向き=視覚的に時計回り(社長指示「時計回り」の既定 dir=1)。
+              // 社長指示(v0.25.1334〜):「たまに2秒さらに1/2の速度で歩く」。今の移動速度(接近/後退/旋回の
+              // どれでも)に一律で追加の減速を掛ける一時ウィンドウ。bs.thorSlowWalkUntilが未来の間だけ有効。
+              const thorSlowMult = () => (newGameTime < (bs.thorSlowWalkUntil ?? 0) ? THOR_SLOWWALK_MULT : 1);
               const thorOrbitMove = () => {
                 const dir = boss.bossCircleDir ?? 1;
                 const relX = bcx - chaseTgt.x, relY = bcy - chaseTgt.y;
                 const curDist = Math.hypot(relX, relY) || 1;
+                const slowMult = thorSlowMult();
                 if (curDist < THOR_ORBIT_DIST) {
                   // 社長指示②: 旋回距離より近づかれたら、旋回せずプレイヤーの1/2速度で真っ直ぐ後ずさる。
                   const ux = relX / curDist, uy = relY / curDist; // 相手から離れる向き
-                  patch.x = boss.x + ux * THOR_RETREAT_SPEED * walkMult * bossMoveDt;
-                  patch.y = boss.y + uy * THOR_RETREAT_SPEED * walkMult * bossMoveDt;
+                  patch.x = boss.x + ux * THOR_RETREAT_SPEED * walkMult * slowMult * bossMoveDt;
+                  patch.y = boss.y + uy * THOR_RETREAT_SPEED * walkMult * slowMult * bossMoveDt;
                   bs.vx = 0; bs.vy = 0;
                   return;
                 }
                 const curAngle = Math.atan2(relY, relX);
-                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * walkMult) / THOR_ORBIT_DIST;
+                const angularSpeed = (speed * THOR_ORBIT_SPEED_MULT * walkMult * slowMult) / THOR_ORBIT_DIST;
                 const newAngle = curAngle + dir * angularSpeed * bossMoveDt;
                 const correctedDist = curDist + (THOR_ORBIT_DIST - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
                 const ncx = chaseTgt.x + Math.cos(newAngle) * correctedDist;
@@ -2309,7 +2319,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
                 const dist = Math.hypot(dpx, dpy) || 1;
                 // 社長指示①: 旋回間合いに入るまでの接近速度はプレイヤーの1/2(自身のspeedではなくTHOR_APPROACH_SPEED)。
-                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(walkMult, THOR_APPROACH_SPEED);
+                if (dist > THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK) moveToward(walkMult, THOR_APPROACH_SPEED * thorSlowMult());
                 else thorOrbitMove();
               };
               // 次の攻撃選択までの間隔。HPが低いほど短く=高頻度化(社長指示)。
@@ -2339,6 +2349,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 damageEnemy(boss.id, dmg, false, true);
                 spawnDamageNumber(bcx, boss.y, dmg, true);
                 playSfx('headshot');
+                // 社長指示: 「これは普通のクリティカルです」= 通常のクリ演出(金の衝撃波+火花+発光。
+                // 銃/近接クリの hitCrit juice と同じ見た目)もここに乗せる。青いCounter演出とは別レイヤーで
+                // 重ねて出す=カウンター成立と同時に「クリティカルが乗った」ことが見た目でも分かるようにする。
+                spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+                spawnBurst(hitX, hitY, '#fde047', 10);
+                useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
                 const lx = bcx - pcx, ly = bcy - pcy;
                 const ll = Math.hypot(lx, ly) || 1;
                 patch.bossState = 'counter-leap';
@@ -2359,6 +2375,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               if (st === 'chase') {
                 if (boss.type === 'thor') {
+                  // 社長指示:「たまに2秒さらに1/2の速度で歩く」。クールダウンが明けたら新しい減速ウィンドウへ
+                  // 突入(既に減速中は再抽選しない=毎フレーム延長し続けない)。
+                  if (newGameTime >= (bs.thorNextSlowWalkAt ?? 0) && newGameTime >= (bs.thorSlowWalkUntil ?? 0)) {
+                    bs.thorNextSlowWalkAt = newGameTime + THOR_SLOWWALK_MIN_INTERVAL_MS + Math.random() * (THOR_SLOWWALK_MAX_INTERVAL_MS - THOR_SLOWWALK_MIN_INTERVAL_MS);
+                    bs.thorSlowWalkUntil = newGameTime + THOR_SLOWWALK_MS;
+                  }
                   thorMove();
                 } else {
                   moveToward(walkMult); // 気絶中は半速、通常は等速

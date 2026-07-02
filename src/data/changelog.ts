@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1335',
+    items: [
+      '隠しボス「トール」の動き方・攻撃の演出を細かく調整(距離の詰め方/引き方、たまに見せる緩急など)。',
+      'トールへのカウンターの手応え(演出)を強化。',
+    ],
+  },
+  {
     version: '0.25.1333',
     items: [
       'ステージ5「軍本部」に新しい隠しボス「トール」が出現するようになった。',

@@ -21,6 +21,23 @@ on the zombie game. Append a new entry after each meaningful change.
   仕様妥当性の洗い出し。調査エージェント3本を起動済み、結果はCORE_LOOP.md/別途ファイルに落とす。
 - 検証: doc+version変更のみ(コード不変)。
 
+## v0.25.1335 — トールにたまに2秒の追加減速+カウンターに本物のクリ演出を追加(社長指示)
+- 「たまに2秒さらに1/2の速度で歩く」に対応。`THOR_SLOWWALK_MS(2000)`/`THOR_SLOWWALK_MULT(0.5)`の
+  一時ウィンドウを新設(`bs.thorSlowWalkUntil`)。5-9秒間隔(`THOR_SLOWWALK_MIN/MAX_INTERVAL_MS`)で
+  chase中に抽選し、有効な間は接近(`THOR_APPROACH_SPEED`)/後退(`THOR_RETREAT_SPEED`)/旋回
+  (`THOR_ORBIT_SPEED_MULT`)のどれに対しても一律で追加×0.5を掛ける(`thorSlowMult()`ヘルパー)。
+  bossState遷移ではなく単純な速度乗数=他の状態機械に影響なし。
+- 「カウンターの下り違います。完全気絶はちゃんとクリティカル５回のストーリーにのせといてください。
+  これは普通のクリティカルです。また、カウンターしてもクリティカル判定になってません。」に対応。
+  v0.25.1333で追加した`damageEnemy(..., crit=true)`(裏ボス完全気絶=bumpBossCritへの計上)自体は
+  仕組みとして正しいが、**見た目に「クリティカルが乗った」演出が一切無く**、青いCounter演出だけが
+  出ていたため「クリティカル判定になっていない」ように見えていた、と判断。銃/近接の通常クリ
+  (`hitCrit`)が出している「金の衝撃波+火花+発光」juice(`spawnRing`+`spawnBurst`+`spawnGlow`、
+  amber系カラー)を`thorCounterHit`にもそのまま追加(青いCounter演出とは別レイヤーで重ねて表示)。
+  bumpBossCrit連携(完全気絶=5クリのカウント)はv0.25.1333のまま変更なし。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。実機未確認。
+- 負荷スコア: 1/10(既存の演出呼び出しを1回追加+速度乗数計算のみ)。
+
 ## v0.25.1333 — トールの接近/後退速度をプレイヤーの1/2に+バックステップ/旋回ステップ+カウンター必ずクリ(社長指示)
 - 「通常は旋回の間合いに入るまでは近づいてくるのはプレイヤーの1/2のスピード」「逆にプレイヤーが旋回
   ゾーンから近づいてきたときに逃げる速度も1/2で後ずさっていき、たまにバックステップで少し距離を取る」
