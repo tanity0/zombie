@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1342 — トールの横払い/突きに刀を追加表示(社長提供素材)+GitHub Pagesデプロイ不具合の調査
+- 「ステージ5の裏ボス用の刀。横払い、突きに追加で攻撃がわかりやすくなる様に使用してください」に対応。
+  社長提供の刀絵(`public/sprites/thor-katana.png`・1254x1254・紫背景)を`pixiTextures.ts`の
+  `loadKeyed`(自動タレット/screamer等と同じ色キー透過ローダ)経由で登録。
+  `drawThorSlash`に`showKatana`引数を追加し、harai(横払い)/tsuki(突き)の**実行**状態のみtrueで
+  呼ぶ(issen/windup中は従来どおり=変更なし)。柄(グリップ)のフラクション座標(0.80,0.76)を
+  回転軸として当たり判定ライン(fx,fy→tx,ty)の始点に置き、刀身がライン方向を向くよう回転。
+  既存の斬撃ピクセル演出(streak/burst)と同じt(0-0.5伸び/0.5-1縮み)でフェードを共有=当たり判定の
+  見た目(赤ゾーン/斬撃エフェクト)自体は変えず、追加の視認性補助としてのみ重ねる。
+  柄/切っ先の画像内フラクション座標は目視での近似(実機調整前提)。
+- **GitHub Pagesの反映が止まっていた件を調査**(社長報告「38からあがらない」)。GitHub Actionsの
+  ログを確認したところ、`npm run build`(buildジョブ)は直近含め毎回成功していたが、
+  `actions/deploy-pages@v4`(deployジョブ)がv0.25.1339/1340/1341の3回連続で失敗
+  (`Deployment failed, try again later.`、うち1回は`deployment_queued`のまま10分でタイムアウト)。
+  ビルド成果物・ワークフロー設定は正常で、**GitHub Pages側の一時的な障害**と判断。v0.25.1341の
+  失敗ジョブを`rerun_failed_jobs`で再実行したところ成功(=以後は`v0.25.1342`から通常どおり反映
+  されるはず)。今後また止まった場合は同じくActionsログで build(成功)/deploy(失敗)を切り分け、
+  deployだけ再実行すればよい。
+- 検証: lint / typecheck / test(269 pass, 1 skip) / build 全通過(`dist/sprites/thor-katana.png`
+  同梱を確認)。実機未確認(柄位置/刀身の長さ・角度の見え方は実プレイでの微調整が前提)。
+- 負荷スコア: 1/10(既存のthorSlashFxプール内に1スプライト追加しただけ・新規Graphics/Text無し)。
+
 ## v0.25.1341 — タイトル更新情報(changelog.ts)の抜け埋め(社長指示: 毎回更新の徹底)
 - 「更新情報は毎回更新」の指示を受け、直近で更新情報エントリが漏れていたv0.25.1338(近接/刀クリの
   完全気絶カウント統一+GAME_AUDIT一括修正10件・設計チャットFable)ぶんをプレイヤー向け文言で

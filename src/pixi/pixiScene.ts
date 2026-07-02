@@ -531,6 +531,20 @@ const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
 const THOR_TSUKI_VIS_HALFWIDTH = 30;    // 突きの描画半太さ(当たり判定と同じ)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
+// トールの刀(社長提供・横払い/突きの視認性を上げる追加ビジュアル)。素材(thor-katana、紫背景色キー
+// 透過済み・1254x1254正方形)は切っ先が左上・柄/房が右下の対角線上に描かれている。柄(握り)を
+// フラクション座標で近似し、そこを回転軸として当たり判定ライン方向へ向ける。実機調整前提。
+const THOR_KATANA_GRIP_FRAC = { x: 0.80, y: 0.76 };  // 柄(握り位置)の画像内フラクション座標
+const THOR_KATANA_TIP_FRAC = { x: 0.05, y: 0.10 };   // 切っ先の画像内フラクション座標(角度/長さ算出用)
+const THOR_KATANA_INTRINSIC_ANGLE = Math.atan2(
+  THOR_KATANA_TIP_FRAC.y - THOR_KATANA_GRIP_FRAC.y,
+  THOR_KATANA_TIP_FRAC.x - THOR_KATANA_GRIP_FRAC.x,
+); // 画像自体の柄→切っ先方向(ローカル角度)
+const THOR_KATANA_BLADE_LEN_FRAC = Math.hypot(
+  THOR_KATANA_TIP_FRAC.x - THOR_KATANA_GRIP_FRAC.x,
+  THOR_KATANA_TIP_FRAC.y - THOR_KATANA_GRIP_FRAC.y,
+); // 柄→切っ先の距離(画像サイズに対する比率)
+const THOR_KATANA_LENGTH = 220; // 表示上の柄→切っ先の長さ(px・トールの体格に対して自然な長さ)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
@@ -5144,7 +5158,8 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const tsukiProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_MS));
-        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, tsukiProg, true);
+        // 社長指示: 突きは刀を追加表示して攻撃をわかりやすくする。
+        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_TSUKI_VIS_HALFWIDTH, tsukiProg, true, true);
       } else if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
@@ -5158,7 +5173,8 @@ export class PixiScene {
         } else {
           // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true);
+          // 社長指示: 横払いは刀を追加表示して攻撃をわかりやすくする。
+          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true);
         }
       } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
         // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。
@@ -6990,18 +7006,20 @@ export class PixiScene {
   // 合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを斬撃ピクセルで当たり判定どおりにモーション)。
   // t: 0(このステートの開始)→1(終了)の進行度。0-0.5でstreakが伸びる(溜め=予告)、0.5-1で縮む(実行=フェード)。
   // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
-  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean) {
+  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false) {
     let c = this.thorSlashFx.get(id);
     if (!c) {
       const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
       const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
+      const katana = new Sprite(); katana.anchor.set(THOR_KATANA_GRIP_FRAC.x, THOR_KATANA_GRIP_FRAC.y);
       c = new Container();
-      c.addChild(streak, burstSp);
+      c.addChild(streak, burstSp, katana);
       this.L.effectLayer.addChild(c);
       this.thorSlashFx.set(id, c);
     }
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
+    const katana = c.children[2] as Sprite;
     const ref = getTexture('fx/slash-streak-4');
     if (!ref) { c.visible = false; return; }
     c.visible = true;
@@ -7030,6 +7048,23 @@ export class PixiScene {
       } else burstSp.visible = false;
     } else {
       burstSp.visible = false;
+    }
+    // 社長提供の刀(横払い/突きの視認性を上げる追加ビジュアル)。柄(グリップ)を判定ラインの始点(fx,fy)に
+    // 置き、刀身が実際の当たり判定ラインの方向を向くよう回転させる。streakと同じt(0-0.5伸び/0.5-1縮み)
+    // でフェードし、ライン自体の見た目(赤ゾーン/斬撃ピクセル)は変えない=あくまで追加の視認性補助。
+    if (showKatana) {
+      const kref = getTexture('thor-katana');
+      if (kref) {
+        if (katana.texture !== kref) katana.texture = kref;
+        const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
+        katana.scale.set(kscale);
+        katana.rotation = angle - THOR_KATANA_INTRINSIC_ANGLE;
+        katana.position.set(fx, fy);
+        katana.alpha = streak.alpha;
+        katana.visible = katana.alpha > 0.01;
+      } else katana.visible = false;
+    } else {
+      katana.visible = false;
     }
   }
 

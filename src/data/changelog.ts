@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1342',
+    items: [
+      '隠しボス「トール」の横払い・突きに、刀を振る絵を追加。攻撃の向きがより分かりやすくなった。',
+    ],
+  },
+  {
     version: '0.25.1340',
     items: [
       '強襲(関所)の中身に「台本」を導入。数で押す/射線で圧す/一点特化/三択カオス/不意打ちなど、毎回違う顔ぶれ・テンポの強襲が出るように。直前の出来やこれまでの傾向を見て選ばれる。',
