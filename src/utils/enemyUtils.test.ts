@@ -172,14 +172,16 @@ describe('hidden boss (mimir/jormungand/skadi/thor) spec', () => {
     expect(jorm.maxHealth).toBe(7500);
     expect(skadi.maxHealth).toBe(10000);
     expect(thor.maxHealth).toBe(11000);
-    // ダメージは giant の2倍据え置き。歩行速度は社長指示で少し上げた(70→90 base)=giant より速い。4裏ボスは同速。
+    // ダメージは giant の2倍据え置き。歩行速度は社長指示で少し上げた(70→90 base)=giant より速い。
+    // mimir/jormungand/skadiは同速。トールだけ社長個別指示(通常速度=プレイヤーの5/4)で別値。
     expect(jorm.damage).toBe(giant.damage * 2);
     expect(mimir.damage).toBe(giant.damage * 2);
     expect(thor.damage).toBe(giant.damage * 2);
     expect(jorm.speed).toBeGreaterThan(giant.speed);
     expect(mimir.speed).toBe(jorm.speed);
     expect(skadi.speed).toBe(jorm.speed);
-    expect(thor.speed).toBe(jorm.speed);
+    // トール: 最終速度(ENEMY_SPEED_MULT=2/3適用後)がPLAYER_BASE_SPEED(87)×5/4=108.75に近い。
+    expect(thor.speed).toBeCloseTo(87 * 1.25, 0);
   });
   it('hitbox = a wide footprint strip (3x body is visual-only, decoupled in pixi)', () => {
     // 社長指示で「当たり判定=足元の四角(帯)」に変更。巨体(約3倍)の見た目は pixi の BOSS_SPRITE_FIT で

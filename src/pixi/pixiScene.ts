@@ -523,7 +523,7 @@ const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェー
 // トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
 const THOR_ISSEN_WINDUP_MS = 3000;      // 一閃の溜め時間(進行度の算出用)
 const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの所要時間(フェード用)
-const THOR_ISSEN_VIS_HALFWIDTH = 120;   // 一閃の描画半太さ(当たり判定と同じ・社長修正指示で2倍)
+const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判定と同じ・社長修正指示で120の2/3へ)
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
@@ -5068,8 +5068,12 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
         const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: (2 + 7 * prog) * 2, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: (1 + 2 * prog) * 2, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+        // 社長修正指示: 予告ラインの太さを実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる
+        // (旧: 溜め進行で細い線が太くなる演出だったため、見た目より判定が広く見えていた)。
+        // 溜めの経過は太さではなく不透明度(緊迫感)で表現する。
+        const w = THOR_ISSEN_VIS_HALFWIDTH * 2;
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w, color: 0xff3030, alpha: (0.12 + 0.18 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: w * 0.35, color: 0xffe0e0, alpha: 0.25 + 0.35 * prog, cap: 'round' });
       } else if (e.bossState === 'issen-dash') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;

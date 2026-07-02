@@ -505,7 +505,7 @@ const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所�
 // 社長修正指示(v0.25.1321〜): 長さを半分(620→310)・幅を2倍(60→120)に変更。溜め中はプレイヤーを
 // 追わない(方向は溜め開始時点で固定・行動選択側でロック)。
 const THOR_ISSEN_RANGE = 310;                // ラインの長さ=終着点までの距離
-const THOR_ISSEN_HALF_WIDTH = 120;           // 当たり判定=赤ライン半幅
+const THOR_ISSEN_HALF_WIDTH = 80;            // 当たり判定=赤ライン半幅(社長修正指示: 120の2/3へ)
 
 const THOR_TSUKI_WINDUP_MS = 1000;           // 突き: 1秒停止(社長指示)
 const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込み)の所要時間
@@ -2556,12 +2556,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   playSfx('thor-thrust');
                 }
               } else if (st === 'tsuki') {
-                // 突き(実行): ダッシュと同じ射程・幅(半分の幅)で素早く踏み込む(社長指示)。
+                // 突き(実行): 本体は動かず、ダッシュと同じ射程・幅(半分の幅)で武器の間合いだけが伸びる
+                // (社長修正指示:「突っ込んでこないで。突くだけ」=harai同様に本体静止)。
                 const fx = boss.aiFromX ?? bcx, fy = boss.aiFromY ?? bcy;
                 const tx = boss.aiTargetX ?? bcx, ty = boss.aiTargetY ?? bcy;
-                const t = Math.max(0, Math.min(1, 1 - ((boss.bossStateUntil ?? newGameTime) - newGameTime) / THOR_TSUKI_MS));
-                patch.x = (fx + (tx - fx) * t) - boss.width / 2;
-                patch.y = (fy + (ty - fy) * t) - boss.height / 2;
                 let lux = tx - fx, luy = ty - fy;
                 const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
                 const lineLen = Math.hypot(tx - fx, ty - fy);
