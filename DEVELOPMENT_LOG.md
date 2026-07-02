@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1307 — 木オブジェクトの影の縮小バグ修正 + PEAK中のBGMダッキングをさらに強める(社長報告2件)
+- **木の影が小さいバグ**(社長報告・スクショで実機確認): `pixiScene.ts`の常時足影(木/壁/プロップ共通の
+  `addObj`)で、壁(係数0.34)・プロップ(係数0.36)は「実際の描画幅(containScale/depthScale込みの
+  `sprite.width`)×係数」を使っているのに対し、**木だけ**`48 * TREE_VISUAL_SCALE * depthScale * 0.28`
+  という別系統の箱基準の式を使っており、係数も0.28と兄弟オブジェクトより小さかった(松明の光が木に
+  落とす影=`addCaster`側は0.36で既に統一済み・地面の常時影だけ取り残されていた)。
+  wallObjs/propObjsと同じ`Math.abs(sprite.width) * 0.34`方式に統一して修正。
+  **当たり判定(trunkRect)は調査の結果、意図どおり**: CLAUDE.mdの「Visual vs. hitbox」規約どおり
+  幹(トランク)だけの意図的に狭い判定(見た目の樹冠/根の広がりとは分離)で、TREE_VISUAL_SCALEを
+  1.5倍した際(既存コミット)に`TRUNK_FOOT_W_MULT=1.5`/`TRUNK_FOOT_H_MULT=1.2`で追従済み・
+  footX/footYへの位置合わせも正しく、バグは無かったため変更していない。
+- **PEAK重ねSE中のBGMダッキングをさらに強める**(社長指示): `PEAK_BGM_DUCK`を0.65→0.4に変更
+  (v0.25.1290で導入した「PEAK突入で通常BGMを少し落とす」の下げ幅を追加で拡大)。
+- 検証: typecheck / lint(0, full) / test(189 pass, 1 skip) / build 通過。
+
 ## v0.25.1306 — 起動画面の「ご利用にあたって(同意)」テキストを「更新情報」に変更(社長指示)
 - 社長指示「トップ画面に表示している同意のテキスト内容を、毎回のアップデート更新情報に変える」を実装。
 - **新規** `src/data/changelog.ts`: プレイヤー向け更新履歴のデータ(`ChangelogEntry[]`)。内部の

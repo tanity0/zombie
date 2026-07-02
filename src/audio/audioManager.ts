@@ -935,7 +935,7 @@ export const releaseDeepReverseBgm = () => {
 };
 
 const PEAK_LAYER_VOLUME = 0.55; // 私案・実機調整前提
-const PEAK_BGM_DUCK = 0.65;     // PEAK中は通常BGMを少し落とす(社長指示)。レイヤーのフェードと同時にランプ。
+const PEAK_BGM_DUCK = 0.4;      // PEAK中は通常BGMを落とす(社長指示・v0.25.1290=0.65→さらに下げてほしいとの追加指示で0.4へ)。レイヤーのフェードと同時にランプ。
 const PEAK_LAYER_FADE_MS = 700;
 
 const ensurePeakLayer = (): HTMLAudioElement | null => {

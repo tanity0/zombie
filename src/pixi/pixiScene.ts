@@ -4192,7 +4192,9 @@ export class PixiScene {
         const dx = sx - pfb.footX, dy = fy - pfb.footY;
         cands.push({ id, x: sx, y: fy, w, d: dx * dx + dy * dy });
       };
-      for (const [key, t] of this.trees) addObj('osh:tree:' + key, t.sprite.x, t.footY, 48 * TREE_VISUAL_SCALE * this.depthScale(t.footY) * 0.28);
+      // 木だけ他のオブジェクト(壁0.34/プロップ0.36)と違う固定係数(0.28・箱基準)で影が小さめだった
+      // バグ修正: wallObjs/propObjsと同じ「実際の描画幅(containScale/depthScale込み)×係数」方式に統一。
+      for (const [key, t] of this.trees) addObj('osh:tree:' + key, t.sprite.x, t.footY, Math.max(8, Math.abs(t.sprite.width) * 0.34));
       for (const [id, e] of this.wallObjs) addObj('osh:wall:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.34));
       for (const [id, e] of this.propObjs) addObj('osh:prop:' + id, e.sprite.x, e.footY, Math.max(8, Math.abs(e.sprite.width) * 0.36));
       for (const [id, e] of this.cityPropObjs) {
