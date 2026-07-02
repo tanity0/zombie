@@ -523,8 +523,7 @@ const MIMIR_LASER_FIRE_MS = 1500;       // 発射本体の表示時間(フェー
 // トール(ステージ5裏ボス)の独自攻撃の描画(視覚・useGameLoop のゲームプレイ値と揃える)。
 const THOR_ISSEN_WINDUP_MS = 3000;      // 一閃の溜め時間(進行度の算出用)
 const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの所要時間(フェード用)
-const THOR_ISSEN_VIS_HALFWIDTH = 60;    // 一閃の描画半太さ(当たり判定と同じ・通常の2倍・社長指示)
-const THOR_ISSEN_VIS_RANGE = 620;       // 一閃のライン長さ(useGameLoop THOR_ISSEN_RANGE と一致)
+const THOR_ISSEN_VIS_HALFWIDTH = 120;   // 一閃の描画半太さ(当たり判定と同じ・社長修正指示で2倍)
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
@@ -1060,9 +1059,6 @@ export class PixiScene {
   private bossBehindAlpha = 1; // 裏ボスの「裏回り透け」alpha を滑らかに追従させる実値(スナップ回避)
   private enemyCount = 0;
   private horizonForestFootWorldY = -Infinity;
-  // トール(ステージ5裏ボス)の一閃・溜め中ライン描画用: このフレームのプレイヤー座標をキャッシュ
-  // (drawEnemy は enemy 単位で呼ばれ player を受け取らないため)。syncActors 冒頭で更新。
-  private curPlayerForThor: { x: number; y: number; width: number; height: number } | null = null;
 
   constructor(layers: SceneLayers) {
     this.L = layers;
@@ -4232,7 +4228,6 @@ export class PixiScene {
 
   private syncActors(player: Player, enemies: Enemy[], gameTime: number, now: number) {
     this.enemyCount = enemies.length;
-    this.curPlayerForThor = player;
 
     // Player
     if (!this.playerView) this.playerView = this.makeActor();
@@ -5065,20 +5060,16 @@ export class PixiScene {
     // トール(ステージ5裏ボス)の独自攻撃(社長指示): 一閃/払いの赤ライン予告+実行、ジャンプ攻撃の着地予告。
     if (e.type === 'thor') {
       if (e.bossState === 'issen-windup') {
-        // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向はまだロックされていない=生存プレイヤーへ追従。
+        // 一閃の溜め: ピクセルが赤くゆっくり点滅(社長指示)。方向は選択時に既にロック済み=
+        // 溜め中はプレイヤーを追わない(社長修正指示。aiFromX/Y→aiTargetX/Yは固定値)。
         const blink = 0.5 + 0.5 * Math.sin(now / 260);
         view.sprite.tint = ((255 << 16) | (Math.round(255 * (1 - blink)) << 8) | Math.round(255 * (1 - blink)));
-        const pl = this.curPlayerForThor;
-        if (pl) {
-          const ppx = pl.x + pl.width / 2, ppy = pl.y + pl.height / 2;
-          let ux = ppx - cx, uy = ppy - cy;
-          const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
-          const ex2 = cx + ux * THOR_ISSEN_VIS_RANGE, ey2 = cy + uy * THOR_ISSEN_VIS_RANGE;
-          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
-          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: (2 + 7 * prog) * 2, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: (1 + 2 * prog) * 2, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
-        }
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
+        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: (2 + 7 * prog) * 2, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+        o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: (1 + 2 * prog) * 2, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
       } else if (e.bossState === 'issen-dash') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;

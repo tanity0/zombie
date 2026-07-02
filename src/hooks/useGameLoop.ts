@@ -34,7 +34,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, MELEE_RADIUS
+  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT
 } from '../store/gameStore';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -102,7 +102,7 @@ import {
 import type { KillBucket } from '../utils/killTelemetry';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs } from '../utils/weaponUtils';
+import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
@@ -488,8 +488,10 @@ const BOSS_DASH_BACKSTEP_MULT = 0.4;                 // 突進溜め中、ゆっ
 // 数値は「同じ射程/幅=ダッシュ」等の指示から妥当な値を採用(既存の裏ボスdashに可視ラインが無かった
 // ため、werewolf系の突進テレグラフ(6px下地+2px芯)を「ダッシュのライン」の基準として2倍/等倍を適用)。
 // 実機調整前提でDEVELOPMENT_LOG.mdに透明化して記録。
-const THOR_ORBIT_MARGIN_PX = 40;             // 近接距離(MELEE_RADIUS)より少し外側で旋回開始(「絶妙に入らない」の余白)
-const THOR_ORBIT_DIST = MELEE_RADIUS + THOR_ORBIT_MARGIN_PX; // 旋回時の目標距離(中心間)
+// 社長修正指示(v0.25.1321〜): 旋回距離=ハンドガンが届かないくらいの距離(RANGE_BY_CATEGORY.handgun
+// 基準)へ変更(旧: 近接距離基準)。
+const THOR_ORBIT_MARGIN_PX = 40;             // ハンドガン射程より少し外側で旋回する余白
+const THOR_ORBIT_DIST = RANGE_BY_CATEGORY.handgun + THOR_ORBIT_MARGIN_PX; // 旋回時の目標距離(中心間)
 const THOR_ORBIT_APPROACH_SLACK = 60;        // この分だけ余裕を見て「接近」⇄「旋回」を切り替える(ハンチング防止)
 const THOR_ORBIT_SPEED_MULT = 2 / 3;         // 旋回速度=通常の2/3(社長指示)
 const THOR_ORBIT_RADIUS_CORRECT = 4;         // 旋回半径をTHOR_ORBIT_DISTへ寄せる補正の速さ(大きいほど素早く戻る)
@@ -500,22 +502,24 @@ const THOR_LOWHP_INTERVAL_MULT = 0.55;       // 低HP時のインターバル倍
 
 const THOR_ISSEN_WINDUP_MS = 3000;           // 一閃: 3秒溜め・赤く点滅して静止(社長指示)
 const THOR_ISSEN_DASH_MS = 280;              // 高速移動そのものの所要時間
-const THOR_ISSEN_RANGE = 620;                // ラインの長さ=終着点までの距離(BOSS_DASH_SPEED_MULT×3秒相当を採用)
-const THOR_ISSEN_HALF_WIDTH = 60;            // 当たり判定=赤ライン半幅(通常突きの2倍・社長指示)
+// 社長修正指示(v0.25.1321〜): 長さを半分(620→310)・幅を2倍(60→120)に変更。溜め中はプレイヤーを
+// 追わない(方向は溜め開始時点で固定・行動選択側でロック)。
+const THOR_ISSEN_RANGE = 310;                // ラインの長さ=終着点までの距離
+const THOR_ISSEN_HALF_WIDTH = 120;           // 当たり判定=赤ライン半幅
 
 const THOR_TSUKI_WINDUP_MS = 1000;           // 突き: 1秒停止(社長指示)
 const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込み)の所要時間
-const THOR_TSUKI_RANGE = THOR_ISSEN_RANGE;   // ダッシュと同じ射程(社長指示=一閃と同じ「ダッシュ射程」を採用)
-const THOR_TSUKI_HALF_WIDTH = THOR_ISSEN_HALF_WIDTH / 2; // ダッシュと同じ幅(一閃の半分=通常幅)
+// 一閃の長さ/幅修正の影響を受けないよう、突き専用の値として独立させる(一閃の元の値=620/半幅30を維持)。
+const THOR_TSUKI_RANGE = 620;                // ダッシュと同じ射程(社長指示=一閃の元の「ダッシュ射程」を採用)
+const THOR_TSUKI_HALF_WIDTH = 30;            // ダッシュと同じ幅(一閃の元の半分=通常幅)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 逆回転+並行ライン表示1秒(社長指示)
-const THOR_HARAI_RANGE = THOR_ISSEN_RANGE;   // ダッシュと同じ距離分のライン(社長指示)
+const THOR_HARAI_RANGE = 620;                // ダッシュと同じ距離分のライン(社長指示。一閃の長さ修正とは独立)
 const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH;
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
-const THOR_JUMP_TRIGGER_HITS = 3;            // 遠距離から連続で被弾すると間合いを詰める(社長指示を具体化)
+const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
-const THOR_JUMP_TRIGGER_RANGE = THOR_ORBIT_DIST * 1.8; // この距離より遠くからの被弾だけを「遠距離チクチク」として数える
 const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
 const THOR_JUMP_MS = 620;                    // 滞空時間(ハンターの速いジャンプ感を踏襲)
 const THOR_JUMP_RADIUS = 70;                 // 着地爆風半径(pumpkinの54よりやや広め=ボス級)
@@ -2157,11 +2161,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let chasing = false;
             let despawn = false;
 
-            // トール専用: 弾を持たないため、遠距離(THOR_JUMP_TRIGGER_RANGEより外)から連続で被弾したら
-            // ジャンプ攻撃で間合いを詰める(社長指示)。他の裏ボスでは無害(参照されない)。
+            // トール専用: 弾を持たないため、画面外からの攻撃(この時点のonScreen=false)を連続で
+            // 被弾したらジャンプ攻撃で間合いを詰める(社長修正指示)。他の裏ボスでは無害(参照されない)。
             if (boss.type === 'thor') {
               const prevHp = bs.thorPrevHealth;
-              if (prevHp >= 0 && boss.health < prevHp && Math.hypot(bcx - pcx, bcy - pcy) > THOR_JUMP_TRIGGER_RANGE) {
+              if (prevHp >= 0 && boss.health < prevHp && !onScreen) {
                 bs.thorRangedHits.push(newGameTime);
               }
               bs.thorRangedHits = bs.thorRangedHits.filter(t => newGameTime - t <= THOR_JUMP_TRIGGER_WINDOW_MS);
@@ -2328,6 +2332,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (pick === 'issen') {
                       patch.bossState = 'issen-windup';
                       patch.bossStateUntil = newGameTime + THOR_ISSEN_WINDUP_MS;
+                      // 社長修正指示: 溜め中はプレイヤーを追わない=方向は溜め開始の瞬間にロックする。
+                      const ddx0 = pcx - bcx, ddy0 = pcy - bcy;
+                      const ddl0 = Math.hypot(ddx0, ddy0) || 1;
+                      patch.aiFromX = bcx; patch.aiFromY = bcy;
+                      patch.aiTargetX = bcx + (ddx0 / ddl0) * THOR_ISSEN_RANGE;
+                      patch.aiTargetY = bcy + (ddy0 / ddl0) * THOR_ISSEN_RANGE;
                     } else if (pick === 'tsuki') {
                       patch.bossState = 'tsuki-windup';
                       patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
@@ -2496,17 +2506,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
               } else if (st === 'issen-windup') {
                 // 一閃: 3秒溜め・静止(赤い明滅は描画側=pixiSceneがbossStateを見て演出・社長指示)。
+                // 方向は選択時(action-roll)に既にロック済み=溜め中はプレイヤーを追わない(社長修正指示)。
                 const { overlap, counterActive } = thorBodyOverlapNow();
                 if (overlap && counterActive) {
                   thorCounterHit(bcx, bcy);
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'issen-dash';
                   patch.bossStateUntil = newGameTime + THOR_ISSEN_DASH_MS;
-                  const ddx = pcx - bcx, ddy = pcy - bcy;
-                  const ddl = Math.hypot(ddx, ddy) || 1;
-                  patch.aiFromX = bcx; patch.aiFromY = bcy;
-                  patch.aiTargetX = bcx + (ddx / ddl) * THOR_ISSEN_RANGE;
-                  patch.aiTargetY = bcy + (ddy / ddl) * THOR_ISSEN_RANGE;
                 }
               } else if (st === 'issen-dash') {
                 // 一閃(高速移動): 終着点まで直進。当たり判定=もとの帯ではなく、この赤いライン上のみ(社長指示)。

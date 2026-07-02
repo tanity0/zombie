@@ -50,10 +50,12 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 帯(=当たり判定/見た目の基準)を ×1.5(社長指示「敵すべて1.5倍・ボスも」)。絵は BOSS_SPRITE_FIT で帯基準に追従。
   mimir:      { width: 248, height: 138, speed: 90, health: 6666,  damage: 38, experienceValue: 0 },
   jormungand: { width: 519, height: 90,  speed: 90, health: 7500,  damage: 38, experienceValue: 0 },
-  skadi:      { width: 456, height: 102, speed: 90, health: 10000, damage: 38, experienceValue: 0 },
+  // 社長修正指示(v0.25.1321〜): スカジは帯を今の2/3スケールへ縮小(456×102→304×68)。
+  skadi:      { width: 304, height: 68,  speed: 90, health: 10000, damage: 38, experienceValue: 0 },
   // 裏ボス(ステージ5=トール)。仕様は他の裏ボスと完全共通(speed/damageは据え置き)。耐久は既存3体の
   // 上昇傾向(6666→7500→10000)を継続する暫定値=実機調整前提(社長要望あれば調整可)。
-  thor:       { width: 280, height: 140, speed: 90, health: 11000, damage: 38, experienceValue: 0 },
+  // 社長修正指示(v0.25.1321〜): 帯を半分スケールへ縮小(280×140→140×70。大きすぎるとの報告)。
+  thor:       { width: 140, height: 70,  speed: 90, health: 11000, damage: 38, experienceValue: 0 },
   // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
   // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
   //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ

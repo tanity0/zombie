@@ -10,6 +10,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1321 — トール/スカジのスケール調整+トールの旋回距離・ジャンプトリガー・一閃を社長指示で修正
+- 社長の実機フィードバックを受けた調整。
+- **トールのスケールを半分に**(「大きすぎる」): `ENEMY_STATS.thor`の帯を280×140→140×70へ。
+  `BOSS_SPRITE_FIT`(fit.w/h/cx/cy)は絵の中での帯の「位置割合」なので変更不要(帯が縮めば
+  `scale=(帯幅/fit.w)/texWidth`の式で絵も自動的に同比率で縮む)。
+- **スカジのスケールを2/3に**: `ENEMY_STATS.skadi`の帯を456×102→304×68へ(同じ理由でBOSS_SPRITE_FIT
+  は不変)。
+- **トールの旋回距離を変更**: 近接距離(MELEE_RADIUS+40)基準→**ハンドガンの射程(RANGE_BY_CATEGORY.
+  handgun=176)+40**基準へ。「ハンドガンが届かないくらいの距離」という指示を、既存の
+  自動射撃レンジテーブルへ直結する形で実装。
+- **ジャンプ攻撃のトリガーを変更**: 「近接距離より遠い位置からの被弾」(distance基準)→
+  「**画面外からの被弾**」(`onScreen`基準)に変更。攻撃コントローラ自体は画面外だと停止するが、
+  被弾トラッキング(`bs.thorPrevHealth`比較)はboss存在時は常時走るため、被弾した瞬間の`onScreen`
+  フラグをそのまま判定に使える。3回/6秒の閾値は変更なし。
+- **一閃の溜め中トラッキングを廃止**: 従来は溜め中(issen-windup)、描画側がプレイヤーの現在位置へ
+  ライン方向を追従させていた。これを廃止し、**行動選択(action-roll)の瞬間に方向をロック**
+  (aiFromX/Y・aiTargetX/Yを溜め開始時点で確定)。溜め終了時(issen-dash遷移)の再計算も削除
+  (ロック済みの値をそのまま使う)。描画側(`pixiScene.ts`)もライブ追従コードを削除し、
+  ロック済み座標を参照する形に統一(mimirのレーザー/harai/issen-dashと同じパターン)。
+  プレイヤー座標キャッシュ用に追加していた`curPlayerForThor`(前回実装分)も不要になったため削除。
+- **一閃の幅/長さを変更**: 半幅60→120(2倍)、射程620→310(半分)。**突き/払いは対象外**
+  (`THOR_TSUKI_RANGE`/`THOR_TSUKI_HALF_WIDTH`/`THOR_HARAI_RANGE`を一閃の定数から独立した固定値
+  (620/30)へデカップリングし、一閃だけの変更が突き/払いへ波及しないようにした)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過。既存テスト
+  (`enemyUtils.test.ts`のトール/スカジの帯サイズ比較)も無改修で通過(giant比のアサートが
+  縮小後の値でも成立する範囲だったため)。実機未確認、体感調整は次回プレイ推奨。
+
 ## v0.25.1320 — PACING_REDESIGN.mdバッチ3.5実装: チャフ配合(3.5-A)+盤面在庫(3.5-B)
 - 仕様(§バッチ3.5、v0.25.1318にFableチャットが記載・社長承認済み)どおりに実装。
 - **3.5-A チャフ配合**: 新規純関数`src/utils/chaffMix.ts`(`pickChaffMix`=関所内はgatePressureで
