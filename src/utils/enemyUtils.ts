@@ -75,17 +75,20 @@ export const isBossType = (t: EnemyType): boolean =>
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.
 interface EnemyWeight { type: EnemyType; weight: number; }
 
-// エリア補正テーブル(社長指定)。finalWeight = baseWeight × areaWeight[area]。0 のエリアは候補から除外。
+// エリア補正テーブル v2(社長承認・分布図再構築 DISTRIBUTION_REDESIGN.md②)。
+// finalWeight = baseWeight × areaWeight[area]。0 のエリアは候補から除外。
 // 添字 = エリア(0 軍備 / 1 研究 / 2 デンジャー / 3 未確認 / 4 深層)。
+// 設計原則: 深部でもチャフ(bat/skeleton)を絶滅させない(緩シーン/キルフローの枯渇防止)。
+// 深さの恐怖は AREA_BASE_DIFFICULTY(強さ倍率)と重い型の比率で出す。zombieは深部で比率を下げる。
 const AREA_WEIGHT: Partial<Record<EnemyType, number[]>> = {
-  bat:      [1.0, 0.7, 0,   0,   0  ],
-  skeleton: [1.0, 1.0, 0.8, 0,   0  ],
-  zombie:   [0.6, 1.0, 1.0, 1.0, 0.8],
-  plant:    [0,   1.0, 1.0, 1.0, 1.0],
-  ghost:    [0,   0,   0.8, 1.0, 1.1],
-  werewolf: [0,   0,   0.7, 1.1, 1.2],
-  pumpkin:  [0,   0,   0,   0.1, 0.3],
-  lich:     [0,   0,   0.7, 1.1, 1.2], // 重み付けはウェアウルフと同等(社長指示)。ただし出現はステージ4のみ(下の allowLich でゲート)。
+  bat:      [1.0, 0.7, 0.35, 0.25, 0.2 ], // 旧 [1.0,0.7,0,0,0]
+  skeleton: [1.0, 1.0, 0.8,  0.5,  0.35], // 旧 [1.0,1.0,0.8,0,0]
+  zombie:   [0.6, 1.0, 1.0,  0.9,  0.7 ], // 旧 [0.6,1.0,1.0,1.0,0.8]
+  plant:    [0,   1.0, 1.0,  1.0,  1.0 ],
+  ghost:    [0,   0,   0.8,  1.0,  1.1 ],
+  werewolf: [0,   0,   0.7,  1.1,  1.2 ],
+  pumpkin:  [0,   0,   0,    0.1,  0.3 ],
+  lich:     [0,   0,   0.7,  1.1,  1.2 ], // 重み付けはウェアウルフと同等(社長指示)。ただし出現はステージ4のみ(下の allowLich でゲート)。
 };
 
 // 型ごとの基礎重み(既存値を定数化)。仕様§6/§7: 型の解禁・比率は時間ではなくエリア補正だけで決める。

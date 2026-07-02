@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1294 — 分布図再構築①: AREA_WEIGHT v2(全エリアにチャフを残す)DISTRIBUTION_REDESIGN.md②実装
+- `DISTRIBUTION_REDESIGN.md`の変更②を実装(設計書の推奨順どおり最初に着手)。
+- `enemyUtils.ts`の`AREA_WEIGHT`を差し替え: bat/skeletonが深部(エリア3/4)でも重み0にならず
+  微量残るように(bat: `[1,0.7,0,0,0]`→`[1,0.7,0.35,0.25,0.2]`、skeleton: `[1,1,0.8,0,0]`→
+  `[1,1,0.8,0.5,0.35]`)。zombieは深部で比率を下げる(`[0.6,1,1,1,0.8]`→`[0.6,1,1,0.9,0.7]`)。
+  ghost/werewolf/pumpkin/plant/lichは変更なし。
+- 狙い: 深部でチャフ(bat/skeleton)が絶滅すると、緩シーンが固い敵だらけで休憩にならない/キル
+  フロー(コンボ・XP)が枯れる問題の解消。深さの恐怖はAREA_BASE_DIFFICULTY(強さ倍率2.1倍)と
+  重い型の比率で維持し、絶滅では出さない設計へ転換。
+- `enemyUtils.test.ts`: `isValidForArea`でbat/skeleton/zombieが全エリアtrueになること、
+  ghost/werewolf/pumpkinの既存ゲート(早いエリアで出現不可)は変更なしであることを新規3件で検証。
+- 検証: typecheck / lint(0, full) / test(141 pass, 1 skip) / build 通過。
+
 ## v0.25.1293 — 分布図再構築(ハイブリッド)の設計書を作成(社長承認・実装は次段でSonnet担当)
 - 社長との協議結果: 距離ベース分布の全廃はせず**「距離=土台(強さ倍率・レア基礎率・構成基礎)/
   台本+AI=その上の演出」**のハイブリッドで再構築することで合意。設計のみ実施(コード変更なし)。

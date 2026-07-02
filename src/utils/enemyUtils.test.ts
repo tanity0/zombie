@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile } from './enemyUtils';
 import type { Enemy, Player, Summon } from '../types/game';
 
 const mkEnemy = (x: number, y: number): Enemy =>
@@ -27,6 +27,28 @@ describe('AREA_MAX_ENEMIES', () => {
   it('matches the per-area cap spec (5/7/10/10/10) and covers every area', () => {
     expect(AREA_MAX_ENEMIES).toEqual([5, 7, 10, 10, 10]);
     expect(AREA_MAX_ENEMIES).toHaveLength(AREA_COUNT);
+  });
+});
+
+describe('AREA_WEIGHT v2 (分布図再構築・DISTRIBUTION_REDESIGN.md②)', () => {
+  it('never lets chaff (bat/skeleton) go extinct in deep areas (kill-flow guard)', () => {
+    for (let area = 0; area < AREA_COUNT; area++) {
+      expect(isValidForArea('bat', area)).toBe(true);
+      expect(isValidForArea('skeleton', area)).toBe(true);
+    }
+  });
+  it('zombie stays valid everywhere (its ratio drops deep, but never to zero)', () => {
+    for (let area = 0; area < AREA_COUNT; area++) {
+      expect(isValidForArea('zombie', area)).toBe(true);
+    }
+  });
+  it('area-gated types are unchanged by the redesign (ghost/werewolf/pumpkin still absent early)', () => {
+    expect(isValidForArea('ghost', 0)).toBe(false);
+    expect(isValidForArea('ghost', 1)).toBe(false);
+    expect(isValidForArea('werewolf', 0)).toBe(false);
+    expect(isValidForArea('pumpkin', 0)).toBe(false);
+    expect(isValidForArea('pumpkin', 1)).toBe(false);
+    expect(isValidForArea('pumpkin', 2)).toBe(false);
   });
 });
 
