@@ -111,21 +111,24 @@ const DDA_TOUGH_TYPES = new Set<EnemyType>(['werewolf', 'pumpkin', 'lich']);
 const DDA_VARIETY_ESC_K = 1.8; // esc=1 で重い型の重み ×2.8(私案)
 const SCENE_FEATURED_BOOST = 2.5; // シーンで featured 指定した型の重み倍率(乗算バイアス・私案)
 const SCENE_SUPPRESSED_MULT = 0.4; // シーンで suppressed 指定した型の重み倍率(社長指示: 緩の時のゾンビ抑え・私案)
-// DISTRIBUTION_REDESIGN.md①: featured指定された型は、そのシーン中だけエリア制限(重み0)を無視
-// できる床(0.5)を持つ。無双(mowdown)シーンのbat/skeleton等、エリアで本来出現不可の型をシーンの
-// 演出として出すための特例。featuredでない型は従来どおり(エリア重み0なら候補外)。
+// DISTRIBUTION_REDESIGN.md①/PACING_REDESIGN.mdバッチ1.5: featured指定された型は、シーンが
+// featuredFloor=true の時だけ、エリア制限(重み0)を無視できる床(0.5)を持つ。無双(mowdown)の
+// bat/skeleton等、エリアで本来出現不可の型をシーンの演出として出すための特例。
+// バッチ1.5の教訓: floorを常時有効にすると「チャフのための床」が関所シーンの問題児(パンプキン/犬)
+// の裏口になり、序盤ゾーンの関所でも出現してしまう事故が起きた。床は floorAllowed=true の呼び出し
+// (講習/mowdownシーン)でのみ効かせ、関所シーンは false でエリア規約に完全準拠させる。
 const FEATURED_MIN_AREA_WEIGHT = 0.5;
 // 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算、featured でシーンの強調型に重み加算。
 // featured/suppressed は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
-// ただし featured は FEATURED_MIN_AREA_WEIGHT の床を持つ(上記)。
-const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = []): EnemyType => {
+// ただし featured は floorAllowed=true の時だけ FEATURED_MIN_AREA_WEIGHT の床を持つ(上記)。
+const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = [], floorAllowed = false): EnemyType => {
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
-  // baseWeight × エリア補正(featuredは床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)。
+  // baseWeight × エリア補正(featuredはfloorAllowed時のみ床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
     .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
     .map(([type, w]) => {
       const areaW = (AREA_WEIGHT[type]?.[area]) ?? 0;
-      const effAreaW = featured.includes(type) ? Math.max(areaW, FEATURED_MIN_AREA_WEIGHT) : areaW;
+      const effAreaW = (floorAllowed && featured.includes(type)) ? Math.max(areaW, FEATURED_MIN_AREA_WEIGHT) : areaW;
       return { type, weight: w * effAreaW * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) };
     })
     .filter(e => e.weight > 0);
@@ -341,11 +344,12 @@ export const generateEnemy = (
   esc = 0, // 難易度③: escalation(0..1)。0=現状据え置き。種類/強さのバイアスに使う。
   featured: EnemyType[] = [], // シーン(SpawnScene)の強調型。selectEnemyType の重みに乗算バイアス。
   suppressed: EnemyType[] = [], // シーン(SpawnScene)の抑え型。重み減(緩の時のゾンビ抑え・社長指示)。
-  rareMult = 1 // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
+  rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
+  floorAllowed = false // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床を許すシーンか(講習/mowdownのみtrue)。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、

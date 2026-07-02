@@ -53,7 +53,7 @@ describe('AREA_WEIGHT v2 (分布図再構築・DISTRIBUTION_REDESIGN.md②)', ()
   });
 });
 
-describe('scene featured floor (DISTRIBUTION_REDESIGN.md①)', () => {
+describe('scene featured floor (DISTRIBUTION_REDESIGN.md① + PACING_REDESIGN.mdバッチ1.5 opt-in)', () => {
   // area 0 (origin): pumpkin/werewolf are normally weight-0 (isValidForArea === false).
   const area0Player = mkPlayer(0, 0);
 
@@ -65,19 +65,27 @@ describe('scene featured floor (DISTRIBUTION_REDESIGN.md①)', () => {
     }
   });
 
-  it('with featured, an area-gated type can be picked (floor bypasses the area gate)', () => {
+  it('with featured but floorAllowed=false (gate scenes) — the floor does NOT apply, so an area-gated problem child is never picked (バッチ1.5: closes the gate-scene backdoor)', () => {
+    for (let i = 0; i < 300; i++) {
+      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin', 'werewolf'], [], 1, false);
+      expect(e.type).not.toBe('pumpkin');
+      expect(e.type).not.toBe('werewolf');
+    }
+  });
+
+  it('with featured AND floorAllowed=true (relief/mowdown scenes) — an area-gated type can be picked (floor bypasses the area gate)', () => {
     const types = new Set<string>();
     for (let i = 0; i < 300; i++) {
-      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin']);
+      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin'], [], 1, true);
       types.add(e.type);
     }
     expect(types.has('pumpkin')).toBe(true);
   });
 
-  it('flags sceneSpawn on area-invalid picks so distance-recycle can exempt them, but not on normal picks', () => {
+  it('flags sceneSpawn on area-invalid picks (floorAllowed=true) so distance-recycle can exempt them, but not on normal picks', () => {
     let sawFlaggedPumpkin = false;
     for (let i = 0; i < 300; i++) {
-      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin']);
+      const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin'], [], 1, true);
       if (e.type === 'pumpkin') {
         expect(e.sceneSpawn).toBe(true);
         sawFlaggedPumpkin = true;

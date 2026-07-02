@@ -264,9 +264,7 @@ const GRENADE_SPREAD_BY_LEVEL: Record<number, number[]> = {
   3: [0, (Math.PI * 2) / 3, -(Math.PI * 2) / 3]
 };
 const MAX_ENEMIES = 10;
-// 保証出現(社長指示): 一定時間経過時に、その種類が1体もいなければ画面外に1体だけ出す(エリア不問・各1回)。
-const PLANT_GUARANTEE_MS = 60000;      // プラント: 1分経過で保証出現
-const WEREWOLF_GUARANTEE_MS = 180000;  // 犬(werewolf): 3分経過で保証出現
+// 保証出現(plant1分/犬3分・エリア不問)はPACING_REDESIGN.mdバッチ1.5で撤廃(社長決定)。
 // ジャイアント(城ボス)出現後、近づくまで城で待機する索敵範囲(これより近づくと起動)。
 const GIANT_AGGRO_RANGE = 380;
 // イベント出現の敵(囲い系=プレイヤー狙い)も「近づくまで向かってこない」。プレイヤーの周囲に湧くので
@@ -493,9 +491,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const frameRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
   const lastEnemySpawnRef = useRef(0);
-  // 保証出現(プラント1分/犬3分)の発火済みフラグ。新ランで false に戻す。
-  const plantGuaranteedRef = useRef(false);
-  const werewolfGuaranteedRef = useRef(false);
   const boomReadyRef = useRef(true); // ドローンブーメランのCD明け検出(false→true でカチッSE+頭上マーク)
   const playerKillTimesRef = useRef<number[]>([]); // プレイヤーの撃破時刻(無双判定の直近ウィンドウ)
   const fireJetEnemyAtRef = useRef<Map<string, number>>(new Map()); // 敵ID→直近の背中火spawn時刻(ショットガン等の多弾を1本に間引く)
@@ -1164,8 +1159,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           areaSectorRef.current = -1; // 担当エリア進入セリフも再アーム
-          plantGuaranteedRef.current = false;    // 保証出現フラグも再アーム
-          werewolfGuaranteedRef.current = false;
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
           // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
           dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
@@ -5342,9 +5335,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const allEnemiesNow = useGameStore.getState().enemies;
         const enemyCountBeforeSpawn = allEnemiesNow.length;
         const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
-        // 裏ボス存命中は通常湧き(プラント含む)を止める=ボス戦に集中(イベント抑止と同基準・社長報告)。
-        const hiddenBossAlive = allEnemiesNow.some(e => isHiddenBoss(e.type));
-        // ただし通常湧きは「裏ボスが画面内で追跡してきている間(bossChasing)」だけ止める(社長指摘: 出現中ずっと
+        // 通常湧きは「裏ボスが画面内で追跡してきている間(bossChasing)」だけ止める(社長指摘: 出現中ずっと
         // 敵が沸かないのは寂しい)。画面外/帰巣中(=非追跡)は通常どおり湧かせる。追跡中は他敵が一斉逃走する演出と
         // 整合させ、湧きも止める。
         const bossChasingNow = useGameStore.getState().bossChasing;
@@ -5407,6 +5398,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const scene = (SCENES_ENABLED && !labTheme && !indoor) ? sceneAt(gameTime) : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
+        // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床は講習/mowdownシーンのみ許可(関所シーンは
+        // false=エリア規約に完全準拠。「チャフのための床」が問題児の裏口になる事故の再発防止)。
+        const sceneFloorAllowed = scene ? (scene.featuredFloor ?? false) : false;
         // 憲法第2条注記(PACING_REDESIGN.md): パンプキン2体は出すタイミング+周囲の雑魚数によっては
         // 回避不能級。2体目がいる間は雑魚湧きテンポを一段緩める(問題児と数を同時に盛らない)。
         const PUMPKIN_PAIR_SPAWN_EASE = 1.3;
@@ -5483,13 +5477,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed);
             // 憲法第2条: 問題児(plant/werewolf/pumpkin/ghost)は同時数キャップを超えて湧かせない。
             // 台本セットピース/保証出現(forcedType指定)はここを通らない=脚本の見せ場はそのまま。
             if (overCap(enemy.type)) {
               let tries = 0;
               while (overCap(enemy.type) && tries < 8) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed);
                 tries++;
               }
               if (overCap(enemy.type)) {
@@ -5510,23 +5504,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 屋外は必ず1体置くので従来どおり毎回リセット=挙動不変。
           if (spawnedThisTick) lastEnemySpawnRef.current = timestamp;
         }
-
-        // 保証出現(社長指示): プラントは1分・犬(werewolf)は3分を過ぎた時点で、その種類が1体もいなければ
-        // エリア不問で画面外に1体だけ出す。各ラン1回のみ(refフラグ)。森ステージ専用(ラボ/屋内/ダンス/囲い中は除外)。
-        if (!danceTest && !indoor && !labTheme && !confining && !hiddenBossAlive) {
-          if (!plantGuaranteedRef.current && gameTime >= PLANT_GUARANTEE_MS) {
-            plantGuaranteedRef.current = true;
-            if (!useGameStore.getState().enemies.some(e => e.type === 'plant')) {
-              addEnemy(generateEnemy(gameTime, player, spawnBounds, 'plant', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
-            }
-          }
-          if (!werewolfGuaranteedRef.current && gameTime >= WEREWOLF_GUARANTEE_MS) {
-            werewolfGuaranteedRef.current = true;
-            if (!useGameStore.getState().enemies.some(e => e.type === 'werewolf')) {
-              addEnemy(generateEnemy(gameTime, player, spawnBounds, 'werewolf', player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc));
-            }
-          }
-        }
+        // 保証出現(plant1分/犬3分・エリア不問)はPACING_REDESIGN.mdバッチ1.5で撤廃(社長決定)。
+        // 「勉強させる回」の役割はバッチ4の講習演目(relief-pumpkin/relief-wolf、featuredFloor有効)が継承する。
 
         // Air-dropped ammo supplies (#3). At an irregular cadence a resupply
         // crate appears at a random spot just off-screen, so the player has to

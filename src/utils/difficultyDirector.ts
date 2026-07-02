@@ -22,6 +22,11 @@ export interface SpawnScene {
   intervalMult: number;  // 湧き間隔の倍率。<1=速い(無双/カオス) / >1=遅い(優しい)。
   suppressed?: EnemyType[]; // 抑える敵型(重み減・×SCENE_SUPPRESSED_MULT)。社長指示: ゾンビは固いので緩の時に多数出さない。
   rareMult?: number; // レア(色付き)出現の演出倍率。省略=1。DISTRIBUTION_REDESIGN.md③: 緩=0/無双=0.5/関所≥1.2。
+  // PACING_REDESIGN.md バッチ1.5: featured指定の型がエリア重み0でも床(FEATURED_MIN_AREA_WEIGHT)で
+  // 出現できる特例を、このシーンに限り許可するか。省略=false(=エリア規約に完全準拠、床は効かない)。
+  // true にするのは講習(relief-pumpkin/relief-wolf。序盤の1種練習は安全)と mowdown(深部のチャフ供給)
+  // のみ。関所シーン(gate-*)は全て false=「チャフのための床」が問題児の裏口になる事故を防ぐ。
+  featuredFloor?: boolean;
 }
 
 export interface Phase {
@@ -38,12 +43,12 @@ export interface Phase {
 // rareMult(DISTRIBUTION_REDESIGN.md③): 緩=0(休憩を汚さない)/無双=0.5(群れに時々1体)/
 // 関所=1.2〜1.35(山場の顔・chaosが最大)/ボス=1.0(素のまま)。基礎率(距離)とRank増幅の上に乗る演出レバー。
 const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], intervalMult: 1.3, suppressed: ['zombie'], rareMult: 0 };                      // 優しい: 雑魚まばら
-const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0 };            // 優しい: パンプキン練習
-const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0 };           // 優しい: 犬(ダッシュ)練習
-const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6, suppressed: ['zombie'], rareMult: 0.5 };  // 無双: 弱雑魚を高速大量
-const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['pumpkin', 'werewolf'], intervalMult: 0.8, rareMult: 1.2 }; // 関所: パンプキン+犬
-const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2 };          // 関所: 雑魚大量+飛び道具
-const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス
+const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true }; // 優しい: パンプキン練習(講習=床あり)
+const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true }; // 優しい: 犬(ダッシュ)練習(講習=床あり)
+const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat', 'skeleton'], intervalMult: 0.6, suppressed: ['zombie'], rareMult: 0.5, featuredFloor: true }; // 無双: 弱雑魚を高速大量(深部のチャフ供給=床あり)
+const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['pumpkin', 'werewolf'], intervalMult: 0.8, rareMult: 1.2 }; // 関所: パンプキン+犬(床なし=エリア規約に従う)
+const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2 };          // 関所: 雑魚大量+飛び道具(床なし)
+const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス(床なし)
 const SCENE_BOSS: SpawnScene           = { id: 'boss',           featured: [], intervalMult: 1.0, rareMult: 1.0 };                     // 城ボス中は素の分布
 
 // PACING_REDESIGN.md 憲法第1条: 画面内は基本10体。台本の countCap は全フェーズ 8〜10 に統一

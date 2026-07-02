@@ -87,4 +87,19 @@ describe('difficultyDirector — spawn scenes (composition/speed levers)', () =>
       expect(g.scene.rareMult ?? 1).toBeGreaterThanOrEqual(1.2);
     }
   });
+
+  it('featuredFloor (PACING_REDESIGN.mdバッチ1.5): only lessons (relief-pumpkin/relief-wolf) and mowdown opt in; every gate scene stays false (no problem-child backdoor)', () => {
+    const floorOnIds = ['relief-pumpkin', 'relief-wolf', 'mowdown'];
+    for (const id of floorOnIds) {
+      const p = PHASES.find(x => x.scene.id === id)!;
+      expect(p.scene.featuredFloor).toBe(true);
+    }
+    for (const p of PHASES.filter(x => x.kind === 'gate')) {
+      expect(p.scene.featuredFloor ?? false).toBe(false);
+    }
+    // relief-sparse and boss carry no featured types at all, so the floor is moot there, but they
+    // must not be accidentally opted in either.
+    const sparse = PHASES.find(p => p.scene.id === 'relief-sparse')!;
+    expect(sparse.scene.featuredFloor ?? false).toBe(false);
+  });
 });

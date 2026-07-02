@@ -10,6 +10,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1302 — PACING_REDESIGN.md バッチ1.5実装: featured床のオプトイン化+保証出現の撤廃
+- 実装チャット(Sonnet)がPACING_REDESIGN.mdバッチ1.5を実装。未決事項なし(設計チャットへの
+  確認不要な項目)だったため、2チャット体制移行後の最初の実装として着手。
+- **featured床のオプトイン化**: `SpawnScene`に`featuredFloor?: boolean`を追加(省略=false)。
+  講習シーン(relief-pumpkin/relief-wolf)とmowdownのみtrue、関所シーン(gate-*)は全てfalse。
+  `enemyUtils.ts`の`selectEnemyType`/`generateEnemy`に`floorAllowed`引数(既定false)を追加し、
+  床(エリア重み0でも0.5で出現可能にする特例)は`floorAllowed=true`の時だけ適用するよう変更。
+  背景: DISTRIBUTION_REDESIGN.md①の床が無双シーンのチャフ供給だけでなく**関所シーンの問題児
+  (パンプキン/犬)にも効いてしまい、序盤ゾーンの関所でも問題児が出現する事故**が起きていた
+  (v0.25.1298実プレイで社長報告)。「チャフのための床」が「問題児の裏口」になっていた設計ミスの修正。
+- **保証出現(plant1分/犬3分・エリア不問)を撤廃**(社長決定): `plantGuaranteedRef`/
+  `werewolfGuaranteedRef`とその発火ブロック・関連定数(`PLANT_GUARANTEE_MS`/`WEREWOLF_GUARANTEE_MS`)・
+  新ランのリセット行を全て削除。「勉強させる回」の役割はバッチ4で実装予定の講習演目
+  (featuredFloor有効のrelief-pumpkin/relief-wolf)が継承する設計。
+  副産物: 使われなくなった`hiddenBossAlive`変数(保証出現ブロックの専用ゲートだった)も削除。
+- テスト: `enemyUtils.test.ts`(floorAllowed=falseでは関所シーンでpumpkin/werewolfが選ばれない/
+  floorAllowed=trueでは選ばれる、の対比を明示。既存の床テストにfloorAllowed=trueを追記して更新)、
+  `difficultyDirector.test.ts`(featuredFloorの割当=講習/mowdownのみtrue・関所は全てfalseを検証)。
+- 検証: typecheck / lint(0, full) / test(158 pass, 1 skip) / build 通過。
+- 設計書更新: `PACING_REDESIGN.md`のバッチ1.5に実装結果を追記、実装順とゲートを更新。次の
+  バッチ3(ラダー最小版)は★未決事項①(連続圧力方式の採否)がFableチャットで決まるまで着手しない。
+  バッチ2(計測)は未決事項が無いため前倒し着手が可能。
+
 ## v0.25.1301 — 2チャット体制への移行準備(実装=Sonnetチャット/設計=Fableチャット・ファイル経由で連携)
 - 社長指示: このチャットはSonnetの実装専用チャットとして切り離し、Fable用の設計チャットを新設。
   以後の話し合いはFableチャット、実装はここ、**受け渡しはすべてファイル経由**(お互いの会話は見えない)。
