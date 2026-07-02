@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1285 — DirectorRank(難易度⑤)の現在値をデバッグ表示に追加(社長指示)
+- 社長「いまランク幾つかの科をデバッグでは見えるようにしといて」に対応。既存の`?director=1`デバッグ
+  オーバーレイ(`DirectorOverlay.tsx`)に、AIディレクター本体(Intensity/Performance/State)とは別枠で
+  現在のDirectorRank(0/1/2)・フェーズキー(またはHARVEST中の表示)・escBoost/countCapBonus/xp倍率の内訳を追記。
+- `src/utils/directorRankState.ts`に`DirectorRankDebug`型と`setDirectorRankDebug/getDirectorRankDebug`を追加
+  (既存のEXP倍率シングルトンと同じファイル・同じパターン)。`useGameLoop.ts`が毎フレーム書き込み、
+  `DirectorOverlay`が自前rafで読む(ストア購読なし・React再描画に影響しない)。
+  ゲーム挙動には触れていない(読むだけの表示追加)。
+- 検証: typecheck / lint(0, full) / test(129 pass, 1 skip) / build 通過。
+
 ## v0.25.1284 — 難易度⑤: DirectorRank(台本+前フェーズ評価)+HARVEST相当のEXP倍率(社長合意・一気に実装)
 - 発端: 社長が中継したCodexの設計提案「BUILD_UP/PEAK/RELAXの3状態だけでは“休んだあとまた試験”に
   なりやすく、“熟せてる感”を作るHARVESTという第4の時間が要る」を受けて方式を協議。合意は

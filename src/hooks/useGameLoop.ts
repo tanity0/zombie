@@ -78,7 +78,7 @@ import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples } from '../utils/aiDirectorDebug';
 import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '../utils/directorRank';
-import { setDirectorRankRewardMult } from '../utils/directorRankState';
+import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize } from '../utils/weaponUtils';
@@ -5234,7 +5234,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const rankAdj = rankOutdoor ? rankAdjustFor(rankRef.current.rank) : { escBoost: 0, countCapBonus: 0, rewardMult: 1 };
         // HARVEST相当(buildupフェーズ=関所間の緩む区間)でだけ、rank に応じたEXP倍率を効かせる
         // (難関=gate/boss中は物資ではなく倍率で回すというCodex提案の切り分けを維持)。
-        setDirectorRankRewardMult(curPhase.kind === 'buildup' ? rankAdj.rewardMult : 1);
+        const rankHarvestActive = curPhase.kind === 'buildup';
+        setDirectorRankRewardMult(rankHarvestActive ? rankAdj.rewardMult : 1);
+        // デバッグ表示用(社長指示: 今のrankを見えるようにしておく)。DirectorOverlay(?director=1)が読む。
+        setDirectorRankDebug({
+          rank: rankRef.current.rank,
+          phaseKey: rankPhaseKey,
+          escBoost: rankAdj.escBoost,
+          countCapBonus: rankAdj.countCapBonus,
+          rewardMult: rankAdj.rewardMult,
+          harvestActive: rankHarvestActive && rankOutdoor,
+          enabled: rankOutdoor,
+        });
         const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
 

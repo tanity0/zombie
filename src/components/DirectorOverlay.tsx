@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getDirectorDebug } from '../utils/aiDirectorDebug';
+import { getDirectorRankDebug } from '../utils/directorRankState';
 import type { DirectorMacro } from '../utils/aiDirector';
 
 // AIディレクター(ステップA)のオンスクリーン可視化(?director=1)。ゲームループとは独立に自前 raf で読むだけ。
@@ -36,6 +37,7 @@ const DirectorOverlay: React.FC = () => {
   }, []);
 
   const d = getDirectorDebug();
+  const rankDebug = getDirectorRankDebug();
   // ステップB/C(?directorApply=relax|buildup|all)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
   const applyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('directorApply') : null;
   const applyRelax = applyParam === 'relax' || applyParam === 'all';
@@ -69,6 +71,18 @@ const DirectorOverlay: React.FC = () => {
         </div>
       ) : (
         <div className="text-white/50">waiting…</div>
+      )}
+      {rankDebug && (
+        <div className="mt-1.5 border-t border-white/15 pt-1">
+          <div className="flex items-center gap-1.5">
+            <span className="w-[42px] text-white/70">Rank</span>
+            <span className="font-bold tabular-nums text-amber-300">{rankDebug.enabled ? rankDebug.rank : '-'}</span>
+            <span className="text-white/40">{rankDebug.harvestActive ? 'HARVEST' : rankDebug.phaseKey}</span>
+          </div>
+          <div className="text-white/40 tabular-nums">
+            esc+{rankDebug.escBoost.toFixed(2)} · cap+{rankDebug.countCapBonus} · xp×{rankDebug.rewardMult.toFixed(2)}
+          </div>
+        </div>
       )}
     </div>
   );
