@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1297 — 緩急再設計(心電図化)の設計書 PACING_REDESIGN.md を作成(実装はSonnet担当・バッチ1〜6)
+- 社長との協議(緩急がジェットコースター的すぎる→心電図のように「試して、上がりすぎたら落とす」)の
+  合意内容を実装可能な粒度で文書化。3層ループ(台本→演目選択→アドリブ)+憲法4条(基本10体/問題児
+  キャップ=パンプキン2・毒ghost1・バフ1/第一レバーは雑魚CD/退屈対応は全ゾーンでいやらしくない
+  レバーのみ)+圧力ラダー8段+緩の演目メニュー(講習・接待・回収・狩猟・純休憩)+山の台本メニュー+
+  ステージ難易度指数(社長承認・ステージ2=labは例外で対象外)。
+- 実装バッチ順: 1憲法→2計測(種別キル/スタイル/最深到達エリア)→3ラダー→4緩の演目→5山の台本→
+  6ステージ指数。各バッチに ?upswing=0 / ?ladder=0 / ?program=0 の復帰フラグを必須化(切り分け用)。
+- **`src/utils/boredomDirector.ts` を叩き台として作成(純関数のみ・未配線=挙動不変)**: 退屈シグナル
+  検出器(Perf≥0.8×Intensity≤0.4の25秒持続で+2体ずつ、最大+10、Intensity≥0.6で即ゼロ)。
+  バッチ1でSonnetが配線+テスト追加する。
+- 既存テストへの影響を明記: difficultyDirector.test.tsの「gateで天井20到達」「gateはbuildupより
+  数が多い」系アサートは憲法第1条と矛盾するため書き直し必須(バッチ1-B)。
+- 検証: typecheck / lint(0, full) / test(147 pass, 1 skip) / build 通過(新規TSは未配線の純関数のみ)。
+
 ## v0.25.1296 — 分布図再構築③: レアのシーン/Rank連動(基礎=距離、演出=AI)DISTRIBUTION_REDESIGN.md③実装
 - `DISTRIBUTION_REDESIGN.md`の変更③を実装(①②に続き最終段)。これで設計書3項目すべて完了。
 - **仕様**: `SpawnScene`に`rareMult?`を追加。緩(relief-sparse/pumpkin/wolf)=**0**(休憩を汚さない)、
