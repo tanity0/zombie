@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1327 — ステージ5近景森を下げる(社長指示・調整)
+- 「ステージ5の近景森、半分くらい下げて」に対応。ステージ4の氷壁と同じパターン
+  (`snowStage`+`FRONT_SNOW_Y_OFFSET`固定100px)を踏襲し、`stage5Stage`
+  (`farBackdrop==='stage5'`)+`frontForestYOffset(frontH)`ヘルパーを新設。
+  ステージ5だけ、frontForestの位置をY方向に `frontForestHeight() × 0.5`
+  (`FRONT_STAGE5_Y_OFFSET_RATIO=0.5`)分だけ下げる(=画像の下半分程度が画面下端の外へ)。
+  `layoutWorld`/`syncActors`双方のfrontForest position.set箇所を同じヘルパー経由に統一。
+- 他ステージ(氷壁/通常森)の位置・見た目は変更なし(`stage5Stage`のみ分岐)。
+- 検証: lint / typecheck / test(257 pass, 1 skip) / build 全通過。PixiJS描画コードのみ=
+  ユニットテスト対象外(既存方針どおり)。実機未確認。
+- 負荷スコア: 1/10(位置計算の定数倍算のみ・毎フレームコストは既存のposition.set呼び出しと同等)。
+
 ## v0.25.1325 — 被写界深度がズーム中にずれる件の修正: filterAreaをworldGroup逆変換で毎フレーム追従(設計チャットFable・バグ修正)
 - 社長報告「被写界深度もおかしい。前に直したはず。どのステージでも起きる」+実機スクショ2枚
   (スカジ戦/ヨルムンガンド戦=どちらも大型ボス=文脈ズーム常時最大引き0.8の場面)。

@@ -140,6 +140,7 @@ const FRONT_FOREST_HEIGHT_RATIO = 0.5;
 const FRONT_FOREST_MIN_HEIGHT = 270;
 const FRONT_FOREST_MAX_HEIGHT = 410;
 const FRONT_SNOW_Y_OFFSET = 100; // ステージ4の近景(氷壁)を下げる(社長指示で30→100)
+const FRONT_STAGE5_Y_OFFSET_RATIO = 0.5; // ステージ5の近景森(戦場の残骸)を半分くらい下げる(社長指示)
 const FRONT_FOREST_ALPHA = 0.78;
 const LAB_FRONT_FOREST_ALPHA = 1.0; // ステージ2だけ近景森を不透明に(社長指示)。他ステージは半透明のまま。
 const FRONT_FOREST_BLUR = 2.2;
@@ -952,6 +953,7 @@ export class PixiScene {
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
   private daylight = false;
   private snowStage = false; // ステージ4(farBackdrop'snow'): 松明を焚き火スプライトに置き換え
+  private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private daylightApplied: boolean | null = null;
   // 環境物(地面/木/森)の現在の暗転tint。昼=本来色、夜=ENV_TINT。
@@ -1404,7 +1406,7 @@ export class PixiScene {
     this.updatePerspectiveGround(0, 0, 0, 0);
     const frontH = this.frontForestHeight();
     const frontScale = frontH / this.L.frontForest.texture.height;
-    this.L.frontForest.position.set(0, h - frontH + (this.snowStage ? FRONT_SNOW_Y_OFFSET : 0));
+    this.L.frontForest.position.set(0, h - frontH + this.frontForestYOffset(frontH));
     this.L.frontForest.width = w;
     this.L.frontForest.height = frontH;
     this.L.frontForest.tileScale.set(frontScale);
@@ -1535,6 +1537,13 @@ export class PixiScene {
       Math.max(FRONT_FOREST_MIN_HEIGHT, this.screenH * FRONT_FOREST_HEIGHT_RATIO)
     );
     return this.snowStage ? base * (2 / 3) : base;
+  }
+
+  // ステージ別の近景森Y下げ量。frontH(=frontForestHeight())依存の値はここで受け取る。
+  private frontForestYOffset(frontH: number) {
+    if (this.snowStage) return FRONT_SNOW_Y_OFFSET;
+    if (this.stage5Stage) return frontH * FRONT_STAGE5_Y_OFFSET_RATIO;
+    return 0;
   }
 
   private horizonActorAlpha(footWorldY: number) {
@@ -2197,6 +2206,7 @@ export class PixiScene {
     // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
     this.daylight = s.farBackdrop === 'city';
     this.snowStage = s.farBackdrop === 'snow';
+    this.stage5Stage = s.farBackdrop === 'stage5';
     this.isLabStage = s.stageTheme === 'lab';
     // vignetteの明るい部分を狭めるのはステージ2だけ(他ステージは既定0.55の通常版)。差分時のみ差し替え。
     if (this.vignetteNarrow !== this.isLabStage) {
@@ -2388,7 +2398,7 @@ export class PixiScene {
       labPerspNow ? LAB_PERSP_CURVE : GROUND_PERSPECTIVE_CURVE,
     );
     const frontH = this.frontForestHeight();
-    this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + (this.snowStage ? FRONT_SNOW_Y_OFFSET : 0));
+    this.L.frontForest.position.set(sx * 0.75, this.screenH - frontH + this.frontForestYOffset(frontH));
     this.L.frontForest.tilePosition.set(
       -s.camera.x * FRONT_FOREST_PARALLAX_X,
       0
