@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1356 — 小物: 診断グラフにup+N線を追加(社長方針v0.25.1348・実装キュー④・キュー完了)
+- `src/utils/aiDirectorDebug.ts`: `DirectorSample`に`upswing`フィールドを追加。
+- `useGameLoop.ts`: 既に毎フレーム計算済みの`upswingBonus`をそのまま`recordDirectorSample`へ渡す
+  だけ(新規計算なし)。
+- `src/components/DirectorResult.tsx`(リザルトの心電図・`?director=1`限定): 5本目の線として
+  `BORED_BONUS_MAX`で正規化して重ね描き(ティール色)+凡例「up+N」を追加。挙動には一切影響しない
+  (表示専用)。プレイヤー向けchangelogへの記載は見送り(デバッグオーバーレイのみの変更のため)。
+- テスト: `aiDirectorDebug.test.ts`に記録の検証1件追加。
+- 検証: lint / typecheck / test(303 pass, 1 skip) / build 全通過。
+- 実機未確認。**これでPACING_REDESIGN.mdの実装キュー(5追補→3完成版→6→up+N)が全項目完了**。
+  残るのは社長による実機統合テスト(実機確認④)のみ。次のアクションは社長のプレイ結果待ち
+  (補給管理は統合テスト後に設計会議してから)。
+
 ## v0.25.1355 — バッチ6: ステージ難易度指数stageAggro(社長方針v0.25.1348・実装キュー③)
 - 新規 `src/utils/stageAggro.ts`: `stageAggroFor(stageId)`(明示表1/3/4/5/6 + stage-7/EXは
   stage-6と同じ上限1.0を継続 + 未知/未選択/stage-2(lab)は中立値0.5)/`riseTauSForAggro`/

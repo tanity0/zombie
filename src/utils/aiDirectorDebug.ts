@@ -35,6 +35,7 @@ export interface DirectorSample {
   areaIdx: number;         // プレイヤーの現在エリア(0-4)
   events: number;          // DIRECTOR_EVENT_BIT のOR
   debt: number;            // バッチ3.5-B: 盤面在庫(boardDebt)。記録のみ・挙動には影響しない。
+  upswing: number;         // 診断up+N線(バッチ1退屈シグナルの上振れ枠。0-BORED_BONUS_MAX)。記録のみ。
 }
 const SAMPLE_CAP = 3000; // 0.5s刻みで約25分ぶん。超えたら古いものから捨てる。
 let samples: DirectorSample[] = [];

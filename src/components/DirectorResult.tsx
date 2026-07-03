@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { getDirectorSamples, DIRECTOR_EVENT_BIT, type DirectorPhaseKind } from '../utils/aiDirectorDebug';
 import { summarizeRun, type DirectorMacro } from '../utils/aiDirector';
+import { BORED_BONUS_MAX } from '../utils/boredomDirector';
 
 // リザルト画面のAIディレクター振り返り(?director=1 の時だけ表示)。
 // プレイ中は数字を見ずに遊び、死亡/クリア後にここで「緊張曲線＋難易度スコア」を確認する(社長指示)。
@@ -94,7 +95,9 @@ const DirectorResult: React.FC = () => {
     if (seg.length > 1) pressureSegs.push(seg.join(' '));
     // バッチ3.5-B: 盤面在庫(debt)線。DEBT_DISPLAY_MAXで正規化してintensity等と同じ0-1軸に重ねる。
     const debtPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.debt / DEBT_DISPLAY_MAX)).toFixed(1)}`).join(' ');
-    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs, debtPts };
+    // バッチ6小物: up+N(退屈シグナルの上振れボーナス)線。BORED_BONUS_MAXで正規化(0-1軸)。挙動不変・記録済み値の表示のみ。
+    const upswingPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.upswing / BORED_BONUS_MAX)).toFixed(1)}`).join(' ');
+    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs, debtPts, upswingPts };
   }, [samples]);
 
   const pct = (sec: number): number => (summary.durationSec > 0 ? Math.round((100 * sec) / summary.durationSec) : 0);
@@ -136,6 +139,8 @@ const DirectorResult: React.FC = () => {
           ))}
           {/* バッチ3.5-B: 盤面在庫(debt)線(第4の線・他の線/イベント色と被らないスレート色) */}
           <polyline points={chart.debtPts} fill="none" stroke="#94a3b8" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 2" />
+          {/* バッチ6小物: up+N(退屈シグナルの上振れボーナス)線(第5の線・城ボス凡例の水色と被らないティール) */}
+          <polyline points={chart.upswingPts} fill="none" stroke="#2dd4bf" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 3" />
           {/* バッチ2.5: エリア移動(縦線+ゾーン番号) */}
           {chart.areaLines.map((a, i) => (
             <g key={i}>
@@ -162,6 +167,10 @@ const DirectorResult: React.FC = () => {
           <span className="inline-flex items-center gap-0.5">
             <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#94a3b8' }} />
             盤面在庫
+          </span>
+          <span className="inline-flex items-center gap-0.5">
+            <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#2dd4bf' }} />
+            up+N
           </span>
         </div>
       )}

@@ -6922,6 +6922,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               areaIdx: playerAreaIdx,
               events,
               debt: boardDebtNow,
+              upswing: upswingBonus,
             });
           }
         }
