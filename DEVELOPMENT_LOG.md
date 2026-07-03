@@ -11,6 +11,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.15 — HANDOFF_CODEX.mdを方向転換フォーク現在地へ全面更新(社長指示「Codexに渡せるようにまとめて」)
+- 旧線時点(v0.25.1358)の内容だったHANDOFF_CODEX.mdを書き直し: ①30秒サマリ(ブランチ/進行
+  プロジェクト/憲法廃止/実機URL) ②R1〜R7の実装済み一覧表+残タスク(統合テスト待ち・R5採否待ち)
+  ③読むファイル順(PACING_V2.md全文を2番目に昇格・旧CHAT_HANDOFF等は非推奨明記) ④作業ルール+
+  新線の復帰フラグ一覧表 ⑤インフラ注意(両線合成デプロイ・github-pages環境の許可リストの教訓)。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 現行設計と無関係(引き継ぎ文書のみ)。
+
 ## v0.26.14 — Pagesデプロイ障害の記録と復旧(環境保護ルール・社長が設定修正)
 - **症状**: /zombie/v2/ が0.26.11のまま更新されない(R6/R7が反映されない)。
 - **原因**: `github-pages`環境の「Deployment branches and tags」が旧線
