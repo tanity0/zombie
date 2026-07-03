@@ -11,6 +11,43 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.8 — R4-C全6種実装+裁定2件反映(実装チャットSonnet・R1〜R4完了)
+- v0.26.6(設計チャットFable)の定量化・裁定を受けて残作業を完了。R1〜R4が本線で完了(社長方針
+  どおり統合テスト待ち)。
+- **裁定①反映**: `stageAggro.ts`の`riseTauSForAggro`を`7 - 4*clamp01(aggro)`へ再較正
+  (中立0.5で5s・スプレッド±2sは維持)。`gatePressure.ts`の該当コメントも解消済みとして更新。
+  `stageAggro.test.ts`を新式に合わせて更新。
+- **裁定②反映**: `difficultyDirector.ts`の`buildPhasesV2`から「14:00で最終コマを無限延長」の
+  特別扱いを撤去。7:30以降の関所60秒⇄緩60秒交互を、現実的なラン長を大きく超える60分ぶん機械生成
+  する形に変更(`phaseAt`はそれでも範囲外なら安全側で最後のフェーズを返すのみ・実質無限継続)。
+  `difficultyDirector.test.ts`を「20:00台でも交互が続く」検証に更新。
+- **R4-C全6種実装**(v0.26.6の定量仕様どおり): 新規`src/utils/shallowExpression.ts`
+  (`resolveShallowSchedule`/`dueShallowSpawns`/`ringPositions`/`fanPositions`/
+  `positionForAngle`/`pickChaffFromMix`の純関数群)。
+  - 数(tempo): intervalMult×0.7(≒1.4倍)+bat寄せ配合(50/30/20)。
+  - 射線(ring): +5s/+30sの2回、各回8体を45°間隔の円配置(開始角ランダム)。
+  - 判断(pincer): +5/20/35/50sの4回、各回ランダム軸角θ/θ+180°(±15°ゆらぎ)から各3体。
+  - 三択(waves): +5/25/45sの3波、各波6体を±30°の扇状、方向は波ごとに120°回転(初期角ランダム)。
+  - 襲撃/スパイク(ring/burst): 初心者ゾーンでは本来のアリーナイベント(囲い/ミニボス)を発火させず
+    (`gateProgramRef`選定時に`program.eventKind && !shallowNow`でゲート)、+10sに10体を
+    ring/burstで代替する。旧来の「イベント開始時点でチャフ限定へ差し替える」安全策
+    (`hordeSpawnRef.shallow`)は削除せず、非gate-program経路(旧2分タイマー/`?events=0`)の
+    憲法第4条セーフティネットとして残置。
+  - 座標式は`Math.hypot(gameBounds.width/2, gameBounds.height/2) + OFFSCREEN_SPAWN_MARGIN`
+    (reaperのoffScreenDist同式)。countCap内(現在数+投入数≤enemyCap)に収まる分だけ投入し、
+    超過分は切り捨て(繰り越さない)。`?shallow=0`で全体を無効化。
+  - 発動条件(コマ開始時点で1回判定・固定)を`shallowExpressionRef`で実装。以前の実装では
+    数(tempo)のmix/テンポ判定が毎フレームplayerAreaIdxを読み直しており「コマ途中のゾーン移動で
+    切り替えない」の条件を満たしていなかったため、このタイミングで修正した。
+- テスト: 新規`shallowExpression.test.ts`(14件・各kindの発火時刻/回数/体数/二重発火なし/
+  ringPositions等の等間隔等距離/pickChaffFromMixのチャフ限定を検証)。
+- 自己点検(実装精度の規律5): 憲法第4条に適合(浅いエリアではチャフ限定+countCap内。むしろ
+  従来の穴を閉じる方向)。第5条(緩を荒らさない)は無関係(関所コマのみが対象)。
+- 検証: lint / typecheck / test(357 pass, 1 skip) / build 全通過。実機未確認
+  (社長方針どおりR1〜R4完了時点で統合テストへ)。
+- 次: 社長の統合テスト(`?v2=1`既定/`?shallow=0`/`?zoomlock=1`推奨)。フィードバック後にR5
+  (ゴールド経済・CORE_LOOP.md§6の価格採否待ち)へ。
+
 ## v0.26.7 — バッチR4実装(一部): 緩整理+浅エリア代替表現(実装チャットSonnet)
 - PACING_V2.mdバッチR4-A/R4-Bを完全実装、R4-Cは6種中3種を配線(残り3種はデータ雛形のみ・
   ★未決事項に記載して裁定待ち)。

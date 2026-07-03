@@ -30,8 +30,11 @@ export const stageAggroFor = (stageId: string | undefined | null): number =>
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
-// pressureの上げ時定数(旧「ラダーの上げ待ち時間」に相当)。stageAggro=0.5で バッチ3既定の8sに一致。
-export const riseTauSForAggro = (aggro: number): number => 10 - 4 * clamp01(aggro);
+// pressureの上げ時定数(旧「ラダーの上げ待ち時間」に相当)。
+// 【裁定済みv0.26.6・PACING_V2.md】: PACING_V2.mdバッチR1-Eのτ短縮(8s→5s)が
+// stageAggro経由の実プレイに反映されていなかった問題を受け、中立点(aggro=0.5)を5sへ再較正
+// (スプレッドは従来どおり±2s: aggro=0→7s / aggro=1→3s)。
+export const riseTauSForAggro = (aggro: number): number => 7 - 4 * clamp01(aggro);
 
 // 退屈発動までの時間(ms)。stageAggro=0.5で既定の25000msに一致。
 export const boredStartMsForAggro = (aggro: number): number => (30 - 10 * clamp01(aggro)) * 1000;

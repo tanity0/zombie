@@ -46,9 +46,9 @@ export interface GatePressureInputs {
   // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 省略時は0=従来と完全一致(risingBlockedへ影響なし)。
   boardDebt?: number;
   // PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はUP_TAU_S(PACING_V2.mdバッチR1-Eで5sへ
-  // 変更済み)。stageAggroForAggro側の`riseTauSForAggro`は実際にはuseGameLoopから常時渡されるため
-  // このデフォルトは実プレイでは使われない。riseTauSForAggro(0.5)は旧8s基準のまま(未更新)で、
-  // 本バッチのτ短縮を実プレイへ反映させるには合わせて再較正が必要 — PACING_V2.mdの★未決事項へ記載。
+  // 変更済み)。実プレイではuseGameLoopが常にstageAggro.tsの`riseTauSForAggro`を渡すため、この
+  // デフォルトは実プレイでは使われない。【裁定済みv0.26.6】riseTauSForAggroの中立点(aggro=0.5)も
+  // 5sへ再較正済みなので、実プレイ・純関数どちらの経路でも中立5sで一致する。
   riseTauS?: number;
 }
 

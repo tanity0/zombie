@@ -23,17 +23,17 @@ describe('stageAggroFor (PACING_REDESIGN.mdバッチ6)', () => {
   });
 });
 
-describe('riseTauSForAggro', () => {
-  it('中立値0.5でバッチ3既定の8sに一致する(no-op)', () => {
-    expect(riseTauSForAggro(0.5)).toBe(8);
+describe('riseTauSForAggro (【裁定済みv0.26.6】PACING_V2.mdバッチR1-Eのτ短縮に合わせて中立点を再較正)', () => {
+  it('中立値0.5でPACING_V2.mdバッチR1-Eの5sに一致する', () => {
+    expect(riseTauSForAggro(0.5)).toBe(5);
   });
-  it('stageAggro=0で最も遅い(10s)/1で最も速い(6s)', () => {
-    expect(riseTauSForAggro(0)).toBe(10);
-    expect(riseTauSForAggro(1)).toBe(6);
+  it('stageAggro=0で最も遅い(7s)/1で最も速い(3s)。スプレッド±2sは従来のまま', () => {
+    expect(riseTauSForAggro(0)).toBe(7);
+    expect(riseTauSForAggro(1)).toBe(3);
   });
   it('0..1の範囲外はクランプする', () => {
-    expect(riseTauSForAggro(-1)).toBe(10);
-    expect(riseTauSForAggro(2)).toBe(6);
+    expect(riseTauSForAggro(-1)).toBe(7);
+    expect(riseTauSForAggro(2)).toBe(3);
   });
 });
 

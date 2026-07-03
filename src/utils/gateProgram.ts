@@ -11,22 +11,9 @@
 import type { EnemyType } from '../types/game';
 import type { PlayStyle } from './killTelemetry';
 import type { SpawnScene } from './difficultyDirector';
-import type { ChaffMix } from './chaffMix';
+import type { ShallowExpression } from './shallowExpression';
 
 export type GateProgramId = 'gate-number' | 'gate-lineofsight' | 'gate-judgment' | 'gate-triple' | 'gate-ambush' | 'gate-assault' | 'gate-boss-spike';
-
-// PACING_V2.mdバッチR4-C: 浅いエリア(エリア0-1)の代替表現。ゾーン天井でfeatured問題児が解禁
-// されない関所でも、湧き方の違いでテーマを感じさせる(バナー名は同じまま=違いは名前と湧き方で)。
-// ★未決事項(PACING_V2.md参照): 'volume'(数)と'chaffHorde'(襲撃/スパイク=既存horde/boss
-// イベントの雑魚版として配線済み)以外は、具体的な半径・角度・体数・タイミングの数値指定が
-// 仕様に無く、新規の湧き配置ジオメトリ(リング/挟み撃ち/波状)を要するため本バッチでは未配線
-// (データの型・タグのみ用意)。
-export type ShallowExpressionKind = 'volume' | 'ring' | 'pincer' | 'chaffHorde' | 'waves';
-export interface ShallowExpression {
-  kind: ShallowExpressionKind;
-  tempoMult?: number; // 'volume'用: 湧きテンポの倍率(叩き台1.4)
-  mix?: ChaffMix;     // 'volume'用: bat寄せ配合の叩き台(50/30/20)
-}
 
 // SpawnSceneと同形+台本固有フィールド。useGameLoop側でcurPhase.scene代わりにそのまま使える。
 export interface GateProgram extends SpawnScene {
@@ -35,7 +22,11 @@ export interface GateProgram extends SpawnScene {
   unlockMs: number;             // PACING_V2.mdバッチR1-A: この時刻(gameTime)以降でないと選出対象にならない
   judgmentPrimary?: EnemyType;  // 判断の関所のみ: 犬/パンプキンどちらを主役にしたか(スタイル依存)
   eventKind?: 'horde' | 'boss'; // バッチ5追補: 関所の頭で発火するアリーナイベント種別(既存beginArenaEvent流用)
-  shallowExpression?: ShallowExpression; // PACING_V2.mdバッチR4-C: 浅いエリア向けの代替表現(叩き台)
+  // PACING_V2.mdバッチR4-C(v0.26.6定量化): 浅いエリア(エリア0-1)向けの代替表現。ゾーン天井で
+  // featured問題児が解禁されない関所でも、湧き方の違いでテーマを感じさせる(バナー名は同じまま)。
+  // eventKindを持つ台本(襲撃/スパイク)がshallow発動中の間は、useGameLoop側が本来のアリーナ
+  // イベント(囲い/ミニボス)の発火を止め、こちらのring/burstに置き換える。
+  shallowExpression?: ShallowExpression;
 }
 
 // 数の関所: チャフ濁流(CD極短)。featuredなし=素の分布+高速湧き(mowdownと同系統の配合)。
@@ -43,8 +34,8 @@ export const GATE_NUMBER: GateProgram = {
   id: 'gate-number', maxRung: 3, unlockMs: 0,
   featured: [], intervalMult: 0.5, rareMult: 1.2,
   mix: { bat: 60, skeleton: 35, zombie: 5 },
-  // R4-C: 配線済み(useGameLoopが浅いエリアでtempoMult/mixを実際に適用する)。
-  shallowExpression: { kind: 'volume', tempoMult: 1.4, mix: { bat: 50, skeleton: 30, zombie: 20 } },
+  // R4-C(v0.26.6定量化): テンポ×0.7(≒1.4倍)+bat寄せ配合(50/30/20)。
+  shallowExpression: { kind: 'tempo', intervalMult: 0.7, mix: { bat: 50, skeleton: 30, zombie: 20 } },
 };
 
 // 射線の関所: plant中心(既存SCENE_GATE_MASS_RANGEDと同値=壁+弾のコンボ)。
@@ -52,9 +43,8 @@ export const GATE_LINEOFSIGHT: GateProgram = {
   id: 'gate-lineofsight', maxRung: 4, unlockMs: 0,
   featured: ['plant'], intervalMult: 0.6, rareMult: 1.2,
   mix: { bat: 25, skeleton: 35, zombie: 40 },
-  // R4-C: 未配線(★未決事項参照)。「画面外周に散らばる同時湧き(リング配置)」の具体的な
-  // 半径・体数はgateProgram.ts側のデータではなく実際の湧き配置ロジックの新設が必要。
-  shallowExpression: { kind: 'ring' },
+  // R4-C(v0.26.6定量化): +5s/+30sの2回、各回8体を45°間隔の円配置(開始角ランダム)。
+  shallowExpression: { kind: 'ring', events: [{ atMs: 5000, count: 8 }, { atMs: 30000, count: 8 }] },
 };
 
 // 判断の関所: 犬orパンプキン1種+弾。既存specialCastOrderと同じスタイル対応(近接→犬優先/遠距離→
@@ -66,8 +56,11 @@ export const gateJudgmentProgram = (style: PlayStyle, tieBreakRandom: number): G
     featured: [primary, 'plant'], intervalMult: 0.7, rareMult: 1.25,
     mix: { bat: 35, skeleton: 40, zombie: 25 }, // v0.25.1343: 主役を立てるため壁は控えめ(チャフ配合の穴埋め)
     judgmentPrimary: primary,
-    // R4-C: 未配線(★未決事項参照)。「2方向からの挟み同時湧き」の角度・距離は仕様に数値指定が無い。
-    shallowExpression: { kind: 'pincer' },
+    // R4-C(v0.26.6定量化): +5/20/35/50sの4回。各回ランダム軸角θとθ+180°(各±15°ゆらぎ)から各3体。
+    shallowExpression: {
+      kind: 'pincer',
+      events: [5000, 20000, 35000, 50000].map(atMs => ({ atMs, perSide: 3, wobbleDeg: 15 })),
+    },
   };
 };
 
@@ -76,9 +69,13 @@ export const GATE_TRIPLE: GateProgram = {
   id: 'gate-triple', maxRung: 6, unlockMs: 4 * 60 * 1000,
   featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35,
   mix: { bat: 30, skeleton: 40, zombie: 30 }, // v0.25.1343: チャフ配合の穴埋め(未指定=素の分布でゾンビ過多だった)
-  // R4-C: 未配線(★未決事項参照)。「3グループ順次湧き(方向を変えて3波)」のグループ数・波の間隔は
-  // 仕様に数値指定が無い。
-  shallowExpression: { kind: 'waves' },
+  // R4-C(v0.26.6定量化): +5/25/45sの3波。各波6体を1方向±30°の扇状から。方向は波ごとに120°回転
+  // (初期角ランダム)。
+  shallowExpression: {
+    kind: 'waves',
+    events: [5000, 25000, 45000].map(atMs => ({ atMs, count: 6, spreadDeg: 30 })),
+    rotateDeg: 120,
+  },
 };
 
 // 不意打ちの関所: 三択+叫び/ゴースト。7:00以降(深入り専用)でのみ選ばれる。screamer/ghost自体の解禁は
@@ -98,9 +95,9 @@ export const GATE_ASSAULT: GateProgram = {
   id: 'gate-assault', maxRung: 4, unlockMs: 3 * 60 * 1000, eventKind: 'horde',
   featured: [], intervalMult: 0.5, rareMult: 1.2,
   mix: { bat: 60, skeleton: 35, zombie: 5 },
-  // R4-C: 配線済み(useGameLoopのhorde段階スポーンが、イベント開始時に浅いエリアならパンプキン/
-  // ウルフの代入を止めて雑魚のみにする=「既存hordeの雑魚版」)。
-  shallowExpression: { kind: 'chaffHorde' },
+  // R4-C(v0.26.6定量化): 浅いエリアでは本来のアリーナイベント(囲い)は発火させず、+10sの1回・
+  // 10体を36°間隔の円配置(小囲い)へ差し替える。
+  shallowExpression: { kind: 'ring', events: [{ atMs: 10000, count: 10 }] },
 };
 
 // スパイクの関所: 関所頭でミニボス版囲い(パンプキン+取り巻き、既存boss kind再利用)。
@@ -109,9 +106,9 @@ export const GATE_BOSS_SPIKE: GateProgram = {
   id: 'gate-boss-spike', maxRung: 5, unlockMs: 4 * 60 * 1000, eventKind: 'boss',
   featured: [], intervalMult: 0.5, rareMult: 1.2,
   mix: { bat: 60, skeleton: 35, zombie: 5 },
-  // R4-C: 配線済み(useGameLoopがイベント開始時に浅いエリアならミニボス(パンプキン)を出さず
-  // 雑魚のみの小さな囲いへ差し替える=「雑魚ホード小・イベント形のみ再現」)。
-  shallowExpression: { kind: 'chaffHorde' },
+  // R4-C(v0.26.6定量化): 浅いエリアでは本来のアリーナイベント(ミニボス)は発火させず、+10sの1回・
+  // 1方向±20°から10体を2秒かけて(5体/秒)投入する。
+  shallowExpression: { kind: 'burst', events: [{ atMs: 10000, count: 10, durationMs: 2000, spreadDeg: 20 }] },
 };
 
 export type Rank = 0 | 1 | 2;

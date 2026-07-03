@@ -66,6 +66,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   OFFSCREEN_RECYCLE_MARGIN,
+  OFFSCREEN_SPAWN_MARGIN,
   isValidForArea,
   AREA_ZONE_NAMES
 } from '../utils/enemyUtils';
@@ -110,6 +111,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, selectGateProgramLegacy, GATE_PROGRAM_DISPLAY_NAME, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { evaluateGateGuarantee } from '../utils/gateGuarantee';
+import { resolveShallowSchedule, dueShallowSpawns, positionForAngle, pickChaffFromMix, type ShallowExpression, type ResolvedShallowSpawn } from '../utils/shallowExpression';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
 import { getSelectedStageId } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
@@ -422,6 +424,8 @@ const STAGE_AGGRO_ENABLED = evParam('stageaggro') !== '0';
 const V2_ENABLED = evParam('v2') !== '0';
 // R2(PHASES再カット): v2=0の間はphaseAt/sceneAt/enemyCountCapへ旧PHASES_LEGACYを渡す。
 const ACTIVE_PHASES = V2_ENABLED ? PHASES : PHASES_LEGACY;
+// PACING_V2.mdバッチR4-C(v0.26.6定量化): 浅いエリアの代替表現。?shallow=0で無効化(発動条件を常にfalse)。
+const SHALLOW_ENABLED = evParam('shallow') !== '0';
 // 現在選択中のステージのstageAggroを毎回引く(localStorage読み取りのみ・pixiScene.tsの
 // getSelectedStageId()と同じ軽量な呼び出しパターン。1フレームに複数箇所から呼んでも軽い)。
 const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(getSelectedStageId()) : STAGE_AGGRO_DEFAULT);
@@ -719,6 +723,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // PACING_V2.mdバッチR1-D(主題保証): 関所開始時点の出現数アンカー+保留中の確定投入+投入済みフラグ。
   const gateGuaranteeRef = useRef<{ phaseKey: string; startMs: number; anchor: Record<KillBucket, number> | null; pendingType: ProblemChild | null; injected: boolean }>(
     { phaseKey: '', startMs: 0, anchor: null, pendingType: null, injected: false }
+  );
+  // PACING_V2.mdバッチR4-C: 浅いエリアの代替表現。関所開始時点(1回だけ)にactive/スケジュールを固定する
+  // (コマ途中のゾーン移動では切り替えない=共通ルール)。prevMsはdueShallowSpawnsの二重発火防止に使う。
+  const shallowExpressionRef = useRef<{ phaseKey: string; active: boolean; expr: ShallowExpression | null; resolved: ResolvedShallowSpawn[]; gateStartMs: number; prevMs: number }>(
+    { phaseKey: '', active: false, expr: null, resolved: [], gateStartMs: 0, prevMs: 0 }
   );
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
@@ -1342,6 +1351,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setGateProgramDebug(null);
           seenProgramIdsRef.current = new Set(); // PACING_V2.mdバッチR1-Bの未見優先も新ランでリセット
           gateGuaranteeRef.current = { phaseKey: '', startMs: 0, anchor: null, pendingType: null, injected: false }; // バッチR1-Dも新ランでリセット
+          shallowExpressionRef.current = { phaseKey: '', active: false, expr: null, resolved: [], gateStartMs: 0, prevMs: 0 }; // バッチR4-Cも新ランでリセット
           setDirectorRankRewardMult(1);
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
@@ -6025,6 +6035,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 pityBlocked: newGameTime < pityEventBlockUntilRef.current,
               });
           gateProgramRef.current = { phaseKey: rankPhaseKey, program, lastId: program.id };
+          // PACING_V2.mdバッチR4-C(v0.26.6定量化): 発動条件はコマ開始時点で1回だけ判定して固定する
+          // (コマ途中のゾーン移動では切り替えない)。初心者ゾーン(エリア0-1)かつ台本にshallowExpression
+          // があれば有効化し、スケジュールをここで解決する(乱数はここで一度だけ引く)。
+          const areaIdxAtGateStart = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
+          const shallowNow = V2_ENABLED && SHALLOW_ENABLED && areaIdxAtGateStart <= 1 && !!program.shallowExpression;
+          shallowExpressionRef.current = shallowNow
+            ? {
+                phaseKey: rankPhaseKey, active: true, expr: program.shallowExpression!,
+                resolved: resolveShallowSchedule(program.shallowExpression!, Math.random),
+                gateStartMs: gameTime, prevMs: gameTime,
+              }
+            : { phaseKey: rankPhaseKey, active: false, expr: null, resolved: [], gateStartMs: gameTime, prevMs: gameTime };
           if (V2_ENABLED) {
             seenProgramIdsRef.current.add(program.id); // R1-B: このランで見せた台本として記録(未見優先の判定に使用)
             // R1-D: 関所開始時点の出現数をアンカーして主題保証の判定に使う(ディープコピー必須)。
@@ -6032,7 +6054,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // バッチ5追補: イベント関所(gate-assault/gate-boss-spike)が選ばれたら、関所頭での発火を予約する。
           // 規模は既存のeventSizeMult(バッチ7で保留していた配線先)でrank/退屈シグナル/pity直後を反映。
-          if (program.eventKind) {
+          // PACING_V2.mdバッチR4-C: 初心者ゾーンでこのコマがshallow発動中なら、確定投入を伴う本来の
+          // アリーナイベント(囲い/ミニボス)は発火させない(問題児の直接spawnEnemyAtを避ける)。
+          // 代わりにshallowExpression(ring/burst)がチャフのみの軽い湧きを担う。
+          if (program.eventKind && !shallowNow) {
             gateEventPendingRef.current = {
               eventKind: program.eventKind,
               phaseKey: rankPhaseKey,
@@ -6305,16 +6330,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // バッチ5: gate(山)フェーズでは、台本固定のsceneAtではなく選定済みの台本(gateProgramRef)を使う。
         let effectiveGateProgram = (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program : null;
-        // PACING_V2.mdバッチR4-C(浅いエリアの代替表現「数: 湧きテンポ×1.4+bat寄せ配合(50/30/20)」):
-        // 初心者ゾーン(エリア0-1)で数の関所が選ばれている間だけ、mixを叩き台の値へ差し替える
-        // (featured投入に頼れないぶん、湧き方で物量感を出す)。programオブジェクト自体はmaxRung/
-        // unlockMs判定に使うので複製で対応(既存のeffectiveProgramと同じパターン)。
-        // テンポ側(×1.4)は関所中ずっとgatePressure連続値(intervalMultForPressure)が実効値を
-        // 決めているためscene.intervalMultへは反映されず、下のshallowTempoBoostで別途乗算する。
-        const shallowVolumeSE = (V2_ENABLED && effectiveGateProgram?.shallowExpression?.kind === 'volume' && playerAreaIdx <= 1)
-          ? effectiveGateProgram!.shallowExpression! : null;
-        if (shallowVolumeSE) {
-          effectiveGateProgram = { ...effectiveGateProgram!, mix: shallowVolumeSE.mix ?? effectiveGateProgram!.mix };
+        // PACING_V2.mdバッチR4-C(v0.26.6定量化・数=tempo種): 関所開始時点でロックされた
+        // shallowExpressionRef(コマ途中のゾーン移動では切り替えない)を読み、mixを差し替える。
+        // programオブジェクト自体はmaxRung/unlockMs判定に使うので複製で対応(既存のeffectiveProgramと
+        // 同じパターン)。テンポ側は関所中ずっとgatePressure連続値(intervalMultForPressure)が実効値を
+        // 決めているためscene.intervalMultへは反映されず、下のshallowTempoMultで別途乗算する。
+        const shallowActiveThisGate = shallowExpressionRef.current.active && shallowExpressionRef.current.phaseKey === rankPhaseKey;
+        const shallowTempoSE = (shallowActiveThisGate && shallowExpressionRef.current.expr?.kind === 'tempo')
+          ? shallowExpressionRef.current.expr : null;
+        if (shallowTempoSE && effectiveGateProgram) {
+          effectiveGateProgram = { ...effectiveGateProgram, mix: shallowTempoSE.mix };
         }
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
@@ -6342,10 +6367,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // debt≈12→×1.2と1.3が重なって×1.56になっていた)。?debt=0時は従来のペア緩和のみが残る。
         const debtEaseMult = DEBT_ENABLED ? debtTempoEaseMult(boardDebtNow) : 1;
         const hardBoardEase = Math.max(debtEaseMult, pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
-        // PACING_V2.mdバッチR4-C: 数の関所の浅いエリア代替表現「湧きテンポ×1.4」。テンポ倍率(速いほど
-        // 良い)なのでintervalMult(間隔・小さいほど速い)へは逆数で効かせる。
-        const shallowTempoBoost = shallowVolumeSE ? 1 / (shallowVolumeSE.tempoMult ?? 1) : 1;
-        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * hardBoardEase * shallowTempoBoost;
+        // PACING_V2.mdバッチR4-C(v0.26.6定量化): 数の関所の浅いエリア代替表現はintervalMult×0.7
+        // (≒テンポ1.4倍)を直接乗算する。
+        const shallowTempoMult = shallowTempoSE ? shallowTempoSE.intervalMult : 1;
+        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * hardBoardEase * shallowTempoMult;
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
@@ -6459,6 +6484,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gg.injected = true;
               }
             }
+          }
+        }
+        // PACING_V2.mdバッチR4-C(v0.26.6定量化): 浅いエリアの代替表現(射線/判断/三択=ring/pincer/
+        // waves・スパイク=burst)。関所開始時点でロックされたスケジュールから、prevMs<発火時刻≤nowMsの
+        // 分だけチャフ限定(bat/skeleton/zombie)で投入する。countCap内(現在数+投入数≤enemyCap)に
+        // 収まる分だけ湧かせ、超過分は切り捨て(繰り越さない=イベント扱いのcap外投入はしない)。
+        if (SHALLOW_ENABLED && shallowActiveThisGate && curPhase.kind === 'gate' && !danceTest && !indoor && !confining) {
+          const se = shallowExpressionRef.current;
+          if (se.expr && se.expr.kind !== 'tempo') {
+            const due = dueShallowSpawns(se.resolved, se.gateStartMs, se.prevMs, gameTime);
+            if (due.length > 0) {
+              const mix = gateProgramRef.current.program?.mix ?? { bat: 60, skeleton: 35, zombie: 5 };
+              const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+              const dist = Math.hypot(gameBounds.width / 2, gameBounds.height / 2) + OFFSCREEN_SPAWN_MARGIN;
+              let room = Math.max(0, enemyCap - useGameStore.getState().enemies.length);
+              for (const d of due) {
+                if (room <= 0) break;
+                const type = pickChaffFromMix(mix, Math.random());
+                const pos = positionForAngle({ x: pcx, y: pcy }, dist, d.angleRad);
+                const e = spawnEnemyAt(type, pos.x - 16, pos.y - 16, gameTime);
+                addEnemy(e);
+                room--;
+              }
+            }
+            se.prevMs = gameTime;
           }
         }
         if (

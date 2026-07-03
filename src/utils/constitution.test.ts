@@ -115,7 +115,7 @@ describe('憲法テスト(横断不変条件)', () => {
     }
   });
 
-  it('R4-C: 数の関所のshallowExpression(配線済み)は仕様の数値(テンポ×1.4・bat50/skeleton30/zombie20)と一致する', () => {
-    expect(GATE_NUMBER.shallowExpression).toEqual({ kind: 'volume', tempoMult: 1.4, mix: { bat: 50, skeleton: 30, zombie: 20 } });
+  it('R4-C: 数の関所のshallowExpressionは仕様の数値(v0.26.6定量化・intervalMult×0.7・bat50/skeleton30/zombie20)と一致する', () => {
+    expect(GATE_NUMBER.shallowExpression).toEqual({ kind: 'tempo', intervalMult: 0.7, mix: { bat: 50, skeleton: 30, zombie: 20 } });
   });
 });

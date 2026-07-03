@@ -87,7 +87,9 @@ const SCENE_GATE_FALLBACK: SpawnScene = { id: 'gate-fallback', featured: [], int
 // ではなく毎回gateProgram.tsのローテが差し替える(PHASESのmaxRung列は撤去=pressure天井は
 // 台本自身のmaxRung×ゾーン天井のみになる)。緩の中身はreliefProgram.tsが選ぶ(PROGRAM_ENABLED既定)。
 // 城ボスは7:00(=420s)で中間ゴール、7:30以降は「深入りモード」(DEEP_DIVE_START_MS)として
-// 報酬/リスクが増す別モードへ移行しつつ同じ60秒交互を14:00まで継続、以降は最終コマを無限延長する。
+// 報酬/リスクが増す別モードへ移行しつつ同じ60秒交互を無限に継続する
+// (【裁定済みv0.26.6】: 「14:00以降は最終コマを無限延長」は設計側の誤記として撤回。14:00の
+// 特別扱いは無く、関所60⇄緩60の交互がそのまま続く)。
 const buildPhasesV2 = (): Phase[] => {
   const phases: Phase[] = [
     { kind: 'buildup', index: 1, startMs: 0,        endMs: 60 * S,  countCap: 8,  scene: SCENE_RELIEF_SPARSE },   // 導入(まず刈れる)
@@ -99,22 +101,17 @@ const buildPhasesV2 = (): Phase[] => {
     { kind: 'buildup', index: 4, startMs: 360 * S,  endMs: 420 * S, countCap: 9,  scene: SCENE_RELIEF_SPARSE },   // ボス前の整え
     { kind: 'boss',    index: 1, startMs: 420 * S,  endMs: 450 * S, countCap: 10, scene: SCENE_BOSS },            // 城ボス(中間ゴール・離脱=クリア可)
   ];
-  // 7:30以降(深入りモード): buildup⇄gate 60秒交互を14:00まで継続。最後の1コマは無限延長する
-  // (旧終局=gateだったが、60秒固定グリッドを7:30起点で単純延長すると14:00はスロットの途中に
-  // 落ちる。「そのとき進行中のコマをそのまま無限延長」という文面どおりの解釈を採用: 結果として
-  // 無限延長コマはbuildup種になるが、reliefProgram.tsは7:00以降の緩を既定でHARVEST無双にする
-  // ため体感は旧終局=継続高強度と大きく変わらない。PACING_V2.mdの★未決事項に記載済み)。
-  const DEEP_DIVE_END_MS = 14 * 60 * S;
+  // 7:30以降(深入りモード): buildup⇄gate 60秒交互に特別な終わりは無い(無限継続)。実装形として、
+  // 現実的なラン長を大きく超える時間(60分)ぶんを機械的に生成する(配列は数十件・負荷は無視できる)。
+  // phaseAtは配列を使い切った後も最後のフェーズを返し続ける(下のフォールバック)ため、万一60分を
+  // 超えても交互の「最後の1コマ」が固定されるだけで、通常のプレイ時間内では常に交互が続く。
+  const GENERATE_UNTIL_MS = 60 * 60 * S; // 60分(現実的なラン長を十分に超える安全マージン)
   let buildupIndex = 5, gateIndex = 4, t = DEEP_DIVE_START_MS;
-  for (;;) {
-    const buildupEnd = t + 60 * S;
-    if (buildupEnd >= DEEP_DIVE_END_MS) { phases.push({ kind: 'buildup', index: buildupIndex, startMs: t, endMs: Infinity, countCap: 9, scene: SCENE_RELIEF_SPARSE }); break; }
-    phases.push({ kind: 'buildup', index: buildupIndex, startMs: t, endMs: buildupEnd, countCap: 9, scene: SCENE_RELIEF_SPARSE });
-    buildupIndex++; t = buildupEnd;
-    const gateEnd = t + 60 * S;
-    if (gateEnd >= DEEP_DIVE_END_MS) { phases.push({ kind: 'gate', index: gateIndex, startMs: t, endMs: Infinity, countCap: 10, scene: SCENE_GATE_FALLBACK }); break; }
-    phases.push({ kind: 'gate', index: gateIndex, startMs: t, endMs: gateEnd, countCap: 10, scene: SCENE_GATE_FALLBACK });
-    gateIndex++; t = gateEnd;
+  while (t < GENERATE_UNTIL_MS) {
+    phases.push({ kind: 'buildup', index: buildupIndex, startMs: t, endMs: t + 60 * S, countCap: 9, scene: SCENE_RELIEF_SPARSE });
+    buildupIndex++; t += 60 * S;
+    phases.push({ kind: 'gate', index: gateIndex, startMs: t, endMs: t + 60 * S, countCap: 10, scene: SCENE_GATE_FALLBACK });
+    gateIndex++; t += 60 * S;
   }
   return phases;
 };
@@ -164,7 +161,8 @@ export const PHASES_LEGACY: Phase[] = [
   { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 7 },   // 14:00+ 終局(カオス継続)
 ];
 
-// 指定時刻のフェーズ。範囲外は最後のフェーズ(無限延長コマ)を返す。`phases`省略時は新骨格(PHASES)。
+// 指定時刻のフェーズ。PHASES(新骨格)は深入り以降を60分ぶん機械生成しているため範囲外に出ることは
+// 通常無いが、万一超えたら安全側で最後のフェーズを返す。`phases`省略時は新骨格(PHASES)。
 // `?v2=0`ではuseGameLoop側がPHASES_LEGACYを明示的に渡して旧骨格へ戻す。
 export const phaseAt = (gameTime: number, phases: Phase[] = PHASES): Phase => {
   for (const p of phases) if (gameTime >= p.startMs && gameTime < p.endMs) return p;

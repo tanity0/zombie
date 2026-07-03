@@ -47,15 +47,24 @@ describe('difficultyDirector — PHASES(v2・PACING_V2.mdバッチR2: 60秒骨�
     expect(DEEP_DIVE_START_MS).toBe(450_000);
   });
 
-  it('14:00以降は最終コマが無限延長される(1つだけendMs=Infinity)', () => {
-    const infinite = PHASES.filter(p => p.endMs === Infinity);
-    expect(infinite.length).toBe(1);
-    expect(infinite[0].startMs).toBeLessThan(14 * 60 * 1000);
-    expect(phaseAt(20 * 60 * 1000)).toBe(infinite[0]); // 20:00でも同じ最終コマのまま
+  it('【裁定済みv0.26.6】14:00に特別な終局は無い。関所60⇄緩60の交互が無限に続く(境界の飛びも無い)', () => {
+    // 7:30以降、60秒ごとに必ずbuildup/gateが切り替わり続ける(14:00をまたいでも例外なし)。
+    // どのendMsも"===Infinity"の特別コマではない(旧設計の「最終コマ無限延長」を撤回した確認)。
+    expect(PHASES.filter(p => p.endMs === Infinity).length).toBe(0);
+    let prevKind = phaseAt(DEEP_DIVE_START_MS).kind;
+    for (let t = DEEP_DIVE_START_MS + 60_000; t <= 25 * 60 * 1000; t += 60_000) {
+      const kind = phaseAt(t).kind;
+      expect(kind, `t=${t}`).not.toBe(prevKind);
+      prevKind = kind;
+    }
+    // 20:00台でもgate/buildupが正しく交互(社長受け入れ条件の例そのまま)。
+    expect(phaseAt(20 * 60 * 1000).kind).toBe('buildup');           // 20:00
+    expect(phaseAt(20 * 60 * 1000 + 60_000).kind).toBe('gate');     // 21:00
+    expect(phaseAt(20 * 60 * 1000 + 120_000).kind).toBe('buildup'); // 22:00(次の周期)
   });
 
   it('関所(gate)スロットは毎回60秒ちょうど(境界のズレが無い)', () => {
-    for (const p of PHASES.filter(x => x.kind === 'gate' && x.endMs !== Infinity)) {
+    for (const p of PHASES.filter(x => x.kind === 'gate')) {
       expect(p.endMs - p.startMs).toBe(60_000);
     }
   });
