@@ -10,7 +10,7 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
-## v0.25.1349 — 賢さの継承: ENGINEERING_NOTES.md新設+規律6/7+振り分け基準(社長指示・設計チャットFable)
+## v0.25.1350 — 賢さの継承: ENGINEERING_NOTES.md新設+規律6/7+振り分け基準(社長指示・設計チャットFable)
 - 社長指示「Fable側の賢さをSonnet側へ継承できるものは今のうちに」。方法を3点でファイル化:
 - **① ENGINEERING_NOTES.md新設(地雷図鑑+診断プレイブック)**: 診断の型5ステップ(「いつから」を
   diffで確定/同じ症状・別レイヤーの列挙/コメントよりコード/安全側+復帰フラグ/教訓の機械化)、
