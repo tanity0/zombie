@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1360 — セーブポイント: 乖離洗い出しP1〜P8を記録+gitタグ(社長指示・設計チャットFable)
+- 社長指示「ここまでの開発を1個セーブポイントとして、別の開発にフォークしたい。セーブポイントに
+  戻して再開する可能性は大いにある。大きな方向転換を試すので一旦分けたい」。
+- ①社長依頼「現状とゴールの乖離を洗い出して」の分析結果(P1 多段ANDで誰も出現を保証しない/
+  P2 時間軸×ゾーン軸の衝突/P3 pressure数値が旧離散設計の遺物+Intensityホールドの自己矛盾/
+  P4 確定供給源の全撤去/P5 計測がブレーキ側のみ/P6 実機1ラン観測/P7 経済未接続/P8 過補正の振動、
+  +改訂版ローテの必須要件5点)をPACING_REDESIGN.md★未決事項へ正式記録(チャット限りの状態を解消)。
+- ②本コミットを**セーブポイント**として注釈付きタグ `savepoint-v0.25.1360` を打つ。
+  復帰方法: `git checkout claude/chat-context-continuity-saxlH`(このブランチ自体がセーブポイント線。
+  タグは「ここまで=心電図化開発の区切り」の目印)。
+- ③フォーク(方向転換用の新ブランチ)はブランチ名の社長指名待ち。フォーク側では CLAUDE.md の
+  Branch lock をフォーク名に書き換えてから開発を始めること(そうしないと実装チャットがこちらへ
+  push してしまう)。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 憲法4条・5条に無関係。
+
 ## v0.25.1359 — 台本ローテーション化の叩き台を★未決事項へ記載(採否待ち・設計チャットFable)
 - 統合テスト「単調」の診断と対策叩き台(60秒コマ交互/未見優先+直前禁止/rank寄せ廃止/時間解禁
   2・3・4分/上げτ8→5秒/憲法4条は不変)をPACING_REDESIGN.mdの★未決事項に正式記載
