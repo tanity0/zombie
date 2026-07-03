@@ -11,6 +11,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.14 — Pagesデプロイ障害の記録と復旧(環境保護ルール・社長が設定修正)
+- **症状**: /zombie/v2/ が0.26.11のまま更新されない(R6/R7が反映されない)。
+- **原因**: `github-pages`環境の「Deployment branches and tags」が旧線
+  (`claude/chat-context-continuity-saxlH`)のみ許可で、新線`claude/direction-shift`が
+  トリガーしたデプロイは**deployジョブが開始1秒で失敗**していた(buildは成功)。
+  v0.26.9で両線合成デプロイをpages.ymlに組んだ際、環境側の許可リスト追加が漏れていた。
+  0.26.11が見えていたのは13:17に旧線pushがトリガーした合成ビルドが新線HEAD(当時0.26.11)を
+  拾っていたため=新線は自力でデプロイできない状態だった。
+- **対処**: 社長がGitHub Web設定(Settings→Environments→github-pages→Deployment branches
+  and tags)に`claude/direction-shift`を追加。本コミットのpushで再発火し、成功を確認する。
+- **教訓(ENGINEERING_NOTES行き候補)**: deploy-pagesジョブの「開始1秒失敗・ログ404」は
+  環境保護ルール(ブランチ許可リスト)拒否のシグネチャ。ワークフローに新ブランチを足す時は
+  環境側の許可リストもセットで確認する。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 現行設計と無関係(インフラのみ)。
+
 ## v0.26.13 — R7実装: エリア台本+ディレクター連携ゲート(社長指示「重みづけの概念から較正しろ」)
 - 社長指示を受け、「たまに」を既存の重みづけ概念から実装チャットが較正して§2エリア台本を実装:
   - **較正の根拠**: ロール粒度15秒=問題児リフラクトリと同じ(倒した直後に次が来ない)。発火確率は
