@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1371 — 台本会議クローズ: 緩サイクル確定+処理速度を査定に追加(社長決定・設計チャットFable)
+- **緩サイクル確定**: 通常60秒×2コマ→緩60秒(RELAX⇄HARVEST交互)・全コマ60秒統一。
+  R7到達は目安(順調9分前後)でKPIにしない。狙い=「急を長く続けない」(連続通常は2つまで)。
+- **処理速度を査定に追加**(社長「処理速度はプレイヤー依存で、スコアに関係する」):
+  `starveRatio`(盤面数<目標数だった時間割合=補充より速く刈れているか)を導入。
+  昇格条件に「または starveRatio≥0.4」を追加。リアルタイム緩急の締めトリガーにも
+  「盤面<目標が15秒継続」を追加。
+- §5の旧方式残骸(formation/insert等)を盤面維持モデルの記述へ修正。
+- **仕様全確定=M2・M3・M4すべて着手可**。旧線Sonnetへ一気に仕上げ(§6)の指示を出す。
+- 検証: doc+version変更のみ(コード不変)。自己点検: §0.5攻略性の原則・第5条(緩の純度)に整合。
+
 ## v0.25.1370 — 攻略性の原則を憲法級で明記(社長決定・設計チャットFable)
 - 社長「きもは、必ず攻略性がある布陣・出現であること。ヴァンサバとの最大の違い。パンプキン2+犬3でも
   時間差ならジャンプカウンター連続+犬回避で解ける」→ PACING_PUZZLE.mdに**§0.5 攻略性の原則**を新設。
