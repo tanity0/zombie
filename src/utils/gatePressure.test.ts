@@ -69,10 +69,15 @@ describe('stepGatePressure', () => {
     expect(s.pressure).toBeLessThanOrEqual(0.5);
   });
 
-  it('stops rising while Intensity >= 0.75 (only decay is allowed)', () => {
+  it('PACING_V2.mdバッチR1-E: Intensity>=0.75でも上げは止まらない(ホールド撤廃・危険側の抑制はboardDebt/被弾インパルスが担う)', () => {
     const start = createGatePressureState(0.3);
     const r = stepGatePressure(start, { ...GOOD, intensity: 0.9, dtMs: 5000 });
-    expect(r.state.pressure).toBeLessThanOrEqual(0.3);
+    expect(r.state.pressure).toBeGreaterThan(0.3);
+  });
+
+  it('PACING_V2.mdバッチR1-E: 上げの時定数は5s(riseTauS省略時)。5s経過でalpha=1-e^-1に到達する', () => {
+    const r = stepGatePressure(createGatePressureState(0), { ...GOOD, dtMs: 5000 });
+    expect(r.state.pressure).toBeCloseTo(1 - Math.exp(-1), 5);
   });
 
   it('バッチ3.5-B: stops rising while boardDebt exceeds RISE_DEBT_MAX, even with low Intensity', () => {

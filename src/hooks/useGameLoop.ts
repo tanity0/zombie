@@ -105,8 +105,9 @@ import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
 import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
-import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
+import { selectGateProgram, selectGateProgramLegacy, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
+import { evaluateGateGuarantee } from '../utils/gateGuarantee';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
 import { getSelectedStageId } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
@@ -413,6 +414,10 @@ const GATE_PROGRAM_ENABLED = evParam('gateprogram') !== '0';
 // PACING_REDESIGN.mdバッチ6: ステージ難易度指数(stageAggro)。?stageaggro=0で中立値0.5固定
 // (バッチ6導入前と完全一致=pressure上げτ8s/退屈発動25s/関所maxRungクランプ5)。
 const STAGE_AGGRO_ENABLED = evParam('stageaggro') !== '0';
+// PACING_V2.mdの復帰フラグ: ?v2=0でR1(台本ローテーション+主題保証)とR2(PHASES再カット)を
+// まとめて旧挙動(rank寄せ選択+旧PHASES)へ戻す。GATE_PROGRAM_ENABLED(?gateprogram=0)は台本選択
+// 機構自体のオンオフ、こちらはその機構内で「新ロジックか旧ロジックか」を切り替える別軸。
+const V2_ENABLED = evParam('v2') !== '0';
 // 現在選択中のステージのstageAggroを毎回引く(localStorage読み取りのみ・pixiScene.tsの
 // getSelectedStageId()と同じ軽量な呼び出しパターン。1フレームに複数箇所から呼んでも軽い)。
 const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(getSelectedStageId()) : STAGE_AGGRO_DEFAULT);
@@ -703,6 +708,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean; recoverySpawned: number }>({ phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0 });
   // バッチ5: 現在の山(gate)フェーズで選ばれている台本+直近に見せた台本id(連続回避用)。
   const gateProgramRef = useRef<{ phaseKey: string; program: GateProgram | null; lastId: GateProgramId | null }>({ phaseKey: '', program: null, lastId: null });
+  // PACING_V2.mdバッチR1-B: このランで既に見せた台本id(未見優先の判定用)。ラン開始でリセット。
+  const seenProgramIdsRef = useRef<Set<GateProgramId>>(new Set());
+  // PACING_V2.mdバッチR1-D(主題保証): 関所開始時点の出現数アンカー+保留中の確定投入+投入済みフラグ。
+  const gateGuaranteeRef = useRef<{ phaseKey: string; startMs: number; anchor: Record<KillBucket, number> | null; pendingType: ProblemChild | null; injected: boolean }>(
+    { phaseKey: '', startMs: 0, anchor: null, pendingType: null, injected: false }
+  );
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
@@ -1323,6 +1334,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setReliefProgramDebug(null);
           gateProgramRef.current = { phaseKey: '', program: null, lastId: null }; // バッチ5も新ランでリセット
           setGateProgramDebug(null);
+          seenProgramIdsRef.current = new Set(); // PACING_V2.mdバッチR1-Bの未見優先も新ランでリセット
+          gateGuaranteeRef.current = { phaseKey: '', startMs: 0, anchor: null, pendingType: null, injected: false }; // バッチR1-Dも新ランでリセット
           setDirectorRankRewardMult(1);
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
@@ -5960,17 +5973,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (GATE_PROGRAM_ENABLED && !labTheme && !indoor && curPhase.kind === 'gate' && gateProgramRef.current.phaseKey !== rankPhaseKey) {
           // バッチ5追補選出ルール(b): 直近の台本がイベント関所だったかを、上書きする前に読む。
           const lastWasEvent = gateProgramRef.current.lastId === 'gate-assault' || gateProgramRef.current.lastId === 'gate-boss-spike';
-          const program = selectGateProgram({
-            phaseMaxRung: curPhase.maxRung ?? 7,
-            rank: rankRef.current.rank,
-            style: getCurrentStyle(),
-            lastProgramId: gateProgramRef.current.lastId,
-            tieBreakRandom: Math.random(),
-            gateIndex: curPhase.index - 1,
-            lastWasEvent,
-            pityBlocked: newGameTime < pityEventBlockUntilRef.current,
-          });
+          // PACING_V2.mdバッチR1: 台本選択は多様性ローテ(時間解禁+未見優先+rank不使用)が既定。
+          // ?v2=0で旧rank寄せ選択(selectGateProgramLegacy+PHASESのmaxRung)へ完全復帰する。
+          const program = V2_ENABLED
+            ? selectGateProgram({
+                gameTime,
+                style: getCurrentStyle(),
+                lastProgramId: gateProgramRef.current.lastId,
+                tieBreakRandom: Math.random(),
+                gateIndex: curPhase.index - 1,
+                lastWasEvent,
+                pityBlocked: newGameTime < pityEventBlockUntilRef.current,
+                seenProgramIds: seenProgramIdsRef.current,
+              })
+            : selectGateProgramLegacy({
+                phaseMaxRung: curPhase.maxRung ?? 7,
+                rank: rankRef.current.rank,
+                style: getCurrentStyle(),
+                lastProgramId: gateProgramRef.current.lastId,
+                tieBreakRandom: Math.random(),
+                gateIndex: curPhase.index - 1,
+                lastWasEvent,
+                pityBlocked: newGameTime < pityEventBlockUntilRef.current,
+              });
           gateProgramRef.current = { phaseKey: rankPhaseKey, program, lastId: program.id };
+          if (V2_ENABLED) {
+            seenProgramIdsRef.current.add(program.id); // R1-B: このランで見せた台本として記録(未見優先の判定に使用)
+            // R1-D: 関所開始時点の出現数をアンカーして主題保証の判定に使う(ディープコピー必須)。
+            gateGuaranteeRef.current = { phaseKey: rankPhaseKey, startMs: gameTime, anchor: snapshotSpawns(), pendingType: null, injected: false };
+          }
           // バッチ5追補: イベント関所(gate-assault/gate-boss-spike)が選ばれたら、関所頭での発火を予約する。
           // 規模は既存のeventSizeMult(バッチ7で保留していた配線先)でrank/退屈シグナル/pity直後を反映。
           if (program.eventKind) {
@@ -6340,6 +6371,42 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const castEnemy = generateEnemy(gameTime, player, spawnBounds, pending, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(castEnemy);
               pressureCastRef.current.pendingCast = null;
+            }
+          }
+        }
+        // PACING_V2.mdバッチR1-D(主題保証): 関所開始15秒経ってもその台本のfeatured問題児が
+        // 1体も出現していなければ、pressureしきい値/boardDebtゲート/Intensityホールドを無視して
+        // 1体だけ確定投入する。ゾーン天井(allowedAtCeiling経由)/同時数キャップ(enemyCap)/
+        // リフラクトリ15秒は破らない。キャップ満杯ならpendingTypeとして次フレーム以降も再チェックする
+        // (pressureCastRef.pendingCastと同じ「掃けたら発火」パターン)。イベント関所はfeatured=[]なので
+        // 対象外(evaluateGateGuaranteeがtarget無しを返し自然にno-opになる)。
+        if (V2_ENABLED && GATE_PROGRAM_ENABLED && pressureOutdoor && !danceTest && !indoor && !confining) {
+          const gg = gateGuaranteeRef.current;
+          const gp = gateProgramRef.current.program;
+          if (gp && gg.phaseKey === rankPhaseKey && gg.anchor && !gg.injected) {
+            if (!gg.pendingType) {
+              const featuredProblemChildren = gp.featured.filter((t): t is ProblemChild => (ALL_PROBLEM_CHILDREN as EnemyType[]).includes(t));
+              const allowedAtCeiling = allowedProblemChildren(gatePressureRef.current.ceiling ?? 1, pressureCastRef.current.order ?? ['pumpkin', 'werewolf']);
+              const evalResult = evaluateGateGuarantee({
+                elapsedMs: gameTime - gg.startMs,
+                featuredProblemChildren,
+                allowedAtCeiling,
+                anchorSpawns: gg.anchor,
+                nowSpawns: snapshotSpawns(),
+                alreadyInjected: gg.injected,
+              });
+              if (evalResult.shouldInject) gg.pendingType = evalResult.type;
+            }
+            const pendingG = gg.pendingType;
+            if (pendingG) {
+              const refractoryOk = !PROGRAM_ENABLED || !isInRefractory(getLastKillAt(pendingG), gameTime);
+              const capOk = useGameStore.getState().enemies.length < enemyCap;
+              if (refractoryOk && capOk) {
+                const guaranteeEnemy = generateEnemy(gameTime, player, spawnBounds, pendingG, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+                addEnemy(guaranteeEnemy);
+                gg.pendingType = null;
+                gg.injected = true;
+              }
             }
           }
         }

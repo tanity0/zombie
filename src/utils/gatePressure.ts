@@ -27,10 +27,9 @@ export const startPressureForRank = (rank: 0 | 1 | 2): number => (rank === 2 ? 0
 
 const NO_HIT_SCORE_SEC = 10;   // 無被弾スコア: 直近被弾からこの秒数で1.0
 const KILL_RATE_GOOD = 0.3;    // 撃破ペーススコア: kill/sのEMAがこの値で1.0
-const UP_TAU_S = 8;            // 上げの時定数(遅い)
+const UP_TAU_S = 5;            // 上げの時定数(PACING_V2.mdバッチR1-E: 8秒→5秒。60秒関所内に配役0.50へ確実に届かせる)
 const DOWN_TAU_S = 2;          // 下げの時定数(速い)
 const HIT_IMPULSE_DROP = 0.15; // 被弾インパルスの即時ステップ減
-const INTENSITY_HOLD = 0.75;   // これ以上のIntensityでは上げを止める(下げのみ許可)
 const HYSTERESIS = 0.05;       // 配役しきい値のヒステリシス幅(点滅防止)
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
@@ -39,13 +38,17 @@ export interface GatePressureInputs {
   msSinceLastHit: number; // 直近被弾からの経過ms
   killRateEma: number;    // 撃破/秒のEMA
   hitImpulse: boolean;    // このフレームで被弾インパルス(2秒以内2被弾 or 1発でHP15%減)が発生したか
+  // PACING_V2.mdバッチR1-E: Intensityによる上げホールドは撤廃済み(risingBlockedはboardDebtのみで
+  // 判定)。フィールド自体は呼び出し側(useGameLoop)が引き続き渡すため残すが、このステップ関数内では未使用。
   intensity: number;      // AIディレクターのIntensity(0..1)
   ceiling: number;        // 実効天井(maxRung→天井変換 × ゾーン天井 の小さい方)
   dtMs: number;
   // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 省略時は0=従来と完全一致(risingBlockedへ影響なし)。
   boardDebt?: number;
-  // PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はUP_TAU_S(8s)=従来と完全一致。
-  // stageAggroForAggro側の`riseTauSForAggro`が算出した値を渡す(0.5で8sに一致)。
+  // PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はUP_TAU_S(PACING_V2.mdバッチR1-Eで5sへ
+  // 変更済み)。stageAggroForAggro側の`riseTauSForAggro`は実際にはuseGameLoopから常時渡されるため
+  // このデフォルトは実プレイでは使われない。riseTauSForAggro(0.5)は旧8s基準のまま(未更新)で、
+  // 本バッチのτ短縮を実プレイへ反映させるには合わせて再較正が必要 — PACING_V2.mdの★未決事項へ記載。
   riseTauS?: number;
 }
 
@@ -66,8 +69,10 @@ export const stepGatePressure = (prev: GatePressureState, inputs: GatePressureIn
   if (inputs.hitImpulse) pressure = Math.max(0, pressure - HIT_IMPULSE_DROP);
 
   // バッチ3.5-B(盤面在庫): 「今盤面に何がいるのか」を見ずに登り続けないよう、debtが高い間は
-  // (Intensity条件とは独立に)登りだけをブロックする(憲法第5条「ピンチに撃たない」の盤面版)。
-  const risingBlocked = (inputs.intensity >= INTENSITY_HOLD && perf > pressure) || (inputs.boardDebt ?? 0) > RISE_DEBT_MAX;
+  // 登りだけをブロックする(憲法第5条「ピンチに撃たない」の盤面版)。
+  // PACING_V2.mdバッチR1-E: Intensity≥0.75での上げ停止(ホールド)は撤廃(本書裁定)。危険時の抑制は
+  // 被弾インパルス(-0.15・維持)+boardDebt+キャップが担う(「台本は見せる。危険度は状況で抑える」)。
+  const risingBlocked = (inputs.boardDebt ?? 0) > RISE_DEBT_MAX;
   if (!risingBlocked) {
     const dtS = Math.max(0, inputs.dtMs) / 1000;
     const tauS = perf >= pressure ? (inputs.riseTauS ?? UP_TAU_S) : DOWN_TAU_S;

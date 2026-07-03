@@ -205,11 +205,27 @@ pressureしきい値・boardDebtゲート・Intensityを**無視して1体を確
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
-| R1 | 台本ローテ(時間解禁/未見優先/rank廃止/主題保証/τ5s・ホールド撤廃) | 未着手 |
+| R1 | 台本ローテ(時間解禁/未見優先/rank廃止/主題保証/τ5s・ホールド撤廃) | **完了(v0.26.3)** |
 | R2 | 時間骨格60秒化(PHASES再カット・深入りモード) | 未着手 |
 | R3 | 関所テーマ可視化(バナー+診断) | 未着手 |
 | R4 | 緩整理+浅エリア代替表現 | 未着手 |
 | R5 | ゴールド経済接続 | **社長採否待ち・着手禁止** |
 
 ## ★未決事項(Sonnetはここに書いて止まる)
-(現在なし)
+
+### R1-E τ短縮(8s→5s)がstageAggro経由では実プレイに反映されない(v0.26.3発見)
+- 症状: `gatePressure.ts`の`UP_TAU_S`は8→5に変更した(指示どおり)。しかし`useGameLoop.ts`は
+  `stepGatePressure`へ`riseTauS: riseTauSForAggro(currentStageAggro())`を**常に**渡しており
+  (`?stageaggro=0`時もcurrentStageAggro()が中立値0.5を返すだけで、riseTauS自体は省略されない)、
+  `stepGatePressure`内は`inputs.riseTauS ?? UP_TAU_S`なので実プレイでは常にriseTauSForAggro側の
+  値が使われ、UP_TAU_S定数は事実上のデッドコードになっている(純粋関数の単体テスト/デフォルト
+  引数としてのみ生きる)。
+- `stageAggro.ts`の`riseTauSForAggro(aggro) = 10 - 4*clamp01(aggro)`はaggro=0.5(既定/中立)で8sを
+  返す式(バッチ6導入時にUP_TAU_S=8sへ一致するよう校正済み)。この式自体は本書のR1-Eの指示文
+  (「gatePressure.ts」とだけ書かれている)に含まれていないため、Sonnetの判断では変更していない。
+- 結果: 現状のコードのままだと「上げτ8→5秒」は**実プレイのどのURLフラグ設定でも体感に反映されない**
+  (テストが検証するのは`stepGatePressure`という純粋関数の既定値としての5sのみ)。
+- 裁定が必要な点: `riseTauSForAggro`の式もこの機会に再較正する(例: aggro=0.5で5sになるよう
+  `7 - 4*clamp01(aggro)`等へ変更)か、あるいはUP_TAU_S変更は「純関数のデフォルト値としての意味合い
+  のみで良く、実プレイの数値はstageAggro側の値付けを別途見直すまで現状維持でよい」のか。
+  値・カーブの意味に関わるため実装チャットの判断では変更していません(仕様変更のルール)。

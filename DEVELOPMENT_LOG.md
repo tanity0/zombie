@@ -11,6 +11,43 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.3 — バッチR1実装: 台本ローテーション(rank寄せ廃止・実装チャットSonnet)
+- PACING_V2.mdバッチR1一式を実装。
+  - **R1-A(時間解禁)**: `gateProgram.ts`の各台本に`unlockMs`を追加(数/射線=0:00・判断=2:00・
+    襲撃=3:00・三択/スパイク=4:00・不意打ち=7:00)。適格判定を`gameTime>=unlockMs`に置き換え。
+  - **R1-B/C(未見優先ローテ+rank撤去)**: `selectGateProgram`を「時間解禁→イベント選出ルール
+    (a)(b)(c)維持→直前除外→未見優先→tieBreakRandomで一様選択」へ書き換え。`GateProgramInput`
+    から`rank`/`phaseMaxRung`を外し`gameTime`/`seenProgramIds`(ラン開始でリセットするSet)を追加。
+    旧ロジックは`selectGateProgramLegacy`/`GateProgramInputLegacy`として維持(削除しない)。
+    `useGameLoop.ts`に復帰フラグ**`?v2=0`**を新設(既定=新ロジック/`v2=0`で旧rank寄せ選択に戻る)。
+  - **R1-D(主題保証)**: 新規`gateGuarantee.ts`(`evaluateGateGuarantee`)。関所開始15秒
+    (`GATE_FEATURE_GUARANTEE_MS`)経ってもfeatured問題児が1体も出現していなければ、pressure
+    しきい値/boardDebtゲート/Intensityホールドを無視して1体だけ確定投入する指示を立てる。
+    ゾーン天井(`allowedProblemChildren(ceiling,...)`経由)/同時数キャップ(`enemyCap`)/リフラクトリ
+    15秒は破らない(呼び出し側で判定)。キャップ満杯時は`pendingType`として毎フレーム再チェック
+    (既存の`pressureCastRef.pendingCast`と同じ「掃けたら発火」パターン)。関所開始時に
+    `snapshotSpawns()`をアンカーとして保存(ディープコピー・実装精度の規律3準拠)。V2_ENABLED&&
+    GATE_PROGRAM_ENABLED時のみ有効。
+  - **R1-E(pressure調整)**: `gatePressure.ts`の`UP_TAU_S`を8→5秒。Intensity≥0.75の上げホールド
+    (`INTENSITY_HOLD`)を撤廃、`risingBlocked`はboardDebtのみで判定(本書裁定・危険側の抑制は
+    被弾インパルス+boardDebt+キャップが担う)。
+- テスト: 新規`gateRotation.test.ts`(100ラン×20関所の全数シミュレーション。直前非連続/未見優先/
+  unlockMs境界/全7メニュー出現を独立参照モデルで突き合わせ検証)、新規`gateGuarantee.test.ts`
+  (7件)。`gateProgram.test.ts`は`selectGateProgramLegacy`向けの既存回帰群+新`selectGateProgram`
+  向けの新規群へ再編。`gatePressure.test.ts`のIntensityホールドのテストは仕様変更として書き換え、
+  τ5s化の回帰テストを追加(本書R1-Eが明示的に許可)。
+- **★未決事項を発見・記載**: `UP_TAU_S`をgatePressure.tsで8→5秒に変えても、`useGameLoop.ts`は
+  常に`stageAggro.ts`の`riseTauSForAggro(currentStageAggro())`をriseTauSとして渡すため
+  (`?stageaggro=0`でも中立値0.5経由で値は渡る)、実プレイでは`UP_TAU_S`が事実上デッドコードになり
+  τ短縮の体感が反映されない。`riseTauSForAggro`の式(aggro=0.5で8s)を今回のR1-Eに合わせて
+  再較正するかは値・カーブの変更判断のため、PACING_V2.mdの★未決事項へ記載し実装は行わず社長裁定待ち。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン)に抵触しない(guaranteeはallowedAtCeilingが
+  空ならno-op=ゾーン天井のまま。R1-B/Cのローテ自体はゾーン判定に触れない)。憲法第5条(緩を荒らさない)
+  にも抵触しない(guarantee/ローテともにgate(関所)フェーズのみが対象、buildup/bossは無変更)。
+- 検証: lint / typecheck / test(322 pass, 1 skip) / build 全通過。`?v2=0`で旧選択ロジック
+  (`selectGateProgramLegacy`+PHASESの`maxRung`)に戻ることをコードパス上で確認(実機未確認)。
+- 次: バッチR2(PHASES再カット・60秒骨格化)。R1-Eのτ未決事項は社長裁定を待って別途対応。
+
 ## v0.26.2 — Pagesデプロイをフォークへ切り替え(設計チャットFable)
 - `.github/workflows/pages.yml` のpushトリガーを `claude/chat-context-continuity-saxlH` →
   `claude/direction-shift` に変更(フォーク側のファイルのみ。旧線のpages.ymlは凍結のまま)。
