@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1374 — リザルト心電図の常時表示+PEAK演出をパズルのコマに同期(社長指示)
+- **①リザルトのAIディレクター心電図を常時表示へ**: `GameOverScreen.tsx`の表示ゲートを
+  `?director=1`必須→既定ON(`?director=0`で非表示)に反転。記録側(`DIRECTOR_ACTIVE`)は元々
+  既定ONだったので、溜まっていたのに見せていなかっただけ=記録コストの増加なし。
+  `DirectorResult.tsx`の「記録なし」文言と旧コメントも実態に合わせて更新。
+- **②PEAK演出のトリガーずれ修正(社長会話で発見・承認)**: PEAK打楽器レイヤーと関所バナー
+  (「多数の変異体を検知」/「襲撃を凌いだ」+gate-clearジングル)のトリガーが旧PHASES時刻表
+  (`phaseAt().kind==='gate'`)のままで、パズル方式の実際の山/緩(60秒コマ)とズレていた
+  (緩コマ中に打楽器が鳴る等)。パズルON時:
+  - 打楽器レイヤー=`getPuzzleDebug().komaKind==='normal'`で駆動(紅き月トリガーは従来どおり併存。
+    ボス中はpuzzleDebug=nullで旧判定にフォールバック=boss中は鳴らない従来挙動と一致)。
+    ※副作用: コマ0(0:00〜)も通常コマなので打楽器がラン開始直後から鳴る。違和感があれば
+    「初回コマは鳴らさない」等の調整が可能(実機判断待ち)。
+  - バナー=コマ境界の通常⇄緩の切り替わりで発火(normal連続2コマ=1つの襲撃ウィンドウ扱い・
+    normal→normalで再発火しない。ラン開始0:00はバナー無し=旧線の「初回関所まで無音」を踏襲)。
+  - 旧PHASES境界のバナーは`!PUZZLE_ENABLED`ゲートで停止(`?puzzle=0`で文言・挙動とも完全復帰)。
+- 自己点検: 憲法第4条・第5条に無関係(音・バナー・リザルト表示のみ。湧き/難易度ロジック不変)。
+- 検証: lint / typecheck / test(383 pass, 1 skip) / build 全通過。実機未確認(統合テストと同時に
+  確認可能。特に②のラン開始直後の打楽器の是非)。
+
 ## v0.25.1373 — デバッグ・死蔵コードの整理(社長指示・挙動不変)
 - 全src横断で「宣言以外どこからも参照されていないexport」を機械的に洗い出し(誤検出=自ファイル内
   使用・テスト参照・意図ある資産を1件ずつ除外)、真に死蔵の3点だけ削除:

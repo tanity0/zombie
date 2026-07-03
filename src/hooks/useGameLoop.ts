@@ -1170,11 +1170,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const hpFrac = gs.player.maxHealth > 0 ? gs.player.health / gs.player.maxHealth : 0;
         const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused;
         setHeartbeatLoop(critical);
-        // PEAK重ねSE+BGMダッキング: トリガーは台本の関所(gate)フェーズ or 紅き月(社長指示で
-        // 「多数の変異体を検知」バナーと同じ源=台本に統一。反応型macroのPEAKでは鳴らさない。
-        // 反応型と台本は別物なので、macro基準だとRELAX表示中に鳴る、が起きる)。屋外のみ。
-        const outdoorGate = gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate';
-        setPeakLayer(!gs.isPaused && gs.player.health > 0 && (outdoorGate || gs.redNight?.phase === 'active'));
+        // PEAK重ねSE+BGMダッキング: トリガーは「多数の変異体を検知」バナーと同じ源=台本に統一
+        // (社長指示。反応型macroのPEAKでは鳴らさない=macro基準だとRELAX表示中に鳴る、が起きる)。
+        // PACING_PUZZLE.md(v0.25.1374): パズル方式ON時の「台本」は旧PHASESではなく60秒コマなので、
+        // トリガーを通常コマ(komaKind==='normal')へ差し替え(社長承認)。旧時刻表のままだと緩コマ中に
+        // 打楽器が鳴る等、音と実態がズレていた。?puzzle=0時・ボス中(puzzleDebug=null)は従来どおり
+        // 旧PHASESのgateフェーズで判定。屋外のみ。
+        const puzzlePeakSnap = PUZZLE_ENABLED ? getPuzzleDebug() : null;
+        const scriptedPeak = puzzlePeakSnap
+          ? puzzlePeakSnap.komaKind === 'normal'
+          : (gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate');
+        setPeakLayer(!gs.isPaused && gs.player.health > 0 && (scriptedPeak || gs.redNight?.phase === 'active'));
       }
 
       // Update FPS counter
@@ -6089,7 +6095,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 生きて抜けた瞬間「襲撃を凌いだ」。表示は頭上の浮きテキストではなく、既存の左上イベント
         // バナー(eventBannerText=「危険変異体出現」等と同じUI)に統一(社長指示)。屋外のみ。
         // 最終フェーズ(gate9)は終わりが無いので生還側は出ない。
-        if (!labTheme && !indoor && gateCalloutRef.current !== rankPhaseKey) {
+        // PACING_PUZZLE.md(v0.25.1374): パズル方式ON時は旧PHASES境界のバナーを止め、コマ境界
+        // (通常⇄緩の切り替わり)側で出す(パズルの配線ブロック内)。?puzzle=0時は従来どおりここ。
+        if (!PUZZLE_ENABLED && !labTheme && !indoor && gateCalloutRef.current !== rankPhaseKey) {
           const prevKey = gateCalloutRef.current;
           gateCalloutRef.current = rankPhaseKey;
           if (curPhase.kind === 'gate') {
@@ -6587,6 +6595,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             puzzleKomaRef.current.komaIndex += 1;
             puzzleKomaRef.current.acc = createKomaAccumulator();
+            const prevKind = puzzleKomaRef.current.kind;
             const posInCycle = puzzleKomaRef.current.komaIndex % 3; // 0,1=通常 / 2=緩枠(社長決定: 通常60秒×2→緩60秒)
             if (posInCycle === 2) {
               const variant = puzzleKomaRef.current.relaxVariant;
@@ -6605,6 +6614,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               puzzleKomaRef.current.lastPatternId = picked.id;
               puzzleKomaRef.current.seenIds.add(picked.id);
               if (allPatternsSeen(rank, puzzleKomaRef.current.seenIds)) puzzleKomaRef.current.seenIds.clear();
+            }
+            // 関所バナー(v0.25.1374): 旧PHASES境界の代わりに、通常⇄緩の切り替わりで出す
+            // (文言・UI・ジングルは従来と同一。連続する通常コマ2つ=1つの襲撃ウィンドウとして扱い、
+            //  normal→normalでは再発火しない)。ラン開始0:00のコマ0はバナー無し(旧線も初回関所まで
+            //  無音だったのを踏襲=導入を騒がせない)。
+            if (prevKind === 'normal' && puzzleKomaRef.current.kind !== 'normal') {
+              useGameStore.setState({ eventBannerText: '襲撃を凌いだ', eventBannerUntil: gameTime + 3500 });
+              playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
+            } else if (prevKind !== 'normal' && puzzleKomaRef.current.kind === 'normal') {
+              useGameStore.setState({ eventBannerText: '多数の変異体を検知', eventBannerUntil: gameTime + 3500 });
             }
           }
 

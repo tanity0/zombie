@@ -12,8 +12,9 @@ import { getSelectedStageId, submitStageHighScore } from '../data/progress';
 import { AREA_ZONE_NAMES } from '../utils/enemyUtils';
 import DirectorResult from './DirectorResult';
 
-// AIディレクター振り返り(?director=1 の時だけリザルトに緊張曲線＋難易度スコアを出す)。
-const directorEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('director') === '1';
+// AIディレクター振り返り(緊張曲線+難易度スコア+ランク階段)。v0.25.1374(社長指示)から
+// リザルトに常時表示(記録側DIRECTOR_ACTIVEは元々既定ON)。?director=0で記録ごと非表示。
+const directorEnabled = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('director') !== '0';
 
 interface GameOverScreenProps {
   stats: GameStats;

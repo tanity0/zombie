@@ -3,7 +3,7 @@ import { getDirectorSamples, DIRECTOR_EVENT_BIT, type DirectorPhaseKind } from '
 import { summarizeRun, type DirectorMacro } from '../utils/aiDirector';
 import { BORED_BONUS_MAX } from '../utils/boredomDirector';
 
-// リザルト画面のAIディレクター振り返り(?director=1 の時だけ表示)。
+// リザルト画面のAIディレクター振り返り(v0.25.1374から常時表示。?director=0で記録ごと停止)。
 // プレイ中は数字を見ずに遊び、死亡/クリア後にここで「緊張曲線＋難易度スコア」を確認する(社長指示)。
 // ゲームループとは独立=すでに記録済みのサンプルを読むだけ。静的表示なので負荷はほぼ無し。
 const MACRO_BG: Record<DirectorMacro, string> = { buildup: '#38bdf8', peak: '#f87171', relax: '#4ade80' };
@@ -168,7 +168,7 @@ const DirectorResult: React.FC = () => {
           ))}
         </svg>
       ) : (
-        <div className="text-[11px] text-white/50 py-2">記録なし（?director=1 で計測されます）</div>
+        <div className="text-[11px] text-white/50 py-2">記録なし（計測前に終了、または ?director=0 で計測停止中）</div>
       )}
       {chart && (
         <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-white/50">
