@@ -5,10 +5,22 @@ on the zombie game. Append a new entry after each meaningful change.
 
 ## Environment
 - Repository: `/Users/tanity/zombie`
-- Branch: `claude/chat-context-continuity-saxlH`
+- Branch: `claude/direction-shift`(このブランチ=方向転換フォーク。旧線
+  `claude/chat-context-continuity-saxlH` はセーブポイントとして凍結・push禁止)
 - Dev server: `npm run dev`
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
+
+## v0.26.0 — フォーク開始: `claude/direction-shift` 新設(社長指名・設計チャットFable)
+- 社長指示「大きな方向転換を試すので一旦分けたい。セーブポイントに戻す可能性は大いにある」。
+  ブランチ名は社長がチャットで `claude/direction-shift` を指名(Branch lockの例外手続きに準拠)。
+- セーブポイント fc1c2a5(v0.25.1361)から分岐。**旧線 `claude/chat-context-continuity-saxlH` は
+  凍結(push禁止)**。再開時は社長指示で旧線をそのまま checkout すればよい。
+- CLAUDE.md の Branch lock / Active branch と本ファイルの Environment をフォーク名に更新。
+- **バージョンは 0.26.0 へ切り上げ**(両ラインとも0.25.xを進めると実機の画面表示でどちらの
+  ビルドか判別できなくなるため。旧線=0.25.x/フォーク=0.26.x で一目で区別)。
+- 方向転換の中身は未定(次の会議で決める)。ゲームコードは無変更。
+- 検証: lint / typecheck / test / build 全通過。自己点検: 憲法4条・5条に無関係(doc+versionのみ)。
 
 ## v0.25.1360 — セーブポイント: 乖離洗い出しP1〜P8を記録+gitタグ(社長指示・設計チャットFable)
 - 社長指示「ここまでの開発を1個セーブポイントとして、別の開発にフォークしたい。セーブポイントに
