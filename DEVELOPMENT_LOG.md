@@ -11,6 +11,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.10 — 憲法廃止+エリア台本の書き込み開始(社長指示・doc変更のみ)
+- **社長指示「憲法は廃止。現状の設計へ」**: `constitution.test.ts`の横断不変条件(第1〜5条。
+  countCap上限/初心者ゾーン不可侵/featuredの自己整合/mix全指定/床の許可リスト/主役上限/
+  天井の単調性)は`claude/direction-shift`ブランチでの拘束力を失った。PACING_V2.md「1. 不変条件」・
+  CLAUDE.md「実装精度の規律」の該当記述を更新(旧憲法は歴史的経緯として文言は残すが、
+  「全条維持」の縛りは削除)。`constitution.test.ts`自体の削除/書き換えは、後続のエリア台本
+  実装バッチで対応する(現時点ではテストはそのまま=挙動もコードも無変更)。
+- **エリア台本(社長指示・書き込み中)**: PACING_V2.md新設「2. エリア台本」に、エリア1〜3の
+  問題児(パンプキン/犬/弾)たまに追加パターン+上限(パンプキン2/犬2/弾3)+別枠(叫び1/
+  ゴースト2・3分解禁だがエリア3以降は最初から出現可)を記録。エリア4は実装時の裁量とする社長指示。
+  関所ローテ(R1)・浅いエリア代替表現(R4-C)との住み分けは未確定(★未決事項候補として記載)。
+  社長が書き込みを継続中のため、実装(コード変更)はまだ着手していない。
+- 自己点検: PACING_V2.mdの現行設計と矛盾しない(本エントリ自体が現行設計の更新)。コード無変更。
+- 検証: doc変更のみ(lint/typecheck/test/build 全通過・コード非変更のため実質no-op確認)。
+- 次: エリア台本の書き込み完了を待ち、数値・既存機構との関係(AREA_WEIGHT/R4-C)を確定してから実装。
+
 ## v0.26.9 — Pagesを両線合成デプロイへ統一(設計チャットFable)
 - pages.ymlを旧線と同一の合成版に更新: どちらの線がpushしても**旧線=`/zombie/`・
   新線=`/zombie/v2/`(vite --base上書き)**の両方を最新でビルドして1つのPagesサイトへデプロイ。
