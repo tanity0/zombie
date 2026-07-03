@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1343 — 社長報告「犬パンプキン合流・ゾンビ配合が効いてない」の原因3つを修正(設計チャットFable・バグ修正)
+- 社長報告(バッチ5直後の実機): 「最初から犬やパンプキンが合わさって湧く」「ゾンビの数調整が効いてない」。
+  調査の結果、旧対策の巻き戻りではなく**バッチ4/5の実装に3つの穴**があった:
+  1. **フェーズ別キル集計のエイリアシング実バグ**: `killPhaseRef.startTotals`に`getKillTotals()`の
+     **生きている参照**を保存していたため、フェーズ差分が常に0。バッチ4の苦戦判定が
+     「直前関所のfeatured型は毎回キル0=苦戦」と誤認→**関所を通るたび回収演目が発動**。
+  2. 回収演目は`featuredFloor: true`+**主役の投入無制限**——バッチ1.5で閉じた床の裏口が回収経由で
+     初心者ゾーンに再開通し、犬/パンプキン/弾が緩のたびに湧いていた(=報告①の正体)。
+  3. バッチ5の台本(判断/三択/不意打ち)と旧gate-chaosに**mix未指定**→これらの関所中はチャフが
+     素のエリア重み(エリア1以深はゾンビ重め)に戻り、ゾンビ配合が効かない(=報告②の正体)。
+- **修正**:
+  - スナップショットをディープコピー化(`snapshotKillTotals`新設)+**型別出現数の記録**
+    (`recordSpawn`・gameStore.addEnemyの合流点で加算)を追加し、苦戦判定を
+    「**出現3体以上なのにキル2未満**」へ(出なかった型を苦戦と誤認しない)。
+  - 回収の主役に**フェーズ合計2体**の上限(講習1体制限と同系のfeatured/floor畳み)。
+  - 判断/三択/不意打ち/gate-chaosに配合を指定(壁25〜35%帯)+**回帰ガードテスト**
+    「mix未指定のシーンを新設しない」を追加。
+- テスト: killTelemetryState(スナップショット独立性/出現記録)2件+difficultyDirectorのmix全指定
+  ガード。lint / typecheck / test(271 pass, 1 skip) / build 全通過。
+- 負荷スコア: 1/10(出現記録=スカラー加算のみ)。コアループ宣言: ②分ループ(初心者ゾーンの
+  約束「問題児は出ない」と配合レバーの回復)。
+
 ## v0.25.1342 — トールの横払い/突きに刀を追加表示(社長提供素材)+GitHub Pagesデプロイ不具合の調査
 - 「ステージ5の裏ボス用の刀。横払い、突きに追加で攻撃がわかりやすくなる様に使用してください」に対応。
   社長提供の刀絵(`public/sprites/thor-katana.png`・1254x1254・紫背景)を`pixiTextures.ts`の

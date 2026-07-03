@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   recordKill, getKillTotals, resetKillTelemetry, getCurrentStyle,
   setPhaseKillDebug, getPhaseKillDebug, resetPhaseKillDebug, getLastKillAt,
+  snapshotKillTotals, recordSpawn, snapshotSpawns,
 } from './killTelemetryState';
 
 describe('killTelemetryState (PACING_REDESIGN.mdバッチ2 singleton)', () => {
@@ -70,5 +71,28 @@ describe('killTelemetryState (PACING_REDESIGN.mdバッチ2 singleton)', () => {
       resetKillTelemetry();
       expect(getLastKillAt('ghost')).toBeUndefined();
     });
+  });
+});
+
+describe('snapshotKillTotals / recordSpawn (v0.25.1343)', () => {
+  it('snapshot is a deep copy — later kills do not mutate the snapshot (aliasing regression)', () => {
+    resetKillTelemetry();
+    const snap = snapshotKillTotals();
+    recordKill('pumpkin', 'gun');
+    expect(snap.byBucket.pumpkin).toBe(0);
+    expect(getKillTotals().byBucket.pumpkin).toBe(1);
+  });
+
+  it('records spawns by bucket and snapshots them independently', () => {
+    resetKillTelemetry();
+    recordSpawn('werewolf');
+    recordSpawn('werewolf');
+    recordSpawn('bat'); // chaff
+    const snap = snapshotSpawns();
+    expect(snap.werewolf).toBe(2);
+    expect(snap.chaff).toBe(1);
+    recordSpawn('werewolf');
+    expect(snap.werewolf).toBe(2); // コピーであること
+    expect(snapshotSpawns().werewolf).toBe(3);
   });
 });

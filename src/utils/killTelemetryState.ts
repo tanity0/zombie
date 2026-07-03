@@ -40,15 +40,34 @@ export const recordKill = (type: EnemyType, method: 'gun' | 'melee', gameTimeMs?
 export const getKillTotals = (): Readonly<KillTotals> => totals;
 export const getLastKillAt = (type: EnemyType): number | undefined => lastKillAt[type];
 
+// GAME_AUDIT追補(v0.25.1343): フェーズ境界のアンカー用ディープコピー。getKillTotals()は生きている
+// オブジェクトを返すため、参照のまま保存すると「開始時点」も一緒に増えて差分が常に0になる
+// (バッチ4の苦戦判定が全featured型を毎回キル0=苦戦と誤認していた実バグの原因)。
+export const snapshotKillTotals = (): KillTotals => ({
+  byBucket: { ...totals.byBucket },
+  gunKills: totals.gunKills,
+  meleeKills: totals.meleeKills,
+});
+
+// GAME_AUDIT追補(v0.25.1343): 型別の「出現」数(バケツ単位)。苦戦判定を
+// 「出現したのにキルが少ない」にするための記録。gameStore.addEnemy(全スポーン経路の合流点)が加算。
+let spawnsByBucket: Record<KillBucket, number> = { pumpkin: 0, werewolf: 0, plant: 0, ghost: 0, screamer: 0, chaff: 0 };
+export const recordSpawn = (type: EnemyType): void => {
+  spawnsByBucket[bucketForKill(type)] += 1;
+};
+export const snapshotSpawns = (): Record<KillBucket, number> => ({ ...spawnsByBucket });
+
 export const resetKillTelemetry = (): void => {
   totals = createTotals();
   lastKillAt = {};
+  spawnsByBucket = { pumpkin: 0, werewolf: 0, plant: 0, ghost: 0, screamer: 0, chaff: 0 };
 };
 
 // 直前に完了したフェーズの種別キル内訳+その時点のスタイル(デバッグ表示用)。
 export interface PhaseKillDebug {
   phaseKey: string;
   killsByBucket: Record<KillBucket, number>;
+  spawnsByBucket?: Record<KillBucket, number>; // v0.25.1343: そのフェーズ中の出現数(苦戦判定用)
   style: PlayStyle;
 }
 

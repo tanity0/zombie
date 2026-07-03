@@ -37,6 +37,7 @@ export const gateJudgmentProgram = (style: PlayStyle, tieBreakRandom: number): G
   return {
     id: 'gate-judgment', maxRung: 5,
     featured: [primary, 'plant'], intervalMult: 0.7, rareMult: 1.25,
+    mix: { bat: 35, skeleton: 40, zombie: 25 }, // v0.25.1343: 主役を立てるため壁は控えめ(チャフ配合の穴埋め)
     judgmentPrimary: primary,
   };
 };
@@ -45,6 +46,7 @@ export const gateJudgmentProgram = (style: PlayStyle, tieBreakRandom: number): G
 export const GATE_TRIPLE: GateProgram = {
   id: 'gate-triple', maxRung: 6,
   featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35,
+  mix: { bat: 30, skeleton: 40, zombie: 30 }, // v0.25.1343: チャフ配合の穴埋め(未指定=素の分布でゾンビ過多だった)
 };
 
 // 不意打ちの関所: 三択+叫び/ゴースト。最終maxRung=7でのみ選ばれる。screamer/ghost自体の解禁は
@@ -53,6 +55,7 @@ export const GATE_TRIPLE: GateProgram = {
 export const GATE_AMBUSH: GateProgram = {
   id: 'gate-ambush', maxRung: 7,
   featured: ['pumpkin', 'werewolf', 'plant', 'screamer', 'ghost'], intervalMult: 0.5, rareMult: 1.4,
+  mix: { bat: 30, skeleton: 35, zombie: 35 }, // v0.25.1343: チャフ配合の穴埋め
 };
 
 export type Rank = 0 | 1 | 2;

@@ -52,8 +52,8 @@ export interface Phase {
 // rareMult(DISTRIBUTION_REDESIGN.md③): 緩=0(休憩を汚さない)/無双=0.5(群れに時々1体)/
 // 関所=1.2〜1.35(山場の顔・chaosが最大)/ボス=1.0(素のまま)。基礎率(距離)とRank増幅の上に乗る演出レバー。
 // バッチ3.5-A: チャフ配合の叩き台(社長定義の役割=bat爽快/skeleton刻み/zombie壁。すべて実機調整前提)。
-// gate-chaos(全部盛り)は仕様の配合表に無いため mix 省略=従来のエリア重み任せのまま(未指定シーンは
-// 完全に既存挙動と一致・社長への質問候補として残す)。
+// v0.25.1343: 全シーン/全台本にmixを指定(未指定=素の分布はゾンビ過多になり「配合が効かない」体感の
+// 原因だった。GAME_AUDIT追補)。
 const SCENE_RELIEF_SPARSE: SpawnScene  = { id: 'relief-sparse',  featured: [], intervalMult: 1.3, suppressed: ['zombie'], rareMult: 0, mix: { bat: 70, skeleton: 25, zombie: 5 } };                      // 優しい: 雑魚まばら
 const SCENE_RELIEF_PUMPKIN: SpawnScene = { id: 'relief-pumpkin', featured: ['pumpkin'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true, mix: { bat: 55, skeleton: 40, zombie: 5 } }; // 優しい: パンプキン練習(講習=床あり)
 const SCENE_RELIEF_WOLF: SpawnScene    = { id: 'relief-wolf',    featured: ['werewolf'], intervalMult: 1.1, suppressed: ['zombie'], rareMult: 0, featuredFloor: true, mix: { bat: 55, skeleton: 40, zombie: 5 } }; // 優しい: 犬(ダッシュ)練習(講習=床あり)
@@ -64,7 +64,7 @@ const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat
 // (エリア2以深でpressure≥0.35解禁後の出現を加速するだけ。エリア0-1はゾーン天井0.34で従来どおり出ない)。
 const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['plant'], intervalMult: 0.8, rareMult: 1.2, mix: { bat: 30, skeleton: 45, zombie: 25 } }; // 関所①(数系): テンポ+数+弾まで(床なし=エリア規約に従う)
 const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2, mix: { bat: 25, skeleton: 35, zombie: 40 } };          // 関所(射線系): 雑魚大量+飛び道具(壁+弾のコンボ・床なし)
-const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35 }; // 関所: 全部盛りカオス(床なし・mix未指定=従来どおり)
+const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35, mix: { bat: 30, skeleton: 40, zombie: 30 } }; // 関所: 全部盛りカオス(床なし。v0.25.1343: mix未指定だと素の分布でゾンビ過多になるため配合を指定)
 const SCENE_BOSS: SpawnScene           = { id: 'boss',           featured: [], intervalMult: 1.0, rareMult: 1.0, mix: { bat: 30, skeleton: 40, zombie: 30 } };                     // 城ボス中
 
 // PACING_REDESIGN.md 憲法第1条: 画面内は基本10体。台本の countCap は全フェーズ 8〜10 に統一

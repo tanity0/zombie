@@ -99,7 +99,7 @@ import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle, getLastKillAt,
-  getPhaseKillDebug
+  getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
@@ -401,6 +401,9 @@ const DEBT_ENABLED = evParam('debt') !== '0';
 // 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
 const PROGRAM_ENABLED = evParam('program') !== '0';
 const STRUGGLE_KILL_MAX = 2; // 直前関所でのfeatured型キル数がこれ未満なら「苦戦気味」=回収の対象
+// v0.25.1343: 「出現したのにキルが少ない」時だけ苦戦とみなす(これ未満の出現数なら対象外)。
+// 初心者ゾーンではfeatured問題児がゾーン天井でそもそも出現しない=キル0だが苦戦ではない。
+const STRUGGLE_MIN_SPAWNS = 3;
 // PACING_REDESIGN.mdバッチ5: 山(関所)の台本選択。?gateprogram=0で従来の固定シーン
 // (PHASESのscene/maxRung)に戻す。
 const GATE_PROGRAM_ENABLED = evParam('gateprogram') !== '0';
@@ -674,12 +677,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 条件が晴れるまで毎フレーム再チェックする(タイマー消費なし・パルスを取りこぼさない)。
   const pressureCastRef = useRef<{ order: [ProblemChild, ProblemChild] | null; pendingCast: ProblemChild | null }>({ order: null, pendingCast: null });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
-  const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof getKillTotals> | null }>({ phaseKey: '', startTotals: null });
+  // v0.25.1343: startTotalsは必ずディープコピー(snapshotKillTotals)で持つ。生参照だと差分が常に0になる。
+  const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof snapshotKillTotals> | null; startSpawns: ReturnType<typeof snapshotSpawns> | null }>({ phaseKey: '', startTotals: null, startSpawns: null });
   // バッチ4: 直近に入った関所(gate)フェーズのfeatured型(「前の山の主役」=回収の判定材料)。
   const lastGateFeaturedRef = useRef<EnemyType[]>([]);
   // バッチ4: 現在の緩(buildup)フェーズで選ばれている演目+講習主役の投入済みフラグ
   // (「1フェーズ合計1体・キル後は再投入しない」の状態管理)。
-  const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean }>({ phaseKey: '', program: null, lessonSpawned: false });
+  const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean; recoverySpawned: number }>({ phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0 });
   // バッチ5: 現在の山(gate)フェーズで選ばれている台本+直近に見せた台本id(連続回避用)。
   const gateProgramRef = useRef<{ phaseKey: string; program: GateProgram | null; lastId: GateProgramId | null }>({ phaseKey: '', program: null, lastId: null });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
@@ -1294,7 +1298,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 難易度⑤(DirectorRank)も新ランでリセット(前ランのスナップショットで初回フェーズを誤評価しない)。
           rankRef.current = { rank: 0, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1, lastPerf: 0.7 };
           lastGateFeaturedRef.current = []; // バッチ4も新ランでリセット
-          reliefProgramRef.current = { phaseKey: '', program: null, lessonSpawned: false };
+          reliefProgramRef.current = { phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0 };
           setReliefProgramDebug(null);
           gateProgramRef.current = { phaseKey: '', program: null, lastId: null }; // バッチ5も新ランでリセット
           setGateProgramDebug(null);
@@ -1314,7 +1318,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
           resetKillTelemetry();
           resetPhaseKillDebug();
-          killPhaseRef.current = { phaseKey: '', startTotals: null };
+          killPhaseRef.current = { phaseKey: '', startTotals: null, startSpawns: null };
           maxAreaRef.current = 0;
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
@@ -5861,15 +5865,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ?rank=0 とは独立(RANK_ENABLEDを跨がない)。
         if (!labTheme && !indoor && killPhaseRef.current.phaseKey !== rankPhaseKey) {
           const prevTotals = killPhaseRef.current.startTotals;
+          const prevSpawns = killPhaseRef.current.startSpawns;
           if (prevTotals) {
             const nowTotals = getKillTotals();
+            const nowSpawns = snapshotSpawns();
             const killsByBucket = {} as Record<KillBucket, number>;
+            const spawnsByBucket = {} as Record<KillBucket, number>;
             (Object.keys(nowTotals.byBucket) as KillBucket[]).forEach(b => {
               killsByBucket[b] = Math.max(0, nowTotals.byBucket[b] - prevTotals.byBucket[b]);
+              spawnsByBucket[b] = Math.max(0, nowSpawns[b] - (prevSpawns?.[b] ?? 0));
             });
-            setPhaseKillDebug({ phaseKey: killPhaseRef.current.phaseKey, killsByBucket, style: getCurrentStyle() });
+            setPhaseKillDebug({ phaseKey: killPhaseRef.current.phaseKey, killsByBucket, spawnsByBucket, style: getCurrentStyle() });
           }
-          killPhaseRef.current = { phaseKey: rankPhaseKey, startTotals: getKillTotals() };
+          // v0.25.1343: 生参照ではなくディープコピーを保存(参照のままだと差分が常に0=苦戦誤認の実バグ)。
+          killPhaseRef.current = { phaseKey: rankPhaseKey, startTotals: snapshotKillTotals(), startSpawns: snapshotSpawns() };
         }
         // バッチ5: 山(緩明け)の台本選択。関所フェーズに入った瞬間だけ判定する(rankPhaseKeyと同じ境界)。
         // バッチ4の直下(lastGateFeaturedRefが実際に見せた台本のfeaturedを読めるように)より前、かつ
@@ -5898,7 +5907,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               for (const t of lastGateFeaturedRef.current) {
                 const bucket = t as KillBucket;
                 const kills = debug.killsByBucket[bucket] ?? 0;
-                if (kills < STRUGGLE_KILL_MAX && kills < worstKills) { worst = t; worstKills = kills; }
+                const spawns = debug.spawnsByBucket?.[bucket] ?? 0;
+                // v0.25.1343: 出現していない型を「苦戦」と誤認しない(ゾーン天井でブロックされた
+                // featuredが毎回キル0=苦戦扱いになり、回収の床経由で初心者ゾーンに問題児が
+                // 逆流していた実バグの修正)。
+                if (spawns >= STRUGGLE_MIN_SPAWNS && kills < STRUGGLE_KILL_MAX && kills < worstKills) { worst = t; worstKills = kills; }
               }
               struggleType = worst;
             }
@@ -5910,7 +5923,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               struggleType,
               intro: curPhase.index === 1, // GAME_AUDIT #6: 導入buildupは必ず純休憩(講習にしない)
             });
-            reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false };
+            reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false, recoverySpawned: 0 };
           }
         }
         // 関所(襲撃)告知(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
@@ -6125,6 +6138,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (effectiveProgram && effectiveProgram.lessonPrimary && reliefProgramRef.current.lessonSpawned) {
           effectiveProgram = { ...effectiveProgram, featured: [], featuredFloor: false };
         }
+        // v0.25.1343: 回収の主役も「弱め少数」の仕様どおり上限を設ける(フェーズ合計2体まで。
+        // 従来は無制限補充で、床とあわせて問題児の実質常駐化を招いていた)。
+        if (effectiveProgram && effectiveProgram.recoveryPrimary && reliefProgramRef.current.recoverySpawned >= 2) {
+          effectiveProgram = { ...effectiveProgram, featured: [], featuredFloor: false };
+        }
         // バッチ5: gate(山)フェーズでは、台本固定のsceneAtではなく選定済みの台本(gateProgramRef)を使う。
         const effectiveGateProgram = (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program : null;
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
@@ -6310,6 +6328,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (1フェーズ合計1体・キル後は再投入しない=effectiveProgramが以後featuredを空にする)。
             if (PROGRAM_ENABLED && reliefProgramRef.current.program?.lessonPrimary === enemy.type) {
               reliefProgramRef.current.lessonSpawned = true;
+            }
+            // v0.25.1343: 回収の主役の投入数を数える(フェーズ合計2体でfeatured/floorを畳む)。
+            if (PROGRAM_ENABLED && reliefProgramRef.current.program?.recoveryPrimary === enemy.type) {
+              reliefProgramRef.current.recoverySpawned += 1;
             }
             addEnemy(enemy);
             spawnedThisTick = true;

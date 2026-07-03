@@ -26,7 +26,7 @@ import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, am
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import { getDirectorRewardMult } from '../utils/directorRankState';
-import { recordKill } from '../utils/killTelemetryState';
+import { recordKill, recordSpawn } from '../utils/killTelemetryState';
 import { getPityDropTuning } from '../utils/pityState';
 import { pickNpcLine } from '../data/npcLines';
 import {
@@ -5097,6 +5097,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   // Enemy actions
   addEnemy: (enemy) => {
+    // v0.25.1342: 型別の出現数を記録(全スポーン経路の合流点)。バッチ4の苦戦判定を
+    // 「出現したのにキルが少ない」にするための計測(挙動には影響しない)。
+    recordSpawn(enemy.type);
     set(state => ({
       enemies: [...state.enemies, enemy]
     }));
