@@ -20,6 +20,15 @@ describe('stepGatePressure', () => {
     expect(last).toBeGreaterThan(0.5);
   });
 
+  it('バッチM1-A: default rise tau is now 5s (riseTauS omitted matches an explicit riseTauS:5)', () => {
+    const withDefault = stepGatePressure(createGatePressureState(0), { ...GOOD, dtMs: 3000 });
+    const withExplicit5 = stepGatePressure(createGatePressureState(0), { ...GOOD, dtMs: 3000, riseTauS: 5 });
+    expect(withDefault.state.pressure).toBeCloseTo(withExplicit5.state.pressure, 10);
+    // Sanity: this is a real tau change from the old 8s (would give a smaller pressure than 5s at t=3s).
+    const withOld8 = stepGatePressure(createGatePressureState(0), { ...GOOD, dtMs: 3000, riseTauS: 8 });
+    expect(withDefault.state.pressure).toBeGreaterThan(withOld8.state.pressure);
+  });
+
   it('down-tau is faster than up-tau: the same perf/pressure gap closes faster on the way down', () => {
     // Rising from 0 toward perf=1 for 1s vs falling from 1 toward perf=0 for 1s — same 1.0 gap.
     const rising = stepGatePressure(createGatePressureState(0), { ...GOOD, dtMs: 1000 });
@@ -69,10 +78,22 @@ describe('stepGatePressure', () => {
     expect(s.pressure).toBeLessThanOrEqual(0.5);
   });
 
-  it('stops rising while Intensity >= 0.75 (only decay is allowed)', () => {
+  it('バッチM1-B(既定): high Intensity no longer holds the rise — pressure keeps climbing under good perf even at Intensity>=0.75', () => {
     const start = createGatePressureState(0.3);
     const r = stepGatePressure(start, { ...GOOD, intensity: 0.9, dtMs: 5000 });
+    expect(r.state.pressure).toBeGreaterThan(0.3);
+  });
+
+  it('バッチM1-B: legacyIntensityHold=true (?m1=0用) restores the old hold behavior (Intensity>=0.75 stops the rise)', () => {
+    const start = createGatePressureState(0.3);
+    const r = stepGatePressure(start, { ...GOOD, intensity: 0.9, dtMs: 5000, legacyIntensityHold: true });
     expect(r.state.pressure).toBeLessThanOrEqual(0.3);
+  });
+
+  it('バッチM1-B: legacyIntensityHold omitted behaves like false (no regression for existing callers)', () => {
+    const withFalse = stepGatePressure(createGatePressureState(0.3), { ...GOOD, intensity: 0.9, dtMs: 5000, legacyIntensityHold: false });
+    const omitted = stepGatePressure(createGatePressureState(0.3), { ...GOOD, intensity: 0.9, dtMs: 5000 });
+    expect(omitted.state.pressure).toBeCloseTo(withFalse.state.pressure, 10);
   });
 
   it('バッチ3.5-B: stops rising while boardDebt exceeds RISE_DEBT_MAX, even with low Intensity', () => {

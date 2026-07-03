@@ -10,6 +10,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1363 — バッチM1(最小修正)実装: τ5秒/Intensityホールド撤廃/主題保証15秒(社長決定v0.25.1362)
+- A/Bレースのこの線(0.25.x最小修正)側の実装。3点以外(rank寄せ台本選択・PHASES骨格・緩の演目
+  選択・イベントゲート・チャフ配合)は一切触っていない。
+- **M1-A**: `src/utils/gatePressure.ts`の`UP_TAU_S`を8→5。`useGameLoop.ts`はM1有効時`riseTauS`を
+  省略してこの既定5秒を使う(バッチ6のstageAggro駆動τは`?m1=0`時のみ復元・`stageAggro.ts`自体は
+  無変更)。
+- **M1-B**: `stepGatePressure`に`legacyIntensityHold?`を追加。既定でIntensityホールドを撤廃、
+  `?m1=0`時のみ旧挙動(Intensity≥0.75で上げ停止)を復元。`gatePressure.test.ts`のホールド系テストを
+  本節の裁定どおり仕様変更として書き換え。
+- **M1-C**: 新規`src/utils/featureGuarantee.ts`(`shouldGuaranteeSpawn`)。関所開始15秒経過+当該
+  関所内で未出現なら、pressure/boardDebtを無視して1体確定投入。憲法2条の同時数キャップ
+  (plant/werewolf/pumpkin=2・ghost=1)とリフラクトリ(`PROBLEM_REFRACTORY_MS`)は厳守。憲法4条
+  (初心者ゾーン)では不発。イベント関所は対象外。**screamerは除外**(専用ディレクターの状態管理と
+  競合するため・`REFRACTORY_TYPES`の既存除外パターンを踏襲)。関所突入時に`snapshotSpawns()`を
+  ディープコピーで固定(実装精度の規律3)。
+- テスト: `featureGuarantee.test.ts`(8件新規)+`gatePressure.test.ts`(3件追加: τ既定化/ホールド
+  撤廃/legacyIntensityHold復元)。
+- 復帰フラグ: `?m1=0`で3点まとめて旧挙動へ。
+- 自己点検: 憲法第4条(初心者ゾーン)に抵触しない(M1-Cはエリア0-1で明示的に不発)。憲法第5条
+  (緩を荒らさない)にも抵触しない(pressure/保証とも関所フェーズのみ対象、緩フェーズ・イベント
+  ゲートは無変更)。
+- 検証: lint / typecheck / test(314 pass, 1 skip) / build 全通過。実機未確認(A/Bレースの比較判定は
+  社長の実機確認待ち)。
+
 ## v0.25.1362 — A/Bレース開始: この線の凍結解除・最小修正バッチM1を仕様化(社長決定・設計チャットFable)
 - 社長決定: 「セーブポイント側も並行して進める場合は、戻ってくるつもりはない。どっちかで答えを出す」
   =**2線並行のA/Bレース**。この線はセーブポイント(戻る保険)ではなくなり、凍結解除して開発再開。

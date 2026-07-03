@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1363',
+    items: [
+      '強襲(関所)の緊張の高まりが早くなり、しばらく粘っても強敵に一度も出会わないまま終わることが減った。',
+    ],
+  },
+  {
     version: '0.25.1357',
     items: [
       '緊張が高まる場面(PEAK)で重なる打楽器の音を、もっとはっきり聞こえるように音量アップ。',

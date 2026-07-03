@@ -95,6 +95,7 @@ import {
 } from '../utils/gatePressure';
 import { setGatePressureDebug } from '../utils/gatePressureState';
 import { pickChaffMix } from '../utils/chaffMix';
+import { shouldGuaranteeSpawn, type GuaranteeType } from '../utils/featureGuarantee';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import {
@@ -416,6 +417,9 @@ const STAGE_AGGRO_ENABLED = evParam('stageaggro') !== '0';
 // 現在選択中のステージのstageAggroを毎回引く(localStorage読み取りのみ・pixiScene.tsの
 // getSelectedStageId()と同じ軽量な呼び出しパターン。1フレームに複数箇所から呼んでも軽い)。
 const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(getSelectedStageId()) : STAGE_AGGRO_DEFAULT);
+// PACING_REDESIGN.md バッチM1(社長決定v0.25.1362・A/Bレース最小修正線): τ8→5秒/Intensityホールド
+// 撤廃/主題保証15秒の3点をまとめて切り替える復帰フラグ。`?m1=0`で3点とも旧挙動へ。
+const M1_ENABLED = evParam('m1') !== '0';
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
@@ -693,6 +697,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // パルスなので、そのフレームで(Tank存命中/debt過多により)投入できなければここに保留し、
   // 条件が晴れるまで毎フレーム再チェックする(タイマー消費なし・パルスを取りこぼさない)。
   const pressureCastRef = useRef<{ order: [ProblemChild, ProblemChild] | null; pendingCast: ProblemChild | null }>({ order: null, pendingCast: null });
+  // バッチM1-C(主題保証): 関所開始時点のfeatured型ごとの出現数スナップショット(ディープコピー・
+  // 実装精度の規律3)+その関所内で既に保証投入済みの型の集合。keyが変わったら(新しい関所)登り直す。
+  const featureGuaranteeRef = useRef<{ key: string; startedAt: number; startSnapshot: Record<KillBucket, number> | null; satisfied: Set<GuaranteeType> }>({ key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   // v0.25.1343: startTotalsは必ずディープコピー(snapshotKillTotals)で持つ。生参照だと差分が常に0になる。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof snapshotKillTotals> | null; startSpawns: ReturnType<typeof snapshotSpawns> | null }>({ phaseKey: '', startTotals: null, startSpawns: null });
@@ -1335,6 +1342,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatePressureRef.current = { key: '', state: createGatePressureState() };
           pressureHitRef.current = { prevHp: -1, hitTimes: [] };
           pressureCastRef.current = { order: null, pendingCast: null };
+          featureGuaranteeRef.current = { key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() }; // バッチM1-Cも新ランでリセット
           setGatePressureDebug(null);
           // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
           resetKillTelemetry();
@@ -6071,6 +6079,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gatePressureRef.current.key = rankPhaseKey;
             gatePressureRef.current.state = createGatePressureState(startPressureForRank(rankRef.current.rank));
           }
+          // バッチM1-C(主題保証): 関所に入った瞬間だけ、開始時点の出現数をディープコピーで固定する
+          // (実装精度の規律3。生参照だとその後の出現も一緒に増えて差分が常に0になる)。
+          if (featureGuaranteeRef.current.key !== rankPhaseKey) {
+            featureGuaranteeRef.current = { key: rankPhaseKey, startedAt: gameTime, startSnapshot: snapshotSpawns(), satisfied: new Set() };
+          }
           // 被弾インパルス検知(2秒以内2被弾、または1発でHP15%減)。AIディレクター本体のprevHpとは
           // 別管理(責務を混ぜない・専用の軽量ref)。
           const hp = player.health, maxHp = Math.max(1, player.maxHealth);
@@ -6090,6 +6103,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const rungCeiling = ceilingForMaxRung(effectiveMaxRung);
           const ceiling = Math.min(zoneCeiling, rungCeiling);
 
+          // バッチM1-A: M1有効時はτ5秒固定(riseTauS省略=gatePressure.tsのUP_TAU_S=5にフォールバック)。
+          // stageAggro(バッチ6)由来のτスケーリングはM1中は使わない(骨格差だけを比較する統制条件)。
+          // `?m1=0`で従来どおりstageAggro駆動のτへ復帰する。
+          // バッチM1-B: 同様にIntensityホールドも既定で撤廃、`?m1=0`だけ旧挙動(legacyIntensityHold)へ。
           const step = stepGatePressure(gatePressureRef.current.state, {
             msSinceLastHit: directorRef.current.state.sinceDamageMs,
             killRateEma: directorRef.current.state.killRateEma,
@@ -6098,7 +6115,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ceiling,
             dtMs: deltaTime * 1000,
             boardDebt: boardDebtNow,
-            riseTauS: riseTauSForAggro(currentStageAggro()),
+            riseTauS: M1_ENABLED ? undefined : riseTauSForAggro(currentStageAggro()),
+            legacyIntensityHold: !M1_ENABLED,
           });
           gatePressureRef.current.state = step.state;
           gatePressureRef.current.ceiling = ceiling;
@@ -6340,6 +6358,39 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const castEnemy = generateEnemy(gameTime, player, spawnBounds, pending, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
               addEnemy(castEnemy);
               pressureCastRef.current.pendingCast = null;
+            }
+          }
+        }
+        // バッチM1-C(主題保証・社長決定v0.25.1362): 関所開始から15秒経ってもその関所のfeatured問題児が
+        // 当該関所内で1体も出現していなければ、pressure/boardDebtを無視して1体を確定投入する。
+        // screamerは対象外(既存の専用ディレクターが独自にCD/同時数を管理しているため・
+        // REFRACTORY_TYPESと同じ理由でここでも除外)。イベント関所(featured空)は自然に対象外。
+        // `?m1=0`でこの保証自体を丸ごと無効化(旧挙動=保証なし)。
+        if (M1_ENABLED && pressureOutdoor && !danceTest && !indoor && !confining && featureGuaranteeRef.current.startSnapshot) {
+          const featured = effectiveGateProgram ? effectiveGateProgram.featured : curPhase.scene.featured;
+          const isEventGate = effectiveGateProgram?.eventKind != null;
+          const elapsedMs = gameTime - featureGuaranteeRef.current.startedAt;
+          const startSnapshot = featureGuaranteeRef.current.startSnapshot;
+          const nowSpawns = snapshotSpawns();
+          for (const t of featured) {
+            if (t === 'screamer') continue;
+            const type = t as GuaranteeType;
+            if (featureGuaranteeRef.current.satisfied.has(type)) continue;
+            const aliveOfType = useGameStore.getState().enemies.filter(e => e.type === type).length;
+            const guarantee = shouldGuaranteeSpawn({
+              type,
+              elapsedMs,
+              spawnedCountForType: nowSpawns[type] - startSnapshot[type],
+              area: playerAreaIdx,
+              isEventGate,
+              aliveOfType,
+              lastKillAtMs: getLastKillAt(type),
+              nowMs: gameTime,
+            });
+            if (guarantee) {
+              const guaranteedEnemy = generateEnemy(gameTime, player, spawnBounds, type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              addEnemy(guaranteedEnemy);
+              featureGuaranteeRef.current.satisfied.add(type);
             }
           }
         }

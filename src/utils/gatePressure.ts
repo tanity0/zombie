@@ -27,10 +27,12 @@ export const startPressureForRank = (rank: 0 | 1 | 2): number => (rank === 2 ? 0
 
 const NO_HIT_SCORE_SEC = 10;   // 無被弾スコア: 直近被弾からこの秒数で1.0
 const KILL_RATE_GOOD = 0.3;    // 撃破ペーススコア: kill/sのEMAがこの値で1.0
-const UP_TAU_S = 8;            // 上げの時定数(遅い)
+// PACING_REDESIGN.md バッチM1-A(社長決定v0.25.1362・A/Bレース統制条件): 8秒→5秒。
+// 関所40秒内に配役0.50へ確実に届かせる(旧8秒は離散段時代の変換値で関所の実尺から再導出されていない)。
+const UP_TAU_S = 5;            // 上げの時定数(遅い)
 const DOWN_TAU_S = 2;          // 下げの時定数(速い)
 const HIT_IMPULSE_DROP = 0.15; // 被弾インパルスの即時ステップ減
-const INTENSITY_HOLD = 0.75;   // これ以上のIntensityでは上げを止める(下げのみ許可)
+const INTENSITY_HOLD = 0.75;   // (バッチM1-B: 既定では不使用。legacyIntensityHold=trueの時だけこの値でホールドする)
 const HYSTERESIS = 0.05;       // 配役しきい値のヒステリシス幅(点滅防止)
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
@@ -44,9 +46,12 @@ export interface GatePressureInputs {
   dtMs: number;
   // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 省略時は0=従来と完全一致(risingBlockedへ影響なし)。
   boardDebt?: number;
-  // PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はUP_TAU_S(8s)=従来と完全一致。
-  // stageAggroForAggro側の`riseTauSForAggro`が算出した値を渡す(0.5で8sに一致)。
+  // PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はUP_TAU_S(バッチM1-Aで5s)。
+  // stageAggroForAggro側の`riseTauSForAggro`が算出した値を渡す(0.5で旧8sに一致・M1中は未使用)。
   riseTauS?: number;
+  // PACING_REDESIGN.mdバッチM1-B(社長決定v0.25.1362): 既定はIntensityホールドを撤廃(このフラグ省略/false)。
+  // `?m1=0`の時だけ呼び出し側からtrueを渡し、旧挙動(Intensity>=0.75で上げ停止)へ復帰する。
+  legacyIntensityHold?: boolean;
 }
 
 export interface GatePressureStepResult {
@@ -66,8 +71,12 @@ export const stepGatePressure = (prev: GatePressureState, inputs: GatePressureIn
   if (inputs.hitImpulse) pressure = Math.max(0, pressure - HIT_IMPULSE_DROP);
 
   // バッチ3.5-B(盤面在庫): 「今盤面に何がいるのか」を見ずに登り続けないよう、debtが高い間は
-  // (Intensity条件とは独立に)登りだけをブロックする(憲法第5条「ピンチに撃たない」の盤面版)。
-  const risingBlocked = (inputs.intensity >= INTENSITY_HOLD && perf > pressure) || (inputs.boardDebt ?? 0) > RISE_DEBT_MAX;
+  // 登りだけをブロックする(憲法第5条「ピンチに撃たない」の盤面版)。
+  // バッチM1-B: Intensityホールドは既定で撤廃(「山の最中こそ登りたい関所」との自己矛盾だった)。
+  // 危険時の抑制は被弾インパルス(即−0.15)+boardDebt+同時数キャップが担う。legacyIntensityHold=true
+  // の時だけ`?m1=0`用に旧挙動(Intensity>=0.75で上げ停止)を復元する。
+  const intensityHoldActive = (inputs.legacyIntensityHold ?? false) && inputs.intensity >= INTENSITY_HOLD;
+  const risingBlocked = (intensityHoldActive && perf > pressure) || (inputs.boardDebt ?? 0) > RISE_DEBT_MAX;
   if (!risingBlocked) {
     const dtS = Math.max(0, inputs.dtMs) / 1000;
     const tauS = perf >= pressure ? (inputs.riseTauS ?? UP_TAU_S) : DOWN_TAU_S;

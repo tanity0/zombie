@@ -13,7 +13,7 @@
 
 ## ★未決事項(Fableチャットで社長と決定するもの)
 
-### ★決定(v0.25.1362): A/Bレース — この線=最小修正バッチM1【Sonnetの次の仕事】
+### ★決定(v0.25.1362): A/Bレース — この線=最小修正バッチM1・**実装済み v0.25.1363**
 社長決定: フォーク `claude/direction-shift`(PACING_V2.md=台本ローテ+60秒骨格の全面作り直し・
 0.26.x)と、この線(最小修正・0.25.x)の**2線並行で答えを出す**。この線はもうセーブポイント
 ではない(戻る保険ではなくレースの片翼。負けた線は捨てる)。
@@ -39,6 +39,35 @@
 - 受け入れ条件: ①保証のユニットテスト(15秒未出現→投入指示/エリア0-1では不発/キャップ満杯は待つ)
   ②gatePressureテスト更新+憲法テスト通過 ③`?m1=0`で旧挙動 ④lint/typecheck/test/build全通過。
 - 実機比較の物差し(両線共通): 「5:00までに問題児3型以上を各1回は見るか」「単調感」「理不尽な事故死の有無」。
+
+#### 実装結果(v0.25.1363)
+設計どおり実装。3点以外(rank寄せ台本選択・PHASES時間骨格・緩の演目選択・イベントゲート・
+チャフ配合)は無変更。
+- **M1-A**: `src/utils/gatePressure.ts`の`UP_TAU_S`を8→5。呼び出し側(`useGameLoop.ts`)は
+  M1有効時`riseTauS`を省略してこの既定値5秒を使う(バッチ6のstageAggro駆動τは`?m1=0`の時だけ
+  復元・`stageAggro.ts`自体は無変更=骨格差の比較を崩さない)。
+- **M1-B**: `stepGatePressure`に`legacyIntensityHold?`を追加。既定(省略/false)でIntensityホールドを
+  撤廃、`?m1=0`時のみ`useGameLoop.ts`が`true`を渡して旧挙動(Intensity≥0.75で上げ停止)を復元。
+  `gatePressure.test.ts`のホールド系テストを新挙動+`legacyIntensityHold`の両方をカバーする形へ更新
+  (仕様変更として本節の裁定どおり書き換え)。
+- **M1-C**: 新規純関数`src/utils/featureGuarantee.ts`(`shouldGuaranteeSpawn`)。憲法2条の同時数
+  キャップ(plant/werewolf/pumpkin=2・ghost=1)とリフラクトリ(`killTelemetry.ts`の
+  `PROBLEM_REFRACTORY_MS`を直接再利用)を守る。**screamerは対象外**(既存の専用ディレクター
+  (screamerRef)がCD/同時数を独自管理しており保証から割り込むと状態がズレるため。
+  `useGameLoop.ts`の`REFRACTORY_TYPES`が同じ理由でscreamerを除外している既存踏襲・未決事項化は
+  不要と判断)。`useGameLoop.ts`側は関所突入時に`snapshotSpawns()`をディープコピーで固定
+  (実装精度の規律3)し、関所のfeatured型ごとに毎フレーム判定、条件が揃った型を`generateEnemy`の
+  forcedTypeで1体投入(同じ関所内では型ごとに1回だけ)。
+- テスト: `featureGuarantee.test.ts`(8件: 発動/15秒未満/出現済み/ゾーン0-1不発/イベント関所不発/
+  キャップ満杯待ち/ghost個別キャップ/リフラクトリ待ち)、`gatePressure.test.ts`に3件追加
+  (τ5s既定化/ホールド撤廃/legacyIntensityHold復元)。憲法テスト(`constitution.test.ts`)は
+  featured/mix/床の構成を変えていないため無変更で通過。
+- 復帰: `?m1=0`で3点まとめて旧挙動(τ=stageAggro駆動・Intensityホールドあり・主題保証なし)。
+- 自己点検: 憲法第4条(初心者ゾーン)に抵触しない(M1-Cはエリア0-1で明示的に不発)。憲法第5条
+  (緩を荒らさない)にも抵触しない(pressure/保証とも関所(gate)フェーズのみが対象。緩フェーズの
+  演目選択・イベントゲートは無変更)。
+- 検証: lint / typecheck / test(314 pass, 1 skip・新規12件を含む) / build 全通過。
+  実機未確認(A/Bレースの比較は社長が実機で判定)。
 
 ### (決着・フォークへ移管)台本ローテーション化(v0.25.1359叩き台)
 → 社長が方向転換の設計図として採用。実装は**フォーク `claude/direction-shift` の PACING_V2.md**
