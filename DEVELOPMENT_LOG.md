@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1370 — 攻略性の原則を憲法級で明記(社長決定・設計チャットFable)
+- 社長「きもは、必ず攻略性がある布陣・出現であること。ヴァンサバとの最大の違い。パンプキン2+犬3でも
+  時間差ならジャンプカウンター連続+犬回避で解ける」→ PACING_PUZZLE.mdに**§0.5 攻略性の原則**を新設。
+- 担保: バースト禁止/邪魔者・特別枠の投入CD3秒は**締め・R7成長でも絶対に縮めない**(CD0に
+  なるのはチャフのみ)/被弾直後1.5秒(叩き台)は邪魔者の新規投入禁止/統合テストの物差しに
+  「詰みゼロ」を追加。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 原則の採録(第5条系の強化)。
+
 ## v0.25.1369 — 台本会議の3決定: 緩は必挟/3レバー独立+リアルタイム緩急/憲法4条廃止(社長決定・設計チャットFable)
 - **①緩モードは条件付きではなく必ず挟む**(定期サイクル)。R1の緩は実質「盛り数とCD」のみの変化。
   サイクルの形だけ★確認待ち(私案: 通常60秒×2→緩30秒、RELAX⇄HARVEST交互。30秒は「順調7分でR7」
