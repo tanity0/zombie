@@ -42,8 +42,9 @@ export interface Phase {
   scene: SpawnScene; // このフェーズの湧きシーン(構成/速度)
   // PACING_REDESIGN.mdバッチ3: このgateフェーズで許される最大段(旧・離散段の名残)。
   // gatePressureのceilingForMaxRungで連続天井へ変換される。gate以外は未指定(pressure対象外)。
-  // 序盤の関所=3 / 中盤=4〜5 / 終盤・7分以降の延長関所=6〜7(ラン全体の階段=①ラン全体の階段、
-  // これとゾーン上限の小さい方が実効天井になる)。
+  // PACING_V2.mdバッチR2: 新PHASES(既定)ではこの列は撤去済み(pressure天井は台本自身のmaxRung×
+  // ゾーン天井のみになる)。PHASES_LEGACY(`?v2=0`)側でのみ引き続き使用: 序盤の関所=3/中盤=4〜5/
+  // 終盤・7分以降の延長関所=6〜7(これとゾーン上限の小さい方が実効天井になる)。
   maxRung?: number;
 }
 
@@ -76,12 +77,68 @@ export const ENEMY_COUNT_CEIL = 20;  // 天井。退屈シグナルの上振れ�
 
 const S = 1000;
 
+// PACING_V2.mdバッチR2: 台本ローテーション(gateProgram.ts)が関所の中身を常に上書きするため、
+// gateスロットのsceneは`GATE_PROGRAM_ENABLED=0`(裏道フォールバック)時にしか読まれない。
+// featured=[]の中立値=どのテーマにも肩入れしない(通常プレイでは実質未使用)。
+const SCENE_GATE_FALLBACK: SpawnScene = { id: 'gate-fallback', featured: [], intervalMult: 0.6, rareMult: 1.2, mix: { bat: 40, skeleton: 35, zombie: 25 } };
+
+// PACING_V2.mdバッチR2: 時間骨格の60秒化。導入60秒→以後 関所60秒⇄緩60秒 を交互に刻む
+// (旧: 95秒/40秒などの不揃いな尺→本書が60秒固定へ統一)。関所の中身(featured/mix)は固定シーン
+// ではなく毎回gateProgram.tsのローテが差し替える(PHASESのmaxRung列は撤去=pressure天井は
+// 台本自身のmaxRung×ゾーン天井のみになる)。緩の中身はreliefProgram.tsが選ぶ(PROGRAM_ENABLED既定)。
+// 城ボスは7:00(=420s)で中間ゴール、7:30以降は「深入りモード」(DEEP_DIVE_START_MS)として
+// 報酬/リスクが増す別モードへ移行しつつ同じ60秒交互を14:00まで継続、以降は最終コマを無限延長する。
+const buildPhasesV2 = (): Phase[] => {
+  const phases: Phase[] = [
+    { kind: 'buildup', index: 1, startMs: 0,        endMs: 60 * S,  countCap: 8,  scene: SCENE_RELIEF_SPARSE },   // 導入(まず刈れる)
+    { kind: 'gate',    index: 1, startMs: 60 * S,   endMs: 120 * S, countCap: 10, scene: SCENE_GATE_FALLBACK },   // 関所①
+    { kind: 'buildup', index: 2, startMs: 120 * S,  endMs: 180 * S, countCap: 9,  scene: SCENE_RELIEF_SPARSE },   // 緩
+    { kind: 'gate',    index: 2, startMs: 180 * S,  endMs: 240 * S, countCap: 10, scene: SCENE_GATE_FALLBACK },   // 関所②
+    { kind: 'buildup', index: 3, startMs: 240 * S,  endMs: 300 * S, countCap: 9,  scene: SCENE_RELIEF_SPARSE },   // 緩
+    { kind: 'gate',    index: 3, startMs: 300 * S,  endMs: 360 * S, countCap: 10, scene: SCENE_GATE_FALLBACK },   // 関所③
+    { kind: 'buildup', index: 4, startMs: 360 * S,  endMs: 420 * S, countCap: 9,  scene: SCENE_RELIEF_SPARSE },   // ボス前の整え
+    { kind: 'boss',    index: 1, startMs: 420 * S,  endMs: 450 * S, countCap: 10, scene: SCENE_BOSS },            // 城ボス(中間ゴール・離脱=クリア可)
+  ];
+  // 7:30以降(深入りモード): buildup⇄gate 60秒交互を14:00まで継続。最後の1コマは無限延長する
+  // (旧終局=gateだったが、60秒固定グリッドを7:30起点で単純延長すると14:00はスロットの途中に
+  // 落ちる。「そのとき進行中のコマをそのまま無限延長」という文面どおりの解釈を採用: 結果として
+  // 無限延長コマはbuildup種になるが、reliefProgram.tsは7:00以降の緩を既定でHARVEST無双にする
+  // ため体感は旧終局=継続高強度と大きく変わらない。PACING_V2.mdの★未決事項に記載済み)。
+  const DEEP_DIVE_END_MS = 14 * 60 * S;
+  let buildupIndex = 5, gateIndex = 4, t = DEEP_DIVE_START_MS;
+  for (;;) {
+    const buildupEnd = t + 60 * S;
+    if (buildupEnd >= DEEP_DIVE_END_MS) { phases.push({ kind: 'buildup', index: buildupIndex, startMs: t, endMs: Infinity, countCap: 9, scene: SCENE_RELIEF_SPARSE }); break; }
+    phases.push({ kind: 'buildup', index: buildupIndex, startMs: t, endMs: buildupEnd, countCap: 9, scene: SCENE_RELIEF_SPARSE });
+    buildupIndex++; t = buildupEnd;
+    const gateEnd = t + 60 * S;
+    if (gateEnd >= DEEP_DIVE_END_MS) { phases.push({ kind: 'gate', index: gateIndex, startMs: t, endMs: Infinity, countCap: 10, scene: SCENE_GATE_FALLBACK }); break; }
+    phases.push({ kind: 'gate', index: gateIndex, startMs: t, endMs: gateEnd, countCap: 10, scene: SCENE_GATE_FALLBACK });
+    gateIndex++; t = gateEnd;
+  }
+  return phases;
+};
+
+// PACING_V2.mdバッチR2: 深入りモードの開始時刻(城ボス終了=7:30)。報酬増(rareMult等)/リスク増
+// (stageAggro/Rank由来のホード規模は従来どおり)の別モードへ切り替わる境界。不意打ち(gate-ambush)は
+// R1のunlockMs(7:00)で解禁済み=本バッチでの追加対応は不要。
+export const DEEP_DIVE_START_MS = 450 * S; // 7:30
+// PACING_V2.mdバッチR2: 深入り係数(叩き台・実機調整前提)。rareMult/ゴールド系倍率に掛ける想定だが、
+// ゴールド経済(R5)は本バッチ時点で未実装のため、rareMult側にのみ適用する(呼び出し側=useGameLoop)。
+export const DEEP_DIVE_REWARD_MULT = 1.5;
+// 深入りモード中かどうかで報酬倍率(rareMult用)を返す純関数。呼び出し側でsceneのrareMultに掛ける。
+export const deepDiveRareMultFor = (gameTime: number): number => (gameTime >= DEEP_DIVE_START_MS ? DEEP_DIVE_REWARD_MULT : 1);
+
+export const PHASES: Phase[] = buildPhasesV2();
+
+// ---- 旧フェーズ表(`?v2=0`用): 復帰フラグで戻すため削除しない ----------------------------------
+
 // 7分アークのフェーズ表。gate(関所)は密度スパイク、buildup(余裕)は密度低め。
 // 台本セットピース(stageDirector: pumpkin1:45 / onslaught3:55 / pumpkin pair4:55)に
 // 関所窓を概ね重ねてある。城ボスは 7:00(=420s)。
 // 14分コース(社長指示): 0-7分=基本の緩急1ターン(白ボス=中間ライン・任意離脱)。7-14分=“急”多めの
 // しんどい延長(エンドコンテンツ)。7-14は関所を増やし・余裕を短く・速度を上げて強度を底上げする(approach A)。
-export const PHASES: Phase[] = [
+export const PHASES_LEGACY: Phase[] = [
   // ── 0-7分: 基本ループ ──
   { kind: 'buildup', index: 1, startMs: 0,        endMs: 95 * S,  countCap: 8,  scene: SCENE_RELIEF_SPARSE },  // 導入(優しめ・雑魚まばら)
   { kind: 'gate',    index: 1, startMs: 95 * S,   endMs: 135 * S, countCap: 10, scene: SCENE_GATE_PUMPWOLF, maxRung: 3 },  // 関所①(育ち確認) パンプキン+犬
@@ -107,18 +164,19 @@ export const PHASES: Phase[] = [
   { kind: 'gate',    index: 9, startMs: 840 * S,  endMs: Infinity, countCap: 10, scene: SCENE_GATE_CHAOS, maxRung: 7 },   // 14:00+ 終局(カオス継続)
 ];
 
-// 指定時刻のフェーズ。範囲外(7分超)は最後の boss フェーズを返す。
-export const phaseAt = (gameTime: number): Phase => {
-  for (const p of PHASES) if (gameTime >= p.startMs && gameTime < p.endMs) return p;
-  return PHASES[PHASES.length - 1];
+// 指定時刻のフェーズ。範囲外は最後のフェーズ(無限延長コマ)を返す。`phases`省略時は新骨格(PHASES)。
+// `?v2=0`ではuseGameLoop側がPHASES_LEGACYを明示的に渡して旧骨格へ戻す。
+export const phaseAt = (gameTime: number, phases: Phase[] = PHASES): Phase => {
+  for (const p of phases) if (gameTime >= p.startMs && gameTime < p.endMs) return p;
+  return phases[phases.length - 1];
 };
 
 // 屋外の通常湧き上限(敵数)。フェーズの countCap を安全域にクランプ。
 // 「使い切るかは難易度次第」= これは上限(許可枠)であって強制湧き数ではない。
-export const enemyCountCap = (gameTime: number): number => {
-  const c = phaseAt(gameTime).countCap;
+export const enemyCountCap = (gameTime: number, phases: Phase[] = PHASES): number => {
+  const c = phaseAt(gameTime, phases).countCap;
   return Math.max(6, Math.min(ENEMY_COUNT_CEIL, c));
 };
 
 // 指定時刻の湧きシーン(構成/速度)。スポーナが読む。
-export const sceneAt = (gameTime: number): SpawnScene => phaseAt(gameTime).scene;
+export const sceneAt = (gameTime: number, phases: Phase[] = PHASES): SpawnScene => phaseAt(gameTime, phases).scene;

@@ -75,7 +75,9 @@ import { bossLairPos, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
-import { enemyCountCap, phaseAt, sceneAt, ENEMY_COUNT_CEIL } from '../utils/difficultyDirector';
+import {
+  enemyCountCap, phaseAt, sceneAt, ENEMY_COUNT_CEIL, PHASES, PHASES_LEGACY, deepDiveRareMultFor,
+} from '../utils/difficultyDirector';
 import { spawnEscalation, gateLiveCorrection } from '../utils/difficultyScaler';
 import { stepDirector, createDirectorState, relaxSpawnAdjust, buildupSpawnAdjust } from '../utils/aiDirector';
 import { setDirectorDebug, recordDirectorSample, resetDirectorSamples, DIRECTOR_EVENT_BIT } from '../utils/aiDirectorDebug';
@@ -418,6 +420,8 @@ const STAGE_AGGRO_ENABLED = evParam('stageaggro') !== '0';
 // まとめて旧挙動(rank寄せ選択+旧PHASES)へ戻す。GATE_PROGRAM_ENABLED(?gateprogram=0)は台本選択
 // 機構自体のオンオフ、こちらはその機構内で「新ロジックか旧ロジックか」を切り替える別軸。
 const V2_ENABLED = evParam('v2') !== '0';
+// R2(PHASES再カット): v2=0の間はphaseAt/sceneAt/enemyCountCapへ旧PHASES_LEGACYを渡す。
+const ACTIVE_PHASES = V2_ENABLED ? PHASES : PHASES_LEGACY;
 // 現在選択中のステージのstageAggroを毎回引く(localStorage読み取りのみ・pixiScene.tsの
 // getSelectedStageId()と同じ軽量な呼び出しパターン。1フレームに複数箇所から呼んでも軽い)。
 const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(getSelectedStageId()) : STAGE_AGGRO_DEFAULT);
@@ -1135,7 +1139,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PEAK重ねSE+BGMダッキング: トリガーは台本の関所(gate)フェーズ or 紅き月(社長指示で
         // 「多数の変異体を検知」バナーと同じ源=台本に統一。反応型macroのPEAKでは鳴らさない。
         // 反応型と台本は別物なので、macro基準だとRELAX表示中に鳴る、が起きる)。屋外のみ。
-        const outdoorGate = gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate';
+        const outdoorGate = gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime, ACTIVE_PHASES).kind === 'gate';
         setPeakLayer(!gs.isPaused && gs.player.health > 0 && (outdoorGate || gs.redNight?.phase === 'active'));
       }
 
@@ -1430,11 +1434,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const arenaProducerOk = !EVENTS_ENABLED || (eventGateOk({
               bigEventActive: redNightActiveNow, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
               boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
-            }) && redNightPhaseGateOk(phaseAt(newGameTime).kind));
+            }) && redNightPhaseGateOk(phaseAt(newGameTime, ACTIVE_PHASES).kind));
             // バッチ5追補: 関所頭に選ばれたイベント関所(gate-assault/gate-boss-spike)の発火予約を消化する。
             // 予約はgateProgramRef選定側(下方)で立てる。関所を抜けても未消化なら黙って破棄(発火しない)。
             if (GATE_PROGRAM_ENABLED && gateEventPendingRef.current) {
-              const curPNow = phaseAt(newGameTime);
+              const curPNow = phaseAt(newGameTime, ACTIVE_PHASES);
               if (gateEventPendingRef.current.phaseKey !== `${curPNow.kind}${curPNow.index}`) {
                 gateEventPendingRef.current = null;
               }
@@ -1672,7 +1676,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ?events=0で本ゲートを無効化(従来どおり時間+デンジャーゾーンだけで判定)。
           const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle';
           const rnProducerOk = !EVENTS_ENABLED || (
-            redNightPhaseGateOk(phaseAt(newGameTime).kind) &&
+            redNightPhaseGateOk(phaseAt(newGameTime, ACTIVE_PHASES).kind) &&
             eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
           if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
@@ -1911,7 +1915,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // バッチ7: 叫び(screamer)は関所中のみ発火(バッチ3のpressure≥0.80解禁と統合するまでの
           // 先行導入=フェーズ種別だけで判定)+ピンチ猶予。?events=0で従来(いつでも発火)に復帰。
           const screamerProducerOk = !EVENTS_ENABLED || (
-            screamerPhaseGateOk(phaseAt(newGameTime).kind) &&
+            screamerPhaseGateOk(phaseAt(newGameTime, ACTIVE_PHASES).kind) &&
             eventGateOk({ bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
           if (aliveScreamer) {
@@ -5920,7 +5924,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ステップ②(難易度ディレクター): 屋外の「敵数の上限」をフェーズ駆動(フロア≈10〜天井20)にする。
         // カリング上限(enemyCap)と湧き上限(normalSpawnCap)の両方を同じ値で動かす(片方だけだと即カリングされる/枠が余る)。
         // 屋内/ラボは従来どおり固定上限。囲い/救助イベントの特別枠は維持。
-        const curPhase = phaseAt(gameTime);
+        const curPhase = phaseAt(gameTime, ACTIVE_PHASES);
         // 難易度⑤(DirectorRank・社長合意): フェーズが切り替わった瞬間に、直前フェーズぶんの成績
         // (gameStats.damageTaken/enemiesKilled/player.level の差分とフェーズ終了時HP)から rank を
         // 更新する。1フェーズ目は比較対象が無いので rank=0(台本通り)のまま。今このフレームには
@@ -6168,7 +6172,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           id: gateProgramRef.current.program.id,
           maxRung: gateProgramRef.current.program.maxRung,
         } : null);
-        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
+        const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime, ACTIVE_PHASES) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
         const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
         // 難易度⑥(ピンチ救済): 「低HP×敵が上限近くまで溜まっている」の持続を測り、松明ドロップの
         // 調整値をシングルトンへ publish(gameStore.dropBreakablePropLoot が読む)。ピンチでない時は
@@ -6276,7 +6280,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor)
           ? (PROGRAM_ENABLED && curPhase.kind === 'buildup' && effectiveProgram ? effectiveProgram
-            : effectiveGateProgram ?? sceneAt(gameTime))
+            : effectiveGateProgram ?? sceneAt(gameTime, ACTIVE_PHASES))
           : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
@@ -6304,7 +6308,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;
         // バッチ3: pressure≥0.80でさらにレア演出を底上げ(rareMult×1.35相当)。
         const pressureRareBoost = pressureOutdoor && rareBoostActiveForPressure(gatePressureRef.current.state.pressure) ? 1.35 : 1;
-        const sceneRareMult = (sceneRareBase >= 1 ? sceneRareBase * (1 + rankAdj.rareBoost) : sceneRareBase) * pressureRareBoost;
+        // PACING_V2.mdバッチR2: 深入りモード(7:30以降)は報酬増の係数(叩き台×1.5)をrareMultに乗せる
+        // (ゴールド系倍率は経済側=R5未実装のため対象外。R5実装時に合わせて適用する)。?v2=0では旧PHASESに
+        // 戻すのと合わせて本係数も無効(常に1)にする。
+        const deepDiveRewardMult = V2_ENABLED ? deepDiveRareMultFor(gameTime) : 1;
+        const sceneRareMult = (sceneRareBase >= 1 ? sceneRareBase * (1 + rankAdj.rareBoost) : sceneRareBase) * pressureRareBoost * deepDiveRewardMult;
         // バッチ3: 関所中は「今許可されている問題児」以外を完全ブロック(重み0)。既存のシーン
         // featured/suppressedはそのまま(scene.featuredが持つ意図=何を強調したいかは尊重しつつ、
         // pressureがまだ許可していない型は上書きでブロックする)。緩フェーズ(pressure対象外)は

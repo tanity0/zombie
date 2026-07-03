@@ -11,6 +11,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.4 — バッチR2実装: 時間骨格60秒化(PHASES再カット・実装チャットSonnet)
+- PACING_V2.mdバッチR2一式を実装。`difficultyDirector.ts`の`PHASES`を60秒骨格へ再カット:
+  導入60秒(buildup①)→以後 関所60秒⇄緩60秒 を交互(gate①1:00-2:00…)、7:00-7:30に城ボス
+  (中間ゴール・従来どおり離脱可)、7:30以降は「深入りモード」として同じ60秒交互を14:00まで継続し、
+  最後の1コマを無限延長する。関所スロットの固定シーン(SCENE_GATE_CHAOS等)は撤去し、中立な
+  `SCENE_GATE_FALLBACK`(featured=[]・`GATE_PROGRAM_ENABLED=0`時のみ読まれる裏道)に統一。
+  `Phase.maxRung`列も撤去(pressure天井は台本自身のmaxRung×ゾーン天井のみになる)。
+  旧`PHASES`は`PHASES_LEGACY`として維持(削除しない)。
+- 深入り係数(叩き台×1.5・`DEEP_DIVE_REWARD_MULT`/`deepDiveRareMultFor`): 7:30以降`sceneRareMult`
+  に乗算。ゴールド系倍率側は経済(R5)が未実装のため対象外(R5実装時に追って適用する必要がある旨を
+  DEVELOPMENT_LOG/PACING_V2.mdに明記)。不意打ち(gate-ambush)の解禁はR1のunlockMs(7:00)で
+  既に対応済みのため本バッチでの追加変更なし。
+- `phaseAt`/`sceneAt`/`enemyCountCap`に`phases`引数(省略時=新PHASES)を追加し、`useGameLoop.ts`で
+  `?v2=0`時に`PHASES_LEGACY`を明示的に渡す`ACTIVE_PHASES`定数を新設(全8箇所の呼び出しを統一)。
+- テスト: `difficultyDirector.test.ts`を新PHASES向け(境界時刻/countCap/boss位置7:00/深入り係数/
+  maxRung撤去)+`PHASES_LEGACY`向けの既存回帰群(内容不変)へ再編。
+- **★未決事項を発見・記載(ブロッキングではないが記録)**: 7:30起点の60秒グリッドは14:00
+  (840000ms)がちょうど境界に乗らない(390000msは60000の倍数でない)ため、「進行中のコマを無限延長」
+  を文面どおり実装すると無限延長コマは`buildup`種になる(旧終局は`gate`種だった)。
+  `reliefProgram.ts`のlate分岐(7:00以降既定HARVEST無双)により体感は大きく変わらないと判断して
+  ブロックせず進めたが、gate限定機構(gatePressure/主題保証/台本ローテ)がこの無限コマ中は働かない
+  という違いがあるため、PACING_V2.mdの★未決事項へ記載し裁定を仰ぐ。
+- 自己点検(実装精度の規律5): 憲法第1条(countCap≤10)は新テストで機械化・維持。第4条(初心者ゾーン)
+  に抵触しない(ゾーン天井ロジック自体は無変更)。第5条(緩を荒らさない)にも抵触しない(緩の中身は
+  reliefProgram.tsが従来どおり駆動。深入り係数はrareMultのみでchaffMix/countCapには触れない)。
+- 検証: lint / typecheck / test(330 pass, 1 skip) / build 全通過。実機未確認(社長方針どおり)。
+- 次: バッチR3(関所テーマ可視化・バナー+診断)。
+
 ## v0.26.3 — バッチR1実装: 台本ローテーション(rank寄せ廃止・実装チャットSonnet)
 - PACING_V2.mdバッチR1一式を実装。
   - **R1-A(時間解禁)**: `gateProgram.ts`の各台本に`unlockMs`を追加(数/射線=0:00・判断=2:00・
