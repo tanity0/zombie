@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1359 — 台本ローテーション化の叩き台を★未決事項へ記載(採否待ち・設計チャットFable)
+- 統合テスト「単調」の診断と対策叩き台(60秒コマ交互/未見優先+直前禁止/rank寄せ廃止/時間解禁
+  2・3・4分/上げτ8→5秒/憲法4条は不変)をPACING_REDESIGN.mdの★未決事項に正式記載
+  (チャットにしか無い状態を解消。HANDOFF_CODEX.mdの参照先を実体化)。社長へ確認3点つき。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1358 — HANDOFF_CODEX.md新設: Codexへの引き継ぎブリーフ(社長指示・設計チャットFable)
 - 社長「一度Codexに渡してみる」を受け、入口ファイルを新設: ①何をしたいか(心電図化+コアループ・
   直近=台本ローテーション化の採否待ち叩き台/ゴールド経済採否待ち/ダンスB実機確認待ち)
