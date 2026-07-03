@@ -46,8 +46,8 @@ const mixedRing = (
     return spawnEnemyAt(type, x, y, gameTime);
   });
 
-// フィナーレ(城ボス)時刻。社長指示で 5→7 分に後ろ倒し(難易度カーブも後ろへ)。
-export const FINALE_BOSS_TIME_MS = 420 * 1000; // 7:00(城ボス出現と同時刻)
+// (旧・FINALE_BOSS_TIME_MSはv0.25.1373で削除: 城ボス時刻の実体はuseGameLoop.tsの
+//  CASTLE_BOSS_MIN_TIME_MS(7:00)。未参照の重複定数を残すと「死んだ方を編集する」事故のもと。)
 
 // ~7分アークのセットピース台本(社長指示で5分→7分へ再配置・×1.4ストレッチ)。緊張カーブは維持:
 // 静かな導入 → 初カウンター → 中ボススパイク → 立て直し → 7体オンスロート(ピーク) → 第二スパイク →

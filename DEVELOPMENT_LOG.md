@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1373 — デバッグ・死蔵コードの整理(社長指示・挙動不変)
+- 全src横断で「宣言以外どこからも参照されていないexport」を機械的に洗い出し(誤検出=自ファイル内
+  使用・テスト参照・意図ある資産を1件ずつ除外)、真に死蔵の3点だけ削除:
+  - `audioManager.ts` `playDanceKick`(合成キック): ダンス音声試行錯誤期の残骸。タップ音は
+    サンプル再生`playSfx('dance-kick'/'dance-kick-just')`に完全移行済みで未参照だった。
+  - `config/shijin.ts` `ARROW_GLYPH`(文字グリフ表): 矢印表示はドット絵矢印に完全移行済みで
+    未参照。コメントが「使用中」と嘘をついていた(誤誘導の芽)。
+  - `stageDirector.ts` `FINALE_BOSS_TIME_MS`: 城ボス時刻の実体は`useGameLoop.ts`の
+    `CASTLE_BOSS_MIN_TIME_MS`。未参照の重複定数=「死んだ方を編集する」事故のもとだった。
+  各削除跡に1行の墓標コメント(移行先を明記)を残置。
+- **消さなかったもの(理由つき)**: `?puzzle=0`/`?m1=0`/`?beat=0`/`?renderer=canvas`の復帰用
+  旧経路(PACING_PUZZLE.md§1等で「削除しない」と明記)/テストから参照される純関数・定数
+  (このリポジトリの流儀)/`equipment.ts rollEquipment`等(コメントに「後でプレゼン仕様で接続」=
+  計画済みbuilding block)/`ff7r.ts`スタイル定数・`font.ts ACTIVE_FONT`(意図あるデザイン資産)/
+  console.error群(初回のみ出す耐障害診断ログ)/shijin.tsのTODO群(「仮値にTODOを明記する」
+  方針そのもの)。tsc(noUnusedLocals)+eslintが通る状態のため未使用import/ローカル変数は元々ゼロ。
+- PACING_PUZZLE.mdの★未決事項: R7降格解釈を「社長承認済み(チャット「おけ」)」として裁定済み
+  記録へ昇格(チャット限りの決定を残さない規律)。
+- 自己点検: 憲法第4条・第5条に無関係(未参照コードの削除のみ=全経路で挙動不変)。
+- 検証: lint / typecheck / test(383 pass, 1 skip) / build 全通過。プレイヤー向けchangelogは
+  変更なし(プレイ体験に変化がないため・v0.25.1356の前例に倣う)。
+
 ## v0.25.1372 — PACING_PUZZLE.md M2→M3→M4を一気に実装(社長決定v0.25.1365〜1371・実装チャットSonnet)
 - **M2** `src/utils/rankAssessor.ts`(新規): ランク(1-7)・R7中の上限成長(10-20・±2/分)・
   盤面目標の毎フレームランプ(6秒+1・被弾直後10秒は据え置き)・リアルタイム緩急(無被弾15秒+

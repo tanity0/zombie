@@ -83,8 +83,7 @@ export const randomRhythmPrompt = (): RhythmArrow[] =>
 // フリックのベクトル → 主軸の矢印。
 export const arrowFromDir = (x: number, y: number): RhythmArrow =>
   Math.abs(x) >= Math.abs(y) ? (x >= 0 ? 'right' : 'left') : (y >= 0 ? 'down' : 'up');
-// 表示用: 矢印グリフと四神の和名(コマンドUI/オーバーレイで使用)。
-export const ARROW_GLYPH: Record<RhythmArrow, string> = { up: '↑', down: '↓', left: '←', right: '→' };
+// (旧・文字グリフ表ARROW_GLYPHはv0.25.1373で削除: 矢印表示は下のドット絵矢印に完全移行済みで未参照だった。)
 
 // リズムゲーム風の太いドット絵矢印(7x7)。上向きを基準に90°回転で4方向。Pixiオーバーレイと
 // HUD(左上コマンド)の両方で同じ形を使う。
