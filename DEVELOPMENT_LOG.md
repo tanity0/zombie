@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1358 — HANDOFF_CODEX.md新設: Codexへの引き継ぎブリーフ(社長指示・設計チャットFable)
+- 社長「一度Codexに渡してみる」を受け、入口ファイルを新設: ①何をしたいか(心電図化+コアループ・
+  直近=台本ローテーション化の採否待ち叩き台/ゴールド経済採否待ち/ダンスB実機確認待ち)
+  ②現状(実装済みバッチ一覧・憲法テスト・統合テスト判定「単調」と原因診断)
+  ③読むファイルの順番表(CLAUDE.md→PACING冒頭→LOG先頭→ENGINEERING_NOTES→CORE_LOOP→AUDIT→
+  役割に応じてGUIDE/DANCE) ④作業ルール要点(Branch lock/version bump/検証一式/未決の扱い/復帰フラグ)。
+- 統合テストの診断と台本ローテ叩き台は前エントリ(v0.25.1357時点の会議)参照。★採否待ちのまま。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1357 — PEAKレイヤーの音量アップ(社長指示)
 - `src/audio/audioManager.ts`: `PEAK_LAYER_VOLUME`を0.55→0.9へ(+64%・社長指定値)。
   PEAK(AIディレクター/紅き月)中に通常BGMへ重ねる打楽器レイヤー(`peak-layer.mp3`)の音量のみ変更。
