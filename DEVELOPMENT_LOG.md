@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1345 — CLAUDE.mdにトークン・作業節約ルール(セクション7)を追記(社長指示)
+- Google Driveの`05_HANDOFF_INBOX`に置かれていた`2026-07-03_chat_to_codex_token_saving_rules.md`
+  (Fableチャット作成)の内容を、`mcp__a9364379...`のDrive読み取りツール(このセッションで再接続)
+  経由で直接取得し、CLAUDE.md末尾に「## 7. トークン・作業節約ルール(常時適用)」として追記。
+  内容: 7-1探索前の所在確認/7-2差分報告のみ/7-3リトライ2回で停止/7-4着手前1問確認/7-5部分読み。
+  原文のラッパー見出しとHTMLコメント(貼り付け手順のメモ)は恒久content化にあたり除外。
+- 追記中に設計チャットFableのv0.25.1343/1344(犬パンプキン合流バグ修正+憲法テスト新設+
+  CLAUDE.mdへの実装精度規律追記)と衝突→pull --rebaseで解決(CLAUDE.mdはFableの新セクション
+  「実装精度の規律」の直後に自分のセクション7が続く形でクリーンにauto-merge)。
+- 検証: lint / typecheck / test(278 pass, 1 skip) / build 全通過(コード変更なし・CLAUDE.mdのみ)。
+
 ## v0.25.1344 — 再発防止: 憲法テスト新設+実装精度の規律をCLAUDE.mdに恒久化(社長指示・設計チャットFable)
 - 社長指示「今後Sonnet側でこの様なことが起きない様に、精度高くコーディングできる対策を」。
   v0.25.1337/1343で実バグ化した見落としを分類し、**人の記憶ではなく機械と規律で守る**2本立てで対策:
