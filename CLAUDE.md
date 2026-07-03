@@ -213,9 +213,16 @@ checks by cost — do NOT lump them together.
    (テストされていたのは純関数だけで、配線側の誤りは全部すり抜けた)。
 5. **完了報告の前に自己点検1行**: 「この変更は憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に
    抵触しないか」をDEVELOPMENT_LOGの実装結果に明記する。
+6. **教訓は即機械化**: バグを直したら、再発しうる教訓を`constitution.test.ts`(不変条件なら)か
+   `ENGINEERING_NOTES.md`(知識なら)に追記してから完了とする。
+7. **調査・地雷の参照**: バグ調査、描画/音声/集計/スポーン系に触る前に **ENGINEERING_NOTES.md**
+   (診断の型・プロジェクト固有の地雷・逆引き表)の該当節を読む。
 (設計チャット側の対応義務: 各バッチの仕様に「受け入れ条件」を明記し、曖昧な表('少数'等)を残さない。)
 
 ## エージェント分業(2チャット体制・社長指示 v0.25.1301〜)
+- **振り分け基準**: 「なぜ?」の調査・複数システムを跨ぐ設計・仕様の判断・監査=設計チャット(Fable)。
+  仕様が確定したバッチ実装・明確な指示の修正=実装チャット(Sonnet)。原因不明のバグは
+  まず設計チャットで診断してから実装チャットへ渡す(Sonnetに向かない仕事を渡さないことも精度対策)。
 - このリポジトリは2つのチャットで運用する:
   - **実装チャット(Sonnet)**: 設計書(PACING_REDESIGN.md 等)のバッチを実装し、結果を
     DEVELOPMENT_LOG.md と設計書のステータス更新でファイルに残す。**設計判断はしない**
@@ -224,7 +231,7 @@ checks by cost — do NOT lump them together.
     実装チャットへ渡す。コードは書かない。
 - **チャット間でお互いの会話は見えない。** 決定・未決・実装結果・実機フィードバックの要点は
   必ずファイル(PACING_REDESIGN.md / DEVELOPMENT_LOG.md / AI_DIRECTOR_HANDOFF.md /
-  DISTRIBUTION_REDESIGN.md / CORE_LOOP.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
+  DISTRIBUTION_REDESIGN.md / CORE_LOOP.md / ENGINEERING_NOTES.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
 - 現在の進行プロジェクト: **PACING_REDESIGN.md(緩急の心電図化)**。どちらのチャットも
   作業開始時にまず PACING_REDESIGN.md(冒頭の「運用」と「★未決事項」)と DEVELOPMENT_LOG.md の
   先頭数エントリを読むこと。

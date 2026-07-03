@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1349 — 賢さの継承: ENGINEERING_NOTES.md新設+規律6/7+振り分け基準(社長指示・設計チャットFable)
+- 社長指示「Fable側の賢さをSonnet側へ継承できるものは今のうちに」。方法を3点でファイル化:
+- **① ENGINEERING_NOTES.md新設(地雷図鑑+診断プレイブック)**: 診断の型5ステップ(「いつから」を
+  diffで確定/同じ症状・別レイヤーの列挙/コメントよりコード/安全側+復帰フラグ/教訓の機械化)、
+  プロジェクト固有の地雷(Pixi v8 filterArea=ローカル座標/HTMLAudio currentTime不信/iOS自動再生
+  280レシピ/シングルトン生参照/gameTime伸縮/床の裏口/イベントはゾーン規約対象外)、
+  逆引き表(変えたいこと→触る場所→壊しやすいもの)、完了前チェックの実行形。
+- **② CLAUDE.md規律に6・7を追加**: 6=教訓は即機械化(テスト or NOTES追記までが完了)、
+  7=描画/音声/集計/スポーン系に触る前にNOTESの該当節を読む。
+- **③ 分業節に振り分け基準を明文化**: 「なぜ?」調査・横断設計・仕様判断=Fable/確定バッチ実装=
+  Sonnet/原因不明バグはFable診断→Sonnet実装。受け渡しファイル一覧にNOTESを追加。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1349 — ダンスビートB方式を実装(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)
 - 曲↔サークル同期(自動アンカー/RHYTHM_RESYNC_MS)を諦め、「拍の真実=リングのスケジュール」から
   メトロノーム(キック音)をリング自身の時計(`rhythm.firstBeatAt`/`interval`・Date.now基準=判定/
