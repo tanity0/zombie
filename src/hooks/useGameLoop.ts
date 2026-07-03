@@ -436,13 +436,17 @@ const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(get
 // ?setpiece=1 で従来台本に復帰(切り分け用)。城ボス(7分)は別経路なので影響なし。
 const SETPIECE_ENABLED = evParam('setpiece') === '1';
 const DIRECTOR_NEAR_RADIUS = 240;                     // Intensity の“近接敵”を数える半径(接触危険レンジ相当)
-// ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、RELAX中の湧きを relaxSpawnAdjust で緩める。
-// ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
-// 少しだけ上乗せする(buildupSpawnAdjust。レバーはescalationのみ=Bより慎重)。?directorApply=all で両方。
-// 既定(フラグ無し)は基準点(commit b1eae30)と完全に同じ挙動。可視化(?director=1)とは独立に指定できる
-// (適用だけ試したい/両方見ながら試したい、のどちらも出来るように)。
+// ステップB: RELAX中の湧きを relaxSpawnAdjust で緩める(緩める側=純ブレーキ)。
+// PACING_V2.md§3(v0.26.12・社長裁定「推薦で」): **デフォルトON化**。?directorApply=0 で無効化、
+// ?directorApply=buildup は従来どおり「buildupのみ」(=relax無効)の意味を維持する。
+// ゲームプレイ中の可視表示は追加しない(社長指示)=挙動のみに効く。
+// ステップC: ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが高いほど escalation を
+// 少しだけ上乗せする(buildupSpawnAdjust)。強める側はRank escBoost/退屈上振れ/gatePressureと
+// アクセルが重複するため、社長裁定によりデフォルトOFF(opt-in)のまま。?directorApply=all で両方。
 const DIRECTOR_APPLY_PARAM = evParam('directorApply');
-const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM === 'relax' || DIRECTOR_APPLY_PARAM === 'all';
+const DIRECTOR_APPLY_RELAX = DIRECTOR_APPLY_PARAM === null
+  ? true
+  : DIRECTOR_APPLY_PARAM === 'relax' || DIRECTOR_APPLY_PARAM === 'all';
 const DIRECTOR_APPLY_BUILDUP = DIRECTOR_APPLY_PARAM === 'buildup' || DIRECTOR_APPLY_PARAM === 'all';
 // 信号算出(Intensity/Performance/macro state)は既定で常時ON(社長要望のPEAK重ねSE/紅き月連携が実プレイで
 // 動くために必要。読むだけで軽い=近接敵数と危険敵の走査のみ、新規描画なし)。他の難易度③④⑤⑥と同じ
@@ -6269,10 +6273,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           maxAreaRef.current = playerAreaIdx;
           useGameStore.setState(state => ({ gameStats: { ...state.gameStats, maxAreaReached: playerAreaIdx } }));
         }
-        // AIディレクター ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、直前フレームで
-        // 算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/湧き間隔を伸ばす/湧き上限を
-        // 下げる」を薄く掛ける。既存の敵を強制的に間引くカリング上限(enemyCap)には触れない=急に画面から
-        // 消える演出を避ける。フラグ無し(既定)は基準点(b1eae30)と完全に同じ挙動。屋内/ラボは対象外。
+        // AIディレクター ステップB: 直前フレームで算出済みの DirectorState(macro)を読み、RELAX中だけ
+        // 「escalationを止める/湧き間隔を伸ばす/湧き上限を下げる」を薄く掛ける。既存の敵を強制的に間引く
+        // カリング上限(enemyCap)には触れない=急に画面から消える演出を避ける。屋内/ラボは対象外。
+        // PACING_V2.md§3(v0.26.12): デフォルトON(?directorApply=0で無効化)。プレイ中の可視表示なし。
         const directorApplyRelaxActive = DIRECTOR_APPLY_RELAX && !labTheme && !indoor;
         const relaxAdj = directorApplyRelaxActive ? relaxSpawnAdjust(directorRef.current.state.macro) : { escMult: 1, intervalMult: 1, capMult: 1 };
         // AIディレクター ステップC(社長合意): ?directorApply=buildup の時だけ、BUILD_UP中にPerformanceが
@@ -6370,7 +6374,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // PACING_V2.mdバッチR4-C(v0.26.6定量化): 数の関所の浅いエリア代替表現はintervalMult×0.7
         // (≒テンポ1.4倍)を直接乗算する。
         const shallowTempoMult = shallowTempoSE ? shallowTempoSE.intervalMult : 1;
-        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * hardBoardEase * shallowTempoMult;
+        // PACING_V2.md§3(v0.26.12): relaxのintervalMult(RELAX中1.35)はhardBoardEase(boardDebt/
+        // パンプキン2体)と同じ「緩めるブレーキ」なので、乗算で二重掛けせずmaxで合成する
+        // (GAME_AUDIT #4と同じ流儀。relax無効時は1なので従来と完全一致)。
+        const easeBrake = Math.max(hardBoardEase, relaxAdj.intervalMult);
+        const sceneIntervalMult = baseIntervalMult * easeBrake * shallowTempoMult;
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;

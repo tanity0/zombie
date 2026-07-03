@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectGateProgram, selectGateProgramLegacy, gateJudgmentProgram, type GateProgramInput, type GateProgramInputLegacy, type GateProgramId } from './gateProgram';
+import { selectGateProgram, selectGateProgramLegacy, gateJudgmentProgram, GATE_PROGRAM_TAGS, type GateProgramInput, type GateProgramInputLegacy, type GateProgramId } from './gateProgram';
 
 // gateIndex=0/lastWasEvent=false/pityBlocked=falseがデフォルト=イベント関所は選出ルール(a)で
 // 除外される(既存テストの期待値を変えないため。イベント関所自体のテストは末尾で個別に書く)。
@@ -153,6 +153,39 @@ describe('selectGateProgram (PACING_V2.mdバッチR1: 台本ローテーショ�
     it('(c) pity発動中/解除後10秒のスロットではイベント関所を選ばない', () => {
       const p = selectGateProgram({ ...base, gateIndex: 2, gameTime: 5 * 60 * 1000, pityBlocked: true });
       expect(p.eventKind).toBeUndefined();
+    });
+  });
+
+  describe('§4 非類似優先(PACING_V2.md v0.26.12・社長指示1「できるだけ似ていないものを次に」)', () => {
+    const ALL_SEEN = new Set<GateProgramId>(['gate-number', 'gate-lineofsight', 'gate-judgment', 'gate-triple', 'gate-ambush', 'gate-assault', 'gate-boss-spike']);
+    const lateBase: GateProgramInput = { ...base, gameTime: 8 * 60 * 1000, gateIndex: 5, seenProgramIds: ALL_SEEN };
+
+    it('GATE_PROGRAM_TAGSは全7台本ぶん定義されている', () => {
+      for (const id of ALL_SEEN) expect(GATE_PROGRAM_TAGS[id]?.length, id).toBeGreaterThan(0);
+    });
+
+    it('三択(featured/ranged/combo)の後は、タグを共有しない{数, 襲撃}だけが候補になる', () => {
+      expect(selectGateProgram({ ...lateBase, lastProgramId: 'gate-triple', tieBreakRandom: 0 }).id).toBe('gate-number');
+      expect(selectGateProgram({ ...lateBase, lastProgramId: 'gate-triple', tieBreakRandom: 0.99 }).id).toBe('gate-assault');
+    });
+
+    it('射線(ranged)の後は、rangedを持たない{数, 襲撃, スパイク}だけが候補になる', () => {
+      const picked = new Set<string>();
+      for (const t of [0, 0.34, 0.67, 0.99]) {
+        picked.add(selectGateProgram({ ...lateBase, lastProgramId: 'gate-lineofsight', tieBreakRandom: t }).id);
+      }
+      expect([...picked].sort()).toEqual(['gate-assault', 'gate-boss-spike', 'gate-number']);
+    });
+
+    it('不意打ち(最高段)の後は、タグを共有しない{数, 襲撃}へ必ず離れる(社長指示2: 最高段に居座らない)', () => {
+      expect(selectGateProgram({ ...lateBase, lastProgramId: 'gate-ambush', tieBreakRandom: 0 }).id).toBe('gate-number');
+      expect(selectGateProgram({ ...lateBase, lastProgramId: 'gate-ambush', tieBreakRandom: 0.99 }).id).toBe('gate-assault');
+    });
+
+    it('未見優先の後に適用される: 未見が1つならその1つが選ばれる(非類似で空にしない)', () => {
+      const seen = new Set<GateProgramId>(['gate-number', 'gate-lineofsight']);
+      const p = selectGateProgram({ ...base, gameTime: 2 * 60 * 1000, seenProgramIds: seen, lastProgramId: 'gate-lineofsight' });
+      expect(p.id).toBe('gate-judgment'); // 判断はrangedを共有(類似1)だが、未見が1つしか無いので選ばれる
     });
   });
 });

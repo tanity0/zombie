@@ -12,8 +12,10 @@ import { getSelectedStageId, submitStageHighScore } from '../data/progress';
 import { AREA_ZONE_NAMES } from '../utils/enemyUtils';
 import DirectorResult from './DirectorResult';
 
-// AIディレクター振り返り(?director=1 の時だけリザルトに緊張曲線＋難易度スコアを出す)。
-const directorEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('director') === '1';
+// AIディレクター振り返り(リザルトの緊張曲線+難易度スコア)。
+// PACING_V2.md§3(v0.26.12・社長裁定): デフォルト表示化(旧: ?director=1必須)。?director=0で非表示。
+// プレイ中には出さない(リザルト画面限定=従来どおりの表示範囲)。
+const directorEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('director') !== '0';
 
 interface GameOverScreenProps {
   stats: GameStats;

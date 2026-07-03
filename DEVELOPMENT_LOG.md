@@ -11,6 +11,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.12 — R6実装: ディレクター再統合+台本選択追加ルール(社長裁定「推薦で」+指示2点)
+- **§3裁定反映(「推薦で」=リラックスのみデフォON・buildupはopt-in維持)**:
+  - `useGameLoop.ts`: `DIRECTOR_APPLY_RELAX`をデフォルトtrue化(`?directorApply=0`で無効/
+    `?directorApply=buildup`は従来どおりbuildupのみの意味を維持)。`DIRECTOR_APPLY_BUILDUP`は不変
+    (opt-in。Rank escBoost・退屈上振れ・gatePressureとのアクセル3重重複を避ける推薦を社長採用)。
+  - 湧き間隔のRELAXブレーキ(×1.35)は`hardBoardEase`(boardDebt/パンプキン2体)と**max合成**へ変更
+    (GAME_AUDIT #4「ブレーキは乗算で二重掛けしない」と同じ流儀)。relax無効時は1なので従来と完全一致。
+    capMult/escMultは単独レバーのため従来どおり乗算。プレイ中の可視表示は追加していない(社長指示)。
+  - `GameOverScreen.tsx`: リザルトの緊張曲線+難易度スコア(`DirectorResult`)をデフォルト表示化
+    (旧: `?director=1`必須 → 新: `?director=0`で非表示)。プレイ中には出ない(従来の表示範囲のまま)。
+- **§4実装(社長指示2点)**:
+  - 指示1「できるだけ似ていないものを次に」: `gateProgram.ts`に`GATE_PROGRAM_TAGS`(テーマタグ表・
+    叩き台)を新設し、`selectGateProgram`の未見優先の後に「直前台本との共有タグ数が最小の候補だけに
+    絞る」非類似優先ステップを追加。例: 三択の後は{数, 襲撃}だけが候補になる。
+  - 指示2「最高段でも下段を混ぜてバリエーション」: 選択がrank/maxRungを一切参照しない既存原則+
+    直前禁止+非類似優先で構造的に保証されることを明文化し、`gateRotation.test.ts`(vi)
+    「7:00以降の関所の過半は不意打ち以外」を100ラン全数検証で機械化。
+  - `?v2=0`(旧rank寄せ選択)には影響なし(`selectGateProgramLegacy`不変)。
+- テスト: `gateRotation.test.ts`の参照モデルに非類似優先を追加+(v)(vi)の検証を新設(3テスト)。
+  `gateProgram.test.ts`に§4の直接テスト5件追加(タグ全定義/三択後・射線後・不意打ち後の候補/
+  未見1つ時の優先順位)。
+- 自己点検: PACING_V2.mdの現行設計と整合(§3・§4を「裁定済み・実装済み」に更新済み。関所/緩の意図
+  =「台本は見せる。危険度は状況で抑える」に対しrelaxは純ブレーキ側なので矛盾しない)。
+- 検証: lint / typecheck / test(363 pass, 1 skip) / build 全通過。実機未確認(統合テストへ)。
+- 次: R7=エリア台本(§2)の「たまに」頻度/CD等の数値確定待ち。確定後にディレクター連携ゲート
+  (intensity高/RELAX中/pity中は発火させない)とセットで実装する。
+
 ## v0.26.11 — AIディレクター(旧・反応型システム)再統合の方針記録(社長指示・doc変更のみ)
 - 社長から「エリア台本にこの路線+AIディレクター/ランク付けの使える部分を流用したい」の指示。
   実装チャットで現状調査(DirectorRank/gatePressureのシグナルは既にデフォルト有効、

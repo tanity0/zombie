@@ -130,11 +130,28 @@ const allPrograms = (input: { style: PlayStyle; tieBreakRandom: number }): GateP
   GATE_ASSAULT, GATE_BOSS_SPIKE,
 ];
 
-// PACING_V2.mdバッチR1-B: 選択 = 時間解禁(gameTime>=unlockMs)を満たす台本から、
+// PACING_V2.md§4(v0.26.12・社長指示1「できるだけ似ていないものを次に」): 台本のテーマタグ。
+// 類似度=共有タグ数で、直前台本との類似度が最小の候補だけに絞る(叩き台・実機調整前提)。
+// swarm=物量 / ranged=弾(plant) / featured=問題児主役 / combo=複合(全部盛り) /
+// surprise=奇襲(叫び・ゴースト) / event=アリーナイベント形。
+export const GATE_PROGRAM_TAGS: Record<GateProgramId, readonly string[]> = {
+  'gate-number': ['swarm'],
+  'gate-lineofsight': ['ranged'],
+  'gate-judgment': ['featured', 'ranged'],
+  'gate-triple': ['featured', 'ranged', 'combo'],
+  'gate-ambush': ['featured', 'ranged', 'combo', 'surprise'],
+  'gate-assault': ['event', 'swarm'],
+  'gate-boss-spike': ['event', 'featured'],
+};
+
+// PACING_V2.mdバッチR1-B+§4: 選択 = 時間解禁(gameTime>=unlockMs)を満たす台本から、
 // 1. イベント関所選出ルール(a)(b)(c)で絞る(バッチ5追補・従来どおり維持)
 // 2. 直近に見せた台本を除外(pool>1のとき)
 // 3. このランで未見の台本がpoolに残っていれば未見だけに絞る
-// 4. 残りからtieBreakRandomで一様に選ぶ(難度分岐は無し=rankは台本選択に一切使わない)
+// 4. §4(v0.26.12): 直前台本とのタグ類似度が最小の候補だけに絞る(非類似優先)
+// 5. 残りからtieBreakRandomで一様に選ぶ(難度分岐は無し=rankもmaxRungも台本選択に一切使わない。
+//    社長指示2「最高段のみに収束させない」はこの「maxRung不参照+ローテ」が構造的に保証し、
+//    gateRotation.test.tsで機械化する)
 export const selectGateProgram = (input: GateProgramInput): GateProgram => {
   const eligible = allPrograms(input).filter(p => input.gameTime >= p.unlockMs);
   const eventGateOk = input.gateIndex >= 2 && !input.lastWasEvent && !input.pityBlocked;
@@ -146,6 +163,12 @@ export const selectGateProgram = (input: GateProgramInput): GateProgram => {
   }
   const unseen = pool.filter(p => !input.seenProgramIds.has(p.id));
   if (unseen.length > 0) pool = unseen;
+  if (input.lastProgramId && pool.length > 1) {
+    const lastTags = GATE_PROGRAM_TAGS[input.lastProgramId];
+    const sims = pool.map(p => GATE_PROGRAM_TAGS[p.id].filter(t => lastTags.includes(t)).length);
+    const minSim = Math.min(...sims);
+    pool = pool.filter((_, i) => sims[i] === minSim);
+  }
   const idx = Math.min(pool.length - 1, Math.floor(input.tieBreakRandom * pool.length));
   return pool[idx];
 };
