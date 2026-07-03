@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1347 — GAME_AUDIT.xlsxを現状へ更新(社長指示・設計チャットFable)
+- シート1: ゴールドシンク=叩き台提出済み(採否待ち)/バッチ5=実装済み(v0.25.1340・穴3件は1343で
+  修正)/ダンスB方式(v0.25.1339社長決定・Sonnet実装待ち)を新規行として追加(計54件)。
+- シート2: 監査後に発覚した新規バグ3件(#14キル集計エイリアシング/#15回収の床逆流/#16 mix未指定)を
+  追記——すべて修正済み(v0.25.1343)。全16件中、修正13・現状維持(青線)3。
+- 読み方シートに更新履歴と再発防止(憲法テスト+CLAUDE.md規律)を記載。
+- 検証: xlsx+version変更のみ(コード不変)。
+
 ## v0.25.1346 — CLAUDE.md: 節約ルール7-4と実装精度規律1の境界を明確化(かぶりチェック・設計チャットFable)
 - 社長指示「Sonnet側もCLAUDE.mdに書いていたのでかぶってないかチェック」。結果:
   v0.25.1345(トークン・作業節約ルール)とv0.25.1344(実装精度の規律)は**領域が別で重複なし**。
