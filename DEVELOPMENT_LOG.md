@@ -11,6 +11,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.2 — Pagesデプロイをフォークへ切り替え(設計チャットFable)
+- `.github/workflows/pages.yml` のpushトリガーを `claude/chat-context-continuity-saxlH` →
+  `claude/direction-shift` に変更(フォーク側のファイルのみ。旧線のpages.ymlは凍結のまま)。
+  これが無いとフォークのビルドが実機(GitHub Pages)に一切届かない設定漏れだった。
+- **実機の枠は1つ**: Pagesサイトは1つなので、実機で確認できるのは常に「最後にデプロイした線」
+  だけ。旧線を実機で見たくなったら社長指示で切り替える(旧線は凍結中なので通常は起きない)。
+- 検証: workflow+version変更のみ(コード不変)。自己点検: 憲法4条・5条に無関係。
+
 ## v0.26.1 — PACING_V2.md新設: 難易度調整AI作り直しの正式仕様(社長設計図・設計チャットFable)
 - 社長がフォークの設計図を提示(心電図の骨格8点+実装順5段)。設計チャットが仕様化して
   **PACING_V2.md** を新設。要点: ①台本は多様性ローテ(時間解禁/未見優先/直前禁止/rank寄せ廃止)
