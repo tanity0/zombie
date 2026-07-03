@@ -51,6 +51,12 @@ describe('AREA_WEIGHT v2 (分布図再構築・DISTRIBUTION_REDESIGN.md②)', ()
     expect(isValidForArea('pumpkin', 1)).toBe(false);
     expect(isValidForArea('pumpkin', 2)).toBe(false);
   });
+  it('PACING_REDESIGN.mdバッチ3完成版(Tank化): pumpkin/werewolfは全エリアで通常湧きプールから撤退(重み0)', () => {
+    for (let area = 0; area < AREA_COUNT; area++) {
+      expect(isValidForArea('werewolf', area), `area ${area}`).toBe(false);
+      expect(isValidForArea('pumpkin', area), `area ${area}`).toBe(false);
+    }
+  });
 });
 
 describe('scene featured floor (DISTRIBUTION_REDESIGN.md① + PACING_REDESIGN.mdバッチ1.5 opt-in)', () => {

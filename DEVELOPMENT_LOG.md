@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1354 — バッチ3完成版: 配役(casting)方式Tank化(社長方針v0.25.1348・実装キュー②)
+- `src/utils/enemyUtils.ts`: `AREA_WEIGHT`のpumpkin/werewolf行を全エリア0化(通常湧きプールから
+  完全撤退)。L4DのTank/Hunterと同じ「ディレクターが意図した瞬間に配役として落とす」設計へ
+  (§バッチ3配役の仕様どおり)。
+- 副作用点検: `buildEnemy`(`spawnEnemyAt`/`generateEnemy`共通の内部ヘルパー)が
+  `!isValidForArea(type, area)`の時に自動で`sceneSpawn: true`を立てる既存機構があるため、
+  gatePressureの配役投入(0.50/0.65跨ぎ、forcedType指定の`generateEnemy`呼び出し)は
+  **今回の変更後は常に自動でsceneSpawn保護**がかかり、距離リサイクル(エリア外強制回収)から
+  自動的に除外される。追加のコード変更は不要だった。講習/狩猟(featuredFloor)・
+  セットピース(isWave=true)・イベント(fromEvent)も既存の除外条件でそのまま保護される。
+- 到着演出フック(バナー/スティングSE)は仕様に「素材は後日・任意」と明記されているため見送り
+  (配役投入コードへの差し込み口は変わらず存在)。
+- テスト: `enemyUtils.test.ts`に「pumpkin/werewolfは全エリアでisValidForArea=false」を追加。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン)に抵触しない(元から初心者ゾーンは0だった。
+  中盤以降のゾーンも0にしただけで、出現経路を集約する変更)。憲法第5条(緩を荒らさない)にも
+  抵触しない(講習/狩猟のfeaturedFloor経路は無変化)。
+- 検証: lint / typecheck / test(291 pass, 1 skip) / build 全通過。
+- 実機未確認(社長方針どおり統合テストへ持ち越し)。次: バッチ6(stageAggro)へ続ける。
+
 ## v0.25.1353 — バッチ5追補: イベント関所(囲いの台本昇格)を実装(社長方針v0.25.1348・実装キュー①)
 - 背景: 2:00固定の囲いランダムタイマーが関所と重なる事故(v0.25.1347実機報告)。応急ではなく
   「台本昇格」で解決(§バッチ5追補の仕様どおり)。
