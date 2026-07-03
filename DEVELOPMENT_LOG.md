@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1364 — M1実機確認①の記録: 最初のゾーン縛りは評価に使えない(設計チャットFable)
+- v0.25.1363実機(最初のゾーン縛り・7:40クリア)の社長判定「イベントでパンプキン1回・たまに数が
+  増える程度・変化ほぼない」を記録。読み=**仕様どおり**(憲法4条で初心者ゾーンは問題児ゼロ・
+  M1保証も発動しない。M1はエリア2以降でしか効かない)。
+- 評価手順をPACING_REDESIGN.mdのM1節に確定記載: 旧線の評価ランは**ゾーンを進める通常プレイ**で。
+  「最初のゾーンでも変化」はフォークPACING_V2 R4-Cの担当(旧線に足すかは社長裁定事項)。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 憲法4条・5条不変。
+
 ## v0.25.1363 — バッチM1(最小修正)実装: τ5秒/Intensityホールド撤廃/主題保証15秒(社長決定v0.25.1362)
 - A/Bレースのこの線(0.25.x最小修正)側の実装。3点以外(rank寄せ台本選択・PHASES骨格・緩の演目
   選択・イベントゲート・チャフ配合)は一切触っていない。
