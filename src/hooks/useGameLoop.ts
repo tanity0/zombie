@@ -112,6 +112,9 @@ import { selectGateProgram, selectGateProgramLegacy, GATE_PROGRAM_DISPLAY_NAME, 
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { evaluateGateGuarantee } from '../utils/gateGuarantee';
 import { resolveShallowSchedule, dueShallowSpawns, positionForAngle, pickChaffFromMix, type ShallowExpression, type ResolvedShallowSpawn } from '../utils/shallowExpression';
+import {
+  rollAreaScriptSpawns, rollAreaScriptSpecial, areaScriptGateOk, AREA_SCRIPT_ROLL_INTERVAL_MS,
+} from '../utils/areaScript';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
 import { getSelectedStageId } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
@@ -426,6 +429,8 @@ const V2_ENABLED = evParam('v2') !== '0';
 const ACTIVE_PHASES = V2_ENABLED ? PHASES : PHASES_LEGACY;
 // PACING_V2.mdバッチR4-C(v0.26.6定量化): 浅いエリアの代替表現。?shallow=0で無効化(発動条件を常にfalse)。
 const SHALLOW_ENABLED = evParam('shallow') !== '0';
+// PACING_V2.md§2(R7): エリア台本。?areascript=0で無効化。
+const AREA_SCRIPT_ENABLED = evParam('areascript') !== '0';
 // 現在選択中のステージのstageAggroを毎回引く(localStorage読み取りのみ・pixiScene.tsの
 // getSelectedStageId()と同じ軽量な呼び出しパターン。1フレームに複数箇所から呼んでも軽い)。
 const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(getSelectedStageId()) : STAGE_AGGRO_DEFAULT);
@@ -733,6 +738,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const shallowExpressionRef = useRef<{ phaseKey: string; active: boolean; expr: ShallowExpression | null; resolved: ResolvedShallowSpawn[]; gateStartMs: number; prevMs: number }>(
     { phaseKey: '', active: false, expr: null, resolved: [], gateStartMs: 0, prevMs: 0 }
   );
+  // PACING_V2.md§2(R7): エリア台本の次回ロール時刻(15秒粒度)。
+  const areaScriptRef = useRef({ nextRollAt: AREA_SCRIPT_ROLL_INTERVAL_MS });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
@@ -1356,6 +1363,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           seenProgramIdsRef.current = new Set(); // PACING_V2.mdバッチR1-Bの未見優先も新ランでリセット
           gateGuaranteeRef.current = { phaseKey: '', startMs: 0, anchor: null, pendingType: null, injected: false }; // バッチR1-Dも新ランでリセット
           shallowExpressionRef.current = { phaseKey: '', active: false, expr: null, resolved: [], gateStartMs: 0, prevMs: 0 }; // バッチR4-Cも新ランでリセット
+          areaScriptRef.current = { nextRollAt: AREA_SCRIPT_ROLL_INTERVAL_MS }; // R7(エリア台本)も新ランでリセット
           setDirectorRankRewardMult(1);
           // 難易度⑥(ピンチ救済)も新ランでリセット。
           pinchRef.current = createPinchState();
@@ -6517,6 +6525,49 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
             se.prevMs = gameTime;
+          }
+        }
+        // PACING_V2.md§2(R7): エリア台本。15秒ごとにロールし、エリア別の確率(「たまに」=
+        // COLOR_RATE_BY_AREAと同じエリア別確率の考え方)でセット(パンプキン/犬/弾)を注入する。
+        // §3ディレクター連携(いつ出すか): RELAX中・intensity≥0.75(ピンチ)・pity発動中は発火させない。
+        // 同時数キャップ(パンプキン2/犬2/弾3/叫び1/ゴースト2)とリフラクトリ15秒・総数enemyCapを守る。
+        // フェーズ種別(関所/緩)には依存しない=「エリア表=何を出すか」のアンビエント層(§2)。
+        if (AREA_SCRIPT_ENABLED && V2_ENABLED && !labTheme && !indoor && !danceTest && !confining && !bossChasingNow
+            && gameTime >= areaScriptRef.current.nextRollAt) {
+          areaScriptRef.current.nextRollAt = gameTime + AREA_SCRIPT_ROLL_INTERVAL_MS;
+          const gateOkNow = areaScriptGateOk({
+            macro: directorRef.current.state.macro,
+            intensity: directorRef.current.state.intensity,
+            pityBlocked: newGameTime < pityEventBlockUntilRef.current,
+          });
+          if (gateOkNow) {
+            const enemiesNow2 = useGameStore.getState().enemies;
+            const alive: Partial<Record<EnemyType, number>> = {};
+            for (const e of enemiesNow2) alive[e.type] = (alive[e.type] ?? 0) + 1;
+            const refractoryTypes = new Set<EnemyType>(
+              (['pumpkin', 'werewolf', 'plant', 'ghost'] as EnemyType[]).filter(t => isInRefractory(getLastKillAt(t), gameTime))
+            );
+            let room = Math.max(0, enemyCap - enemiesNow2.length);
+            const spawnOne = (type: EnemyType) => {
+              const e = generateEnemy(gameTime, player, spawnBounds, type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+              addEnemy(e);
+              room--;
+            };
+            // メイントラック(エリア別パターン表)。
+            const set = rollAreaScriptSpawns({
+              areaIdx: playerAreaIdx, chanceRoll: Math.random(), patternRoll: Math.random(), countRoll: Math.random(),
+              alive, refractoryTypes,
+            });
+            for (const spec of set) {
+              for (let i = 0; i < spec.count && room > 0; i++) spawnOne(spec.type);
+            }
+            // 別枠トラック(叫び1/ゴースト2・3分超orエリア3以降で解禁)。
+            if (room > 0) {
+              const special = rollAreaScriptSpecial({
+                areaIdx: playerAreaIdx, gameTimeMs: gameTime, chanceRoll: Math.random(), pickRoll: Math.random(), alive,
+              });
+              if (special) spawnOne(special);
+            }
           }
         }
         if (

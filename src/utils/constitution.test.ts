@@ -1,10 +1,14 @@
-// 憲法テスト(v0.25.1344・再発防止): PACING_REDESIGN.mdの憲法と横断不変条件を機械化する。
-// 個々のバッチのユニットテストでは掬えない「モジュール間の整合」をここで守る。
-// 背景(全部この形の見落としが実バグ化した):
-//  - GAME_AUDIT #3: 関所①のfeaturedが自分のmaxRung天井では解禁不能=一度も出ない自己矛盾
-//  - v0.25.1343: mix未指定シーンでゾンビ配合が効かない / 回収の床が初心者ゾーンに問題児を逆流
-// 新しいシーン・演目・台本・しきい値を足す時はこのテストを通すこと。どうしても違反したい場合は
-// PACING_REDESIGN.mdの★未決事項に書いて社長裁定を得る(コードコメントに書く質問は届かない)。
+// 旧・憲法テスト【v0.26.8で憲法廃止・v0.26.13ヘッダ更新】
+// 「憲法」としての拘束力(全条維持の縛り)は社長指示で廃止済み。PACING_V2.mdの現行記述
+// (§2エリア台本=エリア1にも問題児が「たまに」出る 等)が常に優先する。
+// このファイルは現存する機構(countCap/gatePressureのゾーン天井/床の許可リスト/mix指定/
+// R4-B緩純度/R4-Cデータ)の**回帰ガード**として存置している。PACING_V2.mdの裁定があれば
+// いつでも書き換え・削除してよい。
+// (旧背景・再発防止の経緯: GAME_AUDIT #3=関所①featuredの自己矛盾/v0.25.1343=mix未指定・
+//  回収床の初心者ゾーン逆流。「横断不変条件はテストで機械化する」という一般原則は引き続き有効)
+// 注: 旧第4条のテストが守るのはgatePressure経路のゾーン天井(§0重要ポイント4の安全弁として残置)
+// のみ。エリア台本(areaScript.ts)がエリア1に問題児を注入するのは仕様であり本テストと矛盾しない
+// (経路が異なる)。
 import { describe, it, expect } from 'vitest';
 import type { EnemyType } from '../types/game';
 import { PHASES, ENEMY_COUNT_FLOOR, type SpawnScene } from './difficultyDirector';
@@ -26,7 +30,7 @@ const ALL_RELIEF_PROGRAMS: ReliefProgram[] = [
 ];
 const ALL_PHASE_SCENES: SpawnScene[] = [...new Map(PHASES.map(p => [p.scene.id, p.scene])).values()];
 
-describe('憲法テスト(横断不変条件)', () => {
+describe('旧・憲法テスト(拘束力はv0.26.8廃止済み・現存機構の回帰ガードとして存置)', () => {
   it('第1条: 台本のcountCapは基本上限(10)を超えない', () => {
     for (const p of PHASES) expect(p.countCap, `phase ${p.kind}${p.index}`).toBeLessThanOrEqual(ENEMY_COUNT_FLOOR);
   });
