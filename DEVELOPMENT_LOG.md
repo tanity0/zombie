@@ -11,6 +11,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.6 — R4-C定量化+裁定2件+テスト方針(社長指示・設計チャットFable)
+- **テスト方針を明記**: この線はR1〜R4を一気に実装してから統合テスト1回(社長指示。バッチごとの
+  実機確認はしない。静的検証+ユニットテストは毎バッチ従来どおり)。
+- **R4-Cを定量仕様化**(実装チャットの質問「どこまで実装しますか?」への回答): 6台本すべて実装する。
+  ただし新湧きシステムは作らず、`src/utils/shallowExpression.ts`の純関数(型+スケジューラ+座標)
+  1モジュール+既存`generateEnemy`/`spawnEnemyAt`への配線のみ。パターン・時刻・体数・角度・
+  countCap内制約・座標式(reaperのoffScreenDist同式)・`?shallow=0`をPACING_V2.md R4-C表に確定。
+  負荷スコア2/10(敵スプライトのみ増・発火時のみ計算)。
+- **裁定①(R1-E)**: `riseTauSForAggro`を`7 - 4*clamp01(aggro)`へ再較正(中立0.5で5s。変調は維持)。
+- **裁定②(R2)**: 「最終コマ無限延長」は設計側の誤記として撤回。7:30以降の関所60⇄緩60交互を
+  無限継続(14:00の特別扱い廃止)。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 憲法4条・5条不変(R4-Cはチャフのみ・cap内)。
+
 ## v0.26.5 — バッチR3実装: 関所テーマの可視化(バナー+診断・実装チャットSonnet)
 - PACING_V2.mdバッチR3一式を実装。
   - **台本名バナー**: 関所開始時の告知バナー(既存の左上イベントバナー`eventBannerText`/
