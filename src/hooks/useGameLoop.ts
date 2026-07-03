@@ -96,6 +96,18 @@ import {
 import { setGatePressureDebug } from '../utils/gatePressureState';
 import { pickChaffMix } from '../utils/chaffMix';
 import { shouldGuaranteeSpawn, type GuaranteeType } from '../utils/featureGuarantee';
+import {
+  createPuzzleClockState, tickPuzzleClock, capForState, cdBasisForRank,
+  applyKomaAssessment, createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
+  type PuzzleClockState, type KomaAccumulatorState,
+} from '../utils/rankAssessor';
+import {
+  selectPattern, allPatternsSeen, nuisanceTarget, decideNextSpawn,
+  relaxBoardTarget, relaxCdMs, noNewSupplyNuisanceTarget, harvestCdMs, harvestTargetTick,
+  CHAFF_WEIGHTS_DEFAULT, CHAFF_WEIGHTS_HARVEST, ZERO_NUISANCE,
+  type FormationPattern, type NuisanceCounts, type SpecialType, type HarvestRampState,
+} from '../utils/scriptPuzzle';
+import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
 import { setPityDrop, resetPityDrop } from '../utils/pityState';
 import {
@@ -420,6 +432,12 @@ const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(get
 // PACING_REDESIGN.md バッチM1(社長決定v0.25.1362・A/Bレース最小修正線): τ8→5秒/Intensityホールド
 // 撤廃/主題保証15秒の3点をまとめて切り替える復帰フラグ。`?m1=0`で3点とも旧挙動へ。
 const M1_ENABLED = evParam('m1') !== '0';
+// PACING_PUZZLE.md バッチM4(社長決定v0.25.1365・ランク7段階×台本パズル方式・既定ON):
+// `?puzzle=0`でこの方式を丸ごと無効化し、M1状態(v0.25.1363の挙動)へ完全復帰する。
+const PUZZLE_ENABLED = evParam('puzzle') !== '0';
+// この方式が湧き型の選択と上限を供給する対象(§2「継続するもの」の通常湧きスポナー管理下の型のみ)。
+// ボス/裏ボス/ハンター/リーパー/ラボ専用型/イベント敵(fromEvent)は対象外(既存の専用ディレクター継続)。
+const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'screamer', 'ghost']);
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
@@ -700,6 +718,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // バッチM1-C(主題保証): 関所開始時点のfeatured型ごとの出現数スナップショット(ディープコピー・
   // 実装精度の規律3)+その関所内で既に保証投入済みの型の集合。keyが変わったら(新しい関所)登り直す。
   const featureGuaranteeRef = useRef<{ key: string; startedAt: number; startSnapshot: Record<KillBucket, number> | null; satisfied: Set<GuaranteeType> }>({ key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() });
+  // PACING_PUZZLE.md バッチM2: ランク/盤面目標(コマをまたいで引き継ぐ持続状態)。
+  const puzzleClockRef = useRef<PuzzleClockState>(createPuzzleClockState());
+  // バッチM3/M4: 60秒コマの進行状態。elapsedMsはボスフェーズ中は加算しない(§2「ボス中は査定・
+  // 台本を停止、ボス後再開」)。komaIndexの下2桁(%3)で通常2→緩1のサイクル位置を決める
+  // (0,1=normal / 2=relax枠。relax枠の中身はrelaxVariantでRELAX⇄HARVESTを交互に切り替える)。
+  const puzzleKomaRef = useRef<{
+    komaIndex: number;
+    elapsedMs: number;
+    kind: 'normal' | 'relax' | 'harvest';
+    pattern: FormationPattern | null; // normalコマの選択済み台本。relax/harvestはnull(HARVEST_PATTERN定数を直接使う)。
+    seenIds: Set<string>;
+    lastPatternId: string | null;
+    relaxVariant: 'relax' | 'harvest'; // 次に緩枠が来た時にどちらを出すか(交互)。
+    acc: KomaAccumulatorState;
+    harvestRamp: HarvestRampState;
+  }>({
+    komaIndex: 0, elapsedMs: 0, kind: 'normal', pattern: null, seenIds: new Set(), lastPatternId: null,
+    relaxVariant: 'relax', acc: createKomaAccumulator(), harvestRamp: { target: 1, msSinceRampMs: 0 },
+  });
+  // バッチM4: 湧きCDのタイムスタンプ(gameTime基準)。0初期化=ラン開始直後は「経過時間0」からCD判定
+  // が始まる(基本CD1秒待ってから1体目、の仕様と自然に一致)。
+  const puzzleCdRef = useRef<{ lastBaseSpawnAt: number; lastNuisanceSpawnAt: number; lastSpecialSpawnAt: number }>({ lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 });
+  // バッチM2: 被弾検知専用(pressureHitRef/M1と同じ責務分離パターン。AIディレクター本体とは別管理)。
+  const puzzleHitRef = useRef<{ prevHp: number; lastHitAt: number }>({ prevHp: -1, lastHitAt: -1e9 });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
   // v0.25.1343: startTotalsは必ずディープコピー(snapshotKillTotals)で持つ。生参照だと差分が常に0になる。
   const killPhaseRef = useRef<{ phaseKey: string; startTotals: ReturnType<typeof snapshotKillTotals> | null; startSpawns: ReturnType<typeof snapshotSpawns> | null }>({ phaseKey: '', startTotals: null, startSpawns: null });
@@ -1344,6 +1386,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pressureCastRef.current = { order: null, pendingCast: null };
           featureGuaranteeRef.current = { key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() }; // バッチM1-Cも新ランでリセット
           setGatePressureDebug(null);
+          // バッチM2/M3/M4も新ランでリセット(ランク1・コマ0・湧きCDタイムスタンプ・被弾検知)。
+          puzzleClockRef.current = createPuzzleClockState();
+          puzzleKomaRef.current = {
+            komaIndex: 0, elapsedMs: 0, kind: 'normal', pattern: null, seenIds: new Set(), lastPatternId: null,
+            relaxVariant: 'relax', acc: createKomaAccumulator(), harvestRamp: { target: 1, msSinceRampMs: 0 },
+          };
+          puzzleCdRef.current = { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 };
+          puzzleHitRef.current = { prevHp: -1, lastHitAt: -1e9 };
+          setPuzzleDebug(null);
           // バッチ2(計測)の種別キル集計も新ランでリセット(前ランの数字を引きずらない)。
           resetKillTelemetry();
           resetPhaseKillDebug();
@@ -1370,6 +1421,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetDirectorSamples(); // リザルトのタイムライン記録も新ランでクリア
         }
         lastSeenGameTimeRef.current = newGameTime;
+
+        // PACING_PUZZLE.md §2: 本方式が「稼働中」かどうか。ボスフェーズ(既存PHASESのboss)だけは
+        // 骨格を残すため対象外(§2「7:00城ボス=既存PHASESのbossフェーズだけ残す」)。curPhaseは
+        // まだこの位置では未計算(ずっと下の別ブロックで初めて求まる)ので、既存の他箇所と同じく
+        // phaseAt()を軽量に再呼び出しする(同種の再計算は無視できるコスト・既存踏襲)。
+        const puzzleActiveNow = PUZZLE_ENABLED && !labTheme && !indoor && !danceTest && phaseAt(newGameTime).kind !== 'boss';
 
         const castle = useGameStore.getState().castleEvent;
         // 城のフィナーレボス: 城に近づくと魔法陣の演出(錬金と同じ=magic-circle)で giantbat が出現(社長指示)。
@@ -1408,7 +1465,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 開始2分以降にランダムで1回だけ発火。開始時に囲い周辺の通常敵を一掃し、イベント用の敵
         // (ゾンビ大量 or giantbot ミニボス)を円内に湧かせる。終了=全滅/撃破 or 制限時間。
         // 研究所/屋内/ダンスでは出さない(通常の森ステージ専用)。
-        if (!danceTest && !indoor && !labTheme) {
+        // PACING_PUZZLE.md §2: 本方式稼働中は「eventProducerの固定イベント」(囲い/ミニボス/救助/卵)を
+        // 丸ごと停止する(ボスフェーズ中はpuzzleActiveNow=falseなので従来どおり動く=既存の骨格を保つ)。
+        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow) {
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
@@ -6052,7 +6111,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         setDirectorRankRewardMult(rankHarvestActive ? rankAdj.rewardMult : 1);
         // 憲法第1条(退屈シグナル→上振れ枠): Perf高×Intensity低の持続だけを見る独立ノブ(Rankとは別)。
         // 前フレームの directorRef.current.state を読む(relaxAdj/buildupAdjと同じ1フレーム遅延パターン)。
-        const upswingOutdoor = UPSWING_ENABLED && !labTheme && !indoor;
+        // PACING_PUZZLE.md §2: 本方式ON時は「退屈上振れup+N」を停止(コマ内のチャフ増員が代替)。
+        const upswingOutdoor = UPSWING_ENABLED && !labTheme && !indoor && !PUZZLE_ENABLED;
         if (upswingOutdoor) {
           upswingRef.current = stepBoredom(upswingRef.current, {
             performance: directorRef.current.state.performance,
@@ -6073,7 +6133,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 関所(gate)中だけ毎フレーム連続スカラーpressureを動かす。`?ladder=0`で無効化(難易度④の
         // 従来挙動に完全復帰)。テンポ/数への反映(sceneIntervalMult/dirCountCap)は後段(spawnBounds
         // 定義後)で行い、ここではpressureのステップと配役トリガーの検出だけを行う。
-        const pressureOutdoor = LADDER_ENABLED && !labTheme && !indoor && curPhase.kind === 'gate';
+        // PACING_PUZZLE.md §2: 本方式ON時はgatePressureの配役・主題保証(M1)を停止する
+        // (curPhase.kind==='gate'はboss中には成立しないため、ここでは!PUZZLE_ENABLEDだけで足りる)。
+        const pressureOutdoor = LADDER_ENABLED && !labTheme && !indoor && curPhase.kind === 'gate' && !PUZZLE_ENABLED;
         if (pressureOutdoor) {
           if (gatePressureRef.current.key !== rankPhaseKey) {
             gatePressureRef.current.key = rankPhaseKey;
@@ -6156,7 +6218,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           maxRung: gateProgramRef.current.program.maxRung,
         } : null);
         const dirCountCap = (labTheme || indoor) ? MAX_ENEMIES : Math.min(ENEMY_COUNT_CEIL, enemyCountCap(gameTime) + rankAdj.countCapBonus + upswingBonus + pressureCapBonus);
-        const enemyCap = confining ? ARENA_EVENT_CAP : (ae ? dirCountCap + RESCUE_ATTACKERS : dirCountCap);
+        // PACING_PUZZLE.md §2/§3-C: 本方式ON時は間引き上限(culling)も本方式の上限(R1-R6=10/
+        // R7=10..20成長)に揃える。旧来のdirCountCap(基本10近辺で頭打ち)のままだと、R7の20体成長を
+        // 旧カリングが即座に間引き潰してしまう(1フレーム遅延で前フレームの値を読む・他の遅延
+        // パターンと同じ許容範囲)。ボス中(puzzleActiveNow=false)は旧来どおりdirCountCapを使う。
+        const enemyCap = confining ? ARENA_EVENT_CAP
+          : (ae ? dirCountCap + RESCUE_ATTACKERS
+          : (puzzleActiveNow ? capForState(puzzleClockRef.current) : dirCountCap));
         // 難易度⑥(ピンチ救済): 「低HP×敵が上限近くまで溜まっている」の持続を測り、松明ドロップの
         // 調整値をシングルトンへ publish(gameStore.dropBreakablePropLoot が読む)。ピンチでない時は
         // 既定値=従来と完全一致。敵の強さ/湧きには触れない(救済は補給側だけ)。
@@ -6164,7 +6232,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pinchRef.current = stepPinch(pinchRef.current, {
             hpFrac: player.maxHealth > 0 ? player.health / player.maxHealth : 0,
             enemyCount: useGameStore.getState().enemies.length,
-            enemyCap: dirCountCap,
+            enemyCap, // 本方式ON時はpuzzleの実効上限(dirCountCapのままだと過大なピンチ誤検知)。
             dtMs: deltaTime * 1000,
           });
           const lvl = pityLevel(pinchRef.current.pinchMs);
@@ -6394,11 +6462,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
         }
+        // PACING_PUZZLE.md §2: 本方式ON時(ボスフェーズ以外)は、通常湧きスポナーの型選択と上限を
+        // 本方式(M2/M3)が供給する。旧経路(下のif全体)は二重湧きを避けるため丸ごとスキップする
+        // (ボス中はpuzzleActiveNow=falseなので既存どおりここが動く)。
         if (
           !danceTest &&
           !indoor &&
           !confining &&
           !bossChasingNow && // 裏ボスが画面内で追跡中だけ通常湧きを止める(非追跡=画面外/帰巣中は湧く・社長指摘)
+          !puzzleActiveNow &&
           fieldCount < normalSpawnCap &&
           timestamp - lastEnemySpawnRef.current > getEnemySpawnInterval(gameTime) * (labTheme ? LAB_SPAWN_INTERVAL_MULT : 1) * sceneIntervalMult
         ) {
@@ -6491,6 +6563,140 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // 保証出現(plant1分/犬3分・エリア不問)はPACING_REDESIGN.mdバッチ1.5で撤廃(社長決定)。
         // 「勉強させる回」の役割はバッチ4の講習演目(relief-pumpkin/relief-wolf、featuredFloor有効)が継承する。
+
+        // PACING_PUZZLE.md バッチM4: 盤面構成パズル方式の配線。§2の停止/継続リストどおり、
+        // 通常湧きスポナー(上のif全体)の代わりにここが型選択と上限を供給する。
+        // ボス中(puzzleActiveNow=false)は何もしない=リフを一切触らない(査定・コマ進行を一時停止し、
+        // ボス後に続きから再開する。§2「ボス中は査定・台本を停止、ボス後再開」)。
+        if (puzzleActiveNow) {
+          // 被弾検知(pressureHitRef/M1と同じ責務分離の専用ref)。
+          if (puzzleHitRef.current.prevHp < 0) puzzleHitRef.current.prevHp = player.health;
+          const dmgTakenThisFrame = Math.max(0, puzzleHitRef.current.prevHp - player.health);
+          if (dmgTakenThisFrame > 0) puzzleHitRef.current.lastHitAt = gameTime;
+          puzzleHitRef.current.prevHp = player.health;
+          const msSinceLastHit = gameTime - puzzleHitRef.current.lastHitAt;
+
+          // コマ境界(60秒ごと)。ボス中は上のif自体に入らないので自然に一時停止する。
+          puzzleKomaRef.current.elapsedMs += deltaTime * 1000;
+          if (puzzleKomaRef.current.elapsedMs >= 60000) {
+            puzzleKomaRef.current.elapsedMs -= 60000;
+            // §4-C: 緩コマ(RELAX/HARVEST)は査定対象外。通常コマだけこのコマの集計を確定させる。
+            if (puzzleKomaRef.current.kind === 'normal') {
+              const input = finalizeKomaAssessmentInput(puzzleKomaRef.current.acc, player.maxHealth);
+              puzzleClockRef.current = applyKomaAssessment(puzzleClockRef.current, input);
+            }
+            puzzleKomaRef.current.komaIndex += 1;
+            puzzleKomaRef.current.acc = createKomaAccumulator();
+            const posInCycle = puzzleKomaRef.current.komaIndex % 3; // 0,1=通常 / 2=緩枠(社長決定: 通常60秒×2→緩60秒)
+            if (posInCycle === 2) {
+              const variant = puzzleKomaRef.current.relaxVariant;
+              puzzleKomaRef.current.kind = variant;
+              puzzleKomaRef.current.pattern = null;
+              puzzleKomaRef.current.relaxVariant = variant === 'relax' ? 'harvest' : 'relax'; // 次の緩枠は交互
+              if (variant === 'harvest') {
+                const cap0 = capForState(puzzleClockRef.current);
+                puzzleKomaRef.current.harvestRamp = { target: Math.min(puzzleClockRef.current.boardTarget, cap0), msSinceRampMs: 0 };
+              }
+            } else {
+              puzzleKomaRef.current.kind = 'normal';
+              const rank = puzzleClockRef.current.rank;
+              const picked = selectPattern(rank, puzzleKomaRef.current.seenIds, puzzleKomaRef.current.lastPatternId, Math.random());
+              puzzleKomaRef.current.pattern = picked;
+              puzzleKomaRef.current.lastPatternId = picked.id;
+              puzzleKomaRef.current.seenIds.add(picked.id);
+              if (allPatternsSeen(rank, puzzleKomaRef.current.seenIds)) puzzleKomaRef.current.seenIds.clear();
+            }
+          }
+
+          // 盤面の現況(パズル管理下の型のみ。ボス/裏ボス/ハンター/リーパー等は対象外)。
+          const puzzleEnemiesNow = useGameStore.getState().enemies;
+          const boardCount = puzzleEnemiesNow.filter(e => PUZZLE_MANAGED_TYPES.has(e.type)).length;
+          const aliveNuisance: NuisanceCounts = {
+            plant: puzzleEnemiesNow.filter(e => e.type === 'plant').length,
+            werewolf: puzzleEnemiesNow.filter(e => e.type === 'werewolf').length,
+            pumpkin: puzzleEnemiesNow.filter(e => e.type === 'pumpkin').length,
+          };
+          const aliveSpecial: Partial<Record<SpecialType, number>> = {
+            screamer: puzzleEnemiesNow.filter(e => e.type === 'screamer').length,
+            ghost: puzzleEnemiesNow.filter(e => e.type === 'ghost').length,
+          };
+
+          const rank = puzzleClockRef.current.rank;
+          let cdMs: number;
+          let effectiveTarget: number;
+          let nuisanceTargetCounts: NuisanceCounts;
+          let areaForSpecial: number;
+          let chaffWeights = CHAFF_WEIGHTS_DEFAULT;
+          let tightenedNow = false;
+
+          if (puzzleKomaRef.current.kind === 'normal') {
+            const tick = tickPuzzleClock(puzzleClockRef.current, {
+              dtMs: deltaTime * 1000,
+              msSinceLastHit,
+              perf: directorRef.current.state.performance,
+              boardCount,
+            });
+            puzzleClockRef.current = tick.state;
+            cdMs = tick.cdMs;
+            tightenedNow = tick.tightened;
+            effectiveTarget = puzzleClockRef.current.boardTarget;
+            nuisanceTargetCounts = puzzleKomaRef.current.pattern ? nuisanceTarget(puzzleKomaRef.current.pattern) : ZERO_NUISANCE;
+            areaForSpecial = playerAreaIdx;
+            // §3-B: このコマの査定用集計へ足し込み(通常コマだけ)。
+            puzzleKomaRef.current.acc = stepKomaAccumulator(puzzleKomaRef.current.acc, {
+              dtMs: deltaTime * 1000,
+              perf: directorRef.current.state.performance,
+              intensity: directorRef.current.state.intensity,
+              dmgTakenThisFrame,
+              boardCount,
+              boardTarget: effectiveTarget,
+              cap: capForState(puzzleClockRef.current),
+            });
+          } else if (puzzleKomaRef.current.kind === 'relax') {
+            cdMs = relaxCdMs(cdBasisForRank(rank, puzzleClockRef.current.r7Cap));
+            effectiveTarget = relaxBoardTarget(puzzleClockRef.current.boardTarget);
+            nuisanceTargetCounts = noNewSupplyNuisanceTarget(aliveNuisance); // 新規補充停止(在席は残す)
+            areaForSpecial = -1; // 特別枠も新規補充停止
+          } else { // 'harvest'
+            const cap = capForState(puzzleClockRef.current);
+            puzzleKomaRef.current.harvestRamp = harvestTargetTick(puzzleKomaRef.current.harvestRamp, cap, deltaTime * 1000);
+            cdMs = harvestCdMs(cdBasisForRank(rank, puzzleClockRef.current.r7Cap));
+            effectiveTarget = puzzleKomaRef.current.harvestRamp.target;
+            nuisanceTargetCounts = noNewSupplyNuisanceTarget(aliveNuisance);
+            areaForSpecial = -1;
+            chaffWeights = CHAFF_WEIGHTS_HARVEST;
+          }
+
+          const decision = decideNextSpawn({
+            boardCount,
+            boardTarget: effectiveTarget,
+            cdElapsedMs: gameTime - puzzleCdRef.current.lastBaseSpawnAt,
+            cdMs,
+            nuisanceElapsedMs: gameTime - puzzleCdRef.current.lastNuisanceSpawnAt,
+            nuisanceTargetCounts,
+            aliveNuisance,
+            specialElapsedMs: gameTime - puzzleCdRef.current.lastSpecialSpawnAt,
+            area: areaForSpecial,
+            aliveSpecial,
+            msSinceLastHit,
+            chaffWeights,
+            tieBreakRandom: Math.random(),
+          });
+          if (decision) {
+            const puzzleEnemy = generateEnemy(gameTime, player, spawnBounds, decision.type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+            addEnemy(puzzleEnemy);
+            puzzleCdRef.current.lastBaseSpawnAt = gameTime;
+            if (decision.slot === 'nuisance') puzzleCdRef.current.lastNuisanceSpawnAt = gameTime;
+            else if (decision.slot === 'special') puzzleCdRef.current.lastSpecialSpawnAt = gameTime;
+          }
+
+          setPuzzleDebug({
+            rank, boardTarget: effectiveTarget, cap: capForState(puzzleClockRef.current), tightened: tightenedNow,
+            komaKind: puzzleKomaRef.current.kind,
+          });
+        } else {
+          setPuzzleDebug(null);
+        }
 
         // Air-dropped ammo supplies (#3). At an irregular cadence a resupply
         // crate appears at a random spot just off-screen, so the player has to
@@ -6963,6 +7169,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               else if (e.type === 'screamer') events |= DIRECTOR_EVENT_BIT.screamer;
               else if (e.type === 'reaper') events |= DIRECTOR_EVENT_BIT.reaper;
             }
+            // PACING_PUZZLE.md バッチM2(§3-D): 本方式ON時のランク/盤面目標(?puzzle=0時はundefined
+            // のまま=ランク階段線が出ない=旧経路のランと区別できる)。setPuzzleDebugと同じスナップ
+            // ショットを読むだけ(記録専用・挙動には影響しない)。
+            const puzzleSnap = getPuzzleDebug();
             recordDirectorSample({
               t: ds.gameTime / 1000,
               intensity: st.intensity,
@@ -6974,6 +7184,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               events,
               debt: boardDebtNow,
               upswing: upswingBonus,
+              puzzleRank: puzzleSnap?.rank,
+              boardTarget: puzzleSnap?.boardTarget,
             });
           }
         }

@@ -36,6 +36,10 @@ export interface DirectorSample {
   events: number;          // DIRECTOR_EVENT_BIT のOR
   debt: number;            // バッチ3.5-B: 盤面在庫(boardDebt)。記録のみ・挙動には影響しない。
   upswing: number;         // 診断up+N線(バッチ1退屈シグナルの上振れ枠。0-BORED_BONUS_MAX)。記録のみ。
+  // PACING_PUZZLE.md バッチM2(§3-D): 本方式(?puzzle=0以外)ON時のみ設定。旧経路(?puzzle=0)は
+  // undefinedのまま=リザルトのランク階段線は本方式のランのみ描画される。
+  puzzleRank?: number;
+  boardTarget?: number;
 }
 const SAMPLE_CAP = 3000; // 0.5s刻みで約25分ぶん。超えたら古いものから捨てる。
 let samples: DirectorSample[] = [];

@@ -11,6 +11,8 @@ import { PHASES, ENEMY_COUNT_FLOOR, type SpawnScene } from './difficultyDirector
 import { GATE_NUMBER, GATE_LINEOFSIGHT, gateJudgmentProgram, GATE_TRIPLE, GATE_AMBUSH, GATE_ASSAULT, GATE_BOSS_SPIKE, type GateProgram } from './gateProgram';
 import { RELAX_PROGRAM, HARVEST_PROGRAM, lessonProgram, recoveryProgram, type ReliefProgram } from './reliefProgram';
 import { ceilingForMaxRung, ceilingForZone, allowedProblemChildren } from './gatePressure';
+import { BASE_CAP, R7_CAP_MAX } from './rankAssessor';
+import { FORMATION_TABLE, SPECIAL_SLOTS, HARVEST_PATTERN, nuisanceTarget, nextNuisanceDeficit, NUISANCE_CD_MS, SPECIAL_CD_MS, ZERO_NUISANCE } from './scriptPuzzle';
 
 // 問題児が関所の許可リストに入るための最低pressure(1種目=スタイル先行側の値で判定)。
 const FIRST_PICK_THRESHOLD: Partial<Record<EnemyType, number>> = {
@@ -86,5 +88,42 @@ describe('憲法テスト(横断不変条件)', () => {
   it('天井テーブルの単調性: maxRung天井とゾーン天井は非減少', () => {
     for (let r = 3; r <= 7; r++) expect(ceilingForMaxRung(r)).toBeGreaterThanOrEqual(ceilingForMaxRung(r - 1));
     for (let a = 1; a <= 4; a++) expect(ceilingForZone(a)).toBeGreaterThanOrEqual(ceilingForZone(a - 1));
+  });
+});
+
+// PACING_PUZZLE.md §1(社長決定v0.25.1369): 本方式(?puzzle=0以外)における憲法の改定基準。
+// 旧経路(?puzzle=0)が使うPHASES/gateProgram/reliefProgram/gatePressure向けの上のテスト群は
+// そのまま残す(本方式では未使用だが、旧経路の回帰防止として有効)。
+describe('憲法テスト(PACING_PUZZLE.mdの改定基準・本方式ON時に適用)', () => {
+  it('第1条(数)は維持: R1〜R6の盤面上限は10、R7の成長上限は20', () => {
+    expect(BASE_CAP).toBe(10);
+    expect(R7_CAP_MAX).toBe(20);
+  });
+
+  it('第2条(同時数キャップ)=ランク表(4-B)が正: どのパターンも自ランクの上限を超えない', () => {
+    for (const pat of FORMATION_TABLE) {
+      const sum = (pat.nuisance.plant ?? 0) + (pat.nuisance.werewolf ?? 0) + (pat.nuisance.pumpkin ?? 0);
+      const cap = pat.rank === 7 ? R7_CAP_MAX : BASE_CAP;
+      expect(sum, pat.id).toBeLessThanOrEqual(cap);
+    }
+  });
+
+  it('特別枠の同時数上限は表どおり: screamer=1 / ghost=2', () => {
+    expect(SPECIAL_SLOTS.find(s => s.type === 'screamer')?.count).toBe(1);
+    expect(SPECIAL_SLOTS.find(s => s.type === 'ghost')?.count).toBe(2);
+  });
+
+  it('第4条(初心者ゾーン不可侵)は本方式では廃止: 邪魔者枠の解禁判定はエリアを引数に取らず、場所に依存しない', () => {
+    const deficit = nextNuisanceDeficit({ plant: 0, werewolf: 0, pumpkin: 2 }, ZERO_NUISANCE);
+    expect(deficit).toBe('pumpkin');
+  });
+
+  it('HARVESTは基本セットのみ(R1-A)へ強制固定される(邪魔者ゼロ)', () => {
+    expect(nuisanceTarget(HARVEST_PATTERN)).toEqual(ZERO_NUISANCE);
+  });
+
+  it('§0.5攻略性の原則: 邪魔者・特別枠の投入CDは3秒固定(rankAssessorのランクCDとは別管理・締めても縮まらない)', () => {
+    expect(NUISANCE_CD_MS).toBe(3000);
+    expect(SPECIAL_CD_MS).toBe(3000);
   });
 });

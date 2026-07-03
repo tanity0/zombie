@@ -188,9 +188,48 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
-| M2 | ランク査定+ランプ+リアルタイム緩急(rankAssessor+診断) | 未着手(**着手可**) |
-| M3 | 盤面構成パズル(scriptPuzzle: 表+選択+CD/枠の純関数) | 未着手(**着手可**) |
-| M4 | 配線(コマループ・緩サイクル・?puzzle=0・ボス停止) | 未着手(**着手可**・仕様全確定v0.25.1371) |
+| M2 | ランク査定+ランプ+リアルタイム緩急(rankAssessor+診断) | **実装済み v0.25.1372** |
+| M3 | 盤面構成パズル(scriptPuzzle: 表+選択+CD/枠の純関数) | **実装済み v0.25.1372** |
+| M4 | 配線(コマループ・緩サイクル・?puzzle=0・ボス停止) | **実装済み v0.25.1372・統合テスト待ち** |
+
+### 実装結果(v0.25.1372・M2→M3→M4を一気に実装)
+- **M2** `src/utils/rankAssessor.ts`: `PuzzleClockState`(rank/r7Cap/boardTarget/belowTargetMs/
+  msSinceRampMs)+`tickPuzzleClock`(毎フレームのランプ+リアルタイム締め判定。tightenedは永続せず
+  毎回入力から導出=被弾した瞬間に自然と基準へ戻る)+`assessKomaDelta`/`applyKomaAssessment`
+  (60秒境界の昇降格)+コマ集計(`stepKomaAccumulator`/`finalizeKomaAssessmentInput`)。
+  テスト34件。
+- **M3** `src/utils/scriptPuzzle.ts`: 確定表(`FORMATION_TABLE`、R1-R7×A-D)+`selectPattern`
+  (未見優先→ランダム・直前禁止)+邪魔者/特別枠の欠員判定+`decideNextSpawn`(バーストしない
+  「今1体だけ何を湧かせるか」の核心判定。§0.5の被弾直後1.5秒ガードを含む)+RELAX/HARVEST
+  オーバーライド関数群。テスト29件。
+- **M4** `src/hooks/useGameLoop.ts`: `puzzleActiveNow`(`PUZZLE_ENABLED && !labTheme && !indoor
+  && !danceTest && phaseAt().kind!=='boss'`)を軸に、①旧通常湧きスポナー②gatePressure(M1配役・
+  τ・ホールド)③eventProducer固定イベント(囲い/ミニボス/救助/卵)④退屈上振れup+N、を停止し、
+  新規の盤面維持ループ(60秒コマ管理・査定呼び出し・decideNextSpawnの実行)に置き換えた。
+  **副次的に発見した不整合を合わせて修正**: 敵数の間引き上限(カリング)とピンチ救済の`enemyCap`が
+  旧`dirCountCap`(基本10近辺で頭打ち)のままだと、R7の20体成長を旧カリングが即座に間引き潰して
+  しまうため、本方式ON時はこの2箇所も`capForState(puzzleClockRef.current)`へ揃えた(仕様の
+  範囲内の配線バグ修正・値や意図は変えていない)。診断: `DirectorSample`に`puzzleRank`/
+  `boardTarget`を追加、`DirectorResult.tsx`にランク階段線、`DirectorOverlay.tsx`に`R{n}[+]/T{target}
+  cap{cap} · {komaKind}`表示、新規`src/utils/puzzleState.ts`(表示専用シングルトン)。
+- **§1(憲法改定)**: `constitution.test.ts`に新describe追加(旧テスト群はそのまま残置=`?puzzle=0`
+  経路の回帰防止)。第1条(10/20)・第2条(表が正)・第4条廃止(邪魔者判定はarea非依存)・
+  HARVEST=R1-A固定・投入CD3秒固定、を機械化。
+- 復帰: `?puzzle=0`で上記すべてが無効化され、M1状態(v0.25.1363の挙動)へ完全復帰する
+  (旧コードパスは削除していない)。
+- 自己点検: 憲法第1条(数)は維持(R1-R6=10/R7成長10-20)。第4条は本方式の中では明示的に廃止
+  (社長決定どおり)だが、`?puzzle=0`側のPHASES/gatePressureは無変更のため第4条自体は健在。
+  第5条(緩を荒らさない)は新RELAX/HARVESTが継承(査定対象外・邪魔者新規補充停止)。
+- 検証: lint / typecheck / test(383 pass, 1 skip・新規105件: rankAssessor34+scriptPuzzle29+
+  constitution追加6+featureGuarantee/gatePressure等の既存分) / build 全通過。
+  **実機未確認(§6のとおり途中の実機確認は行っていない)。M4完了=統合テスト待ち。**
 
 ## ★未決事項(Sonnetはここに書いて止まる)
-(現在なし)
+**現在なし(下記は実装中に見つけた解釈の記録・ブロッキングではない)**:
+- **R7中の「耐えられない」判定とrankAssessor.tsの解釈**: §3-Cの「上限成長+2/-2」と「R7から降格
+  したら上限は10に戻る」の2文は、字面だけでは「-1判定が常に上限-2なのか、時々rank自体を
+  7→6へ落とすのか」が一意に決まらなかった。実装した解釈(`applyKomaAssessment`のコメントに
+  明記): -1判定はまず上限を-2で吸収し、**上限が既に下限(10)にいる状態でさらに-1判定が出た時
+  だけ**実際にR6へ降格する(その時点で上限は定義上10=「降格したら上限は10に戻る」の文とも
+  矛盾しない)。数値・カーブ自体は変えていない(判定順序の解釈のみ)。異なる意図であれば
+  ここに追記のうえ`rankAssessor.ts`の該当コメントとテストを更新する。

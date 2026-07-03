@@ -6,6 +6,7 @@ import { getPhaseKillDebug, getCurrentStyle } from '../utils/killTelemetryState'
 import { getGatePressureDebug } from '../utils/gatePressureState';
 import { getReliefProgramDebug } from '../utils/reliefProgramState';
 import { getGateProgramDebug } from '../utils/gateProgramState';
+import { getPuzzleDebug } from '../utils/puzzleState';
 import type { DirectorMacro } from '../utils/aiDirector';
 
 const PROBLEM_CHILD_INITIAL: Record<string, string> = { plant: 'P', werewolf: 'W', pumpkin: 'K', screamer: 'S', ghost: 'G' };
@@ -49,6 +50,7 @@ const DirectorOverlay: React.FC = () => {
   const pressureDebug = getGatePressureDebug();
   const programDebug = getReliefProgramDebug();
   const gateProgramDebug = getGateProgramDebug();
+  const puzzleDebug = getPuzzleDebug();
   // ステップB/C(?directorApply=relax|buildup|all)が有効かどうかの表示だけ(判定自体は useGameLoop 側)。
   const applyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('directorApply') : null;
   const applyRelax = applyParam === 'relax' || applyParam === 'all';
@@ -124,6 +126,13 @@ const DirectorOverlay: React.FC = () => {
       {gateProgramDebug && (
         <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
           gate {gateProgramDebug.id} maxRung{gateProgramDebug.maxRung}
+        </div>
+      )}
+      {/* PACING_PUZZLE.md バッチM2/M4: 本方式(?puzzle=0以外)ON時のランク/盤面目標。締め中は+表示。 */}
+      {puzzleDebug && (
+        <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
+          R{puzzleDebug.rank}{puzzleDebug.tightened ? '+' : ''}/T{puzzleDebug.boardTarget} cap{puzzleDebug.cap}
+          {' '}· {puzzleDebug.komaKind}
         </div>
       )}
     </div>

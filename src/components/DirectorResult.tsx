@@ -97,7 +97,21 @@ const DirectorResult: React.FC = () => {
     const debtPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.debt / DEBT_DISPLAY_MAX)).toFixed(1)}`).join(' ');
     // バッチ6小物: up+N(退屈シグナルの上振れボーナス)線。BORED_BONUS_MAXで正規化(0-1軸)。挙動不変・記録済み値の表示のみ。
     const upswingPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.upswing / BORED_BONUS_MAX)).toFixed(1)}`).join(' ');
-    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs, debtPts, upswingPts };
+    // PACING_PUZZLE.md バッチM2(§3-D): ランク階段線(1..7を0-1軸へ正規化)。本方式(?puzzle=0以外)の
+    // ランのみpuzzleRankが記録されているので、旧経路(?puzzle=0)のランではnullが続き線が出ない
+    // (gatePressure線と同じ「途切れる=対象外」の見せ方)。
+    const rankSegs: string[] = [];
+    let rankSeg: string[] = [];
+    for (const s of samples) {
+      if (s.puzzleRank == null) {
+        if (rankSeg.length > 1) rankSegs.push(rankSeg.join(' '));
+        rankSeg = [];
+      } else {
+        rankSeg.push(`${x(s.t).toFixed(1)},${y((s.puzzleRank - 1) / 6).toFixed(1)}`);
+      }
+    }
+    if (rankSeg.length > 1) rankSegs.push(rankSeg.join(' '));
+    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs, debtPts, upswingPts, rankSegs };
   }, [samples]);
 
   const pct = (sec: number): number => (summary.durationSec > 0 ? Math.round((100 * sec) / summary.durationSec) : 0);
@@ -141,6 +155,10 @@ const DirectorResult: React.FC = () => {
           <polyline points={chart.debtPts} fill="none" stroke="#94a3b8" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 2" />
           {/* バッチ6小物: up+N(退屈シグナルの上振れボーナス)線(第5の線・城ボス凡例の水色と被らないティール) */}
           <polyline points={chart.upswingPts} fill="none" stroke="#2dd4bf" strokeWidth={1} strokeOpacity={0.85} strokeDasharray="1 3" />
+          {/* PACING_PUZZLE.md バッチM2: ランク階段線(白・本方式ONのランだけ途切れず表示される) */}
+          {chart.rankSegs.map((pts, i) => (
+            <polyline key={i} points={pts} fill="none" stroke="#f1f5f9" strokeWidth={1.3} strokeOpacity={0.9} />
+          ))}
           {/* バッチ2.5: エリア移動(縦線+ゾーン番号) */}
           {chart.areaLines.map((a, i) => (
             <g key={i}>
@@ -171,6 +189,10 @@ const DirectorResult: React.FC = () => {
           <span className="inline-flex items-center gap-0.5">
             <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#2dd4bf' }} />
             up+N
+          </span>
+          <span className="inline-flex items-center gap-0.5">
+            <span className="inline-block w-2 h-0.5" style={{ backgroundColor: '#f1f5f9' }} />
+            ランク(R1-R7)
           </span>
         </div>
       )}

@@ -10,6 +10,47 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1372 — PACING_PUZZLE.md M2→M3→M4を一気に実装(社長決定v0.25.1365〜1371・実装チャットSonnet)
+- **M2** `src/utils/rankAssessor.ts`(新規): ランク(1-7)・R7中の上限成長(10-20・±2/分)・
+  盤面目標の毎フレームランプ(6秒+1・被弾直後10秒は据え置き)・リアルタイム緩急(無被弾15秒+
+  Perf0.6以上or枯渇15秒で締め=CD1ランク上+ランプ4秒間隔、被弾で即解除)・60秒境界の査定
+  (`capReached`かつ`dmgRatio<0.35`かつ(`perfAvg>=0.45`or`starveRatio>=0.4`)で昇格/
+  `dmgRatio>=0.60`or`intensAvg>=0.85`で降格・判定順は降格優先=安全側)。テスト34件。
+- **M3** `src/utils/scriptPuzzle.ts`(新規): ランク別構成パターン表(R1-R7×A-D・社長確定表を
+  そのまま採録)・未見優先→ランダム+直前禁止の選択・邪魔者枠(枠共通CD3秒・§0.5で締めても
+  縮めない)+特別枠(叫び=エリア3〜/ゴースト=エリア4〜・別CD3秒)+基本セット(バット5:スケルトン
+  3:ゾンビ1)・`decideNextSpawn`(バーストしない「今1体だけ」判定・被弾直後1.5秒は邪魔者/特別枠
+  投入禁止)・RELAX(目標60%/CD×2/新規補充停止)/HARVEST(R1-A固定/2秒ランプ/CD×0.5/バット
+  寄せ7:2:1)のオーバーライド。テスト29件。
+- **M4** `src/hooks/useGameLoop.ts`: `puzzleActiveNow`を軸に旧通常湧きスポナー/gatePressure
+  (M1配役・τ・ホールド)/eventProducer固定イベント(囲い・ミニボス・救助・卵)/退屈上振れup+Nを
+  停止し、60秒コマ管理+盤面維持ループへ配線。ボスフェーズ(既存PHASESのboss)だけは骨格を残し
+  puzzleActiveNow=falseで自動的に旧経路へフォールバック(査定・コマは一時停止、ボス後に続きから
+  再開)。**副次的に発見した不整合を合わせて修正**: 敵数の間引き上限(カリング)とピンチ救済の
+  `enemyCap`が旧`dirCountCap`(基本10近辺で頭打ち)のままだと、R7の20体成長を旧カリングが
+  即座に間引き潰してしまうため、本方式ON時はこの2箇所も本方式自身の上限
+  (`capForState(puzzleClockRef.current)`)へ揃えた(仕様の範囲内の配線バグ修正・値や意図は
+  変えていない)。
+- 診断: `DirectorSample`に`puzzleRank`/`boardTarget`を追加、`DirectorResult.tsx`(リザルトの
+  心電図)にランク階段線、`DirectorOverlay.tsx`(`?director=1`)に`R{n}[+]/T{target} cap{cap} ·
+  {komaKind}`表示。新規`src/utils/puzzleState.ts`(表示専用シングルトン)。
+- **§1(憲法改定)**: `constitution.test.ts`に新describeブロックを追加(第1条10/20維持・第2条=
+  ランク表が正・第4条は本方式内で廃止=邪魔者判定がarea非依存であることを確認・HARVEST=R1-A
+  固定・投入CD3秒固定)。旧テスト群はそのまま残置(`?puzzle=0`経路の回帰防止)。
+- 復帰フラグ: `?puzzle=0`でこの方式を丸ごと無効化し、M1状態(v0.25.1363の挙動)へ完全復帰
+  (旧コードパスは削除していない)。
+- **実装中に見つけた解釈をPACING_PUZZLE.mdの★未決事項へ記載**(ブロッキングではない・実装は
+  進めた): R7中の「耐えられない」判定を「まず上限-2、上限が下限(10)に居る状態でさらに-1が
+  出た時だけ実際にR6へ降格」と解釈(§3-Cの2文が字面だけでは一意に決まらないため。数値・カーブ
+  自体は変えていない)。
+- 自己点検: 憲法第1条(数)は維持(R1-R6=10/R7成長10-20)。第4条は本方式内で明示的に廃止(社長
+  決定どおり)だが`?puzzle=0`側のPHASES/gatePressureは無変更のため旧経路の第4条は健在。
+  第5条(緩を荒らさない)は新RELAX/HARVESTが継承。
+- 検証: lint / typecheck / test(383 pass, 1 skip・新規テスト計96件) / build 全通過。
+- **実機未確認(§6のとおり途中の実機確認はせず一気に実装)。M4完了=統合テスト待ち。**
+  次のアクションは社長の実機プレイ判定待ち(物差し: ①R7到達の体感②台本変化で飽きないか
+  ③最初のエリアから邪魔者が出るか④苦戦時に手が緩むか⑤詰みが一度も起きないか)。
+
 ## v0.25.1371 — 台本会議クローズ: 緩サイクル確定+処理速度を査定に追加(社長決定・設計チャットFable)
 - **緩サイクル確定**: 通常60秒×2コマ→緩60秒(RELAX⇄HARVEST交互)・全コマ60秒統一。
   R7到達は目安(順調9分前後)でKPIにしない。狙い=「急を長く続けない」(連続通常は2つまで)。
