@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1346 — CLAUDE.md: 節約ルール7-4と実装精度規律1の境界を明確化(かぶりチェック・設計チャットFable)
+- 社長指示「Sonnet側もCLAUDE.mdに書いていたのでかぶってないかチェック」。結果:
+  v0.25.1345(トークン・作業節約ルール)とv0.25.1344(実装精度の規律)は**領域が別で重複なし**。
+- ただし1点、境界が衝突し得た: 7-4「着手前1問確認」が**仕様・数値の未決**にも適用されると、
+  ★未決事項(設計書)を迂回してチャットの1問で設計判断が済んでしまう抜け道になる。
+  → 7-4に境界の注記を追加: 1問確認は「作業依頼の曖昧さ」(対象ファイル・どちらの意味か等)のみ。
+  仕様・数値・挙動の未決は従来どおり★未決事項に書いて止まる(実装チャットは設計判断をしない)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1345 — CLAUDE.mdにトークン・作業節約ルール(セクション7)を追記(社長指示)
 - Google Driveの`05_HANDOFF_INBOX`に置かれていた`2026-07-03_chat_to_codex_token_saving_rules.md`
   (Fableチャット作成)の内容を、`mcp__a9364379...`のDrive読み取りツール(このセッションで再接続)
