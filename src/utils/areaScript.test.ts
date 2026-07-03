@@ -118,16 +118,22 @@ describe('rollAreaScriptSpecial(別枠: 叫び1/ゴースト2)', () => {
 });
 
 describe('areaScriptGateOk(§3ディレクター連携: いつ出すかの判断)', () => {
-  it('通常時(buildup/peak・intensity低・pity無し)は発火可', () => {
-    expect(areaScriptGateOk({ macro: 'buildup', intensity: 0.3, pityBlocked: false })).toBe(true);
+  it('gateコマ中の通常時(macro=buildup/peak・intensity低・pity無し)は発火可', () => {
+    expect(areaScriptGateOk({ phaseKind: 'gate', macro: 'buildup', intensity: 0.3, pityBlocked: false })).toBe(true);
+  });
+  it('導入/buildup(緩)コマでは発火しない', () => {
+    expect(areaScriptGateOk({ phaseKind: 'buildup', macro: 'buildup', intensity: 0.3, pityBlocked: false })).toBe(false);
+  });
+  it('bossコマでは発火しない', () => {
+    expect(areaScriptGateOk({ phaseKind: 'boss', macro: 'buildup', intensity: 0.3, pityBlocked: false })).toBe(false);
   });
   it('RELAX中(息継ぎ)は発火しない', () => {
-    expect(areaScriptGateOk({ macro: 'relax', intensity: 0.1, pityBlocked: false })).toBe(false);
+    expect(areaScriptGateOk({ phaseKind: 'gate', macro: 'relax', intensity: 0.1, pityBlocked: false })).toBe(false);
   });
   it('intensity>=0.75(ピンチ)は発火しない', () => {
-    expect(areaScriptGateOk({ macro: 'buildup', intensity: 0.75, pityBlocked: false })).toBe(false);
+    expect(areaScriptGateOk({ phaseKind: 'gate', macro: 'buildup', intensity: 0.75, pityBlocked: false })).toBe(false);
   });
   it('pity(救済)発動中は発火しない', () => {
-    expect(areaScriptGateOk({ macro: 'buildup', intensity: 0.3, pityBlocked: true })).toBe(false);
+    expect(areaScriptGateOk({ phaseKind: 'gate', macro: 'buildup', intensity: 0.3, pityBlocked: true })).toBe(false);
   });
 });

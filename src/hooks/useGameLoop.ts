@@ -6529,13 +6529,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // PACING_V2.md§2(R7): エリア台本。15秒ごとにロールし、エリア別の確率(「たまに」=
         // COLOR_RATE_BY_AREAと同じエリア別確率の考え方)でセット(パンプキン/犬/弾)を注入する。
-        // §3ディレクター連携(いつ出すか): RELAX中・intensity≥0.75(ピンチ)・pity発動中は発火させない。
+        // §3ディレクター連携(いつ出すか): 実際のgateコマ中だけ発火させる。導入/buildup(緩)/
+        // boss中は「呼吸」を壊すので止める。さらにRELAX中・intensity≥0.75(ピンチ)・pity発動中は
+        // 発火させない。
         // 同時数キャップ(パンプキン2/犬2/弾3/叫び1/ゴースト2)とリフラクトリ15秒・総数enemyCapを守る。
-        // フェーズ種別(関所/緩)には依存しない=「エリア表=何を出すか」のアンビエント層(§2)。
         if (AREA_SCRIPT_ENABLED && V2_ENABLED && !labTheme && !indoor && !danceTest && !confining && !bossChasingNow
             && gameTime >= areaScriptRef.current.nextRollAt) {
           areaScriptRef.current.nextRollAt = gameTime + AREA_SCRIPT_ROLL_INTERVAL_MS;
           const gateOkNow = areaScriptGateOk({
+            phaseKind: curPhase.kind,
             macro: directorRef.current.state.macro,
             intensity: directorRef.current.state.intensity,
             pityBlocked: newGameTime < pityEventBlockUntilRef.current,

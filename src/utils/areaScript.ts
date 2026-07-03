@@ -1,6 +1,6 @@
 // PACING_V2.md§2(R7): エリア台本。エリア(距離帯)ごとに問題児の「たまに追加」を直接指定する
-// (憲法廃止後の主となる出現規定。旧・初心者ゾーン不可侵の代替は同時数キャップ+ディレクター連携
-// ゲート(§3)が担う)。
+// (憲法廃止後の主となる出現規定。旧・初心者ゾーン不可侵の代替は同時数キャップ+実フェーズ+
+// ディレクター連携ゲート(§3)が担う。導入/緩/bossの呼吸は荒らさず、gateコマ中だけ追加圧にする)。
 //
 // 「たまに」の較正(社長指示「重みづけの概念を見ろ」に基づく実装判断・全て叩き台):
 // - ロール粒度: 15秒(問題児リフラクトリPROBLEM_REFRACTORY_MSと同じ粒度=倒した直後に次が来ない)。
@@ -46,14 +46,15 @@ export const AREA_SCRIPT_PATTERNS: Record<number, AreaScriptSpawnSpec[][]> = {
 };
 
 // §3ディレクター連携ゲート: 「エリア表=何を出すか」「ディレクター=いつ出すか」の分業。
-// ピンチ(intensity高)・RELAX(息継ぎ)・pity(救済)中は発火させない。
+// gateコマ中だけ発火可。導入/緩/boss・ピンチ(intensity高)・RELAX(息継ぎ)・pity(救済)中は発火させない。
 export interface AreaScriptGateInput {
+  phaseKind: 'buildup' | 'gate' | 'boss';
   macro: DirectorMacro;
   intensity: number;
   pityBlocked: boolean;
 }
 export const areaScriptGateOk = (g: AreaScriptGateInput): boolean =>
-  g.macro !== 'relax' && g.intensity < AREA_SCRIPT_INTENSITY_MAX && !g.pityBlocked;
+  g.phaseKind === 'gate' && g.macro !== 'relax' && g.intensity < AREA_SCRIPT_INTENSITY_MAX && !g.pityBlocked;
 
 export interface ResolvedAreaSpawn { type: EnemyType; count: number }
 

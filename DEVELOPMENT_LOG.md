@@ -11,6 +11,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.16 — R7エリア台本の発火をgateコマ中に限定(統合テスト前の体験補正)
+- 社長フィードバック「現状、プレイ体験としてあまりいい状態とは言えない」を受け、26系統の意図
+  (静かな導入→関所で試される→緩で息継ぎ)と実装を照合。R7エリア台本が「フェーズ種別非依存」の
+  アンビエント層として実装されており、導入/buildup(緩)/boss中にも15秒ロールで問題児セットが
+  注入され得るため、心電図の呼吸を壊す方向だと判断した。
+- `src/utils/areaScript.ts`: `areaScriptGateOk`に`phaseKind`を追加し、実フェーズが`gate`の時だけ
+  発火可に変更。既存の安全弁(RELAX中・intensity>=0.75・pity中は発火しない)はそのまま維持。
+- `src/hooks/useGameLoop.ts`: R7エリア台本の発火判定へ`curPhase.kind`を渡す。確率・体数・キャップ・
+  リフラクトリ・`?areascript=0`は不変。
+- `src/utils/areaScript.test.ts`: 導入/buildup(緩)・bossでは発火しないテストを追加し、gate中のみ
+  通ることを機械化。
+- `PACING_V2.md`/`HANDOFF_CODEX.md`: R7の説明を「フェーズ非依存」から「gateコマ中のみ」に更新。
+- 負荷スコア: **1/10**。既存の15秒ロールに条件を1つ足すだけで、むしろ非gate中の追加スポーンを
+  減らす方向。描画/音声/React UIの追加なし。
+- 自己点検: PACING_V2.mdの大目的(心電図・緩急の呼吸)と整合。R5(ゴールド経済)・25系統は未変更。
+- 検証: 関連テスト`areaScript.test.ts`/`shallowExpression.test.ts` 36 pass。フル
+  lint / typecheck / test(385 pass, 1 skip) / build 全通過。
+
 ## v0.26.15 — HANDOFF_CODEX.mdを方向転換フォーク現在地へ全面更新(社長指示「Codexに渡せるようにまとめて」)
 - 旧線時点(v0.25.1358)の内容だったHANDOFF_CODEX.mdを書き直し: ①30秒サマリ(ブランチ/進行
   プロジェクト/憲法廃止/実機URL) ②R1〜R7の実装済み一覧表+残タスク(統合テスト待ち・R5採否待ち)
