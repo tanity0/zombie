@@ -105,7 +105,7 @@ import {
 } from '../utils/killTelemetryState';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
-import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
+import { selectReliefProgram, type ReliefProgram, type ReliefProgramId } from '../utils/reliefProgram';
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, selectGateProgramLegacy, GATE_PROGRAM_DISPLAY_NAME, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
@@ -656,7 +656,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
   // 変異者大量発生(horde): 段階スポーン進捗。1秒に1体ずつ計total体(1/3体目=パンプキン/2/3・最終体目=ウルフ)。
   // totalは既定ARENA_HORDE_COUNT(18)だが、バッチ5追補のイベント関所発火時はeventSizeMultで可変。
-  const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT });
+  // PACING_V2.mdバッチR4-C: shallowはイベント開始時点でプレイヤーが初心者ゾーン(エリア0-1)に
+  // いたか(=問題児の新規投入を禁止し、雑魚のみの小囲いへ差し替える)。
+  const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT, shallow: false });
   // バッチ5追補: 関所頭で発火予約されたイベント関所(gate-assault/gate-boss-spike)の発火待ち状態。
   // gateProgramRef選定側(下方)がセットし、囲い系イベントの毎フレームチェック(上方)が消化する。
   const gateEventPendingRef = useRef<{ eventKind: 'horde' | 'boss'; phaseKey: string; sizeMult: number } | null>(null);
@@ -709,7 +711,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const lastGateFeaturedRef = useRef<EnemyType[]>([]);
   // バッチ4: 現在の緩(buildup)フェーズで選ばれている演目+講習主役の投入済みフラグ
   // (「1フェーズ合計1体・キル後は再投入しない」の状態管理)。
-  const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean; recoverySpawned: number }>({ phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0 });
+  const reliefProgramRef = useRef<{ phaseKey: string; program: ReliefProgram | null; lessonSpawned: boolean; recoverySpawned: number; lastId: ReliefProgramId | null }>({ phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0, lastId: null });
   // バッチ5: 現在の山(gate)フェーズで選ばれている台本+直近に見せた台本id(連続回避用)。
   const gateProgramRef = useRef<{ phaseKey: string; program: GateProgram | null; lastId: GateProgramId | null }>({ phaseKey: '', program: null, lastId: null });
   // PACING_V2.mdバッチR1-B: このランで既に見せた台本id(未見優先の判定用)。ラン開始でリセット。
@@ -1318,7 +1320,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
-          hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT };
+          hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT, shallow: false };
           gateEventPendingRef.current = null; // バッチ5追補も新ランでリセット
           redNightFiredRef.current = false;
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
@@ -1334,7 +1336,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 難易度⑤(DirectorRank)も新ランでリセット(前ランのスナップショットで初回フェーズを誤評価しない)。
           rankRef.current = { rank: 0, phaseKey: '', phaseStartMs: 0, startDamageTaken: 0, startKills: 0, startLevel: 1, lastPerf: 0.7 };
           lastGateFeaturedRef.current = []; // バッチ4も新ランでリセット
-          reliefProgramRef.current = { phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0 };
+          reliefProgramRef.current = { phaseKey: '', program: null, lessonSpawned: false, recoverySpawned: 0, lastId: null }; // R4-Aの直前禁止も新ランでリセット
           setReliefProgramDebug(null);
           gateProgramRef.current = { phaseKey: '', program: null, lastId: null }; // バッチ5も新ランでリセット
           setGateProgramDebug(null);
@@ -1449,6 +1451,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (arenaReady) {
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
+              // PACING_V2.mdバッチR4-C(浅いエリアの代替表現「襲撃/スパイク: 雑魚のみの小囲い」):
+              // イベント開始時点で初心者ゾーン(エリア0-1)にいれば、囲い/ミニボスの問題児injection
+              // (パンプキン/ウルフ)を止め、雑魚のみへ差し替える(憲法第4条: 初心者ゾーンに問題児を出さない)。
+              const eventShallow = areaZoneIndexFor(Math.hypot(pcx, pcy)) <= 1;
               let hordeSizeMult = 1;
               let kind: 'horde' | 'boss' | 'rescue' | 'egg';
               if (gateEventReady && pendingGE) {
@@ -1515,10 +1521,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               if (kind === 'horde') {
                 // 段階スポーン(社長指示): 一斉ではなく「1体ずつ」計N体を per-frame で配置。
-                // 配置/種類(1/3体目=パンプキン/2/3・最終体目=ウルフ)は下の horde 更新ブロックが処理する。
+                // 配置/種類(1/3体目=パンプキン/2/3・最終体目=ウルフ)は下の horde 更新ブロックが処理する
+                // (R4-C: eventShallowなら下のブロックがパンプキン/ウルフの代入を雑魚へ差し替える)。
                 // バッチ5追補: イベント関所発火時はeventSizeMultで基本18体を±(cap20厳守/床14)。
                 const hordeTotal = Math.max(14, Math.min(20, Math.round(ARENA_HORDE_COUNT * hordeSizeMult)));
-                hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: hordeTotal };
+                hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: hordeTotal, shallow: eventShallow };
+              } else if (eventShallow) {
+                // PACING_V2.mdバッチR4-C(スパイク台本の代替表現「雑魚ホード小・イベント形のみ再現」):
+                // 初心者ゾーンではミニボス(パンプキン)を出さず、同じ発生演出(リング/フラッシュ/シェイク)の
+                // まま雑魚のみの小さな囲いに差し替える。
+                const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
+                for (let i = 0; i < ARENA_BOSS_ADDS; i++) {
+                  const pos = placeInRing(0.5);
+                  const t = basics[Math.floor(Math.random() * basics.length)];
+                  const e = spawnEnemyAt(t, pos.x - 16, pos.y - 16, newGameTime);
+                  e.fromEvent = true;
+                  e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
+                  addEnemy(e);
+                }
               } else {
                 // ミニボス: パンプキン+雑魚(社長指示。giantbat は使わない)。プレイヤーから少し離した円内へ。
                 const bx = pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
@@ -1586,7 +1606,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const lpx = player.x + player.width / 2, lpy = player.y + player.height / 2;
               for (let k = 0; k < 1 && hordeSpawnRef.current.spawned < hordeTotalNow; k++) {
                 const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..total)
-                const type: EnemyType = n === pumpkinAtN ? 'pumpkin' : (n === wolfAtN || n === hordeTotalNow) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
+                // PACING_V2.mdバッチR4-C: 初心者ゾーンで開始したイベントはパンプキン/ウルフの代入を
+                // せず雑魚のみにする(「既存hordeの雑魚版」=憲法第4条を直接spawnEnemyAt経路でも守る)。
+                const type: EnemyType = hordeSpawnRef.current.shallow
+                  ? basics[Math.floor(Math.random() * basics.length)]
+                  : n === pumpkinAtN ? 'pumpkin' : (n === wolfAtN || n === hordeTotalNow) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
                 const clear2 = HORDE_SPAWN_PLAYER_CLEARANCE * HORDE_SPAWN_PLAYER_CLEARANCE;
                 let sx = 0, sy = 0;
                 for (let attempt = 0; attempt < HORDE_SPAWN_CLEAR_ATTEMPTS; attempt++) {
@@ -6049,8 +6073,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               lessonExperience: { werewolf: totals.byBucket.werewolf, pumpkin: totals.byBucket.pumpkin },
               struggleType,
               intro: curPhase.index === 1, // GAME_AUDIT #6: 導入buildupは必ず純休憩(講習にしない)
+              lastProgramId: reliefProgramRef.current.lastId, // R4-A: 純休憩⇄HARVESTの直前禁止判定用
             });
-            reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false, recoverySpawned: 0 };
+            reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false, recoverySpawned: 0, lastId: program.id };
           }
         }
         // 関所告知: 関所フェーズに入った瞬間にバナーを出す。生きて抜けた瞬間は「襲撃を凌いだ」(従来どおり)。
@@ -6279,7 +6304,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           effectiveProgram = { ...effectiveProgram, featured: [], featuredFloor: false };
         }
         // バッチ5: gate(山)フェーズでは、台本固定のsceneAtではなく選定済みの台本(gateProgramRef)を使う。
-        const effectiveGateProgram = (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program : null;
+        let effectiveGateProgram = (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program : null;
+        // PACING_V2.mdバッチR4-C(浅いエリアの代替表現「数: 湧きテンポ×1.4+bat寄せ配合(50/30/20)」):
+        // 初心者ゾーン(エリア0-1)で数の関所が選ばれている間だけ、mixを叩き台の値へ差し替える
+        // (featured投入に頼れないぶん、湧き方で物量感を出す)。programオブジェクト自体はmaxRung/
+        // unlockMs判定に使うので複製で対応(既存のeffectiveProgramと同じパターン)。
+        // テンポ側(×1.4)は関所中ずっとgatePressure連続値(intervalMultForPressure)が実効値を
+        // 決めているためscene.intervalMultへは反映されず、下のshallowTempoBoostで別途乗算する。
+        const shallowVolumeSE = (V2_ENABLED && effectiveGateProgram?.shallowExpression?.kind === 'volume' && playerAreaIdx <= 1)
+          ? effectiveGateProgram!.shallowExpression! : null;
+        if (shallowVolumeSE) {
+          effectiveGateProgram = { ...effectiveGateProgram!, mix: shallowVolumeSE.mix ?? effectiveGateProgram!.mix };
+        }
         // 沸きシーン(緩急の部品): 現在フェーズのシーンから「敵構成(featured)」と「沸きスピード(intervalMult)」を読む。
         // 屋内/ラボ/?scenes=0 は素の分布・等速(=従来挙動)。
         const scene = (SCENES_ENABLED && !labTheme && !indoor)
@@ -6306,7 +6342,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // debt≈12→×1.2と1.3が重なって×1.56になっていた)。?debt=0時は従来のペア緩和のみが残る。
         const debtEaseMult = DEBT_ENABLED ? debtTempoEaseMult(boardDebtNow) : 1;
         const hardBoardEase = Math.max(debtEaseMult, pumpkinPairActive ? PUMPKIN_PAIR_SPAWN_EASE : 1);
-        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * hardBoardEase;
+        // PACING_V2.mdバッチR4-C: 数の関所の浅いエリア代替表現「湧きテンポ×1.4」。テンポ倍率(速いほど
+        // 良い)なのでintervalMult(間隔・小さいほど速い)へは逆数で効かせる。
+        const shallowTempoBoost = shallowVolumeSE ? 1 / (shallowVolumeSE.tempoMult ?? 1) : 1;
+        const sceneIntervalMult = baseIntervalMult * relaxAdj.intervalMult * hardBoardEase * shallowTempoBoost;
         // DISTRIBUTION_REDESIGN.md③: レアのシーン/Rank連動。山場(シーンrareMult≥1)でだけRankの
         // rareBoostで増幅する(緩=0/無双=0.5はそのまま=Rankが高くても休憩・無双の色は変えない)。
         const sceneRareBase = scene ? (scene.rareMult ?? 1) : 1;

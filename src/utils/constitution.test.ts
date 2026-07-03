@@ -87,4 +87,35 @@ describe('憲法テスト(横断不変条件)', () => {
     for (let r = 3; r <= 7; r++) expect(ceilingForMaxRung(r)).toBeGreaterThanOrEqual(ceilingForMaxRung(r - 1));
     for (let a = 1; a <= 4; a++) expect(ceilingForZone(a)).toBeGreaterThanOrEqual(ceilingForZone(a - 1));
   });
+
+  // PACING_V2.mdバッチR4-B(緩の純度ガード): 緩コマ中の問題児の新規投入経路はfeaturedFloor
+  // (講習/回収の主役)だけに限定される。pressure配役(gatePressure)・イベント(囲い/主題保証)は
+  // curPhase.kind==='gate'でしか発火しない配線になっている(useGameLoopのpressureOutdoor/
+  // gateEventPendingRef判定・実装精度の規律1: この配線自体はwiring側なので単体テスト対象外だが、
+  // ここではデータ側の不変条件として「床の無い緩演目はfeaturedが空」を固定する)。
+  it('R4-B: 床(featuredFloor)を持たない緩演目(relax/harvest)はfeaturedが空(問題児の新規投入経路が無い)', () => {
+    for (const r of ALL_RELIEF_PROGRAMS) {
+      if (r.featuredFloor) continue;
+      expect(r.featured, `relief program ${r.id}`).toEqual([]);
+    }
+  });
+
+  it('R4-B: 緩の全演目でzombie配合は少数派に抑える(「群れに1体」=既存5%を固定・硬いゾンビを常駐させない)', () => {
+    for (const r of ALL_RELIEF_PROGRAMS) {
+      const mix = r.mix!;
+      const total = mix.bat + mix.skeleton + mix.zombie;
+      expect(mix.zombie / total, `relief program ${r.id}`).toBeLessThanOrEqual(0.1);
+    }
+  });
+
+  it('R4-C: 不意打ち以外の全台本がshallowExpressionを持つ(浅いエリアの代替表現。不意打ちは深入り専用=対象外)', () => {
+    for (const g of ALL_GATE_PROGRAMS) {
+      if (g.id === 'gate-ambush') { expect(g.shallowExpression).toBeUndefined(); continue; }
+      expect(g.shallowExpression, `${g.id}`).toBeDefined();
+    }
+  });
+
+  it('R4-C: 数の関所のshallowExpression(配線済み)は仕様の数値(テンポ×1.4・bat50/skeleton30/zombie20)と一致する', () => {
+    expect(GATE_NUMBER.shallowExpression).toEqual({ kind: 'volume', tempoMult: 1.4, mix: { bat: 50, skeleton: 30, zombie: 20 } });
+  });
 });

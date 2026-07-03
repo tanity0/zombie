@@ -11,6 +11,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.7 — バッチR4実装(一部): 緩整理+浅エリア代替表現(実装チャットSonnet)
+- PACING_V2.mdバッチR4-A/R4-Bを完全実装、R4-Cは6種中3種を配線(残り3種はデータ雛形のみ・
+  ★未決事項に記載して裁定待ち)。
+- **R4-A(緩の演目ローテ)**: `reliefProgram.ts`の`selectReliefProgram`に`lastProgramId`引数を追加。
+  回収/講習の既存適格条件・優先順位・終盤(7:00以降)除外は完全に維持したまま、末尾(旧: 常に
+  HARVEST固定)だけを純休憩⇄HARVESTの交互(直前禁止)に置き換え(候補2つのみ=「未見優先」は
+  「直前と違う方」に一致)。加えて深入りの立て直しコマ(7:30-8:30)は純休憩固定の新規ルールを追加
+  (社長指定)。`useGameLoop.ts`の`reliefProgramRef`に`lastId`を追加して配線。
+- **R4-B(緩の純度ガード)**: 既存配線を確認(pressure配役/主題保証は`curPhase.kind==='gate'`
+  でのみ発火=構造的に緩コマでは発火しない)。データ側の不変条件として`constitution.test.ts`に
+  「床の無い緩演目はfeaturedが空」「全緩演目のzombie配合は10%以下」の2件を追加して固定。
+- **R4-C(浅いエリアの代替表現)**: `gateProgram.ts`に`GateProgram.shallowExpression`
+  (`kind: 'volume'|'ring'|'pincer'|'chaffHorde'|'waves'`)を新設。仕様に具体的数値がある/既存
+  機構で再現できるものだけ実配線した:
+  - **数(volume)**: 「テンポ×1.4+bat寄せ配合(50/30/20)」を実装。`useGameLoop.ts`が初心者ゾーン
+    (エリア0-1)かつ数の関所選択中にmixを差し替え、テンポは`intervalMultForPressure`が実効値を
+    決めるため`sceneIntervalMult`側に`1/tempoMult`を追加乗算(scene.intervalMult側への代入は
+    関所中は無効になると判明したため、効く場所へ変更)。
+  - **襲撃/スパイク(chaffHorde)**: 既存horde/bossアリーナイベントを再利用。イベント開始時点
+    (`beginArenaEvent`相当ブロック)でプレイヤーが初心者ゾーンにいれば、パンプキン/ウルフの
+    直接投入を止めて雑魚のみに差し替える(`hordeSpawnRef.shallow`フラグ+boss枝の分岐追加)。
+    **副産物で実バグ1件close**: 従来この経路は`spawnEnemyAt`で`isValidForArea`等のエリア規約を
+    経由せず直接パンプキンを投入しており、初心者ゾーンでもミニボスが出現しうる憲法第4条の穴が
+    (本タスク開始前から)存在していた。今回の変更でこの穴を閉じた。
+  - **射線(ring)/判断(pincer)/三択(waves)**: 「画面外周の同時湧き」「2方向挟み撃ち」「3波」は
+    新規の湧き配置ジオメトリ(同時多点spawn/挟撃座標/波タイミング)を要し、半径・角度・体数・
+    間隔の数値も仕様に無いため、データ型・タグだけ用意して実配線はせず(未検証の新規スポーン幾何
+    コードを見切り発車で書く工数/バグリスクを避けた)。PACING_V2.mdの★未決事項へ記載。
+- テスト: `reliefProgram.test.ts`にR4-A用8件追加。`constitution.test.ts`にR4-B用2件・R4-C用2件追加。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン)に**むしろ適合を強化**(上記の穴close)。
+  第5条(緩を荒らさない)にも抵触しない(R4-A/Bとも緩フェーズの純度・扱いを厳密化する方向のみ)。
+- 検証: lint / typecheck / test(341 pass, 1 skip) / build 全通過。実機未確認(社長方針どおり)。
+- 次: R4-Cの残り3種(射線/判断/三択)は数値・設計方針の裁定待ち。R5はゴールド経済の価格採否待ち。
+
 ## v0.26.6 — R4-C定量化+裁定2件+テスト方針(社長指示・設計チャットFable)
 - **テスト方針を明記**: この線はR1〜R4を一気に実装してから統合テスト1回(社長指示。バッチごとの
   実機確認はしない。静的検証+ユニットテストは毎バッチ従来どおり)。
