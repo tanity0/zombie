@@ -721,8 +721,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // PACING_PUZZLE.md バッチM2: ランク/盤面目標(コマをまたいで引き継ぐ持続状態)。
   const puzzleClockRef = useRef<PuzzleClockState>(createPuzzleClockState());
   // バッチM3/M4: 60秒コマの進行状態。elapsedMsはボスフェーズ中は加算しない(§2「ボス中は査定・
-  // 台本を停止、ボス後再開」)。komaIndexの下2桁(%3)で通常2→緩1のサイクル位置を決める
-  // (0,1=normal / 2=relax枠。relax枠の中身はrelaxVariantでRELAX⇄HARVESTを交互に切り替える)。
+  // 台本を停止、ボス後再開」)。komaIndex%2で通常1→緩1のサイクル位置を決める(0=normal /
+  // 1=relax枠。社長指示v0.25.1376で通常×2→×1へ改訂。relax枠の中身はrelaxVariantで
+  // RELAX⇄HARVESTを交互に切り替える)。
   const puzzleKomaRef = useRef<{
     komaIndex: number;
     elapsedMs: number;
@@ -6596,8 +6597,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             puzzleKomaRef.current.komaIndex += 1;
             puzzleKomaRef.current.acc = createKomaAccumulator();
             const prevKind = puzzleKomaRef.current.kind;
-            const posInCycle = puzzleKomaRef.current.komaIndex % 3; // 0,1=通常 / 2=緩枠(社長決定: 通常60秒×2→緩60秒)
-            if (posInCycle === 2) {
+            // 社長指示v0.25.1376「ピーク(通常コマ)は1回転だけ」: 通常60秒×1→緩60秒の交互へ
+            // (旧: ×2=v0.25.1371決定を社長自身が改訂)。
+            const posInCycle = puzzleKomaRef.current.komaIndex % 2; // 0=通常 / 1=緩枠
+            if (posInCycle === 1) {
               const variant = puzzleKomaRef.current.relaxVariant;
               puzzleKomaRef.current.kind = variant;
               puzzleKomaRef.current.pattern = null;

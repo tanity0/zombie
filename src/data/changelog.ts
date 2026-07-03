@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1376',
+    items: [
+      '山場と休憩のリズムを変更: 山場60秒→休憩60秒の交互に(以前は山場が2分続いていた)。',
+    ],
+  },
+  {
     version: '0.25.1375',
     items: [
       '緊迫場面の打楽器は山場の始まりに1回だけ流れるように変更(山場の間ずっと鳴り続けない)。鳴り終わるとBGMの音量も自然に戻る。',
