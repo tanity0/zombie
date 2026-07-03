@@ -44,6 +44,9 @@ export interface GatePressureInputs {
   dtMs: number;
   // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 省略時は0=従来と完全一致(risingBlockedへ影響なし)。
   boardDebt?: number;
+  // PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はUP_TAU_S(8s)=従来と完全一致。
+  // stageAggroForAggro側の`riseTauSForAggro`が算出した値を渡す(0.5で8sに一致)。
+  riseTauS?: number;
 }
 
 export interface GatePressureStepResult {
@@ -67,7 +70,7 @@ export const stepGatePressure = (prev: GatePressureState, inputs: GatePressureIn
   const risingBlocked = (inputs.intensity >= INTENSITY_HOLD && perf > pressure) || (inputs.boardDebt ?? 0) > RISE_DEBT_MAX;
   if (!risingBlocked) {
     const dtS = Math.max(0, inputs.dtMs) / 1000;
-    const tauS = perf >= pressure ? UP_TAU_S : DOWN_TAU_S;
+    const tauS = perf >= pressure ? (inputs.riseTauS ?? UP_TAU_S) : DOWN_TAU_S;
     const alpha = 1 - Math.exp(-dtS / tauS);
     pressure += (perf - pressure) * alpha;
   }

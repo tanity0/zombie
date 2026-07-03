@@ -41,9 +41,11 @@ export const stepBoredom = (
   return { boredMs };
 };
 
-// 現在の上振れボーナス(通常湧き上限への加算体数)。BORED_START_MS 未満は0。
-export const boredomBonus = (boredMs: number): number => {
-  if (boredMs < BORED_START_MS) return 0;
-  const steps = Math.floor((boredMs - BORED_START_MS) / BORED_STEP_MS) + 1;
+// 現在の上振れボーナス(通常湧き上限への加算体数)。boredStartMs未満は0。
+// PACING_REDESIGN.mdバッチ6(ステージ難易度指数): 省略時はBORED_START_MS(25000ms)=従来と完全一致。
+// stageAggro.tsの`boredStartMsForAggro`が算出した値を渡す(0.5で25000msに一致)。
+export const boredomBonus = (boredMs: number, boredStartMs: number = BORED_START_MS): number => {
+  if (boredMs < boredStartMs) return 0;
+  const steps = Math.floor((boredMs - boredStartMs) / BORED_STEP_MS) + 1;
   return Math.min(BORED_BONUS_MAX, steps * BORED_STEP_BONUS);
 };

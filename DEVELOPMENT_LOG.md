@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1355 — バッチ6: ステージ難易度指数stageAggro(社長方針v0.25.1348・実装キュー③)
+- 新規 `src/utils/stageAggro.ts`: `stageAggroFor(stageId)`(明示表1/3/4/5/6 + stage-7/EXは
+  stage-6と同じ上限1.0を継続 + 未知/未選択/stage-2(lab)は中立値0.5)/`riseTauSForAggro`/
+  `boredStartMsForAggro`/`gateMaxRungClampForAggro`。ステージkeyの解決は既存の
+  `getSelectedStageId()`(`src/data/progress.ts`)をそのまま流用(pixiScene.tsが毎フレーム
+  描画で使っているのと同じ確立済みパターン)。
+- `src/utils/gatePressure.ts`: `stepGatePressure`に`riseTauS?`引数を追加(省略時8s=従来一致)。
+  `src/utils/boredomDirector.ts`: `boredomBonus`に`boredStartMs?`第2引数を追加(省略時25000ms=
+  従来一致)。
+- `useGameLoop.ts`: `?stageaggro=0`で中立値0.5固定に復帰。関所pressureのriseTauS/退屈発動
+  しきい値(3箇所)/関所maxRungクランプへ配線。
+- **仕様の食い違いを発見**: 関所maxRungクランプ式にステージ1のaggro=0.0を代入すると3になるが、
+  同じ節の注記は「ステージ1は最大段4まで」と書いている。式をそのまま実装し、
+  PACING_REDESIGN.mdの★未決事項へ記載(値の変更は行わず社長裁定待ち)。
+- テスト: `stageAggro.test.ts`(11件)。
+- 自己点検: 憲法第4条・第5条に抵触しない(効くのは関所中のpressure/退屈しきい値のみ)。
+- 検証: lint / typecheck / test(302 pass, 1 skip) / build 全通過。
+- 実機未確認(社長方針どおり統合テストへ持ち越し)。次: 診断up+N線(実装キュー④・最後の項目)。
+
 ## v0.25.1354 — バッチ3完成版: 配役(casting)方式Tank化(社長方針v0.25.1348・実装キュー②)
 - `src/utils/enemyUtils.ts`: `AREA_WEIGHT`のpumpkin/werewolf行を全エリア0化(通常湧きプールから
   完全撤退)。L4DのTank/Hunterと同じ「ディレクターが意図した瞬間に配役として落とす」設計へ

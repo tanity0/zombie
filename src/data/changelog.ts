@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1355',
+    items: [
+      'ステージごとの緩急の強さを調整。序盤のステージほど山場が穏やかに立ち上がり、終盤のステージほど早く盛り上がるように。',
+    ],
+  },
+  {
     version: '0.25.1354',
     items: [
       'パンプキン・犬型は、うろついていて偶然出会う敵から、強襲の山場や講習で狙って送り込まれる敵へ性格を変更。出現の意外性が増した。',

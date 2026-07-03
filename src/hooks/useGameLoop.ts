@@ -107,6 +107,8 @@ import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram'
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
+import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
+import { getSelectedStageId } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -408,6 +410,12 @@ const STRUGGLE_MIN_SPAWNS = 3;
 // PACING_REDESIGN.mdバッチ5: 山(関所)の台本選択。?gateprogram=0で従来の固定シーン
 // (PHASESのscene/maxRung)に戻す。
 const GATE_PROGRAM_ENABLED = evParam('gateprogram') !== '0';
+// PACING_REDESIGN.mdバッチ6: ステージ難易度指数(stageAggro)。?stageaggro=0で中立値0.5固定
+// (バッチ6導入前と完全一致=pressure上げτ8s/退屈発動25s/関所maxRungクランプ5)。
+const STAGE_AGGRO_ENABLED = evParam('stageaggro') !== '0';
+// 現在選択中のステージのstageAggroを毎回引く(localStorage読み取りのみ・pixiScene.tsの
+// getSelectedStageId()と同じ軽量な呼び出しパターン。1フレームに複数箇所から呼んでも軽い)。
+const currentStageAggro = (): number => (STAGE_AGGRO_ENABLED ? stageAggroFor(getSelectedStageId()) : STAGE_AGGRO_DEFAULT);
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
 // gatePressureの問題児ブロック・憲法の数上限をすべて素通りし、序盤の理不尽(最初から弾+濁流)の
@@ -1798,7 +1806,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
               });
               const ready = EVENTS_ENABLED
-                ? (hunterBoredomReady(boredomBonus(upswingRef.current.boredMs)) && hunterProducerOk)
+                ? (hunterBoredomReady(boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro()))) && hunterProducerOk)
                 : score >= HUNTER_FAV_SCORE_NEEDED;
               if (ready) {
                 H.primaryId = spawnHunter(true);
@@ -5971,7 +5979,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               phaseKey: rankPhaseKey,
               sizeMult: eventSizeMult({
                 rank: rankRef.current.rank,
-                boredomBonusValue: boredomBonus(upswingRef.current.boredMs),
+                boredomBonusValue: boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro())),
                 pityRecentlyActive: newGameTime < pityEventBlockUntilRef.current,
               }),
             };
@@ -6045,7 +6053,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             gameTimeMs: gameTime, // 実機フィードバック②: 開始90秒は退屈蓄積しない(BORED_RUN_GRACE_MS)
           });
         }
-        const upswingBonus = upswingOutdoor ? boredomBonus(upswingRef.current.boredMs) : 0;
+        // PACING_REDESIGN.mdバッチ6: 退屈発動までの時間をstageAggroで可変化(0.5=既定25000msに一致)。
+        const upswingBonus = upswingOutdoor ? boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro())) : 0;
         // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 「今盤面に何がいるのか」を先に一度だけ計算し、
         // 以降の4箇所(関所の登り/配役投入/湧きテンポ/イベント発火ゲート)で使い回す(?debt=0で0固定
         // =従来挙動)。屋内/ラボは対象外(屋外の通常敵のみ集計)。
@@ -6075,7 +6084,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const zoneCeiling = ceilingForZone(areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2)));
           // バッチ5: 台本選択が有効な間は、選ばれた台本自身のmaxRung(PHASESの値ではなく台本の値付け)を
           // pressure天井の元にする。台本未選択(初回フレームや?gateprogram=0)はPHASESのmaxRungへ従来どおり。
-          const effectiveMaxRung = (GATE_PROGRAM_ENABLED && gateProgramRef.current.program) ? gateProgramRef.current.program.maxRung : (curPhase.maxRung ?? 7);
+          const scriptMaxRung = (GATE_PROGRAM_ENABLED && gateProgramRef.current.program) ? gateProgramRef.current.program.maxRung : (curPhase.maxRung ?? 7);
+          // バッチ6: ステージ難易度指数によるmaxRungクランプ(min(scriptMaxRung, 3+round(4*stageAggro)))。
+          const effectiveMaxRung = Math.min(scriptMaxRung, gateMaxRungClampForAggro(currentStageAggro()));
           const rungCeiling = ceilingForMaxRung(effectiveMaxRung);
           const ceiling = Math.min(zoneCeiling, rungCeiling);
 
@@ -6087,6 +6098,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ceiling,
             dtMs: deltaTime * 1000,
             boardDebt: boardDebtNow,
+            riseTauS: riseTauSForAggro(currentStageAggro()),
           });
           gatePressureRef.current.state = step.state;
           gatePressureRef.current.ceiling = ceiling;
