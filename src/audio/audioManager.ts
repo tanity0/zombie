@@ -940,7 +940,11 @@ const ensurePeakLayer = (): HTMLAudioElement | null => {
   if (peakLayerEl) return peakLayerEl;
   if (typeof Audio === 'undefined') return null;
   const el = new Audio(PEAK_LAYER_TRACK);
-  el.loop = true;
+  // v0.25.1375(社長指示「ピークは1回転だけ」): ループさせず1周で終える。PEAK窓(通常コマ)が
+  // 続いていても打楽器は1回きり。自然終了時はBGMダッキングを滑らかに戻す(戻さないと
+  // 打楽器なしのままBGMだけ小さい状態がコマ終端まで続いてしまう)。
+  el.loop = false;
+  el.addEventListener('ended', () => { fadePeakLayer(0, 1); });
   el.preload = 'auto';
   (el as HTMLVideoElement).playsInline = true;
   el.volume = 0;
@@ -989,6 +993,7 @@ export const setPeakLayer = (active: boolean) => {
     const el = ensurePeakLayer();
     if (!el) { bgmDuck = 1; applyDuckedBgmVolume(); return; }
     if (shouldPlay) {
+      try { el.currentTime = 0; } catch { /* ignore */ } // 1回転仕様: 各PEAK窓の頭から鳴らし直す
       void el.play().catch(() => { /* ignore: unlocks on next user gesture like other tracks */ });
       fadePeakLayer(PEAK_LAYER_VOLUME * bgmVolume, PEAK_BGM_DUCK);
     } else {
@@ -1011,7 +1016,8 @@ export const setAudioSuspended = (suspended: boolean) => {
     resumeSfxContext();
     if (deepActive) applyBgm();   // 深層中は逆再生版を再開(通常BGMは pause のまま)
     else playBgmRobust();         // bgmActive/muted を尊重して通常BGM復帰
-    if (peakLayerActive) { try { void peakLayerEl?.play().catch(() => {}); } catch { /* ignore */ } }
+    // 1回転仕様: 1周鳴り終えた後(ended)にタブ復帰しても再演奏しない(途中中断だけ再開する)。
+    if (peakLayerActive && peakLayerEl && !peakLayerEl.ended) { try { void peakLayerEl.play().catch(() => {}); } catch { /* ignore */ } }
   }
 };
 

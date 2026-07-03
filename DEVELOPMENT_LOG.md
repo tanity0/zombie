@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1375 — PEAK打楽器は1回転だけ(社長指示「ピークは1回転だけにして」)
+- `src/audio/audioManager.ts`: peak-layer.mp3の`loop`をfalseへ。PEAK窓(通常コマ/紅き月)が続いて
+  いても打楽器は**曲1周で自然終了**し、`ended`リスナーでBGMダッキング(0.4)を従来と同じ700ms
+  ランプで1へ戻す(戻さないと打楽器なしのままBGMだけ小さい状態がコマ終端まで続くため=指示の
+  自然な帰結として同時に実装)。
+- 各PEAK窓の開始時は`currentTime=0`で曲頭から鳴らし直す(旧仕様は前回のフェードアウト位置から
+  再開だった。1回転仕様では「山場の始まり=イントロから」が自然)。
+- タブ復帰(setAudioSuspended)の再開は「途中中断のみ」に限定(`!ended`ガード)。鳴り終えた後に
+  タブへ戻っても再演奏しない。
+- 副次挙動(仕様どおりの帰結・報告): 同一PEAK窓の途中で紅き月が始まっても再演奏はしない(activeが
+  連続していて窓の切れ目がないため)。次の窓からまた1回鳴る。
+- 自己点検: 憲法第4条・第5条に無関係(音声のみ・湧き/難易度ロジック不変)。
+- 検証: lint / typecheck / test(383 pass, 1 skip) / build 全通過。実機で「1回鳴って静かに戻る」
+  聞こえ方の確認を推奨。
+- 運用メモ: v0.25.1374のPagesデプロイがGitHub側の一時障害で失敗していた(実機が1373のままだった)
+  のをrerun_failed_jobsで復旧済み(v0.25.1339と同じ既知パターン)。
+
 ## v0.25.1374 — リザルト心電図の常時表示+PEAK演出をパズルのコマに同期(社長指示)
 - **①リザルトのAIディレクター心電図を常時表示へ**: `GameOverScreen.tsx`の表示ゲートを
   `?director=1`必須→既定ON(`?director=0`で非表示)に反転。記録側(`DIRECTOR_ACTIVE`)は元々
