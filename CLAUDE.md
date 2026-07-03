@@ -233,9 +233,10 @@ checks by cost — do NOT lump them together.
 - **チャット間でお互いの会話は見えない。** 決定・未決・実装結果・実機フィードバックの要点は
   必ずファイル(PACING_REDESIGN.md / DEVELOPMENT_LOG.md / AI_DIRECTOR_HANDOFF.md /
   DISTRIBUTION_REDESIGN.md / CORE_LOOP.md / ENGINEERING_NOTES.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。
-- 現在の進行プロジェクト: **PACING_REDESIGN.md(緩急の心電図化)**。どちらのチャットも
-  作業開始時にまず PACING_REDESIGN.md(冒頭の「運用」と「★未決事項」)と DEVELOPMENT_LOG.md の
-  先頭数エントリを読むこと。
+- 現在の進行プロジェクト: **PACING_PUZZLE.md(ランク7段階×台本パズル方式・旧線の再設計)**。
+  どちらのチャットも作業開始時にまず PACING_PUZZLE.md(「実装順とステータス」「★未決事項」)と
+  DEVELOPMENT_LOG.md の先頭数エントリを読むこと。PACING_REDESIGN.md は前提知識(旧仕様)として
+  参照可。矛盾したら PACING_PUZZLE.md が勝つ。
 
 ## Development environment / handoff
 - Local repository path: `/Users/tanity/zombie`
