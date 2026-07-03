@@ -11,6 +11,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.9 — Pagesを両線合成デプロイへ統一(設計チャットFable)
+- pages.ymlを旧線と同一の合成版に更新: どちらの線がpushしても**旧線=`/zombie/`・
+  新線=`/zombie/v2/`(vite --base上書き)**の両方を最新でビルドして1つのPagesサイトへデプロイ。
+  旧単独ビルド版のままだと、この線からのデプロイが通るようになった時に合成サイトを上書きして
+  しまうため統一が必須だった。
+- **この線のURL**: https://tanity0.github.io/zombie/v2/ (旧線push時にも常に最新化される)。
+  この線のpush起点でデプロイを動かすにはGitHub設定(Environments→github-pages→Deployment
+  branchesに`claude/*`)が必要(未設定の間はこの線のdeployジョブは403で失敗するが実害なし)。
+- 検証: workflow+version変更のみ(コード不変)。自己点検: 憲法4条・5条に無関係。
+
 ## v0.26.8 — R4-C全6種実装+裁定2件反映(実装チャットSonnet・R1〜R4完了)
 - v0.26.6(設計チャットFable)の定量化・裁定を受けて残作業を完了。R1〜R4が本線で完了(社長方針
   どおり統合テスト待ち)。
