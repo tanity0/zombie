@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1357 — PEAKレイヤーの音量アップ(社長指示)
+- `src/audio/audioManager.ts`: `PEAK_LAYER_VOLUME`を0.55→0.9へ(+64%・社長指定値)。
+  PEAK(AIディレクター/紅き月)中に通常BGMへ重ねる打楽器レイヤー(`peak-layer.mp3`)の音量のみ変更。
+  `PEAK_BGM_DUCK`(通常BGMのダッキング量0.4)・その他のSE/BGM音量は無変更。
+- 自己点検: 憲法第4条・第5条には無関係(音量調整のみ・スポーン/難易度ロジック不変)。
+- 検証: lint / typecheck / test(303 pass, 1 skip) / build 全通過。実機未確認(音量バランスは
+  実プレイでの確認を推奨)。
+
 ## v0.25.1356 — 小物: 診断グラフにup+N線を追加(社長方針v0.25.1348・実装キュー④・キュー完了)
 - `src/utils/aiDirectorDebug.ts`: `DirectorSample`に`upswing`フィールドを追加。
 - `useGameLoop.ts`: 既に毎フレーム計算済みの`upswingBonus`をそのまま`recordDirectorSample`へ渡す

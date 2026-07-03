@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1357',
+    items: [
+      '緊張が高まる場面(PEAK)で重なる打楽器の音を、もっとはっきり聞こえるように音量アップ。',
+    ],
+  },
+  {
     version: '0.25.1355',
     items: [
       'ステージごとの緩急の強さを調整。序盤のステージほど山場が穏やかに立ち上がり、終盤のステージほど早く盛り上がるように。',

@@ -953,7 +953,7 @@ export const releaseDeepReverseBgm = () => {
   if (wasDeep) applyBgm(); // 深層中に解放されたら通常BGMへ戻す
 };
 
-const PEAK_LAYER_VOLUME = 0.55; // 私案・実機調整前提
+const PEAK_LAYER_VOLUME = 0.9; // 社長指示: 0.55→0.9(+64%)
 const PEAK_BGM_DUCK = 0.4;      // PEAK中は通常BGMを落とす(社長指示・v0.25.1290=0.65→さらに下げてほしいとの追加指示で0.4へ)。レイヤーのフェードと同時にランプ。
 const PEAK_LAYER_FADE_MS = 700;
 
