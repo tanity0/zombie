@@ -17,9 +17,13 @@ on the zombie game. Append a new entry after each meaningful change.
   P2 時間軸×ゾーン軸の衝突/P3 pressure数値が旧離散設計の遺物+Intensityホールドの自己矛盾/
   P4 確定供給源の全撤去/P5 計測がブレーキ側のみ/P6 実機1ラン観測/P7 経済未接続/P8 過補正の振動、
   +改訂版ローテの必須要件5点)をPACING_REDESIGN.md★未決事項へ正式記録(チャット限りの状態を解消)。
-- ②本コミットを**セーブポイント**として注釈付きタグ `savepoint-v0.25.1360` を打つ。
-  復帰方法: `git checkout claude/chat-context-continuity-saxlH`(このブランチ自体がセーブポイント線。
-  タグは「ここまで=心電図化開発の区切り」の目印)。
+- ②**セーブポイントの実体 = コミット `ae41fe2`(v0.25.1360)@ `claude/chat-context-continuity-saxlH`**。
+  ブランチ自体を保存線として凍結する(フォーク開始後はこちらへ push しない)。
+  復帰方法: `git checkout claude/chat-context-continuity-saxlH` または
+  `git checkout -b <再開ブランチ> ae41fe2`。
+  ※注釈付きタグ `savepoint-v0.25.1360` はリモート環境のgitプロキシがタグpushを403で拒否するため
+  origin に無い(v0.25.1361で判明)。ローカル(社長機)で目印が欲しければ
+  `git tag -a savepoint-v0.25.1360 ae41fe2` を打てばよい。
 - ③フォーク(方向転換用の新ブランチ)はブランチ名の社長指名待ち。フォーク側では CLAUDE.md の
   Branch lock をフォーク名に書き換えてから開発を始めること(そうしないと実装チャットがこちらへ
   push してしまう)。
