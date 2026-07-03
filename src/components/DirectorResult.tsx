@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { getDirectorSamples, DIRECTOR_EVENT_BIT, type DirectorPhaseKind } from '../utils/aiDirectorDebug';
 import { summarizeRun, type DirectorMacro } from '../utils/aiDirector';
 import { BORED_BONUS_MAX } from '../utils/boredomDirector';
+import { GATE_PROGRAM_SHORT_LABEL } from '../utils/gateProgram';
 
 // リザルト画面のAIディレクター振り返り(?director=1 の時だけ表示)。
 // プレイ中は数字を見ずに遊び、死亡/クリア後にここで「緊張曲線＋難易度スコア」を確認する(社長指示)。
@@ -78,6 +79,16 @@ const DirectorResult: React.FC = () => {
     for (let i = 1; i < samples.length; i++) {
       if (samples[i].areaIdx !== samples[i - 1].areaIdx) areaLines.push({ x: x(samples[i].t), areaIdx: samples[i].areaIdx });
     }
+    // PACING_V2.mdバッチR3: 関所帯(gateBands)の中に選ばれた台本の短縮ラベルを重ねる(連続runごとに1つ)。
+    const gateProgramLabels: { x: number; label: string }[] = [];
+    runStart = 0;
+    for (let i = 1; i <= samples.length; i++) {
+      if (i === samples.length || samples[i].gateProgramId !== samples[runStart].gateProgramId) {
+        const id = samples[runStart].gateProgramId;
+        if (id) gateProgramLabels.push({ x: x(samples[runStart].t) + 1, label: GATE_PROGRAM_SHORT_LABEL[id] });
+        runStart = i;
+      }
+    }
     const intensityPts = samples.map(s => `${x(s.t).toFixed(1)},${y(s.intensity).toFixed(1)}`).join(' ');
     const perfPts = samples.map(s => `${x(s.t).toFixed(1)},${y(s.performance).toFixed(1)}`).join(' ');
     const areaPath = `M ${x(t0).toFixed(1)},${(H - PAD).toFixed(1)} L ${intensityPts.replace(/ /g, ' L ')} L ${x(t1).toFixed(1)},${(H - PAD).toFixed(1)} Z`;
@@ -97,7 +108,7 @@ const DirectorResult: React.FC = () => {
     const debtPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.debt / DEBT_DISPLAY_MAX)).toFixed(1)}`).join(' ');
     // バッチ6小物: up+N(退屈シグナルの上振れボーナス)線。BORED_BONUS_MAXで正規化(0-1軸)。挙動不変・記録済み値の表示のみ。
     const upswingPts = samples.map(s => `${x(s.t).toFixed(1)},${y(Math.min(1, s.upswing / BORED_BONUS_MAX)).toFixed(1)}`).join(' ');
-    return { bands, gateBands, eventBands, areaLines, intensityPts, perfPts, areaPath, pressureSegs, debtPts, upswingPts };
+    return { bands, gateBands, eventBands, areaLines, gateProgramLabels, intensityPts, perfPts, areaPath, pressureSegs, debtPts, upswingPts };
   }, [samples]);
 
   const pct = (sec: number): number => (summary.durationSec > 0 ? Math.round((100 * sec) / summary.durationSec) : 0);
@@ -121,6 +132,10 @@ const DirectorResult: React.FC = () => {
           {/* バッチ2.5: 関所(gate/boss)帯(上端の細帯) */}
           {chart.gateBands.map((b, i) => (
             <rect key={i} x={b.x0} y={0} width={Math.max(0.5, b.x1 - b.x0)} height={BAND_H} fill={b.color} opacity={0.85} />
+          ))}
+          {/* PACING_V2.mdバッチR3: 関所帯の中に選ばれた台本の短縮ラベル(数/射/判/三/不/襲/ス)を重ねる */}
+          {chart.gateProgramLabels.map((l, i) => (
+            <text key={i} x={l.x} y={BAND_H - 1} fontSize={5.5} fill="#1c1917" opacity={0.85}>{l.label}</text>
           ))}
           {/* バッチ2.5: イベント発火帯(関所帯のすぐ下) */}
           {chart.eventBands.map((b, i) => (

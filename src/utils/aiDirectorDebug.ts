@@ -5,6 +5,7 @@
 // あわせて「ラン中の時系列サンプル」もここでリングバッファに溜める(リザルト画面のタイムライン/難易度スコア用)。
 // 数字を見ながらプレイするのは無理なので、プレイ後に曲線で振り返れるようにする(社長指示)。
 import type { DirectorState, DirectorMacro } from './aiDirector';
+import type { GateProgramId } from './gateProgram';
 
 let latest: DirectorState | null = null;
 
@@ -36,6 +37,7 @@ export interface DirectorSample {
   events: number;          // DIRECTOR_EVENT_BIT のOR
   debt: number;            // バッチ3.5-B: 盤面在庫(boardDebt)。記録のみ・挙動には影響しない。
   upswing: number;         // 診断up+N線(バッチ1退屈シグナルの上振れ枠。0-BORED_BONUS_MAX)。記録のみ。
+  gateProgramId: GateProgramId | null; // PACING_V2.mdバッチR3: 関所中に選ばれている台本id。緩/ボス中はnull。記録のみ。
 }
 const SAMPLE_CAP = 3000; // 0.5s刻みで約25分ぶん。超えたら古いものから捨てる。
 let samples: DirectorSample[] = [];

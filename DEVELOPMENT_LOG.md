@@ -11,6 +11,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.5 — バッチR3実装: 関所テーマの可視化(バナー+診断・実装チャットSonnet)
+- PACING_V2.mdバッチR3一式を実装。
+  - **台本名バナー**: 関所開始時の告知バナー(既存の左上イベントバナー`eventBannerText`/
+    `eventBannerUntil`、`gateCalloutRef`のフェーズ切替イベント駆動をそのまま流用)を、汎用文言
+    「多数の変異体を検知」から選ばれた台本名(`GATE_PROGRAM_DISPLAY_NAME`: 「数の関所」「射線の関所」
+    「判断の関所」「三択」「不意打ち」「襲撃」「スパイク」)へ差し替え。`GATE_PROGRAM_ENABLED=0`や
+    台本未選択時は旧来の汎用文言にフォールバック。生還時の「襲撃を凌いだ」バナー/SEは無変更。
+    新規per-frame購読は追加していない(既存の`gateCalloutRef.current !== rankPhaseKey`境界のみで発火)。
+  - **診断オーバーレイ(`?director=1`)**: `DirectorOverlay.tsx`は既にバッチ5から`gateProgramDebug.id`/
+    `maxRung`を表示済みだったため本バッチでの追加変更なし(受け入れ条件は満たしている)。
+  - **診断グラフ(DirectorSample)**: `aiDirectorDebug.ts`の`DirectorSample`に`gateProgramId`
+    (`GateProgramId | null`。関所中のみ・0.5秒間隔の既存サンプリングに便乗、記録のみ)を追加。
+    `DirectorResult.tsx`(リザルト画面・?director=1限定の静的表示)の関所帯(gateBands)に、
+    台本の短縮ラベル(`GATE_PROGRAM_SHORT_LABEL`: 数/射/判/三/不/襲/ス。エリア表示Z0-Z4と同じ
+    「短く場所を取らない」流儀)を重ね描き。
+- **負荷スコア: 2/10**(見積もりどおり)。理由: バナー更新はフェーズ切替イベント時のみ(毎フレーム
+  DOM更新なし)。診断グラフは既存0.5秒間隔サンプルに1フィールド追加+リザルト画面の静的SVGへの
+  ラベル追加(ゲームプレイ中のReact再描画には影響しない)。負荷の担い手=UI(HUD文字列更新+
+  診断記録)。安全弁=既存のフェーズ境界トリガー機構をそのまま流用(新規タイマー/購読を作らない)。
+- テスト: `aiDirectorDebug.test.ts`に`gateProgramId`記録の検証1件追加+既存呼び出し全箇所に
+  フィールド追加。
+- 自己点検(実装精度の規律5): 憲法第4条・第5条に無関係(表示専用・湧き/難易度ロジック不変)。
+  React再レンダ規律: バナーはフェーズ切替イベントでのみ更新(毎フレーム購読なし)、
+  DirectorResultは死亡/クリア後の静的表示(そもそも per-frame 購読ではない)。
+- 検証: lint / typecheck / test(331 pass, 1 skip) / build 全通過。実機未確認(社長方針どおり)。
+- 次: バッチR4(緩整理+浅エリア代替表現)。
+
 ## v0.26.4 — バッチR2実装: 時間骨格60秒化(PHASES再カット・実装チャットSonnet)
 - PACING_V2.mdバッチR2一式を実装。`difficultyDirector.ts`の`PHASES`を60秒骨格へ再カット:
   導入60秒(buildup①)→以後 関所60秒⇄緩60秒 を交互(gate①1:00-2:00…)、7:00-7:30に城ボス

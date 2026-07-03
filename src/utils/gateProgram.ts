@@ -153,3 +153,27 @@ export const selectGateProgramLegacy = (input: GateProgramInputLegacy): GateProg
   const midIdx = Math.min(byDifficulty.length - 1, Math.floor(input.tieBreakRandom * byDifficulty.length));
   return byDifficulty[midIdx];
 };
+
+// PACING_V2.mdバッチR3: 関所テーマの可視化用の表示名(社長指定文言)。新旧どちらの選択ロジックでも
+// idは共通なのでこの1枚のマップで両対応する。
+export const GATE_PROGRAM_DISPLAY_NAME: Record<GateProgramId, string> = {
+  'gate-number': '数の関所',
+  'gate-lineofsight': '射線の関所',
+  'gate-judgment': '判断の関所',
+  'gate-triple': '三択',
+  'gate-ambush': '不意打ち',
+  'gate-assault': '襲撃',
+  'gate-boss-spike': 'スパイク',
+};
+
+// PACING_V2.mdバッチR3: 診断グラフ(DirectorResult)用の1文字ラベル。既存のエリア表示(Z0-Z4)と
+// 同じ「短く・場所を取らない」流儀に合わせる(ゲーム内バナーはGATE_PROGRAM_DISPLAY_NAMEの正式名を使う)。
+export const GATE_PROGRAM_SHORT_LABEL: Record<GateProgramId, string> = {
+  'gate-number': '数',
+  'gate-lineofsight': '射',
+  'gate-judgment': '判',
+  'gate-triple': '三',
+  'gate-ambush': '不',
+  'gate-assault': '襲',
+  'gate-boss-spike': 'ス',
+};

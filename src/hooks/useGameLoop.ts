@@ -107,7 +107,7 @@ import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
 import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
 import { setReliefProgramDebug } from '../utils/reliefProgramState';
-import { selectGateProgram, selectGateProgramLegacy, type GateProgram, type GateProgramId } from '../utils/gateProgram';
+import { selectGateProgram, selectGateProgramLegacy, GATE_PROGRAM_DISPLAY_NAME, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { evaluateGateGuarantee } from '../utils/gateGuarantee';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
@@ -1137,7 +1137,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused;
         setHeartbeatLoop(critical);
         // PEAK重ねSE+BGMダッキング: トリガーは台本の関所(gate)フェーズ or 紅き月(社長指示で
-        // 「多数の変異体を検知」バナーと同じ源=台本に統一。反応型macroのPEAKでは鳴らさない。
+        // 関所告知バナー(台本名/「多数の変異体を検知」)と同じ源=台本に統一。反応型macroのPEAKでは鳴らさない。
         // 反応型と台本は別物なので、macro基準だとRELAX表示中に鳴る、が起きる)。屋外のみ。
         const outdoorGate = gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime, ACTIVE_PHASES).kind === 'gate';
         setPeakLayer(!gs.isPaused && gs.player.health > 0 && (outdoorGate || gs.redNight?.phase === 'active'));
@@ -6053,15 +6053,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             reliefProgramRef.current = { phaseKey: rankPhaseKey, program, lessonSpawned: false, recoverySpawned: 0 };
           }
         }
-        // 関所(襲撃)告知(社長指定文言): 関所フェーズに入った瞬間「多数の変異体を検知」、
-        // 生きて抜けた瞬間「襲撃を凌いだ」。表示は頭上の浮きテキストではなく、既存の左上イベント
-        // バナー(eventBannerText=「危険変異体出現」等と同じUI)に統一(社長指示)。屋外のみ。
-        // 最終フェーズ(gate9)は終わりが無いので生還側は出ない。
+        // 関所告知: 関所フェーズに入った瞬間にバナーを出す。生きて抜けた瞬間は「襲撃を凌いだ」(従来どおり)。
+        // 表示は頭上の浮きテキストではなく、既存の左上イベントバナー(eventBannerText=「危険変異体出現」等と
+        // 同じUI)に統一(社長指示)。屋外のみ。最終フェーズ(終局コマ)は終わりが無いので生還側は出ない。
+        // PACING_V2.mdバッチR3(関所テーマの可視化): 台本ローテが有効なら、汎用文言ではなく選ばれた
+        // 台本名(「数の関所」「射線の関所」等)を表示する。新規per-frame UI購読は追加しない
+        // (既存のeventBannerText/gateCalloutRefのフェーズ切替イベント駆動をそのまま流用)。
         if (!labTheme && !indoor && gateCalloutRef.current !== rankPhaseKey) {
           const prevKey = gateCalloutRef.current;
           gateCalloutRef.current = rankPhaseKey;
           if (curPhase.kind === 'gate') {
-            useGameStore.setState({ eventBannerText: '多数の変異体を検知', eventBannerUntil: gameTime + 3500 });
+            const gp = GATE_PROGRAM_ENABLED ? gateProgramRef.current.program : null;
+            const bannerText = gp ? GATE_PROGRAM_DISPLAY_NAME[gp.id] : '多数の変異体を検知';
+            useGameStore.setState({ eventBannerText: bannerText, eventBannerUntil: gameTime + 3500 });
           } else if (prevKey.startsWith('gate')) {
             useGameStore.setState({ eventBannerText: '襲撃を凌いだ', eventBannerUntil: gameTime + 3500 });
             playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
@@ -6998,6 +7002,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               events,
               debt: boardDebtNow,
               upswing: upswingBonus,
+              // PACING_V2.mdバッチR3: 関所中に選ばれている台本id(診断グラフ用・記録のみ)。
+              gateProgramId: (GATE_PROGRAM_ENABLED && curPhase.kind === 'gate') ? gateProgramRef.current.program?.id ?? null : null,
             });
           }
         }
