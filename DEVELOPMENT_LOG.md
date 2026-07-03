@@ -10,6 +10,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1353 — バッチ5追補: イベント関所(囲いの台本昇格)を実装(社長方針v0.25.1348・実装キュー①)
+- 背景: 2:00固定の囲いランダムタイマーが関所と重なる事故(v0.25.1347実機報告)。応急ではなく
+  「台本昇格」で解決(§バッチ5追補の仕様どおり)。
+- `src/utils/gateProgram.ts`: `GATE_ASSAULT`(maxRung4/`eventKind:'horde'`)・`GATE_BOSS_SPIKE`
+  (maxRung5/`eventKind:'boss'`)を追加(ともに`featured: []`+数の関所と同じmix=自己整合)。
+  `selectGateProgram`に選出ルール(a)最初の2関所では選ばない(b)直近イベントなら連続回避
+  (c)pity発動中/解除後10秒は回避、を追加。`constitution.test.ts`の`ALL_GATE_PROGRAMS`にも追加。
+- `src/hooks/useGameLoop.ts`: 関所選定時にイベント関所が選ばれたら`gateEventPendingRef`へ発火予約
+  (`eventSizeMult`でsizeMult算出=バッチ7で保留していた配線をここで消化)。既存の囲いトリガー
+  ブロック(2分タイマー)の`if (!ae)`直下に予約消化の優先分岐を追加し、既存のhorde/boss配置ロジック
+  (段階スポーン/ミニボス配置/リングFX)をそのまま再利用。旧2分タイマーは`EVENTS_ENABLED`時、
+  `redNightPhaseGateOk`で緩フェーズ限定にしたうえでkindをrescue/egg限定に縮小(horde/bossは
+  関所頭側のみに一本化)。`?events=0`で旧の4種フル抽選+無制限フェーズへ完全復帰。
+  `hordeSpawnRef`に`total`を追加し、段階スポーンのパンプキン/ウルフ出現index(旧6/12/18固定)を
+  `round(total/3)`/`round(total*2/3)`/`total`へ一般化(total=18時は旧実装と完全一致を確認)。
+  sizeMult適用時は`clamp(round(18*mult), 14, 20)`(cap20厳守)。
+- テスト: `gateProgram.test.ts`に選出ルール(a)(b)(c)の純関数テスト5件を追加(既存テストのbaseは
+  `gateIndex:0`をデフォルトにして影響なし)。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン)には抵触しない(gate①②では選出ルール(a)が
+  イベント関所自体を禁止)。憲法第5条(緩を荒らさない)にも抵触しない(旧ランダムタイマーは緩
+  フェーズ限定へ縮小、イベント関所は関所内で完結)。
+- 検証: lint / typecheck / test(290 pass, 1 skip・gateProgram.test.ts 16件+constitution.test.ts
+  7件を含む) / build 全通過。
+- 実機未確認(社長方針どおり統合テストへ持ち越し)。次: バッチ3完成版(Tank化)へ続ける。
+
 ## v0.25.1352 — DESIGN_CHAT_GUIDEに「継承できないもの」節を追加(社長指示・設計チャットFable)
 - 社長指示「逆に他モデルで無理なことを明文化しておいて」。文書では移らないモデル特性5つを、
   実例と**後任の補い方**をセットで明文化(§6): 長い因果鎖の横断推論/最初の仮説を自分で壊す力/

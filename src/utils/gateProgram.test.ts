@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { selectGateProgram, gateJudgmentProgram, type GateProgramInput } from './gateProgram';
 
+// gateIndex=0/lastWasEvent=false/pityBlocked=falseがデフォルト=イベント関所は選出ルール(a)で
+// 除外される(既存テストの期待値を変えないため。イベント関所自体のテストは末尾で個別に書く)。
 const base: GateProgramInput = {
   phaseMaxRung: 7,
   rank: 1,
   style: 'バランス',
   lastProgramId: null,
   tieBreakRandom: 0.5,
+  gateIndex: 0,
+  lastWasEvent: false,
+  pityBlocked: false,
 };
 
 describe('selectGateProgram (PACING_REDESIGN.mdバッチ5)', () => {
@@ -62,5 +67,34 @@ describe('gateJudgmentProgram (判断の関所の主役選び)', () => {
 
   it('featuredにplantを含む(弾のレイヤーは常に乗る)', () => {
     expect(gateJudgmentProgram('近接', 0.5).featured).toContain('plant');
+  });
+});
+
+describe('selectGateProgram のイベント関所選出ルール(バッチ5追補)', () => {
+  it('(a) 最初の2関所(gateIndex 0,1)ではイベント関所を選ばない', () => {
+    const p0 = selectGateProgram({ ...base, gateIndex: 0, phaseMaxRung: 5, rank: 2 });
+    const p1 = selectGateProgram({ ...base, gateIndex: 1, phaseMaxRung: 5, rank: 2 });
+    expect(p0.eventKind).toBeUndefined();
+    expect(p1.eventKind).toBeUndefined();
+  });
+
+  it('gateIndex>=2かつ条件が揃えば、rank2でイベント関所(最も難しい適格台本)が選ばれ得る', () => {
+    const p = selectGateProgram({ ...base, gateIndex: 2, phaseMaxRung: 5, rank: 2 });
+    expect(p.id).toBe('gate-boss-spike');
+  });
+
+  it('(b) 直近がイベント関所なら連続で選ばない', () => {
+    const p = selectGateProgram({ ...base, gateIndex: 2, phaseMaxRung: 5, rank: 2, lastWasEvent: true });
+    expect(p.eventKind).toBeUndefined();
+  });
+
+  it('(c) pity発動中/解除後10秒のスロットではイベント関所を選ばない', () => {
+    const p = selectGateProgram({ ...base, gateIndex: 2, phaseMaxRung: 5, rank: 2, pityBlocked: true });
+    expect(p.eventKind).toBeUndefined();
+  });
+
+  it('通常台本の直近除外ロジックはイベント関所選出可否とは独立に働く(lastProgramIdはeventKindなし台本を指す)', () => {
+    const p = selectGateProgram({ ...base, gateIndex: 2, phaseMaxRung: 5, rank: 0, lastProgramId: 'gate-number' });
+    expect(p.id).not.toBe('gate-number');
   });
 });

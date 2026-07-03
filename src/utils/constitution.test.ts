@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EnemyType } from '../types/game';
 import { PHASES, ENEMY_COUNT_FLOOR, type SpawnScene } from './difficultyDirector';
-import { GATE_NUMBER, GATE_LINEOFSIGHT, gateJudgmentProgram, GATE_TRIPLE, GATE_AMBUSH, type GateProgram } from './gateProgram';
+import { GATE_NUMBER, GATE_LINEOFSIGHT, gateJudgmentProgram, GATE_TRIPLE, GATE_AMBUSH, GATE_ASSAULT, GATE_BOSS_SPIKE, type GateProgram } from './gateProgram';
 import { RELAX_PROGRAM, HARVEST_PROGRAM, lessonProgram, recoveryProgram, type ReliefProgram } from './reliefProgram';
 import { ceilingForMaxRung, ceilingForZone, allowedProblemChildren } from './gatePressure';
 
@@ -19,6 +19,7 @@ const FIRST_PICK_THRESHOLD: Partial<Record<EnemyType, number>> = {
 
 const ALL_GATE_PROGRAMS: GateProgram[] = [
   GATE_NUMBER, GATE_LINEOFSIGHT, gateJudgmentProgram('近接', 0.5), GATE_TRIPLE, GATE_AMBUSH,
+  GATE_ASSAULT, GATE_BOSS_SPIKE,
 ];
 const ALL_RELIEF_PROGRAMS: ReliefProgram[] = [
   RELAX_PROGRAM, HARVEST_PROGRAM, lessonProgram('werewolf'), lessonProgram('pumpkin'), recoveryProgram('werewolf'),

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1353',
+    items: [
+      '強襲(関所)に「大量発生」「変異体ボス出現」の演出が組み込まれることがあるように。以前は時間経過で不意に発生していたものが、関所の中身として一体化。',
+    ],
+  },
+  {
     version: '0.25.1349',
     items: [
       '四神舞(ダンスタイム)中、拍のキック音がリング(判定サークル)とぴったり合うように調整。',

@@ -84,7 +84,7 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, stepPinch, pityLevel, pityDropTuning } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import {
-  eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady,
+  eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
   PITY_EVENT_BLOCK_TAIL_MS,
 } from '../utils/eventProducer';
 import {
@@ -637,8 +637,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
-  // 変異者大量発生(horde): 段階スポーン進捗。1秒に3体ずつ計18体(6体目=パンプキン/12体目/18体目=ウルフ)。
-  const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0 });
+  // 変異者大量発生(horde): 段階スポーン進捗。1秒に1体ずつ計total体(1/3体目=パンプキン/2/3・最終体目=ウルフ)。
+  // totalは既定ARENA_HORDE_COUNT(18)だが、バッチ5追補のイベント関所発火時はeventSizeMultで可変。
+  const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT });
+  // バッチ5追補: 関所頭で発火予約されたイベント関所(gate-assault/gate-boss-spike)の発火待ち状態。
+  // gateProgramRef選定側(下方)がセットし、囲い系イベントの毎フレームチェック(上方)が消化する。
+  const gateEventPendingRef = useRef<{ eventKind: 'horde' | 'boss'; phaseKey: string; sizeMult: number } | null>(null);
   // ハンター変異体イベントの状態機械(専用コントローラ)。phase が idle 以外の間=他イベント抑止。
   const hunterRef = useRef({
     phase: 'idle' as 'idle' | 'search' | 'chase' | 'retreat',
@@ -1291,7 +1295,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
-          hordeSpawnRef.current = { spawned: 0, nextAt: 0 };
+          hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT };
+          gateEventPendingRef.current = null; // バッチ5追補も新ランでリセット
           redNightFiredRef.current = false;
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
@@ -1399,24 +1404,48 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // バッチ7(憲法第5条): 紅き月と重ねない+ピンチ救済発動中/解除後10秒は発火しない。
             // ?events=0で本ゲートを無効化(囲いは従来どおり2分ごとのランダム発火に戻る)。
             const redNightActiveNow = useGameStore.getState().redNight?.phase === 'active';
-            const arenaProducerOk = !EVENTS_ENABLED || eventGateOk({
+            // バッチ5追補: EVENTS_ENABLED時は囲いのランダムタイマーはrescue/egg限定(緩フェーズのみ=
+            // redNightPhaseGateOkを紅き月と同じ基準で流用)。horde/bossは以後、関所頭のイベント関所側から発火する。
+            const arenaProducerOk = !EVENTS_ENABLED || (eventGateOk({
               bigEventActive: redNightActiveNow, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
               boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
-            });
-            const arenaReady = (FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk;
+            }) && redNightPhaseGateOk(phaseAt(newGameTime).kind));
+            // バッチ5追補: 関所頭に選ばれたイベント関所(gate-assault/gate-boss-spike)の発火予約を消化する。
+            // 予約はgateProgramRef選定側(下方)で立てる。関所を抜けても未消化なら黙って破棄(発火しない)。
+            if (GATE_PROGRAM_ENABLED && gateEventPendingRef.current) {
+              const curPNow = phaseAt(newGameTime);
+              if (gateEventPendingRef.current.phaseKey !== `${curPNow.kind}${curPNow.index}`) {
+                gateEventPendingRef.current = null;
+              }
+            }
+            const pendingGE = GATE_PROGRAM_ENABLED ? gateEventPendingRef.current : null;
+            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && !redNightActiveNow;
+            const arenaReady = gateEventReady || ((FORCE_ARENA != null || newGameTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !hiddenBossAlive && hunterRef.current.phase === 'idle' && arenaProducerOk);
             if (arenaReady) {
-              nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
-              const kind: 'horde' | 'boss' | 'rescue' | 'egg' =
-                FORCE_ARENA === 'horde' ? 'horde'
-                : FORCE_ARENA === 'boss' ? 'boss'
-                : FORCE_ARENA === 'rescue' ? 'rescue'
-                : FORCE_ARENA === 'egg' ? 'egg'
-                // レスキューは1出撃で最大1回(社長指示)=発生済みなら抽選候補から除外。
-                : rescueFiredRef.current
-                  ? (['horde', 'boss', 'egg'] as const)[Math.floor(Math.random() * 3)]
-                  : (['horde', 'boss', 'rescue', 'egg'] as const)[Math.floor(Math.random() * 4)];
+              let hordeSizeMult = 1;
+              let kind: 'horde' | 'boss' | 'rescue' | 'egg';
+              if (gateEventReady && pendingGE) {
+                // イベント関所発火: 従来の2分タイマーは温存する(タイマー側の抽選には影響させない)。
+                kind = pendingGE.eventKind;
+                hordeSizeMult = pendingGE.sizeMult;
+                gateEventPendingRef.current = null;
+              } else {
+                nextArenaAtRef.current = newGameTime + ARENA_FIRE_INTERVAL_MS; // 次回は2分後
+                kind =
+                  FORCE_ARENA === 'horde' ? 'horde'
+                  : FORCE_ARENA === 'boss' ? 'boss'
+                  : FORCE_ARENA === 'rescue' ? 'rescue'
+                  : FORCE_ARENA === 'egg' ? 'egg'
+                  // バッチ5追補: EVENTS_ENABLED時、ランダムタイマーはrescue/eggのみ(horde/bossは関所頭側)。
+                  : EVENTS_ENABLED
+                    ? (rescueFiredRef.current ? 'egg' : (['rescue', 'egg'] as const)[Math.floor(Math.random() * 2)])
+                    // レスキューは1出撃で最大1回(社長指示)=発生済みなら抽選候補から除外。
+                    : rescueFiredRef.current
+                      ? (['horde', 'boss', 'egg'] as const)[Math.floor(Math.random() * 3)]
+                      : (['horde', 'boss', 'rescue', 'egg'] as const)[Math.floor(Math.random() * 4)];
+              }
               // イベント発生告知バナー(コンボ表示付近)。kind 別の文言。
               // 緑卵(egg)の包囲は告知しない=「いつのまにか発生」(社長指示)。バナー/発生音もなし。
               if (kind !== 'egg') {
@@ -1460,9 +1489,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 return { x: pcx + Math.cos(ang) * dist, y: pcy + Math.sin(ang) * dist };
               };
               if (kind === 'horde') {
-                // 段階スポーン(社長指示): 一斉ではなく「1秒に3体ずつ」計18体を per-frame で配置。
-                // 配置/種類(6体目=パンプキン/12体目/18体目=ウルフ)は下の horde 更新ブロックが処理する。
-                hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime };
+                // 段階スポーン(社長指示): 一斉ではなく「1体ずつ」計N体を per-frame で配置。
+                // 配置/種類(1/3体目=パンプキン/2/3・最終体目=ウルフ)は下の horde 更新ブロックが処理する。
+                // バッチ5追補: イベント関所発火時はeventSizeMultで基本18体を±(cap20厳守/床14)。
+                const hordeTotal = Math.max(14, Math.min(20, Math.round(ARENA_HORDE_COUNT * hordeSizeMult)));
+                hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: hordeTotal };
               } else {
                 // ミニボス: パンプキン+雑魚(社長指示。giantbat は使わない)。プレイヤーから少し離した円内へ。
                 const bx = pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
@@ -1518,15 +1549,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playSfx('event-clear'); // 小イベント完了音
             }
           } else {
-            // 変異者大量発生(horde)の段階スポーン: 1秒に1体ずつ計18体(社長指示で3→1)。N体目(1始まり)で
-            // 種類を出し分け(6=パンプキン / 12=ウルフ / 18=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
-            if (ae.kind === 'horde' && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT && newGameTime >= hordeSpawnRef.current.nextAt) {
+            // 変異者大量発生(horde)の段階スポーン: 1秒に1体ずつ計N体(社長指示で3→1)。N体目中の通し番号で
+            // 種類を出し分け(総数の1/3=パンプキン / 2/3・最終=ウルフ / それ以外=zombie/skeleton/bat ランダム)。
+            // バッチ5追補: totalはeventSizeMultで可変(既定18=従来と同じ6/12/18の比率のまま)。
+            const hordeTotalNow = hordeSpawnRef.current.total;
+            if (ae.kind === 'horde' && hordeSpawnRef.current.spawned < hordeTotalNow && newGameTime >= hordeSpawnRef.current.nextAt) {
               const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
+              const pumpkinAtN = Math.round(hordeTotalNow / 3);
+              const wolfAtN = Math.round(hordeTotalNow * 2 / 3);
               // プレイヤーの現在地(イベント開始時の固定中心=ae.x/yではなく「いま」の位置)からの最低距離を確保する。
               const lpx = player.x + player.width / 2, lpy = player.y + player.height / 2;
-              for (let k = 0; k < 1 && hordeSpawnRef.current.spawned < ARENA_HORDE_COUNT; k++) {
-                const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..18)
-                const type: EnemyType = n === 6 ? 'pumpkin' : (n === 12 || n === 18) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
+              for (let k = 0; k < 1 && hordeSpawnRef.current.spawned < hordeTotalNow; k++) {
+                const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..total)
+                const type: EnemyType = n === pumpkinAtN ? 'pumpkin' : (n === wolfAtN || n === hordeTotalNow) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
                 const clear2 = HORDE_SPAWN_PLAYER_CLEARANCE * HORDE_SPAWN_PLAYER_CLEARANCE;
                 let sx = 0, sy = 0;
                 for (let attempt = 0; attempt < HORDE_SPAWN_CLEAR_ATTEMPTS; attempt++) {
@@ -1580,8 +1615,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             // 終了判定: 全滅(イベント敵0・開始直後グレース後) or 制限時間切れ。
             const eventEnemies = useGameStore.getState().enemies.filter(e => e.fromEvent).length;
-            // horde は全18体を出し切る前に「全滅」で誤終了しないようガード(段階スポーン中は終わらせない)。
-            const hordeSpawnDone = ae.kind !== 'horde' || hordeSpawnRef.current.spawned >= ARENA_HORDE_COUNT;
+            // horde は全N体を出し切る前に「全滅」で誤終了しないようガード(段階スポーン中は終わらせない)。
+            const hordeSpawnDone = ae.kind !== 'horde' || hordeSpawnRef.current.spawned >= hordeSpawnRef.current.total;
             const cleared = newGameTime - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0 && hordeSpawnDone;
             const timedOut = newGameTime >= ae.endsAt;
             if (cleared || timedOut) {
@@ -5915,14 +5950,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // バッチ4の直下(lastGateFeaturedRefが実際に見せた台本のfeaturedを読めるように)より前、かつ
         // pressureOutdoorブロック(この少し下)がrungCeilingの計算に使うため、それより前に確定させる。
         if (GATE_PROGRAM_ENABLED && !labTheme && !indoor && curPhase.kind === 'gate' && gateProgramRef.current.phaseKey !== rankPhaseKey) {
+          // バッチ5追補選出ルール(b): 直近の台本がイベント関所だったかを、上書きする前に読む。
+          const lastWasEvent = gateProgramRef.current.lastId === 'gate-assault' || gateProgramRef.current.lastId === 'gate-boss-spike';
           const program = selectGateProgram({
             phaseMaxRung: curPhase.maxRung ?? 7,
             rank: rankRef.current.rank,
             style: getCurrentStyle(),
             lastProgramId: gateProgramRef.current.lastId,
             tieBreakRandom: Math.random(),
+            gateIndex: curPhase.index - 1,
+            lastWasEvent,
+            pityBlocked: newGameTime < pityEventBlockUntilRef.current,
           });
           gateProgramRef.current = { phaseKey: rankPhaseKey, program, lastId: program.id };
+          // バッチ5追補: イベント関所(gate-assault/gate-boss-spike)が選ばれたら、関所頭での発火を予約する。
+          // 規模は既存のeventSizeMult(バッチ7で保留していた配線先)でrank/退屈シグナル/pity直後を反映。
+          if (program.eventKind) {
+            gateEventPendingRef.current = {
+              eventKind: program.eventKind,
+              phaseKey: rankPhaseKey,
+              sizeMult: eventSizeMult({
+                rank: rankRef.current.rank,
+                boredomBonusValue: boredomBonus(upswingRef.current.boredMs),
+                pityRecentlyActive: newGameTime < pityEventBlockUntilRef.current,
+              }),
+            };
+          }
         }
         // バッチ4: 山→緩の演目選択。フェーズが切り替わった瞬間だけ判定する(rankPhaseKeyと同じ境界)。
         if (PROGRAM_ENABLED && !labTheme && !indoor) {
