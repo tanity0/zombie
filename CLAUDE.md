@@ -228,7 +228,8 @@ checks by cost — do NOT lump them together.
     DEVELOPMENT_LOG.md と設計書のステータス更新でファイルに残す。**設計判断はしない**
     (未決事項に当たったら設計書に質問を書いて止め、社長に報告する)。
   - **設計チャット(Fable)**: 社長との話し合い専用。決定事項は設計書ファイルを直接更新して
-    実装チャットへ渡す。コードは書かない。
+    実装チャットへ渡す。コードは書かない。**設計チャットの後任(モデル交代含む)は
+    DESIGN_CHAT_GUIDE.md(運転マニュアル)を最初に読むこと。**
 - **チャット間でお互いの会話は見えない。** 決定・未決・実装結果・実機フィードバックの要点は
   必ずファイル(PACING_REDESIGN.md / DEVELOPMENT_LOG.md / AI_DIRECTOR_HANDOFF.md /
   DISTRIBUTION_REDESIGN.md / CORE_LOOP.md / ENGINEERING_NOTES.md)に書くこと。チャットにしか書かれていない情報は存在しないのと同じ。

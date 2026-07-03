@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1351 — DESIGN_CHAT_GUIDE.md新設: 設計チャット役の運転マニュアル(後任モデルへの継承・社長指示)
+- 社長指示「設計チャット役をOpus 4.8に交代する際、可能な限りFable 5に近づけて考えられるよう
+  準備を」。方法・流儀・文化を運転マニュアルとしてファイル化:
+  役割定義(会議・診断・仕様化・裁定仲介/コード原則不触・緊急バグのみ例外)/セッション開始の儀式
+  (読む順番+実機報告はまず版の確定)/**社長との仕事の流儀**(結論から・質問を質問で返さない・
+  体感報告は正しい前提で証拠で切り分け・自説の訂正を恐れない・承認語で即実行・社長の言葉を用語化・
+  提案様式=具体数値+負荷スコア+復帰フラグ+コアループ宣言・正直ベースが信頼の源泉)/診断のやり方
+  (ENGINEERING_NOTESの型+スクショ最速)/Sonnet並行運用(version衝突は自分が繰り上げ・実装結果ログの
+  「解釈」「見送り」に穴が居る)/現在地の把握先(スナップショットは書かない=腐るから)/文化メモ。
+- CLAUDE.md分業節に「後任はDESIGN_CHAT_GUIDE.mdを最初に読む」を追記。旧CHAT_HANDOFF.md(v0.25.590
+  時点・ブランチ運用が古い)に非推奨ヘッダを追加し、「型チェックの穴」(tsc --noEmitがTS2304を
+  見逃す)の知見をENGINEERING_NOTES.mdへ移設。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1350 — 賢さの継承: ENGINEERING_NOTES.md新設+規律6/7+振り分け基準(社長指示・設計チャットFable)
 - 社長指示「Fable側の賢さをSonnet側へ継承できるものは今のうちに」。方法を3点でファイル化:
 - **① ENGINEERING_NOTES.md新設(地雷図鑑+診断プレイブック)**: 診断の型5ステップ(「いつから」を

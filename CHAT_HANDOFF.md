@@ -1,4 +1,7 @@
 # チャット引き継ぎ (handoff) — 2026-06-19 時点 / v0.25.590
+> **【注意・v0.25.1351】この文書は古い(特にブランチ運用: 現在はchat-context-continuity-saxlHで直接開発)。**
+> 現行の引き継ぎは **DESIGN_CHAT_GUIDE.md(設計チャット)/CLAUDE.md(共通規律)** を読むこと。
+> 「型チェックの穴」の知見はENGINEERING_NOTES.mdへ移設済み。
 
 次のチャットはこのファイルと CLAUDE.md / DEVELOPMENT_LOG.md を最初に読むこと。
 
