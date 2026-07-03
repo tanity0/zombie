@@ -11,6 +11,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.11 — AIディレクター(旧・反応型システム)再統合の方針記録(社長指示・doc変更のみ)
+- 社長から「エリア台本にこの路線+AIディレクター/ランク付けの使える部分を流用したい」の指示。
+  実装チャットで現状調査(DirectorRank/gatePressureのシグナルは既にデフォルト有効、
+  `relaxSpawnAdjust`/`buildupSpawnAdjust`(macro='relax'/'buildup'の湧き調整)は
+  `?directorApply=...`無しでは無効、リザルト画面の緊張曲線は`?director=1`無しでは非表示、
+  と回答)を経て、PACING_V2.mdに新設「3. AIディレクター(旧・反応型システム)の再統合」として
+  方針を記録:
+  - `relaxSpawnAdjust`/`buildupSpawnAdjust`を**デフォルトON化**(現状はURLフラグ必須)。
+    **ゲームプレイ中の可視表示は追加しない**(社長指示「ゲームプレイ中は表示しないで」。
+    挙動のみに効かせる=元々HUDは無い)。
+  - リザルト画面の`DirectorResult`(緊張曲線・難易度スコア)を**デフォルト表示化**(現状は
+    `?director=1`必須)。プレイ中には出さず、終了後のリザルトのみ(現状の表示範囲と同じ)。
+  - ★未決事項候補として、R1のgatePressure・R4のreliefProgramと`relaxSpawnAdjust`/
+    `buildupSpawnAdjust`が同時に効くことの是非(二重緩和/二重加速のリスク)、既存の閾値・倍率を
+    そのまま流用してよいかを記載。エリア台本(§2)同様、内容確定後に実装へ進む。
+- 自己点検: 現行設計(PACING_V2.md)の更新のみ。コード無変更。
+- 検証: doc変更のみ(lint/typecheck/test/build 全通過・コード非変更のためno-op確認)。
+- 次: エリア台本(§2)・AIディレクター再統合(§3)とも数値/設計方針が出揃い次第、実装へ進む。
+
 ## v0.26.10 — 憲法廃止+エリア台本の書き込み開始(社長指示・doc変更のみ)
 - **社長指示「憲法は廃止。現状の設計へ」**: `constitution.test.ts`の横断不変条件(第1〜5条。
   countCap上限/初心者ゾーン不可侵/featuredの自己整合/mix全指定/床の許可リスト/主役上限/
