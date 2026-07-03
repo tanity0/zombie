@@ -11,6 +11,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.1 — PACING_V2.md新設: 難易度調整AI作り直しの正式仕様(社長設計図・設計チャットFable)
+- 社長がフォークの設計図を提示(心電図の骨格8点+実装順5段)。設計チャットが仕様化して
+  **PACING_V2.md** を新設。要点: ①台本は多様性ローテ(時間解禁/未見優先/直前禁止/rank寄せ廃止)
+  ②時間骨格=導入60秒→関所60⇄緩60(7:00ボス=中間ゴール・7:30以降は深入りモード)
+  ③関所テーマ可視化(バナー) ④緩の純度ガード+浅エリアの代替表現(湧き方向/配合/イベント形)
+  ⑤ゴールド経済接続(価格採否待ち・着手禁止)。加えて**主題保証**(関所15秒でfeatured未出現なら
+  確定投入。ただし憲法4条ゾーン天井・キャップ・リフラクトリは破らない)、pressure上げτ8→5s、
+  Intensity≥0.75ホールド撤廃(P3対応・本書裁定)。復帰フラグ `?v2=0`。
+- ポインタ更新: CLAUDE.md進行プロジェクト→PACING_V2.md / PACING_REDESIGN.mdの台本ローテ叩き台=
+  決着(採用・移管) / HANDOFF_CODEX.mdにフォーク追記。
+- Sonnetへの実装指示はPACING_V2.mdのバッチR1から順(R5は社長採否待ちで着手禁止)。
+- 検証: lint / typecheck / test / build 全通過。自己点検: 仕様書のみの変更でコード不変。
+  憲法4条・5条は仕様上も不変を明記(R1-D保証はゾーン天井を破らない設計)。
+
 ## v0.26.0 — フォーク開始: `claude/direction-shift` 新設(社長指名・設計チャットFable)
 - 社長指示「大きな方向転換を試すので一旦分けたい。セーブポイントに戻す可能性は大いにある」。
   ブランチ名は社長がチャットで `claude/direction-shift` を指名(Branch lockの例外手続きに準拠)。
