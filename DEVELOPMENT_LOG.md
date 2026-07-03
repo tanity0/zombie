@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1368 — 台本会議つづき: HARVESTは基本セットのみへ強制固定(社長協議・設計チャットFable)
+- 社長「強制的に台本を1-2にしては? 1段落として雑魚を盛ってもハーベスト感が薄い」→設計チャットは
+  さらに振り切って**「R1のA=基本セットのみ」固定**を推奨し合意方向で仕様化(R2やR1B〜Dにも
+  問題児が1体入り無双感が濁るため。旧決定「HARVEST=雑魚無双」v0.25.1322とも一致)。
+  邪魔者・特別枠は新規補充のみ停止(在席分は自然消化・強制消去なし)。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 憲法5条(緩を荒らさない)に沿う変更。
+
 ## v0.25.1367 — 台本会議つづき: 湧きセマンティクス+緩モード(会議継続中・設計チャットFable)
 - **湧き方の原則(社長決定)**: バースト湧き禁止。基本CD=「欠けた盤面を何秒で埋めるか」の補充
   テンポで**1体ずつ**配置。最短CD0(即補充)=同じ最大数でも最恐。**ラン開始は1体・CD1秒**
