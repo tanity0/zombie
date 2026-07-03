@@ -205,3 +205,13 @@
 8. **負荷スコア**: 1/10(1拍につきワンショット1本=実機で軽いと実証済みのSFX経路)。
 9. **実機確認の観点**: キック↔リングの一致感(これが目的)/曲とビートの喧嘩具合
    (気持ち悪ければ曲をパッド寄りへ差し替え=社長の素材判断・後日)。
+
+---
+
+## 【v0.25.1349 実装済み・実装チャットSonnet】
+仕様1〜8をすべて実装(該当ファイル: `src/utils/danceBeat.ts`(純関数+テスト7件)、
+`src/audio/audioManager.ts`(`playSfxAt`/`scheduleDanceBeatKick`/`dance-kick-just`/
+`DANCE_BGM_BEAT_DUCK`)、`src/hooks/useGameLoop.ts`(`BEAT_ENABLED`フラグ・旧アンカー同期は
+`?beat=0`配下へ温存)。詳細は`DEVELOPMENT_LOG.md` v0.25.1349を参照。
+lint/typecheck/test/build全通過。**実機確認(項目9)は未実施** — 次に実機で触った時に
+キック↔リングの一致感/曲とビートの喧嘩具合を確認してください。

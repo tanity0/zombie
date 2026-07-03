@@ -110,7 +110,8 @@ import { setGateProgramDebug } from '../utils/gateProgramState';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
-import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm } from '../audio/audioManager';
+import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck } from '../audio/audioManager';
+import { nextBeatToSchedule } from '../utils/danceBeat';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER_TEST, getReaperChaseSpeed, reaperPassIntervalMs } from '../config/reaper';
 import {
@@ -440,6 +441,10 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
 const WAVE_GRACE_MS = 10000;
+// ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
+// (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。
+const BEAT_ENABLED = evParam('beat') !== '0';
+const DANCE_BEAT_SCHEDULE_WINDOW_MS = 150; // 次の1拍をこの時間内に入ったら予約する(仕様:100〜200ms)
 
 // --- 裏ボス(深層域の隠しボス: mimir/jormungand)コントローラ定数 ---
 // 深層域(原点から 7500 以上=area 4)の「指定エリア」に近づくと1回だけ出現する。
@@ -749,6 +754,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rhythmAnchoredRef = useRef<boolean>(false);
   // 定期リシンク: 次に位相を合わせ直す時刻(Date.now基準, ms)。0=未予約。
   const rhythmResyncAtRef = useRef<number>(0);
+  // ダンスビートB方式: メトロノームが直近に予約した拍index(-1=まだ無し)。リズム開始ごとにリセット。
+  const danceBeatScheduledIndexRef = useRef<number>(-1);
   // 追尾カメラの進行方向先読みオフセット(px、描画のみ。フレーム間で保持)。
   const camLookAheadRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
@@ -1005,7 +1012,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // ダンスのタップ(近接円)でも松明・卵を破壊。
         useGameStore.getState().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeR, 30);
-        playSfx('dance-kick'); // ジャスト成功 → キックドラム(拍踏み)
+        // B方式: メトロノームが拍そのものを鳴らすので、JUST成功音はピッチ上げで差別化(仕様4)。
+        playSfx(BEAT_ENABLED ? 'dance-kick-just' : 'dance-kick'); // ジャスト成功 → キックドラム(拍踏み)
       } else if (pa.kind === 'flick') {
         // バッシュ(フリック): カウンター窓を開き、近接フィニッシュ可(execute=true)、
         // ノックバックは上限6(=距離2倍)で強く弾く。
@@ -1013,8 +1021,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const v = ARROW_VEC[pa.arrow];
         rhythmLineAttack(pcx, pcy, v.x, v.y, RHYTHM_FLICK_RANGE, RHYTHM_FLICK_HALF_W, RHYTHM_FLICK_DAMAGE, RHYTHM_FLICK_KNOCKBACK_MULT, true, RHYTHM_FLICK_KNOCKBACK_MAX);
         useGameStore.getState().spawnSlash(pcx + v.x * RHYTHM_FLICK_RANGE * 0.6, pcy + v.y * RHYTHM_FLICK_RANGE * 0.6, 'rgba(186,230,253,0.9)');
-        // フリックの斬撃音(katana-dash)は無し。拍踏みのキックドラムのみ鳴らす。
-        playSfx('dance-kick'); // フリックのジャスト成功でもキックドラム(拍踏み)
+        // フリックの斬撃音(katana-dash)は無し。拍踏みのキックドラムのみ鳴らす(B方式はピッチ上げで差別化)。
+        playSfx(BEAT_ENABLED ? 'dance-kick-just' : 'dance-kick'); // フリックのジャスト成功でもキックドラム(拍踏み)
       } else if (pa.kind === 'god') {
         fireShijinGod(pa.god, pa.x, pa.y);
       } else if (pa.kind === 'finish') {
@@ -2959,52 +2967,74 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               autoTapBeatRef.current = -1; // 自動タップの拍カウンタを開始時にリセット
               rhythmAnchoredRef.current = false; // 曲が鳴り出したら1回だけ位相合わせし直す
               rhythmResyncAtRef.current = 0;      // 定期リシンクの予約もリセット
+              danceBeatScheduledIndexRef.current = -1; // B方式: メトロノームの予約状態もリセット
             }
           }
 
           if (useGameStore.getState().rhythm.active) {
             useGameStore.getState().tickRhythm();
-            // 自動アンカー(ダンス曲↔サークルの開始位相合わせ): ダンス曲は src 差し替え→load→play の
-            // 可変レイテンシ後に鳴り出すため、開始時刻基準のグリッドだと一定オフセットでズレる。曲が
-            // 実際に鳴り出した瞬間の currentTime からグリッド起点を「1回だけ」スナップして位相を合わせる
-            // (毎フレーム同期はしない=ブルブル回避)。
-            if (!rhythmAnchoredRef.current) {
-              const rA = useGameStore.getState().rhythm;
-              if (rA.interval > 0 && rA.expectBeat === 0) {
-                // 先頭ビートを消化する前(リードイン中)だけ補正する。
-                const anchor = getDanceBeatAnchorMs();
-                if (anchor != null) {
-                  const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
-                  // 曲のビート位相 = currentTime=0 の壁時計 + レベル別ダウンビート補正。
-                  const gridBase = anchor + rhythmBeatOffsetForLevel(lvl);
-                  // 元の firstBeatAt にいちばん近いビート境界へスナップ(リードはほぼ維持・位相だけ補正)。
-                  let snapped = gridBase + Math.round((rA.firstBeatAt - gridBase) / rA.interval) * rA.interval;
-                  // 既に過ぎ(かけ)ていたら、最初のサークルを取りこぼさないよう1拍ずつ未来へ送る。
-                  while (snapped <= Date.now() + RHYTHM_SUCCESS_WINDOW_MS) snapped += rA.interval;
-                  useGameStore.getState().setRhythmFirstBeat(snapped);
-                  autoTapBeatRef.current = -1; // グリッド移動に合わせ自動タップの拍カウンタも再起
+            if (!BEAT_ENABLED) {
+              // 旧方式(曲への自動アンカー同期)。?beat=0 の時だけ使う(切り分け用・削除しない)。
+              // 自動アンカー(ダンス曲↔サークルの開始位相合わせ): ダンス曲は src 差し替え→load→play の
+              // 可変レイテンシ後に鳴り出すため、開始時刻基準のグリッドだと一定オフセットでズレる。曲が
+              // 実際に鳴り出した瞬間の currentTime からグリッド起点を「1回だけ」スナップして位相を合わせる
+              // (毎フレーム同期はしない=ブルブル回避)。
+              if (!rhythmAnchoredRef.current) {
+                const rA = useGameStore.getState().rhythm;
+                if (rA.interval > 0 && rA.expectBeat === 0) {
+                  // 先頭ビートを消化する前(リードイン中)だけ補正する。
+                  const anchor = getDanceBeatAnchorMs();
+                  if (anchor != null) {
+                    const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
+                    // 曲のビート位相 = currentTime=0 の壁時計 + レベル別ダウンビート補正。
+                    const gridBase = anchor + rhythmBeatOffsetForLevel(lvl);
+                    // 元の firstBeatAt にいちばん近いビート境界へスナップ(リードはほぼ維持・位相だけ補正)。
+                    let snapped = gridBase + Math.round((rA.firstBeatAt - gridBase) / rA.interval) * rA.interval;
+                    // 既に過ぎ(かけ)ていたら、最初のサークルを取りこぼさないよう1拍ずつ未来へ送る。
+                    while (snapped <= Date.now() + RHYTHM_SUCCESS_WINDOW_MS) snapped += rA.interval;
+                    useGameStore.getState().setRhythmFirstBeat(snapped);
+                    autoTapBeatRef.current = -1; // グリッド移動に合わせ自動タップの拍カウンタも再起
+                    rhythmAnchoredRef.current = true;
+                    rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
+                  }
+                } else if (rA.expectBeat > 0) {
+                  // 先頭ビートを過ぎてしまった場合はスナップせず固定グリッドのまま継続(途中ジャンプ回避)。
                   rhythmAnchoredRef.current = true;
                   rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
                 }
-              } else if (rA.expectBeat > 0) {
-                // 先頭ビートを過ぎてしまった場合はスナップせず固定グリッドのまま継続(途中ジャンプ回避)。
-                rhythmAnchoredRef.current = true;
+              } else if (Date.now() >= rhythmResyncAtRef.current) {
+                // 定期リシンク(アンカー後): 曲の実再生位置から位相のズレを測り、閾値を超えた分だけ最小補正。
+                // 数秒に1回・1拍未満の微調整のみなので軽く、毎フレーム同期のブルブルも起きない。
                 rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
+                const rR = useGameStore.getState().rhythm;
+                const anchor = rR.interval > 0 ? getDanceBeatAnchorMs() : null;
+                if (anchor != null) {
+                  const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
+                  const gridBase = anchor + rhythmBeatOffsetForLevel(lvl);
+                  const iv = rR.interval;
+                  let err = (((rR.firstBeatAt - gridBase) % iv) + iv) % iv; // [0, iv)
+                  if (err > iv / 2) err -= iv;                              // [-iv/2, iv/2) 最寄りビートへの符号付きズレ
+                  if (Math.abs(err) > RHYTHM_RESYNC_MIN_MS) {
+                    useGameStore.getState().setRhythmFirstBeat(rR.firstBeatAt - err); // 位相だけ最小補正(拍indexは不変)
+                  }
+                }
               }
-            } else if (Date.now() >= rhythmResyncAtRef.current) {
-              // 定期リシンク(アンカー後): 曲の実再生位置から位相のズレを測り、閾値を超えた分だけ最小補正。
-              // 数秒に1回・1拍未満の微調整のみなので軽く、毎フレーム同期のブルブルも起きない。
-              rhythmResyncAtRef.current = Date.now() + RHYTHM_RESYNC_MS;
-              const rR = useGameStore.getState().rhythm;
-              const anchor = rR.interval > 0 ? getDanceBeatAnchorMs() : null;
-              if (anchor != null) {
-                const lvl = Math.max(1, Math.min(3, useGameStore.getState().player.subWeaponLevels['shijin'] ?? 1));
-                const gridBase = anchor + rhythmBeatOffsetForLevel(lvl);
-                const iv = rR.interval;
-                let err = (((rR.firstBeatAt - gridBase) % iv) + iv) % iv; // [0, iv)
-                if (err > iv / 2) err -= iv;                              // [-iv/2, iv/2) 最寄りビートへの符号付きズレ
-                if (Math.abs(err) > RHYTHM_RESYNC_MIN_MS) {
-                  useGameStore.getState().setRhythmFirstBeat(rR.firstBeatAt - err); // 位相だけ最小補正(拍indexは不変)
+            } else {
+              // B方式(社長決定 v0.25.1339): 曲には同期せず、リングのスケジュール(firstBeatAt/interval・
+              // Date.now基準=judgeやサークルと同じ時計)から次の1拍だけを先読み予約する。
+              // gameTime→ctx時刻の変換はscheduleDanceBeatKick内で毎回やり直す(ドリフト蓄積を避ける)。
+              const rB = useGameStore.getState().rhythm;
+              if (rB.interval > 0) {
+                const next = nextBeatToSchedule({
+                  nowMs: Date.now(),
+                  firstBeatAtMs: rB.firstBeatAt,
+                  intervalMs: rB.interval,
+                  lastScheduledIndex: danceBeatScheduledIndexRef.current,
+                  windowMs: DANCE_BEAT_SCHEDULE_WINDOW_MS,
+                });
+                if (next.shouldSchedule) {
+                  scheduleDanceBeatKick(next.beatAtMs);
+                  danceBeatScheduledIndexRef.current = next.beatIndex;
                 }
               }
             }
@@ -3058,6 +3088,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else {
               setDanceMode(false);
             }
+            if (BEAT_ENABLED) setDanceBeatDuck(danceNow); // B方式: メトロノームが埋もれないよう曲を軽くダック
             danceModeRef.current = danceNow;
           }
         }
@@ -6854,6 +6885,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       setHeartbeatLoop(false); // 心音ループも確実に停止
       setPeakLayer(false); // PEAK重ねSEも確実に停止
       setDanceMode(false);       // ダンスタイム解除(メインBGMの音量を確実に戻す)
+      setDanceBeatDuck(false);   // B方式のダックも確実に戻す
       danceModeRef.current = false;
     };
   }, [

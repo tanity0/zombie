@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1349',
+    items: [
+      '四神舞(ダンスタイム)中、拍のキック音がリング(判定サークル)とぴったり合うように調整。',
+      '拍に合わせて成功した時の音を、リズムのキック音と聞き分けやすいよう変更。',
+    ],
+  },
+  {
     version: '0.25.1342',
     items: [
       '隠しボス「トール」の横払い・突きに、刀を振る絵を追加。攻撃の向きがより分かりやすくなった。',

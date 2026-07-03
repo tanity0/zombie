@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1349 — ダンスビートB方式を実装(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)
+- 曲↔サークル同期(自動アンカー/RHYTHM_RESYNC_MS)を諦め、「拍の真実=リングのスケジュール」から
+  メトロノーム(キック音)をリング自身の時計(`rhythm.firstBeatAt`/`interval`・Date.now基準=判定/
+  リング描画と完全に同じグリッド)で鳴らす方式に変更。原理的に「キック↔リングのズレ」が起きない。
+  - `src/utils/danceBeat.ts`(新規・純関数): `nextBeatToSchedule` — 毎フレーム「次の未予約の1拍」
+    だけを窓(150ms)内で判定する。テスト7件(窓外/窓内/拍の遅延キャッチアップ/二重予約防止/
+    リードイン中は負indexを予約しない/間隔変更時の再計算/interval<=0の安全側)。
+  - `src/audio/audioManager.ts`: `playSfxAt(key, atCtxTime)`(既存`playSfx`と同経路・指定
+    AudioContext時刻に予約再生)+ `scheduleDanceBeatKick(beatAtMs)`(壁時計ms→ctx時刻の変換を
+    ここに集約。毎回変換し直すのでドリフト非蓄積)。JUSTタップ音はメトロノームと聞き分けられるよう
+    `dance-kick-just`(同じmp3をplaybackRate1.3でピッチ上げ・素材追加なし)に差し替え。
+    `DANCE_BGM_BEAT_DUCK=0.8`でダンス曲を軽くダック(`setDanceBeatDuck`、ダンス開始/終了エッジで
+    呼ぶ)。
+  - `src/hooks/useGameLoop.ts`: 旧アンカー同期ブロックはコード削除せず`if (!BEAT_ENABLED)`配下へ
+    退避(`?beat=0`で復帰可能)。新方式は`if (BEAT_ENABLED)`(既定)で`nextBeatToSchedule`→
+    `scheduleDanceBeatKick`を毎フレーム呼ぶ。
+- 検証: lint / typecheck / test(285 pass, 1 skip・danceBeat.test.ts 7件含む) / build 全通過。
+- 負荷スコア: 1/10(仕様どおりSFX経路のワンショット1本/拍。既存の`dance-kick`実機実績と同等)。
+- 実機未確認(キック↔リングの一致感・曲とビートの喧嘩具合は実プレイでの確認が前提)。
+
 ## v0.25.1348 — 社長方針「難易度調整を全部入れてから統合テスト」+バッチ5追補を仕様化(設計チャットFable・設計のみ)
 - v0.25.1347実機で「2分・最初の関所中に囲いイベント(犬+パンプキン+ゾンビ)が重なった」と社長報告。
   調査: 囲いの中身(6体目パンプキン/12・18体目犬)は社長指示どおりのイベント特例で仕様、

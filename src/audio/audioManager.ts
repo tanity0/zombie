@@ -101,6 +101,7 @@ export type SfxKey =
   | 'hurricane'
   | 'heartbeat' // 瀕死(低HP)中の心音ループ素材(setHeartbeatLoopが再生。playSfx直呼びはしない)
   | 'dance-kick'
+  | 'dance-kick-just' // JUST成功音(dance-kickのピッチ上げ。B方式のメトロノームと聞き分ける)
   | 'heavy-impact'
   | 'skadi-ice'
   | 'heli-intro'
@@ -334,7 +335,10 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // (hurricaneと同じ流儀。ここの volume は読み込み専用の器)。
   heartbeat: { src: `${import.meta.env.BASE_URL}audio/sfx/heartbeat.mp3`, volume: 1 },
   // ダンスフロアのジャスト成功(タップ/フリック両方)で鳴らすキックドラム。
+  // メトロノーム(拍そのもの)と同じ素材だと聞き分けられないため、B方式(v0.25.1339)ではJUST成功音を
+  // ピッチ上げ(playbackRate 1.3)で差別化する(dance-kick-just)。素材追加なし=同じmp3を再利用。
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
+  'dance-kick-just': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60, playbackRate: 1.3 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。音が小さめなのでゲインで増幅(0.9→1.8)。
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },
   // スカジ氷塊破裂/氷刃命中のSE(社長提供)。
@@ -374,6 +378,15 @@ let bgmVolume = DEFAULT_BGM_VOLUME;
 // PEAK重ねレイヤー中だけ通常BGMを少し落とすダッキング倍率(社長指示)。1=等倍。
 // BGM音量を適用する全経路で bgmVolume × bgmDuck を使う(ユーザー設定のスライダー値は汚さない)。
 let bgmDuck = 1;
+// ダンスビートB方式(v0.25.1339): メトロノームのキックが埋もれないよう、ダンス曲を軽くダックする。
+// 実機調整前提の叩き台値。setDanceBeatDuck(true/false) はダンス開始/終了エッジでのみ呼ぶ(useGameLoop)。
+const DANCE_BGM_BEAT_DUCK = 0.8;
+let danceBeatDuckActive = false;
+export const setDanceBeatDuck = (active: boolean) => {
+  if (danceBeatDuckActive === active) return;
+  danceBeatDuckActive = active;
+  playBgmRobust();
+};
 let sfxVolume = DEFAULT_SFX_VOLUME;
 let sfxContext: AudioContext | null = null;
 // 深層域BGM(逆再生版)の状態。別 HTMLAudioElement を並走させ、深層in/outは play/pause で切替。
@@ -474,8 +487,9 @@ const playBgmRobust = () => {
   const token = ++bgmPlayToken;
   const tryPlay = () => {
     if (!bgm || token !== bgmPlayToken || !bgmActive || muted) return;
-    if (bgmGain) bgmGain.gain.value = bgmVolume * bgmDuck;
-    else bgm.volume = bgmVolume * bgmDuck;
+    const v = bgmVolume * bgmDuck * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
+    if (bgmGain) bgmGain.gain.value = v;
+    else bgm.volume = v;
     void bgm.play().catch(() => {});
   };
   tryPlay();
@@ -1083,6 +1097,45 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number) 
   } catch {
     // Ignore playback failures; gameplay must stay responsive.
   }
+};
+
+// ダンスビートB方式(v0.25.1339): 指定した AudioContext 時刻に予約再生する。playSfx とほぼ同じ経路
+// (バッファ/ゲイン/接続)だが、即時(start(0,...))ではなく指定時刻に start する点だけが違う。
+// minIntervalMs のスロットル/sfxLastPlayedAt 更新はしない(呼び出し側=danceBeat.tsが「次の1拍だけ」
+// 予約するため二重発火はそもそも起きない。スロットルを混ぜるとむしろ正規の拍を落としかねない)。
+export const playSfxAt = (key: SfxKey, atCtxTime: number) => {
+  if (muted) return;
+  const config = SFX_SOURCES[key];
+  if (!config) return;
+  const context = ensureSfxContext();
+  if (!context) return;
+  resumeSfxContext();
+  const buffer = sfxBuffers.get(key);
+  if (!buffer) { loadSfxBuffer(key); return; }
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = buffer;
+  source.playbackRate.value = config.playbackRate ?? 1;
+  gain.gain.value = (config.volume ?? 1) * sfxVolume;
+  source.connect(gain);
+  gain.connect(context.destination);
+  const offset = Math.min(config.startAt ?? 0, Math.max(0, buffer.duration - 0.001));
+  const when = Math.max(context.currentTime, atCtxTime); // 過去時刻はcurrentTimeへクランプ(即時再生)
+  try {
+    source.start(when, offset);
+  } catch {
+    // Ignore playback failures; gameplay must stay responsive.
+  }
+};
+
+// ダンスビートB方式: 呼び出し側(useGameLoop)はDate.now基準の壁時計時刻(リングと同じ時計)だけを
+// 持てばよく、AudioContext時刻への変換はここに閉じ込める(音声内部実装をuseGameLoopへ漏らさない)。
+// 変換は呼ぶたびにやり直す(壁時計とオーディオクロックの緩やかなドリフトを蓄積させないため)。
+export const scheduleDanceBeatKick = (beatAtMs: number) => {
+  const context = ensureSfxContext();
+  if (!context) return;
+  const ctxTime = context.currentTime + (beatAtMs - Date.now()) / 1000;
+  playSfxAt('dance-kick', ctxTime);
 };
 
 // --- Hurricane rumble: a continuous low "ゴゴゴゴ" bed that runs only while a
