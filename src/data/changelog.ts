@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1402',
+    items: [
+      'スカベンジャーの立ち絵を新しい3コマのアニメーションに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1401',
     items: [
       'スカベンジャーの歩行を5コマの新しいアニメーションに差し替え(より滑らかに)。',

@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1402 — スカベンジャー立ち絵を新3コマへ入れ替え(社長提供・実装チャット)
+- 社長提供の新イラスト(拳銃を構えた歩行・**3コマ**横並び・紫背景1672×941)へ差し替え。
+  v0.25.1401の5コマから3コマへ戻す形。
+- 変換: 紫背景(色キー76,5,184・許容誤差80、PixiJSのloadKeyedと同アルゴリズム)を透過抜きし、
+  確立済みの整列——**銃手(右端)をx=106・足元を下端y=107に固定+均一スケールで最長コマを
+  高さ106pxへLANCZOS縮小**——を適用して`player-striker-walk-0/1/2.png`を上書き。
+  v0.25.1401で追加した`walk-3/4.png`は削除。
+- 配線を3コマへ戻す: `pixiTextures.ts`の読込リストからwalk-3/4を除去、`playerWalkSequence`の
+  necromancer専用分岐を撤去し他クラスと同じ`[0,1,2,1]`(ピンポン)へ統一。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。dist出力がwalk-0/1/2のみになることを確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(スカベンジャーの立ち絵アセット+歩行フレーム数の変更のみ)。
+
 ## v0.25.1401 — スカベンジャー歩行を5コマ化(社長提供・実装チャット)
 - 社長提供の新イラスト(拳銃を構えた歩行・**5コマ**横並び・1280×720)へ差し替え。
   ※社長は「6コマ」と表現していたが、画像を解析すると分離できるのは5体(透過PNG・6体目は無し)。
