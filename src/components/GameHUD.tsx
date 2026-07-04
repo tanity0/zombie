@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
@@ -9,33 +9,6 @@ import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
-import { buildKatanaShape, type KatanaVariant } from '../utils/katanaShape';
-
-// 背負い刀と同じ形状データをそのまま縮小して描くHUDアイコン。背面の刀と
-// 同じ角度で斜めに回転させる(KATANA_BACK_ROT_DEG と一致)。村雨はシルバー。
-const katanaHex = (c: number) => '#' + c.toString(16).padStart(6, '0');
-const KATANA_ICON_ROT_DEG = 32;
-const KatanaIcon: React.FC<{ size?: number; variant?: KatanaVariant }> = ({ size = 26, variant = 'katana' }) => {
-  const w = size * 0.62;
-  const rects = useMemo(() => buildKatanaShape(1, variant), [variant]);
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
-      <g transform={`rotate(${KATANA_ICON_ROT_DEG} ${size / 2} ${size / 2}) translate(${(size - w) / 2} 0)`}>
-        {rects.map((r, i) => (
-          <rect
-            key={i}
-            x={r.x * w}
-            y={r.y * size}
-            width={r.w * w}
-            height={r.h * size}
-            fill={katanaHex(r.color)}
-            fillOpacity={r.alpha}
-          />
-        ))}
-      </g>
-    </svg>
-  );
-};
 
 const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
@@ -249,10 +222,8 @@ const GameHUD: React.FC = () => {
                   title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
                 >
                   {katanaEquipped
-                    ? (murasameEquipped
-                        // 小烏丸(村雨)は背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
-                        ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />
-                        : <KatanaIcon size={28} variant="katana" />)
+                    // 刀/小烏丸(村雨)とも、背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
+                    ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />
                     : whipEquipped ? '➰'
                     : hasWeaponIcon(melee.key)
                       ? <img src={spritePath(weaponIconName(melee.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />

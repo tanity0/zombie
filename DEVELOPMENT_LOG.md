@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1400 — 刀HUDアイコンを刀・小烏丸とも背負い刀に統一+スカベンジャー歩行の整列修正(社長指示・実装チャット)
+- **刀アイコン統一(実機フィードバック「変わってない」)**: v0.25.1399では`murasame`分岐だけ
+  `katana-item.png`にしたが、実際に装備されるのは`katana`(HUD表示「刀」)側だったため見た目が
+  変わらなかった。刀・小烏丸とも背中の鞘入り刀(`katana-item.png`)は同一なので、`katanaEquipped`
+  分岐全体を`<img katana-item>`に統一。未使用化した`KatanaIcon`(プロシージャルSVG)・
+  `katanaShape`インポート・`useMemo`インポートを除去(`katanaShape.ts`自体は無変更・孤立)。
+- **スカベンジャー歩行の不自然さ修正**: v0.25.1399の立ち絵変換で各フレームを「バウンディングボックス
+  中央」で揃えたため、ポーズごとに胴体が左右に滑って歩行が不自然だった。元スプライトと同様
+  **銃を構えた右手(右端)を固定**(x=106)+足元を下端(y=107)に整列し直して再変換。
+  3フレーム重ね合わせで上半身(頭・胴・銃腕・ベルト)が一致し脚だけが動く=自然な歩行サイクルを確認。
+  均一スケール・アンカー・見た目サイズ(86/tex.width)は不変。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。整列は重ね合成プレビューで目視確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(HUDアイコン表示+立ち絵アセットの整列修正のみ)。
+
 ## v0.25.1399 — スカベンジャー立ち絵差し替え+小烏丸HUDアイコンに背負い刀を流用(社長指示・実装チャット)
 - **スカベンジャー(necromancer クラス)の歩行スプライト差し替え**: 社長提供イラスト
   (拳銃を構えた髭の男性・3フレーム横並び・1280×720)を、現行の描画規約(128×108・下端接地・
