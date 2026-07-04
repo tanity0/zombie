@@ -115,7 +115,7 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
   ※締め(上方向)は通常・ピーク限定のまま(緩コマを荒らさない=第5条)。緩めは全コマ。
 - 診断: `DirectorSample`に`puzzleRank`と`boardTarget`を追加。リザルトグラフにランク階段線。
   `?director=1`オーバーレイに`R{n}/T{target}`表示(締め中は`R{n}+`表示)。
-- テスト: 昇格(capReached必須・starveRatio経路も)/維持/降格/クランプ/R7中の上限成長±2と
+- テスト: 昇格(capReached∧perfAvg経路・starveRatio単独経路も)/維持/降格/クランプ/R7中の上限成長±2と
   10〜20クランプ/被弾中はtarget据え置き/締めトリガー(無被弾+starving)、を全数検証。
 
 ## 4. バッチM3: 盤面構成パズル(scriptPuzzle)【社長決定v0.25.1366=台本会議の結果】
@@ -268,7 +268,7 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
 | M3 | 盤面構成パズル(scriptPuzzle: 表+選択+CD/枠の純関数) | **実装済み v0.25.1372** |
 | M4 | 配線(コマループ・緩サイクル・?puzzle=0・ボス停止) | **実装済み v0.25.1372・統合テスト待ち** |
 | M5 | 弾ドロップのインベントリ連動(RE4式・独立小バッチ) | **実装済み v0.25.1380** |
-| M6 | コマ構成の全面改修(4コマサイクル+片付き駆動ローテ+2段査定・§4-C/4-D/4-E) | **実装済み v0.25.1386・統合テスト待ち** |
+| M6 | コマ構成の全面改修(4コマサイクル+片付き駆動ローテ+2段査定・§4-C/4-D/4-E) | **実装済み v0.25.1388(裁定反映込み)・統合テスト待ち** |
 
 ### 実装結果(v0.25.1386・M6)
 - **§4-C 4コマサイクル**: `KOMA_ORDER=['relax','harvest','normal','peak']`(ラン開始=リラックス)。
@@ -310,6 +310,16 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
     補充より速く刈る最速プレイヤーが永遠に昇格不能(starveRatio経路と自己矛盾)。
     昇格式を **`dmgRatio<0.35 ∧ ((capReached ∧ perfAvg≥0.45) ∨ starveRatio≥0.4)`** へ
     (§3-B更新済み)。R7成長判定も同式を使う。実装+テスト更新はSonnetへ(バッチM6追補)。
+
+- **【実装反映 v0.25.1388・Sonnet】裁定v0.25.1387を反映済み**: `assessKomaDelta`(rankAssessor.ts)の
+  昇格条件を`capReached && dmgRatio<0.35 && (perfAvg>=0.45 || starveRatio>=0.4)`から
+  `dmgRatio<0.35 && ((capReached && perfAvg>=0.45) || starveRatio>=0.4)`へ修正。R7成長判定
+  (`applyRankDelta`)は同関数を経由するため自動的に新式を使う。他4点(2/3/4/5)はコード変更なし
+  (承認済みのため)。テスト: capReached=falseでもstarveRatio経由で昇格することを示す新規テストを
+  追加(rankAssessor.test.ts)。既存の`assessKomaDelta`/`applyKomaAssessment`/R7関連テストは
+  fixtureがこの分岐を突いていなかったため無修正で全通過。lint/typecheck/test/build確認済み。
+  自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)への抵触なし(判定式の内部修正のみ、
+  コマ構造・演出・CD値は無変更)。**これでM6は裁定込みで確定・統合テスト待ち。**
 
 ### 実装結果(v0.25.1372・M2→M3→M4を一気に実装)
 - **M2** `src/utils/rankAssessor.ts`: `PuzzleClockState`(rank/r7Cap/boardTarget/belowTargetMs/

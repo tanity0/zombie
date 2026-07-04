@@ -104,9 +104,13 @@ export type RankDelta = 1 | 0 | -1;
 // 「上限体験に耐えるスコアなら昇格」の機械化。両方の条件が同時に成立し得る場合(高ダメージ域は
 // 重ならないが、低dmgRatio×高intensAvgはあり得る)は降格側を優先する(第5条「ピンチに撃たない」の
 // 精神=危険シグナルが出ている時は昇格させない安全側の判定順)。
+// 【裁定v0.25.1387】昇格式修正: capReached必須のままだと、補充より速く刈る最速プレイヤーは
+// 盤面が目標に届かず永遠に昇格できない(starveRatio経路の存在意義と自己矛盾)。「盤面が埋まった
+// 状態を余裕で捌いた」(capReached∧perfAvg)と「埋まる暇がないほど速く刈った」(starveRatio)の
+// どちらも圧の試験合格として扱う。R7の上限成長判定もこの式を共有する。
 export const assessKomaDelta = (input: KomaAssessmentInput): RankDelta => {
   if (input.dmgRatio >= 0.60 || input.intensAvg >= 0.85) return -1;
-  if (input.capReached && input.dmgRatio < 0.35 && (input.perfAvg >= 0.45 || input.starveRatio >= 0.4)) return 1;
+  if (input.dmgRatio < 0.35 && ((input.capReached && input.perfAvg >= 0.45) || input.starveRatio >= 0.4)) return 1;
   return 0;
 };
 

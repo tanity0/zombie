@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1388 — v0.25.1387裁定の反映: 昇格式の自己矛盾を修正(実装チャット)
+- 対応指示: 「PACING_PUZZLE.md v0.25.1387 の裁定を反映 — 昇格式の修正(§3-B新式・R7成長も同式)
+  +テスト更新。他4点は承認済みで変更不要」。
+- `src/utils/rankAssessor.ts`の`assessKomaDelta`を修正: 昇格条件を
+  `capReached && dmgRatio<0.35 && (perfAvg>=0.45 || starveRatio>=0.4)`(capReached必須)から
+  `dmgRatio<0.35 && ((capReached && perfAvg>=0.45) || starveRatio>=0.4)`へ変更。
+  R7の上限成長判定(`applyRankDelta`)は同関数を経由するため自動的に新式適用(コード変更不要)。
+  他4点(②③④⑤)はコード変更なし(承認済みのため触っていない)。
+- テスト: `rankAssessor.test.ts`に「capReached=falseでもstarveRatio経由で昇格する」ケースを
+  新規追加(この分岐は旧式では不可能だった)。既存の`assessKomaDelta`/`applyKomaAssessment`/R7
+  関連テストは全てfixtureがこの分岐を突いていなかったため無修正で全通過(47 tests, was 46)。
+- `PACING_PUZZLE.md`のM6実装結果節に「実装反映v0.25.1388」を追記、旧式の記述だった
+  テスト説明行(118行目付近)も新式に合わせて修正。ステータス表のM6行を更新。
+- 検証: lint/typecheck/test/build全通過。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし
+  (判定式の内部修正のみ、コマ構造・CD値・演出は無変更)。
+- **これでM6は裁定込みで確定。次は社長の統合テスト待ち。**
+
 ## v0.25.1387 — M6実装の解釈5点を裁定: 4点承認・昇格式を1点修正(設計チャットFable)
 - Sonnetの実装時解釈(v0.25.1386記載)への裁定: ②固定目標への1体ずつランプ化 ③ピーク締めの
   スタック(表端クランプ) ④緩め解除のHP30%ラッチ ⑤空台本=即片付き、の4点は**承認**。

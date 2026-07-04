@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1388',
+    items: [
+      '敵を倒すのがとても速いプレイヤーが、盤面が埋まる暇がないせいでランクが上がりにくい不具合を修正。',
+    ],
+  },
+  {
     version: '0.25.1386',
     items: [
       '戦いの流れを4部構成に刷新: 休憩→雑魚無双→強敵との練習→総力戦(ピーク)、の繰り返しに。ピークだけ雑魚も満量+緊迫演出。',

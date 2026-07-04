@@ -107,8 +107,11 @@ describe('assessKomaDelta', () => {
   it('promotes via the starveRatio path even with low perf (processing-speed credit)', () => {
     expect(assessKomaDelta({ ...good, perfAvg: 0.1, starveRatio: 0.5 })).toBe(1);
   });
-  it('does not promote without capReached, even if everything else looks great', () => {
+  it('does not promote without capReached when starveRatio is also low', () => {
     expect(assessKomaDelta({ ...good, capReached: false })).toBe(0);
+  });
+  it('【裁定v0.25.1387】promotes via starveRatio even when capReached is false (fastest players who out-clear the spawner)', () => {
+    expect(assessKomaDelta({ capReached: false, perfAvg: 0.1, intensAvg: 0.3, dmgRatio: 0.1, starveRatio: 0.5 })).toBe(1);
   });
   it('demotes on high damage ratio', () => {
     expect(assessKomaDelta({ ...good, dmgRatio: 0.6 })).toBe(-1);
