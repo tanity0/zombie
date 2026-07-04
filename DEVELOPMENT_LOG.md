@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1389 — バッチM7仕様化: チャフの武器弱点クリティカル(社長採用・設計チャットFable)
+- 序盤ダレ対策の会議(バイオ/L4D2の敵種別対処の参照)から社長採用:
+  **バット=銃クリ+10% / スケルトン=近接クリ+10% / ゾンビ=銃クリ+10%**(加算・ご褒美のみ。
+  HP/倍率/ペナルティなし・チャフ3種限定・問題児は対象外)。
+  ゾンビは「突進を引き撃ち(頭を撃つ定石)」で銃側に裁定(近接処理は弾節約の上級プレーとして残る)。
+- PACING_PUZZLE.md §5.6に仕様記載・M7としてステータス表に追加(着手可・独立小バッチ)。
+  実装=純関数`weaknessCritBonus`表1枚+既存クリ率判定への加算+`?weakcrit=0`。負荷1/10。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 攻略性の原則の延長(知識=報酬)・第5条無関係。
+
 ## v0.25.1388 — v0.25.1387裁定の反映: 昇格式の自己矛盾を修正(実装チャット)
 - 対応指示: 「PACING_PUZZLE.md v0.25.1387 の裁定を反映 — 昇格式の修正(§3-B新式・R7成長も同式)
   +テスト更新。他4点は承認済みで変更不要」。
