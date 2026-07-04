@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1401 — スカベンジャー歩行を5コマ化(社長提供・実装チャット)
+- 社長提供の新イラスト(拳銃を構えた歩行・**5コマ**横並び・1280×720)へ差し替え。
+  ※社長は「6コマ」と表現していたが、画像を解析すると分離できるのは5体(透過PNG・6体目は無し)。
+  5コマ全部を前進ループの歩行サイクルとして採用した(要調整なら順序/コマ数を変更可)。
+- 変換: 前回(v0.25.1400)で確立した整列方式——**銃手(右端)をx=106に固定+足元を下端y=107に
+  固定+均一スケールで最長コマを高さ106pxへLANCZOS縮小**——を5コマに適用。重ね合わせで上半身
+  (頭・胴・銃腕・ベルト)が一致し脚だけ動くことを確認(横滑りなし)。
+- 配線: `player-striker-walk-3/4.png`を新規追加、`pixiTextures.ts`の読込リストに2枚追加。
+  `pixiScene.ts`の`playerWalkSequence`を **necromancer(スカベンジャー)だけ`[0,1,2,3,4]`** に
+  (他クラス=mage/rogue/warriorは従来`[0,1,2,1]`のまま・3コマ据え置き)。歩行周期は
+  `PLAYER_WALK_CYCLE_MS=460`不変(5コマ=各≒92ms)。`player-striker-game-*`(未参照)は無変更。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。dist出力に walk-3/4 含むことを確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(スカベンジャーの立ち絵アセット+歩行フレーム数の変更のみ・
+  他クラス/ゲームロジックに影響なし)。
+
 ## v0.25.1400 — 刀HUDアイコンを刀・小烏丸とも背負い刀に統一+スカベンジャー歩行の整列修正(社長指示・実装チャット)
 - **刀アイコン統一(実機フィードバック「変わってない」)**: v0.25.1399では`murasame`分岐だけ
   `katana-item.png`にしたが、実際に装備されるのは`katana`(HUD表示「刀」)側だったため見た目が
