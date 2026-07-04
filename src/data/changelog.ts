@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1403',
+    items: [
+      'スカベンジャーの歩行を5コマの往復(左右に折り返す)アニメーションに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1402',
     items: [
       'スカベンジャーの立ち絵を新しい3コマのアニメーションに差し替え。',

@@ -437,12 +437,15 @@ const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
 const playerWalkSequence = (p: Player): number[] =>
-  p.characterClass === 'mage' ||
-  p.characterClass === 'rogue' ||
-  p.characterClass === 'warrior' ||
+  // スカベンジャー(necromancer)は5コマ(player-striker-walk-0..4)を、左→右→折り返し→右→左の
+  // ピンポン再生(社長指示)。端(0,4)を重複させず往復してループ=滑らかな折り返し。
   p.characterClass === 'necromancer'
-    ? [0, 1, 2, 1]
-    : [0, 1];
+    ? [0, 1, 2, 3, 4, 3, 2, 1]
+    : p.characterClass === 'mage' ||
+      p.characterClass === 'rogue' ||
+      p.characterClass === 'warrior'
+      ? [0, 1, 2, 1]
+      : [0, 1];
 const playerWalkFrame = (p: Player, now: number, walking: boolean): number => {
   if (!walking) return 0;
   const sequence = playerWalkSequence(p);

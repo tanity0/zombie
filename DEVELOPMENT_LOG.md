@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1403 — スカベンジャーを5コマ+ピンポン歩行へ(社長提供・実装チャット)
+- 社長提供の新イラスト(拳銃を構えた歩行・**5コマ**横並び・透過1024×576)へ差し替え。
+  ※社長は「6コマ」表現だが、透過PNGを解析すると分離できるのは5体(6体目は無し)。5コマ採用。
+- 指示のアニメ=**左→右→折り返し→右→左のピンポン**。`playerWalkSequence`のnecromancerを
+  `[0,1,2,3,4,3,2,1]`(端0/4を重複させず往復ループ)に。周期`PLAYER_WALK_CYCLE_MS=460`不変
+  (8ステップ=各≒57ms)。他クラス(mage/rogue/warrior)は従来`[0,1,2,1]`のまま。
+- 変換: 確立済みの整列(**銃手=右端x=106・足元=下端y=107・均一スケールで最長コマを高さ106pxへ
+  LANCZOS縮小**)を5コマに適用。透過PNGのため色キー不要。`player-striker-walk-0..4.png`を保存
+  (walk-3/4を再追加)、`pixiTextures.ts`の読込に2枚追加。重ね合わせで上半身一致=横滑りなし確認。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。dist出力にwalk-0..4の5枚。
+- 自己点検: 憲法第4条・第5条に抵触なし(スカベンジャーの立ち絵+歩行シーケンス変更のみ)。
+
 ## v0.25.1402 — スカベンジャー立ち絵を新3コマへ入れ替え(社長提供・実装チャット)
 - 社長提供の新イラスト(拳銃を構えた歩行・**3コマ**横並び・紫背景1672×941)へ差し替え。
   v0.25.1401の5コマから3コマへ戻す形。
