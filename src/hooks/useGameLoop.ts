@@ -38,6 +38,7 @@ import {
   ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, AMMO_MAX
 } from '../store/gameStore';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -445,6 +446,9 @@ const PUZZLE_ENABLED = evParam('puzzle') !== '0';
 // 最小の弾種」にする。`?ammosmart=0`で従来(構え銃の弾種)へ復帰。gameStore側の近接キル経路も
 // 同名パラメータを各自読む(既存のcamNum等と同じ流儀)。
 const AMMO_SMART_ENABLED = evParam('ammosmart') !== '0';
+// PACING_PUZZLE.md §5.6 バッチM7(チャフの武器弱点クリティカル・既定ON): `?weakcrit=0`で無効化。
+// gameStore側の近接キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
+const WEAKCRIT_ENABLED = evParam('weakcrit') !== '0';
 // この方式が湧き型の選択と上限を供給する対象(§2「継続するもの」の通常湧きスポナー管理下の型のみ)。
 // ボス/裏ボス/ハンター/リーパー/ラボ専用型/イベント敵(fromEvent)は対象外(既存の専用ディレクター継続)。
 const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'screamer', 'ghost']);
@@ -4957,8 +4961,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             enemyForFx?.rootUntil !== undefined &&
             gameTime < enemyForFx.rootUntil &&
             Math.random() < MARKSMAN_TRAP_CRIT_BONUS;
+          // PACING_PUZZLE.md §5.6 M7: チャフ(バット/ゾンビ)の武器弱点=銃+10%。命中対象の型は
+          // ヒット時点でしか分からない(発射時は未確定)ため、ここで対象別に追加ロールする。
+          const weakCrit = WEAKCRIT_ENABLED && enemyForFx
+            ? Math.random() < weaknessCritBonus(enemyForFx.type, 'gun')
+            : false;
           // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
-          const hitCrit = !!projectile?.crit || trapCritBonus || headshot === true;
+          const hitCrit = !!projectile?.crit || trapCritBonus || weakCrit || headshot === true;
           // スキル: クリティカルD上昇(+0.5) / バーサーカー(失HP%で全攻撃増) / スナイパー(停止敵・遠距離増)。
           const skillPlayer = collisionState.player;
           const critMult = hitCrit

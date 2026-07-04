@@ -24,6 +24,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -68,6 +69,9 @@ export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, ri
 // PACING_PUZZLE.md §5.5 M5(RE4式弾ドロップ・既定ON): ?ammosmart=0で従来(構え銃の弾種)へ。
 // useGameLoop側の銃キル経路と同名パラメータ(各自読む=既存camNum等と同じ流儀)。
 const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammosmart') !== '0';
+// PACING_PUZZLE.md §5.6 M7(チャフの武器弱点クリティカル・既定ON): ?weakcrit=0で無効化。
+// useGameLoop側の銃ヒット経路と同名パラメータ(各自読む=既存ammosmart等と同じ流儀)。
+const WEAKCRIT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('weakcrit') !== '0';
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -3227,7 +3231,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil
         ? TRAP_ROOT_CRIT_BONUS
         : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
+      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
+      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const newHealth = Math.max(0, enemy.health - dmg);
@@ -3512,7 +3518,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
+      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
+      const crit = Math.random() < Math.min(1, meleeCritChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const nh = Math.max(0, enemy.health - dmg);
@@ -3652,8 +3660,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         : 0;
       // 刀のクリ率 = レベル別基礎(10/20/30%) + プレイヤーのレベルアップ
       // クリティカル率アップ(player.critChance) + トラップ拘束ボーナス。
+      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
+      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
       const crit = Math.random() <
-        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
@@ -3831,7 +3841,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
+      const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
+      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const newHealth = Math.max(0, enemy.health - dmg);

@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1390 — バッチM7実装: チャフの武器弱点クリティカル(実装チャット)
+- `src/utils/weaknessCrit.ts`(新規): `weaknessCritBonus(enemyType, weaponKind)`純関数。
+  バット→銃+10%/スケルトン→近接+10%/ゾンビ→銃+10%。表に無い型(問題児・ボス)は常に0。
+- 配線: `useGameLoop.ts`の銃ヒット判定(`hitCrit`)に対象敵typeへの追加ロールを合成
+  (発射時は貫通で複数typeに当たり得るため、対象が確定するヒット時点で適用)。
+  `gameStore.ts`の近接クリ判定4箇所(通常近接/分身近接/刀/鞭)に`weaknessCritBonus(enemy.type,'melee')`
+  を加算。ペナルティ・HP/ダメージ倍率の変更なし・演出追加なし。
+- 復帰フラグ `?weakcrit=0`(ammosmartと同じ流儀で2ファイルが各自読む)。
+- テスト: `weaknessCrit.test.ts`新規4件。lint/typecheck/test(425 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(クリ率加算のみ)。M6とは独立(干渉なし)。
+
 ## v0.25.1389 — バッチM7仕様化: チャフの武器弱点クリティカル(社長採用・設計チャットFable)
 - 序盤ダレ対策の会議(バイオ/L4D2の敵種別対処の参照)から社長採用:
   **バット=銃クリ+10% / スケルトン=近接クリ+10% / ゾンビ=銃クリ+10%**(加算・ご褒美のみ。
