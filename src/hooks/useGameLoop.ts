@@ -1963,7 +1963,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- 変異体(叫喚型・screamer)ディレクター: 5分以降・同時1体・CDで何度でも(社長指示) ----------
         // 画面外に1体だけ出す。AIが距離を保ちつつ溜め→叫喚で画面内の通常敵を一時強化。溜め完了前に倒せば阻止。
-        if (!danceTest && !indoor) {
+        // PACING_PUZZLE.md(社長裁定v0.25.1378「1は一本化」): パズル方式ON時は本ディレクターを停止し、
+        // 供給を特別枠(§4-A: エリア3〜・同時1・CD3秒)へ一本化する。?puzzle=0時のみ従来どおりここが動く。
+        if (!danceTest && !indoor && !puzzleActiveNow) {
           const sS = useGameStore.getState();
           const aliveScreamer = sS.enemies.some(e => e.type === 'screamer');
           const sCinematic = sS.bossChasing || !!sS.attention || sS.redNight?.phase === 'active'
@@ -6706,6 +6708,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
           if (decision) {
             const puzzleEnemy = generateEnemy(gameTime, player, spawnBounds, decision.type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+            // 叫喚の一本化(社長裁定v0.25.1378): 旧ディレクターが持っていた叫喚固有の扱いを特別枠側へ
+            // 引き継ぐ——fixed=true(単体管理=画面外カリング/距離リサイクル対象外。キープ距離AIで
+            // 画面外に留まるため、外すと回収→即補充のチャーンが起きる)+「叫喚型 出現」バナー。
+            if (decision.type === 'screamer') {
+              puzzleEnemy.fixed = true;
+              useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: gameTime + EVENT_BANNER_MS });
+            }
             addEnemy(puzzleEnemy);
             puzzleCdRef.current.lastBaseSpawnAt = gameTime;
             if (decision.slot === 'nuisance') puzzleCdRef.current.lastNuisanceSpawnAt = gameTime;

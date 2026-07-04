@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1378',
+    items: [
+      '叫喚型の出現ルールを一本化: 拠点から遠いエリア(デンジャーゾーン以降)に進んだ時だけ現れるように。序盤エリアで時間経過だけで出てくることはなくなった。',
+    ],
+  },
+  {
     version: '0.25.1376',
     items: [
       '山場と休憩のリズムを変更: 山場60秒→休憩60秒の交互に(以前は山場が2分続いていた)。',

@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1378 — 叫喚の供給を特別枠へ一本化(社長裁定「1は一本化」・★未決事項①の解決)
+- `useGameLoop.ts`: 旧screamerディレクター(5分以降・旧時刻表gate窓・エリア制限なし)を
+  `!puzzleActiveNow`でゲート=パズル方式ON時は停止。供給は特別枠(§4-A: エリア3〜・同時1・
+  投入CD3秒・被弾後1.5秒ガード)に一本化。
+- 特別枠からの叫喚湧きに旧ディレクター固有の扱いを引き継ぎ: `fixed=true`(単体管理=画面外
+  カリング/距離リサイクル対象外。キープ距離AIで画面外に留まる敵なので、外すと回収→即補充の
+  チャーンが起きる)+「叫喚型 出現」バナー。供給経路の移設であって叫喚自体の演出仕様は不変。
+- PACING_PUZZLE.md: ★未決事項①を裁定済みの記録へ移動(残: ②紅き月の緩ゲート ③ハンター)。
+- 自己点検: 憲法第5条に整合(緩コマ中は特別枠の新規補充停止=叫喚も緩を荒らさない。旧ディレクター
+  は緩/山を旧時刻表で誤判定していた)。第4条は本方式で廃止済みだが、叫喚は距離解禁なので
+  実質「初心者エリアに出ない」性質は保たれる。
+- 検証: lint / typecheck / test(383 pass, 1 skip) / build 全通過。実機ではエリア3(デンジャー
+  ゾーン=原点から3000px)以降へ進んだ時だけ叫喚が出ることを確認。`?puzzle=0`は従来どおり。
+
 ## v0.25.1377 — セーブポイント比較の検分で見つけた仕様のスキマ3件を★未決事項へ記録(doc+versionのみ)
 - 社長依頼「セーブポイント時と現在の仕様比較」の検分中に発見した3件をPACING_PUZZLE.md★未決事項へ:
   ①旧screamerディレクターがパズルON時も稼働(旧時刻表gate窓・エリア制限なし=特別枠表と供給二重)
