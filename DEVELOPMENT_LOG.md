@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1395 — トール横払い調整+緑卵グロー演出(社長指示・実装チャット)
+- **トール(裏ボス)の横払い(harai)**: `THOR_HARAI_HALF_WIDTH`を突きと同じ値(30)から独立させ、
+  1.5倍(45)へ(社長指示)。`harai-windup`中の`thorOrbitMove()`呼び出しを削除し、溜め中は
+  本体静止するように変更(社長指示「立ち止まって」。突き/一閃の溜めと同じ静止パターンに統一)。
+  windup開始時の`bossCircleDir`反転(旧: 逆回転演出用)も、対応する移動が無くなったため削除。
+- **緑卵(mine)のグロー演出**: `pixiScene.ts`の`drawBreakableProp`で、既存の加算グロースプライトの
+  α明滅に加えて半径(width/height)も別周期・位相で伸縮させ、「フワフワ」した浮遊感の呼吸的な
+  揺らぎにした(社長指示)。追加スプライト無し=負荷据え置き。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。PixiJS描画コードのためユニット
+  テストは追加せず(方針どおり)。
+- 自己点検: 憲法第4条・第5条に抵触なし(トール専用ボス演出+装飾グローの調整のみ・パズル系
+  コマ構造/CD/湧きには無関係)。
+
 ## v0.25.1394 — M6追補2実装: 上限カリングの可視域保護(実装チャット)
 - `src/utils/enemyCulling.ts`(新規): `selectCullCandidates(enemies, isProtected, rect,
   restrictToOffscreen)`。`restrictToOffscreen=true`の時、cull候補を矩形外(可視域外)の敵だけに

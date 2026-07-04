@@ -602,9 +602,9 @@ const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込�
 const THOR_TSUKI_RANGE = 620;                // ダッシュと同じ射程(社長指示=一閃の元の「ダッシュ射程」を採用)
 const THOR_TSUKI_HALF_WIDTH = 30;            // ダッシュと同じ幅(一閃の元の半分=通常幅)
 
-const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 逆回転+並行ライン表示1秒(社長指示)
+const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
 const THOR_HARAI_RANGE = 620;                // ダッシュと同じ距離分のライン(社長指示。一閃の長さ修正とは独立)
-const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH;
+const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH * 1.5; // 社長指示: 突きの1.5倍の太さへ(突き本体は無変更)
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
@@ -2615,10 +2615,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       patch.bossState = 'tsuki-windup';
                       patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
                     } else {
-                      // 払い: 逆回転を開始しつつ、プレイヤー中心・現在の接線と並行な赤ラインをロック(社長指示)。
+                      // 払い: 溜め中は本体静止(社長指示・立ち止まる)。プレイヤー中心・現在の接線と
+                      // 並行な赤ラインをロック。
                       patch.bossState = 'harai-windup';
                       patch.bossStateUntil = newGameTime + THOR_HARAI_WINDUP_MS;
-                      patch.bossCircleDir = -(boss.bossCircleDir ?? 1);
                       const rx = bcx - pcx, ry = bcy - pcy;
                       const rl = Math.hypot(rx, ry) || 1;
                       const tx0 = -ry / rl, ty0 = rx / rl; // 接線(90度回転)の単位ベクトル
@@ -2852,8 +2852,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
               } else if (st === 'harai-windup') {
-                // 払い: 逆回転を1秒続けながら(社長指示)、ロック済みの並行ラインを予告表示(描画側)。
-                thorOrbitMove();
+                // 払い: 溜め中は本体静止(社長指示・立ち止まる)。ロック済みの並行ラインを予告表示(描画側)。
                 const { overlap, counterActive } = thorBodyOverlapNow();
                 if (overlap && counterActive) {
                   thorCounterHit(bcx, bcy);

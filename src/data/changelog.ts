@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1395',
+    items: [
+      '隠しボス「トール」の横払いを太く強化し、溜め中は動かず立ち止まるように変更。',
+      '変異体が撒く緑卵の光がフワフワと呼吸するように揺らぐ演出を追加。',
+    ],
+  },
+  {
     version: '0.25.1394',
     items: [
       '被弾が続いた直後などに画面内の敵が不自然に消えることがある不具合を修正。',
