@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1383 — M6追補: 下げ方向のリアルタイム調整は全コマ常時(社長改修・設計チャットFable)
+- 社長「AIは全ての時間で調整を見ている。ハーベストでも辛そうなら敵の数・CDを多少調整」。
+  旧ルール「下げ方向はコマ内で行わない」を上書き: **緩め(下)は全コマ常時**(叩き台: 直近10秒
+  被ダメ≥15%/intens≥0.85/HP≤30%で検知→目標−20%(下限3)+CD×1.5の1段のみ・無被弾10秒で復帰)。
+  締め(上)は通常・ピーク限定のまま(第5条=緩コマを荒らさない)。§3-D/§4-Cを更新。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 第5条整合(緩コマへの介入は下方向のみ)。
+
 ## v0.25.1382 — M6確定: 4コマサイクル+片付き駆動ローテ+2段査定(社長訂正2件反映・設計チャットFable)
 - 社長訂正①: **ピーク=通常と同じランク**。違いは雑魚数(満量)とCD(1段締め)だけ。
   査定の反映は次の通常から(直後のピークは変わらない)。
