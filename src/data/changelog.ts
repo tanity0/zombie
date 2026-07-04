@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1398',
+    items: [
+      '刀装備中のHUDアイコンを元の表示に戻しました。',
+    ],
+  },
+  {
     version: '0.25.1397',
     items: [
       '緑卵の光の揺らぎをもう少し目立つように調整。',

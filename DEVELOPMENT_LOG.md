@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1398 — 刀スキルHUDアイコン差し替え(v0.25.1396)を全撤回(社長指示・実装チャット)
+- 経緯: アップロードされた刀イラスト(紫背景版・透過版とも同一デザイン)は、実は**トールの刀
+  (`thor-katana.png`)そのもの**だった。「刀スキルの画像」という社長の中間発言は誤りで、
+  「小烏丸装備時に背中に表示しているものが、既にそのままアイコン画像と一致していた」との
+  最終確認により、v0.25.1396でのHUDアイコン差し替えは誤りと判明。
+- `src/components/GameHUD.tsx`を完全に元へ戻した(1bbe262の直前と完全一致): 刀装備中は
+  `KatanaIcon`(プロシージャルSVG、`variant`で刀/小烏丸を色分け)のみを表示。
+- `public/sprites/weapons/katana.png`(→一度`murasame.png`へ改名試行)を削除。
+  `thor-katana.png`はトール専用のまま変更なし。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。GameHUD.tsxはv0.25.1396直前と
+  差分ゼロであることを確認済み。
+- 自己点検: 憲法第4条・第5条に抵触なし(HUDアイコン表示の巻き戻しのみ)。
+
 ## v0.25.1397 — 緑卵グロー再調整: 卵本体ではなく光だけを目立たせる(社長指示・実装チャット)
 - 前回(v0.25.1395)の意図の誤解を訂正: 「卵をフワフワさせる」のではなく「卵の光をフワフワ
   光らせて少し目立つように」との指示。卵本体(`view.sprite`)のスケール微振動は元から別変数
