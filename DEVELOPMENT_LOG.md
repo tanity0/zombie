@@ -10,6 +10,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1385 — M6追補: 処理待ちの判定は邪魔者のみ(社長明確化・設計チャットFable)
+- 社長「雑魚は処理待ちに含めない(ただしAIが盤面の敵数などの監視は続けている前提)」。
+  §4-Cの処理待ちに明記: 判定=台本の邪魔者のみ・チャフと特別枠は数えない(雑魚が残っていても
+  コマは進む)。AIの盤面監視(敵数・リアルタイム緩め)は処理待ち中も全コマ継続。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1384 — M6追補: コマ基本40秒+処理待ち(社長決定・設計チャットFable)
 - 社長「基本40秒サイクルにしよう(処理待ちはあり)」。各コマ60秒→**基本40秒**へ。
   リラックス/ハーベスト=きっかり40秒。通常/ピーク=40秒経過時に台本が未片付きなら
