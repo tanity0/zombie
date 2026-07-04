@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   createPuzzleClockState, tickPuzzleClock, capForState, cdBasisForRank, cdBasisTightened,
-  assessKomaDelta, applyKomaAssessment, createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
+  assessKomaDelta, applyKomaAssessment, applyRankDelta, combineCycleDelta, isDemoteGrade,
+  createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
+  createSoftenState, stepSoften, SOFTEN_RELEASE_NO_HIT_MS,
   BASE_CAP, R7_CAP_MIN, R7_CAP_MAX, R7_CAP_STEP, RAMP_INTERVAL_NORMAL_MS, RAMP_INTERVAL_TIGHT_MS,
   RAMP_NO_HIT_HOLD_MS, TIGHTEN_NO_HIT_MS, TIGHTEN_STARVE_MS, clampRank,
+  type KomaAssessmentInput,
 } from './rankAssessor';
 
 describe('cdBasisForRank / cdBasisTightened', () => {
@@ -16,10 +19,10 @@ describe('cdBasisForRank / cdBasisTightened', () => {
     expect(cdBasisForRank(7, R7_CAP_MAX - 1)).toBe(100);
     expect(cdBasisForRank(7, R7_CAP_MAX)).toBe(0);
   });
-  it('tightened uses one rank up (never below the plain value for R7)', () => {
+  it('tightened uses one rank up; §3-D: tightening at R7 goes to CD0(仕様適合修正v0.25.1386)', () => {
     expect(cdBasisTightened(1, R7_CAP_MIN)).toBe(cdBasisForRank(2, R7_CAP_MIN));
     expect(cdBasisTightened(6, R7_CAP_MIN)).toBe(cdBasisForRank(7, R7_CAP_MIN));
-    expect(cdBasisTightened(7, R7_CAP_MIN)).toBe(cdBasisForRank(7, R7_CAP_MIN));
+    expect(cdBasisTightened(7, R7_CAP_MIN)).toBe(0);
     expect(cdBasisTightened(7, R7_CAP_MAX)).toBe(0);
   });
 });
@@ -192,13 +195,15 @@ describe('koma accumulator (finalizeKomaAssessmentInput)', () => {
     expect(input.intensAvg).toBeCloseTo(0.3, 5);
     expect(input.dmgRatio).toBeCloseTo(0.1, 5);
     expect(input.starveRatio).toBeCloseTo(0.5, 5); // understocked for 1s out of 2s total
-    expect(input.capReached).toBe(true); // boardTarget(10) >= cap(10) on both ticks
+    expect(input.capReached).toBe(true); // M6意味: 盤面数(10)がコマ総目標(cap=10)へ到達した瞬間があった
   });
 
-  it('capReached stays false if the target never reaches the cap during the koma', () => {
+  it('M6: capReached stays false if the BOARD never actually reaches the koma total target', () => {
     let acc = createKomaAccumulator();
-    acc = stepKomaAccumulator(acc, { dtMs: 1000, perf: 0.5, intensity: 0.2, dmgTakenThisFrame: 0, boardCount: 3, boardTarget: 4, cap: 10 });
+    acc = stepKomaAccumulator(acc, { dtMs: 1000, perf: 0.5, intensity: 0.2, dmgTakenThisFrame: 0, boardCount: 3, boardTarget: 4, cap: 4 });
     expect(finalizeKomaAssessmentInput(acc, 100).capReached).toBe(false);
+    acc = stepKomaAccumulator(acc, { dtMs: 1000, perf: 0.5, intensity: 0.2, dmgTakenThisFrame: 0, boardCount: 4, boardTarget: 4, cap: 4 });
+    expect(finalizeKomaAssessmentInput(acc, 100).capReached).toBe(true);
   });
 
   it('an empty koma (zero duration) does not divide by zero', () => {
@@ -206,5 +211,88 @@ describe('koma accumulator (finalizeKomaAssessmentInput)', () => {
     const input = finalizeKomaAssessmentInput(acc, 100);
     expect(Number.isFinite(input.perfAvg)).toBe(true);
     expect(Number.isFinite(input.starveRatio)).toBe(true);
+  });
+});
+
+describe('M6 §4-C: combineCycleDelta(2段査定の確定規則)', () => {
+  const mk = (over: Partial<KomaAssessmentInput>): KomaAssessmentInput =>
+    ({ capReached: true, perfAvg: 0.5, intensAvg: 0.3, dmgRatio: 0.1, starveRatio: 0, ...over });
+
+  it('昇格=仮査定が昇格 かつ ピークでも耐えた(dmgRatio<0.35)', () => {
+    expect(combineCycleDelta(1, mk({ dmgRatio: 0.2 }))).toBe(1);
+  });
+  it('仮査定が昇格でもピークで耐えられなければ(0.35<=dmg<0.60)維持へ落ちる', () => {
+    expect(combineCycleDelta(1, mk({ dmgRatio: 0.4 }))).toBe(0);
+  });
+  it('降格=どちらかのコマで降格級(通常側=仮査定-1/ピーク側=dmg>=0.60 or intens>=0.85)', () => {
+    expect(combineCycleDelta(-1, mk({}))).toBe(-1);
+    expect(combineCycleDelta(0, mk({ dmgRatio: 0.7 }))).toBe(-1);
+    expect(combineCycleDelta(1, mk({ intensAvg: 0.9 }))).toBe(-1); // 昇格候補でもピーク降格級なら降格(安全側)
+  });
+  it('仮査定=維持でピークが無難なら維持', () => {
+    expect(combineCycleDelta(0, mk({}))).toBe(0);
+  });
+  it('isDemoteGrade thresholds', () => {
+    expect(isDemoteGrade(mk({ dmgRatio: 0.6 }))).toBe(true);
+    expect(isDemoteGrade(mk({ intensAvg: 0.85 }))).toBe(true);
+    expect(isDemoteGrade(mk({}))).toBe(false);
+  });
+});
+
+describe('M6: applyRankDelta(確定デルタの直接適用・applyKomaAssessmentと同じR7規則)', () => {
+  it('promotes/demotes/holds with clamping, matching the legacy wrapper', () => {
+    const s1 = createPuzzleClockState();
+    expect(applyRankDelta(s1, 1).rank).toBe(2);
+    expect(applyRankDelta(s1, -1).rank).toBe(1); // clamp
+    expect(applyRankDelta(s1, 0).rank).toBe(1);
+  });
+  it('at R7: +1 grows the cap, -1 shrinks it, and demotes only from the floor', () => {
+    const atR7 = { rank: 7 as const, r7Cap: R7_CAP_MIN, boardTarget: 10, belowTargetMs: 0, msSinceRampMs: 0 };
+    expect(applyRankDelta(atR7, 1).r7Cap).toBe(R7_CAP_MIN + R7_CAP_STEP);
+    const demoted = applyRankDelta(atR7, -1);
+    expect(demoted.rank).toBe(6);
+    expect(applyRankDelta({ ...atR7, r7Cap: 14 }, -1)).toMatchObject({ rank: 7, r7Cap: 12 });
+  });
+});
+
+describe('M6 §3-D改訂: stepSoften(全コマ常時の「多少緩め」検知)', () => {
+  const calm = { dtMs: 1000, dmgFracThisFrame: 0, intensity: 0.2, hpFrac: 1, msSinceLastHit: 99999 };
+
+  it('直近10秒の被ダメ合計がmaxHealthの15%以上で緩め発動', () => {
+    let s = createSoftenState();
+    s = stepSoften(s, { ...calm, dmgFracThisFrame: 0.1, msSinceLastHit: 0 });
+    expect(s.softened).toBe(false);
+    s = stepSoften(s, { ...calm, dmgFracThisFrame: 0.06, msSinceLastHit: 0 });
+    expect(s.softened).toBe(true); // 累計0.16 >= 0.15
+  });
+
+  it('直近10秒のIntensity平均が0.85以上で緩め発動', () => {
+    let s = createSoftenState();
+    for (let i = 0; i < 5; i++) s = stepSoften(s, { ...calm, intensity: 0.9 });
+    expect(s.softened).toBe(true);
+  });
+
+  it('HP30%以下で緩め発動(継続中は無被弾10秒でも維持=ラッチ解釈)', () => {
+    let s = createSoftenState();
+    s = stepSoften(s, { ...calm, hpFrac: 0.25 });
+    expect(s.softened).toBe(true);
+    s = stepSoften(s, { ...calm, hpFrac: 0.25, msSinceLastHit: SOFTEN_RELEASE_NO_HIT_MS + 1 });
+    expect(s.softened).toBe(true); // HP条件が残る限り解除しない
+  });
+
+  it('検知条件が消え、かつ無被弾10秒で基準へ戻る(それ未満はラッチ維持)', () => {
+    let s = createSoftenState();
+    s = stepSoften(s, { ...calm, dmgFracThisFrame: 0.2, msSinceLastHit: 0 }); // 発動
+    expect(s.softened).toBe(true);
+    // 11秒経過=バケツが一巡してダメージ窓が空になり、無被弾10秒超 → 解除。
+    for (let i = 0; i < 11; i++) s = stepSoften(s, { ...calm, msSinceLastHit: 1000 * (i + 1) });
+    expect(s.softened).toBe(false);
+  });
+
+  it('発動直後(無被弾10秒未満)はダメージ窓が流れてもラッチで維持される', () => {
+    let s = createSoftenState();
+    s = stepSoften(s, { ...calm, dmgFracThisFrame: 0.2, msSinceLastHit: 0 });
+    for (let i = 0; i < 11; i++) s = stepSoften(s, { ...calm, msSinceLastHit: 500 }); // ずっと直近被弾扱い
+    expect(s.softened).toBe(true);
   });
 });

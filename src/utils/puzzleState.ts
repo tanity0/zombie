@@ -7,7 +7,8 @@ export interface PuzzleDebug {
   boardTarget: number;
   cap: number;
   tightened: boolean;
-  komaKind: 'normal' | 'relax' | 'harvest';
+  softened: boolean; // M6 §3-D改訂: 全コマ常時の「多少緩め」が効いているか
+  komaKind: 'relax' | 'harvest' | 'normal' | 'peak'; // M6 §4-C: 4コマサイクル
 }
 
 let debugState: PuzzleDebug | null = null;

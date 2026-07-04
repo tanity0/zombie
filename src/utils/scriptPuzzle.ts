@@ -6,6 +6,7 @@
 // 枠共通CD3秒はどんな締め/成長でも縮めない。被弾直後1.5秒は邪魔者・特別枠の新規投入をしない。
 
 import type { PuzzleRank } from './rankAssessor';
+import { cdBasisForRank, cdBasisTightened } from './rankAssessor';
 
 export type NuisanceType = 'plant' | 'werewolf' | 'pumpkin';
 export type SpecialType = 'screamer' | 'ghost';
@@ -104,7 +105,7 @@ export const POST_HIT_GUARD_MS = 1500; // 被弾直後は邪魔者・特別枠�
 
 export interface ChaffWeights { bat: number; skeleton: number; zombie: number; }
 export const CHAFF_WEIGHTS_DEFAULT: ChaffWeights = { bat: 5, skeleton: 3, zombie: 1 };
-export const CHAFF_WEIGHTS_HARVEST: ChaffWeights = { bat: 7, skeleton: 2, zombie: 1 }; // 4-C: バット寄せ
+// (旧CHAFF_WEIGHTS_HARVEST(7:2:1)はM6の§4-C改訂でコマ別度数chaffWeightsForKomaへ置き換え)
 
 export const pickChaffType = (weights: ChaffWeights, tieBreakRandom: number): ChaffType => {
   const total = Math.max(1e-9, weights.bat + weights.skeleton + weights.zombie);
@@ -151,37 +152,106 @@ export const decideNextSpawn = (input: BoardMaintenanceInput): PuzzleSpawnDecisi
   return { type: pickChaffType(input.chaffWeights, input.tieBreakRandom), slot: 'chaff' };
 };
 
-// ---- 4-C: 緩モード(RELAX/HARVEST)のオーバーライド --------------------------------------
-
-export const RELAX_TARGET_FRACTION = 0.6;
-export const RELAX_TARGET_MIN = 3;
-export const RELAX_CD_MULT = 2;
-export const HARVEST_CD_MULT = 0.5;
-export const HARVEST_RAMP_INTERVAL_MS = 2000;
-
-// RELAX: 目標数を現在値の60%(下限3)へ。
-export const relaxBoardTarget = (currentTarget: number): number =>
-  Math.max(RELAX_TARGET_MIN, Math.round(currentTarget * RELAX_TARGET_FRACTION));
-
-// RELAX: 基本CD×2。
-export const relaxCdMs = (cdMs: number): number => cdMs * RELAX_CD_MULT;
-
 // RELAX/HARVEST共通: 邪魔者枠は「新規補充のみ停止・在席は残す」= 実効目標を現在の在籍数に固定する
 // (nextNuisanceDeficitは常にnullを返すようになる=補充されない。倒せば自然に減る)。
 export const noNewSupplyNuisanceTarget = (alive: NuisanceCounts): NuisanceCounts => ({ ...alive });
 
-// HARVEST: 基本CD×0.5(刈ってもすぐ補充)。
-export const harvestCdMs = (cdMs: number): number => cdMs * HARVEST_CD_MULT;
+// ---- M6 §4-C: 4コマサイクル(リラックス→ハーベスト→通常→ピーク)【旧4-C(RELAX⇄HARVEST交互)は廃止】
 
-// HARVEST: チャフ目標数を上限まで増員間隔2秒で一気に埋める(rankAssessorの6s/4sランプとは別の
-// 専用ランプ。呼び出し側がHARVESTコマの間だけこちらを呼び、通常のtickPuzzleClockは呼ばない)。
-export interface HarvestRampState { target: number; msSinceRampMs: number; }
-export const harvestTargetTick = (state: HarvestRampState, cap: number, dtMs: number): HarvestRampState => {
-  let msSinceRampMs = state.msSinceRampMs + dtMs;
-  let target = state.target;
-  if (msSinceRampMs >= HARVEST_RAMP_INTERVAL_MS && target < cap) {
-    target = Math.min(cap, target + 1);
-    msSinceRampMs = 0;
+export type KomaKind4 = 'relax' | 'harvest' | 'normal' | 'peak';
+export const KOMA_ORDER: KomaKind4[] = ['relax', 'harvest', 'normal', 'peak']; // ラン開始=リラックスから
+export const nextKomaKind = (kind: KomaKind4): KomaKind4 =>
+  KOMA_ORDER[(KOMA_ORDER.indexOf(kind) + 1) % KOMA_ORDER.length];
+
+export const KOMA_BASE_MS = 40000;          // 各コマ基本40秒(社長決定v0.25.1384)
+export const KOMA_EXTENSION_MAX_MS = 30000; // 通常/ピークの処理待ち延長上限(叩き台。超えたら強制切替)
+
+// チャフ度数(§4-C各コマの役割)。リラックス=bat6:skel4:zombie0/ハーベスト=bat7:skel3:zombie0/
+// 通常・ピーク=基本セット5:3:1。
+export const chaffWeightsForKoma = (kind: KomaKind4): ChaffWeights => {
+  if (kind === 'relax') return { bat: 6, skeleton: 4, zombie: 0 };
+  if (kind === 'harvest') return { bat: 7, skeleton: 3, zombie: 0 };
+  return CHAFF_WEIGHTS_DEFAULT;
+};
+
+// チャフ目標(§4-C・上限capに対する比率)。リラックス40%/ハーベスト100%/通常50%/ピーク100%。
+export const chaffTargetForKoma = (kind: KomaKind4, cap: number): number => {
+  if (kind === 'relax') return Math.round(cap * 0.4);
+  if (kind === 'normal') return Math.round(cap * 0.5);
+  return cap; // harvest / peak = 満量
+};
+
+// チャフ目標へのランプ間隔(§3-A/4-C: 目標へは1体ずつ近づく=バースト禁止の担保)。
+// ハーベスト=2秒(明記)。通常/ピーク=6秒(締め中4秒)。リラックスも6秒(ラン開始の立ち上がり用。
+// 下げ方向は即スナップなので通常は効かない)。
+export const rampIntervalForKoma = (kind: KomaKind4, tightened: boolean): number => {
+  if (kind === 'harvest') return 2000;
+  return tightened ? 4000 : 6000;
+};
+
+// 基本CD(§4-C+§3-D)。リラックス=ランク基準×2/ハーベスト=×0.5/通常=ランク基準(締めで1段上)/
+// ピーク=1段締めが基準(R7はさらに×0.5。締めでもう1段=表端はクランプ・R7の締めは0)。
+// 緩め(softened)は全コマ共通で×1.5、かつ締めと同時成立時は緩め優先(安全側)。
+export const cdForKoma = (
+  kind: KomaKind4, rank: PuzzleRank, r7Cap: number, tightened: boolean, softened: boolean
+): number => {
+  const tight = tightened && !softened && (kind === 'normal' || kind === 'peak'); // 締めは通常/ピーク限定
+  let cd: number;
+  if (kind === 'relax') cd = cdBasisForRank(rank, r7Cap) * 2;
+  else if (kind === 'harvest') cd = cdBasisForRank(rank, r7Cap) * 0.5;
+  else if (kind === 'normal') cd = tight ? cdBasisTightened(rank, r7Cap) : cdBasisForRank(rank, r7Cap);
+  else { // peak: 基準=1段締め(R7は×0.5)。さらに締め=もう1段(R6以下は表端クランプ・R7は0)。
+    if (rank === 7) cd = tight ? 0 : cdBasisForRank(7, r7Cap) * 0.5;
+    else {
+      const base = cdBasisForRank(Math.min(7, rank + 1) as PuzzleRank, r7Cap);
+      cd = tight ? cdBasisForRank(Math.min(7, rank + 2) as PuzzleRank, r7Cap) : base;
+    }
   }
-  return { target, msSinceRampMs };
+  return softened ? cd * 1.5 : cd;
+};
+
+// チャフ目標の実効値ランプ(上げは1ずつ・下げは即スナップ)。§3-Aの被弾ホールド(直近10秒被弾で
+// 据え置き)は通常/ピーク/リラックスに適用、ハーベストは適用しない(盛りは演出=旧harvestTargetTickと
+// 同じ扱い。辛い時は緩め§3-Dが別途効く)。
+export interface ChaffRampState { target: number; msSinceRampMs: number; }
+export const stepChaffRamp = (
+  state: ChaffRampState,
+  input: { dtMs: number; komaTarget: number; rampIntervalMs: number; holdIncrease: boolean }
+): ChaffRampState => {
+  if (state.target > input.komaTarget) return { target: input.komaTarget, msSinceRampMs: 0 }; // 下げは即
+  if (state.target === input.komaTarget) return { target: state.target, msSinceRampMs: 0 };
+  if (input.holdIncrease) return { target: state.target, msSinceRampMs: 0 }; // 被弾直後は足踏み
+  const ms = state.msSinceRampMs + input.dtMs;
+  if (ms >= input.rampIntervalMs) return { target: state.target + 1, msSinceRampMs: 0 };
+  return { target: state.target, msSinceRampMs: ms };
+};
+
+// ---- M6 §4-D: 台本の「片付き」駆動ローテーション ----------------------------------------
+
+// 台本の片付き判定: 台本の邪魔者が「全数出現済み かつ 現在0体」。特別枠とチャフは数えない。
+// 邪魔者なし台本(R1-Aの基本のみ)は即「片付き」扱い(直前禁止があるので同じ台本の空回りはしない)。
+export const isScriptCleared = (target: NuisanceCounts, spawnedForScript: NuisanceCounts, alive: NuisanceCounts): boolean => {
+  for (const t of NUISANCE_TYPES) {
+    if (spawnedForScript[t] < target[t]) return false; // まだ全数出ていない
+    if (target[t] > 0 && alive[t] > 0) return false;   // まだ生きている
+  }
+  return true;
+};
+
+// 次の台本のプール選択: 基本は現ランクの表。AIの裁量で時々1ランク下を混ぜる
+// (各引きで25%・直近10秒に被弾があれば50%。R1は下が無いのでR1のみ)。
+export const LOWER_MIX_CHANCE = 0.25;
+export const LOWER_MIX_CHANCE_HIT = 0.5;
+export const selectRotationPattern = (
+  rank: PuzzleRank,
+  seenIds: ReadonlySet<string>,
+  lastPatternId: string | null,
+  recentlyHit: boolean,
+  poolRoll: number, // 0-1: 下位混入の判定用
+  pickRoll: number  // 0-1: プール内の選択用
+): FormationPattern => {
+  const chance = recentlyHit ? LOWER_MIX_CHANCE_HIT : LOWER_MIX_CHANCE;
+  const useLower = rank > 1 && poolRoll < chance;
+  const r = (useLower ? rank - 1 : rank) as PuzzleRank;
+  return selectPattern(r, seenIds, lastPatternId, pickRoll);
 };

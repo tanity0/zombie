@@ -2,10 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   FORMATION_TABLE, HARVEST_PATTERN, patternsForRank, nuisanceTarget, selectPattern, allPatternsSeen,
   SPECIAL_SLOTS, eligibleSpecialSlots, nextSpecialDeficit, nextNuisanceDeficit,
-  NUISANCE_CD_MS, SPECIAL_CD_MS, POST_HIT_GUARD_MS, pickChaffType, CHAFF_WEIGHTS_DEFAULT, CHAFF_WEIGHTS_HARVEST,
-  decideNextSpawn, relaxBoardTarget, relaxCdMs, noNewSupplyNuisanceTarget, harvestCdMs, harvestTargetTick,
+  NUISANCE_CD_MS, SPECIAL_CD_MS, POST_HIT_GUARD_MS, pickChaffType, CHAFF_WEIGHTS_DEFAULT,
+  decideNextSpawn, noNewSupplyNuisanceTarget,
+  nextKomaKind, KOMA_ORDER, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
+  chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
+  isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
   ZERO_NUISANCE, type NuisanceCounts,
 } from './scriptPuzzle';
+import { cdBasisForRank, R7_CAP_MIN, R7_CAP_MAX } from './rankAssessor';
 
 describe('FORMATION_TABLE (社長決定・確定表)', () => {
   it('has the right pattern counts per rank (R1-R5=4, R6=2, R7=3)', () => {
@@ -99,9 +103,6 @@ describe('pickChaffType', () => {
     expect(pickChaffType(CHAFF_WEIGHTS_DEFAULT, 5.1 / 9)).toBe('skeleton');
     expect(pickChaffType(CHAFF_WEIGHTS_DEFAULT, 8.5 / 9)).toBe('zombie');
   });
-  it('HARVEST weighting skews toward bat (7:2:1)', () => {
-    expect(CHAFF_WEIGHTS_HARVEST).toEqual({ bat: 7, skeleton: 2, zombie: 1 });
-  });
 });
 
 describe('decideNextSpawn', () => {
@@ -156,33 +157,145 @@ describe('decideNextSpawn', () => {
   });
 });
 
-describe('RELAX/HARVEST overrides', () => {
-  it('relaxBoardTarget takes 60% of the current target, floored at 3', () => {
-    expect(relaxBoardTarget(10)).toBe(6);
-    expect(relaxBoardTarget(4)).toBe(3); // round(2.4)=2 -> clamped to min 3
-    expect(relaxBoardTarget(1)).toBe(3);
-  });
-  it('relaxCdMs doubles the base CD', () => {
-    expect(relaxCdMs(500)).toBe(1000);
-  });
-  it('noNewSupplyNuisanceTarget pins the effective target to the current alive count (no new spawns, existing stay)', () => {
+describe('noNewSupplyNuisanceTarget (緩コマの邪魔者補充停止)', () => {
+  it('pins the effective target to the current alive count (no new spawns, existing stay)', () => {
     const alive: NuisanceCounts = { plant: 1, werewolf: 0, pumpkin: 2 };
     const target = noNewSupplyNuisanceTarget(alive);
     expect(nextNuisanceDeficit(target, alive)).toBeNull();
   });
-  it('harvestCdMs halves the base CD (kills refill fast)', () => {
-    expect(harvestCdMs(500)).toBe(250);
+});
+
+describe('M6 §4-C: 4コマサイクル', () => {
+  it('KOMA_ORDER is relax→harvest→normal→peak, run starts at relax, and nextKomaKind cycles it', () => {
+    expect(KOMA_ORDER).toEqual(['relax', 'harvest', 'normal', 'peak']);
+    expect(nextKomaKind('relax')).toBe('harvest');
+    expect(nextKomaKind('harvest')).toBe('normal');
+    expect(nextKomaKind('normal')).toBe('peak');
+    expect(nextKomaKind('peak')).toBe('relax');
   });
-  it('harvestTargetTick ramps by 1 every 2s up to the cap', () => {
-    let s = { target: 3, msSinceRampMs: 0 };
-    for (let i = 0; i < 2; i++) s = harvestTargetTick(s, 10, 1000);
+
+  it('koma timing constants: base 40s, extension cap +30s', () => {
+    expect(KOMA_BASE_MS).toBe(40000);
+    expect(KOMA_EXTENSION_MAX_MS).toBe(30000);
+  });
+
+  it('chaff weights per koma: relax 6:4:0 / harvest 7:3:0 / normal・peak default 5:3:1', () => {
+    expect(chaffWeightsForKoma('relax')).toEqual({ bat: 6, skeleton: 4, zombie: 0 });
+    expect(chaffWeightsForKoma('harvest')).toEqual({ bat: 7, skeleton: 3, zombie: 0 });
+    expect(chaffWeightsForKoma('normal')).toEqual(CHAFF_WEIGHTS_DEFAULT);
+    expect(chaffWeightsForKoma('peak')).toEqual(CHAFF_WEIGHTS_DEFAULT);
+  });
+
+  it('chaff targets per koma: relax 40% / normal 50% / harvest・peak 100% of the cap', () => {
+    expect(chaffTargetForKoma('relax', 10)).toBe(4);
+    expect(chaffTargetForKoma('normal', 10)).toBe(5);
+    expect(chaffTargetForKoma('harvest', 10)).toBe(10);
+    expect(chaffTargetForKoma('peak', 20)).toBe(20);
+  });
+
+  it('ramp intervals: harvest 2s / others 6s (4s while tightened)', () => {
+    expect(rampIntervalForKoma('harvest', false)).toBe(2000);
+    expect(rampIntervalForKoma('normal', false)).toBe(6000);
+    expect(rampIntervalForKoma('normal', true)).toBe(4000);
+    expect(rampIntervalForKoma('relax', false)).toBe(6000);
+  });
+});
+
+describe('M6 cdForKoma', () => {
+  it('relax=×2 / harvest=×0.5 of the rank basis', () => {
+    expect(cdForKoma('relax', 3, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(3, R7_CAP_MIN) * 2);
+    expect(cdForKoma('harvest', 3, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(3, R7_CAP_MIN) * 0.5);
+  });
+  it('normal = rank basis, tightened = one step up', () => {
+    expect(cdForKoma('normal', 3, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(3, R7_CAP_MIN));
+    expect(cdForKoma('normal', 3, R7_CAP_MIN, true, false)).toBe(cdBasisForRank(4, R7_CAP_MIN));
+  });
+  it('§3-D: tighten at R7 goes to CD0 (最恐形)', () => {
+    expect(cdForKoma('normal', 7, R7_CAP_MIN, true, false)).toBe(0);
+  });
+  it('peak = one step tighter as its base; R7 peak = basis(7)×0.5; tighten stacks one more (clamped at the table end)', () => {
+    expect(cdForKoma('peak', 3, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(4, R7_CAP_MIN));
+    expect(cdForKoma('peak', 3, R7_CAP_MIN, true, false)).toBe(cdBasisForRank(5, R7_CAP_MIN));
+    expect(cdForKoma('peak', 7, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(7, R7_CAP_MIN) * 0.5);
+    expect(cdForKoma('peak', 7, R7_CAP_MIN, true, false)).toBe(0);
+    // R6 peak base = basis(7); tighten clamps at the table end (no further reduction, no invented value).
+    expect(cdForKoma('peak', 6, R7_CAP_MIN, true, false)).toBe(cdBasisForRank(7, R7_CAP_MIN));
+  });
+  it('R7 cap grown to 20 makes the basis 0 (peak inherits it)', () => {
+    expect(cdForKoma('normal', 7, R7_CAP_MAX, false, false)).toBe(0);
+    expect(cdForKoma('peak', 7, R7_CAP_MAX, false, false)).toBe(0);
+  });
+  it('§3-D改訂: soften multiplies ×1.5 in every koma and wins over tighten', () => {
+    expect(cdForKoma('harvest', 3, R7_CAP_MIN, false, true)).toBe(cdBasisForRank(3, R7_CAP_MIN) * 0.5 * 1.5);
+    // soften+tighten同時: 緩め優先=締めは無効(基準×1.5)。
+    expect(cdForKoma('normal', 3, R7_CAP_MIN, true, true)).toBe(cdBasisForRank(3, R7_CAP_MIN) * 1.5);
+  });
+});
+
+describe('M6 stepChaffRamp', () => {
+  it('ramps up by 1 per interval toward the koma target', () => {
+    let s = { target: 1, msSinceRampMs: 0 };
+    s = stepChaffRamp(s, { dtMs: 6000, komaTarget: 5, rampIntervalMs: 6000, holdIncrease: false });
+    expect(s.target).toBe(2);
+  });
+  it('snaps down immediately when above the koma target (下げは即)', () => {
+    const s = stepChaffRamp({ target: 10, msSinceRampMs: 0 }, { dtMs: 16, komaTarget: 4, rampIntervalMs: 6000, holdIncrease: false });
     expect(s.target).toBe(4);
-    for (let i = 0; i < 2; i++) s = harvestTargetTick(s, 10, 1000);
+  });
+  it('holds (no increase) right after a hit (§3-A被弾ホールド)', () => {
+    const s = stepChaffRamp({ target: 2, msSinceRampMs: 5900 }, { dtMs: 200, komaTarget: 5, rampIntervalMs: 6000, holdIncrease: true });
+    expect(s.target).toBe(2);
+    expect(s.msSinceRampMs).toBe(0); // 足踏み=間隔もリセット
+  });
+  it('never exceeds the koma target', () => {
+    let s = { target: 4, msSinceRampMs: 0 };
+    for (let i = 0; i < 10; i++) s = stepChaffRamp(s, { dtMs: 6000, komaTarget: 5, rampIntervalMs: 6000, holdIncrease: false });
     expect(s.target).toBe(5);
   });
-  it('harvestTargetTick never exceeds the cap', () => {
-    let s = { target: 9, msSinceRampMs: 0 };
-    for (let i = 0; i < 20; i++) s = harvestTargetTick(s, 10, 2000);
-    expect(s.target).toBe(10);
+});
+
+describe('M6 §4-D: isScriptCleared(片付き判定)', () => {
+  const target: NuisanceCounts = { plant: 0, werewolf: 0, pumpkin: 2 };
+  it('cleared only when all were spawned AND none remain alive', () => {
+    expect(isScriptCleared(target, { plant: 0, werewolf: 0, pumpkin: 2 }, ZERO_NUISANCE)).toBe(true);
+  });
+  it('not cleared while some are still alive', () => {
+    expect(isScriptCleared(target, { plant: 0, werewolf: 0, pumpkin: 2 }, { plant: 0, werewolf: 0, pumpkin: 1 })).toBe(false);
+  });
+  it('not cleared before the full count has spawned (最初の1体だけ倒しても未片付き)', () => {
+    expect(isScriptCleared(target, { plant: 0, werewolf: 0, pumpkin: 1 }, ZERO_NUISANCE)).toBe(false);
+  });
+  it('a nuisance-less script (R1-A 基本のみ) counts as cleared immediately', () => {
+    expect(isScriptCleared(ZERO_NUISANCE, ZERO_NUISANCE, ZERO_NUISANCE)).toBe(true);
+  });
+  it('special/chaff leftovers do not block clearing (判定は邪魔者のみ)', () => {
+    // aliveNuisanceにしか邪魔者は入らない前提のAPI=特別枠・チャフは判定に混ざらないことを型で担保。
+    expect(isScriptCleared(target, { plant: 0, werewolf: 0, pumpkin: 2 }, { plant: 0, werewolf: 0, pumpkin: 0 })).toBe(true);
+  });
+});
+
+describe('M6 §4-D: selectRotationPattern(下位混入つきの次台本選択)', () => {
+  it('mixes one rank lower 25% of the time (50% right after a hit) via the pool roll', () => {
+    // poolRoll=0.2 (<0.25) → 1ランク下のプールから引く。
+    const lower = selectRotationPattern(3, new Set(), null, false, 0.2, 0);
+    expect(lower.rank).toBe(2);
+    // poolRoll=0.3 (>=0.25) → 現ランク。
+    const same = selectRotationPattern(3, new Set(), null, false, 0.3, 0);
+    expect(same.rank).toBe(3);
+    // 直近被弾あり: しきい値0.5に拡大 → poolRoll=0.4でも下位。
+    const lowerHit = selectRotationPattern(3, new Set(), null, true, 0.4, 0);
+    expect(lowerHit.rank).toBe(2);
+    expect(LOWER_MIX_CHANCE).toBe(0.25);
+    expect(LOWER_MIX_CHANCE_HIT).toBe(0.5);
+  });
+  it('R1 has no lower rank — always draws from R1', () => {
+    const p = selectRotationPattern(1, new Set(), null, true, 0, 0.5);
+    expect(p.rank).toBe(1);
+  });
+  it('never repeats the immediately-previous pattern (引き単位の直前禁止)', () => {
+    for (let i = 0; i < 20; i++) {
+      const p = selectRotationPattern(2, new Set(), 'R2-A', false, 0.9, i / 20);
+      expect(p.id).not.toBe('R2-A');
+    }
   });
 });

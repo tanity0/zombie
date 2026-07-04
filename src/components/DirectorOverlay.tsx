@@ -128,10 +128,10 @@ const DirectorOverlay: React.FC = () => {
           gate {gateProgramDebug.id} maxRung{gateProgramDebug.maxRung}
         </div>
       )}
-      {/* PACING_PUZZLE.md バッチM2/M4: 本方式(?puzzle=0以外)ON時のランク/盤面目標。締め中は+表示。 */}
+      {/* PACING_PUZZLE.md バッチM2/M6: 本方式(?puzzle=0以外)ON時のランク/盤面目標。締め中=+、緩め中=-表示。 */}
       {puzzleDebug && (
         <div className="mt-1.5 border-t border-white/15 pt-1 text-white/40 tabular-nums">
-          R{puzzleDebug.rank}{puzzleDebug.tightened ? '+' : ''}/T{puzzleDebug.boardTarget} cap{puzzleDebug.cap}
+          R{puzzleDebug.rank}{puzzleDebug.tightened ? '+' : ''}{puzzleDebug.softened ? '-' : ''}/T{puzzleDebug.boardTarget} cap{puzzleDebug.cap}
           {' '}· {puzzleDebug.komaKind}
         </div>
       )}

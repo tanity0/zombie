@@ -98,15 +98,20 @@ import { setGatePressureDebug } from '../utils/gatePressureState';
 import { pickChaffMix } from '../utils/chaffMix';
 import { shouldGuaranteeSpawn, type GuaranteeType } from '../utils/featureGuarantee';
 import {
-  createPuzzleClockState, tickPuzzleClock, capForState, cdBasisForRank,
-  applyKomaAssessment, createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
-  type PuzzleClockState, type KomaAccumulatorState,
+  createPuzzleClockState, capForState,
+  assessKomaDelta, applyRankDelta, combineCycleDelta,
+  createKomaAccumulator, stepKomaAccumulator, finalizeKomaAssessmentInput,
+  createSoftenState, stepSoften, SOFTEN_TARGET_MULT, SOFTEN_TARGET_MIN,
+  TIGHTEN_NO_HIT_MS, TIGHTEN_PERF_MIN, TIGHTEN_STARVE_MS,
+  type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
 } from '../utils/rankAssessor';
 import {
-  selectPattern, allPatternsSeen, nuisanceTarget, decideNextSpawn,
-  relaxBoardTarget, relaxCdMs, noNewSupplyNuisanceTarget, harvestCdMs, harvestTargetTick,
-  CHAFF_WEIGHTS_DEFAULT, CHAFF_WEIGHTS_HARVEST, ZERO_NUISANCE,
-  type FormationPattern, type NuisanceCounts, type SpecialType, type HarvestRampState,
+  allPatternsSeen, nuisanceTarget, decideNextSpawn, noNewSupplyNuisanceTarget,
+  ZERO_NUISANCE, NUISANCE_TYPES,
+  nextKomaKind, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
+  chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
+  isScriptCleared, selectRotationPattern,
+  type FormationPattern, type NuisanceCounts, type SpecialType, type KomaKind4, type ChaffRampState,
 } from '../utils/scriptPuzzle';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import { debtFor, debtTempoEaseMult, CAST_DEBT_MAX } from '../utils/boardDebt';
@@ -723,26 +728,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // バッチM1-C(主題保証): 関所開始時点のfeatured型ごとの出現数スナップショット(ディープコピー・
   // 実装精度の規律3)+その関所内で既に保証投入済みの型の集合。keyが変わったら(新しい関所)登り直す。
   const featureGuaranteeRef = useRef<{ key: string; startedAt: number; startSnapshot: Record<KillBucket, number> | null; satisfied: Set<GuaranteeType> }>({ key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() });
-  // PACING_PUZZLE.md バッチM2: ランク/盤面目標(コマをまたいで引き継ぐ持続状態)。
+  // PACING_PUZZLE.md バッチM2: ランク(コマをまたいで引き継ぐ持続状態)。
   const puzzleClockRef = useRef<PuzzleClockState>(createPuzzleClockState());
-  // バッチM3/M4: 60秒コマの進行状態。elapsedMsはボスフェーズ中は加算しない(§2「ボス中は査定・
-  // 台本を停止、ボス後再開」)。komaIndex%2で通常1→緩1のサイクル位置を決める(0=normal /
-  // 1=relax枠。社長指示v0.25.1376で通常×2→×1へ改訂。relax枠の中身はrelaxVariantで
-  // RELAX⇄HARVESTを交互に切り替える)。
+  // バッチM6(§4-C): 4コマサイクル(リラックス→ハーベスト→通常→ピーク)の進行状態。
+  // elapsedMsはボスフェーズ中は加算しない(§2「ボス中は査定・台本を停止、ボス後再開」)。
+  // 通常/ピークは40秒経過後も台本が未片付きならコマ延長(処理待ち・上限+30秒)。
+  // script=現在の台本(§4-D片付き駆動でコマ内ローテ)。scriptSpawned=現台本の邪魔者の累計出現数
+  // (片付き判定「全数出現済みかつ現在0体」用)。provisionalDelta=通常コマ末の仮査定。
+  // pendingFinalDelta=ピーク末の確定査定(次の通常コマ開始時に反映=§4-C)。
+  // chaffRamp=チャフ目標の実効値(コマ目標へ1ずつ・下げは即)。belowTargetMs=枯渇継続(締めトリガー用)。
   const puzzleKomaRef = useRef<{
-    komaIndex: number;
+    kind: KomaKind4;
     elapsedMs: number;
-    kind: 'normal' | 'relax' | 'harvest';
-    pattern: FormationPattern | null; // normalコマの選択済み台本。relax/harvestはnull(HARVEST_PATTERN定数を直接使う)。
+    script: FormationPattern | null;
+    scriptSpawned: NuisanceCounts;
     seenIds: Set<string>;
     lastPatternId: string | null;
-    relaxVariant: 'relax' | 'harvest'; // 次に緩枠が来た時にどちらを出すか(交互)。
     acc: KomaAccumulatorState;
-    harvestRamp: HarvestRampState;
+    provisionalDelta: RankDelta | null;
+    pendingFinalDelta: RankDelta | null;
+    chaffRamp: ChaffRampState;
+    belowTargetMs: number;
   }>({
-    komaIndex: 0, elapsedMs: 0, kind: 'normal', pattern: null, seenIds: new Set(), lastPatternId: null,
-    relaxVariant: 'relax', acc: createKomaAccumulator(), harvestRamp: { target: 1, msSinceRampMs: 0 },
+    kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
+    lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
+    chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0,
   });
+  // バッチM6(§3-D改訂): 全コマ常時の「多少緩め」検知(直近10秒の被ダメ/Intensity/低HPのリング集計)。
+  const puzzleSoftenRef = useRef<SoftenState>(createSoftenState());
   // バッチM4: 湧きCDのタイムスタンプ(gameTime基準)。0初期化=ラン開始直後は「経過時間0」からCD判定
   // が始まる(基本CD1秒待ってから1体目、の仕様と自然に一致)。
   const puzzleCdRef = useRef<{ lastBaseSpawnAt: number; lastNuisanceSpawnAt: number; lastSpecialSpawnAt: number }>({ lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 });
@@ -1178,13 +1191,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         setHeartbeatLoop(critical);
         // PEAK重ねSE+BGMダッキング: トリガーは「多数の変異体を検知」バナーと同じ源=台本に統一
         // (社長指示。反応型macroのPEAKでは鳴らさない=macro基準だとRELAX表示中に鳴る、が起きる)。
-        // PACING_PUZZLE.md(v0.25.1374): パズル方式ON時の「台本」は旧PHASESではなく60秒コマなので、
-        // トリガーを通常コマ(komaKind==='normal')へ差し替え(社長承認)。旧時刻表のままだと緩コマ中に
-        // 打楽器が鳴る等、音と実態がズレていた。?puzzle=0時・ボス中(puzzleDebug=null)は従来どおり
-        // 旧PHASESのgateフェーズで判定。屋外のみ。
+        // PACING_PUZZLE.md M6(§4-C): パズル方式ON時の演出コマは**ピーク**(通常コマでは鳴らさない・
+        // 仕様に明記)。?puzzle=0時・ボス中(puzzleDebug=null)は従来どおり旧PHASESのgateフェーズで判定。屋外のみ。
         const puzzlePeakSnap = PUZZLE_ENABLED ? getPuzzleDebug() : null;
         const scriptedPeak = puzzlePeakSnap
-          ? puzzlePeakSnap.komaKind === 'normal'
+          ? puzzlePeakSnap.komaKind === 'peak'
           : (gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate');
         setPeakLayer(!gs.isPaused && gs.player.health > 0 && (scriptedPeak || gs.redNight?.phase === 'active'));
       }
@@ -1398,12 +1409,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           pressureCastRef.current = { order: null, pendingCast: null };
           featureGuaranteeRef.current = { key: '', startedAt: 0, startSnapshot: null, satisfied: new Set() }; // バッチM1-Cも新ランでリセット
           setGatePressureDebug(null);
-          // バッチM2/M3/M4も新ランでリセット(ランク1・コマ0・湧きCDタイムスタンプ・被弾検知)。
+          // バッチM2/M3/M4/M6も新ランでリセット(ランク1・コマ=リラックス・湧きCD・被弾/緩め検知)。
           puzzleClockRef.current = createPuzzleClockState();
           puzzleKomaRef.current = {
-            komaIndex: 0, elapsedMs: 0, kind: 'normal', pattern: null, seenIds: new Set(), lastPatternId: null,
-            relaxVariant: 'relax', acc: createKomaAccumulator(), harvestRamp: { target: 1, msSinceRampMs: 0 },
+            kind: 'relax', elapsedMs: 0, script: null, scriptSpawned: { ...ZERO_NUISANCE }, seenIds: new Set(),
+            lastPatternId: null, acc: createKomaAccumulator(), provisionalDelta: null, pendingFinalDelta: null,
+            chaffRamp: { target: 1, msSinceRampMs: 0 }, belowTargetMs: 0,
           };
+          puzzleSoftenRef.current = createSoftenState();
           puzzleCdRef.current = { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 };
           puzzleHitRef.current = { prevHp: -1, lastHitAt: -1e9 };
           setPuzzleDebug(null);
@@ -1738,11 +1751,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ?events=0で本ゲートを無効化(従来どおり時間+デンジャーゾーンだけで判定)。
           const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle';
           // 社長裁定(v0.25.1380「2:コマ基準で」): パズル方式ON時の「緩フェーズ中にしか開始しない」は
-          // 旧PHASES時刻表ではなく60秒コマで判定する(緩コマ=relax/harvest中のみ開始可。山=通常コマ中に
+          // 旧PHASES時刻表ではなくコマで判定する(緩コマ=relax/harvest中のみ開始可。通常/ピーク中に
           // 窓が開いても抽選を消費せず次の緩コマまで毎フレーム再判定=従来と同じ自然遅延)。
           // ボス中(puzzleActiveNow=false)と?puzzle=0は従来どおり旧phaseAt基準。
           const rnCalmOk = puzzleActiveNow
-            ? puzzleKomaRef.current.kind !== 'normal'
+            ? (puzzleKomaRef.current.kind === 'relax' || puzzleKomaRef.current.kind === 'harvest')
             : redNightPhaseGateOk(phaseAt(newGameTime).kind);
           const rnProducerOk = !EVENTS_ENABLED || (
             rnCalmOk &&
@@ -6597,57 +6610,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ボス中(puzzleActiveNow=false)は何もしない=リフを一切触らない(査定・コマ進行を一時停止し、
         // ボス後に続きから再開する。§2「ボス中は査定・台本を停止、ボス後再開」)。
         if (puzzleActiveNow) {
+          const koma = puzzleKomaRef.current;
           // 被弾検知(pressureHitRef/M1と同じ責務分離の専用ref)。
           if (puzzleHitRef.current.prevHp < 0) puzzleHitRef.current.prevHp = player.health;
           const dmgTakenThisFrame = Math.max(0, puzzleHitRef.current.prevHp - player.health);
           if (dmgTakenThisFrame > 0) puzzleHitRef.current.lastHitAt = gameTime;
           puzzleHitRef.current.prevHp = player.health;
           const msSinceLastHit = gameTime - puzzleHitRef.current.lastHitAt;
-
-          // コマ境界(60秒ごと)。ボス中は上のif自体に入らないので自然に一時停止する。
-          puzzleKomaRef.current.elapsedMs += deltaTime * 1000;
-          if (puzzleKomaRef.current.elapsedMs >= 60000) {
-            puzzleKomaRef.current.elapsedMs -= 60000;
-            // §4-C: 緩コマ(RELAX/HARVEST)は査定対象外。通常コマだけこのコマの集計を確定させる。
-            if (puzzleKomaRef.current.kind === 'normal') {
-              const input = finalizeKomaAssessmentInput(puzzleKomaRef.current.acc, player.maxHealth);
-              puzzleClockRef.current = applyKomaAssessment(puzzleClockRef.current, input);
-            }
-            puzzleKomaRef.current.komaIndex += 1;
-            puzzleKomaRef.current.acc = createKomaAccumulator();
-            const prevKind = puzzleKomaRef.current.kind;
-            // 社長指示v0.25.1376「ピーク(通常コマ)は1回転だけ」: 通常60秒×1→緩60秒の交互へ
-            // (旧: ×2=v0.25.1371決定を社長自身が改訂)。
-            const posInCycle = puzzleKomaRef.current.komaIndex % 2; // 0=通常 / 1=緩枠
-            if (posInCycle === 1) {
-              const variant = puzzleKomaRef.current.relaxVariant;
-              puzzleKomaRef.current.kind = variant;
-              puzzleKomaRef.current.pattern = null;
-              puzzleKomaRef.current.relaxVariant = variant === 'relax' ? 'harvest' : 'relax'; // 次の緩枠は交互
-              if (variant === 'harvest') {
-                const cap0 = capForState(puzzleClockRef.current);
-                puzzleKomaRef.current.harvestRamp = { target: Math.min(puzzleClockRef.current.boardTarget, cap0), msSinceRampMs: 0 };
-              }
-            } else {
-              puzzleKomaRef.current.kind = 'normal';
-              const rank = puzzleClockRef.current.rank;
-              const picked = selectPattern(rank, puzzleKomaRef.current.seenIds, puzzleKomaRef.current.lastPatternId, Math.random());
-              puzzleKomaRef.current.pattern = picked;
-              puzzleKomaRef.current.lastPatternId = picked.id;
-              puzzleKomaRef.current.seenIds.add(picked.id);
-              if (allPatternsSeen(rank, puzzleKomaRef.current.seenIds)) puzzleKomaRef.current.seenIds.clear();
-            }
-            // 関所バナー(v0.25.1374): 旧PHASES境界の代わりに、通常⇄緩の切り替わりで出す
-            // (文言・UI・ジングルは従来と同一。連続する通常コマ2つ=1つの襲撃ウィンドウとして扱い、
-            //  normal→normalでは再発火しない)。ラン開始0:00のコマ0はバナー無し(旧線も初回関所まで
-            //  無音だったのを踏襲=導入を騒がせない)。
-            if (prevKind === 'normal' && puzzleKomaRef.current.kind !== 'normal') {
-              useGameStore.setState({ eventBannerText: '襲撃を凌いだ', eventBannerUntil: gameTime + 3500 });
-              playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
-            } else if (prevKind !== 'normal' && puzzleKomaRef.current.kind === 'normal') {
-              useGameStore.setState({ eventBannerText: '多数の変異体を検知', eventBannerUntil: gameTime + 3500 });
-            }
-          }
 
           // 盤面の現況(パズル管理下の型のみ。ボス/裏ボス/ハンター/リーパー等は対象外)。
           const puzzleEnemiesNow = useGameStore.getState().enemies;
@@ -6662,55 +6631,122 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ghost: puzzleEnemiesNow.filter(e => e.type === 'ghost').length,
           };
 
-          const rank = puzzleClockRef.current.rank;
-          let cdMs: number;
-          let effectiveTarget: number;
-          let nuisanceTargetCounts: NuisanceCounts;
-          let areaForSpecial: number;
-          let chaffWeights = CHAFF_WEIGHTS_DEFAULT;
-          let tightenedNow = false;
+          // M6(§3-D改訂): 全コマ常時の「多少緩め」検知(直近10秒の被ダメ/Intensity平均/低HPのリング集計)。
+          puzzleSoftenRef.current = stepSoften(puzzleSoftenRef.current, {
+            dtMs: deltaTime * 1000,
+            dmgFracThisFrame: player.maxHealth > 0 ? dmgTakenThisFrame / player.maxHealth : 0,
+            intensity: directorRef.current.state.intensity,
+            hpFrac: player.maxHealth > 0 ? player.health / player.maxHealth : 0,
+            msSinceLastHit,
+          });
+          const softenedNow = puzzleSoftenRef.current.softened;
 
-          if (puzzleKomaRef.current.kind === 'normal') {
-            const tick = tickPuzzleClock(puzzleClockRef.current, {
-              dtMs: deltaTime * 1000,
-              msSinceLastHit,
-              perf: directorRef.current.state.performance,
-              boardCount,
-            });
-            puzzleClockRef.current = tick.state;
-            cdMs = tick.cdMs;
-            tightenedNow = tick.tightened;
-            effectiveTarget = puzzleClockRef.current.boardTarget;
-            nuisanceTargetCounts = puzzleKomaRef.current.pattern ? nuisanceTarget(puzzleKomaRef.current.pattern) : ZERO_NUISANCE;
-            areaForSpecial = playerAreaIdx;
-            // §3-B: このコマの査定用集計へ足し込み(通常コマだけ)。
-            puzzleKomaRef.current.acc = stepKomaAccumulator(puzzleKomaRef.current.acc, {
+          // M6(§4-D): 台本の「片付き」駆動ローテーション(通常/ピーク中のみ)。時間では切り替えない。
+          const inScriptKoma = koma.kind === 'normal' || koma.kind === 'peak';
+          const scriptCleared = koma.script == null
+            || isScriptCleared(nuisanceTarget(koma.script), koma.scriptSpawned, aliveNuisance);
+          if (inScriptKoma && scriptCleared && koma.elapsedMs < KOMA_BASE_MS) {
+            // コマの基本時間内なら次の台本を引く(基本=現ランク・時々1ランク下を混ぜる。未見優先・直前禁止)。
+            // 40秒到達後はもう引かない=現台本の片付きがコマ切替の合図になる(下の切替判定)。
+            const picked = selectRotationPattern(
+              puzzleClockRef.current.rank, koma.seenIds, koma.lastPatternId,
+              msSinceLastHit < 10000, Math.random(), Math.random()
+            );
+            koma.script = picked;
+            koma.scriptSpawned = { ...ZERO_NUISANCE };
+            koma.lastPatternId = picked.id;
+            koma.seenIds.add(picked.id);
+            if (allPatternsSeen(puzzleClockRef.current.rank, koma.seenIds)) koma.seenIds.clear();
+          }
+
+          // M6(§4-C): コマ切替判定。リラックス/ハーベスト=きっかり40秒。通常/ピーク=40秒+台本の
+          // 片付き待ち(処理待ちは邪魔者のみ・チャフ/特別枠は含めない=社長v0.25.1385)。延長上限+30秒。
+          koma.elapsedMs += deltaTime * 1000;
+          const baseDone = koma.elapsedMs >= KOMA_BASE_MS;
+          const switchNow = inScriptKoma
+            ? ((baseDone && scriptCleared) || koma.elapsedMs >= KOMA_BASE_MS + KOMA_EXTENSION_MAX_MS)
+            : baseDone;
+          if (switchNow) {
+            // 査定(§3-B/4-C 2段構え): 通常末=仮査定 / ピーク末=検証査定(確定は次の通常開始時に反映)。
+            if (koma.kind === 'normal') {
+              koma.provisionalDelta = assessKomaDelta(finalizeKomaAssessmentInput(koma.acc, player.maxHealth));
+            } else if (koma.kind === 'peak') {
+              const peakInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
+              koma.pendingFinalDelta = combineCycleDelta(koma.provisionalDelta ?? 0, peakInput);
+              koma.provisionalDelta = null;
+            }
+            const prevKind = koma.kind;
+            koma.kind = nextKomaKind(koma.kind);
+            koma.elapsedMs = 0;
+            koma.acc = createKomaAccumulator();
+            if (koma.kind === 'normal') {
+              // 確定査定の反映は「次の通常」から(§4-C。直後のリラックス/ハーベストはR1相当なので影響なし)。
+              if (koma.pendingFinalDelta != null) {
+                puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, koma.pendingFinalDelta);
+                koma.pendingFinalDelta = null;
+              }
+              koma.script = null; // 緩明けは新しい台本から(§4-D。次フレームのローテーションが引く)
+              koma.scriptSpawned = { ...ZERO_NUISANCE };
+            }
+            if (koma.kind === 'relax') {
+              // 緩に入ったら台本は破棄(邪魔者は補充停止=自然消化・強制消去しない=§4-D)。
+              koma.script = null;
+              koma.scriptSpawned = { ...ZERO_NUISANCE };
+            }
+            // PEAK演出(§4-C: 打楽器・バナーはピークコマ。通常コマでは鳴らさない)。
+            // バナー: ピーク突入=「多数の変異体を検知」/ピーク明け=「襲撃を凌いだ」+ジングル。
+            if (koma.kind === 'peak') {
+              useGameStore.setState({ eventBannerText: '多数の変異体を検知', eventBannerUntil: gameTime + 3500 });
+            } else if (prevKind === 'peak') {
+              useGameStore.setState({ eventBannerText: '襲撃を凌いだ', eventBannerUntil: gameTime + 3500 });
+              playSfx('gate-clear'); // 強襲突破ジングル(社長提供SE)
+            }
+          }
+
+          // M6(§4-C): コマ別のチャフ目標・度数・CD。目標へは1ずつランプ(上げ)・下げは即スナップ。
+          const rank = puzzleClockRef.current.rank;
+          const cap = capForState(puzzleClockRef.current);
+          // 締め(§3-D・通常/ピーク限定): 無被弾15秒+(Perf>=0.6 or 盤面<目標が15秒継続)。緩め優先。
+          const tightenedNow = inScriptKoma && !softenedNow
+            && msSinceLastHit >= TIGHTEN_NO_HIT_MS
+            && (directorRef.current.state.performance >= TIGHTEN_PERF_MIN || koma.belowTargetMs >= TIGHTEN_STARVE_MS);
+          let komaChaffTarget = chaffTargetForKoma(koma.kind, cap);
+          if (softenedNow) komaChaffTarget = Math.max(SOFTEN_TARGET_MIN, Math.round(komaChaffTarget * SOFTEN_TARGET_MULT));
+          koma.chaffRamp = stepChaffRamp(koma.chaffRamp, {
+            dtMs: deltaTime * 1000,
+            komaTarget: komaChaffTarget,
+            rampIntervalMs: rampIntervalForKoma(koma.kind, tightenedNow),
+            holdIncrease: koma.kind !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
+          });
+          const cdMs = cdForKoma(koma.kind, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
+          // 邪魔者/特別枠は通常・ピークのみ供給(緩コマは新規補充停止=在席は自然消化)。
+          const nuisanceTargetCounts = inScriptKoma && koma.script
+            ? nuisanceTarget(koma.script)
+            : noNewSupplyNuisanceTarget(aliveNuisance);
+          const areaForSpecial = inScriptKoma ? playerAreaIdx : -1;
+          const wantedNuisance = NUISANCE_TYPES.reduce((s, t) => s + Math.max(nuisanceTargetCounts[t], aliveNuisance[t]), 0);
+          const wantedSpecial = (aliveSpecial.screamer ?? 0) + (aliveSpecial.ghost ?? 0)
+            + (inScriptKoma ? 0 : 0); // 特別枠の欠員はdecideNextSpawnが埋める(目標計上は在席+欠員でなく在席のみ=控えめ側)
+          const totalTarget = Math.min(cap, koma.chaffRamp.target + wantedNuisance + wantedSpecial);
+          koma.belowTargetMs = boardCount < totalTarget ? koma.belowTargetMs + deltaTime * 1000 : 0;
+
+          // 査定集計(§4-C: 通常/ピークのみ意味を持つが、集計自体は毎フレーム=コマ全体・延長込み)。
+          // capReached=「盤面数がそのコマの総目標へ実際に到達した」(M6での再解釈・裁定済み記録参照)。
+          if (inScriptKoma) {
+            koma.acc = stepKomaAccumulator(koma.acc, {
               dtMs: deltaTime * 1000,
               perf: directorRef.current.state.performance,
               intensity: directorRef.current.state.intensity,
               dmgTakenThisFrame,
               boardCount,
-              boardTarget: effectiveTarget,
-              cap: capForState(puzzleClockRef.current),
+              boardTarget: totalTarget,
+              cap: totalTarget,
             });
-          } else if (puzzleKomaRef.current.kind === 'relax') {
-            cdMs = relaxCdMs(cdBasisForRank(rank, puzzleClockRef.current.r7Cap));
-            effectiveTarget = relaxBoardTarget(puzzleClockRef.current.boardTarget);
-            nuisanceTargetCounts = noNewSupplyNuisanceTarget(aliveNuisance); // 新規補充停止(在席は残す)
-            areaForSpecial = -1; // 特別枠も新規補充停止
-          } else { // 'harvest'
-            const cap = capForState(puzzleClockRef.current);
-            puzzleKomaRef.current.harvestRamp = harvestTargetTick(puzzleKomaRef.current.harvestRamp, cap, deltaTime * 1000);
-            cdMs = harvestCdMs(cdBasisForRank(rank, puzzleClockRef.current.r7Cap));
-            effectiveTarget = puzzleKomaRef.current.harvestRamp.target;
-            nuisanceTargetCounts = noNewSupplyNuisanceTarget(aliveNuisance);
-            areaForSpecial = -1;
-            chaffWeights = CHAFF_WEIGHTS_HARVEST;
           }
 
           const decision = decideNextSpawn({
             boardCount,
-            boardTarget: effectiveTarget,
+            boardTarget: totalTarget,
             cdElapsedMs: gameTime - puzzleCdRef.current.lastBaseSpawnAt,
             cdMs,
             nuisanceElapsedMs: gameTime - puzzleCdRef.current.lastNuisanceSpawnAt,
@@ -6720,7 +6756,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             area: areaForSpecial,
             aliveSpecial,
             msSinceLastHit,
-            chaffWeights,
+            chaffWeights: chaffWeightsForKoma(koma.kind),
             tieBreakRandom: Math.random(),
           });
           if (decision) {
@@ -6734,13 +6770,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             addEnemy(puzzleEnemy);
             puzzleCdRef.current.lastBaseSpawnAt = gameTime;
-            if (decision.slot === 'nuisance') puzzleCdRef.current.lastNuisanceSpawnAt = gameTime;
-            else if (decision.slot === 'special') puzzleCdRef.current.lastSpecialSpawnAt = gameTime;
+            if (decision.slot === 'nuisance') {
+              puzzleCdRef.current.lastNuisanceSpawnAt = gameTime;
+              // §4-D: 片付き判定用に現台本の邪魔者出現数を記録。
+              koma.scriptSpawned = { ...koma.scriptSpawned, [decision.type]: koma.scriptSpawned[decision.type as keyof NuisanceCounts] + 1 };
+            } else if (decision.slot === 'special') puzzleCdRef.current.lastSpecialSpawnAt = gameTime;
           }
 
           setPuzzleDebug({
-            rank, boardTarget: effectiveTarget, cap: capForState(puzzleClockRef.current), tightened: tightenedNow,
-            komaKind: puzzleKomaRef.current.kind,
+            rank, boardTarget: totalTarget, cap, tightened: tightenedNow, softened: softenedNow,
+            komaKind: koma.kind,
           });
         } else {
           setPuzzleDebug(null);

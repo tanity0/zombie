@@ -39,8 +39,10 @@ export const cdBasisForRank = (rank: PuzzleRank, r7Cap: number): number =>
 
 // §0.5攻略性の原則: この基本CD(チャフの補充テンポ)は締め/成長でどこまでも縮められるが、
 // 邪魔者・特別枠自体の投入CD(3秒・scriptPuzzle.ts側)は締めても絶対に縮めない(仕様どおり)。
+// v0.25.1386(M6実装時の仕様適合修正): §3-D「①基本CDを1ランク上の基準値へ締める(R7中は0へ)」——
+// M2実装ではR7の締めをbasis(7)のままにしていたが、仕様の字義どおり0へ(最恐形)。
 export const cdBasisTightened = (rank: PuzzleRank, r7Cap: number): number => {
-  if (rank === 7) return cdBasisForRank(7, r7Cap); // 最速帯なのでこれ以上締めようがない
+  if (rank === 7) return 0; // §3-D: R7中の締めはCD0へ
   return cdBasisForRank(Math.min(7, rank + 1) as PuzzleRank, r7Cap);
 };
 
@@ -108,12 +110,12 @@ export const assessKomaDelta = (input: KomaAssessmentInput): RankDelta => {
   return 0;
 };
 
-// R7中の解釈(実装精度の規律1に基づき明記・PACING_PUZZLE.md★未決事項にも記載): 「耐えられない」判定は
-// まず上限を-2(下限10)で吸収し、上限が既に下限にいる状態でさらに耐えられない判定が出た時だけ
-// 実際にR6へ降格する(「R7から降格したら上限は10に戻る」の文と、「耐えられない判定は-2体」の文の
-// 両方を矛盾なく満たす読み)。新規にR7へ昇格した瞬間は上限を10からやり直す。
-export const applyKomaAssessment = (state: PuzzleClockState, input: KomaAssessmentInput): PuzzleClockState => {
-  const delta = assessKomaDelta(input);
+// R7中の解釈(社長承認済み・PACING_PUZZLE.md裁定済み記録): 「耐えられない」判定はまず上限を
+// -2(下限10)で吸収し、上限が既に下限にいる状態でさらに耐えられない判定が出た時だけ実際にR6へ
+// 降格する。新規にR7へ昇格した瞬間は上限を10からやり直す。
+// M6(§4-C 2段査定): 確定デルタは検証査定側で合成する(combineCycleDelta)ため、デルタ適用だけを
+// 独立させたのがapplyRankDelta。applyKomaAssessmentは旧1段査定の互換ラッパー(挙動不変)。
+export const applyRankDelta = (state: PuzzleClockState, delta: RankDelta): PuzzleClockState => {
   if (state.rank === 7) {
     if (delta === 1) return { ...state, r7Cap: Math.min(R7_CAP_MAX, state.r7Cap + R7_CAP_STEP) };
     if (delta === -1) {
@@ -125,6 +127,85 @@ export const applyKomaAssessment = (state: PuzzleClockState, input: KomaAssessme
   const nextRank = clampRank(state.rank + delta);
   if (nextRank === 7) return { ...state, rank: nextRank, r7Cap: R7_CAP_MIN }; // state.rank!==7はここまでで確定済み
   return { ...state, rank: nextRank };
+};
+
+export const applyKomaAssessment = (state: PuzzleClockState, input: KomaAssessmentInput): PuzzleClockState =>
+  applyRankDelta(state, assessKomaDelta(input));
+
+// ---- M6(§4-C): 2段査定の確定規則 -------------------------------------------------------
+// 通常コマ終わりの仮査定(assessKomaDelta)を、ピークコマの実績で検証して確定する:
+//   昇格 = 仮査定が昇格 かつ ピークでも耐えた(dmgRatio<0.35)
+//   降格 = どちらかのコマで降格級(dmgRatio>=0.60 または intensAvg>=0.85)
+//     ※通常コマ側の降格級は仮査定-1と同値(assessKomaDeltaは降格を最優先で判定するため)。
+//   それ以外 = 維持。
+export const isDemoteGrade = (input: KomaAssessmentInput): boolean =>
+  input.dmgRatio >= 0.60 || input.intensAvg >= 0.85;
+
+export const combineCycleDelta = (provisional: RankDelta, peakInput: KomaAssessmentInput): RankDelta => {
+  if (provisional === -1 || isDemoteGrade(peakInput)) return -1;
+  if (provisional === 1 && peakInput.dmgRatio < 0.35) return 1;
+  return 0;
+};
+
+// ---- M6(§3-D改訂): 下げ方向=全コマ常時の「多少緩め」 -----------------------------------
+// 「辛そう」検知: 直近10秒の被ダメ>=maxHealthの15% / 直近10秒のIntensity平均>=0.85 / HP<=30%。
+// 緩め=目標-20%(下限3)+基本CD×1.5の1段のみ。解除=無被弾10秒(かつ検知条件が消えている)で基準へ。
+// ※HP<=30%が続く限り緩めは維持される(無被弾10秒だけで解除するとHP条件で即再発動して点滅するため、
+//   「解除=無被弾10秒」と検知条件の両立をラッチで実装。実装解釈=★裁定済み記録参照)。
+// 直近10秒の集計は1秒×10バケツのリングで近似(per-frame配列生成なし・負荷1/10)。
+export const SOFTEN_WINDOW_MS = 10000;
+export const SOFTEN_DMG_FRAC = 0.15;
+export const SOFTEN_INTENS_MIN = 0.85;
+export const SOFTEN_HP_FRAC = 0.3;
+export const SOFTEN_RELEASE_NO_HIT_MS = 10000;
+export const SOFTEN_TARGET_MULT = 0.8;
+export const SOFTEN_TARGET_MIN = 3;
+export const SOFTEN_CD_MULT = 1.5;
+
+const SOFTEN_BUCKETS = 10;
+
+export interface SoftenState {
+  dmgFrac: number[];    // バケツごとの被ダメ(maxHealth比)合計
+  intensDt: number[];   // バケツごとのIntensity×dt積分
+  dt: number[];         // バケツごとの経過ms
+  cursorMs: number;     // 現バケツ内の経過ms(1000msで次バケツへローテート)
+  idx: number;
+  softened: boolean;
+}
+
+export const createSoftenState = (): SoftenState => ({
+  dmgFrac: new Array(SOFTEN_BUCKETS).fill(0),
+  intensDt: new Array(SOFTEN_BUCKETS).fill(0),
+  dt: new Array(SOFTEN_BUCKETS).fill(0),
+  cursorMs: 0, idx: 0, softened: false,
+});
+
+export interface SoftenTickInput {
+  dtMs: number;
+  dmgFracThisFrame: number; // このフレームの被ダメ ÷ maxHealth
+  intensity: number;
+  hpFrac: number;
+  msSinceLastHit: number;
+}
+
+export const stepSoften = (prev: SoftenState, input: SoftenTickInput): SoftenState => {
+  const s: SoftenState = { ...prev, dmgFrac: [...prev.dmgFrac], intensDt: [...prev.intensDt], dt: [...prev.dt] };
+  // バケツのローテート(dtが大きい時は複数バケツ分進める)。
+  s.cursorMs += input.dtMs;
+  while (s.cursorMs >= SOFTEN_WINDOW_MS / SOFTEN_BUCKETS) {
+    s.cursorMs -= SOFTEN_WINDOW_MS / SOFTEN_BUCKETS;
+    s.idx = (s.idx + 1) % SOFTEN_BUCKETS;
+    s.dmgFrac[s.idx] = 0; s.intensDt[s.idx] = 0; s.dt[s.idx] = 0;
+  }
+  s.dmgFrac[s.idx] += input.dmgFracThisFrame;
+  s.intensDt[s.idx] += input.intensity * input.dtMs;
+  s.dt[s.idx] += input.dtMs;
+  const dmg10s = s.dmgFrac.reduce((a, b) => a + b, 0);
+  const dtSum = s.dt.reduce((a, b) => a + b, 0);
+  const intensAvg10s = dtSum > 0 ? s.intensDt.reduce((a, b) => a + b, 0) / dtSum : 0;
+  const detect = dmg10s >= SOFTEN_DMG_FRAC || intensAvg10s >= SOFTEN_INTENS_MIN || input.hpFrac <= SOFTEN_HP_FRAC;
+  s.softened = detect || (prev.softened && input.msSinceLastHit < SOFTEN_RELEASE_NO_HIT_MS);
+  return s;
 };
 
 // ---- コマ集計(呼び出し側が毎フレーム足し込み、コマ境界でfinalizeしてapplyKomaAssessmentへ渡す) ----
@@ -153,12 +234,16 @@ export interface KomaAccumulatorTickInput {
   cap: number;
 }
 
+// M6(v0.25.1386)でcapReachedの意味を再解釈: 旧「target(ランプ)が上限へ到達」→
+// 「盤面数がそのコマの目標(cap引数=コマ総目標)へ実際に到達した瞬間があった」。
+// §4-Cのコマ別固定目標では旧字義(通常コマ目標=上限の50%が上限10に届く)が成立し得ないため
+// (★裁定済み記録参照)。「意図した圧を実際に経験した上での査定」という趣旨は不変。
 export const stepKomaAccumulator = (acc: KomaAccumulatorState, input: KomaAccumulatorTickInput): KomaAccumulatorState => ({
   perfMsSum: acc.perfMsSum + input.perf * input.dtMs,
   intensMsSum: acc.intensMsSum + input.intensity * input.dtMs,
   weightMs: acc.weightMs + input.dtMs,
   dmgTaken: acc.dmgTaken + Math.max(0, input.dmgTakenThisFrame),
-  capReached: acc.capReached || input.boardTarget >= input.cap,
+  capReached: acc.capReached || input.boardCount >= input.cap,
   belowTargetMsThisKoma: acc.belowTargetMsThisKoma + (input.boardCount < input.boardTarget ? input.dtMs : 0),
   komaDurationMs: acc.komaDurationMs + input.dtMs,
 });
