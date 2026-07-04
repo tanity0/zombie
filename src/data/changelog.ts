@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1399',
+    items: [
+      'スカベンジャーの立ち絵を新しいイラストに差し替え。',
+      '小烏丸を装備している時のHUDアイコンを、背中に背負う刀の絵に変更。',
+    ],
+  },
+  {
     version: '0.25.1398',
     items: [
       '刀装備中のHUDアイコンを元の表示に戻しました。',

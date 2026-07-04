@@ -249,7 +249,10 @@ const GameHUD: React.FC = () => {
                   title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
                 >
                   {katanaEquipped
-                    ? <KatanaIcon size={28} variant={murasameEquipped ? 'murasame' : 'katana'} />
+                    ? (murasameEquipped
+                        // 小烏丸(村雨)は背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
+                        ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />
+                        : <KatanaIcon size={28} variant="katana" />)
                     : whipEquipped ? '➰'
                     : hasWeaponIcon(melee.key)
                       ? <img src={spritePath(weaponIconName(melee.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />

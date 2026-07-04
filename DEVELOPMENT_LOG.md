@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1399 — スカベンジャー立ち絵差し替え+小烏丸HUDアイコンに背負い刀を流用(社長指示・実装チャット)
+- **スカベンジャー(necromancer クラス)の歩行スプライト差し替え**: 社長提供イラスト
+  (拳銃を構えた髭の男性・3フレーム横並び・1280×720)を、現行の描画規約(128×108・下端接地・
+  水平中央・アンカー(0.5,1))に合わせて変換し `player-striker-walk-0/1/2.png` を上書き
+  (※クラスID対応は既存仕様: necromancer=スカベンジャー→player-striker-*、rogue=ストライカー→
+  player-scavenger-*。名前が逆なのは従来どおり・入れ替えない)。
+  - 変換: 3体をx区間で分離→共通ベースライン(上端y=153・下端y=526)+均一スケール(≈0.283)で
+    高さ106pxへLANCZOS縮小→128×108キャンバスに下端接地・水平中央で配置。
+  - 見た目サイズは`playerBaseScale=86/tex.width`(幅128固定)で全クラス共通=現行と一致。
+  - `player-striker-game-*.png`(96×80・現行コードから未参照=プリロードのみ)は対象外・無変更。
+    キャラ選択画面(campaign.ts)は`player-striker-walk-0.png`参照なので自動的に新絵になる。
+- **小烏丸(murasame)のHUDアイコン**: 背中に背負う鞘入り刀の絵(`katana-item.png`)をそのまま
+  アイコンへ流用(社長指示)。`GameHUD.tsx`の小烏丸分岐を`KatanaIcon`(SVG)→`<img katana-item>`へ。
+  刀(非murasame)は指示どおり`KatanaIcon variant="katana"`のまま無変更。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。差し替え後スプライトを拡大合成で目視確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(立ち絵アセット差し替え+HUDアイコン表示のみ)。
+
 ## v0.25.1398 — 刀スキルHUDアイコン差し替え(v0.25.1396)を全撤回(社長指示・実装チャット)
 - 経緯: アップロードされた刀イラスト(紫背景版・透過版とも同一デザイン)は、実は**トールの刀
   (`thor-katana.png`)そのもの**だった。「刀スキルの画像」という社長の中間発言は誤りで、
