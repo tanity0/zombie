@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1393 — 実機バグ診断: 「被弾すると敵が消える」=上限カリング×R7上限縮小(設計チャットFable)
+- 診断: 被弾が嵩む→査定でr7Cap−2/降格(20→10)→上限縮小の瞬間に盤面数>enemyCap→
+  `useGameLoop.ts`の上限カリング(遠い順に即削除)が**画面内の敵まで消す**。
+  「在席は強制消去しない・自然消化」の仕様と矛盾する実バグ。発生条件=被弾が嵩んだ状態で
+  コマ境界(査定)を跨ぐ(R7帯で顕著)なので「条件不明・たまに」と一致。
+- 修正仕様をPACING_PUZZLE.md §5.7(M6追補2)に記載: パズルON時のcapカリングは**可視域外の敵に
+  限定**(可視判定はリサイクルと同じズーム考慮矩形)。画面内の超過は湧き停止+自然消化で収束。
+  cull選別の純関数化+「画面内は選ばれない」テスト。優先実装。
+- 検証: doc+version変更のみ(コード不変)。自己点検: §0.5(見えている敵が消えない=攻略性の体験)に整合。
+
 ## v0.25.1392 — M7追補: 弱点値改訂を反映(バット20/スケルトン20/ゾンビ10・実装チャット)
 - v0.25.1391裁定(バット=銃+20%/スケルトン=近接+20%/ゾンビ=銃+10%据え置き)をコードへ反映。
 - `src/utils/weaknessCrit.ts`: `CHAFF_WEAKNESS`を`EnemyType→WeaponKind`の単純マップから
