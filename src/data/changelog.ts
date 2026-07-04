@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1392',
+    items: [
+      '弱点武器のクリティカル率を強化: バット(銃)とスケルトン(近接)は+10%→+20%に。ゾンビ(銃)は+10%のまま。',
+    ],
+  },
+  {
     version: '0.25.1390',
     items: [
       '雑魚敵に「弱点武器」を追加: バット/ゾンビは銃で、スケルトンは近接でクリティカル率+10%。',

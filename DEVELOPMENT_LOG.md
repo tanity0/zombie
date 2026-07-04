@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1392 — M7追補: 弱点値改訂を反映(バット20/スケルトン20/ゾンビ10・実装チャット)
+- v0.25.1391裁定(バット=銃+20%/スケルトン=近接+20%/ゾンビ=銃+10%据え置き)をコードへ反映。
+- `src/utils/weaknessCrit.ts`: `CHAFF_WEAKNESS`を`EnemyType→WeaponKind`の単純マップから
+  `EnemyType→{weaponKind, bonus}`へ変更(旧: 全種一律`WEAKNESS_CRIT_BONUS=0.10`)。
+  配線(gameStore.ts/useGameLoop.ts)は表引きの返り値を使うだけなので無変更。
+- テスト: `weaknessCrit.test.ts`を新値(バット/スケルトン0.20、ゾンビ0.10)に更新。
+  lint/typecheck/test(425 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(クリ率の値変更のみ)。
+
 ## v0.25.1391 — M7追補: 弱点値の最終確定(バット20/スケルトン20/ゾンビ10・社長確定・設計チャットFable)
 - 社長の最終値: **バット=銃+20% / スケルトン=近接+20% / ゾンビ=銃+10%**。
   (設計チャットが一時「ゾンビ除外」と誤読→社長訂正「ゾンビは10%」で確定。)
