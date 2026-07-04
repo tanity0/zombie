@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1394 — M6追補2実装: 上限カリングの可視域保護(実装チャット)
+- `src/utils/enemyCulling.ts`(新規): `selectCullCandidates(enemies, isProtected, rect,
+  restrictToOffscreen)`。`restrictToOffscreen=true`の時、cull候補を矩形外(可視域外)の敵だけに
+  絞り遠い順で返す。`false`(パズルOFF)は旧来どおり全敵から選ぶ。
+- 配線: `useGameLoop.ts`の上限カリングで、rectに**リサイクル境界をそのまま再利用**
+  (`recycleHalfW/H`・`playerCenterX/Y`=`CONTEXT_ZOOM_MIN`のズーム引き考慮を自動継承)、
+  `restrictToOffscreen`に`puzzleActiveNow`を渡す。保護リスト・削除ログは不変。
+- 画面内の超過分は`.slice`が自然に部分適用+既存の湧き停止で自然消化に任せる(追加コード不要)。
+- テスト: `enemyCulling.test.ts`新規6件。lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし。実バグ修正(挙動の意図を変えない)につき仕様変更ルールの
+  例外に該当。
+
 ## v0.25.1393 — 実機バグ診断: 「被弾すると敵が消える」=上限カリング×R7上限縮小(設計チャットFable)
 - 診断: 被弾が嵩む→査定でr7Cap−2/降格(20→10)→上限縮小の瞬間に盤面数>enemyCap→
   `useGameLoop.ts`の上限カリング(遠い順に即削除)が**画面内の敵まで消す**。

@@ -39,6 +39,7 @@ import {
 } from '../store/gameStore';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
+import { selectCullCandidates } from '../utils/enemyCulling';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -7043,22 +7044,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // deleted the instant it spawns under the low cap).
         const currentEnemiesForCap = useGameStore.getState().enemies;
         if (currentEnemiesForCap.length > enemyCap) {
-          const isProtected = (e: typeof currentEnemiesForCap[number]) =>
-            e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
-            e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
+          const isProtected = (e: typeof currentEnemiesForCap[number]): boolean =>
+            !!e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
+            !!e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
             e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
             e.type === 'lab-zombie-3' || // 研究所Lv3はパンプキン相当のボス(着地爆発)。ランダム湧き個体がcap超過で消されないよう保護
             isHiddenBoss(e.type) || // 裏ボスは専用コントローラ管理(帰巣/回復)。カリングすると討伐誤検出で「勝手に死ぬ」
-            (e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
-          const cullable = [...currentEnemiesForCap]
-            .filter(e => !isProtected(e))
-            .sort((a, b) => {
-              // 中心座標で距離比較(リサイクル/カメラ判定と座標系を統一。従来は左上座標で僅かにズレていた)。
-              const pcx2 = player.x + player.width / 2, pcy2 = player.y + player.height / 2;
-              const distA = Math.hypot(a.x + a.width / 2 - pcx2, a.y + a.height / 2 - pcy2);
-              const distB = Math.hypot(b.x + b.width / 2 - pcx2, b.y + b.height / 2 - pcy2);
-              return distB - distA;
-            });
+            !!(e.isWave && gameTime - (e.spawnedAt ?? 0) < WAVE_GRACE_MS);
+          // PACING_PUZZLE.md §5.7(M6追補2・実機バグ対処): パズルON時、査定でr7Cap/ランクが
+          // 縮小して enemyCap が瞬時に下がっても、画面内の敵は消さない(仕様「在席は強制消去しない・
+          // 自然消化」との矛盾=実バグだった)。cull候補を可視域外(リサイクルと同じ矩形・座標系=
+          // CONTEXT_ZOOM_MIN のズーム引き考慮込み)に限定する。画面内の超過分は湧き停止+自然消化で
+          // 収束させる。?puzzle=0時(puzzleActiveNow=false)は旧挙動(全敵が対象)のまま。
+          const cullable = selectCullCandidates(
+            currentEnemiesForCap,
+            isProtected,
+            { centerX: playerCenterX, centerY: playerCenterY, halfW: recycleHalfW, halfH: recycleHalfH },
+            puzzleActiveNow
+          );
 
           const toRemoveIds = new Set(
             cullable

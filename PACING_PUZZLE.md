@@ -305,8 +305,29 @@ PACING_REDESIGN.mdは前提知識(旧仕様)として参照可。矛盾したら
 | M4 | 配線(コマループ・緩サイクル・?puzzle=0・ボス停止) | **実装済み v0.25.1372・統合テスト待ち** |
 | M5 | 弾ドロップのインベントリ連動(RE4式・独立小バッチ) | **実装済み v0.25.1380** |
 | M6 | コマ構成の全面改修(4コマサイクル+片付き駆動ローテ+2段査定・§4-C/4-D/4-E) | **実装済み v0.25.1388(裁定反映込み)・統合テスト待ち** |
-| M6追補2 | 上限カリングの可視域保護(§5.7・実機バグ) | 未着手(**着手可・優先**) |
+| M6追補2 | 上限カリングの可視域保護(§5.7・実機バグ) | **実装済み v0.25.1394** |
 | M7 | チャフの武器弱点クリティカル(§5.6) | **実装済み v0.25.1392(v0.25.1391の数値改訂込み・バット20/スケルトン20/ゾンビ10)** |
+
+### 実装結果(v0.25.1394・M6追補2)
+- **`src/utils/enemyCulling.ts`(新規・純関数)**: `selectCullCandidates(enemies, isProtected, rect,
+  restrictToOffscreen)`。`restrictToOffscreen=true`の時、cull候補を`rect`外(可視域外)の敵だけに
+  絞り、中心から遠い順(降順)に返す。`false`(パズルOFF時)は旧来どおり全敵から選ぶ。
+  `isOutsideCullRect`もエクスポート(矩形外判定の単体テスト用)。
+- **配線**: `useGameLoop.ts`の上限カリング(cull候補の`cullable`算出)を差し替え。**rectはリサイクル
+  境界(`recycleHalfW`/`recycleHalfH`・`playerCenterX`/`playerCenterY`)をそのまま再利用**
+  (新しい矩形は作らない=CLAUDE.mdのズーム引きルール=`CONTEXT_ZOOM_MIN`考慮を自動的に継承)。
+  `restrictToOffscreen`には`puzzleActiveNow`をそのまま渡す(パズルON時のみ制限。`?puzzle=0`/
+  ボス中/ラボ/屋内/ダンステストは`puzzleActiveNow=false`=旧挙動のまま)。
+  保護リスト(fixed/fromEvent/ボス級/wave猶予)・削除理由ログ(`ENEMY_REMOVE_CAUSE.set('cap')`)は不変。
+- 画面内の超過分(可視域外の候補だけでは足りない場合)は`.slice(0, overflow)`が自然に部分適用する
+  ため追加コード不要=既存の湧き停止(enemyCap超過中はスポナーが増員を止める)と合わさって
+  自然消化で収束する。
+- テスト: `enemyCulling.test.ts`新規6件(内側/外側判定・可視域内は選ばれない・可視域外は遠い順・
+  旧挙動(restrictToOffscreen=false)は可視域内も含む・保護は可視域外でも除外)。
+  lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 負荷: 1/10(既存の距離ソートに矩形内外判定を1つ足すだけ。per-frame新規ループなし)。
+- 自己点検: 憲法第4条・第5条に抵触なし(カリング対象の絞り込みのみ・湧き数/CD/コマ構造は無変更)。
+  実バグ修正のため仕様変更ルールの例外(挙動の意図を変えない明確なバグ修正)に該当。
 
 ### 実装結果(v0.25.1392・M7数値改訂反映)
 - v0.25.1391裁定(バット20%/スケルトン20%/ゾンビ10%据え置き)を`weaknessCritBonus`へ反映。

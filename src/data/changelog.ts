@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1394',
+    items: [
+      '被弾が続いた直後などに画面内の敵が不自然に消えることがある不具合を修正。',
+    ],
+  },
+  {
     version: '0.25.1392',
     items: [
       '弱点武器のクリティカル率を強化: バット(銃)とスケルトン(近接)は+10%→+20%に。ゾンビ(銃)は+10%のまま。',
