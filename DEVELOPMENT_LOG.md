@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1387 — M6実装の解釈5点を裁定: 4点承認・昇格式を1点修正(設計チャットFable)
+- Sonnetの実装時解釈(v0.25.1386記載)への裁定: ②固定目標への1体ずつランプ化 ③ピーク締めの
+  スタック(表端クランプ) ④緩め解除のHP30%ラッチ ⑤空台本=即片付き、の4点は**承認**。
+- ①capReached再解釈は趣旨承認、ただし**昇格式に自己矛盾を発見して修正**:
+  capReached必須のままだと最速プレイヤー(補充より速く刈る=盤面が目標に届かない)が
+  永遠に昇格不能で、starveRatio経路の意図と矛盾。
+  新式: `dmgRatio<0.35 ∧ ((capReached ∧ perfAvg≥0.45) ∨ starveRatio≥0.4)`(R7成長判定も同式)。
+  §3-Bと実装結果節に裁定を記載。**実装+テスト更新はSonnet(M6追補)**。
+- R7中の締めCD basis(7)→0 の仕様適合修正(Sonnet報告)も確認・妥当。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 攻略性の原則・処理速度思想(v0.25.1371)に整合。
+
 ## v0.25.1386 — バッチM6実装: 4コマサイクル+片付き駆動ローテ+2段査定+全コマ緩め(§4-C/4-D/4-E/3-D改訂)
 - **§4-C**: リラックス→ハーベスト→通常(仮査定)→ピーク(検証査定)の4コマ(ラン開始=リラックス・
   基本40秒)。通常/ピークは台本未片付きなら延長(処理待ち=邪魔者のみ・+30秒上限)。コマ別の
