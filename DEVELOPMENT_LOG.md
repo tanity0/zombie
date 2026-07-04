@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1379 — バッチM5仕様化: 弾ドロップのインベントリ連動(RE4式・社長採用・設計チャットFable)
+- 供給側の会議(RE4/L4D2/WWZの弾切れ設計の比較)から社長が案1を採用:
+  キル時弾薬ドロップの弾種を「構えている銃」→**「所持銃のうち残弾割合(リザーブ÷AMMO_MAX)が
+  最小の弾種」**へ(同率は構え優先・1種のみは従来どおり・PHILL弾対象外)。
+  ドロップ率の式・フィニッシャー1.5倍・ナイフマスター0%・松明(pity)・鞭20%は不変=
+  配分だけ変えて総供給量は増やさない。純関数`pickAmmoDropType`+ユニットテスト。`?ammosmart=0`。
+- PACING_PUZZLE.md §5.5に仕様記載・ステータス表にM5追加(M2〜M4実装済みと干渉しない独立小バッチ)。
+- ★未決事項の残2件(紅き月の緩ゲート基準/ハンター発火)は社長へ提示中(次エントリ参照のこと)。
+- 検証: doc+version変更のみ(コード不変)。自己点検: 供給の底(カウンター近接)不変・§0.5に整合。
+
 ## v0.25.1378 — 叫喚の供給を特別枠へ一本化(社長裁定「1は一本化」・★未決事項①の解決)
 - `useGameLoop.ts`: 旧screamerディレクター(5分以降・旧時刻表gate窓・エリア制限なし)を
   `!puzzleActiveNow`でゲート=パズル方式ON時は停止。供給は特別枠(§4-A: エリア3〜・同時1・
