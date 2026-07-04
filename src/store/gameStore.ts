@@ -23,6 +23,7 @@ import {
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
+import { pickAmmoDropType } from '../utils/ammoDrop';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -64,6 +65,9 @@ const initialRhythm = (): RhythmState => ({
 // these per-family RESERVE pools. The reserve starts large (you're well
 // stocked) but ammo is hard to find, so the run is a slow drain on it.
 export const AMMO_MAX: Record<AmmoType, number> = { handgun: 72, shotgun: 24, rifle: 36, phill: 48 };
+// PACING_PUZZLE.md §5.5 M5(RE4式弾ドロップ・既定ON): ?ammosmart=0で従来(構え銃の弾種)へ。
+// useGameLoop側の銃キル経路と同名パラメータ(各自読む=既存camNum等と同じ流儀)。
+const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('ammosmart') !== '0';
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -1402,7 +1406,12 @@ const grantMeleeKillRewards = (
     const ownedAmmoTypes = getGuns(player)
       .map(w => w.ammoType)
       .filter((t): t is AmmoType => !!t);
-    const dropType = gun?.ammoType ?? ownedAmmoTypes[0];
+    // PACING_PUZZLE.md §5.5 M5(RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
+    // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
+    const smartType = AMMO_SMART_ENABLED
+      ? pickAmmoDropType(ownedAmmoTypes.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), gun?.ammoType)
+      : null;
+    const dropType = smartType ?? gun?.ammoType ?? ownedAmmoTypes[0];
     // ナイフマスターは弾薬ドロップ0%(何をしても。社長指示)。
     if (dropType && !hasSkill(player, 'knife-master') && Math.random() < ammoChance) {
       get().addPickup({

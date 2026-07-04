@@ -10,6 +10,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1380 — M5実装(RE4式弾ドロップ)+紅き月をコマ基準へ+ハンター保留(社長指示3点)
+- **M5(§5.5)**: 新規純関数`src/utils/ammoDrop.ts`の`pickAmmoDropType`——所持銃の弾種のうち
+  残弾割合(リザーブ÷AMMO_MAX)が最小のものを落とす。同率は構え優先/同率に構えが無ければ
+  入力順先頭/phill除外/候補空はnull(従来フォールバック)。呼び出しは仕様指定の2経路のみ
+  (`useGameLoop.ts`銃キル/`gameStore.ts` grantMeleeKillRewards)。空輸・松明・ドロップ率式・
+  フィニッシャー×1.5・ナイフマスター0%・鞭20%は不変。`?ammosmart=0`で従来へ
+  (gameStore側は同名パラメータを直読み=camNum等の既存流儀)。テスト8件。
+- **★未決②(社長裁定「コマ基準で」)**: 紅き月の「緩フェーズ中にしか開始しない」を、パズルON時は
+  60秒コマ基準(緩コマ=RELAX/HARVEST中のみ)へ。通常コマ中は抽選を消費せず自然遅延(従来と同じ
+  性質)。深度条件・確率・排他・ピンチ猶予は不変。ボス中/`?puzzle=0`は旧phaseAt基準のまま。
+- **★未決③(社長裁定「保留」)**: ハンターは現状の休眠状態(up+N停止の帰結で発火しない)のまま
+  保留と★未決事項に明記。コードは触っていない。
+- 自己点検: 憲法第5条に整合(紅き月が緩コマ限定に=山に重ねない性質がコマ基準でも維持)。
+  M5は供給量不変で配分のみ=難易度バランスの意図を変えない。
+- 検証: lint / typecheck / test(ammoDrop 8件追加で391 pass, 1 skip) / build 全通過。実機未確認
+  (統合テストに同乗)。
+
 ## v0.25.1379 — バッチM5仕様化: 弾ドロップのインベントリ連動(RE4式・社長採用・設計チャットFable)
 - 供給側の会議(RE4/L4D2/WWZの弾切れ設計の比較)から社長が案1を採用:
   キル時弾薬ドロップの弾種を「構えている銃」→**「所持銃のうち残弾割合(リザーブ÷AMMO_MAX)が

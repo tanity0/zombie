@@ -35,8 +35,9 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT
+  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, AMMO_MAX
 } from '../store/gameStore';
+import { pickAmmoDropType } from '../utils/ammoDrop';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -435,6 +436,10 @@ const M1_ENABLED = evParam('m1') !== '0';
 // PACING_PUZZLE.md バッチM4(社長決定v0.25.1365・ランク7段階×台本パズル方式・既定ON):
 // `?puzzle=0`でこの方式を丸ごと無効化し、M1状態(v0.25.1363の挙動)へ完全復帰する。
 const PUZZLE_ENABLED = evParam('puzzle') !== '0';
+// PACING_PUZZLE.md §5.5 バッチM5(RE4式弾ドロップ・既定ON): キル時弾薬ドロップを「残弾割合が
+// 最小の弾種」にする。`?ammosmart=0`で従来(構え銃の弾種)へ復帰。gameStore側の近接キル経路も
+// 同名パラメータを各自読む(既存のcamNum等と同じ流儀)。
+const AMMO_SMART_ENABLED = evParam('ammosmart') !== '0';
 // この方式が湧き型の選択と上限を供給する対象(§2「継続するもの」の通常湧きスポナー管理下の型のみ)。
 // ボス/裏ボス/ハンター/リーパー/ラボ専用型/イベント敵(fromEvent)は対象外(既存の専用ディレクター継続)。
 const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'screamer', 'ghost']);
@@ -1732,8 +1737,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (山=関所中に窓が開いても抽選を消費せず次の緩まで毎フレーム再判定=自然に遅延)。
           // ?events=0で本ゲートを無効化(従来どおり時間+デンジャーゾーンだけで判定)。
           const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle';
+          // 社長裁定(v0.25.1380「2:コマ基準で」): パズル方式ON時の「緩フェーズ中にしか開始しない」は
+          // 旧PHASES時刻表ではなく60秒コマで判定する(緩コマ=relax/harvest中のみ開始可。山=通常コマ中に
+          // 窓が開いても抽選を消費せず次の緩コマまで毎フレーム再判定=従来と同じ自然遅延)。
+          // ボス中(puzzleActiveNow=false)と?puzzle=0は従来どおり旧phaseAt基準。
+          const rnCalmOk = puzzleActiveNow
+            ? puzzleKomaRef.current.kind !== 'normal'
+            : redNightPhaseGateOk(phaseAt(newGameTime).kind);
           const rnProducerOk = !EVENTS_ENABLED || (
-            redNightPhaseGateOk(phaseAt(newGameTime).kind) &&
+            rnCalmOk &&
             eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
           if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
@@ -5298,7 +5310,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const owned = getGuns(player)
                   .map(w => w.ammoType)
                   .filter((t): t is AmmoType => !!t);
-                const dropType = equippedAmmo ?? owned[0];
+                // M5(§5.5・RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
+                // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
+                const smartType = AMMO_SMART_ENABLED
+                  ? pickAmmoDropType(owned.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), equippedAmmo)
+                  : null;
+                const dropType = smartType ?? equippedAmmo ?? owned[0];
                 if (dropType) {
                   addPickup({
                     id: `pickup-ammo-${enemy.id}`,
