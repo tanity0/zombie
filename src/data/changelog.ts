@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1396',
+    items: [
+      '刀装備中のHUDアイコンを新しいイラストに変更。',
+    ],
+  },
+  {
     version: '0.25.1395',
     items: [
       '隠しボス「トール」の横払いを太く強化し、溜め中は動かず立ち止まるように変更。',

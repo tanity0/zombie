@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1396 — 刀スキルHUDアイコンに社長提供の刀イラストを使用(社長指示・実装チャット)
+- 社長提供の刀イラスト(紫背景・既存`thor-katana.png`と同一素材)は「トール用」ではなく
+  「刀スキルの画像」だったと判明。HUDの刀アイコン(`GameHUD.tsx`の`KatanaIcon`、これまでは
+  矩形合成のプロシージャルSVG)をこの画像へ差し替え。
+- `public/sprites/weapons/katana.png`を新規追加: アップロード素材をPixiJSの`loadKeyed`と同じ
+  色キー抽出(左上ピクセルを基準色・許容誤差80)でアルファ抜きし、`<img>`表示用の透過PNGとして保存
+  (Pillowで一括処理・DOM描画なので色キーはPixiJS側では効かないため事前に焼き込みが必要)。
+  `thor-katana.png`(トールの横払い/突き用)は無変更・別ファイルのまま。
+  murasame(小烏丸)は専用画像が無いため、引き続き`KatanaIcon`のプロシージャルSVGを使用。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。dist出力に新アセットが含まれることを確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(HUDアイコンの差し替えのみ・パズル系コマ構造/CD/湧きには無関係)。
+
 ## v0.25.1395 — トール横払い調整+緑卵グロー演出(社長指示・実装チャット)
 - **トール(裏ボス)の横払い(harai)**: `THOR_HARAI_HALF_WIDTH`を突きと同じ値(30)から独立させ、
   1.5倍(45)へ(社長指示)。`harai-windup`中の`thorOrbitMove()`呼び出しを削除し、溜め中は
