@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1391 — M7追補: 弱点値の最終確定(バット20/スケルトン20/ゾンビ10・社長確定・設計チャットFable)
+- 社長の最終値: **バット=銃+20% / スケルトン=近接+20% / ゾンビ=銃+10%**。
+  (設計チャットが一時「ゾンビ除外」と誤読→社長訂正「ゾンビは10%」で確定。)
+- v0.25.1390のM7実装は全+10%(v0.25.1389仕様時点)なので、**値の改訂のみSonnetへ(M7追補)**:
+  weaknessCritBonusの表とテストの期待値を上記へ。ロジック変更なし。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1390 — バッチM7実装: チャフの武器弱点クリティカル(実装チャット)
 - `src/utils/weaknessCrit.ts`(新規): `weaknessCritBonus(enemyType, weaponKind)`純関数。
   バット→銃+10%/スケルトン→近接+10%/ゾンビ→銃+10%。表に無い型(問題児・ボス)は常に0。
