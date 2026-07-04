@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1404 — スカベンジャーに待機立ち絵+歩行周期を延長(社長提供/指示・実装チャット)
+- **待機(非移動)専用の立ち絵を追加**: 社長提供イラスト(拳銃を構えた広い構え・紫背景JPEG)を
+  色キー抜き(背景96,20,240・JPEG角ノイズは列/行の充填画素数閾値で除去)し、歩行コマと同じ整列
+  (銃手=右端x=106・足元=下端y=107・総身長106px)で`player-striker-idle.png`を新規保存。
+  `playerTextureName`に`walking`引数を追加し、**necromancer(スカベンジャー)が非移動かつ非武将装備の
+  時だけ**この待機絵を返すよう配線(分身の待機表示も`walking=false`で待機絵になる)。他クラス・武将装備は不変。
+  `pixiTextures.ts`の読込に`player-striker-idle`を追加。
+- **歩行周期を延長(「周期を変えて」)**: スカベンジャーは5コマ×ピンポン(8ステップ)でコマ数が多く、
+  460msだとコマ送りが速すぎたため、necromancer専用に`NECRO_WALK_CYCLE_MS=900`を新設
+  (≈112ms/コマ・他クラスの115ms/コマとほぼ同等の自然な歩調)。`playerWalkCycleMs(p)`ヘルパーを
+  コマ送り・上下バウンド(bob/phase)の両方に適用し同期。他クラスは460msのまま。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。待機絵はwalk0/walk2と並べて体格・整列を目視確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(スカベンジャーの立ち絵追加+歩行速度の調整のみ)。
+
 ## v0.25.1403 — スカベンジャーを5コマ+ピンポン歩行へ(社長提供・実装チャット)
 - 社長提供の新イラスト(拳銃を構えた歩行・**5コマ**横並び・透過1024×576)へ差し替え。
   ※社長は「6コマ」表現だが、透過PNGを解析すると分離できるのは5体(6体目は無し)。5コマ採用。

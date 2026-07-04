@@ -37,6 +37,7 @@ export const ensureTextures = (): Promise<void> => {
       'player-striker-walk-2',
       'player-striker-walk-3',
       'player-striker-walk-4',
+      'player-striker-idle',
       'player-striker-game-0',
       'player-striker-game-1',
       'player-striker-game-2',

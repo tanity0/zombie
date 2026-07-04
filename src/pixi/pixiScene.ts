@@ -446,17 +446,26 @@ const playerWalkSequence = (p: Player): number[] =>
       p.characterClass === 'warrior'
       ? [0, 1, 2, 1]
       : [0, 1];
+// 歩行アニメの1周期(ms)。スカベンジャー(necromancer)は5コマ×ピンポンでコマ数が多いぶん、
+// 他クラスと同じ460msだとコマ送りが速すぎるため専用に長め(社長指示「周期を変えて」)。
+const NECRO_WALK_CYCLE_MS = 900;
+const playerWalkCycleMs = (p: Player): number =>
+  p.characterClass === 'necromancer' ? NECRO_WALK_CYCLE_MS : PLAYER_WALK_CYCLE_MS;
 const playerWalkFrame = (p: Player, now: number, walking: boolean): number => {
   if (!walking) return 0;
   const sequence = playerWalkSequence(p);
-  const index = Math.floor((now % PLAYER_WALK_CYCLE_MS) / (PLAYER_WALK_CYCLE_MS / sequence.length));
+  const cycle = playerWalkCycleMs(p);
+  const index = Math.floor((now % cycle) / (cycle / sequence.length));
   return sequence[index] ?? 0;
 };
 // プレイヤーの立ち絵テクスチャ名(クラス/武将装備/フレーム別)。分身もこれを共有して同じ外見にする。
 // ※ necromancer→striker / rogue→scavenger の対応は既存仕様のまま(入れ替えない)。
-const playerTextureName = (p: Player, frame: number): string => {
+const playerTextureName = (p: Player, frame: number, walking = true): string => {
   const warlordFull = hasFullWarlordSet(p.equipment);
   const warlordKatana = warlordFull && hasMurasame(p);
+  // スカベンジャー(necromancer)は歩いていない時だけ専用の待機立ち絵(社長提供)を使う。
+  // 武将フル装備中は武将立ち絵が優先(待機絵は出さない)。
+  if (!walking && !warlordFull && p.characterClass === 'necromancer') return 'player-striker-idle';
   return warlordKatana ? `player-warlord-katana-walk-${frame}`
     : warlordFull ? `player-warlord-gun-walk-${frame}`
     : p.characterClass === 'mage' ? `player-magnum-walk-${frame}`
@@ -4545,10 +4554,10 @@ export class PixiScene {
     // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
     // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。
     const warlordFull = hasFullWarlordSet(p.equipment);
-    const textureName = playerTextureName(p, frame);
+    const textureName = playerTextureName(p, frame, walking);
     const tex = getTexture(textureName) ?? getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
-    const phase = walking ? (now / PLAYER_WALK_CYCLE_MS) * Math.PI * 2 : 0;
+    const phase = walking ? (now / playerWalkCycleMs(p)) * Math.PI * 2 : 0;
     const step = Math.sin(phase);
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     // 徒歩の自然化(3コマの上に重ねる連続モーション・視覚のみ): 接地(lift=0)で縦に潰れて横に広がり、
@@ -4812,8 +4821,9 @@ export class PixiScene {
       this.L.actorLayer.addChild(spr);
       this.shadowCloneAdded = true;
     }
-    // 外見はプレイヤーと同じ立ち絵(クラス/武将装備)を共有。待機なので frame 0。
-    const name = playerTextureName(player, 0);
+    // 外見はプレイヤーと同じ立ち絵(クラス/武将装備)を共有。待機なので frame 0・walking=false
+    // (スカベンジャーは専用の待機立ち絵になる)。
+    const name = playerTextureName(player, 0, false);
     const gray = this.grayscaleTexture(name);
     if (!gray) { spr.visible = false; return; }
     spr.visible = true;

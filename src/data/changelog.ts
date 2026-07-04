@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1404',
+    items: [
+      'スカベンジャーの立ち止まっている時の専用ポーズを追加。',
+      'スカベンジャーの歩行アニメの速さをゆっくりめに調整(自然な歩調に)。',
+    ],
+  },
+  {
     version: '0.25.1403',
     items: [
       'スカベンジャーの歩行を5コマの往復(左右に折り返す)アニメーションに差し替え。',
