@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1381 — M6下書き(4コマサイクル改修)を会議中マークで記録(設計チャットFable)
+- 社長のコマ構成改修指示(リラックス→ハーベスト→通常(査定)→ピークの4コマサイクル/緩2種は
+  R1相当でバット・スケルトン量調整/通常=現ランク+雑魚少なめ=練習・査定/ピーク=査定反映
+  ランク+雑魚満量/台本はコマ内で回し時々1ランク下を混ぜる)を§4-C/4-D/4-Eに下書き。
+- ただし設計チャットの解釈に社長から「あーちがう」と訂正が入ったため、**§4-C/4-D/4-E=未確定・
+  バッチM6=着手禁止**のマーク付きで保存(訂正待ち。現行実装v0.25.1380のまま触らない)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1380 — M5実装(RE4式弾ドロップ)+紅き月をコマ基準へ+ハンター保留(社長指示3点)
 - **M5(§5.5)**: 新規純関数`src/utils/ammoDrop.ts`の`pickAmmoDropType`——所持銃の弾種のうち
   残弾割合(リザーブ÷AMMO_MAX)が最小のものを落とす。同率は構え優先/同率に構えが無ければ
