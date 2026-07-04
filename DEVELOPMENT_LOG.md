@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1397 — 緑卵グロー再調整: 卵本体ではなく光だけを目立たせる(社長指示・実装チャット)
+- 前回(v0.25.1395)の意図の誤解を訂正: 「卵をフワフワさせる」のではなく「卵の光をフワフワ
+  光らせて少し目立つように」との指示。卵本体(`view.sprite`)のスケール微振動は元から別変数
+  (`pulse`、無変更)であり、今回touchしたのはグローライト(`view.light`)のみ。
+- `pixiScene.ts`の`drawBreakableProp`(mine): グローの視認性を強化。
+  αパルス`0.75±0.25`→`0.6±0.4`(明滅の谷を深く=コントラスト増)、半径パルス`1±0.12`→`1±0.22`
+  (伸縮をより大きく)、基準α`0.22`→`0.34`、基準半径倍率`2.2`→`2.6`。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。追加スプライト無し=負荷据え置き(1/10)。
+- 自己点検: 憲法第4条・第5条に抵触なし(装飾グローの数値調整のみ)。
+
 ## v0.25.1396 — 刀スキルHUDアイコンに社長提供の刀イラストを使用(社長指示・実装チャット)
 - 社長提供の刀イラスト(紫背景・既存`thor-katana.png`と同一素材)は「トール用」ではなく
   「刀スキルの画像」だったと判明。HUDの刀アイコン(`GameHUD.tsx`の`KatanaIcon`、これまでは
