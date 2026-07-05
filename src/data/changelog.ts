@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1405',
+    items: [
+      'ヘビーガンナーの立ち絵を新しい5コマの往復アニメーションに差し替え(スカベンジャーと同じ滑らかな歩行)。',
+    ],
+  },
+  {
     version: '0.25.1404',
     items: [
       'スカベンジャーの立ち止まっている時の専用ポーズを追加。',

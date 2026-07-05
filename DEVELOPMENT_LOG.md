@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1405 — ヘビーガンナー立ち絵を5コマ+ピンポン歩行へ(社長提供・実装チャット)
+- ヘビーガンナー(warrior クラス→`player-shotgun-*`)の歩行を、社長提供の新イラスト(青髪・
+  ショットガン構え・**5コマ**横並び・透過黒背景1448×1086)へ差し替え。
+- 変換: 各コマの**銃(下右のマズル=右端)を基準**に右端x=106・足元y=107・均一スケール(最長コマ=高さ106px)
+  でLANCZOS縮小し`player-shotgun-walk-0..4.png`を保存(walk-3/4を新規追加)。重ね合わせで上半身+銃が
+  一致し脚だけ動く=横滑りなしを確認(長い髪は左へ自然になびく)。
+- 「スカベンジャーと同じ5コマピンポン」= necromancerと同じ扱いに統一: `usesFiveFramePingPong(p)`
+  ヘルパーを新設し、necromancer/warriorとも歩行シーケンス`[0,1,2,3,4,3,2,1]`・周期
+  `PINGPONG_WALK_CYCLE_MS=900`(旧NECRO_WALK_CYCLE_MSを改名・汎用化)。mage/rogueは従来`[0,1,2,1]`/460ms。
+- `pixiTextures.ts`の読込に`player-shotgun-walk-3/4`を追加。ヘビーガンナーの待機は従来どおりwalk-0
+  (専用待機絵は未提供)。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。dist出力にshotgun walk-0..4の5枚。
+- 自己点検: 憲法第4条・第5条に抵触なし(ヘビーガンナーの立ち絵+歩行アニメの変更のみ)。
+
 ## v0.25.1404 — スカベンジャーに待機立ち絵+歩行周期を延長(社長提供/指示・実装チャット)
 - **待機(非移動)専用の立ち絵を追加**: 社長提供イラスト(拳銃を構えた広い構え・紫背景JPEG)を
   色キー抜き(背景96,20,240・JPEG角ノイズは列/行の充填画素数閾値で除去)し、歩行コマと同じ整列
