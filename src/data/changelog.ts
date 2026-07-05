@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1435',
+    items: [
+      '爆発などの光で伸びる影の大きさを、以前(v1058の頃)のサイズに戻した。',
+    ],
+  },
+  {
     version: '0.25.1434',
     items: [
       '護衛の軍人(フェイザー)の立ち絵を新しいイラストに差し替え(3コマ往復)。',

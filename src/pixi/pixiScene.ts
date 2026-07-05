@@ -683,8 +683,9 @@ const LOCAL_EVENT_SHADE_ALPHA = 0.5;
 const LOCAL_EVENT_SHADOW_ALPHA = 0.96;
 const LOCAL_EVENT_MAX_CAST_SHADOWS = 22;
 const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
-// 投影影の大きさ倍率(長さ・幅・接地楕円をまとめて拡縮)。社長指示で2倍。視覚のみ・挙動不変。
-const LOCAL_EVENT_SHADOW_SIZE_MULT = 2;
+// 投影影の大きさ倍率(長さ・幅・接地楕円をまとめて拡縮)。v0.25.1077で社長指示により2倍にしたが、
+// v0.25.1435で「1058の頃の影に戻す」の一環として1倍(v1077以前の見た目)へ戻した(社長指示)。
+const LOCAL_EVENT_SHADOW_SIZE_MULT = 1;
 // スカジの氷刃テクスチャの刃先方向(実測: hilt→tip ≈ -62.8°)。発射方向 angle に合わせ rotation=angle-この値。
 const SKADI_BLADE_NATIVE_ANGLE = -62.8 * Math.PI / 180;
 // 木/壁/プロップへの常時足影(太陽/月の方向影)。負荷キャップ=プレイヤーに近い順この個数まで。
