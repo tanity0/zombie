@@ -344,10 +344,10 @@ const PLAYER_SHADOW_SCALE = 0.7;
 const ESCORT_SPRITE_BASE: (string | undefined)[] = [
   'npc/edgar', 'npc/joseph', 'npc/elizabeth', 'npc/musashi', 'npc/muhammad', 'npc/chen', 'npc/lauren', 'npc/phaser',
 ];
-// 歩行コマ間をクロスフェード補間する soldierIndex(社長指示: フェイザー=7 のみ滑らか化。
-// ピンポン[0,1,2,1]は必ず接地↔通過の隣接なので、混ざっても中間歩(足の半開き)として自然に見える)。
-// 残像が気になれば Set から外すだけで即戻せる。
-const ESCORT_CROSSFADE_SOLDIERS = new Set<number>([7]);
+// 歩行コマ間をクロスフェード補間する soldierIndex。かつてフェイザー=7を対象にしたが、ドット絵で
+// 残像(足が二重にボケる)が気になると社長判断(v0.25.1430)で解除=空に戻した。全員素の3コマピンポン。
+// 滑らかにしたい軍人が出たら、クロスフェードではなく5コマ素材を用意して差し替える方針。
+const ESCORT_CROSSFADE_SOLDIERS = new Set<number>([]);
 
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
 const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)

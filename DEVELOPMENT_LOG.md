@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1430 — フェイザーのクロスフェード解除(残像・社長判断)(実装チャット)
+- 社長「フェイザーの残像気になる」。v0.25.1427で入れた歩行コマ間クロスフェードが、ドット絵で足の
+  二重ボケ(残像)として出たため解除。`ESCORT_CROSSFADE_SOLDIERS` を空 `Set([])` に(設計どおりの即戻し)。
+  フェイザーは素の3コマピンポンに復帰。blend機構自体はコードに残す(空なので不作動・将来の再利用可)。
+- 今後、軍人を滑らかにしたい場合はクロスフェードでなく5コマ素材差し替えで対応する方針。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画のみ)。
+
 ## v0.25.1429 — マークスマンを新5コマ素材に差し替え(色味/大きさ/潰れズレの是正)(社長提供・実装チャット)
 - 社長報告: 6コマ化(別作業)したマークスマンで、キャラ選択の絵に色味・大きさ・潰れのズレが発生。
 - 診断(前ターン): char-selectサムネ(MissionSelect.tsx)は idle PNG を object-contain で50pxに収め足元基準で
