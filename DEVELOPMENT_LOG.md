@@ -10,6 +10,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1424 — トールの刀3点調整＋差し替え素材のキャッシュバスト(社長指示・実装チャット)
+### 素材キャッシュ修正(社長報告「チェンの動きがおかしい・素材古い」)
+- **原因**: `ASSET_VERSION`(`src/config/assetVersion.ts`)は「public/の既存素材を“同名で”差し替えた時だけ
+  手で上げる」規約。護衛の軍人8人・各クラス立ち絵を同名(-0/-1等)で差し替えてきたのに`'1'`のまま=
+  URL`?v=1`が不変で、ブラウザ/CDNが旧キャッシュを配信。新規`-2`だけ別名で新しく読まれ、-0/-1が旧絵の
+  ままになり歩行がちぐはぐ・「素材古い」症状(チェンで顕在化)。実は差し替えた全NPC/全クラスで同症状。
+- **修正**: `ASSET_VERSION` `'1'→'2'`。差し替えた全素材(edgar/joseph/elizabeth/lauren/muhammad/musashi/
+  chen/phaser＋player各クラス)が一括で新URL=再DLされる。今後も“同名差し替え”時はここを上げること。
+- 教訓: **同名で public 素材の内容を差し替えたら必ず ASSET_VERSION を上げる**(コミット漏れ防止)。
+### トールの刀 3点(社長指示・視覚のみ・判定不変)
+1. **突き**: 溜め(drawThorTsukiCharge)の引き量を控えめに(`TSUKI_DRAW_BACK_PX` 40→20)＋ease-in(`prog^2`)で
+   「少しだけゆっくり後ろに引く」。実行(tsuki 180ms)はそのまま一気に前へ。
+2. **横払い**: 溜め(harai-windup)から刀を「振り始めの位置」に構える新ヘルパ`drawThorKatanaReady`を追加。
+   柄=トールの手元(footX, footY-boxH*0.5)、刃先=薙ぎ始め点(fx,fy)。実行はこの構えからcontactをtx,tyへ動かす
+   =構え→振りが連続。
+3. **一閃**: dash(issen-dash)で`drawThorSlash`を`showKatana=true`＋pivot=始点(fx,fy)で呼び、移動しながら
+   構えていた刀も振る(居合斬り)。pivotとcontactが一致する初期フレームの角度暴れをangleフォールバックでガード。
+- 負荷スコア: **1/10**(rendering)。単体ボスのスプライト変換のみ。新規per-frame Graphics/フィルタ無し。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画・キャッシュのみ・シミュレーション不変)。
+
 ## v0.25.1423 — 軍人チェンを3コマ化(護衛の軍人 全員完了)(社長提供・実装チャット)
 - 社長提供の兵士イラスト(青髪・眼鏡・黒装備・ライフル・3コマ・透過1672×941)を、護衛NPC「チェン」
   (soldierIndex=5)の3コマ歩行へ差し替え。

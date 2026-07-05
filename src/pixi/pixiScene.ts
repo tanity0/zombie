@@ -553,7 +553,7 @@ const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ラ�
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
-const TSUKI_DRAW_BACK_PX = 40;          // 突き溜め: 手元を狙い線の後方へ引く量(弓引き・実機調整前提)
+const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
 const THOR_TSUKI_VIS_HALFWIDTH = 30;    // 突きの描画半太さ(当たり判定と同じ)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
@@ -5189,7 +5189,9 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const dashProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
-        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, dashProg, true);
+        // 社長指示: 移動しながら、構えてた刀も振る。柄を居合の抜き位置(dash始点 fx,fy)に置き、刃先が
+        // 斬る先(tx,ty)へ抜けていく=居合斬りの振り。showKatana=true + pivot=始点。
+        this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, dashProg, true, true, fx, fy);
       } else if (e.bossState === 'tsuki-windup') {
         // 突きの溜め(社長指示): 弓で矢を引いて放つ感覚。刀の先端を突く方向(プレイヤー)へ向け、
         // 溜めが進むほど手元を後方へ引く(=弓を引く)。実行(tsuki)で前方へ突き出す(=放つ)。
@@ -5218,6 +5220,9 @@ export class PixiScene {
           const pulse = 0.55 + 0.45 * Math.sin(now / 80);
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+          // 社長指示: 刀を振るモーションの「最初の位置」に最初から構えておく。柄=トールの手元、刃先=薙ぎ
+          // 始めの点(fx,fy)。実行(harai)はこの構えから contact を tx,ty へ動かして薙ぐ=構え→振りが連続。
+          this.drawThorKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
         } else {
           // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
@@ -7130,7 +7135,10 @@ export class PixiScene {
           // 判定ライン上の現在位置(fx,fy→tx,ty を tt で補間)へ向ける=斬撃アニメと同期して薙ぐ。
           const contactX = fx + (tx - fx) * tt;
           const contactY = fy + (ty - fy) * tt;
-          katana.rotation = Math.atan2(contactY - pivotY, contactX - pivotX) - THOR_KATANA_INTRINSIC_ANGLE;
+          // pivot と contact がほぼ一致する初期フレーム(一閃=pivotが始点)は角度が不定になるので、
+          // その時はライン方向(angle)へフォールバックして向きの暴れを防ぐ。
+          const pdx = contactX - pivotX, pdy = contactY - pivotY;
+          katana.rotation = (Math.hypot(pdx, pdy) < 1 ? angle : Math.atan2(pdy, pdx)) - THOR_KATANA_INTRINSIC_ANGLE;
           katana.position.set(pivotX, pivotY);
         } else {
           katana.rotation = angle - THOR_KATANA_INTRINSIC_ANGLE;
@@ -7173,8 +7181,10 @@ export class PixiScene {
     const d = Math.hypot(dx, dy) || 1;
     const ux = dx / d, uy = dy / d;           // 狙いの単位ベクトル(前=突く方向)
     const aimAngle = Math.atan2(dy, dx);
-    // 溜めで手元を後方(狙いと逆)へ引く(=弓を引く)。終盤は狙い線に直交して小刻みに震える。
-    const draw = TSUKI_DRAW_BACK_PX * prog;
+    // 溜めで手元を後方(狙いと逆)へ引く(=弓を引く)。社長指示「少しだけゆっくり後ろに引く」=
+    // 引き量を控えめ(TSUKI_DRAW_BACK_PX=20)にし、ease-in(prog^2)でゆっくり引いていく。終盤は
+    // 狙い線に直交して小刻みに震える。実行(tsuki)で一気に前へ突き出す。
+    const draw = TSUKI_DRAW_BACK_PX * prog * prog;
     const shake = prog > 0.6 ? Math.sin(now / 26) * 2.0 * ((prog - 0.6) / 0.4) : 0;
     katana.rotation = aimAngle - THOR_KATANA_INTRINSIC_ANGLE;   // 先端=突く方向
     katana.position.set(pivotX - ux * draw + (-uy) * shake, pivotY - uy * draw + ux * shake);
@@ -7217,6 +7227,37 @@ export class PixiScene {
     katana.position.set(hipX - ux * draw + (-uy) * tremor, hipY - uy * draw + ux * tremor);
     katana.tint = 0xffffff;
     katana.alpha = 0.5 + 0.5 * prog;
+    katana.visible = true;
+  }
+
+  // 横払いの構え(社長指示): 溜め(harai-windup)の間、刀を「振るモーションの最初の位置」に最初から構えて
+  // 置いておく。柄=トールの手元(pivot)、刃先=薙ぎ始めの点(aim=判定ライン始点 fx,fy)へ向ける。streak/burstは
+  // 出さない(溜め中は判定なし)。実行(harai)でこの位置から薙ぎ始める=構え→振りが連続する。
+  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+    let c = this.thorSlashFx.get(id);
+    if (!c) {
+      const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
+      const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
+      const katana = new Sprite(); katana.anchor.set(THOR_KATANA_GRIP_FRAC.x, THOR_KATANA_GRIP_FRAC.y);
+      c = new Container();
+      c.addChild(streak, burstSp, katana);
+      this.L.effectLayer.addChild(c);
+      this.thorSlashFx.set(id, c);
+    }
+    const streak = c.children[0] as Sprite;
+    const burstSp = c.children[1] as Sprite;
+    const katana = c.children[2] as Sprite;
+    const kref = getTexture('thor-katana');
+    if (!kref) { c.visible = false; return; }
+    c.visible = true;
+    streak.visible = false;
+    burstSp.visible = false;
+    const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
+    katana.scale.set(kscale);
+    katana.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) - THOR_KATANA_INTRINSIC_ANGLE;
+    katana.position.set(pivotX, pivotY);
+    katana.tint = 0xffffff;
+    katana.alpha = alpha;
     katana.visible = true;
   }
 

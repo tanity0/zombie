@@ -5,4 +5,6 @@
 // (社長報告の「都度ダウンロード」)。素材は滅多に変わらないので、ここで専用の固定バージョンを持ち、
 // **public/ の既存素材の“内容”を差し替えた時だけ**手で上げる。
 // (新規ファイルの追加は別URL=別名なので、ここを上げる必要はない。)
-export const ASSET_VERSION = '1';
+// v2: 護衛の軍人(edgar/joseph/elizabeth/lauren/muhammad/musashi/chen/phaser)と
+// プレイヤー各クラスの立ち絵を“同名で”差し替えたため、旧キャッシュ(?v=1)を無効化。
+export const ASSET_VERSION = '2';
