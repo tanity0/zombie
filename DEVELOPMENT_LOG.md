@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1426 — 実機相談の診断: 「リラックス→ピークの周期が早い」=リザルト集計の計測バグ(設計チャットFable)
+- 社長報告: リザルトに「PEAK 49回/RELAX 49回」(13:09ラン)→周期が早すぎるのでは、の相談。
+- 診断: 49回は**旧・反応型ディレクターのマクロ分類**(Intensityしきい値遷移・約15秒でパタパタ)の
+  集計で、パズル方式の実周期(コマ2:40サイクル・ピーク約5回/13分)と別物。マクロ分類は
+  表示専用(?directorApply無しでは湧きに影響なし)なので**リザルト行の計測バグ**。
+- 修正仕様をPACING_PUZZLE.md §5.8(M6追補3)に記載: パズルON時のBUILD/PEAK/RELAX行は
+  **コマ種別で集計**(緩2種=RELAX/通常=BUILD/ピーク=PEAK・ボス中はPEAK扱い叩き台)。
+  旧マクロ集計は?puzzle=0時とオーバーレイ用に残す。
+- 体感側の宿題: 集計修正後の実機で、それでも「周期が早い」と感じるなら案A(コマ長の非対称化:
+  緩60/急40)を再検討(チャットで提示済み・採否保留)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1425 — 軽量化施策1: エフェクトのper-frame Graphics全廃(社長承認・実装チャット)
 - 軽量化提案リスト(チャット v0.25.1424 時点)の施策1を実装。エフェクトの残り3種
   (particle/ring/trail)を per-frame Graphics(毎フレーム clear()+図形の再テッセレーション=
