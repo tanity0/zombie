@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1438',
+    items: [
+      'ヘビーガンナーの立ち絵・歩行を新しいイラストの5コマ+専用の立ち止まり絵に差し替え。',
+    ],
+  },
+  {
     version: '0.25.1437',
     items: [
       'ストライカーの立ち絵・歩行を新しいイラストの5コマに差し替え(2コマ目が立ち止まり/キャラ選択の絵)。',
