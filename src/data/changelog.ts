@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1415',
+    items: [
+      '護衛の軍人(ジョセフ)の歩行アニメーションを新しいイラストに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1413',
     items: [
       '隠しボス「トール」の一閃の溜めを、刀を腰に構えてゆっくりためる居合の動作に変更。',
