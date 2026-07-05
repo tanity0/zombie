@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1413 — トール一閃の溜め: 刀を腰に構える居合腰演出(社長指示・実装チャット)
+- 社長指示「一閃の溜めは、刀を腰に構える様にゆっくり溜める動作」。従来の一閃溜め(赤いダメージ
+  ゾーン+本体の赤点滅)に加えて、刀を腰だめで構える演出を追加。
+- `drawThorIaiCharge`メソッドを新設し、issen-windupブランチから呼び出し。刀の柄を腰
+  (fb.footX, fb.footY - fb.boxH*0.32)に置き、刃を**斬る方向と逆(後方)**へ向けた居合腰。
+  溜め(prog 0→1・3秒)でゆっくり後方へ引き(draw 6→20px)、終盤(prog>0.7)は斬る線に直交して
+  小刻みに震わせる。実行(issen-dash)で前方へ抜ける流れ。斬撃ストリークは出さない。
+  方向ライン予告(赤ゾーン)はゲーム上のテレグラフとして残置。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。純視覚のため実機で腰の高さ(boxH*0.32)・
+  引き量を要確認(すぐ調整可)。
+- 自己点検: 憲法第4条・第5条に抵触なし(トール一閃の溜め描画のみ・当たり判定/ゲームプレイ値は不変)。
+
 ## v0.25.1412 — 全4クラスに待機立ち絵+キャラ選択画面へ反映(社長提供・実装チャット)
 - 社長提供の待機イラストを4クラス分用意し、**歩いていない時の立ち絵**+**キャラ選択画面の絵**に採用。
   - マークスマン(mage)→`player-magnum-idle`(白背景) / ヘビーガンナー(warrior)→`player-shotgun-idle`(紫) /

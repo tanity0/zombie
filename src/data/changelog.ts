@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1413',
+    items: [
+      '隠しボス「トール」の一閃の溜めを、刀を腰に構えてゆっくりためる居合の動作に変更。',
+    ],
+  },
+  {
     version: '0.25.1412',
     items: [
       '全4クラスに立ち止まっている時の専用ポーズを追加。キャラ選択画面の絵もその立ち絵に変更。',

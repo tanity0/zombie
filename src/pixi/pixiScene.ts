@@ -5181,6 +5181,8 @@ export class PixiScene {
         ];
         o.poly(pts).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) + 0.08 * pulse });
         o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+        // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
+        this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
       } else if (e.bossState === 'issen-dash') {
         // 一閃(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
         view.sprite.tint = 0xffffff;
@@ -7160,6 +7162,43 @@ export class PixiScene {
     katana.position.set(pivotX - ux * draw + (-uy) * shake, pivotY - uy * draw + ux * shake);
     katana.tint = 0xffffff;
     katana.alpha = 0.55 + 0.45 * prog;
+    katana.visible = true;
+  }
+
+  // 一閃の溜め演出(社長指示): 刀を腰に構えて(居合腰)ゆっくり溜める。一閃の向き(dirX,dirY=斬る方向)
+  // に対し、刃を後方へ引いた腰だめの構え。溜め(prog 0→1・3秒)でゆっくり後方へ引き、終盤は小刻みに
+  // 震わせて張りつめる。実行(issen-dash)で前方へ抜ける=居合斬り。斬撃ストリークは出さない。
+  private drawThorIaiCharge(id: string, hipX: number, hipY: number, dirX: number, dirY: number, prog: number, now: number) {
+    let c = this.thorSlashFx.get(id);
+    if (!c) {
+      const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
+      const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
+      const katana = new Sprite(); katana.anchor.set(THOR_KATANA_GRIP_FRAC.x, THOR_KATANA_GRIP_FRAC.y);
+      c = new Container();
+      c.addChild(streak, burstSp, katana);
+      this.L.effectLayer.addChild(c);
+      this.thorSlashFx.set(id, c);
+    }
+    const streak = c.children[0] as Sprite;
+    const burstSp = c.children[1] as Sprite;
+    const katana = c.children[2] as Sprite;
+    const kref = getTexture('thor-katana');
+    if (!kref) { c.visible = false; return; }
+    c.visible = true;
+    streak.visible = false;
+    burstSp.visible = false;
+    const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
+    katana.scale.set(kscale);
+    const d = Math.hypot(dirX, dirY) || 1;
+    const ux = dirX / d, uy = dirY / d;                 // 斬る方向(前)
+    const backAngle = Math.atan2(-uy, -ux);             // 刃の向き=後方(居合の抜き前)
+    const draw = 6 + 14 * prog;                          // 溜めで腰の後ろへゆっくり引く
+    const tremor = prog > 0.7 ? Math.sin(now / 24) * 1.6 * ((prog - 0.7) / 0.3) : 0;
+    katana.rotation = backAngle - THOR_KATANA_INTRINSIC_ANGLE;
+    // 柄を腰(hip)に置き、溜めで斬る方向と逆へゆっくり引く。震えは斬る線に直交方向へ。
+    katana.position.set(hipX - ux * draw + (-uy) * tremor, hipY - uy * draw + ux * tremor);
+    katana.tint = 0xffffff;
+    katana.alpha = 0.5 + 0.5 * prog;
     katana.visible = true;
   }
 
