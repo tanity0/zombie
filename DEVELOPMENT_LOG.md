@@ -10,6 +10,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1414 — 再デプロイ用の空バンプ(機能変更なし・GitHub Pages障害対応)
+- v0.25.1413 のデプロイが GitHub Pages 側の `syncing_files` 障害で4回連続失敗したため、
+  同じrunの再実行ではなく**新規コミット=新規デプロイ**を起こすためのバージョンバンプのみ。
+  コード・アセットの機能的変更は無し(v0.25.1413 と内容同一)。
+
 ## v0.25.1413 — トール一閃の溜め: 刀を腰に構える居合腰演出(社長指示・実装チャット)
 - 社長指示「一閃の溜めは、刀を腰に構える様にゆっくり溜める動作」。従来の一閃溜め(赤いダメージ
   ゾーン+本体の赤点滅)に加えて、刀を腰だめで構える演出を追加。
