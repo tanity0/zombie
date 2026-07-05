@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1419 — 軍人ムハンマドを3コマ化(社長提供・実装チャット)
+- 社長提供の兵士イラスト(黒髪・緑装備・ライフル・3コマ・透過1915×724)を、護衛NPC「ムハンマド」
+  (soldierIndex=4・社長の呼称「5の軍人」)の3コマ歩行へ差し替え。
+- 通過コマの位置に注意: この画像は**f0が通過(足幅111)**・f1/f2が接地。ピンポン`[0,1,2,1]`の中央を
+  通過にするため **-0=f1(接地A)/-1=f0(通過)/-2=f2(接地B)** の順で配置。共通キャンバス342×443・
+  足元そろえ・中央。`npc/muhammad-0/1/2.png`保存(-2新規)、`pixiTextures.ts`に-2追加。
+- 「全員3アニメのピンポン」= drawEscortsは-2ありNPCを`[0,1,2,1]`ピンポン(v0.25.1418実装済み)。
+  3コマ化した5人(edgar/joseph/elizabeth/lauren/muhammad)は全員ピンポン。残る2コマ(musashi/chen/
+  phaser)は素材提供後に3コマ化予定。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛NPCの立ち絵差し替えのみ)。
+
 ## v0.25.1418 — 差し替えた軍人4人を3コマ歩行アニメへ+エリザベス差し替え(社長指示・実装チャット)
 - 社長指示「入れ替えた軍人は3コマアニメ」。これまで2接地(f0/f2)の2コマにしていたが、真ん中の
   通過コマ(f1)も入れて3コマ化。対象=エドガー/ジョセフ/エリザベス/ローレン。

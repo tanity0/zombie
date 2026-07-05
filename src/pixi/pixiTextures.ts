@@ -241,6 +241,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/phaser-1', scaleMode: 'nearest' },
       { name: 'npc/muhammad-0', scaleMode: 'nearest' },
       { name: 'npc/muhammad-1', scaleMode: 'nearest' },
+      { name: 'npc/muhammad-2', scaleMode: 'nearest' },  // 3コマ歩行(社長提供)
 
       // ステージ別(廃都/雪原)の散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
       ...Object.values(STAGE_PROPS).flat().map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
