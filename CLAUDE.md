@@ -84,8 +84,13 @@ work by what kind of effect-draw it adds and how many are alive at once.
     drawn as **pooled additive sprites** (`drawStrongGlowSprite`: color halo +
     white core from the shared `getGlowTexture`), same as small glow. The
     `drawEffectGfx` glow case is retired (no glow reaches per-frame `Graphics`).
-  - **ring / particle / slash (`FX-R/P/S`) = per-frame `Graphics`** (each its own
-    object, cleared + several shapes/frame). CAUTION single, FAIL stacked.
+  - **ring / particle / slash (`FX-R/P/S`) — FIXED (v0.25.1425)**: were per-frame
+    `Graphics` (each its own object, cleared + several shapes/frame → CAUTION
+    single, FAIL stacked). Now ALL pooled sprites: particle=shared circle tex ×3
+    (halo/body/core), ring=staged-radius baked annulus ×2 (`getRingTexture`),
+    trail=stretched white tex, slash/whip/firejet were already sprites. No
+    effect kind reaches per-frame `Graphics` anymore (drawEffectGfx retired).
+    Re-run the on-device benchmark to confirm the new `P64`/`R8`/`F1`/`A1` lines.
   - **image marks (`IMG`, e.g. `zan`)** = one large (~130px) alpha sprite →
     fill-rate / overdraw bound, not filter. `I4` FAILs (avg ~30). Cap count,
     shrink size, shorten lifetime.

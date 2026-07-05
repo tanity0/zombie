@@ -10,6 +10,28 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1425 — 軽量化施策1: エフェクトのper-frame Graphics全廃(社長承認・実装チャット)
+- 軽量化提案リスト(チャット v0.25.1424 時点)の施策1を実装。エフェクトの残り3種
+  (particle/ring/trail)を per-frame Graphics(毎フレーム clear()+図形の再テッセレーション=
+  ベンチ FX-P(P64)/FX-R(R8) FAIL の主因)からプールsprite化した。slash/whip/firejet/glow/
+  damageNumber は既にsprite/bitmap化済みだったため、これで **VisualEffect の全kindが
+  per-frame Graphics 不使用**になり、旧 drawEffectGfx は撤去。
+- 実装(見た目は旧図形と同形状=仕様不変):
+  - **particle**: 共有の白円盤テクスチャ(`getCircleTexture`・lighting.ts追加)3枚
+    (halo/本体/芯)。円fillと同形状。火花=加算(halo r×2.6 α0.22/本体 r/白芯 0.5r α0.75)、
+    液体=通常合成(暗楕円+本体+ハイライト)。形・色は生成時に一度だけ設定し、毎フレームは
+    位置と全体フェードのみ。
+  - **ring**: 段階ベース半径 [16,32,64,128,256] で焼いた白アニュラス(`getRingTexture`=柔帯+主線、
+    `getRingCoreTexture`=白熱芯)2枚を scale。終端半径に最も近いベースを選び太さのひずみ±√2以内。
+    基準線幅=4px(スポーンの主流値2〜4に整合)。※width per-effect の厳密再現は落ちる(近似)。
+  - **trail**: Texture.WHITE 1枚を線分として回転・伸縮(旧: 直線stroke)。groundLayer 配置は旧同。
+  - 色文字列(rgba)のαは `cssAlpha` で抽出して sprite.alpha に乗算(旧fill/strokeの挙動を踏襲)。
+- CLAUDE.md のベンチ表を更新(FX-R/P/S=FIXED、ベンチ再実行が宿題)。
+- 負荷スコア: **改善そのもの**(rendering)。エフェクト毎の毎フレーム再テッセレーション→
+  tint/scale/alpha 更新のみ。テクスチャは共有・遅延生成(リング5段×2枚+円盤1枚が上限)。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。実機ベンチ(FX/ALL系)の再実行を推奨。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画方式のみ・シミュレーション/判定/演出意図は不変)。
+
 ## v0.25.1424 — トールの刀3点調整＋差し替え素材のキャッシュバスト(社長指示・実装チャット)
 ### 素材キャッシュ修正(社長報告「チェンの動きがおかしい・素材古い」)
 - **原因**: `ASSET_VERSION`(`src/config/assetVersion.ts`)は「public/の既存素材を“同名で”差し替えた時だけ

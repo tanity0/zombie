@@ -31,6 +31,82 @@ export const getGlowTexture = (): Texture => {
   return glowTex;
 };
 
+// 施策1(効果のper-frame Graphics廃止)用の共有テクスチャ群。particle/ring/trail を
+// プールsprite化するための白素材。tint/scale/alpha で色・大きさ・フェードを表す。
+
+// 白いハードエッジの円盤。Graphics の circle().fill() と同形状なので、これを tint+scale
+// した sprite は旧・毎フレーム円fillと見た目が一致する(パーティクルの halo/本体/芯に使う)。
+let circleTex: Texture | null = null;
+export const getCircleTexture = (): Texture => {
+  if (circleTex) return circleTex;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+  ctx.fill();
+  circleTex = Texture.from(canvas);
+  return circleTex;
+};
+
+// リング(円周ストローク)用の白アニュラス。段階ベース半径ごとに1回だけ焼き、実行時は
+// 終端半径に最も近いベースを選んで scale する(線の太さのひずみを ±√2 以内に抑える)。
+// プロファイルは旧Graphicsの3重ストロークのうち色側2本(柔帯 width+4/α0.3+主線 width/α1.0、
+// 基準線幅=4px)を1枚に合成。白い熱芯は getRingCoreTexture(別枚)で重ねる(tintで色が乗らないように)。
+export const RING_TEX_BASES = [16, 32, 64, 128, 256];
+const RING_TEX_PAD = 14;
+const ringTexCache = new Map<number, Texture>();
+export const getRingTexture = (base: number): Texture => {
+  const hit = ringTexCache.get(base);
+  if (hit) return hit;
+  const half = base + RING_TEX_PAD;
+  const size = half * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(half, half, 0, half, half, half);
+  const stop = (r: number) => Math.max(0, Math.min(1, r / half));
+  g.addColorStop(stop(base - 6), 'rgba(255,255,255,0)');
+  g.addColorStop(stop(base - 3), 'rgba(255,255,255,0.3)');
+  g.addColorStop(stop(base - 2), 'rgba(255,255,255,1)');
+  g.addColorStop(stop(base + 2), 'rgba(255,255,255,1)');
+  g.addColorStop(stop(base + 3), 'rgba(255,255,255,0.3)');
+  g.addColorStop(stop(base + 6), 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = Texture.from(canvas);
+  ringTexCache.set(base, tex);
+  return tex;
+};
+
+// リングの白い熱芯(旧: width*0.4 の白ストローク)。色リングと同ベース半径・同scaleで重ねる。
+const ringCoreTexCache = new Map<number, Texture>();
+export const getRingCoreTexture = (base: number): Texture => {
+  const hit = ringCoreTexCache.get(base);
+  if (hit) return hit;
+  const half = base + RING_TEX_PAD;
+  const size = half * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(half, half, 0, half, half, half);
+  const stop = (r: number) => Math.max(0, Math.min(1, r / half));
+  g.addColorStop(stop(base - 2), 'rgba(255,255,255,0)');
+  g.addColorStop(stop(base - 1), 'rgba(255,255,255,1)');
+  g.addColorStop(stop(base + 1), 'rgba(255,255,255,1)');
+  g.addColorStop(stop(base + 2), 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = Texture.from(canvas);
+  ringCoreTexCache.set(base, tex);
+  return tex;
+};
+
 // Green insect egg (mine): baked ONCE into a canvas and drawn as a pooled
 // normal-blend sprite, replacing the old per-frame `Graphics` egg (clear() +
 // ~12 ellipse fills every frame). Upright mossy-green egg with an upper-left

@@ -35,7 +35,7 @@ import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture } from './lighting';
+import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -6798,21 +6798,15 @@ export class PixiScene {
         this.drawFireJetSprite(e, now);
       } else if (e.kind === 'slash') {
         this.drawSlashSprite(e, now);
-      } else {
-        let g = this.effects.get(e.id);
-        // 'glow' is handled above as a pooled sprite and never reaches this
-        // Graphics path, so only 'trail' targets the ground layer here.
-        const targetLayer = e.kind === 'trail'
-          ? this.L.groundLayer
-          : this.L.effectLayer;
-        if (!(g instanceof Graphics)) {
-          if (g) g.destroy();
-          g = new Graphics();
-          this.effects.set(e.id, g);
-        }
-        if (g.parent !== targetLayer) targetLayer.addChild(g);
-        this.drawEffectGfx(g as Graphics, e, now);
+      } else if (e.kind === 'particle') {
+        this.drawParticleSprite(e, now);
+      } else if (e.kind === 'ring') {
+        this.drawRingSprite(e, now);
+      } else if (e.kind === 'trail') {
+        this.drawTrailSprite(e, now);
       }
+      // 施策1: 全kindがプールsprite化され、per-frame Graphics(clear()+再テッセレーション)の
+      // フォールバック経路は撤去した(旧 drawEffectGfx)。ベンチのFX-R/P FAIL筋の解消。
     }
     for (const [id, obj] of this.effects) {
       if (!seen.has(id)) {
@@ -6822,79 +6816,117 @@ export class PixiScene {
     }
   }
 
-  private drawEffectGfx(g: Graphics, e: VisualEffect, now: number) {
-    g.visible = true;
-    g.clear();
+  // ---- 施策1: particle/ring/trail のプールsprite描画(旧 drawEffectGfx=per-frame Graphics を全廃) ----
+  // 旧経路はエフェクト1個につき毎フレーム clear()+複数図形の再テッセレーションで、ベンチの
+  // FX-P(P64)/FX-R(R8) FAIL の主因だった。以下は共有テクスチャの tint/scale/alpha 更新のみ=敵スプライト並みに安い。
+  // 見た目は旧Graphicsの図形(円fill/円周stroke/直線stroke)を同形状のテクスチャで再現する(仕様不変)。
+
+  // rgba文字列のアルファ成分(旧Graphicsは色文字列のαもfill/strokeに反映していたため、spriteでも掛ける)。
+  private cssAlpha(color: string): number {
+    const m = color.match(/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)/);
+    return m ? Math.max(0, Math.min(1, Number(m[1]))) : 1;
+  }
+
+  // particle: 共有円盤テクスチャ3枚(halo/本体/芯)。形・色・相対αは生成時に一度だけ設定し、
+  // 毎フレームは位置と全体フェードのみ更新(旧: 毎フレーム円fill×3の再テッセレーション)。
+  private drawParticleSprite(e: Extract<VisualEffect, { kind: 'particle' }>, now: number) {
     const t = Math.min(1, (now - e.createdAt) / e.duration);
-    switch (e.kind) {
-      case 'particle': {
-        if (e.liquid) {
-          g.blendMode = 'normal';
-          g.alpha = Math.max(0, 1 - t * 0.88);
-          const r = e.size;
-          g.ellipse(e.x, e.y, r * 1.45, r * 0.95).fill({ color: 0x052e16, alpha: 0.46 });
-          g.circle(e.x, e.y, r).fill({ color: e.color, alpha: 0.92 });
-          g.circle(e.x - r * 0.28, e.y - r * 0.22, r * 0.34).fill({ color: 0xd9f99d, alpha: 0.28 });
-          break;
-        }
-        // Glowing additive spark: soft halo + colored body + hot white core.
-        g.blendMode = 'add';
-        g.alpha = Math.max(0, 1 - t);
-        const r = e.size;
-        g.circle(e.x, e.y, r * 2.6).fill({ color: e.color, alpha: 0.22 });
-        g.circle(e.x, e.y, r).fill({ color: e.color });
-        g.circle(e.x, e.y, r * 0.5).fill({ color: 0xffffff, alpha: 0.75 });
-        break;
+    let view = this.effects.get(e.id);
+    if (!(view instanceof Container) || !(view as { __particleFx?: boolean }).__particleFx) {
+      if (view) view.destroy({ children: true });
+      const c = new Container();
+      (c as { __particleFx?: boolean }).__particleFx = true;
+      const tex = getCircleTexture();
+      const halo = new Sprite(tex); halo.anchor.set(0.5);
+      const body = new Sprite(tex); body.anchor.set(0.5);
+      const core = new Sprite(tex); core.anchor.set(0.5);
+      const r = e.size;
+      if (e.liquid) {
+        // 液体: 通常合成。下敷きの暗い楕円+本体+左上ハイライト(旧と同配色・同形状)。
+        halo.blendMode = 'normal'; halo.tint = 0x052e16; halo.alpha = 0.46;
+        halo.width = r * 1.45 * 2; halo.height = r * 0.95 * 2;
+        body.blendMode = 'normal'; body.tint = this.glowTint(e.color); body.alpha = 0.92 * this.cssAlpha(e.color);
+        body.width = body.height = r * 2;
+        core.blendMode = 'normal'; core.tint = 0xd9f99d; core.alpha = 0.28;
+        core.width = core.height = r * 0.34 * 2;
+        core.position.set(-r * 0.28, -r * 0.22);
+      } else {
+        // 加算の火花: 柔halo+色本体+白い熱芯(旧と同半径・同α)。
+        halo.blendMode = 'add'; halo.tint = this.glowTint(e.color); halo.alpha = 0.22;
+        halo.width = halo.height = r * 2.6 * 2;
+        body.blendMode = 'add'; body.tint = this.glowTint(e.color); body.alpha = this.cssAlpha(e.color);
+        body.width = body.height = r * 2;
+        core.blendMode = 'add'; core.tint = 0xffffff; core.alpha = 0.75;
+        core.width = core.height = r; // 半径 0.5r
       }
-      case 'ring': {
-        // Additive shockwave: soft wide band + crisp edge + hot inner line.
-        g.blendMode = 'add';
-        g.alpha = 1 - t;
-        const radius = e.startRadius + (e.endRadius - e.startRadius) * t;
-        g.circle(e.x, e.y, radius).stroke({ width: e.width + 4, color: e.color, alpha: 0.3 });
-        g.circle(e.x, e.y, radius).stroke({ width: e.width, color: e.color });
-        g.circle(e.x, e.y, radius).stroke({ width: Math.max(1, e.width * 0.4), color: 0xffffff, alpha: 0.5 * (1 - t) });
-        break;
-      }
-      // 'glow' は drawSmallGlowSprite / drawStrongGlowSprite(プールsprite)で描画するため
-      // ここ(毎フレ Graphics)には到達しない。重い再テッセレーションを避けるため case は持たない。
-      case 'slash': {
-        // Additive streak: soft wide underlay + hot white core line.
-        g.blendMode = 'add';
-        g.alpha = 1 - t;
-        const half = e.length / 2;
-        const grow = 1 + t * 0.4;
-        const dx = Math.cos(e.angle) * half * grow;
-        const dy = Math.sin(e.angle) * half * grow;
-        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 12 * (1 - t) + 3, color: e.color, alpha: 0.4, cap: 'round' }); // 斬撃を太く(社長指示。旧 8/+2)
-        g.moveTo(e.x - dx, e.y - dy).lineTo(e.x + dx, e.y + dy)
-          .stroke({ width: 5 * (1 - t) + 1.5, color: 0xffffff, alpha: 0.85, cap: 'round' }); // 芯も太く(旧 3/+1)
-        break;
-      }
-      case 'trail': {
-        g.blendMode = 'add';
-        g.alpha = 1 - t;
-        const cx = e.fromX + (e.toX - e.fromX) * t;
-        const cy = e.fromY + (e.toY - e.fromY) * t;
-        g.moveTo(e.fromX, e.fromY).lineTo(cx, cy).stroke({ width: 2.5, color: e.color });
-        break;
-      }
-      case 'whip': {
-        // 全長を即表示してフェード(伸びない)。当たり範囲=太い半透明の帯(丸キャップ=
-        // カプセル)+ 明るい芯 + 白い細芯で視認性を上げる。
-        g.blendMode = 'add';
-        g.alpha = 1;
-        const a = 1 - t;
-        g.moveTo(e.fromX, e.fromY).lineTo(e.toX, e.toY)
-          .stroke({ width: e.halfWidth * 2, color: e.color, alpha: 0.22 * a, cap: 'round' });
-        g.moveTo(e.fromX, e.fromY).lineTo(e.toX, e.toY)
-          .stroke({ width: 6, color: e.color, alpha: 0.9 * a, cap: 'round' });
-        g.moveTo(e.fromX, e.fromY).lineTo(e.toX, e.toY)
-          .stroke({ width: 2, color: 0xffffff, alpha: 0.85 * a, cap: 'round' });
-        break;
-      }
+      c.addChild(halo, body, core);
+      this.L.effectLayer.addChild(c);
+      this.effects.set(e.id, c);
+      view = c;
     }
+    view.visible = true;
+    view.position.set(e.x, e.y);
+    view.alpha = e.liquid ? Math.max(0, 1 - t * 0.88) : Math.max(0, 1 - t);
+  }
+
+  // ring: 段階ベース半径で焼いた白アニュラス(色リング+白熱芯の2枚)を scale で拡げる。
+  // 終端半径に最も近いベースを選び、太さのひずみを±√2以内に抑える(旧: 毎フレーム円周stroke×3)。
+  private drawRingSprite(e: Extract<VisualEffect, { kind: 'ring' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let view = this.effects.get(e.id);
+    if (!(view instanceof Container) || !(view as { __ringFx?: boolean }).__ringFx) {
+      if (view) view.destroy({ children: true });
+      const c = new Container();
+      (c as { __ringFx?: boolean; __ringBase?: number }).__ringFx = true;
+      let base = RING_TEX_BASES[RING_TEX_BASES.length - 1];
+      for (const b of RING_TEX_BASES) { if (e.endRadius <= b * 1.42) { base = b; break; } }
+      (c as { __ringBase?: number }).__ringBase = base;
+      const ringSp = new Sprite(getRingTexture(base)); ringSp.anchor.set(0.5); ringSp.blendMode = 'add';
+      ringSp.tint = this.glowTint(e.color);
+      const coreSp = new Sprite(getRingCoreTexture(base)); coreSp.anchor.set(0.5); coreSp.blendMode = 'add';
+      c.addChild(ringSp, coreSp);
+      this.L.effectLayer.addChild(c);
+      this.effects.set(e.id, c);
+      view = c;
+    }
+    const c = view as Container;
+    const base = (c as { __ringBase?: number }).__ringBase ?? 64;
+    const ringSp = c.children[0] as Sprite;
+    const coreSp = c.children[1] as Sprite;
+    const radius = e.startRadius + (e.endRadius - e.startRadius) * t;
+    const s = radius / base;
+    c.visible = true;
+    c.position.set(e.x, e.y);
+    c.alpha = 1 - t;
+    ringSp.scale.set(s);
+    ringSp.alpha = this.cssAlpha(e.color);
+    coreSp.scale.set(s);
+    coreSp.alpha = 0.5 * (1 - t); // 旧: 白芯は全体フェードと二重で減衰
+  }
+
+  // trail: 白テクスチャ1枚を線分として伸縮(旧: 毎フレーム直線stroke)。groundLayer は旧経路と同じ。
+  private drawTrailSprite(e: Extract<VisualEffect, { kind: 'trail' }>, now: number) {
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite) || !(sprite as { __trailFx?: boolean }).__trailFx) {
+      if (sprite) sprite.destroy();
+      const sp = new Sprite(Texture.WHITE);
+      (sp as { __trailFx?: boolean }).__trailFx = true;
+      sp.anchor.set(0, 0.5);
+      sp.blendMode = 'add';
+      this.L.groundLayer.addChild(sp);
+      this.effects.set(e.id, sp);
+      sprite = sp;
+    }
+    const sp = sprite as Sprite;
+    const dx = e.toX - e.fromX, dy = e.toY - e.fromY;
+    const len = Math.hypot(dx, dy) * t;
+    sp.position.set(e.fromX, e.fromY);
+    sp.rotation = Math.atan2(dy, dx);
+    sp.scale.set(len / Math.max(1, sp.texture.width), 2.5 / Math.max(1, sp.texture.height));
+    sp.tint = this.glowTint(e.color);
+    sp.alpha = (1 - t) * this.cssAlpha(e.color);
+    sp.visible = len > 0.5;
   }
 
   private glowTint(color: string) {

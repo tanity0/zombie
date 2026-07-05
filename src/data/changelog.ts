@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1425',
+    items: [
+      '軽量化(第1弾): 火花・衝撃波の輪・弾道の光の描き方を全面的に軽い方式へ変更。見た目は同じまま、エフェクトが重なる場面のカクつきを軽減。',
+    ],
+  },
+  {
     version: '0.25.1424',
     items: [
       '差し替えた立ち絵(護衛の軍人・各クラス)が古いまま表示され、歩行がちぐはぐになる不具合を修正(素材キャッシュを更新)。',
