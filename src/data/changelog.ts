@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1406',
+    items: [
+      '隠しボス「トール」の横払いを、トールを軸に刀を振る動きに変更(斬撃と連動)。',
+    ],
+  },
+  {
     version: '0.25.1405',
     items: [
       'ヘビーガンナーの立ち絵を新しい5コマの往復アニメーションに差し替え(スカベンジャーと同じ滑らかな歩行)。',

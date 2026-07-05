@@ -5190,8 +5190,9 @@ export class PixiScene {
         } else {
           // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
-          // 社長指示: 横払いは刀を追加表示して攻撃をわかりやすくする。
-          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true);
+          // 社長指示: 横払いは「トールを軸に刀を振る」動きにして斬撃アニメと合わせる。柄の軸=トールの
+          // 手元(足元から胸の高さ)。刃先が判定ライン上を薙いでいく。
+          this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
         }
       } else if (e.bossState === 'jump-windup' || e.bossState === 'jump-attack') {
         // ジャンプ攻撃の着地予告(pumpkin系と同じ意匠の赤い楕円)。
@@ -7023,7 +7024,7 @@ export class PixiScene {
   // 合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを斬撃ピクセルで当たり判定どおりにモーション)。
   // t: 0(このステートの開始)→1(終了)の進行度。0-0.5でstreakが伸びる(溜め=予告)、0.5-1で縮む(実行=フェード)。
   // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
-  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false) {
+  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
     let c = this.thorSlashFx.get(id);
     if (!c) {
       const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
@@ -7075,8 +7076,17 @@ export class PixiScene {
         if (katana.texture !== kref) katana.texture = kref;
         const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
         katana.scale.set(kscale);
-        katana.rotation = angle - THOR_KATANA_INTRINSIC_ANGLE;
-        katana.position.set(fx, fy);
+        if (pivotX !== undefined && pivotY !== undefined) {
+          // 社長指示: 横払いは「トールを軸に刀を振る」。柄をトールの手元(pivot)へ固定し、刃先を
+          // 判定ライン上の現在位置(fx,fy→tx,ty を tt で補間)へ向ける=斬撃アニメと同期して薙ぐ。
+          const contactX = fx + (tx - fx) * tt;
+          const contactY = fy + (ty - fy) * tt;
+          katana.rotation = Math.atan2(contactY - pivotY, contactX - pivotX) - THOR_KATANA_INTRINSIC_ANGLE;
+          katana.position.set(pivotX, pivotY);
+        } else {
+          katana.rotation = angle - THOR_KATANA_INTRINSIC_ANGLE;
+          katana.position.set(fx, fy);
+        }
         katana.alpha = streak.alpha;
         katana.visible = katana.alpha > 0.01;
       } else katana.visible = false;

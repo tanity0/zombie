@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1406 — トール横払い: 刀をトール軸に振る演出へ(社長指示・実装チャット)
+- 社長指摘「トールの刀の表示がおかしい/横払いはトールを中心に刀を振り、斬撃アニメと合わせて」に対応。
+- 旧: 横払い(harai)実行時、刀の柄を判定ライン端(fx,fy=プレイヤー付近)に置いて向けるだけ=トールから
+  離れて置かれ不自然だった。
+- 新: `drawThorSlash`にpivot(pivotX/pivotY)引数を追加。横払いでは柄を**トールの手元
+  (fb.footX, fb.footY - fb.boxH*0.5=胸の高さ)**へ固定し、刃先を判定ライン上の現在位置
+  (fx,fy→tx,ty を進行度ttで補間)へ向ける=**トールを軸に薙ぐ**。既存の斬撃ストリーク(streak)と
+  同じttで動くので斬撃アニメと同期する。pivot未指定時は従来挙動(他の呼び出しに影響なし)。
+- 突き(tsuki)の刀・溜め演出(矢引き→突き)は今回未対応(次段)。刀画像は現行`thor-katana.png`
+  (手元位置に調整済み)を継続使用。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。**純視覚演出のため実機で振りの弧・
+  手元の高さ(boxH*0.5)を要確認**(数値はすぐ調整可)。
+- 自己点検: 憲法第4条・第5条に抵触なし(トール専用の攻撃演出の描画のみ・当たり判定/ゲームプレイ値は不変)。
+
 ## v0.25.1405 — ヘビーガンナー立ち絵を5コマ+ピンポン歩行へ(社長提供・実装チャット)
 - ヘビーガンナー(warrior クラス→`player-shotgun-*`)の歩行を、社長提供の新イラスト(青髪・
   ショットガン構え・**5コマ**横並び・透過黒背景1448×1086)へ差し替え。
