@@ -413,7 +413,7 @@ const DEBT_ENABLED = evParam('debt') !== '0';
 const PROGRAM_ENABLED = evParam('program') !== '0';
 const STRUGGLE_KILL_MAX = 2; // 直前関所でのfeatured型キル数がこれ未満なら「苦戦気味」=回収の対象
 // v0.25.1343: 「出現したのにキルが少ない」時だけ苦戦とみなす(これ未満の出現数なら対象外)。
-// 初心者ゾーンではfeatured問題児がゾーン天井でそもそも出現しない=キル0だが苦戦ではない。
+// 旧経路では初心者ゾーンでfeatured問題児がゾーン天井により出現しない=キル0だが苦戦ではない。
 const STRUGGLE_MIN_SPAWNS = 3;
 // PACING_REDESIGN.mdバッチ5: 山(関所)の台本選択。?gateprogram=0で従来の固定シーン
 // (PHASESのscene/maxRung)に戻す。
@@ -669,8 +669,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
   // 変異者大量発生(horde): 段階スポーン進捗。1秒に1体ずつ計total体(1/3体目=パンプキン/2/3・最終体目=ウルフ)。
   // totalは既定ARENA_HORDE_COUNT(18)だが、バッチ5追補のイベント関所発火時はeventSizeMultで可変。
-  // PACING_V2.mdバッチR4-C: shallowはイベント開始時点でプレイヤーが初心者ゾーン(エリア0-1)に
-  // いたか(=問題児の新規投入を禁止し、雑魚のみの小囲いへ差し替える)。
+  // ?v2=0旧経路: shallowはイベント開始時点でプレイヤーが初心者ゾーン(エリア0-1)に
+  // いたか(=問題児の新規投入を禁止し、雑魚のみの小囲いへ差し替える)。26系では使わない。
   const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT, shallow: false });
   // バッチ5追補: 関所頭で発火予約されたイベント関所(gate-assault/gate-boss-spike)の発火待ち状態。
   // gateProgramRef選定側(下方)がセットし、囲い系イベントの毎フレームチェック(上方)が消化する。
@@ -1473,10 +1473,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (arenaReady) {
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
-              // PACING_V2.mdバッチR4-C(浅いエリアの代替表現「襲撃/スパイク: 雑魚のみの小囲い」):
-              // イベント開始時点で初心者ゾーン(エリア0-1)にいれば、囲い/ミニボスの問題児injection
-              // (パンプキン/ウルフ)を止め、雑魚のみへ差し替える(憲法第4条: 初心者ゾーンに問題児を出さない)。
-              const eventShallow = areaZoneIndexFor(Math.hypot(pcx, pcy)) <= 1;
+              // PACING_V2.md v0.26.17: 26系では敵エリア制約を外すため、浅いエリアでもイベント本来の
+              // パンプキン/ウルフを止めない。?v2=0の旧復帰経路だけ、従来の雑魚版差し替えを残す。
+              const eventShallow = !V2_ENABLED && areaZoneIndexFor(Math.hypot(pcx, pcy)) <= 1;
               let hordeSizeMult = 1;
               let kind: 'horde' | 'boss' | 'rescue' | 'egg';
               if (gateEventReady && pendingGE) {
@@ -1544,14 +1543,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (kind === 'horde') {
                 // 段階スポーン(社長指示): 一斉ではなく「1体ずつ」計N体を per-frame で配置。
                 // 配置/種類(1/3体目=パンプキン/2/3・最終体目=ウルフ)は下の horde 更新ブロックが処理する
-                // (R4-C: eventShallowなら下のブロックがパンプキン/ウルフの代入を雑魚へ差し替える)。
+                // (?v2=0旧経路でeventShallowなら、下のブロックがパンプキン/ウルフの代入を雑魚へ差し替える)。
                 // バッチ5追補: イベント関所発火時はeventSizeMultで基本18体を±(cap20厳守/床14)。
                 const hordeTotal = Math.max(14, Math.min(20, Math.round(ARENA_HORDE_COUNT * hordeSizeMult)));
                 hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: hordeTotal, shallow: eventShallow };
               } else if (eventShallow) {
-                // PACING_V2.mdバッチR4-C(スパイク台本の代替表現「雑魚ホード小・イベント形のみ再現」):
-                // 初心者ゾーンではミニボス(パンプキン)を出さず、同じ発生演出(リング/フラッシュ/シェイク)の
-                // まま雑魚のみの小さな囲いに差し替える。
+                // ?v2=0旧経路の雑魚版差し替え: 初心者ゾーンではミニボス(パンプキン)を出さず、同じ発生演出
+                // (リング/フラッシュ/シェイク)のまま雑魚のみの小さな囲いに差し替える。
                 const basics: EnemyType[] = ['zombie', 'skeleton', 'bat'];
                 for (let i = 0; i < ARENA_BOSS_ADDS; i++) {
                   const pos = placeInRing(0.5);
@@ -1628,8 +1626,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const lpx = player.x + player.width / 2, lpy = player.y + player.height / 2;
               for (let k = 0; k < 1 && hordeSpawnRef.current.spawned < hordeTotalNow; k++) {
                 const n = hordeSpawnRef.current.spawned + 1; // この個体の通し番号(1..total)
-                // PACING_V2.mdバッチR4-C: 初心者ゾーンで開始したイベントはパンプキン/ウルフの代入を
-                // せず雑魚のみにする(「既存hordeの雑魚版」=憲法第4条を直接spawnEnemyAt経路でも守る)。
+                // ?v2=0旧経路: 初心者ゾーンで開始したイベントはパンプキン/ウルフの代入をせず雑魚のみにする。
                 const type: EnemyType = hordeSpawnRef.current.shallow
                   ? basics[Math.floor(Math.random() * basics.length)]
                   : n === pumpkinAtN ? 'pumpkin' : (n === wolfAtN || n === hordeTotalNow) ? 'werewolf' : basics[Math.floor(Math.random() * basics.length)];
@@ -6048,10 +6045,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               });
           gateProgramRef.current = { phaseKey: rankPhaseKey, program, lastId: program.id };
           // PACING_V2.mdバッチR4-C(v0.26.6定量化): 発動条件はコマ開始時点で1回だけ判定して固定する
-          // (コマ途中のゾーン移動では切り替えない)。初心者ゾーン(エリア0-1)かつ台本にshallowExpression
-          // があれば有効化し、スケジュールをここで解決する(乱数はここで一度だけ引く)。
+          // (コマ途中のゾーン移動では切り替えない)。v0.26.17以降、イベント関所は浅いエリアでも
+          // 本来イベントを止めないため、shallowExpressionの代替発火からは外す。
           const areaIdxAtGateStart = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
-          const shallowNow = V2_ENABLED && SHALLOW_ENABLED && areaIdxAtGateStart <= 1 && !!program.shallowExpression;
+          const shallowNow = V2_ENABLED && SHALLOW_ENABLED && areaIdxAtGateStart <= 1 && !!program.shallowExpression && !program.eventKind;
           shallowExpressionRef.current = shallowNow
             ? {
                 phaseKey: rankPhaseKey, active: true, expr: program.shallowExpression!,
@@ -6066,10 +6063,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // バッチ5追補: イベント関所(gate-assault/gate-boss-spike)が選ばれたら、関所頭での発火を予約する。
           // 規模は既存のeventSizeMult(バッチ7で保留していた配線先)でrank/退屈シグナル/pity直後を反映。
-          // PACING_V2.mdバッチR4-C: 初心者ゾーンでこのコマがshallow発動中なら、確定投入を伴う本来の
-          // アリーナイベント(囲い/ミニボス)は発火させない(問題児の直接spawnEnemyAtを避ける)。
-          // 代わりにshallowExpression(ring/burst)がチャフのみの軽い湧きを担う。
-          if (program.eventKind && !shallowNow) {
+          // PACING_V2.md v0.26.17: 26系では敵エリア制約を外すため、浅いエリアでも本来の
+          // アリーナイベント(囲い/ミニボス)を発火させる。
+          if (program.eventKind) {
             gateEventPendingRef.current = {
               eventKind: program.eventKind,
               phaseKey: rankPhaseKey,
@@ -6182,7 +6178,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hitImpulse = dropFrac >= 0.15 || pressureHitRef.current.hitTimes.length >= 2;
           pressureHitRef.current.prevHp = hp;
 
-          const zoneCeiling = ceilingForZone(areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2)));
+          const zoneCeiling = V2_ENABLED ? 1.00 : ceilingForZone(areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2)));
           // バッチ5: 台本選択が有効な間は、選ばれた台本自身のmaxRung(PHASESの値ではなく台本の値付け)を
           // pressure天井の元にする。台本未選択(初回フレームや?gateprogram=0)はPHASESのmaxRungへ従来どおり。
           const scriptMaxRung = (GATE_PROGRAM_ENABLED && gateProgramRef.current.program) ? gateProgramRef.current.program.maxRung : (curPhase.maxRung ?? 7);
@@ -6275,6 +6271,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         });
         // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
         const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
+        // PACING_V2.md v0.26.17: 26系では「エリア1ではパンプキン不可」等の敵エリア制約を外す。
+        // ?v2=0の旧復帰経路ではAREA_WEIGHT/ゾーン天井を従来どおり使う。
+        const ignoreAreaEnemyRestrictions = V2_ENABLED;
         // 最深到達エリア(バッチ2計測)。屋外のみ、単調増加でstoreへ反映(リザルト表示用)。
         // 変化した時だけ set() する(1ランで最大4回・React再描画コストは無視できる)。
         if (!labTheme && !indoor && playerAreaIdx > maxAreaRef.current) {
@@ -6361,8 +6360,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : null;
         const sceneFeatured = scene ? scene.featured : [];
         const sceneSuppressed = scene ? (scene.suppressed ?? []) : [];
-        // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床は講習/mowdownシーンのみ許可(関所シーンは
-        // false=エリア規約に完全準拠。「チャフのための床」が問題児の裏口になる事故の再発防止)。
+        // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床は講習/mowdownシーンのみ許可。26系は
+        // ignoreAreaEnemyRestrictionsで別途エリア制約を外すため、床は旧経路の回帰ガードとして残る。
         const sceneFloorAllowed = scene ? (scene.featuredFloor ?? false) : false;
         // 憲法第2条注記(PACING_REDESIGN.md): パンプキン2体は出すタイミング+周囲の雑魚数によっては
         // 回避不能級。2体目がいる間は雑魚湧きテンポを一段緩める(問題児と数を同時に盛らない)。
@@ -6468,7 +6467,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
         // PACING_V2.mdバッチR1-D(主題保証): 関所開始15秒経ってもその台本のfeatured問題児が
         // 1体も出現していなければ、pressureしきい値/boardDebtゲート/Intensityホールドを無視して
-        // 1体だけ確定投入する。ゾーン天井(allowedAtCeiling経由)/同時数キャップ(enemyCap)/
+        // 1体だけ確定投入する。26系ではゾーン天井を使わず、台本maxRung天井/同時数キャップ(enemyCap)/
         // リフラクトリ15秒は破らない。キャップ満杯ならpendingTypeとして次フレーム以降も再チェックする
         // (pressureCastRef.pendingCastと同じ「掃けたら発火」パターン)。イベント関所はfeatured=[]なので
         // 対象外(evaluateGateGuaranteeがtarget無しを返し自然にno-opになる)。
@@ -6631,13 +6630,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnedThisTick = true;
               continue;
             }
-            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked, sceneMix);
+            let enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked, sceneMix, ignoreAreaEnemyRestrictions);
             // 憲法第2条: 問題児(plant/werewolf/pumpkin/ghost)は同時数キャップを超えて湧かせない。
             // 台本セットピース/保証出現(forcedType指定)はここを通らない=脚本の見せ場はそのまま。
             if (overCap(enemy.type)) {
               let tries = 0;
               while (overCap(enemy.type) && tries < 8) {
-                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked, sceneMix);
+                enemy = generateEnemy(gameTime, player, spawnBounds, undefined, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc, sceneFeatured, sceneSuppressed, sceneRareMult, sceneFloorAllowed, sceneBlocked, sceneMix, ignoreAreaEnemyRestrictions);
                 tries++;
               }
               if (overCap(enemy.type)) {
@@ -6865,7 +6864,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ただし生成直後(5s猶予)・ウェーブ保護・ボス系は除外。ghost(抱卵型)も除外(社長報告「割と消える」):
           // ghostはプレイヤーを中心に周回し続ける追従型なので、エリア2+で出会った個体をプレイヤーが
           // エリア0/1(拠点付近=ステージ1のメイン活動域。ghostは出現重み0)へ連れ帰ると、追従中(=画面内)
-          // にもかかわらず5秒後に強制回収されていた。新規湧きの出現エリア制限(AREA_WEIGHT)自体は不変。
+          // にもかかわらず5秒後に強制回収されていた。26系の通常湧きはAREA_WEIGHT=0を不可扱いにしないが、
+          // 旧経路の距離リサイクル回帰ガードは残す。
           const preserveEnemyState = enemy.type === 'reaper' || enemy.type === 'ghost' || isBossType(enemy.type);
           const aliveMs = gameTime - (enemy.spawnedAt ?? 0);
           // DISTRIBUTION_REDESIGN.md①: sceneSpawn(台本のfeatured床/保証出現などでエリア不問に選ばれた)

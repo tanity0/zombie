@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy } from './enemyUtils';
 import type { Enemy, Player, Summon, GameBounds } from '../types/game';
 
@@ -43,7 +43,7 @@ describe('AREA_WEIGHT v2 (分布図再構築・DISTRIBUTION_REDESIGN.md②)', ()
       expect(isValidForArea('zombie', area)).toBe(true);
     }
   });
-  it('area-gated types are unchanged by the redesign (ghost/werewolf/pumpkin still absent early)', () => {
+  it('legacy area validity table is unchanged (ghost/werewolf/pumpkin still report absent early)', () => {
     expect(isValidForArea('ghost', 0)).toBe(false);
     expect(isValidForArea('ghost', 1)).toBe(false);
     expect(isValidForArea('werewolf', 0)).toBe(false);
@@ -63,7 +63,7 @@ describe('scene featured floor (DISTRIBUTION_REDESIGN.md① + PACING_REDESIGN.md
   // area 0 (origin): pumpkin/werewolf are normally weight-0 (isValidForArea === false).
   const area0Player = mkPlayer(0, 0);
 
-  it('without featured, an area-gated type is never picked', () => {
+  it('legacy path: without featured, an area-gated type is never picked', () => {
     for (let i = 0; i < 200; i++) {
       const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, []);
       expect(e.type).not.toBe('pumpkin');
@@ -71,7 +71,7 @@ describe('scene featured floor (DISTRIBUTION_REDESIGN.md① + PACING_REDESIGN.md
     }
   });
 
-  it('with featured but floorAllowed=false (gate scenes) — the floor does NOT apply, so an area-gated problem child is never picked (バッチ1.5: closes the gate-scene backdoor)', () => {
+  it('legacy path: with featured but floorAllowed=false, the floor does NOT apply and an area-gated problem child is never picked', () => {
     for (let i = 0; i < 300; i++) {
       const e = generateEnemy(0, area0Player, BOUNDS, undefined, null, 0, false, 0, ['pumpkin', 'werewolf'], [], 1, false);
       expect(e.type).not.toBe('pumpkin');
@@ -101,6 +101,24 @@ describe('scene featured floor (DISTRIBUTION_REDESIGN.md① + PACING_REDESIGN.md
       }
     }
     expect(sawFlaggedPumpkin).toBe(true);
+  });
+});
+
+describe('PACING_V2 enemy area restrictions off (v0.26.17)', () => {
+  const area1Player = mkPlayer(1500, 0);
+
+  it('26系ではAREA_WEIGHT=0を出現不可扱いにせず、エリア1でもパンプキンを通常抽選候補にできる', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    try {
+      const e = generateEnemy(
+        0, area1Player, BOUNDS, undefined, null, 0, false, 0,
+        ['pumpkin'], [], 1, false, [], undefined, true,
+      );
+      expect(e.type).toBe('pumpkin');
+      expect(e.sceneSpawn).toBe(true); // 距離リサイクル側の旧エリア不適合回収から守る
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

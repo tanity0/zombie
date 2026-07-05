@@ -42,11 +42,11 @@ describe('evaluateGateGuarantee (PACING_V2.mdバッチR1-D: 主題保証)', () =
     expect(r.shouldInject).toBe(false);
   });
 
-  it('ゾーン0-1では立たない(allowedAtCeilingに型が含まれない=ゾーン天井で解禁されない)', () => {
+  it('?v2=0旧経路のゾーン0-1では立たない(allowedAtCeilingに型が含まれない)', () => {
     const r = evaluateGateGuarantee({
       elapsedMs: GATE_FEATURE_GUARANTEE_MS,
       featuredProblemChildren: ['pumpkin', 'werewolf'],
-      allowedAtCeiling: [], // 初心者ゾーンの天井では問題児が一切解禁されない(憲法第4条)
+      allowedAtCeiling: [], // 旧経路の初心者ゾーン天井では問題児が一切解禁されない
       anchorSpawns: ANCHOR,
       nowSpawns: ANCHOR,
       alreadyInjected: false,

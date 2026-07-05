@@ -158,7 +158,7 @@ describe('ceilingForMaxRung / ceilingForZone', () => {
     expect(ceilingForMaxRung(3)).toBeCloseTo(0.49, 5);
     expect(ceilingForMaxRung(7)).toBeCloseTo(1.0, 5);
   });
-  it('zone ceilings match the 憲法第4条 table (areas 0-1 capped hardest)', () => {
+  it('?v2=0 legacy zone ceilings keep areas 0-1 capped hardest', () => {
     expect(ceilingForZone(0)).toBeCloseTo(0.34, 5);
     expect(ceilingForZone(1)).toBeCloseTo(0.34, 5);
     expect(ceilingForZone(2)).toBeCloseTo(0.79, 5);

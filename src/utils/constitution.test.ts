@@ -6,9 +6,9 @@
 // いつでも書き換え・削除してよい。
 // (旧背景・再発防止の経緯: GAME_AUDIT #3=関所①featuredの自己矛盾/v0.25.1343=mix未指定・
 //  回収床の初心者ゾーン逆流。「横断不変条件はテストで機械化する」という一般原則は引き続き有効)
-// 注: 旧第4条のテストが守るのはgatePressure経路のゾーン天井(§0重要ポイント4の安全弁として残置)
-// のみ。エリア台本(areaScript.ts)がエリア1に問題児を注入するのは仕様であり本テストと矛盾しない
-// (経路が異なる)。
+// 注: 旧第4条のテストが守るのは`?v2=0`旧復帰経路のゾーン天井のみ。26系ではゾーン天井を使わず、
+// エリア1でも問題児を止めない。エリア台本(areaScript.ts)や26系通常湧きがエリア1に問題児を
+// 入れるのは仕様であり、本テストと矛盾しない(経路が異なる)。
 import { describe, it, expect } from 'vitest';
 import type { EnemyType } from '../types/game';
 import { PHASES, ENEMY_COUNT_FLOOR, type SpawnScene } from './difficultyDirector';
@@ -35,7 +35,7 @@ describe('旧・憲法テスト(拘束力はv0.26.8廃止済み・現存機構�
     for (const p of PHASES) expect(p.countCap, `phase ${p.kind}${p.index}`).toBeLessThanOrEqual(ENEMY_COUNT_FLOOR);
   });
 
-  it('第4条: 初心者ゾーン(エリア0-1)の天井では問題児が一切解禁されない', () => {
+  it('?v2=0旧経路: 初心者ゾーン(エリア0-1)のゾーン天井では問題児が一切解禁されない', () => {
     for (const area of [0, 1]) {
       const allowed = allowedProblemChildren(ceilingForZone(area), ['werewolf', 'pumpkin']);
       expect(allowed, `area ${area}`).toEqual([]);
@@ -112,9 +112,10 @@ describe('旧・憲法テスト(拘束力はv0.26.8廃止済み・現存機構�
     }
   });
 
-  it('R4-C: 不意打ち以外の全台本がshallowExpressionを持つ(浅いエリアの代替表現。不意打ちは深入り専用=対象外)', () => {
+  it('R4-C: 非イベント・不意打ち以外の台本がshallowExpressionを持つ(浅いエリアの追加表現)', () => {
     for (const g of ALL_GATE_PROGRAMS) {
       if (g.id === 'gate-ambush') { expect(g.shallowExpression).toBeUndefined(); continue; }
+      if (g.eventKind) { expect(g.shallowExpression, `${g.id}`).toBeUndefined(); continue; }
       expect(g.shallowExpression, `${g.id}`).toBeDefined();
     }
   });

@@ -22,10 +22,9 @@ export interface GateProgram extends SpawnScene {
   unlockMs: number;             // PACING_V2.mdバッチR1-A: この時刻(gameTime)以降でないと選出対象にならない
   judgmentPrimary?: EnemyType;  // 判断の関所のみ: 犬/パンプキンどちらを主役にしたか(スタイル依存)
   eventKind?: 'horde' | 'boss'; // バッチ5追補: 関所の頭で発火するアリーナイベント種別(既存beginArenaEvent流用)
-  // PACING_V2.mdバッチR4-C(v0.26.6定量化): 浅いエリア(エリア0-1)向けの代替表現。ゾーン天井で
-  // featured問題児が解禁されない関所でも、湧き方の違いでテーマを感じさせる(バナー名は同じまま)。
-  // eventKindを持つ台本(襲撃/スパイク)がshallow発動中の間は、useGameLoop側が本来のアリーナ
-  // イベント(囲い/ミニボス)の発火を止め、こちらのring/burstに置き換える。
+  // PACING_V2.mdバッチR4-C(v0.26.6定量化/v0.26.17補正): 浅いエリア(エリア0-1)向けの追加表現。
+  // featured問題児自体はv0.26.17以降止めない。非イベント関所だけ、湧き方の違いを足して
+  // テーマを感じさせる(バナー名は同じまま)。
   shallowExpression?: ShallowExpression;
 }
 
@@ -95,9 +94,7 @@ export const GATE_ASSAULT: GateProgram = {
   id: 'gate-assault', maxRung: 4, unlockMs: 3 * 60 * 1000, eventKind: 'horde',
   featured: [], intervalMult: 0.5, rareMult: 1.2,
   mix: { bat: 60, skeleton: 35, zombie: 5 },
-  // R4-C(v0.26.6定量化): 浅いエリアでは本来のアリーナイベント(囲い)は発火させず、+10sの1回・
-  // 10体を36°間隔の円配置(小囲い)へ差し替える。
-  shallowExpression: { kind: 'ring', events: [{ atMs: 10000, count: 10 }] },
+  // v0.26.17: 浅いエリアでも本来のアリーナイベント(囲い)を止めないため、shallowExpressionは持たない。
 };
 
 // スパイクの関所: 関所頭でミニボス版囲い(パンプキン+取り巻き、既存boss kind再利用)。
@@ -106,9 +103,7 @@ export const GATE_BOSS_SPIKE: GateProgram = {
   id: 'gate-boss-spike', maxRung: 5, unlockMs: 4 * 60 * 1000, eventKind: 'boss',
   featured: [], intervalMult: 0.5, rareMult: 1.2,
   mix: { bat: 60, skeleton: 35, zombie: 5 },
-  // R4-C(v0.26.6定量化): 浅いエリアでは本来のアリーナイベント(ミニボス)は発火させず、+10sの1回・
-  // 1方向±20°から10体を2秒かけて(5体/秒)投入する。
-  shallowExpression: { kind: 'burst', events: [{ atMs: 10000, count: 10, durationMs: 2000, spreadDeg: 20 }] },
+  // v0.26.17: 浅いエリアでも本来のミニボスイベントを止めないため、shallowExpressionは持たない。
 };
 
 export type Rank = 0 | 1 | 2;

@@ -85,7 +85,7 @@ export const isBossType = (t: EnemyType): boolean =>
 interface EnemyWeight { type: EnemyType; weight: number; }
 
 // エリア補正テーブル v2(社長承認・分布図再構築 DISTRIBUTION_REDESIGN.md②)。
-// finalWeight = baseWeight × areaWeight[area]。0 のエリアは候補から除外。
+// finalWeight = baseWeight × areaWeight[area]。0 のエリアは旧経路では候補から除外。
 // 添字 = エリア(0 軍備 / 1 研究 / 2 デンジャー / 3 未確認 / 4 深層)。
 // 設計原則: 深部でもチャフ(bat/skeleton)を絶滅させない(緩シーン/キルフローの枯渇防止)。
 // 深さの恐怖は AREA_BASE_DIFFICULTY(強さ倍率)と重い型の比率で出す。zombieは深部で比率を下げる。
@@ -105,7 +105,7 @@ const AREA_WEIGHT: Partial<Record<EnemyType, number[]>> = {
 };
 
 // 型ごとの基礎重み(既存値を定数化)。仕様§6/§7: 型の解禁・比率は時間ではなくエリア補正だけで決める。
-// finalWeight = BASE_WEIGHT × AREA_WEIGHT[area]。0 のエリアは候補から除外。
+// finalWeight = BASE_WEIGHT × AREA_WEIGHT[area]。0 のエリアは旧経路では候補から除外。
 // giantbat / reaper / lab-zombie は通常プールに含めない(§10。別経路で出す)。
 const BASE_WEIGHT: Partial<Record<EnemyType, number>> = {
   bat:      100,
@@ -135,10 +135,21 @@ const FEATURED_MIN_AREA_WEIGHT = 0.5;
 // 完全ブロック(重み0)するための引数。suppressed(×0.4の部分抑制)とは別物=許可外は0でなければ
 // ならない(「suppressed扱い(重み0)」という設計書の指示どおり)。関所以外(緩シーン)では常に空配列。
 // 型選択は「現在エリアの areaWeight」で決める(仕様§6)。esc で重い型に重み加算、featured でシーンの強調型に重み加算。
-// featured/suppressed は乗算バイアス=エリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
+// featured/suppressed は乗算バイアス。旧経路ではエリアで出現不可(重み0)の型は0のまま(エリア規約を尊重)。
+// 26系はignoreAreaRestrictions=trueでAREA_WEIGHT=0を出現不可扱いにしない。
 // ただし featured は floorAllowed=true の時だけ FEATURED_MIN_AREA_WEIGHT の床を持つ(上記)。
 const CHAFF_TYPES: EnemyType[] = ['bat', 'skeleton', 'zombie'];
-const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: EnemyType[] = [], suppressed: EnemyType[] = [], floorAllowed = false, blocked: EnemyType[] = [], mix?: ChaffMix): EnemyType => {
+const selectEnemyType = (
+  area: number,
+  allowLich = false,
+  esc = 0,
+  featured: EnemyType[] = [],
+  suppressed: EnemyType[] = [],
+  floorAllowed = false,
+  blocked: EnemyType[] = [],
+  mix?: ChaffMix,
+  ignoreAreaRestrictions = false,
+): EnemyType => {
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
   // baseWeight × エリア補正(featuredはfloorAllowed時のみ床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)、blockedは強制0。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
@@ -146,7 +157,8 @@ const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: Ene
     .map(([type, w]) => {
       if (blocked.includes(type)) return { type, weight: 0 };
       const areaW = (AREA_WEIGHT[type]?.[area]) ?? 0;
-      const effAreaW = (floorAllowed && featured.includes(type)) ? Math.max(areaW, FEATURED_MIN_AREA_WEIGHT) : areaW;
+      const areaGateW = ignoreAreaRestrictions ? (areaW > 0 ? areaW : 1) : areaW;
+      const effAreaW = (floorAllowed && featured.includes(type)) ? Math.max(areaGateW, FEATURED_MIN_AREA_WEIGHT) : areaGateW;
       return { type, weight: w * effAreaW * (DDA_TOUGH_TYPES.has(type) ? toughBoost : 1) * (featured.includes(type) ? SCENE_FEATURED_BOOST : 1) * (suppressed.includes(type) ? SCENE_SUPPRESSED_MULT : 1) };
     })
     .filter(e => e.weight > 0);
@@ -381,11 +393,12 @@ export const generateEnemy = (
   rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
   floorAllowed = false, // PACING_REDESIGN.mdバッチ1.5: featuredのエリア床を許すシーンか(講習/mowdownのみtrue)。
   blocked: EnemyType[] = [], // PACING_REDESIGN.mdバッチ3: gatePressureで未解禁の問題児を完全ブロック(重み0)。
-  mix?: ChaffMix // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
+  mix?: ChaffMix, // PACING_REDESIGN.mdバッチ3.5-A: チャフ(bat/skeleton/zombie)の役割配合。省略=従来どおり。
+  ignoreAreaRestrictions = false, // PACING_V2.md v0.26.17: 26系ではAREA_WEIGHT=0を出現不可にしない。
 ): Enemy => {
   // 型選択は「プレイヤーが今いるエリア」の補正で行う(湧きはプレイヤー近傍なので実質同じ)。
   const playerArea = areaIndexForPos(player.x + player.width / 2, player.y + player.height / 2);
-  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed, blocked, mix);
+  const type = forcedType ?? selectEnemyType(playerArea, snowStage, esc, featured, suppressed, floorAllowed, blocked, mix, ignoreAreaRestrictions);
   const viewportWidth = gameBounds.width;
   const viewportHeight = gameBounds.height;
   // 可視範囲はワールドと1:1(カメラ幅=gameBounds)。プレイヤーは中央より viewOffsetY 下にいるので、

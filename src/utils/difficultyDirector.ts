@@ -16,7 +16,8 @@ export type PhaseKind = 'buildup' | 'gate' | 'boss';
 
 // シーン(緩急の“部品”): フェーズに割り当てる湧きの味付け。数(density)はフェーズの countCap 側で持つので、
 // ここでは「敵構成(featured=強調する型)」と「沸きスピード(intervalMult=湧き間隔の倍率・<1で速い)」の2レバー。
-// featured は既存の重み(BASE×AREA)への“乗算バイアス”(エリアで出現不可の型は0のまま=エリア規約を尊重)。
+// featured は既存の重み(BASE×AREA)への“乗算バイアス”。`?v2=0`旧経路ではエリアで
+// 出現不可の型は0のまま。26系の通常湧きはuseGameLoop側のignoreAreaRestrictionsで制約を外す。
 export interface SpawnScene {
   id: string;
   featured: EnemyType[]; // 強調する敵型(重み増し)。[]=素の分布。
@@ -42,8 +43,8 @@ export interface Phase {
   scene: SpawnScene; // このフェーズの湧きシーン(構成/速度)
   // PACING_REDESIGN.mdバッチ3: このgateフェーズで許される最大段(旧・離散段の名残)。
   // gatePressureのceilingForMaxRungで連続天井へ変換される。gate以外は未指定(pressure対象外)。
-  // PACING_V2.mdバッチR2: 新PHASES(既定)ではこの列は撤去済み(pressure天井は台本自身のmaxRung×
-  // ゾーン天井のみになる)。PHASES_LEGACY(`?v2=0`)側でのみ引き続き使用: 序盤の関所=3/中盤=4〜5/
+  // PACING_V2.mdバッチR2: 新PHASES(既定)ではこの列は撤去済み(26系のpressure天井は台本自身の
+  // maxRung由来のみ)。PHASES_LEGACY(`?v2=0`)側でのみ引き続き使用: 序盤の関所=3/中盤=4〜5/
   // 終盤・7分以降の延長関所=6〜7(これとゾーン上限の小さい方が実効天井になる)。
   maxRung?: number;
 }
@@ -62,7 +63,8 @@ const SCENE_MOWDOWN: SpawnScene        = { id: 'mowdown',        featured: ['bat
 // GAME_AUDIT #3: 旧featured ['pumpkin','werewolf'] は自己矛盾で一度も出ていなかった
 // (関所①はmaxRung3=pressure天井0.49 < 配役解禁0.50。問題児は再設計後、シーンfeaturedではなく
 // gatePressureの許可/配役が出す)。段3の実体=「テンポ+数+弾まで」に合わせfeaturedをplantへ変更
-// (エリア2以深でpressure≥0.35解禁後の出現を加速するだけ。エリア0-1はゾーン天井0.34で従来どおり出ない)。
+// (`?v2=0`旧経路ではエリア2以深でpressure≥0.35解禁後の出現を加速するだけ。エリア0-1は
+// ゾーン天井0.34で出ない)。
 const SCENE_GATE_PUMPWOLF: SpawnScene  = { id: 'gate-pumpwolf',  featured: ['plant'], intervalMult: 0.8, rareMult: 1.2, mix: { bat: 30, skeleton: 45, zombie: 25 } }; // 関所①(数系): テンポ+数+弾まで(床なし=エリア規約に従う)
 const SCENE_GATE_MASS_RANGED: SpawnScene = { id: 'gate-mass-ranged', featured: ['plant'], intervalMult: 0.6, rareMult: 1.2, mix: { bat: 25, skeleton: 35, zombie: 40 } };          // 関所(射線系): 雑魚大量+飛び道具(壁+弾のコンボ・床なし)
 const SCENE_GATE_CHAOS: SpawnScene     = { id: 'gate-chaos',     featured: ['pumpkin', 'werewolf', 'plant'], intervalMult: 0.55, rareMult: 1.35, mix: { bat: 30, skeleton: 40, zombie: 30 } }; // 関所: 全部盛りカオス(床なし。v0.25.1343: mix未指定だと素の分布でゾンビ過多になるため配合を指定)
@@ -84,8 +86,8 @@ const SCENE_GATE_FALLBACK: SpawnScene = { id: 'gate-fallback', featured: [], int
 
 // PACING_V2.mdバッチR2: 時間骨格の60秒化。導入60秒→以後 関所60秒⇄緩60秒 を交互に刻む
 // (旧: 95秒/40秒などの不揃いな尺→本書が60秒固定へ統一)。関所の中身(featured/mix)は固定シーン
-// ではなく毎回gateProgram.tsのローテが差し替える(PHASESのmaxRung列は撤去=pressure天井は
-// 台本自身のmaxRung×ゾーン天井のみになる)。緩の中身はreliefProgram.tsが選ぶ(PROGRAM_ENABLED既定)。
+// ではなく毎回gateProgram.tsのローテが差し替える(PHASESのmaxRung列は撤去=26系のpressure天井は
+// 台本自身のmaxRung由来のみ)。緩の中身はreliefProgram.tsが選ぶ(PROGRAM_ENABLED既定)。
 // 城ボスは7:00(=420s)で中間ゴール、7:30以降は「深入りモード」(DEEP_DIVE_START_MS)として
 // 報酬/リスクが増す別モードへ移行しつつ同じ60秒交互を無限に継続する
 // (【裁定済みv0.26.6】: 「14:00以降は最終コマを無限延長」は設計側の誤記として撤回。14:00の

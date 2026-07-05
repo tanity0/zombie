@@ -11,6 +11,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.26.17 — 26系の敵エリア制約を撤廃(エリア1でもパンプキン等を止めない)
+- 社長指示「敵の誓約を全部取っ払って。26系統のみ。エリア1ではパンプキン出ないとか無し」を受け、
+  26系の敵エリア制約を外した。25系は現行の別ラインとして扱い、本作業では未変更。
+- `src/utils/enemyUtils.ts`: `selectEnemyType`/`generateEnemy`に`ignoreAreaRestrictions`を追加。
+  26系の通常湧きでは`AREA_WEIGHT=0`を出現不可扱いにせず、パンプキン/犬なども抽選候補にできる。
+  `?v2=0`旧復帰経路は従来どおり`AREA_WEIGHT`制約を残す。
+- `src/hooks/useGameLoop.ts`: 26系ではgatePressureのゾーン天井を掛けず、通常湧きへ
+  `ignoreAreaEnemyRestrictions=V2_ENABLED`を渡す。浅いエリアでもイベント関所の囲い/ミニボスを
+  本来どおり発火させ、`?v2=0`だけ旧雑魚版差し替えを残す。
+- `src/utils/gateProgram.ts`/`constitution.test.ts`/`gateGuarantee*.ts`/`gatePressure.test.ts`/
+  `difficultyDirector.ts`: イベント関所のshallowExpressionを撤去し、旧ゾーン天井テストは
+  `?v2=0`旧経路の回帰ガードとして明記。
+- `PACING_V2.md`/`HANDOFF_CODEX.md`: 26系でAREA_WEIGHT/ゾーン天井由来の敵エリア制約を撤廃し、
+  R4-Cは非イベント関所の追加表現、イベント関所は本来イベントを止めない仕様へ更新。
+- 負荷スコア: **1/10**。新しい描画/音声/UI/常時処理は追加なし。通常湧きの抽選候補が広がるだけで、
+  同時数キャップ・リフラクトリ・pity・boardDebt等の事故防止弁は維持。
+- 自己点検: PACING_V2.mdの現行設計(「台本は見せる。危険度は状況で抑える」)と整合。R5(ゴールド経済)・25系統は未変更。
+- 検証: 関連テスト`enemyUtils.test.ts`/`gateProgram.test.ts`/`constitution.test.ts`/
+  `shallowExpression.test.ts`/`gatePressure.test.ts`/`gateGuarantee.test.ts` 110 pass。
+  フル lint / typecheck / test(386 pass, 1 skip) / build 全通過。
+
 ## v0.26.16 — R7エリア台本の発火をgateコマ中に限定(統合テスト前の体験補正)
 - 社長フィードバック「現状、プレイ体験としてあまりいい状態とは言えない」を受け、26系統の意図
   (静かな導入→関所で試される→緩で息継ぎ)と実装を照合。R7エリア台本が「フェーズ種別非依存」の

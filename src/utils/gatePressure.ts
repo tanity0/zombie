@@ -41,7 +41,7 @@ export interface GatePressureInputs {
   // PACING_V2.mdバッチR1-E: Intensityによる上げホールドは撤廃済み(risingBlockedはboardDebtのみで
   // 判定)。フィールド自体は呼び出し側(useGameLoop)が引き続き渡すため残すが、このステップ関数内では未使用。
   intensity: number;      // AIディレクターのIntensity(0..1)
-  ceiling: number;        // 実効天井(maxRung→天井変換 × ゾーン天井 の小さい方)
+  ceiling: number;        // 実効天井。26系はmaxRung由来のみ、?v2=0旧経路はゾーン天井も掛ける。
   dtMs: number;
   // PACING_REDESIGN.mdバッチ3.5-B(盤面在庫): 省略時は0=従来と完全一致(risingBlockedへ影響なし)。
   boardDebt?: number;
@@ -129,7 +129,7 @@ export const allowedProblemChildren = (pressure: number, specialCast: [ProblemCh
 const MAX_RUNG_CEILING: Record<number, number> = { 2: 0.34, 3: 0.49, 4: 0.64, 5: 0.79, 6: 0.94, 7: 1.00 };
 export const ceilingForMaxRung = (maxRung: number): number => MAX_RUNG_CEILING[maxRung] ?? 1.00;
 
-// ゾーン上限(憲法第4条)。エリア0-1(初心者)はテンポと数のみに事実上制限される。
+// ゾーン上限(旧憲法第4条)。26系では使わず、?v2=0旧復帰経路用に残す。
 const ZONE_CEILING: number[] = [0.34, 0.34, 0.79, 0.94, 1.00]; // area 0..4
 // GAME_AUDIT #8 検証結果: エリア3の天井0.94 < ghost解禁0.95は仕様どおり(旧離散段の
 // ゾーン上限「エリア3=段6(叫びまで)/エリア4=段7(ゴースト)」の変換値。ghostの関所解禁は
