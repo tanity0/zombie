@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1432',
+    items: [
+      'ストライカーの立ち絵・歩行を新しい5コマの素材に差し替え(2コマ目を立ち止まり/キャラ選択の絵に)。',
+    ],
+  },
+  {
     version: '0.25.1431',
     items: [
       'マークスマンの立ち絵で、輪郭線(シルエットの縁)が消えてしまっていた不具合を修正(透過素材をそのまま使うよう焼き直し)。',

@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1432 — ストライカーを新5コマ透過素材に差し替え(社長提供・実装チャット)
+- 社長提供の赤髪ストライカー(透過・5コマ・1280×426)を差し替え。**反転規約**により ストライカー(rogue)は
+  `player-scavenger-*` に焼く(campaign.ts L448 char-select・pixiScene L486 in-game とも一致を確認済み)。
+- v1431の教訓を適用: **黒キーは使わず透過素材のアルファをそのまま**使用。既存規約(共通スケールfigH→105/
+  右端x106/足元y107)で128×108へ。walk-0..4=f0..f4、idle=f1(社長「2コマ目=ストップ」)。
+  検証: xmax=106/footY=107/figH103-105・枠線保持。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'4'→'5'`。
+- 負荷スコア: 該当なし(素材差し替えのみ)。
+- 検証: lint/typecheck/build全通過。プレビュー目視(色/整列/枠線/潰れOK)。
+- 自己点検: 憲法第4条・第5条に抵触なし(素材差し替えのみ)。
+
 ## v0.25.1431 — マークスマン再焼き直し: 透過素材をアルファ基準で(枠線消え修正)(実装チャット)
 - 社長「背景切った? 透過素材渡したはず。シルエットの枠線が消えてて変」。
 - 原因: v0.25.1429で素材を**黒背景と誤認**しフラッドフィル黒キー(max(r,g,b)≤22)をかけた。だが素材は
