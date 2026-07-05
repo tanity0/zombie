@@ -7,4 +7,5 @@
 // (新規ファイルの追加は別URL=別名なので、ここを上げる必要はない。)
 // v2: 護衛の軍人(edgar/joseph/elizabeth/lauren/muhammad/musashi/chen/phaser)と
 // プレイヤー各クラスの立ち絵を“同名で”差し替えたため、旧キャッシュ(?v=1)を無効化。
-export const ASSET_VERSION = '2';
+// v3: マークスマン(player-magnum-walk-0..4/idle)を新素材で同名差し替え(128×108規格・黒背景除去)。
+export const ASSET_VERSION = '3';
