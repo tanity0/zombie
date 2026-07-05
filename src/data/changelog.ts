@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1428',
+    items: [
+      'リザルトの「BUILD/PEAK/RELAX」の回数・時間を、実際の戦いのコマ(緩/通常/ピーク)に合わせて数えるよう修正(以前は別基準で数えていて回数が実態とズレていた)。',
+    ],
+  },
+  {
     version: '0.25.1427',
     items: [
       '護衛の軍人(フェイザー)の歩行を、コマ間をなめらかにつなぐクロスフェード補間でより滑らかに。',

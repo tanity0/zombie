@@ -40,6 +40,9 @@ export interface DirectorSample {
   // undefinedのまま=リザルトのランク階段線は本方式のランのみ描画される。
   puzzleRank?: number;
   boardTarget?: number;
+  // PACING_PUZZLE.md §5.8(M6追補3): パズルON時のコマ種別。リザルトのBUILD/PEAK/RELAX集計を
+  // コマ基準で数えるために記録する(?puzzle=0/旧経路では undefined=従来のマクロ分類で数える)。
+  komaKind?: 'relax' | 'harvest' | 'normal' | 'peak';
 }
 const SAMPLE_CAP = 3000; // 0.5s刻みで約25分ぶん。超えたら古いものから捨てる。
 let samples: DirectorSample[] = [];

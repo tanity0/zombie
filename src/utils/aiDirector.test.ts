@@ -146,6 +146,48 @@ describe('aiDirector: summarizeRun(リザルト用)', () => {
     expect(s.buildupSeconds).toBeCloseTo(2, 5); // (1-0)+(5-4)
     expect(s.peakSeconds).toBeCloseTo(1, 5); // (2-1)
   });
+
+  // §5.8(M6追補3): パズルON時は komaKind でコマ基準集計。macro は約15秒でパタパタするので、
+  // komaKind があればそちらを優先し、リザルトの BUILD/PEAK/RELAX がコマの実周期に一致する。
+  it('komaKind があればコマ種別で数える(macroは無視・relax/harvest→RELAX / normal→BUILD / peak→PEAK)', () => {
+    // macro を全部 buildup にしても、komaKind 側で正しく分類されることを確かめる。
+    const samples: RunSampleLite[] = [
+      { t: 0, intensity: 0.2, performance: 0.5, macro: 'buildup', komaKind: 'relax' },
+      { t: 1, intensity: 0.2, performance: 0.5, macro: 'buildup', komaKind: 'harvest' }, // relaxと同じ谷(連続)
+      { t: 2, intensity: 0.2, performance: 0.5, macro: 'buildup', komaKind: 'normal' },  // BUILD
+      { t: 3, intensity: 0.2, performance: 0.5, macro: 'buildup', komaKind: 'peak' },    // PEAK
+      { t: 4, intensity: 0.2, performance: 0.5, macro: 'buildup', komaKind: 'relax' },   // 別の谷
+    ];
+    const s = summarizeRun(samples);
+    expect(s.relaxCount).toBe(2);               // relax/harvest塊 と 最後のrelax
+    expect(s.relaxSeconds).toBeCloseTo(2, 5);   // (1-0)+(4-3)
+    expect(s.buildupSeconds).toBeCloseTo(1, 5); // (2-1) normal
+    expect(s.peakCount).toBe(1);
+    expect(s.peakSeconds).toBeCloseTo(1, 5);    // (3-2)
+  });
+
+  it('ボス中(phaseKind==boss)は komaKind に関わらず PEAK 扱い(§5.8叩き台)', () => {
+    const samples: RunSampleLite[] = [
+      { t: 0, intensity: 0.5, performance: 0.5, macro: 'buildup', komaKind: 'normal', phaseKind: 'buildup' },
+      { t: 1, intensity: 0.5, performance: 0.5, macro: 'buildup', komaKind: 'normal', phaseKind: 'boss' }, // ボス→PEAK
+      { t: 2, intensity: 0.5, performance: 0.5, macro: 'buildup', komaKind: 'relax', phaseKind: 'boss' },  // ボス→PEAK(連続)
+    ];
+    const s = summarizeRun(samples);
+    expect(s.peakCount).toBe(1);
+    expect(s.peakSeconds).toBeCloseTo(2, 5); // (1-0)は到着側t1=boss / (2-1)も boss
+  });
+
+  it('komaKind が無い旧経路(?puzzle=0)は従来どおり macro で数える(挙動不変)', () => {
+    const samples: RunSampleLite[] = [
+      { t: 0, intensity: 0.2, performance: 0.5, macro: 'buildup' },
+      { t: 1, intensity: 0.8, performance: 0.4, macro: 'peak' },
+      { t: 2, intensity: 0.3, performance: 0.5, macro: 'relax' },
+    ];
+    const s = summarizeRun(samples);
+    expect(s.peakCount).toBe(1);
+    expect(s.peakSeconds).toBeCloseTo(1, 5);
+    expect(s.relaxSeconds).toBeCloseTo(1, 5);
+  });
 });
 
 describe('aiDirector: relaxSpawnAdjust(ステップB)', () => {

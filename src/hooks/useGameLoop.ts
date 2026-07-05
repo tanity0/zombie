@@ -7284,6 +7284,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               upswing: upswingBonus,
               puzzleRank: puzzleSnap?.rank,
               boardTarget: puzzleSnap?.boardTarget,
+              komaKind: puzzleSnap?.komaKind, // §5.8: パズルON時のコマ種別(リザルト集計をコマ基準へ)
             });
           }
         }

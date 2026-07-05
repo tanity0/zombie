@@ -133,7 +133,28 @@ export const stepDirector = (prev: DirectorState, input: DirectorInputs, dtSec: 
 };
 
 // ---- ラン全体の要約(リザルトの難易度スコア/タイムライン用・純関数) ----
-export interface RunSampleLite { t: number; intensity: number; performance: number; macro: DirectorMacro; }
+// PACING_PUZZLE.md §5.8(M6追補3): パズルON時は BUILD/PEAK/RELAX の集計を「コマ種別」で数える。
+// 旧・反応型ディレクターのマクロ分類(約15秒でパタパタ遷移)はパズル方式の実周期と噛み合わず、
+// リザルト行(例: PEAK 49回)が実態(ピーク約5回)とズレる計測バグだったため。
+export type RunKomaKind = 'relax' | 'harvest' | 'normal' | 'peak';
+export interface RunSampleLite {
+  t: number; intensity: number; performance: number; macro: DirectorMacro;
+  // パズルON時のみ設定(?puzzle=0/旧経路は undefined=従来どおりマクロ分類で数える)。
+  komaKind?: RunKomaKind;
+  // ボス中はコマ停止中なので PEAK 扱い(§5.8 叩き台)にするための判定に使う。
+  phaseKind?: 'buildup' | 'gate' | 'boss';
+}
+
+// サンプル1点を BUILD/PEAK/RELAX のどれに数えるか。komaKind があればコマ基準(§5.8)、
+// 無ければ従来のマクロ分類。ボス中(phaseKind==='boss')は PEAK 扱い(叩き台)。
+const sampleBucket = (s: RunSampleLite): DirectorMacro => {
+  if (s.komaKind !== undefined) {
+    if (s.phaseKind === 'boss' || s.komaKind === 'peak') return 'peak';
+    if (s.komaKind === 'relax' || s.komaKind === 'harvest') return 'relax';
+    return 'buildup'; // normal
+  }
+  return s.macro;
+};
 export interface RunSummary {
   score: number;          // 難易度スコア(0..100)=“どれだけしんどい体験だったか”
   avgIntensity: number;
@@ -159,28 +180,33 @@ export const summarizeRun = (samples: RunSampleLite[]): RunSummary => {
   let peakSeconds = 0, peakCount = 0;
   let buildupSeconds = 0;
   let relaxSeconds = 0, relaxCount = 0;
-  let prevMacro: DirectorMacro | null = null;
+  // score の peakFrac は従来どおりマクロ基準の PEAK 秒で算出=難易度スコアの意味は不変に保つ
+  // (§5.8はリザルトの BUILD/PEAK/RELAX 内訳表示だけをコマ基準へ直す指示。スコアは対象外)。
+  let macroPeakSeconds = 0;
+  let prevBucket: DirectorMacro | null = null;
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     sumI += s.intensity; sumP += s.performance;
     if (s.intensity > maxI) maxI = s.intensity;
     const dt = i > 0 ? Math.max(0, s.t - samples[i - 1].t) : 0;
-    if (s.macro === 'peak') {
-      if (prevMacro !== 'peak') peakCount++;
+    if (s.macro === 'peak') macroPeakSeconds += dt;
+    const bucket = sampleBucket(s);
+    if (bucket === 'peak') {
+      if (prevBucket !== 'peak') peakCount++;
       peakSeconds += dt;
-    } else if (s.macro === 'relax') {
-      if (prevMacro !== 'relax') relaxCount++;
+    } else if (bucket === 'relax') {
+      if (prevBucket !== 'relax') relaxCount++;
       relaxSeconds += dt;
     } else {
       buildupSeconds += dt;
     }
-    prevMacro = s.macro;
+    prevBucket = bucket;
   }
   const n = samples.length;
   const avgIntensity = sumI / n;
   const avgPerformance = sumP / n;
   const durationSec = Math.max(0, samples[n - 1].t - samples[0].t);
-  const peakFrac = durationSec > 0 ? clamp01(peakSeconds / durationSec) : 0;
+  const peakFrac = durationSec > 0 ? clamp01(macroPeakSeconds / durationSec) : 0;
   // 体験のしんどさ = 平均の緊張 + PEAKに居た割合 + 最大の緊張、の合成(私案・チューニング可)。
   const score = Math.round(100 * clamp01(0.55 * avgIntensity + 0.25 * peakFrac + 0.20 * maxI));
   return {

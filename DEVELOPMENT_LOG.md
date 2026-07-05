@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1428 — M6追補3: リザルトBUILD/PEAK/RELAX集計をコマ基準へ(§5.8・実装チャット)
+- 設計チャットが PACING_PUZZLE.md §5.8 に書いた仕様(v0.25.1426・計測バグ修正)を実装。旧・反応型
+  ディレクターのマクロ分類(約15秒でパタパタ→PEAK 49回等)ではなく、パズルのコマ種別で数える。
+- 変更:
+  - `DirectorSample`(aiDirectorDebug.ts)に `komaKind?` 追加。useGameLoopの記録で `puzzleSnap?.komaKind`
+    を併記(パズルON時のみ・?puzzle=0はundefined)。
+  - `summarizeRun`(aiDirector.ts): `sampleBucket` を追加。komaKind があればコマ基準(relax/harvest→
+    RELAX / normal→BUILD / peak→PEAK、phaseKind==='boss'はPEAK扱い=§5.8叩き台)、無ければ従来のマクロ。
+    BUILD/PEAK/RELAX の秒・回数をこのバケツで集計。RunSampleLite に `komaKind?`/`phaseKind?` を追加。
+  - **難易度スコアは不変**: score の peakFrac は従来どおりマクロ基準PEAK秒(`macroPeakSeconds`を別集計)。
+    §5.8は内訳表示のみの指示なのでスコアの意味は勝手に変えない。
+  - DirectorResult.tsx は変更不要(DirectorSample[]をそのまま渡す=komaKind/phaseKindが透過)。
+- テスト: aiDirector.test.ts に3件追加(コマ基準/ボス=PEAK/旧経路はmacro)。全22通過。
+- 負荷スコア: **1/10**(集計方法の変更のみ・記録は既存の0.5s刻みに1フィールド追加)。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(記録・集計のみ・湧き/挙動は不変。?directorApply無しでは
+  マクロ分類は表示専用のまま)。
+
 ## v0.25.1427 — フェイザーの歩行をクロスフェード補間で滑らか化(社長指示・実装チャット)
 - 社長「フェイザーがカクつく」→ 手法確認で「クロスフェード補間(今すぐ)」を選択。フェイザー
   (soldierIndex=7)**のみ**、歩行コマ間をA/Bクロスフェードで連続化した(視覚のみ・判定不変)。
