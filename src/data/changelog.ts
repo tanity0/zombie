@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1436',
+    items: [
+      'スカベンジャーの立ち絵・歩行を新しい5コマの素材に差し替え(立ち止まり/キャラ選択は専用の構え絵に)。これで全4クラスが新しい歩行アニメに。',
+    ],
+  },
+  {
     version: '0.25.1435',
     items: [
       '爆発などの光で伸びる影の大きさを、以前(v1058の頃)のサイズに戻した。',
