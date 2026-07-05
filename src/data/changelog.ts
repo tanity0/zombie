@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1418',
+    items: [
+      '差し替えた護衛の軍人(エドガー/ジョセフ/エリザベス/ローレン)の歩行を3コマの滑らかなアニメーションに。エリザベスも新しいイラストに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1417',
     items: [
       '護衛の軍人(ローレン)の歩行アニメーションを新しいイラストに差し替え。',

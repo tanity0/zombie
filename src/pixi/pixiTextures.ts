@@ -223,16 +223,20 @@ export const ensureTextures = (): Promise<void> => {
       // 進軍用NPC(護衛軍人)のユニーク立ち絵(2コマ歩行・透過済み)。soldierIndex で出し分け。
       { name: 'npc/edgar-0', scaleMode: 'nearest' },
       { name: 'npc/edgar-1', scaleMode: 'nearest' },
+      { name: 'npc/edgar-2', scaleMode: 'nearest' },     // 3コマ歩行(社長提供)
       { name: 'npc/joseph-0', scaleMode: 'nearest' },
       { name: 'npc/joseph-1', scaleMode: 'nearest' },
+      { name: 'npc/joseph-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
       { name: 'npc/elizabeth-0', scaleMode: 'nearest' },
       { name: 'npc/elizabeth-1', scaleMode: 'nearest' },
+      { name: 'npc/elizabeth-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
       { name: 'npc/musashi-0', scaleMode: 'nearest' },
       { name: 'npc/musashi-1', scaleMode: 'nearest' },
       { name: 'npc/chen-0', scaleMode: 'nearest' },
       { name: 'npc/chen-1', scaleMode: 'nearest' },
       { name: 'npc/lauren-0', scaleMode: 'nearest' },
       { name: 'npc/lauren-1', scaleMode: 'nearest' },
+      { name: 'npc/lauren-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
       { name: 'npc/phaser-0', scaleMode: 'nearest' },
       { name: 'npc/phaser-1', scaleMode: 'nearest' },
       { name: 'npc/muhammad-0', scaleMode: 'nearest' },

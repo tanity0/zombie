@@ -5713,14 +5713,17 @@ export class PixiScene {
   // 向きは store の esc.face を使う(描画のみ・シミュレーション非干渉)。
   private drawEscorts(escorts: EscortSoldier[], now: number) {
     const seen = new Set<string>();
-    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
+    // 3コマ立ち絵(-2 あり)は接地A→通過→接地B→通過 のピンポン[0,1,2,1]、2コマのみは従来[0,1](社長指示)。
+    const step = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS);
     for (const esc of escorts) {
       seen.add(esc.id);
       let sp = this.escortSprites.get(esc.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
       // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
       const base = ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter';
-      const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0'); // 行進=常時2コマ歩行
+      const seq = getTexture(`${base}-2`) ? PixiScene.ESCORT_WALK_SEQ_3 : PixiScene.ESCORT_WALK_SEQ_2;
+      const walkFrame = seq[step % seq.length];
+      const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
 
       if (tex) {
         sp.texture = tex;
@@ -5838,6 +5841,8 @@ export class PixiScene {
   // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
   private static readonly RESCUE_NPC_DISPLAY_H = 65; // 表示の基準高さ(px)。社長指示で 54→65(×1.2)。当たり判定(RESCUE_SURVIVOR_SIZE)も同率で拡大。
   private static readonly RESCUE_WALK_FRAME_MS = 170;
+  private static readonly ESCORT_WALK_SEQ_2 = [0, 1];          // 2コマ立ち絵の歩行
+  private static readonly ESCORT_WALK_SEQ_3 = [0, 1, 2, 1];    // 3コマ立ち絵(社長提供): 接地A→通過→接地B→通過
   // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じくらいの見た目サイズで描く(社長指示)。
   // 表示基準高さ RESCUE_NPC_DISPLAY_H の枠へ contain-fit ＋ プレイヤーと同じ遠近曲線(depthScale)。
   private humanNpcScale(texW: number, texH: number, footY: number): number {

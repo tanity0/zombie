@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1418 — 差し替えた軍人4人を3コマ歩行アニメへ+エリザベス差し替え(社長指示・実装チャット)
+- 社長指示「入れ替えた軍人は3コマアニメ」。これまで2接地(f0/f2)の2コマにしていたが、真ん中の
+  通過コマ(f1)も入れて3コマ化。対象=エドガー/ジョセフ/エリザベス/ローレン。
+- 各画像の3コマ(f0=接地A/f1=通過/f2=接地B)を共通キャンバスに足元そろえ・中央で再変換し
+  `npc/{base}-0/1/2.png`を保存(-2を新規追加、-1は通過コマへ差し替え)。エリザベス(社長「3」=index2)は
+  今回新規に3コマ差し替え(拳銃・赤髪)。
+- 描画: `drawEscorts`を3コマ対応に。`${base}-2`テクスチャがあるNPCは歩行シーケンス`[0,1,2,1]`
+  (接地A→通過→接地B→通過のピンポン)、無いNPC(未差し替えのムサシ/チェン/フェイザー/ムハンマド)は
+  従来`[0,1]`。`pixiTextures.ts`にedgar/joseph/elizabeth/lauren の`-2`を追加。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。負荷1/10(テクスチャ1枚増+配列引き)。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛NPCの立ち絵アセット+歩行コマ数の変更のみ)。
+
 ## v0.25.1417 — 軍人(護衛NPC)ローレンの歩行アニメ差し替え(社長提供・実装チャット)
 - 社長提供の兵士イラスト(ツインテール・緑装備・拳銃・3コマ・透過背景2400×1500)を、護衛NPC
   「ローレン」(soldierIndex=6・社長の呼称「7の軍人」)の歩行2コマへ差し替え。
