@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1433 — ヘビーガンナーを新5コマに差し替え(walk=透過/idle=紫単体)(社長提供・実装チャット)
+- 社長提供2枚: walk=5コマ透過シート(1448×1086)、idle=紫背景の立ち絵単体(1254²)。「二枚目がストップ」=
+  idleは専用の別画像(今回はシート内f1ではなく別枚)。ヘビーガンナー(warrior)→`player-shotgun-*`。
+- 背景処理を素材ごとに判定(v1431の教訓): walk=四隅alpha0→**アルファそのまま**。idle=不透明紫→**紫を
+  フラッドフィルでキー抜き**(bg≈(92,18,241)・euclid<110・縁連結のみ。黒枠線/青髪は紫と距離が大きく安全)。
+- 焼き: 既存規約(共通スケールfigH→105/右端x106/足元y107)で128×108。walk-0..4=5コマ、idle=紫単体。
+  検証: 全frame xmax=106/footY=107/figH103-105・枠線保持・紫ハロー無し(プレビュー目視)。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'5'→'6'`。
+- 検証: lint/typecheck/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(素材差し替えのみ)。
+- 残: スカベンジャー(necromancer→player-striker-*)のみ未差し替え。
+
 ## v0.25.1432 — ストライカーを新5コマ透過素材に差し替え(社長提供・実装チャット)
 - 社長提供の赤髪ストライカー(透過・5コマ・1280×426)を差し替え。**反転規約**により ストライカー(rogue)は
   `player-scavenger-*` に焼く(campaign.ts L448 char-select・pixiScene L486 in-game とも一致を確認済み)。

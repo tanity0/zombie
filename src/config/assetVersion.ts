@@ -11,4 +11,5 @@
 // v4: そのv3が黒キー誤爆でシルエット枠線(不透明黒)を削っていたのを、透過素材のアルファ基準で
 //     焼き直して同名差し替え。旧v3キャッシュを無効化する。
 // v5: ストライカー(player-scavenger-walk-0..4/idle=反転規約)を新5コマ透過素材で同名差し替え。
-export const ASSET_VERSION = '5';
+// v6: ヘビーガンナー(player-shotgun-walk-0..4=透過5コマ/idle=紫背景単体をキー抜き)を同名差し替え。
+export const ASSET_VERSION = '6';
