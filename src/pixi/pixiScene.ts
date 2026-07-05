@@ -344,6 +344,10 @@ const PLAYER_SHADOW_SCALE = 0.7;
 const ESCORT_SPRITE_BASE: (string | undefined)[] = [
   'npc/edgar', 'npc/joseph', 'npc/elizabeth', 'npc/musashi', 'npc/muhammad', 'npc/chen', 'npc/lauren', 'npc/phaser',
 ];
+// 歩行コマ間をクロスフェード補間する soldierIndex(社長指示: フェイザー=7 のみ滑らか化。
+// ピンポン[0,1,2,1]は必ず接地↔通過の隣接なので、混ざっても中間歩(足の半開き)として自然に見える)。
+// 残像が気になれば Set から外すだけで即戻せる。
+const ESCORT_CROSSFADE_SOLDIERS = new Set<number>([7]);
 
 const HELI_DISPLAY_H = 120;  // 画面上のヘリ高さ(px。横はテクスチャ比で従属)
 const HELI_ABOVE = 210;      // 序盤、飛来高度(キャラ上方への随伴オフセット px)
@@ -935,6 +939,7 @@ export class PixiScene {
   private baseSoldierSprites = new Map<string, Sprite>(); // 拠点駐留兵士の立ち絵(救助NPCと同じ shooter 素材・足元アンカー・y-sort)
   private baseSoldierFace = new Map<string, { px: number; face: number }>(); // 兵士の向き(前フレx差分で決定)
   private escortSprites = new Map<string, Sprite>(); // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用。
+  private escortBlendSprites = new Map<string, Sprite>(); // クロスフェード対象NPCの「次コマ」重ね描き(滑らか化・視覚のみ)。
   private rescueFace = new Map<string, { vx: number; face: number }>(); // 向きの平滑化(EMA)＋ヒステリシス。パタパタ反転防止
   private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
@@ -5729,6 +5734,12 @@ export class PixiScene {
       const seq = getTexture(`${base}-2`) ? PixiScene.ESCORT_WALK_SEQ_3 : PixiScene.ESCORT_WALK_SEQ_2;
       const walkFrame = seq[step % seq.length];
       const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
+      // クロスフェード補間(対象NPCのみ): コマ内の進行率 frac で「次コマ」を上に α=frac で重ね、
+      // 170msごとのパッ切り替えを連続化する。隣接コマは常に接地↔通過なので混色=中間歩に見える。
+      const crossfade = ESCORT_CROSSFADE_SOLDIERS.has(esc.soldierIndex);
+      const frac = crossfade ? (now % PixiScene.RESCUE_WALK_FRAME_MS) / PixiScene.RESCUE_WALK_FRAME_MS : 0;
+      const nextFrame = seq[(step + 1) % seq.length];
+      const nextTex = crossfade ? (getTexture(`${base}-${nextFrame}`) ?? tex) : null;
 
       // 徒歩の自然化(プレイヤーと同じ二次モーション・視覚のみ・判定不変)。護衛は常時行進なので位相は
       // 時間から連続生成し、コマ周期(seq.length×フレーム時間)に同期させてスカッシュ&ストレッチの山を
@@ -5741,21 +5752,44 @@ export class PixiScene {
       const walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
       const walkLean = stepS * PLAYER_WALK_LEAN_RAD;
 
+      const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
+      const px = Math.round(esc.x), py = Math.round(esc.y - bob);
+      const faceSign = esc.face < 0 ? -1 : 1;
+      const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now);
       if (tex) {
         sp.texture = tex;
         const sc = this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
-        sp.scale.set(sc * walkSqX * (esc.face < 0 ? -1 : 1), sc * walkSqY);
+        sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
         sp.rotation = walkLean;
         // 登場演出中はヘリ離陸タイミングでフェードイン(プレイヤーと同期)。上下左右の4人がこれに該当。
-        sp.alpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now);
+        sp.alpha = baseAlpha;
         sp.visible = sp.alpha > 0;
       } else sp.visible = false;
-      const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
-      sp.position.set(Math.round(esc.x), Math.round(esc.y - bob));
+      sp.position.set(px, py);
       sp.zIndex = esc.y;
+      // クロスフェードの「次コマ」重ね(同じ変換・同じ足元)。α=frac で徐々に前コマを覆う=A/Bクロスフェード。
+      if (crossfade && tex && nextTex && baseAlpha > 0) {
+        let bl = this.escortBlendSprites.get(esc.id);
+        if (!bl) { bl = new Sprite(); bl.anchor.set(0.5, 1); this.L.actorLayer.addChild(bl); this.escortBlendSprites.set(esc.id, bl); }
+        bl.texture = nextTex;
+        const sc = this.humanNpcScale(nextTex.width, nextTex.height, esc.y);
+        bl.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
+        bl.rotation = walkLean;
+        bl.position.set(px, py);
+        bl.zIndex = esc.y + 0.001; // 主スプライトの直上
+        bl.alpha = baseAlpha * frac;
+        bl.visible = bl.alpha > 0.003;
+      } else {
+        const bl = this.escortBlendSprites.get(esc.id);
+        if (bl) bl.visible = false;
+      }
     }
     for (const [id, sp] of this.escortSprites) {
-      if (!seen.has(id)) { sp.destroy(); this.escortSprites.delete(id); }
+      if (!seen.has(id)) {
+        sp.destroy(); this.escortSprites.delete(id);
+        const bl = this.escortBlendSprites.get(id);
+        if (bl) { bl.destroy(); this.escortBlendSprites.delete(id); }
+      }
     }
   }
 

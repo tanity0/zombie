@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1427 — フェイザーの歩行をクロスフェード補間で滑らか化(社長指示・実装チャット)
+- 社長「フェイザーがカクつく」→ 手法確認で「クロスフェード補間(今すぐ)」を選択。フェイザー
+  (soldierIndex=7)**のみ**、歩行コマ間をA/Bクロスフェードで連続化した(視覚のみ・判定不変)。
+- 実装(drawEscorts): `ESCORT_CROSSFADE_SOLDIERS = Set([7])` に含まれるNPCは、コマ内進行率
+  `frac=(now%RESCUE_WALK_FRAME_MS)/RESCUE_WALK_FRAME_MS` で「次コマ」を主スプライトの直上に
+  `alpha=baseAlpha*frac` で重ね描き(`escortBlendSprites` プール)。frac 0→1 で次コマが前コマを覆い、
+  170msのパッ切り替えが滑らかに。二次モーション(スカッシュ/リーン/bob)は主・重ねで同一変換。
+- 残像リスクの緩和理由: ピンポン`[0,1,2,1]`の隣接コマは必ず接地↔通過なので、混色は「足の半開き=
+  中間歩」に見える(2つの接地コマが混ざる悪いケースは起きない)。気になれば Set から 7 を外すだけで即戻し。
+- 対象はフェイザーのみ(「Aだけ直す」)。他7人は現状の3コマピンポンのまま。
+- 負荷スコア: **1/10**(rendering)。対象NPCだけスプライト+1枚(プール・同時数体)。テクスチャは既存。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。実機で残像の有無を要確認(出たら5コマ素材へ切替)。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画のみ)。
+
 ## v0.25.1426 — 実機相談の診断: 「リラックス→ピークの周期が早い」=リザルト集計の計測バグ(設計チャットFable)
 - 社長報告: リザルトに「PEAK 49回/RELAX 49回」(13:09ラン)→周期が早すぎるのでは、の相談。
 - 診断: 49回は**旧・反応型ディレクターのマクロ分類**(Intensityしきい値遷移・約15秒でパタパタ)の

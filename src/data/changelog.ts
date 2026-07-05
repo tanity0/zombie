@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1427',
+    items: [
+      '護衛の軍人(フェイザー)の歩行を、コマ間をなめらかにつなぐクロスフェード補間でより滑らかに。',
+    ],
+  },
+  {
     version: '0.25.1425',
     items: [
       '軽量化(第1弾): 火花・衝撃波の輪・弾道の光の描き方を全面的に軽い方式へ変更。見た目は同じまま、エフェクトが重なる場面のカクつきを軽減。',
