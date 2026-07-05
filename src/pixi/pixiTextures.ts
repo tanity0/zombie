@@ -29,6 +29,8 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-walk-0',
       'player-magnum-walk-1',
       'player-magnum-walk-2',
+      'player-magnum-walk-3',
+      'player-magnum-walk-4',
       'player-magnum-game-0',
       'player-magnum-game-1',
       'player-magnum-game-2',

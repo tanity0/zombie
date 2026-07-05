@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1409',
+    items: [
+      'マークスマンの立ち絵を新しい5コマの往復アニメーションに差し替え(全4クラスが新歩行に)。',
+      '隠しボス「トール」の突きの溜め中、刀を頭上のより中央に構えるよう調整。',
+    ],
+  },
+  {
     version: '0.25.1408',
     items: [
       '隠しボス「トール」の突きに溜め演出を追加(刀を頭上に構えてためる)。',

@@ -436,18 +436,17 @@ const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+ス�
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
-// 5コマ×ピンポン(左→右→折り返し→右→左)歩行を使うクラス。スカベンジャー(necromancer)・
-// ヘビーガンナー(warrior)・ストライカー(rogue)は社長提供の5コマ立ち絵
-// (player-striker-* / player-shotgun-* / player-scavenger-*)を採用。
+// 5コマ×ピンポン(左→右→折り返し→右→左)歩行を使うクラス。4クラス全て社長提供の5コマ立ち絵を採用:
+// スカベンジャー(necromancer→player-striker-*)/ヘビーガンナー(warrior→player-shotgun-*)/
+// ストライカー(rogue→player-scavenger-*)/マークスマン(mage→player-magnum-*)。
 const usesFiveFramePingPong = (p: Player): boolean =>
-  p.characterClass === 'necromancer' || p.characterClass === 'warrior' || p.characterClass === 'rogue';
+  p.characterClass === 'necromancer' || p.characterClass === 'warrior' ||
+  p.characterClass === 'rogue' || p.characterClass === 'mage';
 const playerWalkSequence = (p: Player): number[] =>
   // 5コマ勢は端(0,4)を重複させず往復してループ=滑らかな折り返し。
   usesFiveFramePingPong(p)
     ? [0, 1, 2, 3, 4, 3, 2, 1]
-    : p.characterClass === 'mage'
-      ? [0, 1, 2, 1]
-      : [0, 1];
+    : [0, 1];
 // 歩行アニメの1周期(ms)。5コマ×ピンポン勢はコマ数が多いぶん、他クラスと同じ460msだと
 // コマ送りが速すぎるため専用に長め(社長指示「周期を変えて」)。
 const PINGPONG_WALK_CYCLE_MS = 900;
@@ -7129,9 +7128,10 @@ export class PixiScene {
     burstSp.visible = false;
     const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
     katana.scale.set(kscale);
-    // 上段(刃を上向き=-90°)を基準に、プレイヤーと逆側へ引く(=溜めで後傾を深く)。終盤は震え。
+    // 上段(刃を上向き=-90°=真ん中)を基準に、プレイヤーと逆側へ少しだけ引く(=溜めの後傾)。終盤は震え。
+    // 社長指示「もっと真ん中に」: 傾きを控えめにして刀をトールのほぼ真上・中央に立てる。
     const back = leanX >= 0 ? -1 : 1; // プレイヤーが右なら刃を左(後ろ)へ引く
-    const tilt = back * (0.35 + 0.55 * prog);
+    const tilt = back * (0.06 + 0.14 * prog);
     const shake = prog > 0.6 ? Math.sin(now / 28) * 2.5 * ((prog - 0.6) / 0.4) : 0;
     const rise = 4 + 16 * prog; // 溜めが進むほど上へ引き上げる
     katana.rotation = (-Math.PI / 2 + tilt) - THOR_KATANA_INTRINSIC_ANGLE;

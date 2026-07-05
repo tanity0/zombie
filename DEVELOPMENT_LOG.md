@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1409 — マークスマン5コマ化+トール突き刀を中央寄せ(社長提供/指示・実装チャット)
+- **マークスマン(mage→`player-magnum-*`)**を社長提供の新5コマ(金髪・ライフル・マント・透過黒背景
+  2172×724)へ差し替え。ライフル銃身(右端)基準で右端x=106・足元y=107・均一スケール(最長=高さ106px)
+  で変換し`player-magnum-walk-0..4`を保存(walk-3/4追加)。`pixiTextures.ts`読込に2枚追加。
+  `usesFiveFramePingPong`に**mageを追加**=**全4クラス(necromancer/warrior/rogue/mage)が5コマ
+  ピンポン**に統一。`playerWalkSequence`の旧mage分岐(`[0,1,2,1]`)は不要になり撤去。
+- **トール突きの溜め刀を中央寄せ**(社長指示「もっと真ん中に」): `drawThorTsukiCharge`の後傾角を
+  `back*(0.35+0.55*prog)`(最大~51°)→`back*(0.06+0.14*prog)`(最大~11°)へ縮小。刀がトールの
+  ほぼ真上・中央に立つ。柄位置(fb.footX=中央)・引き上げ・震えは不変。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。マークスマンは重ね合わせで整列確認。
+  刀中央寄せは純視覚のため実機で要確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(立ち絵差し替え+トール演出の描画調整のみ)。
+
 ## v0.25.1408 — トール突きの溜め演出: 刀をトールの上に構える(社長指示・実装チャット)
 - 社長指示「トールの突きの時、刀をトールの上に表示して突きの溜めを表現」に対応。従来tsuki-windup中は
   刀の演出が無かった。
