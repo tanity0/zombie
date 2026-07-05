@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1421 — 軍人ムサシを3コマ化(社長提供・実装チャット)
+- 社長提供の兵士イラスト(黒髪お団子・髭・緑装備・ライフル・3コマ・透過1280×720)を、護衛NPC「ムサシ」
+  (soldierIndex=3)の3コマ歩行へ差し替え。
+- 通過コマの位置: 足幅計測で **f0=通過(footspread110)**・f1(175)/f2(198)が接地。ピンポン`[0,1,2,1]`の
+  中央を通過にするため **-0=f1(接地A)/-1=f0(通過)/-2=f2(接地B)** の順で配置。共通キャンバス226×367・
+  足元そろえ・水平中央。`npc/musashi-0/1/2.png`保存(-2新規)、`pixiTextures.ts`に`npc/musashi-2`追加。
+- drawEscortsは`-2`ありNPCを自動で`[0,1,2,1]`ピンポン+v0.25.1420の二次モーションで描く(配線変更不要)。
+  残る2コマは chen(idx5)/phaser(idx7) のみ。素材提供後に3コマ化予定。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛NPCの立ち絵差し替えのみ)。
+
 ## v0.25.1420 — 護衛の軍人にプレイヤーと同じ二次モーションを追加(社長指示・実装チャット)
 - 社長指示「軍人全部のアニメーションも、プレイヤーみたいに自然に見える工夫を追加」。護衛NPC
   (drawEscorts)の歩行に、プレイヤーと同じ二次モーション(視覚のみ・判定不変)を重ねた。
