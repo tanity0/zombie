@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1431',
+    items: [
+      'マークスマンの立ち絵で、輪郭線(シルエットの縁)が消えてしまっていた不具合を修正(透過素材をそのまま使うよう焼き直し)。',
+    ],
+  },
+  {
     version: '0.25.1430',
     items: [
       '護衛の軍人(フェイザー)の歩行クロスフェードで残像が出ていたため解除。元の3コマ往復に戻した。',
