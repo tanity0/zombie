@@ -483,6 +483,10 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
   return knownClass ? PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
 const PLAYER_WALK_BOB_PX = 0.8;
+// ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=
+// 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
+const KNOCKBACK_HOP_PX = 6;    // 跳ねの高さ(px・控えめ)
+const KNOCKBACK_HOP_MS = 260;  // 跳ねアークの所要時間(敵=被弾lastHit起点 / プレイヤー=knockbackUntil逆算)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するスカッシュ量
@@ -4657,9 +4661,13 @@ export class PixiScene {
       view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean;
     }
+    // ノックバック中の小さな跳ね(社長指示・敵と共通): knockbackUntil から進行度を逆算し sin の1山。
+    const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
+      ? Math.sin(Math.max(0, Math.min(1, 1 - (p.knockbackUntil - now) / KNOCKBACK_HOP_MS)) * Math.PI) * KNOCKBACK_HOP_PX
+      : 0;
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY + slamOffY,
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY,
     );
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
@@ -4951,6 +4959,10 @@ export class PixiScene {
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
+    // ノックバック中の小さな跳ね(社長指示): 被弾(lastHit)を起点に sin の1山ぶんポンと跳ねる。
+    const kbHop = (e.knockbackUntil !== undefined && now < e.knockbackUntil)
+      ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI) * KNOCKBACK_HOP_PX
+      : 0;
     // 裏ボスは「当たり判定=足元の帯(AABB)」と「絵(巨体)」を分離して描く(社長指示)。
     // 他敵は従来どおり足元アンカー＋遠近スケール。
     const bossFixed = isHiddenBoss(e.type);
@@ -4987,7 +4999,7 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      view.sprite.position.set(Math.round(spx + liftShake), Math.round(spy - liftHop));
+      view.sprite.position.set(Math.round(spx + liftShake), Math.round(spy - liftHop - kbHop));
       view.sprite.scale.set(scale * breath.x, scale * breath.y * flinchSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
@@ -5015,7 +5027,7 @@ export class PixiScene {
       view.sprite.visible = true;
     } else {
     view.sprite.anchor.set(0.5, 1);
-    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop));
+    view.sprite.position.set(Math.round(fb.footX + liftShake), Math.round(fb.footY - liftHop - aiHop - kbHop));
     view.sprite.alpha = 1; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
     if (tex) {

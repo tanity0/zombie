@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1410',
+    items: [
+      '敵や自機がノックバックした時に、少しポンと跳ねる演出を追加。',
+    ],
+  },
+  {
     version: '0.25.1409',
     items: [
       'マークスマンの立ち絵を新しい5コマの往復アニメーションに差し替え(全4クラスが新歩行に)。',

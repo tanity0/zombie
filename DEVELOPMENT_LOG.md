@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1410 — ノックバック時に少し跳ねる演出(社長指示・実装チャット)
+- 社長指示「敵と味方のノックバック時、少し跳ねる感じに」。`pixiScene.ts`に純視覚のホップを追加
+  (当たり判定・store位置は不変)。
+- 定数 `KNOCKBACK_HOP_PX=6` / `KNOCKBACK_HOP_MS=260` を新設。1回のノックバックで sin の1山ぶん
+  ポンと跳ねて着地する縦オフセット。
+  - **敵**: `drawEnemy`で`e.knockbackUntil > now`の間、被弾`lastHit`起点の進行度で`kbHop`を算出し、
+    通常敵・裏ボスの両描画position(`- liftHop - aiHop - kbHop` / `- liftHop - kbHop`)へ加算。
+  - **プレイヤー(味方)**: `drawPlayer`で`p.knockbackUntil`から進行度を逆算し`pKbHop`を算出、
+    足元Y(`fb.footY - bob - pKbHop`)へ加算。
+  - 護衛兵(EscortSoldier)はノックバック状態を持たない=対象外。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。純視覚のため実機で跳ね量(6px)/所要
+  (260ms)を要確認(すぐ調整可)。負荷1/10(既存のhop算出にsin1回追加のみ・per-frame新規ループなし)。
+- 自己点検: 憲法第4条・第5条に抵触なし(被弾ノックバックの見た目のみ・挙動/判定は不変)。
+
 ## v0.25.1409 — マークスマン5コマ化+トール突き刀を中央寄せ(社長提供/指示・実装チャット)
 - **マークスマン(mage→`player-magnum-*`)**を社長提供の新5コマ(金髪・ライフル・マント・透過黒背景
   2172×724)へ差し替え。ライフル銃身(右端)基準で右端x=106・足元y=107・均一スケール(最長=高さ106px)
