@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1416 — 軍人(護衛NPC)エドガーの歩行アニメ差し替え(社長提供・実装チャット)
+- 社長提供の兵士イラスト(金髪ひげ・緑装備・ライフル・3コマ・**不透明黒背景**1672×941)を、護衛NPC
+  「エドガー」(soldierIndex=0)の歩行2コマへ差し替え。
+- 変換: 黒背景を色キー抜き(黒アウトラインを削らないよう max(r,g,b)<=18 のみ除去)。3コマのうち
+  2接地(f0/f2)を採用し、共通キャンバス219×290へ足元そろえ・水平中央で配置。`npc/edgar-0/1.png`を上書き。
+  向きは右(既存convention通り)なので反転不要。コード変更なし。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。重ね合わせで整合確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛NPCの立ち絵アセット差し替えのみ)。
+
 ## v0.25.1415 — 軍人(護衛NPC)ジョセフの歩行アニメ差し替え(社長提供・実装チャット)
 - 社長提供の兵士イラスト(灰色髪・緑装備・ライフル・3コマ・透過黒背景2172×724)を、護衛NPC
   「ジョセフ」(soldierIndex=1・社長の呼称「軍人1」)の歩行2コマへ差し替え。
