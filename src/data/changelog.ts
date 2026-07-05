@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1407',
+    items: [
+      'ストライカーの立ち絵を新しい5コマの往復アニメーションに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1406',
     items: [
       '隠しボス「トール」の横払いを、トールを軸に刀を振る動きに変更(斬撃と連動)。',

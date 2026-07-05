@@ -52,6 +52,8 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-walk-0',
       'player-scavenger-walk-1',
       'player-scavenger-walk-2',
+      'player-scavenger-walk-3',
+      'player-scavenger-walk-4',
       'player-scavenger-game-0',
       'player-scavenger-game-1',
       'player-scavenger-game-2',

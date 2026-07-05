@@ -436,15 +436,16 @@ const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+ス�
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
-// 5コマ×ピンポン(左→右→折り返し→右→左)歩行を使うクラス。スカベンジャー(necromancer)と
-// ヘビーガンナー(warrior)は社長提供の5コマ立ち絵(player-striker-* / player-shotgun-*)を採用。
+// 5コマ×ピンポン(左→右→折り返し→右→左)歩行を使うクラス。スカベンジャー(necromancer)・
+// ヘビーガンナー(warrior)・ストライカー(rogue)は社長提供の5コマ立ち絵
+// (player-striker-* / player-shotgun-* / player-scavenger-*)を採用。
 const usesFiveFramePingPong = (p: Player): boolean =>
-  p.characterClass === 'necromancer' || p.characterClass === 'warrior';
+  p.characterClass === 'necromancer' || p.characterClass === 'warrior' || p.characterClass === 'rogue';
 const playerWalkSequence = (p: Player): number[] =>
   // 5コマ勢は端(0,4)を重複させず往復してループ=滑らかな折り返し。
   usesFiveFramePingPong(p)
     ? [0, 1, 2, 3, 4, 3, 2, 1]
-    : p.characterClass === 'mage' || p.characterClass === 'rogue'
+    : p.characterClass === 'mage'
       ? [0, 1, 2, 1]
       : [0, 1];
 // 歩行アニメの1周期(ms)。5コマ×ピンポン勢はコマ数が多いぶん、他クラスと同じ460msだと
