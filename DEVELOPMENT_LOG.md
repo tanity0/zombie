@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1412 — 全4クラスに待機立ち絵+キャラ選択画面へ反映(社長提供・実装チャット)
+- 社長提供の待機イラストを4クラス分用意し、**歩いていない時の立ち絵**+**キャラ選択画面の絵**に採用。
+  - マークスマン(mage)→`player-magnum-idle`(白背景) / ヘビーガンナー(warrior)→`player-shotgun-idle`(紫) /
+    ストライカー(rogue)→`player-scavenger-idle`(紫) / スカベンジャー(necromancer)→`player-striker-idle`(既存)。
+  - 変換: 各背景を色キー抜き(角ノイズは列/行の充填画素数閾値で除去)+歩行と同じ整列
+    (右端x=106・足元y=107・総身長106px)。歩行コマと並べて同寸を目視確認。
+- 配線: `PLAYER_IDLE_SPRITE`(クラス→待機絵名のマップ)を新設し、`playerTextureName`の待機分岐を
+  **全4クラス対応**へ(武将フル装備中は待機絵を出さず武将立ち絵優先=不変)。`pixiTextures.ts`読込に
+  `player-magnum/shotgun/scavenger-idle`を追加(striker-idleは既存)。
+- キャラ選択: `campaign.ts`の4クラスの`sprite`を`*-walk-0`→`*-idle`へ変更(app版でキャッシュバスト)。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。dist出力に4枚のidle。
+- 自己点検: 憲法第4条・第5条に抵触なし(立ち絵アセット追加+キャラ選択画像差し替えのみ)。
+
 ## v0.25.1411 — トール突き溜め: 刀先端を突く方向へ+弓引き演出(社長指示・実装チャット)
 - 社長指示「突く方向に刀の先端を合わせて。弓で矢を引き放つ感覚」。従来の上段構え(刃を真上)から、
   **刃の先端を突く方向(プレイヤー)へ向ける**方式へ変更。

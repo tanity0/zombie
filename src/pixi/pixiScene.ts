@@ -459,14 +459,21 @@ const playerWalkFrame = (p: Player, now: number, walking: boolean): number => {
   const index = Math.floor((now % cycle) / (cycle / sequence.length));
   return sequence[index] ?? 0;
 };
+// 歩いていない時のクラス別 待機立ち絵(社長提供)。※クラスID↔ファイル名の対応は既存仕様のまま:
+// mage=マークスマン / warrior=ヘビーガンナー / necromancer=スカベンジャー / rogue=ストライカー。
+const PLAYER_IDLE_SPRITE: Partial<Record<Player['characterClass'], string>> = {
+  mage: 'player-magnum-idle',
+  warrior: 'player-shotgun-idle',
+  necromancer: 'player-striker-idle',
+  rogue: 'player-scavenger-idle',
+};
 // プレイヤーの立ち絵テクスチャ名(クラス/武将装備/フレーム別)。分身もこれを共有して同じ外見にする。
 // ※ necromancer→striker / rogue→scavenger の対応は既存仕様のまま(入れ替えない)。
 const playerTextureName = (p: Player, frame: number, walking = true): string => {
   const warlordFull = hasFullWarlordSet(p.equipment);
   const warlordKatana = warlordFull && hasMurasame(p);
-  // スカベンジャー(necromancer)は歩いていない時だけ専用の待機立ち絵(社長提供)を使う。
-  // 武将フル装備中は武将立ち絵が優先(待機絵は出さない)。
-  if (!walking && !warlordFull && p.characterClass === 'necromancer') return 'player-striker-idle';
+  // 歩いていない時は各クラス専用の待機立ち絵(社長提供)。武将フル装備中は武将立ち絵が優先(待機絵なし)。
+  if (!walking && !warlordFull && PLAYER_IDLE_SPRITE[p.characterClass]) return PLAYER_IDLE_SPRITE[p.characterClass]!;
   return warlordKatana ? `player-warlord-katana-walk-${frame}`
     : warlordFull ? `player-warlord-gun-walk-${frame}`
     : p.characterClass === 'mage' ? `player-magnum-walk-${frame}`

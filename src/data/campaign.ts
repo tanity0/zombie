@@ -421,7 +421,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'warrior',
     name: 'ヘビーガンナー',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-walk-0.png?v=${spriteVersion}`,
+    sprite: `${import.meta.env.BASE_URL}sprites/player-shotgun-idle.png?v=${spriteVersion}`,
     accent: 'rgba(248, 113, 113, 0.55)',
     gear: 'ショットガン ＋ ハチェット',
     skillKey: 'heavy-grenade',
@@ -433,7 +433,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'mage',
     name: 'マークスマン',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-walk-0.png?v=${spriteVersion}`,
+    sprite: `${import.meta.env.BASE_URL}sprites/player-magnum-idle.png?v=${spriteVersion}`,
     accent: 'rgba(168, 85, 247, 0.52)',
     gear: 'マグナム ＋ ナイフ',
     skillKey: 'marksman-trap',
@@ -445,7 +445,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'rogue',
     name: 'ストライカー',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-walk-0.png?v=${spriteVersion}`,
+    sprite: `${import.meta.env.BASE_URL}sprites/player-scavenger-idle.png?v=${spriteVersion}`,
     accent: 'rgba(52, 211, 153, 0.48)',
     gear: 'ハンドガン ＋ ファイティングナイフ',
     skillKey: 'striker-hunting',
@@ -457,7 +457,7 @@ export const CHARACTER_CLASSES: CharacterClassInfo[] = [
   {
     id: 'necromancer',
     name: 'スカベンジャー',
-    sprite: `${import.meta.env.BASE_URL}sprites/player-striker-walk-0.png?v=${spriteVersion}`,
+    sprite: `${import.meta.env.BASE_URL}sprites/player-striker-idle.png?v=${spriteVersion}`,
     accent: 'rgba(129, 140, 248, 0.48)',
     gear: 'ハンドガン ＋ ハチェット',
     skillKey: 'striker-quick-mag',

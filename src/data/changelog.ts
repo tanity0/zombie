@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1412',
+    items: [
+      '全4クラスに立ち止まっている時の専用ポーズを追加。キャラ選択画面の絵もその立ち絵に変更。',
+    ],
+  },
+  {
     version: '0.25.1411',
     items: [
       '隠しボス「トール」の突きの溜めを、刀の先端を狙いに向けて弓を引くような演出に変更。',
