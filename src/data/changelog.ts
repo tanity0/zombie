@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1411',
+    items: [
+      '隠しボス「トール」の突きの溜めを、刀の先端を狙いに向けて弓を引くような演出に変更。',
+    ],
+  },
+  {
     version: '0.25.1410',
     items: [
       '敵や自機がノックバックした時に、少しポンと跳ねる演出を追加。',

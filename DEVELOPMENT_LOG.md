@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1411 — トール突き溜め: 刀先端を突く方向へ+弓引き演出(社長指示・実装チャット)
+- 社長指示「突く方向に刀の先端を合わせて。弓で矢を引き放つ感覚」。従来の上段構え(刃を真上)から、
+  **刃の先端を突く方向(プレイヤー)へ向ける**方式へ変更。
+- `drawThorTsukiCharge`の引数を`leanX`→`targetX,targetY`(プレイヤー中心)に変更。狙い=手元
+  (fb.footX, fb.footY - fb.boxH*0.55=胸)からターゲットへの向き。`katana.rotation=aimAngle`で
+  先端を突く方向へ合わせ、溜め(prog 0→1)で手元を**狙い線の後方へ引く**(`TSUKI_DRAW_BACK_PX=40`×prog
+  =弓を引く)。終盤は狙い線に直交して小刻みに震わせる(弦の張り)。実行(tsuki)で前方へ突き出す=放つ。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。純視覚のため実機で引き量(40px)・
+  手元の高さ(boxH*0.55)を要確認(すぐ調整可)。
+- 自己点検: 憲法第4条・第5条に抵触なし(トール突きの溜め描画のみ・当たり判定/ゲームプレイ値は不変)。
+
 ## v0.25.1410 — ノックバック時に少し跳ねる演出(社長指示・実装チャット)
 - 社長指示「敵と味方のノックバック時、少し跳ねる感じに」。`pixiScene.ts`に純視覚のホップを追加
   (当たり判定・store位置は不変)。

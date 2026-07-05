@@ -546,6 +546,7 @@ const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ラ�
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
+const TSUKI_DRAW_BACK_PX = 40;          // 突き溜め: 手元を狙い線の後方へ引く量(弓引き・実機調整前提)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
 const THOR_TSUKI_VIS_HALFWIDTH = 30;    // 突きの描画半太さ(当たり判定と同じ)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
@@ -5181,13 +5182,13 @@ export class PixiScene {
         const dashProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
         this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, dashProg, true);
       } else if (e.bossState === 'tsuki-windup') {
-        // 突きの溜め(社長指示): 刀をトールの上に構えて溜めを表現する。方向は未確定なので、
-        // プレイヤー側へ少し傾けつつ上段に構え、溜めが進むほど引き上げる。実行(tsuki)で前方へ突く。
+        // 突きの溜め(社長指示): 弓で矢を引いて放つ感覚。刀の先端を突く方向(プレイヤー)へ向け、
+        // 溜めが進むほど手元を後方へ引く(=弓を引く)。実行(tsuki)で前方へ突き出す(=放つ)。
         view.sprite.tint = 0xffffff;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_WINDUP_MS));
         const pl = useGameStore.getState().player;
-        const leanX = (pl.x + pl.width / 2) - cx;
-        this.drawThorTsukiCharge(e.id, fb.footX, fb.footY - fb.boxH * 1.02, prog, now, leanX);
+        // トールの手元(胸の高さ)を起点に、プレイヤー中心を狙う。
+        this.drawThorTsukiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.55, prog, now, pl.x + pl.width / 2, pl.y + pl.height / 2);
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
         // 実行の瞬間だけプレイヤーの斬撃と同じピクセル演出を表示。180msをそのまま1本の
@@ -7116,10 +7117,10 @@ export class PixiScene {
     }
   }
 
-  // 突きの溜め演出(社長指示): 刀をトール(pivot)の上に上段構えで表示し、溜め(prog 0→1)が
-  // 進むほど引き上げ+後方(プレイヤーと逆側)へ引き、終盤は小刻みに震わせる。斬撃ストリーク/
-  // バーストは出さない(溜め中は判定なし)。leanX>0=プレイヤーは右。
-  private drawThorTsukiCharge(id: string, pivotX: number, pivotY: number, prog: number, now: number, leanX: number) {
+  // 突きの溜め演出(社長指示): 弓で矢を引いて放つ感覚。刀の先端を突く方向(target=プレイヤー)へ
+  // 向け、溜め(prog 0→1)が進むほど手元(pivot=トールの手)を狙い線に沿って後方へ引く。終盤は
+  // 小刻みに震わせる(弦の張り)。斬撃ストリーク/バーストは出さない(溜め中は判定なし)。
+  private drawThorTsukiCharge(id: string, pivotX: number, pivotY: number, prog: number, now: number, targetX: number, targetY: number) {
     let c = this.thorSlashFx.get(id);
     if (!c) {
       const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
@@ -7140,14 +7141,16 @@ export class PixiScene {
     burstSp.visible = false;
     const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
     katana.scale.set(kscale);
-    // 上段(刃を上向き=-90°=真ん中)を基準に、プレイヤーと逆側へ少しだけ引く(=溜めの後傾)。終盤は震え。
-    // 社長指示「もっと真ん中に」: 傾きを控えめにして刀をトールのほぼ真上・中央に立てる。
-    const back = leanX >= 0 ? -1 : 1; // プレイヤーが右なら刃を左(後ろ)へ引く
-    const tilt = back * (0.06 + 0.14 * prog);
-    const shake = prog > 0.6 ? Math.sin(now / 28) * 2.5 * ((prog - 0.6) / 0.4) : 0;
-    const rise = 4 + 16 * prog; // 溜めが進むほど上へ引き上げる
-    katana.rotation = (-Math.PI / 2 + tilt) - THOR_KATANA_INTRINSIC_ANGLE;
-    katana.position.set(pivotX + shake, pivotY - rise);
+    // 狙い=手元からターゲット(プレイヤー)への向き。刃の先端をこの向きへ合わせる。
+    const dx = targetX - pivotX, dy = targetY - pivotY;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d, uy = dy / d;           // 狙いの単位ベクトル(前=突く方向)
+    const aimAngle = Math.atan2(dy, dx);
+    // 溜めで手元を後方(狙いと逆)へ引く(=弓を引く)。終盤は狙い線に直交して小刻みに震える。
+    const draw = TSUKI_DRAW_BACK_PX * prog;
+    const shake = prog > 0.6 ? Math.sin(now / 26) * 2.0 * ((prog - 0.6) / 0.4) : 0;
+    katana.rotation = aimAngle - THOR_KATANA_INTRINSIC_ANGLE;   // 先端=突く方向
+    katana.position.set(pivotX - ux * draw + (-uy) * shake, pivotY - uy * draw + ux * shake);
     katana.tint = 0xffffff;
     katana.alpha = 0.55 + 0.45 * prog;
     katana.visible = true;
