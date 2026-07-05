@@ -14,4 +14,5 @@
 // v6: ヘビーガンナー(player-shotgun-walk-0..4=透過5コマ/idle=紫背景単体をキー抜き)を同名差し替え。
 // v7: 護衛NPCフェイザー(npc/phaser-0/1/2)を新3コマ(紫背景キー抜き)で同名差し替え。
 // v8: スカベンジャー(player-striker-walk-0..4/idle=反転規約)を新5コマ+ストップ絵で同名差し替え。
-export const ASSET_VERSION = '8';
+// v9: ストライカー(player-scavenger-walk-0..4/idle)を新5コマ透過素材(v2)で同名差し替え。
+export const ASSET_VERSION = '9';

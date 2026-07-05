@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1437',
+    items: [
+      'ストライカーの立ち絵・歩行を新しいイラストの5コマに差し替え(2コマ目が立ち止まり/キャラ選択の絵)。',
+    ],
+  },
+  {
     version: '0.25.1436',
     items: [
       'スカベンジャーの立ち絵・歩行を新しい5コマの素材に差し替え(立ち止まり/キャラ選択は専用の構え絵に)。これで全4クラスが新しい歩行アニメに。',

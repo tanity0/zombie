@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1437 — ストライカーを新イラスト5コマに再差し替え(社長提供・実装チャット)
+- 社長提供の新ストライカーシート(**透過**・5コマ・2560×852)。「仕様は同じ」=walk-0..4=f0..f4、
+  **idle=f1(2コマ目=ストップ/キャラ選択)**。反転規約で rogue→`player-scavenger-*`。
+- 四隅alpha=0を確認→黒キーなし・アルファそのまま(教訓遵守)。既存規約(figH→105/右端x106/足元y107)で
+  128×108へ。検証: 全コマ xmax=106/footY=107/figH103-105。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'8'→'9'`。
+- 検証: lint/typecheck/build全通過。プレビュー目視OK。
+- 自己点検: 憲法第4条・第5条に抵触なし(素材差し替えのみ)。
+
 ## v0.25.1436 — スカベンジャーを新5コマ+ストップ絵に差し替え(全4クラス完了)(社長提供・実装チャット)
 - 社長提供2枚: walk=紫背景5コマ(1672×941 PNG)、ストップ=紫背景単体(395×576 **JPEG**)。
   **反転規約**によりスカベンジャー(necromancer)→`player-striker-*`。
