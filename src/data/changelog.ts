@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1422',
+    items: [
+      '護衛の軍人(フェイザー)の歩行を3コマの往復アニメーションに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1421',
     items: [
       '護衛の軍人(ムサシ)の歩行を3コマの往復アニメーションに差し替え。',

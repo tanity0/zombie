@@ -240,6 +240,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/lauren-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
       { name: 'npc/phaser-0', scaleMode: 'nearest' },
       { name: 'npc/phaser-1', scaleMode: 'nearest' },
+      { name: 'npc/phaser-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
       { name: 'npc/muhammad-0', scaleMode: 'nearest' },
       { name: 'npc/muhammad-1', scaleMode: 'nearest' },
       { name: 'npc/muhammad-2', scaleMode: 'nearest' },  // 3コマ歩行(社長提供)
