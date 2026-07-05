@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1408',
+    items: [
+      '隠しボス「トール」の突きに溜め演出を追加(刀を頭上に構えてためる)。',
+    ],
+  },
+  {
     version: '0.25.1407',
     items: [
       'ストライカーの立ち絵を新しい5コマの往復アニメーションに差し替え。',

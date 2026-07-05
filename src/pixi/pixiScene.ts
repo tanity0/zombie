@@ -542,6 +542,7 @@ const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
+const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
 const THOR_TSUKI_VIS_HALFWIDTH = 30;    // 突きの描画半太さ(当たり判定と同じ)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
@@ -5168,6 +5169,14 @@ export class PixiScene {
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const dashProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_DASH_MS));
         this.drawThorSlash(e.id, fx, fy, tx, ty, THOR_ISSEN_VIS_HALFWIDTH, dashProg, true);
+      } else if (e.bossState === 'tsuki-windup') {
+        // 突きの溜め(社長指示): 刀をトールの上に構えて溜めを表現する。方向は未確定なので、
+        // プレイヤー側へ少し傾けつつ上段に構え、溜めが進むほど引き上げる。実行(tsuki)で前方へ突く。
+        view.sprite.tint = 0xffffff;
+        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_WINDUP_MS));
+        const pl = useGameStore.getState().player;
+        const leanX = (pl.x + pl.width / 2) - cx;
+        this.drawThorTsukiCharge(e.id, fb.footX, fb.footY - fb.boxH * 1.02, prog, now, leanX);
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
         // 実行の瞬間だけプレイヤーの斬撃と同じピクセル演出を表示。180msをそのまま1本の
@@ -7094,6 +7103,42 @@ export class PixiScene {
     } else {
       katana.visible = false;
     }
+  }
+
+  // 突きの溜め演出(社長指示): 刀をトール(pivot)の上に上段構えで表示し、溜め(prog 0→1)が
+  // 進むほど引き上げ+後方(プレイヤーと逆側)へ引き、終盤は小刻みに震わせる。斬撃ストリーク/
+  // バーストは出さない(溜め中は判定なし)。leanX>0=プレイヤーは右。
+  private drawThorTsukiCharge(id: string, pivotX: number, pivotY: number, prog: number, now: number, leanX: number) {
+    let c = this.thorSlashFx.get(id);
+    if (!c) {
+      const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
+      const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
+      const katana = new Sprite(); katana.anchor.set(THOR_KATANA_GRIP_FRAC.x, THOR_KATANA_GRIP_FRAC.y);
+      c = new Container();
+      c.addChild(streak, burstSp, katana);
+      this.L.effectLayer.addChild(c);
+      this.thorSlashFx.set(id, c);
+    }
+    const streak = c.children[0] as Sprite;
+    const burstSp = c.children[1] as Sprite;
+    const katana = c.children[2] as Sprite;
+    const kref = getTexture('thor-katana');
+    if (!kref) { c.visible = false; return; }
+    c.visible = true;
+    streak.visible = false;
+    burstSp.visible = false;
+    const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
+    katana.scale.set(kscale);
+    // 上段(刃を上向き=-90°)を基準に、プレイヤーと逆側へ引く(=溜めで後傾を深く)。終盤は震え。
+    const back = leanX >= 0 ? -1 : 1; // プレイヤーが右なら刃を左(後ろ)へ引く
+    const tilt = back * (0.35 + 0.55 * prog);
+    const shake = prog > 0.6 ? Math.sin(now / 28) * 2.5 * ((prog - 0.6) / 0.4) : 0;
+    const rise = 4 + 16 * prog; // 溜めが進むほど上へ引き上げる
+    katana.rotation = (-Math.PI / 2 + tilt) - THOR_KATANA_INTRINSIC_ANGLE;
+    katana.position.set(pivotX + shake, pivotY - rise);
+    katana.tint = 0xffffff;
+    katana.alpha = 0.55 + 0.45 * prog;
+    katana.visible = true;
   }
 
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {

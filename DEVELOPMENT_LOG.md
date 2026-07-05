@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1408 — トール突きの溜め演出: 刀をトールの上に構える(社長指示・実装チャット)
+- 社長指示「トールの突きの時、刀をトールの上に表示して突きの溜めを表現」に対応。従来tsuki-windup中は
+  刀の演出が無かった。
+- `drawThorTsukiCharge`メソッドを新設し、`tsuki-windup`ブランチを追加。刀の柄をトールの頭上
+  (fb.footY - fb.boxH*1.02)に置き**上段構え**(刃は上向き基準)。溜め進行prog(0→1)で
+  ①上へ引き上げ(rise 4→20px) ②プレイヤーと逆側へ後傾を深く(引き=矢を引くイメージ)
+  ③終盤(prog>0.6)は小刻みに震わせる、で「溜め」を表現。斬撃ストリーク/バーストは出さない
+  (溜め中は判定なし)。実行(tsuki)は従来どおり前方へ突き出す。刀画像は`thor-katana.png`継続使用。
+- `THOR_TSUKI_WINDUP_MS=1000`定数を追加(useGameLoopと一致・溜め進行度算出用)。プレイヤー方向は
+  storeから取得しleanXで後傾の向きを決定。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。**純視覚演出・実機で構えの高さ/引き角/
+  震えを要確認**(数値はすぐ調整可)。
+- 自己点検: 憲法第4条・第5条に抵触なし(トール専用攻撃の溜め描画のみ・当たり判定/ゲームプレイ値は不変)。
+
 ## v0.25.1407 — ストライカー立ち絵を5コマ+ピンポン歩行へ(社長提供・実装チャット)
 - ストライカー(rogue クラス→`player-scavenger-*`)の歩行を、社長提供の新イラスト(赤髪・短剣・
   **5コマ**横並び・透過1280×426)へ差し替え。
