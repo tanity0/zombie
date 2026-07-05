@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1434',
+    items: [
+      '護衛の軍人(フェイザー)の立ち絵を新しいイラストに差し替え(3コマ往復)。',
+    ],
+  },
+  {
     version: '0.25.1433',
     items: [
       'ヘビーガンナーの立ち絵・歩行を新しい5コマの素材に差し替え(立ち止まり/キャラ選択は専用の立ち絵に)。',

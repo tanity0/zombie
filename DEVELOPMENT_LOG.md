@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1434 — 護衛NPCフェイザーを新3コマに差し替え(社長提供・実装チャット)
+- 社長提供の新フェイザー(青髪・赤十字・紺装備・**紫背景・3コマ**・1536×1024)を護衛NPC(soldierIndex=7)へ。
+- 背景: 不透明紫→**フラッドフィルでキー抜き**(bg≈(104,17,240)・euclid<110。黒枠線/青髪/紺服は紫と距離大で安全)。
+- 護衛規約(プレイヤーと別): anchor(0.5,1)=足元中央。共通キャンバス242×329・水平中央・足元下端で3フレーム配置。
+  足幅計測で **f1=通過(174=最小)**、自然順 -0=f0(接地A)/-1=f1(通過)/-2=f2(接地B)。ping-pong[0,1,2,1]の中央=通過。
+- drawEscortsは`npc/phaser-2`ありで自動的に3コマピンポン(配線変更なし)。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'6'→'7'`。
+- 検証: lint/typecheck/build全通過。プレビューで紫ハロー無し・枠線保持・整列を確認。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛立ち絵差し替えのみ)。
+
 ## v0.25.1433 — ヘビーガンナーを新5コマに差し替え(walk=透過/idle=紫単体)(社長提供・実装チャット)
 - 社長提供2枚: walk=5コマ透過シート(1448×1086)、idle=紫背景の立ち絵単体(1254²)。「二枚目がストップ」=
   idleは専用の別画像(今回はシート内f1ではなく別枚)。ヘビーガンナー(warrior)→`player-shotgun-*`。
