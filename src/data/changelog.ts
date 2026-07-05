@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1420',
+    items: [
+      '護衛の軍人の歩行に、プレイヤーと同じ自然な二次モーション(上下の弾み・左右の体重移動・縦横の伸縮)を追加。',
+    ],
+  },
+  {
     version: '0.25.1419',
     items: [
       '護衛の軍人(ムハンマド)の歩行を3コマの往復アニメーションに差し替え。',

@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1420 — 護衛の軍人にプレイヤーと同じ二次モーションを追加(社長指示・実装チャット)
+- 社長指示「軍人全部のアニメーションも、プレイヤーみたいに自然に見える工夫を追加」。護衛NPC
+  (drawEscorts)の歩行に、プレイヤーと同じ二次モーション(視覚のみ・判定不変)を重ねた。
+- 実装: `drawEscorts`内で、コマ周期`cycleMs = seq.length × RESCUE_WALK_FRAME_MS`から連続位相
+  `phase = (now/cycleMs)×2π`を生成し、`stepS=sin(phase)`, `lift=|stepS|`。プレイヤーと同じ定数を流用:
+  - スカッシュ&ストレッチ: `walkSqY = 1 + SQUASH·lift − SQUASH·0.5·(1−lift)`,
+    `walkSqX = 1 − SQUASH·0.8·lift + SQUASH·0.4·(1−lift)`(`PLAYER_WALK_SQUASH=0.05`)。
+  - 上下の弾み: `bob = lift × PLAYER_WALK_BOB_PX(0.8) × depthScale(esc.y)`をposition.yから減算。
+  - 左右リーン(体重移動): `rotation = stepS × PLAYER_WALK_LEAN_RAD(0.035)`。アンカーは(0.5,1)足元支点なので
+    プレイヤーと同じく足元を軸に傾く。face反転は従来どおりscale.xの符号で維持。
+- 位相を`seq.length×フレーム時間`に同期させたので、3コマ`[0,1,2,1]`は通過コマ(index1/3)でlift最大=遊脚の
+  最高点、接地コマ(0/2)でlift0=接地、と自然に一致。2コマ`[0,1]`は2接地の中間で弾む。
+- 対象は「軍人」=護衛NPC(drawEscorts)のみ。救助サバイバー(民間人)や駐留兵は今回の指示対象外なので触らず。
+- 負荷スコア: **1/10**(rendering)。1体につき`sin`1回＋乗算数個/フレーム、護衛NPCは同時数体のみ。
+  新規スプライト・フィルタ・per-frame Graphics無し。プレイヤーの二次モーションと同機構。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(描画のみ・シミュレーション/判定は不変)。
+
 ## v0.25.1419 — 軍人ムハンマドを3コマ化(社長提供・実装チャット)
 - 社長提供の兵士イラスト(黒髪・緑装備・ライフル・3コマ・透過1915×724)を、護衛NPC「ムハンマド」
   (soldierIndex=4・社長の呼称「5の軍人」)の3コマ歩行へ差し替え。

@@ -5725,15 +5725,28 @@ export class PixiScene {
       const walkFrame = seq[step % seq.length];
       const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
 
+      // 徒歩の自然化(プレイヤーと同じ二次モーション・視覚のみ・判定不変)。護衛は常時行進なので位相は
+      // 時間から連続生成し、コマ周期(seq.length×フレーム時間)に同期させてスカッシュ&ストレッチの山を
+      // 通過コマに合わせる。接地(lift=0)で縦に潰れ横に広がり、遊脚(lift=1)で縦に伸び横が締まる＋左右リーン。
+      const cycleMs = seq.length * PixiScene.RESCUE_WALK_FRAME_MS;
+      const phase = (now / cycleMs) * Math.PI * 2;
+      const stepS = Math.sin(phase);
+      const lift = Math.abs(stepS); // 0=接地 / 1=遊脚中(最高点)
+      const walkSqY = 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift);
+      const walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
+      const walkLean = stepS * PLAYER_WALK_LEAN_RAD;
+
       if (tex) {
         sp.texture = tex;
         const sc = this.humanNpcScale(tex.width, tex.height, esc.y); // プレイヤーと同寸
-        sp.scale.set(sc * (esc.face < 0 ? -1 : 1), sc);
+        sp.scale.set(sc * walkSqX * (esc.face < 0 ? -1 : 1), sc * walkSqY);
+        sp.rotation = walkLean;
         // 登場演出中はヘリ離陸タイミングでフェードイン(プレイヤーと同期)。上下左右の4人がこれに該当。
         sp.alpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now);
         sp.visible = sp.alpha > 0;
       } else sp.visible = false;
-      sp.position.set(Math.round(esc.x), Math.round(esc.y));
+      const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
+      sp.position.set(Math.round(esc.x), Math.round(esc.y - bob));
       sp.zIndex = esc.y;
     }
     for (const [id, sp] of this.escortSprites) {
