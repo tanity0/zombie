@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1423 — 軍人チェンを3コマ化(護衛の軍人 全員完了)(社長提供・実装チャット)
+- 社長提供の兵士イラスト(青髪・眼鏡・黒装備・ライフル・3コマ・透過1672×941)を、護衛NPC「チェン」
+  (soldierIndex=5)の3コマ歩行へ差し替え。
+- 通過コマの位置: 足幅計測で **f1=通過(footspread126)**・f0(250)/f2(287)が接地。自然順のまま
+  **-0=f0(接地A)/-1=f1(通過)/-2=f2(接地B)** で配置。共通キャンバス297×408・足元そろえ・水平中央。
+  `npc/chen-0/1/2.png`保存(-2新規)、`pixiTextures.ts`に`npc/chen-2`追加。
+- **これで護衛の軍人8人(soldierIndex 0〜7)全員が3コマ往復アニメ+二次モーションに揃った。**
+  未提供で2コマ残っていたNPCはゼロ。
+- 検証: lint/typecheck/test(431 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛NPCの立ち絵差し替えのみ)。
+
 ## v0.25.1422 — 軍人フェイザーを3コマ化(社長提供・実装チャット)
 - 社長提供の兵士イラスト(青髪ロング・額に赤十字・紺装備・ライフル・3コマ・透過1280×853)を、護衛NPC
   「フェイザー」(soldierIndex=7)の3コマ歩行へ差し替え。
