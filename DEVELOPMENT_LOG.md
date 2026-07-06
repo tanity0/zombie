@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1440 — ヘビーガンナーのidle(待機)を差し替え(社長提供・実装チャット)
+- 社長提供の待機絵(透過・単体・1448×1086内に1体)を`player-shotgun-idle`へ。アルファそのまま・
+  既存規約(figH→105/右端x106/足元y107)。walk-1と並べて大きさ/足元の一致を目視確認。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'11'→'12'`。
+- 検証: lint/typecheck/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(素材差し替えのみ)。
+
 ## v0.25.1439 — ヘビーガンナーのwalkを更新版シートで再差し替え(社長提供・実装チャット)
 - 社長提供の更新版walkシート(透過・5コマ・1448×1086。v1438のシートと同寸だが中身は別=差分2万px)。
   ストップ絵の添付なし→**walk-0..4のみ差し替え、idleはv1438のまま**。warrior→`player-shotgun-*`。

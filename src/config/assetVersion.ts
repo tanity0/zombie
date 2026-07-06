@@ -17,4 +17,5 @@
 // v9: ストライカー(player-scavenger-walk-0..4/idle)を新5コマ透過素材(v2)で同名差し替え。
 // v10: ヘビーガンナー(player-shotgun-walk-0..4/idle)を新透過素材(walk5コマ+ストップ単体)で同名差し替え。
 // v11: ヘビーガンナーのwalk 5コマを更新版シートで再差し替え(idleはv10のまま)。
-export const ASSET_VERSION = '11';
+// v12: ヘビーガンナーのidle(待機)を新透過素材で同名差し替え。
+export const ASSET_VERSION = '12';
