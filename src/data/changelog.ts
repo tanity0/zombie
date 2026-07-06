@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1458',
+    items: [
+      '近接攻撃の振りに緩急を追加(ゆっくり構え→鋭く振り抜き→ゆったり残光)。',
+    ],
+  },
+  {
     version: '0.25.1456',
     items: [
       '近接攻撃の振りモーションで、いま装備しているナイフの絵がそのまま表示されるように(構え→振り抜きの両方)。武器を強化すると見た目も変わる。',

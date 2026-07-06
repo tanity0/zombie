@@ -446,6 +446,10 @@ const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
 // ※knife-swing-2はv0.25.1456から「弧のみ」(社長提供)。ナイフはこのスプライトが担当する。
 const MELEE_WPN_F1 = { rot: 200.7 * Math.PI / 180, len: 0.95 };
 const MELEE_WPN_F2 = { rot: 252.6 * Math.PI / 180, len: 0.608, fx: 0.173, fy: 0.250 };
+// スイングの時間イージング(社長指示 v0.25.1457): 進行をゆっくり→速く→ゆっくり(smoothstep)に。
+// 構えがタメて、振り抜きが鋭く走り、残光がゆったり消える。見た目のみ=当たり判定の
+// タイミング・総時間(PLAYER_MELEE_SWING_MS)は不変。
+const meleeSwingEase = (t: number): number => t * t * (3 - 2 * t);
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -4777,7 +4781,7 @@ export class PixiScene {
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     if (this.playerKnifeSetup) {
       if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
-        const kt = sinceSwing / PLAYER_MELEE_SWING_MS;
+        const kt = meleeSwingEase(sinceSwing / PLAYER_MELEE_SWING_MS); // ゆっくり→速く→ゆっくり
         // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }
@@ -4944,7 +4948,7 @@ export class PixiScene {
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     const cSince = Date.now() - (clone.swingAt ?? 0);
     if (this.cloneKnifeSetup && clone.swingAt && cSince >= 0 && cSince < PLAYER_MELEE_SWING_MS) {
-      const kt = cSince / PLAYER_MELEE_SWING_MS;
+      const kt = meleeSwingEase(cSince / PLAYER_MELEE_SWING_MS); // 本体と同じイージング
       const mir = clone.facingLeft ? -1 : 1;
       const cDsc = this.depthScale(footY);
       const unit = boxH * cDsc;                                   // boxH=clone.height*PLAYER_VISUAL_SCALE(本体と同基準)

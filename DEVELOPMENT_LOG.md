@@ -10,12 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1458 — 近接スイングに時間イージング(社長指示・実装チャット)
+- 社長「歩きのモーションみたいに、速度をゆっくり→早く→ゆっくりに」→ スイングの進行kt に
+  smoothstep(`meleeSwingEase = t²(3-2t)`)を適用(本体drawPlayer+分身syncShadowClone両方)。
+  構えがタメて、振り抜きが鋭く走り、残光がゆったり消える。α/コマ切替は全てkt基準なので自動で連動。
+- 見た目のみ: 当たり判定のタイミング・総時間(PLAYER_MELEE_SWING_MS=200ms)は不変。
+- 検証: lint/typecheck/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ)。
+
 ## v0.25.1457 — スカベンジャーのストップ絵を透過PNG版へ差し替え(社長提供・設計チャットFable)
 - 社長が透過PNG版(1580×2304・キャラ実寸1310×1694)を提供 → `stop.png` として保存し、
   紫背景JPEG(要キー抜き)は削除。チェック: 透過・中間アルファなし・高解像度で文句なし。
   輪郭の紫フチは他クラス原本と同じ画風(そのまま出る)。
 - スカベンジャーの懸念(キー抜き・低解像度)は解消。**全4クラスの原本が完全な状態で揃った。**
 - 検証: doc+素材差し替え+version(コード不変)。
+
 ## v0.25.1456 — 近接スイングに装備武器の実絵を表示(社長指示・実装チャット)
 - 社長相談→承認: スイングの固定ダガー絵を「いま装備している近接武器の絵」に。
   f1=構え位置に装備絵 / f2=弧のみ(社長提供の新素材)+振り抜き位置に装備絵 / f3=そのまま。
