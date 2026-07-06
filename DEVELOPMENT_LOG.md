@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1442 — ヘビーガンナーのidleを正しいストップ絵に差し替え(社長訂正・実装チャット)
+- 社長「間違えた、ヘビーガンナーのストップこちら」→ v1440のidleを新素材(透過・1950×1965・図1140×1665)
+  で差し替え。大判素材の縮小(×0.063)なのでLANCZOSで潰れ/ジャギを防止(既存の小規模素材はNEARESTのまま)。
+- 規約128×108/右端x106/足元y107/figH105。walk-1と並べて一致を目視確認。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'13'→'14'`。
+- 検証: lint/typecheck/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(素材差し替えのみ)。
+
 ## v0.25.1441 — 護衛NPCフェイザーを新3コマ(透過)に再差し替え(社長提供・実装チャット)
 - 社長提供の新フェイザー(**透過**・3コマ・1536×1024)。四隅alpha=0→キー処理なし・アルファそのまま。
 - 足幅計測: f0=237/f1=175/f2=221 → **f1=通過**。自然順 -0/-1/-2、ping-pong[0,1,2,1]の中央=通過。

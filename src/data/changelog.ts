@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1442',
+    items: [
+      'ヘビーガンナーの立ち止まり(待機)の絵を正しいイラストに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1441',
     items: [
       '護衛の軍人(フェイザー)の立ち絵を新しいイラストに差し替え。',

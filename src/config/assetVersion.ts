@@ -19,4 +19,5 @@
 // v11: ヘビーガンナーのwalk 5コマを更新版シートで再差し替え(idleはv10のまま)。
 // v12: ヘビーガンナーのidle(待機)を新透過素材で同名差し替え。
 // v13: 護衛NPCフェイザー(npc/phaser-0/1/2)を新3コマ透過素材で同名差し替え。
-export const ASSET_VERSION = '13';
+// v14: ヘビーガンナーのidle(待機)を正しいストップ絵(社長訂正)で同名差し替え。
+export const ASSET_VERSION = '14';
