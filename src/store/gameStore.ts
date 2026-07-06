@@ -971,7 +971,11 @@ export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中�
 export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
 // 衝撃時の寄りパンチズーム。社長指示で 0.3。
 export const MELEE_FINISH_ZOOM_MAG = 0.3;  // 近接フィニッシュの寄り(+30%)
-export const COUNTER_ZOOM_MAG = 0.3;       // カウンター成立の寄り
+export const COUNTER_ZOOM_MAG = 0.5;       // カウンター成立の寄り(社長指示で1.5倍=+50%)
+// 通常キル(銃/接触/爆発/近接いずれも)の寄りパンチズーム(社長指示・1.5倍)。damageEnemy(gun/接触/爆発)と
+// grantMeleeKillRewards(近接全般)の両経路から撃つ。triggerZoomはmax合成なので、フィニッシュ演出
+// (MELEE_FINISH_ZOOM_MAG=0.3・ストップ+揺れ+スロー付き)と重なっても競合せず、強い方(1.5倍)が勝つだけ。
+export const KILL_ZOOM_MAG = 0.5;          // 通常キルの寄り(+50%=1.5倍)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
@@ -1455,6 +1459,9 @@ const grantMeleeKillRewards = (
       get().spawnRing(ex, ey, 4, 24, 'rgba(185,28,28,0.68)', 3, 280);
     }
   }
+  // キル時の寄りパンチズーム(社長指示・1.5倍・視覚のみ)。近接全経路がこのヘルパーを通るので
+  // ここ1箇所で拾える(gun/接触/爆発側は damageEnemy 内で同様に処理)。
+  if (killed.length > 0) get().triggerZoom(KILL_ZOOM_MAG);
 };
 
 // スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
@@ -5215,6 +5222,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnCallout(p.x, p.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
       }
     }
+
+    // キル時の寄りパンチズーム(社長指示・1.5倍・視覚のみ)。gun/接触/爆発のキルはここ1箇所で拾える。
+    if (killed) get().triggerZoom(KILL_ZOOM_MAG);
 
     return killed;
   },

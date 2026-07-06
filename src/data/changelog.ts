@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1464',
+    items: [
+      '敵を倒した時とカウンター成立時、カメラが少し寄るように(1.5倍)。手応えが伝わりやすく。',
+    ],
+  },
+  {
     version: '0.25.1463',
     items: [
       'ストライカーの表示を他のクラスと同じ「元絵そのまま」の素直な描画に統一。',

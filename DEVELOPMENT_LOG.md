@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1464 — KILL/カウンター成立時の寄りパンチズームを実装(社長指示・実装チャット)
+- 社長指示「KILLとカウンターの時にズームする処理を実装。カメラを1.5倍寄る」。
+- **既存調査**: カウンターは既に寄りズーム有り(`COUNTER_ZOOM_MAG=0.3`=1.3倍・`triggerHitImpact`経由)。
+  近接フィニッシュも既に有り(`MELEE_FINISH_ZOOM_MAG=0.3`・`triggerFinishImpact`経由・ストップ+揺れ+
+  スロー付き)。だが**銃/接触/爆発キルおよび非フィニッシュの通常近接キルにはズームが無かった**。
+- 実装:
+  - `COUNTER_ZOOM_MAG` を `0.3→0.5`(1.5倍)に変更。
+  - 新設 `KILL_ZOOM_MAG=0.5`(1.5倍)。「キル全般」を1箇所ずつで拾える共通経路2つにフック:
+    `damageEnemy`(gun/接触/爆発。killed=trueで撃つ)と `grantMeleeKillRewards`(近接キル全般。
+    finisher/非finisher問わず全ての近接キル経路がここを通る。killed.length>0で撃つ)。
+  - `triggerZoom`はmax合成のため、近接フィニッシュの既存ズーム(0.3)と重なっても競合せず新しい
+    1.5倍が自然に勝つ。フィニッシュ固有のストップ/揺れ/スロー演出は一切変更していない
+    (今回はズームのみを追加・指示範囲外の演出は触らない)。
+- 負荷スコア: **1/10**(rendering)。`triggerZoom`は数値2つのset()のみ・新規per-frame処理無し。
+  呼び出し箇所が増えただけで描画側(pixiScene.ts)のズーム適用ロジックは無変更。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・判定/ダメージ/報酬ロジック不変)。
+
 ## v0.25.1463 — M8追補実装: ストライカーも素直化(§5.9・実装チャット)
 - 社長指示「PACING_PUZZLE.md §5.9のM8追補を実装 — ストライカーも素直化で他クラスと揃える」。
   設計チャット(Fable)が記載した仕様(v0.25.1461)を実装。
