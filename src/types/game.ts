@@ -784,6 +784,11 @@ export interface GameStats {
   eliteKills: number;      // エリート(pumpkin)撃破数
   bossKills: number;       // ボス(giantbat)撃破数
   maxAreaReached: number;  // PACING_REDESIGN.mdバッチ2(計測): ラン中に到達した最深エリアindex(0-4)。リザルト表示用。
+  // PACING_PUZZLE.md §5.17 M14: ラン中に到達した最深距離(px・原点から)。maxAreaReachedはindexのみ
+  // なので、境界までの残り距離("あと◯m")や自己最深比較には生の距離が要る。
+  maxDepthDist: number;
+  // PACING_PUZZLE.md §5.17 M14: ラン中に到達した最高ランク(1-7・七つの大罪)。リザルト「到達譜」用。
+  maxRankReached: number;
 }
 
 // Input state — keyboard fallback only. Touch is handled directly by the

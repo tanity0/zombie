@@ -31,6 +31,8 @@ import {
 } from '../utils/namedEnemy';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
+import { getSelectedStageId, getWallMeta, type WallMeta } from '../data/progress';
+import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import { getDirectorRewardMult } from '../utils/directorRankState';
 import { recordKill, recordSpawn } from '../utils/killTelemetryState';
 import { getPityDropTuning } from '../utils/pityState';
@@ -83,6 +85,9 @@ export const PUMPKIN_JUMP_MAX_DIST = 350;
 // PACING_PUZZLE.md §5.14 M13(宿敵/ネームド・既定ON): ?named=0で無効化(昇格判定・ラン抽選とも停止。
 // directorTick.ts側の湧き注入もnamedFoeRunEligibleが常にfalseになるため自動的に湧かなくなる)。
 export const NAMED_ENEMY_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('named') !== '0';
+// PACING_PUZZLE.md §5.17 M14(到達譜=二軸の壁・既定ON): ?walls=0で無効化(予告/儀式演出・
+// ステージ毎メタの読み書きとも停止。ゾーン侵入バナー等の既存演出=eventBannerText系は不変)。
+export const WALL_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('walls') !== '0';
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -1439,7 +1444,11 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
     variant: treasureVariantForValue(treasureValueForRank(named.difficultyRank)),
     worldDrop: true,
   });
-  get().spawnCallout(x, y - 40, 'REVENGE!', '#ffd700', { bg: 0x7a5a00, scale: 1.6 });
+  // PACING_PUZZLE.md §5.17 M14追補(演出仕様v0.25.1499): spawnCallout('REVENGE!')は廃止し、
+  // 大格銘打ち(金)に置き換え。頭上ネームプレート/リング/グローは不変。
+  if (WALL_ENABLED) {
+    get().enqueueWallEvent('revenge', `REVENGE —— ${st.namedFoe.name}`, 'NEMESIS FELLED', '#ffd700', NAMED_TREASURE_GOLD);
+  }
   get().spawnRing(x, y, 14, 220, 'rgba(255,215,0,0.85)', 5, 560);
   get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
 };
@@ -1710,6 +1719,17 @@ export interface GachaPullResult {
   firstAcquire: boolean; // 初取得(比較なしで付与)
   promoted: boolean;     // Lvが上がった/初取得した
   refund: number;        // 返金ゴールド(昇格しなかった時のみ>0)
+}
+
+// PACING_PUZZLE.md §5.17 M14: 大格=銘打ちキューの1件。gold指定時は遅れて+◯G表示を出す
+// (depth=+50G/revenge=+150G。rankは金額表示なし)。
+export interface WallInscriptionEvent {
+  id: number;
+  kind: WallEventKind;
+  title: string;
+  sub: string;
+  color: string;
+  gold?: number;
 }
 
 interface GameState {
@@ -2062,6 +2082,14 @@ interface GameState {
                                                           // 既についたか。falseのまま次ランへ行くと持ち越し(因縁+1)
   lastDamagerType: EnemyType | null;                     // 直近の被弾元の型(宿敵昇格判定用)
   lastDamagerWasNamed: boolean;                          // 直近の被弾元が現在の宿敵インスタンスそのものだったか
+  // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。wallMetaは現在ステージの永続メタ
+  // (resetGameで現在の選択ステージ分を読み直す)。バンド/銘打ちはラン内限定の演出状態。
+  wallMeta: WallMeta;                                    // ステージ毎の踏破/到達フラグ+自己最深+自己最高ランク
+  wallBandText: string;                                  // 中格=帯の文言(空文字=非表示)
+  wallBandUntil: number;                                 // 帯の表示終了時刻(Date.now()基準)
+  wallBandColor: 'white' | 'gold';                        // 帯の色(白=深さ予告/金=宿敵出現)
+  wallEventQueue: WallInscriptionEvent[];                 // 大格=銘打ちの再生キュー(先頭のみ表示)
+  wallEventSeq: number;                                  // キューitemのid採番用
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
@@ -2148,6 +2176,10 @@ interface GameState {
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
   updateEffects: (deltaTime: number) => void;
+  // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出トリガー。
+  triggerWallBand: (text: string, color: 'white' | 'gold', durationMs: number) => void;
+  enqueueWallEvent: (kind: WallEventKind, title: string, sub: string, color: string, gold?: number) => void;
+  dequeueWallEvent: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -2305,6 +2337,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   namedFoeRunResolved: false,
   lastDamagerType: null,
   lastDamagerWasNamed: false,
+  wallMeta: getWallMeta(getSelectedStageId()), // 実際の再読込はresetGame開始時(ステージ切替に追従)
+  wallBandText: '',
+  wallBandUntil: 0,
+  wallBandColor: 'white',
+  wallEventQueue: [],
+  wallEventSeq: 0,
   indoorMode: false,
   labDoors: [],
   labButtons: [],
@@ -2363,7 +2401,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     meleeFinishers: 0,
     eliteKills: 0,
     bossKills: 0,
-    maxAreaReached: 0
+    maxAreaReached: 0,
+    maxDepthDist: 0,
+    maxRankReached: 1
   },
   characterClass: 'warrior',
   effects: [],
@@ -8356,6 +8396,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       namedFoeRunResolved: false,
       lastDamagerType: null,
       lastDamagerWasNamed: false,
+      // PACING_PUZZLE.md §5.17 M14: ステージが変わっている可能性があるので、選択中ステージの壁メタを
+      // 読み直す。演出キュー/帯はラン内限定なので新ランで必ずクリア。
+      wallMeta: getWallMeta(getSelectedStageId()),
+      wallBandText: '',
+      wallBandUntil: 0,
+      wallEventQueue: [],
     });
     state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
@@ -8668,7 +8714,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           meleeFinishers: 0,
           eliteKills: 0,
           bossKills: 0,
-          maxAreaReached: 0
+          maxAreaReached: 0,
+          maxDepthDist: 0,
+          maxRankReached: 1
         },
         characterClass: validClass,
         effects: [],
@@ -9073,5 +9121,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return { effects: live };
     });
-  }
+  },
+
+  // PACING_PUZZLE.md §5.17 M14: 中格=帯。実時間(Date.now)基準=スロー/ヒットストップの影響を受けない。
+  triggerWallBand: (text, color, durationMs) => {
+    set({ wallBandText: text, wallBandUntil: Date.now() + durationMs, wallBandColor: color });
+  },
+
+  // 大格=銘打ちキューへ追加。先頭(表示中の可能性がある分)は動かさず、それ以降を優先順で並べ替える
+  // (演出仕様v0.25.1499: 「両軸が同時に起きたら深さ優先」。sortWallEventsByPriorityで検証済み)。
+  enqueueWallEvent: (kind, title, sub, color, gold) => {
+    set(state => {
+      const newEvent: WallInscriptionEvent = { id: state.wallEventSeq + 1, kind, title, sub, color, gold };
+      const [head, ...rest] = state.wallEventQueue;
+      const tail = sortWallEventsByPriority([...rest, newEvent]);
+      return {
+        wallEventQueue: head !== undefined ? [head, ...tail] : tail,
+        wallEventSeq: state.wallEventSeq + 1,
+      };
+    });
+  },
+
+  dequeueWallEvent: () => set(state => ({ wallEventQueue: state.wallEventQueue.slice(1) })),
 }));

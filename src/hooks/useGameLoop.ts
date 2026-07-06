@@ -36,9 +36,12 @@ import {
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, AMMO_MAX,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
+import {
+  detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
+} from '../utils/wallProgress';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -126,7 +129,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId } from '../data/progress';
+import { getSelectedStageId, setWallMeta } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -382,6 +385,20 @@ const areaZoneIndexFor = (distPx: number): number => {
 // ゾーン判定(エリアバナー/深層BGM)の間引き間隔。距離比較数回だけで負荷は無視できるため毎フレーム(=1)。
 // (3に間引いても体感差・負荷差が無かったため社長指示で1へ戻し。重くなったらここを上げれば間引ける。)
 const ZONE_CHECK_INTERVAL = 1;
+// PACING_PUZZLE.md §5.17 M14: このランの最深距離(gameStats.maxDepthDist)+自己最深
+// (wallMeta.selfDeepestDist・ステージ毎localStorage永続)を更新時だけ反映する。呼び出し側で
+// 間引く(毎フレーム直呼びしない=localStorage書き込みが重いため。1秒間隔+死亡確定時の最終同期)。
+const syncWallDepth = (dist: number): void => {
+  if (dist > useGameStore.getState().gameStats.maxDepthDist) {
+    useGameStore.setState(state => ({ gameStats: { ...state.gameStats, maxDepthDist: dist } }));
+  }
+  const wm = useGameStore.getState().wallMeta;
+  if (dist > wm.selfDeepestDist) {
+    const nextMeta = markSelfDeepest(wm, dist);
+    setWallMeta(getSelectedStageId(), nextMeta);
+    useGameStore.setState({ wallMeta: nextMeta });
+  }
+};
 // 深層域BGM(逆再生)切替の距離しきい値。深層域(エリア=7500px)に合わせる。準備ゾーンは手前、
 // 解除はヒステリシスで戻し過ぎ防止(enter=D / exit=D-200 / 準備開始=D-400 / 解放=D-600)。
 const DEEP_BGM_D = 7500;
@@ -772,6 +789,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gateProgramRef = useRef<{ phaseKey: string; program: GateProgram | null; lastId: GateProgramId | null }>({ phaseKey: '', program: null, lastId: null });
   // バッチ2(計測): ラン中に到達した最深エリア(距離帯)index。リザルト表示用。
   const maxAreaRef = useRef(0);
+  // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
+  const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
+  // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
+  const runDeepestDistRef = useRef(0);
+  const wallDepthSyncRef = useRef(0);
   // 関所(襲撃)の開始/生還コールアウト用: 前フレームの台本フェーズキー。
   const gateCalloutRef = useRef('');
   const hunterKillsRef = useRef<{ t: number; total: number }[]>([]); // 撃破数の時系列(優勢判定の直近20s/6s集計)
@@ -906,6 +928,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const triggerPlayerDeath = useCallback((x: number, y: number) => {
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
+    // PACING_PUZZLE.md §5.17 M14: 死亡確定時に最終同期(1秒間隔の間引きだと直近の数百msが漏れるため)。
+    if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
     setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
     setHeartbeatLoop(false); // 心音ループも死亡で止める
     setPeakLayer(false); // PEAK重ねSEも死亡で止める
@@ -1420,6 +1444,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           resetPhaseKillDebug();
           killPhaseRef.current = { phaseKey: '', startTotals: null, startSpawns: null };
           maxAreaRef.current = 0;
+          wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
+          runDeepestDistRef.current = 0;
+          wallDepthSyncRef.current = 0;
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
@@ -2077,6 +2104,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
               // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
               if (zoneIdx > prevZone) playSfx('event-start');
+              // PACING_PUZZLE.md §5.17 M14: 深さの壁「儀式」(境界を跨いだ=踏破。ステージ毎初回のみ)。
+              if (WALL_ENABLED) {
+                const wallIdx = detectWallBreach(prevZone, zoneIdx);
+                if (wallIdx) {
+                  syncWallDepth(Math.hypot(pcx, pcy)); // 踏破の瞬間の距離も自己最深として反映
+                  const wm = useGameStore.getState().wallMeta;
+                  if (isFirstWallBreach(wm, wallIdx)) {
+                    const nextMeta = markWallBreached(wm, wallIdx);
+                    setWallMeta(getSelectedStageId(), nextMeta);
+                    useGameStore.setState({ wallMeta: nextMeta });
+                    useGameStore.getState().addGold(50);
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
+                    playSfx('event-clear'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+                  }
+                }
+              }
+            }
+            // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告」(境界の手前150pxで帯。1ランに各壁1回)。
+            if (WALL_ENABLED) {
+              const nextWallIdx = zoneIdx + 1;
+              if (
+                nextWallIdx <= wallWarnedRef.current.length && !wallWarnedRef.current[nextWallIdx - 1] &&
+                isApproachingWall(Math.hypot(pcx, pcy), 150)
+              ) {
+                wallWarnedRef.current[nextWallIdx - 1] = true;
+                useGameStore.getState().triggerWallBand(`この先 —— ${AREA_ZONE_NAMES[nextWallIdx]}`, 'white', 2800);
+              }
             }
             // 担当エリア(セクター)進入で、その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1連動)。
             // ハブ付近(原点近く)は除外。十分外へ出てセクターが変わった時に発火。CD は tryNpcLine が担保。
@@ -6289,12 +6343,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           return dx * dx + dy * dy <= zoomNearR2;
         });
         // プレイヤーのエリア(区域)index。区域別の出現可否(isValidForArea)判定に使う。
-        const playerAreaIdx = areaZoneIndexFor(Math.hypot(player.x + player.width / 2, player.y + player.height / 2));
+        const playerDepthDist = Math.hypot(player.x + player.width / 2, player.y + player.height / 2);
+        const playerAreaIdx = areaZoneIndexFor(playerDepthDist);
         // 最深到達エリア(バッチ2計測)。屋外のみ、単調増加でstoreへ反映(リザルト表示用)。
         // 変化した時だけ set() する(1ランで最大4回・React再描画コストは無視できる)。
         if (!labTheme && !indoor && playerAreaIdx > maxAreaRef.current) {
           maxAreaRef.current = playerAreaIdx;
           useGameStore.setState(state => ({ gameStats: { ...state.gameStats, maxAreaReached: playerAreaIdx } }));
+        }
+        // PACING_PUZZLE.md §5.17 M14: このランの最深距離(自己最深比較・「あと◯m」用)。
+        // refは毎フレーム追跡(軽い比較のみ)、store/localStorageへの反映は1秒間隔で間引く
+        // (localStorage書き込みを毎フレームやると重い・自己ベスト表示は1秒程度の遅れは無害)。
+        if (!labTheme && !indoor && WALL_ENABLED) {
+          runDeepestDistRef.current = Math.max(runDeepestDistRef.current, playerDepthDist);
+          if (gameTime - wallDepthSyncRef.current >= 1000) {
+            wallDepthSyncRef.current = gameTime;
+            syncWallDepth(runDeepestDistRef.current);
+          }
         }
         // AIディレクター ステップB(社長合意の最初の実接続): ?directorApply=relax の時だけ、直前フレームで
         // 算出済みの DirectorState(macro)を読み、RELAX中だけ「escalationを止める/湧き間隔を伸ばす/湧き上限を

@@ -10,6 +10,8 @@ import DebugOverlay from './DebugOverlay';
 import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
 import DanceTapMeter from './DanceTapMeter';
+import WallBand from './WallBand';
+import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import ShopMenu from './ShopMenu';
@@ -188,6 +190,9 @@ const Game: React.FC<GameProps> = ({
       {!isTouch && <MouseControls />}
 
       <GameHUD />
+      {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
+      <WallBand />
+      <WallInscription />
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}

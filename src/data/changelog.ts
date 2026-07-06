@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1503',
+    items: [
+      '新要素「到達譜」: 進んだ深さと戦闘ランクの記録・演出を追加(タイトルに最深到達バッジ、リザルトに深度メーター)。',
+    ],
+  },
+  {
     version: '0.25.1500',
     items: [
       'レベルアップ処理、敵のジャンプ着地/突進の危険範囲内にいる間は少し待ってから発動するように。',

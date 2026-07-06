@@ -426,4 +426,44 @@
 }
 .gacha-shoot-text { animation: gacha-shoot-text 1.4s ease-in-out infinite; }
 
+/* PACING_PUZZLE.md §5.17 M14 演出仕様(社長承認v0.25.1499)。DOMオーバーレイ・イベント駆動・
+   Pixi無関与(強glow/毎フレームText不使用=CLAUDE.mdの負荷方針どおり)。 */
+/* 中格=帯: スライドイン0.3秒→ホールド2秒→フェード0.5秒(計2.8秒)。 */
+@keyframes wall-band-cycle {
+  0%     { opacity: 0; transform: translate(-50%, -10px); }
+  10.7%  { opacity: 1; transform: translate(-50%, 0); }
+  82.1%  { opacity: 1; transform: translate(-50%, 0); }
+  100%   { opacity: 0; transform: translate(-50%, 0); }
+}
+.wall-band { animation: wall-band-cycle 2.8s ease-out forwards; }
+
+/* 大格=銘打ち: 横線0.4秒→本文フェード+字間締まり0.6秒(開始0.35秒)→サブ英字(開始0.8秒)→
+   金額(開始1.5秒)→ホールド→全体フェード0.8秒(計約4秒)。要素ごとにanimation-delayで開始をずらす。 */
+@keyframes wall-insc-line {
+  0% { transform: scaleX(0); opacity: 0; }
+  100% { transform: scaleX(1); opacity: 1; }
+}
+@keyframes wall-insc-title {
+  0% { opacity: 0; letter-spacing: 0.34em; }
+  100% { opacity: 1; letter-spacing: 0.14em; }
+}
+@keyframes wall-insc-sub {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes wall-insc-gold {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes wall-insc-fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 惜しさ(死亡リザルトの「あと約◯m」): 数字だけ1回ふわっと明滅(約1.6秒・1回きり・派手にしない)。 */
+@keyframes wall-tantalize-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 

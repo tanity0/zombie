@@ -3,6 +3,9 @@ import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
+import { getSelectedStageId, getWallMeta } from '../data/progress';
+import { deepestReachedBadge } from '../utils/wallProgress';
+import { clampRank } from '../utils/rankAssessor';
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
 // 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
@@ -13,6 +16,14 @@ const formatHeartbeat = (): string | null => {
   const ss = String(h.gameTimeSec % 60).padStart(2, '0');
   const heap = h.heapMB != null ? ` heap${h.heapMB}MB` : '';
   return `前回終了: 敵${h.enemies} 弾${h.projectiles} FX${h.effects} 拾${h.pickups} 設置${h.breakableProps} / ${mm}:${ss}${heap}`;
+};
+
+// PACING_PUZZLE.md §5.17 M14: タイトルバッジ「最深到達: {区域名}の{ランク名}」(選択中ステージの自己最深)。
+// heartbeatと同じ「レンダー内で直接読む」方針(localStorage読み取り1回・state化するほどでもない)。
+const formatWallBadge = (): string | null => {
+  const meta = getWallMeta(getSelectedStageId());
+  if (meta.selfDeepestDist <= 0) return null;
+  return deepestReachedBadge(meta.selfDeepestDist, clampRank(meta.selfHighestRank));
 };
 
 interface TitleScreenProps {
@@ -71,6 +82,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
   };
 
   const heartbeatLine = phase === 'title' ? formatHeartbeat() : null;
+  const wallBadgeLine = phase === 'title' ? formatWallBadge() : null;
 
   return (
     <div
@@ -98,9 +110,22 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </span>
       )}
 
+      {/* PACING_PUZZLE.md §5.17 M14: 最深到達バッジ(選択中ステージの自己最深・金の細枠+菱形ドット)。 */}
+      {wallBadgeLine && (
+        <span
+          className="absolute top-9 right-3 px-2 py-0.5 text-[10px] font-mono tabular-nums text-amber-100/90"
+          style={{
+            background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))',
+            border: '1px solid rgba(255,215,0,0.55)',
+          }}
+        >
+          {'◆'} {wallBadgeLine}
+        </span>
+      )}
+
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
       {heartbeatLine && (
-        <span className="absolute top-9 right-3 max-w-[92vw] px-2 py-0.5 text-[9px] font-mono tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
+        <span className="absolute top-16 right-3 max-w-[92vw] px-2 py-0.5 text-[9px] font-mono tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
           {heartbeatLine}
         </span>
       )}

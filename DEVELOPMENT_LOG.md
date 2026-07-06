@@ -12,6 +12,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1503 — M14: 到達譜=二軸の壁(深さ×ランク)を実装(社長指示・実装チャット)【2026-07-07 01:26 JST】
+- 社長指示「PACING_PUZZLE.md §5.17(M14 到達譜=二軸の壁)を実装して。演出は演出仕様(v0.25.1499確定)
+  ブロックどおり。M13演出の載せ替え追補(出現バナー金帯化・REVENGE銘打ち化)も同時に」を実装。
+- **`src/utils/wallProgress.ts`(新規・純関数・19テスト)**: 境界検知/予告判定/初到達判定
+  (ステージ毎)/不変更新/惜しさ計算(あと◯m・次のランク名)/掛け合わせ見出し/タイトルバッジ文言/
+  同時発火の優先順(深さ>ランク>REVENGE)を全数検証。
+- **`src/data/progress.ts`**: `WallMeta`(踏破フラグ×4/ランク到達フラグ×7/自己最深距離/自己最高
+  ランク)を`baseGrowth`と同じ方針でステージ毎localStorage永続化。
+- **`src/store/gameStore.ts`**: `wallMeta`+ラン内限定の演出state(`wallBandText/Until/Color`=
+  中格帯・`wallEventQueue`=大格銘打ちキュー)追加。`triggerWallBand`/`enqueueWallEvent`/
+  `dequeueWallEvent`アクション。M13の`spawnCallout('REVENGE!')`を`enqueueWallEvent('revenge',...)`
+  へ置き換え。`GameStats`に`maxDepthDist`/`maxRankReached`追加。`?walls=0`で無効化。
+- **`src/utils/directorTick.ts`**: 査定確定直後のランク増加検知→ステージ毎初到達なら儀式(緋・
+  大格銘打ち)+メタ永続化。宿敵出現バナーを中格=金帯へ置き換え(M13追補)。
+- **`src/hooks/useGameLoop.ts`**: 既存ゾーン遷移チェックに相乗りし、境界踏破の儀式(青白・大格
+  銘打ち+50G)+境界手前150pxの予告(白・中格帯・壁ごとラン1回)。自己最深はref追跡+1秒間隔で
+  store/localStorage同期(死亡確定時に最終同期)=毎フレームのlocalStorage書き込みを回避。
+- **`src/components/WallBand.tsx`/`WallInscription.tsx`(新規)**: 中格=帯/大格=銘打ちのDOM
+  オーバーレイ。実時間(Date.now)基準でスロー/ヒットストップ非依存。イベント駆動で毎フレーム
+  再レンダーなし。
+- **`GameOverScreen.tsx`**: 到達譜見出し+縦の深度メーター+惜しさ(死亡時「あと約◯m」数字が
+  1回明滅)。**`TitleScreen.tsx`**: 「◆ 最深到達: {区域名}の{ランク名}」バッジ。
+- 簡略化(PACING_PUZZLE.md §5.17実装結果に詳記): 行データは代表値1行に集約/大格銘打ちの
+  2秒ずらしは直列キュー(1件ずつ表示)で近似/ジングルは既存SE流用(event-clear/level-up)。
+- 負荷スコア: 2/10(仕様書どおり。既存のゾーン/査定チェックに相乗り=新規per-frame処理なし)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (40ファイル/488テスト+2スキップ)。Playwright(グローバル)でタイトル→ステージ選択→出撃準備→
+  実プレイまで操作、コンソールエラー無し(ゾーン境界/ランク到達の実発火は自動操作の移動制約で
+  未確認・ロジックはユニットテストで担保)。
+- 憲法第4条・第5条: 該当なし(進行の記録・演出のみ。ゲームバランス・敵の挙動は不変)。
+
 ## v0.25.1502 — バッチM17仕様化: 被ダメ経路のヘッドレス化(社長採用・設計チャット)【2026-07-07 01:06 JST】
 - 社長採用「2をやってしまおう」を受け、PACING_PUZZLE.md §5.18にM17を仕様化(着手可)。
   切り出しリファクタ(挙動変更ゼロ・combatTick.ts新設・演出はコールバック注入)/移す経路5本

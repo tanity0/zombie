@@ -164,6 +164,70 @@ export const getBaseGrowthForStage = (stageId: string, baseCount = 4): { baseId:
   });
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// バッチM14(§5.17): 到達譜=二軸の壁(深さ×ランク)のステージ毎メタ。
+// 踏破フラグ×4(区域境界)+ランク到達フラグ×7(七つの大罪)+自己最深(距離px)+自己最高ランク。
+// ステージ毎に個別保持(baseGrowthと同じキー方針=stageIdでオブジェクトを分ける)。
+export interface WallMeta {
+  zoneReached: boolean[];      // 長さ4
+  rankReached: boolean[];      // 長さ7
+  selfDeepestDist: number;
+  selfHighestRank: number;     // 1-7
+}
+const WALL_META_KEY = 'zombie.progress.wallMeta';
+type WallMetaMap = Record<string, WallMeta>;
+
+export const emptyWallMeta = (): WallMeta => ({
+  zoneReached: [false, false, false, false],
+  rankReached: [false, false, false, false, false, false, false],
+  selfDeepestDist: 0,
+  selfHighestRank: 1,
+});
+
+const isValidWallMeta = (v: unknown): v is WallMeta => {
+  if (!v || typeof v !== 'object') return false;
+  const m = v as Partial<WallMeta>;
+  return Array.isArray(m.zoneReached) && m.zoneReached.length === 4
+    && Array.isArray(m.rankReached) && m.rankReached.length === 7;
+};
+
+const loadWallMetaMap = (): WallMetaMap => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(WALL_META_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === 'object' ? obj as WallMetaMap : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveWallMetaMap = (m: WallMetaMap): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(WALL_META_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
+// 未登録(または壊れたデータ)は初期値。読み出し専用。
+export const getWallMeta = (stageId: string, m: WallMetaMap = loadWallMetaMap()): WallMeta => {
+  const v = m[stageId];
+  if (isValidWallMeta(v)) {
+    return {
+      zoneReached: [...v.zoneReached],
+      rankReached: [...v.rankReached],
+      selfDeepestDist: Number.isFinite(v.selfDeepestDist) ? v.selfDeepestDist : 0,
+      selfHighestRank: Number.isFinite(v.selfHighestRank) ? Math.max(1, Math.min(7, Math.round(v.selfHighestRank))) : 1,
+    };
+  }
+  return emptyWallMeta();
+};
+
+export const setWallMeta = (stageId: string, meta: WallMeta): void => {
+  if (!stageId) return;
+  const m = loadWallMetaMap();
+  m[stageId] = meta;
+  saveWallMetaMap(m);
+};
+
 // 開発用: 全ステージ解放 / 進行リセット。
 export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
 export const resetProgress = (): void => {
@@ -171,4 +235,5 @@ export const resetProgress = (): void => {
   setSelectedStageId('');
   writeScores({});
   saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)
+  saveWallMetaMap({}); // M14の壁メタも進行リセットで消す(開発用)
 };

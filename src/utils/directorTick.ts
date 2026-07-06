@@ -9,7 +9,11 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { useGameStore, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
+import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED } from '../store/gameStore';
+import { getSelectedStageId, setWallMeta } from '../data/progress';
+import {
+  isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
+} from './wallProgress';
 import type { ActiveEvent, EnemyType, GameBounds, Player } from '../types/game';
 import {
   generateEnemy,
@@ -263,8 +267,26 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     if (koma.kind === 'normal') {
       // 確定査定の反映は「次の通常」から(§4-C。直後のリラックス/ハーベストはR1相当なので影響なし)。
       if (koma.pendingFinalDelta != null) {
+        const prevRank = puzzleClockRef.current.rank;
         puzzleClockRef.current = applyRankDelta(puzzleClockRef.current, koma.pendingFinalDelta);
         koma.pendingFinalDelta = null;
+        // PACING_PUZZLE.md §5.17 M14: ランクの壁(査定確定=このタイミングのみ・予告なし)。
+        const newRank = puzzleClockRef.current.rank;
+        if (WALL_ENABLED && newRank > prevRank) {
+          useGameStore.setState(state => ({
+            gameStats: { ...state.gameStats, maxRankReached: Math.max(state.gameStats.maxRankReached, newRank) },
+          }));
+          const st = useGameStore.getState();
+          if (isFirstRankReach(st.wallMeta, newRank)) {
+            const nextMeta = markSelfHighestRank(markRankReached(st.wallMeta, newRank), newRank);
+            setWallMeta(getSelectedStageId(), nextMeta);
+            useGameStore.setState({ wallMeta: nextMeta });
+            useGameStore.getState().enqueueWallEvent(
+              'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
+            );
+            playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+          }
+        }
       }
       koma.script = null; // 緩明けは新しい台本から(§4-D。次フレームのローテーションが引く)
       koma.scriptSpawned = { ...ZERO_NUISANCE };
@@ -381,9 +403,10 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
       useGameStore.setState({
         namedFoeSpawnedThisRun: true,
         namedFoeResult: { name: nf.name, defeated: false },
-        eventBannerText: `宿敵 現る —— ${nf.name}`,
-        eventBannerUntil: gameTime + EVENT_BANNER_MS,
       });
+      // PACING_PUZZLE.md §5.17 M14追補(演出仕様v0.25.1499): 出現バナーは中格=金帯様式へ
+      // (旧eventBannerTextのpill表示から置き換え)。
+      useGameStore.getState().triggerWallBand(`宿敵 現る —— ${nf.name}`, 'gold', EVENT_BANNER_MS);
       playSfx('gate-clear'); // 専用SEは叩き台として既存の強襲ジングルを流用(社長の実素材待ち)
       namedFoeRef.current.lastAttemptAt = gameTime;
     }

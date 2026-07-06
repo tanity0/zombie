@@ -9,8 +9,15 @@ import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 import { getSelectedStageId, submitStageHighScore } from '../data/progress';
-import { AREA_ZONE_NAMES } from '../utils/enemyUtils';
+import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { clampRank } from '../utils/rankAssessor';
+import {
+  wallAchievementHeadline, metersToNextWall, isOneRankAwayFromNext, nextRankName, WALL_RANK_NAMES,
+} from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
+
+// PACING_PUZZLE.md §5.17 M14: 縦の深度メーターの表示スケール(深層域の余白込み)。表示専用の定数。
+const WALL_METER_SCALE_MAX = AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + 1000;
 
 // AIディレクター振り返り(緊張曲線+難易度スコア+ランク階段)。v0.25.1374(社長指示)から
 // リザルトに常時表示(記録側DIRECTOR_ACTIVEは元々既定ON)。?director=0で記録ごと非表示。
@@ -85,6 +92,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const deathCause = useGameStore(s => s.lastDamageSource);
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の登場結果(このランで出現した場合のみ表示)。
   const namedFoeResult = useGameStore(s => s.namedFoeResult);
+  // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。ステージ毎の自己最深/自己最高ランク。
+  const wallMeta = useGameStore(s => s.wallMeta);
   // クリア時の「装備1個持ち帰り」選択。装備ロードアウト(静的画面なので安定参照)。
   const carriedLoadout = useGameStore(s => s.player.equipment);
   const takeHomeEquipment = useGameStore(s => s.takeHomeEquipment);
@@ -139,6 +148,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   }, [isBenchmarkRun, totalScore]);
 
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
+  // PACING_PUZZLE.md §5.17 M14: 到達譜(掛け合わせ見出し+深度メーター+惜しさ)。
+  const wallHighestRank = clampRank(stats.maxRankReached);
+  const wallHeadline = wallAchievementHeadline(stats.maxAreaReached, wallHighestRank);
+  const wallSelfBestUpdated = stats.maxDepthDist > 0 && stats.maxDepthDist >= wallMeta.selfDeepestDist;
+  const wallMetersToNext = metersToNextWall(stats.maxDepthDist);
+  const wallNextRank = isOneRankAwayFromNext(wallHighestRank) ? nextRankName(wallHighestRank) : null;
+  const wallMeterPct = (d: number) => Math.max(0, Math.min(100, (d / WALL_METER_SCALE_MAX) * 100));
   const statsItems = [
     { label: '生存時間', value: formatTime(stats.timeAlive) },
     { label: '撃破', value: stats.enemiesKilled },
@@ -199,9 +215,32 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '装備を持って撤収した'}
             </p>
           )}
+          {!isBenchmark && (
+            <div className="mt-2">
+              <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+                <span className="text-white/95">{wallHeadline}</span>
+              </p>
+              <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
+              <p className="mt-1 text-[10px] text-white/50">
+                {AREA_ZONE_NAMES[stats.maxAreaReached]} × {WALL_RANK_NAMES[wallHighestRank]}
+              </p>
+            </div>
+          )}
           {!isBenchmark && !won && !withdraw && deathCause && (
             <p className="mt-2 text-[12px] text-white/70">
               死因：<span className="font-semibold text-rose-200">{deathCause}</span>
+            </p>
+          )}
+          {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
+          {!isBenchmark && !won && !withdraw && (wallMetersToNext !== null || wallNextRank) && (
+            <p className="mt-1 text-[11px] text-white/60">
+              {wallMetersToNext !== null && (
+                <>次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m</>
+              )}
+              {wallMetersToNext !== null && wallNextRank && ' / '}
+              {wallNextRank && (
+                <><span className="font-semibold text-rose-300">{wallNextRank}</span> まで あと1昇格だった</>
+              )}
             </p>
           )}
           {!isBenchmark && namedFoeResult && (
@@ -337,6 +376,45 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </div>
             </div>
           </div>
+          {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
+          {!isBenchmark && (
+            <div className="mb-3 rounded-none bg-black/25 px-3 py-2.5 flex items-center gap-3">
+              <div className="relative shrink-0" style={{ width: 14, height: 96 }}>
+                <div className="absolute inset-x-0 bottom-0 top-0 rounded-full bg-white/10" />
+                <div
+                  className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-sky-300/70 to-amber-200/80"
+                  style={{ height: `${wallMeterPct(stats.maxDepthDist)}%` }}
+                />
+                {AREA_THRESHOLDS.map(t => (
+                  <div key={t} className="absolute inset-x-[-3px] h-px bg-white/40" style={{ bottom: `${wallMeterPct(t)}%` }} />
+                ))}
+                {wallMeta.selfDeepestDist > 0 && (
+                  <div
+                    className="absolute inset-x-[-5px] h-[2px] bg-amber-300"
+                    style={{ bottom: `${wallMeterPct(wallMeta.selfDeepestDist)}%` }}
+                    title="自己最深"
+                  />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 text-[11px] text-white/70 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-white/50">到達ランク</span>
+                  <span className="font-semibold tabular-nums" style={{ color: '#ff6a55' }}>{WALL_RANK_NAMES[wallHighestRank]}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-white/50">最深区域</span>
+                  <span className="font-semibold text-sky-200">{AREA_ZONE_NAMES[stats.maxAreaReached]}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-white/50">自己最深</span>
+                  <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>
+                    {Math.round(Math.max(stats.maxDepthDist, wallMeta.selfDeepestDist))}m
+                    {wallSelfBestUpdated && <span className="ml-1">⚑更新</span>}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
           {directorEnabled && !isBenchmark && <DirectorResult />}
           {!isBenchmark && !won && !withdraw && hadEquipment && (
             <div className="mb-3 rounded-none bg-rose-400/5 px-3 py-2.5">

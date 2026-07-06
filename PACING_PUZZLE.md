@@ -648,6 +648,50 @@ M10(バランス走査)の拡張。実装前のアイデアを試せるのが肝
 - テスト: 境界・査定フック検知/ステージ毎初回判定(メタ)/掛け合わせ表示の合成/
   「あと◯m」計算/同時発火時の優先順、を純関数で全数検証。
 
+### 実装結果(v0.25.1503・M14)
+- **`src/utils/wallProgress.ts`(新規・純関数・19テスト)**: 境界検知(`detectWallBreach`)・予告判定
+  (`isApproachingWall`/`distanceToNextWall`)・初到達判定(`isFirstWallBreach`/`isFirstRankReach`)・
+  不変更新(`markWallBreached`/`markRankReached`/`markSelfDeepest`/`markSelfHighestRank`)・
+  惜しさ計算(`metersToNextWall`/`isOneRankAwayFromNext`/`nextRankName`)・掛け合わせ見出し
+  (`wallAchievementHeadline`)・タイトルバッジ文言(`deepestReachedBadge`)・同時発火優先順
+  (`sortWallEventsByPriority`: 深さ>ランク>REVENGE)を全数検証。
+- **`src/data/progress.ts`**: `WallMeta`(ステージ毎: 踏破フラグ×4/ランク到達フラグ×7/自己最深距離/
+  自己最高ランク)を`baseGrowth`と同じ方針(1キーにJSON全体)でlocalStorage永続化
+  (`getWallMeta`/`setWallMeta`)。
+- **`src/store/gameStore.ts`**: `wallMeta`(現在ステージの永続メタ)+ラン内限定の演出状態
+  (`wallBandText/Until/Color`=中格帯・`wallEventQueue`=大格銘打ちキュー)を追加。
+  `triggerWallBand`/`enqueueWallEvent`/`dequeueWallEvent`アクション。`resolveNamedFoeDefeat`の
+  `spawnCallout('REVENGE!')`を`enqueueWallEvent('revenge', ...)`に置き換え(M13追補)。
+  `GameStats`に`maxDepthDist`(このランの最深距離px)・`maxRankReached`(このランの最高ランク)を追加。
+  `?walls=0`で予告/儀式演出・メタ読み書きを停止。
+- **`src/utils/directorTick.ts`**: 査定確定(`applyRankDelta`)直後にランク増加を検知し、ステージ毎
+  初到達なら儀式(緋・大格銘打ち)+`gameStats.maxRankReached`更新+メタ永続化。宿敵出現バナー
+  (`eventBannerText`)を中格=金帯(`triggerWallBand`)へ置き換え(M13追補)。
+- **`src/hooks/useGameLoop.ts`**: 既存のゾーン遷移チェック(区域バナー)に相乗りし、境界を跨いだ
+  瞬間(`detectWallBreach`)にステージ毎初到達なら儀式(青白・大格銘打ち+50G)+ゴールド付与+
+  メタ永続化。境界の手前150pxで予告(白・中格帯・1ランに壁ごと1回)。自己最深距離は毎フレーム
+  ref追跡+1秒間隔でstore/localStorageへ同期(死亡確定時に最終同期1回)=毎フレームの
+  localStorage書き込みを回避。
+- **`src/components/WallBand.tsx`/`WallInscription.tsx`(新規)**: 中格=帯/大格=銘打ちのDOM
+  オーバーレイ(React HUD・Pixi無関与)。実時間(Date.now)基準でスロー/ヒットストップの影響を
+  受けない。イベント駆動(text/queue変化時のみ)=毎フレーム再レンダーなし。
+- **`src/components/GameOverScreen.tsx`**: 到達譜見出し+縦の深度メーター(壁4本の目盛り+今回バー+
+  自己最深旗)+惜しさ(死亡時のみ・「あと約◯m」数字が1回明滅)を追加。
+- **`src/components/TitleScreen.tsx`**: 「◆ 最深到達: {区域名}の{ランク名}」バッジ(選択中ステージ・
+  自己最深0の間は非表示)。
+- **簡略化(明記)**: ①「行データ」の`到達ランク`/`踏破した壁`は本数ではなく最高値の1行に集約
+  (自己最深と同じ「単一の代表値」表示にして冗長な列挙を避けた)。②大格銘打ちの2秒ずらし
+  (同時発火時)は簡易的に「直列キュー(1件ずつ約4秒表示→次へ)」で実装(2秒固定オフセットの
+  精密な重ね出しは行っていない。全て叩き台の演出仕様なので実機調整で追える範囲と判断)。
+  ③ジングルは指示どおり既存SEを流用(踏破=event-clear/到達=level-up)。専用SEは社長の実素材待ち。
+- 負荷スコア: 2/10(仕様書どおり。壁判定は既存のゾーン/査定チェックに相乗り=新規per-frame処理
+  なし。演出はDOMイベント駆動でPixi無関与)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (40ファイル/488テスト+2スキップ)。Playwright(グローバル)でタイトル→ステージ選択→
+  出撃準備→実プレイまで一通り操作し、コンソールエラー無し(ゾーン境界到達/ランク到達の
+  実演出発火は自動操作の移動制約により未確認・ロジックはユニットテストで担保)。
+- 憲法第4条・第5条: 該当なし(進行の記録・演出のみ。ゲームバランス・敵の挙動は不変)。
+
 ## 5.18 バッチM17: M9拡張=プレイヤー被ダメ経路のヘッドレス化(社長採用v0.25.1502)
 - **背景(v0.25.1501で発覚)**: 被ダメの適用が全てuseGameLoop.ts側に残っており、M9ボットは
   構造的にダメージを受けられない=死ねない。playtestの`survived`は生存性の診断値として無意味で、
@@ -706,7 +750,7 @@ M10(バランス走査)の拡張。実装前のアイデアを試せるのが肝
 | M13 | ネームド(宿敵)システム(§5.14) | **実装済み v0.25.1494** |
 | M15 | レア個体の視認性=体格拡大廃止・tint色分け(§5.15) | **実装済み v0.25.1493** |
 | M16 | パンプキンのジャンプ距離上限(§5.16・ボット実測済み) | **実装済み v0.25.1493**(350は仮の値=**最終確定は実機後の社長宿題**v0.25.1489) |
-| M14 | 到達譜=二軸の壁(深さ×ランク・§5.17) | 未着手(**着手可**・演出仕様まで確定v0.25.1499。M13演出の載せ替え追補を含む) |
+| M14 | 到達譜=二軸の壁(深さ×ランク・§5.17) | **実装済み v0.25.1503**(M13演出の載せ替え追補も同時実装) |
 | M11 | 性能調査(tick回帰+実機FPS観戦ボット・§5.12) | 未着手(社長採用v0.25.1467) |
 | M9 | 自動テストプレイ=デバッグボット(§5.10) | **実装済み v0.25.1483**(M9-A切り出し+ボット5ペルソナ+不変条件検査+CI/nightly連携。M10〜M13前提のハンター/レスキュー等レガシー経路は未接続=ENGINEERING_NOTES.md参照) |
 | M8 | スプライト表示の素直化(§5.9改・§5.9-追補2「軍人方式」) | **実装済み v0.25.1471**(4クラス全員・軍人方式=表示実寸+nearest等倍) |

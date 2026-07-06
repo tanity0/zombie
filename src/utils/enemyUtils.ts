@@ -198,6 +198,9 @@ export const selectLabEnemyType = (gameTime: number): EnemyType => {
 export const AREA_COUNT = 5;
 // エリア名(進入バナー・PACING_REDESIGN.mdバッチ2の最深到達telemetry表示で共有)。
 export const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
+// 区域境界(px・原点からの距離)。PACING_PUZZLE.md §5.17 M14の「深さの壁」4本と同じ値
+// (areaIndexForPosのif連鎖と同じ値を共有・挙動は不変)。
+export const AREA_THRESHOLDS = [1500, 3000, 5000, 7500];
 export const areaIndexForPos = (x: number, y: number): number => {
   const d = Math.hypot(x, y);
   if (d >= 7500) return 4;
