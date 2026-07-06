@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1465',
+    items: [
+      'ナイフの振りをほんの少しだけゆったりに調整。',
+    ],
+  },
+  {
     version: '0.25.1464',
     items: [
       '敵を倒した時とカウンター成立時、カメラが少し寄るように(1.5倍)。手応えが伝わりやすく。',

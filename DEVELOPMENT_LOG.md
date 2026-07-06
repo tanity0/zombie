@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1465 — ナイフの振りをほんの少しスローに(社長指示・実装チャット)
+- 社長指示「ナイフの振りをほんの少しだけスローに」。
+- `PLAYER_MELEE_SWING_MS`(近接スイングの踏み込み→振り抜き→復帰の総時間・pixiScene.ts)を
+  `200→220`(+10%)。この定数は「視覚のみ・判定不変」の二次モーション群(踏み込みルンジ・傾き・
+  ストレッチ・武器差し替えコマの切替タイミング・イージング)が全てこの1つの割合(t=経過/この値)を
+  参照しているため、1箇所の変更で振り全体が均等にわずかに間延びする。
+  **攻撃レート/クールダウン/ダメージ判定は別ゲート(store側)で完全に不変**
+  (`meleeSwingAt`セット箇所のコメントに明記の「演出の起点(描画のみ)」を確認済み)。
+- 負荷スコア: **0/10**(定数1つの変更のみ・新規処理なし)。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・攻撃レート/判定は不変)。
+
 ## v0.25.1464 — KILL/カウンター成立時の寄りパンチズームを実装(社長指示・実装チャット)
 - 社長指示「KILLとカウンターの時にズームする処理を実装。カメラを1.5倍寄る」。
 - **既存調査**: カウンターは既に寄りズーム有り(`COUNTER_ZOOM_MAG=0.3`=1.3倍・`triggerHitImpact`経由)。

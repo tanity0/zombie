@@ -520,7 +520,7 @@ const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するス
 const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エンベロープ長)
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
-const PLAYER_MELEE_SWING_MS = 200;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でスピード感↑: 230→200)
+const PLAYER_MELEE_SWING_MS = 220;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でほんの少しスローに: 200→220。視覚のみ=攻撃レート/判定は別ゲート・不変)
 const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャンプ高さ(px・負方向=上)。引き上げ→斬り下ろしの弧。
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
