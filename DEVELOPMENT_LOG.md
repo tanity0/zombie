@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1480 — バッチM13仕様化: ネームド(宿敵)システム(社長確定・設計チャットFable)【2026-07-06 20:39 JST】
+- ドーパミン会議の成果①(敵の壁)。殺された敵の型がネームド昇格: HP・与ダメ×2固定(連敗強化なし)・
+  表示と判定×1.5・頭上に北欧神話の悪魔名(既存ボス名は除外・16名テーブル)・各ラン60%で急コマに
+  1体・倒すとREVENGE演出+ゴールド大+トレジャー確定で成仏・倒せず終了は持ち越し・宿敵は常に1体
+  (新しい死で上書き)。`?named=0`。詳細=PACING_PUZZLE.md §5.14。
+- tintの負荷回答も採録: tint=頂点色乗算で負荷ゼロ/フィルタ色調補正は重いので禁止(レア敵の
+  視認性改善もtint+頭上マークの範囲で別途提案中)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1479 — player.critChanceを近接武器にも適用+スケルトンの近接弱点補正を25%へ(社長指示・実装チャット)【2026-07-06 20:10 JST】
 - **バグ調査**: 「player.critChanceの効果を近接武器にも乗せる」の指示を受けて`gameStore.ts`内の
   近接クリ率計算を全箇所調査。銃(`weaponUtils.ts`の`fireWeapon`)・刀(`performKatanaStrike`)・鞭
