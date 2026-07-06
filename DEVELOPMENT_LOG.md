@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1474 — 恒久ルール: 非効率と判断したら一度確認する(社長指示・設計チャットFable)
+- 社長指示を規律化: 依頼の**段取り**が非効率だと気づいたら、黙って従わず一度だけ
+  「◯◯を先にした方が△△できます」と具申して確認する(例: 設計電卓M12の実装前にサブウェポンの
+  バランス相談を進めない)。採否は社長・却下されたら蒸し返さない。
+- CLAUDE.md **7-6**(両チャット共通)と DESIGN_CHAT_GUIDE.md §2(流儀)に追記。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1473 — ノックバック時の跳ね演出を強調(社長指示・実装チャット)
 - 社長指示「敵のノックバック時の跳ねる動作をもう少しわかりやすく跳ねるようにして」。
 - `src/pixi/pixiScene.ts`の`KNOCKBACK_HOP_PX`(跳ねの高さ)を`6→12`に変更。跳ねの所要時間
