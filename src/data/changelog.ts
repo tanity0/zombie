@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1443',
+    items: [
+      '【試作】ストライカーのドットを2倍の粗さに(レトロなドット感の実験。他クラスは従来のまま)。',
+    ],
+  },
+  {
     version: '0.25.1442',
     items: [
       'ヘビーガンナーの立ち止まり(待機)の絵を正しいイラストに差し替え。',
