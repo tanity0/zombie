@@ -434,8 +434,11 @@ const KATANA_BACK_SCALE = 0.72;
 // オフセット単位 = キャラ箱高×奥行スケール(unit)。右向き時の値(左向きは ox を反転+画像xミラー)。
 // scale = スプライト幅 / unit。実機で微調整可。
 const KNIFE_SWING_SWITCH = 0.30;                        // frame1→frame2 切替(kt 0..1)
+const KNIFE_SWING_SWITCH2 = 0.62;                       // frame2→frame3 切替(社長提供の3コマ化 v0.25.1444)
 const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.12 };  // 1枚目: キャラ左下のダガー(少し上げた)
 const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた・少し大きく)
+// 3枚目: 弧の残光(ダガー無し)。2枚目と共通クロップで焼いてあるため同じ配置=弧がズレずに残ってフェード。
+const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -850,6 +853,7 @@ export class PixiScene {
   // 分身の斬撃モーション(本体と同じナイフ振り2枚)。actorLayer に置き zIndex で本体と前後ソート。
   private cloneKnife = new Sprite();
   private cloneKnifeSlash = new Sprite();
+  private cloneKnifeTrail = new Sprite();                  // 3枚目(弧の残光)。本体と同じ3コマ差し替え
   private cloneKnifeSetup = false;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
@@ -978,6 +982,7 @@ export class PixiScene {
   private playerSkateboardAttached = false;                // playerView.container へ親子付け済みか
   private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1)
   private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(ダガー+青スラッシュ knife-swing-2)
+  private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
@@ -4337,12 +4342,13 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerSkateboard, 1);
       this.playerSkateboardAttached = true;
     }
-    // 近接スイングは2枚の画像(frame1=ダガー / frame2=ダガー+青スラッシュ)を差し替えて見せる。
-    // 本体スプライトの前面に重ね、回転はせず左向きは水平ミラーのみ。
+    // 近接スイングは3枚の画像(frame1=ダガー / frame2=ダガー+青スラッシュ / frame3=弧の残光)を
+    // 差し替えて見せる(社長提供の3コマ化)。本体スプライトの前面に重ね、回転はせず左向きは水平ミラーのみ。
     if (!this.playerKnifeSetup) {
       const f1 = getTexture('knife-swing-1');
       const f2 = getTexture('knife-swing-2');
-      if (f1 && f2) {
+      const f3 = getTexture('knife-swing-3');
+      if (f1 && f2 && f3) {
         this.playerKnife.texture = f1;
         this.playerKnife.anchor.set(0.5, 0.5);
         this.playerKnife.visible = false;
@@ -4351,6 +4357,10 @@ export class PixiScene {
         this.playerKnifeSlash.anchor.set(0.5, 0.5);
         this.playerKnifeSlash.visible = false;
         this.playerView.container.addChild(this.playerKnifeSlash);     // ダガー(1枚目)の更に前面
+        this.playerKnifeTrail.texture = f3;
+        this.playerKnifeTrail.anchor.set(0.5, 0.5);
+        this.playerKnifeTrail.visible = false;
+        this.playerView.container.addChild(this.playerKnifeTrail);
         this.playerKnifeSetup = true;
       }
     }
@@ -4744,10 +4754,11 @@ export class PixiScene {
     } else {
       sb.visible = false;
     }
-    // 近接スイングを2枚の画像差し替えで見せる(描画のみ・判定不変)。回転はせず、左向きは
-    // 水平ミラー。frame1=ダガーをキャラ左下→frame2=ダガー左上+青スラッシュが右へ弧。
+    // 近接スイングを3枚の画像差し替えで見せる(描画のみ・判定不変)。回転はせず、左向きは
+    // 水平ミラー。frame1=ダガー左下→frame2=ダガー+青スラッシュの弧→frame3=弧の残光がフェード。
     const knife = this.playerKnife;
     const slash = this.playerKnifeSlash;
+    const trail = this.playerKnifeTrail;
     if (this.playerKnifeSetup) {
       if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
         const kt = sinceSwing / PLAYER_MELEE_SWING_MS;
@@ -4778,17 +4789,26 @@ export class PixiScene {
           const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
           place(knife, KNIFE_F1, true, a1);
           place(slash, KNIFE_F2, false, 0);
-        } else {
-          // 2枚目(振り抜き+スラッシュ): snap で出して終わりにフェード。
-          // 末尾フェードを後半50%に延長(社長指示=最後フェードアウト)。0.30→0.50。
-          const t = (kt - KNIFE_SWING_SWITCH) / (1 - KNIFE_SWING_SWITCH); // 0..1
-          const a2 = Math.min(1, Math.min(t / 0.12, (1 - t) / 0.50));
+          place(trail, KNIFE_F3, false, 0);
+        } else if (kt < KNIFE_SWING_SWITCH2) {
+          // 2枚目(振り抜き+スラッシュ): snap で出す(フェードは3枚目が担当)。
+          const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
+          const a2 = Math.min(1, t2 / 0.25);
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, true, a2);
+          place(trail, KNIFE_F3, false, 0);
+        } else {
+          // 3枚目(弧の残光): 2枚目と同配置で弧だけ残り、フェードアウト(旧・末尾フェードの置き換え)。
+          const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
+          const a3 = 1 - t3;
+          place(knife, KNIFE_F1, false, 0);
+          place(slash, KNIFE_F2, false, 0);
+          place(trail, KNIFE_F3, true, a3);
         }
       } else {
         knife.visible = false;
         slash.visible = false;
+        trail.visible = false;
       }
     }
     view.overlay.clear();
@@ -4839,7 +4859,7 @@ export class PixiScene {
   private syncShadowClone(player: Player) {
     const clone: ShadowCloneState | null = useGameStore.getState().shadowClone;
     const spr = this.shadowCloneSprite;
-    if (!clone) { spr.visible = false; this.cloneKnife.visible = false; this.cloneKnifeSlash.visible = false; return; }
+    if (!clone) { spr.visible = false; this.cloneKnife.visible = false; this.cloneKnifeSlash.visible = false; this.cloneKnifeTrail.visible = false; return; }
     if (!this.shadowCloneAdded) {
       spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ)
       this.L.actorLayer.addChild(spr);
@@ -4866,19 +4886,22 @@ export class PixiScene {
     spr.zIndex = footY;     // 他アクターと足元Yでy-sort
     spr.alpha = 0.8;        // 分身とわかるよう少し透過
 
-    // 斬撃モーション(本体と同じナイフ振り)を分身にも付与(社長指示)。clone.swingAt 起点で2枚差し替え。
+    // 斬撃モーション(本体と同じナイフ振り)を分身にも付与(社長指示)。clone.swingAt 起点で3枚差し替え。
     if (!this.cloneKnifeSetup) {
       const f1 = getTexture('knife-swing-1');
       const f2 = getTexture('knife-swing-2');
-      if (f1 && f2) {
+      const f3 = getTexture('knife-swing-3');
+      if (f1 && f2 && f3) {
         this.cloneKnife.texture = f1; this.cloneKnife.anchor.set(0.5, 0.5); this.cloneKnife.visible = false;
         this.L.actorLayer.addChild(this.cloneKnife);
         this.cloneKnifeSlash.texture = f2; this.cloneKnifeSlash.anchor.set(0.5, 0.5); this.cloneKnifeSlash.visible = false;
         this.L.actorLayer.addChild(this.cloneKnifeSlash);
+        this.cloneKnifeTrail.texture = f3; this.cloneKnifeTrail.anchor.set(0.5, 0.5); this.cloneKnifeTrail.visible = false;
+        this.L.actorLayer.addChild(this.cloneKnifeTrail);
         this.cloneKnifeSetup = true;
       }
     }
-    const knife = this.cloneKnife, slash = this.cloneKnifeSlash;
+    const knife = this.cloneKnife, slash = this.cloneKnifeSlash, trail = this.cloneKnifeTrail;
     const cSince = Date.now() - (clone.swingAt ?? 0);
     if (this.cloneKnifeSetup && clone.swingAt && cSince >= 0 && cSince < PLAYER_MELEE_SWING_MS) {
       const kt = cSince / PLAYER_MELEE_SWING_MS;
@@ -4901,15 +4924,23 @@ export class PixiScene {
         const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
         place(knife, KNIFE_F1, true, a1);
         place(slash, KNIFE_F2, false, 0);
-      } else {
-        const t = (kt - KNIFE_SWING_SWITCH) / (1 - KNIFE_SWING_SWITCH); // 0..1
-        const a2 = Math.min(1, Math.min(t / 0.12, (1 - t) / 0.50));     // 本体と同じく末尾フェード
+        place(trail, KNIFE_F3, false, 0);
+      } else if (kt < KNIFE_SWING_SWITCH2) {
+        const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
+        const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, true, a2);
+        place(trail, KNIFE_F3, false, 0);
+      } else {
+        const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
+        place(knife, KNIFE_F1, false, 0);
+        place(slash, KNIFE_F2, false, 0);
+        place(trail, KNIFE_F3, true, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
       knife.visible = false;
       slash.visible = false;
+      trail.visible = false;
     }
   }
 

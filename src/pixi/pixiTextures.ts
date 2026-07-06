@@ -95,6 +95,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'knife-item', scaleMode: 'nearest' },  // (旧)近接ナイフ実画像。互換のため残置
       { name: 'knife-swing-1', scaleMode: 'nearest' }, // 近接スイング1枚目(青ダガー)
       { name: 'knife-swing-2', scaleMode: 'nearest' }, // 近接スイング2枚目(青ダガー+青スラッシュ)
+      { name: 'knife-swing-3', scaleMode: 'nearest' }, // 近接スイング3枚目(弧の残光・社長提供3コマ化)
       // ステージ1(森)の装飾: 光る花クラスター12種(壁判定なしの飾り)。
       { name: 'props/flower-0', scaleMode: 'nearest' },
       { name: 'props/flower-1', scaleMode: 'nearest' },

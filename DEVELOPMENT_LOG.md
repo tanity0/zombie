@@ -10,6 +10,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1444 — 近接スイングを3コマ化(社長提供・実装チャット)
+- 社長提供3枚: f1=ダガー単体(暗紫背景・不透明)、f2=ダガー+斬撃弧(透過)、f3=弧の残光(透過)。
+  「3コマに増やして一部修正」→ knife-swing-1/2を同名差し替え+knife-swing-3を新設。
+- 焼き: f1=暗紫(52,24,81)をフラッドフィル(TOL55/フリンジ75。黒枠線とbgの距離≈99なので低トレランス)→
+  枠線12,033px保持を検証。旧と同寸(479×246)=既存の配置定数KNIFE_F1がそのまま合う。
+  f2/f3=透過・同寸(1280×960)なので**共通クロップ(union bbox)**で焼き、2→3コマで弧がズレない。
+- 配線(pixiScene): `KNIFE_SWING_SWITCH2=0.62`と`KNIFE_F3`(=F2と同配置)を追加。位相を
+  1(0-0.30 ダガー)→2(0.30-0.62 弧snap)→3(0.62-1.0 残光1-tフェード)の3段に。旧・末尾フェードは
+  frame3のフェードに置き換え(総時間PLAYER_MELEE_SWING_MS=200ms不変)。本体(drawPlayer)と
+  分身(syncShadowClone)の両方に適用。`playerKnifeTrail`/`cloneKnifeTrail`スプライトを追加。
+- 負荷スコア: **1/10**(rendering)。スプライト差し替え式のまま+常駐スプライト2枚(本体/分身)。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'15'→'16'`。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・近接判定/タイミング不変)。
+
 ## v0.25.1443 — 【試作・案A】ストライカーを半解像度化=ドット2倍の粗さ(社長指示・実装チャット)
 - 社長「プレイ中もっとドットを目立たせたい」→ 提案3案から**案A(キャラのドットを粗くする)をストライカーで試作**。
 - 仕組み: プレイヤーの表示スケールは`PLAYER_CLASS_MENU_SPRITE_WIDTH / tex.width`(テクスチャ幅基準)なので、
