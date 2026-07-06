@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1482 — M13増補+M15新設: 名前32種・レアは色のみ・大きさはネームド専売(社長決定・設計チャットFable)【2026-07-06 20:44 JST】
+- M13: ギリシャ怪物の名前テーブルを16→**32名**へ増量(社長「候補は多いほど良い」)。
+- M15新設: レア(色付き)個体の**体格拡大を廃止**(判定も通常へ)・**本体tintの色分け**へ
+  (青#66aaff/紫#bb66ff/赤#ff5544=叩き台)。サイズ差はネームド×1.5の専売=
+  「大きい=宿敵/色が違う=レア」の2軸分離。`?raretint=0`。
+- ネームドの色は候補提示中(レアの青/紫/赤と被らない: 漆黒/黄金/毒緑)→社長の指名待ち。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1481 — M13改: ネームドの名前をギリシャ神話の怪物へ(社長決定・設計チャットFable)【2026-07-06 20:41 JST】
 - 社長「北欧に悪魔はいない。神系は裏ボスで使う予定」→ 名前空間を神話ごと分離:
   **裏ボス=北欧の神々(予約)/ネームド=ギリシャ神話の怪物**。
