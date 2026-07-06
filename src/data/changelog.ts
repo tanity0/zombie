@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1449',
+    items: [
+      'ストライカー以外の3クラスの立ち絵・歩行で、ドットが濁って(潰れて)見えていたのを修正。シャープな縮小処理で焼き直し。',
+    ],
+  },
+  {
     version: '0.25.1448',
     items: [
       '性能計測(ベンチマーク)の結果を反映: 先日の軽量化でエフェクト密集時のカクつきが大幅改善していることを実測で確認。',

@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1449 — 3クラスを2step-sharpで焼き直し(ドット濁り解消)(社長FB・実装チャット)
+- 社長FB「ストライカー以外の立ち絵がドット潰れてる」。原因: ストライカーの元シートはドットが
+  カッチリした素材だが、他3クラスの元素材はソフト(にじみ気味)。中心1点サンプリング(direct)だと
+  中間色を拾って濁る。候補比較(direct/2step/2step-sharp/box-sharp)で **2step-sharp** が最良と判定。
+- 対応: マークスマン/ヘビーガンナー/スカベンジャーのwalk+idle(計18ファイル)を
+  **LANCZOS2倍→UnsharpMask(r1.2,140%)→NEAREST** で焼き直し。格子・キャンバス・アンカーは
+  v1447と同一(76×64/右端x63/足元y63・oh: magnum61/shotgun62/scav-walk64/idle62)。全18検証OK。
+- ストライカー(player-scavenger-*)は元素材がシャープでdirectのまま良好=**触っていない**(承認済みの見た目維持)。
+- 教訓(ENGINEERING_NOTES候補→次回まとめて追記): 粗ドット焼きは素材の質で使い分け —
+  カッチリ素材=direct(NEAREST中心拾い) / ソフト素材=2step-sharp。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'18'→'19'`。
+- 検証: lint/typecheck/build全通過。3クラスのプレビュー目視(濁り解消・ディテール可読)。
+- 自己点検: 憲法第4条・第5条に抵触なし(素材のみ)。
+
 ## v0.25.1448 — ベンチ再計測(v1446実機)の記録とCLAUDE.mdベンチ表更新(実装チャット)
 - 社長が実機ベンチを実行(v0.25.1446・解像度1.5時点)。軽量化施策1(v1425)の宿題だった再計測。
 - **施策1の効果(FAIL→PASS)**: FX-P P64 avg17→**P90 60fps** / FX-R R8 FAIL→**R12 avg55** /
