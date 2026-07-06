@@ -1013,9 +1013,10 @@ export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中�
 export const MELEE_FINISH_ZOOM_MAG = 0.5;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.5倍=+50%)
 export const MELEE_FINISH_ZOOM_MS = 500;   // KILLだけ専用のズーム長さ(社長指示・スローとは非連動)
 export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを保持する長さ(比率80%はスローと同じ)
-// KILLズームだけの連発防止CD(社長指示・v0.25.1495)。連続キル時、スロー/揺れ/ヒットストップは
-// 毎回発生するが、寄りズームだけはこのCD内なら発動しない(酔い防止・スロー等の演出は不変)。
-export const MELEE_FINISH_ZOOM_CD_MS = 5000;
+// KILLズームだけの連発防止CD(社長指示・v0.25.1495・10秒へ改訂v0.25.1497)。連続キル時、
+// スロー/揺れ/ヒットストップは毎回発生するが、寄りズームだけはこのCD内なら発動しない
+// (酔い防止・スロー等の演出は不変)。
+export const MELEE_FINISH_ZOOM_CD_MS = 10000;
 export const COUNTER_ZOOM_MAG = 0.5;       // カウンター成立の寄り(社長指示で1.5倍=+50%)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies

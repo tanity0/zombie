@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1497',
+    items: [
+      'キルズームの間引きCDを5秒→10秒へ(連続キル中の間引きをより長めに)。',
+    ],
+  },
+  {
     version: '0.25.1495',
     items: [
       'キルのズームを1.5倍へ戻し(連続キル中はズームだけ5秒に1回に間引き。スロー等は変更なし)。',

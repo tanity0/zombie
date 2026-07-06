@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1497 — KILLスロー秒数確認(0.7秒のまま・変更不要)+ズームCDを5秒→10秒へ(社長指示・実装チャット)【2026-07-06 23:49 JST】
+- 社長指示「キルのスロー秒数0.7に戻す。CDを10秒に」を受けて確認・実装。
+- `MELEE_FINISH_SLOW_MS`は既にv0.25.1489で0.7秒(700ms)のまま(以後未変更)のため、コード変更なし
+  (確認のみ)。
+- `src/store/gameStore.ts`の`MELEE_FINISH_ZOOM_CD_MS`を`5000`→`10000`(KILLズームだけの連発防止
+  CDを5秒→10秒へ延長。スロー/揺れ/ヒットストップの発生頻度は不変)。
+- 検証: 新ルール(v0.25.1496)の「小刻みなpush」区分に該当(定数値のみの変更・シグネチャ不変)。
+  `npm run typecheck`のみ実行・通過。関連ユニットテストなし(この定数を直接参照するテストは
+  存在しない)。
+- 憲法第4条・第5条: 該当なし(演出のみの調整・ゲーム性への影響なし)。
+
 ## v0.25.1496 — 恒久ルール改訂: ローカル検証は「要所だけ」(社長指示・設計チャット)【2026-07-06 23:44 JST】
 - 社長指示「毎回テスト回すの重いわ、要所だけにして」を受け、CLAUDE.md「Testing policy」を改訂
   (毎pushフル検証=`lint && typecheck && test && build`の義務を廃止)。新ルール:
