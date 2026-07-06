@@ -24,6 +24,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
@@ -4683,8 +4684,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダンスタイム中はレベルアップを保留(EXPは溜め続け、表示はカンスト)。終了時に一気に処理する。
     if (get().rhythm.active) return;
     // Check if player should level up
-    const { player } = get();
+    const { player, enemies } = get();
     if (player.experience >= player.experienceToNextLevel) {
+      // 社長相談(v0.25.1499): ジャンプ着地/ダッシュの赤ライン当たり判定内にいる間は保留
+      // (useGameLoopが毎フレーム再チェックして、抜けたタイミングで発動させる)。
+      if (isPlayerInAttackTelegraph(player, enemies, PUMPKIN_EXPLOSION_RADIUS)) return;
       get().levelUp();
     }
   },
@@ -4968,8 +4972,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     // バンクしたEXPがまだレベル分あれば、次のレベルアップ(メニュー)へ連鎖。ダンス中は保留のまま。
     if (!get().rhythm.active) {
-      const p = get().player;
-      if (p.experience >= p.experienceToNextLevel) get().levelUp();
+      const { player: p, enemies } = get();
+      // 社長相談(v0.25.1499): 赤ライン当たり判定内なら保留(useGameLoopが再チェック)。
+      if (p.experience >= p.experienceToNextLevel && !isPlayerInAttackTelegraph(p, enemies, PUMPKIN_EXPLOSION_RADIUS)) {
+        get().levelUp();
+      }
     }
   },
 
@@ -8128,8 +8135,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         player: { ...state.player, invulnerable: false },
       }));
       // ダンス中に溜めたEXPで一気にレベルアップ(以降は selectUpgrade が連鎖)。
-      const p = get().player;
-      if (p.experience >= p.experienceToNextLevel) get().levelUp();
+      const { player: p, enemies } = get();
+      // 社長相談(v0.25.1499): 赤ライン当たり判定内なら保留(useGameLoopが再チェック)。
+      if (p.experience >= p.experienceToNextLevel && !isPlayerInAttackTelegraph(p, enemies, PUMPKIN_EXPLOSION_RADIUS)) {
+        get().levelUp();
+      }
     }
   },
 

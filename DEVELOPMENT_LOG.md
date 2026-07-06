@@ -12,6 +12,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1500 — レベルアップを敵ジャンプ着地/ダッシュの赤ライン当たり判定内で保留(社長相談・実装チャット)【2026-07-07 00:29 JST】
+- 社長相談「レベルアップのタイミング、画面内にダッシュとジャンプ準備(赤いライン)出てる時は発動し
+  終わるまで待ってから」→ 追加相談「赤ライン当たり判定内にいる場合に限る」で承認を得て実装。
+- 新規`src/utils/levelUpGate.ts`(純関数・ユニットテスト8件): `isPlayerInAttackTelegraph(player,
+  enemies, pumpkinExplosionRadius)`。
+  - ジャンプ着地(パンプキン/lab-zombie-3/ジャイアントバット/ハンター、`aiPhase==='jump'`):
+    実際の着地爆発ヒット判定と同じ式(useGameLoopのpumpkinBlasts処理を踏襲=
+    `距離(プレイヤー中心, 着地点) <= 爆発半径 + 双方の当たり半径`)。
+  - ダッシュ突進(werewolf/lab-zombie-2/ジャイアントバット/ハンター、`aiPhase==='windup'`):
+    専用の当たり判定式が別に存在しない(汎用接触ダメージ)ため、敵の幅を経路(赤ライン=
+    現在地→狙い点の線分)の当たり半径として近似(点と線分の距離)。
+- `src/store/gameStore.ts`: レベルアップ発動チェック3箇所(`gainExperience`/`applyUpgrade`の
+  連鎖チェック/`setRhythmActive`終了時)全てに`!isPlayerInAttackTelegraph(...)`を追加(XPは
+  従来どおり貯まり続ける。保留するのは`levelUp()`呼び出しだけ)。
+- `src/hooks/useGameLoop.ts`: 上記3箇所はイベント駆動(XP獲得/メニュー閉じ/ダンス終了)なので、
+  「保留中にその後XPを得ない」ケースを取りこぼす。既存のLEVEL UP演出完了チェックの直後に
+  毎フレーム再チェックを追加し、赤ライン圏外に出たタイミングで`levelUp()`を発動させる
+  (演出中/メニュー表示中は二重発動しないようガード)。
+- 既知の簡略化: `src/utils/playtestDriver.ts`(M9ヘッドレスボット)はuseGameLoop.tsの当該
+  per-frame処理を再現していない(既存の他多数の簡略化と同じ扱い)。ただし発動チェック自体は
+  gainExperience等の共有ストアコードを通るため、ボットも実際にゲート判定を経由する
+  (毎フレーム再チェックが無いだけで、次のXP獲得時には正しく解消する)。
+- 負荷スコア: 1/10(既存の敵ループ内`aiPhase`参照+距離計算1本。新規ループ・新規state無し)。
+- 検証: 新ルール③(store共有ロジック・シグネチャ変更)に該当のためフル検証実施。
+  `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (39ファイル/469テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(レベルアップの発動タイミング調整のみ・XP量やアップグレード内容は不変)。
+
 ## v0.25.1499 — M14演出仕様の確定(社長承認・設計チャット)【2026-07-07 00:10 JST】
 - ビジュアルモック(実スクショ合成+アニメ再現のHTML資料)で社長承認「めっちゃいいじゃん。実装で」。
   色は推奨どおり**色分け案**(深さ=青白#bfe3ff/ランク=緋#ff6a55/REVENGE=金#ffd700・

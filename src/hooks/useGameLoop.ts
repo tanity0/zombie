@@ -36,8 +36,9 @@ import {
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, AMMO_MAX,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS
 } from '../store/gameStore';
+import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -6740,6 +6741,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const introUntil = useGameStore.getState().levelUpIntroUntil;
           if (introUntil > 0 && Date.now() >= introUntil) {
             useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 });
+          }
+        }
+
+        // 社長相談(v0.25.1499): ジャンプ着地/ダッシュの赤ライン当たり判定に阻まれて保留中だった
+        // レベルアップを、抜けたタイミングで発動させる(gainExperience等のイベント駆動チェックだけでは
+        // 「その後XPを得ない」ケースを取りこぼすため毎フレーム再チェックする)。
+        {
+          const s = useGameStore.getState();
+          if (
+            !s.rhythm.active && !s.showUpgradeMenu && s.levelUpIntroUntil === 0 &&
+            s.player.experience >= s.player.experienceToNextLevel &&
+            !isPlayerInAttackTelegraph(s.player, s.enemies, PUMPKIN_EXPLOSION_RADIUS)
+          ) {
+            useGameStore.getState().levelUp();
           }
         }
 

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1500',
+    items: [
+      'レベルアップ処理、敵のジャンプ着地/突進の危険範囲内にいる間は少し待ってから発動するように。',
+    ],
+  },
+  {
     version: '0.25.1498',
     items: [
       'キル時のズームが、キルした相手の方へ寄るように(以前は画面中央固定)。',
