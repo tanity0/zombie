@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1466 — M8追補2: 軍人方式へ統一(社長の事実訂正・設計チャットFable)
+- 社長訂正「軍人NPCも同じドット絵風素材・同じ処理で作っている」→ 軍人とプレイヤーの差は
+  素材ではなく**「表示実寸(×1)まで縮め切って保存」+「等倍nearest表示」**だったと確定。
+  縮小の平均化で「にじんだ1ドット」が1ピクセルに潰れ、にじみごと消える=軍人のくっきりの正体。
+- **仕様(§5.9-追補2)**: 4クラス全員、原本から標準LANCZOSで**表示実寸×1へ縮め切り**→
+  **nearest・等倍表示**へ変更(M8改の×2+linear路線を置き換え。ふわふわの原因は×2止め+linearだった)。
+  v18の濁りとの違い=v18は中心1点拾い、本方式は全体平均の普通の縮小。後処理は引き続き禁止。
+- 検証: doc+version変更のみ(コード不変)。実装はSonnet。
+
 ## v0.25.1465 — ナイフの振りをほんの少しスローに(社長指示・実装チャット)
 - 社長指示「ナイフの振りをほんの少しだけスローに」。
 - `PLAYER_MELEE_SWING_MS`(近接スイングの踏み込み→振り抜き→復帰の総時間・pixiScene.ts)を
