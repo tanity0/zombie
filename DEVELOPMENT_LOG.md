@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1490 — KILLだけズームを1.2倍・0.5秒へ変更(カウンターは不変)(社長指示・実装チャット)【2026-07-06 21:46 JST】
+- 社長指示「KILLだけズーム倍率を1.2倍、0.5秒に変更」: 近接フィニッシュ(KILL)の寄りパンチズームを
+  カウンターから分離し専用定数化。`MELEE_FINISH_ZOOM_MAG`(倍率)`0.5→0.2`(1.5倍→1.2倍)。
+  新設`MELEE_FINISH_ZOOM_MS=500`(KILL専用のズーム長さ・スロー(`MELEE_FINISH_SLOW_MS`=700)とは
+  非連動)+`MELEE_FINISH_ZOOM_HOLD_MS=400`(最大寄りを保持する長さ。比率80%はスローと同じ形を踏襲)。
+  **カウンターの寄り(`COUNTER_ZOOM_MAG=0.5`=1.5倍・スローと同期する長さ)は指示外のため無変更**。
+- 負荷スコア: 1/10(既存の視覚専用定数の値変更・専用パラメータ化のみ)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (37ファイル/450テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(KILL演出のズーム倍率・長さのみ)。
+
 ## v0.25.1489 — KILL/カウンターのスロー時間を全体1秒→0.7秒へ短縮(社長指示・実装チャット)【2026-07-06 21:29 JST】
 - 社長指示「スロー演出を全体1秒から0.7秒に短縮」: `MELEE_FINISH_SLOW_MS`
   `1000→700`。保持区間(`MELEE_FINISH_SLOW_HOLD_MS`)は比率(80%)を維持して`800→560`

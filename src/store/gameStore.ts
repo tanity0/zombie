@@ -977,10 +977,13 @@ export const CAMERA_MOVE_ZOOM_TAU = camNum('cammovetau', 1.5);    // 引きが�
 export const CAMERA_INTRO_ZOOM_MAG = camNum('camintro', 1.0);     // 登場ヘリ搭乗シーンの寄り(正=寄り/めっちゃズーム)。社長指示でもう少し寄りスタート。降下で既定へ。?camintro
 export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中、カメラをヘリ高度へ寄せる割合(0=従来の着地面固定 / 1=被写体を中央)。?camintrolift
 // 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
-// ズームの長さ・保持は社長指示でスロー(MELEE_FINISH_SLOW_MS/HOLD_MS)と同期させたため専用定数は撤廃。
+// カウンターはスロー(MELEE_FINISH_SLOW_MS/HOLD_MS)と同期(共通の寄りパンチカーブを流用)。
 // 衝撃時の寄りパンチズーム。社長指示で1.5倍(KILL=近接フィニッシュの「Kill!」演出時のみ。
 // 銃/接触/爆発キルや非フィニッシュの通常近接キルはズームしない=社長指示で撤回・v0.25.1466)。
-export const MELEE_FINISH_ZOOM_MAG = 0.5;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.5倍=+50%)
+// KILLだけ社長指示で1.2倍・0.5秒へ変更(カウンターは1.5倍のまま・スローと同期のまま不変)。
+export const MELEE_FINISH_ZOOM_MAG = 0.2;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.2倍=+20%)
+export const MELEE_FINISH_ZOOM_MS = 500;   // KILLだけ専用のズーム長さ(社長指示・スローとは非連動)
+export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを保持する長さ(比率80%はスローと同じ)
 export const COUNTER_ZOOM_MAG = 0.5;       // カウンター成立の寄り(社長指示で1.5倍=+50%)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
@@ -8577,7 +8580,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 近接フィニッシュ: 寄りは即。スローも即開始(ストップ中はループ早期returnで凍結 → 明けてから
     // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
     // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
-    get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・寄り(スローと同期)
+    get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS); // 即・寄り(KILL専用の長さ・社長指示)
     get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・スロー(強め→保持→等速へランプ)
     setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
   },

@@ -8,7 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '0.25.1488',
+    version: '0.25.1490',
+    items: [
+      'キルのズームを少し控えめ・短めに(カウンターのズームは変更なし)。',
+    ],
+  },
+  {
+    version: '0.25.1489',
     items: [
       'キル/カウンターのスロー演出を全体1秒→0.7秒へ短縮。テンポよく。',
     ],
