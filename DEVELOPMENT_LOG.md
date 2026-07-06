@@ -10,6 +10,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1452 — 原本素材の受領①: ヘビーガンナー(設計チャットFable)
+- 社長からチャット経由で原本を受領し `art_src/originals/heavy-gunner/` に保存:
+  idle.png(1950×1965・キャラ実寸1136×1660)/walk-sheet.png(1448×1086・5コマ)。
+- 素材チェック結果: ①両方とも背景透過・中間アルファなし(キー抜き不要) ②walkは5コマが
+  空白列で綺麗に分割可・足元ライン±5px(footアンカー規約で吸収可) ③idleとwalkで解像度が
+  約5倍違う(縮小後は揃うので実害なし) ④輪郭に紫のフチ(素材のスタイル。そのまま出る)
+  ⑤idleには5px格子信号・walkは格子不明瞭 → 方針どおり素直縮小(格子焼きしない)が正解。
+- `art_src/originals/README.md` 新設: クラス名⇄ゲーム内ファイル名の対応表
+  (heavy-gunner=shotgun/marksman=magnum/striker=scavenger/scavenger=striker の反転規約を明文化)。
+- M8改はこの原本から実行可能になった(他クラスの原本も受領次第ここへ追加)。
+- 検証: doc+素材追加+version(コード不変)。
+
 ## v0.25.1451 — v1449焼き直しの差し戻し+M8を「素直化」へ改訂(社長指示・設計チャットFable)
 - 社長実機報告「ストライカー以外のキャラが気持ち悪くなった。戻して」「下手なことせず素直に
   表示できないのか」→ **v19の3クラスPNG(magnum/shotgun/striker=スカベ)をv18状態へ差し戻し**
