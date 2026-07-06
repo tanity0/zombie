@@ -1034,7 +1034,7 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number) 
   const config = SFX_SOURCES[key];
   if (!config) return;
 
-  const now = window.performance?.now() ?? Date.now();
+  const now = typeof window === 'undefined' ? Date.now() : (window.performance?.now() ?? Date.now());
   const lastPlayedAt = sfxLastPlayedAt.get(key) ?? 0;
   if (config.minIntervalMs && now - lastPlayedAt < config.minIntervalMs) return;
 

@@ -904,8 +904,13 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
 // 近接フィニッシュ&カウンター: ストップ→スロー。社長指示で倍に(700→1400)。さらにもう少し長く
-// (1400→1650→1950)。
-const MELEE_FINISH_SLOW_MS = 1950;
+// (1400→1650→1950)。社長指摘「長さの問題じゃないかも」で全体を約1秒へ戻しつつ、最も遅い区間を
+// 保持してから戻りは速くする形に変更(1950→1000。カーブ形状は下のHOLD_MSと合わせてsrc/utils/
+// timeSlowCurve.tsが消費)。
+export const MELEE_FINISH_SLOW_MS = 1000;
+// 上のスロー時間のうち、最も遅い倍率を保持する長さ(社長指示: 一番遅い時間を長く・戻りは速く)。
+// 残り(MELEE_FINISH_SLOW_MS - この値)が等速へ戻るランプ区間になる。
+export const MELEE_FINISH_SLOW_HOLD_MS = 600;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
@@ -1449,7 +1454,11 @@ const grantMeleeKillRewards = (
       // "Kill!" callout over the executed enemy's head. 刀の一閃は代わりに
       // 軌道中央へ「斬」を出すので、ここでは出さない。
       if (!suppressKillCallout) {
-        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', { bg: 0x7a1322 }); // 濃いワインレッド(社長指示)
+        // 表示時間・保持時間はスロー演出(MELEE_FINISH_SLOW_MS/HOLD_MS)と揃え、スローが一番遅い
+        // 区間の間は文字も一番ハッキリ(満alpha)のまま保つ(社長指示)。
+        get().spawnCallout(ex, enemy.y - 6, 'Kill!', '#ffe4e6', {
+          bg: 0x7a1322, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS,
+        }); // 濃いワインレッド(社長指示)
       }
     } else {
       get().spawnBurst(ex, ey, '#dc2626', 16);
@@ -1758,6 +1767,7 @@ interface GameState {
   timeSlowUntil: number;
   timeSlowScale: number;
   timeSlowStart: number; // スロー開始時刻。倍率を滑らかに 1.0 へ戻す(ランプ)ために使う。
+  timeSlowHoldMs: number; // このms分は最も遅い倍率を保持してからランプ開始(既定0=従来どおり開始直後からランプ)。
   // Screen shake: jitter the canvas while Date.now() < shakeUntil (set on hit).
   // shakeMag=振幅px / shakeDur=フェード基準の長さ(ms)。triggerShake で行動別に設定。
   shakeUntil: number;
@@ -2019,7 +2029,7 @@ interface GameState {
   setCameraPosition: (x: number, y: number) => void;
   triggerAttention: (x: number, y: number) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)
   clearAttention: () => void;
-  triggerTimeSlow: (scale: number, durationMs: number) => void;
+  triggerTimeSlow: (scale: number, durationMs: number, holdMs?: number) => void; // holdMs=最も遅い倍率を保持する時間(既定0)
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
   triggerFinishImpact: () => void; // 近接フィニッシュ: ストップ→(後で)揺れ+スロー+寄り
@@ -2034,7 +2044,7 @@ interface GameState {
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
-  spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number }) => void;
+  spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
@@ -2263,6 +2273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   timeSlowUntil: 0,
   timeSlowScale: 1,
   timeSlowStart: 0,
+  timeSlowHoldMs: 0,
   shakeUntil: 0,
   shakeMag: SHAKE_MAG,
   shakeDur: SHAKE_MS,
@@ -8470,6 +8481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         timeSlowUntil: 0,
         timeSlowScale: 1,
         timeSlowStart: 0,
+        timeSlowHoldMs: 0,
         shakeUntil: 0,
         shakeMag: SHAKE_MAG,
         shakeDur: SHAKE_MS,
@@ -8527,7 +8539,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ストップ開始時、進行中の(スイング等の)揺れを消す=ストップ後に出すこのインパクトの揺れだけ残す。
     set({ shakeUntil: 0 });
     get().triggerHitstop(stopMs);
-    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS); // ストップから必ずスローで等速へ戻す(社長指示)
+    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // ストップから必ずスローで等速へ戻す(社長指示)
     setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
@@ -8536,7 +8548,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
     // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
     get().triggerZoom(MELEE_FINISH_ZOOM_MAG);             // 即・寄り
-    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS);     // 即・スロー(強め→等速へランプ)
+    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・スロー(強め→保持→等速へランプ)
     setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
   },
 
@@ -8549,7 +8561,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  triggerTimeSlow: (scale, durationMs) => {
+  triggerTimeSlow: (scale, durationMs, holdMs = 0) => {
     const now = Date.now();
     const clampedScale = Math.max(MIN_TIME_SLOW_SCALE, Math.min(MAX_TIME_SLOW_SCALE, scale));
     const until = now + Math.max(0, durationMs);
@@ -8562,6 +8574,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           : clampedScale,
         // 新規開始時のみ開始時刻を更新(継続中は維持してランプ区間を保つ)。
         timeSlowStart: active ? state.timeSlowStart : now,
+        // 保持時間も長い方を採用(重なった時に短い方へ縮めない)。
+        timeSlowHoldMs: active ? Math.max(state.timeSlowHoldMs, Math.max(0, holdMs)) : Math.max(0, holdMs),
       };
     });
   },
@@ -8717,8 +8731,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       scale: opts?.scale ?? 1.9,
       serif: opts?.serif,
       bg: opts?.bg,
+      holdMs: opts?.holdMs,
       createdAt: now,
-      duration: opts?.serif ? 1000 : 850
+      duration: opts?.duration ?? (opts?.serif ? 1000 : 850)
     };
     set(state => {
       const next = [...state.effects, effect];

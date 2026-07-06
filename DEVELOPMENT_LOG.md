@@ -12,6 +12,54 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1478 — M9-A完了(ヘッドレス切り出し)+KILL/カウンターのスロー演出を再設計(社長指示・実装チャット)【2026-07-06 20:05 JST】
+- **M9-A**: `PACING_PUZZLE.md §5.10` M9-A(useGameLoopのディレクター配線をヘッドレスから固定
+  16.6msステップで回せる関数へ切り出し)を完了。専門タスクへ分離して慎重に実施(「挙動を1bitも
+  変えない」大手術のため)。新規`src/utils/directorTick.ts`(676行・renderer/React非依存)へ
+  コマ管理+査定+decideNextSpawn消費(`runKomaBoardMaintenance`)・画面外リサイクル+上限カリング
+  (`runOffscreenRecycleAndCull`)・キャップ計算(`computeDirCountCap`/`computeEnemyCap`/
+  `computeNormalSpawnCap`)・ピンチ救済upkeep(`runPityUpkeep`)・AIディレクター信号算出
+  (`runDirectorSignalStep`)を移設。`useGameLoop.ts`側は各呼び出し1行に置換。式・分岐・呼び出し
+  順序は一切変更せず、クロージャ捕捉していた値を明示引数に・useRefの`.current`を明示refに
+  変えただけの「移設」(再設計ではない)。副次的にheadless実行を阻むバグ1件を修正:
+  `audioManager.ts`の`playSfx`が`window.performance`を無ガードで参照しNode上で例外落ちしていた
+  箇所を、同ファイル他所と同じ`typeof window === 'undefined'`ガード済みの形に修正(ブラウザ上の
+  挙動は完全に不変)。ボス中/`?puzzle=0`用の旧ランク評価パス(~500行規模でrankRef/ゲートプログラム/
+  DDA等と密結合)は明示対象3領域に含まれないため据え置き(無理な分割で再テスト不能になる方を回避)。
+  Diffを目視レビュー(コマ管理・キャップ・リサイクル/カリング・信号算出の各呼び出し箇所)し、
+  参照の付け替えミスがないことを確認済み。M9-B(デバッグボットのペルソナ入力合成)は前回
+  v0.25.1475で実装済み。次はM9-C(不変条件アサーション)・M9-D(playtestスクリプト+CI)。
+- **KILL/カウンターのスロー演出の再設計**(社長指示の3段階のやり取りを反映):
+  1. 「ズームが一番寄っているタイミングをスローで見せたい」への調査に対し、続けて社長から
+     「スローの長さじゃないかも。長さは戻しつつ、戻る速さも早く。一番遅い時間を長く。
+     全体は1秒くらい」と方針転換の指示。
+  2. `MELEE_FINISH_SLOW_MS`(スロー全体の長さ)を`1950→1000`(既定=旧来どおり開始直後から
+     ランプする挙動)。新設`MELEE_FINISH_SLOW_HOLD_MS=600`(最も遅い倍率を保持する長さ。
+     残り400msで等速へ戻る=戻りが体感で速くなる)。
+  3. カーブ自体の形状変更(hold区間の追加)は`triggerTimeSlow`の全呼び出し元(ハリケーン/
+     レベルアップ演出/被弾スロー等)に影響するため、`holdMs`を新しい**任意引数**(既定0)として
+     追加し、既定0の時は旧来のカーブ式(smoothstep連続ランプ)と完全一致するようにした
+     (`src/utils/timeSlowCurve.ts`の`computeTimeSlowScale`・純関数・ユニットテスト4件で
+     hold無し/hold有り/hold過大のクランプを検証)。KILL(`triggerFinishImpact`)とカウンター
+     (`triggerHitImpact`。シールドバッシュ等の他の衝撃も同経路を共有=元から同じ`MELEE_FINISH_SLOW_MS`
+     を使っていたので影響範囲は据え置き)だけが`MELEE_FINISH_SLOW_HOLD_MS`を渡す。他の呼び出し元は
+     無変更。
+  4. 続けて社長指示「このピークタイムに、キルとカウンターの文字が一番ハッキリするタイミングを
+     合わせて」: `spawnCallout`のoptsに`holdMs`/`duration`の任意上書きを追加(既定は従来どおり
+     serif=1000ms/非serif=850msで生成直後からフェード=他の全コールアウト(SHOP/QUEST/STUN!等)は
+     無変更)。「Kill!」(`grantMeleeKillRewards`)と「Counter!」(`useGameLoop.ts`4箇所)の
+     呼び出しだけ`holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS`を渡し、
+     スローの「一番遅い」区間(600ms)は文字も満alphaを保持してから残り(400ms)でフェードする形に
+     (`src/pixi/pixiScene.ts`の`drawCalloutWithBg`が`e.holdMs`を見てフェード開始を遅らせる。
+     pop演出・位置の浮き上がりは従来どおり)。
+  - ズームの減衰時間(`MELEE_FINISH_ZOOM_MS=320`)は今回の指示に含まれないため不変
+    (別途未確定の相談事項として残置)。
+- 負荷スコア: 1/10(M9-Aは切り出しのみで実行時コスト不変・スロー/コールアウトは既存の視覚専用
+  計算に条件分岐を足しただけ)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (36ファイル/447テスト。新規`timeSlowCurve.test.ts`4件を含む)。
+- 憲法第4条・第5条: 該当なし(いずれも演出タイミング/デバッグ基盤で進行・緩急ペースと無関係)。
+
 ## v0.25.1477 — 恒久ルール: push打刻(社長指示・設計チャットFable)【2026-07-06 19:47 JST】
 - 社長指示「Sonnet側含めて、開発時にpushしたらpushした時刻を打刻する」を規律化:
   DEVELOPMENT_LOGの各エントリ見出し末尾に**【YYYY-MM-DD HH:MM JST】**を打刻。

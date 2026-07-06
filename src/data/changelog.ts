@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1478',
+    items: [
+      'キル/カウンターのスロー演出を調整: 全体の長さは短くしつつ、一番遅い瞬間を長く保ち、戻りは速く。',
+      'キル/カウンターの文字も、スローが一番遅い間は一番ハッキリ見えるように。',
+    ],
+  },
+  {
     version: '0.25.1476',
     items: [
       'ノックバックしていないのに敵が跳ねて見えることがあったのを修正。',

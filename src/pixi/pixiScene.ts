@@ -7590,11 +7590,17 @@ export class PixiScene {
     bg.tint = e.bg ?? 0xffffff;
     bg.width = txt.width + 34 * scale;   // 文字より広めに帯を伸ばして両端フェード
     bg.height = txt.height + 10 * scale;
-    bg.alpha = Math.max(0, 1 - t) * 0.8; // 透明感を残す
+    // holdMs指定時(KILL/カウンター)はそのms分フェードを遅らせ、満alphaを保持してから残り時間で
+    // フェードする(社長指示: スローの一番遅い区間と文字の一番ハッキリするタイミングを合わせる)。
+    // 未指定(他のbg付きコールアウト)は従来どおり生成直後からフェード=挙動不変。
+    const holdMs = Math.max(0, Math.min(e.duration - 1, e.holdMs ?? 0));
+    const elapsedMs = t * e.duration;
+    const fadeT = elapsedMs < holdMs ? 0 : (elapsedMs - holdMs) / Math.max(1, e.duration - holdMs);
+    bg.alpha = Math.max(0, 1 - fadeT) * 0.8; // 透明感を残す
     const pop = 1 + Math.max(0, 1 - t * 5) * 0.2;
     c.position.set(e.x, e.y - t * 12);
     c.scale.set(pop);
-    txt.alpha = Math.max(0, 1 - t);
+    txt.alpha = Math.max(0, 1 - fadeT);
     c.visible = true;
   }
 
