@@ -14,3 +14,4 @@
 - heavy-gunner: idle.png + walk-sheet.png(v0.25.1452受領)。
 - striker: walk-sheet.png のみ(v0.25.1453受領・社長確認済み)。**2コマ目(index=1)が
   ストップ絵を兼任**(専用idleなし・社長指定)。
+- marksman: walk-sheet.png のみ(v0.25.1454受領)。**2コマ目(index=1)がストップ絵を兼任**(社長指定)。

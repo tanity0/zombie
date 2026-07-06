@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1454 — 原本素材の受領③: マークスマン(設計チャットFable)
+- `art_src/originals/marksman/walk-sheet.png`(2172×724・5コマ)を保存。
+  **2コマ目(index=1)がストップ絵を兼任**(社長指定)。
+- 素材チェック: ①背景透過・中間アルファなし ②5コマ分割可(コマ幅362〜386px・キャラ高376〜388px)
+  ③**足元ラインのブレが532〜552pxと20px幅でやや大きい**(縮小後3〜4px相当の上下動。歩行の
+  上下動として意図なら問題なし・不自然なら焼き工程で足元整列して吸収可=実機で判断)
+  ④格子は不明瞭なソフト素材 → M8改の素直縮小の対象で正しい。
+- 検証: doc+素材追加+version(コード不変)。
+
 ## v0.25.1453 — 原本素材の受領②: ストライカー(設計チャットFable)
 - `art_src/originals/striker/walk-sheet.png`(2560×852・5コマ)を保存。
   **2コマ目(index=1)がストップ絵を兼任**(専用idleなし・社長指定・社長がクラス名を確認)。
