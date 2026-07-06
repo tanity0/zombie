@@ -33,4 +33,6 @@
 //      緩和(figH102→104。frame3寄りの専用スケールで再焼き)。他コマ・コードは変更なし。
 // v24: M8追補(§5.9): ストライカー(player-scavenger-walk-0..4/idle)も原本から標準LANCZOS縮小のみで
 //      焼き直し+実行時linear/mipmap化。他3クラスと表示テイストを統一(2コマ目=ストップ絵兼任)。
-export const ASSET_VERSION = '24';
+// v25: §5.9-追補2「軍人方式」: 4クラス全員、原本から標準LANCZOSで表示実寸(86×73・軍人と同じ
+//      流儀)まで縮め切り、実行時はnearest等倍表示へ(v22/v24のlinear+mipmap路線を撤回)。
+export const ASSET_VERSION = '25';

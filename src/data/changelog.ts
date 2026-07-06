@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1471',
+    items: [
+      '全4クラスのキャラ絵の表示方式を、護衛の軍人と同じ「実寸で焼いてくっきり表示」に統一。ふわつきを解消。',
+    ],
+  },
+  {
     version: '0.25.1468',
     items: [
       'ナイフの振りをもう少しだけゆっくりに。フィニッシュ/カウンター成立時のスロー演出も少し長く。',

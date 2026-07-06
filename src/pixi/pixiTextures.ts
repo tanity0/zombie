@@ -19,18 +19,17 @@ const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
 
-// M8改(PACING_PUZZLE §5.9・社長指示v0.25.1451「素直に表示」): 4クラス全員(マークスマン=magnum/
-// ヘビーガンナー=shotgun/スカベンジャー=striker/ストライカー=scavenger)は「ドット絵風の
-// 高解像度イラスト」であり本物の格子が無い。nearest縮小はカリカリの偽ドット/不気味化を生むため、
-// 実行時 linear+ミップマップで「元絵そのままの均一な描画」にする。
-// ※ストライカー(player-scavenger)はv17で格子焼き(粗ドット)が単体では成功していたが、他3クラスが
-// 素直化されテイストが浮くため社長指示(v0.25.1461)でM8追補として同処理に統一(art_src/originals/
-// striker/walk-sheet.pngから標準LANCZOSのみで再焼き・v0.25.1463)。
-// 軍人・武器アイコン等の本物ドット素材は nearest のまま。`?spritesmooth=0` で従来nearestへ即戻し(実機A/B用)。
+// M8改→§5.9-追補2(社長の事実訂正v0.25.1462「軍人も同じドット風素材・同じ処理でいい」)で置き換え:
+// プレイヤー4クラス(マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker/
+// ストライカー=scavenger)は軍人NPCと同じ「ドット絵風」生成素材。違いは軍人が**表示実寸(×1)まで
+// 縮め切って保存**していたこと=にじみが縮小の平均化で1pxに潰れて消える(等倍+nearestでくっきり)。
+// なのでM8改のlinear+mipmap路線(×2縮小止め)は撤回し、素材そのものを表示実寸へ焼き直した上で
+// 軍人・敵・その他すべてと同じ既定nearestに統一。`?spritesmooth=1`で当時のlinear+mipmapを
+// 一時的に試せるA/B用フラグとして残す(既定はoff=nearest)。
 const SPRITE_SMOOTH: boolean = (() => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   const p = new URLSearchParams(window.location.search).get('spritesmooth');
-  return !(p === '0' || p === 'off' || p === 'false');
+  return p === '1' || p === 'on' || p === 'true';
 })();
 const SOFT_CLASS_PREFIXES = ['player-magnum-', 'player-shotgun-', 'player-striker-', 'player-scavenger-'];
 const isSoftClassSprite = (name: string): boolean =>
