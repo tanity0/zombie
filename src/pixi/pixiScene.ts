@@ -439,6 +439,13 @@ const KNIFE_F1 = { scale: 0.95, ox: -0.30, oy: 0.12 };  // 1枚目: キャラ左
 const KNIFE_F2 = { scale: 1.80, ox: 0.22, oy: -0.12 };  // 2枚目: 被せ+スラッシュ右へ(少し上げた・少し大きく)
 // 3枚目: 弧の残光(ダガー無し)。2枚目と共通クロップで焼いてあるため同じ配置=弧がズレずに残ってフェード。
 const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
+// 装備中の近接武器の実絵をスイングに重ねる(v0.25.1456 社長指示)。武器アイコン5種は同スタイル
+// (刃先が右上≈-46°)なので共通の回転定数で合う。値は焼き込みダガーのPCA計測から:
+// f1: ダガーはknife-swing-1キャンバス中心・軸-25.3°(刃先左下) → アイコン回転200.7°・長さ=unit×0.95
+// f2: 弧テクスチャ内の中心割合(0.173,0.250)・軸26.6°(刃先左上=振り抜き) → 回転252.6°・長さ=unit×0.608
+// ※knife-swing-2はv0.25.1456から「弧のみ」(社長提供)。ナイフはこのスプライトが担当する。
+const MELEE_WPN_F1 = { rot: 200.7 * Math.PI / 180, len: 0.95 };
+const MELEE_WPN_F2 = { rot: 252.6 * Math.PI / 180, len: 0.608, fx: 0.173, fy: 0.250 };
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
 const DOG_WALK_FRAME_MS = 150;
@@ -854,6 +861,7 @@ export class PixiScene {
   private cloneKnife = new Sprite();
   private cloneKnifeSlash = new Sprite();
   private cloneKnifeTrail = new Sprite();                  // 3枚目(弧の残光)。本体と同じ3コマ差し替え
+  private cloneMeleeWpn = new Sprite();                    // 分身にも装備近接の実絵を重ねる
   private cloneKnifeSetup = false;
   // 白黒テクスチャのキャッシュ(テクスチャ名→事前ベイクした RenderTexture)。毎フレームのフィルタ処理を避ける。
   private grayTexCache = new Map<string, Texture>();
@@ -980,9 +988,10 @@ export class PixiScene {
   private playerKatanaBackAttached = false;                // playerView.container へ親子付け済みか
   private playerSkateboard = new Sprite();                 // スケボー乗車中に足元へ敷く板(プレイヤー背面=足の下)
   private playerSkateboardAttached = false;                // playerView.container へ親子付け済みか
-  private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1)
-  private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(ダガー+青スラッシュ knife-swing-2)
+  private playerKnife = new Sprite();                      // 近接スイング1枚目(ダガー画像 knife-swing-1・装備絵が無い時のフォールバック)
+  private playerKnifeSlash = new Sprite();                 // 近接スイング2枚目(弧のみ knife-swing-2)
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
+  private playerMeleeWpn = new Sprite();                   // 装備中の近接武器の実絵(f1/f2に重ねる)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
@@ -4361,6 +4370,9 @@ export class PixiScene {
         this.playerKnifeTrail.anchor.set(0.5, 0.5);
         this.playerKnifeTrail.visible = false;
         this.playerView.container.addChild(this.playerKnifeTrail);
+        this.playerMeleeWpn.anchor.set(0.5, 0.5);
+        this.playerMeleeWpn.visible = false;
+        this.playerView.container.addChild(this.playerMeleeWpn); // 弧より前面=装備ナイフが手前
         this.playerKnifeSetup = true;
       }
     }
@@ -4754,11 +4766,15 @@ export class PixiScene {
     } else {
       sb.visible = false;
     }
-    // 近接スイングを3枚の画像差し替えで見せる(描画のみ・判定不変)。回転はせず、左向きは
-    // 水平ミラー。frame1=ダガー左下→frame2=ダガー+青スラッシュの弧→frame3=弧の残光がフェード。
+    // 近接スイングを3枚の画像差し替えで見せる(描画のみ・判定不変)。左向きは水平ミラー。
+    // frame1=装備ナイフ左下(構え)→frame2=弧+装備ナイフ振り抜き→frame3=弧の残光フェード。
+    // 装備中の近接(weapons/<key>)の実絵を重ね、絵が無い場合のみ旧焼き込みダガーへフォールバック。
     const knife = this.playerKnife;
     const slash = this.playerKnifeSlash;
     const trail = this.playerKnifeTrail;
+    const wpn = this.playerMeleeWpn;
+    const meleeKey = p.weapons.find(w => w.isMelee)?.key;
+    const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     if (this.playerKnifeSetup) {
       if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
         const kt = sinceSwing / PLAYER_MELEE_SWING_MS;
@@ -4784,31 +4800,50 @@ export class PixiScene {
           spr.alpha = alpha * view.sprite.alpha;
           spr.visible = spr.alpha > 0.01;
         };
+        // 装備近接の実絵を置く: 対角線長=unit×lenFrac、回転は左向きミラー時に反転(ミラー合成)。
+        const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
+          if (!wtex) { wpn.visible = false; return; }
+          if (wpn.texture !== wtex) wpn.texture = wtex;
+          const sc2 = (unit * lenFrac) / Math.max(1, Math.hypot(wtex.width, wtex.height));
+          wpn.scale.set(mir * sc2, sc2);
+          wpn.rotation = mir * rot;
+          wpn.position.set(baseX + mir * ox * unit, baseY + oy * unit);
+          wpn.alpha = alpha * view.sprite.alpha;
+          wpn.visible = wpn.alpha > 0.01;
+        };
+        // f2の武器位置: 弧テクスチャ内の割合(fx,fy)を弧の配置(KNIFE_F2)へ写像。
+        const arcAspect = slash.texture && slash.texture.width > 0 ? slash.texture.height / slash.texture.width : 0.577;
+        const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
+        const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
         if (kt < KNIFE_SWING_SWITCH) {
-          // 1枚目(振りかぶり): さっと出す。
+          // 1枚目(振りかぶり): 装備ナイフをさっと出す(絵が無ければ旧焼き込みダガー)。
           const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
-          place(knife, KNIFE_F1, true, a1);
+          place(knife, KNIFE_F1, !wtex, a1);
+          placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
           place(slash, KNIFE_F2, false, 0);
           place(trail, KNIFE_F3, false, 0);
         } else if (kt < KNIFE_SWING_SWITCH2) {
-          // 2枚目(振り抜き+スラッシュ): snap で出す(フェードは3枚目が担当)。
+          // 2枚目(振り抜き): 弧(のみ)+装備ナイフを振り抜き位置へ。snapで出す。
           const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH); // 0..1
           const a2 = Math.min(1, t2 / 0.25);
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, true, a2);
+          placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
           place(trail, KNIFE_F3, false, 0);
         } else {
-          // 3枚目(弧の残光): 2枚目と同配置で弧だけ残り、フェードアウト(旧・末尾フェードの置き換え)。
+          // 3枚目(弧の残光): 2枚目と同配置で弧だけ残り、フェードアウト(武器絵は消す)。
           const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
           const a3 = 1 - t3;
           place(knife, KNIFE_F1, false, 0);
           place(slash, KNIFE_F2, false, 0);
+          wpn.visible = false;
           place(trail, KNIFE_F3, true, a3);
         }
       } else {
         knife.visible = false;
         slash.visible = false;
         trail.visible = false;
+        wpn.visible = false;
       }
     }
     view.overlay.clear();
@@ -4859,7 +4894,7 @@ export class PixiScene {
   private syncShadowClone(player: Player) {
     const clone: ShadowCloneState | null = useGameStore.getState().shadowClone;
     const spr = this.shadowCloneSprite;
-    if (!clone) { spr.visible = false; this.cloneKnife.visible = false; this.cloneKnifeSlash.visible = false; this.cloneKnifeTrail.visible = false; return; }
+    if (!clone) { spr.visible = false; this.cloneKnife.visible = false; this.cloneKnifeSlash.visible = false; this.cloneKnifeTrail.visible = false; this.cloneMeleeWpn.visible = false; return; }
     if (!this.shadowCloneAdded) {
       spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ)
       this.L.actorLayer.addChild(spr);
@@ -4898,10 +4933,15 @@ export class PixiScene {
         this.L.actorLayer.addChild(this.cloneKnifeSlash);
         this.cloneKnifeTrail.texture = f3; this.cloneKnifeTrail.anchor.set(0.5, 0.5); this.cloneKnifeTrail.visible = false;
         this.L.actorLayer.addChild(this.cloneKnifeTrail);
+        this.cloneMeleeWpn.anchor.set(0.5, 0.5); this.cloneMeleeWpn.visible = false;
+        this.L.actorLayer.addChild(this.cloneMeleeWpn);
         this.cloneKnifeSetup = true;
       }
     }
     const knife = this.cloneKnife, slash = this.cloneKnifeSlash, trail = this.cloneKnifeTrail;
+    const wpn = this.cloneMeleeWpn;
+    const meleeKey = player.weapons.find(w => w.isMelee)?.key;
+    const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     const cSince = Date.now() - (clone.swingAt ?? 0);
     if (this.cloneKnifeSetup && clone.swingAt && cSince >= 0 && cSince < PLAYER_MELEE_SWING_MS) {
       const kt = cSince / PLAYER_MELEE_SWING_MS;
@@ -4920,9 +4960,25 @@ export class PixiScene {
         s.alpha = alpha * spr.alpha;                              // 分身の透過(0.8)に合わせる
         s.visible = s.alpha > 0.01;
       };
+      // 装備近接の実絵(本体と同じ計測定数・分身の透過/zIndexを継承)。
+      const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, alpha: number) => {
+        if (!wtex) { wpn.visible = false; return; }
+        if (wpn.texture !== wtex) wpn.texture = wtex;
+        const sc2 = (unit * lenFrac) / Math.max(1, Math.hypot(wtex.width, wtex.height));
+        wpn.scale.set(mir * sc2, sc2);
+        wpn.rotation = mir * rot;
+        wpn.position.set(baseX + mir * ox * unit, baseY + oy * unit);
+        wpn.zIndex = zc;
+        wpn.alpha = alpha * spr.alpha;
+        wpn.visible = wpn.alpha > 0.01;
+      };
+      const arcAspect = slash.texture && slash.texture.width > 0 ? slash.texture.height / slash.texture.width : 0.577;
+      const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
+      const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
       if (kt < KNIFE_SWING_SWITCH) {
         const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
-        place(knife, KNIFE_F1, true, a1);
+        place(knife, KNIFE_F1, !wtex, a1);
+        placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
         place(slash, KNIFE_F2, false, 0);
         place(trail, KNIFE_F3, false, 0);
       } else if (kt < KNIFE_SWING_SWITCH2) {
@@ -4930,17 +4986,20 @@ export class PixiScene {
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, true, a2);
+        placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
         const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
+        wpn.visible = false;
         place(trail, KNIFE_F3, true, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
       knife.visible = false;
       slash.visible = false;
       trail.visible = false;
+      wpn.visible = false;
     }
   }
 

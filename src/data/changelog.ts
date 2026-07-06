@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1456',
+    items: [
+      '近接攻撃の振りモーションで、いま装備しているナイフの絵がそのまま表示されるように(構え→振り抜きの両方)。武器を強化すると見た目も変わる。',
+    ],
+  },
+  {
     version: '0.25.1449',
     items: [
       'ストライカー以外の3クラスの立ち絵・歩行で、ドットが濁って(潰れて)見えていたのを修正。シャープな縮小処理で焼き直し。',

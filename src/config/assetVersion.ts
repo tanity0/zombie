@@ -25,4 +25,6 @@
 // v17: ストライカーを元絵の自然格子(62px・pitch8.645)で焼き直し=潰れ解消(52px試作の改良)。
 // v18: 残り3クラス(magnum/shotgun/striker=スカベ)も自然格子の粗ドット規格(76×64・約60-64ドット)へ展開。
 // v19: その3クラスを2step-sharp(LANCZOS2倍→UnsharpMask→NEAREST)で焼き直し=ソフト素材の濁り解消。
-export const ASSET_VERSION = '20';
+// v20: v19の3クラス焼き直しをv18状態へ差し戻し(社長指示・設計チャット)。
+// v21: knife-swing-2を「弧のみ」(社長提供)へ同名差し替え(装備近接の実絵を重ねる方式に変更)。
+export const ASSET_VERSION = '21';

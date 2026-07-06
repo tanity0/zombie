@@ -10,6 +10,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1456 — 近接スイングに装備武器の実絵を表示(社長指示・実装チャット)
+- 社長相談→承認: スイングの固定ダガー絵を「いま装備している近接武器の絵」に。
+  f1=構え位置に装備絵 / f2=弧のみ(社長提供の新素材)+振り抜き位置に装備絵 / f3=そのまま。
+- 素材: knife-swing-2を弧のみ版(1448×1086・旧の×1.13125拡大と確認)へ同名差し替え。旧unionクロップ
+  相当矩形→現行と同寸1202×694へ焼き=KNIFE_F2/F3のcfg・f3との整列は不変。
+- 計測(PCA): f1焼き込みダガー=キャンバス中心・軸-25.3°(刃先左下)/ f2ダガー=クロップ内割合(0.173,0.250)・
+  軸26.6°(刃先左上)・長さ0.338×弧幅。武器アイコン5種(knife-t1/hatchet-t2/machete-t3/tactical-knife-t4/
+  anti-mutant-knife-t5)は全て同スタイル(刃先右上≈-46°)→**共通回転定数**で成立:
+  `MELEE_WPN_F1={rot:200.7°,len:0.95}` / `MELEE_WPN_F2={rot:252.6°,len:0.608,fx:0.173,fy:0.250}`。
+  回転方向はknife-t1の回転合成画像で目視検証済み。左向きは rotation=mir×rot(ミラー合成則)。
+- 配線: `playerMeleeWpn`/`cloneMeleeWpn`スプライト追加。装備は`p.weapons.find(w=>w.isMelee)?.key`→
+  `weapons/<key>`(5種とも登録済み)。**絵が無い場合は旧焼き込みダガーへフォールバック**(f1のみ。安全側)。
+  本体(drawPlayer)+分身(syncShadowClone)両対応。f2の武器位置は弧テクスチャ内割合→cfg単位空間へ写像。
+- 負荷スコア: **1/10**(rendering)。スプライト各1枚追加・テクスチャ差し替えのみ。
+- キャッシュ: 同名差し替え(knife-swing-2)のため `ASSET_VERSION` `'20'→'21'`。
+- 検証: lint/typecheck/test(434 pass)/build全通過。角度・位置は実機で微調整前提(定数化済みで1行調整)。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・判定/タイミング不変)。
+
 ## v0.25.1455 — 原本素材の受領④: スカベンジャー(全4クラス揃った・設計チャットFable)
 - `art_src/originals/scavenger/` に walk-sheet.png(1672×941・5コマ)と
   stop-purplebg.jpeg(395×576・紫背景JPEG)を保存。
