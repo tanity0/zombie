@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1448',
+    items: [
+      '性能計測(ベンチマーク)の結果を反映: 先日の軽量化でエフェクト密集時のカクつきが大幅改善していることを実測で確認。',
+    ],
+  },
+  {
     version: '0.25.1447',
     items: [
       '全4クラスのキャラ絵をレトロな粗ドット規格に統一(ドットがハッキリ・細部は潰れない密度)。',

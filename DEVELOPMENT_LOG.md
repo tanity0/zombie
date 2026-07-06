@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1448 — ベンチ再計測(v1446実機)の記録とCLAUDE.mdベンチ表更新(実装チャット)
+- 社長が実機ベンチを実行(v0.25.1446・解像度1.5時点)。軽量化施策1(v1425)の宿題だった再計測。
+- **施策1の効果(FAIL→PASS)**: FX-P P64 avg17→**P90 60fps** / FX-R R8 FAIL→**R12 avg55** /
+  F1 FAIL→**PASS avg53** / IMG I4 avg30→**I12 60fps**(旧FAILは同居Graphicsが犯人) /
+  LIGHT T8 avg31→**PASS avg46** / FX-D D20 avg17→**60fps**(bitmap font) / A1 avg15-17→25(改善・まだFAIL)。
+- **残る唯一の主犯=強glow(FX-G)**: pooled sprite化後も G12 FAIL(avg32)。原因は加算合成の
+  大面積オーバードロー(塗り面積律速)。T16 FAIL(29.5)/F2 CAUTION(38.5)も混合中のG10が主因
+  (純ライトT24pはPASS51=トーチ光自体は安い)。
+- CLAUDE.mdベンチ表を全面更新(safe lines/スコアリング指針を実測値へ)。
+- **次の宿題**: v0.25.1447(解像度デフォルト1=塗り面積44%)での再計測。オーバードロー律速の
+  G12/T16/F2/A1が動くはず。それでもG12が落ちるなら「同時強glow数キャップ/半径縮小」を提案予定。
+- 変更はdoc(CLAUDE.md/本ログ)+version+changelogのみ。コード不変。
+- 自己点検: 憲法第4条・第5条に抵触なし(記録のみ)。
+
 ## v0.25.1447 — 【裁定反映】スマホ解像度デフォルト=1+粗ドット規格を全4クラスへ展開(社長裁定・実装チャット)
 - 社長裁定「res1で行こう。プレイヤーのみ、キャラ絵もよろしく」。
 - **①解像度**: PixiStage `resolutionCap` スマホ 1.5→**1**(PC=2据え置き)。実機比較(rescap 1/1.5/2/3)で

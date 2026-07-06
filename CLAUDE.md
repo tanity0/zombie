@@ -79,40 +79,37 @@ work by what kind of effect-draw it adds and how many are alive at once.
     ALREADY fixed** — `drawDamageNumberBitmap` uses a baked `BitmapFont`
     (`dmg-num`, pooled `BitmapText`, color via tint). Only the rare *callout/
     serif* text (e.g. 「斬」) still takes the `Text` fallback; keep those few.
-  - **strong glow (`FX-G`) — FIXED**: was per-frame `Graphics` (`clear()` + ~7
-    circle fills/strokes re-tessellated EVERY frame → `G12` avg ~24 FAIL). Now
-    drawn as **pooled additive sprites** (`drawStrongGlowSprite`: color halo +
-    white core from the shared `getGlowTexture`), same as small glow. The
-    `drawEffectGfx` glow case is retired (no glow reaches per-frame `Graphics`).
-  - **ring / particle / slash (`FX-R/P/S`) — FIXED (v0.25.1425)**: were per-frame
-    `Graphics` (each its own object, cleared + several shapes/frame → CAUTION
-    single, FAIL stacked). Now ALL pooled sprites: particle=shared circle tex ×3
-    (halo/body/core), ring=staged-radius baked annulus ×2 (`getRingTexture`),
-    trail=stretched white tex, slash/whip/firejet were already sprites. No
-    effect kind reaches per-frame `Graphics` anymore (drawEffectGfx retired).
-    Re-run the on-device benchmark to confirm the new `P64`/`R8`/`F1`/`A1` lines.
-  - **image marks (`IMG`, e.g. `zan`)** = one large (~130px) alpha sprite →
-    fill-rate / overdraw bound, not filter. `I4` FAILs (avg ~30). Cap count,
-    shrink size, shorten lifetime.
-  - **lights / torches (`LIGHT`)** — each torch = additive light sprite +
-    reflection + per-frame flame `Graphics`. `T8` FAILs (avg ~31). (Use the
-    `LIGHT-P` pure-light bench stage to separate torch-light cost from the
-    effect-glow cost.)
-  - **everything-at-once** — `ALL A1 = E36 J70 G8 R8 P64 I6 T12` FAILs hard
-    (avg ~15-17). Current **forbidden line** on-device.
-- **Current safe lines (update as the benchmark re-runs):**
-  `enemy E60 safe / projectile J130 safe / bloom≈free /
-  FX-D(numeric) now bitmap-font(was worst) / strong glow now pooled sprite(was G12 fail) /
-  FX composite F1 fail / image I4 fail / light T8 fail / all A1 fail`.
-  (The damage-number-bitmap + strong-glow-sprite wins are implemented but the
-  numbers above predate them — re-run the on-device benchmark to confirm the new
-  `G12` / `F1` / `A1` lines.)
-- **Scoring rule of thumb:** the cost is **draw-method × simultaneous count**.
-  Rank by: text/`Text` (worst) > per-frame `Graphics` (glow/ring/particle/slash)
-  > large alpha sprites (images) > additive lights — all far above
-  enemies/bullets. A feature that adds enemies/bullets is cheap; one that spawns
-  text, several live glows/rings/lights, or big alpha sprites per moment is
-  expensive — cap it, pool it, or switch it to a **pooled sprite** draw.
+  - **strong glow (`FX-G`) — 残る唯一の主犯 (re-measured v0.25.1446)**: pooled
+    additive sprites化(`drawStrongGlowSprite`)後も **`G12` FAIL (avg 32, 旧24)**。
+    コストは再テッセレーションではなく**加算合成の大面積オーバードロー(塗り面積)**。
+    `T16` FAIL(29.5)や`F2` CAUTION(38.5)も混合中の G10 が主因(純ライト`T24p`は
+    PASS=トーチ光自体は安い)。対策方向: 同時強glow数のキャップ/半径縮小/解像度
+    (塗り面積)削減。resolution=1 デフォルト(v0.25.1447)が直撃するはず — 要再計測。
+  - **ring / particle / slash (`FX-R/P/S`) — FIXED・実測確認済み (v0.25.1446)**:
+    per-frame `Graphics` → ALL pooled sprites (v0.25.1425)。再計測で
+    **`P90` PASS(60fps) / `R12` PASS(avg55) / `S16` PASS(60fps) / `F1` PASS(avg53)**
+    (旧: P64 avg~17 FAIL / R8 FAIL)。`F2`のみCAUTION(38.5)でこれはG10混合が主因。
+  - **image marks (`IMG`) — 実測で無罪化 (v0.25.1446)**: `I12` まで PASS(60fps)。
+    旧`I4` FAIL(avg~30)は同居していたGraphicsエフェクトが犯人だった。大型αスプライト
+    自体は12枚まで安全。
+  - **lights / torches (`LIGHT`)** — `T8` PASS(avg46・旧FAIL31) / **`T16` FAIL(29.5)**。
+    ただしT16の混合はG10入り=強glowが主因の疑い濃厚。純ライト(`LIGHT-P`)は
+    `T24p` PASS(avg51)=トーチ光そのものは安い。
+  - **everything-at-once** — `ALL A1` **FAIL avg25**(旧15-17から+8〜10fps改善)。
+    まだ**forbidden line**。残る要素はG8(強glow)+T12。
+- **Current safe lines (measured v0.25.1446 @resolution1.5):**
+  `enemy E60 60fps / projectile J130 60fps / bloom≈free / FX-D D20 60fps /
+  FX-R R12 pass / FX-P P90 60fps / FX-S S16 60fps / FX composite F1 pass・F2 caution /
+  image I12 pass / light T8 pass・T16 fail / strong glow G12 FAIL(唯一の主犯) /
+  all A1 fail(avg25)`。
+  (v0.25.1447でスマホ解像度デフォルト1.5→1=塗り面積44%。オーバードロー律速の
+  G12/T16/F2/A1 は改善するはず — res1での再計測が次の宿題。)
+- **Scoring rule of thumb (v0.25.1446改訂):** the cost is **draw-method ×
+  simultaneous count**。per-frame `Graphics`とText生成は全廃済みなので、現在の
+  ランクは: **強glow(加算・大面積オーバードロー)が突出して最重** > 多数のトーチ
+  (T16+) ≫ 大型αスプライト(I12まで安全)・リング/パーティクル/スラッシュ
+  (pooled sprite=P90でも60fps)・敵/弾(60fps張り付き)。新機能は「同時に生きる
+  強glowを増やすか?」を最初に問うこと(増やすならキャップ必須)。
 - The fix path for heavy effects is **a cheaper render method (pooled sprite /
   bitmap text / baked texture), not fewer enemies/bullets, and not cutting bloom.**
 - (Benchmark caveat: the net diagnostic reads `network unstable`, so trust the
