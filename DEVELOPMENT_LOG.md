@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1441 — 護衛NPCフェイザーを新3コマ(透過)に再差し替え(社長提供・実装チャット)
+- 社長提供の新フェイザー(**透過**・3コマ・1536×1024)。四隅alpha=0→キー処理なし・アルファそのまま。
+- 足幅計測: f0=237/f1=175/f2=221 → **f1=通過**。自然順 -0/-1/-2、ping-pong[0,1,2,1]の中央=通過。
+- 護衛規約: 共通キャンバス243×330・水平中央・足元下端。`npc/phaser-0/1/2`へ。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'12'→'13'`。
+- 検証: lint/typecheck/build全通過。プレビュー目視OK。
+- 自己点検: 憲法第4条・第5条に抵触なし(護衛立ち絵差し替えのみ)。
+
 ## v0.25.1440 — ヘビーガンナーのidle(待機)を差し替え(社長提供・実装チャット)
 - 社長提供の待機絵(透過・単体・1448×1086内に1体)を`player-shotgun-idle`へ。アルファそのまま・
   既存規約(figH→105/右端x106/足元y107)。walk-1と並べて大きさ/足元の一致を目視確認。
