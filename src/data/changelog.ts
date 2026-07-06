@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1488',
+    items: [
+      'キル/カウンターのスロー演出を全体1秒→0.7秒へ短縮。テンポよく。',
+    ],
+  },
+  {
     version: '0.25.1486',
     items: [
       'ナイフ/分身/鞭の近接クリティカルでも敵が痺れて、フィニッシュを狙えるように(銃・刀と同じ挙動に)。',

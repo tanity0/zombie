@@ -907,13 +907,13 @@ export const HITSTOP_MS = 100;
 // (1400→1650→1950)。社長指摘「長さの問題じゃないかも」で全体を約1秒へ戻しつつ、最も遅い区間を
 // 保持してから戻りは速くする形に変更(1950→1000)。一度は保持区間を延ばす代わりに全体も延長した
 // (1000→1300)が、社長指示「全体1秒は崩さず、ピークの時間はさらに長く、戻りはさらに早く」で
-// 全体は1000へ戻し、保持区間だけをさらに伸ばす形に確定(カーブ形状は下のHOLD_MSと合わせて
-// src/utils/timeSlowCurve.tsが消費)。
-export const MELEE_FINISH_SLOW_MS = 1000;
-// 上のスロー時間のうち、最も遅い倍率を保持する長さ(社長指示: 一番遅い時間をさらに長く・戻りは
-// さらに早く。600→800。全体1000は不変)。残り(200ms)が等速へ戻るランプ区間になる
-// (400ms→300ms→200msと戻りは一貫して短縮)。
-export const MELEE_FINISH_SLOW_HOLD_MS = 800;
+// 全体は1000へ戻し、保持区間だけをさらに伸ばす形に確定。さらに社長指示「全体1秒→0.7秒に短縮」で
+// 全体を700へ(保持/戻りの比率(80%/20%)は維持したまま両方を比例縮小。カーブ形状は下のHOLD_MSと
+// 合わせてsrc/utils/timeSlowCurve.tsが消費)。
+export const MELEE_FINISH_SLOW_MS = 700;
+// 上のスロー時間のうち、最も遅い倍率を保持する長さ(全体700への短縮に合わせて800→560。
+// 比率80%は維持)。残り(140ms)が等速へ戻るランプ区間になる。
+export const MELEE_FINISH_SLOW_HOLD_MS = 560;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.

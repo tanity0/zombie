@@ -12,6 +12,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1489 — KILL/カウンターのスロー時間を全体1秒→0.7秒へ短縮(社長指示・実装チャット)【2026-07-06 21:29 JST】
+- 社長指示「スロー演出を全体1秒から0.7秒に短縮」: `MELEE_FINISH_SLOW_MS`
+  `1000→700`。保持区間(`MELEE_FINISH_SLOW_HOLD_MS`)は比率(80%)を維持して`800→560`
+  (残り140msが等速へ戻るランプ)。「Kill!」/「Counter!」の文字表示時間・保持時間も同じ定数を
+  参照しているため自動的に連動。
+- 負荷スコア: 1/10(既存の視覚専用定数の値変更のみ)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (37ファイル/450テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(演出タイミングのみ)。
+
 ## v0.25.1488 — 恒久ルール7-7: 時間のかかる作業は目安を先に出す(社長指示・設計チャットFable)【2026-07-06 21:27 JST】
 - 計測・走査・ボットラン等の前に「目安◯分」を先に伝える(CLAUDE.md 7-7+DESIGN_CHAT_GUIDE §2)。
   目安クラス: ユニット実験2〜5分/playtestフル5分前後/ランダム走査10〜30分/素材一括変換数分。
