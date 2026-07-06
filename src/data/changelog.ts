@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1445',
+    items: [
+      '【試作改良】ストライカーのドットを、細部が潰れない粗さ(元イラストの自然な密度)に再調整。',
+    ],
+  },
+  {
     version: '0.25.1444',
     items: [
       '近接(ナイフ)のエフェクトを3コマの新イラストに差し替え(振りかぶり→斬撃の弧→弧の残光がフェード)。',
