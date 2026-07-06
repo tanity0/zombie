@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1453 — 原本素材の受領②: ストライカー(設計チャットFable)
+- `art_src/originals/striker/walk-sheet.png`(2560×852・5コマ)を保存。
+  **2コマ目(index=1)がストップ絵を兼任**(専用idleなし・社長指定・社長がクラス名を確認)。
+- 素材チェック: ①背景透過・中間アルファなし ②5コマ分割可(コマ幅394〜412px・キャラ高535〜543px・
+  足元ライン687〜689=ほぼ完璧に揃っている) ③髪色照合でもplayer-scavenger-*(クラス=ストライカー)
+  と一致 ④エッジがシャープで現行v17の格子焼きが成功している元素材=**表示は現状維持のクラス**。
+  原本保存は将来の再加工・アニメ追加のための倉庫入れ。
+- 検証: doc+素材追加+version(コード不変)。
+
 ## v0.25.1452 — 原本素材の受領①: ヘビーガンナー(設計チャットFable)
 - 社長からチャット経由で原本を受領し `art_src/originals/heavy-gunner/` に保存:
   idle.png(1950×1965・キャラ実寸1136×1660)/walk-sheet.png(1448×1086・5コマ)。
