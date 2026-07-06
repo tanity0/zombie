@@ -21,7 +21,10 @@ const resolutionCap = (): number => {
     if (uaData && typeof uaData.mobile === 'boolean') mobile = uaData.mobile;
     else if (typeof window !== 'undefined' && window.matchMedia) mobile = window.matchMedia('(pointer: coarse)').matches;
   }
-  return mobile ? 1.5 : 2; // スマホ=1.5(省電力) / PC=2.0(高画質)
+  // スマホ=1(社長裁定 v0.25.1447): 粗ドット規格のキャラは1ドット≈4画面pxで解像度差のにじみを
+  // 呑み込めるため、実機比較(rescap 1/1.5/2/3)で「1は3とほぼ同等・1.5と2はまだら」と判定。
+  // 電池・発熱も最軽(塗り面積は1.5比44%)。PC=2.0(高画質)は据え置き。?rescap= で随時上書き可。
+  return mobile ? 1 : 2;
 };
 
 // (実解像度の診断値は config/renderer.ts の setAppliedResolution 経由で公開する)

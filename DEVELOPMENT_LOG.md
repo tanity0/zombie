@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1447 — 【裁定反映】スマホ解像度デフォルト=1+粗ドット規格を全4クラスへ展開(社長裁定・実装チャット)
+- 社長裁定「res1で行こう。プレイヤーのみ、キャラ絵もよろしく」。
+- **①解像度**: PixiStage `resolutionCap` スマホ 1.5→**1**(PC=2据え置き)。実機比較(rescap 1/1.5/2/3)で
+  「粗ドットのキャラは1ドット≈4画面pxが解像度差のにじみを呑む=1と3がほぼ同等、1.5/2は量子化むらで
+  まだら」と確認済み。電池・発熱も最軽(塗り面積1.5比44%)。`?rescap=` の上書きは温存。
+- **②粗ドット展開(プレイヤー4クラスのみ・軍人は据え置き)**: v1445のストライカー方式を残り3クラスへ。
+  各クラスの元素材でMSE局所谷(62近傍)から自然格子を推定し、共通pitchで76×64キャンバス
+  (右端x63/足元y63=規格アンカー)にNEAREST焼き:
+  - マークスマン(mage→magnum): oh=61 (pitch6.344)。walk=5コマ、idle=f1
+  - ヘビーガンナー(warrior→shotgun): walk oh=62 (pitch5.403)、idle(単体透過)oh=62 (pitch26.855)
+  - スカベンジャー(necromancer→striker): walk oh=64 (pitch5.578・紫キー)、idle(紫jpeg)oh=62 (pitch4.839)
+  - 18ファイル全部 76×64/xmax=63/footY=63 を検証。表示スケールはテクスチャ幅基準なので画面サイズ不変。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'17'→'18'`。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。3クラスのプレビュー目視(潰れ無し・色/枠線保持)。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・判定/挙動不変)。
+
 ## v0.25.1446 — 左下デバッグ行に実描画解像度を表示(社長質問対応・実装チャット)
 - 社長「?rescap=1 が実は3と同じだったりしない?」→ 憶測でなく実機確定できるよう、左下の
   デバッグ行(pixi·vX·floor:)に `res:適用値/端末DPR` を追加(例: `res:1.5/3`)。

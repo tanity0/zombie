@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1447',
+    items: [
+      '全4クラスのキャラ絵をレトロな粗ドット規格に統一(ドットがハッキリ・細部は潰れない密度)。',
+      'スマホの描画解像度の既定を変更(粗ドットと相性の良い設定に。電池・発熱も軽くなる)。',
+    ],
+  },
+  {
     version: '0.25.1446',
     items: [
       '画面左下のデバッグ表示に、実際に効いている描画解像度(res:適用値/端末値)を追加。',

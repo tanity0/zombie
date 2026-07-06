@@ -23,4 +23,5 @@
 // v15: 【試作】ストライカーを半解像度(64×54・図高52)で焼き直し=ドット2倍の粗さ(案A・社長裁定待ち)。
 // v16: 近接スイング(knife-swing-1/2)を新素材で同名差し替え+3コマ目(knife-swing-3)追加。
 // v17: ストライカーを元絵の自然格子(62px・pitch8.645)で焼き直し=潰れ解消(52px試作の改良)。
-export const ASSET_VERSION = '17';
+// v18: 残り3クラス(magnum/shotgun/striker=スカベ)も自然格子の粗ドット規格(76×64・約60-64ドット)へ展開。
+export const ASSET_VERSION = '18';
