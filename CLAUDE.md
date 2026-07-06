@@ -142,13 +142,17 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
 
 ## Testing policy (test/debug cadence)
 Codified from the agreed approach: **test the changed code + its blast radius;
-run the full sweep cheaply/often, reserve heavy checks for big changes.** Split
-checks by cost — do NOT lump them together.
-- **Static checks (`tsc` / `lint` / `build`) — ALWAYS run full, every change.**
-  They are cheap (seconds) and are themselves the *blast-radius detector*:
-  `npm run typecheck` instantly flags every related break across the whole
-  codebase when a type/signature changes. Never scope these down. Run
-  `npm run lint && npm run typecheck && npm test && npm run build` before a push.
+フル検証は「要所」だけ(社長指示v0.25.1496「毎回テスト回すの重い、要所だけにして」).**
+Split checks by cost — do NOT lump them together.
+- **ローカル検証の段階(v0.25.1496改訂・毎push全部回すのを廃止):**
+  - **文書のみの変更(md等・srcを触らない)**: ローカル検証なしで即push。CIが安全網。
+  - **コード変更の小刻みなpush**: `npm run typecheck` のみ(数秒の爆風検知器)+
+    触ったユニットの関連テスト(`npx vitest related <files>` か対象ファイル指定)。
+  - **要所=フル検証(`npm run lint && npm run typecheck && npm test && npm run build`)**:
+    ①バッチ実装の完了報告前 ②社長に実機確認を頼む版のpush前
+    ③store/utils/worldの共有ロジック・型・シグネチャを触った時 ④憲法テスト対象に触れた時。
+  - CI(GitHub Actions・無料)は従来どおり毎pushでフルを回す=ローカルで省いた分の安全網。
+    CIが赤くなったら次のpushで直す(赤いまま実機確認を頼まない)。
 - **Unit tests (Vitest) — scope to changed + related during dev; full in CI.**
   Let the tools compute "related", don't guess: `npm run test:watch` (or
   `npx vitest related <files>`) reruns only tests whose import graph touches the

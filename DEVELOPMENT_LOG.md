@@ -12,6 +12,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1496 — 恒久ルール改訂: ローカル検証は「要所だけ」(社長指示・設計チャット)【2026-07-06 23:44 JST】
+- 社長指示「毎回テスト回すの重いわ、要所だけにして」を受け、CLAUDE.md「Testing policy」を改訂
+  (毎pushフル検証=`lint && typecheck && test && build`の義務を廃止)。新ルール:
+  - 文書のみの変更 → ローカル検証なしで即push(CIが安全網)。
+  - コード変更の小刻みなpush → `typecheck`+触ったユニットの関連テストのみ。
+  - **要所のみフル検証**: ①バッチ完了報告前 ②実機確認を頼む版のpush前
+    ③store/utils/world の共有ロジック・型変更時 ④憲法テスト対象に触れた時。
+  - CI(無料)は毎pushフル継続。赤くなったら次pushで直す(赤いまま実機確認を頼まない)。
+- HANDOFF_CODEX.md §4 の同記述も同旨に更新(全エージェント共通)。
+- 検証: 文書のみの変更につき新ルール適用=ローカル検証なし(CIに委任)。
+- 憲法第4条・第5条: 該当なし(プロセスルールのみ)。
+
 ## v0.25.1495 — KILLズーム倍率を1.5倍へ復帰+ズームだけ連発防止CD5秒(社長指示・実装チャット)【2026-07-06 23:36 JST】
 - 社長指示「キルの倍率やはり1.5倍で、ズーム効果だけCD5秒で」を受けて実装。
 - `src/store/gameStore.ts`: `MELEE_FINISH_ZOOM_MAG`を`0.2`(1.2倍)→`0.5`(1.5倍)へ復帰

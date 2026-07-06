@@ -54,7 +54,10 @@
 - **毎pushで`package.json`のversionをbump**し、**全返信の末尾に現バージョンを明記**。
 - 変更ごとにDEVELOPMENT_LOG.mdへ追記(何を・なぜ・検証結果・負荷スコア1/10形式・
   憲法4条/5条の自己点検1行)。
-- push前検証: `npm run lint && npm run typecheck && npm test && npm run build`(全部通す)。
+- push前検証は**要所だけ**(v0.25.1496改訂・詳細はCLAUDE.md「Testing policy」):
+  文書のみ=検証なし/コード小刻み=`typecheck`+関連テストのみ/
+  バッチ完了報告前・実機確認依頼前・共有ロジック変更時=フル
+  (`npm run lint && npm run typecheck && npm test && npm run build`)。CIは毎pushフル=安全網。
 - **仕様・数値・挙動を勝手に変えない**。未決に当たったらPACING_REDESIGN.mdの★未決事項に書いて
   止まる(コードコメントに質問を書かない)。
 - 挙動を変える機能には復帰フラグ(`?xxx=0`)を付ける。既存フラグ: ?ladder/?events/?mix/?debt/
