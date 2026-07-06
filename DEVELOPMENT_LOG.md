@@ -10,6 +10,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1461 — M8追補: ストライカーも素直化で他クラスと揃える(社長指示・設計チャットFable)
+- 社長「(v1445格子焼きの)ストライカーだけ他とテイストが変わってしまったので揃えたい。同じ処理を」
+  → §5.9の「ストライカーは現状維持」を撤回し、**素直化(原本から標準LANCZOS縮小+linear/mipmap)を
+  ストライカーにも適用**する追補を記載。原本は受領済み(`art_src/originals/striker/walk-sheet.png`・
+  2コマ目=ストップ絵兼任)。ASSET_VERSION更新を忘れないこと。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1460 — バッチM9仕様化: 自動テストプレイ=デバッグボット(社長採用・設計チャットFable)
 - 社長採用(目的=デバッグ)。ヘッドレスでボットがフルランを早送りプレイし、毎tickの不変条件検査で
   バグを自動発見する仕組みをPACING_PUZZLE.md §5.10に仕様化:
