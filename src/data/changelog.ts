@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1439',
+    items: [
+      'ヘビーガンナーの歩行アニメを更新版のイラストに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1438',
     items: [
       'ヘビーガンナーの立ち絵・歩行を新しいイラストの5コマ+専用の立ち止まり絵に差し替え。',
