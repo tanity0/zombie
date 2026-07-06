@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1468 — ナイフの振りもう少しスロー+KILL/カウンターのスロー延長(社長指示・実装チャット)
+- 社長「ナイフの振りもう少しだけゆっくり見せたい」「あとKILLとカウンターの時もう少しだけスローを長く」。
+- `PLAYER_MELEE_SWING_MS`(pixiScene.ts・視覚のみ)を`220→250`にさらに増加(200→220→250)。
+- `MELEE_FINISH_SLOW_MS`(gameStore.ts)を`1400→1650`。近接フィニッシュ(`triggerFinishImpact`)と
+  カウンター(`triggerHitImpact`)の両方が同じこの定数でスロー時間を決めているため、1箇所の変更で
+  両方が均等に少し長くなる。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・攻撃レート/判定は不変)。
+
 ## v0.25.1467 — キルズームをKILL(近接フィニッシュ)とカウンターだけに限定(社長指摘・実装チャット)
 - 社長「ズームはKILLとカウンター時だけだよ。今は敵倒すだけでもズームしちゃってる。これはやめて」。
 - **誤り**: v0.25.1464で「KILL」を「敵を倒す全般」と解釈し、`damageEnemy`(gun/接触/爆発キル)と

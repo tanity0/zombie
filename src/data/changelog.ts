@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1468',
+    items: [
+      'ナイフの振りをもう少しだけゆっくりに。フィニッシュ/カウンター成立時のスロー演出も少し長く。',
+    ],
+  },
+  {
     version: '0.25.1467',
     items: [
       'カメラの寄りズームを、キル演出とカウンター成立の時だけに限定(通常キルでズームしすぎていたのを修正)。',

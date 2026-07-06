@@ -903,8 +903,8 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
-// 近接フィニッシュ: ストップ→スロー。社長指示で倍に(700→1400)。
-const MELEE_FINISH_SLOW_MS = 1400;
+// 近接フィニッシュ&カウンター: ストップ→スロー。社長指示で倍に(700→1400)。さらにもう少し長く(1400→1650)。
+const MELEE_FINISH_SLOW_MS = 1650;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
