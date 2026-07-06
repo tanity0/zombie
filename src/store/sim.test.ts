@@ -362,4 +362,25 @@ describe('headless simulation invariants', () => {
 
     randomSpy.mockRestore();
   });
+
+  it('a melee crit now stuns the target too (社長指示: 銃/刀と同じくクリで痺れてフィニッシュ受付にする)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const z = spawnEnemyAt('zombie', pcx + 4, pcy, useGameStore.getState().gameTime);
+    z.health = 9999; // 生存させてstunUntilが付くか見る(倒れて消えないように)
+    useGameStore.setState({ enemies: [z], effects: [] });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0); // 常にクリティカル
+    useGameStore.setState(s => ({ player: { ...s.player, critChance: 1, counterCooldownEnd: 0 } }));
+    const gt = useGameStore.getState().gameTime;
+
+    useGameStore.getState().triggerCounter();
+
+    const after = useGameStore.getState().enemies[0];
+    expect(after).toBeTruthy();
+    expect(after.stunUntil).toBeDefined();
+    expect(after.stunUntil!).toBeGreaterThan(gt); // クリでスタン=以後gameTime基準でフィニッシュ受付になる
+
+    randomSpy.mockRestore();
+  });
 });

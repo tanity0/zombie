@@ -12,6 +12,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1486 — 近接クリティカルでもスタン(フィニッシュ受付)を掛けるように+スロー再調整(社長指示・実装チャット)【2026-07-06 21:21 JST】
+- **社長報告「近接ではクリティカルが起きない仕様?それ外して」を調査**。会話の中で対象を特定:
+  「クリティカル」＝銃/刀のクリティカルが命中すると敵が5秒スタン(黄色いリング演出)し、
+  その間に近接すると即処刑(ボスは5倍ダメージ)になる仕組みのこと。調べたところ、
+  **銃(useGameLoop.tsのbullet命中経路)と刀(performKatanaStrike)はクリティカル時にこのスタンを
+  掛けていたが、通常のナイフの振り(triggerCounter)・分身の近接攻撃(shadowCloneStrike)・
+  鞭の近接攻撃(performWhipStrike)の3つは、クリティカル自体(ダメージ倍率)は乗るのに
+  スタンを一切掛けていなかった**(見落とし=バグ)。銃と同じ`STUN_DURATION_MS`
+  (`player.stunDurationMult`で延長も反映)+黄色いリング演出(`rgba(250, 204, 21, 0.9)`・
+  銃/刀と同じ色)をこの3箇所に追加。裏ボスの完全気絶カウント(GAME_AUDIT #17・別枠)は無変更。
+  - テスト追加(`src/store/sim.test.ts`): `Math.random`を固定してクリティカルを確実に起こし、
+    近接クリ後に`enemy.stunUntil`が未来のgameTimeへ設定されることを確認。
+- **KILL/カウンターのスロー時間を再調整**(社長指示「スローピークの時間をさらに長く、その分
+  戻りも早く。全体1秒は崩さず」): `MELEE_FINISH_SLOW_MS`を`1300→1000`に戻しつつ(全体1秒を厳守)、
+  `MELEE_FINISH_SLOW_HOLD_MS`を`600→800`へ延長(戻りランプは300ms→200msへさらに短縮)。
+- 負荷スコア: 1/10(既存のクリ判定式への1分岐追加・演出定数の調整のみ・毎フレームコスト不変)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (37ファイル/450テスト+2スキップ。新規テスト1件を含む)。
+- 憲法第4条・第5条: 該当なし(近接クリのスタン付与とスロー演出タイミングはランク査定/
+  緩急ペースと無関係)。
+
 ## v0.25.1485 — M13追補: 宿敵のリザルト表示(社長追加・設計チャットFable)【2026-07-06 21:11 JST】
 - リザルトに①RESULT欄1行(「宿敵 {名前}: 討伐(金文字)/取り逃がし」・出現なしは非表示)
   ②診断グラフに宿敵バンド(金)+討伐マーク+凡例、を追加(§5.14)。スコア加点はしない(表示のみ)。

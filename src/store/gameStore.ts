@@ -905,14 +905,15 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 export const HITSTOP_MS = 100;
 // 近接フィニッシュ&カウンター: ストップ→スロー。社長指示で倍に(700→1400)。さらにもう少し長く
 // (1400→1650→1950)。社長指摘「長さの問題じゃないかも」で全体を約1秒へ戻しつつ、最も遅い区間を
-// 保持してから戻りは速くする形に変更(1950→1000)。さらに社長指示「もっとスローの時間を長めに、
-// その分戻りを早く」でスロー全体・保持区間ともに延長しつつ戻りランプはむしろ短縮(1000→1300。
-// カーブ形状は下のHOLD_MSと合わせてsrc/utils/timeSlowCurve.tsが消費)。
-export const MELEE_FINISH_SLOW_MS = 1300;
-// 上のスロー時間のうち、最も遅い倍率を保持する長さ(社長指示: 一番遅い時間を長く・戻りは速く。
-// 600→1000)。残り(MELEE_FINISH_SLOW_MS - この値=300ms。400msより短縮=戻りが速くなった)が
-// 等速へ戻るランプ区間になる。
-export const MELEE_FINISH_SLOW_HOLD_MS = 1000;
+// 保持してから戻りは速くする形に変更(1950→1000)。一度は保持区間を延ばす代わりに全体も延長した
+// (1000→1300)が、社長指示「全体1秒は崩さず、ピークの時間はさらに長く、戻りはさらに早く」で
+// 全体は1000へ戻し、保持区間だけをさらに伸ばす形に確定(カーブ形状は下のHOLD_MSと合わせて
+// src/utils/timeSlowCurve.tsが消費)。
+export const MELEE_FINISH_SLOW_MS = 1000;
+// 上のスロー時間のうち、最も遅い倍率を保持する長さ(社長指示: 一番遅い時間をさらに長く・戻りは
+// さらに早く。600→800。全体1000は不変)。残り(200ms)が等速へ戻るランプ区間になる
+// (400ms→300ms→200msと戻りは一貫して短縮)。
+export const MELEE_FINISH_SLOW_HOLD_MS = 800;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
@@ -3098,6 +3099,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const survivors: Enemy[] = [];
     const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
+    const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const meleeCritChance = melee?.critChance ?? 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
@@ -3264,6 +3266,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
       const bossBump = crit ? bumpBossCrit(enemy, gameTime) : null;
       if (bossBump?.triggered) bossFullStunHits.push({ x: ecx, y: ecy });
+      // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
+      // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
+      if (crit) critStunAt.push({ x: ecx, y: ecy });
+      const stunUntil = crit
+        ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1)
+        : enemy.stunUntil;
       // Knockback, unless this enemy was shoved recently (debounce to avoid
       // locking it in an infinite stagger). Damage still landed above.
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
@@ -3274,6 +3282,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...enemy,
           health: newHealth,
           lastHit: now,
+          stunUntil,
           knockbackVx: (dx / norm) * speed,
           knockbackVy: (dy / norm) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION,
@@ -3289,6 +3298,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...enemy,
           health: newHealth,
           lastHit: now,
+          stunUntil,
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
@@ -3428,6 +3438,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of meleeDamageNumbers) {
       get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     }
+    // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック。社長指示で近接にも追加)。
+    for (const c of critStunAt) {
+      get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+    }
     // GAME_AUDIT #17: 近接クリで完全気絶が発動したら銃経路と同じ紫FX+STUN!コールアウト。
     for (const p of bossFullStunHits) {
       get().spawnRing(p.x, p.y, 12, 210, 'rgba(168,85,247,0.85)', 5, 520);
@@ -3507,6 +3521,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     const survivors: Enemy[] = [];
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     let bossFinishHit = false;
 
@@ -3544,17 +3559,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const nh = Math.max(0, enemy.health - dmg);
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
+      if (crit) critStunAt.push({ x: ecx, y: ecy });
+      const stunUntil = crit ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil;
       if (now >= (enemy.knockbackImmuneUntil ?? 0)) {
         const norm = Math.max(0.001, dist);
         const falloff = 1 - dist / meleeRange;
         const speed = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
         survivors.push({
-          ...enemy, health: nh, lastHit: now,
+          ...enemy, health: nh, lastHit: now, stunUntil,
           knockbackVx: (dx / norm) * speed, knockbackVy: (dy / norm) * speed,
           knockbackUntil: now + KNOCKBACK_DURATION, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
         });
       } else {
-        survivors.push({ ...enemy, health: nh, lastHit: now, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100 });
+        survivors.push({ ...enemy, health: nh, lastHit: now, stunUntil, knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + 100 });
       }
     }
 
@@ -3575,6 +3592,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 演出はプレイヤーの近接と同じ経路(スラッシュ/ダメージ数字/キル報酬)。分身位置にも一閃を出す。
     for (const s of slashAt) get().spawnSlash(s.x, s.y);
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     grantMeleeKillRewards(get, killed, player, gun);
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
@@ -3828,6 +3846,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
+    const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
@@ -3867,6 +3886,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
+      if (crit) critStunAt.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
       // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。
       const side = ((ecx - pcx) * nx + (ecy - pcy) * ny) >= 0 ? 1 : -1;
@@ -3874,6 +3894,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...enemy,
         health: newHealth,
         lastHit: now,
+        stunUntil: crit ? gameTime + STUN_DURATION_MS * (player.stunDurationMult ?? 1) : enemy.stunUntil,
         knockbackVx: side * nx * WHIP_KNOCKBACK_SPEED,
         knockbackVy: side * ny * WHIP_KNOCKBACK_SPEED,
         knockbackUntil: now + KNOCKBACK_DURATION,
@@ -3911,6 +3932,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
     if (finisherHit || bossFinishHit) get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
