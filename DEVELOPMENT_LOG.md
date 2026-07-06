@@ -10,6 +10,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1451 — v1449焼き直しの差し戻し+M8を「素直化」へ改訂(社長指示・設計チャットFable)
+- 社長実機報告「ストライカー以外のキャラが気持ち悪くなった。戻して」「下手なことせず素直に
+  表示できないのか」→ **v19の3クラスPNG(magnum/shotgun/striker=スカベ)をv18状態へ差し戻し**
+  (git checkoutで復元・ASSET_VERSION 19→20でキャッシュ破棄)。
+- 「軍人が一切潰れない」の答え: rescue素材は73〜120pxの実寸小型で表示とほぼ等倍=縮小の情報損失が
+  起きない。プレイヤーは高解像度イラスト→粗ドット化の工程(v15〜v19の5回の職人芸)があり、
+  格子が実在しないソフト素材では原理的に不気味化する。
+- **M8を全面改訂(§5.9)**: 粗ドット化路線を廃止し「素直化」へ = ソフト系3クラスは
+  標準LANCZOSで表示実寸×2へ縮小するだけ(後処理禁止)+実行時linear+mipmap(`?spritesmooth=0`)。
+  自然格子が実在するストライカー(v17)と軍人・本物ドット絵素材はnearestのまま現状維持。
+- 検証: lint/typecheck/test/build 全通過(PNG差し戻し+doc+ASSET_VERSION+version)。
+  自己点検: ゲームロジック不変・描画素材のみ。
+
 ## v0.25.1450 — バッチM8仕様化: スプライト縮小の品質改善(社長採用・設計チャットFable)
 - 診断の結論(社長との会議): キャラ素材は「ドット絵風の高解像度イラスト」(格子なし)であり、
   nearest縮小(約1/9)の間引きエイリアシングが「潰れ」の正体。本物のドット絵前提のnearest指定が
