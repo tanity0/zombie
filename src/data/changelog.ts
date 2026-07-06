@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1498',
+    items: [
+      'キル時のズームが、キルした相手の方へ寄るように(以前は画面中央固定)。',
+    ],
+  },
+  {
     version: '0.25.1497',
     items: [
       'キルズームの間引きCDを5秒→10秒へ(連続キル中の間引きをより長めに)。',

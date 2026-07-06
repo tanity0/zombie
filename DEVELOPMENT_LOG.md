@@ -12,6 +12,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1498 — KILLズームの寄り先をキルされた対象へ(社長指示・実装チャット)【2026-07-07 00:04 JST】
+- 社長指示「キルした時、キルされた対象にカメラズームに変更。複数いる場合は最初の一体。」を実装。
+- 従来のパンチズーム(KILL/カウンター共通)は常に画面中央を寄り軸にしていた(`worldGroup`を
+  `(screenW/2, screenH/2)`基準でスケール)。KILLだけ寄り先をキルされた対象の中心座標へ変更、
+  カウンターは指定なし=従来どおり画面中央のまま(不変)。
+- `src/store/gameStore.ts`: `triggerZoom`/`triggerFinishImpact`に`targetX?/targetY?`(世界座標)を
+  追加。新規ストアフィールド`zoomHasTarget/zoomTargetX/zoomTargetY`(継続中のズームは寄り先を
+  変えない=zoomStart/durationと同じ「継続扱い」)。新規ヘルパー`finishZoomTargetOf(killed)`が
+  killed配列の先頭(=最初の1体)の中心座標を返す(誰も死ななかった場合はundefined→中央フォールバック)。
+  近接フィニッシュの4経路(通常/分身/刀/鞭)全てに配線。
+- `src/pixi/pixiScene.ts`: パンチズーム減衰中(`zoomDecay>0`)かつ`zoomHasTarget`の時だけ、
+  スケールのピボットを`world.position + zoomTargetX/Y`(=対象の画面座標)にする。それ以外(待機/
+  文脈ズームのみ、またはカウンター)は従来どおり画面中央。
+- 負荷スコア: 1/10(ピボット座標の分岐計算1本追加のみ。描画コスト増減なし)。
+- 検証: 新ルール③(store共有ロジック・シグネチャを触った)に該当のためフル検証実施。
+  `npm run lint && npm run typecheck && npm test && npm run build` 全通過(38ファイル/461テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(演出のみの調整・ゲーム性への影響なし)。
+
 ## v0.25.1497 — KILLスロー秒数確認(0.7秒のまま・変更不要)+ズームCDを5秒→10秒へ(社長指示・実装チャット)【2026-07-06 23:49 JST】
 - 社長指示「キルのスロー秒数0.7に戻す。CDを10秒に」を受けて確認・実装。
 - `MELEE_FINISH_SLOW_MS`は既にv0.25.1489で0.7秒(700ms)のまま(以後未変更)のため、コード変更なし

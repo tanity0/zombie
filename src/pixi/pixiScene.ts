@@ -2386,9 +2386,14 @@ export class PixiScene {
     const czTau = czTarget < this.contextZoom - 0.0001 ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
     this.contextZoom += (czTarget - this.contextZoom) * (1 - Math.exp(-zdt / Math.max(0.001, czTau)));
     const zoom = this.idleZoom * this.contextZoom * punch;
+    // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
+    // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
+    // world.position は本関数の先頭でカメラオフセット込み更新済みなのでここでそのまま使える。
+    const pivotX = (s.zoomHasTarget && zoomDecay > 0) ? this.L.world.position.x + s.zoomTargetX : this.screenW / 2;
+    const pivotY = (s.zoomHasTarget && zoomDecay > 0) ? this.L.world.position.y + s.zoomTargetY : this.screenH / 2;
     if (Math.abs(zoom - 1) > 0.0005) {
       this.L.worldGroup.scale.set(zoom);
-      this.L.worldGroup.position.set((this.screenW / 2) * (1 - zoom), (this.screenH / 2) * (1 - zoom));
+      this.L.worldGroup.position.set(pivotX * (1 - zoom), pivotY * (1 - zoom));
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);

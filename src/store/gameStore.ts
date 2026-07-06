@@ -1443,6 +1443,16 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
   get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
 };
 
+// KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は
+// 最初の1体(配列先頭)。誰も死んでいなければ(ボス気絶ボーナス打だけ等)undefinedを返し、
+// triggerFinishImpact側で従来どおり画面中央へフォールバックする。
+const finishZoomTargetOf = (
+  killed: { enemy: Enemy; finisher: boolean }[]
+): [number, number] | [undefined, undefined] => {
+  const e = killed[0]?.enemy;
+  return e ? [e.x + e.width / 2, e.y + e.height / 2] : [undefined, undefined];
+};
+
 // Shared per-kill rewards for melee-grade kills (the release counter swing and
 // the katana strikes). Mirrors what the counter has always granted: XP pickup,
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
@@ -1846,6 +1856,11 @@ interface GameState {
   zoomMag: number;
   zoomStart: number;  // ズーム開始時刻(hold区間の起点。timeSlowStartと同じ役割)。
   zoomHoldMs: number; // 最大ズームを保持する長さ(既定0=従来どおり開始直後から1.0へランプ)。
+  // パンチズームの寄り先(社長指示・v0.25.1498): hasTarget=falseなら従来どおり画面中央。
+  // trueならtargetX/Y(世界座標)を寄り先にする(KILL=キルされた対象。カウンターは指定なし=中央のまま)。
+  zoomHasTarget: boolean;
+  zoomTargetX: number;
+  zoomTargetY: number;
   // KILLズームだけの連発防止CD(社長指示)。スロー/揺れには適用しない=ズームだけ間引く。
   lastKillZoomAt: number;
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
@@ -2112,8 +2127,9 @@ interface GameState {
   triggerTimeSlow: (scale: number, durationMs: number, holdMs?: number) => void; // holdMs=最も遅い倍率を保持する時間(既定0)
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
-  triggerFinishImpact: () => void; // 近接フィニッシュ: ストップ→(後で)揺れ+スロー+寄り
-  triggerZoom: (mag: number, durationMs: number, holdMs?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
+  // targetX/Y省略時は画面中央基準(カウンター等・従来どおり)。指定時はその世界座標点へ寄る(社長指示: KILLはキルされた対象へ)。
+  triggerFinishImpact: (targetX?: number, targetY?: number) => void; // 近接フィニッシュ: ストップ→(後で)揺れ+スロー+寄り
+  triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
   triggerShake: (durationMs: number, mag?: number) => void; // 行動別の画面シェイク(描画のみ)
 
   // Visual effects (renderer-only; no gameplay impact)
@@ -2368,6 +2384,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   zoomMag: 0,
   zoomStart: 0,
   zoomHoldMs: 0,
+  zoomHasTarget: false,
+  zoomTargetX: 0,
+  zoomTargetY: 0,
   lastKillZoomAt: 0,
   danceTapLog: [],
   hurricane: null,
@@ -3541,7 +3560,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
     }
     if (finisherHit || bossFinishHit) {
-      get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
+      const [ztx, zty] = finishZoomTargetOf(killed);
+      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
     } else if (slashAt.length > 0) {
       // 通常ヒット(空振りでもフィニッシュでもない)のときだけスイングの揺れを出す。
       get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
@@ -3679,7 +3699,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     grantMeleeKillRewards(get, killed, player, gun);
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
-    if (finisherHit || bossFinishHit) get().triggerFinishImpact();
+    if (finisherHit || bossFinishHit) {
+      const [ztx, zty] = finishZoomTargetOf(killed);
+      get().triggerFinishImpact(ztx, zty);
+    }
     // プレイヤーの装備スキル効果を分身の攻撃にも適用(リーパー波及/カウンターマスター/ヘビーガンナー)。
     applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage);
     get().registerMultiHit(slashAt.length); // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ
@@ -3895,7 +3918,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true);
     if (finisherHit || bossFinishHit) {
-      get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
+      const [ztx, zty] = finishZoomTargetOf(killed);
+      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult);
@@ -4018,7 +4042,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
-    if (finisherHit || bossFinishHit) get().triggerFinishImpact(); // ストップ後に 揺れ+スロー+寄りズーム
+    if (finisherHit || bossFinishHit) {
+      const [ztx, zty] = finishZoomTargetOf(killed);
+      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
+    }
     // スキル: リーパー。鞭フィニッシュ範囲(WHIP_LENGTH)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, WHIP_LENGTH_BY_LEVEL[1], meleeBase);
 
@@ -8653,6 +8680,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         zoomMag: 0,
         zoomStart: 0,
         zoomHoldMs: 0,
+        zoomHasTarget: false,
+        zoomTargetX: 0,
+        zoomTargetY: 0,
         lastKillZoomAt: 0,
         hurricane: null,
         summons: [],
@@ -8710,7 +8740,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     setTimeout(() => get().triggerShake(shakeMs, shakeMag), Math.max(0, stopMs));
   },
 
-  triggerFinishImpact: () => {
+  triggerFinishImpact: (targetX, targetY) => {
     // 近接フィニッシュ: 寄りは即。スローも即開始(ストップ中はループ早期returnで凍結 → 明けてから
     // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
     // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
@@ -8718,20 +8748,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ズームだけ間引く(酔い防止)。
     const now = Date.now();
     if (now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS); // 即・寄り(KILL専用の長さ・社長指示)
+      // 即・寄り(KILL専用の長さ・社長指示)。targetX/Yがあればキルされた対象へ寄る(社長指示・v0.25.1498)。
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS, targetX, targetY);
       set({ lastKillZoomAt: now });
     }
     get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・スロー(強め→保持→等速へランプ)
     setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
   },
 
-  triggerZoom: (mag, durationMs, holdMs = 0) => {
+  triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY) => {
     // 描画のみのパンチズーム。重なった場合は強い方/長い方を採用。ゲーム性(カメラ座標/判定)は不変。
     // holdMs: 最大ズームを保持する長さ(社長指示: ピークスロー=最大ズーム+テキスト最大の瞬間を
     // 保持してからフェードアウト。スロー(triggerTimeSlow)と同じhold-then-rampカーブ・同じ
     // 定数(MELEE_FINISH_SLOW_MS/HOLD_MS)を渡して同期させる=描画側はsrc/utils/timeSlowCurve.tsを
     // 流用して消費する)。
+    // targetX/Y(世界座標・社長指示v0.25.1498): 指定時はその点を寄り先にする(KILL=キルされた対象)。
+    // 未指定(カウンター等)は画面中央のまま。継続中(active)のズームは寄り先を変えず維持する
+    // (寄っている最中に急に寄り先が飛ぶのを防ぐ=zoomStart/durationと同じ「継続扱い」の考え方)。
     const now = Date.now();
+    const hasTarget = targetX !== undefined && targetY !== undefined;
     set(state => {
       const active = now < state.zoomUntil;
       return {
@@ -8739,6 +8774,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         zoomMag: Math.max(state.zoomMag, Math.max(0, mag)),
         zoomStart: active ? state.zoomStart : now,
         zoomHoldMs: active ? Math.max(state.zoomHoldMs, Math.max(0, holdMs)) : Math.max(0, holdMs),
+        zoomHasTarget: active ? state.zoomHasTarget : hasTarget,
+        zoomTargetX: active ? state.zoomTargetX : (hasTarget ? targetX : 0),
+        zoomTargetY: active ? state.zoomTargetY : (hasTarget ? targetY : 0),
       };
     });
   },
