@@ -29,4 +29,6 @@
 // v21: knife-swing-2を「弧のみ」(社長提供)へ同名差し替え(装備近接の実絵を重ねる方式に変更)。
 // v22: M8改(§5.9): ソフト系3クラス(magnum/shotgun/striker=スカベ)を原本から標準LANCZOS縮小のみで
 //      焼き直し(後処理なし・ストライカー=scavengerファイルは現状維持)。
-export const ASSET_VERSION = '22';
+// v23: マークスマンの歩行walk-4だけ、frame3(最も背が高いコマ)との高さ差でポップして見えるのを
+//      緩和(figH102→104。frame3寄りの専用スケールで再焼き)。他コマ・コードは変更なし。
+export const ASSET_VERSION = '23';

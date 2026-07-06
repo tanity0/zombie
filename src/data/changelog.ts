@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1462',
+    items: [
+      'マークスマンの歩行アニメで、コマの切り替わりで一瞬キャラが浮いて見える箇所を修正。',
+    ],
+  },
+  {
     version: '0.25.1459',
     items: [
       'キャラ3クラス(マークスマン/ヘビーガンナー/スカベンジャー)の表示を「元絵そのまま」の素直な描画に刷新(不自然な加工を全廃・なめらか表示)。ストライカーは従来どおり。',
