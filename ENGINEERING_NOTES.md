@@ -136,6 +136,12 @@ npm run lint && npm run typecheck && npm test && npm run build
 - 関所ライブ補正(gatePressure)・退屈上振れ(boredomDirector/upswing)・難易度③escalation(spawnEsc)
 - 屋内(研究所/ラボ)・雪原ステージ・ボス戦(puzzleActiveNow=false のレガシー査定経路)
 - サブウェポン/スキルのアクティブ発動(M10で追加予定の「CDが空くたび使用」ポリシー)
+- **プレイヤーの被ダメ経路すべて**(接触ダメージ=useGameLoop.ts:5640・敵の発砲=4793と
+  敵弾ヒット=4856・地雷=5434・ボス攻撃・爆発)。**ボットは構造的にダメージを受けられない=
+  「死ねない」**。playtestレポートの`survived`/深度別の被ダメ計測は**生存性の診断値として無意味**
+  (v0.25.1500の深さ実験で発覚: 棒立ちボットが深層域R7盤面で120秒ノーダメ=偽陰性。
+  被ダメ0という測定結果を見たら、まずこの節を疑うこと)。生存性・危険度の測定をしたい場合は
+  被ダメ経路のヘッドレス化(useGameLoop→directorTickへの切り出し=M9拡張)が先に必要。
 上記に関わるバグはこのボットでは検出できない。壊れた時の網としては上のM9-M12注意点と合わせて読むこと。
 また `Date.now()` ゲート系(ノックバック免疫・カウンターCD・ヒットストップ・スロー等)は
 `vi.useFakeTimers()`で仮想gameTimeと同期させている(`src/store/playtest.test.ts`)。これを外すと
