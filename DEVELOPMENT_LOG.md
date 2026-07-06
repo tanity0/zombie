@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1488 — 恒久ルール7-7: 時間のかかる作業は目安を先に出す(社長指示・設計チャットFable)【2026-07-06 21:27 JST】
+- 計測・走査・ボットラン等の前に「目安◯分」を先に伝える(CLAUDE.md 7-7+DESIGN_CHAT_GUIDE §2)。
+  目安クラス: ユニット実験2〜5分/playtestフル5分前後/ランダム走査10〜30分/素材一括変換数分。
+  実測とズレたら次回目安を更新。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1487 — M16仕様化: パンプキンのジャンプ着地350pxクランプ(設計チャットがボット実測・Fable)【2026-07-06 21:25 JST】
 - 社長報告「ネームド化すると逃げ切れない」→ 設計チャットが**M9デバッグボットを初投入して実測**:
   一時パッチでcapを注入し、離脱シナリオ(8秒交戦→逃走60秒×3)でcap ∞/500/420/400/380/350/320を比較。
