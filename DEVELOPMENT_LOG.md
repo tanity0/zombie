@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1460 — バッチM9仕様化: 自動テストプレイ=デバッグボット(社長採用・設計チャットFable)
+- 社長採用(目的=デバッグ)。ヘッドレスでボットがフルランを早送りプレイし、毎tickの不変条件検査で
+  バグを自動発見する仕組みをPACING_PUZZLE.md §5.10に仕様化:
+  M9-A=ディレクター配線のヘッドレス切り出し(挙動不変が受け入れ条件)/
+  M9-B=逸脱ペルソナ5種のボット(標準/引き撃ち/棒立ち/猪/放浪 — バグは想定外の遊び方で出る)/
+  M9-C=不変条件の網(敵の不正消滅・§0.5違反・盤面/査定整合・状態健全性)+失敗時ダンプ/
+  M9-D=`npm run playtest`+CI短縮版+nightly(既存SIM_FUZZゲート流用)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1459 — M8改実装: スプライト表示の素直化(§5.9・実装チャット)
 - 社長指示「原本からM8改を実行 — 標準LANCZOS縮小のみ・後処理禁止・ストライカーは現状維持」。
 - (a) 焼き: `art_src/originals/` から3クラスを**標準LANCZOSのみ**(シャープ化/NEAREST再サンプル/
