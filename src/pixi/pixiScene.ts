@@ -510,7 +510,7 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
 const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
-const KNOCKBACK_HOP_PX = 6;    // 跳ねの高さ(px・控えめ)
+const KNOCKBACK_HOP_PX = 12;   // 跳ねの高さ(px・社長指示でもっと分かりやすく: 6→12)
 const KNOCKBACK_HOP_MS = 260;  // 跳ねアークの所要時間(敵=被弾lastHit起点 / プレイヤー=knockbackUntil逆算)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動

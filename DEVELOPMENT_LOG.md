@@ -10,6 +10,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1473 — ノックバック時の跳ね演出を強調(社長指示・実装チャット)
+- 社長指示「敵のノックバック時の跳ねる動作をもう少しわかりやすく跳ねるようにして」。
+- `src/pixi/pixiScene.ts`の`KNOCKBACK_HOP_PX`(跳ねの高さ)を`6→12`に変更。跳ねの所要時間
+  (`KNOCKBACK_HOP_MS=260`)は指示外なので不変。敵・プレイヤー共通の同一定数(視覚のみ=
+  当たり判定・位置(store)は不変、CLAUDE.md「Visual vs. hitbox」節どおり)。
+- 負荷スコア: 1/10(既存の視覚専用sin計算の定数変更のみ・毎フレームコスト不変)。
+- 検証: `npm run typecheck`通過。実際の跳ね高さの体感は実機確認が必要(コード上は倍増のみ確認)。
+- 憲法第4条・第5条: 該当なし(ノックバック演出は初心者ゾーン/緩急ペースと無関係の純視覚調整)。
+
 ## v0.25.1472 — メモ: デバッグボット系(M9〜M12)が使い物にならなくなる場面(社長依頼・設計チャットFable)
 - ENGINEERING_NOTES.mdに採録(実体は前コミット901cb2c・version衝突でログとbumpが漏れたため本コミットで補完):
   最悪は「動き続けて古い仕様で合格を出す」静かな偽陰性。①不変条件の仕様変更は同コミットで
