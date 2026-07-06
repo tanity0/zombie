@@ -15,3 +15,5 @@
 - striker: walk-sheet.png のみ(v0.25.1453受領・社長確認済み)。**2コマ目(index=1)が
   ストップ絵を兼任**(専用idleなし・社長指定)。
 - marksman: walk-sheet.png のみ(v0.25.1454受領)。**2コマ目(index=1)がストップ絵を兼任**(社長指定)。
+- scavenger: walk-sheet.png + stop-purplebg.jpeg(v0.25.1455受領)。ストップ絵は**JPEG・紫背景**
+  なのでキー抜きが必要(v6と同手順)。PNG透過版が見つかれば差し替え推奨。

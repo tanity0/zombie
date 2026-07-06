@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1455 — 原本素材の受領④: スカベンジャー(全4クラス揃った・設計チャットFable)
+- `art_src/originals/scavenger/` に walk-sheet.png(1672×941・5コマ)と
+  stop-purplebg.jpeg(395×576・紫背景JPEG)を保存。
+- 素材チェック: 歩き=①透過・中間アルファなし ②5コマ分割可(キャラ高358〜366px・
+  足元642〜645=±3pxで優秀)。ストップ=**条件付き合格**: JPEGで透過なし(紫背景キー抜きが必要・
+  v6と同手順で可能)+解像度がやや小さい(395×576)。PNG透過版が見つかれば差し替え推奨だが、
+  無ければこのままキー抜きで使える。
+- **これで全4クラスの原本が揃った** → M8改(素直縮小)を原本から全クラス実行可能。
+- 検証: doc+素材追加+version(コード不変)。
+
 ## v0.25.1454 — 原本素材の受領③: マークスマン(設計チャットFable)
 - `art_src/originals/marksman/walk-sheet.png`(2172×724・5コマ)を保存。
   **2コマ目(index=1)がストップ絵を兼任**(社長指定)。
