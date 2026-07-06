@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1450 — バッチM8仕様化: スプライト縮小の品質改善(社長採用・設計チャットFable)
+- 診断の結論(社長との会議): キャラ素材は「ドット絵風の高解像度イラスト」(格子なし)であり、
+  nearest縮小(約1/9)の間引きエイリアシングが「潰れ」の正体。本物のドット絵前提のnearest指定が
+  素材の実態と合っていない。方針はオクトラ型「均一なソフトさ」。
+- M8-①: プレイヤー系テクスチャのみ linear+mipmap へ(`?spritesmooth=0`で復帰)。実機A/B用の最小変更。
+- M8-②(①の社長OK後): 敵への展開+素材のオフライン実寸化(表示実寸×2へ事前縮小・VRAM/ロード減)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1449 — 3クラスを2step-sharpで焼き直し(ドット濁り解消)(社長FB・実装チャット)
 - 社長FB「ストライカー以外の立ち絵がドット潰れてる」。原因: ストライカーの元シートはドットが
   カッチリした素材だが、他3クラスの元素材はソフト(にじみ気味)。中心1点サンプリング(direct)だと
