@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1484 — M13確定: ネームドの色=黄金(社長確定・設計チャットFable)【2026-07-06 20:55 JST】
+- パンプキン実素材のtint比較モック(通常/レア青紫赤/漆黒/黄金/毒緑)を提示し、社長が**黄金**を採用。
+  §5.14に確定記載+「金=宿敵」の意味予約を注記(将来のお得枠演出は金以外)。
+- これでM13(ネームド)・M15(レアtint色分け)とも**完成仕様・着手可**。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1483 — M9-C/D完了+KILL/カウンターのズームをスローと同期・スロー再延長(社長指示・実装チャット)【2026-07-06 20:49 JST】
 - **M9-C(不変条件アサーション)+M9-D(実行形態)を完了、M9(自動テストプレイ=デバッグボット)を
   完全に実装**(PACING_PUZZLE.md §5.10。詳細は同ファイルの§5.10「実装結果」+ENGINEERING_NOTES.md
