@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1492 — M14確定: ランク名=七つの大罪(社長確定・設計チャットFable)【2026-07-06 22:06 JST】
+- R1怠惰/R2暴食/R3色欲/R4強欲/R5嫉妬/R6憤怒/R7傲慢(§5.17に確定表)。
+  名前空間3分割が完成: 裏ボス=北欧の神々/宿敵=ギリシャの怪物/ランク=七つの大罪。
+- これでドーパミン系4バッチ(M13宿敵/M14到達譜/M15レアtint/M16ジャンプ上限)が全て着手可
+  (M16の350のみ仮値=実機後の社長宿題)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1491 — バッチM14仕様化: 到達譜=二軸の壁(深さ×ランク)+M16値は宿題(社長採用・設計チャットFable)【2026-07-06 21:52 JST】
 - M14(§5.17)を二軸で仕様化: 深さの壁=既存区域名の境界4本/ランクの壁=R1〜R7に名前
   (★モチーフ選定待ち: A七つの大罪/B自作階梯(虚無)/C七地獄)。
