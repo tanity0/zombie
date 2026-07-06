@@ -5,7 +5,7 @@
 // and keeps counts/health sane. The "auto-debug" net for the logic layer —
 // see CLAUDE.md Testing policy.
 import { describe, it, expect, vi } from 'vitest';
-import { useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS } from './gameStore';
+import { useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS, PUMPKIN_JUMP_MAX_DIST } from './gameStore';
 
 // Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
 // pulling in @types/node (the value is read only under the nightly cron).
@@ -382,5 +382,27 @@ describe('headless simulation invariants', () => {
     expect(after.stunUntil!).toBeGreaterThan(gt); // クリでスタン=以後gameTime基準でフィニッシュ受付になる
 
     randomSpy.mockRestore();
+  });
+
+  it('pumpkin jump lands clamped to PUMPKIN_JUMP_MAX_DIST from the takeoff point (社長採用M16: ボット実測350px)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    // 溜め終了の瞬間、プレイヤーは発動位置から500px離れている(=350クランプが効く距離)。
+    const p = spawnEnemyAt('pumpkin', pcx + 500, pcy, useGameStore.getState().gameTime);
+    const ecx = p.x + p.width / 2, ecy = p.y + p.height / 2;
+    const t0 = useGameStore.getState().gameTime;
+    p.aiPhase = 'crouch';
+    p.aiPhaseUntil = t0 - 1; // 既に溜め終了=次tickでジャンプ開始
+    useGameStore.setState({ enemies: [p] });
+
+    useGameStore.getState().updateEnemies(1 / 60);
+
+    const after = useGameStore.getState().enemies[0];
+    expect(after.aiPhase).toBe('jump');
+    const tx = (after.aiTargetX ?? 0) + after.width / 2;
+    const ty = (after.aiTargetY ?? 0) + after.height / 2;
+    const dist = Math.hypot(tx - ecx, ty - ecy);
+    expect(dist).toBeCloseTo(PUMPKIN_JUMP_MAX_DIST, 0); // 発動位置から最大350pxまでにクランプ
   });
 });

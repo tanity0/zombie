@@ -4,8 +4,9 @@
 // 目的はデバッグ(バランス測定ではない)なので、違反が1件でもあれば即FAIL(assert)。
 import { describe, it, expect, vi } from 'vitest';
 import { useGameStore } from './gameStore';
+import { spawnEnemyAt } from '../utils/enemyUtils';
 import { createPlaytestRefs, runPlaytestTick } from '../utils/playtestDriver';
-import { BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
+import { BOT_PERSONAS, decideBotInput, type BotPersona } from '../utils/playtestBot';
 import {
   checkNoOnscreenCapRemoval, checkSpawnCadence, checkBoardInvariants, checkRankClamp, checkStateHealth,
 } from '../utils/playtestInvariants';
@@ -134,4 +135,48 @@ describe('playtest bot (M9: 自動テストプレイ=デバッグボット)', ()
       expect(allViolations, allViolations.slice(0, 20).join('\n')).toEqual([]);
     },
   );
+});
+
+describe('M16: pumpkin jump-cap escape scenario (回帰・PACING_PUZZLE.md §5.16)', () => {
+  it('cap有効時、8秒交戦→60秒逃走(引き撃ちボット)で1500px以上離れられる(設計チャットのボット実測シナリオの回帰版)', () => {
+    // 固定方向へ直進する素朴な「逃走」は、追いつかれる度にジャンプ着地の吹き飛ばしで
+    // 進行方向以外へ流されて偶発的に閾値を割ることがあった(単発試行のflaky化)。
+    // playtestBot.tsのkiterペルソナ(最寄り敵から常に離れる)へ差し替え、設計チャットの
+    // ボット実測(実際に敵から距離を取り続ける逃走ロジック)に近い挙動で安定させる。
+    useGameStore.getState().resetGame('warrior');
+    const dt = 1 / 60;
+    let t = useGameStore.getState().gameTime;
+    const start = useGameStore.getState().player;
+    const startX = start.x, startY = start.y;
+    // パンプキンを密着圏内に配置(=交戦シナリオ。溜め→ジャンプの発動条件を満たす)。
+    const pumpkin = spawnEnemyAt('pumpkin', startX + 40, startY, t);
+    useGameStore.setState({ enemies: [pumpkin] });
+
+    const STILL = { up: false, down: false, left: false, right: false };
+    const stepStill = (frames: number) => {
+      for (let i = 0; i < frames; i++) {
+        t += dt * 1000;
+        useGameStore.getState().setGameTime(t);
+        useGameStore.getState().movePlayer(STILL, dt);
+        useGameStore.getState().updateEnemies(dt);
+      }
+    };
+    const stepKiting = (frames: number) => {
+      for (let i = 0; i < frames; i++) {
+        t += dt * 1000;
+        useGameStore.getState().setGameTime(t);
+        const s = useGameStore.getState();
+        const decision = decideBotInput('kiter', s.player, s.enemies, t, i, 0);
+        useGameStore.getState().movePlayer(decision.input, dt);
+        useGameStore.getState().updateEnemies(dt);
+      }
+    };
+
+    stepStill(8 * 60);   // 8秒交戦(その場で向き合う=溜め→ジャンプが発動する)
+    stepKiting(60 * 60); // 60秒逃走(最寄り敵=パンプキンから常に離れる)
+
+    const player = useGameStore.getState().player;
+    const dist = Math.hypot(player.x - startX, player.y - startY);
+    expect(dist).toBeGreaterThanOrEqual(1500);
+  });
 });

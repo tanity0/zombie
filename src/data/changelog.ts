@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1492',
+    items: [
+      'レア(色付き)の敵、体が大きくならないよう変更。代わりに体の色で見分けやすく。',
+      'パンプキン系の跳び攻撃、逃げてもちゃんと逃げ切れるように着地距離を調整。',
+    ],
+  },
+  {
     version: '0.25.1490',
     items: [
       'キルのズームを少し控えめ・短めに(カウンターのズームは変更なし)。',

@@ -12,6 +12,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1493 — M15(レアtint・体格拡大廃止)+M16(パンプキンジャンプ350クランプ)を実装(社長指示・実装チャット)【2026-07-06 22:09 JST】
+- 社長指示「PACING_PUZZLE.md §5.14〜§5.16(M13/M15/M16)を実装(v0.25.1488時点確定)」を受けて着手。
+  独立して完結するM15・M16から実装(M13=ネームドは調査中・別途続報)。
+- **M16(§5.16)**: `src/store/gameStore.ts`にパンプキン系(pumpkin/lab-zombie-3)のジャンプ着地
+  クランプを追加。ハンターの視界サークルクランプ(`HUNTER_VISION_RANGE`)と同じ式を移植し、
+  発動位置から`PUMPKIN_JUMP_MAX_DIST=350px`を超える着地は縁までクランプ(溜め/爆発/行動
+  パターンは不変)。`?pjcap=0`で旧(無制限)へ復帰。設計チャットのボット実測(v0.25.1487・
+  350採用の根拠表)どおりの値。
+  - テスト追加: ①ユニット(`sim.test.ts`)クランプ距離が350ちょうどになることを検証
+    ②回帰(`playtest.test.ts`)「8秒交戦→60秒逃走で1500px以上離れられる」離脱シナリオを
+    M9基盤とは独立した専用テストとして追加(仕様書指定どおり)。
+- **M15(§5.15)**: レア(色付き)個体の視認性改善。`src/utils/enemyUtils.ts`の
+  `COLOR_TIER_SIZE_MULT`を1.1/1.2/1.3→全て1.0へ(体格拡大・当たり判定拡大を廃止)。代わりに
+  `src/pixi/pixiScene.ts`の`drawEnemy`で本体スプライトを専用tint(青#66aaff/紫#bb66ff/
+  赤#ff5544)で染める(足元の影の色分けは既存のまま維持=補助として残す)。サイズ差は
+  ネームド(×1.5・M13で実装予定)の専売になる。プール再利用されるビューのtintを
+  colorTier無し時に明示的に0xffffffへ戻す一行を追加(他個体へのtint残留バグを防止)。
+  `?raretint=0`で旧(tintなし・体格拡大あり)へ復帰。
+  - テスト追加(`enemyUtils.test.ts`): 色付き個体が出た時、幅/高さが`getEnemyBaseSize`と
+    一致する(拡大されていない)ことを検証。
+- 負荷スコア: 1/10(M16はジャンプ着地座標の式1本追加のみ。M15はtint代入1行=頂点色乗算で
+  負荷ゼロ・CLAUDE.mdで明記済みのパターン)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (37ファイル/453テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(M16は逃走成立性を確保する調整=攻略性の原則に沿う・M15は視認性の
+  視覚調整のみ)。
+
 ## v0.25.1492 — M14確定: ランク名=七つの大罪(社長確定・設計チャットFable)【2026-07-06 22:06 JST】
 - R1怠惰/R2暴食/R3色欲/R4強欲/R5嫉妬/R6憤怒/R7傲慢(§5.17に確定表)。
   名前空間3分割が完成: 裏ボス=北欧の神々/宿敵=ギリシャの怪物/ランク=七つの大罪。

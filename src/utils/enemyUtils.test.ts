@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, resolveEnemyTarget, spawnEnemyAt, getEnemyFireProfile, generateEnemy, getEnemyBaseSize } from './enemyUtils';
 import type { Enemy, Player, Summon, GameBounds } from '../types/game';
 
 const mkEnemy = (x: number, y: number): Enemy =>
@@ -122,6 +122,19 @@ describe('rareMult (DISTRIBUTION_REDESIGN.md③: scene/rank-driven rare-tier演�
       if (e.colorTier) sawColor = true;
     }
     expect(sawColor).toBe(true);
+  });
+
+  it('PACING_PUZZLE.md §5.15 M15: colored (rare) enemies no longer get a bigger hitbox — size stays at the base', () => {
+    let sawColor = false;
+    for (let i = 0; i < 400; i++) {
+      const e = generateEnemy(0, deepPlayer, BOUNDS, undefined, null, 0, false, 0, [], [], 1.35);
+      if (!e.colorTier) continue;
+      sawColor = true;
+      const base = getEnemyBaseSize(e.type);
+      expect(e.width).toBe(base.width);
+      expect(e.height).toBe(base.height);
+    }
+    expect(sawColor).toBe(true); // このテスト自体が意味を持つには最低1回は色付きを引く必要がある
   });
 });
 

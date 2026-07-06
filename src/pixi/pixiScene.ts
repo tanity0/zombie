@@ -597,6 +597,13 @@ const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number 
   purple: { tint: 0xa855f7, alphaMult: 2.1 },
   red: { tint: 0xef4444, alphaMult: 2.3 },
 };
+// PACING_PUZZLE.md §5.15 M15(社長決定・既定ON): 体格拡大の代わりに本体スプライトをtintで色分け
+// (遠目でも分かる濃さ)。?raretint=0で旧(tintなし=影のみ+体格拡大)へ戻す
+// (enemyUtils.tsのRARE_TINT_ENABLEDと同名パラメータ・各自読む=既存の流儀どおり)。
+const RARE_BODY_TINT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('raretint') !== '0';
+const ENEMY_COLOR_TIER_BODY_TINT: Record<string, number> = {
+  blue: 0x66aaff, purple: 0xbb66ff, red: 0xff5544,
+};
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -5180,6 +5187,10 @@ export class PixiScene {
         }
       }
       view.sprite.visible = true;
+      // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
+      // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
+      // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
+      view.sprite.tint = (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below

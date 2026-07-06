@@ -72,6 +72,10 @@ const AMMO_SMART_ENABLED = typeof window === 'undefined' || new URLSearchParams(
 // PACING_PUZZLE.md §5.6 M7(チャフの武器弱点クリティカル・既定ON): ?weakcrit=0で無効化。
 // useGameLoop側の銃ヒット経路と同名パラメータ(各自読む=既存ammosmart等と同じ流儀)。
 const WEAKCRIT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('weakcrit') !== '0';
+// PACING_PUZZLE.md §5.16 M16(パンプキンのジャンプ距離上限・既定ON): ?pjcap=0で旧・無制限へ。
+// デバッグボット実測(v0.25.1487)で採用=350。ハンターの視界サークルクランプと同じ式を移植。
+const PUMPKIN_JUMP_CAP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('pjcap') !== '0';
+export const PUMPKIN_JUMP_MAX_DIST = 350;
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -5607,6 +5611,15 @@ export const useGameStore = create<GameState>((set, get) => ({
               let jtx = pcx, jty = pcy;
               if (enemy.type === 'hunter' && dist > HUNTER_VISION_RANGE) {
                 const k = HUNTER_VISION_RANGE / (dist || 1);
+                jtx = ecx + (pcx - ecx) * k;
+                jty = ecy + (pcy - ecy) * k;
+              } else if (
+                PUMPKIN_JUMP_CAP_ENABLED && (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3') &&
+                dist > PUMPKIN_JUMP_MAX_DIST
+              ) {
+                // §5.16 M16: 密着圏で溜めた後に逃げられても、着地は発動位置から最大距離までにクランプ
+                // (ハンターの視界サークルクランプと同じ式)。溜め・爆発・行動パターンは不変。
+                const k = PUMPKIN_JUMP_MAX_DIST / (dist || 1);
                 jtx = ecx + (pcx - ecx) * k;
                 jty = ecy + (pcy - ecy) * k;
               }

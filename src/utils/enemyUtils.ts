@@ -240,9 +240,13 @@ const ENEMY_SPEED_MULT = 2 / 3;
 // 影の色で表現(本体の見た目は同じ・旧装飾=黒翼/紫角/赤翼/リング等は廃止)。色ごとに強さ倍率(社長指定)。
 // ジャイアント未満の一般敵のみ対象。ジャイアント/死神/特別敵には付かない(強さ一定)。
 const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
-// レア度で体格も大きく(社長指示: 影の色だけでは見分けづらい→当たり判定ごと拡大)。
-// 青1.1/紫1.2/赤1.3(+10%刻み)。描画は判定箱にフィットするので絵も自動で大きくなる。
-const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = { blue: 1.1, purple: 1.2, red: 1.3 };
+// PACING_PUZZLE.md §5.15 M15(社長決定・既定ON): 体格拡大は廃止し、本体tint(pixiScene.ts)で
+// 見分ける方式へ統一(サイズ差はネームド×1.5の専売にして「大きい=宿敵/色=レア」の2軸を濁らせない)。
+// ?raretint=0で旧(体格拡大+影のみ・tintなし)へ復帰(pixiScene.tsの同名パラメータと対で効く)。
+const RARE_TINT_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('raretint') !== '0';
+const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
+  ? { blue: 1, purple: 1, red: 1 }
+  : { blue: 1.1, purple: 1.2, red: 1.3 }; // 旧値(青1.1/紫1.2/赤1.3・+10%刻み)
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
 const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
