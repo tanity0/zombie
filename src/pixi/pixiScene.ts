@@ -520,7 +520,7 @@ const PLAYER_WALK_SQUASH = 0.05;      // 接地↔遊脚で縦に伸縮するス
 const PLAYER_FIRE_RECOIL_MS = 130;    // 発砲の反動が収まるまで(エンベロープ長)
 const PLAYER_FIRE_RECOIL_PX = 3.2;    // 銃口と逆向き(=後方)へ体が下がる最大px
 const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
-const PLAYER_MELEE_SWING_MS = 250;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でもう少しスローに: 200→220→250。視覚のみ=攻撃レート/判定は別ゲート・不変)
+const PLAYER_MELEE_SWING_MS = 280;    // 近接スイングの踏み込み→振り抜き→復帰の長さ(社長指示でもう少しスローに: 200→220→250→280。視覚のみ=攻撃レート/判定は別ゲート・不変)
 const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャンプ高さ(px・負方向=上)。引き上げ→斬り下ろしの弧。
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
@@ -5068,7 +5068,11 @@ export class PixiScene {
     const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
     const liftShake = liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0;
     // ノックバック中の小さな跳ね(社長指示): 被弾(lastHit)を起点に sin の1山ぶんポンと跳ねる。
-    const kbHop = (e.knockbackUntil !== undefined && now < e.knockbackUntil)
+    // バグ修正(社長報告v0.25.1476): ノックバックCD中(knockbackImmuneUntil)は0速度のまま
+    // knockbackUntilだけ再利用してその場に凍結させる経路があり(gameStore.ts)、速度チェック無しだと
+    // 実際には押されていないのに跳ねてしまっていた。実速度が乗っている時だけ跳ねるようガード。
+    const kbMoving = Math.abs(e.knockbackVx ?? 0) > 0.01 || Math.abs(e.knockbackVy ?? 0) > 0.01;
+    const kbHop = (e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving)
       ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI) * KNOCKBACK_HOP_PX
       : 0;
     // 裏ボスは「当たり判定=足元の帯(AABB)」と「絵(巨体)」を分離して描く(社長指示)。

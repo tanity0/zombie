@@ -10,6 +10,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1476 — ノックバック跳ねの誤爆バグ修正+近接スイング微調整+KILL/カウンタースロー延長(社長指示・実装チャット)
+- **バグ報告**「ノックバックしてないときも跳ねてない?ノックバックにCDがあったはず」を調査。
+  `gameStore.ts`の近接ヒット処理(3251-3278等・計3箇所)は、ノックバック免疫CD中
+  (`knockbackImmuneUntil`)の敵を「その場に凍結(追跡させない)」させるため、`knockbackVx/Vy=0`
+  のまま`knockbackUntil`だけ再利用して更新している(実際の押し出しは無い)。一方
+  `src/pixi/pixiScene.ts`の跳ね演出(`kbHop`)は`knockbackUntil`の有無だけで発火判定しており、
+  速度を見ていなかったため、この「凍結中(実際は動いていない)」状態でも跳ねてしまっていた
+  =バグ確認。**修正**: `kbHop`の発火条件に実速度チェック(`|knockbackVx|>0.01 || |knockbackVy|>0.01`)
+  を追加。凍結ロジック自体(gameStore.ts側)は無変更(意図どおり=ノックバック連発によるハメ防止の
+  仕様は不変)。視覚のみの修正で当たり判定・ダメージ・CD時間は不変。
+- 社長指示「ナイフの振り、もう少しだけモーション長めに」: `PLAYER_MELEE_SWING_MS`
+  `250→280`(3回目の微調整。攻撃レート/判定は別ゲートで不変=視覚のみ)。
+- 社長指示「KILLとカウンター時のスロー演出、もう少し長めにスロー時間を確保」:
+  `MELEE_FINISH_SLOW_MS`(KILL=近接フィニッシュ・カウンター共通のスロー時間)`1650→1950`。
+  ズームの減衰時間(`MELEE_FINISH_ZOOM_MS`)は指示外のため不変(別途提案中の件とは別の調整)。
+- 負荷スコア: 1/10(いずれも既存の視覚専用計算の定数変更・条件追加のみ・毎フレームコスト不変)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過(35ファイル/443テスト)。
+  跳ね誤爆の修正は実機での「ノックバックCD中に跳ねないこと」の目視確認が望ましい。
+- 憲法第4条・第5条: 該当なし(いずれも視覚演出/タイミングの調整で進行・緩急ペースと無関係)。
+
 ## v0.25.1475 — M9-B着手: デバッグボットのペルソナ入力合成(社長指示・実装チャット)
 - 社長指示「PACING_PUZZLE.md §5.10 M9(自動テストプレイ=デバッグボット)〜M12を一気に実装」の
   着手。M9-A(useGameLoopのディレクター配線をヘッドレスへ切り出し)は専門タスクへ分離して進行中

@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1476',
+    items: [
+      'ノックバックしていないのに敵が跳ねて見えることがあったのを修正。',
+      'ナイフの振りをもう少しだけゆっくりに。フィニッシュ/カウンター成立時のスロー演出も少し長く。',
+    ],
+  },
+  {
     version: '0.25.1473',
     items: [
       '敵をノックバックした時の跳ね方をもう少しはっきり見えるように。',
