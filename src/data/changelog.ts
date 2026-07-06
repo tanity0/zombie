@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1446',
+    items: [
+      '画面左下のデバッグ表示に、実際に効いている描画解像度(res:適用値/端末値)を追加。',
+    ],
+  },
+  {
     version: '0.25.1445',
     items: [
       '【試作改良】ストライカーのドットを、細部が潰れない粗さ(元イラストの自然な密度)に再調整。',

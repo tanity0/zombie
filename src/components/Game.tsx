@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
-import { isPixiRenderer } from '../config/renderer';
+import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getTexture } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
@@ -245,6 +245,7 @@ const Game: React.FC<GameProps> = ({
       >
         {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
         {' · '}floor:{getTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}{getTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}{getTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}
+        {' · '}res:{getAppliedResolution() || '?'}/{typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}
       </div>
     </div>
   );

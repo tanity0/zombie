@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1446 — 左下デバッグ行に実描画解像度を表示(社長質問対応・実装チャット)
+- 社長「?rescap=1 が実は3と同じだったりしない?」→ 憶測でなく実機確定できるよう、左下の
+  デバッグ行(pixi·vX·floor:)に `res:適用値/端末DPR` を追加(例: `res:1.5/3`)。
+- 実装: `config/renderer.ts` に `set/getAppliedResolution`(モジュールシングルトン)。PixiStageが
+  `app.init` 後に `app.renderer.resolution`(実際に効いた値)を書き、Game.tsxが表示。挙動変更なし。
+- これで各URLの実測: 無印→1.5 / ?rescap=1→1 / =2→2 / =3→3 のはず。表示が期待と違えばバグ確定として調査。
+- 負荷スコア: 0/10(表示のみ・per-frame処理なし)。
+- 検証: lint/typecheck/test(434 pass)/build全通過(react-refresh警告もrenderer.tsへの移設で解消)。
+- 自己点検: 憲法第4条・第5条に抵触なし(診断表示のみ)。
+
 ## v0.25.1445 — 【試作改良】ストライカーを元絵の自然格子62pxで焼き直し(潰れ解消)(社長FB・実装チャット)
 - 社長FB: 「(rescap=3で)ハッキリはしたが、まだドット絵潰れがある。白背景の参考は潰れていない」。
 - 診断: 元絵の擬似ドットはpitch≈8.65px=図高換算で**約62ドット**の情報密度。52px試作(v1443)は

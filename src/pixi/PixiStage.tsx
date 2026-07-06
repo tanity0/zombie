@@ -6,6 +6,7 @@ import { PixiScene } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
+import { setAppliedResolution } from '../config/renderer';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
 // 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
@@ -22,6 +23,8 @@ const resolutionCap = (): number => {
   }
   return mobile ? 1.5 : 2; // スマホ=1.5(省電力) / PC=2.0(高画質)
 };
+
+// (実解像度の診断値は config/renderer.ts の setAppliedResolution 経由で公開する)
 
 interface PixiStageProps {
   width: number;
@@ -62,6 +65,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         resolution: Math.min(window.devicePixelRatio || 1, resolutionCap()),
         autoDensity: true,
       });
+      setAppliedResolution(app.renderer.resolution); // 診断表示用(実際に効いている値)
       if (cancelled) return;
       await ensureTextures();
       const BASE = import.meta.env.BASE_URL;
