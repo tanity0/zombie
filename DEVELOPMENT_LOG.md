@@ -12,6 +12,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1485 — M13追補: 宿敵のリザルト表示(社長追加・設計チャットFable)【2026-07-06 21:11 JST】
+- リザルトに①RESULT欄1行(「宿敵 {名前}: 討伐(金文字)/取り逃がし」・出現なしは非表示)
+  ②診断グラフに宿敵バンド(金)+討伐マーク+凡例、を追加(§5.14)。スコア加点はしない(表示のみ)。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1484 — M13確定: ネームドの色=黄金(社長確定・設計チャットFable)【2026-07-06 20:55 JST】
 - パンプキン実素材のtint比較モック(通常/レア青紫赤/漆黒/黄金/毒緑)を提示し、社長が**黄金**を採用。
   §5.14に確定記載+「金=宿敵」の意味予約を注記(将来のお得枠演出は金以外)。
