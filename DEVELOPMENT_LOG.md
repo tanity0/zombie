@@ -10,6 +10,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1463 — M8追補実装: ストライカーも素直化(§5.9・実装チャット)
+- 社長指示「PACING_PUZZLE.md §5.9のM8追補を実装 — ストライカーも素直化で他クラスと揃える」。
+  設計チャット(Fable)が記載した仕様(v0.25.1461)を実装。
+- (a) 焼き: `art_src/originals/striker/walk-sheet.png`(透過・2560×852・5コマ)から
+  **標準LANCZOSのみ**(シャープ化/NEAREST再サンプルなし)で128×108規格(figH→105・右端x106・
+  足元y107)へ再焼き: player-scavenger-walk-0..4 + idle(**2コマ目=ストップ絵兼任**・社長指定)。
+  全6ファイル 128×108/x106/y107 検証OK。v17の格子焼き(粗ドット)版は破棄。
+- (b) 実行時: `pixiTextures.ts` の `SOFT_CLASS_PREFIXES` に `player-scavenger-` を追加し、
+  他3クラス同様 `scaleMode:'linear'`+`autoGenerateMipmaps=true`。`?spritesmooth=0`で従来nearestへ。
+  これで**4クラス全員が同じ素直化描画に統一**。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'23'→'24'`。
+- PACING_PUZZLE.md §5.9-3・M8ステータス行を「実装済み」へ更新(次項参照)。
+- 負荷スコア: **1/10**(テクスチャ差し替え+mipmap生成は初回ロードのみ)。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。プレビュー目視(他3クラスと同じ均一な質感)。
+- 自己点検: 憲法第4条・第5条に抵触なし(表示のみ・判定/挙動不変)。
+
 ## v0.25.1462 — マークスマン歩行walk-4の高さポップ修正(社長指摘・実装チャット)
 - 社長「マークスマンの歩き、一番最後のコマだけ少し上にズレてる」「描画が崩れないこと最重要視」。
 - **原因診断**: 5コマの原本(art_src/originals/marksman/walk-sheet.png)は元々コマごとに

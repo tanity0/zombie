@@ -31,4 +31,6 @@
 //      焼き直し(後処理なし・ストライカー=scavengerファイルは現状維持)。
 // v23: マークスマンの歩行walk-4だけ、frame3(最も背が高いコマ)との高さ差でポップして見えるのを
 //      緩和(figH102→104。frame3寄りの専用スケールで再焼き)。他コマ・コードは変更なし。
-export const ASSET_VERSION = '23';
+// v24: M8追補(§5.9): ストライカー(player-scavenger-walk-0..4/idle)も原本から標準LANCZOS縮小のみで
+//      焼き直し+実行時linear/mipmap化。他3クラスと表示テイストを統一(2コマ目=ストップ絵兼任)。
+export const ASSET_VERSION = '24';

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1463',
+    items: [
+      'ストライカーの表示を他のクラスと同じ「元絵そのまま」の素直な描画に統一。',
+    ],
+  },
+  {
     version: '0.25.1462',
     items: [
       'マークスマンの歩行アニメで、コマの切り替わりで一瞬キャラが浮いて見える箇所を修正。',

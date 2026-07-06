@@ -19,18 +19,20 @@ const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
 
-// M8改(PACING_PUZZLE §5.9・社長指示v0.25.1451「素直に表示」): ソフト系3クラス
-// (マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker)は「ドット絵風の
+// M8改(PACING_PUZZLE §5.9・社長指示v0.25.1451「素直に表示」): 4クラス全員(マークスマン=magnum/
+// ヘビーガンナー=shotgun/スカベンジャー=striker/ストライカー=scavenger)は「ドット絵風の
 // 高解像度イラスト」であり本物の格子が無い。nearest縮小はカリカリの偽ドット/不気味化を生むため、
-// この3クラスのみ実行時 linear+ミップマップで「元絵そのままの均一な描画」にする。
-// ストライカー(player-scavenger=自然格子が実在しv17格子焼きが成功)・軍人・武器アイコン等の
-// 本物ドット素材は nearest のまま。`?spritesmooth=0` で従来nearestへ即戻し(実機A/B用)。
+// 実行時 linear+ミップマップで「元絵そのままの均一な描画」にする。
+// ※ストライカー(player-scavenger)はv17で格子焼き(粗ドット)が単体では成功していたが、他3クラスが
+// 素直化されテイストが浮くため社長指示(v0.25.1461)でM8追補として同処理に統一(art_src/originals/
+// striker/walk-sheet.pngから標準LANCZOSのみで再焼き・v0.25.1463)。
+// 軍人・武器アイコン等の本物ドット素材は nearest のまま。`?spritesmooth=0` で従来nearestへ即戻し(実機A/B用)。
 const SPRITE_SMOOTH: boolean = (() => {
   if (typeof window === 'undefined') return true;
   const p = new URLSearchParams(window.location.search).get('spritesmooth');
   return !(p === '0' || p === 'off' || p === 'false');
 })();
-const SOFT_CLASS_PREFIXES = ['player-magnum-', 'player-shotgun-', 'player-striker-'];
+const SOFT_CLASS_PREFIXES = ['player-magnum-', 'player-shotgun-', 'player-striker-', 'player-scavenger-'];
 const isSoftClassSprite = (name: string): boolean =>
   SPRITE_SMOOTH && SOFT_CLASS_PREFIXES.some((pre) => name.startsWith(pre));
 
