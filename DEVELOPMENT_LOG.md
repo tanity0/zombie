@@ -10,6 +10,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1467 — キルズームをKILL(近接フィニッシュ)とカウンターだけに限定(社長指摘・実装チャット)
+- 社長「ズームはKILLとカウンター時だけだよ。今は敵倒すだけでもズームしちゃってる。これはやめて」。
+- **誤り**: v0.25.1464で「KILL」を「敵を倒す全般」と解釈し、`damageEnemy`(gun/接触/爆発キル)と
+  `grantMeleeKillRewards`(非フィニッシュの通常近接キルも含む全経路)に新規ズームフック
+  (`KILL_ZOOM_MAG`)を追加してしまった。実際の「KILL」はゲーム内の「Kill!」コールアウト演出
+  (近接フィニッシュ限定・`finisher`/`bossFinishHit`フラグ)を指しており、既存の
+  `MELEE_FINISH_ZOOM_MAG`(`triggerFinishImpact`経由)がまさにその専用ズーム機構だった。
+- **修正**: 新設した`KILL_ZOOM_MAG`と2箇所のフック(`damageEnemy`・`grantMeleeKillRewards`)を完全撤去。
+  代わりに既存の`MELEE_FINISH_ZOOM_MAG`を`0.3→0.5`(1.5倍)に変更(=これがKILL=近接フィニッシュの
+  ズーム)。`COUNTER_ZOOM_MAG=0.5`はそのまま維持。結果、ズームは**近接フィニッシュ(Kill!)とカウンター
+  成立のみ**で発生し、銃/接触/爆発キルや非フィニッシュの通常近接キルはズームしない(元の挙動)。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。
+- 自己点検: 憲法第4条・第5条に抵触なし(視覚のみ・判定/報酬ロジック不変)。
+
 ## v0.25.1466 — M8追補2: 軍人方式へ統一(社長の事実訂正・設計チャットFable)
 - 社長訂正「軍人NPCも同じドット絵風素材・同じ処理で作っている」→ 軍人とプレイヤーの差は
   素材ではなく**「表示実寸(×1)まで縮め切って保存」+「等倍nearest表示」**だったと確定。
