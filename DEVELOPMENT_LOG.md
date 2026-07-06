@@ -12,6 +12,47 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1483 — M9-C/D完了+KILL/カウンターのズームをスローと同期・スロー再延長(社長指示・実装チャット)【2026-07-06 20:49 JST】
+- **M9-C(不変条件アサーション)+M9-D(実行形態)を完了、M9(自動テストプレイ=デバッグボット)を
+  完全に実装**(PACING_PUZZLE.md §5.10。詳細は同ファイルの§5.10「実装結果」+ENGINEERING_NOTES.md
+  「M9実装の実際のスコープ」を参照。要点のみ):
+  - `src/utils/playtestDriver.ts`(新規): M9-A(`directorTick.ts`)+既存ヘッドレスAPIを固定tickで
+    駆動。`src/utils/playtestInvariants.ts`(新規): 仕様書の不変条件5項目を検査する純関数群。
+    `src/store/playtest.test.ts`(新規): 通常push=短縮版(2ラン×5分相当・毎回)/
+    `npm run playtest`・nightly(SIM_FUZZ=1)=フル版(10ラン×15分相当)。
+  - 実装中に踏んだ教訓(即ENGINEERING_NOTES.mdへ機械化済み): ノックバック免疫/カウンターCD/
+    ヒットストップ/スローはDate.now()(実時間)基準のため、ヘッドレスで54,000tickを数秒の実時間で
+    回すとこれらが実質機能しなくなる(フェイクタイマー無しの初回実測でRankが5分間ずっと1のまま
+    だったことで発覚)。`vi.useFakeTimers()`でDate.now()を仮想gameTimeへ同期させて解決。
+  - 実測: 短縮版(CI・毎push)約18秒/フル版(nightly・`npm run playtest`)約4.4分。いずれも
+    違反0件で全通過。
+  - 既知のスコープ: M9-Aで切り出した経路(コマ管理/査定/decideNextSpawn消費/画面外リサイクル+
+    上限カリング/AIディレクター信号)だけを検査。ハンター・レスキュー・紅き月・囲い・関所ライブ
+    補正・退屈上振れ・屋内/雪原・ボス戦のレガシー経路・サブウェポン/スキルのアクティブ発動は
+    useGameLoop.ts側の未切り出し経路にあり対象外(この網に掛からないバグの種類として明記済み)。
+  - PACING_PUZZLE.mdの実装順テーブル: M9を**実装済み**へ更新。M7の表記も
+    (スケルトン20%→v0.25.1479での25%改訂を反映して)修正。
+- **KILL/カウンターのズーム演出をスローと完全同期**(社長指示の連続したやり取りを反映):
+  1. 「もっとスローの時間を長めにして、その分戻りを早く」: `MELEE_FINISH_SLOW_MS`
+     `1000→1300`、`MELEE_FINISH_SLOW_HOLD_MS`(最も遅い区間の保持)`600→1000`
+     (戻りランプは400ms→300msへ短縮=より速く)。
+  2. 「入りは一瞬でピークスローからでいい。ピークスロー=最大ズーム+テキストも一瞬で表示 →
+     スロー フェードアウト」: これまで未着手だったズームの減衰(`MELEE_FINISH_ZOOM_MS=320`固定・
+     スローと無関係に独立減衰)を、スローと**全く同じhold-then-rampカーブ**(`src/utils/
+     timeSlowCurve.ts`の`computeTimeSlowScale`を1から引く形で再利用=最大寄り→hold→滑らかに
+     等倍へ戻る)に統一。`triggerZoom`に`holdMs`引数を追加し(`triggerTimeSlow`と同じ
+     active-merge方式)、`zoomStart`/`zoomHoldMs`をstateへ新設。専用定数`MELEE_FINISH_ZOOM_MS`は
+     不要になったため削除し、KILL/カウンターの両呼び出しが`MELEE_FINISH_SLOW_MS`/
+     `MELEE_FINISH_SLOW_HOLD_MS`をそのまま渡す(スロー・ズーム・コールアウト文字の3つが完全に
+     同じタイミングで動く=最大寄り+文字最大クリア+最も遅い速度、が同時に始まり同時にフェードする)。
+- 負荷スコア: 1/10(M9はテスト/CI専用の追加コスト0のツール。ズーム同期は既存の視覚専用計算の
+  カーブ形状変更のみ・毎フレームコスト不変)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (37ファイル/449テスト+2スキップ)。`npm run playtest`(SIM_FUZZ=1フル版)も別途実行し
+  10ラン全て違反0件を確認。
+- 憲法第4条・第5条: 該当なし(デバッグ基盤とKILL/カウンターの演出タイミングは進行・緩急ペースと
+  無関係)。
+
 ## v0.25.1482 — M13増補+M15新設: 名前32種・レアは色のみ・大きさはネームド専売(社長決定・設計チャットFable)【2026-07-06 20:44 JST】
 - M13: ギリシャ怪物の名前テーブルを16→**32名**へ増量(社長「候補は多いほど良い」)。
 - M15新設: レア(色付き)個体の**体格拡大を廃止**(判定も通常へ)・**本体tintの色分け**へ

@@ -905,12 +905,14 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 export const HITSTOP_MS = 100;
 // 近接フィニッシュ&カウンター: ストップ→スロー。社長指示で倍に(700→1400)。さらにもう少し長く
 // (1400→1650→1950)。社長指摘「長さの問題じゃないかも」で全体を約1秒へ戻しつつ、最も遅い区間を
-// 保持してから戻りは速くする形に変更(1950→1000。カーブ形状は下のHOLD_MSと合わせてsrc/utils/
-// timeSlowCurve.tsが消費)。
-export const MELEE_FINISH_SLOW_MS = 1000;
-// 上のスロー時間のうち、最も遅い倍率を保持する長さ(社長指示: 一番遅い時間を長く・戻りは速く)。
-// 残り(MELEE_FINISH_SLOW_MS - この値)が等速へ戻るランプ区間になる。
-export const MELEE_FINISH_SLOW_HOLD_MS = 600;
+// 保持してから戻りは速くする形に変更(1950→1000)。さらに社長指示「もっとスローの時間を長めに、
+// その分戻りを早く」でスロー全体・保持区間ともに延長しつつ戻りランプはむしろ短縮(1000→1300。
+// カーブ形状は下のHOLD_MSと合わせてsrc/utils/timeSlowCurve.tsが消費)。
+export const MELEE_FINISH_SLOW_MS = 1300;
+// 上のスロー時間のうち、最も遅い倍率を保持する長さ(社長指示: 一番遅い時間を長く・戻りは速く。
+// 600→1000)。残り(MELEE_FINISH_SLOW_MS - この値=300ms。400msより短縮=戻りが速くなった)が
+// 等速へ戻るランプ区間になる。
+export const MELEE_FINISH_SLOW_HOLD_MS = 1000;
 const MIN_TIME_SLOW_SCALE = 0.18;
 const MAX_TIME_SLOW_SCALE = 1;
 // Screen-shake duration when the player takes damage.
@@ -974,7 +976,7 @@ export const CAMERA_MOVE_ZOOM_TAU = camNum('cammovetau', 1.5);    // 引きが�
 export const CAMERA_INTRO_ZOOM_MAG = camNum('camintro', 1.0);     // 登場ヘリ搭乗シーンの寄り(正=寄り/めっちゃズーム)。社長指示でもう少し寄りスタート。降下で既定へ。?camintro
 export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中、カメラをヘリ高度へ寄せる割合(0=従来の着地面固定 / 1=被写体を中央)。?camintrolift
 // 近接フィニッシュの軽いパンチズーム(視覚のみ。プレイヤー=画面中央を中心に少し寄る)。
-export const MELEE_FINISH_ZOOM_MS = 320;   // ズーム演出の長さ(終わりへ向けて 1.0 に戻る)
+// ズームの長さ・保持は社長指示でスロー(MELEE_FINISH_SLOW_MS/HOLD_MS)と同期させたため専用定数は撤廃。
 // 衝撃時の寄りパンチズーム。社長指示で1.5倍(KILL=近接フィニッシュの「Kill!」演出時のみ。
 // 銃/接触/爆発キルや非フィニッシュの通常近接キルはズームしない=社長指示で撤回・v0.25.1466)。
 export const MELEE_FINISH_ZOOM_MAG = 0.5;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.5倍=+50%)
@@ -1777,6 +1779,8 @@ interface GameState {
   // world by zoomMag around screen center. Triggered on melee finish. No gameplay effect.
   zoomUntil: number;
   zoomMag: number;
+  zoomStart: number;  // ズーム開始時刻(hold区間の起点。timeSlowStartと同じ役割)。
+  zoomHoldMs: number; // 最大ズームを保持する長さ(既定0=従来どおり開始直後から1.0へランプ)。
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
   // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
   hurricane: {
@@ -2033,7 +2037,7 @@ interface GameState {
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
   triggerFinishImpact: () => void; // 近接フィニッシュ: ストップ→(後で)揺れ+スロー+寄り
-  triggerZoom: (mag: number, durationMs?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
+  triggerZoom: (mag: number, durationMs: number, holdMs?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
   triggerShake: (durationMs: number, mag?: number) => void; // 行動別の画面シェイク(描画のみ)
 
   // Visual effects (renderer-only; no gameplay impact)
@@ -2279,6 +2283,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   shakeDur: SHAKE_MS,
   zoomUntil: 0,
   zoomMag: 0,
+  zoomStart: 0,
+  zoomHoldMs: 0,
   danceTapLog: [],
   hurricane: null,
   summons: [],
@@ -8487,6 +8493,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeDur: SHAKE_MS,
         zoomUntil: 0,
         zoomMag: 0,
+        zoomStart: 0,
+        zoomHoldMs: 0,
         hurricane: null,
         summons: [],
         rescueSurvivors: [],
@@ -8531,7 +8539,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // カウンター/バッシュの衝撃: 寄りパンチズームは命中の瞬間に即(=早く寄る)。
     // ストップを入れ、揺れはストップ後に(止まりが揺れに埋もれないよう)。
     // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
-    get().triggerZoom(zoomMag); // 即・寄り
+    get().triggerZoom(zoomMag, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・寄り(スローと同期)
     if (get().rhythm.active) {
       get().triggerShake(shakeMs, shakeMag);
       return;
@@ -8547,18 +8555,27 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 近接フィニッシュ: 寄りは即。スローも即開始(ストップ中はループ早期returnで凍結 → 明けてから
     // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
     // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
-    get().triggerZoom(MELEE_FINISH_ZOOM_MAG);             // 即・寄り
+    get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・寄り(スローと同期)
     get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・スロー(強め→保持→等速へランプ)
     setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
   },
 
-  triggerZoom: (mag, durationMs = MELEE_FINISH_ZOOM_MS) => {
+  triggerZoom: (mag, durationMs, holdMs = 0) => {
     // 描画のみのパンチズーム。重なった場合は強い方/長い方を採用。ゲーム性(カメラ座標/判定)は不変。
+    // holdMs: 最大ズームを保持する長さ(社長指示: ピークスロー=最大ズーム+テキスト最大の瞬間を
+    // 保持してからフェードアウト。スロー(triggerTimeSlow)と同じhold-then-rampカーブ・同じ
+    // 定数(MELEE_FINISH_SLOW_MS/HOLD_MS)を渡して同期させる=描画側はsrc/utils/timeSlowCurve.tsを
+    // 流用して消費する)。
     const now = Date.now();
-    set(state => ({
-      zoomUntil: Math.max(state.zoomUntil, now + Math.max(0, durationMs)),
-      zoomMag: Math.max(state.zoomMag, Math.max(0, mag)),
-    }));
+    set(state => {
+      const active = now < state.zoomUntil;
+      return {
+        zoomUntil: Math.max(active ? state.zoomUntil : 0, now + Math.max(0, durationMs)),
+        zoomMag: Math.max(state.zoomMag, Math.max(0, mag)),
+        zoomStart: active ? state.zoomStart : now,
+        zoomHoldMs: active ? Math.max(state.zoomHoldMs, Math.max(0, holdMs)) : Math.max(0, holdMs),
+      };
+    });
   },
 
   triggerTimeSlow: (scale, durationMs, holdMs = 0) => {

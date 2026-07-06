@@ -21,7 +21,8 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, MELEE_FINISH_ZOOM_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE } from '../store/gameStore';
+import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { hasFullWarlordSet } from '../data/equipment';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
@@ -2350,8 +2351,14 @@ export class PixiScene {
       const zoomTau = zoomingOut ? CAMERA_MOVE_ZOOM_TAU : CAMERA_IDLE_ZOOM_TAU;
       this.idleZoom += (zoomTarget - this.idleZoom) * (1 - Math.exp(-zdt / Math.max(0.001, zoomTau)));
     }
-    const zoomLeft = s.zoomUntil ? s.zoomUntil - now : 0;
-    const punch = (zoomLeft > 0 && s.zoomMag > 0) ? 1 + s.zoomMag * Math.min(1, zoomLeft / MELEE_FINISH_ZOOM_MS) : 1;
+    // KILL/カウンターの寄りパンチズーム: スロー(triggerTimeSlow)と全く同じ「最大を保持→戻りは
+    // 滑らかにランプ」カーブを流用(社長指示: 一番寄っている瞬間をスローの一番遅い区間と揃える)。
+    // computeTimeSlowScaleはminScale(=0)から1.0へ向かうカーブを返すので、1から引いて「1(最大寄り)
+    // →0(寄り無し)」の減衰係数に反転させる。zoomStart/zoomHoldMsはtriggerZoomが設定する。
+    const zoomDecay = (s.zoomUntil > now && s.zoomMag > 0)
+      ? 1 - computeTimeSlowScale(now, s.zoomStart, s.zoomUntil, 0, s.zoomHoldMs)
+      : 0;
+    const punch = 1 + s.zoomMag * zoomDecay;
     // 文脈ズーム: 敵数が多い/大型がいるほど少し引く(視覚専用)。イージング追従＋不感帯でパカパカ防止。
     // 引き(target<現在)は長い時定数でじわっと、戻りは待機と同じ時定数。
     // プレイヤー近く(画面内相当の半径)にいる敵だけ数える。遠くの大型/多数では引かない(社長指示)。

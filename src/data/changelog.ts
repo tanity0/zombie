@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1481',
+    items: [
+      'キル/カウンターのズームも、スローの一番遅い瞬間に合わせて寄りっぱなしに→まとめてフェード。',
+      'スロー時間をもう少し長めに、戻りは逆に速く。',
+    ],
+  },
+  {
     version: '0.25.1479',
     items: [
       'クリティカル率アップの効果がナイフ/分身の近接攻撃にも乗っていなかったのを修正。',

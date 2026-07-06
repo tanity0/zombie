@@ -126,3 +126,18 @@ npm run lint && npm run typecheck && npm test && npm run build
    その場のバグは網の外。
 運用原則: これらのツールは仕様のコピーを内蔵している。**仕様を変えたらツールも同コミットで更新**。
 更新しないままの緑は信用しない。
+
+## M9実装(v0.25.148x)の実際のスコープ(この網に掛からないもの)
+`src/utils/playtestDriver.ts`/`playtestInvariants.ts`/`src/store/playtest.test.ts`が実装した
+ヘッドレスボットは、M9-A(`src/utils/directorTick.ts`)で切り出したコマ管理/査定/decideNextSpawn
+消費/画面外リサイクル+上限カリング/AIディレクター信号**だけ**を回す。以下は現状ボットの網の外
+(useGameLoop.ts側に残る~500行超のレガシー経路にあり、今回のヘッドレス化の対象外だったため):
+- ハンター・叫喚型ディレクター・レスキュー・紅き月・囲い(ホード/ミニボス)イベント
+- 関所ライブ補正(gatePressure)・退屈上振れ(boredomDirector/upswing)・難易度③escalation(spawnEsc)
+- 屋内(研究所/ラボ)・雪原ステージ・ボス戦(puzzleActiveNow=false のレガシー査定経路)
+- サブウェポン/スキルのアクティブ発動(M10で追加予定の「CDが空くたび使用」ポリシー)
+上記に関わるバグはこのボットでは検出できない。壊れた時の網としては上のM9-M12注意点と合わせて読むこと。
+また `Date.now()` ゲート系(ノックバック免疫・カウンターCD・ヒットストップ・スロー等)は
+`vi.useFakeTimers()`で仮想gameTimeと同期させている(`src/store/playtest.test.ts`)。これを外すと
+54,000tickを数秒の実時間で回す都合で近接攻撃CD等が実質機能しなくなり、ランクが全く上がらない
+静かな偽陰性になる(実装中に実際に踏んだ教訓)。
