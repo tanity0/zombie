@@ -10,6 +10,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1470 — バッチM12仕様化: 設計電卓=プロト武器バランス探索(社長採用・設計チャットFable)
+- 社長「新スキル・サブの相談時に、AI側で『この間隔ならこの攻撃力で崩れない』を計算する道具に
+  できないか」→ M12として仕様化(§5.13):
+  M12-A=JSON設定で動く汎用プロト武器(trigger/shape/interval/damage等。未実装のアイデアを
+  コードを書かずに試せる。本番コードパスから隔離・開発専用)/
+  M12-B=`npm run balance-solve`でボットラン×二分探索し「安全圏の数値レンジ」を報告。
+- 運用: 設計チャットが相談をJSON化して自ら実行し、会議のその場で数字つき回答(ヘッドレスなので
+  実機不要)。数字は叩き台であり手触りの最終判断は実機。オンデマンド専用・M9/M10後に着手。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1469 — M10/M11仕様化: バランス走査+性能調査(オンデマンド専用・社長採用・設計チャットFable)
 - **M10(§5.11)**: ビルド(クラス×サブ×スキル)注入ボットランで壊れた組み合わせ・抜け穴を自動検出。
   走査3段(単体→ペア→ランダムN)/外れ値・無被弾R7・ボス即殺・資源無限増殖の自動フラグ/
