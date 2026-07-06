@@ -6,8 +6,8 @@ describe('weaknessCritBonus (PACING_PUZZLE.md §5.6 M7・v0.25.1391改訂値)', 
     expect(weaknessCritBonus('bat', 'gun')).toBe(0.20);
     expect(weaknessCritBonus('bat', 'melee')).toBe(0);
   });
-  it('スケルトンは近接で+0.20、銃では0', () => {
-    expect(weaknessCritBonus('skeleton', 'melee')).toBe(0.20);
+  it('スケルトンは近接で+0.25、銃では0', () => {
+    expect(weaknessCritBonus('skeleton', 'melee')).toBe(0.25);
     expect(weaknessCritBonus('skeleton', 'gun')).toBe(0);
   });
   it('ゾンビは銃で+0.10(据え置き)、近接では0', () => {

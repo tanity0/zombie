@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1479',
+    items: [
+      'クリティカル率アップの効果がナイフ/分身の近接攻撃にも乗っていなかったのを修正。',
+      'スケルトンの近接弱点補正を20%→25%に。',
+    ],
+  },
+  {
     version: '0.25.1478',
     items: [
       'キル/カウンターのスロー演出を調整: 全体の長さは短くしつつ、一番遅い瞬間を長く保ち、戻りは速く。',

@@ -12,6 +12,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1479 — player.critChanceを近接武器にも適用+スケルトンの近接弱点補正を25%へ(社長指示・実装チャット)【2026-07-06 20:10 JST】
+- **バグ調査**: 「player.critChanceの効果を近接武器にも乗せる」の指示を受けて`gameStore.ts`内の
+  近接クリ率計算を全箇所調査。銃(`weaponUtils.ts`の`fireWeapon`)・刀(`performKatanaStrike`)・鞭
+  (`performWhipStrike`)は既に`player.critChance`を加算していたが、**通常ナイフの振り
+  (`triggerCounter`・素の近接攻撃本体)と分身の近接攻撃(`shadowCloneStrike`)の2箇所だけ
+  `player.critChance`が抜け落ちていた**(既存コードの見落とし=明確なバグ)。この2箇所の
+  クリ率計算式に`+ player.critChance`を追加し、他の近接経路と揃えた。挙動が変わるのは
+  「アクセ・スキル等でplayer.critChanceを持っている状態でのナイフ/分身攻撃」のみ
+  (影響が無かった刀/鞭/銃は無変更)。
+  - テスト追加(`src/store/sim.test.ts`): `Math.random`を0.5に固定した決定的な検証で、
+    `player.critChance=0`(ナイフ素の0.05のみ)ではクリティカルしない/`=1`では必ずクリティカルする
+    ことを確認(この修正前のコードでは後者が失敗する=回帰防止のテスト)。
+- **社長指示**: スケルトンの近接クリティカル弱点補正(PACING_PUZZLE.md §5.6 M7)を
+  `20%→25%`に変更(`src/utils/weaknessCrit.ts`の`CHAFF_WEAKNESS.skeleton.bonus`)。
+  バット(銃+20%)・ゾンビ(銃+10%)は指示外のため無変更。既存テスト
+  (`weaknessCrit.test.ts`)の期待値も0.25へ更新。
+- 負荷スコア: 1/10(既存のクリ率計算式への加算項1つ・弱点表の定数変更のみ・毎フレームコスト不変)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (36ファイル/448テスト。新規テスト1件を含む)。
+- 憲法第4条・第5条: 該当なし(近接クリ率・弱点補正はランク査定/緩急ペースと無関係)。
+
 ## v0.25.1478 — M9-A完了(ヘッドレス切り出し)+KILL/カウンターのスロー演出を再設計(社長指示・実装チャット)【2026-07-06 20:05 JST】
 - **M9-A**: `PACING_PUZZLE.md §5.10` M9-A(useGameLoopのディレクター配線をヘッドレスから固定
   16.6msステップで回せる関数へ切り出し)を完了。専門タスクへ分離して慎重に実施(「挙動を1bitも

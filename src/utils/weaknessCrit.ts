@@ -13,11 +13,11 @@ interface WeaknessEntry {
   bonus: number;
 }
 
-// 社長確定値(v0.25.1391改訂): バット=銃+20%/スケルトン=近接+20%/ゾンビ=銃+10%(据え置き)。
-// 表に無い型(問題児・ボス等)は対象外。
+// 社長確定値: バット=銃+20%/スケルトン=近接+25%(v0.25.1391の20%から社長指示で改訂)/
+// ゾンビ=銃+10%(据え置き)。表に無い型(問題児・ボス等)は対象外。
 const CHAFF_WEAKNESS: Partial<Record<EnemyType, WeaknessEntry>> = {
   bat: { weaponKind: 'gun', bonus: 0.20 },
-  skeleton: { weaponKind: 'melee', bonus: 0.20 },
+  skeleton: { weaponKind: 'melee', bonus: 0.25 },
   zombie: { weaponKind: 'gun', bonus: 0.10 },
 };
 

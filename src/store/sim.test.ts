@@ -4,7 +4,7 @@
 // many ticks and asserts the sim never produces NaN/Infinity, never throws,
 // and keeps counts/health sane. The "auto-debug" net for the logic layer —
 // see CLAUDE.md Testing policy.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { useGameStore, bumpBossCrit, BOSS_FULLSTUN_CRITS, BOSS_FULLSTUN_MS } from './gameStore';
 
 // Minimal ambient declaration so the SIM_FUZZ env gate typechecks without
@@ -332,5 +332,34 @@ describe('headless simulation invariants', () => {
     useGameStore.setState({ enemies: [z2] });
     t += 1000 / 60; useGameStore.getState().setGameTime(t); useGameStore.getState().updateEnemies(1 / 60);
     expect(useGameStore.getState().enemies[0].aiPhase).toBeUndefined();
+  });
+
+  it('player.critChance now boosts the regular knife swing (社長指示: 近接武器にも乗せる)', () => {
+    useGameStore.getState().resetGame('warrior');
+    const player = useGameStore.getState().player;
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    // ゾンビは近接弱点補正の対象外(weaknessCrit表は'gun'側のみ=+0.10)なので、素の近接クリ率は
+    // 装備ナイフ(knife-t1)固定の0.05のみ(スキル未所持=Benkei/ナイフマスター等のボーナスも0)。
+    const spawnCloseZombie = () => {
+      const z = spawnEnemyAt('zombie', pcx + 4, pcy, useGameStore.getState().gameTime);
+      z.health = 9999; // 生存させて damageNumber を確実に出す(倒れて即消滅しないように)
+      useGameStore.setState({ enemies: [z], effects: [] });
+    };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5); // 0.05 < 0.5 < 1.0 な決定的な値
+
+    spawnCloseZombie();
+    useGameStore.setState(s => ({ player: { ...s.player, critChance: 0, counterCooldownEnd: 0 } }));
+    useGameStore.getState().triggerCounter();
+    const critsWithoutBonus = useGameStore.getState().effects.filter(e => e.kind === 'damageNumber' && e.crit);
+    expect(critsWithoutBonus.length).toBe(0); // 0.05(素のナイフ)だけでは 0.5 に届かずクリティカルしない
+
+    spawnCloseZombie();
+    // 直前のスイングが付けたカウンターCDを解除しないと2回目が不発(空振り)になるため明示的に0へ。
+    useGameStore.setState(s => ({ player: { ...s.player, critChance: 1, counterCooldownEnd: 0 } }));
+    useGameStore.getState().triggerCounter();
+    const critsWithBonus = useGameStore.getState().effects.filter(e => e.kind === 'damageNumber' && e.crit);
+    expect(critsWithBonus.length).toBeGreaterThan(0); // player.critChance=1 が乗れば必ずクリティカルする
+
+    randomSpy.mockRestore();
   });
 });
