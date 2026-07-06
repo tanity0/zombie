@@ -2,6 +2,8 @@
 
 This file is the handoff log for Codex, Claude Code, and other agents working
 on the zombie game. Append a new entry after each meaningful change.
+エントリ見出しの末尾にpush時刻を【YYYY-MM-DD HH:MM JST】で打刻すること
+(`TZ=Asia/Tokyo date` で取得・v0.25.1477からのルール)。
 
 ## Environment
 - Repository: `/Users/tanity/zombie`
@@ -9,6 +11,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Dev server: `npm run dev`
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
+
+## v0.25.1477 — 恒久ルール: push打刻(社長指示・設計チャットFable)【2026-07-06 19:47 JST】
+- 社長指示「Sonnet側含めて、開発時にpushしたらpushした時刻を打刻する」を規律化:
+  DEVELOPMENT_LOGの各エントリ見出し末尾に**【YYYY-MM-DD HH:MM JST】**を打刻。
+  時刻は自分の時計でなくpush直前に `TZ=Asia/Tokyo date` で取得(CLAUDE.mdと本ファイル冒頭に明記)。
+  本エントリが打刻の第1号。
+- 検証: doc+version変更のみ(コード不変)。
 
 ## v0.25.1476 — ノックバック跳ねの誤爆バグ修正+近接スイング微調整+KILL/カウンタースロー延長(社長指示・実装チャット)
 - **バグ報告**「ノックバックしてないときも跳ねてない?ノックバックにCDがあったはず」を調査。

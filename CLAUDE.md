@@ -249,6 +249,9 @@ checks by cost — do NOT lump them together.
 - After each agent handoff or meaningful change, append a short entry to
   `DEVELOPMENT_LOG.md` with version, summary, files changed, verification,
   and next handoff notes.
+- **push打刻(社長指示v0.25.1477・両チャット+Codex共通)**: DEVELOPMENT_LOGの各エントリ見出しの
+  末尾に**push時刻を【YYYY-MM-DD HH:MM JST】形式で打刻**する。時刻は自分の時計を信用せず
+  push直前に `TZ=Asia/Tokyo date "+%Y-%m-%d %H:%M"` で取得した値を使う。
 - Claude Code may not be able to access the user's Google Drive materials.
   When new BGM/SE files are provided in Drive, have Codex copy them into
   `public/audio/` first, then commit/push so other agents can use them.
