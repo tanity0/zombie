@@ -1008,10 +1008,14 @@ export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中�
 // カウンターはスロー(MELEE_FINISH_SLOW_MS/HOLD_MS)と同期(共通の寄りパンチカーブを流用)。
 // 衝撃時の寄りパンチズーム。社長指示で1.5倍(KILL=近接フィニッシュの「Kill!」演出時のみ。
 // 銃/接触/爆発キルや非フィニッシュの通常近接キルはズームしない=社長指示で撤回・v0.25.1466)。
-// KILLだけ社長指示で1.2倍・0.5秒へ変更(カウンターは1.5倍のまま・スローと同期のまま不変)。
-export const MELEE_FINISH_ZOOM_MAG = 0.2;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.2倍=+20%)
+// KILLだけ社長指示で1.2倍・0.5秒へ変更→倍率はやはり1.5倍へ戻す(社長指示・v0.25.1495。
+// 秒数(0.5秒/holdは不変)。代わりにズーム効果自体へ連発防止CDを追加(下記CD_MS)。
+export const MELEE_FINISH_ZOOM_MAG = 0.5;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.5倍=+50%)
 export const MELEE_FINISH_ZOOM_MS = 500;   // KILLだけ専用のズーム長さ(社長指示・スローとは非連動)
 export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを保持する長さ(比率80%はスローと同じ)
+// KILLズームだけの連発防止CD(社長指示・v0.25.1495)。連続キル時、スロー/揺れ/ヒットストップは
+// 毎回発生するが、寄りズームだけはこのCD内なら発動しない(酔い防止・スロー等の演出は不変)。
+export const MELEE_FINISH_ZOOM_CD_MS = 5000;
 export const COUNTER_ZOOM_MAG = 0.5;       // カウンター成立の寄り(社長指示で1.5倍=+50%)
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
@@ -1841,6 +1845,8 @@ interface GameState {
   zoomMag: number;
   zoomStart: number;  // ズーム開始時刻(hold区間の起点。timeSlowStartと同じ役割)。
   zoomHoldMs: number; // 最大ズームを保持する長さ(既定0=従来どおり開始直後から1.0へランプ)。
+  // KILLズームだけの連発防止CD(社長指示)。スロー/揺れには適用しない=ズームだけ間引く。
+  lastKillZoomAt: number;
   // Whip hurricane: a fixed suction point at the whip tip. While active, nearby
   // enemies are pulled toward (rootX,rootY) each tick. null when inactive.
   hurricane: {
@@ -2361,6 +2367,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   zoomMag: 0,
   zoomStart: 0,
   zoomHoldMs: 0,
+  lastKillZoomAt: 0,
   danceTapLog: [],
   hurricane: null,
   summons: [],
@@ -8645,6 +8652,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         zoomMag: 0,
         zoomStart: 0,
         zoomHoldMs: 0,
+        lastKillZoomAt: 0,
         hurricane: null,
         summons: [],
         rescueSurvivors: [],
@@ -8705,7 +8713,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 近接フィニッシュ: 寄りは即。スローも即開始(ストップ中はループ早期returnで凍結 → 明けてから
     // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
     // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
-    get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS); // 即・寄り(KILL専用の長さ・社長指示)
+    // ズームだけ連発防止CD(社長指示・v0.25.1495): CD内の連続キルはスロー/揺れは毎回出すが
+    // ズームだけ間引く(酔い防止)。
+    const now = Date.now();
+    if (now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS); // 即・寄り(KILL専用の長さ・社長指示)
+      set({ lastKillZoomAt: now });
+    }
     get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・スロー(強め→保持→等速へランプ)
     setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
   },

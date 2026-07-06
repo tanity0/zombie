@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1495 — KILLズーム倍率を1.5倍へ復帰+ズームだけ連発防止CD5秒(社長指示・実装チャット)【2026-07-06 23:36 JST】
+- 社長指示「キルの倍率やはり1.5倍で、ズーム効果だけCD5秒で」を受けて実装。
+- `src/store/gameStore.ts`: `MELEE_FINISH_ZOOM_MAG`を`0.2`(1.2倍)→`0.5`(1.5倍)へ復帰
+  (v0.25.1490時点の値。長さ`MELEE_FINISH_ZOOM_MS=500`/`HOLD_MS=400`は今回の指示に含まれないため
+  不変)。新規`MELEE_FINISH_ZOOM_CD_MS=5000`+ストア新規フィールド`lastKillZoomAt`を追加し、
+  `triggerFinishImpact`内でKILLズームの発動だけをCDでゲート(CD内の連続キルはスロー/揺れ/
+  ヒットストップは毎回どおり発生・ズームだけ間引く)。`resetGame`でCD状態もリセット。
+  カウンター(`COUNTER_ZOOM_MAG`)側は無関係のため不変。
+- 負荷スコア: 1/10(タイムスタンプ比較1本追加のみ。描画コスト増減なし)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (38ファイル/461テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(演出のみの調整・ゲーム性への影響なし)。
+
 ## v0.25.1494 — M13(宿敵/ネームド)を実装(社長指示・実装チャット)【2026-07-06 22:37 JST】
 - 社長指示「PACING_PUZZLE.md §5.14〜§5.16(M13/M15/M16)を実装」の残り、M13(§5.14)を実装。
   M15/M16はv0.25.1493で先行済み。
