@@ -10,6 +10,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1459 — M8改実装: スプライト表示の素直化(§5.9・実装チャット)
+- 社長指示「原本からM8改を実行 — 標準LANCZOS縮小のみ・後処理禁止・ストライカーは現状維持」。
+- (a) 焼き: `art_src/originals/` から3クラスを**標準LANCZOSのみ**(シャープ化/NEAREST再サンプル/
+  格子推定なし)で128×108規格(figH→105・右端x106・足元y107)へ:
+  - marksman/walk-sheet → player-magnum-walk-0..4(idle=2コマ目兼任)
+  - heavy-gunner/walk-sheet+idle → player-shotgun-walk-0..4+idle
+  - scavenger/walk-sheet+stop → player-striker-walk-0..4+idle(stopは左上角の不透明ノイズのみ
+    最大連結成分で除去=キャラ本体は無加工)
+  - 全18ファイル 128×108/x106/y107 検証OK。ストライカー(player-scavenger)は**不変**。
+- (b) 実行時: `pixiTextures.ts` にソフト系3クラス判定(`isSoftClassSprite`)を追加し、該当テクスチャのみ
+  `scaleMode:'linear'`+`autoGenerateMipmaps=true`。**`?spritesmooth=0`で従来nearestへ即戻し**。
+  ストライカー/軍人/武器アイコン等の本物ドット素材はnearestのまま(§5.9-3)。
+- キャッシュ: 同名差し替えのため `ASSET_VERSION` `'21'→'22'`。
+- PACING_PUZZLE.md のM8ステータスを「実装済み v0.25.1459」へ更新。
+- 負荷スコア: **1/10**(テクスチャ差し替え+mipmap生成は初回ロード時のみ。VRAM+約33%/対象18枚のみ)。
+- 検証: lint/typecheck/test(434 pass, 1 skip)/build全通過。実機A/B: 通常表示+`?zoomlock=1`、
+  ダメなら`?spritesmooth=0`で即比較可。
+- 自己点検: 憲法第4条・第5条に抵触なし(表示のみ・判定/挙動不変)。
+
 ## v0.25.1458 — 近接スイングに時間イージング(社長指示・実装チャット)
 - 社長「歩きのモーションみたいに、速度をゆっくり→早く→ゆっくりに」→ スイングの進行kt に
   smoothstep(`meleeSwingEase = t²(3-2t)`)を適用(本体drawPlayer+分身syncShadowClone両方)。

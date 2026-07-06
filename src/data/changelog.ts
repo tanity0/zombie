@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1459',
+    items: [
+      'キャラ3クラス(マークスマン/ヘビーガンナー/スカベンジャー)の表示を「元絵そのまま」の素直な描画に刷新(不自然な加工を全廃・なめらか表示)。ストライカーは従来どおり。',
+    ],
+  },
+  {
     version: '0.25.1458',
     items: [
       '近接攻撃の振りに緩急を追加(ゆっくり構え→鋭く振り抜き→ゆったり残光)。',

@@ -19,6 +19,21 @@ const textures = new Map<string, Texture>();
 let ready = false;
 let loading: Promise<void> | null = null;
 
+// M8改(PACING_PUZZLE §5.9・社長指示v0.25.1451「素直に表示」): ソフト系3クラス
+// (マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker)は「ドット絵風の
+// 高解像度イラスト」であり本物の格子が無い。nearest縮小はカリカリの偽ドット/不気味化を生むため、
+// この3クラスのみ実行時 linear+ミップマップで「元絵そのままの均一な描画」にする。
+// ストライカー(player-scavenger=自然格子が実在しv17格子焼きが成功)・軍人・武器アイコン等の
+// 本物ドット素材は nearest のまま。`?spritesmooth=0` で従来nearestへ即戻し(実機A/B用)。
+const SPRITE_SMOOTH: boolean = (() => {
+  if (typeof window === 'undefined') return true;
+  const p = new URLSearchParams(window.location.search).get('spritesmooth');
+  return !(p === '0' || p === 'off' || p === 'false');
+})();
+const SOFT_CLASS_PREFIXES = ['player-magnum-', 'player-shotgun-', 'player-striker-'];
+const isSoftClassSprite = (name: string): boolean =>
+  SPRITE_SMOOTH && SOFT_CLASS_PREFIXES.some((pre) => name.startsWith(pre));
+
 // Load the atlas + player image and slice every named frame. Idempotent: the
 // first caller kicks off the load, later callers await the same promise.
 export const ensureTextures = (): Promise<void> => {
@@ -256,7 +271,8 @@ export const ensureTextures = (): Promise<void> => {
       ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
         .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
 
-      ...playerWalkNames.map((name) => ({ name, scaleMode: 'nearest' as const })),
+      // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
+      ...playerWalkNames.map((name) => ({ name, scaleMode: (isSoftClassSprite(name) ? 'linear' : 'nearest') as 'linear' | 'nearest' })),
 
       // 裏ボス(深層域の隠しボス)。詳細イラスト調なので linear で滑らかに縮小。
       // 名前=EnemyType と一致させ、drawEnemy の getTexture(e.type) で解決する。
@@ -329,6 +345,8 @@ export const ensureTextures = (): Promise<void> => {
         const tex = await loadOne(name);
         if (!tex) return;
         if (scaleMode) tex.source.scaleMode = scaleMode;
+        // M8改(§5.9): ソフト系3クラスはミップマップONで縮小を均一に(linearと併用)。
+        if (isSoftClassSprite(name)) tex.source.autoGenerateMipmaps = true;
         textures.set(name, tex);
       }),
     ]);
