@@ -10,6 +10,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1469 — M10/M11仕様化: バランス走査+性能調査(オンデマンド専用・社長採用・設計チャットFable)
+- **M10(§5.11)**: ビルド(クラス×サブ×スキル)注入ボットランで壊れた組み合わせ・抜け穴を自動検出。
+  走査3段(単体→ペア→ランダムN)/外れ値・無被弾R7・ボス即殺・資源無限増殖の自動フラグ/
+  自動ナーフはしない(裁定は社長)。
+- **M11(§5.12)**: a=ヘッドレスの1tick処理時間計測(ロジック性能の網・FPSではない)/
+  b=実機FPS観戦ボット(`?bot=1`でボットが自動プレイ・FPSヒストグラムをリザルトに出力)。
+- **両方ともオンデマンド専用(社長指示「毎回やらなくていい」)**: `npm run balance-sweep`・
+  `--perf`フラグ・`?bot=1`を使った時だけ。nightly・毎pushのCIには載せない
+  (M9のデバッグ網=不変条件チェックは従来どおり毎push/nightly)。
+- 前提はM9完成後。検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1468 — ナイフの振りもう少しスロー+KILL/カウンターのスロー延長(社長指示・実装チャット)
 - 社長「ナイフの振りもう少しだけゆっくり見せたい」「あとKILLとカウンターの時もう少しだけスローを長く」。
 - `PLAYER_MELEE_SWING_MS`(pixiScene.ts・視覚のみ)を`220→250`にさらに増加(200→220→250)。
