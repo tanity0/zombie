@@ -10,6 +10,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1472 — メモ: デバッグボット系(M9〜M12)が使い物にならなくなる場面(社長依頼・設計チャットFable)
+- ENGINEERING_NOTES.mdに採録(実体は前コミット901cb2c・version衝突でログとbumpが漏れたため本コミットで補完):
+  最悪は「動き続けて古い仕様で合格を出す」静かな偽陰性。①不変条件の仕様変更は同コミットで
+  ツール更新(憲法テストと同じ規律) ②ボットが知らない新操作は網の外 ③ボットの腕で扱えない
+  メカは偽陰性 ④ダメージ式変更の取り込み忘れ ⑤リバランス後は経年比較不能 ⑥tick構造変更で
+  M11基準リセット・実機FPSは同一機比較のみ ⑦屋内等は前提外。
+- 検証: doc+version変更のみ(コード不変)。
+
 ## v0.25.1471 — §5.9-追補2実装: 4クラス全員を「軍人方式」へ(社長指示・実装チャット)
 - 社長指示「PACING_PUZZLE.md §5.9-追補2 を実装 — 4クラス全員を軍人方式へ: 原本から標準LANCZOSで
   表示実寸×1へ縮め切り+nearest等倍表示(×2+linear路線は置き換え・後処理禁止・ASSET_VERSION更新)」。
