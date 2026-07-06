@@ -12,6 +12,37 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1494 — M13(宿敵/ネームド)を実装(社長指示・実装チャット)【2026-07-06 22:37 JST】
+- 社長指示「PACING_PUZZLE.md §5.14〜§5.16(M13/M15/M16)を実装」の残り、M13(§5.14)を実装。
+  M15/M16はv0.25.1493で先行済み。
+- **`src/utils/namedEnemy.ts`(新規・純関数)**: ギリシャ神話怪物32名テーブル・HP/与ダメ×2・
+  サイズ×1.5・各ラン60%抽選・専用金tint(`0xffd700`)・昇格対象の除外判定(城ボス/死神/裏ボス4体/
+  紅き月個体/型不明)・昇格決定ロジック(自分の宿敵に殺された場合は強化せず因縁+1のみ、
+  それ以外は除外チェック後に型を上書き)。単体テスト8件で除外・抽選境界・優先順位を全数検証。
+- **`src/store/gameStore.ts`**: `damagePlayer`に`damagerType`/`damagerWasNamed`を新設(既存の
+  `source`は表示専用の日本語文字列で型を復元できないため)。死亡時に昇格判定し`namedFoe`メタを
+  localStorageへ永続化。討伐時処理(`resolveNamedFoeDefeat`: メタ消去+ゴールド150g+トレジャー
+  確定1個+「REVENGE!」演出)を近接キル・通常ダメージキルの両経路から呼び出し。`resetGame`冒頭で
+  前ラン未決着分の持ち越し(因縁+1)を確定してから次ランの抽選を実施。`NAMED_ENEMY_ENABLED`
+  (`?named=0`)で昇格判定・ラン抽選を両方停止。
+- **`src/utils/directorTick.ts`**: 特別枠と同じ湧き規律(急コマ限定・同時1・3秒CD・被弾後1.5秒
+  ガード)でネームド湧きを注入。オフスクリーン回収・上限カリングからも保護。AIディレクター
+  診断ビットに`named`を追加(`useGameLoop.ts`/`playtestDriver.ts`は新規refの配線のみ)。
+- **`src/pixi/pixiScene.ts`**: 本体を金tintで染め(レアtintより優先)、頭上に名前を常時表示
+  (同時1体のみ・位置追従のみで毎フレーム再生成しない)。敵ビュープールの既存mark-and-sweepに
+  名前ラベルの破棄を追加。
+- **`src/components/GameOverScreen.tsx`**: リザルトに「宿敵 {名前}: 討伐/取り逃がし」の1行
+  (出現しなかったランは非表示)。
+- **`src/components/DirectorResult.tsx`/`src/utils/aiDirectorDebug.ts`**: 診断グラフに宿敵バンド
+  (金色)+凡例を追加(既存のイベント帯機構に1色足すだけ)。
+- 簡略化(明記): 討伐時刻の離散マーカーは実装せず帯のみ。投射・爆発経由でネームド本人に倒された
+  場合の`lastDamagerWasNamed`伝播は接触キル経路のみ対応(稀なケースとして許容)。
+- 負荷スコア: 2/10(仕様書どおり。倍率違いの敵1体+Text1個+バナー。強glow不使用)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (38ファイル/461テスト+2スキップ)。
+- 憲法第4条・第5条: 該当なし(急コマ限定湧き=緩コマ/ボス中には出さない設計=第5条を満たす。
+  湧き規律は特別枠と同じ扱いのため初心者ゾーン不可侵にも抵触なし)。
+
 ## v0.25.1493 — M15(レアtint・体格拡大廃止)+M16(パンプキンジャンプ350クランプ)を実装(社長指示・実装チャット)【2026-07-06 22:09 JST】
 - 社長指示「PACING_PUZZLE.md §5.14〜§5.16(M13/M15/M16)を実装(v0.25.1488時点確定)」を受けて着手。
   独立して完結するM15・M16から実装(M13=ネームドは調査中・別途続報)。

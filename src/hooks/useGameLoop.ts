@@ -755,6 +755,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // バッチM4: 湧きCDのタイムスタンプ(gameTime基準)。0初期化=ラン開始直後は「経過時間0」からCD判定
   // が始まる(基本CD1秒待ってから1体目、の仕様と自然に一致)。
   const puzzleCdRef = useRef<{ lastBaseSpawnAt: number; lastNuisanceSpawnAt: number; lastSpecialSpawnAt: number }>({ lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 });
+  // §5.14 M13: 宿敵(ネームド)投入の独立CD(他の枠と競合しないよう専用)。
+  const namedFoeRef = useRef<{ lastAttemptAt: number }>({ lastAttemptAt: 0 });
   // バッチM2: 被弾検知専用(pressureHitRef/M1と同じ責務分離パターン。AIディレクター本体とは別管理)。
   const puzzleHitRef = useRef<{ prevHp: number; lastHitAt: number }>({ prevHp: -1, lastHitAt: -1e9 });
   // バッチ2(計測): フェーズ開始時点の種別キル累計スナップショット(差分用)。
@@ -6597,7 +6599,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ボス後に続きから再開する。§2「ボス中は査定・台本を停止、ボス後再開」)。
         // (実装: src/utils/directorTick.ts の runKomaBoardMaintenance へ移設。挙動は不変)。
         runKomaBoardMaintenance(
-          { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef },
+          { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef },
           { puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc }
         );
 

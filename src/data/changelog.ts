@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1494',
+    items: [
+      '新要素「宿敵」: プレイヤーを倒した敵が次のランから強化されて再登場(倒すとゴールドとお宝を獲得)。',
+    ],
+  },
+  {
     version: '0.25.1492',
     items: [
       'レア(色付き)の敵、体が大きくならないよう変更。代わりに体の色で見分けやすく。',

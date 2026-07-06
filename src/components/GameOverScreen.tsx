@@ -83,6 +83,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const hadEquipment = useGameStore(s => Object.values(s.player.equipment).some(Boolean));
   // 死因(直近の被弾原因)。
   const deathCause = useGameStore(s => s.lastDamageSource);
+  // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の登場結果(このランで出現した場合のみ表示)。
+  const namedFoeResult = useGameStore(s => s.namedFoeResult);
   // クリア時の「装備1個持ち帰り」選択。装備ロードアウト(静的画面なので安定参照)。
   const carriedLoadout = useGameStore(s => s.player.equipment);
   const takeHomeEquipment = useGameStore(s => s.takeHomeEquipment);
@@ -200,6 +202,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           {!isBenchmark && !won && !withdraw && deathCause && (
             <p className="mt-2 text-[12px] text-white/70">
               死因：<span className="font-semibold text-rose-200">{deathCause}</span>
+            </p>
+          )}
+          {!isBenchmark && namedFoeResult && (
+            <p className="mt-1 text-[12px] font-semibold text-amber-300">
+              宿敵 {namedFoeResult.name}：{namedFoeResult.defeated ? '討伐' : '取り逃がし'}
             </p>
           )}
         </div>

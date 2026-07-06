@@ -18,6 +18,7 @@ const EVENT_META: { bit: number; label: string; color: string }[] = [
   { bit: DIRECTOR_EVENT_BIT.screamer, label: '叫喚', color: '#facc15' },
   { bit: DIRECTOR_EVENT_BIT.reaper, label: 'リーパー', color: '#c084fc' },
   { bit: DIRECTOR_EVENT_BIT.castleBoss, label: '城ボス', color: '#22d3ee' },
+  { bit: DIRECTOR_EVENT_BIT.named, label: '宿敵', color: '#ffd700' }, // PACING_PUZZLE.md §5.14 M13
 ];
 
 // バッチ3.5-B(盤面在庫): debtは0-1に収まらないスカラーなので、表示用にこの値で正規化する

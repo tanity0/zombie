@@ -25,6 +25,9 @@ import {
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
+import {
+  type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
+} from '../utils/namedEnemy';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -76,6 +79,9 @@ const WEAKCRIT_ENABLED = typeof window === 'undefined' || new URLSearchParams(wi
 // デバッグボット実測(v0.25.1487)で採用=350。ハンターの視界サークルクランプと同じ式を移植。
 const PUMPKIN_JUMP_CAP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('pjcap') !== '0';
 export const PUMPKIN_JUMP_MAX_DIST = 350;
+// PACING_PUZZLE.md §5.14 M13(宿敵/ネームド・既定ON): ?named=0で無効化(昇格判定・ラン抽選とも停止。
+// directorTick.ts側の湧き注入もnamedFoeRunEligibleが常にfalseになるため自動的に湧かなくなる)。
+export const NAMED_ENEMY_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('named') !== '0';
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -425,6 +431,24 @@ const loadNumber = (key: string, def: number): number => {
 };
 const saveNumber = (key: string, n: number): void => {
   try { localStorage.setItem(key, String(n)); } catch { /* ignore */ }
+};
+// PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)のメタ保存({型,名前,因縁回数}の1体分のみ・
+// 新たに別の敵に殺されたら上書き)。goldBalance等と同じtry/catch guarded JSON永続化パターン。
+const NAMED_FOE_KEY = 'zombie:namedFoe';
+const loadNamedFoe = (): NamedFoeMeta | null => {
+  try {
+    const r = localStorage.getItem(NAMED_FOE_KEY);
+    if (!r) return null;
+    const o = JSON.parse(r);
+    if (!o || typeof o !== 'object' || typeof o.type !== 'string' || typeof o.name !== 'string') return null;
+    return { type: o.type, name: o.name, grudge: typeof o.grudge === 'number' ? o.grudge : 0 };
+  } catch { return null; }
+};
+const saveNamedFoe = (m: NamedFoeMeta | null): void => {
+  try {
+    if (m) localStorage.setItem(NAMED_FOE_KEY, JSON.stringify(m));
+    else localStorage.removeItem(NAMED_FOE_KEY);
+  } catch { /* ignore */ }
 };
 
 // Light knockback applied to a normal enemy each time a bullet connects.
@@ -1387,6 +1411,33 @@ const screamerBuffCutOnKillPatch = (
     ? { screamerBuffUntil: gameTime }
     : {};
 
+// PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)を倒した時の決着処理(討伐→REVENGE演出+報酬+成仏)。
+// 近接(grantMeleeKillRewards)・銃/接触/爆発(damageEnemy)の両キル経路から呼ぶ共通ヘルパー。
+const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: number, y: number): void => {
+  const named = killedEnemies.find(e => e.isNamed);
+  const st = get();
+  if (!named || !st.namedFoe) return;
+  saveNamedFoe(null); // 成仏=次に別の敵に殺されるまで宿敵不在
+  useGameStore.setState({
+    namedFoe: null,
+    namedFoeResult: { name: st.namedFoe.name, defeated: true },
+    namedFoeRunResolved: true,
+  });
+  get().addGold(NAMED_TREASURE_GOLD);
+  // トレジャー確定1個(通常のtreasureDropChance抽選を経由せず直接付与)。
+  get().addPickup({
+    id: `pickup-treasure-named-${named.id}`,
+    x: x - 8 + 12, y: y - 8 - 12,
+    type: 'treasure',
+    value: treasureValueForRank(named.difficultyRank),
+    variant: treasureVariantForValue(treasureValueForRank(named.difficultyRank)),
+    worldDrop: true,
+  });
+  get().spawnCallout(x, y - 40, 'REVENGE!', '#ffd700', { bg: 0x7a5a00, scale: 1.6 });
+  get().spawnRing(x, y, 14, 220, 'rgba(255,215,0,0.85)', 5, 560);
+  get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
+};
+
 // Shared per-kill rewards for melee-grade kills (the release counter swing and
 // the katana strikes). Mirrors what the counter has always granted: XP pickup,
 // enemy currency, ammo scavenge for the active gun family, boss weapon crates,
@@ -1410,6 +1461,7 @@ const grantMeleeKillRewards = (
     recordKill(enemy.type, 'melee', get().gameTime);
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
+    if (enemy.isNamed) resolveNamedFoeDefeat(get, [enemy], ex, ey); // §5.14 M13: 宿敵討伐
     const xp = finisher
       ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
       : enemy.experienceValue;
@@ -1823,7 +1875,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number) => boolean; // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean) => boolean; // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -1978,6 +2030,15 @@ interface GameState {
   goldBalance: number;                                  // 永続ゴールド残高(ガチャ通貨。in-run strap とは別)
   addGold: (amount: number) => void;                    // ラン結果のゴールドを加算(永続)
   spendGold: (amount: number) => boolean;               // ガチャ消費。足りれば true
+  // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)。namedFoeは永続メタ(1体分のみ)、残りはラン内限定。
+  namedFoe: NamedFoeMeta | null;                         // 現在の宿敵(型/名前/因縁回数)。null=まだ誰も昇格していない
+  namedFoeRunEligible: boolean;                          // このランで湧かせて良いか(resetGameで60%抽選・1回だけ)
+  namedFoeSpawnedThisRun: boolean;                       // このランで既に湧かせたか(同一ラン内は1体だけ)
+  namedFoeResult: { name: string; defeated: boolean } | null; // リザルト表示用(このランで宿敵が登場したかどうか)
+  namedFoeRunResolved: boolean;                          // このランの宿敵の決着(討伐/自分を殺した/新規上書き)が
+                                                          // 既についたか。falseのまま次ランへ行くと持ち越し(因縁+1)
+  lastDamagerType: EnemyType | null;                     // 直近の被弾元の型(宿敵昇格判定用)
+  lastDamagerWasNamed: boolean;                          // 直近の被弾元が現在の宿敵インスタンスそのものだったか
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
@@ -2213,6 +2274,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   gachaDupeCounts: loadDupeCounts(),
   gachaPitySinceSuper: loadNumber(GACHA_PITY_KEY, 0),
   goldBalance: loadNumber(GOLD_BALANCE_KEY, 0),
+  namedFoe: loadNamedFoe(),
+  namedFoeRunEligible: false, // 実際の抽選はresetGame開始時(初回マウント時点ではまだラン開始前)
+  namedFoeSpawnedThisRun: false,
+  namedFoeResult: null,
+  namedFoeRunResolved: false,
+  lastDamagerType: null,
+  lastDamagerWasNamed: false,
   indoorMode: false,
   labDoors: [],
   labButtons: [],
@@ -4423,7 +4491,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnRing(player.wireAnchorX, player.wireAnchorY, 8, 30, 'rgba(96,165,250,0.8)', 2, 260);
   },
 
-  damagePlayer: (rawAmount, source, fromX, fromY) => {
+  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed) => {
     const { player } = get();
 
     if (player.invulnerable) return false;
@@ -4473,6 +4541,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameStats: amount > 0 ? { ...state.gameStats, damageTaken: state.gameStats.damageTaken + amount } : state.gameStats,
         // 死因表示: 実ダメージ(amount>0)かつ source 指定時に更新。
         lastDamageSource: (amount > 0 && source) ? source : state.lastDamageSource,
+        // §5.14 M13: 宿敵昇格判定用(実ダメージかつ型指定時のみ更新。型不明の被弾では前回値を保持しない
+        // =昇格除外(未指定=除外)の判定を毎回の被弾元で正しくやり直すため、実ダメージ時は必ず上書きする)。
+        lastDamagerType: amount > 0 ? (damagerType ?? null) : state.lastDamagerType,
+        lastDamagerWasNamed: amount > 0 ? !!damagerWasNamed : state.lastDamagerWasNamed,
         // Real damage kicks off a screen shake.
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
@@ -4537,6 +4609,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     const died = get().player.health <= 0;
     // 死亡で装備は全ロスト(持ち込み含む)。持ち帰り永続も破棄する。
     if (died) saveCarriedEquip(null);
+    // PACING_PUZZLE.md §5.14 M13: 死亡時、殺した敵の型を宿敵へ昇格判定(城ボス/死神/裏ボス/
+    // 紅き月個体/型不明は除外。自分の宿敵インスタンスに殺された場合は強化せず因縁+1のみ)。
+    if (died && NAMED_ENEMY_ENABLED) {
+      const st = get();
+      const outcome = decidePromotionOnDeath(st.lastDamagerType, st.lastDamagerWasNamed, st.redNight?.phase === 'active');
+      if (outcome.kind === 'grudge' && st.namedFoe) {
+        const next: NamedFoeMeta = { ...st.namedFoe, grudge: st.namedFoe.grudge + 1 };
+        saveNamedFoe(next);
+        set({ namedFoe: next, namedFoeRunResolved: true });
+      } else if (outcome.kind === 'overwrite') {
+        const next: NamedFoeMeta = { type: outcome.type, name: outcome.name, grudge: 0 };
+        saveNamedFoe(next);
+        set({ namedFoe: next, namedFoeRunResolved: true });
+      }
+    }
     return died;
   },
 
@@ -5184,6 +5271,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
+    let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -5211,6 +5299,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (newHealth === 0) {
         killed = true;
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
+        if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
         // PACING_REDESIGN.mdバッチ2(計測): ガン/接触/爆発キルを種別+スタイル集計へ記録(挙動には影響しない)。
         // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
@@ -5262,6 +5351,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         const p = reaperDefeated as { x: number; y: number };
         get().spawnCallout(p.x, p.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
       }
+    }
+
+    // §5.14 M13: 宿敵を銃/接触/爆発で討伐(REVENGE演出+報酬+成仏)。
+    if (namedFoeKilled) {
+      const ne = namedFoeKilled as Enemy;
+      resolveNamedFoeDefeat(get, [ne], ne.x + ne.width / 2, ne.y + ne.height / 2);
     }
 
     return killed;
@@ -8200,6 +8295,23 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     const state = get();
+    // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
+    // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
+    // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
+    if (state.namedFoeSpawnedThisRun && !state.namedFoeRunResolved && state.namedFoe) {
+      const carried: NamedFoeMeta = { ...state.namedFoe, grudge: state.namedFoe.grudge + 1 };
+      saveNamedFoe(carried);
+      set({ namedFoe: carried });
+    }
+    // 次ランの宿敵抽選(社長指示: 各ラン60%)+ラン内限定フィールドのリセット。
+    set({
+      namedFoeRunEligible: NAMED_ENEMY_ENABLED && rollNamedSpawnThisRun(),
+      namedFoeSpawnedThisRun: false,
+      namedFoeResult: null,
+      namedFoeRunResolved: false,
+      lastDamagerType: null,
+      lastDamagerWasNamed: false,
+    });
     state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)

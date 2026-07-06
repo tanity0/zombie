@@ -58,6 +58,7 @@ export const createPlaytestRefs = (): PlaytestRefs => {
       puzzleCdRef: { current: { lastBaseSpawnAt: 0, lastNuisanceSpawnAt: 0, lastSpecialSpawnAt: 0 } },
       puzzleSoftenRef: { current: createSoftenState() },
       directorRef: directorShared,
+      namedFoeRef: { current: { lastAttemptAt: 0 } },
     },
     director: {
       directorRef: directorShared,

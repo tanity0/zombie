@@ -46,6 +46,9 @@ import {
 } from './scriptPuzzle';
 import { setPuzzleDebug, getPuzzleDebug } from './puzzleState';
 import { playSfx } from '../audio/audioManager';
+import {
+  NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, NAMED_SPAWN_CD_MS, NAMED_POST_HIT_GUARD_MS,
+} from './namedEnemy';
 
 // useRef() が返す MutableRefObject<T> と構造的に同じ({ current: T })。React をimportしないための
 // 最小定義(renderer/React-agnosticの規約)。呼び出し側(useGameLoop.ts)の useRef(...) をそのまま渡せる。
@@ -160,6 +163,8 @@ export interface KomaMaintenanceRefs {
   puzzleCdRef: Ref<{ lastBaseSpawnAt: number; lastNuisanceSpawnAt: number; lastSpecialSpawnAt: number }>;
   puzzleSoftenRef: Ref<SoftenState>;
   directorRef: Ref<{ state: DirectorState }>;
+  // §5.14 M13: 宿敵(ネームド)投入の独立CD(他の枠と競合しないよう専用)。
+  namedFoeRef: Ref<{ lastAttemptAt: number }>;
 }
 
 export interface KomaMaintenanceCtx {
@@ -184,7 +189,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     return;
   }
   const { gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc } = ctx;
-  const { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef } = refs;
+  const { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef } = refs;
 
   const koma = puzzleKomaRef.current;
   // 被弾検知(pressureHitRef/M1と同じ責務分離の専用ref)。
@@ -353,6 +358,37 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     } else if (decision.slot === 'special') puzzleCdRef.current.lastSpecialSpawnAt = gameTime;
   }
 
+  // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の投入。ラン通算1体だけの一発抽選なので
+  // decideNextSpawn(継続補充モデル)の枠には乗せず、特別枠と同じ規律(同時1・3秒CD・被弾直後
+  // 1.5秒ガード=§0.5)だけを踏襲した独立チェックにする(急コマ=通常/ピークのみ)。
+  {
+    const nfState = useGameStore.getState();
+    const nf = nfState.namedFoe;
+    if (
+      inScriptKoma && nf && nfState.namedFoeRunEligible && !nfState.namedFoeSpawnedThisRun &&
+      msSinceLastHit >= NAMED_POST_HIT_GUARD_MS &&
+      !puzzleEnemiesNow.some(e => e.isNamed) &&
+      gameTime - namedFoeRef.current.lastAttemptAt >= NAMED_SPAWN_CD_MS
+    ) {
+      const namedEnemy = generateEnemy(gameTime, player, spawnBounds, nf.type, player.lastDirection, spawnViewOffsetY, snowTheme, spawnEsc);
+      namedEnemy.isNamed = true;
+      namedEnemy.health = Math.round(namedEnemy.health * NAMED_HP_MULT);
+      namedEnemy.maxHealth = Math.round(namedEnemy.maxHealth * NAMED_HP_MULT);
+      namedEnemy.damage = Math.round(namedEnemy.damage * NAMED_DMG_MULT);
+      namedEnemy.width = Math.round(namedEnemy.width * NAMED_SIZE_MULT);
+      namedEnemy.height = Math.round(namedEnemy.height * NAMED_SIZE_MULT);
+      useGameStore.getState().addEnemy(namedEnemy);
+      useGameStore.setState({
+        namedFoeSpawnedThisRun: true,
+        namedFoeResult: { name: nf.name, defeated: false },
+        eventBannerText: `宿敵 現る —— ${nf.name}`,
+        eventBannerUntil: gameTime + EVENT_BANNER_MS,
+      });
+      playSfx('gate-clear'); // 専用SEは叩き台として既存の強襲ジングルを流用(社長の実素材待ち)
+      namedFoeRef.current.lastAttemptAt = gameTime;
+    }
+  }
+
   setPuzzleDebug({
     rank, boardTarget: totalTarget, cap, tightened: tightenedNow, softened: softenedNow,
     komaKind: koma.kind,
@@ -413,6 +449,9 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     if (enemy.type === 'reaper' && enemy.reaperChaser) return enemy;
     // 囲い系イベントの敵は円内に留めるため距離リサイクル対象外(画面外送りしない)。
     if (enemy.fromEvent) return enemy;
+    // §5.14 M13: 宿敵(ネームド)は距離リサイクル対象外(倒すかラン終了まで持ち越すかの2択に
+    // 保ち、勝手に湧き直して型が変わったように見えるのを防ぐ)。
+    if (enemy.isNamed) return enemy;
     // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
     // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
     // ただしラボ(研究所スキン)の通常湧き休眠個体は対象にする: 届かない休眠個体がその場に残り続けて
@@ -518,6 +557,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     const isProtected = (e: typeof currentEnemiesForCap[number]): boolean =>
       !!e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
       !!e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
+      !!e.isNamed || // §5.14 M13: 宿敵は上限カリング対象外(倒すかラン終了持ち越しの2択を保つ)
       e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
       e.type === 'lab-zombie-3' || // 研究所Lv3はパンプキン相当のボス(着地爆発)。ランダム湧き個体がcap超過で消されないよう保護
       isHiddenBoss(e.type) || // 裏ボスは専用コントローラ管理(帰巣/回復)。カリングすると討伐誤検出で「勝手に死ぬ」
@@ -652,6 +692,7 @@ export function runDirectorSignalStep(refs: DirectorSignalRefs, ctx: DirectorSig
       if (e.type === 'hunter') events |= DIRECTOR_EVENT_BIT.hunter;
       else if (e.type === 'screamer') events |= DIRECTOR_EVENT_BIT.screamer;
       else if (e.type === 'reaper') events |= DIRECTOR_EVENT_BIT.reaper;
+      if (e.isNamed) events |= DIRECTOR_EVENT_BIT.named; // §5.14 M13: 宿敵出現中(他イベントと排他ではない)
     }
     // PACING_PUZZLE.md バッチM2(§3-D): 本方式ON時のランク/盤面目標(?puzzle=0時はundefined
     // のまま=ランク階段線が出ない=旧経路のランと区別できる)。setPuzzleDebugと同じスナップ

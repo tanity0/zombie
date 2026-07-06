@@ -24,6 +24,7 @@ export const DIRECTOR_EVENT_BIT = {
   screamer: 8,    // 叫喚型(生存中)
   reaper: 16,     // リーパー(終盤エンティティ、生存中)
   castleBoss: 32, // 城ボス(bossSpawned後)
+  named: 64,      // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)出現中(生存中)
 } as const;
 export interface DirectorSample {
   t: number;

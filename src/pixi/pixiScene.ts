@@ -23,6 +23,7 @@ import type {
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { NAMED_TINT } from '../utils/namedEnemy';
 import { hasFullWarlordSet } from '../data/equipment';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
@@ -906,6 +907,9 @@ export class PixiScene {
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
   private thorSlashFx = new Map<string, Container>();
+  // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
+  // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
+  private namedFoeLabels = new Map<string, Text>();
 
   // ① 通常足影: ソフト影テクスチャのスプライトプール(Graphics廃止)。光方向へ回転+伸縮で
   // 「伸びる/向き」を保ちつつ、毎フレームのブラーパス無しで柔らかいエッジにする。
@@ -4419,6 +4423,8 @@ export class PixiScene {
         this.enemyBlockFall.delete(id);
         const slashFx = this.thorSlashFx.get(id);
         if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
+        const nameLabel = this.namedFoeLabels.get(id);
+        if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
       }
     }
   }
@@ -5190,11 +5196,34 @@ export class PixiScene {
       // PACING_PUZZLE.md §5.15 M15: レア(色付き)個体は本体を専用色でtint(サイズ拡大はネームド専売
       // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
       // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
-      view.sprite.tint = (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
+      // §5.14 M13: 宿敵は専用tint=黄金(社長確定)。レアのtintより優先(被った場合、金が勝つ)。
+      view.sprite.tint = e.isNamed
+        ? NAMED_TINT
+        : (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
     } else {
       view.sprite.skew.x = 0;
       view.sprite.visible = false; // placeholder ellipse drawn in reticle below
     }
+    }
+
+    // §5.14 M13: 宿敵の頭上に名前を常時表示(同時1体・生成は湧き時1回だけ=Pixi Text可)。
+    if (e.isNamed) {
+      let label = this.namedFoeLabels.get(e.id);
+      if (!label) {
+        label = new Text({
+          text: useGameStore.getState().namedFoe?.name ?? '',
+          resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
+          style: { fontFamily: FONT_STACK, fontSize: 15, fontWeight: 'bold', fill: NAMED_TINT, stroke: { color: 0x2a1a00, width: 3 } },
+        });
+        label.anchor.set(0.5, 1);
+        this.L.effectLayer.addChild(label);
+        this.namedFoeLabels.set(e.id, label);
+      }
+      label.visible = true;
+      label.position.set(Math.round(fb.footX), Math.round(fb.footY - fb.boxH - 10 - liftHop - aiHop - kbHop));
+    } else {
+      const label = this.namedFoeLabels.get(e.id);
+      if (label) label.visible = false;
     }
 
     // 被弾フラッシュ: 本体スプライトと同じ形/変形を白で加算オーバーレイし、絵(ピクセル)を一瞬光らせる。
