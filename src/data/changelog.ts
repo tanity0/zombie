@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1521',
+    items: [
+      '未確認汚染エリアへ初めて踏み込む時、行く手を阻む強化された変異者の群れが立ちはだかるように。突破すれば以後は現れない。',
+    ],
+  },
+  {
     version: '0.25.1520',
     items: [
       '拠点を1つも解放していないままデンジャーゾーンへ踏み込むと、強気なハンターが待ち伏せてくる。',

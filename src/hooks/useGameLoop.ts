@@ -68,9 +68,11 @@ import {
   isBossType,
   isHiddenBoss,
   spawnEnemyAt,
+  spawnEnemyAtWithTier,
   selectLabEnemyType,
   resolveEnemyTarget,
-  AREA_ZONE_NAMES
+  AREA_ZONE_NAMES,
+  AREA_THRESHOLDS
 } from '../utils/enemyUtils';
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
@@ -104,12 +106,16 @@ import {
   createPuzzleClockState,
   createKomaAccumulator,
   createSoftenState,
+  clampRank,
   type PuzzleClockState, type KomaAccumulatorState, type SoftenState, type RankDelta,
 } from '../utils/rankAssessor';
 import {
   ZERO_NUISANCE,
-  type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState,
+  selectPattern,
+  nuisanceTarget,
+  type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
 } from '../utils/scriptPuzzle';
+import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -128,7 +134,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, setWallMeta } from '../data/progress';
+import { getSelectedStageId, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -437,6 +443,8 @@ const MIX_ENABLED = evParam('mix') !== '0';
 const DEBT_ENABLED = evParam('debt') !== '0';
 // PACING_PUZZLE.md §5.21 M20(囲いの復活=2軸)。?arena=0で軸1(退屈補正の囲い)のみ無効化。
 const BOREDOM_ARENA_ENABLED = evParam('arena') !== '0';
+// PACING_PUZZLE.md §5.21 M20 軸2(制圧ゲート)。?gate=0でゲート全体(1/2とも)を無効化。
+const GATE_ENABLED = evParam('gate') !== '0';
 // PACING_REDESIGN.mdバッチ4: 緩の演目選択(RELAX/講習/回収/HARVEST)。?program=0で従来の
 // 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
 const PROGRAM_ENABLED = evParam('program') !== '0';
@@ -892,6 +900,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ゾーン判定の間引き用カウンタ + 深層域BGM(逆再生)の現フェーズ。
   const zoneTickRef = useRef<number>(0);
   const deepBgmPhaseRef = useRef<DeepBgmPhase>('shallow');
+  // PACING_PUZZLE.md §5.21 M20(囲いゲート1/2): このステージの恒久解除メタ(resetGameで読み直す)。
+  const gateMetaRef = useRef(emptyGateMeta());
+  // 未クリアのまま未確認境界(gate1)へ入った「未達ペナルティ」発動中フラグ(ハンター復活/死神前倒し用)。
+  const gate1PenaltyActiveRef = useRef(false);
+  // 現在の activeEvent がゲート由来か(クリア時にゲート専用の後処理を行うため)。1=ゲート1/null=通常。
+  const activeGateRef = useRef<1 | null>(null);
+  // 未確認境界を未クリアで踏破し、ゲート1の発火待ち(activeEventが空くのを待つ)。
+  const gate1PendingRef = useRef(false);
 
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -1486,6 +1502,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           areaSectorRef.current = -1; // 担当エリア進入セリフも再アーム
+          gateMetaRef.current = getGateMeta(getSelectedStageId()); // M20ゲート恒久解除メタを選択ステージ分で読み直す
+          gate1PenaltyActiveRef.current = false; // 未達ペナルティも新ランで再アーム
+          activeGateRef.current = null;
+          gate1PendingRef.current = false;
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
           // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
           dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
@@ -1552,7 +1572,53 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (!danceTest && !indoor && !labTheme) {
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
-           if (puzzleActiveNow) {
+           const gate1Ready = shouldTriggerGate1({
+             enabled: GATE_ENABLED,
+             wallIdx: gate1PendingRef.current ? 3 : null,
+             gate1Cleared: gateMetaRef.current.gate1Cleared,
+             activeEventActive: false, // 既に !ae 内=activeEventは無い
+           });
+           if (puzzleActiveNow && gate1Ready) {
+            // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1(社長設計「ゲート>退屈補正」=優先発火)。
+            // 未確認境界を未クリアで踏破した時点で gate1PendingRef が立つ(M14区域判定ブロック側)。
+            // ここで activeEvent が空いた瞬間に発火する(他イベント進行中なら空くまで待つ)。
+            gate1PendingRef.current = false;
+            const rankNow = puzzleClockRef.current.rank;
+            const gateRank = clampRank(rankNow + 1);
+            const pattern = selectPattern(gateRank, new Set(), null, Math.random());
+            const counts = nuisanceTarget(pattern);
+            const gpcx = player.x + player.width / 2, gpcy = player.y + player.height / 2;
+            const placeGateRing = (): { x: number; y: number } => {
+              const ang = Math.random() * Math.PI * 2;
+              const dist = ARENA_EVENT_RADIUS * (0.4 + Math.random() * 0.52);
+              return { x: gpcx + Math.cos(ang) * dist, y: gpcy + Math.sin(ang) * dist };
+            };
+            let gateSpawnedCount = 0;
+            (Object.keys(counts) as NuisanceType[]).forEach(type => {
+              const n = counts[type];
+              for (let i = 0; i < n; i++) {
+                const pos = placeGateRing();
+                // 全個体にレアtint(紫)を強制(=レア倍率で全敵強化・叩き台。tier配分は実機で締める)。
+                const e = spawnEnemyAtWithTier(type, pos.x - 20, pos.y - 20, newGameTime, 'purple');
+                e.fromEvent = true;
+                e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
+                addEnemy(e);
+                gateSpawnedCount++;
+              }
+            });
+            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS };
+            useGameStore.getState().beginArenaEvent(gateEvent);
+            hordeSpawnRef.current = { spawned: gateSpawnedCount, nextAt: newGameTime, total: gateSpawnedCount }; // 全数即配置済み=段階スポーンは追加しない
+            activeGateRef.current = 1;
+            useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            playSfx('event-start');
+            const gateRingColor = 'rgba(168,85,247,0.9)'; // 紫=レア波を示唆
+            spawnRing(gpcx, gpcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, gateRingColor, 6, 700);
+            spawnRing(gpcx, gpcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, gateRingColor, 3, 760);
+            spawnFlash('rgba(88,28,135,0.24)', 360);
+            useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+            useGameStore.getState().triggerTimeSlow(0.4, 520);
+           } else if (puzzleActiveNow) {
             // M20 軸1: 退屈補正の囲い(社長設計)。boredomDirector/upswingの退屈シグナルが完全に
             // 立ち上がった時に囲いhordeを1回差し込む(通常プレイ専用の新経路)。
             const hiddenBossAliveBA = useGameStore.getState().enemies.some(e => isHiddenBoss(e.type));
@@ -1817,7 +1883,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
                 });
                 playSfx('event-clear'); // 小イベント完了音(成功時のみ)
+                // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1クリア時の後処理。恒久解除+未達
+                // ペナルティ解除+ハンター消滅+M14到達判定を遅延実行(未達で止めていた分をここで出す)。
+                // ★簡略化: 「クリア後に死亡せず終える」の区別はまだ配線しておらず、クリアした瞬間に
+                // 即座に恒久解除としている(progress.tsのGateMeta冒頭コメント参照)。
+                if (activeGateRef.current === 1) {
+                  gateMetaRef.current = { ...gateMetaRef.current, gate1Cleared: true };
+                  setGateMeta(getSelectedStageId(), gateMetaRef.current);
+                  gate1PenaltyActiveRef.current = false;
+                  useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') })); // ハンター消滅
+                  hunterRef.current.phase = 'idle';
+                  hunterRef.current.detectStartAt = 0; hunterRef.current.chaseStartAt = 0; hunterRef.current.reinforced = 0; hunterRef.current.primaryId = '';
+                  const wm2 = useGameStore.getState().wallMeta;
+                  if (WALL_ENABLED && isFirstWallBreach(wm2, 3)) {
+                    const nextMeta2 = markWallBreached(wm2, 3);
+                    setWallMeta(getSelectedStageId(), nextMeta2);
+                    useGameStore.setState({ wallMeta: nextMeta2 });
+                    useGameStore.getState().addGold(50);
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
+                  }
+                }
               }
+              activeGateRef.current = null;
               useGameStore.getState().endArenaEvent(); // 拘束解除＋取りこぼし撤去
               spawnRing(ae.x, ae.y, ae.radius, ae.radius * 0.15, 'rgba(148,163,184,0.7)', 4, 520);
               spawnFlash('rgba(255,255,255,0.10)', 200);
@@ -2216,13 +2303,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
               // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
               if (zoneIdx > prevZone) playSfx('event-start');
+              // PACING_PUZZLE.md §5.21 M20 stage③: 未確認境界(wallIdx===3)を未クリアのゲート1のまま
+              // 踏破した=「未達ペナルティ」発動。ゲート1発火待ちを立て、ハンターを復活(再アーム)させる。
+              if (GATE_ENABLED) {
+                const wallIdxNow = detectWallBreach(prevZone, zoneIdx);
+                if (entersGate1Penalty(wallIdxNow, gateMetaRef.current.gate1Cleared)) {
+                  gate1PenaltyActiveRef.current = true;
+                  gate1PendingRef.current = true;
+                  // ハンター復活: 次に判定できる状態へ再アーム(既存の長いCDを待たせない)。
+                  hunterRef.current.nextEligibleAt = Math.min(hunterRef.current.nextEligibleAt, newGameTime);
+                }
+              }
               // PACING_PUZZLE.md §5.17 M14: 深さの壁「儀式」(境界を跨いだ=踏破。ステージ毎初回のみ)。
+              // §5.21 M20: ただし wallIdx===3(未確認)を未クリアのゲート1のまま踏破した場合は、
+              // クリアするまで到達判定を出さない(社長設計「未達ペナルティ」)。
               if (WALL_ENABLED) {
                 const wallIdx = detectWallBreach(prevZone, zoneIdx);
                 if (wallIdx) {
                   syncWallDepth(Math.hypot(pcx, pcy)); // 踏破の瞬間の距離も自己最深として反映
+                  const gateBlocksThisWall = GATE_ENABLED && wallIdx === 3 && !gateMetaRef.current.gate1Cleared;
                   const wm = useGameStore.getState().wallMeta;
-                  if (isFirstWallBreach(wm, wallIdx)) {
+                  if (isFirstWallBreach(wm, wallIdx) && !gateBlocksThisWall) {
                     const nextMeta = markWallBreached(wm, wallIdx);
                     setWallMeta(getSelectedStageId(), nextMeta);
                     useGameStore.setState({ wallMeta: nextMeta });
@@ -2269,8 +2370,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。
+            // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1の未達ペナルティ中は、リスク蓄積の起点を
+            // 未確認到達ライン(AREA_THRESHOLDS[2]=5000)へ前倒しする(既存の起点より緩くはならない)。
+            const spawnRiskFloor = effectiveReaperRiskFloor(REAPER_CONFIG.spawnRiskDepthPx, gate1PenaltyActiveRef.current, AREA_THRESHOLDS[2]);
             if (depth >= REAPER_CONFIG.extremeDepthPx) rs.risk += REAPER_CONFIG.riskGainPerSecExtreme * deltaTime;
-            else if (depth >= REAPER_CONFIG.spawnRiskDepthPx) rs.risk += REAPER_CONFIG.riskGainPerSecDeep * deltaTime;
+            else if (depth >= spawnRiskFloor) rs.risk += REAPER_CONFIG.riskGainPerSecDeep * deltaTime;
             else rs.risk -= REAPER_CONFIG.riskDecayPerSec * deltaTime;
             rs.risk = Math.max(0, Math.min(REAPER_CONFIG.riskMax, rs.risk));
 

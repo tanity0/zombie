@@ -228,6 +228,56 @@ export const setWallMeta = (stageId: string, meta: WallMeta): void => {
   saveWallMetaMap(m);
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// バッチM20(§5.21): 囲いゲート(1/2)の恒久解除メタ。ステージ毎に個別保持(WallMetaと同じ方針)。
+// 社長決定v0.25.1518: クリアし、そのランを死亡以外(クリア/撤退)で終えると以後のランで出現しなくなる。
+// ★簡略化(実装チャットの現時点の判断・後日精緻化の余地あり): 「死亡以外で終える」の正確な区別
+// (クリア直後に死亡した場合は解除しない、等)はまだ配線しておらず、クリアした瞬間に即座に解除済みへ
+// マークしている。死亡してもゲート解除が取り消されない、という点で社長決定より緩い(不利ではなく
+// 有利側にずれた簡略化)。
+export interface GateMeta {
+  gate1Cleared: boolean;
+  gate2Cleared: boolean;
+}
+const GATE_META_KEY = 'zombie.progress.gateMeta';
+type GateMetaMap = Record<string, GateMeta>;
+
+export const emptyGateMeta = (): GateMeta => ({ gate1Cleared: false, gate2Cleared: false });
+
+const isValidGateMeta = (v: unknown): v is GateMeta => {
+  if (!v || typeof v !== 'object') return false;
+  const m = v as Partial<GateMeta>;
+  return typeof m.gate1Cleared === 'boolean' && typeof m.gate2Cleared === 'boolean';
+};
+
+const loadGateMetaMap = (): GateMetaMap => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(GATE_META_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === 'object' ? obj as GateMetaMap : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveGateMetaMap = (m: GateMetaMap): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(GATE_META_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
+export const getGateMeta = (stageId: string, m: GateMetaMap = loadGateMetaMap()): GateMeta => {
+  const v = m[stageId];
+  return isValidGateMeta(v) ? { ...v } : emptyGateMeta();
+};
+
+export const setGateMeta = (stageId: string, meta: GateMeta): void => {
+  if (!stageId) return;
+  const m = loadGateMetaMap();
+  m[stageId] = meta;
+  saveGateMetaMap(m);
+};
+
 // 開発用: 全ステージ解放 / 進行リセット。
 export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
 export const resetProgress = (): void => {
@@ -236,4 +286,5 @@ export const resetProgress = (): void => {
   writeScores({});
   saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)
   saveWallMetaMap({}); // M14の壁メタも進行リセットで消す(開発用)
+  saveGateMetaMap({}); // M20のゲート解除メタも進行リセットで消す(開発用)
 };

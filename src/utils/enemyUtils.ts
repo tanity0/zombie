@@ -325,7 +325,8 @@ const buildEnemy = (
   gameTime: number,
   isWave = false,
   esc = 0, // 難易度③: 強さ(色ティア)escalation。0=現状据え置き。
-  rareMult = 1 // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
+  rareMult = 1, // DISTRIBUTION_REDESIGN.md③: シーン/Rank連動のレア演出倍率。1=現状据え置き。
+  forcedColorTier?: EnemyColorTier // PACING_PUZZLE.md §5.21 M20 stage③: 抽選を経ずtierを強制指定(囲いゲート1の全個体レア化)。
 ): Enemy => {
   const stats = ENEMY_STATS[type];
   // 強さ一定タイプ(ジャイアント/死神)＋ラボ専用敵は距離・色・時間でスケールしない(固定難易度・社長指定)。
@@ -335,7 +336,7 @@ const buildEnemy = (
   const distanceZone = area; // 互換フィールド(0-4)
   const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
-  const colorTier = fixed ? undefined : rollColorTierForArea(area, esc, rareMult);
+  const colorTier = fixed ? undefined : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult));
   const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
   const diff = fixed ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
@@ -446,6 +447,17 @@ export const spawnEnemyAt = (
   y: number,
   gameTime: number
 ): Enemy => buildEnemy(type, x, y, gameTime, true);
+
+// PACING_PUZZLE.md §5.21 M20 stage③(囲いゲート1): 抽選(rollColorTierForArea)を経ずtierを強制指定して
+// スポーンする。rareMultを上げても抽選の上限(DDA_COLOR_SUM_CAP)で無色が残りうるため、「全個体を
+// 確実にレア化」したい一回限りのイベント湧きにはこちらを使う(spawnEnemyAtの兄弟版)。
+export const spawnEnemyAtWithTier = (
+  type: EnemyType,
+  x: number,
+  y: number,
+  gameTime: number,
+  tier: EnemyColorTier
+): Enemy => buildEnemy(type, x, y, gameTime, true, 0, 1, tier);
 
 // Hostile projectile profiles. In the Mad Forest port only `plant` shoots —
 // everything else is pure melee. Plants spit seeds toward the player on a
