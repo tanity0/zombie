@@ -12,6 +12,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1543 — 実機バグ修正2件実装: ベンチのスマホクラッシュ回避+ゲート1chaffが逃げる件【2026-07-07 20:08 JST】
+- **①ベンチのスマホクラッシュ修正**(`src/components/BenchmarkOverlay.tsx`・§5.24-追補): 犯人は
+  ALLカテゴリのMAX(A3・敵72+弾140+全FX+強glow=絶対ピーク)。重い順化(M23)で最初に走るようになり、
+  スマホが一度も食らったことのない負荷=天井超えでクラッシュ(緑卵は無罪=当初目的達成)。
+  `isMobileBenchDevice()`(Game.tsx/OrientationGuard.tsxと同じ`'ontouchstart' in window ||
+  navigator.maxTouchPoints > 0`判定を流用)+`activeBenchmarkProfiles(mobile)`(ALLカテゴリから
+  A3/A2を除外・ALLはA1のみ残す)を新設。`nextProfileIndex`のシグネチャへ`profiles`(実際に走る配列)を
+  追加し、コンポーネント内で固定の`BENCHMARK_PROFILES`を直接参照していた6箇所を、マウント時に一度だけ
+  判定した`profiles`(`useState`初期値)へ差し替え。`BENCHMARK_PROFILES`自体(モジュールエクスポート)は
+  テスト/デスクトップ用にフル構成のまま不変。重い順スキップ自体は他系統で維持・デスクトップはMAXも回す。
+  - テスト: `BenchmarkOverlay.test.ts`に`activeBenchmarkProfiles`3件+モバイル配列での
+    `nextProfileIndex`動作確認1件を追加(既存分と合わせ全15件・全通過)。
+- **②ゲート1基本沸きchaffが逃げる件の修正**(`src/hooks/useGameLoop.ts`・§5.21-追補2の修正追記):
+  原因は基本沸きchaffに`fromEvent`を付けていなかったこと。「囲い中はイベント外の敵が逃走モードになる」
+  既存仕様(v0.25.1261)に該当し、fromEvent無しのchaffが囲いの外へ逃げていた(位置生成自体は正しい)。
+  chaffループの`spawnEnemyAt`直後に`e.fromEvent = true`を追加(台本ループと同じ扱い)。副作用として
+  クリア条件(`fromEvent`殲滅)に基本10体も含まれるようになる=「囲いを空にしてクリア」(社長採用=直感的)。
+  `gateSpawnedCount++`をchaffループにも追加し、`hordeSpawnRef.current`の`spawned/total`が台本+chaffの
+  正しい合算値を持つよう整合。
+  - PACING_PUZZLE.md本文中の古い「ambient(fromEventにしない)」記述は取り消し線で撤回し、修正後の
+    挙動へ更新。
+- 検証: `npm run lint`(0 error・6 warning=react-refresh/only-export-components・既知のトレードオフの
+  延長で新規2件増)/`npm run typecheck`(0 error)/`vitest`(BenchmarkOverlay.test.ts 15 passed)。
+  `useGameLoop.ts`はvitestの依存グラフ上どのテストからも参照されないため関連テストなし(既存の限界・
+  レガシー配線)。フル`npm test`/`npm run build`は社長からの明示指示がないため未実行(CIが安全網)。
+- 自己点検: 憲法第4条・第5条に抵触なし(①はdevツールのみでゲームプレイに影響ゼロ・②はゲート1の
+  クリア条件の対象範囲変更のみで湧き数/CD/コマ構造・当たり判定・ダメージは不変)。
+- 次: 実機での①クラッシュ解消・②chaff残留+クリア動作の確認は社長へ持ち越し。
+
 ## v0.25.1542 — 診断+修正仕様2件: ベンチのスマホクラッシュ(ALL MAX)/ゲート1chaffが逃げる(fromEvent抜け)【2026-07-07 19:41 JST】
 - **設計チャットの実機バグ診断2件を仕様化**(コードは触らない=Sonnet実装待ち)。両方とも直近実装(M23/§5.21-追補2)の実機フィードバック。
 - **①ベンチのスマホクラッシュ=ALL MAX(§5.24-追補・新設)**: 社長報告「重い順化以降、緑卵段に到達する前にたまに落ちる(スマホ/iOS)」。

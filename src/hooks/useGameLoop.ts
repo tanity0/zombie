@@ -1677,14 +1677,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gateSpawnedCount++;
               }
             });
-            // §5.21-追補2(社長決定v0.25.1538): 台本とは別に基本沸き(chaff)10体をambient(fromEventにしない)
-            // でburst配置。クリア条件(fromEvent殲滅)には数えない=従来どおり台本のみでクリア。
+            // §5.21-追補2(社長決定v0.25.1538・実機バグ修正v0.25.1542): 台本とは別に基本沸き(chaff)
+            // 10体をburst配置。当初はambient(fromEventなし)だったが、囲い中は「イベント外の敵は
+            // 逃走モード」になる既存仕様(v0.25.1261)に該当し、chaffが逃げてサークル外へ出る実機バグが
+            // 判明。台本と同じfromEvent=trueを付けて逃げず残るようにする(社長決定)。副作用として
+            // クリア条件(fromEvent殲滅)に基本10体も含まれる=「囲いを空にしてクリア」(社長採用)。
             for (let i = 0; i < GATE1_BASE_CHAFF_COUNT; i++) {
               const pos = placeGateRing();
               const chaffType = pickChaffType(CHAFF_WEIGHTS_DEFAULT, Math.random());
               const e = spawnEnemyAt(chaffType, pos.x - 20, pos.y - 20, newGameTime);
+              e.fromEvent = true;
               e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
               addEnemy(e);
+              gateSpawnedCount++;
             }
             hordeSpawnRef.current = { spawned: gateSpawnedCount, nextAt: newGameTime, total: gateSpawnedCount }; // 全数即配置済み=段階スポーンは追加しない
             activeGateRef.current = 1;

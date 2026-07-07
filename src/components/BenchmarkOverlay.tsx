@@ -107,6 +107,20 @@ export const BENCHMARK_PROFILES: BenchmarkProfile[] = [
   P('MI1', 'MINE',  'M16',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 16),
 ];
 
+// §5.24-追補(社長報告v0.25.1542): 重い順化でALLカテゴリがMAX(A3・敵72+弾140+全FX+強glow=絶対
+// ピーク)から始まるようになり、スマホでは一度も食らったことのない負荷=天井超えでクラッシュ
+// (=データも取れない)。緑卵(MINE)は無罪(緑卵段は60fps実測)。既存のモバイル判定
+// (Game.tsx/OrientationGuard.tsxと同じ 'ontouchstart' in window || navigator.maxTouchPoints > 0)を
+// 流用し、モバイルではALLカテゴリの最重段(MAX=A3・A2)を除外する(ALLはA1のみ走る)。
+// 重い順スキップ自体は他系統で維持・デスクトップはMAXも回す。
+export const isMobileBenchDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
+
+export const activeBenchmarkProfiles = (mobile: boolean): BenchmarkProfile[] =>
+  mobile ? BENCHMARK_PROFILES.filter(p => !(p.category === 'ALL' && (p.id === 'A3' || p.id === 'A2'))) : BENCHMARK_PROFILES;
+
 // 軽量プール(雑魚スウォーム)と重量級プール(大スプライト=影/ライティング負荷)。
 const LIGHT_ENEMY_TYPES: EnemyType[] = ['zombie', 'skeleton', 'bat', 'ghost', 'plant'];
 const HEAVY_ENEMY_TYPES: EnemyType[] = ['pumpkin', 'lab-zombie-3', 'giantbat', 'werewolf', 'reaper', 'lab-zombie-2'];
@@ -182,13 +196,15 @@ export const hasBenchmarkMargin = (avgFps: number, minFps: number): boolean =>
 // 余裕あり(avg≥52&min≥45)→この系統の残り(軽い段)を飛ばして次カテゴリの先頭(最重段)へ。
 // 余裕未満(タイトPASS/CAUTION/FAILいずれも)→同系統の次の(軽い)段へ降りて安全ラインを探す。
 // 降り切ったら(currentIndex+1が次カテゴリへ跨ぐ)自然に次カテゴリへ移る。
-export const nextProfileIndex = (currentIndex: number, avgFps: number, minFps: number): number => {
+// §5.24-追補: 実際に走る系統(モバイルではALL MAX/A2抜き)を`profiles`で受け取る
+// (モバイル/デスクトップで指す配列が変わるため、固定のBENCHMARK_PROFILESを直接参照しない)。
+export const nextProfileIndex = (profiles: BenchmarkProfile[], currentIndex: number, avgFps: number, minFps: number): number => {
   if (hasBenchmarkMargin(avgFps, minFps)) {
-    const currentCategory = BENCHMARK_PROFILES[currentIndex]?.category;
-    const nextCategoryIndex = BENCHMARK_PROFILES.findIndex((profile, index) =>
+    const currentCategory = profiles[currentIndex]?.category;
+    const nextCategoryIndex = profiles.findIndex((profile, index) =>
       index > currentIndex && profile.category !== currentCategory
     );
-    return nextCategoryIndex === -1 ? BENCHMARK_PROFILES.length : nextCategoryIndex;
+    return nextCategoryIndex === -1 ? profiles.length : nextCategoryIndex;
   }
   return currentIndex + 1;
 };
@@ -354,6 +370,9 @@ const createBenchBullet = (px: number, py: number, idx: number, total: number): 
 };
 
 const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) => {
+  // §5.24-追補: モバイルはALLカテゴリの最重段(MAX=A3・A2)を除外(=クラッシュしうる段を走らせない)。
+  // デバイス種別はセッション中に変わらない前提で一度だけ判定する。
+  const [profiles] = useState<BenchmarkProfile[]>(() => activeBenchmarkProfiles(isMobileBenchDevice()));
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);
@@ -424,14 +443,14 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       enemyTarget: profile.enemyTarget,
       stress: stressLabel(profile),
       safeStress: grade === 'PASS' ? stressLabel(profile) : 'not found',
-      adjusted: profile.id !== BENCHMARK_PROFILES[0].id,
+      adjusted: profile.id !== profiles[0].id,
       maxTorches: attemptMaxCountsRef.current.torches,
       maxMines: attemptMaxCountsRef.current.mines,
       maxEnemies: attemptMaxCountsRef.current.enemies,
       maxFx: attemptMaxCountsRef.current.fx,
       sampleCount: samples.length,
     };
-  }, []);
+  }, [profiles]);
 
   const finishBenchmark = useCallback((finalAttempt?: BenchmarkStageResult) => {
     if (finalizedRef.current) return;
@@ -474,8 +493,8 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
   const completeAttempt = useCallback((profile: BenchmarkProfile) => {
     const attemptResult = buildAttemptResult(profile, attemptSamplesRef.current);
-    const nextAttempt = nextProfileIndex(activeAttempt, attemptResult.avgFps, attemptResult.minFps);
-    const isDone = nextAttempt >= BENCHMARK_PROFILES.length;
+    const nextAttempt = nextProfileIndex(profiles, activeAttempt, attemptResult.avgFps, attemptResult.minFps);
+    const isDone = nextAttempt >= profiles.length;
     if (isDone) {
       finishBenchmark(attemptResult);
       return;
@@ -488,7 +507,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     lastSampleAtRef.current = 0;
     cleanupBenchmarkObjects();
     setActiveAttempt(nextAttempt);
-  }, [activeAttempt, buildAttemptResult, cleanupBenchmarkObjects, finishBenchmark]);
+  }, [activeAttempt, buildAttemptResult, cleanupBenchmarkObjects, finishBenchmark, profiles]);
 
   useEffect(() => {
     let cancelled = false;
@@ -528,7 +547,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
   useEffect(() => {
     if (result) return;
-    const profile = BENCHMARK_PROFILES[activeAttempt] ?? BENCHMARK_PROFILES[BENCHMARK_PROFILES.length - 1];
+    const profile = profiles[activeAttempt] ?? profiles[profiles.length - 1];
     const pool = enemyPool(profile);
 
     const runBenchmarkTick = () => {
@@ -735,6 +754,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     addEnemy,
     addProjectile,
     completeAttempt,
+    profiles,
     removeEnemy,
     result,
     spawnBurst,
@@ -750,7 +770,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     cleanupBenchmarkObjects();
   }, [cleanupBenchmarkObjects]);
 
-  const profile = BENCHMARK_PROFILES[activeAttempt] ?? BENCHMARK_PROFILES[BENCHMARK_PROFILES.length - 1];
+  const profile = profiles[activeAttempt] ?? profiles[profiles.length - 1];
   const attemptElapsed = Math.min(BENCHMARK_ATTEMPT_MS, now - attemptStartedAtRef.current);
   const progress = result ? 100 : Math.round((attemptElapsed / BENCHMARK_ATTEMPT_MS) * 100);
   const secondsLeft = Math.max(0, Math.ceil((BENCHMARK_ATTEMPT_MS - attemptElapsed) / 1000));
@@ -792,7 +812,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           </>
         ) : (
           <>
-            <div>try {activeAttempt + 1}/{BENCHMARK_PROFILES.length} fps {fps}</div>
+            <div>try {activeAttempt + 1}/{profiles.length} fps {fps}</div>
             <div>{profile.id} {profile.category} {profile.label}</div>
             <div>{stressLabel(profile)}</div>
           </>
