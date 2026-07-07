@@ -478,6 +478,8 @@ const AMMO_SMART_ENABLED = evParam('ammosmart') !== '0';
 // PACING_PUZZLE.md §5.6 バッチM7(チャフの武器弱点クリティカル・既定ON): `?weakcrit=0`で無効化。
 // gameStore側の近接キル経路も同名パラメータを各自読む(既存のammosmart等と同じ流儀)。
 const WEAKCRIT_ENABLED = evParam('weakcrit') !== '0';
+// PACING_PUZZLE.md §5.23 バッチM22 Group A(A1マズルフラッシュ・既定ON): `?mzl=0`で無効化。
+const MUZZLE_FLASH_ENABLED = evParam('mzl') !== '0';
 // (PUZZLE_MANAGED_TYPES は src/utils/directorTick.ts の runKomaBoardMaintenance へ移設)
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
@@ -3664,12 +3666,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // rifle系のうちグレネードランチャー(rifle-t3)だけ専用の発射音、それ以外(マグナム/スナイパー)はrifle-fire。
             if (activeGun.category === 'rifle') playSfx(activeGun.key === GRENADE_WEAPON_KEY ? 'grenade-launcher-fire' : 'rifle-fire');
             // Muzzle flash at the gun, pointed along the shot.
-            const md = newProjectiles[0].direction;
-            const mpx = postReloadPlayer.x + postReloadPlayer.width / 2 + md.x * 18;
-            const mpy = postReloadPlayer.y + postReloadPlayer.height / 2 + md.y * 18;
-            useGameStore.getState().spawnGlow(
-              mpx, mpy, activeGun.category === 'shotgun' ? 22 : 15, 'rgba(255,238,170,', 90
-            );
+            if (MUZZLE_FLASH_ENABLED) {
+              const md = newProjectiles[0].direction;
+              const mpx = postReloadPlayer.x + postReloadPlayer.width / 2 + md.x * 18;
+              const mpy = postReloadPlayer.y + postReloadPlayer.height / 2 + md.y * 18;
+              useGameStore.getState().spawnGlow(
+                mpx, mpy, activeGun.category === 'shotgun' ? 22 : 15, 'rgba(255,238,170,', 90
+              );
+            }
           }
           newProjectiles.forEach(proj => useGameStore.getState().addProjectile(proj));
         }

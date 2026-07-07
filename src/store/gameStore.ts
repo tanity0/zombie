@@ -90,6 +90,21 @@ export const NAMED_ENEMY_ENABLED = typeof window === 'undefined' || new URLSearc
 // PACING_PUZZLE.md §5.17 M14(到達譜=二軸の壁・既定ON): ?walls=0で無効化(予告/儀式演出・
 // ステージ毎メタの読み書きとも停止。ゾーン侵入バナー等の既存演出=eventBannerText系は不変)。
 export const WALL_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('walls') !== '0';
+// PACING_PUZZLE.md §5.23 M22 Group A(A3・既定ON): 全キル(近接/銃/接触/爆発共通)の死亡ポップ
+// (小リング+方向性スプレー・spawnSpray流用)。`?deathpop=0`で無効化。近接(grantMeleeKillRewards)・
+// 銃/接触/爆発(damageEnemy)の両キル経路が同名パラメータを各自読む(既存ammosmart等と同じ流儀)。
+const DEATHPOP_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('deathpop') !== '0';
+// PACING_PUZZLE.md §5.23 M22 Group B(B1・既定ON): レア(colorTier)/ネームド個体の湧き時に一瞬の
+// 閃光+リング(pooled・one-shot)。`?spawnfx=0`で無効化。全スポーン経路の合流点=addEnemyで1回だけ発火。
+const SPAWNFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('spawnfx') !== '0';
+// B1の色分け(pixiScene.tsのENEMY_COLOR_TIER_BODY_TINT/NAMED_TINTと同じ配色を、レンダラ非依存の
+// gameStore側でも別途保持=XP_ORB_COUNT_BY_COLOR_TIERと同じ「層ごとに独立テーブルを持つ」流儀)。
+const ENEMY_COLOR_TIER_FX: Record<EnemyColorTier, string> = {
+  blue: 'rgba(59,130,246,',
+  purple: 'rgba(168,85,247,',
+  red: 'rgba(239,68,68,',
+};
+const NAMED_FX_COLOR = 'rgba(255,215,0,'; // NAMED_TINT(0xffd700)と同色。resolveNamedFoeDefeatの金色とも統一。
 // 全体調整: 経験値の溜まるスピードを1/3に(獲得量に一律倍率)。
 export const XP_GAIN_MULT = 1 / 3;
 // 初期所持は上限を超えないようにする(shotgun は旧40→新上限18へ)。phill=母数(リザーブ)24スタート。
@@ -1469,6 +1484,18 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
   get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
 };
 
+// PACING_PUZZLE.md §5.23 M22 A3: 全キル(近接/銃/接触/爆発共通)の死亡ポップ=小リング(膨らんで消える)
+// +方向性スプレー(既存spawnSpray流用)。方向は攻撃者(プレイヤー)→敵の延長線(被弾の背中側破裂と同じ考え方)。
+// 近接(grantMeleeKillRewards)・銃/接触/爆発(damageEnemy)の両キル経路から呼ぶ共通ヘルパー。
+const spawnDeathPop = (get: () => GameState, ex: number, ey: number, fromX: number, fromY: number): void => {
+  let dx = ex - fromX;
+  let dy = ey - fromY;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  get().spawnRing(ex, ey, 4, 28, 'rgba(255,255,255,0.5)', 3, 220);
+  get().spawnSpray(ex, ey, dx, dy, 4, ['#fef3c7', '#fde68a', '#e5e7eb']);
+};
+
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は
 // 最初の1体(配列先頭)。誰も死んでいなければ(ボス気絶ボーナス打だけ等)undefinedを返し、
 // triggerFinishImpact側で従来どおり画面中央へフォールバックする。
@@ -1503,6 +1530,7 @@ const grantMeleeKillRewards = (
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
     if (enemy.isNamed) resolveNamedFoeDefeat(get, [enemy], ex, ey); // §5.14 M13: 宿敵討伐
+    if (DEATHPOP_ENABLED) spawnDeathPop(get, ex, ey, player.x + player.width / 2, player.y + player.height / 2);
     const xp = finisher
       ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
       : enemy.experienceValue;
@@ -5362,6 +5390,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       enemies: [...state.enemies, enemy]
     }));
+    // PACING_PUZZLE.md §5.23 M22 B1: レア/ネームド個体の湧き時フラッシュ(M15の「レアが見えない」
+    // 積み残しも同時回収)。全スポーン経路がこのaddEnemyを通るのでここ1箇所で拾える。
+    if (SPAWNFX_ENABLED && (enemy.colorTier || enemy.isNamed)) {
+      const cx = enemy.x + enemy.width / 2;
+      const cy = enemy.y + enemy.height / 2;
+      const color = enemy.isNamed ? NAMED_FX_COLOR : ENEMY_COLOR_TIER_FX[enemy.colorTier as EnemyColorTier];
+      get().spawnRing(cx, cy, 6, 90, `${color}0.8)`, 3, 380);
+      get().spawnGlow(cx, cy, 40, color, 260);
+    }
   },
   
   removeEnemy: (id) => {
@@ -5375,6 +5412,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
+    let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -5403,6 +5441,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed = true;
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
+        deathPopAt = {
+          ex: enemy.x + enemy.width / 2, ey: enemy.y + enemy.height / 2,
+          fromX: state.player.x + state.player.width / 2, fromY: state.player.y + state.player.height / 2,
+        }; // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ
         tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
         // PACING_REDESIGN.mdバッチ2(計測): ガン/接触/爆発キルを種別+スタイル集計へ記録(挙動には影響しない)。
         // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
@@ -5460,6 +5502,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (namedFoeKilled) {
       const ne = namedFoeKilled as Enemy;
       resolveNamedFoeDefeat(get, [ne], ne.x + ne.width / 2, ne.y + ne.height / 2);
+    }
+
+    // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ。
+    if (deathPopAt && DEATHPOP_ENABLED) {
+      const d = deathPopAt as { ex: number; ey: number; fromX: number; fromY: number };
+      spawnDeathPop(get, d.ex, d.ey, d.fromX, d.fromY);
     }
 
     return killed;

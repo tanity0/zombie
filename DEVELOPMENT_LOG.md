@@ -12,6 +12,55 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1527 — M22 Group A(銃側の底上げ)+B1(レア/ネームド入場フラッシュ)実装(§5.23)【2026-07-07 15:21 JST】
+- **A1マズルフラッシュ**: 既存実装(`useGameLoop.ts`の`spawnGlow`呼び出し・半径15/22<44・小glow扱いで
+  実効寿命80ms)がそのままA1の要件を満たしていたため描画は無変更。復帰フラグ`?mzl=0`だけ新規に追加
+  (`MUZZLE_FLASH_ENABLED`)。**同時キャップ~8は明示コードを足さず据え置き**: 最速の実銃(マシンピストル
+  cooldown100ms・装備の連射倍率を足しても実効~55ms程度)×寿命80msの掛け合わせでも理論上の同時生存数は
+  2枚程度にしかならず、キャップ8に達する経路が実際には存在しない(=「起こり得ない状況への防御コードを足さない」
+  の判断)。load 1/10(既存呼び出しをif文1つで囲っただけ)。
+- **A2弾トレーサー**: 新規プールを作らず、既存の弾ごとpooled `Graphics`(`drawProjectile`・J130で安全実測済み)に
+  fillをもう1回足すだけで実装。ハンドガン/ライフル/PHILLの弾(=元々「進行方向へ伸びた矩形」で描かれている
+  プレイヤー弾)に、本体より薄く長い矩形を後方に先に描いてから本体を重ねることで尾に見せる。ショットガン
+  (円ペレット)・敵弾(enemy_bolt)は対象外(スプレー弾/敵弾は尾が似合わない・スコープ外として据え置き)。
+  復帰フラグ`?tracer=0`(`BULLET_TRACER_ENABLED`・pixiScene.ts独自の`tsBool`流儀)。load 1/10
+  (既存Graphicsへの追加fill1回・新規オブジェクトなし・弾キャップに従属)。
+- **A3死亡ポップ**: 全キル経路の合流点2箇所——近接(`grantMeleeKillRewards`)・銃/接触/爆発(`damageEnemy`)
+  ——に新規ヘルパー`spawnDeathPop(get, ex, ey, fromX, fromY)`を追加。既存の`spawnRing`(ring=pooled sprite・
+  R12実測PASS)で小さな白いポップ(4→28px・220ms)+既存だが**呼び出しゼロだった`spawnSpray`を初めて実戦投入**
+  し、プレイヤー→敵の延長方向へ4粒の小さな方向性スプレーを飛ばす(方向の根拠: 既存の`spawnSpray`コメント
+  「被弾の背中側破裂」と同じ考え方=攻撃者から敵への延長線)。宿敵討伐時は既存の金リング(`resolveNamedFoeDefeat`)
+  と重ねて発火する(仕様「全キル(銃含む)」を文字通り解釈・宿敵演出を置き換えない)。復帰フラグ`?deathpop=0`
+  (`DEATHPOP_ENABLED`)。load 2/10(キルレートで自然に上限・キルごとpooled sprite数点のみ・per-frame処理なし)。
+- **B1レア/ネームド入場フラッシュ**: 全スポーン経路の合流点`addEnemy`(コメント「全スポーン経路の合流点」)に
+  1回だけ発火するフックを追加。`colorTier`(blue/purple/red)または`isNamed`を持つ個体が湧いた瞬間に
+  リング+小glow(pooled・one-shot)。色はpixiScene.tsの`ENEMY_COLOR_TIER_BODY_TINT`/`NAMED_TINT`と同系色を
+  gameStore.ts側に別テーブル(`ENEMY_COLOR_TIER_FX`/`NAMED_FX_COLOR`)として独立保持(レンダラ⇔ストアの層分離を
+  保つため、既存の`XP_ORB_COUNT_BY_COLOR_TIER`と同じ「層ごとに独立テーブル」の流儀を踏襲)。M15の「レアが
+  見えない」積み残しをここで同時回収。復帰フラグ`?spawnfx=0`(`SPAWNFX_ENABLED`)。load 1/10(湧きイベント時のみ・安い)。
+- **合算負荷の自己評価**: 個別1〜2/10×4要素。全要素とも加算大面積glowを使わず(A1は既存小glow流用のみ・B1のglowも
+  半径40=small扱い)、鉄則(§5.23「加算の大面積glowを1つも増やさない」)に抵触なし。乱戦×連射×コンボが重なる
+  最悪ケースでも「pooled sprite数点+small glow数点」止まりで、CLAUDE.mdの実測安全域(小glow=安い・ring/particle=
+  P90/R12実測PASS)の範囲内と判断。
+- **ベンチゲート(§5.23必須項目)の扱い**: このリポジトリの`BenchmarkOverlay`はUI駆動(Mission Select→BENCH
+  ボタン)で結果もGameOverScreen上の表示のみ・スクリプト実行/ログ出力に対応していないため、この開発環境
+  (Playwright/headless chromium)から自動計測はできない。加えて本セッション内で確認済みの環境固有事象として、
+  このサンドボックスのrAFは実機よりはるかに遅く回るため、たとえ手動でUIを操作して計測してもFPS数値は
+  実機性能を反映しない可能性が高い(=このサンドボックスでの計測はむしろ誤った安全/危険判定を生みかねない)。
+  よって今回は「新規に足したのはpooled sprite/ring/small glow/既存Graphicsへの追加fillのみで、いずれも
+  CLAUDE.mdの実測安全域内(P90・R12・小glow=安い)に収まる描画方式」という設計上の根拠でロードスコアを
+  申告し、**実機`?bot=1`でのベンチ実測は社長への持ち越し課題**とする(M11=自動FPS観戦ボット自体が未着手の
+  ため、現状はこの手動UIツールしか手段がない)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過(lint clean / typecheck 0 error /
+  test 539 passed, 2 skipped / build成功)。触った箇所(gameStore.ts/useGameLoop.ts/pixiScene.ts)に対する
+  既存の関連テスト(`vitest related`)も含め全緑。新規ユニットテストは追加していない(全て既存の安全実測済み
+  描画プリミティブ(ring/glow/spray/pooled Graphics)の呼び出し追加のみで、新規の純関数ロジックなし)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触なし(演出追加のみ・湧き数/CD/コマ構造/
+  ヒットボックス/ダメージ計算は完全に不変)。
+- 次: Group C(C1方向性シェイク&スプレー/C2コンボエスカレーション/C3なぎ倒しN HITS/C4スピードライン)が未着手。
+  C2は既存の近接専用コンボ(`meleeFinishComboCount`)しか無く「全武器共通コンボ」が存在しない点を実装時に
+  再確認要(仕様変更ルール上、新カウンター新設が必要ならその旨を先に一言確認してから進める)。
+
 ## v0.25.1525 — バッチM22仕様化: 戦闘の派手さ拡充=全部入り(社長採用・設計チャット)【2026-07-07 14:41 JST】
 - 派手さの抜け監査(コード確認): 敵被弾フラッシュ/ボス死体フェードは既存=提案せず。最大の抜け=
   「近接は超派手だが銃側は反動だけで地味」。社長「全部入れた場合」を受け§5.23にM22として全部入りを仕様化。

@@ -606,6 +606,10 @@ const ENEMY_COLOR_TIER_BODY_TINT: Record<string, number> = {
   blue: 0x66aaff, purple: 0xbb66ff, red: 0xff5544,
 };
 
+// PACING_PUZZLE.md §5.23 M22 Group A(A2弾トレーサー・既定ON): 既存の弾描画(pooled Graphics・
+// J130で安全確認済み)に追加のfill呼び出し1回で尾を足すだけ=新規プールなし。?tracer=0で無効化。
+const BULLET_TRACER_ENABLED = tsBool('tracer', true);
+
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
 // it scales sprites + foot shadows only. Collision boxes, attack ranges, the
@@ -6330,6 +6334,12 @@ export class PixiScene {
         g.rotation = Math.atan2(p.direction.y, p.direction.x);
         const len = Math.max(p.width, 6) * (p.weaponType === 'rifle' ? 2.6 : 1.7);
         const hh = Math.max(2, p.height / 2);
+        // A2弾トレーサー: 弾本体(既存の伸びた矩形)の後方にもう一段薄く長い尾を敷くだけ
+        // (同じpooled Graphicsへの追加fill1回=新規オブジェクトなし)。
+        if (BULLET_TRACER_ENABLED) {
+          const tailLen = len * 2;
+          g.rect(-len / 2 - tailLen, -hh / 3, tailLen, hh * 0.66).fill({ color: p.crit ? 0xfde047 : 0xfef3c7, alpha: 0.25 });
+        }
         g.rect(-len / 2, -hh / 2, len, hh).fill({ color: p.crit ? 0xfde047 : 0xfef3c7 });
         break;
       }
@@ -6342,6 +6352,10 @@ export class PixiScene {
         g.rotation = Math.atan2(p.direction.y, p.direction.x);
         const len = Math.max(p.width, 8) * 2.2;
         const hh = Math.max(3, p.height / 2);
+        if (BULLET_TRACER_ENABLED) {
+          const tailLen = len * 1.8;
+          g.rect(-len / 2 - tailLen, -hh / 3, tailLen, hh * 0.66).fill({ color: 0xffedd5, alpha: 0.22 });
+        }
         g.rect(-len / 2, -hh / 2, len, hh).fill({ color: 0xffedd5 });
         g.circle(len / 2 - 2, 0, hh * 0.9).fill({ color: 0xfb923c });
         break;
