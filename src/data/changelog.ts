@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1519',
+    items: [
+      '長く平穏が続くと、まれに変異者の大量発生(囲い)が差し込まれるように。',
+    ],
+  },
+  {
     version: '0.25.1516',
     items: [
       'ハンター変異体: 索敵中は静止せず、ランダムに徘徊しつつ少しずつ接近するように。26秒間発見できないと諦めてフェードアウトする(索敵範囲にプレイヤーが入っている間は猶予が延長される)。',

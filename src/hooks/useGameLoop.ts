@@ -86,6 +86,7 @@ import { evaluatePhasePerformance, rankFromPerformance, rankAdjustFor } from '..
 import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/directorRankState';
 import { createPinchState, pityLevel } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
+import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } from '../utils/boredomArena';
 import {
   eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
 } from '../utils/eventProducer';
@@ -433,6 +434,8 @@ const EVENTS_ENABLED = evParam('events') !== '0';
 const MIX_ENABLED = evParam('mix') !== '0';
 // PACING_REDESIGN.mdバッチ3.5-B: 盤面在庫(boardDebt)。?debt=0で全無効(従来挙動)。
 const DEBT_ENABLED = evParam('debt') !== '0';
+// PACING_PUZZLE.md §5.21 M20(囲いの復活=2軸)。?arena=0で軸1(退屈補正の囲い)のみ無効化。
+const BOREDOM_ARENA_ENABLED = evParam('arena') !== '0';
 // PACING_REDESIGN.mdバッチ4: 緩の演目選択(RELAX/講習/回収/HARVEST)。?program=0で従来の
 // 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
 const PROGRAM_ENABLED = evParam('program') !== '0';
@@ -689,6 +692,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // and is reset whenever gameTime rolls back to ~0 (i.e. a fresh game).
   const consumedWavesRef = useRef(newConsumedWaves());
   const nextArenaAtRef = useRef(FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS); // 次の囲い系イベント発火時刻(gameTime ms)。約2分ごと。
+  // PACING_PUZZLE.md §5.21 M20 軸1: 退屈補正の囲いが次に発火できる gameTime(ms)。旧来のnextArenaAtRefとは別CD。
+  const boredomArenaNextEligibleAtRef = useRef(BOREDOM_ARENA_START_MS);
   // 変異者大量発生(horde): 段階スポーン進捗。1秒に1体ずつ計total体(1/3体目=パンプキン/2/3・最終体目=ウルフ)。
   // totalは既定ARENA_HORDE_COUNT(18)だが、バッチ5追補のイベント関所発火時はeventSizeMultで可変。
   const hordeSpawnRef = useRef({ spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT });
@@ -1415,6 +1420,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayRef.current = 0;
           cratesDroppedRef.current = 0;
           nextArenaAtRef.current = FORCE_ARENA != null ? 0 : ARENA_FIRE_AFTER_MS;
+          boredomArenaNextEligibleAtRef.current = BOREDOM_ARENA_START_MS; // M20軸1のCDも新ランでリセット
           hordeSpawnRef.current = { spawned: 0, nextAt: 0, total: ARENA_HORDE_COUNT };
           gateEventPendingRef.current = null; // バッチ5追補も新ランでリセット
           redNightFiredRef.current = false;
@@ -1535,9 +1541,45 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 研究所/屋内/ダンスでは出さない(通常の森ステージ専用)。
         // PACING_PUZZLE.md §2: 本方式稼働中は「eventProducerの固定イベント」(囲い/ミニボス/救助/卵)を
         // 丸ごと停止する(ボスフェーズ中はpuzzleActiveNow=falseなので従来どおり動く=既存の骨格を保つ)。
-        if (!danceTest && !indoor && !labTheme && !puzzleActiveNow) {
+        // PACING_PUZZLE.md §5.21 M20: 従来はここ全体(発火+進行)を !puzzleActiveNow で丸ごと停止していたが、
+        // 「進行(スポーン段階/クリア判定/タイムアウト)」は M20 の新経路(軸1退屈補正の囲い等)が
+        // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
+        // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
+        if (!danceTest && !indoor && !labTheme) {
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
+           if (puzzleActiveNow) {
+            // M20 軸1: 退屈補正の囲い(社長設計)。boredomDirector/upswingの退屈シグナルが完全に
+            // 立ち上がった時に囲いhordeを1回差し込む(通常プレイ専用の新経路)。
+            const hiddenBossAliveBA = useGameStore.getState().enemies.some(e => isHiddenBoss(e.type));
+            const redNightActiveNowBA = useGameStore.getState().redNight?.phase === 'active';
+            const boredomReady = hunterBoredomReady(boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro())));
+            const fireBoredomArena = shouldFireBoredomArena({
+              enabled: BOREDOM_ARENA_ENABLED,
+              gameTime: newGameTime,
+              nextEligibleAt: boredomArenaNextEligibleAtRef.current,
+              bossChasing: useGameStore.getState().bossChasing,
+              hiddenBossAlive: hiddenBossAliveBA,
+              hunterIdle: hunterRef.current.phase === 'idle',
+              redNightActive: redNightActiveNowBA,
+              boredomReady,
+            });
+            if (fireBoredomArena) {
+              boredomArenaNextEligibleAtRef.current = newGameTime + BOREDOM_ARENA_CD_MS;
+              const bpcx = player.x + player.width / 2, bpcy = player.y + player.height / 2;
+              const baEvent = { kind: 'horde' as const, x: bpcx, y: bpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS };
+              useGameStore.getState().beginArenaEvent(baEvent);
+              hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: ARENA_HORDE_COUNT };
+              useGameStore.setState({ eventBannerText: '変異者大量発生', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              playSfx('event-start');
+              const baRingColor = 'rgba(56,189,248,0.9)';
+              spawnRing(bpcx, bpcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, baRingColor, 6, 700);
+              spawnRing(bpcx, bpcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, baRingColor, 3, 760);
+              spawnFlash('rgba(8,47,73,0.24)', 360);
+              useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+              useGameStore.getState().triggerTimeSlow(0.4, 520);
+            }
+           } else {
             // 発火: activeEvent中でない・次回発火時刻に到達(=約2分ごと)。排他制御は activeEvent と nextArenaAtRef で担保。
             // ?arenanow 指定時は初回を即時(nextArenaAtRef=0 初期化)→以降も2分間隔。
             // 裏ボスが存命の間はイベントを発生させない(社長指示)。bossChasing(追跡中)だけだと出現直後/帰巣/
@@ -1661,6 +1703,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               useGameStore.getState().triggerTimeSlow(0.4, 520);
             }
+           }
           } else if (ae.kind === 'rescue') {
             // 救助: 攻撃者を RESCUE_ATTACKERS 体維持(死んだら補充=生存NPCへ割り当て)。
             // 勝敗/ホールドゲージ/NPCカイトは updateRescue が処理。時間切れ保険のみここで見る。

@@ -79,6 +79,25 @@ on the zombie game. Append a new entry after each meaningful change.
   カーブへの直接影響は無し)。
 - 次: 特になし(依頼完結)。次は社長指示のPACING_PUZZLE.md §5.21(M20: 囲いの復活)に着手。
 
+## v0.25.1519 — M20 stage①: 軸1(退屈補正の囲い)実装(社長指示・実装チャット)【2026-07-07 12:58 JST】
+- 社長指示「PACING_PUZZLE.md §5.21(M20)を実装して。実装は4段刻み(①軸1退屈囲い ②デンジャー凶悪
+  ハンター ③ゲート1 ④ゲート2)。各段で静的検証+関連テスト」に対応。stage①=軸1のみ実装。
+- **前提の発見(重要)**: 囲い/ミニボスの発火+進行(スポーン段階/クリア判定/タイムアウト)は
+  丸ごと`!puzzleActiveNow`でゲートされており(通常プレイ中は完全に停止=事実上デッドコード)、
+  新しいトリガーから`activeEvent`をセットしても進行ロジックが動かないと判明。ゲートを「発火」側
+  だけに絞り、「進行」側は常時稼働に変更(`useGameLoop.ts`)。puzzleActiveNow=false(ボスフェーズ)
+  の旧来経路は完全に無変更(同じコードが同じ条件で動く。挙動の意図は不変、到達経路の分岐位置のみ変更)。
+- **軸1本体**(`src/utils/boredomArena.ts`新規・純関数+ユニットテスト9件): 発火条件
+  (`shouldFireBoredomArena`)を切り出し。開始1分以降・前回発火から2分CD・`activeEvent`無し・
+  裏ボス/ハンター追跡/紅き月と非同時・boredomDirector/upswingの退屈シグナルが完全に立ち上がった
+  (`hunterBoredomReady`と同じ基準)時だけtrue。`useGameLoop.ts`からこの純関数で判定し、trueなら
+  既存の`beginArenaEvent`(horde・既存ARENA_HORDE_COUNT/DURATIONそのまま=叩き台)を発火。
+  復帰フラグ`?arena=0`で無効化可能。
+- **検証**: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (507 passed / 2 skipped)。
+- 憲法第4条・第5条: 該当なし(既存部品の配線・新規バランス値は導入していない=叩き台のまま)。
+- 次: M20 stage②(デンジャー入場時の制圧ゲート=凶悪ハンター/通常ハンター分岐)に着手。
+
 ## v0.25.1514 — M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴塞ぎ・実装チャット)【2026-07-07 12:00 JST】
 - 社長指示「PACING_PUZZLE.md §5.20を実装して。ゲーム本体は触らず bot/test/notes のみ」に対応。
 - `playtestBot.ts`に`rusher`ペルソナ追加(原点から外向き最大速度で直進・カウンター/カイト/武器
