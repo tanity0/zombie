@@ -89,7 +89,7 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, pityLevel } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } from '../utils/boredomArena';
-import { shouldTriggerViciousHunter, pickViciousSpawnPoint, isOutsideCamera, VICIOUS_REARM_MS } from '../utils/viciousHunter';
+import { shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS } from '../utils/viciousHunter';
 import {
   eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
 } from '../utils/eventProducer';
@@ -135,9 +135,9 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, type GateMeta } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
-import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
+import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
@@ -369,10 +369,6 @@ const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
 const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
 const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
 const HUNTER_BASE_SAFE_RADIUS = 150;       // 制圧拠点へこの距離まで近づくと追跡相手が撤退
-// PACING_PUZZLE.md §5.21 M20 軸2「再配置ラッシュ」の再配置クールダウン(v0.25.1531バグ修正)。
-// これが無いと画面外にいる間「毎フレーム」ランダム位置へ瞬間移動し、視界サークルが飛び回る。
-// 意図=「逃げるたび約1.5秒おきに視界際へ再出現」。実機調整前提の叩き台。
-const VICIOUS_REPLACE_CD_MS = 1500;
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
 const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
 // 優勢判定(6項目中 HUNTER_FAV_SCORE_NEEDED 以上で成立)
@@ -400,18 +396,40 @@ const areaZoneIndexFor = (distPx: number): number => {
 // (3に間引いても体感差・負荷差が無かったため社長指示で1へ戻し。重くなったらここを上げれば間引ける。)
 const ZONE_CHECK_INTERVAL = 1;
 // PACING_PUZZLE.md §5.17 M14: このランの最深距離(gameStats.maxDepthDist)+自己最深
-// (wallMeta.selfDeepestDist・ステージ毎localStorage永続)を更新時だけ反映する。呼び出し側で
-// 間引く(毎フレーム直呼びしない=localStorage書き込みが重いため。1秒間隔+死亡確定時の最終同期)。
+// (wallMeta.selfDeepestDist)を更新時だけ反映する。呼び出し側で間引く(毎フレーム直呼びしない)。
+// §5.21 M20追補(社長報告v0.25.1534): localStorageへの確定コミットはラン終了時のみ(commitRunEndProgress
+// が担当)。ここではメモリ上のstore(wallMeta/gameStats)だけを更新し、途中リロードでは何も永続しない。
 const syncWallDepth = (dist: number): void => {
   if (dist > useGameStore.getState().gameStats.maxDepthDist) {
     useGameStore.setState(state => ({ gameStats: { ...state.gameStats, maxDepthDist: dist } }));
   }
   const wm = useGameStore.getState().wallMeta;
   if (dist > wm.selfDeepestDist) {
-    const nextMeta = markSelfDeepest(wm, dist);
-    setWallMeta(getSelectedStageId(), nextMeta);
-    useGameStore.setState({ wallMeta: nextMeta });
+    useGameStore.setState({ wallMeta: markSelfDeepest(wm, dist) });
   }
+};
+// PACING_PUZZLE.md §5.21 M20追補(社長報告v0.25.1534): 進捗のlocalStorageコミットはラン終了時の
+// 1回のみ。ラン中は上記のとおりstore(wallMeta)/ref(gateMetaRef)に生値を持つだけで、確定コミットは
+// 3つの終了経路(死亡=triggerPlayerDeath / クリア=gameWon / 撤退=商人帰還=gameReturned)からのみ呼ぶ。
+// - kind='clear'(クリア or 撤退): 踏破フラグ・ランク到達フラグ・ゲート恒久解除も含めて全部コミット。
+// - kind='death': 自己最深/自己最高ランクの「記録」だけをコミット(実際に到達した記録は残す)。
+//   踏破/ランク到達フラグ・ゲート恒久解除はコミットしない(死亡は解除しない=v0.25.1517則)。
+// 途中リロード/クラッシュはこの関数自体が一度も呼ばれないため、何も永続しない(症状の根治)。
+const commitRunEndProgress = (kind: 'death' | 'clear', gateMeta: GateMeta): void => {
+  const stageId = getSelectedStageId();
+  if (!stageId) return;
+  const wm = useGameStore.getState().wallMeta;
+  if (kind === 'clear') {
+    setWallMeta(stageId, wm);
+    setGateMeta(stageId, gateMeta);
+    return;
+  }
+  const persisted = getWallMeta(stageId);
+  setWallMeta(stageId, {
+    ...persisted,
+    selfDeepestDist: Math.max(persisted.selfDeepestDist, wm.selfDeepestDist),
+    selfHighestRank: Math.max(persisted.selfHighestRank, wm.selfHighestRank),
+  });
 };
 // 深層域BGM(逆再生)切替の距離しきい値。深層域(エリア=7500px)に合わせる。準備ゾーンは手前、
 // 解除はヒステリシスで戻し過ぎ防止(enter=D / exit=D-200 / 準備開始=D-400 / 解放=D-600)。
@@ -514,6 +532,10 @@ const evNum = (key: string, def: number): number => {
 };
 const RESCUE_SPAWN_DIST_MIN = evNum('rescuemin', 500);
 const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
+// PACING_PUZZLE.md §5.21 M20追補(社長設計v0.25.1533・修正v0.25.1534): 凶悪ハンターは索敵フェーズを
+// 廃止し、デンジャー入場(制圧0)から約3秒後に索敵をスキップして「見つかった状態」(chase)で発動する。
+// 視界サークル/再配置ラッシュは凶悪版では出さない(撤去)。`?viciousdelay=<ms>`で調整可(実機調整前提)。
+const VICIOUS_DISCOVER_DELAY_MS = evNum('viciousdelay', 3000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
@@ -732,7 +754,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // PACING_PUZZLE.md §5.21 M20 軸2: 凶悪ハンター(デンジャー入場・拠点制圧0で優勢ゲート無視即発生)。
     vicious: false,              // 現在の出撃が凶悪モードか
     viciousRearmAt: 0,           // 凶悪ハンター終了直後の短い猶予明け gameTime(即座の入れ替わり防止)
-    viciousReplaceAt: 0,         // 次に「再配置ラッシュ」できる gameTime(毎フレーム瞬間移動=視界サークル飛び回りの修正・v0.25.1531)
+    // M20追補(社長設計v0.25.1533/1534): 索敵フェーズ廃止=デンジャー入場から約3秒後に発見済み(chase)で
+    // 直接発動する。この「入場を検知してから発動までの3秒」の起点時刻(0=未検知/待機中でない)。
+    viciousPendingAt: 0,
   });
   // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
@@ -916,6 +940,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const deepBgmPhaseRef = useRef<DeepBgmPhase>('shallow');
   // PACING_PUZZLE.md §5.21 M20(囲いゲート1/2): このステージの恒久解除メタ(resetGameで読み直す)。
   const gateMetaRef = useRef(emptyGateMeta());
+  // §5.21 M20追補(v0.25.1534): クリア(gameWon)/撤退(gameReturned)での進捗コミットを一度だけ行うための
+  // ガード(死亡はtriggerPlayerDeath側のgameOverTriggeredRefが同じ役割を果たす)。新ランでリセット。
+  const runEndCommittedRef = useRef(false);
   // 未クリアのまま未確認境界(gate1)へ入った「未達ペナルティ」発動中フラグ(ハンター復活/死神前倒し用)。
   const gate1PenaltyActiveRef = useRef(false);
   // 現在の activeEvent がゲート由来か(クリア時にゲート専用の後処理を行うため)。1/2=ゲート番号/null=通常。
@@ -969,6 +996,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     gameOverTriggeredRef.current = true;
     // PACING_PUZZLE.md §5.17 M14: 死亡確定時に最終同期(1秒間隔の間引きだと直近の数百msが漏れるため)。
     if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
+    // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破/ゲート恒久解除はコミットしない)。
+    if (WALL_ENABLED) commitRunEndProgress('death', gateMetaRef.current);
     setHurricaneRumble(false); // 死亡で鳴動を止める(ループが回り続けても残響しない)
     setHeartbeatLoop(false); // 心音ループも死亡で止める
     setPeakLayer(false); // PEAK重ねSEも死亡で止める
@@ -1463,7 +1492,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousReplaceAt: 0 };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0 };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -1520,6 +1549,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           zoneSfxPlayedRef.current = new Set(); // 到達SEの「今回のラン」判定も新ランでリセット
           areaSectorRef.current = -1; // 担当エリア進入セリフも再アーム
           gateMetaRef.current = getGateMeta(getSelectedStageId()); // M20ゲート恒久解除メタを選択ステージ分で読み直す
+          runEndCommittedRef.current = false; // 進捗コミット済みガードも新ランで再アーム
           gate1PenaltyActiveRef.current = false; // 未達ペナルティも新ランで再アーム
           activeGateRef.current = null;
           gate1PendingRef.current = false;
@@ -1951,34 +1981,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 playSfx('event-clear'); // 小イベント完了音(成功時のみ)
                 // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1クリア時の後処理。恒久解除+未達
                 // ペナルティ解除+ハンター消滅+M14到達判定を遅延実行(未達で止めていた分をここで出す)。
-                // ★簡略化: 「クリア後に死亡せず終える」の区別はまだ配線しておらず、クリアした瞬間に
-                // 即座に恒久解除としている(progress.tsのGateMeta冒頭コメント参照)。
+                // §5.21 M20追補(社長報告v0.25.1534): 恒久解除/踏破フラグのlocalStorageコミットは
+                // ここでは行わない(メモリ上のref/storeだけ更新)。確定コミットはラン終了時に
+                // commitRunEndProgress('clear')が一括で行う(死亡で終えた場合はコミットされない=
+                // v0.25.1517則「死亡は解除しない」を厳密に満たす)。
                 if (activeGateRef.current === 1) {
                   gateMetaRef.current = { ...gateMetaRef.current, gate1Cleared: true };
-                  setGateMeta(getSelectedStageId(), gateMetaRef.current);
                   gate1PenaltyActiveRef.current = false;
                   useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') })); // ハンター消滅
                   hunterRef.current.phase = 'idle';
                   hunterRef.current.detectStartAt = 0; hunterRef.current.chaseStartAt = 0; hunterRef.current.reinforced = 0; hunterRef.current.primaryId = '';
                   const wm2 = useGameStore.getState().wallMeta;
                   if (WALL_ENABLED && isFirstWallBreach(wm2, 3)) {
-                    const nextMeta2 = markWallBreached(wm2, 3);
-                    setWallMeta(getSelectedStageId(), nextMeta2);
-                    useGameStore.setState({ wallMeta: nextMeta2 });
+                    useGameStore.setState({ wallMeta: markWallBreached(wm2, 3) });
                     useGameStore.getState().addGold(50);
                     useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
                   }
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2クリア時の後処理。恒久解除+M14
                 // 到達判定を遅延実行(ハンター復活は伴わない=ゲート2にはその仕様が無い)。
+                // §5.21 M20追補(v0.25.1534): 同上、コミットはラン終了時のみ。
                 if (activeGateRef.current === 2) {
                   gateMetaRef.current = { ...gateMetaRef.current, gate2Cleared: true };
-                  setGateMeta(getSelectedStageId(), gateMetaRef.current);
                   const wm3 = useGameStore.getState().wallMeta;
                   if (WALL_ENABLED && isFirstWallBreach(wm3, 4)) {
-                    const nextMeta3 = markWallBreached(wm3, 4);
-                    setWallMeta(getSelectedStageId(), nextMeta3);
-                    useGameStore.setState({ wallMeta: nextMeta3 });
+                    useGameStore.setState({ wallMeta: markWallBreached(wm3, 4) });
                     useGameStore.getState().addGold(50);
                     useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
                   }
@@ -2081,6 +2108,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // §5.21 M20追補(v0.25.1534): クリア(gameWon=帰還完了/ゴール)or 撤退(gameReturned=商人「帰還」の
+        // 任意撤収)のいずれかが確定したら、進捗(自己最深/ランク到達/踏破フラグ/ゲート恒久解除)を
+        // 一括でlocalStorageへコミットする(1回のみ・runEndCommittedRefでガード)。
+        if (WALL_ENABLED && !runEndCommittedRef.current) {
+          const rs = useGameStore.getState();
+          if (rs.gameWon || rs.gameReturned) {
+            runEndCommittedRef.current = true;
+            commitRunEndProgress('clear', gateMetaRef.current);
+          }
+        }
+
         // --- ハンター変異体イベント(専用コントローラ・社長指示) ---------------------
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
         if (!danceTest && !indoor) {
@@ -2151,12 +2189,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               viciousRearmAt: H.viciousRearmAt,
             });
             if (viciousReady) {
-              const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
-              H.primaryId = spawnHunter(true, spawnPos);
-              H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0;
-              H.vicious = true;
-              H.eventsThisRun += 1;
-            } else if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
+              // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から約3秒(VICIOUS_DISCOVER_DELAY_MS)
+              // 待ってから、索敵をスキップして「見つかった状態」(chase)へ直接発動する。
+              if (H.viciousPendingAt === 0) H.viciousPendingAt = newGameTime;
+              if (newGameTime - H.viciousPendingAt >= VICIOUS_DISCOVER_DELAY_MS) {
+                const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
+                H.primaryId = spawnHunter(false, spawnPos); // search=false=最初から発見済み(alerted)
+                H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
+                H.vicious = true;
+                H.viciousPendingAt = 0;
+                H.eventsThisRun += 1;
+                useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+                spawnFlash('rgba(180,40,40,0.18)', 220);
+                useGameStore.getState().triggerAttention(spawnPos.x, spawnPos.y);
+              }
+            } else {
+              H.viciousPendingAt = 0; // 条件が崩れた(退避/拠点制圧等)=待機解除
+              if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
               // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
               // 従来復帰用にロジック自体は残す。
               const cam = hs.camera;
@@ -2190,6 +2240,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0;
                 H.eventsThisRun += 1;
               }
+              }
             }
           } else if (H.phase === 'search') {
             const prim = hs.enemies.find(e => e.id === H.primaryId);
@@ -2200,35 +2251,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) {
                 clearAllHunters(); endHunterEvent();
               }
-            } else if (
-              H.vicious && newGameTime >= H.viciousReplaceAt
-              // ズーム引き考慮(v0.25.1532): 画面外判定は「文脈ズーム最大引き(可視域=gameBounds×1/CONTEXT_ZOOM_MIN)」で
-              // 行う。gameBounds基準だと引いている時にまだ画面に見えているハンターを「画面外」と誤判定して
-              // 再配置=見えたまま飛ぶ(CLAUDE.mdのズーム引き考慮則)。可視域=カメラ中心から±(bounds/2×overscan)。
-              && isOutsideCamera(
-                prim.x + prim.width / 2, prim.y + prim.height / 2,
-                hs.camera.x - gameBounds.width * (1 / CONTEXT_ZOOM_MIN - 1) / 2,
-                hs.camera.y - gameBounds.height * (1 / CONTEXT_ZOOM_MIN - 1) / 2,
-                gameBounds.width / CONTEXT_ZOOM_MIN, gameBounds.height / CONTEXT_ZOOM_MIN,
-              )
-            ) {
-              // PACING_PUZZLE.md §5.21 M20 軸2「再配置ラッシュ」: 凶悪ハンターは索敵タイムアウトで
-              // 立ち去らず、画面外へ避けられたら視界ギリギリの奥へ再配置する(既存の再出現CD無視)。
-              // ※CD(VICIOUS_REPLACE_CD_MS)でゲート=毎フレーム瞬間移動して視界サークルが飛び回るのを防ぐ(v0.25.1531)。
-              const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
-              useGameStore.setState(s => ({
-                enemies: s.enemies.map(e => e.id === H.primaryId
-                  ? {
-                      ...e, x: spawnPos.x - e.width / 2, y: spawnPos.y - e.height / 2,
-                      hunterWanderTargetX: undefined, hunterWanderTargetY: undefined, hunterWanderNextAt: undefined,
-                    }
-                  : e),
-              }));
-              H.detectStartAt = 0;
-              H.viciousReplaceAt = newGameTime + VICIOUS_REPLACE_CD_MS;
-            } else if (!H.vicious && newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
-              // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。凶悪モードは対象外
-              // (再配置ラッシュで居座り続ける=タイムアウトで立ち去らない)。
+            } else if (newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
+              // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。
+              // M20追補(v0.25.1533/1534): 凶悪ハンターはこの索敵フェーズ自体に入らなくなった
+              // (デンジャー入場から即chaseへ)ため、ここに来るのは通常ハンターのみ。
               useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterLeavingAt: newGameTime } : e) }));
             } else {
               const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
@@ -2273,7 +2299,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 撤退トリガ: 制圧拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
               const nearBase = hs.baseSites.some(b => b.status === 'captured' && Math.hypot(hpx - b.x, hpy - b.y) <= HUNTER_BASE_SAFE_RADIUS);
               const chasedOut = elapsed >= HUNTER_CHASE_MAX_MS; // kiteで永久追跡＆他イベント停止を防ぐ
-              if (nearBase || retreatCinematic || chasedOut) {
+              // M20追補(社長明確化v0.25.1534)「デンジャーを出る=手前へ戻る」: 凶悪ハンターはプレイヤーが
+              // デンジャーより手前(area<2=r<3000)へ後退したら逃げ去る。前進(ゲート1方向)はゲート発生側で処理。
+              const viciousRetreated = H.vicious && areaZoneIndexFor(Math.hypot(hpx, hpy)) < 2;
+              if (nearBase || retreatCinematic || chasedOut || viciousRetreated) {
                 useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterFleeing: true, dormant: false, aiPhase: undefined } : e) }));
                 H.phase = 'retreat';
                 useGameStore.setState({ eventBannerText: 'ハンターが退いていく', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -2427,9 +2456,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   );
                   const wm = useGameStore.getState().wallMeta;
                   if (isFirstWallBreach(wm, wallIdx) && !gateBlocksThisWall) {
-                    const nextMeta = markWallBreached(wm, wallIdx);
-                    setWallMeta(getSelectedStageId(), nextMeta);
-                    useGameStore.setState({ wallMeta: nextMeta });
+                    // §5.21 M20追補(v0.25.1534): localStorageコミットはラン終了時のみ
+                    // (commitRunEndProgress)。ここではメモリ上のstoreだけ更新。
+                    useGameStore.setState({ wallMeta: markWallBreached(wm, wallIdx) });
                     useGameStore.getState().addGold(50);
                     useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
                     playSfx('event-clear'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)

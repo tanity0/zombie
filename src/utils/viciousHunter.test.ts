@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldTriggerViciousHunter, pickViciousSpawnPoint, isOutsideCamera } from './viciousHunter';
+import { shouldTriggerViciousHunter, pickViciousSpawnPoint } from './viciousHunter';
 
 const baseTrigger = {
   gameTime: 180000,
@@ -58,18 +58,5 @@ describe('pickViciousSpawnPoint', () => {
     const a = pickViciousSpawnPoint(0, 0, 500, () => 0);
     const b = pickViciousSpawnPoint(0, 0, 500, () => 0.5);
     expect(a.x === b.x && a.y === b.y).toBe(false);
-  });
-});
-
-describe('isOutsideCamera', () => {
-  it('reports false for a point inside the camera rect', () => {
-    expect(isOutsideCamera(100, 100, 0, 0, 800, 600)).toBe(false);
-  });
-
-  it('reports true for a point outside each edge', () => {
-    expect(isOutsideCamera(-10, 100, 0, 0, 800, 600)).toBe(true);
-    expect(isOutsideCamera(900, 100, 0, 0, 800, 600)).toBe(true);
-    expect(isOutsideCamera(100, -10, 0, 0, 800, 600)).toBe(true);
-    expect(isOutsideCamera(100, 700, 0, 0, 800, 600)).toBe(true);
   });
 });

@@ -12,6 +12,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1535 — §5.21追補×2実装: 進捗コミットをrun-end限定へ+凶悪ハンター即chase化【2026-07-07 17:33 JST】
+- **①進捗のlocalStorageコミットをラン終了時のみに変更**: `syncWallDepth`(useGameLoop.ts)・
+  gate1/gate2クリア時の踏破/恒久解除コミット・`directorTick.ts`のランク到達コミット、計5箇所の
+  mid-run `setWallMeta`/`setGateMeta`呼び出しを削除し、メモリ上のstore(`wallMeta`)/ref(`gateMetaRef`)
+  更新だけ残した。新設した`commitRunEndProgress(kind, gateMeta)`(useGameLoop.ts)が3つの終了経路
+  ——死亡(`triggerPlayerDeath`)/クリア(`gameWon`)/撤退(`gameReturned`=商人「帰還」の任意撤収)——
+  からのみ呼ばれ、実際にlocalStorageへ書き込む:
+  - `kind='clear'`(クリア/撤退どちらでも同一扱い): 自己最深/自己最高ランクに加え、踏破フラグ・
+    ランク到達フラグ・ゲート恒久解除まで全部コミット。
+  - `kind='death'`: 自己最深/自己最高ランクの「記録」だけを既存永続値とのmaxでコミットし、
+    踏破/ランク到達フラグ・ゲート恒久解除はコミットしない(死亡は解除しない=v0.25.1517則を厳密化)。
+  - 途中リロード/クラッシュはこの関数自体が一度も呼ばれないため何も永続しない=症状の根治。
+  - `gameWon`/`gameReturned`の検知は`runEndCommittedRef`で1回だけガード(新ランでリセット)。
+  - 副次効果: stage③実装時に残していた「★簡略化(クリア後に死亡せず終える区別を未配線)」を本来の
+    仕様どおりに解消(ゲートクリア後に死亡した場合、恒久解除はコミットされなくなった)。
+  - 社長報告②(resetProgress後の残存到達log)は、この根治(mid-run書き込み全廃)で自然に解消される
+    はずという設計チャットの見立てに沿った実装(直接の別バグは発見されなかった)。実機での最終確認は
+    社長へ持ち越し。
+- **②凶悪ハンターの索敵フェーズ廃止+入場3秒後の即chase化**: `H.phase==='idle'`のトリガー判定で
+  `viciousReady`が真になった瞬間から`H.viciousPendingAt`で3秒(`VICIOUS_DISCOVER_DELAY_MS`・
+  `?viciousdelay=`で調整可)計測し、経過後に`spawnHunter(false, ...)`(=最初から`hunterAlerted:true`)
+  で`H.phase='chase'`へ直接遷移(索敵状態を経由しない)。条件が崩れたら(退避/拠点制圧等)
+  `viciousPendingAt`を0に戻して待機解除。発動時は通常の「発見された」演出一式
+  (バナー/シェイク/赤フラッシュ/アテンションパン)を流用。
+  - 索敵フェーズが不要になったため、v0.25.1531/1532で入れた「再配置ラッシュ」(`viciousReplaceAt`/
+    `VICIOUS_REPLACE_CD_MS`/`isOutsideCamera`)を完全撤去(死んだコードを残さない)。
+  - 「デンジャーを出る=手前へ戻る」(社長明確化): chaseフェーズの撤退トリガに
+    `H.vicious && areaZoneIndexFor(...) < 2`(r<3000)を追加。既存の`hunterFleeing`撤退演出をそのまま流用。
+  - `viciousHunter.ts`の`isOutsideCamera`(再配置ラッシュ専用の純関数)と対応テスト2件を削除。
+- 検証: `npm run typecheck`(0 error)+`npx vitest related`(useGameLoop.ts/viciousHunter.ts/
+  directorTick.ts/progress.ts対象・69 passed, 2 skipped)。社長申し送りの新ルール(テスト/ビルドは
+  明示指示時のみ)により`npm test`フル/`npm run build`は未実行(CIが安全網)。
+- 自己点検: 憲法第4条・第5条に抵触なし(進捗の永続タイミング/ハンター発動タイミングの調整のみ・
+  湧き数/CD/コマ構造・ヒットボックス・ダメージ計算は不変)。
+- 次: M22 Group C(未着手)。実機での①②両方の動作確認は社長へ持ち越し。
+
 ## v0.25.1534 — 仕様追補×2: M14進捗のrun-endコミット化+ハンター発動3秒後(社長報告・設計チャット)【2026-07-07 17:12 JST】
 - 開発はSonnetへ返却(設計チャットは診断・仕様のみ)。社長からの追加報告2件を仕様化:
 - **①M14進捗の永続化バグ**: 途中リロード(クラッシュ含む)で「最深到達=到達」が出る/進行リセット直後は

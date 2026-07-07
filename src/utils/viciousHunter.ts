@@ -30,9 +30,3 @@ export const pickViciousSpawnPoint = (
   const ang = rand() * Math.PI * 2;
   return { x: pcx + Math.cos(ang) * detectRange, y: pcy + Math.sin(ang) * detectRange };
 };
-
-// 「再配置ラッシュ」: 索敵中の凶悪ハンターがプレイヤーのカメラ画面外へ出たら、視界ギリギリの奥へ
-// 近接再配置する対象かどうか。カメラ矩形は既存の onscreen 判定(useGameLoop.ts)と同じ矩形基準。
-export const isOutsideCamera = (
-  x: number, y: number, camX: number, camY: number, boundsW: number, boundsH: number,
-): boolean => x < camX || x > camX + boundsW || y < camY || y > camY + boundsH;

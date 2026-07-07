@@ -10,7 +10,6 @@
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
 import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED } from '../store/gameStore';
-import { getSelectedStageId, setWallMeta } from '../data/progress';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES, WALL_RANK_NAMES_EN,
 } from './wallProgress';
@@ -278,8 +277,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
           }));
           const st = useGameStore.getState();
           if (isFirstRankReach(st.wallMeta, newRank)) {
+            // PACING_PUZZLE.md §5.21 M20追補(社長報告v0.25.1534): localStorageコミットはラン終了時
+            // のみ(useGameLoop.tsのcommitRunEndProgress)。ここではメモリ上のstoreだけ更新する。
             const nextMeta = markSelfHighestRank(markRankReached(st.wallMeta, newRank), newRank);
-            setWallMeta(getSelectedStageId(), nextMeta);
             useGameStore.setState({ wallMeta: nextMeta });
             useGameStore.getState().enqueueWallEvent(
               'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
