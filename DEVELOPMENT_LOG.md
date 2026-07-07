@@ -12,6 +12,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1538 — 設計: ベンチ拡張(緑卵+重い順スキップ)とゲート1基本沸き付与を仕様化【2026-07-07 18:48 JST】
+- **設計チャットの仕様化2件**(コードは触らない=Sonnet実装待ち)。プランモードで承認済みの叩き台をファイル化。
+- **①バッチM23=ベンチマーク拡張(§5.24・新設)**: 実装先=`BenchmarkOverlay.tsx`。
+  - A: 緑卵(mine)系統追加(`mineCount`+カテゴリ`'MINE'`=M16/M32/M52・52=`mineAmbushAround`実数)。
+    `createBenchmarkMines`を`createBenchmarkTorches`同型で新設(`bench-mine-` prefix)。**卵スプライトは既に安い
+    (ベイク済プールスプライト)が、影キャスター多数+塊が未計測**=社長の「重いかも」を切り分ける。
+  - B: 各カテゴリを**重→軽**に反転+`nextProfileIndex`書換=余裕ライン以上で軽い段skip・余裕未満で降りて安全ライン探索。
+    余裕ライン叩き台=avg≥52&min≥45(現PASS=40/30より上・実機調整前提)。
+- **②§5.21-追補2=ゲート1に基本沸き10体付与(社長実機訂正で確定)**: 
+  - **訂正の記録**: 前調査(Explore)の「ゲート中もchaffが~10補充される」は**実機と食い違い=誤り**。
+    実機事実(社長)=ゲート1囲いは**台本の敵しか出ない・基本セット0**(例: 台本犬2体なら犬2体だけ)。
+  - 仕様: ゲート1発火時に台本と同じarena内配置経路で**基本沸き10体(bat/skeleton/zombie)をburst付与**(CD0=即10体)。
+    旧「MAX(20天井)」は社長訂正で不要=基本の10に単純化。基本10体はambient(fromEventにしない)=クリア条件不変。
+- 各項目=状態「仕様確定・Sonnet実装待ち」。実装順ステータス表にM23行追加+M20行にゲート1追補2を追記。
+- **段取り**: 承認後、社長へSonnet用ワンライナー2本(「M23実装して」「ゲート1に基本沸き10体を付与して」)を渡す。
+- 変更ファイル: PACING_PUZZLE.md(§5.24新設+§5.21-追補2+ステータス表2行)/DEVELOPMENT_LOG.md/package.json。
+- 検証: 文書のみ=typecheck不要(CLAUDE.md「文書のみ=即push」)。挙動変更ゼロ。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン=r<1500)非抵触——ゲート1はr≥5000の深部。第5条(緩を荒らさない)
+  非抵触——ゲート1は緩シーンでなく制圧関所。ベンチはdevツールでgameplay不変。数値カーブ・floor・閾値は未変更。
+
 ## v0.25.1537 — 社長決定3件の実装: 凶悪ハンター最終締め/到達+50G撤去/近接スイング同期【2026-07-07 18:35 JST】
 - **①凶悪ハンターの最終締め(§5.21-追補)**: chase中の増援トリガ2箇所(`H.reinforced<1/2`)に
   `!H.vicious &&`を追加し、凶悪ハンター(制圧0)には増援を一切呼ばないよう変更。通常ハンター
