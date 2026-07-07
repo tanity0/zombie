@@ -12,6 +12,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1504 — M17: 被ダメ経路のヘッドレス化(combatTick.ts切り出し)(社長指示・実装チャット)【2026-07-07 09:41 JST】
+- 社長指示「PACING_PUZZLE.md §5.18(M17)を実装して。挙動変更ゼロの切り出しリファクタで、
+  このバッチ単独のコミットにすること。受け入れ条件4点を満たすまで完了報告しない」を実装。
+- **`src/utils/combatTick.ts`(新規・レンダラ非依存)**: プレイヤー被ダメ5経路
+  (①敵接触/②敵発砲/③敵弾命中/④地雷/⑤ジャンプ落下攻撃の爆風)をuseGameLoop.tsから関数として
+  切り出し。中身はuseGameLoop.tsの該当ブロックをそのまま移動(数値・ゲート・分岐・呼び出し順序は
+  一切変えていない)。演出(playSfx/spawn*/triggerHitImpact/addMeleeFinishCombo/死亡演出)は
+  `CombatEffects`としてコールバック注入し、ヘッドレスでは`NOOP_COMBAT_EFFECTS`でno-op
+  (判定条件自体はこのファイルに残り実機と完全同一)。紅き月/叫喚バフの倍率は生の入力
+  (redNightActive/screamerBuffUntil/gameTime)を引数化し、driver側は「発動なし」を渡すことで
+  実質1倍(useGameLoop側は現行の計算どおり)。
+- **実行順序の実測訂正**: 仕様書の想定順(②③①④⑤)は実際のuseGameLoop.tsの行順と違っていた。
+  実測した本当の順序は**⑤→②→③→④→①**(ジャンプ落下爆風が最初・敵接触が最後)。
+  useGameLoop.ts側は元のブロック位置にそのまま関数呼び出しを差し込んだので挙動は自動的に不変。
+  playtestDriver.ts側はこの実測順序で明示的に呼ぶよう実装した。
+- **`src/hooks/useGameLoop.ts`**: 5ブロックを関数呼び出しに置き換え。後続コード(プロップ/
+  ピックアップ衝突判定)が参照し続ける`now`/`gameTime`/`player`スナップショットは関数内で
+  取り直さず引数で渡す設計(取り直すと僅かなタイミングズレが生じ得るため)。不要になった
+  importを削除。
+- **`src/utils/playtestDriver.ts`**: `runPlaytestTick`に5関数呼び出しを実測順序で追加。
+- **`src/store/playtest.test.ts`**: `RunReport`に`hpLost`/`died`/`diedAtMs`/`deathCause`を追加し
+  コンソール出力にも反映。新規カナリア回帰(棒立ちボットを未確認汚染エリア相当の座標に配置し
+  密着する敵3体と120秒接触させ被ダメ>0をアサート)を追加。実測: ショート版でも
+  `hpLost=6〜8`(standard/kiterペルソナ)を観測=構造的な穴が解消されたことを確認。
+- **`ENGINEERING_NOTES.md`**: 「M9実装の実際のスコープ」の被ダメ穴の段落を「解消済み
+  (v0.25.1504・M17: combatTick化)」へ同コミットで更新。対象外(ボス攻撃/ハンター/雪原・ラボ)は
+  引き続き網の外と明記。
+- 負荷スコア: 0/10(実行コストは移動のみ・新規per-frame処理なし)。
+- 検証: `npm run lint && npm run typecheck && npm test && npm run build` 全通過
+  (40ファイル/489テスト+2スキップ)。カナリア回帰は単体で4回連続実行し安定(flaky無し)。
+  Playwrightでタイトル→ステージ選択→出撃準備→実プレイまで操作しコンソールエラー無し
+  (実機での接触ダメージの目視確認までは未実施=次回実機確認時に依頼)。
+- 憲法第4条・第5条: 該当なし(測定基盤のリファクタ・ゲーム挙動そのものは不変が要件)。
+
 ## v0.25.1503 — M14: 到達譜=二軸の壁(深さ×ランク)を実装(社長指示・実装チャット)【2026-07-07 01:26 JST】
 - 社長指示「PACING_PUZZLE.md §5.17(M14 到達譜=二軸の壁)を実装して。演出は演出仕様(v0.25.1499確定)
   ブロックどおり。M13演出の載せ替え追補(出現バナー金帯化・REVENGE銘打ち化)も同時に」を実装。

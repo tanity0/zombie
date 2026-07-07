@@ -2,11 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useGameStore,
   INVULN_MS,
-  COUNTER_EXTEND_PER_HIT,
   STUN_DURATION_MS,
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
-  MINE_DAMAGE,
   PLAYER_BASE_SPEED,
   isKatanaMode,
   subWeaponBlockedByKatana,
@@ -29,13 +27,11 @@ import {
   WIRE_LAND_KNOCKBACK_SPEED, WIRE_PASS_DAMAGE_MULT, WIRE_BOMB_RADIUS, WIRE_BOMB_DAMAGE_MULT, WIRE_PASS_BOMB_RADIUS,
   BOSS_MELEE_STUN_MULT,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
-  COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
-  PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
-  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isSeekerActive, isGameTimeStopped, enemyMeleeDist,
+  skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  ENEMY_ATTACK_SPEED_MULT, HUNTER_VISION_RANGE, SCREAMER_BUFF_MULT, AMMO_MAX,
+  HUNTER_VISION_RANGE, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -43,6 +39,10 @@ import {
   detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
 } from '../utils/wallProgress';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import {
+  applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
+  type CombatEffects, type CombatTunables,
+} from '../utils/combatTick';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
@@ -57,15 +57,12 @@ import type { AmmoType, Pickup, Projectile, EnemyType } from '../types/game';
 import {
   checkCollision,
   checkProjectileEnemyCollisions,
-  checkPlayerEnemyCollisions,
   checkPlayerPickupCollisions,
-  checkProjectilePlayerCollisions,
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
 import {
   createEnemyProjectile,
   generateEnemy,
-  getEnemyFireProfile,
   getEnemySpawnCount,
   getEnemySpawnInterval,
   isBossType,
@@ -78,7 +75,7 @@ import {
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
-import { ALCHEMY_CHANNEL_MS, ALCHEMY_AGGRO_RANGE } from '../utils/summonUtils';
+import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
@@ -1249,6 +1246,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
         const snowTheme = loopState.farBackdrop === 'snow'; // ステージ4(雪原): 新型 lich を湧きプールに含める
+
+        // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
+        // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。
+        const combatEffects: CombatEffects = {
+          playSfx,
+          spawnFlash,
+          spawnRing,
+          spawnBurst,
+          spawnGlow: (...args) => useGameStore.getState().spawnGlow(...args),
+          spawnCallout: (...args) => useGameStore.getState().spawnCallout(...args),
+          spawnDamageNumber,
+          spawnEggFluidSplash,
+          triggerHitImpact: (...args) => useGameStore.getState().triggerHitImpact(...args),
+          addMeleeFinishCombo,
+          triggerPlayerDeath,
+        };
+        const combatTunables: CombatTunables = {
+          thorOrbitDist: THOR_ORBIT_DIST,
+          thorCounterLeapMs: THOR_COUNTER_LEAP_MS,
+          grenadeBlastRadius: GRENADE_BLAST_RADIUS,
+          grenadeBlastDamageMult: GRENADE_BLAST_DAMAGE_MULT,
+          counterReflectSlowMs: COUNTER_REFLECT_SLOW_MS,
+        };
 
         // クラッシュ診断(常時・低頻度=3秒毎): 「数分プレイ後に真っ白→タイトルに戻る」現象の手がかり用。
         // 例外を投げないOS/ブラウザ側のタブ強制終了はJSで検知できないため、直前の状態を localStorage へ
@@ -4075,149 +4095,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // パンプキン(/lab-zombie-3)のジャンプ着地爆発(範囲狭め)。store が記録した着地点を消化し、
-        // 爆発FXを出しつつ半径内ならプレイヤーへダメージ(無敵中は無効)。死亡時は通常の死亡演出へ。
-        {
-          const blasts = useGameStore.getState().pumpkinBlasts;
-          if (blasts.length > 0) {
-            // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
-            if (blasts.some(b => !b.ice)) playSfx('heavy-impact');
-            if (blasts.some(b => b.ice)) playSfx('skadi-ice');
-            const bp = useGameStore.getState().player;
-            const bpcx = bp.x + bp.width / 2;
-            const bpcy = bp.y + bp.height / 2;
-            const counterActive = Date.now() <= bp.counterWindowEnd;
-            const parriedEnemyIds: { id: string; bx: number; by: number }[] = [];
-            for (const b of blasts) {
-              if (b.ice) {
-                // スカジ氷=青版の爆発エフェクト(社長指示。爆発処理自体は流用)。
-                spawnFlash('rgba(140,200,255,0.16)', 200);
-                spawnRing(b.x, b.y, 6, b.radius, 'rgba(150,210,255,0.9)', 4, 300);
-                spawnBurst(b.x, b.y, '#bfe6ff', 16);
-                useGameStore.getState().spawnGlow(b.x, b.y, b.radius, 'rgba(150,210,255,', 280);
-              } else {
-                spawnFlash('rgba(255,150,60,0.16)', 200);
-                spawnRing(b.x, b.y, 6, b.radius, 'rgba(255,170,80,0.9)', 4, 300);
-                spawnBurst(b.x, b.y, '#fb923c', 16);
-              }
-              const pr = Math.max(bp.width, bp.height) / 2;
-              if (Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr) {
-                if (counterActive) {
-                  // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
-                  // ※以前は !invulnerable を前提にしていたため、被弾i-frame中だとパリィが
-                  //   丸ごとスキップされ「カウンターしたのにノックバックしない」が起きていた。
-                  parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y });
-                } else if (!bp.invulnerable) {
-                  const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
-                  const died = damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の落下攻撃`);
-                  playSfx('player-damage');
-                  // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
-                  const ddx = bpcx - b.x, ddy = bpcy - b.y;
-                  const dd = Math.max(0.001, Math.hypot(ddx, ddy));
-                  useGameStore.setState(st => ({ player: {
-                    ...st.player,
-                    knockbackVx: (ddx / dd) * PLAYER_KNOCKBACK_SPEED,
-                    knockbackVy: (ddy / dd) * PLAYER_KNOCKBACK_SPEED,
-                    knockbackUntil: Date.now() + PLAYER_KNOCKBACK_MS,
-                  } }));
-                  if (died) triggerPlayerDeath(bpcx, bpcy);
-                }
-              }
-            }
-            if (parriedEnemyIds.length > 0) {
-              const pnow = Date.now();
-              // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
-              addMeleeFinishCombo(1);
-              playSfx('counter');
-              useGameStore.getState().spawnGlow(bpcx, bpcy, 95, 'rgba(56,189,248,', 360);
-              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-              spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-              spawnBurst(bpcx, bpcy, '#38bdf8', 14);
-              useGameStore.getState().spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-              useGameStore.setState(st => ({
-                // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
-                // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
-                player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },
-                enemies: st.enemies.map(e => {
-                  const hit = parriedEnemyIds.find(p => p.id === e.id);
-                  if (!hit) return e;
-                  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-                  // ジャンプ攻撃はプレイヤーの位置めがけて着地する=敵中心がプレイヤー中心とほぼ重なり、
-                  // 「プレイヤー→敵」方向だと向きが 0 に潰れてノックバックが効かない(社長報告のバグ)。
-                  // 距離が小さいときは、敵がジャンプしてきた向き(aiFrom→着地点)の逆=「飛んできた方へ弾き返す」を使う。
-                  let ndx = ecx - bpcx, ndy = ecy - bpcy;
-                  let d = Math.hypot(ndx, ndy);
-                  if (d < 12) {
-                    const ox = e.x - (e.aiFromX ?? e.x), oy = e.y - (e.aiFromY ?? e.y);
-                    const od = Math.hypot(ox, oy);
-                    if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
-                    else { ndx = 0; ndy = -1; d = 1; } // それも潰れていれば上方へ弾く
-                  }
-                  const ux = ndx / d, uy = ndy / d;
-                  return {
-                    ...e,
-                    // 突進パリィと同じく aiPhase を完全解除して弾き返す。'recover' のままだと
-                    // ノックバックが乗らない(社長報告)ため undefined に統一+ai系をリセット。
-                    aiPhase: undefined,
-                    aiPhaseUntil: undefined, aiStartedAt: undefined,
-                    aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-                    aiReadyAt: st.gameTime + 1200,
-                    // 【ジャンプカウンターのノックバック不発の根治】
-                    // ① 速度ノックバックは updateEnemies が「翌フレーム以降」に適用する=ジャンプ着地で
-                    //    付与される stun/lift/recover に上書きされて「その場で痺れる」だけになっていた。
-                    //    → ここで“即時に”位置を弾き飛ばす(COUNTER_KNOCKBACK_LAUNCH)。
-                    // ② 凍結系(stun/lift/root)と ノックバック無敵窓を全解除して、続く速度スライドを
-                    //    何にも邪魔させない。
-                    x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
-                    y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
-                    vx: 0, vy: 0,
-                    stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
-                    knockbackImmuneUntil: 0,
-                    knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
-                    knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
-                    knockbackUntil: pnow + KNOCKBACK_DURATION,
-                  };
-                }),
-              }));
-              // クリティカル反撃(ヘッドショット): 弾いたジャンプ敵へ。aiPhase 解除済みでダメージが通る。
-              const cBase = getActiveGun(bp)?.damage ?? 12;
-              for (const hit of parriedEnemyIds) {
-                const e = useGameStore.getState().enemies.find(en => en.id === hit.id);
-                if (!e) continue;
-                const boss = isBossType(e.type);
-                const critMult = skillCritMult(bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
-                const dmg = Math.max(1, Math.round(cBase * critMult * skillOutgoingDamageMult(bp) * (bp.equipBonus?.damageMult ?? 1)));
-                const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-                damageEnemy(hit.id, dmg);
-                spawnDamageNumber(ex, e.y, dmg, true);
-                spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-                spawnBurst(ex, ey, '#fde047', 10);
-                useGameStore.getState().spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);
-              }
-              playSfx('headshot');
-              // トール(ステージ5裏ボス)のジャンプ攻撃着地がパリィされた場合、他の攻撃と同じ
-              // カウンター後退(近接距離ギリギリ外まで高速後退)へ移行させる(社長指示)。
-              for (const hit of parriedEnemyIds) {
-                const te = useGameStore.getState().enemies.find(en => en.id === hit.id);
-                if (!te || te.type !== 'thor') continue;
-                const tcx = te.x + te.width / 2, tcy = te.y + te.height / 2;
-                const lx = tcx - bpcx, ly = tcy - bpcy;
-                const ll = Math.hypot(lx, ly) || 1;
-                useGameStore.setState(st => ({
-                  enemies: st.enemies.map(en => en.id === hit.id ? {
-                    ...en,
-                    bossState: 'counter-leap',
-                    bossStateUntil: Date.now() + THOR_COUNTER_LEAP_MS,
-                    aiFromX: tcx, aiFromY: tcy,
-                    aiTargetX: bpcx + (lx / ll) * THOR_ORBIT_DIST,
-                    aiTargetY: bpcy + (ly / ll) * THOR_ORBIT_DIST,
-                  } : en),
-                }));
-              }
-            }
-            useGameStore.setState({ pumpkinBlasts: [] });
-          }
-        }
+        // PACING_PUZZLE.md §5.18 M17: ⑤ジャンプ落下攻撃の爆風(pumpkinBlasts消化)。
+        // src/utils/combatTick.ts へ切り出し(挙動不変・コード移動のみ)。
+        applyPumpkinBlastDamage(combatEffects, combatTunables);
 
         // 設置シールドでジャンプ/ダッシュを防いだ瞬間の「ぶつかった感」: 接触点に火花バースト＋
         // 衝撃リング＋衝突音＋ごく短い画面揺れ。ジャンプ/ダッシュ共通(store が kind を付けて積む)。
@@ -4822,125 +4702,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // Every enemy that has a fire profile periodically lobs a hostile
-        // projectile at the player. Each type has its own cadence/range
-        // so grunts shoot rarely and ranged/boss shoot often. We read the
-        // enemies/player fresh from the store here because updateEnemies
-        // just mutated them — the React closure values are one frame
-        // stale, and a stale `lastShot` would have us refire on enemies
-        // that already shot earlier in this very frame.
+        // PACING_PUZZLE.md §5.18 M17: ②敵の発砲/③敵弾→プレイヤー命中(カウンター反射込み)。
+        // src/utils/combatTick.ts へ切り出し(挙動不変・コード移動のみ)。now はこの後(プロップ衝突
+        // 判定等)でも参照するため、切り出し後もここで捕捉したまま渡す(内部で取り直さない)。
         const now = Date.now();
-        const liveEnemies = useGameStore.getState().enemies;
-        const livePlayer = useGameStore.getState().player;
-        const liveGameTime = useGameStore.getState().gameTime;
-        const firedIds: string[] = [];
-        const liveSummonsForFire = useGameStore.getState().summons;
-        liveEnemies.forEach(enemy => {
-          // 裏ボスの発砲(3連発/全方位16発)は専用コントローラが直接撃つので汎用ループからは除外。
-          if (isHiddenBoss(enemy.type)) return;
-          // Stunned enemies are frozen — they can't spit projectiles either.
-          if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
-          // 特殊行動中(ジャンプ/ダッシュの溜め・動作中)は発砲しない(giantbat の弾/ジャンプ/ダッシュを排他に)。
-          if (enemy.aiPhase) return;
-          const profile = getEnemyFireProfile(enemy);
-          if (!profile) return;
-          // 発砲間隔も攻撃倍速で短縮(1/MULT)=より速く撃つ。1.0で従来等速。
-          if (now - enemy.lastShot < profile.interval / ENEMY_ATTACK_SPEED_MULT) return;
-          // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
-          // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
-          const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
-          const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden);
-          if (tgt.hidden) return; // 標的なし=非発砲
-          const dx = tgt.x - (enemy.x + enemy.width / 2);
-          const dy = tgt.y - (enemy.y + enemy.height / 2);
-          if (Math.hypot(dx, dy) > profile.range) return;
-
-          addProjectile(createEnemyProjectile(enemy, livePlayer, tgt.x, tgt.y));
-          firedIds.push(enemy.id);
-        });
-        if (firedIds.length > 0) {
-          useGameStore.setState(state => ({
-            enemies: state.enemies.map(e =>
-              firedIds.includes(e.id) ? { ...e, lastShot: now } : e
-            )
-          }));
-        }
-
-        // Hostile projectiles vs player. If the counter window is currently
-        // open (the player just lifted their finger / tapped Space), reflect
-        // the bolt back at the firing enemy. Otherwise it does damage.
-        const liveProjectiles = useGameStore.getState().projectiles;
-        const incoming = checkProjectilePlayerCollisions(liveProjectiles, player);
-        let reflectedAny = false;
-        for (const proj of incoming) {
-          const currentPlayer = useGameStore.getState().player;
-          if (now <= currentPlayer.counterWindowEnd) {
-            reflectProjectile(proj.id);
-            // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
-            const bcLv = skillLevel(currentPlayer, 'bomb-counter');
-            if (bcLv) {
-              const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv];
-              const bcDmgMult = [0, 1, 1.25, 1.5][bcLv];
-              useGameStore.setState(state => ({
-                projectiles: state.projectiles.map(p =>
-                  p.id === proj.id
-                    ? { ...p, explodeOnHit: true, explodeRadius: GRENADE_BLAST_RADIUS * bcRadiusMult, explodeDamageMult: GRENADE_BLAST_DAMAGE_MULT * bcDmgMult }
-                    : p
-                ),
-              }));
-            }
-            reflectedAny = true;
-            // Each successful reflect refreshes the window so a barrage
-            // can be turned back fully. The cooldown still gates a NEW
-            // counter trigger once the chain finally lapses.
-            useGameStore.setState(state => ({
-              player: {
-                ...state.player,
-                counterWindowEnd: Math.max(
-                  state.player.counterWindowEnd,
-                  now + COUNTER_EXTEND_PER_HIT
-                ),
-                lastCounterSuccessTime: now
-              }
-            }));
-          } else {
-            const wasVulnerable = !useGameStore.getState().player.invulnerable;
-            const rnMult = loopState.redNight?.phase === 'active' ? 2 : 1;
-            // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の飛び道具ダメージも×SCREAMER_BUFF_MULT。
-            const scMult = (loopState.screamerBuffUntil > loopState.gameTime && proj.ownerType && proj.ownerType !== 'screamer' && !isBossType(proj.ownerType)) ? SCREAMER_BUFF_MULT : 1;
-            const playerDied = damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2);
-            if (wasVulnerable) {
-              playSfx('player-damage');
-              spawnFlash('rgba(239,68,68,0.22)', 200);
-            }
-            removeProjectile(proj.id);
-            spawnBurst(
-              player.x + player.width / 2,
-              player.y + player.height / 2,
-              '#ef4444',
-              5
-            );
-            if (playerDied) {
-              triggerPlayerDeath(
-                player.x + player.width / 2,
-                player.y + player.height / 2
-              );
-            }
-          }
-        }
-        // "Counter!" only when a bullet was actually reflected (once per frame).
-        if (reflectedAny) {
-          addMeleeFinishCombo(1);
-          playSfx('counter');
-          const pcx = player.x + player.width / 2;
-          const pcy = player.y + player.height / 2;
-          useGameStore.getState().spawnGlow(pcx, pcy, 95, 'rgba(56,189,248,', COUNTER_REFLECT_SLOW_MS);
-          // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
-          useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-          spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_SLOW_MS);
-          spawnBurst(pcx, pcy, '#38bdf8', 14);
-          useGameStore.getState().spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-        }
+        applyEnemyFire(now);
+        applyEnemyProjectileHits(
+          now, player,
+          loopState.redNight?.phase === 'active',
+          loopState.screamerBuffUntil,
+          loopState.gameTime,
+          combatEffects, combatTunables,
+        );
 
         // スケボー(投擲)の当たり: 通常弾ダメージではなく前方バッシュを出す専用処理。最初に当たった敵で発動し、
         // その板は消える。通常のダメージ衝突(下)に混ざらないよう、当たった板をここで先に取り除く。
@@ -5476,27 +5249,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // stepping on one splashes corrosive green fluid and hurts the player.
         // The invulnerability window keeps a clustered patch from deleting the
         // whole HP bar at once.
-        const currentPlayerForMine = useGameStore.getState().player;
-        const mineHit = useGameStore.getState().breakableProps.find(prop =>
-          prop.type === 'mine' && checkCollision(currentPlayerForMine, prop)
-        );
-        if (mineHit) {
-          const broken = damageBreakableProp(mineHit.id, 999);
-          const fxX = mineHit.footX;
-          const fxY = mineHit.footY - mineHit.height * 0.5;
-          spawnEggFluidSplash(fxX, fxY, 1.28);
-          if (broken && !currentPlayerForMine.invulnerable) {
-            const playerDied = damagePlayer(MINE_DAMAGE, '地雷', fxX, fxY);
-            playSfx('bomb');
-            spawnFlash('rgba(239,68,68,0.18)', 180);
-            if (playerDied) {
-              triggerPlayerDeath(
-                currentPlayerForMine.x + currentPlayerForMine.width / 2,
-                currentPlayerForMine.y + currentPlayerForMine.height / 2
-              );
-            }
-          }
-        }
+        // PACING_PUZZLE.md §5.18 M17: ④地雷。src/utils/combatTick.ts へ切り出し(挙動不変)。
+        applyMineDamage(combatEffects);
         
         // ワイヤーアンカーの毎フレーム処理。
         // フリックで刺す(triggerWireAnchor)→ 1秒後(wirePlantUntil)に startWireDash で高速移動開始 →
@@ -5646,136 +5400,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // Check for collisions between player and enemies.
-        // フレーム先頭スナップショット(player/enemies)は movePlayer / updateEnemies 後に
-        // 古い座標になるため、接触判定は最新状態(getState)で行う。移動後の位置で当たり/
-        // カウンター/ダッシュ弾きを正しく解決する。
-        const collState = useGameStore.getState();
-        const collPlayer = collState.player;
-        const collEnemies = collState.enemies;
-        const playerEnemyCollisions = checkPlayerEnemyCollisions(collPlayer, collEnemies);
-        // ワイヤーアンカーの高速移動中/敵吸着コンボ中は敵接触ダメージを無効化(敵弾は別経路でそのまま当たる)。
-        const wpImmune = collPlayer;
-        const wireDashingNow = Date.now() < wpImmune.wireDashUntil || !!wpImmune.wireStuckEnemyId;
-        // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
-        // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
-        const counterActiveNow = Date.now() <= wpImmune.counterWindowEnd;
-        const dashParried: string[] = [];
-
-        playerEnemyCollisions.forEach(enemy => {
-          if (wireDashingNow) return;
-          // トール(ステージ5裏ボス)専用の攻撃実行中(chase/return以外のbossState)は、通常の接触ダメージを
-          // 適用しない=各攻撃(一閃/突き/払い/ジャンプ攻撃)自身の当たり判定/カウンター処理に委ねる
-          // (社長指示: 一閃・突きは「もとの当たり判定ではなくライン上のみ」)。
-          if (enemy.type === 'thor' && enemy.bossState && enemy.bossState !== 'chase' && enemy.bossState !== 'return') return;
-          // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間はプレイヤーは被弾しない。
-          // カウンター窓中ならカウンター成立=クリティカル反撃(ヘッドショット)を返す。
-          if (enemy.aiPhase === 'jump') {
-            if (counterActiveNow) dashParried.push(enemy.id);
-            return;
-          }
-          // 突進(charge)/ジャンプの着地硬直(recover)/溜め(crouch)も、カウンター窓中は弾く。
-          // パンプキンは空中で重なる窓が一瞬→着地直後は recover で「その場硬直(痺れ)」になり拾えなかったため、
-          // recover/crouch も対象にして広い猶予で確実にノックバック+クリ反撃する。
-          if ((enemy.aiPhase === 'charge' || enemy.aiPhase === 'recover' || enemy.aiPhase === 'crouch') && counterActiveNow) {
-            dashParried.push(enemy.id);
-            return;
-          }
-          // 気絶中(フィニッシュ受付)の敵に触れても被弾しない。
-          // ただしカウンター窓中ならパリィ=弾き返す。カウンターの近接スイングがジャンプ敵を
-          // クリ気絶させると aiPhase が undefined にリセットされ、recover/charge 判定を抜けて
-          // ノックバックしなくなるため、気絶敵もカウンター中は dashParried で確実に弾く。
-          if (enemy.stunUntil !== undefined && gameTime < enemy.stunUntil) {
-            if (counterActiveNow) dashParried.push(enemy.id);
-            return;
-          }
-          const damageWasApplied = !collPlayer.invulnerable;
-          const rnMelee = loopState.redNight?.phase === 'active' ? 2 : 1;
-          // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の接触ダメージも×SCREAMER_BUFF_MULT。
-          const scMelee = (loopState.screamerBuffUntil > loopState.gameTime && enemy.type !== 'screamer' && !isBossType(enemy.type)) ? SCREAMER_BUFF_MULT : 1;
-          const playerDied = damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-          if (damageWasApplied) {
-            playSfx('player-damage');
-            spawnFlash('rgba(239,68,68,0.22)', 200);
-            spawnBurst(
-              collPlayer.x + collPlayer.width / 2,
-              collPlayer.y + collPlayer.height / 2,
-              '#ef4444',
-              6
-            );
-          }
-          if (playerDied) {
-            triggerPlayerDeath(
-              collPlayer.x + collPlayer.width / 2,
-              collPlayer.y + collPlayer.height / 2
-            );
-          }
-        });
-        if (dashParried.length > 0) {
-          const pnow = Date.now();
-          const ppx = collPlayer.x + collPlayer.width / 2, ppy = collPlayer.y + collPlayer.height / 2;
-          // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
-          addMeleeFinishCombo(1);
-          playSfx('counter');
-          useGameStore.getState().spawnGlow(ppx, ppy, 95, 'rgba(56,189,248,', 360);
-          useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-          spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-          spawnBurst(ppx, ppy, '#38bdf8', 14);
-          useGameStore.getState().spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-          useGameStore.setState(st => ({
-            // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
-            player: { ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow },
-            enemies: st.enemies.map(e => {
-              if (!dashParried.includes(e.id)) return e;
-              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-              // ジャンプ同様、突進中の敵はプレイヤーに重なって向きが潰れることがある。
-              // 距離が小さいときは突進してきた向き(aiFrom→現在)の逆=「来た方へ弾き返す」を使う。
-              let ndx = ecx - ppx, ndy = ecy - ppy;
-              let d = Math.hypot(ndx, ndy);
-              if (d < 12) {
-                const ox = e.x - (e.aiFromX ?? e.x), oy = e.y - (e.aiFromY ?? e.y);
-                const od = Math.hypot(ox, oy);
-                if (od > 0.001) { ndx = ox; ndy = oy; d = od; }
-                else { ndx = 0; ndy = -1; d = 1; }
-              }
-              const ux = ndx / d, uy = ndy / d;
-              return {
-                ...e,
-                aiPhase: undefined, // 突進/ジャンプ中断
-                aiPhaseUntil: undefined, aiStartedAt: undefined,
-                aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-                aiReadyAt: st.gameTime + 1200, // 少し間を空ける(giantbat は gbDashReadyAt 側で管理)
-                // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
-                x: e.x + ux * COUNTER_KNOCKBACK_LAUNCH,
-                y: e.y + uy * COUNTER_KNOCKBACK_LAUNCH,
-                vx: 0, vy: 0,
-                stunUntil: undefined, liftUntil: undefined, rootUntil: undefined,
-                knockbackImmuneUntil: 0,
-                knockbackVx: ux * COUNTER_KNOCKBACK_SPEED,
-                knockbackVy: uy * COUNTER_KNOCKBACK_SPEED,
-                knockbackUntil: pnow + KNOCKBACK_DURATION,
-              };
-            }),
-          }));
-          // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
-          // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。
-          const counterBase = getActiveGun(collPlayer)?.damage ?? 12;
-          let counterKill = false;
-          for (const eid of dashParried) {
-            const e = useGameStore.getState().enemies.find(en => en.id === eid);
-            if (!e) continue;
-            const boss = isBossType(e.type);
-            const critMult = skillCritMult(collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
-            const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(collPlayer) * (collPlayer.equipBonus?.damageMult ?? 1)));
-            const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-            counterKill = damageEnemy(eid, dmg) || counterKill;
-            spawnDamageNumber(ex, e.y, dmg, true); // 金色クリ表示
-            spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-            spawnBurst(ex, ey, '#fde047', 10);
-            useGameStore.getState().spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);
-          }
-          playSfx('headshot'); // ヘッドショット反撃音(Counter SE と重ねる)
-          void counterKill;
-        }
+        // PACING_PUZZLE.md §5.18 M17: ①敵接触ダメージ(カウンター/パリィ丸ごと)。
+        // src/utils/combatTick.ts へ切り出し(挙動不変・コード移動のみ)。
+        applyContactDamage(
+          gameTime,
+          loopState.redNight?.phase === 'active',
+          loopState.screamerBuffUntil,
+          combatEffects,
+        );
+        // ↓ 以降のピックアップ衝突判定が使う collPlayer(位置は上の接触判定と同じフレームで不変)。
+        const collPlayer = useGameStore.getState().player;
 
         // 錬金術: 敵 ↔ 召喚(通常個体)の接触ダメージ。召喚は物理ブロックしない。
         // 被弾頻度の制限は damageSummon 側の無敵時間(プレイヤーと同じ INVULN_MS

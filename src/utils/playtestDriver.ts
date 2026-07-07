@@ -16,7 +16,7 @@
 // これらは「今の網に掛からないバグの種類」としてENGINEERING_NOTES.mdに記載する。
 
 import { useGameStore, isKatanaMode } from '../store/gameStore';
-import { getActiveGun, getGuns, fireWeapon } from './weaponUtils';
+import { getActiveGun, getGuns, fireWeapon, RANGE_BY_CATEGORY } from './weaponUtils';
 import { areaIndexForPos } from './enemyUtils';
 import { phaseAt } from './difficultyDirector';
 import { createPuzzleClockState, createKomaAccumulator, createSoftenState } from './rankAssessor';
@@ -29,8 +29,23 @@ import {
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
 import { decideBotInput, type BotPersona } from './playtestBot';
+import {
+  applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
+  NOOP_COMBAT_EFFECTS, type CombatTunables,
+} from './combatTick';
 
 const MAX_ENEMIES = 10; // useGameLoop.ts と同じ既定(コマ管理はcapForStateが実効上限を別途決める)
+
+// PACING_PUZZLE.md §5.18 M17: useGameLoop.ts側のローカル定数と同じ値(叩き台の演出専用チューニング・
+// ヘッドレスでは全てno-opなので実行結果には影響しないが、シグネチャを揃えるために複製)。
+// useGameLoop.ts側の値を変更した場合はここも合わせること。
+const COMBAT_TUNABLES: CombatTunables = {
+  thorOrbitDist: RANGE_BY_CATEGORY.handgun + 40, // THOR_ORBIT_MARGIN_PX
+  thorCounterLeapMs: 260,
+  grenadeBlastRadius: 92,
+  grenadeBlastDamageMult: 0.62,
+  counterReflectSlowMs: 560,
+};
 
 export interface PlaytestRefs {
   pity: PityUpkeepRefs;
@@ -116,6 +131,17 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   useGameStore.getState().updateEnemies(dt);
   useGameStore.getState().updateProjectiles(dt);
   if (useGameStore.getState().suppressionActive) useGameStore.getState().updateSuppression(dt);
+
+  // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)。useGameLoop.tsの実フレーム
+  // 順序と同じ並び(⑤ジャンプ落下爆風→②敵発砲→③敵弾命中→④地雷→①敵接触)で呼ぶ。演出は全てno-op
+  // (NOOP_COMBAT_EFFECTS)=判定条件はuseGameLoop.tsと完全に同じロジックのまま評価される。
+  const combatNow = Date.now();
+  const combatPlayer = useGameStore.getState().player;
+  applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, COMBAT_TUNABLES);
+  applyEnemyFire(combatNow);
+  applyEnemyProjectileHits(combatNow, combatPlayer, false, 0, t, NOOP_COMBAT_EFFECTS, COMBAT_TUNABLES);
+  applyMineDamage(NOOP_COMBAT_EFFECTS);
+  applyContactDamage(t, false, 0, NOOP_COMBAT_EFFECTS);
 
   const s = useGameStore.getState();
   const playerAreaIdx = areaIndexForPos(s.player.x, s.player.y);

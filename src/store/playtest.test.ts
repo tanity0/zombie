@@ -29,6 +29,11 @@ interface RunReport {
   survivedMs: number;
   finalRank: number;
   violations: string[];
+  // PACING_PUZZLE.md §5.18 M17: 被ダメ経路がヘッドレスに繋がったかの計測(playtestレポート拡張)。
+  hpLost: number;               // ラン中の被ダメ合計(治療等の回復分は含めない=減少分のみ加算)
+  died: boolean;                // ラン中に health<=0 になった瞬間があったか
+  diedAtMs: number | null;      // 死亡時点のgameTime(なければnull)
+  deathCause: string | null;    // 死亡時点のlastDamageSource(なければnull)
 }
 
 const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: number, wanderSeed: number): RunReport => {
@@ -48,6 +53,11 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
     let prevKomaKind: KomaKind4 | null = null;
     let prevGameTime = useGameStore.getState().gameTime;
     const overscan = 1 / CONTEXT_ZOOM_MIN; // labTheme/indoorは常にfalse(playtestDriver.tsの前提と同じ)
+    // PACING_PUZZLE.md §5.18 M17: 被ダメ経路がヘッドレスに繋がったかの計測。
+    let hpLost = 0;
+    let died = false;
+    let diedAtMs: number | null = null;
+    let deathCause: string | null = null;
 
     for (let i = 0; i < ticks; i++) {
       const before = useGameStore.getState();
@@ -56,12 +66,19 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
       const prevNuisanceAt = refs.koma.puzzleCdRef.current.lastNuisanceSpawnAt;
       const prevSpecialAt = refs.koma.puzzleCdRef.current.lastSpecialSpawnAt;
       const prevHitAt = refs.koma.puzzleHitRef.current.lastHitAt;
+      const healthBefore = before.player.health;
 
       const nextGameTime = before.gameTime + DT * 1000;
       vi.setSystemTime(realEpoch + nextGameTime); // Date.now() を今回tick分のgameTimeへ同期
       runPlaytestTick(refs, { persona, tickIndex: i, wanderSeed, dt: DT });
 
       const after = useGameStore.getState();
+      hpLost += Math.max(0, healthBefore - after.player.health); // 回復分は含めない(減少分のみ加算)
+      if (!died && after.player.health <= 0) {
+        died = true;
+        diedAtMs = after.gameTime;
+        deathCause = after.lastDamageSource || null;
+      }
       const removedIds = [...beforeIds].filter(id => !after.enemies.some(e => e.id === id));
       const gb = after.gameBounds;
       const rect = {
@@ -89,6 +106,7 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
       survivedMs: useGameStore.getState().gameTime,
       finalRank: refs.koma.puzzleClockRef.current.rank,
       violations,
+      hpLost, died, diedAtMs, deathCause,
     };
   } finally {
     vi.useRealTimers();
@@ -99,7 +117,9 @@ const printReport = (label: string, reports: RunReport[]): void => {
   console.log(`\n=== playtest report: ${label} ===`);
   for (const r of reports) {
     const status = r.violations.length === 0 ? 'OK' : `FAIL(${r.violations.length})`;
-    console.log(`  [${status}] persona=${r.persona} class=${r.characterClass} survived=${(r.survivedMs / 1000).toFixed(0)}s rank=${r.finalRank}`);
+    // PACING_PUZZLE.md §5.18 M17: hpLost/died をコンソール出力にも出す(受け入れ条件のとおり)。
+    const deathInfo = r.died ? ` died@${((r.diedAtMs ?? 0) / 1000).toFixed(0)}s(${r.deathCause ?? '?'})` : '';
+    console.log(`  [${status}] persona=${r.persona} class=${r.characterClass} survived=${(r.survivedMs / 1000).toFixed(0)}s rank=${r.finalRank} hpLost=${r.hpLost.toFixed(0)}${deathInfo}`);
     for (const v of r.violations.slice(0, 5)) console.log(`      - ${v}`);
   }
 };
@@ -135,6 +155,47 @@ describe('playtest bot (M9: 自動テストプレイ=デバッグボット)', ()
       expect(allViolations, allViolations.slice(0, 20).join('\n')).toEqual([]);
     },
   );
+});
+
+describe('M17: 被ダメ経路のヘッドレス化(カナリア回帰・PACING_PUZZLE.md §5.18)', () => {
+  it('棒立ちボット(stationary)を深部相当の盤面(未確認汚染エリア)で120秒回すと被ダメ>0になる', () => {
+    // 受け入れ条件2: 被ダメ5経路(src/utils/combatTick.ts)がヘッドレスへ正しく繋がっていることの
+    // 機械的証明。M9導入当初、ボットは構造的にダメージを受けられなかった(v0.25.1501で発覚)。
+    const realEpoch = Date.now();
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['Date'] });
+    vi.setSystemTime(realEpoch);
+    try {
+      useGameStore.getState().resetGame('warrior');
+      const refs = createPlaytestRefs();
+      // プレイヤーを未確認汚染エリア相当(area index3・5000-7500px。AREA_BASE_DIFFICULTY=1.75)へ
+      // 配置し、密着する敵を複数体スポーン(area基準の強さスケーリングが乗った状態で
+      // 接触ダメージが発生することを確認=「深部相当の盤面」の再現)。
+      const deepX = 6000, deepY = 0;
+      const tStart = useGameStore.getState().gameTime;
+      useGameStore.setState(state => ({ player: { ...state.player, x: deepX, y: deepY } }));
+      const deepEnemies = [
+        spawnEnemyAt('zombie', deepX + 30, deepY, tStart),
+        spawnEnemyAt('zombie', deepX - 30, deepY, tStart),
+        spawnEnemyAt('skeleton', deepX, deepY + 30, tStart),
+      ];
+      useGameStore.setState({ enemies: deepEnemies });
+
+      const TICKS = 120 * 60; // 120秒相当(60fps換算)
+      const dt = 1 / 60;
+      let hpLost = 0;
+      for (let i = 0; i < TICKS; i++) {
+        const before = useGameStore.getState();
+        const healthBefore = before.player.health;
+        const nextGameTime = before.gameTime + dt * 1000;
+        vi.setSystemTime(realEpoch + nextGameTime); // Date.now() を今回tick分のgameTimeへ同期
+        runPlaytestTick(refs, { persona: 'stationary', tickIndex: i, wanderSeed: 0, dt });
+        hpLost += Math.max(0, healthBefore - useGameStore.getState().player.health);
+      }
+      expect(hpLost).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('M16: pumpkin jump-cap escape scenario (回帰・PACING_PUZZLE.md §5.16)', () => {
