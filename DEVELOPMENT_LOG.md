@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1548 — 設計: テスト用クイックスタートURLパラメータ(?smoke)を仕様化(§6-追補 M25)【2026-07-08 01:23 JST】
+- **設計チャットの仕様化1件**(コードは触らない=Sonnet実装待ち)。設計チャットが実機で描画スモークを試みた副産物=
+  実プレイ到達に5画面のクリックが要り自動化が脆いと判明(v1546)→社長「お願い」でショートカット導線を仕様化。
+- **§6-追補 / バッチM25=テスト用クイックスタートURLパラメータ(新設)**:
+  - **`?smoke=1`**=App起動時にタイトル/画面タップ/ミッション/ステージ選択/クラス装備の**5画面を全部スキップして直接`startGame`→`playing`**へ。完全opt-in(無指定は通常起動)。
+  - オプション: `?class=<warrior|mage|rogue|necromancer>`(既定warrior)/`?stage=<id>`(既定=先頭)/`?smoke=bench`=ベンチモード起動(緑卵描画をヘッドレスで踏める)。
+  - 実装=`App.tsx`のマウントuseEffectで`URLSearchParams`読み→`setSelectedStage`→`startGame`。既存の`startGame`/`setSelectedStage`/`getSelectedStageId`/`ensurePreload`流用=**新規ゲームロジックなし=起動導線のショートカットのみ**。ゲーム挙動・バランス不変。
+  - 用途: 描画スモークが`?smoke=1`で実プレイまで確実到達→`pixiScene`(トール赤フラッシュ/マークスマン走り等)の実行時健全性をヘッドレスで機械チェック可能に。
+- **背景メモ(描画スモークの実測)**: WebGL2はヘッドレスでも動作(SwiftShader)。boot〜メニュー5画面すべて pageError/consoleError ゼロで表示=React/メニュー層は健全。
+  実プレイ描画(pixiScene)はメニュー深さで自動到達できず=本パラメータで解消する。今日のコードは typecheck/test(552 pass)/build/lint 全green済み。
+- 変更ファイル: PACING_PUZZLE.md(§6-追補+ステータス表M25行)/DEVELOPMENT_LOG.md/package.json。検証: 文書のみ=typecheck不要。
+- 自己点検(規律5): 憲法第4/5条 非抵触=テスト専用の起動ショートカットでゲーム仕様・バランス・数値は一切不変。
+
 ## v0.25.1547 — バグ修正: マークスマン走りモーションのコマ切り出しズレ(隣コマ混入)【2026-07-07 21:57 JST】
 - **社長報告**: 「切り出し区画がおかしい。隣のコマと一部混ざってる」(v0.25.1545の`player-magnum-run-0〜4.png`)。
 - **原因**: 受領した5コマシート(2030×353)を**均等5分割(406px刻み)で切り出していた**が、実際の
