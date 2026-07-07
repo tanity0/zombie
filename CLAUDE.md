@@ -67,6 +67,9 @@ work by what kind of effect-draw it adds and how many are alive at once.
 - **Cheap (score low):**
   - `enemy` — 60 on screen is *safe* (E60 PASS). Sprite draw is light.
   - `projectile` — 130 *safe* (J130 PASS). Movement + collision is light.
+  - **mine (緑卵)** — 52 *safe* (`M52` PASS avg55 @res1, `M32` 60fps・実測v0.25.1543)。
+    ベイク済プールスプライト1枚+卵1個ごとの影キャスターだが、待ち伏せ最悪ケースの52個でも耐える。
+    **重い原因ではないと実測で確定**(M23=§5.24でこの切り分けのために追加)。
   - **small glow** (radius < `STRONG_GLOW_RADIUS` ~44) — drawn as a pooled
     tinted sprite (`drawSmallGlowSprite`), cheap.
   - **Bloom (AdvancedBloomFilter)** — turning it off barely moves FPS; treat its
@@ -84,7 +87,9 @@ work by what kind of effect-draw it adds and how many are alive at once.
     コストは再テッセレーションではなく**加算合成の大面積オーバードロー(塗り面積)**。
     `T16` FAIL(29.5)や`F2` CAUTION(38.5)も混合中の G10 が主因(純ライト`T24p`は
     PASS=トーチ光自体は安い)。対策方向: 同時強glow数のキャップ/半径縮小/解像度
-    (塗り面積)削減。resolution=1 デフォルト(v0.25.1447)が直撃するはず — 要再計測。
+    (塗り面積)削減。**res1再計測(v0.25.1543・実機スマホ)で `G12` 依然 FAIL avg30**
+    (res1.5の32からほぼ横ばい)=強glowは res1 でも律速のまま。解像度では逃げ切れず、
+    同時数キャップ/半径縮小が本筋。
   - **ring / particle / slash (`FX-R/P/S`) — FIXED・実測確認済み (v0.25.1446)**:
     per-frame `Graphics` → ALL pooled sprites (v0.25.1425)。再計測で
     **`P90` PASS(60fps) / `R12` PASS(avg55) / `S16` PASS(60fps) / `F1` PASS(avg53)**
@@ -102,8 +107,14 @@ work by what kind of effect-draw it adds and how many are alive at once.
   FX-R R12 pass / FX-P P90 60fps / FX-S S16 60fps / FX composite F1 pass・F2 caution /
   image I12 pass / light T8 pass・T16 fail / strong glow G12 FAIL(唯一の主犯) /
   all A1 fail(avg25)`。
-  (v0.25.1447でスマホ解像度デフォルト1.5→1=塗り面積44%。オーバードロー律速の
-  G12/T16/F2/A1 は改善するはず — res1での再計測が次の宿題。)
+  (v0.25.1447でスマホ解像度デフォルト1.5→1=塗り面積44%。)
+- **Re-measured @res1 (v0.25.1543・実機スマホ・↑の"宿題"消化):**
+  `enemy E60 60fps / projectile J130 60fps / mine M52 pass(avg55)・M32 60fps /
+  image I12 60fps / FX-P P90・FX-R R12・FX-S S16・FX-D D20 全60fps /
+  FX F1 pass・F2 pass(avg40)・F3 FAIL(glow14) / strong glow G12 FAIL(avg30・依然唯一の主犯) /
+  pure light T24p pass(avg57)=光は安い・但し light T24/T16 FAIL は混在glowが主因 / all A1 FAIL(avg25)`。
+  **res1でもオーバードロー律速(G12/LIGHT/ALL)は解消せず=強glowが本丸のまま。緑卵は無罪確定(M52 pass)。**
+  ※`ALL MAX`(A3)/`A2`は絶対ピークでスマホのメモリ天井超え=クラッシュのため、ベンチはスマホ時 ALL を A1 までに制限(v0.25.1542-3)。
 - **Scoring rule of thumb (v0.25.1446改訂):** the cost is **draw-method ×
   simultaneous count**。per-frame `Graphics`とText生成は全廃済みなので、現在の
   ランクは: **強glow(加算・大面積オーバードロー)が突出して最重** > 多数のトーチ

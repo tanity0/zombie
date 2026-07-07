@@ -12,6 +12,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1544 — 文書: CLAUDE.mdのベンチ節をres1実測(v1543)で更新+緑卵を無罪明記【2026-07-07 20:55 JST】
+- **CLAUDE.md「Empirical render budget」節を更新**(社長指示「Aだけやっといて」=実測でベンチ節を最新化)。
+  実装コードは不変=文書のみ。
+- **①緑卵(mine)をCheapリストに追加**: `M52` PASS avg55/`M32` 60fps(実測v1543・res1)。ベイク済プールスプライト+
+  卵ごと影キャスターだが52個でも耐える=**重い原因ではないと実測で確定**(M23=§5.24の切り分け目的を達成)。
+- **②res1再計測の「宿題」を消化**: CLAUDE.mdが残していた「res1での再計測が次の宿題」を、社長の実機ベンチ結果で更新。
+  強glow`G12`は res1 でも依然 FAIL avg30(res1.5の32からほぼ横ばい)=**解像度では逃げ切れず、強glowが本丸のまま**。
+  純ライト`T24p` PASS(avg57)=光は安い/LIGHT T24・T16のFAILは混在glowが主因、を再確認。
+- **③スマホでALL MAX/A2を回さない件も注記**(v1542-3のクラッシュ回避=絶対ピークはメモリ天井超え)。
+- 変更ファイル: CLAUDE.md/DEVELOPMENT_LOG.md/package.json。検証: 文書のみ=typecheck不要。挙動変更ゼロ。
+- (別件・調査メモ) 未確認サークル(gate1)の敵数が「10体いない」体感の社長報告を調査: fromEvent修正は
+  v1543で実装済(逃げるのは解消のはず)。confining=true→カリング上限20/gate敵はfromEvent保護/上限カリングは
+  数<20で非発火 → **コード上、AI/カリングは間引いていない**(台本+基本10体=計12前後は全部残るはず)。
+  「足りない」なら間引きでなく元の数=基本沸き数の増量が素直。社長へ「何体欲しいか」を確認中(未仕様)。
+
 ## v0.25.1543 — 実機バグ修正2件実装: ベンチのスマホクラッシュ回避+ゲート1chaffが逃げる件【2026-07-07 20:08 JST】
 - **①ベンチのスマホクラッシュ修正**(`src/components/BenchmarkOverlay.tsx`・§5.24-追補): 犯人は
   ALLカテゴリのMAX(A3・敵72+弾140+全FX+強glow=絶対ピーク)。重い順化(M23)で最初に走るようになり、
