@@ -12,6 +12,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1513 — 発火ナイフ投擲物の見た目を専用イラストに差し替え(社長提供素材・実装チャット)【2026-07-07 11:49 JST】
+- 社長から発火ナイフの素材画像(IMG_6490)提供+「飛翔中/刺さった時の見た目」に使う指示(1問確認で確定)。
+- `public/sprites/weapons/fire-knife-projectile.png` に保存(透過の余白をトリミング、1254×1254→427×509、
+  テクスチャメモリ節約。絵の内容自体は無加工)。`pixiTextures.ts` の `standalone` に登録(nearest)。
+- `pixiScene.ts`: 旧来の手続き描画(`drawProjectile`内 `case 'fire-knife-projectile'`、矩形+多角形のドット
+  調ベクター画)を削除し、`decoyViews`と同じ Container+Graphics+Sprite プール方式(`fireKnifeViews`)へ
+  差し替え。専用の `syncFireKnives`/`drawFireKnife` を新設し、`syncProjectiles` の対象外リストに追加
+  (skadiの氷刃と同じ「rotation = 進行方向 - ネイティブ角」パターンを踏襲)。
+- **ネイティブ角(柄→刃先)は目測でなく実測**: アップロード画像をPCA解析(非透過ピクセルの主成分軸+
+  両端の座標)し `atan2(-495,379) ≈ -52.6°` を確定(`FIRE_KNIFE_NATIVE_ANGLE`)。表示全長は当たり判定
+  14×14よりやや大きい22px(`FIRE_KNIFE_DISPLAY_LEN`、視認性のみ・当たり判定は不変)。
+- 刺さった時の火種明滅(赤橙2重円・導火線演出)は既存仕様のまま維持し、`gfx`側で柄側の位置
+  (`FIRE_KNIFE_HILT_RADIUS_FRAC=0.49`、実測の中心→柄比率)に再配置。
+- **検証**: `npm run lint && npm run typecheck && npm test && npm run build` 全通過(489 passed / 2 skipped)。
+  さらに `public/` 配下に同一originの一時Pixi検証ページを作り(commit前に削除済み)、Playwright実機
+  スクリーンショットで4方向(右/下/左/上)すべて刃先が進行方向を向くこと、`isStuck`時の火種が柄側に
+  出ることを実写で確認(canvas描画コードはユニットテスト対象外というルールのため、この形で目視確認)。
+- 憲法第4条・第5条: 該当なし(見た目のみの差し替え、当たり判定・ダメージ・タイミングは無変更)。
+- 次: 特になし(見た目差し替えは完結)。
+
 ## v0.25.1512 — バッチM19仕様化: rusherペルソナで試験の穴を塞ぐ(社長指示・設計チャット)【2026-07-07 11:36 JST】
 - 社長指摘「穴ってここで塞いだ?」=前回rusherを質問で先送りにしていた(私のミス)。質問なしで仕様化。
 - PACING_PUZZLE.md §5.20にM19を仕様化(着手可): rusherペルソナ(外向き直進・カウンター/カイト無し・

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1513',
+    items: [
+      'サブウェポン「発火ナイフ」の見た目を専用イラストに変更(飛翔中・刺さった状態とも)。',
+    ],
+  },
+  {
     version: '0.25.1503',
     items: [
       '新要素「到達譜」: 進んだ深さと戦闘ランクの記録・演出を追加(タイトルに最深到達バッジ、リザルトに深度メーター)。',

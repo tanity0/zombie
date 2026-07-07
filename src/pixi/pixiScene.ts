@@ -711,6 +711,11 @@ const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 const LOCAL_EVENT_SHADOW_SIZE_MULT = 1;
 // スカジの氷刃テクスチャの刃先方向(実測: hilt→tip ≈ -62.8°)。発射方向 angle に合わせ rotation=angle-この値。
 const SKADI_BLADE_NATIVE_ANGLE = -62.8 * Math.PI / 180;
+// 発火ナイフ投擲物テクスチャの刃先方向(実測: 柄→刃先 ≈ -52.6°)。進行方向 direction に合わせ rotation=angle-この値。
+const FIRE_KNIFE_NATIVE_ANGLE = -52.6 * Math.PI / 180;
+const FIRE_KNIFE_DISPLAY_LEN = 22; // 画面上の全長(px)。当たり判定(14x14)より少し大きく見せて視認性を確保(見た目のみ・当たり判定は不変)。
+const FIRE_KNIFE_NATIVE_LEN = 624;         // 実測: テクスチャ内の柄(石)中心→刃先の距離(px、原寸)
+const FIRE_KNIFE_HILT_RADIUS_FRAC = 0.49;  // 実測: 中心→柄(石)中心は全長の約半分弱
 // 木/壁/プロップへの常時足影(太陽/月の方向影)。負荷キャップ=プレイヤーに近い順この個数まで。
 // 順位下ほど薄くして境界の入れ替わりポップを防ぐ(社長指示・視覚のみ)。
 const OBJECT_SHADOW_MAX = 7;
@@ -899,6 +904,8 @@ export class PixiScene {
   private shieldViews = new Map<string, { container: Container; sprite: Sprite }>();
   // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
   private decoyViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
+  // 発火ナイフ投擲物: 専用イラスト(飛翔/刺さった状態共通)+ 刺さった時の火種明滅(Graphics)。
+  private fireKnifeViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 自動タレット: 砲台ボディ(Graphics)。前方集中/全方位でモード別の見た目。
   private turretViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 投擲スケボー: 進行方向へ回転しながら地面を滑る板スプライト(色キー透過済み)。
@@ -2543,6 +2550,7 @@ export class PixiScene {
     );
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
+    this.syncFireKnives(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
     this.syncSkateboards(s.projectiles, now);
     this.syncSummons(s.summons, now);
@@ -5493,6 +5501,7 @@ export class PixiScene {
       if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
       if (p.weaponType === 'turret') continue; // タレットは syncTurrets で別管理(actorLayer/y-sort)
       if (p.weaponType === 'skateboard') continue; // 投擲スケボーは syncSkateboards で別管理(スプライト)
+      if (p.weaponType === 'fire-knife-projectile') continue; // 発火ナイフは syncFireKnives で別管理(専用イラスト+火種明滅)
       seen.add(p.id);
       let g = this.projectiles.get(p.id);
       if (!g) {
@@ -5557,6 +5566,56 @@ export class PixiScene {
       if (v.sprite.texture !== tex) v.sprite.texture = tex;
       const scale = tex.height > 0 ? DECOY_DISPLAY_H / tex.height : 1;
       v.sprite.scale.set(scale);
+    }
+  }
+
+  // 発火ナイフ投擲物: 専用イラスト(飛翔/刺さった状態共通、center anchorで進行方向へ回転)+
+  // 刺さった時は柄側に短い火種(赤橙の明滅)を足して導火線感を出す(常時glowなし・軽量)。
+  private syncFireKnives(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.weaponType !== 'fire-knife-projectile') continue;
+      if (p.createdAt > now) continue;
+      seen.add(p.id);
+      let v = this.fireKnifeViews.get(p.id);
+      if (!v) {
+        const container = new Container();
+        const gfx = new Graphics();   // 刺さった時の火種明滅(柄側)
+        const sprite = new Sprite();  // ナイフ本体
+        sprite.anchor.set(0.5, 0.5);
+        container.addChild(gfx, sprite);
+        this.L.frontObjectLayer.addChild(container);
+        v = { container, gfx, sprite };
+        this.fireKnifeViews.set(p.id, v);
+      }
+      this.drawFireKnife(v, p);
+    }
+    for (const [id, v] of this.fireKnifeViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.fireKnifeViews.delete(id);
+      }
+    }
+  }
+
+  private drawFireKnife(v: { container: Container; gfx: Graphics; sprite: Sprite }, p: Projectile) {
+    v.container.position.set(p.x + p.width / 2, p.y + p.height / 2);
+    v.container.rotation = Math.atan2(p.direction.y, p.direction.x) - FIRE_KNIFE_NATIVE_ANGLE;
+    const tex = getTexture('weapons/fire-knife-projectile');
+    if (tex) {
+      if (v.sprite.texture !== tex) v.sprite.texture = tex;
+      v.sprite.scale.set(FIRE_KNIFE_DISPLAY_LEN / FIRE_KNIFE_NATIVE_LEN);
+    }
+    const g = v.gfx;
+    g.clear();
+    if (p.isStuck) {
+      const blink = 0.55 + Math.sin(Date.now() / 90) * 0.45; // 火種の明滅(導火線)
+      const hiltAngle = FIRE_KNIFE_NATIVE_ANGLE + Math.PI;
+      const hiltR = FIRE_KNIFE_DISPLAY_LEN * FIRE_KNIFE_HILT_RADIUS_FRAC;
+      const hx = Math.cos(hiltAngle) * hiltR;
+      const hy = Math.sin(hiltAngle) * hiltR;
+      g.circle(hx, hy, 2.6).fill({ color: 0xf97316, alpha: 0.9 * blink });
+      g.circle(hx, hy, 1.3).fill({ color: 0xfde047, alpha: blink });
     }
   }
 
@@ -6296,22 +6355,6 @@ export class PixiScene {
           .fill({ color: 0x000000, alpha: 0.28 });
         g.circle(0, -hop, Math.max(3, p.width / 2)).fill({ color: 0x1f2937 });
         g.circle(-1, -hop - 1, Math.max(1.5, p.width / 5)).fill({ color: 0x9ca3af, alpha: 0.55 });
-        break;
-      }
-      case 'fire-knife-projectile': {
-        // 飛行中: 進行方向へ向いた小さなドット調ナイフ(刃=銀+橙)。
-        // 刺さった後: 短い火種(赤橙の明滅)を足して導火線感を出す(常時glowなし・軽量)。
-        g.rotation = Math.atan2(p.direction.y, p.direction.x);
-        const len = 13;
-        const hh = 3;
-        g.rect(-len / 2, -hh / 2, len * 0.62, hh).fill({ color: 0xcbd5e1 });       // 刃
-        g.rect(len / 2 - len * 0.42, -hh / 2 - 0.5, len * 0.42, hh + 1).fill({ color: 0x7c2d12 }); // 柄
-        g.poly([len / 2, 0, len * 0.1, -hh, len * 0.1, hh]).fill({ color: 0xf1f5f9 }); // 切先
-        if (p.isStuck) {
-          const blink = 0.55 + Math.sin(Date.now() / 90) * 0.45; // 火種の明滅(導火線)
-          g.circle(-len / 2 - 1, 0, 2.6).fill({ color: 0xf97316, alpha: 0.9 * blink });
-          g.circle(-len / 2 - 1, 0, 1.3).fill({ color: 0xfde047, alpha: blink });
-        }
         break;
       }
       case 'drone-boomerang-projectile': {
