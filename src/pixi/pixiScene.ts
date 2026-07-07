@@ -472,10 +472,17 @@ const playerWalkSequence = (p: Player): number[] =>
 const PINGPONG_WALK_CYCLE_MS = 900;
 const playerWalkCycleMs = (p: Player): number =>
   usesFiveFramePingPong(p) ? PINGPONG_WALK_CYCLE_MS : PLAYER_WALK_CYCLE_MS;
-const playerWalkFrame = (p: Player, now: number, walking: boolean): number => {
+// 走りモーション(社長提供・移動レバーを目一杯倒した時だけ): マークスマンのみ先行実装(5コマ・
+// player-magnum-run-0..4)。歩きと同じ8段ping-pongの並びを流用し、周期だけ速める(走り=急ぐ動き)。
+// `?playerrun=0`で無効化(常に歩きモーション)。`?runthreshold=`でしきい値を調整可(実機調整前提)。
+const PLAYER_RUN_ENABLED = tsBool('playerrun', true);
+const PLAYER_RUN_CYCLE_MS = tsNum('runcyclems', 560);
+const PLAYER_RUN_SWIPE_THRESHOLD = tsNum('runthreshold', 0.98); // ほぼ最大チルト(浮動小数の丸め対策で1.0ちょうどにしない)
+const usesRunAnimation = (p: Player): boolean => PLAYER_RUN_ENABLED && p.characterClass === 'mage';
+const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
   const sequence = playerWalkSequence(p);
-  const cycle = playerWalkCycleMs(p);
+  const cycle = running && usesRunAnimation(p) ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
   const index = Math.floor((now % cycle) / (cycle / sequence.length));
   return sequence[index] ?? 0;
 };
@@ -489,11 +496,13 @@ const PLAYER_IDLE_SPRITE: Partial<Record<Player['characterClass'], string>> = {
 };
 // プレイヤーの立ち絵テクスチャ名(クラス/武将装備/フレーム別)。分身もこれを共有して同じ外見にする。
 // ※ necromancer→striker / rogue→scavenger の対応は既存仕様のまま(入れ替えない)。
-const playerTextureName = (p: Player, frame: number, walking = true): string => {
+const playerTextureName = (p: Player, frame: number, walking = true, running = false): string => {
   const warlordFull = hasFullWarlordSet(p.equipment);
   const warlordKatana = warlordFull && hasMurasame(p);
   // 歩いていない時は各クラス専用の待機立ち絵(社長提供)。武将フル装備中は武将立ち絵が優先(待機絵なし)。
   if (!walking && !warlordFull && PLAYER_IDLE_SPRITE[p.characterClass]) return PLAYER_IDLE_SPRITE[p.characterClass]!;
+  // 走りモーション(移動レバー全開時のみ・マークスマン先行実装)。武将フル装備中は武将立ち絵を優先(走り絵なし)。
+  if (running && !warlordFull && usesRunAnimation(p)) return `player-magnum-run-${frame}`;
   return warlordKatana ? `player-warlord-katana-walk-${frame}`
     : warlordFull ? `player-warlord-gun-walk-${frame}`
     : p.characterClass === 'mage' ? `player-magnum-walk-${frame}`
@@ -4649,14 +4658,17 @@ export class PixiScene {
     // スケボー乗車中は歩きアニメを止める(社長指示): 待機フレームで板に立つ。歩行の上下バウンド(bob)/
     // スカッシュ/踏み込みリーンも walking=false で自動的に止まる。
     const walking = p.isMoving && p.direction !== 'idle' && !p.skaterRiding;
-    const frame = playerWalkFrame(p, now, walking);
+    // 走りモーション: 移動レバー(swipeStrength)を目一杯倒している時だけ(マークスマン先行実装)。
+    const running = walking && useGameStore.getState().swipeStrength >= PLAYER_RUN_SWIPE_THRESHOLD;
+    const frame = playerWalkFrame(p, now, walking, running);
     // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
     // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。
     const warlordFull = hasFullWarlordSet(p.equipment);
-    const textureName = playerTextureName(p, frame, walking);
+    const textureName = playerTextureName(p, frame, walking, running);
     const tex = getTexture(textureName) ?? getTexture('player');
     view.sprite.texture = tex ?? view.sprite.texture;
-    const phase = walking ? (now / playerWalkCycleMs(p)) * Math.PI * 2 : 0;
+    const walkCycle = running && usesRunAnimation(p) ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
+    const phase = walking ? (now / walkCycle) * Math.PI * 2 : 0;
     const step = Math.sin(phase);
     const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     // 徒歩の自然化(3コマの上に重ねる連続モーション・視覚のみ): 接地(lift=0)で縦に潰れて横に広がり、

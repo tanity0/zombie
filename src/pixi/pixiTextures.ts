@@ -51,6 +51,12 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-game-0',
       'player-magnum-game-1',
       'player-magnum-game-2',
+      // 走りモーション(社長提供・移動レバー全開時のみ)。マークスマンのみ先行実装。
+      'player-magnum-run-0',
+      'player-magnum-run-1',
+      'player-magnum-run-2',
+      'player-magnum-run-3',
+      'player-magnum-run-4',
       'player-striker-walk-0',
       'player-striker-walk-1',
       'player-striker-walk-2',

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1545',
+    items: [
+      'マークスマン、移動レバーを目一杯倒すと専用の走りモーションになるように(先行実装・他クラスは今後追加予定)。',
+    ],
+  },
+  {
     version: '0.25.1543',
     items: [
       '未確認境界ゲートの基本沸きが囲いの外へ逃げていく不具合を修正。囲いを空にすることでクリアになる。',

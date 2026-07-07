@@ -12,6 +12,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1545 — マークスマンに走りモーション追加(移動レバー全開時・先行実装)【2026-07-07 21:32 JST】
+- **社長からチャットで直接、走りモーション用の5コマ素材(透過確認済みRGBA)を受領して実装**
+  (PACING_PUZZLE.mdの正式仕様ではなく口頭指示・スクリーンショット提供)。
+- **重要な確認事項(実装前に1問確認して判明)**: 素材は当初「ストライカーの走り」として提示されたが、
+  このコードベースには**クラスID↔ファイル名の既知の逆転規約**がある(`pixiScene.ts`のコメントで
+  明記済み: `necromancer`=スカベンジャー→`player-striker-*`ファイル / `rogue`=ストライカー→
+  `player-scavenger-*`ファイル)。既存アートと見比べて確認したところ、社長より本素材は
+  **マークスマン(`characterClass==='mage'`・`player-magnum-*`)用と最終確定**(既存の
+  `player-magnum-walk-0.png`と同じ金髪・紫マントの画風で一致を確認)。
+- **素材加工**: 受領画像(2030×353・5コマ横並び・RGBA)を406×353ずつ均等5分割→既存の「軍人方式」
+  パイプライン(`assetVersion.ts` v25)と同じLANCZOSで表示実寸86×73へ縮小→
+  `public/sprites/player-magnum-run-0〜4.png`として新規保存(既存ファイルの差し替えではなく
+  新規追加のため`ASSET_VERSION`のバンプは不要)。
+- **実装**(`src/pixi/pixiScene.ts`): `usesRunAnimation(p)`(既定=`characterClass==='mage'`のみ)+
+  `PLAYER_RUN_SWIPE_THRESHOLD`(既定0.98・`?runthreshold=`)+`PLAYER_RUN_CYCLE_MS`(既定560ms・
+  `?runcyclems=`・歩き900msより速く)を新設。`drawPlayer`で`swipeStrength`(移動レバーのチルト量・
+  既存store値)がしきい値以上の間だけ`running=true`とし、`playerWalkFrame`/`playerTextureName`へ
+  伝播。走り絵は歩きと同じ8段ping-pong順(`[0,1,2,3,4,3,2,1]`)を流用し周期だけ速める。
+  `?playerrun=0`で無効化(常時歩きモーションへ復帰)。武将フル装備中は従来どおり武将立ち絵を優先
+  (走り絵より優先度低)。`src/pixi/pixiTextures.ts`のロードリストに新5ファイルを追加。
+- **非対象**: マークスマン以外の3クラス(ヘビーガンナー/スカベンジャー/ストライカー)は今回対象外
+  (`usesRunAnimation`が`mage`のみを返すため、他クラスは`swipeStrength`が最大でも従来の歩きモーション
+  のまま)。当たり判定・移動速度・`swipeStrength`自体の意味は無変更(見た目の演出のみ追加)。
+- 検証: `npm run lint`(0 error・既存warning 6件のみ)/`npm run typecheck`(0 error)。PixiJS描画
+  コードのためユニットテストは追加せず(CLAUDE.md「Do not unit-test PixiJS draw code」)。実機での
+  見た目・しきい値感は社長確認へ持ち越し。
+- 自己点検: 憲法第4条・第5条に抵触なし(演出追加のみ・移動速度/当たり判定/エイム距離等の
+  ゲームプレイ数値は無変更)。
+- 次: 残り3クラスへの走りモーション展開は社長からの追加素材待ち。
+
 ## v0.25.1544 — 文書: CLAUDE.mdのベンチ節をres1実測(v1543)で更新+緑卵を無罪明記【2026-07-07 20:55 JST】
 - **CLAUDE.md「Empirical render budget」節を更新**(社長指示「Aだけやっといて」=実測でベンチ節を最新化)。
   実装コードは不変=文書のみ。
