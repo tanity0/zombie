@@ -369,6 +369,10 @@ const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
 const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
 const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
 const HUNTER_BASE_SAFE_RADIUS = 150;       // 制圧拠点へこの距離まで近づくと追跡相手が撤退
+// PACING_PUZZLE.md §5.21 M20 軸2「再配置ラッシュ」の再配置クールダウン(v0.25.1531バグ修正)。
+// これが無いと画面外にいる間「毎フレーム」ランダム位置へ瞬間移動し、視界サークルが飛び回る。
+// 意図=「逃げるたび約1.5秒おきに視界際へ再出現」。実機調整前提の叩き台。
+const VICIOUS_REPLACE_CD_MS = 1500;
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
 const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
 // 優勢判定(6項目中 HUNTER_FAV_SCORE_NEEDED 以上で成立)
@@ -728,6 +732,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // PACING_PUZZLE.md §5.21 M20 軸2: 凶悪ハンター(デンジャー入場・拠点制圧0で優勢ゲート無視即発生)。
     vicious: false,              // 現在の出撃が凶悪モードか
     viciousRearmAt: 0,           // 凶悪ハンター終了直後の短い猶予明け gameTime(即座の入れ替わり防止)
+    viciousReplaceAt: 0,         // 次に「再配置ラッシュ」できる gameTime(毎フレーム瞬間移動=視界サークル飛び回りの修正・v0.25.1531)
   });
   // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
@@ -1458,7 +1463,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0 };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousReplaceAt: 0 };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -2195,9 +2200,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) {
                 clearAllHunters(); endHunterEvent();
               }
-            } else if (H.vicious && isOutsideCamera(prim.x + prim.width / 2, prim.y + prim.height / 2, hs.camera.x, hs.camera.y, gameBounds.width, gameBounds.height)) {
+            } else if (H.vicious && newGameTime >= H.viciousReplaceAt && isOutsideCamera(prim.x + prim.width / 2, prim.y + prim.height / 2, hs.camera.x, hs.camera.y, gameBounds.width, gameBounds.height)) {
               // PACING_PUZZLE.md §5.21 M20 軸2「再配置ラッシュ」: 凶悪ハンターは索敵タイムアウトで
-              // 立ち去らず、画面外へ避けられたら視界ギリギリの奥へ即座に再配置する(既存の再出現CD無視)。
+              // 立ち去らず、画面外へ避けられたら視界ギリギリの奥へ再配置する(既存の再出現CD無視)。
+              // ※CD(VICIOUS_REPLACE_CD_MS)でゲート=毎フレーム瞬間移動して視界サークルが飛び回るのを防ぐ(v0.25.1531)。
               const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
               useGameStore.setState(s => ({
                 enemies: s.enemies.map(e => e.id === H.primaryId
@@ -2208,6 +2214,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   : e),
               }));
               H.detectStartAt = 0;
+              H.viciousReplaceAt = newGameTime + VICIOUS_REPLACE_CD_MS;
             } else if (!H.vicious && newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
               // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。凶悪モードは対象外
               // (再配置ラッシュで居座り続ける=タイムアウトで立ち去らない)。

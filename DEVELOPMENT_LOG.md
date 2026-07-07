@@ -12,6 +12,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1531 — バグ修正: 凶悪ハンターの視界サークルが飛び回る(再配置ラッシュに再配置CD追加)(社長報告・設計チャット直接修正)【2026-07-07 16:21 JST】
+- 社長実機動画(v1529)で「ハンターの視界がバグってる」。連続フレーム解析で視界サークル(R=500)が
+  毎フレーム左右に瞬間移動しているのを確認。
+- **原因**: 凶悪ハンターの「再配置ラッシュ」(useGameLoop.ts)が、画面外にいる間**毎フレーム**新しいランダム
+  角度で再配置していた(検知範囲500px≒カメラ端なので、プレイヤー移動で毎フレーム「画面外→別位置へ瞬間移動」)。
+  =視界サークルが飛び回る。私の§5.21仕様で再配置の「頻度」を明記しなかった抜けでもある(意図は
+  「1回の回避につき1回」であって毎フレームではない)。
+- **修正**: `hunterRef`に`viciousReplaceAt`を追加し、再配置を`VICIOUS_REPLACE_CD_MS=1500ms`でゲート
+  (画面外でもCD中は再配置しない)。意図どおり「逃げるたび約1.5秒おきに視界際へ再出現」になり、毎フレーム
+  瞬間移動が止まる。CD値は叩き台=実機調整前提。
+- 検証: `typecheck`通過(ref型にフィールド追加が通ることを確認)。useGameLoop配線=M9網の外のため
+  ユニット不可、実機での視界サークル安定は次の実機確認で社長へ依頼。
+- 憲法第4条・第5条: 該当なし(表示バグ修正・挙動の意図は仕様どおり=1.5s間隔の再配置)。
+
 ## v0.25.1530 — KILL/カウンターの寄りズームを2倍に変更(社長明示指示)【2026-07-07 15:44 JST】
 - 社長指示「KILLとカウンターのズームを2倍に変更」を受け、`MELEE_FINISH_ZOOM_MAG`/`COUNTER_ZOOM_MAG`を
   0.5→1.0へ変更。実際のカメラ倍率は`punch = 1 + zoomMag * zoomDecay`(pixiScene.ts)なので、
