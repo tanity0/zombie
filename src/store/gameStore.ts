@@ -1033,14 +1033,14 @@ export const CAMERA_INTRO_LIFT_FRAC = camNum('camintrolift', 0.7); // 登場中�
 // 銃/接触/爆発キルや非フィニッシュの通常近接キルはズームしない=社長指示で撤回・v0.25.1466)。
 // KILLだけ社長指示で1.2倍・0.5秒へ変更→倍率はやはり1.5倍へ戻す(社長指示・v0.25.1495。
 // 秒数(0.5秒/holdは不変)。代わりにズーム効果自体へ連発防止CDを追加(下記CD_MS)。
-export const MELEE_FINISH_ZOOM_MAG = 0.5;  // 近接フィニッシュ(KILL)の寄り(社長指示で1.5倍=+50%)
+export const MELEE_FINISH_ZOOM_MAG = 1.0;  // 近接フィニッシュ(KILL)の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 export const MELEE_FINISH_ZOOM_MS = 500;   // KILLだけ専用のズーム長さ(社長指示・スローとは非連動)
 export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを保持する長さ(比率80%はスローと同じ)
 // KILLズームだけの連発防止CD(社長指示・v0.25.1495・10秒へ改訂v0.25.1497)。連続キル時、
 // スロー/揺れ/ヒットストップは毎回発生するが、寄りズームだけはこのCD内なら発動しない
 // (酔い防止・スロー等の演出は不変)。
 export const MELEE_FINISH_ZOOM_CD_MS = 10000;
-export const COUNTER_ZOOM_MAG = 0.5;       // カウンター成立の寄り(社長指示で1.5倍=+50%)
+export const COUNTER_ZOOM_MAG = 1.0;       // カウンター成立の寄り(社長指示で2倍=+100%・旧1.5倍から改訂)
 // PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
 // 「命中の瞬間に全部ピーク→同じ長さ/カーブで一緒に戻る」1拍エンベロープへ統一する。
 // ?juice=0で旧演出(このバッチ以前の個別エンベロープ・スローは毎回/ズームだけCD)へ完全復帰(A/B用)。

@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1530 — KILL/カウンターの寄りズームを2倍に変更(社長明示指示)【2026-07-07 15:44 JST】
+- 社長指示「KILLとカウンターのズームを2倍に変更」を受け、`MELEE_FINISH_ZOOM_MAG`/`COUNTER_ZOOM_MAG`を
+  0.5→1.0へ変更。実際のカメラ倍率は`punch = 1 + zoomMag * zoomDecay`(pixiScene.ts)なので、
+  総ズーム倍率が旧1.5倍→2.0倍になる(値の意味どおり「2倍」)。他の定数(秒数/CD/カーブ/スロー)は
+  指示が無いため不変(仕様変更ルール§「Aを直してと言われたらAだけ」に準拠)。
+- 社長より「毎回テスト回さないルールにした」との申し送りあり(設計チャット側がCLAUDE.mdへ既に反映済み=
+  v0.25.1528「テストは社長指示で回す」を確認)。今回は新ルールどおりtypecheckのみ+
+  `vitest related src/store/gameStore.ts`で検証(フル`npm test`/buildは未実行=社長からの明示指示なし)。
+- 検証: typecheck 0 error / related tests 59 passed, 2 skipped。定数を直接参照するテストは無し。
+- 自己点検: 憲法第4条・第5条に抵触なし(演出の倍率のみ・ゲーム性/判定/CD/スロー秒数は不変)。
+- 次: M22 Group C(未着手)。
+- **付記(履歴事故の記録)**: 本コミットの初回pushをリベース中、`git commit --amend`を一時停止中の
+  リベースに対して誤実行し、直前のv0.25.1529(このすぐ下のエントリ)を自分のコミットへ誤って統合して
+  しまう事故があった。中身のコード差分は無事(データ損失なし)だったが、コミット履歴上1529が独立した
+  コミットでなくなっていたため、社長確認のうえ`fix-1530`ブランチで1529の上に本コミットを正しく積み
+  直して復旧した。
+
 ## v0.25.1529 — バグ修正: 凶悪ハンターの3分ゲートを撤去(仕様「3分無視」に整合)(社長報告・設計チャット直接修正)【2026-07-07 15:45 JST】
 - 社長報告「ハンターが出てこない」の診断で2原因を特定。うち**社長指示「1で」=①のみ**を直接修正:
   - **①(本修正)**: `shouldTriggerViciousHunter`が`gameTime < hunterStartMs(3分)`で発火を止めていた=

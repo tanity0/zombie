@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1530',
+    items: [
+      'KILL(近接フィニッシュ)とカウンター成立時の寄りズームを強化(1.5倍→2倍)。',
+    ],
+  },
+  {
     version: '0.25.1527',
     items: [
       '銃弾に短い光の尾を追加。弾道が少し見やすく。',
