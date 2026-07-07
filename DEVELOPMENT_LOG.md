@@ -12,6 +12,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1536 — 設計: 社長決定3件をPACING_PUZZLE.mdへ焼き込み(ハンター最終締め/到達+50G撤去/近接スイング同期)【2026-07-07 18:08 JST】
+- **設計チャットの引き継ぎ着手**。前設計チャットの引き継ぎで「次チャットでPACING_PUZZLE.mdに焼く・
+  社長決定済み」とされた3件を仕様化(コードは触らない=Sonnet実装待ち)。ドキュメントのみの変更。
+- **①凶悪ハンターの最終締め(§5.21-追補・新設)**: デンジャー凶悪ハンター(制圧0)は**常に1体のみ・
+  増援(20/40・最大3)なし・他所に沸く(再配置)なし**。1体が「見つかった状態」で来て追い、デンジャー退場
+  (area<2)で逃げ去るだけ。**通常ハンター(3分+優勢の時間沸き)の仕様は一切触らない**(社長明示)。
+  →Sonnet: 凶悪版で増援スポーンを呼ばない(通常版の増援は分岐で保護)。負荷0/10。
+- **②到達報酬(+50G)の撤去(§5.17-追補2・新設)**: 深さの壁「踏破」で渡していた**+50Gを撤去**
+  (社長「いらない」)。**演出(青白銘打ち/ジングル/到達譜/深度メーター/タイトルバッジ)・記録は残す**。
+  偽到達経由のゴールド漏れも同時に塞ぐ。**REVENGE(宿敵)の+150Gは対象外=据え置き**。§5.17本文中の
+  +50g/+50G表示の記述3箇所を取り消し線で撤去注記。→Sonnet: `detectWallBreach`のゴールド付与削除+
+  `GameOverScreen.tsx`の到達譜金額表示を外す(行は残す)+大格銘打ちの+50G表示演出も外す。
+- **③KILL/カウンター時の近接スイングを演出に同期(§5.22-追補・新設)**: フィニッシュ/カウンターで
+  振り(スイング)が出ず棒立ちに見える→M21のFREEZE→RELEASEエンベロープに振りも乗せる(スロー時間ぶん
+  振りの見えが伸びて視認できるのが受け入れ条件)。見せ方(スイング絵/既存斬撃トレイルの伸長等)は安い方式で
+  Sonnet裁量(新規強glow不可)。負荷1/10目安。
+- 各追補は状態=**仕様確定・Sonnet実装待ち**。実装順とステータス表のM14/M20/M21行にも追記。
+- **ブランチ注記**: harnessが注入した`claude/design-chat-zombie-handoff-yus3xx`はorigin未存在(fetch不可)。
+  正史(本LOG/CLAUDE.md branch lock/引き継ぎ)どおり`claude/chat-context-continuity-saxlH`へpush。
+- 変更ファイル: PACING_PUZZLE.md(追補3節+本文注記3+ステータス表3行)/DEVELOPMENT_LOG.md/package.json。
+- 検証: 文書のみの変更のためtypecheck不要(CLAUDE.md「文書のみ=即push」)。挙動変更ゼロ。
+- 自己点検(実装精度の規律5): 本変更は憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に非抵触
+  ——進行報酬/敵挙動の仕様記述の変更で、ゲームバランスの数値カーブ・閾値・floorは一切触っていない。
+
 ## v0.25.1535 — §5.21追補×2実装: 進捗コミットをrun-end限定へ+凶悪ハンター即chase化【2026-07-07 17:33 JST】
 - **①進捗のlocalStorageコミットをラン終了時のみに変更**: `syncWallDepth`(useGameLoop.ts)・
   gate1/gate2クリア時の踏破/恒久解除コミット・`directorTick.ts`のランク到達コミット、計5箇所の
