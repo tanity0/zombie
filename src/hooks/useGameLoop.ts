@@ -1332,6 +1332,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           triggerHitImpact: (...args) => useGameStore.getState().triggerHitImpact(...args),
           addMeleeFinishCombo,
           triggerPlayerDeath,
+          markMeleeSwingFx: () => useGameStore.getState().markMeleeSwingFx(),
         };
         const combatTunables: CombatTunables = {
           thorOrbitDist: THOR_ORBIT_DIST,
@@ -1994,8 +1995,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const wm2 = useGameStore.getState().wallMeta;
                   if (WALL_ENABLED && isFirstWallBreach(wm2, 3)) {
                     useGameStore.setState({ wallMeta: markWallBreached(wm2, 3) });
-                    useGameStore.getState().addGold(50);
-                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
+                    // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                   }
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2クリア時の後処理。恒久解除+M14
@@ -2006,8 +2007,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const wm3 = useGameStore.getState().wallMeta;
                   if (WALL_ENABLED && isFirstWallBreach(wm3, 4)) {
                     useGameStore.setState({ wallMeta: markWallBreached(wm3, 4) });
-                    useGameStore.getState().addGold(50);
-                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
+                    // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                   }
                 }
               }
@@ -2289,10 +2290,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else {
               const total = huntersAlive.length;
               const elapsed = newGameTime - H.chaseStartAt;
-              if (H.reinforced < 1 && elapsed >= HUNTER_REINFORCE_1_MS && total < HUNTER_MAX_ALIVE) {
+              // §5.21-追補(社長決定v0.25.1536・最終締め): 凶悪ハンター(制圧0)は常に1体のみ・増援なし。
+              // 増援は通常ハンター(非凶悪)だけに適用する。
+              if (!H.vicious && H.reinforced < 1 && elapsed >= HUNTER_REINFORCE_1_MS && total < HUNTER_MAX_ALIVE) {
                 spawnHunter(false); H.reinforced = 1;
                 useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-              } else if (H.reinforced < 2 && elapsed >= HUNTER_REINFORCE_2_MS && total < HUNTER_MAX_ALIVE) {
+              } else if (!H.vicious && H.reinforced < 2 && elapsed >= HUNTER_REINFORCE_2_MS && total < HUNTER_MAX_ALIVE) {
                 spawnHunter(false); H.reinforced = 2;
                 useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               }
@@ -2459,8 +2462,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // §5.21 M20追補(v0.25.1534): localStorageコミットはラン終了時のみ
                     // (commitRunEndProgress)。ここではメモリ上のstoreだけ更新。
                     useGameStore.setState({ wallMeta: markWallBreached(wm, wallIdx) });
-                    useGameStore.getState().addGold(50);
-                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff', 50);
+                    // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
+                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                     playSfx('event-clear'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
                   }
                 }
@@ -2899,6 +2902,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 playSfx('counter');
                 useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
                 useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+                useGameStore.getState().markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
                 useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });

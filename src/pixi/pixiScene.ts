@@ -4675,9 +4675,18 @@ export class PixiScene {
       }
     }
     // 近接スイング: 狙い方向へ踏み込み(踏込→振抜→復帰のアーク)＋振り抜きの傾き＋横ストレッチ。
+    // §5.22-追補(社長決定v0.25.1536): KILL/カウンターのFREEZE→RELEASEスロー演出が有効な間は、
+    // スイングの表示窓を既定280msからスロー終了時刻まで伸ばす(=スロー中に振りが消えて棒立ちに
+    // 見える不具合を解消)。通常時(スロー無し)は既定どおり280ms・振り自体の判定/攻撃レートは不変
+    // (描画のみ)。ヒットストップ中はnow自体が凍結される(hitstopFreezeNow)ため振りも一緒に止まり、
+    // 解除後はスロー速度で続き=「フリーズ→スロー継続」の1拍に自然に乗る。
+    const juiceSlowUntil = useGameStore.getState().timeSlowUntil;
+    const swingWindowMs = juiceSlowUntil > now
+      ? Math.max(PLAYER_MELEE_SWING_MS, juiceSlowUntil - (p.meleeSwingAt || 0))
+      : PLAYER_MELEE_SWING_MS;
     const sinceSwing = now - (p.meleeSwingAt || 0);
-    if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
-      const t = sinceSwing / PLAYER_MELEE_SWING_MS;
+    if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+      const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
       actOffX += aimx * PLAYER_MELEE_LUNGE_PX * arc * dsc;
@@ -4817,8 +4826,8 @@ export class PixiScene {
     const meleeKey = p.weapons.find(w => w.isMelee)?.key;
     const wtex = meleeKey ? getTexture(`weapons/${meleeKey}`) : null;
     if (this.playerKnifeSetup) {
-      if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < PLAYER_MELEE_SWING_MS) {
-        const kt = meleeSwingEase(sinceSwing / PLAYER_MELEE_SWING_MS); // ゆっくり→速く→ゆっくり
+      if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+        const kt = meleeSwingEase(sinceSwing / swingWindowMs); // ゆっくり→速く→ゆっくり(§5.22-追補でスロー中は伸長)
         // 右/左だけ(上下に撃っても水平成分で決定)。pure縦は直近の向き(face)。
         let kax = aimx, kay = aimy;
         if (kax === 0 && kay === 0) { kax = face; kay = 0; }

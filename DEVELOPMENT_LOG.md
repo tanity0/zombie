@@ -12,6 +12,40 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1537 — 社長決定3件の実装: 凶悪ハンター最終締め/到達+50G撤去/近接スイング同期【2026-07-07 18:35 JST】
+- **①凶悪ハンターの最終締め(§5.21-追補)**: chase中の増援トリガ2箇所(`H.reinforced<1/2`)に
+  `!H.vicious &&`を追加し、凶悪ハンター(制圧0)には増援を一切呼ばないよう変更。通常ハンター
+  (非凶悪)の増援ロジックは無変更。再配置(他所湧き)は既にv0.25.1535で撤去済み=変更不要だった
+  ため、今回は増援のガードのみ。ユニットテストは追加せず(ハンター状態機械自体がM9-Aヘッドレス化
+  対象外のレガシー配線のため、既存の限界に倣い静的検証のみ)。
+- **②到達報酬(+50G)の撤去(§5.17-追補2)**: `useGameLoop.ts`の壁踏破儀式3箇所
+  (wall1/2直踏破・ゲート1クリア時・ゲート2クリア時)から`addGold(50)`呼び出しを削除し、
+  `enqueueWallEvent(...)`の`gold`引数(最後の`50`)も省略(演出/銘打ち/ジングル/到達譜/深度
+  メーター/タイトルバッジは無変更・`gold != null`分岐で自然に+G表示だけ消える)。REVENGE
+  (宿敵討伐+150G)は別の`enqueueWallEvent`呼び出しで`gold`を渡し続けているため無変更(対象外)。
+  `GameOverScreen.tsx`側は調査の結果「+50G」を直接表示する行が現状無かった(集計値のみ)ため、
+  追加の表示変更は不要と判断。
+- **③KILL/カウンターの近接スイング同期(§5.22-追補)**: `pixiScene.ts`の`drawPlayer`で、
+  `store.timeSlowUntil > now`(=M21のスロー演出が有効中)の間だけスイングの表示窓を
+  `Math.max(280ms, timeSlowUntil - meleeSwingAt)`へ伸長(通常時は既定280ms・判定/攻撃レートは
+  不変・描画のみ)。同じ`swingWindowMs`を踏み込みポーズ(arc/lean/stretch)と3コマ差し替え
+  (`meleeSwingEase`)の両方に使い、ヒットストップ中は`now`自体が凍結されるため振りも一緒に
+  止まり、解除後はスローの尺で自然に続く。
+  - カウンター側はこれまで振り(ナイフ差し替え)を一切出しておらず「決めポーズ」のみだったため、
+    `markMeleeSwingFx()`を新規にカウンター成立4箇所——`combatTick.ts`の近接パリィ/弾反射2種
+    (計3箇所)+`useGameLoop.ts`のトール専用カウンター(`thorCounterHit`)——へ追加。シールド
+    バッシュ側の`triggerHitImpact`呼び出し(独自の押し出し演出を持つ)は対象外(スイング二重表示
+    を避けるため個別に追加、`triggerHitImpact`自体には仕込まない設計判断)。
+  - `CombatEffects`インターフェース(`combatTick.ts`)に`markMeleeSwingFx`を追加(ヘッドレス版は
+    no-op)。
+- 検証: `npm run typecheck`(0 error)+`npm run lint`(clean)+`npx vitest related`
+  (useGameLoop.ts/gameStore.ts/combatTick.ts/pixiScene.ts対象・59 passed, 2 skipped)。
+  社長申し送りのルールにより`npm test`フル/`npm run build`は未実行(明示指示時のみ)。
+- 自己点検: 憲法第4条・第5条に抵触なし(敵挙動/報酬/演出タイミングの調整のみ・湧き数・CD・
+  コマ構造・ヒットボックス・ダメージ計算・攻撃レートは完全に不変)。
+- 次: 実機での①②③確認は社長へ持ち越し(特に③はスロー中の振りの見え方を実機で確認要)。
+  M22 Group C(飾り・§5.23)も引き続き未着手。
+
 ## v0.25.1536 — 設計: 社長決定3件をPACING_PUZZLE.mdへ焼き込み(ハンター最終締め/到達+50G撤去/近接スイング同期)【2026-07-07 18:08 JST】
 - **設計チャットの引き継ぎ着手**。前設計チャットの引き継ぎで「次チャットでPACING_PUZZLE.mdに焼く・
   社長決定済み」とされた3件を仕様化(コードは触らない=Sonnet実装待ち)。ドキュメントのみの変更。

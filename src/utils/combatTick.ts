@@ -55,6 +55,7 @@ export interface CombatEffects {
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
   triggerPlayerDeath: (x: number, y: number) => void;
+  markMeleeSwingFx: () => void;
 }
 
 // ヘッドレス(playtestDriver.ts)用: 全て何もしない(判定条件の評価そのものには影響しない)。
@@ -70,6 +71,7 @@ export const NOOP_COMBAT_EFFECTS: CombatEffects = {
   triggerHitImpact: () => {},
   addMeleeFinishCombo: () => {},
   triggerPlayerDeath: () => {},
+  markMeleeSwingFx: () => {},
 };
 
 // useGameLoop.ts側のローカル定数(値そのものは元のまま・二重管理を避けるため引数化)。
@@ -141,6 +143,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     fx.playSfx('counter');
     fx.spawnGlow(bpcx, bpcy, 95, 'rgba(56,189,248,', 360);
     fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+    fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(bpcx, bpcy, '#38bdf8', 14);
     fx.spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
@@ -351,6 +354,7 @@ export const applyEnemyProjectileHits = (
     fx.spawnGlow(pcx, pcy, 95, 'rgba(56,189,248,', tunables.counterReflectSlowMs);
     // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
     fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+    fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, tunables.counterReflectSlowMs);
     fx.spawnBurst(pcx, pcy, '#38bdf8', 14);
     fx.spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
@@ -461,6 +465,7 @@ export const applyContactDamage = (
     fx.playSfx('counter');
     fx.spawnGlow(ppx, ppy, 95, 'rgba(56,189,248,', 360);
     fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+    fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
     fx.spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(ppx, ppy, '#38bdf8', 14);
     fx.spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
