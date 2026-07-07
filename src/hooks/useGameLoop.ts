@@ -87,6 +87,7 @@ import { setDirectorRankRewardMult, setDirectorRankDebug } from '../utils/direct
 import { createPinchState, pityLevel } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } from '../utils/boredomArena';
+import { shouldTriggerViciousHunter, pickViciousSpawnPoint, isOutsideCamera, VICIOUS_REARM_MS } from '../utils/viciousHunter';
 import {
   eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
 } from '../utils/eventProducer';
@@ -710,6 +711,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     chaseStartAt: 0,             // 追跡開始時刻(増援タイマー基準)
     reinforced: 0,               // 投入済み増援数(0..2)
     primaryId: '',               // 索敵個体(初号)のid
+    // PACING_PUZZLE.md §5.21 M20 軸2: 凶悪ハンター(デンジャー入場・拠点制圧0で優勢ゲート無視即発生)。
+    vicious: false,              // 現在の出撃が凶悪モードか
+    viciousRearmAt: 0,           // 凶悪ハンター終了直後の短い猶予明け gameTime(即座の入れ替わり防止)
   });
   // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
@@ -1427,7 +1431,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           redNightFireAtRef.current = rollRedNightFireAt(); // 新ランで発火時刻を再抽選(5〜9分)
           rescueFiredRef.current = false; // 救助イベントの「1出撃1回」フラグも新ランで戻す
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '' };
+          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0 };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -1946,8 +1950,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const r = Math.hypot(gameBounds.width, gameBounds.height) / 2 + 90;
             return { x: hpx + Math.cos(ang) * r, y: hpy + Math.sin(ang) * r };
           };
-          const spawnHunter = (search: boolean): string => {
-            const p = offscreenSpawn();
+          const spawnHunter = (search: boolean, pos?: { x: number; y: number }): string => {
+            const p = pos ?? offscreenSpawn();
             const h = spawnEnemyAt('hunter', p.x - 28, p.y - 32, newGameTime);
             h.fixed = true;              // 屋外リサイクル/カリング対象外=コントローラが寿命を完全管理
             h.vx = 0; h.vy = 0;
@@ -1958,13 +1962,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           };
           const endHunterEvent = () => {
             H.phase = 'idle';
+            // PACING_PUZZLE.md §5.21 M20 軸2: 凶悪モードは優勢ゲート無視で即再発生しうるため、撃破/
+            // 立ち去り直後の一瞬だけ猶予を挟む(通常モードは既存の長いCDのまま)。
             H.nextEligibleAt = newGameTime + HUNTER_RESPAWN_CD_MIN_MS + Math.random() * HUNTER_RESPAWN_CD_SPAN_MS;
+            H.viciousRearmAt = H.vicious ? newGameTime + VICIOUS_REARM_MS : H.viciousRearmAt;
+            H.vicious = false;
             H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0; H.primaryId = '';
           };
           const clearAllHunters = () => useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') }));
 
           if (H.phase === 'idle') {
-            if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
+            // PACING_PUZZLE.md §5.21 M20 軸2: デンジャー入場(r>=3000)時、拠点を1つも制圧していなければ
+            // 優勢ゲート無視で凶悪ハンターを即発生させる(既存の優勢判定より優先してチェック)。
+            const viciousReady = shouldTriggerViciousHunter({
+              gameTime: newGameTime,
+              hunterStartMs: HUNTER_START_MS,
+              spawnBlocked,
+              hunterIdle: true,
+              playerAreaIdx: areaZoneIndexFor(Math.hypot(hpx, hpy)),
+              capturedBaseCount: hs.baseSites.filter(b => b.status === 'captured').length,
+              viciousRearmAt: H.viciousRearmAt,
+            });
+            if (viciousReady) {
+              const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
+              H.primaryId = spawnHunter(true, spawnPos);
+              H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0;
+              H.vicious = true;
+              H.eventsThisRun += 1;
+            } else if (newGameTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && newGameTime >= H.nextEligibleAt && !spawnBlocked) {
               // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
               // 従来復帰用にロジック自体は残す。
               const cam = hs.camera;
@@ -2008,8 +2033,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) {
                 clearAllHunters(); endHunterEvent();
               }
-            } else if (newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
-              // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。
+            } else if (H.vicious && isOutsideCamera(prim.x + prim.width / 2, prim.y + prim.height / 2, hs.camera.x, hs.camera.y, gameBounds.width, gameBounds.height)) {
+              // PACING_PUZZLE.md §5.21 M20 軸2「再配置ラッシュ」: 凶悪ハンターは索敵タイムアウトで
+              // 立ち去らず、画面外へ避けられたら視界ギリギリの奥へ即座に再配置する(既存の再出現CD無視)。
+              const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
+              useGameStore.setState(s => ({
+                enemies: s.enemies.map(e => e.id === H.primaryId
+                  ? {
+                      ...e, x: spawnPos.x - e.width / 2, y: spawnPos.y - e.height / 2,
+                      hunterWanderTargetX: undefined, hunterWanderTargetY: undefined, hunterWanderNextAt: undefined,
+                    }
+                  : e),
+              }));
+              H.detectStartAt = 0;
+            } else if (!H.vicious && newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
+              // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。凶悪モードは対象外
+              // (再配置ラッシュで居座り続ける=タイムアウトで立ち去らない)。
               useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterLeavingAt: newGameTime } : e) }));
             } else {
               const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));

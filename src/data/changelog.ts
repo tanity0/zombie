@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1520',
+    items: [
+      '拠点を1つも解放していないままデンジャーゾーンへ踏み込むと、強気なハンターが待ち伏せてくる。',
+    ],
+  },
+  {
     version: '0.25.1519',
     items: [
       '長く平穏が続くと、まれに変異者の大量発生(囲い)が差し込まれるように。',
