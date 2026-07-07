@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1547',
+    items: [
+      'マークスマンの走りモーション、コマの切り出しがズレて隣のコマと混ざって見えていたのを修正。',
+    ],
+  },
+  {
     version: '0.25.1545',
     items: [
       'マークスマン、移動レバーを目一杯倒すと専用の走りモーションになるように(先行実装・他クラスは今後追加予定)。',
