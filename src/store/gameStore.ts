@@ -31,6 +31,7 @@ import {
 } from '../utils/namedEnemy';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
+import { hunterWanderStep } from '../utils/hunterWander';
 import { getSelectedStageId, getWallMeta, type WallMeta } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -1044,6 +1045,9 @@ export const ENEMY_ATTACK_SPEED_MULT = GAME_SPEED; // ゲームスピード(?spe
 export const HUNTER_VISION_RANGE = 500;
 // ハンターのジャンプ攻撃を発動する距離の上限(社長指示で 720→500)。視界サークル/着地クランプ(=VISION_RANGE)とは別。
 export const HUNTER_JUMP_RANGE = 500;
+// ハンターが索敵タイムアウトで立ち去る際のフェードアウト時間(ms)。useGameLoop(消滅タイミング)と
+// pixiScene(αカーブ)の両方で共有(社長指示: 「26秒後にフェードアウトでいい」)。
+export const HUNTER_LEAVE_FADE_MS = 900;
 
 // 犬型(werewolf): ハンドガン射程より少し外で減速→2倍速で突進。
 export const WEREWOLF_TRIGGER_RANGE = HANDGUN_RANGE_REF + 70; // 「少し外」
@@ -5696,7 +5700,23 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ar = (enemy.aggroRange ?? 200) * 1; // 索敵範囲(PHILL運用に合わせ従来の半分=base等倍)
           const inRange = ddx * ddx + ddy * ddy <= ar * ar;
           const seen = inRange && !(losWalls.length > 0 && segmentBlocked(pcx, pcy, ecx2, ecy2, losWalls)); // 壁越しは見つからない
-          if (!seen) return { ...enemy, vx: 0, vy: 0 };
+          if (!seen) {
+            // ハンター変異体は索敵中も静止せず、低速の「徘徊」で移動する(社長指示: ランダムっぽく
+            // 見せて実はプレイヤーへじわじわ接近)。純関数(src/utils/hunterWander.ts)へ切り出し済み。
+            // ただし立ち去りフェード中(hunterLeavingAt設定済み)はその場で静止する。
+            if (enemy.type === 'hunter' && enemy.hunterLeavingAt === undefined) {
+              const priorWander = (enemy.hunterWanderTargetX !== undefined && enemy.hunterWanderTargetY !== undefined && enemy.hunterWanderNextAt !== undefined)
+                ? { wanderTargetX: enemy.hunterWanderTargetX, wanderTargetY: enemy.hunterWanderTargetY, wanderNextAt: enemy.hunterWanderNextAt }
+                : null;
+              const { vx, vy, wander } = hunterWanderStep(ecx2, ecy2, enemy.speed, pcx, pcy, gameTime, priorWander);
+              const pos = resolveMove(enemy.x + vx * deltaTime, enemy.y + vy * deltaTime);
+              return {
+                ...enemy, x: pos.x, y: pos.y, vx, vy,
+                hunterWanderTargetX: wander.wanderTargetX, hunterWanderTargetY: wander.wanderTargetY, hunterWanderNextAt: wander.wanderNextAt,
+              };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
         }
 

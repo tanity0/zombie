@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1516',
+    items: [
+      'ハンター変異体: 索敵中は静止せず、ランダムに徘徊しつつ少しずつ接近するように。26秒間発見できないと諦めてフェードアウトする(索敵範囲にプレイヤーが入っている間は猶予が延長される)。',
+    ],
+  },
+  {
     version: '0.25.1513',
     items: [
       'サブウェポン「発火ナイフ」の見た目を専用イラストに変更(飛翔中・刺さった状態とも)。',

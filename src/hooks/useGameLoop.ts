@@ -31,7 +31,7 @@ import {
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  HUNTER_VISION_RANGE, AMMO_MAX,
+  HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -350,7 +350,8 @@ const HUNTER_RESPAWN_CD_MIN_MS = 150000;   // 再出現CD最短(150秒=2.5分。
 const HUNTER_RESPAWN_CD_SPAN_MS = 90000;   // +0〜90秒(=150〜240秒)
 const HUNTER_DETECT_RANGE = HUNTER_VISION_RANGE; // 索敵範囲(=視界範囲。描画/ジャンプ範囲と共有)
 const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
-const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(消滅)
+const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(フェードアウト開始)。
+                                            // ただし索敵範囲にプレイヤーが入っている間はこのタイマーを都度リセットする(社長指示)。
 const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
 const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
 const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
@@ -1957,11 +1958,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           } else if (H.phase === 'search') {
             const prim = hs.enemies.find(e => e.id === H.primaryId);
-            if (!prim || cinematic || newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
-              clearAllHunters(); endHunterEvent(); // 撃破/演出割り込み/索敵タイムアウト=立ち去る
+            if (!prim || cinematic) {
+              clearAllHunters(); endHunterEvent(); // 撃破/演出割り込み=即座に立ち去る(フェード無し)
+            } else if (prim.hunterLeavingAt !== undefined) {
+              // フェードアウト中(索敵タイムアウト後): 経過を待って消滅させる。
+              if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) {
+                clearAllHunters(); endHunterEvent();
+              }
+            } else if (newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
+              // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。
+              useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterLeavingAt: newGameTime } : e) }));
             } else {
               const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
               if (d <= HUNTER_DETECT_RANGE) {
+                H.spawnAt = newGameTime; // 索敵範囲にプレイヤーが入っている間は都度タイムアウトをリセット(社長指示)
                 if (H.detectStartAt === 0) {
                   H.detectStartAt = newGameTime;
                   playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)

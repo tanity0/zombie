@@ -405,4 +405,45 @@ describe('headless simulation invariants', () => {
     const dist = Math.hypot(tx - ecx, ty - ecy);
     expect(dist).toBeCloseTo(PUMPKIN_JUMP_MAX_DIST, 0); // 発動位置から最大350pxまでにクランプ
   });
+
+  it('索敵中のハンターは静止せず徘徊し、ネットではプレイヤーへ距離を詰める(社長指示: ランダムっぽく見せて実は接近・実配線の検証)', () => {
+    // 純関数(hunterWander.test.ts)はロジック単体(乱数注入可)で検証済み。ここでは実際の
+    // updateEnemies 経由の配線(dormant分岐→hunterWanderStep→resolveMove→x/y反映)が正しく
+    // 繋がっているかを見る。Math.random を固定してフレーク化を防ぐ(実乱数だと20秒程度の
+    // 短尺では稀に分散がバイアスを上回ることがある=実測で1回flakeを確認済み)。
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      useGameStore.getState().resetGame('warrior');
+      const player = useGameStore.getState().player;
+      const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+      const startX = pcx + 2000, startY = pcy; // プレイヤーから2000px離れた索敵中ハンター(索敵範囲外)
+      const hunter = spawnEnemyAt('hunter', startX, startY, useGameStore.getState().gameTime);
+      hunter.dormant = true;
+      hunter.aggroRange = 0; // 実装(spawnHunter)と同じ: 索敵中は自動起床させない
+      useGameStore.setState({ enemies: [hunter] });
+
+      const dt = 1 / 60;
+      let t = useGameStore.getState().gameTime;
+      const initial = useGameStore.getState().enemies[0];
+      const startDist = Math.hypot((initial.x + initial.width / 2) - pcx, (initial.y + initial.height / 2) - pcy);
+
+      let everMoved = false;
+      for (let i = 0; i < 20 * 60; i++) { // 20秒相当
+        t += dt * 1000;
+        useGameStore.getState().setGameTime(t);
+        useGameStore.getState().updateEnemies(dt);
+        const e = useGameStore.getState().enemies[0];
+        if (e && (e.x !== startX || e.y !== startY)) everMoved = true;
+      }
+
+      const after = useGameStore.getState().enemies[0];
+      expect(after).toBeTruthy();
+      expect(after.dormant).toBe(true); // 20秒では発見されない距離のまま(索敵状態を維持)
+      expect(everMoved).toBe(true); // 静止(vx=vy=0固定)ではなく実際に動いている
+      const endDist = Math.hypot((after.x + after.width / 2) - pcx, (after.y + after.height / 2) - pcy);
+      expect(endDist).toBeLessThan(startDist); // プレイヤー方向へじわじわ接近する
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
 });

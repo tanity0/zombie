@@ -28,6 +28,33 @@ on the zombie game. Append a new entry after each meaningful change.
 - 検証: 文書のみ=ローカル検証なし(v0.25.1496ルール)。
 - 憲法第4条・第5条: 該当なし(既存部品の配線仕様のみ・新規バランスは叩き台/実機調整前提)。
 
+## v0.25.1516 — ハンター変異体: 索敵中の徘徊(接近バイアス)+タイムアウトのフェードアウト化(社長指示・実装チャット)【2026-07-07 12:37 JST】
+- 社長指示「出現後はゆっくり徘徊。ランダムっぽく見せて実はプレイヤーへじわじわ近づく」+
+  「26秒後にフェードアウトでいい。ただし範囲にプレイヤーが入っている場合はリセットされる」に対応。
+- **徘徊アルゴリズム**(`src/utils/hunterWander.ts`新規・純関数+ユニットテスト7件): 索敵中(dormant)の
+  ハンターは静止せず、2〜4秒おきに近傍のランダムウェイポイントを再抽選して低速(通常速度の0.35倍)で
+  移動。抽選のたびに候補方向へプレイヤー方向を3割(`HUNTER_WANDER_BIAS`)だけ混ぜることで、傍目は
+  ランダムでも合計では距離が縮む。配線は`gameStore.ts`のdormant分岐(既存の`resolveMove`=木/壁衝突解決
+  を共用)に追加、ハンター以外の休眠敵(屋内固定敵)は従来どおり完全静止のまま不変。
+- **索敵タイムアウトのフェードアウト化+範囲内リセット**(`useGameLoop.ts`): 従来は26秒
+  (`HUNTER_SEARCH_MAX_MS`)経過で即座に消滅(`clearAllHunters`)だったが、①索敵範囲
+  (`HUNTER_DETECT_RANGE`)にプレイヤーが入っている間は毎tickタイムアウトをリセット(社長指示)
+  ②タイムアウト成立時は即消滅ではなく`hunterLeavingAt`をセットしてフェード開始(900ms=
+  `HUNTER_LEAVE_FADE_MS`、`gameStore.ts`で定義しuseGameLoop/pixiSceneで共有)、フェード完了後に消滅。
+  フェード中はその場で静止(徘徊停止)。既存の撃破/演出割り込み(`!prim || cinematic`)は従来どおり
+  即消滅のまま(フェード無し)。
+- **描画**(`pixiScene.ts`): `drawEnemy`のcontainer.alpha計算に`hunterLeaveFade`項を追加
+  (`hunterLeavingAt`からの経過で1→0へ線形フェード)。既存の地平線/近景フェードと乗算=競合なし。
+- **テスト**: `hunterWander.test.ts`(純関数7件: 方向バイアス・ウェイポイント再抽選条件・速度倍率)
+  +`sim.test.ts`に実配線の統合テスト1件追加(索敵中ハンターがupdateEnemies経由で実際に動き、
+  20秒でネットにプレイヤーへ接近することを確認。Math.randomを固定してフレーク化を防止=実測で
+  実乱数版が1回flakeしたための対応)。
+- **検証(要所=完了報告前のフル)**: `npm run lint && npm run typecheck && npm test && npm run build`
+  全通過(498 passed / 2 skipped)。
+- 憲法第4条・第5条: 該当なし(PACING_PUZZLE.md対象外の独立機能・ハンター単体の挙動でバランス/難易度
+  カーブへの直接影響は無し)。
+- 次: 特になし(依頼完結)。次は社長指示のPACING_PUZZLE.md §5.21(M20: 囲いの復活)に着手。
+
 ## v0.25.1514 — M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴塞ぎ・実装チャット)【2026-07-07 12:00 JST】
 - 社長指示「PACING_PUZZLE.md §5.20を実装して。ゲーム本体は触らず bot/test/notes のみ」に対応。
 - `playtestBot.ts`に`rusher`ペルソナ追加(原点から外向き最大速度で直進・カウンター/カイト/武器
