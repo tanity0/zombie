@@ -16,8 +16,10 @@ describe('shouldTriggerViciousHunter', () => {
     expect(shouldTriggerViciousHunter(baseTrigger)).toBe(true);
   });
 
-  it('does not fire before the 3-minute floor', () => {
-    expect(shouldTriggerViciousHunter({ ...baseTrigger, gameTime: baseTrigger.hunterStartMs - 1 })).toBe(false);
+  it('fires even before the 3-minute floor (§5.21: 3分ゲートを無視して即発生・v0.25.1529)', () => {
+    // 凶悪ハンターは3分フロアを無視する=デンジャー入場(制圧0)で即発生。
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gameTime: 30000 })).toBe(true);
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gameTime: baseTrigger.hunterStartMs - 1 })).toBe(true);
   });
 
   it('does not fire before the danger zone (areaIdx < 2)', () => {

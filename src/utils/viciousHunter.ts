@@ -15,7 +15,9 @@ export interface ViciousHunterTriggerInput {
 
 export const shouldTriggerViciousHunter = (input: ViciousHunterTriggerInput): boolean => {
   if (!input.hunterIdle || input.spawnBlocked) return false;
-  if (input.gameTime < input.hunterStartMs) return false;
+  // §5.21仕様「3分/優勢ゲートを無視して即発生」: 凶悪ハンターは3分フロア(hunterStartMs)を無視する
+  // (デンジャーに30秒で入ったラッシャーへの罰が3分待ちで間に合わない不具合の修正・v0.25.1529)。
+  // hunterStartMsは通常ハンター側の判定に呼び出し側が使う値=ここでは参照しない(互換のため引数は残す)。
   if (input.gameTime < input.viciousRearmAt) return false;
   if (input.playerAreaIdx < 2) return false; // デンジャー(r>=3000)未満は対象外
   return input.capturedBaseCount === 0;
