@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1517 — バッチM21仕様化: KILL/カウンター演出の統一(爽快カーブ・2層構成)(社長委任・設計チャット)【2026-07-07 12:44 JST】
+- 実測診断: KILLとカウンターで演出の骨格が食い違い、本命KILLの方が命中の瞬間が柔らかい(逆転)。
+  ①KILLのズーム500msとスロー700msが別長=最大寄りが先に萎む ②KILLにフリーズ無し(カウンターは100ms有り)
+  ③コメント「ストップ後に」だがtriggerHitstop未呼び。参考=オクトラ/スタオー2Rの1拍構造(FREEZE→RELEASE)。
+- PACING_PUZZLE.md §5.22に仕様化(社長委任「いい感じに整えて」): 方針1=1拍エンベロープに統一
+  (ズーム/スローの長さ・hold・イージング一致・戻りeaseOut)。方針2=KILL多発対策でフラット10s CDを廃止し
+  **2層構成**——Layer1(全キル毎回=短フリーズ+白閃光+速ズームパンチ+文字オーバーシュート・スロー無し・
+  酔わない)/Layer2(featuredのみ=パック片付け∨エリート/ボス/カウンター、最小間隔2.5s=フルのスロー+
+  ズーム寄りhold)。カウンターは常にLayer2相当。数値は全て叩き台・?juice=0/?juicetier=0でA/B。負荷1/10。
+- ステータス表にM21追加。
+- 検証: 文書のみ=ローカル検証なし。
+- 憲法第4条・第5条: 該当なし(演出カーブのみ・ゲーム性/判定は不変が要件)。
+
 ## v0.25.1515 — バッチM20仕様化: 囲いの復活=2軸(退屈補正+制圧ゲート)(社長設計・設計チャット)【2026-07-07 12:21 JST】
 - 社長設計をPACING_PUZZLE.md §5.21に仕様化(着手可)。既存部品の転用/配線で組む(新規敵/システムは作らない):
   - **軸1(退屈補正)**: 眠っている囲いhordeを退屈シグナルで1回差し込む(開始1分〜・CD2分・多用しない・?arena=0)。
