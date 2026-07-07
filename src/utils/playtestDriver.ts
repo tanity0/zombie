@@ -28,7 +28,7 @@ import {
   computeDirCountCap, computeEnemyCap,
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
-import { decideBotInput, type BotPersona } from './playtestBot';
+import { decideBotInput, type BotPersona, type RusherTrackState } from './playtestBot';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
   NOOP_COMBAT_EFFECTS, type CombatTunables,
@@ -112,17 +112,20 @@ export interface PlaytestTickOptions {
   tickIndex: number;
   wanderSeed: number;
   dt: number; // seconds (固定16.6ms=1/60を想定)
+  // PACING_PUZZLE.md §5.20 M19: rusherペルソナの詰まり検知用の外部状態(ラン単位で1つ作って
+  // 毎tick同じ参照を渡す)。他ペルソナでは未使用。
+  rusherState?: RusherTrackState;
 }
 
 // 1tick分: ボット入力の合成→適用(移動/自動射撃/近接/武器切替)→物理更新→ディレクター配線。
 export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): void => {
-  const { persona, tickIndex, wanderSeed, dt } = opts;
+  const { persona, tickIndex, wanderSeed, dt, rusherState } = opts;
   const store = useGameStore.getState();
   const t = store.gameTime + dt * 1000;
   store.setGameTime(t);
 
   const { player, enemies } = useGameStore.getState();
-  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed);
+  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState);
   useGameStore.getState().movePlayer(decision.input, dt);
   autoFireGun();
   if (decision.wantsMelee) useGameStore.getState().triggerCounter();

@@ -12,6 +12,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1514 — M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴塞ぎ・実装チャット)【2026-07-07 12:00 JST】
+- 社長指示「PACING_PUZZLE.md §5.20を実装して。ゲーム本体は触らず bot/test/notes のみ」に対応。
+- `playtestBot.ts`に`rusher`ペルソナ追加(原点から外向き最大速度で直進・カウンター/カイト/武器
+  切替なし・詰まった時(直近30tick=約0.5秒最大半径が更新されない)だけ横へ回避)。`BOT_PERSONAS`
+  巡回には含めず既存スモークは無影響。
+- `playtestDriver.ts`の`PlaytestTickOptions`に任意`rusherState`を追加し素通し(他ペルソナ無影響)。
+- `playtest.test.ts`にM19深層ラッシュ・シナリオを追加: rusher×warrior Lv1初期装備を最大6分回し、
+  境界(1500/3000/5000/7500px)到達時刻/HP・死亡時刻/死因・最終深度を記録。芯アサーションは
+  「r≥7500へ到達できる」ことだけ(HP/死亡は記録のみ・固定しない)。実測=約87〜88秒で深層域到達
+  (社長実機動画の約79秒に近い再現)、6分終了時点で最終深度約31000px・死亡なし。
+- `ENGINEERING_NOTES.md`の「M9実装の実際のスコープ」にrusher解消の注記を追加(depth teleport-probe
+  の人工性は残る旨・他ペルソナの「有能すぎ」は未解消な旨も明記)。PACING_PUZZLE.mdのM19行を
+  実装済みへ更新+実装結果セクション追記。
+- **検証(要所=完了報告前のフル)**: `npm run lint && npm run typecheck && npm test && npm run build`
+  全通過(490 passed / 2 skipped、既存smoke/M16/M17回帰含め全green)。
+- 受け入れ条件: ①既存playtestスモーク(2ラン)通過 ②rusherの深層到達カナリア通過 ③`git status`で
+  store/renderer(gameStore.ts/pixiScene.ts等)が無変更なことを確認済み(bot/test/notesのみ)。
+- 憲法第4条・第5条: 該当なし(ボット/テスト基盤のみ・ゲームバランス/挙動は不変)。
+- 次: 特になし(M19完結)。M10(バランス走査)はM17後の推奨事項として引き続き未着手。
+
 ## v0.25.1513 — 発火ナイフ投擲物の見た目を専用イラストに差し替え(社長提供素材・実装チャット)【2026-07-07 11:49 JST】
 - 社長から発火ナイフの素材画像(IMG_6490)提供+「飛翔中/刺さった時の見た目」に使う指示(1問確認で確定)。
 - `public/sprites/weapons/fire-knife-projectile.png` に保存(透過の余白をトリミング、1254×1254→427×509、

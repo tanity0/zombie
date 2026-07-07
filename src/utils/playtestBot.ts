@@ -5,7 +5,9 @@
 // setActiveWeapon)へ反映する。
 import type { Enemy, InputState, Player } from '../types/game';
 
-export type BotPersona = 'standard' | 'kiter' | 'stationary' | 'boar' | 'wanderer';
+// 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
+// (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
+export type BotPersona = 'standard' | 'kiter' | 'stationary' | 'boar' | 'wanderer' | 'rusher';
 
 export const BOT_PERSONAS: BotPersona[] = ['standard', 'kiter', 'stationary', 'boar', 'wanderer'];
 
@@ -69,6 +71,21 @@ const WANDER_DIRS: InputState[] = [
 ];
 export const wanderDirForSeed = (seed: number): InputState => WANDER_DIRS[Math.abs(seed) % WANDER_DIRS.length];
 
+// rusherペルソナ(§5.20 M19)の詰まり検知に使う外部状態。呼び出し側(ヘッドレス駆動側)が
+// ラン開始時に1つ作って毎tick同じ参照を渡し続ける(rankAssessor等のRef系と同じ「明示的な外部状態」方式)。
+export interface RusherTrackState {
+  maxRadius: number;    // これまでに到達した原点からの最大距離(px)
+  stuckTicks: number;   // 最大距離が更新されていないtick数の連続カウント
+  dodgeSign: 1 | -1;    // 詰まった時に混ぜる横成分の向き(固定・毎回同じ側へ回り込む)
+}
+export const createRusherTrackState = (dodgeSign: 1 | -1 = 1): RusherTrackState => ({
+  maxRadius: 0, stuckTicks: 0, dodgeSign,
+});
+// 詰まり判定のしきい値: 直近この tick 数だけ最大半径が更新されなければ「詰まった」とみなす
+// (≈0.5秒@60fps。デバッグボットの挙動チューニング値であり、ゲームバランス定数ではない)。
+const RUSHER_STUCK_TICKS = 30;
+const RUSHER_ORIGIN_EPS = 4; // 原点にごく近い間は半径方向が不安定なので放浪と同じ固定シード方向を使う
+
 export const decideBotInput = (
   persona: BotPersona,
   player: Player,
@@ -76,11 +93,44 @@ export const decideBotInput = (
   gameTime: number,
   tickIndex: number,
   wanderSeed: number,
+  rusherState?: RusherTrackState,
 ): BotDecision => {
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
 
   switch (persona) {
+    case 'rusher': {
+      // 原点から外向き(半径が増える方向)へ最大速度で直進。カウンター/カイト/武器切替は一切しない
+      // (自動射撃のみに任せる=実プレイの「前進しながら撃つ」低スキル挙動の再現)。
+      const radius = Math.hypot(pcx, pcy);
+      let dx: number, dy: number;
+      if (radius < RUSHER_ORIGIN_EPS) {
+        // 原点直後は半径方向が定まらないので、放浪ペルソナと同じ固定シード方向で離脱する。
+        const seed = wanderDirForSeed(wanderSeed);
+        dx = (seed.right ? 1 : 0) - (seed.left ? 1 : 0);
+        dy = (seed.down ? 1 : 0) - (seed.up ? 1 : 0);
+      } else {
+        dx = pcx / radius;
+        dy = pcy / radius;
+      }
+      if (rusherState) {
+        if (radius > rusherState.maxRadius + 0.5) {
+          rusherState.maxRadius = radius;
+          rusherState.stuckTicks = 0;
+        } else {
+          rusherState.stuckTicks += 1;
+        }
+        if (rusherState.stuckTicks >= RUSHER_STUCK_TICKS) {
+          // 詰まった(木/壁等で最大半径が更新されない): 外向きベクトルへ±90°の横成分を混ぜて回り込む。
+          const lateralX = -dy * rusherState.dodgeSign;
+          const lateralY = dx * rusherState.dodgeSign;
+          dx = dx * 0.5 + lateralX * 0.5;
+          dy = dy * 0.5 + lateralY * 0.5;
+        }
+      }
+      return { input: dirInput(dx, dy), wantsMelee: false, wantsWeaponSwitch: false };
+    }
+
     case 'wanderer':
       // 戦闘を完全に無視し、ラン開始時に決めた一方向へ直進(深部へ)。
       return { input: wanderDirForSeed(wanderSeed), wantsMelee: false, wantsWeaponSwitch: false };

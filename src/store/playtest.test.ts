@@ -6,11 +6,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { createPlaytestRefs, runPlaytestTick } from '../utils/playtestDriver';
-import { BOT_PERSONAS, decideBotInput, type BotPersona } from '../utils/playtestBot';
+import { BOT_PERSONAS, decideBotInput, createRusherTrackState, type BotPersona } from '../utils/playtestBot';
 import {
   checkNoOnscreenCapRemoval, checkSpawnCadence, checkBoardInvariants, checkRankClamp, checkStateHealth,
 } from '../utils/playtestInvariants';
-import { OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
+import { OFFSCREEN_RECYCLE_MARGIN, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS, type KomaKind4 } from '../utils/scriptPuzzle';
 
@@ -239,5 +239,66 @@ describe('M16: pumpkin jump-cap escape scenario (回帰・PACING_PUZZLE.md §5.1
     const player = useGameStore.getState().player;
     const dist = Math.hypot(player.x - startX, player.y - startY);
     expect(dist).toBeGreaterThanOrEqual(1500);
+  });
+});
+
+describe('M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴塞ぎ・PACING_PUZZLE.md §5.20)', () => {
+  it('rusher×Lv1初期装備を最大6分回すと深層域(r>=7500)へ到達する(境界到達/HP/死因を記録)', () => {
+    // 受け入れ条件②: v0.25.1510実機動画(Lv1で約79秒→深層到達→包囲死)を再現できることの機械的証明。
+    // 芯は「詰まらず深層域まで歩けるか」だけ(木/壁で足止めされ続ける事故の検知)。バランス値
+    // (HP残量・死亡有無)は記録専用で固定しない(将来の守護者ゲート/深さ床で変わる想定・§5.20)。
+    const realEpoch = Date.now();
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['Date'] });
+    vi.setSystemTime(realEpoch);
+    try {
+      useGameStore.getState().resetGame('warrior');
+      const refs = createPlaytestRefs();
+      const rusherState = createRusherTrackState();
+      const dt = 1 / 60;
+      const MAX_TICKS = 6 * 60 * 60; // 6分相当(60fps換算)
+
+      const boundaries = [...AREA_THRESHOLDS]; // [1500, 3000, 5000, 7500]
+      const boundaryHits: { r: number; atMs: number; hpAtHit: number }[] = [];
+      let died = false;
+      let diedAtMs: number | null = null;
+      let deathCause: string | null = null;
+      let maxRadius = 0;
+      let finalTick = 0;
+
+      for (let i = 0; i < MAX_TICKS; i++) {
+        finalTick = i;
+        const before = useGameStore.getState();
+        const nextGameTime = before.gameTime + dt * 1000;
+        vi.setSystemTime(realEpoch + nextGameTime); // Date.now() を今回tick分のgameTimeへ同期
+        runPlaytestTick(refs, { persona: 'rusher', tickIndex: i, wanderSeed: 0, dt, rusherState });
+
+        const after = useGameStore.getState();
+        const pcx = after.player.x + after.player.width / 2;
+        const pcy = after.player.y + after.player.height / 2;
+        const radius = Math.hypot(pcx, pcy);
+        if (radius > maxRadius) maxRadius = radius;
+
+        while (boundaries.length > 0 && radius >= boundaries[0]) {
+          const r = boundaries.shift()!;
+          boundaryHits.push({ r, atMs: after.gameTime, hpAtHit: after.player.health });
+        }
+        if (!died && after.player.health <= 0) {
+          died = true;
+          diedAtMs = after.gameTime;
+          deathCause = after.lastDamageSource || null;
+          break; // 死亡したらそこで打ち切り(以降は無意味な放置tickを回さない)
+        }
+      }
+
+      console.log(`\n=== M19 深層ラッシュ・シナリオ ===`);
+      console.log(`  境界到達: ${boundaryHits.map(b => `r${b.r}@${(b.atMs / 1000).toFixed(0)}s(hp=${b.hpAtHit.toFixed(0)})`).join(' / ') || '(なし)'}`);
+      console.log(`  最終深度=${maxRadius.toFixed(0)}px  経過tick=${finalTick}(${(finalTick / 60).toFixed(0)}s)`);
+      console.log(`  死亡=${died}${died ? ` @${((diedAtMs ?? 0) / 1000).toFixed(0)}s 死因=${deathCause ?? '?'}` : ''}`);
+
+      // 芯(受け入れ条件②): rusherが深層域(r>=7500)へ到達できること。
+      expect(maxRadius).toBeGreaterThanOrEqual(7500);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
