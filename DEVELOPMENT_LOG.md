@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1542 — 診断+修正仕様2件: ベンチのスマホクラッシュ(ALL MAX)/ゲート1chaffが逃げる(fromEvent抜け)【2026-07-07 19:41 JST】
+- **設計チャットの実機バグ診断2件を仕様化**(コードは触らない=Sonnet実装待ち)。両方とも直近実装(M23/§5.21-追補2)の実機フィードバック。
+- **①ベンチのスマホクラッシュ=ALL MAX(§5.24-追補・新設)**: 社長報告「重い順化以降、緑卵段に到達する前にたまに落ちる(スマホ/iOS)」。
+  - **診断**: 犯人は`ALL MAX`(A3=敵72+弾140+全FX+強glow=絶対ピーク)。旧順序はALLを軽いA1から回して最初のFAILで打ち切り=MAXまで到達しなかった。
+    M23の重い順で**MAXを最初に回す**ようになり、端末が一度も食らったことのない負荷=天井超え=クラッシュ(=無データ)。
+  - **緑卵は無罪**と判明(到達前に落ちる+緑卵段は60fps=社長実測)。**M23は「緑卵は重くない」を証明した=当初目的達成**。
+  - **修正(社長決定)**: スマホ判定時はALL最重段(MAX/A2)を回さずA1止まり。重い順スキップは他系統で維持。デスクトップはMAXも回す。
+    直らなければ次点=強glow G12/LIGHT T24を同様にモバイルキャップ(実機確認)。
+- **②ゲート1chaffが逃げる=fromEvent抜け(§5.21-追補2に修正追記)**: 社長報告「囲いの雑魚がサークル内に沸いてない・逃げていく」。
+  - **診断(差分)**: v1539実装で基本沸きchaffに`fromEvent`を付けなかった(ambient)。囲い中はイベント外の敵が逃走モードになる既存仕様(v1261)に該当=chaffが逃げて円外へ。
+    台本の敵とchaffの差は`fromEvent`だけ=これが原因(位置は円内で正しい)。
+  - **修正(社長決定)**: chaffにも`fromEvent=true`付与=残る。副作用でクリア条件(fromEvent殲滅)に基本10体も含まれる=「囲いを空にしてクリア」(社長採用=直感的)。
+    §5.21-追補2本文の「ambient=fromEventにしない」は撤回。
+- 実装順ステータス表のM20/M23行に修正待ちを追記。段取り: 社長へSonnet用ワンライナー2本。
+- 変更ファイル: PACING_PUZZLE.md(§5.24-追補+§5.21-追補2修正追記+ステータス表2行)/DEVELOPMENT_LOG.md/package.json。
+- 検証: 文書のみ=typecheck不要。自己点検(規律5): 憲法第4条(初心者ゾーン)非抵触=ゲート1はr≥5000/ベンチはdevツール。第5条非抵触。数値カーブ・floor未変更。
+
 ## v0.25.1541 — M24実装: トール攻撃予告=着弾0.4秒前の赤フラッシュ(全4攻撃統一)【2026-07-07 19:23 JST】
 - **`src/pixi/pixiScene.ts`のみ変更(useGameLoop.ts側の状態機械は無変更=見た目だけの追加)**:
   純関数`thorFlashTint(remainingMs, now)`を新設(`THOR_FLASH_ENABLED`=`?thorflash=0`で無効化・
