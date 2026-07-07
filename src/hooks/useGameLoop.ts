@@ -900,6 +900,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const suppCaptureCountRef = useRef<number>(0);
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
+  // 社長指示(仕様変更v0.25.1523): 到達時のSEは1プレイ(1ラン)中1エリア1回まで。ステージ永続の
+  // WallMetaとは別の「今回のランで既に鳴らした区域」集合(新ランでリセット)。
+  const zoneSfxPlayedRef = useRef<Set<number>>(new Set());
   const areaSectorRef = useRef<number>(-1); // 担当エリア(セクター)進入セリフ用。現在のセクター(ハブ付近では-1)。
   // ゾーン判定の間引き用カウンタ + 深層域BGM(逆再生)の現フェーズ。
   const zoneTickRef = useRef<number>(0);
@@ -1507,6 +1510,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
+          zoneSfxPlayedRef.current = new Set(); // 到達SEの「今回のラン」判定も新ランでリセット
           areaSectorRef.current = -1; // 担当エリア進入セリフも再アーム
           gateMetaRef.current = getGateMeta(getSelectedStageId()); // M20ゲート恒久解除メタを選択ステージ分で読み直す
           gate1PenaltyActiveRef.current = false; // 未達ペナルティも新ランで再アーム
@@ -1590,6 +1594,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 未確認境界を未クリアで踏破した時点で gate1PendingRef が立つ(M14区域判定ブロック側)。
             // ここで activeEvent が空いた瞬間に発火する(他イベント進行中なら空くまで待つ)。
             gate1PendingRef.current = false;
+            // PACING_PUZZLE.md §5.21: 「デンジャーの凶悪ハンターは、この囲いゲート1が発生した時点で
+            // 逃げて消える」(イベント排他=ゲート主役)。通常ハンター(非凶悪)は元々排他対象外なので触らない。
+            // (hunterRefの状態機械はこのブロックの外=別セクションで宣言されるため、ここでは直接操作する。)
+            if (hunterRef.current.vicious) {
+              useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') }));
+              hunterRef.current.phase = 'idle';
+              hunterRef.current.vicious = false;
+              hunterRef.current.detectStartAt = 0; hunterRef.current.chaseStartAt = 0;
+              hunterRef.current.reinforced = 0; hunterRef.current.primaryId = '';
+            }
             const rankNow = puzzleClockRef.current.rank;
             const gateRank = clampRank(rankNow + 1);
             const pattern = selectPattern(gateRank, new Set(), null, Math.random());
@@ -1600,6 +1614,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dist = ARENA_EVENT_RADIUS * (0.4 + Math.random() * 0.52);
               return { x: gpcx + Math.cos(ang) * dist, y: gpcy + Math.sin(ang) * dist };
             };
+            // 社長指示(v0.25.1523「やはり出れない囲いに」)でゲート1もハード(出られない)へ変更。
+            // confinesPlayerを省略=既定true(既存の囲い共通の円内拘束をそのまま適用)。
+            // 重要: beginArenaEvent は呼び出し時点で周辺の非固定敵を一掃するため、必ず「敵を配置する前」に
+            // 呼ぶこと(逆順にすると配置直後の台本の敵まで一掃されてしまうバグを実機v0.25.1522で確認)。
+            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS };
+            useGameStore.getState().beginArenaEvent(gateEvent);
             let gateSpawnedCount = 0;
             (Object.keys(counts) as NuisanceType[]).forEach(type => {
               const n = counts[type];
@@ -1613,10 +1633,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gateSpawnedCount++;
               }
             });
-            // ゲート1は「ソフト=サークルから出られる」(社長設計)。confinesPlayer:false でプレイヤーの
-            // 円内拘束(既存の囲い共通挙動)を明示的に外す(ゲート2=ハードは既定どおり拘束する)。
-            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, confinesPlayer: false };
-            useGameStore.getState().beginArenaEvent(gateEvent);
             hordeSpawnRef.current = { spawned: gateSpawnedCount, nextAt: newGameTime, total: gateSpawnedCount }; // 全数即配置済み=段階スポーンは追加しない
             activeGateRef.current = 1;
             useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -1638,6 +1654,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (プレイヤーはサークルから出られない)。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
+            // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
+            // (gate1と同じ実機バグの教訓・giantbatは除外リストに入っているため実害は無かったが
+            // 順序を揃えて統一する)。
+            const gate2Event = { kind: 'boss' as const, x: g2pcx, y: g2pcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
+            useGameStore.getState().beginArenaEvent(gate2Event);
             const bx = g2pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
             const by = g2pcy + Math.sin(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
             const boss = spawnEnemyAt('giantbat', bx - 24, by - 24, newGameTime);
@@ -1647,8 +1668,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             boss.fromEvent = true;
             boss.dormant = true; boss.aggroRange = GIANT_AGGRO_RANGE; boss.vx = 0; boss.vy = 0;
             addEnemy(boss);
-            const gate2Event = { kind: 'boss' as const, x: g2pcx, y: g2pcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
-            useGameStore.getState().beginArenaEvent(gate2Event);
             activeGateRef.current = 2;
             useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
@@ -2356,7 +2375,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
               // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
               // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
-              if (zoneIdx > prevZone) playSfx('event-start');
+              // 仕様変更(v0.25.1523): 1プレイ(1ラン)中1エリア1回まで(往復で同じ区域に再度届いても鳴らさない)。
+              if (zoneIdx > prevZone && !zoneSfxPlayedRef.current.has(zoneIdx)) {
+                zoneSfxPlayedRef.current.add(zoneIdx);
+                playSfx('event-start');
+              }
               // PACING_PUZZLE.md §5.21 M20 stage③/④: 未確認/深層境界を未クリアのゲートのまま踏破した=
               // 「未達ペナルティ」発動(ゲート1のみハンター復活を伴う。ゲート2はハードなので即戦闘=
               // ペナルティ状態を継続保持する必要がない)。ゲート発火待ちを立てる。
