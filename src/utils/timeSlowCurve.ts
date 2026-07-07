@@ -2,6 +2,9 @@
 // holdMs=0(既定・従来の全呼び出し元)の時は旧来どおり開始直後から1.0へ滑らかにランプする。
 // holdMs>0を渡した呼び出し元(triggerFinishImpact/triggerHitImpact)だけ、最も遅い倍率を
 // holdMsぶん保持してから残り時間で1.0へランプする(社長指示: 一番遅い時間を長く・戻りは速く)。
+// PACING_PUZZLE.md §5.22 M21(社長決定): 戻りのイージングをsmoothstepからeaseOutCubicへ変更
+// (「フッと吸ってスッと吐く」=戻り始めは速く、1.0に近づくほど粘って収束する)。ズーム(triggerZoom)
+// もこの関数を流用するため、KILL/カウンターのズーム・スロー両方に自動的に反映される。
 // レンダラ/Reactに依存しない純関数=ヘッドレスでユニットテスト可能。
 export const computeTimeSlowScale = (
   nowMs: number,
@@ -17,6 +20,6 @@ export const computeTimeSlowScale = (
   if (elapsed < clampedHold) return timeSlowScale;
   const returnSpan = Math.max(1, span - clampedHold);
   const k = Math.max(0, Math.min(1, (elapsed - clampedHold) / returnSpan));
-  const ease = k * k * (3 - 2 * k); // smoothstep
+  const ease = 1 - Math.pow(1 - k, 3); // easeOutCubic
   return timeSlowScale + (1 - timeSlowScale) * ease;
 };

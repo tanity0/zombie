@@ -9,6 +9,7 @@ import {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight
 } from '../types/game';
 import { clampRectInsideCircle } from '../world/arena';
+import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
   RescueSurvivor, computeSurvivorStep, pickRescueComposition,
   RESCUE_RADIUS, RESCUE_SURVIVOR_SIZE, RESCUE_CIVILIAN_HP, RESCUE_SHOOTER_HP,
@@ -1025,6 +1026,17 @@ export const MELEE_FINISH_ZOOM_HOLD_MS = 400; // 上記のうち最大寄りを�
 // (酔い防止・スロー等の演出は不変)。
 export const MELEE_FINISH_ZOOM_CD_MS = 10000;
 export const COUNTER_ZOOM_MAG = 0.5;       // カウンター成立の寄り(社長指示で1.5倍=+50%)
+// PACING_PUZZLE.md §5.22 M21(社長委任v0.25.1516・CD制確定v0.25.1524): KILL/カウンター演出を
+// 「命中の瞬間に全部ピーク→同じ長さ/カーブで一緒に戻る」1拍エンベロープへ統一する。
+// ?juice=0で旧演出(このバッチ以前の個別エンベロープ・スローは毎回/ズームだけCD)へ完全復帰(A/B用)。
+export const JUICE_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('juice') !== '0';
+// 全演出(フリーズ+ズーム+スロー)をまとめて律速するCD。社長決定(v0.25.1524): 5秒でも頻発して
+// 「うざい」ため、現行のMELEE_FINISH_ZOOM_CD_MS(10秒)を値そのまま流用=CD値は変えない。
+// 実機調整用に ?juicecd=<ms> だけ上書き可(任意)。
+export const JUICE_CD_MS = camNum('juicecd', MELEE_FINISH_ZOOM_CD_MS);
+// CD内キル(フル演出が出ない間)の最低保証フラッシュ(任意・OFF可)。
+export const JUICE_MIN_FLASH_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('juiceflash') !== '0';
+export const JUICE_MIN_FLASH_MS = 80;
 // Inertia time constants (s). Velocity eases toward its target over this
 // window. The player is now instant (0 = no inertia, snappy control); enemies
 // keep 0.3s so they curve into turns instead of snapping.
@@ -2161,7 +2173,9 @@ interface GameState {
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void; // ストップ→(後で)揺れ+寄り。ダンス中はストップ無しで即時
   // targetX/Y省略時は画面中央基準(カウンター等・従来どおり)。指定時はその世界座標点へ寄る(社長指示: KILLはキルされた対象へ)。
-  triggerFinishImpact: (targetX?: number, targetY?: number) => void; // 近接フィニッシュ: ストップ→(後で)揺れ+スロー+寄り
+  // 近接フィニッシュ: ストップ+ズーム+スローを1拍エンベロープで発火(CD明けのみ・CD内は最低保証フラッシュのみ)。
+  // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
+  triggerFinishImpact: (targetX?: number, targetY?: number) => boolean;
   triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
   triggerShake: (durationMs: number, mag?: number) => void; // 行動別の画面シェイク(描画のみ)
 
@@ -3602,12 +3616,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun);
-    if (killed.some(k => k.finisher)) {
-      get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
-    }
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = finishZoomTargetOf(killed);
-      get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
+      // M21(§5.22): フル演出(CD明け)の時だけ武器固有の黄フラッシュを重ねる。CD内は
+      // triggerFinishImpact自身が出す最低保証フラッシュ(軽い白)だけになる=二重フラッシュを避ける。
+      const fullCinematic = get().triggerFinishImpact(ztx, zty);
+      if (fullCinematic && killed.some(k => k.finisher)) {
+        get().spawnFlash('rgba(253, 224, 71, 0.28)', 200);
+      }
     } else if (slashAt.length > 0) {
       // 通常ヒット(空振りでもフィニッシュでもない)のときだけスイングの揺れを出す。
       get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
@@ -3735,7 +3751,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((sum, n) => sum + n.value, 0),
       },
-      hitstopUntil: finisherHit || bossFinishHit ? now + HITSTOP_MS : state.hitstopUntil,
+      // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
     }));
 
     // 演出はプレイヤーの近接と同じ経路(スラッシュ/ダメージ数字/キル報酬)。分身位置にも一閃を出す。
@@ -3936,7 +3952,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       meleeFinishComboUntil: comboFinishCount > 0
         ? gameTime + finishWindowMs
         : state.meleeFinishComboUntil,
-      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
+      // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
       player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
     }));
 
@@ -4079,7 +4095,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? (state.meleeFinishComboUntil >= gameTime ? state.meleeFinishComboCount + comboFinishCount : comboFinishCount)
         : state.meleeFinishComboCount,
       meleeFinishComboUntil: comboFinishCount > 0 ? gameTime + finishWindowMs : state.meleeFinishComboUntil,
-      hitstopUntil: finisherHit ? now + HITSTOP_MS : state.hitstopUntil,
+      // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
       player: { ...state.player, knifeComboCount: knifeCombo.count, knifeComboUntil: knifeCombo.until },
     }));
 
@@ -8820,19 +8836,33 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   triggerFinishImpact: (targetX, targetY) => {
-    // 近接フィニッシュ: 寄りは即。スローも即開始(ストップ中はループ早期returnで凍結 → 明けてから
-    // 倍率が滑らかに 1.0 へランプ=ぶつ切り回避)。setTimeout で遅延起動するとフリーズ明けと競合して
-    // 一瞬等速に戻る不具合が出るため同期起動にする。揺れだけストップ後に出す。
-    // ズームだけ連発防止CD(社長指示・v0.25.1495): CD内の連続キルはスロー/揺れは毎回出すが
-    // ズームだけ間引く(酔い防止)。
     const now = Date.now();
-    if (now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
-      // 即・寄り(KILL専用の長さ・社長指示)。targetX/Yがあればキルされた対象へ寄る(社長指示・v0.25.1498)。
-      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS, targetX, targetY);
-      set({ lastKillZoomAt: now });
+    if (!JUICE_ENABLED) {
+      // ?juice=0: このバッチ以前の演出へ完全復帰(A/B比較用)。ズームだけCD、スロー/揺れは毎回。
+      if (now - get().lastKillZoomAt >= MELEE_FINISH_ZOOM_CD_MS) {
+        get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_ZOOM_MS, MELEE_FINISH_ZOOM_HOLD_MS, targetX, targetY);
+        set({ lastKillZoomAt: now });
+      }
+      get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
+      setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
+      return true; // 旧仕様は常時「フル」扱い(呼び出し元の武器固有フラッシュ分岐に影響させない)
     }
-    get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS); // 即・スロー(強め→保持→等速へランプ)
-    setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
+    // PACING_PUZZLE.md §5.22 M21(社長決定v0.25.1524): 命中の瞬間にフリーズ+ズーム+スローが全部
+    // 同時にピークする1拍エンベロープへ統一。全演出をJUICE_CD_MS(=現行のCD値のまま)で一括律速し、
+    // CD明けの1キルだけフル(フリーズ→ズーム/スローが同じ長さ・同じholdで一緒に戻る)。
+    // CD内のキルは最低保証の軽いフラッシュのみ(酔い/うざさ防止・社長実測v0.25.1523-1524)。
+    const cdReady = shouldFireFullJuiceCinematic(now, get().lastKillZoomAt, JUICE_CD_MS);
+    if (cdReady) {
+      set({ lastKillZoomAt: now });
+      get().triggerHitstop(HITSTOP_MS); // KILLにもカウンターと同じフリーズを追加(旧仕様は素通りだった)
+      // ズームをスローと同じ長さ/holdへ統一(旧仕様の専用MELEE_FINISH_ZOOM_MS/HOLD_MSは使わない)。
+      get().triggerZoom(MELEE_FINISH_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, targetX, targetY);
+      get().triggerTimeSlow(0.2, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS);
+      setTimeout(() => get().triggerShake(MELEE_FINISH_SHAKE_MS, MELEE_FINISH_SHAKE_MAG), HITSTOP_MS);
+    } else if (JUICE_MIN_FLASH_ENABLED) {
+      get().spawnFlash('rgba(255,255,255,0.22)', JUICE_MIN_FLASH_MS);
+    }
+    return cdReady;
   },
 
   triggerZoom: (mag, durationMs, holdMs = 0, targetX, targetY) => {

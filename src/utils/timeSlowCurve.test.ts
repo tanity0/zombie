@@ -7,14 +7,15 @@ describe('computeTimeSlowScale', () => {
     expect(computeTimeSlowScale(1500, 1000, 1500, 0.2)).toBe(1); // exactly at the boundary
   });
 
-  it('holdMs=0 (default, all pre-existing callers) matches the original continuous smoothstep ramp', () => {
+  it('holdMs=0 (default, all pre-existing callers) matches the continuous easeOutCubic ramp (M21・社長決定: 少し粘る戻り)', () => {
     const start = 1000, until = 2000, scale = 0.2;
-    // At t=0 the smoothstep ease is 0 → scale stays at the minimum.
+    // At t=0 the ease is 0 → scale stays at the minimum.
     expect(computeTimeSlowScale(start, start, until, scale)).toBeCloseTo(scale, 5);
-    // At the midpoint, smoothstep(0.5) = 0.5 → halfway between scale and 1.
+    // At the midpoint, easeOutCubic(0.5) = 1-(0.5)^3 = 0.875 → most of the way back already
+    // (fast release, then lingers near 1.0 — unlike smoothstep's 0.5 at the midpoint).
     const mid = computeTimeSlowScale(start + 500, start, until, scale);
-    expect(mid).toBeCloseTo(scale + (1 - scale) * 0.5, 5);
-    // Just before the end it should be very close to 1 (but not exactly, smoothstep isn't linear).
+    expect(mid).toBeCloseTo(scale + (1 - scale) * 0.875, 5);
+    // Just before the end it should be very close to 1 (but not exactly, cubic isn't linear).
     const nearEnd = computeTimeSlowScale(start + 999, start, until, scale);
     expect(nearEnd).toBeGreaterThan(0.99);
   });
@@ -27,9 +28,10 @@ describe('computeTimeSlowScale', () => {
     expect(computeTimeSlowScale(start + 599, start, until, scale, holdMs)).toBe(scale);
     // Right at the hold boundary the return ramp begins (still at minimum, ease=0).
     expect(computeTimeSlowScale(start + 600, start, until, scale, holdMs)).toBeCloseTo(scale, 5);
-    // Partway through the (now-compressed) return ramp it should have moved measurably toward 1.
+    // Partway through the (now-compressed) return ramp it should have moved measurably toward 1
+    // (easeOutCubic(0.5) = 0.875, same fast-release-then-linger shape as the no-hold case above).
     const midReturn = computeTimeSlowScale(start + 800, start, until, scale, holdMs); // 200/400 through the ramp
-    expect(midReturn).toBeCloseTo(scale + (1 - scale) * 0.5, 5);
+    expect(midReturn).toBeCloseTo(scale + (1 - scale) * 0.875, 5);
     // By the end it reaches 1 (well, just under, at 999/1000) and hits exactly 1 at/after `until`.
     expect(computeTimeSlowScale(until, start, until, scale, holdMs)).toBe(1);
   });

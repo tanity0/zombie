@@ -247,6 +247,35 @@ on the zombie game. Append a new entry after each meaningful change.
 - 憲法第4条・第5条: 該当なし(バグ修正+社長指示の仕様変更のみ)。
 - 次: 特になし(報告された3件はいずれも対応。②は原因確定に実機の追加情報が要る可能性)。
 
+## v0.25.1526 — M21: KILL/カウンター演出の統一(社長委任・CD制確定・実装チャット)【2026-07-07 14:48 JST】
+- PACING_PUZZLE.md §5.22(社長委任v0.25.1516・CD制確定v0.25.1524「CD値は据え置き」)を実装。
+  KILLとカウンターの演出を「命中の瞬間にフリーズ+ズーム+スローが全部同時にピーク→同じ長さ/hold/
+  カーブで一緒に戻る」1拍エンベロープへ統一。
+- **KILL側の変更**(`triggerFinishImpact`): ①フリーズ(`triggerHitstop`)を追加(従来はKILLにフリーズが
+  無く、カウンターだけ100msフリーズがあった非対称を解消)。②ズームの長さ/holdをスロー用の定数
+  (`MELEE_FINISH_SLOW_MS/HOLD_MS`)へ統一(従来はKILL専用の`MELEE_FINISH_ZOOM_MS/HOLD_MS`=500/400msで
+  スロー700/560msと非連動だった)。③**頻度側**: 従来「ズームは10秒CD・スローは毎キル」で頻度が
+  バラバラだったのを、スローもズーム(=`JUICE_CD_MS`、値は既存`MELEE_FINISH_ZOOM_CD_MS`=10秒のまま
+  据え置き)と同じCDに乗せ、CD明けの1キルで一緒に発火させる方式へ変更(社長決定v0.25.1524の経緯:
+  パック片付けトリガー→特別キル限定→CD5秒、いずれも実測で不採用となった末の結論。**CD値自体は
+  変更していない**)。CD内のキルは軽い白フラッシュ(`JUICE_MIN_FLASH_MS`=80ms・任意でOFF可)のみ。
+  各近接武器(ナイフ/刀/鞭)側で個別に設定していたヒットストップ(`hitstopUntil`直接代入)は
+  `triggerFinishImpact`へ集約したため削除。
+- **カウンター側**(`triggerHitImpact`)は元々ズーム長さ/holdがスローと同期済み・
+  ヒットストップも呼んでいた・CD無視だったため、**変更不要**(仕様どおり既にフル)。
+- **共通の戻りカーブ**(`src/utils/timeSlowCurve.ts`の`computeTimeSlowScale`): イージングを
+  smoothstepからeaseOutCubicへ変更(社長決定「戻りは少し粘るeaseOutへ」)。ズーム(`triggerZoom`)も
+  この関数を流用しているため、KILL/カウンター双方のズーム・スロー戻りに自動的に反映される。
+- **本体**(`src/utils/juiceEnvelope.ts`新規・純関数1種+ユニットテスト3件): `shouldFireFullJuiceCinematic`
+  (CD経過判定を切り出し)。`timeSlowCurve.test.ts`もeaseOutCubicの期待値(中間点0.875)へ更新。
+- **復帰フラグ**: `?juice=0`(このバッチ以前の演出=個別エンベロープ+ズームだけCD・スロー毎回へ完全
+  復帰)/`?juicecd=<ms>`(CD値の実機調整用上書き・任意)/`?juiceflash=0`(CD内の最低保証フラッシュを
+  無効化)。
+- 負荷: 1/10(状態フラグ+フラッシュ1枚+transform。強glow不使用。新規の常時ループ処理なし)。
+- **検証**: `npm run lint && npm run typecheck && npm test && npm run build` 全通過(539 passed / 2 skipped)。
+- 憲法第4条・第5条: 該当なし(演出のみ・ダメージ/判定/CD値そのものへの変更なし)。
+- 次: 実機での爽快感確認(A/B: `?juice=0`との比較)を推奨。次は社長指示のPACING_PUZZLE.md §5.23。
+
 ## v0.25.1514 — M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴塞ぎ・実装チャット)【2026-07-07 12:00 JST】
 - 社長指示「PACING_PUZZLE.md §5.20を実装して。ゲーム本体は触らず bot/test/notes のみ」に対応。
 - `playtestBot.ts`に`rusher`ペルソナ追加(原点から外向き最大速度で直進・カウンター/カイト/武器
