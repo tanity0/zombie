@@ -141,18 +141,18 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   reference for fields others read, and gate the write when nothing changed.
 
 ## Testing policy (test/debug cadence)
-Codified from the agreed approach: **test the changed code + its blast radius;
-フル検証は「要所」だけ(社長指示v0.25.1496「毎回テスト回すの重い、要所だけにして」).**
-Split checks by cost — do NOT lump them together.
-- **ローカル検証の段階(v0.25.1496改訂・毎push全部回すのを廃止):**
-  - **文書のみの変更(md等・srcを触らない)**: ローカル検証なしで即push。CIが安全網。
-  - **コード変更の小刻みなpush**: `npm run typecheck` のみ(数秒の爆風検知器)+
-    触ったユニットの関連テスト(`npx vitest related <files>` か対象ファイル指定)。
-  - **要所=フル検証(`npm run lint && npm run typecheck && npm test && npm run build`)**:
-    ①バッチ実装の完了報告前 ②社長に実機確認を頼む版のpush前
-    ③store/utils/worldの共有ロジック・型・シグネチャを触った時 ④憲法テスト対象に触れた時。
-  - CI(GitHub Actions・無料)は従来どおり毎pushでフルを回す=ローカルで省いた分の安全網。
-    CIが赤くなったら次のpushで直す(赤いまま実機確認を頼まない)。
+**ローカルでテスト/ビルドを回すかは社長が指示する(社長決定v0.25.1528)。** 自己判断の「要所でフル」
+(旧v0.25.1496)は形骸化した——実測でSonnetが毎push `lint && typecheck && test && build`(約90秒/回、
+うちM9ボットスモークが約38秒=テスト時間の88%)をフル実行し、しかもその38秒は今の作業(ゲート/演出/描画)の
+網の外だった。よって自己判断をやめ、社長の明示指示に切り替える。
+- **常時フロア(唯一・毎push)**: `npm run typecheck`(約9秒)。型/未import崩れの爆風検知器。これだけは毎回。
+- **テスト・ビルド(`npm test`/ボット/`npm run build`)は回さない——社長が指示した時だけ回す**
+  (「テスト回して」「要所だから全部」「実機に乗せる前にビルド確認」等)。自己判断で毎push回さない。
+- **文書のみの変更(md等)**: typecheckも不要=即push。
+- **CI(GitHub Actions・無料)は従来どおり毎pushでフルを回す=安全網**。CIが赤ければ次pushで直す/
+  社長が気づいたら指示(赤いまま実機確認を頼まない)。
+- ※補足: `npm test`の約88%はM9ボットスモーク。将来「テスト回して」を軽くしたいなら、ボットスモークを
+  既定の`npm test`から外し別コマンド化(シミュ層=store/utils/world変更時のみ)する選択肢あり(未実施・任意)。
 - **Unit tests (Vitest) — scope to changed + related during dev; full in CI.**
   Let the tools compute "related", don't guess: `npm run test:watch` (or
   `npx vitest related <files>`) reruns only tests whose import graph touches the

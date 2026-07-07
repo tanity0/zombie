@@ -12,6 +12,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1528 — 検証ルール改訂: テストは社長指示で回す(実測でボットスモークの浪費を確定)(社長決定・設計チャット)【2026-07-07 15:32 JST】
+- 社長「Sonnetの実装が前より遅い・デバッグに時間取られてないか」を実測。1push検証=`lint&&typecheck&&test&&build`
+  ≈90秒、うち**M9ボットスモーク38秒(=`npm test`時間の88%)**。しかもその38秒は今の作業(ゲート/演出/描画)の
+  網の外=無駄。旧v1496「自己判断で要所フル」は形骸化(Sonnetが毎push全部回していた)。
+- 社長案「テスト回すかはこっちで指示する」を採用しCLAUDE.md/HANDOFF_CODEXを改訂:
+  **常時フロアは`typecheck`(9s)のみ・テスト/ビルドは社長指示時だけ・文書のみはtypecheckも不要・CIは毎push
+  フルで安全網**。将来「テスト回して」を軽くするなら、ボットスモークを既定`npm test`から外し別コマンド化する
+  選択肢も注記(未実施・任意)。
+- 取り込み: SonnetのM21(v1526)+M22 Group A/B1(v1527)実装済みをpull。
+- 検証: 文書のみ=typecheck不要(新ルール即適用)。
+- 憲法第4条・第5条: 該当なし(プロセスルールのみ)。
+
 ## v0.25.1527 — M22 Group A(銃側の底上げ)+B1(レア/ネームド入場フラッシュ)実装(§5.23)【2026-07-07 15:21 JST】
 - **A1マズルフラッシュ**: 既存実装(`useGameLoop.ts`の`spawnGlow`呼び出し・半径15/22<44・小glow扱いで
   実効寿命80ms)がそのままA1の要件を満たしていたため描画は無変更。復帰フラグ`?mzl=0`だけ新規に追加
