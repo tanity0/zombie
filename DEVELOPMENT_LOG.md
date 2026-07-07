@@ -12,6 +12,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1549 — 実装: テスト用クイックスタートURLパラメータ?smoke(§6-追補 M25)【2026-07-08 03:16 JST】
+- **仕様(§6-追補・v0.25.1548で仕様化)を実装**。`src/App.tsx`にマウントuseEffectを追加、`URLSearchParams`で
+  `?smoke`を検出したら**タイトル/タップ/メニューを全スキップして直接`startGame`を呼ぶ**(完全opt-in・
+  無指定時は従来どおり)。
+- **パラメータ**: `?class=<warrior|mage|rogue|necromancer>`(既定warrior・不正値はstartGame内の既存
+  バリデーションでwarriorへ)/`?stage=<id>`(既定=先頭ステージ`STAGES[0].id`='stage-1')/
+  `?smoke=bench`または`&bench=1`でベンチモード起動。
+- **実装**: 新規ゲームロジックなし=既存`startGame`/`setSelectedStageId`/`getSelectedStageId`/`ensurePreload`
+  をそのまま流用。`smokeHandledRef`で二重発火(StrictMode等)をガード。`setSelectedStageId`(仕様書の
+  `setSelectedStage`は実際の関数名の略記だったため、実在するexportに合わせて呼び出した)。
+- 変更ファイル: `src/App.tsx`(import追加+useRef+useEffect1件)。
+- 検証: `npm run typecheck` green(社長指示によりtest/buildは今回未実行=指示があれば別途)。
+- 自己点検(規律5): 憲法第4/5条 非抵触=起動導線のショートカットのみ、ゲーム挙動・バランス・数値は完全不変。
+- 次: 描画スモーク自動化側(設計チャット/外部)で`?smoke=1`到達を確認予定。
+
 ## v0.25.1548 — 設計: テスト用クイックスタートURLパラメータ(?smoke)を仕様化(§6-追補 M25)【2026-07-08 01:23 JST】
 - **設計チャットの仕様化1件**(コードは触らない=Sonnet実装待ち)。設計チャットが実機で描画スモークを試みた副産物=
   実プレイ到達に5画面のクリックが要り自動化が脆いと判明(v1546)→社長「お願い」でショートカット導線を仕様化。

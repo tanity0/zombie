@@ -10,8 +10,8 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
-import { getSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
-import { getStage } from './data/campaign';
+import { getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
+import { getStage, STAGES } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
 
 const LOADING_MIN_MS = 650;
@@ -22,6 +22,7 @@ function App() {
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const preloadPromiseRef = useRef<Promise<void> | null>(null);
   const pendingBenchmarkRef = useRef(false);
+  const smokeHandledRef = useRef(false);
   const resetGame = useGameStore(state => state.resetGame);
   const gameStats = useGameStore(state => state.gameStats);
   // Pixi レンダラの初フレームが出るまで true にならない(PixiStage が setRendererReady)。
@@ -126,6 +127,19 @@ function App() {
     setBenchmarkMode(pendingBenchmarkRef.current);
     setGameState('playing');
   };
+
+  // テスト用クイックスタート(§6-追補・M25)。`?smoke`があればタイトル/メニューを全スキップし
+  // 直接startGameへ入る。完全にopt-in(無指定時は今まで通り)=描画スモークをヘッドレスで1コマンド到達可能に。
+  useEffect(() => {
+    if (smokeHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const smokeParam = params.get('smoke');
+    if (smokeParam === null) return;
+    smokeHandledRef.current = true;
+    const benchmark = smokeParam === 'bench' || params.get('bench') === '1';
+    setSelectedStageId(params.get('stage') || STAGES[0].id);
+    void startGame(params.get('class') ?? 'warrior', benchmark);
+  }, []);
 
   const handleGameOver = () => {
     setGameState('gameOver');
