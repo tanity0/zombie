@@ -137,7 +137,7 @@ import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
 import { getSelectedStageId, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
-import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
+import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
@@ -2200,7 +2200,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) {
                 clearAllHunters(); endHunterEvent();
               }
-            } else if (H.vicious && newGameTime >= H.viciousReplaceAt && isOutsideCamera(prim.x + prim.width / 2, prim.y + prim.height / 2, hs.camera.x, hs.camera.y, gameBounds.width, gameBounds.height)) {
+            } else if (
+              H.vicious && newGameTime >= H.viciousReplaceAt
+              // ズーム引き考慮(v0.25.1532): 画面外判定は「文脈ズーム最大引き(可視域=gameBounds×1/CONTEXT_ZOOM_MIN)」で
+              // 行う。gameBounds基準だと引いている時にまだ画面に見えているハンターを「画面外」と誤判定して
+              // 再配置=見えたまま飛ぶ(CLAUDE.mdのズーム引き考慮則)。可視域=カメラ中心から±(bounds/2×overscan)。
+              && isOutsideCamera(
+                prim.x + prim.width / 2, prim.y + prim.height / 2,
+                hs.camera.x - gameBounds.width * (1 / CONTEXT_ZOOM_MIN - 1) / 2,
+                hs.camera.y - gameBounds.height * (1 / CONTEXT_ZOOM_MIN - 1) / 2,
+                gameBounds.width / CONTEXT_ZOOM_MIN, gameBounds.height / CONTEXT_ZOOM_MIN,
+              )
+            ) {
               // PACING_PUZZLE.md §5.21 M20 軸2「再配置ラッシュ」: 凶悪ハンターは索敵タイムアウトで
               // 立ち去らず、画面外へ避けられたら視界ギリギリの奥へ再配置する(既存の再出現CD無視)。
               // ※CD(VICIOUS_REPLACE_CD_MS)でゲート=毎フレーム瞬間移動して視界サークルが飛び回るのを防ぐ(v0.25.1531)。
