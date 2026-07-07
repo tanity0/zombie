@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1541',
+    items: [
+      '裏ボス「トール」の全4攻撃(一閃/突き/払い/ジャンプ)に、着弾0.4秒前の鋭い赤フラッシュ予告を追加(反応/カウンターの目安に)。',
+    ],
+  },
+  {
     version: '0.25.1539',
     items: [
       '未確認境界ゲートの囲いに、台本の敵とは別に基本的な雑魚(コウモリ/スケルトン/ゾンビ)が10体沸くように。',

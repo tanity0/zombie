@@ -582,6 +582,22 @@ const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半�
 // フラクション座標で近似し、そこを回転軸として当たり判定ライン方向へ向ける。実機調整前提。
 const THOR_KATANA_GRIP_FRAC = { x: 0.80, y: 0.76 };  // 柄(握り位置)の画像内フラクション座標
 const THOR_KATANA_TIP_FRAC = { x: 0.05, y: 0.10 };   // 切っ先の画像内フラクション座標(角度/長さ算出用)
+
+// PACING_PUZZLE.md §5.25 M24(社長採用v0.25.1540): トール全4攻撃(issen/tsuki/harai/jump)の
+// 「ダメージ瞬間」の400ms前から、体を鋭く赤フラッシュ(反応の一拍)。既存のゾーンテレグラフ
+// (赤線/楕円/斬撃poly/issenの3秒じわランプ)は据え置き=併存。ここは体tintの上書きのみ。
+// `?thorflash=0`で無効化。
+const THOR_FLASH_ENABLED = tsBool('thorflash', true);
+const THOR_FLASH_LEAD_MS = tsNum('thorflashlead', 400);
+// 400ms間に2〜3回の鋭いパルスになる周期(issenの緩やかな点滅=now/260 の約4倍速)。
+// remainingMs=「ダメージ瞬間」までの残りms(0〜THOR_FLASH_LEAD_MS外ならnullで無効)。
+const thorFlashTint = (remainingMs: number, now: number): number | null => {
+  if (!THOR_FLASH_ENABLED) return null;
+  if (remainingMs < 0 || remainingMs > THOR_FLASH_LEAD_MS) return null;
+  const blink = 0.5 + 0.5 * Math.sin(now / 30);
+  const gb = Math.round(255 * (1 - blink) * 0.25); // 緑/青を大きく落として鋭い赤みへ寄せる
+  return (255 << 16) | (gb << 8) | gb;
+};
 const THOR_KATANA_INTRINSIC_ANGLE = Math.atan2(
   THOR_KATANA_TIP_FRAC.y - THOR_KATANA_GRIP_FRAC.y,
   THOR_KATANA_TIP_FRAC.x - THOR_KATANA_GRIP_FRAC.x,
@@ -5345,6 +5361,9 @@ export class PixiScene {
         // 放つ前=普通の赤いダメージゾーン(社長指示: レーザーの二重線ではなく矩形の塗り)。
         const blink = 0.5 + 0.5 * Math.sin(now / 260);
         view.sprite.tint = ((255 << 16) | (Math.round(255 * (1 - blink)) << 8) | Math.round(255 * (1 - blink)));
+        // §5.25 M24: ダメージ瞬間(windup終わり)の400ms前は、じわ点滅の代わりに鋭いフラッシュへ切替。
+        const issenFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
+        if (issenFlash !== null) view.sprite.tint = issenFlash;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_ISSEN_WINDUP_MS));
@@ -5378,6 +5397,9 @@ export class PixiScene {
         // 突きの溜め(社長指示): 弓で矢を引いて放つ感覚。刀の先端を突く方向(プレイヤー)へ向け、
         // 溜めが進むほど手元を後方へ引く(=弓を引く)。実行(tsuki)で前方へ突き出す(=放つ)。
         view.sprite.tint = 0xffffff;
+        // §5.25 M24: tsukiは従来無テレグラフだったが、一貫性優先で他3攻撃と同じ400ms前フラッシュを追加。
+        const tsukiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
+        if (tsukiFlash !== null) view.sprite.tint = tsukiFlash;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_WINDUP_MS));
         const pl = useGameStore.getState().player;
         // トールの手元(胸の高さ)を起点に、プレイヤー中心を狙う。
@@ -5405,6 +5427,9 @@ export class PixiScene {
           // 社長指示: 刀を振るモーションの「最初の位置」に最初から構えておく。柄=トールの手元、刃先=薙ぎ
           // 始めの点(fx,fy)。実行(harai)はこの構えから contact を tx,ty へ動かして薙ぐ=構え→振りが連続。
           this.drawThorKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+          // §5.25 M24: ダメージ瞬間(windup終わり=sweep開始)の400ms前は鋭いフラッシュへ切替。
+          const haraiFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
+          if (haraiFlash !== null) view.sprite.tint = haraiFlash;
         } else {
           // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_ACTIVE_MS));
@@ -5421,6 +5446,10 @@ export class PixiScene {
           const R = THOR_JUMP_RADIUS;
           o.ellipse(tx, ty, R, R * 0.55).fill({ color: 0xff2a2a, alpha: 0.16 + 0.12 * pulse });
           o.ellipse(tx, ty, R, R * 0.55).stroke({ width: 2, color: 0xff3b3b, alpha: 0.45 + 0.3 * pulse });
+          // §5.25 M24: jumpだけ「ダメージ瞬間」=着地(jump-attack終わり)。windupではなく空中フェーズの
+          // 残り400msでフラッシュ(仕様どおりjump-windupは対象外)。
+          const jumpFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
+          if (jumpFlash !== null) view.sprite.tint = jumpFlash;
         }
       } else {
         view.sprite.tint = 0xffffff;

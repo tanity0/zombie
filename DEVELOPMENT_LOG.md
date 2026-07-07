@@ -12,6 +12,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1541 — M24実装: トール攻撃予告=着弾0.4秒前の赤フラッシュ(全4攻撃統一)【2026-07-07 19:23 JST】
+- **`src/pixi/pixiScene.ts`のみ変更(useGameLoop.ts側の状態機械は無変更=見た目だけの追加)**:
+  純関数`thorFlashTint(remainingMs, now)`を新設(`THOR_FLASH_ENABLED`=`?thorflash=0`で無効化・
+  `THOR_FLASH_LEAD_MS`=既定400ms・`?thorflashlead=`で調整可)。`remainingMs`が0〜400msの範囲内なら
+  `now/30`周期の鋭いsin blinkで赤主体のtint(数値)を返し、範囲外/無効時は`null`(既存tintのまま)。
+  400ms間に約2回強のパルス=issenの既存じわ点滅(`now/260`周期)よりはっきり速い「鋭い一拍」。
+- **4攻撃それぞれへ配線**(既存の描画分岐の中で、既存tint設定の直後にフラッシュで上書きするだけ):
+  - **issen-windup**: 既存の3秒じわ点滅tintを、残り400msだけ鋭いフラッシュへ切替(じわランプ自体は
+    そのまま=最後の400msだけ質感が変わる)。
+  - **tsuki-windup**: 新規追加(仕様どおり既存「無テレグラフ」の意図的設計を一貫性優先で変更・社長同意
+    記録済み)。既存の弓引きチャージ演出は不変・併存。
+  - **harai-windup**: 既存の赤線予告+刀構え演出に追加。`harai`(実行中)側は対象外(仕様どおり
+    windupのbossStateUntilのみで判定)。
+  - **jump-attack**: 空中フェーズ(`jump-windup`ではない)の残り400msで判定=着地=ダメージの瞬間に
+    合わせる。既存の着地ゾーン楕円演出はそのまま・フラッシュを追加するだけ。
+  - 対象は`e.type === 'thor'`のみ(他ボス・通常敵は無変更)。当たり判定・windup長・カウンター窓
+    (`COUNTER_WINDOW`)・ダメージ量は一切触っていない(見た目の予告だけ追加)。
+- テスト: `thorFlashTint`自体は純粋な計算だが、`pixiScene.ts`はpixi.js/テクスチャ/照明モジュール
+  一式をモジュールスコープでimportするため(既存の他のPixi描画コードと同様)、ヘッドレスVitestでの
+  直接import/テストは見送り(CLAUDE.md「Do not unit-test PixiJS draw code」+仕様書自身も「ボス状態
+  機械はレガシー配線=静的検証中心(既存の限界)」と明記)。lint/typecheckのみで静的検証。
+- 検証: `npm run lint`(0 error)/`npm run typecheck`(0 error)。フル`npm test`/`npm run build`は
+  社長からの明示指示がないため未実行(CIが安全網)。
+- 自己点検: 憲法第4条・第5条に抵触なし(裏ボス演出のみ・湧き数/CD/コマ構造/当たり判定/ダメージは不変)。
+- 次: 実機でtsuki新規フラッシュ・issen重複(じわ→鋭いの切替)・jump着地基準の3点を社長確認へ。
+
 ## v0.25.1540 — 設計: トール攻撃予告(着弾0.4秒前の赤フラッシュ・全4攻撃)を仕様化(§5.25 M24)【2026-07-07 19:13 JST】
 - **設計チャットの仕様化1件**(コードは触らない=Sonnet実装待ち)。社長相談→反射神経ベースで裁定→プランモード承認済み。
 - **バッチM24=トール攻撃予告(§5.25・新設)**: トール(裏ボス)の攻撃直前に**鋭い赤フラッシュ**を「反応の一拍」として出す。
