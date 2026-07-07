@@ -12,6 +12,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1540 — 設計: トール攻撃予告(着弾0.4秒前の赤フラッシュ・全4攻撃)を仕様化(§5.25 M24)【2026-07-07 19:13 JST】
+- **設計チャットの仕様化1件**(コードは触らない=Sonnet実装待ち)。社長相談→反射神経ベースで裁定→プランモード承認済み。
+- **バッチM24=トール攻撃予告(§5.25・新設)**: トール(裏ボス)の攻撃直前に**鋭い赤フラッシュ**を「反応の一拍」として出す。
+  - **リード=着弾0.4秒(400ms)前**(社長決定=きつめ・スキルチェック。単純反応~0.25sの約1.6倍)。
+  - **対象=全4攻撃に統一**(issen/tsuki/harai/jump)。0.4秒は全windup(最短tsuki/harai=1000ms・jump=700+620)に収まる=windup延長不要。
+  - **フックは攻撃ごとに"ダメージ瞬間"の400ms前**: issen/tsuki/harai=各`*-windup`残り≤400ms。**jumpだけ空中フェーズ(`jump-attack`)残り≤400ms**(着地=ダメージ)。
+  - 描画は既存流用(体tint`pixiScene.ts:5347`or 赤hitFlashスプライト`:5263`)=負荷1/10。既存ゾーンテレグラフ(赤線/楕円/斬撃poly)は据え置き併存(どこ=ゾーン/いつ=新ブリンク)。SE併用は推奨・後乗せ可。
+  - 復帰フラグ`?thorflash=0`。挙動(当たり判定・windup長・カウンター窓・ダメージ)は不変=見た目の予告だけ。
+- **既存意図の変更(記録・社長同意)**: tsuki(突き)は現状「無テレグラフ=速い突きが合図」の意図的設計だったが、
+  一貫性優先で赤フラッシュを載せる(易化を承知)。issenは既存3秒tintランプに加え、残り400msで鋭いブリンクを重ねる。
+- 実装順ステータス表にM24行追加。段取り: 承認後 社長へSonnet用ワンライナー(「M24実装して。仕様=§5.25」)。
+- 変更ファイル: PACING_PUZZLE.md(§5.25新設+ステータス表1行)/DEVELOPMENT_LOG.md/package.json。
+- 検証: 文書のみ=typecheck不要(CLAUDE.md「文書のみ=即push」)。挙動変更ゼロ。
+- 自己点検(実装精度の規律5): 憲法第4条(初心者ゾーン)非抵触=トールは裏ボス(ステージ5)。第5条(緩を荒らさない)
+  非抵触=ボス戦は緩シーンでない。数値カーブ・floor・閾値・攻撃バランスは未変更(見た目の予告レイヤーのみ)。
+
 ## v0.25.1539 — M23(ベンチ拡張=緑卵+重い順スキップ)+ゲート1基本沸き10体実装(§5.24/§5.21-追補2)【2026-07-07 19:03 JST】
 - **①M23 ベンチ拡張**(`src/components/BenchmarkOverlay.tsx`):
   - **(A) MINE系統追加**: `BenchmarkProfile`に`mineCount`を追加(既存全`P(...)`呼び出しに`0`を追記)。
