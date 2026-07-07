@@ -734,6 +734,9 @@ export interface ActiveEvent {
   startedAt: number;     // gameTime(ms)。開始直後の誤終了防止グレースに使う
   endsAt: number;        // gameTime(ms)。制限時間の保険(これを過ぎたら強制終了)
   holdMs?: number;       // rescue: プレイヤーが円内に居た累計時間(ms)。RESCUE_HOLD_NEED_MS で成功。
+  // PACING_PUZZLE.md §5.21 M20: プレイヤーを円内に拘束するか(省略時=true=従来どおり)。
+  // 囲いゲート1(ソフト=出られる)だけ false を明示し、それ以外(horde/boss/ゲート2)は従来どおり拘束する。
+  confinesPlayer?: boolean;
 }
 
 // 紅き夜: 全敵ステータス2倍・経験値2倍・画面赤染め。警告10秒→本番20秒。拠点/商人で逃げられる。

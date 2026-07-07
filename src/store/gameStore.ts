@@ -2581,8 +2581,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         newY = wallResolved.y;
       }
       // 囲い系イベント中はプレイヤーを円(囲い)の内側へ拘束(円コリジョン)。壁解決の後に最終クランプ。
-      // ただし救助(rescue)イベントはプレイヤーを閉じ込めない=出入り自由(社長指示)。
-      if (state.activeEvent && state.activeEvent.kind !== 'rescue') {
+      // ただし救助(rescue)イベントと、confinesPlayer=false を明示するイベント(囲いゲート1=ソフト)は
+      // プレイヤーを閉じ込めない=出入り自由(社長指示)。
+      if (state.activeEvent && state.activeEvent.kind !== 'rescue' && state.activeEvent.confinesPlayer !== false) {
         const ae = state.activeEvent;
         const clamped = clampRectInsideCircle(
           { x: newX, y: newY, width: player.width, height: player.height },

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1522',
+    items: [
+      '深層域へ初めて踏み込む時、強化されたユニーク変異体が道を塞ぎ、倒すまで先へ進めなくなるように。突破すれば以後は現れない。',
+    ],
+  },
+  {
     version: '0.25.1521',
     items: [
       '未確認汚染エリアへ初めて踏み込む時、行く手を阻む強化された変異者の群れが立ちはだかるように。突破すれば以後は現れない。',
