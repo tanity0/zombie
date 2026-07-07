@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import { mineRect } from '../world/mines';
 import type { BreakableProp, EnemyType, Projectile, WeaponType } from '../types/game';
 
 const BENCHMARK_ATTEMPT_MS = 3600;
@@ -39,6 +40,7 @@ type BenchmarkProfile = {
   projectileCount: number;
   yOscillation: number;
   shadowJitter: number;
+  mineCount: number;     // §5.24 M23: 緑卵(mine)。プールスプライト1枚+個別影キャスターの実パスを計測。
 };
 
 const P = (
@@ -47,52 +49,62 @@ const P = (
   glowCount: number, ringCount: number, particleCount: number,
   slashCount: number, dmgCount: number, imageCount: number,
   torchCount: number, projectileCount: number,
-  yOscillation: number, shadowJitter: number
+  yOscillation: number, shadowJitter: number,
+  mineCount: number
 ): BenchmarkProfile => ({
   id, category, label, enemyTarget, heavy,
   glowCount, ringCount, particleCount, slashCount, dmgCount, imageCount,
-  torchCount, projectileCount, yOscillation, shadowJitter,
+  torchCount, projectileCount, yOscillation, shadowJitter, mineCount,
 });
 
-const BENCHMARK_PROFILES: BenchmarkProfile[] = [
-  //   id    cat     label  E   heavy  G   R   P   S   D   I   T   J   yOsc jit
-  P('B1',  'BASE',  'BASE', 10, false, 1,  1,  4,  0,  0,  0,  2,  0,  12,  4),
+// §5.24 M23(社長採用v0.25.1538): 「軽すぎる段を毎回律儀に走る」不満を解消するため、各カテゴリを
+// 重→軽(旧: 軽→重)に反転。nextProfileIndexが「余裕あり」なら残りの軽い段を飛ばして次カテゴリの
+// 最重段へ進む(下方の余裕ライン定数/ロジック参照)。単段カテゴリ(FX-G/R/P/S/D)は反転不要のため不変。
+export const BENCHMARK_PROFILES: BenchmarkProfile[] = [
+  //   id    cat     label  E   heavy  G   R   P   S   D   I   T   J   yOsc jit  mine
+  P('B1',  'BASE',  'BASE', 10, false, 1,  1,  4,  0,  0,  0,  2,  0,  12,  4,  0),
 
-  P('E1',  'ENEMY', 'E24',  24, true,  1,  1,  4,  0,  0,  0,  3,  0,  24,  10),
-  P('E2',  'ENEMY', 'E40',  40, true,  1,  1,  4,  0,  0,  0,  3,  0,  36,  16),
-  P('E3',  'ENEMY', 'E60',  60, true,  1,  1,  4,  0,  0,  0,  3,  0,  48,  22),
+  P('E3',  'ENEMY', 'E60',  60, true,  1,  1,  4,  0,  0,  0,  3,  0,  48,  22, 0),
+  P('E2',  'ENEMY', 'E40',  40, true,  1,  1,  4,  0,  0,  0,  3,  0,  36,  16, 0),
+  P('E1',  'ENEMY', 'E24',  24, true,  1,  1,  4,  0,  0,  0,  3,  0,  24,  10, 0),
 
-  P('PR1', 'PROJ',  'J40',  16, false, 1,  1,  4,  0,  0,  0,  2,  40,  16,  6),
-  P('PR2', 'PROJ',  'J80',  16, false, 1,  1,  4,  0,  0,  0,  2,  80,  16,  6),
-  P('PR3', 'PROJ',  'J130', 16, false, 1,  1,  4,  0,  0,  0,  2, 130,  16,  6),
+  P('PR3', 'PROJ',  'J130', 16, false, 1,  1,  4,  0,  0,  0,  2, 130,  16,  6, 0),
+  P('PR2', 'PROJ',  'J80',  16, false, 1,  1,  4,  0,  0,  0,  2,  80,  16,  6, 0),
+  P('PR1', 'PROJ',  'J40',  16, false, 1,  1,  4,  0,  0,  0,  2,  40,  16,  6, 0),
 
-  P('F1',  'FX',    'F1',   14, false, 6,  6,  40, 8,  8,  0,  2,  0,  16,  6),
-  P('F2',  'FX',    'F2',   14, false, 10, 10, 64, 12, 14, 0,  2,  0,  16,  6),
-  P('F3',  'FX',    'F3',   14, false, 14, 14, 96, 16, 20, 0,  2,  0,  16,  6),
+  P('F3',  'FX',    'F3',   14, false, 14, 14, 96, 16, 20, 0,  2,  0,  16,  6, 0),
+  P('F2',  'FX',    'F2',   14, false, 10, 10, 64, 12, 14, 0,  2,  0,  16,  6, 0),
+  P('F1',  'FX',    'F1',   14, false, 6,  6,  40, 8,  8,  0,  2,  0,  16,  6, 0),
 
-  // FX 単軸分解(F1の主犯特定用)。各々を独立カテゴリにして、FAILしても全部走らせる。
-  P('FXG', 'FX-G',  'G12',  14, false, 12, 0,  0,  0,  0,  0,  2,  0,  16,  6),
-  P('FXR', 'FX-R',  'R12',  14, false, 0,  12, 0,  0,  0,  0,  2,  0,  16,  6),
-  P('FXP', 'FX-P',  'P90',  14, false, 0,  0,  90, 0,  0,  0,  2,  0,  16,  6),
-  P('FXS', 'FX-S',  'S16',  14, false, 0,  0,  0,  16, 0,  0,  2,  0,  16,  6),
-  P('FXD', 'FX-D',  'D20',  14, false, 0,  0,  0,  0,  20, 0,  2,  0,  16,  6),
+  // FX 単軸分解(F1の主犯特定用)。各々を独立カテゴリにして、FAILしても全部走らせる(単段=反転不要)。
+  P('FXG', 'FX-G',  'G12',  14, false, 12, 0,  0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXR', 'FX-R',  'R12',  14, false, 0,  12, 0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXP', 'FX-P',  'P90',  14, false, 0,  0,  90, 0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXS', 'FX-S',  'S16',  14, false, 0,  0,  0,  16, 0,  0,  2,  0,  16,  6, 0),
+  P('FXD', 'FX-D',  'D20',  14, false, 0,  0,  0,  0,  20, 0,  2,  0,  16,  6, 0),
 
-  P('IM1', 'IMG',   'I4',   14, false, 2,  2,  6,  0,  4,  4,  2,  0,  16,  6),
-  P('IM2', 'IMG',   'I8',   14, false, 2,  2,  6,  0,  6,  8,  2,  0,  16,  6),
-  P('IM3', 'IMG',   'I12',  14, false, 2,  2,  6,  0,  8,  12, 2,  0,  16,  6),
+  P('IM3', 'IMG',   'I12',  14, false, 2,  2,  6,  0,  8,  12, 2,  0,  16,  6, 0),
+  P('IM2', 'IMG',   'I8',   14, false, 2,  2,  6,  0,  6,  8,  2,  0,  16,  6, 0),
+  P('IM1', 'IMG',   'I4',   14, false, 2,  2,  6,  0,  4,  4,  2,  0,  16,  6, 0),
 
-  P('L1',  'LIGHT', 'T8',   14, false, 6,  1,  4,  0,  0,  0,  8,  0,  16,  6),
-  P('L2',  'LIGHT', 'T16',  14, false, 10, 1,  4,  0,  0,  0,  16, 0,  16,  6),
-  P('L3',  'LIGHT', 'T24',  14, false, 14, 1,  4,  0,  0,  0,  24, 0,  16,  6),
+  P('L3',  'LIGHT', 'T24',  14, false, 14, 1,  4,  0,  0,  0,  24, 0,  16,  6, 0),
+  P('L2',  'LIGHT', 'T16',  14, false, 10, 1,  4,  0,  0,  0,  16, 0,  16,  6, 0),
+  P('L1',  'LIGHT', 'T8',   14, false, 6,  1,  4,  0,  0,  0,  8,  0,  16,  6, 0),
 
   // 純ライト(effectLayerのglowを足さず、松明=局所ライト+炎Graphicsだけ)。lightそのものの重さを切り分ける。
-  P('LP1', 'LIGHT-P','T8p',  14, false, 1,  1,  4,  0,  0,  0,  8,  0,  16,  6),
-  P('LP2', 'LIGHT-P','T16p', 14, false, 1,  1,  4,  0,  0,  0,  16, 0,  16,  6),
-  P('LP3', 'LIGHT-P','T24p', 14, false, 1,  1,  4,  0,  0,  0,  24, 0,  16,  6),
+  P('LP3', 'LIGHT-P','T24p', 14, false, 1,  1,  4,  0,  0,  0,  24, 0,  16,  6, 0),
+  P('LP2', 'LIGHT-P','T16p', 14, false, 1,  1,  4,  0,  0,  0,  16, 0,  16,  6, 0),
+  P('LP1', 'LIGHT-P','T8p',  14, false, 1,  1,  4,  0,  0,  0,  8,  0,  16,  6, 0),
 
-  P('A1',  'ALL',   'A1',   36, true,  8,  8,  64, 12, 12, 6,  12, 70,  36,  14),
-  P('A2',  'ALL',   'A2',   52, true,  10, 10, 80, 14, 16, 8,  18, 100, 42,  18),
-  P('A3',  'ALL',   'MAX',  72, true,  12, 12, 96, 16, 20, 10, 24, 140, 48,  24),
+  P('A3',  'ALL',   'MAX',  72, true,  12, 12, 96, 16, 20, 10, 24, 140, 48,  24, 0),
+  P('A2',  'ALL',   'A2',   52, true,  10, 10, 80, 14, 16, 8,  18, 100, 42,  18, 0),
+  P('A1',  'ALL',   'A1',   36, true,  8,  8,  64, 12, 12, 6,  12, 70,  36,  14, 0),
+
+  // §5.24 M23: 緑卵(mine)系統。M52=mineAmbushAroundの実数(最悪ケース)。卵自体はプールスプライト
+  // 1枚で安いが、卵1個ごとに影キャスターが付くため「多数同時+塊」の実パスを単独で切り分ける。
+  P('MI3', 'MINE',  'M52',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 52),
+  P('MI2', 'MINE',  'M32',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 32),
+  P('MI1', 'MINE',  'M16',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 16),
 ];
 
 // 軽量プール(雑魚スウォーム)と重量級プール(大スプライト=影/ライティング負荷)。
@@ -115,6 +127,7 @@ export type BenchmarkStageResult = {
   safeStress: string;
   adjusted: boolean;
   maxTorches: number;
+  maxMines: number;
   maxEnemies: number;
   maxFx: number;
   sampleCount: number;
@@ -130,6 +143,7 @@ export type BenchmarkResult = {
   maxProjectiles: number;
   maxPickups: number;
   maxTorches: number;
+  maxMines: number;
   stageCount: number;
   stages: BenchmarkStageResult[];
   categorySummary: string[];
@@ -155,15 +169,28 @@ interface BenchmarkOverlayProps {
 
 
 const stressLabel = (profile: BenchmarkProfile) =>
-  `E${profile.enemyTarget} J${profile.projectileCount} G${profile.glowCount} R${profile.ringCount} P${profile.particleCount} I${profile.imageCount} T${profile.torchCount}`;
+  `E${profile.enemyTarget} J${profile.projectileCount} G${profile.glowCount} R${profile.ringCount} P${profile.particleCount} I${profile.imageCount} T${profile.torchCount} M${profile.mineCount}`;
 
-const nextProfileIndex = (currentIndex: number, currentGrade: BenchmarkGrade): number => {
-  if (currentGrade === 'PASS') return currentIndex + 1;
-  const currentCategory = BENCHMARK_PROFILES[currentIndex]?.category;
-  const nextCategoryIndex = BENCHMARK_PROFILES.findIndex((profile, index) =>
-    index > currentIndex && profile.category !== currentCategory
-  );
-  return nextCategoryIndex === -1 ? BENCHMARK_PROFILES.length : nextCategoryIndex;
+// §5.24 M23(社長採用v0.25.1538): 重→軽ランプ+余裕スキップ。「軽すぎる段を毎回走る」不満の解消。
+// 余裕ライン(現PASS=avg40/min30より明確に上の叩き台・実機調整前提)。
+export const BENCHMARK_MARGIN_AVG_FPS = 52;
+export const BENCHMARK_MARGIN_MIN_FPS = 45;
+
+export const hasBenchmarkMargin = (avgFps: number, minFps: number): boolean =>
+  avgFps >= BENCHMARK_MARGIN_AVG_FPS && minFps >= BENCHMARK_MARGIN_MIN_FPS;
+
+// 余裕あり(avg≥52&min≥45)→この系統の残り(軽い段)を飛ばして次カテゴリの先頭(最重段)へ。
+// 余裕未満(タイトPASS/CAUTION/FAILいずれも)→同系統の次の(軽い)段へ降りて安全ラインを探す。
+// 降り切ったら(currentIndex+1が次カテゴリへ跨ぐ)自然に次カテゴリへ移る。
+export const nextProfileIndex = (currentIndex: number, avgFps: number, minFps: number): number => {
+  if (hasBenchmarkMargin(avgFps, minFps)) {
+    const currentCategory = BENCHMARK_PROFILES[currentIndex]?.category;
+    const nextCategoryIndex = BENCHMARK_PROFILES.findIndex((profile, index) =>
+      index > currentIndex && profile.category !== currentCategory
+    );
+    return nextCategoryIndex === -1 ? BENCHMARK_PROFILES.length : nextCategoryIndex;
+  }
+  return currentIndex + 1;
 };
 
 const gradeBenchmark = (avgFps: number, minFps: number): BenchmarkGrade => {
@@ -269,6 +296,36 @@ const createBenchmarkTorches = (px: number, py: number, count: number, elapsed: 
   return torches;
 };
 
+// §5.24 M23: 緑卵(mine)ベンチ生成(createBenchmarkTorches同型)。実際のスポーン(mineRect)と同じ
+// footRect計算を使い、pooled sprite描画+個別影キャスターの実パスを計測する。health/typeは実際の
+// mine BreakableProp(gameStore.ts syncBreakableProps)と同じ値(health=1・type='mine')。
+export const createBenchmarkMines = (px: number, py: number, count: number, elapsed: number): BreakableProp[] => {
+  const mines: BreakableProp[] = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (i / Math.max(1, count)) * Math.PI * 2 + Math.sin(elapsed * 0.0008) * 0.12;
+    const radius = 96 + (i % 5) * 22;
+    const footX = px + Math.cos(angle) * radius;
+    const footY = py + Math.sin(angle) * (radius * 0.72);
+    const scale = 0.82 + (i % 3) * 0.06;
+    const rect = mineRect({ footX, footY, scale });
+    mines.push({
+      id: `bench-mine-${i}`,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      footX,
+      footY,
+      scale,
+      health: 1,
+      maxHealth: 1,
+      type: 'mine',
+      lastHit: 0,
+    });
+  }
+  return mines;
+};
+
 // 弾幕用のベンチ弾: プレイヤーの周りを周回(orbit)させて画面内に留め、移動更新・衝突判定・描画を
 // 毎フレーム走らせる。phill-bullet は壁カリングの対象外なので松明があっても消えない。
 const createBenchBullet = (px: number, py: number, idx: number, total: number): Projectile => {
@@ -319,11 +376,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     projectiles: 0,
     pickups: 0,
     torches: 0,
+    mines: 0,
   });
   const attemptMaxCountsRef = useRef({
     enemies: 0,
     fx: 0,
     torches: 0,
+    mines: 0,
   });
 
   const addEnemy = useGameStore(state => state.addEnemy);
@@ -345,7 +404,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     spawnedEnemyIdsRef.current.clear();
     benchEnemyBaseRef.current = {};
     useGameStore.setState(state => ({
-      breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
+      breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-') && !prop.id.startsWith('bench-mine-')),
       projectiles: state.projectiles.filter(p => !p.id.startsWith('bench-proj-')),
       effects: [],
     }));
@@ -367,6 +426,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       safeStress: grade === 'PASS' ? stressLabel(profile) : 'not found',
       adjusted: profile.id !== BENCHMARK_PROFILES[0].id,
       maxTorches: attemptMaxCountsRef.current.torches,
+      maxMines: attemptMaxCountsRef.current.mines,
       maxEnemies: attemptMaxCountsRef.current.enemies,
       maxFx: attemptMaxCountsRef.current.fx,
       sampleCount: samples.length,
@@ -400,6 +460,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       maxProjectiles: maxCounts.projectiles,
       maxPickups: maxCounts.pickups,
       maxTorches: maxCounts.torches,
+      maxMines: maxCounts.mines,
       stageCount: attempts.length,
       stages: attempts,
       categorySummary: categorySummary.lines,
@@ -413,7 +474,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
   const completeAttempt = useCallback((profile: BenchmarkProfile) => {
     const attemptResult = buildAttemptResult(profile, attemptSamplesRef.current);
-    const nextAttempt = nextProfileIndex(activeAttempt, attemptResult.grade);
+    const nextAttempt = nextProfileIndex(activeAttempt, attemptResult.avgFps, attemptResult.minFps);
     const isDone = nextAttempt >= BENCHMARK_PROFILES.length;
     if (isDone) {
       finishBenchmark(attemptResult);
@@ -422,7 +483,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
 
     completedAttemptsRef.current = [...completedAttemptsRef.current, attemptResult];
     attemptSamplesRef.current = [];
-    attemptMaxCountsRef.current = { enemies: 0, fx: 0, torches: 0 };
+    attemptMaxCountsRef.current = { enemies: 0, fx: 0, torches: 0, mines: 0 };
     attemptStartedAtRef.current = performance.now();
     lastSampleAtRef.current = 0;
     cleanupBenchmarkObjects();
@@ -534,11 +595,17 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           };
         }),
         breakableProps: [
-          ...state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
+          ...state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-') && !prop.id.startsWith('bench-mine-')),
           ...createBenchmarkTorches(
             state.player.x + state.player.width / 2,
             state.player.y + state.player.height / 2,
             profile.torchCount,
+            elapsed
+          ),
+          ...createBenchmarkMines(
+            state.player.x + state.player.width / 2,
+            state.player.y + state.player.height / 2,
+            profile.mineCount,
             elapsed
           ),
         ],
@@ -550,6 +617,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       const py = state.player.y + state.player.height / 2;
       const existingBenchEnemies = state.enemies.filter(e => spawnedEnemyIdsRef.current.has(e.id));
       const benchTorchCount = state.breakableProps.filter(prop => prop.id.startsWith('bench-torch-')).length;
+      const benchMineCount = state.breakableProps.filter(prop => prop.id.startsWith('bench-mine-')).length;
       const benchProjCount = state.projectiles.filter(p => p.id.startsWith('bench-proj-')).length;
       const missing = Math.max(0, profile.enemyTarget - existingBenchEnemies.length);
 
@@ -570,11 +638,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         projectiles: Math.max(maxCountsRef.current.projectiles, state.projectiles.length),
         pickups: Math.max(maxCountsRef.current.pickups, state.pickups.length),
         torches: Math.max(maxCountsRef.current.torches, benchTorchCount),
+        mines: Math.max(maxCountsRef.current.mines, benchMineCount),
       };
       attemptMaxCountsRef.current = {
         enemies: Math.max(attemptMaxCountsRef.current.enemies, state.enemies.length),
         fx: Math.max(attemptMaxCountsRef.current.fx, state.effects.length),
         torches: Math.max(attemptMaxCountsRef.current.torches, benchTorchCount),
+        mines: Math.max(attemptMaxCountsRef.current.mines, benchMineCount),
       };
 
       for (let i = 0; i < missing; i++) {

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1539',
+    items: [
+      '未確認境界ゲートの囲いに、台本の敵とは別に基本的な雑魚(コウモリ/スケルトン/ゾンビ)が10体沸くように。',
+    ],
+  },
+  {
     version: '0.25.1537',
     items: [
       'デンジャーゾーンの凶悪ハンター、常に1体のみに(増援・他所への再湧きを廃止)。',

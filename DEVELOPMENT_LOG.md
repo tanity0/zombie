@@ -12,6 +12,42 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1539 — M23(ベンチ拡張=緑卵+重い順スキップ)+ゲート1基本沸き10体実装(§5.24/§5.21-追補2)【2026-07-07 19:03 JST】
+- **①M23 ベンチ拡張**(`src/components/BenchmarkOverlay.tsx`):
+  - **(A) MINE系統追加**: `BenchmarkProfile`に`mineCount`を追加(既存全`P(...)`呼び出しに`0`を追記)。
+    新カテゴリ`'MINE'`(M52/M32/M16・52=`mineAmbushAround`の実数=最悪ケース)。`createBenchmarkMines`
+    (`createBenchmarkTorches`同型・`bench-mine-`prefix・実際の`mineRect`で位置/サイズ計算・
+    `health:1/type:'mine'`=実際のmine BreakablePropと同じ値)を新設し、tick内で`breakableProps`へ
+    補充。`cleanupBenchmarkObjects`とtick内の`breakableProps.filter`双方に`bench-mine-`除外を追加。
+    `maxMines`カウンタも`maxTorches`と同じ流儀で追加(`BenchmarkStageResult`/`BenchmarkResult`)。
+  - **(B) 重い順ランプ+余裕スキップ**: 全カテゴリ(ENEMY/PROJ/FX/IMG/LIGHT/LIGHT-P/ALL/MINE(新))を
+    重→軽の配列順に反転(各プロファイルのid/label/stat値自体は不変・並び順だけ変更)。単段カテゴリ
+    (FX-G/R/P/S/D)は不変。`nextProfileIndex`のシグネチャを`(index, grade)`→
+    `(index, avgFps, minFps)`へ変更し、新設の余裕ライン(`BENCHMARK_MARGIN_AVG_FPS=52`・
+    `BENCHMARK_MARGIN_MIN_FPS=45`・`hasBenchmarkMargin`)で判定: **余裕あり**→同系統の残り(軽い段)を
+    飛ばし次カテゴリの先頭(最重段)へ/**余裕未満(タイトPASS・CAUTION・FAILいずれも)**→同系統の次の
+    (軽い)段へ降りて安全ラインを探す(降り切れば自然に次カテゴリへ)。既存の`gradeBenchmark`
+    (avg40/min30)は報告用グレードとして不変、スキップ判定だけ新しい余裕ラインを使う二段構え。
+  - テスト: `src/components/BenchmarkOverlay.test.ts`新規(11件・`nextProfileIndex`の余裕あり/
+    余裕未満/FAILでも降りる/カテゴリ跨ぎ/MINE順序、`createBenchmarkMines`の個数・prefix・
+    type/health、`hasBenchmarkMargin`の境界)。
+  - 既知のトレードオフ: 純関数(`nextProfileIndex`/`hasBenchmarkMargin`/`createBenchmarkMines`)を
+    コンポーネントファイルからexportしたため、`react-refresh/only-export-components`のlint警告が
+    4件出る(エラーではなくCIは通る)。実装先は社長指示どおり`BenchmarkOverlay.tsx`を維持。
+  - 負荷: ベンチはdevツール(常時OFF)=ゲーム実行時の負荷ゼロ。gameplayのmine仕様は無変更。
+- **②ゲート1(未確認境界)に基本沸き10体を付与**(`src/hooks/useGameLoop.ts`): ゲート1発火時、台本布陣の
+  spawnループの直後に`GATE1_BASE_CHAFF_COUNT=10`体を同じarena内配置経路(`placeGateRing()`)で
+  burst配置。型は`pickChaffType(CHAFF_WEIGHTS_DEFAULT, Math.random())`(bat5/skeleton3/zombie1の
+  重み)で決定し`spawnEnemyAt`で生成。**`fromEvent`は付けない(ambient)**=クリア条件は従来どおり
+  台本(`fromEvent`)殲滅のまま不変。CD0=段階スポーンなし・即10体。ゲート2/通常沸き/退屈補正囲いは無変更。
+  - 負荷: 1〜2/10目安(基本10体=通常盤面と同数の密度増分。新規描画方式なし=既存のenemy描画のみ)。
+- 検証: `npm run lint`(0 error・4 warning=上記既知トレードオフ)/`npm run typecheck`(0 error)/
+  `vitest related`(BenchmarkOverlay.tsx/useGameLoop.ts/scriptPuzzle.ts対象・74 passed, 1 skipped)。
+  フル`npm test`/`npm run build`は社長からの明示指示がないため未実行(CIが安全網)。
+- 自己点検: 憲法第4条・第5条に抵触なし(①はdevツールのみ・ゲームプレイに影響ゼロ。②はゲート1の
+  密度増分のみで湧き数上限/CD/コマ構造・クリア条件の判定ロジックは不変)。
+- 次: M22 Group C(未着手)。実機でのMINE系統FPS/重い順skip/ゲート1密度は社長確認へ持ち越し。
+
 ## v0.25.1538 — 設計: ベンチ拡張(緑卵+重い順スキップ)とゲート1基本沸き付与を仕様化【2026-07-07 18:48 JST】
 - **設計チャットの仕様化2件**(コードは触らない=Sonnet実装待ち)。プランモードで承認済みの叩き台をファイル化。
 - **①バッチM23=ベンチマーク拡張(§5.24・新設)**: 実装先=`BenchmarkOverlay.tsx`。

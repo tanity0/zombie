@@ -113,6 +113,8 @@ import {
   ZERO_NUISANCE,
   selectPattern,
   nuisanceTarget,
+  pickChaffType,
+  CHAFF_WEIGHTS_DEFAULT,
   type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
@@ -342,6 +344,10 @@ const RED_NIGHT_FIRE_MIN_MS = 300000;    // 最短(5分)
 const RED_NIGHT_FIRE_SPREAD_MS = 240000; // 上振れ幅(+0〜4分)=実質5〜9分
 const rollRedNightFireAt = (): number => RED_NIGHT_FIRE_MIN_MS + Math.random() * RED_NIGHT_FIRE_SPREAD_MS;
 const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長指示で 0.5→0.3)。1=必ず / 0=出ない
+// PACING_PUZZLE.md §5.21-追補2(社長決定v0.25.1538): ゲート1(未確認境界)の囲い内には台本しか出ず
+// 基本沸き(chaff)が0だった(実機の事実)。台本と同じarena内配置経路でbat/skeleton/zombieの基本沸きを
+// 10体burst配置する(ambient=fromEventにしない・CD0=即10体)。ゲート1のみ・ゲート2/通常沸き/退屈補正囲いは対象外。
+const GATE1_BASE_CHAFF_COUNT = 10;
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -1671,6 +1677,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gateSpawnedCount++;
               }
             });
+            // §5.21-追補2(社長決定v0.25.1538): 台本とは別に基本沸き(chaff)10体をambient(fromEventにしない)
+            // でburst配置。クリア条件(fromEvent殲滅)には数えない=従来どおり台本のみでクリア。
+            for (let i = 0; i < GATE1_BASE_CHAFF_COUNT; i++) {
+              const pos = placeGateRing();
+              const chaffType = pickChaffType(CHAFF_WEIGHTS_DEFAULT, Math.random());
+              const e = spawnEnemyAt(chaffType, pos.x - 20, pos.y - 20, newGameTime);
+              e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
+              addEnemy(e);
+            }
             hordeSpawnRef.current = { spawned: gateSpawnedCount, nextAt: newGameTime, total: gateSpawnedCount }; // 全数即配置済み=段階スポーンは追加しない
             activeGateRef.current = 1;
             useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
