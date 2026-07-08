@@ -1304,6 +1304,10 @@ export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
 // 既定ON(通常挙動は不変)。緑卵の3ソース全てをここで塞ぐ: ①世界生成(minesInRegion/pressure/ambush)
 // ②eggcarrier(抱卵型)の産卵 ③イベント「緑卵の包囲」の卵リング。1個も出なければ描画/爆発/影キャスタも走らない。
 const MINES_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mine') === '0';
+// 診断用(社長v0.25.1562): ?rnenemy=1 で「紅き夜の敵条件」だけを赤演出/音/シネマ抜きで常時ON。
+// = 敵HP実質2倍(被ダメ半減)/敵速度2倍/経験値ドロップ2倍/敵弾・接触の紅き夜挙動。紅き夜の「最初から
+// 引っかかる」が敵条件由来かを切り分ける(赤マトリクスは深層域で無罪確定済=残る差はこの敵条件と音/シネマ)。既定OFF。
+export const RN_ENEMY_FORCE = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('rnenemy') === '1';
 const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リングに置く卵の数。
 // 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)をバラ撒く。
 // 3秒CDののち、周辺のランダム位置へ0.5秒おきに1個ずつ、最大3個ばらまく(社長指示)。
@@ -5484,7 +5488,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (enemy.aiPhase === 'jump') return { enemies };
 
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
-      const eff = state.redNight?.phase === 'active' ? Math.max(1, Math.floor(amount / 2)) : amount;
+      const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(amount / 2)) : amount;
       let newHealth = Math.max(0, enemy.health - eff);
       // 爆弾/爆発ではボス系にトドメを刺さない(社長指示)。ダメージは入るが HP1 で踏みとどまる。
       if (nonLethalBoss && newHealth === 0 && isBossType(enemy.type)) newHealth = 1;
@@ -5691,7 +5695,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pcy = player.y + player.height / 2;
       const indoor = state.indoorMode;
       // 紅き夜中は全敵スピード2倍。
-      const rnSpeedMult = state.redNight?.phase === 'active' ? 2 : 1;
+      const rnSpeedMult = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? 2 : 1;
       // 叫喚型(screamer)の強化窓が有効か。通常敵(ボス/screamer以外)の移動速度を×SCREAMER_BUFF_MULT する。
       const screamActive = gameTime < state.screamerBuffUntil;
       const openDoorIds = indoor ? state.labDoors.filter(d => d.open).map(d => d.id) : [];
@@ -6937,7 +6941,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult());
     const base = xpOrbCountForEnemy(enemy);
     // 紅き夜中は経験値ドロップ数2倍。
-    const n = base * (get().redNight?.phase === 'active' ? 2 : 1);
+    const n = base * ((get().redNight?.phase === 'active' || RN_ENEMY_FORCE) ? 2 : 1);
     for (let i = 0; i < n; i++) {
       get().addPickup({ id: `${idPrefix}-${enemy.id}-${i}`, x: x - 8, y: y - 8, type: 'experience', value: v });
     }

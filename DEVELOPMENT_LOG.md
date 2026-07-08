@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1562 — 診断: 紅き夜の「敵条件」だけを切り出す `?rnenemy=1`(赤演出/音/シネマ抜き)【2026-07-08 18:53 JST】
+- **実機の切り分け進捗(社長)**: `?deepzone=1`(セピア=紅き夜と同じ全画面マトリクス)は**軽い**→**赤マトリクスは無罪確定**(全画面フィルタは安い)。一方`?rednight=1`は**glow=0・敵が少なくても最初から引っかかる**。
+  → 犯人は赤演出でも強glowでも敵数でもない=**紅き夜が開始直後から常時足している別要素**(敵条件 or 音/シネマ)。
+- **社長要望**: 「紅き夜の敵条件をONにするやつ」=敵条件だけ切り出して原因か確かめたい。
+- **`?rnenemy=1`**(`RN_ENEMY_FORCE`・`gameStore.ts`でexport、`useGameLoop.ts`でimport): 紅き夜の**敵条件だけ**を赤演出/peak音/シネマ/店閉じ抜きで常時ON。適用箇所=敵HP実質2倍(被ダメ半減)/敵速度2倍/経験値ドロップ2倍/敵弾(`applyEnemyProjectileHits`)/接触(`applyContactDamage`)の5点に`|| RN_ENEMY_FORCE`。
+- 変更: `gameStore.ts`(flag+3点)/ `useGameLoop.ts`(import+2点)。検証: **typecheck clean**。既定OFF=通常挙動不変。
+- **切り分けの狙い**: `?rnenemy=1&glow=0`で**敵条件だけ**で引っかかるか。引っかかれば敵条件(速度2倍の物理/接触/敵弾処理あたり)が原因。引っかからなければ残る容疑=**peak-layer音(`setPeakLayer`→`peak-layer.mp3`)/シネマ**。次はそこにトグルを付けて詰める。
+- ※調査メモ: 紅き夜のRENDERは`deepGradeFilter`(赤マトリクス)1つだけ=深層域と同機構(無罪)。残る紅き夜固有の常時要素は「敵条件×2」「peak-layer BGM」「cinematic(ハンター湧き抑止・カメラではない)」。
+
 ## v0.25.1561 — 診断: 紅き夜/深層域の強制起動パラメータ `?rednight=1` `?deepzone=1`【2026-07-08 18:31 JST】
 - **社長要望**: 実機で紅き夜・深層域の重さをオンデマンド検証したい(通常は紅き夜=5〜9分+30%+デンジャー以降、深層域=原点距離≥D で自然発火)。
 - **`?rednight=1`**(`useGameLoop.ts`・`RED_NIGHT_FORCE`): 紅き夜を**即・強制でactive固定**。条件(時刻/確率/エリア/緩コマ/裏ボス)を全無視し、`redNight={phase:'active',...}`を直set。終了/拠点やり過ごしも起きない(force分岐が毎フレ先取り=既存の状態機械は`else if`で走らない)。`activateRedNight`はphaseを立てるだけ=敵×2等はphase参照で動的に効くので直setで等価。→ 赤マトリクス+×2の強glow積み上がりを丸ごと再現。

@@ -32,7 +32,8 @@ import {
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
+  RN_ENEMY_FORCE
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -5138,7 +5139,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         applyEnemyFire(now);
         applyEnemyProjectileHits(
           now, player,
-          loopState.redNight?.phase === 'active',
+          loopState.redNight?.phase === 'active' || RN_ENEMY_FORCE,
           loopState.screamerBuffUntil,
           loopState.gameTime,
           combatEffects, combatTunables,
@@ -5843,7 +5844,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // src/utils/combatTick.ts へ切り出し(挙動不変・コード移動のみ)。
         applyContactDamage(
           gameTime,
-          loopState.redNight?.phase === 'active',
+          loopState.redNight?.phase === 'active' || RN_ENEMY_FORCE,
           loopState.screamerBuffUntil,
           combatEffects,
         );
