@@ -932,6 +932,9 @@ export const releaseDeepReverseBgm = () => {
   if (wasDeep) applyBgm(); // 深層中に解放されたら通常BGMへ戻す
 };
 
+// 診断用(社長v0.25.1563): ?peaklayer=0 でPEAK重ねBGM(peak-layer.mp3=紅き夜/関所で鳴る打楽器)を無効化。
+// 紅き夜の「最初から引っかかる」がこの2本目のHTMLAudio再生由来かを切り分ける(赤マトリクス/敵条件/glowは無罪確定済)。既定ON。
+const PEAK_LAYER_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('peaklayer') === '0';
 const PEAK_LAYER_VOLUME = 0.9; // 社長指示: 0.55→0.9(+64%)
 const PEAK_BGM_DUCK = 0.4;      // PEAK中は通常BGMを落とす(社長指示・v0.25.1290=0.65→さらに下げてほしいとの追加指示で0.4へ)。レイヤーのフェードと同時にランプ。
 const PEAK_LAYER_FADE_MS = 700;
@@ -987,6 +990,7 @@ const fadePeakLayer = (target: number, duckTarget: number) => {
 // active: 襲撃(台本の関所フェーズ)中か紅き月中か。呼び出し側(useGameLoop)が判定を持つ。
 // 通常BGMを止めずに重ね、同時にBGMを少しダッキング(社長要望: PEAK突入/終了を体で感じさせる)。
 export const setPeakLayer = (active: boolean) => {
+  if (PEAK_LAYER_DISABLED) return; // ?peaklayer=0 診断: 重ねBGMを一切鳴らさない(起動時フラグ=最初から未再生)
   const shouldPlay = active && !muted && bgmActive;
   if (shouldPlay !== peakLayerActive) {
     peakLayerActive = shouldPlay;

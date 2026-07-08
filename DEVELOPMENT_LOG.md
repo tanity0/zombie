@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1563 — 診断: PEAK重ねBGMのOFFトグル `?peaklayer=0`(紅き夜の残る容疑=音)【2026-07-08 19:03 JST】
+- **実機の切り分け(社長)**: `?rnenemy=1&deepzone=1&glow=0`=**軽い** → 敵条件も無罪。これまでで**赤マトリクス/敵条件/glow/敵数=全て無罪**。
+- **残る紅き夜固有の常時要素**(rnenemy+deepzoneの組に含まれない差)= **peak-layer BGM**(`setPeakLayer`→`peak-layer.mp3`・1.46MB)。紅き夜開始と同時に2本目のHTMLAudioを再生=「最初から引っかかる」の唯一の未検証容疑。※dangerBias=1/cinematicも紅き夜固有だが、ハーベスト/強襲でも立つのに軽い(glow=0)ため容疑薄。
+- **`?peaklayer=0`**(`audioManager.ts`・`PEAK_LAYER_DISABLED`): `setPeakLayer`冒頭で早期return=重ねBGMを一切鳴らさない。既定ON=通常挙動不変。
+- 変更: `audioManager.ts`(flag+早期return)。検証: **typecheck clean**。
+- **切り分けの狙い**: **`?rednight=1&glow=0&peaklayer=0`** で引っかかりが**消えれば重ねBGM(2本目HTMLAudio)が犯人**=対策は素材軽量化/Web Audioバッファ化/プリデコード等。**まだ引っかかれば音は無罪**=残りはcinematic/dangerBias(director)を個別に潰す。
+- ※調査経緯: 紅き夜のRENDERは赤マトリクス1枚のみ(深層セピアと同機構=無罪)。敵条件5点(HP/速度/XP/敵弾/接触)は`?rnenemy=1`で無罪。→ 消去法で音が最右翼。
+
 ## v0.25.1562 — 診断: 紅き夜の「敵条件」だけを切り出す `?rnenemy=1`(赤演出/音/シネマ抜き)【2026-07-08 18:53 JST】
 - **実機の切り分け進捗(社長)**: `?deepzone=1`(セピア=紅き夜と同じ全画面マトリクス)は**軽い**→**赤マトリクスは無罪確定**(全画面フィルタは安い)。一方`?rednight=1`は**glow=0・敵が少なくても最初から引っかかる**。
   → 犯人は赤演出でも強glowでも敵数でもない=**紅き夜が開始直後から常時足している別要素**(敵条件 or 音/シネマ)。
