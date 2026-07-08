@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1559 — 診断: 瀕死赤ビネットOFFトグル `?lowhp=0`(強glow確定・低HP点滅の切り分け)【2026-07-08 17:42 JST】
+- **実機確定(社長)**: `?glow=0`で重さが消えた=**強glow(加算オーバードロー=G12)が犯人で確定**。恒久対策は同時数キャップ/半径縮小/塗り面積削減の方向(別途仕様化)。
+- **社長の追加観測**: 「HPピンチの赤点滅も重かった。これもグロー?」
+- **設計チャットの回答**: それは`VisualEffect`のglowではなく**`lowHpVignette`=全画面(1.06×オーバスキャン)の赤ビネットSprite**(screen座標・**通常合成**・HP≤20の間ずっとalpha脈動を毎フレ更新)。加算ではないが**全画面を毎フレ塗る**=大面積overdrawの同系統コスト。ただし**低HP=乱戦=強glow多発の局面と相関**するので、点滅自体の重さか周囲の戦闘かは切り分けが要る。
+- **対応**: `?lowhp=0`(`LOW_HP_VIGNETTE_DISABLED`)を追加=`syncLowHpVignette`冒頭で非表示にして早期return。既定ON=通常挙動不変。
+- 変更: `src/pixi/pixiScene.ts`のみ(フラグ1+ゲート1)。検証: **typecheck clean**。
+- **切り分けの読み**: 瀕死状態で`?lowhp=0`単体→軽くなればビネット本体が重い(=脈動頻度/面積/alpha削減 or 縁だけ描く等の対策余地)。変わらなければ相関(周囲の強glowが主因=`?glow=0`側で解決済)。
+
 ## v0.25.1558 — 診断: 強glow/足影の個別OFFトグル `?glow=0` `?shadow=0`(実機の重さ切り分け)【2026-07-08 17:31 JST】
 - **社長の実機見立て**: 重くなるのは①ハーベスト/強襲(敵多い時)②紅き夜。共通点=「色を重ねてる」(加算オーバードロー)+敵の影が気になる。
 - **設計チャットの診断**: 「色を重ねてる」=**強glow(加算合成の大面積オーバードロー)**=ベンチ唯一のFAIL(G12)そのもの。戦闘密度↑=同時強glow↑。紅き夜はさらに全画面赤マトリクスを bloom+tilt-shift の上に重ねる+敵×2で減りにくい。敵の影=`syncShadows`で敵1体につき影1枚(数に比例)。

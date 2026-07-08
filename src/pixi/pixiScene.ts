@@ -65,8 +65,10 @@ const DEEP_ZONE_GRADE_ENABLED = DZ_PARAMS?.get('deepzonegrade') !== '0'; // ?dee
 // 診断用トグル(社長v0.25.1558): 実機の重さ/クラッシュ切り分け。既定ON=通常挙動不変。
 // ?glow=0   … 強glow(加算合成の大面積オーバードロー=ベンチ唯一のFAIL G12)を描画しない(小glowは安いので残す)。
 // ?shadow=0 … 全アクターの足影(敵1体=影1枚・数に比例)を描画しない。
+// ?lowhp=0  … 瀕死(HP≤20)の赤ビネット(全画面オーバスキャンのスプライトを毎フレ脈動)を出さない。
 const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
+const LOW_HP_VIGNETTE_DISABLED = DZ_PARAMS?.get('lowhp') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
   return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.4;  // 目安 0.35〜0.45(色は分かるが褪せてる)
@@ -6128,6 +6130,10 @@ export class PixiScene {
   // 瀕死(HP≤20): 暗い赤のビネットが心拍(ドクン…ドクン…)で脈動。HP≥21で解除。screen座標・全画面オーバスキャン。
   private syncLowHpVignette(health: number, now: number) {
     const v = this.lowHpVignette;
+    if (LOW_HP_VIGNETTE_DISABLED) { // ?lowhp=0 診断: 瀕死赤ビネットを出さない(全画面overdraw切り分け)
+      if (v.visible) { v.visible = false; v.alpha = 0; }
+      return;
+    }
     if (health > LOW_HP_THRESHOLD) {
       if (v.visible) { v.visible = false; v.alpha = 0; }
       return;
