@@ -882,6 +882,26 @@ export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'd
   void setBgmActive(true);
 };
 
+// 選択ステージのBGMをブラウザキャッシュへ先読みする(ステージ開始時のロード遅延対策・社長v0.25.1568)。
+// preloadAllAudio は default(=stage1)のBGMしか温めないため、非デフォルトステージ(stage3〜6/lab)は
+// ステージ開始の瞬間に初めてダウンロード=BGM開始が遅延していた。開始前(startGame)にこれを呼び、
+// 使い捨て要素で当該mp3をHTTPキャッシュへ落としておく(本番の bgm 要素は同URL=キャッシュから即ロード)。
+let stageBgmPreloadEl: HTMLAudioElement | null = null;
+let stageBgmPreloadSrc = '';
+export const preloadStageBgm = (variant: string) => {
+  if (typeof Audio === 'undefined') return;
+  const url = GAME_BGM[variant] ?? GAME_BGM.default;
+  if (url === stageBgmPreloadSrc) return; // 同一曲は再先読みしない
+  stageBgmPreloadSrc = url;
+  if (stageBgmPreloadEl) { try { stageBgmPreloadEl.pause(); } catch { /* ignore */ } } // 前の先読み要素を解放(pauseはフェッチを中断しない)
+  const el = new Audio(url);
+  el.preload = 'auto';
+  (el as HTMLVideoElement).playsInline = true;
+  el.muted = true;
+  try { el.load(); } catch { /* ignore */ }
+  stageBgmPreloadEl = el; // フェッチ完了までGCで消えないよう参照を保持(次の先読みで置き換わる)
+};
+
 // --- 深層域BGM(逆再生版)切替 ----------------------------------------------
 // 準備ゾーンで先読み(pause)→深層inで play/pause トグル。クロスフェード無し・無音ほぼ無し。
 // 現在ステージに逆再生版が無ければ(lab等)すべて no-op。

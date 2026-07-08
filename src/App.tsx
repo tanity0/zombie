@@ -8,7 +8,7 @@ import OrientationGuard from './components/OrientationGuard';
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
-import { setBgmScene, preloadAllAudio, unlockDanceAudio, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
 import { getStage, STAGES } from './data/campaign';
@@ -101,6 +101,12 @@ function App() {
   const startGame = async (characterClass: string, benchmark = false) => {
     // Web/iOS Safari BGM unlock workaround. Remove for native-app audio.
     unlockDanceAudio();
+    // v0.25.1568: 選択ステージのBGMを開始前に先読み(非デフォルトステージのステージ開始BGM遅延対策)。
+    // gameState==='playing' の useEffect と同じキー導出。ベンチはBGM無しなので除外。
+    if (!benchmark) {
+      const selStage = getStage(getSelectedStageId());
+      preloadStageBgm(selStage?.bgm ?? (selStage?.theme === 'lab' ? 'lab' : 'default'));
+    }
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass
       : 'warrior';

@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1568 — 対策: 選択ステージBGMの先読み(ステージ開始BGM遅延の根治)【2026-07-08 21:51 JST】
+- **実機報告(社長)**: 「ステージスタート時のBGM遅延が確率高い」。A/B(`?peaklayer=1&heartbeat=1`でも不安定)で**peak/心音は無罪確定**。
+- **原因**: `preloadAllAudio`は**default(stage1)のBGMしか先読みしない**。非デフォルトステージ(stage3〜6/lab)は`setBgmScene('game', key)`→`setBgmTrack`→`bgm.src=stageBGM`→loadで**ステージ開始の瞬間に初ダウンロード**=遅延。GAME_BGMのURLはキャッシュバスト無し=一度落ちれば以後速いが、iOSのキャッシュ追い出し(長時間セッション)で再取得が増え遅延の確率が上がる。
+- **対策**: `audioManager.ts`に`preloadStageBgm(variant)`新設=使い捨て要素で当該mp3をHTTPキャッシュへ先読み(pauseは前要素解放でフェッチ中断せず)。`App.tsx`の`startGame`冒頭(unlock直後)で、選択ステージのBGMキー(`st.bgm ?? theme==='lab'?'lab':'default'`=playing useEffectと同一導出)を渡して呼ぶ。開始前(ensurePreload/リセット/イントロ中)にダウンロードが進む→本番bgm要素は同URL=キャッシュ即ロードで遅延解消。ベンチ除外。
+- 変更: `audioManager.ts`(preloadStageBgm)/ `App.tsx`(import+startGameで呼ぶ)。検証: **typecheck clean**。
+- ※①SFXが時々鳴らない(メニュー)は別要因=**SFXの`?v=__APP_VERSION__`が毎pushキャッシュバスト**(意図的)。今セッションの8連続pushで各build毎に全SFX再DL→バッファ前は無音→リロードで解消。**push連打を止めれば収束**(コード不具合ではない)。必要ならSTARTタップでSFXコンテキストをresume強化(iOS地雷=要慎重)。
+
 ## v0.25.1567 — 心音ループを既定OFF(社長「重くないが要らない」)【2026-07-08 21:01 JST】
 - **社長**: 心音はそこまで重くないが、これも要らない → **心音ループを既定OFF**(`HEARTBEAT_DISABLED`既定true・`?heartbeat=1`で試聴のみ)。連続ループのWeb Audioバッファ地雷候補でもあるので、要らないなら鳴らさないのが安全。
 - **BGMちらつき報告(調査中)**: 社長「BGMが鳴ったり鳴らなくなったりする(軽いけど)」。peak-layer既定OFF(v1566)は**打楽器重ね+ダッキングを消すだけ**でBGMのplay/pauseや音量を切らない(`bgmDuck`は常に1のまま)=**機構上はBGMを途切れさせない**。deep enter/exitもエッジ駆動でクリーン。→ 最有力容疑は**残っている診断パラメータ**、特に`?deepzone=1`(逆再生BGMへ差し替え=通常BGMをpauseするので"鳴らなくなった"に聞こえうる)。**クリーンURL(?paramなし)で再確認を依頼**。それでも出るならBGM切替(deep/dance swap)を深掘りする。
