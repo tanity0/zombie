@@ -1632,6 +1632,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // puzzleActiveNow=true(通常プレイ)中に activeEvent をセットするケースでも動く必要があるため、
         // ゲートを「発火」側だけに絞る(進行側は常時稼働=puzzleActiveNow=falseの旧来挙動は無変更)。
         if (!danceTest && !indoor && !labTheme) {
+          // PACING_PUZZLE.md §5.21-追補5(社長決定v0.25.1555): ゲート発火待ちが立っていて、かつ城ボス
+          // 以外のイベント(レスキュー/退屈囲い=kind 'rescue'|'horde')が進行中なら、それを強制解除して
+          // ゲートを発火可能にする(「ゲート>他イベント」の優先を発火時に効かせる)。城ボスは PHASE
+          // (kind==='boss' → puzzleActiveNow=false)なので、この分岐は城ボス中は走らず自然に defer する。
+          // activeEvent の kind 'boss'(アリーナミニボス/ゲート2自身)は強制解除しない(=protect)。
+          // 既にゲートがアクティブ(activeGateRef!=null)なら触らない(発火済みのゲートを消さない)。
+          {
+            const aePre = useGameStore.getState().activeEvent;
+            if (puzzleActiveNow && activeGateRef.current == null && aePre && aePre.kind !== 'boss') {
+              const gate1WouldFire = shouldTriggerGate1({
+                enabled: GATE_ENABLED,
+                wallIdx: gate1PendingRef.current ? 3 : null,
+                gate1Cleared: gateMetaRef.current.gate1Cleared,
+                activeEventActive: false,
+                doneThisRun: gate1DoneThisRunRef.current,
+              });
+              const gate2WouldFire = shouldTriggerGate2({
+                enabled: GATE_ENABLED,
+                wallIdx: gate2PendingRef.current ? 4 : null,
+                gate2Cleared: gateMetaRef.current.gate2Cleared,
+                activeEventActive: false,
+              });
+              if (gate1WouldFire || gate2WouldFire) {
+                useGameStore.getState().endArenaEvent();
+              }
+            }
+          }
           const ae = useGameStore.getState().activeEvent;
           if (!ae) {
            const gate1Ready = shouldTriggerGate1({
@@ -2538,7 +2565,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // の抽選/蓄積そのものを凍結し、湧かせない(未達ペナルティ=effectiveReaperRiskFloorは維持。
           // ゲートが解ける=activeGateRef.currentがnullに戻ったタイミングでリスクは元の値から再開する)。
           // 既に追跡中(chaserAlive)のチェイサーはこの抑止の対象外(既存の追跡/ワープ挙動は不変)。
-          if (!chaserAlive && activeGateRef.current === 1) {
+          // §5.21-追補5(社長決定v0.25.1555): 抑止をゲート1の「発火待ち」窓(gate1PendingRef=未確認境界を
+          // 踏破済みでまだゲートが発火していない間)にも拡張する。未達ペナルティによる死神は、ゲートが
+          // 実際に発火して決着してから初めて牙を剥くべきで、他イベント(城ボス等)待ちで発火が繰り延べ
+          // られている間に湧かせてはいけない。
+          if (!chaserAlive && (activeGateRef.current === 1 || gate1PendingRef.current)) {
             // 抑止中: 何もしない(risk加減・気配演出・完全出現のいずれも止める)。
           } else if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。

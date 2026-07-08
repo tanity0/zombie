@@ -12,6 +12,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1555 — 実装: ゲートのイベント優先(城ボス独立/他イベント強制解除/発火待ち死神抑止)§5.21-追補5【Sonnetサブ連携】【2026-07-08 15:35 JST】
+- **実機バグ(社長v0.25.1554・スクショ)**: 拠点クリア後に未確認へ到達してもゲート1が発火しなかった。原因=発火条件`!activeEvent && puzzleActiveNow`に対し、
+  到達時に**①城ボスPHASE(puzzleActiveNow=false)②レスキューevent(activeEvent!=null)が両方ブロック**。二次症状=発火せず死神抑止も効かず未達ペナルティ死神で被弾。
+- **修正(§5.21-追補5・3点。Sonnetサブ実装→設計チャットが検証+git)**:
+  1. **他イベント強制解除**: ゲート発火待ち(gate1/gate2 would-fire)かつ`activeEvent.kind!=='boss'`(レスキュー/退屈囲い)なら`endArenaEvent()`で強制解除してから発火(「ゲート>他イベント」を発火時に効かせる)。
+  2. **城ボス独立**: 城ボス=PHASE(kind==='boss'→puzzleActiveNow=false)なので強制解除分岐は走らず**自然にdefer**。activeEvent kind 'boss'(ミニボス/ゲート2自身)も強制解除から除外(protect)。既にゲートactive(`activeGateRef!=null`)なら触らない。
+  3. **死神抑止を発火待ちへ拡張**: reaper抑止条件を`activeGateRef===1`→`(activeGateRef===1 || gate1PendingRef.current)`。城ボス待ち等で発火が遅れる間の理不尽な死神を止める。
+- 変更: `src/hooks/useGameLoop.ts`のみ(発火分岐前にforce-clearブロック追加・reaper抑止条件拡張+コメント)。
+- 検証(設計チャット独立): **typecheck clean**。負荷 1/10(発火分岐に条件追加のみ・新規描画なし)。★このコミット直後に社長がゲート失敗時の挙動を再設計(→追補6=ノックバック+リトライ)。
+
 ## v0.25.1554 — 実装: ゲート再設計2(雑魚ディレクター任せ/台本・ボス×5・近接フィニッシュ限定キル)§5.21-追補4【Sonnetサブエージェント連携】【2026-07-08 12:27 JST】
 - **Sonnetサブ(model=Sonnet)実装→設計チャットが独立検証+git締め**(v1553で仕様先行コミット済、本コミットが実装)。
 - **① 雑魚=ディレクター任せ(revert)**: 追補3の`resolveGate1ChaffPlan`+`gate1Active`配線を**完全撤去**=`runKomaBoardMaintenance`は常に通常のkoma駆動。
