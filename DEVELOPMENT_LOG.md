@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1565 — 診断: `?deepzone=1` を「完全再現」化(逆再生BGMも強制)【2026-07-08 20:13 JST】
+- **社長の指摘**: 深層域テスト(`?deepzone=1`)は**セピア色だけ**強制で、**逆再生BGMは未検証**だった。完全再現でテストしたい。
+- **調査**: 深層域の逆再生BGMは**差し替え(swap)**=通常BGMをpauseして逆再生版をplay(`enterDeepReverseBgm`)=**同時1本**(overlayではない)。だから原理的には軽いはずだが、未実測。
+- **対応**: `?deepzone=1`(既存の`DEEP_ZONE_FORCE`)を useGameLoop 側にも適用。深層BGM状態機械の`dist`を、eligible(屋外非ラボ)なら`DEEP_BGM_D+1000`へ強制=距離無視で prep→deep へ進み、`prepareDeepReverseBgm`→`enterDeepReverseBgm`が発動。pixiScene側のセピア強制と合わせ**色+逆再生BGMの完全再現**に。
+  - `dist`はゾーン判定ブロック内のローカル=**死神/裏ボス(実`depth`参照)には影響しない**(誤発動なし)を確認。
+- 変更: `useGameLoop.ts`(flag+dist強制)。検証: **typecheck clean**。既定OFF=通常挙動不変。
+- **狙い**: 実機で`?deepzone=1`(=色+逆再生BGM)が**軽ければ**、「差し替え(1本)は軽い」が実証=peak-layer対策の**案G(PEAKでBGMを打楽器入り版へ差し替え)**の裏付けになる。もし重ければ差し替えにも別の問題があることになる。
+
 ## v0.25.1564 — 記録: 「同時2本目の音声ストリーム=重い」を確定・ENGINEERING_NOTESへ機械化【2026-07-08 19:34 JST】
 - **社長の指摘**: この重さは根深い=過去の「ダンスフロア問題」と同根では? → HANDOFF_DANCE_AUDIO.md/ENGINEERING_NOTESを精査。
 - **確定した知見(即機械化)**: この端末(iOS Safari)は**長尺音声ストリームは同時1本まで**。2本目は

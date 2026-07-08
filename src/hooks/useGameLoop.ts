@@ -480,6 +480,9 @@ const GATE_ENABLED = evParam('gate') !== '0';
 // 診断用(社長v0.25.1561): ?rednight=1 で紅き夜を即・強制発動して持続(通常は5〜9分+30%+デンジャー以降)。
 // 実機で紅き夜の重さ(赤マトリクス+敵×2の強glow積み上がり)をオンデマンド検証するため。既定OFF。
 const RED_NIGHT_FORCE = evParam('rednight') === '1';
+// 診断用(社長v0.25.1565): ?deepzone=1 の「完全再現」= セピア色(pixiScene側で既に強制)に加え、
+// 深層域BGM(逆再生=通常BGMをpauseして差し替え)も距離無視で強制発動する。逆再生BGM自体の重さ検証用。既定OFF。
+const DEEP_ZONE_FORCE = evParam('deepzone') === '1';
 // PACING_REDESIGN.mdバッチ4: 緩の演目選択(RELAX/講習/回収/HARVEST)。?program=0で従来の
 // 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
 const PROGRAM_ENABLED = evParam('program') !== '0';
@@ -2477,7 +2480,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         zoneTickRef.current++;
         if (zoneTickRef.current % ZONE_CHECK_INTERVAL === 0) {
           const eligible = !danceTest && !indoor && !labTheme; // 屋外非ラボのみ深層域BGM対象
-          const dist = eligible ? Math.hypot(player.x + player.width / 2, player.y + player.height / 2) : 0;
+          // ?deepzone=1 完全再現: eligible(屋外)なら距離を無視して深層扱い=状態機械が prep→deep へ進み逆再生BGMが発動。
+          const dist = eligible
+            ? (DEEP_ZONE_FORCE ? DEEP_BGM_D + 1000 : Math.hypot(player.x + player.width / 2, player.y + player.height / 2))
+            : 0;
           const phase = deepBgmPhaseRef.current;
           if (!eligible) {
             if (phase !== 'shallow') { exitDeepReverseBgm(); releaseDeepReverseBgm(); deepBgmPhaseRef.current = 'shallow'; }
