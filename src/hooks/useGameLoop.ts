@@ -329,6 +329,7 @@ const EVENT_SPAWN_AGGRO_RANGE = 300;
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 240;        // 囲い半径(閉じ込め円)。社長指示で少し拡大: 210→240(horde/boss/egg 共通)
+const GATE_FAIL_KNOCKBACK_MARGIN = 400; // §5.21-追補6: ゲート失敗時に境界より内側へ押し戻す距離(叩き台・実機調整)
 // 大量発生(horde)の段階スポーン(1秒に1体・計18体)は、湧き位置をイベント中心(=開始時のプレイヤー位置で固定)
 // からの距離だけで決めていたため、~18秒かけてプレイヤーが円内を動くと、現在地の近くへ偶然湧いて
 // 「湧きと重なって理不尽に被弾する」ことがあった(社長報告)。現在のプレイヤー位置からの最低距離を確保する。
@@ -2069,6 +2070,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                   }
                 }
+              } else {
+                // PACING_PUZZLE.md §5.21-追補6(社長決定v0.25.1556): ゲート失敗(制限時間切れ・未クリア)=
+                // プレイヤーをそのゲートの境界より内側(手前エリア)へ強制ノックバック。doneThisRunは立てない
+                // ので、内側から再び境界を越えれば detectWallBreach が踏破を再検知しゲートが再発火する
+                // (=リトライループ。死神ペナルティは使わない=追補5抑止+ゲート地形で事実上眠る)。
+                const failedGate = activeGateRef.current;
+                const boundary = failedGate === 2 ? AREA_THRESHOLDS[3] : AREA_THRESHOLDS[2];
+                const targetD = Math.max(0, boundary - GATE_FAIL_KNOCKBACK_MARGIN);
+                const pl = useGameStore.getState().player;
+                const kpcx = pl.x + pl.width / 2, kpcy = pl.y + pl.height / 2;
+                const kd = Math.hypot(kpcx, kpcy) || 1;
+                const nx = (kpcx / kd) * targetD, ny = (kpcy / kd) * targetD;
+                useGameStore.setState(s => ({ player: { ...s.player, x: nx - s.player.width / 2, y: ny - s.player.height / 2 } }));
+                areaZoneRef.current = areaZoneIndexFor(targetD); // prevZoneを内側へ=再クロスで踏破を再検知
+                useGameStore.setState({ eventBannerText: 'ゲート突破失敗 —— 押し戻された', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               }
               activeGateRef.current = null;
               useGameStore.getState().endArenaEvent(); // 拘束解除＋取りこぼし撤去
