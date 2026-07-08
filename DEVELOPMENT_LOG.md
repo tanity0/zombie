@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1560 — 対策: 瀕死赤ビネットをPixi全画面スプライト→DOM/CSSへ移設(実機の低HP落ち解消)【Sonnetサブ連携】【2026-07-08 18:03 JST】
+- **実機確定(社長)**: `?glow=0`でも瀕死(HP≤20)で重く、ピンチ終了で軽くなる=**赤ビネット`lowHpVignette`が独立した犯人**(相関ではない)。
+- **診断(設計チャット)**: 正体は`uiLayer`(=bloom対象の`filteredWorld`の外)の**全画面(1.06×)通常合成スプライト1枚**を毎フレ描画。中心透明でもGPUは全画面クアッド全面にシェーダを走らせる=**塗り面積(フィル)コスト**。既に積み上がった全画面層(grade/vignette/frontBank/fog×3/bloom出力)に対する"最後の一枚"で塗り律速の実機が落ちる。他にHP≤20トリガーの描画は無い(全走査確認)。
+- **対策(案A=社長採用「一つずつ潰す・まずピンチ」)**: 赤ビネットを**WebGLから外しReact HUDのDOM/CSSオーバーレイへ移設**。ブラウザのコンポジタが別レイヤーで合成=**WebGLフィルはゼロ**に。見た目(赤縁の心拍脈動)は維持。
+  - 新規`src/components/LowHpVignette.tsx`: 購読は`health>0 && health<=20`の**派生boolのみ**=閾値跨ぎでしか再レンダしない(CLAUDE.md再レンダ規律)。脈動は**CSS `@keyframes lowhp-heartbeat`**(Reactは触らない)。`?lowhp=0`は本コンポーネントが引き継ぎ(完全OFF可)。
+  - `src/index.css`: `@keyframes lowhp-heartbeat`(2拍→休=旧Pixiの心拍を近似・opacity 0.18↔0.46)。
+  - `src/components/GameHUD.tsx`: HUD root(`absolute inset-0 z-40 pointer-events-none`)先頭に`<LowHpVignette/>`をマウント。
+  - `src/pixi/pixiScene.ts`: 旧`lowHpVignette`スプライト/`syncLowHpVignette`/関連定数/`getRedVignetteTexture`import/`LOW_HP_VIGNETTE_DISABLED`を**全撤去**(WebGLフィルを消す)。`addChild`の`vignette`は残置(line 1484のgetChildIndex整合)。
+- 検証(設計チャット独立): **typecheck clean** / 旧識別子のgrep漏れ無し / addChild整合確認。負荷 **1/10**(WebGLフィルを1枚削減=軽くなる方向。DOMオーバーレイはGPU合成で激安)。
+- **次(社長「一つずつ」)**: 強glowの恒久対策(同時数キャップ/半径縮小)が次の山。実機で本コミットの瀕死が軽くなったか確認 → OKなら強glowへ。
+
 ## v0.25.1559 — 診断: 瀕死赤ビネットOFFトグル `?lowhp=0`(強glow確定・低HP点滅の切り分け)【2026-07-08 17:42 JST】
 - **実機確定(社長)**: `?glow=0`で重さが消えた=**強glow(加算オーバードロー=G12)が犯人で確定**。恒久対策は同時数キャップ/半径縮小/塗り面積削減の方向(別途仕様化)。
 - **社長の追加観測**: 「HPピンチの赤点滅も重かった。これもグロー?」

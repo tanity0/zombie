@@ -38,7 +38,7 @@ import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture } from './pixiTextures';
-import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getRedVignetteTexture, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
+import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
 import { enemyFootBox, enemyHitStrip, playerFootBox, summonFootBox, PLAYER_VISUAL_SCALE } from './renderSpec';
@@ -65,10 +65,8 @@ const DEEP_ZONE_GRADE_ENABLED = DZ_PARAMS?.get('deepzonegrade') !== '0'; // ?dee
 // 診断用トグル(社長v0.25.1558): 実機の重さ/クラッシュ切り分け。既定ON=通常挙動不変。
 // ?glow=0   … 強glow(加算合成の大面積オーバードロー=ベンチ唯一のFAIL G12)を描画しない(小glowは安いので残す)。
 // ?shadow=0 … 全アクターの足影(敵1体=影1枚・数に比例)を描画しない。
-// ?lowhp=0  … 瀕死(HP≤20)の赤ビネット(全画面オーバスキャンのスプライトを毎フレ脈動)を出さない。
 const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
 const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
-const LOW_HP_VIGNETTE_DISABLED = DZ_PARAMS?.get('lowhp') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
   return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.4;  // 目安 0.35〜0.45(色は分かるが褪せてる)
@@ -241,9 +239,6 @@ const ENV_TINT = (() => {
   return (g << 16) | (g << 8) | g;
 })();
 const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
-// 瀕死演出: HP がこの値以下で、暗い赤のビネット(赤色テクスチャ)が心拍(ドクン…ドクン…)で脈動。21以上で解除。
-const LOW_HP_THRESHOLD = 20;           // HP ≤ 20 でON / ≥ 21 でOFF
-const LOW_HP_HEARTBEAT_MS = 1100;      // 心拍1周期(2拍=ドクン…ドクン…)
 
 // --- 研究施設(屋内)の暗さ -------------------------------------------------------
 // ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
@@ -1069,7 +1064,6 @@ export class PixiScene {
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
-  private lowHpVignette = new Sprite(getRedVignetteTexture()); // 瀕死(HP≤20): 暗い赤のビネットがドクンと脈動(赤色テクスチャ)
   private vignetteNarrow: boolean | null = null; // 現在のvignetteが狭い版(lab用)か。差分時だけテクスチャ差し替え。
   private worldFadeMask = new Sprite(Texture.WHITE);
   private worldFadeMaskTexture: Texture | null = null;
@@ -1472,17 +1466,12 @@ export class PixiScene {
 
     this.vignette.alpha = ENV_VIGNETTE_ALPHA;
 
-    // 瀕死ビネット(HP≤20): 暗い赤(テクスチャ自体が赤)。中心アンカーで脈動。既定は非表示。
-    this.lowHpVignette.anchor.set(0.5);
-    this.lowHpVignette.alpha = 0;
-    this.lowHpVignette.visible = false;
-
     // Screen-space overlays: cool multiply grade darkens/cools the whole scene
-    // (multiply preserves detail/outlines), then the vignette, then 瀕死赤, then damage
+    // (multiply preserves detail/outlines), then the vignette, then damage
     // flash + off-screen arrows on top of everything.
     this.L.uiLayer.addChild(
       this.stageLightShaftGfx,
-      this.gradeSprite, this.vignette, this.lowHpVignette,
+      this.gradeSprite, this.vignette,
       this.flashGfx, this.arrowGfx,
     );
 
@@ -2601,7 +2590,6 @@ export class PixiScene {
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.syncBossCorpse(s.bossCorpse, now);
-    this.syncLowHpVignette(s.player.health, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
       !s.indoorMode && s.stageTheme !== 'lab' && !s.rhythm.active,
@@ -6125,28 +6113,6 @@ export class PixiScene {
     sp.position.set(Math.round(stripCx + (0.5 - fit.cx) * spriteW), Math.round(stripCy + (0.5 - fit.cy) * spriteH));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
-  }
-
-  // 瀕死(HP≤20): 暗い赤のビネットが心拍(ドクン…ドクン…)で脈動。HP≥21で解除。screen座標・全画面オーバスキャン。
-  private syncLowHpVignette(health: number, now: number) {
-    const v = this.lowHpVignette;
-    if (LOW_HP_VIGNETTE_DISABLED) { // ?lowhp=0 診断: 瀕死赤ビネットを出さない(全画面overdraw切り分け)
-      if (v.visible) { v.visible = false; v.alpha = 0; }
-      return;
-    }
-    if (health > LOW_HP_THRESHOLD) {
-      if (v.visible) { v.visible = false; v.alpha = 0; }
-      return;
-    }
-    v.visible = true;
-    // 心拍: 1周期に2拍のガウシアン(ドクン…ドクン…)。
-    const ph = (now % LOW_HP_HEARTBEAT_MS) / LOW_HP_HEARTBEAT_MS;
-    const bump = (c: number, w: number) => Math.exp(-((ph - c) ** 2) / w);
-    const beat = Math.min(1, bump(0.04, 0.0010) + bump(0.22, 0.0013));
-    v.position.set(this.screenW / 2, this.screenH / 2);
-    v.width = this.screenW * 1.06;  // 隅まで覆うオーバスキャン
-    v.height = this.screenH * 1.06;
-    v.alpha = 0.20 + 0.26 * beat;   // 0.20→0.46(明るい側を抑え、振れ幅も縮めてチカチカ軽減)
   }
 
   // 深層域グレーディング: 深層域(eligible かつ原点距離>=D)の間だけ stage ルートへ退色セピアの

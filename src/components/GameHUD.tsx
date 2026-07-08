@@ -7,6 +7,7 @@ import { hasWeaponIcon, weaponIconName } from '../utils/weaponUtils';
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
+import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
@@ -59,6 +60,7 @@ const GameHUD: React.FC = () => {
 
   return (
     <div className="absolute inset-0 z-40 pointer-events-none text-white">
+      <LowHpVignette />
       {/* Acquisition popup — shows for 5s after picking up notable items. */}
       {itemGetVisible && (
         <div

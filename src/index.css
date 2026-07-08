@@ -140,6 +140,16 @@
   100% { opacity: 0; }
 }
 
+/* 瀕死(HP≤20)ビネットの心拍脈動(ドクン…ドクン…)。旧PixiスプライトからDOM/CSSへ移設(v0.25.1560)。 */
+@keyframes lowhp-heartbeat {
+  0%   { opacity: 0.18; }
+  4%   { opacity: 0.46; }
+  12%  { opacity: 0.20; }
+  22%  { opacity: 0.42; }
+  32%  { opacity: 0.18; }
+  100% { opacity: 0.18; }
+}
+
 @keyframes upgrade-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
