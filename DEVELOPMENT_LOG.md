@@ -12,6 +12,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1567 — 心音ループを既定OFF(社長「重くないが要らない」)【2026-07-08 21:01 JST】
+- **社長**: 心音はそこまで重くないが、これも要らない → **心音ループを既定OFF**(`HEARTBEAT_DISABLED`既定true・`?heartbeat=1`で試聴のみ)。連続ループのWeb Audioバッファ地雷候補でもあるので、要らないなら鳴らさないのが安全。
+- **BGMちらつき報告(調査中)**: 社長「BGMが鳴ったり鳴らなくなったりする(軽いけど)」。peak-layer既定OFF(v1566)は**打楽器重ね+ダッキングを消すだけ**でBGMのplay/pauseや音量を切らない(`bgmDuck`は常に1のまま)=**機構上はBGMを途切れさせない**。deep enter/exitもエッジ駆動でクリーン。→ 最有力容疑は**残っている診断パラメータ**、特に`?deepzone=1`(逆再生BGMへ差し替え=通常BGMをpauseするので"鳴らなくなった"に聞こえうる)。**クリーンURL(?paramなし)で再確認を依頼**。それでも出るならBGM切替(deep/dance swap)を深掘りする。
+- 変更: `audioManager.ts`(心音既定OFF)。検証: **typecheck clean**。
+
 ## v0.25.1566 — 対策: PEAK重ねBGMを既定OFF(紅き夜の重さ根治)+音声同時ストリーム監査+心音トグル【2026-07-08 20:41 JST】
 - **社長決定**: 「そもそもPEAK時にBGMを変えなくていい」→ **peak-layer(打楽器重ね)を既定OFF**に。`PEAK_LAYER_DISABLED`を
   既定true(`?peaklayer=1`で従来の重ねを試聴のみ可)。**2本目HTMLAudio同時再生が消える=紅き夜/強襲/関所のPEAKが軽くなる**。BGMはPEAK中も通常のまま(重ね無し・ダッキング無し)。

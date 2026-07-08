@@ -1225,10 +1225,10 @@ let heartbeatGain: GainNode | null = null;
 let heartbeatStartTimer: number | null = null;
 const HEARTBEAT_VOLUME = 0.55; // 私案・実機調整前提(まだ緊張を煽りすぎない控えめな音量から開始)
 const HEARTBEAT_FADE_S = 0.25;
-// 診断用(社長v0.25.1566・監査で発見): ?heartbeat=0 で心音ループを無効化。心音は**連続ループのWeb Audio
-// バッファ**(source.loop=true)=ダンスループと同クラス=「連続バッファ再生が重い」地雷の候補。瀕死(ピンチ)中に
-// 鳴るので、ピンチの残り重さに寄与していないか切り分ける。既定ON(通常挙動不変)。
-const HEARTBEAT_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('heartbeat') === '0';
+// 社長決定(v0.25.1567): 心音ループは**既定OFF**(「重くはないが、これもいらない」)。心音は連続ループの
+// Web Audioバッファ(source.loop=true)=ダンスループと同クラスの地雷候補でもあり、要らないなら鳴らさないのが安全。
+// `?heartbeat=1`で従来の心音を試聴のみ可(温存)。既定でピンチ中も心音は鳴らない。
+const HEARTBEAT_DISABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('heartbeat') !== '1';
 
 const startHeartbeatSource = () => {
   heartbeatStartTimer = null;
