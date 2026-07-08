@@ -12,6 +12,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1553 — 設計: ゲート再設計2の仕様化(雑魚=ディレクター任せ/台本・ボス5倍・近接フィニッシュ限定キル)§5.21-追補4【2026-07-08 12:12 JST】
+- **設計チャットの仕様化1件**(このコミットは仕様doc+版のみ。実装はSonnetサブが並行実装中=別コミットで締める)。社長の2点変更を§5.21-追補4に焼いた。
+- **① 雑魚の湧き数はディレクター任せ**: 追補3の`resolveGate1ChaffPlan`による「ゲート1中chaff目標=ピーク・CD0強制」を**撤回**=通常のkomaディレクター駆動へ戻す。
+  **permeable(入り自由)・死神抑止・再湧きガード・籠城ハード拘束(追補3)は維持**。
+- **② ゲート1台本＋ゲート2ボス=5倍・近接フィニッシュ限定キル**(社長明言「キルは近接フィニッシュ」):
+  - 強さ×5(`GATE2_BOSS_STRENGTH_MULT`現×2→×5・gate1台本も×5相当)。
+  - **近接フィニッシュ(=「Kill!」を出す締め=`grantMeleeKillRewards`経路)でしか死なない**。銃/接触/爆発/非フィニッシュの通常近接では撃破不可
+    (既存`damageEnemy`の`nonLethalBoss`と同型の"フィニッシュ以外は殺さない"フラグ)。クリア=台本(fromEvent)を全部フィニッシュ(fromEvent==0機構は不変)。
+  - ★実機叩き台: 銃は5倍HPを削れる(既定)/完全無効かは実機で締め。フィニッシュ発火条件は既存機構に合わせる。
+- **運用メモ**: Sonnetサブエージェント(model=Sonnet)へ実装委譲中。本コミットはstop hook対応で仕様docを先行保護したもの=実装コミットは追って別版で。
+- 変更(本コミット): PACING_PUZZLE.md(§5.21-追補4新設+追補3の状態注記)/DEVELOPMENT_LOG.md/package.json。
+
 ## v0.25.1552 — 実装: M22 Group C=飾りC1/C3/C4(C2保留)(§5.23)【Sonnetサブエージェント連携】【2026-07-08 11:17 JST】
 - **Sonnetサブエージェント(model=Sonnet)へ実装委譲→設計チャットが独立検証+git締め**(2件目の連携)。
 - **M22 Group C(C1/C3/C4)を実装**(C2 コンボ・エスカレーションは保留=未実装):
