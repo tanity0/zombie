@@ -62,6 +62,11 @@ import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 // stage ルートに ColorMatrixFilter 1枚。enter/exit を約1秒でフェード(filter.alpha 補間)。HUDはDOMなので非対象。
 const DZ_PARAMS = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 const DEEP_ZONE_GRADE_ENABLED = DZ_PARAMS?.get('deepzonegrade') !== '0'; // ?deepzonegrade=0 で無効化
+// 診断用トグル(社長v0.25.1558): 実機の重さ/クラッシュ切り分け。既定ON=通常挙動不変。
+// ?glow=0   … 強glow(加算合成の大面積オーバードロー=ベンチ唯一のFAIL G12)を描画しない(小glowは安いので残す)。
+// ?shadow=0 … 全アクターの足影(敵1体=影1枚・数に比例)を描画しない。
+const STRONG_GLOW_DISABLED = DZ_PARAMS?.get('glow') === '0';
+const ACTOR_SHADOWS_DISABLED = DZ_PARAMS?.get('shadow') === '0';
 const DEEP_ZONE_GRADE_SAT = (() => {
   const v = Number(DZ_PARAMS?.get('dzsat'));               // ?dzsat= で退色後の彩度を現地調整
   return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.4;  // 目安 0.35〜0.45(色は分かるが褪せてる)
@@ -4284,6 +4289,13 @@ export class PixiScene {
     baseSites: BaseSite[] = [],
     now = 0
   ) {
+    // ?shadow=0 診断(社長v0.25.1558): 全アクター足影オフ。既存のプール影を全破棄して以降1枚も置かない。
+    if (ACTOR_SHADOWS_DISABLED) {
+      if (this.shadowPool.size > 0) {
+        for (const [id, sp] of this.shadowPool) { sp.destroy(); this.shadowPool.delete(id); }
+      }
+      return;
+    }
     const seen = new Set<string>();
     // 登場演出中はプレイヤーが空中なので足影は出さない(着地後に出る)。
     if (!this.introActive) {
@@ -7114,6 +7126,7 @@ export class PixiScene {
         // 小glow=プールsprite(従来)。強glowも以前は毎フレ Graphics(clear()+7図形の再テッセレーション=
         // G12 FAIL)だったが、同じプールsprite方式(色haloと白coreの加算スプライト)に変更して激減させる。
         if (e.radius <= SMALL_GLOW_SPRITE_RADIUS_MAX) this.drawSmallGlowSprite(e, now);
+        else if (STRONG_GLOW_DISABLED) this.hideEffectView(e.id); // ?glow=0 診断: 強glowを描かない(既存プールviewも隠す)
         else this.drawStrongGlowSprite(e, now);
       } else if (e.kind === 'whip') {
         this.drawWhipSprite(e, now);

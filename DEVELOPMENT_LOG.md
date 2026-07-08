@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1558 — 診断: 強glow/足影の個別OFFトグル `?glow=0` `?shadow=0`(実機の重さ切り分け)【2026-07-08 17:31 JST】
+- **社長の実機見立て**: 重くなるのは①ハーベスト/強襲(敵多い時)②紅き夜。共通点=「色を重ねてる」(加算オーバードロー)+敵の影が気になる。
+- **設計チャットの診断**: 「色を重ねてる」=**強glow(加算合成の大面積オーバードロー)**=ベンチ唯一のFAIL(G12)そのもの。戦闘密度↑=同時強glow↑。紅き夜はさらに全画面赤マトリクスを bloom+tilt-shift の上に重ねる+敵×2で減りにくい。敵の影=`syncShadows`で敵1体につき影1枚(数に比例)。
+- **対応(切り分けトグル2種・`?mine=0`と同系)**: `pixiScene.ts`冒頭に`DZ_PARAMS`経由でフラグ追加。既定ON=通常挙動不変。
+  - **`?glow=0`** = `STRONG_GLOW_DISABLED`: glow描画分岐で強glow(radius≥STRONG_GLOW_RADIUS)を`hideEffectView`に差し替え=描かない(既存プールviewも隠す)。**小glowは安いので残す**。ロジック(effect生成)は不変=描画コストだけ消す。
+  - **`?shadow=0`** = `ACTOR_SHADOWS_DISABLED`: `syncShadows`冒頭でプール影を全破棄して早期return=以降1枚も置かない。
+  - 既存**`?deepzonegrade=0`**で紅き夜の赤マトリクスは既に消せる(社長へ案内済)。
+- 変更: `src/pixi/pixiScene.ts`のみ(フラグ2+ゲート2箇所)。検証: **typecheck clean**。
+- **切り分けの読み**: 実機でハーベスト/強襲/紅き夜を`?glow=0`→軽くなれば強glowが本丸(=キャップ/半径縮小/同時数制限が本筋の対策)。`?shadow=0`→軽くなれば影(=影キャップ導入余地)。`?mine=0`と組み合わせて1つずつ潰す。
+- ※ベンチ自走の件: `?bench=1`(+`?smoke=1`)で起動は可能だがヘッドレス=SwiftShader(ソフトWebGL)のためFPSは実機非代表。故障検知(クラッシュ/コンテキストロス/エラー)には使えるが重さ/塗り面積の判定は実機が真実、と社長へ回答。
+
 ## v0.25.1557 — 診断: 緑卵(mine)全ソースOFFトグル `?mine=0`(実機の重さ/クラッシュ切り分け)【2026-07-08 16:06 JST】
 - **社長報告**: 実機プレイ中にやたら重くなる瞬間があり落ちる。緑卵を一時的に全部オフにして切り分けたい。
 - **対応**: `?mine=0` で緑卵(=地雷/卵 type:'mine')を**1個も生成しない**診断トグルを追加(既定ON=通常挙動不変)。切り分け用の一時フラグ。
