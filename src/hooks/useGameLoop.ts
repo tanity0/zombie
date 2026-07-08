@@ -505,6 +505,10 @@ const AMMO_SMART_ENABLED = evParam('ammosmart') !== '0';
 const WEAKCRIT_ENABLED = evParam('weakcrit') !== '0';
 // PACING_PUZZLE.md §5.23 バッチM22 Group A(A1マズルフラッシュ・既定ON): `?mzl=0`で無効化。
 const MUZZLE_FLASH_ENABLED = evParam('mzl') !== '0';
+// PACING_PUZZLE.md §5.23 バッチM22 Group C(C1方向性シェイク&スプレー・既定ON): 銃ヒット/
+// 銃キルの血しぶきバーストを弾の進行方向へ寄せる。`?dirfx=0`で無効化。gameStore側の近接
+// 経路も同名パラメータを各自読む(既存のammosmart/weakcrit等と同じ流儀・最終ゲートはstore側)。
+const DIRFX_ENABLED = evParam('dirfx') !== '0';
 // (PUZZLE_MANAGED_TYPES は src/utils/directorTick.ts の runKomaBoardMaintenance へ移設)
 // 実機フィードバック②(v0.25.1315): セットピース固定台本(stageDirector.ts WAVE_EVENTS:
 // 0:35弾plant/1:45パンプキン/2:50plant/3:55七体オンスロート/4:55パンプキン2)は、エリア規約・
@@ -5226,8 +5230,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (enemyForFx) {
             const hitX = enemyForFx.x + enemyForFx.width / 2;
             const hitY = enemyForFx.y + enemyForFx.height / 2;
-            spawnBurst(hitX, hitY, '#b91c1c', hitCrit ? 8 : 5);
-            spawnBurst(hitX, hitY, '#7f1d1d', hitCrit ? 4 : 2);
+            // §5.23 M22 C1: 血しぶきの方向=弾の進行方向(出口側=貫通していく向き)。
+            const bDirX = DIRFX_ENABLED && projectile ? projectile.direction.x : undefined;
+            const bDirY = DIRFX_ENABLED && projectile ? projectile.direction.y : undefined;
+            spawnBurst(hitX, hitY, '#b91c1c', hitCrit ? 8 : 5, bDirX, bDirY);
+            spawnBurst(hitX, hitY, '#7f1d1d', hitCrit ? 4 : 2, bDirX, bDirY);
           }
 
           // Crit / headshot juice: gold shockwave + sparks + glow.
@@ -5462,13 +5469,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ex = enemy.x + enemy.width / 2;
               const ey = enemy.y + enemy.height / 2;
               const bloodCount = enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 30 : 16;
+              // §5.23 M22 C1: 弾/接触キルの死亡血しぶきも弾の進行方向へ寄せる(弾が無い接触キル等はundefined=従来の全方位)。
+              const kDirX = DIRFX_ENABLED && projectile ? projectile.direction.x : undefined;
+              const kDirY = DIRFX_ENABLED && projectile ? projectile.direction.y : undefined;
               spawnBurst(
                 ex,
                 ey,
                 '#dc2626',
-                bloodCount
+                bloodCount,
+                kDirX,
+                kDirY
               );
-              spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)));
+              spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)), kDirX, kDirY);
               spawnRing(ex, ey, 4, enemy.type === 'pumpkin' || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
               useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
 

@@ -11,6 +11,10 @@ import {
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
+  normalizeDir, biasedBurstAngle,
+  shouldShowMultiHitFx, dedupeMultiHitEffects,
+} from '../utils/dirFx';
+import {
   RescueSurvivor, computeSurvivorStep, pickRescueComposition,
   RESCUE_RADIUS, RESCUE_SURVIVOR_SIZE, RESCUE_CIVILIAN_HP, RESCUE_SHOOTER_HP,
   RESCUE_ATTACKERS, RESCUE_SHOOTER_RANGE, RESCUE_SHOOTER_INTERVAL_MS, RESCUE_SHOOTER_DAMAGE,
@@ -97,6 +101,14 @@ const DEATHPOP_ENABLED = typeof window === 'undefined' || new URLSearchParams(wi
 // PACING_PUZZLE.md §5.23 M22 Group B(B1・既定ON): レア(colorTier)/ネームド個体の湧き時に一瞬の
 // 閃光+リング(pooled・one-shot)。`?spawnfx=0`で無効化。全スポーン経路の合流点=addEnemyで1回だけ発火。
 const SPAWNFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('spawnfx') !== '0';
+// PACING_PUZZLE.md §5.23 M22 Group C(C1・既定ON): 既存の画面シェイク(triggerShake)/バースト粒子
+// (spawnBurst)を、被弾/近接ヒット/キルの方向へ寄せる(新規エフェクト種は追加しない・引数を足すだけ)。
+// `?dirfx=0`で無効化。useGameLoop側の銃ヒット経路も同名パラメータを各自読む(既存weakcrit等と同じ流儀)。
+const DIRFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('dirfx') !== '0';
+// PACING_PUZZLE.md §5.23 M22 Group C(C3・既定ON): 1スイング/1発で複数の敵に当たった時、
+// プレイヤー頭上に「N HITS」bitmap-text+小フラッシュ(既存spawnRing/spawnGlow流用)。
+// `?multifx=0`で無効化。既存registerMultiHit(全6箇所の多段ヒット経路)に相乗り=呼び出し側の追加配線なし。
+const MULTIFX_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('multifx') !== '0';
 // B1の色分け(pixiScene.tsのENEMY_COLOR_TIER_BODY_TINT/NAMED_TINTと同じ配色を、レンダラ非依存の
 // gameStore側でも別途保持=XP_ORB_COUNT_BY_COLOR_TIERと同じ「層ごとに独立テーブルを持つ」流儀)。
 const ENEMY_COLOR_TIER_FX: Record<EnemyColorTier, string> = {
@@ -1574,10 +1586,13 @@ const grantMeleeKillRewards = (
       });
       get().spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
     }
+    // §5.23 M22 C1: 血しぶきの方向=攻撃者(プレイヤー)→敵の延長線(spawnDeathPopと同じ考え方)。
+    const bdx = ex - (player.x + player.width / 2);
+    const bdy = ey - (player.y + player.height / 2);
     if (finisher) {
       // Finisher juice: white shockwave + gold ring + sparks + glow + callout.
-      get().spawnBurst(ex, ey, '#dc2626', 30);
-      get().spawnBurst(ex, ey, '#7f1d1d', 14);
+      get().spawnBurst(ex, ey, '#dc2626', 30, bdx, bdy);
+      get().spawnBurst(ex, ey, '#7f1d1d', 14, bdx, bdy);
       get().spawnRing(ex, ey, 10, 92, 'rgba(255,255,255,0.95)', 3, 280);
       get().spawnRing(ex, ey, 8, 64, 'rgba(252,211,77,0.95)', 4, 380);
       get().spawnRing(ex, ey, 4, 34, 'rgba(185,28,28,0.72)', 3, 320);
@@ -1592,8 +1607,8 @@ const grantMeleeKillRewards = (
         }); // 濃いワインレッド(社長指示)
       }
     } else {
-      get().spawnBurst(ex, ey, '#dc2626', 16);
-      get().spawnBurst(ex, ey, '#7f1d1d', 7);
+      get().spawnBurst(ex, ey, '#dc2626', 16, bdx, bdy);
+      get().spawnBurst(ex, ey, '#7f1d1d', 7, bdx, bdy);
       get().spawnRing(ex, ey, 4, 24, 'rgba(185,28,28,0.68)', 3, 280);
     }
   }
@@ -1915,6 +1930,10 @@ interface GameState {
   shakeUntil: number;
   shakeMag: number;
   shakeDur: number;
+  // PACING_PUZZLE.md §5.23 M22 Group C1: 方向性シェイク(既存)。{0,0}=方向なし=従来どおり等方の
+  // ランダム揺れ(pixiScene.ts側でdirLen<しきい値なら等方にフォールバック)。正規化済み単位ベクトル。
+  shakeDirX: number;
+  shakeDirY: number;
   // Punch-zoom (render-only): while Date.now() < zoomUntil, the renderer scales the
   // world by zoomMag around screen center. Triggered on melee finish. No gameplay effect.
   zoomUntil: number;
@@ -2205,11 +2224,15 @@ interface GameState {
   // 戻り値=そのキルでフル演出(CD明け)が出たか(呼び出し元が武器固有フラッシュを出すかの判断に使う)。
   triggerFinishImpact: (targetX?: number, targetY?: number) => boolean;
   triggerZoom: (mag: number, durationMs: number, holdMs?: number, targetX?: number, targetY?: number) => void; // 近接フィニッシュ等のパンチズーム(描画のみ)
-  triggerShake: (durationMs: number, mag?: number) => void; // 行動別の画面シェイク(描画のみ)
+  // dirX/dirY(§5.23 M22 C1・任意・未正規化でよい): 指定時はシェイクをその方向へ寄せる。
+  // 未指定/{0,0}/`?dirfx=0`は従来どおり等方のランダム揺れ。
+  triggerShake: (durationMs: number, mag?: number, dirX?: number, dirY?: number) => void; // 行動別の画面シェイク(描画のみ)
 
   // Visual effects (renderer-only; no gameplay impact)
   spawnEffect: (effect: VisualEffect) => void;
-  spawnBurst: (x: number, y: number, color: string, count?: number) => void;
+  // dirX/dirY(§5.23 M22 C1・任意): 指定時(かつ非ゼロ)は全方位ではなく、その方向を中心にした
+  // 円錐(spawnSprayと同じ角度)へ絞って噴く。未指定/{0,0}/`?dirfx=0`は従来どおり全方位。
+  spawnBurst: (x: number, y: number, color: string, count?: number, dirX?: number, dirY?: number) => void;
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
@@ -2221,6 +2244,8 @@ interface GameState {
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
   spawnFlash: (color: string, duration?: number) => void;
+  // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
+  spawnMultiHitFx: (x: number, y: number, count: number) => void;
   updateEffects: (deltaTime: number) => void;
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出トリガー。
   triggerWallBand: (text: string, color: 'white' | 'gold', durationMs: number) => void;
@@ -2467,6 +2492,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   shakeUntil: 0,
   shakeMag: SHAKE_MAG,
   shakeDur: SHAKE_MS,
+  shakeDirX: 0,
+  shakeDirY: 0,
   zoomUntil: 0,
   zoomMag: 0,
   zoomStart: 0,
@@ -3654,7 +3681,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     } else if (slashAt.length > 0) {
       // 通常ヒット(空振りでもフィニッシュでもない)のときだけスイングの揺れを出す。
-      get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG);
+      // §5.23 M22 C1: 方向=プレイヤー→命中した敵たちの重心(複数ヒット時は平均)。
+      let hitCx = 0, hitCy = 0;
+      for (const s of slashAt) { hitCx += s.x; hitCy += s.y; }
+      hitCx /= slashAt.length; hitCy /= slashAt.length;
+      get().triggerShake(MELEE_SWING_SHAKE_MS, MELEE_SWING_SHAKE_MAG, hitCx - pcx, hitCy - pcy);
     }
 
     // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
@@ -4630,6 +4661,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
         shakeDur: amount > 0 ? SHAKE_MS : state.shakeDur,
+        // ここは方向未計算(この分岐は早期return)なので等方(方向なし)固定。古いshakeDir*の持ち越しを防ぐ。
+        shakeDirX: amount > 0 ? 0 : state.shakeDirX,
+        shakeDirY: amount > 0 ? 0 : state.shakeDirY,
         player: {
           ...state.player,
           health: Math.max(1, Math.floor(state.player.maxHealth * 0.5)),
@@ -4649,14 +4683,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     
     // 被弾ノックバック(社長指示): 被弾源(fromX/Y)が指定され実ダメージなら、そこから離れる方向へ弾く。
+    // §5.23 M22 C1: 同じ方向(dirX/dirY)を画面シェイクにも流用(被弾源から弾かれる向き=揺れの向き)。
     const kbNow = Date.now();
     let kbVx = 0, kbVy = 0, kbApply = false;
+    let dirX = 0, dirY = 0;
     if (amount > 0 && fromX !== undefined && fromY !== undefined) {
       const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
       let dx = pcx - fromX, dy = pcy - fromY;
       const d = Math.hypot(dx, dy);
       if (d < 0.001) { dx = 0; dy = -1; } else { dx /= d; dy /= d; }
       kbVx = dx * PLAYER_KNOCKBACK_SPEED; kbVy = dy * PLAYER_KNOCKBACK_SPEED; kbApply = true;
+      dirX = dx; dirY = dy;
     }
 
     set(state => {
@@ -4674,6 +4711,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
         shakeDur: amount > 0 ? SHAKE_MS : state.shakeDur,
+        // §5.23 M22 C1: 被弾源→プレイヤーのノックバック向きへ揺れを寄せる(?dirfx=0で従来の等方揺れ)。
+        shakeDirX: amount > 0 ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
+        shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
         player: {
           ...state.player,
           health: newHealth,
@@ -6572,10 +6612,34 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // キャラ固有スキル ヘビーガンナー(warrior): 同一攻撃で2体以上に当てたら3秒バフをarm。
   // それ以外のキャラ/2体未満では何もしない(=set 抑止)。
+  // §5.23 M22 C3(社長決定v0.25.1550): 「なぎ倒しN HITS」演出はこの関数(全6箇所の多段ヒット経路が
+  // 既に呼んでいる=registerMultiHitのcount引数)に相乗りする。ヘビーガンナーバフはwarrior限定だが、
+  // 見た目の「N HITS」バナーは全キャラ共通(呼び出し元を増やさず、この1箇所で分岐する)。
   registerMultiHit: (count) => {
     const state = get();
+    if (MULTIFX_ENABLED && shouldShowMultiHitFx(count)) {
+      const p = state.player;
+      get().spawnMultiHitFx(p.x + p.width / 2, p.y - 26, count);
+    }
     if (state.player.characterClass !== 'warrior' || count < 2) return;
     set(s => ({ player: { ...s.player, heavyGunnerExpBuffUntil: s.gameTime + 3000 } }));
+  },
+
+  // §5.23 M22 C3: プレイヤー頭上に「N HITS」bitmap-text(pixiScene.tsのdrawMultiHitBanner・
+  // 既存dmg-numフォント方式)+一瞬の小フラッシュ(既存spawnRing/spawnGlow=新規描画方式なし)。
+  // 同時キャップ=1(dedupeMultiHitEffects=既存のmultiHitエフェクトを追加前に間引く=常に最新のみ)。
+  spawnMultiHitFx: (x, y, count) => {
+    const now = Date.now();
+    const effect: VisualEffect = {
+      kind: 'multiHit',
+      id: `fx-multihit-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      x, y, count,
+      createdAt: now,
+      duration: 620,
+    };
+    set(state => ({ effects: [...dedupeMultiHitEffects(state.effects), effect] }));
+    get().spawnRing(x, y, 6, 40, 'rgba(190,242,100,0.85)', 3, 320);
+    get().spawnGlow(x, y, 30, 'rgba(190,242,100,', 320); // radius<STRONG_GLOW_RADIUS(44)=小glow(安い)
   },
 
   // Ammo
@@ -8821,6 +8885,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeUntil: 0,
         shakeMag: SHAKE_MAG,
         shakeDur: SHAKE_MS,
+        shakeDirX: 0,
+        shakeDirY: 0,
         zoomUntil: 0,
         zoomMag: 0,
         zoomStart: 0,
@@ -8851,15 +8917,21 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   clearAttention: () => set({ attention: null }),
 
-  triggerShake: (durationMs, mag = SHAKE_MAG) => {
+  triggerShake: (durationMs, mag = SHAKE_MAG, dirX, dirY) => {
     // 描画のみ。重なった時は「強い方(振幅)」を優先(弱い揺れが強い揺れを潰さない)。長さは延長。
+    // §5.23 M22 C1: dirX/dirY指定時(かつ?dirfx=0でない)は正規化して保存し、弱い方(既存中)が
+    // 強い揺れに上書きされる時と同じルールで、新しく始まる揺れの方向だけ差し替える。
     const now = Date.now();
+    const dir = DIRFX_ENABLED ? normalizeDir(dirX ?? 0, dirY ?? 0) : { x: 0, y: 0 };
     set(state => {
       const active = now < state.shakeUntil;
       if (active && state.shakeMag >= mag) {
         return { shakeUntil: Math.max(state.shakeUntil, now + Math.max(0, durationMs)) };
       }
-      return { shakeUntil: now + Math.max(0, durationMs), shakeMag: Math.max(0, mag), shakeDur: Math.max(1, durationMs) };
+      return {
+        shakeUntil: now + Math.max(0, durationMs), shakeMag: Math.max(0, mag), shakeDur: Math.max(1, durationMs),
+        shakeDirX: dir.x, shakeDirY: dir.y,
+      };
     });
   },
 
@@ -9010,11 +9082,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { effects: next };
     });
   },
-  spawnBurst: (x, y, color, count = 6) => {
+  spawnBurst: (x, y, color, count = 6, dirX, dirY) => {
     const now = Date.now();
+    // §5.23 M22 C1: 方向指定(かつ有効長)なら円錐(spawnSprayと同じ角度)へ絞る。無指定/{0,0}は
+    // 従来どおり全方位(既存の呼び出し元は全てそのまま=挙動不変)。
+    const dir = DIRFX_ENABLED ? normalizeDir(dirX ?? 0, dirY ?? 0) : { x: 0, y: 0 };
+    const directed = dir.x !== 0 || dir.y !== 0;
     const fresh: VisualEffect[] = [];
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
+      const angle = directed ? biasedBurstAngle(dir.x, dir.y, Math.random()) : Math.random() * Math.PI * 2;
       const speed = 60 + Math.random() * 120;
       fresh.push({
         kind: 'particle',

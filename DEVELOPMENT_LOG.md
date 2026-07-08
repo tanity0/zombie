@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1552 — 実装: M22 Group C=飾りC1/C3/C4(C2保留)(§5.23)【Sonnetサブエージェント連携】【2026-07-08 11:17 JST】
+- **Sonnetサブエージェント(model=Sonnet)へ実装委譲→設計チャットが独立検証+git締め**(2件目の連携)。
+- **M22 Group C(C1/C3/C4)を実装**(C2 コンボ・エスカレーションは保留=未実装):
+  - **C1 方向性シェイク&スプレー**(`?dirfx=0`): 新規描画ゼロ=既存のシェイクオフセット計算と既存プール粒子(`spawnBurst`/`spawnSpray`)を
+    被弾/斬撃/銃キルの**方向へバイアス**するだけ(`dirFx.ts`の`biasedShakeOffset`/`biasedBurstAngle`)。
+  - **C3 なぎ倒し「N HITS」**(`?multifx=0`): 既存`registerMultiHit`(全6経路が集約)にフック=1スイングの同時ヒット数で発火。
+    表示は**dmg-numアトラスのBitmapText**(chars に` HITS`追加=同じ1回bake・**Pixi Text不使用**)+一瞬フラッシュ(既存`spawnRing`+小glow半径30<44)。同時キャップ=1。
+  - **C4 スピードライン**(`?speedline=0`): 突進/カウンター中**だけ**画面端に速度線。**固定プール8本**(=同時キャップ)・`getGlowTexture`使い回し(新規テクスチャなし)・
+    screen-space(uiLayer=ズーム安全)・130×5pxの細streak×加算(加算面積は極小=強glowの大面積とは別物)。
+  - 新規純関数 `src/utils/dirFx.ts`(+17ユニットテスト)。`types/game.ts`に`VisualEffect kind 'multiHit'`追加。
+- **予算の鉄則クリア**: 新規の強glow(加算大面積)ゼロ / Pixi Text生成ゼロ(C3はBitmapText) / 各要素に復帰フラグ+同時数キャップ。
+- 変更: `src/utils/dirFx.ts`(+test)/`src/store/gameStore.ts`/`src/hooks/useGameLoop.ts`/`src/pixi/pixiScene.ts`/`src/types/game.ts`。
+- 検証(設計チャットが独立に再実行): **typecheck clean / npm test 572 pass・2 skip(憲法13/13+M9ボット含む)**。
+- **社長裁定が要る解釈フラグ(実機で見て決定)**: ①C4「dash」を一閃ダッシュ(`katanaDashUntil`)+ワイヤーダッシュ(`wireDashUntil`)両方に適用
+  (仕様は「突進」単数=一閃だけ意図なら要修正) ②C3閾値=2ヒット(既存の"2体以上"バーを流用) ③C4カウンター窓=`PLAYER_COUNTER_MS`(280ms)流用 ④N HITS色=ライム(飾り)。
+- 実機で見る点: C1/C3/C4の派手さバランス+ベンチ(`?bot=1`)でGroup A+B1込みの合算FPS(旧持ち越し確認も同時消化)。
+
 ## v0.25.1551 — 実装: ゲート1再設計=通常沸き無限流入(§5.21-追補3)【Sonnetサブエージェント連携】【2026-07-08 10:51 JST】
 - **設計チャットがClaude Codeサブエージェント(model=Sonnet)へ実装委譲→設計チャットが検証+git締め**(社長「sonnet連携でそっちでやって」)。
   分業維持: Sonnetサブ=コード+typecheck / 設計チャット=diff検証・版bump・ログ・push・ブランチ管理。

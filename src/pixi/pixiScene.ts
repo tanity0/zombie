@@ -23,6 +23,7 @@ import type {
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
 import { hasFullWarlordSet } from '../data/equipment';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
@@ -635,6 +636,17 @@ const ENEMY_COLOR_TIER_BODY_TINT: Record<string, number> = {
 // J130で安全確認済み)に追加のfill呼び出し1回で尾を足すだけ=新規プールなし。?tracer=0で無効化。
 const BULLET_TRACER_ENABLED = tsBool('tracer', true);
 
+// PACING_PUZZLE.md §5.23 M22 Group C(C4スピードライン・既定ON): 突進(刀の一閃ダッシュ/ワイヤー
+// アンカーの高速移動)またはカウンター成立直後だけ、画面端寄りに薄い速度線を数本出す
+// (pooled sprite固定8本・getGlowTextureの使い回し=新規テクスチャなし)。?speedline=0で無効化。
+const SPEEDLINE_ENABLED = tsBool('speedline', true);
+const SPEED_LINE_COUNT = 8;          // 固定プール=同時数キャップそのもの
+const SPEED_LINE_LENGTH = 130;       // screen px
+const SPEED_LINE_THICKNESS = 5;      // screen px(細い帯)
+const SPEED_LINE_DIST_FRAC = 0.62;   // 画面対角の半分に対する配置距離(画面端寄り)
+const SPEED_LINE_FADE_MS = 90;       // 終了間際にこのmsで線形フェード(ポップインは省略=短命なので不要)
+const SPEED_LINE_MAX_ALPHA = 0.55;
+
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
 // it scales sprites + foot shadows only. Collision boxes, attack ranges, the
@@ -1027,6 +1039,9 @@ export class PixiScene {
   // 描画時に world.position(=-camera+shake)を足して world→screen 変換する。
   private reticleGfx = new Graphics();
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
+  // §5.23 M22 C4: 突進/カウンターの速度線。固定プール(SPEED_LINE_COUNT本・screen座標=uiLayer)。
+  // 遅延生成(初回syncSpeedLinesで作る)。getGlowTextureの使い回し=新規テクスチャなし。
+  private speedLineSprites: Sprite[] = [];
   private flashGfx = new Graphics();   // full-screen damage flashes (screen)
   private arrowGfx = new Graphics();   // off-screen supply arrows (screen)
   private playerDeathAt = 0;           // 死亡で立ち絵フェード開始した時刻(now基準。health>0でリセット)
@@ -1995,6 +2010,8 @@ export class PixiScene {
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.targetX, e.targetY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
+      case 'multiHit':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
     }
   }
 
@@ -2362,8 +2379,16 @@ export class PixiScene {
     if (shakeLeft > 0) {
       // 振幅(shakeMag)×フェード(残り/長さ)。行動別に triggerShake で強さを設定。
       const mag = (s.shakeMag || 7) * SHAKE_GLOBAL_MULT * Math.min(1, shakeLeft / (s.shakeDur || SHAKE_MS));
-      sx = (Math.random() * 2 - 1) * mag;
-      sy = (Math.random() * 2 - 1) * mag;
+      // §5.23 M22 C1: 方向指定(shakeDirX/Y、triggerShake側で?dirfx=0なら常に{0,0})があれば
+      // その方向へ寄せる。無指定(dirLenほぼ0)は従来どおり完全な等方ランダム。
+      const dirLen = Math.hypot(s.shakeDirX, s.shakeDirY);
+      if (dirLen > 0.01) {
+        const off = biasedShakeOffset(mag, s.shakeDirX / dirLen, s.shakeDirY / dirLen, Math.random() * 2 - 1, Math.random() * 2 - 1);
+        sx = off.x; sy = off.y;
+      } else {
+        sx = (Math.random() * 2 - 1) * mag;
+        sy = (Math.random() * 2 - 1) * mag;
+      }
     }
     this.L.world.position.set(-s.camera.x + sx, -s.camera.y + sy);
     this.syncLab(); // 屋内ステージの床/壁/扉描画＋屋外レイヤーの表示切替
@@ -2599,6 +2624,7 @@ export class PixiScene {
       s.escorts
     );
     this.syncPlayerFx(s.player, now);
+    this.syncSpeedLines(s.player, now); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
     // (近接スポーンや追跡で巣からずれても本体を指す)。
@@ -7101,6 +7127,8 @@ export class PixiScene {
         this.drawRingSprite(e, now);
       } else if (e.kind === 'trail') {
         this.drawTrailSprite(e, now);
+      } else if (e.kind === 'multiHit') {
+        this.drawMultiHitBanner(e, now);
       }
       // 施策1: 全kindがプールsprite化され、per-frame Graphics(clear()+再テッセレーション)の
       // フォールバック経路は撤去した(旧 drawEffectGfx)。ベンチのFX-R/P FAIL筋の解消。
@@ -7666,7 +7694,8 @@ export class PixiScene {
           fill: 0xffffff,
           stroke: { color: 0x020617, width: 5 },
         },
-        chars: '0123456789',
+        // §5.23 M22 C3: 「N HITS」バナー用に space/H/I/T/S を追加(同じアトラス・同じ1回のbake)。
+        chars: '0123456789 HITS',
         resolution: 2,
       });
       this.damageFontReady = true;
@@ -7786,6 +7815,33 @@ export class PixiScene {
     bt.scale.set(((15 * scale) / PixiScene.DAMAGE_FONT_SIZE) * pop);
     bt.position.set(e.x, e.y - t * 12);
     bt.tint = e.color; // crit=金 / 通常=白 などを tint で
+    bt.alpha = Math.max(0, 1 - t);
+  }
+
+  // §5.23 M22 C3: 「N HITS」バナー(プレイヤー頭上)。drawDamageNumberBitmapと同じ手法
+  // (dmg-numアトラスのBitmapText・プール再利用・色はtint)。Text生成は一切しない。
+  // フォント焼き込みに失敗した稀なケース(damageFontReady=false)は、CLAUDE.mdの
+  // 「Text生成禁止」を優先し、この演出だけ非表示にする(数値ダメージと違い必須情報ではない飾りなので)。
+  private drawMultiHitBanner(e: Extract<VisualEffect, { kind: 'multiHit' }>, now: number) {
+    this.ensureDamageFont();
+    if (!this.damageFontReady) { this.hideEffectView(e.id); return; }
+    const t = Math.min(1, (now - e.createdAt) / e.duration);
+    let bt = this.effects.get(e.id);
+    if (!(bt instanceof BitmapText)) {
+      if (bt) bt.destroy();
+      bt = new BitmapText({
+        text: `${e.count} HITS`,
+        style: { fontFamily: PixiScene.DAMAGE_FONT, fontSize: PixiScene.DAMAGE_FONT_SIZE },
+      });
+      (bt as BitmapText).anchor.set(0.5, 0.5);
+      this.L.effectLayer.addChild(bt);
+      this.effects.set(e.id, bt);
+    }
+    bt.visible = true;
+    const pop = 1 + Math.max(0, 1 - t * 4) * 0.3; // Kill!コールアウトより少し派手なpop-in
+    bt.scale.set((20 / PixiScene.DAMAGE_FONT_SIZE) * pop);
+    bt.position.set(e.x, e.y - t * 16);
+    bt.tint = 0xbef264; // ライム(スラッシャー追撃・薙ぎ倒し系と同系色。gameStore側のリング/glowと揃える)
     bt.alpha = Math.max(0, 1 - t);
   }
 
@@ -7972,6 +8028,54 @@ export class PixiScene {
         g.rect(x, top, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
         g.rect(x, top, w * progress, h).fill({ color: STATUS_YELLOW });
       }
+    }
+  }
+
+  // §5.23 M22 C4: 固定プール(SPEED_LINE_COUNT本)を一度だけ生成。getGlowTexture(既存の小glowと
+  // 同じソフトな放射グラデーション)を引き伸ばして細い帯にする=新規テクスチャ・新規フィルタなし。
+  private ensureSpeedLines() {
+    if (this.speedLineSprites.length > 0) return;
+    const tex = getGlowTexture();
+    for (let i = 0; i < SPEED_LINE_COUNT; i++) {
+      const sp = new Sprite(tex);
+      sp.anchor.set(0.5, 0.5);
+      sp.blendMode = 'add';
+      sp.tint = 0xe0f2fe;
+      sp.visible = false;
+      this.L.uiLayer.addChild(sp);
+      this.speedLineSprites.push(sp);
+    }
+  }
+
+  // 突進(刀の一閃ダッシュ/ワイヤーアンカーの高速移動)またはカウンター成立直後だけ、画面端寄りに
+  // 速度線を出す(常時ONではない)。screen-space(uiLayer)固定なのでズーム引き(CONTEXT_ZOOM_MIN)でも
+  // 常に画面内=カリング判定は不要。`?speedline=0`で無効化。
+  private syncSpeedLines(player: Player, now: number) {
+    if (!SPEEDLINE_ENABLED) {
+      for (const sp of this.speedLineSprites) sp.visible = false;
+      return;
+    }
+    this.ensureSpeedLines();
+    const remain = speedLineRemainingMs(
+      now, player.katanaDashUntil, player.wireDashUntil, player.lastCounterSuccessTime, PLAYER_COUNTER_MS,
+    );
+    if (remain <= 0) {
+      for (const sp of this.speedLineSprites) sp.visible = false;
+      return;
+    }
+    const alpha = speedLineAlpha(remain, SPEED_LINE_FADE_MS, SPEED_LINE_MAX_ALPHA);
+    const cx = this.screenW / 2, cy = this.screenH / 2;
+    const dist = Math.hypot(cx, cy) * SPEED_LINE_DIST_FRAC;
+    for (let i = 0; i < this.speedLineSprites.length; i++) {
+      const sp = this.speedLineSprites[i];
+      const ang = (i / this.speedLineSprites.length) * Math.PI * 2 + 0.3; // 均等配置(軸に重ならないよう回転オフセット)
+      const jitter = 1 + Math.sin(now / 45 + i) * 0.06; // 軽い明滅(計算コスト最小)
+      sp.position.set(cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist);
+      sp.rotation = ang;
+      sp.width = SPEED_LINE_LENGTH;
+      sp.height = SPEED_LINE_THICKNESS;
+      sp.alpha = alpha * jitter;
+      sp.visible = true;
     }
   }
 
