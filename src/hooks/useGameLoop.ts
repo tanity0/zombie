@@ -115,7 +115,7 @@ import {
   nuisanceTarget,
   type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
 } from '../utils/scriptPuzzle';
-import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
+import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor, GATE1_FORMATION_STRENGTH_MULT } from '../utils/gate1';
 import { shouldTriggerGate2, GATE2_BOSS_STRENGTH_MULT } from '../utils/gate2';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
@@ -343,8 +343,9 @@ const RED_NIGHT_FIRE_SPREAD_MS = 240000; // 上振れ幅(+0〜4分)=実質5〜9�
 const rollRedNightFireAt = (): number => RED_NIGHT_FIRE_MIN_MS + Math.random() * RED_NIGHT_FIRE_SPREAD_MS;
 const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長指示で 0.5→0.3)。1=必ず / 0=出ない
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
-// ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(runKomaBoardMaintenance +
-// resolveGate1ChaffPlanを参照。ゲート1アクティブ中だけkoma目標をピーク・CD0にする)。
+// ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
+// 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
+// ゲート1中もchaffは通常のディレクター駆動のまま(gate1.ts参照)。
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -1679,8 +1680,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const n = counts[type];
               for (let i = 0; i < n; i++) {
                 const pos = placeGateRing();
-                // 全個体にレアtint(紫)を強制(=レア倍率で全敵強化・叩き台。tier配分は実機で締める)。
+                // 全個体にレアtint(紫)を強制(見た目)。§5.21-追補4(社長決定v0.25.1553): 強さは
+                // 紫のレア倍率(×1.5)に加えてGATE1_FORMATION_STRENGTH_MULT(×5)をHP/最大HP/ダメージへ
+                // 追加で乗せる。かつ近接フィニッシュでしか死なない(finishKillOnly=true)。
                 const e = spawnEnemyAtWithTier(type, pos.x - 20, pos.y - 20, newGameTime, 'purple');
+                e.health *= GATE1_FORMATION_STRENGTH_MULT;
+                e.maxHealth *= GATE1_FORMATION_STRENGTH_MULT;
+                e.damage = Math.round(e.damage * GATE1_FORMATION_STRENGTH_MULT);
+                e.finishKillOnly = true;
                 e.fromEvent = true;
                 e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
                 addEnemy(e);
@@ -1688,9 +1695,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             });
             // §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(fromEvent)」は撤去。
-            // 基本沸き(chaff)は通常沸き(koma maintenance)の無限流入に置き換える(runKomaBoardMaintenance
-            // 側が activeGateRef.current===1 の間だけ目標=ピーク・CD0で回す)。ここでは台本(formation)の
-            // 配置のみ行う。クリア=台本(fromEvent)殲滅のみ(chaffはfromEventでないためクリアに数えない)。
+            // 基本沸き(chaff)は通常沸き(koma maintenance)の無限流入に置き換える(permeable=trueで
+            // 境界を越えて流入。§5.21-追補4でchaff目標のピーク・CD0強制は撤回=通常のディレクター
+            // 駆動)。ここでは台本(formation)の配置のみ行う。クリア=台本(fromEvent)殲滅のみ
+            // (chaffはfromEventでないためクリアに数えない)。
             hordeSpawnRef.current = { spawned: gateSpawnedCount, nextAt: newGameTime, total: gateSpawnedCount }; // 全数即配置済み=段階スポーンは追加しない
             activeGateRef.current = 1;
             useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -1708,8 +1716,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
              activeEventActive: false,
            })) {
             // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2(ハード=出られない)。城ボス(giantbat)の
-            // ユニーク版1体を強さ×2(GATE2_BOSS_STRENGTH_MULT)で配置。confinesPlayerは省略=既定true
-            // (プレイヤーはサークルから出られない)。
+            // ユニーク版1体を強さ×5(GATE2_BOSS_STRENGTH_MULT・§5.21-追補4で×2→×5)で配置。
+            // confinesPlayerは省略=既定true(プレイヤーはサークルから出られない)。近接フィニッシュ
+            // でしか死なない(finishKillOnly=true)。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
             // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
@@ -1723,6 +1732,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             boss.health *= GATE2_BOSS_STRENGTH_MULT;
             boss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
             boss.damage = Math.round(boss.damage * GATE2_BOSS_STRENGTH_MULT);
+            boss.finishKillOnly = true;
             boss.fromEvent = true;
             boss.dormant = true; boss.aggroRange = GIANT_AGGRO_RANGE; boss.vx = 0; boss.vy = 0;
             addEnemy(boss);
@@ -5711,10 +5721,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const tcx = tgt.x + tgt.width / 2, tcy = tgt.y + tgt.height / 2;
                 if (isBossType(tgt.type)) {
                   const bdmg = Math.max(1, Math.round(meleeDmg * BOSS_MELEE_STUN_MULT));
-                  useGameStore.getState().damageEnemy(tgt.id, bdmg, true); // ボス非致死
+                  // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true(finishKillOnlyボスの
+                  // 通常許容と同じ。nonLethalBoss=trueで即死自体は元々しない)。
+                  useGameStore.getState().damageEnemy(tgt.id, bdmg, true, false, true); // ボス非致死
                   spawnDamageNumber(tcx, tgt.y, bdmg, true);
                 } else {
-                  useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1); // 即死フィニッシュ
+                  useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true); // 即死フィニッシュ
                 }
                 useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
                 useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');
@@ -6667,12 +6679,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ボス中(puzzleActiveNow=false)は何もしない=リフを一切触らない(査定・コマ進行を一時停止し、
         // ボス後に続きから再開する。§2「ボス中は査定・台本を停止、ボス後再開」)。
         // (実装: src/utils/directorTick.ts の runKomaBoardMaintenance へ移設。挙動は不変)。
+        // PACING_PUZZLE.md §5.21-追補4: 追補3の「ゲート1中はchaff目標=ピーク・CD0を強制」は撤回済み
+        // (gate1.ts参照)。ゲート1中もkomaは通常どおりディレクター駆動のまま=ここに特別分岐は無い。
         runKomaBoardMaintenance(
           { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef },
           {
             puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
-            // PACING_PUZZLE.md §5.21-追補3: 囲いゲート1中は通常沸き(koma)をピーク・CD0で回し続ける(無限流入)。
-            gate1Active: activeGateRef.current === 1,
           }
         );
 

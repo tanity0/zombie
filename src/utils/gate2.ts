@@ -11,6 +11,7 @@ export interface Gate2TriggerInput {
 export const shouldTriggerGate2 = (input: Gate2TriggerInput): boolean =>
   input.enabled && input.wallIdx === 4 && !input.gate2Cleared && !input.activeEventActive;
 
-// 城ボス(giantbat)ユニーク版の強さ倍率。CONSTANT_STRENGTH_TYPESの固定値を、この個体だけ
-// 赤レア相当(×2)へ上書きする(社長設計「暫定」)。
-export const GATE2_BOSS_STRENGTH_MULT = 2;
+// 城ボス(giantbat)ユニーク版の強さ倍率。CONSTANT_STRENGTH_TYPESの固定値を、この個体だけ上書きする。
+// §5.21-追補4(社長決定v0.25.1553): ×2(赤レア相当)→×5。合わせて近接フィニッシュ限定キルになる
+// (finishKillOnlyフラグ・useGameLoop.ts のゲート2ボス配置箇所参照)。
+export const GATE2_BOSS_STRENGTH_MULT = 5;

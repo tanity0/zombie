@@ -26,12 +26,11 @@ export const effectiveReaperRiskFloor = (
   baseFloor: number, penaltyActive: boolean, frontloadedFloor: number,
 ): number => (penaltyActive ? Math.min(baseFloor, frontloadedFloor) : baseFloor);
 
-// §5.21-追補3: ゲート1アクティブ中は koma(通常沸き)のチャフ目標/CDを、コマ種別(relax/harvest/
-// normal/peak)が何であっても「目標=ピーク(100% of cap)・CD=0」に固定し、連続max密度の無限流入に
-// する(円内10体burstの置き換え)。ゲート1以外(平常時)は通常どおりコマ駆動の値をそのまま使う
-// (既存カーブは不変)。
-export interface KomaChaffPlan { target: number; cdMs: number; }
-export const resolveGate1ChaffPlan = (
-  gate1Active: boolean, cap: number, normalTarget: number, normalCdMs: number,
-): KomaChaffPlan =>
-  gate1Active ? { target: cap, cdMs: 0 } : { target: normalTarget, cdMs: normalCdMs };
+// §5.21-追補4(社長決定v0.25.1553): 追補3で足した「ゲート1アクティブ中はchaff目標=ピーク・CD0を
+// 強制」は撤回。ゲート1中もchaffは通常のkomaディレクター駆動のまま(ランク相応の目標/CD)。
+// resolveGate1ChaffPlan(強制プラン関数)は削除済み — 雑魚の湧き数はディレクター任せに戻す。
+
+// ゲート1の台本(formation)個体の強さ倍率。gate2.ts の GATE2_BOSS_STRENGTH_MULT と対で「5倍・
+// 近接フィニッシュ限定キル」を担う(社長決定v0.25.1553)。台本は紫tint(rare色倍率)を維持したまま
+// 追加でこの倍率をHP/最大HP/ダメージに掛ける(spawn直後に useGameLoop 側で適用)。
+export const GATE1_FORMATION_STRENGTH_MULT = 5;

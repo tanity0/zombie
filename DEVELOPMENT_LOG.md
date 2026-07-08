@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1554 — 実装: ゲート再設計2(雑魚ディレクター任せ/台本・ボス×5・近接フィニッシュ限定キル)§5.21-追補4【Sonnetサブエージェント連携】【2026-07-08 12:27 JST】
+- **Sonnetサブ(model=Sonnet)実装→設計チャットが独立検証+git締め**(v1553で仕様先行コミット済、本コミットが実装)。
+- **① 雑魚=ディレクター任せ(revert)**: 追補3の`resolveGate1ChaffPlan`+`gate1Active`配線を**完全撤去**=`runKomaBoardMaintenance`は常に通常のkoma駆動。
+  **permeable(入り自由)/死神抑止/再湧きガード/籠城拘束は不変**を独立確認(いずれも`gate1Active`を読まないため無影響)。
+- **② ×5・近接フィニッシュ限定キル**:
+  - `Enemy.finishKillOnly`新設。`damageEnemy`に`viaMeleeFinish`引数追加(`nonLethalBoss`と同型)。純関数`clampFinishKillOnlyHealth`(+test)=
+    finishKillOnly個体は非フィニッシュだと**HP1で踏みとどまる**(銃/爆発/非スタン近接チップ)。近接の**スタン即時処刑(`finisher:true`)/ボス5×スタン打撃(`bossFinishHit`)はclamp外=倒しきれる**。
+  - 強さ×5: `GATE2_BOSS_STRENGTH_MULT`2→5・gate1台本に`GATE1_FORMATION_STRENGTH_MULT=5`。
+  - **詰み検証(設計チャット)**: フィニッシュ=クリでスタン→近接処刑=到達可能。クリア=台本(fromEvent)全処刑でfromEvent==0(機構不変)。
+- 変更: `useGameLoop.ts`/`gameStore.ts`/`types/game.ts`/`directorTick.ts`/`gate1.ts`(+test)/`gate2.ts`(+test)/`playtestDriver.ts`/`finishKillOnly.ts`(新+test)。
+- 検証(設計チャットが独立再実行): **typecheck clean / npm test 575 pass・2 skip**。負荷 1/10(近接ループ内のbool分岐追加のみ・描画/毎frame増なし)。
+- **社長裁定が要る解釈フラグ(実機で決定)**:
+  1. **gate1台本の×5は既存の紫レア倍率(~1.5×)に"上乗せ"=実効~7.5×**(共有テーブルを避けた実装判断)。クリーンな×5にしたいなら要調整。
+  2. 近接フィニッシュ=**クリでスタン→処刑**が前提。無/低クリのビルドは締めにくい可能性=実機で確認(必要なら別のフィニッシュ手段 or 5倍緩和)。
+  3. ボスのフィニッシュ=既存の「完全気絶(紫)ボスへ5×近接」機構に対応付け(ボス専用のexecuteフラグは無いため)。
+- 実機で見る点: ①籠城の雑魚密度(通常ディレクターに戻して薄すぎないか) ②台本/ボスがフィニッシュで倒せて詰まないか ③×5(~7.5×)の硬さ加減。
+
 ## v0.25.1553 — 設計: ゲート再設計2の仕様化(雑魚=ディレクター任せ/台本・ボス5倍・近接フィニッシュ限定キル)§5.21-追補4【2026-07-08 12:12 JST】
 - **設計チャットの仕様化1件**(このコミットは仕様doc+版のみ。実装はSonnetサブが並行実装中=別コミットで締める)。社長の2点変更を§5.21-追補4に焼いた。
 - **① 雑魚の湧き数はディレクター任せ**: 追補3の`resolveGate1ChaffPlan`による「ゲート1中chaff目標=ピーク・CD0強制」を**撤回**=通常のkomaディレクター駆動へ戻す。

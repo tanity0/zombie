@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor, resolveGate1ChaffPlan } from './gate1';
+import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor, GATE1_FORMATION_STRENGTH_MULT } from './gate1';
 
 const baseTrigger = {
   enabled: true,
@@ -68,13 +68,8 @@ describe('effectiveReaperRiskFloor', () => {
   });
 });
 
-describe('resolveGate1ChaffPlan', () => {
-  it('forces target=cap (peak/100%) and cd=0 while gate1 is active, regardless of the normal koma-driven values', () => {
-    expect(resolveGate1ChaffPlan(true, 10, 4, 2500)).toEqual({ target: 10, cdMs: 0 });
-    expect(resolveGate1ChaffPlan(true, 20, 0, 9999)).toEqual({ target: 20, cdMs: 0 });
-  });
-
-  it('passes the normal koma-driven target/cd through unchanged when gate1 is not active', () => {
-    expect(resolveGate1ChaffPlan(false, 10, 4, 2500)).toEqual({ target: 4, cdMs: 2500 });
+describe('GATE1_FORMATION_STRENGTH_MULT', () => {
+  it('is the documented ×5 strength multiplier (§5.21-追補4)', () => {
+    expect(GATE1_FORMATION_STRENGTH_MULT).toBe(5);
   });
 });

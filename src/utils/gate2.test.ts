@@ -34,7 +34,7 @@ describe('shouldTriggerGate2', () => {
 });
 
 describe('GATE2_BOSS_STRENGTH_MULT', () => {
-  it('is the documented ×2 (red-rare-equivalent) multiplier', () => {
-    expect(GATE2_BOSS_STRENGTH_MULT).toBe(2);
+  it('is the documented ×5 multiplier (§5.21-追補4)', () => {
+    expect(GATE2_BOSS_STRENGTH_MULT).toBe(5);
   });
 });

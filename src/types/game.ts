@@ -282,6 +282,11 @@ export interface Enemy {
   // PACING_PUZZLE.md §5.14 M13: この個体が現在の宿敵(ネームド)インスタンスか。同時1体まで。
   // HP/与ダメ/サイズは湧き時に既に倍率反映済み(このフラグは表示(tint+名前)専用)。
   isNamed?: boolean;
+  // PACING_PUZZLE.md §5.21-追補4: ゲート1台本/ゲート2ボス専用。この個体は近接フィニッシュ
+  // (スタン即時処刑 or ボス5×スタン打撃=どちらもMELEE_FINISH演出の対象)以外ではHPを0にできない
+  // (damageEnemyのviaMeleeFinish/直近接スイングのfinisher系分岐がガード。通常の銃/接触/爆発/
+  // 非フィニッシュ近接はHP1で踏みとどまる)。
+  finishKillOnly?: boolean;
   // DISTRIBUTION_REDESIGN.md①: 台本シーンのfeatured床(FEATURED_MIN_AREA_WEIGHT)で、本来その
   // エリアでは出現しない型が選ばれた時に立つ。距離リサイクルの「エリア不適合→強制回収」を免除する
   // (免除しないとシーンで出した直後に5秒で消される=ghost消失バグと同型の再発)。画面外に離れた時の
