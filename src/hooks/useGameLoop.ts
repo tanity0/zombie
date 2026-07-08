@@ -45,6 +45,7 @@ import {
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
+import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { isPixiRenderer } from '../config/renderer';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -5213,11 +5214,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const trapCritBonus =
             enemyForFx?.rootUntil !== undefined &&
             gameTime < enemyForFx.rootUntil &&
-            Math.random() < MARKSMAN_TRAP_CRIT_BONUS;
+            Math.random() < applyEnemyCritPenalty(MARKSMAN_TRAP_CRIT_BONUS, enemyForFx);
           // PACING_PUZZLE.md §5.6 M7: チャフ(バット/ゾンビ)の武器弱点=銃+10%。命中対象の型は
           // ヒット時点でしか分からない(発射時は未確定)ため、ここで対象別に追加ロールする。
           const weakCrit = WEAKCRIT_ENABLED && enemyForFx
-            ? Math.random() < weaknessCritBonus(enemyForFx.type, 'gun')
+            ? Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemyForFx.type, 'gun'), enemyForFx)
             : false;
           // PHILL銃の頭部命中は確定ヘッドショット=クリティカル扱い(×1.5＋気絶＋headshot SE＋金VFX)。
           const hitCrit = !!projectile?.crit || trapCritBonus || weakCrit || headshot === true;

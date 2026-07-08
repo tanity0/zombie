@@ -31,6 +31,7 @@ import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, am
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
+import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
 } from '../utils/namedEnemy';
@@ -3487,7 +3488,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタン(=非フィニッシュ)の通常近接チップダメージ。finishKillOnly個体はHP1で踏みとどまる。
@@ -3796,7 +3797,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタンの通常近接チップ(分身の自動攻撃)。finishKillOnly個体はHP1で踏みとどまる。
@@ -3947,7 +3948,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
       const crit = Math.random() <
-        Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+        applyEnemyCritPenalty(Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
@@ -4131,7 +4132,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player));
+      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタンの通常鞭打ち。finishKillOnly個体はHP1で踏みとどまる。

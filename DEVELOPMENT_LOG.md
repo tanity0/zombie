@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1569 — 実装: レア敵ほどクリ率が下がる(色階層ペナルティ・下限5%)【Sonnetサブ連携】【2026-07-09 02:19 JST】
+- **社長決定**: レアな敵ほどクリティカル率が下がる。順番に5%ずつ。適用範囲=**全クリ率判定(1a)**、ネームドは**対象外(2b)**、下限=**初期の一番低いクリ率=5%(開始ナイフ knife-t1)**。
+- **仕様**: 青 -5% / 紫 -10% / 赤 -15%(絶対pp・共通敵0・ネームド0)。`applyEnemyCritPenalty(base, enemy) = min(base, max(0.05, base − penalty))`=**5%未満に下げない**+**元々5%未満の攻撃にクリを足さない**(銃素0%は0%のまま)。確定クリ(ヘッドショット/`projectile.crit`/カウンター反撃)は**不変**。
+- **実装(Sonnetサブ→設計チャット検証+git)**:
+  - 純関数 `src/utils/critPenalty.ts`(`CRIT_RATE_FLOOR=0.05`/`COLOR_TIER_CRIT_PENALTY`/`enemyCritPenalty`/`applyEnemyCritPenalty`)+ `critPenalty.test.ts`(9件:各階層/共通/ネームド免除/下限/足さない/base==floor)。
+  - 配線6箇所: `gameStore.ts`の近接クリ3(3491/3800/4135)+刀1(3951)=`enemy`、`useGameLoop.ts`の銃トラップ(5217)+弱点クリ(5221)=`enemyForFx`。いずれも`Math.min(1,合算)`の外側に適用。
+- 検証(設計チャット独立): **typecheck clean / npm test 584 pass・2 skip(crit 9/9)**。負荷 1/10(クリ判定に純関数1呼び足すだけ)。
+- ※カウンターの吹き飛び消失バグ(前報告)は保留中(案A=画面内クランプ提案済・社長裁定待ち)。
+
 ## v0.25.1568 — 対策: 選択ステージBGMの先読み(ステージ開始BGM遅延の根治)【2026-07-08 21:51 JST】
 - **実機報告(社長)**: 「ステージスタート時のBGM遅延が確率高い」。A/B(`?peaklayer=1&heartbeat=1`でも不安定)で**peak/心音は無罪確定**。
 - **原因**: `preloadAllAudio`は**default(stage1)のBGMしか先読みしない**。非デフォルトステージ(stage3〜6/lab)は`setBgmScene('game', key)`→`setBgmTrack`→`bgm.src=stageBGM`→loadで**ステージ開始の瞬間に初ダウンロード**=遅延。GAME_BGMのURLはキャッシュバスト無し=一度落ちれば以後速いが、iOSのキャッシュ追い出し(長時間セッション)で再取得が増え遅延の確率が上がる。
