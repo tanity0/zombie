@@ -1299,6 +1299,11 @@ const TREASURE_DROP_CHANCE_BY_RANK = {
 } as const; // 一律2%/撃破(社長指示)。通常ランクは0(treasureDropChance)。
 const TREASURE_VARIANTS_BY_RARITY = [4, 2, 3, 1, 5, 6] as const;
 export const MINE_DAMAGE = 34; // Insect egg acid splash damage.
+// 診断用トグル(社長v0.25.1557): ?mine=0 で緑卵(mine=地雷/卵)を全ソースOFF=1個も生成しない。
+// 実機の「やたら重い→落ちる」瞬間の切り分け用(ベンチではM52 PASS=無罪だが実機実プレイで再確認)。
+// 既定ON(通常挙動は不変)。緑卵の3ソース全てをここで塞ぐ: ①世界生成(minesInRegion/pressure/ambush)
+// ②eggcarrier(抱卵型)の産卵 ③イベント「緑卵の包囲」の卵リング。1個も出なければ描画/爆発/影キャスタも走らない。
+const MINES_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mine') === '0';
 const EGG_RING_COUNT = 22; // イベント「緑卵の包囲」で画面外リングに置く卵の数。
 // 変異体(抱卵型・旧ghost): プレイヤーの周囲を周回しながら緑卵(mine)をバラ撒く。
 // 3秒CDののち、周辺のランダム位置へ0.5秒おきに1個ずつ、最大3個ばらまく(社長指示)。
@@ -6123,7 +6128,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 0.5秒おきに1個ずつ、最大 EGGCARRIER_BURST_COUNT 個ばらまく。初回は spawn からすぐ開始。
           let nextLay = enemy.eggLayAt ?? (gameTime + EGGCARRIER_BURST_INTERVAL_MS);
           let burst = enemy.eggBurstCount ?? 0;
-          if (gameTime >= nextLay) {
+          if (!MINES_DISABLED && gameTime >= nextLay) { // ?mine=0 診断: 抱卵型は卵を撒かない(通常敵として動くだけ)
             const ecx2 = gmoved.x + enemy.width / 2, ecy2 = gmoved.y + enemy.height / 2;
             const aa = Math.random() * Math.PI * 2;
             const rr = Math.random() * EGGCARRIER_SCATTER_RADIUS;
@@ -6399,7 +6404,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const b = state.gameBounds;
       const maxDim = Math.max(b.width, b.height);
       const baseR = maxDim * 0.72; // 画面外(可視外)・retention pad 内に収める半径
-      const N = EGG_RING_COUNT;
+      const N = MINES_DISABLED ? 0 : EGG_RING_COUNT; // ?mine=0 診断: 卵リングイベントも0個(何も追加しない)
       const stamp = Math.floor(state.gameTime);
       const eggs: BreakableProp[] = [];
       for (let i = 0; i < N; i++) {
@@ -7176,19 +7181,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         camera.x + bounds.width + pad,
         camera.y + bounds.height + pad
       );
-      const generatedMines = minesInRegion(
+      const generatedMines = MINES_DISABLED ? [] : minesInRegion(
         camera.x - pad,
         camera.y - pad,
         camera.x + bounds.width + pad,
         camera.y + bounds.height + pad
       );
-      const pressureMines = pressureMinesNearPlayer(
+      const pressureMines = MINES_DISABLED ? [] : pressureMinesNearPlayer(
         state.player.x + state.player.width / 2,
         state.player.y + state.player.height / 2,
         state.player.lastDirection,
         state.gameTime
       );
-      const ambushMines = mineAmbushAnchor ? mineAmbushAround(mineAmbushAnchor) : [];
+      const ambushMines = (MINES_DISABLED || !mineAmbushAnchor) ? [] : mineAmbushAround(mineAmbushAnchor);
       // 研究所スキン: UV バーを区画ごと(1区画1本)に生成。松明と同じ region 方式・破壊済みは destroyed で除外。
       const generatedUv = labTheme ? labUvBarsInRegion(
         camera.x - pad, camera.y - pad, camera.x + bounds.width + pad, camera.y + bounds.height + pad

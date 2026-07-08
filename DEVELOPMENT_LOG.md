@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1557 — 診断: 緑卵(mine)全ソースOFFトグル `?mine=0`(実機の重さ/クラッシュ切り分け)【2026-07-08 16:06 JST】
+- **社長報告**: 実機プレイ中にやたら重くなる瞬間があり落ちる。緑卵を一時的に全部オフにして切り分けたい。
+- **対応**: `?mine=0` で緑卵(=地雷/卵 type:'mine')を**1個も生成しない**診断トグルを追加(既定ON=通常挙動不変)。切り分け用の一時フラグ。
+  - `gameStore.ts` 冒頭に `MINES_DISABLED = URLSearchParams.get('mine')==='0'`(`typeof window`ガードでSSR/テスト無影響)。
+  - 緑卵の**3ソース全て**を塞いだ: ①世界生成(`minesInRegion`/`pressureMinesNearPlayer`/`mineAmbushAround`→[]) ②eggcarrier(抱卵型)の産卵(`!MINES_DISABLED`で撒かない・敵自体は通常移動) ③イベント「緑卵の包囲」卵リング(`N=0`)。
+  - 1個も出なければ**描画・爆発・影キャスタ・当たり判定も走らない**(全て`breakableProps`のtype:'mine'を経由=空になる)。ベンチ専用のmine生成(`BenchmarkOverlay.tsx`)は別経路=意図的に非対象。
+- **切り分けの狙い**: ベンチでは緑卵は無罪(M52 PASS avg55)。実機の重さ/クラッシュが`?mine=0`で消えるなら実プレイ固有の緑卵コスト(ベンチ非再現)、消えないなら緑卵は無関係=別要因(強glow等)を疑う。
+- 変更: `src/store/gameStore.ts`のみ(フラグ1+ゲート3箇所)。検証: **typecheck clean**。負荷: 診断時は緑卵ゼロ=軽くなる方向のみ。既定OFF時は挙動不変。
+
 ## v0.25.1556 — 実装: ゲート失敗=内側へ強制ノックバック+リトライ(死神ペナルティ廃)§5.21-追補6【Sonnetサブ連携】【2026-07-08 15:43 JST】
 - **社長設計(v0.25.1555)**: 現状はゲート失敗(時間切れ・未クリア)で拘束が解けるだけ=プレイヤーは境界の外側(奥)に残り再挑戦不能。「一度失敗するとその回はトライできない」を解消。
 - **修正(§5.21-追補6・Sonnetサブ実装→設計チャット検証+git)**:
