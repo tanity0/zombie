@@ -737,6 +737,10 @@ export interface ActiveEvent {
   // PACING_PUZZLE.md §5.21 M20: プレイヤーを円内に拘束するか(省略時=true=従来どおり)。
   // 囲いゲート1(ソフト=出られる)だけ false を明示し、それ以外(horde/boss/ゲート2)は従来どおり拘束する。
   confinesPlayer?: boolean;
+  // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 円を敵に"入り自由"にするか(省略時=false=
+  // 従来どおり「円外の非fromEvent敵は逃走モード」)。ゲート1だけ true を明示し、通常沸きのchaffが
+  // 境界を越えて円内へ流れ込めるようにする(gameStore.ts の arenaConfiningFlee 参照)。
+  permeable?: boolean;
 }
 
 // 紅き夜: 全敵ステータス2倍・経験値2倍・画面赤染め。警告10秒→本番20秒。拠点/商人で逃げられる。

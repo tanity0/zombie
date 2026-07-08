@@ -48,6 +48,7 @@ import {
   type FormationPattern, type NuisanceCounts, type SpecialType, type KomaKind4, type ChaffRampState,
 } from './scriptPuzzle';
 import { setPuzzleDebug, getPuzzleDebug } from './puzzleState';
+import { resolveGate1ChaffPlan } from './gate1';
 import { playSfx } from '../audio/audioManager';
 import {
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, NAMED_SPAWN_CD_MS, NAMED_POST_HIT_GUARD_MS,
@@ -180,6 +181,9 @@ export interface KomaMaintenanceCtx {
   spawnViewOffsetY: number;
   snowTheme: boolean;
   spawnEsc: number;
+  // PACING_PUZZLE.md §5.21-追補3: 囲いゲート1がアクティブな間だけ true。koma目標/CDを
+  // ピーク(100% of cap)・CD0へ強制する(resolveGate1ChaffPlan参照)。
+  gate1Active: boolean;
 }
 
 // PACING_PUZZLE.md バッチM4: 盤面構成パズル方式の配線。§2の停止/継続リストどおり、
@@ -315,13 +319,19 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     && (directorRef.current.state.performance >= TIGHTEN_PERF_MIN || koma.belowTargetMs >= TIGHTEN_STARVE_MS);
   let komaChaffTarget = chaffTargetForKoma(koma.kind, cap);
   if (softenedNow) komaChaffTarget = Math.max(SOFTEN_TARGET_MIN, Math.round(komaChaffTarget * SOFTEN_TARGET_MULT));
+  let cdMs = cdForKoma(koma.kind, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
+  // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): ゲート1アクティブ中は通常のコマ駆動の
+  // 目標/CDを無視し、目標=ピーク(100% of cap)・CD=0に固定する(連続max密度の無限流入。円内
+  // burst配置の置き換え)。ゲート1以外(平常時)はコマ駆動の値をそのまま使う=既存カーブ不変。
+  const gate1Plan = resolveGate1ChaffPlan(ctx.gate1Active, cap, komaChaffTarget, cdMs);
+  komaChaffTarget = gate1Plan.target;
+  cdMs = gate1Plan.cdMs;
   koma.chaffRamp = stepChaffRamp(koma.chaffRamp, {
     dtMs: deltaTime * 1000,
     komaTarget: komaChaffTarget,
     rampIntervalMs: rampIntervalForKoma(koma.kind, tightenedNow),
     holdIncrease: koma.kind !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
   });
-  const cdMs = cdForKoma(koma.kind, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
   // 邪魔者/特別枠は通常・ピークのみ供給(緩コマは新規補充停止=在席は自然消化)。
   const nuisanceTargetCounts = inScriptKoma && koma.script
     ? nuisanceTarget(koma.script)

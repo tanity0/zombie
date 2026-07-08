@@ -12,6 +12,26 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1551 — 実装: ゲート1再設計=通常沸き無限流入(§5.21-追補3)【Sonnetサブエージェント連携】【2026-07-08 10:51 JST】
+- **設計チャットがClaude Codeサブエージェント(model=Sonnet)へ実装委譲→設計チャットが検証+git締め**(社長「sonnet連携でそっちでやって」)。
+  分業維持: Sonnetサブ=コード+typecheck / 設計チャット=diff検証・版bump・ログ・push・ブランチ管理。
+- **§5.21-追補3を実装**(仕様どおり7点):
+  1. gate1発火部の`GATE1_BASE_CHAFF_COUNT`円内10体burst撤去(+未使用import整理)。
+  2. **通常沸き(koma)をゲート1中もピーク・CD0で回す無限流入**: `resolveGate1ChaffPlan(gate1Active,cap,...)`(gate1.ts純関数)で
+     `runKomaBoardMaintenance`のchaff目標=cap(100%)・CD=0へ上書き(コマ種別カーブは不変)。`gate1Active=activeGateRef===1`を配線。
+  3. **サークルを敵に"入り自由"**: `ActiveEvent.permeable`新設(types)+gate1のみtrue。`gameStore.arenaConfiningFlee`に`&& !permeable`を追加=
+     囲い中の逃走モード(v1261)をゲート1で無効化。
+  4. クリア=台本(fromEvent)殲滅のみ(chaffはfromEvent無し=不変機構で自動的にクリアに数えない)。
+  5. プレイヤー拘束=ハード維持(不変)。
+  6. **死神抑止**: gate1アクティブ中は深奥リスクの蓄積/気配/出現を凍結(if/else restructure)。**未達ペナルティ(タイムアウト死神)は不変**。
+     ※既に追跡中のチェイサーは抑止対象外(既存追跡は不変)=実機で違和感あれば再相談。
+  7. **全滅後再湧きガード**: `gate1DoneThisRunRef`をクリア時に立て`shouldTriggerGate1`で参照(新ランで再アーム)。
+     ※Sonnet申し送り: `gate1Cleared`は既にクリア時in-memoryセット済で再発火レースは既に閉じていた可能性=本ガードは防御的な二重化(挙動変更なし)。
+- 変更: `useGameLoop.ts`/`gate1.ts`(+`gate1.test.ts`)/`directorTick.ts`/`types/game.ts`/`gameStore.ts`/`playtestDriver.ts`。
+- 検証(設計チャットが独立に再実行): **typecheck clean / npm test 555 pass・2 skip(憲法+M9ボット含む)**。強glow追加なし。
+- 補足(実機で見る点): koma目標はrampで徐々にcapへ寄る(CD0で充填は速いが瞬間満タンではない)=密度感が薄ければ社長裁定で調整。
+  実機確認=籠城戦の手応え/死神が出ないこと/全滅後に再発火しないこと。
+
 ## v0.25.1550 — 設計: M22 Group Cのスコープ確定(C1/C3/C4実装・C2保留)【2026-07-08 10:32 JST】
 - **設計チャットの裁定反映1件**(コードは触らない=Sonnet実装待ち)。M22 Group C(飾り)の実装スコープを社長裁定で確定。
 - **実装対象=C1・C3・C4**(全部既存フック流用=軽い):

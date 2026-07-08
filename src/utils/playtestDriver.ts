@@ -163,6 +163,7 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   runKomaBoardMaintenance(refs.koma, {
     puzzleActiveNow: true, gameTime: t, deltaTime: dt, player: s.player, playerAreaIdx,
     spawnBounds: gameBounds, spawnViewOffsetY: 0, snowTheme: false, spawnEsc: 0,
+    gate1Active: false, // ヘッドレスplaytestはゲート1を再現していない(既存挙動どおりコマ駆動のまま)
   });
   runOffscreenRecycleAndCull({
     labTheme: false, indoor: false, gameBounds, player: s.player, playerCenterX, playerCenterY,

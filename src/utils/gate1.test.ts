@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from './gate1';
+import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor, resolveGate1ChaffPlan } from './gate1';
 
 const baseTrigger = {
   enabled: true,
   wallIdx: 3 as number | null,
   gate1Cleared: false,
   activeEventActive: false,
+  doneThisRun: false,
 };
 
 describe('shouldTriggerGate1', () => {
@@ -30,6 +31,10 @@ describe('shouldTriggerGate1', () => {
 
   it('does not fire when disabled via the recovery flag', () => {
     expect(shouldTriggerGate1({ ...baseTrigger, enabled: false })).toBe(false);
+  });
+
+  it('does not fire again in the same run once the in-run doneThisRun guard is set, even if gate1Cleared has not been committed yet', () => {
+    expect(shouldTriggerGate1({ ...baseTrigger, gate1Cleared: false, doneThisRun: true })).toBe(false);
   });
 });
 
@@ -60,5 +65,16 @@ describe('effectiveReaperRiskFloor', () => {
 
   it('never relaxes the threshold even if frontloadedFloor is somehow higher than base', () => {
     expect(effectiveReaperRiskFloor(14600, true, 20000)).toBe(14600);
+  });
+});
+
+describe('resolveGate1ChaffPlan', () => {
+  it('forces target=cap (peak/100%) and cd=0 while gate1 is active, regardless of the normal koma-driven values', () => {
+    expect(resolveGate1ChaffPlan(true, 10, 4, 2500)).toEqual({ target: 10, cdMs: 0 });
+    expect(resolveGate1ChaffPlan(true, 20, 0, 9999)).toEqual({ target: 20, cdMs: 0 });
+  });
+
+  it('passes the normal koma-driven target/cd through unchanged when gate1 is not active', () => {
+    expect(resolveGate1ChaffPlan(false, 10, 4, 2500)).toEqual({ target: 4, cdMs: 2500 });
   });
 });

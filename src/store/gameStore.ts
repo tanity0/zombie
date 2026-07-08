@@ -5789,7 +5789,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 攻撃AI(溜め/突進/ジャンプ等)は中断し、プレイヤーと反対方向へ通常速度で離れる。裏ボス自身は上で除外済み。
         // 併せて「囲いに囲まれるイベント(プレイヤーを円に閉じ込める=rescue以外の囲い系)」中も、外の通常敵
         // (イベント敵=fromEvent は除く)を同じ逃走モードにする(社長指示)。→ 外の敵がイベント円へ寄って来ない。
-        const arenaConfiningFlee = state.activeEvent != null && state.activeEvent.kind !== 'rescue';
+        // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): ゲート1は permeable=true でこの逃走モードを
+        // 無効化する(サークルを敵に"入り自由"にし、通常沸きのchaffが境界を越えて円内へ流れ込めるようにする)。
+        const arenaConfiningFlee = state.activeEvent != null && state.activeEvent.kind !== 'rescue' && !state.activeEvent.permeable;
         if (state.bossChasing || (arenaConfiningFlee && !enemy.fromEvent)) {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const fx = ecx - pcx, fy = ecy - pcy;

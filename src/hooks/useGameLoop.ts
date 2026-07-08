@@ -113,8 +113,6 @@ import {
   ZERO_NUISANCE,
   selectPattern,
   nuisanceTarget,
-  pickChaffType,
-  CHAFF_WEIGHTS_DEFAULT,
   type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
@@ -344,10 +342,9 @@ const RED_NIGHT_FIRE_MIN_MS = 300000;    // 最短(5分)
 const RED_NIGHT_FIRE_SPREAD_MS = 240000; // 上振れ幅(+0〜4分)=実質5〜9分
 const rollRedNightFireAt = (): number => RED_NIGHT_FIRE_MIN_MS + Math.random() * RED_NIGHT_FIRE_SPREAD_MS;
 const RED_NIGHT_RUN_CHANCE = 0.3;        // 出撃ごとの発生確率(社長指示で 0.5→0.3)。1=必ず / 0=出ない
-// PACING_PUZZLE.md §5.21-追補2(社長決定v0.25.1538): ゲート1(未確認境界)の囲い内には台本しか出ず
-// 基本沸き(chaff)が0だった(実機の事実)。台本と同じarena内配置経路でbat/skeleton/zombieの基本沸きを
-// 10体burst配置する(ambient=fromEventにしない・CD0=即10体)。ゲート1のみ・ゲート2/通常沸き/退屈補正囲いは対象外。
-const GATE1_BASE_CHAFF_COUNT = 10;
+// PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
+// ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(runKomaBoardMaintenance +
+// resolveGate1ChaffPlanを参照。ゲート1アクティブ中だけkoma目標をピーク・CD0にする)。
 const ARENA_HORDE_COUNT = 18;          // ゾンビ版の初期湧き数(cap 20 以内)
 const ARENA_HORDE_DURATION_MS = 40000; // ゾンビ版の制限時間保険(段階スポーン約18秒化に合わせ30→40へ)。基本は全滅で終了
 const ARENA_BOSS_ADDS = 4;             // ボス版の取り巻きゾンビ数
@@ -957,6 +954,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gate1PendingRef = useRef(false);
   // 深層境界を未クリアで踏破し、ゲート2の発火待ち(activeEventが空くのを待つ)。
   const gate2PendingRef = useRef(false);
+  // §5.21-追補3(社長決定v0.25.1546): ラン内ガード。台本(fromEvent)殲滅でクリアした瞬間に立て、
+  // 恒久コミット(gateMetaRef.current.gate1Cleared・ラン終了時commit)を待たずに同ランでの再発火を止める
+  // (実機報告「サークルの敵を全滅させたら、またサークルの敵が沸いた」対策・shouldTriggerGate1参照)。
+  const gate1DoneThisRunRef = useRef(false);
 
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -1561,6 +1562,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           activeGateRef.current = null;
           gate1PendingRef.current = false;
           gate2PendingRef.current = false;
+          gate1DoneThisRunRef.current = false; // ラン内ガードも新ランで再アーム
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
           // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
           dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
@@ -1632,6 +1634,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
              wallIdx: gate1PendingRef.current ? 3 : null,
              gate1Cleared: gateMetaRef.current.gate1Cleared,
              activeEventActive: false, // 既に !ae 内=activeEventは無い
+             doneThisRun: gate1DoneThisRunRef.current, // §5.21-追補3: ラン内ガード(全滅後の再湧き対策)
            });
            if (puzzleActiveNow && gate1Ready) {
             // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1(社長設計「ゲート>退屈補正」=優先発火)。
@@ -1660,9 +1663,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             };
             // 社長指示(v0.25.1523「やはり出れない囲いに」)でゲート1もハード(出られない)へ変更。
             // confinesPlayerを省略=既定true(既存の囲い共通の円内拘束をそのまま適用)。
+            // §5.21-追補3(社長決定v0.25.1546): permeable=true でサークルを敵に"入り自由"にする
+            // (囲い中「円外の敵は逃走モード」になる既存仕様v0.25.1261をゲート1だけ無効化=通常沸きの
+            // chaffが境界を越えて円内へ流れ込めるようにする。gameStore.ts の arenaConfiningFlee 参照)。
             // 重要: beginArenaEvent は呼び出し時点で周辺の非固定敵を一掃するため、必ず「敵を配置する前」に
             // 呼ぶこと(逆順にすると配置直後の台本の敵まで一掃されてしまうバグを実機v0.25.1522で確認)。
-            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS };
+            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, permeable: true };
             useGameStore.getState().beginArenaEvent(gateEvent);
             let gateSpawnedCount = 0;
             (Object.keys(counts) as NuisanceType[]).forEach(type => {
@@ -1677,20 +1683,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 gateSpawnedCount++;
               }
             });
-            // §5.21-追補2(社長決定v0.25.1538・実機バグ修正v0.25.1542): 台本とは別に基本沸き(chaff)
-            // 10体をburst配置。当初はambient(fromEventなし)だったが、囲い中は「イベント外の敵は
-            // 逃走モード」になる既存仕様(v0.25.1261)に該当し、chaffが逃げてサークル外へ出る実機バグが
-            // 判明。台本と同じfromEvent=trueを付けて逃げず残るようにする(社長決定)。副作用として
-            // クリア条件(fromEvent殲滅)に基本10体も含まれる=「囲いを空にしてクリア」(社長採用)。
-            for (let i = 0; i < GATE1_BASE_CHAFF_COUNT; i++) {
-              const pos = placeGateRing();
-              const chaffType = pickChaffType(CHAFF_WEIGHTS_DEFAULT, Math.random());
-              const e = spawnEnemyAt(chaffType, pos.x - 20, pos.y - 20, newGameTime);
-              e.fromEvent = true;
-              e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
-              addEnemy(e);
-              gateSpawnedCount++;
-            }
+            // §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(fromEvent)」は撤去。
+            // 基本沸き(chaff)は通常沸き(koma maintenance)の無限流入に置き換える(runKomaBoardMaintenance
+            // 側が activeGateRef.current===1 の間だけ目標=ピーク・CD0で回す)。ここでは台本(formation)の
+            // 配置のみ行う。クリア=台本(fromEvent)殲滅のみ(chaffはfromEventでないためクリアに数えない)。
             hordeSpawnRef.current = { spawned: gateSpawnedCount, nextAt: newGameTime, total: gateSpawnedCount }; // 全数即配置済み=段階スポーンは追加しない
             activeGateRef.current = 1;
             useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -2008,6 +2004,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // v0.25.1517則「死亡は解除しない」を厳密に満たす)。
                 if (activeGateRef.current === 1) {
                   gateMetaRef.current = { ...gateMetaRef.current, gate1Cleared: true };
+                  gate1DoneThisRunRef.current = true; // §5.21-追補3: ラン内ガードも即立てる(全滅後の再湧き対策)
                   gate1PenaltyActiveRef.current = false;
                   useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') })); // ハンター消滅
                   hunterRef.current.phase = 'idle';
@@ -2523,7 +2520,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 逃げ切り(homeRadius帰還)は下の else 分岐が先に chaserId を null にするため、ここは「撃破」のみが該当。
           if (rs.chaserId != null && !chaserAlive) { rs.defeatCount += 1; rs.chaserId = null; rs.risk = 0; rs.timeSpawned = false; rs.warpAnimStartAt = 0; }
 
-          if (!chaserAlive) {
+          // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): ゲート1がアクティブな間は死神(深奥リスク)
+          // の抽選/蓄積そのものを凍結し、湧かせない(未達ペナルティ=effectiveReaperRiskFloorは維持。
+          // ゲートが解ける=activeGateRef.currentがnullに戻ったタイミングでリスクは元の値から再開する)。
+          // 既に追跡中(chaserAlive)のチェイサーはこの抑止の対象外(既存の追跡/ワープ挙動は不変)。
+          if (!chaserAlive && activeGateRef.current === 1) {
+            // 抑止中: 何もしない(risk加減・気配演出・完全出現のいずれも止める)。
+          } else if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。
             // PACING_PUZZLE.md §5.21 M20 stage③: 囲いゲート1の未達ペナルティ中は、リスク蓄積の起点を
             // 未確認到達ライン(AREA_THRESHOLDS[2]=5000)へ前倒しする(既存の起点より緩くはならない)。
@@ -6654,7 +6657,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (実装: src/utils/directorTick.ts の runKomaBoardMaintenance へ移設。挙動は不変)。
         runKomaBoardMaintenance(
           { puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef },
-          { puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc }
+          {
+            puzzleActiveNow, gameTime, deltaTime, player, playerAreaIdx, spawnBounds, spawnViewOffsetY, snowTheme, spawnEsc,
+            // PACING_PUZZLE.md §5.21-追補3: 囲いゲート1中は通常沸き(koma)をピーク・CD0で回し続ける(無限流入)。
+            gate1Active: activeGateRef.current === 1,
+          }
         );
 
         // Air-dropped ammo supplies (#3). At an irregular cadence a resupply
