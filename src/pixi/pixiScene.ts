@@ -62,6 +62,7 @@ import { STAGE_SKINS, resolveStageSkinKey } from '../data/stageSkins';
 // stage ルートに ColorMatrixFilter 1枚。enter/exit を約1秒でフェード(filter.alpha 補間)。HUDはDOMなので非対象。
 const DZ_PARAMS = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 const DEEP_ZONE_GRADE_ENABLED = DZ_PARAMS?.get('deepzonegrade') !== '0'; // ?deepzonegrade=0 で無効化
+const FORCE_DEEP_ZONE = DZ_PARAMS?.get('deepzone') === '1'; // 診断: ?deepzone=1 で深層域セピアを距離無視で常時ON(実機で退色グレードの重さ検証・社長v0.25.1561)
 // 診断用トグル(社長v0.25.1558): 実機の重さ/クラッシュ切り分け。既定ON=通常挙動不変。
 // ?glow=0   … 強glow(加算合成の大面積オーバードロー=ベンチ唯一のFAIL G12)を描画しない(小glowは安いので残す)。
 // ?shadow=0 … 全アクターの足影(敵1体=影1枚・数に比例)を描画しない。
@@ -6130,6 +6131,9 @@ export class PixiScene {
 
     if (redNightActive) {
       // 紅き夜: 距離によらず強制 ON。
+      this.deepGradeOn = true;
+    } else if (FORCE_DEEP_ZONE) {
+      // ?deepzone=1 診断: 距離/eligibleを無視して深層域セピアを常時ON(退色グレードの重さ検証)。
       this.deepGradeOn = true;
     } else {
       // 通常の深層域ヒステリシス(行ったり来たりでポップしない): enter=D / exit=D-200。

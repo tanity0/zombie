@@ -476,6 +476,9 @@ const DEBT_ENABLED = evParam('debt') !== '0';
 const BOREDOM_ARENA_ENABLED = evParam('arena') !== '0';
 // PACING_PUZZLE.md §5.21 M20 軸2(制圧ゲート)。?gate=0でゲート全体(1/2とも)を無効化。
 const GATE_ENABLED = evParam('gate') !== '0';
+// 診断用(社長v0.25.1561): ?rednight=1 で紅き夜を即・強制発動して持続(通常は5〜9分+30%+デンジャー以降)。
+// 実機で紅き夜の重さ(赤マトリクス+敵×2の強glow積み上がり)をオンデマンド検証するため。既定OFF。
+const RED_NIGHT_FORCE = evParam('rednight') === '1';
 // PACING_REDESIGN.mdバッチ4: 緩の演目選択(RELAX/講習/回収/HARVEST)。?program=0で従来の
 // 固定シーン(PHASESのscene)に戻す。問題児リフラクトリ(3.5-Bの追補)も同フラグで束ねる。
 const PROGRAM_ENABLED = evParam('program') !== '0';
@@ -2121,7 +2124,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             rnCalmOk &&
             eventGateOk({ bigEventActive: rnBigEventActive, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current, boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0 })
           );
-          if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
+          if (RED_NIGHT_FORCE) {
+            // ?rednight=1 診断: 条件(時刻/確率/エリア/緩コマ)を全て無視して紅き夜を即・強制でactive固定。
+            // 終了/やり過ごしも起きない(このブランチが毎フレ先取りするため下の状態機械は走らない)。
+            // activateRedNight は phase を立てるだけ=×2等はphase参照で動的に効くので直setで等価。
+            if (!rn || rn.phase !== 'active') {
+              useGameStore.setState({ redNight: { phase: 'active', activeAt: newGameTime, endAt: newGameTime + 3600000 } });
+            }
+          } else if (!rn && !redNightFiredRef.current && newGameTime >= redNightFireAtRef.current && !rnGs.bossChasing
               && !rnGs.enemies.some(e => isHiddenBoss(e.type)) // 裏ボス存命中は紅き夜を発火させない(イベント抑止と同基準)
               && areaZoneIndexFor(rnDepth) >= 2 && rnProducerOk) {
             // 3分後 かつ デンジャーゾーン以降で、出撃に一度だけ抽選。当たれば発火、外れたらこの出撃は紅き夜なし

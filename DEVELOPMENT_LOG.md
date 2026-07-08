@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1561 — 診断: 紅き夜/深層域の強制起動パラメータ `?rednight=1` `?deepzone=1`【2026-07-08 18:31 JST】
+- **社長要望**: 実機で紅き夜・深層域の重さをオンデマンド検証したい(通常は紅き夜=5〜9分+30%+デンジャー以降、深層域=原点距離≥D で自然発火)。
+- **`?rednight=1`**(`useGameLoop.ts`・`RED_NIGHT_FORCE`): 紅き夜を**即・強制でactive固定**。条件(時刻/確率/エリア/緩コマ/裏ボス)を全無視し、`redNight={phase:'active',...}`を直set。終了/拠点やり過ごしも起きない(force分岐が毎フレ先取り=既存の状態機械は`else if`で走らない)。`activateRedNight`はphaseを立てるだけ=敵×2等はphase参照で動的に効くので直setで等価。→ 赤マトリクス+×2の強glow積み上がりを丸ごと再現。
+- **`?deepzone=1`**(`pixiScene.ts`・`FORCE_DEEP_ZONE`): 深層域セピアグレードを**距離/eligible無視で常時ON**(`syncDeepZoneGrade`の非紅き夜分岐で`deepGradeOn=true`)。退色グレード(=紅き夜と同じ全画面マトリクス機構)の重さ単体を検証。
+- 変更: `useGameLoop.ts`(flag+force分岐)/ `pixiScene.ts`(flag+分岐)。検証: **typecheck clean**。既定OFF=通常挙動不変。
+- **切り分けの狙い**: `?rednight=1`で紅き夜を出し、そこに`?deepzonegrade=0`(赤マトリクスOFF)/`?glow=0`(glow OFF)を重ねて、紅き夜の重さが**赤マトリクスか強glow積み上がりか**を実機で確定→正しい恒久対策へ。
+
 ## v0.25.1560 — 対策: 瀕死赤ビネットをPixi全画面スプライト→DOM/CSSへ移設(実機の低HP落ち解消)【Sonnetサブ連携】【2026-07-08 18:03 JST】
 - **実機確定(社長)**: `?glow=0`でも瀕死(HP≤20)で重く、ピンチ終了で軽くなる=**赤ビネット`lowHpVignette`が独立した犯人**(相関ではない)。
 - **診断(設計チャット)**: 正体は`uiLayer`(=bloom対象の`filteredWorld`の外)の**全画面(1.06×)通常合成スプライト1枚**を毎フレ描画。中心透明でもGPUは全画面クアッド全面にシェーダを走らせる=**塗り面積(フィル)コスト**。既に積み上がった全画面層(grade/vignette/frontBank/fog×3/bloom出力)に対する"最後の一枚"で塗り律速の実機が落ちる。他にHP≤20トリガーの描画は無い(全走査確認)。
