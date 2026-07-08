@@ -12,6 +12,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1550 — 設計: M22 Group Cのスコープ確定(C1/C3/C4実装・C2保留)【2026-07-08 10:32 JST】
+- **設計チャットの裁定反映1件**(コードは触らない=Sonnet実装待ち)。M22 Group C(飾り)の実装スコープを社長裁定で確定。
+- **実装対象=C1・C3・C4**(全部既存フック流用=軽い):
+  - C1 方向性シェイク&スプレー(`?dirfx=0`)=既存シェイク/粒子を被弾・斬撃の方向へ寄せるだけ。
+  - C3 なぎ倒し「N HITS」(`?multifx=0`)=既存`registerMultiHit`/`hgHitCount`(1スイングの同時ヒット数)を流用してbitmap-text表示。
+  - C4 スピードライン(`?speedline=0`)=突進/カウンター中のみ画面端速度線(pooled)。
+- **C2 コンボ・エスカレーションは一旦保留**(社長決定)。理由=汎用キルコンボ(武器問わず連続キルのディケイ窓)が
+  未存在で新規state新設の要否が未決。既存は近接フィニッシュ限定(`finishComboCount`)で銃を含まない。再開時に
+  (a)新規汎用カウンター/(b)近接限定流用/(c)廃止を裁定する、と§5.23に記録。
+- **ベンチ**: M23(§5.24)で整備済み=Group C実装後に実機`?bot=1`で実測し、Group A+B1で持ち越したベンチ確認も同時消化。
+  強glowゼロの鉄則厳守(全要素 pooled sprite / bitmap-text / transform)。
+- 変更ファイル: PACING_PUZZLE.md(§5.23=C2保留注記+Group C実装スコープ節+ステータス表M22行)/DEVELOPMENT_LOG.md/package.json。検証: 文書のみ=typecheck不要。
+- 自己点検(規律5): 憲法第4/5条 非抵触=見た目の飾りのみ・ゲームバランス/数値/敵挙動は不変。強glow予算の鉄則も明記。
+
 ## v0.25.1549 — 実装: テスト用クイックスタートURLパラメータ?smoke(§6-追補 M25)【2026-07-08 03:16 JST】
 - **仕様(§6-追補・v0.25.1548で仕様化)を実装**。`src/App.tsx`にマウントuseEffectを追加、`URLSearchParams`で
   `?smoke`を検出したら**タイトル/タップ/メニューを全スキップして直接`startGame`を呼ぶ**(完全opt-in・
