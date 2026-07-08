@@ -932,9 +932,11 @@ export const releaseDeepReverseBgm = () => {
   if (wasDeep) applyBgm(); // 深層中に解放されたら通常BGMへ戻す
 };
 
-// 診断用(社長v0.25.1563): ?peaklayer=0 でPEAK重ねBGM(peak-layer.mp3=紅き夜/関所で鳴る打楽器)を無効化。
-// 紅き夜の「最初から引っかかる」がこの2本目のHTMLAudio再生由来かを切り分ける(赤マトリクス/敵条件/glowは無罪確定済)。既定ON。
-const PEAK_LAYER_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('peaklayer') === '0';
+// 社長決定(v0.25.1566): **PEAK時はBGMを変えない**=PEAK重ねBGM(peak-layer.mp3=紅き夜/関所で鳴る打楽器)を
+// **既定OFF**にする。理由=peak-layerは通常BGMに重ねる「2本目のHTMLAudio同時再生」で、この端末(iOS Safari)では
+// 描画を引っかからせる(紅き夜が最初から重い原因=v0.25.1563で実証。ENGINEERING_NOTES音声節参照)。既定でBGMは
+// PEAK/紅き夜でも通常のまま(重ね無し・ダッキング無し)。`?peaklayer=1`で従来の重ねを試聴可(A/B用に温存)。
+const PEAK_LAYER_DISABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('peaklayer') !== '1';
 const PEAK_LAYER_VOLUME = 0.9; // 社長指示: 0.55→0.9(+64%)
 const PEAK_BGM_DUCK = 0.4;      // PEAK中は通常BGMを落とす(社長指示・v0.25.1290=0.65→さらに下げてほしいとの追加指示で0.4へ)。レイヤーのフェードと同時にランプ。
 const PEAK_LAYER_FADE_MS = 700;
@@ -1223,6 +1225,10 @@ let heartbeatGain: GainNode | null = null;
 let heartbeatStartTimer: number | null = null;
 const HEARTBEAT_VOLUME = 0.55; // 私案・実機調整前提(まだ緊張を煽りすぎない控えめな音量から開始)
 const HEARTBEAT_FADE_S = 0.25;
+// 診断用(社長v0.25.1566・監査で発見): ?heartbeat=0 で心音ループを無効化。心音は**連続ループのWeb Audio
+// バッファ**(source.loop=true)=ダンスループと同クラス=「連続バッファ再生が重い」地雷の候補。瀕死(ピンチ)中に
+// 鳴るので、ピンチの残り重さに寄与していないか切り分ける。既定ON(通常挙動不変)。
+const HEARTBEAT_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('heartbeat') === '0';
 
 const startHeartbeatSource = () => {
   heartbeatStartTimer = null;
@@ -1268,6 +1274,7 @@ const stopHeartbeatNode = () => {
 // 猶予中にONへ戻れば同じソースをそのまま継続(新ソースを作らない)。
 let heartbeatStopTimer: number | null = null;
 export const setHeartbeatLoop = (active: boolean) => {
+  if (HEARTBEAT_DISABLED) return; // ?heartbeat=0 診断: 心音ループを一切鳴らさない(連続バッファ地雷の切り分け)
   const shouldPlay = active && !muted;
   if (shouldPlay) {
     if (heartbeatStopTimer != null) { clearTimeout(heartbeatStopTimer); heartbeatStopTimer = null; }

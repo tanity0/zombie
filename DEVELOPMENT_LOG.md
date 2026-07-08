@@ -12,6 +12,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1566 — 対策: PEAK重ねBGMを既定OFF(紅き夜の重さ根治)+音声同時ストリーム監査+心音トグル【2026-07-08 20:41 JST】
+- **社長決定**: 「そもそもPEAK時にBGMを変えなくていい」→ **peak-layer(打楽器重ね)を既定OFF**に。`PEAK_LAYER_DISABLED`を
+  既定true(`?peaklayer=1`で従来の重ねを試聴のみ可)。**2本目HTMLAudio同時再生が消える=紅き夜/強襲/関所のPEAKが軽くなる**。BGMはPEAK中も通常のまま(重ね無し・ダッキング無し)。
+- **知識の機械化(社長「今後の糧に書き加えて」)**: ENGINEERING_NOTES音声節に追記=「差し替え(swap)が正しいBGM切替/`unlockDanceAudio`はswapの解錠であって重ねる技術ではない/深層域完全再現(v1565)でswapは軽いと実証/PEAKは既定でBGM不変(社長決定)」。
+- **音声同時ストリーム監査(社長「他にもここ起因を探して」)**: 現存の音声再生を棚卸し —
+  - `bgm`=唯一の常用ストリーム=OK / `deepBgm`=**swap**(通常pause)=OK / `peakLayerEl`=**overlay=犯人**→既定OFFで解決 /
+    `hurricane`=~2.4秒の短クリップ連発=ワンショット寄り=低リスク / SFX・dance-kick=ワンショット=OK。
+  - **要注意で残ったのは `heartbeat`(心音)= `source.loop=true` の連続ループWeb Audioバッファ**=ダンスループと同クラスの地雷候補。**瀕死(ピンチ)中に鳴る**=ピンチの残り重さに寄与する疑い。
+- **`?heartbeat=0`** 診断トグル追加(`HEARTBEAT_DISABLED`・`setHeartbeatLoop`冒頭で早期return)。既定ON=通常挙動不変。
+- 変更: `audioManager.ts`(peak既定OFF化・心音トグル)/ `ENGINEERING_NOTES.md`(知識+監査)。検証: **typecheck clean**。
+- **次の実機確認**: ①PEAKでBGMが変わらず軽いか(peak既定OFFの体感) ②瀕死で`?heartbeat=0`にするとさらに軽くなるか(心音=連続バッファが残り犯人か)。重ければ心音も「短いドクンのワンショット化(B方式)」or素材短縮で回避。
+
 ## v0.25.1565 — 診断: `?deepzone=1` を「完全再現」化(逆再生BGMも強制)【2026-07-08 20:13 JST】
 - **社長の指摘**: 深層域テスト(`?deepzone=1`)は**セピア色だけ**強制で、**逆再生BGMは未検証**だった。完全再現でテストしたい。
 - **調査**: 深層域の逆再生BGMは**差し替え(swap)**=通常BGMをpauseして逆再生版をplay(`enterDeepReverseBgm`)=**同時1本**(overlayではない)。だから原理的には軽いはずだが、未実測。
