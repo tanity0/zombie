@@ -12,6 +12,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1570 — 修正: カウンター吹き飛び消失(案A)+ クリ率ペナルティ改訂(3%/ボス-10%)【Sonnetサブ×2連携】【2026-07-09 03:03 JST】
+- **① カウンターで敵が消えるバグ(案A)**: ダッシュ/ジャンプをカウンターすると強ノックバック(×3)で敵が画面外リサイクル境界を越えて着地→次フレームで`runOffscreenRecycleAndCull`にリサイクルされ「消える」。
+  修正=`gameStore.ts`のノックバック・スライド分岐(~5790)で、着地位置を**リサイクル境界の内側にクランプ**(`directorTick.ts`と同じ境界計算を複製・buffer=敵サイズ)。resolveMove後に適用。**全ノックバック共通**(bash/whip/爆発/カウンター=どれも敵を画面外へ飛ばさない)。COUNTER_KNOCKBACK_SPEEDやリサイクル本体は不変。
+- **② クリ率ペナルティ改訂(社長決定)**: 前v1569を上書き。
+  - 色階層 **3%ずつ**: 青 -3% / 紫 -6% / 赤 -9%(旧5/10/15)。
+  - **ネームド or ボス系(`isBossType`)は色階層無視で一律 -10%**(旧「ネームド免除」を撤回)。
+  - 下限`CRIT_RATE_FLOOR=0.05`・式`min(base,max(0.05,base-penalty))`は不変。`critPenalty.ts`のみ改修(呼び出し6箇所は`enemy`全体を渡すので無変更)。テスト14件(ボス型giantbat・ネームド優先・下限)。
+- 検証(設計チャット独立): **typecheck clean / npm test 589 pass・2 skip(crit 14/14)**。負荷 各1/10。
+- ※**③ ネームド=即死無し+近接フィニッシュ(ボス×5)で統一** は社長確認待ち(finishKillOnly機構をネームドに適用する解釈で合ってるか確認中)。OK後に着手。
+
 ## v0.25.1569 — 実装: レア敵ほどクリ率が下がる(色階層ペナルティ・下限5%)【Sonnetサブ連携】【2026-07-09 02:19 JST】
 - **社長決定**: レアな敵ほどクリティカル率が下がる。順番に5%ずつ。適用範囲=**全クリ率判定(1a)**、ネームドは**対象外(2b)**、下限=**初期の一番低いクリ率=5%(開始ナイフ knife-t1)**。
 - **仕様**: 青 -5% / 紫 -10% / 赤 -15%(絶対pp・共通敵0・ネームド0)。`applyEnemyCritPenalty(base, enemy) = min(base, max(0.05, base − penalty))`=**5%未満に下げない**+**元々5%未満の攻撃にクリを足さない**(銃素0%は0%のまま)。確定クリ(ヘッドショット/`projectile.crit`/カウンター反撃)は**不変**。

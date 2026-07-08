@@ -36,7 +36,8 @@ import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
 } from '../utils/namedEnemy';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
+import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import { getSelectedStageId, getWallMeta, type WallMeta } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
@@ -5793,7 +5794,20 @@ export const useGameStore = create<GameState>((set, get) => ({
             enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
             enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,
           );
-          return { ...enemy, x: kb.x, y: kb.y };
+          // ノックバック(カウンター等)の吹き飛び先を画面外リサイクル境界の内側にクランプする(案A)。
+          // runOffscreenRecycleAndCull (directorTick.ts) と同じ境界計算をここで複製し、境界を
+          // 越えた瞬間に次フレームでリサイクルされて「カウンターした敵が消える」不具合を防ぐ。
+          // 通常の追跡AI(このifブロックの外)には影響しない。
+          const recycleZoomOverscan = (labTheme || indoor) ? 1 : 1 / CONTEXT_ZOOM_MIN;
+          const recycleHalfW = (state.gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          const recycleHalfH = (state.gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
+          const bufferX = enemy.width;  // 境界ぎりぎりではなく内側へ余裕を持って着地させる
+          const bufferY = enemy.height;
+          const kbCenterX = kb.x + enemy.width / 2;
+          const kbCenterY = kb.y + enemy.height / 2;
+          const clampedCenterX = Math.max(pcx - (recycleHalfW - bufferX), Math.min(pcx + (recycleHalfW - bufferX), kbCenterX));
+          const clampedCenterY = Math.max(pcy - (recycleHalfH - bufferY), Math.min(pcy + (recycleHalfH - bufferY), kbCenterY));
+          return { ...enemy, x: clampedCenterX - enemy.width / 2, y: clampedCenterY - enemy.height / 2 };
         }
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
