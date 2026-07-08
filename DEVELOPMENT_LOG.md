@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1564 — 記録: 「同時2本目の音声ストリーム=重い」を確定・ENGINEERING_NOTESへ機械化【2026-07-08 19:34 JST】
+- **社長の指摘**: この重さは根深い=過去の「ダンスフロア問題」と同根では? → HANDOFF_DANCE_AUDIO.md/ENGINEERING_NOTESを精査。
+- **確定した知見(即機械化)**: この端末(iOS Safari)は**長尺音声ストリームは同時1本まで**。2本目は
+  **2本目のHTMLAudioElement**でも**Web Audioバッファ連続再生**でも描画が引っかかる(ダンス~20fps=v0.25.258/274/278 / 紅き夜=peak-layer.mp3)。**短いワンショットSFXだけ同時でも無料**。
+- **peak-layerは"2本目HTMLAudio=重い"のクリーンな実証**(`?peaklayer=0`で軽い・低電力OFF)=HANDOFF_DANCE_AUDIO §3の未決(「2要素は軽い"かも"」)への答え=**重い**。
+- **重要な帰結**: 前コミットで検討した「案①=peak-layerをWeb Audioバッファへ移行」は**ダンスフロアが証明した壁(連続バッファ再生=重い)に当たるので却下**。ENGINEERING_NOTES音声節に鉄則追記(2本目を開くな/B方式ワンショット or 単一BGMへ事前ミックス)。
+- 変更: `ENGINEERING_NOTES.md`(音声節に確定知見)。恒久対策の方式は社長判断待ち(ドロップ vs B方式ワンショット)。
+
 ## v0.25.1563 — 診断: PEAK重ねBGMのOFFトグル `?peaklayer=0`(紅き夜の残る容疑=音)【2026-07-08 19:03 JST】
 - **実機の切り分け(社長)**: `?rnenemy=1&deepzone=1&glow=0`=**軽い** → 敵条件も無罪。これまでで**赤マトリクス/敵条件/glow/敵数=全て無罪**。
 - **残る紅き夜固有の常時要素**(rnenemy+deepzoneの組に含まれない差)= **peak-layer BGM**(`setPeakLayer`→`peak-layer.mp3`・1.46MB)。紅き夜開始と同時に2本目のHTMLAudioを再生=「最初から引っかかる」の唯一の未検証容疑。※dangerBias=1/cinematicも紅き夜固有だが、ハーベスト/強襲でも立つのに軽い(glow=0)ため容疑薄。
