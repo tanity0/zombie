@@ -225,20 +225,17 @@ describe('headless simulation invariants', () => {
     expect(Math.hypot(escort.x - site0.x, escort.y - site0.y)).toBeLessThanOrEqual(130 + 1);
   });
 
-  it('explosions (nonLethalBoss) cannot kill boss-types but still chip them; normal hits do kill', () => {
+  it('explosions kill boss-types normally (nonLethalBoss floor abolished v0.25.1571)', () => {
     useGameStore.getState().resetGame('warrior');
-    // ボス系: 爆発(nonLethalBoss)では HP1 で踏みとどまり死なない。
+    // 廃止(v0.25.1571・owner:廃止): 爆発(旧nonLethalBoss)もボス系を普通に倒せる。
+    // damageEnemy の nonLethalBoss 引数は互換のため残置だが、渡しても floor は効かない。
     const boss = spawnEnemyAt('jormungand', 0, 0, 0);
     useGameStore.setState({ enemies: [{ ...boss, health: 30, maxHealth: boss.maxHealth }] });
     const id = useGameStore.getState().enemies[0].id;
     const killedByBlast = useGameStore.getState().damageEnemy(id, 9999, true);
-    expect(killedByBlast).toBe(false);
-    expect(useGameStore.getState().enemies.find(e => e.id === id)?.health).toBe(1);
-    // 通常攻撃(致死可)なら同じボスを倒せる。
-    const killedNormal = useGameStore.getState().damageEnemy(id, 9999);
-    expect(killedNormal).toBe(true);
+    expect(killedByBlast).toBe(true);
     expect(useGameStore.getState().enemies.find(e => e.id === id)).toBeUndefined();
-    // 雑魚は爆発でも普通に死ぬ(nonLethalBoss はボス系だけ対象)。
+    // 雑魚は爆発でも従来どおり普通に死ぬ。
     const zomb = spawnEnemyAt('zombie', 0, 0, 0);
     useGameStore.setState({ enemies: [{ ...zomb, health: 10 }] });
     const zid = useGameStore.getState().enemies[0].id;

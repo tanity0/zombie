@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1571 — 実装: 爆発ボス即死不可を廃止 + ネームド=ボス近接フィニッシュ統一【Sonnetサブ連携】【2026-07-09 11:55 JST】
+- **① 「爆発ではボスを倒せない(HP1踏みとどまり)」仕様を廃止(社長決定:廃止)**: `damageEnemy`の`nonLethalBoss`フロア(`if(nonLethalBoss && newHealth===0 && isBossType)newHealth=1`)を撤去=爆発でもボスを普通に倒せる(爆弾ビルド解放)。※`nonLethalBoss`引数は~17箇所が渡すため互換で残置(実装側は`_nonLethalBoss`で不使用)。**ゲートの`finishKillOnly`/`clampFinishKillOnlyHealth`(§5.21-追補4)は別機構=不変**。sim.testの旧挙動アサートを新挙動(爆発でボス撃破)へ更新。
+- **② ネームド=パンプキン/ボス系と同じ近接フィニッシュに統一(社長決定)**: スタン中の敵への近接は、通常敵=即時処刑(即死)/ボス系=×5(`BOSS_MELEE_STUN_MULT`)で即死無し。**ネームドをボス側分岐に含める**=即死処刑されず×5フィニッシュで削って倒す(雑魚がネームド化しても同じ)。4武器分岐(近接/影分身/刀/鞭)を`isBossType || namedGetsBossFinish`に変更。
+  - `namedGetsBossFinish(enemy)=isNamed && !NAMED_FINISH_EXCEPT_TYPES.has(type)`。**例外タイプ集合は今は空=全ネームド統一**。特殊例外ネームドは後で個別指定(フックのみ用意)。
+  - 安全確認(Sonnet検証): 通常ネームドは`bossFullStunUntil`未定義=1回の×5で気絶解除(パンプキン/hunterと同挙動)。`bossFinishHit`経由でも二重加算なし・ネームド報酬(`resolveNamedFoeDefeat`)は`isNamed`単独判定で正常発火。`finisher:false`扱い=フィニッシュXP1.5倍は付かない(ボス系とのパリティ・意図的)。
+- 検証(設計チャット独立): **typecheck clean / npm test 589 pass・2 skip / sim.test 16 pass**。負荷 各1/10。
+- **実機で見る点**: ①爆発でボス/エリートが倒せる ②ネームド(雑魚昇格含む)が即死せず近接フィニッシュ(×5)で倒す感触。例外にしたいネームドがいれば`NAMED_FINISH_EXCEPT_TYPES`へ追加。
+
 ## v0.25.1570 — 修正: カウンター吹き飛び消失(案A)+ クリ率ペナルティ改訂(3%/ボス-10%)【Sonnetサブ×2連携】【2026-07-09 03:03 JST】
 - **① カウンターで敵が消えるバグ(案A)**: ダッシュ/ジャンプをカウンターすると強ノックバック(×3)で敵が画面外リサイクル境界を越えて着地→次フレームで`runOffscreenRecycleAndCull`にリサイクルされ「消える」。
   修正=`gameStore.ts`のノックバック・スライド分岐(~5790)で、着地位置を**リサイクル境界の内側にクランプ**(`directorTick.ts`と同じ境界計算を複製・buffer=敵サイズ)。resolveMove後に適用。**全ノックバック共通**(bash/whip/爆発/カウンター=どれも敵を画面外へ飛ばさない)。COUNTER_KNOCKBACK_SPEEDやリサイクル本体は不変。
