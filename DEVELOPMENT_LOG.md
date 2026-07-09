@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1572 — 実装: FF風「崩れ去る」死亡演出を統一+ド派手化(ネームド/城ボス/ハンター/裏ボス)【Sonnetサブ連携】【2026-07-09 14:14 JST】
+- **社長決定**: 死亡モーションを統一。FFボス風にゴゴゴと崩れ去る(裏ボスの既存演出を通しで)。対象=**ネームド+giantbat(城ボス)+ハンター(A採用)+裏ボス(mimir/jorm/skadi/thor)**。**パンプキン等の一般沸きボス系は除外**。さらに「重くならない範囲でド派手に」。
+- **実装(Sonnetサブ→設計チャット検証+git)**:
+  - 予測子 `getsDramaticDeath(enemy)=isNamed || isHiddenBoss || giantbat || hunter`(`enemyUtils.ts`)。
+  - 共通ヘルパー `triggerDramaticDeath`(`gameStore.ts`): `bossCorpse`(既存FFフェード流用)+白フラッシュ+**衝撃波リング2枚(白→敵色・pooled)**+**残骸バースト26(pooled)**+`triggerShake(2600,6)`+`triggerTimeSlow(0.35,520,90)`。**強glow不使用**。
+  - **キル時発火(消滅ではなく討伐)**: `grantMeleeKillRewards`(近接)と`damageEnemy`(銃/接触/爆発)の両経路でガード発火。ハンター/城ボスは"立ち去り"があるため消滅検知だと誤発火する→キル検知で回避。
+  - **二重発火回避**: 裏ボスコントローラの旧inline(corpse/shake/flash/SFX)を撤去し統一経路へ。`hiddenBossDefeated`/`bossChasing`/討伐バナーは残置。
+  - **SFX統一**: useGameLoopに`bossCorpse.diedAt`変化ウォッチャを追加し`boss-death`を1回再生(gameStoreはplaySfx不可のため)。
+  - **潜在バグ修正(Sonnet発見)**: `bossCorpse`のクリーンアップが`hiddenBoss`存在ステージ限定ブロック内=裏ボス無しステージで城ボス/ハンター/ネームドのcorpseが永久リークしていた→ウォッチャを常時実行へ移動して修正。
+- 検証(設計チャット独立): **typecheck clean / npm test 589 pass・2 skip**。**負荷 2/10**(全て一発・イベント時・pooled/flash/shake/slow=描画コスト極小・強glow0)。
+- ※既知の許容ケース(Sonnet報告): 稀にパンプキン/lab-zombie-3が"その回のネームド"に昇格した場合は`isNamed`経由で演出が出る(=「ネームドは出す」の仕様どおり・一般沸きパンプキンは対象外のまま)。reaperは昇格除外で常に対象外。
+- 実機で見る点: 対象ボス撃破時のゴゴゴ崩れ+リング/破片/スローの派手さと重さ(重ければリング数/破片数/スロー時間を削る)。
+
 ## v0.25.1571 — 実装: 爆発ボス即死不可を廃止 + ネームド=ボス近接フィニッシュ統一【Sonnetサブ連携】【2026-07-09 11:55 JST】
 - **① 「爆発ではボスを倒せない(HP1踏みとどまり)」仕様を廃止(社長決定:廃止)**: `damageEnemy`の`nonLethalBoss`フロア(`if(nonLethalBoss && newHealth===0 && isBossType)newHealth=1`)を撤去=爆発でもボスを普通に倒せる(爆弾ビルド解放)。※`nonLethalBoss`引数は~17箇所が渡すため互換で残置(実装側は`_nonLethalBoss`で不使用)。**ゲートの`finishKillOnly`/`clampFinishKillOnlyHealth`(§5.21-追補4)は別機構=不変**。sim.testの旧挙動アサートを新挙動(爆発でボス撃破)へ更新。
 - **② ネームド=パンプキン/ボス系と同じ近接フィニッシュに統一(社長決定)**: スタン中の敵への近接は、通常敵=即時処刑(即死)/ボス系=×5(`BOSS_MELEE_STUN_MULT`)で即死無し。**ネームドをボス側分岐に含める**=即死処刑されず×5フィニッシュで削って倒す(雑魚がネームド化しても同じ)。4武器分岐(近接/影分身/刀/鞭)を`isBossType || namedGetsBossFinish`に変更。

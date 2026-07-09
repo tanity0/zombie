@@ -36,7 +36,7 @@ import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
 } from '../utils/namedEnemy';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import { getSelectedStageId, getWallMeta, type WallMeta } from '../data/progress';
@@ -1524,6 +1524,39 @@ const spawnDeathPop = (get: () => GameState, ex: number, ey: number, fromX: numb
   get().spawnSpray(ex, ey, dx, dy, 4, ['#fef3c7', '#fde68a', '#e5e7eb']);
 };
 
+// 討伐で「FF風クランブル」統一演出(triggerDramaticDeath)を出す対象(getsDramaticDeath=ネームド/裏ボス/
+// giantbat/hunter)の、討伐後フェード表示の長さ(ms)。useGameLoop の BOSS_FADE_MS / pixiScene の
+// syncBossCorpse 内 FADE_MS と同じ値で必ず揃える(3箇所で複製・pixiScene側の既存コメントと同じ運用)。
+const DRAMATIC_DEATH_FADE_MS = 2600;
+
+// spawnRing/spawnBurst の色パーサ(pixiScene.glowTint)は 'rgba(r,g,b,...)' 形式からしか tint を
+// 抽出できない(hexは白 0xffffff にフォールバック)。getEnemyColor は hex を返すため、敵色で確実に
+// 色付けしたいリングだけこの変換を通す(spawnBurst側は既存の全呼び出しと同じくhexそのまま=挙動不変)。
+const hexToRgba = (hex: string, alpha: number): string => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+};
+
+// 「flashy unified boss death」juice機能: ネームド/裏ボス(mimir/jormungand/skadi/thor)/giantbat/hunter の
+// 討伐に共通の「FF風クランブル」演出を出す(getsDramaticDeath で判定・呼び出し元でガード済み)。
+// 近接(grantMeleeKillRewards)・銃/接触/爆発(damageEnemy)の両キル経路から、対象を倒した時に1回だけ呼ぶ。
+// SFXは含まない(gameStoreはplaySfxをimportできないため。useGameLoopがbossCorpse.diedAtの変化を監視して
+// 'boss-death'を1回鳴らす)。HARD PERF CONSTRAINT: 強glow(spawnGlow大径)は使わない=pooled sprite
+// (spawnRing/spawnBurst)とscreen-space spawnFlash/triggerShake/triggerTimeSlowのみ。
+const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: number): void => {
+  // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
+  useGameStore.setState({
+    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now() },
+  });
+  const tint = hexToRgba(getEnemyColor(enemy.type), 0.8);
+  get().spawnFlash('rgba(255,255,255,0.32)', 260);         // 白い閃光(瞬間)
+  get().spawnRing(x, y, 10, 200, 'rgba(255,255,255,0.9)', 4, 420);  // 衝撃波リング①(白・速い)
+  get().spawnRing(x, y, 6, 260, tint, 3, 560);                       // 衝撃波リング②(敵色・遅れて大きく)
+  get().spawnBurst(x, y, getEnemyColor(enemy.type), 26);             // 崩れ散る残骸
+  get().triggerShake(DRAMATIC_DEATH_FADE_MS, 6);            // 長く低いシェイク(旧・裏ボス限定=5 よりわずかに強め)
+  get().triggerTimeSlow(0.35, 520, 90);                     // 決着の一瞬をスロー
+};
+
 // KILLパンチズームの寄り先(社長指示・v0.25.1498): キルされた対象の中心座標。複数いる場合は
 // 最初の1体(配列先頭)。誰も死んでいなければ(ボス気絶ボーナス打だけ等)undefinedを返し、
 // triggerFinishImpact側で従来どおり画面中央へフォールバックする。
@@ -1558,6 +1591,8 @@ const grantMeleeKillRewards = (
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
     if (enemy.isNamed) resolveNamedFoeDefeat(get, [enemy], ex, ey); // §5.14 M13: 宿敵討伐
+    // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。近接キル経路。
+    if (getsDramaticDeath(enemy)) triggerDramaticDeath(get, enemy, ex, ey);
     if (DEATHPOP_ENABLED) spawnDeathPop(get, ex, ey, player.x + player.width / 2, player.y + player.height / 2);
     const xp = finisher
       ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
@@ -5482,6 +5517,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
     let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
+    let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
 
     set(state => {
       const { enemies, gameStats } = state;
@@ -5512,6 +5548,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         killed = true;
         if (enemy.type === 'reaper') reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
+        // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。銃/接触/爆発キル経路。
+        if (getsDramaticDeath(enemy)) dramaticDeathAt = { enemy, x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
         deathPopAt = {
           ex: enemy.x + enemy.width / 2, ey: enemy.y + enemy.height / 2,
           fromX: state.player.x + state.player.width / 2, fromY: state.player.y + state.player.height / 2,
@@ -5573,6 +5611,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (namedFoeKilled) {
       const ne = namedFoeKilled as Enemy;
       resolveNamedFoeDefeat(get, [ne], ne.x + ne.width / 2, ne.y + ne.height / 2);
+    }
+
+    // juice: FF風クランブル統一演出。銃/接触/爆発キル経路。
+    if (dramaticDeathAt) {
+      const d = dramaticDeathAt as { enemy: Enemy; x: number; y: number };
+      triggerDramaticDeath(get, d.enemy, d.x, d.y);
     }
 
     // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ。

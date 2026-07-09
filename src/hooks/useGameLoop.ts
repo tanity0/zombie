@@ -941,6 +941,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number }>(
     { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 }
   );
+  // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
+  // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
+  // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
+  const bossCorpseSfxRef = useRef(0);
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
@@ -2779,6 +2783,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // juice(flashy unified boss death): getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)の
+        // 討伐 corpse/VFX は gameStore 側(triggerDramaticDeath)が共通に出す。SFXだけは gameStore が
+        // playSfx を持てないため、ここで bossCorpse.diedAt の変化を監視して1回だけ鳴らす。corpse の
+        // 片付け(フェード終了→null)も、裏ボス未設定ステージ(城単体/洋館ステージ等)で動くよう、下の
+        // 裏ボス専用ブロック(hiddenBoss configured時のみ実行)の外(=毎フレーム常時)に置く。
+        {
+          const corpse = useGameStore.getState().bossCorpse;
+          if (corpse) {
+            if (corpse.diedAt !== bossCorpseSfxRef.current) {
+              bossCorpseSfxRef.current = corpse.diedAt;
+              playSfx('boss-death'); // 討伐(消滅)SE。長尺なのでフェードアウト付き(社長提供)
+            }
+            if (Date.now() - corpse.diedAt >= BOSS_FADE_MS) useGameStore.setState({ bossCorpse: null });
+          }
+        }
+
         // --- 裏ボス(深層域の隠しボス: ステージ1=ミーミル / ステージ3=ヨルムンガルド) ---
         // 仕様(社長指示): 深層域の指定エリアに近づくと1回だけ出現→「危険!直ちに避難を」。
         //  追跡/攻撃(3連発・全方位16発・たまにダッシュ)。画面外は巣へ戻りつつ毎秒40回復。
@@ -2795,24 +2815,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const boss = bs.bossId ? live.find(e => e.id === bs.bossId) : undefined;
 
           // 討伐検出: 出現中の裏ボスが敵配列から消えた(=プレイヤーが倒した)。自前の帰巣退場は retreating で除外。
+          // juice(flashy unified boss death): corpse/シェイク/フラッシュ/SFXは gameStore の共通キル経路
+          // (triggerDramaticDeath・grantMeleeKillRewards/damageEnemy)から統一して出すようになったので、
+          // ここでは討伐フラグとバナーだけを立てる(二重発火防止)。
           if (bs.bossId && !boss && !bs.retreating) {
             useGameStore.setState({
               bossChasing: false,
               hiddenBossDefeated: true,
-              bossCorpse: { type: hiddenBoss, x: bs.lastX, y: bs.lastY, w: bs.w, h: bs.h, diedAt: Date.now() },
               eventBannerText: `${enemyDeathLabel(hiddenBoss)}討伐!`,
               eventBannerUntil: newGameTime + 3600,
             });
-            useGameStore.getState().triggerShake(BOSS_FADE_MS, 5); // ゴゴゴゴ…と長く低い地鳴り
-            spawnFlash('rgba(255,255,255,0.25)', 320);
-            playSfx('boss-death'); // 裏ボス討伐(消滅)SE。長尺なのでフェードアウト付き(社長提供)
             bs.bossId = null;
           }
 
           if (!bs.bossId) {
-            // 討伐後のフェード期間が終わったら corpse を片付ける。
-            const corpse = useGameStore.getState().bossCorpse;
-            if (corpse && Date.now() - corpse.diedAt >= BOSS_FADE_MS) useGameStore.setState({ bossCorpse: null });
             if (useGameStore.getState().bossChasing) useGameStore.setState({ bossChasing: false });
 
             // 未出現で、固定の巣(指定エリア)へ近づいたら出現(この出撃で1回だけ)。アテンション中は重ねない。
