@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1573 — 更新情報の追記(v1554〜1572のプレイヤー向け変更を backfill)+ ゲートキーパー(城ボス)攻撃力の回答【2026-07-09 14:59 JST】
+- **社長指示①**: 「最近更新情報を更新するの忘れてる」→ `src/data/changelog.ts` に v1547 以降のプレイヤー向け変更を backfill。追加=**1554**(境界ゲート敵×5・近接フィニッシュ限定/雑魚はディレクター戻し)/**1555**(拠点解放後にゲートが出ない不具合修正)/**1556**(ゲート失敗=内側へ押し戻し+リトライ)/**1566**(PEAK打楽器重ねBGM廃止)/**1567**(瀕死心音ループ廃止)/**1568**(ステージ開始BGM遅延の修正=先読み)/**1570**(カウンター吹き飛び消失の修正+レア敵クリ率ペナルティ 青-3/紫-6/赤-9・ネームド/ボス-10・下限5%)/**1571**(爆発でボス撃破可・ネームド近接フィニッシュ統一)/**1572**(FF風崩れ去る死亡演出のド派手統一)。※純診断トグル(mine/glow/shadow/lowhp/rednight/deepzone/rnenemy)と不可視の内部軽量化(1560)は非プレイヤー向けとして除外。
+- **社長指示②(回答のみ・コード変更なし)**: 「ゲートキーパーのジャンプ攻撃力と弾の攻撃力(台本=ゲート時の強さ)」。**ゲートキーパー=城ボス`giantbat`(ゲート2ボス・ジャンプ+弾を両方持つ唯一の該当敵)**。素の`damage`=19/弾profile=10。ゲート2は`GATE2_BOSS_STRENGTH_MULT=5`を`damage`/HPに乗算=**`boss.damage`=95**。
+  - **ジャンプ攻撃力=95**: 着地爆風`pumpkinBlasts`が`damage: enemy.damage`(=95)を積む(`gameStore.ts` L6045→`combatTick.ts` L124 `damagePlayer(b.damage)`)。
+  - **弾の攻撃力=10(据え置き=×5が乗らない)**: 弾ダメは`getEnemyFireProfile.damage`(10)×`difficultyMultiplier`で算出。giantbatは固定強度型=`difficultyMultiplier=1`。ゲート×5は`enemy.damage`/HPにしか掛からず、弾ダメ経路(profile×difficultyMultiplier)には届かない=**弾は10のまま**。※接触ダメも95。紅き夜中は弾/接触が×2(弾20/接触190)だがジャンプ爆風には紅き夜倍率が乗らない実装(b.damageのみ)。
+  - **設計上の非対称を社長へ報告(仕様変更ルール順守=勝手に変えない)**: ジャンプ95に対し弾10=約9.5倍差。ゲート×5が弾に効かないのは意図か要確認。
+- 変更: `src/data/changelog.ts`(9エントリ backfill)/ `package.json`(版)/ 本ログ。検証: **typecheck**(下記)。負荷: 0/10(データ/文書のみ・実行時コスト無し)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**非抵触**(changelogデータ+ログのみ・ゲームロジック不変)。
+
 ## v0.25.1572 — 実装: FF風「崩れ去る」死亡演出を統一+ド派手化(ネームド/城ボス/ハンター/裏ボス)【Sonnetサブ連携】【2026-07-09 14:14 JST】
 - **社長決定**: 死亡モーションを統一。FFボス風にゴゴゴと崩れ去る(裏ボスの既存演出を通しで)。対象=**ネームド+giantbat(城ボス)+ハンター(A採用)+裏ボス(mimir/jorm/skadi/thor)**。**パンプキン等の一般沸きボス系は除外**。さらに「重くならない範囲でド派手に」。
 - **実装(Sonnetサブ→設計チャット検証+git)**:
