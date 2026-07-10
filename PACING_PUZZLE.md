@@ -1260,6 +1260,34 @@ M10(バランス走査)の拡張。実装前のアイデアを試せるのが肝
 
 **負荷 1/10**(数値/分岐のみ・新規描画/毎frame増なし)。**検証**: typecheck + npm test(constitution/critPenalty/finishKillOnly/gate1/gate2/sim green)。**状態**: 仕様確定・実装。
 
+### §5.21-追補8 ゲート2ボス=ミゲル(天使名ボス)本実装・バッチ1(存在+周回移動+攻撃1横払い)(社長決定v0.25.1587〜)
+**位置づけ**: §5.21 stage④で「城ボス(giantbat)仮流用・専用挙動は★別途」としていたゲート2ボスの本実装。**giantbatは城ボス(フィナーレ)として別枠で存続**。ゲートボス勢は**天使名**(裏ボス4体=北欧神話とは別系統)。1体目=**ミゲル**(内部型`miguel`・大天使ミカエル)。裏ボス級=1枚絵大型スプライト+状態機械攻撃。**攻撃は1つずつ追加**(本バッチ=横払いのみ)。参照=トール(Explore地図・useGameLoop/pixiScene)。
+
+**素材(設計チャットが焼き済み・`public/sprites`)**:
+- `miguel.png`(797×1187・透過)=本体。`BOSS_SPRITE_FIT.miguel`叩き台`{ w:0.50, h:0.20, cx:0.35, cy:0.99 }`(thor流用+足元実測・実機微調整)。
+- `miguel-sword.png`(805×3437・透過・縦=柄上/切先下)=剣(thor-katana相当)。`GRIP_FRAC{x:0.51,y:0.14}` `TIP_FRAC{x:0.47,y:1.00}`(叩き台)。intrinsic angle/blade-lenはthorと同式で算出。
+
+**存在(新裏ボス型 `miguel`)**: Explore地図§6チェックリスト全項目(型union/ENEMY_STATS/isHiddenBoss/isBossType/CONSTANT_STRENGTH_TYPES/getEnemyColor/getEnemyFireProfile=hidden chainに入れるが弾は当面未使用/preload/BOSS_SPRITE_FIT/drawEnemy block/controller)。
+- **ENEMY_STATS.miguel** 叩き台 `{ width:120, height:60, speed:70, health:2000, damage:38, experienceValue:0 }`。
+- **ステータス=城ボスの2倍(社長)**: giantbatゲート2実効=HP5000/与ダメ95。ミゲルはhidden(hpMult=1)→base health2000 ×ゲート2の`GATE2_BOSS_STRENGTH_MULT`(5)=**HP10000**、base damage38×5=**与ダメ190**=2倍。
+- **ゲート2 spawn差し替え**(useGameLoop.ts:1766 `spawnEnemyAt('giantbat',…)`→`'miguel'`)。spawn直後に`bossState='chase'`(周回)/`bossNextActionAt`/`homeX,homeY=ゲート中心(g2pcx,g2pcy)`をセット。ゲート機構(×5・出られない拘束・エリア判定OFF・恒久解除・banner)は不変で流用。
+
+**テスト用の統一起動フラグ `?gateboss=1`(社長「各ステージで使う・裏ボス方式で統一」)**:
+- ラン開始直後、そのステージのゲート2ボス型(現状stage1=`miguel`。将来はステージ設定から解決)をプレイヤー近くに1体force-spawnし、ゲート2と同じ初期化(bossState='chase'/home=生成中心/×5/fromEvent)で戦えるように。テスト用途=まず戦えればよい(拘束サークルは任意)。既定OFF=通常挙動不変。1フラグで将来のステージ別ボスにも対応。
+
+**移動(基本挙動 bossState='chase')**:
+- **ゲート枠の内側ギリギリを反時計回り(CCW)に周回**。中心=home、周回半径=`GATE_ARENA_RADIUS(300)−内側マージン`(叩き台=実効~250)。接線方向CCWへ一定速度。プレイヤー追尾しない(周回主体)。
+- **攻撃中(harai-windup/harai 等)は必ず立ち止まる**(vx=vy=0)。
+- **近接被弾で1秒間2倍速**: 近接ダメージ経路(grantMeleeKillRewards/4武器の近接分岐)で被弾enemyに`meleeHitAt=gameTime`をスタンプ→miguel制御機が`gameTime−meleeHitAt≤1000`で周回速度×2。銃/爆発では発動しない。
+
+**攻撃1=横払い(狭)**: トールのharaiを流用し範囲を狭く。
+- 状態: `chase`→`harai-windup`→`harai`→`chase`(同構造)。攻撃選択pool=当面`['harai']`のみ。次アクション間隔=thorNextActionDelay相当(叩き台)。
+- 定数(狭く): `MIGUEL_HARAI_WINDUP_MS=1000` / `RANGE`叩き台**380**(トール620) / `HALF_WIDTH`叩き台**25**(トール45) / `ACTIVE_MS=220`。
+- 判定=トールと同じ点-線分距離(aiFrom/aiTargetをプレイヤー中心の接線でロック)。当たれば`boss.damage`(190)を1回/フレーム、カウンター窓ならパリィ反射(thorCounterHit相当)。
+- 描画=windup中に赤テレグラフ線+剣「構え」ポーズ(drawThorKatanaReady相当のmiguel版)、active中に剣を振る(drawThorSlash相当=柄をミゲルの手にpin・切先がaiFrom→aiTargetを追い弧を描く)。剣=miguel-sword。**剣はモーションで振る(社長「トールの刀みたいに」)**。
+
+**受け入れ**: `?gateboss=1`でミゲル出現→CCW周回→横払い(狭)を撃つ→攻撃中は止まる→近接被弾で一瞬速く。typecheck+既存テスト green。数値(HP/ダメ/半径/狭さ/周回速度/fit/grip)全て叩き台=実機調整前提。負荷1/10(単ボス・強glow不使用・pooled/線描画)。**状態**: 仕様確定・実装(Sonnet)。攻撃2以降は追って追加。
+
 ## 5.22 バッチM21: KILL/カウンター演出の統一(爽快カーブ)(社長委任v0.25.1516)
 **課題(実測v0.25.1515)**: KILLとカウンターで演出の骨格が食い違い、しかも本命のKILLの方が命中の瞬間が
 柔らかい(逆転)。①KILLのズーム(500ms)とスロー(700ms)が別長=最大寄りが先に萎む ②KILLにフリーズ無し
