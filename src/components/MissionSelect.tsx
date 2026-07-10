@@ -34,27 +34,48 @@ interface MissionSelectProps {
 // コマのURLは idle スプライトURLの命名規則(…-idle.png → …-walk-N.png)から導出(全4クラス共通規則)。
 const MENU_WALK_PINGPONG = [0, 1, 2, 3, 4, 3, 2, 1]; // pixiScene の playerWalkSequence と同じ並び
 const MENU_WALK_CYCLE_MS = 900;                      // 同 PINGPONG_WALK_CYCLE_MS
+const MENU_WALK_DISPLAY_H = 50;                      // 旧 max-h-[50px] と同じ表示高さ
+const MENU_WALK_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('menuwalk') !== '0'; // ?menuwalk=0 で静止画へ復帰
 const menuWalkFrameSrc = (idleSrc: string, frame: number): string =>
   idleSrc.replace('-idle.png', `-walk-${frame}.png`);
+// 実機バグ修正(v0.25.1580「ガタガタずれる/つなぎがおかしい」): <img>+pixelated の非整数スケールは
+// コマごとに nearest の間引き/太りが変わって輪郭が這う。→ キャンバスへ「整数倍nearest焼き→最終フィットは
+// 平滑」の2段にして、全コマ同一の量子化=剛体的な動きにする(setStateも廃止=再レンダ0)。
 const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: number }> = ({ idleSrc, alt, nudgeY }) => {
-  const [step, setStep] = useState(0);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
-    // 全5コマを先読み(コマ切替時のチラつき防止。全コマ86×73の小PNG=無視できる量)
-    for (let f = 0; f < 5; f++) { const im = new Image(); im.src = menuWalkFrameSrc(idleSrc, f); }
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const k = Math.min(3, Math.max(1, Math.ceil((MENU_WALK_DISPLAY_H * dpr) / 73))); // 整数倍(端末密度ぶんを確保)
+    canvas.width = 86 * k;
+    canvas.height = 73 * k;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false; // 焼きは nearest(ドットの太りを全コマ均一に)
+    const imgs: HTMLImageElement[] = [];
+    for (let f = 0; f < 5; f++) { const im = new Image(); im.src = menuWalkFrameSrc(idleSrc, f); imgs.push(im); }
+    let lastStep = -1;
     const stepMs = MENU_WALK_CYCLE_MS / MENU_WALK_PINGPONG.length;
-    const iv = window.setInterval(() => {
-      setStep(Math.floor((Date.now() % MENU_WALK_CYCLE_MS) / stepMs));
-    }, stepMs / 2);
+    const draw = () => {
+      const step = Math.floor((Date.now() % MENU_WALK_CYCLE_MS) / stepMs);
+      if (step === lastStep) return;
+      const im = imgs[MENU_WALK_PINGPONG[step] ?? 0];
+      if (!im || !im.complete || im.naturalWidth === 0) return; // 未ロード中は前コマ表示のまま(チラつき防止)
+      lastStep = step;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+    };
+    draw();
+    const iv = window.setInterval(draw, stepMs / 2);
     return () => window.clearInterval(iv);
   }, [idleSrc]);
-  const frame = MENU_WALK_PINGPONG[step] ?? 0;
   return (
-    <img
-      src={menuWalkFrameSrc(idleSrc, frame)}
-      alt={alt}
-      draggable={false}
-      className="relative max-h-[50px] object-contain"
-      style={{ imageRendering: 'pixelated', transform: `translateY(${nudgeY}px) scale(1.08)`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
+    <canvas
+      ref={canvasRef}
+      aria-label={alt}
+      className="relative"
+      style={{ height: MENU_WALK_DISPLAY_H, width: 'auto', transform: `translateY(${nudgeY}px) scale(1.08)`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
     />
   );
 };
@@ -456,8 +477,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   aria-pressed={on}
                 >
                   <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: cc.accent, opacity: on ? 0.85 : 0.3 }} />
-                  {/* 選択中のクラスだけ歩きモーション(ドット絵)。非選択は従来の待機立ち絵。 */}
-                  {on ? (
+                  {/* 選択中のクラスだけ歩きモーション(ドット絵)。非選択は従来の待機立ち絵。?menuwalk=0で全静止。 */}
+                  {on && MENU_WALK_ENABLED ? (
                     <WalkingClassSprite idleSrc={cc.sprite} alt={cc.name} nudgeY={cc.portraitNudgeY} />
                   ) : (
                     <img
@@ -465,7 +486,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       alt={cc.name}
                       draggable={false}
                       className="relative max-h-[50px] object-contain"
-                      style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) scale(1)`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
+                      style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) ${on ? 'scale(1.08)' : 'scale(1)'}`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
                     />
                   )}
                   <span className={`relative mt-0.5 text-[8px] leading-none ${on ? 'text-purple-100' : 'text-white/55'}`}>{cc.name}</span>
