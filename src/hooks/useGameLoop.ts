@@ -63,6 +63,7 @@ import {
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
+import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
 import {
   createEnemyProjectile,
@@ -306,6 +307,13 @@ const TURRET_GRENADE_CHANCE = 0.10;                     // 通常弾の代わり
 const TURRET_LAUNCHER_DAMAGE = 44;                      // タレットのグレネードランチャー弾の直撃ダメージ(手榴弾とは別物)
 const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発・範囲。TODO: 実機調整(既存爆発演出を流用)
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
+// 救急鞄(first-aid-kit・通常サブウェポン): 中身(既存ammo-*/health/bombピックアップ)の払い出し条件
+// 判定は純関数(src/utils/firstAidKit.ts)。ここは投擲アーク(quick-magazineと同じ流儀)と、鞄を
+// 使い切った時の最寄り敵への投擲(5ダメージ+ノックバック)の見た目/数値のみ。数値は全て叩き台(仮値)。
+const FIRST_AID_KIT_THROW_DISTANCE = 82;      // TODO(救急鞄): quick-magazineと同値。仮値
+const FIRST_AID_KIT_THROW_MS = 360;           // TODO(救急鞄): quick-magazineと同値。仮値
+const FIRST_AID_KIT_THROW_DAMAGE = 5;         // 空鞄を最寄りの敵へ投げた時のダメージ(社長指定)
+const FIRST_AID_KIT_THROW_KNOCKBACK_MULT = 1.2; // TODO(救急鞄): 仮値(dog bite 0.8よりやや強め)
 // 発火ナイフ(通常サブウェポン): クールダウンごとに敵1体へナイフを自動投擲。命中で刺さり、
 // 単体ダメージ→2秒後に刺さった位置(敵に追従)で範囲爆発。敵を爆弾化する遅延範囲武器。
 const FIRE_KNIFE_COOLDOWN_BY_LEVEL = [0, 8000, 7000, 6000]; // Lv1=8s / Lv2=7s / Lv3=6s
@@ -4652,6 +4660,109 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const footX = subWeaponPlayer.x + subWeaponPlayer.width / 2;
             const footY = subWeaponPlayer.y + subWeaponPlayer.height;
             useGameStore.getState().spawnGroundFire(footX, footY);
+          }
+        }
+
+        // 救急鞄(first-aid-kit): レベルで開放される中身(Lv1=弾薬のみ/Lv2=+回復/Lv3=+爆弾)を、
+        // 条件成立時に既存Pickup(ammo-*/health/bomb)として1回ずつ払い出す(quick-magazineと同じ
+        // 短い投擲アークで足元付近に投げ、プレイヤーが拾うと既存の収集効果がそのまま適用される)。
+        // 開放中の中身を全て払い出し終えたら、空の鞄を最寄りの敵へ投げる(5ダメージ+ノックバック、
+        // 1ラン1回・使い切り)。判定(何を払い出すか/空になったか)は純関数
+        // computeFirstAidKitTick/isFirstAidKitEmpty(src/utils/firstAidKit.ts)に閉じており、
+        // ここはその結果を store(firstAidKitState)へ書き込み、addPickup/damageEnemyを呼ぶだけ。
+        if (
+          !inReturnCircle &&
+          subWeaponPlayer.subWeapons.includes('first-aid-kit') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'first-aid-kit')
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['first-aid-kit'] ?? 1));
+          const ammoTypesUsed = Array.from(new Set(
+            subWeaponPlayer.weapons
+              .filter(w => !w.isMelee && (w.ammoType === 'handgun' || w.ammoType === 'shotgun' || w.ammoType === 'rifle'))
+              .map(w => w.ammoType as FirstAidKitAmmoType)
+          ));
+          const kitStateNow = useGameStore.getState().firstAidKitState;
+          const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+
+          // Lv3の爆弾条件でしか使わない値なので、該当しない時は画面内敵数の走査自体をしない。
+          let onScreenEnemyCount = 0;
+          if (level >= 3 && !kitStateNow.bombDispensed) {
+            const cam = useGameStore.getState().camera;
+            onScreenEnemyCount = useGameStore.getState().enemies.reduce((n, e) => {
+              const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+              return (ex >= cam.x && ex <= cam.x + gameBounds.width && ey >= cam.y && ey <= cam.y + gameBounds.height) ? n + 1 : n;
+            }, 0);
+          }
+
+          const kitResult = computeFirstAidKitTick({
+            level,
+            ammoTypesUsed,
+            ammoHandgun: subWeaponPlayer.ammoHandgun,
+            ammoShotgun: subWeaponPlayer.ammoShotgun,
+            ammoRifle: subWeaponPlayer.ammoRifle,
+            health: subWeaponPlayer.health,
+            maxHealth: subWeaponPlayer.maxHealth,
+            onScreenEnemyCount,
+            state: kitStateNow,
+          });
+
+          if (kitResult.dispense) {
+            useGameStore.getState().setFirstAidKitState(kitResult.nextState);
+            const dir = safeThrowDirection(
+              pcx, pcy,
+              useGameStore.getState().enemies,
+              subWeaponPlayer.lastDirection ?? { x: 1, y: 0 },
+            );
+            const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+            const px = pcx + (dir.x / dirMag) * FIRST_AID_KIT_THROW_DISTANCE;
+            const py = pcy + (dir.y / dirMag) * FIRST_AID_KIT_THROW_DISTANCE;
+            const fromX = pcx - 8;
+            const fromY = pcy - 8;
+            addPickup({
+              id: `pickup-first-aid-kit-${kitResult.dispense}-${Date.now()}`,
+              x: px - 8,
+              y: py - 8,
+              type: kitResult.dispense,
+              value: 0,
+              throwFromX: fromX,
+              throwFromY: fromY,
+              throwStartAt: Date.now(),
+              throwDuration: FIRST_AID_KIT_THROW_MS
+            });
+            spawnRing(fromX + 8, fromY + 8, 4, 18, 'rgba(226,232,240,0.72)', 2, 220);
+            spawnRing(px, py, 4, 22, 'rgba(226,232,240,0.7)', 2, 260);
+            spawnBurst(px, py, '#e2e8f0', 6);
+          }
+
+          // 中身を払い出し切っていたら(=鞄が空)、空の鞄を最寄りの敵へ投げる。ターゲットが画面に
+          // 居ないフレームでは thrown を確定させず、敵が現れたフレームで改めて実行する。
+          const kitStateAfterDispense = kitResult.dispense ? kitResult.nextState : kitStateNow;
+          if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level, ammoTypesUsed)) {
+            const target = useGameStore.getState().enemies
+              .filter(e => e.type !== 'reaper' || e.reaperChaser)
+              .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
+              .sort((a, b) => a.dist - b.dist)[0]?.enemy;
+            if (target) {
+              const tx = target.x + target.width / 2;
+              const ty = target.y + target.height / 2;
+              const killed = damageEnemy(target.id, FIRST_AID_KIT_THROW_DAMAGE);
+              spawnDamageNumber(tx, target.y, FIRST_AID_KIT_THROW_DAMAGE, false);
+              // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/reaper/裏ボス)はノックバック無効(シールドと同じ慣例)。
+              const knockbackImmune = target.type === 'giantbat' || target.type === 'pumpkin'
+                || target.type === 'reaper' || isHiddenBoss(target.type);
+              if (!killed && !knockbackImmune) {
+                const n = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
+                useGameStore.getState().knockbackEnemy(target.id, (tx - pcx) / n, (ty - pcy) / n, FIRST_AID_KIT_THROW_KNOCKBACK_MULT);
+              }
+              spawnBurst(tx, ty, '#e2e8f0', 10);
+              spawnRing(tx, ty, 3, 26, 'rgba(226,232,240,0.75)', 2, 260);
+              if (killed) {
+                playEnemyDeath();
+                dropEnemyXp(target, tx, ty, `pickup-xp-first-aid-kit-${Date.now()}`);
+              }
+              useGameStore.getState().setFirstAidKitState({ ...kitStateAfterDispense, thrown: true });
+            }
           }
         }
 

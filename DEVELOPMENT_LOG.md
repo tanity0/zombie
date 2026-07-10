@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1608 — 追加: 新サブウェポン「救急鞄(first-aid-kit)」=条件で既存ピックアップを払い出し、空鞄を投げる【2026-07-11 03:53 JST】
+- **社長指示**: 各種弾薬・回復・爆弾を1ゲーム1回ずつ、条件で払い出す。**既存ピックアップを流用(新規作らない)**。Lv1=弾/Lv2=+回復/Lv3=+爆弾。全部出し切ったら空鞄を最寄り敵へ投擲=**5ダメージ+ノックバック**(免疫敵は例外)。
+- **実装**(Sonnet): `SubWeaponKey 'first-aid-kit'`(一般枠)。純関数 `firstAidKit.ts`(`computeFirstAidKitTick`=今フレーム何を払い出すか・`isFirstAidKitEmpty`=空判定)+ユニット17。払い出し=**既存 `ammo-<type>`/`health`/`bomb` ピックアップを `addPickup`**(quick-mag同型の投げアーク・投げ先は`safeThrowDirection`で敵の薄い側)。条件: ammoは使用中弾種のリザーブが0 / healはHP<50% / bombは画面内敵≥5、各**1ラン1回**。空になったら最寄り敵(非チェイサーreaper除く)へ**5ダメージ+ノックバック**(giantbat/pumpkin/reaper/裏ボスは弾かない=シールドの慣例)。`firstAidKitState`はinit/resetGame両方でリセット。ピックアップ量は既存(ammo=`AMMO_PICKUP`・heal=`maxHealth×HEAL_FRACTION`)=value非依存で正常。
+- 検証: **typecheck clean / vitest related 91 pass・2 skip**。負荷 **1/10**。
+- **★実装判断(要確認)**: ①`ammo-phill`は対象外(研究所専用) ②画面内=camera+gameBounds厳密AABB(最大引き時に枠外の見えてる敵は数えない=ズーム余白なし) ③画面内カウントにボス含む ④1フレーム最大1個(優先=弾>回復>爆弾) ⑤空鞄投げは**即着弾(専用スプライト/SEなし・burst/ring演出のみ)** ⑥ノックバック倍率1.2 ⑦帰還サークル内でも作動(他の設置サブは停止するが、救急=自己回復系なので停止させていない)。
+
 ## v0.25.1607 — 追加: 新スキル「救難信号(rescue-signal)」=近接ヒット時、確率で味方が飛来し必中1撃【2026-07-11 03:34 JST】
 - **社長指示**: 近接攻撃ヒット時、確率で味方が援護近接。影(分身)と違い**必中・ランダム・倍率1**の単純な戦力アップ。選んでいないキャラが後ろから高速飛来→ナイフ→飛び去る。**発動でズーム演出**。確率効果なので**サブではなくスキル枠**。proc%は今後タレット相当へ調整。
 - **実装**(Sonnet): `SkillKey 'rescue-signal'` + `RescueAlly`型。純関数 `src/utils/rescueSignal.ts`(proc率/対象選定=ヒット敵→死亡なら最寄り生存/クラス選定=別クラス)+ユニット12。`gameStore`: `applyRescueSignalProc`(近接スイングのヒットで**1スイング1回**判定)+ `spawnRescueAlly`/`tickRescueAllies`(着弾フレームで**必中`damageEnemy`=倍率1フラット**・crit/コンボ/skillMult非適用=分身との差別化)。ズーム=`triggerZoom`直叩き(`triggerHitImpact`はtimeSlow内包のため不使用=**スロー無し**・CLAUDE.md順守)。`pixiScene`: 飛来アライをプールsprite描画(`playerTextureName`/`playerBaseScale`を`{...player,characterClass:klass}`で流用=クラス→スプライトの命名トラップを手書きしない)。init/resetGame両方でreset。

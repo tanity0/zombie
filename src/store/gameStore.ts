@@ -12,6 +12,7 @@ import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE,
   isEnemyInGroundFire,
 } from '../utils/molotov';
+import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -1480,6 +1481,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'sage-stone': return '賢者の石';
     case 'shadow-clone': return '分身';
     case 'molotov': return '火炎瓶';
+    case 'first-aid-kit': return '救急鞄';
     default: return 'サブウェポン';
   }
 };
@@ -2098,6 +2100,11 @@ interface GameState {
   spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
 
+  // 救急鞄(first-aid-kit)サブウェポン。中身(弾薬/回復/爆弾)の払い出し済みフラグ+鞄投擲済みフラグ
+  // (1ラン限り)。判定自体は src/utils/firstAidKit.ts(純関数)、ここは状態の保持のみ。
+  firstAidKitState: FirstAidKitState;
+  setFirstAidKitState: (state: FirstAidKitState) => void; // useGameLoop が computeFirstAidKitTick の結果を反映するだけ
+
   // スキル「救難信号」。近接ヒット時(triggerCounter)に発動判定した結果をここで一体生成する。
   // rescueAllies の state 宣言自体は上(groundFires近く)にまとめてある。
   spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number) => void;
@@ -2502,6 +2509,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   homingLocks: [],
   shadowClone: null,
   molotovCycle: null,
+  firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -4024,6 +4032,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 火炎瓶(molotov): 判定(いつ・何本)は useGameLoop が computeMolotovTick(純関数)で決め、
   // ここは結果を state へ書き込むだけ。
   setMolotovCycle: (cycle) => set({ molotovCycle: cycle }),
+
+  // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
+  // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
+  setFirstAidKitState: (state) => set({ firstAidKitState: state }),
 
   spawnGroundFire: (x, y) => {
     set(state => ({
@@ -9090,6 +9102,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         groundFires: [],
         rescueAllies: [],
         molotovCycle: null,
+        firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
