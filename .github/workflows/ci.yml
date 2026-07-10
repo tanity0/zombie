@@ -2,9 +2,10 @@ name: CI
 
 # 静的検査(lint / 型 / build)とユニットテスト(vitest)を push と PR で回す。
 # デプロイ(pages.yml)とは独立。ここが緑であることをマージ前ゲートにする想定。
+# pull_request トリガーは撤去(v0.25.1583): 開発ブランチにPRが開いていると push と pull_request で
+# 同じコミットのCIが2本走り、赤の時は失敗メールも2倍飛ぶため。push だけで全ブランチをカバーする。
 on:
   push:
-  pull_request:
 
 # 同一ブランチの古い実行は新しい push が来たらキャンセル(無駄な並走を防ぐ)。
 concurrency:

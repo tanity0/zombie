@@ -12,6 +12,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1583 — 修正: CI毎push失敗→GitHub失敗メール連発の解消(lint規約+二重起動撤去)【2026-07-10 17:35 JST】
+- **社長報告**: 「毎回githubからメールくるのうざい」→ 調査: **CIがv1571以降の全pushで失敗**(=失敗通知メール)、
+  しかも**1pushにつきCIが2本**(push+pull_requestの二重トリガー・開発ブランチにPRが開いているため)=メール2倍。
+- **原因①(赤の犯人)**: v1571で互換のため残した`damageEnemy`の`_nonLethalBoss`引数が
+  `@typescript-eslint/no-unused-vars`(既定設定)に引っかかりlintエラー。ローカルはtypecheckのみ運用(社長決定
+  v0.25.1528)のため気づかず、CI(フル)だけが赤かった。
+- **修正①**: eslint設定に**`_`接頭辞=意図的未使用の標準規約**を追加(`argsIgnorePattern`/`varsIgnorePattern`/
+  `caughtErrorsIgnorePattern: '^_'`)。→ **lint 0エラー**(warning7件は落とさない)。コード側は不変。
+- **修正②**: ci.ymlの`pull_request:`トリガー撤去=pushのみに(同一コミット2本走り解消)。カバレッジは不変
+  (全ブランチpushで走る)。
+- 検証: lint 0 errors / typecheck clean。**このpushからCIが緑=失敗メールは止まる見込み**(緑化直後に
+  「fixed」通知が1通来ることがある)。それでも通知を減らしたければ GitHub側設定(Settings→Notifications→
+  Actions)で失敗通知自体を切れる(任意)。
+
 ## v0.25.1582 — 修正: マークスマン/ヘビーガンナー歩行の「顔の左右揺れすぎ」を抑制(素材の頭位置合わせ)【2026-07-10 17:29 JST】
 - **社長指示**: 「頭というか顔かな、左右に揺れすぎ。ストライカーくらいの揺れにして」。
 - **計測**(頭重心xの振れ幅・86×73素材): magnum **2.9px**(頭胴足が体ごと横揺れ)/shotgun **1.8px**/scavenger(=ストライカー) **1.2px**=目標。
