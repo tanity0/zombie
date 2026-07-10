@@ -1073,6 +1073,15 @@ export const JUICE_MIN_FLASH_MS = 80;
 // keep 0.3s so they curve into turns instead of snapping.
 export const PLAYER_INERTIA_TAU = 0;
 export const ENEMY_INERTIA_TAU = 0.3;
+// 社長指示(v0.25.1585): 慣性を「その瞬間の実効速度が速い敵ほど強く」する。実効速度=素の速度
+// ×紅き夜(×2)×叫喚バフ(×1.2)×ゾンビラッシュ 等=いま実際に動いている速さ。基準速度
+// INERTIA_SPEED_REF で慣性=ENEMY_INERTIA_TAU、それより速いほど tau を線形に増やす(上限
+// MAX_MULT倍=紅き夜等で超高速になっても旋回不能にはしない)。基準以下は据え置き(下限=1倍=
+// 遅い敵の身軽さは変えない)。→ 死神(最速)は常時重い/紅き夜で速くなった敵はその間だけ重くなる。
+const INERTIA_SPEED_REF = 55;          // この実効速度で慣性=基準(bat等の通常速度あたり=enemy.speed済み単位)
+const INERTIA_SPEED_MAX_MULT = 2.0;    // 慣性倍率の上限(tau上限=0.6s)
+const inertiaTauForSpeed = (effSpeed: number): number =>
+  ENEMY_INERTIA_TAU * Math.max(1, Math.min(INERTIA_SPEED_MAX_MULT, effSpeed / INERTIA_SPEED_REF));
 // 照準サークル(=PHILL弾/アンカーの狙い)の慣性。向き/距離の変化に少し遅れて追従(秒)。
 // 値を上げるほどサークルがゆっくり動く(社長指示でさらにゆっくりに 0.10→0.20)。
 export const AIM_INERTIA_TAU = 0.28; // 照準サークルの追従(大きいほど遅い)。気持ち速く(0.34→0.28)
@@ -6188,7 +6197,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const by = ty + ry * radialW;
           const bl = Math.max(0.001, Math.hypot(bx, by));
           const gtvx = (bx / bl) * speed, gtvy = (by / bl) * speed;
-          const ga = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
+          const ga = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
           const gvx = (enemy.vx ?? gtvx) + (gtvx - (enemy.vx ?? gtvx)) * ga;
           const gvy = (enemy.vy ?? gtvy) + (gtvy - (enemy.vy ?? gtvy)) * ga;
           const gmoved = resolveMove(enemy.x + gvx * deltaTime, enemy.y + gvy * deltaTime);
@@ -6243,14 +6252,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           const bx = rx * radialW + tx * 0.5, by = ry * radialW + ty * 0.5;
           const bl = Math.max(0.001, Math.hypot(bx, by));
           const stvx = (bx / bl) * speed, stvy = (by / bl) * speed;
-          const sa = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
+          const sa = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
           const svx = (enemy.vx ?? stvx) + (stvx - (enemy.vx ?? stvx)) * sa;
           const svy = (enemy.vy ?? stvy) + (stvy - (enemy.vy ?? stvy)) * sa;
           const smoved = resolveMove(enemy.x + svx * deltaTime, enemy.y + svy * deltaTime);
           return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y, screamNextAt: nextScream };
         }
 
-        const alpha = inertiaAlpha(deltaTime, ENEMY_INERTIA_TAU);
+        const alpha = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
         const vx = (enemy.vx ?? tvx) + (tvx - (enemy.vx ?? tvx)) * alpha;
         const vy = (enemy.vy ?? tvy) + (tvy - (enemy.vy ?? tvy)) * alpha;
 

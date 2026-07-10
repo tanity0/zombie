@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1585',
+    items: [
+      '敵の慣性を「速い敵ほど重い」に変更。死神は常に大回り気味に、紅き月などで速くなった敵はその間だけ旋回が重くなる(遅い敵は今までどおり身軽)。',
+    ],
+  },
+  {
     version: '0.25.1584',
     items: [
       'マークスマンの歩きモーションを新しいイラストに差し替え。',
