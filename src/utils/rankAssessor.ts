@@ -262,3 +262,48 @@ export const finalizeKomaAssessmentInput = (acc: KomaAccumulatorState, maxHealth
     starveRatio: acc.belowTargetMsThisKoma / dur,
   };
 };
+
+// ---- §5.17-追補(M18で実装): 昇格度スコア(惜しさ指標の差し替え) --------------------------
+// 旧「あと1昇格だった」(常に真=情報量ゼロ)の代わりに、既存の昇格判定式(assessKomaDelta)を
+// 「ライン=100」へ正規化した連続指標で見せる。**判定バランスは変えない=表示の翻訳のみ**
+// (assessKomaDeltaの数値・分岐は一切変更しない。このセクションは読むだけの純関数)。
+export type PromotionBottleneck = 'damage' | 'throughput' | 'starve';
+
+export interface PromotionScoreResult {
+  total: number;       // 0..PROMOTION_DISPLAY_CAP にクランプした表示用の総合昇格度
+  damage: number;       // 被ダメスコア(クランプ前)
+  throughput: number;   // 処理スコア(capReached時のみ有効・非到達時は0)
+  starve: number;       // 速刈りスコア
+  bottleneck: PromotionBottleneck; // 総合を決めている(=足を引っ張っている)項目
+}
+
+// 表示の頭打ち(社長承認v0.25.1508: 「上限は120程度で頭打ち表示」)。
+export const PROMOTION_DISPLAY_CAP = 120;
+
+export const PROMOTION_BOTTLENECK_LABEL: Record<PromotionBottleneck, string> = {
+  damage: '被ダメ',
+  throughput: '処理',
+  starve: '速刈り',
+};
+
+// 正規化式(PACING_PUZZLE.md §5.17-追補の表と1対1):
+//   被ダメスコア = 100 × (0.60 − dmgRatio) ÷ 0.25   (0=降格ライン60%被弾 / 100=昇格ライン35%)
+//   処理スコア   = 100 × perfAvg ÷ 0.45              (capReached時のみ有効)
+//   速刈りスコア = 100 × starveRatio ÷ 0.4
+//   総合         = min(被ダメ, max(capReached ? 処理 : 0, 速刈り))
+// これは assessKomaDelta の「dmgRatio<0.35 ∧ ((capReached∧perfAvg>=0.45) ∨ starveRatio>=0.4)」と
+// 「総合>=100 ⇔ 昇格」でほぼ等価(dmgRatio=0.35ちょうどの境界のみ、assessKomaDeltaの厳密な
+// `<` と本式の `>=100`(=dmgRatio<=0.35)がズレる。降格側(intensAvg>=0.85/dmgRatio>=0.60)は
+// 「昇格度」に混ぜない=本関数は読まない(§5.17-追補: 意味が濁るため)。
+export const promotionScore = (input: KomaAssessmentInput): PromotionScoreResult => {
+  const damage = Math.max(0, 100 * (0.60 - input.dmgRatio) / 0.25);
+  const throughput = Math.max(0, input.capReached ? 100 * input.perfAvg / 0.45 : 0);
+  const starve = Math.max(0, 100 * input.starveRatio / 0.4);
+  const route = Math.max(throughput, starve);
+  const totalRaw = Math.min(damage, route);
+  const bottleneck: PromotionBottleneck = damage <= route ? 'damage' : (throughput >= starve ? 'throughput' : 'starve');
+  return {
+    total: Math.max(0, Math.min(PROMOTION_DISPLAY_CAP, totalRaw)),
+    damage, throughput, starve, bottleneck,
+  };
+};

@@ -6,6 +6,7 @@ import {
   createSoftenState, stepSoften, SOFTEN_RELEASE_NO_HIT_MS,
   BASE_CAP, R7_CAP_MIN, R7_CAP_MAX, R7_CAP_STEP, RAMP_INTERVAL_NORMAL_MS, RAMP_INTERVAL_TIGHT_MS,
   RAMP_NO_HIT_HOLD_MS, TIGHTEN_NO_HIT_MS, TIGHTEN_STARVE_MS, clampRank,
+  promotionScore,
   type KomaAssessmentInput,
 } from './rankAssessor';
 
@@ -297,5 +298,58 @@ describe('M6 §3-D改訂: stepSoften(全コマ常時の「多少緩め」検知)
     s = stepSoften(s, { ...calm, dmgFracThisFrame: 0.2, msSinceLastHit: 0 });
     for (let i = 0; i < 11; i++) s = stepSoften(s, { ...calm, msSinceLastHit: 500 }); // ずっと直近被弾扱い
     expect(s.softened).toBe(true);
+  });
+});
+
+// PACING_PUZZLE.md §5.17-追補/§5.19 バッチM18: 昇格度スコア(惜しさ指標の差し替え)。
+// 「判定バランスは1ミリも変えない=表示の翻訳のみ」の裏付けとして、既存の assessKomaDelta と
+// 「total>=100 ⇔ +1判定」で等価であることを格子全域で確認する。
+describe('promotionScore', () => {
+  // intensAvgは降格側専用のシグナルでpromotionScoreは読まない(§5.17-追補: 意味が濁るため混ぜない)。
+  // 等価性は「昇格度で見せる範囲」= intensAvg<0.85(降格級でない)に限定して検証する。
+  const INTENS_AVG_SAFE = 0;
+  // dmgRatioは0.35をちょうど跨ぐ点だけ assessKomaDelta の厳密な `<0.35` と
+  // promotionScore の `>=100`(dmgRatio<=0.35 相当)がズレ得るため、グリッドは0.35を避ける。
+  const DMG_RATIOS = [0, 0.05, 0.1, 0.15, 0.2, 0.275, 0.325, 0.375, 0.425, 0.5, 0.6, 0.7, 0.85, 1];
+  const PERF_AVGS = [0, 0.2, 0.44, 0.45, 0.46, 0.6, 1];
+  const STARVE_RATIOS = [0, 0.2, 0.39, 0.4, 0.41, 0.7, 1];
+  const CAP_REACHED = [true, false];
+
+  it('total>=100 ⇔ assessKomaDelta==+1 across the full grid (intensAvg fixed below the demote line)', () => {
+    let checked = 0;
+    for (const dmgRatio of DMG_RATIOS) {
+      for (const perfAvg of PERF_AVGS) {
+        for (const starveRatio of STARVE_RATIOS) {
+          for (const capReached of CAP_REACHED) {
+            const input: KomaAssessmentInput = { capReached, perfAvg, intensAvg: INTENS_AVG_SAFE, dmgRatio, starveRatio };
+            const delta = assessKomaDelta(input);
+            const { total } = promotionScore(input);
+            expect(total >= 100).toBe(delta === 1);
+            checked++;
+          }
+        }
+      }
+    }
+    expect(checked).toBe(DMG_RATIOS.length * PERF_AVGS.length * STARVE_RATIOS.length * CAP_REACHED.length);
+  });
+
+  it('names the smallest gating item as the bottleneck (damage-limited example)', () => {
+    // dmgRatio=0.5 → 被ダメスコア=40。processing/starveが共に満点でも被ダメが足を引っ張る。
+    const r = promotionScore({ capReached: true, perfAvg: 1, intensAvg: 0, dmgRatio: 0.5, starveRatio: 1 });
+    expect(r.bottleneck).toBe('damage');
+    expect(Math.round(r.total)).toBe(40);
+  });
+
+  it('names throughput/starve as the bottleneck when damage is not the limiter', () => {
+    // dmgRatioが十分低く(被ダメスコア=100超)、processing側だけが未達。
+    const r = promotionScore({ capReached: false, perfAvg: 1, intensAvg: 0, dmgRatio: 0, starveRatio: 0.2 });
+    expect(r.bottleneck).toBe('starve'); // capReached=falseなのでthroughputは常に0
+  });
+
+  it('clamps the display total at 0 and at PROMOTION_DISPLAY_CAP', () => {
+    const zero = promotionScore({ capReached: false, perfAvg: 0, intensAvg: 0, dmgRatio: 1, starveRatio: 0 });
+    expect(zero.total).toBe(0);
+    const capped = promotionScore({ capReached: true, perfAvg: 1, intensAvg: 0, dmgRatio: 0, starveRatio: 1 });
+    expect(capped.total).toBeLessThanOrEqual(120);
   });
 });

@@ -41,6 +41,7 @@ import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import { getSelectedStageId, getWallMeta, type WallMeta } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
+import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
 import { recordKill, recordSpawn } from '../utils/killTelemetryState';
 import { getPityDropTuning } from '../utils/pityState';
@@ -2201,6 +2202,10 @@ interface GameState {
   wallBandColor: 'white' | 'gold';                        // 帯の色(白=深さ予告/金=宿敵出現)
   wallEventQueue: WallInscriptionEvent[];                 // 大格=銘打ちの再生キュー(先頭のみ表示)
   wallEventSeq: number;                                  // キューitemのid採番用
+  // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)表示用。直近に完了した「通常」コマの
+  // 査定入力スナップショット(directorTick.tsがコマ切替の度に書き換える)。死亡リザルトが1回だけ
+  // 読んでpromotionScore()に渡す(rankAssessor.ts)。負荷0/10(読むだけ)。
+  lastKomaAssessmentInput: KomaAssessmentInput | null;
   // 屋内(研究施設)ステージ
   indoorMode: boolean;                                  // 屋内マップ(壁/カメラクランプ/湧き抑制)有効か
   labDoors: LabDoor[];                                  // 可変ドア(解錠状態)
@@ -2462,6 +2467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   wallBandColor: 'white',
   wallEventQueue: [],
   wallEventSeq: 0,
+  lastKomaAssessmentInput: null,
   indoorMode: false,
   labDoors: [],
   labButtons: [],
@@ -8637,6 +8643,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       wallBandText: '',
       wallBandUntil: 0,
       wallEventQueue: [],
+      lastKomaAssessmentInput: null,
     });
     state.enemies.forEach(e => tagRemove(e.id, 'reset')); // 消失ログ用: リスタートで全敵クリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
-import { calculateResultScore } from '../utils/resultScoring';
+import { calculateResultScore, topScoreItem } from '../utils/resultScoring';
 import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equipScrapGold } from '../data/equipment';
@@ -10,7 +10,7 @@ import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 import { getSelectedStageId, submitStageHighScore } from '../data/progress';
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
-import { clampRank } from '../utils/rankAssessor';
+import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import {
   wallAchievementHeadline, metersToNextWall, isOneRankAwayFromNext, nextRankName, WALL_RANK_NAMES,
 } from '../utils/wallProgress';
@@ -22,6 +22,10 @@ const WALL_METER_SCALE_MAX = AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1] + 1000;
 // AIディレクター振り返り(緊張曲線+難易度スコア+ランク階段)。v0.25.1374(社長指示)から
 // リザルトに常時表示(記録側DIRECTOR_ACTIVEは元々既定ON)。?director=0で記録ごと非表示。
 const directorEnabled = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('director') !== '0';
+
+// PACING_PUZZLE.md §5.19 バッチM18: リザルト画面の整理(3層化)。復帰フラグ=?resultclassic=1で
+// 旧レイアウト(整理前)を全体表示。安全弁のため旧JSXは削除せずこのフラグの下に残す。
+const resultClassicMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('resultclassic') === '1';
 
 interface GameOverScreenProps {
   stats: GameStats;
@@ -83,6 +87,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   benchmarkResult = null
 }) => {
   const [benchmarkCopyState, setBenchmarkCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  // PACING_PUZZLE.md §5.19 M18④: スコア内訳とAIディレクターは別々の開閉(独立トグル2つ・ローカルuseState)。
+  const [scoreDetailOpen, setScoreDetailOpen] = useState(false);
+  const [directorOpen, setDirectorOpen] = useState(false);
   // 研究所(ラボ)ステージか。speedBonus はラボ勝利のみ。stageTheme は勝利後も保持される
   // (ステージ2は屋外ラボ=indoorMode は false なので theme で判定する)。
   const isLab = useGameStore(s => s.stageTheme === 'lab');
@@ -94,6 +101,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const namedFoeResult = useGameStore(s => s.namedFoeResult);
   // PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁(深さ×ランク)。ステージ毎の自己最深/自己最高ランク。
   const wallMeta = useGameStore(s => s.wallMeta);
+  // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)。直近に完了した「通常」コマのスナップショット
+  // (コマ切替の度にしか変わらないので毎フレーム購読ではない・静的画面のReact規律に抵触しない)。
+  const lastKomaAssessmentInput = useGameStore(s => s.lastKomaAssessmentInput);
   // クリア時の「装備1個持ち帰り」選択。装備ロードアウト(静的画面なので安定参照)。
   const carriedLoadout = useGameStore(s => s.player.equipment);
   const takeHomeEquipment = useGameStore(s => s.takeHomeEquipment);
@@ -155,6 +165,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const wallMetersToNext = metersToNextWall(stats.maxDepthDist);
   const wallNextRank = isOneRankAwayFromNext(wallHighestRank) ? nextRankName(wallHighestRank) : null;
   const wallMeterPct = (d: number) => Math.max(0, Math.min(100, (d / WALL_METER_SCALE_MAX) * 100));
+  // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)。死亡時のみ・スナップショットがある時だけ。
+  // ★未決事項(PACING_PUZZLE.md参照): 「総合が低い時はランク行を出さない」の閾値が未定義のため、
+  // 現状は閾値を設けず常に表示する(暫定)。
+  const promotion = (isDeathRun && lastKomaAssessmentInput) ? promotionScore(lastKomaAssessmentInput) : null;
   const statsItems = [
     { label: '生存時間', value: formatTime(stats.timeAlive) },
     { label: '撃破', value: stats.enemiesKilled },
@@ -180,6 +194,21 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     ...(speedBonus > 0 ? [{ label: '残り時間', value: speedBonus }] : []),
     ...(clearBonus > 0 ? [{ label: 'クリアボーナス', value: clearBonus }] : [])
   ];
+  // PACING_PUZZLE.md §5.19 M18②: 「一番効いた項目」= scoreItems の argmax(同点は先勝ち)。
+  const topScoreItemResult = topScoreItem(scoreItems);
+  // §5.19 M18③: RESULTグリッドの要点4つ / 詳細▾へ回す残り。
+  const resultCoreItems = [
+    { label: '生存時間', value: formatTime(stats.timeAlive) },
+    { label: '撃破', value: stats.enemiesKilled },
+    { label: 'Lv', value: stats.maxLevel },
+    { label: '最大コンボ', value: stats.maxCombo },
+  ];
+  const resultDetailItems = [
+    { label: '与ダメ', value: Math.ceil(stats.damageDealt) },
+    { label: 'トレジャー', value: stats.treasuresCollected },
+    { label: 'スクラップ残', value: remainingStraps },
+  ];
+  const showLostEquipmentBox = isDeathRun && hadEquipment;
   const isBenchmark = benchmarkResult !== null;
   const safeBenchmarkStage = benchmarkResult?.stages.filter(stage => stage.grade === 'PASS').at(-1);
   const stoppedBenchmarkStage = benchmarkResult?.stages.find(stage => stage.grade !== 'PASS');
@@ -215,38 +244,105 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '装備を持って撤収した'}
             </p>
           )}
-          {!isBenchmark && (
-            <div className="mt-2">
-              <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
-                <span className="text-white/95">{wallHeadline}</span>
-              </p>
-              <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
-              <p className="mt-1 text-[10px] text-white/50">
-                {AREA_ZONE_NAMES[stats.maxAreaReached]} × {WALL_RANK_NAMES[wallHighestRank]}
-              </p>
-            </div>
-          )}
-          {!isBenchmark && !won && !withdraw && deathCause && (
-            <p className="mt-2 text-[12px] text-white/70">
-              死因：<span className="font-semibold text-rose-200">{deathCause}</span>
-            </p>
-          )}
-          {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
-          {!isBenchmark && !won && !withdraw && (wallMetersToNext !== null || wallNextRank) && (
-            <p className="mt-1 text-[11px] text-white/60">
-              {wallMetersToNext !== null && (
-                <>次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m</>
+          {resultClassicMode ? (
+            <>
+              {!isBenchmark && (
+                <div className="mt-2">
+                  <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+                    <span className="text-white/95">{wallHeadline}</span>
+                  </p>
+                  <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
+                  <p className="mt-1 text-[10px] text-white/50">
+                    {AREA_ZONE_NAMES[stats.maxAreaReached]} × {WALL_RANK_NAMES[wallHighestRank]}
+                  </p>
+                </div>
               )}
-              {wallMetersToNext !== null && wallNextRank && ' / '}
-              {wallNextRank && (
-                <><span className="font-semibold text-rose-300">{wallNextRank}</span> まで あと1昇格だった</>
+              {!isBenchmark && !won && !withdraw && deathCause && (
+                <p className="mt-2 text-[12px] text-white/70">
+                  死因：<span className="font-semibold text-rose-200">{deathCause}</span>
+                </p>
               )}
-            </p>
-          )}
-          {!isBenchmark && namedFoeResult && (
-            <p className="mt-1 text-[12px] font-semibold text-amber-300">
-              宿敵 {namedFoeResult.name}：{namedFoeResult.defeated ? '討伐' : '取り逃がし'}
-            </p>
+              {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
+              {!isBenchmark && !won && !withdraw && (wallMetersToNext !== null || wallNextRank) && (
+                <p className="mt-1 text-[11px] text-white/60">
+                  {wallMetersToNext !== null && (
+                    <>次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m</>
+                  )}
+                  {wallMetersToNext !== null && wallNextRank && ' / '}
+                  {wallNextRank && (
+                    <><span className="font-semibold text-rose-300">{wallNextRank}</span> まで あと1昇格だった</>
+                  )}
+                </p>
+              )}
+              {!isBenchmark && namedFoeResult && (
+                <p className="mt-1 text-[12px] font-semibold text-amber-300">
+                  宿敵 {namedFoeResult.name}：{namedFoeResult.defeated ? '討伐' : '取り逃がし'}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              {/* PACING_PUZZLE.md §5.19 M18①: 到達譜を1ヒーロー枠に統合(見出し+深度メーター+
+                  自己最深+宿敵行+昇格度)。旧・小字/RESULT最深到達/メーター内到達ランク・最深区域行は削除。 */}
+              {!isBenchmark && (
+                <div className="mt-2">
+                  <p className="text-[15px] font-semibold tracking-wide" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+                    <span className="text-white/95">{wallHeadline}</span>
+                  </p>
+                  <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
+                  <div className="mt-2.5 flex items-center gap-3 text-left">
+                    <div className="relative shrink-0" style={{ width: 14, height: 96 }}>
+                      <div className="absolute inset-x-0 bottom-0 top-0 rounded-full bg-white/10" />
+                      <div
+                        className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-sky-300/70 to-amber-200/80"
+                        style={{ height: `${wallMeterPct(stats.maxDepthDist)}%` }}
+                      />
+                      {AREA_THRESHOLDS.map(t => (
+                        <div key={t} className="absolute inset-x-[-3px] h-px bg-white/40" style={{ bottom: `${wallMeterPct(t)}%` }} />
+                      ))}
+                      {wallMeta.selfDeepestDist > 0 && (
+                        <div
+                          className="absolute inset-x-[-5px] h-[2px] bg-amber-300"
+                          style={{ bottom: `${wallMeterPct(wallMeta.selfDeepestDist)}%` }}
+                          title="自己最深"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 text-[11px] text-white/70 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-white/50">自己最深</span>
+                        <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>
+                          {Math.round(Math.max(stats.maxDepthDist, wallMeta.selfDeepestDist))}m
+                          {wallSelfBestUpdated && <span className="ml-1">⚑更新</span>}
+                        </span>
+                      </div>
+                      {namedFoeResult && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-white/50">宿敵 {namedFoeResult.name}</span>
+                          <span className="font-semibold text-amber-300">{namedFoeResult.defeated ? '討伐' : '取り逃がし'}</span>
+                        </div>
+                      )}
+                      {/* PACING_PUZZLE.md §5.17-追補: 昇格度(惜しさ)。死亡時のみ・スナップショットがある時だけ。 */}
+                      {promotion && (
+                        <div className="pt-0.5">
+                          <span className="text-white/50">昇格度</span>{' '}
+                          <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>{Math.round(promotion.total)}</span>
+                          <span className="text-white/40"> —— 阻んだのは</span>{' '}
+                          <span className="font-semibold text-rose-200">
+                            {PROMOTION_BOTTLENECK_LABEL[promotion.bottleneck]}({Math.round(promotion[promotion.bottleneck])})
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!isBenchmark && !won && !withdraw && deathCause && (
+                <p className="mt-2 text-[12px] text-white/70">
+                  死因：<span className="font-semibold text-rose-200">{deathCause}</span>
+                </p>
+              )}
+            </>
           )}
         </div>
         <div className="px-4 pb-4">
@@ -342,86 +438,184 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               </button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="rounded-none bg-purple-400/5 px-3 py-2">
-              <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                {statsItems.map(item => (
-                  <div key={item.label} className="min-w-0">
-                    <div className="text-[9px] tracking-wide text-white/45 truncate">{item.label}</div>
-                    <div className="text-[15px] font-semibold text-white tabular-nums truncate">{item.value}</div>
+          {resultClassicMode ? (
+            <>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="rounded-none bg-purple-400/5 px-3 py-2">
+                  <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {statsItems.map(item => (
+                      <div key={item.label} className="min-w-0">
+                        <div className="text-[9px] tracking-wide text-white/45 truncate">{item.label}</div>
+                        <div className="text-[15px] font-semibold text-white tabular-nums truncate">{item.value}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                <div className="rounded-none bg-black/25 px-3 py-2">
+                  <div className="mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-widest text-white/45">SCORE</span>
+                      {isHighScore && (
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 animate-pulse">
+                          HIGH SCORE
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
+                  </div>
+                  <div className="space-y-1 text-[11px] text-white/65 tabular-nums">
+                    {scoreItems.map(item => (
+                      <div key={item.label} className="flex items-center justify-between gap-2">
+                        <span>{item.label}</span>
+                        <span className="text-right text-white/80">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="rounded-none bg-black/25 px-3 py-2">
-              <div className="mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-widest text-white/45">SCORE</span>
-                  {isHighScore && (
-                    <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 animate-pulse">
-                      HIGH SCORE
-                    </span>
+              {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
+              {!isBenchmark && (
+                <div className="mb-3 rounded-none bg-black/25 px-3 py-2.5 flex items-center gap-3">
+                  <div className="relative shrink-0" style={{ width: 14, height: 96 }}>
+                    <div className="absolute inset-x-0 bottom-0 top-0 rounded-full bg-white/10" />
+                    <div
+                      className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-sky-300/70 to-amber-200/80"
+                      style={{ height: `${wallMeterPct(stats.maxDepthDist)}%` }}
+                    />
+                    {AREA_THRESHOLDS.map(t => (
+                      <div key={t} className="absolute inset-x-[-3px] h-px bg-white/40" style={{ bottom: `${wallMeterPct(t)}%` }} />
+                    ))}
+                    {wallMeta.selfDeepestDist > 0 && (
+                      <div
+                        className="absolute inset-x-[-5px] h-[2px] bg-amber-300"
+                        style={{ bottom: `${wallMeterPct(wallMeta.selfDeepestDist)}%` }}
+                        title="自己最深"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 text-[11px] text-white/70 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-white/50">到達ランク</span>
+                      <span className="font-semibold tabular-nums" style={{ color: '#ff6a55' }}>{WALL_RANK_NAMES[wallHighestRank]}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-white/50">最深区域</span>
+                      <span className="font-semibold text-sky-200">{AREA_ZONE_NAMES[stats.maxAreaReached]}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-white/50">自己最深</span>
+                      <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>
+                        {Math.round(Math.max(stats.maxDepthDist, wallMeta.selfDeepestDist))}m
+                        {wallSelfBestUpdated && <span className="ml-1">⚑更新</span>}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {directorEnabled && !isBenchmark && <DirectorResult />}
+            </>
+          ) : (
+            <>
+              {/* PACING_PUZZLE.md §5.19 M18③: RESULTは要点4つ。総合スコアを主役に、内訳は詳細▾へ。 */}
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="rounded-none bg-purple-400/5 px-3 py-2">
+                  <div className="mb-1.5 text-[10px] uppercase tracking-widest text-white/45">RESULT</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {resultCoreItems.map(item => (
+                      <div key={item.label} className="min-w-0">
+                        <div className="text-[9px] tracking-wide text-white/45 truncate">{item.label}</div>
+                        <div className="text-[15px] font-semibold text-white tabular-nums truncate">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-none bg-black/25 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-white/45">SCORE</span>
+                    {isHighScore && (
+                      <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-amber-400/25 text-amber-100 animate-pulse">
+                        HIGH SCORE
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
+                  {topScoreItemResult && (
+                    <div className="mt-0.5 text-[11px] text-white/60 truncate">
+                      {topScoreItemResult.label} <span className="font-semibold text-white/85 tabular-nums">{topScoreItemResult.value}</span>
+                    </div>
                   )}
                 </div>
-                <div className="mt-1.5 text-2xl font-bold text-amber-200 tabular-nums leading-tight">{totalScore}</div>
               </div>
-              <div className="space-y-1 text-[11px] text-white/65 tabular-nums">
-                {scoreItems.map(item => (
-                  <div key={item.label} className="flex items-center justify-between gap-2">
-                    <span>{item.label}</span>
-                    <span className="text-right text-white/80">{item.value}</span>
+              {/* PACING_PUZZLE.md §5.19 M18②③: スコア内訳+残りの数字は「詳細▾」で開閉(既定は畳む)。 */}
+              <button
+                type="button"
+                onClick={() => setScoreDetailOpen(v => !v)}
+                className="mb-3 w-full flex items-center justify-between rounded-none bg-purple-400/5 px-3 py-1.5 text-[11px] text-white/60"
+              >
+                <span>詳細</span>
+                <span>{scoreDetailOpen ? '▴' : '▾'}</span>
+              </button>
+              {scoreDetailOpen && (
+                <div className="mb-3 rounded-none bg-black/20 px-3 py-2.5 space-y-2.5">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {resultDetailItems.map(item => (
+                      <div key={item.label} className="min-w-0">
+                        <div className="text-[9px] tracking-wide text-white/45 truncate">{item.label}</div>
+                        <div className="text-[13px] font-semibold text-white tabular-nums truncate">{item.value}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          {/* PACING_PUZZLE.md §5.17 M14: 到達譜=縦の深度メーター(壁4本の目盛り+今回バー+自己最深旗)。 */}
-          {!isBenchmark && (
-            <div className="mb-3 rounded-none bg-black/25 px-3 py-2.5 flex items-center gap-3">
-              <div className="relative shrink-0" style={{ width: 14, height: 96 }}>
-                <div className="absolute inset-x-0 bottom-0 top-0 rounded-full bg-white/10" />
-                <div
-                  className="absolute inset-x-0 bottom-0 rounded-full bg-gradient-to-t from-sky-300/70 to-amber-200/80"
-                  style={{ height: `${wallMeterPct(stats.maxDepthDist)}%` }}
-                />
-                {AREA_THRESHOLDS.map(t => (
-                  <div key={t} className="absolute inset-x-[-3px] h-px bg-white/40" style={{ bottom: `${wallMeterPct(t)}%` }} />
-                ))}
-                {wallMeta.selfDeepestDist > 0 && (
-                  <div
-                    className="absolute inset-x-[-5px] h-[2px] bg-amber-300"
-                    style={{ bottom: `${wallMeterPct(wallMeta.selfDeepestDist)}%` }}
-                    title="自己最深"
-                  />
-                )}
-              </div>
-              <div className="min-w-0 flex-1 text-[11px] text-white/70 space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-white/50">到達ランク</span>
-                  <span className="font-semibold tabular-nums" style={{ color: '#ff6a55' }}>{WALL_RANK_NAMES[wallHighestRank]}</span>
+                  <div className="space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/65 tabular-nums">
+                    {scoreItems.map(item => (
+                      <div key={item.label} className="flex items-center justify-between gap-2">
+                        <span>{item.label}</span>
+                        <span className="text-right text-white/80">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-white/50">最深区域</span>
-                  <span className="font-semibold text-sky-200">{AREA_ZONE_NAMES[stats.maxAreaReached]}</span>
+              )}
+              {/* PACING_PUZZLE.md §5.19 M18④: AIディレクターは既定で畳む(社長指示v0.25.1374を今回の承認で上書き)。 */}
+              {directorEnabled && !isBenchmark && (
+                <div className="mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setDirectorOpen(v => !v)}
+                    className="w-full flex items-center justify-between rounded-none bg-purple-400/5 px-3 py-1.5 text-[11px] text-white/60"
+                  >
+                    <span>AIディレクター</span>
+                    <span>{directorOpen ? '閉じる▴' : '開く▾'}</span>
+                  </button>
+                  {directorOpen && <div className="mt-2"><DirectorResult /></div>}
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-white/50">自己最深</span>
-                  <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>
-                    {Math.round(Math.max(stats.maxDepthDist, wallMeta.selfDeepestDist))}m
-                    {wallSelfBestUpdated && <span className="ml-1">⚑更新</span>}
-                  </span>
+              )}
+              {/* PACING_PUZZLE.md §5.19 M18③: ゴールド/所持ゴールドは「お金の枠」へ移動。
+                  死亡+装備ロストがある時は換金額と同居(下のロスト装備ボックス)。それ以外はここで単独表示。 */}
+              {!isBenchmark && !showLostEquipmentBox && (
+                <div className="mb-3 rounded-none bg-black/20 px-3 py-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
+                  <span>獲得 <span className="font-semibold text-amber-200 tabular-nums">+{goldEarned}g</span></span>
+                  <span>所持 <span className="font-semibold text-white tabular-nums">{goldBalance}g</span></span>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
-          {directorEnabled && !isBenchmark && <DirectorResult />}
-          {!isBenchmark && !won && !withdraw && hadEquipment && (
+          {showLostEquipmentBox && (
             <div className="mb-3 rounded-none bg-rose-400/5 px-3 py-2.5">
-              <div className="flex items-center justify-between mb-2">
+              {/* PACING_PUZZLE.md §5.19 M18③: ゴールド/所持ゴールドを「お金の枠」(ロスト装備の換金額と
+                  同居)へ集約。旧レイアウトは換金額のみだった行を、獲得/所持込みに拡張する。 */}
+              <div className="flex items-center justify-between mb-2 gap-2">
                 <span className="text-[11px] font-semibold text-rose-200">失った装備</span>
-                {equipmentGold > 0 && (
-                  <span className="text-[11px] font-semibold text-amber-200 tabular-nums">換金 +{equipmentGold}g</span>
+                {resultClassicMode ? (
+                  equipmentGold > 0 && (
+                    <span className="text-[11px] font-semibold text-amber-200 tabular-nums">換金 +{equipmentGold}g</span>
+                  )
+                ) : (
+                  <span className="text-[10px] text-white/60 tabular-nums truncate">
+                    獲得 <span className="font-semibold text-amber-200">+{goldEarned}g</span>
+                    {equipmentGold > 0 && <> / 換金 <span className="font-semibold text-amber-200">+{equipmentGold}g</span></>}
+                    {' '}/ 所持 <span className="font-semibold text-white">{goldBalance}g</span>
+                  </span>
                 )}
               </div>
               <div className="flex flex-col gap-1.5">

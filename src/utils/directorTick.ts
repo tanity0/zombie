@@ -253,7 +253,11 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   if (switchNow) {
     // 査定(§3-B/4-C 2段構え): 通常末=仮査定 / ピーク末=検証査定(確定は次の通常開始時に反映)。
     if (koma.kind === 'normal') {
-      koma.provisionalDelta = assessKomaDelta(finalizeKomaAssessmentInput(koma.acc, player.maxHealth));
+      const normalInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
+      koma.provisionalDelta = assessKomaDelta(normalInput);
+      // PACING_PUZZLE.md §5.17-追補/§5.19 M18: 昇格度(惜しさ)表示用の最新スナップショット。
+      // 死亡リザルトが1回だけ読む(promotionScore)。判定挙動には影響しない(読むだけ)。
+      useGameStore.setState({ lastKomaAssessmentInput: normalInput });
     } else if (koma.kind === 'peak') {
       const peakInput = finalizeKomaAssessmentInput(koma.acc, player.maxHealth);
       koma.pendingFinalDelta = combineCycleDelta(koma.provisionalDelta ?? 0, peakInput);

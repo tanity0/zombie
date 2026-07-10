@@ -73,3 +73,18 @@ export const calculateResultScore = (
     goldEarned: Math.floor(goldScore / 2000),
   };
 };
+
+// PACING_PUZZLE.md §5.19 バッチM18②: リザルトの「一番効いた項目」= scoreItems の argmax。
+// 同点は先勝ち(配列の先の要素を優先)。空配列は null。レンダラ非依存の純関数。
+export interface LabeledValue {
+  label: string;
+  value: number;
+}
+
+export const topScoreItem = <T extends LabeledValue>(items: T[]): T | null => {
+  let best: T | null = null;
+  for (const item of items) {
+    if (best === null || item.value > best.value) best = item;
+  }
+  return best;
+};
