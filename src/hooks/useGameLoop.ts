@@ -2831,23 +2831,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // ?gateboss=1 診断(PACING_PUZZLE.md §5.21-追補8): ラン開始直後、そのステージのゲート2ボス型を
-        // プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/×5/
-        // fromEvent)ですぐ戦えるようにする(拘束サークル/beginArenaEventは省略=テスト用途)。
-        // 将来ステージが増えたら GATE2_BOSS_TYPE_BY_STAGE に足すだけで対応する。既定OFF=通常挙動不変。
+        // 実ゲート2と同じ形でforce-spawnして即テストできるようにする。将来ステージが増えたら
+        // GATE2_BOSS_TYPE_BY_STAGE に足すだけで対応する。既定OFF=通常挙動不変。
+        // 実機バグ修正(社長報告v0.25.1593「開始位置的にこっちが強制的に食らって即死」): 旧実装は
+        // ボスをプレイヤーの真上(gcx-24,gcy-24)に出していた=接触ダメージ190で即死。実ゲート2と同じく
+        // ①拘束サークル(beginArenaEvent)を張り ②ボスは周回半径ぶん離した位置(中心の上方)へ出す。
         if (FORCE_GATEBOSS && !gatebossForceRef.current && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
           const gbType = GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()];
           if (gbType) {
             gatebossForceRef.current = true;
             const gcx = player.x + player.width / 2, gcy = player.y + player.height / 2;
-            const gboss = spawnEnemyAt(gbType, gcx - 24, gcy - 24, newGameTime);
+            // 拘束サークル=中心=プレイヤー開始位置(実ゲート2と同じ。プレイヤーは円内に留まりミゲルと戦える)。
+            const gEvent = { kind: 'boss' as const, x: gcx, y: gcy, radius: GATE_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
+            useGameStore.getState().beginArenaEvent(gEvent); // 敵一掃を含むのでボス配置の前に呼ぶ
+            // ボスは中心の上方=周回半径ぶん離して出す(即接触死を防ぐ)。実ゲート2と同じ offset 式。
+            const gbx = gcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
+            const gby = gcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
+            const gboss = spawnEnemyAt(gbType, gbx - 24, gby - 24, newGameTime);
             gboss.health *= GATE2_BOSS_STRENGTH_MULT;
             gboss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
             gboss.damage = Math.round(gboss.damage * GATE2_BOSS_STRENGTH_MULT);
             gboss.fromEvent = true;
             gboss.bossState = 'chase';
             gboss.bossNextActionAt = newGameTime + 2000;
-            gboss.homeX = gcx; gboss.homeY = gcy;
+            gboss.homeX = gcx; gboss.homeY = gcy; // 周回の中心=ゲート中心
             addEnemy(gboss);
+            activeGateRef.current = 2; // 実ゲート2相当(エリア判定OFF等)。テスト用途。
           }
         }
 
