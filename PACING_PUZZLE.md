@@ -1219,6 +1219,47 @@ M10(バランス走査)の拡張。実装前のアイデアを試せるのが肝
   即消滅バグによる混乱、②拠点を1個以上制圧済みで通常ハンター経路(優勢/退屈ゲート待ち)に
   なっていた、のいずれかの可能性が高い(引き続き実機確認が必要)。
 
+### §5.21-追補7 レア倍率刷新 + ゲート機構の一本化(finishKillOnly/×5廃止・ゲートキーパー=赤レア)(社長決定v0.25.1574)
+**テーマ**: 「近接フィニッシュ限定(finishKillOnly)+×5」の特殊ゲート機構を廃止し、レア(色階層)体系=「HPで硬い・倒し方は自由」に一本化する。**ゲートキーパー=ゲート1の雑魚布陣**、**城ボス=ゲート2のgiantbat**(別物)。
+
+**A. レア色倍率を攻撃/HPに分離**(`src/utils/enemyUtils.ts` buildEnemy)
+- 単一 `COLOR_TIER_MULT = {blue:1.2, purple:1.5, red:2}` を2テーブルへ:
+  - `COLOR_TIER_DMG_MULT = {blue:1.5, purple:2, red:3}`(攻撃=接触/近接/ジャンプ/弾)
+  - `COLOR_TIER_HP_MULT  = {blue:2,   purple:3, red:5}`(HP)
+- buildEnemy:
+  - `colorDmgMult = colorTier ? COLOR_TIER_DMG_MULT[colorTier] : 1` / `colorHpMult = colorTier ? COLOR_TIER_HP_MULT[colorTier] : 1`
+  - `areaBase = fixed ? 1 : AREA_BASE_DIFFICULTY[area]` / `diffDmg = areaBase * colorDmgMult` / `diffHp = areaBase * colorHpMult`
+  - `hpMult = (reaper||hidden) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT)`
+  - `dmgMult = reaper ? 1 : (fixed ? 1 : diffDmg)`
+  - `difficultyMultiplier: fixed ? 1 : diffDmg`(弾は攻撃側に追従)
+  - 旧`COLOR_TIER_MULT`削除。
+- **不変**: `COLOR_TIER_SIZE_MULT`・`COLOR_RATE_BY_AREA`(出現率)・`COLOR_TIER_CRIT_PENALTY`(critPenalty.ts)・XP。
+- **回帰安全**: 非色付き敵は colorDmgMult=colorHpMult=1 → diffDmg=diffHp=areaBase=旧diff → 完全不変。
+
+**B1. ネームド=通常挙動へ(v1571 §②巻き戻し)**(`src/store/gameStore.ts`)
+- 近接スタン処刑の4分岐 `if (isBossType(enemy.type) || namedGetsBossFinish(enemy))` → `if (isBossType(enemy.type))` に戻す。ネームドは通常敵として即時処刑(finisher:true)。
+- `namedGetsBossFinish`/`NAMED_FINISH_EXCEPT_TYPES` は未使用化(削除)。**名前表示・×2・宿敵記録は不変**。
+
+**B2. finishKillOnly 全廃**(`src/hooks/useGameLoop.ts`)
+- ゲート1布陣の `e.finishKillOnly = true` 削除・**ゲート2城ボスの `boss.finishKillOnly = true` も削除**。finishKillOnlyを立てる箇所ゼロ。
+- `clampFinishKillOnlyHealth`/フィールドは機構ごと残置(dormant=呼ばれない・blast最小)。finishKillOnly.testは純関数直テストなのでgreen維持。
+
+**C. ゲート1布陣=赤レア相当(×5廃止)**(`src/hooks/useGameLoop.ts` gate1 spawn)
+- `spawnEnemyAtWithTier(type, ..., 'purple')` の `'purple'` → `'red'`。`GATE1_FORMATION_STRENGTH_MULT`(×5)の3行削除。→ 布陣は赤レア(攻×3/HP×5・赤tint)。弾も赤の攻撃×3が自動追従。
+- `GATE1_FORMATION_STRENGTH_MULT` 定数(gate1.ts)+ import 削除。
+
+**城ボス(ゲート2 giantbat)= finishKillOnly除去のみ、他は不変**
+- `GATE2_BOSS_STRENGTH_MULT`(×5)・isBossType挙動(即死処刑不可・×5スタン打撃)・ユニーク版(★別途の専用挙動)は**そのまま**。finishKillOnlyだけ外す=どの手段でも倒せる。
+
+**D1. ゲート半径 240→300**(`src/hooks/useGameLoop.ts`)
+- 新定数 `GATE_ARENA_RADIUS = 300`。gate1/gate2 の event.radius・リング描画・敵配置(`placeGateRing` 等の `ARENA_EVENT_RADIUS` 参照)を `GATE_ARENA_RADIUS` へ。**他イベント(horde/boss/egg)は `ARENA_EVENT_RADIUS = 240` のまま**。
+
+**D2. ゲート発生中はエリア判定OFF**(`src/hooks/useGameLoop.ts` ゾーン遷移ブロック)
+- 区域バナー/SE/ゲート予約(entersGate1Penalty・gate2Pending)/踏破儀式/壁予告(isApproachingWall)を、`activeGateRef.current !== null` の間は全スキップ。
+- ただし `areaZoneRef.current = zoneIdx` の**黙って更新は行う**(ゲート終了後の遅延誤発火防止)。抑止はゲートactive中のみ=pending・失敗ノックバック後の再判定(追補6リトライ)は従来どおり。
+
+**負荷 1/10**(数値/分岐のみ・新規描画/毎frame増なし)。**検証**: typecheck + npm test(constitution/critPenalty/finishKillOnly/gate1/gate2/sim green)。**状態**: 仕様確定・実装。
+
 ## 5.22 バッチM21: KILL/カウンター演出の統一(爽快カーブ)(社長委任v0.25.1516)
 **課題(実測v0.25.1515)**: KILLとカウンターで演出の骨格が食い違い、しかも本命のKILLの方が命中の瞬間が
 柔らかい(逆転)。①KILLのズーム(500ms)とスロー(700ms)が別長=最大寄りが先に萎む ②KILLにフリーズ無し
