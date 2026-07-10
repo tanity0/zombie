@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1589 — 差し替え: マークスマンの走り(新イラスト・暗色マント/ライフル5コマ)【2026-07-10 19:20 JST】
+- **社長提供**: マークスマンの走りシート(1600×272・5コマ・暗色マントの新絵)。既存`player-magnum-run-0..4.png`を同名差し替え(idle/歩きは無変更)。
+- 回収=トランスクリプト抽出。焼き=**歩き(v28)と同一の86×73規格**へ。セルのアスペクト(1.176)がキャンバス(1.178)とほぼ一致=歪みなしでLANCZOS縮小。
+  **横位置を歩きの内容中心(x=36)に揃え**、**顔の左右揺れも抑制**(頭xを中央値へ整数px平行移動)=**事後0.3px**=**走り↔歩きの切替でサイズ/位置が跳ねない**。プレビュー(歩き0番と並べ)で一致を目視確認。
+- 同名差し替えのため **ASSET_VERSION 28→29**。検証: **typecheck clean**。負荷 0/10(素材のみ)。実機で見る点: ①走りの見た目 ②レバー全開で走り切替時に歩きと違和感が出ないか。
+
 ## v0.25.1588 — 実装: ゲート2ボス「ミゲル」バッチ1(存在+CCW周回+攻撃1横払い+?gateboss=1)§5.21-追補8【Sonnetサブ連携】【2026-07-10 19:10 JST】
 - **§5.21-追補8 の本実装**(Sonnetサブ→設計チャットが全diff検証+git)。仕様/素材は前コミット群(v1587)。
 - **存在**: 新裏ボス型 `miguel`(types/game.ts + ENEMY_STATS `{120,60,70,2000,38,0}` + isHiddenBoss/isBossType/CONSTANT_STRENGTH/getEnemyColor#6b21a8/getEnemyFireProfile=hidden chain・弾は当面未使用 + ENEMY_DEATH_LABELS)。ゲート2 spawnを `giantbat`→`miguel` に差し替え(bossState='chase'/home=ゲート中心/×5=`GATE2_BOSS_STRENGTH_MULT`。**HP10000/与ダメ190=城ボスの2倍**・社長指定)。**城ボスgiantbatのフィナーレ枠は無変更**。ゲート機構(拘束/エリア判定OFF/恒久解除/banner)不変。

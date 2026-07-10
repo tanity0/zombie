@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1589',
+    items: [
+      'マークスマンの走りモーションを新しいイラストに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1588',
     items: [
       '深層ゲート(ゲート2)のボスを、専用の新ボス「ミゲル」に変更。ゲートの内側を周回し、横払いで斬ってくる(今後さらに攻撃を追加予定)。',
