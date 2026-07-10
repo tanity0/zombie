@@ -12,6 +12,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1590 — 差し替え: ストライカーの走り(新イラスト5コマ・scavenger接頭辞)【2026-07-10 19:42 JST】
+- **社長提供**: ストライカーの走りシート(1140×264・5コマ)。既存`player-scavenger-run-0..4.png`(=罠: ストライカー=rogue=scavenger接頭辞)を同名差し替え。
+- 焼き=scavenger歩きと同じ**86×73規格**(高さ264→73でLANCZOS縮小・cw_t=63)・**横位置を歩きの内容中心45へ揃え**・**顔揺れ抑制**(頭x中央値へ整数px平行移動=事後0.5px)。歩き0番と並べたプレビューで一致目視。同名差し替えのため **ASSET_VERSION 29→30**。検証: typecheck clean。負荷 0/10。
+
 ## v0.25.1589 — 差し替え: マークスマンの走り(新イラスト・暗色マント/ライフル5コマ)【2026-07-10 19:20 JST】
 - **社長提供**: マークスマンの走りシート(1600×272・5コマ・暗色マントの新絵)。既存`player-magnum-run-0..4.png`を同名差し替え(idle/歩きは無変更)。
 - 回収=トランスクリプト抽出。焼き=**歩き(v28)と同一の86×73規格**へ。セルのアスペクト(1.176)がキャンバス(1.178)とほぼ一致=歪みなしでLANCZOS縮小。
