@@ -547,7 +547,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       }`}
                     >
                       <span className="flex w-full items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">Lv{ownedSkillLevels[k] ?? 1}</span></span>
+                        <span className="text-[13px] font-semibold">{SKILLS[k].name} <span className="text-amber-200">{lvText(k, ownedSkillLevels[k] ?? 1)}</span></span>
                         {on && <Check size={15} className="shrink-0" />}
                       </span>
                       <span className={`text-[9px] font-semibold uppercase tracking-wider ${RARITY_TEXT[rarity]}`}>{RARITY_LABEL[rarity]}</span>

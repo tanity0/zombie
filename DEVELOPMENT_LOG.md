@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1604 — 修正: 装備メニューのスキルLv表記がMAXにならない(死神/ボマー等maxLv1がLv1表示)【2026-07-11 03:09 JST】
+- **社長報告**(スクショ): 装備画面で死神・ボマー(maxLv1スキル)が「Lv1」表示=「MAX」になっていない。
+- **原因**: 装備メニュー(`MissionSelect.tsx:550`)がスキルLvを `Lv{ownedSkillLevels[k] ?? 1}` と**生で描画**しており、他画面(ガチャ結果)で使っている`lvText`ヘルパ(上限到達で「MAX」)を通していなかった。
+- **修正**: 該当を `{lvText(k, ownedSkillLevels[k] ?? 1)}` に変更。これで上限到達スキルは「MAX」表示に(死神・ボマー=maxLv1は常にMAX、Lv3上限スキルもLv3到達で「MAX」=ガチャ画面と統一)。
+- 検証: **typecheck clean**。負荷 0/10(表示のみ)。※Lv3上限スキルも到達時MAX表示になる点は他画面と統一の挙動。maxLv1だけMAXにしたい等あれば調整。
+
 ## v0.25.1603 — 修正: 死神(reaper)の理不尽な武器除外を撤去=倒せる追跡死神に全プレイヤー武器が当たる【2026-07-11 03:06 JST】
 - **社長指示**: 「自分の武器なのに特定の敵に当たらないのは理不尽・絶対やめて」→「30箇所は修正」→「錬金の死神も効く・除外すな」。
 - **原因(監査で判明)**: 死神を除外するプレイヤー側の箇所が**32箇所**(刀/各サブウェポン/タレット/スキル/錬金召喚/四神ダンス等)。全部が古い「reaperを除外」コピペで、**倒せる追跡本体(reaperChaser)まで巻き込んで除外**していた=刀装備だと死神に一切ダメージ不可、タレットが死神を狙わない等。コア近接(ナイフ/鞭/分身/フィニッシュ)だけは正しく`!reaperChaser`で当たっていた。
