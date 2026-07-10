@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1586',
+    items: [
+      '叫喚型(叫ぶ敵)と緑卵をばらまく敵の出現CDを3秒→30秒に延長。沸きすぎを緩和した。',
+    ],
+  },
+  {
     version: '0.25.1585',
     items: [
       '敵の慣性を「速い敵ほど重い」に変更。死神は常に大回り気味に、紅き月などで速くなった敵はその間だけ旋回が重くなる(遅い敵は今までどおり身軽)。',

@@ -122,8 +122,8 @@ describe('憲法テスト(PACING_PUZZLE.mdの改定基準・本方式ON時に適
     expect(nuisanceTarget(HARVEST_PATTERN)).toEqual(ZERO_NUISANCE);
   });
 
-  it('§0.5攻略性の原則: 邪魔者・特別枠の投入CDは3秒固定(rankAssessorのランクCDとは別管理・締めても縮まらない)', () => {
+  it('§0.5攻略性の原則: 邪魔者の投入CDは3秒固定・特別枠(叫喚/緑卵)は社長決定v0.25.1586で30秒へ延長(バースト禁止=別管理・締めても縮まらない)', () => {
     expect(NUISANCE_CD_MS).toBe(3000);
-    expect(SPECIAL_CD_MS).toBe(3000);
+    expect(SPECIAL_CD_MS).toBe(30000);
   });
 });

@@ -12,6 +12,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1586 — 修正: 叫喚/緑卵の沸きCDを3秒→30秒(特別枠CD延長)【2026-07-10 18:40 JST】
+- **社長報告**: 叫ぶ敵(叫喚型)・緑卵ばらまき(抱卵型ghost)が沸きすぎてうざい。30秒以上でいい。
+- **診断**: 社長は「叫喚の再出現=60秒」と認識していたが、**その60秒(`SCREAMER_RESPAWN_CD_MS`)はパズル方式ON(既定)では休眠**。
+  通常プレイの沸き頻度を決めているのは**特別枠(叫喚/緑卵)の投入CD=`SPECIAL_CD_MS=3000`(3秒)**(`scriptPuzzle.ts` §4-A)。これが沸きすぎの実体。
+- **修正**: `SPECIAL_CD_MS` 3000→**30000(30秒)**。叫喚(同時1)/緑卵ghost(同時2)は同じ特別枠なので両方に効く。
+  **邪魔者枠(`NUISANCE_CD_MS`=パンプキン/犬等)は3秒据え置き**(別枠・社長指示は特別枠のみ)。`NAMED_SPAWN_CD_MS`は別定数=不変。
+- **憲法テスト更新**: `constitution.test.ts`の「投入CD3秒固定」不変条件を、社長決定として特別枠のみ30秒へ改定
+  (邪魔者=3秒固定は維持・バースト禁止の趣旨は不変=延長方向なので§0.5に非抵触)。
+- 検証: **typecheck clean / constitution.test 13 pass**。負荷 0/10(定数1つ)。実機で見る点: 叫喚・緑卵の出現間隔が体感で伸びたか(足りなければ数値だけ再調整)。
+
 ## v0.25.1585 — 実装: 敵の慣性を実効速度連動(速い敵ほど旋回が重い)【2026-07-10 18:09 JST】
 - **社長指示の変遷**: 当初「死神とハンターの慣性1.5倍」(保留)→相談で「速い敵ほど慣性を強く」→「速くなった時どうなる?」→**②実効速度基準を採用**。
 - **仕様**: `ENEMY_INERTIA_TAU`(0.3)を固定から**実効速度連動**へ。`inertiaTauForSpeed(effSpeed)=0.3×clamp(effSpeed/55, 1, 2.0)`。

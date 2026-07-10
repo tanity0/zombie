@@ -98,7 +98,10 @@ export const nextNuisanceDeficit = (target: NuisanceCounts, alive: NuisanceCount
 // ---- 0.5/4-A: 投入CD(枠共通・締めても縮めない) -----------------------------------------
 
 export const NUISANCE_CD_MS = 3000;
-export const SPECIAL_CD_MS = 3000;
+// 特別枠(叫喚screamer/緑卵ghost)の投入CD。社長指示v0.25.1586「叫喚・緑卵が沸きすぎてうざい・30秒以上でいい」で
+// 3秒→30秒へ延長。※パズルON(既定)ではこのCDが実体。非パズル用のSCREAMER_RESPAWN_CD_MS(60秒)は休眠なので
+// 通常プレイの沸き頻度はここが決める。邪魔者(NUISANCE_CD_MS=パンプキン/犬等)は3秒据え置き=別枠。
+export const SPECIAL_CD_MS = 30000;
 export const POST_HIT_GUARD_MS = 1500; // 被弾直後は邪魔者・特別枠の新規投入をしない(叩き台)
 
 // ---- 4-A: 基本セット(チャフ)度数 -------------------------------------------------------
