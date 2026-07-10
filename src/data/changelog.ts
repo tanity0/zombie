@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1582',
+    items: [
+      'マークスマンとヘビーガンナーの歩きで顔が左右に揺れすぎていたのを、ストライカーと同程度まで抑えた。',
+    ],
+  },
+  {
     version: '0.25.1581',
     items: [
       'リザルト画面を整理。到達情報は1枠に集約、スコアは総合+一番効いた項目だけ表示(内訳は「詳細」で開閉)、数字は要点4つに厳選、お金の情報は1か所へ。',
