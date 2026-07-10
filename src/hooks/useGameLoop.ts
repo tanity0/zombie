@@ -696,6 +696,11 @@ const MIGUEL_ORBIT_MARGIN = 20;
 const MIGUEL_ORBIT_SPEED = 70;               // 周回の接線速度(px/s・叩き台)
 const MIGUEL_MELEE_DASH_MS = 1000;           // 近接被弾で1秒間だけ周回速度アップ
 const MIGUEL_MELEE_DASH_MULT = 2;            // 加速倍率
+// 「移動中、たまにゆっくり歩く」(社長指示・トールのSLOWWALKと同型)。
+const MIGUEL_SLOW_WALK_MS = 1500;            // 減速が続く時間
+const MIGUEL_SLOW_WALK_MULT = 0.4;           // 減速倍率(周回速度に乗算)
+const MIGUEL_SLOW_WALK_MIN_GAP_MS = 4000;    // 「たまに」の頻度(最小)
+const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;    // 同・最大
 
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
@@ -964,6 +969,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   );
   // ?gateboss=1 診断: ラン開始後に1回だけそのステージのゲート2ボスをforce-spawnしたかどうか。
   const gatebossForceRef = useRef(false);
+  // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
+  // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
+  const miguelSlowRef = useRef({ slowUntil: 0, nextAt: 0 });
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1593,6 +1601,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
+          miguelSlowRef.current = { slowUntil: 0, nextAt: 0 }; // ミゲルのゆっくり歩きタイマーも新ランで再アーム
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -3594,10 +3603,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const st = miguel.bossState ?? 'chase';
             const patch: Partial<typeof miguel> = {};
 
+            // 「移動中、たまにゆっくり歩く」(仕様指示・トールのSLOWWALKと同型)。周回中(chase)のみ
+            // ランダム間隔で減速ウィンドウを開始する。攻撃中は元々静止するため無関係。
+            if (miguelSlowRef.current.nextAt === 0) {
+              miguelSlowRef.current.nextAt = newGameTime + MIGUEL_SLOW_WALK_MIN_GAP_MS + Math.random() * (MIGUEL_SLOW_WALK_MAX_GAP_MS - MIGUEL_SLOW_WALK_MIN_GAP_MS);
+            }
+            if (st === 'chase' && newGameTime >= miguelSlowRef.current.nextAt) {
+              miguelSlowRef.current.slowUntil = newGameTime + MIGUEL_SLOW_WALK_MS;
+              miguelSlowRef.current.nextAt = newGameTime + MIGUEL_SLOW_WALK_MIN_GAP_MS + Math.random() * (MIGUEL_SLOW_WALK_MAX_GAP_MS - MIGUEL_SLOW_WALK_MIN_GAP_MS);
+            }
+            const slowWalkActive = newGameTime < miguelSlowRef.current.slowUntil;
+
             // 近接被弾で1秒間だけ周回速度2倍(仕様指示)。gun/爆発では発動しない
             // (meleeHitAt は gameStore.ts の近接ダメージ経路だけがスタンプする)。
             const meleeDashActive = newGameTime - (miguel.meleeHitAt ?? -Infinity) <= MIGUEL_MELEE_DASH_MS;
-            const orbitSpeedMult = meleeDashActive ? MIGUEL_MELEE_DASH_MULT : 1;
+            const orbitSpeedMult = (meleeDashActive ? MIGUEL_MELEE_DASH_MULT : 1) * (slowWalkActive ? MIGUEL_SLOW_WALK_MULT : 1);
             // 周回半径=ゲート内側ギリギリ。halfSize=足元帯(判定)の高さ半分をクリアランスに使う。
             const halfSize = miguel.height / 2;
             const orbitRadius = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - halfSize;
@@ -3684,8 +3704,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
                 playSfx('thor-sweep');
               }
-            } else if (st === 'harai') {
-              // 払い(実行): ロック済みの並行ライン上のみ判定(トールと同じ点-線分距離判定)。
+            } else if (st === 'harai' || st === 'tate') {
+              // 払い/縦払い(実行): ロック済みのライン上のみ判定(トールと同じ点-線分距離判定)。
+              // 横(harai)と縦(tate)はラインの向きが違うだけで当たり判定コードは共通(orientation非依存)。
               const fx = miguel.aiFromX ?? mcx, fy = miguel.aiFromY ?? mcy;
               const tx = miguel.aiTargetX ?? mcx, ty = miguel.aiTargetY ?? mcy;
               let lux = tx - fx, luy = ty - fy;
@@ -3701,13 +3722,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   miguelCounterHit(cxp, cyp);
                   countered = true;
                 } else {
-                  const died = damagePlayer(miguel.damage, 'ミゲルの払い', cxp, cyp);
+                  const died = damagePlayer(miguel.damage, st === 'harai' ? 'ミゲルの払い' : 'ミゲルの縦払い', cxp, cyp);
                   if (died) triggerPlayerDeath(pcx, pcy);
                 }
               }
               if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = miguelNextActionDelay();
+                if (st === 'harai') {
+                  // 横払いが終わった瞬間に直接 tate へ(社長のタイミング訂正: 別の1秒溜めを挟まず、
+                  // 共有の1回の溜めから計2発。ここでプレイヤー中心の縦ラインをその時点でロックする)。
+                  patch.bossState = 'tate';
+                  patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
+                  patch.aiFromX = pcx;
+                  patch.aiFromY = pcy - MIGUEL_HARAI_RANGE / 2;
+                  patch.aiTargetX = pcx;
+                  patch.aiTargetY = pcy + MIGUEL_HARAI_RANGE / 2;
+                  playSfx('thor-sweep');
+                } else {
+                  patch.bossState = 'chase';
+                  patch.bossNextActionAt = miguelNextActionDelay();
+                }
               }
             } else if (st === 'counter-leap') {
               // カウンター成立後、近接距離ギリギリ外までロック済みの後退先へ高速移動(トールと同じ)。

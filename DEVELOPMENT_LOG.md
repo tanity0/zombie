@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1596 — 追加: ミゲルの攻撃「横払い→縦払い」2発コンボ+周回中のランダム減速歩き【2026-07-10 22:57 JST】
+- **社長指示**: ①「横払いを1秒後に縦にも 計2発」→訂正「払いの発動後ではなく、溜めが始まってから1秒後ね」。②「移動中、たまにゆっくり歩く ランダム」。
+- **①横→縦コンボ**(`useGameLoop.ts` ミゲル状態機械 / `types/game.ts` / `pixiScene.ts`): 新ステート`tate`(縦払い)を追加。溜め(harai-windup=1000ms)は**1回だけ**で、横払い(harai)の実行が終わった瞬間に**別の溜めを挟まず直接**tateへ遷移=計2発。tateはその時点のプレイヤー中心の**縦ライン**をロック(`aiFromY=pcy-RANGE/2`〜`aiTargetY=pcy+RANGE/2`)。当たり判定は横と共通(点-線分距離・向き非依存)。ダメージ表示は縦=「ミゲルの縦払い」。描画は`harai`実行の既存コードをaiFrom/aiTargetが縦になるだけで流用(専用windup描画なし)。
+- **②ランダム減速歩き**(`useGameLoop.ts`): トールのSLOWWALKと同型。周回(chase)中のみ`MIGUEL_SLOW_WALK_MIN/MAX_GAP_MS`(4〜9s)のランダム間隔で`MIGUEL_SLOW_WALK_MS`(1500ms)だけ周回速度×`MIGUEL_SLOW_WALK_MULT`(0.4)に減速。近接被弾ダッシュ(×2)とは乗算合成。専用`miguelSlowRef`(bossRef非依存)を新ランで再アーム。
+- 数値は全て叩き台=**実機調整前提**。検証: **typecheck clean / lint 0エラー / npm test 596 pass・2 skip(Sonnet実行)**。負荷 1/10(単ボスの状態機械・新規強glowなし)。自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(ゲート2ボス専用挙動でランク配分・分布に不干渉)。実機(`?gateboss=1`)で横→縦の2発が溜め開始~1秒で出るか・たまに減速歩きするかを確認。
+
 ## v0.25.1595 — 調整: ミゲルをゲート2の×5適用なし=基本値(HP2000/与ダメ38)に【2026-07-10 22:37 JST】
 - **社長指示**: 「基本値の方にして」(=前回提示のミゲル基本値2000/38を実効値に)。
 - **修正**: ゲート2の`GATE2_BOSS_STRENGTH_MULT`(×5)をミゲルに掛けるのをやめた。適用2箇所(実ゲート2 spawn + `?gateboss=1` force-spawn)の`health/maxHealth/damage *= ×5`(各3行)を撤去。→ 実効=**HP2000/与ダメ190→38**(旧10000/190から基本値へ)。

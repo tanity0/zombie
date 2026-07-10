@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1596',
+    items: [
+      'ゲート2ボス「ミゲル」の攻撃を強化。横払いのあとに縦払いも続けて放つ2連撃になり、周回移動中はたまにゆっくり歩くようになった。',
+    ],
+  },
+  {
     version: '0.25.1591',
     items: [
       'スカベンジャーの歩きを新しいイラストに差し替え、専用の走りモーションも追加。これで全4クラスに走りモーションが揃った。',

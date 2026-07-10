@@ -355,8 +355,11 @@ export interface Enemy {
   //  counter-leap = カウンター成立時、近接距離ギリギリ外へ高速後退。
   //  backstep = 旋回距離より近づかれた時、たまに発火する短時間の後方ステップ(社長指示)。
   //  orbit-step = 旋回中(適正距離)にたまに混ぜる、接線方向への短時間ステップ(社長指示)。
+  // ミゲル(ゲート2ボス)専用の追加ステート:
+  //  tate = 縦払い(harai=横払いの実行が終わった瞬間に直接遷移・別の溜めなし。共有の1回のharai-windup
+  //  から計2発コンボになる。プレイヤー中心の縦ラインをその時点でロックし、当たり判定はharaiと共通)。
   bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
-    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step';
+    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾

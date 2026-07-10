@@ -5543,7 +5543,9 @@ export class PixiScene {
     if (e.type === 'miguel') {
       const slashFx = this.miguelSlashFx.get(e.id);
       if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
-      if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
+      // tate(縦払い)は harai(横払い)実行の直後に別windupなしで始まるため、専用のwindup描画は無い。
+      // aiFrom/aiTargetが縦になるだけで実行(active)描画は既存コードをそのまま流用できる。社長指示の2発コンボ。
+      if (e.bossState === 'harai-windup' || e.bossState === 'harai' || e.bossState === 'tate') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
@@ -5556,7 +5558,7 @@ export class PixiScene {
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
           this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
         } else {
-          // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
+          // 払い/縦払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
           this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
         }
