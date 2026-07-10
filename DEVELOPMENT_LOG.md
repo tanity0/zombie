@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1588 — 実装: ゲート2ボス「ミゲル」バッチ1(存在+CCW周回+攻撃1横払い+?gateboss=1)§5.21-追補8【Sonnetサブ連携】【2026-07-10 19:10 JST】
+- **§5.21-追補8 の本実装**(Sonnetサブ→設計チャットが全diff検証+git)。仕様/素材は前コミット群(v1587)。
+- **存在**: 新裏ボス型 `miguel`(types/game.ts + ENEMY_STATS `{120,60,70,2000,38,0}` + isHiddenBoss/isBossType/CONSTANT_STRENGTH/getEnemyColor#6b21a8/getEnemyFireProfile=hidden chain・弾は当面未使用 + ENEMY_DEATH_LABELS)。ゲート2 spawnを `giantbat`→`miguel` に差し替え(bossState='chase'/home=ゲート中心/×5=`GATE2_BOSS_STRENGTH_MULT`。**HP10000/与ダメ190=城ボスの2倍**・社長指定)。**城ボスgiantbatのフィナーレ枠は無変更**。ゲート機構(拘束/エリア判定OFF/恒久解除/banner)不変。
+- **移動(専用ミニコントローラ・thorとは独立の兄弟ブロック)**: `enemies.find(type==='miguel' && bossState!=null)` を毎frame駆動。**home中心を反時計回り(CCW)周回**(角度符号=Y-down画面でCCW=角度減。半径=GATE_ARENA_RADIUS-margin20-height/2=250)。**攻撃中(harai-windup/harai)は周回を呼ばず立ち止まる**。**近接被弾で1秒2倍速**(gameStore 4近接経路が`meleeHitAt`スタンプ→`newGameTime-meleeHitAt≤1000`で×2。銃/爆発=別経路damageEnemyなので非発動)。try/catchで初回のみログ。**updateEnemies:5798 `isHiddenBoss→return`で座標非干渉=周回と競合しない**を確認。
+- **攻撃1=横払い(狭)**: トールharai流用(chase→harai-windup→harai→chase + counter-leap)。`MIGUEL_HARAI_WINDUP_MS=1000/RANGE=380/HALF_WIDTH=25/ACTIVE_MS=220`(トール620/45より狭い)。点-線分距離判定・被弾で`boss.damage`(190)・カウンター窓でパリィ反射(miguelCounterHit=thor相当)。攻撃pool=当面haraiのみ。
+- **描画(pixiScene)**: BOSS_SPRITE_FIT.miguel `{0.50,0.20,0.35,0.99}`・MIGUEL_SWORD_*(grip{0.51,0.14}/tip{0.47,1.00}/length260)。drawThorSlash/Ready を汎用ヘルパー(drawKatanaSlash/Ready)へリファクタしmiguel-sword版wrapperを追加。miguelSlashFx Map+cleanup(個体除去/全teardown)。miguel drawEnemyブロック=windup赤テレグラフ+構え、active=剣を振る(柄=手にpin・切先がライン追従の弧)。剣はモーションで振る。
+- **テスト起動 `?gateboss=1`**(統一): `GATE2_BOSS_TYPE_BY_STAGE{'stage-1':'miguel'}` からステージのゲート2ボスをラン開始直後にforce-spawn(拘束なし・ゲート2と同じ×5初期化)。新ランで再アーム。将来ステージはlookup追加のみ。
+- **★私のv1586取りこぼし修正**: `scriptPuzzle.test.ts`にもSPECIAL_CD_MSの2つ目アサート(3000)があり、constitution側しか直していなかった=CI赤要因。30000へ更新(教訓: 定数変更は全テストをgrep/フル実行で確認)。
+- 検証(設計チャット独立): **typecheck clean / npm test 596 pass・2 skip / lint 0エラー**。全diffレビュー済(型/stats/近接スタンプ4経路/制御機の周回符号・非干渉/描画ヘルパー流用)。負荷 1/10(単ボス・強glow不使用・pooled/線描画)。
+- **実機で見る点(`?gateboss=1`で即テスト可)**: ①ミゲルがCCW周回するか ②横払い(狭)の予告→薙ぎ→剣の振り ③攻撃中に止まるか ④近接被弾で一瞬速くなるか ⑤絵のfit(足元/大きさ)・剣の柄/切先の見え。全数値=叩き台=実機調整前提。攻撃2以降は追って追加。
+
 ## v0.25.1587 — 素材: ゲート2ボス「ミゲル」本体+剣スプライトを先行コミット(実装はSonnet並行中)【2026-07-10 18:45 JST】
 - 社長提供のゲート2ボス(天使名・ミゲル)素材を確実に保全するため、コードより先にスプライトのみコミット。
   設計チャットが焼き済み: `public/sprites/miguel.png`(797×1187・透過・BOSS_SPRITE_FIT叩き台`{w:0.50,h:0.20,cx:0.35,cy:0.99}`)、

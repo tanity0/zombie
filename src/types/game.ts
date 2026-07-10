@@ -363,6 +363,10 @@ export interface Enemy {
   bossBurstNextAt?: number;  // 次の1発の gameTime(ms)
   // トール専用: 旋回方向(1=時計回り/既定 -1=逆回転)。払いの予告中だけ一時的に反転する。
   bossCircleDir?: number;
+  // ミゲル(ゲート2ボス)専用: 直近に「近接」ダメージを受けた gameTime(ms)。gameStore.ts の近接
+  // ダメージ経路(grantMeleeKillRewards/4武器の近接分岐)だけがスタンプする(銃/爆発では発動しない)。
+  // useGameLoop のミゲル専用コントローラがこれを見て、被弾後1秒だけ周回速度を上げる(社長指示)。
+  meleeHitAt?: number;
 }
 
 export type SummonKind = 'normal' | 'rare';
@@ -413,6 +417,8 @@ export type EnemyType =
   | 'jormungand' // 裏ボス(ステージ3): 巨蛇「ヨルムンガルド」。仕様は mimir と共通
   | 'skadi'      // 裏ボス(ステージ4): 氷の死王「スカジ」。仕様は他の裏ボスと共通
   | 'thor'       // 裏ボス(ステージ5): 鬼刀の武人「トール」。仕様は他の裏ボスと共通(社長提供素材)
+  | 'miguel'     // ゲート2ボス(天使名ボス1体目): 大天使ミカエル「ミゲル」。仕様=他の裏ボスと共通だが
+                 // stageのhiddenBoss設定ではなくゲート2(useGameLoop.ts)からfromEventでスポーンされる
   | 'hunter'     // ハンター変異体: 3分以降・優勢時に出現。索敵→発見→拠点まで追跡→撤退する徘徊ストーカー(専用イベント制御)
   | 'screamer';  // 変異体(叫喚型): 5分以降・同時1体。距離を保ち、溜め→叫喚で画面内の通常敵を一時強化(優先処理対象)
 

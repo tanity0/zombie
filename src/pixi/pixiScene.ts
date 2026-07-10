@@ -599,6 +599,10 @@ const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
 const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
+// ミゲル(ゲート2ボス)の横払い(狭)描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
+const MIGUEL_HARAI_WINDUP_MS = 1000;    // 払いの予告時間(useGameLoop と一致)
+const MIGUEL_HARAI_ACTIVE_MS = 220;     // 払いの実行(判定持続)時間(useGameLoop と一致)
+const MIGUEL_HARAI_VIS_HALFWIDTH = 25;  // 払いの描画半太さ(当たり判定と同じ・トールより狭い)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
@@ -634,6 +638,20 @@ const THOR_KATANA_BLADE_LEN_FRAC = Math.hypot(
   THOR_KATANA_TIP_FRAC.y - THOR_KATANA_GRIP_FRAC.y,
 ); // 柄→切っ先の距離(画像サイズに対する比率)
 const THOR_KATANA_LENGTH = 220; // 表示上の柄→切っ先の長さ(px・トールの体格に対して自然な長さ)
+// PACING_PUZZLE.md §5.21-追補8: ミゲルの剣(社長提供・miguel-sword.png=805×3437・透過済み。
+// 縦長で柄が上・切っ先が下)。thor-katanaと同じ「柄フラクション座標を回転軸にして当たり判定
+// ライン方向へ向ける」方式を流用。叩き台(実機調整前提)。
+const MIGUEL_SWORD_GRIP_FRAC = { x: 0.51, y: 0.14 };  // 柄(握り位置)の画像内フラクション座標
+const MIGUEL_SWORD_TIP_FRAC = { x: 0.47, y: 1.00 };   // 切っ先の画像内フラクション座標
+const MIGUEL_SWORD_INTRINSIC_ANGLE = Math.atan2(
+  MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
+  MIGUEL_SWORD_TIP_FRAC.x - MIGUEL_SWORD_GRIP_FRAC.x,
+); // 画像自体の柄→切っ先方向(ローカル角度)
+const MIGUEL_SWORD_BLADE_LEN_FRAC = Math.hypot(
+  MIGUEL_SWORD_TIP_FRAC.x - MIGUEL_SWORD_GRIP_FRAC.x,
+  MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
+); // 柄→切っ先の距離(画像サイズに対する比率)
+const MIGUEL_SWORD_LENGTH = 260; // 表示上の柄→切っ先の長さ(px・素材が長身の剣なのでトールの刀=220よりやや長め)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
@@ -811,6 +829,7 @@ const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: nu
   jormungand: { w: 0.91, h: 0.21, cx: 0.50, cy: 0.72 }, // 巨蛇(横長 1280×960)。帯=とぐろの下端。
   skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(1151×1243)。帯=足元。
   thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93 }, // 鬼刀の武人(1132×1147)。帯=両足の実測位置。
+  miguel:     { w: 0.50, h: 0.20, cx: 0.35, cy: 0.99 }, // 大天使ミゲル(797×1187)。thor流用+足元実測の叩き台(実機微調整前提)。
 };
 const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // 設置物(盾)/召喚が攻撃された時の被弾シェイク。減衰する短い横揺れ(描画のみ)。
@@ -972,6 +991,9 @@ export class PixiScene {
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
   private thorSlashFx = new Map<string, Container>();
+  // PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス)専用のharai演出コンテナ。thorSlashFxと同じ
+  // 仕組み(enemy.id keyed)だが別マップ=別ボス種の同時存在(理論上)でも取り違えない。
+  private miguelSlashFx = new Map<string, Container>();
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
   // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
   private namedFoeLabels = new Map<string, Text>();
@@ -4508,6 +4530,8 @@ export class PixiScene {
         this.enemyBlockFall.delete(id);
         const slashFx = this.thorSlashFx.get(id);
         if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
+        const miguelFx = this.miguelSlashFx.get(id);
+        if (miguelFx) { miguelFx.destroy({ children: true }); this.miguelSlashFx.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
       }
@@ -5505,6 +5529,32 @@ export class PixiScene {
           // 残り400msでフラッシュ(仕様どおりjump-windupは対象外)。
           const jumpFlash = thorFlashTint((e.bossStateUntil ?? gameTime) - gameTime, now);
           if (jumpFlash !== null) view.sprite.tint = jumpFlash;
+        }
+      } else {
+        view.sprite.tint = 0xffffff;
+      }
+    }
+    // ミゲル(ゲート2ボス・§5.21-追補8バッチ1)の横払い(狭)。トールのharai描画を流用し、範囲/太さ/
+    // 剣素材だけ差し替える(攻撃はharaiのみ=攻撃2以降は追って追加)。
+    if (e.type === 'miguel') {
+      const slashFx = this.miguelSlashFx.get(e.id);
+      if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
+      if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
+        view.sprite.tint = 0xffffff;
+        const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
+        const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        if (e.bossState === 'harai-windup') {
+          // 放つ前=赤いダメージゾーンのライン予告(トールと同じ意匠)。
+          const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS));
+          const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+          // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
+          this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+        } else {
+          // 払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
+          const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
+          this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
         }
       } else {
         view.sprite.tint = 0xffffff;
@@ -7433,21 +7483,29 @@ export class PixiScene {
     } else burst.visible = false;
   }
 
-  // トール(一閃/突き/払い)専用: drawSlashSprite と同じピクセル素材(fx/slash-streak-*, fx/slash-burst-*)を、
-  // プレイヤーの斬撃のような固定斜め向きではなく、実際の当たり判定ライン(fx,fy→tx,ty・半幅halfWidth)に
-  // 合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを斬撃ピクセルで当たり判定どおりにモーション)。
+  // トール/ミゲル(一閃/突き/払い)共通: drawSlashSprite と同じピクセル素材(fx/slash-streak-*,
+  // fx/slash-burst-*)を、プレイヤーの斬撃のような固定斜め向きではなく、実際の当たり判定ライン
+  // (fx,fy→tx,ty・半幅halfWidth)に合わせて回転・伸縮して表示する(社長指示: 一閃/突き/払いを
+  // 斬撃ピクセルで当たり判定どおりにモーション)。ボス種ごとの差分(FXマップ/剣テクスチャ/柄フラク
+  // 座標/柄→切っ先角度・長さ比・表示長)をパラメータ化し、drawThorSlash/drawMiguelSlash から呼ぶ
+  // (§5.21-追補8: 剣の見た目だけ差し替えたいのでヘルパーを共通化・専用関数の重複を避ける)。
   // t: 0(このステートの開始)→1(終了)の進行度。0-0.5でstreakが伸びる(溜め=予告)、0.5-1で縮む(実行=フェード)。
   // burst=trueの間だけ命中点(tx,ty)にバーストがポップ(実行中の手応え。溜め中は出さない)。
-  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
-    let c = this.thorSlashFx.get(id);
+  private drawKatanaSlash(
+    fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
+    bladeLenFrac: number, katanaLength: number, katanaTexName: string,
+    id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean,
+    showKatana = false, pivotX?: number, pivotY?: number
+  ) {
+    let c = fxMap.get(id);
     if (!c) {
       const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
       const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
-      const katana = new Sprite(); katana.anchor.set(THOR_KATANA_GRIP_FRAC.x, THOR_KATANA_GRIP_FRAC.y);
+      const katana = new Sprite(); katana.anchor.set(gripFrac.x, gripFrac.y);
       c = new Container();
       c.addChild(streak, burstSp, katana);
       this.L.effectLayer.addChild(c);
-      this.thorSlashFx.set(id, c);
+      fxMap.set(id, c);
     }
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
@@ -7481,27 +7539,28 @@ export class PixiScene {
     } else {
       burstSp.visible = false;
     }
-    // 社長提供の刀(横払い/突きの視認性を上げる追加ビジュアル)。柄(グリップ)を判定ラインの始点(fx,fy)に
-    // 置き、刀身が実際の当たり判定ラインの方向を向くよう回転させる。streakと同じt(0-0.5伸び/0.5-1縮み)
-    // でフェードし、ライン自体の見た目(赤ゾーン/斬撃ピクセル)は変えない=あくまで追加の視認性補助。
+    // 社長提供の刀/剣(横払い/突きの視認性を上げる追加ビジュアル)。柄(グリップ)を判定ラインの始点
+    // (fx,fy)に置き、刀身が実際の当たり判定ラインの方向を向くよう回転させる。streakと同じt(0-0.5
+    // 伸び/0.5-1縮み)でフェードし、ライン自体の見た目(赤ゾーン/斬撃ピクセル)は変えない=あくまで
+    // 追加の視認性補助。
     if (showKatana) {
-      const kref = getTexture('thor-katana');
+      const kref = getTexture(katanaTexName);
       if (kref) {
         if (katana.texture !== kref) katana.texture = kref;
-        const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
+        const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
         katana.scale.set(kscale);
         if (pivotX !== undefined && pivotY !== undefined) {
-          // 社長指示: 横払いは「トールを軸に刀を振る」。柄をトールの手元(pivot)へ固定し、刃先を
+          // 社長指示: 横払いは「本体を軸に刀を振る」。柄を本体の手元(pivot)へ固定し、刃先を
           // 判定ライン上の現在位置(fx,fy→tx,ty を tt で補間)へ向ける=斬撃アニメと同期して薙ぐ。
           const contactX = fx + (tx - fx) * tt;
           const contactY = fy + (ty - fy) * tt;
           // pivot と contact がほぼ一致する初期フレーム(一閃=pivotが始点)は角度が不定になるので、
           // その時はライン方向(angle)へフォールバックして向きの暴れを防ぐ。
           const pdx = contactX - pivotX, pdy = contactY - pivotY;
-          katana.rotation = (Math.hypot(pdx, pdy) < 1 ? angle : Math.atan2(pdy, pdx)) - THOR_KATANA_INTRINSIC_ANGLE;
+          katana.rotation = (Math.hypot(pdx, pdy) < 1 ? angle : Math.atan2(pdy, pdx)) - intrinsicAngle;
           katana.position.set(pivotX, pivotY);
         } else {
-          katana.rotation = angle - THOR_KATANA_INTRINSIC_ANGLE;
+          katana.rotation = angle - intrinsicAngle;
           katana.position.set(fx, fy);
         }
         katana.alpha = streak.alpha;
@@ -7510,6 +7569,21 @@ export class PixiScene {
     } else {
       katana.visible = false;
     }
+  }
+
+  private drawThorSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+    this.drawKatanaSlash(
+      this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+    );
+  }
+
+  // ミゲル(ゲート2ボス)の横払い(狭)実行時の描画。drawThorSlashと同じ仕組みをmiguel-swordで流用。
+  private drawMiguelSlash(id: string, fx: number, fy: number, tx: number, ty: number, halfWidth: number, t: number, burst: boolean, showKatana = false, pivotX?: number, pivotY?: number) {
+    this.drawKatanaSlash(
+      this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+      id, fx, fy, tx, ty, halfWidth, t, burst, showKatana, pivotX, pivotY
+    );
   }
 
   // 突きの溜め演出(社長指示): 弓で矢を引いて放つ感覚。刀の先端を突く方向(target=プレイヤー)へ
@@ -7591,34 +7665,54 @@ export class PixiScene {
   }
 
   // 横払いの構え(社長指示): 溜め(harai-windup)の間、刀を「振るモーションの最初の位置」に最初から構えて
-  // 置いておく。柄=トールの手元(pivot)、刃先=薙ぎ始めの点(aim=判定ライン始点 fx,fy)へ向ける。streak/burstは
+  // 置いておく。柄=本体の手元(pivot)、刃先=薙ぎ始めの点(aim=判定ライン始点 fx,fy)へ向ける。streak/burstは
   // 出さない(溜め中は判定なし)。実行(harai)でこの位置から薙ぎ始める=構え→振りが連続する。
-  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
-    let c = this.thorSlashFx.get(id);
+  // トール/ミゲル共通(§5.21-追補8: 剣の見た目だけ差し替えるためパラメータ化)。
+  private drawKatanaReady(
+    fxMap: Map<string, Container>, gripFrac: { x: number; y: number }, intrinsicAngle: number,
+    bladeLenFrac: number, katanaLength: number, katanaTexName: string,
+    id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number
+  ) {
+    let c = fxMap.get(id);
     if (!c) {
       const streak = new Sprite(); streak.blendMode = 'add'; streak.anchor.set(0.5, 0.5);
       const burstSp = new Sprite(); burstSp.anchor.set(0.5, 0.5); burstSp.blendMode = 'add';
-      const katana = new Sprite(); katana.anchor.set(THOR_KATANA_GRIP_FRAC.x, THOR_KATANA_GRIP_FRAC.y);
+      const katana = new Sprite(); katana.anchor.set(gripFrac.x, gripFrac.y);
       c = new Container();
       c.addChild(streak, burstSp, katana);
       this.L.effectLayer.addChild(c);
-      this.thorSlashFx.set(id, c);
+      fxMap.set(id, c);
     }
     const streak = c.children[0] as Sprite;
     const burstSp = c.children[1] as Sprite;
     const katana = c.children[2] as Sprite;
-    const kref = getTexture('thor-katana');
+    const kref = getTexture(katanaTexName);
     if (!kref) { c.visible = false; return; }
     c.visible = true;
     streak.visible = false;
     burstSp.visible = false;
-    const kscale = THOR_KATANA_LENGTH / (THOR_KATANA_BLADE_LEN_FRAC * Math.max(1, kref.width));
+    const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
     katana.scale.set(kscale);
-    katana.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) - THOR_KATANA_INTRINSIC_ANGLE;
+    katana.rotation = Math.atan2(aimY - pivotY, aimX - pivotX) - intrinsicAngle;
     katana.position.set(pivotX, pivotY);
     katana.tint = 0xffffff;
     katana.alpha = alpha;
     katana.visible = true;
+  }
+
+  private drawThorKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+    this.drawKatanaReady(
+      this.thorSlashFx, THOR_KATANA_GRIP_FRAC, THOR_KATANA_INTRINSIC_ANGLE, THOR_KATANA_BLADE_LEN_FRAC, THOR_KATANA_LENGTH, 'thor-katana',
+      id, pivotX, pivotY, aimX, aimY, alpha
+    );
+  }
+
+  // ミゲル(ゲート2ボス)の横払い(狭)溜め時の「構え」描画。drawThorKatanaReadyと同じ仕組みをmiguel-swordで流用。
+  private drawMiguelKatanaReady(id: string, pivotX: number, pivotY: number, aimX: number, aimY: number, alpha: number) {
+    this.drawKatanaReady(
+      this.miguelSlashFx, MIGUEL_SWORD_GRIP_FRAC, MIGUEL_SWORD_INTRINSIC_ANGLE, MIGUEL_SWORD_BLADE_LEN_FRAC, MIGUEL_SWORD_LENGTH, 'miguel-sword',
+      id, pivotX, pivotY, aimX, aimY, alpha
+    );
   }
 
   private dogFetchPose(e: Extract<VisualEffect, { kind: 'dogFetch' }>, now: number) {
@@ -8473,6 +8567,7 @@ export class PixiScene {
     for (const g of this.projectiles.values()) g.destroy();
     for (const o of this.effects.values()) o.destroy();
     for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
+    for (const o of this.miguelSlashFx.values()) o.destroy({ children: true });
     // 影は shadowContainer + プール済みスプライトで管理(旧 shadowGfx は存在しない孤児参照だった)。
     // 以前はここで存在しない shadowGfx.destroy() を呼んで例外→以降の解放(playerFx等)が握り潰されていた。
     this.shadowContainer.destroy({ children: true });

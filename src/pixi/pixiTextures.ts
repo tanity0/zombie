@@ -302,6 +302,12 @@ export const ensureTextures = (): Promise<void> => {
       // トール(ステージ5)はドット絵タッチの素材なので、他の裏ボス(linear)と違い nearest で
       // ピクセルの輪郭を保つ(hunterと同じ扱い)。
       { name: 'thor', scaleMode: 'nearest' as const },
+      // ゲート2ボス(§5.21-追補8): ミゲル(大天使)。詳細イラスト調なので他の裏ボス(mimir等)と同じ
+      // linear で滑らかに縮小。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
+      { name: 'miguel', scaleMode: 'linear' as const },
+      // ミゲルの剣(横払い用ビジュアル)。miguel-sword.png は既に透過済み(色キー不要・
+      // thor-katanaと違いloadKeyedを使わない・通常のstandalone読み込みでOK)。詳細イラスト調なのでlinear。
+      { name: 'miguel-sword', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

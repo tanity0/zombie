@@ -556,6 +556,12 @@ const RESCUE_SPAWN_DIST_MAX = evNum('rescuemax', 1000);
 const VICIOUS_DISCOVER_DELAY_MS = evNum('viciousdelay', 3000);
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
+// PACING_PUZZLE.md §5.21-追補8: テスト用の統一起動フラグ。ラン開始直後、そのステージのゲート2ボス型を
+// プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/×5/fromEvent)で
+// すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
+// このlookupに追加するだけで対応する(現状はstage-1=ミゲルのみ)。
+const FORCE_GATEBOSS = evParam('gateboss') === '1';
+const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = { 'stage-1': 'miguel' };
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
 // (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。
@@ -678,6 +684,19 @@ const THOR_HARAI_RANGE = 620;                // ダッシュと同じ距離分�
 const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH * 1.5; // 社長指示: 突きの1.5倍の太さへ(突き本体は無変更)
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
+// PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス・天使名ボス1体目)。トールのharaiを流用し
+// 範囲を狭くした専用攻撃1つのみ(バッチ1)。定数は叩き台(実機調整前提)。
+const MIGUEL_HARAI_WINDUP_MS = 1000;         // 払い: 溜め1秒(トールと同型)
+const MIGUEL_HARAI_RANGE = 380;              // トール(620)より狭い(仕様指定)
+const MIGUEL_HARAI_HALF_WIDTH = 25;          // トール(45)より狭い(仕様指定)
+const MIGUEL_HARAI_ACTIVE_MS = 220;
+// ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。
+// margin=20・miguel.height=60 → 300-20-30=250(仕様の目安値と一致)。
+const MIGUEL_ORBIT_MARGIN = 20;
+const MIGUEL_ORBIT_SPEED = 70;               // 周回の接線速度(px/s・叩き台)
+const MIGUEL_MELEE_DASH_MS = 1000;           // 近接被弾で1秒間だけ周回速度アップ
+const MIGUEL_MELEE_DASH_MULT = 2;            // 加速倍率
+
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
 const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
@@ -687,6 +706,7 @@ const THOR_JUMP_RECOVER_MS = 900;            // 着地後の硬直
 
 const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
+let miguelCtrlErrLogged = false;                     // ミゲル制御例外のログも初回だけ
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
 const PICKUP_HARD_CAP = 120;
@@ -942,6 +962,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number }>(
     { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 }
   );
+  // ?gateboss=1 診断: ラン開始後に1回だけそのステージのゲート2ボスをforce-spawnしたかどうか。
+  const gatebossForceRef = useRef(false);
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1570,6 +1592,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           heliLandedRef.current = false; // ヘリ着陸SE/砂煙の1回フラグも新ランで戻す
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
+          gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -1751,24 +1774,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
              gate2Cleared: gateMetaRef.current.gate2Cleared,
              activeEventActive: false,
            })) {
-            // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2(ハード=出られない)。城ボス(giantbat)の
-            // ユニーク版1体を強さ×5(GATE2_BOSS_STRENGTH_MULT・§5.21-追補4で×2→×5)で配置。
-            // confinesPlayerは省略=既定true(プレイヤーはサークルから出られない)。
+            // PACING_PUZZLE.md §5.21-追補8: 囲いゲート2(ハード=出られない)。ゲート2ボス=天使名の
+            // 裏ボス勢1体目「ミゲル」(内部型'miguel')をユニーク版・強さ×5(GATE2_BOSS_STRENGTH_MULT)で
+            // 配置する(旧: 城ボスgiantbatの仮流用。giantbatは城フィナーレボスとして別枠で存続=
+            // useGameLoop.ts:1638 の別スポーンは無変更)。confinesPlayerは省略=既定true。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
             // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
-            // (gate1と同じ実機バグの教訓・giantbatは除外リストに入っているため実害は無かったが
+            // (gate1と同じ実機バグの教訓・裏ボス(isHiddenBoss)は除外リストに入っているため実害は無いが
             // 順序を揃えて統一する)。
             const gate2Event = { kind: 'boss' as const, x: g2pcx, y: g2pcy, radius: GATE_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
             useGameStore.getState().beginArenaEvent(gate2Event);
             const bx = g2pcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const by = g2pcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
-            const boss = spawnEnemyAt('giantbat', bx - 24, by - 24, newGameTime);
+            const boss = spawnEnemyAt('miguel', bx - 24, by - 24, newGameTime);
             boss.health *= GATE2_BOSS_STRENGTH_MULT;
             boss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
             boss.damage = Math.round(boss.damage * GATE2_BOSS_STRENGTH_MULT);
             boss.fromEvent = true;
-            boss.dormant = true; boss.aggroRange = GIANT_AGGRO_RANGE; boss.vx = 0; boss.vy = 0;
+            // ミゲルは周回移動(bossState制御)なので dormant/aggroRange は使わない(giantbat流用時の名残)。
+            boss.bossState = 'chase';
+            boss.bossNextActionAt = newGameTime + 2000;
+            boss.homeX = g2pcx; boss.homeY = g2pcy; // 周回の中心=ゲート中心
             addEnemy(boss);
             activeGateRef.current = 2;
             useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
@@ -2803,6 +2830,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // ?gateboss=1 診断(PACING_PUZZLE.md §5.21-追補8): ラン開始直後、そのステージのゲート2ボス型を
+        // プレイヤー近くへ即force-spawnし、ゲート2と同じ初期化(bossState=chase/home=生成中心/×5/
+        // fromEvent)ですぐ戦えるようにする(拘束サークル/beginArenaEventは省略=テスト用途)。
+        // 将来ステージが増えたら GATE2_BOSS_TYPE_BY_STAGE に足すだけで対応する。既定OFF=通常挙動不変。
+        if (FORCE_GATEBOSS && !gatebossForceRef.current && !danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+          const gbType = GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()];
+          if (gbType) {
+            gatebossForceRef.current = true;
+            const gcx = player.x + player.width / 2, gcy = player.y + player.height / 2;
+            const gboss = spawnEnemyAt(gbType, gcx - 24, gcy - 24, newGameTime);
+            gboss.health *= GATE2_BOSS_STRENGTH_MULT;
+            gboss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
+            gboss.damage = Math.round(gboss.damage * GATE2_BOSS_STRENGTH_MULT);
+            gboss.fromEvent = true;
+            gboss.bossState = 'chase';
+            gboss.bossNextActionAt = newGameTime + 2000;
+            gboss.homeX = gcx; gboss.homeY = gcy;
+            addEnemy(gboss);
+          }
+        }
+
         // --- 裏ボス(深層域の隠しボス: ステージ1=ミーミル / ステージ3=ヨルムンガルド) ---
         // 仕様(社長指示): 深層域の指定エリアに近づくと1回だけ出現→「危険!直ちに避難を」。
         //  追跡/攻撃(3連発・全方位16発・たまにダッシュ)。画面外は巣へ戻りつつ毎秒40回復。
@@ -3521,6 +3569,165 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
          } catch (err) {
           if (!bossCtrlErrLogged) { bossCtrlErrLogged = true; console.error('[hiddenBoss] controller error (suppressed after first):', err); }
+         }
+        }
+
+        // --- ミゲル(ゲート2ボス・§5.21-追補8)専用ミニコントローラ ---
+        // stage の hiddenBoss 設定(mimir/thor等)とは独立: ゲート2は fromEvent 経由で直接 addEnemy
+        // 済みなので、上のブロック(bs.bossId による単一種の巣/帰巣/深層域退場ロジック)には乗せず、
+        // 別の敵個体(miguel)を専用に見つけて動かす小さな兄弟ブロックとして実装する(社長「hiddenBoss
+        // 未設定のステージでもゲート2ボスは動く必要がある」= hiddenBossが無い/別種でも独立して動く)。
+        // 仕様: ゲート枠内側を反時計回り(CCW)に周回。プレイヤー追尾はしない。攻撃(横払いharai)中は
+        // 静止。近接被弾で1秒間だけ周回速度2倍。攻撃選択pool=当面harai(狭)のみ(トールのharaiを流用)。
+        if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+         try {
+          const miguel = useGameStore.getState().enemies.find(e => e.type === 'miguel' && e.bossState != null);
+          if (miguel) {
+            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+            const mcx = miguel.x + miguel.width / 2, mcy = miguel.y + miguel.height / 2;
+            const bossMoveDt = deltaTime * MOVE_SPEED_MULT; // 通常敵と同じ移動テンポ(社長指示の裏ボス共通則)
+            const mHomeX = miguel.homeX ?? mcx, mHomeY = miguel.homeY ?? mcy;
+            const st = miguel.bossState ?? 'chase';
+            const patch: Partial<typeof miguel> = {};
+
+            // 近接被弾で1秒間だけ周回速度2倍(仕様指示)。gun/爆発では発動しない
+            // (meleeHitAt は gameStore.ts の近接ダメージ経路だけがスタンプする)。
+            const meleeDashActive = newGameTime - (miguel.meleeHitAt ?? -Infinity) <= MIGUEL_MELEE_DASH_MS;
+            const orbitSpeedMult = meleeDashActive ? MIGUEL_MELEE_DASH_MULT : 1;
+            // 周回半径=ゲート内側ギリギリ。halfSize=足元帯(判定)の高さ半分をクリアランスに使う。
+            const halfSize = miguel.height / 2;
+            const orbitRadius = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - halfSize;
+
+            // 旋回運動(トールのthorOrbitMove相当だが、プレイヤーではなく固定の home 中心を回る・CCW固定)。
+            const miguelOrbitMove = () => {
+              const relX = mcx - mHomeX, relY = mcy - mHomeY;
+              const curDist = Math.hypot(relX, relY) || 1;
+              const curAngle = Math.atan2(relY, relX);
+              const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult) / orbitRadius;
+              // Y-down画面座標では角度増加=視覚的に時計回り(トールの規約と同じ)。CCW=角度を減らす向き。
+              const newAngle = curAngle - angularSpeed * bossMoveDt;
+              const correctedDist = curDist + (orbitRadius - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
+              const ncx = mHomeX + Math.cos(newAngle) * correctedDist;
+              const ncy = mHomeY + Math.sin(newAngle) * correctedDist;
+              patch.x = ncx - miguel.width / 2;
+              patch.y = ncy - miguel.height / 2;
+            };
+
+            // 次の攻撃選択までの間隔(叩き台=トールと同じ間隔レンジを流用・仕様指示)。
+            const miguelNextActionDelay = () => newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
+
+            // カウンター成立時の共通処理(thorCounterHit相当を流用・仕様指示)。
+            const miguelCounterHit = (hitX: number, hitY: number) => {
+              const cp = useGameStore.getState().player;
+              const pnow = Date.now();
+              addMeleeFinishCombo(1);
+              playSfx('counter');
+              useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
+              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+              useGameStore.getState().markMeleeSwingFx();
+              spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+              spawnBurst(hitX, hitY, '#38bdf8', 14);
+              useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+              useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+              const counterBase = getActiveGun(cp)?.damage ?? 12;
+              const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
+              const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+              damageEnemy(miguel.id, dmg, false, true);
+              spawnDamageNumber(mcx, miguel.y, dmg, true);
+              playSfx('headshot');
+              spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+              spawnBurst(hitX, hitY, '#fde047', 10);
+              useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
+              const lx = mcx - pcx, ly = mcy - pcy;
+              const ll = Math.hypot(lx, ly) || 1;
+              patch.bossState = 'counter-leap';
+              patch.bossStateUntil = newGameTime + THOR_COUNTER_LEAP_MS;
+              patch.aiFromX = mcx; patch.aiFromY = mcy;
+              patch.aiTargetX = pcx + (lx / ll) * orbitRadius;
+              patch.aiTargetY = pcy + (ly / ll) * orbitRadius;
+            };
+
+            const miguelBodyOverlapNow = () => {
+              const cp = useGameStore.getState().player;
+              return {
+                overlap: rectsOverlap({ x: miguel.x, y: miguel.y, width: miguel.width, height: miguel.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
+                counterActive: Date.now() <= cp.counterWindowEnd,
+              };
+            };
+
+            if (st === 'chase') {
+              miguelOrbitMove(); // 攻撃中(windup/active)は呼ばない=立ち止まる(仕様指示)
+              if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
+                // 攻撃選択pool=当面harai(狭)のみ(仕様指示。攻撃2以降は追って追加)。
+                patch.bossState = 'harai-windup';
+                patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
+                // プレイヤー中心・現在の接線と並行な赤ラインをロック(トールのharaiと同じ方式)。
+                const rx = mcx - pcx, ry = mcy - pcy;
+                const rl = Math.hypot(rx, ry) || 1;
+                const tx0 = -ry / rl, ty0 = rx / rl;
+                patch.aiFromX = pcx - tx0 * (MIGUEL_HARAI_RANGE / 2);
+                patch.aiFromY = pcy - ty0 * (MIGUEL_HARAI_RANGE / 2);
+                patch.aiTargetX = pcx + tx0 * (MIGUEL_HARAI_RANGE / 2);
+                patch.aiTargetY = pcy + ty0 * (MIGUEL_HARAI_RANGE / 2);
+              }
+            } else if (st === 'harai-windup') {
+              // 払い: 溜め中は本体静止(仕様指示)。カウンター可能。
+              const { overlap, counterActive } = miguelBodyOverlapNow();
+              if (overlap && counterActive) {
+                miguelCounterHit(mcx, mcy);
+              } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
+                patch.bossState = 'harai';
+                patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
+                playSfx('thor-sweep');
+              }
+            } else if (st === 'harai') {
+              // 払い(実行): ロック済みの並行ライン上のみ判定(トールと同じ点-線分距離判定)。
+              const fx = miguel.aiFromX ?? mcx, fy = miguel.aiFromY ?? mcy;
+              const tx = miguel.aiTargetX ?? mcx, ty = miguel.aiTargetY ?? mcy;
+              let lux = tx - fx, luy = ty - fy;
+              const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
+              const lineLen = Math.hypot(tx - fx, ty - fy);
+              const tproj = Math.max(0, Math.min(lineLen, (pcx - fx) * lux + (pcy - fy) * luy));
+              const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
+              const pr = Math.max(player.width, player.height) / 2;
+              let countered = false;
+              if (Math.hypot(pcx - cxp, pcy - cyp) <= MIGUEL_HARAI_HALF_WIDTH + pr) {
+                const cp = useGameStore.getState().player;
+                if (Date.now() <= cp.counterWindowEnd) {
+                  miguelCounterHit(cxp, cyp);
+                  countered = true;
+                } else {
+                  const died = damagePlayer(miguel.damage, 'ミゲルの払い', cxp, cyp);
+                  if (died) triggerPlayerDeath(pcx, pcy);
+                }
+              }
+              if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = miguelNextActionDelay();
+              }
+            } else if (st === 'counter-leap') {
+              // カウンター成立後、近接距離ギリギリ外までロック済みの後退先へ高速移動(トールと同じ)。
+              const fx = miguel.aiFromX ?? mcx, fy = miguel.aiFromY ?? mcy;
+              const tx = miguel.aiTargetX ?? mcx, ty = miguel.aiTargetY ?? mcy;
+              const t = Math.max(0, Math.min(1, 1 - ((miguel.bossStateUntil ?? newGameTime) - newGameTime) / THOR_COUNTER_LEAP_MS));
+              patch.x = (fx + (tx - fx) * t) - miguel.width / 2;
+              patch.y = (fy + (ty - fy) * t) - miguel.height / 2;
+              if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = miguelNextActionDelay();
+              }
+            } else {
+              // 未知/旧ステート(初期スポーン直後を含む)は chase へフォールバックし必ず再開させる。
+              patch.bossState = 'chase';
+              patch.bossNextActionAt = miguelNextActionDelay();
+            }
+
+            if (Object.keys(patch).length) {
+              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === miguel.id ? { ...e, ...patch } : e) }));
+            }
+          }
+         } catch (err) {
+          if (!miguelCtrlErrLogged) { miguelCtrlErrLogged = true; console.error('[miguel] controller error (suppressed after first):', err); }
          }
         }
 

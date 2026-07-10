@@ -150,9 +150,9 @@ describe('decideNextSpawn', () => {
     expect(specialBlocked?.slot).toBe('chaff');
   });
 
-  it('the nuisance CD (3s) matches NUISANCE_CD_MS and is never referenced as reducible', () => {
+  it('the nuisance CD (3s) matches NUISANCE_CD_MS; special CD extended to 30s (v0.25.1586)', () => {
     expect(NUISANCE_CD_MS).toBe(3000);
-    expect(SPECIAL_CD_MS).toBe(3000);
+    expect(SPECIAL_CD_MS).toBe(30000);
     expect(POST_HIT_GUARD_MS).toBe(1500);
   });
 });

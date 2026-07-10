@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1588',
+    items: [
+      '深層ゲート(ゲート2)のボスを、専用の新ボス「ミゲル」に変更。ゲートの内側を周回し、横払いで斬ってくる(今後さらに攻撃を追加予定)。',
+    ],
+  },
+  {
     version: '0.25.1586',
     items: [
       '叫喚型(叫ぶ敵)と緑卵をばらまく敵の出現CDを3秒→30秒に延長。沸きすぎを緩和した。',

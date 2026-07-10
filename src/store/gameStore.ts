@@ -719,6 +719,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   jormungand: 'ヨルムンガルド',
   skadi: 'スカジ',
   thor: 'トール',
+  miguel: 'ミゲル',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
@@ -3604,7 +3605,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true } : e),
+      // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
+      // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
+      // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
+      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -3872,7 +3876,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const finisherHit = killed.some(k => k.finisher);
     set(state => ({
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true } : e),
+      // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
+      // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
+      // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
+      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -4059,7 +4066,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true } : e),
+      // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
+      // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
+      // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
+      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
@@ -4212,7 +4222,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const finishWindowMs = (MELEE_FINISH_COMBO_WINDOW_MS + skillFinishComboWindowBonus(player)) * (player.equipBonus?.killGraceMult ?? 1); // 装備KILL猶予で延長
     set(state => ({
       // このスイングで近接ダメージを受けた敵(lastHit===now)に meleeAggro を付与(救助で以後プレイヤー狙い)。
-      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true } : e),
+      // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
+      // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
+      // 無害な余剰フィールド(useGameLoop のミゲル専用コントローラだけが参照)。
+      enemies: survivors.map(e => e.lastHit === now ? { ...e, meleeAggro: true, meleeHitAt: gameTime } : e),
       gameStats: {
         ...state.gameStats,
         enemiesKilled: state.gameStats.enemiesKilled + killed.length,
