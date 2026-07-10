@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1607 — 追加: 新スキル「救難信号(rescue-signal)」=近接ヒット時、確率で味方が飛来し必中1撃【2026-07-11 03:34 JST】
+- **社長指示**: 近接攻撃ヒット時、確率で味方が援護近接。影(分身)と違い**必中・ランダム・倍率1**の単純な戦力アップ。選んでいないキャラが後ろから高速飛来→ナイフ→飛び去る。**発動でズーム演出**。確率効果なので**サブではなくスキル枠**。proc%は今後タレット相当へ調整。
+- **実装**(Sonnet): `SkillKey 'rescue-signal'` + `RescueAlly`型。純関数 `src/utils/rescueSignal.ts`(proc率/対象選定=ヒット敵→死亡なら最寄り生存/クラス選定=別クラス)+ユニット12。`gameStore`: `applyRescueSignalProc`(近接スイングのヒットで**1スイング1回**判定)+ `spawnRescueAlly`/`tickRescueAllies`(着弾フレームで**必中`damageEnemy`=倍率1フラット**・crit/コンボ/skillMult非適用=分身との差別化)。ズーム=`triggerZoom`直叩き(`triggerHitImpact`はtimeSlow内包のため不使用=**スロー無し**・CLAUDE.md順守)。`pixiScene`: 飛来アライをプールsprite描画(`playerTextureName`/`playerBaseScale`を`{...player,characterClass:klass}`で流用=クラス→スプライトの命名トラップを手書きしない)。init/resetGame両方でreset。
+- **数値=叩き台**: proc Lv1/2/3=**10/15/20%**(タレット相当へ実測調整予定)、飛来450ms、ズーム0.28。
+- 検証: **typecheck clean / vitest related 86 pass(新12含む)**。負荷 **2/10**(発動時のみ・同時0-1体・強glow無し)。
+- **★実装判断(要確認)**: ①1スイングに複数ヒットでも判定は1回(乱発防止・対象はヒット先頭) ②レアリティ=rare ③ズームは着弾時 ④キル時XP/ゴールド付与(弾は無し) ⑤フック=通常の近接スイングのみ(刀オート斬りは未フック)。
+
 ## v0.25.1606 — 修正: スカベンジャーのクイックマガジンを「敵の少ない方面」へ投げる【2026-07-11 03:13 JST】
 - **社長指示**: 「投げ込むのは敵がいない(少ない)方面に投げる」。
 - **原因**: 従来は `lastDirection`(進行方向)へ投げていた=群れの中へ投げてしまい、拾いに行くのが危険だった。

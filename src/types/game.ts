@@ -491,6 +491,24 @@ export interface ShadowCloneState {
   swingAt?: number;               // 直近の近接スイング演出の起点(Date.now)。本体と同じ斬撃モーション描画に使う。
 }
 
+// スキル「救難信号」(rescue-signal)の援護アライ。プレイヤーの近接ヒットで一定確率で発生する
+// 一過性エフェクト: 背後から飛来 → 対象へ必中1撃(ダメージ適用はgameStore.tickRescueAlliesが
+// 着弾フレームで行う) → 背後へ飛び去って消滅。当たり判定・パス探索は持たない演出専用の状態
+// (world/collisionには一切触れない=CLAUDE.mdの「PixiJSは描画のみ」原則どおり、pixiScene側は
+// この配列を読んで位置を補間するだけ)。
+export interface RescueAlly {
+  id: string;
+  klass: CharacterClass;   // 見た目(プレイヤーと別クラス)。既存のクラス→立ち絵テクスチャ対応を流用して描画
+  fromX: number;           // 出現地点(プレイヤーの背後)の足元X
+  fromY: number;
+  targetX: number;         // 発生時点の対象の足元X(対象が消えた後のフォールバック位置)
+  targetY: number;
+  targetEnemyId: string;   // ダメージ適用先。着弾時に生存していなければ何もしない(スキップ)
+  damage: number;          // 発生時点のプレイヤー近接ダメージそのまま(倍率1・crit/コンボ/装備アウトゴーイング倍率なし)
+  spawnedAt: number;       // gameTime(ms)。フェーズ(飛来→打撃→離脱)の起点
+  struck: boolean;         // 着弾ダメージを適用済みか(tickRescueAlliesが二重適用を防ぐためのフラグ)
+}
+
 // 火炎瓶(molotov)サブウェポンが足元に設置する地面の火だまり。MOLOTOV_FIRE_LIFETIME_MS(3秒)で消滅。
 // 生成/寿命切れ/敵への接触ダメージは gameStore.ts(spawnGroundFire/tickGroundFires)が処理する
 // シミュレーション側の状態で、pixiScene.ts はこの配列を読むだけ(松明の炎の見た目を流用して描画)。
@@ -539,7 +557,7 @@ export type SkillKey =
   // レア
   | 'crit-up' | 'knight' | 'exploder' | 'sharpshooter' | 'sniper' | 'ricochet'
   | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'
-  | 'knife-master' | 'benkei' | 'reflex'
+  | 'knife-master' | 'benkei' | 'reflex' | 'rescue-signal'
   // 通常
   | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
   | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder';

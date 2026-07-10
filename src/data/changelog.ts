@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1607',
+    items: [
+      '新スキル「救難信号」を追加。近接がヒットすると一定確率で仲間が飛んできて必中の追撃をくれる(発動時にズーム演出)。',
+    ],
+  },
+  {
     version: '0.25.1603',
     items: [
       '死神に自分の武器が当たらなかった不具合を修正。刀・タレット・各サブウェポン・スキル・召喚など全ての攻撃で、追ってくる死神を削れるようになった。',

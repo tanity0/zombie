@@ -19,9 +19,9 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, RescueAlly,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_HOLD_MS, RESCUE_ALLY_FLYOUT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
@@ -962,6 +962,8 @@ export class PixiScene {
   private enemies = new Map<string, ActorView>();
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
+  // スキル 救難信号: 飛来する援護アライ(一過性)。同時に生きるのは基本1体程度なので per-id プールで十分軽い。
+  private rescueAllyViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
   // 分身(サブウェポン): プレイヤーと同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト。
@@ -2651,6 +2653,7 @@ export class PixiScene {
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
+    this.syncRescueAllies(s.rescueAllies, s.enemies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -4745,6 +4748,73 @@ export class PixiScene {
         view.container.destroy({ children: true });
         this.groundFireViews.delete(id);
       }
+    }
+  }
+
+  // スキル 救難信号: 近接ヒットで一定確率で発生する援護アライ(プレイヤーと別クラスの立ち絵)。
+  // 背後(fromX/fromY)→対象(targetEnemyIdが生存中ならその現在地・消えていればtargetX/Yへの
+  // フォールバック)→背後、の単純な線形フライトを描くだけの一過性演出(当たり判定なし)。ダメージ
+  // 適用/寿命はsim側(gameStore.tickRescueAllies)が担い、ここは rescueAllies を読んで位置を
+  // 補間するだけ(CLAUDE.md「PixiJSは描画のみ」)。同時に生きるのは基本1体程度なのでper-idプールで十分軽い。
+  private syncRescueAllies(allies: RescueAlly[], enemies: Enemy[], player: Player, gameTime: number) {
+    const seen = new Set<string>();
+    for (const a of allies) {
+      seen.add(a.id);
+      let spr = this.rescueAllyViews.get(a.id);
+      if (!spr) {
+        spr = new Sprite();
+        spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ規約)
+        this.L.actorLayer.addChild(spr);
+        this.rescueAllyViews.set(a.id, spr);
+      }
+      // クラス→立ち絵テクスチャは既存のplayerTextureNameをそのまま流用(クラスID↔ファイル名の対応=
+      // mage→magnum/warrior→shotgun/necromancer→striker/rogue→scavengerを手書きしない・CLAUDE.md注意点)。
+      // 待機立ち絵(frame0・walking=false)で十分(短命の演出のため歩行/斬撃モーションは省略)。
+      const fakeAlly = { ...player, characterClass: a.klass };
+      const name = playerTextureName(fakeAlly, 0, false);
+      const tex = getTexture(name) ?? getTexture('player');
+      if (!tex) { spr.visible = false; continue; }
+
+      const target = enemies.find(e => e.id === a.targetEnemyId);
+      const tx = target ? target.x + target.width / 2 : a.targetX;
+      const ty = target ? target.y + target.height / 2 : a.targetY;
+
+      // elapsed は gameTime(sim clock)基準。tickRescueAllies のダメージ適用タイミングと必ず一致させる。
+      const elapsed = gameTime - a.spawnedAt;
+      let footX: number, footY: number, alpha = 1;
+      if (elapsed < RESCUE_ALLY_FLYIN_MS) {
+        const t = Math.max(0, Math.min(1, elapsed / RESCUE_ALLY_FLYIN_MS));
+        const ease = 1 - (1 - t) * (1 - t); // ease-out(勢いよく飛び込む)
+        footX = a.fromX + (tx - a.fromX) * ease;
+        footY = a.fromY + (ty - a.fromY) * ease;
+      } else if (elapsed < RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_HOLD_MS) {
+        footX = tx; footY = ty; // 打撃の一瞬は対象に静止
+      } else {
+        const t = Math.max(0, Math.min(1, (elapsed - RESCUE_ALLY_FLYIN_MS - RESCUE_ALLY_HOLD_MS) / RESCUE_ALLY_FLYOUT_MS));
+        const ease = t * t; // ease-in(引くように離脱)
+        footX = tx + (a.fromX - tx) * ease;
+        footY = ty + (a.fromY - ty) * ease;
+        alpha = 1 - t * 0.4; // 離脱時に軽くフェード
+      }
+
+      const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
+      const boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
+      const baseScale = playerBaseScale(fakeAlly, tex, boxW, boxH);
+      const d = this.depthScale(footY);
+      const sc = baseScale * d;
+      const facingLeft = tx < a.fromX; // 往路の左右で固定(離脱中に反転させない=シンプルな挙動)
+      spr.texture = tex;
+      spr.scale.set(facingLeft ? -sc : sc, sc);
+      spr.position.set(
+        this.snapToScreenPixel(footX, this.L.world.position.x),
+        this.snapToScreenPixel(footY, this.L.world.position.y),
+      );
+      spr.zIndex = footY; // 他アクターと足元Yでy-sort
+      spr.alpha = alpha;
+      spr.visible = true;
+    }
+    for (const [id, spr] of this.rescueAllyViews) {
+      if (!seen.has(id)) { spr.destroy(); this.rescueAllyViews.delete(id); }
     }
   }
 

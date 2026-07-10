@@ -4911,6 +4911,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (設置自体は上の molotov ブロックが行う。ここは置いた後の面倒を見るだけ)。
         useGameStore.getState().tickGroundFires();
 
+        // スキル 救難信号: 飛来中の援護アライの着弾ダメージ適用 + 寿命切れ回収(発生自体は
+        // triggerCounter内のapplyRescueSignalProcが行う。ここは置いた後の面倒を見るだけ)。
+        useGameStore.getState().tickRescueAllies();
+
         // 自動タレット: 設置中は留まってオート射撃。前方集中=SMG相当の長射程直線、全方位=
         // ハンドガン相当の短射程ターゲット。低確率でグレネード弾。寿命終了で小爆発(範囲ダメージ)。
         // updateProjectiles の duration カリングより前に寿命を処理して爆発を出す。

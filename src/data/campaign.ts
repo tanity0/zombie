@@ -505,7 +505,7 @@ export const SKILL_KEYS: SkillKey[] = [
   'reaper', 'berserker', 'skater',
   'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet',
   'bomber', 'fire-shooter', 'bomb-counter', 'punisher', 'combo-master',
-  'knife-master', 'benkei', 'reflex',
+  'knife-master', 'benkei', 'reflex', 'rescue-signal',
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
   'attack-shooter', 'runner', 'seeker', 'scrap-builder',
 ];
@@ -529,6 +529,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'knife-master': { name: 'ナイフマスター', desc: '近接ダメージのコンボでダメージ増加(+2%/hit, 最大+100%)。近接クリ率+20%。ただし弾薬ドロップ0%', rarity: 'rare' },
   'benkei':       { name: '弁慶',           desc: '武器を切り替えると10秒間クリティカル率+10%', rarity: 'rare' },
   'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'rare' },
+  'rescue-signal':{ name: '救難信号',       desc: '近接ヒット時、一定確率で味方が援護攻撃(必中・倍率1)。ズーム演出', rarity: 'rare' },
   // 通常
   'gold-rush':    { name: 'ゴールドラッシュ', desc: 'ゴールド取得量が増加', rarity: 'normal' },
   'time-keeper':  { name: 'タイムキーパー', desc: 'サブウェポンのクールダウン-30%', rarity: 'normal' },
@@ -564,6 +565,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'knife-master': { base: '近接コンボでダメージ増加＋近接クリ率上昇。ただし弾薬ドロップ0%', lv: ['+2%/hit(上限+50%)・近接クリ+10%', '+2%/hit(上限+70%)・+15%', '+4%/hit(上限+100%)・+20%'] },
   'benkei':       { base: '武器を切り替えるとクリティカル率が一時上昇', lv: ['+5%/10秒', '+10%/12秒', '+15%/15秒'] },
   'reflex':       { base: '被弾時に反撃の爆発（CDあり）', lv: ['ダメージ60／半径92／CD1.0s', '80／104／0.8s', '100／116／0.6s'] },
+  'rescue-signal':{ base: '近接ヒット時、一定確率で味方が援護攻撃（必中・倍率1）', lv: ['発動10%', '発動15%', '発動20%'] },
   // 通常
   'gold-rush':    { base: 'ゴールド取得量が増加', lv: ['+20%', '+35%', '+50%'] },
   'time-keeper':  { base: 'サブウェポンのクールダウン減少', lv: ['-10%', '-20%', '-30%'] },

@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, RescueAlly
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE,
@@ -33,6 +33,7 @@ import {
 } from '../config/shijin';
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
+import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
@@ -972,6 +973,20 @@ export const skillSeekerProcChance = (player: Player): number => {
 // シーカー発動中か(プレイヤーが半透明＝通常敵のターゲットから外れる)。
 export const isSeekerActive = (player: Player, gameTime: number): boolean => player.seekerUntil > gameTime;
 
+// 救難信号(rescue-signal): 発動率は skillLevel + rescueSignalProcChance(src/utils/rescueSignal.ts)。
+// ここは演出(飛来アライ)のタイミング/距離/ズーム量の定数のみ(いずれも叩き台・要調整)。
+// フェーズ: 飛来(FLYIN)→着弾でヒットストップ無しの1撃(HOLDの頭で適用)→離脱(FLYOUT)→消滅。
+export const RESCUE_ALLY_FLYIN_MS = 180;   // 背後→対象への飛来にかける時間
+export const RESCUE_ALLY_HOLD_MS = 90;     // 対象付近での一撃(ダメージはこの区間の開始時に適用)
+export const RESCUE_ALLY_FLYOUT_MS = 180;  // 対象→背後へ飛び去る時間
+export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_HOLD_MS + RESCUE_ALLY_FLYOUT_MS; // 450ms
+export const RESCUE_ALLY_SPAWN_DIST = 120; // 出現地点=プレイヤーの向きの逆(背後)へこの距離(px)
+// ズーム演出: 命中の瞬間に小さく寄る。CLAUDE.md方針によりスロー(timeSlow)/ヒットストップは使わない
+// (triggerHitImpactはtimeSlowを内包するため使用不可。triggerZoomを直接叩く)。
+export const RESCUE_SIGNAL_ZOOM_MAG = 0.28;
+export const RESCUE_SIGNAL_ZOOM_MS = 220;
+export const RESCUE_SIGNAL_ZOOM_HOLD_MS = 70;
+
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
@@ -1156,6 +1171,7 @@ export const SKADI_BLADE_HIT = 18;     // 氷刃の命中半径(px)
 export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを過ぎると消滅
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
+let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
 // 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
 export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒
@@ -1678,6 +1694,43 @@ const grantMeleeKillRewards = (
   }
 };
 
+// スキル: 救難信号(rescue-signal) = プレイヤーの近接がこのスイングでヒットした敵IDリストを
+// 受け取り、レベル別の確率(rescueSignalProcChance)で1回だけ判定する(複数体を同時に斬っても
+// 判定は1スイング1回=乱発防止。★この粒度は仕様に「PLAYERの近接ヒットで」とのみ記載で複数ヒット時の
+// 挙動は未指定のため実装判断。設計チャットで要確認)。発動したら対象(ヒットした敵の先頭。既に
+// 死亡していればselectRescueSignalTargetが最寄りの生存敵へフォールバック)へ、プレイヤーと別クラスの
+// 援護アライを背後から1体飛ばす(生成はspawnRescueAllyアクション。ダメージ適用/演出はtickRescueAllies
+// が着弾フレームで行う=このスキル自体はプレイヤーにダメージも被弾もさせない)。
+// ダメージは「現在の近接ダメージそのまま(倍率1)」= 呼び出し側が渡す baseMeleeDamage を素通しする
+// (crit/コンボ倍率/skillOutgoingDamageMultは一切乗せない。この「倍率1・単純な戦力アップ」が
+// このスキルの識別=分身(shadow-clone、フル近接複製)との差別化・CLAUDE.md仕様変更ルールに基づき変更禁止)。
+const applyRescueSignalProc = (
+  get: () => GameState,
+  player: Player,
+  baseMeleeDamage: number,
+  hitEnemyIds: string[],
+  pcx: number,
+  pcy: number,
+) => {
+  if (hitEnemyIds.length === 0) return;
+  const lvl = skillLevel(player, 'rescue-signal');
+  if (!lvl || Math.random() >= rescueSignalProcChance(lvl)) return;
+  const target = selectRescueSignalTarget(hitEnemyIds[0], get().enemies, pcx, pcy);
+  if (!target) return; // 生存中の敵が誰もいない=発動スキップ
+  const klass = pickRescueSignalAllyClass(player.characterClass);
+  // 出現位置=プレイヤーの現在向き(lastDirection)の逆側(=背後)。向き不明時は下向き基準にフォールバック。
+  const ld = player.lastDirection;
+  const lm = ld ? Math.hypot(ld.x, ld.y) : 0;
+  const dir = lm > 0.01 ? { x: ld!.x / lm, y: ld!.y / lm } : { x: 0, y: 1 };
+  const fromX = pcx - dir.x * RESCUE_ALLY_SPAWN_DIST;
+  const fromY = pcy - dir.y * RESCUE_ALLY_SPAWN_DIST;
+  get().spawnRescueAlly(
+    klass, fromX, fromY,
+    { id: target.id, x: target.x + target.width / 2, y: target.y + target.height / 2 },
+    baseMeleeDamage,
+  );
+};
+
 // スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
 // 同じスイング範囲)内の敵全員にもフィニッシュ(即死)を波及。ボスは即死せず、近接フィニッシュ
 // 相当ダメージ(スタン中ボスへの近接と同じ ×BOSS_MELEE_STUN_MULT)。reaper型(特殊敵)は対象外。
@@ -1866,6 +1919,9 @@ interface GameState {
   skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string }[];
   // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
   groundFires: GroundFire[];
+  // スキル「救難信号」の援護アライ(一過性演出)。生成/着弾ダメージ/寿命は tickRescueAllies が処理、
+  // 描画は pixiScene が直読み(RescueAlly型のコメント参照)。
+  rescueAllies: RescueAlly[];
   // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
   shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
@@ -2041,6 +2097,11 @@ interface GameState {
   setMolotovCycle: (cycle: MolotovCycleState | null) => void; // useGameLoop が computeMolotovTick の結果を反映するだけ
   spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
+
+  // スキル「救難信号」。近接ヒット時(triggerCounter)に発動判定した結果をここで一体生成する。
+  // rescueAllies の state 宣言自体は上(groundFires近く)にまとめてある。
+  spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number) => void;
+  tickRescueAllies: () => void; // 毎フレーム: 着弾フレームでダメージ適用(必中) + 寿命切れ回収
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -2418,6 +2479,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skadiIceMarkers: [],
   skadiIceBlades: [],
   groundFires: [],
+  rescueAllies: [],
   boomerangReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
@@ -3401,6 +3463,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
+    const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
     const meleeCritChance = melee?.critChance ?? 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
@@ -3502,6 +3565,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (bashShove) {
         bashHitEnemy = true; // 敵にヒット → 後でストップ
         slashAt.push({ x: ecx, y: ecy });
+        meleeHitEnemyIds.push(enemy.id);
         const dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT;
         meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
         // §5.21-追補4: シールドバッシュはフィニッシュではない。finishKillOnly個体はHP1で踏みとどまる。
@@ -3521,6 +3585,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // Anything in reach gets cut — show a slash on it.
       slashAt.push({ x: ecx, y: ecy });
+      meleeHitEnemyIds.push(enemy.id);
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         if (isBossType(enemy.type)) {
@@ -3780,6 +3845,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage);
+    // スキル: 救難信号(近接ヒット時、一定確率で味方が援護攻撃=必中・倍率1)。
+    applyRescueSignalProc(get, player, meleeDamage, meleeHitEnemyIds, pcx, pcy);
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
@@ -3991,6 +4058,56 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const h of hits) {
       get().damageEnemy(h.id, MOLOTOV_DOT_DAMAGE);
       get().spawnDamageNumber(h.x, h.y, MOLOTOV_DOT_DAMAGE);
+    }
+  },
+
+  // スキル 救難信号: applyRescueSignalProc の発動判定を受けて一過性アライを1体積む。
+  // 描画(飛来→打撃→離脱)は pixiScene 側が rescueAllies を直読みして行う。
+  spawnRescueAlly: (klass, fromX, fromY, target, damage) => {
+    set(state => ({
+      rescueAllies: [...state.rescueAllies, {
+        id: `rescue-ally-${rescueAllySeq++}`,
+        klass, fromX, fromY,
+        targetX: target.x, targetY: target.y,
+        targetEnemyId: target.id,
+        damage,
+        spawnedAt: state.gameTime,
+        struck: false,
+      }],
+    }));
+  },
+
+  // 毎フレーム: 飛来(RESCUE_ALLY_FLYIN_MS)を終えた瞬間に1回だけダメージを適用し(struck=trueで
+  // 二重適用を防ぐ)、全体の寿命(RESCUE_ALLY_TOTAL_MS)を過ぎたものを配列から回収する。
+  // 対象が既に消えていれば(このtick以前に他の要因で死亡/画面外recycle等)ダメージ適用をスキップする
+  // だけで、演出(飛来→離脱)自体は最後まで再生する(既に決めた target 座標へ向かうだけなので違和感が無い)。
+  tickRescueAllies: () => {
+    const { rescueAllies, gameTime } = get();
+    if (rescueAllies.length === 0) return;
+    const toStrike = rescueAllies.filter(a => !a.struck && gameTime >= a.spawnedAt + RESCUE_ALLY_FLYIN_MS);
+    const alive = rescueAllies.filter(a => gameTime < a.spawnedAt + RESCUE_ALLY_TOTAL_MS);
+    if (toStrike.length > 0 || alive.length !== rescueAllies.length) {
+      const struckIds = new Set(toStrike.map(a => a.id));
+      set({
+        rescueAllies: alive.map(a => struckIds.has(a.id) ? { ...a, struck: true } : a),
+      });
+    }
+    for (const a of toStrike) {
+      const target = get().enemies.find(e => e.id === a.targetEnemyId);
+      if (!target) continue; // 着弾前に対象が消えていた=何もしない(演出はそのまま最後まで流れる)
+      const tcx = target.x + target.width / 2;
+      const tcy = target.y + target.height / 2;
+      const killed = get().damageEnemy(a.targetEnemyId, a.damage);
+      get().spawnDamageNumber(tcx, target.y, a.damage, false);
+      get().spawnSlash(tcx, tcy, 'rgba(226,232,240,0.95)');
+      get().spawnRing(tcx, tcy, 6, 34, 'rgba(56,189,248,0.75)', 2, 260);
+      // ズーム演出のみ(CLAUDE.md: サブウェポン/スキルのprocはスロー禁止=triggerHitImpactは
+      // timeSlowを内包するため使わず、triggerZoomを直接叩く)。
+      get().triggerZoom(RESCUE_SIGNAL_ZOOM_MAG, RESCUE_SIGNAL_ZOOM_MS, RESCUE_SIGNAL_ZOOM_HOLD_MS, tcx, tcy);
+      if (killed) {
+        get().dropEnemyCurrency(target, tcx, tcy);
+        get().dropEnemyXp(target, tcx, tcy, 'pickup-xp-rescue');
+      }
     }
   },
 
@@ -8971,6 +9088,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         homingLocks: [],
         shadowClone: null,
         groundFires: [],
+        rescueAllies: [],
         molotovCycle: null,
         breakableProps: runBreakables,
         destroyedBreakableProps: {},
