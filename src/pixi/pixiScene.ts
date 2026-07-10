@@ -476,17 +476,23 @@ const playerWalkSequence = (p: Player): number[] =>
 const PINGPONG_WALK_CYCLE_MS = 900;
 const playerWalkCycleMs = (p: Player): number =>
   usesFiveFramePingPong(p) ? PINGPONG_WALK_CYCLE_MS : PLAYER_WALK_CYCLE_MS;
-// 走りモーション(社長提供・移動レバーを目一杯倒した時だけ): マークスマンのみ先行実装(5コマ・
-// player-magnum-run-0..4)。歩きと同じ8段ping-pongの並びを流用し、周期だけ速める(走り=急ぐ動き)。
+// 走りモーション(社長提供・移動レバーを目一杯倒した時だけ): マークスマン(magnum-run)+
+// ストライカー(scavenger-run・v0.25.1576)。マークスマンは歩きと同じ8段ping-pongの並びを流用、
+// ストライカーは前方ループ[0..4](社長指示「この人はピンポンしない」)。周期は歩きより速める(走り=急ぐ動き)。
 // `?playerrun=0`で無効化(常に歩きモーション)。`?runthreshold=`でしきい値を調整可(実機調整前提)。
 const PLAYER_RUN_ENABLED = tsBool('playerrun', true);
 const PLAYER_RUN_CYCLE_MS = tsNum('runcyclems', 560);
 const PLAYER_RUN_SWIPE_THRESHOLD = tsNum('runthreshold', 0.98); // ほぼ最大チルト(浮動小数の丸め対策で1.0ちょうどにしない)
-const usesRunAnimation = (p: Player): boolean => PLAYER_RUN_ENABLED && p.characterClass === 'mage';
+const usesRunAnimation = (p: Player): boolean =>
+  PLAYER_RUN_ENABLED && (p.characterClass === 'mage' || p.characterClass === 'rogue');
+// 走りのコマ並び: ストライカー(rogue)=前方ループ(折り返さない)。マークスマン=歩きと同じ8段ping-pong(既存挙動不変)。
+const playerRunSequence = (p: Player): number[] =>
+  p.characterClass === 'rogue' ? [0, 1, 2, 3, 4] : playerWalkSequence(p);
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
-  const sequence = playerWalkSequence(p);
-  const cycle = running && usesRunAnimation(p) ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
+  const runAnim = running && usesRunAnimation(p);
+  const sequence = runAnim ? playerRunSequence(p) : playerWalkSequence(p);
+  const cycle = runAnim ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
   const index = Math.floor((now % cycle) / (cycle / sequence.length));
   return sequence[index] ?? 0;
 };
@@ -505,8 +511,11 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
   const warlordKatana = warlordFull && hasMurasame(p);
   // 歩いていない時は各クラス専用の待機立ち絵(社長提供)。武将フル装備中は武将立ち絵が優先(待機絵なし)。
   if (!walking && !warlordFull && PLAYER_IDLE_SPRITE[p.characterClass]) return PLAYER_IDLE_SPRITE[p.characterClass]!;
-  // 走りモーション(移動レバー全開時のみ・マークスマン先行実装)。武将フル装備中は武将立ち絵を優先(走り絵なし)。
-  if (running && !warlordFull && usesRunAnimation(p)) return `player-magnum-run-${frame}`;
+  // 走りモーション(移動レバー全開時のみ・マークスマン/ストライカー)。武将フル装備中は武将立ち絵を優先(走り絵なし)。
+  // ※クラスID↔ファイル名の対応は既存仕様のまま: rogue=ストライカー=scavenger 接頭辞。
+  if (running && !warlordFull && usesRunAnimation(p)) {
+    return p.characterClass === 'rogue' ? `player-scavenger-run-${frame}` : `player-magnum-run-${frame}`;
+  }
   return warlordKatana ? `player-warlord-katana-walk-${frame}`
     : warlordFull ? `player-warlord-gun-walk-${frame}`
     : p.characterClass === 'mage' ? `player-magnum-walk-${frame}`

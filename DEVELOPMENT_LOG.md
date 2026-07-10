@@ -12,6 +12,21 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1576 — 実装: ストライカーの走りモーション(前方ループ・チャット貼付画像の直接回収)【2026-07-10 12:27 JST】
+- **社長指示**: マークスマンの走りは活かし。次にストライカーの走りを実装。**「この人はピンポンしない」=前方ループ[0..4]**(マークスマンの8段ping-pongとは別)。
+- **素材の受け渡し(重要・恒久知識)**: 今セッション(要約リセット後)からチャット貼付画像が`/root/.claude/uploads/`にファイル化されなくなった(7/8の1枚のみ残存・以降0件)。**回避策を確立=会話トランスクリプトJSONL(`/root/.claude/projects/...jsonl`)から画像blockのbase64を直接抽出**(python・base64は画面に出さずファイルへ)。社長は従来どおり**チャットに貼るだけでOK**。Drive/Codex経由は不要になった。
+- **切り出し(設計チャット自身で実施・Codex不使用)**: シート1140×264(5コマ・等間隔228pxセル)→ 既存規格に一致させて5枚へ:
+  - **キャンバス86×73=歩き(player-scavenger-walk-*)と完全同一** → `playerBaseScale`の幅正規化でも**歩き↔走りでサイズが跳ねない**(magnum runの94×73とは意図的に別判断)。
+  - 接地ライン(シートy=264)→キャンバス下端。**セル座標を保存**して配置(コマごとのbboxセンタリングをしない=横ジッター防止)。コマ3の1px浮き=空中コマも保存。LANCZOS縮小(§5.9の焼き直し規格)・キャラ高69-71px(歩き71-72と整合)。
+  - 目視確認: 歩き0番と並べたプレビューで向き(左)・サイズ・接地の一致を確認済み。
+- **配線**(`pixiScene.ts`/`pixiTextures.ts`):
+  - `usesRunAnimation`: mage→**mage||rogue**。※クラスID↔ファイル名の対応どおり**rogue=ストライカー=scavenger接頭辞**(striker接頭辞はスカベンジャー=罠)。
+  - `playerRunSequence`新設: rogue=[0,1,2,3,4]前方ループ/mage=従来のplayerWalkSequence(8段ping-pong)=**マークスマン挙動は完全不変**。
+  - `playerTextureName`: rogue走り→`player-scavenger-run-${frame}`。プリロードに5枚追加。周期は共通`PLAYER_RUN_CYCLE_MS=560`(叩き台・`?runcyclems=`で実機調整可)・しきい値/OFFフラグも共通(`?runthreshold=`/`?playerrun=0`)。
+- 追加ファイル: `public/sprites/player-scavenger-run-0..4.png`(計~37KB)。検証: **typecheck clean**・PNG5枚のディスク実在/寸法/接地gap確認済み。負荷 **1/10**(既存の走り分岐に乗るだけ・新規毎frame処理なし)。
+- **実機で見る点**: ①レバー全開でストライカーが走りに切り替わるか ②前方ループの足運びが自然か(周期560msが速い/遅ければ`?runcyclems=`で当たりを付けて指示) ③歩き↔走りの切替でサイズ/位置が跳ねないか。
+- ※保留中の別件: マークスマン走りモーション「廃棄」指示は**撤回済み**(活かし・v0.25.1576時点)。
+
 ## v0.25.1575 — 実装: レア倍率刷新+ゲート機構一本化(§5.21-追補7)【Sonnetサブ連携】【2026-07-10 11:28 JST】
 - **§5.21-追補7 の実装**(Sonnetサブ→設計チャットが独立検証+git)。仕様docは前コミット v0.25.1574。
 - **A レア色倍率を攻撃/HP分離**(`enemyUtils.ts`): 単一`COLOR_TIER_MULT`廃止→`COLOR_TIER_DMG_MULT{青1.5/紫2/赤3}`+`COLOR_TIER_HP_MULT{青2/紫3/赤5}`。buildEnemyで`diffDmg`/`diffHp`に分離(`hpMult`=diffHp・`dmgMult`=diffDmg・`difficultyMultiplier`=fixed?1:diffDmg=弾は攻撃側)。**非色付き敵はdiffDmg=diffHp=areaBase=旧diff=完全不変**を独立確認。サイズ/出現率/クリ/XPは不変。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1576',
+    items: [
+      'ストライカーにも専用の走りモーションを追加(移動レバーを目一杯倒した時。マークスマンに続き2クラス目)。',
+    ],
+  },
+  {
     version: '0.25.1575',
     items: [
       'レア(色付き)の敵の強さを刷新。攻撃力とHPを別々に強化し、青→紫→赤ほど手強く(特にHPが硬く)なった。',
