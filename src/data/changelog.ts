@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1579',
+    items: [
+      '深層ゲートのボス戦中に死神が湧いてしまう不具合を修正(ゲート中は死神が湧かない=境界ゲートと同じ扱いに)。',
+    ],
+  },
+  {
     version: '0.25.1578',
     items: [
       'キャラ選択画面で、選択中のキャラのドット絵が歩きモーションで動くように。',

@@ -2609,7 +2609,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 踏破済みでまだゲートが発火していない間)にも拡張する。未達ペナルティによる死神は、ゲートが
           // 実際に発火して決着してから初めて牙を剥くべきで、他イベント(城ボス等)待ちで発火が繰り延べ
           // られている間に湧かせてはいけない。
-          if (!chaserAlive && (activeGateRef.current === 1 || gate1PendingRef.current)) {
+          // §5.21-追補5の対称拡張(社長実機報告v0.25.1579「ゲート2のボス戦中に死神が湧く」): 抑止を
+          // ゲート2(activeGateRef===2)と発火待ち(gate2PendingRef)にも適用。ゲート2は深層境界(r>=7500)
+          // =リスクが最速で溜まる深さ+ハード拘束(逃げられない)なので、ゲート1以上に死神が理不尽。
+          if (!chaserAlive && (activeGateRef.current !== null || gate1PendingRef.current || gate2PendingRef.current)) {
             // 抑止中: 何もしない(risk加減・気配演出・完全出現のいずれも止める)。
           } else if (!chaserAlive) {
             // リスク更新(深奥滞在で増加・深奥外で減少)。

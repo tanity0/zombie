@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1579 — 修正: ゲート2(城ボス)戦中に死神が湧く(抑止のゲート2漏れ)【2026-07-10 17:06 JST】
+- **実機報告(社長)**: ゲート2のボスと戦っている時に死神が湧いた。
+- **原因**: 死神抑止(§5.21-追補3/5)の条件が`activeGateRef===1 || gate1Pending`のみ=**ゲート2(===2)とgate2Pendingが漏れ**。
+  ゲート2は深層境界(r≥7500)=リスク最速蓄積の深さ+ハード拘束(逃げられない)なので、ゲート1以上に理不尽だった。
+- **修正**(`useGameLoop.ts` 1行): 抑止条件を`activeGateRef.current !== null || gate1Pending || gate2Pending`へ対称拡張
+  (§5.21-追補5と同じ理屈をゲート2に適用)。既に追跡中のチェイサーは従来どおり対象外(既存挙動不変)。
+- 検証: **typecheck clean**。負荷 0/10(条件1行)。実機で見る点: ゲート2戦中/発火待ち中に死神が湧かないこと。
+- ※併せて社長指摘「リザルトの見た目が巻き戻ってる/あと1昇格を変えたはず」を調査 → **巻き戻りではなくM18
+  (リザルト3層化+昇格度・§5.19・モック承認v0.25.1509)が未実装のまま残っていた**(GameOverScreen.tsxの最終変更=v1503、
+  ステータス表も「未着手・着手可」)。→ 次コミットでM18を実装する(Sonnetサブ発注済み)。
+
 ## v0.25.1578 — 実装: キャラ選択画面=選択中キャラのドット絵を歩きモーション再生【2026-07-10 16:52 JST】
 - **社長指示**: キャラ選択画面で、選択中のキャラのドット絵を歩きモーションに。
 - 実装(`MissionSelect.tsx`のみ): 孤立小コンポーネント`WalkingClassSprite`新設。選択中チップだけゲーム内と同じ
