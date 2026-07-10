@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1606 — 修正: スカベンジャーのクイックマガジンを「敵の少ない方面」へ投げる【2026-07-11 03:13 JST】
+- **社長指示**: 「投げ込むのは敵がいない(少ない)方面に投げる」。
+- **原因**: 従来は `lastDirection`(進行方向)へ投げていた=群れの中へ投げてしまい、拾いに行くのが危険だった。
+- **修正**: 純関数 `safeThrowDirection`(新設 `src/utils/throwDir.ts`)を導入。半径500内の敵を16方位でスコアリングし、その向きの前方に居る敵の重み(近いほど大)が最小の方位を選ぶ。近くに敵が居なければ従来どおり `lastDirection` を返す。`useGameLoop` のquick-mag投擲でこの向きを使用。**投擲距離・拾って回収・リロード効果は不変**。
+- 検証: **typecheck clean / throwDir.test 6ケース pass**。負荷 1/10(発動時のみ・16方位×近傍敵の軽い計算、毎フレームではない)。
+
 ## v0.25.1605 — 調整: ミゲルの縦横斬り/トールの横払いの長さを半分【2026-07-11 03:09 JST】
 - **社長指示**: 「ミゲルの縦横斬りの長さ半分 / トールの横切り長さ半分」。
 - **変更**(`useGameLoop.ts` 定数): `MIGUEL_HARAI_RANGE` 380→190(横払い・縦払い両方がこの値=一発で両方半分)/ `THOR_HARAI_RANGE` 620→310(横払いのみ。一閃・突きは不変)。ラインの当たり判定長=描画長が半分に。太さ(HALF_WIDTH)・溜め時間・ダメージは不変。

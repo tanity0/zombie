@@ -63,6 +63,7 @@ import {
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
+import { safeThrowDirection } from '../utils/throwDir';
 import {
   createEnemyProjectile,
   generateEnemy,
@@ -4256,7 +4257,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ? subWeaponPlayer.ammoRifle
                 : 0;
           if (active?.ammoType && (active.magazine ?? 0) < maxMag && reserve > 0) {
-            const dir = subWeaponPlayer.lastDirection ?? { x: 1, y: 0 };
+            // 投げ先=敵が少ない方面へ(社長指示v0.25.1606)。マガジンは拾って回収するので、
+            // 進行方向ではなく「敵の薄い側」へ投げて安全に取りに行けるようにする。
+            const dir = safeThrowDirection(
+              subWeaponPlayer.x + subWeaponPlayer.width / 2,
+              subWeaponPlayer.y + subWeaponPlayer.height / 2,
+              useGameStore.getState().enemies,
+              subWeaponPlayer.lastDirection ?? { x: 1, y: 0 },
+            );
             const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
             const px = subWeaponPlayer.x + subWeaponPlayer.width / 2
               + (dir.x / dirMag) * STRIKER_QUICK_MAG_THROW_DISTANCE;
