@@ -370,6 +370,9 @@ export interface Enemy {
   // ダメージ経路(grantMeleeKillRewards/4武器の近接分岐)だけがスタンプする(銃/爆発では発動しない)。
   // useGameLoop のミゲル専用コントローラがこれを見て、被弾後1秒だけ周回速度を上げる(社長指示)。
   meleeHitAt?: number;
+  // 火炎瓶(molotov)サブウェポン: 直近に地面の火(groundFires)からDoTを受けた gameTime(ms)。
+  // MOLOTOV_DOT_INTERVAL_MS(0.5秒)のスロットルに使用(複数の火に重なっても二重取りしない)。
+  lastFireHitAt?: number;
 }
 
 export type SummonKind = 'normal' | 'rare';
@@ -471,7 +474,7 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tactical-knife' | 'anti-mutant-knife' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile' | 'skateboard';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone' | 'molotov';
 
 // 分身(サブウェポン)の生成インスタンス。生成位置に固定、外見はプレイヤーと同じ(白黒)。
 // その場で一定時間(5秒間・1秒ごと)自動で近接攻撃を繰り返し、時間切れ or 完全に画面外で消滅。最大1体。
@@ -486,6 +489,16 @@ export interface ShadowCloneState {
   attacksDone: number;            // これまでに行った自動近接攻撃の回数
   nextAttackAt: number;           // 次の自動攻撃を行う gameTime(ms)
   swingAt?: number;               // 直近の近接スイング演出の起点(Date.now)。本体と同じ斬撃モーション描画に使う。
+}
+
+// 火炎瓶(molotov)サブウェポンが足元に設置する地面の火だまり。MOLOTOV_FIRE_LIFETIME_MS(3秒)で消滅。
+// 生成/寿命切れ/敵への接触ダメージは gameStore.ts(spawnGroundFire/tickGroundFires)が処理する
+// シミュレーション側の状態で、pixiScene.ts はこの配列を読むだけ(松明の炎の見た目を流用して描画)。
+export interface GroundFire {
+  id: string;
+  x: number;
+  y: number;
+  createdAt: number; // gameTime(ms)。この時刻からの経過で寿命判定する。
 }
 
 // 制圧イベントの拠点。4か所固定(東西南北)。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。

@@ -19,7 +19,7 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -775,6 +775,12 @@ const SHIELD_DEPLOY_DROP = 16;   // 落下開始オフセット(px、上から�
 const DECOY_DISPLAY_H = 56;      // 設置型デコイ装置の画面上の高さ(px)
 const TORCH_VIEWPORT_MARGIN = 170;
 const TORCH_FAR_FADE_MARGIN = 120;
+// 火炎瓶(molotov)の地面の火: 松明の炎(drawFlameShape)をそのまま流用するが、松明の柱は無く
+// 地面の火だまりなので松明本体より小さめの半径(見た目のみ・当たり判定は MOLOTOV_FIRE_RADIUS で
+// 別管理=CLAUDE.md「見た目と当たり判定の分離」)。
+const GROUND_FIRE_FLAME_R = 4.2;
+const GROUND_FIRE_LIGHT_RADIUS = 46;
+const GROUND_FIRE_VIEWPORT_MARGIN = 120;
 const SMALL_GLOW_SPRITE_RADIUS_MAX = STRONG_GLOW_RADIUS - 1;
 const SMALL_GLOW_RADIUS_SCALE = 0.88;
 const SMALL_GLOW_ALPHA_SCALE = 0.74;
@@ -996,6 +1002,9 @@ export class PixiScene {
   private turretViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 投擲スケボー: 進行方向へ回転しながら地面を滑る板スプライト(色キー透過済み)。
   private skateboardViews = new Map<string, { container: Container; sprite: Sprite; gfx: Graphics }>();
+  // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
+  // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
+  private groundFireViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>();
   private effects = new Map<string, EffectView>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
@@ -1898,6 +1907,21 @@ export class PixiScene {
     return { container, light, reflection, sprite, flame, overlay };
   }
 
+  // 火炎瓶(molotov)の地面の火1個ぶんのビュー。松明(makeProp)から「柱スプライト無し」の
+  // 最小構成(炎Graphics + 暖色ライトのみ)を切り出したもの。
+  private makeGroundFireView(): { container: Container; flame: Graphics; light: Sprite } {
+    const container = new Container();
+    const light = new Sprite(getGlowTexture());
+    light.anchor.set(0.5);
+    light.blendMode = 'add';
+    this.L.groundLayer.addChild(light);
+    const flame = new Graphics();
+    flame.blendMode = 'add';
+    container.addChild(flame);
+    this.L.actorLayer.addChild(container);
+    return { container, flame, light };
+  }
+
   // ---- top-level frame sync ------------------------------------------------
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front
@@ -2626,6 +2650,7 @@ export class PixiScene {
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
+    this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -4152,26 +4177,7 @@ export class PixiScene {
     if (torchAlpha > 0) {
       const r = 5.5 * d * prop.scale * pulse;
       const sway = Math.sin(now / 160 + prop.footX * 0.015) * r * 0.55;
-      f.circle(flameX, flameY + 3, r * 5.1).fill({ color: 0xff9f1c, alpha: 0.09 });
-      f.ellipse(flameX + sway * 0.12, flameY - r * 0.6, r * 2.4, r * 4.4)
-        .fill({ color: 0xff7a18, alpha: 0.22 });
-      f.ellipse(flameX + sway * 0.36, flameY - r * 2.1, r * 1.45, r * 3.7)
-        .fill({ color: 0xfbbf24, alpha: 0.34 });
-      f.ellipse(flameX + sway * 0.55, flameY - r * 3.1, r * 0.72, r * 2.15)
-        .fill({ color: 0xffedd5, alpha: 0.48 });
-      f.circle(flameX + sway * 0.25, flameY - r * 0.35, r * 1.2)
-        .fill({ color: 0xffffff, alpha: 0.28 });
-      for (let i = 0; i < TORCH_EMBER_COUNT; i++) {
-        const seed = prop.footX * 0.021 + prop.footY * 0.007 + i * 1.931;
-        const rise = ((now / (760 + i * 73) + seed) % 1);
-        const drift = Math.sin(now / (230 + i * 29) + seed * 9) * r * (0.9 + i * 0.12);
-        const ex = flameX + drift;
-        const ey = flameY - r * (1.7 + rise * 9.5);
-        const emberAlpha = torchAlpha * Math.sin(rise * Math.PI) * (0.18 + (i % 3) * 0.05);
-        const emberR = r * (0.22 + (i % 3) * 0.08);
-        f.circle(ex, ey, emberR * 2.4).fill({ color: 0xff9f1c, alpha: emberAlpha * 0.28 });
-        f.circle(ex, ey, emberR).fill({ color: i % 2 === 0 ? 0xfef3c7 : 0xfbbf24, alpha: emberAlpha });
-      }
+      this.drawFlameShape(f, flameX, flameY, r, sway, prop.footX, prop.footY, now, torchAlpha);
     }
 
     const o = view.overlay;
@@ -4179,6 +4185,36 @@ export class PixiScene {
     if (now - prop.lastHit < 90) {
       o.circle(prop.footX, prop.footY - visualH * d * 0.48, Math.max(14, visualW * d * 0.45))
         .fill({ color: 0xffffff, alpha: 0.34 });
+    }
+  }
+
+  // 松明/焚き火の炎の形そのもの(旧: drawBreakablePropに直書き)。火炎瓶(molotov)の地面の火
+  // (syncGroundFires)からも同じ見た目を再利用するため、座標計算のみを外に出して共有する
+  // (数式は元のtorch描画と完全に同一=見た目の変更なし)。呼び出し側で g.clear() 済みの Graphics
+  // に加算描画する(g自体のblendMode='add'が前提)。emberAlphaMult=各要素の元コードのtorchAlpha相当。
+  private drawFlameShape(
+    g: Graphics, flameX: number, flameY: number, r: number, sway: number,
+    seedX: number, seedY: number, now: number, emberAlphaMult: number,
+  ) {
+    g.circle(flameX, flameY + 3, r * 5.1).fill({ color: 0xff9f1c, alpha: 0.09 });
+    g.ellipse(flameX + sway * 0.12, flameY - r * 0.6, r * 2.4, r * 4.4)
+      .fill({ color: 0xff7a18, alpha: 0.22 });
+    g.ellipse(flameX + sway * 0.36, flameY - r * 2.1, r * 1.45, r * 3.7)
+      .fill({ color: 0xfbbf24, alpha: 0.34 });
+    g.ellipse(flameX + sway * 0.55, flameY - r * 3.1, r * 0.72, r * 2.15)
+      .fill({ color: 0xffedd5, alpha: 0.48 });
+    g.circle(flameX + sway * 0.25, flameY - r * 0.35, r * 1.2)
+      .fill({ color: 0xffffff, alpha: 0.28 });
+    for (let i = 0; i < TORCH_EMBER_COUNT; i++) {
+      const seed = seedX * 0.021 + seedY * 0.007 + i * 1.931;
+      const rise = ((now / (760 + i * 73) + seed) % 1);
+      const drift = Math.sin(now / (230 + i * 29) + seed * 9) * r * (0.9 + i * 0.12);
+      const ex = flameX + drift;
+      const ey = flameY - r * (1.7 + rise * 9.5);
+      const emberAlpha = emberAlphaMult * Math.sin(rise * Math.PI) * (0.18 + (i % 3) * 0.05);
+      const emberR = r * (0.22 + (i % 3) * 0.08);
+      g.circle(ex, ey, emberR * 2.4).fill({ color: 0xff9f1c, alpha: emberAlpha * 0.28 });
+      g.circle(ex, ey, emberR).fill({ color: i % 2 === 0 ? 0xfef3c7 : 0xfbbf24, alpha: emberAlpha });
     }
   }
 
@@ -4665,6 +4701,51 @@ export class PixiScene {
     }
     for (const [id, sp] of this.skadiBlockPool) { if (!seen.has(id)) { sp.destroy(); this.skadiBlockPool.delete(id); } }
     for (const [id, sp] of this.skadiBladePool) { if (!seen.has(id)) { sp.destroy(); this.skadiBladePool.delete(id); } }
+  }
+
+  // 火炎瓶(molotov)の地面の火。lifetime/DoTは gameStore(groundFires/tickGroundFires)側の仕事、
+  // ここは配列を読んで松明と同じ炎(drawFlameShape)+小さめの暖色ライトを描くだけ(Pixiは描画専門)。
+  // 同時に生きるのは最大3〜4個程度(仕様上の上限)なので、松明と同じ per-id プール(Graphics/Sprite)で十分軽い。
+  private syncGroundFires(fires: GroundFire[], now: number) {
+    const seen = new Set<string>();
+    for (const fire of fires) {
+      seen.add(fire.id);
+      let view = this.groundFireViews.get(fire.id);
+      if (!view) { view = this.makeGroundFireView(); this.groundFireViews.set(fire.id, view); }
+
+      const d = this.depthScale(fire.y);
+      const horizonAlpha = this.horizonActorAlpha(fire.y);
+      const viewportDistance = this.distanceOutsideViewport(fire.x, fire.y, GROUND_FIRE_VIEWPORT_MARGIN);
+      const visible = viewportDistance <= 0 && horizonAlpha > 0;
+
+      view.container.zIndex = fire.y;
+      view.container.visible = visible;
+      view.container.alpha = horizonAlpha;
+      view.light.visible = visible;
+      if (!visible) { view.flame.clear(); continue; }
+
+      // 揺らぎ/形は松明(drawBreakableProp)と同じ式を再利用(見た目の一貫性)。
+      const pulse = 0.80 + 0.13 * Math.sin(now / 125 + fire.x * 0.03) + 0.07 * Math.sin(now / 53 + fire.y * 0.05);
+      const r = GROUND_FIRE_FLAME_R * d * pulse;
+      const sway = Math.sin(now / 160 + fire.x * 0.015) * r * 0.55;
+      const flameX = Math.round(fire.x);
+      const flameY = Math.round(fire.y);
+
+      view.light.position.set(fire.x, fire.y);
+      view.light.tint = 0xffb45f;
+      view.light.width = view.light.height = GROUND_FIRE_LIGHT_RADIUS * d * pulse;
+      view.light.alpha = 0.16 * horizonAlpha * pulse;
+
+      view.flame.clear();
+      this.drawFlameShape(view.flame, flameX, flameY, r, sway, fire.x, fire.y, now, horizonAlpha);
+    }
+    for (const [id, view] of this.groundFireViews) {
+      if (!seen.has(id)) {
+        view.light.destroy();
+        view.container.destroy({ children: true });
+        this.groundFireViews.delete(id);
+      }
+    }
   }
 
   // スプライトにシアンtintを乗せて描く。通常はHPバー、レア(死神)は渦っぽいシアンの円。

@@ -12,6 +12,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1601 — 追加: 新サブウェポン「火炎瓶(molotov)」=移動中に火を敷く地面DoT【2026-07-11 01:57 JST】
+- **社長指示**: 新サブ「火炎瓶」。一般枠。10秒サイクルで移動中のみ1秒1個ずつ足元に火を設置(Lv別本数=3/5/7)。各火は3秒で消え、敵が乗ると0.5秒毎に5ダメージ。プレイヤーは無傷。見た目は松明の炎を流用。
+- **実装**(実装チャット=Sonnet。設計チャットが仕様確定→ブリーフ→差分検証→git):
+  - `src/utils/molotov.ts`(新)= 純関数`computeMolotovTick`(サイクル/設置/CD判定)+`isEnemyInGroundFire`(円DoT判定)+叩き台定数。`molotov.test.ts`(新)12ケース。
+  - `types/game.ts`: `SubWeaponKey`に`'molotov'` / `Enemy.lastFireHitAt?`(DoTスロットル) / `GroundFire`型。
+  - `campaign.ts`: `SUB_WEAPON_KEYS`に追加(一般枠)。`gameStore.ts`: 状態`groundFires`/`molotovCycle`+action`spawnGroundFire`/`tickGroundFires`(寿命回収+既存`damageEnemy`でDoT・スロー無し)+表示名「火炎瓶」+初期化/新ラン再セット。
+  - `useGameLoop.ts`: turret/fire-knifeと同型の自動サイクルブロック(`!inReturnCircle`/`!blockedByKatana`ゲート)+`tickGroundFires()`呼び出し。
+  - `pixiScene.ts`: 松明の炎描画を`drawFlameShape`に抽出(**数式は完全同一=松明の見た目不変**)、`syncGroundFires`で地面の火をper-idプール描画(炎+小さめ暖色ライト)。
+- **仕様の帰結(社長へ既報)**: 1秒1個×寿命3秒なので**同時に生きる火は全Lv最大3〜4個**。レベルは1サイクルの敷設本数(=軌跡の長さ)を増やす。
+- 検証: **typecheck clean / lint 0エラー / molotov.test 12/12 / related 86 pass・2 skip / constitution 13/13**。負荷 **2/10**(tickGroundFiresは火0本で即return、生存時も敵×最大3-4火の二乗距離のみ。描画は松明同型プール・強glow非該当)。
+- **★未確認(社長裁定待ち)**: ①死神(reaper)にもDoTが当たる(タレット/分身は死神を除外している=不整合の可能性)。②ショップ価格は既定100据置。③消滅時のフェードアウト無し(3秒でパッと消える)。
+
 ## v0.25.1600 — 調整: ミゲルの剣の表示サイズをさらに縮小(160→40)【2026-07-11 01:18 JST】
 - **社長指示**: 「ミゲルの剣まだ大きい。半分の半分くらいにして」。
 - **変更**: `MIGUEL_SWORD_LENGTH` 160→40(現状160の半分の半分=約1/4)。**見た目のみ**=当たり判定(`MIGUEL_HARAI_RANGE`)・攻撃範囲は不変。

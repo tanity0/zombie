@@ -62,6 +62,7 @@ import {
   checkPlayerPickupCollisions,
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
+import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
 import {
   createEnemyProjectile,
   generateEnemy,
@@ -4616,6 +4617,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           setSubWeaponCooldown('turret', gameTime + TURRET_COOLDOWN_MS);
         }
 
+        // 火炎瓶(molotov): 10秒サイクルで、移動中のみ1秒に1個ずつ足元に火を設置(Lv別本数=3/5/7)。
+        // 判定(いつ・何本)は純関数 computeMolotovTick(src/utils/molotov.ts)に閉じており、ここは
+        // その結果を store へ書き込む(設置=spawnGroundFire/サイクル状態=setMolotovCycle/次CD=setSubWeaponCooldown)だけ。
+        if (
+          !inReturnCircle &&
+          subWeaponPlayer.subWeapons.includes('molotov') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'molotov')
+        ) {
+          const level = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['molotov'] ?? 1));
+          const molotovCycleNow = useGameStore.getState().molotovCycle;
+          const molotovResult = computeMolotovTick({
+            gameTime,
+            isMoving: subWeaponPlayer.isMoving,
+            cycle: molotovCycleNow,
+            cooldownAt: subWeaponPlayer.subWeaponCooldowns['molotov'] ?? 0,
+            maxFires: MOLOTOV_FIRES_BY_LEVEL[level],
+          });
+          if (molotovResult.cycle !== molotovCycleNow) {
+            useGameStore.getState().setMolotovCycle(molotovResult.cycle);
+          }
+          if (molotovResult.cooldownAt !== null) {
+            setSubWeaponCooldown('molotov', molotovResult.cooldownAt);
+          }
+          if (molotovResult.drop) {
+            const footX = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+            const footY = subWeaponPlayer.y + subWeaponPlayer.height;
+            useGameStore.getState().spawnGroundFire(footX, footY);
+          }
+        }
+
         // 発火ナイフ: クールダウンごとに最も近い敵1体へナイフを投擲(敵が居る時だけ)。
         if (
           !inReturnCircle &&
@@ -4867,6 +4898,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 錬金術: 召喚ユニットの追従/攻撃/レア吸引/消滅を毎フレーム更新。
         useGameStore.getState().updateSummons(deltaTime);
+
+        // 火炎瓶(molotov): 設置済みの地面の火の寿命切れ回収 + 敵への接触DoTを毎フレーム更新
+        // (設置自体は上の molotov ブロックが行う。ここは置いた後の面倒を見るだけ)。
+        useGameStore.getState().tickGroundFires();
 
         // 自動タレット: 設置中は留まってオート射撃。前方集中=SMG相当の長射程直線、全方位=
         // ハンドガン相当の短射程ターゲット。低確率でグレネード弾。寿命終了で小爆発(範囲ダメージ)。

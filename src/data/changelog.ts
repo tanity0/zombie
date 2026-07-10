@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1601',
+    items: [
+      '新サブウェポン「火炎瓶」を追加。移動中に足元へ火を敷き、踏んだ敵をじわじわ焼く(レベルで敷ける本数アップ)。',
+    ],
+  },
+  {
     version: '0.25.1596',
     items: [
       'ゲート2ボス「ミゲル」の攻撃を強化。横払いのあとに縦払いも続けて放つ2連撃になり、周回移動中はたまにゆっくり歩くようになった。',

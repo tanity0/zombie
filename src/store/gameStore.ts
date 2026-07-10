@@ -6,8 +6,12 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire
 } from '../types/game';
+import {
+  MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE,
+  isEnemyInGroundFire,
+} from '../utils/molotov';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -1151,6 +1155,7 @@ export const SKADI_BLADE_DAMAGE = 20;  // 氷刃の命中ダメージ(ボス弾�
 export const SKADI_BLADE_HIT = 18;     // 氷刃の命中半径(px)
 export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを過ぎると消滅
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
+let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
 // 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
 export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒
@@ -1458,6 +1463,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'wire-anchor': return 'ワイヤーアンカー';
     case 'sage-stone': return '賢者の石';
     case 'shadow-clone': return '分身';
+    case 'molotov': return '火炎瓶';
     default: return 'サブウェポン';
   }
 };
@@ -1858,6 +1864,8 @@ interface GameState {
   // 裏ボス スカジの氷ハザード。markers=足元の氷塊テレグラフ(赤サークル2秒→起爆)、blades=設置後に発射される氷刃。
   skadiIceMarkers: { id: string; x: number; y: number; bornAt: number; fireAt: number; enemyId: string }[];
   skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string }[];
+  // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
+  groundFires: GroundFire[];
   // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
   shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
@@ -2026,6 +2034,13 @@ interface GameState {
   shadowCloneStrike: (clone: ShadowCloneState) => void; // 分身がその場で近接攻撃(プレイヤーの近接処理＋スキル効果を共用)
   tickShadowClone: () => void;                           // 毎フレーム: 1秒ごとの自動攻撃と寿命(5秒)消滅を進める
   expireShadowClone: () => void;                         // 分身を消滅させCD(3s)開始(寿命切れ/画面外)
+
+  // 火炎瓶(molotov)サブウェポン。現在のサイクルの投下進捗(純関数 computeMolotovTick の状態)。
+  // null=アイドル(次サイクルはCD明けで開始)。判定自体は src/utils/molotov.ts、ここは適用のみ。
+  molotovCycle: MolotovCycleState | null;
+  setMolotovCycle: (cycle: MolotovCycleState | null) => void; // useGameLoop が computeMolotovTick の結果を反映するだけ
+  spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
+  tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -2402,6 +2417,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   shieldBlocks: [],
   skadiIceMarkers: [],
   skadiIceBlades: [],
+  groundFires: [],
   boomerangReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
@@ -2423,6 +2439,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   summonFxAt: 0,
   homingLocks: [],
   shadowClone: null,
+  molotovCycle: null,
   projectiles: [],
   pickups: [],
   breakableProps: [],
@@ -3935,6 +3952,46 @@ export const useGameStore = create<GameState>((set, get) => ({
     const level = Math.max(1, Math.min(3, get().player.subWeaponLevels['shadow-clone'] ?? 1));
     set({ shadowClone: null });
     get().setSubWeaponCooldown('shadow-clone', get().gameTime + SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL[level]);
+  },
+
+  // 火炎瓶(molotov): 判定(いつ・何本)は useGameLoop が computeMolotovTick(純関数)で決め、
+  // ここは結果を state へ書き込むだけ。
+  setMolotovCycle: (cycle) => set({ molotovCycle: cycle }),
+
+  spawnGroundFire: (x, y) => {
+    set(state => ({
+      groundFires: [...state.groundFires, { id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime }],
+    }));
+  },
+
+  // 毎フレーム: 寿命切れ(3秒)の火を回収し、生存中の火に重なっている敵へ0.5秒スロットルでDoT(5dmg)を与える。
+  // プレイヤーは対象外(自分の火なので無敵=そもそも判定しない)。既存の damageEnemy を再利用するので
+  // キル報酬/演出/統計は他の攻撃経路と同じに揃う(スロー演出は damageEnemy 側に無いのでここでも発生しない)。
+  tickGroundFires: () => {
+    const { groundFires, gameTime, enemies } = get();
+    if (groundFires.length === 0) return;
+    const aliveFires = groundFires.filter(f => gameTime < f.createdAt + MOLOTOV_FIRE_LIFETIME_MS);
+    const hits: { id: string; x: number; y: number }[] = [];
+    if (aliveFires.length > 0) {
+      for (const e of enemies) {
+        if (gameTime - (e.lastFireHitAt ?? -Infinity) < MOLOTOV_DOT_INTERVAL_MS) continue;
+        const ecx = e.x + e.width / 2;
+        const ecy = e.y + e.height / 2;
+        if (isEnemyInGroundFire(ecx, ecy, aliveFires)) hits.push({ id: e.id, x: ecx, y: ecy });
+      }
+    }
+    if (aliveFires.length !== groundFires.length || hits.length > 0) {
+      set(state => ({
+        groundFires: aliveFires,
+        enemies: hits.length > 0
+          ? state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastFireHitAt: gameTime } : e)
+          : state.enemies,
+      }));
+    }
+    for (const h of hits) {
+      get().damageEnemy(h.id, MOLOTOV_DOT_DAMAGE);
+      get().spawnDamageNumber(h.x, h.y, MOLOTOV_DOT_DAMAGE);
+    }
   },
 
   performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
@@ -8913,6 +8970,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         skadiIceBlades: [],
         homingLocks: [],
         shadowClone: null,
+        groundFires: [],
+        molotovCycle: null,
         breakableProps: runBreakables,
         destroyedBreakableProps: {},
         mineAmbushAnchor: null,
