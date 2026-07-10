@@ -1783,7 +1783,7 @@ const applySlasherTimedStrike = (
   let killed = 0;
   let hit = false;
   for (const e of get().enemies) {
-    if (e.type === 'reaper') continue;
+    if (e.type === 'reaper' && !e.reaperChaser) continue;
     const ecx = e.x + e.width / 2;
     const ecy = e.y + e.height / 2;
     const dx = ecx - pcx, dy = ecy - pcy;
@@ -2826,7 +2826,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         let snapX = baseX, snapY = baseY;
         const stage3 = state.farBackdrop === 'city';
         for (const e of state.enemies) {
-          if (e.type === 'reaper') continue;
+          if (e.type === 'reaper' && !e.reaperChaser) continue;
           const fb = enemyFootBox(e);
           const hx = fb.footX;
           const hy = enemyHeadY(e, stage3); // 実描画の縦範囲に基づく頭付近(横長素材でも頭に乗る)
@@ -4349,7 +4349,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const r2 = h.radius * h.radius;
     // 半径内の敵を距離順に最大 HURRICANE_MAX_TARGETS_PER_FRAME 体まで根元へ吸引(負荷cap)。
     const inRange = state.enemies
-      .filter(e => e.type !== 'reaper')
+      .filter(e => e.type !== 'reaper' || e.reaperChaser)
       .map(e => {
         const ex = e.x + e.width / 2;
         const ey = e.y + e.height / 2;
@@ -4473,7 +4473,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const rcy = s0.y + s0.height / 2;
         const pr2 = ALCHEMY_RARE_SUCTION_PULL_RANGE * ALCHEMY_RARE_SUCTION_PULL_RANGE;
         const inRange = enemiesNext
-          .map((e, i) => ({ i, d2: (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2, reaper: e.type === 'reaper' }))
+          .map((e, i) => ({ i, d2: (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2, reaper: e.type === 'reaper' && !e.reaperChaser }))
           .filter(o => !o.reaper && o.d2 <= pr2)
           .sort((a, b) => a.d2 - b.d2)
           .slice(0, ALCHEMY_RARE_SUCTION_MAX_TARGETS);
@@ -4502,7 +4502,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const aura2 = auraR * auraR;
           const rareDmg = Math.round(ALCHEMY_RARE_MELEE_DAMAGE * rareDamageMult); // 賢者の石: +50%
           for (const e of enemiesNext) {
-            if (e.type === 'reaper') continue;
+            if (e.type === 'reaper' && !e.reaperChaser) continue;
             const d2 = (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2;
             if (d2 > aura2) continue;
             attackHits.push({ id: e.id, amount: rareDmg, x: e.x + e.width / 2, y: e.y });
@@ -4524,7 +4524,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const aoe2 = SAGE_NORMAL_AOE_RADIUS * SAGE_NORMAL_AOE_RADIUS;
           let hitAny = false;
           for (const e of enemiesNext) {
-            if (e.type === 'reaper') continue;
+            if (e.type === 'reaper' && !e.reaperChaser) continue;
             const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
             if (d2 > aoe2) continue;
             attackHits.push({ id: e.id, amount: s.damage, x: e.x + e.width / 2, y: e.y });
@@ -4536,7 +4536,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           let nd2 = ALCHEMY_ATTACK_RANGE * ALCHEMY_ATTACK_RANGE;
           let nx = 0, ny = 0;
           for (const e of enemiesNext) {
-            if (e.type === 'reaper') continue;
+            if (e.type === 'reaper' && !e.reaperChaser) continue;
             const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
             if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
           }
@@ -4590,7 +4590,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダメージは経路確定時に一括適用する(移動自体はKATANA_DASH_MSかけて行う)。
     const targetIds: string[] = [];
     for (const e of enemies) {
-      if (e.type === 'reaper') continue;
+      if (e.type === 'reaper' && !e.reaperChaser) continue;
       const ex = e.x + e.width / 2 - pcx;
       const ey = e.y + e.height / 2 - pcy;
       const along = ex * ux + ey * uy;
@@ -4888,7 +4888,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnGlow(pcx, pcy, 56, 'rgba(56,189,248,', 360);
         const kbMult = (KNOCKBACK_SPEED * 2) / BULLET_KNOCKBACK_SPEED;
         for (const e of get().enemies) {
-          if (e.type === 'reaper') continue;
+          if (e.type === 'reaper' && !e.reaperChaser) continue;
           const ecx = e.x + e.width / 2;
           const ecy = e.y + e.height / 2;
           const dx = ecx - pcx;

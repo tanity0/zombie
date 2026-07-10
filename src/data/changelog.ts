@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1603',
+    items: [
+      '死神に自分の武器が当たらなかった不具合を修正。刀・タレット・各サブウェポン・スキル・召喚など全ての攻撃で、追ってくる死神を削れるようになった。',
+    ],
+  },
+  {
     version: '0.25.1601',
     items: [
       '新サブウェポン「火炎瓶」を追加。移動中に足元へ火を敷き、踏んだ敵をじわじわ焼く(レベルで敷ける本数アップ)。',

@@ -1125,7 +1125,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // 直線(帯)攻撃: 起点から(dx,dy)方向 length まで、半幅 halfW の帯に入る敵へ。
     const rhythmLineAttack = (cx: number, cy: number, dx: number, dy: number, length: number, halfW: number, damage: number, kbMult: number, execute: boolean, kbMax = 3) => {
       for (const e of useGameStore.getState().enemies) {
-        if (e.type === 'reaper') continue;
+        if (e.type === 'reaper' && !e.reaperChaser) continue;
         const rx = e.x + e.width / 2 - cx;
         const ry = e.y + e.height / 2 - cy;
         const along = rx * dx + ry * dy;
@@ -1156,7 +1156,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const blastR = GRENADE_BLAST_RADIUS;
         const fxMs = GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS;
         const targets = useGameStore.getState().enemies
-          .filter(e => e.type !== 'reaper')
+          .filter(e => e.type !== 'reaper' || e.reaperChaser)
           .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - x, e.y + e.height / 2 - y) }))
           .sort((a, b) => a.d - b.d).slice(0, SUZAKU_MAX_TARGETS).map(h => h.e);
         spawnFlash('rgba(248,113,113,0.16)', 150);
@@ -1168,7 +1168,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(bx, by, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(bx, by, 58, 'rgba(248,113,113,', fxMs);
           for (const e of useGameStore.getState().enemies) {
-            if (e.type === 'reaper') continue;
+            if (e.type === 'reaper' && !e.reaperChaser) continue;
             const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
             if (dist > blastR) continue;
             const falloff = 1 - dist / blastR;
@@ -1229,7 +1229,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const meleeR = huntingMeleeRadius(p);
         spawnRing(pcx, pcy, 6, meleeR, 'rgba(167,139,250,0.6)', 2, 200);
         for (const e of useGameStore.getState().enemies) {
-          if (e.type === 'reaper') continue;
+          if (e.type === 'reaper' && !e.reaperChaser) continue;
           const ex = e.x + e.width / 2;
           const ey = e.y + e.height / 2;
           const d = Math.hypot(ex - pcx, ey - pcy);
@@ -3993,7 +3993,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const bcx = bp.x + bp.width / 2;
               const bcy = bp.y + bp.height / 2;
               const target = useGameStore.getState().enemies
-                .filter(e => e.type !== 'reaper')
+                .filter(e => e.type !== 'reaper' || e.reaperChaser)
                 .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - bcx, e.y + e.height / 2 - bcy) }))
                 .filter(h => h.d <= BYAKKO_RANGE)
                 .sort((a, b) => a.d - b.d)[0]?.e;
@@ -4130,7 +4130,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let best: { id: string; d2: number } | null = null;
             let bestStunned: { id: string; d2: number } | null = null;
             for (const e of useGameStore.getState().enemies) {
-              if (e.type === 'reaper') continue;
+              if (e.type === 'reaper' && !e.reaperChaser) continue;
               // 距離は enemyMeleeDist(裏ボスは帯AABBの最近点)。巨体ボスを中心基準にすると帯の端で
               // 「近づいても発動しない」狭い当たりになる(社長報告)。最近点なら表示枠=攻撃判定が一致する。
               const d = enemyMeleeDist(kcx, kcy, e);
@@ -4170,7 +4170,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
           const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
           const target = useGameStore.getState().enemies
-            .filter(e => e.type !== 'reaper')
+            .filter(e => e.type !== 'reaper' || e.reaperChaser)
             .map(e => ({
               enemy: e,
               dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy)
@@ -4314,7 +4314,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 dogY = activeFetch.targetY + (homeY - activeFetch.targetY) * k;
               }
               for (const enemy of bstate.enemies) {
-                if (enemy.type === 'reaper') continue;
+                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
                 if (activeFetch.bitten.has(enemy.id)) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
@@ -4659,7 +4659,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
           // ターゲット = プレイヤーに最も近い非リーパー敵(既存の自動射撃に準拠)。
           const target = useGameStore.getState().enemies
-            .filter(e => e.type !== 'reaper')
+            .filter(e => e.type !== 'reaper' || e.reaperChaser)
             .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
             .sort((a, b) => a.dist - b.dist)[0]?.enemy;
           if (target) {
@@ -4716,7 +4716,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const pcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
                 const range2 = HOMING_RANGE * HOMING_RANGE;
                 const inRange = enemiesNow
-                  .filter(e => e.type !== 'reaper')
+                  .filter(e => e.type !== 'reaper' || e.reaperChaser)
                   .map(e => ({ id: e.id, d2: (e.x + e.width / 2 - pcx) ** 2 + (e.y + e.height / 2 - pcy) ** 2 }))
                   .filter(o => o.d2 <= range2)
                   .sort((a, b) => a.d2 - b.d2);
@@ -4930,7 +4930,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               const tWalls = aoeWalls(tcx, tcy);
               for (const enemy of useGameStore.getState().enemies) {
-                if (enemy.type === 'reaper') continue;
+                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - tcx, ey - tcy);
@@ -4956,7 +4956,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (!fireReady) continue;
               // 全方位: 射程内の最も近い敵を狙う(近い敵優先)。範囲内に敵がいなければ撃たない。
               const target = useGameStore.getState().enemies
-                .filter(e => e.type !== 'reaper')
+                .filter(e => e.type !== 'reaper' || e.reaperChaser)
                 .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - tcx, e.y + e.height / 2 - tcy) }))
                 .filter(h => h.d <= TURRET_OMNI_RANGE)
                 .sort((a, b) => a.d - b.d)[0]?.e;
@@ -4975,7 +4975,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const fx = Math.cos(aim);
               const fy = Math.sin(aim);
               const hasFwdTarget = useGameStore.getState().enemies.some(e => {
-                if (e.type === 'reaper') return false;
+                if (e.type === 'reaper' && !e.reaperChaser) return false;
                 const dx = e.x + e.width / 2 - tcx;
                 const dy = e.y + e.height / 2 - tcy;
                 const along = dx * fx + dy * fy;          // 前方への射影
@@ -5055,7 +5055,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             const dWalls = aoeWalls(dcx, dcy);
             for (const enemy of useGameStore.getState().enemies) {
-              if (enemy.type === 'reaper') continue;
+              if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
               const ex = enemy.x + enemy.width / 2;
               const ey = enemy.y + enemy.height / 2;
               const dist = Math.hypot(ex - dcx, ey - dcy);
@@ -5137,7 +5137,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnGlow(gx, gy, 50, 'rgba(251,146,60,', fxMs);
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
-            if (enemy.type === 'reaper') continue;
+            if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
             const dist = Math.hypot(ex - gx, ey - gy);
@@ -5194,7 +5194,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().spawnGlow(bx, by, Math.round(blastR * 0.68), 'rgba(251,146,60,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               const fkWalls = aoeWalls(bx, by);
               for (const enemy of useGameStore.getState().enemies) {
-                if (enemy.type === 'reaper') continue;
+                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - bx, ey - by);
@@ -5221,7 +5221,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 飛行中: 非リーパー敵への命中判定(1体目に刺さる)。
             let hit: typeof fkState.enemies[number] | undefined;
             for (const e of fkState.enemies) {
-              if (e.type === 'reaper') continue;
+              if (e.type === 'reaper' && !e.reaperChaser) continue;
               if (checkCollision(knife, e)) { hit = e; break; }
             }
             if (hit) {
@@ -5258,7 +5258,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (phase === 'out' || phase === 'return') {
               // 貫通接触: 同一敵はこのフェーズで1回(hitEnemies)。行き/戻りで配列はリセット済み。
               for (const e of bs.enemies) {
-                if (e.type === 'reaper') continue;
+                if (e.type === 'reaper' && !e.reaperChaser) continue;
                 if (boom.hitEnemies.includes(e.id)) continue;
                 if (!checkCollision(boom, e)) continue;
                 boom.hitEnemies.push(e.id); // store配列を直接更新(既存の貫通弾と同じ手法)
@@ -5280,7 +5280,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dmg = Math.max(1, Math.round(boom.damage / DRONE_BOOM_STOP_DMG_DIV));
                 const boomWalls = aoeWalls(bx, by);
                 for (const e of bs.enemies) {
-                  if (e.type === 'reaper') continue;
+                  if (e.type === 'reaper' && !e.reaperChaser) continue;
                   const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
@@ -5309,7 +5309,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             continue;
           }
           const targets = useGameStore.getState().enemies
-            .filter(enemy => enemy.type !== 'reaper')
+            .filter(enemy => enemy.type !== 'reaper' || enemy.reaperChaser)
             .filter(enemy => !alreadyHit.has(enemy.id))
             .map(enemy => ({
               enemy,
@@ -5662,7 +5662,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
             const glWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
-              if (splashEnemy.id === enemyId || splashEnemy.type === 'reaper') continue;
+              if (splashEnemy.id === enemyId || (splashEnemy.type === 'reaper' && !splashEnemy.reaperChaser)) continue;
               const sx = splashEnemy.x + splashEnemy.width / 2;
               const sy = splashEnemy.y + splashEnemy.height / 2;
               const dist = Math.hypot(sx - blastX, sy - blastY);
@@ -5704,7 +5704,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
-              if (splashEnemy.id === enemyId || splashEnemy.type === 'reaper') continue;
+              if (splashEnemy.id === enemyId || (splashEnemy.type === 'reaper' && !splashEnemy.reaperChaser)) continue;
               const sx = splashEnemy.x + splashEnemy.width / 2;
               const sy = splashEnemy.y + splashEnemy.height / 2;
               const dist = Math.hypot(sx - blastX, sy - blastY);
@@ -5762,7 +5762,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             let target: typeof enemyForFx | undefined;
             let bestD2 = Infinity;
             for (const other of useGameStore.getState().enemies) {
-              if (other.id === enemyId || other.type === 'reaper') continue;
+              if (other.id === enemyId || (other.type === 'reaper' && !other.reaperChaser)) continue;
               const d2 = (other.x + other.width / 2 - ox) ** 2 + (other.y + other.height / 2 - oy) ** 2;
               if (d2 < bestD2) { bestD2 = d2; target = other; }
             }
@@ -7300,7 +7300,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().spawnGlow(bcx, bcy, 58, 'rgba(251,146,60,', 380);
             playSfx('bomb');
             for (const e of useGameStore.getState().enemies) {
-              if (e.type === 'reaper' || e.aiPhase === 'jump') continue; // reaper除外・空中無敵は対象外
+              if ((e.type === 'reaper' && !e.reaperChaser) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               const dist = Math.hypot(ecx - bcx, ecy - bcy);
               if (dist > radius) continue;
