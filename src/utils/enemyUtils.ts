@@ -61,8 +61,8 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   thor:       { width: 140, height: 70,  speed: 163, health: 11000, damage: 38, experienceValue: 0 },
   // PACING_PUZZLE.md §5.21-追補8: ゲート2ボス(天使名ボス1体目)=ミゲル。stageのhiddenBossではなく
   // ゲート2(useGameLoop.ts)がfromEventでスポーンする。叩き台値(実機調整前提・社長決定v0.25.1587)。
-  // isHiddenBoss経由でhpMult=1固定 → ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)適用後 HP10000/与ダメ190
-  // (=城ボスgiantbatのゲート2実効値の2倍・社長指定)。
+  // isHiddenBoss経由でhpMult=1固定。社長指示v0.25.1595「基本値の方にして」でゲート2の×5は適用しない=
+  // この基本値(HP2000/与ダメ38)がそのまま実効値になる。
   // 社長指示v0.25.1594「天使系ボスの大きさ半分で」: 表示幅=width/BOSS_SPRITE_FIT.w なので当たり寸(帯)を
   // 半分にすると絵も当たりも一緒に半分になる(視覚と当たりがズレない)。width120→60・height60→30。
   miguel:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 },

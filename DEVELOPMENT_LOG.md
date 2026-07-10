@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1595 — 調整: ミゲルをゲート2の×5適用なし=基本値(HP2000/与ダメ38)に【2026-07-10 22:37 JST】
+- **社長指示**: 「基本値の方にして」(=前回提示のミゲル基本値2000/38を実効値に)。
+- **修正**: ゲート2の`GATE2_BOSS_STRENGTH_MULT`(×5)をミゲルに掛けるのをやめた。適用2箇所(実ゲート2 spawn + `?gateboss=1` force-spawn)の`health/maxHealth/damage *= ×5`(各3行)を撤去。→ 実効=**HP2000/与ダメ190→38**(旧10000/190から基本値へ)。
+- 定数`GATE2_BOSS_STRENGTH_MULT=5`は将来の再調整用に**休眠で残置**(gate2.tsコメント+testは値5担保)。useGameLoopの未使用import撤去。enemyUtilsコメント更新。
+- 検証: **typecheck clean / lint 0エラー / gate2.test 6 pass**。負荷 0/10。実機(`?gateboss=1`)でミゲルのHP/与ダメが基本値相当(柔らかく/痛くない)になっているか確認。
+
 ## v0.25.1594 — 調整: 天使系ボス(ミゲル)の大きさ半分【2026-07-10 22:13 JST】
 - **社長指示**: 天使系ボスの大きさ半分で。
 - **修正**: 表示幅=`enemy.width / BOSS_SPRITE_FIT.w`(pixiScene:6178)なので、`ENEMY_STATS.miguel`の当たり寸を半分に(width120→60・height60→30)。絵も当たり判定も一緒に半分=視覚と当たりがズレない。speed/HP/与ダメは不変。周回クリアランス(height/2)が15になり周回半径250→265へ微増(実害なし)。

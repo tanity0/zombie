@@ -118,7 +118,7 @@ import {
   type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
-import { shouldTriggerGate2, GATE2_BOSS_STRENGTH_MULT } from '../utils/gate2';
+import { shouldTriggerGate2 } from '../utils/gate2';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -1775,9 +1775,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
              activeEventActive: false,
            })) {
             // PACING_PUZZLE.md §5.21-追補8: 囲いゲート2(ハード=出られない)。ゲート2ボス=天使名の
-            // 裏ボス勢1体目「ミゲル」(内部型'miguel')をユニーク版・強さ×5(GATE2_BOSS_STRENGTH_MULT)で
-            // 配置する(旧: 城ボスgiantbatの仮流用。giantbatは城フィナーレボスとして別枠で存続=
-            // useGameLoop.ts:1638 の別スポーンは無変更)。confinesPlayerは省略=既定true。
+            // 裏ボス勢1体目「ミゲル」(内部型'miguel')を配置する(旧: 城ボスgiantbatの仮流用。giantbatは
+            // 城フィナーレボスとして別枠で存続=useGameLoop.ts:1638 の別スポーンは無変更)。confinesPlayer省略=既定true。
+            // 社長指示v0.25.1595「基本値の方にして」: ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)は適用しない=
+            // ミゲルはENEMY_STATSの基本値(HP2000/与ダメ38)そのままで戦う(ミゲルは専用調整のボスなので旧giantbat枠の×5は不要)。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
             // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
@@ -1788,9 +1789,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bx = g2pcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const by = g2pcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const boss = spawnEnemyAt('miguel', bx - 24, by - 24, newGameTime);
-            boss.health *= GATE2_BOSS_STRENGTH_MULT;
-            boss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
-            boss.damage = Math.round(boss.damage * GATE2_BOSS_STRENGTH_MULT);
             boss.fromEvent = true;
             // ミゲルは周回移動(bossState制御)なので dormant/aggroRange は使わない(giantbat流用時の名残)。
             boss.bossState = 'chase';
@@ -2848,10 +2846,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gbx = gcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const gby = gcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const gboss = spawnEnemyAt(gbType, gbx - 24, gby - 24, newGameTime);
-            gboss.health *= GATE2_BOSS_STRENGTH_MULT;
-            gboss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
-            gboss.damage = Math.round(gboss.damage * GATE2_BOSS_STRENGTH_MULT);
-            gboss.fromEvent = true;
+            gboss.fromEvent = true; // ×5は掛けない=基本値(実ゲート2と揃える・社長指示v0.25.1595)
             gboss.bossState = 'chase';
             gboss.bossNextActionAt = newGameTime + 2000;
             gboss.homeX = gcx; gboss.homeY = gcy; // 周回の中心=ゲート中心
