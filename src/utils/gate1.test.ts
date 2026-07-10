@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor, GATE1_FORMATION_STRENGTH_MULT } from './gate1';
+import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from './gate1';
 
 const baseTrigger = {
   enabled: true,
@@ -65,11 +65,5 @@ describe('effectiveReaperRiskFloor', () => {
 
   it('never relaxes the threshold even if frontloadedFloor is somehow higher than base', () => {
     expect(effectiveReaperRiskFloor(14600, true, 20000)).toBe(14600);
-  });
-});
-
-describe('GATE1_FORMATION_STRENGTH_MULT', () => {
-  it('is the documented ×5 strength multiplier (§5.21-追補4)', () => {
-    expect(GATE1_FORMATION_STRENGTH_MULT).toBe(5);
   });
 });

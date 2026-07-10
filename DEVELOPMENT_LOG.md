@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1575 — 実装: レア倍率刷新+ゲート機構一本化(§5.21-追補7)【Sonnetサブ連携】【2026-07-10 11:28 JST】
+- **§5.21-追補7 の実装**(Sonnetサブ→設計チャットが独立検証+git)。仕様docは前コミット v0.25.1574。
+- **A レア色倍率を攻撃/HP分離**(`enemyUtils.ts`): 単一`COLOR_TIER_MULT`廃止→`COLOR_TIER_DMG_MULT{青1.5/紫2/赤3}`+`COLOR_TIER_HP_MULT{青2/紫3/赤5}`。buildEnemyで`diffDmg`/`diffHp`に分離(`hpMult`=diffHp・`dmgMult`=diffDmg・`difficultyMultiplier`=fixed?1:diffDmg=弾は攻撃側)。**非色付き敵はdiffDmg=diffHp=areaBase=旧diff=完全不変**を独立確認。サイズ/出現率/クリ/XPは不変。
+- **B1 ネームド=通常挙動へ**(`gameStore.ts`): v1571の近接スタン処刑4分岐を`isBossType||namedGetsBossFinish`→`isBossType`に戻す。`namedGetsBossFinish`/`NAMED_FINISH_EXCEPT_TYPES`削除。名前/×2/宿敵記録は不変。
+- **B2 finishKillOnly全廃**(`useGameLoop.ts`): ゲート1布陣+ゲート2城ボス両方の`finishKillOnly=true`削除。機構(`clampFinishKillOnlyHealth`/フィールド)はdormant残置。
+- **C ゲート1布陣=赤レア相当**(`useGameLoop.ts`/`gate1.ts`): 布陣tier`'purple'`→`'red'`・`GATE1_FORMATION_STRENGTH_MULT`(×5)の3行+定数+import削除。→赤レア(攻×3/HP×5・弾も×3自動)。
+- **城ボス(ゲート2)**: `GATE2_BOSS_STRENGTH_MULT`(×5)・isBossType挙動は据え置き、finishKillOnlyのみ除去=どの手段でも倒せる。
+- **D1 ゲート半径 240→300**(`useGameLoop.ts`): `GATE_ARENA_RADIUS=300`新設。gate1/gate2のevent radius・placeGateRing・spawnRing・ボス配置のみ差し替え。他イベント(horde/boss/egg)は`ARENA_EVENT_RADIUS=240`のまま。
+- **D2 ゲート中エリア判定OFF**(`useGameLoop.ts`): ゾーン遷移の効果(区域バナー/SE/ゲート予約/踏破儀式/壁予告)を`activeGateRef.current===null`で包む。`areaZoneRef`は上で黙って更新(遅延誤発火防止)。pending・失敗ノックバック再判定(追補6)は不変。
+- 検証(設計チャット独立): **typecheck clean / npm test 588 pass・2 skip・0 fail**(Sonnet実行)。テスト更新=`gate1.test.ts`(削除した`GATE1_FORMATION_STRENGTH_MULT`のimport+旧アサート除去)。設計チャットが全diffレビュー済み(A回帰安全/B1 4箇所/D2の包み方/半径ゲート限定)+stale comment 1件修正(gameStore鞭サイトの「ネームド5×」注記)。負荷 **1/10**(数値/分岐のみ・新規描画/毎frame増なし)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に**非抵触**(レア/ゲートの強さ・機構の変更のみ・緩コマや初心者エリアの構造は不変)。
+- **実機で見る点**: ①レア敵(青/紫/赤)の硬さ/痛さの体感 ②境界ゲート(赤レア布陣)が銃/爆発でも倒せて詰まないか ③城ボスが銃/爆発で倒せるか ④ネームドが気絶→近接トドメ一撃で倒せるか ⑤ゲート半径300の手応え ⑥ゲート中にエリアバナー/踏破が出ないこと。
+
 ## v0.25.1574 — 設計: レア倍率刷新+ゲート機構一本化の仕様確定(§5.21-追補7)【2026-07-10 11:24 JST】
 - **社長決定を §5.21-追補7 に記載**(このコミットは**仕様docのみ**。コード実装はSonnetサブが並行中=別コミット v0.25.1575 で締める)。
 - 内容: **A** レア色倍率を攻撃/HP分離(青 攻1.5/HP2・紫 攻2/HP3・赤 攻3/HP5・弾=攻撃側。クリ/サイズ/出現率/XP据え置き)/ **B1** ネームド=通常挙動へ(v1571 §②巻き戻し)/ **B2** finishKillOnly全廃(ゲート1布陣+城ボス両方)/ **C** ゲート1布陣=赤レア相当(攻×3/HP×5・赤tint・×5廃止)/ **D1** ゲート半径 240→300(ゲート専用定数・他イベントは240維持)/ **D2** ゲート発生中はエリア判定OFF。

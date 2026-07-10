@@ -30,7 +30,6 @@ export const effectiveReaperRiskFloor = (
 // 強制」は撤回。ゲート1中もchaffは通常のkomaディレクター駆動のまま(ランク相応の目標/CD)。
 // resolveGate1ChaffPlan(強制プラン関数)は削除済み — 雑魚の湧き数はディレクター任せに戻す。
 
-// ゲート1の台本(formation)個体の強さ倍率。gate2.ts の GATE2_BOSS_STRENGTH_MULT と対で「5倍・
-// 近接フィニッシュ限定キル」を担う(社長決定v0.25.1553)。台本は紫tint(rare色倍率)を維持したまま
-// 追加でこの倍率をHP/最大HP/ダメージに掛ける(spawn直後に useGameLoop 側で適用)。
-export const GATE1_FORMATION_STRENGTH_MULT = 5;
+// §5.21-追補7(社長決定v0.25.1574): 旧「ゲート1台本=紫tint+×5倍加算+finishKillOnly」は廃止。
+// ゲート1台本は赤レア相当(spawnEnemyAtWithTier(...,'red'))の色倍率のみで強さを表現する
+// (GATE1_FORMATION_STRENGTH_MULT は削除・useGameLoop.ts のゲート1布陣配置箇所参照)。

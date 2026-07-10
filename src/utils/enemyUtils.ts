@@ -248,7 +248,9 @@ const ENEMY_SPEED_MULT = 2 / 3;
 // ---- 色付き(影の色)個体 ----------------------------------------------------
 // 影の色で表現(本体の見た目は同じ・旧装飾=黒翼/紫角/赤翼/リング等は廃止)。色ごとに強さ倍率(社長指定)。
 // ジャイアント未満の一般敵のみ対象。ジャイアント/死神/特別敵には付かない(強さ一定)。
-const COLOR_TIER_MULT: Record<EnemyColorTier, number> = { blue: 1.2, purple: 1.5, red: 2 };
+// §5.21-追補7(社長決定v0.25.1574): 攻撃/HPを別テーブルへ分離(旧単一 COLOR_TIER_MULT は廃止)。
+const COLOR_TIER_DMG_MULT: Record<EnemyColorTier, number> = { blue: 1.5, purple: 2, red: 3 };
+const COLOR_TIER_HP_MULT: Record<EnemyColorTier, number> = { blue: 2, purple: 3, red: 5 };
 // PACING_PUZZLE.md §5.15 M15(社長決定・既定ON): 体格拡大は廃止し、本体tint(pixiScene.ts)で
 // 見分ける方式へ統一(サイズ差はネームド×1.5の専売にして「大きい=宿敵/色=レア」の2軸を濁らせない)。
 // ?raretint=0で旧(体格拡大+影のみ・tintなし)へ復帰(pixiScene.tsの同名パラメータと対で効く)。
@@ -342,14 +344,18 @@ const buildEnemy = (
   const distanceZone = area; // 互換フィールド(0-4)
   const difficultyRank = difficultyRankForArea(area); // トレジャー抽選用(エリアベース)
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
+  // §5.21-追補7: 攻撃/HPを別倍率で分離(colorDmgMult/colorHpMult → diffDmg/diffHp)。
   const colorTier = fixed ? undefined : (forcedColorTier ?? rollColorTierForArea(area, esc, rareMult));
-  const colorMult = colorTier ? COLOR_TIER_MULT[colorTier] : 1;
+  const colorDmgMult = colorTier ? COLOR_TIER_DMG_MULT[colorTier] : 1;
+  const colorHpMult = colorTier ? COLOR_TIER_HP_MULT[colorTier] : 1;
   // 最終倍率 = エリア基礎難易度 × 色付き倍率(社長指定・時間スケールは廃止)。固定難易度タイプ = 1。
-  const diff = fixed ? 1 : AREA_BASE_DIFFICULTY[area] * colorMult;
+  const areaBase = fixed ? 1 : AREA_BASE_DIFFICULTY[area];
+  const diffDmg = areaBase * colorDmgMult;
+  const diffHp = areaBase * colorHpMult;
   // Reaper は終端個体で別管理。giant/ラボ等の固定タイプは全体底上げ(ENEMY_HP_MULT)のみ維持。
   // reaper と裏ボスは health をそのまま使う(裏ボスは個別HPを直接指定=ENEMY_HP_MULT を掛けない)。
-  const hpMult = (type === 'reaper' || isHiddenBoss(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diff * ENEMY_HP_MULT);
-  const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diff);
+  const hpMult = (type === 'reaper' || isHiddenBoss(type)) ? 1 : (fixed ? ENEMY_HP_MULT : diffHp * ENEMY_HP_MULT);
+  const dmgMult = type === 'reaper' ? 1 : (fixed ? 1 : diffDmg);
   const sizeMult = colorTier ? COLOR_TIER_SIZE_MULT[colorTier] : 1;
 
   return {
@@ -370,7 +376,7 @@ const buildEnemy = (
     isWave,
     distanceZone,
     difficultyRank,
-    difficultyMultiplier: diff,
+    difficultyMultiplier: fixed ? 1 : diffDmg,
     colorTier,
     // DISTRIBUTION_REDESIGN.md①: このエリアでは本来出現しない型(featured床/保証出現などで選ばれた)
     // なら、距離リサイクルの「エリア不適合→強制回収」を免除するフラグを立てる。

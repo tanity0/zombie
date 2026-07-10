@@ -501,10 +501,6 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
-const NAMED_FINISH_EXCEPT_TYPES = new Set<EnemyType>(); // 社長が個別指定する「例外ネームド」の敵タイプをここに追加(今は空=全ネームド統一)
-// ネームドはボス系と同じ近接フィニッシュ(×5・即時処刑無し)で倒す(社長決定)。例外タイプは対象外。
-const namedGetsBossFinish = (enemy: { isNamed?: boolean; type: EnemyType }): boolean =>
-  !!enemy.isNamed && !NAMED_FINISH_EXCEPT_TYPES.has(enemy.type);
 // 裏ボス(mimir/jormungand/skadi)専用: クリティカルを規定回数当てると「完全気絶(紫)」に移行。
 // 通常敵の気絶相当で、この間は攻撃を受けても起きず(stun 維持)、5× 近接をタイマー切れまで“し放題”。
 export const BOSS_FULLSTUN_CRITS = 5;    // 完全気絶に必要なクリ回数(社長指示)
@@ -3494,7 +3490,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       slashAt.push({ x: ecx, y: ecy });
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
-        if (isBossType(enemy.type) || namedGetsBossFinish(enemy)) {
+        if (isBossType(enemy.type)) {
           // Bosses can't be instakilled. A melee hit on a stunned boss deals
           // 5× melee damage. 通常の気絶は1発で解除するが、裏ボスの「完全気絶(紫)」中は
           // 解除せずタイマー切れまで5×近接を“し放題”(社長指示)。
@@ -3821,7 +3817,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       slashAt.push({ x: ecx, y: ecy });
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
-        if (isBossType(enemy.type) || namedGetsBossFinish(enemy)) {
+        if (isBossType(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
@@ -3955,7 +3951,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // オート斬撃(allowFinisher=false)はスタン敵にも通常ダメージだけ与え、
       // スタンは消さない(一閃で仕留める余地を残す)。
       if (stunned && allowFinisher) {
-        if (isBossType(enemy.type) || namedGetsBossFinish(enemy)) {
+        if (isBossType(enemy.type)) {
           // Same boss rule as the knife: 5× damage, no execute。ただし裏ボスの完全気絶(紫)中は
           // 気絶を解除せずタイマー切れまで5×を“し放題”(社長指示)。通常の気絶は従来どおり1発で解除。
           const bossFull = enemy.bossFullStunUntil !== undefined && gameTime < enemy.bossFullStunUntil;
@@ -4155,8 +4151,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
-        // 近接フィニッシュ: スタン敵は即時処刑(ボス/ネームドは5×でスタン解除)。
-        if (isBossType(enemy.type) || namedGetsBossFinish(enemy)) {
+        // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。ネームドは通常敵扱い=即時処刑・§5.21-追補7)。
+        if (isBossType(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });

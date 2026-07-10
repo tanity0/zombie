@@ -117,7 +117,7 @@ import {
   nuisanceTarget,
   type FormationPattern, type NuisanceCounts, type KomaKind4, type ChaffRampState, type NuisanceType,
 } from '../utils/scriptPuzzle';
-import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor, GATE1_FORMATION_STRENGTH_MULT } from '../utils/gate1';
+import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2, GATE2_BOSS_STRENGTH_MULT } from '../utils/gate2';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
@@ -331,6 +331,7 @@ const EVENT_SPAWN_AGGRO_RANGE = 300;
 // --- 囲い系イベント(小イベント=強制アリーナ戦/ミニボス戦) ---
 const ARENA_EVENT_CAP = 20;            // イベント中の同時敵上限(通常10→20。終了で10へ戻す)
 const ARENA_EVENT_RADIUS = 240;        // 囲い半径(閉じ込め円)。社長指示で少し拡大: 210→240(horde/boss/egg 共通)
+const GATE_ARENA_RADIUS = 300;         // §5.21-追補7: ゲート1/ゲート2専用の広め半径(240→300・ゲート限定)。他イベント(horde/boss/egg)は ARENA_EVENT_RADIUS のまま。
 const GATE_FAIL_KNOCKBACK_MARGIN = 400; // §5.21-追補6: ゲート失敗時に境界より内側へ押し戻す距離(叩き台・実機調整)
 // 大量発生(horde)の段階スポーン(1秒に1体・計18体)は、湧き位置をイベント中心(=開始時のプレイヤー位置で固定)
 // からの距離だけで決めていたため、~18秒かけてプレイヤーが円内を動くと、現在地の近くへ偶然湧いて
@@ -1703,7 +1704,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gpcx = player.x + player.width / 2, gpcy = player.y + player.height / 2;
             const placeGateRing = (): { x: number; y: number } => {
               const ang = Math.random() * Math.PI * 2;
-              const dist = ARENA_EVENT_RADIUS * (0.4 + Math.random() * 0.52);
+              const dist = GATE_ARENA_RADIUS * (0.4 + Math.random() * 0.52);
               return { x: gpcx + Math.cos(ang) * dist, y: gpcy + Math.sin(ang) * dist };
             };
             // 社長指示(v0.25.1523「やはり出れない囲いに」)でゲート1もハード(出られない)へ変更。
@@ -1713,21 +1714,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // chaffが境界を越えて円内へ流れ込めるようにする。gameStore.ts の arenaConfiningFlee 参照)。
             // 重要: beginArenaEvent は呼び出し時点で周辺の非固定敵を一掃するため、必ず「敵を配置する前」に
             // 呼ぶこと(逆順にすると配置直後の台本の敵まで一掃されてしまうバグを実機v0.25.1522で確認)。
-            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, permeable: true };
+            const gateEvent = { kind: 'horde' as const, x: gpcx, y: gpcy, radius: GATE_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + ARENA_HORDE_DURATION_MS, permeable: true };
             useGameStore.getState().beginArenaEvent(gateEvent);
             let gateSpawnedCount = 0;
             (Object.keys(counts) as NuisanceType[]).forEach(type => {
               const n = counts[type];
               for (let i = 0; i < n; i++) {
                 const pos = placeGateRing();
-                // 全個体にレアtint(紫)を強制(見た目)。§5.21-追補4(社長決定v0.25.1553): 強さは
-                // 紫のレア倍率(×1.5)に加えてGATE1_FORMATION_STRENGTH_MULT(×5)をHP/最大HP/ダメージへ
-                // 追加で乗せる。かつ近接フィニッシュでしか死なない(finishKillOnly=true)。
-                const e = spawnEnemyAtWithTier(type, pos.x - 20, pos.y - 20, newGameTime, 'purple');
-                e.health *= GATE1_FORMATION_STRENGTH_MULT;
-                e.maxHealth *= GATE1_FORMATION_STRENGTH_MULT;
-                e.damage = Math.round(e.damage * GATE1_FORMATION_STRENGTH_MULT);
-                e.finishKillOnly = true;
+                // §5.21-追補7(社長決定v0.25.1574): 全個体を赤レア相当(強制tier='red')で配置。
+                // レア色倍率(攻×3/HP×5)がそのまま強さになる=専用の×5倍加算(GATE1_FORMATION_STRENGTH_MULT)は廃止。
+                const e = spawnEnemyAtWithTier(type, pos.x - 20, pos.y - 20, newGameTime, 'red');
                 e.fromEvent = true;
                 e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
                 addEnemy(e);
@@ -1744,8 +1740,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ eventBannerText: '境界ゲート出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
             const gateRingColor = 'rgba(168,85,247,0.9)'; // 紫=レア波を示唆
-            spawnRing(gpcx, gpcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, gateRingColor, 6, 700);
-            spawnRing(gpcx, gpcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, gateRingColor, 3, 760);
+            spawnRing(gpcx, gpcy, GATE_ARENA_RADIUS * 0.2, GATE_ARENA_RADIUS, gateRingColor, 6, 700);
+            spawnRing(gpcx, gpcy, GATE_ARENA_RADIUS, GATE_ARENA_RADIUS + 30, gateRingColor, 3, 760);
             spawnFlash('rgba(88,28,135,0.24)', 360);
             useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
             useGameStore.getState().triggerTimeSlow(0.4, 520);
@@ -1757,22 +1753,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
            })) {
             // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2(ハード=出られない)。城ボス(giantbat)の
             // ユニーク版1体を強さ×5(GATE2_BOSS_STRENGTH_MULT・§5.21-追補4で×2→×5)で配置。
-            // confinesPlayerは省略=既定true(プレイヤーはサークルから出られない)。近接フィニッシュ
-            // でしか死なない(finishKillOnly=true)。
+            // confinesPlayerは省略=既定true(プレイヤーはサークルから出られない)。
             gate2PendingRef.current = false;
             const g2pcx = player.x + player.width / 2, g2pcy = player.y + player.height / 2;
             // 重要: beginArenaEvent は周辺の非固定敵を一掃するため、必ずボスを配置する前に呼ぶ
             // (gate1と同じ実機バグの教訓・giantbatは除外リストに入っているため実害は無かったが
             // 順序を揃えて統一する)。
-            const gate2Event = { kind: 'boss' as const, x: g2pcx, y: g2pcy, radius: ARENA_EVENT_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
+            const gate2Event = { kind: 'boss' as const, x: g2pcx, y: g2pcy, radius: GATE_ARENA_RADIUS, startedAt: newGameTime, endsAt: newGameTime + GATE2_BOSS_DURATION_MS };
             useGameStore.getState().beginArenaEvent(gate2Event);
-            const bx = g2pcx + Math.cos(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
-            const by = g2pcy + Math.sin(-Math.PI / 2) * ARENA_EVENT_RADIUS * 0.5;
+            const bx = g2pcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
+            const by = g2pcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const boss = spawnEnemyAt('giantbat', bx - 24, by - 24, newGameTime);
             boss.health *= GATE2_BOSS_STRENGTH_MULT;
             boss.maxHealth *= GATE2_BOSS_STRENGTH_MULT;
             boss.damage = Math.round(boss.damage * GATE2_BOSS_STRENGTH_MULT);
-            boss.finishKillOnly = true;
             boss.fromEvent = true;
             boss.dormant = true; boss.aggroRange = GIANT_AGGRO_RANGE; boss.vx = 0; boss.vy = 0;
             addEnemy(boss);
@@ -1780,8 +1774,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
             const gate2RingColor = 'rgba(239,68,68,0.9)'; // 赤=ハードゲートを示唆
-            spawnRing(g2pcx, g2pcy, ARENA_EVENT_RADIUS * 0.2, ARENA_EVENT_RADIUS, gate2RingColor, 6, 700);
-            spawnRing(g2pcx, g2pcy, ARENA_EVENT_RADIUS, ARENA_EVENT_RADIUS + 30, gate2RingColor, 3, 760);
+            spawnRing(g2pcx, g2pcy, GATE_ARENA_RADIUS * 0.2, GATE_ARENA_RADIUS, gate2RingColor, 6, 700);
+            spawnRing(g2pcx, g2pcy, GATE_ARENA_RADIUS, GATE_ARENA_RADIUS + 30, gate2RingColor, 3, 760);
             spawnFlash('rgba(127,29,29,0.26)', 360);
             useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
             useGameStore.getState().triggerTimeSlow(0.4, 520);
@@ -2521,53 +2515,60 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else if (zoneIdx !== areaZoneRef.current) {
               const prevZone = areaZoneRef.current;
               areaZoneRef.current = zoneIdx;
-              useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
-              // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
-              // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
-              // 仕様変更(v0.25.1523): 1プレイ(1ラン)中1エリア1回まで(往復で同じ区域に再度届いても鳴らさない)。
-              if (zoneIdx > prevZone && !zoneSfxPlayedRef.current.has(zoneIdx)) {
-                zoneSfxPlayedRef.current.add(zoneIdx);
-                playSfx('event-start');
-              }
-              // PACING_PUZZLE.md §5.21 M20 stage③/④: 未確認/深層境界を未クリアのゲートのまま踏破した=
-              // 「未達ペナルティ」発動(ゲート1のみハンター復活を伴う。ゲート2はハードなので即戦闘=
-              // ペナルティ状態を継続保持する必要がない)。ゲート発火待ちを立てる。
-              if (GATE_ENABLED) {
-                const wallIdxNow = detectWallBreach(prevZone, zoneIdx);
-                if (entersGate1Penalty(wallIdxNow, gateMetaRef.current.gate1Cleared)) {
-                  gate1PenaltyActiveRef.current = true;
-                  gate1PendingRef.current = true;
-                  // ハンター復活: 次に判定できる状態へ再アーム(既存の長いCDを待たせない)。
-                  hunterRef.current.nextEligibleAt = Math.min(hunterRef.current.nextEligibleAt, newGameTime);
-                } else if (wallIdxNow === 4 && !gateMetaRef.current.gate2Cleared) {
-                  gate2PendingRef.current = true;
+              // §5.21-追補7(社長決定v0.25.1574): ゲート発生中(activeGateRef.current!==null)は
+              // 区域バナー/SE/ゲート予約/踏破儀式を全スキップする。areaZoneRef自体は上で黙って更新済み
+              // (=ゲート終了後に遅延誤発火しない)。抑止はゲートactive中のみ(pending/失敗ノックバック
+              // 再判定=追補6は対象外)。
+              if (activeGateRef.current === null) {
+                useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
+                // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
+                // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
+                // 仕様変更(v0.25.1523): 1プレイ(1ラン)中1エリア1回まで(往復で同じ区域に再度届いても鳴らさない)。
+                if (zoneIdx > prevZone && !zoneSfxPlayedRef.current.has(zoneIdx)) {
+                  zoneSfxPlayedRef.current.add(zoneIdx);
+                  playSfx('event-start');
                 }
-              }
-              // PACING_PUZZLE.md §5.17 M14: 深さの壁「儀式」(境界を跨いだ=踏破。ステージ毎初回のみ)。
-              // §5.21 M20: ただし wallIdx===3/4(未確認/深層)を未クリアのゲートのまま踏破した場合は、
-              // クリアするまで到達判定を出さない(社長設計「未達ペナルティ」)。
-              if (WALL_ENABLED) {
-                const wallIdx = detectWallBreach(prevZone, zoneIdx);
-                if (wallIdx) {
-                  syncWallDepth(Math.hypot(pcx, pcy)); // 踏破の瞬間の距離も自己最深として反映
-                  const gateBlocksThisWall = GATE_ENABLED && (
-                    (wallIdx === 3 && !gateMetaRef.current.gate1Cleared) ||
-                    (wallIdx === 4 && !gateMetaRef.current.gate2Cleared)
-                  );
-                  const wm = useGameStore.getState().wallMeta;
-                  if (isFirstWallBreach(wm, wallIdx) && !gateBlocksThisWall) {
-                    // §5.21 M20追補(v0.25.1534): localStorageコミットはラン終了時のみ
-                    // (commitRunEndProgress)。ここではメモリ上のstoreだけ更新。
-                    useGameStore.setState({ wallMeta: markWallBreached(wm, wallIdx) });
-                    // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
-                    useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff');
-                    playSfx('event-clear'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+                // PACING_PUZZLE.md §5.21 M20 stage③/④: 未確認/深層境界を未クリアのゲートのまま踏破した=
+                // 「未達ペナルティ」発動(ゲート1のみハンター復活を伴う。ゲート2はハードなので即戦闘=
+                // ペナルティ状態を継続保持する必要がない)。ゲート発火待ちを立てる。
+                if (GATE_ENABLED) {
+                  const wallIdxNow = detectWallBreach(prevZone, zoneIdx);
+                  if (entersGate1Penalty(wallIdxNow, gateMetaRef.current.gate1Cleared)) {
+                    gate1PenaltyActiveRef.current = true;
+                    gate1PendingRef.current = true;
+                    // ハンター復活: 次に判定できる状態へ再アーム(既存の長いCDを待たせない)。
+                    hunterRef.current.nextEligibleAt = Math.min(hunterRef.current.nextEligibleAt, newGameTime);
+                  } else if (wallIdxNow === 4 && !gateMetaRef.current.gate2Cleared) {
+                    gate2PendingRef.current = true;
+                  }
+                }
+                // PACING_PUZZLE.md §5.17 M14: 深さの壁「儀式」(境界を跨いだ=踏破。ステージ毎初回のみ)。
+                // §5.21 M20: ただし wallIdx===3/4(未確認/深層)を未クリアのゲートのまま踏破した場合は、
+                // クリアするまで到達判定を出さない(社長設計「未達ペナルティ」)。
+                if (WALL_ENABLED) {
+                  const wallIdx = detectWallBreach(prevZone, zoneIdx);
+                  if (wallIdx) {
+                    syncWallDepth(Math.hypot(pcx, pcy)); // 踏破の瞬間の距離も自己最深として反映
+                    const gateBlocksThisWall = GATE_ENABLED && (
+                      (wallIdx === 3 && !gateMetaRef.current.gate1Cleared) ||
+                      (wallIdx === 4 && !gateMetaRef.current.gate2Cleared)
+                    );
+                    const wm = useGameStore.getState().wallMeta;
+                    if (isFirstWallBreach(wm, wallIdx) && !gateBlocksThisWall) {
+                      // §5.21 M20追補(v0.25.1534): localStorageコミットはラン終了時のみ
+                      // (commitRunEndProgress)。ここではメモリ上のstoreだけ更新。
+                      useGameStore.setState({ wallMeta: markWallBreached(wm, wallIdx) });
+                      // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
+                      useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[zoneIdx]} —— 踏破`, 'TRESPASS', '#bfe3ff');
+                      playSfx('event-clear'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+                    }
                   }
                 }
               }
             }
             // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告」(境界の手前150pxで帯。1ランに各壁1回)。
-            if (WALL_ENABLED) {
+            // §5.21-追補7: ゲート発生中は予告も出さない(バナー類と足並みを揃える)。
+            if (WALL_ENABLED && activeGateRef.current === null) {
               const nextWallIdx = zoneIdx + 1;
               if (
                 nextWallIdx <= wallWarnedRef.current.length && !wallWarnedRef.current[nextWallIdx - 1] &&
