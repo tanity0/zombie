@@ -681,14 +681,14 @@ const THOR_TSUKI_RANGE = 620;                // ダッシュと同じ射程(社�
 const THOR_TSUKI_HALF_WIDTH = 30;            // ダッシュと同じ幅(一閃の元の半分=通常幅)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
-const THOR_HARAI_RANGE = 620;                // ダッシュと同じ距離分のライン(社長指示。一閃の長さ修正とは独立)
+const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1605で横払いの長さ半分(620→310)。一閃/突きとは独立
 const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH * 1.5; // 社長指示: 突きの1.5倍の太さへ(突き本体は無変更)
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
 // PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス・天使名ボス1体目)。トールのharaiを流用し
 // 範囲を狭くした専用攻撃1つのみ(バッチ1)。定数は叩き台(実機調整前提)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;         // 払い: 溜め1秒(トールと同型)
-const MIGUEL_HARAI_RANGE = 380;              // トール(620)より狭い(仕様指定)
+const MIGUEL_HARAI_RANGE = 190;              // 社長指示v0.25.1605で縦横斬りの長さ半分(380→190)。横払い/縦払い両方がこの値
 const MIGUEL_HARAI_HALF_WIDTH = 25;          // トール(45)より狭い(仕様指定)
 const MIGUEL_HARAI_ACTIVE_MS = 220;
 // ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。

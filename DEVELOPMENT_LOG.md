@@ -12,6 +12,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1605 — 調整: ミゲルの縦横斬り/トールの横払いの長さを半分【2026-07-11 03:09 JST】
+- **社長指示**: 「ミゲルの縦横斬りの長さ半分 / トールの横切り長さ半分」。
+- **変更**(`useGameLoop.ts` 定数): `MIGUEL_HARAI_RANGE` 380→190(横払い・縦払い両方がこの値=一発で両方半分)/ `THOR_HARAI_RANGE` 620→310(横払いのみ。一閃・突きは不変)。ラインの当たり判定長=描画長が半分に。太さ(HALF_WIDTH)・溜め時間・ダメージは不変。
+- 検証: **typecheck clean**。負荷 0/10(定数のみ)。実機で斬りの長さが半分になったか確認。
+
 ## v0.25.1604 — 修正: 装備メニューのスキルLv表記がMAXにならない(死神/ボマー等maxLv1がLv1表示)【2026-07-11 03:09 JST】
 - **社長報告**(スクショ): 装備画面で死神・ボマー(maxLv1スキル)が「Lv1」表示=「MAX」になっていない。
 - **原因**: 装備メニュー(`MissionSelect.tsx:550`)がスキルLvを `Lv{ownedSkillLevels[k] ?? 1}` と**生で描画**しており、他画面(ガチャ結果)で使っている`lvText`ヘルパ(上限到達で「MAX」)を通していなかった。
