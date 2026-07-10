@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1587 — 素材: ゲート2ボス「ミゲル」本体+剣スプライトを先行コミット(実装はSonnet並行中)【2026-07-10 18:45 JST】
+- 社長提供のゲート2ボス(天使名・ミゲル)素材を確実に保全するため、コードより先にスプライトのみコミット。
+  設計チャットが焼き済み: `public/sprites/miguel.png`(797×1187・透過・BOSS_SPRITE_FIT叩き台`{w:0.50,h:0.20,cx:0.35,cy:0.99}`)、
+  `public/sprites/miguel-sword.png`(805×3437・透過・GRIP`{0.51,0.14}`/TIP`{0.47,1.00}`叩き台)。トランスクリプト抽出→Pillow整形。
+- 本実装(型追加/周回移動/攻撃1横払い/`?gateboss=1`)は §5.21-追補8 の仕様でSonnetサブが並行実装中=別コミットで締める。
+- スプライト単体は無害(未参照でもpreloadは失敗を握り潰す)。負荷 0/10(素材のみ)。
+
 ## v0.25.1586 — 修正: 叫喚/緑卵の沸きCDを3秒→30秒(特別枠CD延長)【2026-07-10 18:40 JST】
 - **社長報告**: 叫ぶ敵(叫喚型)・緑卵ばらまき(抱卵型ghost)が沸きすぎてうざい。30秒以上でいい。
 - **診断**: 社長は「叫喚の再出現=60秒」と認識していたが、**その60秒(`SCREAMER_RESPAWN_CD_MS`)はパズル方式ON(既定)では休眠**。
