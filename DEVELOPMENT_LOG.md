@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1591 — 差し替え+追加: スカベンジャーの歩き差し替え+走り新規(全4クラス走り完了)【2026-07-10 21:25 JST】
+- **社長提供**: スカベンジャー(=罠: 内部`necromancer`=`player-striker-`接頭辞)の歩き(1000×264)+走り(1160×264)。
+  歩き=`player-striker-walk-0..4`を同名差し替え/走り=`player-striker-run-0..4`を**新規追加**(スカベンジャーだけ走り未実装だった)。
+- 焼き=既存striker規格86×73・**横中心47**(既存idle/game frameと継続)・顔揺れ抑制。走りは前方ループ[0..4](他クラス走りと同方針=折り返さない)。歩き0番と並べプレビュー確認。
+- **コード配線**(`pixiScene.ts`/`pixiTextures.ts`): `usesRunAnimation`にnecromancer追加/`playerRunSequence`=necromancer[0..4]/`playerTextureName`=necromancer走り→`player-striker-run-${frame}`/プリロード5枚追加。**これで全4クラス(magnum/shotgun/scavenger=striker/striker=scavenger)に走りモーション**。
+- 同名差し替え(歩き)のため **ASSET_VERSION 30→31**(走りは新規名だが一括更新)。検証: **typecheck clean**。負荷 0/10。
+- ※歩きの顔揺れ2.6px(自然な体重移動ぶん・他クラス走りより大)。気になれば他クラス並(~0.5px)へ再flattening可(要社長判断)。
+
 ## v0.25.1590 — 差し替え: ストライカーの走り(新イラスト5コマ・scavenger接頭辞)【2026-07-10 19:42 JST】
 - **社長提供**: ストライカーの走りシート(1140×264・5コマ)。既存`player-scavenger-run-0..4.png`(=罠: ストライカー=rogue=scavenger接頭辞)を同名差し替え。
 - 焼き=scavenger歩きと同じ**86×73規格**(高さ264→73でLANCZOS縮小・cw_t=63)・**横位置を歩きの内容中心45へ揃え**・**顔揺れ抑制**(頭x中央値へ整数px平行移動=事後0.5px)。歩き0番と並べたプレビューで一致目視。同名差し替えのため **ASSET_VERSION 29→30**。検証: typecheck clean。負荷 0/10。

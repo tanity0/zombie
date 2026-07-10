@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1591',
+    items: [
+      'スカベンジャーの歩きを新しいイラストに差し替え、専用の走りモーションも追加。これで全4クラスに走りモーションが揃った。',
+    ],
+  },
+  {
     version: '0.25.1590',
     items: [
       'ストライカーの走りモーションを新しいイラストに差し替え。',

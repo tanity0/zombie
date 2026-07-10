@@ -484,12 +484,14 @@ const PLAYER_RUN_ENABLED = tsBool('playerrun', true);
 const PLAYER_RUN_CYCLE_MS = tsNum('runcyclems', 560);
 const PLAYER_RUN_SWIPE_THRESHOLD = tsNum('runthreshold', 0.98); // ほぼ最大チルト(浮動小数の丸め対策で1.0ちょうどにしない)
 const usesRunAnimation = (p: Player): boolean =>
-  PLAYER_RUN_ENABLED && (p.characterClass === 'mage' || p.characterClass === 'rogue' || p.characterClass === 'warrior');
-// 走りのコマ並び: ストライカー(rogue)=5コマ前方ループ・ヘビーガンナー(warrior)=6コマ前方ループ
-// (どちらも折り返さない=社長指示)。マークスマン=歩きと同じ8段ping-pong(既存挙動不変)。
+  PLAYER_RUN_ENABLED && (p.characterClass === 'mage' || p.characterClass === 'rogue' || p.characterClass === 'warrior' || p.characterClass === 'necromancer');
+// 走りのコマ並び: ストライカー(rogue)=5コマ前方ループ・ヘビーガンナー(warrior)=6コマ前方ループ・
+// スカベンジャー(necromancer=striker接頭辞)=5コマ前方ループ(いずれも折り返さない=社長指示)。
+// マークスマン=歩きと同じ8段ping-pong(既存挙動不変)。
 const playerRunSequence = (p: Player): number[] =>
   p.characterClass === 'rogue' ? [0, 1, 2, 3, 4]
   : p.characterClass === 'warrior' ? [0, 1, 2, 3, 4, 5]
+  : p.characterClass === 'necromancer' ? [0, 1, 2, 3, 4]
   : playerWalkSequence(p);
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
@@ -514,11 +516,13 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
   const warlordKatana = warlordFull && hasMurasame(p);
   // 歩いていない時は各クラス専用の待機立ち絵(社長提供)。武将フル装備中は武将立ち絵が優先(待機絵なし)。
   if (!walking && !warlordFull && PLAYER_IDLE_SPRITE[p.characterClass]) return PLAYER_IDLE_SPRITE[p.characterClass]!;
-  // 走りモーション(移動レバー全開時のみ・マークスマン/ストライカー/ヘビーガンナー)。武将フル装備中は武将立ち絵を優先(走り絵なし)。
-  // ※クラスID↔ファイル名の対応は既存仕様のまま: rogue=ストライカー=scavenger / warrior=ヘビーガンナー=shotgun。
+  // 走りモーション(移動レバー全開時のみ・全4クラス)。武将フル装備中は武将立ち絵を優先(走り絵なし)。
+  // ※クラスID↔ファイル名の対応は既存仕様のまま: rogue=ストライカー=scavenger / warrior=ヘビーガンナー=shotgun /
+  //   necromancer=スカベンジャー=striker / mage=マークスマン=magnum。
   if (running && !warlordFull && usesRunAnimation(p)) {
     return p.characterClass === 'rogue' ? `player-scavenger-run-${frame}`
       : p.characterClass === 'warrior' ? `player-shotgun-run-${frame}`
+      : p.characterClass === 'necromancer' ? `player-striker-run-${frame}`
       : `player-magnum-run-${frame}`;
   }
   return warlordKatana ? `player-warlord-katana-walk-${frame}`

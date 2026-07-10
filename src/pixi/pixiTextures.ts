@@ -68,6 +68,12 @@ export const ensureTextures = (): Promise<void> => {
       'player-shotgun-run-3',
       'player-shotgun-run-4',
       'player-shotgun-run-5',
+      // スカベンジャー(=striker接頭辞)の走り5コマ(v0.25.1591で追加=これで全4クラスに走り)。
+      'player-striker-run-0',
+      'player-striker-run-1',
+      'player-striker-run-2',
+      'player-striker-run-3',
+      'player-striker-run-4',
       'player-striker-walk-0',
       'player-striker-walk-1',
       'player-striker-walk-2',
