@@ -2683,7 +2683,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
 
-            // 時間による出現(社長指示): 10分経過後、20秒ごとに抽選。確率=10%+(10分以降の経過分×10%)で最大100%。
+            // 時間による出現(社長指示): 15分経過後、20秒ごとに抽選。確率=10%+(15分以降の経過分×10%)で最大100%。
             // 抽選ごとに気配演出(横切り)を出し、当選で risk を最大化=直後の完全出現へ。距離条件は不問。
             if (!hiddenBossOnScreen
                 && newGameTime >= REAPER_CONFIG.timeStartMs

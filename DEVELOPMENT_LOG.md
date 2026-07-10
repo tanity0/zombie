@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1602 — 調整: 時間死神の開始を10分→15分に(社長指示)【2026-07-11 02:45 JST】
+- **社長指示**: 「時間死神は15分以降にして」。
+- **変更**: `REAPER_CONFIG.timeStartMs` を `10*60*1000`→`15*60*1000`(10分→15分)。確率式は据え置き(開始時点10%、以降1分ごと+10%、最大100%=24分)。距離死神(深奥リスク)は不変。
+- 併せてコメント/ドキュメントの「10分」表記を15分へ更新(`reaper.ts`・`useGameLoop.ts:2686`・`TUTORIAL_NOTES.md`)。
+- 検証: **typecheck clean**。テスト無し(timeStartMsを直接assertするテストは存在せず)。負荷 0/10(定数のみ)。
+
 ## v0.25.1601 — 追加: 新サブウェポン「火炎瓶(molotov)」=移動中に火を敷く地面DoT【2026-07-11 01:57 JST】
 - **社長指示**: 新サブ「火炎瓶」。一般枠。10秒サイクルで移動中のみ1秒1個ずつ足元に火を設置(Lv別本数=3/5/7)。各火は3秒で消え、敵が乗ると0.5秒毎に5ダメージ。プレイヤーは無傷。見た目は松明の炎を流用。
 - **実装**(実装チャット=Sonnet。設計チャットが仕様確定→ブリーフ→差分検証→git):
