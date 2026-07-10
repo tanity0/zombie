@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1577',
+    items: [
+      'ヘビーガンナーにも専用の走りモーションを追加(移動レバーを目一杯倒した時。これで3クラス目)。',
+    ],
+  },
+  {
     version: '0.25.1576',
     items: [
       'ストライカーにも専用の走りモーションを追加(移動レバーを目一杯倒した時。マークスマンに続き2クラス目)。',

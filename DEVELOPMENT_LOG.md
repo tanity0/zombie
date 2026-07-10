@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1577 — 実装: ヘビーガンナーの走りモーション(6コマ前方ループ)【2026-07-10 14:19 JST】
+- **社長指示**: ヘビーガンナーの走りシート(6コマ・1320×264)。「これもピンポンではない」=前方ループ[0..5]。
+- 素材回収はv1576で確立したトランスクリプト抽出(チャット貼付→JSONLからbase64直取り)。切り出しも同手順:
+  **キャンバス86×73=shotgun歩きと同一規格**・接地=下端・220pxセル座標保存(横ジッター防止)・LANCZOS縮小。
+  横アンカーはshotgun歩き実測の内容中心46.2px。キャラ高68-72(歩き71-72と整合)・コマ1/5の1px浮き=空中コマ保存。
+  歩き0番と並べたプレビューで向き/サイズ/接地の一致を目視確認済み。
+- 配線(`pixiScene.ts`/`pixiTextures.ts`): `usesRunAnimation`にwarrior追加。`playerRunSequence`=warrior[0..5](6コマ前方)/
+  rogue[0..4]/mage=従来ping-pong(不変)。`playerTextureName`=warrior走り→`player-shotgun-run-${frame}`。プリロード6枚追加。
+  周期/しきい値/OFFフラグは3クラス共通(`?runcyclems=`/`?runthreshold=`/`?playerrun=0`)。
+- 追加: `public/sprites/player-shotgun-run-0..5.png`(計~50KB)。検証: **typecheck clean**・PNG6枚の実在/寸法/接地確認済み。負荷 **1/10**。
+- 実機で見る点: ①ヘビーガンナーのレバー全開で走り切替 ②6コマ前方ループの足運び(周期560ms共通が合うか) ③歩き↔走りでサイズ/位置が跳ねないか。
+- 残り: スカベンジャーのみ走り未実装(素材待ち)。
+
 ## v0.25.1576 — 実装: ストライカーの走りモーション(前方ループ・チャット貼付画像の直接回収)【2026-07-10 12:27 JST】
 - **社長指示**: マークスマンの走りは活かし。次にストライカーの走りを実装。**「この人はピンポンしない」=前方ループ[0..4]**(マークスマンの8段ping-pongとは別)。
 - **素材の受け渡し(重要・恒久知識)**: 今セッション(要約リセット後)からチャット貼付画像が`/root/.claude/uploads/`にファイル化されなくなった(7/8の1枚のみ残存・以降0件)。**回避策を確立=会話トランスクリプトJSONL(`/root/.claude/projects/...jsonl`)から画像blockのbase64を直接抽出**(python・base64は画面に出さずファイルへ)。社長は従来どおり**チャットに貼るだけでOK**。Drive/Codex経由は不要になった。
