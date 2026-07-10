@@ -3729,13 +3729,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
                 if (st === 'harai') {
                   // 横払いが終わった瞬間に直接 tate へ(社長のタイミング訂正: 別の1秒溜めを挟まず、
-                  // 共有の1回の溜めから計2発。ここでプレイヤー中心の縦ラインをその時点でロックする)。
+                  // 共有の1回の溜めから計2発)。縦ラインは横ラインの中心(=溜め開始時のプレイヤー位置)に
+                  // 固定する=溜め中に見せた縦の赤ライン予告と実挙動を一致させる(社長指示v0.25.1597
+                  // 「縦も赤ライン出して」)。現在位置には取り直さない(予告とズレるため)。
+                  const cxm = ((miguel.aiFromX ?? pcx) + (miguel.aiTargetX ?? pcx)) / 2;
+                  const cym = ((miguel.aiFromY ?? pcy) + (miguel.aiTargetY ?? pcy)) / 2;
                   patch.bossState = 'tate';
                   patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
-                  patch.aiFromX = pcx;
-                  patch.aiFromY = pcy - MIGUEL_HARAI_RANGE / 2;
-                  patch.aiTargetX = pcx;
-                  patch.aiTargetY = pcy + MIGUEL_HARAI_RANGE / 2;
+                  patch.aiFromX = cxm;
+                  patch.aiFromY = cym - MIGUEL_HARAI_RANGE / 2;
+                  patch.aiTargetX = cxm;
+                  patch.aiTargetY = cym + MIGUEL_HARAI_RANGE / 2;
                   playSfx('thor-sweep');
                 } else {
                   patch.bossState = 'chase';

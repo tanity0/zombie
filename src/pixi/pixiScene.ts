@@ -655,7 +655,7 @@ const MIGUEL_SWORD_BLADE_LEN_FRAC = Math.hypot(
   MIGUEL_SWORD_TIP_FRAC.x - MIGUEL_SWORD_GRIP_FRAC.x,
   MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
 ); // 柄→切っ先の距離(画像サイズに対する比率)
-const MIGUEL_SWORD_LENGTH = 260; // 表示上の柄→切っ先の長さ(px・素材が長身の剣なのでトールの刀=220よりやや長め)
+const MIGUEL_SWORD_LENGTH = 160; // 表示上の柄→切っ先の長さ(px・見た目のみ=当たり判定はMIGUEL_HARAI_RANGE。社長指示v0.25.1597「剣が大きすぎる」で260→160に縮小。叩き台=実機調整前提)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
@@ -5543,12 +5543,24 @@ export class PixiScene {
     if (e.type === 'miguel') {
       const slashFx = this.miguelSlashFx.get(e.id);
       if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
-      // tate(縦払い)は harai(横払い)実行の直後に別windupなしで始まるため、専用のwindup描画は無い。
-      // aiFrom/aiTargetが縦になるだけで実行(active)描画は既存コードをそのまま流用できる。社長指示の2発コンボ。
+      // 2発コンボ(横払い→縦払い)。溜め(harai-windup)は1回のみ=単一の溜めから横+縦の計2発。
+      // 2発目(縦)も溜め中〜横実行中ずっと赤ラインで予告する(社長指示v0.25.1597「縦も赤ライン出して」)。
       if (e.bossState === 'harai-windup' || e.bossState === 'harai' || e.bossState === 'tate') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
+        // 縦払い(2発目)の予告赤ライン。溜め中(harai-windup)〜横払い実行中(harai)ずっと出して縦が
+        // 来ることを知らせる。位置=横ラインの中心(=溜め開始時のプレイヤー位置)に固定した縦ライン
+        // で、tate実挙動の縦ライン(同じ中心にロック)と一致する。tate実行中はslashを出すのでここは出さない。
+        if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
+          const inWindup = e.bossState === 'harai-windup';
+          const vprog = inWindup ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS)) : 1;
+          const vpulse = 0.55 + 0.45 * Math.sin(now / 80);
+          const cxm = (fx + tx) / 2, cym = (fy + ty) / 2;
+          const halfLen = Math.hypot(tx - fx, ty - fy) / 2; // = MIGUEL_HARAI_RANGE/2(横ライン長の半分)
+          o.moveTo(cxm, cym - halfLen).lineTo(cxm, cym + halfLen).stroke({ width: 2 + 5 * vprog, color: 0xff3030, alpha: (0.18 + 0.5 * vprog) * (0.7 + 0.3 * vpulse), cap: 'round' });
+          o.moveTo(cxm, cym - halfLen).lineTo(cxm, cym + halfLen).stroke({ width: 1 + 2 * vprog, color: 0xffe0e0, alpha: 0.45 + 0.45 * vprog, cap: 'round' });
+        }
         if (e.bossState === 'harai-windup') {
           // 放つ前=赤いダメージゾーンのライン予告(トールと同じ意匠)。
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS));
