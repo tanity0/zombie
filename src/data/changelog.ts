@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1578',
+    items: [
+      'キャラ選択画面で、選択中のキャラのドット絵が歩きモーションで動くように。',
+    ],
+  },
+  {
     version: '0.25.1577',
     items: [
       'ヘビーガンナーにも専用の走りモーションを追加(移動レバーを目一杯倒した時。これで3クラス目)。',

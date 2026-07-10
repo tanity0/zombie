@@ -12,6 +12,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1578 — 実装: キャラ選択画面=選択中キャラのドット絵を歩きモーション再生【2026-07-10 16:52 JST】
+- **社長指示**: キャラ選択画面で、選択中のキャラのドット絵を歩きモーションに。
+- 実装(`MissionSelect.tsx`のみ): 孤立小コンポーネント`WalkingClassSprite`新設。選択中チップだけゲーム内と同じ
+  **5コマ×ピンポン[0,1,2,3,4,3,2,1]・周期900ms**(pixiSceneの`playerWalkSequence`/`PINGPONG_WALK_CYCLE_MS`と同値)で
+  `<img>`のsrcを切替。コマURLはidleスプライトURLの命名規則から導出(`…-idle.png`→`…-walk-N.png`・4クラス全部で
+  walk-0..4の実在をディスク確認済み)。非選択チップは従来の待機立ち絵のまま。全5コマをmount時に先読み(チラつき防止)。
+- 再レンダ規律: interval(56ms)のsetStateは孤立コンポーネント内=チップ1個の`<img>`だけが更新。メニュー画面限定
+  (プレイ中HUDではない)。負荷 **1/10**。検証: **typecheck clean**。
+- 実機で見る点: ①選択キャラが歩く(足踏み) ②切替時にチラつかないか ③非選択は静止のまま。
+
 ## v0.25.1577 — 実装: ヘビーガンナーの走りモーション(6コマ前方ループ)【2026-07-10 14:19 JST】
 - **社長指示**: ヘビーガンナーの走りシート(6コマ・1320×264)。「これもピンポンではない」=前方ループ[0..5]。
 - 素材回収はv1576で確立したトランスクリプト抽出(チャット貼付→JSONLからbase64直取り)。切り出しも同手順:

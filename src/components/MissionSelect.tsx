@@ -28,6 +28,37 @@ interface MissionSelectProps {
   onStartBenchmark: (characterClass: string) => void;
 }
 
+// キャラ選択チップ: 選択中のクラスだけ、ドット絵をゲーム内と同じ「5コマ×ピンポン」歩きモーションで再生
+// (社長指示v0.25.1578)。メニュー画面限定の孤立小コンポーネント=再レンダは自分(56ms間隔)に閉じる
+// (CLAUDE.md再レンダ規律。プレイ中のHUDではないので毎フレーム相当でも影響なし)。
+// コマのURLは idle スプライトURLの命名規則(…-idle.png → …-walk-N.png)から導出(全4クラス共通規則)。
+const MENU_WALK_PINGPONG = [0, 1, 2, 3, 4, 3, 2, 1]; // pixiScene の playerWalkSequence と同じ並び
+const MENU_WALK_CYCLE_MS = 900;                      // 同 PINGPONG_WALK_CYCLE_MS
+const menuWalkFrameSrc = (idleSrc: string, frame: number): string =>
+  idleSrc.replace('-idle.png', `-walk-${frame}.png`);
+const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: number }> = ({ idleSrc, alt, nudgeY }) => {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    // 全5コマを先読み(コマ切替時のチラつき防止。全コマ86×73の小PNG=無視できる量)
+    for (let f = 0; f < 5; f++) { const im = new Image(); im.src = menuWalkFrameSrc(idleSrc, f); }
+    const stepMs = MENU_WALK_CYCLE_MS / MENU_WALK_PINGPONG.length;
+    const iv = window.setInterval(() => {
+      setStep(Math.floor((Date.now() % MENU_WALK_CYCLE_MS) / stepMs));
+    }, stepMs / 2);
+    return () => window.clearInterval(iv);
+  }, [idleSrc]);
+  const frame = MENU_WALK_PINGPONG[step] ?? 0;
+  return (
+    <img
+      src={menuWalkFrameSrc(idleSrc, frame)}
+      alt={alt}
+      draggable={false}
+      className="relative max-h-[50px] object-contain"
+      style={{ imageRendering: 'pixelated', transform: `translateY(${nudgeY}px) scale(1.08)`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
+    />
+  );
+};
+
 // 画面(導線): ホーム → ステージ選択 → ミッション詳細 → キャラ選択 → 装備選択 → スタート。
 // ホームからはオプション / 開発施設 / 資料室 へも分岐する。UIデザインは後追い(ここは導線優先の仮UI)。
 type Screen =
@@ -425,13 +456,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   aria-pressed={on}
                 >
                   <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: cc.accent, opacity: on ? 0.85 : 0.3 }} />
-                  <img
-                    src={cc.sprite}
-                    alt={cc.name}
-                    draggable={false}
-                    className="relative max-h-[50px] object-contain"
-                    style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) ${on ? 'scale(1.08)' : 'scale(1)'}`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
-                  />
+                  {/* 選択中のクラスだけ歩きモーション(ドット絵)。非選択は従来の待機立ち絵。 */}
+                  {on ? (
+                    <WalkingClassSprite idleSrc={cc.sprite} alt={cc.name} nudgeY={cc.portraitNudgeY} />
+                  ) : (
+                    <img
+                      src={cc.sprite}
+                      alt={cc.name}
+                      draggable={false}
+                      className="relative max-h-[50px] object-contain"
+                      style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) scale(1)`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
+                    />
+                  )}
                   <span className={`relative mt-0.5 text-[8px] leading-none ${on ? 'text-purple-100' : 'text-white/55'}`}>{cc.name}</span>
                 </button>
               );
