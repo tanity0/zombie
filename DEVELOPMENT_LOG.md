@@ -12,6 +12,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1600 — 調整: ミゲルの剣の表示サイズをさらに縮小(160→40)【2026-07-11 01:18 JST】
+- **社長指示**: 「ミゲルの剣まだ大きい。半分の半分くらいにして」。
+- **変更**: `MIGUEL_SWORD_LENGTH` 160→40(現状160の半分の半分=約1/4)。**見た目のみ**=当たり判定(`MIGUEL_HARAI_RANGE`)・攻撃範囲は不変。
+- 検証: **typecheck clean**。負荷 0/10(定数1つ)。実機で剣が小さくなったか確認。まだ大きい/小さいなら数値調整。
+
 ## v0.25.1599 — 調整: 裏に回ったボスの透明化、近接攻撃距離以内は半透明(0.5)を下限に保つ【2026-07-11 00:50 JST】
 - **社長指示**: 「敵の重なり処理(透明にする)だけど、裏に回っても近接攻撃距離くらいならまだ半透明ぐらいの調整にして」。
 - **対象**: `bossFixed`(裏ボス/巨体ボス=ミゲル含む)の「プレイヤーが帯より奥=裏に回ると絵を透かす」処理(`pixiScene.ts` bossBehindAlpha)。従来は behindDist 70→220px で 0.5→0(完全透明)まで薄くしていた。

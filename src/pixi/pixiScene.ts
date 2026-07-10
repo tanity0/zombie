@@ -655,7 +655,7 @@ const MIGUEL_SWORD_BLADE_LEN_FRAC = Math.hypot(
   MIGUEL_SWORD_TIP_FRAC.x - MIGUEL_SWORD_GRIP_FRAC.x,
   MIGUEL_SWORD_TIP_FRAC.y - MIGUEL_SWORD_GRIP_FRAC.y,
 ); // 柄→切っ先の距離(画像サイズに対する比率)
-const MIGUEL_SWORD_LENGTH = 160; // 表示上の柄→切っ先の長さ(px・見た目のみ=当たり判定はMIGUEL_HARAI_RANGE。社長指示v0.25.1597「剣が大きすぎる」で260→160に縮小。叩き台=実機調整前提)
+const MIGUEL_SWORD_LENGTH = 40; // 表示上の柄→切っ先の長さ(px・見た目のみ=当たり判定はMIGUEL_HARAI_RANGE。社長指示: v1597「大きすぎる」で260→160、v1600「まだ大きい・半分の半分くらい」で160→40。叩き台=実機調整前提)
 // 色付き個体の「影の色」。装飾は廃止し、足元の影をこの色で染める(青<紫<赤)。
 const ENEMY_COLOR_TIER_SHADOW: Record<string, { tint: number; alphaMult: number }> = {
   // 色はそのまま、濃さ(alphaMult)を上げて色が地面に乗りやすく=見分けやすく(社長指示)。1.7/1.7/1.9→2.1/2.1/2.3。
