@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1584',
+    items: [
+      'マークスマンの歩きモーションを新しいイラストに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1582',
     items: [
       'マークスマンとヘビーガンナーの歩きで顔が左右に揺れすぎていたのを、ストライカーと同程度まで抑えた。',
