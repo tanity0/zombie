@@ -844,6 +844,11 @@ const BOSS_BEHIND_ALPHA = 0.5;
 // #2(社長指示): 裏に回って 0.5 まで薄くなった後、さらに奥(=手前へ遠ざかる)へ離れたら、
 // この距離(behindDist=70→FAR)で 0.5→0(完全透明)へ続ける。#1(0.5まで)の数値・カーブは不変。
 const BOSS_BEHIND_FAR_PX = 220;
+// #3(社長指示v0.25.1599): 裏に回っても「近接攻撃距離くらい」までは完全透明にせず、半透明
+// (=BOSS_BEHIND_ALPHA)を下限に保つ。#2で0へ薄くなる区間でも、この距離以内なら0.5で止める。
+// 距離アンカーは近接攻撃距離(gameStore の MELEE_RADIUS=74)に合わせた視覚用の複製値(描画は
+// ゲーム定数へ結合させない方針)。当たり判定/近接判定は不変=見た目の下限だけを足す。
+const BOSS_BEHIND_MELEE_PX = 74;
 const STAGE4_ENEMY_VISUAL_SCALE = 1.5; // ステージ4の全敵絵を1.5倍(社長指示)。足元アンカーで上方向に拡大。
 // 色付き(レア)個体のサイズ差は enemyUtils の COLOR_TIER_SIZE_MULT で「当たり判定ごと」拡大する
 // (社長指示)。描画は判定箱(fb)にフィットするため、ここでの追加倍率は不要(掛けると二重拡大になる)。
@@ -5281,6 +5286,17 @@ export class PixiScene {
           a = BOSS_BEHIND_ALPHA * (1 - t2);
         }
         behindTarget = a;
+      }
+      // #3(社長指示v0.25.1599): 近接攻撃距離くらいに居る間は完全透明にせず、半透明(0.5)を下限に保つ。
+      // プレイヤー中心→当たり判定帯(AABB)の最近点までの2D距離で判定(gameStoreの近接判定と同じ帯基準)。
+      // #2で0へ薄くなる区間でも、近接圏内なら 0.5 で止める(#1/#2のカーブ値自体は不変)。
+      {
+        const plcx = ply.x + ply.width / 2, plcy = ply.y + ply.height / 2;
+        const nx = Math.max(e.x, Math.min(plcx, e.x + e.width));
+        const ny = Math.max(e.y, Math.min(plcy, e.y + e.height));
+        if (Math.hypot(plcx - nx, plcy - ny) <= BOSS_BEHIND_MELEE_PX) {
+          behindTarget = Math.max(behindTarget, BOSS_BEHIND_ALPHA);
+        }
       }
       // 透ける/戻るを滑らかにフェード。速度は障害物の透けの2倍(社長指示)= 1-(1-lerp)^2。
       const fastLerp = 1 - (1 - this.seeThroughLerp) ** 2;

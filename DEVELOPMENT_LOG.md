@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1599 — 調整: 裏に回ったボスの透明化、近接攻撃距離以内は半透明(0.5)を下限に保つ【2026-07-11 00:50 JST】
+- **社長指示**: 「敵の重なり処理(透明にする)だけど、裏に回っても近接攻撃距離くらいならまだ半透明ぐらいの調整にして」。
+- **対象**: `bossFixed`(裏ボス/巨体ボス=ミゲル含む)の「プレイヤーが帯より奥=裏に回ると絵を透かす」処理(`pixiScene.ts` bossBehindAlpha)。従来は behindDist 70→220px で 0.5→0(完全透明)まで薄くしていた。
+- **変更(#3を追加)**: プレイヤー中心→当たり判定帯(AABB)の**最近点までの2D距離が近接攻撃距離以内(`BOSS_BEHIND_MELEE_PX=74`=MELEE_RADIUS相当の視覚用複製値)なら、`behindTarget`の下限を`BOSS_BEHIND_ALPHA=0.5`にクランプ**。→ 裏に回っても近接圏内では完全透明にならず半透明で残る。**#1(0→70で1.0→0.5)/#2(70→220で0.5→0)のカーブ値自体は不変**=近接圏の外に出れば従来どおり完全透明まで薄くなる。
+- 当たり判定・近接判定・攻撃距離は不変(見た目の下限を足しただけ=CLAUDE.md「Visual vs. hitbox」順守)。検証: **typecheck clean / lint 0エラー**。負荷 1/10(bossFixed個体のみ・毎フレーム最近点距離1回=強glowなし)。実機で裏に回った時、近接距離までは薄く見え、離れると消えるか確認。数値(74)は叩き台=実機調整前提。
+
 ## v0.25.1598 — 修正: ミゲルを紫カウンター(完全気絶)で痺れさせる+縦払いを独立した溜めに(横と仕様統一)【2026-07-11 00:02 JST】
 - **社長指示**: ①「紫カウンターでも痺れてくれない」。②「縦切りも溜めなので横切りと仕様を揃えて。同時に発動してる」。
 - **①紫(完全気絶)で痺れる**(`useGameLoop.ts`ミゲルコントローラ): カウンターは必ずクリ扱い→`bumpBossCrit`で5クリ完全気絶(紫)の`bossFullStunUntil`は**セットされていた**が、ミゲル専用コントローラがそれを**読んでいなかった**ため移動も攻撃も止まらなかった(トールは`bossFullStun`でfrozen判定するが、ミゲルは`updateEnemies`を素通りするので自前判定が要る)。トールと同型の`miguelFullStun`判定を追加=完全気絶中は周回も攻撃も完全停止、解除後はchaseから再開(次アクションを少し先送りして暴発防止)。
