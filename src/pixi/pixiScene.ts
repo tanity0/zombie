@@ -5538,31 +5538,20 @@ export class PixiScene {
         view.sprite.tint = 0xffffff;
       }
     }
-    // ミゲル(ゲート2ボス・§5.21-追補8バッチ1)の横払い(狭)。トールのharai描画を流用し、範囲/太さ/
-    // 剣素材だけ差し替える(攻撃はharaiのみ=攻撃2以降は追って追加)。
+    // ミゲル(ゲート2ボス・§5.21-追補8)の払い攻撃。トールのharai描画を流用し、範囲/太さ/剣素材だけ
+    // 差し替える。横払い(harai)→縦払い(tate)の2発コンボ=各々が独立した溜め+実行(攻撃3以降は追って追加)。
     if (e.type === 'miguel') {
       const slashFx = this.miguelSlashFx.get(e.id);
       if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
-      // 2発コンボ(横払い→縦払い)。溜め(harai-windup)は1回のみ=単一の溜めから横+縦の計2発。
-      // 2発目(縦)も溜め中〜横実行中ずっと赤ラインで予告する(社長指示v0.25.1597「縦も赤ライン出して」)。
-      if (e.bossState === 'harai-windup' || e.bossState === 'harai' || e.bossState === 'tate') {
+      // 2発コンボ(横払いharai→縦払いtate)。各々が独立した溜め(*-windup)+実行を持つ(社長指示
+      // v0.25.1598「縦切りも溜め=横と仕様を揃える。同時発動をやめる」)。溜めの赤ライン予告は
+      // aiFrom→aiTargetの向きで横/縦が自動的に切り替わる(orientation非依存)。
+      if (e.bossState === 'harai-windup' || e.bossState === 'harai' || e.bossState === 'tate-windup' || e.bossState === 'tate') {
         view.sprite.tint = 0xffffff;
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
-        // 縦払い(2発目)の予告赤ライン。溜め中(harai-windup)〜横払い実行中(harai)ずっと出して縦が
-        // 来ることを知らせる。位置=横ラインの中心(=溜め開始時のプレイヤー位置)に固定した縦ライン
-        // で、tate実挙動の縦ライン(同じ中心にロック)と一致する。tate実行中はslashを出すのでここは出さない。
-        if (e.bossState === 'harai-windup' || e.bossState === 'harai') {
-          const inWindup = e.bossState === 'harai-windup';
-          const vprog = inWindup ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS)) : 1;
-          const vpulse = 0.55 + 0.45 * Math.sin(now / 80);
-          const cxm = (fx + tx) / 2, cym = (fy + ty) / 2;
-          const halfLen = Math.hypot(tx - fx, ty - fy) / 2; // = MIGUEL_HARAI_RANGE/2(横ライン長の半分)
-          o.moveTo(cxm, cym - halfLen).lineTo(cxm, cym + halfLen).stroke({ width: 2 + 5 * vprog, color: 0xff3030, alpha: (0.18 + 0.5 * vprog) * (0.7 + 0.3 * vpulse), cap: 'round' });
-          o.moveTo(cxm, cym - halfLen).lineTo(cxm, cym + halfLen).stroke({ width: 1 + 2 * vprog, color: 0xffe0e0, alpha: 0.45 + 0.45 * vprog, cap: 'round' });
-        }
-        if (e.bossState === 'harai-windup') {
-          // 放つ前=赤いダメージゾーンのライン予告(トールと同じ意匠)。
+        if (e.bossState === 'harai-windup' || e.bossState === 'tate-windup') {
+          // 放つ前=赤いダメージゾーンのライン予告(トールと同じ意匠)+構え。横/縦はライン向きで決まる。
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS));
           const pulse = 0.55 + 0.45 * Math.sin(now / 80);
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });

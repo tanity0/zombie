@@ -3679,7 +3679,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
             };
 
-            if (st === 'chase') {
+            // 完全気絶(紫・5クリ=カウンター含む)中は移動も攻撃も完全停止=痺れる(社長指示v0.25.1598
+            // 「紫カウンターで痺れさせる」)。トールの frozen(useGameLoop bossFullStun)と同型。ミゲルは
+            // updateEnemies を素通りするのでここで明示判定する。周回(orbitMove)を呼ばない=その場で静止。
+            const miguelFullStun = miguel.bossFullStunUntil !== undefined && newGameTime < miguel.bossFullStunUntil;
+            if (miguelFullStun) {
+              // 解除後は chase から再開。直後の溜め攻撃の暴発を防ぐため次アクションを少し先送りにする。
+              patch.bossState = 'chase';
+              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+            } else if (st === 'chase') {
               miguelOrbitMove(); // 攻撃中(windup/active)は呼ばない=立ち止まる(仕様指示)
               if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
                 // 攻撃選択pool=当面harai(狭)のみ(仕様指示。攻撃2以降は追って追加)。
@@ -3701,6 +3709,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 miguelCounterHit(mcx, mcy);
               } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
                 patch.bossState = 'harai';
+                patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
+                playSfx('thor-sweep');
+              }
+            } else if (st === 'tate-windup') {
+              // 縦払いの溜め: 横払い(harai-windup)と同仕様=本体静止・カウンター可能(社長指示v0.25.1598
+              // 「縦切りも溜め=横と仕様を揃える」)。溜め終了で縦払い実行(tate)へ。
+              const { overlap, counterActive } = miguelBodyOverlapNow();
+              if (overlap && counterActive) {
+                miguelCounterHit(mcx, mcy);
+              } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
+                patch.bossState = 'tate';
                 patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
                 playSfx('thor-sweep');
               }
@@ -3728,19 +3747,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
                 if (st === 'harai') {
-                  // 横払いが終わった瞬間に直接 tate へ(社長のタイミング訂正: 別の1秒溜めを挟まず、
-                  // 共有の1回の溜めから計2発)。縦ラインは横ラインの中心(=溜め開始時のプレイヤー位置)に
-                  // 固定する=溜め中に見せた縦の赤ライン予告と実挙動を一致させる(社長指示v0.25.1597
-                  // 「縦も赤ライン出して」)。現在位置には取り直さない(予告とズレるため)。
-                  const cxm = ((miguel.aiFromX ?? pcx) + (miguel.aiTargetX ?? pcx)) / 2;
-                  const cym = ((miguel.aiFromY ?? pcy) + (miguel.aiTargetY ?? pcy)) / 2;
-                  patch.bossState = 'tate';
-                  patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
-                  patch.aiFromX = cxm;
-                  patch.aiFromY = cym - MIGUEL_HARAI_RANGE / 2;
-                  patch.aiTargetX = cxm;
-                  patch.aiTargetY = cym + MIGUEL_HARAI_RANGE / 2;
-                  playSfx('thor-sweep');
+                  // 横払い実行の直後は「縦払いの溜め」へ(社長指示v0.25.1598「縦切りも溜め=横と仕様を
+                  // 揃える。同時発動をやめる」)。横と同じく本体静止・赤ライン予告つきの独立した溜め。縦ラインは
+                  // 今のプレイヤー位置に画面縦向きでロック(横のwindupがプレイヤー位置にロックするのと同じ揃え方)。
+                  patch.bossState = 'tate-windup';
+                  patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
+                  patch.aiFromX = pcx;
+                  patch.aiFromY = pcy - MIGUEL_HARAI_RANGE / 2;
+                  patch.aiTargetX = pcx;
+                  patch.aiTargetY = pcy + MIGUEL_HARAI_RANGE / 2;
                 } else {
                   patch.bossState = 'chase';
                   patch.bossNextActionAt = miguelNextActionDelay();
