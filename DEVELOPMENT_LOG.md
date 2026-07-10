@@ -12,6 +12,11 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1594 — 調整: 天使系ボス(ミゲル)の大きさ半分【2026-07-10 22:13 JST】
+- **社長指示**: 天使系ボスの大きさ半分で。
+- **修正**: 表示幅=`enemy.width / BOSS_SPRITE_FIT.w`(pixiScene:6178)なので、`ENEMY_STATS.miguel`の当たり寸を半分に(width120→60・height60→30)。絵も当たり判定も一緒に半分=視覚と当たりがズレない。speed/HP/与ダメは不変。周回クリアランス(height/2)が15になり周回半径250→265へ微増(実害なし)。
+- 検証: **typecheck clean**。負荷 0/10(定数のみ)。実機(`?gateboss=1`)でミゲルが半分の大きさになっているか確認。
+
 ## v0.25.1593 — 修正: ?gateboss=1 が開始位置でボスに重なり即死(周回半径ぶん離し+拘束サークル)【2026-07-10 21:40 JST】
 - **社長報告**: `?gateboss=1`でスタートすると、位置的にこっちが強制的に食らって即死する。
 - **原因**: 強制スポーンがミゲルを**プレイヤーの真上(gcx-24,gcy-24)**に配置=接触ダメージ190で即死。かつ拘束なしで周回中心が定まらずテストにならなかった。

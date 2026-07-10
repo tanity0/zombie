@@ -63,7 +63,9 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // ゲート2(useGameLoop.ts)がfromEventでスポーンする。叩き台値(実機調整前提・社長決定v0.25.1587)。
   // isHiddenBoss経由でhpMult=1固定 → ゲート2の×5(GATE2_BOSS_STRENGTH_MULT)適用後 HP10000/与ダメ190
   // (=城ボスgiantbatのゲート2実効値の2倍・社長指定)。
-  miguel:     { width: 120, height: 60, speed: 70, health: 2000, damage: 38, experienceValue: 0 },
+  // 社長指示v0.25.1594「天使系ボスの大きさ半分で」: 表示幅=width/BOSS_SPRITE_FIT.w なので当たり寸(帯)を
+  // 半分にすると絵も当たりも一緒に半分になる(視覚と当たりがズレない)。width120→60・height60→30。
+  miguel:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 },
   // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
   // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
   //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
