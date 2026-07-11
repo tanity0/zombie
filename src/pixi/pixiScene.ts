@@ -5784,24 +5784,23 @@ export class PixiScene {
         const pulse = 0.5 + 0.5 * Math.sin(now / 110);
         // ゾーンの太さ=実際の攻撃判定幅(THOR_ISSEN_VIS_HALFWIDTH*2)と一致させる。矩形(fx,fy)→(tx,ty)を
         // 半幅ぶん左右に膨らませて塗る(ジャンプ攻撃の着地ゾーンと同じ意匠=fill+stroke)。
-        // 社長指示v0.25.1612「赤の外に出れば食らわない」: 当たり判定は点-線分距離を[0,長さ]でクランプ=
-        // 両端に半径(HALF_WIDTH+自機半径)の丸キャップが張り出す。矩形の角端では赤の外に出ても食らう隙が
-        // 残るので、両端点に半径=判定半幅の丸(fill)を足して丸端化し、判定のカプセル形を覆う(判定は不変)。
+        // 社長指示v0.25.1617「範囲攻撃の赤表示は全部四角に統一(丸を置くのをやめる)」: 当たり判定は点-線分
+        // 距離を[0,長さ]clamp=両端に半径ぶんの丸い張り出しがある。丸(円)ではなく両端を半幅ぶん軸方向へ
+        // 延ばした「角ばった四角」で覆う(角のぶん丸より広く覆う=赤の外=安全は維持・判定は不変)。
         const ddx = tx - fx, ddy = ty - fy;
         const ddl = Math.hypot(ddx, ddy) || 1;
         const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
+        const ux = ddx / ddl, uy = ddy / ddl;  // 軸方向の単位ベクトル(両端の延長に使う)
         const hw = THOR_ISSEN_VIS_HALFWIDTH;
         const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
         const pts = [
-          fx + nx * hw, fy + ny * hw,
-          tx + nx * hw, ty + ny * hw,
-          tx - nx * hw, ty - ny * hw,
-          fx - nx * hw, fy - ny * hw,
+          fx - ux * hw + nx * hw, fy - uy * hw + ny * hw,
+          tx + ux * hw + nx * hw, ty + uy * hw + ny * hw,
+          tx + ux * hw - nx * hw, ty + uy * hw - ny * hw,
+          fx - ux * hw - nx * hw, fy - uy * hw - ny * hw,
         ];
         o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
         o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
-        o.circle(fx, fy, hw).fill({ color: 0xff2a2a, alpha: zoneFill }); // 手元側の丸キャップ
-        o.circle(tx, ty, hw).fill({ color: 0xff2a2a, alpha: zoneFill }); // 切っ先側の丸キャップ(判定の張り出しを覆う)
         // 社長指示: 一閃の溜めは刀を腰に構えて(居合腰)ゆっくり溜める。方向はロック済み(fx,fy→tx,ty)。
         this.drawThorIaiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.32, tx - fx, ty - fy, prog, now);
       } else if (e.bossState === 'issen-dash') {
@@ -5839,26 +5838,25 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (e.bossState === 'harai-windup') {
-          // 放つ前=赤いダメージゾーン予告。社長指示v0.25.1612「赤の外=安全」: 当たり判定は中心線の
-          // 両側±THOR_HARAI_HALF_WIDTH(=VIS_HALFWIDTH=40)のカプセル(clampで両端に丸キャップが張り出す)
-          // なので、予告も細い線ではなく判定幅ぶん膨らませた矩形ゾーン+両端丸キャップで描く(判定は不変=実寸を覆う)。
+          // 放つ前=赤いダメージゾーン予告。社長指示v0.25.1617「範囲攻撃の赤表示は全部四角に統一」: 判定は
+          // 中心線の両側±THOR_HARAI_HALF_WIDTH(=VIS_HALFWIDTH=40)のカプセル(両端に丸い張り出し)。丸ではなく
+          // 両端を半幅ぶん軸方向へ延ばした「角ばった四角」で覆う(角のぶん広く覆う=赤の外=安全は維持・判定不変)。
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_HARAI_WINDUP_MS));
           const pulse = 0.55 + 0.45 * Math.sin(now / 80);
           const hdx = tx - fx, hdy = ty - fy;
           const hdl = Math.hypot(hdx, hdy) || 1;
           const hnx = -hdy / hdl, hny = hdx / hdl; // 進行方向に直交する単位ベクトル
+          const hux = hdx / hdl, huy = hdy / hdl;  // 軸方向の単位ベクトル(両端の延長に使う)
           const hhw = THOR_HARAI_VIS_HALFWIDTH;
           const hFill = 0.12 + 0.22 * prog + 0.08 * pulse;
           const hpts = [
-            fx + hnx * hhw, fy + hny * hhw,
-            tx + hnx * hhw, ty + hny * hhw,
-            tx - hnx * hhw, ty - hny * hhw,
-            fx - hnx * hhw, fy - hny * hhw,
+            fx - hux * hhw + hnx * hhw, fy - huy * hhw + hny * hhw,
+            tx + hux * hhw + hnx * hhw, ty + huy * hhw + hny * hhw,
+            tx + hux * hhw - hnx * hhw, ty + huy * hhw - hny * hhw,
+            fx - hux * hhw - hnx * hhw, fy - huy * hhw - hny * hhw,
           ];
           o.poly(hpts).fill({ color: 0xff2a2a, alpha: hFill });
           o.poly(hpts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
-          o.circle(fx, fy, hhw).fill({ color: 0xff2a2a, alpha: hFill }); // 手元側の丸キャップ
-          o.circle(tx, ty, hhw).fill({ color: 0xff2a2a, alpha: hFill }); // 薙ぎ先側の丸キャップ(判定の張り出しを覆う)
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' }); // 薙ぎの軸(白芯)
           // 社長指示: 刀を振るモーションの「最初の位置」に最初から構えておく。柄=トールの手元、刃先=薙ぎ
           // 始めの点(fx,fy)。実行(harai)はこの構えから contact を tx,ty へ動かして薙ぐ=構え→振りが連続。
@@ -5914,20 +5912,19 @@ export class PixiScene {
           const ddx = tx - fx, ddy = ty - fy;
           const ddl = Math.hypot(ddx, ddy) || 1;
           const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
+          const ux = ddx / ddl, uy = ddy / ddl;  // 軸方向の単位ベクトル(両端の延長に使う)
           const hw = MIGUEL_HARAI_VIS_HALFWIDTH; // =当たり判定 MIGUEL_HARAI_HALF_WIDTH と一致
           const zoneFill = (0.12 + 0.22 * prog) + 0.08 * pulse;
+          // 社長指示v0.25.1617「範囲攻撃の赤表示は全部四角に統一(丸を置くのをやめる)」: 両端を半幅ぶん
+          // 軸方向へ延ばした角ばった四角で、判定の丸い張り出しを角で覆う(赤の外=安全は維持・判定は不変)。
           const pts = [
-            fx + nx * hw, fy + ny * hw,
-            tx + nx * hw, ty + ny * hw,
-            tx - nx * hw, ty - ny * hw,
-            fx - nx * hw, fy - ny * hw,
+            fx - ux * hw + nx * hw, fy - uy * hw + ny * hw,
+            tx + ux * hw + nx * hw, ty + uy * hw + ny * hw,
+            tx + ux * hw - nx * hw, ty + uy * hw - ny * hw,
+            fx - ux * hw - nx * hw, fy - uy * hw - ny * hw,
           ];
           o.poly(pts).fill({ color: 0xff2a2a, alpha: zoneFill });
           o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
-          // 社長指示v0.25.1612「赤の外=安全」: 当たり判定は両端に丸キャップ(clamp)が張り出すので、
-          // 矩形の角端を丸(fill・半径=判定半幅)で覆って判定のカプセル形と一致させる(判定は不変)。
-          o.circle(fx, fy, hw).fill({ color: 0xff2a2a, alpha: zoneFill });
-          o.circle(tx, ty, hw).fill({ color: 0xff2a2a, alpha: zoneFill });
           // 中心線も薄く残して「薙ぎの軸」を示す(白い芯)。
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
