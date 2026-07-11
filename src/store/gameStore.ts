@@ -976,15 +976,17 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 
 // 救難信号(rescue-signal): 発動率は skillLevel + rescueSignalProcChance(src/utils/rescueSignal.ts)。
 // ここは演出(飛来アライ)のタイミング/距離/ズーム量の定数のみ(いずれも叩き台・要調整)。
-// フェーズ: 飛来(FLYIN)→登場ポーズで一拍静止(ARRIVE_HOLD)→着弾で1撃(この一拍終わりで適用)→
-// 打撃後の静止(HOLD)→離脱(FLYOUT)→消滅。社長指示v0.25.1611「登場したら一拍置いてから攻撃」=
-// 飛来と攻撃が同時で見えなかったので、着弾前に登場を見せる静止フェーズを挟む。
-export const RESCUE_ALLY_FLYIN_MS = 300;   // 背後→対象への飛来(放物線ジャンプ)にかける時間。社長指示v0.25.1613
-                                           // 「慣性をもって自然にジャンプ」=弧が見える長さへ延長(180→300・叩き台)
-export const RESCUE_ALLY_ARRIVE_HOLD_MS = 300; // 対象に着いてから攻撃までの一拍(登場を見せる静止・叩き台/要調整)
-export const RESCUE_ALLY_HOLD_MS = 90;     // 対象付近での一撃(ダメージはこの一拍終わり=打撃の頭で適用)
-export const RESCUE_ALLY_FLYOUT_MS = 180;  // 対象→背後へ飛び去る時間
-export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_HOLD_MS + RESCUE_ALLY_FLYOUT_MS; // 750ms
+// フェーズ(社長指示v0.25.1614): 飛来ジャンプ(FLYIN)→登場一拍(ARRIVE_HOLD)→着弾&近接モーション
+//   (ATTACK)→モーション後の一拍(POST_HOLD)→少ししゃがみ込む(CROUCH・バックジャンプの溜め)→
+//   バックジャンプ離脱(FLYOUT)→消滅。着地は「敵より前面(手前)」に取る(描画はpixiScene側)。
+//   ダメージは FLYIN+ARRIVE_HOLD の頭(=着弾)で1回だけ適用(tickRescueAllies)。
+export const RESCUE_ALLY_FLYIN_MS = 300;   // 背後→対象前面への飛来(放物線ジャンプ・慣性つき)。叩き台
+export const RESCUE_ALLY_ARRIVE_HOLD_MS = 300; // 着地してから攻撃までの一拍(登場を見せる静止・叩き台)
+export const RESCUE_ALLY_ATTACK_MS = 280;  // 着弾=近接モーションが流れる間、敵前面で静止(≒PLAYER_MELEE_SWING_MS)
+export const RESCUE_ALLY_POST_HOLD_MS = 200; // 近接モーションが終わってからの一拍(社長指示・叩き台)
+export const RESCUE_ALLY_CROUCH_MS = 200;  // 少ししゃがみ込む(バックジャンプの溜め・後日しゃがみ絵に差し替え予定)
+export const RESCUE_ALLY_FLYOUT_MS = 220;  // バックジャンプで背後へ離脱する時間
+export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_ATTACK_MS + RESCUE_ALLY_POST_HOLD_MS + RESCUE_ALLY_CROUCH_MS + RESCUE_ALLY_FLYOUT_MS; // 1500ms
 export const RESCUE_ALLY_SPAWN_DIST = 120; // 出現地点=プレイヤーの向きの逆(背後)へこの距離(px)
 // ズーム演出: 命中の瞬間に小さく寄る。CLAUDE.md方針によりスロー(timeSlow)/ヒットストップは使わない
 // (triggerHitImpactはtimeSlowを内包するため使用不可。triggerZoomを直接叩く)。

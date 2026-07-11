@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1614 — 救難信号: 敵前面に着地→斬り→一拍→しゃがみ→バックジャンプ帰投【2026-07-11 11:09 JST】
+- **社長指示**「敵より前面に表示される位置に飛んできて、攻撃して、モーション終わったら一拍置いてから少ししゃがみ込んでバックジャンプして帰って。しゃがみ絵は後で(クラス別に)渡す」。
+- **①敵より前面に着地**(`pixiScene.ts`): 着地点を敵中心(ty)→**敵の足元+`RESCUE_ALLY_FRONT_MARGIN(14px)`手前(下)**へ。footYが敵の足元より大きい=actorLayerのy-sortで敵の上に描かれる(=前面)。飛来/近接/バックジャンプの起点もこのlandX/landYへ統一。
+- **②フェーズ再構成**(`gameStore.ts`定数+`pixiScene.ts`位相): 飛来(FLYIN 300)→登場一拍(ARRIVE_HOLD 300)→**着弾&近接モーション(ATTACK 280)**→**モーション後の一拍(POST_HOLD 200・新規)**→**少ししゃがみ込む(CROUCH 200・新規)**→**バックジャンプ離脱(FLYOUT 180→220)**→消滅。総尺 870→**1500ms**。`RESCUE_ALLY_HOLD_MS(90)`は廃し、ATTACK/POST_HOLD/CROUCHへ分解。ダメージ/ズームは従来どおり strike=FLYIN+ARRIVE_HOLD(=600ms)で発火(不変)。
+- **③しゃがみ=スクワッシュ仮実装**(`pixiScene.ts`): CROUCH区間で `crouchSqY 1→0.70 / crouchSqX 1→1.16` に潰す(foot-anchorなので頭が沈む=しゃがみに見える)。**社長がクラス別しゃがみ絵を後日支給予定→そのとき差し替え**(現状は絵未支給のため潰しで代替)。
+- **④バックジャンプ**(`pixiScene.ts`): しゃがみを解いて背後(fromX/Y)へ ease-in の放物線で跳ね戻る(敵を向いたまま後ろへ=バックジャンプ)。踏み切りの伸び(jumpStretch)+フェード。
+- 近接スイングの内部尺は `PLAYER_MELEE_SWING_MS`→`RESCUE_ALLY_ATTACK_MS` 参照に統一(=280で同値。ATTACK調整時に振りも自動追従)。
+- 自己点検: 憲法第4条/第5条に非抵触(スキル演出の飛来/離脱モーション・見た目のみ。ダメージ・確率・判定・湧き・スロー無しは不変)。
+- 検証: **typecheck clean**。負荷 **1/10**(pooled sprite 4枚/体・同時0-1体・強glowなし)。実機で ①敵の前面に出るか ②斬り→一拍→しゃがみ→バックジャンプの流れが自然か を社長確認。
+- **★TODO(しゃがみ絵支給後)**: CROUCH区間の body.texture をクラス別しゃがみ絵に差し替える(命名規約は支給時に決定=`player-<class>-crouch` 等)。総尺1500msが長ければ POST_HOLD/CROUCH/ARRIVE_HOLD の数値だけで調整可(要指示)。
+
 ## v0.25.1613 — 救難信号: 慣性ジャンプで飛来+着弾で本体と同じ近接モーション【2026-07-11 10:54 JST】
 - **社長指示**「救難信号、ちゃんと慣性をもって自然にジャンプしてきて、近接攻撃のモーションを発動して。通常のプレイヤーと同じ描画」。従来は静止立ち絵の線形スライド飛来+着弾はダメージ数字/スラッシュFXのみだった。
 - **実装方針(本体描画に非干渉)**: `drawPlayer` の近接スイングは `this.playerKnife/Slash/Trail` シングルトンに密結合していて流用は危険。代わりに **`syncShadowClone`(分身)が既にやっている「自前ナイフ3枚で本体と同じ差し替えスイング」を救援アライへ移植**。プレイヤー本体の描画コードは一切変更なし。

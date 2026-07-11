@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1614',
+    items: [
+      '救難信号: 味方が敵の手前(前面)に飛び込んで斬り、モーション後に一拍おき、少し溜めてからバックジャンプで帰るように。',
+    ],
+  },
+  {
     version: '0.25.1613',
     items: [
       '救難信号: 味方が慣性をつけて自然にジャンプで飛び込み、着弾で通常プレイヤーと同じ近接斬りモーションを繰り出すように。',

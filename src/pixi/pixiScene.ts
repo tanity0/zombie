@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_HOLD_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
@@ -566,6 +566,7 @@ const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
 const RESCUE_ALLY_HOP_PX = 48;        // 救援アライの飛来ジャンプ弧の頂点の高さ(px・視覚のみ)。社長指示v0.25.1613
+const RESCUE_ALLY_FRONT_MARGIN = 14;  // 着地を敵の足元より何px手前(下=描画で前面)へ取るか。社長指示v0.25.1614
 const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
 const PLAYER_COUNTER_POP = 0.13;      // 決めポーズの一瞬の膨らみ(縦横)
 const PLAYER_COUNTER_LEAN_RAD = 0.10; // 決めポーズの傾き
@@ -4809,48 +4810,63 @@ export class PixiScene {
       const target = enemies.find(e => e.id === a.targetEnemyId);
       const tx = target ? target.x + target.width / 2 : a.targetX;
       const ty = target ? target.y + target.height / 2 : a.targetY;
+      // 着地は「敵より前面(手前=描画で上)」に取る(社長指示v0.25.1614): 敵の足元(bottom)より少し手前(下)へ。
+      // footY を敵の足元より大きくすると actorLayer の y-sort で敵の上に描かれる。
+      const efy = target ? target.y + target.height : a.targetY; // 敵の足元(world Y)
+      const landX = tx;
+      const landY = efy + RESCUE_ALLY_FRONT_MARGIN;
 
-      // 進行方向(往路)=飛び込む向き。左右反転/近接の振り向きに使う(離脱中は反転させない=シンプル)。
-      const facingLeft = tx < a.fromX;
+      // 進行方向(往路)=飛び込む向き。左右反転/近接の振り向き/バックジャンプの向きに使う(離脱中も反転させない
+      // =敵を向いたまま後ろへ跳ぶ=バックジャンプ)。
+      const facingLeft = landX < a.fromX;
       const mir = facingLeft ? -1 : 1;
 
-      // elapsed は gameTime(sim clock)基準。tickRescueAllies のダメージ適用タイミングと必ず一致させる。
+      // フェーズ境界(elapsed=gameTime-spawnedAt)。ダメージ/近接は strikeAt で発火(tickRescueAlliesと一致)。
       const elapsed = gameTime - a.spawnedAt;
-      const strikeAt = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS; // ダメージ&近接発火(=tickRescueAlliesと一致)
-      const staticUntil = strikeAt + RESCUE_ALLY_HOLD_MS;                 // 着地して静止する区間の終わり
+      const strikeAt = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS;
+      const swingEnd = strikeAt + RESCUE_ALLY_ATTACK_MS;         // 近接モーション終わり
+      const crouchStart = swingEnd + RESCUE_ALLY_POST_HOLD_MS;   // モーション後の一拍の終わり=しゃがみ始め
+      const backjumpStart = crouchStart + RESCUE_ALLY_CROUCH_MS; // しゃがみ終わり=バックジャンプ開始
       let footX: number, footY: number, hop = 0, alpha = 1, jumpStretch = 1;
+      let crouchSqX = 1, crouchSqY = 1;
       if (elapsed < RESCUE_ALLY_FLYIN_MS) {
-        // 飛来=放物線ジャンプ(慣性つき・社長指示): 水平は ease-out(勢いよく出て着地で減速)、垂直は
-        // sin の1山(跳ねて着地)。空中では縦に軽く伸びる(自然なジャンプの伸び)。
+        // 飛来=放物線ジャンプ(慣性つき): 水平 ease-out(勢いよく出て着地で減速)+垂直 sin1山のホップ。
         const t = Math.max(0, Math.min(1, elapsed / RESCUE_ALLY_FLYIN_MS));
         const ex = 1 - (1 - t) * (1 - t);
-        footX = a.fromX + (tx - a.fromX) * ex;
-        footY = a.fromY + (ty - a.fromY) * ex;
+        footX = a.fromX + (landX - a.fromX) * ex;
+        footY = a.fromY + (landY - a.fromY) * ex;
         hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX;
         jumpStretch = 1 + 0.12 * Math.sin(Math.PI * t);
-      } else if (elapsed < staticUntil) {
-        // 登場一拍(ARRIVE_HOLD)→着弾→打撃の静止(HOLD)。対象に静止して着弾/近接を見せる。
-        footX = tx; footY = ty;
+      } else if (elapsed < crouchStart) {
+        // 着地→登場一拍→着弾&近接モーション→モーション後の一拍。敵前面で静止。
+        footX = landX; footY = landY;
+      } else if (elapsed < backjumpStart) {
+        // 少ししゃがみ込む(バックジャンプの溜め・前面で静止)。※後日クラス別しゃがみ絵に差し替え予定=
+        // 今はスクワッシュ(縦潰し)で仮表現。foot-anchorなので頭が沈む=しゃがみに見える。
+        footX = landX; footY = landY;
+        const cp = Math.max(0, Math.min(1, (elapsed - crouchStart) / RESCUE_ALLY_CROUCH_MS));
+        crouchSqY = 1 - 0.30 * cp; // 縦に潰れる(しゃがみ)
+        crouchSqX = 1 + 0.16 * cp; // 横に広がる
       } else {
-        // 離脱=背後へ跳ね戻る(こちらも小さなジャンプ弧)。
-        const t = Math.max(0, Math.min(1, (elapsed - staticUntil) / RESCUE_ALLY_FLYOUT_MS));
-        const ez = t * t;
-        footX = tx + (a.fromX - tx) * ez;
-        footY = ty + (a.fromY - ty) * ez;
-        hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX * 0.7;
-        alpha = 1 - t * 0.4;
+        // バックジャンプ=しゃがみを解いて背後(fromX/Y)へ跳ね戻る(敵を向いたまま後ろへ)。往路より速い放物線。
+        const t = Math.max(0, Math.min(1, (elapsed - backjumpStart) / RESCUE_ALLY_FLYOUT_MS));
+        const ez = t * t; // ease-in(引くように離脱)
+        footX = landX + (a.fromX - landX) * ez;
+        footY = landY + (a.fromY - landY) * ez;
+        hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX;
+        jumpStretch = 1 + 0.16 * Math.sin(Math.PI * Math.min(1, t * 1.6)); // 踏み切りの伸び
+        alpha = 1 - t * 0.6;
       }
 
       // 近接モーション(着弾=strikeAt で発火・本体/分身と同じ3枚差し替え+踏み込み二次モーション)。
       const meleeSince = gameTime - (a.spawnedAt + strikeAt);
-      const swinging = meleeSince >= 0 && meleeSince < PLAYER_MELEE_SWING_MS;
+      const swinging = meleeSince >= 0 && meleeSince < RESCUE_ALLY_ATTACK_MS;
       const dsc = this.depthScale(footY);
-      let offX = 0, offY = 0, lean = 0, sqX = 1, sqY = 1;
-      let aimx = mir, aimy = 0;
+      let offX = 0, offY = 0, lean = 0, sqX = crouchSqX, sqY = crouchSqY;
       if (swinging) {
         const am = Math.hypot(tx - a.fromX, ty - a.fromY) || 1;
-        aimx = (tx - a.fromX) / am; aimy = (ty - a.fromY) / am; // 踏み込みは往路方向(飛び込んで斬る)
-        const tt = meleeSince / PLAYER_MELEE_SWING_MS;
+        const aimx = (tx - a.fromX) / am, aimy = (ty - a.fromY) / am; // 踏み込みは往路方向(飛び込んで斬る)
+        const tt = meleeSince / RESCUE_ALLY_ATTACK_MS;
         const arc = Math.sin(tt * Math.PI);
         const whip = 1 - tt;
         offX += aimx * PLAYER_MELEE_LUNGE_PX * arc * dsc;
@@ -4877,7 +4893,7 @@ export class PixiScene {
       // 近接スイング3枚オーバーレイ(分身 syncShadowClone と同一ロジック=本体と同じ見た目。救援アライは
       // 装備武器を持たないので常に焼き込みダガー frame1/2/3 を差し替える)。
       if (swinging) {
-        const kt = meleeSwingEase(meleeSince / PLAYER_MELEE_SWING_MS);
+        const kt = meleeSwingEase(meleeSince / RESCUE_ALLY_ATTACK_MS);
         const unit = boxH * dsc;
         const baseX = bx; // 本体の踏み込みオフセットを引き継ぐ
         const baseY = this.snapToScreenPixel(footY - hop - boxH * 0.5 * dsc, this.L.world.position.y) + offY; // 胸あたり
