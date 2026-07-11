@@ -83,6 +83,9 @@ export const ensureTextures = (): Promise<void> => {
       'player-striker-game-0',
       'player-striker-game-1',
       'player-striker-game-2',
+      // スカベンジャー(=striker絵/necromancer)近接の専用ポーズ(社長提供v0.25.1620)。構え=しゃがみ→振り抜き=立ち絵。
+      'player-striker-melee-ready',
+      'player-striker-melee-swing',
       'player-shotgun-walk-0',
       'player-shotgun-walk-1',
       'player-shotgun-walk-2',

@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1620 — スカベンジャー近接に専用ポーズ(構えしゃがみ→振り抜き立ち絵)【2026-07-11 23:29 JST】
+- **社長提供素材**(IMG_6592.png=2ポーズ)。「スカベンジャー 近接攻撃の時、構え時のしゃがみ、振り抜いた時の立ち絵」。
+- **命名の罠(照合済)**: 表示名スカベンジャー = ファイル`player-striker-*` = characterClass`necromancer`(赤ベスト黒髪。実物照合で確認)。
+  ファイル`scavenger`は別人(赤毛=表示名ストライカー)。CLAUDE.md注意点どおり取り違え回避。
+- **素材の焼き出し**(`public/sprites/`): アップ画像(透過済PNG 2496×1584)を左=構え/右=振り抜きに分割し、
+  `player-striker-melee-ready.png`(しゃがみ)/`player-striker-melee-swing.png`(腕上げ)を生成。**待機絵と同じ幅86px**の
+  キャンバスに**足元を下端・足元x中央**で配置(両ポーズ共通86×81)。source→final F=0.053(叩き台)。`playerBaseScale`が
+  幅基準なので幅86統一=描画スケール/足位置が待機絵と一致(スイング中にサイズが飛ばない)。
+- **配線**(`pixiTextures.ts`/`pixiScene.ts`): 2ポーズを`playerWalkNames`に追加(nearest)。`drawPlayer`で
+  characterClass`necromancer`かつ近接スイング中は本体テクスチャを進行度で差し替え=`kt<SCAVENGER_MELEE_READY_FRAC(0.4)`で
+  しゃがみ、以降は振り抜き。武将フル装備中は非適用。テクスチャ未ロード時は差し替えず待機絵にフォールバック(クラッシュなし)。
+- 自己点検: 憲法第4条/第5条に非抵触(近接の見た目のみ。攻撃レート・判定・射程・ダメージは不変=`playerBaseScale`幅基準で位置/スケールも不変)。
+- 検証: **typecheck clean**。負荷 **1/10**(小スプライト2枚のロード+スイング中のテクスチャ差し替えのみ・新規drawなし)。
+- **★叩き台/要調整(実機で社長確認)**: ①スケール(F=0.053)・足元位置が待機/歩きと自然に繋がるか ②切替割合`SCAVENGER_MELEE_READY_FRAC=0.4`
+  (構え→振り抜きのタイミング) ③**既存のナイフ振りオーバーレイ(ダガー+弧)は残置**=専用ポーズの腕と二重に見えるなら
+  スカベンジャー時だけ非表示にする(要指示)。④他クラスにも同様の構え/振り抜き絵を出す場合は同方式で追加可(素材待ち)。
+
 ## v0.25.1619 — バグ修正: ミゲルに反射弾(カウンター)を当てると絵が消える【2026-07-11 14:57 JST】
 - **社長報告**「ミゲルにカウンターで弾当てると、絵が消える」。
 - **原因**(診断): 反射弾が裏ボスに命中すると `useGameLoop.ts:5744` の「カウンター弾ワープ」処理が発火し、対象ボスに

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1620',
+    items: [
+      'スカベンジャーの近接攻撃に専用モーションを追加。構え(しゃがみ)→振り抜き(立ち絵)の2ポーズで斬るように(社長提供の立ち絵)。',
+    ],
+  },
+  {
     version: '0.25.1619',
     items: [
       'バグ修正: ミゲルにカウンター(反射弾)を当てると絵が消えることがある不具合を修正。反射弾のダメージは従来どおり入ります。',
