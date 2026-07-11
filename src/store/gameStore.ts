@@ -979,7 +979,8 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 // フェーズ: 飛来(FLYIN)→登場ポーズで一拍静止(ARRIVE_HOLD)→着弾で1撃(この一拍終わりで適用)→
 // 打撃後の静止(HOLD)→離脱(FLYOUT)→消滅。社長指示v0.25.1611「登場したら一拍置いてから攻撃」=
 // 飛来と攻撃が同時で見えなかったので、着弾前に登場を見せる静止フェーズを挟む。
-export const RESCUE_ALLY_FLYIN_MS = 180;   // 背後→対象への飛来にかける時間
+export const RESCUE_ALLY_FLYIN_MS = 300;   // 背後→対象への飛来(放物線ジャンプ)にかける時間。社長指示v0.25.1613
+                                           // 「慣性をもって自然にジャンプ」=弧が見える長さへ延長(180→300・叩き台)
 export const RESCUE_ALLY_ARRIVE_HOLD_MS = 300; // 対象に着いてから攻撃までの一拍(登場を見せる静止・叩き台/要調整)
 export const RESCUE_ALLY_HOLD_MS = 90;     // 対象付近での一撃(ダメージはこの一拍終わり=打撃の頭で適用)
 export const RESCUE_ALLY_FLYOUT_MS = 180;  // 対象→背後へ飛び去る時間

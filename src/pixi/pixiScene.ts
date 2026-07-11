@@ -565,6 +565,7 @@ const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャン
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
+const RESCUE_ALLY_HOP_PX = 48;        // 救援アライの飛来ジャンプ弧の頂点の高さ(px・視覚のみ)。社長指示v0.25.1613
 const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
 const PLAYER_COUNTER_POP = 0.13;      // 決めポーズの一瞬の膨らみ(縦横)
 const PLAYER_COUNTER_LEAN_RAD = 0.10; // 決めポーズの傾き
@@ -970,7 +971,9 @@ export class PixiScene {
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
   // スキル 救難信号: 飛来する援護アライ(一過性)。同時に生きるのは基本1体程度なので per-id プールで十分軽い。
-  private rescueAllyViews = new Map<string, Sprite>();
+  // 救援アライ(スキル救難信号): 本体スプライト+近接スイング3枚(分身と同じ焼き込みダガー差し替え)を
+  // per-idで持つ。飛来=放物線ジャンプ、着弾=本体と同じ近接モーション(社長指示v0.25.1613)。
+  private rescueAllyViews = new Map<string, { body: Sprite; knife: Sprite; slash: Sprite; trail: Sprite }>();
   // 救急鞄(first-aid-kit): 空鞄投擲(一過性・1ラン1回=同時に生きるのは常に0-1体)。per-id プール。
   private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
@@ -4777,63 +4780,143 @@ export class PixiScene {
     const seen = new Set<string>();
     for (const a of allies) {
       seen.add(a.id);
-      let spr = this.rescueAllyViews.get(a.id);
-      if (!spr) {
-        spr = new Sprite();
-        spr.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ規約)
-        this.L.actorLayer.addChild(spr);
-        this.rescueAllyViews.set(a.id, spr);
+      let v = this.rescueAllyViews.get(a.id);
+      if (!v) {
+        const body = new Sprite();
+        body.anchor.set(0.5, 1); // foot-centre(プレイヤー本体と同じ規約)
+        this.L.actorLayer.addChild(body);
+        // 近接スイング3枚(焼き込みダガー frame1/2/3)。分身 syncShadowClone と同じ差し替え方式。
+        const mk = (texName: string) => {
+          const s = new Sprite();
+          const t = getTexture(texName);
+          if (t) s.texture = t;
+          s.anchor.set(0.5, 0.5);
+          s.visible = false;
+          this.L.actorLayer.addChild(s);
+          return s;
+        };
+        v = { body, knife: mk('knife-swing-1'), slash: mk('knife-swing-2'), trail: mk('knife-swing-3') };
+        this.rescueAllyViews.set(a.id, v);
       }
+      const { body, knife, slash, trail } = v;
       // クラス→立ち絵テクスチャは既存のplayerTextureNameをそのまま流用(クラスID↔ファイル名の対応=
       // mage→magnum/warrior→shotgun/necromancer→striker/rogue→scavengerを手書きしない・CLAUDE.md注意点)。
-      // 待機立ち絵(frame0・walking=false)で十分(短命の演出のため歩行/斬撃モーションは省略)。
       const fakeAlly = { ...player, characterClass: a.klass };
       const name = playerTextureName(fakeAlly, 0, false);
       const tex = getTexture(name) ?? getTexture('player');
-      if (!tex) { spr.visible = false; continue; }
+      if (!tex) { body.visible = false; knife.visible = false; slash.visible = false; trail.visible = false; continue; }
 
       const target = enemies.find(e => e.id === a.targetEnemyId);
       const tx = target ? target.x + target.width / 2 : a.targetX;
       const ty = target ? target.y + target.height / 2 : a.targetY;
 
+      // 進行方向(往路)=飛び込む向き。左右反転/近接の振り向きに使う(離脱中は反転させない=シンプル)。
+      const facingLeft = tx < a.fromX;
+      const mir = facingLeft ? -1 : 1;
+
       // elapsed は gameTime(sim clock)基準。tickRescueAllies のダメージ適用タイミングと必ず一致させる。
       const elapsed = gameTime - a.spawnedAt;
-      let footX: number, footY: number, alpha = 1;
+      const strikeAt = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS; // ダメージ&近接発火(=tickRescueAlliesと一致)
+      const staticUntil = strikeAt + RESCUE_ALLY_HOLD_MS;                 // 着地して静止する区間の終わり
+      let footX: number, footY: number, hop = 0, alpha = 1, jumpStretch = 1;
       if (elapsed < RESCUE_ALLY_FLYIN_MS) {
+        // 飛来=放物線ジャンプ(慣性つき・社長指示): 水平は ease-out(勢いよく出て着地で減速)、垂直は
+        // sin の1山(跳ねて着地)。空中では縦に軽く伸びる(自然なジャンプの伸び)。
         const t = Math.max(0, Math.min(1, elapsed / RESCUE_ALLY_FLYIN_MS));
-        const ease = 1 - (1 - t) * (1 - t); // ease-out(勢いよく飛び込む)
-        footX = a.fromX + (tx - a.fromX) * ease;
-        footY = a.fromY + (ty - a.fromY) * ease;
-      } else if (elapsed < RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_HOLD_MS) {
-        // 登場一拍(ARRIVE_HOLD)+打撃の静止(HOLD)。この区間はずっと対象に静止して登場を見せる。
-        // ダメージは tickRescueAllies が FLYIN+ARRIVE_HOLD の頭で1回だけ適用する(描画とタイミング一致)。
+        const ex = 1 - (1 - t) * (1 - t);
+        footX = a.fromX + (tx - a.fromX) * ex;
+        footY = a.fromY + (ty - a.fromY) * ex;
+        hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX;
+        jumpStretch = 1 + 0.12 * Math.sin(Math.PI * t);
+      } else if (elapsed < staticUntil) {
+        // 登場一拍(ARRIVE_HOLD)→着弾→打撃の静止(HOLD)。対象に静止して着弾/近接を見せる。
         footX = tx; footY = ty;
       } else {
-        const t = Math.max(0, Math.min(1, (elapsed - RESCUE_ALLY_FLYIN_MS - RESCUE_ALLY_ARRIVE_HOLD_MS - RESCUE_ALLY_HOLD_MS) / RESCUE_ALLY_FLYOUT_MS));
-        const ease = t * t; // ease-in(引くように離脱)
-        footX = tx + (a.fromX - tx) * ease;
-        footY = ty + (a.fromY - ty) * ease;
-        alpha = 1 - t * 0.4; // 離脱時に軽くフェード
+        // 離脱=背後へ跳ね戻る(こちらも小さなジャンプ弧)。
+        const t = Math.max(0, Math.min(1, (elapsed - staticUntil) / RESCUE_ALLY_FLYOUT_MS));
+        const ez = t * t;
+        footX = tx + (a.fromX - tx) * ez;
+        footY = ty + (a.fromY - ty) * ez;
+        hop = Math.sin(Math.PI * t) * RESCUE_ALLY_HOP_PX * 0.7;
+        alpha = 1 - t * 0.4;
+      }
+
+      // 近接モーション(着弾=strikeAt で発火・本体/分身と同じ3枚差し替え+踏み込み二次モーション)。
+      const meleeSince = gameTime - (a.spawnedAt + strikeAt);
+      const swinging = meleeSince >= 0 && meleeSince < PLAYER_MELEE_SWING_MS;
+      const dsc = this.depthScale(footY);
+      let offX = 0, offY = 0, lean = 0, sqX = 1, sqY = 1;
+      let aimx = mir, aimy = 0;
+      if (swinging) {
+        const am = Math.hypot(tx - a.fromX, ty - a.fromY) || 1;
+        aimx = (tx - a.fromX) / am; aimy = (ty - a.fromY) / am; // 踏み込みは往路方向(飛び込んで斬る)
+        const tt = meleeSince / PLAYER_MELEE_SWING_MS;
+        const arc = Math.sin(tt * Math.PI);
+        const whip = 1 - tt;
+        offX += aimx * PLAYER_MELEE_LUNGE_PX * arc * dsc;
+        offY += aimy * PLAYER_MELEE_LUNGE_PX * arc * dsc;
+        lean += mir * PLAYER_MELEE_LEAN_RAD * whip;
+        sqX *= 1 + PLAYER_MELEE_STRETCH * arc;
+        sqY *= 1 - PLAYER_MELEE_STRETCH * 0.6 * arc;
       }
 
       const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const baseScale = playerBaseScale(fakeAlly, tex, boxW, boxH);
-      const d = this.depthScale(footY);
-      const sc = baseScale * d;
-      const facingLeft = tx < a.fromX; // 往路の左右で固定(離脱中に反転させない=シンプルな挙動)
-      spr.texture = tex;
-      spr.scale.set(facingLeft ? -sc : sc, sc);
-      spr.position.set(
-        this.snapToScreenPixel(footX, this.L.world.position.x),
-        this.snapToScreenPixel(footY, this.L.world.position.y),
-      );
-      spr.zIndex = footY; // 他アクターと足元Yでy-sort
-      spr.alpha = alpha;
-      spr.visible = true;
+      const sc = baseScale * dsc;
+      const bx = this.snapToScreenPixel(footX, this.L.world.position.x) + offX;
+      const by = this.snapToScreenPixel(footY - hop, this.L.world.position.y) + offY;
+      body.texture = tex;
+      body.scale.set((facingLeft ? -sc : sc) * sqX, sc * jumpStretch * sqY);
+      body.rotation = lean;
+      body.position.set(bx, by);
+      body.zIndex = footY; // 他アクターと足元Yでy-sort
+      body.alpha = alpha;
+      body.visible = true;
+
+      // 近接スイング3枚オーバーレイ(分身 syncShadowClone と同一ロジック=本体と同じ見た目。救援アライは
+      // 装備武器を持たないので常に焼き込みダガー frame1/2/3 を差し替える)。
+      if (swinging) {
+        const kt = meleeSwingEase(meleeSince / PLAYER_MELEE_SWING_MS);
+        const unit = boxH * dsc;
+        const baseX = bx; // 本体の踏み込みオフセットを引き継ぐ
+        const baseY = this.snapToScreenPixel(footY - hop - boxH * 0.5 * dsc, this.L.world.position.y) + offY; // 胸あたり
+        const zc = footY + 0.5; // 本体のすぐ前面
+        const place = (s: Sprite, cfg: { scale: number; ox: number; oy: number }, vis: boolean, al: number) => {
+          if (!vis || !s.texture || s.texture.width === 0) { s.visible = false; return; }
+          const scl = (unit * cfg.scale) / s.texture.width;
+          s.scale.set(mir * scl, scl); // 左向き=水平ミラー(回転なし)
+          s.position.set(baseX + mir * cfg.ox * unit, baseY + cfg.oy * unit);
+          s.zIndex = zc;
+          s.alpha = al * alpha;
+          s.visible = s.alpha > 0.01;
+        };
+        if (kt < KNIFE_SWING_SWITCH) {
+          const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
+          place(knife, KNIFE_F1, true, a1); // 振りかぶり(ダガー)
+          place(slash, KNIFE_F2, false, 0);
+          place(trail, KNIFE_F3, false, 0);
+        } else if (kt < KNIFE_SWING_SWITCH2) {
+          const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH);
+          const a2 = Math.min(1, t2 / 0.25);
+          place(knife, KNIFE_F1, false, 0);
+          place(slash, KNIFE_F2, true, a2); // 振り抜き(弧)
+          place(trail, KNIFE_F3, false, 0);
+        } else {
+          const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2);
+          place(knife, KNIFE_F1, false, 0);
+          place(slash, KNIFE_F2, false, 0);
+          place(trail, KNIFE_F3, true, 1 - t3); // 弧の残光フェード
+        }
+      } else {
+        knife.visible = false; slash.visible = false; trail.visible = false;
+      }
     }
-    for (const [id, spr] of this.rescueAllyViews) {
-      if (!seen.has(id)) { spr.destroy(); this.rescueAllyViews.delete(id); }
+    for (const [id, v] of this.rescueAllyViews) {
+      if (!seen.has(id)) {
+        v.body.destroy(); v.knife.destroy(); v.slash.destroy(); v.trail.destroy();
+        this.rescueAllyViews.delete(id);
+      }
     }
   }
 
