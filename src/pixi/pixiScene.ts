@@ -570,6 +570,7 @@ const MELEE_POSE_READY_FRAC = 0.4; // 近接専用ポーズ: 構え絵を出す�
 const MELEE_POSE_PREFIX: Record<string, string> = {
   necromancer: 'player-striker-melee', // スカベンジャー(社長提供v0.25.1620)
   mage: 'player-magnum-melee',         // マークスマン(社長提供v0.25.1622)
+  warrior: 'player-shotgun-melee',     // ヘビーガンナー(社長提供v0.25.1624)
 };
 const RESCUE_ALLY_HOP_PX = 48;        // 救援アライの飛来ジャンプ弧の頂点の高さ(px・視覚のみ)。社長指示v0.25.1613
 const RESCUE_ALLY_FRONT_MARGIN = 14;  // 着地を敵の足元より何px手前(下=描画で前面)へ取るか。社長指示v0.25.1614

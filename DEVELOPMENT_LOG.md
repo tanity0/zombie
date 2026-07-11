@@ -12,6 +12,18 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1624 — ヘビーガンナー近接に専用ポーズ(構え→振り抜き2コマ)【2026-07-12 06:07 JST】
+- **社長提供素材**(aimeglioスプライトシート=2ポーズ)。「ヘビーガンナーの近接モーション」。
+- **命名照合(確認済)**: ヘビーガンナー = ファイル`player-shotgun-*` = characterClass`warrior`(青髪・白マフラー・青装束。実物照合で一致)。
+- **素材の焼き出し**(`public/sprites/`): アップ画像(透過済400×264)を左=構え(frame0)/右=振り抜き(frame1)に分割し、
+  `player-shotgun-melee-ready.png`/`player-shotgun-melee-swing.png`を生成(86×84・足元下端・足元x中央)。振り抜きの立ち身長を
+  測って shotgun 待機絵の立ち身長72pxへ合わせ F=0.327。幅86=待機絵と同じ=描画スケール/足位置が待機絵と一致。
+- **配線**(`pixiScene.ts`/`pixiTextures.ts`): `MELEE_POSE_PREFIX`に`warrior`→`player-shotgun-melee`を追加(スカベンジャー/マークスマンと同方式)。
+  2ポーズを`playerWalkNames`に追加(nearest)。これで4クラス中3クラス(necromancer/mage/warrior)に近接専用ポーズ完備。残りは`rogue`(=表示名ストライカー・素材待ち)。
+- 自己点検: 憲法第4条/第5条に非抵触(近接の見た目のみ。攻撃レート・判定・射程・ダメージ不変)。
+- 検証: **typecheck clean**。負荷 **1/10**(小スプライト2枚+スイング中の差し替えのみ)。
+- **★叩き台/要調整**: ①スケール(F=0.327)・足元 ②切替割合0.4 ③既存ナイフ振りオーバーレイ残置(要指示で非表示化)。
+
 ## v0.25.1623 — 斬り射程を元へ戻す / 突きの半幅を±15に【2026-07-12 06:01 JST】
 - **社長指示**「斬りの射程はそれぞれ戻して。突きの半幅を±15にして」。
 - **①斬り射程を元へ**(`useGameLoop.ts`): v1621の160を各元値へ戻す=`THOR_HARAI_RANGE` 160→310 / `MIGUEL_HARAI_RANGE` 160→190(横払い/縦払い共通)。

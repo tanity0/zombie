@@ -98,6 +98,9 @@ export const ensureTextures = (): Promise<void> => {
       'player-shotgun-game-0',
       'player-shotgun-game-1',
       'player-shotgun-game-2',
+      // ヘビーガンナー(=shotgun絵/warrior)近接の専用ポーズ(社長提供v0.25.1624)。構え(frame0)→振り抜き(frame1)。
+      'player-shotgun-melee-ready',
+      'player-shotgun-melee-swing',
       'player-scavenger-walk-0',
       'player-scavenger-walk-1',
       'player-scavenger-walk-2',

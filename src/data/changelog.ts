@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1624',
+    items: [
+      'ヘビーガンナーの近接攻撃に専用モーションを追加。構え→振り抜きの2ポーズで斬るように(社長提供の立ち絵)。',
+    ],
+  },
+  {
     version: '0.25.1623',
     items: [
       'トール・ミゲルの横払いの射程を元に戻し、トールの突きの当たり幅を細く(±15)に。',
