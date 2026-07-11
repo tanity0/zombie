@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1619',
+    items: [
+      'バグ修正: ミゲルにカウンター(反射弾)を当てると絵が消えることがある不具合を修正。反射弾のダメージは従来どおり入ります。',
+    ],
+  },
+  {
     version: '0.25.1618',
     items: [
       'ミゲルの弾攻撃を調整: 発射数/間隔を既存のボス弾定義に統一し、弾を撃つ頻度を斬りより高めに(周回しながら撃つ・撃つ間は斬らないは維持)。',

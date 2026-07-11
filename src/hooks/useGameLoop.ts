@@ -5741,7 +5741,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // 裏ボス: カウンター弾(反射弾)を食らうと、プレイヤーの反対側 BOSS_COUNTER_WARP_DIST へワープ(社長指示)。
           // ワープ先でフラッシュ＋0.5秒フェードイン(reaperWarpAlpha を boss controller が駆動)。即死(ワーム)時は除外。
-          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && !enemyKilled
+          // ★ミゲル(ゲート2ボス)は除外(社長報告v0.25.1619「反射弾を当てると絵が消える」修正): ミゲルは
+          //   ワープせず定位置を周回する設計。かつ専用コントローラで動くため汎用ボスの reaperWarpAlpha フェードイン
+          //   復帰(useGameLoop 3009付近)を通らず、reaperWarpAlpha=0 のまま固定=絵が消えたままになっていた。
+          //   ワープ対象から外し、反射弾のダメージだけ通す(=消えない)。
+          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && enemyForFx.type !== 'miguel' && !enemyKilled
               && Date.now() >= bossRef.current.warpUntil) {
             const wpl = useGameStore.getState().player;
             const wpcx = wpl.x + wpl.width / 2, wpcy = wpl.y + wpl.height / 2;
