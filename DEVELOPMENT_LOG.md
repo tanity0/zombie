@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1626 — トール/ミゲルの斬り発動距離を250px以内に【2026-07-12 06:19 JST】
+- **社長指示**「トールとミゲルの斬り系、発動距離を250px以内に変更」。
+- **新定数** `HARAI_TRIGGER_DIST = 250`(`useGameLoop.ts`)。斬り系(トールharai / ミゲルharai・tate)を発動できるプレイヤーまでの最大距離。
+- **トール**: 払いを攻撃候補に入れる条件を `THOR_ORBIT_DIST+THOR_ORBIT_APPROACH_SLACK`(276px)→ **`HARAI_TRIGGER_DIST`(250px)** へ。250px超では一閃/突きのみ。
+- **ミゲル**: 従来は距離無関係で斬り40%だったが、**プレイヤーが250px以内の時だけ**斬りを選択可能に。250px超では弾3連(volley)のみ(`canHarai=false`なら強制volley)。
+- 自己点検: 憲法第4条/第5条に非抵触(ボス攻撃の発動距離条件=社長指示。初心者/緩ゾーンの湧き・閾値に無関係)。
+- 検証: **typecheck clean**。負荷 変化なし。実機で ①トールが250px超で斬らず一閃/突きになるか ②ミゲルが遠い時は弾のみ・近い時に斬るか を社長確認。
+
 ## v0.25.1625 — ストライカー近接に専用ポーズ=全4クラス完備【2026-07-12 06:13 JST】
 - **社長提供素材**(aimeglioスプライトシート=2ポーズ)。「ストライカーの近接モーション」。
 - **命名照合(確認済)**: ストライカー = ファイル`player-scavenger-*` = characterClass`rogue`(赤毛・タン装束。実物照合で一致)。

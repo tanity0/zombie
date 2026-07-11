@@ -691,6 +691,7 @@ const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従�
 const THOR_TSUKI_HALF_WIDTH = 15;            // 社長指示v0.25.1622で突きの半幅を±15へ(30→15=細い突き)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
+const HARAI_TRIGGER_DIST = 250;              // 斬り系(トールharai / ミゲルharai・tate)を発動できるプレイヤーまでの最大距離(社長指示v0.25.1626)
 const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1622で横払いの長さを元へ戻す(160→310)。一閃/突きとは独立
 const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
@@ -3195,11 +3196,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } else if (boss.type === 'thor') {
                   if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                     // トール専用: 弾もダッシュも使わない独自3種(一閃/突き/払い)からランダムに選ぶ(社長指示)。
-                    // 払いは旋回中(=近接距離+余白の範囲に居る)時だけ候補に入れる。
+                    // 払いはプレイヤーが HARAI_TRIGGER_DIST(250px)以内に居る時だけ候補に入れる(社長指示v0.25.1626)。
                     const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
-                    const isOrbiting = Math.hypot(dpx, dpy) <= THOR_ORBIT_DIST + THOR_ORBIT_APPROACH_SLACK;
+                    const canHarai = Math.hypot(dpx, dpy) <= HARAI_TRIGGER_DIST;
                     const pool: Array<'issen' | 'tsuki' | 'harai'> = ['issen', 'tsuki'];
-                    if (isOrbiting) pool.push('harai');
+                    if (canHarai) pool.push('harai');
                     const pick = pool[Math.floor(Math.random() * pool.length)];
                     if (pick === 'issen') {
                       patch.bossState = 'issen-windup';
@@ -3724,7 +3725,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               miguelOrbitMove(); // 攻撃中(windup/active)は呼ばない=立ち止まる(仕様指示)
               if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
                 // 攻撃選択: たまに弾3連(volley)、それ以外はharai→tateの斬りコンボ(社長指示v0.25.1616)。
-                if (Math.random() < MIGUEL_VOLLEY_CHANCE) {
+                // 斬りはプレイヤーが HARAI_TRIGGER_DIST(250px)以内の時だけ。遠い時は弾3連のみ(社長指示v0.25.1626)。
+                const canHarai = Math.hypot(pcx - mcx, pcy - mcy) <= HARAI_TRIGGER_DIST;
+                if (!canHarai || Math.random() < MIGUEL_VOLLEY_CHANCE) {
                   // 弾3連=周回しながら撃つ。volley 中はchaseに居ない=斬りは発動しない(=「この間は斬り発動しない」)。
                   patch.bossState = 'volley';
                   patch.bossStateUntil = newGameTime + BOSS_BURST_SHOTS * BOSS_BURST_GAP_MS;
