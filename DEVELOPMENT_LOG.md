@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1611 — 調整: 救難信号に登場一拍 / ドローンブーメラン絵2倍 / ミゲル縦横の赤予告=攻撃範囲に一致【2026-07-11 10:26 JST】
+- **社長指示3件**(いずれも当たり判定・バランスは不変=見た目/タイミングのみ)。
+- **①救難信号=登場して一拍おいてから攻撃**(`gameStore.ts`/`pixiScene.ts`): 飛来(180ms)の直後に即攻撃していて「全く見えない」との指摘。飛来と攻撃の間に **`RESCUE_ALLY_ARRIVE_HOLD_MS=300ms`** の登場ポーズ(対象に静止)を挟む。ダメージ適用は `spawnedAt + FLYIN + ARRIVE_HOLD` へ後ろ倒し(`tickRescueAllies` の toStrike 条件)、`RESCUE_ALLY_TOTAL_MS` は 450→750ms。`syncRescueAllies` の静止フェーズを `FLYIN+ARRIVE_HOLD+HOLD` まで延長(描画とダメージ適用タイミングを一致維持)。ズームは従来どおり打撃と同時(=一拍のあとに寄る)。**300msは叩き台・要調整**。
+- **②ドローンブーメランの絵2倍**(`pixiScene.ts`): `DRONE_BOOMERANG_SPRITE_SCALE 1.0→2.0`。**表示のみ**(当たり判定 `p.width` は不変=CLAUDE.md「見た目と判定は分離」)。
+- **③ミゲル縦横の赤予告=攻撃範囲に一致**(`pixiScene.ts`): 当たり判定は中心線の両側±`MIGUEL_HARAI_HALF_WIDTH(40)` のカプセル(`useGameLoop.ts:3744-3748`)なのに、予告は**細い中心線1本**だけを描いていて幅が全く出ていなかった=「レッドラインと攻撃範囲がイコールでない」の原因。トールの一閃ゾーンと同じく、`aiFrom→aiTarget` を `MIGUEL_HARAI_VIS_HALFWIDTH(40)` ぶん左右に膨らませた**矩形ゾーン(fill+stroke)**で描画するように変更。白い中心線は「薙ぎの軸」として薄く残置。**判定は一切不変=見た目だけ実寸に合わせた**。
+- 自己点検: 憲法第4条(初心者ゾーン)/第5条(緩を荒らさない)に非抵触(ボス演出/スキル演出の見た目・タイミングのみ、閾値・カーブ・湧きに無関係)。
+- 検証: **typecheck clean**。負荷 各1/10(既存poolスプライト/既存zoneメソッド流用・新規強glowなし)。実機で①一拍が見えるか・③縦横の赤ゾーン幅が判定と一致して見えるかを社長確認。
+- **★観察(未実装・提案のみ)**: トールの横払い(harai-windup)も同じ細い中心線予告のまま(`pixiScene.ts:5734-5735`)。ただし今回の指示は「縦切り横切り」=ミゲルなのでトールは触っていない。トール横払いも同様に幅を出すか要判断(指示があれば対応)。
+
 ## v0.25.1610 — 追加/調整: 救難信号=刀の一閃でも発動 / 救急鞄=飛ぶカバン / トール・ミゲルの斬り幅±40px【2026-07-11 10:06 JST】
 - **社長指示3件**。
 - **①救難信号=刀の一閃時**(`gameStore.ts` 実装Sonnet): `performKatanaStrike` は auto-slash と 一閃(dash)で共有、`allowFinisher` で区別(auto=false / 一閃=true)。`allowFinisher` の時だけ `applyRescueSignalProc` を呼ぶ=**一閃のみ発動**(auto-slashは非発動)。ダメージは `baseDamage*damageMult`(crit/コンボ/skillMult前=倍率1ルール踏襲)。`triggerCounter` は刀装備時に早期return=二重発動なし。

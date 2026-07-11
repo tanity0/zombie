@@ -21,7 +21,7 @@ import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_HOLD_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_HOLD_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
@@ -461,7 +461,7 @@ const KATANA_BACK_IMG_ROT = 0;
 // ドローンブーメラン投擲物の表示サイズ(叩き台): 旧procedural描画の視覚半径は p.width*0.5
 // (=直径 p.width)だったので、初期値はそれに合わせて 1.0(スプライト表示幅 ≒ p.width)。
 // 実機で大きすぎ/小さすぎればここだけ調整する。
-const DRONE_BOOMERANG_SPRITE_SCALE = 1.0;
+const DRONE_BOOMERANG_SPRITE_SCALE = 2.0; // 社長指示v0.25.1611: 絵を2倍(表示のみ・当たり判定 p.width は不変)
 // 救急鞄(first-aid-kit)の空鞄投擲スプライトの表示幅(px・叩き台)。CLAUDE.md「敵サイズ程度で読める」
 // 指示どおり、雑魚敵(zombie 30px)前後を狙った値。実機で大きすぎ/小さすぎればここだけ調整する。
 const THROWN_BAG_SPRITE_WIDTH = 28;
@@ -4801,10 +4801,12 @@ export class PixiScene {
         const ease = 1 - (1 - t) * (1 - t); // ease-out(勢いよく飛び込む)
         footX = a.fromX + (tx - a.fromX) * ease;
         footY = a.fromY + (ty - a.fromY) * ease;
-      } else if (elapsed < RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_HOLD_MS) {
-        footX = tx; footY = ty; // 打撃の一瞬は対象に静止
+      } else if (elapsed < RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_HOLD_MS) {
+        // 登場一拍(ARRIVE_HOLD)+打撃の静止(HOLD)。この区間はずっと対象に静止して登場を見せる。
+        // ダメージは tickRescueAllies が FLYIN+ARRIVE_HOLD の頭で1回だけ適用する(描画とタイミング一致)。
+        footX = tx; footY = ty;
       } else {
-        const t = Math.max(0, Math.min(1, (elapsed - RESCUE_ALLY_FLYIN_MS - RESCUE_ALLY_HOLD_MS) / RESCUE_ALLY_FLYOUT_MS));
+        const t = Math.max(0, Math.min(1, (elapsed - RESCUE_ALLY_FLYIN_MS - RESCUE_ALLY_ARRIVE_HOLD_MS - RESCUE_ALLY_HOLD_MS) / RESCUE_ALLY_FLYOUT_MS));
         const ease = t * t; // ease-in(引くように離脱)
         footX = tx + (a.fromX - tx) * ease;
         footY = ty + (a.fromY - ty) * ease;
@@ -5777,11 +5779,25 @@ export class PixiScene {
         const fx = e.aiFromX ?? cx, fy = e.aiFromY ?? cy;
         const tx = e.aiTargetX ?? cx, ty = e.aiTargetY ?? cy;
         if (e.bossState === 'harai-windup' || e.bossState === 'tate-windup') {
-          // 放つ前=赤いダメージゾーンのライン予告(トールと同じ意匠)+構え。横/縦はライン向きで決まる。
+          // 放つ前=赤いダメージゾーンの予告。社長指示v0.25.1611「レッドライン=攻撃範囲にする」:
+          // 当たり判定は中心線の両側±MIGUEL_HARAI_HALF_WIDTH のカプセルなので、予告も細い線1本ではなく
+          // 判定幅ぶん膨らませた矩形ゾーンで描く(トールの一閃ゾーンと同じ意匠。判定は不変=見た目だけ実寸)。
           const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_WINDUP_MS));
           const pulse = 0.55 + 0.45 * Math.sin(now / 80);
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 2 + 5 * prog, color: 0xff3030, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+          const ddx = tx - fx, ddy = ty - fy;
+          const ddl = Math.hypot(ddx, ddy) || 1;
+          const nx = -ddy / ddl, ny = ddx / ddl; // 進行方向に直交する単位ベクトル
+          const hw = MIGUEL_HARAI_VIS_HALFWIDTH; // =当たり判定 MIGUEL_HARAI_HALF_WIDTH と一致
+          const pts = [
+            fx + nx * hw, fy + ny * hw,
+            tx + nx * hw, ty + ny * hw,
+            tx - nx * hw, ty - ny * hw,
+            fx - nx * hw, fy - ny * hw,
+          ];
+          o.poly(pts).fill({ color: 0xff2a2a, alpha: (0.12 + 0.22 * prog) + 0.08 * pulse });
+          o.poly(pts).stroke({ width: 2, color: 0xff3b3b, alpha: (0.32 + 0.4 * prog) + 0.15 * pulse });
+          // 中心線も薄く残して「薙ぎの軸」を示す(白い芯)。
+          o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
           this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
         } else {

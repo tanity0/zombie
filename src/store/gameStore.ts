@@ -976,11 +976,14 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 
 // 救難信号(rescue-signal): 発動率は skillLevel + rescueSignalProcChance(src/utils/rescueSignal.ts)。
 // ここは演出(飛来アライ)のタイミング/距離/ズーム量の定数のみ(いずれも叩き台・要調整)。
-// フェーズ: 飛来(FLYIN)→着弾でヒットストップ無しの1撃(HOLDの頭で適用)→離脱(FLYOUT)→消滅。
+// フェーズ: 飛来(FLYIN)→登場ポーズで一拍静止(ARRIVE_HOLD)→着弾で1撃(この一拍終わりで適用)→
+// 打撃後の静止(HOLD)→離脱(FLYOUT)→消滅。社長指示v0.25.1611「登場したら一拍置いてから攻撃」=
+// 飛来と攻撃が同時で見えなかったので、着弾前に登場を見せる静止フェーズを挟む。
 export const RESCUE_ALLY_FLYIN_MS = 180;   // 背後→対象への飛来にかける時間
-export const RESCUE_ALLY_HOLD_MS = 90;     // 対象付近での一撃(ダメージはこの区間の開始時に適用)
+export const RESCUE_ALLY_ARRIVE_HOLD_MS = 300; // 対象に着いてから攻撃までの一拍(登場を見せる静止・叩き台/要調整)
+export const RESCUE_ALLY_HOLD_MS = 90;     // 対象付近での一撃(ダメージはこの一拍終わり=打撃の頭で適用)
 export const RESCUE_ALLY_FLYOUT_MS = 180;  // 対象→背後へ飛び去る時間
-export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_HOLD_MS + RESCUE_ALLY_FLYOUT_MS; // 450ms
+export const RESCUE_ALLY_TOTAL_MS = RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS + RESCUE_ALLY_HOLD_MS + RESCUE_ALLY_FLYOUT_MS; // 750ms
 export const RESCUE_ALLY_SPAWN_DIST = 120; // 出現地点=プレイヤーの向きの逆(背後)へこの距離(px)
 // ズーム演出: 命中の瞬間に小さく寄る。CLAUDE.md方針によりスロー(timeSlow)/ヒットストップは使わない
 // (triggerHitImpactはtimeSlowを内包するため使用不可。triggerZoomを直接叩く)。
@@ -4107,14 +4110,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
 
-  // 毎フレーム: 飛来(RESCUE_ALLY_FLYIN_MS)を終えた瞬間に1回だけダメージを適用し(struck=trueで
-  // 二重適用を防ぐ)、全体の寿命(RESCUE_ALLY_TOTAL_MS)を過ぎたものを配列から回収する。
+  // 毎フレーム: 飛来+登場一拍(RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS)を終えた瞬間に
+  // 1回だけダメージを適用し(struck=trueで二重適用を防ぐ)、全体の寿命(RESCUE_ALLY_TOTAL_MS)を
+  // 過ぎたものを配列から回収する。
   // 対象が既に消えていれば(このtick以前に他の要因で死亡/画面外recycle等)ダメージ適用をスキップする
   // だけで、演出(飛来→離脱)自体は最後まで再生する(既に決めた target 座標へ向かうだけなので違和感が無い)。
   tickRescueAllies: () => {
     const { rescueAllies, gameTime } = get();
     if (rescueAllies.length === 0) return;
-    const toStrike = rescueAllies.filter(a => !a.struck && gameTime >= a.spawnedAt + RESCUE_ALLY_FLYIN_MS);
+    const toStrike = rescueAllies.filter(a => !a.struck && gameTime >= a.spawnedAt + RESCUE_ALLY_FLYIN_MS + RESCUE_ALLY_ARRIVE_HOLD_MS);
     const alive = rescueAllies.filter(a => gameTime < a.spawnedAt + RESCUE_ALLY_TOTAL_MS);
     if (toStrike.length > 0 || alive.length !== rescueAllies.length) {
       const struckIds = new Set(toStrike.map(a => a.id));
