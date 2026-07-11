@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1609 — 追加: ドローンブーメランに専用スプライト(社長提供)+救急鞄スプライトを登録【2026-07-11 09:45 JST】
+- **社長提供**: ドローンブーメラン(3枚羽シュリケン)/救急鞄(バックパック)の素材(紫色キー)。
+- **焼き**: 両方を色キー透過→クロップ→128px正方キャンバスへLANCZOSで焼き、`public/sprites/drone-boomerang.png`・`first-aid-kit.png` として保存。`pixiTextures.ts` に nearest で登録。
+- **配線(ブーメランのみ・実装Sonnet)**: `pixiScene.ts` に `droneBoomerangViews`(per-idスプライトプール・skateboard流用)+`syncDroneBoomerangs`/`drawDroneBoomerangSprite` を追加。飛翔中は回転スプライト(`DRONE_BOOMERANG_SPRITE_SCALE=1.0`=表示幅≒p.width)、停止中の射程リングは従来Graphicsのまま。旧procedural羽Graphicsは撤去。
+- 救急鞄スプライトは**登録のみ**(描画=飛ぶカバンは次版で。社長裁定=空鞄投擲時に表示)。
+- 検証: **typecheck clean**。負荷 1/10(単発プール・強glowなし)。
+
 ## v0.25.1608 — 追加: 新サブウェポン「救急鞄(first-aid-kit)」=条件で既存ピックアップを払い出し、空鞄を投げる【2026-07-11 03:53 JST】
 - **社長指示**: 各種弾薬・回復・爆弾を1ゲーム1回ずつ、条件で払い出す。**既存ピックアップを流用(新規作らない)**。Lv1=弾/Lv2=+回復/Lv3=+爆弾。全部出し切ったら空鞄を最寄り敵へ投擲=**5ダメージ+ノックバック**(免疫敵は例外)。
 - **実装**(Sonnet): `SubWeaponKey 'first-aid-kit'`(一般枠)。純関数 `firstAidKit.ts`(`computeFirstAidKitTick`=今フレーム何を払い出すか・`isFirstAidKitEmpty`=空判定)+ユニット17。払い出し=**既存 `ammo-<type>`/`health`/`bomb` ピックアップを `addPickup`**(quick-mag同型の投げアーク・投げ先は`safeThrowDirection`で敵の薄い側)。条件: ammoは使用中弾種のリザーブが0 / healはHP<50% / bombは画面内敵≥5、各**1ラン1回**。空になったら最寄り敵(非チェイサーreaper除く)へ**5ダメージ+ノックバック**(giantbat/pumpkin/reaper/裏ボスは弾かない=シールドの慣例)。`firstAidKitState`はinit/resetGame両方でリセット。ピックアップ量は既存(ammo=`AMMO_PICKUP`・heal=`maxHealth×HEAL_FRACTION`)=value非依存で正常。

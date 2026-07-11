@@ -167,6 +167,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/anti-mutant-knife-t5', scaleMode: 'nearest' },
       // 発火ナイフ(サブウェポン投擲物)の飛翔/刺さった見た目。ドット絵調なので nearest。
       { name: 'weapons/fire-knife-projectile', scaleMode: 'nearest' },
+      // サブウェポンの表示スプライト(社長提供・色キー済みPNG=通常ロードでOK)。ドット絵調なので nearest。
+      { name: 'drone-boomerang', scaleMode: 'nearest' }, // ドローンブーメラン(回転する投擲刃)
+      { name: 'first-aid-kit', scaleMode: 'nearest' },   // 救急鞄(空鞄投擲の見た目)
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
       { name: 'skadi-ice-block', scaleMode: 'nearest' },
       { name: 'skadi-ice-blade', scaleMode: 'nearest' },

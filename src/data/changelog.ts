@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1609',
+    items: [
+      'ドローンブーメランの見た目を専用の回転シュリケン絵に差し替え。',
+    ],
+  },
+  {
     version: '0.25.1608',
     items: [
       '新サブウェポン「救急鞄」を追加。弾切れ/HP半分/敵5体以上のときに弾薬・回復・爆弾を1回ずつ取り出す(レベルで中身が増える)。全部使うと空鞄を最寄りの敵に投げつける。',

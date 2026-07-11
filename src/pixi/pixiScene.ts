@@ -458,6 +458,10 @@ const MELEE_WPN_F2 = { rot: 252.6 * Math.PI / 180, len: 0.608, fx: 0.173, fy: 0.
 const meleeSwingEase = (t: number): number => t * t * (3 - 2 * t);
 // 背負い刀(実画像)の追加回転(rad)。素材が既に斜め(柄=右上/鞘=左下)なので既定0。実機で微調整可。
 const KATANA_BACK_IMG_ROT = 0;
+// ドローンブーメラン投擲物の表示サイズ(叩き台): 旧procedural描画の視覚半径は p.width*0.5
+// (=直径 p.width)だったので、初期値はそれに合わせて 1.0(スプライト表示幅 ≒ p.width)。
+// 実機で大きすぎ/小さすぎればここだけ調整する。
+const DRONE_BOOMERANG_SPRITE_SCALE = 1.0;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
 // 5コマ×ピンポン(左→右→折り返し→右→左)歩行を使うクラス。4クラス全て社長提供の5コマ立ち絵を採用:
@@ -1004,6 +1008,9 @@ export class PixiScene {
   private turretViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 投擲スケボー: 進行方向へ回転しながら地面を滑る板スプライト(色キー透過済み)。
   private skateboardViews = new Map<string, { container: Container; sprite: Sprite; gfx: Graphics }>();
+  // ドローンブーメラン投擲物: 3枚羽シュリケンのスプライトが常時回転しながら飛ぶ。
+  // 停止中(boomPhase==='stop')の射程リングは従来どおり drawProjectile(Graphics)側が描く。
+  private droneBoomerangViews = new Map<string, { container: Container; sprite: Sprite }>();
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
   private groundFireViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>();
@@ -2676,6 +2683,7 @@ export class PixiScene {
     this.syncFireKnives(s.projectiles, now);
     this.syncTurrets(s.projectiles, now);
     this.syncSkateboards(s.projectiles, now);
+    this.syncDroneBoomerangs(s.projectiles, now);
     this.syncSummons(s.summons, now);
     this.syncEventBloom(s.effects, now);
     this.syncEffects(s.effects, s.camera, now);
@@ -6103,6 +6111,57 @@ export class PixiScene {
     g.circle(hw * 0.6, hh, 2.4).fill({ color: 0xfacc15 });
   }
 
+  // ドローンブーメラン投擲物: 専用イラスト(3枚羽シュリケン)を中心アンカーで常時回転させて描画。
+  // 停止中(boomPhase==='stop')の射程リングは syncProjectiles/drawProjectile(Graphics)側が
+  // 引き続き描く(ここはスプライト本体のみ・二重描画を避けるため drawProjectile 側からは
+  // ブレード形状を削除済み)。
+  private syncDroneBoomerangs(projectiles: Projectile[], now: number) {
+    const seen = new Set<string>();
+    for (const p of projectiles) {
+      if (p.weaponType !== 'drone-boomerang-projectile') continue;
+      if (p.createdAt > now) continue;
+      seen.add(p.id);
+      let v = this.droneBoomerangViews.get(p.id);
+      if (!v) {
+        const container = new Container();
+        const sprite = new Sprite();
+        sprite.anchor.set(0.5);
+        sprite.visible = false;
+        container.addChild(sprite);
+        this.L.frontObjectLayer.addChild(container);
+        v = { container, sprite };
+        this.droneBoomerangViews.set(p.id, v);
+      }
+      this.drawDroneBoomerangSprite(v, p, now);
+    }
+    for (const [id, v] of this.droneBoomerangViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.droneBoomerangViews.delete(id);
+      }
+    }
+  }
+
+  private drawDroneBoomerangSprite(v: { container: Container; sprite: Sprite }, p: Projectile, now: number) {
+    const cx = p.x + p.width / 2;
+    const cy = p.y + p.height / 2;
+    v.container.position.set(cx, cy);
+    v.container.zIndex = cy;
+    const tex = getTexture('drone-boomerang');
+    if (tex && tex.height > 0) {
+      v.sprite.visible = true;
+      if (v.sprite.texture !== tex) v.sprite.texture = tex;
+      const targetW = Math.max(1, p.width) * DRONE_BOOMERANG_SPRITE_SCALE;
+      const sc = targetW / tex.width;
+      v.sprite.scale.set(sc);
+      // 常時回転(停止中も回り続ける=旧procedural描画と同じ演出)。
+      v.sprite.rotation = (now / 90) % (Math.PI * 2);
+    } else {
+      // テクスチャ未読込時は何も表示しない(手描きフォールバックは追加しない)。
+      v.sprite.visible = false;
+    }
+  }
+
   // 設置型シールドは向き別スプライトを足元アンカーで描画。actorLayer に置いて
   // 囲い系イベントの柵リング: 半透明の光る円ストローク(world座標・地面=アクターの下)。
   // 単一 Graphics に円を数本引くだけ。負荷 1/10(描画のみ・毎フレーム1図形)。
@@ -6679,14 +6738,9 @@ export class PixiScene {
         break;
       }
       case 'drone-boomerang-projectile': {
-        // ドット調のドローン/ブーメラン。常時回転(停止中は強めの周囲リングで判定範囲を示す)。
-        g.rotation = (Date.now() / 90) % (Math.PI * 2);
-        const rr = Math.max(5, p.width * 0.5);
-        // 「く」の字(ブーメラン)2枚羽。
-        g.poly([-rr, -2, rr * 0.2, -2, rr * 0.2, -rr, rr * 0.2 + 4, -rr, rr * 0.2 + 4, 2, -rr, 2]).fill({ color: 0x67e8f9 });
-        g.circle(0, 0, 2.2).fill({ color: 0xecfeff });
+        // 本体(3枚羽シュリケンのスプライト)は syncDroneBoomerangs 側で描画。ここは停止中
+        // (boomPhase==='stop')の判定範囲リングのみ(二重描画を避けるため procedural ブレードは廃止)。
         if (p.boomPhase === 'stop') {
-          // 範囲リング(円は回転しても見た目同じなので g.rotation はそのままでOK)。
           const range = p.area ?? 0;
           const pulse = 0.7 + Math.sin(Date.now() / 120) * 0.3;
           g.circle(0, 0, range).stroke({ color: 0x06121f, alpha: 0.5, width: 3 });
