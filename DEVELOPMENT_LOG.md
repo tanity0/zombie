@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1610 — 追加/調整: 救難信号=刀の一閃でも発動 / 救急鞄=飛ぶカバン / トール・ミゲルの斬り幅±40px【2026-07-11 10:06 JST】
+- **社長指示3件**。
+- **①救難信号=刀の一閃時**(`gameStore.ts` 実装Sonnet): `performKatanaStrike` は auto-slash と 一閃(dash)で共有、`allowFinisher` で区別(auto=false / 一閃=true)。`allowFinisher` の時だけ `applyRescueSignalProc` を呼ぶ=**一閃のみ発動**(auto-slashは非発動)。ダメージは `baseDamage*damageMult`(crit/コンボ/skillMult前=倍率1ルール踏襲)。`triggerCounter` は刀装備時に早期return=二重発動なし。
+- **②救急鞄=飛ぶカバン**(`types`/`gameStore`/`useGameLoop`/`pixiScene`): 空鞄投擲を即着弾から**飛翔演出**へ。`ThrownBag`(rescueAlly同型)+`spawnThrownBag`/`tickThrownBags`(init/reset両方)。投擲は開始フレームで`thrown=true`確定→`THROWN_BAG_FLIGHT_MS=280ms`飛翔→着弾で従来効果(5ダメ+ノックバック免疫チェック+FX)。`pixiScene.syncThrownBags`が`first-aid-kit`スプライトをプールで飛翔描画(`THROWN_BAG_SPRITE_WIDTH=28`)。
+- **③斬り幅±40px**(`useGameLoop`/`pixiScene`): 社長裁定「中心から片側=40px」。トール横払い(`THOR_HARAI_HALF_WIDTH` 45→40 / VIS 30→40)、ミゲル横払い+縦払い(`MIGUEL_HARAI_HALF_WIDTH` 25→40 / VIS 25→40)。長さ(RANGE)は不変。判定=描画一致。
+- 検証: **typecheck clean / vitest related 74 pass / lint 0エラー**(①②はSonnet実行)。負荷 各1/10。
+- **★確認事項(救急鞄)**: 飛翔中の回転演出付き/ノックバック方向は投擲起点基準(着弾遅延280ms対応)/キル時の死亡SEはstoreから鳴らせない制約によりなし(tickRescueAlliesと同じ)。
+
 ## v0.25.1609 — 追加: ドローンブーメランに専用スプライト(社長提供)+救急鞄スプライトを登録【2026-07-11 09:45 JST】
 - **社長提供**: ドローンブーメラン(3枚羽シュリケン)/救急鞄(バックパック)の素材(紫色キー)。
 - **焼き**: 両方を色キー透過→クロップ→128px正方キャンバスへLANCZOSで焼き、`public/sprites/drone-boomerang.png`・`first-aid-kit.png` として保存。`pixiTextures.ts` に nearest で登録。

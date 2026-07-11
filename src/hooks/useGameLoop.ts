@@ -33,7 +33,8 @@ import {
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
-  RN_ENEMY_FORCE
+  RN_ENEMY_FORCE,
+  FIRST_AID_KIT_THROW_DAMAGE
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -308,12 +309,11 @@ const TURRET_LAUNCHER_DAMAGE = 44;                      // タレットのグレ
 const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発・範囲。TODO: 実機調整(既存爆発演出を流用)
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
 // 救急鞄(first-aid-kit・通常サブウェポン): 中身(既存ammo-*/health/bombピックアップ)の払い出し条件
-// 判定は純関数(src/utils/firstAidKit.ts)。ここは投擲アーク(quick-magazineと同じ流儀)と、鞄を
-// 使い切った時の最寄り敵への投擲(5ダメージ+ノックバック)の見た目/数値のみ。数値は全て叩き台(仮値)。
+// 判定は純関数(src/utils/firstAidKit.ts)。ここは投擲アーク(quick-magazineと同じ流儀)の見た目のみ。
+// 使い切った鞄本体の投擲(5ダメージ+ノックバック)は gameStore の thrownBags/tickThrownBags が処理
+// (FIRST_AID_KIT_THROW_DAMAGE/KNOCKBACK_MULTはstore側からimport=着弾処理と発生元で値を1箇所に統一)。
 const FIRST_AID_KIT_THROW_DISTANCE = 82;      // TODO(救急鞄): quick-magazineと同値。仮値
 const FIRST_AID_KIT_THROW_MS = 360;           // TODO(救急鞄): quick-magazineと同値。仮値
-const FIRST_AID_KIT_THROW_DAMAGE = 5;         // 空鞄を最寄りの敵へ投げた時のダメージ(社長指定)
-const FIRST_AID_KIT_THROW_KNOCKBACK_MULT = 1.2; // TODO(救急鞄): 仮値(dog bite 0.8よりやや強め)
 // 発火ナイフ(通常サブウェポン): クールダウンごとに敵1体へナイフを自動投擲。命中で刺さり、
 // 単体ダメージ→2秒後に刺さった位置(敵に追従)で範囲爆発。敵を爆弾化する遅延範囲武器。
 const FIRE_KNIFE_COOLDOWN_BY_LEVEL = [0, 8000, 7000, 6000]; // Lv1=8s / Lv2=7s / Lv3=6s
@@ -691,14 +691,14 @@ const THOR_TSUKI_HALF_WIDTH = 30;            // ダッシュと同じ幅(一閃�
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
 const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1605で横払いの長さ半分(620→310)。一閃/突きとは独立
-const THOR_HARAI_HALF_WIDTH = THOR_TSUKI_HALF_WIDTH * 1.5; // 社長指示: 突きの1.5倍の太さへ(突き本体は無変更)
+const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
 // PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス・天使名ボス1体目)。トールのharaiを流用し
 // 範囲を狭くした専用攻撃1つのみ(バッチ1)。定数は叩き台(実機調整前提)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;         // 払い: 溜め1秒(トールと同型)
 const MIGUEL_HARAI_RANGE = 190;              // 社長指示v0.25.1605で縦横斬りの長さ半分(380→190)。横払い/縦払い両方がこの値
-const MIGUEL_HARAI_HALF_WIDTH = 25;          // トール(45)より狭い(仕様指定)
+const MIGUEL_HARAI_HALF_WIDTH = 40;          // 社長指示v0.25.1610: 中心から片側40px(旧25)。横払い/縦払い共通
 const MIGUEL_HARAI_ACTIVE_MS = 220;
 // ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。
 // margin=20・miguel.height=60 → 300-20-30=250(仕様の目安値と一致)。
@@ -4737,6 +4737,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // 中身を払い出し切っていたら(=鞄が空)、空の鞄を最寄りの敵へ投げる。ターゲットが画面に
           // 居ないフレームでは thrown を確定させず、敵が現れたフレームで改めて実行する。
+          // 実際のダメージ/ノックバック/FX適用は着弾時(gameStore.tickThrownBags)。ここは投擲の
+          // 発生(=飛んでいく鞄エンティティの生成)のみ。thrownはこの発生フレームで確定させる
+          // (毎フレーム再トリガーしないよう、飛翔中に再度ここへ入らないようにするため)。
           const kitStateAfterDispense = kitResult.dispense ? kitResult.nextState : kitStateNow;
           if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level, ammoTypesUsed)) {
             const target = useGameStore.getState().enemies
@@ -4746,21 +4749,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (target) {
               const tx = target.x + target.width / 2;
               const ty = target.y + target.height / 2;
-              const killed = damageEnemy(target.id, FIRST_AID_KIT_THROW_DAMAGE);
-              spawnDamageNumber(tx, target.y, FIRST_AID_KIT_THROW_DAMAGE, false);
-              // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/reaper/裏ボス)はノックバック無効(シールドと同じ慣例)。
-              const knockbackImmune = target.type === 'giantbat' || target.type === 'pumpkin'
-                || target.type === 'reaper' || isHiddenBoss(target.type);
-              if (!killed && !knockbackImmune) {
-                const n = Math.max(0.001, Math.hypot(tx - pcx, ty - pcy));
-                useGameStore.getState().knockbackEnemy(target.id, (tx - pcx) / n, (ty - pcy) / n, FIRST_AID_KIT_THROW_KNOCKBACK_MULT);
-              }
-              spawnBurst(tx, ty, '#e2e8f0', 10);
-              spawnRing(tx, ty, 3, 26, 'rgba(226,232,240,0.75)', 2, 260);
-              if (killed) {
-                playEnemyDeath();
-                dropEnemyXp(target, tx, ty, `pickup-xp-first-aid-kit-${Date.now()}`);
-              }
+              useGameStore.getState().spawnThrownBag(pcx, pcy, { id: target.id, x: tx, y: ty }, FIRST_AID_KIT_THROW_DAMAGE);
               useGameStore.getState().setFirstAidKitState({ ...kitStateAfterDispense, thrown: true });
             }
           }
@@ -5025,6 +5014,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // スキル 救難信号: 飛来中の援護アライの着弾ダメージ適用 + 寿命切れ回収(発生自体は
         // triggerCounter内のapplyRescueSignalProcが行う。ここは置いた後の面倒を見るだけ)。
         useGameStore.getState().tickRescueAllies();
+
+        // 救急鞄(first-aid-kit): 投擲中の空鞄の着弾ダメージ適用 + 寿命切れ回収(発生自体は
+        // 下のisFirstAidKitEmptyブロックがspawnThrownBagで行う。ここは置いた後の面倒を見るだけ)。
+        useGameStore.getState().tickThrownBags();
 
         // 自動タレット: 設置中は留まってオート射撃。前方集中=SMG相当の長射程直線、全方位=
         // ハンドガン相当の短射程ターゲット。低確率でグレネード弾。寿命終了で小爆発(範囲ダメージ)。

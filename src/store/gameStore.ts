@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, RescueAlly
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, RescueAlly, ThrownBag
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE,
@@ -988,6 +988,14 @@ export const RESCUE_SIGNAL_ZOOM_MAG = 0.28;
 export const RESCUE_SIGNAL_ZOOM_MS = 220;
 export const RESCUE_SIGNAL_ZOOM_HOLD_MS = 70;
 
+// 救急鞄(first-aid-kit)の空鞄投擲。プレイヤー→対象敵まで直線で飛ぶ一過性演出(RescueAllyと同じ
+// 構造の使い切りパターン)。ダメージ/ノックバック/FXは飛行完了の瞬間に1回だけ適用する。
+// ダメージ/ノックバック倍率の値自体は据え置き(旧useGameLoop内ローカル定数からの移設のみ・
+// tickThrownBagsがstore側にあるためexportして両方(useGameLoop起動側/store着弾側)から参照する)。
+export const THROWN_BAG_FLIGHT_MS = 280;             // 投げてから着弾までの飛行時間(社長指定レンジ250-300msの叩き台)
+export const FIRST_AID_KIT_THROW_DAMAGE = 5;         // 空鞄を最寄りの敵へ投げた時のダメージ(社長指定)
+export const FIRST_AID_KIT_THROW_KNOCKBACK_MULT = 1.2; // TODO(救急鞄): 仮値(dog bite 0.8よりやや強め)
+
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
 // この後は必ずスロー(triggerTimeSlow)で等速へ戻す。
 export const HITSTOP_MS = 100;
@@ -1173,6 +1181,7 @@ export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを�
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
+let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
 // 行き=貫通(近接同等)→一定距離で停止(回転+周囲パルス)→プレイヤー現在地へ戻り(貫通)→消滅。
 export const DRONE_BOOM_COOLDOWN_MS = 5000;                 // 全Lv共通5秒
@@ -1924,6 +1933,9 @@ interface GameState {
   // スキル「救難信号」の援護アライ(一過性演出)。生成/着弾ダメージ/寿命は tickRescueAllies が処理、
   // 描画は pixiScene が直読み(RescueAlly型のコメント参照)。
   rescueAllies: RescueAlly[];
+  // 救急鞄(first-aid-kit)の空鞄投擲(一過性演出)。生成/着弾ダメージ/寿命は tickThrownBags が処理、
+  // 描画は pixiScene が直読み(ThrownBag型のコメント参照)。
+  thrownBags: ThrownBag[];
   // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
   shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
@@ -2109,6 +2121,11 @@ interface GameState {
   // rescueAllies の state 宣言自体は上(groundFires近く)にまとめてある。
   spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number) => void;
   tickRescueAllies: () => void; // 毎フレーム: 着弾フレームでダメージ適用(必中) + 寿命切れ回収
+
+  // 救急鞄(first-aid-kit)の空鞄投擲。判定(誰に投げるか/ダメージ量)は useGameLoop の
+  // isFirstAidKitEmpty ブロックが決め、ここは飛行中のエンティティの生成・着弾処理のみ担う。
+  spawnThrownBag: (fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number) => void;
+  tickThrownBags: () => void; // 毎フレーム: 飛行完了フレームでダメージ+ノックバック+FX適用(必中) + 寿命切れ回収
 
   // Player actions
   movePlayer: (input: InputState, deltaTime: number) => void;
@@ -2487,6 +2504,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skadiIceBlades: [],
   groundFires: [],
   rescueAllies: [],
+  thrownBags: [],
   boomerangReadyFxAt: 0,
   marksmanRangeFxAt: 0,
   marksmanRangeFxShownFor: 0,
@@ -4123,6 +4141,61 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  // 救急鞄(first-aid-kit): 中身を払い出し切った後、鞄本体を最寄りの敵へ投げる一過性演出
+  // (rescueAllyと同じ構造)。生成のみ(発動判定/対象選定はuseGameLoop側)。描画はpixiScene側が
+  // thrownBagsを直読みして飛翔位置を補間する。
+  spawnThrownBag: (fromX, fromY, target, damage) => {
+    set(state => ({
+      thrownBags: [...state.thrownBags, {
+        id: `thrown-bag-${thrownBagSeq++}`,
+        fromX, fromY,
+        targetX: target.x, targetY: target.y,
+        targetEnemyId: target.id,
+        damage,
+        spawnedAt: state.gameTime,
+        struck: false,
+      }],
+    }));
+  },
+
+  // 毎フレーム: 飛行(THROWN_BAG_FLIGHT_MS)を終えた瞬間に1回だけダメージ+ノックバック+FXを適用し
+  // (struck=trueで二重適用を防ぐ)、寿命(=飛行完了)を過ぎたものを配列から回収する。tickRescueAllies
+  // と異なり離脱フェーズが無い一方通行の投擲なので、寿命=飛行時間そのもの。
+  // 対象が既に消えていれば(着弾前に他の要因で死亡/画面外recycle等)ダメージ適用をスキップするだけ
+  // (演出自体は最後まで再生=既に決めたtarget座標へ向かうだけなので違和感が無い)。
+  tickThrownBags: () => {
+    const { thrownBags, gameTime } = get();
+    if (thrownBags.length === 0) return;
+    const toStrike = thrownBags.filter(b => !b.struck && gameTime >= b.spawnedAt + THROWN_BAG_FLIGHT_MS);
+    const alive = thrownBags.filter(b => gameTime < b.spawnedAt + THROWN_BAG_FLIGHT_MS);
+    if (toStrike.length > 0 || alive.length !== thrownBags.length) {
+      set({ thrownBags: alive });
+    }
+    for (const b of toStrike) {
+      const target = get().enemies.find(e => e.id === b.targetEnemyId);
+      if (!target) continue; // 着弾前に対象が消えていた=何もしない
+      const tcx = target.x + target.width / 2;
+      const tcy = target.y + target.height / 2;
+      const killed = get().damageEnemy(b.targetEnemyId, b.damage);
+      get().spawnDamageNumber(tcx, target.y, b.damage, false);
+      // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/reaper/裏ボス)はノックバック無効(既存のシールド等と同じ慣例)。
+      const knockbackImmune = target.type === 'giantbat' || target.type === 'pumpkin'
+        || target.type === 'reaper' || isHiddenBoss(target.type);
+      if (!killed && !knockbackImmune) {
+        // 方向は投擲元(b.fromX/Y=発生時のプレイヤー位置)基準。着弾は投擲からTHROWN_BAG_FLIGHT_MS後
+        // なのでプレイヤーが動いている可能性があり、着弾時点の現在地より「投げた場所」からの
+        // 押し出しの方が一貫する(旧仕様=投擲と着弾が同フレームだった時の向きと同じ考え方)。
+        const n = Math.max(0.001, Math.hypot(tcx - b.fromX, tcy - b.fromY));
+        get().knockbackEnemy(b.targetEnemyId, (tcx - b.fromX) / n, (tcy - b.fromY) / n, FIRST_AID_KIT_THROW_KNOCKBACK_MULT);
+      }
+      get().spawnBurst(tcx, tcy, '#e2e8f0', 10);
+      get().spawnRing(tcx, tcy, 3, 26, 'rgba(226,232,240,0.75)', 2, 260);
+      if (killed) {
+        get().dropEnemyXp(target, tcx, tcy, `pickup-xp-first-aid-kit-${b.id}`);
+      }
+    }
+  },
+
   performKatanaStrike: (targetIds, damageMult, allowFinisher) => {
     const now = Date.now();
     const { player, gameTime, enemies } = get();
@@ -4143,6 +4216,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
+    const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
 
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
@@ -4154,6 +4228,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       slashAt.push({ x: ecx, y: ecy });
+      katanaHitEnemyIds.push(enemy.id);
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       // 近接フィニッシュ(スタン敵の即時処刑/ボス5×)は一閃ダッシュのみ。
       // オート斬撃(allowFinisher=false)はスタン敵にも通常ダメージだけ与え、
@@ -4313,6 +4388,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // スキル: リーパー。刀の一閃フィニッシュ範囲(katanaRange)内の敵を全員フィニッシュ。
     applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, katanaRange(player), baseDamage * damageMult);
+    // スキル: 救難信号。刀装備時は通常近接の代わりに一閃(allowFinisher=trueのダッシュ斬り。
+    // triggerKatanaDash経由のみ)がプレイヤーの「近接ヒット」に相当するため、ここで発動判定する。
+    // オート斬撃(allowFinisher=false)は対象外(社長指示「一閃時」=ダッシュ斬りのみ)。
+    // baseMeleeDamage = baseDamage*damageMult = このヒットがcrit/コンボ/skillOutgoingDamageMult抜きで
+    // 計算した素ダメージ(通常近接のmeleeDamageと同じ「倍率1」の考え方)。
+    if (allowFinisher) {
+      applyRescueSignalProc(get, player, baseDamage * damageMult, katanaHitEnemyIds, pcx, pcy);
+    }
 
     return { hit: slashAt.length > 0, finish: finisherHit || bossFinishHit, killed: killed.length };
   },
@@ -9101,6 +9184,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         shadowClone: null,
         groundFires: [],
         rescueAllies: [],
+        thrownBags: [],
         molotovCycle: null,
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,

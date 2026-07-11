@@ -509,6 +509,22 @@ export interface RescueAlly {
   struck: boolean;         // 着弾ダメージを適用済みか(tickRescueAlliesが二重適用を防ぐためのフラグ)
 }
 
+// 救急鞄(first-aid-kit)サブウェポンの空鞄投擲。中身を払い出し切った後、鞄本体をプレイヤーから
+// 対象の敵へ飛ばす一過性エンティティ(RescueAllyと同じ構造の使い切りパターン)。当たり判定は持たず、
+// 飛行完了(THROWN_BAG_FLIGHT_MS経過)の瞬間にダメージ/ノックバック/FXを1回だけ適用する
+// (適用/寿命はgameStore.tickThrownBagsが処理、描画はpixiScene側がこの配列を直読みして位置を補間するだけ)。
+export interface ThrownBag {
+  id: string;
+  fromX: number;           // 投げ始め=プレイヤー足元
+  fromY: number;
+  targetX: number;         // 発生時点の対象の足元X(対象が消えた後のフォールバック位置)
+  targetY: number;
+  targetEnemyId: string;   // ダメージ適用先。着弾時に生存していなければ何もしない(スキップ)
+  damage: number;          // FIRST_AID_KIT_THROW_DAMAGE そのまま
+  spawnedAt: number;       // gameTime(ms)。飛行の起点
+  struck: boolean;         // 着弾ダメージを適用済みか(tickThrownBagsが二重適用を防ぐためのフラグ)
+}
+
 // 火炎瓶(molotov)サブウェポンが足元に設置する地面の火だまり。MOLOTOV_FIRE_LIFETIME_MS(3秒)で消滅。
 // 生成/寿命切れ/敵への接触ダメージは gameStore.ts(spawnGroundFire/tickGroundFires)が処理する
 // シミュレーション側の状態で、pixiScene.ts はこの配列を読むだけ(松明の炎の見た目を流用して描画)。

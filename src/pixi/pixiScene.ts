@@ -19,9 +19,9 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, RescueAlly,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, RescueAlly, ThrownBag,
 } from '../types/game';
-import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_HOLD_MS, RESCUE_ALLY_FLYOUT_MS } from '../store/gameStore';
+import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_HOLD_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
@@ -462,6 +462,9 @@ const KATANA_BACK_IMG_ROT = 0;
 // (=直径 p.width)だったので、初期値はそれに合わせて 1.0(スプライト表示幅 ≒ p.width)。
 // 実機で大きすぎ/小さすぎればここだけ調整する。
 const DRONE_BOOMERANG_SPRITE_SCALE = 1.0;
+// 救急鞄(first-aid-kit)の空鞄投擲スプライトの表示幅(px・叩き台)。CLAUDE.md「敵サイズ程度で読める」
+// 指示どおり、雑魚敵(zombie 30px)前後を狙った値。実機で大きすぎ/小さすぎればここだけ調整する。
+const THROWN_BAG_SPRITE_WIDTH = 28;
 const DOG_WALK_FRAME_MS = 150;
 const DOG_SPRITE_SCALE = 1 / 3;
 // 5コマ×ピンポン(左→右→折り返し→右→左)歩行を使うクラス。4クラス全て社長提供の5コマ立ち絵を採用:
@@ -606,11 +609,11 @@ const THOR_ISSEN_DASH_MS = 280;         // 一閃の高速移動そのものの�
 const THOR_ISSEN_VIS_HALFWIDTH = 80;    // 一閃の描画半太さ(当たり判定と同じ・社長修正指示で120の2/3へ)
 const THOR_HARAI_WINDUP_MS = 1000;      // 払いの予告(逆回転+並行ライン)時間
 const THOR_HARAI_ACTIVE_MS = 220;       // 払いの実行(判定持続)時間
-const THOR_HARAI_VIS_HALFWIDTH = 30;    // 払いの描画半太さ(当たり判定と同じ)
+const THOR_HARAI_VIS_HALFWIDTH = 40;    // 払いの描画半太さ(当たり判定THOR_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 // ミゲル(ゲート2ボス)の横払い(狭)描画用(視覚・useGameLoop のゲームプレイ値と一致させること)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;    // 払いの予告時間(useGameLoop と一致)
 const MIGUEL_HARAI_ACTIVE_MS = 220;     // 払いの実行(判定持続)時間(useGameLoop と一致)
-const MIGUEL_HARAI_VIS_HALFWIDTH = 25;  // 払いの描画半太さ(当たり判定と同じ・トールより狭い)
+const MIGUEL_HARAI_VIS_HALFWIDTH = 40;  // 払いの描画半太さ(当たり判定MIGUEL_HARAI_HALF_WIDTH=40と一致・社長指示v0.25.1610)
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
@@ -968,6 +971,8 @@ export class PixiScene {
   private summonViews = new Map<string, ActorView>();
   // スキル 救難信号: 飛来する援護アライ(一過性)。同時に生きるのは基本1体程度なので per-id プールで十分軽い。
   private rescueAllyViews = new Map<string, Sprite>();
+  // 救急鞄(first-aid-kit): 空鞄投擲(一過性・1ラン1回=同時に生きるのは常に0-1体)。per-id プール。
+  private thrownBagViews = new Map<string, Sprite>();
   private breakableProps = new Map<string, PropView>();
   private playerView: ActorView | null = null;
   // 分身(サブウェポン): プレイヤーと同じ立ち絵を白黒キャッシュで描く足元アンカーのスプライト。
@@ -2661,6 +2666,7 @@ export class PixiScene {
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncRescueAllies(s.rescueAllies, s.enemies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ
+    this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -4823,6 +4829,51 @@ export class PixiScene {
     }
     for (const [id, spr] of this.rescueAllyViews) {
       if (!seen.has(id)) { spr.destroy(); this.rescueAllyViews.delete(id); }
+    }
+  }
+
+  // 救急鞄(first-aid-kit): 空鞄投擲(一過性)。プレイヤー(fromX/Y)→対象敵(targetEnemyIdが生存中なら
+  // その現在地・消えていればtargetX/Yへのフォールバック)への直線飛行をスプライト1枚で描くだけの
+  // 演出(当たり判定なし)。ダメージ適用/寿命はsim側(gameStore.tickThrownBags)が担い、ここは
+  // thrownBagsを読んで位置を補間するだけ(CLAUDE.md「PixiJSは描画のみ」)。1ラン1回の使い切りで
+  // 同時に生きるのは常に0-1体なのでper-idプールで十分軽い(強glowなし・pooled sprite 1枚)。
+  private syncThrownBags(bags: ThrownBag[], enemies: Enemy[], gameTime: number) {
+    const seen = new Set<string>();
+    for (const b of bags) {
+      seen.add(b.id);
+      let spr = this.thrownBagViews.get(b.id);
+      if (!spr) {
+        spr = new Sprite();
+        spr.anchor.set(0.5);
+        this.L.frontObjectLayer.addChild(spr);
+        this.thrownBagViews.set(b.id, spr);
+      }
+      const tex = getTexture('first-aid-kit');
+      if (!tex) { spr.visible = false; continue; } // テクスチャ未読込時は何も描かない(グレースフルにスキップ)
+
+      const target = enemies.find(e => e.id === b.targetEnemyId);
+      const tx = target ? target.x + target.width / 2 : b.targetX;
+      const ty = target ? target.y + target.height / 2 : b.targetY;
+
+      // elapsed は gameTime(sim clock)基準。tickThrownBags のダメージ適用タイミングと必ず一致させる。
+      const elapsed = gameTime - b.spawnedAt;
+      const t = Math.max(0, Math.min(1, elapsed / THROWN_BAG_FLIGHT_MS));
+      const ease = 1 - (1 - t) * (1 - t); // ease-out(投げ込む勢い。rescueAllyの飛来フェーズと同じ考え方)
+      const x = b.fromX + (tx - b.fromX) * ease;
+      const y = b.fromY + (ty - b.fromY) * ease;
+
+      const sc = THROWN_BAG_SPRITE_WIDTH / tex.width;
+      spr.texture = tex;
+      spr.scale.set(sc);
+      spr.rotation = t * Math.PI; // 投げ物らしい回転(叩き台・半回転)
+      spr.position.set(
+        this.snapToScreenPixel(x, this.L.world.position.x),
+        this.snapToScreenPixel(y, this.L.world.position.y),
+      );
+      spr.visible = true;
+    }
+    for (const [id, spr] of this.thrownBagViews) {
+      if (!seen.has(id)) { spr.destroy(); this.thrownBagViews.delete(id); }
     }
   }
 
