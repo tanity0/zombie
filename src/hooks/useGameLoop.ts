@@ -711,12 +711,12 @@ const MIGUEL_SLOW_WALK_MS = 1500;            // 減速が続く時間
 const MIGUEL_SLOW_WALK_MULT = 0.4;           // 減速倍率(周回速度に乗算)
 const MIGUEL_SLOW_WALK_MIN_GAP_MS = 4000;    // 「たまに」の頻度(最小)
 const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;    // 同・最大
-// 弾3連攻撃(社長指示v0.25.1616「周回しながらたまに弾攻撃。0.5秒間隔で3発。この間は斬り発動しない」)。
+// 弾3連攻撃(社長指示v0.25.1616→v0.25.1618で調整)。周回しながら撃つ(=立ち止まらない・社長選択B)。
+// 発射数/間隔は既存のボス弾定義に統一=BOSS_BURST_SHOTS(3)/BOSS_BURST_GAP_MS(0.5秒)を参照(独自定数を廃止)。
 // 弾の性能(damage/speed/size)は enemyUtils.getEnemyFireProfile の miguel 定義(speed320/damage20/size16・
-// プレイヤー狙い)を流用。発射タイミングだけこのコントローラで制御(トールの3連発と同型)。
-const MIGUEL_VOLLEY_CHANCE = 0.35;           // chaseの攻撃選択で斬りコンボの代わりに弾3連を選ぶ確率(=「たまに」・叩き台/要調整)
-const MIGUEL_VOLLEY_SHOTS = 3;               // 3発
-const MIGUEL_VOLLEY_INTERVAL_MS = 500;       // 0.5秒間隔
+// プレイヤー狙い)を流用。撃っている間は斬りコンボを出さない(=斬撃判定と重ならない)。
+const MIGUEL_VOLLEY_CHANCE = 0.6;            // chaseの攻撃選択で斬りコンボの代わりに弾3連を選ぶ確率。社長指示v0.25.1618
+                                             // 「剣撃より頻度高め」=0.5超(弾6:斬り4)・叩き台/要調整
 
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
@@ -3712,7 +3712,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (Math.random() < MIGUEL_VOLLEY_CHANCE) {
                   // 弾3連=周回しながら撃つ。volley 中はchaseに居ない=斬りは発動しない(=「この間は斬り発動しない」)。
                   patch.bossState = 'volley';
-                  patch.bossStateUntil = newGameTime + MIGUEL_VOLLEY_SHOTS * MIGUEL_VOLLEY_INTERVAL_MS;
+                  patch.bossStateUntil = newGameTime + BOSS_BURST_SHOTS * BOSS_BURST_GAP_MS;
                   miguelVolleyRef.current = { nextShotAt: newGameTime, shots: 0 };
                 } else {
                   patch.bossState = 'harai-windup';
@@ -3791,10 +3791,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // プレイヤー狙い(createEnemyProjectile既定)・性能はgetEnemyFireProfileのmiguel定義。
               miguelOrbitMove();
               const vr = miguelVolleyRef.current;
-              if (vr.shots < MIGUEL_VOLLEY_SHOTS && newGameTime >= vr.nextShotAt) {
+              if (vr.shots < BOSS_BURST_SHOTS && newGameTime >= vr.nextShotAt) {
                 addProjectile(createEnemyProjectile(miguel, player));
                 vr.shots += 1;
-                vr.nextShotAt = newGameTime + MIGUEL_VOLLEY_INTERVAL_MS;
+                vr.nextShotAt = newGameTime + BOSS_BURST_GAP_MS;
               }
               if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
                 patch.bossState = 'chase';
