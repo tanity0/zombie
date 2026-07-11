@@ -625,7 +625,7 @@ const MIGUEL_HARAI_VIS_HALFWIDTH = 40;  // 払いの描画半太さ(当たり判
 const THOR_TSUKI_WINDUP_MS = 1000;      // 突きの溜め時間(useGameLoop と一致・溜め演出の進行度算出用)
 const TSUKI_DRAW_BACK_PX = 20;          // 突き溜め: 手元を狙い線の後方へ引く量(社長指示「少しだけ」ゆっくり)
 const THOR_TSUKI_MS = 180;              // 突きの実行(判定持続)時間(useGameLoop と一致)
-const THOR_TSUKI_VIS_HALFWIDTH = 30;    // 突きの描画半太さ(当たり判定と同じ)
+const THOR_TSUKI_VIS_HALFWIDTH = 15;    // 突きの描画半太さ(当たり判定THOR_TSUKI_HALF_WIDTH=15と一致・社長指示v0.25.1622)
 const THOR_JUMP_RADIUS = 70;            // ジャンプ攻撃の着地爆風半径(useGameLoop と一致)
 // トールの刀(社長提供・横払い/突きの視認性を上げる追加ビジュアル)。素材(thor-katana、紫背景色キー
 // 透過済み・1254x1254正方形)は切っ先が左上・柄/房が右下の対角線上に描かれている。柄(握り)を

@@ -688,17 +688,17 @@ const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込�
 // 一閃の長さ/幅修正の影響を受けないよう、突き専用の値として独立させる(一閃の元の値=620/半幅30を維持)。
 const THOR_TSUKI_RANGE = 300;                // 社長指示v0.25.1621で射程を620→300pxへ短縮
 const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従速度=プレイヤー速度のこの倍(社長指示v0.25.1621「追跡速度を半分」)
-const THOR_TSUKI_HALF_WIDTH = 30;            // ダッシュと同じ幅(一閃の元の半分=通常幅)
+const THOR_TSUKI_HALF_WIDTH = 15;            // 社長指示v0.25.1622で突きの半幅を±15へ(30→15=細い突き)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
-const THOR_HARAI_RANGE = 160;                // 社長指示v0.25.1621で横払いの長さを160へ(310→160)。一閃/突きとは独立
+const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1622で横払いの長さを元へ戻す(160→310)。一閃/突きとは独立
 const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
 // PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス・天使名ボス1体目)。トールのharaiを流用し
 // 範囲を狭くした専用攻撃1つのみ(バッチ1)。定数は叩き台(実機調整前提)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;         // 払い: 溜め1秒(トールと同型)
-const MIGUEL_HARAI_RANGE = 160;              // 社長指示v0.25.1621で縦横斬りの長さを160へ(190→160)。横払い/縦払い両方がこの値
+const MIGUEL_HARAI_RANGE = 190;              // 社長指示v0.25.1622で縦横斬りの長さを元へ戻す(160→190)。横払い/縦払い両方がこの値
 const MIGUEL_HARAI_HALF_WIDTH = 40;          // 社長指示v0.25.1610: 中心から片側40px(旧25)。横払い/縦払い共通
 const MIGUEL_HARAI_ACTIVE_MS = 220;
 // ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。

@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1623 — 斬り射程を元へ戻す / 突きの半幅を±15に【2026-07-12 06:01 JST】
+- **社長指示**「斬りの射程はそれぞれ戻して。突きの半幅を±15にして」。
+- **①斬り射程を元へ**(`useGameLoop.ts`): v1621の160を各元値へ戻す=`THOR_HARAI_RANGE` 160→310 / `MIGUEL_HARAI_RANGE` 160→190(横払い/縦払い共通)。
+- **②突きの半幅=±15**(`useGameLoop.ts`+`pixiScene.ts`): `THOR_TSUKI_HALF_WIDTH` 30→15(当たり判定)+`THOR_TSUKI_VIS_HALFWIDTH` 30→15(実行時の斬撃描画)を一致させて細い突きに。
+- **据え置き(今回の指示対象外=維持)**: 突きの射程300px(v1621)・突き溜め中の追従半減(`THOR_TSUKI_TRACK_FRAC=0.5`)はそのまま。
+- 自己点検: 憲法第4条/第5条に非抵触(ボス攻撃の射程/幅の数値調整=社長指示)。
+- 検証: **typecheck clean**。負荷 変化なし。実機で ①斬り射程が元の間合いに戻ったか ②突きが細くなったか(判定=見た目一致)を社長確認。
+
 ## v0.25.1622 — マークスマン近接に専用ポーズ(構え→振り抜き2コマ)+差し替えを汎用化【2026-07-12 05:55 JST】
 - **社長提供素材**(aimeglioスプライトシート=2ポーズ+Aseprite JSON)。「マークスマンの近接モーション」。
 - **命名照合(確認済)**: マークスマン = ファイル`player-magnum-*` = characterClass`mage`(金髪・黒フード・紫。実物照合で一致)。
