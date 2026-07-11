@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1615 — 救難信号: 索敵をハンドガン射程内に限定(圏外なら不発)+着地後は張り付かない【2026-07-11 11:28 JST】
+- **社長指示**「救難信号、プレイヤーからハンドガン範囲までしか索敵しない。その範囲内に敵がいない場合は発動しない。着地後は移動しない(敵に張り付かない)」。
+- **①索敵=ハンドガン射程内のみ+圏外なら不発**(`rescueSignal.ts`/`gameStore.ts`): `selectRescueSignalTarget` に `maxRange` を追加。プレイヤー(pcx/pcy)から `RANGE_BY_CATEGORY.handgun(=176px)` 以内の生存敵だけを候補にする。ヒットした敵でも射程外なら対象にせず、射程内の最寄り生存敵へ。**射程内に誰もいなければ null=発動スキップ**(`applyRescueSignalProc` が target=null で return)。純関数なのでユニット3本追加(圏外除外/ヒット圏外→圏内フォールバック/圏内ゼロ→null)。
+- **②着地後は敵を追わない(張り付き解消)**(`types/game.ts`/`gameStore.ts`/`pixiScene.ts`): 従来は描画が毎フレーム「生きた敵の現在地」を参照して着地点を更新=敵の移動に追従(張り付き)していた。**着地位置を発生時点で固定**するよう、`RescueAlly` に `targetFootY`(発生時点の足元Y)を追加し、`targetX/targetY`(=中心・既存)と合わせて**発生時点の座標のみ**で描画。`syncRescueAllies` の生きた敵ルックアップを撤去(`enemies` 引数も削除)。ダメージ適用(`tickRescueAllies`)は従来どおり `targetEnemyId` で生きた敵に必中=挙動不変(見た目の着地点だけ固定)。
+- 自己点検: 憲法第4条/第5条に非抵触(発動条件の索敵範囲と演出の着地追従のみ。発動率・ダメージ・倍率1・スロー無しは不変)。索敵範囲は既存の正典 `RANGE_BY_CATEGORY.handgun` を流用=新規マジックナンバーなし。
+- 検証: **typecheck clean / vitest rescueSignal 15 pass(range系3本追加込み)**。負荷 変化なし(1/10)。実機で ①ハンドガン射程外の敵単独では出ない ②発動後に対象が動いても味方が付いていかず着地点に留まる を社長確認。
+
 ## v0.25.1614 — 救難信号: 敵前面に着地→斬り→一拍→しゃがみ→バックジャンプ帰投【2026-07-11 11:09 JST】
 - **社長指示**「敵より前面に表示される位置に飛んできて、攻撃して、モーション終わったら一拍置いてから少ししゃがみ込んでバックジャンプして帰って。しゃがみ絵は後で(クラス別に)渡す」。
 - **①敵より前面に着地**(`pixiScene.ts`): 着地点を敵中心(ty)→**敵の足元+`RESCUE_ALLY_FRONT_MARGIN(14px)`手前(下)**へ。footYが敵の足元より大きい=actorLayerのy-sortで敵の上に描かれる(=前面)。飛来/近接/バックジャンプの起点もこのlandX/landYへ統一。

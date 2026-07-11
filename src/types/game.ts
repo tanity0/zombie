@@ -501,8 +501,9 @@ export interface RescueAlly {
   klass: CharacterClass;   // 見た目(プレイヤーと別クラス)。既存のクラス→立ち絵テクスチャ対応を流用して描画
   fromX: number;           // 出現地点(プレイヤーの背後)の足元X
   fromY: number;
-  targetX: number;         // 発生時点の対象の足元X(対象が消えた後のフォールバック位置)
-  targetY: number;
+  targetX: number;         // 発生時点の対象の中心X(固定=着地後は敵を追わない・社長指示v0.25.1615)
+  targetY: number;         // 発生時点の対象の中心Y(固定)
+  targetFootY: number;     // 発生時点の対象の足元Y(固定)。着地=これより少し手前(前面)に取る
   targetEnemyId: string;   // ダメージ適用先。着弾時に生存していなければ何もしない(スキップ)
   damage: number;          // 発生時点のプレイヤー近接ダメージそのまま(倍率1・crit/コンボ/装備アウトゴーイング倍率なし)
   spawnedAt: number;       // gameTime(ms)。フェーズ(飛来→打撃→離脱)の起点

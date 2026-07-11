@@ -32,7 +32,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -1732,8 +1732,10 @@ const applyRescueSignalProc = (
   if (hitEnemyIds.length === 0) return;
   const lvl = skillLevel(player, 'rescue-signal');
   if (!lvl || Math.random() >= rescueSignalProcChance(lvl)) return;
-  const target = selectRescueSignalTarget(hitEnemyIds[0], get().enemies, pcx, pcy);
-  if (!target) return; // 生存中の敵が誰もいない=発動スキップ
+  // 索敵はプレイヤーからハンドガン射程(RANGE_BY_CATEGORY.handgun=176px)以内のみ。範囲内に生存中の敵が
+  // いなければ target=null=発動スキップ(社長指示v0.25.1615「ハンドガン範囲までしか索敵しない/いなければ発動しない」)。
+  const target = selectRescueSignalTarget(hitEnemyIds[0], get().enemies, pcx, pcy, RANGE_BY_CATEGORY.handgun);
+  if (!target) return;
   const klass = pickRescueSignalAllyClass(player.characterClass);
   // 出現位置=プレイヤーの現在向き(lastDirection)の逆側(=背後)。向き不明時は下向き基準にフォールバック。
   const ld = player.lastDirection;
@@ -1741,9 +1743,10 @@ const applyRescueSignalProc = (
   const dir = lm > 0.01 ? { x: ld!.x / lm, y: ld!.y / lm } : { x: 0, y: 1 };
   const fromX = pcx - dir.x * RESCUE_ALLY_SPAWN_DIST;
   const fromY = pcy - dir.y * RESCUE_ALLY_SPAWN_DIST;
+  // 着地位置は発生時点で固定(着地後は敵を追わない=張り付かない・社長指示v0.25.1615)。中心と足元Yを渡す。
   get().spawnRescueAlly(
     klass, fromX, fromY,
-    { id: target.id, x: target.x + target.width / 2, y: target.y + target.height / 2 },
+    { id: target.id, x: target.x + target.width / 2, y: target.y + target.height / 2, footY: target.y + target.height },
     baseMeleeDamage,
   );
 };
@@ -2125,7 +2128,7 @@ interface GameState {
 
   // スキル「救難信号」。近接ヒット時(triggerCounter)に発動判定した結果をここで一体生成する。
   // rescueAllies の state 宣言自体は上(groundFires近く)にまとめてある。
-  spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number) => void;
+  spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number; footY: number }, damage: number) => void;
   tickRescueAllies: () => void; // 毎フレーム: 着弾フレームでダメージ適用(必中) + 寿命切れ回収
 
   // 救急鞄(first-aid-kit)の空鞄投擲。判定(誰に投げるか/ダメージ量)は useGameLoop の
@@ -4104,7 +4107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       rescueAllies: [...state.rescueAllies, {
         id: `rescue-ally-${rescueAllySeq++}`,
         klass, fromX, fromY,
-        targetX: target.x, targetY: target.y,
+        targetX: target.x, targetY: target.y, targetFootY: target.footY,
         targetEnemyId: target.id,
         damage,
         spawnedAt: state.gameTime,

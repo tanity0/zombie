@@ -2669,7 +2669,7 @@ export class PixiScene {
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
-    this.syncRescueAllies(s.rescueAllies, s.enemies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ
+    this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
     this.syncStageLightShaftDrift(s.camera, now);
@@ -4773,11 +4773,11 @@ export class PixiScene {
   }
 
   // スキル 救難信号: 近接ヒットで一定確率で発生する援護アライ(プレイヤーと別クラスの立ち絵)。
-  // 背後(fromX/fromY)→対象(targetEnemyIdが生存中ならその現在地・消えていればtargetX/Yへの
-  // フォールバック)→背後、の単純な線形フライトを描くだけの一過性演出(当たり判定なし)。ダメージ
-  // 適用/寿命はsim側(gameStore.tickRescueAllies)が担い、ここは rescueAllies を読んで位置を
-  // 補間するだけ(CLAUDE.md「PixiJSは描画のみ」)。同時に生きるのは基本1体程度なのでper-idプールで十分軽い。
-  private syncRescueAllies(allies: RescueAlly[], enemies: Enemy[], player: Player, gameTime: number) {
+  // 背後(fromX/fromY)→対象の発生時点位置(targetX/Y/FootY・固定)→背後、のジャンプ飛来を描く一過性演出
+  // (当たり判定なし)。着地位置は発生時点で固定=生きた敵の座標は参照しない(着地後は敵を追わない=張り付かない・
+  // 社長指示v0.25.1615)。ダメージ適用/寿命はsim側(gameStore.tickRescueAllies)が担い、ここは rescueAllies を
+  // 読んで位置を補間するだけ(CLAUDE.md「PixiJSは描画のみ」)。同時に生きるのは基本1体程度なのでper-idプールで十分軽い。
+  private syncRescueAllies(allies: RescueAlly[], player: Player, gameTime: number) {
     const seen = new Set<string>();
     for (const a of allies) {
       seen.add(a.id);
@@ -4807,12 +4807,13 @@ export class PixiScene {
       const tex = getTexture(name) ?? getTexture('player');
       if (!tex) { body.visible = false; knife.visible = false; slash.visible = false; trail.visible = false; continue; }
 
-      const target = enemies.find(e => e.id === a.targetEnemyId);
-      const tx = target ? target.x + target.width / 2 : a.targetX;
-      const ty = target ? target.y + target.height / 2 : a.targetY;
+      // 着地位置は発生時点で固定(社長指示v0.25.1615「着地後は移動しない=敵に張り付かない」)。生きた敵の
+      // 座標は参照せず、発生時点の中心(targetX/Y)と足元(targetFootY)を使う=敵が動いても追従しない。
+      const tx = a.targetX;
+      const ty = a.targetY;
       // 着地は「敵より前面(手前=描画で上)」に取る(社長指示v0.25.1614): 敵の足元(bottom)より少し手前(下)へ。
       // footY を敵の足元より大きくすると actorLayer の y-sort で敵の上に描かれる。
-      const efy = target ? target.y + target.height : a.targetY; // 敵の足元(world Y)
+      const efy = a.targetFootY; // 敵の足元(world Y・発生時点で固定)
       const landX = tx;
       const landY = efy + RESCUE_ALLY_FRONT_MARGIN;
 

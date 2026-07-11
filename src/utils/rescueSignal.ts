@@ -25,27 +25,31 @@ export interface RescueSignalTargetCandidate {
   health: number;
 }
 
-// 近接ヒットした敵(hitEnemyId)がまだ生存していればそれを対象にする。既に死亡(そのスイングで
-// 倒された=enemies配列に存在しない、またはhealth<=0)していれば、fromX/fromY から最も近い
-// 生存中の敵を対象にする。生存中の敵が誰もいなければ null(=発動をスキップ)。
+// 索敵は「プレイヤー(fromX/fromY)から maxRange(=ハンドガン射程)以内」に限る(社長指示v0.25.1615)。
+// 近接ヒットした敵(hitEnemyId)が生存 かつ 射程内 ならそれを対象にする。既に死亡(そのスイングで
+// 倒された=enemies配列に存在しない、またはhealth<=0)or 射程外なら、射程内で最も近い生存敵へ。
+// 射程内に生存中の敵が誰もいなければ null(=発動をスキップ=範囲内に敵がいなければ発動しない)。
 export const selectRescueSignalTarget = <T extends RescueSignalTargetCandidate>(
   hitEnemyId: string,
   enemies: readonly T[],
   fromX: number,
   fromY: number,
+  maxRange: number,
 ): T | null => {
+  const maxSq = maxRange * maxRange;
+  const distSqFrom = (e: T): number => {
+    const dx = e.x + e.width / 2 - fromX;
+    const dy = e.y + e.height / 2 - fromY;
+    return dx * dx + dy * dy;
+  };
   const hit = enemies.find(e => e.id === hitEnemyId && e.health > 0);
-  if (hit) return hit;
+  if (hit && distSqFrom(hit) <= maxSq) return hit;
   let best: T | null = null;
   let bestDistSq = Infinity;
   for (const e of enemies) {
     if (e.health <= 0) continue;
-    const cx = e.x + e.width / 2;
-    const cy = e.y + e.height / 2;
-    const dx = cx - fromX;
-    const dy = cy - fromY;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < bestDistSq) { bestDistSq = distSq; best = e; }
+    const distSq = distSqFrom(e);
+    if (distSq <= maxSq && distSq < bestDistSq) { bestDistSq = distSq; best = e; }
   }
   return best;
 };

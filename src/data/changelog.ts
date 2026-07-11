@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1615',
+    items: [
+      '救難信号: 索敵範囲をプレイヤーからハンドガン射程内に限定(範囲内に敵がいなければ発動しない)。着地後は敵を追わず、その場に留まるように(張り付き解消)。',
+    ],
+  },
+  {
     version: '0.25.1614',
     items: [
       '救難信号: 味方が敵の手前(前面)に飛び込んで斬り、モーション後に一拍おき、少し溜めてからバックジャンプで帰るように。',
