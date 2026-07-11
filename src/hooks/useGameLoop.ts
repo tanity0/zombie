@@ -686,7 +686,7 @@ const THOR_ISSEN_HALF_WIDTH = 80;            // 当たり判定=赤ライン半�
 const THOR_TSUKI_WINDUP_MS = 1000;           // 突き: 1秒停止(社長指示)
 const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込み)の所要時間
 // 一閃の長さ/幅修正の影響を受けないよう、突き専用の値として独立させる(一閃の元の値=620/半幅30を維持)。
-const THOR_TSUKI_RANGE = 300;                // 社長指示v0.25.1621で射程を620→300pxへ短縮
+const THOR_TSUKI_RANGE = 240;                // 社長指示v0.25.1627で射程を300→240pxへ短縮(旧: v1621 620→300)
 const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従速度=プレイヤー速度のこの倍(社長指示v0.25.1621「追跡速度を半分」)
 const THOR_TSUKI_HALF_WIDTH = 15;            // 社長指示v0.25.1622で突きの半幅を±15へ(30→15=細い突き)
 

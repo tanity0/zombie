@@ -12,6 +12,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1627 — トールの突き射程を240pxに【2026-07-12 06:46 JST】
+- **社長指示**「トールの突き射程を240に変更」。`THOR_TSUKI_RANGE` 300→240(`useGameLoop.ts`)。溜め追従半減(v1621)・半幅±15(v1623)は維持。
+- 検証: **typecheck clean**。
+
 ## v0.25.1626 — トール/ミゲルの斬り発動距離を250px以内に【2026-07-12 06:19 JST】
 - **社長指示**「トールとミゲルの斬り系、発動距離を250px以内に変更」。
 - **新定数** `HARAI_TRIGGER_DIST = 250`(`useGameLoop.ts`)。斬り系(トールharai / ミゲルharai・tate)を発動できるプレイヤーまでの最大距離。

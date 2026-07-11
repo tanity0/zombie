@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1627',
+    items: [
+      'トールの突きの射程を240pxに短縮。',
+    ],
+  },
+  {
     version: '0.25.1626',
     items: [
       'トール・ミゲルの斬り(横払い/縦払い)を、プレイヤーが250px以内にいる時だけ発動するように。遠い時はトールは一閃/突き、ミゲルは弾に。',
