@@ -711,6 +711,12 @@ const MIGUEL_SLOW_WALK_MS = 1500;            // 減速が続く時間
 const MIGUEL_SLOW_WALK_MULT = 0.4;           // 減速倍率(周回速度に乗算)
 const MIGUEL_SLOW_WALK_MIN_GAP_MS = 4000;    // 「たまに」の頻度(最小)
 const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;    // 同・最大
+// 弾3連攻撃(社長指示v0.25.1616「周回しながらたまに弾攻撃。0.5秒間隔で3発。この間は斬り発動しない」)。
+// 弾の性能(damage/speed/size)は enemyUtils.getEnemyFireProfile の miguel 定義(speed320/damage20/size16・
+// プレイヤー狙い)を流用。発射タイミングだけこのコントローラで制御(トールの3連発と同型)。
+const MIGUEL_VOLLEY_CHANCE = 0.35;           // chaseの攻撃選択で斬りコンボの代わりに弾3連を選ぶ確率(=「たまに」・叩き台/要調整)
+const MIGUEL_VOLLEY_SHOTS = 3;               // 3発
+const MIGUEL_VOLLEY_INTERVAL_MS = 500;       // 0.5秒間隔
 
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
@@ -982,6 +988,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
   const miguelSlowRef = useRef({ slowUntil: 0, nextAt: 0 });
+  const miguelVolleyRef = useRef({ nextShotAt: 0, shots: 0 }); // 弾3連の発射タイミング/残弾(単体ボスなので単一refで足る)
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1612,6 +1619,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           miguelSlowRef.current = { slowUntil: 0, nextAt: 0 }; // ミゲルのゆっくり歩きタイマーも新ランで再アーム
+          miguelVolleyRef.current = { nextShotAt: 0, shots: 0 }; // 弾3連タイマーも新ランでリセット
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -3700,17 +3708,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else if (st === 'chase') {
               miguelOrbitMove(); // 攻撃中(windup/active)は呼ばない=立ち止まる(仕様指示)
               if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
-                // 攻撃選択pool=当面harai(狭)のみ(仕様指示。攻撃2以降は追って追加)。
-                patch.bossState = 'harai-windup';
-                patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
-                // プレイヤー中心・現在の接線と並行な赤ラインをロック(トールのharaiと同じ方式)。
-                const rx = mcx - pcx, ry = mcy - pcy;
-                const rl = Math.hypot(rx, ry) || 1;
-                const tx0 = -ry / rl, ty0 = rx / rl;
-                patch.aiFromX = pcx - tx0 * (MIGUEL_HARAI_RANGE / 2);
-                patch.aiFromY = pcy - ty0 * (MIGUEL_HARAI_RANGE / 2);
-                patch.aiTargetX = pcx + tx0 * (MIGUEL_HARAI_RANGE / 2);
-                patch.aiTargetY = pcy + ty0 * (MIGUEL_HARAI_RANGE / 2);
+                // 攻撃選択: たまに弾3連(volley)、それ以外はharai→tateの斬りコンボ(社長指示v0.25.1616)。
+                if (Math.random() < MIGUEL_VOLLEY_CHANCE) {
+                  // 弾3連=周回しながら撃つ。volley 中はchaseに居ない=斬りは発動しない(=「この間は斬り発動しない」)。
+                  patch.bossState = 'volley';
+                  patch.bossStateUntil = newGameTime + MIGUEL_VOLLEY_SHOTS * MIGUEL_VOLLEY_INTERVAL_MS;
+                  miguelVolleyRef.current = { nextShotAt: newGameTime, shots: 0 };
+                } else {
+                  patch.bossState = 'harai-windup';
+                  patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
+                  // プレイヤー中心・現在の接線と並行な赤ラインをロック(トールのharaiと同じ方式)。
+                  const rx = mcx - pcx, ry = mcy - pcy;
+                  const rl = Math.hypot(rx, ry) || 1;
+                  const tx0 = -ry / rl, ty0 = rx / rl;
+                  patch.aiFromX = pcx - tx0 * (MIGUEL_HARAI_RANGE / 2);
+                  patch.aiFromY = pcy - ty0 * (MIGUEL_HARAI_RANGE / 2);
+                  patch.aiTargetX = pcx + tx0 * (MIGUEL_HARAI_RANGE / 2);
+                  patch.aiTargetY = pcy + ty0 * (MIGUEL_HARAI_RANGE / 2);
+                }
               }
             } else if (st === 'harai-windup') {
               // 払い: 溜め中は本体静止(仕様指示)。カウンター可能。
@@ -3770,6 +3785,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'chase';
                   patch.bossNextActionAt = miguelNextActionDelay();
                 }
+              }
+            } else if (st === 'volley') {
+              // 弾3連(0.5秒間隔で3発)。周回しながら撃つ=静止しない(社長指示「周回しながら」)。弾は
+              // プレイヤー狙い(createEnemyProjectile既定)・性能はgetEnemyFireProfileのmiguel定義。
+              miguelOrbitMove();
+              const vr = miguelVolleyRef.current;
+              if (vr.shots < MIGUEL_VOLLEY_SHOTS && newGameTime >= vr.nextShotAt) {
+                addProjectile(createEnemyProjectile(miguel, player));
+                vr.shots += 1;
+                vr.nextShotAt = newGameTime + MIGUEL_VOLLEY_INTERVAL_MS;
+              }
+              if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = miguelNextActionDelay();
               }
             } else if (st === 'counter-leap') {
               // カウンター成立後、近接距離ギリギリ外までロック済みの後退先へ高速移動(トールと同じ)。

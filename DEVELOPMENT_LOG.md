@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1616 — ミゲルに弾3連攻撃を追加(周回しながら・0.5秒間隔3発・この間斬りなし)【2026-07-11 11:42 JST】
+- **社長指示**「(ミゲル)周回しながらたまに弾攻撃。0.5秒間隔で3発。この間は斬り発動しない」。
+- **実装**(`useGameLoop.ts` ミゲル専用コントローラ・`types/game.ts`): 新bossState `'volley'` を追加。
+  - **攻撃選択**: `chase` で行動タイミングが来たら `Math.random() < MIGUEL_VOLLEY_CHANCE(0.35)` なら弾3連(volley)、それ以外は従来のharai→tate斬りコンボ。=「たまに弾」。
+  - **volley**: `miguelOrbitMove()` を呼ぶ=**周回しながら**撃つ(斬りと違い静止しない)。`miguelVolleyRef`(nextShotAt/shots)で **0.5秒間隔(`MIGUEL_VOLLEY_INTERVAL_MS=500`)×3発(`MIGUEL_VOLLEY_SHOTS=3`)** を発射。`bossStateUntil = now + 3*500(=1500ms)` 経過でchaseへ復帰。
+  - **弾**: `addProjectile(createEnemyProjectile(miguel, player))`=プレイヤー狙い。性能は既存の `getEnemyFireProfile` の miguel 定義(**speed320/damage20/size16**・「将来の弾攻撃追加時にそのまま使える置き場」とコメント済み)を流用=新規マジックナンバー無し。描画は既存の `enemy_bolt`(赤ボルト・plant/giantbatと同経路=描画実績あり)。
+  - **「この間は斬り発動しない」**: volley 中はchaseに居ない=攻撃選択が走らない=斬りは自然に発動しない。完全気絶(bossFullStunUntil)は従来どおり最優先でchaseへ割り込む(volleyも中断)。
+- 自己点検: 憲法第4条/第5条に非抵触(ゲート2ボスの攻撃追加=社長指示。初心者ゾーン/緩ゾーンの湧き・閾値・カーブに無関係)。
+- 検証: **typecheck clean**。負荷 1/10(弾3発/回・既存projectile経路)。**未決/叩き台**: `MIGUEL_VOLLEY_CHANCE=0.35`(「たまに」の頻度)と弾ダメージ20は暫定。実機で頻度・弾速・威力・「斬りと弾の混ざり具合」を社長確認して調整。弾の発射SEは未付与(必要なら追って)。
+- ※配線ロジック(状態機械)なのでユニット非対象(既存ミゲル/トールコントローラと同じ扱い=静的検証中心)。
+
 ## v0.25.1615 — 救難信号: 索敵をハンドガン射程内に限定(圏外なら不発)+着地後は張り付かない【2026-07-11 11:28 JST】
 - **社長指示**「救難信号、プレイヤーからハンドガン範囲までしか索敵しない。その範囲内に敵がいない場合は発動しない。着地後は移動しない(敵に張り付かない)」。
 - **①索敵=ハンドガン射程内のみ+圏外なら不発**(`rescueSignal.ts`/`gameStore.ts`): `selectRescueSignalTarget` に `maxRange` を追加。プレイヤー(pcx/pcy)から `RANGE_BY_CATEGORY.handgun(=176px)` 以内の生存敵だけを候補にする。ヒットした敵でも射程外なら対象にせず、射程内の最寄り生存敵へ。**射程内に誰もいなければ null=発動スキップ**(`applyRescueSignalProc` が target=null で return)。純関数なのでユニット3本追加(圏外除外/ヒット圏外→圏内フォールバック/圏内ゼロ→null)。
