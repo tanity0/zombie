@@ -565,7 +565,12 @@ const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャン
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
-const SCAVENGER_MELEE_READY_FRAC = 0.4; // スカベンジャー近接: 構え(しゃがみ)絵を出すスイング進行の割合(以降は振り抜き絵)。社長指示v0.25.1620・叩き台
+const MELEE_POSE_READY_FRAC = 0.4; // 近接専用ポーズ: 構え絵を出すスイング進行の割合(以降は振り抜き絵)。社長指示v0.25.1620・叩き台
+// 近接に専用2ポーズ絵を持つクラス→ファイル接頭辞(-ready=構え / -swing=振り抜き)。素材のあるクラスのみ登録。
+const MELEE_POSE_PREFIX: Record<string, string> = {
+  necromancer: 'player-striker-melee', // スカベンジャー(社長提供v0.25.1620)
+  mage: 'player-magnum-melee',         // マークスマン(社長提供v0.25.1622)
+};
 const RESCUE_ALLY_HOP_PX = 48;        // 救援アライの飛来ジャンプ弧の頂点の高さ(px・視覚のみ)。社長指示v0.25.1613
 const RESCUE_ALLY_FRONT_MARGIN = 14;  // 着地を敵の足元より何px手前(下=描画で前面)へ取るか。社長指示v0.25.1614
 const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
@@ -5105,12 +5110,13 @@ export class PixiScene {
       ? Math.max(PLAYER_MELEE_SWING_MS, juiceSlowUntil - (p.meleeSwingAt || 0))
       : PLAYER_MELEE_SWING_MS;
     const sinceSwing = now - (p.meleeSwingAt || 0);
-    // スカベンジャー(=striker絵/characterClass necromancer)の近接: 本体を専用ポーズへ差し替える(社長提供
-    // 素材v0.25.1620)。構え(しゃがみ)→振り抜き(立ち絵)をスイング進行 kt=SCAVENGER_MELEE_READY_FRAC で切替。
-    // 専用ポーズは待機絵と同じ幅86px・足元下端で焼いてあるので描画スケール/足位置は不変(playerBaseScaleは幅基準)。
-    if (p.characterClass === 'necromancer' && !warlordFull && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
-      const poseTex = getTexture((sinceSwing / swingWindowMs) < SCAVENGER_MELEE_READY_FRAC
-        ? 'player-striker-melee-ready' : 'player-striker-melee-swing');
+    // 近接専用ポーズを持つクラス(スカベンジャー=necromancer/マークスマン=mage・社長提供素材)は近接スイング中に
+    // 本体を差し替える。構え→振り抜きをスイング進行 kt=MELEE_POSE_READY_FRAC で切替。専用ポーズは各クラスの待機絵と
+    // 同じ幅86px・足元下端で焼いてあるので描画スケール/足位置は不変(playerBaseScaleは幅基準)。
+    const meleePosePrefix = MELEE_POSE_PREFIX[p.characterClass];
+    if (meleePosePrefix && !warlordFull && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+      const poseTex = getTexture((sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC
+        ? `${meleePosePrefix}-ready` : `${meleePosePrefix}-swing`);
       if (poseTex) view.sprite.texture = poseTex;
     }
     if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {

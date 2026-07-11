@@ -51,6 +51,9 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-game-0',
       'player-magnum-game-1',
       'player-magnum-game-2',
+      // マークスマン(=magnum絵/mage)近接の専用ポーズ(社長提供v0.25.1622)。構え(frame0)→振り抜き(frame1)の2コマ。
+      'player-magnum-melee-ready',
+      'player-magnum-melee-swing',
       // 走りモーション(社長提供・移動レバー全開時のみ)。マークスマン+ストライカー(=scavenger接頭辞)。
       'player-magnum-run-0',
       'player-magnum-run-1',

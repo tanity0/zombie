@@ -12,6 +12,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1622 — マークスマン近接に専用ポーズ(構え→振り抜き2コマ)+差し替えを汎用化【2026-07-12 05:55 JST】
+- **社長提供素材**(aimeglioスプライトシート=2ポーズ+Aseprite JSON)。「マークスマンの近接モーション」。
+- **命名照合(確認済)**: マークスマン = ファイル`player-magnum-*` = characterClass`mage`(金髪・黒フード・紫。実物照合で一致)。
+- **素材の焼き出し**(`public/sprites/`): アップ画像(透過済448×264)を左=構え(frame0)/右=振り抜き(frame1)に分割し、
+  `player-magnum-melee-ready.png`/`player-magnum-melee-swing.png`を生成(86×82・足元下端・足元x中央)。振り抜きの立ち身長を
+  測って magnum 待機絵の立ち身長71pxへ合わせ F=0.335。幅86=待機絵と同じ=描画スケール/足位置が待機絵と一致。
+  ※JSONは`_______base.png`(112×66)を参照していたが未アップ→直接届いたシートPNGから抽出(内容は同一2ポーズ)。
+- **配線の汎用化**(`pixiScene.ts`): スカベンジャー専用だった差し替えを**クラス→接頭辞マップ`MELEE_POSE_PREFIX`**に一般化
+  (`necromancer`→`player-striker-melee` / `mage`→`player-magnum-melee`)。`drawPlayer`は接頭辞から`-ready`/`-swing`を
+  スイング進行`MELEE_POSE_READY_FRAC(0.4)`で切替。定数を`SCAVENGER_MELEE_READY_FRAC`→`MELEE_POSE_READY_FRAC`へ改名。
+  `pixiTextures.ts`に2ポーズ追加(nearest)。未ロード時は待機絵にフォールバック。
+- 自己点検: 憲法第4条/第5条に非抵触(近接の見た目のみ。攻撃レート・判定・射程・ダメージ不変=幅基準で位置/スケールも不変)。
+- 検証: **typecheck clean**。負荷 **1/10**(小スプライト2枚+スイング中の差し替えのみ)。
+- **★叩き台/要調整**: ①スケール(F=0.335)・足元の繋がり ②切替割合0.4 ③既存ナイフ振りオーバーレイは残置(二重に見えるなら
+  該当クラスで非表示化=要指示)。④JSONのフレーム尺125ms/コマではなくスイング進行で切替(スカベンジャーと統一)。
+
 ## v0.25.1621 — トール/ミゲル射程調整: 横払い160 / 突き300px+溜め追従を半減【2026-07-12 05:45 JST】
 - **社長指示**「トールとミゲル両方の横払い系の射程を160に。突きの射程は300pxにし、更に溜め中の追跡速度を半分に」。
 - **①横払い系=160**(`useGameLoop.ts`): `THOR_HARAI_RANGE` 310→160、`MIGUEL_HARAI_RANGE` 190→160(ミゲルは横払い/縦払い共通)。ラインの全長(プレイヤー中心に±80px)。

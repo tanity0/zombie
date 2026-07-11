@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1622',
+    items: [
+      'マークスマンの近接攻撃に専用モーションを追加。構え→振り抜きの2ポーズで斬るように(社長提供の立ち絵)。',
+    ],
+  },
+  {
     version: '0.25.1621',
     items: [
       'トール・ミゲルの横払いの射程を160に短縮。トールの突きは射程300pxに短縮し、溜め中の狙いの追従を遅く(動けば避けやすく)。',
