@@ -110,6 +110,9 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-game-0',
       'player-scavenger-game-1',
       'player-scavenger-game-2',
+      // ストライカー(=scavenger絵/rogue)近接の専用ポーズ(社長提供v0.25.1625)。構え(frame0)→振り抜き(frame1)。
+      'player-scavenger-melee-ready',
+      'player-scavenger-melee-swing',
       // 武将セット(特殊3点)フル装備時の立ち絵。小烏丸も装備していれば刀バージョン。
       'player-warlord-gun-walk-0',
       'player-warlord-gun-walk-1',
