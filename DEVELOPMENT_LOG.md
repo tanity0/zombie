@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1621 — トール/ミゲル射程調整: 横払い160 / 突き300px+溜め追従を半減【2026-07-12 05:45 JST】
+- **社長指示**「トールとミゲル両方の横払い系の射程を160に。突きの射程は300pxにし、更に溜め中の追跡速度を半分に」。
+- **①横払い系=160**(`useGameLoop.ts`): `THOR_HARAI_RANGE` 310→160、`MIGUEL_HARAI_RANGE` 190→160(ミゲルは横払い/縦払い共通)。ラインの全長(プレイヤー中心に±80px)。
+- **②突きの射程=300px**: `THOR_TSUKI_RANGE` 620→300。トール中心から前方への突き到達距離。
+- **③突き溜め中の追従を半減**(`useGameLoop.ts`+`pixiScene.ts`): 従来は突きの狙いが**実行の瞬間に現在プレイヤー位置へスナップ**(=実質「無限速の追跡」・シム側に追従速度の概念なし)だった。これを、溜め入口で狙い点(aiTarget)をプレイヤー現在地に初期化→**溜め中は狙い点を`player.speed × THOR_TSUKI_TRACK_FRAC(0.5) × bossMoveDt`でプレイヤーへ追従**(=プレイヤー移動の半分の速さ)→実行時はこの**遅延した狙い点**へ突く、へ変更。動けば狙いが遅れて突きラインから外せる。突きチャージの見た目(`drawThorTsukiCharge`)も現在プレイヤー→遅延狙い点(aiTarget)に合わせ、当たり判定と一致。
+- **解釈注記**: 「追跡速度を半分」に対し、旧仕様は瞬間スナップ=有限の追従速度が無かったため、「プレイヤー速度の半分で追う有限追従」と解釈して実装(=`THOR_TSUKI_TRACK_FRAC=0.5`)。意図と違えば数値/方式を調整。
+- 自己点検: 憲法第4条/第5条に非抵触(ボス攻撃の射程/追従の調整=社長指示。初心者/緩ゾーンの湧き・閾値に無関係)。
+- 検証: **typecheck clean**。負荷 変化なし。実機で ①横払いの短さ ②突き射程300 ③溜め中に横移動すると突きが遅れて避けられるか を社長確認。**叩き台**: `THOR_TSUKI_TRACK_FRAC=0.5`。
+
 ## v0.25.1620 — スカベンジャー近接に専用ポーズ(構えしゃがみ→振り抜き立ち絵)【2026-07-11 23:29 JST】
 - **社長提供素材**(IMG_6592.png=2ポーズ)。「スカベンジャー 近接攻撃の時、構え時のしゃがみ、振り抜いた時の立ち絵」。
 - **命名の罠(照合済)**: 表示名スカベンジャー = ファイル`player-striker-*` = characterClass`necromancer`(赤ベスト黒髪。実物照合で確認)。

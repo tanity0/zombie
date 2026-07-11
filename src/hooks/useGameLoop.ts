@@ -686,18 +686,19 @@ const THOR_ISSEN_HALF_WIDTH = 80;            // 当たり判定=赤ライン半�
 const THOR_TSUKI_WINDUP_MS = 1000;           // 突き: 1秒停止(社長指示)
 const THOR_TSUKI_MS = 180;                   // 突き自体(高速な踏み込み)の所要時間
 // 一閃の長さ/幅修正の影響を受けないよう、突き専用の値として独立させる(一閃の元の値=620/半幅30を維持)。
-const THOR_TSUKI_RANGE = 620;                // ダッシュと同じ射程(社長指示=一閃の元の「ダッシュ射程」を採用)
+const THOR_TSUKI_RANGE = 300;                // 社長指示v0.25.1621で射程を620→300pxへ短縮
+const THOR_TSUKI_TRACK_FRAC = 0.5;           // 突き溜め中の狙い追従速度=プレイヤー速度のこの倍(社長指示v0.25.1621「追跡速度を半分」)
 const THOR_TSUKI_HALF_WIDTH = 30;            // ダッシュと同じ幅(一閃の元の半分=通常幅)
 
 const THOR_HARAI_WINDUP_MS = 1000;           // 払い: 溜め1秒(社長指示)
-const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1605で横払いの長さ半分(620→310)。一閃/突きとは独立
+const THOR_HARAI_RANGE = 160;                // 社長指示v0.25.1621で横払いの長さを160へ(310→160)。一閃/突きとは独立
 const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
 // PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス・天使名ボス1体目)。トールのharaiを流用し
 // 範囲を狭くした専用攻撃1つのみ(バッチ1)。定数は叩き台(実機調整前提)。
 const MIGUEL_HARAI_WINDUP_MS = 1000;         // 払い: 溜め1秒(トールと同型)
-const MIGUEL_HARAI_RANGE = 190;              // 社長指示v0.25.1605で縦横斬りの長さ半分(380→190)。横払い/縦払い両方がこの値
+const MIGUEL_HARAI_RANGE = 160;              // 社長指示v0.25.1621で縦横斬りの長さを160へ(190→160)。横払い/縦払い両方がこの値
 const MIGUEL_HARAI_HALF_WIDTH = 40;          // 社長指示v0.25.1610: 中心から片側40px(旧25)。横払い/縦払い共通
 const MIGUEL_HARAI_ACTIVE_MS = 220;
 // ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。
@@ -3212,6 +3213,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     } else if (pick === 'tsuki') {
                       patch.bossState = 'tsuki-windup';
                       patch.bossStateUntil = newGameTime + THOR_TSUKI_WINDUP_MS;
+                      // 突き溜め: 狙い点(aiTarget)をプレイヤー現在地で初期化。溜め中にプレイヤー速度の半分で
+                      // 追従させ、実行時はこの遅延した狙い点へ突く(社長指示v0.25.1621「溜め中の追跡速度を半分」)。
+                      patch.aiFromX = bcx; patch.aiFromY = bcy;
+                      patch.aiTargetX = pcx; patch.aiTargetY = pcy;
                     } else {
                       // 払い: 溜め中は本体静止(社長指示・立ち止まる)。プレイヤー中心・現在の接線と
                       // 並行な赤ラインをロック。
@@ -3413,13 +3418,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (!countered && newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = thorNextActionDelay(); }
               } else if (st === 'tsuki-windup') {
                 // 突き: 1秒停止(社長指示)。線の予告は無し=素早い踏み込みそのものが合図。
+                // 社長指示v0.25.1621: 溜め中は狙い点(aiTarget)をプレイヤー速度の半分でプレイヤーへ追従。
+                // = 瞬間スナップをやめ、動けば狙いが遅れて外せる(実行時はこの遅延点へ突く)。
+                const aimX = boss.aiTargetX ?? pcx, aimY = boss.aiTargetY ?? pcy;
+                const adx = pcx - aimX, ady = pcy - aimY;
+                const adl = Math.hypot(adx, ady);
+                const trackStep = Math.min(adl, player.speed * THOR_TSUKI_TRACK_FRAC * bossMoveDt);
+                const naimX = adl > 0.001 ? aimX + (adx / adl) * trackStep : aimX;
+                const naimY = adl > 0.001 ? aimY + (ady / adl) * trackStep : aimY;
+                patch.aiTargetX = naimX; patch.aiTargetY = naimY; // 溜め中は遅延追従する狙い点を保持
                 const { overlap, counterActive } = thorBodyOverlapNow();
                 if (overlap && counterActive) {
                   thorCounterHit(bcx, bcy);
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'tsuki';
                   patch.bossStateUntil = newGameTime + THOR_TSUKI_MS;
-                  const ddx = pcx - bcx, ddy = pcy - bcy;
+                  // 突く方向=遅延した狙い点(naim)への向き。射程ぶん伸ばして突きラインを確定。
+                  const ddx = naimX - bcx, ddy = naimY - bcy;
                   const ddl = Math.hypot(ddx, ddy) || 1;
                   patch.aiFromX = bcx; patch.aiFromY = bcy;
                   patch.aiTargetX = bcx + (ddx / ddl) * THOR_TSUKI_RANGE;

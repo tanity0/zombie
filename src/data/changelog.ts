@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1621',
+    items: [
+      'トール・ミゲルの横払いの射程を160に短縮。トールの突きは射程300pxに短縮し、溜め中の狙いの追従を遅く(動けば避けやすく)。',
+    ],
+  },
+  {
     version: '0.25.1620',
     items: [
       'スカベンジャーの近接攻撃に専用モーションを追加。構え(しゃがみ)→振り抜き(立ち絵)の2ポーズで斬るように(社長提供の立ち絵)。',

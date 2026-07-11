@@ -5830,8 +5830,10 @@ export class PixiScene {
         if (tsukiFlash !== null) view.sprite.tint = tsukiFlash;
         const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / THOR_TSUKI_WINDUP_MS));
         const pl = useGameStore.getState().player;
-        // トールの手元(胸の高さ)を起点に、プレイヤー中心を狙う。
-        this.drawThorTsukiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.55, prog, now, pl.x + pl.width / 2, pl.y + pl.height / 2);
+        // 社長指示v0.25.1621: 溜め中の狙いは「遅延追従する狙い点(aiTarget)」に合わせる(瞬間追従をやめた分、
+        // 見た目の切っ先も遅れて追う=当たり判定と一致)。aiTarget未設定時のみプレイヤー中心にフォールバック。
+        this.drawThorTsukiCharge(e.id, fb.footX, fb.footY - fb.boxH * 0.55, prog, now,
+          e.aiTargetX ?? (pl.x + pl.width / 2), e.aiTargetY ?? (pl.y + pl.height / 2));
       } else if (e.bossState === 'tsuki') {
         // 突き(実行): 溜め中(tsuki-windup)は方向が未確定(社長指示=予告ラインなし)なので、
         // 実行の瞬間だけプレイヤーの斬撃と同じピクセル演出を表示。180msをそのまま1本の
