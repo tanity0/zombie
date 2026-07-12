@@ -57,4 +57,6 @@
 // v33: マークスマン(=magnum)の歩き5コマ+立ち絵(player-magnum-walk-0..4 / idle)を「ドット保持」で焼き直し
 //      (社長提供の×4拡大ドットシート aimeglio_6 を ÷4 NEAREST で元ドット復元→透明列分割→78×66へ足元下端
 //      中央配置。LANCZOS縮小を廃止=にじみ解消)。立ち絵=2コマ目(frame1)。走り/近接ポーズは旧(次ステップ)。
-export const ASSET_VERSION = '33';
+// v34: マークスマンの近接ポーズ(player-magnum-melee-ready/swing)もドット保持で焼き直し(aimeglio_3・÷4 NEAREST)。
+//      歩きと同じ幅78キャンバス(playerBaseScale同一=同サイズ)・足元揃え。構え=native scaleのしゃがみ(低い)。走りはまだ旧。
+export const ASSET_VERSION = '34';

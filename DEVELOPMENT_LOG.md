@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1633 — マークスマン近接ポーズもドット保持で焼き直し【2026-07-12 13:02 JST】
+- **社長提供**: マークスマンの近接シート(aimeglio_3・構え=左/振り抜き=右)。
+- **ドット判定**: 62色・run長=4の倍数(×4拡大の本物ドット)を確認して着手。
+- **ベイク**: ÷4 NEAREST→2コマ分割→**歩きと同じ幅78キャンバス**(playerBaseScale同一=歩きと同サイズ)・**足元x重心=中央・足元下端**。構え=native scaleのしゃがみ(silhouetteが低く小さいのは正しい)/振り抜き=立ち身長がidleとほぼ同じ。旧の近接(標準化で拡大・にじみ)より歩きと整合。
+- **差し替え**: `player-magnum-melee-{ready,swing}.png`(78×63)。元シート退避 `art_src/originals/marksman/melee-sheet-dot.png`。**ASSET_VERSION 33→34**。
+- **残**: マークスマンの**走り(run)だけ旧のにじみ**。走りのドットシートが来れば完了。
+- 自己点検: 憲法非抵触(見た目のみ)。検証: **typecheck clean**。負荷0/10。実機で 近接時のサイズ/足元が歩きと繋がるか を社長確認。
+
 ## v0.25.1632 — マークスマン歩き/立ち絵をドット保持で焼き直し(試し)【2026-07-12 12:52 JST】
 - **経緯**: プレイヤー絵が全部「取り込み時のLANCZOS縮小」でにじんでいた件(v1631までの調査)。社長がマークスマンの**元ドットシート**(aimeglio_6・×4拡大・64色・透過)を再送。「試しにマークスマンでやってみて/立ち絵は2コマ目」。
 - **ドット判定(受領時・約束の履行)**: 64色・run長が全部4の倍数(4/8/12)=**1×で描いて×4拡大した本物のドット**と確認してから着手(※最初に来たsheet(117k色・1行988色)は"ドットでない"と焼く前に突っ込んで却下済み)。
