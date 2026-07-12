@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1643 — ヘビーガンナーの走り(6コマ)+近接をドット保持で焼き直し【2026-07-13 00:52 JST】
+- **社長提供**: ヘビーガンナー(=**player-shotgun**絵/warrior・青髪)の近接(aimeglio_2・2ポーズ)+走り(aimeglio_2・**6コマ**)。両方64/60色=ドット確認。取り違え確認: 青髪=既存`player-shotgun-idle`と同一人物。
+- **ベイク**: 近接=÷4 NEAREST・幅78・足元x重心中央(CH66)。走り=÷4・6コマ分割(前方=左→右)・頭top平滑(頭≤1px)・幅78(CH67)。
+- **走りの再生**: warrior=**6コマ前方ループ`[0,1,2,3,4,5]`**(既定)=シート順そのまま。コード変更なし。
+- **差し替え**: `player-shotgun-{melee-ready,melee-swing,run-0..5}.png`。元シート退避 `art_src/originals/heavy-gunner/{melee,run}-sheet-dot.png`。**ASSET_VERSION 40→41**。
+- **★走りの残差**: 絵のコマ2→3で背丈が4px変わるため、頭は≤1pxだが**足が1コマ3px浮く**(マークスマンと同型)。気になれば当該コマを絵側で背丈調整が根本。
+- **残**: ヘビーガンナーの歩き/立ちはまだ旧。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1642 — ストライカーの近接もドット保持=2クラス目完了【2026-07-13 00:40 JST】
 - **社長提供**: ストライカー近接シート(aimeglio_4・構え/振り抜き)。64色=ドット確認。
 - **ベイク**: ÷4 NEAREST→2コマ→幅78・足元x重心中央・足元下端(CH66)。構え=しゃがみ(43×48)/振り抜き=立ち(47×64)。立ち/歩き/走りと同スケール。
