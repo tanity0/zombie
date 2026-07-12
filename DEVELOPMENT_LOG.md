@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1646 — ヘビーガンナーの専用立ち絵を差し替え【2026-07-13 08:40 JST】
+- **社長提供**: ヘビーガンナーの専用立ち絵(単一直立ポーズ・aimeglio_9)。「こちらで」(aimeglio_11ではなく9を採用)。64色=ドット確認。
+- **ベイク**: ÷4 NEAREST→bbox→幅78・足元下端・中央(78×66)。v1644の暫定(歩き2コマ目)→専用の直立ポーズへ。
+- **差し替え**: `player-shotgun-idle.png`。元画像退避 `art_src/originals/heavy-gunner/idle-dot.png`。**ASSET_VERSION 43→44**。他は不変。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1645 — スカベンジャーの走り+歩き+立ちをドット保持で焼き直し【2026-07-13 02:34 JST】
 - **社長提供**: スカベンジャー(=player-striker絵/necromancer・茶髪男性)の走り(0007f8c0・5コマ)+歩き(4a0dfaea・5コマ)。62色=ドット確認。取り違え確認: 茶髪男性=既存`player-striker-idle`と同一人物(scavenger-idle=赤毛女性は別=ストライカー)。命名反転の罠を回避。
 - **ベイク**: 両方÷4 NEAREST→5コマ→頭top平滑→幅78。走りCH66/歩きCH63。**頭も足も各1px以内**(素直な絵)。立ち=暫定で歩き2コマ目(※scavengerも元は専用stop.pngありのクラス)。

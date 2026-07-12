@@ -78,4 +78,6 @@
 //      立ち=暫定で歩き2コマ目)。→ヘビーガンナーは歩き/立ち/走り/近接 全モーション完備(3クラス目)。残=スカベンジャー。
 // v43: スカベンジャー(=player-striker絵/necromancer・茶髪男性)の走り5コマ+歩き5コマ+立ち(player-striker-{run,walk}-0..4/idle)を
 //      ドット保持で焼き直し(÷4・幅78・頭も足も1px以内・立ち=暫定で歩き2コマ目)。走りは前方ループ(necromancer既定)。近接だけまだ旧。
-export const ASSET_VERSION = '43';
+// v44: ヘビーガンナーの専用立ち絵(player-shotgun-idle)を社長提供の単一ポーズ(aimeglio_9・直立)で差し替え(÷4・幅78・
+//      暫定の歩き2コマ目→専用立ち絵へ)。他は不変。
+export const ASSET_VERSION = '44';

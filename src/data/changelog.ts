@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1646',
+    items: [
+      'ヘビーガンナーの立ち絵を、暫定(歩き2コマ目)から専用の直立ポーズに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1645',
     items: [
       'スカベンジャーの走り・歩き・立ち絵もドット保持で焼き直し。残るはスカベンジャーの近接だけ(それが入れば全4クラス完了)。',
