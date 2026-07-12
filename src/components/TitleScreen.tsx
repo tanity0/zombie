@@ -54,16 +54,54 @@ const PANEL_STYLE: React.CSSProperties = {
 const ChronicleTimeline: React.FC = () => {
   const entries = useMemo(() => loadChronicle().slice().sort((a, b) => a.at - b.at), []);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [entered, setEntered] = useState(false);
+  // 登場演出(社長指示v0.25.1637): 上(過去)から下(最新)へスクロール位置を流し込む+フェードイン。
+  // イージングは easeOutQuart(強い減速=スクロールの「慣性」)。ユーザーが触ったら即中断して手動へ譲る。
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight; // 初期表示は最新(最下部)を見せる
+    if (!el) return;
+    const reveal = requestAnimationFrame(() => setEntered(true)); // フェードイン開始
+    const target = el.scrollHeight - el.clientHeight; // 最下部(最新)までの距離
+    let raf = 0;
+    let startTs: number | null = null;
+    let cancelled = false;
+    const stop = () => { cancelled = true; };
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 4); // 慣性(終端でぬるっと止まる)
+    const DURATION = 1600;
+    const tick = (ts: number) => {
+      if (cancelled) return;
+      if (startTs === null) startTs = ts;
+      const p = Math.min(1, (ts - startTs) / DURATION);
+      el.scrollTop = target * easeOut(p); // 上→下へ流し込む
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    if (target > 1) {
+      el.addEventListener('touchstart', stop, { passive: true });
+      el.addEventListener('wheel', stop, { passive: true });
+      el.addEventListener('pointerdown', stop, { passive: true });
+      raf = requestAnimationFrame(tick);
+    } else {
+      el.scrollTop = el.scrollHeight; // スクロール不要な短いリストは最新に置くだけ
+    }
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(reveal);
+      cancelAnimationFrame(raf);
+      el.removeEventListener('touchstart', stop);
+      el.removeEventListener('wheel', stop);
+      el.removeEventListener('pointerdown', stop);
+    };
   }, []);
   if (entries.length === 0) return null;
   const fade = 'linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)';
   return (
     <div
       className="absolute left-1/2 top-24 z-[35] flex w-[82%] max-w-[340px] -translate-x-1/2 flex-col"
-      style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 25%), 26%)' }}
+      style={{
+        bottom: 'max(calc(env(safe-area-inset-bottom) + 25%), 26%)',
+        opacity: entered ? 1 : 0,
+        transition: 'opacity 700ms ease-out', // 流し込みと同時にふわっと現れる(-translate-x-1/2は不変=transformは触らない)
+      }}
       onClick={(e) => e.stopPropagation()} // 年表を触って(スクロール等)もゲームを開始させない
     >
       <style>{`.chronicle-scroll::-webkit-scrollbar{display:none}`}</style>

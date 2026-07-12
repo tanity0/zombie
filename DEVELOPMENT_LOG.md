@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1637 — 歴史年表の登場を「上から流し込み+スクロール慣性」に【2026-07-12 23:06 JST】
+- **社長指示**「年表は上から流れ込んでくる登場にして/動きにはスクロールの様に慣性を持たせて」。
+- `TitleScreen.tsx` `ChronicleTimeline`: 表示時に**scrollTopを上(過去=0)→下(最新=最大)へアニメ**。イージング=**easeOutQuart**(1-(1-t)^4=強い減速=スクロールの「慣性」)。DURATION=1600ms。同時に**フェードイン**(opacity 0→1・700ms ease-out)。
+- **手動優先**: 流し込み中に `touchstart`/`wheel`/`pointerdown` が来たら即中断→ユーザーの手動スクロールへ譲る(overflow-y-autoは維持)。短くてスクロール不要なリストは最新へ置くだけ(慣性アニメは走らせない)。
+- **既存不変**: 文字色(白)/中央揃え/明朝/区切り線/z-[35](ローディング暗幕より前面)/`-translate-x-1/2`(transformは触らずopacityのみ)は不変。
+- 検証: **typecheck clean**。負荷 **1/10**(タイトル/ローディング表示時に1回のrAFアニメ・数百msで終了・毎フレーム常駐なし)。
+
 ## v0.25.1636 — マークスマン歩き/走り/立ちをコマ割り修正版で差し替え【2026-07-12 22:53 JST】
 - **経緯**: 走りの再生がおかしい件を調査→マークスマンは歩きも走りも既定で**ピンポン再生**[0,1,2,3,4,3,2,1]と判明。社長が**コマ割りを直した最終シート**(7fa37e7b=走り1600×272 / a38da3bf=歩き1400×264)を提供。
 - **社長決定**: **ループ(再生順)は元の設定=ピンポンのまま**でよい → `playerRunSequence`/`playerWalkSequence` は**不変**(コード変更なし)。絵だけ差し替え。
