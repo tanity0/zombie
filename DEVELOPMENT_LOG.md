@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1645 — スカベンジャーの走り+歩き+立ちをドット保持で焼き直し【2026-07-13 02:34 JST】
+- **社長提供**: スカベンジャー(=player-striker絵/necromancer・茶髪男性)の走り(0007f8c0・5コマ)+歩き(4a0dfaea・5コマ)。62色=ドット確認。取り違え確認: 茶髪男性=既存`player-striker-idle`と同一人物(scavenger-idle=赤毛女性は別=ストライカー)。命名反転の罠を回避。
+- **ベイク**: 両方÷4 NEAREST→5コマ→頭top平滑→幅78。走りCH66/歩きCH63。**頭も足も各1px以内**(素直な絵)。立ち=暫定で歩き2コマ目(※scavengerも元は専用stop.pngありのクラス)。
+- **再生**: 走り=前方ループ(necromancer既定)。歩き=現状ピンポン。
+- **差し替え**: `player-striker-{run-0..4,walk-0..4,idle}.png`。元シート退避 `art_src/originals/scavenger/{run,walk}-sheet-dot.png`。**ASSET_VERSION 42→43**。
+- **残**: スカベンジャーの**近接(melee)だけまだ旧**。これが入れば全4クラス完了。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1644 — ヘビーガンナーの歩き/立ち絵もドット保持=3クラス目完了【2026-07-13 02:16 JST】
 - **社長提供**: ヘビーガンナー(=player-shotgun絵)歩きシート(1040×264・aimeglio_10)。64色=ドット確認。
 - **ベイク**: ÷4 NEAREST→5コマ分割→頭top平滑→幅78・CH65。**頭も足も各1px以内**。

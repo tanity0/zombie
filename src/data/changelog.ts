@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1645',
+    items: [
+      'スカベンジャーの走り・歩き・立ち絵もドット保持で焼き直し。残るはスカベンジャーの近接だけ(それが入れば全4クラス完了)。',
+    ],
+  },
+  {
     version: '0.25.1644',
     items: [
       'ヘビーガンナーの歩き・立ち絵もドット保持で焼き直し。これでヘビーガンナーも全モーションがドットに(3クラス目)。残るはスカベンジャーのみ。',

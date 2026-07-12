@@ -76,4 +76,6 @@
 //      ドット保持で焼き直し(÷4 NEAREST・幅78・走りは頭top平滑=頭≤1px)。走りは6コマ前方ループ(warrior既定)。歩き/立ちはまだ旧。
 // v42: ヘビーガンナーの歩き5コマ+立ち絵(player-shotgun-walk-0..4/idle)もドット保持で焼き直し(÷4・幅78・頭も足も1px以内・
 //      立ち=暫定で歩き2コマ目)。→ヘビーガンナーは歩き/立ち/走り/近接 全モーション完備(3クラス目)。残=スカベンジャー。
-export const ASSET_VERSION = '42';
+// v43: スカベンジャー(=player-striker絵/necromancer・茶髪男性)の走り5コマ+歩き5コマ+立ち(player-striker-{run,walk}-0..4/idle)を
+//      ドット保持で焼き直し(÷4・幅78・頭も足も1px以内・立ち=暫定で歩き2コマ目)。走りは前方ループ(necromancer既定)。近接だけまだ旧。
+export const ASSET_VERSION = '43';
