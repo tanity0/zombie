@@ -62,7 +62,7 @@ const ChronicleTimeline: React.FC = () => {
   const fade = 'linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)';
   return (
     <div
-      className="absolute left-1/2 top-24 flex w-[82%] max-w-[340px] -translate-x-1/2 flex-col"
+      className="absolute left-1/2 top-24 z-[35] flex w-[82%] max-w-[340px] -translate-x-1/2 flex-col"
       style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 25%), 26%)' }}
       onClick={(e) => e.stopPropagation()} // 年表を触って(スクロール等)もゲームを開始させない
     >
@@ -178,8 +178,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </span>
       )}
 
-      {/* 歴史年表(縦の時系列・各個人の軌跡)。タイトル画面でのみ表示(社長決定v0.25.1628)。 */}
-      {phase === 'title' && <ChronicleTimeline />}
+      {/* 歴史年表(縦の時系列・各個人の軌跡)。タイトル+ローディング画面で表示(社長指示v0.25.1635)。
+          z-[35]でローディングの暗幕(z-30・黒55%)より前面=白が沈まない。 */}
+      {(phase === 'title' || phase === 'loading') && <ChronicleTimeline />}
 
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
       {heartbeatLine && (

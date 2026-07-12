@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1635',
+    items: [
+      '歴史年表をローディング画面でも表示するように(文字は白のまま、暗転の暗幕より前面で見えます)。',
+    ],
+  },
+  {
     version: '0.25.1634',
     items: [
       'マークスマンの走りもドット保持で焼き直し。これでマークスマンは歩き・立ち・近接・走りの全モーションがくっきりドットに。',

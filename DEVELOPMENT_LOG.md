@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1635 — 歴史年表をローディング画面でも表示【2026-07-12 22:48 JST】
+- **社長指示**「履歴をローディング画面でも表示しておいて。白を保ったまま」。
+- `TitleScreen.tsx`: `ChronicleTimeline` の表示条件を `phase === 'title'` → **`phase === 'title' || phase === 'loading'`** に拡張。
+- **白を保つ**: ローディングの暗幕(`z-30`・黒55%)で白文字が沈まないよう、年表ルートに **`z-[35]`** を付与(暗幕より前面・blackout `z-40` より後面)。文字色(白)・レイアウト・中央揃え・明朝は不変。年表下端(26%)はローディングのスピナー(18%)より上=非重複。
+- 検証: **typecheck clean**。負荷 変化なし(タイトル時と同じlocalStorage1回読み・store非購読)。
+
 ## v0.25.1634 — マークスマン走りもドット保持=全モーション完備【2026-07-12 13:10 JST】
 - **社長提供**: マークスマンの走りシート(aimeglio_5・5コマ)。63色・run=4の倍数=本物ドット確認。
 - **ベイク**: ÷4 NEAREST→5コマ分割→**歩きと同一の78×66・足元下端・bbox中央**(=歩き/近接と同スケール同足元)。走りは前傾で横広(native最大74幅)だが78に収まる(クリップ無し)。
