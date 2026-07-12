@@ -976,13 +976,13 @@ export const isSeekerActive = (player: Player, gameTime: number): boolean => pla
 
 // 救難信号(rescue-signal): 発動率は skillLevel + rescueSignalProcChance(src/utils/rescueSignal.ts)。
 // ここは演出(飛来アライ)のタイミング/距離/ズーム量の定数のみ(いずれも叩き台・要調整)。
-// フェーズ(社長指示v0.25.1614): 飛来ジャンプ(FLYIN)→登場一拍(ARRIVE_HOLD)→着弾&近接モーション
-//   (ATTACK)→モーション後の一拍(POST_HOLD)→少ししゃがみ込む(CROUCH・バックジャンプの溜め)→
-//   バックジャンプ離脱(FLYOUT)→消滅。着地は「敵より前面(手前)」に取る(描画はpixiScene側)。
+// フェーズ(社長指示v0.25.1614 / v0.25.1629): 飛来ジャンプ(FLYIN)→着地しゃがみ(ARRIVE_HOLD=構え/-ready)→
+//   着弾&切り付け(ATTACK=振り抜き/-swing)→モーション後の一拍(POST_HOLD)→少ししゃがみ込む(CROUCH・
+//   バックジャンプの溜め)→バックジャンプ離脱(FLYOUT)→消滅。着地は「敵より前面(手前)」に取る(描画はpixiScene側)。
 //   ダメージは FLYIN+ARRIVE_HOLD の頭(=着弾)で1回だけ適用(tickRescueAllies)。
 export const RESCUE_ALLY_FLYIN_MS = 300;   // 背後→対象前面への飛来(放物線ジャンプ・慣性つき)。叩き台
-export const RESCUE_ALLY_ARRIVE_HOLD_MS = 300; // 着地してから攻撃までの一拍(登場を見せる静止・叩き台)
-export const RESCUE_ALLY_ATTACK_MS = 280;  // 着弾=近接モーションが流れる間、敵前面で静止(≒PLAYER_MELEE_SWING_MS)
+export const RESCUE_ALLY_ARRIVE_HOLD_MS = 300; // 着地してしゃがむ(構え=-ready)一拍。切り付け前の「着地でしゃがみ絵」。叩き台
+export const RESCUE_ALLY_ATTACK_MS = 280;  // 着弾=切り付け(振り抜き=-swing)が流れる間、敵前面で静止(≒PLAYER_MELEE_SWING_MS)
 export const RESCUE_ALLY_POST_HOLD_MS = 200; // 近接モーションが終わってからの一拍(社長指示・叩き台)
 export const RESCUE_ALLY_CROUCH_MS = 200;  // 少ししゃがみ込む(バックジャンプの溜め・後日しゃがみ絵に差し替え予定)
 export const RESCUE_ALLY_FLYOUT_MS = 220;  // バックジャンプで背後へ離脱する時間

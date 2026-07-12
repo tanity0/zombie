@@ -4836,6 +4836,21 @@ export class PixiScene {
       const swingEnd = strikeAt + RESCUE_ALLY_ATTACK_MS;         // 近接モーション終わり
       const crouchStart = swingEnd + RESCUE_ALLY_POST_HOLD_MS;   // モーション後の一拍の終わり=しゃがみ始め
       const backjumpStart = crouchStart + RESCUE_ALLY_CROUCH_MS; // しゃがみ終わり=バックジャンプ開始
+
+      // ボディ絵の差し替え(社長指示v0.25.1629「ジャンプ着地でしゃがみ絵→切り付けのモーション徹底」):
+      // 救援アライもプレイヤー本体と同じクラス別近接ポーズを使う。着地の一拍(ARRIVE_HOLD)=構え(=しゃがみ・
+      // -ready)、着弾の近接モーション(ATTACK)=振り抜き(=切り付け・-swing)。素材は待機絵と同じ幅86pxで
+      // 焼いてあるので playerBaseScale(幅基準)は不変=足位置/スケールは崩れない。ポーズを持たないクラスは
+      // 従来どおり待機絵にフォールバック(?? tex)。
+      let bodyTex = tex;
+      const meleePosePrefix = MELEE_POSE_PREFIX[a.klass];
+      if (meleePosePrefix) {
+        if (elapsed >= RESCUE_ALLY_FLYIN_MS && elapsed < strikeAt) {
+          bodyTex = getTexture(`${meleePosePrefix}-ready`) ?? tex; // 着地=しゃがみ(構え)
+        } else if (elapsed >= strikeAt && elapsed < swingEnd) {
+          bodyTex = getTexture(`${meleePosePrefix}-swing`) ?? tex; // 切り付け(振り抜き)
+        }
+      }
       let footX: number, footY: number, hop = 0, alpha = 1, jumpStretch = 1;
       let crouchSqX = 1, crouchSqY = 1;
       if (elapsed < RESCUE_ALLY_FLYIN_MS) {
@@ -4887,11 +4902,11 @@ export class PixiScene {
 
       const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
-      const baseScale = playerBaseScale(fakeAlly, tex, boxW, boxH);
+      const baseScale = playerBaseScale(fakeAlly, bodyTex, boxW, boxH);
       const sc = baseScale * dsc;
       const bx = this.snapToScreenPixel(footX, this.L.world.position.x) + offX;
       const by = this.snapToScreenPixel(footY - hop, this.L.world.position.y) + offY;
-      body.texture = tex;
+      body.texture = bodyTex;
       body.scale.set((facingLeft ? -sc : sc) * sqX, sc * jumpStretch * sqY);
       body.rotation = lean;
       body.position.set(bx, by);
