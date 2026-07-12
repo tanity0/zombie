@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1642',
+    items: [
+      'ストライカーの近接ポーズもドット保持で焼き直し。これでストライカーは歩き・立ち・走り・近接の全モーションがくっきりドットに(2クラス目完了)。',
+    ],
+  },
+  {
     version: '0.25.1641',
     items: [
       'ストライカーの歩き・立ち絵もドット保持で焼き直し(上下バタつきも1px以内)。ストライカーの近接はまだ旧。',

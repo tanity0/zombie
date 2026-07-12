@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1642 — ストライカーの近接もドット保持=2クラス目完了【2026-07-13 00:40 JST】
+- **社長提供**: ストライカー近接シート(aimeglio_4・構え/振り抜き)。64色=ドット確認。
+- **ベイク**: ÷4 NEAREST→2コマ→幅78・足元x重心中央・足元下端(CH66)。構え=しゃがみ(43×48)/振り抜き=立ち(47×64)。立ち/歩き/走りと同スケール。
+- **差し替え**: `player-scavenger-melee-{ready,swing}.png`(78×66)。元シート退避 `art_src/originals/striker/melee-sheet-dot.png`。**ASSET_VERSION 39→40**。
+- **完了**: ストライカーは**歩き/立ち/走り/近接 全モーションがドット**(マークスマンに続き2クラス目)。残=ヘビーガンナー(player-shotgun)/スカベンジャー(player-striker)。
+- **未決(持ち越し)**: ストライカーの歩きの再生順(ピンポン/前方)は社長確認待ち(v1641のGIF)。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1641 — ストライカーの歩き/立ち絵もドット保持で焼き直し【2026-07-13 00:34 JST】
 - **社長提供**: ストライカー(=player-scavenger絵)の歩きシート(1060×264・aimeglio_8)。64色・run=4の倍数=ドット確認。
 - **ベイク**: ÷4 NEAREST→5コマ分割→頭top平滑(隣接1px以内)→幅78・CH64。**頭も足も各1px以内**。立ち=2コマ目(frame1)=README準拠。走りと同スケール(幅78)。

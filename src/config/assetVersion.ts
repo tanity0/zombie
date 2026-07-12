@@ -70,4 +70,6 @@
 //      NEAREST・幅78・頭top平滑=頭も足も各1px以内)。走りは前方ループ(rogue既定)。歩き/立ち/近接はまだ旧。
 // v39: ストライカーの歩き5コマ+立ち絵(player-scavenger-walk-0..4/idle)もドット保持+平滑で焼き直し(幅78・CH64・
 //      頭も足も1px以内・立ち=2コマ目)。歩きの再生順は現状ピンポンのまま(要確認)。近接はまだ旧。
-export const ASSET_VERSION = '39';
+// v40: ストライカーの近接ポーズ(player-scavenger-melee-ready/swing)もドット保持で焼き直し(aimeglio_4・÷4 NEAREST・
+//      幅78・足元x重心中央)。構え=しゃがみ/振り抜き=立ち。→ストライカーは歩き/立ち/走り/近接 全モーション完備。
+export const ASSET_VERSION = '40';
