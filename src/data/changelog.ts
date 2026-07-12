@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1640',
+    items: [
+      'ストライカーの走りをドット保持で焼き直し(上下バタつきも1px以内に平滑・前方ループ)。ストライカーの歩き/立ち/近接はまだ旧のまま。',
+    ],
+  },
+  {
     version: '0.25.1639',
     items: [
       'マークスマンの走りを前方ループに変更(ピンポン=折り返し再生をやめた)。歩きは従来どおり。',

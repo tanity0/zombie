@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1640 — ストライカーの走りをドット保持+バタつき平滑で焼き直し【2026-07-13 00:00 JST】
+- **社長提供**: ストライカー(=**player-scavenger**絵/rogue・赤毛女性)の走りシート(1140×264)。60色・run=4の倍数=ドット確認。
+- **取り違え確認**: 赤毛キャラ=既存`player-scavenger-idle`と同一人物(`player-striker-idle`=別の男性キャラ)。命名反転の罠を回避してOK。
+- **ベイク**: ÷4 NEAREST→5コマ分割(前方=左→右)→頭top平滑(隣接1px以内)→幅78・CH64。**頭も足も各1px以内**(この絵は背丈差2pxと小さいため両立)。
+- **再生**: ストライカー(rogue)は走り=前方ループ`[0,1,2,3,4]`(既定)=シート順そのまま。コード変更なし。
+- **差し替え**: `player-scavenger-run-0..4.png`(78×64)。元シート退避 `art_src/originals/striker/run-sheet-dot.png`。**ASSET_VERSION 37→38**。
+- **残**: ストライカーの歩き/立ち/近接はまだ旧のにじみ(素材待ち)。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1639 — マークスマンの走りをピンポン→前方ループに【2026-07-12 23:49 JST】
 - **社長指示**「マークスマンの走りピンポンやめる」(v1636の「ループは元のまま」から翻意)。
 - `pixiScene.ts` `playerRunSequence`: mageのフォールバック `playerWalkSequence(p)`(=8段ping-pong `[0,1,2,3,4,3,2,1]`)→ **`[0,1,2,3,4]`前方ループ**に変更。warrior=6コマ[0..5]は不変。**歩き(playerWalkSequence)はピンポンのまま不変**=走りだけ前方ループ。
