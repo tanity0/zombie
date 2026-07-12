@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1639',
+    items: [
+      'マークスマンの走りを前方ループに変更(ピンポン=折り返し再生をやめた)。歩きは従来どおり。',
+    ],
+  },
+  {
     version: '0.25.1638',
     items: [
       'マークスマンの走りの上下バタつきを平滑化(コマ間の頭の上下を1px以内に)。歩きは元から気にならない範囲なので据え置き。',

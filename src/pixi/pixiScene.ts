@@ -484,8 +484,8 @@ const PINGPONG_WALK_CYCLE_MS = 900;
 const playerWalkCycleMs = (p: Player): number =>
   usesFiveFramePingPong(p) ? PINGPONG_WALK_CYCLE_MS : PLAYER_WALK_CYCLE_MS;
 // 走りモーション(社長提供・移動レバーを目一杯倒した時だけ): マークスマン(magnum-run)+
-// ストライカー(scavenger-run・v0.25.1576)。マークスマンは歩きと同じ8段ping-pongの並びを流用、
-// ストライカーは前方ループ[0..4](社長指示「この人はピンポンしない」)。周期は歩きより速める(走り=急ぐ動き)。
+// ストライカー(scavenger-run・v0.25.1576)。両者とも前方ループ[0..4](マークスマンはv0.25.1639で
+// ピンポン→前方ループに変更)。周期は歩きより速める(走り=急ぐ動き)。
 // `?playerrun=0`で無効化(常に歩きモーション)。`?runthreshold=`でしきい値を調整可(実機調整前提)。
 const PLAYER_RUN_ENABLED = tsBool('playerrun', true);
 const PLAYER_RUN_CYCLE_MS = tsNum('runcyclems', 560);
@@ -494,12 +494,11 @@ const usesRunAnimation = (p: Player): boolean =>
   PLAYER_RUN_ENABLED && (p.characterClass === 'mage' || p.characterClass === 'rogue' || p.characterClass === 'warrior' || p.characterClass === 'necromancer');
 // 走りのコマ並び: ストライカー(rogue)=5コマ前方ループ・ヘビーガンナー(warrior)=6コマ前方ループ・
 // スカベンジャー(necromancer=striker接頭辞)=5コマ前方ループ(いずれも折り返さない=社長指示)。
-// マークスマン=歩きと同じ8段ping-pong(既存挙動不変)。
+// マークスマン(mage)=5コマ前方ループ(社長指示v0.25.1639「走りピンポンやめる」。旧=歩きと同じ8段ping-pong)。
+// ※歩きのコマ並び(playerWalkSequence)は不変=ピンポンのまま。走りだけ前方ループにする。
 const playerRunSequence = (p: Player): number[] =>
-  p.characterClass === 'rogue' ? [0, 1, 2, 3, 4]
-  : p.characterClass === 'warrior' ? [0, 1, 2, 3, 4, 5]
-  : p.characterClass === 'necromancer' ? [0, 1, 2, 3, 4]
-  : playerWalkSequence(p);
+  p.characterClass === 'warrior' ? [0, 1, 2, 3, 4, 5]
+  : [0, 1, 2, 3, 4];
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
   const runAnim = running && usesRunAnimation(p);

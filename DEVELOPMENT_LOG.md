@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1639 — マークスマンの走りをピンポン→前方ループに【2026-07-12 23:49 JST】
+- **社長指示**「マークスマンの走りピンポンやめる」(v1636の「ループは元のまま」から翻意)。
+- `pixiScene.ts` `playerRunSequence`: mageのフォールバック `playerWalkSequence(p)`(=8段ping-pong `[0,1,2,3,4,3,2,1]`)→ **`[0,1,2,3,4]`前方ループ**に変更。warrior=6コマ[0..5]は不変。**歩き(playerWalkSequence)はピンポンのまま不変**=走りだけ前方ループ。
+- コマ周期は不変(`PLAYER_RUN_CYCLE_MS=560`)=5コマ前方ループで112ms/コマ(rogue/necromancerと同じ)。
+- 素材は不変=ASSET_VERSIONは据え置き(37)。他クラスの走り(rogue/necromancer前方・warrior 6コマ)にも影響なし。
+- 検証: **typecheck clean**。実機で走りが折り返さず一方向ループになったか社長確認。
+
 ## v0.25.1638 — マークスマン走りの上下バタつきを平滑化【2026-07-12 23:33 JST】
 - **社長指示**「歩きと走りの上下のバタつきが気になるので1pxの範囲内に調整」→追補「前後と比べて1pxは動いていい」。
 - **診断(実測)**: 歩き=頭の上下が各1px以内(=据え置きOK)。走り=**絵そのものにコマ3が3px低い外れ値**があり、足固定で焼くと頭が3px跳ねていた(足の振れは0px)。コードbob=0.8px(既に1px内)/スカッシュ±5%は不介入(全クラス共通のため)。
