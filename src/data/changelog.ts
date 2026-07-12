@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1632',
+    items: [
+      'マークスマンの歩き・立ち絵を「ドット保持」で焼き直し(にじみ解消・くっきり)。取り込み時のLANCZOS縮小をやめ、元ドットを復元して差し替え。走り/近接ポーズはまだ旧(ドット素材が届き次第、同じ方式で焼き直します)。',
+    ],
+  },
+  {
     version: '0.25.1631',
     items: [
       '歴史年表の文字色を白に。',
