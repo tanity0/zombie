@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1641 — ストライカーの歩き/立ち絵もドット保持で焼き直し【2026-07-13 00:34 JST】
+- **社長提供**: ストライカー(=player-scavenger絵)の歩きシート(1060×264・aimeglio_8)。64色・run=4の倍数=ドット確認。
+- **ベイク**: ÷4 NEAREST→5コマ分割→頭top平滑(隣接1px以内)→幅78・CH64。**頭も足も各1px以内**。立ち=2コマ目(frame1)=README準拠。走りと同スケール(幅78)。
+- **差し替え**: `player-scavenger-{walk-0..4,idle}.png`(78×64)。元シート退避 `art_src/originals/striker/walk-sheet-dot.png`。**ASSET_VERSION 38→39**。
+- **歩きの再生順=現状ピンポンのまま**(マークスマン歩きと同流儀)。※走り絵が前方サイクルだったのと同様、歩き絵も前方サイクルなら折り返しが不自然な可能性→社長にGIF(ピンポン/前方)で確認中。
+- **残**: ストライカーの近接(melee)はまだ旧。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1640 — ストライカーの走りをドット保持+バタつき平滑で焼き直し【2026-07-13 00:00 JST】
 - **社長提供**: ストライカー(=**player-scavenger**絵/rogue・赤毛女性)の走りシート(1140×264)。60色・run=4の倍数=ドット確認。
 - **取り違え確認**: 赤毛キャラ=既存`player-scavenger-idle`と同一人物(`player-striker-idle`=別の男性キャラ)。命名反転の罠を回避してOK。
