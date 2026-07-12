@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1644 — ヘビーガンナーの歩き/立ち絵もドット保持=3クラス目完了【2026-07-13 02:16 JST】
+- **社長提供**: ヘビーガンナー(=player-shotgun絵)歩きシート(1040×264・aimeglio_10)。64色=ドット確認。
+- **ベイク**: ÷4 NEAREST→5コマ分割→頭top平滑→幅78・CH65。**頭も足も各1px以内**。
+- **★立ち絵**: 暫定で歩き2コマ目(frame1)。※HGは元々専用idle.pngがあったクラス(README)=専用立ち絵が来れば差し替え可(社長に確認済み)。
+- **差し替え**: `player-shotgun-{walk-0..4,idle}.png`(78×65)。元シート退避 `art_src/originals/heavy-gunner/walk-sheet-dot.png`。**ASSET_VERSION 41→42**。
+- **完了**: ヘビーガンナーは**歩き/立ち/走り/近接 全モーションがドット**(3クラス目)。残=スカベンジャー(player-striker)。
+- **未決(持ち越し)**: 歩きの再生順(ピンポン/前方)は全クラス共通で社長確認待ち(v1641 GIF)。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1643 — ヘビーガンナーの走り(6コマ)+近接をドット保持で焼き直し【2026-07-13 00:52 JST】
 - **社長提供**: ヘビーガンナー(=**player-shotgun**絵/warrior・青髪)の近接(aimeglio_2・2ポーズ)+走り(aimeglio_2・**6コマ**)。両方64/60色=ドット確認。取り違え確認: 青髪=既存`player-shotgun-idle`と同一人物。
 - **ベイク**: 近接=÷4 NEAREST・幅78・足元x重心中央(CH66)。走り=÷4・6コマ分割(前方=左→右)・頭top平滑(頭≤1px)・幅78(CH67)。

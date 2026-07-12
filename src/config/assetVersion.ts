@@ -74,4 +74,6 @@
 //      幅78・足元x重心中央)。構え=しゃがみ/振り抜き=立ち。→ストライカーは歩き/立ち/走り/近接 全モーション完備。
 // v41: ヘビーガンナー(=player-shotgun絵/warrior・青髪)の走り6コマ(player-shotgun-run-0..5)+近接(melee-ready/swing)を
 //      ドット保持で焼き直し(÷4 NEAREST・幅78・走りは頭top平滑=頭≤1px)。走りは6コマ前方ループ(warrior既定)。歩き/立ちはまだ旧。
-export const ASSET_VERSION = '41';
+// v42: ヘビーガンナーの歩き5コマ+立ち絵(player-shotgun-walk-0..4/idle)もドット保持で焼き直し(÷4・幅78・頭も足も1px以内・
+//      立ち=暫定で歩き2コマ目)。→ヘビーガンナーは歩き/立ち/走り/近接 全モーション完備(3クラス目)。残=スカベンジャー。
+export const ASSET_VERSION = '42';
