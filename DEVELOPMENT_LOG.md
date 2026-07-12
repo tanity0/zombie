@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1634 — マークスマン走りもドット保持=全モーション完備【2026-07-12 13:10 JST】
+- **社長提供**: マークスマンの走りシート(aimeglio_5・5コマ)。63色・run=4の倍数=本物ドット確認。
+- **ベイク**: ÷4 NEAREST→5コマ分割→**歩きと同一の78×66・足元下端・bbox中央**(=歩き/近接と同スケール同足元)。走りは前傾で横広(native最大74幅)だが78に収まる(クリップ無し)。
+- **差し替え**: `player-magnum-run-0..4.png`(78×66)。元シート退避 `art_src/originals/marksman/run-sheet-dot.png`。**ASSET_VERSION 34→35**。
+- **完了**: マークスマンは**歩き/立ち/近接/走りの全モーションがドット**で揃った(このクラスのにじみ一掃)。他3クラス(スカベンジャー/ヘビーガンナー/ストライカー)は未対応=素材が届けば同方式。
+- 検証: **typecheck clean**。負荷0/10。実機で 走りがくっきり&歩きと同サイズか を社長確認。
+
 ## v0.25.1633 — マークスマン近接ポーズもドット保持で焼き直し【2026-07-12 13:02 JST】
 - **社長提供**: マークスマンの近接シート(aimeglio_3・構え=左/振り抜き=右)。
 - **ドット判定**: 62色・run長=4の倍数(×4拡大の本物ドット)を確認して着手。

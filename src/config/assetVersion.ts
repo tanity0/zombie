@@ -59,4 +59,6 @@
 //      中央配置。LANCZOS縮小を廃止=にじみ解消)。立ち絵=2コマ目(frame1)。走り/近接ポーズは旧(次ステップ)。
 // v34: マークスマンの近接ポーズ(player-magnum-melee-ready/swing)もドット保持で焼き直し(aimeglio_3・÷4 NEAREST)。
 //      歩きと同じ幅78キャンバス(playerBaseScale同一=同サイズ)・足元揃え。構え=native scaleのしゃがみ(低い)。走りはまだ旧。
-export const ASSET_VERSION = '34';
+// v35: マークスマンの走り5コマ(player-magnum-run-0..4)もドット保持で焼き直し(aimeglio_5・÷4 NEAREST・78×66)。
+//      →マークスマンは歩き/立ち/近接/走り 全モーションがドットで完備。他3クラスは未対応。
+export const ASSET_VERSION = '35';

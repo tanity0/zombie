@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1634',
+    items: [
+      'マークスマンの走りもドット保持で焼き直し。これでマークスマンは歩き・立ち・近接・走りの全モーションがくっきりドットに。',
+    ],
+  },
+  {
     version: '0.25.1633',
     items: [
       'マークスマンの近接ポーズ(構え/振り抜き)もドット保持で焼き直し。これでマークスマンは歩き・立ち・近接がくっきりドットに(残るは走りのみ)。',
