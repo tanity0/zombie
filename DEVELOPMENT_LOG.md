@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1636 — マークスマン歩き/走り/立ちをコマ割り修正版で差し替え【2026-07-12 22:53 JST】
+- **経緯**: 走りの再生がおかしい件を調査→マークスマンは歩きも走りも既定で**ピンポン再生**[0,1,2,3,4,3,2,1]と判明。社長が**コマ割りを直した最終シート**(7fa37e7b=走り1600×272 / a38da3bf=歩き1400×264)を提供。
+- **社長決定**: **ループ(再生順)は元の設定=ピンポンのまま**でよい → `playerRunSequence`/`playerWalkSequence` は**不変**(コード変更なし)。絵だけ差し替え。
+- **ベイク**: 両シートとも 62/64色・run=4の倍数=ドット確認 → ÷4 NEAREST・幅78・足元下端・bbox中央。走りは最長67pxのため **CH=69**(歩きはCH66)。幅78共通=playerBaseScale同一=同スケール。立ち=歩き2コマ目(frame1)。
+- **差し替え**: `player-magnum-{walk-0..4,run-0..4,idle}.png`。元シート退避 `art_src/originals/marksman/{run,walk}-sheet-dot.png` を最終版で上書き。**ASSET_VERSION 35→36**。
+- **判定/名前の注記**: 2枚とも upload時にファイル名の区別部分(日本語?)が `__` に置換され両方 `marks__.png` で到着→**ポーズ+幅で A=走り(1600)/B=歩き(1400)** と判定して割り当て。
+- 検証: **typecheck clean**。負荷0/10。実機で 歩き/走りのコマ割りが直ったか(ピンポンでも自然か)を社長確認。他3クラスは未対応(素材待ち)。
+
 ## v0.25.1635 — 歴史年表をローディング画面でも表示【2026-07-12 22:48 JST】
 - **社長指示**「履歴をローディング画面でも表示しておいて。白を保ったまま」。
 - `TitleScreen.tsx`: `ChronicleTimeline` の表示条件を `phase === 'title'` → **`phase === 'title' || phase === 'loading'`** に拡張。

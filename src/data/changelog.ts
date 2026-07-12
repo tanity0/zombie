@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1636',
+    items: [
+      'マークスマンの歩き・走り・立ち絵を、コマ割りを直した最終ドットシートで差し替え(再生の折り返し=ループは従来どおり)。',
+    ],
+  },
+  {
     version: '0.25.1635',
     items: [
       '歴史年表をローディング画面でも表示するように(文字は白のまま、暗転の暗幕より前面で見えます)。',
