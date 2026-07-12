@@ -141,7 +141,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, type GateMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, type GateMeta } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
 import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
@@ -2226,6 +2226,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               } else if (newGameTime >= rn.endAt) {
                 // 20秒経過 → 終了
                 rnGs.endRedNight();
+                // 歴史年表: 拠点に入らず(=skipせず)紅き夜を最後まで凌いだら即載せ(社長決定v0.25.1628)。
+                // skipRedNight(拠点でやり過ごし)側では記録しない=「越えた」のは生存タイムアウトのみ。
+                recordChronicle(getSelectedStageId(), 'redNight', 'redNight', '紅き夜を越えた');
                 useGameStore.setState({
                   eventBannerText: '紅き夜が明けた',
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
@@ -2575,6 +2578,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 再判定=追補6は対象外)。
               if (activeGateRef.current === null) {
                 useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
+                // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。
+                // 浅い側へ戻る移動(zoneIdx<prevZone)は「到達」ではないので記録しない。
+                if (zoneIdx > prevZone) {
+                  recordChronicle(getSelectedStageId(), 'zone', String(zoneIdx), `${AREA_ZONE_NAMES[zoneIdx]}に到達`);
+                }
                 // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
                 // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
                 // 仕様変更(v0.25.1523): 1プレイ(1ラン)中1エリア1回まで(往復で同じ区域に再度届いても鳴らさない)。

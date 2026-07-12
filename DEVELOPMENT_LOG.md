@@ -12,6 +12,19 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1628 — 歴史年表(chronicle)をタイトル画面に追加【2026-07-12 10:19 JST】
+- **社長決定**: タイトル画面に永続の「歴史年表」を新設。各ステージの要所マイルストーンを**初回のみ**時系列で記録し、縦にずらっと表示(各個人の軌跡)。上=過去/下=最新、指で上へスクロールして遡れる、スクロールバー無し。
+- **コミット方式(社長決定)**: 個別マイルストーンは全て**A=達成の瞬間に即載せ**(死亡/帰還/タスクキルに依らず永続)。ステージクリアは年表対象外(社長リストに無し)。拠点解放も社長裁定でA(即載せ)=拠点は永続前例が無いため年表用に新規配線。紅き夜は「拠点に入らず生存タイムアウト(=`endRedNight`)」のみ記録、`skipRedNight`(拠点でやり過ごし)は記録しない。
+- **記録種別(8種)**: zone(区域到達)/rank(ランク到達)/boss(各種ボス討伐=ミーミル/ヨルムンガルド/スカジ/トール/ミゲル/giantbat)/base(拠点解放・4箇所)/hunter(ハンター討伐)/reaper(死神討伐)/redNight(紅き夜を越えた)/cave(洞窟発見=**型のみ予約・未配線**。将来ステージに洞窟を置いた時用)。
+- **新規データ層**(`src/data/progress.ts`): `zombie.progress.chronicle` に配列で保存。`recordChronicle(stageId,kind,detail,phrase)` が dedup(`${stageId}::${kind}::${detail}`)して初回のみ push。`loadChronicle()`/`stageChronicleLabel()`(main=「ステージN」/ex・free=地名)。`resetProgress` でも消去。
+- **フック配線(6箇所・全て即載せ)**: ①区域=`useGameLoop.ts` 区域バナー隣(深い側へ初到達時) ②ランク=`directorTick.ts` `isFirstRankReach`ブロック ③各種ボス/ハンター=`gameStore.ts` `triggerDramaticDeath`(近接/銃 両キル経路の合流点。宿敵isNamedのみはボス扱いにしない) ④死神=`gameStore.ts` 死神撃破(スキル付与と同所) ⑤拠点=`gameStore.ts` `capturedThisFrame`(捕獲累計を`(n/4)`でラベル) ⑥紅き夜=`useGameLoop.ts` `endRedNight()`直後。
+- **表示**(`TitleScreen.tsx`): `ChronicleTimeline` を新設(phase==='title'のみ)。localStorageを表示時に1回読むだけ=**store購読なし=毎フレーム再描画しない**(heartbeat/wallBadgeと同方針=React再描画規律順守)。左側の縦パネル、最下部へ自動スクロール、上下端マスクフェード、`::-webkit-scrollbar`非表示+`scrollbarWidth:none`。年表内タップは`stopPropagation`でゲーム開始を抑止。
+- **命名**: 紅き夜は社長「そこはよろしく」に従い、イベント中バナー「紅き夜が明けた」と揃えて年表も**「紅き夜を越えた」**(内部名=紅き夜)。※リザルト画面(`DirectorResult`)だけ表示名が「紅き月」で不一致が残る=統一するか社長判断。
+- **テスト**: `src/data/progress.test.ts` 新設(初回のみ記録=dedup / detail・kind・stage違いの共存 / ラベル前置 / stageId空ガード / stageChronicleLabel)。5件パス。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(記録の読み書きのみ。ゲーム挙動・湧き・閾値は不変)。
+- 負荷 **1/10**(記録=イベント発火時のみlocalStorage1回・毎フレームではない/表示=タイトル時のみ読み1回・store非購読・CSSマスクは静的)。
+- 検証: **typecheck clean** / 年表ユニット5件パス。実機で ①各要所達成→タイトルに載るか ②初回のみ(重複しないか) ③縦スクロール(遡り)・バーが出ないか ④年表タップで誤ってゲーム開始しないか を社長確認。★叩き台=レイアウト(左パネル幅58%/位置/フォント)・拠点ラベルの`(n/4)`表記は要調整前提。
+
 ## v0.25.1627 — トールの突き射程を240pxに【2026-07-12 06:46 JST】
 - **社長指示**「トールの突き射程を240に変更」。`THOR_TSUKI_RANGE` 300→240(`useGameLoop.ts`)。溜め追従半減(v1621)・半幅±15(v1623)は維持。
 - 検証: **typecheck clean**。

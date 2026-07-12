@@ -2,7 +2,7 @@
 // ゲームロジックには触れず localStorage だけで完結させる(導線の解放制御用)。
 // メインミッションをクリアすると次ステージが解放される。EX は前提ステージのクリアで解放。
 
-import { STAGES, type Stage } from './campaign';
+import { STAGES, getStage, type Stage } from './campaign';
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
@@ -278,6 +278,69 @@ export const setGateMeta = (stageId: string, meta: GateMeta): void => {
   saveGateMetaMap(m);
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// 歴史年表(chronicle): 各ステージの要所マイルストーンを「初回のみ」永続記録する読み取り専用の記録
+// (社長決定v0.25.1628)。タイトル画面に縦の年表として時系列で並べる(各個人の軌跡)。
+//   ・記録タイミング = マイルストーン達成の瞬間に即載せ(個別討伐と同じA方式=死亡/帰還/タスクキルに
+//     依らず、達成した瞬間に localStorage へ)。ステージクリアは年表に含めない(社長のリスト対象外)。
+//   ・dedup = 初回のみ(`${stageId}::${kind}::${detail}` が既にあれば無視・社長決定)。
+//   ・種別: zone(区域到達) / rank(ランク到達) / boss(各種ボス討伐) / base(拠点解放) /
+//     hunter(ハンター討伐) / reaper(死神討伐) / redNight(紅き夜を越えた) /
+//     cave(洞窟発見=将来ステージに洞窟を置いた時用・型だけ予約し現状は未配線)。
+export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave';
+
+export interface ChronicleEntry {
+  key: string;          // dedup キー = `${stageId}::${kind}::${detail}`
+  stageId: string;
+  kind: ChronicleKind;
+  label: string;        // 表示文(ステージ見出しを含む完成形)
+  at: number;           // 記録時刻(Date.now()。時系列の並べ替え用)
+}
+const CHRONICLE_KEY = 'zombie.progress.chronicle';
+
+export const loadChronicle = (): ChronicleEntry[] => {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CHRONICLE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((e): e is ChronicleEntry =>
+      !!e && typeof e === 'object' &&
+      typeof e.key === 'string' && typeof e.stageId === 'string' &&
+      typeof e.kind === 'string' && typeof e.label === 'string' && typeof e.at === 'number');
+  } catch {
+    return [];
+  }
+};
+
+const saveChronicle = (list: ChronicleEntry[]): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(CHRONICLE_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+};
+
+// ステージ見出し(main=「ステージN」/ ex・free=地名)。年表ラベルの接頭に使う。
+export const stageChronicleLabel = (stageId: string): string => {
+  const st = getStage(stageId);
+  if (!st) return '';
+  return st.kind === 'main' ? `ステージ${st.index}` : st.name;
+};
+
+// マイルストーンを初回のみ記録する(既に同キーがあれば false=何もしない)。phrase=ステージ見出しを
+// 除いた出来事の文(例「深層域に到達」)。ステージ見出しは内部で前置する。イベント発火時のみ呼ばれる
+// (毎フレームではない)ので localStorage 読み書き1回で十分軽い(負荷1/10)。
+export const recordChronicle = (
+  stageId: string, kind: ChronicleKind, detail: string, phrase: string
+): boolean => {
+  if (!stageId) return false;
+  const key = `${stageId}::${kind}::${detail}`;
+  const list = loadChronicle();
+  if (list.some(e => e.key === key)) return false;
+  const prefix = stageChronicleLabel(stageId);
+  list.push({ key, stageId, kind, label: prefix ? `${prefix} ${phrase}` : phrase, at: Date.now() });
+  saveChronicle(list);
+  return true;
+};
+
 // 開発用: 全ステージ解放 / 進行リセット。
 export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
 export const resetProgress = (): void => {
@@ -287,4 +350,5 @@ export const resetProgress = (): void => {
   saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)
   saveWallMetaMap({}); // M14の壁メタも進行リセットで消す(開発用)
   saveGateMetaMap({}); // M20のゲート解除メタも進行リセットで消す(開発用)
+  saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
 };

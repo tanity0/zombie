@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
-import { getSelectedStageId, getWallMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, loadChronicle } from '../data/progress';
 import { deepestReachedBadge } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
 
@@ -43,6 +43,50 @@ interface TitleScreenProps {
 const PANEL_STYLE: React.CSSProperties = {
   background: 'linear-gradient(95deg, rgba(9,8,14,0.6) 0%, rgba(9,8,14,0.48) 50%, rgba(9,8,14,0.16) 100%)',
   borderLeft: '1px solid rgba(168,85,247,0.75)',
+};
+
+// 歴史年表(社長決定v0.25.1628): 各ステージの要所マイルストーンを時系列で縦に並べる読み取り専用の記録。
+// heartbeat/wallBadge と同じ「タイトル表示時に localStorage を1回読むだけ」方針(store購読なし=毎フレーム
+// 再描画しない)。上=過去 / 下=最新(最下部へ自動スクロール)。指で上へスクロールして過去へ遡れる。
+// スクロールバーは出さない(社長指示)。上下端はマスクでフェード=「流れていく」見た目。
+const ChronicleTimeline: React.FC = () => {
+  const entries = useMemo(() => loadChronicle().slice().sort((a, b) => a.at - b.at), []);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight; // 初期表示は最新(最下部)を見せる
+  }, []);
+  if (entries.length === 0) return null;
+  const fade = 'linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%)';
+  return (
+    <div
+      className="absolute left-3 top-20 flex w-[58%] max-w-[280px] flex-col"
+      style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 30%), 31%)' }}
+      onClick={(e) => e.stopPropagation()} // 年表を触って(スクロール等)もゲームを開始させない
+    >
+      <style>{`.chronicle-scroll::-webkit-scrollbar{display:none}`}</style>
+      <div
+        className="mb-1 pb-1 text-[10px] font-bold tracking-[0.2em] text-purple-200/70"
+        style={{ borderBottom: '1px solid rgba(168,85,247,0.5)' }}
+      >
+        歴史年表
+      </div>
+      <div
+        ref={scrollRef}
+        className="chronicle-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pr-1"
+        style={{ scrollbarWidth: 'none', maskImage: fade, WebkitMaskImage: fade }}
+      >
+        <ul className="space-y-1.5 py-3">
+          {entries.map((e) => (
+            <li key={e.key} className="flex items-start gap-1.5 text-[11px] leading-snug text-white/75">
+              <span className="mt-[3px] shrink-0 text-[7px] text-purple-300/80">◆</span>
+              <span style={{ textShadow: '0 1px 3px rgba(0,0,0,0.85)' }}>{e.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
 };
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDone }) => {
@@ -122,6 +166,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
           {'◆'} {wallBadgeLine}
         </span>
       )}
+
+      {/* 歴史年表(縦の時系列・各個人の軌跡)。タイトル画面でのみ表示(社長決定v0.25.1628)。 */}
+      {phase === 'title' && <ChronicleTimeline />}
 
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
       {heartbeatLine && (

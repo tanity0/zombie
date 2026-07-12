@@ -45,7 +45,7 @@ import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
-import { getSelectedStageId, getWallMeta, type WallMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, recordChronicle, type WallMeta } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -1590,6 +1590,16 @@ const hexToRgba = (hex: string, alpha: number): string => {
 // 'boss-death'を1回鳴らす)。HARD PERF CONSTRAINT: 強glow(spawnGlow大径)は使わない=pooled sprite
 // (spawnRing/spawnBurst)とscreen-space spawnFlash/triggerShake/triggerTimeSlowのみ。
 const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: number): void => {
+  // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
+  // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
+  if (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter') {
+    recordChronicle(
+      getSelectedStageId(),
+      enemy.type === 'hunter' ? 'hunter' : 'boss',
+      enemy.type,
+      `${enemyDeathLabel(enemy.type)}を討伐`
+    );
+  }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
   useGameStore.setState({
     bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now() },
@@ -5904,6 +5914,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (reaperDefeated) {
       const already = get().ownedSkills.includes('reaper');
       get().grantSkill('reaper');
+      // 歴史年表: 死神討伐を即載せ(社長決定v0.25.1628。スキル付与と同じA方式=撃破の瞬間に永続)。
+      recordChronicle(getSelectedStageId(), 'reaper', 'reaper', '死神を討伐');
       if (!already) {
         const p = reaperDefeated as { x: number; y: number };
         get().spawnCallout(p.x, p.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
@@ -8508,6 +8520,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
       get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
+      // 歴史年表: 拠点解放を即載せ(社長決定v0.25.1628=A方式。拠点は永続前例が無いので年表用に新規)。
+      // 4拠点それぞれを初回のみ記録(dedup=拠点id)。捕獲累計(1..4)をラベルに添える。
+      recordChronicle(getSelectedStageId(), 'base', c.id, `拠点を解放 (${captureCount}/4)`);
     }
     // 「敵に囲まれた時」セリフ(時間停止なしHUD)。同一NPC/同一カテゴリのCDを守って1件だけ通す。
     for (const ev of npcSurroundEvents) {

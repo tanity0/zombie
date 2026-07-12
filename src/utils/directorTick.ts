@@ -31,6 +31,7 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { CONTEXT_ZOOM_MIN } from './cameraZoom';
+import { getSelectedStageId, recordChronicle } from '../data/progress';
 import {
   capForState,
   assessKomaDelta, applyRankDelta, combineCycleDelta,
@@ -289,6 +290,8 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
               'rank', `${WALL_RANK_NAMES[newRank]} —— 到達`, WALL_RANK_NAMES_EN[newRank], '#ff6a55'
             );
             playSfx('level-up'); // 専用ジングル無し=既存SEの流用(演出仕様v0.25.1499)
+            // 歴史年表: ランク到達を初回のみ即載せ(社長決定v0.25.1628)。dedup=ランク値。
+            recordChronicle(getSelectedStageId(), 'rank', String(newRank), `ランク「${WALL_RANK_NAMES[newRank]}」に到達`);
           }
         }
       }
