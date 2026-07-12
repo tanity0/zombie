@@ -321,6 +321,12 @@ const createBaseSites = (): BaseSite[] => {
   return sites;
 };
 
+// 拠点の方位名(社長指示v0.25.1630「拠点は方位で、北の拠点を開放 とか」)。拠点は原点中心の円周90度刻み
+// (createBaseSites)=常にいずれかの基本方位軸上に乗る。y+ が画面下=南 / y- が上=北(標準スクリーン座標)。
+// 支配軸で判定(拠点座標は片軸が~0なので厳密)。
+const baseCompassLabel = (x: number, y: number): string =>
+  Math.abs(x) >= Math.abs(y) ? (x >= 0 ? '東' : '西') : (y >= 0 ? '南' : '北');
+
 // 帰還フェーズ(フィナーレボス撃破/終了アイテム後): 即勝利せず帰還サークルへ誘導。3秒とどまると帰還完了=gameWon。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
 export const RETURN_CIRCLE_HOLD_MS = 3000; // とどまる時間=帰還完了(描画の進捗にも使用)
@@ -8521,8 +8527,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
       // 歴史年表: 拠点解放を即載せ(社長決定v0.25.1628=A方式。拠点は永続前例が無いので年表用に新規)。
-      // 4拠点それぞれを初回のみ記録(dedup=拠点id)。捕獲累計(1..4)をラベルに添える。
-      recordChronicle(getSelectedStageId(), 'base', c.id, `拠点を解放 (${captureCount}/4)`);
+      // 4拠点それぞれを初回のみ記録(dedup=拠点id)。ラベルは方位名(社長指示v0.25.1630)。
+      recordChronicle(getSelectedStageId(), 'base', c.id, `${baseCompassLabel(c.x, c.y)}の拠点を開放`);
     }
     // 「敵に囲まれた時」セリフ(時間停止なしHUD)。同一NPC/同一カテゴリのCDを守って1件だけ通す。
     for (const ev of npcSurroundEvents) {

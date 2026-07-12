@@ -45,10 +45,12 @@ const PANEL_STYLE: React.CSSProperties = {
   borderLeft: '1px solid rgba(168,85,247,0.75)',
 };
 
-// 歴史年表(社長決定v0.25.1628): 各ステージの要所マイルストーンを時系列で縦に並べる読み取り専用の記録。
-// heartbeat/wallBadge と同じ「タイトル表示時に localStorage を1回読むだけ」方針(store購読なし=毎フレーム
-// 再描画しない)。上=過去 / 下=最新(最下部へ自動スクロール)。指で上へスクロールして過去へ遡れる。
-// スクロールバーは出さない(社長指示)。上下端はマスクでフェード=「流れていく」見た目。
+// 歴史年表(社長決定v0.25.1628 / 見た目v0.25.1630): 各ステージの要所マイルストーンを時系列で縦に並べる
+// 読み取り専用の記録。heartbeat/wallBadge と同じ「タイトル表示時に localStorage を1回読むだけ」方針
+// (store購読なし=毎フレーム再描画しない)。上=過去 / 下=最新(最下部へ自動スクロール)。指で上へスクロール
+// して過去へ遡れる。スクロールバーは出さない。上下端はマスクでフェード=「流れていく」見た目。
+// スタイル(社長指示v0.25.1630): 見出し無し・中央揃え・フォントは更新情報くらい(12.5px)・全体エルデンリング風
+// (金色の明朝体・淡い金の区切り線・強い影で背景の上でも読める)。
 const ChronicleTimeline: React.FC = () => {
   const entries = useMemo(() => loadChronicle().slice().sort((a, b) => a.at - b.at), []);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -57,31 +59,40 @@ const ChronicleTimeline: React.FC = () => {
     if (el) el.scrollTop = el.scrollHeight; // 初期表示は最新(最下部)を見せる
   }, []);
   if (entries.length === 0) return null;
-  const fade = 'linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%)';
+  const fade = 'linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)';
   return (
     <div
-      className="absolute left-3 top-20 flex w-[58%] max-w-[280px] flex-col"
-      style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 30%), 31%)' }}
+      className="absolute left-1/2 top-24 flex w-[82%] max-w-[340px] -translate-x-1/2 flex-col"
+      style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 25%), 26%)' }}
       onClick={(e) => e.stopPropagation()} // 年表を触って(スクロール等)もゲームを開始させない
     >
       <style>{`.chronicle-scroll::-webkit-scrollbar{display:none}`}</style>
       <div
-        className="mb-1 pb-1 text-[10px] font-bold tracking-[0.2em] text-purple-200/70"
-        style={{ borderBottom: '1px solid rgba(168,85,247,0.5)' }}
-      >
-        歴史年表
-      </div>
-      <div
         ref={scrollRef}
-        className="chronicle-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain pr-1"
+        className="chronicle-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain"
         style={{ scrollbarWidth: 'none', maskImage: fade, WebkitMaskImage: fade }}
       >
-        <ul className="space-y-1.5 py-3">
-          {entries.map((e) => (
-            <li key={e.key} className="flex items-start gap-1.5 text-[11px] leading-snug text-white/75">
-              <span className="mt-[3px] shrink-0 text-[7px] text-purple-300/80">◆</span>
-              <span style={{ textShadow: '0 1px 3px rgba(0,0,0,0.85)' }}>{e.label}</span>
-            </li>
+        <ul className="flex flex-col items-center py-5">
+          {entries.map((e, i) => (
+            <React.Fragment key={e.key}>
+              {i > 0 && (
+                <span
+                  className="my-2.5 h-px w-12"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgba(197,170,110,0.32), transparent)' }}
+                />
+              )}
+              <li
+                className="text-center text-[12.5px] leading-relaxed"
+                style={{
+                  fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
+                  color: 'rgba(219,201,156,0.92)',
+                  letterSpacing: '0.06em',
+                  textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
+                }}
+              >
+                {e.label}
+              </li>
+            </React.Fragment>
           ))}
         </ul>
       </div>
