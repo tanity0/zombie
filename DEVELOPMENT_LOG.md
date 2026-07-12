@@ -12,6 +12,10 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1631 — 歴史年表の文字色を白に【2026-07-12 13:36 JST】
+- **社長指示**「文字色を白にして」。`ChronicleTimeline` のエントリ文字色を金色 `rgba(219,201,156)` → **白 `rgba(255,255,255,0.94)`**(`TitleScreen.tsx`)。明朝体・中央揃え・淡い金の区切り線・強い影は据え置き(区切り線は金のまま=文字だけ白)。
+- 検証: **typecheck clean**。負荷 変化なし。
+
 ## v0.25.1630 — 歴史年表の見た目刷新(エルデンリング風)+ 拠点を方位名に【2026-07-12 12:15 JST】
 - **社長指示**「真ん中揃えで/更新情報くらいのフォントサイズで/拠点は方位で(北の拠点を開放 とか)/歴史年表ってタイトルいらない/全体的にエルデンリングっぽく」。
 - **表示刷新**(`TitleScreen.tsx` `ChronicleTimeline`):

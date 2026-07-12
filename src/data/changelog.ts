@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1631',
+    items: [
+      '歴史年表の文字色を白に。',
+    ],
+  },
+  {
     version: '0.25.1630',
     items: [
       '歴史年表の見た目を刷新: 見出しを外して中央揃え・フォントを大きく、全体をエルデンリング風(金色の明朝体・淡い金の区切り線)に。拠点の記録を方位名で表示(「北の拠点を開放」など)。',

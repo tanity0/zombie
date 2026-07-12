@@ -85,7 +85,7 @@ const ChronicleTimeline: React.FC = () => {
                 className="text-center text-[12.5px] leading-relaxed"
                 style={{
                   fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
-                  color: 'rgba(219,201,156,0.92)',
+                  color: 'rgba(255,255,255,0.94)',
                   letterSpacing: '0.06em',
                   textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
                 }}
