@@ -1602,11 +1602,19 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // 歴史年表(chronicle): 各種ボス/ハンターの初回討伐を即載せ(社長決定v0.25.1628)。近接/銃 両キル経路が
   // この関数を通るのでここ1箇所で拾える。宿敵(isNamedのみ)はボス扱いにしない=年表に載せない。
   if (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter') {
+    // 年表フレーズ(社長指示v0.25.1658):
+    //  ・城ボス(giantbat=各ステージのストーリーボス・固有名なし)→「ストーリーボスを撃破」。
+    //  ・天使(ゲート2ボス=ミゲル等・固有名あり)→「天使◯◯を撃破」。※新しい天使を足す時はここに条件追加。
+    //  ・それ以外の裏ボス(mimir/jormungand/skadi/thor)/ハンターは従来どおり「◯◯を討伐」。
+    const phrase =
+      enemy.type === 'giantbat' ? 'ストーリーボスを撃破'
+      : enemy.type === 'miguel' ? `天使${enemyDeathLabel(enemy.type)}を撃破`
+      : `${enemyDeathLabel(enemy.type)}を討伐`;
     recordChronicle(
       getSelectedStageId(),
       enemy.type === 'hunter' ? 'hunter' : 'boss',
       enemy.type,
-      `${enemyDeathLabel(enemy.type)}を討伐`
+      phrase
     );
   }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。

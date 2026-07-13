@@ -12,6 +12,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1658 — 年表: 城ボス=「ストーリーボスを撃破」/天使=「天使◯◯を撃破」に表記変更【2026-07-13 18:27 JST】
+- **社長指示**「年表に、天使の撃破と各ステージ城ボスの撃破も記載。城ボスは名前無いと思うので『ストーリーボスを撃破』で」。
+- **調査結果**: 城ボス(giantbat)も天使(miguel=ゲート2ボス・isHiddenBossに含む)も、既に両キル経路
+  (近接=grantMeleeKillRewards / 銃・爆発=damageEnemyのdramaticDeath)から `triggerDramaticDeath` を通り
+  **年表に記録済み**だった。ただしフレーズが分かりにくかった:
+  - giantbat=「変異体(飛行型)を討伐」→ ただの飛行型変異体に見え、城ボス(ストーリーボス)と分からない。
+  - miguel=「ミゲルを討伐」→ 天使と分からない。
+- **修正(`gameStore.ts` triggerDramaticDeath の年表フレーズのみ)**:
+  - giantbat →「**ストーリーボスを撃破**」(社長指定の文言そのまま)。
+  - miguel →「**天使ミゲルを撃破**」(`天使${enemyDeathLabel(type)}を撃破`。将来の天使を足す時はここに条件追加)。
+  - 裏ボス(mimir/jormungand/skadi/thor)/ハンターは従来どおり「◯◯を討伐」で据え置き。
+  - dedupキー(detail=enemy.type)・記録タイミング・ゲート条件は不変=挙動は表記のみ変更。
+- **注意(既存データ)**: dedupキーは変えていないので、**修正前の版で既に記録済みの城ボス/天使は古い表記のまま
+  localStorageに残る**(recordChronicleは既存キーを上書きしない)。実機で新表記を見るには、まだ記録していない
+  ステージで倒すか、進捗リセットが必要。新規記録分は新表記で載る。
+- **表記の混在メモ**: 城ボス/天使だけ「撃破」、裏ボス/ハンター/死神は「討伐」の混在。社長が「撃破」指定だったため。
+  気になれば全ボスを「撃破」or「討伐」に統一可(要指示)。
+- 検証: `npm run typecheck` パス / `npx eslint src/store/gameStore.ts` exit0。実機で城ボス撃破→年表に
+  「ストーリーボスを撃破」、ミゲル撃破→「天使ミゲルを撃破」が載るか社長確認(要進捗リセット or 未記録ステージ)。
+- Files: `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1657 — 救急鞄: 後発銃種の弾切れバグ修正+空鞄を爆発範囲攻撃化+飛び出しにズーム/スロー【2026-07-13 17:48 JST】
 - **社長報告(バグ)**「ショットガンで開始→弾切れで弾は出たが、その後ハンドガンを拾って弾切れになっても出てこない」。
 - **原因**: `isFirstAidKitEmpty` が「今持っている銃種の弾を配り終えたか」で空判定していたため、ショットガンだけの段階で
