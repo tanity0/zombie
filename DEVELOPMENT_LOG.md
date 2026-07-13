@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1659 — 年表: ボス討伐の動詞を「討伐」で統一(撃破→討伐)【2026-07-13 18:29 JST】
+- **社長指示**「あ、討伐でいいよ」(v0.25.1658の『撃破』を撤回)。
+- `gameStore.ts` triggerDramaticDeath の年表フレーズ: 「ストーリーボスを**撃破**」→「ストーリーボスを**討伐**」、
+  「天使ミゲルを**撃破**」→「天使ミゲルを**討伐**」。裏ボス/ハンター/死神と同じ「討伐」に統一(混在解消)。
+- 記録経路・dedupキー・タイミングは不変=表記のみ。既存記録の上書きはしない点も1658と同じ(要進捗リセット/未記録ステージ)。
+- 検証: `npm run typecheck` パス。
+- Files: `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1658 — 年表: 城ボス=「ストーリーボスを撃破」/天使=「天使◯◯を撃破」に表記変更【2026-07-13 18:27 JST】
 - **社長指示**「年表に、天使の撃破と各ステージ城ボスの撃破も記載。城ボスは名前無いと思うので『ストーリーボスを撃破』で」。
 - **調査結果**: 城ボス(giantbat)も天使(miguel=ゲート2ボス・isHiddenBossに含む)も、既に両キル経路
