@@ -12,6 +12,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1663 — ジブリル専用コントローラ スライス1(退避移動＋被弾カウント＋距離適応弾)【2026-07-13 19:37 JST】
+- **社長指示(攻撃パターン)**: ジブリル=「ゆっくりプレイヤーから退避 / 3発被弾で加速 / 10発でゲート反対側ワープ /
+  遠=スナイプ弾3発(通常敵弾の2倍速)1秒間隔 / ハンドガン距離内=通常弾5発(ミゲル間隔)/ ランタン攻撃(別)」。
+- **本コミット=スライス1**(退避移動・被弾カウント・距離適応弾)。**ランタン攻撃はスライス2**、**ラフィはスライス3**で追加。
+- **実装(`useGameLoop.ts`)**:
+  - ミゲル制御の find を `miguel || rafi` に限定(ジブリルは別挙動なので専用コントローラへ分離。ラフィはスライス3まで
+    暫定でミゲルのクローンのまま=無挙動にしない)。
+  - **ジブリル専用ミニコントローラ**(ミゲルの兄弟ブロック)を新設。状態=chase(退避)/volley(発射)。
+    - 退避: プレイヤーの逆方向へ `JIBRIL_RETREAT_SPEED=55`(px/s・プレイヤー87より遅い)。アリーナ縁にクランプ。
+    - 被弾カウント: `enemy.lastHit` の変化で近似(1フレ1カウント)。`JIBRIL_HITS_FASTER=3` で退避×1.7。
+    - ワープ: `JIBRIL_HITS_WARP=10` 発ごとにゲート中心を挟んでプレイヤー反対側の縁へ(紫リング/フラッシュFX)。
+    - 弾: chase→volley 遷移時に距離で `JIBRIL_HANDGUN_DIST=300` 内なら close(5発・`BOSS_BURST_GAP_MS`=0.5秒)、
+      外なら snipe(3発・`JIBRIL_SNIPE_GAP_MS`=1秒・`createEnemyProjectile` の速度を `×2`)。撃ちながらも退避継続。
+  - 専用 ref `jibrilRef`(hits/lastHitSeen/lastWarpHits/volleyMode/shots/nextShotAt)＋新ランでリセット＋
+    エラーログ初回のみ(`jibrilCtrlErrLogged`)。
+- **叩き台の数値**(実機調整前提): 退避55/加速×1.7/ハンドガン距離300/スナイプ2倍速/弾ダメージ=プロファイル20(ミゲル同値)。
+- **未実装(次スライス)**: ランタン攻撃(5秒・振り子・足元に紫の単発火0.7秒予告→2秒・30固定=火炎瓶の数値流用可)/ ラフィ専用挙動。
+- 検証: `npm run typecheck` パス / `npx eslint src/hooks/useGameLoop.ts` exit0。実機でステージ3の深層の扉→
+  ジブリルが退避しながら距離で弾を撃ち分けるか・被弾でワープするかを社長確認。数値は叩き台=要調整。
+- Files: `src/hooks/useGameLoop.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1662 — ラフィ(ステージ4ゲート2ボス)追加＋天使判定を isGate2AngelBoss に一本化【2026-07-13 19:23 JST】
 - **社長提供**「ステージ4の天使ラフィ」(本体＋武器=骨刃)。ジブリルと同じくミゲルの丸ごとクローンで追加。
 - **素材**: `public/sprites/rafi.png`(728×881・本体)/ `public/sprites/rafi-blade.png`(172×512・武器)。原本=`art_src/originals/rafi/`。

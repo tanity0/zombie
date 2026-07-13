@@ -728,6 +728,17 @@ const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;    // 同・最大
 const MIGUEL_VOLLEY_CHANCE = 0.6;            // chaseの攻撃選択で斬りコンボの代わりに弾3連を選ぶ確率。社長指示v0.25.1618
                                              // 「剣撃より頻度高め」=0.5超(弾6:斬り4)・叩き台/要調整
 
+// ジブリル(ステージ3ゲート2ボス)専用パラメータ(社長指示v0.25.1663)。全て叩き台=実機調整前提。
+const JIBRIL_RETREAT_SPEED = 55;            // 退避の基本速度(px/s・ゆっくりプレイヤーから離れる=プレイヤー87より遅い)
+const JIBRIL_RETREAT_FAST_MULT = 1.7;       // 3発被弾後の退避加速(55×1.7=93.5=プレイヤーより少し速い)
+const JIBRIL_HITS_FASTER = 3;               // この被弾数で退避が少し速くなる
+const JIBRIL_HITS_WARP = 10;                // この被弾数ごとにゲート反対側へワープ
+const JIBRIL_HANDGUN_DIST = 300;            // ハンドガン距離(この内側で弾が5発モードへ変化)
+const JIBRIL_SNIPE_SHOTS = 3;               // 遠距離: スナイプ弾の発射数
+const JIBRIL_SNIPE_GAP_MS = 1000;           // 遠距離: 1秒間隔
+const JIBRIL_SNIPE_SPEED_MULT = 2;          // 遠距離: 通常敵弾の2倍速
+const JIBRIL_CLOSE_SHOTS = 5;               // 近距離(ハンドガン圏内): 通常弾の発射数(間隔=BOSS_BURST_GAP_MS=ミゲルと同じ0.5秒)
+
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
 const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
@@ -738,6 +749,7 @@ const THOR_JUMP_RECOVER_MS = 900;            // 着地後の硬直
 const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let miguelCtrlErrLogged = false;                     // ミゲル制御例外のログも初回だけ
+let jibrilCtrlErrLogged = false;                     // ジブリル制御例外のログも初回だけ
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
 const PICKUP_HARD_CAP = 120;
@@ -999,6 +1011,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
   const miguelSlowRef = useRef({ slowUntil: 0, nextAt: 0 });
   const miguelVolleyRef = useRef({ nextShotAt: 0, shots: 0 }); // 弾3連の発射タイミング/残弾(単体ボスなので単一refで足る)
+  // ジブリル(ステージ3ゲート2ボス)専用: 被弾カウント/退避加速/ワープ/弾モードの状態(単体ボスなので単一refで足る)。
+  const jibrilRef = useRef({ hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe' as 'snipe' | 'close', shots: 0, nextShotAt: 0 });
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1630,6 +1644,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           miguelSlowRef.current = { slowUntil: 0, nextAt: 0 }; // ミゲルのゆっくり歩きタイマーも新ランで再アーム
           miguelVolleyRef.current = { nextShotAt: 0, shots: 0 }; // 弾3連タイマーも新ランでリセット
+          jibrilRef.current = { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0 }; // ジブリルの被弾/退避/弾状態も新ランでリセット
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -3660,7 +3675,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 静止。近接被弾で1秒間だけ周回速度2倍。攻撃選択pool=当面harai(狭)のみ(トールのharaiを流用)。
         if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try {
-          const miguel = useGameStore.getState().enemies.find(e => isGate2AngelBoss(e.type) && e.bossState != null);
+          // ミゲル制御はミゲル本体＋(当面)ラフィを駆動。ジブリルは別挙動なので専用コントローラ(下)が駆動する。
+          // ラフィは専用挙動(スライス3)実装までミゲルのクローンで動かす。
+          const miguel = useGameStore.getState().enemies.find(e => (e.type === 'miguel' || e.type === 'rafi') && e.bossState != null);
           if (miguel) {
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
             const mcx = miguel.x + miguel.width / 2, mcy = miguel.y + miguel.height / 2;
@@ -3873,6 +3890,100 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
          } catch (err) {
           if (!miguelCtrlErrLogged) { miguelCtrlErrLogged = true; console.error('[miguel] controller error (suppressed after first):', err); }
+         }
+        }
+
+        // --- ジブリル(ステージ3ゲート2ボス)専用ミニコントローラ(社長指示v0.25.1663) ---
+        // ミゲルとは別挙動: ゆっくりプレイヤーから退避 + 距離適応弾(遠=スナイプ3発2倍速 / 近=ハンドガン圏内で通常5発)。
+        // 3発被弾で退避加速・10発ごとにゲート反対側へワープ(少しのランダム性)。※ランタン攻撃はスライス2で追加。
+        if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+         try {
+          const jibril = useGameStore.getState().enemies.find(e => e.type === 'jibril' && e.bossState != null);
+          if (jibril) {
+            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+            const jcx = jibril.x + jibril.width / 2, jcy = jibril.y + jibril.height / 2;
+            const bossMoveDt = deltaTime * MOVE_SPEED_MULT;
+            const jHomeX = jibril.homeX ?? jcx, jHomeY = jibril.homeY ?? jcy;
+            const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - jibril.height / 2;
+            const st = jibril.bossState ?? 'chase';
+            const patch: Partial<typeof jibril> = {};
+            const jr = jibrilRef.current;
+
+            // 被弾カウント(lastHit の変化=1被弾として近似。1フレーム内の多重ヒットは1と数える)。
+            if (jibril.lastHit && jibril.lastHit !== jr.lastHitSeen) {
+              jr.hits += 1;
+              jr.lastHitSeen = jibril.lastHit;
+            }
+            // 退避移動(プレイヤーの逆方向・アリーナ内にクランプ)。3発被弾以降はやや速い。
+            const retreatMove = () => {
+              const ax = jcx - pcx, ay = jcy - pcy;
+              const al = Math.hypot(ax, ay) || 1;
+              const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1);
+              let nx = jcx + (ax / al) * spd * bossMoveDt;
+              let ny = jcy + (ay / al) * spd * bossMoveDt;
+              const rx = nx - jHomeX, ry = ny - jHomeY;
+              const rl = Math.hypot(rx, ry);
+              if (rl > maxR) { nx = jHomeX + (rx / rl) * maxR; ny = jHomeY + (ry / rl) * maxR; }
+              patch.x = nx - jibril.width / 2;
+              patch.y = ny - jibril.height / 2;
+            };
+
+            const jibrilFull = jibril.bossFullStunUntil !== undefined && newGameTime < jibril.bossFullStunUntil;
+            if (jr.hits - jr.lastWarpHits >= JIBRIL_HITS_WARP) {
+              // 10発ごと: ゲート中心を挟んでプレイヤーの反対側(アリーナ縁)へワープ。
+              jr.lastWarpHits = jr.hits;
+              const dx = jHomeX - pcx, dy = jHomeY - pcy;
+              const dl = Math.hypot(dx, dy) || 1;
+              const wx = jHomeX + (dx / dl) * maxR, wy = jHomeY + (dy / dl) * maxR;
+              spawnRing(jcx, jcy, 8, 60, 'rgba(168,85,247,0.8)', 3, 300);
+              patch.x = wx - jibril.width / 2;
+              patch.y = wy - jibril.height / 2;
+              spawnRing(wx, wy, 8, 70, 'rgba(168,85,247,0.9)', 3, 340);
+              spawnFlash('rgba(88,28,135,0.20)', 240);
+              patch.bossState = 'chase';
+              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+            } else if (jibrilFull) {
+              patch.bossState = 'chase';
+              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+            } else if (st === 'chase') {
+              retreatMove();
+              if (newGameTime >= (jibril.bossNextActionAt ?? 0)) {
+                // 距離でモード決定: ハンドガン圏内=通常5発(ミゲル間隔) / それ以外=スナイプ3発2倍速。
+                const dist = Math.hypot(pcx - jcx, pcy - jcy);
+                jr.volleyMode = dist <= JIBRIL_HANDGUN_DIST ? 'close' : 'snipe';
+                jr.shots = 0;
+                jr.nextShotAt = newGameTime;
+                const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
+                const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
+                patch.bossState = 'volley';
+                patch.bossStateUntil = newGameTime + shots * gap + 200;
+              }
+            } else if (st === 'volley') {
+              retreatMove(); // 撃ちながらも退避を続ける
+              const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
+              const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
+              if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
+                const proj = createEnemyProjectile(jibril, player);
+                if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT; // 通常敵弾の2倍速
+                addProjectile(proj);
+                jr.shots += 1;
+                jr.nextShotAt = newGameTime + gap;
+              }
+              if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
+              }
+            } else {
+              patch.bossState = 'chase';
+              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+            }
+
+            if (Object.keys(patch).length) {
+              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === jibril.id ? { ...e, ...patch } : e) }));
+            }
+          }
+         } catch (err) {
+          if (!jibrilCtrlErrLogged) { jibrilCtrlErrLogged = true; console.error('[jibril] controller error (suppressed after first):', err); }
          }
         }
 
