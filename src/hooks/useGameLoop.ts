@@ -738,6 +738,14 @@ const JIBRIL_SNIPE_SHOTS = 3;               // 遠距離: スナイプ弾の発�
 const JIBRIL_SNIPE_GAP_MS = 1000;           // 遠距離: 1秒間隔
 const JIBRIL_SNIPE_SPEED_MULT = 2;          // 遠距離: 通常敵弾の2倍速
 const JIBRIL_CLOSE_SHOTS = 5;               // 近距離(ハンドガン圏内): 通常弾の発射数(間隔=BOSS_BURST_GAP_MS=ミゲルと同じ0.5秒)
+// ジブリルのランタン攻撃(社長指示v0.25.1664)。火の数値は火炎瓶相当+仕様の上書き。全て叩き台。
+const JIBRIL_LANTERN_CHANCE = 0.4;          // chaseの攻撃選択でランタン攻撃を選ぶ確率(残りは弾)
+const JIBRIL_LANTERN_MS = 5000;             // ランタン攻撃の継続時間(5秒)
+const JIBRIL_FIRE_GAP_MS = 700;             // 足元へ火を落とす間隔(0.7秒ごと)
+const JIBRIL_FIRE_TELEGRAPH_MS = 700;       // 赤い当たり判定フェードイン(0.7秒で発動)
+const JIBRIL_FIRE_LIFE_MS = 2000;           // 火の寿命(2秒)
+const JIBRIL_FIRE_DAMAGE = 30;              // 単発固定ダメージ
+const JIBRIL_FIRE_RADIUS = 22;              // 当たり半径(=MOLOTOV_FIRE_RADIUS・見た目/大きさ火炎瓶と同等)
 
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
@@ -1012,7 +1020,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const miguelSlowRef = useRef({ slowUntil: 0, nextAt: 0 });
   const miguelVolleyRef = useRef({ nextShotAt: 0, shots: 0 }); // 弾3連の発射タイミング/残弾(単体ボスなので単一refで足る)
   // ジブリル(ステージ3ゲート2ボス)専用: 被弾カウント/退避加速/ワープ/弾モードの状態(単体ボスなので単一refで足る)。
-  const jibrilRef = useRef({ hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe' as 'snipe' | 'close', shots: 0, nextShotAt: 0 });
+  const jibrilRef = useRef({ hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe' as 'snipe' | 'close', shots: 0, nextShotAt: 0, nextFireAt: 0 });
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1644,7 +1652,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
           miguelSlowRef.current = { slowUntil: 0, nextAt: 0 }; // ミゲルのゆっくり歩きタイマーも新ランで再アーム
           miguelVolleyRef.current = { nextShotAt: 0, shots: 0 }; // 弾3連タイマーも新ランでリセット
-          jibrilRef.current = { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0 }; // ジブリルの被弾/退避/弾状態も新ランでリセット
+          jibrilRef.current = { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0, nextFireAt: 0 }; // ジブリルの被弾/退避/弾/ランタン状態も新ランでリセット
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -3948,15 +3956,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else if (st === 'chase') {
               retreatMove();
               if (newGameTime >= (jibril.bossNextActionAt ?? 0)) {
-                // 距離でモード決定: ハンドガン圏内=通常5発(ミゲル間隔) / それ以外=スナイプ3発2倍速。
-                const dist = Math.hypot(pcx - jcx, pcy - jcy);
-                jr.volleyMode = dist <= JIBRIL_HANDGUN_DIST ? 'close' : 'snipe';
-                jr.shots = 0;
-                jr.nextShotAt = newGameTime;
-                const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
-                const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
-                patch.bossState = 'volley';
-                patch.bossStateUntil = newGameTime + shots * gap + 200;
+                if (Math.random() < JIBRIL_LANTERN_CHANCE) {
+                  // ランタン攻撃(5秒間・0.7秒ごとに足元へ紫の単発火)。
+                  patch.bossState = 'lantern';
+                  patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_MS;
+                  jr.nextFireAt = newGameTime; // 開始直後に1発目
+                } else {
+                  // 距離でモード決定: ハンドガン圏内=通常5発(ミゲル間隔) / それ以外=スナイプ3発2倍速。
+                  const dist = Math.hypot(pcx - jcx, pcy - jcy);
+                  jr.volleyMode = dist <= JIBRIL_HANDGUN_DIST ? 'close' : 'snipe';
+                  jr.shots = 0;
+                  jr.nextShotAt = newGameTime;
+                  const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
+                  const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
+                  patch.bossState = 'volley';
+                  patch.bossStateUntil = newGameTime + shots * gap + 200;
+                }
               }
             } else if (st === 'volley') {
               retreatMove(); // 撃ちながらも退避を続ける
@@ -3970,6 +3985,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 jr.nextShotAt = newGameTime + gap;
               }
               if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
+                patch.bossState = 'chase';
+                patch.bossNextActionAt = newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
+              }
+            } else if (st === 'lantern') {
+              // ランタン攻撃(5秒): ランタンを掲げつつゆっくり退避し、0.7秒ごとにプレイヤーの足元へ紫の単発火を設置。
+              retreatMove();
+              if (newGameTime >= jr.nextFireAt) {
+                const fpx = pcx, fpy = player.y + player.height; // この瞬間のプレイヤー足元(移動で回避可)
+                useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS + JIBRIL_FIRE_LIFE_MS);
+                jr.nextFireAt = newGameTime + JIBRIL_FIRE_GAP_MS;
+              }
+              if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
                 patch.bossState = 'chase';
                 patch.bossNextActionAt = newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
               }
@@ -5207,6 +5234,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 火炎瓶(molotov): 設置済みの地面の火の寿命切れ回収 + 敵への接触DoTを毎フレーム更新
         // (設置自体は上の molotov ブロックが行う。ここは置いた後の面倒を見るだけ)。
         useGameStore.getState().tickGroundFires();
+
+        // ジブリルのランタン火(紫の単発火・社長指示v0.25.1664): 寿命切れ回収 + 有効化後のプレイヤー接触判定。
+        // molotovと違い「プレイヤーに」当たる。触れると30固定ダメージを与えてその火は即消える(単発)。
+        {
+          const bf = useGameStore.getState().bossFires;
+          if (bf.length > 0) {
+            const pl = useGameStore.getState().player;
+            const plcx = pl.x + pl.width / 2, plcy = pl.y + pl.height / 2;
+            const hitR = JIBRIL_FIRE_RADIUS + Math.min(pl.width, pl.height) / 2;
+            let died = false;
+            let struck = false; // 1フレーム1ヒットに制限(重なった複数火の多重ダメージ/i-frame無視を防ぐ)
+            const survivors: typeof bf = [];
+            for (const f of bf) {
+              if (newGameTime >= f.expireAt) continue; // 寿命切れ=消滅
+              const active = newGameTime >= f.activateAt; // 予告(0.7s)後にダメージ有効
+              if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
+                struck = true;
+                const d = damagePlayer(JIBRIL_FIRE_DAMAGE, 'ジブリルのランタン火', f.x, f.y);
+                if (d) { died = true; triggerPlayerDeath(plcx, plcy); }
+                continue; // ダメージを与えた火は消える(単発)。他の重なり火は次フレーム(i-frame明け)に持ち越し。
+              }
+              survivors.push(f);
+            }
+            if (survivors.length !== bf.length) useGameStore.getState().setBossFires(survivors);
+          }
+        }
 
         // スキル 救難信号: 飛来中の援護アライの着弾ダメージ適用 + 寿命切れ回収(発生自体は
         // triggerCounter内のapplyRescueSignalProcが行う。ここは置いた後の面倒を見るだけ)。

@@ -6,7 +6,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, RescueAlly, ThrownBag
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE,
@@ -1197,6 +1197,7 @@ export const SKADI_BLADE_HIT = 18;     // 氷刃の命中半径(px)
 export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを過ぎると消滅
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
+let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
@@ -1968,6 +1969,8 @@ interface GameState {
   skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string }[];
   // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
   groundFires: GroundFire[];
+  // ジブリルのランタン攻撃の紫の単発火(プレイヤー被弾)。判定/寿命は useGameLoop、描画は pixiScene が直読み。
+  bossFires: BossFire[];
   // スキル「救難信号」の援護アライ(一過性演出)。生成/着弾ダメージ/寿命は tickRescueAllies が処理、
   // 描画は pixiScene が直読み(RescueAlly型のコメント参照)。
   rescueAllies: RescueAlly[];
@@ -2149,6 +2152,8 @@ interface GameState {
   setMolotovCycle: (cycle: MolotovCycleState | null) => void; // useGameLoop が computeMolotovTick の結果を反映するだけ
   spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
+  spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
+  setBossFires: (fires: BossFire[]) => void;                   // ジブリル火の配列を差し替え(useGameLoopのtickが枝刈り/被弾処理後に反映)
 
   // 救急鞄(first-aid-kit)サブウェポン。中身(弾薬/回復/爆弾)の払い出し済みフラグ+鞄投擲済みフラグ
   // (1ラン限り)。判定自体は src/utils/firstAidKit.ts(純関数)、ここは状態の保持のみ。
@@ -2543,6 +2548,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skadiIceMarkers: [],
   skadiIceBlades: [],
   groundFires: [],
+  bossFires: [],
   rescueAllies: [],
   thrownBags: [],
   boomerangReadyFxAt: 0,
@@ -4100,6 +4106,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       groundFires: [...state.groundFires, { id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime }],
     }));
   },
+
+  // ジブリルの紫の単発火を1つ設置(0.7秒予告→2秒有効)。判定/寿命/被弾処理は useGameLoop の tick が担う。
+  spawnBossFire: (x, y, spawnAt, activateAt, expireAt) => {
+    set(state => ({
+      bossFires: [...state.bossFires, { id: `bfire-${bossFireSeq++}`, x, y, spawnAt, activateAt, expireAt }],
+    }));
+  },
+  setBossFires: (fires) => set({ bossFires: fires }),
 
   // 毎フレーム: 寿命切れ(3秒)の火を回収し、生存中の火に重なっている敵へ0.5秒スロットルでDoT(5dmg)を与える。
   // プレイヤーは対象外(自分の火なので無敵=そもそも判定しない)。既存の damageEnemy を再利用するので
@@ -9247,6 +9261,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         homingLocks: [],
         shadowClone: null,
         groundFires: [],
+  bossFires: [],
         rescueAllies: [],
         thrownBags: [],
         molotovCycle: null,

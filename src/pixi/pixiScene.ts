@@ -19,7 +19,7 @@ import type { Renderer } from 'pixi.js';
 import { TiltShiftFilter, AdvancedBloomFilter } from 'pixi-filters';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, RescueAlly, ThrownBag,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag,
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
@@ -1037,6 +1037,7 @@ export class PixiScene {
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
   private groundFireViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>();
+  private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private effects = new Map<string, EffectView>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
@@ -2685,6 +2686,7 @@ export class PixiScene {
     this.syncSlasherRing(s.player, s.realGameTime);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
+    this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
@@ -4795,6 +4797,38 @@ export class PixiScene {
         view.light.destroy();
         view.container.destroy({ children: true });
         this.groundFireViews.delete(id);
+      }
+    }
+  }
+
+  // ジブリルのランタン火(社長指示v0.25.1664): molotovと違い「プレイヤーに」当たるボスハザード。
+  // 予告(spawnAt→activateAt=0.7s)=赤い当たり判定フェードイン / 有効(activateAt→expireAt=2s)=紫の火。
+  // 判定/寿命は useGameLoop 側。ここは s.bossFires を直読みして1枚のGraphicsへ一括描画(数個・一過性=軽い)。
+  private syncBossFires(fires: BossFire[], gameTime: number, now: number) {
+    const g = this.bossFireGfx;
+    if (!g.parent) { g.blendMode = 'add'; this.L.groundLayer.addChild(g); }
+    g.clear();
+    if (fires.length === 0) return;
+    const HITR = 22;   // 当たり半径(=useGameLoop JIBRIL_FIRE_RADIUS)。予告円をこれに合わせる。
+    const FLAMER = 14; // 火の基準サイズ(火炎瓶相当)。
+    for (const f of fires) {
+      if (gameTime >= f.expireAt) continue;
+      if (gameTime < f.activateAt) {
+        // 予告=赤い当たり判定フェードイン(社長指示「0.7秒で発動」)。
+        const p = Math.max(0, Math.min(1, (gameTime - f.spawnAt) / Math.max(1, f.activateAt - f.spawnAt)));
+        g.circle(f.x, f.y, HITR).fill({ color: 0xff2a2a, alpha: 0.08 + 0.20 * p });
+        g.circle(f.x, f.y, HITR).stroke({ width: 2, color: 0xff3b3b, alpha: 0.35 + 0.4 * p });
+      } else {
+        // 有効=紫の火(色は紫・大きさは火炎瓶相当)。終盤フェードアウト。
+        const life = Math.max(0, Math.min(1, 1 - (gameTime - f.activateAt) / Math.max(1, f.expireAt - f.activateAt)));
+        const pulse = 0.82 + 0.18 * Math.sin(now / 90 + f.x * 0.05) + 0.08 * Math.sin(now / 47 + f.y * 0.06);
+        const r = FLAMER * pulse;
+        const a = 0.55 + 0.45 * life;
+        const sway = Math.sin(now / 150 + f.x * 0.02) * r * 0.5;
+        g.circle(f.x, f.y + 2, r * 3.2).fill({ color: 0x7c3aed, alpha: 0.10 * life });           // 外周グロウ
+        g.ellipse(f.x + sway * 0.2, f.y - r * 0.6, r * 1.7, r * 3.0).fill({ color: 0x7e22ce, alpha: 0.26 * a });
+        g.ellipse(f.x + sway * 0.4, f.y - r * 1.4, r * 1.0, r * 2.4).fill({ color: 0xa855f7, alpha: 0.40 * a });
+        g.ellipse(f.x + sway * 0.5, f.y - r * 2.0, r * 0.5, r * 1.5).fill({ color: 0xe9d5ff, alpha: 0.50 * a });
       }
     }
   }

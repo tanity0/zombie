@@ -12,6 +12,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1664 — ジブリル スライス2(ランタン攻撃＋紫の単発火ハザード)【2026-07-13 19:56 JST】
+- **社長指示(承認)**: ジブリルのランタン攻撃=「5秒間・足元に紫の単発火・0.7秒予告フェードイン→2秒・30固定・
+  ダメージを与えた火は消える・見た目/大きさは火炎瓶相当・色は紫」。方針(molotov風の見た目でプレイヤーに当たる新規火)承認済み。
+- **新ハザード `BossFire`**(`types/game.ts`): {id,x,y,spawnAt,activateAt,expireAt}。molotov(groundFire=敵に当たるDoT)とは別系統で
+  **プレイヤーに当たる単発火**。
+- **store(`gameStore.ts`)**: `bossFires`配列＋`spawnBossFire`(0.7s予告→2s)＋`setBossFires`(tickの反映用)＋init/resetでクリア。
+- **ジブリル制御(`useGameLoop.ts`)**: chase→攻撃選択に **`JIBRIL_LANTERN_CHANCE=0.4` でランタン**(残りは弾)。
+  `lantern`状態(5秒)=退避しつつ`JIBRIL_FIRE_GAP_MS=0.7秒`ごとにプレイヤー足元へ`spawnBossFire`。
+  bossState型に`'lantern'`追加。
+- **火のtick(`useGameLoop.ts`・tickGroundFiresの隣)**: 寿命切れ回収＋有効化(activateAt)後にプレイヤー接触判定=
+  半径`JIBRIL_FIRE_RADIUS=22`＋自機半径。命中で`damagePlayer(30)`＋その火を消す(単発)。**1フレーム1ヒット制限**
+  (重なり火の多重ダメージ/i-frame無視を防止)。無敵中は当てない=火は残す。
+- **描画(`pixiScene.ts`)**: `syncBossFires`=1枚のGraphicsへ一括。予告=赤い当たり判定フェードイン(spawn→activate)、
+  有効=紫の火(自前描画・`drawFlameShape`はオレンジ固定のため流用せず紫で描く)、終盤フェードアウト。groundLayer。
+- **未実装(次の短い追加)**: 「手元のランタンを振り子運動(慣性つき)」の**スプライト描画**。座標系(ワールド/スクリーン)の
+  取り違えで位置がズレやすく実機無しで正確に置けないため、火(危険な本体)を先に完成させ、手元ランタンの揺れは後追いで足す。
+- **叩き台**: ランタン確率0.4/継続5s/火0.7s間隔/予告0.7s/寿命2s/30固定/半径22/紫。負荷 **2/10**
+  (火は一過性・同時数個・1枚Graphicsのper-frame描画=molotovと同流儀・event-only)。
+- 検証: `npm run typecheck` パス / `npx eslint`(4ファイル)exit0。実機でジブリルのランタン中に足元へ紫火が出る/
+  予告で避けられる/触れると30被弾するかを社長確認。数値・火の見た目は叩き台=要調整。
+- Files: `types/game.ts`, `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`,
+  `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1663 — ジブリル専用コントローラ スライス1(退避移動＋被弾カウント＋距離適応弾)【2026-07-13 19:37 JST】
 - **社長指示(攻撃パターン)**: ジブリル=「ゆっくりプレイヤーから退避 / 3発被弾で加速 / 10発でゲート反対側ワープ /
   遠=スナイプ弾3発(通常敵弾の2倍速)1秒間隔 / ハンドガン距離内=通常弾5発(ミゲル間隔)/ ランタン攻撃(別)」。

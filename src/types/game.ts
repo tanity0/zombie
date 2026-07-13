@@ -362,7 +362,7 @@ export interface Enemy {
   //  tate-windup = 縦払いの溜め(横払いharai-windupと同仕様=静止・赤ライン予告・カウンター可)。
   //  tate = 縦払いの実行(プレイヤー位置に画面縦のラインをロック。当たり判定はharaiと共通=向きのみ縦)。
   bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
-    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley';
+    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾
@@ -539,6 +539,18 @@ export interface GroundFire {
   x: number;
   y: number;
   createdAt: number; // gameTime(ms)。この時刻からの経過で寿命判定する。
+}
+
+// ジブリルのランタン攻撃が足元に落とす紫の単発火(社長指示v0.25.1664)。groundFire(molotov)と違い
+// 「プレイヤーに」当たるボスのハザード。0.7秒の赤い予告フェードイン→有効化→2秒で消滅。プレイヤーに触れると
+// 30固定ダメージを与えてその火は即消える(単発)。判定/寿命は useGameLoop(tick)、描画は pixiScene が直読み。
+export interface BossFire {
+  id: string;
+  x: number;
+  y: number;
+  spawnAt: number;    // 生成 gameTime(ms)。ここから activateAt までが赤い予告。
+  activateAt: number; // spawnAt + 予告(0.7s)。これ以降ダメージ有効(紫の火)。
+  expireAt: number;   // activateAt + 火寿命(2s)。これで消滅。
 }
 
 // 制圧イベントの拠点。4か所固定(東西南北)。captured時はHPを持ち、敵の攻撃/時間で減り、プレイヤー在内/安全地帯で回復。
