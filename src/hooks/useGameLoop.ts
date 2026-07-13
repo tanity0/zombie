@@ -2117,6 +2117,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
                     useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[3]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                   }
+                  // §5.21-追補9(社長指示v0.25.1655): 年表「未確認汚染エリアに到達」はゲート1クリア時に刻む
+                  // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
+                  recordChronicle(getSelectedStageId(), 'zone', '3', `${AREA_ZONE_NAMES[3]}に到達`);
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2クリア時の後処理。恒久解除+M14
                 // 到達判定を遅延実行(ハンター復活は伴わない=ゲート2にはその仕様が無い)。
@@ -2129,6 +2132,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // §5.17-追補2(社長決定v0.25.1536): 到達の+50Gを撤去(演出/記録は残す)。
                     useGameStore.getState().enqueueWallEvent('depth', `${AREA_ZONE_NAMES[4]} —— 踏破`, 'TRESPASS', '#bfe3ff');
                   }
+                  // §5.21-追補9(社長指示v0.25.1655): 年表「深層域に到達」はゲート2ボス(ミゲル)討伐時に刻む
+                  // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
+                  recordChronicle(getSelectedStageId(), 'zone', '4', `${AREA_ZONE_NAMES[4]}に到達`);
                 }
               } else {
                 // PACING_PUZZLE.md §5.21-追補6(社長決定v0.25.1556): ゲート失敗(制限時間切れ・未クリア)=
@@ -2577,18 +2583,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (=ゲート終了後に遅延誤発火しない)。抑止はゲートactive中のみ(pending/失敗ノックバック
               // 再判定=追補6は対象外)。
               if (activeGateRef.current === null) {
-                useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
-                // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。
-                // 浅い側へ戻る移動(zoneIdx<prevZone)は「到達」ではないので記録しない。
-                if (zoneIdx > prevZone) {
-                  recordChronicle(getSelectedStageId(), 'zone', String(zoneIdx), `${AREA_ZONE_NAMES[zoneIdx]}に到達`);
-                }
-                // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
-                // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
-                // 仕様変更(v0.25.1523): 1プレイ(1ラン)中1エリア1回まで(往復で同じ区域に再度届いても鳴らさない)。
-                if (zoneIdx > prevZone && !zoneSfxPlayedRef.current.has(zoneIdx)) {
-                  zoneSfxPlayedRef.current.add(zoneIdx);
-                  playSfx('event-start');
+                // §5.21-追補9(社長指示v0.25.1655「ゲート2のボスを倒すまでは深層域に到達したことに
+                // しない=倒すまではエリア移動しない」): このクロスが未クリアのゲート(1=未確認汚染/
+                // 2=深層)で塞がれる踏破なら、区域到達の告知・記録(バナー/年表/SE)を保留し、ゲート
+                // クリア時(=ボス討伐後)にまとめて出す。判定は下の踏破(markWallBreached)側と同一条件で統一。
+                const wallIdxCrossed = detectWallBreach(prevZone, zoneIdx);
+                const gateBlocksThisWall = GATE_ENABLED && (
+                  (wallIdxCrossed === 3 && !gateMetaRef.current.gate1Cleared) ||
+                  (wallIdxCrossed === 4 && !gateMetaRef.current.gate2Cleared)
+                );
+                if (!gateBlocksThisWall) {
+                  useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
+                  // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。
+                  // 浅い側へ戻る移動(zoneIdx<prevZone)は「到達」ではないので記録しない。
+                  if (zoneIdx > prevZone) {
+                    recordChronicle(getSelectedStageId(), 'zone', String(zoneIdx), `${AREA_ZONE_NAMES[zoneIdx]}に到達`);
+                  }
+                  // 区域遷移音は「遠ざかる移動(外側=より深い区域へ)」のときだけ鳴らす。
+                  // 外側から内側へ戻る(zoneIdx が小さくなる)ときは鳴らさない(社長指示)。
+                  // 仕様変更(v0.25.1523): 1プレイ(1ラン)中1エリア1回まで(往復で同じ区域に再度届いても鳴らさない)。
+                  if (zoneIdx > prevZone && !zoneSfxPlayedRef.current.has(zoneIdx)) {
+                    zoneSfxPlayedRef.current.add(zoneIdx);
+                    playSfx('event-start');
+                  }
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage③/④: 未確認/深層境界を未クリアのゲートのまま踏破した=
                 // 「未達ペナルティ」発動(ゲート1のみハンター復活を伴う。ゲート2はハードなので即戦闘=
@@ -2608,13 +2625,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §5.21 M20: ただし wallIdx===3/4(未確認/深層)を未クリアのゲートのまま踏破した場合は、
                 // クリアするまで到達判定を出さない(社長設計「未達ペナルティ」)。
                 if (WALL_ENABLED) {
-                  const wallIdx = detectWallBreach(prevZone, zoneIdx);
+                  const wallIdx = wallIdxCrossed; // 上で算出済み(踏破先ゾーンindex or null)を共用
                   if (wallIdx) {
                     syncWallDepth(Math.hypot(pcx, pcy)); // 踏破の瞬間の距離も自己最深として反映
-                    const gateBlocksThisWall = GATE_ENABLED && (
-                      (wallIdx === 3 && !gateMetaRef.current.gate1Cleared) ||
-                      (wallIdx === 4 && !gateMetaRef.current.gate2Cleared)
-                    );
+                    // gateBlocksThisWall は上(区域告知の保留判定)と同一=踏破儀式も同条件でガード。
                     const wm = useGameStore.getState().wallMeta;
                     if (isFirstWallBreach(wm, wallIdx) && !gateBlocksThisWall) {
                       // §5.21 M20追補(v0.25.1534): localStorageコミットはラン終了時のみ

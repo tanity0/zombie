@@ -12,6 +12,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1655 — ゲート2敗北時に「深層域到達」を刻まないよう修正(倒すまでエリア移動しない)【2026-07-13 16:43 JST】
+- **社長報告(バグ)**「ゲート2のボスに負けても深層域に行けたことになっちゃってる。ここ倒すまではエリア移動しないで」。
+- **原因**: v1628で足した年表(chronicle)の区域到達記録が、既存の踏破(markWallBreached)側の
+  `gateBlocksThisWall` ガードから漏れて、**ゲートで塞がれる境界をクロスした瞬間に「深層域に到達」を刻んでいた**
+  (踏破イベント自体は既にガード済みで、ゲートクリア時のみ発火する正しい挙動だった=年表だけが早撃ちしていた)。
+- **修正(`useGameLoop.ts`)**:
+  - クロス側(区域遷移ブロック): `wallIdxCrossed`/`gateBlocksThisWall`(wall3&!gate1Cleared || wall4&!gate2Cleared)を
+    **踏破側と同一条件で先頭に一本化**し、**バナー・年表・区域SEを `!gateBlocksThisWall` でまとめてガード**
+    (=未クリアのゲートで塞がれる踏破では区域到達の告知/記録を一切出さない)。踏破儀式ブロックは
+    重複していた `wallIdx`/`gateBlocksThisWall` を外側の共用に統一(挙動不変)。
+  - ゲートクリア側: **ゲート1クリア時に「未確認汚染エリアに到達」・ゲート2クリア(ミゲル討伐)時に「深層域に到達」を
+    年表へ刻む**(既存の踏破イベントと同じ場所=同じ瞬間)。dedup=区域index なので二重記録なし。
+- これで **敗北(ゲート失敗=押し戻し)では年表にも踏破にも何も残らず、討伐して初めて到達扱い**になる。
+  ゲート1も同条件でハード拘束なので同じ扱いに統一(既存踏破と足並みが揃う)。
+- **注意(既存データ)**: 修正前の版で既に刻まれた「深層域に到達」は localStorage に残る(dedupキーは消えない)ので、
+  社長の実機では進捗リセットするまで古い記録が残る。新規ランでは倒すまで刻まれない。
+- **物理的な最深到達(結果画面の「最深到達エリア」/自己最深距離)は据え置き**=拘束された物理位置を反映したまま
+  (別系統。年表の到達記録=社長報告の主対象のみ修正)。必要なら結果画面側も同様にゲート条件で抑止可(要指示)。
+- 自己点検: 憲法第4条(初心者ゾーン)/第5条(緩を荒らさない)には非抵触(深層=最外周のゲート挙動のみ)。
+- 検証: `npm run typecheck` パス / `npx eslint src/hooks/useGameLoop.ts` exit0。実機でゲート2敗北→年表に載らない、
+  討伐→載る、を社長確認。
+- Files: `src/hooks/useGameLoop.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1654 — 救援アライのバックジャンプ前しゃがみを「しゃがみ絵」に【2026-07-13 16:20 JST】
 - **社長指示**「(②の)救援アライはしゃがみ絵にして」。
 - `pixiScene.ts` `syncRescueAllies`:

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1655',
+    items: [
+      '深層の扉(ゲート2)のボスに敗れた場合、深層域へは到達していない扱いになるよう修正(倒すまで年表に「深層域に到達」を刻みません)。',
+    ],
+  },
+  {
     version: '0.25.1654',
     items: [
       '救難信号の援護アライの「バックジャンプ前のしゃがみ」を、縦潰しの仮表現からクラス別のしゃがみ絵(構え)に差し替え。',
