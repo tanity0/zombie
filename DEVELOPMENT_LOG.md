@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1650 — ストライカーの歩きを修正版に差し替え+頭の横揺れ除去【2026-07-13 11:10 JST】
+- **社長**「こちらに差し替え」→「もう一度修正」= 最新シート `aimeglio_13`(e429dd13)をストライカー(=player-scavenger絵)の歩きに採用。64色=ドット確認。
+- **ベイク**: ÷4 NEAREST→5コマ→**頭中心x合わせ(median基準)**+頭top平滑・幅78・CH64。**medianは髪の流れ(尾)に強い**=extent中心だと1.5px残ったが median で **頭横揺れ0.0px**(全コマ39.0)・縦1px。立ち=歩き2コマ目も同基準。
+- **差し替え**: `player-scavenger-{walk-0..4,idle}.png`。元シート退避 `art_src/originals/striker/walk-sheet-dot.png`(上書き)。**ASSET_VERSION 47→48**。走り/近接は不変。
+- **知見**: 髪が長い/流れるキャラの頭中心xは **median基準**が安定(mean/extentは尾に引っ張られる)。今後の横揺れ対策はmedianを既定に。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1649 — スカベンジャーの歩き/走りの頭の横揺れを1px以内に【2026-07-13 10:37 JST】
 - **社長指示**「スカベンジャーの歩きと走りの頭の前後左右揺れ 1px以内に抑えて」。
 - **診断**: 従来は各コマを**bbox中心**で横合わせ→腕/銃/マントの伸縮で頭が左右にブレていた(実測: 歩き横3.9px / 走り横6.2px)。
