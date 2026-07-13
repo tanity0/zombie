@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1647 — スカベンジャーの近接=全4クラス ドット化完了【2026-07-13 08:44 JST】
+- **社長提供**: スカベンジャー(=player-striker絵)近接シート(aimeglio・構え/振り抜き)。64色=ドット確認。
+- **ベイク**: ÷4 NEAREST→2コマ→幅78・足元x重心中央(78×66)。構え=しゃがみ(47×47)/振り抜き=立ち(48×64)。
+- **差し替え**: `player-striker-melee-{ready,swing}.png`。元シート退避 `art_src/originals/scavenger/melee-sheet-dot.png`。**ASSET_VERSION 44→45**。
+- **🎉 完了**: **全4クラス**(マークスマン=magnum / ヘビーガンナー=shotgun / ストライカー=scavenger絵 / スカベンジャー=striker絵)の**歩き/立ち/走り/近接がすべてドット保持**で焼き直し済み。取り込み時のLANCZOSにじみを一掃、上下バタつきも各1px以内に平滑。全素材は`art_src/originals/`に退避済み。
+- **未決(持ち越し・任意)**: ①歩きの再生順(ピンポン/前方)は全クラス共通で社長確認待ち(走りは前方確定)。②ストライカー/スカベンジャーの立ち絵は暫定で歩き2コマ目(専用が要れば差し替え)。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1646 — ヘビーガンナーの専用立ち絵を差し替え【2026-07-13 08:40 JST】
 - **社長提供**: ヘビーガンナーの専用立ち絵(単一直立ポーズ・aimeglio_9)。「こちらで」(aimeglio_11ではなく9を採用)。64色=ドット確認。
 - **ベイク**: ÷4 NEAREST→bbox→幅78・足元下端・中央(78×66)。v1644の暫定(歩き2コマ目)→専用の直立ポーズへ。
