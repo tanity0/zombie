@@ -12,6 +12,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1670 — ゲート2を倒すまで深層演出(セピア/逆再生BGM)に入らない(発火前の隙間を封鎖)【2026-07-13 21:36 JST】
+- **社長報告(バグ)**「ゲート2入った時、まだ深層域に入っちゃってる」。
+- **原因**: ゲート2は境界(7500)を**跨いだ後**に発火する(pending→activeEventが空いた瞬間)。跨いだ瞬間〜発火までの
+  隙間では activeGateRef=null のため、v1666/1667の「ゲート中凍結」が効く前に**深層演出(セピア+逆再生BGM)が先に
+  入ってしまい、凍結が「入った状態」を固定**していた。
+- **修正方針**: 凍結(状態保持)ではなく**「ゲート2を倒すまで深層演出に入れない」**(ロック)へ:
+  - **BGM(useGameLoop)**: prep→deep 遷移に `deepAllowed = !GATE_ENABLED || gate2Cleared` を追加。
+    未クリアの間は距離が7500を超えても deep へ進まない(prep=先読み待機は維持)。クリアの瞬間に deep へ。
+  - **セピア(store+pixiScene)**: store に `deepZoneLocked`(=GATE_ENABLED && !gate2Cleared・変化時のみ反映)を新設。
+    `syncDeepZoneGrade` はロック中 `deepGradeOn=false` を強制(redNight/?deepzone=1 の強制ONは従来どおり優先)。
+    クリアでロック解除→通常判定→セピアがフェードイン(=討伐の瞬間に深層域が「始まる」)。
+  - v1666/1667の gateActive 凍結は残置(ゲート1戦闘や境界行き来の保険)。
+- **挙動**: 境界を跨ぐ→深層演出なしのままゲート2戦闘→**討伐した瞬間にセピア+逆再生BGMが入る**。敗北(押し戻し)なら
+  何も入らない。恒久クリア済みランでは従来どおり境界通過で即入る。
+- 検証: `npm run typecheck` パス / eslint(3ファイル)exit0。実機でゲート2発生〜戦闘中に深層演出が入らないこと・
+  討伐の瞬間に入ることを社長確認。
+- Files: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`, `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1669 — 凶悪ハンター解放をラン内スコープへ(次ランで復活)【2026-07-13 20:50 JST】
 - **社長決定**「拠点を解放していないエリアでは強制ハンターイベントは次runでも復活」= v1668の解放(gate1Cleared=
   恒久)は広すぎた。**ゲート1通過による解放はそのラン限り**とし、新ランでは拠点0なら再び発生する。

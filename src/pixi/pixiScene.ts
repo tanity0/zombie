@@ -2707,6 +2707,7 @@ export class PixiScene {
       now,
       s.redNight?.phase === 'active',
       s.gateActive, // ゲート戦闘中はセピアの切替を凍結(社長指示v0.25.1667)
+      s.deepZoneLocked, // ゲート2未クリアの間は深層セピアに入らない(社長報告v0.25.1670)
     );
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
@@ -6739,7 +6740,7 @@ export class PixiScene {
   // ColorMatrixFilter を掛け、enter/exit を約1秒でフェード(filter.alpha 補間)。描画のみ=store非干渉。
   // 紅き夜(redNightActive)中は血赤マトリクスに切り替え、距離によらず全画面に掛ける。
   // amount≈0 のときはフィルタを外して全画面パスを発生させない(非深層域での追加コスト無し)。
-  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number, redNightActive: boolean, gateActive = false) {
+  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number, redNightActive: boolean, gateActive = false, deepLocked = false) {
     if (!DEEP_ZONE_GRADE_ENABLED) return;
     const dt = this.lastGradeNow ? Math.min(0.1, (now - this.lastGradeNow) / 1000) : 0;
     this.lastGradeNow = now;
@@ -6754,6 +6755,11 @@ export class PixiScene {
     } else if (FORCE_DEEP_ZONE) {
       // ?deepzone=1 診断: 距離/eligibleを無視して深層域セピアを常時ON(退色グレードの重さ検証)。
       this.deepGradeOn = true;
+    } else if (deepLocked) {
+      // 社長報告v0.25.1670「ゲート2入った時、まだ深層域に入っちゃってる」: ゲート2は境界を跨いだ後に発火する
+      // ため、発火前の隙間でセピアが先に入っていた(gateActive凍結はその後の固定しかできない)。
+      // → ゲート2を倒すまで(deepZoneLocked)は深層セピアに入らない(強制OFF)。クリアの瞬間に通常判定へ→フェードイン。
+      this.deepGradeOn = false;
     } else if (gateActive) {
       // 社長指示v0.25.1667「ゲートを超えない限りエリア切替を発動しない」: ゲート戦闘中は深層域セピアの
       // ON/OFF を現在のまま凍結。ゲート2の境界(=DEEP_ZONE_GRADE_D)の上にアリーナが張られるため、戦闘中に

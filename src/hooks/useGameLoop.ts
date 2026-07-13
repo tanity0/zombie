@@ -1037,6 +1037,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const rafiRef = useRef({ rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 });
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
   const gateActivePrevRef = useRef(false);
+  // ゲート2未クリア(=深層演出ロック)のstore反映用・直前値(同上)。
+  const deepLockedPrevRef = useRef(false);
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -2613,7 +2615,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           } else if (phase === 'shallow') {
             if (dist >= DEEP_BGM_D - 400) { prepareDeepReverseBgm(); deepBgmPhaseRef.current = 'prep'; }
           } else if (phase === 'prep') {
-            if (dist >= DEEP_BGM_D) { enterDeepReverseBgm(); deepBgmPhaseRef.current = 'deep'; }
+            // 社長報告v0.25.1670「ゲート2入った時、まだ深層域に入っちゃってる」: ゲート2は境界(7500)を跨いだ後に
+            // 発火するため、跨いだ瞬間〜発火までの隙間で deep へ進んでいた(凍結v1666はその後の固定しかできない)。
+            // → ゲート2を倒すまで(gate2Cleared=false)は deep へ進まない(prepで待機=先読みは維持)。
+            const deepAllowed = !GATE_ENABLED || gateMetaRef.current.gate2Cleared;
+            if (dist >= DEEP_BGM_D && deepAllowed) { enterDeepReverseBgm(); deepBgmPhaseRef.current = 'deep'; }
             else if (dist < DEEP_BGM_D - 600) { releaseDeepReverseBgm(); deepBgmPhaseRef.current = 'shallow'; }
           } else { // deep
             if (dist < DEEP_BGM_D - 200) { exitDeepReverseBgm(); deepBgmPhaseRef.current = 'prep'; }
@@ -2627,6 +2633,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gateActiveNow !== gateActivePrevRef.current) {
             gateActivePrevRef.current = gateActiveNow;
             useGameStore.setState({ gateActive: gateActiveNow });
+          }
+          // ゲート2未クリアの間は深層演出(セピア)をロック(社長報告v0.25.1670)。クリアの瞬間に解除→演出が入る。
+          const deepLockedNow = GATE_ENABLED && !gateMetaRef.current.gate2Cleared;
+          if (deepLockedNow !== deepLockedPrevRef.current) {
+            deepLockedPrevRef.current = deepLockedNow;
+            useGameStore.setState({ deepZoneLocked: deepLockedNow });
           }
         }
 

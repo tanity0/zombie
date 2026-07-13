@@ -1974,6 +1974,10 @@ interface GameState {
   // 深さの壁ゲート(1/2)の戦闘中か(useGameLoop の activeGateRef を反映)。描画側(深層セピア)がゲート中は
   // エリア切替を凍結するために読む(社長指示v0.25.1667「ゲートを超えるまでエリア切替を発動しない」)。
   gateActive: boolean;
+  // ゲート2(深層境界)が未クリアの間 true(useGameLoop が gateMetaRef を反映)。描画側(深層セピア)は
+  // これが true の間、距離が深層に届いていても深層演出へ入らない(社長報告v0.25.1670: ゲート2は境界を
+  // 跨いだ後に発火するため、発火前の隙間で深層演出が先に入っていた。凍結ではなく「倒すまで入れない」)。
+  deepZoneLocked: boolean;
   // スキル「救難信号」の援護アライ(一過性演出)。生成/着弾ダメージ/寿命は tickRescueAllies が処理、
   // 描画は pixiScene が直読み(RescueAlly型のコメント参照)。
   rescueAllies: RescueAlly[];
@@ -2553,6 +2557,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   groundFires: [],
   bossFires: [],
   gateActive: false,
+  deepZoneLocked: false,
   rescueAllies: [],
   thrownBags: [],
   boomerangReadyFxAt: 0,
@@ -9270,6 +9275,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         groundFires: [],
   bossFires: [],
   gateActive: false,
+  deepZoneLocked: false,
         rescueAllies: [],
         thrownBags: [],
         molotovCycle: null,
