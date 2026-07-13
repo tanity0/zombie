@@ -333,6 +333,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'jibril', scaleMode: 'linear' as const },
       // ジブリルの武器=ランタン(ミゲルのmiguel-swordに相当する別武器スプライト・透過済み・linear)。
       { name: 'jibril-lantern', scaleMode: 'linear' as const },
+      // ゲート2ボス(ステージ4): ラフィ(天使)。ミゲル/ジブリルと同じ扱い(linear・名前=EnemyType一致)。
+      { name: 'rafi', scaleMode: 'linear' as const },
+      // ラフィの武器=骨刃(別武器スプライト・透過済み・linear)。振り演出は武器の使い方受領後に追加。
+      { name: 'rafi-blade', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

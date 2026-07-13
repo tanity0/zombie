@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1662',
+    items: [
+      'ステージ4の深層の扉(ゲート2)に天使「ラフィ」を追加(挙動はミゲルと同型。武器=骨刃の演出は今後追加)。',
+    ],
+  },
+  {
     version: '0.25.1661',
     items: [
       'ステージ3の深層の扉(ゲート2)に天使「ジブリル」を追加(挙動はミゲルと同型。武器=ランタンの演出は今後追加)。',

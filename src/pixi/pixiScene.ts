@@ -31,7 +31,7 @@ import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/ca
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
 const ZOOM_OVERSCAN = 1 / CONTEXT_ZOOM_MIN;
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
-import { getEnemyColor, isHiddenBoss } from '../utils/enemyUtils';
+import { getEnemyColor, isHiddenBoss, isGate2AngelBoss } from '../utils/enemyUtils';
 import { getRunPois, isPoiRevealed, poiSectorIndex } from '../world/pois';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
@@ -862,6 +862,7 @@ const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: nu
   thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93 }, // 鬼刀の武人(1132×1147)。帯=両足の実測位置。
   miguel:     { w: 0.50, h: 0.20, cx: 0.35, cy: 0.99 }, // 大天使ミゲル(797×1187)。thor流用+足元実測の叩き台(実機微調整前提)。
   jibril:     { w: 0.50, h: 0.18, cx: 0.40, cy: 0.97 }, // 天使ジブリル(740×1267)。ミゲル流用+足元の叩き台(実機微調整前提)。
+  rafi:       { w: 0.50, h: 0.16, cx: 0.50, cy: 0.96 }, // 天使ラフィ(728×881・横広の獣性個体)。足元の叩き台(実機微調整前提)。
 };
 const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // 設置物(盾)/召喚が攻撃された時の被弾シェイク。減衰する短い横揺れ(描画のみ)。
@@ -5975,9 +5976,9 @@ export class PixiScene {
     }
     // ミゲル(ゲート2ボス・§5.21-追補8)の払い攻撃。トールのharai描画を流用し、範囲/太さ/剣素材だけ
     // 差し替える。横払い(harai)→縦払い(tate)の2発コンボ=各々が独立した溜め+実行(攻撃3以降は追って追加)。
-    if (e.type === 'miguel' || e.type === 'jibril') {
-      // ジブリル(ステージ3ゲート2ボス)はミゲルの攻撃描画を流用(社長指示v0.25.1661「一旦ミゲルをそのままコピー」)。
-      // 赤ゾーン予告(武器非依存=理不尽回避のため必ず出す)は両者共通。武器スプライト(ready/slash)は現状ミゲル専用
+    if (isGate2AngelBoss(e.type)) {
+      // 天使(ゲート2ボス=ミゲル/ジブリル/ラフィ…)はミゲルの攻撃描画を流用(社長指示v0.25.1661「一旦ミゲルをそのままコピー」)。
+      // 赤ゾーン予告(武器非依存=理不尽回避のため必ず出す)は共通。武器スプライト(ready/slash)は現状ミゲル専用
       // (miguel-sword)なので、ジブリルの武器=ランタンの振り演出は社長から武器の使い方を受け取ってから追加する
       // (それまでジブリルは予告+ダメージのみ=武器の絵は本体絵に描かれたランタン/剣で代替)。
       const slashFx = this.miguelSlashFx.get(e.id);

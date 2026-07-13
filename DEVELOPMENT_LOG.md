@@ -12,6 +12,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1662 — ラフィ(ステージ4ゲート2ボス)追加＋天使判定を isGate2AngelBoss に一本化【2026-07-13 19:23 JST】
+- **社長提供**「ステージ4の天使ラフィ」(本体＋武器=骨刃)。ジブリルと同じくミゲルの丸ごとクローンで追加。
+- **素材**: `public/sprites/rafi.png`(728×881・本体)/ `public/sprites/rafi-blade.png`(172×512・武器)。原本=`art_src/originals/rafi/`。
+- **天使判定の一本化(リファクタ)**: `miguel||jibril||rafi` の繰り返しを **`enemyUtils.isGate2AngelBoss(t)`** に集約。
+  以後の天使追加は「このヘルパー1行 + 型ごとのデータ(stats/color/label/texture/fit/GATE2マップ)」だけで済む。
+  - 置換箇所: useGameLoop(コントローラfind・反射弾ワープ除外)/ pixiScene(攻撃描画ガード)/ gameStore(年表フレーズ)。挙動不変。
+- **ラフィ配線(rafiを各所に追加)**: EnemyType / ENEMY_STATS(ミゲル同値・叩き台)/ isHiddenBoss / isBossType /
+  CONSTANT_STRENGTH_TYPES / getEnemyFireProfile / getEnemyColor(#7c3aed)/ ENEMY_DEATH_LABELS('ラフィ')/
+  GATE2_BOSS_TYPE_BY_STAGE('stage-4':'rafi')/ pixiTextures('rafi'・'rafi-blade')/ BOSS_SPRITE_FIT(叩き台)。
+- **武器演出は現状ミゲル専用**(骨刃の振り演出は「武器の使い方」受領後に追加。rafi-blade.png は登録済み・予告+ダメージのみ)。
+- 検証: `npm run typecheck` パス / `npx eslint`(6ファイル)exit0。実機でステージ4の深層の扉→ラフィ出現・
+  討伐で年表「天使ラフィを討伐」を社長確認。帯位置(BOSS_SPRITE_FIT)は叩き台=要微調整。
+- Files: `types/game.ts`, `utils/enemyUtils.ts`, `store/gameStore.ts`, `hooks/useGameLoop.ts`,
+  `pixi/pixiScene.ts`, `pixi/pixiTextures.ts`, `public/sprites/rafi*.png`, `art_src/originals/rafi/*`,
+  `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1661 — ジブリル(ステージ3ゲート2ボス)配線=ミゲルの丸ごとクローン【2026-07-13 19:18 JST】
 - **社長指示**「一旦ミゲルをそのままコピーでいい」。ジブリルをステージ3のゲート2ボスとして、ミゲルの機構を全流用で追加。
 - **配線(EnemyType 'jibril' を各所に足す)**:

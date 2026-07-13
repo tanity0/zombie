@@ -42,7 +42,7 @@ import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
 } from '../utils/namedEnemy';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, isGate2AngelBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import { getSelectedStageId, getWallMeta, recordChronicle, type WallMeta } from '../data/progress';
@@ -733,6 +733,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   thor: 'トール',
   miguel: 'ミゲル',
   jibril: 'ジブリル',
+  rafi: 'ラフィ',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
@@ -1609,7 +1610,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     //  ・それ以外の裏ボス(mimir/jormungand/skadi/thor)/ハンターは従来どおり「◯◯を討伐」。
     const phrase =
       enemy.type === 'giantbat' ? 'ストーリーボスを討伐'
-      : (enemy.type === 'miguel' || enemy.type === 'jibril') ? `天使${enemyDeathLabel(enemy.type)}を討伐`
+      : isGate2AngelBoss(enemy.type) ? `天使${enemyDeathLabel(enemy.type)}を討伐`
       : `${enemyDeathLabel(enemy.type)}を討伐`;
     recordChronicle(
       getSelectedStageId(),

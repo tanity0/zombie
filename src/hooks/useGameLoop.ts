@@ -73,6 +73,7 @@ import {
   getEnemySpawnInterval,
   isBossType,
   isHiddenBoss,
+  isGate2AngelBoss,
   spawnEnemyAt,
   spawnEnemyAtWithTier,
   selectLabEnemyType,
@@ -578,7 +579,7 @@ const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボス�
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
 // このlookupに追加するだけで対応する(現状はstage-1=ミゲルのみ)。
 const FORCE_GATEBOSS = evParam('gateboss') === '1';
-const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = { 'stage-1': 'miguel', 'stage-3': 'jibril' };
+const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = { 'stage-1': 'miguel', 'stage-3': 'jibril', 'stage-4': 'rafi' };
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
 // (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。
@@ -3659,7 +3660,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 静止。近接被弾で1秒間だけ周回速度2倍。攻撃選択pool=当面harai(狭)のみ(トールのharaiを流用)。
         if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try {
-          const miguel = useGameStore.getState().enemies.find(e => (e.type === 'miguel' || e.type === 'jibril') && e.bossState != null);
+          const miguel = useGameStore.getState().enemies.find(e => isGate2AngelBoss(e.type) && e.bossState != null);
           if (miguel) {
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
             const mcx = miguel.x + miguel.width / 2, mcy = miguel.y + miguel.height / 2;
@@ -5801,7 +5802,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           //   ワープせず定位置を周回する設計。かつ専用コントローラで動くため汎用ボスの reaperWarpAlpha フェードイン
           //   復帰(useGameLoop 3009付近)を通らず、reaperWarpAlpha=0 のまま固定=絵が消えたままになっていた。
           //   ワープ対象から外し、反射弾のダメージだけ通す(=消えない)。
-          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && enemyForFx.type !== 'miguel' && enemyForFx.type !== 'jibril' && !enemyKilled
+          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && !isGate2AngelBoss(enemyForFx.type) && !enemyKilled
               && Date.now() >= bossRef.current.warpUntil) {
             const wpl = useGameStore.getState().player;
             const wpcx = wpl.x + wpl.width / 2, wpcy = wpl.y + wpl.height / 2;

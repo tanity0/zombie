@@ -67,6 +67,7 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // 半分にすると絵も当たりも一緒に半分になる(視覚と当たりがズレない)。width120→60・height60→30。
   miguel:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 },
   jibril:     { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 }, // ステージ3ゲート2ボス(一旦ミゲル同値=叩き台・社長指示v0.25.1661)
+  rafi:       { width: 60, height: 30, speed: 70, health: 2000, damage: 38, experienceValue: 0 }, // ステージ4ゲート2ボス(一旦ミゲル同値=叩き台・社長指示v0.25.1662)
   // ハンター変異体(イベント専用・通常プールには入れない)。強さは通常敵と同じ計算式に乗せる
   // (CONSTANT_STRENGTH_TYPES には入れない=エリア/距離・色でスケール)。社長指示の規定値:
   //  実効「耐久6000・攻撃40」スタート → 通常式 health×(ENEMY_HP_MULT=5)×areaDiff を踏まえ
@@ -83,13 +84,17 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
 // miguel(ゲート2ボス)もここに含める: updateEnemies の通常追跡AIから除外(専用コントローラが座標を
 // 直接書き込む)/帯AABB基準の近接判定/BOSS_SPRITE_FIT描画 等、他の裏ボスと共通の土台に乗せるため
 // (PACING_PUZZLE.md §5.21-追補8のExplore地図チェックリスト)。
-export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril';
+export const isHiddenBoss = (t: EnemyType): boolean => t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi';
+
+// ゲート2の天使ボス(ミゲル/ジブリル/ラフィ…)。裏ボスの部分集合=ゲート2から fromEvent スポーンされ、
+// 専用コントローラ(bossState機械)で動き、ミゲルの攻撃描画を流用する型。将来の天使を足す時はここ1箇所に追加する。
+export const isGate2AngelBoss = (t: EnemyType): boolean => t === 'miguel' || t === 'jibril' || t === 'rafi';
 
 // Big set-piece enemies. They use a different crit ruleset (no instant melee
 // finisher; crits hit much harder instead).
 export const isBossType = (t: EnemyType): boolean =>
   t === 'pumpkin' || t === 'giantbat' || t === 'reaper' || t === 'lab-zombie-3' ||
-  t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'hunter';
+  t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' || t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'hunter';
 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ネームド/裏ボス4体/giantbat/hunter=劇的な討伐。パンプキン(および死神/lab-zombie-3)は対象外(社長指示)。
@@ -270,7 +275,7 @@ const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
   ? { blue: 1, purple: 1, red: 1 }
   : { blue: 1.1, purple: 1.2, red: 1.3 }; // 旧値(青1.1/紫1.2/赤1.3・+10%刻み)
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
-const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril']);
+const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -508,7 +513,7 @@ export const getEnemyFireProfile = (enemy: Enemy): FireProfile | null => {
   // useGameLoop の専用コントローラ(3連発/全方位16発)が直接制御する(interval/range は使わない)。
   // miguel(ゲート2ボス)もこのチェーンに含める(Explore地図チェックリスト)が、バッチ1では弾は
   // 未使用(攻撃1=harai は近接ライン判定のみ)。将来の弾攻撃追加時にそのまま使える置き場として置く。
-  if (enemy.type === 'mimir' || enemy.type === 'jormungand' || enemy.type === 'skadi' || enemy.type === 'thor' || enemy.type === 'miguel' || enemy.type === 'jibril') {
+  if (enemy.type === 'mimir' || enemy.type === 'jormungand' || enemy.type === 'skadi' || enemy.type === 'thor' || enemy.type === 'miguel' || enemy.type === 'jibril' || enemy.type === 'rafi') {
     return { interval: 99999, range: 99999, speed: 320, damage: 20, size: 16 };
   }
   return null;
@@ -574,6 +579,7 @@ export const getEnemyColor = (type: EnemyType): string => {
     case 'thor':     return '#8b1a1a';  // 血の赤褐色(裏ボス・トール)
     case 'miguel':   return '#6b21a8';  // 濃い紫(ゲート2ボス・天使名ボス「ミゲル」)
     case 'jibril':   return '#6d28d9';  // 濃い紫(ゲート2ボス・天使名ボス「ジブリル」・ステージ3)
+    case 'rafi':     return '#7c3aed';  // 紫(ゲート2ボス・天使名ボス「ラフィ」・ステージ4)
     case 'hunter':   return '#d9cfc4';  // 蒼白い肉色(ハンター変異体)
     case 'screamer': return '#8fae4f';  // くすんだ毒々しい緑(叫喚型)
     default:         return '#dc2626';
