@@ -362,7 +362,7 @@ export interface Enemy {
   //  tate-windup = 縦払いの溜め(横払いharai-windupと同仕様=静止・赤ライン予告・カウンター可)。
   //  tate = 縦払いの実行(プレイヤー位置に画面縦のラインをロック。当たり判定はharaiと共通=向きのみ縦)。
   bossState?: 'chase' | 'aim-burst' | 'burst' | 'aim-radial' | 'radial' | 'skadi-ice' | 'skadi-blade' | 'dash-windup' | 'dash' | 'return' | 'laser-windup' | 'laser-fire'
-    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern';
+    | 'issen-windup' | 'issen-dash' | 'tsuki-windup' | 'tsuki' | 'harai-windup' | 'harai' | 'tate-windup' | 'tate' | 'jump-windup' | 'jump-attack' | 'jump-recover' | 'counter-leap' | 'backstep' | 'orbit-step' | 'volley' | 'lantern' | 'bone';
   bossStateUntil?: number;   // 現フェーズ終了 gameTime(ms)
   bossNextActionAt?: number; // 次に特殊行動(burst/radial/dash)を抽選できる gameTime(ms)
   bossBurstLeft?: number;    // 3連発の残弾

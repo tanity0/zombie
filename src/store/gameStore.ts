@@ -1966,7 +1966,7 @@ interface GameState {
   pumpkinBlasts: { x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean }[];
   // 裏ボス スカジの氷ハザード。markers=足元の氷塊テレグラフ(赤サークル2秒→起爆)、blades=設置後に発射される氷刃。
   skadiIceMarkers: { id: string; x: number; y: number; bornAt: number; fireAt: number; enemyId: string }[];
-  skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string }[];
+  skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string; visual?: 'ice' | 'bone' }[];
   // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
   groundFires: GroundFire[];
   // ジブリルのランタン攻撃の紫の単発火(プレイヤー被弾)。判定/寿命は useGameLoop、描画は pixiScene が直読み。
@@ -2237,7 +2237,7 @@ interface GameState {
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
-  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string) => void;
+  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: 'ice' | 'bone') => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
   enqueueNpcDialogue: (lines: { name: string; text: string }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
@@ -5994,8 +5994,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   spawnSkadiIce: (x, y, bornAt, fireAt, enemyId) => set(s => ({
     skadiIceMarkers: [...s.skadiIceMarkers, { id: `sice${skadiHazardSeq++}`, x, y, bornAt, fireAt, enemyId }],
   })),
-  spawnSkadiBlade: (x, y, angle, launchAt, enemyId) => set(s => ({
-    skadiIceBlades: [...s.skadiIceBlades, { id: `sbld${skadiHazardSeq++}`, x, y, angle, launchAt, launched: false, vx: 0, vy: 0, expireAt: 0, enemyId }],
+  spawnSkadiBlade: (x, y, angle, launchAt, enemyId, visual = 'ice') => set(s => ({
+    skadiIceBlades: [...s.skadiIceBlades, { id: `sbld${skadiHazardSeq++}`, x, y, angle, launchAt, launched: false, vx: 0, vy: 0, expireAt: 0, enemyId, visual }],
   })),
 
   enqueueNpcDialogue: (lines) => {
@@ -6690,7 +6690,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pr = Math.max(player.width, player.height) / 2;
       const counterOpen = now <= player.counterWindowEnd;
       const meleeR = huntingMeleeRadius(player);
-      const skadiIceBlades = !skadiAlive ? [] : state.skadiIceBlades
+      // 骨刃(ラフィ=visual:'bone')はスカジ生存に関係なく処理する(ゲート2ボスの攻撃)。氷刃(スカジ)は
+      // 従来どおりスカジ不在時は処理せず破棄(掃除)。※skadiIceBlades配列を両ボスで共用しているため。
+      const activeBlades = skadiAlive ? state.skadiIceBlades : state.skadiIceBlades.filter(b => b.visual === 'bone');
+      const skadiIceBlades = activeBlades
         .map(b => {
           if (!b.launched) {
             if (gameTime >= b.launchAt) {

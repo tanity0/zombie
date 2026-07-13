@@ -12,6 +12,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1665 — ラフィ専用コントローラ(追跡＋横ステップ＋ジャンプ＋骨攻撃＋カウンター連鎖)【2026-07-13 20:06 JST】
+- **社長指示(攻撃パターン・確認済み)**: ラフィ=「ゆっくり追跡＋ランダム横高速ステップ / ハンドガン距離300内=骨攻撃
+  (スカジ氷刃の骨刃版・設置間隔=400×1.5=600ms)/ 300外=ジャンプ攻撃(トール流用・着地AoE)/ ジャンプの溜めを
+  カウンターされたら即再ジャンプ・連続2回まで」。距離境界300・間隔600msは社長確認済み。
+- **骨刃=スカジ氷刃のvisual差し替え(`gameStore.ts`/`pixiScene.ts`)**: `skadiIceBlades` に `visual?:'ice'|'bone'` を追加。
+  `spawnSkadiBlade(...,'bone')` で骨刃。描画は `visual` でテクスチャを `rafi-blade`/`skadi-ice-blade` に振り分け
+  (`RAFI_BLADE_NATIVE_ANGLE=-90°`=叩き台)。**判定/挙動はスカジ刃と完全に同じ**(設置→1秒後発射→命中20/カウンター可)。
+- **共用配列fix(重要)**: スカジ刃tickは `!skadiAlive ? []` で全消去していたため、ラフィの骨刃も消えていた。
+  → **骨刃(bone)はスカジ生存に関係なく処理・氷刃(ice)は従来どおりスカジ不在で掃除**、に変更。
+- **ラフィ専用コントローラ(`useGameLoop.ts`)**: ミゲル制御の find をミゲルのみに戻し、ラフィ専用ブロックを新設。
+  状態=chase(追跡＋横ステップ)/bone(骨刃7本・600ms)/jump-windup→jump-attack(pumpkinBlasts着地)→jump-recover。
+  - 追跡=`RAFI_CHASE_SPEED=62`(プレイヤー87より遅い)・アリーナ内クランプ。横ステップ=間隔1.8〜3.6秒・0.22秒・速度360で
+    プレイヤー方向に直交(左右ランダム)。
+  - 攻撃選択=距離≤300で骨、>300でジャンプ。ジャンプ溜め中カウンター→`rafiCounterHit`(ミゲル型FX＋反撃)＋
+    `RAFI_JUMP_MAX_REJUMPS=2` まで即再ジャンプ。着地硬直のカウンターは通常(再ジャンプ無し)。
+  - 専用 ref `rafiRef`＋新ランリセット＋エラーログ初回のみ。
+- **叩き台**: 追跡62/横ステップ(1.8〜3.6s・0.22s・360)/骨7本600ms/ジャンプ=トール値流用/再ジャンプ2回/骨刃角度-90°。
+- **メモ**: 再ジャンプは「直ぐに」=溜め中カウンターで即もう一度溜め(最大3ジャンプ)。速すぎたら要調整。骨刃の向き/大きさは叩き台。
+- 検証: `npm run typecheck` パス / `npx eslint`(4ファイル)exit0。実機でステージ4の深層の扉→ラフィが追跡/横ステップ/
+  距離で骨orジャンプ/カウンター連鎖するかを社長確認。数値・骨刃の見た目は叩き台=要調整。
+- **これでゲート2天使3体(ミゲル/ジブリル/ラフィ)の専用挙動が揃った**(ジブリルの手元ランタンの振り子演出だけ後追い)。
+- Files: `types/game.ts`, `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`,
+  `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1664 — ジブリル スライス2(ランタン攻撃＋紫の単発火ハザード)【2026-07-13 19:56 JST】
 - **社長指示(承認)**: ジブリルのランタン攻撃=「5秒間・足元に紫の単発火・0.7秒予告フェードイン→2秒・30固定・
   ダメージを与えた火は消える・見た目/大きさは火炎瓶相当・色は紫」。方針(molotov風の見た目でプレイヤーに当たる新規火)承認済み。

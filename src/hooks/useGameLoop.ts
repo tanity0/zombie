@@ -747,6 +747,17 @@ const JIBRIL_FIRE_LIFE_MS = 2000;           // 火の寿命(2秒)
 const JIBRIL_FIRE_DAMAGE = 30;              // 単発固定ダメージ
 const JIBRIL_FIRE_RADIUS = 22;              // 当たり半径(=MOLOTOV_FIRE_RADIUS・見た目/大きさ火炎瓶と同等)
 
+// ラフィ(ステージ4ゲート2ボス)専用パラメータ(社長指示v0.25.1665)。全て叩き台=実機調整前提。
+const RAFI_CHASE_SPEED = 62;                // ゆっくり追跡(px/s・プレイヤー87より遅い)
+const RAFI_HANDGUN_DIST = 300;             // この内側=骨攻撃 / 外側=ジャンプ攻撃(社長確認済み)
+const RAFI_STEP_MIN_GAP_MS = 1800;          // 横ステップの最短間隔
+const RAFI_STEP_MAX_GAP_MS = 3600;          // 横ステップの最長間隔
+const RAFI_STEP_MS = 220;                   // 横ステップの持続(短く高速)
+const RAFI_STEP_SPEED = 360;                // 横ステップ中の速度(高速)
+const RAFI_BONE_COUNT = 7;                  // 骨刃の本数(=スカジ SKADI_BLADE_COUNT)
+const RAFI_BONE_GAP_MS = 600;               // 骨刃の設置間隔=スカジ400×1.5(社長確認済み)
+const RAFI_JUMP_MAX_REJUMPS = 2;            // ジャンプの溜めをカウンターされた時に連続で追撃ジャンプする最大回数
+
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
 const THOR_JUMP_WINDUP_MS = 700;             // ジャンプ前の溜め(pumpkinのcrouchより短め=間合いを詰める性質上)
@@ -758,6 +769,7 @@ const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時�
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let miguelCtrlErrLogged = false;                     // ミゲル制御例外のログも初回だけ
 let jibrilCtrlErrLogged = false;                     // ジブリル制御例外のログも初回だけ
+let rafiCtrlErrLogged = false;                       // ラフィ制御例外のログも初回だけ
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
 const PICKUP_HARD_CAP = 120;
@@ -1021,6 +1033,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const miguelVolleyRef = useRef({ nextShotAt: 0, shots: 0 }); // 弾3連の発射タイミング/残弾(単体ボスなので単一refで足る)
   // ジブリル(ステージ3ゲート2ボス)専用: 被弾カウント/退避加速/ワープ/弾モードの状態(単体ボスなので単一refで足る)。
   const jibrilRef = useRef({ hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe' as 'snipe' | 'close', shots: 0, nextShotAt: 0, nextFireAt: 0 });
+  // ラフィ(ステージ4ゲート2ボス)専用: カウンター連鎖/骨攻撃の残数/横ステップの状態(単体ボスなので単一refで足る)。
+  const rafiRef = useRef({ rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 });
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1653,6 +1667,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           miguelSlowRef.current = { slowUntil: 0, nextAt: 0 }; // ミゲルのゆっくり歩きタイマーも新ランで再アーム
           miguelVolleyRef.current = { nextShotAt: 0, shots: 0 }; // 弾3連タイマーも新ランでリセット
           jibrilRef.current = { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0, nextFireAt: 0 }; // ジブリルの被弾/退避/弾/ランタン状態も新ランでリセット
+          rafiRef.current = { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 }; // ラフィのカウンター連鎖/骨攻撃/横ステップ状態も新ランでリセット
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -3683,9 +3698,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 静止。近接被弾で1秒間だけ周回速度2倍。攻撃選択pool=当面harai(狭)のみ(トールのharaiを流用)。
         if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try {
-          // ミゲル制御はミゲル本体＋(当面)ラフィを駆動。ジブリルは別挙動なので専用コントローラ(下)が駆動する。
-          // ラフィは専用挙動(スライス3)実装までミゲルのクローンで動かす。
-          const miguel = useGameStore.getState().enemies.find(e => (e.type === 'miguel' || e.type === 'rafi') && e.bossState != null);
+          // ミゲル制御はミゲル本体のみを駆動。ジブリル/ラフィは別挙動なので各専用コントローラ(下)が駆動する。
+          const miguel = useGameStore.getState().enemies.find(e => e.type === 'miguel' && e.bossState != null);
           if (miguel) {
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
             const mcx = miguel.x + miguel.width / 2, mcy = miguel.y + miguel.height / 2;
@@ -4011,6 +4025,168 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
          } catch (err) {
           if (!jibrilCtrlErrLogged) { jibrilCtrlErrLogged = true; console.error('[jibril] controller error (suppressed after first):', err); }
+         }
+        }
+
+        // --- ラフィ(ステージ4ゲート2ボス)専用ミニコントローラ(社長指示v0.25.1665) ---
+        // ゆっくり追跡＋ランダム横ステップ。ハンドガン距離(300px)内=骨攻撃(スカジ氷刃の骨刃版・設置間隔600ms)、
+        // 外=ジャンプ攻撃(トール流用・着地AoE)。ジャンプの溜めをカウンターされたら即再ジャンプ(連続2回まで)。
+        if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
+         try {
+          const rafi = useGameStore.getState().enemies.find(e => e.type === 'rafi' && e.bossState != null);
+          if (rafi) {
+            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+            const rcx = rafi.x + rafi.width / 2, rcy = rafi.y + rafi.height / 2;
+            const bossMoveDt = deltaTime * MOVE_SPEED_MULT;
+            const rHomeX = rafi.homeX ?? rcx, rHomeY = rafi.homeY ?? rcy;
+            const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - rafi.height / 2;
+            const st = rafi.bossState ?? 'chase';
+            const patch: Partial<typeof rafi> = {};
+            const rr = rafiRef.current;
+
+            // アリーナ内クランプ(中心=ゲート中心)。
+            const clampArena = (nx: number, ny: number) => {
+              const dx = nx - rHomeX, dy = ny - rHomeY;
+              const dl = Math.hypot(dx, dy);
+              if (dl > maxR) return { x: rHomeX + (dx / dl) * maxR, y: rHomeY + (dy / dl) * maxR };
+              return { x: nx, y: ny };
+            };
+            const chaseMove = (spd: number) => {
+              const dx = pcx - rcx, dy = pcy - rcy;
+              const dl = Math.hypot(dx, dy) || 1;
+              const c = clampArena(rcx + (dx / dl) * spd * bossMoveDt, rcy + (dy / dl) * spd * bossMoveDt);
+              patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
+            };
+            const nextAction = () => newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
+
+            // カウンター判定(溜め/硬直中の接触＋カウンター窓)。ミゲル/トールと同型。
+            const rafiBodyOverlapNow = () => {
+              const cp = useGameStore.getState().player;
+              return {
+                overlap: rectsOverlap({ x: rafi.x, y: rafi.y, width: rafi.width, height: rafi.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
+                counterActive: Date.now() <= cp.counterWindowEnd,
+              };
+            };
+            // カウンター成立処理(ミゲルのmiguelCounterHit相当・FX＋反撃ダメージ)。後退はせず、呼び出し側で再ジャンプ判定する。
+            const rafiCounterHit = (hx: number, hy: number) => {
+              const cp = useGameStore.getState().player;
+              const pnow = Date.now();
+              addMeleeFinishCombo(1);
+              playSfx('counter');
+              useGameStore.getState().spawnGlow(hx, hy, 95, 'rgba(56,189,248,', 360);
+              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+              useGameStore.getState().markMeleeSwingFx();
+              spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+              spawnBurst(hx, hy, '#38bdf8', 14);
+              useGameStore.getState().spawnCallout(hx, hy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+              useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
+              const counterBase = getActiveGun(cp)?.damage ?? 12;
+              const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
+              const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
+              damageEnemy(rafi.id, dmg, false, true);
+              spawnDamageNumber(rcx, rafi.y, dmg, true);
+              playSfx('headshot');
+              spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
+              spawnBurst(hx, hy, '#fde047', 10);
+            };
+
+            const rafiFull = rafi.bossFullStunUntil !== undefined && newGameTime < rafi.bossFullStunUntil;
+            if (rafiFull) {
+              patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+            } else if (st === 'chase') {
+              if (newGameTime < rr.stepUntil) {
+                // 横ステップ中: プレイヤー方向に直交して高速移動(アリーナ内)。
+                const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
+                patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
+              } else if (rr.nextStepAt !== 0 && newGameTime >= rr.nextStepAt) {
+                // 横ステップ開始: プレイヤー方向に直交(左右ランダム)。
+                const dx = pcx - rcx, dy = pcy - rcy; const dl = Math.hypot(dx, dy) || 1;
+                const side = Math.random() < 0.5 ? 1 : -1;
+                rr.stepDx = (-dy / dl) * side; rr.stepDy = (dx / dl) * side;
+                rr.stepUntil = newGameTime + RAFI_STEP_MS;
+                rr.nextStepAt = newGameTime + RAFI_STEP_MS + RAFI_STEP_MIN_GAP_MS + Math.random() * (RAFI_STEP_MAX_GAP_MS - RAFI_STEP_MIN_GAP_MS);
+              } else {
+                if (rr.nextStepAt === 0) rr.nextStepAt = newGameTime + RAFI_STEP_MIN_GAP_MS + Math.random() * (RAFI_STEP_MAX_GAP_MS - RAFI_STEP_MIN_GAP_MS);
+                chaseMove(RAFI_CHASE_SPEED);
+              }
+              // 攻撃選択(ステップ中は待つ)。
+              if (newGameTime >= rr.stepUntil && newGameTime >= (rafi.bossNextActionAt ?? 0)) {
+                const dist = Math.hypot(pcx - rcx, pcy - rcy);
+                rr.rejumps = 0;
+                if (dist <= RAFI_HANDGUN_DIST) {
+                  patch.bossState = 'bone';
+                  rr.boneLeft = RAFI_BONE_COUNT; rr.boneNextAt = newGameTime;
+                } else {
+                  patch.bossState = 'jump-windup';
+                  patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS;
+                }
+              }
+            } else if (st === 'bone') {
+              // 骨刃をプレイヤー周囲リングに設置(600ms間隔・7本)→設置1秒後に発射(スカジ流用・見た目=骨刃)。
+              if (rr.boneLeft > 0 && newGameTime >= rr.boneNextAt) {
+                const a0 = Math.random() * Math.PI * 2;
+                const dist = SKADI_BLADE_RING_MIN + Math.random() * (SKADI_BLADE_RING_MAX - SKADI_BLADE_RING_MIN);
+                const sx = pcx + Math.cos(a0) * dist, sy = pcy + Math.sin(a0) * dist;
+                const aim = Math.atan2(pcy - sy, pcx - sx); // 設置時のプレイヤー方向(以後固定)
+                useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, rafi.id, 'bone');
+                rr.boneLeft -= 1;
+                rr.boneNextAt = newGameTime + RAFI_BONE_GAP_MS;
+              }
+              if (rr.boneLeft <= 0) {
+                patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
+              }
+            } else if (st === 'jump-windup') {
+              // 溜め: 静止・カウンター可能。カウンターされたら即再ジャンプ(連続2回まで)。
+              const { overlap, counterActive } = rafiBodyOverlapNow();
+              if (overlap && counterActive) {
+                rafiCounterHit(rcx, rcy);
+                if (rr.rejumps < RAFI_JUMP_MAX_REJUMPS) {
+                  rr.rejumps += 1;
+                  patch.bossState = 'jump-windup';
+                  patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS; // 即もう一度溜め
+                } else {
+                  patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
+                }
+              } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+                patch.bossState = 'jump-attack';
+                patch.bossStateUntil = newGameTime + THOR_JUMP_MS;
+                patch.aiFromX = rcx; patch.aiFromY = rcy;
+                patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 着地点=溜め終了時のプレイヤー位置(ロック)
+              }
+            } else if (st === 'jump-attack') {
+              // ジャンプ(実行): ロック済みの着地点まで移動(トール流用)。
+              const fx = rafi.aiFromX ?? rcx, fy = rafi.aiFromY ?? rcy;
+              const tx = rafi.aiTargetX ?? rcx, ty = rafi.aiTargetY ?? rcy;
+              const t = Math.max(0, Math.min(1, 1 - ((rafi.bossStateUntil ?? newGameTime) - newGameTime) / THOR_JUMP_MS));
+              patch.x = (fx + (tx - fx) * t) - rafi.width / 2;
+              patch.y = (fy + (ty - fy) * t) - rafi.height / 2;
+              if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+                // 着地: 既存pumpkinBlasts(着地爆発)へ積む=カウンター/被弾処理を再利用(トールと同じ)。
+                useGameStore.setState(state => ({
+                  pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: THOR_JUMP_RADIUS, damage: rafi.damage, enemyId: rafi.id }],
+                }));
+                patch.bossState = 'jump-recover';
+                patch.bossStateUntil = newGameTime + THOR_JUMP_RECOVER_MS;
+              }
+            } else if (st === 'jump-recover') {
+              // 着地後の硬直。静止・カウンター可能(こちらは再ジャンプ無し=通常のカウンター)。
+              const { overlap, counterActive } = rafiBodyOverlapNow();
+              if (overlap && counterActive) {
+                rafiCounterHit(rcx, rcy);
+                patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
+              } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
+                patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
+              }
+            } else {
+              patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
+            }
+
+            if (Object.keys(patch).length) {
+              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === rafi.id ? { ...e, ...patch } : e) }));
+            }
+          }
+         } catch (err) {
+          if (!rafiCtrlErrLogged) { rafiCtrlErrLogged = true; console.error('[rafi] controller error (suppressed after first):', err); }
          }
         }
 

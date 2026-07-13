@@ -818,6 +818,7 @@ const LOCAL_EVENT_SHADOW_REACH_MULT = 6.25;
 const LOCAL_EVENT_SHADOW_SIZE_MULT = 1;
 // スカジの氷刃テクスチャの刃先方向(実測: hilt→tip ≈ -62.8°)。発射方向 angle に合わせ rotation=angle-この値。
 const SKADI_BLADE_NATIVE_ANGLE = -62.8 * Math.PI / 180;
+const RAFI_BLADE_NATIVE_ANGLE = -90 * Math.PI / 180; // 骨刃(rafi-blade)の素材内の刃先向き(叩き台=実機で微調整)
 // 発火ナイフ投擲物テクスチャの刃先方向(実測: 柄→刃先 ≈ -52.6°)。進行方向 direction に合わせ rotation=angle-この値。
 const FIRE_KNIFE_NATIVE_ANGLE = -52.6 * Math.PI / 180;
 const FIRE_KNIFE_DISPLAY_LEN = 22; // 画面上の全長(px)。当たり判定(14x14)より少し大きく見せて視認性を確保(見た目のみ・当たり判定は不変)。
@@ -4710,7 +4711,7 @@ export class PixiScene {
   // 氷刃=設置中は薄く方向表示→発射後はくっきり、常に向きへ回転。effectLayer=world座標。
   private syncSkadiHazards(
     markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
-    blades: { id: string; x: number; y: number; angle: number; launched: boolean }[],
+    blades: { id: string; x: number; y: number; angle: number; launched: boolean; visual?: 'ice' | 'bone' }[],
     gameTime: number,
   ) {
     const g = this.skadiHazardGfx;
@@ -4738,19 +4739,21 @@ export class PixiScene {
         sp.visible = true;
       }
     }
-    const btex = getTexture('skadi-ice-blade');
-    if (btex) {
-      const bsc = 80 / Math.max(btex.width, btex.height);
-      for (const b of blades) {
-        seen.add(b.id);
-        let sp = this.skadiBladePool.get(b.id);
-        if (!sp) { sp = new Sprite(btex); sp.anchor.set(0.5, 0.5); this.skadiHazardContainer.addChild(sp); this.skadiBladePool.set(b.id, sp); }
-        sp.scale.set(bsc);
-        sp.rotation = b.angle - SKADI_BLADE_NATIVE_ANGLE; // 刃先を発射方向へ
-        sp.position.set(b.x, b.y);
-        sp.alpha = b.launched ? 1 : (0.4 + 0.2 * pulse); // 設置中は薄い予告→発射後くっきり
-        sp.visible = true;
-      }
+    // 氷刃(skadi)/骨刃(rafi=visual:'bone')は判定/挙動は同じ・見た目のテクスチャだけ差し替える(社長指示v0.25.1665)。
+    const iceTex = getTexture('skadi-ice-blade');
+    const boneTex = getTexture('rafi-blade');
+    for (const b of blades) {
+      const btex = b.visual === 'bone' ? boneTex : iceTex;
+      if (!btex) continue;
+      seen.add(b.id);
+      let sp = this.skadiBladePool.get(b.id);
+      if (!sp) { sp = new Sprite(btex); sp.anchor.set(0.5, 0.5); this.skadiHazardContainer.addChild(sp); this.skadiBladePool.set(b.id, sp); }
+      if (sp.texture !== btex) sp.texture = btex; // 差し替え(プール再利用時の保険)
+      sp.scale.set(80 / Math.max(btex.width, btex.height));
+      sp.rotation = b.angle - (b.visual === 'bone' ? RAFI_BLADE_NATIVE_ANGLE : SKADI_BLADE_NATIVE_ANGLE); // 刃先を発射方向へ
+      sp.position.set(b.x, b.y);
+      sp.alpha = b.launched ? 1 : (0.4 + 0.2 * pulse); // 設置中は薄い予告→発射後くっきり
+      sp.visible = true;
     }
     for (const [id, sp] of this.skadiBlockPool) { if (!seen.has(id)) { sp.destroy(); this.skadiBlockPool.delete(id); } }
     for (const [id, sp] of this.skadiBladePool) { if (!seen.has(id)) { sp.destroy(); this.skadiBladePool.delete(id); } }
