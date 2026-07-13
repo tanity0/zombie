@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1651 — マークスマンの歩きも頭の横揺れを1px以内に【2026-07-13 11:23 JST】
+- **社長指示**「マークス歩きの頭の揺れ1px」。
+- **再焼き**(退避済み `art_src/originals/marksman/walk-sheet-dot.png` から): median基準の頭中心x合わせ+頭top平滑。頭横揺れ **1.4px→0.0px**(全コマ39.0)・縦1px。立ち=歩き2コマ目も同基準。幅78・CH66→63。
+- **差し替え**: `player-magnum-{walk-0..4,idle}.png`。**ASSET_VERSION 48→49**。走り/近接は不変。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1650 — ストライカーの歩きを修正版に差し替え+頭の横揺れ除去【2026-07-13 11:10 JST】
 - **社長**「こちらに差し替え」→「もう一度修正」= 最新シート `aimeglio_13`(e429dd13)をストライカー(=player-scavenger絵)の歩きに採用。64色=ドット確認。
 - **ベイク**: ÷4 NEAREST→5コマ→**頭中心x合わせ(median基準)**+頭top平滑・幅78・CH64。**medianは髪の流れ(尾)に強い**=extent中心だと1.5px残ったが median で **頭横揺れ0.0px**(全コマ39.0)・縦1px。立ち=歩き2コマ目も同基準。

@@ -89,4 +89,6 @@
 //      縦(頭top平滑=1px以内)は据え置き。他クラスは未対応(必要なら同処理)。
 // v48: ストライカー(=player-scavenger絵)の歩きを社長修正版シート(aimeglio_13)で差し替え+頭中心x合わせ(median基準=
 //      髪の流れに強い)+頭top平滑。頭横揺れ0px/縦1px。立ち=歩き2コマ目も同基準。走り/近接は不変。
-export const ASSET_VERSION = '48';
+// v49: マークスマン(=player-magnum絵)の歩きも頭中心x合わせ(median)+頭top平滑で再焼き(退避済みシートから)。頭横揺れ
+//      1.4px→0px・縦1px。立ち=歩き2コマ目も同基準(CH66→63)。走り/近接は不変。
+export const ASSET_VERSION = '49';

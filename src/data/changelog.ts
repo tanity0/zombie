@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1651',
+    items: [
+      'マークスマンの歩きも頭の横揺れを1px以内(実質0px)に。立ち絵も同じ基準に。',
+    ],
+  },
+  {
     version: '0.25.1650',
     items: [
       'ストライカーの歩きを修正版の絵に差し替え、頭の横揺れを1px以内(実質0px)に。立ち絵も同じ基準に。',
