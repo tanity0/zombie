@@ -1072,6 +1072,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 恒久コミット(gateMetaRef.current.gate1Cleared・ラン終了時commit)を待たずに同ランでの再発火を止める
   // (実機報告「サークルの敵を全滅させたら、またサークルの敵が沸いた」対策・shouldTriggerGate1参照)。
   const gate1DoneThisRunRef = useRef(false);
+  // このランでゲート1(未確認境界)を「通過」したか(社長決定v0.25.1669: 凶悪ハンター解放はラン内スコープ=次ランで復活)。
+  // gate1DoneThisRunRef(再発火防止)とは別軸: ①今ランのゲート1クリア ②恒久クリア済みで境界を通り抜け、のどちらでも立つ。
+  const gate1PassedThisRunRef = useRef(false);
 
   // Game actions
   const movePlayer = useGameStore(state => state.movePlayer);
@@ -1682,6 +1685,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           gate1PendingRef.current = false;
           gate2PendingRef.current = false;
           gate1DoneThisRunRef.current = false; // ラン内ガードも新ランで再アーム
+          gate1PassedThisRunRef.current = false; // ゲート1通過(凶悪ハンター解放)も新ランでリセット=復活(社長決定v0.25.1669)
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
           // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
           dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
@@ -2157,6 +2161,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (activeGateRef.current === 1) {
                   gateMetaRef.current = { ...gateMetaRef.current, gate1Cleared: true };
                   gate1DoneThisRunRef.current = true; // §5.21-追補3: ラン内ガードも即立てる(全滅後の再湧き対策)
+                  gate1PassedThisRunRef.current = true; // ゲート1通過=このランは凶悪ハンター解放(社長決定v0.25.1669)
                   gate1PenaltyActiveRef.current = false;
                   useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') })); // ハンター消滅
                   hunterRef.current.phase = 'idle';
@@ -2389,7 +2394,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playerAreaIdx: areaZoneIndexFor(Math.hypot(hpx, hpy)),
               capturedBaseCount: hs.baseSites.filter(b => b.status === 'captured').length,
               viciousRearmAt: H.viciousRearmAt,
-              gate1Cleared: gateMetaRef.current.gate1Cleared, // ゲート1通過済み=強制ハンター停止(社長決定v0.25.1668)
+              gate1PassedThisRun: gate1PassedThisRunRef.current, // このランでゲート1通過=停止・次ランで復活(社長決定v0.25.1669)
             });
             if (viciousReady) {
               // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から約3秒(VICIOUS_DISCOVER_DELAY_MS)
@@ -2658,6 +2663,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   (wallIdxCrossed === 3 && !gateMetaRef.current.gate1Cleared) ||
                   (wallIdxCrossed === 4 && !gateMetaRef.current.gate2Cleared)
                 );
+                // 社長決定v0.25.1669: ゲート1が(恒久)クリア済みで境界(壁3)を素通りした場合も「このランで通過」と
+                // みなす=凶悪ハンター解放(戦闘が無いランでも通過扱い)。未クリア時はゲートクリア側で立てる。
+                if (wallIdxCrossed === 3 && !gateBlocksThisWall) {
+                  gate1PassedThisRunRef.current = true;
+                }
                 if (!gateBlocksThisWall) {
                   useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
                   // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。

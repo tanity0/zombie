@@ -9,7 +9,7 @@ const baseTrigger = {
   playerAreaIdx: 2,
   capturedBaseCount: 0,
   viciousRearmAt: 0,
-  gate1Cleared: false,
+  gate1PassedThisRun: false,
 };
 
 describe('shouldTriggerViciousHunter', () => {
@@ -47,10 +47,12 @@ describe('shouldTriggerViciousHunter', () => {
     expect(shouldTriggerViciousHunter({ ...baseTrigger, viciousRearmAt: baseTrigger.gameTime + 1 })).toBe(false);
   });
 
-  it('does not fire once gate 1 has been cleared (社長決定v0.25.1668: ゲート通過後は強制ハンター停止)', () => {
-    // 拠点0のままでも、ゲート1を通過(クリア)した後は発生しない。未確認/深層(areaIdx 3/4)でも同様。
-    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1Cleared: true })).toBe(false);
-    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1Cleared: true, playerAreaIdx: 4 })).toBe(false);
+  it('does not fire once gate 1 has been passed THIS RUN (社長決定v0.25.1668/1669: 通過で停止・ラン内スコープ)', () => {
+    // 拠点0のままでも、このランでゲート1を通過した後は発生しない。未確認/深層(areaIdx 3/4)でも同様。
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1PassedThisRun: true })).toBe(false);
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1PassedThisRun: true, playerAreaIdx: 4 })).toBe(false);
+    // ラン内スコープ: 新ラン(フラグリセット後)は拠点0なら再び発生する=「次ランで復活」(v0.25.1669)。
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1PassedThisRun: false })).toBe(true);
   });
 });
 

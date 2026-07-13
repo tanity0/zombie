@@ -12,6 +12,24 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1669 — 凶悪ハンター解放をラン内スコープへ(次ランで復活)【2026-07-13 20:50 JST】
+- **社長決定**「拠点を解放していないエリアでは強制ハンターイベントは次runでも復活」= v1668の解放(gate1Cleared=
+  恒久)は広すぎた。**ゲート1通過による解放はそのラン限り**とし、新ランでは拠点0なら再び発生する。
+- **実装**: 判定入力を `gate1Cleared`(恒久) → **`gate1PassedThisRun`(ラン内)** に差し替え。
+  - 新ref `gate1PassedThisRunRef`(useGameLoop)。**新ランでfalseへリセット**(=復活)。
+  - 立つ瞬間は2つ: **①今ランでゲート1をクリア**(gate1DoneThisRunRefと同じ箇所)/**②恒久クリア済みランで
+    境界(壁3)を素通りした時**(クロス判定の `wallIdxCrossed===3 && !gateBlocksThisWall`)=戦闘が無いランでも
+    「通過」で解放される(通過するまでは毎ラン出る)。
+  - gate1DoneThisRunRef(ゲート再発火防止)とは意味を混ぜず別refにした。
+- **挙動まとめ**: 拠点0でデンジャー以深=凶悪ハンター。このランでゲート1を通過(クリア or 開放済み境界の通り抜け)
+  した瞬間から、そのランは湧かない。**次ランは拠点0なら復活**(ゲートの恒久クリア状態は関係なし)。
+  拠点1つ以上制圧のランは従来どおり最初から出ない。
+- **テスト**: `viciousHunter.test.ts` を新フィールドへ更新+ラン内スコープ(リセット後は再び発生)を明示。**11 passed**。
+- 検証: `npm run typecheck` パス / vitest 11 passed / eslint exit0。実機で「ゲート1通過→そのランは湧かない」
+  「次ラン(拠点0)→デンジャーで復活」を社長確認。
+- Files: `src/utils/viciousHunter.ts`, `src/utils/viciousHunter.test.ts`, `src/hooks/useGameLoop.ts`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1668 — ゲート1通過後は凶悪(強制)ハンターを発生させない【2026-07-13 20:42 JST】
 - **社長決定**「ハンターを無視してゲートに到達後、通過できたら強制ハンターも発生しなくなる、で」
   (前段の調査回答: 凶悪ハンターの条件は「区域≥2＋拠点0」のみでゲート状態を見ておらず、ゲート1通過後も
