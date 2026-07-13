@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1656',
+    items: [
+      '救急鞄スキルの発動時に、振り抜きポーズで救急鞄を頭上へ掲げ、中身のアイテムが飛び出す演出を追加。',
+    ],
+  },
+  {
     version: '0.25.1655',
     items: [
       '深層の扉(ゲート2)のボスに敗れた場合、深層域へは到達していない扱いになるよう修正(倒すまで年表に「深層域に到達」を刻みません)。',

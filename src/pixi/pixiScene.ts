@@ -565,6 +565,11 @@ const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
 const MELEE_POSE_READY_FRAC = 0.4; // 近接専用ポーズ: 構え絵を出すスイング進行の割合(以降は振り抜き絵)。社長指示v0.25.1620・叩き台
+// 救急鞄スキル発動演出(社長指示v0.25.1656): 払い出しの瞬間に「振り抜きポーズ+鞄を頭上へ掲げる」一拍。全て叩き台=実機調整前提。
+const PLAYER_FIRSTAID_POSE_MS = 620;        // ポーズ+鞄掲げの表示長(描画のみ・判定不変)
+const PLAYER_FIRSTAID_BAG_SCALE = 0.92;     // 掲げる鞄の大きさ(体高basis の割合)
+const PLAYER_FIRSTAID_BAG_UP_FRAC = 1.18;   // 足元から上へ何体高ぶん掲げるか(=頭上)
+const PLAYER_FIRSTAID_BAG_FWD_FRAC = 0.26;  // 狙い/向き方向へ何体高ぶん前へ出すか(掲げる手側)
 // 近接に専用2ポーズ絵を持つクラス→ファイル接頭辞(-ready=構え / -swing=振り抜き)。素材のあるクラスのみ登録。
 const MELEE_POSE_PREFIX: Record<string, string> = {
   necromancer: 'player-striker-melee', // スカベンジャー(社長提供v0.25.1620)
@@ -1142,6 +1147,8 @@ export class PixiScene {
   private playerKnifeTrail = new Sprite();                 // 近接スイング3枚目(弧の残光 knife-swing-3)
   private playerMeleeWpn = new Sprite();                   // 装備中の近接武器の実絵(f1/f2に重ねる)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
+  private playerFirstAidBag = new Sprite();                // 救急鞄スキル発動時に掲げる鞄(first-aid-kit・描画のみ)
+  private playerFirstAidBagSetup = false;                  // 鞄スプライトのテクスチャ/親子付け済みか
   private stageLightShaftGfx = new Graphics();
   private vignette = new Sprite(getVignetteTexture());
   private vignetteNarrow: boolean | null = null; // 現在のvignetteが狭い版(lab用)か。差分時だけテクスチャ差し替え。
@@ -4580,6 +4587,17 @@ export class PixiScene {
         this.playerKnifeSetup = true;
       }
     }
+    // 救急鞄スキルの発動演出用スプライト(掲げる鞄)。テクスチャは独立ロードなので別ガードで親子付け。
+    if (!this.playerFirstAidBagSetup) {
+      const bagTex = getTexture('first-aid-kit');
+      if (bagTex) {
+        this.playerFirstAidBag.texture = bagTex;
+        this.playerFirstAidBag.anchor.set(0.5, 0.5);
+        this.playerFirstAidBag.visible = false;
+        this.playerView.container.addChild(this.playerFirstAidBag); // 本体の前面(掲げる鞄)
+        this.playerFirstAidBagSetup = true;
+      }
+    }
     this.drawPlayer(this.playerView, player, gameTime, now);
     this.syncShadowClone(player);
 
@@ -5128,9 +5146,16 @@ export class PixiScene {
     // 本体を差し替える。構え→振り抜きをスイング進行 kt=MELEE_POSE_READY_FRAC で切替。専用ポーズは各クラスの待機絵と
     // 同じ幅86px・足元下端で焼いてあるので描画スケール/足位置は不変(playerBaseScaleは幅基準)。
     const meleePosePrefix = MELEE_POSE_PREFIX[p.characterClass];
+    // 救急鞄スキル発動の一拍(振り抜きポーズ+鞄掲げ)。近接スイングとは別トリガー(firstAidPoseAt)。
+    const sinceFirstAid = now - (p.firstAidPoseAt || 0);
+    const firstAidActive = p.firstAidPoseAt > 0 && sinceFirstAid >= 0 && sinceFirstAid < PLAYER_FIRSTAID_POSE_MS;
     if (meleePosePrefix && !warlordFull && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const poseTex = getTexture((sinceSwing / swingWindowMs) < MELEE_POSE_READY_FRAC
         ? `${meleePosePrefix}-ready` : `${meleePosePrefix}-swing`);
+      if (poseTex) view.sprite.texture = poseTex;
+    } else if (meleePosePrefix && !warlordFull && firstAidActive) {
+      // 救急鞄発動: 本体を振り抜き絵(-swing)へ差し替え(社長指示v0.25.1656)。近接スイング中はそちら優先。
+      const poseTex = getTexture(`${meleePosePrefix}-swing`);
       if (poseTex) view.sprite.texture = poseTex;
     }
     if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
@@ -5263,6 +5288,31 @@ export class PixiScene {
       sb.alpha = view.sprite.alpha;
     } else {
       sb.visible = false;
+    }
+    // 救急鞄スキル発動: 「鞄を頭上へ掲げる」一拍(振り抜きポーズと同じ窓・描画のみ・判定不変)。
+    // 立ち上がりでせり上がり→保持→引きでフェードアウト。向きで左右反転・本体の傾きへ軽く追従。
+    const fab = this.playerFirstAidBag;
+    if (this.playerFirstAidBagSetup && firstAidActive && fab.texture && fab.texture.width > 0) {
+      const t = sinceFirstAid / PLAYER_FIRSTAID_POSE_MS;
+      const rise = Math.min(1, t / 0.22);       // 素早く掲げる
+      const fall = Math.min(1, (1 - t) / 0.3);  // 終盤で引く
+      const appear = Math.max(0, Math.min(rise, fall));
+      const targetH = fb.boxH * dsc * PLAYER_FIRSTAID_BAG_SCALE;
+      const sc = targetH / fab.texture.height;
+      const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
+      const fwd = (flip ? -1 : 1) * PLAYER_FIRSTAID_BAG_FWD_FRAC * fb.boxH * dsc;
+      const upFrac = PLAYER_FIRSTAID_BAG_UP_FRAC * (0.82 + 0.18 * appear); // 下から持ち上げる感
+      fab.visible = true;
+      fab.scale.set((flip ? -1 : 1) * sc, sc);
+      fab.rotation = actLean * 0.5; // 本体の二次モーションへ軽く追従
+      fab.position.set(
+        this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX + fwd,
+        this.snapToScreenPixel(fb.footY - bob, this.L.world.position.y) + introOffY + actOffY - upFrac * fb.boxH * dsc,
+      );
+      fab.alpha = appear * view.sprite.alpha;
+      fab.visible = fab.alpha > 0.01;
+    } else if (this.playerFirstAidBagSetup) {
+      fab.visible = false;
     }
     // 近接スイングを3枚の画像差し替えで見せる(描画のみ・判定不変)。左向きは水平ミラー。
     // frame1=装備ナイフ左下(構え)→frame2=弧+装備ナイフ振り抜き→frame3=弧の残光フェード。

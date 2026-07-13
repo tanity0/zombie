@@ -71,6 +71,9 @@ export interface Player {
   // 近接スイング演出用タイムスタンプ(Date.now)。描画のみ=スイングの二次モーション(踏み込み/振り抜き)の起点。
   // 0=未スイング。判定・射程には不干渉(renderer が読むだけ)。
   meleeSwingAt: number;
+  // 救急鞄スキル発動演出用タイムスタンプ(Date.now)。描画のみ=払い出しの瞬間に「振り抜きポーズ+鞄を掲げる」
+  // 一拍の起点(社長指示v0.25.1656)。0=未発動。判定・射程・払い出しロジックには不干渉(renderer が読むだけ)。
+  firstAidPoseAt: number;
   // Level-up modifiers applied to ALL owned guns: magBonus adds to every gun's
   // magazine capacity; reloadMult scales reload time (<1 = faster).
   magBonus: number;

@@ -12,6 +12,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1656 — 救急鞄スキル発動演出(振り抜きポーズ+鞄を掲げてアイテムが飛び出す)【2026-07-13 16:54 JST】
+- **社長指示**「救急鞄　スキルが発動したときは　振りぬきの立ち絵と、その上に救急鞄のドット絵を表示して、
+  該当アイテムが飛び出てくる演出して(ようは鞄を掲げているように見える描写)」。
+- **描画のみの演出**(払い出しロジック=`firstAidKit.ts`純関数は不変・判定/中身/条件は一切触らない)。
+- **トリガー**: `Player.firstAidPoseAt`(Date.now・meleeSwingAtと同型の描画専用タイムスタンプ)を新設。
+  store に `markFirstAidPoseFx()` を追加(`markMeleeSwingFx`と同型)。`useGameLoop` の救急鞄払い出し
+  (`kitResult.dispense`成立)の瞬間に呼ぶ。init/resetGame とも `firstAidPoseAt: 0`。
+- **本体ポーズ(`pixiScene.ts` drawPlayer)**: 発動窓(`PLAYER_FIRSTAID_POSE_MS=620`)の間、本体を
+  クラス別の**振り抜き絵 `-swing`**(全4クラス完備の近接ポーズ素材を流用)へ差し替え。近接スイング中は
+  そちら優先(else-if)。
+- **掲げる鞄**: 新スプライト `playerFirstAidBag`(既存 `first-aid-kit` テクスチャ=空鞄投擲と共用・nearest)を
+  プレイヤーコンテナ前面に追加。窓の間だけ**頭上へ掲げる**(せり上がり→保持→引きのフェード・向きで
+  左右反転・本体傾きへ軽く追従)。叩き台定数=UP_FRAC1.18/FWD_FRAC0.26/SCALE0.92。
+- **アイテムの飛び出し**: 払い出しpickupの投擲起点(`throwFromY`)を上半身の高さ(`pcy - height*0.5 - 8`)へ
+  上げ、「掲げた鞄から中身が飛び出て手元に落ちる」弧に。既存のリング/バーストも同起点へ上がる。
+- **slow-moは付けない**(CLAUDE.md: サブウェポン系イベントはスロー禁止・明示指示なし)。
+- 負荷: **1/10**(プール鞄1枚を発動時だけ表示・本体差し替えは既存機構・新規glow/text/フィルタ無し)。
+- **素材メモ**: 掲げる鞄は既存 `first-aid-kit.png`(オリーブのミリタリー救急リュック・見た目ドット風だが
+  実測3298色)を流用。より綺麗なドット鞄を出したい場合は差し替え素材を頂ければ差し替え可(要指示)。
+- 検証: `npm run typecheck` パス / `npx eslint`(pixiScene/useGameLoop/gameStore/game.ts)exit0。
+  実機で各クラス・各中身(弾薬/回復/爆弾)の払い出しでポーズ+鞄掲げ+飛び出しが出るか社長確認
+  (掲げる高さ/大きさ/長さは叩き台=要調整)。
+- Files: `src/types/game.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1655 — ゲート2敗北時に「深層域到達」を刻まないよう修正(倒すまでエリア移動しない)【2026-07-13 16:43 JST】
 - **社長報告(バグ)**「ゲート2のボスに負けても深層域に行けたことになっちゃってる。ここ倒すまではエリア移動しないで」。
 - **原因**: v1628で足した年表(chronicle)の区域到達記録が、既存の踏破(markWallBreached)側の

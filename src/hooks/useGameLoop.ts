@@ -4778,6 +4778,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           if (kitResult.dispense) {
             useGameStore.getState().setFirstAidKitState(kitResult.nextState);
+            // 発動演出(社長指示v0.25.1656): 振り抜きポーズ+救急鞄を掲げる一拍(描画のみ・判定不変)。
+            useGameStore.getState().markFirstAidPoseFx();
             const dir = safeThrowDirection(
               pcx, pcy,
               useGameStore.getState().enemies,
@@ -4786,8 +4788,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dirMag = Math.max(0.001, Math.hypot(dir.x, dir.y));
             const px = pcx + (dir.x / dirMag) * FIRST_AID_KIT_THROW_DISTANCE;
             const py = pcy + (dir.y / dirMag) * FIRST_AID_KIT_THROW_DISTANCE;
+            // アイテムは「掲げた鞄」から飛び出す見た目にするため、投擲の起点を上半身の高さへ上げる。
             const fromX = pcx - 8;
-            const fromY = pcy - 8;
+            const fromY = pcy - subWeaponPlayer.height * 0.5 - 8;
             addPickup({
               id: `pickup-first-aid-kit-${kitResult.dispense}-${Date.now()}`,
               x: px - 8,

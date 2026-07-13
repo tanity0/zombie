@@ -2238,6 +2238,7 @@ interface GameState {
   openCounterWindow: () => void;
   setSlasherCombo: (startAt: number, step: number) => void;
   markMeleeSwingFx: () => void; // 近接スイング演出の起点を更新(描画のみ)。追撃など別経路から呼ぶ。
+  markFirstAidPoseFx: () => void; // 救急鞄スキル発動演出の起点を更新(描画のみ)。払い出しの瞬間に呼ぶ。
   markCastleBossSpawned: () => void;
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
@@ -2477,6 +2478,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     reloadEndsAt: 0,
     reloadingWeaponId: '',
     meleeSwingAt: 0,
+    firstAidPoseAt: 0,
     magBonus: 0,
     reloadMult: 1,
     stunDurationMult: 1,
@@ -6774,6 +6776,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ player: { ...state.player, meleeSwingAt: Date.now() } }));
   },
 
+  markFirstAidPoseFx: () => {
+    set(state => ({ player: { ...state.player, firstAidPoseAt: Date.now() } }));
+  },
+
   markCastleBossSpawned: () => {
     set(state => ({
       castleEvent: {
@@ -9153,6 +9159,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadEndsAt: 0,
           reloadingWeaponId: '',
           meleeSwingAt: 0,
+          firstAidPoseAt: 0,
           magBonus: 0,
           reloadMult: 1,
           stunDurationMult: 1,
