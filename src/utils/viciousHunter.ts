@@ -11,6 +11,9 @@ export interface ViciousHunterTriggerInput {
   playerAreaIdx: number;      // areaZoneIndexFor(プレイヤー距離)。デンジャー(=2)以深で対象。
   capturedBaseCount: number;  // 制圧済み拠点数
   viciousRearmAt: number;     // 直近の凶悪ハンター終了から VICIOUS_REARM_MS 後の gameTime(初期値0)
+  gate1Cleared: boolean;      // ゲート1(未確認境界の囲い)を通過(クリア)済みか(gateMetaRef.gate1Cleared)。
+                              // 社長決定v0.25.1668「ハンターを無視してゲートに到達後、通過できたら強制ハンターも発生しなくなる」。
+                              // メモリ上の値=同ラン中はクリアの瞬間から効き、死亡で終えたランは恒久コミットされない(既存則どおり)。
 }
 
 export const shouldTriggerViciousHunter = (input: ViciousHunterTriggerInput): boolean => {
@@ -20,6 +23,7 @@ export const shouldTriggerViciousHunter = (input: ViciousHunterTriggerInput): bo
   // hunterStartMsは通常ハンター側の判定に呼び出し側が使う値=ここでは参照しない(互換のため引数は残す)。
   if (input.gameTime < input.viciousRearmAt) return false;
   if (input.playerAreaIdx < 2) return false; // デンジャー(r>=3000)未満は対象外
+  if (input.gate1Cleared) return false; // ゲート1通過済み=以後は強制ハンターを出さない(社長決定v0.25.1668)
   return input.capturedBaseCount === 0;
 };
 

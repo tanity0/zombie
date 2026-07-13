@@ -12,6 +12,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1668 — ゲート1通過後は凶悪(強制)ハンターを発生させない【2026-07-13 20:42 JST】
+- **社長決定**「ハンターを無視してゲートに到達後、通過できたら強制ハンターも発生しなくなる、で」
+  (前段の調査回答: 凶悪ハンターの条件は「区域≥2＋拠点0」のみでゲート状態を見ておらず、ゲート1通過後も
+  未確認/深層で湧き続けていた)。
+- **実装**: `shouldTriggerViciousHunter`(純関数・viciousHunter.ts)に **`gate1Cleared` 条件を追加**=trueなら発生しない。
+  配線(useGameLoop.ts)は `gateMetaRef.current.gate1Cleared` を渡すだけ。
+- **セマンティクス(既存則に従う)**: メモリ上の値なので**同ラン中はゲート1クリアの瞬間から効く**。恒久コミットは
+  ラン終了(クリア/撤退)時のみ=死亡で終えたランでは次ラン再び発生する(「死亡は解除しない」v0.25.1517則と整合)。
+  恒久解除済みステージでは以後のランでも発生しない(=一度でも通過できた=解放)。
+- **テスト**: `viciousHunter.test.ts` に gate1Cleared=true(区域2/深層4both)で発生しないケースを追加。**11 passed**。
+- 他の条件(区域≥2/拠点0/idle/spawnBlocked/再アーム3秒)は不変。通常ハンター(優勢判定)も不変。
+- 検証: `npm run typecheck` パス / `vitest run viciousHunter.test.ts` 11 passed / eslint exit0。
+  実機で「拠点0でゲート1突破→以後未確認/深層でハンターが湧かない」「死亡後の次ランでは復活」を社長確認。
+- Files: `src/utils/viciousHunter.ts`, `src/utils/viciousHunter.test.ts`, `src/hooks/useGameLoop.ts`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1667 — ゲート戦闘中の深層域セピア(色調)も凍結(エリア切替を完全停止)【2026-07-13 20:30 JST】
 - **社長追報**: エリア切替時に起きていたのは3つ=①切り替わりSE ②画面のセピア ③逆再生BGM。戦闘中に外(浅い側)へ
   出ると色/BGMが戻っていた=**距離7500判定が戦闘中も生きていた**。

@@ -9,6 +9,7 @@ const baseTrigger = {
   playerAreaIdx: 2,
   capturedBaseCount: 0,
   viciousRearmAt: 0,
+  gate1Cleared: false,
 };
 
 describe('shouldTriggerViciousHunter', () => {
@@ -44,6 +45,12 @@ describe('shouldTriggerViciousHunter', () => {
 
   it('respects the short rearm buffer after a previous vicious hunter ended', () => {
     expect(shouldTriggerViciousHunter({ ...baseTrigger, viciousRearmAt: baseTrigger.gameTime + 1 })).toBe(false);
+  });
+
+  it('does not fire once gate 1 has been cleared (社長決定v0.25.1668: ゲート通過後は強制ハンター停止)', () => {
+    // 拠点0のままでも、ゲート1を通過(クリア)した後は発生しない。未確認/深層(areaIdx 3/4)でも同様。
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1Cleared: true })).toBe(false);
+    expect(shouldTriggerViciousHunter({ ...baseTrigger, gate1Cleared: true, playerAreaIdx: 4 })).toBe(false);
   });
 });
 

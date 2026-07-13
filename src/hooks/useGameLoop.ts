@@ -2389,6 +2389,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               playerAreaIdx: areaZoneIndexFor(Math.hypot(hpx, hpy)),
               capturedBaseCount: hs.baseSites.filter(b => b.status === 'captured').length,
               viciousRearmAt: H.viciousRearmAt,
+              gate1Cleared: gateMetaRef.current.gate1Cleared, // ゲート1通過済み=強制ハンター停止(社長決定v0.25.1668)
             });
             if (viciousReady) {
               // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から約3秒(VICIOUS_DISCOVER_DELAY_MS)
