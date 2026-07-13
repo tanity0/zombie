@@ -12,6 +12,30 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1661 — ジブリル(ステージ3ゲート2ボス)配線=ミゲルの丸ごとクローン【2026-07-13 19:18 JST】
+- **社長指示**「一旦ミゲルをそのままコピーでいい」。ジブリルをステージ3のゲート2ボスとして、ミゲルの機構を全流用で追加。
+- **配線(EnemyType 'jibril' を各所に足す)**:
+  - `types/game.ts`: EnemyType に 'jibril'。
+  - `enemyUtils.ts`: ENEMY_STATS(60×30/HP2000/与38=ミゲル同値・叩き台)/ isHiddenBoss / isBossType /
+    CONSTANT_STRENGTH_TYPES / getEnemyFireProfile / getEnemyColor(#6d28d9)に 'jibril' を追加。
+  - `gameStore.ts`: ENEMY_DEATH_LABELS['jibril']='ジブリル' / 年表フレーズ=天使は miguel||jibril で「天使◯◯を討伐」。
+  - `useGameLoop.ts`: GATE2_BOSS_TYPE_BY_STAGE に 'stage-3':'jibril' / ゲート2スポーンを
+    `GATE2_BOSS_TYPE_BY_STAGE[stageId] ?? 'miguel'` に(旧: 'miguel'ハードコード)/ ミゲル制御の find を
+    `miguel||jibril` に(=同じコントローラが両者を駆動)/ 被ダメ表示ラベルを `enemyDeathLabel(type)の払い/縦払い` に一般化 /
+    反射弾ワープ除外に jibril を追加。
+  - `pixiTextures.ts`: 'jibril'(本体)/'jibril-lantern'(武器)を linear 登録。
+  - `pixiScene.ts`: BOSS_SPRITE_FIT['jibril']={w0.50/h0.18/cx0.40/cy0.97}(叩き台)/ ミゲルの攻撃描画ガードを
+    `miguel||jibril` に(赤ゾーン予告=武器非依存を両者に出す=理不尽回避)。
+- **武器演出は現状ミゲル専用**: 武器スプライト(ready/slash=miguel-sword)は `type==='miguel'` に限定。
+  **ジブリルの武器=ランタンの振り演出は、社長から「武器の使い方」を受領後に追加**(それまで予告+ダメージのみ。
+  素材 jibril-lantern.png は登録済み)。
+- **他ステージのゲート2**: 未マップのステージ(2/5/6/7)は従来どおりミゲル(`?? 'miguel'`)=挙動不変。
+- 負荷: 1/10(既存ボス機構の型追加のみ・新規描画/glowなし)。
+- 検証: `npm run typecheck` パス / `npx eslint`(6ファイル)exit0。実機でステージ3の深層の扉→ジブリル出現・
+  攻撃予告/カウンター/討伐で年表「天使ジブリルを討伐」を社長確認。帯位置(BOSS_SPRITE_FIT)は叩き台=要微調整。
+- Files: `types/game.ts`, `utils/enemyUtils.ts`, `store/gameStore.ts`, `hooks/useGameLoop.ts`,
+  `pixi/pixiScene.ts`, `pixi/pixiTextures.ts`, `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1660 — ジブリル(ステージ3ゲート2ボス)素材の保存(実装準備・配線は未着手)【2026-07-13 19:06 JST】
 - **社長提供**: ステージ3のゲート2ボス「ジブリル」(天使枠2体目)の本体絵＋武器(ランタン)。
 - **保存のみ**(コードへの配線=EnemyType/GATE2_BOSS_TYPE_BY_STAGE/コントローラ/描画 は**未着手**。方針確認待ち)。

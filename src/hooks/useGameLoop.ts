@@ -578,7 +578,7 @@ const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボス�
 // すぐ戦えるようにする(拘束サークルは省略=テスト用途)。既定OFF=通常挙動不変。将来ステージが増えたら
 // このlookupに追加するだけで対応する(現状はstage-1=ミゲルのみ)。
 const FORCE_GATEBOSS = evParam('gateboss') === '1';
-const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = { 'stage-1': 'miguel' };
+const GATE2_BOSS_TYPE_BY_STAGE: Partial<Record<string, EnemyType>> = { 'stage-1': 'miguel', 'stage-3': 'jibril' };
 // (WAVE_GRACE_MS は src/utils/directorTick.ts へ移設)
 // ダンスビートB方式(社長決定 v0.25.1339・仕様はHANDOFF_DANCE_AUDIO.md末尾)。?beat=0で従来の
 // (メトロノーム無し+曲への自動アンカー同期)挙動へ完全復帰(切り分け用)。
@@ -1824,7 +1824,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().beginArenaEvent(gate2Event);
             const bx = g2pcx + Math.cos(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const by = g2pcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
-            const boss = spawnEnemyAt('miguel', bx - 24, by - 24, newGameTime);
+            // ゲート2ボスはステージ別(stage-1=ミゲル / stage-3=ジブリル)。未定義ステージは従来どおりミゲル。
+            const gate2BossType = GATE2_BOSS_TYPE_BY_STAGE[getSelectedStageId()] ?? 'miguel';
+            const boss = spawnEnemyAt(gate2BossType, bx - 24, by - 24, newGameTime);
             boss.fromEvent = true;
             // ミゲルは周回移動(bossState制御)なので dormant/aggroRange は使わない(giantbat流用時の名残)。
             boss.bossState = 'chase';
@@ -3657,7 +3659,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 静止。近接被弾で1秒間だけ周回速度2倍。攻撃選択pool=当面harai(狭)のみ(トールのharaiを流用)。
         if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try {
-          const miguel = useGameStore.getState().enemies.find(e => e.type === 'miguel' && e.bossState != null);
+          const miguel = useGameStore.getState().enemies.find(e => (e.type === 'miguel' || e.type === 'jibril') && e.bossState != null);
           if (miguel) {
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
             const mcx = miguel.x + miguel.width / 2, mcy = miguel.y + miguel.height / 2;
@@ -3813,7 +3815,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   miguelCounterHit(cxp, cyp);
                   countered = true;
                 } else {
-                  const died = damagePlayer(miguel.damage, st === 'harai' ? 'ミゲルの払い' : 'ミゲルの縦払い', cxp, cyp);
+                  const died = damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, cxp, cyp);
                   if (died) triggerPlayerDeath(pcx, pcy);
                 }
               }
@@ -5799,7 +5801,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           //   ワープせず定位置を周回する設計。かつ専用コントローラで動くため汎用ボスの reaperWarpAlpha フェードイン
           //   復帰(useGameLoop 3009付近)を通らず、reaperWarpAlpha=0 のまま固定=絵が消えたままになっていた。
           //   ワープ対象から外し、反射弾のダメージだけ通す(=消えない)。
-          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && enemyForFx.type !== 'miguel' && !enemyKilled
+          if (projectile?.reflected && enemyForFx && isHiddenBoss(enemyForFx.type) && enemyForFx.type !== 'miguel' && enemyForFx.type !== 'jibril' && !enemyKilled
               && Date.now() >= bossRef.current.warpUntil) {
             const wpl = useGameStore.getState().player;
             const wpcx = wpl.x + wpl.width / 2, wpcy = wpl.y + wpl.height / 2;

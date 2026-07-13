@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1661',
+    items: [
+      'ステージ3の深層の扉(ゲート2)に天使「ジブリル」を追加(挙動はミゲルと同型。武器=ランタンの演出は今後追加)。',
+    ],
+  },
+  {
     version: '0.25.1659',
     items: [
       '歴史年表: 城ボスの討伐を「ストーリーボスを討伐」、天使(ゲート2ボス)の討伐を「天使◯◯を討伐」と分かりやすい表記に変更(動詞は「討伐」で統一)。',

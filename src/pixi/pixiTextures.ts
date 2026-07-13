@@ -329,6 +329,10 @@ export const ensureTextures = (): Promise<void> => {
       // ミゲルの剣(横払い用ビジュアル)。miguel-sword.png は既に透過済み(色キー不要・
       // thor-katanaと違いloadKeyedを使わない・通常のstandalone読み込みでOK)。詳細イラスト調なのでlinear。
       { name: 'miguel-sword', scaleMode: 'linear' as const },
+      // ゲート2ボス(ステージ3): ジブリル(天使)。ミゲルと同じ扱い(詳細イラスト調=linear・名前=EnemyType一致)。
+      { name: 'jibril', scaleMode: 'linear' as const },
+      // ジブリルの武器=ランタン(ミゲルのmiguel-swordに相当する別武器スプライト・透過済み・linear)。
+      { name: 'jibril-lantern', scaleMode: 'linear' as const },
       // ハンター変異体(イベント敵)。名前=EnemyType と一致=drawEnemy の getTexture(e.type) で解決。
       // ドット絵タッチなので nearest(全ステージ共通の1枚絵・透過済み)。
       { name: 'hunter', scaleMode: 'nearest' as const },

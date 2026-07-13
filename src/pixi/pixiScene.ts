@@ -861,6 +861,7 @@ const BOSS_SPRITE_FIT: Record<string, { w: number; h: number; cx: number; cy: nu
   skadi:      { w: 0.92, h: 0.19, cx: 0.49, cy: 0.88 }, // 氷の王(1151×1243)。帯=足元。
   thor:       { w: 0.50, h: 0.20, cx: 0.52, cy: 0.93 }, // 鬼刀の武人(1132×1147)。帯=両足の実測位置。
   miguel:     { w: 0.50, h: 0.20, cx: 0.35, cy: 0.99 }, // 大天使ミゲル(797×1187)。thor流用+足元実測の叩き台(実機微調整前提)。
+  jibril:     { w: 0.50, h: 0.18, cx: 0.40, cy: 0.97 }, // 天使ジブリル(740×1267)。ミゲル流用+足元の叩き台(実機微調整前提)。
 };
 const BOSS_FIT_DEFAULT = { w: 0.8, h: 0.2, cx: 0.5, cy: 0.85 };
 // 設置物(盾)/召喚が攻撃された時の被弾シェイク。減衰する短い横揺れ(描画のみ)。
@@ -5974,7 +5975,11 @@ export class PixiScene {
     }
     // ミゲル(ゲート2ボス・§5.21-追補8)の払い攻撃。トールのharai描画を流用し、範囲/太さ/剣素材だけ
     // 差し替える。横払い(harai)→縦払い(tate)の2発コンボ=各々が独立した溜め+実行(攻撃3以降は追って追加)。
-    if (e.type === 'miguel') {
+    if (e.type === 'miguel' || e.type === 'jibril') {
+      // ジブリル(ステージ3ゲート2ボス)はミゲルの攻撃描画を流用(社長指示v0.25.1661「一旦ミゲルをそのままコピー」)。
+      // 赤ゾーン予告(武器非依存=理不尽回避のため必ず出す)は両者共通。武器スプライト(ready/slash)は現状ミゲル専用
+      // (miguel-sword)なので、ジブリルの武器=ランタンの振り演出は社長から武器の使い方を受け取ってから追加する
+      // (それまでジブリルは予告+ダメージのみ=武器の絵は本体絵に描かれたランタン/剣で代替)。
       const slashFx = this.miguelSlashFx.get(e.id);
       if (slashFx) slashFx.visible = false; // 既定で非表示。実行ステートのみ下で表示する
       // 2発コンボ(横払いharai→縦払いtate)。各々が独立した溜め(*-windup)+実行を持つ(社長指示
@@ -6009,11 +6014,12 @@ export class PixiScene {
           // 中心線も薄く残して「薙ぎの軸」を示す(白い芯)。
           o.moveTo(fx, fy).lineTo(tx, ty).stroke({ width: 1 + 2 * prog, color: 0xffe0e0, alpha: 0.35 + 0.35 * prog, cap: 'round' });
           // 剣を振るモーションの「最初の位置」に最初から構えておく。柄=ミゲルの手元、刃先=薙ぎ始めの点。
-          this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
+          // 武器スプライトはミゲル専用(miguel-sword)。ジブリルは武器の使い方を受領後に別途追加(予告のみ)。
+          if (e.type === 'miguel') this.drawMiguelKatanaReady(e.id, fb.footX, fb.footY - fb.boxH * 0.5, fx, fy, 0.45 + 0.4 * prog);
         } else {
           // 払い/縦払い(実行): 放った瞬間はプレイヤーの斬撃と同じピクセル演出を当たり判定に合わせて表示。
           const activeProg = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / MIGUEL_HARAI_ACTIVE_MS));
-          this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
+          if (e.type === 'miguel') this.drawMiguelSlash(e.id, fx, fy, tx, ty, MIGUEL_HARAI_VIS_HALFWIDTH, activeProg, true, true, fb.footX, fb.footY - fb.boxH * 0.5);
         }
       } else {
         view.sprite.tint = 0xffffff;

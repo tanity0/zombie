@@ -732,6 +732,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   skadi: 'スカジ',
   thor: 'トール',
   miguel: 'ミゲル',
+  jibril: 'ジブリル',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
@@ -1608,7 +1609,7 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     //  ・それ以外の裏ボス(mimir/jormungand/skadi/thor)/ハンターは従来どおり「◯◯を討伐」。
     const phrase =
       enemy.type === 'giantbat' ? 'ストーリーボスを討伐'
-      : enemy.type === 'miguel' ? `天使${enemyDeathLabel(enemy.type)}を討伐`
+      : (enemy.type === 'miguel' || enemy.type === 'jibril') ? `天使${enemyDeathLabel(enemy.type)}を討伐`
       : `${enemyDeathLabel(enemy.type)}を討伐`;
     recordChronicle(
       getSelectedStageId(),
