@@ -239,9 +239,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : withdraw ? '帰還' : 'ゲームオーバー'}
           </h2>
-          {(isBenchmark || won || withdraw) && (
+          {/* 勝利時の「森を生き延びた」は撤去(社長指示v0.25.1671)。ベンチ/撤退の文言のみ残す。 */}
+          {(isBenchmark || withdraw) && (
             <p className="text-[13px] text-white/60 mt-1">
-              {isBenchmark ? '段階式の描画負荷テストが完了しました' : won ? '森を生き延びた' : '装備を持って撤収した'}
+              {isBenchmark ? '段階式の描画負荷テストが完了しました' : '装備を持って撤収した'}
             </p>
           )}
           {resultClassicMode ? (

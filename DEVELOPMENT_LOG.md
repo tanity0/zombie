@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1671 — リザルトの「森を生き延びた」を削除【2026-07-13 21:48 JST】
+- **社長指示**「リザルトの 森を生き延びた ってやつ消して」。
+- `GameOverScreen.tsx`: クリア(won)時のサブテキスト「森を生き延びた」を撤去。ベンチ(「段階式の描画負荷テストが
+  完了しました」)と撤退(「装備を持って撤収した」)の文言は据え置き。タイトル行(「ステージクリア！」等)は不変。
+- 検証: `npm run typecheck` パス / eslint exit0。
+- Files: `src/components/GameOverScreen.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1670 — ゲート2を倒すまで深層演出(セピア/逆再生BGM)に入らない(発火前の隙間を封鎖)【2026-07-13 21:36 JST】
 - **社長報告(バグ)**「ゲート2入った時、まだ深層域に入っちゃってる」。
 - **原因**: ゲート2は境界(7500)を**跨いだ後**に発火する(pending→activeEventが空いた瞬間)。跨いだ瞬間〜発火までの

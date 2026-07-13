@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1671',
+    items: [
+      'リザルト画面のクリア時サブテキスト「森を生き延びた」を削除。',
+    ],
+  },
+  {
     version: '0.25.1670',
     items: [
       '深層の扉(ゲート2)のボスを倒すまで、深層域の演出(セピア・逆再生BGM)に入らないよう修正。境界を跨いだ瞬間に深層域へ入った扱いになっていた隙間を塞ぎ、討伐した瞬間に深層域の演出が始まります。',
