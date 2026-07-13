@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1649',
+    items: [
+      'スカベンジャーの歩き・走りの頭の横揺れを1px以内に抑えた(頭の中心を基準に再配置)。立ち絵も同じ基準に揃えて、歩き出しで頭が横に飛ばないように。',
+    ],
+  },
+  {
     version: '0.25.1648',
     items: [
       'スカベンジャーの立ち絵を、暫定(歩き2コマ目)から専用の直立ポーズに差し替え。',

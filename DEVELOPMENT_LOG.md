@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1649 — スカベンジャーの歩き/走りの頭の横揺れを1px以内に【2026-07-13 10:37 JST】
+- **社長指示**「スカベンジャーの歩きと走りの頭の前後左右揺れ 1px以内に抑えて」。
+- **診断**: 従来は各コマを**bbox中心**で横合わせ→腕/銃/マントの伸縮で頭が左右にブレていた(実測: 歩き横3.9px / 走り横6.2px)。
+- **修正(再焼き)**: 各コマの**頭の横中心(上10px帯の水平extent中心)をキャンバス中央CW/2へ固定**して配置。→頭横揺れ **歩き0.5px / 走り0.9px**(縦=頭top平滑で1px以内は据え置き)。
+- **立ち絵も同基準に**: idleの頭中心xも39へ揃え(idle 39.3 / walk 39.1〜39.5 / run 38.9〜39.9)=**歩き出しで頭が横に飛ばない**。
+- **差し替え**: `player-striker-{walk-0..4,run-0..4,idle}.png`。**ASSET_VERSION 46→47**。元シートは既存の退避済みを流用(再焼きのみ)。
+- **注**: 頭を固定したぶん、腕/銃/マント(手足側)がその下で振れる=歩き/走りとして自然。他3クラスも同じ横揺れがあれば同処理可(要指示)。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1648 — スカベンジャーの専用立ち絵を差し替え【2026-07-13 10:20 JST】
 - **社長提供**: スカベンジャー(=player-striker絵)の専用立ち絵(単一直立ポーズ・aimeglio_11)。62色=ドット確認。
 - **ベイク**: ÷4 NEAREST→bbox→幅78・足元下端・中央(78×66)。暫定(歩き2コマ目)→専用の直立ポーズへ。
