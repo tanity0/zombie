@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1653 — 歴史年表をローディング中だけ・上下いっぱいの全画面に【2026-07-13 12:19 JST】
+- **社長指示**「年表、ローディング中だけにして、上から下まで全画面に広げて」。
+- `TitleScreen.tsx`:
+  - **表示条件**: `phase === 'title' || 'loading'` → **`phase === 'loading'` のみ**(タイトル画面には出さない)。
+  - **全画面化**: `ChronicleTimeline` を `top-4 / bottom-4% / w-[96%] / max-w-680` に拡大(上から下までほぼ全画面)。フォント12.5px・区切り「|」・中央揃え・慣性は不変。
+  - **重ね順整理**: ローディング部を分割=**暗幕(bg-black/55)は z-30**(年表の後面で背景を沈める)、**スピナー+LOADINGは z-40**(年表 z-35 の前面)へ。スピナー位置は `pb-18%`→**`pb-6%`(下端)**=全画面年表と重なりにくく。
+- 検証: **typecheck clean**。負荷 変化なし(ローディング時のみ・store非購読)。
+
 ## v0.25.1652 — 歴史年表を全画面寄りに拡大+区切りを縦棒「|」に【2026-07-13 11:53 JST】
 - **社長指示**「年表、表示範囲を全画面使う形で。フォントサイズなどは変えずに。あと行間の横線は縦のエフェクト無しの|で。」
 - `TitleScreen.tsx` `ChronicleTimeline`:

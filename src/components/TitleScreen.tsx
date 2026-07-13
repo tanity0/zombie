@@ -96,10 +96,10 @@ const ChronicleTimeline: React.FC = () => {
   const fade = 'linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)';
   return (
     <div
-      className="absolute left-1/2 top-16 z-[35] flex w-[94%] max-w-[680px] -translate-x-1/2 flex-col"
+      className="absolute left-1/2 top-4 z-[35] flex w-[96%] max-w-[680px] -translate-x-1/2 flex-col"
       style={{
-        // 社長指示v0.25.1652: 表示範囲を全画面寄りに広げる(フォントサイズは不変)。上=バッジ下、下=START手前。
-        bottom: 'max(calc(env(safe-area-inset-bottom) + 14%), 15%)',
+        // 社長指示v0.25.1653: ローディング中だけ、上から下まで全画面に広げる(フォントサイズは不変)。
+        bottom: 'max(calc(env(safe-area-inset-bottom) + 3%), 4%)',
         opacity: entered ? 1 : 0,
         transition: 'opacity 700ms ease-out', // 流し込みと同時にふわっと現れる(-translate-x-1/2は不変=transformは触らない)
       }}
@@ -221,9 +221,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
         </span>
       )}
 
-      {/* 歴史年表(縦の時系列・各個人の軌跡)。タイトル+ローディング画面で表示(社長指示v0.25.1635)。
-          z-[35]でローディングの暗幕(z-30・黒55%)より前面=白が沈まない。 */}
-      {(phase === 'title' || phase === 'loading') && <ChronicleTimeline />}
+      {/* 歴史年表(縦の時系列・各個人の軌跡)。ローディング中だけ全画面表示(社長指示v0.25.1653)。
+          z-[35]=暗幕(z-30)より前面で白が沈まない / スピナー(z-40)は年表の更に前面に残す。 */}
+      {phase === 'loading' && <ChronicleTimeline />}
 
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
       {heartbeatLine && (
@@ -293,10 +293,14 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, waitForAssets, onDon
 
       {/* 本物ローディング(START後・暗転の前に素材完了を待つ) */}
       {phase === 'loading' && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-end bg-black/55 pb-[18%]">
-          <div className="h-9 w-9 animate-spin rounded-full border-2 border-purple-400/20 border-t-purple-300/85" />
-          <span className="mt-4 text-[11px] tracking-[0.34em] text-purple-200/55">LOADING…</span>
-        </div>
+        <>
+          {/* 暗幕(z-30)=年表(z-35)の後面で背景を沈める。スピナー(z-40)=年表の更に前面・下端に残す。 */}
+          <div className="pointer-events-none absolute inset-0 z-30 bg-black/55" />
+          <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-end pb-[6%]">
+            <div className="h-9 w-9 animate-spin rounded-full border-2 border-purple-400/20 border-t-purple-300/85" />
+            <span className="mt-4 text-[11px] tracking-[0.34em] text-purple-200/55">LOADING…</span>
+          </div>
+        </>
       )}
 
       {/* ゆっくり暗転(ロード完了後) → 暗転し切ったらメニューへ。 */}
