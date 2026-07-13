@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1667',
+    items: [
+      '深層の扉(ゲート)の戦闘中、境界を行き来すると画面のセピア(色調)まで行ったり来たり切り替わってしまう不具合を修正(ゲートを超えるまで色調も固定。BGM・SEと合わせてエリア切替を完全に凍結)。',
+    ],
+  },
+  {
     version: '0.25.1666',
     items: [
       '深層の扉(ゲート)の戦闘中、境界を行き来すると深層域のBGMが行ったり来たり切り替わってしまう不具合を修正(ゲートを超えるまでBGMを固定)。',

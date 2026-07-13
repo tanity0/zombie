@@ -12,6 +12,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1667 — ゲート戦闘中の深層域セピア(色調)も凍結(エリア切替を完全停止)【2026-07-13 20:30 JST】
+- **社長追報**: エリア切替時に起きていたのは3つ=①切り替わりSE ②画面のセピア ③逆再生BGM。戦闘中に外(浅い側)へ
+  出ると色/BGMが戻っていた=**距離7500判定が戦闘中も生きていた**。
+- **切り分け**: ①区域SE(`event-start`)=v1655で activeGate 中ガード済み。③逆再生BGM=v1666で凍結済み。
+  **②セピア(深層域グレーディング)だけ未対応**だった=描画側(pixiScene `syncDeepZoneGrade`)がプレイヤーの原点距離で
+  ON/OFF判定しており、ゲートを知らなかった。深層域専用SEは存在しない(grep確認)=①はv1655で足りている。
+- **修正**:
+  - store に `gateActive: boolean` を新設(init/resetで false)。**描画側がゲート状態を読めるようにする**
+    (activeGateRefはuseGameLoopのref=描画から読めないため)。
+  - `useGameLoop.ts`: `activeGateRef.current !== null` を **変化時だけ** `useGameStore.setState({ gateActive })` で反映
+    (`gateActivePrevRef` で毎フレームchurn回避)。
+  - `pixiScene.ts` `syncDeepZoneGrade`: 引数に `gateActive` を追加し、**ゲート中は `deepGradeOn` の距離判定を凍結**
+    (現在のON/OFFを保持)。redNight/`?deepzone=1` の強制ONはそのまま優先。
+- **これでゲート戦闘中はSE/セピア/BGMの3つとも据え置き**=「ゲートを超えない限りエリア切替を発動しない」を満たす。
+  ゲートを超え(クリアし)たら通常判定へ戻る(セピアは約1秒フェード・BGMは通常遷移)。
+- 検証: `npm run typecheck` パス / `npx eslint`(3ファイル)exit0。実機でゲート2戦闘中に境界を行き来しても
+  セピア/BGM/SEが切り替わらないか、クリア後は通常どおり深層域(セピア+逆再生BGM)へ移るかを社長確認。
+- Files: `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`, `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1666 — ゲート戦闘中の深層BGM切替を凍結(エリアが行ったり来たり修正)【2026-07-13 20:21 JST】
 - **社長報告(バグ)**「天使ゲート(と もしかしたらゲート1も)でエリア切替が止まらない。戦闘中にエリアを行ったり来たり
   してしまう。ゲートを超えない限りエリア切替を発動しないようにして」。

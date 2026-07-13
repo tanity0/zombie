@@ -1035,6 +1035,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const jibrilRef = useRef({ hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe' as 'snipe' | 'close', shots: 0, nextShotAt: 0, nextFireAt: 0 });
   // ラフィ(ステージ4ゲート2ボス)専用: カウンター連鎖/骨攻撃の残数/横ステップの状態(単体ボスなので単一refで足る)。
   const rafiRef = useRef({ rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 });
+  // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
+  const gateActivePrevRef = useRef(false);
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -2609,6 +2611,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             else if (dist < DEEP_BGM_D - 600) { releaseDeepReverseBgm(); deepBgmPhaseRef.current = 'shallow'; }
           } else { // deep
             if (dist < DEEP_BGM_D - 200) { exitDeepReverseBgm(); deepBgmPhaseRef.current = 'prep'; }
+          }
+        }
+
+        // ゲート戦闘中フラグをstoreへ反映(描画側=深層域セピアがゲート中はエリア切替を凍結するため・社長指示v0.25.1667)。
+        // 変化時だけ set(毎フレームの set churn を避ける)。
+        {
+          const gateActiveNow = activeGateRef.current !== null;
+          if (gateActiveNow !== gateActivePrevRef.current) {
+            gateActivePrevRef.current = gateActiveNow;
+            useGameStore.setState({ gateActive: gateActiveNow });
           }
         }
 

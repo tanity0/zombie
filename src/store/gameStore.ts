@@ -1971,6 +1971,9 @@ interface GameState {
   groundFires: GroundFire[];
   // ジブリルのランタン攻撃の紫の単発火(プレイヤー被弾)。判定/寿命は useGameLoop、描画は pixiScene が直読み。
   bossFires: BossFire[];
+  // 深さの壁ゲート(1/2)の戦闘中か(useGameLoop の activeGateRef を反映)。描画側(深層セピア)がゲート中は
+  // エリア切替を凍結するために読む(社長指示v0.25.1667「ゲートを超えるまでエリア切替を発動しない」)。
+  gateActive: boolean;
   // スキル「救難信号」の援護アライ(一過性演出)。生成/着弾ダメージ/寿命は tickRescueAllies が処理、
   // 描画は pixiScene が直読み(RescueAlly型のコメント参照)。
   rescueAllies: RescueAlly[];
@@ -2549,6 +2552,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skadiIceBlades: [],
   groundFires: [],
   bossFires: [],
+  gateActive: false,
   rescueAllies: [],
   thrownBags: [],
   boomerangReadyFxAt: 0,
@@ -9265,6 +9269,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         shadowClone: null,
         groundFires: [],
   bossFires: [],
+  gateActive: false,
         rescueAllies: [],
         thrownBags: [],
         molotovCycle: null,
