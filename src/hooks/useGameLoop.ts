@@ -310,10 +310,17 @@ const TURRET_EXPLOSION_RADIUS = 64;                     // 消滅時の小爆発
 const TURRET_EXPLOSION_DAMAGE = 36;                     // 消滅時の小爆発・威力。TODO: 実機調整
 // 救急鞄(first-aid-kit・通常サブウェポン): 中身(既存ammo-*/health/bombピックアップ)の払い出し条件
 // 判定は純関数(src/utils/firstAidKit.ts)。ここは投擲アーク(quick-magazineと同じ流儀)の見た目のみ。
-// 使い切った鞄本体の投擲(5ダメージ+ノックバック)は gameStore の thrownBags/tickThrownBags が処理
+// 使い切った鞄本体の投擲(着弾で爆発範囲攻撃・社長決定v0.25.1657)は gameStore の thrownBags/tickThrownBags が処理
 // (FIRST_AID_KIT_THROW_DAMAGE/KNOCKBACK_MULTはstore側からimport=着弾処理と発生元で値を1箇所に統一)。
 const FIRST_AID_KIT_THROW_DISTANCE = 82;      // TODO(救急鞄): quick-magazineと同値。仮値
 const FIRST_AID_KIT_THROW_MS = 360;           // TODO(救急鞄): quick-magazineと同値。仮値
+// 救急鞄: アイテム飛び出しの寄り+スロー(社長指示v0.25.1657)。救急鞄を明示的にスロー対象へ指名=
+// CLAUDE.md「サブウェポンはスロー禁止」の例外(明示指示あり)。全て叩き台=実機調整前提。
+const FIRST_AID_POP_ZOOM_MAG = 0.4;           // 寄りの強さ(近接フィニッシュ1.0より控えめ)
+const FIRST_AID_POP_ZOOM_MS = 460;            // 寄りの長さ
+const FIRST_AID_POP_ZOOM_HOLD_MS = 120;       // 最大寄りの保持
+const FIRST_AID_POP_SLOW_SCALE = 0.4;         // スロー倍率
+const FIRST_AID_POP_SLOW_MS = 460;            // スローの長さ
 // 発火ナイフ(通常サブウェポン): クールダウンごとに敵1体へナイフを自動投擲。命中で刺さり、
 // 単体ダメージ→2秒後に刺さった位置(敵に追従)で範囲爆発。敵を爆弾化する遅延範囲武器。
 const FIRE_KNIFE_COOLDOWN_BY_LEVEL = [0, 8000, 7000, 6000]; // Lv1=8s / Lv2=7s / Lv3=6s
@@ -4780,6 +4787,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().setFirstAidKitState(kitResult.nextState);
             // 発動演出(社長指示v0.25.1656): 振り抜きポーズ+救急鞄を掲げる一拍(描画のみ・判定不変)。
             useGameStore.getState().markFirstAidPoseFx();
+            // 飛び出しの一拍を強調(社長指示v0.25.1657): プレイヤー(掲げた鞄)へ寄り+スロー。
+            // 救急鞄は社長が明示的にスロー対象へ指名=CLAUDE.mdのサブウェポン・スロー禁止の例外。
+            useGameStore.getState().triggerZoom(FIRST_AID_POP_ZOOM_MAG, FIRST_AID_POP_ZOOM_MS, FIRST_AID_POP_ZOOM_HOLD_MS, pcx, pcy);
+            useGameStore.getState().triggerTimeSlow(FIRST_AID_POP_SLOW_SCALE, FIRST_AID_POP_SLOW_MS);
             const dir = safeThrowDirection(
               pcx, pcy,
               useGameStore.getState().enemies,
@@ -4813,7 +4824,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 発生(=飛んでいく鞄エンティティの生成)のみ。thrownはこの発生フレームで確定させる
           // (毎フレーム再トリガーしないよう、飛翔中に再度ここへ入らないようにするため)。
           const kitStateAfterDispense = kitResult.dispense ? kitResult.nextState : kitStateNow;
-          if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level, ammoTypesUsed)) {
+          if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level)) {
             const target = useGameStore.getState().enemies
               .filter(e => e.type !== 'reaper' || e.reaperChaser)
               .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))

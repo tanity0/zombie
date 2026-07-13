@@ -1005,7 +1005,10 @@ export const RESCUE_SIGNAL_ZOOM_HOLD_MS = 70;
 // ダメージ/ノックバック倍率の値自体は据え置き(旧useGameLoop内ローカル定数からの移設のみ・
 // tickThrownBagsがstore側にあるためexportして両方(useGameLoop起動側/store着弾側)から参照する)。
 export const THROWN_BAG_FLIGHT_MS = 280;             // 投げてから着弾までの飛行時間(社長指定レンジ250-300msの叩き台)
-export const FIRST_AID_KIT_THROW_DAMAGE = 5;         // 空鞄を最寄りの敵へ投げた時のダメージ(社長指定)
+// 社長決定v0.25.1657: 空鞄は「爆発範囲攻撃」。着弾点中心のAoE(反射神経の反撃爆発に準拠・外周はfalloff減衰)。
+// 値は叩き台=実機調整前提。THROW_DAMAGE=爆発中心の基準ダメージ(旧5=単体ダメージから改訂)。
+export const FIRST_AID_KIT_THROW_DAMAGE = 80;        // 爆発の中心ダメージ(falloffで外周は減衰)
+export const FIRST_AID_BAG_EXPLODE_RADIUS = 100;     // 爆発半径(px)
 export const FIRST_AID_KIT_THROW_KNOCKBACK_MULT = 1.2; // TODO(救急鞄): 仮値(dog bite 0.8よりやや強め)
 
 // Hitstop: 全停止(timeScale=0)で衝撃を出す瞬間ストップ。全インパクト共通0.1秒(社長指示)。
@@ -4201,25 +4204,38 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     for (const b of toStrike) {
       const target = get().enemies.find(e => e.id === b.targetEnemyId);
-      if (!target) continue; // 着弾前に対象が消えていた=何もしない
-      const tcx = target.x + target.width / 2;
-      const tcy = target.y + target.height / 2;
-      const killed = get().damageEnemy(b.targetEnemyId, b.damage);
-      get().spawnDamageNumber(tcx, target.y, b.damage, false);
-      // 重い敵/ボス/すり抜け勢(giantbat/pumpkin/reaper/裏ボス)はノックバック無効(既存のシールド等と同じ慣例)。
-      const knockbackImmune = target.type === 'giantbat' || target.type === 'pumpkin'
-        || target.type === 'reaper' || isHiddenBoss(target.type);
-      if (!killed && !knockbackImmune) {
-        // 方向は投擲元(b.fromX/Y=発生時のプレイヤー位置)基準。着弾は投擲からTHROWN_BAG_FLIGHT_MS後
-        // なのでプレイヤーが動いている可能性があり、着弾時点の現在地より「投げた場所」からの
-        // 押し出しの方が一貫する(旧仕様=投擲と着弾が同フレームだった時の向きと同じ考え方)。
-        const n = Math.max(0.001, Math.hypot(tcx - b.fromX, tcy - b.fromY));
-        get().knockbackEnemy(b.targetEnemyId, (tcx - b.fromX) / n, (tcy - b.fromY) / n, FIRST_AID_KIT_THROW_KNOCKBACK_MULT);
-      }
-      get().spawnBurst(tcx, tcy, '#e2e8f0', 10);
-      get().spawnRing(tcx, tcy, 3, 26, 'rgba(226,232,240,0.75)', 2, 260);
-      if (killed) {
-        get().dropEnemyXp(target, tcx, tcy, `pickup-xp-first-aid-kit-${b.id}`);
+      // 社長決定v0.25.1657: 空鞄=爆発範囲攻撃。着弾点中心のAoE(反射神経の反撃爆発に準拠)。
+      // 対象が消えていても発生時に記録した対象足元(targetX/Y)で爆発させる(空振りにしない)。
+      const cx = target ? target.x + target.width / 2 : b.targetX;
+      const cy = target ? target.y + target.height / 2 : b.targetY;
+      const exMult = skillExplosionMult(get().player); // 全爆発共通の倍率(エクスプローダー等)に追従
+      const radius = FIRST_AID_BAG_EXPLODE_RADIUS * exMult;
+      const baseDmg = b.damage * exMult; // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
+      get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
+      get().spawnBurst(cx, cy, '#ffae46', 22);
+      get().spawnGlow(cx, cy, radius * 0.55, 'rgba(255,150,60,', 400);
+      // 半径内の敵に falloff ダメージ+押し出し(中心=b.fromX/Yではなく着弾点基準)。
+      for (const e of get().enemies) {
+        if (e.type === 'reaper' && !e.reaperChaser) continue;
+        const ecx = e.x + e.width / 2;
+        const ecy = e.y + e.height / 2;
+        const dx = ecx - cx, dy = ecy - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > radius) continue;
+        const falloff = 1 - dist / radius;
+        const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
+        const killed = get().damageEnemy(e.id, dmg);
+        get().spawnDamageNumber(ecx, e.y, dmg, false);
+        // 重い敵/ボス/すり抜け勢はノックバック無効(既存のシールド等と同じ慣例)。
+        const knockbackImmune = e.type === 'giantbat' || e.type === 'pumpkin'
+          || e.type === 'reaper' || isHiddenBoss(e.type);
+        if (!killed && !knockbackImmune) {
+          const nrm = Math.max(0.001, dist);
+          get().knockbackEnemy(e.id, dx / nrm, dy / nrm, FIRST_AID_KIT_THROW_KNOCKBACK_MULT);
+        }
+        if (killed) {
+          get().dropEnemyXp(e, ecx, ecy, `pickup-xp-first-aid-kit-${b.id}-${e.id}`);
+        }
       }
     }
   },

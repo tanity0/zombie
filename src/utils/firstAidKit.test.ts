@@ -102,36 +102,37 @@ describe('computeFirstAidKitTick', () => {
   });
 });
 
-describe('isFirstAidKitEmpty', () => {
+describe('isFirstAidKitEmpty(社長決定v0.25.1657: 弾3種すべて+Lv回復/爆弾で空)', () => {
+  const allAmmo = { ammoHandgunDispensed: true, ammoShotgunDispensed: true, ammoRifleDispensed: true };
+
   it('何も払い出していない状態では空ではない', () => {
-    expect(isFirstAidKitEmpty(createFirstAidKitState(), 1, ['handgun'])).toBe(false);
+    expect(isFirstAidKitEmpty(createFirstAidKitState(), 1)).toBe(false);
   });
 
-  it('Lv1: 所持弾薬タイプを全て払い出せば空になる(回復/爆弾は数えない)', () => {
-    const state: FirstAidKitState = { ...createFirstAidKitState(), ammoHandgunDispensed: true, ammoShotgunDispensed: true };
-    expect(isFirstAidKitEmpty(state, 1, ['handgun', 'shotgun'])).toBe(true);
+  it('弾を一部の銃種しか払い出していなければ空にならない(3種そろうまで投げない)', () => {
+    const partial: FirstAidKitState = { ...createFirstAidKitState(), ammoHandgunDispensed: true, ammoShotgunDispensed: true };
+    expect(isFirstAidKitEmpty(partial, 1)).toBe(false); // rifle未払い出し=まだ空でない
   });
 
-  it('Lv2: 弾薬を払い出しても回復が未払い出しなら空にならない', () => {
-    const state: FirstAidKitState = { ...createFirstAidKitState(), ammoHandgunDispensed: true };
-    expect(isFirstAidKitEmpty(state, 2, ['handgun'])).toBe(false);
+  it('Lv1: 弾3種すべてを払い出せば空になる(回復/爆弾は数えない)', () => {
+    const state: FirstAidKitState = { ...createFirstAidKitState(), ...allAmmo };
+    expect(isFirstAidKitEmpty(state, 1)).toBe(true);
   });
 
-  it('Lv2: 弾薬+回復を払い出せば空になる', () => {
-    const state: FirstAidKitState = { ...createFirstAidKitState(), ammoHandgunDispensed: true, healDispensed: true };
-    expect(isFirstAidKitEmpty(state, 2, ['handgun'])).toBe(true);
+  it('Lv2: 弾3種を払い出しても回復が未払い出しなら空にならない', () => {
+    const state: FirstAidKitState = { ...createFirstAidKitState(), ...allAmmo };
+    expect(isFirstAidKitEmpty(state, 2)).toBe(false);
   });
 
-  it('Lv3: 弾薬+回復+爆弾を全て払い出して初めて空になる', () => {
-    const partial: FirstAidKitState = {
-      ...createFirstAidKitState(), ammoHandgunDispensed: true, healDispensed: true,
-    };
-    expect(isFirstAidKitEmpty(partial, 3, ['handgun'])).toBe(false);
+  it('Lv2: 弾3種+回復を払い出せば空になる', () => {
+    const state: FirstAidKitState = { ...createFirstAidKitState(), ...allAmmo, healDispensed: true };
+    expect(isFirstAidKitEmpty(state, 2)).toBe(true);
+  });
+
+  it('Lv3: 弾3種+回復+爆弾を全て払い出して初めて空になる', () => {
+    const partial: FirstAidKitState = { ...createFirstAidKitState(), ...allAmmo, healDispensed: true };
+    expect(isFirstAidKitEmpty(partial, 3)).toBe(false);
     const full: FirstAidKitState = { ...partial, bombDispensed: true };
-    expect(isFirstAidKitEmpty(full, 3, ['handgun'])).toBe(true);
-  });
-
-  it('開放中の中身が0個(銃を1つも持っていない等)なら、何も払い出せていなくても空にはならない', () => {
-    expect(isFirstAidKitEmpty(createFirstAidKitState(), 1, [])).toBe(false);
+    expect(isFirstAidKitEmpty(full, 3)).toBe(true);
   });
 });

@@ -113,20 +113,19 @@ export const computeFirstAidKitTick = ({
   return { dispense, nextState };
 };
 
-// 「現在のレベルで開放中の中身を、全て払い出し終えたか」。0個しか開放されていない(＝銃を1つも
-// 持っていないLv1のような極端ケース)は空にしない=false固定(何も渡していないのに投げるのは変)。
-// useGameLoopはこれがtrueかつ!state.thrownの間、毎フレーム再チェックして敵が居る瞬間に鞄を投げる
-// (ターゲット不在で投げそこねても、次フレーム以降も再挑戦できるようthrown確定はここでは行わない)。
+// 「鞄を投げる=空になったか」。社長決定v0.25.1657: **弾3種(handgun/shotgun/rifle)すべて**を配り終え、
+// さらにレベルで開放される回復(Lv2)・爆弾(Lv3)も配り終えて初めて空=投擲(爆発範囲攻撃)。
+// これにより「銃種を1つしか使っていない段階で早々に投げてしまい、後から拾った銃種の弾を配れない」問題を解消
+// (3種すべて配り終えるまで鞄は手元に残り、後発の銃種の弾も配れる)。ammoTypesUsedは空判定には使わない
+// (=「使った銃種だけ」ではなく「3種すべて」で判定する。使っていない銃種の弾は payout ロジック側で配られない
+// ため、その銃種を使うまで空にはならない=鞄は投げられない)。
 export const isFirstAidKitEmpty = (
   state: FirstAidKitState,
   level: number,
-  ammoTypesUsed: readonly FirstAidKitAmmoType[],
 ): boolean => {
   const healApplicable = level >= 2;
   const bombApplicable = level >= 3;
-  const totalApplicable = ammoTypesUsed.length + (healApplicable ? 1 : 0) + (bombApplicable ? 1 : 0);
-  if (totalApplicable === 0) return false;
-  if (!ammoTypesUsed.every(t => ammoDispensedFlag(state, t))) return false;
+  if (!state.ammoHandgunDispensed || !state.ammoShotgunDispensed || !state.ammoRifleDispensed) return false;
   if (healApplicable && !state.healDispensed) return false;
   if (bombApplicable && !state.bombDispensed) return false;
   return true;

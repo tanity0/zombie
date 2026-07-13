@@ -12,6 +12,39 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1657 — 救急鞄: 後発銃種の弾切れバグ修正+空鞄を爆発範囲攻撃化+飛び出しにズーム/スロー【2026-07-13 17:48 JST】
+- **社長報告(バグ)**「ショットガンで開始→弾切れで弾は出たが、その後ハンドガンを拾って弾切れになっても出てこない」。
+- **原因**: `isFirstAidKitEmpty` が「今持っている銃種の弾を配り終えたか」で空判定していたため、ショットガンだけの段階で
+  配り切ると即「空」→敵が居れば鞄を投げて `thrown=true`(使い切り)。以後 `computeFirstAidKitTick` が先頭の
+  `if(state.thrown) return null` で一切配らない=後から拾ったハンドガンの弾が出ない。
+- **社長決定(直し方)**: **弾3種(handgun/shotgun/rifle)すべて+レベル開放の回復(Lv2)/爆弾(Lv3)を配り切るまで鞄は投げない**。
+  3種そろって初めて「弾は完了」、回復/爆弾もそろったら投擲。**投擲=爆発範囲攻撃**にする。
+- **実装**:
+  - `firstAidKit.ts` `isFirstAidKitEmpty`: 判定を「弾3種すべて配布済み+回復(Lv2)+爆弾(Lv3)」に変更。`ammoTypesUsed`
+    引数は廃止(3種固定判定)。→ 3種そろうまで鞄は手元に残り、後発の銃種の弾も配れる(=バグ解消)。
+    ※使っていない銃種の弾は payout 側で配られないので、その銃種を使うまで鞄は投げられない(社長設計どおり)。
+  - `firstAidKit.test.ts`: 新仕様に合わせて `isFirstAidKitEmpty` 系テストを書き換え(17テスト green)。
+  - `gameStore.ts` `tickThrownBags`: 着弾を**単体ダメージ→着弾点中心の爆発範囲攻撃**へ(反射神経の反撃爆発に準拠=
+    falloff・`skillExplosionMult`追従・ノックバック・リング/バースト/グロウFX)。対象消失時は発生時の対象足元
+    (`targetX/Y`)で爆発=空振りにしない。`FIRST_AID_KIT_THROW_DAMAGE` 5→80(爆発中心の基準)、
+    `FIRST_AID_BAG_EXPLODE_RADIUS=100` 新設(叩き台)。
+  - `useGameLoop.ts`: 払い出しの瞬間に **`triggerZoom`(寄り)+`triggerTimeSlow`(スロー)** を追加
+    (社長指示「アイテムが飛び出す時にズーム・スロー」)。**救急鞄を明示的にスロー対象へ指名=CLAUDE.mdの
+    サブウェポン・スロー禁止の例外**。定数 `FIRST_AID_POP_ZOOM_*`/`FIRST_AID_POP_SLOW_*`(叩き台)。
+    `isFirstAidKitEmpty` 呼び出しの引数も更新。
+- **叩き台の数値(実機調整前提)**: 爆発 半径100/中心ダメージ80/falloff(0.55+0.45)。寄り mag0.4・460ms・hold120。スロー 0.4倍・460ms。
+- **注意/仕様の含意**: 鞄投擲(=爆発)は「3種+回復/爆弾を全部配り切った時」だけ発火。3銃種を使わないランでは
+  鞄は投げられない(=手元でずっと弾を配り続ける)。これは社長設計どおり。気になれば投擲条件を緩める案あり。
+- **頻度メモ**: 払い出しごとにズーム+スローが入る(最大=弾3+回復+爆弾で5回/ラン。時間的に散らばるので連発はしない)。
+  多いと感じたら「弾切れ払い出しだけ」等に絞れます。
+- 負荷: **1/10**(空判定=純ロジック / 爆発=ラン1回の単発AoE+単発FX / ズーム・スローは既存機構)。
+  slow-mo は救急鞄のみ・明示指示による例外。
+- 検証: `npm run typecheck` パス / `npx eslint`(firstAidKit/test/useGameLoop/gameStore)exit0 /
+  `vitest run src/utils/firstAidKit.test.ts` = 17 passed。実機で「ショットガン→弾切れ配布→ハンドガン拾って弾切れ配布」
+  が出るか、投擲時に爆発が出るか、飛び出しの寄り/スローの強さを社長確認(数値は叩き台)。
+- Files: `src/utils/firstAidKit.ts`, `src/utils/firstAidKit.test.ts`, `src/hooks/useGameLoop.ts`,
+  `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1656 — 救急鞄スキル発動演出(振り抜きポーズ+鞄を掲げてアイテムが飛び出す)【2026-07-13 16:54 JST】
 - **社長指示**「救急鞄　スキルが発動したときは　振りぬきの立ち絵と、その上に救急鞄のドット絵を表示して、
   該当アイテムが飛び出てくる演出して(ようは鞄を掲げているように見える描写)」。
