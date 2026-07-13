@@ -12,6 +12,15 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1654 — 救援アライのバックジャンプ前しゃがみを「しゃがみ絵」に【2026-07-13 16:20 JST】
+- **社長指示**「(②の)救援アライはしゃがみ絵にして」。
+- `pixiScene.ts` `syncRescueAllies`:
+  - **バックジャンプ前のCROUCH区間**([crouchStart, backjumpStart))の body絵を、**クラス別しゃがみ絵 `-ready`(構え)** に差し替え(着地の一拍と同じ絵を再利用=v1629の流用)。
+  - **縦潰しの仮表現を撤去**(`crouchSqX/crouchSqY` を削除)=しゃがみ絵と二重にしゃがまないように。`sqX/sqY` の初期値も 1 に整理(未使用変数を除去=lint clean)。
+- これで救援アライは 着地しゃがみ(-ready)→切り付け(-swing)→一拍→**バックジャンプ前しゃがみ(-ready)**→離脱 と、全て専用ポーズ絵で通る(仮スクワッシュ廃止)。
+- 素材は既存の`-ready`流用=ASSET_VERSIONは据え置き。挙動(タイミング/当たり)は不変=見た目のみ。
+- 検証: **typecheck clean / eslint clean**。負荷0/10(既存絵の差し替えのみ)。実機でCROUCH区間が縦潰しでなく構え絵で出るか社長確認。
+
 ## v0.25.1653 — 歴史年表をローディング中だけ・上下いっぱいの全画面に【2026-07-13 12:19 JST】
 - **社長指示**「年表、ローディング中だけにして、上から下まで全画面に広げて」。
 - `TitleScreen.tsx`:

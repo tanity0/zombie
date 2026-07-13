@@ -4848,10 +4848,11 @@ export class PixiScene {
           bodyTex = getTexture(`${meleePosePrefix}-ready`) ?? tex; // 着地=しゃがみ(構え)
         } else if (elapsed >= strikeAt && elapsed < swingEnd) {
           bodyTex = getTexture(`${meleePosePrefix}-swing`) ?? tex; // 切り付け(振り抜き)
+        } else if (elapsed >= crouchStart && elapsed < backjumpStart) {
+          bodyTex = getTexture(`${meleePosePrefix}-ready`) ?? tex; // バックジャンプ前のしゃがみ=構え絵(社長指示v0.25.1654)
         }
       }
       let footX: number, footY: number, hop = 0, alpha = 1, jumpStretch = 1;
-      let crouchSqX = 1, crouchSqY = 1;
       if (elapsed < RESCUE_ALLY_FLYIN_MS) {
         // 飛来=放物線ジャンプ(慣性つき): 水平 ease-out(勢いよく出て着地で減速)+垂直 sin1山のホップ。
         const t = Math.max(0, Math.min(1, elapsed / RESCUE_ALLY_FLYIN_MS));
@@ -4864,12 +4865,9 @@ export class PixiScene {
         // 着地→登場一拍→着弾&近接モーション→モーション後の一拍。敵前面で静止。
         footX = landX; footY = landY;
       } else if (elapsed < backjumpStart) {
-        // 少ししゃがみ込む(バックジャンプの溜め・前面で静止)。※後日クラス別しゃがみ絵に差し替え予定=
-        // 今はスクワッシュ(縦潰し)で仮表現。foot-anchorなので頭が沈む=しゃがみに見える。
+        // バックジャンプ前のしゃがみ=クラス別しゃがみ絵(-ready)に差し替え済み(社長指示v0.25.1654)。
+        // 旧: スクワッシュ(縦潰し)の仮表現。しゃがみ絵を使うので縦潰し(crouchSqX/Y)は掛けない(二重しゃがみ防止)。
         footX = landX; footY = landY;
-        const cp = Math.max(0, Math.min(1, (elapsed - crouchStart) / RESCUE_ALLY_CROUCH_MS));
-        crouchSqY = 1 - 0.30 * cp; // 縦に潰れる(しゃがみ)
-        crouchSqX = 1 + 0.16 * cp; // 横に広がる
       } else {
         // バックジャンプ=しゃがみを解いて背後(fromX/Y)へ跳ね戻る(敵を向いたまま後ろへ)。往路より速い放物線。
         const t = Math.max(0, Math.min(1, (elapsed - backjumpStart) / RESCUE_ALLY_FLYOUT_MS));
@@ -4885,7 +4883,7 @@ export class PixiScene {
       const meleeSince = gameTime - (a.spawnedAt + strikeAt);
       const swinging = meleeSince >= 0 && meleeSince < RESCUE_ALLY_ATTACK_MS;
       const dsc = this.depthScale(footY);
-      let offX = 0, offY = 0, lean = 0, sqX = crouchSqX, sqY = crouchSqY;
+      let offX = 0, offY = 0, lean = 0, sqX = 1, sqY = 1;
       if (swinging) {
         const am = Math.hypot(tx - a.fromX, ty - a.fromY) || 1;
         const aimx = (tx - a.fromX) / am, aimy = (ty - a.fromY) / am; // 踏み込みは往路方向(飛び込んで斬る)
