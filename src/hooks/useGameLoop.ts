@@ -2597,6 +2597,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const phase = deepBgmPhaseRef.current;
           if (!eligible) {
             if (phase !== 'shallow') { exitDeepReverseBgm(); releaseDeepReverseBgm(); deepBgmPhaseRef.current = 'shallow'; }
+          } else if (activeGateRef.current !== null) {
+            // 社長指示v0.25.1666「ゲートを超えない限りエリア切替を発動しない」: ゲート戦闘中は深層BGMの切替を凍結。
+            // ゲート2の境界(=DEEP_BGM_D=7500)の上にアリーナが張られるため、戦闘中に境界を行き来すると深層BGMが
+            // prep↔deep で行ったり来たりしていた(=「エリアが行ったり来たり」の正体)。ゲート中は現在フェーズを保持し、
+            // ゲートを超えて(クリアして)から通常判定へ戻す。区域バナー/年表は既に activeGate 中スキップ済み。
           } else if (phase === 'shallow') {
             if (dist >= DEEP_BGM_D - 400) { prepareDeepReverseBgm(); deepBgmPhaseRef.current = 'prep'; }
           } else if (phase === 'prep') {

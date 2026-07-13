@@ -12,6 +12,22 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1666 — ゲート戦闘中の深層BGM切替を凍結(エリアが行ったり来たり修正)【2026-07-13 20:21 JST】
+- **社長報告(バグ)**「天使ゲート(と もしかしたらゲート1も)でエリア切替が止まらない。戦闘中にエリアを行ったり来たり
+  してしまう。ゲートを超えない限りエリア切替を発動しないようにして」。
+- **原因特定**: 区域バナー/年表は既に activeGate 中スキップ済み(v1655)だが、**深層域BGM(逆再生)の切替(`DEEP_BGM_D=7500`)が
+  ゲートに未連動**だった。ゲート2の境界=`AREA_THRESHOLDS[3]=7500`=`DEEP_BGM_D` と同一で、戦闘アリーナが7500の上に張られる
+  ため、戦闘中にプレイヤーが7500を行き来する→深層BGMが prep↔deep で行ったり来たり=「エリアが行ったり来たり」の正体。
+  ゲート1(5000)は深層BGM圏外(<6900)なので発生せず=社長の「もしかしたら」と整合。
+- **修正(`useGameLoop.ts`)**: 深層BGM状態機械に `activeGateRef.current !== null` の凍結分岐を追加。**ゲート戦闘中は
+  現在フェーズを保持**し、ゲートを超え(クリアし)てから通常判定へ戻す。両ゲート共通(gate1でも凍結=無害)。
+  区域バナー/年表/踏破は従来どおり(activeGate中スキップ＋ゲートクリア時に確定)。
+- **注意**: これは「深層BGMの行き来」が対象。もし社長が見ているのが別のエリア表示(視覚)なら、その要素を教えてもらえれば
+  同様にゲート連動で凍結する(区域バナー自体は既にゲート中は出ない)。
+- 検証: `npm run typecheck` パス / `npx eslint src/hooks/useGameLoop.ts` exit0。実機でゲート2戦闘中に深層BGMが
+  行ったり来たりしないか、クリア後は通常どおり深層BGMへ移るかを社長確認。
+- Files: `src/hooks/useGameLoop.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1665 — ラフィ専用コントローラ(追跡＋横ステップ＋ジャンプ＋骨攻撃＋カウンター連鎖)【2026-07-13 20:06 JST】
 - **社長指示(攻撃パターン・確認済み)**: ラフィ=「ゆっくり追跡＋ランダム横高速ステップ / ハンドガン距離300内=骨攻撃
   (スカジ氷刃の骨刃版・設置間隔=400×1.5=600ms)/ 300外=ジャンプ攻撃(トール流用・着地AoE)/ ジャンプの溜めを
