@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1660 — ジブリル(ステージ3ゲート2ボス)素材の保存(実装準備・配線は未着手)【2026-07-13 19:06 JST】
+- **社長提供**: ステージ3のゲート2ボス「ジブリル」(天使枠2体目)の本体絵＋武器(ランタン)。
+- **保存のみ**(コードへの配線=EnemyType/GATE2_BOSS_TYPE_BY_STAGE/コントローラ/描画 は**未着手**。方針確認待ち)。
+  - `public/sprites/jibril.png`(740×1267・本体・linear想定。ミゲル797×1187と同形式)。
+  - `public/sprites/jibril-lantern.png`(132×512・武器=ランタン。ミゲルのmiguel-sword 805×3437に相当する別武器スプライト)。
+  - 原本アーカイブ: `art_src/originals/jibril/{jibril-src.png, jibril-lantern-src.png}`。
+- **方針(社長と確認中)**: ミゲルのゲート2ボス機構(コントローラ/描画)を流用し、武器をランタンに差し替え(振りの支点/長さ定数を再調整)。
+  ステータスはひとまずミゲル同値(HP2000/与38)を叩き台。→ 社長のGO後に配線する。
+- **注意**: この版は**素材追加のみ**でジブリルはまだ出現しない(プレイヤー向けchangelogは実際に動く配線完了時に追記)。
+- Files: `public/sprites/jibril.png`, `public/sprites/jibril-lantern.png`, `art_src/originals/jibril/*`, `package.json`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1659 — 年表: ボス討伐の動詞を「討伐」で統一(撃破→討伐)【2026-07-13 18:29 JST】
 - **社長指示**「あ、討伐でいいよ」(v0.25.1658の『撃破』を撤回)。
 - `gameStore.ts` triggerDramaticDeath の年表フレーズ: 「ストーリーボスを**撃破**」→「ストーリーボスを**討伐**」、
