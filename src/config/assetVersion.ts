@@ -82,4 +82,6 @@
 //      暫定の歩き2コマ目→専用立ち絵へ)。他は不変。
 // v45: スカベンジャー(=player-striker絵)の近接ポーズ(melee-ready/swing)もドット保持で焼き直し(÷4・幅78・足元x重心中央)。
 //      →全4クラス(magnum/shotgun/scavenger絵/striker絵)の歩き/立ち/走り/近接が全てドットで完備(にじみ一掃 完了)。
-export const ASSET_VERSION = '45';
+// v46: スカベンジャーの専用立ち絵(player-striker-idle)を社長提供の単一直立ポーズ(aimeglio_11)で差し替え(÷4・幅78・
+//      暫定の歩き2コマ目→専用立ち絵へ)。他は不変。
+export const ASSET_VERSION = '46';

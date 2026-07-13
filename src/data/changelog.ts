@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1648',
+    items: [
+      'スカベンジャーの立ち絵を、暫定(歩き2コマ目)から専用の直立ポーズに差し替え。',
+    ],
+  },
+  {
     version: '0.25.1647',
     items: [
       'スカベンジャーの近接ポーズもドット保持で焼き直し。これで全4クラスの歩き・立ち・走り・近接がすべてくっきりドットに(にじみ一掃 完了)。',

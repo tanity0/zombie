@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1648 — スカベンジャーの専用立ち絵を差し替え【2026-07-13 10:20 JST】
+- **社長提供**: スカベンジャー(=player-striker絵)の専用立ち絵(単一直立ポーズ・aimeglio_11)。62色=ドット確認。
+- **ベイク**: ÷4 NEAREST→bbox→幅78・足元下端・中央(78×66)。暫定(歩き2コマ目)→専用の直立ポーズへ。
+- **差し替え**: `player-striker-idle.png`。元画像退避 `art_src/originals/scavenger/idle-dot.png`。**ASSET_VERSION 45→46**。他は不変。
+- これで**全4クラスとも専用立ち絵**(ヘビーガンナー=v1646 / スカベンジャー=本v)。マークスマン/ストライカーは元から歩き2コマ目兼用(社長仕様)。
+- 検証: **typecheck clean**。負荷0/10。
+
 ## v0.25.1647 — スカベンジャーの近接=全4クラス ドット化完了【2026-07-13 08:44 JST】
 - **社長提供**: スカベンジャー(=player-striker絵)近接シート(aimeglio・構え/振り抜き)。64色=ドット確認。
 - **ベイク**: ÷4 NEAREST→2コマ→幅78・足元x重心中央(78×66)。構え=しゃがみ(47×47)/振り抜き=立ち(48×64)。
