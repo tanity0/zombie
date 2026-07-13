@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1652',
+    items: [
+      '歴史年表の表示範囲を全画面寄りに拡大(フォントサイズは変更なし)。行間の区切りを、金の横線からエフェクト無しの縦棒「|」に変更。',
+    ],
+  },
+  {
     version: '0.25.1651',
     items: [
       'マークスマンの歩きも頭の横揺れを1px以内(実質0px)に。立ち絵も同じ基準に。',

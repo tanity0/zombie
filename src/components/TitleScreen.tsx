@@ -96,9 +96,10 @@ const ChronicleTimeline: React.FC = () => {
   const fade = 'linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)';
   return (
     <div
-      className="absolute left-1/2 top-24 z-[35] flex w-[82%] max-w-[340px] -translate-x-1/2 flex-col"
+      className="absolute left-1/2 top-16 z-[35] flex w-[94%] max-w-[680px] -translate-x-1/2 flex-col"
       style={{
-        bottom: 'max(calc(env(safe-area-inset-bottom) + 25%), 26%)',
+        // 社長指示v0.25.1652: 表示範囲を全画面寄りに広げる(フォントサイズは不変)。上=バッジ下、下=START手前。
+        bottom: 'max(calc(env(safe-area-inset-bottom) + 14%), 15%)',
         opacity: entered ? 1 : 0,
         transition: 'opacity 700ms ease-out', // 流し込みと同時にふわっと現れる(-translate-x-1/2は不変=transformは触らない)
       }}
@@ -114,10 +115,14 @@ const ChronicleTimeline: React.FC = () => {
           {entries.map((e, i) => (
             <React.Fragment key={e.key}>
               {i > 0 && (
+                // 行間の区切り: エフェクト無しの縦棒「|」(社長指示v0.25.1652。旧=金の横グラデ線)。
                 <span
-                  className="my-2.5 h-px w-12"
-                  style={{ background: 'linear-gradient(90deg, transparent, rgba(197,170,110,0.32), transparent)' }}
-                />
+                  aria-hidden
+                  className="my-2 select-none text-[12.5px] leading-none"
+                  style={{ color: 'rgba(255,255,255,0.45)' }}
+                >
+                  |
+                </span>
               )}
               <li
                 className="text-center text-[12.5px] leading-relaxed"

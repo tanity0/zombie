@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1652 — 歴史年表を全画面寄りに拡大+区切りを縦棒「|」に【2026-07-13 11:53 JST】
+- **社長指示**「年表、表示範囲を全画面使う形で。フォントサイズなどは変えずに。あと行間の横線は縦のエフェクト無しの|で。」
+- `TitleScreen.tsx` `ChronicleTimeline`:
+  - **表示範囲拡大**: `top-24/w-[82%]/max-w-[340px]/bottom-26%` → **`top-16/w-[94%]/max-w-[680px]/bottom-15%`**(上=バッジ下・下=START手前で全画面寄り)。**フォントは12.5pxのまま不変**(社長指示)。
+  - **区切り変更**: 行間の金の横グラデ線 → **エフェクト無しの縦棒「|」**(`rgba(255,255,255,0.45)`・text-shadow/グラデ/グロー無し・12.5px)。
+  - 中央揃え/白文字/明朝/スクロール慣性/上下マスクフェード/z-[35](ローディング前面)は不変。
+- 検証: **typecheck clean**。負荷 変化なし。
+
 ## v0.25.1651 — マークスマンの歩きも頭の横揺れを1px以内に【2026-07-13 11:23 JST】
 - **社長指示**「マークス歩きの頭の揺れ1px」。
 - **再焼き**(退避済み `art_src/originals/marksman/walk-sheet-dot.png` から): median基準の頭中心x合わせ+頭top平滑。頭横揺れ **1.4px→0.0px**(全コマ39.0)・縦1px。立ち=歩き2コマ目も同基準。幅78・CH66→63。
