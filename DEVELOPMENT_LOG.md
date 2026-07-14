@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1714 — M35仕様書化: ボットレポート計測拡張(Sonnetへ発注)【2026-07-15 00:16 JST】
+- **M34完了確認**: 緑卵の避け/叩き(v0.25.1713)。playtestフル10ラン=**地雷死0**(改善前2/6)・
+  純関数テスト8件含む22件green・通常プレイ不変。
+- **§6.12 M35**: テスト結果#1の測定ギャップ対応(社長指示)。botTelemetryシングルトン(subUses/
+  overclockProcs)+レポートへ scrapEarned/Spent・damageTaken(既存stat転記)・goldEarned(リザルトと
+  同式で死亡時評価=gold常時0問題の置き換え)を実機/ヘッドレス両レポートに追加。計測のみ・挙動不変。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(仕様のみ)。
+
+
 ## v0.25.1713 — M34実装: ボットAI改善=緑卵(地雷)を避ける/叩く(§6.11)【2026-07-15 00:12 JST】
 - **PACING_PUZZLE.md §6.11 バッチM34**(社長指示v0.25.1711)を実装チャット(Sonnet)が実装。
   **ボット入力(playtestBot)のみの変更で、通常プレイ(?bot無し)・敵AI・卵の仕様は1バイトも不変。**
