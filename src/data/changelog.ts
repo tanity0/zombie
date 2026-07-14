@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1674',
+    items: [
+      '開発: 実機オートパイロット(?botモード=AIプレイヤーを実プレイ環境に放り込む)の設計書を作成(M26-L・実装は今後)。ゲーム挙動は不変。',
+    ],
+  },
+  {
     version: '0.25.1673',
     items: [
       '開発: バランス自動テストの計測を拡充(キル数/最低HP/ニアデス回数/最深到達/区域滞在)。シミュレーション精度向上プロジェクト(M26)開始。ゲーム挙動は不変。',

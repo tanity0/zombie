@@ -1587,6 +1587,53 @@ KILL/カウンター爽快演出(M21)・斬撃トレイル・小glow(`drawSmallG
 **運用**: 各Stepの実装後は `npm run playtest`(フル10ラン)のレポートをDEVELOPMENT_LOGに記録し、前Stepとの
 指標差(hpLost/ニアデス/キル)を比較=「精度が上がった」を数字で確認しながら進む。
 
+## 6.3 バッチM26-L: 実機オートパイロット(?botモード)(社長採用v0.25.1674・Sonnet実装用)
+**Sonnetへの指示例**: 「M26-L=実機オートパイロットを実装して。仕様=PACING_PUZZLE.md §6.3」
+
+**目的**: ヘッドレスボットの判断ロジック(`decideBotInput`)を**実際のゲーム(本物のuseGameLoop・描画・全システム)**に
+接続し、AIプレイヤーを実プレイ環境へ放り込んで結果を観察できるようにする(社長指示v0.25.1674)。ヘッドレスが
+網の外にしていたゲート/天使ボス/ハンター/イベント/成長を、実機側は**最初から全部含む**。
+
+### 仕様(全て `?bot` 指定時のみ有効。無指定の通常プレイは1バイトも挙動を変えない)
+1. **URLパラメータ `?bot=<persona>`**(`standard|kiter|stationary|boar|wanderer|rusher`。不正値・値なしは`standard`)。
+   既存 `?smoke=1` と併用可(`?smoke=1&bot=kiter` で人手ゼロの自動ラン)。読み取りは useGameLoop 冒頭の既存
+   URLSearchParams 群(GAME_SPEED等)と同じ流儀でモジュール定数に。
+2. **移動入力の注入**: useGameLoop のメインループ内、`inputState` を store から読んだ直後(useGameLoop.ts:1438付近)で、
+   botモードなら `decideBotInput(persona, player, enemies, gameTime, tickCount, seed, rusherState)`(`src/utils/playtestBot.ts`・
+   既存)を呼び、**返り値 `decision.input` をローカルで `inputState` に差し替える**(storeへは書かない=タッチUI非干渉)。
+   - `tickCount` はbotモード用の連番 useRef(毎フレーム+1)。`seed` はラン開始時に固定(0でよい)。
+   - `rusherState` は `createRusherTrackState()`(既存)をラン単位の useRef で保持(rusher以外は未使用=渡さなくてよい)。
+3. **近接/武器切替**: `decision.wantsMelee` なら `useGameStore.getState().triggerCounter()`、`decision.wantsWeaponSwitch`
+   なら playtestDriver.ts の `cycleActiveGun` と同じ処理(getGuns/setActiveWeapon の巡回)を実行。呼び出し位置は
+   movePlayer(4245付近)の直後でよい。
+4. **レベルアップの自動選択(重要=これが無いとUIで永久停止)**: メインループの **isPaused スキップ(1431)より前**に、
+   botモード && `showUpgradeMenu` なら `upgradeOptions` から1つ選んで `selectUpgrade(選択)` を呼ぶ。
+   - **選択ポリシーは新規の純関数 `src/utils/botUpgradePolicy.ts` に切り出す**(ヘッドレス側 Step1 でも共用するため)。
+     シグネチャ: `pickUpgrade(options: UpgradeOption[], rand: () => number): UpgradeOption`。中身は当面
+     **一様ランダム**(叩き台)。rand はシード付き決定的乱数(mulberry32等の小実装)をボット状態に持つ=再現性確保。
+     `Math.random` 直呼びは不可。ユニットテスト(空でない/決定的)を同コミットで。
+5. **他のUIポーズ対策**: ショップ/イベントメニューはボットが自発的に開くことは無い想定だが、**botモード中に
+   isPaused が60秒継続したら console.warn + 該当メニューを閉じる**(詰み検知の保険。showShopMenu/showEventQuestMenu
+   を false + isPaused解除)。
+6. **ラン終了レポート**: gameOver / gameWon / 帰還のいずれかで1回だけ、
+   `console.log('[BOT_REPORT]', JSON.stringify({...}))` を出し、同じオブジェクトを `window.__BOT_REPORT__` に格納
+   (Playwright回収用)。中身: persona / survivedMs / died / deathCause(lastDamageSource) / kills(gameStats.enemiesKilled) /
+   playerLevel / maxDepthPx(gameStats.maxDepthDist) / maxAreaReached / gold(goldBalance)。**新規の集計機構は作らない**
+   =storeに既にある値だけで構成(足りない指標は将来Stepで)。
+7. **やらないこと**: 描画/HUDの変更なし。Playwright放流スクリプトはリポジトリに入れない(設計チャットが環境側で実施)。
+   botモードでの進捗保存(chronicle/wallMeta等)は**既存挙動のまま**(隔離しない=叩き台。汚したくなければ実行前に
+   プロフィール退避は運用で対応。★必要なら後で「bot時は保存スキップ」を追加)。
+
+### 受け入れ条件
+- `?smoke=1&bot=standard` で起動→人手ゼロでプレイヤーが移動/射撃/カウンターし、レベルアップも自動で閉じて進行が
+  止まらない。死亡または15分経過(そのまま放置)で `[BOT_REPORT]` がconsoleに1回出る。
+- `?bot` 無しの通常プレイ・既存テスト(npm test)・typecheck が完全に不変/green。
+- 全6ペルソナが起動可能(rusherは深層へ直進することを目視確認)。
+- 負荷: botモード時のみの処理(通常プレイへの追加コスト0)=負荷スコア 0/10(通常時)。
+
+### 状態
+- **設計完了(v0.25.1674)・Sonnet実装待ち**。実装後: 設計チャットがPlaywrightで放流→録画/レポート回収→分析。
+
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
@@ -1607,6 +1654,7 @@ KILL/カウンター爽快演出(M21)・斬撃トレイル・小glow(`drawSmallG
 | M24 | トール攻撃予告=着弾0.4秒前の赤フラッシュ(全4攻撃・§5.25) | **実装済み v0.25.1541**(tsukiは無テレ→フラッシュ有へ変更・社長同意・実機確認は持ち越し) |
 | M25 | テスト用クイックスタートURLパラメータ(`?smoke`=5画面スキップ→実プレイ・§6-追補) | **実装済み v0.25.1549** |
 | M26 | プレイシミュレーション精度向上(§6.2・段階式Step0〜4) | **Step0実装済み v0.25.1673**・Step1(成長ループ)から順次 |
+| M26-L | 実機オートパイロット=?botモード(§6.3) | **設計完了 v0.25.1674・Sonnet実装待ち**(指示例は§6.3冒頭) |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |
 | M12 | 設計電卓=プロト武器バランス探索(§5.13・M10後) | 未着手(社長採用v0.25.1470) |
 | M13 | ネームド(宿敵)システム(§5.14) | **実装済み v0.25.1494** |

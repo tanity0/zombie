@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1674 — M26-L: 実機オートパイロット(?botモード)の設計完了(Sonnet実装待ち)【2026-07-14 11:47 JST】
+- **社長指示**「実際のプレイ環境にAIプレイヤーを放り込んで結果をみる」→採用。「あとで時間あるときに制作にかかれる
+  よう設計しておいて。Sonnetに投げるだけにしておいて」。
+- **設計書を PACING_PUZZLE.md §6.3(バッチM26-L)に作成**(コード変更なし・設計のみ)。要点:
+  - `?bot=<persona>` でヘッドレスボットの判断(`decideBotInput`・既存流用)を本物のuseGameLoopの入力
+    (`inputState` をループ内ローカルで差し替え=storeに書かない)へ注入。`?smoke=1&bot=kiter` で人手ゼロ自動ラン。
+  - レベルアップUIの自動選択は**新規純関数 `botUpgradePolicy.ts`**(シード付き決定的乱数・ヘッドレスStep1と共用前提)。
+    isPausedスキップより前で処理(=UIで永久停止しない)。UIポーズ60秒継続の詰み検知保険つき。
+  - ラン終了時 `[BOT_REPORT]` JSON をconsole+`window.__BOT_REPORT__` へ(Playwright回収用・storeにある値のみで構成)。
+  - `?bot`無しの通常プレイは1バイトも挙動不変、が受け入れ条件の柱。
+- **配線ポイントの事前調査済み**(Sonnetが迷わないよう仕様に行番号付きで明記): 入力=useGameLoop.ts:1438/4245、
+  レベルアップ=showUpgradeMenu/upgradeOptions/selectUpgrade(gameStore)、ボット判断=playtestBot.ts(BotDecision)、
+  武器切替=playtestDriver.tsのcycleActiveGun相当。
+- **Sonnetへの指示例(§6.3冒頭に記載)**: 「M26-L=実機オートパイロットを実装して。仕様=PACING_PUZZLE.md §6.3」
+- 実装後の運用: 設計チャットがPlaywright(環境に導入済み)で放流→録画/[BOT_REPORT]回収→分析。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(コード変更なし)。
+
 ## v0.25.1673 — M26開始: シミュレーション精度向上 Step0=計測の充実【2026-07-14 10:25 JST】
 - **社長方針**「最終的には全部取り込みたい。現実的な手段を模索しつつ、すぐ取り入れられるものから順番に一つずつ」。
 - **ロードマップを PACING_PUZZLE.md §6.2(バッチM26)に新設**: Step0=計測の充実(小)→ Step1=成長ループ接続(中)→
