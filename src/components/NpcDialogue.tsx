@@ -13,6 +13,10 @@ const NPC_PORTRAIT_BASE: Record<string, string> = {
   'チェン': 'chen',
   'ローレン': 'lauren',
   'フェイザー': 'phaser',
+  // 二人組(クエストNPC)。台詞(EVENT_QUEST_LINES系)の話者名=男/女 → 専用バストアップ
+  // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。
+  '男': 'futari-man',
+  '女': 'futari-woman',
 };
 
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、

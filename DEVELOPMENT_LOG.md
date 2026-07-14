@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1716 — 二人組の立ち絵差し替え+台詞時のバストアップ表示(社長素材)【2026-07-15 01:15 JST】
+- **社長素材**(IMG_6624・透過RGBA 376×264)で差し替え:
+  - `public/sprites/quest-futari.png` を同名置き換え(表示は高さ基準スケール=コード変更なし・解像度向上)。
+    原画は `art_src/originals/futari/futari-v2.png` に保存。
+  - バストアップ2枚を切り出し(男103×115/女98×109・頭〜胸・幅=高さ×0.9に整形)→
+    `public/sprites/npc/futari-man-0.png` / `futari-woman-0.png`。
+  - `NpcDialogue.tsx` の NPC_PORTRAIT_BASE に `男`/`女` を追加=既存の護衛NPCと同じ意匠で、
+    二人組の台詞(受領4行/サブ受領2行)に話者のバストアップが出る。
+- 負荷: 0/10(既存の表示経路のみ・新規描画なし)。検証: typecheck/eslintクリーン。
+  実機確認ポイント: 立ち絵の大きさ(高さ基準・気になれば調整)/受領時の左上会話にバストが出るか。
+- Files: `public/sprites/quest-futari.png`, `public/sprites/npc/futari-{man,woman}-0.png`(新規),
+  `art_src/originals/futari/`(新規), `src/components/NpcDialogue.tsx`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1715 — M35実装完了: ボットレポート計測拡張(Sonnet実装→設計チャットが検証・完成)【2026-07-15 01:14 JST】
 - Sonnetサブエージェントが実装をほぼ完了した段階で社長により停止されたため(固まって見えた状況)、
   **残置されていたWIPを設計チャットが検証して完成させた**(実装内容は仕様§6.12に忠実であることを差分で確認)。
