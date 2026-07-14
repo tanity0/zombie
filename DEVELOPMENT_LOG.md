@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1708 — ローカルテスト=その場ビルド既定へ(Pages配信の環境差を回避)【2026-07-14 22:51 JST】
+- **社長報告**「ローカルビルドだとテストが回るが、GitHub Pages版はローディングから進まない。リポジトリが違う?」
+- **事実確認**: リポジトリは正・**pages.ymlのデプロイは直近8回すべて成功**(最新=v0.25.1707を13:22Z配信)。
+  よって「デプロイ失敗/別リポジトリ」ではなく、**Pages配信のアセットロードがテスト環境で完走しない**問題。
+- **対応**: `botrun-local.mjs` を baseUrl:"local" 既定に——スクリプトが自動で `npm run build`→
+  `vite preview`(4173)起動→実走→サーバ停止。**pullした最新HEADを直接テスト**(デプロイ待ちも不要=むしろ改善)。
+  Pages版を叩く時だけURLを書く。REQUEST#1に任意のPages診断(F12 Networkで止まるリクエスト名の記録)を追加。
+- **残課題(要注視)**: Pages版のローディング停止が**実プレイヤー環境でも起きるなら本番障害**。社長のスマホで
+  Pages版が普通に遊べるかを一度確認してほしい(遊べる=テスト環境固有/止まる=優先診断に昇格)。
+- Files: `scripts/botrun-local.mjs`, `TEST_HANDOFF/README.md`, `TEST_HANDOFF/REQUEST.md`,
+  `TEST_HANDOFF/request.config.json`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1707 — テストキット自己回復化(タイトル停止対策)+手動手順の文書化【2026-07-14 22:21 JST】
 - **社長報告**「(ローカルテストが)更新情報 はじめる の手順で止まってるっぽい。操作方法とか手順って渡してる？」
   → 手順は未整備だった。コンテナからは tanity0.github.io に到達不可(プロキシ拒否)で直接診断できないため、

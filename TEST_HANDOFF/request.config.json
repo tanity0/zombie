@@ -1,5 +1,5 @@
 {
-  "baseUrl": "https://tanity0.github.io/zombie/",
+  "baseUrl": "local",
   "runMs": 900000,
   "headless": true,
   "viewport": { "width": 1280, "height": 800 },

@@ -5,10 +5,10 @@
 新実装のバグ(consoleエラー/挙動破綻)とバランスの実測データを取る。
 
 ## やること
-0. **診断(最初に1回)**: デプロイ版が最新か確認——`https://tanity0.github.io/zombie/` を開き、
-   タイトル右上のバージョンを記録(v0.25.1707未満なら数分待って再確認)。前回「?smoke=1がタイトルで
-   止まる」報告があったため、スクリプトはタイトル検出時に自動でUIクリックへフォールバックする
-   (結果の `smokeFallback` フィールドに記録される。trueのランが多い場合はその旨をMDに明記)。
+0. **本テストはローカルビルドで実行**(baseUrl:"local"=スクリプトが自動でビルド→preview起動)。
+   **(任意・1分だけ)Pages診断**: `https://tanity0.github.io/zombie/` をブラウザで開き、ローディングで
+   止まる場合はF12のNetworkタブで「止まっている/失敗しているリクエスト名」をメモしてresultsに書く
+   (デプロイ自体は全成功をこちらで確認済み。配信ロードの問題の切り分け材料)。
 1. `git pull` 後、`npm install`(初回のみ)。起動失敗時は `npx playwright install chromium`。
 2. `node scripts/botrun-local.mjs` を実行(構成は `TEST_HANDOFF/request.config.json`=6構成×最大15分。
    合計最大90分・放置可。途中でボットが死んだらそのランは自動で次へ)。

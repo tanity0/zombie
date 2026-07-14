@@ -5,11 +5,32 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn, execSync } from 'node:child_process';
 
 const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
 const cfg = JSON.parse(fs.readFileSync(path.join(root, 'TEST_HANDOFF/request.config.json'), 'utf8'));
 const outDir = path.join(root, 'TEST_HANDOFF/results');
 fs.mkdirSync(outDir, { recursive: true });
+
+// baseUrl:"local" = その場でビルドしてプレビューサーバを立てる(既定)。Pages配信のラグ/環境差を排除し、
+// 常に「pullした最新コード」をテストする。URL文字列を入れればそのURL(Pages等)を叩く従来動作。
+let baseUrl = cfg.baseUrl;
+let server = null;
+if (baseUrl === 'local') {
+  if (cfg.skipBuild !== true) {
+    console.log('[setup] npm run build(最新HEADをテストするため毎回ビルド・約20-30秒)');
+    execSync('npm run build', { cwd: root, stdio: 'inherit' });
+  }
+  server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { cwd: root, stdio: 'ignore', detached: false });
+  let up = false;
+  for (let i = 0; i < 30 && !up; i++) {
+    try { const r = await fetch('http://localhost:4173/zombie/'); up = r.ok; } catch { /* retry */ }
+    if (!up) await new Promise(r => setTimeout(r, 1000));
+  }
+  if (!up) { console.error('[setup] previewサーバが起動しない'); server.kill(); process.exit(1); }
+  baseUrl = 'http://localhost:4173/zombie/';
+  console.log('[setup] preview起動OK →', baseUrl);
+}
 
 const stamp = new Date().toISOString().slice(0, 16).replace(/[-T:]/g, '').replace(/(\d{8})(\d{4})/, '$1-$2');
 const browser = await chromium.launch({ headless: cfg.headless !== false, channel: 'chrome' })
@@ -34,7 +55,7 @@ for (const c of cfg.configs) {
     } catch { /* ignore */ }
   }, { subs: c.subs, skills: c.skills });
 
-  const url = `${cfg.baseUrl}?smoke=1&bot=${c.persona ?? 'standard'}&stage=stage-1`;
+  const url = `${baseUrl}?smoke=1&bot=${c.persona ?? 'standard'}&stage=stage-1`;
   const t0 = Date.now();
   console.log(`[run] ${c.name} → ${url}`);
   await page.goto(url, { waitUntil: 'load' });
@@ -72,6 +93,7 @@ for (const c of cfg.configs) {
 }
 
 await browser.close();
+server?.kill();
 const outPath = path.join(outDir, `${stamp}-raw.json`);
 fs.writeFileSync(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), config: cfg, results }, null, 2));
 console.log(`[out] ${outPath}`);

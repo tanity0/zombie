@@ -17,9 +17,10 @@
   最低限入れるもの: 実行環境(OS/ブラウザ/headed or headless)・各ランの `[BOT_REPORT]` 生JSON・
   consoleエラー全文(なければ「0件」)・気づき(任意)。
 - ブラウザはローカルChromeを使用(`scripts/botrun-local.mjs` は `channel:'chrome'`)。
-  ゲームは既定でデプロイ版(https://tanity0.github.io/zombie/)を叩く=ビルド不要。
-  最新pushの反映待ち(Pagesデプロイ数分)に注意。ローカルで最新を試す時は
-  `npm install && npm run dev` して `request.config.json` の baseUrl を差し替え。
+- **既定はローカルビルド**(`request.config.json` の baseUrl:"local")——スクリプトが自動で
+  `npm run build`→previewサーバ起動→実走→サーバ停止まで行う。**pullした最新コードをそのままテスト**
+  できる(Pagesのデプロイ待ち・配信環境差の影響なし)。Pages版を叩きたい時だけ baseUrl にURLを書く。
+  ※Pages版はテスト環境によってローディングが完走しない事象が報告済み(v0.25.1707時点・原因調査は設計チャット)。
 
 ## セットアップ/トラブルシュート
 - 初回: `npm install`。ブラウザ起動に失敗したら `npx playwright install chromium`(Chrome不在フォールバック用)。

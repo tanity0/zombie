@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1708',
+    items: [
+      '開発: ローカルテストを「その場でビルド→ローカルサーバ」既定に変更(Pages配信の環境差を回避・常に最新コードをテスト)。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1707',
     items: [
       '開発: テスト実走スクリプトを自己回復型に強化(タイトルで止まった場合の自動クリック開始・手動操作手順の文書化・診断記録)。ゲーム変更なし。',
