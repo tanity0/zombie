@@ -12,6 +12,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1680 — M26 Step3: 天使ボスAIを純関数へ抽出(実プレイ/ヘッドレス共用)【2026-07-14 13:58 JST】
+- **本抽出(規律4・M17 combatTickと同じ流儀)**: useGameLoopに直書きだったミゲル/ジブリル/ラフィの3コントローラ+
+  ジブリルのランタン火tickを **新規 `src/utils/angelBossTick.ts`** へ逐語移設。
+  - シミュレーション(移動/攻撃判定/ダメージ/弾・火・骨刃の生成/カウンター報酬)はstore直叩き=両環境で同一。
+  - **音(playSfx)だけ `AngelSfx` コールバック注入**(audioManagerをヘッドレスでimportしない縛りのため)。
+    実プレイ=`ANGEL_SFX`(counter/headshot/thor-sweep)、ヘッドレス=`NOOP_ANGEL_SFX`。
+  - 定数29個(MIGUEL_*/JIBRIL_*/RAFI_*+天使共用のTHOR同値系)も移設。useGameLoopから**約400行削減**。
+  - 3体のref(miguelSlow/miguelVolley/jibril/rafi)は `AngelBossState`+`createAngelBossState()` に統合
+    (useGameLoop=angelStateRef / driver=refs.angel)。エラーフラグも angelCtrlErrLogged に統合。
+- **ヘッドレス接続**: runPlaytestTick(events ON)で `runAngelBossTick`+`tickAngelBossFires` を毎tick実行
+  =**ゲート2が「不動のタンク削り」から本物のボス戦(周回/払い/弾3連/ランタン/骨刃/カウンター)になった**。
+- **新テスト M26-S3**: 直接配置したミゲルがヘッドレスで「周回移動」し「攻撃ステートへ遷移」することを機械検証
+  (updateEnemiesはミゲルを素通しするので、これが動く=抽出コントローラが駆動している証拠)。
+- **⚠実機確認のお願い(重要)**: 抽出は逐語移設(挙動・数値は不変のはず)だが、**実プレイの天使3体の経路を触った**ため、
+  ステージ1ミゲル(周回/払い→縦払い/弾3連/カウンター後退/SE)・ステージ3ジブリル(退避/弾/ランタン火/ワープ)・
+  ステージ4ラフィ(横ステップ/ジャンプ連鎖/骨刃)の挙動が従来どおりかを社長の実機で確認いただきたい。
+- 検証: `npm run typecheck` / eslint クリーン / **フルスイート665 passed**(M26-S3込み)。
+- M26残り: Step4=イベント接続(囲い/レスキュー/紅き夜・最大)+随時キャリブレーション。
+- Files: `src/utils/angelBossTick.ts`(新規), `src/hooks/useGameLoop.ts`(-約400行), `src/utils/playtestDriver.ts`,
+  `src/store/playtest.test.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1679 — M26 Step2: ゲート1/2+凶悪ハンターのヘッドレス接続【2026-07-14 13:36 JST】
 - **事前調査の収穫(移植を最小化)**: ①アリーナ拘束は `store.movePlayer`(gameStore:2879)にある=**beginArenaEventを
   張るだけで拘束が効く**。②ハンターの移動も `store.updateEnemies` の徘徊接近AI(hunterWander)にある=**spawnするだけで

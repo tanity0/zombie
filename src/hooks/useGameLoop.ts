@@ -126,6 +126,7 @@ import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from
 import { shouldTriggerGate2 } from '../utils/gate2';
 import { decideBotInput, pickupSeekInput, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
 import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
+import { runAngelBossTick, tickAngelBossFires, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -475,6 +476,13 @@ const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ラ�
 const BOT_PARAM = evParam('bot');
 const BOT_PERSONA: BotPersona | null = BOT_PARAM === null ? null
   : ((BOT_PERSONAS as string[]).includes(BOT_PARAM) || BOT_PARAM === 'rusher') ? BOT_PARAM as BotPersona : 'standard';
+
+// 天使(ゲート2ボス)コントローラの音注入(本体はangelBossTick.ts=M26 Step3で抽出。ヘッドレスはNOOP、実プレイはここ)。
+const ANGEL_SFX: AngelSfx = {
+  counter: () => playSfx('counter'),
+  reward: () => playSfx('headshot'),
+  sweep: () => playSfx('thor-sweep'),
+};
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
@@ -712,59 +720,14 @@ const THOR_HARAI_RANGE = 310;                // 社長指示v0.25.1622で横払�
 const THOR_HARAI_HALF_WIDTH = 40;            // 社長指示v0.25.1610: 中心から片側40px(旧TSUKI*1.5=45)。突き本体は無変更
 const THOR_HARAI_ACTIVE_MS = 220;            // 横払いの判定持続
 
-// PACING_PUZZLE.md §5.21-追補8: ミゲル(ゲート2ボス・天使名ボス1体目)。トールのharaiを流用し
-// 範囲を狭くした専用攻撃1つのみ(バッチ1)。定数は叩き台(実機調整前提)。
-const MIGUEL_HARAI_WINDUP_MS = 1000;         // 払い: 溜め1秒(トールと同型)
-const MIGUEL_HARAI_RANGE = 190;              // 社長指示v0.25.1622で縦横斬りの長さを元へ戻す(160→190)。横払い/縦払い両方がこの値
-const MIGUEL_HARAI_HALF_WIDTH = 40;          // 社長指示v0.25.1610: 中心から片側40px(旧25)。横払い/縦払い共通
-const MIGUEL_HARAI_ACTIVE_MS = 220;
 // ゲート内側マージン。周回半径=GATE_ARENA_RADIUS-margin-帯高さ半分(足元帯=height/2)。
 // margin=20・miguel.height=60 → 300-20-30=250(仕様の目安値と一致)。
-const MIGUEL_ORBIT_MARGIN = 20;
-const MIGUEL_ORBIT_SPEED = 70;               // 周回の接線速度(px/s・叩き台)
-const MIGUEL_MELEE_DASH_MS = 1000;           // 近接被弾で1秒間だけ周回速度アップ
-const MIGUEL_MELEE_DASH_MULT = 2;            // 加速倍率
 // 「移動中、たまにゆっくり歩く」(社長指示・トールのSLOWWALKと同型)。
-const MIGUEL_SLOW_WALK_MS = 1500;            // 減速が続く時間
-const MIGUEL_SLOW_WALK_MULT = 0.4;           // 減速倍率(周回速度に乗算)
-const MIGUEL_SLOW_WALK_MIN_GAP_MS = 4000;    // 「たまに」の頻度(最小)
-const MIGUEL_SLOW_WALK_MAX_GAP_MS = 9000;    // 同・最大
 // 弾3連攻撃(社長指示v0.25.1616→v0.25.1618で調整)。周回しながら撃つ(=立ち止まらない・社長選択B)。
 // 発射数/間隔は既存のボス弾定義に統一=BOSS_BURST_SHOTS(3)/BOSS_BURST_GAP_MS(0.5秒)を参照(独自定数を廃止)。
-// 弾の性能(damage/speed/size)は enemyUtils.getEnemyFireProfile の miguel 定義(speed320/damage20/size16・
-// プレイヤー狙い)を流用。撃っている間は斬りコンボを出さない(=斬撃判定と重ならない)。
-const MIGUEL_VOLLEY_CHANCE = 0.6;            // chaseの攻撃選択で斬りコンボの代わりに弾3連を選ぶ確率。社長指示v0.25.1618
                                              // 「剣撃より頻度高め」=0.5超(弾6:斬り4)・叩き台/要調整
 
-// ジブリル(ステージ3ゲート2ボス)専用パラメータ(社長指示v0.25.1663)。全て叩き台=実機調整前提。
-const JIBRIL_RETREAT_SPEED = 55;            // 退避の基本速度(px/s・ゆっくりプレイヤーから離れる=プレイヤー87より遅い)
-const JIBRIL_RETREAT_FAST_MULT = 1.7;       // 3発被弾後の退避加速(55×1.7=93.5=プレイヤーより少し速い)
-const JIBRIL_HITS_FASTER = 3;               // この被弾数で退避が少し速くなる
-const JIBRIL_HITS_WARP = 10;                // この被弾数ごとにゲート反対側へワープ
-const JIBRIL_HANDGUN_DIST = 300;            // ハンドガン距離(この内側で弾が5発モードへ変化)
-const JIBRIL_SNIPE_SHOTS = 3;               // 遠距離: スナイプ弾の発射数
-const JIBRIL_SNIPE_GAP_MS = 1000;           // 遠距離: 1秒間隔
-const JIBRIL_SNIPE_SPEED_MULT = 2;          // 遠距離: 通常敵弾の2倍速
-const JIBRIL_CLOSE_SHOTS = 5;               // 近距離(ハンドガン圏内): 通常弾の発射数(間隔=BOSS_BURST_GAP_MS=ミゲルと同じ0.5秒)
-// ジブリルのランタン攻撃(社長指示v0.25.1664)。火の数値は火炎瓶相当+仕様の上書き。全て叩き台。
-const JIBRIL_LANTERN_CHANCE = 0.4;          // chaseの攻撃選択でランタン攻撃を選ぶ確率(残りは弾)
-const JIBRIL_LANTERN_MS = 5000;             // ランタン攻撃の継続時間(5秒)
-const JIBRIL_FIRE_GAP_MS = 700;             // 足元へ火を落とす間隔(0.7秒ごと)
-const JIBRIL_FIRE_TELEGRAPH_MS = 700;       // 赤い当たり判定フェードイン(0.7秒で発動)
-const JIBRIL_FIRE_LIFE_MS = 2000;           // 火の寿命(2秒)
-const JIBRIL_FIRE_DAMAGE = 30;              // 単発固定ダメージ
-const JIBRIL_FIRE_RADIUS = 22;              // 当たり半径(=MOLOTOV_FIRE_RADIUS・見た目/大きさ火炎瓶と同等)
 
-// ラフィ(ステージ4ゲート2ボス)専用パラメータ(社長指示v0.25.1665)。全て叩き台=実機調整前提。
-const RAFI_CHASE_SPEED = 62;                // ゆっくり追跡(px/s・プレイヤー87より遅い)
-const RAFI_HANDGUN_DIST = 300;             // この内側=骨攻撃 / 外側=ジャンプ攻撃(社長確認済み)
-const RAFI_STEP_MIN_GAP_MS = 1800;          // 横ステップの最短間隔
-const RAFI_STEP_MAX_GAP_MS = 3600;          // 横ステップの最長間隔
-const RAFI_STEP_MS = 220;                   // 横ステップの持続(短く高速)
-const RAFI_STEP_SPEED = 360;                // 横ステップ中の速度(高速)
-const RAFI_BONE_COUNT = 7;                  // 骨刃の本数(=スカジ SKADI_BLADE_COUNT)
-const RAFI_BONE_GAP_MS = 600;               // 骨刃の設置間隔=スカジ400×1.5(社長確認済み)
-const RAFI_JUMP_MAX_REJUMPS = 2;            // ジャンプの溜めをカウンターされた時に連続で追撃ジャンプする最大回数
 
 const THOR_JUMP_TRIGGER_HITS = 3;            // 画面外からの被弾3回で間合いを詰める(社長修正指示)
 const THOR_JUMP_TRIGGER_WINDOW_MS = 6000;    // ↑を数える時間窓
@@ -775,9 +738,7 @@ const THOR_JUMP_RECOVER_MS = 900;            // 着地後の硬直
 
 const THOR_COUNTER_LEAP_MS = 260;            // カウンターを受けた時の後退ジャンプ所要時間(社長指示)
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
-let miguelCtrlErrLogged = false;                     // ミゲル制御例外のログも初回だけ
-let jibrilCtrlErrLogged = false;                     // ジブリル制御例外のログも初回だけ
-let rafiCtrlErrLogged = false;                       // ラフィ制御例外のログも初回だけ
+let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
 const PICKUP_HARD_CAP = 120;
@@ -1037,12 +998,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gatebossForceRef = useRef(false);
   // ミゲル専用「たまにゆっくり歩く」タイマー(社長指示・トールのthorNextSlowWalkAt/thorSlowWalkUntil相当)。
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
-  const miguelSlowRef = useRef({ slowUntil: 0, nextAt: 0 });
-  const miguelVolleyRef = useRef({ nextShotAt: 0, shots: 0 }); // 弾3連の発射タイミング/残弾(単体ボスなので単一refで足る)
-  // ジブリル(ステージ3ゲート2ボス)専用: 被弾カウント/退避加速/ワープ/弾モードの状態(単体ボスなので単一refで足る)。
-  const jibrilRef = useRef({ hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe' as 'snipe' | 'close', shots: 0, nextShotAt: 0, nextFireAt: 0 });
-  // ラフィ(ステージ4ゲート2ボス)専用: カウンター連鎖/骨攻撃の残数/横ステップの状態(単体ボスなので単一refで足る)。
-  const rafiRef = useRef({ rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 });
+  const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
   const gateActivePrevRef = useRef(false);
   // ゲート2未クリア(=深層演出ロック)のstore反映用・直前値(同上)。
@@ -1744,10 +1700,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           reaperRef.current = { risk: 0, lastPassAt: 0, passCount: 0, chaserId: null, chaserSpawnAt: 0, lastWarpAt: 0, lastTimeRollAt: 0, timeSpawned: false, warpAnimStartAt: 0, warpToX: 0, warpToY: 0, warpTeleported: false, defeatCount: 0 };
           bossRef.current = { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0 };
           gatebossForceRef.current = false; // ?gateboss=1 の force-spawn も新ランで再アーム
-          miguelSlowRef.current = { slowUntil: 0, nextAt: 0 }; // ミゲルのゆっくり歩きタイマーも新ランで再アーム
-          miguelVolleyRef.current = { nextShotAt: 0, shots: 0 }; // 弾3連タイマーも新ランでリセット
-          jibrilRef.current = { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0, nextFireAt: 0 }; // ジブリルの被弾/退避/弾/ランタン状態も新ランでリセット
-          rafiRef.current = { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 }; // ラフィのカウンター連鎖/骨攻撃/横ステップ状態も新ランでリセット
+          angelStateRef.current = createAngelBossState(); // 天使(ゲート2ボス)状態も新ランでリセット(M26 Step3)
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
           botRusherRef.current = createRusherTrackState();
@@ -3808,504 +3761,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          }
         }
 
-        // --- ミゲル(ゲート2ボス・§5.21-追補8)専用ミニコントローラ ---
-        // stage の hiddenBoss 設定(mimir/thor等)とは独立: ゲート2は fromEvent 経由で直接 addEnemy
-        // 済みなので、上のブロック(bs.bossId による単一種の巣/帰巣/深層域退場ロジック)には乗せず、
-        // 別の敵個体(miguel)を専用に見つけて動かす小さな兄弟ブロックとして実装する(社長「hiddenBoss
-        // 未設定のステージでもゲート2ボスは動く必要がある」= hiddenBossが無い/別種でも独立して動く)。
-        // 仕様: ゲート枠内側を反時計回り(CCW)に周回。プレイヤー追尾はしない。攻撃(横払いharai)中は
-        // 静止。近接被弾で1秒間だけ周回速度2倍。攻撃選択pool=当面harai(狭)のみ(トールのharaiを流用)。
+        // --- 天使(ゲート2ボス=ミゲル/ジブリル/ラフィ)コントローラ ---
+        // M26 Step3(§6.2)で src/utils/angelBossTick.ts の純関数へ抽出(規律4・M17 combatTickと同じ流儀)。
+        // 挙動・数値は抽出前と同一。ヘッドレス(playtestDriver)と共用。音はANGEL_SFXで注入(定義は本ファイル下部)。
         if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
          try {
-          // ミゲル制御はミゲル本体のみを駆動。ジブリル/ラフィは別挙動なので各専用コントローラ(下)が駆動する。
-          const miguel = useGameStore.getState().enemies.find(e => e.type === 'miguel' && e.bossState != null);
-          if (miguel) {
-            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-            const mcx = miguel.x + miguel.width / 2, mcy = miguel.y + miguel.height / 2;
-            const bossMoveDt = deltaTime * MOVE_SPEED_MULT; // 通常敵と同じ移動テンポ(社長指示の裏ボス共通則)
-            const mHomeX = miguel.homeX ?? mcx, mHomeY = miguel.homeY ?? mcy;
-            const st = miguel.bossState ?? 'chase';
-            const patch: Partial<typeof miguel> = {};
-
-            // 「移動中、たまにゆっくり歩く」(仕様指示・トールのSLOWWALKと同型)。周回中(chase)のみ
-            // ランダム間隔で減速ウィンドウを開始する。攻撃中は元々静止するため無関係。
-            if (miguelSlowRef.current.nextAt === 0) {
-              miguelSlowRef.current.nextAt = newGameTime + MIGUEL_SLOW_WALK_MIN_GAP_MS + Math.random() * (MIGUEL_SLOW_WALK_MAX_GAP_MS - MIGUEL_SLOW_WALK_MIN_GAP_MS);
-            }
-            if (st === 'chase' && newGameTime >= miguelSlowRef.current.nextAt) {
-              miguelSlowRef.current.slowUntil = newGameTime + MIGUEL_SLOW_WALK_MS;
-              miguelSlowRef.current.nextAt = newGameTime + MIGUEL_SLOW_WALK_MIN_GAP_MS + Math.random() * (MIGUEL_SLOW_WALK_MAX_GAP_MS - MIGUEL_SLOW_WALK_MIN_GAP_MS);
-            }
-            const slowWalkActive = newGameTime < miguelSlowRef.current.slowUntil;
-
-            // 近接被弾で1秒間だけ周回速度2倍(仕様指示)。gun/爆発では発動しない
-            // (meleeHitAt は gameStore.ts の近接ダメージ経路だけがスタンプする)。
-            const meleeDashActive = newGameTime - (miguel.meleeHitAt ?? -Infinity) <= MIGUEL_MELEE_DASH_MS;
-            const orbitSpeedMult = (meleeDashActive ? MIGUEL_MELEE_DASH_MULT : 1) * (slowWalkActive ? MIGUEL_SLOW_WALK_MULT : 1);
-            // 周回半径=ゲート内側ギリギリ。halfSize=足元帯(判定)の高さ半分をクリアランスに使う。
-            const halfSize = miguel.height / 2;
-            const orbitRadius = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - halfSize;
-
-            // 旋回運動(トールのthorOrbitMove相当だが、プレイヤーではなく固定の home 中心を回る・CCW固定)。
-            const miguelOrbitMove = () => {
-              const relX = mcx - mHomeX, relY = mcy - mHomeY;
-              const curDist = Math.hypot(relX, relY) || 1;
-              const curAngle = Math.atan2(relY, relX);
-              const angularSpeed = (MIGUEL_ORBIT_SPEED * orbitSpeedMult) / orbitRadius;
-              // Y-down画面座標では角度増加=視覚的に時計回り(トールの規約と同じ)。CCW=角度を減らす向き。
-              const newAngle = curAngle - angularSpeed * bossMoveDt;
-              const correctedDist = curDist + (orbitRadius - curDist) * Math.min(1, THOR_ORBIT_RADIUS_CORRECT * bossMoveDt);
-              const ncx = mHomeX + Math.cos(newAngle) * correctedDist;
-              const ncy = mHomeY + Math.sin(newAngle) * correctedDist;
-              patch.x = ncx - miguel.width / 2;
-              patch.y = ncy - miguel.height / 2;
-            };
-
-            // 次の攻撃選択までの間隔(叩き台=トールと同じ間隔レンジを流用・仕様指示)。
-            const miguelNextActionDelay = () => newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
-
-            // カウンター成立時の共通処理(thorCounterHit相当を流用・仕様指示)。
-            const miguelCounterHit = (hitX: number, hitY: number) => {
-              const cp = useGameStore.getState().player;
-              const pnow = Date.now();
-              addMeleeFinishCombo(1);
-              playSfx('counter');
-              useGameStore.getState().spawnGlow(hitX, hitY, 95, 'rgba(56,189,248,', 360);
-              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-              useGameStore.getState().markMeleeSwingFx();
-              spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-              spawnBurst(hitX, hitY, '#38bdf8', 14);
-              useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-              useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
-              const counterBase = getActiveGun(cp)?.damage ?? 12;
-              const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
-              const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
-              damageEnemy(miguel.id, dmg, false, true);
-              spawnDamageNumber(mcx, miguel.y, dmg, true);
-              playSfx('headshot');
-              spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-              spawnBurst(hitX, hitY, '#fde047', 10);
-              useGameStore.getState().spawnGlow(hitX, hitY, 34, 'rgba(253,224,71,', 240);
-              const lx = mcx - pcx, ly = mcy - pcy;
-              const ll = Math.hypot(lx, ly) || 1;
-              patch.bossState = 'counter-leap';
-              patch.bossStateUntil = newGameTime + THOR_COUNTER_LEAP_MS;
-              patch.aiFromX = mcx; patch.aiFromY = mcy;
-              patch.aiTargetX = pcx + (lx / ll) * orbitRadius;
-              patch.aiTargetY = pcy + (ly / ll) * orbitRadius;
-            };
-
-            const miguelBodyOverlapNow = () => {
-              const cp = useGameStore.getState().player;
-              return {
-                overlap: rectsOverlap({ x: miguel.x, y: miguel.y, width: miguel.width, height: miguel.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
-                counterActive: Date.now() <= cp.counterWindowEnd,
-              };
-            };
-
-            // 完全気絶(紫・5クリ=カウンター含む)中は移動も攻撃も完全停止=痺れる(社長指示v0.25.1598
-            // 「紫カウンターで痺れさせる」)。トールの frozen(useGameLoop bossFullStun)と同型。ミゲルは
-            // updateEnemies を素通りするのでここで明示判定する。周回(orbitMove)を呼ばない=その場で静止。
-            const miguelFullStun = miguel.bossFullStunUntil !== undefined && newGameTime < miguel.bossFullStunUntil;
-            if (miguelFullStun) {
-              // 解除後は chase から再開。直後の溜め攻撃の暴発を防ぐため次アクションを少し先送りにする。
-              patch.bossState = 'chase';
-              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-            } else if (st === 'chase') {
-              miguelOrbitMove(); // 攻撃中(windup/active)は呼ばない=立ち止まる(仕様指示)
-              if (newGameTime >= (miguel.bossNextActionAt ?? 0)) {
-                // 攻撃選択: たまに弾3連(volley)、それ以外はharai→tateの斬りコンボ(社長指示v0.25.1616)。
-                // 斬りはプレイヤーが HARAI_TRIGGER_DIST(250px)以内の時だけ。遠い時は弾3連のみ(社長指示v0.25.1626)。
-                const canHarai = Math.hypot(pcx - mcx, pcy - mcy) <= HARAI_TRIGGER_DIST;
-                if (!canHarai || Math.random() < MIGUEL_VOLLEY_CHANCE) {
-                  // 弾3連=周回しながら撃つ。volley 中はchaseに居ない=斬りは発動しない(=「この間は斬り発動しない」)。
-                  patch.bossState = 'volley';
-                  patch.bossStateUntil = newGameTime + BOSS_BURST_SHOTS * BOSS_BURST_GAP_MS;
-                  miguelVolleyRef.current = { nextShotAt: newGameTime, shots: 0 };
-                } else {
-                  patch.bossState = 'harai-windup';
-                  patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
-                  // プレイヤー中心・現在の接線と並行な赤ラインをロック(トールのharaiと同じ方式)。
-                  const rx = mcx - pcx, ry = mcy - pcy;
-                  const rl = Math.hypot(rx, ry) || 1;
-                  const tx0 = -ry / rl, ty0 = rx / rl;
-                  patch.aiFromX = pcx - tx0 * (MIGUEL_HARAI_RANGE / 2);
-                  patch.aiFromY = pcy - ty0 * (MIGUEL_HARAI_RANGE / 2);
-                  patch.aiTargetX = pcx + tx0 * (MIGUEL_HARAI_RANGE / 2);
-                  patch.aiTargetY = pcy + ty0 * (MIGUEL_HARAI_RANGE / 2);
-                }
-              }
-            } else if (st === 'harai-windup') {
-              // 払い: 溜め中は本体静止(仕様指示)。カウンター可能。
-              const { overlap, counterActive } = miguelBodyOverlapNow();
-              if (overlap && counterActive) {
-                miguelCounterHit(mcx, mcy);
-              } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
-                patch.bossState = 'harai';
-                patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
-                playSfx('thor-sweep');
-              }
-            } else if (st === 'tate-windup') {
-              // 縦払いの溜め: 横払い(harai-windup)と同仕様=本体静止・カウンター可能(社長指示v0.25.1598
-              // 「縦切りも溜め=横と仕様を揃える」)。溜め終了で縦払い実行(tate)へ。
-              const { overlap, counterActive } = miguelBodyOverlapNow();
-              if (overlap && counterActive) {
-                miguelCounterHit(mcx, mcy);
-              } else if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
-                patch.bossState = 'tate';
-                patch.bossStateUntil = newGameTime + MIGUEL_HARAI_ACTIVE_MS;
-                playSfx('thor-sweep');
-              }
-            } else if (st === 'harai' || st === 'tate') {
-              // 払い/縦払い(実行): ロック済みのライン上のみ判定(トールと同じ点-線分距離判定)。
-              // 横(harai)と縦(tate)はラインの向きが違うだけで当たり判定コードは共通(orientation非依存)。
-              const fx = miguel.aiFromX ?? mcx, fy = miguel.aiFromY ?? mcy;
-              const tx = miguel.aiTargetX ?? mcx, ty = miguel.aiTargetY ?? mcy;
-              let lux = tx - fx, luy = ty - fy;
-              const lul = Math.hypot(lux, luy) || 1; lux /= lul; luy /= lul;
-              const lineLen = Math.hypot(tx - fx, ty - fy);
-              const tproj = Math.max(0, Math.min(lineLen, (pcx - fx) * lux + (pcy - fy) * luy));
-              const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
-              const pr = Math.max(player.width, player.height) / 2;
-              let countered = false;
-              if (Math.hypot(pcx - cxp, pcy - cyp) <= MIGUEL_HARAI_HALF_WIDTH + pr) {
-                const cp = useGameStore.getState().player;
-                if (Date.now() <= cp.counterWindowEnd) {
-                  miguelCounterHit(cxp, cyp);
-                  countered = true;
-                } else {
-                  const died = damagePlayer(miguel.damage, `${enemyDeathLabel(miguel.type)}の${st === 'harai' ? '払い' : '縦払い'}`, cxp, cyp);
-                  if (died) triggerPlayerDeath(pcx, pcy);
-                }
-              }
-              if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
-                if (st === 'harai') {
-                  // 横払い実行の直後は「縦払いの溜め」へ(社長指示v0.25.1598「縦切りも溜め=横と仕様を
-                  // 揃える。同時発動をやめる」)。横と同じく本体静止・赤ライン予告つきの独立した溜め。縦ラインは
-                  // 今のプレイヤー位置に画面縦向きでロック(横のwindupがプレイヤー位置にロックするのと同じ揃え方)。
-                  patch.bossState = 'tate-windup';
-                  patch.bossStateUntil = newGameTime + MIGUEL_HARAI_WINDUP_MS;
-                  patch.aiFromX = pcx;
-                  patch.aiFromY = pcy - MIGUEL_HARAI_RANGE / 2;
-                  patch.aiTargetX = pcx;
-                  patch.aiTargetY = pcy + MIGUEL_HARAI_RANGE / 2;
-                } else {
-                  patch.bossState = 'chase';
-                  patch.bossNextActionAt = miguelNextActionDelay();
-                }
-              }
-            } else if (st === 'volley') {
-              // 弾3連(0.5秒間隔で3発)。周回しながら撃つ=静止しない(社長指示「周回しながら」)。弾は
-              // プレイヤー狙い(createEnemyProjectile既定)・性能はgetEnemyFireProfileのmiguel定義。
-              miguelOrbitMove();
-              const vr = miguelVolleyRef.current;
-              if (vr.shots < BOSS_BURST_SHOTS && newGameTime >= vr.nextShotAt) {
-                addProjectile(createEnemyProjectile(miguel, player));
-                vr.shots += 1;
-                vr.nextShotAt = newGameTime + BOSS_BURST_GAP_MS;
-              }
-              if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = miguelNextActionDelay();
-              }
-            } else if (st === 'counter-leap') {
-              // カウンター成立後、近接距離ギリギリ外までロック済みの後退先へ高速移動(トールと同じ)。
-              const fx = miguel.aiFromX ?? mcx, fy = miguel.aiFromY ?? mcy;
-              const tx = miguel.aiTargetX ?? mcx, ty = miguel.aiTargetY ?? mcy;
-              const t = Math.max(0, Math.min(1, 1 - ((miguel.bossStateUntil ?? newGameTime) - newGameTime) / THOR_COUNTER_LEAP_MS));
-              patch.x = (fx + (tx - fx) * t) - miguel.width / 2;
-              patch.y = (fy + (ty - fy) * t) - miguel.height / 2;
-              if (newGameTime >= (miguel.bossStateUntil ?? 0)) {
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = miguelNextActionDelay();
-              }
-            } else {
-              // 未知/旧ステート(初期スポーン直後を含む)は chase へフォールバックし必ず再開させる。
-              patch.bossState = 'chase';
-              patch.bossNextActionAt = miguelNextActionDelay();
-            }
-
-            if (Object.keys(patch).length) {
-              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === miguel.id ? { ...e, ...patch } : e) }));
-            }
-          }
+          runAngelBossTick(angelStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, ANGEL_SFX, triggerPlayerDeath);
          } catch (err) {
-          if (!miguelCtrlErrLogged) { miguelCtrlErrLogged = true; console.error('[miguel] controller error (suppressed after first):', err); }
-         }
-        }
-
-        // --- ジブリル(ステージ3ゲート2ボス)専用ミニコントローラ(社長指示v0.25.1663) ---
-        // ミゲルとは別挙動: ゆっくりプレイヤーから退避 + 距離適応弾(遠=スナイプ3発2倍速 / 近=ハンドガン圏内で通常5発)。
-        // 3発被弾で退避加速・10発ごとにゲート反対側へワープ(少しのランダム性)。※ランタン攻撃はスライス2で追加。
-        if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
-         try {
-          const jibril = useGameStore.getState().enemies.find(e => e.type === 'jibril' && e.bossState != null);
-          if (jibril) {
-            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-            const jcx = jibril.x + jibril.width / 2, jcy = jibril.y + jibril.height / 2;
-            const bossMoveDt = deltaTime * MOVE_SPEED_MULT;
-            const jHomeX = jibril.homeX ?? jcx, jHomeY = jibril.homeY ?? jcy;
-            const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - jibril.height / 2;
-            const st = jibril.bossState ?? 'chase';
-            const patch: Partial<typeof jibril> = {};
-            const jr = jibrilRef.current;
-
-            // 被弾カウント(lastHit の変化=1被弾として近似。1フレーム内の多重ヒットは1と数える)。
-            if (jibril.lastHit && jibril.lastHit !== jr.lastHitSeen) {
-              jr.hits += 1;
-              jr.lastHitSeen = jibril.lastHit;
-            }
-            // 退避移動(プレイヤーの逆方向・アリーナ内にクランプ)。3発被弾以降はやや速い。
-            const retreatMove = () => {
-              const ax = jcx - pcx, ay = jcy - pcy;
-              const al = Math.hypot(ax, ay) || 1;
-              const spd = JIBRIL_RETREAT_SPEED * (jr.hits >= JIBRIL_HITS_FASTER ? JIBRIL_RETREAT_FAST_MULT : 1);
-              let nx = jcx + (ax / al) * spd * bossMoveDt;
-              let ny = jcy + (ay / al) * spd * bossMoveDt;
-              const rx = nx - jHomeX, ry = ny - jHomeY;
-              const rl = Math.hypot(rx, ry);
-              if (rl > maxR) { nx = jHomeX + (rx / rl) * maxR; ny = jHomeY + (ry / rl) * maxR; }
-              patch.x = nx - jibril.width / 2;
-              patch.y = ny - jibril.height / 2;
-            };
-
-            const jibrilFull = jibril.bossFullStunUntil !== undefined && newGameTime < jibril.bossFullStunUntil;
-            if (jr.hits - jr.lastWarpHits >= JIBRIL_HITS_WARP) {
-              // 10発ごと: ゲート中心を挟んでプレイヤーの反対側(アリーナ縁)へワープ。
-              jr.lastWarpHits = jr.hits;
-              const dx = jHomeX - pcx, dy = jHomeY - pcy;
-              const dl = Math.hypot(dx, dy) || 1;
-              const wx = jHomeX + (dx / dl) * maxR, wy = jHomeY + (dy / dl) * maxR;
-              spawnRing(jcx, jcy, 8, 60, 'rgba(168,85,247,0.8)', 3, 300);
-              patch.x = wx - jibril.width / 2;
-              patch.y = wy - jibril.height / 2;
-              spawnRing(wx, wy, 8, 70, 'rgba(168,85,247,0.9)', 3, 340);
-              spawnFlash('rgba(88,28,135,0.20)', 240);
-              patch.bossState = 'chase';
-              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-            } else if (jibrilFull) {
-              patch.bossState = 'chase';
-              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-            } else if (st === 'chase') {
-              retreatMove();
-              if (newGameTime >= (jibril.bossNextActionAt ?? 0)) {
-                if (Math.random() < JIBRIL_LANTERN_CHANCE) {
-                  // ランタン攻撃(5秒間・0.7秒ごとに足元へ紫の単発火)。
-                  patch.bossState = 'lantern';
-                  patch.bossStateUntil = newGameTime + JIBRIL_LANTERN_MS;
-                  jr.nextFireAt = newGameTime; // 開始直後に1発目
-                } else {
-                  // 距離でモード決定: ハンドガン圏内=通常5発(ミゲル間隔) / それ以外=スナイプ3発2倍速。
-                  const dist = Math.hypot(pcx - jcx, pcy - jcy);
-                  jr.volleyMode = dist <= JIBRIL_HANDGUN_DIST ? 'close' : 'snipe';
-                  jr.shots = 0;
-                  jr.nextShotAt = newGameTime;
-                  const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
-                  const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
-                  patch.bossState = 'volley';
-                  patch.bossStateUntil = newGameTime + shots * gap + 200;
-                }
-              }
-            } else if (st === 'volley') {
-              retreatMove(); // 撃ちながらも退避を続ける
-              const shots = jr.volleyMode === 'close' ? JIBRIL_CLOSE_SHOTS : JIBRIL_SNIPE_SHOTS;
-              const gap = jr.volleyMode === 'close' ? BOSS_BURST_GAP_MS : JIBRIL_SNIPE_GAP_MS;
-              if (jr.shots < shots && newGameTime >= jr.nextShotAt) {
-                const proj = createEnemyProjectile(jibril, player);
-                if (jr.volleyMode === 'snipe') proj.speed *= JIBRIL_SNIPE_SPEED_MULT; // 通常敵弾の2倍速
-                addProjectile(proj);
-                jr.shots += 1;
-                jr.nextShotAt = newGameTime + gap;
-              }
-              if (jr.shots >= shots && newGameTime >= (jibril.bossStateUntil ?? 0)) {
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
-              }
-            } else if (st === 'lantern') {
-              // ランタン攻撃(5秒): ランタンを掲げつつゆっくり退避し、0.7秒ごとにプレイヤーの足元へ紫の単発火を設置。
-              retreatMove();
-              if (newGameTime >= jr.nextFireAt) {
-                const fpx = pcx, fpy = player.y + player.height; // この瞬間のプレイヤー足元(移動で回避可)
-                useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS, newGameTime + JIBRIL_FIRE_TELEGRAPH_MS + JIBRIL_FIRE_LIFE_MS);
-                jr.nextFireAt = newGameTime + JIBRIL_FIRE_GAP_MS;
-              }
-              if (newGameTime >= (jibril.bossStateUntil ?? 0)) {
-                patch.bossState = 'chase';
-                patch.bossNextActionAt = newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
-              }
-            } else {
-              patch.bossState = 'chase';
-              patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-            }
-
-            if (Object.keys(patch).length) {
-              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === jibril.id ? { ...e, ...patch } : e) }));
-            }
-          }
-         } catch (err) {
-          if (!jibrilCtrlErrLogged) { jibrilCtrlErrLogged = true; console.error('[jibril] controller error (suppressed after first):', err); }
-         }
-        }
-
-        // --- ラフィ(ステージ4ゲート2ボス)専用ミニコントローラ(社長指示v0.25.1665) ---
-        // ゆっくり追跡＋ランダム横ステップ。ハンドガン距離(300px)内=骨攻撃(スカジ氷刃の骨刃版・設置間隔600ms)、
-        // 外=ジャンプ攻撃(トール流用・着地AoE)。ジャンプの溜めをカウンターされたら即再ジャンプ(連続2回まで)。
-        if (!danceTest && !indoor && !labTheme && !useGameStore.getState().gameWon) {
-         try {
-          const rafi = useGameStore.getState().enemies.find(e => e.type === 'rafi' && e.bossState != null);
-          if (rafi) {
-            const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-            const rcx = rafi.x + rafi.width / 2, rcy = rafi.y + rafi.height / 2;
-            const bossMoveDt = deltaTime * MOVE_SPEED_MULT;
-            const rHomeX = rafi.homeX ?? rcx, rHomeY = rafi.homeY ?? rcy;
-            const maxR = GATE_ARENA_RADIUS - MIGUEL_ORBIT_MARGIN - rafi.height / 2;
-            const st = rafi.bossState ?? 'chase';
-            const patch: Partial<typeof rafi> = {};
-            const rr = rafiRef.current;
-
-            // アリーナ内クランプ(中心=ゲート中心)。
-            const clampArena = (nx: number, ny: number) => {
-              const dx = nx - rHomeX, dy = ny - rHomeY;
-              const dl = Math.hypot(dx, dy);
-              if (dl > maxR) return { x: rHomeX + (dx / dl) * maxR, y: rHomeY + (dy / dl) * maxR };
-              return { x: nx, y: ny };
-            };
-            const chaseMove = (spd: number) => {
-              const dx = pcx - rcx, dy = pcy - rcy;
-              const dl = Math.hypot(dx, dy) || 1;
-              const c = clampArena(rcx + (dx / dl) * spd * bossMoveDt, rcy + (dy / dl) * spd * bossMoveDt);
-              patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
-            };
-            const nextAction = () => newGameTime + THOR_ACTION_MIN_MS + Math.random() * (THOR_ACTION_MAX_MS - THOR_ACTION_MIN_MS);
-
-            // カウンター判定(溜め/硬直中の接触＋カウンター窓)。ミゲル/トールと同型。
-            const rafiBodyOverlapNow = () => {
-              const cp = useGameStore.getState().player;
-              return {
-                overlap: rectsOverlap({ x: rafi.x, y: rafi.y, width: rafi.width, height: rafi.height }, { x: cp.x, y: cp.y, width: cp.width, height: cp.height }),
-                counterActive: Date.now() <= cp.counterWindowEnd,
-              };
-            };
-            // カウンター成立処理(ミゲルのmiguelCounterHit相当・FX＋反撃ダメージ)。後退はせず、呼び出し側で再ジャンプ判定する。
-            const rafiCounterHit = (hx: number, hy: number) => {
-              const cp = useGameStore.getState().player;
-              const pnow = Date.now();
-              addMeleeFinishCombo(1);
-              playSfx('counter');
-              useGameStore.getState().spawnGlow(hx, hy, 95, 'rgba(56,189,248,', 360);
-              useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-              useGameStore.getState().markMeleeSwingFx();
-              spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-              spawnBurst(hx, hy, '#38bdf8', 14);
-              useGameStore.getState().spawnCallout(hx, hy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-              useGameStore.setState(stt => ({ player: { ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow } }));
-              const counterBase = getActiveGun(cp)?.damage ?? 12;
-              const critMult = skillCritMult(cp, BOSS_CRIT_DAMAGE_MULT);
-              const dmg = Math.max(1, Math.round(counterBase * critMult * skillOutgoingDamageMult(cp) * (cp.equipBonus?.damageMult ?? 1)));
-              damageEnemy(rafi.id, dmg, false, true);
-              spawnDamageNumber(rcx, rafi.y, dmg, true);
-              playSfx('headshot');
-              spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
-              spawnBurst(hx, hy, '#fde047', 10);
-            };
-
-            const rafiFull = rafi.bossFullStunUntil !== undefined && newGameTime < rafi.bossFullStunUntil;
-            if (rafiFull) {
-              patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-            } else if (st === 'chase') {
-              if (newGameTime < rr.stepUntil) {
-                // 横ステップ中: プレイヤー方向に直交して高速移動(アリーナ内)。
-                const c = clampArena(rcx + rr.stepDx * RAFI_STEP_SPEED * bossMoveDt, rcy + rr.stepDy * RAFI_STEP_SPEED * bossMoveDt);
-                patch.x = c.x - rafi.width / 2; patch.y = c.y - rafi.height / 2;
-              } else if (rr.nextStepAt !== 0 && newGameTime >= rr.nextStepAt) {
-                // 横ステップ開始: プレイヤー方向に直交(左右ランダム)。
-                const dx = pcx - rcx, dy = pcy - rcy; const dl = Math.hypot(dx, dy) || 1;
-                const side = Math.random() < 0.5 ? 1 : -1;
-                rr.stepDx = (-dy / dl) * side; rr.stepDy = (dx / dl) * side;
-                rr.stepUntil = newGameTime + RAFI_STEP_MS;
-                rr.nextStepAt = newGameTime + RAFI_STEP_MS + RAFI_STEP_MIN_GAP_MS + Math.random() * (RAFI_STEP_MAX_GAP_MS - RAFI_STEP_MIN_GAP_MS);
-              } else {
-                if (rr.nextStepAt === 0) rr.nextStepAt = newGameTime + RAFI_STEP_MIN_GAP_MS + Math.random() * (RAFI_STEP_MAX_GAP_MS - RAFI_STEP_MIN_GAP_MS);
-                chaseMove(RAFI_CHASE_SPEED);
-              }
-              // 攻撃選択(ステップ中は待つ)。
-              if (newGameTime >= rr.stepUntil && newGameTime >= (rafi.bossNextActionAt ?? 0)) {
-                const dist = Math.hypot(pcx - rcx, pcy - rcy);
-                rr.rejumps = 0;
-                if (dist <= RAFI_HANDGUN_DIST) {
-                  patch.bossState = 'bone';
-                  rr.boneLeft = RAFI_BONE_COUNT; rr.boneNextAt = newGameTime;
-                } else {
-                  patch.bossState = 'jump-windup';
-                  patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS;
-                }
-              }
-            } else if (st === 'bone') {
-              // 骨刃をプレイヤー周囲リングに設置(600ms間隔・7本)→設置1秒後に発射(スカジ流用・見た目=骨刃)。
-              if (rr.boneLeft > 0 && newGameTime >= rr.boneNextAt) {
-                const a0 = Math.random() * Math.PI * 2;
-                const dist = SKADI_BLADE_RING_MIN + Math.random() * (SKADI_BLADE_RING_MAX - SKADI_BLADE_RING_MIN);
-                const sx = pcx + Math.cos(a0) * dist, sy = pcy + Math.sin(a0) * dist;
-                const aim = Math.atan2(pcy - sy, pcx - sx); // 設置時のプレイヤー方向(以後固定)
-                useGameStore.getState().spawnSkadiBlade(sx, sy, aim, newGameTime + SKADI_BLADE_DELAY_MS, rafi.id, 'bone');
-                rr.boneLeft -= 1;
-                rr.boneNextAt = newGameTime + RAFI_BONE_GAP_MS;
-              }
-              if (rr.boneLeft <= 0) {
-                patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
-              }
-            } else if (st === 'jump-windup') {
-              // 溜め: 静止・カウンター可能。カウンターされたら即再ジャンプ(連続2回まで)。
-              const { overlap, counterActive } = rafiBodyOverlapNow();
-              if (overlap && counterActive) {
-                rafiCounterHit(rcx, rcy);
-                if (rr.rejumps < RAFI_JUMP_MAX_REJUMPS) {
-                  rr.rejumps += 1;
-                  patch.bossState = 'jump-windup';
-                  patch.bossStateUntil = newGameTime + THOR_JUMP_WINDUP_MS; // 即もう一度溜め
-                } else {
-                  patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
-                }
-              } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
-                patch.bossState = 'jump-attack';
-                patch.bossStateUntil = newGameTime + THOR_JUMP_MS;
-                patch.aiFromX = rcx; patch.aiFromY = rcy;
-                patch.aiTargetX = pcx; patch.aiTargetY = pcy; // 着地点=溜め終了時のプレイヤー位置(ロック)
-              }
-            } else if (st === 'jump-attack') {
-              // ジャンプ(実行): ロック済みの着地点まで移動(トール流用)。
-              const fx = rafi.aiFromX ?? rcx, fy = rafi.aiFromY ?? rcy;
-              const tx = rafi.aiTargetX ?? rcx, ty = rafi.aiTargetY ?? rcy;
-              const t = Math.max(0, Math.min(1, 1 - ((rafi.bossStateUntil ?? newGameTime) - newGameTime) / THOR_JUMP_MS));
-              patch.x = (fx + (tx - fx) * t) - rafi.width / 2;
-              patch.y = (fy + (ty - fy) * t) - rafi.height / 2;
-              if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
-                // 着地: 既存pumpkinBlasts(着地爆発)へ積む=カウンター/被弾処理を再利用(トールと同じ)。
-                useGameStore.setState(state => ({
-                  pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: THOR_JUMP_RADIUS, damage: rafi.damage, enemyId: rafi.id }],
-                }));
-                patch.bossState = 'jump-recover';
-                patch.bossStateUntil = newGameTime + THOR_JUMP_RECOVER_MS;
-              }
-            } else if (st === 'jump-recover') {
-              // 着地後の硬直。静止・カウンター可能(こちらは再ジャンプ無し=通常のカウンター)。
-              const { overlap, counterActive } = rafiBodyOverlapNow();
-              if (overlap && counterActive) {
-                rafiCounterHit(rcx, rcy);
-                patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
-              } else if (newGameTime >= (rafi.bossStateUntil ?? 0)) {
-                patch.bossState = 'chase'; patch.bossNextActionAt = nextAction();
-              }
-            } else {
-              patch.bossState = 'chase'; patch.bossNextActionAt = newGameTime + BOSS_ACTION_MIN_MS;
-            }
-
-            if (Object.keys(patch).length) {
-              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === rafi.id ? { ...e, ...patch } : e) }));
-            }
-          }
-         } catch (err) {
-          if (!rafiCtrlErrLogged) { rafiCtrlErrLogged = true; console.error('[rafi] controller error (suppressed after first):', err); }
+          if (!angelCtrlErrLogged) { angelCtrlErrLogged = true; console.error('[angel] controller error (suppressed after first):', err); }
          }
         }
 
@@ -5541,31 +5004,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (設置自体は上の molotov ブロックが行う。ここは置いた後の面倒を見るだけ)。
         useGameStore.getState().tickGroundFires();
 
-        // ジブリルのランタン火(紫の単発火・社長指示v0.25.1664): 寿命切れ回収 + 有効化後のプレイヤー接触判定。
-        // molotovと違い「プレイヤーに」当たる。触れると30固定ダメージを与えてその火は即消える(単発)。
-        {
-          const bf = useGameStore.getState().bossFires;
-          if (bf.length > 0) {
-            const pl = useGameStore.getState().player;
-            const plcx = pl.x + pl.width / 2, plcy = pl.y + pl.height / 2;
-            const hitR = JIBRIL_FIRE_RADIUS + Math.min(pl.width, pl.height) / 2;
-            let died = false;
-            let struck = false; // 1フレーム1ヒットに制限(重なった複数火の多重ダメージ/i-frame無視を防ぐ)
-            const survivors: typeof bf = [];
-            for (const f of bf) {
-              if (newGameTime >= f.expireAt) continue; // 寿命切れ=消滅
-              const active = newGameTime >= f.activateAt; // 予告(0.7s)後にダメージ有効
-              if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
-                struck = true;
-                const d = damagePlayer(JIBRIL_FIRE_DAMAGE, 'ジブリルのランタン火', f.x, f.y);
-                if (d) { died = true; triggerPlayerDeath(plcx, plcy); }
-                continue; // ダメージを与えた火は消える(単発)。他の重なり火は次フレーム(i-frame明け)に持ち越し。
-              }
-              survivors.push(f);
-            }
-            if (survivors.length !== bf.length) useGameStore.getState().setBossFires(survivors);
-          }
-        }
+        // ジブリルのランタン火(紫の単発火): M26 Step3で angelBossTick.ts へ移設(挙動不変・ヘッドレス共用)。
+        tickAngelBossFires(newGameTime, triggerPlayerDeath);
 
         // スキル 救難信号: 飛来中の援護アライの着弾ダメージ適用 + 寿命切れ回収(発生自体は
         // triggerCounter内のapplyRescueSignalProcが行う。ここは置いた後の面倒を見るだけ)。

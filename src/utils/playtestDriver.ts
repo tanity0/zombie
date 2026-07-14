@@ -29,6 +29,8 @@ import { shouldTriggerGate1, entersGate1Penalty } from './gate1';
 import { shouldTriggerGate2 } from './gate2';
 import { detectWallBreach } from './wallProgress';
 import { shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS } from './viciousHunter';
+import { runAngelBossTick, tickAngelBossFires, createAngelBossState, NOOP_ANGEL_SFX, type AngelBossState } from './angelBossTick';
+import { GAME_SPEED } from '../config/gameSpeed';
 import type { AmmoType } from '../types/game';
 import { areaIndexForPos, isBossType, spawnEnemyAt, spawnEnemyAtWithTier, AREA_THRESHOLDS } from './enemyUtils';
 import { checkProjectileEnemyCollisions, checkPlayerPickupCollisions } from './collisionUtils';
@@ -91,6 +93,8 @@ export interface PlaytestRefs {
     hunterRearmAt: number;                     // 凶悪ハンター撃破後の再アーム時刻
     hunterWasAlive: boolean;                   // 撃破検知(rearm計時)用
   };
+  // M26 Step3(§6.2): 天使(ゲート2ボス)コントローラの状態(angelBossTick.ts=実プレイと共用)。
+  angel: AngelBossState;
 }
 
 // useGameLoop.ts の useRef 初期値と同じ形(M9-A extraction時点のスナップショット)。
@@ -131,6 +135,7 @@ export const createPlaytestRefs = (): PlaytestRefs => {
       hunterRearmAt: 0,
       hunterWasAlive: false,
     },
+    angel: createAngelBossState(),
   };
 };
 
@@ -240,8 +245,8 @@ const runGateAndHunterTick = (refs: PlaytestRefs, t: number): void => {
     } else if (shouldTriggerGate2({ enabled: true, wallIdx: g.gate2Pending ? 4 : null, gate2Cleared: g.gate2Cleared, activeEventActive: false })) {
       g.gate2Pending = false;
       useGameStore.getState().beginArenaEvent({ kind: 'boss', x: pcx, y: pcy, radius: GATE_ARENA_RADIUS, startedAt: t, endsAt: t + GATE2_BOSS_DURATION_MS });
-      // ヘッドレスのゲート2ボスは当面ミゲル固定(ステージ選択なし)。天使AI(専用コントローラ)は未接続=
-      // その場に立つだけ(Step3で接続予定)。HP2000のタンクとして「倒すまで拘束」だけを再現する。
+      // ヘッドレスのゲート2ボスは当面ミゲル固定(ステージ選択なし)。天使AI(angelBossTick.ts)は
+      // M26 Step3で接続済み=実プレイと同じ周回/払い/弾3連で戦う(音のみNOOP)。
       const boss = spawnEnemyAt('miguel', pcx - 24, pcy - GATE_ARENA_RADIUS * 0.5 - 24, t);
       boss.fromEvent = true; boss.bossState = 'chase'; boss.bossNextActionAt = t + 2000;
       boss.homeX = pcx; boss.homeY = pcy;
@@ -402,7 +407,12 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   }
 
   // M26 Step2(§6.2): ゲート1/2+凶悪ハンター(events===falseのシナリオ試験では切る)。
-  if (opts.events !== false) runGateAndHunterTick(refs, t);
+  // M26 Step3: 天使(ゲート2ボス)コントローラ+ジブリルのランタン火tick(実プレイと同じ抽出関数・音NOOP)。
+  if (opts.events !== false) {
+    runGateAndHunterTick(refs, t);
+    runAngelBossTick(refs.angel, t, dt, GAME_SPEED, NOOP_ANGEL_SFX, () => {});
+    tickAngelBossFires(t, () => {});
+  }
 
   const s = useGameStore.getState();
   const playerAreaIdx = areaIndexForPos(s.player.x, s.player.y);

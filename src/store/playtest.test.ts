@@ -392,3 +392,45 @@ describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)
     }
   });
 });
+
+describe('M26 Step3: 天使ボスAIのヘッドレス接続(angelBossTick.ts=実プレイと共用)', () => {
+  it('抽出したミゲルAIがヘッドレスで動く(周回移動+攻撃ステートに遷移する)', () => {
+    const realEpoch = Date.now();
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['Date'] });
+    vi.setSystemTime(realEpoch);
+    try {
+      useGameStore.getState().resetGame('rogue');
+      const refs = createPlaytestRefs();
+      const p = useGameStore.getState().player;
+      const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+      // ゲート2スポーンと同じ形でミゲルを直接配置(AIの動作検証が目的なのでゲート発火は経由しない)。
+      const boss = spawnEnemyAt('miguel', pcx - 24, pcy - 150 - 24, 0);
+      boss.fromEvent = true;
+      boss.bossState = 'chase';
+      boss.bossNextActionAt = 2000;
+      boss.homeX = pcx; boss.homeY = pcy;
+      useGameStore.getState().addEnemy(boss);
+
+      const startX = boss.x, startY = boss.y;
+      let moved = false;
+      let sawAttackState = false;
+      const dt = 1 / 60;
+      for (let i = 0; i < 20 * 60; i++) { // 20秒
+        const nextGameTime = useGameStore.getState().gameTime + dt * 1000;
+        vi.setSystemTime(realEpoch + nextGameTime);
+        runPlaytestTick(refs, { persona: 'stationary', tickIndex: i, wanderSeed: 0, dt });
+        const m = useGameStore.getState().enemies.find(e => e.type === 'miguel');
+        if (!m) break; // 討伐された(それも「AIが動いて戦闘が成立した」証拠なので継続不要)
+        if (Math.hypot(m.x - startX, m.y - startY) > 40) moved = true;
+        if (m.bossState && m.bossState !== 'chase') sawAttackState = true;
+        if (moved && sawAttackState) break;
+      }
+      // 芯: 抽出前のuseGameLoop直書きと同じく、周回で動き、攻撃ステート(volley/harai-windup等)へ遷移する。
+      // (updateEnemiesはミゲルを素通しするので、これが動く=angelBossTickが駆動している証拠)
+      expect(moved).toBe(true);
+      expect(sawAttackState).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
