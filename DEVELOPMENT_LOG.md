@@ -12,6 +12,17 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1676 — 分業ルール改定: 診断系調査=Fable直轄/走査系=Sonnet(徹底)【2026-07-14 12:22 JST】
+- **社長決定**「以後はその形で徹底。それ以外でFableがやった方がコスパいいと判断したら尋ねて」。
+- **CLAUDE.md エージェント分業に「調査の振り分け」を追記**:
+  - 診断系(原因不明バグ・状態機械/タイミング・複数システム跨ぎ・仕様判断が絡む)=**Fableが直轄で最後まで**。
+    「調査設計→Sonnet実査」の分業は廃止(調査は仮説→検証ループで設計と実行が不可分)。
+  - 走査系(列挙・計測・テスト実行・定型確認)=**Sonnetに任せる**。
+  - 枠外でFableがやる方が得と判断した時は**勝手にやらず社長に尋ねる**。
+- 根拠(v0.25.1675の実測): ゲート2深層演出バグは仮説3回修正(凍結→セピア→ロック)で真因到達=間にSonnetを挟むと
+  伝達3往復+設計判断の差し戻しが発生していた。
+- Files: `CLAUDE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(文書のみ)。
+
 ## v0.25.1675 — M26-L実装: 実機オートパイロット(?botモード)【2026-07-14 12:07 JST】
 - **経緯**: 社長「実装しちゃおう」→設計チャットが着手→「sonnetね」の行き違いが判明した時点でほぼ完了していたため、
   社長裁定「このまま採用」。**Sonnetへの依頼(§6.3冒頭の指示例)は不要になった。**
