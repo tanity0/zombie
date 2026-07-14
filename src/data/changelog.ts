@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1710',
+    items: [
+      '開発: 配布方針を決定(ネイティブアプリ化=アセット同梱を想定)。初回ローディング改善案は見送り。記録のみでゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1709',
     items: [
       '開発: 「Pages版のローディングが長い」の原因を特定(初回ロードで全アセット162MB=音声79MB込みを待つ設計)。改善案は裁定待ち・記録のみでゲーム変更なし。',
