@@ -13,10 +13,10 @@ const NPC_PORTRAIT_BASE: Record<string, string> = {
   'チェン': 'chen',
   'ローレン': 'lauren',
   'フェイザー': 'phaser',
-  // 二人組(クエストNPC)。台詞(EVENT_QUEST_LINES系)の話者名=男/女 → 専用バストアップ
+  // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
   // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。
-  '男': 'futari-man',
-  '女': 'futari-woman',
+  'グレン': 'futari-man',
+  'ミラ': 'futari-woman',
 };
 
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
@@ -30,6 +30,10 @@ export const NpcDialogue = () => {
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
   // 話者の立ち絵(あれば)。上半身だけ見せるため、立ち絵を高さ基準で拡大し枠で上部だけ切り出す。
   const portraitBase = NPC_PORTRAIT_BASE[npc.name];
+  // 二人組(futari-*)のバストアップは肩まで入っていて護衛の細長い立ち絵より横幅が広い
+  // (表示高さ64pxで幅≈58px)。護衛用の枠幅40だと文字に被るため、枠を実表示幅に合わせて広げる
+  // (社長報告v0.25.1719「絵が文字に被ってるのでNPC同様にずらして」)。
+  const portraitBoxW = portraitBase?.startsWith('futari') ? 62 : 40;
   return (
     <div
       className="absolute text-left"
@@ -47,7 +51,7 @@ export const NpcDialogue = () => {
       >
         {portraitBase && (
           // バストは背景の高さ(=文字)に対して背が高く、下端を背景下端に合わせて上へはみ出させる。
-          <div className="relative self-stretch shrink-0" style={{ width: 40 }}>
+          <div className="relative self-stretch shrink-0" style={{ width: portraitBoxW }}>
             <img
               src={spritePath(`npc/${portraitBase}-0`)}
               alt={npc.name}

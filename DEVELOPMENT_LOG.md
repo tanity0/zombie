@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1719 — 二人組の命名(ミラ/グレン)+台詞バストの被り修正【2026-07-15 01:41 JST】
+- **社長指示**「男女の会話、絵が文字に被ってるのでNPC同様にずらして。名前は女がミラ 男がグレン」。
+- `EVENT_QUEST_LINES`/`EVENT_QUEST_LINES_SUB` の話者名を 女→**ミラ**/男→**グレン** へ。
+  `NpcDialogue.NPC_PORTRAIT_BASE` のキーも同名に更新(グレン=futari-man/ミラ=futari-woman)。
+- 被り修正: 二人組のバストは肩まで入っていて護衛の細長い立ち絵より横幅が広い(表示高64pxで幅≈58px)
+  ため、護衛用の枠幅40pxだと文字に食い込んでいた。**futari系のみ枠幅62px**にしてテキスト開始位置をずらす
+  (護衛NPCの表示は不変)。
+- 検証: typecheck/eslintクリーン。実機確認: 受領時の会話でミラ/グレンの名前+バストが被りなく出るか。
+- Files: `src/store/gameStore.ts`, `src/components/NpcDialogue.tsx`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1718 — M36実装: センサー地雷CD是正=個別チャージ制(§6.13・Sonnet実装)【2026-07-15 01:38 JST】
 - **§6.13の仕様どおり実装**: 旧グローバル10秒CD(`setSubWeaponCooldown('sensor-mine')`)を撤去し、
   チャージ制へ。チャージ数=同時設置上限と同じ(Lv1=3/Lv2=4/Lv3=5)。設置=準備完了チャージを1消費

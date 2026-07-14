@@ -405,18 +405,19 @@ const createEventQuestNpc = (): EventQuestNpc => {
 // EVENT_QUEST_DWELL_MS(3秒)居続けると強制受領(拠点解放と同じメーター表示)。会話は左上のNPC会話
 // (npcDialogueQueue)へ流す。行データは旧EventQuestMenuのDIALOGUEから移設。
 export const EVENT_QUEST_DWELL_MS = 3000;
+// 話者名は社長命名(v0.25.1719): 女=ミラ / 男=グレン(NpcDialogueのバストアップ対応と一致させること)。
 export const EVENT_QUEST_LINES: { name: string; text: string }[] = [
-  { name: '女', text: '隊長！感染者じゃなさそう！' },
-  { name: '男', text: '・・・フム、何も見なかった事にしろ。' },
-  { name: '女', text: '感染者サンプルを探してるの！' },
-  { name: '男', text: 'ばか言うな！・・・知られたからには手伝ってもらう。' },
+  { name: 'ミラ', text: '隊長！感染者じゃなさそう！' },
+  { name: 'グレン', text: '・・・フム、何も見なかった事にしろ。' },
+  { name: 'ミラ', text: '感染者サンプルを探してるの！' },
+  { name: 'グレン', text: 'ばか言うな！・・・知られたからには手伝ってもらう。' },
 ];
 // 納品(完了)報酬のゴールド(社長裁定v0.25.1686 #5「報酬は100で」。強制/サブ各)。
 export const EVENT_QUEST_REWARD_GOLD = 100;
 // サブ「とにかくサンプルを集めてきて」受領時の台詞(★仮テキスト=会話は後で社長が詰める)。
 export const EVENT_QUEST_LINES_SUB: { name: string; text: string }[] = [
-  { name: '女', text: 'まだ足りないの！とにかくサンプルを集めてきて！' },
-  { name: '男', text: '・・・数が要る。頼む。' },
+  { name: 'ミラ', text: 'まだ足りないの！とにかくサンプルを集めてきて！' },
+  { name: 'グレン', text: '・・・数が要る。頼む。' },
 ];
 const loadMeleeDropPct = (): number => {
   try {
