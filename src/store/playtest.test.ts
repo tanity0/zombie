@@ -34,6 +34,13 @@ interface RunReport {
   died: boolean;                // ラン中に health<=0 になった瞬間があったか
   diedAtMs: number | null;      // 死亡時点のgameTime(なければnull)
   deathCause: string | null;    // 死亡時点のlastDamageSource(なければnull)
+  // PACING_PUZZLE.md §6.2 M26 Step0(社長指示v0.25.1673「シミュレーション精度向上」): バランス測定の充実。
+  kills: number;                // 総キル数(gameStats.enemiesKilled)
+  playerLevel: number;          // 終了時のプレイヤーレベル(成長ループ未接続の現状は常に1=Step1のビフォー計測)
+  minHp: number;                // ラン中の最低HP(ニアデスの深さ)
+  nearDeathCount: number;       // HPが最大値の25%を上から下へ跨いだ回数(ニアデス頻度)
+  maxDepthPx: number;           // 原点からの最深到達距離(px)
+  areaSec: number[];            // 区域(0..4)ごとの滞在秒数
 }
 
 const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: number, wanderSeed: number): RunReport => {
@@ -58,6 +65,12 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
     let died = false;
     let diedAtMs: number | null = null;
     let deathCause: string | null = null;
+    // §6.2 M26 Step0: バランス計測(最低HP/ニアデス回数/最深距離/区域滞在)。
+    let minHp = useGameStore.getState().player.health;
+    let nearDeathCount = 0;
+    let maxDepthPx = 0;
+    const areaSec = [0, 0, 0, 0, 0];
+    const zoneIdxOf = (dist: number): number => AREA_THRESHOLDS.filter(th => dist >= th).length; // 0..4
 
     for (let i = 0; i < ticks; i++) {
       const before = useGameStore.getState();
@@ -79,6 +92,13 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
         diedAtMs = after.gameTime;
         deathCause = after.lastDamageSource || null;
       }
+      // §6.2 M26 Step0: バランス計測。minHp/ニアデス(最大HPの25%を上→下に跨いだ回数)/最深距離/区域滞在。
+      minHp = Math.min(minHp, after.player.health);
+      const ndThreshold = after.player.maxHealth * 0.25;
+      if (healthBefore >= ndThreshold && after.player.health < ndThreshold) nearDeathCount++;
+      const depthNow = Math.hypot(after.player.x + after.player.width / 2, after.player.y + after.player.height / 2);
+      maxDepthPx = Math.max(maxDepthPx, depthNow);
+      areaSec[zoneIdxOf(depthNow)] += DT;
       const removedIds = [...beforeIds].filter(id => !after.enemies.some(e => e.id === id));
       const gb = after.gameBounds;
       const rect = {
@@ -101,12 +121,17 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
       prevGameTime = after.gameTime;
     }
 
+    const endState = useGameStore.getState();
     return {
       persona, characterClass, ticks,
-      survivedMs: useGameStore.getState().gameTime,
+      survivedMs: endState.gameTime,
       finalRank: refs.koma.puzzleClockRef.current.rank,
       violations,
       hpLost, died, diedAtMs, deathCause,
+      kills: endState.gameStats.enemiesKilled,
+      playerLevel: endState.player.level,
+      minHp, nearDeathCount, maxDepthPx,
+      areaSec: areaSec.map(s => Math.round(s)),
     };
   } finally {
     vi.useRealTimers();
@@ -119,7 +144,9 @@ const printReport = (label: string, reports: RunReport[]): void => {
     const status = r.violations.length === 0 ? 'OK' : `FAIL(${r.violations.length})`;
     // PACING_PUZZLE.md §5.18 M17: hpLost/died をコンソール出力にも出す(受け入れ条件のとおり)。
     const deathInfo = r.died ? ` died@${((r.diedAtMs ?? 0) / 1000).toFixed(0)}s(${r.deathCause ?? '?'})` : '';
+    // §6.2 M26 Step0: kills/lv/minHp/ニアデス/最深/区域滞在も1行で出す(バランスの読み取り用)。
     console.log(`  [${status}] persona=${r.persona} class=${r.characterClass} survived=${(r.survivedMs / 1000).toFixed(0)}s rank=${r.finalRank} hpLost=${r.hpLost.toFixed(0)}${deathInfo}`);
+    console.log(`      kills=${r.kills} lv=${r.playerLevel} minHp=${r.minHp.toFixed(0)} nearDeath=${r.nearDeathCount} depth=${Math.round(r.maxDepthPx)}px areaSec=[${r.areaSec.join('/')}]`);
     for (const v of r.violations.slice(0, 5)) console.log(`      - ${v}`);
   }
 };

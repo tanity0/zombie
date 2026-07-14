@@ -12,6 +12,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1673 — M26開始: シミュレーション精度向上 Step0=計測の充実【2026-07-14 10:25 JST】
+- **社長方針**「最終的には全部取り込みたい。現実的な手段を模索しつつ、すぐ取り入れられるものから順番に一つずつ」。
+- **ロードマップを PACING_PUZZLE.md §6.2(バッチM26)に新設**: Step0=計測の充実(小)→ Step1=成長ループ接続(中)→
+  Step2=ハンター+ゲート接続(中)→ Step3=天使ボスAIのヘッドレス化(大)→ Step4=イベント接続(最大)+随時キャリブレーション。
+  各Step後に `npm run playtest` の指標差で「精度が上がった」を数字で確認しながら進む運用。
+- **Step0実装(`src/store/playtest.test.ts`)**: RunReport/レポート出力に **kills / playerLevel / minHp /
+  nearDeathCount(最大HP25%を上→下に跨いだ回数)/ maxDepthPx / areaSec(区域0..4の滞在秒)** を追加。
+  ロジック変更なし=計測のみ(ゲーム挙動不変)。
+- **初回計測の発見**: ショート版で **kiter(引き撃ち)×マークスマン=5分でkills 0**(hpLost8・逃げ続けて一切当てて
+  いない)。standard×warrior=26キル。→ 引き撃ちペルソナの射撃が機能していない疑い(移動方向と射程の関係か、
+  ボットの狙いか)。**Step1着手時に一緒に調査**(成長ループはキル→XPが前提なので、ここが直らないとkiterは測れない)。
+- 検証: `npm run typecheck` パス / ショート版playtest OK(新指標が出力されるのを確認)。
+- Files: `src/store/playtest.test.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1672 — デバッグ/バランステスト実施(社長指示・コード変更なし)【2026-07-14 09:44 JST】
 - **社長指示**「デバッグ、バランステストしておいて」。今セッション(v1655〜1671: ゲート到達ガード/救急鞄/天使ボス
   2体の専用AI/ハンター条件/深層演出ロック)の節目としてフルチェック+バランス走行を実施。
