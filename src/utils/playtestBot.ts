@@ -62,6 +62,29 @@ const retreat = (pcx: number, pcy: number, e: Enemy): InputState => {
   return dirInput(dx / n, dy / n);
 };
 
+// M26 Step1(§6.2): 手が空いている(入力が無い)tickに、近くのピックアップ(XP/弾薬/回復)へ歩み寄る
+// 「拾い」挙動。実プレイヤーが戦闘の隙間にジェムを回収する動きの再現。stationary(棒立ちが仕様)は除外。
+// 危険になれば次tickの本来のペルソナ判断(退避等)が優先されるので自己修正される。
+export const pickupSeekInput = (
+  persona: BotPersona,
+  input: InputState,
+  pcx: number,
+  pcy: number,
+  pickups: readonly { x: number; y: number }[],
+  maxDist = 240,
+): InputState => {
+  if (persona === 'stationary') return input;
+  if (input.up || input.down || input.left || input.right) return input; // 本来の判断が動いている時は触らない
+  let bestX = 0, bestY = 0, bestD = maxDist;
+  for (const p of pickups) {
+    const d = Math.hypot(p.x + 8 - pcx, p.y + 8 - pcy); // ピックアップは16px角=中心へ+8
+    if (d < bestD) { bestD = d; bestX = p.x + 8; bestY = p.y + 8; }
+  }
+  if (bestD >= maxDist) return input;
+  const n = Math.max(0.001, bestD);
+  return dirInput((bestX - pcx) / n, (bestY - pcy) / n);
+};
+
 // 放浪ペルソナ用: ラン開始時に一度だけ選ぶ固定方向(spawn からの一方向へ直進=戦闘無視)。
 const WANDER_DIRS: InputState[] = [
   { up: true, down: false, left: false, right: false },
@@ -86,6 +109,11 @@ export const createRusherTrackState = (dodgeSign: 1 | -1 = 1): RusherTrackState 
 const RUSHER_STUCK_TICKS = 30;
 const RUSHER_ORIGIN_EPS = 4; // 原点にごく近い間は半径方向が不安定なので放浪と同じ固定シード方向を使う
 
+// kiterの「射程バンド維持」の既定射程(px)。ハンドガン(RANGE_BY_CATEGORY.handgun=176)相当。
+// 呼び出し側が現在の銃の実射程(gunRangePx)を渡せばそれを使う(このモジュールはstore/weaponUtils非依存を
+// 保つため、射程の解決は呼び出し側=playtestDriver/useGameLoopの責務にする)。
+const KITER_DEFAULT_RANGE = 176;
+
 export const decideBotInput = (
   persona: BotPersona,
   player: Player,
@@ -94,6 +122,7 @@ export const decideBotInput = (
   tickIndex: number,
   wanderSeed: number,
   rusherState?: RusherTrackState,
+  gunRangePx?: number,
 ): BotDecision => {
   const pcx = player.x + player.width / 2;
   const pcy = player.y + player.height / 2;
@@ -143,10 +172,18 @@ export const decideBotInput = (
     }
 
     case 'kiter': {
-      // 常に最寄り敵から距離を取る「引き撃ち専」。近接は使わず、銃の自動射撃だけに頼る。
+      // 引き撃ち専: 最寄り敵を「銃の射程バンド内」に保ちながら下がる。近接は使わない。
+      // M26 Step1修正(v0.25.1678): 旧実装は無条件退避で、プレイヤー(87)が通常敵(zombie42等)を永遠に
+      // 引き離し、射程ゲート(fireWeaponはrange内の敵にしか撃たない)に誰も入らず5分でキル0だった
+      // (Step0計測で発覚)。近すぎ=退避 / 遠すぎ=接近 / バンド内=静止して撃たせる、が本来の引き撃ち。
       const target = nearestEnemy(pcx, pcy, enemies);
       if (!target) return { input: STILL_INPUT, wantsMelee: false, wantsWeaponSwitch: false };
-      return { input: retreat(pcx, pcy, target), wantsMelee: false, wantsWeaponSwitch: tickIndex % 900 === 0 };
+      const range = gunRangePx ?? KITER_DEFAULT_RANGE;
+      const d = distTo(pcx, pcy, target);
+      const input = d < range * 0.55 ? retreat(pcx, pcy, target)
+        : d > range * 0.9 ? approach(pcx, pcy, target)
+        : STILL_INPUT;
+      return { input, wantsMelee: false, wantsWeaponSwitch: tickIndex % 900 === 0 };
     }
 
     case 'boar': {

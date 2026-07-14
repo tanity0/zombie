@@ -124,7 +124,7 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { decideBotInput, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
+import { decideBotInput, pickupSeekInput, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
 import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
@@ -1500,11 +1500,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         } = loopState;
         // M26-L(§6.3): botモードはヘッドレスボットの判断(decideBotInput)で入力をローカル差し替え
         // (storeへは書かない=タッチUI非干渉)。以降このtick内の inputState 参照は全てボット入力になる。
+        const botGunForRange = BOT_PERSONA ? getActiveGun(player) : undefined;
         const botDecision = BOT_PERSONA
           ? decideBotInput(BOT_PERSONA, player, enemies, gameTime, botTickRef.current++, 0,
-              BOT_PERSONA === 'rusher' ? botRusherRef.current : undefined)
+              BOT_PERSONA === 'rusher' ? botRusherRef.current : undefined,
+              botGunForRange && botGunForRange.category !== 'phill'
+                ? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY]
+                : undefined)
           : null;
-        const inputState = botDecision ? botDecision.input : touchInputState;
+        const inputState = botDecision
+          ? pickupSeekInput(BOT_PERSONA as BotPersona, botDecision.input,
+              player.x + player.width / 2, player.y + player.height / 2, pickups)
+          : touchInputState;
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする

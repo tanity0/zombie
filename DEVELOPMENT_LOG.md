@@ -12,6 +12,32 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1678 — M26 Step1: 成長ループ接続+真の主犯「弾ヒット処理の不在」を修正【2026-07-14 13:18 JST】
+- **診断(Fable直轄・新ルール初適用)**: kiterキル0の真因は「引き撃ちの距離」ではなく、**ヘッドレスに
+  「プレイヤー弾→敵のヒット処理」自体が存在しなかった**こと(useGameLoop.ts:6168のレガシー配線=ヘッドレスの
+  従来キルは全て近接だった)。一時診断テスト(15秒ごと内部ダンプ)で「30発発射・0キル」を実測して確定。
+- **実装(playtestDriver.ts中心)**:
+  1. **`applyBotProjectileHits`**: useGameLoop:6168-6560の忠実ミニ版(判定=checkProjectileEnemyCollisions/
+     crit・スキル倍率のダメージ式/despawn則/キル時のXP+通貨ドロップ)。省略=FX/SE/護衛/武器箱/グレネード誘爆等。
+  2. **弾薬ドロップ経済**(6576-6607の写し): キルごとに設定率でRE4式スマート弾種をドロップ(無いと銃専ボットが恒久弾切れ)。
+  3. **pickup回収**: `checkPlayerPickupCollisions`(純関数)で毎tick回収。
+  4. **拾い歩き `pickupSeekInput`**(playtestBot.ts・新純関数): 手が空いたtickは240px内の最寄りドロップへ歩く
+     (stationaryは除外)。実機botモード(useGameLoop)にも同配線=対称。
+  5. **自動レベルアップ**: intro(850ms)経過→メニュー→`pickUpgrade`(決定的乱数=refs.growth.rand)。
+     **保留levelUpの毎tick再チェック**(useGameLoop:7894の写し=テレグラフ中の閾値越え取りこぼし対策)も移植。
+  6. **kiter射程バンド化**: 無条件退避→「近すぎ退避/遠すぎ接近/バンド内静止」(実射程は呼び出し側が
+     `gunRangePx`引数で渡す=playtestBotのstore非依存を維持)。
+- **M16回帰テスト修正**: 逃走ボットとしてkiterを流用していたのを wanderer(固定方向直進)へ差し替え
+  (新kiterは無限退避しない=シナリオの意図「逃走可能性」に合う方を使う)。
+- **効果(フル10ラン・15分相当)**: Step0→Step1で
+  standard 26キル/Lv1 → **198-473キル/Lv7-10** / boar → **545キル/Lv11** / stationary → 477-523キル/Lv4-6 /
+  kiter 0キル → **21-46キル**(ただしLv1のまま+深度36k-40pxまで漂流=接近ルールが湧きに引かれて外へ流れる。
+  次の調整候補=アンカー/漂流上限)。hpLostは依然6-8=**ボットはほぼ被弾しない**(敵が移動ボットを捕まえられない)
+  =実プレイヤーとの残る主要乖離として記録。
+- テスト: playtestBot 14件(バンド/拾い追加)+botUpgradePolicy 6件+フルスイート green(M16修正込み)。
+- Files: `utils/playtestDriver.ts`, `utils/playtestBot.ts`, `utils/playtestBot.test.ts`, `store/playtest.test.ts`,
+  `hooks/useGameLoop.ts`, `PACING_PUZZLE.md`, `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1677 — M26-L実機確認完了(Playwrightソーク結果)【2026-07-14 12:30 JST】
 - **Playwright(headless Chromium)で `?smoke=1&bot=standard` を17分ソーク**した結果:
   - ✅ **consoleエラー/ページエラー: 0件**(17分間)。

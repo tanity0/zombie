@@ -249,19 +249,22 @@ describe('M16: pumpkin jump-cap escape scenario (回帰・PACING_PUZZLE.md §5.1
         useGameStore.getState().updateEnemies(dt);
       }
     };
-    const stepKiting = (frames: number) => {
+    // M26 Step1(v0.25.1678)でkiterは「射程バンド維持」へ変更され、無限退避しなくなった。
+    // このシナリオの意図は「逃走が可能か」(ジャンプcap回帰)なので、逃走ボットは wanderer
+    // (固定方向へ直進・戦闘無視=設計チャットの元実測と同じ一直線逃走)へ差し替える。
+    const stepFleeing = (frames: number) => {
       for (let i = 0; i < frames; i++) {
         t += dt * 1000;
         useGameStore.getState().setGameTime(t);
         const s = useGameStore.getState();
-        const decision = decideBotInput('kiter', s.player, s.enemies, t, i, 0);
+        const decision = decideBotInput('wanderer', s.player, s.enemies, t, i, 0);
         useGameStore.getState().movePlayer(decision.input, dt);
         useGameStore.getState().updateEnemies(dt);
       }
     };
 
-    stepStill(8 * 60);   // 8秒交戦(その場で向き合う=溜め→ジャンプが発動する)
-    stepKiting(60 * 60); // 60秒逃走(最寄り敵=パンプキンから常に離れる)
+    stepStill(8 * 60);    // 8秒交戦(その場で向き合う=溜め→ジャンプが発動する)
+    stepFleeing(60 * 60); // 60秒逃走(固定方向へ直進=パンプキンから離れ続ける)
 
     const player = useGameStore.getState().player;
     const dist = Math.hypot(player.x - startX, player.y - startY);

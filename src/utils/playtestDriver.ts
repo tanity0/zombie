@@ -7,6 +7,8 @@
 // コマ管理/査定/decideNextSpawn消費/画面外リサイクル+上限カリング/AIディレクター信号だけで、
 // ハンター・叫喚型ディレクター・レスキュー/紅き月/囲いイベント・関所ライブ補正・退屈上振れ等は
 // useGameLoop.ts側に残っている~500行超のレガシー経路にあり、今回のヘッドレス化の対象外):
+// M26 Step1(v0.25.1678)で「成長ループ」(ピックアップ回収→レベルアップ→自動強化選択)は接続済み。
+// サブウェポンの自動使用は未接続(発火ロジックがuseGameLoopレガシー配線のため。M26 Step2以降で検討)。
 // - puzzleActiveNow は常に true 固定(ボス/`?puzzle=0`のレガシー経路は検査対象外)。
 // - confining(囲いイベント)/ae(アクティブイベント)は常に無し。rescueAttackers=0。
 // - pressureOutdoor/boardDebtNow/upswingBonus/spawnEsc は0固定(関所ライブ補正・退屈上振れ・
@@ -15,9 +17,19 @@
 // - labTheme/indoor/snowTheme は常にfalse(研究所/屋内/雪原ステージは対象外)。
 // これらは「今の網に掛からないバグの種類」としてENGINEERING_NOTES.mdに記載する。
 
-import { useGameStore, isKatanaMode } from '../store/gameStore';
-import { getActiveGun, getGuns, fireWeapon, RANGE_BY_CATEGORY } from './weaponUtils';
-import { areaIndexForPos } from './enemyUtils';
+import {
+  useGameStore, isKatanaMode, hasSkill, AMMO_MAX,
+  skillCritMult, skillOutgoingDamageMult, skillComboMasterMult, sniperGunMult,
+  CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS,
+} from '../store/gameStore';
+import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY } from './weaponUtils';
+import { pickAmmoDropType } from './ammoDrop';
+import { isPlayerInAttackTelegraph } from './levelUpGate';
+import type { AmmoType } from '../types/game';
+import { areaIndexForPos, isBossType } from './enemyUtils';
+import { checkProjectileEnemyCollisions, checkPlayerPickupCollisions } from './collisionUtils';
+import { weaknessCritBonus } from './weaknessCrit';
+import { applyEnemyCritPenalty } from './critPenalty';
 import { phaseAt } from './difficultyDirector';
 import { createPuzzleClockState, createKomaAccumulator, createSoftenState } from './rankAssessor';
 import { ZERO_NUISANCE } from './scriptPuzzle';
@@ -28,7 +40,8 @@ import {
   computeDirCountCap, computeEnemyCap,
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
-import { decideBotInput, type BotPersona, type RusherTrackState } from './playtestBot';
+import { decideBotInput, pickupSeekInput, type BotPersona, type RusherTrackState } from './playtestBot';
+import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
   NOOP_COMBAT_EFFECTS, type CombatTunables,
@@ -51,6 +64,8 @@ export interface PlaytestRefs {
   pity: PityUpkeepRefs;
   koma: KomaMaintenanceRefs;
   director: DirectorSignalRefs;
+  // M26 Step1(§6.2): 成長ループ用。レベルアップ自動選択の決定的乱数(シード固定=同ラン再現可能)。
+  growth: { rand: () => number };
 }
 
 // useGameLoop.ts の useRef 初期値と同じ形(M9-A extraction時点のスナップショット)。
@@ -80,7 +95,63 @@ export const createPlaytestRefs = (): PlaytestRefs => {
       hunterRef: { current: { phase: 'idle' } }, // ヘッドレスではハンター未実装=常にidle(dangerBiasへの寄与0)
       gatePressureRef: { current: { state: { pressure: 0 } } },
     },
+    growth: { rand: mulberry32(1) },
   };
+};
+
+// M26 Step1(§6.2): プレイヤー弾→敵のヒット処理(ヘッドレス版)。useGameLoop.ts:6168-6560 の忠実ミニ版。
+// 判定(checkProjectileEnemyCollisions)とダメージ式(crit/スキル倍率)・despawn則・キル時のXP/通貨ドロップは
+// 実装と同じ。**Step0まではこれが無く「銃弾が敵に当たらない」=ヘッドレスのキルは全て近接だった**(kiterキル0の真因)。
+// 意図的な省略(FX/SE/護衛セリフ/エリート武器箱/グレネード誘爆/反射弾プラント即死/トラップ根crit=ボットは
+// トラップ未使用のため発生しない)。
+const applyBotProjectileHits = (gameTime: number): void => {
+  const s0 = useGameStore.getState();
+  const collisions = checkProjectileEnemyCollisions(s0.projectiles, s0.enemies);
+  for (const { projectileId, enemyId, damage, headshot } of collisions) {
+    const st = useGameStore.getState();
+    const enemy = st.enemies.find(e => e.id === enemyId);
+    const projectile = st.projectiles.find(p => p.id === projectileId);
+    if (!enemy || !projectile) continue; // 同フレーム内の先行ヒットで死亡/除去済み
+    const isBoss = isBossType(enemy.type);
+    const weakCrit = Math.random() < applyEnemyCritPenalty(weaknessCritBonus(enemy.type, 'gun'), enemy);
+    const hitCrit = !!projectile.crit || weakCrit || headshot === true;
+    const player = st.player;
+    const critMult = hitCrit ? skillCritMult(player, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) : 1;
+    const comboMasterMult = skillComboMasterMult(player, gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil);
+    const dmg = damage * critMult * skillOutgoingDamageMult(player) * sniperGunMult(player, enemy) * comboMasterMult;
+    const killed = st.damageEnemy(enemyId, dmg, false, hitCrit);
+    // despawn則(useGameLoop.ts:6507-6523と同じ): pierce=N発貫通 / passthrough=キルで停止 / それ以外=1発で消滅。
+    const removeIt = projectile.pierce !== undefined
+      ? projectile.hitEnemies.length > projectile.pierce
+      : projectile.passthrough ? killed : true;
+    if (removeIt) useGameStore.getState().removeProjectile(projectileId);
+    if (killed) {
+      const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
+      useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
+      useGameStore.getState().dropEnemyXp(enemy, ex, ey, 'pickup-xp');
+      // 弾薬ドロップ(useGameLoop.ts:6576-6607と同じ経済): キルごとに設定ドロップ率でロールし、
+      // RE4式スマート弾種(残弾割合が最小の弾種)で落とす。これが無いと銃専ボットが恒久的に弾切れになる。
+      const stKill = useGameStore.getState();
+      const kp = stKill.player;
+      const gunKillDropRate = Math.max(0, Math.min(1,
+        stKill.meleeAmmoDropPercent / 100 + (kp.ammoDropBonus ?? 0) + (kp.equipBonus?.ammoDropBonus ?? 0)));
+      if (!hasSkill(kp, 'knife-master') && Math.random() < gunKillDropRate) {
+        const equippedAmmo = getActiveGun(kp)?.ammoType;
+        const owned = stKill.player.weapons.filter(w => !w.isMelee).map(w => w.ammoType).filter((tt): tt is AmmoType => !!tt);
+        const smartType = pickAmmoDropType(
+          owned.map(tt => ({ type: tt, reserve: ammoPoolFor(kp, tt), max: AMMO_MAX[tt] })), equippedAmmo);
+        const dropType = smartType ?? equippedAmmo ?? owned[0];
+        if (dropType && dropType !== 'phill') {
+          useGameStore.getState().addPickup({
+            id: `pickup-ammo-${enemy.id}`,
+            x: ex - 8 + 16, y: ey - 8,
+            type: `ammo-${dropType}` as 'ammo-handgun' | 'ammo-shotgun' | 'ammo-rifle',
+            value: 0, worldDrop: true,
+          });
+        }
+      }
+    }
+  }
 };
 
 // 所持銃を巡回して次の武器へ切り替える(ボットの「武器切替」入力)。銃が1丁以下なら何もしない。
@@ -125,14 +196,23 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   store.setGameTime(t);
 
   const { player, enemies } = useGameStore.getState();
-  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState);
-  useGameStore.getState().movePlayer(decision.input, dt);
+  // kiterの射程バンド用に現在の銃の実射程を渡す(M26 Step1)。銃なし/phillは既定値にフォールバック。
+  const botGun = getActiveGun(player);
+  const botGunRange = botGun && botGun.category !== 'phill'
+    ? RANGE_BY_CATEGORY[botGun.category as keyof typeof RANGE_BY_CATEGORY]
+    : undefined;
+  const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange);
+  // 手が空いているtickは近くのドロップ(XP/弾薬)を拾いに歩く(M26 Step1・stationaryは除外)。
+  const moveInput = pickupSeekInput(persona, decision.input,
+    player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().pickups);
+  useGameStore.getState().movePlayer(moveInput, dt);
   autoFireGun();
   if (decision.wantsMelee) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();
 
   useGameStore.getState().updateEnemies(dt);
   useGameStore.getState().updateProjectiles(dt);
+  applyBotProjectileHits(t); // M26 Step1: プレイヤー弾→敵ヒット(これが無いと銃キルが一切発生しない)
   if (useGameStore.getState().suppressionActive) useGameStore.getState().updateSuppression(dt);
 
   // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)。useGameLoop.tsの実フレーム
@@ -145,6 +225,36 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   applyEnemyProjectileHits(combatNow, combatPlayer, false, 0, t, NOOP_COMBAT_EFFECTS, COMBAT_TUNABLES);
   applyMineDamage(NOOP_COMBAT_EFFECTS);
   applyContactDamage(t, false, 0, NOOP_COMBAT_EFFECTS);
+
+  // M26 Step1(§6.2): 成長ループ接続。実プレイと同じ純関数(checkPlayerPickupCollisions)でピックアップを
+  // 回収し(useGameLoopの回収配線のヘッドレス版)、レベルアップ演出(levelUpIntroUntil=Date.now基準・
+  // フェイクタイマーでgameTimeに同期済み)の経過後にメニューを開き、選択肢を自動選択(決定的乱数)する。
+  // サブウェポンの自動使用は未接続(useGameLoop側レガシー配線=既知の簡略化。ヘッダーの注記参照)。
+  {
+    const growth = useGameStore.getState();
+    const pickupHits = checkPlayerPickupCollisions(growth.player, growth.pickups);
+    pickupHits.forEach(id => useGameStore.getState().collectPickup(id));
+    const introUntil = useGameStore.getState().levelUpIntroUntil;
+    if (introUntil > 0 && Date.now() >= introUntil) {
+      // useGameLoop.ts の intro→メニュー遷移(7878-7880)と同じ。
+      useGameStore.setState({ showUpgradeMenu: true, isPaused: true, levelUpIntroUntil: 0 });
+    }
+    const menu = useGameStore.getState();
+    if (menu.showUpgradeMenu && menu.upgradeOptions.length > 0) {
+      menu.selectUpgrade(pickUpgrade(menu.upgradeOptions, refs.growth.rand));
+    }
+    // 保留レベルアップの再チェック(useGameLoop.ts:7894-7901の写し): 赤ライン当たり判定内でXPが
+    // 閾値を跨いだ場合、イベント駆動のチェックだけでは取りこぼす=毎tick再チェックして発動させる。
+    // (これが無いとテレグラフ中に閾値越え→以後XPを得てもlevelUpが呼ばれずLv1のまま、が起きる)
+    const pend = useGameStore.getState();
+    if (
+      !pend.rhythm.active && !pend.showUpgradeMenu && pend.levelUpIntroUntil === 0 &&
+      pend.player.experience >= pend.player.experienceToNextLevel &&
+      !isPlayerInAttackTelegraph(pend.player, pend.enemies, PUMPKIN_EXPLOSION_RADIUS)
+    ) {
+      pend.levelUp();
+    }
+  }
 
   const s = useGameStore.getState();
   const playerAreaIdx = areaIndexForPos(s.player.x, s.player.y);

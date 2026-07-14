@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decideBotInput, wanderDirForSeed, BOT_PERSONAS } from './playtestBot';
+import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 
@@ -93,5 +93,36 @@ describe('decideBotInput', () => {
     expect(d1.wantsWeaponSwitch).toBe(false);
     const d1200 = decideBotInput('standard', player, [], 0, 1200, 0);
     expect(d1200.wantsWeaponSwitch).toBe(true);
+  });
+
+  it('kiter holds in the gun-range band and approaches when the target is out of range (M26 Step1)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    // range=200 指定: バンド=[110, 180]。中(150)=静止 / 外(400)=接近 / 近(50)=退避。
+    const mid = spawnEnemyAt('zombie', pcx + 150 - 15, pcy - 15, 0); // 中心距離≈150
+    expect(decideBotInput('kiter', player, [mid], 0, 0, 0, undefined, 200).input)
+      .toEqual({ up: false, down: false, left: false, right: false });
+    const far = spawnEnemyAt('zombie', pcx + 400 - 15, pcy - 15, 0);
+    expect(decideBotInput('kiter', player, [far], 0, 0, 0, undefined, 200).input.right).toBe(true);
+    const near = spawnEnemyAt('zombie', pcx + 50 - 15, pcy - 15, 0);
+    expect(decideBotInput('kiter', player, [near], 0, 0, 0, undefined, 200).input.left).toBe(true);
+  });
+});
+
+describe('pickupSeekInput (M26 Step1: 手空き時の拾い)', () => {
+  const IDLE = { up: false, down: false, left: false, right: false };
+  it('入力が空いていて近くにピックアップがあれば、そこへ向かう', () => {
+    const input = pickupSeekInput('kiter', IDLE, 100, 100, [{ x: 100 + 92, y: 100 - 8 }]); // 中心=+100,右
+    expect(input.right).toBe(true);
+  });
+  it('本来の入力がある時は上書きしない', () => {
+    const moving = { up: true, down: false, left: false, right: false };
+    expect(pickupSeekInput('kiter', moving, 100, 100, [{ x: 192, y: 92 }])).toBe(moving);
+  });
+  it('stationary(棒立ちが仕様)は拾いに行かない', () => {
+    expect(pickupSeekInput('stationary', IDLE, 100, 100, [{ x: 192, y: 92 }])).toBe(IDLE);
+  });
+  it('maxDistより遠いピックアップは無視する', () => {
+    expect(pickupSeekInput('kiter', IDLE, 0, 0, [{ x: 5000, y: 5000 }])).toEqual(IDLE);
   });
 });
