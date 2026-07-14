@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1720 — 年表にボス討伐アイコン(天使/城ボス/裏ボス)【2026-07-15 01:48 JST】
+- **社長指示**「天使と城ボス、裏ボスは年表のテキスト横に絵文字っぽくフォントサイズの小さい絵を表示」。
+- `TitleScreen.ChronicleTimeline`: kind='boss'の行でkeyのdetail(敵型)から対象8体
+  (miguel/jibril/rafi/giantbat/mimir/jormungand/skadi/thor)のアイコンを引き、テキスト前に
+  高さ16px(maxW24・contain・ベースライン揃え)のインライン<img>を表示。giantbatは`atlas-px2/giantbat.png`
+  (単体ドット絵)を使用。ハンター/死神など対象外の行はアイコン無し(社長指名の3グループのみ)。
+- 負荷: 0/10(ローディング画面のDOMのみ)。検証: typecheck/eslintクリーン。
+  実機確認: 年表の該当行に絵が出るか・行の高さが崩れないか。
+- Files: `src/components/TitleScreen.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1719 — 二人組の命名(ミラ/グレン)+台詞バストの被り修正【2026-07-15 01:41 JST】
 - **社長指示**「男女の会話、絵が文字に被ってるのでNPC同様にずらして。名前は女がミラ 男がグレン」。
 - `EVENT_QUEST_LINES`/`EVENT_QUEST_LINES_SUB` の話者名を 女→**ミラ**/男→**グレン** へ。

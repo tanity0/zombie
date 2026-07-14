@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1720',
+    items: [
+      '歴史年表: 天使・ストーリーボス(城)・裏ボスの討伐行に、テキスト横へ小さな絵(絵文字サイズ)を表示するようになりました。',
+    ],
+  },
+  {
     version: '0.25.1719',
     items: [
       '二人組に名前が付きました: 女=ミラ/男=グレン(台詞の話者名に表示)。',

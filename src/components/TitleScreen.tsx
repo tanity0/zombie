@@ -3,7 +3,8 @@ import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
-import { getSelectedStageId, getWallMeta, loadChronicle } from '../data/progress';
+import { getSelectedStageId, getWallMeta, loadChronicle, type ChronicleEntry } from '../data/progress';
+import { spritePath } from '../utils/spriteLoader';
 import { deepestReachedBadge } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
 
@@ -51,6 +52,20 @@ const PANEL_STYLE: React.CSSProperties = {
 // して過去へ遡れる。スクロールバーは出さない。上下端はマスクでフェード=「流れていく」見た目。
 // スタイル(社長指示v0.25.1630): 見出し無し・中央揃え・フォントは更新情報くらい(12.5px)・全体エルデンリング風
 // (金色の明朝体・淡い金の区切り線・強い影で背景の上でも読める)。
+// 年表アイコン(社長指示v0.25.1720): 天使(ミゲル/ジブリル/ラフィ)・城ボス(giantbat)・裏ボス4体の
+// 討伐行に、テキスト横へ絵文字サイズの絵を添える。entryのkey=`stageId::kind::detail`のdetail(敵型)で引く。
+// ハンター/死神など対象外の行はアイコン無し(社長指名の3グループのみ)。
+const CHRONICLE_BOSS_ICON: Record<string, string> = {
+  miguel: 'miguel', jibril: 'jibril', rafi: 'rafi',
+  giantbat: 'atlas-px2/giantbat',
+  mimir: 'mimir', jormungand: 'jormungand', skadi: 'skadi', thor: 'thor',
+};
+const chronicleIconSrc = (e: ChronicleEntry): string | null => {
+  if (e.kind !== 'boss') return null;
+  const base = CHRONICLE_BOSS_ICON[e.key.split('::')[2] ?? ''];
+  return base ? spritePath(base) : null;
+};
+
 const ChronicleTimeline: React.FC = () => {
   const entries = useMemo(() => loadChronicle().slice().sort((a, b) => a.at - b.at), []);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -133,6 +148,22 @@ const ChronicleTimeline: React.FC = () => {
                   textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
                 }}
               >
+                {chronicleIconSrc(e) && (
+                  <img
+                    src={chronicleIconSrc(e)!}
+                    alt=""
+                    draggable={false}
+                    style={{
+                      display: 'inline-block',
+                      height: 16,
+                      width: 'auto',
+                      maxWidth: 24,
+                      objectFit: 'contain',
+                      verticalAlign: '-3px',
+                      marginRight: 6,
+                    }}
+                  />
+                )}
                 {e.label}
               </li>
             </React.Fragment>
