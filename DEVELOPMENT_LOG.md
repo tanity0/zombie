@@ -12,6 +12,14 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1687 — 分業ルール更新: 調査の延長の実装はFable自己判断可(必ずSonnetと天秤)【2026-07-14 17:16 JST】
+- **社長指示**「調査時にそのまま実装してしまう方がトークン量も安そうな事案であれば自己判断してください。
+  その代わり、かならずsonnetと天秤にかけて判断してからにすること」。
+- CLAUDE.md「調査の振り分け」に追記: 調査でコンテキストを積んだ流れの実装は、
+  「仕様書化+Sonnetの再調査コスト vs 直接実装コスト」を必ず天秤にかけた上でFableが自己判断で実装可。
+  天秤の結論は報告に1行残す。仕様確定済みで調査コンテキスト不要な大きめバッチは従来どおりSonnet。
+- Files: `CLAUDE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(記録のみ)。
+
 ## v0.25.1686 — 二人組クエスト本実装(強制=ネームド討伐/サブ=討伐ノルマ/解放=城ボス+強制フラグ)【2026-07-14 17:00 JST】
 - **社長裁定(全8件+追加指示)**: #1 ネームド=パンプキンか犬 / #2 レア=青個体(あとは紫・赤の記載どおり) /
   #3 完了は1度きり(受注のみなら次run再受注可) / #4 城ボス出現ゲートは無し。**次ステージ解放=
