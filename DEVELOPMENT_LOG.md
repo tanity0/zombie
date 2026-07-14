@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.1693 — M29「フレアガン」/M30「ジャンクウェポン」仕様書化(Sonnetサブエージェントへ追加発注)【2026-07-14 18:56 JST】
+- **M27/M28完了確認**: Sonnetサブエージェントがセンサー地雷(v0.25.1691)・援護射撃(v0.25.1692)を
+  実装・コミット・push完了(テスト91/93件パス・ツリークリーン・詳細は各バージョンのログ参照)。
+- **M29 フレアガン(§6.6)**: 近接時に進行方向へ発射・CD=Lv1:5秒/2:4秒/3:3秒・ダメージ無し・
+  ハンドガン距離に着弾→**3秒間、召喚と同じ範囲(ALCHEMY_AGGRO_RANGE=380)の敵を引き付ける**
+  (既存のresolveEnemyTargetに疑似ターゲットとして乗せる=召喚と完全に同じ効き方・ボスも既存規則のまま)。
+- **M30 ジャンクウェポン(§6.7)**: 近接と同時にスイング方向へ散弾5発。**スクラップが弾**(1消費=3ダメージ・
+  1発あたりLv1:1/Lv2:2/Lv3:3スクラップ=フル消費5/10/15)。**社長裁定: 1発分に足りなくても1スクラップ以上
+  あればフルセット5発**(消費=min(フルコスト,所持全部)・ダメージLv固定・0のみ不発)。ショットガン弾薬は消費しない。
+- どちらもスロー禁止・強glow禁止・受け入れ条件付き。同じSonnetサブエージェントへ追加発注(M29=v0.25.1694、
+  M30=v0.25.1695の予定)。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(仕様のみ・コード変更なし)。
+
+
 This file is the handoff log for Codex, Claude Code, and other agents working
 on the zombie game. Append a new entry after each meaningful change.
 エントリ見出しの末尾にpush時刻を【YYYY-MM-DD HH:MM JST】で打刻すること
