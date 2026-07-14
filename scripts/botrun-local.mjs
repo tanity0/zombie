@@ -5,9 +5,11 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn, execSync } from 'node:child_process';
 
-const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+// Windows対応: URL.pathname は「\C:\...」になり ENOENT で即死する(テストチャット報告v0.25.1707)。
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cfg = JSON.parse(fs.readFileSync(path.join(root, 'TEST_HANDOFF/request.config.json'), 'utf8'));
 const outDir = path.join(root, 'TEST_HANDOFF/results');
 fs.mkdirSync(outDir, { recursive: true });
@@ -66,17 +68,15 @@ for (const c of cfg.configs) {
   const titleTxt = await page.evaluate(() => document.body.innerText).catch(() => '');
   if (titleTxt.includes('はじめる')) {
     smokeFallback = true;
-    console.log(`[warn] ${c.name}: smokeスキップ不発 → タイトルからUIクリックで開始を試行`);
-    const clickSeq = ['はじめる', '狂い咲きの森', '出撃準備', 'START'];
-    for (const label of clickSeq) {
-      try {
-        await page.getByText(label, { exact: false }).first().click({ timeout: 8000 });
-        await page.waitForTimeout(1800);
-        console.log(`[fallback] clicked: ${label}`);
-      } catch {
-        console.log(`[fallback] click失敗: ${label}(この時点の画面テキストを記録)`);
-        break;
-      }
+    // テストチャット実測(v0.25.1707): 「はじめる」1クリックで足りる(その後は?smoke=1が自動出撃させる。
+    // ステージ選択以降のクリック列は不要=空振りする)。ロードが遅い環境ではタイトル表示まで時間がかかる
+    // だけなので、クリック前に追加で待つ。
+    console.log(`[warn] ${c.name}: タイトル検出 → 「はじめる」をクリック(以降は?smoke=1が自動出撃)`);
+    try {
+      await page.getByText('はじめる', { exact: false }).first().click({ timeout: 15000 });
+      console.log('[fallback] clicked: はじめる');
+    } catch {
+      console.log('[fallback] click失敗: はじめる(この時点の画面テキストを記録)');
     }
   }
   let report = null;

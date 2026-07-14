@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1711',
+    items: [
+      '開発: テスト実走スクリプトのWindows対応(パス処理修正)+起動フォールバック簡素化(テストチャット申し送り反映)。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1710',
     items: [
       '開発: 配布方針を決定(ネイティブアプリ化=アセット同梱を想定)。初回ローディング改善案は見送り。記録のみでゲーム変更なし。',
