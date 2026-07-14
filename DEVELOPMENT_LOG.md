@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.1723 — M37実装: ボットAI改善=人間反応のカウンター(§6.14・Sonnet実装)【2026-07-15 02:19 JST】
+- 仕様書(§6.14)どおり、純関数 `decideCounterReaction`(`src/utils/playtestBot.ts`)を追加。
+  カウンター可能な脅威を検知→ペルソナ別の**反応遅延**後に**試行確率**で1回抽選→`wantsMelee=true`。
+  検知対象はv1スコープの3種のみ: 敵`aiPhase==='jump'`(距離<200px・着地点(aiTargetX/Y)も自分の近く)/
+  `aiPhase==='charge'`(距離<180px・進行方向(vx,vy)が自分へ向いている=cos類似度>=0.3)/
+  敵弾hostile projectile(距離<160px・接近中・到達予測<400ms)。裏ボス/天使の固有攻撃はv1対象外(仕様どおり)。
+- 反応モデル: `CounterThreatState`(threatId/検知時刻/抽選結果/発火済みフラグ)を呼び出し側のref/state
+  で保持(M34のRusherTrackStateと同じ流儀)。遅延中に脅威が消えたら撃たない/既存のカウンターCD
+  (counterCooldownEnd)中は撃たない/同じ脅威には1回しか発火しない(連射防止)。乱数は引数注入
+  (既定Math.random)でテスト決定化。`COUNTER_REACTION_PROFILES`(定数1箇所)= standard/wanderer=250ms・65%・
+  rusher=200ms・75%・kiter=300ms・50%(仕様どおりの叩き台値)。stationaryは未掲載=無効(棒立ちが仕様)。
+- 配線: `playtestDriver.ts`(`PlaytestRefs.counterThreat`をラン単位で保持)と`useGameLoop.ts`の
+  botブロック(`botCounterThreatRef`・新ランでリセット)の両方へ、M34(adjustBotForMines)と同じ
+  後段合成(既存wantsMeleeとOR)で接続。移動入力には触れず、`?bot`無しの通常プレイはBOT_PERSONA=null
+  でブロックごと素通り=挙動不変・負荷0。
+- ★未決(コミットせず・ここで報告のみ): `boar`ペルソナはM37仕様書(§6.14)にプロファイル記載が無い
+  (standard/wanderer/rusher/kiterのみ・stationary/flee系=明示的に無効)。仕様にない値を推測で足さない
+  方針のため、boarはこのバッチでは対象外(無効=既存挙動のまま)。段階付けが必要なら社長裁定の上で
+  PACING_PUZZLE.md §6.14へ追記されたい。
+- 検証: `npm run typecheck`(0エラー)+ESLint(触ったファイル・0件)+
+  `npx vitest related --run src/utils/playtestBot.ts src/utils/playtestDriver.ts src/hooks/useGameLoop.ts`
+  (playtestBot.test.tsに新規12件追加=jump/charge/敵弾検知・遅延前不発火・脅威消滅で不発火・乱数決定的・
+  CD中不発火・逆方向は非検知・連射防止・stationary常時無効、を含め全32件pass。playtest.test.ts短縮版も
+  green)。`npm run playtest`(SIM_FUZZフル・10ラン×15分相当)green(7 tests pass, 361s)。
+  hpLost実測はstandard=6〜8/kiter=6/boar=6〜8/stationary=6〜10/wanderer=7〜10(既存ラン同様に低水準。
+  ベースライン比較は未実施=社長指示外につき省略)。
+- 負荷スコア: 1/10。ボット(`?bot`)時のみ動く判定コードで、敵/弾のリストを毎tick1回線形走査するだけ
+  (既存のnearestEnemy等と同オーダー)。通常プレイはブロックごと未実行=コスト0。
+- Files: `src/utils/playtestBot.ts`, `src/utils/playtestBot.test.ts`, `src/utils/playtestDriver.ts`,
+  `src/hooks/useGameLoop.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`,
+  `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1722 — M37仕様書化: ボットの人間反応カウンター(Sonnetへ発注)【2026-07-15 02:01 JST】
 - **社長指示**「テストAIについて、ジャンプ攻撃やダッシュ、弾など、ある程度人間の反応範囲でカウンターも
   取る様にしたい。AIの強さ段階があるならそこは調整して」。

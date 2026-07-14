@@ -46,7 +46,10 @@ import {
   computeDirCountCap, computeEnemyCap,
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
-import { decideBotInput, pickupSeekInput, adjustBotForMines, type BotPersona, type RusherTrackState } from './playtestBot';
+import {
+  decideBotInput, pickupSeekInput, adjustBotForMines, decideCounterReaction, createCounterThreatState,
+  type BotPersona, type RusherTrackState, type CounterThreatState,
+} from './playtestBot';
 import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
@@ -95,6 +98,8 @@ export interface PlaytestRefs {
   };
   // M26 Step3(§6.2): 天使(ゲート2ボス)コントローラの状態(angelBossTick.ts=実プレイと共用)。
   angel: AngelBossState;
+  // M37(§6.14): 人間反応のカウンター検知状態(ラン単位で1つ保持)。
+  counterThreat: CounterThreatState;
 }
 
 // useGameLoop.ts の useRef 初期値と同じ形(M9-A extraction時点のスナップショット)。
@@ -136,6 +141,7 @@ export const createPlaytestRefs = (): PlaytestRefs => {
       hunterWasAlive: false,
     },
     angel: createAngelBossState(),
+    counterThreat: createCounterThreatState(),
   };
 };
 
@@ -361,9 +367,16 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     player.x + player.width / 2, player.y + player.height / 2,
     useGameStore.getState().breakableProps.filter(p => p.type === 'mine'),
   );
+  // M37(§6.14): 人間反応のカウンター(ジャンプ/突進/敵弾を反応遅延+試行確率でカウンター)。
+  // 移動入力は変えない=既存のwantsMelee判断(mine叩き込み)とOR合成するだけ。
+  const wantsCounterReaction = decideCounterReaction(
+    persona, refs.counterThreat,
+    player.x + player.width / 2, player.y + player.height / 2,
+    enemies, useGameStore.getState().projectiles, t, player.counterCooldownEnd,
+  );
   useGameStore.getState().movePlayer(mineAdj.input, dt);
   autoFireGun();
-  if (mineAdj.wantsMelee) useGameStore.getState().triggerCounter();
+  if (mineAdj.wantsMelee || wantsCounterReaction) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();
 
   useGameStore.getState().updateEnemies(dt);

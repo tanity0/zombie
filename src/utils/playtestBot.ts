@@ -3,7 +3,7 @@
 // ペルソナ5種(叩き台)。純関数(store/Reactに依存しない)= ユニットテスト可能。
 // 呼び出し側(headless driver)がこの決定を実際の store アクション(movePlayer/triggerCounter/
 // setActiveWeapon)へ反映する。
-import type { Enemy, InputState, Player } from '../types/game';
+import type { Enemy, InputState, Player, Projectile } from '../types/game';
 
 // 'rusher' はPACING_PUZZLE.md §5.20(M19・深層ラッシュ試験専用)のペルソナ。既存の通常スモーク
 // (BOT_PERSONAS の巡回)には含めず、専用テストからのみ persona 名で直接呼び出す。
@@ -172,6 +172,147 @@ export const adjustBotForMines = (
   const cy = dy + ly;
   const cl = Math.max(0.001, Math.hypot(cx, cy));
   return { input: dirInput(cx / cl, cy / cl), wantsMelee };
+};
+
+// M37(§6.14): 人間反応のカウンター。カウンター可能な脅威(ジャンプ攻撃/突進/敵弾)を検知したら
+// ペルソナ別の反応遅延を置いてから wantsMelee=true を出す(=人間が見て反応する時間の再現)。
+// 呼び出し側(playtestDriver/useGameLoopのbotブロック)がこれを既存の wantsMelee とOR合成する
+// (移動入力には触らない=このバッチの変更はカウンターの有無のみ)。裏ボス/天使の固有攻撃
+// (bossState機械)はv1対象外(PACING_PUZZLE.md §6.14)。
+const JUMP_THREAT_DIST = 200;   // 敵aiPhase==='jump'をカウンター対象とみなす距離(px)
+const CHARGE_THREAT_DIST = 180; // 敵aiPhase==='charge'を対象とみなす距離(px)
+// 突進の進行方向(vx,vy)とプレイヤーへ向かう方向のcos類似度がこれ以上なら「自分へ向いている」
+// とみなす(叩き台・実機/ソークで調整)。突進は狙い点(aiTargetX/Y)がほぼプレイヤー位置固定+弱
+// ホーミングのため、実際に向かってくる突進は概ね1に近い値になる。
+const CHARGE_HEADING_MIN_DOT = 0.3;
+const PROJECTILE_THREAT_DIST = 160;  // 敵弾をカウンター対象とみなす距離(px)
+const PROJECTILE_THREAT_ETA_MS = 400; // 到達予測がこれ未満なら対象(接近中のみ。離れていく弾は無視)
+
+export type CounterThreatKind = 'jump' | 'charge' | 'projectile';
+
+export interface CounterReactionProfile {
+  reactionMs: number; // 検知から発火までの反応遅延(ms)
+  chance: number;      // 検知1回あたりの試行確率(0..1・人間の見逃し)
+}
+
+// ペルソナ別プロファイル(叩き台・PACING_PUZZLE.md §6.14の値)。未掲載のペルソナは無効
+// (stationary=棒立ちが仕様。'boar'はM37仕様書に記載が無いため対象外=挙動不変)。
+export const COUNTER_REACTION_PROFILES: Partial<Record<BotPersona, CounterReactionProfile>> = {
+  standard: { reactionMs: 250, chance: 0.65 },
+  wanderer: { reactionMs: 250, chance: 0.65 },
+  rusher: { reactionMs: 200, chance: 0.75 },
+  kiter: { reactionMs: 300, chance: 0.50 },
+};
+
+// 呼び出し側(ヘッドレスdriver/useGameLoopのbotブロック)がラン単位で1つ作り、毎tick同じ参照を
+// 渡し続ける外部状態(RusherTrackStateと同じ流儀)。純関数側はこれを読み書きするだけで、
+// store/Reactには一切触れない。
+export interface CounterThreatState {
+  threatId: string | null;        // 追跡中の脅威(敵id or 弾id)。null=追跡中の脅威なし
+  kind: CounterThreatKind | null;
+  detectedAt: number;             // 検知した gameTime(ms)
+  willAttempt: boolean;           // 検知時に1回だけ抽選した「撃つか」の結果
+  fired: boolean;                 // この脅威に対し既に wantsMelee=true を返したか(連打防止)
+}
+
+export const createCounterThreatState = (): CounterThreatState => ({
+  threatId: null, kind: null, detectedAt: 0, willAttempt: false, fired: false,
+});
+
+const jumpIsThreat = (pcx: number, pcy: number, e: Enemy): boolean => {
+  if (distTo(pcx, pcy, e) >= JUMP_THREAT_DIST) return false;
+  const tx = e.aiTargetX ?? e.x, ty = e.aiTargetY ?? e.y;
+  return Math.hypot(tx - pcx, ty - pcy) < JUMP_THREAT_DIST; // 着地点も自分の近く=自分へ向いている
+};
+
+const chargeIsThreat = (pcx: number, pcy: number, e: Enemy): boolean => {
+  if (distTo(pcx, pcy, e) >= CHARGE_THREAT_DIST) return false;
+  const hvx = e.vx ?? 0, hvy = e.vy ?? 0;
+  const hl = Math.hypot(hvx, hvy);
+  if (hl < 0.001) return false; // 進行方向が定まらない(発生直後等)は判定しない
+  const tpx = pcx - e.x, tpy = pcy - e.y; // distTo等と同じ基準(e.x/e.y=raw座標)で揃える
+  const tl = Math.hypot(tpx, tpy) || 1;
+  const dot = (hvx / hl) * (tpx / tl) + (hvy / hl) * (tpy / tl);
+  return dot >= CHARGE_HEADING_MIN_DOT;
+};
+
+const projectileIsThreat = (pcx: number, pcy: number, p: Projectile): boolean => {
+  if (!p.hostile) return false;
+  const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
+  const dx = pcx - cx, dy = pcy - cy;
+  const d = Math.hypot(dx, dy);
+  if (d >= PROJECTILE_THREAT_DIST || d < 0.001) return false;
+  const closing = p.direction.x * p.speed * (dx / d) + p.direction.y * p.speed * (dy / d);
+  if (closing <= 0) return false; // 離れていく(既に自分を過ぎた)弾は対象外
+  return (d / closing) * 1000 < PROJECTILE_THREAT_ETA_MS;
+};
+
+const findCounterThreat = (
+  pcx: number, pcy: number, enemies: readonly Enemy[], projectiles: readonly Projectile[],
+): { id: string; kind: CounterThreatKind } | null => {
+  for (const e of enemies) {
+    if (e.aiPhase === 'jump' && jumpIsThreat(pcx, pcy, e)) return { id: e.id, kind: 'jump' };
+  }
+  for (const e of enemies) {
+    if (e.aiPhase === 'charge' && chargeIsThreat(pcx, pcy, e)) return { id: e.id, kind: 'charge' };
+  }
+  for (const p of projectiles) {
+    if (projectileIsThreat(pcx, pcy, p)) return { id: p.id, kind: 'projectile' };
+  }
+  return null;
+};
+
+const threatStillValid = (
+  threatId: string, kind: CounterThreatKind, pcx: number, pcy: number,
+  enemies: readonly Enemy[], projectiles: readonly Projectile[],
+): boolean => {
+  if (kind === 'projectile') {
+    const p = projectiles.find(pp => pp.id === threatId);
+    return !!p && projectileIsThreat(pcx, pcy, p);
+  }
+  const e = enemies.find(ee => ee.id === threatId);
+  if (!e || e.aiPhase !== kind) return false;
+  return kind === 'jump' ? jumpIsThreat(pcx, pcy, e) : chargeIsThreat(pcx, pcy, e);
+};
+
+// 脅威検知→反応遅延→試行確率の抽選→カウンター発火、を1tick分進める。state は呼び出し側で
+// ラン単位に1つ保持し、毎tick同じ参照を渡すこと(mutateする)。既存のカウンターCD
+// (counterCooldownEnd)を尊重=CD中は発火しない(遅延経過済みでもCD明けまで待つ)。
+export const decideCounterReaction = (
+  persona: BotPersona,
+  state: CounterThreatState,
+  pcx: number,
+  pcy: number,
+  enemies: readonly Enemy[],
+  projectiles: readonly Projectile[],
+  gameTime: number,
+  counterCooldownEnd: number,
+  rand: () => number = Math.random,
+): boolean => {
+  const profile = COUNTER_REACTION_PROFILES[persona];
+  if (!profile) return false;
+
+  // 追跡中の脅威が消えた/条件を外れたら解除(遅延中に消えたら撃たない=ここで打ち切られる)。
+  if (state.threatId !== null && !threatStillValid(state.threatId, state.kind as CounterThreatKind, pcx, pcy, enemies, projectiles)) {
+    state.threatId = null; state.kind = null; state.fired = false;
+  }
+
+  // 新規検知(追跡中の脅威が無い時のみ=1脅威ずつ処理。検知ごとに1回だけ抽選する)。
+  if (state.threatId === null) {
+    const found = findCounterThreat(pcx, pcy, enemies, projectiles);
+    if (found) {
+      state.threatId = found.id; state.kind = found.kind;
+      state.detectedAt = gameTime;
+      state.willAttempt = rand() < profile.chance;
+      state.fired = false;
+    }
+  }
+
+  if (state.threatId === null || !state.willAttempt || state.fired) return false;
+  if (gameTime - state.detectedAt < profile.reactionMs) return false; // 反応遅延中
+  if (gameTime < counterCooldownEnd) return false; // 既存CD中は撃たない(連打防止)
+  state.fired = true;
+  return true;
 };
 
 export const decideBotInput = (

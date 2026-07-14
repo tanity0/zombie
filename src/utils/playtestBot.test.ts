@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
-  adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST } from './playtestBot';
+  adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
+  decideCounterReaction, createCounterThreatState } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
+import type { Projectile } from '../types/game';
 
 const freshPlayer = () => {
   useGameStore.getState().resetGame('warrior');
@@ -183,5 +185,112 @@ describe('adjustBotForMines (M34: 緑卵を避ける/叩く)', () => {
   it('wantsMeleeが元からtrueなら維持される(敵への近接判断を消さない)', () => {
     const r = adjustBotForMines(RIGHT, true, 0, 0, [{ footX: 200, footY: 200 }]);
     expect(r.wantsMelee).toBe(true);
+  });
+});
+
+// M37(§6.14): 人間反応のカウンター(ジャンプ攻撃/突進/敵弾を反応遅延+試行確率でカウンター)。
+const buildProjectile = (over: Partial<Projectile>): Projectile => ({
+  id: `t-proj-${Math.random().toString(36).slice(2)}`,
+  x: 0, y: 0, width: 8, height: 8, speed: 300, damage: 10,
+  direction: { x: 1, y: 0 }, weaponType: 'enemy_bolt', duration: 1400,
+  createdAt: Date.now(), passthrough: false, hitEnemies: [],
+  hostile: false, reflected: false, ...over,
+});
+
+describe('decideCounterReaction (M37: 人間反応のカウンター・PACING_PUZZLE.md §6.14)', () => {
+  const rand0 = () => 0; // 常に試行成功(0 < chance)
+  const rand1 = () => 1; // 常に見逃し(1 >= chance)
+
+  it('ジャンプ接近(距離200px以内・着地点が自分の近く)を検知し、反応遅延(standard=250ms)後にwantsMelee', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const jumper = { ...spawnEnemyAt('pumpkin', pcx + 100, pcy, 0), aiPhase: 'jump' as const, aiTargetX: pcx, aiTargetY: pcy };
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 0, 0, rand0)).toBe(false); // 遅延前は撃たない
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 250, 0, rand0)).toBe(true);
+  });
+
+  it('遅延中に脅威(ジャンプ)が消えたら、元の遅延を過ぎても撃たない', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const jumper = { ...spawnEnemyAt('pumpkin', pcx + 100, pcy, 0), aiPhase: 'jump' as const, aiTargetX: pcx, aiTargetY: pcy };
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('standard', state, pcx, pcy, [], [], 100, 0, rand0)).toBe(false); // 着地=脅威消滅
+    expect(decideCounterReaction('standard', state, pcx, pcy, [], [], 300, 0, rand0)).toBe(false); // 250ms超過後も撃たない
+  });
+
+  it('乱数固定で決定的: 試行抽選(chance)に外れた検知は、遅延後も撃たない', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const jumper = { ...spawnEnemyAt('pumpkin', pcx + 100, pcy, 0), aiPhase: 'jump' as const, aiTargetX: pcx, aiTargetY: pcy };
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 0, 0, rand1)).toBe(false);
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 250, 0, rand1)).toBe(false);
+  });
+
+  it('既存のカウンターCD(counterCooldownEnd)中は、反応遅延・試行に成功していても撃たない', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const jumper = { ...spawnEnemyAt('pumpkin', pcx + 100, pcy, 0), aiPhase: 'jump' as const, aiTargetX: pcx, aiTargetY: pcy };
+    const state = createCounterThreatState();
+    decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 0, 0, rand0); // 検知
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 250, 500, rand0)).toBe(false); // CD明けは500
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 500, 500, rand0)).toBe(true); // CD明け後は撃つ
+  });
+
+  it('突進(charge・距離180px以内・進行方向が自分へ向いている)を検知する(rusher=200ms)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const charger = { ...spawnEnemyAt('werewolf', pcx + 100, pcy, 0), aiPhase: 'charge' as const, vx: -300, vy: 0 };
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 200, 0, rand0)).toBe(true);
+  });
+
+  it('突進の進行方向が自分と逆なら検知しない(かすめて通り過ぎるだけの突進)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const charger = { ...spawnEnemyAt('werewolf', pcx + 100, pcy, 0), aiPhase: 'charge' as const, vx: 300, vy: 0 };
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 300, 0, rand0)).toBe(false);
+  });
+
+  it('敵弾(接近中・距離160px以内・到達予測400ms未満)を検知する(kiter=300ms)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const bolt = buildProjectile({ x: pcx - 104, y: pcy - 4, direction: { x: 1, y: 0 }, speed: 400, hostile: true });
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('kiter', state, pcx, pcy, [], [bolt], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('kiter', state, pcx, pcy, [], [bolt], 300, 0, rand0)).toBe(true);
+  });
+
+  it('自分から遠ざかる敵弾(接近中ではない)は検知しない', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const bolt = buildProjectile({ x: pcx - 104, y: pcy - 4, direction: { x: -1, y: 0 }, speed: 400, hostile: true });
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('kiter', state, pcx, pcy, [], [bolt], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('kiter', state, pcx, pcy, [], [bolt], 400, 0, rand0)).toBe(false);
+  });
+
+  it('プロファイル未掲載のペルソナ(stationary)は常に無効(棒立ちが仕様=挙動不変)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const jumper = { ...spawnEnemyAt('pumpkin', pcx + 100, pcy, 0), aiPhase: 'jump' as const, aiTargetX: pcx, aiTargetY: pcy };
+    const state = createCounterThreatState();
+    expect(decideCounterReaction('stationary', state, pcx, pcy, [jumper], [], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('stationary', state, pcx, pcy, [jumper], [], 1000, 0, rand0)).toBe(false);
+  });
+
+  it('発火後は同じ脅威が続いている間は連射しない', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const jumper = { ...spawnEnemyAt('pumpkin', pcx + 100, pcy, 0), aiPhase: 'jump' as const, aiTargetX: pcx, aiTargetY: pcy };
+    const state = createCounterThreatState();
+    decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 0, 0, rand0);
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 250, 0, rand0)).toBe(true);
+    expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 260, 0, rand0)).toBe(false);
   });
 });

@@ -134,7 +134,10 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { decideBotInput, pickupSeekInput, adjustBotForMines, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
+import {
+  decideBotInput, pickupSeekInput, adjustBotForMines, createRusherTrackState,
+  decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
+} from '../utils/playtestBot';
 import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
 import { runAngelBossTick, tickAngelBossFires, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
@@ -1019,6 +1022,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M26-L(§6.3): 実機オートパイロット(?bot)の状態。BOT_PERSONA=null時は全て不使用。
   const botTickRef = useRef(0);                            // decideBotInput用のtick連番
   const botRusherRef = useRef(createRusherTrackState());   // rusherペルソナの詰まり検知状態
+  const botCounterThreatRef = useRef(createCounterThreatState()); // M37(§6.14): 人間反応カウンターの検知状態
   const botRandRef = useRef(mulberry32(1));                // レベルアップ自動選択の決定的乱数(シード固定=再現性)
   const botPausedSinceRef = useRef(0);                     // isPaused継続の詰み検知(Date.now基準)
   const botReportedRef = useRef(false);                    // [BOT_REPORT]を出したか(1ラン1回)
@@ -1502,6 +1506,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               player.x + player.width / 2, player.y + player.height / 2,
               loopState.breakableProps.filter(p => p.type === 'mine'))
           : null;
+        // M37(§6.14): 人間反応のカウンター(ジャンプ/突進/敵弾を反応遅延+試行確率でカウンター)。
+        // 移動入力は変えない=既存のwantsMelee判断(mine叩き込み)とOR合成するだけ。?bot無しの
+        // 通常プレイはBOT_PERSONA=nullなのでこのブロックごと素通り(挙動不変・負荷0)。
+        const botWantsCounterReaction = botDecision
+          ? decideCounterReaction(
+              BOT_PERSONA as BotPersona, botCounterThreatRef.current,
+              player.x + player.width / 2, player.y + player.height / 2,
+              enemies, loopState.projectiles, gameTime, player.counterCooldownEnd)
+          : false;
         const inputState = botMineAdj ? botMineAdj.input : touchInputState;
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
@@ -1739,6 +1752,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
           botTickRef.current = 0;
           botRusherRef.current = createRusherTrackState();
+          botCounterThreatRef.current = createCounterThreatState(); // M37: 人間反応カウンターの検知状態も新ランでリセット
           botRandRef.current = mulberry32(1);
           botReportedRef.current = false;
           botPausedSinceRef.current = 0;
@@ -3828,7 +3842,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
         movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
         // M26-L(§6.3): ボットの近接(指離しカウンター)/武器切替。ヘッドレス(playtestDriver)と同じ操作を実機で行う。
-        if (botMineAdj?.wantsMelee) useGameStore.getState().triggerCounter(); // M34: 卵叩き(wantsMelee)も合成後の値を使う
+        if (botMineAdj?.wantsMelee || botWantsCounterReaction) useGameStore.getState().triggerCounter(); // M34: 卵叩き / M37: 人間反応カウンター
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);
