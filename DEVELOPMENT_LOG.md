@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1698 — フレアガンの火の描写を2/3に縮小(見た目のみ)【2026-07-14 19:52 JST】
+- **社長指示**「フレアガンの火の描写を2/3の大きさに」。`pixiScene.syncFlareGun`の`sizeMult`に
+  `FLARE_VISUAL_SCALE=2/3`を乗算(炎・ライト径とも)。**引き付け範囲(380px)・効果・寿命は不変**(描画のみ)。
+- 検証: typecheck/eslintクリーン。実機で炎の大きさを社長確認。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1697 — M31実装: スキル5点(ランナー追記/マグネット/オーバークロック/ラストマガジン/ウォームアップ)(§6.8)【2026-07-14 19:33 JST】
 - **PACING_PUZZLE.md §6.8 バッチM31**(仕様確定済み)を実装チャット(Sonnet)が実装。5点まとめて1コミット。
   1. **ランナー追記**: リロード中は移動速度さらに×1.10(Lv不問固定・既存Lv倍率+10/15/20%に乗算)。

@@ -4870,8 +4870,11 @@ export class PixiScene {
       if (!visible) { view.flame.clear(); continue; }
 
       // 揺らぎ/形は molotov の地面の火(syncGroundFires)と同じ式を再利用。飛翔中は小さめの火。
+      // 全体を2/3スケール(社長指示v0.25.1698「フレアガンの火の描写を2/3の大きさに」・見た目のみ=
+      // 引き付け範囲や判定は不変)。
       const pulse = 0.80 + 0.13 * Math.sin(now / 125 + f.x * 0.03) + 0.07 * Math.sin(now / 53 + f.y * 0.05);
-      const sizeMult = flying ? 0.6 : 1;
+      const FLARE_VISUAL_SCALE = 2 / 3;
+      const sizeMult = (flying ? 0.6 : 1) * FLARE_VISUAL_SCALE;
       const r = GROUND_FIRE_FLAME_R * d * pulse * sizeMult;
       const sway = flying ? 0 : Math.sin(now / 160 + f.x * 0.015) * r * 0.55;
 

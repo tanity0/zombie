@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1698',
+    items: [
+      'フレアガンの火の見た目を2/3の大きさに縮小(引き付け範囲・効果は不変)。',
+    ],
+  },
+  {
     version: '0.25.1697',
     items: [
       'スキル「ランナー」強化: リロード中は移動速度がさらに+10%(レベル不問)。',
