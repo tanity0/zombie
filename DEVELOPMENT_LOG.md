@@ -1,5 +1,26 @@
 # Development Log
 
+## v0.25.1726 — 援護射撃CD=6/5/4秒(裁定)+NPC絵がプレイヤー本人になるバグ修正【2026-07-15 03:06 JST】
+- **CD裁定反映**(依頼#2の突出=生存3.3倍/キル4.1倍を受けた社長裁定=提案(a)):
+  `SUPPORT_SNIPER_CD_MS_BY_LEVEL` を [5000,4000,3000]→**[6000,5000,4000]**(supportSniper.ts)。
+  テスト期待値・useGameLoopコメント・§6.5(確定仕様+受け入れ条件)も同時更新。
+- **NPC絵バグ修正**(社長報告「出現するのがNPCではなくてプレイヤーになっちゃってる」・Fable診断):
+  - 根因: `drawSupportSniper`の `fakeAlly = { ...player, characterClass: npc.allyClass }` が
+    **本人のequipmentもspreadで引き継ぐ**ため、武将セット(特殊3点)フル装備中は
+    `playerTextureName` が武将立ち絵を優先(pixiScene.ts:531 `!warlordFull` ガード)→
+    characterClass差し替えが無視され**プレイヤー本人と同じ武将絵**で出ていた。
+    allyClass選定(pickRescueSignalAllyClass=現在クラス除外)は正常=絵の解決だけの問題。
+  - 修正: モジュール定数 `ALLY_PLAIN_EQUIP = emptyEquipLoadout()` を fakeAlly の equipment に
+    差し替え(毎フレーム生成しない)。**同根の救難信号アライ(syncRescueAllies)も同時に修正**
+    (同一パターンの明確なバグ=挙動意図「仲間は非出撃クラスの素の立ち絵」を回復するだけ)。
+    playerBaseScale も武将分岐(高さ基準)から正しいクラス幅基準に戻る。
+- 天秤結論: 診断済みコンテキスト+4ファイル小修正のためFable直接実装(Sonnet発注は再調査コストの方が高い)。
+- 検証: typecheck / eslint(触4ファイル) / related 133件パス(M9スモーク込み)。
+  実機確認(武将フル装備で援護射撃・救難信号のNPCが非出撃クラス絵で出るか)は社長へ持ち越し。
+- Files: `src/utils/supportSniper.ts`, `src/utils/supportSniper.test.ts`, `src/pixi/pixiScene.ts`,
+  `src/hooks/useGameLoop.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1725 — テスト結果#2の分析+スクリプトWindows起動修正【2026-07-15 02:46 JST】
 - **依頼#2結果受領**(v0.25.1721で実測・6構成完走・console/pageerror 0件)。分析:
   - **オーバークロック=理論値と完全一致**: 成立数/発動数 = sensor構成 32/(55+65)≈27% ・

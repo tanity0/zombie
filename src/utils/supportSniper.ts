@@ -4,7 +4,7 @@
 // 仕様の正は PACING_PUZZLE.md §6.5(バッチM28)。
 
 // --- 調整用定数(§6.5 確定値+叩き台) ---
-export const SUPPORT_SNIPER_CD_MS_BY_LEVEL: readonly number[] = [0, 5000, 4000, 3000]; // index=level(1..3)。社長指定
+export const SUPPORT_SNIPER_CD_MS_BY_LEVEL: readonly number[] = [0, 6000, 5000, 4000]; // index=level(1..3)。社長指定(v0.25.1726: 実地テスト#2で突出→5/4/3→6/5/4秒に調整)
 export const SUPPORT_SNIPER_SLIDE_IN_MS = 250;   // スライドイン(登場→発射まで)
 export const SUPPORT_SNIPER_SLIDE_OUT_MS = 350;  // スライドアウト(発射→消滅。向きは変えず後退)
 export const SUPPORT_SNIPER_SLIDE_START_OUT = 30; // スライド開始点=縁の外側この距離(px・叩き台)

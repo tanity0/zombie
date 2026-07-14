@@ -4707,7 +4707,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
-        // 援護射撃(support-sniper): 移動中のみCDが進み、CD毎(Lv1=5s/Lv2=4s/Lv3=3s)にNPC1人が
+        // 援護射撃(support-sniper): 移動中のみCDが進み、CD毎(Lv1=6s/Lv2=5s/Lv3=4s・v0.25.1726調整)にNPC1人が
         // 「狙う敵と反対側の画面縁」からスライドイン→プレイヤーと同性能のスナイパー弾(rifle-t2・
         // 既存プレイヤー弾パイプライン)を最寄り敵へ発射→向きを変えず後退して消える(PACING_PUZZLE.md §6.5 M28)。
         // CD進行/発射可否は純関数 computeSupportSniperTick、出現点は computeSupportSniperEntry

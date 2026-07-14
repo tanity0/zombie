@@ -5,10 +5,10 @@ import {
 } from './supportSniper';
 
 describe('computeSupportSniperTick', () => {
-  it('レベル別CD=5/4/3秒(SUPPORT_SNIPER_CD_MS_BY_LEVEL・社長指定)', () => {
-    expect(SUPPORT_SNIPER_CD_MS_BY_LEVEL[1]).toBe(5000);
-    expect(SUPPORT_SNIPER_CD_MS_BY_LEVEL[2]).toBe(4000);
-    expect(SUPPORT_SNIPER_CD_MS_BY_LEVEL[3]).toBe(3000);
+  it('レベル別CD=6/5/4秒(SUPPORT_SNIPER_CD_MS_BY_LEVEL・社長指定v0.25.1726)', () => {
+    expect(SUPPORT_SNIPER_CD_MS_BY_LEVEL[1]).toBe(6000);
+    expect(SUPPORT_SNIPER_CD_MS_BY_LEVEL[2]).toBe(5000);
+    expect(SUPPORT_SNIPER_CD_MS_BY_LEVEL[3]).toBe(4000);
   });
 
   it('停止中はCDが進まない(保持・リセットしない)', () => {

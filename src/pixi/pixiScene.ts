@@ -31,7 +31,7 @@ import {
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
-import { hasFullWarlordSet } from '../data/equipment';
+import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
 // 画面固定レイヤー(地面/地平森)を横方向にこの倍率でオーバースキャンして中央寄せする(黒帯防止)。
@@ -522,6 +522,10 @@ const PLAYER_IDLE_SPRITE: Partial<Record<Player['characterClass'], string>> = {
   necromancer: 'player-striker-idle',
   rogue: 'player-scavenger-idle',
 };
+// 援護NPC/救援アライ用の空装備(v0.25.1726): プレイヤーをspreadした fakeAlly に本人のequipmentが
+// 残っていると、武将セットフル装備中は playerTextureName が武将立ち絵を優先して characterClass 差し替えが
+// 無視され、NPCがプレイヤー本人の絵になるバグの根因だった。仲間の絵は常に素のクラス待機絵にする。
+const ALLY_PLAIN_EQUIP = emptyEquipLoadout();
 // プレイヤーの立ち絵テクスチャ名(クラス/武将装備/フレーム別)。分身もこれを共有して同じ外見にする。
 // ※ necromancer→striker / rogue→scavenger の対応は既存仕様のまま(入れ替えない)。
 const playerTextureName = (p: Player, frame: number, walking = true, running = false): string => {
@@ -4987,7 +4991,9 @@ export class PixiScene {
       const { body, knife, slash, trail } = v;
       // クラス→立ち絵テクスチャは既存のplayerTextureNameをそのまま流用(クラスID↔ファイル名の対応=
       // mage→magnum/warrior→shotgun/necromancer→striker/rogue→scavengerを手書きしない・CLAUDE.md注意点)。
-      const fakeAlly = { ...player, characterClass: a.klass };
+      // equipment を空に(ALLY_PLAIN_EQUIP): 援護射撃NPCと同根のバグ(武将フル装備中は武将絵が優先されて
+      // klass 差し替えが無視される)をここでも塞ぐ(v0.25.1726)。
+      const fakeAlly = { ...player, characterClass: a.klass, equipment: ALLY_PLAIN_EQUIP };
       const name = playerTextureName(fakeAlly, 0, false);
       const tex = getTexture(name) ?? getTexture('player');
       if (!tex) { body.visible = false; knife.visible = false; slash.visible = false; trail.visible = false; continue; }
@@ -6847,7 +6853,9 @@ export class PixiScene {
       this.L.actorLayer.addChild(sp);
       this.supportSniperSprite = sp;
     }
-    const fakeAlly = { ...player, characterClass: npc.allyClass };
+    // equipment を空に差し替え(ALLY_PLAIN_EQUIP): 本人の武将装備を引き継ぐと武将絵が優先されて
+    // allyClass が無視され「プレイヤー本人の絵」になる(v0.25.1726バグ修正)。
+    const fakeAlly = { ...player, characterClass: npc.allyClass, equipment: ALLY_PLAIN_EQUIP };
     const tex = getTexture(playerTextureName(fakeAlly, 0, false)) ?? getTexture('player');
     if (!tex) { sp.visible = false; return; }
     // スライド位置: 縁の交点(npc.x/y)を基準に、向き(dir=敵の方向)の軸上で 外(-START_OUT)→内(+INSET)。
