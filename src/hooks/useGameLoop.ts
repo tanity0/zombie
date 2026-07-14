@@ -28,6 +28,7 @@ import {
   BOSS_MELEE_STUN_MULT,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
+  skillMagnetAmmoRangeMult, skillOverclockChance,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
@@ -4689,14 +4690,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ssTick = computeSupportSniperTick({
             deltaMs: deltaTime * 1000,
             isMoving: subWeaponPlayer.isMoving,
-            hasEnemy: ssTarget !== null,
+            // NPCは同時1人。前の演出が残っている間は「撃てない」扱い=満タン(0)保持で先送りし、
+            // 空いたフレームで即発射する(発射扱いでCDを巻き戻さない)。
+            hasEnemy: ssTarget !== null && !ssState.supportSniperNpc,
             cdRemainingMs: ssState.supportSniperCdMs,
             cooldownMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[ssLevel],
           });
-          if (ssTick.cdRemainingMs !== ssState.supportSniperCdMs) {
-            useGameStore.getState().setSupportSniperCd(ssTick.cdRemainingMs);
+          // スキル: オーバークロック = 発射時に20/25/30%でタイマー即満タン(CD式サブと同じ抽選・§6.8 M31)。
+          const ssCdNext = ssTick.fire && Math.random() < skillOverclockChance(subWeaponPlayer) ? 0 : ssTick.cdRemainingMs;
+          if (ssCdNext !== ssState.supportSniperCdMs) {
+            useGameStore.getState().setSupportSniperCd(ssCdNext);
           }
-          // NPCは同時1人(前の演出が残っていたら発射を1フレーム先送り=CDは満タン保持で即再判定される)。
           if (ssTick.fire && ssTarget && !ssState.supportSniperNpc) {
             const ssCam = ssState.camera;
             const ssGb = ssState.gameBounds;
@@ -6575,8 +6579,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // Check for collisions between player and pickups.
         // 同上: ピックアップは本フレーム中に敵ドロップで増えるため、最新状態(getState)で判定する。
+        // スキル マグネット(§6.8 M31): 弾薬ピックアップのみ拾得範囲 ×1.1/1.2/1.3(Lv)。
         const collPickups = useGameStore.getState().pickups;
-        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups);
+        const pickupCollisions = checkPlayerPickupCollisions(collPlayer, collPickups, skillMagnetAmmoRangeMult(collPlayer));
 
         if (pickupCollisions.length > 0) {
           const collidedPickups = pickupCollisions

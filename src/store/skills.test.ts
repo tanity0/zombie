@@ -3,7 +3,12 @@
 // CLAUDE.md Testing policy (test the changed logic in the same commit).
 import { describe, it, expect } from 'vitest';
 import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
-  skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive } from './gameStore';
+  skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
+  skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
+  skillWarmUpSpeedMult, skillWarmUpReloadMult, skillWarmUpCritBonus, WARM_UP_DURATION_MS,
+  RUNNER_RELOAD_BONUS_MULT } from './gameStore';
+import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
+import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
   rollGachaSkill, GACHA_EXCLUDED_SKILLS } from '../data/campaign';
@@ -119,6 +124,75 @@ describe('runner move speed bonus (+10/15/20%)', () => {
     expect(skillRunnerSpeedMult(withSkill('runner', 1))).toBeCloseTo(1.10);
     expect(skillRunnerSpeedMult(withSkill('runner', 2))).toBeCloseTo(1.15);
     expect(skillRunnerSpeedMult(withSkill('runner', 3))).toBeCloseTo(1.20);
+  });
+  it('リロード中はさらに+10%(Lv不問固定・Lv倍率に乗算・非装備時は1のまま)(§6.8 M31)', () => {
+    expect(RUNNER_RELOAD_BONUS_MULT).toBeCloseTo(1.10);
+    expect(skillRunnerSpeedMult(withSkill('runner', 1), true)).toBeCloseTo(1.10 * 1.10);
+    expect(skillRunnerSpeedMult(withSkill('runner', 2), true)).toBeCloseTo(1.15 * 1.10);
+    expect(skillRunnerSpeedMult(withSkill('runner', 3), true)).toBeCloseTo(1.20 * 1.10);
+    // 非装備はリロード中でも従来どおり(完全不変)
+    expect(skillRunnerSpeedMult({ skills: [], skillLevels: {} } as unknown as Player, true)).toBeCloseTo(1.0);
+  });
+});
+
+describe('magnet: ammo pickup range mult (+10/20/30%) (§6.8 M31)', () => {
+  it('scales by level and is ×1.0 without the skill', () => {
+    expect(skillMagnetAmmoRangeMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
+    expect(skillMagnetAmmoRangeMult(withSkill('magnet', 1))).toBeCloseTo(1.1);
+    expect(skillMagnetAmmoRangeMult(withSkill('magnet', 2))).toBeCloseTo(1.2);
+    expect(skillMagnetAmmoRangeMult(withSkill('magnet', 3))).toBeCloseTo(1.3);
+  });
+  it('checkPlayerPickupCollisions: 弾薬だけ拡大矩形で拾い、非弾薬(xp)は従来のまま', () => {
+    // プレイヤー32×32 @ (0,0) → 基準拾得矩形 = (-16,-16)〜(48,48)。
+    const player = { x: 0, y: 0, width: 32, height: 32 } as unknown as Player;
+    // 基準矩形の右端(48)の少し外・×1.3矩形(右端57.6)の内側に置く。
+    const ammo = { id: 'a', x: 50, y: 8, type: 'ammo-rifle', value: 10 } as unknown as Pickup;
+    const xp = { id: 'x', x: 50, y: 8, type: 'xp', value: 1 } as unknown as Pickup;
+    // mult=1(非装備): どちらも拾わない=従来挙動
+    expect(checkPlayerPickupCollisions(player, [ammo, xp])).toEqual([]);
+    // mult=1.3(Lv3): 弾薬だけ拾う。xpは従来矩形のまま
+    expect(checkPlayerPickupCollisions(player, [ammo, xp], 1.3)).toEqual(['a']);
+  });
+});
+
+describe('overclock: sub-weapon CD instant reset chance (20/25/30%) (§6.8 M31)', () => {
+  it('scales by level and is 0 without the skill', () => {
+    expect(skillOverclockChance({ skills: [], skillLevels: {} } as unknown as Player)).toBe(0);
+    expect(skillOverclockChance(withSkill('overclock', 1))).toBeCloseTo(0.20);
+    expect(skillOverclockChance(withSkill('overclock', 2))).toBeCloseTo(0.25);
+    expect(skillOverclockChance(withSkill('overclock', 3))).toBeCloseTo(0.30);
+  });
+});
+
+describe('last-magazine: final round damage mult (×2.0/2.5/3.0) (§6.8 M31)', () => {
+  it('発射前の残弾1(=この発射で空)のときだけ倍率が乗る', () => {
+    expect(skillLastMagazineMult(withSkill('last-magazine', 1), 1)).toBeCloseTo(2.0);
+    expect(skillLastMagazineMult(withSkill('last-magazine', 2), 1)).toBeCloseTo(2.5);
+    expect(skillLastMagazineMult(withSkill('last-magazine', 3), 1)).toBeCloseTo(3.0);
+  });
+  it('残弾2以上・残弾0・非装備は×1.0(完全不変)', () => {
+    expect(skillLastMagazineMult(withSkill('last-magazine', 3), 2)).toBeCloseTo(1.0);
+    expect(skillLastMagazineMult(withSkill('last-magazine', 3), 0)).toBeCloseTo(1.0);
+    expect(skillLastMagazineMult({ skills: [], skillLevels: {} } as unknown as Player, 1)).toBeCloseTo(1.0);
+  });
+});
+
+describe('warm-up: first 60s buffs (move+10% / reload×0.80 / crit+20%) (§6.8 M31)', () => {
+  const p = withSkill('warm-up', 1);
+  it('gameTime<60000 の間だけ効く(境界: 60000ちょうどで切れる)', () => {
+    expect(skillWarmUpSpeedMult(p, 0)).toBeCloseTo(1.10);
+    expect(skillWarmUpReloadMult(p, 0)).toBeCloseTo(0.80);
+    expect(skillWarmUpCritBonus(p, 0)).toBeCloseTo(0.20);
+    expect(skillWarmUpSpeedMult(p, WARM_UP_DURATION_MS - 1)).toBeCloseTo(1.10);
+    expect(skillWarmUpSpeedMult(p, WARM_UP_DURATION_MS)).toBeCloseTo(1.0);
+    expect(skillWarmUpReloadMult(p, WARM_UP_DURATION_MS)).toBeCloseTo(1.0);
+    expect(skillWarmUpCritBonus(p, WARM_UP_DURATION_MS)).toBe(0);
+  });
+  it('非装備は60秒以内でも中立(完全不変)', () => {
+    const none = { skills: [], skillLevels: {} } as unknown as Player;
+    expect(skillWarmUpSpeedMult(none, 0)).toBeCloseTo(1.0);
+    expect(skillWarmUpReloadMult(none, 0)).toBeCloseTo(1.0);
+    expect(skillWarmUpCritBonus(none, 0)).toBe(0);
   });
 });
 

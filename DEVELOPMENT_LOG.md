@@ -1,5 +1,43 @@
 # Development Log
 
+## v0.25.1697 — M31実装: スキル5点(ランナー追記/マグネット/オーバークロック/ラストマガジン/ウォームアップ)(§6.8)【2026-07-14 19:33 JST】
+- **PACING_PUZZLE.md §6.8 バッチM31**(仕様確定済み)を実装チャット(Sonnet)が実装。5点まとめて1コミット。
+  1. **ランナー追記**: リロード中は移動速度さらに×1.10(Lv不問固定・既存Lv倍率+10/15/20%に乗算)。
+     `skillRunnerSpeedMult(player, reloading=false)`へ拡張し、movePlayerのリロード分岐だけ true を渡す。
+     非装備はリロード中でも従来どおり1。スキル説明文(SKILLS/SKILL_LEVEL_INFO)に追記。
+  2. **マグネット(新規・ノーマル)**: 弾薬ピックアップ(ammo-handgun/shotgun/rifle/phill)のみ拾得矩形を
+     中心基準で×1.1/1.2/1.3(Lv)。`checkPlayerPickupCollisions`に`ammoRangeMult`引数(既定1=従来不変)を追加、
+     useGameLoopが`skillMagnetAmmoRangeMult(player)`を渡す。XP/回復/武器/トレジャー/スクラップ等は従来のまま
+     (ボットdriverは既定値=挙動不変)。
+  3. **オーバークロック(新規・超レア)**: サブウェポン発動時20/25/30%(Lv)でCD即リセット。
+     `setSubWeaponCooldown`の合流点でΔ>0(実CD開始)の時だけ抽選、成功=CDを設定しない(全CD式サブに一様適用)。
+     援護射撃(専用タイマー)は発射時に同抽選でタイマー即満タン(0)。CD無しサブ(センサー地雷/ジャンク等)は
+     setSubWeaponCooldownを通らない=自然に対象外。タイムキーパーとは別軸で重複可。
+  4. **ラストマガジン(新規・ノーマル)**: 発射前の残弾1(=その発射で空になるトリガー1回分)の弾ダメージ
+     ×2.0/2.5/3.0(Lv)。`skillLastMagazineMult(player, magazineBeforeShot)`を fireWeapon の素ダメージ
+     (shotDamage=ショットガンは全ペレット共通)と firePhillShot(PHILL含む・仕様指定)へ焼き込み。
+     命中時の他倍率とは乗算。援護射撃弾・ジャンクウェポン(弾倉なし)は対象外。
+  5. **ウォームアップ(新規・ノーマル)**: gameTime<60000の間、移動×1.10・リロード×0.80・クリ率+0.20。
+     全Lv同値=SKILL_MAX_LEVEL['warm-up']=1(Lv1固定・bomber方式)。移動=movePlayer両分岐、
+     リロード=effectiveReloadMs(storeのgameTime直読み=startReload/SE長/リロードバー全呼び出しで一致)、
+     クリ=銃(fireWeaponのcritChance和)+近接/刀/鞭/分身の4箇所の和+援護射撃弾。対ボスクリペナルティ等は
+     総和に従来どおり適用(既存のapplyEnemyCritPenalty経路)。
+- **M28の微修正(同コミット)**: 援護射撃で「NPC演出中にCDが明けた」場合、従来はCDが満タンへ巻き戻っていた
+  (コメントの意図「満タン保持で先送り」と実装が不一致)。hasEnemyにNPC空きを含めて満タン(0)保持→
+  空き次第即発射に修正(オーバークロックのタイマー即満タンが演出中に消えるのを防ぐ前提整備)。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(任意装備スキル・シーン/台本に不干渉)。
+  未所持プレイヤーは全ヘルパが中立値(×1/+0)=完全不変(テストで固定)。
+- 負荷スコア: **1/10**(全て条件分岐+定数倍率。マグネットの矩形拡大は判定1回分の座標計算のみ・
+  オーバークロックはCD設定時の乱数1回)。
+- 検証: `npm run typecheck` クリーン / eslint(触った7ファイル)クリーン / `skills.test.ts` 29件パス(+8新規:
+  ランナーリロード/マグネット値+拾得統合/オーバークロック値/ラストマガジン境界/ウォームアップ境界60s) /
+  `npx vitest related --run`=7ファイル94件パス(M9ボットスモーク含む)。
+  実機確認ポイント: ガチャに新スキル3種+超レア1種が出る/ランナー装備でリロード中の足の速さ/開幕60秒の
+  ウォームアップ体感/残弾1発目のダメージ倍増(ショットガン最終シェル)/オーバークロックの連続発動。
+- Files: `src/types/game.ts`, `src/data/campaign.ts`, `src/store/gameStore.ts`, `src/store/skills.test.ts`,
+  `src/utils/weaponUtils.ts`, `src/utils/collisionUtils.ts`, `src/hooks/useGameLoop.ts`,
+  `package.json`, `src/data/changelog.ts`, `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1696 — M31仕様書化: スキル5点(ランナー追記/マグネット/オーバークロック/ラストマガジン/ウォームアップ)【2026-07-14 19:20 JST】
 - **M29/M30完了確認**: Sonnetサブエージェントがフレアガン(v0.25.1694)・ジャンクウェポン(v0.25.1695)を
   実装・push完了(テスト154/87件パス・★未決なし・ツリークリーン確認済み)。

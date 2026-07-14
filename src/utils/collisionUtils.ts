@@ -178,9 +178,13 @@ export const checkEnemySummonCollisions = (
 };
 
 // Check collisions between player and pickups
+// ammoRangeMult: スキル マグネット(§6.8 M31)= 弾薬ピックアップのみ拾得矩形を中心基準で
+// ×1.1/1.2/1.3 に拡大(呼び出し側が skillMagnetAmmoRangeMult で算出)。既定1=従来どおり。
+// XP/回復/武器/トレジャー/スクラップ等の非弾薬は常に従来の矩形。
 export const checkPlayerPickupCollisions = (
   player: Player,
-  pickups: Pickup[]
+  pickups: Pickup[],
+  ammoRangeMult = 1
 ): string[] => {
   // Slight magnet around the player so collection feels snappy without
   // hoovering pickups from across the screen.
@@ -191,6 +195,17 @@ export const checkPlayerPickupCollisions = (
     width: player.width + PAD * 2,
     height: player.height + PAD * 2
   };
+  // マグネット: 弾薬用の拾得矩形(中心基準スケール)。mult=1なら同一矩形。
+  const ammoExpandedPlayer = ammoRangeMult !== 1
+    ? {
+        x: expandedPlayer.x - expandedPlayer.width * (ammoRangeMult - 1) / 2,
+        y: expandedPlayer.y - expandedPlayer.height * (ammoRangeMult - 1) / 2,
+        width: expandedPlayer.width * ammoRangeMult,
+        height: expandedPlayer.height * ammoRangeMult
+      }
+    : expandedPlayer;
+  const isAmmoPickup = (t: Pickup['type']): boolean =>
+    t === 'ammo-handgun' || t === 'ammo-shotgun' || t === 'ammo-rifle' || t === 'ammo-phill';
 
   // Pickups don't carry width/height in the type, so treat them as the
   // 16×16 sprite the renderer draws.
@@ -207,7 +222,7 @@ export const checkPlayerPickupCollisions = (
         return false;
       }
       const pos = pickupDisplayPosition(pickup, now);
-      return checkCollision(expandedPlayer, {
+      return checkCollision(isAmmoPickup(pickup.type) ? ammoExpandedPlayer : expandedPlayer, {
         x: pos.x,
         y: pos.y,
         width: PICKUP_SIZE,

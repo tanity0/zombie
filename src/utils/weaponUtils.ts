@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult } from '../store/gameStore';
+import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, skillWarmUpCritBonus, skillWarmUpReloadMult } from '../store/gameStore';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { isHiddenBoss } from './enemyUtils';
 
@@ -175,7 +175,9 @@ const RELOAD_TIME_MULT = 2;
 // 短縮 upgrade.
 export const effectiveReloadMs = (w: Weapon, p: Player): number =>
   // 装備(腕・取り回し系)のリロード短縮を乗算(中立=1)。
-  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1));
+  // スキル: ウォームアップ = 出撃から60秒間リロード時間 ×0.80(§6.8 M31。gameTimeはstoreから直読み=
+  // startReload/SE長/リロードバーの全呼び出しで自動的に同じ値になる)。
+  Math.max(250, (w.reloadMs ?? 0) * RELOAD_TIME_MULT * p.reloadMult * (p.equipBonus?.reloadMult ?? 1) * skillWarmUpReloadMult(p, useGameStore.getState().gameTime));
 
 // Is this specific gun currently mid-reload?
 export const isReloading = (p: Player, weaponId: string): boolean =>
@@ -317,7 +319,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   const scavMult = scavengerGunMult(player, gtFire);
   // スキル アタックシューター: 銃ダメージ +10/20/30%(Lv)。
   // 装備(腕・火力系)のダメージ倍率を素ダメージへ反映。中立=1。
-  const shotDamage = weapon.damage * scavMult * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
+  // スキル ラストマガジン: 弾倉最後の1発(この発射で空になるトリガー1回分=発射前の残弾1)×2.0/2.5/3.0。
+  // ショットガンは最終シェルの全ペレットに乗る(shotDamage共通)。命中時の他倍率とは乗算(§6.8 M31)。
+  const shotDamage = weapon.damage * scavMult * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
@@ -329,7 +333,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
     const gt = useGameStore.getState().gameTime;
     const quickMagCritBonus = player.quickMagCritUntil > gt ? 0.10 : 0;
     // 装備(アクセ・クリ系)のクリ率は player.critChance とは別枠で加算(装備内上限とスキル枠は独立)。
-    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gt));
+    // スキル ウォームアップ: 出撃から60秒間クリ率+20%(§6.8 M31)。
+    const critChance = Math.min(1, (weapon.critChance ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gt) + skillWarmUpCritBonus(player, gt));
     const crit = Math.random() < critChance;
     projectiles.push({
       id: `proj-${weapon.id}-${now}-${i}`,
@@ -400,7 +405,9 @@ export const buildSupportSniperShot = (
   const speed = (def.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
   const shotDamage = def.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
   const quickMagCritBonus = player.quickMagCritUntil > gameTime ? 0.10 : 0;
-  const critChance = Math.min(1, (weaponBaseCritChance(def) ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gameTime));
+  // ウォームアップのクリ率+20%も通常のプレイヤー弾と同じ扱いで加算(§6.8 M31)。
+  // ラストマガジンは対象外(援護射撃弾は弾倉を持たない・§6.8)。
+  const critChance = Math.min(1, (weaponBaseCritChance(def) ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime));
   return {
     id: `proj-support-sniper-${Date.now()}`,
     x: x - size / 2,

@@ -592,14 +592,15 @@ export interface EscortSoldier {
 // レア度: normal/rare/super(超レア=死神/バーサーカー/スケーター)。
 export type SkillKey =
   // 超レア
-  | 'reaper' | 'berserker' | 'skater'
+  | 'reaper' | 'berserker' | 'skater' | 'overclock'
   // レア
   | 'crit-up' | 'knight' | 'exploder' | 'sharpshooter' | 'sniper' | 'ricochet'
   | 'bomber' | 'fire-shooter' | 'bomb-counter' | 'punisher' | 'combo-master'
   | 'knife-master' | 'benkei' | 'reflex' | 'rescue-signal'
   // 通常
   | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
-  | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder';
+  | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder'
+  | 'magnet' | 'last-magazine' | 'warm-up';
 
 // 四神舞(リズム)サブウェポン。リズム入力(タップ/フリック)で戦い、フリック4本パターンで
 // 四神技(朱雀/玄武/青龍/白虎)を発動。状態は store に持ち、攻撃実行は useGameLoop が担う。

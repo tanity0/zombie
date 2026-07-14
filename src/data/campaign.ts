@@ -507,18 +507,20 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
 // rarity: normal/rare/super(超レア)。ガチャのレア度枠と装備UIの色分けに使用。
 export type SkillRarity = 'normal' | 'rare' | 'super';
 export const SKILL_KEYS: SkillKey[] = [
-  'reaper', 'berserker', 'skater',
+  'reaper', 'berserker', 'skater', 'overclock',
   'crit-up', 'knight', 'exploder', 'sharpshooter', 'sniper', 'ricochet',
   'bomber', 'fire-shooter', 'bomb-counter', 'punisher', 'combo-master',
   'knife-master', 'benkei', 'reflex', 'rescue-signal',
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
   'attack-shooter', 'runner', 'seeker', 'scrap-builder',
+  'magnet', 'last-magazine', 'warm-up',
 ];
 export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: SkillRarity }> = {
   // 超レア
   'reaper':       { name: '死神',           desc: '近接フィニッシュ時、その攻撃範囲内の敵を全員フィニッシュ（ボスは即死せず5倍ダメージ）', rarity: 'super' },
   'berserker':    { name: 'バーサーカー',   desc: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', rarity: 'super' },
   'skater':       { name: 'スケーター',     desc: '移動速度3倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
+  'overclock':    { name: 'オーバークロック', desc: 'サブウェポン発動時、20%の確率でクールダウンを即リセット(Lvで25%/30%)', rarity: 'super' },
   // レア
   'crit-up':      { name: 'クリティカルダメージ上昇', desc: 'クリティカルダメージ ×1.5→×2.0(ボス ×5→×5.5)', rarity: 'rare' },
   'knight':       { name: 'ナイト',         desc: '被ダメージ-20%。盾/召喚の最大HP+50%', rarity: 'rare' },
@@ -543,9 +545,12 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'counter-master':{ name: 'カウンターマスター', desc: 'カウンター窓延長＋成功時に周囲を強ノックバック', rarity: 'normal' },
   'slasher':      { name: 'スラッシャー',   desc: '近接命中後のタイミングリングをジャストタップで追撃(最大3連・各2/3減衰・ノックバック)', rarity: 'normal' },
   'attack-shooter':{ name: 'アタックシューター', desc: '銃ダメージ+10%(Lvで+20%/+30%)', rarity: 'normal' },
-  'runner':       { name: 'ランナー',       desc: '移動速度+10%(Lvで+15%/+20%)', rarity: 'normal' },
+  'runner':       { name: 'ランナー',       desc: '移動速度+10%(Lvで+15%/+20%)。リロード中はさらに+10%', rarity: 'normal' },
   'seeker':       { name: 'シーカー',       desc: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる(CD10秒)', rarity: 'normal' },
   'scrap-builder':{ name: 'スクラップビルダー', desc: '出撃開始時の初期スクラップ+50(Lvで+100/+150)', rarity: 'normal' },
+  'magnet':       { name: 'マグネット',     desc: '弾薬ピックアップの拾得範囲+10%(Lvで+20%/+30%)', rarity: 'normal' },
+  'last-magazine':{ name: 'ラストマガジン', desc: '弾倉最後の1発のダメージ×2.0(Lvで×2.5/×3.0)。ショットガンは最終シェルの全ペレット', rarity: 'normal' },
+  'warm-up':      { name: 'ウォームアップ', desc: '出撃から60秒間、移動速度+10%・リロード時間-20%・クリティカル率+20%', rarity: 'normal' },
 };
 
 // レベル別の説明。共通説明(base)は必ず残し、現在のLvの具体値(lv[])を併記する
@@ -555,6 +560,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'reaper':       { base: '近接フィニッシュ時、攻撃範囲内の敵を全員フィニッシュ（ボスは即死せず5倍ダメージ）' },
   'berserker':    { base: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', lv: ['増加量×1.0', '増加量×1.25', '増加量×1.5'] },
   'skater':       { base: '移動速度3倍。ただし慣性が強く操作が難しくなる', lv: ['慣性 強', '慣性 中', '慣性 弱（最も扱いやすい）'] },
+  'overclock':    { base: 'サブウェポン発動時、一定確率でクールダウンを即リセット', lv: ['発動20%', '25%', '30%'] },
   // レア
   'crit-up':      { base: 'クリティカルダメージが上昇（ボスにも適用）', lv: ['×1.5', '×1.75', '×2.0'] },
   'knight':       { base: '被ダメージ減少＋盾/召喚の最大HP増加', lv: ['被ダメ-20%／召喚HP+50%', '被ダメ-30%／召喚HP+75%', '被ダメ-40%／召喚HP+100%'] },
@@ -579,9 +585,12 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'counter-master':{ base: 'カウンター窓延長＋成功時に周囲を強ノックバック', lv: ['窓+0.12s／KB×2', '+0.18s／×2.5', '+0.25s／×3'] },
   'slasher':      { base: '近接命中後のタイミングリングをジャストタップで追撃（各2/3減衰・ノックバック）', lv: ['最大1連', '最大2連', '最大3連'] },
   'attack-shooter':{ base: '銃ダメージが上昇', lv: ['+10%', '+20%', '+30%'] },
-  'runner':       { base: '移動速度が上昇', lv: ['+10%', '+15%', '+20%'] },
+  'runner':       { base: '移動速度が上昇。リロード中はさらに+10%（Lv不問）', lv: ['+10%', '+15%', '+20%'] },
   'seeker':       { base: '被弾時に一定確率で3秒間半透明化し、通常敵から狙われなくなる（CD10秒）', lv: ['発動30%', '40%', '50%'] },
   'scrap-builder':{ base: '出撃開始時の初期スクラップが増える', lv: ['+50', '+100', '+150'] },
+  'magnet':       { base: '弾薬ピックアップの拾得範囲が拡大（弾薬以外は従来どおり）', lv: ['+10%', '+20%', '+30%'] },
+  'last-magazine':{ base: '弾倉最後の1発のダメージが増加（ショットガンは最終シェルの全ペレット）', lv: ['×2.0', '×2.5', '×3.0'] },
+  'warm-up':      { base: '出撃から60秒間、移動速度+10%・リロード時間-20%・クリティカル率+20%' },
 };
 // 現在Lvに即した説明。共通説明＋「Lv○：具体値」を併記。Lv変化なしは共通説明のみ。
 export const skillDescForLevel = (key: SkillKey, level: number): string => {
@@ -631,7 +640,7 @@ export const gachaSuperPercent = (pity: number): number => rarityWeightsForPity(
 export const gachaPityRemaining = (pity: number): number => Math.max(0, GACHA_PITY_MAX - Math.max(0, Math.floor(pity)));
 
 // スキルの最大Lv。一部スキルはLv1固定(効果表でLv2/3が none のもの)。
-export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1 };
+export const SKILL_MAX_LEVEL: Partial<Record<SkillKey, number>> = { reaper: 1, bomber: 1, 'warm-up': 1 }; // warm-up=全Lv同値(固定)のためLv1止まり(§6.8 M31)
 export const skillMaxLevel = (key: SkillKey): number => SKILL_MAX_LEVEL[key] ?? 3;
 // Lv抽選: スキルごとの「被り回数(dupeCount)」とレア度で [Lv1,Lv2,Lv3] の重みを決める。
 // 0回=初取得。被るほど高Lvが出やすくなる(社長確定表)。

@@ -1000,10 +1000,43 @@ export const skillAttackShooterGunMult = (player: Player): number => {
   return lv ? 1 + [0, 0.10, 0.20, 0.30][lv] : 1;
 };
 // ランナー: 移動速度 +10/15/20%(Lv)。移動速度の倍率として使用。
-export const skillRunnerSpeedMult = (player: Player): number => {
+// §6.8 M31追記: リロード中はさらに+10%(Lv不問の固定%・Lv倍率に乗算。非装備時は従来どおり1)。
+export const RUNNER_RELOAD_BONUS_MULT = 1.10;
+export const skillRunnerSpeedMult = (player: Player, reloading = false): number => {
   const lv = skillLevel(player, 'runner');
-  return lv ? 1 + [0, 0.10, 0.15, 0.20][lv] : 1;
+  if (!lv) return 1;
+  return (1 + [0, 0.10, 0.15, 0.20][lv]) * (reloading ? RUNNER_RELOAD_BONUS_MULT : 1);
 };
+// マグネット: 弾薬ピックアップのみ拾得矩形を中心基準で ×1.1/1.2/1.3(Lv)。弾薬以外は従来どおり(§6.8 M31)。
+export const skillMagnetAmmoRangeMult = (player: Player): number => {
+  const lv = skillLevel(player, 'magnet');
+  return lv ? [1, 1.1, 1.2, 1.3][lv] : 1;
+};
+// オーバークロック: サブウェポン発動(CD開始)時、CD即リセットの発動率(Lv1:20%/Lv2:25%/Lv3:30%)。
+// setSubWeaponCooldown の合流点+援護射撃の発射時に抽選(§6.8 M31)。CD無しサブは対象外(リセットするCDが無い)。
+export const skillOverclockChance = (player: Player): number => {
+  const lv = skillLevel(player, 'overclock');
+  return lv ? [0, 0.20, 0.25, 0.30][lv] : 0;
+};
+// ラストマガジン: 弾倉最後の1発(その発射で空になるトリガー1回分=発射前の残弾1)のダメージ ×2.0/2.5/3.0(Lv)。
+// ショットガンは最終シェルの全ペレットに乗る(発射時の素ダメージへ焼き込み=命中時の他倍率とは乗算。§6.8 M31)。
+export const skillLastMagazineMult = (player: Player, magazineBeforeShot: number): number => {
+  const lv = skillLevel(player, 'last-magazine');
+  return lv && magazineBeforeShot === 1 ? [0, 2.0, 2.5, 3.0][lv] : 1;
+};
+// ウォームアップ: 出撃から60秒間(gameTime<60000)、移動+10%・リロード時間×0.80・クリ率+20%(全Lv同値・§6.8 M31)。
+export const WARM_UP_DURATION_MS = 60000;
+export const WARM_UP_SPEED_MULT = 1.10;
+export const WARM_UP_RELOAD_MULT = 0.80;
+export const WARM_UP_CRIT_BONUS = 0.20;
+export const isWarmUpActive = (player: Player, gameTime: number): boolean =>
+  hasSkill(player, 'warm-up') && gameTime < WARM_UP_DURATION_MS;
+export const skillWarmUpSpeedMult = (player: Player, gameTime: number): number =>
+  isWarmUpActive(player, gameTime) ? WARM_UP_SPEED_MULT : 1;
+export const skillWarmUpReloadMult = (player: Player, gameTime: number): number =>
+  isWarmUpActive(player, gameTime) ? WARM_UP_RELOAD_MULT : 1;
+export const skillWarmUpCritBonus = (player: Player, gameTime: number): number =>
+  isWarmUpActive(player, gameTime) ? WARM_UP_CRIT_BONUS : 0;
 // シーカー: 被弾時、CD明け＆抽選成功で3秒間半透明＋通常敵から狙われなくなる。CD10秒。
 export const SEEKER_DURATION_MS = 3000;
 export const SEEKER_COOLDOWN_MS = 10000;
@@ -2849,9 +2882,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // スキル: スケーター = 通常歩行の移動速度 ×3(特殊ロコモーションは対象外。
         // 社長指示で段階的に強化: 2→3=1.5倍)。マークスマン = 3秒連続移動で ×1.2(通常歩行/リロード移動に乗る)。
         // 装備(体・機動系)の移動速度倍率は通常歩行/リロード移動に乗る(特殊ロコモーションは対象外)。中立=1。
-        // スキル: ランナー = 通常歩行/リロード移動の移動速度 +10/15/20%(Lv)。
-        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
-        : player.speed * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
+        // スキル: ランナー = 通常歩行/リロード移動の移動速度 +10/15/20%(Lv)。リロード中はさらに+10%(§6.8 M31)。
+        // スキル: ウォームアップ = 出撃から60秒間、移動速度+10%(§6.8 M31)。
+        : reloading ? player.speed * RELOAD_MOVE_SPEED_MULT * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player, true) * marksmanSpeedMult(player, state.gameTime) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
+        : player.speed * (hasSkill(player, 'skater') && player.skaterRiding ? 3 : 1) * skillRunnerSpeedMult(player) * marksmanSpeedMult(player, state.gameTime) * skillWarmUpSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -3841,7 +3875,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタン(=非フィニッシュ)の通常近接チップダメージ。finishKillOnly個体はHP1で踏みとどまる。
@@ -4155,7 +4189,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタンの通常近接チップ(分身の自動攻撃)。finishKillOnly個体はHP1で踏みとどまる。
@@ -4494,7 +4528,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
       const crit = Math.random() <
-        applyEnemyCritPenalty(Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+        applyEnemyCritPenalty(Math.min(1, KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)] + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
@@ -4689,7 +4723,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
       // PACING_PUZZLE.md §5.6 M7: チャフ(スケルトン)の武器弱点=近接+10%。
       const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
-      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+      const crit = Math.random() < applyEnemyCritPenalty(Math.min(1, meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillWarmUpCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
       const dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit });
       // §5.21-追補4: 非スタンの通常鞭打ち。finishKillOnly個体はHP1で踏みとどまる。
@@ -5513,7 +5547,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / (player.equipBonus?.fireRateMult ?? 1)) return;
     // GAME_AUDIT #10: 通常射撃(weaponUtils)と同じダメージ倍率を適用する。従来は連射装備だけ
     // 効いてダメージ装備・スキル・スカベンジャーが素通りだった(速くなるが強くならない非対称)。
-    const phillDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
+    // スキル: ラストマガジン = 弾倉最後の1発 ×2.0/2.5/3.0(PHILLも対象・§6.8 M31)。
+    const phillDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     if (snapEnemy) {
@@ -5713,6 +5748,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // スキル: タイムキーパー = サブCDのΔ(残り時間)を ×0.7。CDは gameTime 基準。
       const mult = skillCooldownMult(state.player);
       const delta = readyAt - state.gameTime;
+      // スキル: オーバークロック = サブウェポン発動(CD開始)時、20/25/30%でCDを即リセット(§6.8 M31)。
+      // Δ>0(実CDの開始)の時だけ抽選。成功=CDを設定しない(既存値は発動時点で既に明けている=即再使用可)。
+      // タイムキーパー等の既存CD系とは別軸で重複可。CD無しサブはここを通らない=自然に対象外。
+      if (delta > 0 && Math.random() < skillOverclockChance(state.player)) {
+        return {};
+      }
       const effReadyAt = mult !== 1 && delta > 0 ? state.gameTime + delta * mult : readyAt;
       return {
         player: {
