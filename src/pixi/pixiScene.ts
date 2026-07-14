@@ -28,6 +28,7 @@ import {
   SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_SLIDE_START_OUT, SUPPORT_SNIPER_INSET,
   type SupportSniperNpcState,
 } from '../utils/supportSniper';
+import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
 import { hasFullWarlordSet } from '../data/equipment';
@@ -1047,6 +1048,7 @@ export class PixiScene {
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
   private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
+  private flareGunViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>(); // フレアガン(flare-gun)の火(makeGroundFireView流用・同時1-2個)
   private effects = new Map<string, EffectView>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
@@ -2697,6 +2699,7 @@ export class PixiScene {
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
     this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
+    this.syncFlareGun(s.flareGunFlares, s.gameTime, now); // フレアガン(飛翔→着弾中3秒の火・molotovの火を流用)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
@@ -4832,6 +4835,59 @@ export class PixiScene {
         view.light.destroy();
         view.container.destroy({ children: true });
         this.groundFireViews.delete(id);
+      }
+    }
+  }
+
+  // フレアガン(flare-gun・§6.6 M29)の火炎弾。飛翔(発射点→着弾点の直線+小さな山なりの見た目)→
+  // 着弾中3秒は molotov の地面の火と同じ炎(makeGroundFireView/drawFlameShape 流用・ダメージ無し版)。
+  // 引き付け判定は sim 側(activeFlareTargets→resolveEnemyTarget)。ここは s.flareGunFlares を読んで
+  // 描くだけ(CLAUDE.md「PixiJSは描画のみ」)。同時1〜2個+per-idプールで軽い。強glowは使わない。
+  private syncFlareGun(flares: FlareGunFlare[], gameTime: number, now: number) {
+    const seen = new Set<string>();
+    for (const f of flares) {
+      seen.add(f.id);
+      let view = this.flareGunViews.get(f.id);
+      if (!view) { view = this.makeGroundFireView(); this.flareGunViews.set(f.id, view); }
+
+      // 位置: 飛翔中は発射点→着弾点を補間し、小さな山なり(見た目のみ)を付ける。着弾後は着弾点固定。
+      const flying = gameTime < f.landAt;
+      const ft = flying ? Math.max(0, Math.min(1, (gameTime - f.firedAt) / Math.max(1, f.landAt - f.firedAt))) : 1;
+      const fx = f.fromX + (f.x - f.fromX) * ft;
+      const fy = f.fromY + (f.y - f.fromY) * ft - (flying ? Math.sin(Math.PI * ft) * 36 : 0);
+
+      const d = this.depthScale(fy);
+      const horizonAlpha = this.horizonActorAlpha(fy);
+      const viewportDistance = this.distanceOutsideViewport(fx, fy, GROUND_FIRE_VIEWPORT_MARGIN);
+      // 着弾直前〜終了400msはフェードアウト(ぶつ切り消滅を避ける・見た目のみ)。
+      const lifeFade = Math.max(0, Math.min(1, (f.until - gameTime) / 400));
+      const visible = viewportDistance <= 0 && horizonAlpha > 0 && lifeFade > 0;
+
+      view.container.zIndex = fy;
+      view.container.visible = visible;
+      view.container.alpha = horizonAlpha * lifeFade;
+      view.light.visible = visible;
+      if (!visible) { view.flame.clear(); continue; }
+
+      // 揺らぎ/形は molotov の地面の火(syncGroundFires)と同じ式を再利用。飛翔中は小さめの火。
+      const pulse = 0.80 + 0.13 * Math.sin(now / 125 + f.x * 0.03) + 0.07 * Math.sin(now / 53 + f.y * 0.05);
+      const sizeMult = flying ? 0.6 : 1;
+      const r = GROUND_FIRE_FLAME_R * d * pulse * sizeMult;
+      const sway = flying ? 0 : Math.sin(now / 160 + f.x * 0.015) * r * 0.55;
+
+      view.light.position.set(fx, fy);
+      view.light.tint = 0xffb45f;
+      view.light.width = view.light.height = GROUND_FIRE_LIGHT_RADIUS * d * pulse * sizeMult;
+      view.light.alpha = 0.16 * horizonAlpha * pulse * lifeFade;
+
+      view.flame.clear();
+      this.drawFlameShape(view.flame, Math.round(fx), Math.round(fy), r, sway, f.x, f.y, now, horizonAlpha * lifeFade);
+    }
+    for (const [id, view] of this.flareGunViews) {
+      if (!seen.has(id)) {
+        view.light.destroy();
+        view.container.destroy({ children: true });
+        this.flareGunViews.delete(id);
       }
     }
   }

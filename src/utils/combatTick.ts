@@ -30,6 +30,7 @@ import {
   isBossType, isHiddenBoss, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile,
 } from './enemyUtils';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
+import { activeFlareTargets } from './flareGun';
 import { getActiveGun } from './weaponUtils';
 import { checkCollision, checkPlayerEnemyCollisions, checkProjectilePlayerCollisions } from './collisionUtils';
 import {
@@ -240,7 +241,11 @@ export const applyEnemyFire = (now: number): void => {
   const livePlayer = useGameStore.getState().player;
   const liveGameTime = useGameStore.getState().gameTime;
   const firedIds: string[] = [];
-  const liveSummonsForFire = useGameStore.getState().summons;
+  // フレアガン(§6.6 M29): 着弾中のフレアを疑似召喚として発砲ターゲットにも合流(召喚と同じ効き方)。
+  const liveFlareTargets = activeFlareTargets(useGameStore.getState().flareGunFlares, liveGameTime);
+  const liveSummonsForFire = liveFlareTargets.length > 0
+    ? [...useGameStore.getState().summons, ...liveFlareTargets]
+    : useGameStore.getState().summons;
   liveEnemies.forEach(enemy => {
     // 裏ボスの発砲(3連発/全方位16発)は専用コントローラが直接撃つので汎用ループからは除外。
     if (isHiddenBoss(enemy.type)) return;

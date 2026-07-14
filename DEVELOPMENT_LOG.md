@@ -1,5 +1,35 @@
 # Development Log
 
+## v0.25.1694 — M29実装: サブウェポン「フレアガン」(§6.6)【2026-07-14 19:08 JST】
+- **PACING_PUZZLE.md §6.6 バッチM29**(仕様確定済み)を実装チャット(Sonnet)が実装。
+  - **発射**: 近接攻撃(`triggerCounter`・M27/ドローンと同じ合流点)で進行方向(lastDirection)へ発射。
+    CD=Lv1:5秒/Lv2:4秒/Lv3:3秒(`setSubWeaponCooldown`経由=タイムキーパー等の既存CD規則も他サブと同じ扱い)。
+    CD中のスイングでは出ない。
+  - **弾**: ダメージ無し。着弾点=プレイヤー中心+向き×`RANGE_BY_CATEGORY.handgun`(=176・§6.6実装指定)。
+    飛翔350ms(見た目のみ・叩き台)→着弾。
+  - **引き付け**: 着弾点が3秒間、疑似召喚(`activeFlareTargets`)として**既存の`resolveEnemyTarget`に合流**
+    =召喚と完全に同じ効き方(通常敵380px=ALCHEMY_AGGRO_RANGE/ボスは既存のBOSS_SUMMON_AGGRO規則のまま)。
+    専用ヘイト機構は新設していない。合流点は3箇所: updateEnemies(追跡)・combatTick.applyEnemyFire(発砲)・
+    useGameLoopの裏ボス追跡。`resolveEnemyTarget`のsummons引数は最小構造型`SummonTargetLike`へ広げた
+    (実召喚Summonはそのまま通る=挙動不変)。
+  - **純関数化+テスト**: `src/utils/flareGun.ts`(activeFlareTargets=着弾中のみ疑似召喚化/pruneFlares=
+    寿命回収・不変時は同一参照)+`flareGun.test.ts` 6件(resolveEnemyTargetとの統合テスト含む)。
+  - **描画**: `pixiScene.syncFlareGun`=molotovの地面の火(makeGroundFireView/drawFlameShape)を流用。
+    飛翔中は小さめの火が山なりに飛び、着弾中は同じ炎+小ライト、終了400msフェード。強glowなし。
+  - **登録**: SubWeaponKeyへ `flare-gun`・表示名「フレアガン」・SUB_WEAPON_KEYSへ既存体系どおり登録。
+  - **SE**: 仕様・叩き台に指定が無いため付けていない(必要なら候補: 発射ポップ音。実機調整は社長)。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(任意装備のサブウェポン・シーン/台本に不干渉)。
+- 負荷スコア: **2/10**(合流はフレア着弾中のみ配列結合1回/フレーム+既存ターゲット解決の対象が数個増えるだけ。
+  描画はper-idプールの炎1〜2個=molotovと同じ方式)。
+- 検証: `npm run typecheck` クリーン / eslint(触った9ファイル)クリーン / `npx vitest related --run`=11ファイル
+  **154件パス**(新規flareGun 6件+enemyUtils既存+M9ボットスモーク含む)。実機確認ポイント: 装備→スイングで
+  進行方向へ火炎弾→少し先に3秒の火→周囲の敵が吸い寄せられる/CD 5/4/3秒/ダメージが出ていないこと/
+  ボス(裏ボス)がフレアに吸い付くこと(召喚と同じ)。
+- Files: `src/utils/flareGun.ts`(新規), `src/utils/flareGun.test.ts`(新規), `src/utils/enemyUtils.ts`,
+  `src/utils/combatTick.ts`, `src/types/game.ts`, `src/data/campaign.ts`, `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`,
+  `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1693 — M29「フレアガン」/M30「ジャンクウェポン」仕様書化(Sonnetサブエージェントへ追加発注)【2026-07-14 18:56 JST】
 - **M27/M28完了確認**: Sonnetサブエージェントがセンサー地雷(v0.25.1691)・援護射撃(v0.25.1692)を
   実装・コミット・push完了(テスト91/93件パス・ツリークリーン・詳細は各バージョンのログ参照)。

@@ -310,12 +310,23 @@ export const getEnemyBaseSpeed = (type: EnemyType): number => ENEMY_STATS[type].
 export const getEnemyBaseSize = (type: EnemyType): { width: number; height: number } =>
   ({ width: ENEMY_STATS[type].width, height: ENEMY_STATS[type].height });
 
+// resolveEnemyTarget が必要とする最小形(実召喚 Summon のほか、フレアガンの疑似召喚
+// FlarePseudoSummon=utils/flareGun.ts も構造的に一致する。§6.6 M29)。
+export interface SummonTargetLike {
+  kind: Summon['kind'];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 // 敵のターゲット解決(錬金術): 既定はプレイヤー中心。aggroRange 内に、プレイヤーより近い
-// 通常召喚ユニットがいればそれを狙う(ソフト/局所、ハードヘイト固定にしない)。summons は ≤3 で軽量。
+// 通常召喚ユニットがいればそれを狙う(ソフト/局所、ハードヘイト固定にしない)。summons は ≤3 で軽量
+// (+フレアガン着弾中は疑似召喚が数個加わる程度)。
 export const resolveEnemyTarget = (
   enemy: Enemy,
   player: Player,
-  summons: Summon[],
+  summons: readonly SummonTargetLike[],
   aggroRange: number,
   // シーカー発動中などでプレイヤーを標的にできない場合 true。召喚がいればそれを狙い、
   // いなければ hidden=true(=狙う相手なし。呼び出し側で待機/非発砲にする)。

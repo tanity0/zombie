@@ -15,6 +15,7 @@ import {
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
 import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
+import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -1228,6 +1229,7 @@ export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを�
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
 let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
+let flareGunSeq = 0;    // フレアガン(flare-gun)のフレアの一意id採番(プール/差分の安定キー)
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
@@ -1542,6 +1544,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'first-aid-kit': return '救急鞄';
     case 'sensor-mine': return 'センサー地雷';
     case 'support-sniper': return '援護射撃';
+    case 'flare-gun': return 'フレアガン';
     default: return 'サブウェポン';
   }
 };
@@ -2224,6 +2227,12 @@ interface GameState {
   supportSniperNpc: SupportSniperNpcState | null;
   setSupportSniperCd: (ms: number) => void;                            // useGameLoop が tick の結果を反映するだけ
   setSupportSniperNpc: (npc: SupportSniperNpcState | null) => void;    // useGameLoop がNPCの生成/発射打刻/消滅を反映するだけ
+
+  // フレアガン(flare-gun)サブウェポン(PACING_PUZZLE.md §6.6 M29)。発射は triggerCounter(近接スイング・CD制)、
+  // 引き付けは updateEnemies/combatTick が activeFlareTargets(疑似召喚)を resolveEnemyTarget へ合流、
+  // 寿命の回収は useGameLoop(pruneFlares)、描画は pixiScene が直読み。ダメージ無し。
+  flareGunFlares: FlareGunFlare[];
+  setFlareGunFlares: (flares: readonly FlareGunFlare[]) => void; // useGameLoop が pruneFlares の結果を反映するだけ
   spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
@@ -2652,6 +2661,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   sensorMines: [],
   supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
   supportSniperNpc: null,
+  flareGunFlares: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -3379,6 +3389,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         ),
       }));
       get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
+    }
+
+    // フレアガン(flare-gun): 近接攻撃時に進行方向(プレイヤーの向き)へ発射(CD=Lv1:5秒/Lv2:4秒/Lv3:3秒・
+    // CD中のスイングでは出ない)。ダメージ無し。ハンドガン距離(RANGE_BY_CATEGORY.handgun)の地点に着弾し、
+    // 着弾点が3秒間、召喚と同じ範囲(ALCHEMY_AGGRO_RANGE)の敵を引き付ける(疑似召喚として
+    // resolveEnemyTarget へ合流=召喚と完全に同じ効き方。PACING_PUZZLE.md §6.6 M29)。スロー無し。
+    if (
+      player.subWeapons.includes('flare-gun') &&
+      !subWeaponBlockedByKatana(player, 'flare-gun') &&
+      gameTime >= (player.subWeaponCooldowns['flare-gun'] ?? 0)
+    ) {
+      const fgLevel = Math.max(1, Math.min(3, player.subWeaponLevels['flare-gun'] ?? 1));
+      const fgDir = player.lastDirection ?? { x: 1, y: 0 };
+      const fgMag = Math.max(0.001, Math.hypot(fgDir.x, fgDir.y));
+      const fgDist = RANGE_BY_CATEGORY.handgun; // 「ハンドガン距離」=既存のハンドガン射程定数(§6.6 実装指定)
+      const fgX = pcx + (fgDir.x / fgMag) * fgDist;
+      const fgY = pcy + (fgDir.y / fgMag) * fgDist;
+      set(state => ({
+        flareGunFlares: [...state.flareGunFlares, {
+          id: `flare-${flareGunSeq++}`,
+          fromX: pcx, fromY: pcy,
+          x: fgX, y: fgY,
+          firedAt: gameTime,
+          landAt: gameTime + FLARE_GUN_FLIGHT_MS,
+          until: gameTime + FLARE_GUN_FLIGHT_MS + FLARE_GUN_DURATION_MS,
+        }],
+      }));
+      get().setSubWeaponCooldown('flare-gun', gameTime + FLARE_GUN_CD_MS_BY_LEVEL[fgLevel]);
     }
 
     // ワイヤーアンカーはフリック発動に変更(triggerWireAnchor)。スイング(指離し)では発動しない。
@@ -4182,6 +4220,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 決め、ここは結果を state へ書き込むだけ。
   setSupportSniperCd: (ms) => set({ supportSniperCdMs: ms }),
   setSupportSniperNpc: (npc) => set({ supportSniperNpc: npc }),
+
+  // フレアガン(flare-gun): 寿命の回収は useGameLoop が pruneFlares(純関数)で決め、ここは反映のみ。
+  setFlareGunFlares: (flares) => set({ flareGunFlares: [...flares] }),
 
   // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
@@ -6251,6 +6292,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
     set(state => {
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
+      // フレアガン(§6.6 M29): 着弾中のフレアを疑似召喚として敵ターゲット解決へ合流
+      // (召喚と完全に同じ効き方=専用ヘイト機構なし)。ループ外で一度だけ合成する。
+      const flareTargets = state.flareGunFlares.length > 0 ? activeFlareTargets(state.flareGunFlares, gameTime) : [];
+      const targetSummons = flareTargets.length > 0 ? [...summons, ...flareTargets] : summons;
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       const now = Date.now();
       // 特殊攻撃(突進/ジャンプ)の溜め・CD・動作を ENEMY_ATTACK_SPEED_MULT 倍速にする。
@@ -6612,7 +6657,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 与えた敵(meleeAggro)」はプレイヤーへターゲットを切り替える(社長指示)。死んでいたら最寄りNPCへ。
         // シーカー: プレイヤー半透明中は通常敵(ボス/死神/イベントボス級を除く)から狙われない。
         const playerHidden = isSeekerActive(player, gameTime) && !isBossType(enemy.type);
-        let tgt = resolveEnemyTarget(enemy, player, summons, ALCHEMY_AGGRO_RANGE, playerHidden);
+        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden);
         if (enemy.escortTarget && !enemy.meleeAggro && rescueSurvivors.length > 0) {
           let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
           if (!sv) {
@@ -9426,6 +9471,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         sensorMines: [],
         supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
         supportSniperNpc: null,
+        flareGunFlares: [],
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

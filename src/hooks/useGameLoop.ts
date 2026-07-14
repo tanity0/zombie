@@ -70,6 +70,7 @@ import {
   computeSupportSniperTick, computeSupportSniperEntry,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
 } from '../utils/supportSniper';
+import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
 import {
@@ -3174,7 +3175,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const stunned = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
               const walkMult = stunned ? BOSS_STUN_SPEED_MULT : 1; // 気絶中は歩行のみ半速(攻撃は通常)
               // 追跡先=プレイヤー/召喚の「近い方」(社長指示)。通常敵と同じ resolveEnemyTarget で吸い付く。
-              const chaseTgt = resolveEnemyTarget(boss, player, useGameStore.getState().summons, BOSS_SUMMON_AGGRO);
+              // フレアガン(§6.6 M29): 着弾中のフレアも疑似召喚として合流=ボスは既存の召喚ヘイト規則
+              // (BOSS_SUMMON_AGGRO)のままフレアに吸い付く(新しい強制は足さない)。
+              const bossFlareTargets = activeFlareTargets(useGameStore.getState().flareGunFlares, newGameTime);
+              const chaseTgt = resolveEnemyTarget(
+                boss, player,
+                bossFlareTargets.length > 0 ? [...useGameStore.getState().summons, ...bossFlareTargets] : useGameStore.getState().summons,
+                BOSS_SUMMON_AGGRO
+              );
               // 慣性付き移動: 目標方向の desired 速度へ現在速度を BOSS_TURN_RESPONSE で寄せて位置を更新
               // (急な方向転換がぬるっと効く=慣性)。最高速は spd*mult のまま不変。
               // spd省略時は自身のspeed(mimir/jormungand/skadi/通常敵の既定)。トールの接近だけ
@@ -5514,6 +5522,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               useGameStore.getState().registerMultiHit(smHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
             }
+          }
+        }
+
+        // フレアガン(flare-gun・§6.6 M29): 寿命切れ(着弾+3秒)のフレアを回収(判定=純関数 pruneFlares)。
+        // 引き付け自体は updateEnemies/combatTick/ボス追跡が activeFlareTargets を合流して処理する。
+        {
+          const fgFlares = useGameStore.getState().flareGunFlares;
+          if (fgFlares.length > 0) {
+            const fgAlive = pruneFlares(fgFlares, gameTime);
+            if (fgAlive !== fgFlares) useGameStore.getState().setFlareGunFlares(fgAlive);
           }
         }
 
