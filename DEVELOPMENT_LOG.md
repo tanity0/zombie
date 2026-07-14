@@ -12,6 +12,16 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1689 — M27仕様書化: サブウェポン「センサー地雷」(Sonnet実装待ち)【2026-07-14 18:11 JST】
+- **社長指示**「センサー地雷: 近接攻撃で設置/範囲に敵が入ると2秒後に起爆/同時数3/4/5/威力と範囲は手榴弾の
+  1.2倍程度/エクスプローダー・ボマー対象」。
+- PACING_PUZZLE.md **§6.4 バッチM27**として仕様確定(基準値: ダメージ50=42×1.2・半径79=66×1.2。
+  叩き台: センサー範囲=爆発半径・上限中は最古置換・CDなし・赤点滅2秒・スロー禁止・入手は既存サブ体系)。
+  受け入れ条件5項を明記。ステータス表にM27行を追加。
+- 天秤(v0.25.1687ルール): 仕様確定済みの新規バッチで調査コンテキスト不要=**Sonnetへ**(直接実装より安い)。
+  Sonnetへのワンライナー: 「M27=センサー地雷を実装して。仕様はPACING_PUZZLE.md §6.4」。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(仕様のみ・コード変更なし)。
+
 ## v0.25.1688 — トラップの対ボス: 天使=移動半減で効く+対ボス銃クリ率+10%を実効化【2026-07-14 18:07 JST】
 - **社長質問**「トラップってボスに対してどうなってる？効かないなら移動半減+クリ率アップ(既存の値)にして」。
 - **診断結果(効き方はボス種別で3通りだった)**:
