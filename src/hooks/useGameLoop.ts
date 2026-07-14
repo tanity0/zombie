@@ -5689,10 +5689,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // Apply the crit multiplier at hit time: bosses take 5× on a crit,
           // normal enemies 1.5×. `damage` is the projectile's base damage.
           const isBoss = enemyForFx ? isBossType(enemyForFx.type) : false;
+          // トラップ(root)中のクリ率+10%: ボスはクリペナルティ(-10%)と丁度相殺して実質0だったため、
+          // ボスに限りペナルティを通さず既存値(MARKSMAN_TRAP_CRIT_BONUS=0.10)をそのまま適用
+          // (社長指示v0.25.1688「ボスにはクリティカル率アップ(既存の値)」。ボス以外は従来どおり)。
           const trapCritBonus =
-            enemyForFx?.rootUntil !== undefined &&
+            enemyForFx !== undefined &&
+            enemyForFx.rootUntil !== undefined &&
             gameTime < enemyForFx.rootUntil &&
-            Math.random() < applyEnemyCritPenalty(MARKSMAN_TRAP_CRIT_BONUS, enemyForFx);
+            Math.random() < (isBoss ? MARKSMAN_TRAP_CRIT_BONUS : applyEnemyCritPenalty(MARKSMAN_TRAP_CRIT_BONUS, enemyForFx));
           // PACING_PUZZLE.md §5.6 M7: チャフ(バット/ゾンビ)の武器弱点=銃+10%。命中対象の型は
           // ヒット時点でしか分からない(発射時は未確定)ため、ここで対象別に追加ロールする。
           const weakCrit = WEAKCRIT_ENABLED && enemyForFx

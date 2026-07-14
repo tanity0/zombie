@@ -12,6 +12,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1688 — トラップの対ボス: 天使=移動半減で効く+対ボス銃クリ率+10%を実効化【2026-07-14 18:07 JST】
+- **社長質問**「トラップってボスに対してどうなってる？効かないなら移動半減+クリ率アップ(既存の値)にして」。
+- **診断結果(効き方はボス種別で3通りだった)**:
+  - 裏ボス4体(ミミル/ヨルムンガンド/スカジ/トール)=**効く**(専用コントローラがroot対応済み・移動も攻撃も完全停止)。
+  - 城ボス(giantbat)/パンプキン/ハンター=**効く**(updateEnemiesのroot分岐で移動停止)。
+  - **天使3体(ミゲル/ジブリル/ラフィ)=完全無効**(updateEnemiesをスキップ+angelBossTickがrootUntil未参照)。
+  - クリ率+10%(TRAP_ROOT_CRIT_BONUS/MARKSMAN_TRAP_CRIT_BONUS=0.10): **銃経路はボス相手に実質0**
+    (対ボスクリペナルティ-10%と丁度相殺)。近接経路は合算後に減算のため実質+10%で効いていた。
+- **修正(「効かない」2点のみ・効いている完全停止系は不変)**:
+  - `angelBossTick.ts`: ディスパッチャで root 中は移動係数×0.5(`ANGEL_ROOT_SLOW_MULT`)。歩行系(旋回/後退/
+    追跡/ステップ)は全て moveSpeedMult 経由なので1箇所で効く。攻撃ツイーン(counter-leap/ジャンプ/ワープ)は
+    時間基準=影響なし(移動だけ半減)。
+  - `useGameLoop.ts` 銃ヒットのtrapCritBonus: ボスに限りペナルティを通さず既存値0.10をそのまま適用
+    (ボス以外・ネームド(非ボス)は従来どおり)。
+- 天秤(v0.25.1687ルール): 診断でangel/裏ボス/updateEnemiesの経路を特定済み+2ファイル小修正=直接実装が安い。
+- 負荷: 1/10(係数1個と条件分岐1個)。検証: typecheck / eslint クリーン。実機確認ポイント: 天使戦でトラップ→
+  歩行が目に見えて遅くなる/root中の銃クリ発生率。
+- Files: `src/utils/angelBossTick.ts`, `src/hooks/useGameLoop.ts`, `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1687 — 分業ルール更新: 調査の延長の実装はFable自己判断可(必ずSonnetと天秤)【2026-07-14 17:16 JST】
 - **社長指示**「調査時にそのまま実装してしまう方がトークン量も安そうな事案であれば自己判断してください。
   その代わり、かならずsonnetと天秤にかけて判断してからにすること」。
