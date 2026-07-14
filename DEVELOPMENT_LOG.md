@@ -12,6 +12,23 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1672 — デバッグ/バランステスト実施(社長指示・コード変更なし)【2026-07-14 09:44 JST】
+- **社長指示**「デバッグ、バランステストしておいて」。今セッション(v1655〜1671: ゲート到達ガード/救急鞄/天使ボス
+  2体の専用AI/ハンター条件/深層演出ロック)の節目としてフルチェック+バランス走行を実施。
+- **結果: 全部グリーン・修正の必要なし。**
+  - `npm run lint`: **0エラー**(警告7=既存のreact-refresh系のみ)。
+  - `npm run typecheck`: クリーン。
+  - `npm test`: **652 passed / 2 skipped(56ファイル)**。gate2(6)/viciousHunter(11)/firstAidKit(17)/憲法テスト含む。
+  - `npm run build`: 成功(22秒・500kBチャンク警告は既存)。
+  - **バランス走行(playtest フル・10ラン×15分相当・全ペルソナ×全クラス)**: **10/10生存**。hpLost 6〜10(/110)、
+    9/10ランが rank4 到達。外れ値=wanderer×mage が rank1(被ダメ6で生存・徘徊ペルソナがキル薄の外周を回った
+    模様=ペルソナ由来のブレと判断。次回も再現するなら要観察)。
+  - M19深層ラッシュ: r7500到達@87s・hp102・死亡なし(従来記録と同水準)。
+- **カバレッジの注意(重要)**: ヘッドレスボットは**ゲート発火/天使ボス戦(ミゲル/ジブリル/ラフィ)/深層演出ロックを
+  通らない**(ボット試験の網の外)。今セッションの主要変更のうちこれらは**実機確認が唯一の検証手段**
+  — 社長の実機プレイで「ゲート2戦闘中に深層演出が入らない/ジブリル・ラフィの挙動/ランタン火」の確認を推奨。
+- Files: `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(コード変更なし)。
+
 ## v0.25.1671 — リザルトの「森を生き延びた」を削除【2026-07-13 21:48 JST】
 - **社長指示**「リザルトの 森を生き延びた ってやつ消して」。
 - `GameOverScreen.tsx`: クリア(won)時のサブテキスト「森を生き延びた」を撤去。ベンチ(「段階式の描画負荷テストが

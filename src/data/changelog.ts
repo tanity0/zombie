@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1672',
+    items: [
+      '安定性チェックを実施(全テスト652件・ビルド・バランス自動走行10ラン)。問題は見つかりませんでした(コード変更なし)。',
+    ],
+  },
+  {
     version: '0.25.1671',
     items: [
       'リザルト画面のクリア時サブテキスト「森を生き延びた」を削除。',
