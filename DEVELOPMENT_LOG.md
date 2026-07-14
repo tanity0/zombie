@@ -12,6 +12,38 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1692 — M28実装: サブウェポン「援護射撃」(§6.5)【2026-07-14 18:51 JST】
+- **PACING_PUZZLE.md §6.5 バッチM28**(仕様確定済み)を実装チャット(Sonnet)が実装。
+  - **CD**: 移動中のみ進む「残りms」方式(`supportSniperCdMs`。subWeaponCooldownsの絶対時刻では停止中
+    保持ができないため専用フィールド)。Lv1=5秒/Lv2=4秒/Lv3=3秒(社長指定)。停止中は保持・リセットなし。
+    敵が居ない時は撃たず満タン(0)保持→移動中に敵が現れたら即発射。レベルアップでCDが縮んだら残りをクランプ。
+  - **弾**: `buildSupportSniperShot`(weaponUtils.ts)= CATALOG rifle-t2 と fireWeapon と同じ生成時計算
+    (素ダメージ=スカベンジャー/アタックシューター/装備倍率・クリ率=基礎+パッシブ+装備+クイックマガジン+弁慶)で
+    weaponType='rifle'/weaponKey='rifle-t2' の**通常のプレイヤー弾**を生成→既存の命中パイプライン
+    (クリ倍率/スナイパー/コンボマスター/貫通=passthrough)が通常どおり乗る。**弾薬は消費しない**。
+  - **狙い**: プレイヤーから一番近い敵(無敵の徘徊死神=非chaserは手榴弾照準と同じ除外)。発射時(登場250ms後)に
+    対象の現在位置へ再照準、居なければその時点の最寄り敵へ持ち替え(全滅時は向きのまま発射=害なし)。
+  - **演出**: NPC1人(護衛軍人スプライト流用・soldierIndexランダム)が「狙う敵→プレイヤー」延長線と画面縁の交点
+    (±約7°ランダム・純関数 computeSupportSniperEntry)から縁の外30px→内60pxへスライドイン250ms(easeOut+フェード)
+    →発射→**向きを変えずに**同じ軸で後退350ms(easeIn+フェード)で消滅。同時1人。
+    SE=スナイパー発砲音(rifle-fire)を護衛NPCと同じ `npcSfxDistGain` で距離減衰。マズルフラッシュ=既存の小グロー。
+    **スローモーションは発生させない**。**新規の強glowなし**。
+  - **純関数化+テスト**: `src/utils/supportSniper.ts`(computeSupportSniperTick=移動中のみCD進行/満タン保持、
+    computeSupportSniperEntry=縁交点+jitter回転)+`supportSniper.test.ts` 12件。
+  - **登録**: SubWeaponKeyへ `support-sniper` 追加・表示名「援護射撃」・SUB_WEAPON_KEYSへ molotov/turret と
+    同じ扱いで登録。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(任意装備のサブウェポン・シーン/台本に不干渉)。
+- **メモ**: 出現点の画面縁は sim の nominal 可視域(camera+gameBounds)基準。文脈ズーム最大引き
+  (CONTEXT_ZOOM_MIN=0.8)では縁がやや内側になるが、フェードイン/アウトで破綻しない(?zoomlock=1 での見え方は
+  実機確認ポイント)。
+- 負荷スコア: **2/10**(simは最寄り敵走査+純関数1回/フレーム、発射はCD毎のイベント駆動。描画はSprite1枚の補間のみ)。
+- 検証: `npm run typecheck` クリーン / eslint(触った8ファイル)クリーン / `npx vitest related --run`=7ファイル93件パス
+  (新規supportSniper 12件+M9ボットスモーク含む)。実機確認ポイント: 移動し続けてCD毎にNPCが縁から登場→発射→後退/
+  停止中は撃たない(再開でタイマー続き)/敵なし時は満タン保持→敵出現で即発射/?zoomlock=1での縁の見え方。
+- Files: `src/utils/supportSniper.ts`(新規), `src/utils/supportSniper.test.ts`(新規), `src/utils/weaponUtils.ts`,
+  `src/types/game.ts`, `src/data/campaign.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1691 — M27実装: サブウェポン「センサー地雷」(§6.4)【2026-07-14 18:40 JST】
 - **PACING_PUZZLE.md §6.4 バッチM27**(仕様確定済み)を実装チャット(Sonnet)が実装。
   - **設置**: 近接攻撃(スイング)=`triggerCounter` のドローンブーメランと同じ合流点で足元に1個設置(設置CDなし)。

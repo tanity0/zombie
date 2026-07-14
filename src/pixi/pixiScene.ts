@@ -24,6 +24,10 @@ import type {
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
+import {
+  SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_SLIDE_START_OUT, SUPPORT_SNIPER_INSET,
+  type SupportSniperNpcState,
+} from '../utils/supportSniper';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
 import { hasFullWarlordSet } from '../data/equipment';
@@ -1042,6 +1046,7 @@ export class PixiScene {
   private groundFireViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>();
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
   private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
+  private supportSniperSprite: Sprite | null = null;       // 援護射撃(support-sniper)のNPC(同時1人・護衛軍人スプライト流用のプールSprite)
   private effects = new Map<string, EffectView>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
@@ -2703,6 +2708,7 @@ export class PixiScene {
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
+    this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(画面縁のスライドイン→発射→後退)
     this.syncBossCorpse(s.bossCorpse, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
@@ -6765,6 +6771,48 @@ export class PixiScene {
         if (bl) { bl.destroy(); this.escortBlendSprites.delete(id); }
       }
     }
+  }
+
+  // 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28)のNPC。護衛軍人スプライト(ESCORT_SPRITE_BASE)を
+  // 流用した1枚のプールSprite。位置/タイミングは sim 側の supportSniperNpc(縁の交点+向き+打刻)から
+  // ここで補間するだけ(書き込みなし): スライドイン250ms(縁の外30px→内60px・easeOut+フェードイン)→発射→
+  // 向きを変えずに同じ軸で後退350ms(easeIn+フェードアウト)。同時1人・イベント駆動=軽い(強glow不使用)。
+  private drawSupportSniper(npc: SupportSniperNpcState | null, gameTime: number) {
+    let sp = this.supportSniperSprite;
+    if (!npc) { if (sp) sp.visible = false; return; }
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5, 1);
+      this.L.actorLayer.addChild(sp);
+      this.supportSniperSprite = sp;
+    }
+    const base = ESCORT_SPRITE_BASE[npc.soldierIndex] ?? 'rescue/shooter';
+    const tex = getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
+    if (!tex) { sp.visible = false; return; }
+    // スライド位置: 縁の交点(npc.x/y)を基準に、向き(dir=敵の方向)の軸上で 外(-START_OUT)→内(+INSET)。
+    let offset: number;
+    let alpha: number;
+    if (npc.firedAt <= 0) {
+      const inT = Math.max(0, Math.min(1, (gameTime - npc.spawnedAt) / SUPPORT_SNIPER_SLIDE_IN_MS));
+      const e = 1 - (1 - inT) * (1 - inT); // easeOutQuad(スッと出て止まる)
+      offset = -SUPPORT_SNIPER_SLIDE_START_OUT + (SUPPORT_SNIPER_SLIDE_START_OUT + SUPPORT_SNIPER_INSET) * e;
+      alpha = Math.min(1, inT * 1.6);
+    } else {
+      const outT = Math.max(0, Math.min(1, (gameTime - npc.firedAt) / SUPPORT_SNIPER_SLIDE_OUT_MS));
+      const e = outT * outT; // easeInQuad(ゆっくり下がり始めてスッと消える)
+      offset = SUPPORT_SNIPER_INSET - (SUPPORT_SNIPER_SLIDE_START_OUT + SUPPORT_SNIPER_INSET) * e;
+      alpha = 1 - outT;
+    }
+    const px = npc.x + npc.dirX * offset;
+    const py = npc.y + npc.dirY * offset;
+    sp.texture = tex;
+    const sc = this.humanNpcScale(tex.width, tex.height, py); // プレイヤーと同寸(護衛と同じ)
+    const faceSign = npc.dirX >= 0 ? 1 : -1; // 向き=敵の方向。発射後も変えない(そのまま後退)
+    sp.scale.set(sc * faceSign, sc);
+    sp.alpha = alpha * this.horizonActorAlpha(py);
+    sp.visible = sp.alpha > 0.01;
+    sp.position.set(Math.round(px), Math.round(py));
+    sp.zIndex = py;
   }
 
   // 裏ボス討伐演出: store.bossCorpse がある間だけ、死亡位置に頭基準で本体絵を描き、

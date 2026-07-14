@@ -66,6 +66,10 @@ import {
 } from '../utils/collisionUtils';
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
+import {
+  computeSupportSniperTick, computeSupportSniperEntry,
+  SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
+} from '../utils/supportSniper';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
 import {
@@ -150,7 +154,7 @@ import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClamp
 import { getSelectedStageId, getWallMeta, setWallMeta, getGateMeta, setGateMeta, emptyGateMeta, recordChronicle, type GateMeta } from '../data/progress';
 import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 import { contextZoomTarget, isLargeForZoom } from '../utils/cameraZoom';
-import { fireWeapon, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
+import { fireWeapon, buildSupportSniperShot, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
 import { playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
@@ -4648,6 +4652,109 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const footX = subWeaponPlayer.x + subWeaponPlayer.width / 2;
             const footY = subWeaponPlayer.y + subWeaponPlayer.height;
             useGameStore.getState().spawnGroundFire(footX, footY);
+          }
+        }
+
+        // 援護射撃(support-sniper): 移動中のみCDが進み、CD毎(Lv1=5s/Lv2=4s/Lv3=3s)にNPC1人が
+        // 「狙う敵と反対側の画面縁」からスライドイン→プレイヤーと同性能のスナイパー弾(rifle-t2・
+        // 既存プレイヤー弾パイプライン)を最寄り敵へ発射→向きを変えず後退して消える(PACING_PUZZLE.md §6.5 M28)。
+        // CD進行/発射可否は純関数 computeSupportSniperTick、出現点は computeSupportSniperEntry
+        // (src/utils/supportSniper.ts)。ここは結果の反映のみ。スローモーションは発生させない(CLAUDE.md)。
+        if (
+          !inReturnCircle &&
+          subWeaponPlayer.subWeapons.includes('support-sniper') &&
+          !subWeaponBlockedByKatana(subWeaponPlayer, 'support-sniper')
+        ) {
+          const ssLevel = Math.max(1, Math.min(3, subWeaponPlayer.subWeaponLevels['support-sniper'] ?? 1));
+          const ssState = useGameStore.getState();
+          const ssPcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+          const ssPcy = subWeaponPlayer.y + subWeaponPlayer.height / 2;
+          // 狙い=プレイヤーから一番近い敵(死神の非追跡個体=無敵の徘徊体は狙わない。手榴弾の照準と同じ除外)。
+          let ssTarget: (typeof ssState.enemies)[number] | null = null;
+          let ssBest = Infinity;
+          for (const e of ssState.enemies) {
+            if (e.type === 'reaper' && !e.reaperChaser) continue;
+            const d = Math.hypot(e.x + e.width / 2 - ssPcx, e.y + e.height / 2 - ssPcy);
+            if (d < ssBest) { ssBest = d; ssTarget = e; }
+          }
+          const ssTick = computeSupportSniperTick({
+            deltaMs: deltaTime * 1000,
+            isMoving: subWeaponPlayer.isMoving,
+            hasEnemy: ssTarget !== null,
+            cdRemainingMs: ssState.supportSniperCdMs,
+            cooldownMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[ssLevel],
+          });
+          if (ssTick.cdRemainingMs !== ssState.supportSniperCdMs) {
+            useGameStore.getState().setSupportSniperCd(ssTick.cdRemainingMs);
+          }
+          // NPCは同時1人(前の演出が残っていたら発射を1フレーム先送り=CDは満タン保持で即再判定される)。
+          if (ssTick.fire && ssTarget && !ssState.supportSniperNpc) {
+            const ssCam = ssState.camera;
+            const ssGb = ssState.gameBounds;
+            const entry = computeSupportSniperEntry(
+              ssTarget.x + ssTarget.width / 2, ssTarget.y + ssTarget.height / 2,
+              ssPcx, ssPcy,
+              { left: ssCam.x, top: ssCam.y, right: ssCam.x + ssGb.width, bottom: ssCam.y + ssGb.height },
+              (Math.random() - 0.5) * 0.24, // ±少しランダム(叩き台: 約±7°)
+            );
+            if (entry) {
+              useGameStore.getState().setSupportSniperNpc({
+                id: Date.now(),
+                x: entry.x, y: entry.y,
+                dirX: entry.dirX, dirY: entry.dirY,
+                soldierIndex: Math.floor(Math.random() * 8), // 護衛軍人スプライト(0..7)を流用
+                spawnedAt: gameTime,
+                firedAt: 0,
+                targetEnemyId: ssTarget.id,
+              });
+            }
+          }
+        }
+        // 援護射撃NPCの状態機械(スライドイン完了→発射/スライドアウト完了→消滅)。装備の有無に
+        // 関わらず進める(発射待ちの間に装備が外れても演出は完走させる)。描画は pixiScene が直読み。
+        {
+          const ssNpc = useGameStore.getState().supportSniperNpc;
+          if (ssNpc) {
+            if (ssNpc.firedAt === 0 && gameTime >= ssNpc.spawnedAt + SUPPORT_SNIPER_SLIDE_IN_MS) {
+              // 発射位置=スライドイン終点(縁の内側 SUPPORT_SNIPER_INSET)。銃口ぶん少し上から撃つ(見た目)。
+              const fireX = ssNpc.x + ssNpc.dirX * SUPPORT_SNIPER_INSET;
+              const fireY = ssNpc.y + ssNpc.dirY * SUPPORT_SNIPER_INSET;
+              const muzzleY = fireY - 20;
+              const stNow = useGameStore.getState();
+              // 狙った敵の現在位置へ(発射までの250msで倒されていたら、その時点の最寄り敵へ持ち替え)。
+              let tgt = stNow.enemies.find(e => e.id === ssNpc.targetEnemyId) ?? null;
+              if (!tgt) {
+                let best = Infinity;
+                const pcx2 = stNow.player.x + stNow.player.width / 2;
+                const pcy2 = stNow.player.y + stNow.player.height / 2;
+                for (const e of stNow.enemies) {
+                  if (e.type === 'reaper' && !e.reaperChaser) continue;
+                  const d = Math.hypot(e.x + e.width / 2 - pcx2, e.y + e.height / 2 - pcy2);
+                  if (d < best) { best = d; tgt = e; }
+                }
+              }
+              let aimX = ssNpc.dirX, aimY = ssNpc.dirY; // 敵が全滅していたら向きのまま撃つ(害なし)
+              if (tgt) {
+                const tx = tgt.x + tgt.width / 2 - fireX;
+                const ty = tgt.y + tgt.height / 2 - muzzleY;
+                const tm = Math.max(0.001, Math.hypot(tx, ty));
+                aimX = tx / tm; aimY = ty / tm;
+              }
+              addProjectile(buildSupportSniperShot(stNow.player, fireX, muzzleY, { x: aimX, y: aimY }, gameTime));
+              // SE: プレイヤーのスナイパー発砲音(rifle-fire)を護衛NPCと同じ npcSfxDistGain で距離減衰。
+              const ssPl = stNow.player;
+              const g = npcSfxDistGain(
+                fireX, fireY,
+                ssPl.x + ssPl.width / 2, ssPl.y + ssPl.height / 2,
+                stNow.camera, stNow.gameBounds,
+              );
+              if (g > 0) playSfx('rifle-fire', g);
+              // マズルフラッシュ(プレイヤー射撃と同じ小グロー・イベント駆動=軽い。強glowではない)。
+              useGameStore.getState().spawnGlow(fireX + aimX * 18, muzzleY + aimY * 18, 15, 'rgba(255,238,170,', 90);
+              useGameStore.getState().setSupportSniperNpc({ ...ssNpc, firedAt: gameTime });
+            } else if (ssNpc.firedAt > 0 && gameTime >= ssNpc.firedAt + SUPPORT_SNIPER_SLIDE_OUT_MS) {
+              useGameStore.getState().setSupportSniperNpc(null);
+            }
           }
         }
 

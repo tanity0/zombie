@@ -383,6 +383,46 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   return projectiles;
 };
 
+// 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28): プレイヤーのスナイパー(rifle-t2)と同性能の
+// 1発を、NPC位置から「既存のプレイヤー弾」として生成する。fireWeapon の生成時計算と同じ式
+// (素ダメージ=スカベンジャー/アタックシューター/装備倍率、クリ率=基礎+パッシブ+装備+クイックマガジン+弁慶)を使い、
+// weaponType/weaponKey も rifle/rifle-t2 に揃える=命中時のスキル倍率(クリ/スナイパー/コンボマスター)・
+// 貫通(passthrough)が通常のプレイヤー弾と完全に同じ扱いになる。プレイヤーの銃の状態(弾薬/リロード/
+// lastFired)には一切触れない(弾は消費しない)。副作用なし。
+export const buildSupportSniperShot = (
+  player: Player,
+  x: number, y: number,                       // 弾の中心の生成位置(NPCの発射位置)
+  direction: { x: number; y: number },        // 射線(正規化済みを渡す)
+  gameTime: number,
+): Projectile => {
+  const def = CATALOG['rifle-t2'];
+  const size = def.projectileSize || 8;
+  const speed = (def.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
+  const shotDamage = def.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
+  const quickMagCritBonus = player.quickMagCritUntil > gameTime ? 0.10 : 0;
+  const critChance = Math.min(1, (weaponBaseCritChance(def) ?? 0) + (player.critChance || 0) + (player.equipBonus?.critBonus ?? 0) + quickMagCritBonus + skillBenkeiCritBonus(player, gameTime));
+  return {
+    id: `proj-support-sniper-${Date.now()}`,
+    x: x - size / 2,
+    y: y - size / 2,
+    width: size,
+    height: size,
+    speed,
+    damage: shotDamage, // クリ倍率は命中時適用(通常のプレイヤー弾と同じ)
+    direction,
+    weaponType: def.category as WeaponType, // 'rifle'
+    weaponKey: def.key,                     // 'rifle-t2'
+    duration: 1400,
+    createdAt: Date.now(),
+    passthrough: def.passthrough || false,  // rifle-t2=貫通
+    hitEnemies: [],
+    pierce: def.pierce,
+    hostile: false,
+    reflected: false,
+    crit: Math.random() < critChance,
+  };
+};
+
 export const getWeaponShortName = (type: WeaponType): string => {
   switch (type) {
     case 'handgun': return 'ハンドガン';
