@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1707 — テストキット自己回復化(タイトル停止対策)+手動手順の文書化【2026-07-14 22:21 JST】
+- **社長報告**「(ローカルテストが)更新情報 はじめる の手順で止まってるっぽい。操作方法とか手順って渡してる？」
+  → 手順は未整備だった。コンテナからは tanity0.github.io に到達不可(プロキシ拒否)で直接診断できないため、
+  キット側を自己回復型に:
+  - `scripts/botrun-local.mjs`: 開始9秒後にタイトル(「はじめる」)を検出したら**自動クリックで開始**
+    (はじめる→狂い咲きの森→▶出撃準備→▶START。?botはゲーム開始後に自動で操作を引き継ぐ)。
+    `smokeFallback`/最終画面テキストを結果JSONに記録=?smoke不発の証拠が残る。
+  - `TEST_HANDOFF/README.md`: セットアップ(`npx playwright install chromium`)+**手動操作手順**+
+    「開始不能ならスクショ+consoleをpushして終了(調査は設計チャット)」を明記。
+  - `TEST_HANDOFF/REQUEST.md`: 依頼#1に診断ステップ0(デプロイ版バージョン確認・smokeFallback報告)を追加。
+- ?smoke不発の原因はテスト結果(smokeFallback/console)を見て診断する(こちらのプレビューでは正常動作のため
+  デプロイ環境/手順差の可能性)。
+- Files: `scripts/botrun-local.mjs`, `TEST_HANDOFF/README.md`, `TEST_HANDOFF/REQUEST.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1706 — テストチャット運用(TEST_HANDOFF)整備+依頼#1発行【2026-07-14 21:35 JST】
 - **社長運用決定**「ここで会話しつつ、テストが必要と判断したらテスト内容をgithubを介してテストチャットへ渡す。
   テストチャットには『テストして』とだけ伝えれば読みに行ってテストして結果を記載。こちらに戻って『テストしたよ』で再開」。
