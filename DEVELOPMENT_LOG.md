@@ -12,6 +12,34 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1691 — M27実装: サブウェポン「センサー地雷」(§6.4)【2026-07-14 18:40 JST】
+- **PACING_PUZZLE.md §6.4 バッチM27**(仕様確定済み)を実装チャット(Sonnet)が実装。
+  - **設置**: 近接攻撃(スイング)=`triggerCounter` のドローンブーメランと同じ合流点で足元に1個設置(設置CDなし)。
+    同時数 Lv1=3/Lv2=4/Lv3=5、上限中の追加設置は最古(placedAt最小)を置換。
+  - **起爆**: 範囲(=爆発半径79)に敵中心が入ると感知→2秒の赤点滅テレグラフ→起爆。感知後は敵が離れても解除しない。
+    敵のみに反応(死神含む)・プレイヤー/召喚/護衛は無視・自傷なし。
+  - **爆発**: ダメージ50・半径79(=手榴弾42/66の1.2倍)。手榴弾の爆発ブロックを踏襲(減衰0.55+0.45×falloff/
+    壁越し不可/ボス系非致死/ノックバック/キル時XPドロップ/registerMultiHit)。**エクスプローダー**=
+    `skillExplosionMult`(半径・ダメージ倍率=手榴弾と同経路)、**ボマー**=起爆時ミニ手榴弾3個
+    (手榴弾と同じ子グレネード: 1/3ダメージ・0.6半径・再散布なし)。ヘビーガンナー固有の爆発範囲倍率も
+    手榴弾と同様に適用(キャラ固有仕様「すべての爆発範囲」に従う)。**スローモーションは発生させない**。
+  - **純関数化+テスト**: `src/utils/sensorMine.ts`(placeSensorMine=最古置換 / tickSensorMines=感知・起爆判定)
+    +`sensorMine.test.ts` 11件。gameStore/useGameLoopは結果の反映と爆発処理のみ。
+  - **描画**: `pixiScene.syncSensorMines` = ジブリル火(syncBossFires)と同系の共有Graphics1枚へ一括描画
+    (待機=暗色ディスク+琥珀ランプ明滅/感知後=ランプ赤点滅+爆発範囲の赤円)。最大5個+画面外スキップ。
+    新規の強glowなし。
+  - **登録**: SubWeaponKeyへ `sensor-mine` 追加・表示名「センサー地雷」・SUB_WEAPON_KEYS(ロードアウト/
+    開発施設/ショップ陳列)へ molotov/turret と同じ扱いで登録。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(サブウェポンは任意装備・シーン/台本に不干渉)。
+- 負荷スコア: **2/10**(simは設置≤5個×敵中心の距離判定/フレーム+イベント駆動の爆発。描画は共有Graphics1枚に
+  小プリミティブ数個×≤5+画面外スキップ。強glow/Text/per-effect Graphicsの新設なし)。
+- 検証: `npm run typecheck` クリーン / eslint(触った7ファイル)クリーン / `npx vitest related --run`=7ファイル91件パス
+  (新規sensorMine 11件+M9ボットスモーク含む)。実機確認ポイント: 装備→スイングで足元に地雷/敵接近で赤点滅→2秒後爆発/
+  4個目設置で最古が消える(Lv1)/エクスプローダー・ボマー所持時の挙動。
+- Files: `src/utils/sensorMine.ts`(新規), `src/utils/sensorMine.test.ts`(新規), `src/types/game.ts`,
+  `src/data/campaign.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`,
+  `package.json`, `src/data/changelog.ts`, `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1690 — 天使トラップ=停止へ改訂+M28「援護射撃」仕様書化(Sonnetへサブエージェント発注)【2026-07-14 18:18 JST】
 - **社長裁定①**「天使だけ効いてなかったなら、天使もボスと揃えて停止で」= v0.25.1688の移動半減を改訂。
   `angelBossTick`ディスパッチャ: root中は**平常時(chase)のみtick停止=移動も新規攻撃も止まる**。

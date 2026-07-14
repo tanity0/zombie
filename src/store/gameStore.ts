@@ -13,6 +13,7 @@ import {
   isEnemyInGroundFire,
 } from '../utils/molotov';
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
+import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL } from '../utils/sensorMine';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -1225,6 +1226,7 @@ export const SKADI_BLADE_HIT = 18;     // 氷刃の命中半径(px)
 export const SKADI_BLADE_LIFE_MS = 2500; // 発射後の寿命(ms)。これを過ぎると消滅
 let skadiHazardSeq = 0; // スカジ氷ハザードの一意id採番(プール/差分の安定キー)
 let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(プール/差分の安定キー)
+let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
@@ -1537,6 +1539,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'shadow-clone': return '分身';
     case 'molotov': return '火炎瓶';
     case 'first-aid-kit': return '救急鞄';
+    case 'sensor-mine': return 'センサー地雷';
     default: return 'サブウェポン';
   }
 };
@@ -2205,6 +2208,11 @@ interface GameState {
   // null=アイドル(次サイクルはCD明けで開始)。判定自体は src/utils/molotov.ts、ここは適用のみ。
   molotovCycle: MolotovCycleState | null;
   setMolotovCycle: (cycle: MolotovCycleState | null) => void; // useGameLoop が computeMolotovTick の結果を反映するだけ
+
+  // センサー地雷(sensor-mine)サブウェポン(PACING_PUZZLE.md §6.4 M27)。設置は triggerCounter(近接スイング)、
+  // 感知/起爆判定は純関数 tickSensorMines(src/utils/sensorMine.ts)+useGameLoop が爆発処理、描画は pixiScene が直読み。
+  sensorMines: SensorMineState[];
+  setSensorMines: (mines: SensorMineState[]) => void; // useGameLoop が tickSensorMines の結果を反映するだけ
   spawnGroundFire: (x: number, y: number) => void;             // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   spawnBossFire: (x: number, y: number, spawnAt: number, activateAt: number, expireAt: number) => void; // ジブリルの紫の単発火を1つ設置(useGameLoopから呼ぶ)
@@ -2630,6 +2638,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   homingLocks: [],
   shadowClone: null,
   molotovCycle: null,
+  sensorMines: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -3337,6 +3346,26 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       get().setSubWeaponCooldown('drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
       set({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
+    }
+
+    // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置(設置CDなし・
+    // PACING_PUZZLE.md §6.4)。同時数Lv1=3/Lv2=4/Lv3=5、上限中の追加設置は最古を置換
+    // (判定=純関数 placeSensorMine)。感知/起爆/爆発は useGameLoop 側。スロー演出は出さない(CLAUDE.md)。
+    if (
+      player.subWeapons.includes('sensor-mine') &&
+      !subWeaponBlockedByKatana(player, 'sensor-mine')
+    ) {
+      const smLevel = Math.max(1, Math.min(3, player.subWeaponLevels['sensor-mine'] ?? 1));
+      const smFootX = player.x + player.width / 2;
+      const smFootY = player.y + player.height;
+      set(state => ({
+        sensorMines: placeSensorMine(
+          state.sensorMines,
+          { id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0 },
+          SENSOR_MINE_CAP_BY_LEVEL[smLevel]
+        ),
+      }));
+      get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
     }
 
     // ワイヤーアンカーはフリック発動に変更(triggerWireAnchor)。スイング(指離し)では発動しない。
@@ -4131,6 +4160,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 火炎瓶(molotov): 判定(いつ・何本)は useGameLoop が computeMolotovTick(純関数)で決め、
   // ここは結果を state へ書き込むだけ。
   setMolotovCycle: (cycle) => set({ molotovCycle: cycle }),
+
+  // センサー地雷(sensor-mine): 感知/起爆判定は useGameLoop が tickSensorMines(純関数)で決め、
+  // ここは結果を state へ書き込むだけ。
+  setSensorMines: (mines) => set({ sensorMines: mines }),
 
   // 救急鞄(first-aid-kit): 判定(何を払い出すか/空になったか)は useGameLoop が
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
@@ -9372,6 +9405,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescueAllies: [],
         thrownBags: [],
         molotovCycle: null,
+        sensorMines: [],
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

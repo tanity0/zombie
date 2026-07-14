@@ -65,6 +65,7 @@ import {
   checkEnemySummonCollisions
 } from '../utils/collisionUtils';
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
+import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
 import {
@@ -5328,6 +5329,85 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
           useGameStore.getState().registerMultiHit(hgHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+        }
+
+        // センサー地雷(sensor-mine): 範囲(=爆発半径79)に敵が入ると2秒後に起爆(PACING_PUZZLE.md §6.4 M27)。
+        // 感知/起爆の判定は純関数 tickSensorMines(src/utils/sensorMine.ts)、ここは結果の反映と爆発処理のみ。
+        // 爆発は手榴弾と同じ経路(エクスプローダー倍率/ボマー子グレネード/減衰・ノックバック/ボス非致死/壁越し不可)。
+        // 敵のみに反応・自傷なし。サブ武器の爆発なのでスローモーションは発生させない(CLAUDE.md)。
+        {
+          const smStore = useGameStore.getState();
+          if (smStore.sensorMines.length > 0) {
+            const smResult = tickSensorMines({
+              mines: smStore.sensorMines,
+              enemies: smStore.enemies.map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 })),
+              gameTime,
+            });
+            if (smResult.changed) smStore.setSensorMines(smResult.mines);
+            for (const mine of smResult.detonated) {
+              // スキル: ボマー = 起爆時にミニ手榴弾3個散布(手榴弾と同じ子グレネード処理。子は再散布しない)。
+              if (hasSkill(useGameStore.getState().player, 'bomber')) {
+                const nowB = Date.now();
+                for (let k = 0; k < 3; k++) {
+                  const ang = (Math.PI * 2 * k) / 3 + Math.random() * 0.5;
+                  addProjectile({
+                    id: `proj-bomber-mini-${mine.id}-${nowB}-${k}`,
+                    x: mine.x - 5, y: mine.y - 5, width: 10, height: 10,
+                    speed: HEAVY_GRENADE_SPEED * 0.8,
+                    damage: HEAVY_GRENADE_DAMAGE / 3,
+                    direction: { x: Math.cos(ang), y: Math.sin(ang) },
+                    weaponType: 'grenade', weaponKey: 'sub-heavy-grenade',
+                    duration: 600, createdAt: nowB,
+                    passthrough: false, hitEnemies: [], hostile: false, reflected: false,
+                    bomberSpawned: true, // 子はこれ以上散布しない
+                    explodeRadius: HEAVY_GRENADE_RADIUS * 0.6,
+                  });
+                }
+                spawnBurst(mine.x, mine.y, '#fbbf24', 8);
+              }
+              playSfx('bomb');
+              // スキル: エクスプローダー = 半径/ダメージ倍率(手榴弾と同じ倍率経路)。
+              // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲倍率(全爆発対象)。
+              const smExMult = skillExplosionMult(useGameStore.getState().player);
+              const smHgMult = heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
+              const smBlastR = SENSOR_MINE_RADIUS * smExMult * smHgMult;
+              const smFxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
+              spawnRing(mine.x, mine.y, 8, smBlastR, 'rgba(251,146,60,0.82)', 5, smFxMs);
+              spawnBurst(mine.x, mine.y, '#f97316', 20);
+              spawnBurst(mine.x, mine.y, '#7f1d1d', 8);
+              useGameStore.getState().spawnGlow(mine.x, mine.y, 50, 'rgba(251,146,60,', smFxMs);
+              const smWalls = aoeWalls(mine.x, mine.y);
+              let smHitCount = 0;
+              for (const enemy of useGameStore.getState().enemies) {
+                if (enemy.type === 'reaper' && !enemy.reaperChaser) continue;
+                const ex = enemy.x + enemy.width / 2;
+                const ey = enemy.y + enemy.height / 2;
+                const dist = Math.hypot(ex - mine.x, ey - mine.y);
+                if (dist > smBlastR) continue;
+                if (smWalls.length > 0 && segmentBlocked(mine.x, mine.y, ex, ey, smWalls)) continue; // 壁越しには効かない
+                const falloff = 1 - dist / smBlastR;
+                const splashDamage = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * smExMult * (0.55 + falloff * 0.45)));
+                const smKilled = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死(手榴弾と同じ)
+                smHitCount += 1;
+                spawnDamageNumber(ex, enemy.y, splashDamage, false);
+                spawnBurst(ex, ey, '#b91c1c', 4);
+                if (!smKilled && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
+                  const norm = Math.max(0.001, dist);
+                  useGameStore.getState().knockbackEnemy(
+                    enemy.id,
+                    (ex - mine.x) / norm,
+                    (ey - mine.y) / norm,
+                    HEAVY_GRENADE_KNOCKBACK_MULT * (0.55 + falloff * 0.45)
+                  );
+                }
+                if (smKilled) {
+                  playEnemyDeath();
+                  dropEnemyXp(enemy, ex, ey, 'pickup-xp-sensor-mine');
+                }
+              }
+              useGameStore.getState().registerMultiHit(smHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+            }
+          }
         }
 
         // 発火ナイフ: 飛行中は敵に当たると刺さり(単体ダメージ)、2秒後に刺さった位置で範囲爆発。

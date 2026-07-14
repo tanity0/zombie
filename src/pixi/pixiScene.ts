@@ -23,6 +23,7 @@ import type {
 } from '../types/game';
 import { useGameStore, huntingMeleeRadius, hasMurasame, SLASHER_RING_MS, SLASHER_JUST_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_WINDOW, katanaRange, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, PUMPKIN_JUMP_MS, PUMPKIN_RECOVER_MS, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, SKADI_ICE_RADIUS, RETURN_CIRCLE_HOLD_MS, BASE_CAPTURE_HOLD_MS, CAMERA_DOWN_OFFSET_FRAC, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, THROWN_BAG_FLIGHT_MS } from '../store/gameStore';
 import { computeTimeSlowScale } from '../utils/timeSlowCurve';
+import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { NAMED_TINT } from '../utils/namedEnemy';
 import { hasFullWarlordSet } from '../data/equipment';
@@ -1040,6 +1041,7 @@ export class PixiScene {
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
   private groundFireViews = new Map<string, { container: Container; flame: Graphics; light: Sprite }>();
   private bossFireGfx = new Graphics();                    // ジブリルのランタン火(紫の単発火)を一括描画(予告=赤円/有効=紫火)
+  private sensorMineGfx = new Graphics();                  // センサー地雷(sensor-mine)を一括描画(待機=ディスク+ランプ/感知=赤点滅テレグラフ)
   private effects = new Map<string, EffectView>();
   // トール(一閃/突き/払い)専用: プレイヤーの斬撃と同じピクセル演出(streak+burst)を、実際の当たり判定
   // ライン(fx,fy→tx,ty・半幅)に合わせて出す。enemy.id keyed(裏ボスは1体のみだが将来の複数化にも耐える)。
@@ -2689,6 +2691,7 @@ export class PixiScene {
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime);
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
+    this.syncSensorMines(s.sensorMines, s.gameTime, now); // センサー地雷(待機ディスク/感知後2秒の赤点滅テレグラフ)
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now);
@@ -4855,6 +4858,36 @@ export class PixiScene {
         g.ellipse(f.x + sway * 0.2, f.y - r * 0.6, r * 1.7, r * 3.0).fill({ color: 0x7e22ce, alpha: 0.26 * a });
         g.ellipse(f.x + sway * 0.4, f.y - r * 1.4, r * 1.0, r * 2.4).fill({ color: 0xa855f7, alpha: 0.40 * a });
         g.ellipse(f.x + sway * 0.5, f.y - r * 2.0, r * 0.5, r * 1.5).fill({ color: 0xe9d5ff, alpha: 0.50 * a });
+      }
+    }
+  }
+
+  // センサー地雷(sensor-mine): 待機=暗色の小型ディスク+琥珀ランプの明滅 / 感知後2秒=赤点滅テレグラフ
+  // (爆発範囲の赤円+ランプ赤点滅)。ジブリル火(syncBossFires)と同系の「共有Graphics1枚へ一括描画」方式
+  // (同時最大5個+小プリミティブ数個=軽い。新規の強glowは使わない)。設置/感知/起爆の判定は sim 側
+  // (gameStore/useGameLoop)が担い、ここは s.sensorMines を読んで描くだけ(CLAUDE.md「PixiJSは描画のみ」)。
+  private syncSensorMines(mines: SensorMineState[], gameTime: number, now: number) {
+    const g = this.sensorMineGfx;
+    if (!g.parent) this.L.groundLayer.addChild(g);
+    g.clear();
+    if (mines.length === 0) return;
+    for (const m of mines) {
+      // 画面外はスキップ(distanceOutsideViewport はズーム引き(CONTEXT_ZOOM_MIN)込みの可視域で判定)。
+      if (this.distanceOutsideViewport(m.x, m.y, SENSOR_MINE_RADIUS + 40) > 0) continue;
+      // 本体: 地面に置いた小型ディスク(楕円=接地感)+外周リム。
+      g.ellipse(m.x, m.y, 7, 4.6).fill({ color: 0x1f2937, alpha: 0.92 });
+      g.ellipse(m.x, m.y, 7, 4.6).stroke({ width: 1.5, color: 0x475569, alpha: 0.9 });
+      if (m.triggeredAt <= 0) {
+        // 待機: 琥珀ランプがゆっくり明滅(視認用の控えめな存在表示)。
+        const lampPulse = 0.5 + 0.5 * Math.sin(now / 420 + m.x * 0.05);
+        g.circle(m.x, m.y - 2, 1.7).fill({ color: 0xfbbf24, alpha: 0.35 + 0.5 * lampPulse });
+      } else {
+        // 感知→起爆(2秒): 赤点滅テレグラフ。ランプ赤点滅+爆発範囲の赤円(ジブリル火の予告と同系の見せ方)。
+        const blinkOn = Math.floor((gameTime - m.triggeredAt) / 90) % 2 === 0;
+        const p = Math.max(0, Math.min(1, (gameTime - m.triggeredAt) / SENSOR_MINE_FUSE_MS));
+        g.circle(m.x, m.y - 2, 2.4).fill({ color: 0xff3b3b, alpha: blinkOn ? 0.95 : 0.25 });
+        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).fill({ color: 0xff2a2a, alpha: (blinkOn ? 0.10 : 0.04) + 0.08 * p });
+        g.circle(m.x, m.y, SENSOR_MINE_RADIUS).stroke({ width: 2, color: 0xff3b3b, alpha: (blinkOn ? 0.5 : 0.2) + 0.25 * p });
       }
     }
   }
