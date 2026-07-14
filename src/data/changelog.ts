@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1712',
+    items: [
+      '開発: テスト用ボットAIの改善仕様(緑卵を避ける/近接で叩き割る)を設計書化(§6.11 M34)。通常プレイへの影響なし。',
+    ],
+  },
+  {
     version: '0.25.1711',
     items: [
       '開発: テスト実走スクリプトのWindows対応(パス処理修正)+起動フォールバック簡素化(テストチャット申し送り反映)。ゲーム変更なし。',
