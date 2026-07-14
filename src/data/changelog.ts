@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1705',
+    items: [
+      '開発: 運用体制の更新を記録(実装=設計チャットからのサブエージェント発注に一本化)。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1704',
     items: [
       'センサー地雷に設置クールダウン10秒を追加(これまではスイング毎に設置)。タイムキーパー/オーバークロックも効きます。',
