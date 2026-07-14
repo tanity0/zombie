@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1706 — テストチャット運用(TEST_HANDOFF)整備+依頼#1発行【2026-07-14 21:35 JST】
+- **社長運用決定**「ここで会話しつつ、テストが必要と判断したらテスト内容をgithubを介してテストチャットへ渡す。
+  テストチャットには『テストして』とだけ伝えれば読みに行ってテストして結果を記載。こちらに戻って『テストしたよ』で再開」。
+- 整備したもの:
+  - `TEST_HANDOFF/README.md`(プロトコルと掟: テストチャットはTEST_HANDOFF/以外編集禁止・
+    `[test-report]`コミット・**TEST_HANDOFF/のみの変更はバージョン規則の例外**)。
+  - `TEST_HANDOFF/REQUEST.md` **依頼#1**: M27〜M33のフル速ソーク6構成×最大15分(baseline/センサー地雷/
+    ジャンク/フレアガン/援護射撃/手榴弾×バーサーカー+エクスプローダー)。
+  - `TEST_HANDOFF/request.config.json`(スクリプトが読む構成定義)+`scripts/botrun-local.mjs`
+    (ローカルChrome(channel:'chrome')でデプロイ版を実走・BOT_REPORT/consoleエラー/スクショを自動収集)。
+  - CLAUDE.mdに「テストチャット運用」節(トリガー=『テストして』・掟の正はTEST_HANDOFF/README.md)。
+- 検証: typecheck / スクリプト構文チェックOK(実行はテストチャット側で)。
+- Files: `TEST_HANDOFF/`(新規3点), `scripts/botrun-local.mjs`(新規), `CLAUDE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1705 — 体制更新の恒久化: Sonnet=サブエージェント(単独チャット廃止)【2026-07-14 21:30 JST】
 - **社長決定**「sonnetのみのチャットはもう稼働させてません。僕がいうsonnetはここのサブエージェントのこと」
   「ローカルはやるならテスト専用」。CLAUDE.mdのエージェント分業節を更新(2チャット体制→設計チャット+

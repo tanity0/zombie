@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1706',
+    items: [
+      '開発: テストチャット運用(TEST_HANDOFF=依頼書と結果をGitHubで受け渡し)を整備し、第1号依頼(M27〜M33のフル速ソーク6構成)を発行。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1705',
     items: [
       '開発: 運用体制の更新を記録(実装=設計チャットからのサブエージェント発注に一本化)。ゲーム変更なし。',

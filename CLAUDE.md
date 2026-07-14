@@ -267,6 +267,14 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
   DEVELOPMENT_LOG.md の先頭数エントリを読むこと。PACING_REDESIGN.md は前提知識(旧仕様)として
   参照可。矛盾したら PACING_PUZZLE.md が勝つ。
 
+## テストチャット運用(ローカル・テスト専用・社長運用決定v0.25.1706)
+- 社長が「**テストして**」と言ったら: あなたはテスト専用チャット。`git pull` →
+  **`TEST_HANDOFF/REQUEST.md` を読んで実行** → 結果を `TEST_HANDOFF/results/` に書いて
+  `[test-report]` コミットで push(手順・掟の正は `TEST_HANDOFF/README.md`)。
+- **テストチャットはコード・設計書・CLAUDE.mdを編集しない**(触るのは TEST_HANDOFF/ のみ)。
+- **TEST_HANDOFF/ のみの変更はバージョンbump・changelog・DEVELOPMENT_LOG不要**(下のVersioning規則の例外)。
+- テスト依頼(REQUEST.md)を書くのは設計チャット。結果の分析も設計チャット(テストチャットは判断しない)。
+
 ## Development environment / handoff
 - Local repository path: `/Users/tanity/zombie`
 - Active branch: `claude/chat-context-continuity-saxlH`

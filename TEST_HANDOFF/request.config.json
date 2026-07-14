@@ -1,0 +1,14 @@
+{
+  "baseUrl": "https://tanity0.github.io/zombie/",
+  "runMs": 900000,
+  "headless": true,
+  "viewport": { "width": 1280, "height": 800 },
+  "configs": [
+    { "name": "baseline", "persona": "standard", "subs": null, "skills": null },
+    { "name": "sensor-mine_lastmag-warmup", "persona": "standard", "subs": ["sensor-mine"], "skills": ["last-magazine", "warm-up"] },
+    { "name": "junk-weapon_magnet-runner", "persona": "standard", "subs": ["junk-weapon"], "skills": ["magnet", "runner"] },
+    { "name": "flare-gun_overclock-warmup", "persona": "standard", "subs": ["flare-gun"], "skills": ["overclock", "warm-up"] },
+    { "name": "support-sniper_overclock-lastmag", "persona": "standard", "subs": ["support-sniper"], "skills": ["overclock", "last-magazine"] },
+    { "name": "grenade_berserker-exploder", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["berserker", "exploder"] }
+  ]
+}
