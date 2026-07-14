@@ -6,7 +6,8 @@ import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
   skillWarmUpSpeedMult, skillWarmUpReloadMult, skillWarmUpCritBonus, WARM_UP_DURATION_MS,
-  RUNNER_RELOAD_BONUS_MULT, skillScrapBuilderGainMult, applyRescueSignalProc } from './gameStore';
+  RUNNER_RELOAD_BONUS_MULT, skillScrapBuilderGainMult, applyRescueSignalProc,
+  skillOutgoingDamageMult, skillGoldRushMult } from './gameStore';
 import { vi } from 'vitest';
 import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
 import type { Pickup } from '../types/game';
@@ -220,6 +221,40 @@ describe('rescue-signal: 発動中(アライ存命中)は再発動しない (§6
     } finally {
       rand.mockRestore();
     }
+  });
+});
+
+describe('berserker skillOutgoingDamageMult: 全プレイヤー攻撃へ乗算する倍率(§6.10 M33②で対象拡大)', () => {
+  const bers = (level: number, health: number, maxHealth = 100): Player =>
+    ({ skills: ['berserker'], skillLevels: { berserker: level }, health, maxHealth } as unknown as Player);
+  it('失ったHP割合×係数(Lv1:1.0/Lv2:1.25/Lv3:1.5)で増加。満タンHP=×1.0', () => {
+    expect(skillOutgoingDamageMult(bers(1, 100))).toBeCloseTo(1.0);   // 満タン
+    expect(skillOutgoingDamageMult(bers(1, 50))).toBeCloseTo(1.5);    // 半分失=+50%
+    expect(skillOutgoingDamageMult(bers(2, 50))).toBeCloseTo(1.625);  // ×1.25係数
+    expect(skillOutgoingDamageMult(bers(3, 50))).toBeCloseTo(1.75);   // ×1.5係数
+  });
+  it('非装備は常に×1.0(M33②の対象拡大でも未所持プレイヤーは完全不変)', () => {
+    expect(skillOutgoingDamageMult({ skills: [], skillLevels: {}, health: 10, maxHealth: 100 } as unknown as Player)).toBeCloseTo(1.0);
+  });
+  it('M33②の代表適用例: 犬噛みつき6/molotov DoT 5/召喚接触10 に×1.5(Lv1半減HP)を乗せ四捨五入', () => {
+    const m = skillOutgoingDamageMult(bers(1, 50)); // 1.5
+    expect(Math.max(1, Math.round(6 * m))).toBe(9);   // 犬 DOG_BITE_DAMAGE=6
+    expect(Math.max(1, Math.round(5 * m))).toBe(8);   // molotov MOLOTOV_DOT_DAMAGE=5(エクスプローダー無し時)
+    expect(Math.max(1, Math.round(10 * m))).toBe(15); // 錬金召喚の接触(例: amount=10)
+  });
+});
+
+describe('gold-rush: 永続ゴールド獲得倍率(×1.2/1.35/1.5)(§6.10 M33⑪)', () => {
+  it('scales by level and is ×1.0 without the skill', () => {
+    expect(skillGoldRushMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
+    expect(skillGoldRushMult(withSkill('gold-rush', 1))).toBeCloseTo(1.2);
+    expect(skillGoldRushMult(withSkill('gold-rush', 2))).toBeCloseTo(1.35);
+    expect(skillGoldRushMult(withSkill('gold-rush', 3))).toBeCloseTo(1.5);
+  });
+  it('適用例(四捨五入): 宿敵討伐/クエスト報酬100G → Lv1=120/Lv2=135/Lv3=150', () => {
+    expect(Math.round(100 * skillGoldRushMult(withSkill('gold-rush', 1)))).toBe(120);
+    expect(Math.round(100 * skillGoldRushMult(withSkill('gold-rush', 2)))).toBe(135);
+    expect(Math.round(100 * skillGoldRushMult(withSkill('gold-rush', 3)))).toBe(150);
   });
 });
 

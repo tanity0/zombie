@@ -538,7 +538,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'reflex':       { name: '反射神経',       desc: '被弾時に反撃の爆発(CDあり)', rarity: 'rare' },
   'rescue-signal':{ name: '救難信号',       desc: '近接ヒット時、一定確率で味方が援護攻撃(必中・倍率1)。ズーム演出', rarity: 'rare' },
   // 通常
-  'gold-rush':    { name: 'ゴールドラッシュ', desc: 'ゴールド取得量が増加', rarity: 'normal' },
+  'gold-rush':    { name: 'ゴールドラッシュ', desc: 'ゴールドの獲得量+20%(Lvで+35%/+50%)。リザルト・宿敵討伐・クエスト報酬が対象', rarity: 'normal' },
   'time-keeper':  { name: 'タイムキーパー', desc: 'サブウェポンのクールダウン-30%', rarity: 'normal' },
   'ghost-shooter':{ name: 'ゴーストシューター', desc: '20%の確率で弾を消費しない', rarity: 'normal' },
   'dog-run':      { name: 'ドッグラン',     desc: '犬のクールダウン0・射程制限解除(犬装備時)', rarity: 'normal' },
@@ -578,7 +578,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'reflex':       { base: '被弾時に反撃の爆発（CDあり）', lv: ['ダメージ60／半径92／CD1.0s', '80／104／0.8s', '100／116／0.6s'] },
   'rescue-signal':{ base: '近接ヒット時、一定確率で味方が援護攻撃（必中・倍率1）', lv: ['発動10%', '発動15%', '発動20%'] },
   // 通常
-  'gold-rush':    { base: 'ゴールド取得量が増加', lv: ['+20%', '+35%', '+50%'] },
+  'gold-rush':    { base: 'ゴールドの獲得量が増加（リザルト・宿敵討伐・クエスト報酬。装備したランに適用）', lv: ['+20%', '+35%', '+50%'] },
   'time-keeper':  { base: 'サブウェポンのクールダウン減少', lv: ['-10%', '-20%', '-30%'] },
   'ghost-shooter':{ base: '一定確率で弾を消費しない', lv: ['10%', '20%', '30%'] },
   'dog-run':      { base: '犬のクールダウン短縮（犬装備時）', lv: ['CD-50%', 'CD0', 'CD0＋射程制限解除'] },

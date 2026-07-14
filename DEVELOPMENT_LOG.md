@@ -1,5 +1,51 @@
 # Development Log
 
+## v0.25.1704 — M33実装: 監査裁定の反映11点+センサー地雷CD10秒(§6.10)【2026-07-14 21:14 JST】
+- **PACING_PUZZLE.md §6.10 バッチM33**(社長裁定v0.25.1702-1703)を実装チャット(Sonnet)が実装。11点1コミット。
+  1. **センサー地雷CD10秒**: `SENSOR_MINE_COOLDOWN_MS=10000`(utils/sensorMine.ts)。triggerCounterの設置フックに
+     CDゲート+`setSubWeaponCooldown('sensor-mine',…)`=タイムキーパー/オーバークロックが他サブ同様に乗る。
+     同時数上限・最古置換・他仕様は不変。
+  2. **★9 バーサーカー全攻撃化**: `skillOutgoingDamageMult`を 手榴弾fuse爆発/センサー地雷爆発/火炎ナイフ爆発/
+     救急鞄爆発(tickThrownBags)/molotov火DoT/反射神経/ボムカウンター/ドローン(往復接触+パルス)/
+     ワイヤー(すり抜け・Lv3爆撃・大技=meleeDmgへ合成)/犬噛みつき/四神全技(shijinHitEnemy合流点)/
+     錬金召喚(updateSummonsのattackHits)/賢者の石ハリケーン に乗算(各サイト四捨五入)。
+  3. **★1 ボマー散布拡大**: 新純関数 `buildBomberMinis`(utils/bomberScatter.ts=手榴弾散布と同一仕様・
+     damage42/3・半径66×0.6・速度118×0.8・再散布なし)を グレネードランチャー着弾爆発(weaponKey=rifle-t3=
+     メインT3/タレットランチャー弾共通)/火炎ナイフ爆発/救急鞄爆発/ボムカウンター爆発 に配線。
+  4. **★2 エクスプローダー拡大**: molotovの火(DoTダメージ+感知半径×倍率。描画の火サイズは従来=視覚と判定の
+     分離の範囲)/ワイヤーLv3爆撃(半径+ダメージ。Lv1/2の弾きのみは従来)/朱雀(半径+ダメージ)/
+     ドローンパルスAoE(半径+ダメージ)/デコイLv3消滅爆発/タレット消滅爆発(いずれも半径+ダメージ)。
+  5. **★3 救急鞄爆発の半径に heavyGunnerExplosionMult** を適用(他の爆発と同じ扱い)。
+  6. **★4 time-keeper×援護射撃**: 専用タイマーのCD開始時に `skillCooldownMult` を乗算(オーバークロックと同じ合流点)。
+  7. **★10 救難信号→鞭・分身**: performWhipStrike(基準=meleeBase×WHIP_DAMAGE_MULT)/shadowCloneStrike
+     (基準=meleeDamage・索敵起点=分身中心)に `applyRescueSignalProc` を配線(基本近接/刀と同条件)。
+  8. **★11 ナイフマスター加算→分身・スラッシャー**: `computeKnifeCombo` の結果書き込みを shadowCloneStrike/
+     applySlasherTimedStrike に追加(倍率は既に乗っていた=加算のみ未配線だった)。
+  9. **★15 ワイヤー=meleeDamage基準**: 素のmelee.damage → ×strikerMeleeMult×装備damageMult(刀/鞭/分身/
+     ドローンと同じ基準)。
+  10. **★8 護衛NPC弾の除外**: 命中処理で weaponKey='escort' のみ skillCritMult/skillOutgoingDamageMult/
+     sniperGunMult/skillComboMasterMult を乗せない(クリ時は素のクリ倍率のみ)。タレット/ホーミング/ジャンク/
+     援護射撃/跳弾/反射弾は従来どおり(★9と整合)。
+  11. **★14 ゴールドラッシュ=永続ゴールド獲得へ**: 新純関数 `skillGoldRushMult`(×1.2/1.35/1.5)。
+     collectPickupのstrap式から撤去(スクラップはスクラップビルダーに一本化)。適用先=リザルトのラン獲得ゴールド
+     (GameOverScreenの表示+addGold。装備換金equipmentGoldは対象外)・宿敵討伐NAMED_TREASURE_GOLD(壁銘打ちの
+     表示額も同額)・二人組クエスト報酬EVENT_QUEST_REWARD_GOLD(コールアウト表示も同額)。ショップ返金は対象外。
+     説明文(SKILLS/SKILL_LEVEL_INFO)を実態に更新。
+- **SKILL_SUBWEAPON_MATRIX.md を実装後の状態に更新**(受け入れ条件): §2表の該当行+★1/2/3/4/8/9/10/11/14/15に
+  「修正済み v0.25.1704」を追記。§3.5に実装完了行を追加。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(スキル/サブの適用整合のみ・シーン/台本不干渉)。
+  未所持/未装備プレイヤーは全ヘルパが中立値=完全不変(バーサーカー×1/エクスプローダー×1/ボマー無し/
+  ゴールドラッシュ×1をテストで固定)。
+- 負荷スコア: **1/10**(全て既存サイトへの定数倍率乗算+イベント駆動の散布。毎フレームの新規コスト無し)。
+- 検証: `npm run typecheck` クリーン / eslint(触った9ファイル)クリーン / 直接実行=skills 37件+bomberScatter 2件+
+  sensorMine 12件=**50件パス** / `npx vitest related --run`=8ファイル**110件パス**(M9ボットスモーク含む)。
+  実機確認ポイント: バーサーカー低HP時の各攻撃の伸び/ボマー+ランチャーの散布/センサー地雷のCD10秒/
+  ゴールドラッシュ装備ランのリザルト金額(×1.2〜1.5)/護衛NPC弾のダメージがビルド非依存になったこと。
+- Files: `src/utils/sensorMine.ts`+`.test.ts`, `src/utils/bomberScatter.ts`+`.test.ts`(新規),
+  `src/store/gameStore.ts`, `src/store/skills.test.ts`, `src/hooks/useGameLoop.ts`, `src/data/campaign.ts`,
+  `src/components/GameOverScreen.tsx`, `SKILL_SUBWEAPON_MATRIX.md`, `package.json`, `src/data/changelog.ts`,
+  `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1703 — M33仕様書化: 監査裁定11点+センサー地雷CD10秒(Sonnetへ発注)【2026-07-14 20:49 JST】
 - **社長裁定**(SKILL_SUBWEAPON_MATRIXの★リストへ): 直す=★1/2/3/4/8/9/10/11/14/15。★16=現状維持。
   ★5/6/7/12/13/17/18=裁定なし(保留)。+新規「センサー地雷に1個あたりのCD10秒」。

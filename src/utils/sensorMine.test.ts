@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   placeSensorMine, tickSensorMines,
-  SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS,
+  SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, SENSOR_MINE_COOLDOWN_MS,
   SensorMineState,
 } from './sensorMine';
 
@@ -24,6 +24,10 @@ describe('placeSensorMine', () => {
     const mines = [mine('a', 100), mine('b', 100), mine('c', 300)];
     const next = placeSensorMine(mines, mine('d', 400), 3);
     expect(next.map(m => m.id)).toEqual(['b', 'c', 'd']);
+  });
+
+  it('設置CD=10秒(§6.10 M33①・社長指示。適用はtriggerCounterのsetSubWeaponCooldown経由)', () => {
+    expect(SENSOR_MINE_COOLDOWN_MS).toBe(10000);
   });
 
   it('レベル別上限=3/4/5(SENSOR_MINE_CAP_BY_LEVEL)', () => {

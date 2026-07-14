@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore, topScoreItem } from '../utils/resultScoring';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, skillGoldRushMult } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equipScrapGold } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
@@ -124,8 +124,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     speedBonus,
     clearBonus,
     totalScore,
-    goldEarned,
+    goldEarned: goldEarnedBase,
   } = calculateResultScore(stats, won, isLab);
+  // スキル: ゴールドラッシュ(§6.10 M33⑪) = リザルトのラン獲得ゴールド ×1.2/1.35/1.5(Lv・四捨五入)。
+  // そのランで装備していた場合に適用(storeのplayerはこのランの状態のまま)。表示と加算で同じ値を使う。
+  const goldRushMult = useGameStore(s => skillGoldRushMult(s.player));
+  const goldEarned = Math.round(goldEarnedBase * goldRushMult);
   // このランで得たゴールドを永続財布へ加算(マウント時1回。ベンチマークは加算しない)。
   const isBenchmarkRun = benchmarkResult !== null;
   const addGold = useGameStore(s => s.addGold);

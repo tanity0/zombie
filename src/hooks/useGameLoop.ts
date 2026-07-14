@@ -28,7 +28,7 @@ import {
   BOSS_MELEE_STUN_MULT,
   KNOCKBACK_DURATION, KNOCKBACK_IMMUNE_MS,
   skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
-  skillMagnetAmmoRangeMult, skillOverclockChance,
+  skillMagnetAmmoRangeMult, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
   skillSummonHpMult, heavyGunnerExplosionMult, enemyDeathLabel, isInReturnCircle, isGameTimeStopped, enemyMeleeDist,
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_TOTAL_MS,
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
@@ -73,6 +73,7 @@ import {
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { pickRescueSignalAllyClass } from '../utils/rescueSignal';
+import { buildBomberMinis } from '../utils/bomberScatter';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
 import {
@@ -1183,7 +1184,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       const boss = SHIJIN_BOSS_TYPES.has(e.type);
       const ex = e.x + e.width / 2;
       const ey = e.y + e.height / 2;
-      const dmg = allowExecute && stunned && !boss ? Math.max(damage, e.health) : damage;
+      // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を四神の全技(この合流点)に乗算(四捨五入)。
+      const outDamage = Math.max(1, Math.round(damage * skillOutgoingDamageMult(st.player)));
+      const dmg = allowExecute && stunned && !boss ? Math.max(outDamage, e.health) : outDamage;
       const killed = damageEnemy(enemyId, dmg);
       if (killed) {
         playEnemyDeath();
@@ -1224,7 +1227,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 朱雀: 近場最大3体を「グレネードランチャー(rifle-t3)」相当で爆破(手榴弾heavy-grenadeではない)。
         // 半径・演出時間はランチャーの爆発(GRENADE_BLAST_RADIUS / GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS)に合わせ、
         // 色だけ朱雀(朱)に。範囲ダメージはフォールオフ。
-        const blastR = GRENADE_BLAST_RADIUS;
+        // §6.10 M33④: エクスプローダーを朱雀爆発(半径+ダメージ)にも適用(ダメージ側は下のshijinHitEnemy呼び出しで乗算)。
+        const szExMult = skillExplosionMult(useGameStore.getState().player);
+        const blastR = GRENADE_BLAST_RADIUS * szExMult;
         const fxMs = GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS;
         const targets = useGameStore.getState().enemies
           .filter(e => e.type !== 'reaper' || e.reaperChaser)
@@ -1243,7 +1248,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
             if (dist > blastR) continue;
             const falloff = 1 - dist / blastR;
-            shijinHitEnemy(e.id, Math.max(1, Math.round(SUZAKU_BLAST_DAMAGE * (0.55 + falloff * 0.45))), true);
+            shijinHitEnemy(e.id, Math.max(1, Math.round(SUZAKU_BLAST_DAMAGE * szExMult * (0.55 + falloff * 0.45))), true);
           }
         }
         playSfx('bomb');
@@ -4338,9 +4343,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 if (Math.hypot(ex - dogX, ey - dogY) > DOG_BITE_RADIUS) continue;
+                // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を犬の噛みつきにも乗算(四捨五入)。
                 activeFetch.bitten.add(enemy.id);
-                const killed = damageEnemy(enemy.id, DOG_BITE_DAMAGE);
-                spawnDamageNumber(ex, enemy.y, DOG_BITE_DAMAGE, false);
+                const dogDmg = Math.max(1, Math.round(DOG_BITE_DAMAGE * skillOutgoingDamageMult(useGameStore.getState().player)));
+                const killed = damageEnemy(enemy.id, dogDmg);
+                spawnDamageNumber(ex, enemy.y, dogDmg, false);
                 spawnBurst(ex, ey, '#cbd5e1', 4);
                 if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
                   const n = Math.max(0.001, Math.hypot(ex - dogX, ey - dogY));
@@ -4698,7 +4705,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             cooldownMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[ssLevel],
           });
           // スキル: オーバークロック = 発射時に20/25/30%でタイマー即満タン(CD式サブと同じ抽選・§6.8 M31)。
-          const ssCdNext = ssTick.fire && Math.random() < skillOverclockChance(subWeaponPlayer) ? 0 : ssTick.cdRemainingMs;
+          // スキル: タイムキーパー(§6.10 M33⑥) = 専用タイマーのCD開始時にも skillCooldownMult(×0.9/0.8/0.7)を乗算
+          // (他サブのsetSubWeaponCooldown合流点と同じ扱い)。
+          const ssCdNext = ssTick.fire
+            ? (Math.random() < skillOverclockChance(subWeaponPlayer) ? 0 : ssTick.cdRemainingMs * skillCooldownMult(subWeaponPlayer))
+            : ssTick.cdRemainingMs;
           if (ssCdNext !== ssState.supportSniperCdMs) {
             useGameStore.getState().setSupportSniperCd(ssCdNext);
           }
@@ -5171,7 +5182,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().completeEventQuest();
                   spawnRing(q.x, q.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
                   useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(253,230,138,', 520);
-                  useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${EVENT_QUEST_REWARD_GOLD}G`, '#fde68a');
+                  // §6.10 M33⑪: ゴールドラッシュの獲得倍率を表示にも反映(付与額=completeEventQuestと同じ式)。
+                  useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(useGameStore.getState().player))}G`, '#fde68a');
                   playSfx('event-clear');
                 }
               }
@@ -5209,7 +5221,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               turretFireRef.current.delete(turret.id);
               turretAimRef.current.delete(turret.id);
               playSfx('bomb');
-              spawnRing(tcx, tcy, 8, TURRET_EXPLOSION_RADIUS, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+              // §6.10 M33④: エクスプローダーをタレット消滅爆発(半径+ダメージ)にも適用。
+              const tExMult = skillExplosionMult(useGameStore.getState().player);
+              const tBlastR = TURRET_EXPLOSION_RADIUS * tExMult;
+              spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(tcx, tcy, '#f97316', 16);
               useGameStore.getState().spawnGlow(tcx, tcy, 44, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               const tWalls = aoeWalls(tcx, tcy);
@@ -5218,10 +5233,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ex = enemy.x + enemy.width / 2;
                 const ey = enemy.y + enemy.height / 2;
                 const dist = Math.hypot(ex - tcx, ey - tcy);
-                if (dist > TURRET_EXPLOSION_RADIUS) continue;
+                if (dist > tBlastR) continue;
                 if (tWalls.length > 0 && segmentBlocked(tcx, tcy, ex, ey, tWalls)) continue; // 壁越し不可
-                const falloff = 1 - dist / TURRET_EXPLOSION_RADIUS;
-                const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * (0.55 + falloff * 0.45)));
+                const falloff = 1 - dist / tBlastR;
+                const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
                 spawnDamageNumber(ex, enemy.y, dmg, false);
                 if (killed) {
@@ -5334,7 +5349,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dcx = decoy.x + decoy.width / 2;
             const dcy = decoy.y + decoy.height / 2;
             playSfx('bomb');
-            spawnRing(dcx, dcy, 8, DECOY_LV3_EXPLOSION_RADIUS, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
+            // §6.10 M33④: エクスプローダーをデコイLv3消滅爆発(半径+ダメージ)にも適用。
+            const dExMult = skillExplosionMult(useGameStore.getState().player);
+            const dBlastR = DECOY_LV3_EXPLOSION_RADIUS * dExMult;
+            spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             spawnBurst(dcx, dcy, '#38bdf8', 16);
             useGameStore.getState().spawnGlow(dcx, dcy, 44, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             const dWalls = aoeWalls(dcx, dcy);
@@ -5343,10 +5361,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ex = enemy.x + enemy.width / 2;
               const ey = enemy.y + enemy.height / 2;
               const dist = Math.hypot(ex - dcx, ey - dcy);
-              if (dist > DECOY_LV3_EXPLOSION_RADIUS) continue;
+              if (dist > dBlastR) continue;
               if (dWalls.length > 0 && segmentBlocked(dcx, dcy, ex, ey, dWalls)) continue; // 壁越し不可
-              const falloff = 1 - dist / DECOY_LV3_EXPLOSION_RADIUS;
-              const dmg = Math.max(1, Math.round(decoy.damage * (0.55 + falloff * 0.45)));
+              const falloff = 1 - dist / dBlastR;
+              const dmg = Math.max(1, Math.round(decoy.damage * dExMult * (0.55 + falloff * 0.45)));
               const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
               spawnDamageNumber(ex, enemy.y, dmg, false);
               if (!killed && enemy.type !== 'giantbat' && enemy.type !== 'pumpkin') {
@@ -5410,6 +5428,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const grenadeExMult = skillExplosionMult(useGameStore.getState().player);
           // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
           const hgExMult = heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
+          // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
+          const grenadeOutMult = skillOutgoingDamageMult(useGameStore.getState().player);
           // 子グレネード(ボマー)は固有の半径/ダメージを持つ。未指定は通常の手榴弾値。
           const blastR = (grenade.explodeRadius ?? HEAVY_GRENADE_RADIUS) * grenadeExMult * hgExMult;
           let hgHitCount = 0;
@@ -5428,7 +5448,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (dist > blastR) continue;
             if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
             const falloff = 1 - dist / blastR;
-            const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * (0.55 + falloff * 0.45)));
+            const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * grenadeOutMult * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死(社長指示)
             hgHitCount += 1;
             spawnDamageNumber(ex, enemy.y, splashDamage, false);
@@ -5493,6 +5513,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲倍率(全爆発対象)。
               const smExMult = skillExplosionMult(useGameStore.getState().player);
               const smHgMult = heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
+              // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
+              const smOutMult = skillOutgoingDamageMult(useGameStore.getState().player);
               const smBlastR = SENSOR_MINE_RADIUS * smExMult * smHgMult;
               const smFxMs = HEAVY_GRENADE_EXPLOSION_EFFECT_MS;
               spawnRing(mine.x, mine.y, 8, smBlastR, 'rgba(251,146,60,0.82)', 5, smFxMs);
@@ -5509,7 +5531,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (dist > smBlastR) continue;
                 if (smWalls.length > 0 && segmentBlocked(mine.x, mine.y, ex, ey, smWalls)) continue; // 壁越しには効かない
                 const falloff = 1 - dist / smBlastR;
-                const splashDamage = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * smExMult * (0.55 + falloff * 0.45)));
+                const splashDamage = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * smExMult * smOutMult * (0.55 + falloff * 0.45)));
                 const smKilled = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死(手榴弾と同じ)
                 smHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
@@ -5556,11 +5578,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const by = knife.y + knife.height / 2;
               // 発火ナイフの爆発は「爆発扱い」: エクスプローダー(半径/ダメージ ×1.2/1.35/1.5)を乗せる(社長指示)。
               const fkExMult = skillExplosionMult(useGameStore.getState().player);
+              // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
+              const fkOutMult = skillOutgoingDamageMult(useGameStore.getState().player);
               // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
               const blastR = (knife.area ?? FIRE_KNIFE_RADIUS_BY_LEVEL[1]) * fkExMult * heavyGunnerExplosionMult(useGameStore.getState().player, gameTime);
               let fkHitCount = 0;
               removeProjectile(knife.id);
               playSfx('bomb');
+              // §6.10 M33③: ボマー = 発火ナイフの爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
+              if (hasSkill(useGameStore.getState().player, 'bomber')) {
+                for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`)) addProjectile(mini);
+                spawnBurst(bx, by, '#fbbf24', 8);
+              }
               spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               spawnBurst(bx, by, '#f97316', 18);
               spawnBurst(bx, by, '#7f1d1d', 8);
@@ -5574,7 +5603,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (dist > blastR) continue;
                 if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / blastR;
-                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * (0.55 + falloff * 0.45)));
+                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * fkOutMult * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死
                 fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false);
@@ -5636,8 +5665,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (!checkCollision(boom, e)) continue;
                 boom.hitEnemies.push(e.id); // store配列を直接更新(既存の貫通弾と同じ手法)
                 const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-                const killed = damageEnemy(e.id, boom.damage, true); // 爆発=ボス系には非致死
-                spawnDamageNumber(ex, e.y, boom.damage, false);
+                // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をドローン往復の接触ダメージにも乗算。
+                const boomDmg = Math.max(1, Math.round(boom.damage * skillOutgoingDamageMult(useGameStore.getState().player)));
+                const killed = damageEnemy(e.id, boomDmg, true); // 爆発=ボス系には非致死
+                spawnDamageNumber(ex, e.y, boomDmg, false);
                 spawnBurst(ex, ey, '#a5f3fc', 4);
                 if (killed) {
                   playEnemyDeath();
@@ -5649,8 +5680,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const nextPulse = boomPulseRef.current.get(boom.id) ?? 0;
               if (gameTime >= nextPulse) {
                 boomPulseRef.current.set(boom.id, gameTime + DRONE_BOOM_PULSE_MS);
-                const r = boom.area ?? DRONE_BOOM_RADIUS;
-                const dmg = Math.max(1, Math.round(boom.damage / DRONE_BOOM_STOP_DMG_DIV));
+                // §6.10 M33④: エクスプローダーをドローンパルスAoE(半径+ダメージ)にも適用。
+                // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をパルスダメージにも乗算。
+                const pulseExMult = skillExplosionMult(useGameStore.getState().player);
+                const r = (boom.area ?? DRONE_BOOM_RADIUS) * pulseExMult;
+                const dmg = Math.max(1, Math.round((boom.damage / DRONE_BOOM_STOP_DMG_DIV) * pulseExMult * skillOutgoingDamageMult(useGameStore.getState().player)));
                 const boomWalls = aoeWalls(bx, by);
                 for (const e of bs.enemies) {
                   if (e.type === 'reaper' && !e.reaperChaser) continue;
@@ -5919,8 +5953,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hitCrit = !!projectile?.crit || trapCritBonus || weakCrit || headshot === true;
           // スキル: クリティカルD上昇(+0.5) / バーサーカー(失HP%で全攻撃増) / スナイパー(停止敵・遠距離増)。
           const skillPlayer = collisionState.player;
+          // §6.10 M33⑩(★8裁定): 護衛NPC弾(weaponKey='escort')はプレイヤーの攻撃ではないため、
+          // プレイヤースキル倍率(skillCritMult/skillOutgoingDamageMult/sniperGunMult/skillComboMasterMult)を
+          // 乗せない(クリ時は素のクリ倍率のみ)。タレット/ホーミング/ジャンク/援護射撃/跳弾/反射弾は
+          // プレイヤー由来なので従来どおり(★9と整合)。
+          const isEscortShot = projectile?.weaponKey === 'escort';
           const critMult = hitCrit
-            ? skillCritMult(skillPlayer, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
+            ? (isEscortShot
+                ? (isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT)
+                : skillCritMult(skillPlayer, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT))
             : 1;
           // スキル: コンボマスターは「全攻撃」増加(ユーザー指定)。銃にもフィニッシュコンボ倍率を適用。
           const comboMasterMult = skillComboMasterMult(skillPlayer, gameTime, collisionState.meleeFinishComboCount, collisionState.meleeFinishComboUntil);
@@ -5929,7 +5970,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const plantCounterKill = !!projectile?.reflected && enemyForFx?.type === 'plant';
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
-            : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
+            : isEscortShot
+              ? damage * critMult
+              : damage * critMult * skillOutgoingDamageMult(skillPlayer) * sniperGunMult(skillPlayer, enemyForFx) * comboMasterMult;
           const enemyKilled = damageEnemy(enemyId, dmg, false, hitCrit);
           // 護衛NPCの弾の被弾音も、発砲音と同じ距離減衰をかける(遠いNPCの攻撃は被弾音も小さく/画面外は無音)。
           // プレイヤー自身の弾は等倍(gain=1)。
@@ -6063,6 +6106,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
             useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
+            // §6.10 M33③: ボマー = グレネードランチャー弾(メインT3/タレットランチャー弾)の着弾爆発でも
+            // 子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
+            if (hasSkill(skillPlayer, 'bomber')) {
+              for (const mini of buildBomberMinis(blastX, blastY, `gl-${projectileId}`)) addProjectile(mini);
+              spawnBurst(blastX, blastY, '#fbbf24', 8);
+            }
           }
 
           // スキル弾: explodeOnHit(ファイアシューター/ボムカウンター)の小爆発。
@@ -6404,7 +6453,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const nowW = Date.now();
           const pcx = wp.x + wp.width / 2;
           const pcy = wp.y + wp.height / 2;
-          const meleeDmg = (wp.weapons.find(w => w.isMelee)?.damage ?? 6);
+          // §6.10 M33⑨: ダメージ基準を素のmelee.damageから meleeDamage(strikerMeleeMult×装備damageMult込み)へ
+          // (他の近接派生=刀/鞭/分身/ドローンと同じ基準)。
+          // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)もワイヤー(すり抜け/Lv3爆撃/大技)に乗算。
+          const meleeDmg = (wp.weapons.find(w => w.isMelee)?.damage ?? 6) * strikerMeleeMult(wp) * (wp.equipBonus?.damageMult ?? 1) * skillOutgoingDamageMult(wp);
           // 刺し待ち(1秒)が明けたら、その地点へ自動で高速移動を開始する。
           if (wp.wireAnchored && nowW >= wp.wirePlantUntil) {
             useGameStore.getState().startWireDash();
@@ -6502,7 +6554,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
             const lvl = Math.max(1, Math.min(3, wp.subWeaponLevels['wire-anchor'] ?? 1));
             const explode = lvl >= 3;
-            const dmg = meleeDmg * WIRE_BOMB_DAMAGE_MULT;
+            // §6.10 M33④: エクスプローダーをワイヤーLv3爆撃(半径+ダメージ)にも適用(Lv1/2の弾きのみは従来どおり)。
+            const wireExMult = explode ? skillExplosionMult(wp) : 1;
+            const wireBombR = WIRE_BOMB_RADIUS * wireExMult;
+            const dmg = meleeDmg * WIRE_BOMB_DAMAGE_MULT * wireExMult;
             // 着地は全Lvで周囲の敵を「強制ノックバック」(無敵無視で必ず弾く・社長指示)。
             // 直前のすり抜けで knockbackImmuneUntil が立つため、ゲートすると着地で弾かなくなっていた。
             // Lv3 はさらに範囲ダメージ(ボス系は非致死)。
@@ -6510,7 +6565,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const hits = useGameStore.getState().enemies.filter(e => {
               if (e.aiPhase === 'jump') return false; // 空中無敵は対象外
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-              return Math.hypot(ecx - pcx, ecy - pcy) <= WIRE_BOMB_RADIUS + Math.max(e.width, e.height) / 2;
+              return Math.hypot(ecx - pcx, ecy - pcy) <= wireBombR + Math.max(e.width, e.height) / 2;
             });
             hits.forEach(e => {
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
@@ -6532,7 +6587,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             if (explode) {
               spawnFlash('rgba(147,197,253,0.22)', 180);
-              spawnRing(pcx, pcy, 10, WIRE_BOMB_RADIUS, 'rgba(147,197,253,0.95)', 5, 360);
+              spawnRing(pcx, pcy, 10, wireBombR, 'rgba(147,197,253,0.95)', 5, 360);
               spawnBurst(pcx, pcy, '#93c5fd', 24);
               spawnBurst(pcx, pcy, '#dbeafe', 14);
               playSfx('bomb');
@@ -7676,7 +7731,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcy = currentPlayer.y + currentPlayer.height / 2;
             const exMult = skillExplosionMult(currentPlayer);
             const radius = GRENADE_BLAST_RADIUS * exMult * bcRadiusMult;
-            const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * bcDmgMult * (currentPlayer.equipBonus?.damageMult ?? 1);
+            // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をボムカウンター爆発にも乗算。
+            const base = BOMB_COUNTER_BLAST_DAMAGE * exMult * bcDmgMult * (currentPlayer.equipBonus?.damageMult ?? 1) * skillOutgoingDamageMult(currentPlayer);
             spawnRing(bcx, bcy, 10, radius, 'rgba(251,146,60,0.85)', 5, 380);
             spawnBurst(bcx, bcy, '#f97316', 20);
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
@@ -7691,6 +7747,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dmg = Math.max(1, Math.round(base * (0.55 + falloff * 0.45)));
               damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
               spawnDamageNumber(ecx, e.y, dmg, false);
+            }
+            // §6.10 M33③: ボマー = ボムカウンター爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
+            if (hasSkill(currentPlayer, 'bomber')) {
+              for (const mini of buildBomberMinis(bcx, bcy, `bc-${currentPlayer.lastCounterSuccessTime}`)) addProjectile(mini);
+              spawnBurst(bcx, bcy, '#fbbf24', 8);
             }
           }
           prevCounterSuccessRef.current = currentPlayer.lastCounterSuccessTime;

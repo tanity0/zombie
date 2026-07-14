@@ -9,14 +9,15 @@ import {
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag
 } from '../types/game';
 import {
-  MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE,
+  MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
   isEnemyInGroundFire,
 } from '../utils/molotov';
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
-import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL } from '../utils/sensorMine';
+import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_COOLDOWN_MS } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
+import { buildBomberMinis } from '../utils/bomberScatter';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -1007,6 +1008,13 @@ export const skillRunnerSpeedMult = (player: Player, reloading = false): number 
   if (!lv) return 1;
   return (1 + [0, 0.10, 0.15, 0.20][lv]) * (reloading ? RUNNER_RELOAD_BONUS_MULT : 1);
 };
+// ゴールドラッシュ(§6.10 M33⑪で「永続ゴールド獲得」へ変更): ラン獲得ゴールド(リザルト)・宿敵討伐・
+// 二人組クエスト報酬の獲得量 ×1.2/1.35/1.5(Lv)。ショップの返金(refund)は取得ではないので対象外。
+// 端数は適用側で Math.round(四捨五入)。旧: in-runスクラップ拾得倍率(collectPickupのstrap)=撤去済み。
+export const skillGoldRushMult = (player: Player): number => {
+  const lv = skillLevel(player, 'gold-rush');
+  return lv ? [1, 1.2, 1.35, 1.5][lv] : 1;
+};
 // スクラップビルダー追記(§6.9 M32): スクラップ(strap)ピックアップ収集時の取得量 ×1.1/1.2/1.3(Lv)。
 // 既存効果(出撃開始時の初期スクラップ+50/100/150)は別枠のまま不変。端数は収集側の Math.round(四捨五入)。
 export const skillScrapBuilderGainMult = (player: Player): number => {
@@ -1628,7 +1636,9 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
     namedFoeResult: { name: st.namedFoe.name, defeated: true },
     namedFoeRunResolved: true,
   });
-  get().addGold(NAMED_TREASURE_GOLD);
+  // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。表示(壁銘打ち)も同額。
+  const namedGold = Math.round(NAMED_TREASURE_GOLD * skillGoldRushMult(st.player));
+  get().addGold(namedGold);
   // トレジャー確定1個(通常のtreasureDropChance抽選を経由せず直接付与)。
   get().addPickup({
     id: `pickup-treasure-named-${named.id}`,
@@ -1641,7 +1651,7 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
   // PACING_PUZZLE.md §5.17 M14追補(演出仕様v0.25.1499): spawnCallout('REVENGE!')は廃止し、
   // 大格銘打ち(金)に置き換え。頭上ネームプレート/リング/グローは不変。
   if (WALL_ENABLED) {
-    get().enqueueWallEvent('revenge', `REVENGE —— ${st.namedFoe.name}`, 'NEMESIS FELLED', '#ffd700', NAMED_TREASURE_GOLD);
+    get().enqueueWallEvent('revenge', `REVENGE —— ${st.namedFoe.name}`, 'NEMESIS FELLED', '#ffd700', namedGold);
   }
   get().spawnRing(x, y, 14, 220, 'rgba(255,215,0,0.85)', 5, 560);
   get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
@@ -1999,6 +2009,15 @@ const applySlasherTimedStrike = (
     }
   }
   get().spawnRing(pcx, pcy, 6, meleeRange, 'rgba(190,242,100,0.5)', 3, 200); // 追撃の一閃
+  // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: スラッシャー追撃のヒットでも貯める。倍率は既に乗っている)。
+  {
+    const slKnifeCombo = computeKnifeCombo(player, gameTime, hit);
+    if (slKnifeCombo.count !== player.knifeComboCount || slKnifeCombo.until !== player.knifeComboUntil) {
+      useGameStore.setState(state => ({
+        player: { ...state.player, knifeComboCount: slKnifeCombo.count, knifeComboUntil: slKnifeCombo.until },
+      }));
+    }
+  }
   // 追撃のジャスト成立フィードバック(ダンスの「JUST!」と同じコールアウト)。頭上に一瞬。
   get().spawnCallout(pcx, player.y - 24, 'JUST!', '#bef264', { scale: 1.2 });
   const nextStep = step + 1;
@@ -3419,12 +3438,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ boomerangThrowFxAt: Date.now() }); // ブーメラン投擲音SEのトリガ
     }
 
-    // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置(設置CDなし・
-    // PACING_PUZZLE.md §6.4)。同時数Lv1=3/Lv2=4/Lv3=5、上限中の追加設置は最古を置換
+    // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置
+    // (§6.10 M33①: 設置CD=10秒。setSubWeaponCooldown経由=タイムキーパー/オーバークロックが他サブ同様に乗る)。
+    // 同時数Lv1=3/Lv2=4/Lv3=5、上限中の追加設置は最古を置換
     // (判定=純関数 placeSensorMine)。感知/起爆/爆発は useGameLoop 側。スロー演出は出さない(CLAUDE.md)。
     if (
       player.subWeapons.includes('sensor-mine') &&
-      !subWeaponBlockedByKatana(player, 'sensor-mine')
+      !subWeaponBlockedByKatana(player, 'sensor-mine') &&
+      gameTime >= (player.subWeaponCooldowns['sensor-mine'] ?? 0)
     ) {
       const smLevel = Math.max(1, Math.min(3, player.subWeaponLevels['sensor-mine'] ?? 1));
       const smFootX = player.x + player.width / 2;
@@ -3437,6 +3458,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ),
       }));
       get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
+      get().setSubWeaponCooldown('sensor-mine', gameTime + SENSOR_MINE_COOLDOWN_MS); // §6.10 M33①: 設置CD10秒
     }
 
     // フレアガン(flare-gun): 近接攻撃時に進行方向(プレイヤーの向き)へ発射(CD=Lv1:5秒/Lv2:4秒/Lv3:3秒・
@@ -4167,6 +4189,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
+    const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
     let bossFinishHit = false;
 
     for (const enemy of enemies) {
@@ -4181,6 +4204,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (dist > meleeRange) { survivors.push(enemy); continue; }
       if (walls.length > 0 && segmentBlocked(ccx, ccy, ecx, ecy, walls)) { survivors.push(enemy); continue; }
       slashAt.push({ x: ecx, y: ecy });
+      cloneHitEnemyIds.push(enemy.id); // スキル 救難信号(§6.10 M33⑦): 分身のヒット敵ID(発動判定/対象選定用)
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         if (isBossType(enemy.type)) {
@@ -4222,6 +4246,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const finisherHit = killed.some(k => k.finisher);
+    // スキル: ナイフマスターのコンボ加算(§6.10 M33⑧: 分身のヒットでも貯める。倍率は既に乗っている)。
+    const cloneKnifeCombo = computeKnifeCombo(player, gameTime, slashAt.length > 0);
     set(state => ({
       // §5.21-追補8: 同じ判定(このスイングで近接ダメージを受けた=lastHit===now)でミゲル(ゲート2ボス)
       // 専用の meleeHitAt もスタンプ(gun/爆発は damageEnemy 側の別経路なので対象外)。ミゲル以外は
@@ -4235,6 +4261,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossKills: state.gameStats.bossKills + killed.reduce((n, k) => n + (isScoreBoss(k.enemy.type) ? 1 : 0), 0),
         damageDealt: state.gameStats.damageDealt + damageNumbers.reduce((sum, n) => sum + n.value, 0),
       },
+      player: { ...state.player, knifeComboCount: cloneKnifeCombo.count, knifeComboUntil: cloneKnifeCombo.until },
       // hitstopはtriggerFinishImpact側でCD込みで一括管理(M21・§5.22)。ここでの個別設定は廃止。
     }));
 
@@ -4253,6 +4280,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyMeleeFinishSkillSpread(get, player, finisherHit, ccx, ccy, meleeRange, meleeDamage);
     get().registerMultiHit(slashAt.length); // ヘビーガンナー: 2体以上ヒットで爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) counterMasterKnockback(get, ccx, ccy, counterMasterKbScale(player));
+    // スキル: 救難信号(§6.10 M33⑦: 分身のヒットでも発動判定。基本近接/刀と同条件・索敵起点は分身中心)。
+    applyRescueSignalProc(get, player, meleeDamage, cloneHitEnemyIds, ccx, ccy);
   },
 
   // 毎フレーム: 分身の自動近接(1秒ごと×最大5回)を進め、寿命(5秒)到達 or 回数上限で消滅。
@@ -4326,12 +4355,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (groundFires.length === 0) return;
     const aliveFires = groundFires.filter(f => gameTime < f.createdAt + MOLOTOV_FIRE_LIFETIME_MS);
     const hits: { id: string; x: number; y: number }[] = [];
+    // スキル: エクスプローダー(§6.10 M33④) = molotovの火も「全ての爆発」扱いで半径・ダメージ ×倍率。
+    // スキル: バーサーカー等(§6.10 M33②) = skillOutgoingDamageMult をDoTダメージに乗算(四捨五入)。
+    const gfExMult = skillExplosionMult(get().player);
+    const gfDotDmg = Math.max(1, Math.round(MOLOTOV_DOT_DAMAGE * gfExMult * skillOutgoingDamageMult(get().player)));
     if (aliveFires.length > 0) {
       for (const e of enemies) {
         if (gameTime - (e.lastFireHitAt ?? -Infinity) < MOLOTOV_DOT_INTERVAL_MS) continue;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
-        if (isEnemyInGroundFire(ecx, ecy, aliveFires)) hits.push({ id: e.id, x: ecx, y: ecy });
+        if (isEnemyInGroundFire(ecx, ecy, aliveFires, MOLOTOV_FIRE_RADIUS * gfExMult)) hits.push({ id: e.id, x: ecx, y: ecy });
       }
     }
     if (aliveFires.length !== groundFires.length || hits.length > 0) {
@@ -4343,8 +4376,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }));
     }
     for (const h of hits) {
-      get().damageEnemy(h.id, MOLOTOV_DOT_DAMAGE);
-      get().spawnDamageNumber(h.x, h.y, MOLOTOV_DOT_DAMAGE);
+      get().damageEnemy(h.id, gfDotDmg);
+      get().spawnDamageNumber(h.x, h.y, gfDotDmg);
     }
   },
 
@@ -4436,8 +4469,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cx = target ? target.x + target.width / 2 : b.targetX;
       const cy = target ? target.y + target.height / 2 : b.targetY;
       const exMult = skillExplosionMult(get().player); // 全爆発共通の倍率(エクスプローダー等)に追従
-      const radius = FIRST_AID_BAG_EXPLODE_RADIUS * exMult;
-      const baseDmg = b.damage * exMult; // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
+      // §6.10 M33⑤: ヘビーガンナー固有(爆発範囲倍率)を他の爆発と同じく半径へ適用。
+      const radius = FIRST_AID_BAG_EXPLODE_RADIUS * exMult * heavyGunnerExplosionMult(get().player, gameTime);
+      // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
+      const baseDmg = b.damage * exMult * skillOutgoingDamageMult(get().player); // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
+      // §6.10 M33③: ボマー = 救急鞄の爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
+      if (hasSkill(get().player, 'bomber')) {
+        for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`)) get().addProjectile(mini);
+        get().spawnBurst(cx, cy, '#fbbf24', 8);
+      }
       get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
       get().spawnBurst(cx, cy, '#ffae46', 22);
       get().spawnGlow(cx, cy, radius * 0.55, 'rgba(255,150,60,', 400);
@@ -4699,6 +4739,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const damageNumbers: { x: number; y: number; value: number; crit: boolean }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
+    const whipHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): 鞭のヒット敵ID(発動判定/対象選定用)
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
@@ -4709,6 +4750,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       hits++;
+      whipHitEnemyIds.push(enemy.id);
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       slashAt.push({ x: ecx, y: ecy });
@@ -4791,6 +4833,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
+    // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
+    // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
+    applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = finishZoomTargetOf(killed);
       get().triggerFinishImpact(ztx, zty); // ストップ後に 揺れ+スロー+寄りズーム(キルされた対象へ)
@@ -4862,7 +4907,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ enemies, hurricane: { ...h, lastTickAt: now, lastDamageAt: dealDamage ? now : h.lastDamageAt } });
     if (dealDamage) {
       // スキル: 賢者の石 = ハリケーンの巻き込みダメージ +20%。
-      const hurDmg = Math.round(HURRICANE_DAMAGE * sageStoneHurricaneMult(state.player));
+      // §6.10 M33②: 賢者の石ハリケーンにも skillOutgoingDamageMult(バーサーカー等)を乗算。
+      const hurDmg = Math.round(HURRICANE_DAMAGE * sageStoneHurricaneMult(state.player) * skillOutgoingDamageMult(state.player));
       for (const o of inRange) {
         get().damageEnemy(o.id, hurDmg);
         get().spawnDamageNumber(o.x, o.y, hurDmg); // 巻き込みダメージを可視化
@@ -5029,9 +5075,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       nextSummons.push(moveFollow(s));
     }
     set({ summons: nextSummons, ...(enemiesChanged ? { enemies: enemiesNext } : {}) });
+    // §6.10 M33②: 錬金術召喚(通常接触/レア死神AoE)にも skillOutgoingDamageMult(バーサーカー等)を乗算(四捨五入)。
+    const summonOutMult = skillOutgoingDamageMult(get().player);
     for (const h of attackHits) {
-      get().damageEnemy(h.id, h.amount);
-      get().spawnDamageNumber(h.x, h.y, h.amount); // 召喚(死神AoE/通常接触)の攻撃を可視化
+      const sDmg = Math.max(1, Math.round(h.amount * summonOutMult));
+      get().damageEnemy(h.id, sDmg);
+      get().spawnDamageNumber(h.x, h.y, sDmg); // 召喚(死神AoE/通常接触)の攻撃を可視化
     }
   },
 
@@ -5365,7 +5414,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const pcy = p.y + p.height / 2;
         const exMult = skillExplosionMult(p);
         const radius = [0, 92, 104, 116][rfLv] * exMult;
-        const baseDmg = [0, 60, 80, 100][rfLv] * exMult;
+        // §6.10 M33②: 反射神経の反撃爆発にも skillOutgoingDamageMult(バーサーカー等)を乗算。
+        const baseDmg = [0, 60, 80, 100][rfLv] * exMult * skillOutgoingDamageMult(p);
         get().spawnRing(pcx, pcy, 10, radius, 'rgba(56,189,248,0.85)', 5, 360);
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, 56, 'rgba(56,189,248,', 360);
@@ -6088,7 +6138,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     //    (fadeStartedAtは立てず立ち姿のまま・以後何も起きない)。
     const stageId = getSelectedStageId();
     const active = get().eventQuestActive;
-    get().addGold(EVENT_QUEST_REWARD_GOLD);
+    // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。
+    get().addGold(Math.round(EVENT_QUEST_REWARD_GOLD * skillGoldRushMult(get().player)));
     const meta = getEventQuestMeta(stageId);
     if (active === 'forced') {
       setEventQuestMeta(stageId, { ...meta, forced: true });
@@ -7697,15 +7748,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         break;
       case 'strap':
         set(state => {
-          // スキル: ゴールドラッシュ = 取得量 ×(1 + rand 0.10〜0.30)を取得毎にロール。
-          const grLv = skillLevel(state.player, 'gold-rush'); // ゴールド取得 +20%/35%/50%(Lv)
-          const goldRush = grLv ? [1, 1.2, 1.35, 1.5][grLv] : 1;
+          // §6.10 M33⑪: ゴールドラッシュはin-runスクラップ拾得から撤去(永続ゴールド獲得へ移動)。
           return {
           player: {
             ...state.player,
             // スクラップ獲得数アップ(パッシブ): 取得量を scrapMult 倍に(+30%/回)。
             // スキル: スクラップビルダー = 取得量 ×1.1/1.2/1.3(Lv・§6.9 M32。四捨五入は既存のMath.round)。
-            straps: state.player.straps + Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * goldRush * skillScrapBuilderGainMult(state.player)))
+            straps: state.player.straps + Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * skillScrapBuilderGainMult(state.player)))
           },
           gameStats: {
             ...state.gameStats,

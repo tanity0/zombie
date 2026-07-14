@@ -7,6 +7,7 @@
 export const SENSOR_MINE_DAMAGE = 50;   // = HEAVY_GRENADE_DAMAGE 42 × 1.2(手榴弾の1.2倍・社長指定)
 export const SENSOR_MINE_RADIUS = 79;   // = HEAVY_GRENADE_RADIUS 66 × 1.2(爆発半径。センサー範囲も同値=叩き台)
 export const SENSOR_MINE_FUSE_MS = 2000; // 感知から起爆まで(赤点滅テレグラフの長さ)
+export const SENSOR_MINE_COOLDOWN_MS = 10000; // 設置CD(§6.10 M33①・社長指示。旧: CDなし=スイング毎設置)
 export const SENSOR_MINE_CAP_BY_LEVEL: readonly number[] = [0, 3, 4, 5]; // index=level(1..3)。同時設置数の上限
 
 // 設置済みの地雷1個。triggeredAt=0 は待機(未感知)、>0 はその gameTime に感知済み
