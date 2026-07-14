@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1702',
+    items: [
+      '開発: スキル×サブウェポンの適用関係を全数監査し、マトリクスと裁定リスト18件(漏れ候補・非対称・説明ズレ)を文書化(SKILL_SUBWEAPON_MATRIX.md)。ゲーム変更なし・修正は裁定後。',
+    ],
+  },
+  {
     version: '0.25.1701',
     items: [
       'スキル「スクラップビルダー」強化: スクラップ取得量が+10%(Lvで+20%/+30%)増えるようになりました(初期スクラップ+50/100/150はそのまま)。',
