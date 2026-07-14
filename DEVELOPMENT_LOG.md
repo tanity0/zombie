@@ -12,6 +12,13 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1682 — 実機確認: 天使ミゲル=戦闘〜討伐まで正常(Step3抽出の検証)【2026-07-14 14:28 JST】
+- **社長実機報告**「天使ミゲルは正常に戦闘、討伐まで確認」= M26 Step3(v0.25.1680)の angelBossTick.ts 抽出後、
+  実プレイ経路(ミゲル: 周回/払い→縦払い/弾3連/カウンター/討伐)が挙動不変であることを確認済み。
+- 残りの実機確認: **ジブリル(ステージ3)/ラフィ(ステージ4)**=次にそのステージを触る時に確認
+  (抽出は3体とも同じ流儀なのでリスクは低いが、未確認である事実をここに記録)。
+- Files: `PACING_PUZZLE.md`(Step3行更新), `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(記録のみ)。
+
 ## v0.25.1681 — 二人組(クエストNPC)の会話ポップアップ廃止→3秒滞在で自動受領【2026-07-14 14:22 JST】
 - **社長指示**「二人のイベントは会話ポップアップを廃止。他のNPC同様に左上に会話を表示、強制的にサブクエストを受領。
   条件は会話サークル内に3秒居続ける(拠点解放と同じくメーター表示)」。
