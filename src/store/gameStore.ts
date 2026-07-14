@@ -13,7 +13,7 @@ import {
   isEnemyInGroundFire,
 } from '../utils/molotov';
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
-import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_COOLDOWN_MS } from '../utils/sensorMine';
+import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_CHARGE_COOLDOWN_MS, sensorMineChargesReady, consumeSensorMineCharge } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
@@ -2284,6 +2284,9 @@ interface GameState {
   // 感知/起爆判定は純関数 tickSensorMines(src/utils/sensorMine.ts)+useGameLoop が爆発処理、描画は pixiScene が直読み。
   sensorMines: SensorMineState[];
   setSensorMines: (mines: SensorMineState[]) => void; // useGameLoop が tickSensorMines の結果を反映するだけ
+  // §6.13 M36: 設置チャージ制(グローバルCDは撤去)。回復待ちチャージの readyAt 配列(純関数=sensorMine.ts)。
+  // 要素なし=全チャージ準備完了。triggerCounter が設置のたびに直接 set() する(専用アクションは無し)。
+  sensorMineCharges: number[];
 
   // 援護射撃(support-sniper)サブウェポン(PACING_PUZZLE.md §6.5 M28)。CDは「移動中のみ進む残りms」
   // (subWeaponCooldowns の絶対時刻方式では停止中の保持ができないため専用フィールド)。
@@ -2726,6 +2729,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   shadowClone: null,
   molotovCycle: null,
   sensorMines: [],
+  sensorMineCharges: [],
   supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
   supportSniperNpc: null,
   flareGunFlares: [],
@@ -3440,26 +3444,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置
-    // (§6.10 M33①: 設置CD=10秒。setSubWeaponCooldown経由=タイムキーパー/オーバークロックが他サブ同様に乗る)。
-    // 同時数Lv1=3/Lv2=4/Lv3=5、上限中の追加設置は最古を置換
-    // (判定=純関数 placeSensorMine)。感知/起爆/爆発は useGameLoop 側。スロー演出は出さない(CLAUDE.md)。
+    // (§6.13 M36: グローバルCDではなくチャージ制。チャージ数=同時設置上限Lv1=3/Lv2=4/Lv3=5と同じ。
+    // 設置=準備完了チャージを1消費、消費分は設置から10秒後に個別再準備。setSubWeaponCooldownを通らないため
+    // タイムキーパー/オーバークロック/M35計測(recordSubUse・成立時recordOverclockProc)は援護射撃と同じ流儀で手動維持)。
+    // 盤面上限=N(既存)。チャージがあっても盤面がN個埋まっていれば最古を置換(判定=純関数 placeSensorMine)。
+    // 感知/起爆/爆発は useGameLoop 側。スロー演出は出さない(CLAUDE.md)。
     if (
       player.subWeapons.includes('sensor-mine') &&
-      !subWeaponBlockedByKatana(player, 'sensor-mine') &&
-      gameTime >= (player.subWeaponCooldowns['sensor-mine'] ?? 0)
+      !subWeaponBlockedByKatana(player, 'sensor-mine')
     ) {
       const smLevel = Math.max(1, Math.min(3, player.subWeaponLevels['sensor-mine'] ?? 1));
-      const smFootX = player.x + player.width / 2;
-      const smFootY = player.y + player.height;
-      set(state => ({
-        sensorMines: placeSensorMine(
-          state.sensorMines,
-          { id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0 },
-          SENSOR_MINE_CAP_BY_LEVEL[smLevel]
-        ),
-      }));
-      get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
-      get().setSubWeaponCooldown('sensor-mine', gameTime + SENSOR_MINE_COOLDOWN_MS); // §6.10 M33①: 設置CD10秒
+      const smCap = SENSOR_MINE_CAP_BY_LEVEL[smLevel];
+      if (sensorMineChargesReady(get().sensorMineCharges, gameTime, smCap) > 0) {
+        const smFootX = player.x + player.width / 2;
+        const smFootY = player.y + player.height;
+        const smOverclock = Math.random() < skillOverclockChance(player); // §6.8 M31と同じ抽選=発動(設置)時
+        const smDuration = smOverclock ? 0 : SENSOR_MINE_CHARGE_COOLDOWN_MS * skillCooldownMult(player); // タイムキーパー
+        set(state => ({
+          sensorMines: placeSensorMine(
+            state.sensorMines,
+            { id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0 },
+            smCap
+          ),
+          sensorMineCharges: consumeSensorMineCharge(state.sensorMineCharges, gameTime, smCap, smDuration) ?? state.sensorMineCharges,
+        }));
+        get().spawnRing(smFootX, smFootY, 4, 20, 'rgba(148,163,184,0.6)', 2, 200); // 設置の小リング(軽量)
+        recordSubUse('sensor-mine'); // M35計測: setSubWeaponCooldown経由をやめたため手動合流点
+        if (smOverclock) recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
+      }
     }
 
     // フレアガン(flare-gun): 近接攻撃時に進行方向(プレイヤーの向き)へ発射(CD=Lv1:5秒/Lv2:4秒/Lv3:3秒・
@@ -9611,6 +9623,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         thrownBags: [],
         molotovCycle: null,
         sensorMines: [],
+        sensorMineCharges: [],
         supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
         supportSniperNpc: null,
         flareGunFlares: [],

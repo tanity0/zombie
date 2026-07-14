@@ -2,13 +2,15 @@
 // 純関数に閉じ込める(CLAUDE.md「実装精度の規律」4: 配線ロジックは純関数に切り出してテスト)。
 // 設置は gameStore.triggerCounter(近接スイング)、起爆の反映と爆発処理は useGameLoop、
 // 描画は pixiScene.syncSensorMines(読むだけ)。仕様の正は PACING_PUZZLE.md §6.4(バッチM27)。
+// チャージ制(個別CD)の仕様の正は §6.13(バッチM36)。
 
 // --- 調整用定数(§6.4 確定値+叩き台) ---
 export const SENSOR_MINE_DAMAGE = 50;   // = HEAVY_GRENADE_DAMAGE 42 × 1.2(手榴弾の1.2倍・社長指定)
 export const SENSOR_MINE_RADIUS = 79;   // = HEAVY_GRENADE_RADIUS 66 × 1.2(爆発半径。センサー範囲も同値=叩き台)
 export const SENSOR_MINE_FUSE_MS = 2000; // 感知から起爆まで(赤点滅テレグラフの長さ)
-export const SENSOR_MINE_COOLDOWN_MS = 10000; // 設置CD(§6.10 M33①・社長指示。旧: CDなし=スイング毎設置)
-export const SENSOR_MINE_CAP_BY_LEVEL: readonly number[] = [0, 3, 4, 5]; // index=level(1..3)。同時設置数の上限
+export const SENSOR_MINE_CAP_BY_LEVEL: readonly number[] = [0, 3, 4, 5]; // index=level(1..3)。同時設置数の上限・チャージ数と同じ(§6.13)
+// §6.13 M36: 消費した1チャージが個別に再準備されるまでの時間(旧SENSOR_MINE_COOLDOWN_MS=グローバルCDは撤去)。
+export const SENSOR_MINE_CHARGE_COOLDOWN_MS = 10000;
 
 // 設置済みの地雷1個。triggeredAt=0 は待機(未感知)、>0 はその gameTime に感知済み
 // (triggeredAt + SENSOR_MINE_FUSE_MS で起爆)。
@@ -93,4 +95,32 @@ export const tickSensorMines = ({
     }
   }
   return { mines: remaining, detonated, changed };
+};
+
+// --- チャージ制(§6.13 M36): グローバルCDではなく「チャージ数=同時設置上限(SENSOR_MINE_CAP_BY_LEVEL)」を
+// 個別に管理する。状態は「回復待ち(消費済みでまだ再準備できていない)チャージの readyAt 配列」のみで表現し、
+// 準備完了チャージは配列に載せない(要素なし=全チャージ準備完了)。gameStore.triggerCounter が
+// 設置のたびに consumeSensorMineCharge を呼び、結果を state.sensorMineCharges として保持する。
+
+// 期限切れ(readyAt<=gameTime = 再準備完了)の要素を取り除いた配列を返す(純粋)。
+export const pruneSensorMineCharges = (pending: readonly number[], gameTime: number): number[] =>
+  pending.filter(readyAt => readyAt > gameTime);
+
+// 準備完了チャージ数 = cap − 回復待ち件数(prune後)。0未満にはならない。
+export const sensorMineChargesReady = (pending: readonly number[], gameTime: number, cap: number): number =>
+  Math.max(0, cap - pruneSensorMineCharges(pending, gameTime).length);
+
+// 設置1回分のチャージ消費。準備完了チャージが無ければ null(=設置不可)。
+// durationMs<=0 を渡すとオーバークロック成立相当(そのチャージを回復待ちに積まず即再準備)。
+// time-keeper 等のCD短縮は呼び出し側が durationMs に乗算済みの値を渡す(setSubWeaponCooldownと同じ流儀)。
+export const consumeSensorMineCharge = (
+  pending: readonly number[],
+  gameTime: number,
+  cap: number,
+  durationMs: number,
+): number[] | null => {
+  const pruned = pruneSensorMineCharges(pending, gameTime);
+  if (pruned.length >= cap) return null;
+  if (durationMs <= 0) return pruned; // 即再準備(回復待ちに積まない)
+  return [...pruned, gameTime + durationMs];
 };

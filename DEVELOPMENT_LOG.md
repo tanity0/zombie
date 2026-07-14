@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.1718 — M36実装: センサー地雷CD是正=個別チャージ制(§6.13・Sonnet実装)【2026-07-15 01:38 JST】
+- **§6.13の仕様どおり実装**: 旧グローバル10秒CD(`setSubWeaponCooldown('sensor-mine')`)を撤去し、
+  チャージ制へ。チャージ数=同時設置上限と同じ(Lv1=3/Lv2=4/Lv3=5)。設置=準備完了チャージを1消費
+  (ゼロなら設置不可)。消費したチャージは設置から10秒後に個別に再準備=全チャージ準備済みならN個連続設置可。
+  盤面上限=N(既存)・チャージがあっても盤面がN個埋まっていれば最古置換(既存 `placeSensorMine` 不変)。
+  起爆・感知・ダメージ・赤点滅・描画は不変(CDの持ち方だけの是正)。
+- **純関数(`src/utils/sensorMine.ts`)**: 状態を「消費済みで回復待ちのreadyAt配列」のみで表現
+  (要素なし=全チャージ準備完了)。`pruneSensorMineCharges`(期限切れ除去)/`sensorMineChargesReady`
+  (cap−回復待ち件数)/`consumeSensorMineCharge`(消費。durationMs<=0はオーバークロック相当=即再準備・
+  回復待ちに積まない)。旧`SENSOR_MINE_COOLDOWN_MS`は`SENSOR_MINE_CHARGE_COOLDOWN_MS`(=10000のまま)に改名。
+- **gameStore.triggerCounter**: `setSubWeaponCooldown`を通らなくなったため、援護射撃と同じ流儀で手動配線。
+  time-keeper(`skillCooldownMult`をdurationMsに乗算)/オーバークロック(設置時`skillOverclockChance`で抽選、
+  成立でdurationMs=0=そのチャージ即再準備+`recordOverclockProc`)/M35計測(`recordSubUse('sensor-mine')`を
+  設置毎に手動記録)。チャージ状態は新store field `sensorMineCharges: number[]`(sensorMinesと同様、
+  triggerCounter内で直接set・専用アクションなし)。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(サブウェポンのCD持ち方のみ・
+  盤面/ダメージ/感知/描画は一切不変)。
+- 負荷スコア: **1/10**(設置(近接スイング)イベント発生時のみの配列prune/フィルタ。要素数は最大5。
+  per-frame処理なし・新規描画なし)。
+- 検証: `npm run typecheck` クリーン / eslint(`sensorMine.ts`/`sensorMine.test.ts`/`gameStore.ts`)クリーン /
+  `npx vitest related --run`(sensorMine.ts等変更ファイル起点)**128件パス**(M9ボットスモーク込み。
+  sensorMine.test.ts単体=18件、新規7件: Lv3連続5設置/一斉10秒回復/1個ずつ独立回復/time-keeper倍率/
+  オーバークロック即回復/prune純関数/盤面残存時の最古置換)。フルビルドは未実施(社長指示なし)。
+  実機確認は社長へ持ち越し。
+- Files: `src/utils/sensorMine.ts`, `src/utils/sensorMine.test.ts`, `src/store/gameStore.ts`,
+  `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1717 — M36仕様書化: センサー地雷CD是正=個別チャージ制(設計チャットの勘違い訂正)【2026-07-15 01:30 JST】
 - **社長指摘**: M33①の「10秒に1個(グローバルCD)」は勘違い。正=**チャージ制**(プランA):
   チャージ数=Lv個数(3/4/5)・設置で1消費・**1個ずつ独立に10秒で再準備**・全準備ならN連続設置可・
