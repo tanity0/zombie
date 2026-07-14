@@ -215,7 +215,8 @@ describe('M17: 被ダメ経路のヘッドレス化(カナリア回帰・PACING_
         const healthBefore = before.player.health;
         const nextGameTime = before.gameTime + dt * 1000;
         vi.setSystemTime(realEpoch + nextGameTime); // Date.now() を今回tick分のgameTimeへ同期
-        runPlaytestTick(refs, { persona: 'stationary', tickIndex: i, wanderSeed: 0, dt });
+        // events:false = M26 Step2のゲート/ハンターを切る(このシナリオの目的=盤面敵の被ダメ経路カナリアを分離)
+        runPlaytestTick(refs, { persona: 'stationary', tickIndex: i, wanderSeed: 0, dt, events: false });
         hpLost += Math.max(0, healthBefore - useGameStore.getState().player.health);
       }
       expect(hpLost).toBeGreaterThan(0);
@@ -300,7 +301,9 @@ describe('M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴
         const before = useGameStore.getState();
         const nextGameTime = before.gameTime + dt * 1000;
         vi.setSystemTime(realEpoch + nextGameTime); // Date.now() を今回tick分のgameTimeへ同期
-        runPlaytestTick(refs, { persona: 'rusher', tickIndex: i, wanderSeed: 0, dt, rusherState });
+        // events:false = M26 Step2のゲート/ハンターを切る(このシナリオの目的=イベント無しの深層ペーシング計測。
+        // ゲート込みのラッシュ挙動は下の M26-S2 シナリオが担当)
+        runPlaytestTick(refs, { persona: 'rusher', tickIndex: i, wanderSeed: 0, dt, rusherState, events: false });
 
         const after = useGameStore.getState();
         const pcx = after.player.x + after.player.width / 2;
@@ -327,6 +330,63 @@ describe('M19: rusherペルソナ+深層ラッシュ・シナリオ(試験の穴
 
       // 芯(受け入れ条件②): rusherが深層域(r>=7500)へ到達できること。
       expect(maxRadius).toBeGreaterThanOrEqual(7500);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('M26 Step2: ゲート+凶悪ハンターのヘッドレス接続(§6.2)', () => {
+  it('rusher(拠点0)はデンジャーで凶悪ハンターに出会い、未確認境界でゲート1が発火してアリーナに拘束される', () => {
+    const realEpoch = Date.now();
+    vi.useFakeTimers({ shouldAdvanceTime: false, toFake: ['Date'] });
+    vi.setSystemTime(realEpoch);
+    try {
+      useGameStore.getState().resetGame('rogue');
+      const refs = createPlaytestRefs();
+      const rusherState = createRusherTrackState();
+      const dt = 1 / 60;
+      const MAX_TICKS = 150 * 60; // 150秒相当(r5000到達≈60s+ゲート40s+余裕)
+
+      let hunterSeen = false;
+      let gate1Fired = false;
+      let confinedSamples = 0;
+      let maxExcess = 0; // 拘束中にアリーナ半径をどれだけはみ出したか(最大)
+      let gate1Ended = false;
+
+      for (let i = 0; i < MAX_TICKS; i++) {
+        const nextGameTime = useGameStore.getState().gameTime + dt * 1000;
+        vi.setSystemTime(realEpoch + nextGameTime);
+        runPlaytestTick(refs, { persona: 'rusher', tickIndex: i, wanderSeed: 0, dt, rusherState }); // events既定ON
+        const s = useGameStore.getState();
+        if (s.enemies.some(e => e.type === 'hunter')) hunterSeen = true;
+        if (refs.gate.activeGate === 1) {
+          gate1Fired = true;
+          const ae = s.activeEvent;
+          if (ae) {
+            const pcx = s.player.x + s.player.width / 2, pcy = s.player.y + s.player.height / 2;
+            const d = Math.hypot(pcx - ae.x, pcy - ae.y);
+            confinedSamples++;
+            maxExcess = Math.max(maxExcess, d - ae.radius);
+          }
+        } else if (gate1Fired && refs.gate.activeGate === null) {
+          gate1Ended = true;
+        }
+        if (s.player.health <= 0) break;
+      }
+
+      console.log(`\n=== M26-S2 ゲート+ハンター・シナリオ ===`);
+      console.log(`  hunterSeen=${hunterSeen} gate1Fired=${gate1Fired} confinedSamples=${confinedSamples} maxExcess=${maxExcess.toFixed(1)}px gate1Ended=${gate1Ended} gate1Cleared=${refs.gate.gate1Cleared}`);
+
+      // 芯①: 拠点0でデンジャー以深へ入った=凶悪ハンターが発生する。
+      expect(hunterSeen).toBe(true);
+      // 芯②: 未確認境界(r5000)踏破でゲート1が発火する。
+      expect(gate1Fired).toBe(true);
+      // 芯③: ゲート中はアリーナ(半径300)に拘束される(store.movePlayerのクランプ=はみ出しは自機の半身程度まで)。
+      expect(confinedSamples).toBeGreaterThan(0);
+      expect(maxExcess).toBeLessThanOrEqual(40);
+      // 芯④: ゲートはクリアか時間切れ(40秒)で必ず終わる(無限拘束にならない)。
+      expect(gate1Ended).toBe(true);
     } finally {
       vi.useRealTimers();
     }

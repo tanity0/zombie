@@ -12,6 +12,29 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1679 — M26 Step2: ゲート1/2+凶悪ハンターのヘッドレス接続【2026-07-14 13:36 JST】
+- **事前調査の収穫(移植を最小化)**: ①アリーナ拘束は `store.movePlayer`(gameStore:2879)にある=**beginArenaEventを
+  張るだけで拘束が効く**。②ハンターの移動も `store.updateEnemies` の徘徊接近AI(hunterWander)にある=**spawnするだけで
+  追ってくる**。→ 移植対象は「発火/終了の判定」と「凶悪ハンターのspawn判定」だけで済んだ。
+- **実装(`playtestDriver.ts` `runGateAndHunterTick`)**: useGameLoopレガシー配線の忠実ミニ版。
+  - 区域クロス検知(areaZone)→ゲート予約(entersGate1Penalty / wall4&未クリア)。
+  - 発火: shouldTriggerGate1/2(既存純関数)→ gate1=赤tier台本(selectPattern(rank+1))をリング配置+permeable囲い40秒 /
+    gate2=ミゲル(**天使AIは未接続=Step3。HP2000タンクとして「倒すまで拘束」だけ再現**)囲い5分。
+  - 終了: 全滅=クリア(gate1Cleared/gate2Cleared)/時間切れ=境界内側へノックバック(再クロスで再発火のリトライループ)。
+  - 凶悪ハンター: shouldTriggerViciousHunter(gate1PassedThisRun連動込み)→ 視界距離にspawn(移動はstore任せ)。
+    撃破→VICIOUS_REARM_MS再アーム。director信号のhunterRef.phaseにも反映(dangerBias)。
+  - `PlaytestTickOptions.events`(既定ON)。M17/M19のシナリオ試験は false で分離(目的が違うため)。
+- **新シナリオテスト M26-S2**(playtest.test.ts): rusher(拠点0)150秒で
+  **hunterSeen=true / gate1Fired=true / 拘束はみ出し最大0.0px(4804サンプル) / 時間切れ終了=true**を機械検証。
+- **フル10ラン計測(Step1→Step2)**: **全ペルソナの深層漂流がゲートで停止**(全員depth≈5287=壁5000+アリーナ300で
+  キャップ・深層域滞在0秒)。kiterの4万px漂流が解消しLv2へ成長(前Stepの観察課題が副作用で解決)。
+  ランダム強化のボットでは赤tierゲート1を突破できない=リトライループが機能。**新観察**: ゲートに詰まる
+  ペルソナはrank1に停滞(深部に行けない=査定が上がらない)。boar/stationary(内周型)は従来どおりrank4-5。
+- テスト: フルスイート**664 passed**(M26-S2追加込み)/ typecheck / eslint クリーン。
+- 残り: Step3=天使ボスAIのヘッドレス化(ゲート2が「タンク削り」から「本物のボス戦」になる)/ Step4=イベント接続。
+- Files: `utils/playtestDriver.ts`, `store/playtest.test.ts`, `PACING_PUZZLE.md`, `package.json`,
+  `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1678 — M26 Step1: 成長ループ接続+真の主犯「弾ヒット処理の不在」を修正【2026-07-14 13:18 JST】
 - **診断(Fable直轄・新ルール初適用)**: kiterキル0の真因は「引き撃ちの距離」ではなく、**ヘッドレスに
   「プレイヤー弾→敵のヒット処理」自体が存在しなかった**こと(useGameLoop.ts:6168のレガシー配線=ヘッドレスの

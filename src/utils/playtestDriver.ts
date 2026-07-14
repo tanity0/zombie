@@ -20,19 +20,23 @@
 import {
   useGameStore, isKatanaMode, hasSkill, AMMO_MAX,
   skillCritMult, skillOutgoingDamageMult, skillComboMasterMult, sniperGunMult,
-  CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS,
+  CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
 } from '../store/gameStore';
 import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY } from './weaponUtils';
 import { pickAmmoDropType } from './ammoDrop';
 import { isPlayerInAttackTelegraph } from './levelUpGate';
+import { shouldTriggerGate1, entersGate1Penalty } from './gate1';
+import { shouldTriggerGate2 } from './gate2';
+import { detectWallBreach } from './wallProgress';
+import { shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS } from './viciousHunter';
 import type { AmmoType } from '../types/game';
-import { areaIndexForPos, isBossType } from './enemyUtils';
+import { areaIndexForPos, isBossType, spawnEnemyAt, spawnEnemyAtWithTier, AREA_THRESHOLDS } from './enemyUtils';
 import { checkProjectileEnemyCollisions, checkPlayerPickupCollisions } from './collisionUtils';
 import { weaknessCritBonus } from './weaknessCrit';
 import { applyEnemyCritPenalty } from './critPenalty';
 import { phaseAt } from './difficultyDirector';
-import { createPuzzleClockState, createKomaAccumulator, createSoftenState } from './rankAssessor';
-import { ZERO_NUISANCE } from './scriptPuzzle';
+import { createPuzzleClockState, createKomaAccumulator, createSoftenState, clampRank } from './rankAssessor';
+import { ZERO_NUISANCE, selectPattern, nuisanceTarget, type NuisanceType } from './scriptPuzzle';
 import { createPinchState } from './pityDirector';
 import { createDirectorState } from './aiDirector';
 import {
@@ -48,6 +52,16 @@ import {
 } from './combatTick';
 
 const MAX_ENEMIES = 10; // useGameLoop.ts と同じ既定(コマ管理はcapForStateが実効上限を別途決める)
+
+// M26 Step2(§6.2): ゲート1/2+凶悪ハンターのヘッドレス接続に使う定数(useGameLoop.tsのローカル定数と同値。
+// useGameLoop.ts側を変えたらここも合わせる=COMBAT_TUNABLESと同じ流儀)。
+const GATE_ARENA_RADIUS = 300;
+const GATE_FAIL_KNOCKBACK_MARGIN = 400;
+const ARENA_HORDE_DURATION_MS = 40000;
+const GATE2_BOSS_DURATION_MS = 300000;
+const ARENA_END_GRACE_MS = 600;
+const EVENT_SPAWN_AGGRO_RANGE = 300;
+const HUNTER_START_MS = 180000;
 
 // PACING_PUZZLE.md §5.18 M17: useGameLoop.ts側のローカル定数と同じ値(叩き台の演出専用チューニング・
 // ヘッドレスでは全てno-opなので実行結果には影響しないが、シグネチャを揃えるために複製)。
@@ -66,6 +80,17 @@ export interface PlaytestRefs {
   director: DirectorSignalRefs;
   // M26 Step1(§6.2): 成長ループ用。レベルアップ自動選択の決定的乱数(シード固定=同ラン再現可能)。
   growth: { rand: () => number };
+  // M26 Step2(§6.2): ゲート1/2+凶悪ハンターのヘッドレス状態(useGameLoopの各refの写し)。
+  gate: {
+    areaZone: number;                 // -1=初回未採用(areaZoneRef相当)
+    gate1Pending: boolean; gate2Pending: boolean;
+    gate1Cleared: boolean; gate2Cleared: boolean;
+    gate1DoneThisRun: boolean; gate1PassedThisRun: boolean;
+    activeGate: 1 | 2 | null;
+    hordeSpawned: number; hordeTotal: number; // gate1台本の全数即配置(誤終了ガード用)
+    hunterRearmAt: number;                     // 凶悪ハンター撃破後の再アーム時刻
+    hunterWasAlive: boolean;                   // 撃破検知(rearm計時)用
+  };
 }
 
 // useGameLoop.ts の useRef 初期値と同じ形(M9-A extraction時点のスナップショット)。
@@ -96,6 +121,16 @@ export const createPlaytestRefs = (): PlaytestRefs => {
       gatePressureRef: { current: { state: { pressure: 0 } } },
     },
     growth: { rand: mulberry32(1) },
+    gate: {
+      areaZone: -1,
+      gate1Pending: false, gate2Pending: false,
+      gate1Cleared: false, gate2Cleared: false,
+      gate1DoneThisRun: false, gate1PassedThisRun: false,
+      activeGate: null,
+      hordeSpawned: 0, hordeTotal: 0,
+      hunterRearmAt: 0,
+      hunterWasAlive: false,
+    },
   };
 };
 
@@ -154,6 +189,113 @@ const applyBotProjectileHits = (gameTime: number): void => {
   }
 };
 
+// M26 Step2(§6.2): ゲート1/2の発火・終了+凶悪ハンターのヘッドレス接続。useGameLoop.tsのレガシー配線
+// (区域クロス検知/ゲート発火/終了・失敗ノックバック/凶悪ハンター発生)の忠実ミニ版。
+// **拘束(プレイヤーをサークル内に閉じ込める)は store.movePlayer 側にあるため beginArenaEvent を張るだけで効く。**
+// **ハンターの移動も store.updateEnemies の徘徊接近AIが担う**(useGameLoopの状態機械=検知/増援/撤退は簡略化)。
+// 省略: バナー/SE/年表/踏破(wallMeta)/ゲート1ペナルティのハンター即時再アーム/**gate2の天使AI(Step3で接続)**。
+const zoneIdxOf = (dist: number): number => AREA_THRESHOLDS.filter(th => dist >= th).length;
+
+const runGateAndHunterTick = (refs: PlaytestRefs, t: number): void => {
+  const g = refs.gate;
+  const p0 = useGameStore.getState().player;
+  const pcx = p0.x + p0.width / 2, pcy = p0.y + p0.height / 2;
+  const zoneIdx = zoneIdxOf(Math.hypot(pcx, pcy));
+
+  // --- 区域クロス検知(areaZoneRef相当)+ゲート予約(useGameLoop区域ブロックの写し) ---
+  if (g.areaZone === -1) {
+    g.areaZone = zoneIdx; // 初回は黙って採用
+  } else if (zoneIdx !== g.areaZone) {
+    const prevZone = g.areaZone;
+    g.areaZone = zoneIdx;
+    if (g.activeGate === null) {
+      const wallIdx = detectWallBreach(prevZone, zoneIdx);
+      const gateBlocksThisWall = (wallIdx === 3 && !g.gate1Cleared) || (wallIdx === 4 && !g.gate2Cleared);
+      if (wallIdx === 3 && !gateBlocksThisWall) g.gate1PassedThisRun = true; // 開放済み境界の素通り=通過
+      if (entersGate1Penalty(wallIdx, g.gate1Cleared)) g.gate1Pending = true;
+      else if (wallIdx === 4 && !g.gate2Cleared) g.gate2Pending = true;
+    }
+  }
+
+  // --- 発火(activeEventが空いた瞬間・useGameLoopゲート発火ブロックの写し) ---
+  if (!useGameStore.getState().activeEvent) {
+    if (shouldTriggerGate1({ enabled: true, wallIdx: g.gate1Pending ? 3 : null, gate1Cleared: g.gate1Cleared, activeEventActive: false, doneThisRun: g.gate1DoneThisRun })) {
+      g.gate1Pending = false;
+      const pattern = selectPattern(clampRank(refs.koma.puzzleClockRef.current.rank + 1), new Set(), null, Math.random());
+      const counts = nuisanceTarget(pattern);
+      useGameStore.getState().beginArenaEvent({ kind: 'horde', x: pcx, y: pcy, radius: GATE_ARENA_RADIUS, startedAt: t, endsAt: t + ARENA_HORDE_DURATION_MS, permeable: true });
+      let spawned = 0;
+      (Object.keys(counts) as NuisanceType[]).forEach(type => {
+        for (let i = 0; i < counts[type]; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const d0 = GATE_ARENA_RADIUS * (0.4 + Math.random() * 0.52);
+          const e = spawnEnemyAtWithTier(type, pcx + Math.cos(ang) * d0 - 20, pcy + Math.sin(ang) * d0 - 20, t, 'red');
+          e.fromEvent = true; e.dormant = true; e.aggroRange = EVENT_SPAWN_AGGRO_RANGE; e.vx = 0; e.vy = 0;
+          useGameStore.getState().addEnemy(e);
+          spawned++;
+        }
+      });
+      g.hordeSpawned = spawned; g.hordeTotal = spawned;
+      g.activeGate = 1;
+    } else if (shouldTriggerGate2({ enabled: true, wallIdx: g.gate2Pending ? 4 : null, gate2Cleared: g.gate2Cleared, activeEventActive: false })) {
+      g.gate2Pending = false;
+      useGameStore.getState().beginArenaEvent({ kind: 'boss', x: pcx, y: pcy, radius: GATE_ARENA_RADIUS, startedAt: t, endsAt: t + GATE2_BOSS_DURATION_MS });
+      // ヘッドレスのゲート2ボスは当面ミゲル固定(ステージ選択なし)。天使AI(専用コントローラ)は未接続=
+      // その場に立つだけ(Step3で接続予定)。HP2000のタンクとして「倒すまで拘束」だけを再現する。
+      const boss = spawnEnemyAt('miguel', pcx - 24, pcy - GATE_ARENA_RADIUS * 0.5 - 24, t);
+      boss.fromEvent = true; boss.bossState = 'chase'; boss.bossNextActionAt = t + 2000;
+      boss.homeX = pcx; boss.homeY = pcy;
+      useGameStore.getState().addEnemy(boss);
+      g.activeGate = 2;
+    }
+  }
+
+  // --- 終了判定(useGameLoopアリーナ終了ブロックの写し) ---
+  const ae = useGameStore.getState().activeEvent;
+  if (ae && g.activeGate !== null) {
+    const eventEnemies = useGameStore.getState().enemies.filter(e => e.fromEvent).length;
+    const hordeSpawnDone = ae.kind !== 'horde' || g.hordeSpawned >= g.hordeTotal;
+    const cleared = t - ae.startedAt > ARENA_END_GRACE_MS && eventEnemies === 0 && hordeSpawnDone;
+    const timedOut = t >= ae.endsAt;
+    if (cleared || timedOut) {
+      if (cleared) {
+        if (g.activeGate === 1) { g.gate1Cleared = true; g.gate1DoneThisRun = true; g.gate1PassedThisRun = true; }
+        if (g.activeGate === 2) { g.gate2Cleared = true; }
+      } else {
+        // 失敗=境界の内側へ強制ノックバック(areaZoneも内側へ=再クロスで再発火のリトライループ)。
+        const boundary = g.activeGate === 2 ? AREA_THRESHOLDS[3] : AREA_THRESHOLDS[2];
+        const targetD = Math.max(0, boundary - GATE_FAIL_KNOCKBACK_MARGIN);
+        const pl = useGameStore.getState().player;
+        const kx = pl.x + pl.width / 2, ky = pl.y + pl.height / 2;
+        const kd = Math.hypot(kx, ky) || 1;
+        useGameStore.setState(st => ({ player: { ...st.player, x: (kx / kd) * targetD - st.player.width / 2, y: (ky / kd) * targetD - st.player.height / 2 } }));
+        g.areaZone = zoneIdxOf(targetD);
+      }
+      g.activeGate = null;
+      useGameStore.getState().endArenaEvent();
+    }
+  }
+
+  // --- 凶悪ハンター(拠点0×デンジャー以深。判定=純関数、移動=storeの徘徊接近AI任せ) ---
+  const hunterAlive = useGameStore.getState().enemies.some(e => e.type === 'hunter');
+  if (g.hunterWasAlive && !hunterAlive) g.hunterRearmAt = t + VICIOUS_REARM_MS; // 撃破→短い再アーム
+  g.hunterWasAlive = hunterAlive;
+  refs.director.hunterRef.current.phase = hunterAlive ? 'chase' : 'idle'; // director信号(dangerBias)にも反映
+  if (shouldTriggerViciousHunter({
+    gameTime: t,
+    hunterStartMs: HUNTER_START_MS,
+    spawnBlocked: useGameStore.getState().activeEvent != null,
+    hunterIdle: !hunterAlive,
+    playerAreaIdx: zoneIdx,
+    capturedBaseCount: useGameStore.getState().baseSites.filter(b => b.status === 'captured').length,
+    viciousRearmAt: g.hunterRearmAt,
+    gate1PassedThisRun: g.gate1PassedThisRun,
+  })) {
+    const sp = pickViciousSpawnPoint(pcx, pcy, HUNTER_VISION_RANGE);
+    useGameStore.getState().addEnemy(spawnEnemyAt('hunter', sp.x - 20, sp.y - 20, t));
+  }
+};
+
 // 所持銃を巡回して次の武器へ切り替える(ボットの「武器切替」入力)。銃が1丁以下なら何もしない。
 const cycleActiveGun = (): void => {
   const player = useGameStore.getState().player;
@@ -186,6 +328,9 @@ export interface PlaytestTickOptions {
   // PACING_PUZZLE.md §5.20 M19: rusherペルソナの詰まり検知用の外部状態(ラン単位で1つ作って
   // 毎tick同じ参照を渡す)。他ペルソナでは未使用。
   rusherState?: RusherTrackState;
+  // M26 Step2: ゲート1/2+凶悪ハンターの接続。既定ON(通常のスモーク/フル計測)。特定シナリオ試験
+  // (M17被ダメカナリア/M19深層ラッシュ=イベント無しのペーシング計測が目的)は false で切る。
+  events?: boolean;
 }
 
 // 1tick分: ボット入力の合成→適用(移動/自動射撃/近接/武器切替)→物理更新→ディレクター配線。
@@ -255,6 +400,9 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
       pend.levelUp();
     }
   }
+
+  // M26 Step2(§6.2): ゲート1/2+凶悪ハンター(events===falseのシナリオ試験では切る)。
+  if (opts.events !== false) runGateAndHunterTick(refs, t);
 
   const s = useGameStore.getState();
   const playerAreaIdx = areaIndexForPos(s.player.x, s.player.y);
