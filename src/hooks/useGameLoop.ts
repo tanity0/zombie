@@ -124,6 +124,8 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
+import { decideBotInput, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
+import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
 import {
   computeDirCountCap, computeEnemyCap, computeNormalSpawnCap,
@@ -467,6 +469,12 @@ const RESCUE_RESPAWN_MS = 3000;        // 救助イベント: 攻撃者を倒し
 const evParam = (key: string): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(key);
 const FORCE_ARENA = evParam('arenanow');               // null=通常 / '1'=ランダム / 'horde' / 'boss' / 'rescue'
+// M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
+// (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
+// 不正値は 'standard' へフォールバック。'rusher'(M19深層ラッシュ専用ペルソナ)も指定可。
+const BOT_PARAM = evParam('bot');
+const BOT_PERSONA: BotPersona | null = BOT_PARAM === null ? null
+  : ((BOT_PERSONAS as string[]).includes(BOT_PARAM) || BOT_PARAM === 'rusher') ? BOT_PARAM as BotPersona : 'standard';
 const DDA_ENABLED = evParam('dda') !== '0';            // 難易度③(戦力連動の強さ/種類escalation)。?dda=0 で無効化。
 const GATE_LIVE_TAU = 1.0;                             // 難易度④: 関所ライブ補正の平滑化時定数(秒)。
 const SCENES_ENABLED = evParam('scenes') !== '0';     // 沸きシーン(構成/速度)。?scenes=0 で無効化(素の分布・等速)。
@@ -1039,6 +1047,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gateActivePrevRef = useRef(false);
   // ゲート2未クリア(=深層演出ロック)のstore反映用・直前値(同上)。
   const deepLockedPrevRef = useRef(false);
+  // M26-L(§6.3): 実機オートパイロット(?bot)の状態。BOT_PERSONA=null時は全て不使用。
+  const botTickRef = useRef(0);                            // decideBotInput用のtick連番
+  const botRusherRef = useRef(createRusherTrackState());   // rusherペルソナの詰まり検知状態
+  const botRandRef = useRef(mulberry32(1));                // レベルアップ自動選択の決定的乱数(シード固定=再現性)
+  const botPausedSinceRef = useRef(0);                     // isPaused継続の詰み検知(Date.now基準)
+  const botReportedRef = useRef(false);                    // [BOT_REPORT]を出したか(1ラン1回)
   // juice(flashy unified boss death): 直近に鳴らした bossCorpse.diedAt(0=未鳴動)。store の
   // bossCorpse は getsDramaticDeath 対象(ネームド/裏ボス/giantbat/hunter)討伐で共通に立つので、
   // ここで変化を検出して 'boss-death' SFX を1回だけ鳴らす(gameStore は playSfx を持てないため)。
@@ -1117,9 +1131,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     benchmarkModeRef.current = Boolean(options.benchmarkMode);
   }, [options.benchmarkMode]);
 
+  // M26-L(§6.3): ラン終了レポート。botモード時のみ・1ラン1回だけ console + window.__BOT_REPORT__ へ出す
+  // (Playwright等の外部回収用)。新規集計は持たず、storeに既にある値だけで構成する(仕様どおり)。
+  const emitBotReport = useCallback((outcome: 'death' | 'clear' | 'return') => {
+    if (!BOT_PERSONA || botReportedRef.current) return;
+    botReportedRef.current = true;
+    const s = useGameStore.getState();
+    const report = {
+      persona: BOT_PERSONA,
+      outcome,
+      survivedMs: Math.round(s.gameTime),
+      deathCause: outcome === 'death' ? (s.lastDamageSource || null) : null,
+      kills: s.gameStats.enemiesKilled,
+      playerLevel: s.player.level,
+      maxDepthPx: Math.round(s.gameStats.maxDepthDist),
+      maxAreaReached: s.gameStats.maxAreaReached,
+      gold: s.goldBalance,
+    };
+    console.log('[BOT_REPORT]', JSON.stringify(report));
+    (window as unknown as Record<string, unknown>).__BOT_REPORT__ = report;
+  }, []);
+
   const triggerPlayerDeath = useCallback((x: number, y: number) => {
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
+    emitBotReport('death'); // M26-L: botモードなら死因つきレポートを先に確定(以降の後始末と独立)
     // PACING_PUZZLE.md §5.17 M14: 死亡確定時に最終同期(1秒間隔の間引きだと直近の数百msが漏れるため)。
     if (WALL_ENABLED) syncWallDepth(runDeepestDistRef.current);
     // §5.21 M20追補(v0.25.1534): 死亡は「記録」のみコミット(踏破/ゲート恒久解除はコミットしない)。
@@ -1137,7 +1173,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     spawnBurst(x, y, '#7f1d1d', 22);
     // 立ち絵の1秒フェードを見せてからゲームオーバー画面へ(現状の死亡演出はそのまま)。
     window.setTimeout(onGameOver, 1100);
-  }, [onGameOver, spawnBurst, spawnFlash, spawnRing]);
+  }, [onGameOver, spawnBurst, spawnFlash, spawnRing, emitBotReport]);
 
   const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {
     const now = Date.now();
@@ -1425,6 +1461,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         fpsCounterRef.current.lastCheck = timestamp;
       }
       
+      // M26-L(§6.3): 実機オートパイロットのポーズ系処理。isPausedスキップより前に置く=UIで永久停止しない。
+      // BOT_PERSONA=null(通常プレイ)ではこのブロックは丸ごと素通り(挙動不変)。
+      if (BOT_PERSONA) {
+        const bs = useGameStore.getState();
+        // レベルアップの自動選択(ポリシーはヘッドレスStep1と共用の純関数・決定的乱数)。
+        if (bs.showUpgradeMenu && bs.upgradeOptions.length > 0) {
+          bs.selectUpgrade(pickUpgrade(bs.upgradeOptions, botRandRef.current));
+        }
+        // 終了レポート: 勝利/帰還(死亡は triggerPlayerDeath 側で発火)。
+        if (bs.gameWon) emitBotReport('clear');
+        else if (bs.gameReturned) emitBotReport('return');
+        // 詰み検知の保険: isPaused が60秒続いたら警告して強制解除(ショップ等の想定外UI)。
+        if (bs.isPaused) {
+          if (botPausedSinceRef.current === 0) botPausedSinceRef.current = Date.now();
+          else if (Date.now() - botPausedSinceRef.current > 60000) {
+            console.warn('[BOT] paused >60s — force-closing menus');
+            useGameStore.setState({ showShopMenu: false, showEventQuestMenu: false, showUpgradeMenu: false, isPaused: false });
+            botPausedSinceRef.current = 0;
+          }
+        } else {
+          botPausedSinceRef.current = 0;
+        }
+      }
       // Skip updates if game is paused. Read fresh from the store (not the
       // captured closure) so a level-up / pause takes effect immediately even
       // before React re-runs this effect with the new value.
@@ -1435,10 +1494,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           player,
           enemies,
           pickups,
-          inputState,
+          inputState: touchInputState,
           swipeDirection,
           gameBounds,
         } = loopState;
+        // M26-L(§6.3): botモードはヘッドレスボットの判断(decideBotInput)で入力をローカル差し替え
+        // (storeへは書かない=タッチUI非干渉)。以降このtick内の inputState 参照は全てボット入力になる。
+        const botDecision = BOT_PERSONA
+          ? decideBotInput(BOT_PERSONA, player, enemies, gameTime, botTickRef.current++, 0,
+              BOT_PERSONA === 'rusher' ? botRusherRef.current : undefined)
+          : null;
+        const inputState = botDecision ? botDecision.input : touchInputState;
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
@@ -1675,6 +1741,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           miguelVolleyRef.current = { nextShotAt: 0, shots: 0 }; // 弾3連タイマーも新ランでリセット
           jibrilRef.current = { hits: 0, lastHitSeen: 0, lastWarpHits: 0, volleyMode: 'snipe', shots: 0, nextShotAt: 0, nextFireAt: 0 }; // ジブリルの被弾/退避/弾/ランタン状態も新ランでリセット
           rafiRef.current = { rejumps: 0, boneLeft: 0, boneNextAt: 0, nextStepAt: 0, stepUntil: 0, stepDx: 0, stepDy: 0 }; // ラフィのカウンター連鎖/骨攻撃/横ステップ状態も新ランでリセット
+          // M26-L: 実機オートパイロットの状態も新ランでリセット(tick連番/rusher詰まり検知/乱数/レポート済みフラグ)。
+          botTickRef.current = 0;
+          botRusherRef.current = createRusherTrackState();
+          botRandRef.current = mulberry32(1);
+          botReportedRef.current = false;
+          botPausedSinceRef.current = 0;
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
@@ -4243,6 +4315,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Move player based on input or swipe direction
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
         movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
+        // M26-L(§6.3): ボットの近接(指離しカウンター)/武器切替。ヘッドレス(playtestDriver)と同じ操作を実機で行う。
+        if (botDecision?.wantsMelee) useGameStore.getState().triggerCounter();
+        if (botDecision?.wantsWeaponSwitch) {
+          const botPlayer = useGameStore.getState().player;
+          const botGuns = getGuns(botPlayer);
+          if (botGuns.length >= 2) {
+            const botActive = getActiveGun(botPlayer);
+            const botIdx = botActive ? botGuns.findIndex(g => g.id === botActive.id) : -1;
+            useGameStore.getState().setActiveWeapon(botGuns[(botIdx + 1) % botGuns.length].id);
+          }
+        }
         // スケーター新仕様: 旧「逆フリックで急停止バッシュ」は廃止。バッシュはダブルタップ乗車→指離しで
         // 投擲したスケボーがヒットした時に発動する(下の skateboard 衝突処理)。
 
@@ -7947,6 +8030,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       danceModeRef.current = false;
     };
   }, [
+    emitBotReport, // M26-L: botレポート(安定参照のuseCallback)
     movePlayer,
     fireWeapons,
     updateEnemies,

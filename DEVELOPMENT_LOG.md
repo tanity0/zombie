@@ -12,6 +12,27 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1675 — M26-L実装: 実機オートパイロット(?botモード)【2026-07-14 12:07 JST】
+- **経緯**: 社長「実装しちゃおう」→設計チャットが着手→「sonnetね」の行き違いが判明した時点でほぼ完了していたため、
+  社長裁定「このまま採用」。**Sonnetへの依頼(§6.3冒頭の指示例)は不要になった。**
+- **実装(§6.3の設計書どおり)**:
+  - `src/utils/botUpgradePolicy.ts`(新規): `mulberry32`(シード付き決定的乱数)+`pickUpgrade`(一様ランダム選択・叩き台)。
+    ヘッドレスStep1と共用予定の純関数。テスト6件(再現性/値域/クランプ)green。
+  - `useGameLoop.ts`: `?bot=<persona>`(evParam流儀・不正値はstandard・無指定は完全無効)。
+    - ループ冒頭(isPausedスキップ**より前**)にbot専用ブロック: レベルアップ自動選択(selectUpgrade)/
+      勝利・帰還時の`[BOT_REPORT]`/isPaused60秒継続の詰み検知(メニュー強制クローズ)。
+    - 入力注入: `inputState`をデストラクチャで`touchInputState`に退避し、botモード時は`decideBotInput`の結果を
+      **ローカル差し替え**(storeへ書かない=タッチUI非干渉)。rusherは`createRusherTrackState`を渡す。
+    - movePlayer直後: `wantsMelee`→triggerCounter / `wantsWeaponSwitch`→銃巡回(playtestDriverのcycle相当)。
+    - `emitBotReport(outcome)`(useCallback): persona/outcome/survivedMs/deathCause/kills/playerLevel/maxDepthPx/
+      maxAreaReached/gold を console `[BOT_REPORT]` + `window.__BOT_REPORT__` へ(1ラン1回)。死亡は
+      triggerPlayerDeath内で発火。新ランで全bot状態リセット。
+- 検証: `npm run typecheck` パス / eslint 0(exhaustive-deps警告はdeps追加で解消) / botUpgradePolicyテスト 6 passed。
+  実機起動確認(Playwright放流)は次エントリ。
+- 負荷: 通常プレイ(?bot無し)への追加コスト0(分岐1つ)=**0/10**。botモード時も判断は既存純関数=軽量。
+- Files: `src/utils/botUpgradePolicy.ts`(新規), `src/utils/botUpgradePolicy.test.ts`(新規), `src/hooks/useGameLoop.ts`,
+  `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1674 — M26-L: 実機オートパイロット(?botモード)の設計完了(Sonnet実装待ち)【2026-07-14 11:47 JST】
 - **社長指示**「実際のプレイ環境にAIプレイヤーを放り込んで結果をみる」→採用。「あとで時間あるときに制作にかかれる
   よう設計しておいて。Sonnetに投げるだけにしておいて」。

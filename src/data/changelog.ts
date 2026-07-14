@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1675',
+    items: [
+      '開発: 実機オートパイロット(?bot=ペルソナ名)を実装。AIプレイヤーが本物のゲームを自動プレイし、終了時にレポートを出します(?smoke=1&bot=standard 等)。通常プレイへの影響はありません。',
+    ],
+  },
+  {
     version: '0.25.1674',
     items: [
       '開発: 実機オートパイロット(?botモード=AIプレイヤーを実プレイ環境に放り込む)の設計書を作成(M26-L・実装は今後)。ゲーム挙動は不変。',
