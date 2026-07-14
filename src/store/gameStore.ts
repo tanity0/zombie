@@ -382,8 +382,19 @@ const createEventQuestNpc = (): EventQuestNpc => {
     status: 'available',
     questIndex: 0,
     fadeStartedAt: 0,
+    dwellMs: 0,
   };
 };
+// 二人組(クエストNPC)の受領方式(社長指示v0.25.1681): 会話ポップアップ廃止。会話サークル内に
+// EVENT_QUEST_DWELL_MS(3秒)居続けると強制受領(拠点解放と同じメーター表示)。会話は左上のNPC会話
+// (npcDialogueQueue)へ流す。行データは旧EventQuestMenuのDIALOGUEから移設。
+export const EVENT_QUEST_DWELL_MS = 3000;
+export const EVENT_QUEST_LINES: { name: string; text: string }[] = [
+  { name: '女', text: '隊長！感染者じゃなさそう！' },
+  { name: '男', text: '・・・フム、何も見なかった事にしろ。' },
+  { name: '女', text: '感染者サンプルを探してるの！' },
+  { name: '男', text: 'ばか言うな！・・・知られたからには手伝ってもらう。' },
+];
 const loadMeleeDropPct = (): number => {
   try {
     const v = localStorage.getItem(DROP_PCT_KEY);
@@ -3218,8 +3229,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const {
       player, gameTime, realGameTime, enemies, projectiles, weaponMerchant,
-      eventQuestNpc, showShopMenu, showEventQuestMenu, showUpgradeMenu,
-      shopReopenAt, eventQuestReopenAt
+      showShopMenu, showUpgradeMenu,
+      shopReopenAt
     } = get();
     // 帰還サークル内では攻撃停止(置き攻撃の出入りハメ防止)。
     if (isInReturnCircle(player, get().returnCircle)) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -3378,34 +3389,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    const qdx = eventQuestNpc.x - pcx;
-    const qdy = eventQuestNpc.y - pcy;
-    if (
-      !get().indoorMode && // 屋内ステージは二人組(クエストNPC)不在=相互作用しない
-      eventQuestNpc.status === 'available' &&
-      !showShopMenu &&
-      !showEventQuestMenu &&
-      !showUpgradeMenu &&
-      gameTime >= eventQuestReopenAt &&
-      qdx * qdx + qdy * qdy <= eventQuestNpc.radius * eventQuestNpc.radius
-    ) {
-      set({
-        showEventQuestMenu: true,
-        isPaused: true,
-        touchActive: false,
-        swipeDirection: null,
-        swipeStrength: 1,
-        player: {
-          ...player,
-          counterWindowEnd: now + COUNTER_WINDOW,
-          counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
-        }
-      });
-      get().spawnRing(eventQuestNpc.x, eventQuestNpc.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, SHOP_INTERACT_RING_MS);
-      get().spawnGlow(eventQuestNpc.x, eventQuestNpc.y - 30, 68, 'rgba(96,165,250,', SHOP_INTERACT_RING_MS);
-      get().spawnCallout(eventQuestNpc.x, eventQuestNpc.y - 76, 'QUEST', '#bfdbfe');
-      return { swung: true, hit: true, finish: false, killed: 0 };
-    }
+    // 二人組(クエストNPC)の会話ポップアップは廃止(社長指示v0.25.1681)。受領は「会話サークル内に
+    // 3秒滞在」(useGameLoopのdwell判定→acceptEventQuest)へ移行=performAttack(指離し)では何もしない。
 
     // 刀装備中: 通常ナイフのスイープ(ダメージ/ノックバック/フィニッシュ/
     // グレネード起爆/トラップ押し出し/小物破壊)は行わない。既存カウンター条件
@@ -5832,7 +5817,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       isPaused: false,
       eventQuestNpc: {
         ...state.eventQuestNpc,
-        status: 'accepted'
+        status: 'accepted',
+        dwellMs: 0
       },
       eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
     }));

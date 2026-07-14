@@ -160,6 +160,7 @@ const CASTLE_FOOT_OFFSET_Y = 38;
 const CASTLE_TARGET_HEIGHT = 188; // 125 * 1.5(建物1.5倍指示)
 const MERCHANT_TARGET_HEIGHT = 100;
 const EVENT_NPC_TARGET_HEIGHT = 108;
+const EVENT_QUEST_DWELL_VIS_MS = 3000; // 二人組の滞在受領メーターの満了時間(gameStore.EVENT_QUEST_DWELL_MSと一致)
 const EVENT_NPC_FADE_MS = 1100;
 // 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。
 const WHIP_HURRICANE_ANCHOR_Y = 0.92;   // テクスチャ内の地面の渦(根元)位置(縦長竜巻)
@@ -3328,6 +3329,15 @@ export class PixiScene {
         .stroke({ width: 2 * d, color: 0x60a5fa, alpha: 0.34 + pulse * 0.2 });
       g.circle(0, -targetH * 0.96, 4 * d)
         .fill({ color: 0xbfdbfe, alpha: 0.72 + pulse * 0.18 });
+    }
+    // 滞在受領の進捗メーター(社長指示v0.25.1681): 拠点解放の制圧アークと同じ意匠(白いアーク・12時起点)。
+    // 3秒(=EVENT_QUEST_DWELL_MS。useGameLoopが dwellMs を加算)で満了=自動受領。
+    if (npc.status === 'available' && npc.dwellMs > 0) {
+      const frac = Math.max(0, Math.min(1, npc.dwellMs / EVENT_QUEST_DWELL_VIS_MS));
+      const start = -Math.PI / 2, rr = (npc.radius + 6) * d, cyq = -8 * d;
+      g.moveTo(Math.cos(start) * rr, cyq + Math.sin(start) * rr)
+        .arc(0, cyq, rr, start, start + Math.PI * 2 * frac)
+        .stroke({ width: 4 * d, color: 0xfff7cc, alpha: 0.95 });
     }
     if (npc.status === 'accepted') {
       g.circle(0, -targetH * 0.98, 5 * d)

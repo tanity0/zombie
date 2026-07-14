@@ -33,6 +33,7 @@ import {
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
+  EVENT_QUEST_DWELL_MS, EVENT_QUEST_LINES,
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE
 } from '../store/gameStore';
@@ -5006,6 +5007,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // ジブリルのランタン火(紫の単発火): M26 Step3で angelBossTick.ts へ移設(挙動不変・ヘッドレス共用)。
         tickAngelBossFires(newGameTime, triggerPlayerDeath);
+
+        // 二人組(クエストNPC)の滞在受領(社長指示v0.25.1681): 会話ポップアップ廃止。会話サークル内に
+        // 3秒(EVENT_QUEST_DWELL_MS)居続けると強制受領(拠点解放と同じ進捗メーター=pixiSceneがdwellMsを描く)。
+        // 受領の瞬間: 左上のNPC会話へ二人の台詞を流し、旧ポップアップ起動時と同じ青リング/QUESTコールアウトで合図。
+        if (!indoor && !labTheme) {
+          const q = useGameStore.getState().eventQuestNpc;
+          if (q.status === 'available') {
+            const qpcx = player.x + player.width / 2, qpcy = player.y + player.height / 2;
+            const qdx = q.x - qpcx, qdy = q.y - qpcy;
+            const inside = qdx * qdx + qdy * qdy <= q.radius * q.radius;
+            if (inside) {
+              const nd = q.dwellMs + deltaTime * 1000;
+              if (nd >= EVENT_QUEST_DWELL_MS) {
+                useGameStore.getState().acceptEventQuest();
+                useGameStore.getState().enqueueNpcDialogue(EVENT_QUEST_LINES);
+                spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
+                useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
+                useGameStore.getState().spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
+                playSfx('event-start');
+              } else {
+                useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
+              }
+            } else if (q.dwellMs !== 0) {
+              useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: 0 } }));
+            }
+          }
+        }
 
         // スキル 救難信号: 飛来中の援護アライの着弾ダメージ適用 + 寿命切れ回収(発生自体は
         // triggerCounter内のapplyRescueSignalProcが行う。ここは置いた後の面倒を見るだけ)。

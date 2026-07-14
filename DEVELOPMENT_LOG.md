@@ -12,6 +12,25 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1681 — 二人組(クエストNPC)の会話ポップアップ廃止→3秒滞在で自動受領【2026-07-14 14:22 JST】
+- **社長指示**「二人のイベントは会話ポップアップを廃止。他のNPC同様に左上に会話を表示、強制的にサブクエストを受領。
+  条件は会話サークル内に3秒居続ける(拠点解放と同じくメーター表示)」。
+- **実装**:
+  - `EventQuestNpc` に `dwellMs` 追加(型+createEventQuestNpc)。`EVENT_QUEST_DWELL_MS=3000` と
+    `EVENT_QUEST_LINES`(旧EventQuestMenuの4行=女/男の台詞)を gameStore へ移設・export。
+  - `performAttack` のポップアップ起動ブロック(指離しでメニュー+ポーズ)を**撤去**。
+  - `useGameLoop`: サークル内滞在で dwellMs 加算(外へ出たらリセット)。3秒到達で `acceptEventQuest`(強制受領)+
+    `enqueueNpcDialogue(EVENT_QUEST_LINES)`(**左上のNPC会話へ4行**)+旧起動時と同じ青リング/QUESTコールアウト+
+    `event-start` SE。**ゲームは止まらない**(ポーズ無し)。屋内/ラボは従来どおり対象外。
+  - `pixiScene.syncEventQuestNpc`: **拠点解放と同じ白い進捗アーク**(12時起点・radius+6px)を dwellMs>0 の間表示。
+  - `Game.tsx` からポップアップ描画を撤去し、`EventQuestMenu.tsx` を**削除**。unused変数も掃除。
+    (openEventQuest/declineEventQuest/showEventQuestMenu はstoreに残置=互換・常時false。)
+- 負荷: 1/10(滞在判定=距離1回/フレーム・メーター=既存Graphicsに1アーク)。
+- 検証: `npm run typecheck` / eslint クリーン。実機で「サークルに入る→アークが3秒で満ちる→左上に会話4行+受領」
+  「途中で出るとリセット」を社長確認。
+- Files: `types/game.ts`, `store/gameStore.ts`, `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`,
+  `components/Game.tsx`, `components/EventQuestMenu.tsx`(削除), `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1680 — M26 Step3: 天使ボスAIを純関数へ抽出(実プレイ/ヘッドレス共用)【2026-07-14 13:58 JST】
 - **本抽出(規律4・M17 combatTickと同じ流儀)**: useGameLoopに直書きだったミゲル/ジブリル/ラフィの3コントローラ+
   ジブリルのランタン火tickを **新規 `src/utils/angelBossTick.ts`** へ逐語移設。

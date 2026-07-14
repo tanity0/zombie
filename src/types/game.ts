@@ -661,6 +661,9 @@ export interface EventQuestNpc {
   status: EventQuestStatus;
   questIndex: number;
   fadeStartedAt: number;
+  // 会話サークル内の滞在時間(ms)。3秒(EVENT_QUEST_DWELL_MS)で自動受領(社長指示v0.25.1681=ポップアップ廃止・
+  // 拠点解放と同じメーター表示)。サークル外へ出るとリセット。
+  dwellMs: number;
 }
 
 // Projectile types

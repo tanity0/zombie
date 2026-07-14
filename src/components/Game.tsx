@@ -15,7 +15,6 @@ import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
 import ShopMenu from './ShopMenu';
-import EventQuestMenu from './EventQuestMenu';
 import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
@@ -224,9 +223,8 @@ const Game: React.FC<GameProps> = ({
         <ShopMenu />
       )}
 
-      {showEventQuestMenu && (
-        <EventQuestMenu />
-      )}
+      {/* 二人組(クエストNPC)の会話ポップアップは廃止(社長指示v0.25.1681)。
+          受領=会話サークル3秒滞在(拠点解放式メーター)+左上NPC会話へ移行。 */}
 
       {/* 登場時のセリフ(時間停止・オートタイプ)。表示中だけ自前 raf で更新。 */}
       <IntroDialogue />
