@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1724',
+    items: [
+      '開発: ボットのカウンター反応プロファイルを裁定反映(boar=200ms/75%を付与・rusherは低スキル再現の意図を守り無効へ訂正)。通常プレイ影響なし。',
+    ],
+  },
+  {
     version: '0.25.1723',
     items: [
       '開発: テスト用ボットAI(§6.14 M37)を実装。ジャンプ攻撃/突進/敵弾をペルソナ別の反応遅延+試行確率でカウンターするようになりました。?botモード時のみの挙動で、通常プレイへの影響はありません。',

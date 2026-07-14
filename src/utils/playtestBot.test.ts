@@ -239,13 +239,13 @@ describe('decideCounterReaction (M37: 人間反応のカウンター・PACING_PU
     expect(decideCounterReaction('standard', state, pcx, pcy, [jumper], [], 500, 500, rand0)).toBe(true); // CD明け後は撃つ
   });
 
-  it('突進(charge・距離180px以内・進行方向が自分へ向いている)を検知する(rusher=200ms)', () => {
+  it('突進(charge・距離180px以内・進行方向が自分へ向いている)を検知する(boar=200ms)', () => {
     const player = freshPlayer();
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const charger = { ...spawnEnemyAt('werewolf', pcx + 100, pcy, 0), aiPhase: 'charge' as const, vx: -300, vy: 0 };
     const state = createCounterThreatState();
-    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 0, 0, rand0)).toBe(false);
-    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 200, 0, rand0)).toBe(true);
+    expect(decideCounterReaction('boar', state, pcx, pcy, [charger], [], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('boar', state, pcx, pcy, [charger], [], 200, 0, rand0)).toBe(true);
   });
 
   it('突進の進行方向が自分と逆なら検知しない(かすめて通り過ぎるだけの突進)', () => {
@@ -253,8 +253,17 @@ describe('decideCounterReaction (M37: 人間反応のカウンター・PACING_PU
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const charger = { ...spawnEnemyAt('werewolf', pcx + 100, pcy, 0), aiPhase: 'charge' as const, vx: 300, vy: 0 };
     const state = createCounterThreatState();
+    expect(decideCounterReaction('boar', state, pcx, pcy, [charger], [], 0, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('boar', state, pcx, pcy, [charger], [], 300, 0, rand0)).toBe(false);
+  });
+
+  it('rusher=低スキル再現(M19試験専用)なのでカウンターは常に無効(社長裁定v0.25.1724)', () => {
+    const player = freshPlayer();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const charger = { ...spawnEnemyAt('werewolf', pcx + 100, pcy, 0), aiPhase: 'charge' as const, vx: -300, vy: 0 };
+    const state = createCounterThreatState();
     expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 0, 0, rand0)).toBe(false);
-    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 300, 0, rand0)).toBe(false);
+    expect(decideCounterReaction('rusher', state, pcx, pcy, [charger], [], 1000, 0, rand0)).toBe(false);
   });
 
   it('敵弾(接近中・距離160px以内・到達予測400ms未満)を検知する(kiter=300ms)', () => {

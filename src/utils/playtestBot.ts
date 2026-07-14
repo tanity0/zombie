@@ -195,12 +195,14 @@ export interface CounterReactionProfile {
   chance: number;      // 検知1回あたりの試行確率(0..1・人間の見逃し)
 }
 
-// ペルソナ別プロファイル(叩き台・PACING_PUZZLE.md §6.14の値)。未掲載のペルソナは無効
-// (stationary=棒立ちが仕様。'boar'はM37仕様書に記載が無いため対象外=挙動不変)。
+// ペルソナ別プロファイル(叩き台・PACING_PUZZLE.md §6.14の値・社長裁定v0.25.1724で改訂)。
+// 未掲載のペルソナは無効: stationary=棒立ちが仕様 / **rusher=「カウンターを一切しない低スキル再現」
+// (M19深層ラッシュ試験専用)の設計意図を守るため無効**(v0.25.1723で誤って最強値を与えていた訂正)。
+// boar=殴り屋なので最速プロファイル(旧rusher枠の値)。
 export const COUNTER_REACTION_PROFILES: Partial<Record<BotPersona, CounterReactionProfile>> = {
   standard: { reactionMs: 250, chance: 0.65 },
   wanderer: { reactionMs: 250, chance: 0.65 },
-  rusher: { reactionMs: 200, chance: 0.75 },
+  boar: { reactionMs: 200, chance: 0.75 },
   kiter: { reactionMs: 300, chance: 0.50 },
 };
 

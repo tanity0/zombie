@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1724 — ボットカウンターの裁定反映: boar=200ms/75%・rusher=無効へ訂正【2026-07-15 02:44 JST】
+- **社長裁定**(「はい」=提案どおり): boar(殴り屋)に最速プロファイル200ms・75%を付与/
+  rusherはM37で誤って最強値を与えていたのを**無効へ訂正**(=M19深層ラッシュ試験の「カウンターを
+  一切しない低スキル再現」という設計意図を保全)。
+- `COUNTER_REACTION_PROFILES`(playtestBot.ts)を改訂+テスト更新(boar検知2件を書き換え・
+  rusher常時無効の固定テストを追加)。§6.14の叩き台表も改訂。
+- 検証: typecheck / related 39件パス(M9スモーク込み)。
+- Files: `src/utils/playtestBot.ts`, `src/utils/playtestBot.test.ts`, `PACING_PUZZLE.md`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1723 — M37実装: ボットAI改善=人間反応のカウンター(§6.14・Sonnet実装)【2026-07-15 02:19 JST】
 - 仕様書(§6.14)どおり、純関数 `decideCounterReaction`(`src/utils/playtestBot.ts`)を追加。
   カウンター可能な脅威を検知→ペルソナ別の**反応遅延**後に**試行確率**で1回抽選→`wantsMelee=true`。
