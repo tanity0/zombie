@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1717',
+    items: [
+      '開発: センサー地雷のCD仕様を是正する設計(グローバル10秒→1個ずつ独立CD10秒のチャージ制・Lv個数まで連続設置可)を書き出し(§6.13 M36)。実装はこれから。',
+    ],
+  },
+  {
     version: '0.25.1716',
     items: [
       '謎の二人組の立ち絵を新しいドット絵に差し替え(社長素材)。台詞の時は話者(男/女)それぞれのバストアップが左上の会話に表示されるようになりました。',
