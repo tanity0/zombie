@@ -423,6 +423,49 @@ export const buildSupportSniperShot = (
   };
 };
 
+// ジャンクウェポン(junk-weapon・PACING_PUZZLE.md §6.7 M30): 近接スイングと同時にスイング方向へ撃つ
+// 散弾5発。飛翔特性=ショットガンT1相当(CATALOG shotgun-t1 の速度/サイズ+T1スプレッドコーン)を参照し、
+// 既存のプレイヤー弾(weaponType='shotgun')として生成=命中時スキルは通常どおり乗る。
+// ダメージはLv固定(呼び出し元が computeJunkShot で決めて渡す)。弾薬はスクラップ(呼び出し元が消費)で、
+// ショットガン弾薬・生成時クリ抽選は使わない(ダメージ固定が仕様のため crit=false)。副作用なし。
+export const buildJunkWeaponPellets = (
+  x: number, y: number,                 // 発射点(プレイヤー中心)
+  direction: { x: number; y: number },  // スイング方向(正規化済みを渡す)
+  pelletDamage: number,                 // 1発のダメージ(Lv固定=3/6/9)
+  pelletCount: number,                  // 同時発射数(=JUNK_WEAPON_PELLETS)
+): Projectile[] => {
+  const def = CATALOG['shotgun-t1'];
+  const size = def.projectileSize || 7;
+  const speed = (def.projectileSpeed || 440) * PROJECTILE_SPEED_MULT;
+  const cone = SHOTGUN_SPREAD_CONE_RAD_BY_TIER[def.tier ?? 1] ?? SHOTGUN_SPREAD_CONE_RAD_BY_TIER[1];
+  const spreadStep = pelletCount > 1 ? cone / (pelletCount - 1) : 0;
+  const now = Date.now();
+  const pellets: Projectile[] = [];
+  for (let i = 0; i < pelletCount; i++) {
+    const angle = -spreadStep * (pelletCount - 1) / 2 + i * spreadStep;
+    pellets.push({
+      id: `proj-junk-weapon-${now}-${i}`,
+      x: x - size / 2,
+      y: y - size / 2,
+      width: size,
+      height: size,
+      speed,
+      damage: pelletDamage,
+      direction: rotate(direction, angle),
+      weaponType: 'shotgun',
+      weaponKey: 'sub-junk-weapon',
+      duration: 1400,
+      createdAt: now,
+      passthrough: false,
+      hitEnemies: [],
+      hostile: false,
+      reflected: false,
+      crit: false,
+    });
+  }
+  return pellets;
+};
+
 export const getWeaponShortName = (type: WeaponType): string => {
   switch (type) {
     case 'handgun': return 'ハンドガン';

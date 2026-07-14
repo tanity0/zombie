@@ -16,6 +16,7 @@ import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
 import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL } from '../utils/sensorMine';
 import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/supportSniper';
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
+import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -35,7 +36,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -1545,6 +1546,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'sensor-mine': return 'センサー地雷';
     case 'support-sniper': return '援護射撃';
     case 'flare-gun': return 'フレアガン';
+    case 'junk-weapon': return 'ジャンクウェポン';
     default: return 'サブウェポン';
   }
 };
@@ -2060,6 +2062,7 @@ interface GameState {
   anchorPlantFxAt: number;    // ワイヤーアンカーを(地面に)打ち込んだ時刻(Date.now)。打ち込み音SEのトリガ
   anchorEnemyHitFxAt: number; // ワイヤーアンカーが敵に当たった時刻(Date.now)。近接命中音SEのトリガ
   boomerangThrowFxAt: number; // ドローンブーメランを投げた時刻(Date.now)。投擲音SEのトリガ
+  junkShotFxAt: number;       // ジャンクウェポン(junk-weapon)発砲時刻(Date.now)。shotgun-fire SEのトリガ
   summonFxAt: number;         // 錬金術で召喚した時刻(Date.now)。召喚音SEのトリガ
   projectiles: Projectile[];
   pickups: Pickup[];
@@ -2654,6 +2657,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   anchorPlantFxAt: 0,
   anchorEnemyHitFxAt: 0,
   boomerangThrowFxAt: 0,
+  junkShotFxAt: 0,
   summonFxAt: 0,
   homingLocks: [],
   shadowClone: null,
@@ -3417,6 +3421,34 @@ export const useGameStore = create<GameState>((set, get) => ({
         }],
       }));
       get().setSubWeaponCooldown('flare-gun', gameTime + FLARE_GUN_CD_MS_BY_LEVEL[fgLevel]);
+    }
+
+    // ジャンクウェポン(junk-weapon): 近接攻撃と同時にスイング方向へ散弾5発(ショットガンT1相当・CDなし。
+    // PACING_PUZZLE.md §6.7 M30)。弾薬=スクラップ(1消費=3ダメージ・1発あたりLv1=1/Lv2=2/Lv3=3)。
+    // 社長裁定v0.25.1693: スクラップ≥1なら常にフル5発発射・消費=min(フルコスト,所持全部)・ダメージはLv固定・
+    // 0のみ不発。ショットガン弾薬は消費しない。判定=純関数 computeJunkShot(src/utils/junkWeapon.ts)。スロー無し。
+    if (
+      player.subWeapons.includes('junk-weapon') &&
+      !subWeaponBlockedByKatana(player, 'junk-weapon')
+    ) {
+      const jwLevel = Math.max(1, Math.min(3, player.subWeaponLevels['junk-weapon'] ?? 1));
+      const jwShot = computeJunkShot(jwLevel, player.straps);
+      if (jwShot.fire) {
+        const jwDir = player.lastDirection ?? { x: 1, y: 0 };
+        const jwMag = Math.max(0.001, Math.hypot(jwDir.x, jwDir.y));
+        const pellets = buildJunkWeaponPellets(
+          pcx, pcy,
+          { x: jwDir.x / jwMag, y: jwDir.y / jwMag },
+          jwShot.pelletDamage,
+          JUNK_WEAPON_PELLETS
+        );
+        for (const p of pellets) get().addProjectile(p);
+        set(state => ({
+          player: { ...state.player, straps: Math.max(0, state.player.straps - jwShot.cost) },
+          gameStats: { ...state.gameStats, strapsSpent: state.gameStats.strapsSpent + jwShot.cost }, // 消費計上=ショップ購入と同じ経路
+          junkShotFxAt: Date.now(), // 発砲SE(shotgun-fire)のトリガ(useGameLoopが再生)
+        }));
+      }
     }
 
     // ワイヤーアンカーはフリック発動に変更(triggerWireAnchor)。スイング(指離し)では発動しない。
@@ -9364,6 +9396,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         anchorPlantFxAt: 0,
         anchorEnemyHitFxAt: 0,
         boomerangThrowFxAt: 0,
+        junkShotFxAt: 0,
         summonFxAt: 0,
         player: {
           x: spawnTL.x,

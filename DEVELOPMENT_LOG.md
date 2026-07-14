@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.1695 — M30実装: サブウェポン「ジャンクウェポン」(§6.7)【2026-07-14 19:15 JST】
+- **PACING_PUZZLE.md §6.7 バッチM30**(仕様確定済み)を実装チャット(Sonnet)が実装。
+  - **発射**: 近接攻撃(`triggerCounter`・他のスイング連動サブと同じ合流点)と同時にスイング方向
+    (lastDirection)へ散弾5発。CDなし(スクラップ消費が実質の抑制)。
+  - **弾薬=スクラップ**: 1発あたりの消費=Lv1:1/Lv2:2/Lv3:3(フル5/10/15)・1スクラップ=3ダメージ
+    (発ダメージ=Lv固定3/6/9)。**社長裁定v0.25.1693**: スクラップ≥1なら常にフル5発・
+    消費=min(フルコスト,所持全部)・ダメージはLv固定・0のみ不発。消費は `player.straps` 減算+
+    `gameStats.strapsSpent` 加算(ショップ購入と同じ計上)=右上のスクラップ表示が既存購読でそのまま減る。
+    **ショットガン弾薬・マガジンには一切触れない**。
+  - **弾**: `buildJunkWeaponPellets`(weaponUtils.ts)= CATALOG shotgun-t1 の速度(440×弾速倍率)/サイズ(7)+
+    T1スプレッドコーン(1.00rad)で weaponType='shotgun' の**通常のプレイヤー弾**を生成→命中時スキルは
+    通常どおり乗る(既存パイプライン)。ダメージ固定が仕様のため生成時クリ抽選は無し(crit=false。
+    命中時の追加ロール=トラップroot/弱点クリは他のプレイヤー弾と同じく発生し得る)。
+  - **SE**: `junkShotFxAt`(既存のfxAtトリガ方式)→ useGameLoop が 'shotgun-fire' を再生。
+  - **純関数化+テスト**: `src/utils/junkWeapon.ts`(computeJunkShot=発射可否/消費/発ダメージ)+
+    `junkWeapon.test.ts` 6件(社長裁定の例=Lv3所持7→5発7消費/所持1→5発1消費を含む)。
+  - **登録**: SubWeaponKeyへ `junk-weapon`・表示名「ジャンクウェポン」・SUB_WEAPON_KEYSへ既存体系どおり登録。
+  - **描画**: 追加なし(既存のshotgun弾描画をそのまま使用)。**スロー無し・強glow無し**。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(任意装備のサブウェポン・シーン/台本に不干渉)。
+- 負荷スコア: **1/10**(スイング毎のイベント駆動で弾5個追加のみ。弾はJ130安全ラインの既存パイプライン。
+  毎フレームの新規コスト無し)。
+- 検証: `npm run typecheck` クリーン / eslint(触った7ファイル)クリーン / `npx vitest related --run`=7ファイル
+  **87件パス**(新規junkWeapon 6件+M9ボットスモーク含む)。実機確認ポイント: 装備→スイングで散弾5発+
+  ショットガン音/スクラップ表示が5/10/15減る(不足時は残り全部)/0で不発/ショットガン弾薬が減らないこと。
+- Files: `src/utils/junkWeapon.ts`(新規), `src/utils/junkWeapon.test.ts`(新規), `src/utils/weaponUtils.ts`,
+  `src/types/game.ts`, `src/data/campaign.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `package.json`, `src/data/changelog.ts`, `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1694 — M29実装: サブウェポン「フレアガン」(§6.6)【2026-07-14 19:08 JST】
 - **PACING_PUZZLE.md §6.6 バッチM29**(仕様確定済み)を実装チャット(Sonnet)が実装。
   - **発射**: 近接攻撃(`triggerCounter`・M27/ドローンと同じ合流点)で進行方向(lastDirection)へ発射。
