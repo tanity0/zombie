@@ -12,6 +12,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1677 — M26-L実機確認完了(Playwrightソーク結果)【2026-07-14 12:30 JST】
+- **Playwright(headless Chromium)で `?smoke=1&bot=standard` を17分ソーク**した結果:
+  - ✅ **consoleエラー/ページエラー: 0件**(17分間)。
+  - ✅ **ボットが実戦している**: 最終スクショで Lv3(=レベルアップ自動選択が2回機能・UIで止まっていない)/
+    HP76/COMBO6/「Kill!」表示(カウンター処刑も動作)/武器3丁目取得/通貨24。受け入れ条件の核心を満たす。
+  - ⚠️ **既知の制約(ゲーム側のバグではない)**: headless=ソフトウェアレンダリングでは fps が極端に低く、
+    deltaTimeクランプにより**ゲーム内時間が実時間の約1/12**(実17分でゲーム内01:22)。このため15分フルランの
+    `[BOT_REPORT]` はクラウドのheadlessでは実用的に待てない。**フルランのbot観察は実機(社長のスマホ/PCで
+    URLに `&bot=standard` 等を付けるだけ)が本線**。headless側は起動/統合スモーク(数ゲーム分)用と割り切る。
+    ヘッドレスvitest(30秒で15分相当)は従来どおり量産計測の本線。
+- 運用メモ: 実機での使い方=`https://…/zombie/?smoke=1&bot=kiter` など。ラン終了(死亡/クリア/帰還)で
+  console に `[BOT_REPORT]` が出る(スマホでは remote debug か、死亡時のリザルト画面の目視でも可)。
+- Files: `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(文書のみ)。
+
 ## v0.25.1676 — 分業ルール改定: 診断系調査=Fable直轄/走査系=Sonnet(徹底)【2026-07-14 12:22 JST】
 - **社長決定**「以後はその形で徹底。それ以外でFableがやった方がコスパいいと判断したら尋ねて」。
 - **CLAUDE.md エージェント分業に「調査の振り分け」を追記**:

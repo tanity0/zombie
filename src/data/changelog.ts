@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1677',
+    items: [
+      '開発: 実機オートパイロットの動作確認完了(自動で戦闘・レベルアップ・コンボまで確認、エラーゼロ)。ゲーム内容の変更はありません。',
+    ],
+  },
+  {
     version: '0.25.1676',
     items: [
       '開発: エージェント分業ルールを更新(診断系の調査=Fable直轄/走査系=Sonnet、を徹底)。ゲーム内容の変更はありません。',
