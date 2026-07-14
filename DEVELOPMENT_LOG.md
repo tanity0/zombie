@@ -12,6 +12,20 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1690 — 天使トラップ=停止へ改訂+M28「援護射撃」仕様書化(Sonnetへサブエージェント発注)【2026-07-14 18:18 JST】
+- **社長裁定①**「天使だけ効いてなかったなら、天使もボスと揃えて停止で」= v0.25.1688の移動半減を改訂。
+  `angelBossTick`ディスパッチャ: root中は**平常時(chase)のみtick停止=移動も新規攻撃も止まる**。
+  実行中の攻撃(windup/払い/ジャンプ/counter-leap等)は完走させる(tickだけ止めると時計が先に進み、
+  root明けにツイーン瞬間完了=テレポートに見えるため)。対ボス銃クリ+10%の実効化(v1688)は据え置き。
+- **社長指示②** サブウェポン「援護射撃」= PACING_PUZZLE.md **§6.5 バッチM28**として仕様確定:
+  移動中CD毎(Lv1=5秒/Lv2=4秒/Lv3=3秒・社長指定)にNPC1人が「狙う敵と反対側の画面端」からスッと登場→
+  プレイヤーと同性能のスナイパー弾(既存プレイヤー弾パイプライン=貫通等のスキルが乗る)を最寄り敵へ発射→
+  向きを変えずに後退して消える。スロー禁止・受け入れ条件5項。
+- **社長指示③**「sonnetへはここからサブエージェントで投げてください」= M27(センサー地雷)+M28(援護射撃)を
+  この設計チャットからSonnetサブエージェントに発注(以後この方式)。
+- 検証: typecheck / eslint クリーン。実機確認ポイント: 天使戦でトラップ→攻撃の合間に完全停止するか。
+- Files: `src/utils/angelBossTick.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1689 — M27仕様書化: サブウェポン「センサー地雷」(Sonnet実装待ち)【2026-07-14 18:11 JST】
 - **社長指示**「センサー地雷: 近接攻撃で設置/範囲に敵が入ると2秒後に起爆/同時数3/4/5/威力と範囲は手榴弾の
   1.2倍程度/エクスプローダー・ボマー対象」。

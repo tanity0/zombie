@@ -33,12 +33,6 @@ const ORBIT_RADIUS_CORRECT = 4;         // 半径補正の寄せ係数(=THOR_ORB
 const BOSS_BURST_SHOTS = 3;             // 弾3連(同値)
 const BOSS_BURST_GAP_MS = 500;          // 0.5秒間隔(同値)
 const HARAI_TRIGGER_DIST = 250;         // 斬り系を出せる距離(同値)
-// トラップ(marksman-trap)のroot中、天使ボスは「移動半減」で効く(社長指示v0.25.1688)。
-// 天使は updateEnemies のroot完全停止(vx=0)を素通りする(isHiddenBoss=スキップ)ため、
-// ディスパッチャで唯一の移動係数(moveSpeedMult)に掛けて効かせる。攻撃は止めない
-// (裏ボス4体の「rootで移動も攻撃も完全停止」とは別仕様=ボスへの効き方の社長裁定)。
-const ANGEL_ROOT_SLOW_MULT = 0.5;
-
 // ミゲル
 const MIGUEL_HARAI_WINDUP_MS = 1000;
 const MIGUEL_HARAI_RANGE = 190;
@@ -520,14 +514,16 @@ export const runAngelBossTick = (
 ): void => {
   const angel = useGameStore.getState().enemies.find(e => isGate2AngelBoss(e.type) && e.bossState != null);
   if (!angel) return;
-  // トラップ(root)中は移動半減(ANGEL_ROOT_SLOW_MULT参照)。歩行系(旋回/後退/追跡/ステップ)は
-  // 全て moveSpeedMult 経由(bossMoveDt)なのでここ1箇所で効く。攻撃ツイーン(counter-leap/
-  // ジャンプ/ワープ)は bossStateUntil 基準の時間進行=影響しない(移動だけ遅くなる)。
+  // トラップ(root)中は他のボスと揃えて「停止」(社長裁定v0.25.1690。v0.25.1688の移動半減から改訂)。
+  // 天使は updateEnemies のroot分岐(vx=0)を素通りする(isHiddenBoss=スキップ)ため、ここで止める。
+  // 裏ボスのfrozen相当: 平常時(chase=移動/次攻撃の起点)のみtickを止める=移動も新規攻撃も停止。
+  // 攻撃の実行中(windup/払い/ジャンプ/counter-leap等)は完走させる(tickだけ止めると時計が先へ進み、
+  // root明けにツイーンが瞬間完了=テレポートに見えるため)。攻撃が終わればchaseへ戻り凍結する。
   const rooted = angel.rootUntil !== undefined && newGameTime < angel.rootUntil;
-  const mult = moveSpeedMult * (rooted ? ANGEL_ROOT_SLOW_MULT : 1);
-  if (angel.type === 'miguel') runMiguelTick(angel, s, newGameTime, deltaTime, mult, sfx, onPlayerDeath);
-  else if (angel.type === 'jibril') runJibrilTick(angel, s, newGameTime, deltaTime, mult, sfx);
-  else if (angel.type === 'rafi') runRafiTick(angel, s, newGameTime, deltaTime, mult, sfx);
+  if (rooted && (angel.bossState ?? 'chase') === 'chase') return;
+  if (angel.type === 'miguel') runMiguelTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx, onPlayerDeath);
+  else if (angel.type === 'jibril') runJibrilTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx);
+  else if (angel.type === 'rafi') runRafiTick(angel, s, newGameTime, deltaTime, moveSpeedMult, sfx);
 };
 
 // --- ジブリルのランタン火(bossFires)のtick(旧useGameLoop v0.25.1664ブロックの移設・挙動不変) ---
