@@ -148,6 +148,8 @@ import {
   getKillTotals, resetKillTelemetry, setPhaseKillDebug, resetPhaseKillDebug, getCurrentStyle, getLastKillAt,
   getPhaseKillDebug, snapshotKillTotals, snapshotSpawns
 } from '../utils/killTelemetryState';
+import { recordSubUse, recordOverclockProc, getBotTelemetry } from '../utils/botTelemetry';
+import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
 import { selectReliefProgram, type ReliefProgram } from '../utils/reliefProgram';
@@ -1104,6 +1106,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     if (!BOT_PERSONA || botReportedRef.current) return;
     botReportedRef.current = true;
     const s = useGameStore.getState();
+    // M35(§6.12): goldはgoldBalance読み(リザルト画面が加算する前=常に0)を廃止し、リザルト画面と同じ
+    // 計算式(calculateResultScore+ゴールドラッシュ倍率=GameOverScreenのgoldEarnedと同値)を終了時点で評価。
+    const botTele = getBotTelemetry();
     const report = {
       persona: BOT_PERSONA,
       outcome,
@@ -1113,7 +1118,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       playerLevel: s.player.level,
       maxDepthPx: Math.round(s.gameStats.maxDepthDist),
       maxAreaReached: s.gameStats.maxAreaReached,
-      gold: s.goldBalance,
+      // M35: 計測拡張(サブ発動/オーバークロック/スクラップ収支/被ダメ/ラン獲得ゴールド)。
+      subUses: botTele.subUses,
+      overclockProcs: botTele.overclockProcs,
+      scrapEarned: Math.round(s.gameStats.strapsCollected),
+      scrapSpent: Math.round(s.gameStats.strapsSpent),
+      damageTaken: Math.round(s.gameStats.damageTaken),
+      goldEarned: Math.round(
+        calculateResultScore(s.gameStats, outcome === 'clear', s.stageTheme === 'lab').goldEarned
+        * skillGoldRushMult(s.player)
+      ),
     };
     console.log('[BOT_REPORT]', JSON.stringify(report));
     (window as unknown as Record<string, unknown>).__BOT_REPORT__ = report;
@@ -4713,9 +4727,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // スキル: オーバークロック = 発射時に20/25/30%でタイマー即満タン(CD式サブと同じ抽選・§6.8 M31)。
           // スキル: タイムキーパー(§6.10 M33⑥) = 専用タイマーのCD開始時にも skillCooldownMult(×0.9/0.8/0.7)を乗算
           // (他サブのsetSubWeaponCooldown合流点と同じ扱い)。
-          const ssCdNext = ssTick.fire
-            ? (Math.random() < skillOverclockChance(subWeaponPlayer) ? 0 : ssTick.cdRemainingMs * skillCooldownMult(subWeaponPlayer))
-            : ssTick.cdRemainingMs;
+          let ssCdNext = ssTick.cdRemainingMs;
+          if (ssTick.fire) {
+            recordSubUse('support-sniper'); // M35: 専用タイマー式=手動合流点(CD開始=発動)。計測のみ
+            if (Math.random() < skillOverclockChance(subWeaponPlayer)) {
+              recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
+              ssCdNext = 0;
+            } else {
+              ssCdNext = ssTick.cdRemainingMs * skillCooldownMult(subWeaponPlayer);
+            }
+          }
           if (ssCdNext !== ssState.supportSniperCdMs) {
             useGameStore.getState().setSupportSniperCd(ssCdNext);
           }
@@ -4836,6 +4857,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           });
 
           if (kitResult.dispense) {
+            recordSubUse('first-aid-kit'); // M35: CD無しサブの発動計測(払い出し1回=1発動・挙動不変)
             useGameStore.getState().setFirstAidKitState(kitResult.nextState);
             // 発動演出(社長指示v0.25.1656): 振り抜きポーズ+救急鞄を掲げる一拍(描画のみ・判定不変)。
             useGameStore.getState().markFirstAidPoseFx();

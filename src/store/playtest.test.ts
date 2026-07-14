@@ -3,7 +3,9 @@
 // SIM_FUZZ=1(nightly、または `npm run playtest` のローカル実行)でのみ走る。
 // 目的はデバッグ(バランス測定ではない)なので、違反が1件でもあれば即FAIL(assert)。
 import { describe, it, expect, vi } from 'vitest';
-import { useGameStore } from './gameStore';
+import { useGameStore, skillGoldRushMult } from './gameStore';
+import { snapshotBotTelemetry } from '../utils/botTelemetry';
+import { calculateResultScore } from '../utils/resultScoring';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { createPlaytestRefs, runPlaytestTick } from '../utils/playtestDriver';
 import { BOT_PERSONAS, decideBotInput, createRusherTrackState, type BotPersona } from '../utils/playtestBot';
@@ -41,6 +43,13 @@ interface RunReport {
   nearDeathCount: number;       // HPが最大値の25%を上から下へ跨いだ回数(ニアデス頻度)
   maxDepthPx: number;           // 原点からの最深到達距離(px)
   areaSec: number[];            // 区域(0..4)ごとの滞在秒数
+  // PACING_PUZZLE.md §6.12 M35: 計測拡張(botTelemetry+既存statの転記+リザルト式ゴールド)。
+  subUses: Partial<Record<string, number>>; // サブウェポン種別ごとの発動回数
+  overclockProcs: number;       // オーバークロック成立回数
+  scrapEarned: number;          // gameStats.strapsCollected
+  scrapSpent: number;           // gameStats.strapsSpent
+  damageTaken: number;          // gameStats.damageTaken
+  goldEarned: number;           // リザルト画面と同じ式(resultScoring+ゴールドラッシュ倍率)を終了時点で評価
 }
 
 const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: number, wanderSeed: number): RunReport => {
@@ -122,6 +131,9 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
     }
 
     const endState = useGameStore.getState();
+    // §6.12 M35: 終了時点の計測スナップショット(ディープコピー=規律3)とリザルト式ゴールド
+    // (実機[BOT_REPORT]と同じ式。won=false=ヘッドレスはtick上限終了でクリア概念なし)。
+    const tele = snapshotBotTelemetry();
     return {
       persona, characterClass, ticks,
       survivedMs: endState.gameTime,
@@ -132,6 +144,15 @@ const runOnePlaytest = (persona: BotPersona, characterClass: string, ticks: numb
       playerLevel: endState.player.level,
       minHp, nearDeathCount, maxDepthPx,
       areaSec: areaSec.map(s => Math.round(s)),
+      subUses: tele.subUses,
+      overclockProcs: tele.overclockProcs,
+      scrapEarned: Math.round(endState.gameStats.strapsCollected),
+      scrapSpent: Math.round(endState.gameStats.strapsSpent),
+      damageTaken: Math.round(endState.gameStats.damageTaken),
+      goldEarned: Math.round(
+        calculateResultScore(endState.gameStats, false, endState.stageTheme === 'lab').goldEarned
+        * skillGoldRushMult(endState.player)
+      ),
     };
   } finally {
     vi.useRealTimers();
@@ -147,6 +168,9 @@ const printReport = (label: string, reports: RunReport[]): void => {
     // §6.2 M26 Step0: kills/lv/minHp/ニアデス/最深/区域滞在も1行で出す(バランスの読み取り用)。
     console.log(`  [${status}] persona=${r.persona} class=${r.characterClass} survived=${(r.survivedMs / 1000).toFixed(0)}s rank=${r.finalRank} hpLost=${r.hpLost.toFixed(0)}${deathInfo}`);
     console.log(`      kills=${r.kills} lv=${r.playerLevel} minHp=${r.minHp.toFixed(0)} nearDeath=${r.nearDeathCount} depth=${Math.round(r.maxDepthPx)}px areaSec=[${r.areaSec.join('/')}]`);
+    // §6.12 M35: サブ発動/オーバークロック/スクラップ収支/被ダメ/リザルト式ゴールドも1行で出す。
+    const subUsesStr = Object.entries(r.subUses).map(([k, n]) => `${k}:${n}`).join(',') || '-';
+    console.log(`      subUses=[${subUsesStr}] overclock=${r.overclockProcs} scrap=+${r.scrapEarned}/-${r.scrapSpent} dmgTaken=${r.damageTaken} gold=${r.goldEarned}`);
     for (const v of r.violations.slice(0, 5)) console.log(`      - ${v}`);
   }
 };

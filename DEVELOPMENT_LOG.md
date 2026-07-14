@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.1715 — M35実装完了: ボットレポート計測拡張(Sonnet実装→設計チャットが検証・完成)【2026-07-15 01:14 JST】
+- Sonnetサブエージェントが実装をほぼ完了した段階で社長により停止されたため(固まって見えた状況)、
+  **残置されていたWIPを設計チャットが検証して完成させた**(実装内容は仕様§6.12に忠実であることを差分で確認)。
+- **実装内容**: `src/utils/botTelemetry.ts`(軽量シングルトン+テスト5件)= `recordSubUse`
+  (setSubWeaponCooldown合流点=proc判定前+手動3箇所: ジャンク発射/援護射撃発射/救急鞄払い出し)・
+  `recordOverclockProc`(成立2箇所)・resetGameでリセット。実機`[BOT_REPORT]`とヘッドレスRunReportに
+  `subUses/overclockProcs/scrapEarned/scrapSpent/damageTaken/goldEarned`を追加。goldEarnedは
+  **リザルト画面と同じ計算式(calculateResultScore×ゴールドラッシュ倍率)を終了時点で評価**
+  (従来のgoldBalance読み=常に0、を置き換え)。計測のみ=ゲーム挙動不変。
+- 検証(設計チャット実施): typecheck OK/eslintクリーン/botTelemetryテスト5件+`vitest related`
+  **110件パス**(M9スモーク込み)。
+- **運用裁定の記録(社長)**: バッチ毎のテスト(新規テスト+related・M9スモーク込み)は**現状維持**で継続。
+- Files: `src/utils/botTelemetry.ts`+`.test.ts`(新規), `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `src/store/playtest.test.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1714 — M35仕様書化: ボットレポート計測拡張(Sonnetへ発注)【2026-07-15 00:16 JST】
 - **M34完了確認**: 緑卵の避け/叩き(v0.25.1713)。playtestフル10ラン=**地雷死0**(改善前2/6)・
   純関数テスト8件含む22件green・通常プレイ不変。

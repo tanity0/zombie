@@ -18,6 +18,7 @@ import { SupportSniperNpcState, SUPPORT_SNIPER_CD_MS_BY_LEVEL } from '../utils/s
 import { FlareGunFlare, activeFlareTargets, FLARE_GUN_CD_MS_BY_LEVEL, FLARE_GUN_FLIGHT_MS, FLARE_GUN_DURATION_MS } from '../utils/flareGun';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis } from '../utils/bomberScatter';
+import { recordSubUse, recordOverclockProc, resetBotTelemetry } from '../utils/botTelemetry';
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import {
@@ -3500,6 +3501,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const jwLevel = Math.max(1, Math.min(3, player.subWeaponLevels['junk-weapon'] ?? 1));
       const jwShot = computeJunkShot(jwLevel, player.straps);
       if (jwShot.fire) {
+        recordSubUse('junk-weapon'); // M35: CD無しサブの発動計測(手動合流点・挙動不変)
         const jwDir = player.lastDirection ?? { x: 1, y: 0 };
         const jwMag = Math.max(0.001, Math.hypot(jwDir.x, jwDir.y));
         const pellets = buildJunkWeaponPellets(
@@ -5804,6 +5806,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setSubWeaponCooldown: (key, readyAt) => {
+    // M35(§6.12): ボット計測=サブウェポン発動回数(合流点)。overclock成立でCDが付かない場合も
+    // 「発動」として数える=proc判定より前に記録。計測のみ=挙動不変。
+    recordSubUse(key);
     set(state => {
       // スキル: タイムキーパー = サブCDのΔ(残り時間)を ×0.7。CDは gameTime 基準。
       const mult = skillCooldownMult(state.player);
@@ -5812,6 +5817,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Δ>0(実CDの開始)の時だけ抽選。成功=CDを設定しない(既存値は発動時点で既に明けている=即再使用可)。
       // タイムキーパー等の既存CD系とは別軸で重複可。CD無しサブはここを通らない=自然に対象外。
       if (delta > 0 && Math.random() < skillOverclockChance(state.player)) {
+        recordOverclockProc(); // M35: 成立回数の計測のみ
         return {};
       }
       const effReadyAt = mult !== 1 && delta > 0 ? state.gameTime + delta * mult : readyAt;
@@ -9323,6 +9329,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     const state = get();
+    // M35(§6.12): ボット計測カウンタをラン開始でリセット(実機/ヘッドレス両ハーネス共通の合流点)。
+    resetBotTelemetry();
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
