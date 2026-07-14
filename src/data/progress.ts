@@ -3,6 +3,7 @@
 // メインミッションをクリアすると次ステージが解放される。EX は前提ステージのクリアで解放。
 
 import { STAGES, getStage, type Stage } from './campaign';
+import { getEventQuestConfig } from '../utils/eventQuest';
 
 const CLEARED_KEY = 'zombie.progress.cleared';
 const SELECTED_KEY = 'zombie.progress.selectedStage';
@@ -279,15 +280,62 @@ export const setGateMeta = (stageId: string, meta: GateMeta): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// 二人組(クエストNPC)の完了メタ(社長指示v0.25.1684)。完了(納品)したステージでは以後
-// 二人は出現しない(そのプレイ中は立ち姿のまま=消えない。次run以降の出現だけを止める)。
-// ステージ毎に stageId を Set で永続保持(CLEARED_KEY と同じ方針)。
-const EVENT_QUEST_DONE_KEY = 'zombie.progress.eventQuestDone';
+// 二人組(クエストNPC)の進捗メタ(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686)。ステージ毎に
+// 「強制クエスト納品済み(forced)」「サブ納品済み(sub)」を永続保持(GateMeta と同じ方針)。
+//   ・サブ納品済み=二人は以後そのステージに出現しない。
+//   ・完了は1度きり(受注のみで死亡した場合は次runで再受注可=run内状態は保存しない)。
+// 旧v0.25.1684の 'zombie.progress.eventQuestDone'(stageIdのSet)は目標なし時代の完了フラグ
+// なので読まずに廃棄する(resetProgressで掃除)。
+export interface EventQuestMeta { forced: boolean; sub: boolean; }
+const EVENT_QUEST_META_KEY = 'zombie.progress.eventQuestMeta';
+const LEGACY_EVENT_QUEST_DONE_KEY = 'zombie.progress.eventQuestDone';
+type EventQuestMetaMap = Record<string, EventQuestMeta>;
 
-const readEventQuestDone = (): Set<string> => {
+export const emptyEventQuestMeta = (): EventQuestMeta => ({ forced: false, sub: false });
+
+const isValidEventQuestMeta = (v: unknown): v is EventQuestMeta => {
+  if (!v || typeof v !== 'object') return false;
+  const m = v as Partial<EventQuestMeta>;
+  return typeof m.forced === 'boolean' && typeof m.sub === 'boolean';
+};
+
+const loadEventQuestMetaMap = (): EventQuestMetaMap => {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(EVENT_QUEST_META_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === 'object' ? obj as EventQuestMetaMap : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveEventQuestMetaMap = (m: EventQuestMetaMap): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(EVENT_QUEST_META_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+};
+
+export const getEventQuestMeta = (stageId: string, m: EventQuestMetaMap = loadEventQuestMetaMap()): EventQuestMeta => {
+  const v = m[stageId];
+  return isValidEventQuestMeta(v) ? { ...v } : emptyEventQuestMeta();
+};
+
+export const setEventQuestMeta = (stageId: string, meta: EventQuestMeta): void => {
+  if (!stageId) return;
+  const m = loadEventQuestMetaMap();
+  m[stageId] = meta;
+  saveEventQuestMetaMap(m);
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// 城ボス(giantbat)クリアフラグ(ステージ毎・永続)。討伐の瞬間に立てる(年表と同じA方式=
+// その後死亡しても取り消さない)。次ステージ解放の条件の片翼(下の syncQuestStageClear)。
+const CASTLE_BOSS_KEY = 'zombie.progress.castleBoss';
+
+const readCastleBossSet = (): Set<string> => {
   if (typeof localStorage === 'undefined') return new Set();
   try {
-    const raw = localStorage.getItem(EVENT_QUEST_DONE_KEY);
+    const raw = localStorage.getItem(CASTLE_BOSS_KEY);
     const arr = raw ? JSON.parse(raw) : [];
     return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
   } catch {
@@ -295,20 +343,33 @@ const readEventQuestDone = (): Set<string> => {
   }
 };
 
-const writeEventQuestDone = (s: Set<string>): void => {
+const writeCastleBossSet = (s: Set<string>): void => {
   if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(EVENT_QUEST_DONE_KEY, JSON.stringify([...s])); } catch { /* ignore */ }
+  try { localStorage.setItem(CASTLE_BOSS_KEY, JSON.stringify([...s])); } catch { /* ignore */ }
 };
 
-export const getEventQuestDone = (stageId: string): boolean =>
-  !!stageId && readEventQuestDone().has(stageId);
+export const getCastleBossCleared = (stageId: string): boolean =>
+  !!stageId && readCastleBossSet().has(stageId);
 
-export const markEventQuestDone = (stageId: string): void => {
+export const markCastleBossCleared = (stageId: string): void => {
   if (!stageId) return;
-  const s = readEventQuestDone();
+  const s = readCastleBossSet();
   if (s.has(stageId)) return;
   s.add(stageId);
-  writeEventQuestDone(s);
+  writeCastleBossSet(s);
+};
+
+// 次ステージ解放の同期(社長裁定v0.25.1686 #4): クエスト設定のあるステージは
+// 「城ボスクリアフラグ && 強制クリアフラグ」が揃った瞬間にクリア扱い(=次ステージ出現)。
+// 強制を課さないステージ(cfg.forced=false: 3/4/5)は最初からクリア済み扱い=城ボスのみで解放。
+// クエスト設定の無いステージはこの関数は何もしない(従来どおり勝利時 markStageCleared)。
+// 城ボス討伐時と強制クエスト納品時の両方から呼ぶ(冪等)。
+export const syncQuestStageClear = (stageId: string): void => {
+  if (!stageId) return;
+  const cfg = getEventQuestConfig(stageId);
+  if (!cfg) return;
+  const forcedOk = !cfg.forced || getEventQuestMeta(stageId).forced;
+  if (forcedOk && getCastleBossCleared(stageId)) markStageCleared(stageId);
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -383,6 +444,8 @@ export const resetProgress = (): void => {
   saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)
   saveWallMetaMap({}); // M14の壁メタも進行リセットで消す(開発用)
   saveGateMetaMap({}); // M20のゲート解除メタも進行リセットで消す(開発用)
-  writeEventQuestDone(new Set()); // 二人組(クエストNPC)の完了メタも進行リセットで消す(開発用)
+  saveEventQuestMetaMap({}); // 二人組クエストの進捗メタも進行リセットで消す(開発用)
+  writeCastleBossSet(new Set()); // 城ボスクリアフラグも進行リセットで消す(開発用)
+  try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
 };

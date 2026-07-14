@@ -100,7 +100,7 @@ export const isBossType = (t: EnemyType): boolean =>
 // ネームド/裏ボス4体/giantbat/hunter=劇的な討伐。パンプキン(および死神/lab-zombie-3)は対象外(社長指示)。
 // isNamed は型ではなく個体フラグなので Enemy を受け取る(isHiddenBoss/isBossTypeはEnemyType引数)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter';
+  !!enemy.isNamed || !!enemy.questTarget || isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter';
 
 // Stage director: which enemy types are eligible at this gameTime, and how
 // likely each is to be picked. Modeled after Mad Forest's gentle ramp.

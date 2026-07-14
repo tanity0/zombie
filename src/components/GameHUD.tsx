@@ -11,6 +11,30 @@ import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted } from '../audio/audioManager';
 
+// 二人組クエストの進捗(右上スクラップ下・社長裁定v0.25.1686 #8「サブクエスト系は右上の
+// スクラップ下に短く表示 n/Nも」)。受領中のみ表示、目標達成で緑+「納品」。
+// 購読はプリミティブ3つだけ(受領/キル/納品の時にしか変わらない=React再描画規律)。
+const EventQuestPill: React.FC = () => {
+  const active = useGameStore(s => s.eventQuestActive);
+  const kills = useGameStore(s => s.eventQuestKills);
+  const goal = useGameStore(s => s.eventQuestGoalCount);
+  if (!active || goal <= 0) return null;
+  const done = kills >= goal;
+  const label = active === 'forced' ? '変異種討伐' : 'サンプル集め';
+  return (
+    <div
+      className="absolute glass-pill px-3 py-1 text-[12px] font-semibold tabular-nums"
+      style={{
+        top: 'calc(max(env(safe-area-inset-top), 8px) + 34px)',
+        right: 'max(env(safe-area-inset-right), 12px)',
+        color: done ? '#4ade80' : '#e2e8f0',
+      }}
+    >
+      🧪 {label} {Math.min(kills, goal)}/{goal}{done ? ' 納品' : ''}
+    </div>
+  );
+};
+
 const GameHUD: React.FC = () => {
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
@@ -167,6 +191,7 @@ const GameHUD: React.FC = () => {
       >
         🔩 {player.straps}
       </div>
+      <EventQuestPill />
 
       {/* フィナーレボスの予告/常時バナーは廃止。出現時の告知は city/castle 側の eventBanner「危険変異体出現」に一本化。 */}
 

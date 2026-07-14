@@ -12,6 +12,36 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1686 — 二人組クエスト本実装(強制=ネームド討伐/サブ=討伐ノルマ/解放=城ボス+強制フラグ)【2026-07-14 17:00 JST】
+- **社長裁定(全8件+追加指示)**: #1 ネームド=パンプキンか犬 / #2 レア=青個体(あとは紫・赤の記載どおり) /
+  #3 完了は1度きり(受注のみなら次run再受注可) / #4 城ボス出現ゲートは無し。**次ステージ解放=
+  城ボスクリアフラグ && 強制クリアフラグ** / #5 報酬=100G / #6 クエスト無しステージには二人は出ない /
+  #7 注意誘導なし=拠点と同じ「近く(500px)+画面外の時だけ縁矢印」 / #8 進捗は右上スクラップ下に n/N。
+  **追加**: 強制として課すのはステージ1のみ。3/4/5はフラグ構造だけ持ち最初からクリア済み扱い=サブのみ発生。
+- **実装**(詳細マップは EVENT_QUEST_DESIGN.md):
+  - `utils/eventQuest.ts`(+test 12件): EVENT_QUEST_CONFIG(st1=強制+敵10 / st3=青5 / st4=紫5 / st5=赤5)・
+    questNamedSpawnPos(二人の方位角+180°・距離2000-2600)・pickQuestNamedType・questKillProgress(純関数)。
+  - `data/progress.ts`: eventQuestMeta({forced,sub}・ステージ毎)+castleBoss フラグ+**syncQuestStageClear**
+    (両フラグ成立→markStageCleared=次ステージ出現)。旧v1684キーは読まずに廃棄・resetProgressで掃除。
+  - `gameStore`: acceptEventQuest=種別決定+強制ならネームド湧き(宿敵レシピ流用・questTargetフラグ・休眠
+    aggro320)/completeEventQuest=報酬100G+永続化(強制→サブ受付へ戻る・サブ→completed+以後不出現)/
+    キル進捗フック(damageEnemy kill分岐+grantMeleeKillRewards)/城ボスフラグ(triggerDramaticDeathの
+    giantbat・fromEvent除外)/囲い・レスキュー一掃の除外/resetGame出現ゲート(cfg無し or サブ済み=gone)。
+  - `useGameLoop`: 滞在状態機械=受領(台詞を強制/サブで出し分け・★仮テキスト)→目標達成後のみ納品メーター。
+  - `pixiScene`: questTarget=金tint+名前(宿敵と同描画)・縁矢印マーク(拠点と同規則・金色)。
+  - `GameHUD`: EventQuestPill(🧪 変異種討伐 0/1・達成で緑+「納品」。プリミティブ購読のみ)。
+  - `App.handleVictory`: クエストステージはフラグ同期(勝利そのものでは解放しない)、他ステージは従来どおり。
+- **注意(挙動変更)**: ステージ1の次ステージ解放は「城ボス討伐+強制クエスト納品」の両方が必要になった
+  (勝利/帰還だけでは解放されない)。3/4/5は強制が最初からクリア済み扱い=城ボス討伐の瞬間に解放
+  (帰還不要になった点も従来からの変更・裁定#4のフラグ方式どおり)。
+- 負荷: 1/10(イベント駆動+滞在判定の分岐のみ。ネームド1体は既存スポーン経路)。
+- 検証: typecheck / eslint(既存警告1のみ) / `vitest related`(8ファイル95件パス・M9スモーク含む)。
+  実機確認ポイント: st1で受領→反対側にネームド(金・名前)→討伐→納品100G→サブ受注→10体→納品→二人不出現
+  /城ボス討伐と合わせてst2が出現するか/縁矢印(500px内・画面外)/HUDのn/N。
+- Files: `utils/eventQuest.ts`(新規+test), `data/progress.ts`, `types/game.ts`, `store/gameStore.ts`,
+  `hooks/useGameLoop.ts`, `pixi/pixiScene.ts`, `components/GameHUD.tsx`, `App.tsx`, `utils/enemyUtils.ts`,
+  `utils/directorTick.ts`, `EVENT_QUEST_DESIGN.md`, `package.json`, `data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1685 — 二人組クエストの目標仕様を設計書化(EVENT_QUEST_DESIGN.md新設・実装は裁定後)【2026-07-14 15:44 JST】
 - **社長指示**: 目標を定義(会話内容は後で詰める)。
   - 強制「特定変異種のサンプルが欲しい」= クリアしないと城ボスが7分になっても出現しない。

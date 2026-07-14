@@ -2745,9 +2745,11 @@ export class PixiScene {
         ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);
     const alertedHunters = s.enemies.filter(e => e.type === 'hunter' && e.hunterAlerted && !e.hunterFleeing).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+    // 二人組クエストの強制目標(同時1体)。近く+画面外の時だけ縁矢印(syncArrows)。
+    const questTargets = s.enemies.filter(e => e.questTarget).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで常に方角を示す(優先処理対象)。
     const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
-    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers);
+    this.syncArrows(s.pickups, s.castleEvent, s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab'), s.activeEvent, revealedPois, s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets);
     this.syncFlash(s.effects, now);
 
     // Warm ground pool follows the player. It lives in the world's groundLayer
@@ -5797,7 +5799,8 @@ export class PixiScene {
       // なのでここでは触らない)。抽選なし/フラグ無効時は明示的に等倍(0xffffff)へ戻す
       // (敵の描画ビューはid単位でプール再利用されるため、リセットしないと別個体へtintが残る)。
       // §5.14 M13: 宿敵は専用tint=黄金(社長確定)。レアのtintより優先(被った場合、金が勝つ)。
-      view.sprite.tint = e.isNamed
+      // 二人組クエストの強制目標個体(questTarget)も宿敵と同じ金tint+名前表示(EVENT_QUEST_DESIGN.md)。
+      view.sprite.tint = (e.isNamed || e.questTarget)
         ? NAMED_TINT
         : (RARE_BODY_TINT_ENABLED && e.colorTier) ? ENEMY_COLOR_TIER_BODY_TINT[e.colorTier] : 0xffffff;
     } else {
@@ -5807,11 +5810,12 @@ export class PixiScene {
     }
 
     // §5.14 M13: 宿敵の頭上に名前を常時表示(同時1体・生成は湧き時1回だけ=Pixi Text可)。
-    if (e.isNamed) {
+    // クエスト目標個体(questTarget)も同様(名前は個体のquestName。同時1体なので負荷は同等)。
+    if (e.isNamed || e.questTarget) {
       let label = this.namedFoeLabels.get(e.id);
       if (!label) {
         label = new Text({
-          text: useGameStore.getState().namedFoe?.name ?? '',
+          text: e.questTarget ? (e.questName ?? '') : (useGameStore.getState().namedFoe?.name ?? ''),
           resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
           style: { fontFamily: FONT_STACK, fontSize: 15, fontWeight: 'bold', fill: NAMED_TINT, stroke: { color: 0x2a1a00, width: 3 } },
         });
@@ -8769,7 +8773,8 @@ export class PixiScene {
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
     hunters: { x: number; y: number }[] = [],
-    screamers: { x: number; y: number }[] = []
+    screamers: { x: number; y: number }[] = [],
+    questTargets: { x: number; y: number }[] = []
   ) {
     const g = this.arrowGfx;
     g.clear();
@@ -9105,6 +9110,33 @@ export class PixiScene {
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
       g.rect(ex - 5, ey - 4, 10, 9).stroke({ width: 1.5, color, alpha: 0.9 }); // 旗/拠点アイコン(簡易)
       g.rect(ex - 5, ey - 4, 6, 4).fill({ color, alpha: 0.85 });
+      const hx = ex + dx * 15, hy = ey + dy * 15;
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+    }
+
+    // 二人組クエストの強制目標(ネームド)の方向マーク: 拠点と同じ規則(社長裁定v0.25.1686 #7=
+    // 注意誘導はせず「近づいたらマーク表示」)。近く(500px以内)かつ画面外の時だけ縁矢印。
+    // 画面内は本体(金tint+名前)がそのままマーク。
+    for (const qt of questTargets) {
+      const tx = qt.x - camera.x, ty = qt.y - camera.y;
+      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue;
+      if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      let tdist = Infinity;
+      if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+      else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+      if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+      else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+      if (!isFinite(tdist)) continue;
+      const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
+      const color = 0xffd700; // ネームドと同じ金(NAMED_TINT)
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
+      g.rect(ex - 1.5, ey - 5, 3, 6).fill({ color, alpha: 0.95 }); // 「!」マーク(簡易)
+      g.circle(ex, ey + 4, 1.6).fill({ color, alpha: 0.95 });
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];

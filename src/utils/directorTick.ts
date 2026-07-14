@@ -485,6 +485,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // §5.14 M13: 宿敵(ネームド)は距離リサイクル対象外(倒すかラン終了まで持ち越すかの2択に
     // 保ち、勝手に湧き直して型が変わったように見えるのを防ぐ)。
     if (enemy.isNamed) return enemy;
+    // 二人組クエストの強制目標個体も同様に対象外(討伐が条件=消えたり湧き直したりしてはいけない)。
+    if (enemy.questTarget) return enemy;
     // 休眠中(未起動)の敵は「近づくまで向かってこない」設計。距離リサイクルで先回り(ワープ)させない
     // =城ボス等は起動するまで定位置で待機。一度起動(dormant解除)すれば以降は通常どおりリサイクルされる(社長指示)。
     // ただしラボ(研究所スキン)の通常湧き休眠個体は対象にする: 届かない休眠個体がその場に残り続けて
@@ -591,6 +593,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       !!e.fixed || // 屋内ステージの固定配置敵は数が多くてもカリングしない(遠い敵が消えない)
       !!e.fromEvent || // 囲い系イベントの敵は終了判定に必要なのでカリングしない
       !!e.isNamed || // §5.14 M13: 宿敵は上限カリング対象外(倒すかラン終了持ち越しの2択を保つ)
+      !!e.questTarget || // 二人組クエストの強制目標個体(討伐が条件=消えてはいけない)
       e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' ||
       e.type === 'lab-zombie-3' || // 研究所Lv3はパンプキン相当のボス(着地爆発)。ランダム湧き個体がcap超過で消されないよう保護
       isHiddenBoss(e.type) || // 裏ボスは専用コントローラ管理(帰巣/回復)。カリングすると討伐誤検出で「勝手に死ぬ」

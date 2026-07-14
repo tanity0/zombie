@@ -10,7 +10,8 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, preloadStageBgm, setAudioSuspended, clearSfxThrottle } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
-import { getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared } from './data/progress';
+import { getSelectedStageId, setSelectedStageId, getSelectedFreeMode, markStageCleared, syncQuestStageClear } from './data/progress';
+import { getEventQuestConfig } from './utils/eventQuest';
 import { getStage, STAGES } from './data/campaign';
 import { isPixiRenderer } from './config/renderer';
 
@@ -160,8 +161,14 @@ function App() {
     // 勝利したら選択中ステージのメインミッションをクリア扱いにし、次ステージを解放する。
     // (ダンス練習/ベンチは選択ステージを空にしているのでここでは何も起きない)
     // フリー(周回)出撃は進行に影響させない=クリア扱いにしない。
+    // 二人組クエストのあるステージ(1/3/4/5)は解放条件が「城ボスクリアフラグ && 強制クリアフラグ」
+    // (社長裁定v0.25.1686 #4)。勝利(帰還)そのものでは解放せず、両フラグが揃った時だけクリア扱い
+    // (城ボス討伐時/強制納品時にも同じ同期が走る=どちらが後でもその瞬間に解放される)。
     const stageId = getSelectedStageId();
-    if (stageId && !getSelectedFreeMode()) markStageCleared(stageId);
+    if (stageId && !getSelectedFreeMode()) {
+      if (getEventQuestConfig(stageId)) syncQuestStageClear(stageId);
+      else markStageCleared(stageId);
+    }
     setGameState('victory');
   };
 

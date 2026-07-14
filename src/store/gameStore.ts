@@ -40,12 +40,21 @@ import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
+  NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName,
 } from '../utils/namedEnemy';
+import {
+  getEventQuestConfig, questNamedSpawnPos, pickQuestNamedType, questKillProgress,
+  QUEST_NAMED_AGGRO_RANGE,
+} from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, isGate2AngelBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
-import { getSelectedStageId, getWallMeta, recordChronicle, getEventQuestDone, markEventQuestDone, type WallMeta } from '../data/progress';
+import {
+  getSelectedStageId, getWallMeta, recordChronicle,
+  getEventQuestMeta, setEventQuestMeta, markCastleBossCleared, syncQuestStageClear,
+  type WallMeta,
+} from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -383,7 +392,7 @@ const createEventQuestNpc = (): EventQuestNpc => {
     questIndex: 0,
     fadeStartedAt: 0,
     dwellMs: 0,
-    leftSinceAccept: false,
+    leftSinceAccept: true, // 生成直後は「外に居た」扱い=初回はそのまま受領できる
   };
 };
 // 二人組(クエストNPC)の受領方式(社長指示v0.25.1681): 会話ポップアップ廃止。会話サークル内に
@@ -396,9 +405,13 @@ export const EVENT_QUEST_LINES: { name: string; text: string }[] = [
   { name: '女', text: '感染者サンプルを探してるの！' },
   { name: '男', text: 'ばか言うな！・・・知られたからには手伝ってもらう。' },
 ];
-// 納品(完了)報酬のゴールド(社長指示v0.25.1684「報酬ゲット」。中身は未指定のため
-// 叩き台=宿敵討伐と同額150G。社長裁定で内容/額とも変更可)。
-export const EVENT_QUEST_REWARD_GOLD = 150;
+// 納品(完了)報酬のゴールド(社長裁定v0.25.1686 #5「報酬は100で」。強制/サブ各)。
+export const EVENT_QUEST_REWARD_GOLD = 100;
+// サブ「とにかくサンプルを集めてきて」受領時の台詞(★仮テキスト=会話は後で社長が詰める)。
+export const EVENT_QUEST_LINES_SUB: { name: string; text: string }[] = [
+  { name: '女', text: 'まだ足りないの！とにかくサンプルを集めてきて！' },
+  { name: '男', text: '・・・数が要る。頼む。' },
+];
 const loadMeleeDropPct = (): number => {
   try {
     const v = localStorage.getItem(DROP_PCT_KEY);
@@ -1634,6 +1647,14 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       enemy.type,
       phrase
     );
+    // 城ボスクリアフラグ(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686 #4): 討伐の瞬間に永続記録し、
+    // 「城ボスフラグ && 強制クエストフラグ」が揃えばそのステージをクリア扱い=次ステージ解放。
+    // イベント産のgiantbat(fromEvent)はストーリーボスではないので除外(finaleDefeatedと同じ扱い)。
+    if (enemy.type === 'giantbat' && !enemy.fromEvent) {
+      const qStageId = getSelectedStageId();
+      markCastleBossCleared(qStageId);
+      syncQuestStageClear(qStageId);
+    }
   }
   // 討伐後のフェードアウト(既存の裏ボス演出を流用・pixiScene.syncBossCorpseが描画)。
   useGameStore.setState({
@@ -1679,6 +1700,12 @@ const grantMeleeKillRewards = (
     // PACING_REDESIGN.mdバッチ2(計測): 近接全経路のキルを種別+スタイル集計へ記録(挙動には影響しない)。
     // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
     recordKill(enemy.type, 'melee', get().gameTime);
+    // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。近接全経路はここ1箇所で拾える。
+    {
+      const qs = useGameStore.getState();
+      const qNext = questKillProgress(qs.eventQuestActive, qs.eventQuestGoalTier, qs.eventQuestKills, enemy);
+      if (qNext !== null) useGameStore.setState({ eventQuestKills: qNext });
+    }
     const ex = enemy.x + enemy.width / 2;
     const ey = enemy.y + enemy.height / 2;
     if (enemy.isNamed) resolveNamedFoeDefeat(get, [enemy], ex, ey); // §5.14 M13: 宿敵討伐
@@ -2040,6 +2067,12 @@ interface GameState {
   screamerBuffUntil: number;
   weaponMerchant: WeaponMerchant;
   eventQuestNpc: EventQuestNpc;
+  // 二人組クエストのrun内状態(EVENT_QUEST_DESIGN.md)。受領中のクエスト種別と討伐進捗。
+  // HUD(右上スクラップ下の n/N 表示)はこのプリミティブ群だけを購読する(React再描画規律)。
+  eventQuestActive: 'forced' | 'sub' | null;
+  eventQuestKills: number;
+  eventQuestGoalCount: number;               // N(forced=1 / sub=設定値)
+  eventQuestGoalTier: EnemyColorTier | null; // sub の対象色(null=全キル)
   gameTime: number;
   // gameTime と同じくポーズ中は止まるが、slow-mo(timeScale)の影響を受けない「実効」時計。
   // 近接フィニッシュの slow-mo で gameTime が遅くなってもスラッシャー追撃リングを通常速度で
@@ -2609,6 +2642,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   screamerBuffUntil: 0,
   weaponMerchant: createWeaponMerchant(),
   eventQuestNpc: createEventQuestNpc(),
+  eventQuestActive: null,
+  eventQuestKills: 0,
+  eventQuestGoalCount: 0,
+  eventQuestGoalTier: null,
   gameTime: 0,
   realGameTime: 0,
   isPaused: false,
@@ -5816,6 +5853,33 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   acceptEventQuest: () => {
+    // 受領(EVENT_QUEST_DESIGN.md): 強制が未納品(ステージ1のみ課される)なら強制、
+    // 納品済み(または最初からクリア済み扱い=3/4/5)ならサブを受ける。
+    // 強制の受領時は「二人と反対側の研究対象区域」にネームド(パンプキンか犬・宿敵と同じ個体強化)を配置。
+    const stageId = getSelectedStageId();
+    const cfg = getEventQuestConfig(stageId);
+    if (!cfg) return; // 設定なしステージでは二人が出ない(resetGateでgone)ため来ないはずの保険
+    const forcedPending = cfg.forced && !getEventQuestMeta(stageId).forced;
+    if (forcedPending) {
+      const q = get().eventQuestNpc;
+      const pos = questNamedSpawnPos(q.x, q.y);
+      const e = spawnEnemyAt(pickQuestNamedType(cfg), pos.x, pos.y, get().gameTime);
+      e.questTarget = true;
+      e.questName = pickNamedEnemyName();
+      e.health = Math.round(e.health * NAMED_HP_MULT);
+      e.maxHealth = Math.round(e.maxHealth * NAMED_HP_MULT);
+      e.damage = Math.round(e.damage * NAMED_DMG_MULT);
+      e.width = Math.round(e.width * NAMED_SIZE_MULT);
+      e.height = Math.round(e.height * NAMED_SIZE_MULT);
+      // 中心を指定位置に合わせ、起動するまで定位置で待機(注意誘導はしない=近づいたらマーク・社長裁定#7)。
+      e.x = pos.x - e.width / 2;
+      e.y = pos.y - e.height / 2;
+      e.vx = 0; e.vy = 0;
+      e.dormant = true;
+      e.aggroRange = QUEST_NAMED_AGGRO_RANGE;
+      e.homeX = e.x; e.homeY = e.y;
+      get().addEnemy(e);
+    }
     set(state => ({
       showEventQuestMenu: false,
       isPaused: false,
@@ -5825,6 +5889,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         dwellMs: 0,
         leftSinceAccept: false
       },
+      eventQuestActive: forcedPending ? 'forced' : 'sub',
+      eventQuestKills: 0,
+      eventQuestGoalCount: forcedPending ? 1 : cfg.sub.count,
+      eventQuestGoalTier: forcedPending ? null : cfg.sub.tier,
       eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
     }));
   },
@@ -5838,18 +5906,44 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   completeEventQuest: () => {
-    // 納品完了(社長指示v0.25.1684): 報酬ゴールド(永続残高へ即時)+完了をステージ毎に永続記録
-    // (以後そのステージに二人は出現しない)。そのプレイでは消さない=fadeStartedAtは立てず
-    // 立ち姿のまま(以後この二人のところでは何も起きない)。
+    // 納品(EVENT_QUEST_DESIGN.md): 報酬ゴールド(永続残高へ即時)+段階を永続記録。
+    //  ・強制納品 → forcedフラグ+次ステージ解放同期(城ボスフラグと揃えばクリア扱い)。
+    //    二人は残り、サブの受付(available)へ戻る(一度離れてから再滞在3秒で受注)。
+    //  ・サブ納品 → subフラグ=以後そのステージに二人は出現しない。そのプレイでは消さない
+    //    (fadeStartedAtは立てず立ち姿のまま・以後何も起きない)。
+    const stageId = getSelectedStageId();
+    const active = get().eventQuestActive;
     get().addGold(EVENT_QUEST_REWARD_GOLD);
-    markEventQuestDone(getSelectedStageId());
-    set(state => ({
-      eventQuestNpc: {
-        ...state.eventQuestNpc,
-        status: 'completed',
-        dwellMs: 0
-      }
-    }));
+    const meta = getEventQuestMeta(stageId);
+    if (active === 'forced') {
+      setEventQuestMeta(stageId, { ...meta, forced: true });
+      syncQuestStageClear(stageId);
+      set(state => ({
+        eventQuestNpc: {
+          ...state.eventQuestNpc,
+          status: 'available',
+          dwellMs: 0,
+          leftSinceAccept: false
+        },
+        eventQuestActive: null,
+        eventQuestKills: 0,
+        eventQuestGoalCount: 0,
+        eventQuestGoalTier: null
+      }));
+    } else {
+      setEventQuestMeta(stageId, { ...meta, sub: true });
+      set(state => ({
+        eventQuestNpc: {
+          ...state.eventQuestNpc,
+          status: 'completed',
+          dwellMs: 0
+        },
+        eventQuestActive: null,
+        eventQuestKills: 0,
+        eventQuestGoalCount: 0,
+        eventQuestGoalTier: null
+      }));
+    }
   },
   
   // Enemy actions
@@ -5924,7 +6018,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // PACING_REDESIGN.mdバッチ2(計測): ガン/接触/爆発キルを種別+スタイル集計へ記録(挙動には影響しない)。
         // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
         recordKill(enemy.type, 'gun', state.gameTime);
-        
+        // 二人組クエストのキル進捗(EVENT_QUEST_DESIGN.md)。銃/接触/爆発キル経路。
+        const questKillNext = questKillProgress(state.eventQuestActive, state.eventQuestGoalTier, state.eventQuestKills, enemy);
+
         // Update game stats
         const newStats = {
           ...gameStats,
@@ -5937,6 +6033,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return {
           enemies: updatedEnemies.filter(e => e.id !== id),
           gameStats: newStats,
+          ...(questKillNext !== null ? { eventQuestKills: questKillNext } : {}),
           // The giantbat is the run's finale boss — defeating it triggers the return phase.
           // ただし囲い系イベントのミニボス(fromEvent)は finale ではないので除外。即勝利せず帰還サークルへ。
           finaleDefeated: state.finaleDefeated || (enemy.type === 'giantbat' && !enemy.fromEvent),
@@ -6872,7 +6969,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const clearR2 = (event.radius * 1.5) ** 2;
       const kept = state.enemies.filter(e => {
-        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed) return true;
+        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed || e.questTarget) return true;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2; // 範囲外だけ残す
@@ -6938,7 +7035,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const clearR2 = (event.radius * 1.5) ** 2;
       const kept = state.enemies.filter(e => {
-        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed) return true;
+        if (e.type === 'reaper' || e.type === 'giantbat' || e.type === 'pumpkin' || isHiddenBoss(e.type) || e.fixed || e.questTarget) return true;
         const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
         return (ecx - event.x) ** 2 + (ecy - event.y) ** 2 > clearR2;
       });
@@ -9290,10 +9387,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         weaponMerchant: indoor
           ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
           : createWeaponMerchant(),
-        // 二人組(クエストNPC): 過去のプレイで納品済みのステージには以後出現しない(社長指示v0.25.1684)。
-        eventQuestNpc: getEventQuestDone(getSelectedStageId())
-          ? { ...createEventQuestNpc(), status: 'gone' }
-          : createEventQuestNpc(),
+        // 二人組(クエストNPC): クエスト設定のあるステージ(1/3/4/5)のみ出現(社長裁定v0.25.1686 #6)。
+        // サブ納品済みステージにも以後出現しない(そのプレイ中に消えないのは completeEventQuest 側)。
+        eventQuestNpc: (() => {
+          const qCfg = getEventQuestConfig(getSelectedStageId());
+          const qGone = !qCfg || getEventQuestMeta(getSelectedStageId()).sub;
+          return qGone ? { ...createEventQuestNpc(), status: 'gone' as const } : createEventQuestNpc();
+        })(),
+        eventQuestActive: null,
+        eventQuestKills: 0,
+        eventQuestGoalCount: 0,
+        eventQuestGoalTier: null,
         gameTime: 0,
         realGameTime: 0,
         isPaused: false,
