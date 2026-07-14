@@ -1,28 +1,26 @@
-# テスト依頼 #1: M27〜M33(新サブ4種+新スキル+監査修正)のフル速ソーク(v0.25.1706)
+# テスト依頼 #2: 新計測(M35)による実測ソーク=CD/発動率/収支/被弾スケール(v0.25.1721)
 
 ## 目的
-クラウド(GPU無し・ゲーム時間1/20)では取れなかった**フル速(60fps)の長時間実走**で、
-新実装のバグ(consoleエラー/挙動破綻)とバランスの実測データを取る。
+依頼#1で測れなかった項目を、M35で追加された計測(subUses/overclockProcs/scrapEarned/scrapSpent/
+damageTaken/goldEarned)で実測する。センサー地雷はM36で**チャージ制**(Lv個数まで連続設置・1個ずつ10秒回復)に
+変わっているので、その挙動確認も兼ねる。
 
 ## やること
-0. **本テストはローカルビルドで実行**(baseUrl:"local"=スクリプトが自動でビルド→preview起動)。
-   **(任意・1分だけ)Pages診断**: `https://tanity0.github.io/zombie/` をブラウザで開き、ローディングで
-   止まる場合はF12のNetworkタブで「止まっている/失敗しているリクエスト名」をメモしてresultsに書く
-   (デプロイ自体は全成功をこちらで確認済み。配信ロードの問題の切り分け材料)。
-1. `git pull` 後、`npm install`(初回のみ)。起動失敗時は `npx playwright install chromium`。
-2. `node scripts/botrun-local.mjs` を実行(構成は `TEST_HANDOFF/request.config.json`=6構成×最大15分。
-   合計最大90分・放置可。途中でボットが死んだらそのランは自動で次へ)。
-3. 結果を `TEST_HANDOFF/results/<YYYYMMDD-HHMM>-m27-33-soak.md`(+自動出力の.json)にまとめて
-   `[test-report]` コミットで push。ゲーム開始まで到達できない場合はREADMEのトラブルシュート→
-   それでもダメなら状況(スクショ+console+URL)だけpushして終了。
+1. `git pull` → `npm install`(初回のみ)。
+2. `node scripts/botrun-local.mjs`(構成は `request.config.json`=6構成×最大15分・放置可)。
+3. 結果を `TEST_HANDOFF/results/<YYYYMMDD-HHMM>-m35-metrics.md`(+自動出力の.json)にまとめ、
+   `[test-report]` コミットで push。
 
-## 記録してほしい項目(スクリプトが自動収集。MDには要約を)
-- 各構成の `[BOT_REPORT]`(outcome/survivedMs/deathCause/kills/playerLevel/maxDepthPx/gold)
-- consoleエラー・pageerror(全文。0件なら0件と明記)
-- baseline と各構成のキル数/生存時間の差(体感でよいので「明らかに強い/弱い」があれば一言)
+## 構成と見たい数字
+| 構成 | 見たい数字 |
+|---|---|
+| baseline | 比較基準(kills/damageTaken/goldEarned) |
+| sensor-mine + overclock/time-keeper | `subUses['sensor-mine']`(チャージ制: 冒頭に3連続→以後1個/10秒×0.7(TK)ペースか)・`overclockProcs`(発動の~30%成立か=Lv3) |
+| junk-weapon + scrap-builder/magnet | `scrapEarned/scrapSpent`(初期+150と取得+30%込みの収支)・`subUses['junk-weapon']`(発射機会が増えたか。依頼#1の19キルから改善するか) |
+| heavy-grenade + berserker/exploder | `damageTaken`とkillsの関係(被弾が多いランほど伸びるか)・`subUses['heavy-grenade']`・`goldEarned` |
+| support-sniper + overclock/last-magazine | `subUses['support-sniper']`(移動中3秒CD×OCでどこまで増えるか)・`overclockProcs` |
+| flare-gun + gold-rush/warm-up | `goldEarned`(ゴールドラッシュ×1.5が乗って妥当な額か)・`subUses['flare-gun']` |
 
-## 特に見たい点
-- センサー地雷CD10秒後の設置頻度(スパム消滅の確認)・ジャンクのスクラップ収支
-- オーバークロック構成でサブ発動が目に見えて増えるか
-- バーサーカー全攻撃化(M33②)後、被弾が増えるほど爆発/召喚ダメージが伸びるか
-- 援護射撃NPC(非出撃クラス)の出入りが破綻しないか(見た目の異常があればスクショ)
+## 記録してほしいこと
+- 各構成の[BOT_REPORT]全文(新項目込み)・consoleエラー(0件なら明記)
+- 気づき(任意): センサー地雷の置かれ方(冒頭バースト→ポツポツ、になっているか)、その他見た目の異常

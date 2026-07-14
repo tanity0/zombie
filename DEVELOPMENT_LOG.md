@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1721 — テスト依頼#2発行: M35計測による実測ソーク6構成【2026-07-15 01:51 JST】
+- TEST_HANDOFF/REQUEST.md を依頼#2へ更新: センサー地雷チャージ制(M36)の挙動・オーバークロック成立率
+  (~30%@Lv3)・ジャンク×スクラップビルダーの収支(依頼#1の19キルから改善するか)・バーサーカーの
+  被弾↔キル相関・ゴールドラッシュ×1.5の妥当性、をM35の新計測(subUses等)で実測。
+- 構成6本(request.config.json): baseline/センサー地雷+OC+TK/ジャンク+スクラップビルダー+マグネット/
+  手榴弾+バーサーカー+エクスプローダー/援護射撃+OC+ラストマガジン/フレアガン+ゴールドラッシュ+ウォームアップ。
+- テストチャットで「テストして」で実行→結果push→こちらで分析。
+- Files: `TEST_HANDOFF/REQUEST.md`, `TEST_HANDOFF/request.config.json`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`(依頼のみ・コード変更なし)。
+
+
 ## v0.25.1720 — 年表にボス討伐アイコン(天使/城ボス/裏ボス)【2026-07-15 01:48 JST】
 - **社長指示**「天使と城ボス、裏ボスは年表のテキスト横に絵文字っぽくフォントサイズの小さい絵を表示」。
 - `TitleScreen.ChronicleTimeline`: kind='boss'の行でkeyのdetail(敵型)から対象8体
