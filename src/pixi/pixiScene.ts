@@ -3267,6 +3267,12 @@ export class PixiScene {
   }
 
   private syncEventQuestNpc(npc: EventQuestNpc, player: Player, now: number) {
+    // 過去のプレイで納品済みのステージ: 二人は出現しない(社長指示v0.25.1684)。
+    if (npc.status === 'gone') {
+      this.eventNpcView.visible = false;
+      this.npcShadow = null;
+      return;
+    }
     const tex = getTexture('quest-futari');
     if (!tex) {
       this.eventNpcView.visible = false;
@@ -3301,7 +3307,9 @@ export class PixiScene {
     const pcy = player.y + player.height / 2;
     const dx = npc.x - pcx;
     const dy = npc.y - pcy;
-    const near = npc.status === 'available' && dx * dx + dy * dy <= (npc.radius + 72) * (npc.radius + 72);
+    // 受領済み(accepted)も納品の対話対象なのでサークルを見せる(社長指示v0.25.1684の「同じ動作」)。
+    const near = (npc.status === 'available' || npc.status === 'accepted')
+      && dx * dx + dy * dy <= (npc.radius + 72) * (npc.radius + 72);
     const statusAlpha = npc.status === 'completed'
       ? Math.max(0, 1 - fadeElapsed / EVENT_NPC_FADE_MS)
       : 1;
@@ -3332,7 +3340,8 @@ export class PixiScene {
     }
     // 滞在受領の進捗メーター(社長指示v0.25.1681): 拠点解放の制圧アークと同じ意匠(白いアーク・12時起点)。
     // 3秒(=EVENT_QUEST_DWELL_MS。useGameLoopが dwellMs を加算)で満了=自動受領。
-    if (npc.status === 'available' && npc.dwellMs > 0) {
+    // 受領済み(accepted)は納品の再滞在メーターとして同じアークを使う(社長指示v0.25.1684)。
+    if ((npc.status === 'available' || npc.status === 'accepted') && npc.dwellMs > 0) {
       const frac = Math.max(0, Math.min(1, npc.dwellMs / EVENT_QUEST_DWELL_VIS_MS));
       const start = -Math.PI / 2, rr = (npc.radius + 6) * d, cyq = -8 * d;
       g.moveTo(Math.cos(start) * rr, cyq + Math.sin(start) * rr)

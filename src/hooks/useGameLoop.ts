@@ -33,7 +33,7 @@ import {
   ENEMY_REMOVE_CAUSE, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
   HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
-  EVENT_QUEST_DWELL_MS, EVENT_QUEST_LINES,
+  EVENT_QUEST_DWELL_MS, EVENT_QUEST_LINES, EVENT_QUEST_REWARD_GOLD,
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE
 } from '../store/gameStore';
@@ -5011,26 +5011,46 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 二人組(クエストNPC)の滞在受領(社長指示v0.25.1681): 会話ポップアップ廃止。会話サークル内に
         // 3秒(EVENT_QUEST_DWELL_MS)居続けると強制受領(拠点解放と同じ進捗メーター=pixiSceneがdwellMsを描く)。
         // 受領の瞬間: 左上のNPC会話へ二人の台詞を流し、旧ポップアップ起動時と同じ青リング/QUESTコールアウトで合図。
+        // 納品(社長指示v0.25.1684): 受領後に一度サークルを出てから「また」同じ3秒滞在で完了=報酬ゴールド。
+        // 完了後(completed/gone)は何も起きない(二人は立ち姿のまま)。
         if (!indoor && !labTheme) {
           const q = useGameStore.getState().eventQuestNpc;
-          if (q.status === 'available') {
+          if (q.status === 'available' || q.status === 'accepted') {
             const qpcx = player.x + player.width / 2, qpcy = player.y + player.height / 2;
             const qdx = q.x - qpcx, qdy = q.y - qpcy;
             const inside = qdx * qdx + qdy * qdy <= q.radius * q.radius;
-            if (inside) {
+            if (q.status === 'available') {
+              if (inside) {
+                const nd = q.dwellMs + deltaTime * 1000;
+                if (nd >= EVENT_QUEST_DWELL_MS) {
+                  useGameStore.getState().acceptEventQuest();
+                  useGameStore.getState().enqueueNpcDialogue(EVENT_QUEST_LINES);
+                  spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
+                  useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
+                  useGameStore.getState().spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
+                  playSfx('event-start');
+                } else {
+                  useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
+                }
+              } else if (q.dwellMs !== 0) {
+                useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: 0 } }));
+              }
+            } else if (!inside) {
+              // 受領済みでサークル外: 「また」来た扱いに武装(leftSinceAccept)。滞在はリセット。
+              if (!q.leftSinceAccept || q.dwellMs !== 0) {
+                useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, leftSinceAccept: true, dwellMs: 0 } }));
+              }
+            } else if (q.leftSinceAccept) {
               const nd = q.dwellMs + deltaTime * 1000;
               if (nd >= EVENT_QUEST_DWELL_MS) {
-                useGameStore.getState().acceptEventQuest();
-                useGameStore.getState().enqueueNpcDialogue(EVENT_QUEST_LINES);
-                spawnRing(q.x, q.y - 22, 12, 62, 'rgba(96,165,250,0.82)', 3, 520);
-                useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(96,165,250,', 520);
-                useGameStore.getState().spawnCallout(q.x, q.y - 76, 'QUEST', '#bfdbfe');
-                playSfx('event-start');
+                useGameStore.getState().completeEventQuest();
+                spawnRing(q.x, q.y - 22, 12, 62, 'rgba(253,230,138,0.85)', 3, 520);
+                useGameStore.getState().spawnGlow(q.x, q.y - 30, 68, 'rgba(253,230,138,', 520);
+                useGameStore.getState().spawnCallout(q.x, q.y - 76, `+${EVENT_QUEST_REWARD_GOLD}G`, '#fde68a');
+                playSfx('event-clear');
               } else {
                 useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: nd } }));
               }
-            } else if (q.dwellMs !== 0) {
-              useGameStore.setState(s2 => ({ eventQuestNpc: { ...s2.eventQuestNpc, dwellMs: 0 } }));
             }
           }
         }

@@ -652,7 +652,8 @@ export interface WeaponMerchant {
   radius: number;
 }
 
-export type EventQuestStatus = 'available' | 'accepted' | 'completed';
+// gone = 過去のプレイで完了(納品)済みのステージ: 二人はそのステージに以後出現しない(社長指示v0.25.1684)。
+export type EventQuestStatus = 'available' | 'accepted' | 'completed' | 'gone';
 
 export interface EventQuestNpc {
   x: number;
@@ -662,8 +663,11 @@ export interface EventQuestNpc {
   questIndex: number;
   fadeStartedAt: number;
   // 会話サークル内の滞在時間(ms)。3秒(EVENT_QUEST_DWELL_MS)で自動受領(社長指示v0.25.1681=ポップアップ廃止・
-  // 拠点解放と同じメーター表示)。サークル外へ出るとリセット。
+  // 拠点解放と同じメーター表示)。サークル外へ出るとリセット。受領済みなら同じ3秒滞在で納品=完了。
   dwellMs: number;
+  // 受領後に一度サークルの外へ出たか。true になってから再滞在3秒で納品=完了
+  // (社長指示v0.25.1684の「また…すると完了」=受領直後にその場で立ち続けても即完了しないためのガード)。
+  leftSinceAccept: boolean;
 }
 
 // Projectile types

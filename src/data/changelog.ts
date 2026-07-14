@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1684',
+    items: [
+      '謎の二人組(サブクエストNPC)に納品(完了)を追加: 受領後に一度サークルを離れ、また戻って3秒とどまる(同じメーター)とクエスト完了・報酬ゴールド獲得。完了したステージには以後この二人は現れません(そのプレイ中は立ち姿のまま)。',
+    ],
+  },
+  {
     version: '0.25.1683',
     items: [
       'グレネードランチャー(ライフル系Tier3)の装填弾数を1→2に増やしました。',

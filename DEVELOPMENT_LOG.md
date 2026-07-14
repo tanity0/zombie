@@ -12,6 +12,31 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1684 — 二人組(クエストNPC)の納品=再滞在3秒で完了+報酬/以後そのステージ不出現【2026-07-14 15:24 JST】
+- **社長指示**「サブクエスト完了後、また二人のサークルで同じ動作をすると完了。報酬ゲット。以後、そのステージに
+  この二人は現れない。(そのプレイでは消える必要はない。以後その二人のところではなにも起きないだけ。)」。
+- **実装**:
+  - `useGameLoop`: 受領済み(accepted)で**一度サークルを出てから**(=「また」のガード。`leftSinceAccept`新設)
+    再びサークル内に3秒滞在(同じ白メーター)で `completeEventQuest`。金色リング/グロー+`+150G`コールアウト+
+    `event-clear` SE。受領直後にその場に立ち続けても即完了しない(台詞再生中の誤完了防止)。
+  - `gameStore.completeEventQuest`: `addGold(EVENT_QUEST_REWARD_GOLD)`(永続残高へ即時=宿敵討伐と同経路)+
+    `markEventQuestDone(stageId)`(永続)。**fadeStartedAtは立てない**=そのプレイでは二人は立ち姿のまま消えず、
+    以後は何も起きない。
+  - `data/progress.ts`: `zombie.progress.eventQuestDone`(stageIdのSet・CLEARED_KEYと同方針)を新設。
+    `getEventQuestDone`/`markEventQuestDone`。`resetProgress`(開発用)でも消去。
+  - `resetGame`: 納品済みステージでは `status:'gone'`(EventQuestStatusに追加)で生成=次run以降そのステージに
+    二人は出現しない。`pixiScene.syncEventQuestNpc`は`gone`を即非表示。acceptedでも青サークル+滞在メーターを表示。
+- **★報酬の中身は叩き台**: 社長指定が「報酬ゲット」のみだったため、宿敵(ネームド)討伐と同額の
+  **ゴールド150**(`EVENT_QUEST_REWARD_GOLD`・1定数)で仮置き。内容/額の裁定があれば即差し替え可。
+  ※確認のAskUserQuestionがセッション切断で送れなかったため、前例に合わせた仮実装で先へ進めた。
+- **仕様メモ**: クエストに討伐等の「目標」は現状未実装(受領→即納品可)。目標が入ったら納品側の条件に
+  ゲートを1つ足すだけの構造にしてある。受領のみで死亡/帰還した場合は次runで再び available(従来どおり)。
+- 負荷: 1/10(滞在判定の分岐が1つ増えるだけ・描画は既存アーク流用)。
+- 検証: `npm run typecheck` / eslint(触った5ファイル)クリーン。実機確認ポイント: 「受領→出る→戻って3秒で
+  +150G・SE」「受領直後に立ち続けても完了しない」「次runで二人が居ない」「進行リセットで復活」。
+- Files: `src/data/progress.ts`, `src/types/game.ts`, `src/store/gameStore.ts`, `src/hooks/useGameLoop.ts`,
+  `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1683 — グレネードランチャー(rifle-t3)の装填弾数 1→2【2026-07-14 14:37 JST】
 - **社長指示**「Tier3のグレネードランチャー、装填弾数を+1発増やして」。
 - `weaponUtils.ts` CATALOG の `rifle-t3` の `magSize: 1 → 2` のみ変更(他の数値・リロード時間等は不変)。

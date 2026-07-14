@@ -45,7 +45,7 @@ import { openCrate } from '../utils/weaponDrop';
 import { isBossType, isHiddenBoss, isGate2AngelBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
-import { getSelectedStageId, getWallMeta, recordChronicle, type WallMeta } from '../data/progress';
+import { getSelectedStageId, getWallMeta, recordChronicle, getEventQuestDone, markEventQuestDone, type WallMeta } from '../data/progress';
 import { sortWallEventsByPriority, type WallEventKind } from '../utils/wallProgress';
 import type { KomaAssessmentInput } from '../utils/rankAssessor';
 import { getDirectorRewardMult } from '../utils/directorRankState';
@@ -383,6 +383,7 @@ const createEventQuestNpc = (): EventQuestNpc => {
     questIndex: 0,
     fadeStartedAt: 0,
     dwellMs: 0,
+    leftSinceAccept: false,
   };
 };
 // 二人組(クエストNPC)の受領方式(社長指示v0.25.1681): 会話ポップアップ廃止。会話サークル内に
@@ -395,6 +396,9 @@ export const EVENT_QUEST_LINES: { name: string; text: string }[] = [
   { name: '女', text: '感染者サンプルを探してるの！' },
   { name: '男', text: 'ばか言うな！・・・知られたからには手伝ってもらう。' },
 ];
+// 納品(完了)報酬のゴールド(社長指示v0.25.1684「報酬ゲット」。中身は未指定のため
+// 叩き台=宿敵討伐と同額150G。社長裁定で内容/額とも変更可)。
+export const EVENT_QUEST_REWARD_GOLD = 150;
 const loadMeleeDropPct = (): number => {
   try {
     const v = localStorage.getItem(DROP_PCT_KEY);
@@ -5818,7 +5822,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       eventQuestNpc: {
         ...state.eventQuestNpc,
         status: 'accepted',
-        dwellMs: 0
+        dwellMs: 0,
+        leftSinceAccept: false
       },
       eventQuestReopenAt: state.gameTime + EVENT_NPC_REOPEN_DELAY_MS
     }));
@@ -5833,11 +5838,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   completeEventQuest: () => {
+    // 納品完了(社長指示v0.25.1684): 報酬ゴールド(永続残高へ即時)+完了をステージ毎に永続記録
+    // (以後そのステージに二人は出現しない)。そのプレイでは消さない=fadeStartedAtは立てず
+    // 立ち姿のまま(以後この二人のところでは何も起きない)。
+    get().addGold(EVENT_QUEST_REWARD_GOLD);
+    markEventQuestDone(getSelectedStageId());
     set(state => ({
       eventQuestNpc: {
         ...state.eventQuestNpc,
         status: 'completed',
-        fadeStartedAt: Date.now()
+        dwellMs: 0
       }
     }));
   },
@@ -9280,7 +9290,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         weaponMerchant: indoor
           ? { x: LAB_MERCHANT.x, y: LAB_MERCHANT.y, radius: MERCHANT_INTERACT_RADIUS }
           : createWeaponMerchant(),
-        eventQuestNpc: createEventQuestNpc(),
+        // 二人組(クエストNPC): 過去のプレイで納品済みのステージには以後出現しない(社長指示v0.25.1684)。
+        eventQuestNpc: getEventQuestDone(getSelectedStageId())
+          ? { ...createEventQuestNpc(), status: 'gone' }
+          : createEventQuestNpc(),
         gameTime: 0,
         realGameTime: 0,
         isPaused: false,

@@ -279,6 +279,39 @@ export const setGateMeta = (stageId: string, meta: GateMeta): void => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// 二人組(クエストNPC)の完了メタ(社長指示v0.25.1684)。完了(納品)したステージでは以後
+// 二人は出現しない(そのプレイ中は立ち姿のまま=消えない。次run以降の出現だけを止める)。
+// ステージ毎に stageId を Set で永続保持(CLEARED_KEY と同じ方針)。
+const EVENT_QUEST_DONE_KEY = 'zombie.progress.eventQuestDone';
+
+const readEventQuestDone = (): Set<string> => {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(EVENT_QUEST_DONE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const writeEventQuestDone = (s: Set<string>): void => {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(EVENT_QUEST_DONE_KEY, JSON.stringify([...s])); } catch { /* ignore */ }
+};
+
+export const getEventQuestDone = (stageId: string): boolean =>
+  !!stageId && readEventQuestDone().has(stageId);
+
+export const markEventQuestDone = (stageId: string): void => {
+  if (!stageId) return;
+  const s = readEventQuestDone();
+  if (s.has(stageId)) return;
+  s.add(stageId);
+  writeEventQuestDone(s);
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // 歴史年表(chronicle): 各ステージの要所マイルストーンを「初回のみ」永続記録する読み取り専用の記録
 // (社長決定v0.25.1628)。タイトル画面に縦の年表として時系列で並べる(各個人の軌跡)。
 //   ・記録タイミング = マイルストーン達成の瞬間に即載せ(個別討伐と同じA方式=死亡/帰還/タスクキルに
@@ -350,5 +383,6 @@ export const resetProgress = (): void => {
   saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)
   saveWallMetaMap({}); // M14の壁メタも進行リセットで消す(開発用)
   saveGateMetaMap({}); // M20のゲート解除メタも進行リセットで消す(開発用)
+  writeEventQuestDone(new Set()); // 二人組(クエストNPC)の完了メタも進行リセットで消す(開発用)
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
 };
