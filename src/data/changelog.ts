@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1683',
+    items: [
+      'グレネードランチャー(ライフル系Tier3)の装填弾数を1→2に増やしました。',
+    ],
+  },
+  {
     version: '0.25.1682',
     items: [
       '開発: 天使ミゲルのAI整理(v0.25.1680)後の実機確認が完了(戦闘〜討伐まで正常)。記録のみでゲーム変更はありません。',

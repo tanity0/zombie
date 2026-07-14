@@ -12,6 +12,12 @@ on the zombie game. Append a new entry after each meaningful change.
 - Local URL: `http://localhost:5173/zombie/` unless Vite chooses another port
 - Renderer under active development: PixiJS only
 
+## v0.25.1683 — グレネードランチャー(rifle-t3)の装填弾数 1→2【2026-07-14 14:37 JST】
+- **社長指示**「Tier3のグレネードランチャー、装填弾数を+1発増やして」。
+- `weaponUtils.ts` CATALOG の `rifle-t3` の `magSize: 1 → 2` のみ変更(他の数値・リロード時間等は不変)。
+- 検証: `npm run typecheck` クリーン。
+- Files: `src/utils/weaponUtils.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1682 — 実機確認: 天使ミゲル=戦闘〜討伐まで正常(Step3抽出の検証)【2026-07-14 14:28 JST】
 - **社長実機報告**「天使ミゲルは正常に戦闘、討伐まで確認」= M26 Step3(v0.25.1680)の angelBossTick.ts 抽出後、
   実プレイ経路(ミゲル: 周回/払い→縦払い/弾3連/カウンター/討伐)が挙動不変であることを確認済み。
