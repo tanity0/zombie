@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1727',
+    items: [
+      '援護射撃: 登場するのはプレイアブルクラスではなく、今回護衛に出ていない軍人NPC(エドガーたち)になりました。この出撃で護衛中の4人は登場しません。',
+    ],
+  },
+  {
     version: '0.25.1726',
     items: [
       '援護射撃: CDをLv1=6秒/Lv2=5秒/Lv3=4秒に調整(実地テストで強すぎたため1秒ずつ延長)。',

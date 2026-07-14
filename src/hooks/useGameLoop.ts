@@ -36,7 +36,8 @@ import {
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
   EVENT_QUEST_DWELL_MS, EVENT_QUEST_LINES, EVENT_QUEST_LINES_SUB, EVENT_QUEST_REWARD_GOLD,
   RN_ENEMY_FORCE,
-  FIRST_AID_KIT_THROW_DAMAGE
+  FIRST_AID_KIT_THROW_DAMAGE,
+  PHASER_INDEX, BASE_SOLDIER_COUNT
 } from '../store/gameStore';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
@@ -68,11 +69,10 @@ import {
 import { computeMolotovTick, MOLOTOV_FIRES_BY_LEVEL } from '../utils/molotov';
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
 import {
-  computeSupportSniperTick, computeSupportSniperEntry,
+  computeSupportSniperTick, computeSupportSniperEntry, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
-import { pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { buildBomberMinis } from '../utils/bomberScatter';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
@@ -4768,9 +4768,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 id: Date.now(),
                 x: entry.x, y: entry.y,
                 dirX: entry.dirX, dirY: entry.dirY,
-                // 絵=今回出撃していない3クラスからランダム(§6.9 M32)。救難信号と同じ選定関数を流用
-                // =出撃クラスは絶対に出ない(pickRescueSignalAllyClassが現在クラスを除外)。
-                allyClass: pickRescueSignalAllyClass(subWeaponPlayer.characterClass),
+                // 絵=「この出撃で護衛に出ていない軍人NPC」からランダム(§6.9 M32・社長訂正v0.25.1727:
+                // プレイアブル4クラスではなくエドガー等の軍人)。フェイザーはレア枠のため既定プール外。
+                soldierIndex: pickSupportSniperSoldier(
+                  ssState.escorts.map(e => e.soldierIndex), BASE_SOLDIER_COUNT, PHASER_INDEX),
                 spawnedAt: gameTime,
                 firedAt: 0,
                 targetEnemyId: ssTarget.id,

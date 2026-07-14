@@ -10,8 +10,6 @@ export const SUPPORT_SNIPER_SLIDE_OUT_MS = 350;  // スライドアウト(発射
 export const SUPPORT_SNIPER_SLIDE_START_OUT = 30; // スライド開始点=縁の外側この距離(px・叩き台)
 export const SUPPORT_SNIPER_INSET = 60;           // 発射位置=縁の内側この距離(px・叩き台。上縁でも絵が見える程度)
 
-import type { CharacterClass } from '../types/game';
-
 // 画面縁に出現するNPC(同時に1人のみ)。x/y=「狙う敵→プレイヤー」延長線と画面縁の交点。
 // スライドの始点/終点は描画側が dir と定数(START_OUT/INSET)から導出する(状態は増やさない)。
 export interface SupportSniperNpcState {
@@ -20,13 +18,35 @@ export interface SupportSniperNpcState {
   y: number;
   dirX: number;         // NPCの向き(狙う敵の方向・単位ベクトル。スライドはこの軸で前進/後退)
   dirY: number;
-  // 絵=今回出撃していない3クラスからランダム(§6.9 M32・社長指示で護衛軍人スプライトから差し替え)。
-  // 選定は pickRescueSignalAllyClass(utils/rescueSignal.ts)を流用=出撃クラスは絶対に出ない。
-  allyClass: CharacterClass;
+  // 絵=「この出撃で護衛に出ていない軍人NPC」からランダム(社長訂正v0.25.1727: プレイアブル4クラス
+  // ではなくエドガー等の軍人)。BASE_SOLDIERS名簿のindex(pixiScene の ESCORT_SPRITE_BASE と同じ対応)。
+  soldierIndex: number;
   spawnedAt: number;    // gameTime(ms)。spawnedAt+SLIDE_IN_MS で発射
   firedAt: number;      // 0=未発射。>0=発射時刻(+SLIDE_OUT_MS で消滅)
   targetEnemyId: string;
 }
+
+// 登場NPCの選定: 軍人名簿(0..soldierCount-1)から「この出撃で護衛に出ている軍人(deployedIndices)」を
+// 除いてランダム。rareIndex(フェイザー=レア枠)は護衛抽選と同じくレア性を保つため既定プールから除外する。
+// 保険(理論上到達しない=8人中護衛は4人): プールが空なら非出撃全員→それも空なら名簿全体から選ぶ。
+export const pickSupportSniperSoldier = (
+  deployedIndices: readonly number[],
+  soldierCount: number,
+  rareIndex: number | null,
+  rng: () => number = Math.random,
+): number => {
+  const deployed = new Set(deployedIndices);
+  let pool: number[] = [];
+  for (let i = 0; i < soldierCount; i++) {
+    if (!deployed.has(i) && i !== rareIndex) pool.push(i);
+  }
+  if (pool.length === 0) {
+    for (let i = 0; i < soldierCount; i++) if (!deployed.has(i)) pool.push(i);
+  }
+  if (pool.length === 0) pool = Array.from({ length: soldierCount }, (_, i) => i);
+  const idx = Math.max(0, Math.min(pool.length - 1, Math.floor(rng() * pool.length)));
+  return pool[idx];
+};
 
 export interface SupportSniperTickInput {
   deltaMs: number;        // このフレームの経過(ms・timeScale適用後)

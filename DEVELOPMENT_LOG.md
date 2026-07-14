@@ -1,5 +1,28 @@
 # Development Log
 
+## v0.25.1727 — 援護射撃NPC=非出撃の軍人へ訂正(M32-2の仕様化ミス是正)【2026-07-15 03:18 JST】
+- **社長訂正**: M32-2「今回出撃していないキャラ」の私の解釈(=プレイアブル4クラスの非出撃)が誤り。
+  正=**軍人NPC(エドガー等)のうち、この出撃で護衛に出ていない者**。v1726のバグ報告の真意もこれ
+  (「プレイヤー(の絵)になっちゃってる」=クラス絵そのものが誤り)。
+- 実装:
+  - `pickSupportSniperSoldier`(supportSniper.ts・純関数+テスト3件): 名簿8人−今回の護衛4人
+    (`escorts[].soldierIndex`)からランダム。**フェイザー(7)は護衛抽選と同じレア枠扱いで既定プール外**
+    (希少性の既存意図を保全。含めたい場合は引数1つで解除可=★裁定あれば)。
+    保険: プール空なら非出撃全員→名簿全体(理論上到達しない)。
+  - `SupportSniperNpcState.allyClass: CharacterClass` → **`soldierIndex: number`**。
+  - 描画(drawSupportSniper): playerTextureName流用をやめ **`ESCORT_SPRITE_BASE[soldierIndex]`の
+    静止コマ0**+護衛と同じ`humanNpcScale`(プレイヤー同寸・遠近込み)。fakeAlly経路は撤去
+    (v1726の`ALLY_PLAIN_EQUIP`は救難信号アライ用として存置=そちらはクラス絵のままが正)。
+  - gameStoreから`PHASER_INDEX`/`BASE_SOLDIER_COUNT`をexport(重複定数を作らない)。
+  - §6.9の2)と受け入れ条件2を訂正版に改定(旧記述は取り消し線で保存)。
+- 検証: typecheck / eslint(触5ファイル) / related 136件パス(新テスト3件込み)。
+  実機確認(護衛に出ていない軍人が出るか・4人と被らないか)は社長へ持ち越し。
+- 天秤: 診断コンテキスト継続+5ファイル小改修のためFable直接実装。
+- Files: `src/utils/supportSniper.ts`, `src/utils/supportSniper.test.ts`, `src/pixi/pixiScene.ts`,
+  `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `PACING_PUZZLE.md`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1726 — 援護射撃CD=6/5/4秒(裁定)+NPC絵がプレイヤー本人になるバグ修正【2026-07-15 03:06 JST】
 - **CD裁定反映**(依頼#2の突出=生存3.3倍/キル4.1倍を受けた社長裁定=提案(a)):
   `SUPPORT_SNIPER_CD_MS_BY_LEVEL` を [5000,4000,3000]→**[6000,5000,4000]**(supportSniper.ts)。

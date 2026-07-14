@@ -522,9 +522,10 @@ const PLAYER_IDLE_SPRITE: Partial<Record<Player['characterClass'], string>> = {
   necromancer: 'player-striker-idle',
   rogue: 'player-scavenger-idle',
 };
-// 援護NPC/救援アライ用の空装備(v0.25.1726): プレイヤーをspreadした fakeAlly に本人のequipmentが
+// 救難信号アライ用の空装備(v0.25.1726): プレイヤーをspreadした fakeAlly に本人のequipmentが
 // 残っていると、武将セットフル装備中は playerTextureName が武将立ち絵を優先して characterClass 差し替えが
-// 無視され、NPCがプレイヤー本人の絵になるバグの根因だった。仲間の絵は常に素のクラス待機絵にする。
+// 無視され、仲間がプレイヤー本人の絵になるバグの根因だった。仲間の絵は常に素のクラス待機絵にする。
+// (援護射撃NPCはv0.25.1727で軍人立ち絵(ESCORT_SPRITE_BASE)へ変更されたためこの経路を通らない。)
 const ALLY_PLAIN_EQUIP = emptyEquipLoadout();
 // プレイヤーの立ち絵テクスチャ名(クラス/武将装備/フレーム別)。分身もこれを共有して同じ外見にする。
 // ※ necromancer→striker / rogue→scavenger の対応は既存仕様のまま(入れ替えない)。
@@ -2715,7 +2716,7 @@ export class PixiScene {
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
-    this.drawSupportSniper(s.supportSniperNpc, s.player, s.gameTime); // 援護射撃NPC(非出撃クラスの立ち絵・画面縁のスライドイン→発射→後退)
+    this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
     this.syncBossCorpse(s.bossCorpse, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
@@ -6838,13 +6839,14 @@ export class PixiScene {
     }
   }
 
-  // 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28)のNPC=今回出撃していないクラスのキャラ立ち絵
-  // (§6.9 M32で護衛軍人スプライトから差し替え。クラス→テクスチャは救難信号アライと同じ
-  // playerTextureName 流用=クラスID↔ファイル名対応を手書きしない)。1枚のプールSprite。
+  // 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28)のNPC=「この出撃で護衛に出ていない軍人」の
+  // 立ち絵(§6.9 M32社長訂正v0.25.1727: プレイアブル4クラスではなくエドガー等の軍人NPC。
+  // ESCORT_SPRITE_BASE[soldierIndex] の静止コマ0を護衛と同じ humanNpcScale=プレイヤー同寸で描く)。
+  // 1枚のプールSprite。
   // 位置/タイミングは sim 側の supportSniperNpc(縁の交点+向き+打刻)からここで補間するだけ(書き込みなし):
   // スライドイン250ms(縁の外30px→内60px・easeOut+フェードイン)→発射→向きを変えずに同じ軸で
   // 後退350ms(easeIn+フェードアウト)。同時1人・イベント駆動=軽い(強glow不使用)。
-  private drawSupportSniper(npc: SupportSniperNpcState | null, player: Player, gameTime: number) {
+  private drawSupportSniper(npc: SupportSniperNpcState | null, gameTime: number) {
     let sp = this.supportSniperSprite;
     if (!npc) { if (sp) sp.visible = false; return; }
     if (!sp) {
@@ -6853,10 +6855,9 @@ export class PixiScene {
       this.L.actorLayer.addChild(sp);
       this.supportSniperSprite = sp;
     }
-    // equipment を空に差し替え(ALLY_PLAIN_EQUIP): 本人の武将装備を引き継ぐと武将絵が優先されて
-    // allyClass が無視され「プレイヤー本人の絵」になる(v0.25.1726バグ修正)。
-    const fakeAlly = { ...player, characterClass: npc.allyClass, equipment: ALLY_PLAIN_EQUIP };
-    const tex = getTexture(playerTextureName(fakeAlly, 0, false)) ?? getTexture('player');
+    // 軍人立ち絵の静止コマ0(未提供indexは護衛と同じ rescue/shooter フォールバック)。
+    const base = ESCORT_SPRITE_BASE[npc.soldierIndex] ?? 'rescue/shooter';
+    const tex = getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
     if (!tex) { sp.visible = false; return; }
     // スライド位置: 縁の交点(npc.x/y)を基準に、向き(dir=敵の方向)の軸上で 外(-START_OUT)→内(+INSET)。
     let offset: number;
@@ -6875,9 +6876,8 @@ export class PixiScene {
     const px = npc.x + npc.dirX * offset;
     const py = npc.y + npc.dirY * offset;
     sp.texture = tex;
-    // スケール=救難信号アライと同じ playerBaseScale(幅基準・プレイヤー本体と同寸)×遠近。
-    const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
-    const sc = playerBaseScale(fakeAlly, tex, boxW, boxW) * this.depthScale(py);
+    // スケール=護衛軍人と同じ humanNpcScale(プレイヤー同寸・遠近込み)。
+    const sc = this.humanNpcScale(tex.width, tex.height, py);
     const faceSign = npc.dirX >= 0 ? 1 : -1; // 向き=敵の方向。発射後も変えない(そのまま後退)
     sp.scale.set(sc * faceSign, sc);
     sp.alpha = alpha * this.horizonActorAlpha(py);

@@ -1,8 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeSupportSniperTick, computeSupportSniperEntry,
+  computeSupportSniperTick, computeSupportSniperEntry, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL,
 } from './supportSniper';
+
+describe('pickSupportSniperSoldier (登場NPC=非出撃の軍人・社長訂正v0.25.1727)', () => {
+  it('護衛に出ている軍人とフェイザー(レア枠)は選ばれない', () => {
+    for (let r = 0; r < 20; r++) {
+      const picked = pickSupportSniperSoldier([0, 2, 4, 6], 8, 7, () => r / 20);
+      expect([1, 3, 5]).toContain(picked);
+    }
+  });
+  it('フェイザーが護衛に差し込まれた回も、残りの非出撃軍人から選ぶ', () => {
+    for (let r = 0; r < 20; r++) {
+      const picked = pickSupportSniperSoldier([0, 1, 2, 7], 8, 7, () => r / 20);
+      expect([3, 4, 5, 6]).toContain(picked);
+    }
+  });
+  it('保険: プールが空になる異常系でも例外なく名簿内indexを返す', () => {
+    const picked = pickSupportSniperSoldier([0, 1, 2, 3, 4, 5, 6, 7], 8, 7, () => 0.5);
+    expect(picked).toBeGreaterThanOrEqual(0);
+    expect(picked).toBeLessThan(8);
+  });
+});
 
 describe('computeSupportSniperTick', () => {
   it('レベル別CD=6/5/4秒(SUPPORT_SNIPER_CD_MS_BY_LEVEL・社長指定v0.25.1726)', () => {
