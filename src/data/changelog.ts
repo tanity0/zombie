@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1699',
+    items: [
+      '安定性チェックを実施(全テスト716件・ビルド・バランス自動走行10ラン・新サブ/新スキル装備の実機ボット5構成)。新機能起因の不具合は見つかりませんでした(コード変更なし・記録のみ)。',
+    ],
+  },
+  {
     version: '0.25.1698',
     items: [
       'フレアガンの火の見た目を2/3の大きさに縮小(引き付け範囲・効果は不変)。',
