@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1703',
+    items: [
+      '開発: 監査の裁定(直す10件=バーサーカー全攻撃化/ボマー・エクスプローダー拡大/救難信号の鞭・分身対応/ゴールドラッシュ永続化ほか)+センサー地雷の設置CD10秒を仕様書化(§6.10 M33)。実装はこれから。',
+    ],
+  },
+  {
     version: '0.25.1702',
     items: [
       '開発: スキル×サブウェポンの適用関係を全数監査し、マトリクスと裁定リスト18件(漏れ候補・非対称・説明ズレ)を文書化(SKILL_SUBWEAPON_MATRIX.md)。ゲーム変更なし・修正は裁定後。',
