@@ -134,7 +134,7 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { decideBotInput, pickupSeekInput, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
+import { decideBotInput, pickupSeekInput, adjustBotForMines, createRusherTrackState, BOT_PERSONAS, type BotPersona } from '../utils/playtestBot';
 import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
 import { runAngelBossTick, tickAngelBossFires, createAngelBossState, type AngelSfx } from '../utils/angelBossTick';
 import { setPuzzleDebug, getPuzzleDebug } from '../utils/puzzleState';
@@ -1479,10 +1479,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ? RANGE_BY_CATEGORY[botGunForRange.category as keyof typeof RANGE_BY_CATEGORY]
                 : undefined)
           : null;
-        const inputState = botDecision
-          ? pickupSeekInput(BOT_PERSONA as BotPersona, botDecision.input,
-              player.x + player.width / 2, player.y + player.height / 2, pickups)
-          : touchInputState;
+        // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。?bot無しの通常プレイは不変)。
+        const botMineAdj = botDecision
+          ? adjustBotForMines(
+              pickupSeekInput(BOT_PERSONA as BotPersona, botDecision.input,
+                player.x + player.width / 2, player.y + player.height / 2, pickups),
+              botDecision.wantsMelee,
+              player.x + player.width / 2, player.y + player.height / 2,
+              loopState.breakableProps.filter(p => p.type === 'mine'))
+          : null;
+        const inputState = botMineAdj ? botMineAdj.input : touchInputState;
         const danceTest = loopState.danceTestMode; // 仮: 練習モードは敵を一切スポーンしない
         const indoor = loopState.indoorMode;       // 屋内ステージ: 自動湧き/wave/城/死神を止め、固定敵のみ
         const labTheme = loopState.stageTheme === 'lab'; // 研究所スキン: 湧く敵をラボ用ゾンビのみにする
@@ -3808,7 +3814,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 移動のみ MOVE_SPEED_MULT 倍速(演出/進行は等速のまま=deltaTimeを据え置き)。
         movePlayer(inputState, deltaTime * MOVE_SPEED_MULT);
         // M26-L(§6.3): ボットの近接(指離しカウンター)/武器切替。ヘッドレス(playtestDriver)と同じ操作を実機で行う。
-        if (botDecision?.wantsMelee) useGameStore.getState().triggerCounter();
+        if (botMineAdj?.wantsMelee) useGameStore.getState().triggerCounter(); // M34: 卵叩き(wantsMelee)も合成後の値を使う
         if (botDecision?.wantsWeaponSwitch) {
           const botPlayer = useGameStore.getState().player;
           const botGuns = getGuns(botPlayer);

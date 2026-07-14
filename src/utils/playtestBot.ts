@@ -114,6 +114,66 @@ const RUSHER_ORIGIN_EPS = 4; // 原点にごく近い間は半径方向が不安
 // 保つため、射程の解決は呼び出し側=playtestDriver/useGameLoopの責務にする)。
 const KITER_DEFAULT_RANGE = 176;
 
+// M34(§6.11): 緑卵(地雷=breakableProps type='mine')を「避ける/叩く」。ボット入力のみの後段補正で、
+// 通常プレイ・敵AI・卵の仕様には一切触れない。呼び出し側(playtestDriver/useGameLoopのbotブロック)が
+// ペルソナ判断+拾い歩き(pickupSeekInput)の後にこれを通す。
+// - 叩く: 最寄りの卵が近接リーチ内(接触判定より外の安全距離=MINE_SMASH_DIST)なら wantsMelee=true
+//   (スイングは全方位=breakPropsAlongが卵を1ヒットで割る)。叩ける距離なら叩く優先(反発合成はしない)。
+// - 避ける: 移動中のみ、進行方向の前方〜近傍(MINE_AVOID_RADIUS)の卵に対し「卵と反対側の直交方向」を
+//   移動方向に合成して45°逸れる(8方向入力で確実に効く反発の実装形)。後方の卵は無視(既に離れている)。
+//   静止判断(stationary/kiterのバンド内静止等)は動かさない=ペルソナ不変。
+export interface MinePropLike { footX: number; footY: number }
+export const MINE_AVOID_RADIUS = 70; // 反発を効かせる距離(px・叩き台)
+export const MINE_SMASH_DIST = 60;   // これ以内なら叩いて割る(接触より外・近接リーチ74内の安全距離・叩き台)
+
+export interface MineAdjustResult { input: InputState; wantsMelee: boolean }
+
+export const adjustBotForMines = (
+  input: InputState,
+  wantsMelee: boolean,
+  pcx: number,
+  pcy: number,
+  mines: readonly MinePropLike[],
+  avoidRadius = MINE_AVOID_RADIUS,
+  smashDist = MINE_SMASH_DIST,
+): MineAdjustResult => {
+  if (mines.length === 0) return { input, wantsMelee };
+  // 最寄りの卵(叩く判定用)。
+  let nearestD = Infinity;
+  for (const m of mines) {
+    const d = Math.hypot(m.footX - pcx, m.footY - pcy);
+    if (d < nearestD) nearestD = d;
+  }
+  // 叩ける距離なら叩く(優先)。移動入力はそのまま(スイングは移動と独立・全方位)。
+  if (nearestD <= smashDist) return { input, wantsMelee: true };
+  // 避ける: 移動していない時は触らない(ペルソナの静止判断を尊重)。
+  const mx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const my = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  if (mx === 0 && my === 0) return { input, wantsMelee };
+  const ml = Math.max(0.001, Math.hypot(mx, my));
+  const dx = mx / ml, dy = my / ml;
+  // 前方(進行方向側)〜近傍の卵に対し、卵のいる側と反対の「横」へ舵を切る(反発の後ろ向き成分は
+  // 8方向入力(dirInputの0.3閾値)ではほぼ消えるため、確実に曲がる直交ステアで避ける)。
+  let steer = 0; // Σ sign(cross)×重み。正=卵が右側寄り→左(上)へ、負=卵が左側寄り→右(下)へ
+  for (const m of mines) {
+    const tx = m.footX - pcx, ty = m.footY - pcy; // プレイヤー→卵
+    const d = Math.hypot(tx, ty);
+    if (d >= avoidRadius || d < 0.001) continue;
+    const front = dx * (tx / d) + dy * (ty / d);
+    if (front <= 0) continue; // 後方の卵は避けない(既に離れる向き=蛇行しない)
+    const cross = dx * (ty / d) - dy * (tx / d); // 正=卵が進行の右側(画面座標y下向き)
+    steer += (cross >= 0 ? 1 : -1) * front * (1 - d / avoidRadius + 0.5);
+  }
+  if (steer === 0) return { input, wantsMelee };
+  // 卵と反対側の直交方向を等重で合成=進行を保ったまま45°逸れる(決定的)。
+  const lx = steer > 0 ? dy : -dy;
+  const ly = steer > 0 ? -dx : dx;
+  const cx = dx + lx;
+  const cy = dy + ly;
+  const cl = Math.max(0.001, Math.hypot(cx, cy));
+  return { input: dirInput(cx / cl, cy / cl), wantsMelee };
+};
+
 export const decideBotInput = (
   persona: BotPersona,
   player: Player,

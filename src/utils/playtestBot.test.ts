@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS } from './playtestBot';
+import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
+  adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 
@@ -124,5 +125,63 @@ describe('pickupSeekInput (M26 Step1: 手空き時の拾い)', () => {
   });
   it('maxDistより遠いピックアップは無視する', () => {
     expect(pickupSeekInput('kiter', IDLE, 0, 0, [{ x: 5000, y: 5000 }])).toEqual(IDLE);
+  });
+});
+
+// M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正)。
+describe('adjustBotForMines (M34: 緑卵を避ける/叩く)', () => {
+  const RIGHT = { up: false, down: false, left: false, right: true };
+  const STILL = { up: false, down: false, left: false, right: false };
+
+  it('卵が無ければ入力もwantsMeleeも不変(同一参照)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, []);
+    expect(r.input).toBe(RIGHT);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('叩く: 最寄りの卵がMINE_SMASH_DIST(60)以内ならwantsMelee=true・移動入力は不変(叩く優先)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 50, footY: 0 }]);
+    expect(r.wantsMelee).toBe(true);
+    expect(r.input).toBe(RIGHT); // 反発合成はしない(叩ける距離なら叩く)
+    expect(MINE_SMASH_DIST).toBe(60);
+  });
+
+  it('避ける: 前方(進行方向)の卵は反発で進路が曲がる(右進行+右前方の卵→上下成分が付く)', () => {
+    // 卵は右65px・SMASH(60)の外・AVOID(70)の内。y をわずかに下へずらし反発が上へ出るように。
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 65, footY: 6 }]);
+    expect(r.wantsMelee).toBe(false);
+    expect(r.input).not.toEqual(RIGHT); // 直進のままではない=曲がった
+    expect(r.input.up).toBe(true);      // 卵の下側(footY=+6)を避けて上へ逸れる
+    expect(MINE_AVOID_RADIUS).toBe(70);
+  });
+
+  it('後方の卵は避けない(既に離れる向き=蛇行しない)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: -65, footY: 0 }]);
+    expect(r.input).toBe(RIGHT);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('静止中(移動入力なし)は動かさない=stationary/バンド内静止のペルソナ判断を尊重(smash距離外)', () => {
+    const r = adjustBotForMines(STILL, false, 0, 0, [{ footX: 65, footY: 0 }]);
+    expect(r.input).toBe(STILL);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('真正面の卵でも決定的に逸れる(cross=0は右側扱い→上へ45°)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 62, footY: 0 }]);
+    expect(r.wantsMelee).toBe(false);
+    expect(r.input.up).toBe(true);    // 上へ逸れる
+    expect(r.input.right).toBe(true); // 前進成分は保つ(45°)
+  });
+
+  it('卵が進行の左上側なら下へ逸れる(反対側ステア)', () => {
+    const r = adjustBotForMines(RIGHT, false, 0, 0, [{ footX: 62, footY: -10 }]);
+    expect(r.input.down).toBe(true);
+    expect(r.input.right).toBe(true);
+  });
+
+  it('wantsMeleeが元からtrueなら維持される(敵への近接判断を消さない)', () => {
+    const r = adjustBotForMines(RIGHT, true, 0, 0, [{ footX: 200, footY: 200 }]);
+    expect(r.wantsMelee).toBe(true);
   });
 });

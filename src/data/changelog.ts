@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1713',
+    items: [
+      '開発: テストボットが緑卵(地雷)を避けて歩き、近接リーチ内なら叩いて割るようになりました(?botモード/ヘッドレステスト専用の改善。通常プレイ・敵・卵の仕様は一切変わりません)。',
+    ],
+  },
+  {
     version: '0.25.1712',
     items: [
       '開発: テスト用ボットAIの改善仕様(緑卵を避ける/近接で叩き割る)を設計書化(§6.11 M34)。通常プレイへの影響なし。',

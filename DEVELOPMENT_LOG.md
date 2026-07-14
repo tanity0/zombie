@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.1713 — M34実装: ボットAI改善=緑卵(地雷)を避ける/叩く(§6.11)【2026-07-15 00:12 JST】
+- **PACING_PUZZLE.md §6.11 バッチM34**(社長指示v0.25.1711)を実装チャット(Sonnet)が実装。
+  **ボット入力(playtestBot)のみの変更で、通常プレイ(?bot無し)・敵AI・卵の仕様は1バイトも不変。**
+- **純関数 `adjustBotForMines`**(src/utils/playtestBot.ts・ペルソナ判断+拾い歩きの「後段補正」):
+  - **叩く(優先)**: 最寄りの卵(breakableProps type='mine')が `MINE_SMASH_DIST=60px` 以内なら
+    `wantsMelee=true`(近接スイングの breakPropsAlong が卵を1ヒットで安全に割る=接触爆発しない。
+    近接リーチ74内・接触判定より外の安全距離)。移動入力は変えない。
+  - **避ける**: 移動中のみ、前方(進行方向側)`MINE_AVOID_RADIUS=70px` 以内の卵に対し「卵と反対側の
+    直交方向」を等重合成して45°逸れる(反発ベクトルの後ろ向き成分は8方向入力の0.3閾値でほぼ消えるため、
+    確実に曲がる直交ステア形で実装)。後方の卵は無視(蛇行しない)。真正面(cross=0)は決定的に上側へ。
+  - 静止判断(stationary/kiterのバンド内静止)は動かさない=既存ペルソナの挙動を壊さない。
+- **両ハーネス配線**: playtestDriver(ヘッドレス)=decideBotInput→pickupSeekInput→adjustBotForMines→
+  movePlayer/triggerCounter。useGameLoopのbotブロック(実機?bot)=同順で合成し、wantsMeleeも合成後の値を使用。
+- **自己点検**: 憲法第4条・第5条に非抵触(ボットテスト系のみ。シーン/台本/ゲーム挙動不干渉)。
+- 負荷スコア: **1/10**(ボット時のみ卵配列の距離判定/tick。通常プレイは0=botDecisionがnullなら旧経路そのまま)。
+- 検証: `npm run typecheck` クリーン / eslint(4ファイル)クリーン / `playtestBot.test.ts` **22件パス**
+  (adjustBotForMines 8件新規: 叩く優先・前方ステア方向・後方無視・静止尊重・真正面の決定性・wantsMelee維持) /
+  **`npm run playtest`(SIM_FUZZ フル)7件パス・全10ラン[OK]=survived 900s・地雷死0**(改善前のテスト結果#1は
+  地雷死2/6)。実機確認ポイント: `?bot`で緑卵の多い抱卵型地帯を通過する際の迂回/接近時のスイング。
+- Files: `src/utils/playtestBot.ts`, `src/utils/playtestBot.test.ts`, `src/utils/playtestDriver.ts`,
+  `src/hooks/useGameLoop.ts`, `package.json`, `src/data/changelog.ts`, `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1712 — M34仕様書化: ボットAI改善=緑卵を避ける/叩く(Sonnetへ発注)【2026-07-14 23:50 JST】
 - **社長指示**「AI改善として、緑の卵は避けるか叩くかしよう」(テスト結果#1の地雷死2/6を受けて)。
 - **§6.11 M34**: 前方70px程度の卵は移動ベクトルに反発合成で迂回/近接リーチ内なら`wantsMelee`で叩き割る

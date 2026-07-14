@@ -46,7 +46,7 @@ import {
   computeDirCountCap, computeEnemyCap,
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
-import { decideBotInput, pickupSeekInput, type BotPersona, type RusherTrackState } from './playtestBot';
+import { decideBotInput, pickupSeekInput, adjustBotForMines, type BotPersona, type RusherTrackState } from './playtestBot';
 import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
@@ -355,9 +355,15 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   // 手が空いているtickは近くのドロップ(XP/弾薬)を拾いに歩く(M26 Step1・stationaryは除外)。
   const moveInput = pickupSeekInput(persona, decision.input,
     player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().pickups);
-  useGameStore.getState().movePlayer(moveInput, dt);
+  // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。ペルソナ判断+拾い歩きの後に合成)。
+  const mineAdj = adjustBotForMines(
+    moveInput, decision.wantsMelee,
+    player.x + player.width / 2, player.y + player.height / 2,
+    useGameStore.getState().breakableProps.filter(p => p.type === 'mine'),
+  );
+  useGameStore.getState().movePlayer(mineAdj.input, dt);
   autoFireGun();
-  if (decision.wantsMelee) useGameStore.getState().triggerCounter();
+  if (mineAdj.wantsMelee) useGameStore.getState().triggerCounter();
   if (decision.wantsWeaponSwitch) cycleActiveGun();
 
   useGameStore.getState().updateEnemies(dt);
