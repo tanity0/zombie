@@ -23,7 +23,10 @@ if (baseUrl === 'local') {
     console.log('[setup] npm run build(最新HEADをテストするため毎回ビルド・約20-30秒)');
     execSync('npm run build', { cwd: root, stdio: 'inherit' });
   }
-  server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { cwd: root, stdio: 'ignore', detached: false });
+  // Windows対応(テストチャット報告v0.25.1721): npxの実体はnpx.cmdのため素のspawnはENOENT(-4058)で落ちる。
+  // shell:trueで解決し、errorイベントも拾って診断可能にする。
+  server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { cwd: root, stdio: 'ignore', detached: false, shell: true });
+  server.on('error', (e) => console.error('[setup] previewサーバのspawnに失敗:', e.message));
   let up = false;
   for (let i = 0; i < 30 && !up; i++) {
     try { const r = await fetch('http://localhost:4173/zombie/'); up = r.ok; } catch { /* retry */ }

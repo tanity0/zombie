@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1725',
+    items: [
+      '開発: テスト結果#2を受領・分析(6構成完走・エラー0。オーバークロック成立率=理論値30%と完全一致・センサー地雷チャージ制も理論値どおり・援護射撃が2回連続で突出)。実走スクリプトのWindows起動バグも修正。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1724',
     items: [
       '開発: ボットのカウンター反応プロファイルを裁定反映(boar=200ms/75%を付与・rusherは低スキル再現の意図を守り無効へ訂正)。通常プレイ影響なし。',
