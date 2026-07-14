@@ -72,6 +72,7 @@ import {
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
+import { pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { computeFirstAidKitTick, isFirstAidKitEmpty, type FirstAidKitAmmoType } from '../utils/firstAidKit';
 import { safeThrowDirection } from '../utils/throwDir';
 import {
@@ -4715,7 +4716,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 id: Date.now(),
                 x: entry.x, y: entry.y,
                 dirX: entry.dirX, dirY: entry.dirY,
-                soldierIndex: Math.floor(Math.random() * 8), // 護衛軍人スプライト(0..7)を流用
+                // 絵=今回出撃していない3クラスからランダム(§6.9 M32)。救難信号と同じ選定関数を流用
+                // =出撃クラスは絶対に出ない(pickRescueSignalAllyClassが現在クラスを除外)。
+                allyClass: pickRescueSignalAllyClass(subWeaponPlayer.characterClass),
                 spawnedAt: gameTime,
                 firedAt: 0,
                 targetEnemyId: ssTarget.id,

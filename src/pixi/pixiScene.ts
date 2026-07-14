@@ -2711,7 +2711,7 @@ export class PixiScene {
     this.syncBaseSites(s.baseSites, now, s.safeBaseId);
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
-    this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(画面縁のスライドイン→発射→後退)
+    this.drawSupportSniper(s.supportSniperNpc, s.player, s.gameTime); // 援護射撃NPC(非出撃クラスの立ち絵・画面縁のスライドイン→発射→後退)
     this.syncBossCorpse(s.bossCorpse, now);
     // 深層域グレーディング(退色セピア・描画のみ)。逆再生BGMと同じ境界・約1秒フェード。
     this.syncDeepZoneGrade(
@@ -6832,11 +6832,13 @@ export class PixiScene {
     }
   }
 
-  // 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28)のNPC。護衛軍人スプライト(ESCORT_SPRITE_BASE)を
-  // 流用した1枚のプールSprite。位置/タイミングは sim 側の supportSniperNpc(縁の交点+向き+打刻)から
-  // ここで補間するだけ(書き込みなし): スライドイン250ms(縁の外30px→内60px・easeOut+フェードイン)→発射→
-  // 向きを変えずに同じ軸で後退350ms(easeIn+フェードアウト)。同時1人・イベント駆動=軽い(強glow不使用)。
-  private drawSupportSniper(npc: SupportSniperNpcState | null, gameTime: number) {
+  // 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28)のNPC=今回出撃していないクラスのキャラ立ち絵
+  // (§6.9 M32で護衛軍人スプライトから差し替え。クラス→テクスチャは救難信号アライと同じ
+  // playerTextureName 流用=クラスID↔ファイル名対応を手書きしない)。1枚のプールSprite。
+  // 位置/タイミングは sim 側の supportSniperNpc(縁の交点+向き+打刻)からここで補間するだけ(書き込みなし):
+  // スライドイン250ms(縁の外30px→内60px・easeOut+フェードイン)→発射→向きを変えずに同じ軸で
+  // 後退350ms(easeIn+フェードアウト)。同時1人・イベント駆動=軽い(強glow不使用)。
+  private drawSupportSniper(npc: SupportSniperNpcState | null, player: Player, gameTime: number) {
     let sp = this.supportSniperSprite;
     if (!npc) { if (sp) sp.visible = false; return; }
     if (!sp) {
@@ -6845,8 +6847,8 @@ export class PixiScene {
       this.L.actorLayer.addChild(sp);
       this.supportSniperSprite = sp;
     }
-    const base = ESCORT_SPRITE_BASE[npc.soldierIndex] ?? 'rescue/shooter';
-    const tex = getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
+    const fakeAlly = { ...player, characterClass: npc.allyClass };
+    const tex = getTexture(playerTextureName(fakeAlly, 0, false)) ?? getTexture('player');
     if (!tex) { sp.visible = false; return; }
     // スライド位置: 縁の交点(npc.x/y)を基準に、向き(dir=敵の方向)の軸上で 外(-START_OUT)→内(+INSET)。
     let offset: number;
@@ -6865,7 +6867,9 @@ export class PixiScene {
     const px = npc.x + npc.dirX * offset;
     const py = npc.y + npc.dirY * offset;
     sp.texture = tex;
-    const sc = this.humanNpcScale(tex.width, tex.height, py); // プレイヤーと同寸(護衛と同じ)
+    // スケール=救難信号アライと同じ playerBaseScale(幅基準・プレイヤー本体と同寸)×遠近。
+    const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
+    const sc = playerBaseScale(fakeAlly, tex, boxW, boxW) * this.depthScale(py);
     const faceSign = npc.dirX >= 0 ? 1 : -1; // 向き=敵の方向。発射後も変えない(そのまま後退)
     sp.scale.set(sc * faceSign, sc);
     sp.alpha = alpha * this.horizonActorAlpha(py);

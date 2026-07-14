@@ -10,6 +10,8 @@ export const SUPPORT_SNIPER_SLIDE_OUT_MS = 350;  // スライドアウト(発射
 export const SUPPORT_SNIPER_SLIDE_START_OUT = 30; // スライド開始点=縁の外側この距離(px・叩き台)
 export const SUPPORT_SNIPER_INSET = 60;           // 発射位置=縁の内側この距離(px・叩き台。上縁でも絵が見える程度)
 
+import type { CharacterClass } from '../types/game';
+
 // 画面縁に出現するNPC(同時に1人のみ)。x/y=「狙う敵→プレイヤー」延長線と画面縁の交点。
 // スライドの始点/終点は描画側が dir と定数(START_OUT/INSET)から導出する(状態は増やさない)。
 export interface SupportSniperNpcState {
@@ -18,7 +20,9 @@ export interface SupportSniperNpcState {
   y: number;
   dirX: number;         // NPCの向き(狙う敵の方向・単位ベクトル。スライドはこの軸で前進/後退)
   dirY: number;
-  soldierIndex: number; // 護衛軍人スプライトの流用index(0..7)
+  // 絵=今回出撃していない3クラスからランダム(§6.9 M32・社長指示で護衛軍人スプライトから差し替え)。
+  // 選定は pickRescueSignalAllyClass(utils/rescueSignal.ts)を流用=出撃クラスは絶対に出ない。
+  allyClass: CharacterClass;
   spawnedAt: number;    // gameTime(ms)。spawnedAt+SLIDE_IN_MS で発射
   firedAt: number;      // 0=未発射。>0=発射時刻(+SLIDE_OUT_MS で消滅)
   targetEnemyId: string;

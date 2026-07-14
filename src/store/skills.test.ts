@@ -6,7 +6,8 @@ import { skillMeleeComboMult, SLASHER_MULTS, SLASHER_MAX_HITS,
   skillAttackShooterGunMult, skillRunnerSpeedMult, skillSeekerProcChance, isSeekerActive,
   skillMagnetAmmoRangeMult, skillOverclockChance, skillLastMagazineMult,
   skillWarmUpSpeedMult, skillWarmUpReloadMult, skillWarmUpCritBonus, WARM_UP_DURATION_MS,
-  RUNNER_RELOAD_BONUS_MULT } from './gameStore';
+  RUNNER_RELOAD_BONUS_MULT, skillScrapBuilderGainMult, applyRescueSignalProc } from './gameStore';
+import { vi } from 'vitest';
 import { checkPlayerPickupCollisions } from '../utils/collisionUtils';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
@@ -174,6 +175,51 @@ describe('last-magazine: final round damage mult (×2.0/2.5/3.0) (§6.8 M31)', (
     expect(skillLastMagazineMult(withSkill('last-magazine', 3), 2)).toBeCloseTo(1.0);
     expect(skillLastMagazineMult(withSkill('last-magazine', 3), 0)).toBeCloseTo(1.0);
     expect(skillLastMagazineMult({ skills: [], skillLevels: {} } as unknown as Player, 1)).toBeCloseTo(1.0);
+  });
+});
+
+describe('scrap-builder: scrap pickup gain mult (+10/20/30%) (§6.9 M32)', () => {
+  it('scales by level and is ×1.0 without the skill(初期スクラップ効果は別枠=この関数は取得量のみ)', () => {
+    expect(skillScrapBuilderGainMult({ skills: [], skillLevels: {} } as unknown as Player)).toBeCloseTo(1.0);
+    expect(skillScrapBuilderGainMult(withSkill('scrap-builder', 1))).toBeCloseTo(1.1);
+    expect(skillScrapBuilderGainMult(withSkill('scrap-builder', 2))).toBeCloseTo(1.2);
+    expect(skillScrapBuilderGainMult(withSkill('scrap-builder', 3))).toBeCloseTo(1.3);
+  });
+  it('収集式(Math.round=四捨五入)と合成した取得量の例: 5スクラップ×Lv3=7(6.5→7)', () => {
+    const gain = (value: number, lv: number) =>
+      Math.max(1, Math.round(value * 1 * skillScrapBuilderGainMult(withSkill('scrap-builder', lv))));
+    expect(gain(5, 1)).toBe(6);  // 5.5 → 6
+    expect(gain(5, 2)).toBe(6);  // 6.0
+    expect(gain(5, 3)).toBe(7);  // 6.5 → 7(四捨五入)
+    expect(gain(1, 3)).toBe(1);  // 1.3 → 1
+  });
+});
+
+describe('rescue-signal: 発動中(アライ存命中)は再発動しない (§6.9 M32)', () => {
+  // applyRescueSignalProc(get, player, dmg, hitIds, pcx, pcy)。Math.random=0固定=確率は必ず成功side。
+  const enemy = { id: 'e1', x: 30, y: 0, width: 20, height: 20, health: 10 };
+  const mkGet = (rescueAllies: unknown[], spawn: (...args: unknown[]) => void) =>
+    (() => ({ enemies: [enemy], rescueAllies, spawnRescueAlly: spawn })) as never;
+  const player = {
+    ...withSkill('rescue-signal', 3),
+    characterClass: 'warrior', lastDirection: { x: 1, y: 0 },
+  } as unknown as Player;
+
+  it('アライ不在なら発動する(前提確認)/存命中は発動しない/退場後は再発動する', () => {
+    const rand = vi.spyOn(Math, 'random').mockReturnValue(0); // 抽選は常に成功側
+    try {
+      const spawnA = vi.fn();
+      applyRescueSignalProc(mkGet([], spawnA), player, 10, ['e1'], 0, 10);
+      expect(spawnA).toHaveBeenCalledTimes(1); // 不在=発動
+      const spawnB = vi.fn();
+      applyRescueSignalProc(mkGet([{ id: 'ally-1' }], spawnB), player, 10, ['e1'], 0, 10);
+      expect(spawnB).not.toHaveBeenCalled(); // 存命中=再発動しない(§6.9)
+      const spawnC = vi.fn();
+      applyRescueSignalProc(mkGet([], spawnC), player, 10, ['e1'], 0, 10);
+      expect(spawnC).toHaveBeenCalledTimes(1); // 全員退場後=再発動可
+    } finally {
+      rand.mockRestore();
+    }
   });
 });
 

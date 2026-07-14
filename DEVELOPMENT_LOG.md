@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.1701 — M32実装: スキル/サブ調整3点(スクラップビルダー取得量/援護射撃NPC非出撃キャラ/救難信号重複禁止)(§6.9)【2026-07-14 20:21 JST】
+- **PACING_PUZZLE.md §6.9 バッチM32**(仕様確定済み)を実装チャット(Sonnet)が実装。3点まとめて1コミット。
+  1. **スクラップビルダー追記**: スクラップ(strap)ピックアップ収集時の取得量 ×1.1/1.2/1.3(Lv)。
+     新純関数 `skillScrapBuilderGainMult` を収集式(collectPickup case 'strap')の既存倍率群
+     (scrapMult×装備scrapBonus×ゴールドラッシュ)へ乗算。端数=既存の Math.round(四捨五入)。
+     既存効果(出撃開始時の初期スクラップ+50/100/150)は別枠のまま不変。SKILLS/SKILL_LEVEL_INFOの説明文更新
+     (Lv別表記=初期+50・取得+10% 等)。gameStats.strapsCollected は従来どおり生値(挙動不変)。
+  2. **援護射撃NPC=非出撃クラスのキャラ絵**: SupportSniperNpcState.soldierIndex → `allyClass: CharacterClass`
+     へ差し替え。選定=救難信号と同じ `pickRescueSignalAllyClass`(現在クラスを除外=出撃クラスは絶対に出ない・
+     発射ごとにランダム)。描画=護衛軍人スプライト→ `playerTextureName`+`playerBaseScale` 流用
+     (救難信号アライと同方式=クラスID↔ファイル名対応を手書きしない)。挙動(スライドイン→発射→後退)不変。
+  3. **救難信号の重複発動禁止**: `applyRescueSignalProc` に「`rescueAllies` が存命中は発動しない」ガードを
+     1行追加(全員退場=tickRescueAlliesの寿命回収で空になれば再発動可)。発動率・対象選定・CD等の他仕様不変。
+     テストのため関数をexport化(挙動変更はガード1行のみ)。
+- **自己点検**: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に非抵触(任意装備スキル/サブの調整のみ)。
+  未所持/未装備は完全不変(①は中立×1・②は装備時のみの絵替え・③は発動時のみのガード)。
+- 負荷スコア: **1/10**(①倍率1個 ②絵の参照先変更のみ ③長さ判定1回)。
+- 検証: `npm run typecheck` クリーン / eslint(触った6ファイル)クリーン / `skills.test.ts` **32件パス**(+3新規:
+  取得量倍率+四捨五入例(5×Lv3=6.5→7)/救難信号ガード=不在発動・存命中不発動・退場後再発動をMath.randomモックで固定) /
+  `npx vitest related --run`=7ファイル104件パス(M9ボットスモーク含む)。
+  実機確認ポイント: スクラップ取得の増分/援護射撃のNPCが自キャラ以外の3人からランダムで出る(絵のスケール・
+  左右向き)/救難信号がアライ表示中に重ならない。
+- Files: `src/store/gameStore.ts`, `src/store/skills.test.ts`, `src/utils/supportSniper.ts`,
+  `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `src/data/campaign.ts`,
+  `package.json`, `src/data/changelog.ts`, `PACING_PUZZLE.md`, `DEVELOPMENT_LOG.md`。
+
 ## v0.25.1700 — M32仕様書化: スキル/サブ調整3点(Sonnetへ発注)【2026-07-14 20:14 JST】
 - **§6.9 M32**: ①スクラップビルダーに**取得量+10/20/30%**追加(既存の初期スクラップ+50/100/150は不変)
   ②援護射撃のNPC=**非出撃3クラスからランダム**(絵は既存クラススプライト流用) ③救難信号=**発動中は再発動しない**

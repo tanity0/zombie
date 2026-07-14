@@ -1007,6 +1007,12 @@ export const skillRunnerSpeedMult = (player: Player, reloading = false): number 
   if (!lv) return 1;
   return (1 + [0, 0.10, 0.15, 0.20][lv]) * (reloading ? RUNNER_RELOAD_BONUS_MULT : 1);
 };
+// スクラップビルダー追記(§6.9 M32): スクラップ(strap)ピックアップ収集時の取得量 ×1.1/1.2/1.3(Lv)。
+// 既存効果(出撃開始時の初期スクラップ+50/100/150)は別枠のまま不変。端数は収集側の Math.round(四捨五入)。
+export const skillScrapBuilderGainMult = (player: Player): number => {
+  const lv = skillLevel(player, 'scrap-builder');
+  return lv ? [1, 1.1, 1.2, 1.3][lv] : 1;
+};
 // マグネット: 弾薬ピックアップのみ拾得矩形を中心基準で ×1.1/1.2/1.3(Lv)。弾薬以外は従来どおり(§6.8 M31)。
 export const skillMagnetAmmoRangeMult = (player: Player): number => {
   const lv = skillLevel(player, 'magnet');
@@ -1836,7 +1842,8 @@ const grantMeleeKillRewards = (
 // ダメージは「現在の近接ダメージそのまま(倍率1)」= 呼び出し側が渡す baseMeleeDamage を素通しする
 // (crit/コンボ倍率/skillOutgoingDamageMultは一切乗せない。この「倍率1・単純な戦力アップ」が
 // このスキルの識別=分身(shadow-clone、フル近接複製)との差別化・CLAUDE.md仕様変更ルールに基づき変更禁止)。
-const applyRescueSignalProc = (
+// (§6.9 M32でexport化=発動中ガードのユニットテスト用。挙動は従来+ガード1行のみ)
+export const applyRescueSignalProc = (
   get: () => GameState,
   player: Player,
   baseMeleeDamage: number,
@@ -1846,7 +1853,10 @@ const applyRescueSignalProc = (
 ) => {
   if (hitEnemyIds.length === 0) return;
   const lvl = skillLevel(player, 'rescue-signal');
-  if (!lvl || Math.random() >= rescueSignalProcChance(lvl)) return;
+  if (!lvl) return;
+  // §6.9 M32: 発動中(援護アライが出ている間)は再発動しない(全員退場後に再発動可・キャラ被り防止)。
+  if (get().rescueAllies.length > 0) return;
+  if (Math.random() >= rescueSignalProcChance(lvl)) return;
   // 索敵はプレイヤーからハンドガン射程(RANGE_BY_CATEGORY.handgun=176px)以内のみ。範囲内に生存中の敵が
   // いなければ target=null=発動スキップ(社長指示v0.25.1615「ハンドガン範囲までしか索敵しない/いなければ発動しない」)。
   const target = selectRescueSignalTarget(hitEnemyIds[0], get().enemies, pcx, pcy, RANGE_BY_CATEGORY.handgun);
@@ -7694,7 +7704,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           player: {
             ...state.player,
             // スクラップ獲得数アップ(パッシブ): 取得量を scrapMult 倍に(+30%/回)。
-            straps: state.player.straps + Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * goldRush))
+            // スキル: スクラップビルダー = 取得量 ×1.1/1.2/1.3(Lv・§6.9 M32。四捨五入は既存のMath.round)。
+            straps: state.player.straps + Math.max(1, Math.round(pickup.value * ((state.player.scrapMult ?? 1) + (state.player.equipBonus?.scrapBonus ?? 0)) * goldRush * skillScrapBuilderGainMult(state.player)))
           },
           gameStats: {
             ...state.gameStats,
