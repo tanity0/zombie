@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1737 — 援護射撃の攻撃力弱体(マグナム基準×1/2・社長裁定)【2026-07-15 18:41 JST】
+- 社長裁定「マグナム基準で、計算後に半分に割って」を反映(§6.5に追記):
+  `buildSupportSniperShot`(weaponUtils.ts)の shotDamage を
+  `CATALOG['rifle-t1'].damage(30) × 職/スキル/装備倍率 × 0.5` に変更(旧=rifle-t2の55そのまま)。
+  実効ベース15=旧比約27%。**飛翔特性(速度1000/貫通)・クリ率・命中時スキル扱いは
+  スナイパー(rifle-t2)のまま**=攻撃力の基準だけ差し替え(裁定の範囲外は触らない)。
+- 検証: typecheck / related 134件green。実機の体感は社長確認へ。
+- 天秤: 1式1定数の変更=Fable直接。
+- Files: `src/utils/weaponUtils.ts`, `PACING_PUZZLE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1736 — ステージ5の遠景森2を半分に縮小(社長指示)【2026-07-15 18:32 JST】
 - `STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.21`(既定0.42の半分)を新設し、layoutNearHorizonの高さ比を
   ステージ別に分岐(lab=0.17の前例と同方式)。applyNearHorizonが現在キーを保持し、resize経由の

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1737',
+    items: [
+      '援護射撃: 攻撃力を弱体化(基準をスナイパー55→マグナム30に変更し、さらに計算後1/2=実効15)。弾速・貫通などの飛翔特性は従来どおり。',
+    ],
+  },
+  {
     version: '0.25.1736',
     items: [
       'ステージ5: 遠景手前の森2(戦場の残骸の帯)を半分のサイズに縮小。',

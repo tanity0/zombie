@@ -388,12 +388,15 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[]): Pr
   return projectiles;
 };
 
-// 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28): プレイヤーのスナイパー(rifle-t2)と同性能の
-// 1発を、NPC位置から「既存のプレイヤー弾」として生成する。fireWeapon の生成時計算と同じ式
+// 援護射撃(support-sniper・PACING_PUZZLE.md §6.5 M28): スナイパー射撃の1発を、NPC位置から
+// 「既存のプレイヤー弾」として生成する。fireWeapon の生成時計算と同じ式
 // (素ダメージ=スカベンジャー/アタックシューター/装備倍率、クリ率=基礎+パッシブ+装備+クイックマガジン+弁慶)を使い、
 // weaponType/weaponKey も rifle/rifle-t2 に揃える=命中時のスキル倍率(クリ/スナイパー/コンボマスター)・
 // 貫通(passthrough)が通常のプレイヤー弾と完全に同じ扱いになる。プレイヤーの銃の状態(弾薬/リロード/
 // lastFired)には一切触れない(弾は消費しない)。副作用なし。
+// 攻撃力の基準(社長裁定v0.25.1737): ダメージだけ**マグナム(rifle-t1=30)を基準**にし、倍率計算後に
+// **1/2**(実効ベース15)。旧=スナイパー55そのままはテスト#2/#3の突出+実機「強すぎ」により弱体。
+// 飛翔特性(速度/サイズ/貫通)・クリ率・命中時のスキル扱いは従来どおりスナイパー(rifle-t2)のまま。
 export const buildSupportSniperShot = (
   player: Player,
   x: number, y: number,                       // 弾の中心の生成位置(NPCの発射位置)
@@ -403,7 +406,7 @@ export const buildSupportSniperShot = (
   const def = CATALOG['rifle-t2'];
   const size = def.projectileSize || 8;
   const speed = (def.projectileSpeed || 520) * PROJECTILE_SPEED_MULT;
-  const shotDamage = def.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1);
+  const shotDamage = CATALOG['rifle-t1'].damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player) * (player.equipBonus?.damageMult ?? 1) * 0.5;
   const quickMagCritBonus = player.quickMagCritUntil > gameTime ? 0.10 : 0;
   // ウォームアップのクリ率+20%も通常のプレイヤー弾と同じ扱いで加算(§6.8 M31)。
   // ラストマガジンは対象外(援護射撃弾は弾倉を持たない・§6.8)。
