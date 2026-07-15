@@ -140,9 +140,12 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
   return Number.isFinite(v) && v > 0 ? v : 0.17; // ステージ2既定0.17(社長指定)
 })();
-// ステージ5(戦場の残骸)だけ縮小(社長指示: v1736半分→v1738半分→v1739半分→v1741で1.5倍=0.07875)。
-const STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.07875;
-const STAGE5_NEAR_HORIZON_UP_PX = 100; // ステージ5だけ森2を上へずらす量(px・社長指示v0.25.1741)
+// ステージ5の森1/森2は実寸px指定(社長指示v0.25.1742: 比率+クランプ方式だと端末次第で
+// 倍率が効かず「大きくならない」ため、固定pxに切り替え)。底は遠景境界線(farH)基準の下オフセット。
+const STAGE5_HORIZON_FOREST_HEIGHT_PX = 150; // 森1の高さ(px)
+const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ(px)
+const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
+const STAGE5_NEAR_HORIZON_DOWN_PX = 50;      // 森2の底=境界線から下へ(px)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
@@ -1765,7 +1768,8 @@ export class PixiScene {
   // 帯が浮いたため、底を遠景の境界線(farH)に直接合わせる(社長指示v0.25.1740「遠景の境界線に合わせて」)。
   // 他ステージは従来式(重なり比+固定オフセット+lab追加下げ)のまま。
   private horizonForestY(farH: number, horizonH: number): number {
-    if (this.stage5Stage) return farH - horizonH;
+    // ステージ5: 底=境界線(farH)+20px下(社長指示v0.25.1742の実寸指定)。
+    if (this.stage5Stage) return farH + STAGE5_HORIZON_FOREST_DOWN_PX - horizonH;
     return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0);
   }
   private horizonForestHeight() {
@@ -1773,10 +1777,9 @@ export class PixiScene {
       HORIZON_FOREST_MAX_HEIGHT,
       Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
     );
-    // ステージ5だけ縮小(社長指示: v1738半分→v1739半分→v1740で1.5倍→v1741でさらに1.5倍=×0.5625)。
-    // 雪原の frontForestHeight ×2/3 と同じ前例方式。
+    // ステージ5は実寸150px固定(社長指示v0.25.1742。比率×クランプ×倍率だと端末次第で伸びないため)。
     // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
-    return this.stage5Stage ? base * 0.5625 : base;
+    return this.stage5Stage ? STAGE5_HORIZON_FOREST_HEIGHT_PX : base;
   }
 
   private frontForestHeight() {
@@ -2280,15 +2283,14 @@ export class PixiScene {
     const tex = this.L.nearHorizon.texture;
     if (!tex || tex.width <= 1 || tex.height <= 1) return;
     const farH = this.farBackdropHeight();
-    // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)、ステージ5は半分(社長指示v0.25.1736)。
-    // 他ステージは原典の0.42。
-    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO
-      : this.nearHorizonKeyNow === 'stage5' ? STAGE5_NEAR_HORIZON_HEIGHT_RATIO
-      : NEAR_HORIZON_HEIGHT_RATIO;
-    const height = this.screenH * heightRatio;
-    // ステージ5は帯を100px上へ(社長指示v0.25.1741)。他ステージは従来位置。
-    const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO
-      - (this.nearHorizonKeyNow === 'stage5' ? STAGE5_NEAR_HORIZON_UP_PX : 0);
+    // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)。他ステージは原典の0.42。
+    // ステージ5は実寸px指定(社長指示v0.25.1742): 高さ100px・底=境界線(farH)+50px下。
+    const stage5 = this.nearHorizonKeyNow === 'stage5';
+    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
+    const height = stage5 ? STAGE5_NEAR_HORIZON_HEIGHT_PX : this.screenH * heightRatio;
+    const bottom = stage5
+      ? farH + STAGE5_NEAR_HORIZON_DOWN_PX
+      : farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
     // 横オーバースキャン: 引いた時に左右が切れないよう画面より広く中央寄せ(worldGroup内=スケール対象)。
     const nhMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
     this.L.nearHorizon.width = this.screenW * ZOOM_OVERSCAN;

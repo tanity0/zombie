@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.1742 — ステージ5森1/森2を実寸px指定へ(社長指示)【2026-07-15 19:13 JST】
+- 比率×クランプ×倍率方式を廃し、ステージ5だけ固定px定数に:
+  - **森1**: 高さ`STAGE5_HORIZON_FOREST_HEIGHT_PX=150`・底=境界線(farH)+`DOWN_PX=20`下。
+  - **森2**: 高さ`STAGE5_NEAR_HORIZON_HEIGHT_PX=100`・底=境界線+`DOWN_PX=50`下。
+  旧定数(RATIO 0.07875/UP_PX 100/×0.5625)は撤去。他ステージの式は不変。
+- 背景: スマホではhorizonForestのbaseがmin120pxクランプに張り付き、倍率が実質効かなかった
+  (v1741の社長報告「大きくならなくなった」の根因)。以後この4定数のpx指定だけで調整可能。
+- 検証: typecheck green。見え方は実機で社長確認へ。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1741 — ステージ5森1さらに1.5倍+森2を1.5倍・100px上へ(社長指示)【2026-07-15 18:58 JST】
 - 森1(horizonForest): ×0.375→**×0.5625**(底は境界線アンカーのまま=v1740方式)。
 - 森2(nearHorizon): 高さ比 0.0525→**0.07875**+`STAGE5_NEAR_HORIZON_UP_PX=100`で底を100px上へ
