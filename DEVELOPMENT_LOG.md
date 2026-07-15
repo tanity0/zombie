@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.1751 — EX2日時=DAY45/03:40を暫定確定(社長裁定「そのまま とりあえず」)【2026-07-16 01:06 JST】
+- M42の★未決(stage-ex2の日時)を消化。値は据え置き=コード変更なし(§6.19・ステータス表の注記のみ更新)。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1750 — M42実装: ストーリー選択の親子構造化+出撃ページ統一(§6.19)【2026-07-16 00:53 JST】
 - `src/data/campaign.ts`: `Stage`に`day: number`/`time: string`/`locationTitle: string`を追加し、
   9ステージ全部に社長指定値(§6.19-2)を投入。stage-ex2のみ★叩き台(DAY45/03:40。社長指定はEX1件分
