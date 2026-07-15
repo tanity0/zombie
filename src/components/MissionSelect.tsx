@@ -139,6 +139,16 @@ const RARITY_TEXT: Record<SkillRarity, string> = {
   normal: 'text-white/60', rare: 'text-sky-300', super: 'text-amber-300',
 };
 
+// PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-3: ミッション種別ラベル。文字で識別できるように
+// し、色だけに依存しない(「色だけに依存せず、文字でも識別可能にする」)。stage.kind から導出する
+// (追補1のStoryMissionType 'main'/'sub'/'ex' は新設せず、既存のStage.kindで代用=マッピング確定)。
+const MISSION_TYPE_LABEL: Record<Stage['kind'], string> = { main: 'MAIN', ex: 'EX', free: 'FREE' };
+const MISSION_TYPE_BADGE_CLS: Record<Stage['kind'], string> = {
+  main: 'bg-purple-400/15 text-purple-100',
+  ex: 'bg-fuchsia-400/15 text-fuchsia-100',
+  free: 'bg-emerald-400/15 text-emerald-100',
+};
+
 // キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
 const CLASS_PORTRAIT: Record<CharacterClass, string> = {
   warrior: 'portrait-shotgun',     // ヘビーガンナー(ショットガン)=タイトルの少女
@@ -324,6 +334,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
   // ====================================================================
   // ステージ選択
+  // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1: 「日時・場所」を親ノード見出しとし、その下に
+  // ミッション種別ラベル([MAIN]/[EX])付きの子カードを縦積みする構造(旧: ステージ名を並べたフラットな
+  // 一覧)。開発コード(M1〜EX2)はここでは表示しない。
   // ====================================================================
   const renderStageSelect = () => {
     const mains = STAGES.filter(s => s.kind === 'main');
@@ -331,56 +344,70 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return (
       <>
         <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />
-        <div className="p-3 space-y-2">
-          {mains.map((stage, i) => <StageRow key={stage.id} stage={stage} index={i} />)}
+        <div className="p-3 space-y-4">
+          {mains.map((stage, i) => <StageNode key={stage.id} stage={stage} index={i} />)}
           {exs.some(s => isStageUnlocked(s, cleared)) && (
             <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">クリア後 / 隠しステージ</div>
           )}
           {exs.map((stage, i) => isStageUnlocked(stage, cleared)
-            ? <StageRow key={stage.id} stage={stage} index={mains.length + i} />
+            ? <StageNode key={stage.id} stage={stage} index={mains.length + i} />
             : <LockedExHint key={stage.id} />)}
         </div>
       </>
     );
   };
 
-  const StageRow: React.FC<{ stage: Stage; index?: number }> = ({ stage, index = 0 }) => {
+  // 日時・場所ノード(親)+ ミッション子カードの縦積み。子カードは配列でmapする構造にしておき、
+  // 将来SUBミッションが増えた時もそのままノード直下へ並べられるようにする(追補1-3「同じ日時・場所で
+  // 発生するミッションカードを縦に並べる」)。現状は各ステージに main のみ(subsは別の旧概念=未使用)。
+  const StageNode: React.FC<{ stage: Stage; index?: number }> = ({ stage, index = 0 }) => {
     const unlocked = isStageUnlocked(stage, cleared);
     const done = cleared.has(stage.id);
     const hiScore = getStageHighScore(stage.id);
+    const missions = [stage.main];
     return (
-      <button
-        type="button"
-        disabled={!unlocked}
-        onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
-        // 各選択肢を左からスッとカスケード表示。ロック行(opacity-60)はフェード終端の opacity:1 と競合するので付けない。
+      <div
+        // 各ノードを左からスッとカスケード表示(旧StageRowと同じ演出をノード単位に引き継ぐ)。
+        className={unlocked ? 'menu-item-in' : undefined}
         style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
-        className={`ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left transition-[filter] ${
-          unlocked ? 'menu-item-in active:brightness-110' : 'is-off'
-        }`}
       >
-        <span className={`shrink-0 w-11 h-11 rounded-none flex items-center justify-center text-[12px] font-bold ${
-          stage.kind === 'ex' ? 'bg-fuchsia-400/15 text-fuchsia-100'
-            : stage.kind === 'free' ? 'bg-emerald-400/15 text-emerald-100'
-            : 'bg-purple-400/15 text-purple-100'
-        }`}>
-          {stage.main.code}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block text-[15px] font-semibold text-white truncate">
-            {stage.name}
-            {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">クリア済</span>}
-            {unlocked && hiScore > 0 && (
-              <span className="ml-2 align-middle text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>
-            )}
+        <div className="px-1 pb-1.5">
+          <span className="block text-[11px] font-semibold tracking-wide text-purple-200/70 tabular-nums">
+            DAY {stage.day} / {stage.time}
           </span>
-          <span className="block text-[11px] text-white/45 truncate">{stage.main.title}・{stage.area}</span>
-          <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">
-            {unlocked ? stage.main.summary : '前ステージのクリアで解放'}
-          </span>
-        </span>
-        {unlocked ? <ChevronLeft size={16} className="rotate-180 text-white/40" /> : <Lock size={15} className="text-white/40" />}
-      </button>
+          <span className="block text-[15px] font-bold text-white truncate">{stage.locationTitle}</span>
+        </div>
+        <div className="space-y-1.5">
+          {missions.map((m, mi) => (
+            <button
+              key={mi}
+              type="button"
+              disabled={!unlocked}
+              onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
+              className={`ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left transition-[filter] ${
+                unlocked ? 'active:brightness-110' : 'is-off'
+              }`}
+            >
+              <span className={`shrink-0 rounded-none px-2 py-1 text-[10px] font-bold tracking-wider ${MISSION_TYPE_BADGE_CLS[stage.kind]}`}>
+                {MISSION_TYPE_LABEL[stage.kind]}
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold text-white truncate">
+                  {m.title}
+                  {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">クリア済</span>}
+                  {unlocked && hiScore > 0 && (
+                    <span className="ml-2 align-middle text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>
+                  )}
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">
+                  {unlocked ? m.summary : '前ステージのクリアで解放'}
+                </span>
+              </span>
+              {unlocked ? <ChevronLeft size={16} className="rotate-180 text-white/40" /> : <Lock size={15} className="text-white/40" />}
+            </button>
+          ))}
+        </div>
+      </div>
     );
   };
 
@@ -392,7 +419,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   );
 
   // ====================================================================
-  // ミッション詳細(メインミッションのブリーフィング + サブミッション)
+  // ミッション詳細(出撃ページ。メインミッションのブリーフィング + サブミッション)
+  // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-3: ヘッダ=日時/場所名/ミッション名 →
+  // 状況説明(synopsis) → 任務目標(summary) → 特殊条件(specialConditions・あれば) →
+  // 特殊支給装備(specialEquipment・あれば)。開発コード(M1等)はここでも表示しない。
   // ====================================================================
   const renderMissionDetail = (stageId: string) => {
     const stage = getStage(stageId);
@@ -401,14 +431,34 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const done = cleared.has(stage.id);
     return (
       <>
-        <Header title={`${m.code}：${m.title}`} subtitle={`${stage.name} / ${stage.area}`} onBack={() => setScreen({ name: 'stageSelect' })} />
+        <Header title={`DAY ${stage.day} / ${stage.time}`} subtitle={stage.locationTitle} onBack={() => setScreen({ name: 'stageSelect' })} />
         <div className="menu-stagger p-3 space-y-3">
-          {/* 説明欄: 未クリアは「あらすじ」、クリア後は「クリア後の記録(debrief)」を表示。 */}
-          <Section label={done ? 'クリア後' : 'あらすじ'}>
+          <h2 className="px-1 text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
+
+          {/* 説明欄: 未クリアは「状況説明」、クリア後は「クリア後の記録(debrief)」を表示。 */}
+          <Section label={done ? 'クリア後' : '状況説明'}>
             {(done ? m.debrief : m.synopsis).map((line, i) => (
               <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
             ))}
           </Section>
+
+          <Section label="任務目標">
+            <p className="text-[13px] leading-relaxed text-white/85">{m.summary}</p>
+          </Section>
+
+          {m.specialConditions && m.specialConditions.length > 0 && (
+            <Section label="特殊条件">
+              <p className="text-[12px] leading-relaxed text-white/80">
+                {m.specialConditions.map(c => `・${c}`).join(' ')}
+              </p>
+            </Section>
+          )}
+
+          {m.specialEquipment && m.specialEquipment.length > 0 && (
+            <Section label="特殊支給装備">
+              <p className="text-[12px] leading-relaxed text-white/80">{m.specialEquipment.join(' / ')}</p>
+            </Section>
+          )}
 
           <Section label="サブミッション">
             {stage.subs.length === 0
@@ -701,6 +751,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const itemRecords = ARCHIVE_RECORDS.filter(r => r.category === 'item');
     const termRecords = ARCHIVE_RECORDS.filter(r => r.category === 'term');
     const openRecord = openArchiveRecordId ? getArchiveRecord(openArchiveRecordId) : null;
+    // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-7: 任務記録の本文モーダルへ、日時/場所名の
+    // メタ行を unlockStageId → Stageノード参照で表示する(本文へ書き込まない=データの重複管理を避ける)。
+    const openRecordStage = openRecord?.unlockStageId ? getStage(openRecord.unlockStageId) : undefined;
     return (
       <>
         <Header title="資料室" subtitle="ストーリー記録・変異体図鑑" onBack={goHomeFromArchive} />
@@ -744,6 +797,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 >
                   {openRecord.title}
                 </h3>
+                {openRecordStage && (
+                  <p className="mb-3 text-[11px] text-purple-200/55 tracking-wide">
+                    DAY {openRecordStage.day} / {openRecordStage.time}・{openRecordStage.locationTitle}
+                  </p>
+                )}
                 <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
                   {openRecord.body.map((line, i) => <p key={i}>{line}</p>)}
                 </div>

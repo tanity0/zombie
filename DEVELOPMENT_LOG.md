@@ -1,5 +1,55 @@
 # Development Log
 
+## v0.25.1750 — M42実装: ストーリー選択の親子構造化+出撃ページ統一(§6.19)【2026-07-16 00:53 JST】
+- `src/data/campaign.ts`: `Stage`に`day: number`/`time: string`/`locationTitle: string`を追加し、
+  9ステージ全部に社長指定値(§6.19-2)を投入。stage-ex2のみ★叩き台(DAY45/03:40。社長指定はEX1件分
+  のみのため未決=そのまま裁定待ち)。`StageMission`に`specialEquipment?: string[]`を追加、
+  stage-2に`['PHILLガン']`(叩き台)を投入。ミッション名/本文/報酬/戦闘仕様は無変更。
+- `src/components/MissionSelect.tsx`: `renderStageSelect`を「親ノード見出し(DAY n / hh:mm+場所名)
+  +子ミッションカード([MAIN]/[EX]の文字ラベル+ミッション名+summary)」の縦積みへ再構成
+  (`StageRow`→`StageNode`。子カードは配列mapで将来のSUB追加に対応できる形にしたが、現状は各ノード
+  main 1件のみ)。開発コード(`stage.main.code`=M1〜EX2)の表示箇所をgrepで洗い、選択画面/ミッション
+  詳細から除去(リザルト・資料室には元々出ていなかったことを確認済み)。ミッション詳細(出撃ページ)は
+  ヘッダ=DAY/時刻+場所名(`Header`)→ミッション名見出し→状況説明(synopsis。ラベルを「あらすじ」→
+  「状況説明」に変更)→任務目標(summary・新設Section)→特殊条件(あれば)→特殊支給装備(あれば・
+  新設Section)→(既存)サブミッション→出撃準備、の順に再構成。資料室の本文モーダルへ
+  `unlockStageId`→Stage参照のメタ行(DAY n / hh:mm・場所名)を追加(本文へは書き込まない)。
+- `src/data/progress.ts`: missionId(`${stageId}:main`)ベースのミッション単位クリア集合を追加
+  (`getClearedMissions`/`markMissionCleared`/`missionIdForMain`。既存キー`zombie.progress.cleared`
+  とは別キーで保存=additive)。`markStageCleared`の内部から両方へ記録するようにし(「MAINクリア時に
+  両方へ記録」)、呼び出し側(`App.tsx`のhandleVictory等)は無編集。`resetProgress`にも追加(開発用
+  進行リセットの一貫性)。
+- `src/data/progress.test.ts`: missionId系のユニット7件を追加(初回追加/冪等/空ガード/
+  `markStageCleared`との同時記録/別キー保存/`resetProgress`での消去)。既存5件+新規7件=12件。
+- `src/components/GameOverScreen.tsx`: 勝利リザルトの見出し(「ステージクリア！」)直下にDAY/時刻+
+  場所名+ミッション名を表示(追補1-6の表示順)。`mission`の参照元を`stage.main`と明示する変数
+  (`stage`)を追加しただけで、clearReport/資料解放の参照先自体は無変更(現状=stage.mainのまま。
+  SUB実装時の拡張点としてコメント化)。M40/M41の動線・冪等性は無編集。
+- 検証: `npm run typecheck` green / `npx eslint`(campaign.ts, progress.ts, progress.test.ts,
+  MissionSelect.tsx, GameOverScreen.tsx) green(warning 0。GameOverScreen.tsxの全角スペース区切りは
+  `no-irregular-whitespace`に引っかかったため`{'　'}`の文字列リテラルに変更して解消) /
+  `npx vitest related --run`(同ファイル+storyArchive.ts) green(9 files, 163 passed | 2 skipped)。
+- 受け入れ確認(追補1-9・10点、確認方法込み): 1.日時+場所名が最上位=`StageNode`のコードレビュー(静的)。
+  2.MAIN/SUBEXの子ミッション表示=`MISSION_TYPE_LABEL`のコードレビュー(静的。SUBは現状データが無く
+  未実演=マッピング確定どおり「SUBの選択導線はまだ無い」)。3.同じノードに複数ミッション登録可=
+  `missions`配列map構造で静的確認(現状全ノード1件のみ、データ追加なしで拡張できる形)。4.選択ミッション
+  だけの出撃情報表示=`renderMissionDetail`が`stage.main`のみ参照(コードレビュー)。5.MAIN/SUBの
+  クリア状態分離保存=`progress.test.ts`のunit(missionId形式の分離を検証)。6.MAINクリア時のみ次ノード
+  解放=`isStageUnlocked`/`markStageCleared`無編集(既存ロジック流用、コードレビュー+typecheck)。
+  7.個別ミッション単位の任務報告/資料表示=`GameOverScreen.tsx`が`stage.main`スコープのまま
+  (コードレビュー)。8.再クリア/リロードでの重複解放なし=`progress.test.ts`の冪等テスト+既存
+  `storyArchive.test.ts`(17件green)。9.M40/M41の回帰なし=`vitest related`全green+
+  `storyArchive.test.ts`無編集で17件green。10.EX解放後もM6洋館ノードが残る=`campaign.ts`で
+  stage-6(旧市街地・洋館)とstage-ex1(旧市街地・洋館跡地)を別idのまま保持(コードレビュー)。
+- ★未決事項: stage-ex2の日時(DAY45/03:40は叩き台のまま。社長裁定持ち越し=§6.19に明記済み)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)には抵触しない(UI表示構造とミッション
+  単位の進行記録先を追加しただけで、難易度カーブ・敵配置・スコア/報酬・戦闘仕様は無変更)。
+- Files: `src/data/campaign.ts`, `src/data/progress.ts`, `src/data/progress.test.ts`,
+  `src/components/MissionSelect.tsx`, `src/components/GameOverScreen.tsx`,
+  `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+- 実機確認は社長へ持ち越し(選択画面の見た目・出撃ページ・リザルトヘッダ・資料室メタ行・
+  EX2日時の裁定)。
+
 ## v0.25.1749 — M42(改定)仕様確定: ストーリー選択の親子構造化(社長仕様受領)【2026-07-16 00:40 JST】
 - 社長仕様(選択画面の最上位=日時+場所名ノード・MAIN/SUB/EX子カード・開発コード非表示・
   ミッション単位の進行/リザルト/資料メタ)を `STORY_UI_SPEC.md` 追補1として全文正本化。

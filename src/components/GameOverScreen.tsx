@@ -167,7 +167,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // ステージIDの解決はハイスコア送信と同じ getSelectedStageId()(localStorage・store外の既存正本)。
   // 死亡/撤退/ベンチでは won=false なので mission は undefined のまま=任務報告欄は出ない。
   const stageId = won ? getSelectedStageId() : '';
-  const mission = stageId ? getStage(stageId)?.main : undefined;
+  // PACING_PUZZLE.md §6.19 M42: clearReport/資料解放は選択したミッションのデータだけを参照する
+  // (現状=stage.main。SUB実装時にここを missionId 経由の参照へ広げれば誤表示しない)。
+  const stage = stageId ? getStage(stageId) : undefined;
+  const mission = stage?.main;
   const clearReportLines = (mission?.clearReport?.length ? mission.clearReport : mission?.debrief) ?? [];
   const [unlockedRecordIds, setUnlockedRecordIds] = useState<string[]>([]);
   const [openRecordId, setOpenRecordId] = useState<string | null>(null);
@@ -278,6 +281,13 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : withdraw ? '帰還' : 'ゲームオーバー'}
           </h2>
+          {/* PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-6: 「任務クリア」の直下に日時/場所名/
+              ミッション名を表示(追補1-6の表示順どおり)。勝利時・ステージ情報が引けた時だけ。 */}
+          {won && stage && mission && (
+            <p className="mt-1 text-[12px] text-purple-200/70 tracking-wide">
+              DAY {stage.day} / {stage.time}{'　'}{stage.locationTitle}{'　'}{mission.title}
+            </p>
+          )}
           {/* 勝利時の「森を生き延びた」は撤去(社長指示v0.25.1671)。ベンチ/撤退の文言のみ残す。 */}
           {(isBenchmark || withdraw) && (
             <p className="text-[13px] text-white/60 mt-1">

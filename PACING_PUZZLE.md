@@ -2296,6 +2296,28 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 
 ### 状態
 - **仕様確定 v0.25.1749・Sonnet実装待ち**。
+- **実装済み v0.25.1750**(Sonnetサブエージェント)。検証: `npm run typecheck` green /
+  `npx eslint`(campaign.ts, progress.ts, progress.test.ts, MissionSelect.tsx, GameOverScreen.tsx)
+  green(warning 0) / `npx vitest related --run`(同ファイル+storyArchive.ts) green
+  (163 passed | 2 skipped。`progress.test.ts` は既存5件+新規7件=12件)。
+  実装内容: ①`campaign.ts`にStage.day/time/locationTitle(9ステージ分。stage-ex2=★叩き台DAY45/03:40
+  =未決のまま)+StageMission.specialEquipment(stage-2に'PHILLガン')を追加。②`MissionSelect.tsx`の
+  `renderStageSelect`を「親ノード(DAY n/hh:mm+場所名)+子ミッションカード([MAIN]/[EX]ラベル+
+  ミッション名+summary)」の縦積みへ再構成(`StageRow`→`StageNode`)。開発コード(`stage.main.code`)の
+  表示は選択画面・ミッション詳細から除去(元々リザルト/資料室には出ていなかったことをgrepで確認済み)。
+  ③ミッション詳細(出撃ページ)をヘッダ=DAY/時刻+場所名+ミッション名見出し→状況説明(synopsis。
+  ラベルを「あらすじ」→「状況説明」に変更)→任務目標(summary)→特殊条件(あれば)→特殊支給装備
+  (あれば)→(既存)サブミッション→出撃準備、の順に再構成。④`progress.ts`にmissionId
+  (`${stageId}:main`)ベースのクリア集合を追加(`getClearedMissions`/`markMissionCleared`/
+  `missionIdForMain`。既存の`markStageCleared`内から additive に両方書き込み=呼び出し側の
+  `App.tsx`は無編集)。`resetProgress`にも追加(開発リセットの一貫性)。⑤`GameOverScreen.tsx`の
+  勝利ヘッダ直下にDAY/時刻+場所名+ミッション名を追加表示(`stage`/`mission`参照は既存の
+  `stage.main`スコープのまま=SUB実装時の拡張点としてコメント化)。⑥`MissionSelect.tsx`の資料室
+  本文モーダルへ`unlockStageId`→Stage参照のメタ行(DAY n/時刻・場所名)を追加。
+  ★未決事項(裁定待ち): stage-ex2の日時(★叩き台DAY45/03:40。上記のとおり据え置き)。
+  自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)には抵触しない(本バッチはUI表示構造と
+  進行の記録先の追加のみで、難易度カーブ・敵配置・ゲームプレイ数値は無変更)。
+  実機確認は社長へ持ち越し(選択画面の見た目・出撃ページ・リザルトヘッダ・資料室メタ行)。
 
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
@@ -2333,7 +2355,7 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 | M39 | ボットAI改善=武器商人ゾーン回避(§6.16) | **実装済み v0.25.1733**(+v0.25.1732の即クローズ保険。確認は依頼#4再走が兼ねる) |
 | M40 | ストーリー情報UI第1弾=リザルト任務報告+資料データ土台(§6.17・正=STORY_UI_SPEC.md) | **実装済み v0.25.1746**(typecheck/eslint/vitest related全green・実機確認は社長へ持ち越し。★未決=フリーモード時の扱い、非ブロッキング) |
 | M41 | ストーリー情報UI第2弾=資料室UI+未読バッジ+追加ポップアップ(§6.18) | **実装済み v0.25.1748**(入口=メインメニューの既存資料室ボタン・社長裁定。実機確認は社長へ持ち越し) |
-| M42 | ストーリー選択画面の親子構造化+出撃ページ統一(§6.19・正=STORY_UI_SPEC.md追補1) | **仕様確定 v0.25.1749・Sonnet実装待ち**(★EX2の日時=叩き台DAY45/03:40) |
+| M42 | ストーリー選択画面の親子構造化+出撃ページ統一(§6.19・正=STORY_UI_SPEC.md追補1) | **実装済み v0.25.1750**(typecheck/eslint/vitest related全green・実機確認は社長へ持ち越し。★EX2の日時=叩き台DAY45/03:40のまま裁定待ち) |
 | M43 | M1〜M7文面の順次実装(仕様書12章-7) | 未着手(文面は社長/ストーリー側から) |
 | M44 | 通信ログ読み返し(仕様書4章・旧M42から分離) | 未着手 |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |

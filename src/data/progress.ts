@@ -38,6 +38,51 @@ export const markStageCleared = (stageId: string): void => {
   if (set.has(stageId)) return;
   set.add(stageId);
   writeSet(set);
+  // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-5: 「MAINクリア時に両方へ記録」。
+  // 現状は全ステージがMAINミッション1本のみ(SUBの選択導線は無い)ので、既存のステージクリア
+  // (=MAIN初回クリア)と同じ瞬間にミッション単位クリア集合(missionId)も additive に記録する。
+  markMissionCleared(missionIdForMain(stageId));
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-4/5: ミッション単位のクリア集合。
+// 既存のステージクリア保存(CLEARED_KEY)は変更せず、missionId(`${stageId}:main` 形式)ベースの
+// 別集合を別キーで保存する(additive・移行不要)。MAINとSUBのクリア状態を混同しないための器
+// (現状はMAINのみ配線。SUBの選択導線はまだ無い)。
+const CLEARED_MISSIONS_KEY = 'zombie.progress.clearedMissions';
+
+// メインミッションのmissionId(`${stageId}:main`)を返す純関数。将来SUBが増えても衝突しない命名。
+export const missionIdForMain = (stageId: string): string => `${stageId}:main`;
+
+const readMissionSet = (): Set<string> => {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(CLEARED_MISSIONS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+const writeMissionSet = (set: Set<string>): void => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(CLEARED_MISSIONS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore (quota / private mode) */
+  }
+};
+
+export const getClearedMissions = (): Set<string> => readMissionSet();
+
+export const markMissionCleared = (missionId: string): void => {
+  if (!missionId) return;
+  const set = readMissionSet();
+  if (set.has(missionId)) return;
+  set.add(missionId);
+  writeMissionSet(set);
 };
 
 // 前提ステージ(unlockBy)がクリア済みなら解放。最初のステージ(unlockBy=null)は常に解放。
@@ -439,6 +484,7 @@ export const recordChronicle = (
 export const unlockAllStages = (): void => writeSet(new Set(STAGES.map(s => s.id)));
 export const resetProgress = (): void => {
   writeSet(new Set());
+  writeMissionSet(new Set()); // M42のミッション単位クリア集合も進行リセットで消す(開発用)
   setSelectedStageId('');
   writeScores({});
   saveBaseGrowth({}); // 拠点Lv/EXPも進行リセットで消す(開発用)

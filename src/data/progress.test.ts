@@ -14,9 +14,57 @@ const backing: Record<string, string> = {};
   get length() { return Object.keys(backing).length; },
 } as Storage;
 
-import { recordChronicle, loadChronicle, stageChronicleLabel } from './progress';
+import {
+  recordChronicle, loadChronicle, stageChronicleLabel,
+  markStageCleared, getClearedStages, getClearedMissions, markMissionCleared, missionIdForMain, resetProgress,
+} from './progress';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
+
+// PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-4/5: ミッション単位クリア集合(missionId)。
+// 既存のステージクリア保存とは別キー(additive)で、MAINクリア時に両方へ記録される仕様のユニット。
+describe('ミッション単位クリア集合(missionId・M42)', () => {
+  it('missionIdForMain: `${stageId}:main` 形式を返す', () => {
+    expect(missionIdForMain('stage-2')).toBe('stage-2:main');
+  });
+
+  it('markMissionCleared: 初回は追加され、getClearedMissions に反映される', () => {
+    expect(getClearedMissions().size).toBe(0);
+    markMissionCleared('stage-1:main');
+    expect(getClearedMissions().has('stage-1:main')).toBe(true);
+  });
+
+  it('markMissionCleared: 再クリアで重複しない(冪等)', () => {
+    markMissionCleared('stage-1:main');
+    markMissionCleared('stage-1:main');
+    expect(getClearedMissions().size).toBe(1);
+  });
+
+  it('missionId が空なら何もしない', () => {
+    markMissionCleared('');
+    expect(getClearedMissions().size).toBe(0);
+  });
+
+  it('markStageCleared: 既存のステージクリア集合とミッション単位クリア集合の両方へ同時記録する(追補1-5)', () => {
+    markStageCleared('stage-2');
+    expect(getClearedStages().has('stage-2')).toBe(true);
+    expect(getClearedMissions().has('stage-2:main')).toBe(true);
+  });
+
+  it('markStageCleared: 既存のステージクリア保存キーとは別キーで保存される(additive)', () => {
+    markStageCleared('stage-2');
+    // 既存キー(zombie.progress.cleared)には従来どおり stageId のみが入り、missionId形式は混ざらない。
+    const raw = backing['zombie.progress.cleared'];
+    expect(JSON.parse(raw)).toEqual(['stage-2']);
+  });
+
+  it('resetProgress: ミッション単位クリア集合も進行リセットで消える', () => {
+    markStageCleared('stage-2');
+    resetProgress();
+    expect(getClearedMissions().size).toBe(0);
+    expect(getClearedStages().size).toBe(0);
+  });
+});
 
 describe('歴史年表(chronicle)', () => {
   it('初回のみ記録: 同じ(stage,kind,detail)は2回目以降 false で重複しない', () => {

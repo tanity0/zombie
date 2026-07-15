@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1750',
+    items: [
+      'ストーリー選択画面を刷新。日時と場所を最上位に、ミッションを子カードで表示するようにした。',
+      '出撃前の説明画面にも日時・場所・特殊支給装備を追加表示。',
+    ],
+  },
+  {
     version: '0.25.1749',
     items: [
       '開発: ストーリー選択画面の親子構造化(日時・場所ノード+MAIN/SUB/EXカード)の仕様を受領・確定(STORY_UI_SPEC.md追補1+§6.19)。実装開始。ゲーム変更なし。',

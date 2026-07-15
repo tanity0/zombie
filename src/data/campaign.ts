@@ -35,6 +35,9 @@ export interface StageMission {
   unlockedRecordIds?: string[];
   // 出撃ページに出す特殊条件の短ラベル(データのみ先行。表示はM42)。未指定 = 特殊条件なし。
   specialConditions?: string[];
+  // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-4: 出撃ページの「特殊支給装備」欄。
+  // 未指定 = 非表示。
+  specialEquipment?: string[];
 }
 
 export interface SubMission {
@@ -52,6 +55,12 @@ export interface Stage {
   main: StageMission;    // メインミッション
   subs: SubMission[];    // サブミッション(今は空=準備中。後で追加)
   unlockBy: string | null; // このステージ解放に必要な「直前ステージのid」(null=最初から解放)
+  // PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1: 親ノード(日時・場所)の表示情報。
+  // ミッション側(StageMission)へは重複記載しない(追補1-4「日時と場所名を、各ミッションデータへ
+  // 重複記載しない」)。値は社長指定(追補1-2)。
+  day: number;            // ゲーム内経過日数(例: 26)
+  time: string;           // 'hh:mm' 形式(例: '16:20')
+  locationTitle: string;  // 場所名(例: '東部避難回廊')
   indoor?: boolean;      // 屋内(研究施設)ステージ=手書き壁マップ/カメラクランプ/湧き抑制
   theme?: 'lab';         // 見た目テーマ(屋外構造のままテクスチャだけ差し替え)。'lab'=研究所スキン。
   farBackdrop?: string;  // 遠景パノラマの差し替えキー(forestテーマの距離パノラマだけ変える)。'city'=夜の廃都。
@@ -72,6 +81,9 @@ export const STAGES: Stage[] = [
     name: '狂い咲きの森',
     area: '森林地帯 / 偵察部隊 救助',
     unlockBy: null,
+    day: 26,
+    time: '16:20',
+    locationTitle: '東部避難回廊',
     nearHorizon: 'forest', // 遠景森2(手前の森シルエット帯)
     mainEvent: 'suppression', // メインミッション=4拠点制圧イベント(東西南北)
     hiddenBoss: 'mimir', // 深層域の裏ボス=ミーミル(巨大な眼)
@@ -110,6 +122,9 @@ export const STAGES: Stage[] = [
     name: '研究所跡',
     area: '壊滅した研究所 / 中枢データ回収',
     unlockBy: 'stage-1',
+    day: 28,
+    time: '01:40',
+    locationTitle: 'PHILL再生医療研究所',
     subs: [],
     // ステージ2は「野外ラボ」=屋外スクロール(他ステージと同じサバイバル進行)＋研究所スキン。
     // 内容差は theme:'lab' による「見た目(遠景/地平/床=ラボ・木なし)＋ラボ壁が障害物として出現」＋死神なし。
@@ -150,6 +165,8 @@ export const STAGES: Stage[] = [
         'mission-remote-lab-comm-log',
       ],
       specialConditions: ['単身潜入', 'PHILLガン固定', '弾薬有限', '敵の殲滅は不要'],
+      // PACING_PUZZLE.md §6.19 M42: 特殊支給装備(叩き台・社長指定)。
+      specialEquipment: ['PHILLガン'],
     },
   },
   {
@@ -159,6 +176,9 @@ export const STAGES: Stage[] = [
     name: 'リモート研究施設',
     area: '連携研究施設 / 責任者 救出',
     unlockBy: 'stage-2',
+    day: 30,
+    time: '10:30',
+    locationTitle: '東部医療科学センター',
     farBackdrop: 'city', // 遠景を昼の廃都パノラマ(正午ステージ)へ差し替え(森の地形・地平はそのまま)。
     nearHorizon: 'city', // 遠景森2(手前の廃墟都市帯)
     hiddenBoss: 'jormungand', // 深層域の裏ボス=ヨルムンガルド(巨蛇)
@@ -194,6 +214,9 @@ export const STAGES: Stage[] = [
     name: '封鎖地域',
     area: 'ロックダウン地域 / 医師団 接触',
     unlockBy: 'stage-3',
+    day: 32,
+    time: '17:10',
+    locationTitle: '北部封鎖区域',
     farBackdrop: 'snow', // 遠景を雪原の要塞パノラマへ差し替え(地形/地平は森のまま)
     bgm: 'stage4',       // ステージ4専用BGM(public/audio/stage4.mp3)
     hiddenBoss: 'skadi', // 深層域の裏ボス=スカジ(氷の死王)
@@ -237,6 +260,9 @@ export const STAGES: Stage[] = [
     name: '軍本部',
     area: '防衛線 / 本部 防衛',
     unlockBy: 'stage-4',
+    day: 35,
+    time: '22:15',
+    locationTitle: '対変異体防衛本部',
     bgm: 'stage5',        // ステージ5専用BGM(public/audio/stage5.mp3)
     farBackdrop: 'stage5', // 遠景を紅き月の城塞パノラマへ差し替え(社長提供素材)。地形/前景は森のまま(未提供)。
     nearHorizon: 'stage5', // 遠景森2(手前に重ねる帯)= 戦場の残骸(旗/大砲/木箱、社長提供素材)
@@ -275,6 +301,9 @@ export const STAGES: Stage[] = [
     name: '古い洋館',
     area: '廃屋 / 私設ラボ 確認',
     unlockBy: 'stage-5',
+    day: 36,
+    time: '23:10',
+    locationTitle: '旧市街地・洋館',
     bgm: 'stage6',       // ステージ6専用BGM(public/audio/stage6.mp3)
     subs: [],
     main: {
@@ -317,6 +346,9 @@ export const STAGES: Stage[] = [
     name: '逆探知地点',
     area: '救難信号 発信地点 / 二人組',
     unlockBy: 'stage-6',
+    day: 38,
+    time: '04:20',
+    locationTitle: '指定座標地点',
     subs: [],
     main: {
       code: 'M7',
@@ -355,6 +387,9 @@ export const STAGES: Stage[] = [
     name: '洋館再訪',
     area: 'クリア後 / 任意イベント',
     unlockBy: 'stage-7',
+    day: 42,
+    time: '03:40',
+    locationTitle: '旧市街地・洋館跡地',
     subs: [],
     main: {
       code: 'EX1',
@@ -389,6 +424,12 @@ export const STAGES: Stage[] = [
     name: '変異した洋館跡',
     area: 'クリア後 / 隠しステージ',
     unlockBy: 'stage-ex1',
+    // ★叩き台(PACING_PUZZLE.md §6.19「★未決事項」参照): 社長指定(追補1-2)はEX1件分(DAY42/03:40/
+    // 旧市街地・洋館跡地)のみで、EX2固有の値は明示されていない。EX1の1日後・同時刻・同地名として
+    // 仮置き(DAY45/03:40)。社長裁定が出るまでの暫定値=実装チャットの設計判断ではない。
+    day: 45,
+    time: '03:40',
+    locationTitle: '旧市街地・洋館跡地',
     subs: [],
     main: {
       code: 'EX2',
