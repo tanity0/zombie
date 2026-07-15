@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1743 — ステージ5森1の高さ150→130px(社長指示)【2026-07-15 19:21 JST】
+- `STAGE5_HORIZON_FOREST_HEIGHT_PX` 150→130。他は不変(底=境界線+20px下のまま)。
+- 検証: typecheck green。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1742 — ステージ5森1/森2を実寸px指定へ(社長指示)【2026-07-15 19:13 JST】
 - 比率×クランプ×倍率方式を廃し、ステージ5だけ固定px定数に:
   - **森1**: 高さ`STAGE5_HORIZON_FOREST_HEIGHT_PX=150`・底=境界線(farH)+`DOWN_PX=20`下。

@@ -142,7 +142,7 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
 })();
 // ステージ5の森1/森2は実寸px指定(社長指示v0.25.1742: 比率+クランプ方式だと端末次第で
 // 倍率が効かず「大きくならない」ため、固定pxに切り替え)。底は遠景境界線(farH)基準の下オフセット。
-const STAGE5_HORIZON_FOREST_HEIGHT_PX = 150; // 森1の高さ(px)
+const STAGE5_HORIZON_FOREST_HEIGHT_PX = 130; // 森1の高さ(px・社長指示v0.25.1743で150→130)
 const STAGE5_HORIZON_FOREST_DOWN_PX = 20;    // 森1の底=境界線から下へ(px)
 const STAGE5_NEAR_HORIZON_HEIGHT_PX = 100;   // 森2の高さ(px)
 const STAGE5_NEAR_HORIZON_DOWN_PX = 50;      // 森2の底=境界線から下へ(px)

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1743',
+    items: [
+      'ステージ5: 森1の高さを150px→130pxに調整。',
+    ],
+  },
+  {
     version: '0.25.1742',
     items: [
       'ステージ5: 森1/森2を実寸px指定に変更(森1=高さ150px・境界線+20px下/森2=高さ100px・境界線+50px下)。端末によってサイズ調整が効かなかった問題の対策。',
