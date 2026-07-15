@@ -2010,6 +2010,49 @@ M33①の「グローバル10秒CD(10秒に1個)」は設計チャットの勘�
   playtestDriver/useGameLoop両ハーネス配線。`npm run playtest`フルgreen。★未決:
   `boar`ペルソナは仕様書にプロファイル記載が無いため対象外=無効のまま。実機確認は社長へ持ち越し)。
 
+## 6.15 バッチM38: ボットAI改善=松明を壊してスクラップ供給を作る(社長指示v0.25.1727・Sonnet実装用)
+
+**ボット専用の改善。通常プレイ・松明/ドロップ/スクラップ仕様は1バイトも変えない**(ボット入力の生成のみ)。
+
+### 背景(依頼#2の実測)
+スクラップ収入の主源は「爆発による松明破壊」で、ボットは松明を意図的に壊さないため、
+爆発ビルド以外ではスクラップ供給がほぼゼロ(junk構成の獲得5 vs 爆発構成108-162)。
+ジャンクウェポン/スクラップビルダー等のスクラップ経済の計測がボットで成立しない。
+なお**スクラップを「拾う」動きは既にある**(M26 Step1の手空き拾い=pickupSeekInputがstrap含む
+全pickupsを対象に240px以内へ歩み寄る+接触回収)。足りないのは**供給(松明壊し)だけ**。
+
+### 仕様(社長「ある程度松明は壊して、スクラップも拾う」)
+- **手空きのtick**(ペルソナ判断+拾い歩き(pickupSeekInput)の後も移動入力が無い時)に、
+  最寄りの**未破壊の松明**(`breakableProps` type==='torch')が近くにあれば歩み寄り、
+  近接リーチ内に入ったら `wantsMelee=true` で割る(スイングが breakPropsAlong で松明を割り、
+  既存のドロップ抽選(dropBreakablePropLoot)でスクラップ等が出る)。
+- **優先順位: ピックアップ拾い(既存) > 松明**。pickupSeekInput が動いたtickは松明に行かない
+  (=「ある程度」壊す。戦闘・拾いの合間だけ)。
+- 対象ペルソナ: **stationary除外**(棒立ちが仕様)・**rusher除外**(カウンター/寄り道を一切しない
+  低スキル再現=M19の設計意図)。他(standard/kiter/boar/wanderer)は対象
+  (実質発火するのは手空きが発生する standard/kiter)。
+
+### 叩き台(この値で実装・ソークで調整)
+- `TORCH_SEEK_DIST = 240`px(拾い歩きのmaxDistと同じ・これ以内の最寄り松明へ歩く)
+- `TORCH_SMASH_DIST = 60`px(M34のMINE_SMASH_DISTと同値・これ以内でwantsMelee=true)
+- 実装形: `playtestBot.ts` に純関数(例 `torchForageInput(persona, input, pcx, pcy, torches, seekDist, smashDist)`
+  → `{ input, wantsMelee }`)。松明の座標は M34 と同じ `footX/footY`(MinePropLike互換)。
+- 合成順: ペルソナ判断 → pickupSeekInput → **松明フォレージ(本件)** → adjustBotForMines(M34)
+  → decideCounterReaction(M37)とOR合成。M34が後段なので、松明への進路上の緑卵は既存の回避/叩きが効く。
+- 配線は両ハーネス: `playtestDriver.runPlaytestTick`(runPlaytestTick内の pickupSeekInput 直後)と
+  `useGameLoop.ts` のbotブロック(≈1500行付近・adjustBotForMinesへ渡すinputの合成点)。
+- 松明叩きの近接は triggerCounter 経路(既存のwantsMelee OR合成に1本追加)。カウンターCDは既存尊重。
+- type==='uv-bar'(研究所スキンの松明代替)はv1対象外(テスト経済の主戦場はステージ1の森)。
+
+### 受け入れ条件
+1. 純関数+ユニットテスト(手空きで240px内の松明へ歩く/60px内でwantsMelee/移動入力がある時は不干渉/
+   stationary・rusher除外/範囲外無視)。
+2. `npm run playtest` green。
+3. `?bot`無しの通常プレイは挙動不変。typecheck+eslint。負荷=ボット時のみ(通常時0)。
+
+### 状態
+- **仕様確定・Sonnet実装待ち**(v0.25.1728)。
+
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
@@ -2042,6 +2085,7 @@ M33①の「グローバル10秒CD(10秒に1個)」は設計チャットの勘�
 | M35 | ボットレポート計測拡張=subUses/overclockProcs/スクラップ収支/goldEarned/damageTaken(§6.12) | **実装済み v0.25.1715**(Sonnet実装→停止のため設計チャットが検証・完成) |
 | M36 | センサー地雷CDの是正=個別チャージ制(§6.13) | **実装済み v0.25.1718**(社長指示v0.25.1716・実機確認は社長へ持ち越し) |
 | M37 | ボットAI改善=人間反応のカウンター(§6.14) | **実装済み v0.25.1723**(playtestフルgreen・boarペルソナは仕様外=対象外) |
+| M38 | ボットAI改善=松明壊し=スクラップ供給(§6.15) | **仕様確定 v0.25.1728・Sonnet実装待ち** |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |
 | M12 | 設計電卓=プロト武器バランス探索(§5.13・M10後) | 未着手(社長採用v0.25.1470) |
 | M13 | ネームド(宿敵)システム(§5.14) | **実装済み v0.25.1494** |
