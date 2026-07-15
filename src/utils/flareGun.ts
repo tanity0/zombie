@@ -6,7 +6,7 @@
 // 寿命の回収と合流は useGameLoop/updateEnemies/combatTick、描画は pixiScene(読むだけ)。
 
 // --- 調整用定数(§6.6 確定値+叩き台) ---
-export const FLARE_GUN_CD_MS_BY_LEVEL: readonly number[] = [0, 5000, 4000, 3000]; // index=level(1..3)。社長指定
+export const FLARE_GUN_CD_MS_BY_LEVEL: readonly number[] = [0, 9000, 7000, 5000]; // index=level(1..3)。社長指定(v0.25.1740で5/4/3→9/7/5秒)
 export const FLARE_GUN_DURATION_MS = 3000; // 着弾点が敵を引き付ける時間(社長指定=3秒)
 export const FLARE_GUN_FLIGHT_MS = 350;    // 発射→着弾の飛翔時間(見た目のみ・叩き台)
 

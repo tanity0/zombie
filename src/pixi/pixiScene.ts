@@ -130,7 +130,6 @@ const HORIZON_FOREST_MAX_HEIGHT = 185;
 const HORIZON_FOREST_OVERLAP_RATIO = 0.18;
 const HORIZON_FOREST_Y_OFFSET_PX = -100;
 const LAB_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ2だけ遠景森1を下げる量(px)。他ステージは0。
-const STAGE5_HORIZON_FOREST_EXTRA_DOWN = 20; // ステージ5だけ遠景森1を下げる量(px・社長指示v0.25.1739「少し下に」叩き台)。
 const HORIZON_FOREST_BOTTOM_FADE_PX = 10;
 // 遠景手前森(ステージ3): 地平の森の「手前」に重なる近めの帯。closer=大きく/下/速いパララックス/弱ブラー。
 // 遠景森2の高さ(screenH比)。全ステージ共通の既定=0.42(原典)。
@@ -1636,7 +1635,7 @@ export class PixiScene {
     // 横伸び防止: frontForest と同じく y 基準の均一スケール(x も同値)。横は自然比率のままタイルで繰り返して幅を埋める
     // (parallax で横スクロールする=元々シームレスにタイルできる素材)。非均一(w/texW)だと横に引き伸ばされていた。
     this.L.horizonForest.tileScale.set(horizonH / this.L.horizonForest.texture.height);
-    this.L.horizonForest.position.set(-horizonMarginX, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0) + (this.stage5Stage ? STAGE5_HORIZON_FOREST_EXTRA_DOWN : 0));
+    this.L.horizonForest.position.set(-horizonMarginX, this.horizonForestY(farH, horizonH));
     this.layoutNearHorizon(); // 遠景手前森の寸法/位置も追従
     this.updateHorizonForestFadeMask(w, horizonH);
     this.updateWorldFadeMask(w, h);
@@ -1761,14 +1760,22 @@ export class PixiScene {
     return Math.min(this.screenH * FAR_BACKDROP_HEIGHT_CAP, Math.max(FAR_BACKDROP_MIN_HEIGHT, this.screenH * FAR_BACKDROP_HEIGHT_RATIO));
   }
 
+  // 遠景森1(horizonForest)の縦位置。ステージ5は縮小により固定オフセット(-100px)が相対的に強く効いて
+  // 帯が浮いたため、底を遠景の境界線(farH)に直接合わせる(社長指示v0.25.1740「遠景の境界線に合わせて」)。
+  // 他ステージは従来式(重なり比+固定オフセット+lab追加下げ)のまま。
+  private horizonForestY(farH: number, horizonH: number): number {
+    if (this.stage5Stage) return farH - horizonH;
+    return farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0);
+  }
   private horizonForestHeight() {
     const base = Math.min(
       HORIZON_FOREST_MAX_HEIGHT,
       Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
     );
-    // ステージ5だけ縮小(社長指示: v1738半分→v1739さらに半分=×0.25)。雪原の frontForestHeight ×2/3 と同じ前例方式。
+    // ステージ5だけ縮小(社長指示: v1738半分→v1739さらに半分→v1740で1.5倍=×0.375)。
+    // 雪原の frontForestHeight ×2/3 と同じ前例方式。
     // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
-    return this.stage5Stage ? base * 0.25 : base;
+    return this.stage5Stage ? base * 0.375 : base;
   }
 
   private frontForestHeight() {
@@ -2659,7 +2666,7 @@ export class PixiScene {
       0
     );
     const horizonH = this.horizonForestHeight();
-    this.L.horizonForest.position.set(0, farH - horizonH * HORIZON_FOREST_OVERLAP_RATIO + HORIZON_FOREST_Y_OFFSET_PX + (this.isLabStage ? LAB_HORIZON_FOREST_EXTRA_DOWN : 0) + (this.stage5Stage ? STAGE5_HORIZON_FOREST_EXTRA_DOWN : 0));
+    this.L.horizonForest.position.set(0, this.horizonForestY(farH, horizonH));
     this.L.horizonForest.tilePosition.set(
       -s.camera.x * HORIZON_FOREST_PARALLAX_X,
       0

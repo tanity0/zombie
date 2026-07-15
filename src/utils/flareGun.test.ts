@@ -16,10 +16,10 @@ const flare = (id: string, firedAt: number, x = 500, y = 0): FlareGunFlare => ({
 });
 
 describe('flareGun 定数(§6.6)', () => {
-  it('CD=Lv1:5秒/Lv2:4秒/Lv3:3秒・引き付け3秒', () => {
-    expect(FLARE_GUN_CD_MS_BY_LEVEL[1]).toBe(5000);
-    expect(FLARE_GUN_CD_MS_BY_LEVEL[2]).toBe(4000);
-    expect(FLARE_GUN_CD_MS_BY_LEVEL[3]).toBe(3000);
+  it('CD=Lv1:9秒/Lv2:7秒/Lv3:5秒(社長指定v0.25.1740)・引き付け3秒', () => {
+    expect(FLARE_GUN_CD_MS_BY_LEVEL[1]).toBe(9000);
+    expect(FLARE_GUN_CD_MS_BY_LEVEL[2]).toBe(7000);
+    expect(FLARE_GUN_CD_MS_BY_LEVEL[3]).toBe(5000);
     expect(FLARE_GUN_DURATION_MS).toBe(3000);
   });
 });

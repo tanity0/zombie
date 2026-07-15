@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1740',
+    items: [
+      'フレアガン: CDをLv1=9秒/Lv2=7秒/Lv3=5秒に変更(従来5/4/3秒)。',
+      'ステージ5: 森1(地平帯)を1.5倍に戻し、遠景の境界線に底を合わせました(縮小で浮いていたのを修正)。',
+    ],
+  },
+  {
     version: '0.25.1739',
     items: [
       'ステージ5: 遠景の森1・森2をさらに半分に縮小し、森1(地平帯)を少し下げました。',

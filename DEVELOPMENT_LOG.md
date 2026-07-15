@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1740 — フレアガンCD=9/7/5秒+ステージ5森1を1.5倍・境界線アンカー(社長指示)【2026-07-15 18:52 JST】
+- **フレアガンCD**: `FLARE_GUN_CD_MS_BY_LEVEL` [5000,4000,3000]→**[9000,7000,5000]**
+  (flareGun.ts+テスト期待値+§6.6改定)。related 140件green。
+- **ステージ5森1**: 大きさ×0.25→**×0.375**(1.5倍)。位置は「浮き」の根因が固定オフセット
+  -100pxの相対的過効(縮小でhorizonHが小さくなり帯の底がfarHから離れた)だったため、
+  ステージ5だけ**底を遠景境界線(farH)に直接アンカー**する方式へ(`horizonForestY()`ヘルパーに
+  resize/毎フレームの2箇所を集約)。v1739の`STAGE5_HORIZON_FOREST_EXTRA_DOWN`(+20px)は
+  本アンカーで上書きされたため削除。他ステージの式は不変。
+- 検証: typecheck green。見え方は実機で社長確認へ。
+- Files: `src/utils/flareGun.ts`, `src/utils/flareGun.test.ts`, `src/pixi/pixiScene.ts`,
+  `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1739 — ステージ5の森1/森2をさらに半分+森1を下げ(社長指示)【2026-07-15 18:46 JST】
 - 森2(nearHorizon): 高さ比 0.105→**0.0525**(原典0.42の1/8)。
 - 森1(horizonForest): ×0.5→**×0.25**+`STAGE5_HORIZON_FOREST_EXTRA_DOWN = 20`px 下げ
