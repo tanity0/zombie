@@ -340,7 +340,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderStageSelect = () => {
     const mains = STAGES.filter(s => s.kind === 'main');
-    const exs = STAGES.filter(s => s.kind === 'ex');
+    const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden); // hidden=一旦非表示(社長指示v0.25.1752: ex2)
     return (
       <>
         <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />

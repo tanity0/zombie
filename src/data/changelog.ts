@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1752',
+    items: [
+      'EXステージ2件目(変異した洋館跡)をステージ選択から一旦非表示に(データは残置)。',
+    ],
+  },
+  {
     version: '0.25.1751',
     items: [
       '開発: EXステージ2件目の日時(DAY 45 / 03:40)を暫定確定(社長裁定)。ゲーム変更なし。',

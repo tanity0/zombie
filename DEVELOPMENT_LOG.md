@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1752 — EX2を一旦非表示(社長指示)【2026-07-16 02:10 JST】
+- `Stage.hidden?: boolean` を新設し stage-ex2 に付与。ステージ選択のEX一覧で hidden を除外
+  (ロック表示も出さない)。データ/進行/解放チェーンは残置=再表示は hidden を外すだけ。
+- 検証: typecheck green。
+- Files: `src/data/campaign.ts`, `src/components/MissionSelect.tsx`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1751 — EX2日時=DAY45/03:40を暫定確定(社長裁定「そのまま とりあえず」)【2026-07-16 01:06 JST】
 - M42の★未決(stage-ex2の日時)を消化。値は据え置き=コード変更なし(§6.19・ステータス表の注記のみ更新)。
 - Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
