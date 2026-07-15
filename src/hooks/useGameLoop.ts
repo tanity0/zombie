@@ -1454,6 +1454,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // BOT_PERSONA=null(通常プレイ)ではこのブロックは丸ごと素通り(挙動不変)。
       if (BOT_PERSONA) {
         const bs = useGameStore.getState();
+        // 武器商人ショップの自動クローズ(依頼#3実測バグ・v0.25.1732): M38の松明フォレージで
+        // 商人付近の近接スイング→ショップが開き2ランが15分停止。下の60秒保険は shopReopenAt を
+        // 設定せず閉じるため「即再オープン→また60秒」のループに入り得る。開いた瞬間に正規の
+        // closeShop()(reopen遅延1.5s付き)で閉じるのが本修正。
+        if (bs.showShopMenu) bs.closeShop();
         // レベルアップの自動選択(ポリシーはヘッドレスStep1と共用の純関数・決定的乱数)。
         if (bs.showUpgradeMenu && bs.upgradeOptions.length > 0) {
           bs.selectUpgrade(pickUpgrade(bs.upgradeOptions, botRandRef.current));

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1732',
+    items: [
+      '開発: テストボットが武器商人のショップを開いたまま止まるのを修正(自動で閉じる)+依頼#3の結果分析+無効2アームの再走依頼#4を発行。通常プレイへの影響なし。',
+    ],
+  },
+  {
     version: '0.25.1731',
     items: [
       'カウンターで弾き返した敵弾の速度を2倍に(従来1.8倍)。より鋭く跳ね返ります。',

@@ -1,5 +1,33 @@
 # Development Log
 
+## v0.25.1732 — 依頼#3分析+ボットの商人モーダル自動クローズ+依頼#4発行【2026-07-15 13:09 JST】
+- **依頼#3結果分析**(results/20260715-0107-m38-economy-abtest.md・10ラン中8有効・エラー0):
+  - **正規スクリプトがWindowsで完走**(v1725修正の実地確認OK。以後一時ランナー不要)。
+  - **① M38(松明フォレージ)=効果実証**: junk構成のscrapEarned **5→73/59**・junk発射31→58/47・
+    kills 62→122/74。供給ループは回った。なお依然**消費超過**(279/215消費)=Lv3ジャンクの
+    燃費(15スクラップ/発)に対し供給が細い。バランス裁定は社長判断待ち(現状は「初期150を
+    使い切ったら威力急減」という設計どおりの制約とも読める)。
+  - **② バーサーカーON/OFF=判定保留**: OFF側が商人停止で有効n=1(しかもfallback開始の別条件)。
+    参考値: ON 83/81キル vs OFF 100キル=**ONが上回っていない**が材料不足→依頼#4で再走。
+  - **③ ゴールドラッシュ=乗っている方向**: ON 35G(50キル) vs OFF 20G(51キル)・25G(79キル)。
+    キル同数対で1.75倍相当(リザルト式にはLv/時間項もあるため×1.5と矛盾しない)。ON側n=1→依頼#4で再走。
+  - **新バグ: 武器商人モーダルでボット15分停止×2ラン**(berserker-off-a=ゲーム内0:08 /
+    goldrush-on-a=1:12)。根因: ショップは「商人58px圏内での近接スイング」で開く+isPaused。
+    **M38の松明フォレージが開幕の商人付近でスイングを誘発**した可能性が高い。既存の
+    「ポーズ60秒で強制解除」保険は shopReopenAt を設定せず閉じるため、商人の隣に居続けると
+    **即再オープン→また60秒**のループに入り得る(15分停止と整合)。
+- **修正(ボット専用・ゲーム仕様不変)**: ボットがショップを開いた瞬間に正規 `closeShop()`
+  (reopen遅延1.5s付き)で自動クローズ。useGameLoopのbotポーズ系ブロック+playtestDriver
+  (ヘッドレスにも同保険=同構造の潜在フリーズを予防)。60秒保険は最終防衛として存置。
+- **依頼#4発行**: 無効化された2アームの再走(berserker-off×2 / goldrush-on×2=4ラン)+
+  商人停止が再発しないかの確認。
+- 検証: typecheck green / related(playtestDriver+useGameLoop)6件green(M9スモーク込み=
+  ヘッドレスでの商人自動クローズも通過)。
+- 天秤: 診断コンテキスト継続+2行の保険追加=Fable直接(Sonnet発注は過剰)。
+- Files: `src/hooks/useGameLoop.ts`, `src/utils/playtestDriver.ts`, `TEST_HANDOFF/REQUEST.md`,
+  `TEST_HANDOFF/request.config.json`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1731 — カウンター反射弾の速度2倍(社長指示)【2026-07-15 13:03 JST】
 - `REFLECT_SPEED_MULTIPLIER` 1.8→2.0(gameStore.ts:682・reflectProjectileの反射時speed乗算)。
   ダメージ倍率(×10)・非貫通・向き反転など他の反射仕様は不変。

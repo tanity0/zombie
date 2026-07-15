@@ -1,30 +1,25 @@
-# テスト依頼 #3: M38松明フォレージの経済実測+バーサーカー/ゴールドラッシュのON/OFF比較(v0.25.1730)
+# テスト依頼 #4: 依頼#3の無効2アーム再走(武器商人停止の修正確認込み・v0.25.1732)
 
 ## 目的
-1. **M38(v0.25.1729)の効果測定**: ボットが手空き時に近くの松明を壊すようになった。
-   依頼#2でスクラップ供給ゼロ同然だったジャンク構成(獲得5/消費155)の収支がどう変わるか。
-2. **依頼#2で分離できなかった2点のON/OFF比較**(同一構成・スキル有無だけ変えて各2ラン):
-   - バーサーカー(被弾で火力が伸びるスキル)がkills/生存にどれだけ寄与しているか。
-   - ゴールドラッシュのgoldEarned×1.5が実測で乗っているか。
+依頼#3で「武器商人モーダル停止」により無効化された2アームを再走してn=2を揃える。
+停止バグ自体は**v0.25.1732で修正済み**(ボットがショップを開いた瞬間に正規closeShop()で自動クローズ)
+なので、その修正の実地確認も兼ねる。
 
 ## やること
-1. `git pull`(HEADがv0.25.1729以上=M38入りであること)。
-2. `node scripts/botrun-local.mjs`(構成は `request.config.json`=**10ラン**×最大15分。
-   実測では多くが2〜4分で死亡するので**全体目安30〜45分・放置可**)。
-   - ※前回Windowsで落ちたspawn問題(`npx ENOENT`)は**v0.25.1725で修正済み**(shell:true+error捕捉)。
-     今回は正規スクリプトで動くはず。**動いたかどうか自体も報告項目**。もしまた落ちたら
-     エラー全文を結果に貼り、前回同様の一時ランナー回避でOK(ゲームコードはHEADのままで)。
-3. 結果を `TEST_HANDOFF/results/<YYYYMMDD-HHMM>-m38-economy-abtest.md`(+自動出力の.json)にまとめ、
+1. `git pull`(HEADがv0.25.1732以上であること)。
+2. `node scripts/botrun-local.mjs`(構成は `request.config.json`=**4ラン**×最大15分。
+   実測は2〜4分/ランが多い=**全体目安15〜25分・放置可**)。
+3. 結果を `TEST_HANDOFF/results/<YYYYMMDD-HHMM>-m38-abtest-rerun.md`(+自動出力の.json)にまとめ、
    `[test-report]` コミットで push。
 
 ## 構成と見たい数字
 | 構成(×ラン数) | 見たい数字 |
 |---|---|
-| junk-weapon + scrap-builder/magnet **×2** | `scrapEarned`(**依頼#2は5**。M38の松明壊しで増えるか)・`scrapSpent`・`subUses['junk-weapon']`(弾が続くようになったか)・kills(依頼#2は62) |
-| grenade + **berserker**/exploder ×2 ↔ grenade + exploder(berserker無し)×2 | ON/OFF間で kills・damageTaken・生存秒を比較(バーサーカーの寄与を分離)。判定は設計チャット |
-| flare-gun + **gold-rush**/warm-up ×2 ↔ flare-gun + warm-up(gold-rush無し)×2 | ON/OFF間で `goldEarned` を比較(×1.5が乗っているか)。kills/生存秒も併記(正規化用) |
+| grenade + exploder(berserker**無し**)×2 | kills・damageTaken・生存秒(依頼#3のON側 83/81キル・2:06/2:07 との比較用) |
+| flare-gun + **gold-rush**/warm-up ×2 | `goldEarned`(依頼#3のOFF側 20/25 との比較用)・kills・生存秒 |
 
 ## 記録してほしいこと
-- 各ランの[BOT_REPORT]全文(表にまとめてよい)・consoleエラー(0件なら明記)
-- **正規スクリプト(botrun-local.mjs)がWindowsでそのまま動いたか**(v1725修正の実地確認)
-- 気づき(任意): 見た目の異常など。判定・分析はしなくてよい(設計チャットがやる)
+- 各ランの[BOT_REPORT]全文・consoleエラー(0件なら明記)
+- **武器商人モーダルで止まるランが出なかったか**(v0.25.1732修正の確認。もし止まったらスクショと
+  ゲーム内時刻を記録)
+- 気づき(任意)。判定・分析はしなくてよい(設計チャットがやる)

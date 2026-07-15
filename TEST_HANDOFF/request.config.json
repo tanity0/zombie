@@ -4,15 +4,9 @@
   "headless": true,
   "viewport": { "width": 1280, "height": 800 },
   "configs": [
-    { "name": "junk-scrap-a", "persona": "standard", "subs": ["junk-weapon"], "skills": ["scrap-builder", "magnet"] },
-    { "name": "junk-scrap-b", "persona": "standard", "subs": ["junk-weapon"], "skills": ["scrap-builder", "magnet"] },
-    { "name": "berserker-on-a", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["berserker", "exploder"] },
-    { "name": "berserker-on-b", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["berserker", "exploder"] },
-    { "name": "berserker-off-a", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
-    { "name": "berserker-off-b", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
-    { "name": "goldrush-on-a", "persona": "standard", "subs": ["flare-gun"], "skills": ["gold-rush", "warm-up"] },
-    { "name": "goldrush-on-b", "persona": "standard", "subs": ["flare-gun"], "skills": ["gold-rush", "warm-up"] },
-    { "name": "goldrush-off-a", "persona": "standard", "subs": ["flare-gun"], "skills": ["warm-up"] },
-    { "name": "goldrush-off-b", "persona": "standard", "subs": ["flare-gun"], "skills": ["warm-up"] }
+    { "name": "berserker-off-a2", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
+    { "name": "berserker-off-b2", "persona": "standard", "subs": ["heavy-grenade"], "skills": ["exploder"] },
+    { "name": "goldrush-on-a2", "persona": "standard", "subs": ["flare-gun"], "skills": ["gold-rush", "warm-up"] },
+    { "name": "goldrush-on-b2", "persona": "standard", "subs": ["flare-gun"], "skills": ["gold-rush", "warm-up"] }
   ]
 }

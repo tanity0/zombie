@@ -348,6 +348,10 @@ export interface PlaytestTickOptions {
 export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): void => {
   const { persona, tickIndex, wanderSeed, dt, rusherState } = opts;
   const store = useGameStore.getState();
+  // 武器商人ショップの自動クローズ(実機botと同じ保険・v0.25.1732): 近接スイングが商人の
+  // 圏内(58px)に入るとショップが開いて isPaused=true になる。ヘッドレスも正規 closeShop()
+  // (reopen遅延1.5s付き)で即閉じ、詰み/計測停止を防ぐ。
+  if (store.showShopMenu) store.closeShop();
   const t = store.gameTime + dt * 1000;
   store.setGameTime(t);
 
