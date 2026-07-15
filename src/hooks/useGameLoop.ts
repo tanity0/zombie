@@ -2433,7 +2433,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // --- ハンター変異体イベント(専用コントローラ・社長指示) ---------------------
         // 屋内/練習モードでは出さない。出現〜索敵〜発見〜追跡〜撤退〜増援を状態機械で管理。
-        if (!danceTest && !indoor) {
+        // ステージ2(研究所スキン=labTheme)にも出さない(社長指示v0.25.1753。凶悪ハンター含む
+        // コントローラごと停止=死神をlabで止めるのと同じ扱い)。
+        if (!danceTest && !indoor && !labTheme) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;

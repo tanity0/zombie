@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1753 — ステージ2にハンターを出さない(社長指示)【2026-07-16 02:13 JST】
+- ハンター専用コントローラ(useGameLoop・凶悪ハンター含む)の起動条件に `!labTheme` を追加
+  (従来は屋内/練習のみ除外=屋外ラボのステージ2では発生していた)。死神をlabで止めるのと同じ扱い。
+  他ステージ・ゲート系イベントは不変。
+- 検証: typecheck green。
+- Files: `src/hooks/useGameLoop.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1752 — EX2を一旦非表示(社長指示)【2026-07-16 02:10 JST】
 - `Stage.hidden?: boolean` を新設し stage-ex2 に付与。ステージ選択のEX一覧で hidden を除外
   (ロック表示も出さない)。データ/進行/解放チェーンは残置=再表示は hidden を外すだけ。

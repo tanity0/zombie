@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1753',
+    items: [
+      'ステージ2(研究所): ハンター変異体(凶悪ハンター含む)が出現しなくなりました。',
+    ],
+  },
+  {
     version: '0.25.1752',
     items: [
       'EXステージ2件目(変異した洋館跡)をステージ選択から一旦非表示に(データは残置)。',
