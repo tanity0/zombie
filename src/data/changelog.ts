@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1741',
+    items: [
+      'ステージ5: 森1をさらに1.5倍に、森2を1.5倍にして100px上に移動。',
+    ],
+  },
+  {
     version: '0.25.1740',
     items: [
       'フレアガン: CDをLv1=9秒/Lv2=7秒/Lv3=5秒に変更(従来5/4/3秒)。',

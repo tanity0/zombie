@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1741 — ステージ5森1さらに1.5倍+森2を1.5倍・100px上へ(社長指示)【2026-07-15 18:58 JST】
+- 森1(horizonForest): ×0.375→**×0.5625**(底は境界線アンカーのまま=v1740方式)。
+- 森2(nearHorizon): 高さ比 0.0525→**0.07875**+`STAGE5_NEAR_HORIZON_UP_PX=100`で底を100px上へ
+  (layoutNearHorizonのbottom式にステージ5分岐)。他ステージ不変・視覚のみ。
+- 検証: typecheck green。見え方は実機で社長確認へ。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1740 — フレアガンCD=9/7/5秒+ステージ5森1を1.5倍・境界線アンカー(社長指示)【2026-07-15 18:52 JST】
 - **フレアガンCD**: `FLARE_GUN_CD_MS_BY_LEVEL` [5000,4000,3000]→**[9000,7000,5000]**
   (flareGun.ts+テスト期待値+§6.6改定)。related 140件green。

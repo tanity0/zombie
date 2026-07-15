@@ -140,8 +140,9 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
   return Number.isFinite(v) && v > 0 ? v : 0.17; // ステージ2既定0.17(社長指定)
 })();
-// ステージ5(戦場の残骸)だけ縮小(社長指示: v1736半分→v1738さらに半分→v1739さらに半分=原典0.42の1/8)。
-const STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.0525;
+// ステージ5(戦場の残骸)だけ縮小(社長指示: v1736半分→v1738半分→v1739半分→v1741で1.5倍=0.07875)。
+const STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.07875;
+const STAGE5_NEAR_HORIZON_UP_PX = 100; // ステージ5だけ森2を上へずらす量(px・社長指示v0.25.1741)
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
@@ -1772,10 +1773,10 @@ export class PixiScene {
       HORIZON_FOREST_MAX_HEIGHT,
       Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
     );
-    // ステージ5だけ縮小(社長指示: v1738半分→v1739さらに半分→v1740で1.5倍=×0.375)。
+    // ステージ5だけ縮小(社長指示: v1738半分→v1739半分→v1740で1.5倍→v1741でさらに1.5倍=×0.5625)。
     // 雪原の frontForestHeight ×2/3 と同じ前例方式。
     // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
-    return this.stage5Stage ? base * 0.375 : base;
+    return this.stage5Stage ? base * 0.5625 : base;
   }
 
   private frontForestHeight() {
@@ -2285,7 +2286,9 @@ export class PixiScene {
       : this.nearHorizonKeyNow === 'stage5' ? STAGE5_NEAR_HORIZON_HEIGHT_RATIO
       : NEAR_HORIZON_HEIGHT_RATIO;
     const height = this.screenH * heightRatio;
-    const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
+    // ステージ5は帯を100px上へ(社長指示v0.25.1741)。他ステージは従来位置。
+    const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO
+      - (this.nearHorizonKeyNow === 'stage5' ? STAGE5_NEAR_HORIZON_UP_PX : 0);
     // 横オーバースキャン: 引いた時に左右が切れないよう画面より広く中央寄せ(worldGroup内=スケール対象)。
     const nhMarginX = (this.screenW * ZOOM_OVERSCAN - this.screenW) / 2;
     this.L.nearHorizon.width = this.screenW * ZOOM_OVERSCAN;
