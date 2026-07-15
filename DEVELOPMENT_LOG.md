@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1749 — M42(改定)仕様確定: ストーリー選択の親子構造化(社長仕様受領)【2026-07-16 00:40 JST】
+- 社長仕様(選択画面の最上位=日時+場所名ノード・MAIN/SUB/EX子カード・開発コード非表示・
+  ミッション単位の進行/リザルト/資料メタ)を `STORY_UI_SPEC.md` 追補1として全文正本化。
+- §6.19にマッピング確定: StoryLocationNode型は新設せず**Stageにday/time/locationTitleを追加**
+  (ノード情報の一元保持)/ミッション名・本文は既存維持(表示例の新ミッション名は例示と解釈=M43)/
+  specialEquipment新フィールド/進行はadditive(既存ステージクリア保存を壊さずmissionId集合を追加)。
+- **★未決1点**: stage-ex2(変異した洋館跡)の日時は社長指定がEX1件分のみ→叩き台 DAY45/03:40 で実装し
+  裁定待ち。
+- 旧M42の「通信ログ読み返し」はM44へ分離。Sonnetサブエージェント発注。
+- Files: `STORY_UI_SPEC.md`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1748 — M41実装: 資料室UI刷新+未読NEWバッジ+「資料が追加されました」ポップアップ(§6.18)【2026-07-15 22:33 JST】
 - `src/components/MissionSelect.tsx`: `renderArchive`の「任務記録」セクションを`ARCHIVE_RECORDS`
   (category='mission')ベースへ差し替え(解放済み=タイトル一覧+未読は金ドット→タップで本文表示・

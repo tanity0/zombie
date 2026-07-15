@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1749',
+    items: [
+      '開発: ストーリー選択画面の親子構造化(日時・場所ノード+MAIN/SUB/EXカード)の仕様を受領・確定(STORY_UI_SPEC.md追補1+§6.19)。実装開始。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1748',
     items: [
       'メインメニューの資料室を刷新。回収した資料の閲覧・未読NEW表示・クリア後の資料追加のお知らせを追加。',
