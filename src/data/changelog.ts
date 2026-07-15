@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1755',
+    items: [
+      '開発: ネームド(天使・裏ボス・宿敵)の表示名を「CODE:ローマ字」形式へ変える仕様を確定(§6.20)。実装開始。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1754',
     items: [
       'ステージ2(研究所): 敵の視界(起床する索敵範囲)を300pxに変更(湧き敵420→300・書類ガード220→300で統一)。より深く忍び寄れます。',

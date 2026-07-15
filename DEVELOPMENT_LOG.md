@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1755 — M45仕様確定: ネームド名を「CODE:ローマ字」へ(社長指示)【2026-07-16 08:31 JST】
+- 対象=天使3(MIGUEL/JIBRIL/RAFI)・裏ボス4(MIMIR/JORMUNGAND/SKADI/THOR)・宿敵32名(CERBERUS等)。
+  §6.20に変換表と実装方式(NAMED_ENEMY_NAMES置換+旧カタカナ永続名の読み時正規化
+  normalizeNamedName+表示箇所grep総当り)を確定→Sonnet発注。
+- 種族ラベル(変異体(◯◯型)等)とNPC名は対象外。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1754 — ステージ2の敵視界を300pxへ(社長指示)【2026-07-16 08:18 JST】
 - `LAB_SPAWN_AGGRO_RANGE` 420→**300**(useGameLoop・湧きラボゾンビ)+書類ガードの
   `aggroRange` 220→**300**(gameStore・ステージ2の敵で統一)。起床判定(視線=壁越し不可)は不変。
