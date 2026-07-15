@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1738 — ステージ5の森2をさらに半分+森1も半分(社長指示)【2026-07-15 18:43 JST】
+- 森2(nearHorizon): `STAGE5_NEAR_HORIZON_HEIGHT_RATIO` 0.21→**0.105**(原典0.42の1/4)。
+- 森1(horizonForest=地平帯): `horizonForestHeight()` にステージ5分岐 **×0.5** を追加
+  (雪原の frontForestHeight ×2/3 と同じ前例方式)。地平の薄消し線(horizonActorHideScreenY)は
+  帯の実位置から導出のため自動追従(視覚のみ・ゲームプレイ不変)。他ステージ不変。
+- 検証: typecheck green。見え方は実機で社長確認へ。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1737 — 援護射撃の攻撃力弱体(マグナム基準×1/2・社長裁定)【2026-07-15 18:41 JST】
 - 社長裁定「マグナム基準で、計算後に半分に割って」を反映(§6.5に追記):
   `buildSupportSniperShot`(weaponUtils.ts)の shotDamage を

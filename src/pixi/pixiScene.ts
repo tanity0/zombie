@@ -140,8 +140,8 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
   return Number.isFinite(v) && v > 0 ? v : 0.17; // ステージ2既定0.17(社長指定)
 })();
-// ステージ5(戦場の残骸)だけ半分(社長指示v0.25.1736「遠景手前の森2が大きすぎる。半分にして」=0.42/2)。
-const STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.21;
+// ステージ5(戦場の残骸)だけ縮小(社長指示v0.25.1736「半分にして」=0.21→さらに半分v0.25.1738=0.105)。
+const STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.105;
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
@@ -1761,10 +1761,13 @@ export class PixiScene {
   }
 
   private horizonForestHeight() {
-    return Math.min(
+    const base = Math.min(
       HORIZON_FOREST_MAX_HEIGHT,
       Math.max(HORIZON_FOREST_MIN_HEIGHT, this.screenH * HORIZON_FOREST_HEIGHT_RATIO)
     );
+    // ステージ5だけ半分(社長指示v0.25.1738「森1も半分に」)。雪原の frontForestHeight ×2/3 と同じ前例方式。
+    // 地平の薄消し線(horizonActorHideScreenY)は帯の実位置から導出しているので自動で追従する。
+    return this.stage5Stage ? base * 0.5 : base;
   }
 
   private frontForestHeight() {
