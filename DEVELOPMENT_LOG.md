@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1736 — ステージ5の遠景森2を半分に縮小(社長指示)【2026-07-15 18:32 JST】
+- `STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.21`(既定0.42の半分)を新設し、layoutNearHorizonの高さ比を
+  ステージ別に分岐(lab=0.17の前例と同方式)。applyNearHorizonが現在キーを保持し、resize経由の
+  再レイアウトでも正しい比を引く。他ステージ不変。
+- 検証: typecheck green。実機の見え方は社長確認へ。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1735 — 年表の討伐ボス絵を上方向へ拡大(社長指示)【2026-07-15 18:31 JST】
 - 行間の「|」区切り(上下マージン込み≈28pxの余白帯)を使い、アイコンを height 16→28px・maxWidth
   24→42px に拡大。`marginTop: -12` でマージンボックスは従来の16px相当のまま=**行送り・レイアウトは

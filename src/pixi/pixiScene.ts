@@ -140,6 +140,8 @@ const LAB_NEAR_HORIZON_HEIGHT_RATIO = (() => {
   const v = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('nh')) : NaN;
   return Number.isFinite(v) && v > 0 ? v : 0.17; // ステージ2既定0.17(社長指定)
 })();
+// ステージ5(戦場の残骸)だけ半分(社長指示v0.25.1736「遠景手前の森2が大きすぎる。半分にして」=0.42/2)。
+const STAGE5_NEAR_HORIZON_HEIGHT_RATIO = 0.21;
 const NEAR_HORIZON_PARALLAX_X = 0.5;         // 横パララックス(遠景森2=手前)。|大|=近い
 const NEAR_HORIZON_BOTTOM_RATIO = 0.10;      // 底を farH からさらに screenH×この割合だけ下へ(大きいほど下)。少し上へ
 const NEAR_HORIZON_BLUR = 0.35;              // 近いので地平の森より弱いブラー
@@ -2245,8 +2247,10 @@ export class PixiScene {
     this.nearHorizonOverrides[key] = t;
   }
   // 遠景森2をキー(s.nearHorizon)で出し分け。差分時にテクスチャ差し替え+再レイアウト、tint は昼夜連動。
+  private nearHorizonKeyNow = ''; // layoutNearHorizon(resize経由含む)がステージ別高さ比を引くための現在キー
   private applyNearHorizon(key: string) {
     const tex = key ? this.nearHorizonOverrides[key] : null;
+    this.nearHorizonKeyNow = key;
     if (!tex) { this.L.nearHorizon.visible = false; return; }
     if (this.L.nearHorizon.texture !== tex) this.L.nearHorizon.texture = tex;
     // 毎フレーム現在の画面/テクスチャ寸法でレイアウト(テクスチャ未準備なら内部で早期return)。
@@ -2264,8 +2268,11 @@ export class PixiScene {
     const tex = this.L.nearHorizon.texture;
     if (!tex || tex.width <= 1 || tex.height <= 1) return;
     const farH = this.farBackdropHeight();
-    // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)。他ステージは原典の0.42。
-    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO : NEAR_HORIZON_HEIGHT_RATIO;
+    // 遠景森2の高さ(サイズ)はステージ2だけ低め(社長指示)、ステージ5は半分(社長指示v0.25.1736)。
+    // 他ステージは原典の0.42。
+    const heightRatio = this.isLabStage ? LAB_NEAR_HORIZON_HEIGHT_RATIO
+      : this.nearHorizonKeyNow === 'stage5' ? STAGE5_NEAR_HORIZON_HEIGHT_RATIO
+      : NEAR_HORIZON_HEIGHT_RATIO;
     const height = this.screenH * heightRatio;
     const bottom = farH + this.screenH * NEAR_HORIZON_BOTTOM_RATIO;
     // 横オーバースキャン: 引いた時に左右が切れないよう画面より広く中央寄せ(worldGroup内=スケール対象)。

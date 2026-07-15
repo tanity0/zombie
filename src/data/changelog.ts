@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1736',
+    items: [
+      'ステージ5: 遠景手前の森2(戦場の残骸の帯)を半分のサイズに縮小。',
+    ],
+  },
+  {
     version: '0.25.1735',
     items: [
       '年表: 討伐ボスの絵を大きく表示(行間の余白を使って上方向へ拡大。行送りは不変)。',
