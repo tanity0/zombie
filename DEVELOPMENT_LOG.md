@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1731 — カウンター反射弾の速度2倍(社長指示)【2026-07-15 13:03 JST】
+- `REFLECT_SPEED_MULTIPLIER` 1.8→2.0(gameStore.ts:682・reflectProjectileの反射時speed乗算)。
+  ダメージ倍率(×10)・非貫通・向き反転など他の反射仕様は不変。
+- 検証: typecheck green(定数1点・テスト参照なし)。天秤: 定数1点=Fable直接(Sonnet過剰)。
+- Files: `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1730 — テスト依頼#3発行: M38経済実測+バーサーカー/ゴールドラッシュAB比較【2026-07-15 09:43 JST】
 - 社長指示「やっておこう」を受けて依頼#3を発行(TEST_HANDOFF/REQUEST.md+request.config.json)。
 - 内容(10ラン・全てstandard/stage-1・最大15分):

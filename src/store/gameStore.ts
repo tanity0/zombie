@@ -679,7 +679,7 @@ const SKATEBOARD_BASH_RANGE = 140;      // ヒット時バッシュの範囲(半
 // knockback for this long (damage still lands) so it can't be locked forever.
 export const KNOCKBACK_IMMUNE_MS = 1750;
 export const REFLECT_DAMAGE_MULTIPLIER = 10.0; // countered/reflected bullets hit 10× harder(社長指示で60→10)
-export const REFLECT_SPEED_MULTIPLIER = 1.8;
+export const REFLECT_SPEED_MULTIPLIER = 2.0; // カウンター反射弾の速度倍率(社長指示v0.25.1731で1.8→2.0)
 // スキル: 反射神経の反撃爆発。ランチャー相当の半径・ダメージ(useGameLoop GRENADE_* に準拠の仮値)。
 export const REFLEX_BLAST_RADIUS = 92;  // = GRENADE_BLAST_RADIUS
 export const REFLEX_BLAST_DAMAGE = 60;  // ランチャー級の反撃(要実機調整)

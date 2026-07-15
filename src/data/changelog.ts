@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1731',
+    items: [
+      'カウンターで弾き返した敵弾の速度を2倍に(従来1.8倍)。より鋭く跳ね返ります。',
+    ],
+  },
+  {
     version: '0.25.1730',
     items: [
       '開発: テスト依頼#3を発行(M38松明壊し後のジャンク経済の再実測+バーサーカー/ゴールドラッシュのON/OFF比較・計10ラン)。ゲーム変更なし。',
