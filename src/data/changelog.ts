@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1735',
+    items: [
+      '年表: 討伐ボスの絵を大きく表示(行間の余白を使って上方向へ拡大。行送りは不変)。',
+    ],
+  },
+  {
     version: '0.25.1734',
     items: [
       'ステージ5の地面を専用素材(戦場跡)に差し替え(これまでは森の地面を流用)。',

@@ -154,12 +154,16 @@ const ChronicleTimeline: React.FC = () => {
                     alt=""
                     draggable={false}
                     style={{
+                      // 社長指示v0.25.1735: 行間の「|」ぶんの余白を使い、絵を上方向へ拡大表示する。
+                      // height 16→28 + marginTop -12 でマージンボックスは従来の16pxのまま
+                      // (=行送り・レイアウト不変)、描画だけが上の余白帯へはみ出す。
                       display: 'inline-block',
-                      height: 16,
+                      height: 28,
                       width: 'auto',
-                      maxWidth: 24,
+                      maxWidth: 42,
                       objectFit: 'contain',
                       verticalAlign: '-3px',
+                      marginTop: -12,
                       marginRight: 6,
                     }}
                   />

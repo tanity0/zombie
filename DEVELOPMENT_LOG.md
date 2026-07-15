@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.1735 — 年表の討伐ボス絵を上方向へ拡大(社長指示)【2026-07-15 18:31 JST】
+- 行間の「|」区切り(上下マージン込み≈28pxの余白帯)を使い、アイコンを height 16→28px・maxWidth
+  24→42px に拡大。`marginTop: -12` でマージンボックスは従来の16px相当のまま=**行送り・レイアウトは
+  不変で、描画だけが上の余白へはみ出す**方式(TitleScreen.tsx・値は叩き台=実機で微調整可)。
+- 検証: typecheck green。見え方(上の行やフェードマスクとの干渉が無いか)は実機で社長確認へ。
+- Files: `src/components/TitleScreen.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1734 — ステージ5の地面素材を組み込み(社長提供)【2026-07-15 14:31 JST】
 - 社長提供PNG(1254×1254・3.2MB)を `public/backgrounds/stage5-ground.jpg`(JPG品質85・463KB=
   既存地面と同水準)へ変換して配置。変換は画像CLI不在のため同梱Chromiumのcanvasで実施
