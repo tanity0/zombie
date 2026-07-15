@@ -135,7 +135,7 @@ import {
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
 import {
-  decideBotInput, pickupSeekInput, adjustBotForMines, createRusherTrackState,
+  decideBotInput, pickupSeekInput, torchForageInput, adjustBotForMines, createRusherTrackState,
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
 import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
@@ -1498,13 +1498,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 : undefined)
           : null;
         // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。?bot無しの通常プレイは不変)。
+        // M38(§6.15): その手前に松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割って
+        // スクラップ供給を作る)を挟む。松明への進路上の緑卵は後段のadjustBotForMinesの回避/叩きが効く。
         const botMineAdj = botDecision
-          ? adjustBotForMines(
-              pickupSeekInput(BOT_PERSONA as BotPersona, botDecision.input,
-                player.x + player.width / 2, player.y + player.height / 2, pickups),
-              botDecision.wantsMelee,
-              player.x + player.width / 2, player.y + player.height / 2,
-              loopState.breakableProps.filter(p => p.type === 'mine'))
+          ? (() => {
+              const botMoveAfterPickup = pickupSeekInput(BOT_PERSONA as BotPersona, botDecision.input,
+                player.x + player.width / 2, player.y + player.height / 2, pickups);
+              const botTorchForage = torchForageInput(BOT_PERSONA as BotPersona, botMoveAfterPickup,
+                player.x + player.width / 2, player.y + player.height / 2,
+                loopState.breakableProps.filter(p => p.type === 'torch'));
+              return adjustBotForMines(
+                botTorchForage.input,
+                botDecision.wantsMelee || botTorchForage.wantsMelee,
+                player.x + player.width / 2, player.y + player.height / 2,
+                loopState.breakableProps.filter(p => p.type === 'mine'));
+            })()
           : null;
         // M37(§6.14): 人間反応のカウンター(ジャンプ/突進/敵弾を反応遅延+試行確率でカウンター)。
         // 移動入力は変えない=既存のwantsMelee判断(mine叩き込み)とOR合成するだけ。?bot無しの

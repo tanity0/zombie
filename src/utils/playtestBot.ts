@@ -85,6 +85,42 @@ export const pickupSeekInput = (
   return dirInput((bestX - pcx) / n, (bestY - pcy) / n);
 };
 
+// M38(§6.15): 松明を壊してスクラップ供給を作る「松明フォレージ」。手空きのtick(ペルソナ判断+
+// 拾い歩き(pickupSeekInput)の後も移動入力が無い時)のみ発火する後段補正で、通常プレイ・松明/
+// ドロップ/スクラップの仕様には一切触れない。呼び出し側(playtestDriver/useGameLoopのbotブロック)
+// が pickupSeekInput の直後・adjustBotForMines(M34)の手前でこれを通す(優先順位: ピックアップ拾い
+// (既存) > 松明。pickupSeekInputが動いたtickは松明に行かない=不干渉)。
+// - 歩み寄り: TORCH_SEEK_DIST以内の最寄りの未破壊松明へ dirInput で近づく(pickupSeekInputと同じ流儀)。
+// - 叩く: TORCH_SMASH_DIST以内なら wantsMelee=true(スイングは全方位=breakPropsAlongが松明を割り、
+//   既存のドロップ抽選(dropBreakablePropLoot)でスクラップ等が出る)。移動は追加しない。
+// - stationary(棒立ちが仕様)・rusher(カウンター/寄り道を一切しない低スキル再現=M19の設計意図)は除外。
+export const TORCH_SEEK_DIST = 240;  // 拾い歩きのmaxDistと同じ(§6.15 叩き台)
+export const TORCH_SMASH_DIST = 60;  // M34のMINE_SMASH_DISTと同値(§6.15 叩き台)
+
+export interface TorchForageResult { input: InputState; wantsMelee: boolean }
+
+export const torchForageInput = (
+  persona: BotPersona,
+  input: InputState,
+  pcx: number,
+  pcy: number,
+  torches: readonly MinePropLike[],
+  seekDist = TORCH_SEEK_DIST,
+  smashDist = TORCH_SMASH_DIST,
+): TorchForageResult => {
+  if (persona === 'stationary' || persona === 'rusher') return { input, wantsMelee: false };
+  if (input.up || input.down || input.left || input.right) return { input, wantsMelee: false }; // 本来の判断/拾いが動いている時は触らない
+  let bestX = 0, bestY = 0, bestD = seekDist;
+  for (const t of torches) {
+    const d = Math.hypot(t.footX - pcx, t.footY - pcy);
+    if (d < bestD) { bestD = d; bestX = t.footX; bestY = t.footY; }
+  }
+  if (bestD >= seekDist) return { input, wantsMelee: false };
+  if (bestD <= smashDist) return { input, wantsMelee: true }; // 叩ける距離: 追加の移動はしない(優先)
+  const n = Math.max(0.001, bestD);
+  return { input: dirInput((bestX - pcx) / n, (bestY - pcy) / n), wantsMelee: false };
+};
+
 // 放浪ペルソナ用: ラン開始時に一度だけ選ぶ固定方向(spawn からの一方向へ直進=戦闘無視)。
 const WANDER_DIRS: InputState[] = [
   { up: true, down: false, left: false, right: false },

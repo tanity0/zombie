@@ -1,5 +1,42 @@
 # Development Log
 
+## v0.25.1729 — M38実装: ボットAI改善=松明壊し=スクラップ供給(§6.15)【2026-07-15 09:14 JST】
+- 設計チャット確定仕様(§6.15)をSonnetサブエージェントが実装。**ボット専用の後段補正。通常プレイ・
+  松明/ドロップ/スクラップの仕様は1バイトも変更していない**(ボット入力の生成のみ)。
+- `src/utils/playtestBot.ts`: 純関数 `torchForageInput(persona, input, pcx, pcy, torches, seekDist, smashDist)`
+  → `{ input, wantsMelee }` を追加(`TORCH_SEEK_DIST=240`/`TORCH_SMASH_DIST=60`)。
+  - 手空き(移動入力なし)のtickのみ発火。移動入力がある時は入力をそのまま返す(不干渉・pickupSeekInput
+    が動いたtickは松明に行かない=優先順位「拾い>松明」が自然に成立)。
+  - `stationary`(棒立ちが仕様)・`rusher`(M19の低スキル再現=カウンター/寄り道を一切しない設計意図)は除外。
+  - 240px以内の最寄り未破壊松明(`MinePropLike`=footX/footY互換)へdirInputで歩み寄り、60px以内で
+    `wantsMelee: true`(スイングは全方位=既存のbreakPropsAlong/dropBreakablePropLootがそのまま効く)。
+- 配線(両ハーネス・合成順=ペルソナ判断→pickupSeekInput→**松明フォレージ(本件)**→adjustBotForMines(M34)
+  →decideCounterReaction(M37)とOR合成。M34が後段のため松明への進路上の緑卵は既存の回避/叩きが効く):
+  - `src/utils/playtestDriver.ts`(`runPlaytestTick`): pickupSeekInputの直後に挿入。torchesは
+    `breakableProps.filter(p => p.type === 'torch')`(damageBreakablePropが破壊時に配列から即除去する
+    ため`health>0`等の追加フィルタは不要=既存のM34 mineフィルタと同じ最小形)。wantsMeleeは
+    `decision.wantsMelee || torchForage.wantsMelee`でadjustBotForMinesへ渡す。
+  - `src/hooks/useGameLoop.ts`(botブロック・≈1500行): 既存の`pickupSeekInput→adjustBotForMines`ネストを
+    IIFEに拡張し、その間に松明フォレージを挟んだ(型安全に`botDecision`のnarrowingをIIFEクロージャへ
+    持ち込むため。非null断言は使っていない)。
+- テスト: `src/utils/playtestBot.test.ts` に `torchForageInput` の describe を新設(7件・pickupSeekInputの
+  直後に配置): 240px内へ歩く/60px内でwantsMelee(移動は追加しない)/移動入力がある時は不干渉/
+  stationary除外/rusher除外/240px超は無視/松明無しは入力・wantsMeleeとも同一参照で不変。
+- 検証: `npm run typecheck` green / `npx eslint`(4ファイル)warning・error無し /
+  `npx vitest related --run src/utils/playtestBot.ts src/utils/playtestDriver.ts` →
+  **46 passed | 1 skipped (47)**(playtestBot.test.ts 40件=新規7件込み全green、
+  playtest.test.ts 7件中6件実行=M9スモーク含め全green・新規クラッシュ/不変条件違反なし)。
+  `npm run playtest`実機フルは社長指示が無いため未実行(CLAUDE.mdテスト運用=社長明示指示時のみ)。
+- 自己点検: 本変更はボット入力の後段補正のみで、通常プレイの松明/ドロップ/スクラップ仕様・敵AI・
+  ゲームバランスには一切触れていない=**憲法第4条(初心者ゾーン不可侵)・第5条(緩を荒らさない)に抵触しない**
+  (ボット専用=テスト計測の精度向上が目的で、実プレイの盤面パズル・ペーシングには影響しない)。
+- ★未決事項: なし(仕様書§6.15の記載どおりに実装。未決に該当する曖昧値・未定義挙動は無かった)。
+- Files: `src/utils/playtestBot.ts`, `src/utils/playtestBot.test.ts`, `src/utils/playtestDriver.ts`,
+  `src/hooks/useGameLoop.ts`, `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`,
+  `DEVELOPMENT_LOG.md`。
+- 次: 設計チャットが実機/`npm run playtest`確認、commit/pushを実施。
+
+
 ## v0.25.1728 — M38仕様書化: ボットの松明壊し=スクラップ供給(§6.15・Sonnet実装待ち)【2026-07-15 09:07 JST】
 - **社長指示**「ある程度松明は壊して、スクラップも拾うとか？」→ 調査の結果:
   - スクラップを**拾う**動きは既存(M26 Step1の手空き拾い=pickupSeekInputがstrap含む全pickups対象)。

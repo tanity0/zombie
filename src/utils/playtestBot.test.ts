@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
+  torchForageInput, TORCH_SEEK_DIST, TORCH_SMASH_DIST,
   adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
   decideCounterReaction, createCounterThreatState } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
@@ -127,6 +128,56 @@ describe('pickupSeekInput (M26 Step1: 手空き時の拾い)', () => {
   });
   it('maxDistより遠いピックアップは無視する', () => {
     expect(pickupSeekInput('kiter', IDLE, 0, 0, [{ x: 5000, y: 5000 }])).toEqual(IDLE);
+  });
+});
+
+// M38(§6.15): 松明フォレージ(手空きのみ発火・松明を壊してスクラップ供給を作る・PACING_PUZZLE.md §6.15)。
+describe('torchForageInput (M38: 松明フォレージ)', () => {
+  const IDLE = { up: false, down: false, left: false, right: false };
+  const MOVING = { up: true, down: false, left: false, right: false };
+
+  it('手空きでTORCH_SEEK_DIST(240)以内の最寄り松明へ歩み寄る', () => {
+    const r = torchForageInput('standard', IDLE, 0, 0, [{ footX: 200, footY: 0 }]);
+    expect(r.input.right).toBe(true);
+    expect(r.wantsMelee).toBe(false);
+    expect(TORCH_SEEK_DIST).toBe(240);
+  });
+
+  it('TORCH_SMASH_DIST(60)以内ならwantsMelee=true・移動は追加しない(叩く優先)', () => {
+    const r = torchForageInput('standard', IDLE, 0, 0, [{ footX: 50, footY: 0 }]);
+    expect(r.wantsMelee).toBe(true);
+    expect(r.input).toBe(IDLE);
+    expect(TORCH_SMASH_DIST).toBe(60);
+  });
+
+  it('移動入力がある時は不干渉(そのまま返す・叩けるほど近くても無視)', () => {
+    const r = torchForageInput('standard', MOVING, 0, 0, [{ footX: 10, footY: 0 }]);
+    expect(r.input).toBe(MOVING);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('stationaryは除外(棒立ちが仕様)', () => {
+    const r = torchForageInput('stationary', IDLE, 0, 0, [{ footX: 10, footY: 0 }]);
+    expect(r.input).toBe(IDLE);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('rusherは除外(カウンター/寄り道を一切しない低スキル再現=M19の設計意図)', () => {
+    const r = torchForageInput('rusher', IDLE, 0, 0, [{ footX: 10, footY: 0 }]);
+    expect(r.input).toBe(IDLE);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('TORCH_SEEK_DISTより遠い松明は無視する', () => {
+    const r = torchForageInput('standard', IDLE, 0, 0, [{ footX: 300, footY: 0 }]);
+    expect(r.input).toBe(IDLE);
+    expect(r.wantsMelee).toBe(false);
+  });
+
+  it('松明が無ければ入力もwantsMeleeも不変(同一参照)', () => {
+    const r = torchForageInput('kiter', IDLE, 0, 0, []);
+    expect(r.input).toBe(IDLE);
+    expect(r.wantsMelee).toBe(false);
   });
 });
 

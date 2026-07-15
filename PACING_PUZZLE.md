@@ -2051,7 +2051,21 @@ M33①の「グローバル10秒CD(10秒に1個)」は設計チャットの勘�
 3. `?bot`無しの通常プレイは挙動不変。typecheck+eslint。負荷=ボット時のみ(通常時0)。
 
 ### 状態
-- **仕様確定・Sonnet実装待ち**(v0.25.1728)。
+- **実装済み(v0.25.1729・Sonnetサブエージェント実装)**。
+  - `src/utils/playtestBot.ts` に純関数 `torchForageInput(persona, input, pcx, pcy, torches, seekDist,
+    smashDist)` → `{ input, wantsMelee }` を追加(`TORCH_SEEK_DIST=240`/`TORCH_SMASH_DIST=60`)。
+    仕様どおり: 手空きのみ発火/移動入力があれば不干渉/stationary・rusher除外/240px内へ歩み寄り
+    60px内でwantsMelee。
+  - 配線: `playtestDriver.runPlaytestTick`(pickupSeekInput直後)+`useGameLoop.ts`のbotブロック
+    (≈1500行、pickupSeekInput→**松明フォレージ**→adjustBotForMines(M34)の順)。torchesは
+    `breakableProps.filter(p => p.type === 'torch')`(破壊時に配列から即除去される既存仕様のため
+    追加のhealthフィルタ不要)。
+  - テスト: `src/utils/playtestBot.test.ts` に7件追加(受け入れ条件1を全網羅)。
+  - 検証: typecheck green / eslint(4ファイル)クリーン /
+    `vitest related --run playtestBot.ts playtestDriver.ts` → **46 passed | 1 skipped (47)**。
+    `npm run playtest`実機フルは社長指示待ち(未実行)。
+  - ★未決事項: なし。
+  - 詳細はDEVELOPMENT_LOG.md v0.25.1729参照。
 
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
@@ -2085,7 +2099,7 @@ M33①の「グローバル10秒CD(10秒に1個)」は設計チャットの勘�
 | M35 | ボットレポート計測拡張=subUses/overclockProcs/スクラップ収支/goldEarned/damageTaken(§6.12) | **実装済み v0.25.1715**(Sonnet実装→停止のため設計チャットが検証・完成) |
 | M36 | センサー地雷CDの是正=個別チャージ制(§6.13) | **実装済み v0.25.1718**(社長指示v0.25.1716・実機確認は社長へ持ち越し) |
 | M37 | ボットAI改善=人間反応のカウンター(§6.14) | **実装済み v0.25.1723**(playtestフルgreen・boarペルソナは仕様外=対象外) |
-| M38 | ボットAI改善=松明壊し=スクラップ供給(§6.15) | **仕様確定 v0.25.1728・Sonnet実装待ち** |
+| M38 | ボットAI改善=松明壊し=スクラップ供給(§6.15) | **実装済み v0.25.1729**(vitest related全green・実機/`npm run playtest`確認は社長へ持ち越し) |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |
 | M12 | 設計電卓=プロト武器バランス探索(§5.13・M10後) | 未着手(社長採用v0.25.1470) |
 | M13 | ネームド(宿敵)システム(§5.14) | **実装済み v0.25.1494** |

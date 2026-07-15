@@ -47,8 +47,8 @@ import {
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
 import {
-  decideBotInput, pickupSeekInput, adjustBotForMines, decideCounterReaction, createCounterThreatState,
-  type BotPersona, type RusherTrackState, type CounterThreatState,
+  decideBotInput, pickupSeekInput, torchForageInput, adjustBotForMines, decideCounterReaction,
+  createCounterThreatState, type BotPersona, type RusherTrackState, type CounterThreatState,
 } from './playtestBot';
 import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
 import {
@@ -361,9 +361,15 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   // 手が空いているtickは近くのドロップ(XP/弾薬)を拾いに歩く(M26 Step1・stationaryは除外)。
   const moveInput = pickupSeekInput(persona, decision.input,
     player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().pickups);
-  // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。ペルソナ判断+拾い歩きの後に合成)。
+  // M38(§6.15): 松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割ってスクラップ供給を作る)。
+  const torchForage = torchForageInput(
+    persona, moveInput,
+    player.x + player.width / 2, player.y + player.height / 2,
+    useGameStore.getState().breakableProps.filter(p => p.type === 'torch'),
+  );
+  // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。松明フォレージの後に合成)。
   const mineAdj = adjustBotForMines(
-    moveInput, decision.wantsMelee,
+    torchForage.input, decision.wantsMelee || torchForage.wantsMelee,
     player.x + player.width / 2, player.y + player.height / 2,
     useGameStore.getState().breakableProps.filter(p => p.type === 'mine'),
   );
