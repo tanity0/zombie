@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1730 — テスト依頼#3発行: M38経済実測+バーサーカー/ゴールドラッシュAB比較【2026-07-15 09:43 JST】
+- 社長指示「やっておこう」を受けて依頼#3を発行(TEST_HANDOFF/REQUEST.md+request.config.json)。
+- 内容(10ラン・全てstandard/stage-1・最大15分):
+  1. **junk-weapon+scrap-builder/magnet ×2** — M38(松明フォレージ)でscrapEarnedが依頼#2の5から
+     改善するか(供給が生まれてジャンクの弾が続くか)。
+  2. **grenade+exploderのberserker ON/OFF ×各2** — バーサーカー寄与の分離(依頼#2の保留)。
+  3. **flare-gun+warm-upのgold-rush ON/OFF ×各2** — goldEarned×1.5の実測検証(同保留)。
+- 併せて「正規スクリプトがWindowsで動いたか」(v1725のspawn修正の実地確認)を報告項目に明記。
+- Files: `TEST_HANDOFF/REQUEST.md`, `TEST_HANDOFF/request.config.json`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+- 次: テストチャットの `[test-report]` を受けて分析(判定は設計チャット)。
+
+
 ## v0.25.1729 — M38実装: ボットAI改善=松明壊し=スクラップ供給(§6.15)【2026-07-15 09:14 JST】
 - 設計チャット確定仕様(§6.15)をSonnetサブエージェントが実装。**ボット専用の後段補正。通常プレイ・
   松明/ドロップ/スクラップの仕様は1バイトも変更していない**(ボット入力の生成のみ)。
