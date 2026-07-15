@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1754',
+    items: [
+      'ステージ2(研究所): 敵の視界(起床する索敵範囲)を300pxに変更(湧き敵420→300・書類ガード220→300で統一)。より深く忍び寄れます。',
+    ],
+  },
+  {
     version: '0.25.1753',
     items: [
       'ステージ2(研究所): ハンター変異体(凶悪ハンター含む)が出現しなくなりました。',

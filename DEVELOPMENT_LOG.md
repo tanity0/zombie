@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1754 — ステージ2の敵視界を300pxへ(社長指示)【2026-07-16 08:18 JST】
+- `LAB_SPAWN_AGGRO_RANGE` 420→**300**(useGameLoop・湧きラボゾンビ)+書類ガードの
+  `aggroRange` 220→**300**(gameStore・ステージ2の敵で統一)。起床判定(視線=壁越し不可)は不変。
+- 湧きリング(画面外~570px)>視界300なので「湧いた瞬間に起きる」ことはない。リサイクル距離より
+  十分小さく敵切れも起きない(420時代と同じ構造のまま範囲だけ縮小)。
+- 検証: typecheck green。忍び寄り感は実機で社長確認へ。
+- Files: `src/hooks/useGameLoop.ts`, `src/store/gameStore.ts`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1753 — ステージ2にハンターを出さない(社長指示)【2026-07-16 02:13 JST】
 - ハンター専用コントローラ(useGameLoop・凶悪ハンター含む)の起動条件に `!labTheme` を追加
   (従来は屋内/練習のみ除外=屋外ラボのステージ2では発生していた)。死神をlabで止めるのと同じ扱い。

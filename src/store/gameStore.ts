@@ -9461,8 +9461,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           })()
         : null;
       // ガード(固定・休眠・aggroRange内で起床)。書類の手前(原点側)に密集配置。
+      // 視界=300px(社長指示v0.25.1754「ステージ2の敵は視界300px」で湧き敵と統一。旧220)。
       const mkGuard = (type: EnemyType, gx: number, gy: number): Enemy =>
-        ({ ...spawnEnemyAt(type, gx, gy, 0), fixed: true, dormant: true, aggroRange: 220, vx: 0, vy: 0, homeX: gx, homeY: gy });
+        ({ ...spawnEnemyAt(type, gx, gy, 0), fixed: true, dormant: true, aggroRange: 300, vx: 0, vy: 0, homeX: gx, homeY: gy });
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
         ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
