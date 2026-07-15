@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1734 — ステージ5の地面素材を組み込み(社長提供)【2026-07-15 14:31 JST】
+- 社長提供PNG(1254×1254・3.2MB)を `public/backgrounds/stage5-ground.jpg`(JPG品質85・463KB=
+  既存地面と同水準)へ変換して配置。変換は画像CLI不在のため同梱Chromiumのcanvasで実施
+  (executablePath=/opt/pw-browsers/chromium)。
+- 配線: `BACKGROUND_PATHS` に追加(pixiTextures.ts)+ PixiStage.tsx で load →
+  `scene.setGroundOverride('stage5', …)`(雪原と同じ汎用オーバーライド機構=キー追加のみ。
+  これまでステージ5は森の地面を流用していた)。
+- 検証: typecheck green。実機の見え方(タイルの継ぎ目・明度)は社長確認へ。
+- Files: `public/backgrounds/stage5-ground.jpg`(新規), `src/pixi/pixiTextures.ts`,
+  `src/pixi/PixiStage.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1733 — M39実装: ボットの武器商人ゾーン回避(社長裁定「用がなければ避ける」)【2026-07-15 14:28 JST】
 - v0.25.1732の即クローズ保険に続く**本体対策**(§6.16 M39): ボットは商人ゾーンに用が無い限り近寄らない。
   - `avoidMerchantZone`(playtestBot.ts・純関数): ゾーン内(<90px=対話58+余白)なら手空きでも外向きへ

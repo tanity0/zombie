@@ -146,7 +146,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
       // ≒フラッシュ無し。万一キャッシュ未温(稀)でも、表示済みなので黒画面にはならず一瞬森が見えるだけ。
       const load = (p: string) => Assets.load(`${BASE}${p}`).catch(() => null);
       void (async () => {
-        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front] = await Promise.all([
+        const [labGround, s3Far, s3Ground, s3Horizon, s3Near, s1Near, s2Far, s2Near, s4Far, s4Front, s4Ground, s4Horizon, s3Front, s5Far, s5Horizon, s5Near, s5Front, s5Ground] = await Promise.all([
           load('sprites/lab-floor/lab-floor-stage2.png'),
           load('backgrounds/stage3-distant-city-day.jpg'),
           load('backgrounds/stage3-ground-cobble2.jpg'),
@@ -164,6 +164,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
           load('backgrounds/stage5-horizon.png'),
           load('backgrounds/stage5-near-horizon.png'),
           load('backgrounds/stage5-front.png'),
+          load('backgrounds/stage5-ground.jpg'),
         ]);
         if (cancelled || sceneRef.current !== scene) return;
         scene.setLabGroundTexture(labGround);            // 研究所スキンの床
@@ -181,6 +182,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height }) => {
         scene.setFrontOverride('snow', s4Front);         // 近景森: 氷壁(ステージ4・不透明)
         scene.setFrontOverride('stage5', s5Front);       // 近景森: 戦場の残骸(ステージ5・社長提供)
         scene.setGroundOverride('snow', s4Ground);       // 地面: 雪原(ステージ4)
+        scene.setGroundOverride('stage5', s5Ground);     // 地面: 戦場跡(ステージ5・社長提供)
         scene.setHorizonOverride('snow', s4Horizon);     // 地平帯(遠景森1): 氷壁帯(ステージ4・下フェード)
         scene.setHorizonOverride('stage5', s5Horizon);   // 地平帯(遠景森1): 城塞の壁(ステージ5・社長提供)
       })();

@@ -478,6 +478,7 @@ const BACKGROUND_PATHS = [
   'backgrounds/stage4-front2.png',
   'backgrounds/stage4-ground.jpg',
   'backgrounds/stage4-horizon.png',
+  'backgrounds/stage5-ground.jpg',
   'backgrounds/stage3-front-rooftops.png',
   'sprites/lab-floor/lab-floor-stage2.png',
 ];

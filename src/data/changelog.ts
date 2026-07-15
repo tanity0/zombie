@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1734',
+    items: [
+      'ステージ5の地面を専用素材(戦場跡)に差し替え(これまでは森の地面を流用)。',
+    ],
+  },
+  {
     version: '0.25.1733',
     items: [
       '開発: テストボットが武器商人ゾーンに用がない限り近寄らないように(§6.16 M39・依頼#3の商人停止の本体対策)。通常プレイへの影響なし。',
