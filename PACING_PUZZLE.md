@@ -2095,6 +2095,50 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
   ユニットテスト6件(ゾーン内脱出/掠め進路の45°逸れ/逆向き・遠方・非掠め不干渉/stationary除外)。
   typecheck / eslint / related 52件green(M9スモーク込み)。実機確認は依頼#4の再走が兼ねる。
 
+## 6.17 バッチM40: ストーリー情報UI 第1弾=リザルト任務報告+資料データ土台(社長仕様書・Sonnet実装用)
+
+**仕様の正 = `STORY_UI_SPEC.md`**(社長がDrive経由で提供した採用済み仕様v0.25.1745を全文リポジトリ化)。
+本バッチは同仕様書「12. 実装優先順位」の**1〜3**に対応する。資料室UI(優先4)はM41、
+出撃ページ統一+通信ログ(優先5-6)はM42、M1〜M7文面(優先7)はM43として後続。
+
+### スコープ(このバッチでやること)
+1. **データ拡張(campaign.ts)**: 既存 `StageMission` に追加フィールド
+   `clearReport?: string[]`(任務報告2〜4短文) / `unlockedRecordIds?: string[]`(クリアで解放する資料ID) /
+   `specialConditions?: string[]`(特殊条件の短ラベル・M42で表示に使う。データだけ先行)。
+   仕様書の StoryStageInfo 型は**新設せず既存Stage/StageMissionへマッピング**する
+   (missionTitle=title / preBrief=synopsis / objective=summary / startComms=briefing / nextStageId=unlockBy逆引き。
+   二重管理をしない=仕様書7章の趣旨)。
+   文面: M2(stage-2)のみ仕様書の例文を投入。他ステージのclearReportは未設定=既存debriefへフォールバック。
+2. **資料台帳(新規 `src/data/storyArchive.ts`)**: 仕様書7章の `ArchiveRecord` 型
+   (id/category:mutant|weapon|item|term|mission/title/body/unlockStageId)+台帳配列。
+   初期データ=M2の任務記録4件(軍再生医療計画/PHILL計画記録/異常増殖データ/リモート共同研究所との通信履歴。
+   本文はドラフト可=差し替え前提)。
+   `StoryArchiveState`(clearedStageIds/unlockedRecordIds/readRecordIds/latestUnlockedRecordIds)を
+   localStorage `zombie:storyArchive` で永続(load/save/unlockForStage/markRead の純関数+テスト。
+   heartbeat/chronicleと同じ「必要時に1回読む」方針・store購読なし)。
+   **解放は冪等**(再クリアで重複解放しない=仕様書9章)。
+3. **リザルト画面(勝利クリア時のみ)**: 既存リザルトに**「任務報告」欄**を追加
+   (clearReport 2〜4短文。無ければ debrief 流用)。+**[回収資料を見る]**ボタン=今回解放された
+   資料だけの一覧モーダル(閉じるとリザルトへ戻る・読まなくても進行可・開いた資料はmarkRead)。
+   [次へ]等の既存動線は不変。**死亡リザルトには出さない**。初回クリア時に unlockForStage を呼ぶ。
+
+### 制約
+- React再描画規律(CLAUDE.md)厳守: リザルトは表示時のみなので毎フレーム購読は発生しないはずだが、
+  storeの毎フレーム更新フィールドを丸ごと購読しない。
+- 資料室UI本体(タイトル/拠点からの入口)は**このバッチではやらない**(M41・入口の場所は★社長裁定待ち)。
+- 見た目は既存リザルトのトーンに合わせる(新規の派手な演出・強glow不要。負荷1/10)。
+
+### 受け入れ条件
+1. stage-2を初回クリアすると、リザルトに任務報告(仕様書5章のM2例文)が出て、資料4件が解放される。
+   [回収資料を見る]で4件の一覧→本文が読め、閉じるとリザルトへ戻る。再クリアで報告は再表示されるが
+   解放は重複しない(unlockedRecordIdsが増えない)。
+2. clearReport未設定ステージはdebriefが任務報告欄に出る。死亡時は任務報告欄なし=従来リザルトのまま。
+3. localStorage永続: リロード後もunlocked/readが保持される。
+4. typecheck+eslint+`vitest related`green(storyArchive純関数のテスト必須)。
+
+### 状態
+- **仕様確定 v0.25.1745・Sonnet実装待ち**。
+
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
@@ -2129,6 +2173,10 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 | M37 | ボットAI改善=人間反応のカウンター(§6.14) | **実装済み v0.25.1723**(playtestフルgreen・boarペルソナは仕様外=対象外) |
 | M38 | ボットAI改善=松明壊し=スクラップ供給(§6.15) | **実装済み v0.25.1729**(依頼#3でscrapEarned 5→73/59=効果実証) |
 | M39 | ボットAI改善=武器商人ゾーン回避(§6.16) | **実装済み v0.25.1733**(+v0.25.1732の即クローズ保険。確認は依頼#4再走が兼ねる) |
+| M40 | ストーリー情報UI第1弾=リザルト任務報告+資料データ土台(§6.17・正=STORY_UI_SPEC.md) | **仕様確定 v0.25.1745・Sonnet実装待ち** |
+| M41 | ストーリー情報UI第2弾=資料室UI(未読管理・仕様書6章) | 未着手(★未決: 資料室の入口の場所=社長裁定待ち) |
+| M42 | ストーリー情報UI第3弾=出撃ページ統一+通信ログ読み返し(仕様書3-4章) | 未着手 |
+| M43 | M1〜M7文面の順次実装(仕様書12章-7) | 未着手(文面は社長/ストーリー側から) |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |
 | M12 | 設計電卓=プロト武器バランス探索(§5.13・M10後) | 未着手(社長採用v0.25.1470) |
 | M13 | ネームド(宿敵)システム(§5.14) | **実装済み v0.25.1494** |

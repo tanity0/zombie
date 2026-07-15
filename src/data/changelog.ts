@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1745',
+    items: [
+      '開発: ストーリー情報UI/UX仕様(the ONE)を受領・リポジトリ化(STORY_UI_SPEC.md)し、実装バッチM40〜M43に分割。M40(リザルト任務報告+資料データ土台)を実装開始。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1744',
     items: [
       'ステージ5: 森2を10px上へ(境界線+50px下→+40px下)。',

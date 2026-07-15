@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1745 — ストーリー情報UI仕様の受領・バッチ化(M40発注)【2026-07-15 20:32 JST】
+- 社長提供(Drive)の「the ONE ストーリー情報UI・UX仕様」を全文 `STORY_UI_SPEC.md` としてリポジトリ化
+  (チャット/Driveにしか無い情報は存在しないのと同じ=CLAUDE.mdの原則)。
+- 仕様書「12. 実装優先順位」をバッチ分割: **M40**=優先1-3(リザルト任務報告欄+StageMissionへの
+  clearReport/unlockedRecordIds/specialConditions追加+storyArchive台帳・永続+回収資料モーダル)
+  /**M41**=資料室UI(★未決: 入口の場所) /**M42**=出撃ページ統一+通信ログ /**M43**=M1〜M7文面。
+- 設計判断: 仕様書のStoryStageInfo型は新設せず既存Stage/StageMissionへマッピング(二重管理禁止=
+  仕様書7章の趣旨と、campaign.tsが正本というリポジトリ既存原則の両立)。
+- §6.17にM40仕様確定→Sonnetサブエージェント発注。
+- Files: `STORY_UI_SPEC.md`(新規), `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`,
+  `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1744 — ステージ5森2を10px上へ(社長指示)【2026-07-15 19:38 JST】
 - `STAGE5_NEAR_HORIZON_DOWN_PX` 50→40(底=境界線+40px下)。他は不変。
 - 検証: typecheck green。
