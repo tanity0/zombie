@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1747 — M41仕様確定(§6.18): 資料室UI+未読NEW+追加ポップアップ(社長裁定)【2026-07-15 22:24 JST】
+- 社長裁定: 入口=**年表があるメインメニューに年表と並列**/NEW・未読マーク/エンディング後
+  「資料が追加されました」ポップアップ→閉じるとメインメニュー上で入口確認/拠点・ステージ選択には
+  追加しない/リザルトの[回収資料を見る]は別導線として維持。
+- 実態マッピング(設計チャット): 「メインメニュー」=MissionSelectホームハブ。**「資料室」ボタンは
+  ハブに既存**(世界観+debrief転載+図鑑の簡易画面)なので、これを仕様書6章のカテゴリ構成へ刷新する。
+  ※年表(ChronicleTimeline)の実体はタイトル画面のローディング中全画面表示で、ハブにボタンは無い
+  —「並列」はハブのボタン列に資料室が並ぶ形で充足と解釈(年表ボタンの新設はしない。要るなら別裁定)。
+- §6.18に仕様確定(未読バッジ=unlocked−read差分/ポップアップ=latestUnlockedRecordIdsの消費式/
+  debrief転載の旧任務記録は撤去=二重管理禁止)→Sonnetサブエージェント発注。
+- Files: `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1746 — ストーリー情報UI 第1弾=リザルト任務報告+資料データ土台(§6.17 M40実装)【2026-07-15 20:42 JST】
 - `src/data/campaign.ts`: `StageMission` に `clearReport?`/`unlockedRecordIds?`/`specialConditions?`
   を追加。stage-2(M2)のみ仕様書5章の任務報告例文3文+資料ID4件+3章の特殊条件4ラベルを投入。

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1747',
+    items: [
+      '開発: 資料室UI(M41)の仕様確定=入口はメインメニューの資料室ボタン・NEW表示・クリア後「資料が追加されました」ポップアップ(社長裁定)。実装開始。ゲーム変更なし。',
+    ],
+  },
+  {
     version: '0.25.1746',
     items: [
       'クリア後のリザルトに任務報告と回収資料の閲覧を追加(まずはステージ2)。',
