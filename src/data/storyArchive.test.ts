@@ -14,7 +14,7 @@ const backing: Record<string, string> = {};
 
 import {
   ARCHIVE_RECORDS, getArchiveRecord, loadStoryArchive, saveStoryArchive, emptyStoryArchiveState,
-  unlockRecordsForStage, markRecordRead, isRecordUnlocked, isRecordRead,
+  unlockRecordsForStage, markRecordRead, isRecordUnlocked, isRecordRead, consumeLatestUnlocked,
 } from './storyArchive';
 
 beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
@@ -116,6 +116,41 @@ describe('markRecordRead / isRecordRead', () => {
 
   it('空IDは無視する', () => {
     markRecordRead('');
+    expect(loadStoryArchive().readRecordIds).toEqual([]);
+  });
+});
+
+describe('consumeLatestUnlocked(§6.18 M41「資料が追加されました」ポップアップの通知消費)', () => {
+  const M2_RECORD_IDS = [
+    'mission-military-regen-plan', 'mission-phill-plan-record',
+    'mission-abnormal-growth-data', 'mission-remote-lab-comm-log',
+  ];
+
+  it('未解放(latestUnlockedRecordIds空)なら空配列を返し、状態も変えない', () => {
+    expect(consumeLatestUnlocked()).toEqual([]);
+    expect(loadStoryArchive()).toEqual(emptyStoryArchiveState());
+  });
+
+  it('直近解放分を返しつつ、latestUnlockedRecordIdsを空にして保存する(1回目)', () => {
+    unlockRecordsForStage('stage-2', M2_RECORD_IDS);
+    expect(loadStoryArchive().latestUnlockedRecordIds).toEqual(M2_RECORD_IDS);
+    const consumed = consumeLatestUnlocked();
+    expect(consumed).toEqual(M2_RECORD_IDS);
+    const state = loadStoryArchive();
+    expect(state.latestUnlockedRecordIds).toEqual([]);
+    // unlockedRecordIds/readRecordIds など他フィールドは無変更(消費は通知だけを対象にする)。
+    expect(state.unlockedRecordIds).toEqual(M2_RECORD_IDS);
+  });
+
+  it('2回目の呼び出しは空配列(通知は使い切り・再表示されない)', () => {
+    unlockRecordsForStage('stage-2', M2_RECORD_IDS);
+    consumeLatestUnlocked();
+    expect(consumeLatestUnlocked()).toEqual([]);
+  });
+
+  it('既読状態には影響しない(通知の消費と既読化は別物)', () => {
+    unlockRecordsForStage('stage-2', M2_RECORD_IDS);
+    consumeLatestUnlocked();
     expect(loadStoryArchive().readRecordIds).toEqual([]);
   });
 });

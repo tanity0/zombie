@@ -1,5 +1,40 @@
 # Development Log
 
+## v0.25.1748 — M41実装: 資料室UI刷新+未読NEWバッジ+「資料が追加されました」ポップアップ(§6.18)【2026-07-15 22:33 JST】
+- `src/components/MissionSelect.tsx`: `renderArchive`の「任務記録」セクションを`ARCHIVE_RECORDS`
+  (category='mission')ベースへ差し替え(解放済み=タイトル一覧+未読は金ドット→タップで本文表示・
+  `markRecordRead`/未解放は「？？？（未回収）」の伏せ表示)。旧・STAGES.debrief転載セクションは撤去
+  (仕様書7章・11章「同一内容の二重管理禁止」)。「世界観」「変異体図鑑」は既存のまま維持。
+  武器・特殊装備/アイテム/用語は台帳に該当categoryの項目がある時だけSection表示(現状0件で非表示)。
+  ハブの「資料室」`HubButton`にNEWバッジ(新設`badge`prop)、未読数
+  (`unlockedRecordIds−readRecordIds`)>0で表示。ローカル`archiveState`はマウント時+資料室入場時+
+  資料を開いた時+資料室から戻った時に`loadStoryArchive()`を読み直す(store購読なし・毎フレーム購読なし)。
+  「資料が追加されました」ポップアップはホーム表示(マウント)時に`latestUnlockedRecordIds`が非空なら
+  1回だけ小パネル表示→閉じると`consumeLatestUnlocked()`で永続側もクリア(強制遷移なし)。
+- `src/data/storyArchive.ts`: consume系純関数 `consumeLatestUnlocked(): string[]` を追加
+  (`latestUnlockedRecordIds`を読み出しつつ空にして保存。未読数バッジには影響しない別物)。
+- `src/data/storyArchive.test.ts`: `consumeLatestUnlocked`のテスト4件追加(既存13件+新規4件=17件)。
+- 見た目: 既存メニューのFF7R風・紫系トーン(`glass-panel`)を踏襲、バッジ/ポップアップはamber系の
+  既存強調色を流用。新規演出・強glowなし。**負荷スコア1/10**(静的な条件付きレンダリング+ユーザー
+  操作起点のlocalStorage読み直しのみ。毎フレーム購読・アニメーションループ無し)。
+- 検証: `npm run typecheck` green / `npx eslint`(MissionSelect.tsx, storyArchive.ts,
+  storyArchive.test.ts) green(warning 0) / `npx vitest related --run`(同3ファイル+GameOverScreen.tsx)
+  green(`storyArchive.test.ts` 17 passed。MissionSelect/GameOverScreenはUIコンポーネントで対応する
+  unit testが無く既存の慣例どおり対象外)。
+- 受け入れ条件(§6.18・4点)の確認方法: (1)ポップアップ1回表示+NEWバッジ+再表示なし=
+  `consumeLatestUnlocked`の1回目/2回目挙動をunitで検証(`storyArchive.test.ts`)、UI側は静的レビュー。
+  (2)資料室の任務記録4件+未読マーク+既読化+NEW消滅/未解放伏せ表示/変異体図鑑・世界観は従来どおり/
+  旧debrief転載無し=`renderArchive`/`renderArchiveRecordList`をコードレビューで静的確認。
+  (3)リザルトの[回収資料を見る](M40)は無変更=`GameOverScreen.tsx`は本バッチで未編集(git diffで確認)。
+  (4)typecheck+eslint+vitest related green=上記のとおり実施・全green。
+  **実機でのタップ/表示確認は社長へ持ち越し。**
+- 自己点検: 本変更はゲームプレイ(敵/武器/スポーン/バランス)に触れておらず、憲法4条(初心者ゾーン
+  不可侵)・5条(緩を荒らさない)に抵触しない(メニュー画面の表示追加のみ)。
+- ★未決事項: なし。
+- Files: `src/components/MissionSelect.tsx`, `src/data/storyArchive.ts`, `src/data/storyArchive.test.ts`,
+  `PACING_PUZZLE.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1747 — M41仕様確定(§6.18): 資料室UI+未読NEW+追加ポップアップ(社長裁定)【2026-07-15 22:24 JST】
 - 社長裁定: 入口=**年表があるメインメニューに年表と並列**/NEW・未読マーク/エンディング後
   「資料が追加されました」ポップアップ→閉じるとメインメニュー上で入口確認/拠点・ステージ選択には

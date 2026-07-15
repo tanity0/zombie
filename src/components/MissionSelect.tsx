@@ -20,6 +20,10 @@ import {
   getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore
 } from '../data/progress';
 import {
+  ARCHIVE_RECORDS, getArchiveRecord, loadStoryArchive, markRecordRead, consumeLatestUnlocked,
+  type ArchiveRecord, type StoryArchiveState,
+} from '../data/storyArchive';
+import {
   getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
 
@@ -230,6 +234,32 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const setPendingSkills = useGameStore(state => state.setPendingSkills);
   const [cleared, setCleared] = useState<Set<string>>(() => getClearedStages());
 
+  // PACING_PUZZLE.md §6.18 バッチM41: 資料室(未読バッジ+閲覧)+「資料が追加されました」ポップアップ。
+  // storyArchive は heartbeat/chronicle と同じ「必要時に1回読む」方針(store購読なし・React再描画規律)。
+  // archiveState はマウント時に1回読み、資料を開いた(既読化した)/資料室に入った時だけ明示的に
+  // 読み直す(毎フレーム購読ではなく、ユーザー操作起点の局所的な再計算)。
+  const [archiveState, setArchiveState] = useState<StoryArchiveState>(() => loadStoryArchive());
+  const refreshArchiveState = () => setArchiveState(loadStoryArchive());
+  const unreadArchiveCount = archiveState.unlockedRecordIds.filter(id => !archiveState.readRecordIds.includes(id)).length;
+  const goArchive = () => { playSfx('ui-select'); refreshArchiveState(); setScreen({ name: 'archive' }); };
+  const goHomeFromArchive = () => { playSfx('ui-select'); refreshArchiveState(); setScreen({ name: 'home' }); };
+  const [openArchiveRecordId, setOpenArchiveRecordId] = useState<string | null>(null);
+  const handleOpenArchiveRecord = (id: string) => {
+    playSfx('ui-select');
+    markRecordRead(id);
+    refreshArchiveState();
+    setOpenArchiveRecordId(id);
+  };
+  const closeArchiveRecord = () => { playSfx('ui-select'); setOpenArchiveRecordId(null); };
+  // 「資料が追加されました」ポップアップ: ホーム表示(=このコンポーネントのマウント)時に1回だけ
+  // latestUnlockedRecordIds を読む。閉じたら consumeLatestUnlocked() で永続側もクリアし、再表示しない。
+  const [newRecordsNotice, setNewRecordsNotice] = useState<string[]>(() => loadStoryArchive().latestUnlockedRecordIds);
+  const closeNewRecordsNotice = () => {
+    playSfx('ui-select');
+    consumeLatestUnlocked();
+    setNewRecordsNotice([]);
+  };
+
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
   useEffect(() => {
     const kick = () => setBgmScene('menu');
@@ -260,9 +290,35 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={100} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={150} />
-        <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={() => setScreen({ name: 'archive' })} delay={200} />
+        <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={goArchive} delay={200} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
       </div>
+      {/* PACING_PUZZLE.md §6.18 M41 / STORY_UI_SPEC.md 8章: エンディング(勝利)後にメニューへ戻った時の
+          「資料が追加されました」ポップアップ。ホーム表示(=マウント)時に非空なら1回だけ出す。閉じるだけで
+          強制遷移なし(仕様書11章「非採用」)。見た目は既存モーダルと同じglass-panelトーン・強glowなし。 */}
+      {newRecordsNotice.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-3"
+          style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+        >
+          <div className="glass-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
+            <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">お知らせ</div>
+            <h3 className="mb-2 text-lg font-semibold text-amber-100" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+              資料が追加されました
+            </h3>
+            <p className="mb-4 text-[12px] leading-relaxed text-white/75">
+              資料室に新しい記録が{newRecordsNotice.length}件届いています。
+            </p>
+            <button
+              type="button"
+              onClick={closeNewRecordsNotice}
+              className="w-full rounded-none bg-amber-400/15 px-3 py-2.5 text-[12px] font-semibold text-amber-100"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -609,39 +665,102 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const renderWeaponDev = () => <WeaponDev onBack={() => setScreen({ name: 'home' })} />;
 
   // ====================================================================
-  // 資料室(ストーリー記録 + 図鑑)
+  // 資料室(ストーリー記録 + 図鑑) — PACING_PUZZLE.md §6.18 バッチM41で刷新。
+  // STORY_UI_SPEC.md 6章のカテゴリ構成へ: 任務記録は ArchiveRecord ベース(解放済み=タイトル一覧+
+  // 未読マーク→タップで本文/既読化、未解放=伏せ表示)に差し替え。旧・debrief転載セクションは撤去
+  // (仕様書7章・11章「同一内容の別文章を管理しない」)。武器/アイテム/用語は台帳に項目がある時だけ表示。
   // ====================================================================
-  const renderArchive = () => (
-    <>
-      <Header title="資料室" subtitle="ストーリー記録・変異体図鑑" onBack={() => setScreen({ name: 'home' })} />
-      <div className="menu-stagger p-3 space-y-3">
-        <Section label="世界観">
-          {WORLD_INTRO.map((line, i) => <p key={i} className="text-[12px] leading-relaxed text-white/80">{line}</p>)}
-        </Section>
-        <Section label="任務記録">
-          {STAGES.filter(s => s.kind === 'main').map(s => {
-            const done = cleared.has(s.id);
-            return (
-              <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
-                <div className="text-[12px] font-semibold text-white">{s.main.code}：{s.main.title}</div>
-                <div className="text-[12px] leading-relaxed text-white/70 mt-1">
-                  {done ? s.main.debrief.join(' ') : <span className="text-white/40">未クリア（クリアで記録が開示される）</span>}
-                </div>
-              </div>
-            );
-          })}
-        </Section>
-        <Section label="変異体図鑑">
-          {BESTIARY.map(b => (
-            <div key={b.id} className="flex gap-2 text-[12px] leading-snug">
-              <span className="shrink-0 min-w-[7rem] font-semibold text-white/85">{b.name}</span>
-              <span className="text-white/55">{b.note}</span>
-            </div>
-          ))}
-        </Section>
-      </div>
-    </>
+  const renderArchiveRecordList = (records: ArchiveRecord[]) => (
+    <div className="flex flex-col gap-1.5">
+      {records.map(r => {
+        const unlocked = archiveState.unlockedRecordIds.includes(r.id);
+        const unread = unlocked && !archiveState.readRecordIds.includes(r.id);
+        return unlocked ? (
+          <button
+            key={r.id}
+            type="button"
+            onClick={() => handleOpenArchiveRecord(r.id)}
+            className="flex items-center gap-2 rounded-none bg-purple-400/5 px-3 py-2 text-left active:bg-purple-400/10"
+          >
+            {unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" aria-label="未読" />}
+            <span className="text-[13px] font-semibold text-white/90">{r.title}</span>
+          </button>
+        ) : (
+          <div key={r.id} className="flex items-center gap-2 rounded-none bg-black/20 px-3 py-2 opacity-55">
+            <Lock size={12} className="shrink-0 text-white/40" />
+            <span className="text-[13px] text-white/40">？？？（未回収）</span>
+          </div>
+        );
+      })}
+    </div>
   );
+
+  const renderArchive = () => {
+    const missionRecords = ARCHIVE_RECORDS.filter(r => r.category === 'mission');
+    const weaponRecords = ARCHIVE_RECORDS.filter(r => r.category === 'weapon');
+    const itemRecords = ARCHIVE_RECORDS.filter(r => r.category === 'item');
+    const termRecords = ARCHIVE_RECORDS.filter(r => r.category === 'term');
+    const openRecord = openArchiveRecordId ? getArchiveRecord(openArchiveRecordId) : null;
+    return (
+      <>
+        <Header title="資料室" subtitle="ストーリー記録・変異体図鑑" onBack={goHomeFromArchive} />
+        <div className="menu-stagger p-3 space-y-3">
+          <Section label="世界観">
+            {WORLD_INTRO.map((line, i) => <p key={i} className="text-[12px] leading-relaxed text-white/80">{line}</p>)}
+          </Section>
+          {missionRecords.length > 0 && (
+            <Section label="任務記録">{renderArchiveRecordList(missionRecords)}</Section>
+          )}
+          {weaponRecords.length > 0 && (
+            <Section label="武器・特殊装備">{renderArchiveRecordList(weaponRecords)}</Section>
+          )}
+          {itemRecords.length > 0 && (
+            <Section label="アイテム">{renderArchiveRecordList(itemRecords)}</Section>
+          )}
+          {termRecords.length > 0 && (
+            <Section label="用語">{renderArchiveRecordList(termRecords)}</Section>
+          )}
+          <Section label="変異体図鑑">
+            {BESTIARY.map(b => (
+              <div key={b.id} className="flex gap-2 text-[12px] leading-snug">
+                <span className="shrink-0 min-w-[7rem] font-semibold text-white/85">{b.name}</span>
+                <span className="text-white/55">{b.note}</span>
+              </div>
+            ))}
+          </Section>
+        </div>
+        {/* 資料本文モーダル(既存GameOverScreenの回収資料モーダルと同トーン=glass-panel・金色明朝見出し)。 */}
+        {openRecord && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center px-3"
+            style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+          >
+            <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+              <div className="px-4 py-5">
+                <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">資料</div>
+                <h3
+                  className="mb-3 text-lg font-semibold text-amber-100"
+                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                >
+                  {openRecord.title}
+                </h3>
+                <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                  {openRecord.body.map((line, i) => <p key={i}>{line}</p>)}
+                </div>
+                <button
+                  type="button"
+                  onClick={closeArchiveRecord}
+                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   // --- ルーティング ----------------------------------------------------
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
@@ -661,7 +780,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
 // === 共通の小物 =========================================================
 // FF7R風メニュー行: 左に紫アクセントバー＋右へフェードする半透明、選択(active/hover)で紫帯が左から差し込む。
-const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; onClick: () => void; accent?: boolean; delay?: number }> = ({ icon, label, desc, onClick, accent, delay = 0 }) => (
+const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; onClick: () => void; accent?: boolean; delay?: number; badge?: string }> = ({ icon, label, desc, onClick, accent, delay = 0, badge }) => (
   <button
     onClick={() => { playSfx('ui-select'); onClick?.(); }}
     style={{
@@ -674,7 +793,15 @@ const HubButton: React.FC<{ icon: React.ReactNode; label: string; desc: string; 
     <span className="absolute inset-0 -translate-x-full transition-transform duration-200 ease-out group-hover:translate-x-0 group-active:translate-x-0" style={{ background: 'linear-gradient(95deg, rgba(168,85,247,0.3), rgba(168,85,247,0.03))' }} />
     <span className="relative z-10 shrink-0 w-10 h-10 flex items-center justify-center text-purple-200/90">{icon}</span>
     <span className="relative z-10 flex-1">
-      <span className="block text-[15px] font-semibold tracking-wide text-white">{label}</span>
+      <span className="flex items-center gap-1.5">
+        <span className="text-[15px] font-semibold tracking-wide text-white">{label}</span>
+        {/* PACING_PUZZLE.md §6.18 M41: 未読資料あり=NEWバッジ(資料室ボタンのみ想定・汎用propとして追加)。 */}
+        {badge && (
+          <span className="shrink-0 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-100">
+            {badge}
+          </span>
+        )}
+      </span>
       <span className="block text-[11px] text-white/50">{desc}</span>
     </span>
     <ChevronLeft size={16} className="relative z-10 rotate-180 text-purple-300/45" />

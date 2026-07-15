@@ -2213,7 +2213,49 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 4. typecheck+eslint+related green(storyArchiveの追加純関数にテスト)。
 
 ### 状態
-- **仕様確定 v0.25.1747・Sonnet実装待ち**。
+- **実装済み v0.25.1748(Sonnet実装)**。
+  - `src/components/MissionSelect.tsx`:
+    - `renderArchive`(資料室)を刷新。「任務記録」セクションを `ARCHIVE_RECORDS`(category='mission')
+      ベースへ差し替え(解放済み=タイトル一覧+未読は金ドット→タップで本文表示(開いたら`markRecordRead`)、
+      未解放は`Lock`アイコン+「？？？（未回収）」の伏せ表示)。旧・STAGES.debrief転載セクションは撤去
+      (仕様書7章・11章)。「世界観」「変異体図鑑」(BESTIARY)は既存のまま維持。武器・特殊装備/アイテム/
+      用語は`ARCHIVE_RECORDS`に該当categoryの項目がある時だけSection表示(現状0件なので非表示)。
+    - ハブの「資料室」`HubButton`にNEWバッジ(`badge`prop新設)。未読数
+      (`archiveState.unlockedRecordIds − readRecordIds`の差集合)>0で表示。`archiveState`はマウント時
+      +資料室入場時(`goArchive`)+資料を開いた時(`handleOpenArchiveRecord`)+資料室から戻る時
+      (`goHomeFromArchive`)に`loadStoryArchive()`を読み直すローカルuseState(store購読なし・
+      毎フレーム購読なし=CLAUDE.md React再描画規律準拠)。
+    - 「資料が追加されました」ポップアップ: `newRecordsNotice`をマウント時(=ホーム表示時)に1回だけ
+      `loadStoryArchive().latestUnlockedRecordIds`から読み込み、非空ならホーム画面に小パネル表示。
+      閉じると`consumeLatestUnlocked()`で永続側もクリア+ローカルstateを空にして再表示させない。
+      閉じるだけで強制遷移なし(仕様書11章)。
+  - `src/data/storyArchive.ts`: consume系純関数 `consumeLatestUnlocked(): string[]` を追加。
+    `latestUnlockedRecordIds`を読み出しつつ空にして保存する(空なら状態を変えず`[]`を返す)。
+    未読数(バッジ)には影響しない別物(`readRecordIds`とは独立)。
+  - `src/data/storyArchive.test.ts`: `consumeLatestUnlocked`のテスト4件を追加(未解放時は空配列+状態不変/
+    1回目は直近解放分を返しつつlatestUnlockedRecordIdsのみ空にする(unlockedRecordIdsは無変更)/2回目は
+    空配列(再表示されない)/既読状態には影響しない)。既存13件+新規4件=計17件、全green。
+  - 見た目: 既存メニューのFF7R風・紫系トーン(`glass-panel`+紫アクセント)を踏襲。バッジ/ポップアップの
+    強調色のみ既存の任務報告・HIGH SCORE等と同じamber系。新規演出・強glowなし。
+    負荷スコア **1/10**(静的な条件付きレンダリング+ユーザー操作起点のlocalStorage読み直しのみ。
+    毎フレーム購読・アニメーションループ無し)。
+  - 検証: `npm run typecheck` green / `npx eslint src/components/MissionSelect.tsx src/data/storyArchive.ts
+    src/data/storyArchive.test.ts` green(warning 0) / `npx vitest related --run` green
+    (`storyArchive.test.ts` 17 passed。`MissionSelect.tsx`/`GameOverScreen.tsx`には対応するunit testが
+    無く関連実行の対象外=既存の慣例どおりUIコンポーネントは静的レビューで確認)。
+  - 受け入れ条件(4点)の確認方法:
+    1. stage-2クリア→[メニューに戻る]でホームにポップアップ1回→閉じてNEW表示/再表示されない:
+       `newRecordsNotice`はマウント時1回読み+`consumeLatestUnlocked`が2回目呼び出しで空配列を返す
+       ことをunitで確認(`storyArchive.test.ts`)。UI側の実機タップ確認(ポップアップ表示→NEWバッジ→
+       ホーム再訪で非表示)は静的コードレビュー済み・実機確認は社長へ持ち越し。
+    2. 資料室の任務記録4件+未読マーク+開くと既読化+全部読むとNEW消滅/未解放は伏せ表示/変異体図鑑・
+       世界観は従来どおり/旧debrief転載無し: `renderArchive`/`renderArchiveRecordList`の分岐を
+       コードレビューで確認(静的確認)。実機タップ確認は社長へ持ち越し。
+    3. リザルトの[回収資料を見る](M40)は無変更: `GameOverScreen.tsx`は本バッチで一切編集していない
+       (git diffで確認済み)。`storyArchive.ts`の既存エクスポート(`getArchiveRecord`/
+       `unlockRecordsForStage`/`markRecordRead`)のシグネチャも無変更。
+    4. typecheck+eslint+vitest related green: 上記のとおり実施・全green。
+  - ★未決事項: なし。
 
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
@@ -2250,7 +2292,7 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 | M38 | ボットAI改善=松明壊し=スクラップ供給(§6.15) | **実装済み v0.25.1729**(依頼#3でscrapEarned 5→73/59=効果実証) |
 | M39 | ボットAI改善=武器商人ゾーン回避(§6.16) | **実装済み v0.25.1733**(+v0.25.1732の即クローズ保険。確認は依頼#4再走が兼ねる) |
 | M40 | ストーリー情報UI第1弾=リザルト任務報告+資料データ土台(§6.17・正=STORY_UI_SPEC.md) | **実装済み v0.25.1746**(typecheck/eslint/vitest related全green・実機確認は社長へ持ち越し。★未決=フリーモード時の扱い、非ブロッキング) |
-| M41 | ストーリー情報UI第2弾=資料室UI+未読バッジ+追加ポップアップ(§6.18) | **仕様確定 v0.25.1747・Sonnet実装待ち**(入口=メインメニューの既存資料室ボタン・社長裁定) |
+| M41 | ストーリー情報UI第2弾=資料室UI+未読バッジ+追加ポップアップ(§6.18) | **実装済み v0.25.1748**(入口=メインメニューの既存資料室ボタン・社長裁定。実機確認は社長へ持ち越し) |
 | M42 | ストーリー情報UI第3弾=出撃ページ統一+通信ログ読み返し(仕様書3-4章) | 未着手 |
 | M43 | M1〜M7文面の順次実装(仕様書12章-7) | 未着手(文面は社長/ストーリー側から) |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |

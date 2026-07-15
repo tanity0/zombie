@@ -150,3 +150,16 @@ export const isRecordUnlocked = (id: string, state: StoryArchiveState = loadStor
 
 export const isRecordRead = (id: string, state: StoryArchiveState = loadStoryArchive()): boolean =>
   state.readRecordIds.includes(id);
+
+// PACING_PUZZLE.md §6.18 バッチM41: 「資料が追加されました」ポップアップ(MissionSelectホーム)の通知消費。
+// latestUnlockedRecordIds を読み出しつつ空にして保存する(呼んだら通知は消えて二度と出ない)。
+// 呼び出し側はポップアップを閉じた時に1回だけ呼ぶ(未読バッジ=unlockedRecordIds−readRecordIds とは
+// 別物なので、これを呼んでも未読マーク/ハブのNEWバッジは変化しない)。
+export const consumeLatestUnlocked = (): string[] => {
+  const state = loadStoryArchive();
+  const ids = state.latestUnlockedRecordIds;
+  if (!ids.length) return [];
+  state.latestUnlockedRecordIds = [];
+  saveStoryArchive(state);
+  return ids;
+};
