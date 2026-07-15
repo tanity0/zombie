@@ -2137,7 +2137,46 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 4. typecheck+eslint+`vitest related`green(storyArchive純関数のテスト必須)。
 
 ### 状態
-- **仕様確定 v0.25.1745・Sonnet実装待ち**。
+- **実装済み v0.25.1746(Sonnet実装)**。
+  - campaign.ts: `StageMission` に `clearReport?`/`unlockedRecordIds?`/`specialConditions?` を追加。
+    stage-2(M2)のみ仕様書5章の例文3文+資料ID4件+3章の特殊条件4ラベルを投入。他ステージは未設定
+    (リザルト側で debrief へフォールバック)。仕様書の `StoryStageInfo` 型は新設せず既存
+    Stage/StageMission へマッピングする方針どおり。
+  - 新規 `src/data/storyArchive.ts`: `ArchiveRecord`型+M2の任務記録4件の台帳、
+    `StoryArchiveState`(clearedStageIds/unlockedRecordIds/readRecordIds/latestUnlockedRecordIds)を
+    localStorage `zombie:storyArchive` で永続する純関数群(load/save/unlockRecordsForStage/
+    markRecordRead/isRecordUnlocked/isRecordRead)。解放は冪等(`unlockRecordsForStage` は既出IDを
+    増やさない)。同コミットでユニットテスト `src/data/storyArchive.test.ts`(13件)。
+  - `src/components/GameOverScreen.tsx`: 勝利時(`won`)のみ「任務報告」欄(clearReport→無ければ
+    debrief)+解放資料が1件以上あれば`[回収資料を見る（N）]`ボタンを追加。クリック→一覧モーダル→
+    資料タップで本文モーダル(開いた瞬間 `markRecordRead`)。どちらの「閉じる」もリザルトへ戻る
+    (§5の記述どおり)。`unlockRecordsForStage` はマウント時に1回だけ(`useRef`ガード、既存の
+    `hsRef`/`creditedRef`と同じ流儀)。死亡/撤退/ベンチでは `won=false` のため `mission` が
+    `undefined` になり、任務報告欄自体が出ない。既存の[もう一度プレイ]/[メニューに戻る]・
+    スコア/報酬表示・ハイスコア/ゴールド加算ロジックは無変更。
+  - 見た目: 既存リザルトと同じ `glass-panel` + 金色系(amber)明朝見出し。新規演出・強glowなし。
+    負荷スコア **1/10**(静的な条件付きレンダリングのみ。毎フレーム購読・アニメーションループ無し。
+    コストは表示時の1回だけの localStorage 読み書き)。
+  - 検証: `npm run typecheck` green / `npx eslint <touched>` green(warning 0) /
+    `npx vitest related --run` green(152 passed / 2 skipped、campaign.ts/storyArchive.ts/
+    storyArchive.test.ts/GameOverScreen.tsxの依存グラフ経由でM9ボットスモーク込み)。
+  - 受け入れ条件(4点)の確認方法:
+    1. stage-2初回クリア→任務報告+資料4件解放→一覧→本文→閉じてリザルトへ戻る/再クリアで
+       unlockedRecordIdsが増えない: `storyArchive.test.ts`の「初回クリア」「再クリア」テストで
+       ロジックを検証(unit)。UIの実機タップ確認は社長へ持ち越し(静的レビューはGameOverScreen.tsx
+       の分岐を目視確認済み)。
+    2. clearReport未設定ステージはdebriefへフォールバック/死亡時は欄なし: `clearReportLines`の
+       フォールバック式と`won &&`ガードをコードレビューで確認(静的確認。他ステージ=stage-1/3〜7/
+       EX1/EX2はclearReport未設定のままなのでdebrief表示になる)。
+    3. localStorage永続(リロード後も保持): `storyArchive.test.ts`の「ラウンドトリップ」テストで
+       load/save往復を検証(unit)。実機でのリロード確認は社長へ持ち越し。
+    4. typecheck+eslint+vitest related green: 上記のとおり実施・全green。
+  - ★未決事項(軽微・非ブロッキング): フリー(周回)出撃で stage-2 を勝利した場合、任務報告表示と
+    `unlockRecordsForStage` 呼び出しをフリーモードで特別扱いするか(現状は`markStageCleared`と違い
+    フリーモードを区別せず常に動く)。`unlockRecordsForStage`自体は冪等なので実害は無い
+    (二重解放にはならない)が、STORY_UI_SPEC.mdはフリーモードに言及しておらず、意図的な仕様かは
+    未確認。実装チャットの判断で「区別しない」を暫定採用(理由: 冪等で安全・spec対象外・
+    区別する場合も見た目/進行に影響なし)。区別が必要なら指示を。
 
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
@@ -2173,7 +2212,7 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 | M37 | ボットAI改善=人間反応のカウンター(§6.14) | **実装済み v0.25.1723**(playtestフルgreen・boarペルソナは仕様外=対象外) |
 | M38 | ボットAI改善=松明壊し=スクラップ供給(§6.15) | **実装済み v0.25.1729**(依頼#3でscrapEarned 5→73/59=効果実証) |
 | M39 | ボットAI改善=武器商人ゾーン回避(§6.16) | **実装済み v0.25.1733**(+v0.25.1732の即クローズ保険。確認は依頼#4再走が兼ねる) |
-| M40 | ストーリー情報UI第1弾=リザルト任務報告+資料データ土台(§6.17・正=STORY_UI_SPEC.md) | **仕様確定 v0.25.1745・Sonnet実装待ち** |
+| M40 | ストーリー情報UI第1弾=リザルト任務報告+資料データ土台(§6.17・正=STORY_UI_SPEC.md) | **実装済み v0.25.1746**(typecheck/eslint/vitest related全green・実機確認は社長へ持ち越し。★未決=フリーモード時の扱い、非ブロッキング) |
 | M41 | ストーリー情報UI第2弾=資料室UI(未読管理・仕様書6章) | 未着手(★未決: 資料室の入口の場所=社長裁定待ち) |
 | M42 | ストーリー情報UI第3弾=出撃ページ統一+通信ログ読み返し(仕様書3-4章) | 未着手 |
 | M43 | M1〜M7文面の順次実装(仕様書12章-7) | 未着手(文面は社長/ストーリー側から) |

@@ -9,6 +9,8 @@ import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 import { getSelectedStageId, submitStageHighScore } from '../data/progress';
+import { getStage } from '../data/campaign';
+import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRecord } from '../data/storyArchive';
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import {
@@ -160,6 +162,39 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     hsRef.current = true;
     if (submitStageHighScore(getSelectedStageId(), totalScore)) setIsHighScore(true);
   }, [isBenchmarkRun, totalScore]);
+
+  // PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章・7章: 任務報告+回収資料(勝利クリア時のみ)。
+  // ステージIDの解決はハイスコア送信と同じ getSelectedStageId()(localStorage・store外の既存正本)。
+  // 死亡/撤退/ベンチでは won=false なので mission は undefined のまま=任務報告欄は出ない。
+  const stageId = won ? getSelectedStageId() : '';
+  const mission = stageId ? getStage(stageId)?.main : undefined;
+  const clearReportLines = (mission?.clearReport?.length ? mission.clearReport : mission?.debrief) ?? [];
+  const [unlockedRecordIds, setUnlockedRecordIds] = useState<string[]>([]);
+  const [openRecordId, setOpenRecordId] = useState<string | null>(null);
+  const [archiveListOpen, setArchiveListOpen] = useState(false);
+  const archiveUnlockedRef = useRef(false);
+  useEffect(() => {
+    // クリア確定時に1回だけ呼ぶ(冪等な関数だが、呼び出し自体もrefガードで重複させない)。
+    if (archiveUnlockedRef.current || !won || !stageId) return;
+    archiveUnlockedRef.current = true;
+    const recordIds = mission?.unlockedRecordIds ?? [];
+    if (recordIds.length) setUnlockedRecordIds(unlockRecordsForStage(stageId, recordIds));
+  }, [won, stageId, mission]);
+  const unlockedRecords = unlockedRecordIds
+    .map(id => getArchiveRecord(id))
+    .filter((r): r is ArchiveRecord => !!r);
+  const openRecord = openRecordId ? getArchiveRecord(openRecordId) : null;
+  const handleOpenRecord = (id: string) => {
+    playSfx('ui-select');
+    markRecordRead(id);
+    setOpenRecordId(id);
+  };
+  // §5「閉じるとリザルト画面へ戻る」: 一覧/本文どちらの閉じるも、回収資料フロー全体を閉じてリザルトへ戻す。
+  const closeArchive = () => {
+    playSfx('ui-select');
+    setOpenRecordId(null);
+    setArchiveListOpen(false);
+  };
 
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
   // PACING_PUZZLE.md §5.17 M14: 到達譜(掛け合わせ見出し+深度メーター+惜しさ)。
@@ -605,6 +640,26 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               )}
             </>
           )}
+          {/* PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章: 任務報告(勝利クリア時のみ)。
+              スコア/報酬の下・[回収資料を見る]/次への上、というSTORY_UI_SPEC.mdの推奨レイアウト順。
+              死亡/撤退/ベンチには一切出さない(clearReportLines は won=false だと空になる)。 */}
+          {won && clearReportLines.length > 0 && (
+            <div className="mb-3 rounded-none bg-amber-400/5 px-3 py-2.5">
+              <div className="mb-1.5 text-[10px] uppercase tracking-widest text-amber-200/70">任務報告</div>
+              <div className="space-y-1 text-[12px] leading-relaxed text-white/85" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+                {clearReportLines.map((line, i) => <p key={i}>{line}</p>)}
+              </div>
+              {unlockedRecords.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { playSfx('ui-select'); setArchiveListOpen(true); }}
+                  className="mt-2.5 w-full rounded-none bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-100"
+                >
+                  回収資料を見る（{unlockedRecords.length}）
+                </button>
+              )}
+            </div>
+          )}
           {showLostEquipmentBox && (
             <div className="mb-3 rounded-none bg-rose-400/5 px-3 py-2.5">
               {/* PACING_PUZZLE.md §5.19 M18③: ゴールド/所持ゴールドを「お金の枠」(ロスト装備の換金額と
@@ -738,6 +793,65 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           </div>
         </div>
       </div>
+      {/* PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章: 「回収資料を見る」の一覧→本文モーダル。
+          既存リザルトと同じトーン(glass-panel・金色明朝見出し)。強glow等の新規演出は使わない(負荷1/10)。
+          一覧/本文どちらの「閉じる」も回収資料フロー全体を閉じてリザルトへ戻す(§5「閉じるとリザルト
+          画面へ戻る」)。 */}
+      {(archiveListOpen || openRecord) && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-3"
+          style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+        >
+          <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
+            {openRecord ? (
+              <div className="px-4 py-5">
+                <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>
+                <h3
+                  className="mb-3 text-lg font-semibold text-amber-100"
+                  style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}
+                >
+                  {openRecord.title}
+                </h3>
+                <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
+                  {openRecord.body.map((line, i) => <p key={i}>{line}</p>)}
+                </div>
+                {/* 本文の「閉じる」は一覧へ戻す(設計チャット調整v0.25.1746: 4件連続で読む動線を1タップに。
+                    リザルトへ戻るのは一覧側の閉じる=仕様書5章どおり)。 */}
+                <button
+                  type="button"
+                  onClick={() => { playSfx('ui-select'); setOpenRecordId(null); setArchiveListOpen(true); }}
+                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                >
+                  一覧へ戻る
+                </button>
+              </div>
+            ) : (
+              <div className="px-4 py-5">
+                <div className="mb-3 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料（今回分）</div>
+                <div className="flex flex-col gap-1.5">
+                  {unlockedRecords.map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => handleOpenRecord(r.id)}
+                      className="text-left p-2.5 rounded-none bg-amber-400/5 active:bg-amber-400/10"
+                    >
+                      <span className="text-[13px] font-semibold text-amber-100">{r.title}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={closeArchive}
+                  className="mt-4 w-full rounded-none bg-purple-400/10 px-3 py-2 text-[12px] font-semibold text-white/85"
+                >
+                  閉じる
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

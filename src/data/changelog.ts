@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1746',
+    items: [
+      'クリア後のリザルトに任務報告と回収資料の閲覧を追加(まずはステージ2)。',
+    ],
+  },
+  {
     version: '0.25.1745',
     items: [
       '開発: ストーリー情報UI/UX仕様(the ONE)を受領・リポジトリ化(STORY_UI_SPEC.md)し、実装バッチM40〜M43に分割。M40(リザルト任務報告+資料データ土台)を実装開始。ゲーム変更なし。',

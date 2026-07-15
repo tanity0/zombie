@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.1746 — ストーリー情報UI 第1弾=リザルト任務報告+資料データ土台(§6.17 M40実装)【2026-07-15 20:42 JST】
+- `src/data/campaign.ts`: `StageMission` に `clearReport?`/`unlockedRecordIds?`/`specialConditions?`
+  を追加。stage-2(M2)のみ仕様書5章の任務報告例文3文+資料ID4件+3章の特殊条件4ラベルを投入。
+  他ステージは未設定のまま(リザルト側でdebriefへフォールバック)。
+- 新規 `src/data/storyArchive.ts`: `ArchiveRecord`型+M2の任務記録4件(軍再生医療計画/PHILL計画記録/
+  異常増殖データ/リモート共同研究所との通信履歴)の台帳。`StoryArchiveState`をlocalStorage
+  `zombie:storyArchive`で永続する純関数群(load/save/unlockRecordsForStage/markRecordRead等)。
+  解放は冪等(再クリアでunlockedRecordIdsが増えない)。同コミットで`storyArchive.test.ts`(13件)。
+- `src/components/GameOverScreen.tsx`: 勝利時(`won`)のみ「任務報告」欄+解放資料がある時だけ
+  `[回収資料を見る]`ボタン→一覧モーダル→本文モーダル(開いたら`markRecordRead`)。閉じるとリザルトへ
+  戻る。`unlockRecordsForStage`はマウント時に`useRef`ガードで1回だけ呼ぶ(既存の`hsRef`と同じ流儀)。
+  死亡/撤退/ベンチには一切出さない。既存の[もう一度プレイ]/[メニューに戻る]・スコア/報酬・
+  ハイスコア/ゴールド加算は無変更。見た目は既存トーン(glass-panel+金色明朝)、新規演出なし。
+  **負荷スコア1/10**(静的な条件付きレンダリング。毎フレーム購読・ループ無し。コストは表示時1回の
+  localStorage読み書きのみ)。
+- 検証: `npm run typecheck` green / `npx eslint`(campaign.ts, storyArchive.ts, storyArchive.test.ts,
+  GameOverScreen.tsx) green / `npx vitest related --run`(同4ファイル)152 passed・2 skipped、green。
+- 受け入れ条件(§6.17・4点): (1)(3)は`storyArchive.test.ts`の初回解放/再クリア非重複/永続
+  ラウンドトリップで検証(unit)。(2)は`clearReportLines`フォールバック式+`won &&`ガードを
+  コードレビューで静的確認。(4)は上記検証で満たす。**実機でのタップ/リロード確認は社長へ持ち越し**。
+- 自己点検: 本変更はゲームプレイ(敵/武器/スポーン/バランス)に触れておらず、憲法4条(初心者ゾーン
+  不可侵)・5条(緩を荒らさない)に抵触しない(リザルト画面の表示追加のみ)。
+- ★未決(軽微・非ブロッキング、§6.17に記載): フリー(周回)出撃でのstage-2勝利時、任務報告表示と
+  資料解放を`markStageCleared`同様にフリーモード除外すべきかは未確認。`unlockRecordsForStage`は
+  冪等なので実害なし=暫定「区別しない」を採用。
+- 設計チャット検証時の調整1点: 資料**本文**の閉じるボタンを「リザルトまで全部閉じる」→
+  **「一覧へ戻る」**に変更(4件連続で読む動線を1タップに。仕様書5章の「閉じるとリザルトへ戻る」は
+  一覧側の閉じるで維持)。typecheck/eslint/related再実行green。
+- Files: `src/data/campaign.ts`, `src/data/storyArchive.ts`(新規), `src/data/storyArchive.test.ts`
+  (新規), `src/components/GameOverScreen.tsx`, `PACING_PUZZLE.md`, `package.json`,
+  `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1745 — ストーリー情報UI仕様の受領・バッチ化(M40発注)【2026-07-15 20:32 JST】
 - 社長提供(Drive)の「the ONE ストーリー情報UI・UX仕様」を全文 `STORY_UI_SPEC.md` としてリポジトリ化
   (チャット/Driveにしか無い情報は存在しないのと同じ=CLAUDE.mdの原則)。

@@ -28,6 +28,13 @@ export interface StageMission {
   // ステージ開始時の会話イベント(時間停止・オートタイプ)。ミッションごとに内容/有無が変わる。
   // 未指定/空 = 会話なし(フリーミッション等)。
   dialogue?: IntroLine[];
+  // PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 7章: 勝利リザルトの「任務報告」欄(2〜4短文)。
+  // 未指定のステージは debrief をフォールバック表示する(リザルト側の責務。ここでは空のままでよい)。
+  clearReport?: string[];
+  // クリアで解放する資料室(src/data/storyArchive.ts の ArchiveRecord.id)。未指定 = 解放なし。
+  unlockedRecordIds?: string[];
+  // 出撃ページに出す特殊条件の短ラベル(データのみ先行。表示はM42)。未指定 = 特殊条件なし。
+  specialConditions?: string[];
 }
 
 export interface SubMission {
@@ -130,6 +137,19 @@ export const STAGES: Stage[] = [
         '主任研究者は死亡認定。',
         'ただし、事故直前の自己投与ログは欠損していた。',
       ],
+      // PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章・6章・3章の M2例文をそのまま反映。
+      clearReport: [
+        '施設は軍の再生医療研究所だった。',
+        '壊滅直前のデータには、通常の治療では説明できない異常値が残されている。',
+        '別地域の共同研究所との通信記録を確認。生存者の捜索を開始する。',
+      ],
+      unlockedRecordIds: [
+        'mission-military-regen-plan',
+        'mission-phill-plan-record',
+        'mission-abnormal-growth-data',
+        'mission-remote-lab-comm-log',
+      ],
+      specialConditions: ['単身潜入', 'PHILLガン固定', '弾薬有限', '敵の殲滅は不要'],
     },
   },
   {
