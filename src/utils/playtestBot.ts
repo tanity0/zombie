@@ -121,6 +121,54 @@ export const torchForageInput = (
   return { input: dirInput((bestX - pcx) / n, (bestY - pcy) / n), wantsMelee: false };
 };
 
+// M39(§6.16・社長指示v0.25.1733「用がなければ武器商人ゾーンは避ける」): 商人ゾーン回避。
+// ショップは「商人の対話半径(58px)内での近接スイング」で開く=ボットに用は無いので、そもそも
+// ゾーンに近寄らない(依頼#3で商人モーダル停止×2ランの再発防止。開いた場合の即クローズ保険
+// (v0.25.1732)は最終防衛として別に残る)。ボット入力のみの後段補正・通常プレイ不変。
+// - ゾーン内に入ってしまったら外向きへ歩いて出る(手空きでも)。
+// - ゾーン外近傍では、進行方向がゾーンを掠める時だけ直交ステアで45°逸れる(M34の卵回避と同じ流儀)。
+// - stationary(棒立ちが仕様)は動かさない(スイング誘発時のショップは即クローズ保険が受ける)。
+// - 呼び出し側は松明フォレージ/拾い歩きの対象からもゾーン内の物を除外する(用を作らない)。
+export const MERCHANT_AVOID_RADIUS = 90; // 対話半径58+余白(叩き台)
+
+export interface MerchantZoneLike { x: number; y: number }
+
+export const avoidMerchantZone = (
+  persona: BotPersona,
+  input: InputState,
+  pcx: number,
+  pcy: number,
+  merchant: MerchantZoneLike | null,
+  avoidRadius = MERCHANT_AVOID_RADIUS,
+): InputState => {
+  if (!merchant || persona === 'stationary') return input;
+  const tx = merchant.x - pcx, ty = merchant.y - pcy;
+  const d = Math.hypot(tx, ty);
+  if (d >= avoidRadius * 2) return input; // 遠い=無関係
+  if (d < avoidRadius) {
+    // ゾーン内: 外向きへ出る(d≈0の縮退は+x固定で決定的に)。
+    if (d < 0.001) return dirInput(1, 0);
+    return dirInput(-tx / d, -ty / d);
+  }
+  // ゾーン外近傍: 移動中のみ。進行方向の前方にゾーンが掠る時だけ横へ逸れる。
+  const mx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const my = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  if (mx === 0 && my === 0) return input;
+  const ml = Math.max(0.001, Math.hypot(mx, my));
+  const dx = mx / ml, dy = my / ml;
+  const front = dx * tx + dy * ty;          // 進行方向成分(px)。負=既に離れる向き
+  if (front <= 0) return input;
+  const perp = dx * ty - dy * tx;           // 符号付き垂直距離(px)。正=商人が進行の右側
+  if (Math.abs(perp) >= avoidRadius) return input; // 進路はゾーンを掠めない
+  // 商人と反対側の直交方向を等重で合成=進行を保ったまま45°逸れる(M34と同じ決定的ステア)。
+  const lx = perp >= 0 ? dy : -dy;
+  const ly = perp >= 0 ? -dx : dx;
+  const cx = dx + lx;
+  const cy = dy + ly;
+  const cl = Math.max(0.001, Math.hypot(cx, cy));
+  return dirInput(cx / cl, cy / cl);
+};
+
 // 放浪ペルソナ用: ラン開始時に一度だけ選ぶ固定方向(spawn からの一方向へ直進=戦闘無視)。
 const WANDER_DIRS: InputState[] = [
   { up: true, down: false, left: false, right: false },

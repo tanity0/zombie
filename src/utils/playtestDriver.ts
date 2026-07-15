@@ -47,7 +47,8 @@ import {
   type KomaState, type PityUpkeepRefs, type KomaMaintenanceRefs, type DirectorSignalRefs,
 } from './directorTick';
 import {
-  decideBotInput, pickupSeekInput, torchForageInput, adjustBotForMines, decideCounterReaction,
+  decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
+  adjustBotForMines, decideCounterReaction,
   createCounterThreatState, type BotPersona, type RusherTrackState, type CounterThreatState,
 } from './playtestBot';
 import { pickUpgrade, mulberry32 } from './botUpgradePolicy';
@@ -362,18 +363,28 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     ? RANGE_BY_CATEGORY[botGun.category as keyof typeof RANGE_BY_CATEGORY]
     : undefined;
   const decision = decideBotInput(persona, player, enemies, t, tickIndex, wanderSeed, rusherState, botGunRange);
+  // M39(§6.16): 商人ゾーンに用は作らない=拾い/松明の対象からゾーン内の物を除外し、移動もゾーンを避ける。
+  const merchant = useGameStore.getState().weaponMerchant;
+  const outsideMerchantZone = (x: number, y: number): boolean =>
+    Math.hypot(x - merchant.x, y - merchant.y) > MERCHANT_AVOID_RADIUS;
   // 手が空いているtickは近くのドロップ(XP/弾薬)を拾いに歩く(M26 Step1・stationaryは除外)。
   const moveInput = pickupSeekInput(persona, decision.input,
-    player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().pickups);
+    player.x + player.width / 2, player.y + player.height / 2,
+    useGameStore.getState().pickups.filter(p => outsideMerchantZone(p.x + 8, p.y + 8)));
   // M38(§6.15): 松明フォレージ(手空きのみ発火・拾い歩きの直後に合成・松明を割ってスクラップ供給を作る)。
   const torchForage = torchForageInput(
     persona, moveInput,
     player.x + player.width / 2, player.y + player.height / 2,
-    useGameStore.getState().breakableProps.filter(p => p.type === 'torch'),
+    useGameStore.getState().breakableProps.filter(p => p.type === 'torch' && outsideMerchantZone(p.footX, p.footY)),
+  );
+  // M39(§6.16): 商人ゾーン回避ステア(ゾーン内なら出る/掠める進路は45°逸れる)。
+  const avoidedInput = avoidMerchantZone(
+    persona, torchForage.input,
+    player.x + player.width / 2, player.y + player.height / 2, merchant,
   );
   // M34(§6.11): 緑卵(地雷)を避ける/叩く(ボット入力のみの後段補正。松明フォレージの後に合成)。
   const mineAdj = adjustBotForMines(
-    torchForage.input, decision.wantsMelee || torchForage.wantsMelee,
+    avoidedInput, decision.wantsMelee || torchForage.wantsMelee,
     player.x + player.width / 2, player.y + player.height / 2,
     useGameStore.getState().breakableProps.filter(p => p.type === 'mine'),
   );

@@ -135,7 +135,8 @@ import {
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
 import {
-  decideBotInput, pickupSeekInput, torchForageInput, adjustBotForMines, createRusherTrackState,
+  decideBotInput, pickupSeekInput, torchForageInput, avoidMerchantZone, MERCHANT_AVOID_RADIUS,
+  adjustBotForMines, createRusherTrackState,
   decideCounterReaction, createCounterThreatState, BOT_PERSONAS, type BotPersona,
 } from '../utils/playtestBot';
 import { pickUpgrade, mulberry32 } from '../utils/botUpgradePolicy';
@@ -1507,13 +1508,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // スクラップ供給を作る)を挟む。松明への進路上の緑卵は後段のadjustBotForMinesの回避/叩きが効く。
         const botMineAdj = botDecision
           ? (() => {
+              // M39(§6.16): 商人ゾーンに用は作らない=拾い/松明の対象からゾーン内の物を除外し、
+              // 移動もゾーンを避ける(ショップ誤オープン=依頼#3の商人停止の再発防止)。
+              const bm = loopState.weaponMerchant;
+              const outsideMerchantZone = (x: number, y: number): boolean =>
+                Math.hypot(x - bm.x, y - bm.y) > MERCHANT_AVOID_RADIUS;
               const botMoveAfterPickup = pickupSeekInput(BOT_PERSONA as BotPersona, botDecision.input,
-                player.x + player.width / 2, player.y + player.height / 2, pickups);
+                player.x + player.width / 2, player.y + player.height / 2,
+                pickups.filter(p => outsideMerchantZone(p.x + 8, p.y + 8)));
               const botTorchForage = torchForageInput(BOT_PERSONA as BotPersona, botMoveAfterPickup,
                 player.x + player.width / 2, player.y + player.height / 2,
-                loopState.breakableProps.filter(p => p.type === 'torch'));
+                loopState.breakableProps.filter(p => p.type === 'torch' && outsideMerchantZone(p.footX, p.footY)));
+              const botAvoided = avoidMerchantZone(BOT_PERSONA as BotPersona, botTorchForage.input,
+                player.x + player.width / 2, player.y + player.height / 2, bm);
               return adjustBotForMines(
-                botTorchForage.input,
+                botAvoided,
                 botDecision.wantsMelee || botTorchForage.wantsMelee,
                 player.x + player.width / 2, player.y + player.height / 2,
                 loopState.breakableProps.filter(p => p.type === 'mine'));

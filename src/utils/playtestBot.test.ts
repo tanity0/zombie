@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { decideBotInput, wanderDirForSeed, pickupSeekInput, BOT_PERSONAS,
   torchForageInput, TORCH_SEEK_DIST, TORCH_SMASH_DIST,
+  avoidMerchantZone, MERCHANT_AVOID_RADIUS,
   adjustBotForMines, MINE_AVOID_RADIUS, MINE_SMASH_DIST,
   decideCounterReaction, createCounterThreatState } from './playtestBot';
 import { useGameStore } from '../store/gameStore';
@@ -178,6 +179,44 @@ describe('torchForageInput (M38: 松明フォレージ)', () => {
     const r = torchForageInput('kiter', IDLE, 0, 0, []);
     expect(r.input).toBe(IDLE);
     expect(r.wantsMelee).toBe(false);
+  });
+});
+
+describe('avoidMerchantZone (M39: 商人ゾーン回避=社長指示「用がなければ避ける」)', () => {
+  const IDLE = { up: false, down: false, left: false, right: false };
+  const RIGHT = { up: false, down: false, left: false, right: true };
+
+  it('ゾーン内(<90px)に居たら手空きでも外向きへ歩いて出る', () => {
+    const out = avoidMerchantZone('standard', IDLE, 100, 100, { x: 150, y: 100 }); // 商人=右50px
+    expect(out.left).toBe(true);
+    expect(out.right).toBe(false);
+    expect(MERCHANT_AVOID_RADIUS).toBe(90);
+  });
+
+  it('進行方向の先にゾーンが掠る時は前進を保ったまま横へ逸れる', () => {
+    const out = avoidMerchantZone('standard', RIGHT, 0, 0, { x: 130, y: 0 }); // 前方130px(<2R)・真正面
+    expect(out.right).toBe(true);
+    expect(out.up || out.down).toBe(true);
+  });
+
+  it('ゾーンと逆向きの移動は不干渉(同一参照)', () => {
+    const out = avoidMerchantZone('standard', RIGHT, 0, 0, { x: -130, y: 0 }); // 商人は後方
+    expect(out).toBe(RIGHT);
+  });
+
+  it('遠い商人(>=2R)は不干渉(同一参照)', () => {
+    const out = avoidMerchantZone('standard', RIGHT, 0, 0, { x: 400, y: 0 });
+    expect(out).toBe(RIGHT);
+  });
+
+  it('進路がゾーンを掠めない(垂直距離>=R)なら不干渉', () => {
+    const out = avoidMerchantZone('standard', RIGHT, 0, 0, { x: 100, y: 120 }); // 右前方だが十分下
+    expect(out).toBe(RIGHT);
+  });
+
+  it('stationaryは動かさない(棒立ちが仕様。ゾーン内でも不干渉)', () => {
+    const out = avoidMerchantZone('stationary', IDLE, 100, 100, { x: 110, y: 100 });
+    expect(out).toBe(IDLE);
   });
 });
 

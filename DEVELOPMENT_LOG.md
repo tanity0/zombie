@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.1733 — M39実装: ボットの武器商人ゾーン回避(社長裁定「用がなければ避ける」)【2026-07-15 14:28 JST】
+- v0.25.1732の即クローズ保険に続く**本体対策**(§6.16 M39): ボットは商人ゾーンに用が無い限り近寄らない。
+  - `avoidMerchantZone`(playtestBot.ts・純関数): ゾーン内(<90px=対話58+余白)なら手空きでも外向きへ
+    脱出/掠める進路は45°直交ステア(M34と同じ流儀)/stationaryは不干渉。
+  - **用を作らない**: 拾い歩き・松明フォレージ(M38)の対象からゾーン内のドロップ/松明を除外
+    (両ハーネスの呼び出し側フィルタ)。
+  - 合成順: ペルソナ→拾い→松明→商人回避→M34(卵)→M37(カウンター)。
+- 検証: typecheck / eslint(4ファイル) / related 52件green(新テスト6件込み・M9スモーク込み)。
+  実地確認は依頼#4の再走が兼ねる(REQUEST.mdの要求HEADをv0.25.1733以上に更新済み)。
+- 天秤: 診断コンテキスト継続の小改修=Fable直接(Sonnet発注は再調査コストの方が高い)。
+- 自己点検: ボット入力の後段補正のみ=憲法4条(初心者ゾーン)・5条(緩を荒らさない)非抵触。
+- Files: `src/utils/playtestBot.ts`, `src/utils/playtestBot.test.ts`, `src/utils/playtestDriver.ts`,
+  `src/hooks/useGameLoop.ts`, `PACING_PUZZLE.md`, `TEST_HANDOFF/REQUEST.md`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+- 次: ステージ5の地面素材(社長提供)を組み込み(v0.25.1734予定)。
+
+
 ## v0.25.1732 — 依頼#3分析+ボットの商人モーダル自動クローズ+依頼#4発行【2026-07-15 13:09 JST】
 - **依頼#3結果分析**(results/20260715-0107-m38-economy-abtest.md・10ラン中8有効・エラー0):
   - **正規スクリプトがWindowsで完走**(v1725修正の実地確認OK。以後一時ランナー不要)。
