@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.1739 — ステージ5の森1/森2をさらに半分+森1を下げ(社長指示)【2026-07-15 18:46 JST】
+- 森2(nearHorizon): 高さ比 0.105→**0.0525**(原典0.42の1/8)。
+- 森1(horizonForest): ×0.5→**×0.25**+`STAGE5_HORIZON_FOREST_EXTRA_DOWN = 20`px 下げ
+  (ステージ2の LAB_HORIZON_FOREST_EXTRA_DOWN=20 と同じ前例方式・叩き台。resize/毎フレームの
+  位置式2箇所に追加)。他ステージ不変・視覚のみ。
+- 検証: typecheck green。見え方は実機で社長確認へ(下げ量20pxは要調整なら1定数)。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1738 — ステージ5の森2をさらに半分+森1も半分(社長指示)【2026-07-15 18:43 JST】
 - 森2(nearHorizon): `STAGE5_NEAR_HORIZON_HEIGHT_RATIO` 0.21→**0.105**(原典0.42の1/4)。
 - 森1(horizonForest=地平帯): `horizonForestHeight()` にステージ5分岐 **×0.5** を追加

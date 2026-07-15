@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1739',
+    items: [
+      'ステージ5: 遠景の森1・森2をさらに半分に縮小し、森1(地平帯)を少し下げました。',
+    ],
+  },
+  {
     version: '0.25.1738',
     items: [
       'ステージ5: 遠景の森2をさらに半分(計1/4)に、森1(地平帯)も半分に縮小。',
