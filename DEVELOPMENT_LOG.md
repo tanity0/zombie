@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1744 — ステージ5森2を10px上へ(社長指示)【2026-07-15 19:38 JST】
+- `STAGE5_NEAR_HORIZON_DOWN_PX` 50→40(底=境界線+40px下)。他は不変。
+- 検証: typecheck green。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1743 — ステージ5森1の高さ150→130px(社長指示)【2026-07-15 19:21 JST】
 - `STAGE5_HORIZON_FOREST_HEIGHT_PX` 150→130。他は不変(底=境界線+20px下のまま)。
 - 検証: typecheck green。

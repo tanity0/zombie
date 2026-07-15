@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1744',
+    items: [
+      'ステージ5: 森2を10px上へ(境界線+50px下→+40px下)。',
+    ],
+  },
+  {
     version: '0.25.1743',
     items: [
       'ステージ5: 森1の高さを150px→130pxに調整。',
