@@ -8,12 +8,80 @@ import { isHiddenBoss } from './enemyUtils';
 
 // 社長決定v0.25.1481→v0.25.1482(候補は多いほど良い=32名に増量): 裏ボス=北欧の神々を
 // 予約するため、ネームドはギリシャ神話の怪物から取る(名前空間を神話ごとに分離)。
+// PACING_PUZZLE.md §6.20 バッチM45(社長指示v0.25.1755): 表示を「CODE:ローマ字」表記へ現代化。
 export const NAMED_ENEMY_NAMES: readonly string[] = [
-  'ケルベロス', 'オルトロス', 'ヒュドラ', 'キマイラ', 'メデューサ', 'ステンノ', 'エウリュアレ', 'ミノタウロス',
-  'ハルピュイア', 'スキュラ', 'カリュブディス', 'エキドナ', 'テュポン', 'ラミア', 'エンプーサ', 'モルモ',
-  'リュカオン', 'ピュトン', 'ラドン', 'ゲリュオン', 'カクス', 'アルゴス', 'タロス', 'セイレーン',
-  'ケートー', 'スフィンクス', 'キュクロプス', 'ポリュペモス', 'アンタイオス', 'ネメア', 'スティンファロス', 'ヒュプノス',
+  'CODE:CERBERUS', 'CODE:ORTHRUS', 'CODE:HYDRA', 'CODE:CHIMERA', 'CODE:MEDUSA', 'CODE:STHENO', 'CODE:EURYALE', 'CODE:MINOTAUR',
+  'CODE:HARPY', 'CODE:SCYLLA', 'CODE:CHARYBDIS', 'CODE:ECHIDNA', 'CODE:TYPHON', 'CODE:LAMIA', 'CODE:EMPUSA', 'CODE:MORMO',
+  'CODE:LYCAON', 'CODE:PYTHON', 'CODE:LADON', 'CODE:GERYON', 'CODE:CACUS', 'CODE:ARGOS', 'CODE:TALOS', 'CODE:SIREN',
+  'CODE:CETO', 'CODE:SPHINX', 'CODE:CYCLOPS', 'CODE:POLYPHEMUS', 'CODE:ANTAEUS', 'CODE:NEMEA', 'CODE:STYMPHALOS', 'CODE:HYPNOS',
 ];
+
+// 旧カタカナ名→新表記(CODE:ローマ字)の正規化マップ(§6.20)。天使3+裏ボス4+宿敵32名の全37名。
+// localStorage 永続済みの宿敵(namedFoe.name)・年表等で旧名が来ても表示層で新表記に変換するための
+// 読み時正規化ヘルパー。永続データ自体の書き換えは不要(このマップは表示直前にだけ通す)。
+const NAMED_NAME_LEGACY_MAP: Readonly<Record<string, string>> = {
+  // 天使(ゲート2ボス)
+  'ミゲル': 'CODE:MIGUEL',
+  'ジブリル': 'CODE:JIBRIL',
+  'ラフィ': 'CODE:RAFI',
+  // 裏ボス
+  'ミーミル': 'CODE:MIMIR',
+  'ヨルムンガルド': 'CODE:JORMUNGAND',
+  'スカジ': 'CODE:SKADI',
+  'トール': 'CODE:THOR',
+  // 宿敵/クエストネームド(32名)
+  'ケルベロス': 'CODE:CERBERUS',
+  'オルトロス': 'CODE:ORTHRUS',
+  'ヒュドラ': 'CODE:HYDRA',
+  'キマイラ': 'CODE:CHIMERA',
+  'メデューサ': 'CODE:MEDUSA',
+  'ステンノ': 'CODE:STHENO',
+  'エウリュアレ': 'CODE:EURYALE',
+  'ミノタウロス': 'CODE:MINOTAUR',
+  'ハルピュイア': 'CODE:HARPY',
+  'スキュラ': 'CODE:SCYLLA',
+  'カリュブディス': 'CODE:CHARYBDIS',
+  'エキドナ': 'CODE:ECHIDNA',
+  'テュポン': 'CODE:TYPHON',
+  'ラミア': 'CODE:LAMIA',
+  'エンプーサ': 'CODE:EMPUSA',
+  'モルモ': 'CODE:MORMO',
+  'リュカオン': 'CODE:LYCAON',
+  'ピュトン': 'CODE:PYTHON',
+  'ラドン': 'CODE:LADON',
+  'ゲリュオン': 'CODE:GERYON',
+  'カクス': 'CODE:CACUS',
+  'アルゴス': 'CODE:ARGOS',
+  'タロス': 'CODE:TALOS',
+  'セイレーン': 'CODE:SIREN',
+  'ケートー': 'CODE:CETO',
+  'スフィンクス': 'CODE:SPHINX',
+  'キュクロプス': 'CODE:CYCLOPS',
+  'ポリュペモス': 'CODE:POLYPHEMUS',
+  'アンタイオス': 'CODE:ANTAEUS',
+  'ネメア': 'CODE:NEMEA',
+  'スティンファロス': 'CODE:STYMPHALOS',
+  'ヒュプノス': 'CODE:HYPNOS',
+};
+
+// 旧カタカナ名→新表記(CODE:ローマ字)への正規化(§6.20)。未知の名前(既に新表記/該当なし)はそのまま返す。
+export const normalizeNamedName = (name: string): string => NAMED_NAME_LEGACY_MAP[name] ?? name;
+
+// 文章内の旧名を全置換する正規化(§6.20追補・社長指示v0.25.1756)。年表などlocalStorageに
+// 「記録時の文言」が焼き込まれている行の表示用(保存データは書き換えない)。
+// ・「天使ミゲル」のような種族接頭辞は接頭辞ごと新表記に置換(社長指示「天使 はいらない」)。
+// ・部分一致事故を防ぐため長い名前から先に置換(例: 「ステンノ」と「テンノ」のような包含関係対策)。
+const LEGACY_NAMES_LONGEST_FIRST: readonly string[] =
+  Object.keys(NAMED_NAME_LEGACY_MAP).sort((a, b) => b.length - a.length);
+export const normalizeNamedNamesInText = (text: string): string => {
+  let out = text;
+  for (const legacy of LEGACY_NAMES_LONGEST_FIRST) {
+    if (!out.includes(legacy)) continue;
+    const modern = NAMED_NAME_LEGACY_MAP[legacy];
+    out = out.split(`天使${legacy}`).join(modern).split(legacy).join(modern);
+  }
+  return out;
+};
 
 export const NAMED_HP_MULT = 2;
 export const NAMED_DMG_MULT = 2;

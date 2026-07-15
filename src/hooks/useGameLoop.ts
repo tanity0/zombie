@@ -3571,7 +3571,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'ミーミルのレーザー', cxp, cyp);
+                  const died = damagePlayer(MIMIR_LASER_DAMAGE, 'CODE:MIMIR のレーザー', cxp, cyp);
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -3633,7 +3633,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'トールの一閃', cxp, cyp);
+                    const died = damagePlayer(boss.damage, 'CODE:THOR の一閃', cxp, cyp);
                     useGameStore.getState().spawnImageMark(cxp, cyp, 'zan', { scale: 1.0, duration: 1000 }); // 社長指示: 食らうと「斬」
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
@@ -3682,7 +3682,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'トールの突き', cxp, cyp);
+                    const died = damagePlayer(boss.damage, 'CODE:THOR の突き', cxp, cyp);
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
@@ -3714,7 +3714,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'トールの払い', cxp, cyp);
+                    const died = damagePlayer(boss.damage, 'CODE:THOR の払い', cxp, cyp);
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }

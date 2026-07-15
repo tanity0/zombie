@@ -30,7 +30,7 @@ import {
 } from '../utils/supportSniper';
 import type { FlareGunFlare } from '../utils/flareGun';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
-import { NAMED_TINT } from '../utils/namedEnemy';
+import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import { contextZoomTarget, isLargeForZoom, CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 // 文脈ズームで最大まで引いた時(worldGroup.scale=CONTEXT_ZOOM_MIN)でも画面を覆えるよう、worldGroup内の
@@ -5943,7 +5943,7 @@ export class PixiScene {
       let label = this.namedFoeLabels.get(e.id);
       if (!label) {
         label = new Text({
-          text: e.questTarget ? (e.questName ?? '') : (useGameStore.getState().namedFoe?.name ?? ''),
+          text: e.questTarget ? (e.questName ?? '') : normalizeNamedName(useGameStore.getState().namedFoe?.name ?? ''),
           resolution: Math.min(3, Math.max(2, Math.round(window.devicePixelRatio || 2))),
           style: { fontFamily: FONT_STACK, fontSize: 15, fontWeight: 'bold', fill: NAMED_TINT, stroke: { color: 0x2a1a00, width: 3 } },
         });

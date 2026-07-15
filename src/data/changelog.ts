@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1756',
+    items: [
+      'ネームドの名前表記を「CODE:ローマ字」スタイルに刷新(天使・裏ボス・宿敵の全37名)。年表の過去の討伐記録も新表記で表示されます(「天使」などの接頭辞は廃止)。',
+    ],
+  },
+  {
     version: '0.25.1755',
     items: [
       '開発: ネームド(天使・裏ボス・宿敵)の表示名を「CODE:ローマ字」形式へ変える仕様を確定(§6.20)。実装開始。ゲーム変更なし。',

@@ -543,7 +543,7 @@ export const tickAngelBossFires = (newGameTime: number, onPlayerDeath: (x: numbe
     const active = newGameTime >= f.activateAt;
     if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
       struck = true;
-      const d = useGameStore.getState().damagePlayer(JIBRIL_FIRE_DAMAGE, 'ジブリルのランタン火', f.x, f.y);
+      const d = useGameStore.getState().damagePlayer(JIBRIL_FIRE_DAMAGE, 'CODE:JIBRIL のランタン火', f.x, f.y);
       if (d) { died = true; onPlayerDeath(plcx, plcy); }
       continue;
     }

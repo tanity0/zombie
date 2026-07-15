@@ -1,12 +1,54 @@
 import { describe, it, expect } from 'vitest';
 import {
   NAMED_ENEMY_NAMES, isPromotionExcluded, pickNamedEnemyName, rollNamedSpawnThisRun, decidePromotionOnDeath,
+  normalizeNamedName, normalizeNamedNamesInText,
 } from './namedEnemy';
 
 describe('NAMED_ENEMY_NAMES', () => {
   it('has 32 distinct names (社長指示: 候補は多いほど良い)', () => {
     expect(NAMED_ENEMY_NAMES.length).toBe(32);
     expect(new Set(NAMED_ENEMY_NAMES).size).toBe(32);
+  });
+
+  it('§6.20 M45: all names use the "CODE:ROMAN" display format', () => {
+    for (const name of NAMED_ENEMY_NAMES) {
+      expect(name).toMatch(/^CODE:[A-Z]+$/);
+    }
+  });
+});
+
+describe('normalizeNamedName (§6.20 M45)', () => {
+  it('maps legacy katakana names (angels/hidden bosses/named foes) to the new CODE:ROMAN display', () => {
+    expect(normalizeNamedName('ミゲル')).toBe('CODE:MIGUEL');
+    expect(normalizeNamedName('ジブリル')).toBe('CODE:JIBRIL');
+    expect(normalizeNamedName('ラフィ')).toBe('CODE:RAFI');
+    expect(normalizeNamedName('ミーミル')).toBe('CODE:MIMIR');
+    expect(normalizeNamedName('ヨルムンガルド')).toBe('CODE:JORMUNGAND');
+    expect(normalizeNamedName('スカジ')).toBe('CODE:SKADI');
+    expect(normalizeNamedName('トール')).toBe('CODE:THOR');
+    expect(normalizeNamedName('ケルベロス')).toBe('CODE:CERBERUS');
+    expect(normalizeNamedName('ヒュプノス')).toBe('CODE:HYPNOS');
+  });
+
+  it('returns unknown/already-new names unchanged', () => {
+    expect(normalizeNamedName('CODE:CERBERUS')).toBe('CODE:CERBERUS');
+    expect(normalizeNamedName('未知の名前')).toBe('未知の名前');
+    expect(normalizeNamedName('')).toBe('');
+  });
+});
+
+describe('normalizeNamedNamesInText (§6.20追補: 年表など記録済み文言の表示時正規化)', () => {
+  it('文中の旧名を新表記へ置換し、「天使」接頭辞は接頭辞ごと外す(社長指示v0.25.1756)', () => {
+    expect(normalizeNamedNamesInText('天使ミゲルを討伐')).toBe('CODE:MIGUELを討伐');
+    expect(normalizeNamedNamesInText('ミーミルを討伐')).toBe('CODE:MIMIRを討伐');
+    expect(normalizeNamedNamesInText('ヨルムンガルドを討伐')).toBe('CODE:JORMUNGANDを討伐');
+  });
+
+  it('複数の旧名・旧名なし・新表記済みの文もそれぞれ正しく扱う', () => {
+    expect(normalizeNamedNamesInText('トールとスカジを討伐')).toBe('CODE:THORとCODE:SKADIを討伐');
+    expect(normalizeNamedNamesInText('ストーリーボスを討伐')).toBe('ストーリーボスを討伐');
+    expect(normalizeNamedNamesInText('CODE:MIGUELを討伐')).toBe('CODE:MIGUELを討伐');
+    expect(normalizeNamedNamesInText('深層域に到達')).toBe('深層域に到達');
   });
 });
 

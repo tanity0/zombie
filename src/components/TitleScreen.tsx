@@ -7,6 +7,7 @@ import { getSelectedStageId, getWallMeta, loadChronicle, type ChronicleEntry } f
 import { spritePath } from '../utils/spriteLoader';
 import { deepestReachedBadge } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
+import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 
 // 前回セッション末尾の状態(クラッシュ診断・社長報告のスマホ真っ白現象の手がかり用)。タイトル表示のたび
 // 読み直しても軽い(localStorageの読み取り1回)ので、レンダー内で直接読む(state化するほどでもない)。
@@ -148,6 +149,7 @@ const ChronicleTimeline: React.FC = () => {
                   textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
                 }}
               >
+                {/* §6.20 M45: 記録済みの旧名(カタカナ)も表示時に CODE:ローマ字 へ正規化(保存データは不変)。 */}
                 {chronicleIconSrc(e) && (
                   <img
                     src={chronicleIconSrc(e)!}
@@ -168,7 +170,7 @@ const ChronicleTimeline: React.FC = () => {
                     }}
                   />
                 )}
-                {e.label}
+                {normalizeNamedNamesInText(e.label)}
               </li>
             </React.Fragment>
           ))}

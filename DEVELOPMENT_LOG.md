@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1756 — M45実装: ネームド名「CODE:ローマ字」化(年表正規化・天使接頭辞なし込み)【2026-07-16 08:52 JST】
+- Sonnet実装が社長の中断で停止したため、途中成果(32名置換・正規化マップ・死因/ラベル/ネームプレート/
+  宿敵バナー置換)を設計チャットが検証・引き取り、残りを直接完成:
+  - `normalizeNamedNamesInText`(文中の旧名を長い順に全置換・「天使◯◯」は接頭辞ごと置換)+テスト5ケース。
+  - 年表(ChronicleTimeline)の表示を正規化経由に(記録済みの旧行も新表記で見える。保存データ不変)。
+  - 年表の新規行生成から「天使」接頭辞を削除(社長指示v0.25.1756「天使 はいらない」)。isGate2AngelBoss
+    のこの用途は廃止(import整理)。
+- 検証: typecheck / eslint(8ファイル) / related 147件green。実機確認は社長へ持ち越し。
+- 自己点検: 表示文字列のみの変更=憲法4条/5条に非抵触(挙動・バランス不変)。
+- Files: `src/utils/namedEnemy.ts`, `src/utils/namedEnemy.test.ts`, `src/store/gameStore.ts`,
+  `src/hooks/useGameLoop.ts`, `src/pixi/pixiScene.ts`, `src/utils/angelBossTick.ts`,
+  `src/utils/directorTick.ts`, `src/components/TitleScreen.tsx`, `PACING_PUZZLE.md`,
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1755 — M45仕様確定: ネームド名を「CODE:ローマ字」へ(社長指示)【2026-07-16 08:31 JST】
 - 対象=天使3(MIGUEL/JIBRIL/RAFI)・裏ボス4(MIMIR/JORMUNGAND/SKADI/THOR)・宿敵32名(CERBERUS等)。
   §6.20に変換表と実装方式(NAMED_ENEMY_NAMES置換+旧カタカナ永続名の読み時正規化

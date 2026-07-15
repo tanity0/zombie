@@ -46,14 +46,14 @@ import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
 import {
   type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath,
-  NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName,
+  NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
 } from '../utils/namedEnemy';
 import {
   getEventQuestConfig, questNamedSpawnPos, pickQuestNamedType, questKillProgress,
   QUEST_NAMED_AGGRO_RANGE,
 } from '../utils/eventQuest';
 import { openCrate } from '../utils/weaponDrop';
-import { isBossType, isHiddenBoss, isGate2AngelBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, getsDramaticDeath, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN } from '../utils/enemyUtils';
 import { CONTEXT_ZOOM_MIN } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -765,13 +765,13 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'lab-zombie-1': '研究施設の変異体(Lv1)',
   'lab-zombie-2': '研究施設の変異体(Lv2)',
   'lab-zombie-3': '研究施設の変異体(Lv3)',
-  mimir: 'ミーミル',
-  jormungand: 'ヨルムンガルド',
-  skadi: 'スカジ',
-  thor: 'トール',
-  miguel: 'ミゲル',
-  jibril: 'ジブリル',
-  rafi: 'ラフィ',
+  mimir: 'CODE:MIMIR',
+  jormungand: 'CODE:JORMUNGAND',
+  skadi: 'CODE:SKADI',
+  thor: 'CODE:THOR',
+  miguel: 'CODE:MIGUEL',
+  jibril: 'CODE:JIBRIL',
+  rafi: 'CODE:RAFI',
   hunter: '変異体(狩猟型)',
   screamer: '変異体(叫喚型)',
 };
@@ -1638,7 +1638,7 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
   saveNamedFoe(null); // 成仏=次に別の敵に殺されるまで宿敵不在
   useGameStore.setState({
     namedFoe: null,
-    namedFoeResult: { name: st.namedFoe.name, defeated: true },
+    namedFoeResult: { name: normalizeNamedName(st.namedFoe.name), defeated: true },
     namedFoeRunResolved: true,
   });
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = 永続ゴールド獲得 ×1.2/1.35/1.5(Lv・四捨五入)。表示(壁銘打ち)も同額。
@@ -1656,7 +1656,7 @@ const resolveNamedFoeDefeat = (get: () => GameState, killedEnemies: Enemy[], x: 
   // PACING_PUZZLE.md §5.17 M14追補(演出仕様v0.25.1499): spawnCallout('REVENGE!')は廃止し、
   // 大格銘打ち(金)に置き換え。頭上ネームプレート/リング/グローは不変。
   if (WALL_ENABLED) {
-    get().enqueueWallEvent('revenge', `REVENGE —— ${st.namedFoe.name}`, 'NEMESIS FELLED', '#ffd700', namedGold);
+    get().enqueueWallEvent('revenge', `REVENGE —— ${normalizeNamedName(st.namedFoe.name)}`, 'NEMESIS FELLED', '#ffd700', namedGold);
   }
   get().spawnRing(x, y, 14, 220, 'rgba(255,215,0,0.85)', 5, 560);
   get().spawnGlow(x, y, 140, 'rgba(255,215,0,', 620);
@@ -1699,11 +1699,11 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   if (isHiddenBoss(enemy.type) || enemy.type === 'giantbat' || enemy.type === 'hunter') {
     // 年表フレーズ(社長指示v0.25.1658→1659で動詞は「討伐」に統一):
     //  ・城ボス(giantbat=各ステージのストーリーボス・固有名なし)→「ストーリーボスを討伐」。
-    //  ・天使(ゲート2ボス=ミゲル等・固有名あり)→「天使◯◯を討伐」。※新しい天使を足す時はここに条件追加。
-    //  ・それ以外の裏ボス(mimir/jormungand/skadi/thor)/ハンターは従来どおり「◯◯を討伐」。
+    //  ・固有名持ち(天使/裏ボス)は「CODE:◯◯を討伐」(§6.20 M45)。「天使」等の種族接頭辞は
+    //    付けない(社長指示v0.25.1756「天使 はいらない」)。
+    //  ・ハンターは従来どおり種族ラベル「変異体(狩猟型)を討伐」。
     const phrase =
       enemy.type === 'giantbat' ? 'ストーリーボスを討伐'
-      : isGate2AngelBoss(enemy.type) ? `天使${enemyDeathLabel(enemy.type)}を討伐`
       : `${enemyDeathLabel(enemy.type)}を討伐`;
     recordChronicle(
       getSelectedStageId(),

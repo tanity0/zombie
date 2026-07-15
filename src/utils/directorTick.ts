@@ -51,7 +51,7 @@ import {
 import { setPuzzleDebug, getPuzzleDebug } from './puzzleState';
 import { playSfx } from '../audio/audioManager';
 import {
-  NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, NAMED_SPAWN_CD_MS, NAMED_POST_HIT_GUARD_MS,
+  NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, NAMED_SPAWN_CD_MS, NAMED_POST_HIT_GUARD_MS, normalizeNamedName,
 } from './namedEnemy';
 
 // useRef() が返す MutableRefObject<T> と構造的に同じ({ current: T })。React をimportしないための
@@ -412,11 +412,11 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
       useGameStore.getState().addEnemy(namedEnemy);
       useGameStore.setState({
         namedFoeSpawnedThisRun: true,
-        namedFoeResult: { name: nf.name, defeated: false },
+        namedFoeResult: { name: normalizeNamedName(nf.name), defeated: false },
       });
       // PACING_PUZZLE.md §5.17 M14追補(演出仕様v0.25.1499): 出現バナーは中格=金帯様式へ
       // (旧eventBannerTextのpill表示から置き換え)。
-      useGameStore.getState().triggerWallBand(`宿敵 現る —— ${nf.name}`, 'gold', EVENT_BANNER_MS);
+      useGameStore.getState().triggerWallBand(`宿敵 現る —— ${normalizeNamedName(nf.name)}`, 'gold', EVENT_BANNER_MS);
       playSfx('gate-clear'); // 専用SEは叩き台として既存の強襲ジングルを流用(社長の実素材待ち)
       namedFoeRef.current.lastAttemptAt = gameTime;
     }
