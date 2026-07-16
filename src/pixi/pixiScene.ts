@@ -558,14 +558,14 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
     : 'player';
 };
 // 立ち絵のベース拡大率(クラス絵=幅基準 / 武将立ち絵=高さ基準 / 不明クラス=枠内接)。分身と共有。
-// クラス絵は整数スケール(社長裁定v0.25.1759「aで」): 旧86/78≈1.103の非整数nearest拡大が
-// 「ドット潰れ」(1ドットが1px/2px列にまだら化)の主因だった。
-// v0.25.1760: 社長指示「整数で大きさ倍にしてみて」=×2.0で実験中(幅156px表示)。
+// クラス絵は整数スケール=等倍×1.0(社長裁定v0.25.1759「aで」→×2実験(v1760)→v0.25.1761「等倍に戻そう」):
+// 旧86/78≈1.103の非整数nearest拡大が「ドット潰れ」(1ドットが1px/2px列にまだら化)の主因だった。
+// 素材実寸(幅78px)のまま描く。
 const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): number => {
   if (hasFullWarlordSet(p.equipment)) return ((PLAYER_CLASS_MENU_SPRITE_WIDTH / 128) * 108) / tex.height;
   const knownClass = p.characterClass === 'mage' || p.characterClass === 'warrior' ||
     p.characterClass === 'rogue' || p.characterClass === 'necromancer';
-  return knownClass ? 2 : containScale(boxW, boxH, tex.width, tex.height);
+  return knownClass ? 1 : containScale(boxW, boxH, tex.width, tex.height);
 };
 const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=

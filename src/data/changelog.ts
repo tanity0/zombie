@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1761',
+    items: [
+      'プレイヤー立ち絵を等倍(×1.0)に戻しました(×2は切り分け実験でした)。',
+    ],
+  },
+  {
     version: '0.25.1760',
     items: [
       '実験: プレイヤー立ち絵を整数2倍(幅156px)で表示(ドット潰れ切り分け用・社長指示)。',

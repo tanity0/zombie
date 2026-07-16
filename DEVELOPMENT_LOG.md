@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.1761 — プレイヤー立ち絵を等倍へ戻す(社長指示)【2026-07-16 09:42 JST】
+- `playerBaseScale` クラス絵分岐 ×2.0(実験)→**×1.0**。v1759の状態に復帰。
+- チルトシフトの扱い(全OFF案(a)/妥協案(b))は社長裁定待ちのまま。
+- 検証: typecheck green。
+- Files: `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1760 — 実験: プレイヤー立ち絵を整数×2表示(社長指示)【2026-07-16 09:26 JST】
 - `playerBaseScale` クラス絵分岐 ×1.0→**×2.0**(幅156px)。「後から画像処理して潰れてそう」の
   切り分け実験: 整数2倍でもまだらが出るなら、スプライトのスケールではなく後段(フィルタパス/
