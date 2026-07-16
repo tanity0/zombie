@@ -583,6 +583,12 @@ const PLAYER_TEXEL_SNAP_HOLD = 0.10;    // 誤差この割合まではスナッ�
 const PLAYER_TEXEL_SNAP_RELEASE = 0.16; // ここで完全に素のスケールへ(間は線形ブレンド)
 const TEXEL_SNAP_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('psnap') !== '0';
+// 検証ビルド(社長指示v0.25.1770「試しに全部切ってみる。戻せるように」): プレイヤー本体の二次モーション
+// (歩行スカッシュ&ストレッチ/リーン/上下bob・発砲反動・近接踏み込み・カウンター決めポーズ・リロード揺れ)を
+// 一括OFF=剛体ピクセルスプライト化。`?pmotion=1` で従来の全演出へ即復帰。対象はプレイヤー本体の変形のみ
+// (コマ差し替え(歩き/走り/近接ポーズ)・登場演出・ノックバック跳ね(敵共通)・分身/救援アライは対象外)。
+const PLAYER_MOTION_FX = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('pmotion') === '1';
 const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
@@ -5343,11 +5349,11 @@ export class PixiScene {
     const walkCycle = running && usesRunAnimation(p) ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
     const phase = walking ? (now / walkCycle) * Math.PI * 2 : 0;
     const step = Math.sin(phase);
-    const bob = walking ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
+    const bob = walking && PLAYER_MOTION_FX ? Math.abs(step) * PLAYER_WALK_BOB_PX * this.depthScale(fb.footY) : 0;
     // 徒歩の自然化(3コマの上に重ねる連続モーション・視覚のみ): 接地(lift=0)で縦に潰れて横に広がり、
     // 遊脚の最高点(lift=1)で縦に伸びて横が締まる(スカッシュ&ストレッチ)＋足元支点の左右リーン(体重移動)。
     let walkSqX = 1, walkSqY = 1, walkLean = 0;
-    if (walking) {
+    if (walking && PLAYER_MOTION_FX) {
       const lift = Math.abs(step); // 0=接地 / 1=遊脚中(最高点)
       walkSqY = 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift);
       walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
@@ -5366,7 +5372,7 @@ export class PixiScene {
     else if (p.lastDirection) { const lm = Math.hypot(p.lastDirection.x, p.lastDirection.y) || 1; aimx = p.lastDirection.x / lm; aimy = p.lastDirection.y / lm; }
     // 銃発砲の反動: 銃口と逆向き(後方)へ一瞬引け、軽く縦に縮む(急減衰)。
     const gun = getActiveGun(p);
-    if (gun) {
+    if (gun && PLAYER_MOTION_FX) {
       const sinceFire = now - (gun.lastFired || 0);
       if (sinceFire >= 0 && sinceFire < PLAYER_FIRE_RECOIL_MS) {
         const e = 1 - sinceFire / PLAYER_FIRE_RECOIL_MS;
@@ -5402,7 +5408,7 @@ export class PixiScene {
       const poseTex = getTexture(`${meleePosePrefix}-swing`);
       if (poseTex) view.sprite.texture = poseTex;
     }
-    if (p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (PLAYER_MOTION_FX && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
@@ -5414,14 +5420,14 @@ export class PixiScene {
     }
     // カウンター成立の決めポーズ: 一瞬ふくらむ膨らみ＋傾き(速い減衰)。
     const sinceCounter = now - (p.lastCounterSuccessTime || 0);
-    if (p.lastCounterSuccessTime > 0 && sinceCounter >= 0 && sinceCounter < PLAYER_COUNTER_MS) {
+    if (PLAYER_MOTION_FX && p.lastCounterSuccessTime > 0 && sinceCounter >= 0 && sinceCounter < PLAYER_COUNTER_MS) {
       const pop = (1 - sinceCounter / PLAYER_COUNTER_MS) ** 2; // 速い減衰
       actSqX *= 1 + PLAYER_COUNTER_POP * pop;
       actSqY *= 1 + PLAYER_COUNTER_POP * pop;
       actLean += face * PLAYER_COUNTER_LEAN_RAD * pop;
     }
     // リロード中: 手元作業の小刻みな上下＋左右リーン(リロード中だけ・進行と独立)。
-    if (p.reloadingWeaponId && now < p.reloadEndsAt) {
+    if (PLAYER_MOTION_FX && p.reloadingWeaponId && now < p.reloadEndsAt) {
       actOffY += Math.sin(now / 70) * PLAYER_RELOAD_BOB_PX * dsc;
       actLean += Math.sin(now / 110) * PLAYER_RELOAD_LEAN_RAD;
     }

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1770',
+    items: [
+      'テスト: プレイヤーの二次モーション(歩行の揺れ・発砲反動・リロード揺れ・近接踏み込み・カウンターポーズ)を一括OFF(ドットまだらの切り分け検証。?pmotion=1で従来の演出へ)。',
+    ],
+  },
+  {
     version: '0.25.1769',
     items: [
       'プレイヤー描画の新方式(ドット保持焼き+ピクセルスナップ)を正式採用(実機確認済み)。見た目はv0.25.1768と同じです。',
