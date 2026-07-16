@@ -42,10 +42,18 @@ const treeInCell = (cx: number, cy: number): TreeInstance | null => {
   return { key, footX, footY, scale };
 };
 
+// ステージ5(対変異体防衛本部)は木を出さない(社長指示2026-07-16: 木の代わりに残骸オブジェクト=
+// cityProps の STAGE5_PROPS を散布)。ここで空を返すことで、描画(pixiScene)・幹当たり判定
+// (resolveTreeCollision)・湧き/配置回避(trunkRect参照系)の全消費箇所が自動で一致して消える
+// (destructibles と同じ「world層のモジュール状態」方式)。gameStore.resetGame がラン開始ごとに設定。
+let treesDisabled = false;
+export const setTreesDisabled = (disabled: boolean): void => { treesDisabled = disabled; };
+
 // Every tree whose cell origin falls inside the given world rect.
 export const treesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number
 ): TreeInstance[] => {
+  if (treesDisabled) return [];
   const startX = Math.floor(minX / TREE_CELL) * TREE_CELL;
   const startY = Math.floor(minY / TREE_CELL) * TREE_CELL;
   const out: TreeInstance[] = [];

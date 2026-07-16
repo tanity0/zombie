@@ -1,5 +1,32 @@
 # Development Log
 
+## v0.25.1788 — ステージ5素材取込み(敵9種の戦場セット+木の代わりの残骸オブジェクト17種)【2026-07-17 01:18 JST】
+- 社長支給2点: ①敵シート(JPEG・ステージ1と同配置・上6+下4=10体) ②オブジェクトシート(PNG・紫背景)。
+  ※天秤: 調査コンテキスト(配線先の全読解)が手元に揃っていたため設計チャット直接実装(Sonnet仕様書化より安)。
+- **検収**: 敵シートはステージ1(atlas-px2)と絵柄を1対1照合し9種の対応を確定(bat=四足獣/skeleton=武装兵士/
+  ghost=青い霊体 等)。**10体目(フード付き亡霊)はステージ1に存在しない枠=用途未確定のため
+  `stage5-enemies/hood-unused.png` に保管・未配線**(社長に用途を確認中: lich割当/未使用/別型)。
+- **スライス**: playwright(Chromium canvas)でJPEG/PNGをデコードし、背景flood-fill+連結成分抽出
+  (v0.25.771方式)。敵10体(期待6+4と一致)/オブジェクトは指示どおり**2行目(10種)+3行目(7種)のみ**
+  切り出し(他の行は指示なし=未取込み)。切り出し品質は目視確認(霊体の炎の房・紫抜きとも欠けなし)。
+- **敵スキン配線**(stage3/4と同方式): `farBackdrop==='stage5'` で `stage5-enemies/<type>` に差し替え
+  (pixiScene: battlefieldStageフラグ+texチェーン+STAGE5_FOOT_FRAC_X=下端12%α重心の実測補正)。
+  pixiTextures: nearest登録9枚+regAspect(`stage5:`)。当たり判定/サイズ不変・視覚スケールは等倍(叩き台)。
+- **残骸オブジェクト**: `STAGE5_PROPS`(17種・全て当たり判定あり・displayH/当たり寸は叩き台)を
+  `STAGE_PROPS.stage5` に登録=既存のcityProps散布/衝突(プレイヤー・敵共通)/ズーム対応に自動で乗る。
+  密度[3,4]/区画(cityと同等・叩き台)。
+- **木なし化**: `world/trees.ts` に `setTreesDisabled`(モジュール状態=destructibles方式)を新設し、
+  `treesInRegion` を一括ゲート。**描画・幹当たり・湧き/配置回避の全消費箇所が単一ゲートで同時に消える**。
+  resetGameが `farBackdrop==='stage5'` で毎ラン設定。ユニットテスト3件(trees.test.ts)。
+- 検証: typecheck green・trees.test 3/3・ヘッドレス実機シム(stage-5)で木なし+残骸プロップ表示を確認。
+  敵スキンの画面確認はブラウザスモークが護衛イベント待ちで敵が湧かず(**ステージ1でも同じ=既存挙動**・
+  時間進行が会話/待機で止まる)、実機確認は社長へ持ち越し(テクスチャ配信200・配線はstage3/4の写経)。
+- 負荷: 1/10(テクスチャ差し替え+既存プロップ経路への追加のみ。新規per-frame処理なし)。
+- Files: `public/sprites/stage5-enemies/*`(10枚・うち1枚未使用), `public/sprites/stage5-props/*`(17枚),
+  `src/pixi/pixiScene.ts`, `src/pixi/pixiTextures.ts`, `src/world/cityProps.ts`, `src/world/trees.ts`,
+  `src/world/trees.test.ts`(新), `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1787 — M47実装: 近接調整P2=即死しきい値+ナイフマスター上限60%(§6.22)【2026-07-17 00:28 JST】
 - 実装=Sonnetサブエージェント。検証=設計チャット(typecheck+meleeExecute7+constitution13+skills=57件
   green・diffレビュー: 強個体3×はボス5×と同型でfinishKillOnly非clamp・分身も同ルール・heavy打は

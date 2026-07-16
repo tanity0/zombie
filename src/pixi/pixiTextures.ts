@@ -319,6 +319,10 @@ export const ensureTextures = (): Promise<void> => {
       // ステージ4(雪原)専用の敵絵(既存9種の差し替え＋新型 lich)。詳細イラスト調なので linear で滑らかに縮小。
       ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
         .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
+      // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種)。
+      // ピクセルアート調なのでアトラス敵/stage3と同じ nearest。10体目(hood-unused)は用途未確定=未登録。
+      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+        .map((t) => ({ name: `stage5-enemies/${t}`, scaleMode: 'nearest' as const })),
 
       // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
       ...playerWalkNames.map((name) => ({ name, scaleMode: (isSoftClassSprite(name) ? 'linear' : 'nearest') as 'linear' | 'nearest' })),
@@ -466,6 +470,7 @@ export const ensureTextures = (): Promise<void> => {
       regAspect(`default:${ty}`, ty);                 // アトラス(森系)の敵絵
       regAspect(`stage3:${ty}`, `stage3-enemies/${ty}`); // 廃都(ステージ3)の敵絵
       regAspect(`stage4:${ty}`, `stage4-enemies/${ty}`); // 雪原(ステージ4)の敵絵
+      regAspect(`stage5:${ty}`, `stage5-enemies/${ty}`); // 戦場(ステージ5)の敵絵
     }
     // 新型 lich はステージ4専用。既定キー 'lich' にも同じ絵を割り当てて drawEnemy のフォールバックを成立させる。
     const lichTex = textures.get('stage4-enemies/lich');

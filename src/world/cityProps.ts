@@ -61,14 +61,39 @@ export const SNOW_PROPS: CityPropDef[] = [
 ];
 
 // farBackdropキー別の散布カタログ。'' / forest は散布なし(木システムが担当)。
+// ステージ5(対変異体防衛本部)の散布オブジェクト(社長提供シート2026-07-16の2行目・3行目=
+// 「木の代わりのオブジェクト(当たり判定有り)」)。ステージ5は木を出さない(trees.setTreesDisabled)ため、
+// これらが唯一の散布障害物。displayH/当たり寸は叩き台(実機調整前提)。全て当たり判定あり(社長指示)。
+export const STAGE5_PROPS: CityPropDef[] = [
+  { tex: 'stage5-props/prop-r2-c1',  displayH: 64,  collide: true, decal: false, colW: 100, colH: 22, weight: 4 }, // 瓦礫の山(横長)
+  { tex: 'stage5-props/prop-r2-c2',  displayH: 88,  collide: true, decal: false, colW: 88,  colH: 24, weight: 4 }, // 大岩塊
+  { tex: 'stage5-props/prop-r2-c3',  displayH: 96,  collide: true, decal: false, colW: 40,  colH: 18, weight: 3 }, // 石柱
+  { tex: 'stage5-props/prop-r2-c4',  displayH: 66,  collide: true, decal: false, colW: 44,  colH: 18, weight: 4 }, // 崩れた石柱
+  { tex: 'stage5-props/prop-r2-c5',  displayH: 96,  collide: true, decal: false, colW: 48,  colH: 18, weight: 3 }, // 石アーチ(窓)
+  { tex: 'stage5-props/prop-r2-c6',  displayH: 98,  collide: true, decal: false, colW: 78,  colH: 24, weight: 3 }, // 石壁ブロック
+  { tex: 'stage5-props/prop-r2-c7',  displayH: 82,  collide: true, decal: false, colW: 66,  colH: 22, weight: 3 }, // 崩れ城壁
+  { tex: 'stage5-props/prop-r2-c8',  displayH: 92,  collide: true, decal: false, colW: 26,  colH: 14, weight: 3 }, // 砲身柱(縦長)
+  { tex: 'stage5-props/prop-r2-c9',  displayH: 84,  collide: true, decal: false, colW: 52,  colH: 20, weight: 3 }, // パイプ塔
+  { tex: 'stage5-props/prop-r2-c10', displayH: 62,  collide: true, decal: false, colW: 70,  colH: 20, weight: 4 }, // 対戦車杭
+  { tex: 'stage5-props/prop-r3-c1',  displayH: 84,  collide: true, decal: false, colW: 130, colH: 26, weight: 3 }, // 大砲
+  { tex: 'stage5-props/prop-r3-c2',  displayH: 84,  collide: true, decal: false, colW: 100, colH: 24, weight: 3 }, // 壊れた臼砲
+  { tex: 'stage5-props/prop-r3-c3',  displayH: 84,  collide: true, decal: false, colW: 140, colH: 26, weight: 2 }, // 荷車の残骸
+  { tex: 'stage5-props/prop-r3-c4',  displayH: 56,  collide: true, decal: false, colW: 100, colH: 22, weight: 4 }, // 残骸の山
+  { tex: 'stage5-props/prop-r3-c5',  displayH: 78,  collide: true, decal: false, colW: 100, colH: 22, weight: 3 }, // 血染めの防壁
+  { tex: 'stage5-props/prop-r3-c6',  displayH: 82,  collide: true, decal: false, colW: 92,  colH: 24, weight: 3 }, // 機材ボックス
+  { tex: 'stage5-props/prop-r3-c7',  displayH: 100, collide: true, decal: false, colW: 140, colH: 30, weight: 2 }, // 破れテント
+];
+
 export const STAGE_PROPS: Record<string, CityPropDef[]> = {
   city: CITY_PROPS,
   snow: SNOW_PROPS,
+  stage5: STAGE5_PROPS,
 };
 // 区画あたりの散布数 [min, 追加レンジ]。大きい物が多いステージは控えめに。
 const STAGE_PROP_COUNT: Record<string, [number, number]> = {
   city: [3, 4], // 3〜6
   snow: [1, 2], // 1〜2(塔/バス/テントは大きいのでまばら)
+  stage5: [3, 4], // 3〜6(木の代替=cityと同等の密度・叩き台)
 };
 
 const totalWeightFor = (defs: CityPropDef[]) => defs.reduce((s, d) => s + d.weight, 0);

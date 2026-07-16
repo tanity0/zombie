@@ -948,6 +948,25 @@ const STAGE4_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost
 const stage4EnemyTextureName = (type: string): string | null =>
   STAGE4_ENEMY_TYPES.has(type) ? `stage4-enemies/${type}` : null;
 
+// ステージ5(対変異体防衛本部)専用の敵絵。ステージ1と同配置のシート(社長提供・2026-07-16)から
+// 9種を1:1差し替え。当たり判定/サイズは不変。farBackdrop==='stage5' のみ。
+// (シート10体目=フード付き亡霊は用途未確定のため stage5-enemies/hood-unused.png に保管・未使用。)
+const STAGE5_ENEMY_TYPES = new Set(['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']);
+const stage5EnemyTextureName = (type: string): string | null =>
+  STAGE5_ENEMY_TYPES.has(type) ? `stage5-enemies/${type}` : null;
+// ステージ5の足元ズレ補正(STAGE4_FOOT_FRAC_Xと同方式: 下端12%帯のα重心x比率を実測)。
+const STAGE5_FOOT_FRAC_X: Record<string, number> = {
+  zombie: 0.460,
+  bat: 0.515,
+  skeleton: 0.468,
+  plant: 0.486,
+  ghost: 0.469,
+  werewolf: 0.521,
+  pumpkin: 0.477,
+  giantbat: 0.485,
+  reaper: 0.517,
+};
+
 const AMMO_INDICATOR_COLOR: Record<string, string> = {
   'ammo-handgun': '#d4a017',
   'ammo-shotgun': '#ef4444',
@@ -1226,6 +1245,7 @@ export class PixiScene {
   // 昼ステージ(正午)モード。s.farBackdrop==='city' の間 true。環境の暗転/グレード/霧/減光を弱める。
   private daylight = false;
   private snowStage = false; // ステージ4(farBackdrop'snow'): 松明を焚き火スプライトに置き換え
+  private battlefieldStage = false; // ステージ5(farBackdrop'stage5'): 敵絵=戦場セット・木なし(残骸プロップに置換)
   private stage5Stage = false; // ステージ5(farBackdrop'stage5'): 近景森(戦場の残骸)を下げる
   private isLabStage = false; // 現在の出撃が lab テーマ(ステージ2)か。影向きの分岐に使用。
   private daylightApplied: boolean | null = null;
@@ -2527,6 +2547,7 @@ export class PixiScene {
     // 昼ステージ(正午)モード: 遠景キー 'city' の間は環境を昼へ。木tintより前に確定させる。
     this.daylight = s.farBackdrop === 'city';
     this.snowStage = s.farBackdrop === 'snow';
+    this.battlefieldStage = s.farBackdrop === 'stage5';
     this.stage5Stage = s.farBackdrop === 'stage5';
     this.isLabStage = s.stageTheme === 'lab';
     // vignetteの明るい部分を狭めるのはステージ2だけ(他ステージは既定0.55の通常版)。差分時のみ差し替え。
@@ -5822,6 +5843,7 @@ export class PixiScene {
     const tex = getTexture(
       (this.daylight ? stage3EnemyTextureName(e.type) : null)
       ?? (this.snowStage ? stage4EnemyTextureName(e.type) : null)
+      ?? (this.battlefieldStage ? stage5EnemyTextureName(e.type) : null)
       ?? labEnemyTextureName(e.type, e.id)
       ?? e.type
     );
@@ -5986,8 +6008,8 @@ export class PixiScene {
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqY);
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
-      if (this.snowStage) {
-        const footFrac = STAGE4_FOOT_FRAC_X[e.type];
+      if (this.snowStage || this.battlefieldStage) {
+        const footFrac = this.snowStage ? STAGE4_FOOT_FRAC_X[e.type] : STAGE5_FOOT_FRAC_X[e.type];
         if (footFrac !== undefined) {
           view.sprite.position.x = Math.round(fb.footX + liftShake - (footFrac - 0.5) * tex.width * scaleX);
         }

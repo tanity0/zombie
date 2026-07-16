@@ -79,7 +79,7 @@ import {
   ALCHEMY_RARE_SUCTION_MAX_TARGETS, ALCHEMY_RARE_SUCTION_SPEED, SHOP_ALCHEMY_COST,
   ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
-import { resolveTreeCollision, treesInRegion, trunkRect } from '../world/trees';
+import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision } from '../world/cityProps';
 import { resolveTorchCollision, torchRect, torchesInRegion } from '../world/torches';
@@ -9588,6 +9588,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stageTheme: StageTheme = (!state.danceTestMode && state.pendingStageTheme === 'lab') ? 'lab' : 'forest';
       // 遠景差し替え(forestテーマの距離パノラマのみ。ダンステスト/labでは無効)。
       const farBackdrop = (!state.danceTestMode && stageTheme === 'forest') ? state.pendingFarBackdrop : '';
+      // ステージ5(戦場)は木なし=残骸プロップ(STAGE5_PROPS)に置換(社長指示2026-07-16)。
+      // world層のゲートを毎ラン設定(描画/幹当たり/配置回避が treesInRegion 経由で一括に空になる)。
+      setTreesDisabled(farBackdrop === 'stage5');
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
       const nearHorizon = !state.danceTestMode ? state.pendingNearHorizon : '';
       // 裏ボス(深層域)。屋外(非ラボ/非屋内)・非ダンステストのときだけ有効。
