@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1785',
+    items: [
+      '開発向け: 近接バランスの実測ソーク結果を記録(文書のみ)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1784',
     items: [
       '開発向け: ボットの計測を拡張(与ダメージの内訳/即死キル数/近接ペース)。近接バランス調整の実測準備で、ゲーム内の挙動に変化はありません。',
