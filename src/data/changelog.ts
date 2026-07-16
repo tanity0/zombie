@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1767',
+    items: [
+      'テスト: ストライカーの立ち絵を「ドット保持焼き(実寸+くっきり描画)」へ切替(滲み/モヤ解消の検証ビルド)。歩き・走り・近接・待機の全コマ対象。',
+    ],
+  },
+  {
     version: '0.25.1766',
     items: [
       '開発運用メモの更新のみ(素材取込みの検収ルール)。ゲーム内の変化はありません。',
