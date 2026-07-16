@@ -209,8 +209,13 @@ npm run lint && npm run typecheck && npm test && npm run build
   ファイル名は現行と同じ(`public/sprites/player-{magnum|shotgun|striker|scavenger}-*.png`)=同名上書き。
 - **倍率**: 現行(幅78px)と**同じ構図・同じ余白比率のまま、キャンバス実寸を整数倍**で描き出す。
   推奨 **×3(幅234px)**(DPR3端末まで密度が届く)。×2(156px)でも可・×4まで受け入れ可能。
-- **条件**: 全コマ同一倍率 / 足元アンカー(下端)と構図は現行と相似 / 透過PNG。
-  高さはコマごとに現行比率のままでよい(表示は幅基準で正規化される)。
+- **支給形式はシートのまま・キャンバス不揃いでもOK(v0.25.1764)**: 取込みは
+  `scripts/import-player-sprites.mjs` が吸収する(コマ検出→bboxトリム→統一キャンバスへ
+  足元下端・中央配置→現行命名で書き出し)。素材側の必須条件は次の4つだけ:
+  ①透過背景 ②コマ間は完全透過の隙間で区切る(横並びシート可) ③足元=絵の下端が接地
+  ④ポーズ間でキャラの大きさが絵として一貫(ツールでは直せない唯一の項目)。
+  使い方: `node scripts/import-player-sprites.mjs player-scavenger idle=a.png walk=sheet.png ...`
+  (**同クラスの全ポーズを1回の実行でまとめて渡す**=統一キャンバス→表示サイズが揃う)。
 ### コード側(受け入れ済み・v0.25.1763)
 - `pixiTextures.PLAYER_ART_BASE_W=78`(表示基準幅)。ロード時に**素材幅>78を検出したら自動で
   linear+mipmap 化**(等倍素材はnearestのまま=現行とビット一致)。
