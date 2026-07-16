@@ -44,6 +44,7 @@ import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
+import { getAppliedResolution } from '../config/renderer';
 import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
@@ -570,6 +571,18 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
     p.characterClass === 'rogue' || p.characterClass === 'necromancer';
   return knownClass ? PLAYER_ART_BASE_W / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
+// プレイヤーのピクセルスナップ(案1・テスト v0.25.1768): 1ドット=キャンバス整数px へ丸めて
+// 「半端な拡大率」由来のドット潰れ(1px/2px列のまだら)を根治する。復帰フラグ ?psnap=0。
+//  ・res1では通常 k≈1.06(画面フィット)×待機ズーム(〜1.05)≒1.0〜1.12 → 整数1へスナップ
+//    (=プレイヤーは帯内でキャンバス等倍固定。待機ズームや遠近ではサイズが変わらなくなる)。
+//  ・ズーム演出(KILLパンチ/文脈ズーム引き)で帯を外れたら滑らかに素のスケールへ戻す
+//    (HOLD..RELEASE 間で線形ブレンド=境界でサイズが跳ねない)。
+//  ・歩行スカッシュ等の演出係数はスナップの外側に掛かる(演出は殺さない。動作中の僅かな
+//    まだらは動きで見えない=静止時が完全にくっきりであることを優先)。
+const PLAYER_TEXEL_SNAP_HOLD = 0.10;    // 誤差この割合まではスナップ維持
+const PLAYER_TEXEL_SNAP_RELEASE = 0.16; // ここで完全に素のスケールへ(間は線形ブレンド)
+const TEXEL_SNAP_ENABLED = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('psnap') !== '0';
 const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
@@ -1999,6 +2012,26 @@ export class PixiScene {
   }
 
   // ---- top-level frame sync ------------------------------------------------
+
+  // プレイヤーのピクセルスナップ(案1・?psnap=0で無効)。sc(ワールド単位のスプライトスケール)を
+  // 「1テクセル=キャンバス整数px」になるよう丸める。累積スケールは actorLayer.worldTransform
+  // (フィット×ズーム。前フレーム値=変化が緩やかなので1フレ遅れは無害)×レンダラ解像度で算出。
+  // 視覚のみ(判定不変)。帯の端は HOLD..RELEASE で線形ブレンドし、ズーム演出で跳ねない。
+  private snapTexelScale(sc: number): number {
+    if (!TEXEL_SNAP_ENABLED || sc <= 0) return sc;
+    const worldScale = this.L.actorLayer.worldTransform.a || 1;
+    const res = getAppliedResolution() || 1;
+    const k = sc * worldScale * res;               // 現在の「キャンバスpx/テクセル」
+    const k2 = Math.round(k);
+    if (k2 < 1) return sc;                          // ズーム大引き(1px未満)はスナップしない
+    const off = Math.abs(k2 - k) / k;
+    if (off <= PLAYER_TEXEL_SNAP_HOLD) return k2 / (worldScale * res);
+    if (off < PLAYER_TEXEL_SNAP_RELEASE) {
+      const t = (off - PLAYER_TEXEL_SNAP_HOLD) / (PLAYER_TEXEL_SNAP_RELEASE - PLAYER_TEXEL_SNAP_HOLD);
+      return (k2 / (worldScale * res)) * (1 - t) + sc * t;
+    }
+    return sc;
+  }
 
   // Visual-only depth scale for an object given its foot world-Y. >1 in front
   // of the player, <1 behind. Never affects gameplay (hitboxes/ranges).
@@ -5129,7 +5162,7 @@ export class PixiScene {
       const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const baseScale = playerBaseScale(fakeAlly, bodyTex, boxW, boxH);
-      const sc = baseScale * dsc;
+      const sc = this.snapTexelScale(baseScale * dsc); // 本体と同じピクセルスナップ(案1)
       const bx = this.snapToScreenPixel(footX, this.L.world.position.x) + offX;
       const by = this.snapToScreenPixel(footY - hop, this.L.world.position.y) + offY;
       body.texture = bodyTex;
@@ -5424,9 +5457,10 @@ export class PixiScene {
 
     if (tex) {
       // 武将立ち絵は高さ基準で正規化(標準クラス絵=幅86px相当の128x108 と同じ画面上の高さに合わせる)。
-      // 通常クラス絵は従来どおり幅基準。
+      // 通常クラス絵は従来どおり幅基準。ピクセルスナップ(案1)は遠近まで掛けた素のスケールに適用し、
+      // 登場演出(introScale)や歩行スカッシュ等の演出係数はその外側(=演出は殺さない)。
       const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
-      const sc = baseScale * this.depthScale(fb.footY) * introScale;
+      const sc = this.snapTexelScale(baseScale * this.depthScale(fb.footY)) * introScale;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       view.sprite.scale.set((flip ? -sc : sc) * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean;
@@ -5671,7 +5705,7 @@ export class PixiScene {
     const footX = clone.x + clone.width / 2;
     const footY = clone.y + clone.height;
     const baseScale = playerBaseScale(player, gray, boxW, boxH);
-    const sc = baseScale * this.depthScale(footY);
+    const sc = this.snapTexelScale(baseScale * this.depthScale(footY)); // 本体と同じピクセルスナップ(案1)
     spr.scale.set(clone.facingLeft ? -sc : sc, sc);
     spr.position.set(
       this.snapToScreenPixel(footX, this.L.world.position.x),
