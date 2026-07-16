@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1793 — ステージ5の散らばり銃を10〜150度回転(社長指示「アイテムと見分けが付くように」)【2026-07-17 05:11 JST】
+- `CityPropDef.rotateDeg?: [min,max]`(度)を新設し、`cityPropsInRegion`(world層の純関数)が指定型のみ
+  決定的に回転角を振って `CityProp.rotation`(rad)で返す。散らばりの**銃7種(r1-c1〜c7)に[10,150]を指定**
+  (血染めナイフr1-c8は「銃だけ」の指示どおり対象外)。
+- 描画(pixiScene syncCityProps): rotation≠0のスプライトだけ中心アンカー(0.5,0.5)+rotationで生成時に
+  1回適用(per-frameコストなし)。当たり判定なしのデカール前提=見た目専用。
+- 検証: typecheck green・world層テスト17件green。見た目の確認は社長実機で。
+- Files: `src/world/cityProps.ts`, `src/pixi/pixiScene.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1792 — ステージ5散らばり密度アップ(社長指示「もっと散らばってるほうが雰囲気出る」)【2026-07-17 01:51 JST】
 - 散布数 [4,4](4〜8/区画680px²)→**[12,6](12〜18/区画)**+散らばり物(判定なし61種)のweightを2倍化。
   配分: **障害物(判定あり)≈3個/区画(v1788の3〜7個より少ない=通行性は悪化させない)/

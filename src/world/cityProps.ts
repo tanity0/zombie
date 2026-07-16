@@ -16,6 +16,10 @@ export interface CityPropDef {
   colW: number;      // 足元当たり矩形の幅(world px・collide時のみ)
   colH: number;      // 同 高さ(=奥行きの薄い帯。底辺が足元)
   weight: number;    // 散布の出やすさ
+  // 個体ごとのランダム回転範囲(度)。散らばりの銃など「拾えるアイテム(横向き表示)と見分ける」用途
+  // (社長指示2026-07-17)。指定時は cityPropsInRegion が決定的に回転角を振る。当たり判定なし前提
+  // (decal/素通り)の見た目専用。未指定=回転なし(0)。
+  rotateDeg?: [number, number];
 }
 
 // シートから抽出した素材(木 r0-c0/r0-c2 は tree システム側なので除外)。
@@ -87,13 +91,13 @@ export const STAGE5_PROPS: CityPropDef[] = [
   //    寝かせ物(武器/防具/衣類/小物)=デカール(地面レイヤー・当たりなし)、
   //    立ち物(木箱/鉄条網/杭柵)=Y-sortビルボード・当たりなし。旗(r7-c1/c2)は除外。
   // 武器(r1)
-  { tex: 'stage5-props/prop-r1-c1',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ライフル
-  { tex: 'stage5-props/prop-r1-c2',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ライフル2
-  { tex: 'stage5-props/prop-r1-c3',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 短機関銃
-  { tex: 'stage5-props/prop-r1-c4',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 拳銃
-  { tex: 'stage5-props/prop-r1-c5',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 散弾銃
-  { tex: 'stage5-props/prop-r1-c6',  displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // リボルバー
-  { tex: 'stage5-props/prop-r1-c7',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 大型拳銃
+  { tex: 'stage5-props/prop-r1-c1',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // ライフル
+  { tex: 'stage5-props/prop-r1-c2',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // ライフル2
+  { tex: 'stage5-props/prop-r1-c3',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 短機関銃
+  { tex: 'stage5-props/prop-r1-c4',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 拳銃
+  { tex: 'stage5-props/prop-r1-c5',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 散弾銃
+  { tex: 'stage5-props/prop-r1-c6',  displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // リボルバー
+  { tex: 'stage5-props/prop-r1-c7',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 , rotateDeg: [10, 150] }, // 大型拳銃
   { tex: 'stage5-props/prop-r1-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 血染めナイフ
   // 防具(r4)
   { tex: 'stage5-props/prop-r4-c1',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ヘルメット
@@ -188,6 +192,7 @@ export interface CityProp {
   footY: number;
   scale: number;
   variant: number; // 該当カタログ(STAGE_PROPS[farKey])のインデックス
+  rotation: number; // 描画回転(rad)。def.rotateDeg 指定時のみ非0(見た目専用・判定に不使用)
 }
 
 const hash2 = (x: number, y: number): number => {
@@ -217,7 +222,12 @@ export const cityPropsInRegion = (
         if (isObstacleDestroyed(id)) continue;
         const variant = pickVariant(defs, hash2(cx * 5.5 + k * 1.7, cy * 4.4 - k * 2.6));
         const scale = 0.85 + hash2(cx * 0.9 + k * 4.2, cy * 1.6 - k * 0.8) * 0.3; // 0.85〜1.15
-        out.push({ id, footX, footY, scale, variant });
+        // 回転(rotateDeg指定の型のみ): 決定的に範囲内で振る(度→rad)。見た目専用。
+        const rd = defs[variant]?.rotateDeg;
+        const rotation = rd
+          ? (rd[0] + hash2(cx * 6.3 - k * 2.9 + 1.1, cy * 3.8 + k * 5.7 - 7.7) * (rd[1] - rd[0])) * (Math.PI / 180)
+          : 0;
+        out.push({ id, footX, footY, scale, variant, rotation });
       }
     }
   }

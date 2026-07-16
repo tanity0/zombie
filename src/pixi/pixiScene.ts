@@ -3637,7 +3637,14 @@ export class PixiScene {
       if (!entry) {
         const tex = getTexture(def.tex);
         const sprite = new Sprite(tex ?? undefined);
-        sprite.anchor.set(0.5, 1);
+        // 回転つき(散らばりの銃=rotateDeg指定)は中心アンカーでその場回転。
+        // 「拾えるアイテム(横向き表示)と見分ける」ための見た目専用(社長指示2026-07-17)。
+        if (p.rotation !== 0) {
+          sprite.anchor.set(0.5, 0.5);
+          sprite.rotation = p.rotation;
+        } else {
+          sprite.anchor.set(0.5, 1);
+        }
         sprite.x = p.footX;
         sprite.y = p.footY;
         if (def.decal) {
