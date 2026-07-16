@@ -82,6 +82,78 @@ export const STAGE5_PROPS: CityPropDef[] = [
   { tex: 'stage5-props/prop-r3-c5',  displayH: 78,  collide: true, decal: false, colW: 100, colH: 22, weight: 3 }, // 血染めの防壁
   { tex: 'stage5-props/prop-r3-c6',  displayH: 82,  collide: true, decal: false, colW: 92,  colH: 24, weight: 3 }, // 機材ボックス
   { tex: 'stage5-props/prop-r3-c7',  displayH: 100, collide: true, decal: false, colW: 140, colH: 30, weight: 2 }, // 破れテント
+  // ── 以下、戦場の散らばり物(社長指示2026-07-17「その他のオブジェクトも適切な大きさでばら撒く。
+  //    当たり判定は無くていい(大きなものでなければ)。旗はいらない」)。
+  //    寝かせ物(武器/防具/衣類/小物)=デカール(地面レイヤー・当たりなし)、
+  //    立ち物(木箱/鉄条網/杭柵)=Y-sortビルボード・当たりなし。旗(r7-c1/c2)は除外。
+  // 武器(r1)
+  { tex: 'stage5-props/prop-r1-c1',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ライフル
+  { tex: 'stage5-props/prop-r1-c2',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ライフル2
+  { tex: 'stage5-props/prop-r1-c3',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 短機関銃
+  { tex: 'stage5-props/prop-r1-c4',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 拳銃
+  { tex: 'stage5-props/prop-r1-c5',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 散弾銃
+  { tex: 'stage5-props/prop-r1-c6',  displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // リボルバー
+  { tex: 'stage5-props/prop-r1-c7',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 大型拳銃
+  { tex: 'stage5-props/prop-r1-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 血染めナイフ
+  // 防具(r4)
+  { tex: 'stage5-props/prop-r4-c1',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ヘルメット
+  { tex: 'stage5-props/prop-r4-c2',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // トゲ付き兜
+  { tex: 'stage5-props/prop-r4-c3',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ヘルメット2
+  { tex: 'stage5-props/prop-r4-c4',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // ガスマスク
+  { tex: 'stage5-props/prop-r4-c5',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // ガスマスク2
+  { tex: 'stage5-props/prop-r4-c6',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 肩当て鎧
+  { tex: 'stage5-props/prop-r4-c7',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 胸甲
+  { tex: 'stage5-props/prop-r4-c8',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 翼章の甲板
+  { tex: 'stage5-props/prop-r4-c9',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 装甲板
+  { tex: 'stage5-props/prop-r4-c10', displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 装甲板2
+  // 衣類・鞄(r5)
+  { tex: 'stage5-props/prop-r5-c1',  displayH: 36, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // コート
+  { tex: 'stage5-props/prop-r5-c2',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 軍服
+  { tex: 'stage5-props/prop-r5-c3',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ズボン
+  { tex: 'stage5-props/prop-r5-c4',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // ブーツ
+  { tex: 'stage5-props/prop-r5-c5',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 背嚢
+  { tex: 'stage5-props/prop-r5-c6',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 鞄
+  { tex: 'stage5-props/prop-r5-c7',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 雑嚢
+  { tex: 'stage5-props/prop-r5-c8',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // トランク
+  // 木箱・弾薬(r6)。木箱は立ち物(Y-sort・当たりなし)、弾薬類は地面デカール。
+  { tex: 'stage5-props/prop-r6-c1',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 木箱
+  { tex: 'stage5-props/prop-r6-c2',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 木箱2
+  { tex: 'stage5-props/prop-r6-c3',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 木箱3
+  { tex: 'stage5-props/prop-r6-c4',  displayH: 30, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 小箱
+  { tex: 'stage5-props/prop-r6-c5',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 1 }, // 赤木箱
+  { tex: 'stage5-props/prop-r6-c6',  displayH: 36, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 弾薬箱(開)
+  { tex: 'stage5-props/prop-r6-c7',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 弾倉
+  { tex: 'stage5-props/prop-r6-c8',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 弾倉2
+  { tex: 'stage5-props/prop-r6-c9',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 弾倉3
+  { tex: 'stage5-props/prop-r6-c10', displayH: 10, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 弾丸
+  { tex: 'stage5-props/prop-r6-c11', displayH: 10, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 弾丸2
+  { tex: 'stage5-props/prop-r6-c12', displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 大口径弾
+  { tex: 'stage5-props/prop-r6-c13', displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 弾帯
+  // 鉄条網・杭柵(r7・旗のr7-c1/c2は除外)。立ち物・当たりなし(社長指示: 大きくなければ判定不要)。
+  { tex: 'stage5-props/prop-r7-c3',  displayH: 40, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 鉄条網コイル
+  { tex: 'stage5-props/prop-r7-c4',  displayH: 48, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 木枠バリケード
+  { tex: 'stage5-props/prop-r7-c5',  displayH: 46, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // X字杭
+  { tex: 'stage5-props/prop-r7-c6',  displayH: 40, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 尖杭
+  { tex: 'stage5-props/prop-r7-c7',  displayH: 34, collide: false, decal: false, colW: 0, colH: 0, weight: 2 }, // 杭と骨の山
+  // 小物(r8)
+  { tex: 'stage5-props/prop-r8-c1',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 黒い本
+  { tex: 'stage5-props/prop-r8-c2',  displayH: 18, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // ロザリオ
+  { tex: 'stage5-props/prop-r8-c3',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 血の刃
+  { tex: 'stage5-props/prop-r8-c4',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 短剣
+  { tex: 'stage5-props/prop-r8-c5',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 軍刀
+  // 地面の細かい遺留品(r9)
+  { tex: 'stage5-props/prop-r9-c1',  displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 薬莢
+  { tex: 'stage5-props/prop-r9-c2',  displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 認識票プレート
+  { tex: 'stage5-props/prop-r9-c3',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 歯車
+  { tex: 'stage5-props/prop-r9-c4',  displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 鍵と部品
+  { tex: 'stage5-props/prop-r9-c5',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 頭蓋骨
+  { tex: 'stage5-props/prop-r9-c6',  displayH: 14, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 骨片
+  { tex: 'stage5-props/prop-r9-c7',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 書類
+  { tex: 'stage5-props/prop-r9-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 書類2
+  { tex: 'stage5-props/prop-r9-c9',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 血染めの布
+  { tex: 'stage5-props/prop-r9-c10', displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // マグカップ
+  { tex: 'stage5-props/prop-r9-c11', displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 小弾薬箱
+  { tex: 'stage5-props/prop-r9-c12', displayH: 12, collide: false, decal: true,  colW: 0, colH: 0, weight: 1 }, // 認識票
 ];
 
 export const STAGE_PROPS: Record<string, CityPropDef[]> = {
@@ -93,7 +165,7 @@ export const STAGE_PROPS: Record<string, CityPropDef[]> = {
 const STAGE_PROP_COUNT: Record<string, [number, number]> = {
   city: [3, 4], // 3〜6
   snow: [1, 2], // 1〜2(塔/バス/テントは大きいのでまばら)
-  stage5: [3, 4], // 3〜6(木の代替=cityと同等の密度・叩き台)
+  stage5: [4, 4], // 4〜8(木の代替+戦場の散らばり物込みで少し多め・叩き台)
 };
 
 const totalWeightFor = (defs: CityPropDef[]) => defs.reduce((s, d) => s + d.weight, 0);
