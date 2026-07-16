@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.1765 — ストライカー立ち絵を高解像度版へ差し替え(社長支給・第1弾)【2026-07-16 14:47 JST】
+- **素材**: 社長支給3ファイル(歩き5コマシート/しゃがみ構え+振り抜き2コマ/走り5コマシート)。
+  idle=歩き2コマ目の流用(社長指定)。**rogue=ストライカー→`player-scavenger-*`**(クラスID↔ファイル名の
+  入れ違いは既存仕様のまま・pixiScene L537コメント準拠)。
+- **取込み**: `import-player-sprites.mjs` に `melee=`(2コマ一括→-ready/-swing展開)と `--fitchar W`
+  (画面上のキャラ幅をWpxへ=旧ドット絵との見かけサイズ一致の余白を自動計算。基準=walkの最大キャラ幅)を追加。
+  `--fitchar 48` で統一キャンバス312×256・13枚を書き出し(キャラ実体188〜212px幅=旧48px幅の約4倍密度)。
+- **検証**: devサーバ+ヘッドレスChromium(DPR2/DPR3)で実プレイ画面をスクショ確認——新絵が旧サイズどおり
+  (護衛NPCと同スケール・約48px幅)で表示され、v1763の自動受け入れ(幅>78→linear+mipmap縮小)が機能。
+  typecheck green。game-0..2はレンダラ未参照(pixiTexturesでロードのみ)のため据え置きで影響なし。
+- **実機確認(社長)**: 歩き/走り/近接ポーズの見え方、キャラ選択画面のチップ(非選択`<img>`のpixelated縮小)の粗さ。
+- Files: `public/sprites/player-scavenger-{idle,walk-0..4,run-0..4,melee-ready,melee-swing}.png`(13枚),
+  `scripts/import-player-sprites.mjs`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1764 — 立ち絵取込みスクリプト(シートのまま・不揃いキャンバス吸収)【2026-07-16 14:04 JST】
 - 社長質問「同一のキャンバスサイズはそちらで調整できない？」→ **できる**: `scripts/import-player-sprites.mjs` 新設
   (依存なし・process-heli.mjsと同じ純Node PNGパイプライン)。コマ検出(透過列・GAP_MIN=4/FRAME_MIN_W=16で

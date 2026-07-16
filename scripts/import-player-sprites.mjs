@@ -6,17 +6,25 @@
 // Node組み込みのみ(zlib)・追加パッケージ不要(process-heli.mjs と同じ方針)。
 //
 // 使い方:
-//   node scripts/import-player-sprites.mjs <outPrefix> <kind=src.png> [kind=src.png ...] [--out DIR] [--pad N]
+//   node scripts/import-player-sprites.mjs <outPrefix> <kind=src.png> [kind=src.png ...] [--out DIR] [--pad N] [--fitchar W]
 //     outPrefix: 例 player-scavenger
-//     kind:      idle | walk | run | game | melee-ready | melee-swing
-//                (idle / melee-* は1コマ必須。walk/run/game は検出したコマ数だけ -N 連番で出力)
-//     --out DIR: 出力先(既定 public/sprites)
-//     --pad N:   統一キャンバスの左右余白px(既定 2)
+//     kind:      idle | walk | run | game | melee-ready | melee-swing | melee
+//                (idle / melee-ready / melee-swing は1コマ必須。melee=2コマシート
+//                 [しゃがみ構え, 振り抜き]の一括指定→ -melee-ready / -melee-swing へ展開。
+//                 walk/run/game は検出したコマ数だけ -N 連番で出力)
+//     --out DIR:   出力先(既定 public/sprites)
+//     --pad N:     統一キャンバスの左右余白px(既定 2・--fitchar 指定時は無視)
+//     --fitchar W: 「画面上のキャラ幅を W px にする」余白を自動計算(推奨 48=現行ドット絵の
+//                  キャラ実幅)。ゲームはキャンバス幅を78pxへ正規化表示するため、
+//                  canvasW = 基準コマのキャラ幅 × 78 / W で余白を焼き込む。基準コマ=walk があれば
+//                  walk の最大キャラ幅、無ければ全コマの最大幅。
 //   例: node scripts/import-player-sprites.mjs player-scavenger \
-//         idle=art_src/scv-idle.png walk=art_src/scv-walk-sheet.png melee-ready=art_src/scv-ready.png
+//         walk=art_src/st-walk.png melee=art_src/st-melee.png run=art_src/st-run.png --fitchar 48
 //
 // 重要: 1回の実行に渡した全入力のコマから統一キャンバスを決める。同クラスの全ポーズは
 // なるべく1回の実行でまとめて取り込むこと(別々に実行するとキャンバス=表示サイズが揃わない)。
+// idle が「歩きの特定コマと同じ」素材の場合は、取込み後に walk-N を idle 名へコピーすればよい
+// (全出力が同一キャンバスなのでコピーで整合する)。
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -190,17 +198,19 @@ const detectFrames = (img) => {
 const args = process.argv.slice(2);
 let outDir = 'public/sprites';
 let pad = 2;
+let fitChar = 0; // 0=無効。>0 なら「画面上のキャラ幅を N px」にする余白を自動計算
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--out') outDir = args[++i];
   else if (args[i] === '--pad') pad = Math.max(0, Number(args[++i]) || 0);
+  else if (args[i] === '--fitchar') fitChar = Math.max(0, Number(args[++i]) || 0);
   else positional.push(args[i]);
 }
 const [outPrefix, ...pairs] = positional;
-const KINDS = ['idle', 'walk', 'run', 'game', 'melee-ready', 'melee-swing'];
+const KINDS = ['idle', 'walk', 'run', 'game', 'melee-ready', 'melee-swing', 'melee'];
 const SINGLE_KINDS = new Set(['idle', 'melee-ready', 'melee-swing']);
 if (!outPrefix || pairs.length === 0) {
-  console.error('usage: node scripts/import-player-sprites.mjs <outPrefix> <kind=src.png> [kind=src.png ...] [--out DIR] [--pad N]');
+  console.error('usage: node scripts/import-player-sprites.mjs <outPrefix> <kind=src.png> [kind=src.png ...] [--out DIR] [--pad N] [--fitchar W]');
   console.error('       kind: ' + KINDS.join(' | '));
   process.exit(1);
 }
@@ -216,13 +226,32 @@ const jobs = pairs.map((p) => {
     console.error(`${kind} は1コマ必須ですが ${frames.length} コマ検出: ${src}`);
     process.exit(1);
   }
+  if (kind === 'melee' && frames.length !== 2) {
+    console.error(`melee は2コマ(しゃがみ構え,振り抜き)必須ですが ${frames.length} コマ検出: ${src}`);
+    process.exit(1);
+  }
   console.log(`${kind}: ${src} → ${frames.length}コマ ` + frames.map(f => `${f.w}x${f.h}`).join(' '));
   return { kind, src, frames };
 });
 
 // 統一キャンバス: 全コマの最大bbox + 左右pad。足元=下端フラッシュ(縦padなし)。
+// --fitchar 指定時: 「基準コマ(walk優先)のキャラ幅が画面上で fitChar px になる」キャンバス幅を計算
+// (ゲーム側 pixiScene.playerBaseScale はキャンバス幅を PLAYER_ART_BASE_W=78px へ正規化表示するため、
+//  canvasW = refW × 78 / fitChar で余白を焼き込めば旧ドット絵とキャラの見かけサイズが揃う)。
 const all = jobs.flatMap(j => j.frames);
-const canvasW = Math.max(...all.map(f => f.w)) + pad * 2;
+const RUNTIME_BASE_W = 78; // = src/pixi/pixiTextures.ts PLAYER_ART_BASE_W(変えたら揃えること)
+let canvasW = Math.max(...all.map(f => f.w)) + pad * 2;
+if (fitChar > 0) {
+  const walkJob = jobs.find(j => j.kind === 'walk');
+  const refW = Math.max(...(walkJob ? walkJob.frames : all).map(f => f.w));
+  const fitW = Math.round(refW * RUNTIME_BASE_W / fitChar);
+  if (fitW < canvasW) {
+    console.warn(`警告: --fitchar ${fitChar} のキャンバス幅(${fitW})より広いコマがある(最大${canvasW - pad * 2})。はみ出さないよう広い方を採用。`);
+  } else {
+    canvasW = fitW;
+  }
+  console.log(`fitchar: 基準キャラ幅${refW}px → 画面上約${(refW * RUNTIME_BASE_W / canvasW).toFixed(1)}px(目標${fitChar}px)`);
+}
 const canvasH = Math.max(...all.map(f => f.h));
 // ポーズ間の大きさの一貫性チェック(絵としての責務は素材側。ツールは警告のみ)。
 const minH = Math.min(...all.map(f => f.h));
@@ -243,7 +272,10 @@ for (const { kind, frames } of jobs) {
       const dstOff = ((dstY0 + y) * canvasW + dstX0) * 4;
       f.img.rgba.copy(outBuf, dstOff, srcOff, srcOff + f.w * 4);
     }
-    const name = SINGLE_KINDS.has(kind) ? `${outPrefix}-${kind}.png` : `${outPrefix}-${kind}-${i}.png`;
+    // melee(2コマ一括)は [しゃがみ構え, 振り抜き] の順で -ready / -swing へ展開。
+    const name = kind === 'melee' ? `${outPrefix}-melee-${i === 0 ? 'ready' : 'swing'}.png`
+      : SINGLE_KINDS.has(kind) ? `${outPrefix}-${kind}.png`
+      : `${outPrefix}-${kind}-${i}.png`;
     const path = join(outDir, name);
     writeFileSync(path, encodePng(outBuf, canvasW, canvasH));
     console.log(`wrote ${path} (${canvasW}x${canvasH})`);
