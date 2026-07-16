@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.1796 — 敵の縁フェザー+服の回転(社長指示)【2026-07-17 07:03 JST】
+- **①敵10枚の縁の白ノイズ対策**: 不透明画素のうち透明に接する最外周1px=α50%・その内側1px=α75%に
+  フェザー(社長指示の方式どおり)。JPEG切り出し境界の白ハロが暗背景で目立たなくなったのを
+  暗背景モンタージュ(実寸+ゲーム内相当の縮小)で目視確認。同名差し替え=**ASSET_VERSION 51→52**。
+- **②服の回転**: コート/軍服/ズボン(r5-c1〜c3)に rotateDeg:[0,90] を追加(銃の[10,150]と同じ仕組み)。
+- 検証: typecheck green。
+- Files: `public/sprites/stage5-enemies/*`(10枚差し替え), `src/world/cityProps.ts`,
+  `src/config/assetVersion.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1795 — メニュー透明のまま問題の安全側修正(社長報告「更新した最初だけ拠点メニューの透明度が0」)【2026-07-17 06:16 JST】
 - **構造的原因**: 入場アニメ(menu-item-in等)が `animation-fill-mode: both` だったため、
   「アニメが一度も開始されない」(更新直後の初回起動・iOSの復帰タイミング等の環境要因)と

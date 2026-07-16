@@ -111,9 +111,9 @@ export const STAGE5_PROPS: CityPropDef[] = [
   { tex: 'stage5-props/prop-r4-c9',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 装甲板
   { tex: 'stage5-props/prop-r4-c10', displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // 装甲板2
   // 衣類・鞄(r5)
-  { tex: 'stage5-props/prop-r5-c1',  displayH: 36, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // コート
-  { tex: 'stage5-props/prop-r5-c2',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 軍服
-  { tex: 'stage5-props/prop-r5-c3',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ズボン
+  { tex: 'stage5-props/prop-r5-c1',  displayH: 36, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [0, 90] }, // コート
+  { tex: 'stage5-props/prop-r5-c2',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [0, 90] }, // 軍服
+  { tex: 'stage5-props/prop-r5-c3',  displayH: 32, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [0, 90] }, // ズボン
   { tex: 'stage5-props/prop-r5-c4',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ブーツ
   { tex: 'stage5-props/prop-r5-c5',  displayH: 34, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 背嚢
   { tex: 'stage5-props/prop-r5-c6',  displayH: 30, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 鞄
