@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1771',
+    items: [
+      'プレイヤーの二次モーション(歩行の揺れ・発砲反動など)を全て復帰して確定。ドット潰れ対策(ピクセルスナップ)との両立を実機確認済み。',
+    ],
+  },
+  {
     version: '0.25.1770',
     items: [
       'テスト: プレイヤーの二次モーション(歩行の揺れ・発砲反動・リロード揺れ・近接踏み込み・カウンターポーズ)を一括OFF(ドットまだらの切り分け検証。?pmotion=1で従来の演出へ)。',

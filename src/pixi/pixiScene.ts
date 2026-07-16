@@ -583,12 +583,14 @@ const PLAYER_TEXEL_SNAP_HOLD = 0.10;    // 誤差この割合まではスナッ�
 const PLAYER_TEXEL_SNAP_RELEASE = 0.16; // ここで完全に素のスケールへ(間は線形ブレンド)
 const TEXEL_SNAP_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('psnap') !== '0';
-// 検証ビルド(社長指示v0.25.1770「試しに全部切ってみる。戻せるように」): プレイヤー本体の二次モーション
-// (歩行スカッシュ&ストレッチ/リーン/上下bob・発砲反動・近接踏み込み・カウンター決めポーズ・リロード揺れ)を
-// 一括OFF=剛体ピクセルスプライト化。`?pmotion=1` で従来の全演出へ即復帰。対象はプレイヤー本体の変形のみ
+// プレイヤー本体の二次モーション(歩行スカッシュ&ストレッチ/リーン/上下bob・発砲反動・近接踏み込み・
+// カウンター決めポーズ・リロード揺れ)の一括スイッチ。v0.25.1770の全OFF検証で「動作中の変形はドットの
+// 崩れとして知覚されない」(テンポラルマスキング=毎フレーム別の場所に出る崩れは残像で溶ける。犯人は
+// 静止/低速の半端スケールだけ=ピクセルスナップで根治済み)と社長実機確認→**全演出ON=確定(v0.25.1771)**。
+// 診断用に `?pmotion=0` で一括OFF(剛体スプライト化)へ切替可。対象はプレイヤー本体の変形のみ
 // (コマ差し替え(歩き/走り/近接ポーズ)・登場演出・ノックバック跳ね(敵共通)・分身/救援アライは対象外)。
-const PLAYER_MOTION_FX = typeof window !== 'undefined'
-  && new URLSearchParams(window.location.search).get('pmotion') === '1';
+const PLAYER_MOTION_FX = typeof window === 'undefined'
+  || new URLSearchParams(window.location.search).get('pmotion') !== '0';
 const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
