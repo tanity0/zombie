@@ -319,9 +319,9 @@ export const ensureTextures = (): Promise<void> => {
       // ステージ4(雪原)専用の敵絵(既存9種の差し替え＋新型 lich)。詳細イラスト調なので linear で滑らかに縮小。
       ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
         .map((t) => ({ name: `stage4-enemies/${t}`, scaleMode: 'linear' as const })),
-      // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種)。
-      // ピクセルアート調なのでアトラス敵/stage3と同じ nearest。10体目(hood-unused)は用途未確定=未登録。
-      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper']
+      // ステージ5(対変異体防衛本部)専用の敵絵(社長提供シート2026-07-16・ステージ1と同配置の9種+
+      // 10体目のフード亡霊=lich・社長裁定2026-07-17)。ピクセルアート調なのでアトラス敵/stage3と同じ nearest。
+      ...['zombie', 'bat', 'skeleton', 'plant', 'ghost', 'werewolf', 'pumpkin', 'giantbat', 'reaper', 'lich']
         .map((t) => ({ name: `stage5-enemies/${t}`, scaleMode: 'nearest' as const })),
 
       // M8改(§5.9): ソフト系3クラスは linear(+下のローダでmipmapON)。それ以外は従来nearest。
@@ -477,6 +477,7 @@ export const ensureTextures = (): Promise<void> => {
     if (lichTex) { textures.set('lich', lichTex); }
     regAspect('default:lich', 'stage4-enemies/lich');
     regAspect('stage4:lich', 'stage4-enemies/lich');
+    regAspect('stage5:lich', 'stage5-enemies/lich');
     regAspect('default:hunter', 'hunter'); // ハンター変異体(全ステージ共通の1枚絵)
     regAspect('default:screamer', 'screamer'); // 変異体(叫喚型・全ステージ共通の1枚絵)
     regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');

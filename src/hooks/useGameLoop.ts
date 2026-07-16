@@ -1575,7 +1575,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 洋館［SUB］再訪: 通常ステージと同様に敵が湧く(統合正本9.3)が、城ボス(M6ストーリーボス)だけは
         // 出さない(洋館=保存槽の目的地。ボス再戦は正史に無い)。
         const revisitRun = loopState.revisitMode;
-        const snowTheme = loopState.farBackdrop === 'snow'; // ステージ4(雪原): 新型 lich を湧きプールに含める
+        // ステージ4(雪原)/ステージ5(戦場): 新型 lich を湧きプールに含める(社長裁定2026-07-17:
+        // ステージ5の10体目=フード亡霊をlich扱いで出す)。変数名は歴史的経緯(元は雪原限定)。
+        const snowTheme = loopState.farBackdrop === 'snow' || loopState.farBackdrop === 'stage5';
 
         // PACING_PUZZLE.md §5.18 M17: 被ダメ5経路(src/utils/combatTick.ts)へ渡す演出コールバック+
         // チューニング値。値そのものは以下のローカル定数のまま(二重管理を避けるため引数化しただけ)。

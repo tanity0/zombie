@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1791 — ステージ5の10体目=lich扱いで出現(社長裁定「一旦リッチと同じでいい」)【2026-07-17 01:44 JST】
+- 敵シート10体目(フード付き亡霊)を `stage5-enemies/lich.png` にリネームし、**ステージ5でもlich(旋回型)が
+  湧くように**(ステージ4と同じ重み・AREA_WEIGHT・AI。ゲート=useGameLoopの snowTheme フラグを
+  farBackdrop 'snow'|'stage5' に拡張=allowLichとして全spawn経路へ既存配線)。
+- 描画: STAGE5_ENEMY_TYPESにlich追加+テクスチャ登録(nearest)+regAspect(stage5:lich)+
+  足元重心補正0.561(実測)。当たり判定・HP・速度等は既存lichのまま(見た目のみステージ5専用)。
+- 検証: typecheck green。実機での出現確認は社長へ(エリア3以降で湧く=AREA_WEIGHT[0,0,0.7,1.1,1.2])。
+- Files: `public/sprites/stage5-enemies/lich.png`(旧hood-unused), `src/pixi/pixiScene.ts`,
+  `src/pixi/pixiTextures.ts`, `src/hooks/useGameLoop.ts`, `src/utils/enemyUtils.ts`(コメントのみ),
+  `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1789 — ステージ5散らばり物61種+背景残り(紫/グレー)の切り直し(社長指示)【2026-07-17 01:36 JST】
 - **①散らばり物**: オブジェクトシートの残り行(1,4〜9行目)を全スライスし **61種を追加**
   (武器8/防具10/衣類・鞄8/木箱・弾薬13/鉄条網・杭柵5/小物5/地面の遺留品12)。

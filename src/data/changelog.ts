@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1791',
+    items: [
+      'ステージ5に旋回型の敵(ステージ4の新型と同種)が出現するように。見た目はステージ5専用のフード付き亡霊。',
+    ],
+  },
+  {
     version: '0.25.1790',
     items: [
       '内部整理のみ(不採用素材ファイルの削除)。ゲーム内の変化はありません。',

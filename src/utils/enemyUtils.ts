@@ -123,7 +123,7 @@ const AREA_WEIGHT: Partial<Record<EnemyType, number[]>> = {
   // 旧 werewolf [0,0,0.7,1.1,1.2] / pumpkin [0,0,0,0.1,0.3]。
   werewolf: [0,   0,   0,    0,    0   ],
   pumpkin:  [0,   0,   0,    0,    0   ],
-  lich:     [0,   0,   0.7,  1.1,  1.2 ], // 重み付けはウェアウルフと同等(社長指示)。ただし出現はステージ4のみ(下の allowLich でゲート)。
+  lich:     [0,   0,   0.7,  1.1,  1.2 ], // 重み付けはウェアウルフと同等(社長指示)。出現はステージ4/5(下の allowLich でゲート)。
 };
 
 // 型ごとの基礎重み(既存値を定数化)。仕様§6/§7: 型の解禁・比率は時間ではなくエリア補正だけで決める。
@@ -137,7 +137,7 @@ const BASE_WEIGHT: Partial<Record<EnemyType, number>> = {
   ghost:    45,
   werewolf: 45,
   pumpkin:  22,
-  lich:     45, // ステージ4のみ(allowLich でゲート)。重みはウェアウルフと同等(社長指示)。
+  lich:     45, // ステージ4/5(allowLich でゲート)。重みはウェアウルフと同等(社長指示)。
 };
 
 // 難易度③(種類軸): escalation で「重い型」の重みを乗算で底上げ(過剰育成なら手強い種類が増える)。
@@ -164,7 +164,7 @@ const selectEnemyType = (area: number, allowLich = false, esc = 0, featured: Ene
   const toughBoost = 1 + Math.max(0, esc) * DDA_VARIETY_ESC_K;
   // baseWeight × エリア補正(featuredはfloorAllowed時のみ床あり) ×(重い型なら toughBoost)×(シーン強調なら SCENE_FEATURED_BOOST)×(シーン抑えなら SCENE_SUPPRESSED_MULT)、blockedは強制0。
   const pool = (Object.entries(BASE_WEIGHT) as [EnemyType, number][])
-    .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)限定
+    .filter(([type]) => type !== 'lich' || allowLich) // lich はステージ4(雪原)/5(戦場)限定
     .map(([type, w]) => {
       if (blocked.includes(type)) return { type, weight: 0 };
       const areaW = (AREA_WEIGHT[type]?.[area]) ?? 0;
