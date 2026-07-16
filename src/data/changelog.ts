@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1781',
+    items: [
+      '拠点メニューの並び替え: オプションを一番下に移動。',
+    ],
+  },
+  {
     version: '0.25.1780',
     items: [
       '文言の刷新つづき: EX任務の見出し「追加任務」→「作戦外行動」、ミッション詳細の「▶ 出撃準備」→「▶ 担当指名」。',
