@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.1757 — ステージ2の索敵解除(距離を取ると追跡を諦めて再休眠・社長裁定)【2026-07-16 09:04 JST】
+- 社長裁定「距離を取ったら追跡を諦めて再休眠する(索敵解除)」を実装(ラボのlab-zombie限定):
+  - 純関数 `tickLabDeaggro`(labStealth.ts+テスト5件): **解除距離450px・猶予3秒**(叩き台)。
+    解除450>視界300のヒステリシス=境界でのパカパカ防止。範囲内に戻るとカウンタはリセット。
+  - 配線: updateEnemies(dormantブロック直後)。再休眠時はaiPhase系も全消し・その場停止。
+    起床/範囲内復帰/再休眠/resetGameでカウンタ掃除(id別一時テーブル=Enemy型は汚さない)。
+  - 再発見は既存の視界(300px+視線)判定=v1754と組み合わせでステルス再挑戦が成立。
+- 検証: typecheck / eslint / related 139件green(新規5件込み)。体感(450px/3秒)は実機で社長調整へ。
+- 天秤: 診断コンテキスト継続の小改修=Fable直接。
+- Files: `src/utils/labStealth.ts`(新規), `src/utils/labStealth.test.ts`(新規),
+  `src/store/gameStore.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1756 — M45実装: ネームド名「CODE:ローマ字」化(年表正規化・天使接頭辞なし込み)【2026-07-16 08:52 JST】
 - Sonnet実装が社長の中断で停止したため、途中成果(32名置換・正規化マップ・死因/ラベル/ネームプレート/
   宿敵バナー置換)を設計チャットが検証・引き取り、残りを直接完成:

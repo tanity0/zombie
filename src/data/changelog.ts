@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1757',
+    items: [
+      'ステージ2(研究所): 敵に索敵解除を追加。450pxより遠い状態が3秒続くと追跡を諦めてその場で再休眠します(近づけば視界300pxで再発見)。',
+    ],
+  },
+  {
     version: '0.25.1756',
     items: [
       'ネームドの名前表記を「CODE:ローマ字」スタイルに刷新(天使・裏ボス・宿敵の全37名)。年表の過去の討伐記録も新表記で表示されます(「天使」などの接頭辞は廃止)。',

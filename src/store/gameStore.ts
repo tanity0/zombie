@@ -41,6 +41,7 @@ import {
 import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets } from '../utils/weaponUtils';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
+import { tickLabDeaggro } from '../utils/labStealth';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { weaknessCritBonus } from '../utils/weaknessCrit';
 import { applyEnemyCritPenalty } from '../utils/critPenalty';
@@ -1284,6 +1285,9 @@ let groundFireSeq = 0;  // 火炎瓶(molotov)の地面の火の一意id採番(�
 let sensorMineSeq = 0;  // センサー地雷(sensor-mine)の一意id採番(プール/差分の安定キー)
 let flareGunSeq = 0;    // フレアガン(flare-gun)のフレアの一意id採番(プール/差分の安定キー)
 let bossFireSeq = 0;    // ジブリルのランタン火の一意id採番(プール/差分の安定キー)
+// ステージ2(研究所)の索敵解除(§labStealth.ts): 起床中の敵ごとの「プレイヤーが解除距離の外に出た時刻」
+// (id→gameTime)。Enemy型を汚さない一時テーブル。範囲内復帰/解除/再休眠で都度削除し、resetGameで全消去。
+const labOutOfRangeSince = new Map<string, number>();
 let rescueAllySeq = 0;  // 救難信号の援護アライの一意id採番(プール/差分の安定キー)
 let thrownBagSeq = 0;   // 救急鞄の空鞄投擲の一意id採番(プール/差分の安定キー)
 // ドローンブーメラン(通常サブ・手動発動): 立ち止まり中の近接入力で進行方向へ投げる。
@@ -6627,7 +6631,30 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 };
           }
+          labOutOfRangeSince.delete(enemy.id); // 起床の瞬間に解除カウンタを初期化
           return { ...enemy, dormant: false, vx: 0, vy: 0 };
+        }
+
+        // ステージ2(研究所)の索敵解除(社長指示v0.25.1757・純関数=labStealth.ts):
+        // 起床中でもプレイヤーが解除距離(450px)より遠い状態が3秒続いたら追跡を諦めてその場で再休眠。
+        // 再発見は上のdormantブロック(視界300px+視線)。解除450>視界300のヒステリシスで点滅しない。
+        // ラボのlab-zombie限定=他ステージ・他の敵は不変。
+        if (labTheme && enemy.type.startsWith('lab-zombie')) {
+          const ecx3 = enemy.x + enemy.width / 2;
+          const ecy3 = enemy.y + enemy.height / 2;
+          const dxq = pcx - ecx3, dyq = pcy - ecy3;
+          const dt = tickLabDeaggro(gameTime, dxq * dxq + dyq * dyq, labOutOfRangeSince.get(enemy.id));
+          if (dt.outSince === undefined) labOutOfRangeSince.delete(enemy.id);
+          else labOutOfRangeSince.set(enemy.id, dt.outSince);
+          if (dt.deaggro) {
+            labOutOfRangeSince.delete(enemy.id);
+            return {
+              ...enemy, dormant: true, vx: 0, vy: 0,
+              aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+              aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+              aiReadyAt: undefined,
+            };
+          }
         }
 
         // 裏ボスが追いかけてきている間は、通常の敵もボスも全員プレイヤーから一斉に逃走する(社長指示)。
@@ -9347,6 +9374,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     // M35(§6.12): ボット計測カウンタをラン開始でリセット(実機/ヘッドレス両ハーネス共通の合流点)。
     resetBotTelemetry();
+    labOutOfRangeSince.clear(); // ステージ2索敵解除の一時テーブル(前ランのid残骸を掃除)
     // PACING_PUZZLE.md §5.14 M13: 前ラン終了時点で宿敵が登場していたのに決着(討伐/自分を殺した/
     // 新規上書き)がついていなければ持ち越し(型・名前は維持・因縁+1)。クリア/死亡いずれの
     // ラン終了でも次ランのresetGame呼び出しがこの唯一の締めタイミングになる。
