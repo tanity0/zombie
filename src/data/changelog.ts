@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1780',
+    items: [
+      '文言の刷新つづき: EX任務の見出し「追加任務」→「作戦外行動」、ミッション詳細の「▶ 出撃準備」→「▶ 担当指名」。',
+    ],
+  },
+  {
     version: '0.25.1779',
     items: [
       'メニューの言葉を世界観に合わせて刷新: 「ミッション選択」→「拠点」、「ステージ選択」→「作戦準備/作戦地域」、リザルトは「任務達成/任務失敗」など。',

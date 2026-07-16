@@ -393,7 +393,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <div className="p-3 space-y-4">
           {mains.map((stage, i) => <StageNode key={stage.id} stage={stage} index={i} />)}
           {exs.length > 0 && (
-            <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">追加任務</div>
+            <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">作戦外行動</div>
           )}
           {exs.map((stage, i) => <StageNode key={stage.id} stage={stage} index={mains.length + i} />)}
         </div>
@@ -566,8 +566,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </Section>
           )}
 
-          {/* 出撃導線は「出撃準備」のみ(フリー周回は廃止・社長指示)。上のメイン/サブミッション欄は
-              後日「出撃時の進捗表示」に置き換える予定(ボタンではない)。 */}
+          {/* 出撃導線は「担当指名」(旧・出撃準備)のみ(フリー周回は廃止・社長指示)。上のメイン/サブ
+              ミッション欄は後日「出撃時の進捗表示」に置き換える予定(ボタンではない)。 */}
           <Ff7rButton
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
             className="w-full"
@@ -575,7 +575,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             fade="both"
             paddingY="0.8rem"
           >
-            ▶ 出撃準備
+            ▶ 担当指名
           </Ff7rButton>
         </div>
       </>
