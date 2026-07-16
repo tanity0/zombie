@@ -313,13 +313,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderHome = () => (
     <>
-      <Header title="ミッション選択" />
+      <Header title="拠点" />
       <div className="p-3 space-y-2">
-        <HubButton icon={<Swords size={18} />} label="ステージ選択" desc="メインミッションへ出撃" onClick={goStageSelect} accent delay={0} />
+        <HubButton icon={<Swords size={18} />} label="作戦準備" desc="作戦地域を選ぶ" onClick={goStageSelect} accent delay={0} />
         <HubButton icon={<Check size={18} />} label="装備" desc={`サブウェポン1 / スキル最大${MAX_EQUIPPED_SKILLS}`} onClick={() => setScreen({ name: 'loadout' })} delay={50} />
         <HubButton icon={<Settings size={18} />} label="オプション" desc="音量・各種設定" onClick={() => setScreen({ name: 'options' })} delay={100} />
         <HubButton icon={<ShoppingBag size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={150} />
-        <HubButton icon={<BookOpen size={18} />} label="資料室" desc="ストーリー記録・図鑑" onClick={goArchive} delay={200} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
+        <HubButton icon={<BookOpen size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={200} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
         <p className="pt-1 text-center text-[11px] text-white/35">v{__APP_VERSION__}</p>
       </div>
       {/* PACING_PUZZLE.md §6.18 M41 / STORY_UI_SPEC.md 8章: エンディング(勝利)後にメニューへ戻った時の
@@ -381,14 +381,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 一覧)。開発コード(M1〜EX2)はここでは表示しない。
   // ====================================================================
   const renderStageSelect = () => {
-    const mains = STAGES.filter(s => s.kind === 'main');
+    // ロック中ノードは一覧に出さない(社長決定v0.25.1779・No.5)。進行に応じてリストが伸びていく。
+    const mains = STAGES.filter(s => s.kind === 'main' && isStageUnlocked(s, cleared));
     // EXノード(統合正本10.1 / 指示書8.1): 条件成立(再訪で薬を使用)まで一切出さない(伏せ表示もしない)。
     // hidden=旧ex2の残置データ(導線なし)。
     const storyFlags = getStoryFlags();
     const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden && canShowEx(storyFlags) && isStageUnlocked(s, cleared));
     return (
       <>
-        <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />
+        <Header title="作戦地域" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
           {mains.map((stage, i) => <StageNode key={stage.id} stage={stage} index={i} />)}
           {exs.length > 0 && (
@@ -501,7 +502,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <h2 className="px-1 text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
 
           {/* 説明欄: 未クリアは「状況説明」、クリア後は「クリア後の記録(debrief)」を表示。 */}
-          <Section label={done && m.debrief.length > 0 ? 'クリア後' : '状況説明'}>
+          <Section label={done && m.debrief.length > 0 ? '任務後の記録' : '状況説明'}>
             {descLines.map((line, i) => (
               <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
             ))}
@@ -716,7 +717,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     };
     return (
       <>
-        <Header title="装備" subtitle="ステージ共通。サブウェポンとスキルを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
+        <Header title="装備" subtitle="全作戦共通。サブウェポンとスキルを選択（自動保存）" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
           {/* スキル(別枠・最大2)。装備候補はガチャで解禁済み(ownedSkills)のみ。 */}
           <div>
@@ -850,7 +851,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const openRecordStage = openRecord?.unlockStageId ? getStage(openRecord.unlockStageId) : undefined;
     return (
       <>
-        <Header title="資料室" subtitle="ストーリー記録・変異体図鑑" onBack={goHomeFromArchive} />
+        <Header title="資料室" subtitle="記録・変異体資料" onBack={goHomeFromArchive} />
         <div className="menu-stagger p-3 space-y-3">
           <Section label="世界観">
             {WORLD_INTRO.map((line, i) => <p key={i} className="text-[12px] leading-relaxed text-white/80">{line}</p>)}

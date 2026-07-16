@@ -12,7 +12,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ benchmarkMode = false, st
   const title = 'ゾンビサバイバル';
   const subtitle = startup
     ? '素材をダウンロード中…'
-    : benchmarkMode ? '描画負荷テストを準備中' : '装備とフィールドを準備中';
+    : benchmarkMode ? '描画負荷テストを準備中' : '作戦地域へ移動中…';
 
   // 控えめ表示: 「同意して始める」後(TitleScreen の START後)ローディングと同じ見た目(社長指示)。
   // 小さな回転スピナー＋「LOADING…」だけ。ゲームタイトル(ゾンビサバイバル)は出さない。

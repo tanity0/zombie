@@ -284,7 +284,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       <div className="glass-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overscroll-contain touch-pan-y rounded-none">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
-            {isBenchmark ? 'ベンチ結果' : won ? 'ステージクリア！' : withdraw ? '帰還' : 'ゲームオーバー'}
+            {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
           </h2>
           {/* PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-6: 「任務クリア」の直下に日時/場所名/
               ミッション名を表示(追補1-6の表示順どおり)。勝利時・ステージ情報が引けた時だけ。 */}
