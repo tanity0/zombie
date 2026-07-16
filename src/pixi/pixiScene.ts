@@ -1082,6 +1082,8 @@ export class PixiScene {
   private merchantShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   private npcShadow: { x: number; y: number; w: number; alpha: number } | null = null;
   private castleShadow: { x: number; y: number; w: number; alpha: number } | null = null;
+  // 洋館再訪(the ONE): true の間、城(洋館)の画面端マーカーをボス未出現でも表示する。
+  private revisitMarker = false;
   // 拾い物は複数あるので配列で要求(id は 'pk:'+pickup.id)。syncPickups が毎フレーム作り直す。
   private pickupShadows: { id: string; x: number; y: number; w: number; alpha: number }[] = [];
   private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
@@ -2719,6 +2721,8 @@ export class PixiScene {
     this.syncForestFlowers(); // ステージ1(森)の装飾花(その他ステージでは no-op)
     this.updateLabCeiling(s.stageTheme === 'lab' && !s.indoorMode); // 最前面の天井ケーブル帯(lab テーマのみ)
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
+    // 洋館再訪(the ONE): 城(洋館=保存槽)への画面端マーカーをボス未出現でも出す(目的地の誘導)。
+    this.revisitMarker = s.revisitMode === true;
     // 屋内(研究施設)は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は描画しない。
     if (s.indoorMode || s.stageTheme === 'lab') {
       // 屋内 / 研究所スキンは城(建物)を描かない。※ giantbat ボスは城座標に出る(クリア条件)ので湧き自体は維持。
@@ -9015,8 +9019,9 @@ export class PixiScene {
     const castleY = castle.y + 40 - camera.y;
     // 城マーカーは城が実在するステージ(屋外・非ラボ)でのみ表示。
     // ステージ2(ラボ/屋内)は城を描かないので、位置マーカーも出さない。
-    // さらにボス出現まで(bossSpawned)はマーカー非表示(社長指示)。
-    if (castleVisible && castle.bossSpawned && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
+    // さらにボス出現まで(bossSpawned)はマーカー非表示(社長指示)。洋館再訪(the ONE)は目的地=洋館
+    // なのでボス無しでも表示する(revisitMarker)。
+    if (castleVisible && (castle.bossSpawned || this.revisitMarker) && (castleX < 0 || castleX > this.screenW || castleY < 0 || castleY > this.screenH)) {
       const angle = Math.atan2(castleY - cyC, castleX - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
