@@ -98,7 +98,7 @@ export const STAGE5_PROPS: CityPropDef[] = [
   { tex: 'stage5-props/prop-r1-c5',  displayH: 22, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // 散弾銃
   { tex: 'stage5-props/prop-r1-c6',  displayH: 20, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 , rotateDeg: [10, 150] }, // リボルバー
   { tex: 'stage5-props/prop-r1-c7',  displayH: 24, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 , rotateDeg: [10, 150] }, // 大型拳銃
-  { tex: 'stage5-props/prop-r1-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // 血染めナイフ
+  { tex: 'stage5-props/prop-r1-c8',  displayH: 16, collide: false, decal: true,  colW: 0, colH: 0, weight: 4, rotateDeg: [10, 150] }, // 血染めナイフ(社長指示2026-07-17「ナイフもお願い」)
   // 防具(r4)
   { tex: 'stage5-props/prop-r4-c1',  displayH: 26, collide: false, decal: true,  colW: 0, colH: 0, weight: 4 }, // ヘルメット
   { tex: 'stage5-props/prop-r4-c2',  displayH: 28, collide: false, decal: true,  colW: 0, colH: 0, weight: 2 }, // トゲ付き兜

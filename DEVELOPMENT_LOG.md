@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.1794 — 散らばりナイフも回転対象に(社長指示「ナイフもお願い」)【2026-07-17 06:12 JST】
+- 血染めナイフ(r1-c8)に rotateDeg:[10,150] を追加(v1793の銃7種と同じ仕組み)。1行のみ。
+- 検証: typecheck green。
+- Files: `src/world/cityProps.ts`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1793 — ステージ5の散らばり銃を10〜150度回転(社長指示「アイテムと見分けが付くように」)【2026-07-17 05:11 JST】
 - `CityPropDef.rotateDeg?: [min,max]`(度)を新設し、`cityPropsInRegion`(world層の純関数)が指定型のみ
   決定的に回転角を振って `CityProp.rotation`(rad)で返す。散らばりの**銃7種(r1-c1〜c7)に[10,150]を指定**

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1794',
+    items: [
+      'ステージ5の散らばりナイフも銃と同じくランダム回転(10〜150度)で置くように。',
+    ],
+  },
+  {
     version: '0.25.1793',
     items: [
       'ステージ5に散らばる銃を斜め(10〜150度のランダム回転)で置くように。拾えるアイテムの銃(横向き表示)と見分けが付きます。',
