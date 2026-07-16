@@ -96,6 +96,7 @@ import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { clampFinishKillOnlyHealth } from '../utils/finishKillOnly';
+import { stunnedMeleeOutcome, ELITE_MELEE_STUN_MULT } from '../utils/meleeExecute';
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -932,15 +933,16 @@ export const skillKnifeMasterMeleeCrit = (player: Player): number => {
   return kl ? [0, 0.10, 0.15, 0.20][kl] : 0;
 };
 // 近接コンボ倍率(ナイフマスター × コンボマスター)。3つの近接ダメージ地点とカウンター斬撃で共通使用。
-//  ・knife-master: 近接ヒットで knifeComboCount を貯め、+2%/hit(上限+100%=×2.0、50hitでカンスト)。窓3秒。
+//  ・knife-master: 近接ヒットで knifeComboCount を貯め、+2%/hit(上限+60%=×1.6、Lv3は15hitでカンスト。
+//    PACING_PUZZLE.md §6.22 M47仕様②=社長裁定でP1の[0,50,70,100]%からP2=[0,40,50,60]%へ圧縮)。窓3秒。
 //  ・combo-master: フィニッシュコンボ(meleeFinishComboCount)生存中、+2%/combo(上限+50%)。
 // どちらも非装備なら ×1。窓の有効判定は呼び出し側の gameTime に依存。
 export const skillMeleeComboMult = (player: Player, gameTime: number, finishComboCount: number, finishComboUntil: number): number => {
   let mult = 1;
   const kl = skillLevel(player, 'knife-master');
   if (kl && gameTime < player.knifeComboUntil) {
-    const rate = [0, 0.02, 0.02, 0.04][kl]; // +2%/+2%/+4% per hit
-    const cap = [0, 0.50, 0.70, 1.0][kl];   // 上限 +50%/+70%/+100%
+    const rate = [0, 0.02, 0.02, 0.04][kl]; // +2%/+2%/+4% per hit(不変)
+    const cap = [0, 0.40, 0.50, 0.60][kl];  // 上限 +40%/+50%/+60%(§6.22 M47仕様②)
     mult *= 1 + Math.min(cap, player.knifeComboCount * rate);
   }
   mult *= skillComboMasterMult(player, gameTime, finishComboCount, finishComboUntil);
@@ -3936,6 +3938,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           continue;
         }
+        // §6.22 M47仕様①: 強個体(pumpkin/lab-zombie-3/isNamed/questTarget)はHP50%以上だと
+        // 即死せず近接ダメージ×3+気絶解除(ボス5×と同じフィニッシュ経路扱い)。雑魚は無条件即死。
+        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+          bossFinishHit = true;
+          const dmg = meleeDamage * ELITE_MELEE_STUN_MULT;
+          meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          const newHealth = Math.max(0, enemy.health - dmg);
+          if (newHealth <= 0) {
+            killed.push({ enemy, finisher: false });
+          } else {
+            survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          }
+          continue;
+        }
         killed.push({ enemy, finisher: true }); // normal instant execute
         recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死
         continue;
@@ -4255,6 +4271,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dmg = meleeDamage * BOSS_MELEE_STUN_MULT;
           damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           // §5.21-追補4: スタン中ボスへの5×近接=ボスのフィニッシュ経路そのものなのでclampしない。
+          const nh = Math.max(0, enemy.health - dmg);
+          if (nh <= 0) killed.push({ enemy, finisher: false });
+          else survivors.push({ ...enemy, health: nh, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          continue;
+        }
+        // §6.22 M47仕様①: 分身にもナイフと同じ強個体しきい値を適用(分身だけエリート消し可、を残さない)。
+        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+          bossFinishHit = true;
+          const dmg = meleeDamage * ELITE_MELEE_STUN_MULT;
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
           const nh = Math.max(0, enemy.health - dmg);
           if (nh <= 0) killed.push({ enemy, finisher: false });
           else survivors.push({ ...enemy, health: nh, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
@@ -4614,6 +4640,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           continue;
         }
+        // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
+        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+          bossFinishHit = true;
+          const dmg = baseDamage * damageMult * ELITE_MELEE_STUN_MULT;
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          const newHealth = Math.max(0, enemy.health - dmg);
+          if (newHealth <= 0) {
+            killed.push({ enemy, finisher: false });
+          } else {
+            survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          }
+          continue;
+        }
         killed.push({ enemy, finisher: true }); // 通常ナイフと同じ即時フィニッシュ
         recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(刀)
         continue;
@@ -4809,7 +4848,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
-        // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。ネームドは通常敵扱い=即時処刑・§5.21-追補7)。
+        // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。§6.22 M47でネームド/questTarget/
+        // pumpkin/lab-zombie-3はHP50%以上なら即死せず×3+気絶解除に変更=旧§5.21-追補7の「ネームドは
+        // 通常敵扱い=即時処刑」を上書き)。
         if (isBossType(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeBase * whipMult * BOSS_MELEE_STUN_MULT;
@@ -4818,6 +4859,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) killed.push({ enemy, finisher: false });
           else survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          continue;
+        }
+        // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
+        if (stunnedMeleeOutcome(enemy) === 'heavy') {
+          bossFinishHit = true;
+          const dmg = meleeBase * whipMult * ELITE_MELEE_STUN_MULT;
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true });
+          const newHealth = Math.max(0, enemy.health - dmg);
+          if (newHealth <= 0) {
+            killed.push({ enemy, finisher: false });
+          } else {
+            survivors.push({ ...enemy, health: newHealth, stunUntil: undefined, lastHit: now, liftUntil: now + 420 });
+          }
           continue;
         }
         killed.push({ enemy, finisher: true });

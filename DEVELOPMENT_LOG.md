@@ -1,5 +1,45 @@
 # Development Log
 
+## v0.25.1787 — M47実装: 近接調整P2=即死しきい値+ナイフマスター上限60%(§6.22)【2026-07-17 00:28 JST】
+- 実装=Sonnetサブエージェント。検証=設計チャット(typecheck+meleeExecute7+constitution13+skills=57件
+  green・diffレビュー: 強個体3×はボス5×と同型でfinishKillOnly非clamp・分身も同ルール・heavy打は
+  recordFinisherKill非対象=計測整合)。
+- **★未決(pumpkin/lab-zombie-3がisBossType先取りで新しきい値に未到達)は設計チャット裁定=実装のまま採用**
+  (元から即死不可・退行ゼロ。本丸=isNamed/questTarget個体にはしきい値が効いている。詳細§6.22/★未決5)。
+- **前後比較ソーク(同条件15分×5ラン×2ビルド)**: ナイフ特化melee実効DPS 79→69(-13%)/対銃比3.1→2.0倍/
+  即死シェア9%→6%。方向はP2の狙いどおり(結果の正本=§6.22)。さらに寄せる場合の次の一手=P3(KMクリ半減)。
+- **仕様①(気絶中近接の即死しきい値)**: 純関数 `src/utils/meleeExecute.ts` を新設。
+  `stunnedMeleeOutcome(enemy)` は強個体(`type==='pumpkin' || 'lab-zombie-3' || isNamed || questTarget`)
+  かつ `health < maxHealth×ELITE_EXECUTE_HP_RATIO(0.5)` なら `'execute'`(現行どおり即死)、
+  強個体でHP50%以上なら `'heavy'`(近接ダメージ×`ELITE_MELEE_STUN_MULT(3)`+気絶解除・ボス5×と同じ
+  フィニッシュ経路扱い=finishKillOnlyでもclampしない・crit扱いの金数字表示)、雑魚は常に`'execute'`。
+  `src/store/gameStore.ts` の finisher 4箇所(通常ナイフ~3940/分身~4279/刀~4643/鞭~4864、いずれも
+  `isBossType`分岐の後段)をこの関数経由に統一。分身にも同ルールを適用(旧: 分身だけエリートを
+  即死させられる抜け穴があった)。鞭側の旧コメント「ネームドは通常敵扱い=即時処刑(§5.21-追補7)」は
+  本バッチで上書き(コメント更新済み)。'heavy'判定は`recordFinisherKill()`を呼ばない(即死ではない
+  ため。ダメージは既存のmeleeチャネル集計に自然に乗る)。
+- **仕様②(knife-masterコンボ上限圧縮)**: `skillMeleeComboMult`(gameStore.ts)の cap を
+  `[0, 0.50, 0.70, 1.0]` → `[0, 0.40, 0.50, 0.60]` へ(rate `[0, 0.02, 0.02, 0.04]` は不変)。
+  `src/data/campaign.ts` の `SKILLS['knife-master'].desc`「最大+100%」→「最大+60%」、および
+  レベル別説明`SKILL_LEVEL_INFO['knife-master'].lv`の各上限表記(50/70/100% → 40/50/60%)も同様に更新
+  (desc と二重管理の同一数値のため、片方だけ直すと画面間で矛盾する)。
+- **★未決事項(設計チャットへ・詳細はPACING_PUZZLE.md §6.22内および全体★未決リスト5番)**:
+  `isBossType()`(`src/utils/enemyUtils.ts`)は pumpkin/lab-zombie-3 を既に含む(`enemyUtils.test.ts:162`
+  で固定済み)。指示どおり `stunnedMeleeOutcome` の呼び出しを「isBossType分岐の後段」に置いたため、
+  pumpkin/lab-zombie-3 は isBossType側(無条件5×・即死なし)で先に`continue`し、新しい50%しきい値には
+  実際には到達しない(現状維持のまま=仕様①の「HP<50%で現行どおり即死」が実現できていない、というより
+  この2タイプは元々isBossTypeで即死しない)。新しきい値が実際に効くのは isNamed/questTarget個体のみ。
+  裁定待ち(isBossTypeの定義/呼び出し順序を変えるかどうかは他箇所への影響があるため独断で変更していない)。
+- **検証**: `npm run typecheck` green / `npx eslint` (変更5ファイル) clean /
+  `npx vitest run src/utils/meleeExecute.test.ts` 7 tests green(境界50%両側×pumpkin/lab-zombie-3/
+  isNamed/questTarget+雑魚無条件即死+定数値) /
+  `npx vitest related src/utils/meleeExecute.ts src/store/gameStore.ts src/data/campaign.ts --run`
+  12 files・196 tests green (2 skipped) / `npx vitest run src/utils/constitution.test.ts` 13 tests green。
+  負荷1/10(分岐1個+定数、新規ループ・新規描画なし)。
+- Files: `src/utils/meleeExecute.ts`(新規)、`src/utils/meleeExecute.test.ts`(新規)、
+  `src/store/gameStore.ts`、`src/store/skills.test.ts`(旧capの期待値を新仕様値へ更新)、
+  `src/data/campaign.ts`、`PACING_PUZZLE.md`、`DEVELOPMENT_LOG.md`。
+
 ## v0.25.1785 — ナイフvs銃の初回実測ソーク(設計チャット・M46計測基盤の初仕事)【2026-07-16 23:12 JST】
 - ヘッドレス(standardペルソナ・15分相当×5ラン×2ビルド)で実測。使い捨てテストで実行し削除(コミットなし)。
   結果の正本は PACING_PUZZLE.md §6.21「初回ソーク結果」。

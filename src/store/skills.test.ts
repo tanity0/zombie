@@ -24,28 +24,28 @@ const withSkill = (key: SkillKey, level: number): Player =>
 const knifeMaster = (count: number, level = 1, until = 10_000): Player =>
   ({ skills: ['knife-master'], skillLevels: { 'knife-master': level }, knifeComboCount: count, knifeComboUntil: until } as unknown as Player);
 
-describe('knife-master combo damage (leveled +2%/+2%/+4% per hit, cap +50%/+70%/+100%)', () => {
+describe('knife-master combo damage (leveled +2%/+2%/+4% per hit, cap +40%/+50%/+60% — PACING_PUZZLE.md §6.22 M47仕様②)', () => {
   const at = (count: number, level = 1, until = 10_000) =>
     skillMeleeComboMult(knifeMaster(count, level, until), 0, 0, 0);
 
-  it('Lv1: +2%/hit, caps at +50% (×1.5)', () => {
+  it('Lv1: +2%/hit, caps at +40% (×1.4)', () => {
     expect(at(0, 1)).toBeCloseTo(1.0);
     expect(at(1, 1)).toBeCloseTo(1.02);
     expect(at(10, 1)).toBeCloseTo(1.20);
-    expect(at(25, 1)).toBeCloseTo(1.5);
-    expect(at(99, 1)).toBeCloseTo(1.5); // clamped
+    expect(at(20, 1)).toBeCloseTo(1.4);
+    expect(at(99, 1)).toBeCloseTo(1.4); // clamped
   });
 
-  it('Lv2: +2%/hit, caps at +70% (×1.7)', () => {
+  it('Lv2: +2%/hit, caps at +50% (×1.5)', () => {
     expect(at(10, 2)).toBeCloseTo(1.20);
-    expect(at(35, 2)).toBeCloseTo(1.7);
-    expect(at(99, 2)).toBeCloseTo(1.7); // clamped
+    expect(at(25, 2)).toBeCloseTo(1.5);
+    expect(at(99, 2)).toBeCloseTo(1.5); // clamped
   });
 
-  it('Lv3: +4%/hit, caps at +100% (×2.0)', () => {
+  it('Lv3: +4%/hit, caps at +60% (×1.6)', () => {
     expect(at(10, 3)).toBeCloseTo(1.40);
-    expect(at(25, 3)).toBeCloseTo(2.0);
-    expect(at(99, 3)).toBeCloseTo(2.0); // clamped
+    expect(at(15, 3)).toBeCloseTo(1.6);
+    expect(at(99, 3)).toBeCloseTo(1.6); // clamped
   });
 
   it('reverts to ×1.0 once the 3s combo window has expired', () => {
