@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1763',
+    items: [
+      'プレイヤー立ち絵の高解像度素材(準備中)の受け入れ対応: 高密度版が届き次第、画面サイズはそのままで絵の鮮明さだけが上がります(現時点の見た目は変化なし)。',
+    ],
+  },
+  {
     version: '0.25.1762',
     items: [
       'ストーリー『the ONE』を一括実装: 二人組(グレンとミラ)の確定会話、任意サブ3本(ステージ1/3/4)の共通表示、ステージ5の強制再遭遇。',

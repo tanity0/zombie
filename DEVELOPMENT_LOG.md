@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.1763 — プレイヤー立ち絵: 高解像度素材(エリオット式=NPC方式)の受け入れ準備(社長決定「そうしよ」)【2026-07-16 13:15 JST】
+- **決定**: 『冒険家エリオットの千年物語』等HD-2D系譜の方式を採用=①キャラは常にピント面(v1758で実装済み)
+  ②素材を高密度(表示px×2〜3)で描き出し縮小表示(=NPCが潰れない理屈)③整数倍固執をやめ端数は素材密度で吸収。
+- **実装(受け入れ準備・現行素材ではビット一致=見た目不変)**:
+  - `pixiTextures.PLAYER_ART_BASE_W=78` 新設。ロード時にクラス立ち絵の**幅>78を検出したら自動で
+    linear+mipmap**(等倍素材=現行はnearestのまま)。
+  - `pixiScene.playerBaseScale`: knownClass を `1` → `78/tex.width` へ正規化(現行78px素材=×1.0で不変。
+    本体/分身/救援アライ共通)。
+  - メニュー歩きチップ(WalkingClassSprite): 素材がキャンバスより大きい時だけ平滑焼き(等倍=従来nearest)。
+- **発注仕様を ENGINEERING_NOTES.md に文書化**: 対象65枚・同構図の整数倍描き出し(推奨×3=幅234px)・
+  同名上書きで即反映。新規キャラ素材の共通規約「表示px×2〜3で描き出し縮小表示(ドット密度統一)」も明記。
+- 負荷: 1/10(ロード時の分岐のみ・毎フレームコスト不変)。検証: typecheck green。素材差し替え後の実機確認は
+  社長(残チェック: メニュー非選択チップの`<img>` pixelatedの見え方)。
+- Files: `src/pixi/pixiTextures.ts`, `src/pixi/pixiScene.ts`, `src/components/MissionSelect.tsx`,
+  `ENGINEERING_NOTES.md`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1762 — ストーリー『the ONE』一括実装(統合正本+一括制作指示書・社長指示)【2026-07-16 11:26 JST】
 - **正本**: Google Docs『the ONE』統合正本・制作製本版(2026-07-16)+一括制作指示書。1PR/段階コミット5本
   (story-data-model → selection-ui → content-m1-m7 → branch-revisit-ex → tests-and-cleanup)。

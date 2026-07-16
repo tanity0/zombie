@@ -32,8 +32,15 @@ const SPRITE_SMOOTH: boolean = (() => {
   return p === '1' || p === 'on' || p === 'true';
 })();
 const SOFT_CLASS_PREFIXES = ['player-magnum-', 'player-shotgun-', 'player-striker-', 'player-scavenger-'];
-const isSoftClassSprite = (name: string): boolean =>
-  SPRITE_SMOOTH && SOFT_CLASS_PREFIXES.some((pre) => name.startsWith(pre));
+const isClassSpriteName = (name: string): boolean =>
+  SOFT_CLASS_PREFIXES.some((pre) => name.startsWith(pre));
+const isSoftClassSprite = (name: string): boolean => SPRITE_SMOOTH && isClassSpriteName(name);
+
+// プレイヤー立ち絵の「表示基準幅」(px)。現行素材の実寸=78px幅がそのまま画面上の表示サイズ。
+// 社長決定(v0.25.1763・エリオット式=NPC方式): 立ち絵素材は将来「同じ構図のまま整数倍(×2〜×4)の
+// キャンバスで描き出し」て差し替える。表示側は常にこの基準幅へ縮小するので、素材を同名で
+// 上書きするだけで画面上のサイズは変わらず密度だけ上がる(pixiScene.playerBaseScale が参照)。
+export const PLAYER_ART_BASE_W = 78;
 
 // Load the atlas + player image and slice every named frame. Idempotent: the
 // first caller kicks off the load, later callers await the same promise.
@@ -402,6 +409,14 @@ export const ensureTextures = (): Promise<void> => {
         if (scaleMode) tex.source.scaleMode = scaleMode;
         // M8改(§5.9): ソフト系3クラスはミップマップONで縮小を均一に(linearと併用)。
         if (isSoftClassSprite(name)) tex.source.autoGenerateMipmaps = true;
+        // 高解像度プレイヤー素材の自動受け入れ(社長決定v0.25.1763・エリオット式=NPC方式):
+        // クラス立ち絵が基準幅78pxより大きい=高密度版が届いたら、その素材だけ linear+mipmap で
+        // 滑らかに縮小する(NPC/裏ボスの「詳細イラスト調」と同じ扱い)。等倍素材(現行)は従来どおり
+        // nearest=挙動不変。素材を同名で上書きするだけで切り替わる(コード変更不要)。
+        if (isClassSpriteName(name) && tex.width > PLAYER_ART_BASE_W) {
+          tex.source.scaleMode = 'linear';
+          tex.source.autoGenerateMipmaps = true;
+        }
         textures.set(name, tex);
       }),
     ]);

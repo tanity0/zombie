@@ -43,7 +43,7 @@ import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
-import { getTexture } from './pixiTextures';
+import { getTexture, PLAYER_ART_BASE_W } from './pixiTextures';
 import { getGlowTexture, getEggTexture, getVignetteTexture, getVignetteTextureNarrow, getSoftShadowTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 import { FONT_STACK } from '../config/font';
@@ -558,14 +558,17 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
     : 'player';
 };
 // 立ち絵のベース拡大率(クラス絵=幅基準 / 武将立ち絵=高さ基準 / 不明クラス=枠内接)。分身と共有。
-// クラス絵は整数スケール=等倍×1.0(社長裁定v0.25.1759「aで」→×2実験(v1760)→v0.25.1761「等倍に戻そう」):
-// 旧86/78≈1.103の非整数nearest拡大が「ドット潰れ」(1ドットが1px/2px列にまだら化)の主因だった。
-// 素材実寸(幅78px)のまま描く。
+// クラス絵は表示基準幅 PLAYER_ART_BASE_W(78px)へ正規化(社長決定v0.25.1763・エリオット式=NPC方式):
+//  ・現行素材(実寸78px幅)では 78/78=×1.0 で従来(v0.25.1761 等倍)とビット一致=挙動不変。
+//  ・高解像度素材(同じ構図を整数倍×2〜×4で描き出した版)が届いたら自動で縮小表示
+//    (ロード側 pixiTextures が linear+mipmap 化)。画面上のサイズは変えず密度だけ上がる=
+//    NPCが潰れないのと同じ理屈(1ドット<1画面px)。
+// 旧86/78≈1.103の非整数nearest拡大が「ドット潰れ」の主因だった経緯は v0.25.1759 参照。
 const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): number => {
   if (hasFullWarlordSet(p.equipment)) return ((PLAYER_CLASS_MENU_SPRITE_WIDTH / 128) * 108) / tex.height;
   const knownClass = p.characterClass === 'mage' || p.characterClass === 'warrior' ||
     p.characterClass === 'rogue' || p.characterClass === 'necromancer';
-  return knownClass ? 1 : containScale(boxW, boxH, tex.width, tex.height);
+  return knownClass ? PLAYER_ART_BASE_W / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
 const PLAYER_WALK_BOB_PX = 0.8;
 // ノックバック時の小さな縦の跳ね(社長指示「少し跳ねる感じ」)。敵・プレイヤー共通。視覚のみ=

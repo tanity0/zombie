@@ -69,6 +69,9 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
       const im = imgs[MENU_WALK_PINGPONG[step] ?? 0];
       if (!im || !im.complete || im.naturalWidth === 0) return; // 未ロード中は前コマ表示のまま(チラつき防止)
       lastStep = step;
+      // 高解像度素材(社長決定v0.25.1763・NPC方式)の受け入れ: 素材がキャンバスより大きい=縮小になる時だけ
+      // 平滑(linear相当)で焼く。等倍素材(現行)は従来どおり nearest(ドットの太りを全コマ均一に)=挙動不変。
+      ctx.imageSmoothingEnabled = im.naturalWidth > canvas.width;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
     };
