@@ -96,6 +96,13 @@ describe('旧案文面の削除・置換監査(指示書10章)', () => {
       'ミラ「こちらミラ。変異体に対する薬が完成した。至急、回収に来て。時間がない」'
     );
   });
+
+  it('M6ではフィル本人・保存槽・中身を見せない(修正差分メモD-05: 施錠された冷却区画の違和感のみ)', () => {
+    const m6 = [...st('stage-6').main.debrief, ...(st('stage-6').main.clearReport ?? []),
+      ...st('stage-6').main.synopsis, ...st('stage-6').main.briefing].join('');
+    expect(m6).toContain('施錠された冷却設備付き');
+    expect(m6).not.toMatch(/冷凍保存|保存槽|成人男性|フィル/);
+  });
 });
 
 describe('M7グレン戦直前・確定稿(指示書4.7「台詞順が完全一致」)', () => {
@@ -179,12 +186,13 @@ describe('二人組の確定会話(指示書4章)', () => {
 describe('通常エンディング(指示書5章)', () => {
   it('聴取記録の台本が確定稿と完全一致(サブ達成状況で本文を変えない=単一の台本)', () => {
     expect(ENDING_HEADER).toBe('［軍本部／聴取記録］');
+    // 修正差分メモD-10(2026-07-16): 本名フル開示「ノラ・ソレル」+感染起点の質問文を改稿。
     expect(ENDING_SCRIPT).toEqual([
       { speaker: '記録官', text: '本名は' },
-      { speaker: '女', text: 'ノラ' },
+      { speaker: '女', text: 'ノラ・ソレル' },
       { speaker: '記録官', text: 'グレンと名乗っていた男は、研究所主任グレアム・ケスラーか' },
       { speaker: 'ノラ', text: 'はい' },
-      { speaker: '記録官', text: '研究所の資料から、感染の起点はグレンだったと断定したが？' },
+      { speaker: '記録官', text: '研究所の感染は、彼の発症が起点で間違いないか' },
       { speaker: 'ノラ', text: 'はい' },
       { speaker: '記録官', text: 'なぜそのまま研究所を後にした？' },
       { speaker: 'ノラ', text: '研究を止められるわけにはいかなかった' },
@@ -200,9 +208,10 @@ describe('資料「グレンの薬」(指示書6.1)と洋館再訪/EX(指示書7
   it('グレンの薬=確定文面。ステージ勝利のunlockedRecordIdsには載っていない(条件付き解放)', () => {
     const rec = getArchiveRecord('mission-glen-medicine');
     expect(rec?.title).toBe('グレンの薬');
+    // 修正差分メモD-10の確定文面(句点区切りの2文目)。
     expect(rec?.body).toEqual([
       'ミラから託された未登録薬剤。',
-      '変異体を治療するためのものなのか、グレンが最後に調合したと思われる薬。現状は効果不明。',
+      '変異体を治療するためのものなのか。グレンが最後に調合したと思われるが、現状は効果不明。',
     ]);
     for (const s of STAGES) {
       expect(s.main.unlockedRecordIds ?? [], s.id).not.toContain('mission-glen-medicine');
@@ -221,16 +230,19 @@ describe('資料「グレンの薬」(指示書6.1)と洋館再訪/EX(指示書7
 
   it('EX=軍の正式任務(出撃説明・任務報告が確定2行/開始通信なし/ボス名にPHILL・フィルを使わない)', () => {
     const ex = st('stage-ex1').main;
-    expect(ex.title).toBe('異常変異体調査');
+    // 修正差分メモD-07(2026-07-16): EXの表示は全箇所「未確認変異体」(旧: 異常変異体)。
+    expect(ex.title).toBe('未確認変異体調査');
     expect(ex.briefing).toEqual([
       '洋館跡地で既存分類に該当しない大型変異体を確認。',
       '現地へ向かい、対象を調査・排除せよ。',
     ]);
-    expect(ex.clearReport).toEqual(['異常変異体を排除。', '発生原因は特定できず。']);
+    expect(ex.clearReport).toEqual(['未確認変異体を排除。', '発生原因は特定できず。']);
     expect(ex.dialogue).toEqual([]);
-    // ボス表示は「異常変異体」(useGameLoopのバナー)。ステージ文面にも PHILL/フィルの正体明示がない。
+    // ボス表示は「未確認変異体」(useGameLoopのバナー)。ステージ文面にも PHILL/フィルの正体明示がなく、
+    // 旧称「異常変異体」も残さない(D-07チェックリスト)。
     for (const text of playerFacingStrings(st('stage-ex1'))) {
       expect(text, text).not.toMatch(/フィル/);
+      expect(text, text).not.toMatch(/異常変異体/);
     }
   });
 

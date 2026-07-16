@@ -12,10 +12,10 @@ export const ENDING_HEADER = '［軍本部／聴取記録］';
 
 export const ENDING_SCRIPT: EndingLine[] = [
   { speaker: '記録官', text: '本名は' },
-  { speaker: '女', text: 'ノラ' },
+  { speaker: '女', text: 'ノラ・ソレル' },
   { speaker: '記録官', text: 'グレンと名乗っていた男は、研究所主任グレアム・ケスラーか' },
   { speaker: 'ノラ', text: 'はい' },
-  { speaker: '記録官', text: '研究所の資料から、感染の起点はグレンだったと断定したが？' },
+  { speaker: '記録官', text: '研究所の感染は、彼の発症が起点で間違いないか' },
   { speaker: 'ノラ', text: 'はい' },
   { speaker: '記録官', text: 'なぜそのまま研究所を後にした？' },
   { speaker: 'ノラ', text: '研究を止められるわけにはいかなかった' },

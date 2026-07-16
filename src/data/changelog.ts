@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1782',
+    items: [
+      'ストーリー文面を最新の正本に更新: EXの表記を「未確認変異体」へ統一、エンディングの台詞2箇所を改稿、洋館(M6)の任務報告を修正、再訪の操作表示を「投与する」に変更。',
+    ],
+  },
+  {
     version: '0.25.1781',
     items: [
       '拠点メニューの並び替え: オプションを一番下に移動。',

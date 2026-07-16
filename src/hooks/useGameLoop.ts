@@ -1871,7 +1871,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           playSfx('boss-appear');
         }
 
-        // --- the ONE ストーリーボス(M7=グレン巨大化 / EX=異常変異体) ---
+        // --- the ONE ストーリーボス(M7=グレン巨大化 / EX=未確認変異体) ---
         // 統合正本M7/10章: storyBossOnly ステージは通常湧き・各種イベントを全停止(上下の各ゲート)し、
         // 「導入会話(M7・会話なし=EXは即)→ボス出現→撃破→終幕→勝利」だけで構成する。ボスは既存の
         // giantbat(城ボス)を流用(新規アート禁止=指示書1)。勝利は帰還サークルを経由せず直接 gameWon。
@@ -1900,8 +1900,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // グレン巨大化の咆哮(確定台詞・指示書4.7)。
               useGameStore.getState().enqueueNpcDialogue([{ name: 'グレン', text: 'グガガガガガガガガ！' }]);
             } else {
-              // EX: ボス表示は「異常変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3)。
-              useGameStore.setState({ eventBannerText: '異常変異体', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              // EX: ボス表示は「未確認変異体」のみ(PHILL/フィルの名は出さない=統合正本10.3・
+              // 修正差分メモD-07で「異常変異体」から改称)。
+              useGameStore.setState({ eventBannerText: '未確認変異体', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             }
           } else if (storyBossSpawnedRef.current && storyBossWinAtRef.current === 0) {
             // 撃破検知: 場から giantbat が消えたら終幕へ(storyBossランには他の giantbat 供給経路がない)。

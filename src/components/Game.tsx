@@ -25,7 +25,7 @@ import { useGameControls } from '../hooks/useGameControls';
 import { computeViewport } from '../utils/viewport';
 import { playSfx } from '../audio/audioManager';
 
-// the ONE 洋館［SUB］再訪(統合正本9.3): 保存槽(洋館)接近中だけ出す操作ボタン。
+// the ONE 洋館［SUB］再訪(統合正本9.3): 保存槽(洋館)接近中だけ出す操作表示［投与する］。
 // 購読は boolean 1個(medicinePromptVisible・変化時のみ書かれる)=React再レンダ規律準拠の孤立小コンポーネント。
 const MedicinePrompt: React.FC = () => {
   const visible = useGameStore(s => s.medicinePromptVisible);
@@ -41,7 +41,7 @@ const MedicinePrompt: React.FC = () => {
       className="absolute left-1/2 z-40 -translate-x-1/2 rounded-none border border-amber-300/60 bg-black/70 px-5 py-3 text-[14px] font-bold tracking-wide text-amber-100 shadow-lg backdrop-blur-sm active:bg-black/85"
       style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 132px), 148px)' }}
     >
-      ［グレンの薬を使う］
+      ［投与する］
     </button>
   );
 };
@@ -251,7 +251,7 @@ const Game: React.FC<GameProps> = ({
       {/* 登場時のセリフ(時間停止・オートタイプ)。表示中だけ自前 raf で更新。 */}
       <IntroDialogue />
 
-      {/* 洋館再訪: 保存槽接近中の［グレンの薬を使う］(統合正本9.3)。 */}
+      {/* 洋館再訪: 保存槽接近中の［投与する］(統合正本9.3・修正差分メモD-09)。 */}
       <MedicinePrompt />
 
       {/* In-play version marker (bottom-left): same source as the title's
