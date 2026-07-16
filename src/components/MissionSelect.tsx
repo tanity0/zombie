@@ -13,12 +13,14 @@ import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import {
   STAGES, getStage, CHARACTER_CLASSES, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, SKILL_KEYS, SKILLS, MAX_EQUIPPED_SKILLS, WORLD_INTRO, BESTIARY,
-  GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel,
+  GACHA_PULL_COST, RARITY_LABEL, skillMaxLevel, skillDescForLevel, stageDateLabel, REVISIT_MISSION,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, type SkillRarity, type Stage
 } from '../data/campaign';
 import {
-  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore
+  getClearedStages, isStageUnlocked, setSelectedStageId, setSelectedFreeMode, unlockAllStages, resetProgress, getStageHighScore,
+  getStoryFlags, updateStoryFlags, setSelectedMission, getEventQuestMeta, type SelectedMission
 } from '../data/progress';
+import { subsAllCompletedFromMeta, revisitCardState, canShowEx } from '../utils/storyProgress';
 import {
   ARCHIVE_RECORDS, getArchiveRecord, loadStoryArchive, markRecordRead, consumeLatestUnlocked,
   type ArchiveRecord, type StoryArchiveState,
@@ -92,8 +94,8 @@ type Screen =
   | { name: 'weaponDev' }
   | { name: 'archive' }
   | { name: 'stageSelect' }
-  | { name: 'missionDetail'; stageId: string }
-  | { name: 'characterSelect'; stageId: string }
+  | { name: 'missionDetail'; stageId: string; mission?: SelectedMission }
+  | { name: 'characterSelect'; stageId: string; mission?: SelectedMission }
   | { name: 'loadout' };
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -148,6 +150,8 @@ const MISSION_TYPE_BADGE_CLS: Record<Stage['kind'], string> = {
   ex: 'bg-fuchsia-400/15 text-fuchsia-100',
   free: 'bg-emerald-400/15 text-emerald-100',
 };
+// SUBミッション(任意サブ表示カード/洋館再訪)のバッジ。MAIN/EXと同じく文字で識別(色だけに依存しない)。
+const SUB_BADGE_CLS = 'bg-sky-400/15 text-sky-100';
 
 // キャラ選択の全画面立ち絵(社長提供)。クラス→立ち絵ファイルの対応=武器イメージで割当(差し替え容易)。
 const CLASS_PORTRAIT: Record<CharacterClass, string> = {
@@ -269,6 +273,17 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     consumeLatestUnlocked();
     setNewRecordsNotice([]);
   };
+  // 統合正本8.2 / 指示書6.2: サブ未完了で初回エンディングを見た後だけ、一度きりのヒントを出す。
+  // 閉じたら hintShown を永続化して二度と出さない(通常EDを「バッドエンド」とは呼ばない)。
+  const [storyHintNotice, setStoryHintNotice] = useState<boolean>(() => {
+    const f = getStoryFlags();
+    return f.endingSeen && !f.hintShown && !subsAllCompletedFromMeta();
+  });
+  const closeStoryHintNotice = () => {
+    playSfx('ui-select');
+    updateStoryFlags({ hintShown: true });
+    setStoryHintNotice(false);
+  };
 
   // タイトル曲の自動再生制限対策(初回タップで確実に再生開始)。
   useEffect(() => {
@@ -280,11 +295,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const goStageSelect = () => { playSfx('ui-select'); setCleared(getClearedStages()); setScreen({ name: 'stageSelect' }); };
 
   // --- 開始処理 ---------------------------------------------------------
-  const startMission = (stageId: string, charId: CharacterClass) => {
+  const startMission = (stageId: string, charId: CharacterClass, mission: SelectedMission = 'main') => {
     playSfx('mission-start');
     useGameStore.getState().setDanceTestMode(false);
     setSelectedStageId(stageId);          // 勝利時にこのステージをクリア扱いにする(App側)
     setSelectedFreeMode(freeMode);        // フリー(周回)=会話なし & クリア進行に影響させない
+    setSelectedMission(mission);          // 'revisit'=洋館［SUB］再訪(会話なし・保存槽ゴール・任務報告なし)
     // 装備(サブ/スキル)はトップの装備メニューで選んだ永続値を resetGame がそのまま反映する(ここでは触らない)。
     onStartGame(charId);
   };
@@ -313,8 +329,9 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         >
           <div className="glass-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">お知らせ</div>
+            {/* 統合正本8.1 / 指示書6.1の確定文言。 */}
             <h3 className="mb-2 text-lg font-semibold text-amber-100" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
-              資料が追加されました
+              新しい資料が資料室に追加されました
             </h3>
             <p className="mb-4 text-[12px] leading-relaxed text-white/75">
               資料室に新しい記録が{newRecordsNotice.length}件届いています。
@@ -323,6 +340,28 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               type="button"
               onClick={closeNewRecordsNotice}
               className="w-full rounded-none bg-amber-400/15 px-3 py-2.5 text-[12px] font-semibold text-amber-100"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+      {/* 統合正本8.2: サブ未完了ヒント(初回EDの後のみ・一度きり)。資料追加ポップアップとは排他
+          (medicine経路=サブ3本完了とhint経路=未完了は同時に成立しない)。 */}
+      {newRecordsNotice.length === 0 && storyHintNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-3"
+          style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
+        >
+          <div className="glass-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
+            <div className="mb-1 text-[10px] uppercase tracking-widest text-purple-200/70">お知らせ</div>
+            <p className="mb-4 text-[13px] leading-relaxed text-white/85">
+              グレンとミラとの関係を深めると、新たな資料が見つかるかもしれない。
+            </p>
+            <button
+              type="button"
+              onClick={closeStoryHintNotice}
+              className="w-full rounded-none bg-purple-400/15 px-3 py-2.5 text-[12px] font-semibold text-white/85"
             >
               閉じる
             </button>
@@ -340,18 +379,19 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // ====================================================================
   const renderStageSelect = () => {
     const mains = STAGES.filter(s => s.kind === 'main');
-    const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden); // hidden=一旦非表示(社長指示v0.25.1752: ex2)
+    // EXノード(統合正本10.1 / 指示書8.1): 条件成立(再訪で薬を使用)まで一切出さない(伏せ表示もしない)。
+    // hidden=旧ex2の残置データ(導線なし)。
+    const storyFlags = getStoryFlags();
+    const exs = STAGES.filter(s => s.kind === 'ex' && !s.hidden && canShowEx(storyFlags) && isStageUnlocked(s, cleared));
     return (
       <>
         <Header title="ステージ選択" subtitle="クリアで次のステージが解放される" onBack={() => setScreen({ name: 'home' })} />
         <div className="p-3 space-y-4">
           {mains.map((stage, i) => <StageNode key={stage.id} stage={stage} index={i} />)}
-          {exs.some(s => isStageUnlocked(s, cleared)) && (
-            <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">クリア後 / 隠しステージ</div>
+          {exs.length > 0 && (
+            <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">追加任務</div>
           )}
-          {exs.map((stage, i) => isStageUnlocked(stage, cleared)
-            ? <StageNode key={stage.id} stage={stage} index={mains.length + i} />
-            : <LockedExHint key={stage.id} />)}
+          {exs.map((stage, i) => <StageNode key={stage.id} stage={stage} index={mains.length + i} />)}
         </div>
       </>
     );
@@ -365,6 +405,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const done = cleared.has(stage.id);
     const hiScore = getStageHighScore(stage.id);
     const missions = [stage.main];
+    // 任意サブ(二人組クエスト)の納品状況(表示用CLEAR)。メニュー描画時のみのlocalStorage読取。
+    const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;
+    // 洋館［SUB］再訪(stage-6のみ・統合正本9章): 条件成立で同じ親ノードにカード追加。
+    // クリア後(薬使用後)は CLEAR 表示+非活性(指示書9「破綻させない」)。
+    const revisitState = stage.id === 'stage-6'
+      ? revisitCardState(getStoryFlags(), subsAllCompletedFromMeta())
+      : 'hidden';
     return (
       <div
         // 各ノードを左からスッとカスケード表示(旧StageRowと同じ演出をノード単位に引き継ぐ)。
@@ -373,7 +420,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       >
         <div className="px-1 pb-1.5">
           <span className="block text-[11px] font-semibold tracking-wide text-purple-200/70 tabular-nums">
-            DAY {stage.day} / {stage.time}
+            {stageDateLabel(stage)}
           </span>
           <span className="block text-[15px] font-bold text-white truncate">{stage.locationTitle}</span>
         </div>
@@ -394,7 +441,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <span className="flex-1 min-w-0">
                 <span className="block text-[14px] font-semibold text-white truncate">
                   {m.title}
-                  {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">クリア済</span>}
+                  {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
                   {unlocked && hiScore > 0 && (
                     <span className="ml-2 align-middle text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>
                   )}
@@ -406,17 +453,48 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               {unlocked ? <ChevronLeft size={16} className="rotate-180 text-white/40" /> : <Lock size={15} className="text-white/40" />}
             </button>
           ))}
+          {/* 任意サブ表示カード(指示書3: 3本共通のタイトル・説明)。実体は出撃中の二人組クエスト
+              なので出撃ボタンではなく情報カード。納品済みは CLEAR。 */}
+          {unlocked && stage.subs.map(s => (
+            <div key={s.id} className="ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left">
+              <span className={`shrink-0 rounded-none px-2 py-1 text-[10px] font-bold tracking-wider ${SUB_BADGE_CLS}`}>SUB</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold text-white truncate">
+                  {s.title}
+                  {subQuestDone && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">{s.desc}</span>
+              </span>
+              {subQuestDone && <Check size={15} className="shrink-0 text-emerald-300/70" />}
+            </div>
+          ))}
+          {/* 洋館［SUB］再訪(統合正本9.1): MAINと同居する子カード。 */}
+          {revisitState !== 'hidden' && (
+            <button
+              type="button"
+              disabled={revisitState !== 'available'}
+              onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id, mission: 'revisit' }); }}
+              className={`ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left transition-[filter] ${
+                revisitState === 'available' ? 'active:brightness-110' : 'is-off'
+              }`}
+            >
+              <span className={`shrink-0 rounded-none px-2 py-1 text-[10px] font-bold tracking-wider ${SUB_BADGE_CLS}`}>SUB</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold text-white truncate">
+                  {REVISIT_MISSION.title}
+                  {revisitState === 'cleared' && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">{REVISIT_MISSION.summary}</span>
+              </span>
+              {revisitState === 'available'
+                ? <ChevronLeft size={16} className="rotate-180 text-white/40" />
+                : <Check size={15} className="shrink-0 text-emerald-300/70" />}
+            </button>
+          )}
         </div>
       </div>
     );
   };
-
-  const LockedExHint: React.FC = () => (
-    <div className="w-full flex items-center gap-3 rounded-none bg-black/25 px-3 py-3 opacity-60">
-      <span className="shrink-0 w-11 h-11 rounded-none bg-purple-400/5 flex items-center justify-center"><Lock size={16} className="text-white/40" /></span>
-      <span className="text-[12px] text-white/45">？？？（未解放）</span>
-    </div>
-  );
 
   // ====================================================================
   // ミッション詳細(出撃ページ。メインミッションのブリーフィング + サブミッション)
@@ -424,20 +502,24 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 状況説明(synopsis) → 任務目標(summary) → 特殊条件(specialConditions・あれば) →
   // 特殊支給装備(specialEquipment・あれば)。開発コード(M1等)はここでも表示しない。
   // ====================================================================
-  const renderMissionDetail = (stageId: string) => {
+  const renderMissionDetail = (stageId: string, missionKind: SelectedMission = 'main') => {
     const stage = getStage(stageId);
     if (!stage) return null;
-    const m = stage.main;
-    const done = cleared.has(stage.id);
+    // 洋館［SUB］再訪(統合正本9章): stage-6と同じ親ノード情報の下に REVISIT_MISSION を表示する。
+    const isRevisit = missionKind === 'revisit';
+    const m = isRevisit ? REVISIT_MISSION : stage.main;
+    const done = isRevisit ? getStoryFlags().revisitCleared : cleared.has(stage.id);
+    // クリア後の記録(debrief)が空のミッション(再訪=秘密行動)は状況説明のまま。
+    const descLines = done && m.debrief.length > 0 ? m.debrief : m.synopsis;
     return (
       <>
-        <Header title={`DAY ${stage.day} / ${stage.time}`} subtitle={stage.locationTitle} onBack={() => setScreen({ name: 'stageSelect' })} />
+        <Header title={stageDateLabel(stage)} subtitle={stage.locationTitle} onBack={() => setScreen({ name: 'stageSelect' })} />
         <div className="menu-stagger p-3 space-y-3">
           <h2 className="px-1 text-[18px] font-bold tracking-wide text-white">{m.title}</h2>
 
           {/* 説明欄: 未クリアは「状況説明」、クリア後は「クリア後の記録(debrief)」を表示。 */}
-          <Section label={done ? 'クリア後' : '状況説明'}>
-            {(done ? m.debrief : m.synopsis).map((line, i) => (
+          <Section label={done && m.debrief.length > 0 ? 'クリア後' : '状況説明'}>
+            {descLines.map((line, i) => (
               <p key={i} className="text-[13px] leading-relaxed text-white/85">{line}</p>
             ))}
           </Section>
@@ -460,21 +542,26 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </Section>
           )}
 
-          <Section label="サブミッション">
-            {stage.subs.length === 0
-              ? <p className="text-[12px] text-white/45">{stage.kind === 'free' ? 'なし（周回ミッション）' : '準備中（後日追加）'}</p>
-              : stage.subs.map(s => (
-                <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
-                  <div className="text-[13px] font-semibold text-white">{s.title}</div>
-                  <div className="text-[11px] text-white/55">{s.desc}</div>
-                </div>
-              ))}
-          </Section>
+          {!isRevisit && (
+            <Section label="サブミッション">
+              {stage.subs.length === 0
+                ? <p className="text-[12px] text-white/45">{stage.kind === 'free' ? 'なし（周回ミッション）' : 'なし'}</p>
+                : stage.subs.map(s => (
+                  <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
+                    <div className="text-[13px] font-semibold text-white">
+                      {s.title}
+                      {getEventQuestMeta(stage.id).sub && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
+                    </div>
+                    <div className="text-[11px] text-white/55">{s.desc}</div>
+                  </div>
+                ))}
+            </Section>
+          )}
 
           {/* 出撃導線は「出撃準備」のみ(フリー周回は廃止・社長指示)。上のメイン/サブミッション欄は
               後日「出撃時の進捗表示」に置き換える予定(ボタンではない)。 */}
           <Ff7rButton
-            onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId }); }}
+            onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
             className="w-full"
             emphasis
             fade="both"
@@ -491,7 +578,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラクター選択
   // ====================================================================
   // 参考レイアウト(社長提供): 全画面=選択中キャラの立ち絵 / 左下=情報集約 / 最下段=キャラ選択。
-  const renderCharacterSelect = (stageId: string) => {
+  const renderCharacterSelect = (stageId: string, missionKind: SelectedMission = 'main') => {
     // 前ランからの持ち越し装備(localStorage)。ラン開始時に該当スロットへ自動装備される。
     const carriedDef = equipmentById(getCarriedEquipId());
     const carriedIcon = carriedDef && hasEquipIcon(carriedDef.id) ? spritePath(equipIconName(carriedDef.id)) : null;
@@ -509,7 +596,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
         {/* 戻る(左上) */}
         <button
-          onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId }); }}
+          onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId, mission: missionKind }); }}
           className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 text-white/85 flex items-center gap-1 active:bg-black/65"
           style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
           aria-label="戻る"
@@ -548,7 +635,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
             {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
             <Ff7rButton
-              onClick={() => startMission(stageId, selectedClass)}
+              onClick={() => startMission(stageId, selectedClass, missionKind)}
               className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="スタート"
               emphasis
@@ -822,12 +909,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
   // --- ルーティング ----------------------------------------------------
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
-  if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId);
+  if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
   return (
     <Shell>
       {screen.name === 'home' && renderHome()}
       {screen.name === 'stageSelect' && renderStageSelect()}
-      {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId)}
+      {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}
       {screen.name === 'loadout' && renderLoadout()}
       {screen.name === 'options' && renderOptions()}
       {screen.name === 'weaponDev' && renderWeaponDev()}

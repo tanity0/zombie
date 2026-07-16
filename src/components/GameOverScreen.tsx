@@ -8,8 +8,8 @@ import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equip
 import { spritePath } from '../utils/spriteLoader';
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
-import { getSelectedStageId, submitStageHighScore } from '../data/progress';
-import { getStage } from '../data/campaign';
+import { getSelectedStageId, getSelectedMission, submitStageHighScore } from '../data/progress';
+import { getStage, stageDateLabel, REVISIT_MISSION } from '../data/campaign';
 import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRecord } from '../data/storyArchive';
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
@@ -167,11 +167,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // ステージIDの解決はハイスコア送信と同じ getSelectedStageId()(localStorage・store外の既存正本)。
   // 死亡/撤退/ベンチでは won=false なので mission は undefined のまま=任務報告欄は出ない。
   const stageId = won ? getSelectedStageId() : '';
-  // PACING_PUZZLE.md §6.19 M42: clearReport/資料解放は選択したミッションのデータだけを参照する
-  // (現状=stage.main。SUB実装時にここを missionId 経由の参照へ広げれば誤表示しない)。
+  // PACING_PUZZLE.md §6.19 M42: clearReport/資料解放は選択したミッションのデータだけを参照する。
+  // 洋館［SUB］再訪(selectedMission='revisit')は REVISIT_MISSION を参照=MAINの報告/資料と混同しない。
   const stage = stageId ? getStage(stageId) : undefined;
-  const mission = stage?.main;
-  const clearReportLines = (mission?.clearReport?.length ? mission.clearReport : mission?.debrief) ?? [];
+  const missionKind = won ? getSelectedMission() : 'main';
+  const mission = missionKind === 'revisit' ? REVISIT_MISSION : stage?.main;
+  // 統合正本9.4 / 指示書7.3: suppressDebrief=任務報告欄そのものを出さない(debriefフォールバックも抑止)。
+  const clearReportLines = mission?.suppressDebrief
+    ? []
+    : ((mission?.clearReport?.length ? mission.clearReport : mission?.debrief) ?? []);
   const [unlockedRecordIds, setUnlockedRecordIds] = useState<string[]>([]);
   const [openRecordId, setOpenRecordId] = useState<string | null>(null);
   const [archiveListOpen, setArchiveListOpen] = useState(false);
@@ -180,9 +184,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     // クリア確定時に1回だけ呼ぶ(冪等な関数だが、呼び出し自体もrefガードで重複させない)。
     if (archiveUnlockedRef.current || !won || !stageId) return;
     archiveUnlockedRef.current = true;
-    const recordIds = mission?.unlockedRecordIds ?? [];
+    // 秘密再訪は資料解放なし(統合正本9.4「軍の任務記録・資料室へ投薬結果を追加しない」)。
+    const recordIds = (missionKind === 'revisit' ? [] : mission?.unlockedRecordIds) ?? [];
     if (recordIds.length) setUnlockedRecordIds(unlockRecordsForStage(stageId, recordIds));
-  }, [won, stageId, mission]);
+  }, [won, stageId, mission, missionKind]);
   const unlockedRecords = unlockedRecordIds
     .map(id => getArchiveRecord(id))
     .filter((r): r is ArchiveRecord => !!r);
@@ -285,7 +290,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               ミッション名を表示(追補1-6の表示順どおり)。勝利時・ステージ情報が引けた時だけ。 */}
           {won && stage && mission && (
             <p className="mt-1 text-[12px] text-purple-200/70 tracking-wide">
-              DAY {stage.day} / {stage.time}{'　'}{stage.locationTitle}{'　'}{mission.title}
+              {stageDateLabel(stage)}{'　'}{stage.locationTitle}{'　'}{mission.title}
             </p>
           )}
           {/* 勝利時の「森を生き延びた」は撤去(社長指示v0.25.1671)。ベンチ/撤退の文言のみ残す。 */}
