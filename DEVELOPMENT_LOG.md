@@ -1,5 +1,39 @@
 # Development Log
 
+## v0.25.1762 — ストーリー『the ONE』一括実装(統合正本+一括制作指示書・社長指示)【2026-07-16 11:26 JST】
+- **正本**: Google Docs『the ONE』統合正本・制作製本版(2026-07-16)+一括制作指示書。1PR/段階コミット5本
+  (story-data-model → selection-ui → content-m1-m7 → branch-revisit-ex → tests-and-cleanup)。
+- **データ層**: `Stage.timeLabel`(M6=某日／未明・EX=数日後／未明)/`storyBossOnly`/`StageMission.suppressDebrief`。
+  M2〜M7/EX文面を正本へ改修(旧ワクチン・息子・少年・始祖宿主・主人公実験ログ・自己投与ログ・腕足反復を削除/置換)。
+  M7確定6行(dialogue)・M6ミラ最終通信・EX出撃説明/報告の確定文面。`REVISIT_MISSION`(再訪)/`SUB_RESCUE_MISSION`
+  (任意サブ共通カード)/`stageDateLabel`。stage-ex1=EX異常変異体調査へ全面書き換え(旧洋館再訪EX構造は廃止)。
+- **状態**: `StoryFlags`(endingSeen/hintShown/medicineOwned/medicineUsed/revisitCleared・旧セーブ=全false)+
+  `selectedMission`('main'|'revisit')を progress.ts に永続。判定は `utils/storyProgress.ts` 純関数
+  (subsAllCompleted=stage1/3/4・revisitCardState・canShowEx・endingFollowup)。
+- **UI**: ステージ選択=stageDateLabel見出し/CLEARタグ/任意サブSUBカード(1/3/4)/再訪SUBカード(stage-6・
+  条件成立で出現/クリア後CLEAR+非活性)/EXノードは薬使用後のみ(伏せ表示なし)。リザルト=再訪は
+  suppressDebriefで任務報告欄ごと非表示+資料解放なし。資料追加ポップアップ=確定文言へ。ヒント(初回EDのみ)。
+- **ゲーム内**: 二人組会話を確定稿へ(強制=M1初遭遇5行/サブ受注・完了=ステージ別/M5=遭遇のみ2行・報酬なしで
+  meta.sub化)。storyBossOnly(M7/EX)=通常湧き・城ボス・ハンター・ゲート・紅き夜・死神・演出波・演目を全停止し
+  「導入会話→giantbat即出現(M7=グレン咆哮/EX=異常変異体バナー)→撃破→終幕(サブ3本完了でミラ『グレンの薬を
+  託すよ』+グレン『……』)→直接勝利」。再訪ラン=通常湧き維持・城ボスのみ停止・洋館接近で［グレンの薬を使う］
+  →1.6秒後勝利(成功演出なし)。
+- **エンディング**: `EndingScreen`(聴取記録タップ/オート送り→暗転→PHILL→最小スタッフロール)。M7勝利→
+  リザルト「メニューに戻る」で再生。終了時 endingSeen+サブ3本完了なら薬付与+資料「グレンの薬」解放
+  (latestUnlocked→メニューのポップアップが自然発火)。
+- **テスト**: 新規27件(storyProgress 10 / storyCanon 17=親ノード8本の日時場所・M番号非露出・旧文面監査・
+  確定台詞完全一致・ED台本・再訪/EX不変条件)。lint/typecheck/全テスト/build green(下の検証参照)。
+- **既知差分(要社長裁定)**: ①M7/EXボス=giantbat流用(新規アート禁止のため。EXの差別化未実装)
+  ②M7導入区間=開始時会話で代替(移動区間なし) ③スタッフロール文面未支給=最小実装(the ONEのみ)
+  ④ショップ復活アイテム「ワクチン」はゲーム仕様として残置 ⑤旧stage-ex2=hidden残置(正史外)
+  ⑥ステージ5の旧サブ(赤5体+100G)は遭遇のみ化で消滅(正本の「サブ3本+M5遭遇」準拠)。
+- Files: `src/data/campaign.ts` `src/data/progress.ts` `src/data/storyArchive.ts` `src/data/ending.ts`(新)
+  `src/data/storyCanon.test.ts`(新) `src/utils/eventQuest.ts` `src/utils/storyProgress.ts`(新)
+  `src/utils/storyProgress.test.ts`(新) `src/store/gameStore.ts` `src/hooks/useGameLoop.ts` `src/App.tsx`
+  `src/components/MissionSelect.tsx` `src/components/GameOverScreen.tsx` `src/components/EndingScreen.tsx`(新)
+  `src/components/Game.tsx` `src/pixi/pixiScene.ts` `src/types/game.ts` `src/data/changelog.ts` `package.json`。
+
+
 ## v0.25.1761 — プレイヤー立ち絵を等倍へ戻す(社長指示)【2026-07-16 09:42 JST】
 - `playerBaseScale` クラス絵分岐 ×2.0(実験)→**×1.0**。v1759の状態に復帰。
 - チルトシフトの扱い(全OFF案(a)/妥協案(b))は社長裁定待ちのまま。
