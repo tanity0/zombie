@@ -2608,6 +2608,17 @@ export class PixiScene {
     // worldGroupの現在値で逆変換してローカルに張り直す=フィルタ枠は常に画面ぴったり・
     // tiltShift.start/end(画面px)はそのままで正しくなる。zoom=1でも同式で(0,0,w,h)に一致。
     this.syncWorldFilterArea();
+    // 被写界深度(tilt-shift)のシャープ帯をプレイヤーの画面Yへ毎フレーム追従(社長指示v0.25.1758
+    // 「(ドット絵の滲みの正体=チルトシフト)プレイヤーは外して」)。帯が固定比率(0.54)だと立ち位置
+    // (屋外=camdownで0.58/ラボ・屋内=0.50)とズレ、プレイヤーに薄いボケが常時乗っていた。
+    // start/endは画面px扱い(上のfilterArea追従でズーム中も画面基準のまま)なので、ズーム込みの
+    // 実画面Yを渡す=プレイヤーは常にピント(ボケ0)。ボケの絵作り(上下のDoF)は従来のまま。
+    if (this.tiltShift) {
+      const tz = this.L.worldGroup.scale.x || 1;
+      const bandY = (this.L.world.position.y + zpy) * tz + this.L.worldGroup.position.y;
+      this.tiltShift.start = { x: 0, y: bandY };
+      this.tiltShift.end = { x: this.screenW, y: bandY };
+    }
     // スモッグ: 各層1枚を画面に固定し、texture を右へ流す(tilePosition.x↑)+揺らめき。縦は位置の bob で揺らめき。
     // 奥レイヤーは world 内なので camera/shake を打ち消して画面にピン留め(子は素の画面座標で配置)。
     this.bgCloudLayer.position.set(s.camera.x - sx, s.camera.y - sy);
