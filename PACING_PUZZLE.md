@@ -2372,6 +2372,44 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
   - 検証: typecheck / eslint(8ファイル) / related 147件green(namedEnemyテスト新旧+文中置換5ケース)。
     実機確認(ネームプレート・年表・死因表示)は社長へ持ち越し。
 
+## 6.21 バッチM46: ボットレポート計測拡張 第2弾=与ダメ/即死/近接ペース(社長指示2026-07-16・Sonnet実装用)
+
+### 背景
+テスト結果(`TEST_HANDOFF/results/20260716-1143-knife-dps-theory.md`)で、ナイフ系の理論DPSがt4以降で
+銃全系統を逆転すると判明(t5=68.6 vs 最強銃50.1・フル盛りで約3倍)。社長方針=**A寄り(近接特化ビルドは
+許す)だが「お手軽すぎ」なので調整を検討**。調整(即死しきい値等)の前後比較のため、ボットで
+**実効DPS・即死チャネルの寄与・近接の実効ペース**を測れるようにする。**計測のみ=ゲーム挙動・数値は一切不変**(M35と同思想)。
+
+### 仕様
+1. **`src/utils/botTelemetry.ts` に追加**(M35と同パターン・`resetBotTelemetry()`で新カウンタも0に):
+   - `recordDamageDealt(channel: 'gun' | 'melee' | 'other', amount: number)`:
+     プレイヤー起因で敵に発生させたダメージ量を加算。**オーバーキル込み**(HP床クランプ前のdmg値)。
+     蓄積形は `damageDealt: { gun: number; melee: number; other: number }`。
+   - `recordFinisherKill()`: 気絶中の敵への近接即死(gameStoreの `killed.push({ enemy, finisher: true })` 箇所)。
+     累計 `finisherKills`。**即死はダメージとして加算しない(件数のみ)**。
+   - `recordMeleeSwing(hitCount: number)`: 近接カウンター振り1回ごとに呼ぶ(hitCount=その振りで
+     当てた敵数)。累計 `meleeSwings` / `meleeHits`。
+2. **チャネル定義(これに従う。迷う箇所が出たら★未決に書いて停止)**:
+   - `melee` = 近接カウンター振りの通常ダメージ+気絶ボスへの5×フィニッシュ打+刀のオート斬撃/一閃。
+   - `gun` = プレイヤーの発射弾のヒット(handgun/shotgun/rifle系+PHILL銃)。
+   - `other` = それ以外のプレイヤー起因ダメージ(サブウェポン・スキル・タレット・センサー地雷・設置物・爆発等)。
+   - 敵起因・環境起因は数えない。
+3. **計測の狙いは gun/melee の比較**。`other` は参考値=網羅漏れは許容するが、**把握した未計測経路は
+   完了報告に列挙する**(黙って落とさない)。
+4. **レポート出力**: 実機 `[BOT_REPORT]`(useGameLoop)とヘッドレス RunReport(playtest)の**両方**へ
+   `damageDealt { gun, melee, other, total }` / `finisherKills` / `meleeSwings` / `meleeHits` を追加
+   (totalは出力時に合算で可)。
+5. リセット: 既存の `resetBotTelemetry()`(gameStore resetGame内)に乗せる。
+
+### 受け入れ条件
+1. botTelemetry の新カウンタの加算/リセットのユニットテスト(既存 `botTelemetry.test.ts` に追記)。
+2. ヘッドレスのボットスモーク(playtest系)で `damageDealt.total > 0`、近接が発生するランで `meleeSwings > 0` が出力される。
+3. ゲーム挙動・数値は不変(カウンタ加算のみ・スカラー)。typecheck+eslint+related green。負荷1/10。
+4. 完了報告に「otherの未計測経路(あれば)」を列挙。
+
+### 状態
+- **仕様確定・Sonnet実装中**(社長指示「テストAIの拡充はやって」2026-07-16)。
+
 ## 実装順とステータス
 | バッチ | 内容 | 状態 |
 |---|---|---|
@@ -2412,6 +2450,7 @@ shopReopenAt未設定で即再オープンのループに入り得た)。v0.25.1
 | M43 | M1〜M7文面の順次実装(仕様書12章-7) | 未着手(文面は社長/ストーリー側から) |
 | M44 | 通信ログ読み返し(仕様書4章・旧M42から分離) | 未着手 |
 | M45 | ネームド名を「CODE:ローマ字」表記へ(§6.20) | **実装済み v0.25.1756**(年表既存行の表示時正規化・天使接頭辞なし込み) |
+| M46 | ボット計測拡張第2弾=与ダメ/即死/近接ペース(§6.21) | 仕様確定・Sonnet実装中(ナイフDPS実測の前提) |
 | M10 | バランス走査=ビルド別ボットラン(§5.11・M9後**+M17後推奨**) | 未着手(社長採用v0.25.1467) |
 | M12 | 設計電卓=プロト武器バランス探索(§5.13・M10後) | 未着手(社長採用v0.25.1470) |
 | M13 | ネームド(宿敵)システム(§5.14) | **実装済み v0.25.1494** |

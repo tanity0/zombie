@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1783',
+    items: [
+      '開発向け: ボット計測拡張(与ダメージ/即死/近接ペース)の仕様書を追加(バッチM46)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1782',
     items: [
       'ストーリー文面を最新の正本に更新: EXの表記を「未確認変異体」へ統一、エンディングの台詞2箇所を改稿、洋館(M6)の任務報告を修正、再訪の操作表示を「投与する」に変更。',
