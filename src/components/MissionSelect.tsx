@@ -403,99 +403,79 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 日時・場所ノード(親)+ ミッション子カードの縦積み。子カードは配列でmapする構造にしておき、
   // 将来SUBミッションが増えた時もそのままノード直下へ並べられるようにする(追補1-3「同じ日時・場所で
   // 発生するミッションカードを縦に並べる」)。現状は各ステージに main のみ(subsは別の旧概念=未使用)。
+  // ステージ選択のノード(社長指示v0.25.1772でUI刷新): 「日付+場所」の親見出しをボタンの顔にして
+  // ノード全体を1つのタップ対象にする。ミッション行(MAIN/SUB)は枠なしの状態表示のみ=ボタンに見せない
+  // (旧: ミッションごとに枠ボタン→SUB情報カードが「押せないボタン」に見えて紛らわしかった)。
+  // 再訪(SUB)の出撃導線はミッション詳細ページ内へ移設。
   const StageNode: React.FC<{ stage: Stage; index?: number }> = ({ stage, index = 0 }) => {
     const unlocked = isStageUnlocked(stage, cleared);
     const done = cleared.has(stage.id);
     const hiScore = getStageHighScore(stage.id);
-    const missions = [stage.main];
     // 任意サブ(二人組クエスト)の納品状況(表示用CLEAR)。メニュー描画時のみのlocalStorage読取。
     const subQuestDone = stage.subs.length > 0 && getEventQuestMeta(stage.id).sub;
-    // 洋館［SUB］再訪(stage-6のみ・統合正本9章): 条件成立で同じ親ノードにカード追加。
-    // クリア後(薬使用後)は CLEAR 表示+非活性(指示書9「破綻させない」)。
+    // 洋館［SUB］再訪(stage-6のみ・統合正本9章)。ここでは行の状態表示のみ(導線は詳細ページ)。
     const revisitState = stage.id === 'stage-6'
       ? revisitCardState(getStoryFlags(), subsAllCompletedFromMeta())
       : 'hidden';
+    // ミッション状態行(枠なし)。バッジ+タイトル+CLEAR等のテキストのみ。
+    const missionLine = (badgeCls: string, badge: string, title: string, tags: React.ReactNode) => (
+      <span className="flex items-center gap-2 min-w-0">
+        <span className={`shrink-0 rounded-none px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${badgeCls}`}>{badge}</span>
+        <span className="min-w-0 truncate text-[13px] font-semibold text-white/90">{title}</span>
+        {tags}
+      </span>
+    );
     return (
-      <div
-        // 各ノードを左からスッとカスケード表示(旧StageRowと同じ演出をノード単位に引き継ぐ)。
-        className={unlocked ? 'menu-item-in' : undefined}
+      <button
+        type="button"
+        disabled={!unlocked}
+        onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
+        className={`ff7r-fade-right w-full rounded-none px-3 py-3 text-left transition-[filter] ${
+          unlocked ? 'active:brightness-110 menu-item-in' : 'is-off'
+        }`}
         style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
       >
-        <div className="px-1 pb-1.5">
-          <span className="block text-[11px] font-semibold tracking-wide text-purple-200/70 tabular-nums">
-            {stageDateLabel(stage)}
+        {/* 親見出し(日付+場所)=ボタンの顔。右にシェブロン/ロック。 */}
+        <span className="flex items-center gap-3">
+          <span className="flex-1 min-w-0">
+            <span className="block text-[11px] font-semibold tracking-wide text-purple-200/70 tabular-nums">
+              {stageDateLabel(stage)}
+            </span>
+            <span className="block text-[16px] font-bold text-white truncate">{stage.locationTitle}</span>
           </span>
-          <span className="block text-[15px] font-bold text-white truncate">{stage.locationTitle}</span>
-        </div>
-        <div className="space-y-1.5">
-          {missions.map((m, mi) => (
-            <button
-              key={mi}
-              type="button"
-              disabled={!unlocked}
-              onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id }); }}
-              className={`ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left transition-[filter] ${
-                unlocked ? 'active:brightness-110' : 'is-off'
-              }`}
-            >
-              <span className={`shrink-0 rounded-none px-2 py-1 text-[10px] font-bold tracking-wider ${MISSION_TYPE_BADGE_CLS[stage.kind]}`}>
-                {MISSION_TYPE_LABEL[stage.kind]}
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[14px] font-semibold text-white truncate">
-                  {m.title}
-                  {done && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
-                  {unlocked && hiScore > 0 && (
-                    <span className="ml-2 align-middle text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>
-                  )}
-                </span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">
-                  {unlocked ? m.summary : '前ステージのクリアで解放'}
-                </span>
-              </span>
-              {unlocked ? <ChevronLeft size={16} className="rotate-180 text-white/40" /> : <Lock size={15} className="text-white/40" />}
-            </button>
-          ))}
-          {/* 任意サブ表示カード(指示書3: 3本共通のタイトル・説明)。実体は出撃中の二人組クエスト
-              なので出撃ボタンではなく情報カード。納品済みは CLEAR。 */}
-          {unlocked && stage.subs.map(s => (
-            <div key={s.id} className="ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left">
-              <span className={`shrink-0 rounded-none px-2 py-1 text-[10px] font-bold tracking-wider ${SUB_BADGE_CLS}`}>SUB</span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[14px] font-semibold text-white truncate">
-                  {s.title}
-                  {subQuestDone && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
-                </span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">{s.desc}</span>
-              </span>
-              {subQuestDone && <Check size={15} className="shrink-0 text-emerald-300/70" />}
-            </div>
-          ))}
-          {/* 洋館［SUB］再訪(統合正本9.1): MAINと同居する子カード。 */}
-          {revisitState !== 'hidden' && (
-            <button
-              type="button"
-              disabled={revisitState !== 'available'}
-              onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id, mission: 'revisit' }); }}
-              className={`ff7r-fade-right w-full flex items-center gap-3 rounded-none px-3 py-3 text-left transition-[filter] ${
-                revisitState === 'available' ? 'active:brightness-110' : 'is-off'
-              }`}
-            >
-              <span className={`shrink-0 rounded-none px-2 py-1 text-[10px] font-bold tracking-wider ${SUB_BADGE_CLS}`}>SUB</span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-[14px] font-semibold text-white truncate">
-                  {REVISIT_MISSION.title}
-                  {revisitState === 'cleared' && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
-                </span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-white/70 truncate">{REVISIT_MISSION.summary}</span>
-              </span>
-              {revisitState === 'available'
-                ? <ChevronLeft size={16} className="rotate-180 text-white/40" />
-                : <Check size={15} className="shrink-0 text-emerald-300/70" />}
-            </button>
-          )}
-        </div>
-      </div>
+          {unlocked
+            ? <ChevronLeft size={16} className="rotate-180 shrink-0 text-white/40" />
+            : <Lock size={15} className="shrink-0 text-white/40" />}
+        </span>
+        {/* ミッション状態(枠なし・押せる見た目にしない)。ロック中は解放条件のみ。 */}
+        {unlocked ? (
+          <span className="mt-2 block space-y-1">
+            {missionLine(
+              MISSION_TYPE_BADGE_CLS[stage.kind], MISSION_TYPE_LABEL[stage.kind], stage.main.title,
+              <>
+                {done && <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>}
+                {hiScore > 0 && <span className="shrink-0 text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>}
+              </>
+            )}
+            {stage.subs.map(s => (
+              <React.Fragment key={s.id}>
+                {missionLine(
+                  SUB_BADGE_CLS, 'SUB', s.title,
+                  subQuestDone && <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>
+                )}
+              </React.Fragment>
+            ))}
+            {revisitState !== 'hidden' && missionLine(
+              SUB_BADGE_CLS, 'SUB', REVISIT_MISSION.title,
+              revisitState === 'cleared'
+                ? <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>
+                : <span className="shrink-0 text-[10px] text-sky-300/90">出撃可</span>
+            )}
+          </span>
+        ) : (
+          <span className="mt-1.5 block text-[12px] leading-snug text-white/50">前ステージのクリアで解放</span>
+        )}
+      </button>
     );
   };
 
@@ -509,7 +489,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const stage = getStage(stageId);
     if (!stage) return null;
     // 洋館［SUB］再訪(統合正本9章): stage-6と同じ親ノード情報の下に REVISIT_MISSION を表示する。
+    // 出撃導線はこの詳細ページ内(サブミッション欄→再訪の詳細ページ)。ステージ選択には枠ボタンを置かない。
     const isRevisit = missionKind === 'revisit';
+    const revisitState = stage.id === 'stage-6'
+      ? revisitCardState(getStoryFlags(), subsAllCompletedFromMeta())
+      : 'hidden';
     const m = isRevisit ? REVISIT_MISSION : stage.main;
     const done = isRevisit ? getStoryFlags().revisitCleared : cleared.has(stage.id);
     // クリア後の記録(debrief)が空のミッション(再訪=秘密行動)は状況説明のまま。
@@ -547,17 +531,41 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {!isRevisit && (
             <Section label="サブミッション">
-              {stage.subs.length === 0
+              {stage.subs.length === 0 && revisitState === 'hidden'
                 ? <p className="text-[12px] text-white/45">{stage.kind === 'free' ? 'なし（周回ミッション）' : 'なし'}</p>
-                : stage.subs.map(s => (
-                  <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
-                    <div className="text-[13px] font-semibold text-white">
-                      {s.title}
-                      {getEventQuestMeta(stage.id).sub && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
-                    </div>
-                    <div className="text-[11px] text-white/55">{s.desc}</div>
-                  </div>
-                ))}
+                : (
+                  <>
+                    {stage.subs.map(s => (
+                      <div key={s.id} className="rounded-none bg-purple-400/5 px-3 py-2">
+                        <div className="text-[13px] font-semibold text-white">
+                          {s.title}
+                          {getEventQuestMeta(stage.id).sub && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
+                        </div>
+                        <div className="text-[11px] text-white/55">{s.desc}</div>
+                      </div>
+                    ))}
+                    {/* 洋館［SUB］再訪: 出撃導線はここ(条件成立時のみ)。クリア後はCLEAR表示のみ。 */}
+                    {revisitState !== 'hidden' && (
+                      <div className="rounded-none bg-purple-400/5 px-3 py-2">
+                        <div className="text-[13px] font-semibold text-white">
+                          {REVISIT_MISSION.title}
+                          {revisitState === 'cleared' && <span className="ml-2 align-middle text-[10px] text-emerald-300/90">CLEAR</span>}
+                        </div>
+                        <div className="text-[11px] text-white/55">{REVISIT_MISSION.summary}</div>
+                        {revisitState === 'available' && (
+                          <Ff7rButton
+                            onClick={() => { playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId, mission: 'revisit' }); }}
+                            className="mt-2 w-full"
+                            fade="both"
+                            paddingY="0.55rem"
+                          >
+                            ▶ 再訪の詳細へ
+                          </Ff7rButton>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
             </Section>
           )}
 

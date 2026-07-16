@@ -543,6 +543,24 @@ export const stageChronicleLabel = (stageId: string): string => {
   return st.kind === 'main' ? `ステージ${st.index}` : st.name;
 };
 
+// 年表の「初ミッション」行の実日付(社長指示v0.25.1772)。初回参照時に永続化して以後固定
+// (既存プレイヤーは最古エントリの日付で初期化=「実際に始めた日」に最も近い値)。
+const CHRONICLE_START_KEY = 'zombie.progress.chronicleStart';
+export const getChronicleStartAt = (): number => {
+  const entries = loadChronicle();
+  const fallback = entries.length ? Math.min(...entries.map(e => e.at)) : Date.now();
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(CHRONICLE_START_KEY);
+    const n = raw ? Number(raw) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+    localStorage.setItem(CHRONICLE_START_KEY, String(fallback));
+    return fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 // マイルストーンを初回のみ記録する(既に同キーがあれば false=何もしない)。phrase=ステージ見出しを
 // 除いた出来事の文(例「深層域に到達」)。ステージ見出しは内部で前置する。イベント発火時のみ呼ばれる
 // (毎フレームではない)ので localStorage 読み書き1回で十分軽い(負荷1/10)。
@@ -573,6 +591,7 @@ export const resetProgress = (): void => {
   writeCastleBossSet(new Set()); // 城ボスクリアフラグも進行リセットで消す(開発用)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
+  try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)
   setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)
   setSelectedMission('main');
 };

@@ -3,7 +3,7 @@ import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { CHANGELOG } from '../data/changelog';
-import { getSelectedStageId, getWallMeta, loadChronicle, type ChronicleEntry } from '../data/progress';
+import { getSelectedStageId, getWallMeta, loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
 import { spritePath } from '../utils/spriteLoader';
 import { deepestReachedBadge } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
@@ -67,8 +67,17 @@ const chronicleIconSrc = (e: ChronicleEntry): string | null => {
   return base ? spritePath(base) : null;
 };
 
+// 「初ミッション」行の実日付表示(社長指示v0.25.1772)。例: 2026/7/16
+const formatChronicleDate = (at: number): string => {
+  const d = new Date(at);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+};
+
 const ChronicleTimeline: React.FC = () => {
   const entries = useMemo(() => loadChronicle().slice().sort((a, b) => a.at - b.at), []);
+  // 年表の先頭に常設する「初ミッション」行(社長指示v0.25.1772): 記録が空でも年表に置き、
+  // すぐ下にプレイ開始の実日付をグレーで出す(初回参照時に永続化=以後固定)。
+  const startAt = useMemo(() => getChronicleStartAt(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [entered, setEntered] = useState(false);
   // 登場演出(社長指示v0.25.1637): 上(過去)から下(最新)へスクロール位置を流し込む+フェードイン。
@@ -108,7 +117,6 @@ const ChronicleTimeline: React.FC = () => {
       el.removeEventListener('pointerdown', stop);
     };
   }, []);
-  if (entries.length === 0) return null;
   const fade = 'linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%)';
   return (
     <div
@@ -128,18 +136,35 @@ const ChronicleTimeline: React.FC = () => {
         style={{ scrollbarWidth: 'none', maskImage: fade, WebkitMaskImage: fade }}
       >
         <ul className="flex flex-col items-center py-5">
-          {entries.map((e, i) => (
+          {/* 先頭に常設の「初ミッション」(社長指示v0.25.1772)。すぐ下に実日付をグレーで。 */}
+          <li
+            className="text-center text-[12.5px] leading-relaxed"
+            style={{
+              fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
+              color: 'rgba(255,255,255,0.94)',
+              letterSpacing: '0.06em',
+              textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
+            }}
+          >
+            初ミッション
+            <span
+              className="block leading-snug"
+              style={{ color: 'rgba(255,255,255,0.42)', fontSize: '10.5px', letterSpacing: '0.08em', marginTop: 2 }}
+            >
+              {formatChronicleDate(startAt)}
+            </span>
+          </li>
+          {entries.map((e) => (
             <React.Fragment key={e.key}>
-              {i > 0 && (
-                // 行間の区切り: エフェクト無しの縦棒「|」(社長指示v0.25.1652。旧=金の横グラデ線)。
-                <span
-                  aria-hidden
-                  className="my-2 select-none text-[12.5px] leading-none"
-                  style={{ color: 'rgba(255,255,255,0.45)' }}
-                >
-                  |
-                </span>
-              )}
+              {/* 行間の区切り: エフェクト無しの縦棒「|」(社長指示v0.25.1652。旧=金の横グラデ線)。
+                  先頭に常設行が入ったため全エントリの前に置く。 */}
+              <span
+                aria-hidden
+                className="my-2 select-none text-[12.5px] leading-none"
+                style={{ color: 'rgba(255,255,255,0.45)' }}
+              >
+                |
+              </span>
               <li
                 className="text-center text-[12.5px] leading-relaxed"
                 style={{
