@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1786',
+    items: [
+      '開発向け: 近接調整P2(即死しきい値+ナイフマスター上限)の仕様を確定(文書のみ・実装は次版)。',
+    ],
+  },
+  {
     version: '0.25.1785',
     items: [
       '開発向け: 近接バランスの実測ソーク結果を記録(文書のみ)。ゲーム内の変化はありません。',
