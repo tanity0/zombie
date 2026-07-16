@@ -400,13 +400,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     );
   };
 
-  // 日時・場所ノード(親)+ ミッション子カードの縦積み。子カードは配列でmapする構造にしておき、
-  // 将来SUBミッションが増えた時もそのままノード直下へ並べられるようにする(追補1-3「同じ日時・場所で
-  // 発生するミッションカードを縦に並べる」)。現状は各ステージに main のみ(subsは別の旧概念=未使用)。
   // ステージ選択のノード(社長指示v0.25.1772でUI刷新): 「日付+場所」の親見出しをボタンの顔にして
-  // ノード全体を1つのタップ対象にする。ミッション行(MAIN/SUB)は枠なしの状態表示のみ=ボタンに見せない
+  // ノード全体を1つのタップ対象にする。ミッション行は枠なしの状態表示のみ=ボタンに見せない
   // (旧: ミッションごとに枠ボタン→SUB情報カードが「押せないボタン」に見えて紛らわしかった)。
-  // 再訪(SUB)の出撃導線はミッション詳細ページ内へ移設。
+  // SUBはB案(社長決定v0.25.1777)=タイトルを並べず「SUB n/N」1行に集約する。今後サブミッションが
+  // 何本増えてもノードの高さは一定(MAIN行+SUB集約行の最大2行)。サブの内訳・出撃導線は
+  // ミッション詳細ページ側(サブミッション欄)が正。
   const StageNode: React.FC<{ stage: Stage; index?: number }> = ({ stage, index = 0 }) => {
     const unlocked = isStageUnlocked(stage, cleared);
     const done = cleared.has(stage.id);
@@ -417,6 +416,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const revisitState = stage.id === 'stage-6'
       ? revisitCardState(getStoryFlags(), subsAllCompletedFromMeta())
       : 'hidden';
+    // SUB集約カウント(B案v0.25.1777): 総数=任意サブ+再訪(表示中のみ)、完了=納品済み+再訪クリア。
+    // 各サブのクリア判定は従来の行表示と同じソース(subQuestDone / revisitState)を使う。
+    const subTotal = stage.subs.length + (revisitState !== 'hidden' ? 1 : 0);
+    const subCleared = (subQuestDone ? stage.subs.length : 0) + (revisitState === 'cleared' ? 1 : 0);
     // ミッション状態行(枠なし)。バッジ+タイトル+CLEAR等のテキストのみ。
     const missionLine = (badgeCls: string, badge: string, title: string, tags: React.ReactNode) => (
       <span className="flex items-center gap-2 min-w-0">
@@ -457,19 +460,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 {hiScore > 0 && <span className="shrink-0 text-[10px] text-amber-300/85 tabular-nums">HI {hiScore}</span>}
               </>
             )}
-            {stage.subs.map(s => (
-              <React.Fragment key={s.id}>
-                {missionLine(
-                  SUB_BADGE_CLS, 'SUB', s.title,
-                  subQuestDone && <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>
-                )}
-              </React.Fragment>
-            ))}
-            {revisitState !== 'hidden' && missionLine(
-              SUB_BADGE_CLS, 'SUB', REVISIT_MISSION.title,
-              revisitState === 'cleared'
-                ? <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>
-                : <span className="shrink-0 text-[10px] text-sky-300/90">出撃可</span>
+            {subTotal > 0 && missionLine(
+              SUB_BADGE_CLS, 'SUB', `${subCleared}/${subTotal}`,
+              <>
+                {subCleared >= subTotal && <span className="shrink-0 text-[10px] text-emerald-300/90">CLEAR</span>}
+                {revisitState === 'available' && <span className="shrink-0 text-[10px] text-sky-300/90">出撃可</span>}
+              </>
             )}
           </span>
         ) : (

@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1777',
+    items: [
+      'ステージ選択の表示を整理: サブミッションはタイトルを並べず「SUB n/N」(クリア数/総数)に集約。サブが増えてもノードが縦に伸びません(内訳はミッション詳細ページで確認)。',
+    ],
+  },
+  {
     version: '0.25.1776',
     items: [
       '起動時のローディングに読み込み進捗の%表示を追加。',

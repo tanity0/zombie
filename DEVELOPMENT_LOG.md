@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.1777 — ステージ選択のSUB表示をn/N集約(B案・社長決定)【2026-07-16 18:20 JST】
+- **背景**: サブミッションは今後増える予定。旧UI(v1772)はノード内にSUB行を縦積み=増えるほど
+  ボタンが肥大。社長提示のA案(ボタン外へぶら下げ)/B案(n/N集約)から**B案を採用**(AskUserQuestionで確認)。
+- **実装**: StageNodeのSUB行(subs.map+再訪行)を「SUB n/N」1行に集約。総数=任意サブ+再訪(表示中のみ)、
+  完了数=納品済みサブ+再訪クリア(クリア判定ソースは従来行と同一=subQuestDone/revisitState)。
+  全完了でCLEAR、再訪available時は「出撃可」タグ併記。**ノード高さはMAIN行+SUB行の最大2行で一定**。
+  サブの内訳・出撃導線は従来どおりミッション詳細ページが正(変更なし)。
+- 検証: typecheck green+ヘッドレス実機シム2状態(初期=SUB 0/1・全進行シード=SUB 1/1 CLEAR×3/
+  洋館SUB 0/1出撃可/MAINのみのステージは1行)でスクショ確認。
+- Files: `src/components/MissionSelect.tsx`, `package.json`, `src/data/changelog.ts`, `DEVELOPMENT_LOG.md`。
+
+
 ## v0.25.1776 — 更新情報ボタン「OK」化+ローディング%表示(社長指示)【2026-07-16 18:01 JST】
 - **①更新情報のボタン文言**: 「はじめる」→「OK」(TitleScreen・ariaLabel共。文言のみ・挙動不変)。
 - **②ローディングの%表示**: START後のローディング(年表画面)の「LOADING…」に読み込み進捗%を追加。
