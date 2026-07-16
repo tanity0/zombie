@@ -8,6 +8,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.25.1790',
+    items: [
+      '内部整理のみ(不採用素材ファイルの削除)。ゲーム内の変化はありません。',
+    ],
+  },
+  {
     version: '0.25.1789',
     items: [
       'ステージ5の戦場に散らばり物を追加: 武器・防具・衣類・木箱・鉄条網・骨や書類など61種が地面に散乱します(通行の邪魔にはなりません)。旗は不採用。',
